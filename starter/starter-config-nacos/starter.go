@@ -31,8 +31,12 @@ import (
 func init() {
 	// Register the refresh bridge as a root object so it is always created.
 	// It links the "nacos" remote config provider's change listener to the
-	// application's property refresh, enabling hot-reload of bound beans.
-	gs.Provide(newConfigRefreshBridge).Export(gs.As[gs.Rooter]())
+	// application's property refresh, enabling hot-reload of bound beans. A
+	// stable name keeps it from colliding with the application's own root beans,
+	// which also export gs.Rooter (an alias for any) under the default bean name.
+	gs.Provide(newConfigRefreshBridge).
+		Name("nacosConfigRefreshBridge").
+		Export(gs.As[gs.Rooter]())
 }
 
 // configRefreshBridge connects remote Nacos config changes to the

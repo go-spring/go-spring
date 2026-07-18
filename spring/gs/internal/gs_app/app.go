@@ -21,6 +21,7 @@ package gs_app
 import (
 	"context"
 	"sync"
+	"time"
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs/internal/gs"
@@ -82,6 +83,21 @@ type Server interface {
 	Stop() error
 }
 
+// PreStopper is an optional interface a Server may implement to participate in
+// graceful drain. When shutdown begins, PreStop is invoked on every server that
+// implements it — before the configured pre-stop delay and before any server is
+// stopped — so the server can start refusing to advertise itself as ready (for
+// example, flip a readiness probe to OUT_OF_SERVICE) while in-flight requests
+// keep being served.
+//
+// This is what lets a Kubernetes rolling update be lossless: on SIGTERM the
+// readiness probe goes false, the endpoint controller removes the pod from
+// Service endpoints, and only after the pre-stop delay — enough time for that
+// removal to propagate — are the servers actually stopped.
+type PreStopper interface {
+	PreStop(ctx context.Context)
+}
+
 // ContextProvider is a wrapper that provides explicit access to the
 // application's root context. It allows users to inject the context into
 // their beans without ambiguity.
@@ -127,6 +143,15 @@ type App struct {
 	ctx    context.Context    // Root context for managing cancellation
 	cancel context.CancelFunc // Function to cancel the root context
 	wg     sync.WaitGroup     // WaitGroup to track running servers
+
+	// preStopDelay is how long to wait, after readiness is flipped off, before
+	// stopping servers on shutdown. It gives external load balancers / the K8s
+	// endpoint controller time to stop routing traffic here. Zero disables the
+	// drain wait (default), preserving the previous immediate-shutdown behavior.
+	preStopDelay time.Duration
+	// shutdownTimeout bounds how long to wait for all servers to stop before
+	// forcing cleanup. Zero means wait indefinitely (default).
+	shutdownTimeout time.Duration
 
 	Rooters []Rooter `autowire:"?"`
 	Runners []Runner `autowire:"${spring.app.runners:=?}"`
@@ -188,6 +213,23 @@ func (app *App) RefreshProperties() error {
 	return app.c.RefreshProperties(p)
 }
 
+// readDuration reads a duration value (e.g. "5s") from the configuration.
+// A missing, empty, or unparsable value yields 0, which callers treat as
+// "feature disabled", so a malformed setting degrades to the safe default
+// rather than failing startup.
+func readDuration(p flatten.Storage, key string) time.Duration {
+	v, ok := p.Value(key)
+	if !ok || v == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		log.Warnf(context.Background(), log.TagAppDef, "invalid duration for %s=%q: %v", key, v, err)
+		return 0
+	}
+	return d
+}
+
 // initLog initializes the application's logging system based on configuration.
 // It configures the global logger if the "logging" section exists in the
 // provided configuration storage. When no "logging" section is present,
@@ -225,6 +267,10 @@ func (app *App) Start() error {
 	if err != nil {
 		return err
 	}
+
+	// Read shutdown drain settings from the merged configuration.
+	app.preStopDelay = readDuration(p, "app.shutdown.pre-stop-delay")
+	app.shutdownTimeout = readDuration(p, "app.shutdown.timeout")
 
 	// Initialize logger
 	if err = app.initLog(p); err != nil {
@@ -298,6 +344,22 @@ func (app *App) WaitForShutdown() {
 	// Block until the root context is cancelled
 	<-app.ctx.Done()
 
+	// Graceful drain: give drain-aware servers a chance to stop advertising
+	// readiness (e.g. actuator /readiness -> OUT_OF_SERVICE), then wait the
+	// configured pre-stop delay so load balancers / the K8s endpoint controller
+	// remove this instance before we actually stop serving. Both steps are
+	// skipped when no delay is configured, preserving immediate shutdown.
+	if app.preStopDelay > 0 {
+		drainCtx := context.WithoutCancel(app.ctx)
+		for _, svr := range app.Servers {
+			if ps, ok := svr.(PreStopper); ok {
+				ps.PreStop(drainCtx)
+			}
+		}
+		log.Infof(app.ctx, log.TagAppDef, "draining for %s before stopping servers", app.preStopDelay)
+		time.Sleep(app.preStopDelay)
+	}
+
 	// Stop all servers concurrently
 	var stopWg sync.WaitGroup
 	for _, svr := range app.Servers {
@@ -310,8 +372,26 @@ func (app *App) WaitForShutdown() {
 		}, goutil.DetachCancel)
 	}
 
-	stopWg.Wait()
-	app.wg.Wait()
+	// Wait for all servers to stop, bounded by shutdownTimeout when configured.
+	// On timeout we log and proceed to cleanup rather than blocking forever, so
+	// a stuck server cannot wedge the shutdown.
+	if app.shutdownTimeout > 0 {
+		done := make(chan struct{})
+		goutil.Go(app.ctx, func(context.Context) {
+			stopWg.Wait()
+			app.wg.Wait()
+			close(done)
+		}, goutil.DetachCancel)
+		select {
+		case <-done:
+		case <-time.After(app.shutdownTimeout):
+			log.Errorf(app.ctx, log.TagAppDef, "shutdown timed out after %s, forcing cleanup", app.shutdownTimeout)
+		}
+	} else {
+		stopWg.Wait()
+		app.wg.Wait()
+	}
+
 	app.c.Close()
 	log.Infof(app.ctx, log.TagAppDef, "shutdown complete")
 	log.Destroy()

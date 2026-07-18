@@ -31,6 +31,11 @@
 //	            a down database never trips a liveness restart.
 //	/readiness  200 {"status":"UP"} only after the app has reported readiness
 //	            AND every registered health.Indicator passes; 503 otherwise.
+//	            During graceful shutdown it flips to 503 OUT_OF_SERVICE (see
+//	            PreStop) so Kubernetes drains the pod before servers stop.
+//	/startup    503 OUT_OF_SERVICE until the app has finished starting, then
+//	            200 {"status":"UP"}. Backs a K8s startupProbe so a slow boot is
+//	            not killed by the liveness probe.
 //	/info       200 with build/version info from the embedded build metadata.
 //
 // Health indicators are contributed by other beans: any bean exported as
@@ -49,6 +54,7 @@ import (
 	"time"
 
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/endpoint"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/health"
 )
@@ -84,8 +90,16 @@ type Server struct {
 	// with no indicators still gets liveness/readiness/info.
 	Indicators []health.Indicator `autowire:"?"`
 
-	svr   *http.Server
-	ready atomic.Bool
+	// Endpoints are all beans exported as endpoint.Endpoint. Optional: a
+	// component (e.g. starter-otel's Prometheus /metrics) contributes its handler
+	// here and it is mounted on this same management port, so operators scrape
+	// one port instead of each component running its own server. The actuator
+	// does not import those components — the seam is the stdlib interface.
+	Endpoints []endpoint.Endpoint `autowire:"?"`
+
+	svr      *http.Server
+	ready    atomic.Bool
+	draining atomic.Bool
 }
 
 // Run binds the management listener and begins serving immediately. It
@@ -100,7 +114,15 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /readiness", s.handleReadiness)
+	mux.HandleFunc("GET /startup", s.handleStartup)
 	mux.HandleFunc("GET /info", s.handleInfo)
+	// Mount every contributed endpoint (e.g. otel's Prometheus /metrics) on the
+	// same management port. Each owns its full path; they are registered after
+	// the built-ins so a contributor cannot shadow /health etc. (ServeMux panics
+	// on a duplicate pattern, surfacing a misconfiguration at startup).
+	for _, ep := range s.Endpoints {
+		mux.Handle(ep.Path(), ep)
+	}
 	s.svr = &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -131,6 +153,16 @@ func (s *Server) Stop() error {
 	return s.svr.Shutdown(context.Background())
 }
 
+// PreStop implements the framework's graceful-drain hook. It is called at the
+// start of shutdown, before the server is stopped, and flips readiness to
+// OUT_OF_SERVICE so a Kubernetes readiness probe fails and the endpoint
+// controller removes this pod from Service endpoints while in-flight requests
+// keep being served. The management server itself keeps serving so probes can
+// still observe the OUT_OF_SERVICE state during the drain window.
+func (s *Server) PreStop(ctx context.Context) {
+	s.draining.Store(true)
+}
+
 // handleHealth reports liveness: the process is up and serving. It intentionally
 // does not consult health indicators — a degraded dependency should fail
 // readiness, not trigger a liveness restart.
@@ -148,7 +180,7 @@ type componentStatus struct {
 // readiness barrier has been crossed AND every registered indicator passes.
 // Returns 503 while not ready or when any required component is down.
 func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
-	if !s.ready.Load() {
+	if !s.ready.Load() || s.draining.Load() {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"status": "OUT_OF_SERVICE",
 		})
@@ -178,6 +210,23 @@ func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
 		body["components"] = components
 	}
 	writeJSON(w, code, body)
+}
+
+// handleStartup backs a Kubernetes startupProbe: it reports 503 until the
+// application has finished starting (the readiness barrier has been crossed),
+// then 200. Unlike /readiness it does not consult health indicators — its only
+// job is to tell the kubelet "startup is done, hand off to the liveness probe",
+// so a slow boot is not mistaken for a hung process and killed. It is not
+// affected by drain: once startup has completed, startupProbe is no longer
+// polled.
+func (s *Server) handleStartup(w http.ResponseWriter, r *http.Request) {
+	if !s.ready.Load() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status": "OUT_OF_SERVICE",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": health.StatusUp})
 }
 
 // handleInfo reports build/version metadata read from the binary's embedded

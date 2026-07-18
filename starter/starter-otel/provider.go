@@ -122,11 +122,23 @@ func newPropagator(name string) (propagation.TextMapPropagator, error) {
 	}
 }
 
+// promServe carries the pull-based Prometheus artifacts produced by the
+// metrics exporter. handler renders the registry (always set for the prometheus
+// exporter) and is contributed to the actuator as an endpoint.Endpoint so
+// /metrics is served on the shared management port. server is the optional
+// dedicated scrape server, started only when a positive port is configured; set
+// ${spring.observability.metrics.port}=0 to serve /metrics solely through the
+// actuator.
+type promServe struct {
+	handler http.Handler
+	server  *http.Server
+}
+
 // newMeterProvider builds a MeterProvider for the configured exporter. The
-// prometheus exporter is pull-based and returns a standalone *http.Server that
-// serves the scrape endpoint on Port; the otlp/stdout exporters are push-based
-// via a PeriodicReader and return a nil server.
-func newMeterProvider(cfg MetricsConfig, res *resource.Resource) (*sdkmetric.MeterProvider, *http.Server, error) {
+// prometheus exporter is pull-based and returns a *promServe carrying the scrape
+// handler (and an optional dedicated server); the otlp/stdout exporters are
+// push-based via a PeriodicReader and return a nil *promServe.
+func newMeterProvider(cfg MetricsConfig, res *resource.Resource) (*sdkmetric.MeterProvider, *promServe, error) {
 	ctx := context.Background()
 
 	switch cfg.Exporter {
@@ -140,7 +152,11 @@ func newMeterProvider(cfg MetricsConfig, res *resource.Resource) (*sdkmetric.Met
 			sdkmetric.WithReader(exp),
 			sdkmetric.WithResource(res),
 		)
-		return mp, serveMetrics(fmt.Sprintf(":%d", cfg.Port), cfg.Path, reg), nil
+		ps := &promServe{handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
+		if cfg.Port > 0 {
+			ps.server = serveMetrics(fmt.Sprintf(":%d", cfg.Port), cfg.Path, ps.handler)
+		}
+		return mp, ps, nil
 
 	case "otlp-grpc":
 		opts := []otlpmetricgrpc.Option{}
@@ -195,12 +211,14 @@ func newPushMeterProvider(exp sdkmetric.Exporter, interval time.Duration, res *r
 	)
 }
 
-// serveMetrics starts a standalone HTTP server rendering the Prometheus
-// registry on path. It runs on its own listener (decoupled from any component's
+// serveMetrics starts a standalone HTTP server rendering the Prometheus scrape
+// handler on path. It runs on its own listener (decoupled from any component's
 // transport), mirroring the dedicated :9090 the dubbo/kratos examples expose.
-func serveMetrics(addr, path string, reg *prometheus.Registry) *http.Server {
+// The same handler is also contributed to the actuator (see metricsEndpoint), so
+// this dedicated server is optional and skipped when port<=0.
+func serveMetrics(addr, path string, handler http.Handler) *http.Server {
 	mux := http.NewServeMux()
-	mux.Handle(path, promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	mux.Handle(path, handler)
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -208,4 +226,23 @@ func serveMetrics(addr, path string, reg *prometheus.Registry) *http.Server {
 		}
 	}()
 	return srv
+}
+
+// metricsEndpoint adapts the Prometheus scrape handler to endpoint.Endpoint so
+// the actuator mounts /metrics on its management port. It is the seam that lets
+// starter-otel expose metrics through the actuator without either starter
+// importing the other — both depend only on stdlib.
+type metricsEndpoint struct {
+	path    string
+	handler http.Handler
+}
+
+func newMetricsEndpoint(path string, handler http.Handler) *metricsEndpoint {
+	return &metricsEndpoint{path: path, handler: handler}
+}
+
+func (m *metricsEndpoint) Path() string { return m.path }
+
+func (m *metricsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	m.handler.ServeHTTP(w, r)
 }

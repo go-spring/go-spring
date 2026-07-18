@@ -25,6 +25,7 @@ Each module is independent and can be used separately. Detailed documentation is
 
 | Module | Description |
 |--------|-------------|
+| [aspect](./aspect/) | AOP-equivalent interceptor chain for cross-cutting concerns (transaction, cache, audit, timing) |
 | [ctxcache](./ctxcache/) | Context-based caching utilities |
 | [errutil](./errutil/) | Error handling utilities, provides error wrapping, stack trace capture and more |
 | [fileutil](./fileutil/) | File system utilities |

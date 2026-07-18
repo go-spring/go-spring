@@ -1,0 +1,8 @@
+services:
+  # Redis backing both the *redis.Client bean (starter-go-redis) and the
+  # Locker bean built on top of it (starter-lock-redis).
+  redis:
+    image: redis:7
+    container_name: starter-lock-redis
+    ports:
+      - "127.0.0.1:6379:6379"

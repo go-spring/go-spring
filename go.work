@@ -41,9 +41,12 @@ use (
 	./starter/starter-ants
 	./starter/starter-bigcache
 	./starter/starter-casbin
+	./starter/starter-config-bus
 	./starter/starter-config-consul
 	./starter/starter-config-etcd
+	./starter/starter-config-file
 	./starter/starter-config-nacos
+	./starter/starter-discovery-k8s
 	./starter/starter-dubbo
 	./starter/starter-echo
 	./starter/starter-elasticsearch
@@ -62,6 +65,9 @@ use (
 	./starter/starter-kitex
 	./starter/starter-kitex/example
 	./starter/starter-kratos
+	./starter/starter-lock-consul
+	./starter/starter-lock-etcd
+	./starter/starter-lock-redis
 	./starter/starter-lua-filter
 	./starter/starter-memcached
 	./starter/starter-mongodb
@@ -70,6 +76,7 @@ use (
 	./starter/starter-neo4j
 	./starter/starter-oauth2-client
 	./starter/starter-otel
+	./starter/starter-otel/example
 	./starter/starter-pprof
 	./starter/starter-pulsar
 	./starter/starter-rabbitmq

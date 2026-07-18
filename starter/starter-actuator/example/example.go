@@ -82,10 +82,12 @@ func main() {
 	gs.Run()
 }
 
-// runTest asserts the three endpoints behave as documented: /health is always
-// UP, /readiness reflects the aggregated indicator (UP, then DOWN once the
-// dependency is toggled), and /info returns build metadata. It exits non-zero
-// on any failure, then triggers a graceful shutdown.
+// runTest asserts the endpoints behave as documented: /health is always UP,
+// /readiness reflects the aggregated indicator (UP, then DOWN once the
+// dependency is toggled, then UP again), /startup reports readiness completion,
+// and /info returns build metadata. It then triggers a graceful shutdown and
+// asserts the drain sequence flips /readiness to OUT_OF_SERVICE while liveness
+// stays up. It exits non-zero on any failure.
 func runTest() {
 	const base = "http://127.0.0.1:9370"
 
@@ -96,6 +98,10 @@ func runTest() {
 	// The app has reported readiness and the dependency is healthy -> 200.
 	mustStatus(base+"/readiness", http.StatusOK)
 	fmt.Println("readiness UP")
+
+	// Startup has completed (readiness barrier crossed) -> 200.
+	mustStatus(base+"/startup", http.StatusOK)
+	fmt.Println("startup OK")
 
 	// Build info is served.
 	mustStatus(base+"/info", http.StatusOK)
@@ -108,7 +114,41 @@ func runTest() {
 	mustStatus(base+"/health", http.StatusOK)
 	fmt.Println("readiness DOWN when dependency down, health still UP")
 
+	// Restore the dependency so the subsequent 503 is attributable to draining,
+	// not to the indicator.
+	dep.down.Store(false)
+	mustStatus(base+"/readiness", http.StatusOK)
+
+	// Trigger graceful shutdown. With app.shutdown.pre-stop-delay set, the
+	// framework flips readiness to OUT_OF_SERVICE and keeps serving for the drain
+	// window before stopping. Poll until /readiness reports 503 while /health
+	// stays 200, proving the pod would be drained from Service endpoints before
+	// it stops accepting traffic.
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if statusOf(base+"/readiness") == http.StatusServiceUnavailable {
+			mustStatus(base+"/health", http.StatusOK)
+			fmt.Println("readiness OUT_OF_SERVICE during drain, health still UP")
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	fmt.Fprintln(os.Stderr, "readiness did not flip to OUT_OF_SERVICE during drain")
+	os.Exit(1)
+}
+
+// statusOf returns the HTTP status code for a GET of url, or -1 on error (for
+// example once the server has stopped serving at the end of the drain window).
+func statusOf(url string) int {
+	resp, err := http.Get(url)
+	if err != nil {
+		return -1
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	return resp.StatusCode
 }
 
 // mustStatus fetches url and exits the process non-zero unless the response

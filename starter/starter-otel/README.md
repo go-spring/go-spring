@@ -93,7 +93,7 @@ Metrics (`spring.observability.metrics.exporter`):
 | --- | --- | --- |
 | `otlp-grpc` | OTLP over gRPC | Default. Push to a Collector on `endpoint` (`:4317`) every `interval`. |
 | `otlp-http` | OTLP over HTTP | Same as above over HTTP (`:4318`). |
-| `prometheus` | Prometheus (pull) | Serves a standalone `/metrics` endpoint on `port` for scraping. |
+| `prometheus` | Prometheus (pull) | Serves a `/metrics` scrape endpoint. On a standalone server on `port`, and — when `starter-actuator` is present — also on its management port (see [Metrics via the Actuator](#metrics-via-the-actuator)). |
 | `stdout` | Standard output | Prints metrics as JSON every `interval`. |
 | `none` | (disabled) | Builds no `MeterProvider`. |
 
@@ -129,9 +129,58 @@ Metrics, under `${spring.observability.metrics}`:
 | `exporter` | `otlp-grpc` | `otlp-grpc` \| `otlp-http` \| `prometheus` \| `stdout` \| `none`. |
 | `endpoint` | (empty) | Collector address; required for the otlp exporters. |
 | `insecure` | `true` | Disable TLS for the otlp exporters. |
-| `port` | `9090` | Port of the standalone `/metrics` server (prometheus exporter). |
-| `path` | `/metrics` | Path of the prometheus scrape endpoint. |
+| `port` | `9090` | Port of the standalone `/metrics` server (prometheus exporter). Set to `0` to skip the standalone server and serve `/metrics` **only** through the actuator management port (see [Metrics via the Actuator](#metrics-via-the-actuator)). |
+| `path` | `/metrics` | Path of the prometheus scrape endpoint (used by both the standalone server and the actuator mount). |
 | `interval` | `10s` | Push interval for the otlp/stdout readers. |
+
+## Metrics via the Actuator
+
+When `starter-actuator` is also imported, the Prometheus exporter's scrape
+handler is mounted on the actuator management port (`:9370`) in addition to — or
+instead of — its own standalone server. Operators then scrape a **single port**
+for probes *and* metrics.
+
+This works through the zero-dependency `go-spring.org/stdlib/endpoint` seam:
+`starter-otel` exports its scrape handler as an `endpoint.Endpoint` bean, and the
+actuator mounts every such bean on its management server. Neither starter imports
+the other.
+
+```go
+import (
+    _ "go-spring.org/starter-otel"
+    _ "go-spring.org/starter-actuator"
+)
+```
+
+```properties
+# Serve /metrics only through the actuator (no standalone metrics server):
+spring.observability.metrics.exporter=prometheus
+spring.observability.metrics.port=0
+spring.observability.metrics.path=/metrics
+```
+
+```bash
+curl http://127.0.0.1:9370/metrics
+```
+
+Leaving `port` at a non-zero value keeps both the standalone server and the
+actuator mount active. See the actuator README's *Metrics & Kubernetes Scraping*
+section for Pod-annotation and `ServiceMonitor` scrape samples.
+
+## Trace ↔ Log Correlation
+
+When tracing is enabled, `starter-otel` installs a `log.FieldsFromContext` hook
+that lifts the active span's `trace_id` and `span_id` off the context onto every
+log record written with that context. A request's logs are then joined to its
+trace with no per-call-site code:
+
+```go
+log.Infof(ctx, tag, "handling request")
+// → ...||trace_id=29b84b8a2f4eaa447120bf01282c3930||span_id=bc6627138bf150f7||msg=handling request
+```
+
+The hook is a no-op when the context carries no valid span, so uninstrumented
+code paths pay nothing.
 
 ## Connecting Multiple Backends
 
@@ -152,10 +201,17 @@ Jaeger on `:4317`) you may point `endpoint` at it directly; for Prometheus use
 
 ## Example
 
-See [contrib/observability-gorm](../../contrib/observability-gorm) for a runnable
-smoke test: importing `starter-otel` + `starter-gorm-mysql` and configuring
-`${spring.observability}` once is enough to get GORM query spans and connection
-pool metrics at the Collector, with no per-component instrumentation code.
+See [example](example) for a runnable, self-asserting smoke test: importing
+`starter-otel` + `starter-actuator` and configuring `${spring.observability}`
+once is enough to (1) correlate a request's logs to its trace via `trace_id` and
+(2) serve otel's Prometheus `/metrics` on the actuator management port — with no
+external services (tracing uses the stdout exporter, metrics are scraped
+in-process).
+
+See [contrib/observability-gorm](../../contrib/observability-gorm) for an
+end-to-end example that adds an instrumented component (`starter-gorm-mysql`):
+GORM query spans and connection-pool metrics reach the Collector with no
+per-component instrumentation code.
 
 ## Graceful Shutdown
 

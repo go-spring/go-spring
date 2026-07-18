@@ -45,12 +45,15 @@ spring.actuator.addr=:9370
 ```bash
 curl http://127.0.0.1:9370/health      # liveness
 curl http://127.0.0.1:9370/readiness   # readiness (aggregates health indicators)
+curl http://127.0.0.1:9370/startup     # startup probe (503 until started, then 200)
 curl http://127.0.0.1:9370/info        # build/version info
 ```
 
 Map them to a Kubernetes pod spec directly:
 
 ```yaml
+startupProbe:
+  httpGet: { path: /startup, port: 9370 }
 livenessProbe:
   httpGet: { path: /health, port: 9370 }
 readinessProbe:
@@ -62,8 +65,30 @@ readinessProbe:
 | Endpoint | Method | Meaning |
 | --- | --- | --- |
 | `/health` | GET | Liveness. Returns `200 {"status":"UP"}` once the process is serving. It reflects that the process is up, **not** dependency health — a down database never trips a liveness restart. |
-| `/readiness` | GET | Readiness. Returns `200 {"status":"UP"}` only after the app has crossed its readiness barrier **and** every registered health indicator passes; `503` otherwise (`OUT_OF_SERVICE` before ready, `DOWN` when a component fails). |
+| `/readiness` | GET | Readiness. Returns `200 {"status":"UP"}` only after the app has crossed its readiness barrier **and** every registered health indicator passes; `503` otherwise (`OUT_OF_SERVICE` before ready or while draining on shutdown, `DOWN` when a component fails). |
+| `/startup` | GET | Startup probe. Returns `503 OUT_OF_SERVICE` until the app has finished starting, then `200 {"status":"UP"}`. Unlike `/readiness` it ignores health indicators — its only job is to tell the kubelet startup is done, so a slow boot is not killed by the liveness probe. |
 | `/info` | GET | Build/version metadata read from the binary's embedded build info (module path/version, Go toolchain, and the VCS revision/time when built from a checkout). |
+| `/metrics` | GET | Prometheus scrape endpoint. Present only when `starter-otel` is imported with `spring.observability.metrics.exporter=prometheus` — otel contributes its scrape handler and the actuator mounts it here (see *Metrics & Kubernetes Scraping*). |
+
+## Graceful Shutdown (Drain)
+
+On `SIGTERM`, the framework runs a drain sequence before stopping servers: the
+actuator flips `/readiness` to `503 OUT_OF_SERVICE` (via a `PreStop` hook) while
+`/health` and in-flight requests stay up, then waits `app.shutdown.pre-stop-delay`
+so the Kubernetes endpoint controller can remove the pod from Service endpoints
+before it stops accepting new traffic. This is what makes a rolling update
+lossless. Servers are then stopped, bounded by `app.shutdown.timeout`.
+
+```properties
+# Wait this long after readiness flips false before stopping servers.
+app.shutdown.pre-stop-delay=5s
+# Optional cap on how long to wait for servers to stop (0 = wait indefinitely).
+app.shutdown.timeout=30s
+```
+
+Both settings are framework-level (they apply to every server, not just the
+actuator) and default to `0`, which disables the drain wait and preserves
+immediate shutdown.
 
 ## Health Indicators
 
@@ -98,6 +123,67 @@ response so a probe failure is easy to attribute:
 
 Client starters that ship a health indicator (e.g. `starter-go-redis`) are
 folded in automatically once both starters are imported.
+
+## Metrics & Kubernetes Scraping
+
+The actuator can also serve the Prometheus `/metrics` endpoint, so operators
+scrape a **single management port** for probes *and* metrics instead of the
+metrics exporter running its own server. This is opt-in through `starter-otel`:
+any bean exported as `endpoint.Endpoint` (from the zero-dependency
+`go-spring.org/stdlib/endpoint` package) is mounted on the management port, and
+`starter-otel`'s Prometheus exporter contributes exactly such a bean — no import
+of otel by this starter and no extra wiring:
+
+```go
+import (
+    _ "go-spring.org/starter-actuator"
+    _ "go-spring.org/starter-otel"
+)
+```
+
+```properties
+# Serve /metrics through the actuator only (no dedicated metrics server):
+spring.observability.metrics.exporter=prometheus
+spring.observability.metrics.port=0
+spring.observability.metrics.path=/metrics
+```
+
+```bash
+curl http://127.0.0.1:9370/metrics
+```
+
+### Pod annotation scraping
+
+For a Prometheus server using pod-annotation discovery, point it at the
+management port:
+
+```yaml
+metadata:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9370"
+    prometheus.io/path: "/metrics"
+```
+
+### ServiceMonitor (Prometheus Operator)
+
+Expose the management port on the Service, then select it with a
+`ServiceMonitor`:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: my-app
+spec:
+  selector:
+    matchLabels:
+      app: my-app
+  endpoints:
+    - port: management   # the Service port that maps to 9370
+      path: /metrics
+      interval: 15s
+```
 
 ## Configuration
 

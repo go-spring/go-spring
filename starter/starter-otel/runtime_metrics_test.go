@@ -46,12 +46,13 @@ func TestRuntimeMetricsExposed(t *testing.T) {
 	res, err := newResource("runtime-smoke")
 	assert.Error(t, err).Nil()
 
-	mp, srv, err := newMeterProvider(cfg, res)
+	mp, ps, err := newMeterProvider(cfg, res)
 	assert.Error(t, err).Nil()
-	assert.That(t, srv).NotNil()
+	assert.That(t, ps).NotNil()
+	assert.That(t, ps.server).NotNil()
 	defer func() {
 		_ = mp.Shutdown(context.Background())
-		_ = srv.Shutdown(context.Background())
+		_ = ps.server.Shutdown(context.Background())
 	}()
 
 	err = runtimemetrics.Start(runtimemetrics.WithMeterProvider(mp))

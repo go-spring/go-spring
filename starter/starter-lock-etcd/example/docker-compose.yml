@@ -1,0 +1,10 @@
+services:
+  etcd:
+    image: bitnami/etcd:3.5
+    container_name: starter-lock-etcd
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+    ports:
+      - "127.0.0.1:2379:2379"

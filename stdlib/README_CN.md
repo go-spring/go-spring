@@ -23,6 +23,7 @@
 
 | 模块 | 说明 |
 |--------|-------------|
+| [aspect](./aspect/) | AOP 等价能力，横切关注点（事务、缓存、审计、埋点）的拦截器链 |
 | [ctxcache](./ctxcache/) | 基于 Context 的缓存工具 |
 | [errutil](./errutil/) | 错误处理工具，提供错误包装、栈追踪捕获等功能 |
 | [fileutil](./fileutil/) | 文件系统工具 |

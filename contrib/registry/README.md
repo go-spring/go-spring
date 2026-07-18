@@ -37,6 +37,20 @@ framework plugs into it.
   `github.com/kitex-contrib/registry-consul`, wired explicitly in
   `provider/server.go` (there is no starter for it).
 
+## Kubernetes-native discovery (no registration step)
+
+Inside Kubernetes there is no separate registry to register into: the platform
+already registers every Pod behind a Service. Discovery is therefore
+**client-side only** — resolve a Service name to its live Pod endpoints — which
+is a different shape from the register-then-discover examples above, and why it
+is a reusable **starter** rather than a demo here:
+[`starter/starter-discovery-k8s`](../../starter/starter-discovery-k8s). It
+implements `stdlib/discovery` in two modes: headless-Service DNS (zero
+dependency, no RBAC) and an EndpointSlice informer (real-time, client-go +
+`get/list/watch endpointslices` RBAC). The starter carries its own K8s manifests
+and example; there is no docker-compose demo under this directory because the
+mechanism needs a real cluster, not a single container.
+
 ## Common shape of every example
 
 ```

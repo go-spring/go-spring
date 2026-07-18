@@ -29,6 +29,7 @@ import (
 
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/endpoint"
 	"go-spring.org/stdlib/flatten"
 	runtimemetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
@@ -82,10 +83,13 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		r.Provide(tp).Destroy(func(tp *sdktrace.TracerProvider) error {
 			return tp.Shutdown(context.Background())
 		})
+		// Correlate logs with traces: install the log hook that stamps every
+		// record with the active span's trace_id/span_id.
+		installLogCorrelation()
 	}
 
 	if cfg.Metrics.Enable && cfg.Metrics.Exporter != "none" {
-		mp, srv, err := newMeterProvider(cfg.Metrics, res)
+		mp, ps, err := newMeterProvider(cfg.Metrics, res)
 		if err != nil {
 			return err
 		}
@@ -106,10 +110,20 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 				return err
 			}
 		}
-		if srv != nil {
-			r.Provide(srv).Destroy(func(srv *http.Server) error {
-				return srv.Shutdown(context.Background())
-			})
+		// Pull-based (prometheus) exporter: contribute the scrape handler as an
+		// endpoint.Endpoint so starter-actuator, if present, serves /metrics on
+		// the shared management port — no cross-starter import. The dedicated
+		// server (ps.server) is optional and only runs when metrics.port>0.
+		if ps != nil {
+			if ps.server != nil {
+				r.Provide(ps.server).Destroy(func(srv *http.Server) error {
+					return srv.Shutdown(context.Background())
+				})
+			}
+			if ps.handler != nil {
+				r.Provide(newMetricsEndpoint(cfg.Metrics.Path, ps.handler)).
+					Export(gs.As[endpoint.Endpoint]())
+			}
 		}
 	}
 

@@ -87,7 +87,7 @@ Metrics(`spring.observability.metrics.exporter`):
 | --- | --- | --- |
 | `otlp-grpc` | OTLP over gRPC | 默认。每隔 `interval` 推送到 `endpoint`(`:4317`)上的 Collector。 |
 | `otlp-http` | OTLP over HTTP | 同上,走 HTTP(`:4318`)。 |
-| `prometheus` | Prometheus(pull) | 在 `port` 上暴露独立的 `/metrics` 端点供抓取。 |
+| `prometheus` | Prometheus(pull) | 在 `port` 上暴露独立的 `/metrics` 端点供抓取；当引入 `starter-actuator` 时，同一抓取 handler 还会挂载到管理端口（见[通过 Actuator 暴露指标](#通过-actuator-暴露指标)）。 |
 | `stdout` | 标准输出 | 每隔 `interval` 以 JSON 打印 metrics。 |
 | `none` | (禁用) | 不构建 `MeterProvider`。 |
 
@@ -122,9 +122,53 @@ Metrics，位于 `${spring.observability.metrics}`：
 | `exporter` | `otlp-grpc` | `otlp-grpc` \| `otlp-http` \| `prometheus` \| `stdout` \| `none`。 |
 | `endpoint` | （空） | Collector 地址；otlp exporter 必填。 |
 | `insecure` | `true` | 对 otlp exporter 关闭 TLS。 |
-| `port` | `9090` | 独立 `/metrics` server 的端口（prometheus exporter）。 |
-| `path` | `/metrics` | prometheus 抓取端点的路径。 |
+| `port` | `9090` | 独立 `/metrics` server 的端口（prometheus exporter）。设为 `0` 则不启动独立 server，仅通过 actuator 管理端口暴露 `/metrics`（见[通过 Actuator 暴露指标](#通过-actuator-暴露指标)）。 |
+| `path` | `/metrics` | prometheus 抓取端点的路径（独立 server 与 actuator 挂载共用）。 |
 | `interval` | `10s` | otlp/stdout reader 的推送间隔。 |
+
+## 通过 Actuator 暴露指标
+
+同时引入 `starter-actuator` 时，Prometheus exporter 的抓取 handler 会挂载到
+actuator 管理端口（`:9370`）上——可与自身的独立 server 并存，也可完全取而代之。
+运维方由此**只抓一个端口**即可同时拿到探针与指标。
+
+这通过零依赖的 `go-spring.org/stdlib/endpoint` 缝隙实现：`starter-otel` 把抓取
+handler 导出为 `endpoint.Endpoint` bean，actuator 将所有此类 bean 挂载到管理
+server。两个 starter 互不 import。
+
+```go
+import (
+    _ "go-spring.org/starter-otel"
+    _ "go-spring.org/starter-actuator"
+)
+```
+
+```properties
+# 仅通过 actuator 暴露 /metrics（不再另起独立指标 server）：
+spring.observability.metrics.exporter=prometheus
+spring.observability.metrics.port=0
+spring.observability.metrics.path=/metrics
+```
+
+```bash
+curl http://127.0.0.1:9370/metrics
+```
+
+`port` 保持非零则独立 server 与 actuator 挂载同时存在。Pod 注解与 `ServiceMonitor`
+抓取示例见 actuator README 的*指标与 Kubernetes 抓取*一节。
+
+## Trace ↔ Log 关联
+
+启用 tracing 时，`starter-otel` 会安装一个 `log.FieldsFromContext` 钩子，把当前
+span 的 `trace_id` 与 `span_id` 从 context 提取到每一条以该 context 写出的日志
+记录上。一个请求的日志由此自动与其 trace 关联，无需任何逐调用点的代码：
+
+```go
+log.Infof(ctx, tag, "handling request")
+// → ...||trace_id=29b84b8a2f4eaa447120bf01282c3930||span_id=bc6627138bf150f7||msg=handling request
+```
+
+当 context 不携带有效 span 时该钩子为 no-op，因此未埋点的代码路径零开销。
 
 ## 对接多种后端
 
@@ -143,10 +187,14 @@ app (starter-otel) ──OTLP──▶ Collector ──┬─▶ Jaeger / Tempo 
 
 ## 示例
 
-参见 [contrib/observability-gorm](../../contrib/observability-gorm) 的可运行冒烟
-测试：引入 `starter-otel` + `starter-gorm-mysql` 并配置一次
-`${spring.observability}`，即可在 Collector 侧拿到 GORM 查询 span 和连接池指标，
-无需任何逐组件的埋点代码。
+参见 [example](example) 的可运行、自校验冒烟测试：引入 `starter-otel` +
+`starter-actuator` 并配置一次 `${spring.observability}`，即可（1）通过 `trace_id`
+将一个请求的日志关联到其 trace，（2）在 actuator 管理端口上暴露 otel 的 Prometheus
+`/metrics`——无需任何外部服务（tracing 用 stdout exporter，metrics 进程内抓取）。
+
+参见 [contrib/observability-gorm](../../contrib/observability-gorm) 的端到端示例，
+它额外引入一个已埋点组件（`starter-gorm-mysql`）：无需任何逐组件埋点代码，即可在
+Collector 侧拿到 GORM 查询 span 和连接池指标。
 
 ## 优雅关闭
 
