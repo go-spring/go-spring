@@ -30,32 +30,29 @@ import (
 	"github.com/gin-gonic/gin"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-gin"
+	StarterGin "go-spring.org/starter-gin"
 )
 
 func init() {
 	gs.Provide(&Controller{})
-	gs.Provide(func(c *Controller) *gin.Engine {
-		gin.SetMode(gin.ReleaseMode)
-		e := gin.New()
+	// Provide a RouterRegister: the starter owns the *gin.Engine and its HTTP
+	// server (address from ${spring.gin.server}); we only wire routes and
+	// middleware onto the engine it hands us.
+	gs.Provide(func(c *Controller) StarterGin.RouterRegister {
+		return func(e *gin.Engine) {
+			// Feature 1: middleware — stamp an application-level header on
+			// every response so callers can identify the service.
+			e.Use(func(ctx *gin.Context) {
+				ctx.Header("X-App", "go-spring")
+				ctx.Next()
+			})
 
-		// Feature 1: middleware.
-		// Built-in Recovery protects against handler panics; the
-		// custom middleware stamps an application-level header on
-		// every response so callers can identify the service.
-		e.Use(gin.Recovery())
-		e.Use(func(ctx *gin.Context) {
-			ctx.Header("X-App", "go-spring")
-			ctx.Next()
-		})
+			// Feature 2: path parameter + JSON response.
+			e.GET("/echo/:name", c.Echo)
 
-		// Feature 2: path parameter + JSON response.
-		e.GET("/echo/:name", c.Echo)
-
-		// Feature 3: query-parameter handler.
-		e.GET("/greet", c.Greet)
-
-		return e
+			// Feature 3: query-parameter handler.
+			e.GET("/greet", c.Greet)
+		}
 	})
 }
 

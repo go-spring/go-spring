@@ -21,25 +21,28 @@ Refer to the [example.go](example/example.go) file.
 import _ "go-spring.org/starter-kafka"
 ```
 
-### 2. Configure the Kafka Client
+### 2. Configure the Kafka Clients
 
-Add Kafka configuration in your project's [configuration file](example/conf/app.properties), for example:
+Define one or more named clients under `spring.kafka.instances.<name>` in your
+project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.kafka.brokers=127.0.0.1:9092
-spring.kafka.topic=hello
-spring.kafka.group=hello-group
+spring.kafka.instances.a.brokers=127.0.0.1:9092
+spring.kafka.instances.a.topic=hello
+spring.kafka.instances.a.group=hello-group
+spring.kafka.instances.b.brokers=127.0.0.1:9092
 ```
 
 ### 3. Inject the Kafka Client
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [example.go](example/example.go) file. Each named instance is registered
+as a `*kgo.Client` bean under that name; inject the one you need by name.
 
 ```go
 import "github.com/twmb/franz-go/pkg/kgo"
 
 type Service struct {
-    Client *kgo.Client `autowire:"__default__"`
+    Client *kgo.Client `autowire:"a"`
 }
 ```
 
@@ -61,5 +64,6 @@ fetches.EachRecord(func(r *kgo.Record) {
 
 ## Advanced Features
 
-* **Supports multiple Kafka clients**: You can define multiple Kafka clients under
-  `spring.kafka.instances` in the configuration file and reference them by name.
+* **Multiple Kafka clients**: Every entry under `spring.kafka.instances` becomes an
+  independently configured `*kgo.Client` bean; inject them by name to talk to
+  different clusters or consumer groups.

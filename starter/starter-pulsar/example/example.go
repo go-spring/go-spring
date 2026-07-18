@@ -38,7 +38,7 @@ const (
 )
 
 type Service struct {
-	Client pulsar.Client `autowire:"__default__"`
+	Client pulsar.Client `autowire:"a"`
 }
 
 func main() {

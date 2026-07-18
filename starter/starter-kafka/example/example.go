@@ -35,7 +35,7 @@ import (
 const topic = "hello"
 
 type Service struct {
-	Client *kgo.Client `autowire:"__default__"`
+	Client *kgo.Client `autowire:"a"`
 }
 
 func main() {

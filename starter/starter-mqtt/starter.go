@@ -23,13 +23,6 @@ import (
 
 func init() {
 
-	// Register a single default MQTT client.
-	// This client will only be created if the property "spring.mqtt.broker" is set.
-	// It uses the configuration tagged with "${spring.mqtt}".
-	gs.Provide(newClient, gs.TagArg("${spring.mqtt}")).
-		Condition(gs.OnProperty("spring.mqtt.broker")).
-		Destroy(destroyClient)
-
 	// Register multiple MQTT clients as a group.
 	// Each instance is created according to the configuration in "${spring.mqtt.instances}".
 	// This allows defining multiple MQTT clients dynamically.

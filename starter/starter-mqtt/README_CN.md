@@ -23,21 +23,24 @@ import _ "go-spring.org/starter-mqtt"
 
 ### 2. 配置 MQTT 客户端
 
-在项目的[配置文件](example/conf/app.properties)中添加 MQTT 配置，比如：
+在项目的[配置文件](example/conf/app.properties)中，在 `spring.mqtt.instances.<name>`
+下定义一个或多个具名客户端，比如：
 
 ```properties
-spring.mqtt.broker=tcp://127.0.0.1:1883
+spring.mqtt.instances.a.broker=tcp://127.0.0.1:1883
+spring.mqtt.instances.b.broker=tcp://127.0.0.1:1883
 ```
 
 ### 3. 注入 MQTT 客户端
 
-参见 [example.go](example/example.go) 文件。
+参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+`mqtt.Client` bean，按名称注入所需实例即可。
 
 ```go
 import mqtt "github.com/eclipse/paho.mqtt.golang"
 
 type Service struct {
-    Client mqtt.Client `autowire:"__default__"`
+    Client mqtt.Client `autowire:"a"`
 }
 ```
 
@@ -59,4 +62,5 @@ _ = token.Error()
 
 ## 高级功能
 
-* **支持多 MQTT 客户端**：可以在配置文件的 `spring.mqtt.instances` 下定义多个 MQTT 客户端，并在项目中使用 name 进行引用。
+* **多 MQTT 客户端**：`spring.mqtt.instances` 下的每一项都会成为一个独立配置的
+  `mqtt.Client` bean，按名称注入即可访问不同的 broker。

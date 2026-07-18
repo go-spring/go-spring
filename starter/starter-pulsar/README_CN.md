@@ -23,21 +23,24 @@ import _ "go-spring.org/starter-pulsar"
 
 ### 2. 配置 Pulsar 客户端
 
-在项目的[配置文件](example/conf/app.properties)中添加 Pulsar 配置,例如:
+在项目的[配置文件](example/conf/app.properties)中,在 `spring.pulsar.instances.<name>`
+下定义一个或多个具名客户端,例如:
 
 ```properties
-spring.pulsar.url=pulsar://127.0.0.1:6650
+spring.pulsar.instances.a.url=pulsar://127.0.0.1:6650
+spring.pulsar.instances.b.url=pulsar://127.0.0.1:6650
 ```
 
 ### 3. 注入 Pulsar 客户端
 
-参考 [example.go](example/example.go) 文件。
+参考 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+`pulsar.Client` bean,按名称注入所需实例即可。
 
 ```go
 import "github.com/apache/pulsar-client-go/pulsar"
 
 type Service struct {
-    Client pulsar.Client `autowire:"__default__"`
+    Client pulsar.Client `autowire:"a"`
 }
 ```
 
@@ -63,5 +66,5 @@ consumer.Ack(msg)
 
 ## 高级特性
 
-* **支持多个 Pulsar 客户端**:可以在配置文件中的 `spring.pulsar.instances` 下定义多个
-  Pulsar 客户端,并通过名称引用它们。
+* **多 Pulsar 客户端**:`spring.pulsar.instances` 下的每一项都会成为一个独立配置的
+  `pulsar.Client` bean,按名称注入即可访问不同的集群。

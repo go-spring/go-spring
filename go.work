@@ -51,11 +51,11 @@ use (
 	./starter/starter-gorm-clickhouse
 	./starter/starter-gorm-mysql
 	./starter/starter-gorm-postgres
-	./starter/starter-gorm-sqlite
 	./starter/starter-gorm-sqlserver
 	./starter/starter-grpc
 	./starter/starter-hertz
 	./starter/starter-kafka
+	./starter/starter-kafka-sarama
 	./starter/starter-kitex
 	./starter/starter-kitex/example
 	./starter/starter-kratos
@@ -63,6 +63,7 @@ use (
 	./starter/starter-memcached
 	./starter/starter-mongodb
 	./starter/starter-mqtt
+	./starter/starter-nats
 	./starter/starter-neo4j
 	./starter/starter-oauth2-client
 	./starter/starter-otel

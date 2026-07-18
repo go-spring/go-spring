@@ -5,8 +5,11 @@
 > The project has been officially released, welcome to use!
 
 `starter-hertz` adapts the [CloudWeGo Hertz](https://github.com/cloudwego/hertz)
-HTTP framework to the Go-Spring server lifecycle, so Hertz starts after the
-container is ready and shuts down gracefully with the rest of the application.
+HTTP framework to the Go-Spring server lifecycle. The starter owns the
+`*server.Hertz` and its listener (address from configuration); the application
+only provides a `RouterRegister` bean to mount routes and middleware. Hertz
+starts after the container is ready and shuts down gracefully with the rest of
+the application.
 
 ## Installation
 
@@ -24,37 +27,38 @@ Refer to the [example.go](example/example.go) file.
 import _ "go-spring.org/starter-hertz"
 ```
 
-### 2. Provide a `*server.Hertz`
+### 2. Provide a `RouterRegister` Bean
 
-You own the Hertz instance (host/port, middlewares, routes); the starter only
-drives its `Run` / `Shutdown` from the Go-Spring readiness signal. Refer to the
+The starter creates the `*server.Hertz` on the configured address and hands it
+to your register; you mount middleware and routes there. Refer to the
 [example.go](example/example.go) file.
 
 ```go
-gs.Provide(func(c *Controller) *server.Hertz {
-    h := server.Default(server.WithHostPorts("127.0.0.1:8003"))
-    h.Use(func(ctx context.Context, r *app.RequestContext) {
-        r.Response.Header.Set("X-App", "go-spring")
-        r.Next(ctx)
-    })
-    h.GET("/echo/:name", c.Echo)
-    h.GET("/greet", c.Greet)
-    return h
+gs.Provide(func(c *Controller) StarterHertz.RouterRegister {
+    return func(h *server.Hertz) {
+        h.Use(func(ctx context.Context, r *app.RequestContext) {
+            r.Response.Header.Set("X-App", "go-spring")
+            r.Next(ctx)
+        })
+        h.GET("/echo/:name", c.Echo)
+        h.GET("/greet", c.Greet)
+    }
 })
 ```
 
 > **Port convention** — the three HTTP starters use distinct ports so they can run side by side:
 > `starter-gin` → `:8001`, `starter-echo` → `:8002`, `starter-hertz` → `:8003`.
-> Unlike gin/echo, Hertz owns its own listener, so the port is set on the engine via
-> `WithHostPorts` (there is no `spring.hertz.server.addr` config to inject it).
+> Hertz owns its own listener, but the address is still taken from
+> `spring.hertz.server.addr` and passed to the engine via `WithHostPorts`.
 
-### 3. Disable the Built-in HTTP Server
+### 3. Configure the Address and Disable the Built-in HTTP Server
 
-Because Hertz manages its own listener, disable the default Go-Spring HTTP
-server in [app.properties](example/conf/app.properties):
+Set the Hertz listen address and disable the default Go-Spring HTTP server
+(Hertz drives its own listener) in [app.properties](example/conf/app.properties):
 
 ```properties
 spring.http.server.enabled=false
+spring.hertz.server.addr=127.0.0.1:8003
 ```
 
 ### 4. Run the Application
@@ -81,11 +85,11 @@ features and asserts each one via real HTTP calls in `runTest`:
 
 ## Advanced Features
 
-* **Bring-your-own Hertz** — the starter never allocates `*server.Hertz` for
-  you, so any Hertz option (TLS, tracer, custom transport, ...) works
-  unchanged.
+* **Framework-owned engine** — the starter builds the `*server.Hertz` from
+  configuration and hands it to your `RouterRegister`; any Hertz option added by
+  `server.Default` (TLS, tracer, custom transport, ...) applies uniformly.
 * **Managed lifecycle** — the adapter waits for the Go-Spring readiness signal
   before calling `h.Run()`, and calls `h.Shutdown(ctx)` on shutdown.
 * **Opt-in registration** — set `spring.hertz.server.enabled=false` to opt out
   of the automatic server registration (enabled by default when a
-  `*server.Hertz` bean is present).
+  `RouterRegister` bean is present).

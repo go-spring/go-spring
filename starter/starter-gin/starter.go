@@ -27,24 +27,38 @@ func init() {
 		HavingValue("true").MatchIfMissing()
 	gs.Module(enableSimpleGinServer, func(r gs.BeanProvider, p flatten.Storage) error {
 
-		// Register a Gin-backed HTTP server
-		// when the application provides a gin.Engine.
+		// Register a Gin-backed HTTP server when the application provides a
+		// RouterRegister bean. The starter owns the *gin.Engine and its
+		// http.Server (config from ${spring.gin.server}); the app only supplies
+		// the route/middleware registration.
 		r.Provide(
 			NewSimpleGinServer,
 			gs.IndexArg(1, gs.TagArg("${spring.gin.server}")),
 		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[*gin.Engine]())
+			Condition(gs.OnBean[RouterRegister]())
 		return nil
 	})
 }
 
-// SimpleGinServer adapts gin.Engine to the Go-Spring server lifecycle.
+// RouterRegister registers routes and middleware onto the framework-owned
+// *gin.Engine. This function type keeps SimpleGinServer route-agnostic: the
+// starter creates and configures the engine and its HTTP server, while each
+// application supplies its own register bean to wire handlers.
+type RouterRegister func(e *gin.Engine)
+
+// SimpleGinServer adapts a Gin engine to the Go-Spring server lifecycle.
 type SimpleGinServer struct {
 	*gs.SimpleHttpServer
 }
 
-// NewSimpleGinServer creates a Gin HTTP server using ${spring.gin.server} configuration.
-func NewSimpleGinServer(e *gin.Engine, cfg gs.SimpleHttpServerConfig) *SimpleGinServer {
+// NewSimpleGinServer builds a *gin.Engine with framework defaults, applies the
+// registered RouterRegister, and wraps it in an HTTP server configured from
+// ${spring.gin.server}.
+func NewSimpleGinServer(register RouterRegister, cfg gs.SimpleHttpServerConfig) *SimpleGinServer {
+	gin.SetMode(gin.ReleaseMode)
+	e := gin.New()
+	e.Use(gin.Recovery())
+	register(e)
 	return &SimpleGinServer{
 		SimpleHttpServer: gs.NewSimpleHttpServer(&gs.HttpServeMux{Handler: e}, cfg),
 	}

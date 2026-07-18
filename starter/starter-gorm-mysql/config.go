@@ -27,7 +27,7 @@ type Config struct {
 	User         string        `value:"${user}"`           // Database username
 	Password     string        `value:"${password}"`       // Database password
 	Network      string        `value:"${net:=}"`          // Network type (tcp, unix), optional
-	Addr         string        `value:"${addr}"`           // Database host:port or socket path
+	Addr         string        `value:"${addr:=}"`         // Database host:port or socket path (required unless ServiceName is set)
 	DB           string        `value:"${db}"`             // Database name
 	Timeout      time.Duration `value:"${timeout:=}"`      // Connection timeout
 	ReadTimeout  time.Duration `value:"${readTimeout:=}"`  // Read timeout

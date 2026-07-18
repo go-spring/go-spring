@@ -23,23 +23,26 @@ import _ "go-spring.org/starter-kafka"
 
 ### 2. 配置 Kafka 客户端
 
-在项目的[配置文件](example/conf/app.properties)中添加 Kafka 配置,例如:
+在项目的[配置文件](example/conf/app.properties)中,在 `spring.kafka.instances.<name>`
+下定义一个或多个具名客户端,例如:
 
 ```properties
-spring.kafka.brokers=127.0.0.1:9092
-spring.kafka.topic=hello
-spring.kafka.group=hello-group
+spring.kafka.instances.a.brokers=127.0.0.1:9092
+spring.kafka.instances.a.topic=hello
+spring.kafka.instances.a.group=hello-group
+spring.kafka.instances.b.brokers=127.0.0.1:9092
 ```
 
 ### 3. 注入 Kafka 客户端
 
-参考 [example.go](example/example.go) 文件。
+参考 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+`*kgo.Client` bean,按名称注入所需实例即可。
 
 ```go
 import "github.com/twmb/franz-go/pkg/kgo"
 
 type Service struct {
-    Client *kgo.Client `autowire:"__default__"`
+    Client *kgo.Client `autowire:"a"`
 }
 ```
 
@@ -60,5 +63,5 @@ fetches.EachRecord(func(r *kgo.Record) {
 
 ## 高级特性
 
-* **支持多个 Kafka 客户端**:可以在配置文件中的 `spring.kafka.instances` 下定义多个
-  Kafka 客户端,并通过名称引用它们。
+* **多 Kafka 客户端**:`spring.kafka.instances` 下的每一项都会成为一个独立配置的
+  `*kgo.Client` bean,按名称注入即可访问不同的集群或消费者组。

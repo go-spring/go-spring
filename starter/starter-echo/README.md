@@ -4,8 +4,10 @@
 
 > The project has been officially released, welcome to use!
 
-`starter-echo` wires the [labstack/echo](https://github.com/labstack/echo) web framework into Go-Spring,
-so an application-provided `*echo.Echo` bean is served through the Go-Spring server lifecycle.
+`starter-echo` wires the [labstack/echo](https://github.com/labstack/echo) web framework into Go-Spring.
+The starter owns the `*echo.Echo` and its HTTP server (created from configuration); the application only
+provides a `RouterRegister` bean to mount routes and middleware, and everything is served through the
+Go-Spring server lifecycle.
 
 ## Installation
 
@@ -34,23 +36,22 @@ spring.http.server.enabled=false
 spring.echo.server.addr=:8002
 ```
 
-The starter registers its server bean when `spring.echo.server.enabled` is `true` (default) and an
-`*echo.Echo` bean is provided by the application.
+The starter registers its server bean when `spring.echo.server.enabled` is `true` (default) and a
+`RouterRegister` bean is provided by the application.
 
 > **Port convention** — the three HTTP starters use distinct ports so they can run side by side:
 > `starter-gin` → `:8001`, `starter-echo` → `:8002`, `starter-hertz` → `:8003`.
 
-### 3. Provide an `*echo.Echo` Bean
+### 3. Provide a `RouterRegister` Bean
 
-Refer to the [example.go](example/example.go) file.
+The starter creates and configures the `*echo.Echo` (banner hidden, `middleware.Recover()`) and hands
+it to your register. Mount routes and middleware there. Refer to the [example.go](example/example.go) file.
 
 ```go
-gs.Provide(func(c *Controller) *echo.Echo {
-    e := echo.New()
-    e.HideBanner = true
-    e.Use(middleware.Recover())
-    e.GET("/echo/:name", c.Echo)
-    return e
+gs.Provide(func(c *Controller) StarterEcho.RouterRegister {
+    return func(e *echo.Echo) {
+        e.GET("/echo/:name", c.Echo)
+    }
 })
 ```
 
@@ -58,8 +59,8 @@ gs.Provide(func(c *Controller) *echo.Echo {
 
 The [example](example/example.go) demonstrates three features exercised end-to-end via real HTTP:
 
-* **Middleware** — `middleware.Recover()` plus a custom middleware that sets an `X-App: go-spring`
-  response header on every request.
+* **Middleware** — the starter installs `middleware.Recover()`; the register adds a custom middleware
+  that sets an `X-App: go-spring` response header on every request.
 * **Path parameter + JSON** — `GET /echo/:name` returns `{"message":"Hello, <name>"}` using
   `ctx.Param` and `ctx.JSON`.
 * **Route group** — `e.Group("/api")` mounts `GET /api/greet?name=...` returning
@@ -70,4 +71,4 @@ The [example](example/example.go) demonstrates three features exercised end-to-e
 * **Custom server configuration**: tune `spring.echo.server.*` (address, TLS, timeouts, ...) via the
   standard `SimpleHttpServerConfig` binding.
 * **Full echo ecosystem**: any echo middleware, group, renderer, or binder can be composed on the
-  `*echo.Echo` bean before it is handed to the starter.
+  `*echo.Echo` passed to the `RouterRegister`.

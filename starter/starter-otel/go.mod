@@ -6,6 +6,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
+	go.opentelemetry.io/contrib/instrumentation/runtime v0.68.0
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.43.0

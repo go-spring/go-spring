@@ -26,13 +26,6 @@ import (
 
 func init() {
 
-	// Register a single default MongoDB client.
-	// This client will only be created if the property "spring.mongodb.uri" is set.
-	// It uses the configuration tagged with "${spring.mongodb}".
-	gs.Provide(newClient, gs.TagArg("${spring.mongodb}")).
-		Condition(gs.OnProperty("spring.mongodb.uri")).
-		Destroy(destroyClient)
-
 	// Register multiple MongoDB clients as a group.
 	// Each instance is created according to the configuration in "${spring.mongodb.instances}".
 	// This allows defining multiple MongoDB clients dynamically.

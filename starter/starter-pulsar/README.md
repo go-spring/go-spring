@@ -21,23 +21,26 @@ Refer to the [example.go](example/example.go) file.
 import _ "go-spring.org/starter-pulsar"
 ```
 
-### 2. Configure the Pulsar Client
+### 2. Configure the Pulsar Clients
 
-Add Pulsar configuration in your project's [configuration file](example/conf/app.properties), for example:
+Define one or more named clients under `spring.pulsar.instances.<name>` in your
+project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.pulsar.url=pulsar://127.0.0.1:6650
+spring.pulsar.instances.a.url=pulsar://127.0.0.1:6650
+spring.pulsar.instances.b.url=pulsar://127.0.0.1:6650
 ```
 
 ### 3. Inject the Pulsar Client
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [example.go](example/example.go) file. Each named instance is registered
+as a `pulsar.Client` bean under that name; inject the one you need by name.
 
 ```go
 import "github.com/apache/pulsar-client-go/pulsar"
 
 type Service struct {
-    Client pulsar.Client `autowire:"__default__"`
+    Client pulsar.Client `autowire:"a"`
 }
 ```
 
@@ -63,5 +66,6 @@ consumer.Ack(msg)
 
 ## Advanced Features
 
-* **Supports multiple Pulsar clients**: You can define multiple Pulsar clients under
-  `spring.pulsar.instances` in the configuration file and reference them by name.
+* **Multiple Pulsar clients**: Every entry under `spring.pulsar.instances` becomes
+  an independently configured `pulsar.Client` bean; inject them by name to talk to
+  different clusters.

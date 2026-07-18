@@ -23,21 +23,24 @@ import _ "go-spring.org/starter-rabbitmq"
 
 ### 2. 配置 RabbitMQ 实例
 
-在项目的[配置文件](example/conf/app.properties)中添加 RabbitMQ 配置，比如：
+在项目的[配置文件](example/conf/app.properties)中，在 `spring.rabbitmq.instances.<name>`
+下定义一个或多个具名实例，比如：
 
 ```properties
-spring.rabbitmq.url=amqp://guest:guest@127.0.0.1:5672/
+spring.rabbitmq.instances.a.url=amqp://guest:guest@127.0.0.1:5672/
+spring.rabbitmq.instances.b.url=amqp://guest:guest@127.0.0.1:5672/
 ```
 
 ### 3. 注入 RabbitMQ 连接
 
-参见 [example.go](example/example.go) 文件。
+参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+`*amqp.Connection` bean，按名称注入所需实例即可。
 
 ```go
 import amqp "github.com/rabbitmq/amqp091-go"
 
 type Service struct {
-    Conn *amqp.Connection `autowire:"__default__"`
+    Conn *amqp.Connection `autowire:"a"`
 }
 ```
 
@@ -66,4 +69,5 @@ _ = ch.PublishWithContext(ctx, "", "hello", false, false, amqp.Publishing{Body: 
 
 ## 高级功能
 
-* **支持多 RabbitMQ 实例**：可以在配置文件的 `spring.rabbitmq.instances` 下定义多个 RabbitMQ 实例，并在项目中使用 name 进行引用。
+* **多 RabbitMQ 实例**：`spring.rabbitmq.instances` 下的每一项都会成为一个独立配置的
+  `*amqp.Connection` bean，按名称注入即可访问不同的 broker 或 vhost。

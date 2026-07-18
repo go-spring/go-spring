@@ -36,7 +36,7 @@ import (
 const queueName = "hello"
 
 type Service struct {
-	Conn *amqp.Connection `autowire:"__default__"`
+	Conn *amqp.Connection `autowire:"a"`
 }
 
 func main() {

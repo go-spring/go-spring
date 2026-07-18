@@ -5,7 +5,9 @@
 > 该项目已经正式发布，欢迎使用！
 
 `starter-hertz` 将 [CloudWeGo Hertz](https://github.com/cloudwego/hertz) HTTP
-框架接入 Go-Spring 的服务生命周期：容器就绪后再启动 Hertz，应用退出时优雅关闭。
+框架接入 Go-Spring 的服务生命周期。`*server.Hertz` 及其监听器由 starter 依据配置
+创建并持有，应用只需提供一个 `RouterRegister` Bean 来挂载路由与中间件：容器就绪后
+再启动 Hertz，应用退出时优雅关闭。
 
 ## 安装
 
@@ -23,36 +25,37 @@ go get go-spring.org/starter-hertz
 import _ "go-spring.org/starter-hertz"
 ```
 
-### 2. 提供 `*server.Hertz` 实例
+### 2. 提供 `RouterRegister` Bean
 
-Hertz 实例（监听地址、中间件、路由）由应用自己创建；starter 只负责在容器就绪
-后调用 `Run`，在退出时调用 `Shutdown`。参见 [example.go](example/example.go) 文件。
+starter 会依据配置在指定地址创建 `*server.Hertz` 并交给你的注册器，你在其中挂载
+中间件与路由即可。参见 [example.go](example/example.go) 文件。
 
 ```go
-gs.Provide(func(c *Controller) *server.Hertz {
-    h := server.Default(server.WithHostPorts("127.0.0.1:8003"))
-    h.Use(func(ctx context.Context, r *app.RequestContext) {
-        r.Response.Header.Set("X-App", "go-spring")
-        r.Next(ctx)
-    })
-    h.GET("/echo/:name", c.Echo)
-    h.GET("/greet", c.Greet)
-    return h
+gs.Provide(func(c *Controller) StarterHertz.RouterRegister {
+    return func(h *server.Hertz) {
+        h.Use(func(ctx context.Context, r *app.RequestContext) {
+            r.Response.Header.Set("X-App", "go-spring")
+            r.Next(ctx)
+        })
+        h.GET("/echo/:name", c.Echo)
+        h.GET("/greet", c.Greet)
+    }
 })
 ```
 
 > **端口约定** —— 三个 HTTP starter 使用互不相同的端口，可同时启动：
 > `starter-gin` → `:8001`，`starter-echo` → `:8002`，`starter-hertz` → `:8003`。
-> 与 gin/echo 不同，Hertz 自己管理监听器，端口通过 engine 的 `WithHostPorts` 设置
-> （没有 `spring.hertz.server.addr` 配置项可供注入）。
+> Hertz 虽自己管理监听器，但地址仍从 `spring.hertz.server.addr` 读取，由 starter
+> 通过 `WithHostPorts` 传入 engine。
 
-### 3. 关闭内置 HTTP 服务
+### 3. 配置地址并关闭内置 HTTP 服务
 
-Hertz 会自己管理监听器，因此需要在 [app.properties](example/conf/app.properties)
-中关闭 Go-Spring 内置的 HTTP 服务：
+在 [app.properties](example/conf/app.properties) 中设置 Hertz 监听地址，并关闭
+Go-Spring 内置 HTTP 服务（Hertz 自己管理监听器）：
 
 ```properties
 spring.http.server.enabled=false
+spring.hertz.server.addr=127.0.0.1:8003
 ```
 
 ### 4. 运行应用
@@ -79,9 +82,10 @@ HTTP 请求逐个断言：
 
 ## 高级功能
 
-* **自定义 Hertz 实例**：starter 不会替你创建 `*server.Hertz`，因此 TLS、
-  Tracer、自定义 transport 等任意 Hertz 选项都可以照常使用。
+* **框架托管 engine**：starter 依据配置创建 `*server.Hertz` 并交给你的
+  `RouterRegister`，`server.Default` 附带的 TLS、Tracer、自定义 transport 等选项
+  统一生效。
 * **托管的生命周期**：适配器会等待 Go-Spring 就绪信号后再调用 `h.Run()`，
   在关闭阶段调用 `h.Shutdown(ctx)`。
 * **可选的注册开关**：将 `spring.hertz.server.enabled=false` 可以关闭自动注册
-  （默认在存在 `*server.Hertz` Bean 时开启）。
+  （默认在存在 `RouterRegister` Bean 时开启）。

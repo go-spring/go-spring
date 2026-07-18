@@ -36,7 +36,7 @@ import (
 const topic = "go-spring/hello"
 
 type Service struct {
-	Client mqtt.Client `autowire:"__default__"`
+	Client mqtt.Client `autowire:"a"`
 }
 
 func main() {

@@ -48,11 +48,25 @@ type TraceConfig struct {
 // serves Path on Port; the otlp/stdout exporters are push-based on Interval.
 // Empty/zero values keep OTel SDK defaults.
 type MetricsConfig struct {
-	Enable   bool          `value:"${enable:=true}"`
-	Exporter string        `value:"${exporter:=otlp-grpc}"` // otlp-grpc|otlp-http|prometheus|stdout|none
-	Endpoint string        `value:"${endpoint:=}"`
-	Insecure bool          `value:"${insecure:=true}"`
-	Port     int           `value:"${port:=9090}"`
-	Path     string        `value:"${path:=/metrics}"`
-	Interval time.Duration `value:"${interval:=10s}"` // push interval for otlp/stdout readers
+	Enable   bool                 `value:"${enable:=true}"`
+	Exporter string               `value:"${exporter:=otlp-grpc}"` // otlp-grpc|otlp-http|prometheus|stdout|none
+	Endpoint string               `value:"${endpoint:=}"`
+	Insecure bool                 `value:"${insecure:=true}"`
+	Port     int                  `value:"${port:=9090}"`
+	Path     string               `value:"${path:=/metrics}"`
+	Interval time.Duration        `value:"${interval:=10s}"` // push interval for otlp/stdout readers
+	Runtime  RuntimeMetricsConfig `value:"${runtime}"`
+}
+
+// RuntimeMetricsConfig controls Go runtime instrumentation under
+// ${spring.observability.metrics.runtime}. When enabled the starter feeds Go
+// runtime metrics (GC, heap/alloc, goroutine count, GOMAXPROCS, scheduling)
+// into the shared MeterProvider, so they surface through whichever metrics
+// exporter is configured without any per-project wiring. This is continuous
+// metrics, complementing starter-pprof's on-demand profile dumps.
+type RuntimeMetricsConfig struct {
+	Enable bool `value:"${enable:=true}"`
+	// MinReadMemStatsInterval caps how often runtime.ReadMemStats is called,
+	// which is stop-the-world; zero keeps the instrumentation's own default.
+	MinReadMemStatsInterval time.Duration `value:"${min-read-mem-stats-interval:=15s}"`
 }

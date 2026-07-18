@@ -24,12 +24,12 @@ import (
 
 // Config holds the configuration parameters for a ClickHouse connection.
 type Config struct {
-	User        string        `value:"${user:=default}"`   // Database username, default "default"
-	Password    string        `value:"${password:=}"`      // Database password
-	Addr        string        `value:"${addr}"`            // Database host:port (native protocol, typically 9000)
-	DB          string        `value:"${db:=default}"`     // Database name, default "default"
-	DialTimeout time.Duration `value:"${dialTimeout:=}"`   // Connection dial timeout, optional
-	ReadTimeout time.Duration `value:"${readTimeout:=}"`   // Read timeout, optional
+	User        string        `value:"${user:=default}"` // Database username, default "default"
+	Password    string        `value:"${password:=}"`    // Database password
+	Addr        string        `value:"${addr:=}"`        // Database host:port (native protocol, typically 9000; required unless ServiceName is set)
+	DB          string        `value:"${db:=default}"`   // Database name, default "default"
+	DialTimeout time.Duration `value:"${dialTimeout:=}"` // Connection dial timeout, optional
+	ReadTimeout time.Duration `value:"${readTimeout:=}"` // Read timeout, optional
 
 	// ServiceName is the service discovery name. When set, Addr is ignored and
 	// the connection dials a live instance resolved from the discovery backend.

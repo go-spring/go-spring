@@ -33,27 +33,28 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-hertz"
+	StarterHertz "go-spring.org/starter-hertz"
 )
 
 func init() {
 	gs.Provide(&Controller{})
-	gs.Provide(func(c *Controller) *server.Hertz {
-		h := server.Default(server.WithHostPorts("127.0.0.1:8003"))
+	// Provide a RouterRegister: the starter owns the *server.Hertz and its
+	// listener (address from ${spring.hertz.server}); we only wire routes and
+	// middleware onto the engine it hands us.
+	gs.Provide(func(c *Controller) StarterHertz.RouterRegister {
+		return func(h *server.Hertz) {
+			// Feature 1: middleware — inject a response header on every request.
+			h.Use(func(ctx context.Context, r *app.RequestContext) {
+				r.Response.Header.Set("X-App", "go-spring")
+				r.Next(ctx)
+			})
 
-		// Feature 1: middleware — inject a response header on every request.
-		h.Use(func(ctx context.Context, r *app.RequestContext) {
-			r.Response.Header.Set("X-App", "go-spring")
-			r.Next(ctx)
-		})
+			// Feature 2: path parameter + JSON response.
+			h.GET("/echo/:name", c.Echo)
 
-		// Feature 2: path parameter + JSON response.
-		h.GET("/echo/:name", c.Echo)
-
-		// Feature 3: query parameter + JSON response.
-		h.GET("/greet", c.Greet)
-
-		return h
+			// Feature 3: query parameter + JSON response.
+			h.GET("/greet", c.Greet)
+		}
 	})
 }
 

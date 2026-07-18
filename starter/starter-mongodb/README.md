@@ -21,23 +21,26 @@ Refer to the [example.go](example/example.go) file.
 import _ "go-spring.org/starter-mongodb"
 ```
 
-### 2. Configure the MongoDB Instance
+### 2. Configure the MongoDB Instances
 
-Add MongoDB configuration in your project's [configuration file](example/conf/app.properties), for example:
+Define one or more named instances under `spring.mongodb.instances.<name>` in your
+project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.mongodb.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.a.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
 ```
 
 ### 3. Inject the MongoDB Instance
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [example.go](example/example.go) file. Each named instance is registered
+as a `*mongo.Client` bean under that name; inject the one you need by name.
 
 ```go
 import "go.mongodb.org/mongo-driver/v2/mongo"
 
 type Service struct {
-    Mongo *mongo.Client `autowire:"__default__"`
+    Mongo *mongo.Client `autowire:"a"`
 }
 ```
 
@@ -61,5 +64,6 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
 
 ## Advanced Features
 
-* **Supports multiple MongoDB instances**: You can define multiple MongoDB instances under
-  `spring.mongodb.instances` in the configuration file and reference them by name.
+* **Multiple MongoDB instances**: Every entry under `spring.mongodb.instances`
+  becomes an independently configured `*mongo.Client` bean; inject them by name to
+  talk to different clusters or databases.

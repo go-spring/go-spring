@@ -3,6 +3,7 @@ module go-spring.org/starter-gorm-mysql
 go 1.26
 
 require (
+	github.com/go-sql-driver/mysql v1.9.3
 	go-spring.org/spring v1.3.4
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.1
@@ -23,7 +24,6 @@ require (
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/hashicorp/go-version v1.6.0 // indirect

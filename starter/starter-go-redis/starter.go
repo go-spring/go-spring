@@ -17,8 +17,8 @@
 package StarterGoRedis
 
 import (
-	"github.com/redis/go-redis/v9"
 	"github.com/redis/go-redis/extra/redisotel/v9"
+	"github.com/redis/go-redis/v9"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/discovery"
 	"go-spring.org/stdlib/errutil"
@@ -37,6 +37,9 @@ func init() {
 // is absent those globals are no-ops, so this stays a zero-config opt-in that
 // needs no per-component adaptation.
 func newClient(c Config) (*redis.Client, error) {
+	if c.Addr == "" && c.ServiceName == "" {
+		return nil, errutil.Explain(nil, "redis: one of addr or service-name must be set")
+	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)

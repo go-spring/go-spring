@@ -31,6 +31,9 @@ func init() {
 
 // newClient creates a new Redis client based on the provided configuration.
 func newClient(c Config) (*redis.Pool, error) {
+	if c.Addr == "" && c.ServiceName == "" {
+		return nil, errutil.Explain(nil, "redis: one of addr or service-name must be set")
+	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)

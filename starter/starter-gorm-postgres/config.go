@@ -24,14 +24,14 @@ import (
 
 // Config holds the configuration parameters for a PostgreSQL connection.
 type Config struct {
-	Host           string        `value:"${host}"`               // Database host
-	Port           string        `value:"${port:=5432}"`         // Database port
-	User           string        `value:"${user}"`               // Database username
-	Password       string        `value:"${password}"`           // Database password
-	DB             string        `value:"${db}"`                 // Database name
-	SSLMode        string        `value:"${sslmode:=disable}"`   // SSL mode, e.g., disable, require, verify-full
-	TimeZone       string        `value:"${timezone:=}"`         // Timezone, e.g., Asia/Shanghai
-	ConnectTimeout time.Duration `value:"${connectTimeout:=}"`   // Connection timeout
+	Host           string        `value:"${host:=}"`           // Database host (required unless ServiceName is set)
+	Port           string        `value:"${port:=5432}"`       // Database port
+	User           string        `value:"${user}"`             // Database username
+	Password       string        `value:"${password}"`         // Database password
+	DB             string        `value:"${db}"`               // Database name
+	SSLMode        string        `value:"${sslmode:=disable}"` // SSL mode, e.g., disable, require, verify-full
+	TimeZone       string        `value:"${timezone:=}"`       // Timezone, e.g., Asia/Shanghai
+	ConnectTimeout time.Duration `value:"${connectTimeout:=}"` // Connection timeout
 
 	// ServiceName is the service discovery name. When set, Host/Port are ignored
 	// and the connection dials a live instance resolved from the discovery backend.

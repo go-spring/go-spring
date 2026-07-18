@@ -62,6 +62,9 @@ func init() {
 // and address changes take effect without rebuilding the client. When
 // c.ServiceName is empty this is a plain Addr dial, unchanged from before.
 func newClient(c Config) (*gorm.DB, error) {
+	if c.Addr == "" && c.ServiceName == "" {
+		return nil, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
+	}
 	dsn := c.DSN()
 
 	var conn *discoveryConn

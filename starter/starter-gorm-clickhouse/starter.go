@@ -23,6 +23,7 @@ import (
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/discovery"
+	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/clickhouse"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
@@ -51,6 +52,9 @@ func init() {
 // and address changes take effect without rebuilding the client. When
 // c.ServiceName is empty this is a plain DSN dial, unchanged from before.
 func newClient(c Config) (*gorm.DB, error) {
+	if c.Addr == "" && c.ServiceName == "" {
+		return nil, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
+	}
 	var (
 		db  *gorm.DB
 		err error

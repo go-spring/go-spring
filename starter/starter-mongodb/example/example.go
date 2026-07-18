@@ -35,7 +35,7 @@ import (
 )
 
 type Service struct {
-	Mongo *mongo.Client `autowire:"__default__"`
+	Mongo *mongo.Client `autowire:"a"`
 }
 
 func (s *Service) coll() *mongo.Collection {

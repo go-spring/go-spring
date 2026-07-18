@@ -28,38 +28,34 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-echo"
+	StarterEcho "go-spring.org/starter-echo"
 )
 
 func init() {
 	gs.Provide(&Controller{})
-	gs.Provide(func(c *Controller) *echo.Echo {
-		e := echo.New()
-		e.HideBanner = true
+	// Provide a RouterRegister: the starter owns the *echo.Echo and its HTTP
+	// server (address from ${spring.echo.server}); we only wire routes and
+	// middleware onto the engine it hands us.
+	gs.Provide(func(c *Controller) StarterEcho.RouterRegister {
+		return func(e *echo.Echo) {
+			// Feature 1: middleware — stamp an application-level header on
+			// every response so callers can identify the service.
+			e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+				return func(ctx echo.Context) error {
+					ctx.Response().Header().Set("X-App", "go-spring")
+					return next(ctx)
+				}
+			})
 
-		// Feature 1: middleware.
-		// Built-in Recover protects against handler panics; the
-		// custom middleware stamps an application-level header on
-		// every response so callers can identify the service.
-		e.Use(middleware.Recover())
-		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(ctx echo.Context) error {
-				ctx.Response().Header().Set("X-App", "go-spring")
-				return next(ctx)
-			}
-		})
+			// Feature 2: path parameter + JSON response.
+			e.GET("/echo/:name", c.Echo)
 
-		// Feature 2: path parameter + JSON response.
-		e.GET("/echo/:name", c.Echo)
-
-		// Feature 3: route group with a query-parameter handler.
-		g := e.Group("/api")
-		g.GET("/greet", c.Greet)
-
-		return e
+			// Feature 3: route group with a query-parameter handler.
+			g := e.Group("/api")
+			g.GET("/greet", c.Greet)
+		}
 	})
 }
 

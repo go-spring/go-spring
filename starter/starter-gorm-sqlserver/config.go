@@ -23,11 +23,11 @@ import (
 
 // Config holds the configuration parameters for a SQL Server connection.
 type Config struct {
-	User     string `value:"${user}"`         // Database username
-	Password string `value:"${password}"`     // Database password
-	Host     string `value:"${host}"`         // Database host
-	Port     string `value:"${port:=1433}"`   // Database port
-	DB       string `value:"${db}"`           // Database name
+	User     string `value:"${user}"`       // Database username
+	Password string `value:"${password}"`   // Database password
+	Host     string `value:"${host:=}"`     // Database host (required unless ServiceName is set)
+	Port     string `value:"${port:=1433}"` // Database port
+	DB       string `value:"${db}"`         // Database name
 
 	// ServiceName is the service discovery name. When set, Host/Port are
 	// ignored for dialing and the connection reaches a live instance resolved

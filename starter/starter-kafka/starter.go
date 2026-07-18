@@ -25,14 +25,6 @@ import (
 )
 
 func init() {
-
-	// Register a single default Kafka client.
-	// This client will only be created if the property "spring.kafka.brokers" is set.
-	// It uses the configuration tagged with "${spring.kafka}".
-	gs.Provide(newClient, gs.TagArg("${spring.kafka}")).
-		Condition(gs.OnProperty("spring.kafka.brokers")).
-		Destroy(destroyClient)
-
 	// Register multiple Kafka clients as a group.
 	// Each instance is created according to the configuration in "${spring.kafka.instances}".
 	// This allows defining multiple Kafka clients dynamically.

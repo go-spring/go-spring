@@ -21,23 +21,26 @@ Refer to the [example.go](example/example.go) file.
 import _ "go-spring.org/starter-mqtt"
 ```
 
-### 2. Configure the MQTT Client
+### 2. Configure the MQTT Clients
 
-Add MQTT configuration in your project's [configuration file](example/conf/app.properties), for example:
+Define one or more named clients under `spring.mqtt.instances.<name>` in your
+project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.mqtt.broker=tcp://127.0.0.1:1883
+spring.mqtt.instances.a.broker=tcp://127.0.0.1:1883
+spring.mqtt.instances.b.broker=tcp://127.0.0.1:1883
 ```
 
 ### 3. Inject the MQTT Client
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [example.go](example/example.go) file. Each named instance is registered
+as an `mqtt.Client` bean under that name; inject the one you need by name.
 
 ```go
 import mqtt "github.com/eclipse/paho.mqtt.golang"
 
 type Service struct {
-    Client mqtt.Client `autowire:"__default__"`
+    Client mqtt.Client `autowire:"a"`
 }
 ```
 
@@ -60,5 +63,6 @@ the subscription handler.
 
 ## Advanced Features
 
-* **Supports multiple MQTT clients**: You can define multiple MQTT clients under
-  `spring.mqtt.instances` in the configuration file and reference them by name.
+* **Multiple MQTT clients**: Every entry under `spring.mqtt.instances` becomes an
+  independently configured `mqtt.Client` bean; inject them by name to talk to
+  different brokers.

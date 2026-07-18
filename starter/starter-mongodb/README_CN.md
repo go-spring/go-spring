@@ -23,21 +23,24 @@ import _ "go-spring.org/starter-mongodb"
 
 ### 2. 配置 MongoDB 实例
 
-在项目的[配置文件](example/conf/app.properties)中添加 MongoDB 配置，比如：
+在项目的[配置文件](example/conf/app.properties)中，在 `spring.mongodb.instances.<name>`
+下定义一个或多个具名实例，比如：
 
 ```properties
-spring.mongodb.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.a.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
 ```
 
 ### 3. 注入 MongoDB 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+`*mongo.Client` bean，按名称注入所需实例即可。
 
 ```go
 import "go.mongodb.org/mongo-driver/v2/mongo"
 
 type Service struct {
-    Mongo *mongo.Client `autowire:"__default__"`
+    Mongo *mongo.Client `autowire:"a"`
 }
 ```
 
@@ -61,4 +64,5 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
 
 ## 高级功能
 
-* **支持多 MongoDB 实例**：可以在配置文件的 `spring.mongodb.instances` 下定义多个 MongoDB 实例，并在项目中使用 name 进行引用。
+* **多 MongoDB 实例**：`spring.mongodb.instances` 下的每一项都会成为一个独立配置的
+  `*mongo.Client` bean，按名称注入即可访问不同的集群或数据库。

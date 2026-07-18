@@ -16,6 +16,8 @@
 | `starter-echo` | [labstack/echo](https://github.com/labstack/echo) | 托管 `*echo.Echo` bean |
 | `starter-hertz` | [CloudWeGo Hertz](https://github.com/cloudwego/hertz) | 托管 Hertz HTTP 服务 |
 | `starter-go-zero/rest` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | 通过 `HandlerRegister` bean 托管 go-zero `rest.Server` |
+| `starter-goframe/http` | [gogf/gf](https://github.com/gogf/gf) | 托管 goframe `*ghttp.Server`(另有 `/tcp` 裸 TCP 子包) |
+| `starter-kratos/http` | [go-kratos/kratos](https://github.com/go-kratos/kratos) | 托管 kratos HTTP 传输服务 |
 
 ## RPC 框架
 
@@ -28,6 +30,8 @@
 | `starter-thrift` | [Apache Thrift](https://thrift.apache.org/) | 基于 `TSimpleServer` 封装 `TProcessor` bean |
 | `starter-dubbo` | [dubbo-go/v3](https://pkg.go.dev/dubbo.apache.org/dubbo-go/v3) | 完整服务端 + 客户端，支持注册中心服务发现 |
 | `starter-go-zero/zrpc` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | 通过 `ServiceRegister` bean 托管 zrpc gRPC 服务，可选 etcd 注册 |
+| `starter-goframe/grpc` | [gogf/gf](https://github.com/gogf/gf) | goframe gRPC 服务（`grpcx.GrpcServer`） |
+| `starter-kratos/grpc` | [go-kratos/kratos](https://github.com/go-kratos/kratos) | kratos gRPC 传输服务，支持 etcd 注册 |
 
 ## WebSocket
 
@@ -38,12 +42,17 @@
 | --- | --- | --- |
 | `starter-websocket` | [gorilla/websocket](https://github.com/gorilla/websocket) | 提供 `*websocket.Upgrader` |
 | `starter-websocket-coder` | [coder/websocket](https://github.com/coder/websocket) | 提供 `*websocket.AcceptOptions` |
+| `starter-goframe/ws` | [gogf/gf](https://github.com/gogf/gf) | 基于 `*ghttp.Server` 的 WebSocket 升级 |
+| `starter-kratos/ws` | [tx7do/kratos-transport](https://github.com/tx7do/kratos-transport) | kratos WebSocket 传输服务 |
 
 ## 数据库
 
 | Starter | 底层库 | 领域 |
 | --- | --- | --- |
 | `starter-gorm-mysql` | [gorm](https://gorm.io/) | MySQL 关系型数据库 |
+| `starter-gorm-postgres` | [gorm](https://gorm.io/) | PostgreSQL 关系型数据库 |
+| `starter-gorm-sqlserver` | [gorm](https://gorm.io/) | Microsoft SQL Server 关系型数据库 |
+| `starter-gorm-clickhouse` | [gorm](https://gorm.io/) | ClickHouse OLAP 列式数据库 |
 | `starter-mongodb` | [mongo-driver/v2](https://go.mongodb.org/mongo-driver/v2) | MongoDB 文档数据库 |
 | `starter-neo4j` | [neo4j-go-driver](https://github.com/neo4j/neo4j-go-driver) | Neo4j 图数据库 |
 | `starter-elasticsearch` | [go-elasticsearch](https://github.com/elastic/go-elasticsearch) | Elasticsearch 搜索引擎 |
@@ -55,17 +64,41 @@
 | `starter-go-redis` | [go-redis](https://github.com/redis/go-redis) | Redis 客户端 |
 | `starter-redigo` | [redigo](https://github.com/gomodule/redigo) | Redis 客户端（另一驱动实现） |
 | `starter-memcached` | [gomemcache](https://github.com/bradfitz/gomemcache) | Memcached 客户端 |
+| `starter-bigcache` | [BigCache](https://github.com/allegro/bigcache) | 进程内、GC 友好的内存缓存 |
 
 ## 消息队列
 
 | Starter | 底层库 | 领域 |
 | --- | --- | --- |
 | `starter-kafka` | [twmb/franz-go](https://github.com/twmb/franz-go) | Kafka |
+| `starter-kafka-sarama` | [IBM/sarama](https://github.com/IBM/sarama) | Kafka（另一驱动实现，共用 `spring.kafka` 前缀） |
 | `starter-pulsar` | [apache/pulsar-client-go](https://github.com/apache/pulsar-client-go) | Apache Pulsar |
 | `starter-rabbitmq` | [amqp091-go](https://github.com/rabbitmq/amqp091-go) | RabbitMQ |
+| `starter-nats` | [nats.go](https://github.com/nats-io/nats.go) | NATS 核心消息 + JetStream（纯 Go） |
+| `starter-mqtt` | [paho.mqtt.golang](https://github.com/eclipse/paho.mqtt.golang) | MQTT |
+
+## 安全 / 授权
+
+| Starter | 底层库 | 说明 |
+| --- | --- | --- |
+| `starter-casbin` | [Casbin](https://casbin.org) | 访问控制（RBAC/ABAC/ACL），enforcer 以 bean 形式注册 |
+| `starter-oauth2-client` | [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) | OAuth2 client-credentials `*http.Client`，自动刷新令牌 |
+
+## HTTP 中间件
+
+| Starter | 底层库 | 说明 |
+| --- | --- | --- |
+| `starter-lua-filter` | [gopher-lua](https://github.com/yuin/gopher-lua) | 在 `net/http` 层用 Lua 编写可编程的 HTTP 请求过滤器 |
+
+## 并发
+
+| Starter | 底层库 | 说明 |
+| --- | --- | --- |
+| `starter-ants` | [ants](https://github.com/panjf2000/ants) | 进程内、资源受限的 goroutine 协程池 |
 
 ## 可观测 / 诊断
 
 | Starter | 底层库 | 说明 |
 | --- | --- | --- |
+| `starter-otel` | [OpenTelemetry](https://opentelemetry.io/) | 统一可观测核心，构建共享的 Tracer/Meter Provider 并注册为 OTel 全局对象 |
 | `starter-pprof` | Go `net/http/pprof` | 独立 HTTP 服务，暴露运行时性能剖析 |

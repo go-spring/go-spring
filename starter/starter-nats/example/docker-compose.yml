@@ -1,0 +1,7 @@
+services:
+  nats:
+    image: nats:2.10
+    container_name: starter-nats
+    command: ["-js"]
+    ports:
+      - "127.0.0.1:4222:4222"

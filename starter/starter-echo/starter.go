@@ -18,6 +18,7 @@ package StarterEcho
 
 import (
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 )
@@ -27,24 +28,38 @@ func init() {
 		HavingValue("true").MatchIfMissing()
 	gs.Module(enableSimpleEchoServer, func(r gs.BeanProvider, p flatten.Storage) error {
 
-		// Register an Echo-backed HTTP server
-		// when the application provides an echo.Echo.
+		// Register an Echo-backed HTTP server when the application provides a
+		// RouterRegister bean. The starter owns the *echo.Echo and its
+		// http.Server (config from ${spring.echo.server}); the app only supplies
+		// the route/middleware registration.
 		r.Provide(
 			NewSimpleEchoServer,
 			gs.IndexArg(1, gs.TagArg("${spring.echo.server}")),
 		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[*echo.Echo]())
+			Condition(gs.OnBean[RouterRegister]())
 		return nil
 	})
 }
 
-// SimpleEchoServer adapts echo.Echo to the Go-Spring server lifecycle.
+// RouterRegister registers routes and middleware onto the framework-owned
+// *echo.Echo. This function type keeps SimpleEchoServer route-agnostic: the
+// starter creates and configures the engine and its HTTP server, while each
+// application supplies its own register bean to wire handlers.
+type RouterRegister func(e *echo.Echo)
+
+// SimpleEchoServer adapts an Echo engine to the Go-Spring server lifecycle.
 type SimpleEchoServer struct {
 	*gs.SimpleHttpServer
 }
 
-// NewSimpleEchoServer creates an Echo HTTP server using ${spring.echo.server} configuration.
-func NewSimpleEchoServer(e *echo.Echo, cfg gs.SimpleHttpServerConfig) *SimpleEchoServer {
+// NewSimpleEchoServer builds an *echo.Echo with framework defaults, applies the
+// registered RouterRegister, and wraps it in an HTTP server configured from
+// ${spring.echo.server}.
+func NewSimpleEchoServer(register RouterRegister, cfg gs.SimpleHttpServerConfig) *SimpleEchoServer {
+	e := echo.New()
+	e.HideBanner = true
+	e.Use(middleware.Recover())
+	register(e)
 	return &SimpleEchoServer{
 		SimpleHttpServer: gs.NewSimpleHttpServer(&gs.HttpServeMux{Handler: e}, cfg),
 	}

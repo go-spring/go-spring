@@ -25,6 +25,7 @@ import (
 	"github.com/microsoft/go-mssqldb/msdsn"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/discovery"
+	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
@@ -53,6 +54,9 @@ func init() {
 // its DialContext signature matches mssql.Dialer. When c.ServiceName is empty
 // this stays a plain DSN dial, unchanged from before.
 func newClient(c Config) (*gorm.DB, error) {
+	if c.Host == "" && c.ServiceName == "" {
+		return nil, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
+	}
 	if c.ServiceName == "" {
 		db, err := gorm.Open(sqlserver.Open(c.DSN()))
 		if err != nil {

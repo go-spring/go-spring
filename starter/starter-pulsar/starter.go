@@ -23,13 +23,6 @@ import (
 
 func init() {
 
-	// Register a single default Pulsar client.
-	// This client will only be created if the property "spring.pulsar.url" is set.
-	// It uses the configuration tagged with "${spring.pulsar}".
-	gs.Provide(newClient, gs.TagArg("${spring.pulsar}")).
-		Condition(gs.OnProperty("spring.pulsar.url")).
-		Destroy(destroyClient)
-
 	// Register multiple Pulsar clients as a group.
 	// Each instance is created according to the configuration in "${spring.pulsar.instances}".
 	// This allows defining multiple Pulsar clients dynamically.

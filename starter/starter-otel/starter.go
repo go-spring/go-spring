@@ -30,6 +30,7 @@ import (
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
+	runtimemetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -92,6 +93,19 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		r.Provide(mp).Destroy(func(mp *sdkmetric.MeterProvider) error {
 			return mp.Shutdown(context.Background())
 		})
+		// Feed Go runtime metrics (GC, heap, goroutines, GOMAXPROCS, ...) into
+		// the MeterProvider we just built. The instrumentation registers async
+		// callbacks on this provider; they are torn down by mp.Shutdown above,
+		// so there is no separate stop hook to manage.
+		if cfg.Metrics.Runtime.Enable {
+			opts := []runtimemetrics.Option{runtimemetrics.WithMeterProvider(mp)}
+			if cfg.Metrics.Runtime.MinReadMemStatsInterval > 0 {
+				opts = append(opts, runtimemetrics.WithMinimumReadMemStatsInterval(cfg.Metrics.Runtime.MinReadMemStatsInterval))
+			}
+			if err := runtimemetrics.Start(opts...); err != nil {
+				return err
+			}
+		}
 		if srv != nil {
 			r.Provide(srv).Destroy(func(srv *http.Server) error {
 				return srv.Shutdown(context.Background())
