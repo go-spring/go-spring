@@ -1,5 +1,20 @@
 # md5util
+[English](README.md) | [中文](README_CN.md)
 
-`md5util` 提供 MD5 摘要计算工具。
+`md5util` computes the MD5 checksum of a string and returns it as a
+lowercase hex string. Part of Go-Spring's zero-dependency `stdlib` layer.
 
-该目录用于简化字符串、字节数据或文件内容的 MD5 计算，适合需要快速生成校验值的场景。
+## API
+
+- `MD5(str string) string` — lowercase hex-encoded MD5 digest.
+
+## Usage
+
+```go
+import "go-spring.org/stdlib/md5util"
+
+sum := md5util.MD5("hello") // "5d41402abc4b2a76b9719d911017c592"
+```
+
+MD5 is **not** suitable for cryptographic authentication. Use it only for
+checksums, cache keys, or fingerprints where collisions are tolerable.

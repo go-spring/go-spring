@@ -1,5 +1,27 @@
 # netutil
+[English](README.md) | [中文](README_CN.md)
 
-`netutil` 提供网络相关辅助工具。
+`netutil` provides tiny network helpers for use inside the Go-Spring
+framework. Part of the zero-dependency `stdlib` layer.
 
-该目录用于封装地址、端口、连接或网络环境判断等常见网络处理逻辑。
+## API
+
+- `LocalIPv4() string` — the first non-loopback IPv4 address of the local
+  machine, or `"0.0.0.0"` when none is available. Cached after the first
+  call.
+
+## Usage
+
+```go
+import "go-spring.org/stdlib/netutil"
+
+ip := netutil.LocalIPv4()
+```
+
+## Caveats
+
+- IPv6 is ignored.
+- The result is cached at the first call via `sync.Once`; later interface
+  changes are not observed.
+- Errors from `net.InterfaceAddrs()` are swallowed — the fallback address
+  is `"0.0.0.0"`.

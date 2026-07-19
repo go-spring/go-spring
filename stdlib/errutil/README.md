@@ -57,7 +57,12 @@ err := errutil.Stack(baseErr, "InitService")
 This pattern preserves both semantic meaning and call-path trace,
 making it ideal for large or layered systems.
 
-## License
+## Public API
 
-This project is licensed under the **Apache 2.0 License**.
-See the [LICENSE](../../Downloads/errutil-main/LICENSE) file for details.
+- `Explain(err, format, args...) error` — wraps with `":"`.
+- `Stack(err, format, args...) error` — wraps with `" >> "`.
+- `ErrForbiddenMethod`, `ErrUnimplementedMethod` — sentinel errors for the
+  forbidden / not-implemented cases.
+
+Both wrappers use `fmt.Errorf("... %w", err)`, so `errors.Is` / `errors.As`
+keep working across chains.

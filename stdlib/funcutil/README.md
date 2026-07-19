@@ -1,5 +1,28 @@
 # funcutil
+[English](README.md) | [中文](README_CN.md)
 
-`funcutil` 提供函数式编程相关的辅助工具。
+`funcutil` returns runtime metadata (file, line, name) about a Go function
+value. Used by the container / aspect framework to build human-readable
+diagnostics. Part of the zero-dependency `stdlib` layer.
 
-该目录包含围绕函数调用、延迟计算、组合和适配等场景的通用能力，用于减少业务代码中的样板逻辑。
+## API
+
+- `FuncName(fn any) string` — package-qualified function name, without the
+  full module path prefix. Method values printed by the runtime as `T.m-fm`
+  have the `-fm` suffix trimmed.
+- `FileLine(fn any) (file string, line int, fnName string)` — the source
+  location plus the cleaned-up name.
+
+## Usage
+
+```go
+import "go-spring.org/stdlib/funcutil"
+
+func Handle() {}
+
+name := funcutil.FuncName(Handle)
+file, line, _ := funcutil.FileLine(Handle)
+```
+
+`fn` must be a function or method value. Passing anything else will panic
+inside `reflect`.

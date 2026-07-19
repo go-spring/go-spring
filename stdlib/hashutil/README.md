@@ -1,5 +1,22 @@
 # hashutil
+[English](README.md) | [中文](README_CN.md)
 
-`hashutil` 提供哈希计算相关的便捷工具。
+`hashutil` is a thin convenience wrapper around `hash/fnv`. Part of
+Go-Spring's zero-dependency `stdlib` layer.
 
-该目录用于封装常见哈希算法的使用方式，让调用方可以更简单地完成字符串、字节流或文件内容的摘要计算。
+## API
+
+- `FNV1a64(s string) uint64` — 64-bit FNV-1a of a string, using the standard
+  library `hash/fnv` implementation.
+
+## Usage
+
+```go
+import "go-spring.org/stdlib/hashutil"
+
+h := hashutil.FNV1a64("some/key")
+```
+
+FNV-1a is a fast, non-cryptographic hash. Suitable for map sharding, cache
+bucketing, and similar tasks. Do not use it where an adversary can choose
+inputs.

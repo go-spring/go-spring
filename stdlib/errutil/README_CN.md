@@ -49,6 +49,12 @@ err := errutil.Stack(baseErr, "InitService")
 
 这种组合方式既保留了业务语义，又体现了错误传播路径，非常适合在中大型项目中使用。
 
-## 许可证
+## 公开 API
 
-本项目采用 Apache 2.0 许可证。详情请见 [LICENSE](../../Downloads/errutil-main/LICENSE) 文件。
+- `Explain(err, format, args...) error` — 用 `":"` 包装。
+- `Stack(err, format, args...) error` — 用 `" >> "` 包装。
+- `ErrForbiddenMethod`、`ErrUnimplementedMethod` — 用于"禁用调用"和"未实现"
+  两种场景的哨兵错误。
+
+两个包装函数都通过 `fmt.Errorf("... %w", err)` 保留原始错误，因此
+`errors.Is` / `errors.As` 在整条链上仍然可用。
