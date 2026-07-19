@@ -111,6 +111,12 @@ HTTP server the application already runs (no own port).
 | --- | --- | --- |
 | `starter-ants` | [ants](https://github.com/panjf2000/ants) | In-process, resource-bounded goroutine pool |
 
+## Mail
+
+| Starter | Underlying library | Notes |
+| --- | --- | --- |
+| `starter-mail` | [wneessen/go-mail](https://github.com/wneessen/go-mail) | SMTP mailer (HTML/attachments/multi-recipient); send-only, no template engine |
+
 ## Observability / Diagnostics
 
 | Starter | Underlying library | Notes |

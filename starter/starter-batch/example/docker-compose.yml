@@ -1,0 +1,9 @@
+services:
+  # Redis backing the *redis.Client bean (starter-go-redis), the durable batch
+  # JobRepository (starter-batch-redis), and the example's result set. Its
+  # durability across the two example runs is what the smoke test exercises.
+  redis:
+    image: redis:7
+    container_name: starter-batch-redis
+    ports:
+      - "127.0.0.1:6379:6379"

@@ -109,6 +109,12 @@
 | --- | --- | --- |
 | `starter-ants` | [ants](https://github.com/panjf2000/ants) | 进程内、资源受限的 goroutine 协程池 |
 
+## 邮件
+
+| Starter | 底层库 | 说明 |
+| --- | --- | --- |
+| `starter-mail` | [wneessen/go-mail](https://github.com/wneessen/go-mail) | SMTP 发信（HTML/附件/多收件人）；只发信，不含模板引擎 |
+
 ## 可观测 / 诊断
 
 | Starter | 底层库 | 说明 |

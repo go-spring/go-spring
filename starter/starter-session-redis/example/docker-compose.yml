@@ -1,0 +1,8 @@
+services:
+  # Redis backing both the *redis.Client bean (starter-go-redis) and the
+  # session store built on top of it (starter-session-redis).
+  redis:
+    image: redis:7
+    container_name: starter-session-redis
+    ports:
+      - "127.0.0.1:6379:6379"

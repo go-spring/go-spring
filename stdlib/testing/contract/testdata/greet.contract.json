@@ -1,0 +1,26 @@
+[
+  {
+    "name": "greet",
+    "request": {
+      "method": "GET",
+      "path": "/greet",
+      "query": { "name": "Ada" }
+    },
+    "response": {
+      "status": 200,
+      "headers": { "Content-Type": "application/json" },
+      "body": { "message": "Hello, Ada!" }
+    }
+  },
+  {
+    "name": "greet-missing-name",
+    "request": {
+      "method": "GET",
+      "path": "/greet"
+    },
+    "response": {
+      "status": 400,
+      "body": { "error": "name is required" }
+    }
+  }
+]

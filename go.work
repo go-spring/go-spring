@@ -40,6 +40,8 @@ use (
 	./starter/starter-actuator
 	./starter/starter-admin-ui
 	./starter/starter-ants
+	./starter/starter-batch
+	./starter/starter-batch-redis
 	./starter/starter-bigcache
 	./starter/starter-casbin
 	./starter/starter-config-bus
@@ -76,6 +78,7 @@ use (
 	./starter/starter-lock-k8s
 	./starter/starter-lock-redis
 	./starter/starter-lua-filter
+	./starter/starter-mail
 	./starter/starter-mesh
 	./starter/starter-mesh/example
 	./starter/starter-memcached
@@ -84,6 +87,7 @@ use (
 	./starter/starter-nats
 	./starter/starter-neo4j
 	./starter/starter-oauth2-client
+	./starter/starter-oauth2-server
 	./starter/starter-otel
 	./starter/starter-otel/example
 	./starter/starter-pprof
@@ -94,8 +98,11 @@ use (
 	./starter/starter-resilience
 	./starter/starter-scheduler
 	./starter/starter-security-jwt
+	./starter/starter-session-redis
 	./starter/starter-swagger
 	./starter/starter-thrift
+	./starter/starter-transaction-at-gorm
+	./starter/starter-transaction-at-gorm/example
 	./starter/starter-transaction-saga
 	./starter/starter-transaction-saga-gorm
 	./starter/starter-transaction-tcc
