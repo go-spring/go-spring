@@ -49,8 +49,8 @@ spring.grpc.server.health.enabled=true
 
 # 传输层 TLS：启用并指定 PEM 证书/私钥路径。
 spring.grpc.server.tls.enabled=false
-spring.grpc.server.tls.certFile=
-spring.grpc.server.tls.keyFile=
+spring.grpc.server.tls.cert-file=
+spring.grpc.server.tls.key-file=
 ```
 
 ### 3. 注册 gRPC 服务

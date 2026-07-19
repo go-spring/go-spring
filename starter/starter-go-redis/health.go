@@ -20,34 +20,23 @@ import (
 	"context"
 
 	"github.com/redis/go-redis/v9"
+	"go-spring.org/stdlib/health"
+	"go-spring.org/stdlib/starter"
 )
 
-// redisHealth adapts a Redis client into a health.Indicator. It is registered
-// once per configured instance and exported as health.Indicator, so an
-// application that also imports starter-actuator gets Redis readiness folded
-// into /readiness with no extra wiring. When the actuator is absent the bean is
-// simply never collected.
-type redisHealth struct {
-	name   string
-	client redis.UniversalClient
-}
-
-// HealthName identifies the instance under its configured name, e.g.
-// "redis:cache".
-func (h *redisHealth) HealthName() string { return "redis:" + h.name }
-
-// CheckHealth reports the connection as healthy when PING succeeds within the
-// caller's context deadline.
-func (h *redisHealth) CheckHealth(ctx context.Context) error {
-	return h.client.Ping(ctx).Err()
-}
-
-// newClientHealth builds an indicator for a single/sentinel client.
-func newClientHealth(name string, client *redis.Client) *redisHealth {
-	return &redisHealth{name: name, client: client}
+// newClientHealth builds an indicator for a single/sentinel client. It is
+// registered once per configured instance and exported as health.Indicator, so
+// an application that also imports starter-actuator gets Redis readiness folded
+// into /readiness with no extra wiring.
+func newClientHealth(name string, client *redis.Client) health.Indicator {
+	return starter.NewIndicator("redis:"+name, func(ctx context.Context) error {
+		return client.Ping(ctx).Err()
+	})
 }
 
 // newClusterHealth builds an indicator for a cluster client.
-func newClusterHealth(name string, client *redis.ClusterClient) *redisHealth {
-	return &redisHealth{name: name, client: client}
+func newClusterHealth(name string, client *redis.ClusterClient) health.Indicator {
+	return starter.NewIndicator("redis:"+name, func(ctx context.Context) error {
+		return client.Ping(ctx).Err()
+	})
 }

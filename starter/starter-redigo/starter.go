@@ -21,6 +21,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/discovery"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/starter"
 )
 
 func init() {
@@ -32,8 +33,11 @@ func init() {
 
 // newClient creates a new Redis client based on the provided configuration.
 func newClient(c Config) (*redis.Pool, error) {
-	if c.Addr == "" && c.ServiceName == "" {
-		return nil, errutil.Explain(nil, "redis: one of addr or service-name must be set")
+	if err := starter.RequireAny("redis",
+		starter.Field{Name: "addr", Value: c.Addr},
+		starter.Field{Name: "service-name", Value: c.ServiceName},
+	); err != nil {
+		return nil, err
 	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {

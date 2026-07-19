@@ -29,6 +29,7 @@ import (
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/health"
+	"go-spring.org/stdlib/starter"
 )
 
 func init() {
@@ -139,8 +140,11 @@ func newClusterClient(c Config) (*redis.ClusterClient, error) {
 func validateConfig(c Config) error {
 	switch c.Mode {
 	case "", "single":
-		if c.Addr == "" && c.ServiceName == "" {
-			return errutil.Explain(nil, "redis: one of addr or service-name must be set")
+		if err := starter.RequireAny("redis",
+			starter.Field{Name: "addr", Value: c.Addr},
+			starter.Field{Name: "service-name", Value: c.ServiceName},
+		); err != nil {
+			return err
 		}
 	case "sentinel":
 		if c.ServiceName != "" {

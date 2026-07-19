@@ -80,7 +80,7 @@ All keys live under `spring.lock.<name>`:
 | `tls.enabled`   | `false`   | enable TLS                                       |
 | `tls.cert-file` | `""`      | client certificate (mutual TLS)                  |
 | `tls.key-file`  | `""`      | client private key (mutual TLS)                  |
-| `tls.ca-cert-file` | `""`   | PEM bundle of trusted CAs                        |
+| `tls.ca-file` | `""`   | PEM bundle of trusted CAs                        |
 
 ## Core Behavior
 

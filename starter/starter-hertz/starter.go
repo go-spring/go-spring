@@ -18,7 +18,6 @@ package StarterHertz
 
 import (
 	"context"
-	"crypto/tls"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -27,6 +26,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/starter"
 )
 
 func init() {
@@ -53,14 +53,6 @@ func init() {
 // own register bean to wire handlers.
 type RouterRegister func(h *server.Hertz)
 
-// TLSConfig enables HTTPS by pointing at a PEM certificate/key pair. When
-// Enabled is false the server listens in plaintext HTTP.
-type TLSConfig struct {
-	Enabled  bool   `value:"${enabled:=false}"`
-	CertFile string `value:"${certFile:=}"`
-	KeyFile  string `value:"${keyFile:=}"`
-}
-
 // HealthConfig exposes an optional liveness/readiness endpoint served by the
 // starter. It is disabled by default so applications opt in explicitly.
 type HealthConfig struct {
@@ -73,13 +65,13 @@ type HealthConfig struct {
 // read/write/idle timeouts are passed to the engine via server options rather
 // than a standard http.Server. Field naming mirrors gs.SimpleHttpServerConfig.
 type Config struct {
-	Addr         string        `value:"${addr:=:8003}"`
-	ReadTimeout  time.Duration `value:"${readTimeout:=5s}"`
-	WriteTimeout time.Duration `value:"${writeTimeout:=5s}"`
-	IdleTimeout  time.Duration `value:"${idleTimeout:=60s}"`
-	MaxBodySize  int           `value:"${maxBodySize:=0}"`
-	TLS          TLSConfig     `value:"${tls}"`
-	Health       HealthConfig  `value:"${health}"`
+	Addr         string            `value:"${addr:=:8003}"`
+	ReadTimeout  time.Duration     `value:"${readTimeout:=5s}"`
+	WriteTimeout time.Duration     `value:"${writeTimeout:=5s}"`
+	IdleTimeout  time.Duration     `value:"${idleTimeout:=60s}"`
+	MaxBodySize  int               `value:"${maxBodySize:=0}"`
+	TLS          starter.TLSConfig `value:"${tls}"`
+	Health       HealthConfig      `value:"${health}"`
 }
 
 // SimpleHertzServer adapts a *server.Hertz to the Go-Spring server lifecycle.
@@ -104,13 +96,11 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServ
 		opts = append(opts, server.WithMaxRequestBodySize(cfg.MaxBodySize))
 	}
 	if cfg.TLS.Enabled {
-		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+		tlsCfg, err := cfg.TLS.Build()
 		if err != nil {
-			return nil, errutil.Explain(err, "failed to load TLS key pair")
+			return nil, errutil.Explain(err, "hertz: build TLS")
 		}
-		opts = append(opts, server.WithTLS(&tls.Config{
-			Certificates: []tls.Certificate{cert},
-		}))
+		opts = append(opts, server.WithTLS(tlsCfg))
 	}
 
 	h := server.Default(opts...)

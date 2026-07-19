@@ -50,8 +50,8 @@ spring.echo.server.health.path=/healthz
 
 # HTTPS: enable and point at a PEM cert/key pair.
 spring.echo.server.tls.enabled=false
-spring.echo.server.tls.certFile=
-spring.echo.server.tls.keyFile=
+spring.echo.server.tls.cert-file=
+spring.echo.server.tls.key-file=
 ```
 
 The starter registers its server bean when `spring.echo.server.enabled` is `true` (default) and a

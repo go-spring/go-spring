@@ -21,6 +21,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go-spring.org/stdlib/starter"
 )
 
 // Config holds the configuration parameters for a SQL Server connection.
@@ -52,12 +54,13 @@ type Config struct {
 	// this are logged at warn level.
 	SlowThreshold time.Duration `value:"${slow-threshold:=0}"`
 
-	// TLS configuration. TLSEnabled maps to the driver "encrypt=true" mode;
-	// TLSSkipVerify maps to "TrustServerCertificate=true"; TLSCA supplies a PEM
-	// server certificate/CA path via "certificate".
-	TLSEnabled    bool   `value:"${tls-enabled:=false}"`     // Enable TLS encryption
-	TLSSkipVerify bool   `value:"${tls-skip-verify:=false}"` // Trust the server certificate without verification
-	TLSCA         string `value:"${tls-ca:=}"`               // Path to server certificate / CA (PEM)
+	// TLS uses the shared stdlib/starter.TLSConfig block (nested keys:
+	// tls.enabled, tls.insecure-skip-verify, tls.ca-file). SQL Server maps
+	// them onto DSN parameters rather than a *tls.Config: TLS.Enabled →
+	// "encrypt=true"; TLS.InsecureSkipVerify → "TrustServerCertificate=true";
+	// TLS.CAFile → "certificate" (a PEM server certificate / CA path). The
+	// CertFile/KeyFile fields are unused because the DSN has no client-cert slot.
+	TLS starter.TLSConfig `value:"${tls}"`
 
 	// ServiceName is the service discovery name. When set, Host/Port are
 	// ignored for dialing and the connection reaches a live instance resolved
@@ -91,14 +94,14 @@ func (c Config) DSN() string {
 		sb.WriteString("&connection+timeout=")
 		sb.WriteString(strconv.Itoa(int(c.ConnectTimeout.Seconds())))
 	}
-	if c.TLSEnabled {
+	if c.TLS.Enabled {
 		sb.WriteString("&encrypt=true")
-		if c.TLSSkipVerify {
+		if c.TLS.InsecureSkipVerify {
 			sb.WriteString("&TrustServerCertificate=true")
 		}
-		if c.TLSCA != "" {
+		if c.TLS.CAFile != "" {
 			sb.WriteString("&certificate=")
-			sb.WriteString(url.QueryEscape(c.TLSCA))
+			sb.WriteString(url.QueryEscape(c.TLS.CAFile))
 		}
 	}
 	return sb.String()

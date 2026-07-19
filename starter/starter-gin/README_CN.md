@@ -49,8 +49,8 @@ spring.gin.server.health.path=/healthz
 
 # HTTPS：启用并指定 PEM 证书/私钥路径。
 spring.gin.server.tls.enabled=false
-spring.gin.server.tls.certFile=
-spring.gin.server.tls.keyFile=
+spring.gin.server.tls.cert-file=
+spring.gin.server.tls.key-file=
 ```
 
 当 `spring.gin.server.enabled` 为 `true`（默认）且应用提供了 `RouterRegister` Bean 时，

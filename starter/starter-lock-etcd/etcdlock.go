@@ -48,9 +48,9 @@ func newEtcdLocker(c Config) (*etcdLocker, error) {
 		return nil, errutil.Explain(nil, "lock-etcd: endpoints is required")
 	}
 
-	tlsCfg, err := buildTLSConfig(c.TLS)
+	tlsCfg, err := c.TLS.Build()
 	if err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "lock-etcd: build TLS")
 	}
 
 	cli, err := clientv3.New(clientv3.Config{

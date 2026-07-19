@@ -49,8 +49,8 @@ spring.echo.server.health.path=/healthz
 
 # HTTPS：启用并指定 PEM 证书/私钥路径。
 spring.echo.server.tls.enabled=false
-spring.echo.server.tls.certFile=
-spring.echo.server.tls.keyFile=
+spring.echo.server.tls.cert-file=
+spring.echo.server.tls.key-file=
 ```
 
 当 `spring.echo.server.enabled` 为 `true`（默认）且应用提供了 `RouterRegister` Bean 时，

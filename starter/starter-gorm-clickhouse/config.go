@@ -20,6 +20,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"go-spring.org/stdlib/starter"
 )
 
 // Config holds the configuration parameters for a ClickHouse connection.
@@ -46,14 +48,11 @@ type Config struct {
 	// this are logged at warn level.
 	SlowThreshold time.Duration `value:"${slow-threshold:=0}"`
 
-	// TLS configuration. When TLSEnabled is set, the native ClickHouse driver
-	// negotiates a secure connection; CA/cert/key paths supply custom material
-	// and TLSSkipVerify disables server certificate verification.
-	TLSEnabled    bool   `value:"${tls-enabled:=false}"`     // Enable TLS (secure native connection)
-	TLSSkipVerify bool   `value:"${tls-skip-verify:=false}"` // Skip server certificate verification
-	TLSCA         string `value:"${tls-ca:=}"`               // Path to CA certificate (PEM)
-	TLSCert       string `value:"${tls-cert:=}"`             // Path to client certificate (PEM)
-	TLSKey        string `value:"${tls-key:=}"`              // Path to client private key (PEM)
+	// TLS configuration. When TLS.Enabled is set, the native ClickHouse driver
+	// negotiates a secure connection using the *tls.Config produced by the
+	// shared stdlib/starter.TLSConfig builder. Keys are nested
+	// (spring.gorm.clickhouse.<name>.tls.enabled, ...tls.cert-file, ...).
+	TLS starter.TLSConfig `value:"${tls}"`
 
 	// ServiceName is the service discovery name. When set, Addr is ignored and
 	// the connection dials a live instance resolved from the discovery backend.

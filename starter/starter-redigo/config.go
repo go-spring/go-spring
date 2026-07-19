@@ -18,15 +18,13 @@ package StarterRedigo
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/stdlib/discovery"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/starter"
 )
 
 var driverRegistry = map[string]Driver{}
@@ -87,65 +85,10 @@ type Config struct {
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext. Field layout matches
 	// starter-go-redis so the two starters stay interchangeable.
-	TLS TLSConfig `value:"${tls}"`
+	TLS starter.TLSConfig `value:"${tls}"`
 
 	// Driver specifies which Redis driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
-}
-
-// TLSConfig configures a TLS connection to Redis. It is only applied when
-// Enabled is true.
-type TLSConfig struct {
-	// Enabled turns on TLS for the connection.
-	Enabled bool `value:"${enabled:=false}"`
-
-	// CertFile and KeyFile are the client certificate/key pair, used for mutual
-	// TLS. Leave both empty when the server does not require a client cert.
-	CertFile string `value:"${cert-file:=}"`
-	KeyFile  string `value:"${key-file:=}"`
-
-	// CAFile is a PEM bundle of root CAs used to verify the server certificate.
-	// When empty the host's default root set is used.
-	CAFile string `value:"${ca-file:=}"`
-
-	// ServerName overrides the name checked against the server certificate,
-	// useful when dialing by IP or through a service-discovery label.
-	ServerName string `value:"${server-name:=}"`
-
-	// InsecureSkipVerify disables server certificate verification. Intended for
-	// local testing only — never enable it in production.
-	InsecureSkipVerify bool `value:"${insecure-skip-verify:=false}"`
-}
-
-// buildTLSConfig turns a TLSConfig into a *tls.Config, or nil when TLS is
-// disabled. It loads the client key pair and CA bundle from disk when provided.
-func buildTLSConfig(c TLSConfig) (*tls.Config, error) {
-	if !c.Enabled {
-		return nil, nil
-	}
-	cfg := &tls.Config{
-		ServerName:         c.ServerName,
-		InsecureSkipVerify: c.InsecureSkipVerify,
-	}
-	if c.CertFile != "" || c.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
-		if err != nil {
-			return nil, errutil.Explain(err, "redis: failed to load TLS key pair")
-		}
-		cfg.Certificates = []tls.Certificate{cert}
-	}
-	if c.CAFile != "" {
-		pem, err := os.ReadFile(c.CAFile)
-		if err != nil {
-			return nil, errutil.Explain(err, "redis: failed to read TLS CA file")
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, errutil.Explain(nil, "redis: no certificates found in CA file %s", c.CAFile)
-		}
-		cfg.RootCAs = pool
-	}
-	return cfg, nil
 }
 
 // Driver interface defines how to create a Redis client.
@@ -174,9 +117,9 @@ type DefaultDriver struct{}
 // addresses without rebuilding the pool. When c.ServiceName is empty this is a
 // plain Addr dial, unchanged from before.
 func (DefaultDriver) CreateClient(c Config) (*redis.Pool, error) {
-	tlsConfig, err := buildTLSConfig(c.TLS)
+	tlsConfig, err := c.TLS.Build()
 	if err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "redis: build TLS")
 	}
 
 	var ld *discovery.LiveDialer

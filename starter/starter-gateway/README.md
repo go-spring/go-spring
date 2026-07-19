@@ -130,8 +130,8 @@ The [example.go](example/example.go) program demonstrates and asserts:
 * **Hot reload** — routes bind through a `gs.Dync` map; any config refresh rebuilds
   the compiled table on the next request. A route that fails to compile is
   rejected and the previous table keeps serving.
-* **TLS / mTLS** — set `spring.gateway.server.tls.enabled=true` with `certFile`/
-  `keyFile`; adding `caFile` turns on mutual TLS (clients must present a cert).
+* **TLS / mTLS** — set `spring.gateway.server.tls.enabled=true` with `cert-file`/
+  `key-file`; adding `ca-file` turns on mutual TLS (clients must present a cert).
 * **Graceful drain** — the gateway is a `gs.Server`, so it listens early (a port
   clash fails startup), serves only after readiness, and drains in-flight requests
   on shutdown.

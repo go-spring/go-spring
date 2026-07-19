@@ -17,10 +17,7 @@
 package StarterKafkaSarama
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/IBM/sarama"
@@ -70,9 +67,9 @@ func newClient(c Config) (sarama.Client, error) {
 	}
 
 	if c.TLS.Enabled {
-		tc, err := tlsConfig(c.TLS)
+		tc, err := c.TLS.Build()
 		if err != nil {
-			return nil, err
+			return nil, errutil.Explain(err, "kafka: build TLS")
 		}
 		cfg.Net.TLS.Enable = true
 		cfg.Net.TLS.Config = tc
@@ -113,32 +110,6 @@ func applySASL(cfg *sarama.Config, c SASLConfig) error {
 		return fmt.Errorf("unsupported kafka sasl mechanism: %q", c.Mechanism)
 	}
 	return nil
-}
-
-// tlsConfig assembles a *tls.Config from optional CA / client cert files.
-// Kept structurally identical to the franz-go variant so behaviour is the
-// same across implementations.
-func tlsConfig(c TLSConfig) (*tls.Config, error) {
-	tc := &tls.Config{InsecureSkipVerify: c.InsecureSkipVerify}
-	if c.CACert != "" {
-		pem, err := os.ReadFile(c.CACert)
-		if err != nil {
-			return nil, errutil.Explain(err, "failed to read kafka tls ca-cert: %s", c.CACert)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("failed to parse kafka tls ca-cert: %s", c.CACert)
-		}
-		tc.RootCAs = pool
-	}
-	if c.ClientCert != "" || c.ClientKey != "" {
-		cert, err := tls.LoadX509KeyPair(c.ClientCert, c.ClientKey)
-		if err != nil {
-			return nil, errutil.Explain(err, "failed to load kafka tls client cert/key")
-		}
-		tc.Certificates = []tls.Certificate{cert}
-	}
-	return tc, nil
 }
 
 // applyProducer translates ProducerConfig into cfg.Producer fields.

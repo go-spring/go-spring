@@ -71,8 +71,8 @@ spring.hertz.server.health.path=/healthz
 
 # HTTPS：启用并指定 PEM 证书/私钥路径。
 spring.hertz.server.tls.enabled=false
-spring.hertz.server.tls.certFile=
-spring.hertz.server.tls.keyFile=
+spring.hertz.server.tls.cert-file=
+spring.hertz.server.tls.key-file=
 ```
 
 ### 4. 运行应用

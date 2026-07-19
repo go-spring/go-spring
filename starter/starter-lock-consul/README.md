@@ -78,7 +78,7 @@ All keys live under `spring.lock.<name>`:
 | `ttl`              | `30s`    | Session TTL. Consul clamps to `[10s, 86400s]`; auto-renewed behind `api.Lock`.         |
 | `key-prefix`       | `lock/`  | Prepended to every lock key so many apps can share a Consul cluster.                   |
 | `tls.enabled`      | `false`  | Turn on TLS to the Consul agent.                                                       |
-| `tls.address`      | (empty)  | Overrides the server name checked against the presented certificate.                   |
+| `tls.server-name`  | (empty)  | Overrides the server name checked against the presented certificate.                   |
 | `tls.ca-file`      | (empty)  | PEM bundle of CAs used to verify the agent's cert.                                     |
 | `tls.cert-file`    | (empty)  | Client certificate for mutual TLS.                                                     |
 | `tls.key-file`     | (empty)  | Client key for mutual TLS.                                                             |

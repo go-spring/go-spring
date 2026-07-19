@@ -16,7 +16,11 @@
 
 package StarterKafka
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/stdlib/starter"
+)
 
 // Config defines Kafka client configuration.
 type Config struct {
@@ -35,8 +39,11 @@ type Config struct {
 	// SASL configures SASL authentication, disabled by default.
 	SASL SASLConfig `value:"${sasl}"`
 
-	// TLS configures transport encryption, disabled by default.
-	TLS TLSConfig `value:"${tls}"`
+	// TLS configures transport encryption, disabled by default. It uses the
+	// shared stdlib/starter TLS block so property keys are uniform across
+	// starters (cert-file / key-file / ca-file / server-name /
+	// insecure-skip-verify).
+	TLS starter.TLSConfig `value:"${tls}"`
 
 	// Producer tunes producer-side batching, compression and acks.
 	Producer ProducerConfig `value:"${producer}"`
@@ -58,27 +65,6 @@ type SASLConfig struct {
 
 	// Password is the SASL password.
 	Password string `value:"${password:=}"`
-}
-
-// TLSConfig configures TLS transport encryption. When Enabled is true the
-// client dials brokers over TLS; certificate files are optional and only
-// needed for a custom CA or mutual TLS.
-type TLSConfig struct {
-	// Enabled turns on TLS for broker connections, default is false.
-	Enabled bool `value:"${enabled:=false}"`
-
-	// CACert is the path to a PEM CA bundle used to verify the broker
-	// certificate; empty uses the system roots.
-	CACert string `value:"${ca-cert:=}"`
-
-	// ClientCert and ClientKey are the PEM client certificate/key pair for
-	// mutual TLS; both empty disables client authentication.
-	ClientCert string `value:"${client-cert:=}"`
-	ClientKey  string `value:"${client-key:=}"`
-
-	// InsecureSkipVerify disables broker certificate verification. Never
-	// enable it outside development, default is false.
-	InsecureSkipVerify bool `value:"${insecure-skip-verify:=false}"`
 }
 
 // ProducerConfig tunes the producer. Zero values leave franz-go's own

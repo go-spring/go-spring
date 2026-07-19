@@ -18,7 +18,6 @@ package StarterThrift
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -26,6 +25,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/starter"
 )
 
 func init() {
@@ -44,14 +44,6 @@ func init() {
 	})
 }
 
-// TLSConfig enables a TLS server transport by pointing at a PEM certificate/key
-// pair. When Enabled is false the server uses a plaintext socket transport.
-type TLSConfig struct {
-	Enabled  bool   `value:"${enabled:=false}"`
-	CertFile string `value:"${certFile:=}"`
-	KeyFile  string `value:"${keyFile:=}"`
-}
-
 // Config defines Thrift server configuration.
 //
 // Protocol selects the on-the-wire message encoding and must match the
@@ -61,12 +53,12 @@ type TLSConfig struct {
 // cross-language clients. Both settings must be paired with a matching
 // client; a mismatch corrupts the wire protocol.
 type Config struct {
-	Addr          string        `value:"${addr:=:9292}"`
-	ClientTimeout time.Duration `value:"${clientTimeout:=0}"`
-	Protocol      string        `value:"${protocol:=binary}"`
-	Transport     string        `value:"${transport:=none}"`
-	BufferSize    int           `value:"${bufferSize:=4096}"`
-	TLS           TLSConfig     `value:"${tls}"`
+	Addr          string            `value:"${addr:=:9292}"`
+	ClientTimeout time.Duration     `value:"${clientTimeout:=0}"`
+	Protocol      string            `value:"${protocol:=binary}"`
+	Transport     string            `value:"${transport:=none}"`
+	BufferSize    int               `value:"${bufferSize:=4096}"`
+	TLS           starter.TLSConfig `value:"${tls}"`
 }
 
 // SimpleThriftServer adapts a thrift.TSimpleServer to the Go-Spring server lifecycle.
@@ -85,12 +77,11 @@ func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor) *SimpleThriftServ
 // when enabled, TLS.
 func (s *SimpleThriftServer) newTransport() (thrift.TServerTransport, error) {
 	if s.cfg.TLS.Enabled {
-		cert, err := tls.LoadX509KeyPair(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
+		tlsCfg, err := s.cfg.TLS.Build()
 		if err != nil {
-			return nil, errutil.Explain(err, "failed to load TLS key pair")
+			return nil, errutil.Explain(err, "thrift: build TLS")
 		}
-		cfg := &tls.Config{Certificates: []tls.Certificate{cert}}
-		return thrift.NewTSSLServerSocketTimeout(s.cfg.Addr, cfg, s.cfg.ClientTimeout)
+		return thrift.NewTSSLServerSocketTimeout(s.cfg.Addr, tlsCfg, s.cfg.ClientTimeout)
 	}
 	return thrift.NewTServerSocketTimeout(s.cfg.Addr, s.cfg.ClientTimeout)
 }

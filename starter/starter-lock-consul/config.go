@@ -16,7 +16,11 @@
 
 package StarterLockConsul
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/stdlib/starter"
+)
 
 // Config binds one Consul-backed distributed-lock instance under
 // "spring.lock.<name>". Every instance owns its own consul API client; two
@@ -49,27 +53,7 @@ type Config struct {
 
 	// TLS configures optional TLS to the Consul agent. It is applied only
 	// when TLS.Enabled is true; otherwise the client dials in plaintext.
-	TLS TLSConfig `value:"${tls}"`
-}
-
-// TLSConfig configures TLS to the Consul agent. It maps directly onto
-// api.TLSConfig; Address here overrides the SNI/hostname checked against the
-// server certificate when dialing by IP.
-type TLSConfig struct {
-	// Enabled turns on TLS for the api.Client. It also implies scheme=https
-	// unless the caller has explicitly set another scheme.
-	Enabled bool `value:"${enabled:=false}"`
-
-	// Address overrides the server name checked against the presented
-	// certificate. Leave empty to use the Config.Address host.
-	Address string `value:"${address:=}"`
-
-	// CAFile is a PEM bundle of CAs used to verify the Consul agent's cert.
-	// When empty the host default root set is used.
-	CAFile string `value:"${ca-file:=}"`
-
-	// CertFile and KeyFile are the client certificate/key pair for mutual
-	// TLS. Leave both empty when the server does not require a client cert.
-	CertFile string `value:"${cert-file:=}"`
-	KeyFile  string `value:"${key-file:=}"`
+	// TLS.ServerName overrides the SNI/hostname checked against the server
+	// certificate when dialing by IP.
+	TLS starter.TLSConfig `value:"${tls}"`
 }

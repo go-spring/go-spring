@@ -18,10 +18,7 @@ package StarterGormClickhouse
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"time"
@@ -96,27 +93,3 @@ func Stats(db *gorm.DB) (sql.DBStats, error) {
 	return sqlDB.Stats(), nil
 }
 
-// buildTLSConfig assembles the *tls.Config for a secure ClickHouse connection.
-// It honors TLSSkipVerify and loads CA/cert/key from the configured paths.
-func buildTLSConfig(c Config) (*tls.Config, error) {
-	cfg := &tls.Config{InsecureSkipVerify: c.TLSSkipVerify}
-	if c.TLSCA != "" {
-		pem, err := os.ReadFile(c.TLSCA)
-		if err != nil {
-			return nil, fmt.Errorf("gorm clickhouse: read tls ca: %w", err)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("gorm clickhouse: failed to append tls ca from %s", c.TLSCA)
-		}
-		cfg.RootCAs = pool
-	}
-	if c.TLSCert != "" || c.TLSKey != "" {
-		cert, err := tls.LoadX509KeyPair(c.TLSCert, c.TLSKey)
-		if err != nil {
-			return nil, fmt.Errorf("gorm clickhouse: load tls cert/key: %w", err)
-		}
-		cfg.Certificates = []tls.Certificate{cert}
-	}
-	return cfg, nil
-}

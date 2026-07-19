@@ -116,8 +116,8 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 
 * **热更新** —— 路由通过 `gs.Dync` map 绑定；任何配置刷新都会在下一次请求时重建已编译路由
   表。编译失败的路由会被拒绝，上一份路由表继续服务。
-* **TLS / mTLS** —— 设置 `spring.gateway.server.tls.enabled=true` 并配 `certFile`/`keyFile`；
-  再加 `caFile` 即开启双向 TLS（客户端必须出示证书）。
+* **TLS / mTLS** —— 设置 `spring.gateway.server.tls.enabled=true` 并配 `cert-file`/`key-file`；
+  再加 `ca-file` 即开启双向 TLS（客户端必须出示证书）。
 * **优雅停机** —— 网关是 `gs.Server`，因此提前监听（端口冲突在启动即失败）、就绪后才对外
   服务、停机时排空在途请求。
 * **bean 形态过滤器** —— `jwt-auth(<bean>)` 与 `lua(<bean>)` 解析一个导出为

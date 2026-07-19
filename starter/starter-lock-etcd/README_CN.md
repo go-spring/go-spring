@@ -77,7 +77,7 @@ case <-workDone:
 | `tls.enabled`   | `false`   | 启用 TLS                                |
 | `tls.cert-file` | `""`      | 客户端证书（mTLS）                      |
 | `tls.key-file`  | `""`      | 客户端私钥（mTLS）                      |
-| `tls.ca-cert-file` | `""`   | 受信任 CA 的 PEM 集                     |
+| `tls.ca-file` | `""`   | 受信任 CA 的 PEM 集                     |
 
 ## 核心行为
 

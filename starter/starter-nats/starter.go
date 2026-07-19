@@ -18,7 +18,6 @@ package StarterNats
 
 import (
 	"context"
-	"crypto/tls"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -109,16 +108,14 @@ func newConn(c Config) (*Conn, error) {
 		opts = append(opts, opt)
 	}
 	if c.TLS.Enabled {
-		if c.TLS.InsecureSkipVerify {
-			opts = append(opts, nats.Secure(&tls.Config{InsecureSkipVerify: true}))
+		tlsCfg, err := c.TLS.Build()
+		if err != nil {
+			return nil, errutil.Explain(err, "nats: build TLS")
+		}
+		if tlsCfg != nil {
+			opts = append(opts, nats.Secure(tlsCfg))
 		} else {
 			opts = append(opts, nats.Secure())
-		}
-		if c.TLS.CAFile != "" {
-			opts = append(opts, nats.RootCAs(c.TLS.CAFile))
-		}
-		if c.TLS.CertFile != "" || c.TLS.KeyFile != "" {
-			opts = append(opts, nats.ClientCert(c.TLS.CertFile, c.TLS.KeyFile))
 		}
 	}
 

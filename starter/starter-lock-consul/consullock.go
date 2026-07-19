@@ -77,10 +77,11 @@ func newConsulLocker(c Config) (*consulLocker, error) {
 	}
 	if c.TLS.Enabled {
 		cfg.TLSConfig = api.TLSConfig{
-			Address:  c.TLS.Address,
-			CAFile:   c.TLS.CAFile,
-			CertFile: c.TLS.CertFile,
-			KeyFile:  c.TLS.KeyFile,
+			Address:            c.TLS.ServerName,
+			CAFile:             c.TLS.CAFile,
+			CertFile:           c.TLS.CertFile,
+			KeyFile:            c.TLS.KeyFile,
+			InsecureSkipVerify: c.TLS.InsecureSkipVerify,
 		}
 	}
 

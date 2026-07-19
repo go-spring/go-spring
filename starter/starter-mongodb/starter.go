@@ -24,6 +24,7 @@ import (
 
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/discovery"
+	"go-spring.org/stdlib/errutil"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
@@ -75,9 +76,9 @@ func newClient(c Config) (*mongo.Client, error) {
 			AuthMechanism: c.AuthMechanism,
 		})
 	}
-	tlsCfg, err := c.TLS.build()
+	tlsCfg, err := c.TLS.Build()
 	if err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "mongodb: build TLS")
 	}
 	if tlsCfg != nil {
 		opts.SetTLSConfig(tlsCfg)

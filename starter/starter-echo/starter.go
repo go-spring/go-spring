@@ -27,6 +27,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/starter"
 )
 
 func init() {
@@ -53,14 +54,6 @@ func init() {
 // application supplies its own register bean to wire handlers.
 type RouterRegister func(e *echo.Echo)
 
-// TLSConfig enables HTTPS by pointing at a PEM certificate/key pair. When
-// Enabled is false the server listens in plaintext HTTP.
-type TLSConfig struct {
-	Enabled  bool   `value:"${enabled:=false}"`
-	CertFile string `value:"${certFile:=}"`
-	KeyFile  string `value:"${keyFile:=}"`
-}
-
 // HealthConfig exposes an optional liveness/readiness endpoint served by the
 // starter. It is disabled by default so applications opt in explicitly.
 type HealthConfig struct {
@@ -74,9 +67,9 @@ type HealthConfig struct {
 // and an optional health endpoint without touching the spring core struct.
 type Config struct {
 	gs.SimpleHttpServerConfig
-	MaxBodySize int64        `value:"${maxBodySize:=0}"`
-	TLS         TLSConfig    `value:"${tls}"`
-	Health      HealthConfig `value:"${health}"`
+	MaxBodySize int64             `value:"${maxBodySize:=0}"`
+	TLS         starter.TLSConfig `value:"${tls}"`
+	Health      HealthConfig      `value:"${health}"`
 }
 
 // SimpleEchoServer adapts an Echo engine to the Go-Spring server lifecycle. It

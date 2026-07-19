@@ -24,6 +24,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"go-spring.org/stdlib/health"
+	"go-spring.org/stdlib/starter"
 )
 
 // Metrics accumulates per-route request counters exposed as Prometheus text on
@@ -140,21 +143,16 @@ func line(b *strings.Builder, route, class string, v int64) {
 	fmt.Fprintf(b, "gateway_requests_total{route=%q,status=%q} %d\n", route, class, v)
 }
 
-// gatewayHealth reports the gateway as a health.Indicator. It stays UP as long
-// as the route table is loaded; a route whose lb:// upstream currently has zero
-// live instances is a per-route concern surfaced via metrics/logs, not a reason
-// to fail the whole gateway's readiness (it may still serve other routes).
-type gatewayHealth struct {
-	tbl *RouteTable
-}
-
-func newGatewayHealth(tbl *RouteTable) *gatewayHealth { return &gatewayHealth{tbl: tbl} }
-
-func (h *gatewayHealth) HealthName() string { return "gateway" }
-
-func (h *gatewayHealth) CheckHealth(ctx context.Context) error {
-	if h.tbl.compiled.Load() == nil {
-		return fmt.Errorf("gateway: route table not loaded")
-	}
-	return nil
+// newGatewayHealth reports the gateway as a health.Indicator. It stays UP as
+// long as the route table is loaded; a route whose lb:// upstream currently
+// has zero live instances is a per-route concern surfaced via metrics/logs,
+// not a reason to fail the whole gateway's readiness (it may still serve
+// other routes).
+func newGatewayHealth(tbl *RouteTable) health.Indicator {
+	return starter.NewIndicator("gateway", func(ctx context.Context) error {
+		if tbl.compiled.Load() == nil {
+			return fmt.Errorf("gateway: route table not loaded")
+		}
+		return nil
+	})
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/wneessen/go-mail"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/starter"
 )
 
 // Attachment is a file attached to a Message. Filename is the name shown to the
@@ -84,8 +85,8 @@ func init() {
 // unknown auth/TLS mode, and probes the server once at startup so a
 // misconfiguration surfaces at boot rather than on the first send.
 func newMailer(c Config) (*Mailer, error) {
-	if c.Host == "" {
-		return nil, errutil.Explain(nil, "mail: host is required")
+	if err := starter.RequireField("mail", "host", c.Host); err != nil {
+		return nil, err
 	}
 
 	opts := []mail.Option{

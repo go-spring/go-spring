@@ -25,6 +25,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/discovery"
+	"go-spring.org/stdlib/errutil"
 	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
@@ -73,25 +74,22 @@ func newClient(c Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
 	}
 
-	// Resolve the TLS DSN parameter: a registered custom config name when
-	// CA/cert/key are supplied, otherwise a driver built-in mode.
+	// Resolve the TLS DSN parameter. The shared TLS builder returns a fully
+	// materialized *tls.Config when TLS is enabled (empty CAFile falls back to
+	// the host's system root set; ServerName/InsecureSkipVerify honored), or
+	// (nil, nil) when disabled. Register the config with the driver under a
+	// unique name and reference it in the DSN as tls=<name>.
 	var tlsName string
-	if c.TLSEnabled {
-		tlsCfg, err := buildTLSConfig(c)
-		if err != nil {
+	tlsCfg, err := c.TLS.Build()
+	if err != nil {
+		return nil, errutil.Explain(err, "gorm-mysql: build TLS")
+	}
+	if tlsCfg != nil {
+		tlsName = fmt.Sprintf("gstls_%d", tlsSeq.Add(1))
+		if err := mysql.RegisterTLSConfig(tlsName, tlsCfg); err != nil {
 			return nil, err
 		}
-		if tlsCfg != nil {
-			tlsName = fmt.Sprintf("gstls_%d", tlsSeq.Add(1))
-			if err := mysql.RegisterTLSConfig(tlsName, tlsCfg); err != nil {
-				return nil, err
-			}
-			c.tlsParam = tlsName
-		} else if c.TLSSkipVerify {
-			c.tlsParam = "skip-verify"
-		} else {
-			c.tlsParam = "true"
-		}
+		c.tlsParam = tlsName
 	}
 
 	dsn := c.DSN()

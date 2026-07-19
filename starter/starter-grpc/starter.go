@@ -24,6 +24,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/starter"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -50,14 +51,6 @@ func init() {
 // ServiceRegister registers services on a grpc.Server.
 type ServiceRegister func(svr *grpc.Server)
 
-// TLSConfig enables transport-level TLS by pointing at a PEM certificate/key
-// pair. When Enabled is false the server accepts plaintext connections.
-type TLSConfig struct {
-	Enabled  bool   `value:"${enabled:=false}"`
-	CertFile string `value:"${certFile:=}"`
-	KeyFile  string `value:"${keyFile:=}"`
-}
-
 // KeepaliveConfig tunes server-side keepalive enforcement. Zero values leave
 // the corresponding gRPC default in place.
 type KeepaliveConfig struct {
@@ -76,14 +69,14 @@ type HealthConfig struct {
 
 // Config defines gRPC server configuration.
 type Config struct {
-	Addr                 string          `value:"${addr:=:9494}"`
-	ConnectionTimeout    time.Duration   `value:"${connectionTimeout:=0}"`
-	MaxRecvMsgSize       int             `value:"${maxRecvMsgSize:=0}"`
-	MaxSendMsgSize       int             `value:"${maxSendMsgSize:=0}"`
-	MaxConcurrentStreams uint32          `value:"${maxConcurrentStreams:=0}"`
-	Keepalive            KeepaliveConfig `value:"${keepalive}"`
-	TLS                  TLSConfig       `value:"${tls}"`
-	Health               HealthConfig    `value:"${health}"`
+	Addr                 string             `value:"${addr:=:9494}"`
+	ConnectionTimeout    time.Duration      `value:"${connectionTimeout:=0}"`
+	MaxRecvMsgSize       int                `value:"${maxRecvMsgSize:=0}"`
+	MaxSendMsgSize       int                `value:"${maxSendMsgSize:=0}"`
+	MaxConcurrentStreams uint32             `value:"${maxConcurrentStreams:=0}"`
+	Keepalive            KeepaliveConfig    `value:"${keepalive}"`
+	TLS                  starter.TLSConfig  `value:"${tls}"`
+	Health               HealthConfig       `value:"${health}"`
 }
 
 // SimpleGrpcServer adapts a grpc.Server to the Go-Spring server lifecycle.
@@ -125,11 +118,11 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	}
 
 	if s.cfg.TLS.Enabled {
-		creds, err := credentials.NewServerTLSFromFile(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
+		tlsCfg, err := s.cfg.TLS.Build()
 		if err != nil {
-			return nil, errutil.Explain(err, "failed to load TLS key pair")
+			return nil, errutil.Explain(err, "grpc: build TLS")
 		}
-		opts = append(opts, grpc.Creds(creds))
+		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
 	}
 	return opts, nil
 }

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/stdlib/resilience"
+	"go-spring.org/stdlib/starter"
 )
 
 // Config holds the configuration parameters for a MySQL connection.
@@ -53,15 +54,12 @@ type Config struct {
 	// this are logged at warn level.
 	SlowThreshold time.Duration `value:"${slow-threshold:=0}"`
 
-	// TLS configuration. When TLSEnabled is set, the connection negotiates TLS.
-	// With no CA/cert supplied it uses the driver built-in modes ("skip-verify"
-	// when TLSSkipVerify is set, otherwise "true"); when CA/cert/key paths are
-	// supplied a custom tls.Config is registered with the driver.
-	TLSEnabled    bool   `value:"${tls-enabled:=false}"`     // Enable TLS
-	TLSSkipVerify bool   `value:"${tls-skip-verify:=false}"` // Skip server certificate verification
-	TLSCA         string `value:"${tls-ca:=}"`               // Path to CA certificate (PEM)
-	TLSCert       string `value:"${tls-cert:=}"`             // Path to client certificate (PEM)
-	TLSKey        string `value:"${tls-key:=}"`              // Path to client private key (PEM)
+	// TLS configuration. When TLS.Enabled is set, the connection negotiates TLS
+	// and a *tls.Config built from CA/cert/key/server-name/insecure-skip-verify
+	// is registered with the mysql driver, then referenced in the DSN as
+	// tls=<unique-name>. Uses the shared stdlib/starter.TLSConfig block, so keys
+	// are nested (spring.gorm.mysql.<name>.tls.enabled, ...tls.cert-file, ...).
+	TLS starter.TLSConfig `value:"${tls}"`
 
 	// ServiceName is the service discovery name. When set, Addr is ignored and
 	// the connection dials a live instance resolved from the discovery backend.

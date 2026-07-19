@@ -64,7 +64,7 @@ func newClient(c Config) (*gorm.DB, error) {
 	// The native driver (ch.OpenDB) is required whenever we must inject a custom
 	// TLS config or a discovery-backed dialer, neither of which the URL-style DSN
 	// can express. Otherwise the plain DSN path stays as before.
-	useNative := c.ServiceName != "" || c.TLSEnabled
+	useNative := c.ServiceName != "" || c.TLS.Enabled
 	if !useNative {
 		db, err = gorm.Open(clickhouse.Open(c.DSN()), gormConfig(c))
 		if err != nil {
@@ -81,10 +81,10 @@ func newClient(c Config) (*gorm.DB, error) {
 			DialTimeout: c.DialTimeout,
 			ReadTimeout: c.ReadTimeout,
 		}
-		if c.TLSEnabled {
-			tlsCfg, terr := buildTLSConfig(c)
+		if c.TLS.Enabled {
+			tlsCfg, terr := c.TLS.Build()
 			if terr != nil {
-				return nil, terr
+				return nil, errutil.Explain(terr, "gorm-clickhouse: build TLS")
 			}
 			opts.TLS = tlsCfg
 		}

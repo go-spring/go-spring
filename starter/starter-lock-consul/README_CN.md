@@ -75,7 +75,7 @@ func (s *Service) Run(ctx context.Context) error {
 | `ttl`               | `30s`     | 会话 TTL；Consul 允许范围 `[10s, 86400s]`，由 `api.Lock` 自动续约。|
 | `key-prefix`        | `lock/`   | 会拼接到每个 Key 前面，便于多应用共用同一 Consul 集群。          |
 | `tls.enabled`       | `false`   | 是否启用到 Consul agent 的 TLS。                                 |
-| `tls.address`       | (空)      | 覆盖用于校验服务器证书的主机名。                                 |
+| `tls.server-name`   | (空)      | 覆盖用于校验服务器证书的主机名。                                 |
 | `tls.ca-file`       | (空)      | 用于校验 agent 证书的 CA PEM 束。                                |
 | `tls.cert-file`     | (空)      | mTLS 客户端证书。                                                |
 | `tls.key-file`      | (空)      | mTLS 客户端私钥。                                                |

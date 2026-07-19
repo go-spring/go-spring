@@ -74,8 +74,8 @@ spring.hertz.server.health.path=/healthz
 
 # HTTPS: enable and point at a PEM cert/key pair.
 spring.hertz.server.tls.enabled=false
-spring.hertz.server.tls.certFile=
-spring.hertz.server.tls.keyFile=
+spring.hertz.server.tls.cert-file=
+spring.hertz.server.tls.key-file=
 ```
 
 ### 4. Run the Application

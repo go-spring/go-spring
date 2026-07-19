@@ -22,6 +22,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {
@@ -57,9 +58,9 @@ func newClient(c Config) (mqtt.Client, error) {
 		log.Infof(ctx, log.TagAppDef, "mqtt reconnecting to %q", c.Broker)
 	})
 
-	tlsCfg, err := c.TLS.tlsConfig()
+	tlsCfg, err := c.TLS.Build()
 	if err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "mqtt: build TLS")
 	}
 	if tlsCfg != nil {
 		opts.SetTLSConfig(tlsCfg)

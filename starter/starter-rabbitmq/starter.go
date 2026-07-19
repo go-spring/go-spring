@@ -18,10 +18,6 @@ package StarterRabbitMQ
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"fmt"
-	"os"
 	"strings"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -47,22 +43,19 @@ func init() {
 func newClient(c Config) (*amqp.Connection, error) {
 	ctx := context.Background()
 
-	useTLS := c.TLS.Enabled || strings.HasPrefix(strings.ToLower(c.URL), "amqps://")
+	tc, err := c.TLS.Build()
+	if err != nil {
+		return nil, errutil.Explain(err, "rabbitmq: build TLS")
+	}
+	useTLS := tc != nil || strings.HasPrefix(strings.ToLower(c.URL), "amqps://")
 
-	var (
-		conn *amqp.Connection
-		err  error
-	)
+	var conn *amqp.Connection
 	if useTLS || c.Heartbeat > 0 || c.Vhost != "" {
 		cfg := amqp.Config{
 			Vhost:     c.Vhost,
 			Heartbeat: c.Heartbeat,
 		}
-		if useTLS {
-			tc, terr := tlsConfig(c.TLS)
-			if terr != nil {
-				return nil, terr
-			}
+		if tc != nil {
 			cfg.TLSClientConfig = tc
 		}
 		conn, err = amqp.DialConfig(c.URL, cfg)
@@ -109,35 +102,6 @@ func newClient(c Config) (*amqp.Connection, error) {
 	}()
 
 	return conn, nil
-}
-
-// tlsConfig assembles a *tls.Config from optional CA / client cert files.
-// Written to mirror starter-kafka's tlsConfig so the two starters read the
-// same way, with the extra ServerName knob AMQPS often needs.
-func tlsConfig(c TLSConfig) (*tls.Config, error) {
-	tc := &tls.Config{
-		InsecureSkipVerify: c.InsecureSkipVerify,
-		ServerName:         c.ServerName,
-	}
-	if c.CACert != "" {
-		pem, err := os.ReadFile(c.CACert)
-		if err != nil {
-			return nil, errutil.Explain(err, "failed to read rabbitmq tls ca-cert: %s", c.CACert)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("failed to parse rabbitmq tls ca-cert: %s", c.CACert)
-		}
-		tc.RootCAs = pool
-	}
-	if c.ClientCert != "" || c.ClientKey != "" {
-		cert, err := tls.LoadX509KeyPair(c.ClientCert, c.ClientKey)
-		if err != nil {
-			return nil, errutil.Explain(err, "failed to load rabbitmq tls client cert/key")
-		}
-		tc.Certificates = []tls.Certificate{cert}
-	}
-	return tc, nil
 }
 
 // destroyClient closes the RabbitMQ connection. amqp091 closes the notifier

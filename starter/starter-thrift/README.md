@@ -48,8 +48,8 @@ spring.thrift.server.bufferSize=4096
 
 # TLS server transport: enable and point at a PEM cert/key pair.
 spring.thrift.server.tls.enabled=false
-spring.thrift.server.tls.certFile=
-spring.thrift.server.tls.keyFile=
+spring.thrift.server.tls.cert-file=
+spring.thrift.server.tls.key-file=
 ```
 
 ### 3. Register your processor

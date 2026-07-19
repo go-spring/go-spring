@@ -17,12 +17,9 @@
 package StarterMQTT
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"os"
 	"time"
 
-	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/starter"
 )
 
 // Config defines MQTT client connection configuration.
@@ -54,60 +51,11 @@ type Config struct {
 
 	// TLS configures transport security for MQTTS. Use a "ssl://" or "tls://"
 	// broker URL together with TLS.Enabled.
-	TLS TLSConfig `value:"${tls}"`
+	TLS starter.TLSConfig `value:"${tls}"`
 
 	// Will configures the Last Will and Testament (LWT) message the broker
 	// publishes on the client's behalf if it disconnects ungracefully.
 	Will WillConfig `value:"${will}"`
-}
-
-// TLSConfig configures transport security for the MQTT connection. When Enabled
-// is true a *tls.Config is attached to the client; the remaining fields are
-// optional and only consulted while Enabled is true.
-type TLSConfig struct {
-	// Enabled turns on TLS for the connection, default is false.
-	Enabled bool `value:"${enabled:=false}"`
-
-	// CAFile is the path to a PEM CA bundle used to verify the broker
-	// certificate. When empty the system root pool is used.
-	CAFile string `value:"${ca-file:=}"`
-
-	// CertFile and KeyFile are the client certificate and key used for
-	// mutual TLS. Both must be set together, default is empty.
-	CertFile string `value:"${cert-file:=}"`
-	KeyFile  string `value:"${key-file:=}"`
-
-	// InsecureSkipVerify disables broker certificate verification. It is
-	// intended for testing only and must not be used in production.
-	InsecureSkipVerify bool `value:"${insecure-skip-verify:=false}"`
-}
-
-// tlsConfig builds a *tls.Config from the settings. It returns nil when TLS is
-// disabled, so callers can attach the result unconditionally.
-func (c TLSConfig) tlsConfig() (*tls.Config, error) {
-	if !c.Enabled {
-		return nil, nil
-	}
-	cfg := &tls.Config{InsecureSkipVerify: c.InsecureSkipVerify}
-	if c.CAFile != "" {
-		pem, err := os.ReadFile(c.CAFile)
-		if err != nil {
-			return nil, errutil.Explain(err, "mqtt tls: read ca file %s", c.CAFile)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, errutil.Explain(nil, "mqtt tls: no certificates parsed from %s", c.CAFile)
-		}
-		cfg.RootCAs = pool
-	}
-	if c.CertFile != "" || c.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
-		if err != nil {
-			return nil, errutil.Explain(err, "mqtt tls: load client key pair")
-		}
-		cfg.Certificates = []tls.Certificate{cert}
-	}
-	return cfg, nil
 }
 
 // WillConfig configures the Last Will and Testament message. The will is

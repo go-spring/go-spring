@@ -11,7 +11,8 @@ starter：贡献 etcd concurrency session 后端的 `lock.Locker` 命名 bean。
   按 config 名注册并导出为 `lock.Locker`。
 - locker 使用 `concurrency.NewSession(WithTTL)` + `concurrency.NewMutex`；
   keepalive 由 session 自身完成，因此不需要手工续期 goroutine。
-- 可选 TLS（`TLSConfig{Enabled, CertFile, KeyFile, CACertFile}`），默认关闭。
+- 可选 TLS，使用 `stdlib/starter` 的共享 `starter.TLSConfig`（`Enabled`、
+  `CertFile`、`KeyFile`、`CAFile`、`ServerName`、`InsecureSkipVerify`），默认关闭。
 
 ## 2. 关键抽象与缝隙
 
@@ -30,8 +31,9 @@ starter：贡献 etcd concurrency session 后端的 `lock.Locker` 命名 bean。
 - **续期由 session keepalive 处理。** 锁不跑手工续期 goroutine——etcd session
   自身有 keepalive；此处解读 `RenewInterval` 会与 session 冲突，该值只服务
   于 consul / redis。
-- **TLS 结构与家族一致。** `Enabled` 是开关，`CertFile`/`KeyFile`（mTLS）
-  与 `CACertFile`（服务端校验）与其他 starter 保持一致模式。
+- **TLS 使用共享块。** `TLS` 字段是 `stdlib/starter` 的 `starter.TLSConfig`;
+  `Enabled` 是开关,`CertFile`/`KeyFile`(mTLS)与 `CAFile`(服务端校验)
+  与所有 Go-Spring starter 保持一致。
 - **不能对 proxy 跑 `go mod tidy`。** `stdlib/lock` 是 workspace 本地包；
   tidy 会 404。
 

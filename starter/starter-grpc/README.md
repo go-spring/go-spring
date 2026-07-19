@@ -49,8 +49,8 @@ spring.grpc.server.health.enabled=true
 
 # Transport TLS: enable and point at a PEM cert/key pair.
 spring.grpc.server.tls.enabled=false
-spring.grpc.server.tls.certFile=
-spring.grpc.server.tls.keyFile=
+spring.grpc.server.tls.cert-file=
+spring.grpc.server.tls.key-file=
 ```
 
 ### 3. Register your service

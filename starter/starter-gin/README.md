@@ -50,8 +50,8 @@ spring.gin.server.health.path=/healthz
 
 # HTTPS: enable and point at a PEM cert/key pair.
 spring.gin.server.tls.enabled=false
-spring.gin.server.tls.certFile=
-spring.gin.server.tls.keyFile=
+spring.gin.server.tls.cert-file=
+spring.gin.server.tls.key-file=
 ```
 
 The starter registers its server bean when `spring.gin.server.enabled` is `true` (default) and a

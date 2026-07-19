@@ -17,11 +17,9 @@
 package StarterMongoDB
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"fmt"
-	"os"
 	"time"
+
+	"go-spring.org/stdlib/starter"
 )
 
 // Config defines MongoDB client connection configuration.
@@ -64,8 +62,10 @@ type Config struct {
 	// pool before being closed, 0 means no limit, e.g., "5m".
 	MaxConnIdleTime time.Duration `value:"${max-conn-idle-time:=0}"`
 
-	// TLS configures transport encryption for the connection.
-	TLS TLSConfig `value:"${tls}"`
+	// TLS configures transport encryption for the connection. It is the shared
+	// zero-dependency block from stdlib/starter; leave TLS.Enabled=false to
+	// negotiate no TLS (unless the URI itself requests it).
+	TLS starter.TLSConfig `value:"${tls}"`
 
 	// ServiceName resolves the connection address through a registered discovery
 	// backend instead of relying solely on the URI hosts. When set, a LiveDialer
@@ -84,57 +84,4 @@ type Config struct {
 	// naming service once via discovery.Register; the default backend name is
 	// "default".
 	Discovery string `value:"${discovery:=default}"`
-}
-
-// TLSConfig configures TLS for the MongoDB client. When Enabled is false all
-// other fields are ignored and the connection is made in plaintext (unless the
-// URI itself requests TLS).
-type TLSConfig struct {
-	// Enabled turns on TLS for the connection, default is false.
-	Enabled bool `value:"${enabled:=false}"`
-
-	// CACertFile is the path to a PEM-encoded CA certificate used to verify the
-	// server certificate. When empty, the system trust store is used.
-	CACertFile string `value:"${ca-cert-file:=}"`
-
-	// CertFile is the path to the PEM-encoded client certificate for mutual TLS,
-	// default is empty.
-	CertFile string `value:"${cert-file:=}"`
-
-	// KeyFile is the path to the PEM-encoded client private key for mutual TLS,
-	// default is empty.
-	KeyFile string `value:"${key-file:=}"`
-
-	// InsecureSkipVerify disables server certificate verification. It should be
-	// used only for testing, default is false.
-	InsecureSkipVerify bool `value:"${insecure-skip-verify:=false}"`
-}
-
-// build constructs a *tls.Config from the TLS settings, loading the CA and
-// client certificates from disk when configured. It returns nil when TLS is
-// disabled.
-func (t TLSConfig) build() (*tls.Config, error) {
-	if !t.Enabled {
-		return nil, nil
-	}
-	cfg := &tls.Config{InsecureSkipVerify: t.InsecureSkipVerify}
-	if t.CACertFile != "" {
-		pem, err := os.ReadFile(t.CACertFile)
-		if err != nil {
-			return nil, fmt.Errorf("mongodb: read ca cert: %w", err)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("mongodb: no certificates parsed from %s", t.CACertFile)
-		}
-		cfg.RootCAs = pool
-	}
-	if t.CertFile != "" || t.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("mongodb: load client key pair: %w", err)
-		}
-		cfg.Certificates = []tls.Certificate{cert}
-	}
-	return cfg, nil
 }

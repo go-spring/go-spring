@@ -14,8 +14,9 @@ backed by etcd concurrency sessions.
 - The locker uses `concurrency.NewSession(WithTTL)` + `concurrency.NewMutex`;
   keepalive is handled by the session, so no manual renew goroutine is
   needed.
-- Optionally configures TLS to the etcd cluster (`TLSConfig{Enabled,
-  CertFile, KeyFile, CACertFile}`), off by default.
+- Optionally configures TLS to the etcd cluster via the shared
+  `starter.TLSConfig` (`Enabled`, `CertFile`, `KeyFile`, `CAFile`,
+  `ServerName`, `InsecureSkipVerify`), off by default.
 
 ## 2. Key Abstractions & Seams
 
@@ -37,9 +38,10 @@ backed by etcd concurrency sessions.
   renewal goroutine — etcd sessions already keepalive under the hood.
   Interpreting `RenewInterval` here would fight with the session's own
   behavior; the value is only used for consul/redis.
-- **TLS config follows the family shape.** `Enabled` gates it, then
-  `CertFile`/`KeyFile` (mutual TLS) and `CACertFile` (server verification)
-  match the pattern used across Go-Spring starters.
+- **TLS config uses the shared block.** The `TLS` field is
+  `starter.TLSConfig` from `stdlib/starter`; `Enabled` gates it, then
+  `CertFile`/`KeyFile` (mutual TLS) and `CAFile` (server verification)
+  match every other Go-Spring starter.
 - **No `go mod tidy` against the proxy.** `stdlib/lock` is workspace-local;
   tidy would 404.
 

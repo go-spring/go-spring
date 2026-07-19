@@ -17,12 +17,9 @@
 package StarterRegistryEtcd
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"os"
 	"time"
 
-	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/starter"
 )
 
 // EtcdConfig binds the etcd cluster connection under ${spring.registry.etcd}.
@@ -51,30 +48,16 @@ type EtcdConfig struct {
 	// share one cluster without collisions. Trailing slashes are preserved.
 	KeyPrefix string `value:"${key-prefix:=/services/}"`
 
-	// TLS configures optional transport-layer security. Off by default.
-	TLS TLSConfig `value:"${tls}"`
+	// TLS configures optional transport-layer security. Off by default. Uses
+	// the shared zero-dependency TLS block from stdlib/starter so every starter
+	// exposes the same tls.* keys.
+	TLS starter.TLSConfig `value:"${tls}"`
 
 	// Name is the key this etcd registrar is published under in the
 	// stdlib/discovery registrar registry. The register server selects a backend
 	// by this name via ${spring.registry.backend}; keep both at "default" for the
 	// common single-registry case.
 	Name string `value:"${name:=default}"`
-}
-
-// TLSConfig configures a TLS connection to etcd. It is only applied when
-// Enabled is true.
-type TLSConfig struct {
-	// Enabled turns on TLS for the connection.
-	Enabled bool `value:"${enabled:=false}"`
-
-	// CertFile and KeyFile are the client certificate/key pair used for mutual
-	// TLS. Leave both empty when the server does not require a client cert.
-	CertFile string `value:"${cert-file:=}"`
-	KeyFile  string `value:"${key-file:=}"`
-
-	// CACertFile is a PEM bundle of root CAs used to verify the server
-	// certificate. When empty the host's default root set is used.
-	CACertFile string `value:"${ca-cert-file:=}"`
 }
 
 // RegistrationConfig binds the instance to advertise, under ${spring.registry}.
@@ -122,32 +105,4 @@ func (c EtcdConfig) ttlSeconds() int64 {
 		s = 1
 	}
 	return s
-}
-
-// buildTLSConfig turns a TLSConfig into a *tls.Config, or nil when TLS is
-// disabled. It loads the client key pair and CA bundle from disk when provided.
-func buildTLSConfig(c TLSConfig) (*tls.Config, error) {
-	if !c.Enabled {
-		return nil, nil
-	}
-	cfg := &tls.Config{}
-	if c.CertFile != "" || c.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
-		if err != nil {
-			return nil, errutil.Explain(err, "registry-etcd: failed to load TLS key pair")
-		}
-		cfg.Certificates = []tls.Certificate{cert}
-	}
-	if c.CACertFile != "" {
-		pem, err := os.ReadFile(c.CACertFile)
-		if err != nil {
-			return nil, errutil.Explain(err, "registry-etcd: failed to read TLS CA file")
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, errutil.Explain(nil, "registry-etcd: no certificates found in CA file %s", c.CACertFile)
-		}
-		cfg.RootCAs = pool
-	}
-	return cfg, nil
 }

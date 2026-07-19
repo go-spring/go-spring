@@ -67,7 +67,7 @@ spring.registry.metadata.version=v1
 | `dial-timeout` | `5s` | 限定初次连接与启动探测耗时。 |
 | `ttl` | `15s` | 租约时长;实例存活期间持续保活。向上取整到整秒。 |
 | `key-prefix` | `/services/` | 拼在每个键之前,便于多应用共享一个集群。 |
-| `tls.*` | (关闭) | 可选客户端 TLS(`enabled`、`cert-file`、`key-file`、`ca-cert-file`)。 |
+| `tls.*` | (关闭) | 可选客户端 TLS(`enabled`、`cert-file`、`key-file`、`ca-file`)。 |
 | `name` | `default` | 本 registrar 在 `stdlib/discovery` registrar 注册表中的名字。 |
 
 实例配置,绑定于 `spring.registry`(与后端无关 —— 切换注册中心后端只需替换匿名导入,

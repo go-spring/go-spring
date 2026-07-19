@@ -73,7 +73,7 @@ Connection, bound under `spring.registry.etcd`:
 | `dial-timeout` | `5s` | Bounds the initial connect and the startup probe. |
 | `ttl` | `15s` | Lease duration; the registrar keeps it alive while up. Rounded up to whole seconds. |
 | `key-prefix` | `/services/` | Prepended to every key so apps can share a cluster. |
-| `tls.*` | (off) | Optional client TLS (`enabled`, `cert-file`, `key-file`, `ca-cert-file`). |
+| `tls.*` | (off) | Optional client TLS (`enabled`, `cert-file`, `key-file`, `ca-file`). |
 | `name` | `default` | Name this registrar is published under in the `stdlib/discovery` registrar registry. |
 
 Instance, bound under `spring.registry` (backend-agnostic — switching registry
