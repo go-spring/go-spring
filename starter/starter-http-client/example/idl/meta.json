@@ -1,0 +1,8 @@
+{
+  "name": "Greet",
+  "description": "Minimal greet service used to demo the declarative HTTP client",
+  "version": "v1.0.0",
+  "imports": [
+    "https://go-spring.org/gs-http-gen/standard@v1.idl"
+  ]
+}

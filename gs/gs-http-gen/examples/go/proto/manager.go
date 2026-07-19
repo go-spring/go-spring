@@ -17,6 +17,7 @@ import (
 	"go-spring.org/stdlib/jsonflow"
 )
 
+var _ = fmt.Sprintf
 var _ = strings.Index
 var _ = url.ParseQuery
 var _ = strconv.FormatInt
@@ -99,7 +100,10 @@ func (x ErrCodeAsString) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON decodes the enum value from its string name.
 func (x *ErrCodeAsString) UnmarshalJSON(data []byte) error {
-	str := strings.Trim(string(data), "\"")
+	str, err := strconv.Unquote(string(data))
+	if err != nil {
+		return errutil.Explain(err, "invalid ErrCodeAsString JSON string")
+	}
 	if v, ok := ErrCode_value[str]; ok {
 		*x = ErrCodeAsString(v)
 		return nil
@@ -154,7 +158,10 @@ func (x ManagerLevelAsString) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON decodes the enum value from its string name.
 func (x *ManagerLevelAsString) UnmarshalJSON(data []byte) error {
-	str := strings.Trim(string(data), "\"")
+	str, err := strconv.Unquote(string(data))
+	if err != nil {
+		return errutil.Explain(err, "invalid ManagerLevelAsString JSON string")
+	}
 	if v, ok := ManagerLevel_value[str]; ok {
 		*x = ManagerLevelAsString(v)
 		return nil
@@ -215,7 +222,10 @@ func (x DepartmentAsString) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON decodes the enum value from its string name.
 func (x *DepartmentAsString) UnmarshalJSON(data []byte) error {
-	str := strings.Trim(string(data), "\"")
+	str, err := strconv.Unquote(string(data))
+	if err != nil {
+		return errutil.Explain(err, "invalid DepartmentAsString JSON string")
+	}
 	if v, ok := Department_value[str]; ok {
 		*x = DepartmentAsString(v)
 		return nil
@@ -314,22 +324,22 @@ func (x *PageReq) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("page"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "page"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeInt[int64](e, x.Page); err != nil {
 		return err
 	}
-	if err := e.WriteString("size"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "size"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeInt[int64](e, x.Size); err != nil {
 		return err
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Validate checks field values using generated validation expressions.
@@ -429,11 +439,11 @@ func (x *Address) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.City == nil) {
-		if err := e.WriteString("city"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "city"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.City); err != nil {
@@ -441,7 +451,7 @@ func (x *Address) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Street == nil) {
-		if err := e.WriteString("street"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "street"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Street); err != nil {
@@ -449,14 +459,14 @@ func (x *Address) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.PostalCode == nil) {
-		if err := e.WriteString("postalCode"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "postalCode"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.PostalCode); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 type ContactInfo struct {
@@ -555,17 +565,17 @@ func (x *ContactInfo) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("email"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "email"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeString[string](e, x.Email); err != nil {
 		return err
 	}
 	if !(x.Phone == nil) {
-		if err := e.WriteString("phone"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "phone"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Phone); err != nil {
@@ -573,20 +583,24 @@ func (x *ContactInfo) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Address == nil) {
-		if err := e.WriteString("address"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "address"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*Address](e, x.Address); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Validate checks field values using generated validation expressions.
 func (x *ContactInfo) Validate() error {
-	if !(Email(x.Email)) {
-		return errutil.Explain(nil, "validate failed on \"ContactInfo.Email\"")
+	ok, err := Email(Email)
+	if err != nil {
+		return errutil.Explain(err, "validate failed")
+	}
+	if !ok {
+		return errutil.Explain(nil, "validate failed")
 	}
 	return nil
 }
@@ -776,11 +790,11 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.Id == nil) {
-		if err := e.WriteString("id"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "id"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Id); err != nil {
@@ -788,7 +802,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Name == nil) {
-		if err := e.WriteString("name"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "name"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Name); err != nil {
@@ -796,7 +810,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Age == nil) {
-		if err := e.WriteString("age"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "age"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[int64](e, x.Age); err != nil {
@@ -804,7 +818,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Vip == nil) {
-		if err := e.WriteString("vip"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "vip"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeBoolPtr[bool](e, x.Vip); err != nil {
@@ -812,7 +826,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Salary == nil) {
-		if err := e.WriteString("salary"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "salary"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeFloatPtr[float64](e, x.Salary); err != nil {
@@ -820,7 +834,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Level == nil) {
-		if err := e.WriteString("level"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "level"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeAny[*ManagerLevelAsString](e, x.Level); err != nil {
@@ -828,7 +842,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Department == nil) {
-		if err := e.WriteString("department"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "department"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[Department](e, x.Department); err != nil {
@@ -836,7 +850,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.PrimaryContact == nil) {
-		if err := e.WriteString("primaryContact"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "primaryContact"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*ContactInfo](e, x.PrimaryContact); err != nil {
@@ -844,7 +858,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(len(x.Contacts) == 0) {
-		if err := e.WriteString("contacts"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "contacts"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeArray(jsonflow.EncodeObject[*ContactInfo])(e, x.Contacts); err != nil {
@@ -852,7 +866,7 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(len(x.Tags) == 0) {
-		if err := e.WriteString("tags"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "tags"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeMap(jsonflow.EncodeStringKey[string], jsonflow.EncodeString[string])(e, x.Tags); err != nil {
@@ -860,14 +874,14 @@ func (x *Manager) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(len(x.Labels) == 0) {
-		if err := e.WriteString("labels"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "labels"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeMap(jsonflow.EncodeStringKey[string], jsonflow.EncodeArray(jsonflow.EncodeString[string]))(e, x.Labels); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Validate checks field values using generated validation expressions.
@@ -885,6 +899,18 @@ func (x *Manager) Validate() error {
 	if x.Salary != nil {
 		if !(*x.Salary >= SALARY_MIN && *x.Salary <= SALARY_MAX) {
 			return errutil.Explain(nil, "validate failed on \"Manager.Salary\"")
+		}
+	}
+	if x.PrimaryContact != nil {
+		if err := x.PrimaryContact.Validate(); err != nil {
+			return errutil.Explain(err, "validate failed on \"Manager.PrimaryContact\"")
+		}
+	}
+	for _, v0 := range x.Contacts {
+		if v0 != nil {
+			if err := v0.Validate(); err != nil {
+				return errutil.Explain(err, "validate failed on \"Manager.Contacts\"")
+			}
 		}
 	}
 	return nil
@@ -1135,23 +1161,23 @@ func (x *CreateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("name"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "name"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeString[string](e, x.Name); err != nil {
 		return err
 	}
-	if err := e.WriteString("age"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "age"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeInt[int64](e, x.Age); err != nil {
 		return err
 	}
 	if !(x.Vip == nil) {
-		if err := e.WriteString("vip"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "vip"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeBoolPtr[bool](e, x.Vip); err != nil {
@@ -1159,7 +1185,7 @@ func (x *CreateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Salary == nil) {
-		if err := e.WriteString("salary"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "salary"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeFloatPtr[float64](e, x.Salary); err != nil {
@@ -1167,7 +1193,7 @@ func (x *CreateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Level == nil) {
-		if err := e.WriteString("level"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "level"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeAny[*ManagerLevelAsString](e, x.Level); err != nil {
@@ -1175,7 +1201,7 @@ func (x *CreateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Department == nil) {
-		if err := e.WriteString("department"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "department"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[Department](e, x.Department); err != nil {
@@ -1183,14 +1209,14 @@ func (x *CreateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.PrimaryContact == nil) {
-		if err := e.WriteString("primaryContact"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "primaryContact"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*ContactInfo](e, x.PrimaryContact); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Validate checks field values using generated validation expressions.
@@ -1387,11 +1413,11 @@ func (x *UpdateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.Name == nil) {
-		if err := e.WriteString("name"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "name"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Name); err != nil {
@@ -1399,21 +1425,21 @@ func (x *UpdateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Age == nil) {
-		if err := e.WriteString("age"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "age"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[int64](e, x.Age); err != nil {
 			return err
 		}
 	}
-	if err := e.WriteString("vip"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "vip"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeBoolPtr[bool](e, x.Vip); err != nil {
 		return err
 	}
 	if !(x.Salary == nil) {
-		if err := e.WriteString("salary"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "salary"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeFloatPtr[float64](e, x.Salary); err != nil {
@@ -1421,7 +1447,7 @@ func (x *UpdateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Level == nil) {
-		if err := e.WriteString("level"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "level"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[ManagerLevel](e, x.Level); err != nil {
@@ -1429,7 +1455,7 @@ func (x *UpdateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Department == nil) {
-		if err := e.WriteString("department"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "department"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[Department](e, x.Department); err != nil {
@@ -1437,14 +1463,14 @@ func (x *UpdateManagerReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.PrimaryContact == nil) {
-		if err := e.WriteString("primaryContact"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "primaryContact"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*ContactInfo](e, x.PrimaryContact); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Validate checks field values using generated validation expressions.
@@ -1721,23 +1747,23 @@ func (x *GetManagerResp) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("code"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "code"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeInt[ErrCode](e, x.Code); err != nil {
 		return err
 	}
-	if err := e.WriteString("message"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "message"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeString[string](e, x.Message); err != nil {
 		return err
 	}
 	if !(x.RequestId == nil) {
-		if err := e.WriteString("requestId"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "requestId"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.RequestId); err != nil {
@@ -1745,14 +1771,24 @@ func (x *GetManagerResp) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Data == nil) {
-		if err := e.WriteString("data"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "data"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*Manager](e, x.Data); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
+}
+
+// Validate checks field values using generated validation expressions.
+func (x *GetManagerResp) Validate() error {
+	if x.Data != nil {
+		if err := x.Data.Validate(); err != nil {
+			return errutil.Explain(err, "validate failed on \"GetManagerResp.Data\"")
+		}
+	}
+	return nil
 }
 
 type CreateManagerResp struct {
@@ -1869,23 +1905,23 @@ func (x *CreateManagerResp) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("code"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "code"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeInt[ErrCode](e, x.Code); err != nil {
 		return err
 	}
-	if err := e.WriteString("message"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "message"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeString[string](e, x.Message); err != nil {
 		return err
 	}
 	if !(x.RequestId == nil) {
-		if err := e.WriteString("requestId"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "requestId"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.RequestId); err != nil {
@@ -1893,14 +1929,24 @@ func (x *CreateManagerResp) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Data == nil) {
-		if err := e.WriteString("data"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "data"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*Manager](e, x.Data); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
+}
+
+// Validate checks field values using generated validation expressions.
+func (x *CreateManagerResp) Validate() error {
+	if x.Data != nil {
+		if err := x.Data.Validate(); err != nil {
+			return errutil.Explain(err, "validate failed on \"CreateManagerResp.Data\"")
+		}
+	}
+	return nil
 }
 
 type UpdateManagerResp struct {
@@ -2017,23 +2063,23 @@ func (x *UpdateManagerResp) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("code"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "code"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeInt[ErrCode](e, x.Code); err != nil {
 		return err
 	}
-	if err := e.WriteString("message"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "message"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeString[string](e, x.Message); err != nil {
 		return err
 	}
 	if !(x.RequestId == nil) {
-		if err := e.WriteString("requestId"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "requestId"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.RequestId); err != nil {
@@ -2041,14 +2087,24 @@ func (x *UpdateManagerResp) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Data == nil) {
-		if err := e.WriteString("data"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "data"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*Manager](e, x.Data); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
+}
+
+// Validate checks field values using generated validation expressions.
+func (x *UpdateManagerResp) Validate() error {
+	if x.Data != nil {
+		if err := x.Data.Validate(); err != nil {
+			return errutil.Explain(err, "validate failed on \"UpdateManagerResp.Data\"")
+		}
+	}
+	return nil
 }
 
 type DeleteManagerResp struct {
@@ -2165,23 +2221,23 @@ func (x *DeleteManagerResp) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("code"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "code"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeInt[ErrCode](e, x.Code); err != nil {
 		return err
 	}
-	if err := e.WriteString("message"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "message"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeString[string](e, x.Message); err != nil {
 		return err
 	}
 	if !(x.RequestId == nil) {
-		if err := e.WriteString("requestId"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "requestId"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.RequestId); err != nil {
@@ -2189,14 +2245,19 @@ func (x *DeleteManagerResp) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Data == nil) {
-		if err := e.WriteString("data"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "data"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeBoolPtr[bool](e, x.Data); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
+}
+
+// Validate checks field values using generated validation expressions.
+func (x *DeleteManagerResp) Validate() error {
+	return nil
 }
 
 type ManagersPageData struct {
@@ -2297,11 +2358,11 @@ func (x *ManagersPageData) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.Total == nil) {
-		if err := e.WriteString("total"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "total"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[int64](e, x.Total); err != nil {
@@ -2309,7 +2370,7 @@ func (x *ManagersPageData) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Page == nil) {
-		if err := e.WriteString("page"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "page"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[int64](e, x.Page); err != nil {
@@ -2317,7 +2378,7 @@ func (x *ManagersPageData) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Size == nil) {
-		if err := e.WriteString("size"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "size"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[int64](e, x.Size); err != nil {
@@ -2325,14 +2386,26 @@ func (x *ManagersPageData) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(len(x.Items) == 0) {
-		if err := e.WriteString("items"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "items"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeArray(jsonflow.EncodeObject[*Manager])(e, x.Items); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
+}
+
+// Validate checks field values using generated validation expressions.
+func (x *ManagersPageData) Validate() error {
+	for _, v0 := range x.Items {
+		if v0 != nil {
+			if err := v0.Validate(); err != nil {
+				return errutil.Explain(err, "validate failed on \"ManagersPageData.Items\"")
+			}
+		}
+	}
+	return nil
 }
 
 type ListManagersResp struct {
@@ -2449,23 +2522,23 @@ func (x *ListManagersResp) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("code"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "code"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeInt[ErrCode](e, x.Code); err != nil {
 		return err
 	}
-	if err := e.WriteString("message"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "message"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeString[string](e, x.Message); err != nil {
 		return err
 	}
 	if !(x.RequestId == nil) {
-		if err := e.WriteString("requestId"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "requestId"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.RequestId); err != nil {
@@ -2473,12 +2546,22 @@ func (x *ListManagersResp) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Data == nil) {
-		if err := e.WriteString("data"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "data"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*ManagersPageData](e, x.Data); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
+}
+
+// Validate checks field values using generated validation expressions.
+func (x *ListManagersResp) Validate() error {
+	if x.Data != nil {
+		if err := x.Data.Validate(); err != nil {
+			return errutil.Explain(err, "validate failed on \"ListManagersResp.Data\"")
+		}
+	}
+	return nil
 }

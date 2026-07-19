@@ -751,6 +751,7 @@ import (
 	"go-spring.org/stdlib/jsonflow"
 )
 
+var _ = fmt.Sprintf
 var _ = strings.Index
 var _ = url.ParseQuery
 var _ = strconv.FormatInt
@@ -970,14 +971,14 @@ var _ = formutil.EncodeInt[int]
 					return err
 				}
 			{{- end}}
-			if err := e.WriteObjectBegin(); err != nil {
+			if err := jsonflow.EncodeObjectBegin(e); err != nil {
 				return err
 			}
 			{{- range $f := $s.Fields }}
 				{{- $fieldName := printf "x.%s" $f.Name}}
 				{{- if $f.JSONTag.OmitEmpty }}
 					if !({{genIsEmptyJSON $fieldName $f.TypeKind}}) {
-						if err := e.WriteString("{{$f.JSONTag.Name}}"); err != nil {
+						if err := jsonflow.EncodeString[string](e, "{{$f.JSONTag.Name}}"); err != nil {
 							return err
 						}
 						if err := {{genEncodeJSON $f.Type $f.TypeKind}}(e, {{$fieldName}}); err != nil {
@@ -985,7 +986,7 @@ var _ = formutil.EncodeInt[int]
 						}
 					}
 				{{- else}}
-					if err := e.WriteString("{{$f.JSONTag.Name}}"); err != nil {
+					if err := jsonflow.EncodeString[string](e, "{{$f.JSONTag.Name}}"); err != nil {
 						return err
 					}
 					if err := {{genEncodeJSON $f.Type $f.TypeKind}}(e, {{$fieldName}}); err != nil {
@@ -993,7 +994,7 @@ var _ = formutil.EncodeInt[int]
 					}
 				{{- end}}
 			{{- end}}
-			return e.WriteObjectEnd()
+			return jsonflow.EncodeObjectEnd(e)
 		}
 
 		{{- if $s.OneOf }}
@@ -1423,7 +1424,7 @@ var _ = formutil.EncodeInt[int]
 				if x == nil {
 					return jsonflow.EncodeNull(e)
 				}
-				if err := e.WriteObjectBegin(); err != nil {
+				if err := jsonflow.EncodeObjectBegin(e); err != nil {
 					return err
 				}
 				{{- range $f := $s.Fields }}
@@ -1431,7 +1432,7 @@ var _ = formutil.EncodeInt[int]
 						{{- $fieldName := printf "x.%s" $f.Name}}
 						{{- if $f.JSONTag.OmitEmpty }}
 							if !({{genIsEmptyJSON $fieldName $f.TypeKind}}) {
-								if err := e.WriteString("{{$f.JSONTag.Name}}"); err != nil {
+								if err := jsonflow.EncodeString[string](e, "{{$f.JSONTag.Name}}"); err != nil {
 									return err
 								}
 								if err := {{genEncodeJSON $f.Type $f.TypeKind}}(e, {{$fieldName}}); err != nil {
@@ -1439,7 +1440,7 @@ var _ = formutil.EncodeInt[int]
 								}
 							}
 						{{- else}}
-							if err := e.WriteString("{{$f.JSONTag.Name}}"); err != nil {
+							if err := jsonflow.EncodeString[string](e, "{{$f.JSONTag.Name}}"); err != nil {
 								return err
 							}
 							if err := {{genEncodeJSON $f.Type $f.TypeKind}}(e, {{$fieldName}}); err != nil {
@@ -1448,7 +1449,7 @@ var _ = formutil.EncodeInt[int]
 						{{- end}}
 					{{- end}}
 				{{- end}}
-				return e.WriteObjectEnd()
+				return jsonflow.EncodeObjectEnd(e)
 			}
 		{{end}} {{- /* end of json encoded */}}
 

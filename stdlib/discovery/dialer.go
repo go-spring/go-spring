@@ -50,6 +50,12 @@ type LiveDialer struct {
 // call Stop to release the watch. Any options applied to the returned
 // LiveDialer.Dialer (timeout, keep-alive, ...) are used for every dial.
 func NewLiveDialer(ctx context.Context, d Discovery, name string) (*LiveDialer, error) {
+	// Mesh mode: the sidecar owns discovery, so skip resolve/watch and dial one
+	// stable endpoint (see newMeshDialer). Read here so every caller that builds
+	// a dialer degrades uniformly, without per-starter branching.
+	if MeshMode() {
+		return newMeshDialer(name), nil
+	}
 	eps, err := d.Resolve(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("discovery: resolve %q: %w", name, err)
@@ -121,11 +127,14 @@ func (ld *LiveDialer) Dial(ctx context.Context, _ string) (net.Conn, error) {
 	return ld.DialContext(ctx, "tcp", "")
 }
 
-// Stop ends the background watch. It is safe to call more than once.
+// Stop ends the background watch. It is safe to call more than once. A dialer
+// built for mesh mode has no watch, so Stop is a no-op there.
 func (ld *LiveDialer) Stop() error {
 	var err error
 	ld.stopOnce.Do(func() {
-		err = ld.watcher.Stop()
+		if ld.watcher != nil {
+			err = ld.watcher.Stop()
+		}
 	})
 	return err
 }

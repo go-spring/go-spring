@@ -14,14 +14,21 @@ import (
 //
 // Target identifies the remote service, which can be either a service name
 // (for service discovery) or a direct address in the form of "IP:PORT".
+//
+// HTTPClient carries the transport every call runs on. Leave it nil to use
+// http.DefaultClient, or inject an *http.Client whose Transport adds service
+// discovery, load balancing and resilience (see go-spring.org/stdlib/httpx and
+// starter-http-client) — the generated call sites are unchanged either way.
 type Client struct {
-	Target string
+	Target     string
+	HTTPClient *http.Client
 }
 
 // Create a new manager
 func (c *Client) CreateManager(ctx context.Context, req *CreateManagerReq, opts ...httpclt.RequestOption) (*http.Response, *CreateManagerResp, error) {
 	meta := httpclt.CombineMetadata(httpclt.Metadata{
 		Target:  c.Target,
+		Client:  c.HTTPClient,
 		Schema:  "http",
 		Method:  "POST",
 		Pattern: "/managers",
@@ -37,6 +44,7 @@ func (c *Client) CreateManager(ctx context.Context, req *CreateManagerReq, opts 
 func (c *Client) DeleteManager(ctx context.Context, req *GetManagerReq, opts ...httpclt.RequestOption) (*http.Response, *DeleteManagerResp, error) {
 	meta := httpclt.CombineMetadata(httpclt.Metadata{
 		Target:  c.Target,
+		Client:  c.HTTPClient,
 		Schema:  "http",
 		Method:  "DELETE",
 		Pattern: "/managers/{id}",
@@ -52,6 +60,7 @@ func (c *Client) DeleteManager(ctx context.Context, req *GetManagerReq, opts ...
 func (c *Client) GetManager(ctx context.Context, req *GetManagerReq, opts ...httpclt.RequestOption) (*http.Response, *GetManagerResp, error) {
 	meta := httpclt.CombineMetadata(httpclt.Metadata{
 		Target:  c.Target,
+		Client:  c.HTTPClient,
 		Schema:  "http",
 		Method:  "GET",
 		Pattern: "/managers/{id}",
@@ -67,6 +76,7 @@ func (c *Client) GetManager(ctx context.Context, req *GetManagerReq, opts ...htt
 func (c *Client) ListManagers(ctx context.Context, req *ListManagersReq, opts ...httpclt.RequestOption) (*http.Response, *ListManagersResp, error) {
 	meta := httpclt.CombineMetadata(httpclt.Metadata{
 		Target:  c.Target,
+		Client:  c.HTTPClient,
 		Schema:  "http",
 		Method:  "GET",
 		Pattern: "/managers",
@@ -82,6 +92,7 @@ func (c *Client) ListManagers(ctx context.Context, req *ListManagersReq, opts ..
 func (c *Client) UpdateManager(ctx context.Context, req *UpdateManagerReq, opts ...httpclt.RequestOption) (*http.Response, *UpdateManagerResp, error) {
 	meta := httpclt.CombineMetadata(httpclt.Metadata{
 		Target:  c.Target,
+		Client:  c.HTTPClient,
 		Schema:  "http",
 		Method:  "PUT",
 		Pattern: "/managers/{id}",

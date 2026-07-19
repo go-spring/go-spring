@@ -1,0 +1,11 @@
+# Build artifacts and local-only files that must not enter the image context.
+.git
+.gitignore
+Dockerfile
+.dockerignore
+deploy
+output
+logs
+*.log
+*.md
+docker-compose.yml

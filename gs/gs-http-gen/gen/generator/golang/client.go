@@ -67,8 +67,14 @@ import (
 //
 // Target identifies the remote service, which can be either a service name
 // (for service discovery) or a direct address in the form of "IP:PORT".
+//
+// HTTPClient carries the transport every call runs on. Leave it nil to use
+// http.DefaultClient, or inject an *http.Client whose Transport adds service
+// discovery, load balancing and resilience (see go-spring.org/stdlib/httpx and
+// starter-http-client) — the generated call sites are unchanged either way.
 type Client struct {
-	Target string
+	Target     string
+	HTTPClient *http.Client
 }
 
 {{- range $r := .RPCs }}
@@ -78,6 +84,7 @@ type Client struct {
 	func (c *Client) {{$r.Name}}(ctx context.Context, req *{{$r.Request}}, opts ...httpclt.RequestOption) (*http.Response, {{$r.Response}}, error) {
 		meta := httpclt.CombineMetadata(httpclt.Metadata{
 			Target:  c.Target,
+			Client:  c.HTTPClient,
 			Schema:  "http",
 			Method:  "{{$r.Method}}",
 			Pattern: "{{$r.Path}}",

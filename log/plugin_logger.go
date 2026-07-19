@@ -42,6 +42,7 @@ type Logger interface {
 	GetName() string      // Appender's name
 	GetTags() []string    // Tags associated with this logger
 	GetLevel() LevelRange // Level range handled by this logger
+	SetLevel(LevelRange)  // Overrides the level range at runtime
 	Append(e *Event)      // Handles writing a log event
 }
 
@@ -81,11 +82,30 @@ type LoggerBase struct {
 	Name  string     `PluginAttribute:"name"`           // Logger name
 	Tags  []string   `PluginAttribute:"tag,default=*"`  // Optional tags associated with this logger
 	Level LevelRange `PluginAttribute:"level,default="` // Level range handled by this logger
+
+	// override holds a runtime level range that supersedes the configured
+	// Level when non-nil. It is swapped atomically so SetLevel is safe to call
+	// from another goroutine (e.g. an actuator "loggers" endpoint) while the
+	// hot path reads it locklessly.
+	override atomic.Pointer[LevelRange]
 }
 
-func (c *LoggerBase) GetName() string      { return c.Name }
-func (c *LoggerBase) GetTags() []string    { return c.Tags }
-func (c *LoggerBase) GetLevel() LevelRange { return c.Level }
+func (c *LoggerBase) GetName() string   { return c.Name }
+func (c *LoggerBase) GetTags() []string { return c.Tags }
+
+// GetLevel returns the runtime override if one has been set via SetLevel,
+// otherwise the level range from configuration.
+func (c *LoggerBase) GetLevel() LevelRange {
+	if p := c.override.Load(); p != nil {
+		return *p
+	}
+	return c.Level
+}
+
+// SetLevel overrides the logger's level range at runtime. The change takes
+// effect immediately for subsequent events; passing the zero LevelRange still
+// installs an override (use the configured value to revert semantics).
+func (c *LoggerBase) SetLevel(r LevelRange) { c.override.Store(&r) }
 
 var (
 	_ Logger = (*DiscardLogger)(nil)
@@ -113,7 +133,7 @@ func (c *SyncLogger) Stop()        {}
 
 // Append sends the event directly to appenders.
 func (c *SyncLogger) Append(e *Event) {
-	if c.Level.Enable(e.Level) {
+	if c.GetLevel().Enable(e.Level) {
 		for _, r := range c.AppenderRefs {
 			r.Append(e)
 		}
@@ -210,7 +230,7 @@ func (c *AsyncLogger) Stop() {
 // Append enqueues a log event into the async buffer.
 // Behavior on full buffer depends on BufferFullPolicy.
 func (c *AsyncLogger) Append(e *Event) {
-	if !c.Level.Enable(e.Level) {
+	if !c.GetLevel().Enable(e.Level) {
 		e.Reset()
 		return
 	}
@@ -250,9 +270,9 @@ type DiscardLogger struct {
 	LoggerBase
 }
 
-func (d DiscardLogger) Start() error    { return nil }
-func (d DiscardLogger) Stop()           {}
-func (d DiscardLogger) Append(e *Event) { e.Reset() }
+func (d *DiscardLogger) Start() error    { return nil }
+func (d *DiscardLogger) Stop()           {}
+func (d *DiscardLogger) Append(e *Event) { e.Reset() }
 
 // ConsoleLogger writes log events to standard output.
 type ConsoleLogger struct {
@@ -282,7 +302,7 @@ func (c *ConsoleLogger) Stop() {
 
 // Append writes the event to the console if its level is enabled.
 func (c *ConsoleLogger) Append(e *Event) {
-	if c.Level.Enable(e.Level) {
+	if c.GetLevel().Enable(e.Level) {
 		c.appender.Append(e)
 	}
 	e.Reset()
@@ -321,7 +341,7 @@ func (c *FileLogger) Stop() {
 
 // Append writes the log event to the file if its level is enabled.
 func (c *FileLogger) Append(e *Event) {
-	if c.Level.Enable(e.Level) {
+	if c.GetLevel().Enable(e.Level) {
 		c.appender.Append(e)
 	}
 	e.Reset()
@@ -429,19 +449,22 @@ func (f *RollingFileLogger) Start() error {
 		})
 	}
 
-	// Initialize the underlay logger
+	// Initialize the underlay logger. Fields are assigned individually rather
+	// than copying f.LoggerBase, because LoggerBase carries an atomic override
+	// that must not be copied by value; runtime level changes are propagated
+	// explicitly via SetLevel below.
 	if f.AsyncWrite {
-		f.logger = &AsyncLogger{
-			LoggerBase:   f.LoggerBase,
+		inner := &AsyncLogger{
 			AppenderRefs: f.appenders,
 			BufferSize:   f.BufferSize,
 			OnBufferFull: f.OnBufferFull,
 		}
+		inner.Name, inner.Tags, inner.Level = f.Name, f.Tags, f.Level
+		f.logger = inner
 	} else {
-		f.logger = &SyncLogger{
-			LoggerBase:   f.LoggerBase,
-			AppenderRefs: f.appenders,
-		}
+		inner := &SyncLogger{AppenderRefs: f.appenders}
+		inner.Name, inner.Tags, inner.Level = f.Name, f.Tags, f.Level
+		f.logger = inner
 	}
 
 	// Start the appenders manually (since they aren't managed by the framework)
@@ -476,7 +499,23 @@ func (f *RollingFileLogger) Stop() {
 	}
 }
 
-// Append forwards the log event to the internal logger.
+// SetLevel overrides the level range at runtime and propagates the override to
+// the internal sync/async logger so the change takes effect on the hot path.
+// Note: in separate mode the per-file appender-level splits (normal vs .wf) are
+// fixed at Start; lowering the level below the originally configured minimum is
+// bounded by those appender refs.
+func (f *RollingFileLogger) SetLevel(r LevelRange) {
+	f.LoggerBase.SetLevel(r)
+	if f.logger != nil {
+		f.logger.SetLevel(r)
+	}
+}
+
+// Append forwards the log event to the internal logger when enabled.
 func (f *RollingFileLogger) Append(e *Event) {
+	if !f.GetLevel().Enable(e.Level) {
+		e.Reset()
+		return
+	}
 	f.logger.Append(e)
 }

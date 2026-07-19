@@ -207,6 +207,20 @@ application can load configuration from it at startup and hot-reload at runtime.
   client dials the address directly, unchanged. For examples of framework-native
   provider registration into consul/etcd/nacos/zookeeper/polaris, see
   `contrib/registry/`.
+- **Service-mesh mode degrades the client-side stack centrally, not per
+  starter.** When a sidecar (Istio/Envoy, Linkerd) is injected it already does
+  discovery and load balancing, so running the app's own on top double-balances
+  and confuses locality/outlier logic. A single process-global switch
+  (`spring.mesh.enabled`, wired by `starter-mesh`) is read once at the discovery
+  and load-balancing factory points — `discovery.NewClientDialer` / `NewLiveDialer`
+  and `loadbalance.Pool` — and degrades both to a pass-through: names resolve to
+  one stable Service address (ClusterIP) the sidecar intercepts, and the balancer
+  stops selecting and ejecting. Client starters must obtain their dialer via
+  `discovery.NewClientDialer` (as `starter-go-redis` does) so the switch is
+  honored without per-starter branching; those still calling `NewLiveDialer`
+  directly also degrade, but require a registered backend even in mesh mode. The
+  code is not removed — flipping the switch off restores full client-side
+  behavior.
 - **Instance-level registration (ServiceRegistry) is provided; RPC-framework
   provider registration is not.** Do not conflate two different "registration"
   concerns. (1) Registering *this process* into an external registry

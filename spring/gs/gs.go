@@ -374,6 +374,7 @@ type (
 	ReadySignal         = gs_app.ReadySignal
 	ContextProvider     = gs_app.ContextProvider
 	PropertiesRefresher = gs_app.PropertiesRefresher
+	EnvProvider         = gs_app.EnvProvider
 )
 
 // Provide registers a global bean definition.

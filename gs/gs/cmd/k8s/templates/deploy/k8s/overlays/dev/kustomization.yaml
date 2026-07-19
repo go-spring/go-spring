@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Development overlay: single replica, a dev- name prefix, and the dev image tag.
+namePrefix: dev-
+namespace: GS_APP_NAME-dev
+
+resources:
+  - ../../base
+
+replicas:
+  - name: GS_APP_NAME
+    count: 1
+
+images:
+  - name: GS_IMAGE
+    newTag: dev

@@ -43,6 +43,14 @@ type Metadata struct {
 	Body    any               // Request body
 	Header  http.Header       // Request headers
 	Config  map[string]string // Additional configuration options
+
+	// Client is the HTTP client used to send this request. When nil the request
+	// falls back to http.DefaultClient. A declarative client (see
+	// go-spring.org/stdlib/httpx and starter-http-client) sets it to an
+	// *http.Client whose Transport carries service discovery, load balancing and
+	// resilience, so the same generated call site works for a direct address or
+	// a discovered service without touching the generated code.
+	Client *http.Client
 }
 
 // RequestOption is a function that modifies the Metadata.
@@ -76,9 +84,14 @@ func WithConfig(config map[string]string) RequestOption {
 	}
 }
 
-// DoRequest is a function that performs the actual HTTP request.
+// DoRequest is a function that performs the actual HTTP request. It sends the
+// request through meta.Client when set, otherwise through http.DefaultClient.
 var DoRequest = func(req *http.Request, meta Metadata, fn func(io.Reader) error) (*http.Response, error) {
-	resp, err := http.DefaultClient.Do(req)
+	client := http.DefaultClient
+	if meta.Client != nil {
+		client = meta.Client
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

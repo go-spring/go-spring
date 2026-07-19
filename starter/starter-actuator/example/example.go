@@ -17,6 +17,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -25,10 +26,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-actuator"
 	"go-spring.org/stdlib/health"
@@ -107,6 +110,55 @@ func runTest() {
 	mustStatus(base+"/info", http.StatusOK)
 	fmt.Println("info OK")
 
+	// The z-suffixed canonical probe paths behave like their legacy aliases.
+	mustStatus(base+"/healthz", http.StatusOK)
+	mustStatus(base+"/readyz", http.StatusOK)
+	mustStatus(base+"/startupz", http.StatusOK)
+	fmt.Println("healthz/readyz/startupz OK")
+
+	// loggers: the root logger is listed at INFO, a DEBUG line is suppressed,
+	// then after raising the level to DEBUG it is emitted. This proves the
+	// runtime level override wired through the log control seam takes effect.
+	body := mustBody(base + "/loggers")
+	if !strings.Contains(body, `"root"`) || !strings.Contains(body, `"configuredLevel": "INFO"`) {
+		fail("/loggers did not report root at INFO: " + body)
+	}
+	log.Debugf(context.Background(), log.TagAppDef, "debug-before-should-not-appear")
+	mustStatusMethod(http.MethodPost, base+"/loggers/root", `{"configuredLevel":"DEBUG"}`, http.StatusNoContent)
+	if body = mustBody(base + "/loggers"); !strings.Contains(body, `"configuredLevel": "DEBUG"`) {
+		fail("/loggers did not reflect the DEBUG override: " + body)
+	}
+	log.Debugf(context.Background(), log.TagAppDef, "debug-after-should-appear")
+	// An unknown logger is 404; an invalid level is 400.
+	mustStatusMethod(http.MethodPost, base+"/loggers/nope", `{"configuredLevel":"DEBUG"}`, http.StatusNotFound)
+	mustStatusMethod(http.MethodPost, base+"/loggers/root", `{"configuredLevel":"BOGUS"}`, http.StatusBadRequest)
+	fmt.Println("loggers level override OK")
+
+	// env: ordinary values pass through; secret-named keys and ENC(...) values
+	// are masked.
+	body = mustBody(base + "/env")
+	if !strings.Contains(body, "jdbc:mysql://localhost:3306/demo") {
+		fail("/env dropped an ordinary property: " + body)
+	}
+	if strings.Contains(body, "super-secret-pw") || strings.Contains(body, "abcdef123456") || strings.Contains(body, "9f8a7b6c5d") {
+		fail("/env leaked a secret value: " + body)
+	}
+	fmt.Println("env masking OK")
+
+	// configprops: same masking over the nested tree view.
+	body = mustBody(base + "/configprops")
+	if strings.Contains(body, "super-secret-pw") || strings.Contains(body, "9f8a7b6c5d") {
+		fail("/configprops leaked a secret value: " + body)
+	}
+	fmt.Println("configprops masking OK")
+
+	// threaddump: a goroutine stack dump is served as text.
+	body = mustBody(base + "/threaddump")
+	if !strings.Contains(body, "goroutine ") {
+		fail("/threaddump did not return a goroutine dump: " + body)
+	}
+	fmt.Println("threaddump OK")
+
 	// Toggle the dependency down; readiness must now fail with 503 while
 	// liveness stays up (a degraded dependency must not trip liveness).
 	dep.down.Store(true)
@@ -165,6 +217,46 @@ func mustStatus(url string, want int) {
 		fmt.Fprintf(os.Stderr, "unexpected status for %s: got %d want %d\n", url, resp.StatusCode, want)
 		os.Exit(1)
 	}
+}
+
+// mustStatusMethod issues a request with the given method and body and exits
+// non-zero unless the response status matches want.
+func mustStatusMethod(method, url, body string, want int) {
+	req, err := http.NewRequest(method, url, bytes.NewBufferString(body))
+	if err != nil {
+		fail(fmt.Sprintf("build request %s %s: %v", method, url, err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fail(fmt.Sprintf("request %s %s: %v", method, url, err))
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != want {
+		fail(fmt.Sprintf("unexpected status for %s %s: got %d want %d", method, url, resp.StatusCode, want))
+	}
+}
+
+// mustBody GETs url and returns the response body as a string, exiting non-zero
+// on a transport error or non-200 status.
+func mustBody(url string) string {
+	resp, err := http.Get(url)
+	if err != nil {
+		fail(fmt.Sprintf("request %s: %v", url, err))
+	}
+	b, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fail(fmt.Sprintf("unexpected status for %s: got %d want 200", url, resp.StatusCode))
+	}
+	return string(b)
+}
+
+// fail prints a message to stderr and exits non-zero.
+func fail(msg string) {
+	fmt.Fprintln(os.Stderr, msg)
+	os.Exit(1)
 }
 
 // ----------------------------------------------------------------------------

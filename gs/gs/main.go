@@ -36,7 +36,7 @@ import (
 	"go-spring.org/gs/tool"
 )
 
-const Version = "v0.3.1"
+const Version = "v0.4.0"
 
 // builtins are subcommands compiled directly into the gs binary.
 var builtins = map[string]*cobra.Command{
@@ -45,6 +45,7 @@ var builtins = map[string]*cobra.Command{
 	"add":   cmd.NewAddCmd(),
 	"go":    cmd.NewGoCmd(),
 	"serve": cmd.NewServeCmd(),
+	"k8s":   cmd.NewK8sCmd(),
 }
 
 // helpFlags trigger showHelp when passed as the first argument.

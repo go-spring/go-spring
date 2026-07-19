@@ -77,6 +77,16 @@ func (p *Pool) Pick(info PickInfo) (Result, error) {
 		return Result{}, ErrNoAvailable
 	}
 
+	// Mesh mode: a sidecar already load-balances, so degrade to a pass-through.
+	// The source exposes a single stable endpoint (the Service ClusterIP; see
+	// discovery.newMeshDialer); return it directly with no strategy selection
+	// and no tracker eviction — a lone mesh endpoint must never be ejected or
+	// traffic would black-hole. Read the switch here, at the Pool assembly
+	// point, so no balancer/starter has to special-case it.
+	if discovery.MeshMode() {
+		return Result{Endpoint: eps[0], Done: func(DoneInfo) {}}, nil
+	}
+
 	// Discovery-driven filtering: prefer instances the naming service reports
 	// healthy. If the backend does not track health (none marked healthy) fall
 	// back to all, matching discovery.LiveDialer.Pick so discovery still works.

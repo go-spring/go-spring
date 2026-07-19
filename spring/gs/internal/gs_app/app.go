@@ -21,6 +21,7 @@ package gs_app
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go-spring.org/log"
@@ -128,6 +129,26 @@ func (c *PropertiesRefresher) RefreshProperties() error {
 	return c.app.RefreshProperties()
 }
 
+// EnvProvider exposes a read-only snapshot of the application's merged
+// configuration properties for operational introspection (e.g. an actuator
+// "env" endpoint). Components inject this bean instead of reaching into the
+// container, and the snapshot stays current across hot property refreshes.
+//
+// It carries no secret-masking policy of its own: callers that surface values
+// to operators are responsible for masking sensitive keys/values.
+type EnvProvider struct {
+	app *App
+}
+
+// Snapshot returns a fresh copy of every resolved leaf property, keyed by its
+// flattened dot-path. Returns an empty map before properties are loaded.
+func (c *EnvProvider) Snapshot() map[string]string {
+	if ls := c.app.env.Load(); ls != nil {
+		return (*ls).Data()
+	}
+	return map[string]string{}
+}
+
 // App represents the core application, managing its lifecycle,
 // configuration, and dependency injection. It serves as the central
 // coordinator for:
@@ -156,6 +177,11 @@ type App struct {
 	Rooters []Rooter `autowire:"?"`
 	Runners []Runner `autowire:"${spring.app.runners:=?}"`
 	Servers []Server `autowire:"${spring.app.servers:=?}"`
+
+	// env holds the most recently merged configuration storage, published for
+	// read-only introspection via EnvProvider. It is swapped atomically on
+	// every (re)load so a concurrent env snapshot never sees a torn state.
+	env atomic.Pointer[flatten.LayeredStorage]
 }
 
 // NewApp creates a new App instance with an initialized root context.
@@ -210,7 +236,18 @@ func (app *App) RefreshProperties() error {
 	if err != nil {
 		return err
 	}
+	app.publishEnv(p)
 	return app.c.RefreshProperties(p)
+}
+
+// publishEnv atomically publishes the merged configuration storage so that
+// EnvProvider can serve a current read-only snapshot across hot refreshes. It
+// is a no-op for storages that are not the layered aggregate (the normal case
+// always is), so introspection simply reports nothing rather than failing.
+func (app *App) publishEnv(p flatten.Storage) {
+	if ls, ok := p.(*flatten.LayeredStorage); ok {
+		app.env.Store(ls)
+	}
 }
 
 // readDuration reads a duration value (e.g. "5s") from the configuration.
@@ -261,12 +298,14 @@ func (app *App) Start() error {
 
 	app.c.Provide(&PropertiesRefresher{app})
 	app.c.Provide(&ContextProvider{app.ctx})
+	app.c.Provide(&EnvProvider{app})
 
 	// Load and refresh application properties
 	p, err := app.p.Refresh()
 	if err != nil {
 		return err
 	}
+	app.publishEnv(p)
 
 	// Read shutdown drain settings from the merged configuration.
 	app.preStopDelay = readDuration(p, "app.shutdown.pre-stop-delay")

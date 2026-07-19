@@ -443,3 +443,24 @@ func (s *LayeredStorage) SliceEntries(key string, result map[string]string) bool
 	}
 	return false
 }
+
+// Data returns a flattened snapshot of every leaf key across all layers, with
+// values resolved by the normal override rule (higher-priority layers win).
+// It is intended for introspection (e.g. an actuator "env" endpoint), not for
+// binding. The returned map is a fresh copy the caller may mutate freely.
+func (s *LayeredStorage) Data() map[string]string {
+	out := make(map[string]string)
+	for _, arr := range s.layers {
+		for _, source := range arr {
+			for k := range source.Data() {
+				if _, seen := out[k]; seen {
+					continue
+				}
+				if v, ok := s.Value(k); ok {
+					out[k] = v
+				}
+			}
+		}
+	}
+	return out
+}

@@ -17,6 +17,7 @@ import (
 	"go-spring.org/stdlib/jsonflow"
 )
 
+var _ = fmt.Sprintf
 var _ = strings.Index
 var _ = url.ParseQuery
 var _ = strconv.FormatInt
@@ -74,7 +75,10 @@ func (x PayloadTypeAsString) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON decodes the enum value from its string name.
 func (x *PayloadTypeAsString) UnmarshalJSON(data []byte) error {
-	str := strings.Trim(string(data), "\"")
+	str, err := strconv.Unquote(string(data))
+	if err != nil {
+		return errutil.Explain(err, "invalid PayloadTypeAsString JSON string")
+	}
 	if v, ok := PayloadType_value[str]; ok {
 		*x = PayloadTypeAsString(v)
 		return nil
@@ -157,11 +161,11 @@ func (x *Message) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.Role == nil) {
-		if err := e.WriteString("role"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "role"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Role); err != nil {
@@ -169,14 +173,14 @@ func (x *Message) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Content == nil) {
-		if err := e.WriteString("content"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "content"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Content); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Streaming assistant request
@@ -297,11 +301,11 @@ func (x *AssistantReqBody) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.SessionId == nil) {
-		if err := e.WriteString("sessionId"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "sessionId"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.SessionId); err != nil {
@@ -309,7 +313,7 @@ func (x *AssistantReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.UserId == nil) {
-		if err := e.WriteString("userId"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "userId"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.UserId); err != nil {
@@ -317,14 +321,14 @@ func (x *AssistantReqBody) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(len(x.Messages) == 0) {
-		if err := e.WriteString("messages"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "messages"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeArray(jsonflow.EncodeObject[*Message])(e, x.Messages); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Validate checks field values using generated validation expressions.
@@ -407,11 +411,11 @@ func (x *MessageDelta) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.Content == nil) {
-		if err := e.WriteString("content"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "content"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Content); err != nil {
@@ -419,14 +423,14 @@ func (x *MessageDelta) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.IsFinal == nil) {
-		if err := e.WriteString("isFinal"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "isFinal"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeBoolPtr[bool](e, x.IsFinal); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Tool call payload
@@ -504,11 +508,11 @@ func (x *ToolCall) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.Name == nil) {
-		if err := e.WriteString("name"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "name"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Name); err != nil {
@@ -516,14 +520,14 @@ func (x *ToolCall) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(len(x.Arguments) == 0) {
-		if err := e.WriteString("arguments"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "arguments"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeMap(jsonflow.EncodeStringKey[string], jsonflow.EncodeString[string])(e, x.Arguments); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Image payload
@@ -601,11 +605,11 @@ func (x *ImageData) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.Mime == nil) {
-		if err := e.WriteString("mime"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "mime"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Mime); err != nil {
@@ -613,14 +617,14 @@ func (x *ImageData) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(len(x.Data) == 0) {
-		if err := e.WriteString("data"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "data"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeBytes(e, x.Data); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Error payload
@@ -698,11 +702,11 @@ func (x *ErrorInfo) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.Code == nil) {
-		if err := e.WriteString("code"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "code"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeIntPtr[ErrCode](e, x.Code); err != nil {
@@ -710,14 +714,14 @@ func (x *ErrorInfo) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Message == nil) {
-		if err := e.WriteString("message"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "message"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.Message); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 
 // Union payload for SSE events
@@ -847,17 +851,17 @@ func (x *Payload) EncodeJSON(e jsonflow.Encoder) error {
 	if err := x.validateOneOf(); err != nil {
 		return err
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
-	if err := e.WriteString("FieldType"); err != nil {
+	if err := jsonflow.EncodeString[string](e, "FieldType"); err != nil {
 		return err
 	}
 	if err := jsonflow.EncodeAny[PayloadTypeAsString](e, x.FieldType); err != nil {
 		return err
 	}
 	if !(x.MessageDelta == nil) {
-		if err := e.WriteString("MessageDelta"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "MessageDelta"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*MessageDelta](e, x.MessageDelta); err != nil {
@@ -865,7 +869,7 @@ func (x *Payload) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.ToolCall == nil) {
-		if err := e.WriteString("ToolCall"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "ToolCall"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*ToolCall](e, x.ToolCall); err != nil {
@@ -873,7 +877,7 @@ func (x *Payload) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.ImageData == nil) {
-		if err := e.WriteString("ImageData"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "ImageData"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*ImageData](e, x.ImageData); err != nil {
@@ -881,14 +885,14 @@ func (x *Payload) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.ErrorInfo == nil) {
-		if err := e.WriteString("ErrorInfo"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "ErrorInfo"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*ErrorInfo](e, x.ErrorInfo); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
 }
 func (x *Payload) validateOneOf() error {
 	if x == nil {
@@ -1006,11 +1010,11 @@ func (x *AssistantEvent) EncodeJSON(e jsonflow.Encoder) error {
 	if x == nil {
 		return jsonflow.EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := jsonflow.EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if !(x.EventId == nil) {
-		if err := e.WriteString("eventId"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "eventId"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeStringPtr[string](e, x.EventId); err != nil {
@@ -1018,12 +1022,22 @@ func (x *AssistantEvent) EncodeJSON(e jsonflow.Encoder) error {
 		}
 	}
 	if !(x.Payload == nil) {
-		if err := e.WriteString("payload"); err != nil {
+		if err := jsonflow.EncodeString[string](e, "payload"); err != nil {
 			return err
 		}
 		if err := jsonflow.EncodeObject[*Payload](e, x.Payload); err != nil {
 			return err
 		}
 	}
-	return e.WriteObjectEnd()
+	return jsonflow.EncodeObjectEnd(e)
+}
+
+// Validate checks field values using generated validation expressions.
+func (x *AssistantEvent) Validate() error {
+	if x.Payload != nil {
+		if err := x.Payload.Validate(); err != nil {
+			return errutil.Explain(err, "validate failed on \"AssistantEvent.Payload\"")
+		}
+	}
+	return nil
 }

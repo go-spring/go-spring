@@ -63,3 +63,56 @@ type Indicator interface {
 	// dependency cannot stall a probe.
 	CheckHealth(ctx context.Context) error
 }
+
+// Group identifies which Kubernetes probe an indicator contributes to. The
+// three groups mirror the container lifecycle probes; a collector consults a
+// group's indicators for the matching probe endpoint.
+type Group string
+
+const (
+	// GroupLiveness is checked by the liveness probe. Indicators in this group
+	// should test only that the process itself is functioning — never an
+	// external dependency — because a liveness failure restarts the pod. Most
+	// applications register nothing here (liveness = process is up).
+	GroupLiveness Group = "liveness"
+
+	// GroupReadiness is checked by the readiness probe: whether the app can
+	// currently serve traffic. Dependency indicators (database, cache, ...)
+	// belong here so a degraded dependency removes the pod from Service
+	// endpoints without restarting it.
+	GroupReadiness Group = "readiness"
+
+	// GroupStartup is checked by the startup probe: whether the app has finished
+	// starting. Dependency indicators that must be reachable before the app is
+	// considered started belong here.
+	GroupStartup Group = "startup"
+)
+
+// Grouped is an optional interface an Indicator may implement to declare which
+// probe groups it contributes to. An indicator that does not implement it is
+// treated as belonging to GroupReadiness and GroupStartup (dependency health),
+// never GroupLiveness — the safe default, since a dependency check must not be
+// able to trigger a liveness restart.
+type Grouped interface {
+	// HealthGroups returns the probe groups this indicator contributes to.
+	HealthGroups() []Group
+}
+
+// GroupsOf returns the probe groups an indicator contributes to, applying the
+// default (readiness + startup) when the indicator does not implement Grouped.
+func GroupsOf(ind Indicator) []Group {
+	if g, ok := ind.(Grouped); ok {
+		return g.HealthGroups()
+	}
+	return []Group{GroupReadiness, GroupStartup}
+}
+
+// InGroup reports whether an indicator contributes to the given probe group.
+func InGroup(ind Indicator, group Group) bool {
+	for _, g := range GroupsOf(ind) {
+		if g == group {
+			return true
+		}
+	}
+	return false
+}

@@ -22,6 +22,15 @@
 | `starter-goframe/http` | [gogf/gf](https://github.com/gogf/gf) | 托管 goframe `*ghttp.Server`(另有 `/tcp` 裸 TCP 子包) |
 | `starter-kratos/http` | [go-kratos/kratos](https://github.com/go-kratos/kratos) | 托管 kratos HTTP 传输服务 |
 
+## HTTP 客户端
+
+把远程服务声明为接口,生成调用代码,再注入一个装配好的 `*http.Client`——服务
+发现、负载均衡与韧性都已接入。
+
+| Starter | 底层库 | 说明 |
+| --- | --- | --- |
+| `starter-http-client` | Go `net/http` + [`gs-http-gen`](../gs/gs-http-gen) | 声明式 HTTP 客户端(对标 OpenFeign / `@HttpExchange`):在同一个 `*http.Client` 背后接入发现 + 负载均衡 + 韧性 + 链路追踪透传 |
+
 ## RPC 框架
 
 注册服务后由 starter 负责监听/服务构建、生命周期与优雅关闭。

@@ -48,6 +48,7 @@ use (
 	./starter/starter-config-file
 	./starter/starter-config-k8s
 	./starter/starter-config-nacos
+	./starter/starter-config-vault
 	./starter/starter-discovery-k8s
 	./starter/starter-dubbo
 	./starter/starter-echo
@@ -63,6 +64,8 @@ use (
 	./starter/starter-gorm-sqlserver
 	./starter/starter-grpc
 	./starter/starter-hertz
+	./starter/starter-http-client
+	./starter/starter-http-client/example
 	./starter/starter-kafka
 	./starter/starter-kafka-sarama
 	./starter/starter-kitex
@@ -73,6 +76,8 @@ use (
 	./starter/starter-lock-k8s
 	./starter/starter-lock-redis
 	./starter/starter-lua-filter
+	./starter/starter-mesh
+	./starter/starter-mesh/example
 	./starter/starter-memcached
 	./starter/starter-mongodb
 	./starter/starter-mqtt
@@ -93,6 +98,7 @@ use (
 	./starter/starter-thrift
 	./starter/starter-transaction-saga
 	./starter/starter-transaction-saga-gorm
+	./starter/starter-transaction-tcc
 	./starter/starter-trpc
 	./starter/starter-trpc/example
 	./starter/starter-validation

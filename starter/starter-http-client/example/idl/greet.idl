@@ -1,0 +1,32 @@
+// ==================================================
+// Greet Service - RPC IDL
+// A one-method service used to demonstrate the declarative HTTP client:
+// declare the interface here, generate the client, then inject it.
+// ==================================================
+
+// Greeting request. The caller's name rides as a query parameter.
+type GreetReq {
+    required string name (query="name")
+}
+
+// Greeting response. servedBy reveals which backend instance answered (so a
+// load-balanced call can be observed hopping between instances), and
+// traceParent echoes the inbound W3C trace-context header (so trace propagation
+// across the two ends is observable).
+type GreetResp {
+    required string message
+    required string servedBy
+    required string traceParent
+}
+
+// Greet a user by name.
+rpc Greet(GreetReq) GreetResp {
+    method="GET"
+    path="/greet"
+    contentType="form"
+    summary="Greet a user by name"
+
+    connTimeout=100
+    readTimeout=100
+    writeTimeout=100
+}

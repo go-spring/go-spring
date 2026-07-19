@@ -23,6 +23,15 @@ Serve an application-provided web engine through the Go-Spring server lifecycle.
 | `starter-goframe/http` | [gogf/gf](https://github.com/gogf/gf) | Serves a goframe `*ghttp.Server` (also ships a `/tcp` raw-TCP sub-package) |
 | `starter-kratos/http` | [go-kratos/kratos](https://github.com/go-kratos/kratos) | Serves a kratos HTTP transport server |
 
+## HTTP Client
+
+Declare a remote service as an interface, generate the call sites, and inject an
+assembled `*http.Client` with discovery, load balancing and resilience wired in.
+
+| Starter | Underlying library | Notes |
+| --- | --- | --- |
+| `starter-http-client` | Go `net/http` + [`gs-http-gen`](../gs/gs-http-gen) | Declarative HTTP client (OpenFeign / `@HttpExchange` equivalent): discovery + load balancing + resilience + trace propagation behind one `*http.Client` |
+
 ## RPC Frameworks
 
 Register a service and let the starter handle listener/server setup, lifecycle,

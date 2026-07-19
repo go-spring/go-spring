@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go-spring.org/spring/conf/decrypt"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/typeutil"
@@ -200,6 +201,11 @@ func BindValue(p flatten.Storage, v reflect.Value, t reflect.Type, param BindPar
 	}
 	if val = strings.TrimSpace(val); val == "" {
 		return nil
+	}
+
+	// decrypt property-level ciphertext (ENC(...) / {cipher}...) before conversion
+	if val, err = decrypt.Decode(val); err != nil {
+		return errutil.Explain(err, "failed to decrypt value at path %s", param.Path)
 	}
 
 	// try converter function first

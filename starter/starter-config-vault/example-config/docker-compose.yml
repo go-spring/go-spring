@@ -1,0 +1,11 @@
+services:
+  vault:
+    image: hashicorp/vault:1.16
+    container_name: starter-vault-config
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "root"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    ports:
+      - "127.0.0.1:8200:8200"

@@ -333,11 +333,10 @@ func (DefaultDriver) CreateClient(c Config) (*redis.Client, error) {
 
 	var ld *discovery.LiveDialer
 	if c.ServiceName != "" {
-		d, err := discovery.MustGet(c.Discovery)
-		if err != nil {
-			return nil, err
-		}
-		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+		// NewClientDialer centralizes the discovery/mesh decision: normally it
+		// resolves c.Discovery and keeps the endpoint set fresh; in mesh mode it
+		// skips the backend and dials the stable Service address for the sidecar.
+		ld, err = discovery.NewClientDialer(context.Background(), c.Discovery, c.ServiceName)
 		if err != nil {
 			return nil, err
 		}

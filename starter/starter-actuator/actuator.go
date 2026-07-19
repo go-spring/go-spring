@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// Package StarterActuator exposes operational HTTP endpoints — liveness,
-// readiness, and build info — on a dedicated management port.
+// Package StarterActuator exposes operational HTTP endpoints — health probes,
+// build info, and runtime introspection — on a dedicated management port.
 //
 // Unlike the application's main HTTP server (gs.SimpleHttpServer), which only
 // begins serving once every server has signaled readiness, the actuator starts
@@ -24,23 +24,37 @@
 // observe the OUT_OF_SERVICE -> UP transition, and a liveness probe must answer
 // throughout a long startup so the pod is not killed prematurely.
 //
-// Endpoints (all GET, JSON responses):
+// Probe endpoints map to the three Kubernetes container probes. The z-suffixed
+// paths are canonical; the older names are kept as aliases:
 //
-//	/health     always 200 {"status":"UP"} once the process is serving; it
-//	            reflects liveness (the process is up), not dependency health, so
-//	            a down database never trips a liveness restart.
-//	/readiness  200 {"status":"UP"} only after the app has reported readiness
-//	            AND every registered health.Indicator passes; 503 otherwise.
-//	            During graceful shutdown it flips to 503 OUT_OF_SERVICE (see
-//	            PreStop) so Kubernetes drains the pod before servers stop.
-//	/startup    503 OUT_OF_SERVICE until the app has finished starting, then
-//	            200 {"status":"UP"}. Backs a K8s startupProbe so a slow boot is
-//	            not killed by the liveness probe.
-//	/info       200 with build/version info from the embedded build metadata.
+//	/healthz  (alias /health)    liveness: 200 {"status":"UP"} as long as the
+//	          process is serving. Consults only indicators that declare the
+//	          liveness group (usually none), so a degraded dependency never
+//	          trips a liveness restart.
+//	/readyz   (alias /readiness) readiness: 200 only after the app reports ready
+//	          AND every readiness-group indicator passes; 503 otherwise. During
+//	          graceful shutdown it flips to 503 OUT_OF_SERVICE (see PreStop) so
+//	          Kubernetes drains the pod before servers stop.
+//	/startupz (alias /startup)   startup: 503 until the app has finished starting
+//	          AND every startup-group indicator passes, then 200. Backs a K8s
+//	          startupProbe so a slow boot is not killed by the liveness probe.
+//	          Unaffected by drain (startupProbe stops after first success).
+//
+// Introspection endpoints (all JSON unless noted):
+//
+//	GET  /info        build/version info from the embedded build metadata.
+//	GET  /loggers     configured loggers with their effective levels, plus the
+//	                  selectable level names.
+//	POST /loggers/{name}  set a logger's level at runtime; body
+//	                  {"configuredLevel":"DEBUG"}. 204 on success.
+//	GET  /env         merged configuration properties, secrets masked.
+//	GET  /configprops merged configuration as a nested tree, secrets masked.
+//	GET  /threaddump  goroutine stack dump (text/plain), the Go analogue of a
+//	                  JVM thread dump.
 //
 // Health indicators are contributed by other beans: any bean exported as
 // health.Indicator (a redis client wrapper, a gorm pool wrapper, ...) is
-// collected here and folded into /readiness with zero per-component wiring.
+// collected here and folded into the probes with zero per-component wiring.
 package StarterActuator
 
 import (
@@ -97,6 +111,11 @@ type Server struct {
 	// does not import those components — the seam is the stdlib interface.
 	Endpoints []endpoint.Endpoint `autowire:"?"`
 
+	// Env exposes a read-only snapshot of the merged configuration for the /env
+	// and /configprops endpoints. Optional so the actuator still builds probes
+	// and info when property introspection is unavailable.
+	Env *gs.EnvProvider `autowire:"?"`
+
 	svr      *http.Server
 	ready    atomic.Bool
 	draining atomic.Bool
@@ -112,10 +131,20 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", s.handleHealth)
+	// Probe endpoints: z-suffixed canonical paths plus legacy aliases.
+	mux.HandleFunc("GET /healthz", s.handleLiveness)
+	mux.HandleFunc("GET /health", s.handleLiveness)
+	mux.HandleFunc("GET /readyz", s.handleReadiness)
 	mux.HandleFunc("GET /readiness", s.handleReadiness)
+	mux.HandleFunc("GET /startupz", s.handleStartup)
 	mux.HandleFunc("GET /startup", s.handleStartup)
+	// Introspection endpoints.
 	mux.HandleFunc("GET /info", s.handleInfo)
+	mux.HandleFunc("GET /loggers", s.handleLoggers)
+	mux.HandleFunc("POST /loggers/{name}", s.handleSetLogger)
+	mux.HandleFunc("GET /env", s.handleEnv)
+	mux.HandleFunc("GET /configprops", s.handleConfigProps)
+	mux.HandleFunc("GET /threaddump", s.handleThreadDump)
 	// Mount every contributed endpoint (e.g. otel's Prometheus /metrics) on the
 	// same management port. Each owns its full path; they are registered after
 	// the built-ins so a contributor cannot shadow /health etc. (ServeMux panics
@@ -163,72 +192,6 @@ func (s *Server) PreStop(ctx context.Context) {
 	s.draining.Store(true)
 }
 
-// handleHealth reports liveness: the process is up and serving. It intentionally
-// does not consult health indicators — a degraded dependency should fail
-// readiness, not trigger a liveness restart.
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"status": health.StatusUp})
-}
-
-// componentStatus is the per-indicator entry reported under /readiness.
-type componentStatus struct {
-	Status health.Status `json:"status"`
-	Error  string        `json:"error,omitempty"`
-}
-
-// handleReadiness reports whether the app is ready to receive traffic: the
-// readiness barrier has been crossed AND every registered indicator passes.
-// Returns 503 while not ready or when any required component is down.
-func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
-	if !s.ready.Load() || s.draining.Load() {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"status": "OUT_OF_SERVICE",
-		})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), checkTimeout)
-	defer cancel()
-
-	overall := health.StatusUp
-	components := make(map[string]componentStatus, len(s.Indicators))
-	for _, ind := range s.Indicators {
-		if err := ind.CheckHealth(ctx); err != nil {
-			components[ind.HealthName()] = componentStatus{Status: health.StatusDown, Error: err.Error()}
-			overall = health.StatusDown
-		} else {
-			components[ind.HealthName()] = componentStatus{Status: health.StatusUp}
-		}
-	}
-
-	code := http.StatusOK
-	if overall == health.StatusDown {
-		code = http.StatusServiceUnavailable
-	}
-	body := map[string]any{"status": overall}
-	if len(components) > 0 {
-		body["components"] = components
-	}
-	writeJSON(w, code, body)
-}
-
-// handleStartup backs a Kubernetes startupProbe: it reports 503 until the
-// application has finished starting (the readiness barrier has been crossed),
-// then 200. Unlike /readiness it does not consult health indicators — its only
-// job is to tell the kubelet "startup is done, hand off to the liveness probe",
-// so a slow boot is not mistaken for a hung process and killed. It is not
-// affected by drain: once startup has completed, startupProbe is no longer
-// polled.
-func (s *Server) handleStartup(w http.ResponseWriter, r *http.Request) {
-	if !s.ready.Load() {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"status": "OUT_OF_SERVICE",
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": health.StatusUp})
-}
-
 // handleInfo reports build/version metadata read from the binary's embedded
 // build info (module path/version, Go toolchain, and VCS stamp when the binary
 // was built from a checkout).
@@ -265,4 +228,12 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(v)
+}
+
+// decodeJSON decodes a request body into v, rejecting unknown fields and bodies
+// larger than 64 KiB so a malformed or oversized POST cannot exhaust memory.
+func decodeJSON(r *http.Request, v any) error {
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 64<<10))
+	dec.DisallowUnknownFields()
+	return dec.Decode(v)
 }

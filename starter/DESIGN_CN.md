@@ -159,6 +159,16 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   解析成实时端点,这对各基础设施客户端是通用的。RPC 的 **provider** 注册按上述原则
   保持框架原生。`ServiceName` 为空时 client 按地址直连,行为不变。各框架原生注册进
   consul/etcd/nacos/zookeeper/polaris 的示例见 `contrib/registry/`。
+- **服务网格模式集中退化客户端栈,而非逐 starter 判断。** 注入 sidecar
+  (Istio/Envoy、Linkerd)后它已负责发现与负载均衡,应用自带的再叠加就会双重负载
+  均衡,并让拓扑/离群逻辑错乱。用一个进程级全局开关(`spring.mesh.enabled`,由
+  `starter-mesh` 接线),在发现与负载均衡的 Factory 装配处 ——
+  `discovery.NewClientDialer` / `NewLiveDialer` 与 `loadbalance.Pool` —— 读取一次
+  并统一退化为直通:服务名解析为唯一稳定的 Service 地址(ClusterIP)交给 sidecar
+  拦截,负载均衡器不再选择、不再剔除。client 类 starter 应经
+  `discovery.NewClientDialer` 获取 dialer(如 `starter-go-redis`),这样无需逐个分支
+  即可感知开关;仍直接调用 `NewLiveDialer` 的也会退化,但在 mesh 模式下仍需已注册后端。
+  代码不删除 —— 关掉开关即恢复完整的客户端行为。
 - **实例级注册(ServiceRegistry)已提供;RPC 框架 provider 注册仍不统一。** 别把两种
   "注册"混为一谈。(1)把**本进程**注册进外部注册中心(Nacos/Consul/Eureka)—— 即
   Spring Cloud `@EnableDiscoveryClient` 的方向 —— 是与传输无关的通用能力,已通过

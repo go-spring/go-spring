@@ -4,4 +4,4 @@ package proto
 
 // Email is a default validation function for fields of type string.
 // This serves as a placeholder that can be overridden or extended.
-var Email = func(string) bool { return true }
+var Email = func(string) (bool, error) { return true, nil }

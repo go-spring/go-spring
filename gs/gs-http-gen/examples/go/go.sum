@@ -65,6 +65,8 @@ github.com/ugorji/go/codec v1.3.0 h1:Qd2W2sQawAfG8XSvzwhBeoGq71zXOC/Q1E9y/wUcsUA
 github.com/ugorji/go/codec v1.3.0/go.mod h1:pRBVtBSKl77K30Bv8R2P+cLSGaTtex6fsA2Wjqmfxj4=
 go-spring.org/stdlib v0.1.3 h1:H/JelZPvt2xYkyLfcu6Bi5nGo/CKmx7t1jX1RU/p7k0=
 go-spring.org/stdlib v0.1.3/go.mod h1:jDIah6YCXdE0QcKsR2GK6sCSYm2ybSa5dX08KF/OGoc=
+go-spring.org/stdlib v0.1.5 h1:XtYVYK11Mvfp45Y3AR98oMNaSdHK7Oj2u3IxJpTWQEs=
+go-spring.org/stdlib v0.1.5/go.mod h1:jDIah6YCXdE0QcKsR2GK6sCSYm2ybSa5dX08KF/OGoc=
 go.uber.org/mock v0.5.0 h1:KAMbZvZPyBPWgD14IrIQ38QCyjwpvVVV6K/bHl1IwQU=
 go.uber.org/mock v0.5.0/go.mod h1:ge71pBPLYDk7QIi1LupWxdAykm7KIEFchiOqd6z7qMM=
 golang.org/x/arch v0.20.0 h1:dx1zTU0MAE98U+TQ8BLl7XsJbgze2WnNKF/8tGp/Q6c=

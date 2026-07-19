@@ -1,0 +1,17 @@
+# Requires the Prometheus Operator (CRD monitoring.coreos.com/v1). The actuator
+# exposes /metrics on the management port only when starter-otel is wired into
+# the app; without it, delete this file or the endpoint returns 404.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: GS_APP_NAME
+  labels:
+    app.kubernetes.io/name: GS_APP_NAME
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: GS_APP_NAME
+  endpoints:
+    - port: management
+      path: /metrics
+      interval: 15s

@@ -288,3 +288,24 @@ func TestPoolEmpty(t *testing.T) {
 	_, err := p.Pick(PickInfo{})
 	assert.Error(t, err).Is(ErrNoAvailable)
 }
+
+func TestPoolMeshPassThrough(t *testing.T) {
+	t.Cleanup(func() { discovery.SetMeshMode(false) })
+
+	// A tracker that would eject "svc" after a single failure. In mesh mode it
+	// must be bypassed entirely so the lone endpoint is never black-holed.
+	src := staticSource{{Addr: "svc", Healthy: true}}
+	tr := NewTracker(TrackerConfig{Threshold: 1, EjectFor: time.Minute})
+	p := NewPool(src, NewRoundRobin(), WithTracker(tr))
+
+	discovery.SetMeshMode(true)
+	for range 5 {
+		r, err := p.Pick(PickInfo{})
+		assert.Error(t, err).Nil()
+		assert.String(t, r.Endpoint.Addr).Equal("svc")
+		// Report failures: without the mesh short-circuit these would eject "svc".
+		r.Done(DoneInfo{Err: errors.New("boom")})
+	}
+	// The tracker never saw the failures — degradation skipped it.
+	assert.That(t, tr.Ejected("svc")).False()
+}

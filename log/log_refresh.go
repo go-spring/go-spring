@@ -39,6 +39,7 @@ var global struct {
 	refreshed bool
 	loggers   []Logger
 	appenders []Appender
+	named     map[string]Logger // configured loggers keyed by name (incl. root)
 }
 
 // RefreshConfig loads logging configuration from a flat map.
@@ -308,6 +309,7 @@ func Refresh(s flatten.Storage) error {
 
 	global.loggers = slices.Collect(maps.Values(cLoggers))
 	global.appenders = slices.Collect(maps.Values(cAppenders))
+	global.named = cLoggers
 	global.refreshed = true
 
 	// Stop old loggers and appenders
@@ -343,5 +345,6 @@ func Destroy() {
 	}
 	global.loggers = nil
 	global.appenders = nil
+	global.named = nil
 	global.refreshed = false
 }

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/spf13/cast"
+	"go-spring.org/spring/conf/decrypt"
 	"go-spring.org/spring/conf/provider"
 	"go-spring.org/spring/conf/reader"
 	"go-spring.org/stdlib/errutil"
@@ -63,6 +64,15 @@ func RegisterReader(r reader.Reader, ext ...string) {
 // Must be called in init functions only.
 func RegisterProvider(name string, p provider.Provider) {
 	provider.Register(name, p)
+}
+
+// RegisterDecryptDriver registers a property-level decryptor driver, the seam
+// through which a custom decryption scheme (an asymmetric cipher or a cloud
+// KMS) replaces the built-in AES-GCM driver. Select the active driver with the
+// GS_CONFIG_DECRYPT_DRIVER environment variable. Must be called in init
+// functions only.
+func RegisterDecryptDriver(name string, f decrypt.Factory) {
+	decrypt.RegisterDriver(name, f)
 }
 
 // Load creates a Properties instance from a configuration source.
