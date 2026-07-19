@@ -61,6 +61,44 @@ fetches.EachRecord(func(r *kgo.Record) {
 })
 ```
 
+## 消息 Binder
+
+除原生客户端外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
+(来自 `go-spring.org/stdlib/messaging`),让业务代码收发 `*messaging.Message`
+信封而不依赖 franz-go API —— 底层换 broker 时业务代码无需改动。
+
+从 `*kgo.Client` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):
+
+```go
+import (
+    "go-spring.org/spring/gs"
+    StarterKafka "go-spring.org/starter-kafka"
+)
+
+gs.Provide(StarterKafka.NewBinder, gs.TagArg("a"))
+```
+
+然后通过信封收发:
+
+```go
+pub, _ := binder.NewPublisher(ctx, "orders")
+defer pub.Close()
+_ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
+
+sub, _ := binder.NewSubscriber(ctx, "orders", "")
+defer sub.Close()
+_ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
+    // 处理 m.Payload / m.Headers
+    return nil
+})
+```
+
+franz-go 在构造 client 时就固定了它的消费 topics 与消费者组,且一个 client 就是单个
+consumer,所以订阅方只轮询 client 已配置的 topics,`source` 按名称在其中选取,`group`
+取自 client 配置 —— **一个 client bean 对应一个逻辑 consumer**。trace context 经 kotel
+钩子骑在 record header 上,配合 starter-otel 即可串联 producer 与 consumer 链路。原生
+`*kgo.Client` bean 仍可用于事务、admin API 等 binder 未建模的 Kafka 能力。
+
 ## 高级特性
 
 * **多 Kafka 客户端**:`spring.kafka.instances` 下的每一项都会成为一个独立配置的

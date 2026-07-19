@@ -159,6 +159,16 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   解析成实时端点,这对各基础设施客户端是通用的。RPC 的 **provider** 注册按上述原则
   保持框架原生。`ServiceName` 为空时 client 按地址直连,行为不变。各框架原生注册进
   consul/etcd/nacos/zookeeper/polaris 的示例见 `contrib/registry/`。
+- **实例级注册(ServiceRegistry)已提供;RPC 框架 provider 注册仍不统一。** 别把两种
+  "注册"混为一谈。(1)把**本进程**注册进外部注册中心(Nacos/Consul/Eureka)—— 即
+  Spring Cloud `@EnableDiscoveryClient` 的方向 —— 是与传输无关的通用能力,已通过
+  `stdlib/discovery` 的 `Registrar` 抽象(`Register`/`Deregister` + 由后端自持的
+  TTL/心跳,复用与 `Discovery` 相同的 driver 注册表 seam)及其首个后端
+  `starter-registry-consul` 提供。(2)注册某 RPC 框架的**服务**仍按上一条保持框架
+  原生。纯 Kubernetes 下两者都不需要 —— 平台已把每个 Pod 注册在 Service 之后(用
+  `starter-discovery-k8s` 去发现);`Registrar` 是给虚机 / 裸机 / 混合部署用的。这个
+  "注册自己"的 starter 属全局 / 基础设施形态(§2.4):导出一个 `gs.Server`,应用就绪后
+  注册、`PreStop` 时注销,使滚动重启无损。
 - **可观测遵循"中心定义、边缘桥接"。** starter 通过 OTel 全局输出,或用 `SetLogger`
   钩子把库的内部日志桥接进 go-spring `log`;桥接时必须同时补一个 go-spring
   `FileLogger` sink,否则会丢掉 console 输出。

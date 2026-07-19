@@ -1,0 +1,31 @@
+# The example running in-cluster with replicas > 1 so leader election is
+# meaningful: every replica campaigns for the same Lease and exactly one wins.
+# Build and push an image from this module first, then set `image:` below.
+#
+#   # from starter-lock-k8s/
+#   docker build -t <your-registry>/lock-k8s-example:latest -f example/Dockerfile .
+#   docker push <your-registry>/lock-k8s-example:latest
+#   kubectl apply -f rbac.yaml
+#   kubectl apply -f deployment.yaml
+#   kubectl logs deploy/lock-k8s-example --all-containers   # one pod logs "became leader"
+#   kubectl get lease example-leader -o yaml                # holderIdentity is the leader
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lock-k8s-example
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: lock-k8s-example
+  template:
+    metadata:
+      labels:
+        app: lock-k8s-example
+    spec:
+      serviceAccountName: lock-k8s
+      containers:
+        - name: example
+          image: REPLACE_ME/lock-k8s-example:latest
+          imagePullPolicy: IfNotPresent

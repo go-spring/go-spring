@@ -101,6 +101,50 @@ Why call-site helpers instead of a wrapped channel/publisher:
   `Delivery` — is what propagates trace context and links producer to consumer
   across services.
 
+## Messaging Binder
+
+Beyond the raw connection, this starter can expose a broker-neutral
+`messaging.Binder` (from `go-spring.org/stdlib/messaging`), so application code
+publishes and consumes `*messaging.Message` envelopes without depending on the
+`amqp` API — swapping the broker underneath does not touch business code.
+
+Register the binder as a bean from an `*amqp.Connection` (select the named
+instance with `gs.TagArg`):
+
+```go
+import (
+    "go-spring.org/spring/gs"
+    StarterRabbitMQ "go-spring.org/starter-rabbitmq"
+)
+
+gs.Provide(StarterRabbitMQ.NewBinder, gs.TagArg("a"))
+```
+
+Then publish and subscribe through the envelope:
+
+```go
+pub, _ := binder.NewPublisher(ctx, "orders")
+defer pub.Close()
+_ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
+
+sub, _ := binder.NewSubscriber(ctx, "orders", "")
+defer sub.Close()
+_ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
+    // handle m.Payload / m.Headers
+    return nil
+})
+```
+
+`destination` and `source` are queue names; the publisher sends to the default
+exchange keyed by the queue name, and both sides declare the queue idempotently.
+Each publisher and subscriber owns its own channel (channels are not
+concurrency-safe). A RabbitMQ queue is itself the competing-consumer group, so
+`group` is unused. The subscriber ranges over deliveries — a handler error nacks
+with requeue while success acks. Trace context rides the message headers, so with
+starter-otel a trace links producer to consumer. The raw `*amqp.Connection` bean
+stays available for custom exchanges, routing, publisher confirms and other AMQP
+features the binder does not model.
+
 ## Advanced Features
 
 * **Multiple RabbitMQ instances**: Every entry under `spring.rabbitmq.instances`

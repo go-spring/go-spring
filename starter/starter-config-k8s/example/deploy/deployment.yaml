@@ -1,0 +1,31 @@
+# The example running in-cluster so the ConfigMap read and informer watch use
+# the ServiceAccount. Build and push an image from this module first, then set
+# `image:` below.
+#
+#   # from starter-config-k8s/
+#   docker build -t <your-registry>/config-k8s-example:latest -f example/Dockerfile .
+#   docker push <your-registry>/config-k8s-example:latest
+#   kubectl apply -f rbac.yaml
+#   kubectl apply -f configmap.yaml
+#   kubectl apply -f deployment.yaml
+#   kubectl logs deploy/config-k8s-example   # prints demo.message from the ConfigMap
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-k8s-example
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: config-k8s-example
+  template:
+    metadata:
+      labels:
+        app: config-k8s-example
+    spec:
+      serviceAccountName: config-k8s
+      containers:
+        - name: example
+          image: REPLACE_ME/config-k8s-example:latest
+          imagePullPolicy: IfNotPresent

@@ -97,6 +97,46 @@ starter.EndSpan(span, err)
   即你已持有 `Publishing` / `Delivery` 的地方——才能传播链路上下文,把生产者与消费者
   跨服务串联起来。
 
+## 消息 Binder
+
+除原生连接外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
+(来自 `go-spring.org/stdlib/messaging`),让业务代码收发 `*messaging.Message`
+信封而不依赖 `amqp` API —— 底层换 broker 时业务代码无需改动。
+
+从 `*amqp.Connection` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):
+
+```go
+import (
+    "go-spring.org/spring/gs"
+    StarterRabbitMQ "go-spring.org/starter-rabbitmq"
+)
+
+gs.Provide(StarterRabbitMQ.NewBinder, gs.TagArg("a"))
+```
+
+然后通过信封收发:
+
+```go
+pub, _ := binder.NewPublisher(ctx, "orders")
+defer pub.Close()
+_ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
+
+sub, _ := binder.NewSubscriber(ctx, "orders", "")
+defer sub.Close()
+_ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
+    // 处理 m.Payload / m.Headers
+    return nil
+})
+```
+
+`destination` 与 `source` 都是队列名;publisher 走默认 exchange、routingKey 取队列名,
+两侧都会幂等地 `QueueDeclare`。每个 publisher 与 subscriber 各自持有一个 channel
+(channel 非并发安全)。RabbitMQ 队列本身就是竞争消费组,因此 `group` 不使用。订阅方
+range 消费 deliveries —— handler 出错则 Nack 并 requeue,成功则 Ack。trace context 骑在
+消息 headers 上,配合 starter-otel 即可串联 producer 与 consumer 链路。原生
+`*amqp.Connection` bean 仍可用于自定义 exchange、路由、publisher confirm 等 binder 未建模
+的 AMQP 能力。
+
 ## 高级功能
 
 * **多 RabbitMQ 实例**：`spring.rabbitmq.instances` 下的每一项都会成为一个独立配置的

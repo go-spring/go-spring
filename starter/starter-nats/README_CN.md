@@ -65,6 +65,42 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 
 连接层事件（异步错误、断连、重连、关闭）会被桥接进 go-spring 日志。
 
+## 消息 Binder
+
+除原生连接外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
+(来自 `go-spring.org/stdlib/messaging`),让业务代码收发 `*messaging.Message`
+信封而不依赖 `nats.go` API —— 底层换 broker 时业务代码无需改动。
+
+从 `*Conn` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):
+
+```go
+import (
+    "go-spring.org/spring/gs"
+    StarterNats "go-spring.org/starter-nats"
+)
+
+gs.Provide(StarterNats.NewBinder, gs.TagArg("main"))
+```
+
+然后通过信封收发:
+
+```go
+pub, _ := binder.NewPublisher(ctx, "orders")
+defer pub.Close()
+_ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
+
+sub, _ := binder.NewSubscriber(ctx, "orders", "workers")
+defer sub.Close()
+_ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
+    // 处理 m.Payload / m.Headers
+    return nil
+})
+```
+
+订阅方的 `group` 映射为 NATS queue group(竞争消费)。trace context 骑在消息
+`Header` 上,配合 starter-otel 即可让 producer 与 consumer 链路串联。原生 `*Conn`
+bean 仍可用于 JetStream、请求-应答等 binder 未建模的 NATS 能力。
+
 ## 高级功能
 
 * **JetStream**：在某个实例上设置 `spring.nats.instances.<name>.jetstream.enabled=true`，

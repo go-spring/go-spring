@@ -1,0 +1,36 @@
+# RBAC for the Lease-backed lock. The application's ServiceAccount needs
+# get/create/update on coordination.k8s.io/leases in its namespace — the minimum
+# a Lease lock/election requires. Update is used for renewal and release; no
+# delete is needed because release clears holderIdentity rather than deleting the
+# object.
+#
+#   kubectl apply -f rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lock-k8s
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lock-k8s-leases
+  namespace: default
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lock-k8s-leases
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: lock-k8s
+    namespace: default
+roleRef:
+  kind: Role
+  name: lock-k8s-leases
+  apiGroup: rbac.authorization.k8s.io

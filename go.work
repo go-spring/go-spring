@@ -38,6 +38,7 @@ use (
 	./log/benchmarks/logs
 	./spring
 	./starter/starter-actuator
+	./starter/starter-admin-ui
 	./starter/starter-ants
 	./starter/starter-bigcache
 	./starter/starter-casbin
@@ -45,11 +46,13 @@ use (
 	./starter/starter-config-consul
 	./starter/starter-config-etcd
 	./starter/starter-config-file
+	./starter/starter-config-k8s
 	./starter/starter-config-nacos
 	./starter/starter-discovery-k8s
 	./starter/starter-dubbo
 	./starter/starter-echo
 	./starter/starter-elasticsearch
+	./starter/starter-gateway
 	./starter/starter-gin
 	./starter/starter-go-redis
 	./starter/starter-go-zero
@@ -67,6 +70,7 @@ use (
 	./starter/starter-kratos
 	./starter/starter-lock-consul
 	./starter/starter-lock-etcd
+	./starter/starter-lock-k8s
 	./starter/starter-lock-redis
 	./starter/starter-lua-filter
 	./starter/starter-memcached
@@ -81,9 +85,14 @@ use (
 	./starter/starter-pulsar
 	./starter/starter-rabbitmq
 	./starter/starter-redigo
+	./starter/starter-registry-consul
 	./starter/starter-resilience
 	./starter/starter-scheduler
+	./starter/starter-security-jwt
+	./starter/starter-swagger
 	./starter/starter-thrift
+	./starter/starter-transaction-saga
+	./starter/starter-transaction-saga-gorm
 	./starter/starter-trpc
 	./starter/starter-trpc/example
 	./starter/starter-validation

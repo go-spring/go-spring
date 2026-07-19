@@ -70,3 +70,7 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   is evicted or expires. It is a global hook shared by every DefaultDriver-built cache; per-instance callbacks require a
   custom `Driver`.
 * **Graceful shutdown**: the destroy callback calls `Close()`, stopping the background cleaner goroutine.
+* **Near cache backend**: `AsCache(bc, codec)` adapts a BigCache instance to `stdlib/cache.Cache` for use as the near
+  (in-process) level of a multi-level cache. Note BigCache expires by a single global `life-window`, so the per-call TTL
+  is ignored; when used purely as a local level, `cache.Memory` (which keeps concrete types without serialization) is
+  often the better fit.

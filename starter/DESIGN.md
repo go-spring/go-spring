@@ -207,6 +207,21 @@ application can load configuration from it at startup and hot-reload at runtime.
   client dials the address directly, unchanged. For examples of framework-native
   provider registration into consul/etcd/nacos/zookeeper/polaris, see
   `contrib/registry/`.
+- **Instance-level registration (ServiceRegistry) is provided; RPC-framework
+  provider registration is not.** Do not conflate two different "registration"
+  concerns. (1) Registering *this process* into an external registry
+  (Nacos/Consul/Eureka) — the Spring Cloud `@EnableDiscoveryClient` direction —
+  is a generic, transport-agnostic capability, provided via the
+  `stdlib/discovery` `Registrar` abstraction (`Register`/`Deregister` with
+  backend-owned TTL/heartbeat, reusing the same driver-registry seam as
+  `Discovery`) and its first backend `starter-registry-consul`. (2) Registering
+  an RPC framework's *services* stays framework-native per the bullet above.
+  Neither is needed in pure Kubernetes, where the platform registers every Pod
+  behind a Service (discover with `starter-discovery-k8s`); the `Registrar`
+  exists for VM / bare-metal / hybrid deployments. The register-me starter is a
+  global/infrastructure archetype (§2.4): it exports a `gs.Server` that registers
+  once the app is ready and deregisters on `PreStop`, so a rolling restart is
+  lossless.
 - **Observability is central-define, edge-bridge.** The starter emits through
   the OTel globals or bridges the library's internal logs into go-spring `log`
   via a `SetLogger` hook; it must also add a go-spring `FileLogger` sink or the

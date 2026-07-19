@@ -68,6 +68,45 @@ checks `Conn.Healthy()` reports the connection as up before exercising them.
 Connection-layer events (async errors, disconnect, reconnect, close) are bridged into
 go-spring's log.
 
+## Messaging Binder
+
+Beyond the raw connection, this starter can expose a broker-neutral
+`messaging.Binder` (from `go-spring.org/stdlib/messaging`), so application code
+publishes and consumes `*messaging.Message` envelopes without depending on the
+`nats.go` API — swapping the broker underneath does not touch business code.
+
+Register the binder as a bean from a `*Conn` (select the named instance with
+`gs.TagArg`):
+
+```go
+import (
+    "go-spring.org/spring/gs"
+    StarterNats "go-spring.org/starter-nats"
+)
+
+gs.Provide(StarterNats.NewBinder, gs.TagArg("main"))
+```
+
+Then publish and subscribe through the envelope:
+
+```go
+pub, _ := binder.NewPublisher(ctx, "orders")
+defer pub.Close()
+_ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
+
+sub, _ := binder.NewSubscriber(ctx, "orders", "workers")
+defer sub.Close()
+_ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
+    // handle m.Payload / m.Headers
+    return nil
+})
+```
+
+The subscriber `group` maps onto a NATS queue group (competing consumers). Trace
+context rides the message `Header`, so with starter-otel a trace links producer
+to consumer. The raw `*Conn` bean stays available for JetStream, request-reply
+and other NATS features the binder does not model.
+
 ## Advanced Features
 
 * **JetStream**: Set `spring.nats.instances.<name>.jetstream.enabled=true` to expose

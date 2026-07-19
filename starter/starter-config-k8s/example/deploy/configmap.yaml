@@ -1,0 +1,18 @@
+# The ConfigMap the example imports. Each data key is a config document parsed
+# by its extension (application.yaml -> YAML); the provider flattens it into
+# properties (server.port, demo.message, ...). Edit this object and the running
+# example hot-reloads the bound field within seconds:
+#
+#   kubectl apply -f configmap.yaml
+#   kubectl edit configmap app-config   # change demo.message, watch the logs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+data:
+  application.yaml: |
+    demo:
+      message: hello-from-configmap
+    server:
+      port: 8080

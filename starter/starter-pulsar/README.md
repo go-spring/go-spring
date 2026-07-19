@@ -112,6 +112,49 @@ err := handle(ctx, msg)
 starter.EndSpan(span, err)
 ```
 
+## Messaging Binder
+
+Beyond the raw client, this starter can expose a broker-neutral
+`messaging.Binder` (from `go-spring.org/stdlib/messaging`), so application code
+publishes and consumes `*messaging.Message` envelopes without depending on the
+Pulsar client API — swapping the broker underneath does not touch business code.
+
+Register the binder as a bean from a `pulsar.Client` (select the named instance
+with `gs.TagArg`):
+
+```go
+import (
+    "go-spring.org/spring/gs"
+    StarterPulsar "go-spring.org/starter-pulsar"
+)
+
+gs.Provide(StarterPulsar.NewBinder, gs.TagArg("a"))
+```
+
+Then publish and subscribe through the envelope:
+
+```go
+pub, _ := binder.NewPublisher(ctx, "orders")
+defer pub.Close()
+_ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
+
+sub, _ := binder.NewSubscriber(ctx, "orders", "workers")
+defer sub.Close()
+_ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
+    // handle m.Payload / m.Headers
+    return nil
+})
+```
+
+`destination` and `source` are topics. The subscriber `group` becomes the Pulsar
+subscription name in `Shared` mode (competing consumers); an empty group derives
+`go-spring-<topic>`. Each publisher owns a Producer and each subscriber owns a
+Consumer with a background receive loop — a handler error nacks the message for
+redelivery while success acks it. Trace context rides the message properties, so
+with starter-otel a trace links producer to consumer. The raw `pulsar.Client`
+bean stays available for readers, the admin API, schemas and other Pulsar
+features the binder does not model.
+
 ## Advanced Features
 
 * **Multiple Pulsar clients**: Every entry under `spring.pulsar.instances` becomes

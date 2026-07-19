@@ -62,6 +62,48 @@ fetches.EachRecord(func(r *kgo.Record) {
 })
 ```
 
+## Messaging Binder
+
+Beyond the raw client, this starter can expose a broker-neutral
+`messaging.Binder` (from `go-spring.org/stdlib/messaging`), so application code
+publishes and consumes `*messaging.Message` envelopes without depending on the
+franz-go API — swapping the broker underneath does not touch business code.
+
+Register the binder as a bean from a `*kgo.Client` (select the named instance
+with `gs.TagArg`):
+
+```go
+import (
+    "go-spring.org/spring/gs"
+    StarterKafka "go-spring.org/starter-kafka"
+)
+
+gs.Provide(StarterKafka.NewBinder, gs.TagArg("a"))
+```
+
+Then publish and subscribe through the envelope:
+
+```go
+pub, _ := binder.NewPublisher(ctx, "orders")
+defer pub.Close()
+_ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
+
+sub, _ := binder.NewSubscriber(ctx, "orders", "")
+defer sub.Close()
+_ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
+    // handle m.Payload / m.Headers
+    return nil
+})
+```
+
+franz-go fixes a client's consume topics and group at construction, and one
+client is a single consumer, so the subscriber polls the client's configured
+topics and `source` selects among them by name while `group` comes from the
+client config — **use one client bean per logical consumer**. Trace context
+rides record headers via the kotel hooks, so with starter-otel a trace links
+producer to consumer. The raw `*kgo.Client` bean stays available for
+transactions, the admin API and other Kafka features the binder does not model.
+
 ## Advanced Features
 
 * **Multiple Kafka clients**: Every entry under `spring.kafka.instances` becomes an

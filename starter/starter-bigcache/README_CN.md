@@ -65,3 +65,6 @@ value, err := s.Cache.Get("key")
 * **命中率统计**：设置 `stats-enabled=true` 后读取 `cache.Stats()` 获取命中/未命中/冲突计数，用于监控缓存效果。
 * **淘汰/过期回调**：在启动前调用 `StarterBigCache.SetOnRemove(fn)`，当条目被淘汰或过期时收到通知。该回调为所有 DefaultDriver 构建的缓存共享的全局钩子；按实例定制需自定义 `Driver`。
 * **优雅关闭**：destroy 回调会调用 `Close()`，停止后台清理 goroutine。
+* **近端缓存后端**：`AsCache(bc, codec)` 将 BigCache 实例适配为 `stdlib/cache.Cache`,用作多级缓存的近端(进程内)层。
+  注意 BigCache 按单一全局 `life-window` 过期,因此每次调用的 TTL 会被忽略;若纯粹作为本地层,通常更适合用
+  `cache.Memory`(不序列化、保留具体类型)。

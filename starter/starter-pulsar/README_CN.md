@@ -107,6 +107,45 @@ err := handle(ctx, msg)
 starter.EndSpan(span, err)
 ```
 
+## 消息 Binder
+
+除原生客户端外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
+(来自 `go-spring.org/stdlib/messaging`),让业务代码收发 `*messaging.Message`
+信封而不依赖 Pulsar 客户端 API —— 底层换 broker 时业务代码无需改动。
+
+从 `pulsar.Client` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):
+
+```go
+import (
+    "go-spring.org/spring/gs"
+    StarterPulsar "go-spring.org/starter-pulsar"
+)
+
+gs.Provide(StarterPulsar.NewBinder, gs.TagArg("a"))
+```
+
+然后通过信封收发:
+
+```go
+pub, _ := binder.NewPublisher(ctx, "orders")
+defer pub.Close()
+_ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
+
+sub, _ := binder.NewSubscriber(ctx, "orders", "workers")
+defer sub.Close()
+_ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
+    // 处理 m.Payload / m.Headers
+    return nil
+})
+```
+
+`destination` 与 `source` 都是 topic。订阅方的 `group` 映射为 `Shared` 模式下的
+Pulsar 订阅名(竞争消费);group 为空时派生 `go-spring-<topic>`。每个 publisher 持有一个
+Producer,每个 subscriber 持有一个 Consumer 并跑后台接收循环 —— handler 出错则 Nack 触发
+重投,成功则 Ack。trace context 骑在消息 Properties 上,配合 starter-otel 即可串联
+producer 与 consumer 链路。原生 `pulsar.Client` bean 仍可用于 reader、admin API、schema
+等 binder 未建模的 Pulsar 能力。
+
 ## 高级特性
 
 * **多 Pulsar 客户端**:`spring.pulsar.instances` 下的每一项都会成为一个独立配置的
