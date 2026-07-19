@@ -1,0 +1,29 @@
+{{- if .Values.prometheusAdapter.enabled }}
+# prometheus-adapter rule set that turns an actuator counter scraped by
+# Prometheus (via the ServiceMonitor) into a per-pod custom metric on
+# custom.metrics.k8s.io, which the HPA above consumes. Rendered into the
+# namespace where prometheus-adapter runs (Values.prometheusAdapter.namespace),
+# not the app's — mount it into the adapter Deployment's --config flag.
+#
+# Chain: actuator /metrics -> ServiceMonitor -> Prometheus -> prometheus-adapter
+#        -> custom.metrics.k8s.io -> HPA.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.prometheusAdapter.configMapName }}
+  namespace: {{ .Values.prometheusAdapter.namespace }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    rules:
+      - seriesQuery: 'http_requests_total{namespace!="",pod!=""}'
+        resources:
+          overrides:
+            namespace: {resource: "namespace"}
+            pod: {resource: "pod"}
+        name:
+          matches: "^(.*)_total$"
+          as: "{{ .Values.autoscaling.customMetric.name }}"
+        metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
+{{- end }}

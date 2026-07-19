@@ -13,7 +13,9 @@ liveness 探针。
 - Kubernetes 探针分组:`GroupLiveness`、`GroupReadiness`、`GroupStartup`。
 - 可选 `Grouped` 接口:只想参与部分探针时实现它;未实现时默认走
   readiness + startup(安全默认)。
-- `GroupsOf` / `InGroup` 辅助函数,让收集方按探针过滤。
+- 可选 `Critical` 接口:返回 `IsCritical() false` 的指标仍会逐组件上报,但其 `DOWN`
+  不会拉低聚合探针,因此"降级但可容忍"的依赖不会把 Pod 摘出流量。默认(未实现)为关键。
+- `GroupsOf` / `InGroup` / `IsCritical` 辅助函数,让收集方按探针过滤并加权。
 
 ## 安装
 

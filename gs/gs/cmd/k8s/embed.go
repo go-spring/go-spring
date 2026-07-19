@@ -29,8 +29,18 @@ import (
 	"path/filepath"
 	"sort"
 
+	"strings"
+
 	"go-spring.org/gs/internal/runcmd"
 	"go-spring.org/stdlib/errutil"
+)
+
+// Deploy format selectors. A project uses exactly one; the other tree under
+// templates/deploy is skipped so the generated project isn't cluttered with a
+// packaging style it doesn't use.
+const (
+	FormatKustomize = "kustomize"
+	FormatHelm      = "helm"
 )
 
 // templates carries every scaffolding file. The `all:` prefix is required so
@@ -40,18 +50,26 @@ import (
 //go:embed all:templates
 var templates embed.FS
 
-// Write renders every embedded template into destDir, applying the given
+// Write renders the embedded templates into destDir, applying the given
 // placeholder replacements to file contents. Placeholders are applied
 // longest-key-first so a shorter key never partially overwrites a longer one
 // that contains it as a prefix. Existing files are skipped (with an [INFO]
 // line) unless force is true, so re-running `gs k8s` never silently clobbers
 // hand-edited manifests.
-func Write(destDir string, replaces map[string]string, force bool) error {
+//
+// format selects the packaging style (FormatKustomize or FormatHelm): shared
+// files (Dockerfile, conf/, README) are always written, but only the matching
+// tree under deploy/ is emitted — deploy/k8s for kustomize, deploy/helm for
+// helm — so a project gets exactly one packaging layout.
+func Write(destDir string, replaces map[string]string, force bool, format string) error {
 	keys := make([]string, 0, len(replaces))
 	for k := range replaces {
 		keys = append(keys, k)
 	}
 	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
+
+	kustomizeDir := filepath.Join("deploy", "k8s")
+	helmDir := filepath.Join("deploy", "helm")
 
 	const root = "templates"
 	return fs.WalkDir(templates, root, func(path string, d fs.DirEntry, err error) error {
@@ -65,6 +83,19 @@ func Write(destDir string, replaces map[string]string, force bool) error {
 		if err != nil {
 			return errutil.Explain(err, "resolve template path %q", path)
 		}
+
+		// Skip the deploy tree that doesn't match the chosen format.
+		switch format {
+		case FormatHelm:
+			if isUnder(rel, kustomizeDir) {
+				return nil
+			}
+		default: // FormatKustomize
+			if isUnder(rel, helmDir) {
+				return nil
+			}
+		}
+
 		outPath := filepath.Join(destDir, rel)
 
 		if !force {
@@ -95,4 +126,10 @@ func Write(destDir string, replaces map[string]string, force bool) error {
 		}
 		return nil
 	})
+}
+
+// isUnder reports whether the slash- or OS-separated relative path rel is dir
+// itself or lives beneath it, so a whole subtree can be skipped in one check.
+func isUnder(rel, dir string) bool {
+	return rel == dir || strings.HasPrefix(rel, dir+string(filepath.Separator))
 }

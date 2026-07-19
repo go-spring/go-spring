@@ -49,12 +49,19 @@ That is all. Every client starter that resolves a `service-name` through
 no per-component change. The switch is read once at startup, before any client
 builds its dialer.
 
+Set `spring.mesh.enabled=auto` to let the starter infer mesh mode from the
+environment: it turns on only when a sidecar is detected (via mesh-injected
+environment variables such as `ISTIO_META_*` / `LINKERD2_PROXY_*`). An explicit
+`true` / `false` always wins — `auto` is only the inference used when you have
+not decided.
+
 ## When to enable
 
 | Deployment | `spring.mesh.enabled` | Rationale |
 | --- | --- | --- |
 | Kubernetes **with** a sidecar injected (Istio/Envoy, Linkerd) | `true` | The sidecar owns discovery + load balancing; the app must not balance again. |
 | VM / bare metal / any deployment **without** a mesh | `false` (default) | No sidecar exists, so the app's own client-side discovery and load balancing must stay active. |
+| Same artifact deployed both ways | `auto` | Infer per-environment from sidecar signals; explicit `true`/`false` still overrides. |
 
 ## What changes when enabled
 
@@ -66,7 +73,10 @@ builds its dialer.
   with no strategy selection and no outlier ejection (a lone mesh endpoint must
   never be evicted).
 - **Tracing** is unaffected: the OTel global propagator still injects headers, so
-  application and mesh spans stay correlated.
+  application and mesh spans stay correlated. When `starter-otel` is present it
+  fills the `discovery.SetTraceInjector` seam, so wrapping an outbound transport
+  with `discovery.TraceRoundTripper` stamps `traceparent` on every request and
+  keeps the trace unbroken across the sidecar hop.
 - **Readiness semantics are unchanged** — probes behave the same with or without
   mesh mode.
 
@@ -81,7 +91,7 @@ builds its dialer.
 
 | Property | Default | Description |
 | --- | --- | --- |
-| `spring.mesh.enabled` | `false` | Turns service-mesh mode on. Enable only when a sidecar is injected. |
+| `spring.mesh.enabled` | `false` | Service-mesh mode: `true`, `false`, or `auto` (infer from sidecar signals). Enable only when a sidecar is injected. |
 
 ## Example
 

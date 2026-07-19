@@ -116,3 +116,28 @@ func InGroup(ind Indicator, group Group) bool {
 	}
 	return false
 }
+
+// Critical is an optional interface an Indicator may implement to declare
+// whether its failure should fail the aggregate probe.
+//
+// An indicator that does not implement it is treated as critical: any DOWN
+// critical indicator flips the probe to DOWN (503), so Kubernetes removes the
+// pod from Service endpoints. A non-critical indicator's status is still
+// reported for observability, but a DOWN result does not lower the aggregate —
+// use it for a degraded-but-tolerable dependency (an optional cache, a
+// best-effort downstream) that should not take the pod out of rotation.
+type Critical interface {
+	// IsCritical reports whether a failure of this indicator should fail the
+	// aggregate probe.
+	IsCritical() bool
+}
+
+// IsCritical reports whether a DOWN result from ind should lower the aggregate
+// probe status, applying the default (true) when ind does not implement
+// [Critical].
+func IsCritical(ind Indicator) bool {
+	if c, ok := ind.(Critical); ok {
+		return c.IsCritical()
+	}
+	return true
+}

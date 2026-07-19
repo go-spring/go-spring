@@ -16,7 +16,12 @@ autowires all of them for readiness, startup, and liveness probes.
 - Optional `Grouped` interface for indicators that only want to contribute
   to specific probes; the safe default (readiness + startup) applies when
   it is not implemented.
-- `GroupsOf` / `InGroup` helpers so collectors filter indicators per probe.
+- Optional `Critical` interface: an indicator that returns `IsCritical() false`
+  is still reported per-component but its `DOWN` result does not lower the
+  aggregate probe, so a degraded-but-tolerable dependency keeps the pod in
+  rotation. The default (not implemented) is critical.
+- `GroupsOf` / `InGroup` / `IsCritical` helpers so collectors filter and weight
+  indicators per probe.
 
 ## Installation
 

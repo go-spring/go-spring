@@ -71,6 +71,7 @@ HTTP server the application already runs (no own port).
 | `starter-mongodb` | [mongo-driver/v2](https://go.mongodb.org/mongo-driver/v2) | MongoDB document database |
 | `starter-neo4j` | [neo4j-go-driver](https://github.com/neo4j/neo4j-go-driver) | Neo4j graph database |
 | `starter-elasticsearch` | [go-elasticsearch](https://github.com/elastic/go-elasticsearch) | Elasticsearch search engine |
+| `starter-repository-gorm` | [gorm](https://gorm.io/) | Generic `repository.Repository[T,ID]` (CRUD + paging + audit) over any gorm `*gorm.DB` |
 
 ## Cache
 

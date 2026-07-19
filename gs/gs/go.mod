@@ -6,6 +6,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	go-spring.org/stdlib v0.1.7
 	golang.org/x/mod v0.37.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

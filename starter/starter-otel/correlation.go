@@ -18,8 +18,12 @@ package StarterOTel
 
 import (
 	"context"
+	"net/http"
 
 	"go-spring.org/log"
+	"go-spring.org/stdlib/discovery"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -51,4 +55,20 @@ func installLogCorrelation() {
 			log.String("span_id", sc.SpanID().String()),
 		}
 	}
+}
+
+// installTracePropagation fills the stdlib/discovery trace-injector seam with an
+// injector backed by the global OTel propagator (the one just installed from
+// ${spring.observability.trace.propagator}, W3C traceparent and/or B3). It lets
+// outbound requests carry the active trace context so a downstream service — and
+// any mesh sidecar (Istio/Envoy) on the path — joins the same trace instead of
+// starting a new one, keeping links intact across a hop.
+//
+// Like installLogCorrelation, this keeps stdlib free of an OTel dependency: the
+// seam is discovery.SetTraceInjector, and importing the one starter that owns
+// the propagator lights up propagation everywhere with no per-component wiring.
+func installTracePropagation() {
+	discovery.SetTraceInjector(func(ctx context.Context, header http.Header) {
+		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(header))
+	})
 }

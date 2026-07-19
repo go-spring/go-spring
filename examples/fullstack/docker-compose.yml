@@ -1,0 +1,20 @@
+# Dependencies for the full-stack reference app: a Consul agent for service
+# discovery/registration and a Nacos server for the config-center hot-reload leg.
+# Both bind to 127.0.0.1 only, matching the addresses hard-coded in the services'
+# conf/app.properties and main.go.
+services:
+  consul:
+    image: hashicorp/consul:1.18
+    container_name: fullstack-consul
+    command: agent -dev -client=0.0.0.0
+    ports:
+      - "127.0.0.1:8500:8500"
+
+  nacos:
+    image: nacos/nacos-server:v2.4.3
+    container_name: fullstack-nacos
+    environment:
+      MODE: "standalone"
+    ports:
+      - "127.0.0.1:8848:8848"
+      - "127.0.0.1:9848:9848"

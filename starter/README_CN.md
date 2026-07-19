@@ -69,6 +69,7 @@
 | `starter-mongodb` | [mongo-driver/v2](https://go.mongodb.org/mongo-driver/v2) | MongoDB 文档数据库 |
 | `starter-neo4j` | [neo4j-go-driver](https://github.com/neo4j/neo4j-go-driver) | Neo4j 图数据库 |
 | `starter-elasticsearch` | [go-elasticsearch](https://github.com/elastic/go-elasticsearch) | Elasticsearch 搜索引擎 |
+| `starter-repository-gorm` | [gorm](https://gorm.io/) | 基于任意 gorm `*gorm.DB` 的通用 `repository.Repository[T,ID]`(CRUD + 分页 + 审计) |
 
 ## 缓存
 

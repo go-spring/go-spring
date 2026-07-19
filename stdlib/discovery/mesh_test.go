@@ -18,6 +18,7 @@ package discovery
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -88,4 +89,69 @@ func TestNewClientDialer_NormalModeResolvesBackend(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer ld.Stop()
 	assert.Slice(t, addrsOf(ld.Endpoints())).Equal([]string{"10.0.0.1:6379", "10.0.0.2:6379"})
+}
+
+func TestDetectMesh_NoSignal(t *testing.T) {
+	// A clean environment has no sidecar signal, so auto mode stays off.
+	assert.That(t, DetectMesh()).False()
+}
+
+func TestDetectMesh_IstioSignal(t *testing.T) {
+	t.Setenv("ISTIO_META_WORKLOAD_NAME", "user-svc")
+	assert.That(t, DetectMesh()).True()
+}
+
+func TestDetectMesh_LinkerdSignal(t *testing.T) {
+	t.Setenv("LINKERD2_PROXY_LOG", "info")
+	assert.That(t, DetectMesh()).True()
+}
+
+func TestInjectTrace_NoInjectorIsNoop(t *testing.T) {
+	t.Cleanup(func() { SetTraceInjector(nil) })
+	SetTraceInjector(nil)
+
+	h := http.Header{}
+	InjectTrace(context.Background(), h) // must not panic and must add nothing
+	assert.Number(t, len(h)).Equal(0)
+}
+
+func TestInjectTrace_UsesInstalledInjector(t *testing.T) {
+	t.Cleanup(func() { SetTraceInjector(nil) })
+	SetTraceInjector(func(_ context.Context, header http.Header) {
+		header.Set("traceparent", "00-abc-def-01")
+	})
+
+	h := http.Header{}
+	InjectTrace(context.Background(), h)
+	assert.String(t, h.Get("traceparent")).Equal("00-abc-def-01")
+}
+
+// captureRT records the request it receives so a test can inspect the headers
+// the transport chain produced.
+type captureRT struct{ got *http.Request }
+
+func (c *captureRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	c.got = req
+	return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Header: http.Header{}}, nil
+}
+
+func TestTraceRoundTripper_InjectsHeaderWithoutMutatingCaller(t *testing.T) {
+	t.Cleanup(func() { SetTraceInjector(nil) })
+	SetTraceInjector(func(_ context.Context, header http.Header) {
+		header.Set("traceparent", "00-trace-span-01")
+	})
+
+	cap := &captureRT{}
+	rt := TraceRoundTripper(cap)
+
+	req, err := http.NewRequest(http.MethodGet, "http://user-svc/api", nil)
+	assert.Error(t, err).Nil()
+
+	_, err = rt.RoundTrip(req)
+	assert.Error(t, err).Nil()
+
+	// The outbound request carries the trace header ...
+	assert.String(t, cap.got.Header.Get("traceparent")).Equal("00-trace-span-01")
+	// ... but the caller's original request was left untouched (net/http contract).
+	assert.String(t, req.Header.Get("traceparent")).Equal("")
 }

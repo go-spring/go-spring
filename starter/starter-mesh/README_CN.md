@@ -44,12 +44,17 @@ spring.mesh.enabled=true
 以及所有 `stdlib/loadbalance` 的 Pool,都会自动退化 —— 无需逐个组件改动。开关在启动
 时被读取一次,早于任何 client 构造其 dialer。
 
+设置 `spring.mesh.enabled=auto` 可让 starter 从环境自动推断:仅当探测到 sidecar
+(通过网格注入的环境变量,如 `ISTIO_META_*` / `LINKERD2_PROXY_*`)时才开启。显式的
+`true` / `false` 始终优先 —— `auto` 只是你未决策时使用的推断。
+
 ## 何时开启
 
 | 部署形态 | `spring.mesh.enabled` | 原因 |
 | --- | --- | --- |
 | Kubernetes **且注入了** sidecar(Istio/Envoy、Linkerd) | `true` | sidecar 已负责发现与负载均衡,应用不能再选一次。 |
 | 虚拟机 / 裸机 / 任何**无网格**的部署 | `false`(默认) | 没有 sidecar,应用自带的客户端发现与负载均衡必须保持生效。 |
+| 同一制品两种环境都部署 | `auto` | 按 sidecar 信号逐环境推断;显式 `true`/`false` 仍会覆盖。 |
 
 ## 开启后有何变化
 
@@ -59,7 +64,9 @@ spring.mesh.enabled=true
 - **`stdlib/loadbalance`** —— `Pool` 直接返回这唯一端点,不做算法选择、不做离群剔除
   (唯一的网格端点绝不能被剔除,否则流量黑洞)。
 - **链路追踪不受影响**:OTel 全局 propagator 仍然注入 header,应用与网格的 span 保持
-  关联。
+  关联。存在 `starter-otel` 时,它会填充 `discovery.SetTraceInjector` 接缝,于是用
+  `discovery.TraceRoundTripper` 包裹出站 transport 即可在每个请求上打上 `traceparent`,
+  使链路跨过 sidecar 这一跳不断段。
 - **就绪语义不变** —— 无论是否开启 mesh 模式,探针行为一致。
 
 ## 不做的事
@@ -72,7 +79,7 @@ spring.mesh.enabled=true
 
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `spring.mesh.enabled` | `false` | 打开服务网格模式。仅在注入了 sidecar 时开启。 |
+| `spring.mesh.enabled` | `false` | 服务网格模式:`true`、`false` 或 `auto`(按 sidecar 信号推断)。仅在注入了 sidecar 时开启。 |
 
 ## 示例
 

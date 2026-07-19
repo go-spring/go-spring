@@ -19,12 +19,6 @@ spec:
           type: Utilization
           averageUtilization: 70
     # To scale on a custom/application metric exposed via the ServiceMonitor
-    # (e.g. requests-per-second scraped from /metrics), add a Pods metric here
-    # and install the prometheus-adapter. Left commented as a starting point.
-    # - type: Pods
-    #   pods:
-    #     metric:
-    #       name: http_requests_per_second
-    #     target:
-    #       type: AverageValue
-    #       averageValue: "100"
+    # (e.g. requests-per-second scraped from /metrics), install prometheus-adapter
+    # and apply the samples in ../monitoring (prometheus-adapter-configmap.yaml +
+    # hpa-custom-metric.yaml, which replaces this HPA). Left as CPU-only here.

@@ -1,0 +1,28 @@
+# Sample HPA that scales GS_APP_NAME on a custom/application metric exposed via
+# prometheus-adapter (see prometheus-adapter-configmap.yaml). Apply this INSTEAD
+# of base/hpa.yaml when you want custom-metric scaling — running both would give
+# the Deployment two autoscalers. Requires the custom.metrics.k8s.io API served
+# by prometheus-adapter.
+#
+# Not listed in base/kustomization.yaml on purpose (it replaces the default HPA).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: GS_APP_NAME-custom
+  labels:
+    app.kubernetes.io/name: GS_APP_NAME
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: GS_APP_NAME
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"

@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "app.name" . }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "app.selectorLabels" . | nindent 8 }}
+    spec:
+      # Give the app time to drain: readiness flips to OUT_OF_SERVICE on SIGTERM,
+      # preStop sleeps while the endpoint controller removes this pod, then the
+      # app stops servers. Keep this >= app.shutdown.timeout in app-k8s.properties.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: {{ include "app.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.http }}
+            - name: management
+              containerPort: {{ .Values.ports.management }}
+          env:
+            # Activate conf/app-k8s.properties (JSON logs to stdout, drain windows).
+            - name: GS_SPRING_PROFILES_ACTIVE
+              value: "k8s"
+            # Downward API -> GS_ env -> property tree (pod.name, pod.namespace, ...).
+            # Consumed by go-spring.org/stdlib/podinfo.PodInfo.
+            - name: GS_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GS_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GS_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: GS_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: GS_POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+          # Probes hit the actuator management port. startupProbe guards a slow
+          # boot from the liveness probe; readinessProbe fails during drain so
+          # traffic is removed before servers stop.
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: management
+            periodSeconds: 3
+            failureThreshold: 40
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: management
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: management
+            periodSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # Matches app.shutdown.pre-stop-delay. Gives the endpoint
+              # controller time to stop routing new requests to this pod.
+              exec:
+                command: ["sleep", "{{ .Values.preStopSleepSeconds }}"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: podinfo
+              mountPath: /etc/podinfo
+              readOnly: true
+      volumes:
+        # Downward API labels/annotations mounted as files; podinfo reads
+        # /etc/podinfo/labels (see pod.labels.path in app-k8s.properties).
+        - name: podinfo
+          downwardAPI:
+            items:
+              - path: labels
+                fieldRef:
+                  fieldPath: metadata.labels
+              - path: annotations
+                fieldRef:
+                  fieldPath: metadata.annotations

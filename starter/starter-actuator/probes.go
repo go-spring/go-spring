@@ -32,8 +32,10 @@ type componentStatus struct {
 // checkGroup runs every indicator that contributes to the given probe group and
 // reports the aggregate status plus per-component detail. An indicator that does
 // not declare its groups defaults to readiness+startup (never liveness), so a
-// dependency check can never fail a liveness probe. With no matching indicator
-// the group is trivially UP.
+// dependency check can never fail a liveness probe. A DOWN indicator lowers the
+// aggregate only when it is critical (the default); a non-critical indicator's
+// failure is still reported per-component but does not take the pod out of
+// rotation. With no matching indicator the group is trivially UP.
 func (s *Server) checkGroup(ctx context.Context, group health.Group) (health.Status, map[string]componentStatus) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
@@ -46,7 +48,9 @@ func (s *Server) checkGroup(ctx context.Context, group health.Group) (health.Sta
 		}
 		if err := ind.CheckHealth(ctx); err != nil {
 			components[ind.HealthName()] = componentStatus{Status: health.StatusDown, Error: err.Error()}
-			overall = health.StatusDown
+			if health.IsCritical(ind) {
+				overall = health.StatusDown
+			}
 		} else {
 			components[ind.HealthName()] = componentStatus{Status: health.StatusUp}
 		}

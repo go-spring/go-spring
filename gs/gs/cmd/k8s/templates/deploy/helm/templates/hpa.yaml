@@ -1,0 +1,33 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "app.name" . }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "app.name" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if .Values.autoscaling.customMetric.enabled }}
+    # Custom/application metric exposed via the ServiceMonitor and surfaced on
+    # custom.metrics.k8s.io by prometheus-adapter (see prometheus-adapter.yaml).
+    - type: Pods
+      pods:
+        metric:
+          name: {{ .Values.autoscaling.customMetric.name }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.autoscaling.customMetric.averageValue | quote }}
+    {{- end }}
+{{- end }}

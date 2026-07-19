@@ -31,6 +31,9 @@ package StarterMesh
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -48,18 +51,41 @@ func init() {
 	gs.Module(nil, setup)
 }
 
-// setup binds ${spring.mesh} and applies the switch to stdlib/discovery, which
-// stdlib/loadbalance also reads. A false value (the default) is applied too, so
-// an imported-but-disabled starter leaves the client-side stack fully active.
+// setup binds ${spring.mesh}, resolves the mode to a boolean and applies the
+// switch to stdlib/discovery, which stdlib/loadbalance also reads. A false value
+// (the default) is applied too, so an imported-but-disabled starter leaves the
+// client-side stack fully active.
 func setup(_ gs.BeanProvider, p flatten.Storage) error {
 	var cfg Config
 	if err := conf.Bind(p, &cfg, "${spring.mesh}"); err != nil {
 		return err
 	}
-	discovery.SetMeshMode(cfg.Enabled)
-	if cfg.Enabled {
+	enabled, err := resolveMeshMode(cfg.Enabled)
+	if err != nil {
+		return err
+	}
+	discovery.SetMeshMode(enabled)
+	if enabled {
 		log.Infof(context.Background(), log.TagAppDef,
 			"service-mesh mode enabled: client-side discovery and load balancing degrade to pass-through; the sidecar owns them")
 	}
 	return nil
+}
+
+// resolveMeshMode turns the configured ${spring.mesh.enabled} value into the
+// boolean the discovery layer consumes. "auto" infers from the environment via
+// discovery.DetectMesh; any other value is parsed as a boolean, keeping the
+// explicit true/false as the single source of truth.
+func resolveMeshMode(mode string) (bool, error) {
+	if strings.EqualFold(strings.TrimSpace(mode), "auto") {
+		detected := discovery.DetectMesh()
+		log.Infof(context.Background(), log.TagAppDef,
+			"service-mesh mode=auto: sidecar %s", map[bool]string{true: "detected", false: "not detected"}[detected])
+		return detected, nil
+	}
+	enabled, err := strconv.ParseBool(mode)
+	if err != nil {
+		return false, fmt.Errorf("invalid spring.mesh.enabled %q: want true, false, or auto", mode)
+	}
+	return enabled, nil
 }

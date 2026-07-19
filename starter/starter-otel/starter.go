@@ -86,6 +86,9 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		// Correlate logs with traces: install the log hook that stamps every
 		// record with the active span's trace_id/span_id.
 		installLogCorrelation()
+		// Propagate trace context on outbound requests (via the discovery
+		// seam) so downstream services and mesh sidecars share one trace.
+		installTracePropagation()
 	}
 
 	if cfg.Metrics.Enable && cfg.Metrics.Exporter != "none" {

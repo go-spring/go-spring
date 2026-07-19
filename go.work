@@ -27,6 +27,7 @@ use (
 	./contrib/registry/zookeeper
 	./examples/bookman
 	./examples/chatAI
+	./examples/fullstack
 	./examples/miniapi
 	./examples/startup
 	./gs/gs
@@ -79,6 +80,8 @@ use (
 	./starter/starter-lock-redis
 	./starter/starter-lua-filter
 	./starter/starter-mail
+	./starter/starter-migration-gorm
+	./starter/starter-migration-gorm/example
 	./starter/starter-mesh
 	./starter/starter-mesh/example
 	./starter/starter-memcached
@@ -95,6 +98,11 @@ use (
 	./starter/starter-rabbitmq
 	./starter/starter-redigo
 	./starter/starter-registry-consul
+	./starter/starter-registry-etcd
+	./starter/starter-registry-nacos
+	./starter/starter-registry-zookeeper
+	./starter/starter-repository-gorm
+	./starter/starter-repository-gorm/example
 	./starter/starter-resilience
 	./starter/starter-scheduler
 	./starter/starter-security-jwt

@@ -18,9 +18,17 @@ package StarterMesh
 
 // Config holds the service-mesh switch, bound from ${spring.mesh}.
 type Config struct {
-	// Enabled turns service-mesh mode on. Set it to true only when a sidecar is
-	// injected (it does discovery and load balancing for you); leave it false on
-	// VMs, bare metal, or any deployment without a mesh, where the application's
-	// own client-side discovery and load balancing must stay active.
-	Enabled bool `value:"${enabled:=false}"`
+	// Enabled selects the service-mesh mode. It accepts "true", "false" (the
+	// default), or "auto":
+	//
+	//   - true  — force mesh mode on. Set it when a sidecar is injected (it does
+	//     discovery and load balancing for you).
+	//   - false — force mesh mode off. Leave it on VMs, bare metal, or any
+	//     deployment without a mesh, where the application's own client-side
+	//     discovery and load balancing must stay active.
+	//   - auto  — infer from the environment: mesh mode turns on only when a
+	//     sidecar is detected (see discovery.DetectMesh). The explicit true/false
+	//     remains the single source of truth; auto is just the inference used when
+	//     the operator has not decided.
+	Enabled string `value:"${enabled:=false}"`
 }

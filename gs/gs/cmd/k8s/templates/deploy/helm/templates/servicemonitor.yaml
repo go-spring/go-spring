@@ -1,0 +1,19 @@
+{{- if .Values.serviceMonitor.enabled }}
+# Requires the Prometheus Operator (CRD monitoring.coreos.com/v1). The actuator
+# exposes /metrics on the management port only when starter-otel is wired into
+# the app; without it, disable serviceMonitor or the endpoint returns 404.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "app.name" . }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: management
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}

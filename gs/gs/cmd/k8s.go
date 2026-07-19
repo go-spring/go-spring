@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -39,20 +40,22 @@ func NewK8sCmd() *cobra.Command {
 	var port int
 	var image string
 	var force bool
+	var format string
 
 	c := &cobra.Command{
 		Use:          "k8s",
 		Short:        "generate Kubernetes deploy scaffolding (Dockerfile, manifests)",
-		Example:      "  gs k8s --port 9090",
+		Example:      "  gs k8s --port 9090\n  gs k8s --format helm",
 		SilenceUsage: true,
 	}
 	c.Flags().IntVar(&port, "port", 9090, "primary application HTTP port exposed by the container")
 	c.Flags().StringVar(&image, "image", "", "container image repository (default: project name)")
+	c.Flags().StringVar(&format, "format", k8s.FormatKustomize, "deploy packaging format: kustomize | helm")
 	c.Flags().BoolVar(&force, "force", false, "overwrite existing files instead of skipping them")
 	runcmd.BindFlag(c)
 
 	c.RunE = func(cmd *cobra.Command, args []string) error {
-		return runK8s(port, image, force)
+		return runK8s(port, image, force, format)
 	}
 	return c
 }
@@ -61,7 +64,13 @@ func NewK8sCmd() *cobra.Command {
 // reads gs.json for the module path (reusing readProjectMeta), derives the
 // Kubernetes resource/image name from the module leaf, and substitutes those
 // plus the chosen ports into the embedded templates.
-func runK8s(port int, image string, force bool) error {
+func runK8s(port int, image string, force bool, format string) error {
+	switch format {
+	case k8s.FormatKustomize, k8s.FormatHelm:
+	default:
+		return errutil.Explain(fmt.Errorf("unknown format %q", format), "must be %q or %q", k8s.FormatKustomize, k8s.FormatHelm)
+	}
+
 	currDir, err := os.Getwd()
 	if err != nil {
 		return errutil.Explain(err, "get working directory")
@@ -86,14 +95,18 @@ func runK8s(port int, image string, force bool) error {
 		"GS_IMAGE":          image,
 	}
 
-	log.Printf("[INFO] Generating Kubernetes deploy scaffolding for %q", appName)
-	if err := k8s.Write(currDir, replaces, force); err != nil {
+	log.Printf("[INFO] Generating Kubernetes deploy scaffolding (%s) for %q", format, appName)
+	if err := k8s.Write(currDir, replaces, force, format); err != nil {
 		return err
 	}
 
-	log.Println("[INFO] Done. Next: build the image and apply an overlay, e.g.")
+	log.Println("[INFO] Done. Next: build the image and apply the manifests, e.g.")
 	log.Printf("[INFO]   docker build -t %s:latest .", image)
-	log.Println("[INFO]   kubectl apply -k deploy/k8s/overlays/dev")
+	if format == k8s.FormatHelm {
+		log.Println("[INFO]   helm template deploy/helm | kubectl apply -f -")
+	} else {
+		log.Println("[INFO]   kubectl apply -k deploy/k8s/overlays/dev")
+	}
 	return nil
 }
 

@@ -1,0 +1,64 @@
+# Values for GS_PROJECT_NAME. Mirrors the Kustomize defaults; tune per cluster.
+
+replicaCount: 2
+
+image:
+  repository: GS_IMAGE
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Override the chart-derived resource name (defaults to the chart name).
+nameOverride: ""
+
+service:
+  type: ClusterIP
+
+# The application HTTP port and the actuator management port (probes/metrics).
+ports:
+  http: GS_APP_PORT
+  management: GS_MGMT_PORT
+
+# terminationGracePeriodSeconds and the preStop sleep align with
+# app.shutdown.timeout / app.shutdown.pre-stop-delay in conf/app-k8s.properties:
+# readiness flips to OUT_OF_SERVICE on SIGTERM, preStop sleeps while endpoints
+# are removed, then servers stop. Keep grace period >= app.shutdown.timeout.
+terminationGracePeriodSeconds: 30
+preStopSleepSeconds: 5
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+# HorizontalPodAutoscaler. When enabled the Deployment omits a static replica
+# count so the HPA is authoritative.
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  # Scale on a custom/application metric scraped from the actuator /metrics
+  # endpoint via the ServiceMonitor + prometheus-adapter. Requires
+  # prometheusAdapter below (or an existing adapter) exposing this metric.
+  customMetric:
+    enabled: false
+    name: http_requests_per_second
+    averageValue: "100"
+
+# ServiceMonitor for the Prometheus Operator. /metrics is only served when
+# starter-otel is wired into the app; disable this otherwise.
+serviceMonitor:
+  enabled: true
+  interval: 15s
+
+# Optional prometheus-adapter ConfigMap that maps an actuator business metric
+# onto the custom.metrics.k8s.io API so autoscaling.customMetric can consume it.
+# Rendered into the namespace where prometheus-adapter runs (not the app's).
+# Off by default: most clusters manage the adapter config centrally.
+prometheusAdapter:
+  enabled: false
+  namespace: monitoring
+  configMapName: adapter-config

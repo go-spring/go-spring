@@ -47,3 +47,39 @@ func TestSetup_DefaultDisabled(t *testing.T) {
 	runSetup(t, map[string]string{})
 	assert.That(t, discovery.MeshMode()).False()
 }
+
+func TestSetup_InvalidValueErrors(t *testing.T) {
+	t.Cleanup(func() { discovery.SetMeshMode(false) })
+
+	st := flatten.NewPropertiesStorage(flatten.NewProperties(map[string]string{"spring.mesh.enabled": "maybe"}))
+	assert.Error(t, setup(nil, st)).NotNil()
+}
+
+func TestResolveMeshMode_Explicit(t *testing.T) {
+	on, err := resolveMeshMode("true")
+	assert.Error(t, err).Nil()
+	assert.That(t, on).True()
+
+	off, err := resolveMeshMode("false")
+	assert.Error(t, err).Nil()
+	assert.That(t, off).False()
+}
+
+func TestResolveMeshMode_AutoNoSignal(t *testing.T) {
+	// A clean environment carries no sidecar signal, so auto resolves to off.
+	on, err := resolveMeshMode("auto")
+	assert.Error(t, err).Nil()
+	assert.That(t, on).False()
+}
+
+func TestResolveMeshMode_AutoWithSignal(t *testing.T) {
+	t.Setenv("ISTIO_META_WORKLOAD_NAME", "user-svc")
+	on, err := resolveMeshMode("auto")
+	assert.Error(t, err).Nil()
+	assert.That(t, on).True()
+}
+
+func TestResolveMeshMode_Invalid(t *testing.T) {
+	_, err := resolveMeshMode("maybe")
+	assert.Error(t, err).NotNil()
+}
