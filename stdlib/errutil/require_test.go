@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package starter
+package errutil
 
 import (
 	"testing"

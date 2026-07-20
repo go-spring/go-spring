@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package starter
+package health
 
 import (
 	"context"
@@ -22,8 +22,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"go-spring.org/spring/actuator/health"
 )
 
 func TestNewIndicator_NameAndProbe(t *testing.T) {
@@ -35,25 +33,25 @@ func TestNewIndicator_NameAndProbe(t *testing.T) {
 
 func TestNewIndicator_Defaults(t *testing.T) {
 	ind := NewIndicator("x", func(context.Context) error { return nil })
-	// No WithGroups: must fall back to health defaults (readiness + startup),
+	// No WithGroups: must fall back to package defaults (readiness + startup),
 	// which means Grouped must NOT be implemented.
-	_, grouped := ind.(health.Grouped)
+	_, grouped := ind.(Grouped)
 	assert.False(t, grouped, "default indicator must not implement Grouped")
-	assert.Equal(t, []health.Group{health.GroupReadiness, health.GroupStartup}, health.GroupsOf(ind))
-	assert.True(t, health.IsCritical(ind), "default indicator must be critical")
+	assert.Equal(t, []Group{GroupReadiness, GroupStartup}, GroupsOf(ind))
+	assert.True(t, IsCritical(ind), "default indicator must be critical")
 }
 
 func TestNewIndicator_WithGroups(t *testing.T) {
 	ind := NewIndicator("x", func(context.Context) error { return nil },
-		WithGroups(health.GroupLiveness))
-	g, ok := ind.(health.Grouped)
+		WithGroups(GroupLiveness))
+	g, ok := ind.(Grouped)
 	assert.True(t, ok)
-	assert.Equal(t, []health.Group{health.GroupLiveness}, g.HealthGroups())
-	assert.True(t, health.InGroup(ind, health.GroupLiveness))
-	assert.False(t, health.InGroup(ind, health.GroupReadiness))
+	assert.Equal(t, []Group{GroupLiveness}, g.HealthGroups())
+	assert.True(t, InGroup(ind, GroupLiveness))
+	assert.False(t, InGroup(ind, GroupReadiness))
 }
 
 func TestNewIndicator_NonCritical(t *testing.T) {
 	ind := NewIndicator("x", func(context.Context) error { return nil }, NonCritical())
-	assert.False(t, health.IsCritical(ind))
+	assert.False(t, IsCritical(ind))
 }

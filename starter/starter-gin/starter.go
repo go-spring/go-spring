@@ -23,10 +23,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/spring/starter"
 )
 
 func init() {
@@ -67,7 +67,7 @@ type HealthConfig struct {
 type Config struct {
 	gs.SimpleHttpServerConfig
 	MaxBodySize int64             `value:"${maxBodySize:=0}"`
-	TLS         starter.TLSConfig `value:"${tls}"`
+	TLS         tlsconf.TLSConfig `value:"${tls}"`
 	Health      HealthConfig      `value:"${health}"`
 }
 

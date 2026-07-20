@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config holds the configuration parameters for a SQL Server connection.
@@ -54,13 +54,13 @@ type Config struct {
 	// this are logged at warn level.
 	SlowThreshold time.Duration `value:"${slow-threshold:=0}"`
 
-	// TLS uses the shared stdlib/starter.TLSConfig block (nested keys:
+	// TLS uses the shared tlsconf.TLSConfig block (nested keys:
 	// tls.enabled, tls.insecure-skip-verify, tls.ca-file). SQL Server maps
 	// them onto DSN parameters rather than a *tls.Config: TLS.Enabled →
 	// "encrypt=true"; TLS.InsecureSkipVerify → "TrustServerCertificate=true";
 	// TLS.CAFile → "certificate" (a PEM server certificate / CA path). The
 	// CertFile/KeyFile fields are unused because the DSN has no client-cert slot.
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// ServiceName is the service discovery name. When set, Host/Port are
 	// ignored for dialing and the connection reaches a live instance resolved

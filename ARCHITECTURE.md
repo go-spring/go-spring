@@ -63,7 +63,7 @@ on an in-workspace module sends `go mod tidy` to the proxy and 404s. See the
 | `stdlib/` | foundation | Zero-dependency general-purpose utilities (a completion of the Go standard library) | Pure Go helpers — types, encoding, collections, hashing, text, ... | Any third-party import; capability abstractions / driver registries (those live in `spring/`); container/DI logic | [stdlib/README.md](stdlib/README.md) |
 | `log/` | foundation | Structured logging model, config grammar, adapters | The logging model, appenders, field encoding, log config parser | Business logging; hard deps on `spring` | [log/DESIGN.md](log/DESIGN.md) |
 | `spring/` | core | IoC container, dependency injection, app lifecycle, built-in HTTP server, conf, and the framework's capability abstractions | Bean model, injection, start/stop state machine, config binding/refresh, minimal HTTP server; capability interfaces + driver registries (cache, lock, discovery, resilience, ...) | Third-party business packages; integration code that wires a real backend; a full web framework (see §4) | [spring/DESIGN.md](spring/DESIGN.md) |
-| `starter/` | integration | One module per third-party service/framework, wired into the IoC container | `starter-*` modules following the five archetypes; the family design guide | Business logic; deployment scaffolding; cross-starter shared helper packages | [starter/DESIGN.md](starter/DESIGN.md) |
+| `starter/` | integration | One module per third-party service/framework, wired into the IoC container | `starter-*` modules following the five archetypes; the family design guide | Business logic; deployment scaffolding; a *new* shared-helper package living only to serve starters (use an existing natural home instead - see trap below) | [starter/DESIGN.md](starter/DESIGN.md) |
 | `gs/` | tooling | Dev tools: scaffolding (`gs`), GUI, code generation (`gs-http-gen`), mocking (`gs-mock`) | CLI/codegen/tooling that operates *on* projects | Runtime framework code; anything imported by a running app | [gs/README.md](gs/README.md) |
 | `contrib/` | demo | Runnable examples showing how third-party frameworks are wired the Go-Spring way | Per-framework runnable variants; smoke tests | Reusable modules (those become `starter-*`); deployment scaffolding | [contrib/DIRECTORY_CONVENTIONS.md](contrib/DIRECTORY_CONVENTIONS.md) |
 | `examples/` | demo | End-to-end sample applications built only from published starters | Reference apps (fullstack, bookman, ...) that *consume* the framework | New framework capabilities; code an app shouldn't need to copy | [examples/examples.md](examples/examples.md) |
@@ -100,10 +100,14 @@ Answer top-down; the first match wins.
 Two recurring traps:
 
 - *"I'll just add a small helper shared by two starters."* No — cross-starter
-  shared helper packages are currently disallowed
-  ([starter/DESIGN.md §3](starter/DESIGN.md), "Duplication is currently tolerated
-  over premature abstraction"). Duplicate first; a consolidation pass may come
-  later.
+  shared helper packages are disallowed when no natural home exists
+  ([starter/DESIGN.md §3](starter/DESIGN.md)). First check whether one of the
+  existing natural homes covers it - `spring/cloud/tlsconf` (TLS config),
+  `spring/actuator/health.NewIndicator` (health indicator factory),
+  `stdlib/errutil.RequireField`/`RequireAny` (fail-fast validation). If yes,
+  import it. If no, inline per-starter; a shared package materializes only
+  when its nature points at a real home, not when two starters happen to
+  share a snippet.
 - *"This abstraction needs a Redis client, I'll put it in stdlib."* No — two
   things are wrong. It is not a pure utility (it is a capability abstraction, so
   its home is `spring/`, not `stdlib/`), and the moment a third-party import is

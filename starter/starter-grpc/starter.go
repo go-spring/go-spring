@@ -21,10 +21,10 @@ import (
 	"net"
 	"time"
 
+	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/spring/starter"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -75,7 +75,7 @@ type Config struct {
 	MaxSendMsgSize       int                `value:"${maxSendMsgSize:=0}"`
 	MaxConcurrentStreams uint32             `value:"${maxConcurrentStreams:=0}"`
 	Keepalive            KeepaliveConfig    `value:"${keepalive}"`
-	TLS                  starter.TLSConfig  `value:"${tls}"`
+	TLS                  tlsconf.TLSConfig `value:"${tls}"`
 	Health               HealthConfig       `value:"${health}"`
 }
 

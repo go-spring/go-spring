@@ -21,7 +21,6 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/spring/actuator/health"
-	"go-spring.org/spring/starter"
 )
 
 // newClientHealth builds an indicator for a single/sentinel client. It is
@@ -29,14 +28,14 @@ import (
 // an application that also imports starter-actuator gets Redis readiness folded
 // into /readiness with no extra wiring.
 func newClientHealth(name string, client *redis.Client) health.Indicator {
-	return starter.NewIndicator("redis:"+name, func(ctx context.Context) error {
+	return health.NewIndicator("redis:"+name, func(ctx context.Context) error {
 		return client.Ping(ctx).Err()
 	})
 }
 
 // newClusterHealth builds an indicator for a cluster client.
 func newClusterHealth(name string, client *redis.ClusterClient) health.Indicator {
-	return starter.NewIndicator("redis:"+name, func(ctx context.Context) error {
+	return health.NewIndicator("redis:"+name, func(ctx context.Context) error {
 		return client.Ping(ctx).Err()
 	})
 }

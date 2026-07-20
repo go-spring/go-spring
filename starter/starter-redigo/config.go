@@ -23,8 +23,8 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/spring/starter"
 )
 
 var driverRegistry = map[string]Driver{}
@@ -85,7 +85,7 @@ type Config struct {
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext. Field layout matches
 	// starter-go-redis so the two starters stay interchangeable.
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// Driver specifies which Redis driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`

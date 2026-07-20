@@ -176,10 +176,17 @@ application can load configuration from it at startup and hot-reload at runtime.
   startup connection validation, TLS, and destroy hooks are considered part of
   what a starter must provide, not optional extras. TLS is a nested
   `TLSConfig` (`enabled` + cert/key/CA), off by default.
-- **Duplication is currently tolerated over premature abstraction.** Common
-  capabilities (health, TLS, fail-fast) are intentionally written once per
-  module rather than extracted into a shared package. A consolidation pass may
-  come later; until then, do not build cross-starter helper packages.
+- **Shared helpers live in their natural homes, not in a starter-shared
+  package.** The three concerns every starter touches - TLS config, health
+  indicator construction, fail-fast validation - each have a single home
+  decided by their nature, not by who consumes them:
+  `spring/cloud/tlsconf.TLSConfig` (config fields -> `*tls.Config`),
+  `spring/actuator/health.NewIndicator` (factory for that package's
+  `Indicator` interface), `stdlib/errutil.RequireField`/`RequireAny`
+  (formatting sugar over `errutil.Explain`). Starters import these directly.
+  A *new* cross-cutting concern that no existing package naturally owns is
+  still inlined per-starter until a second home materializes - do not
+  pre-emptively create a shared package for it.
 - **Prefer framework-native registration and discovery; unify only where none
   exists.** The default is to use each framework's *own* registration and
   discovery mechanism rather than force a Go-Spring abstraction on top of it. A

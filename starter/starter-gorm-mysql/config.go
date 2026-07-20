@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/spring/cloud/resilience"
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config holds the configuration parameters for a MySQL connection.
@@ -57,9 +57,9 @@ type Config struct {
 	// TLS configuration. When TLS.Enabled is set, the connection negotiates TLS
 	// and a *tls.Config built from CA/cert/key/server-name/insecure-skip-verify
 	// is registered with the mysql driver, then referenced in the DSN as
-	// tls=<unique-name>. Uses the shared stdlib/starter.TLSConfig block, so keys
+	// tls=<unique-name>. Uses the shared tlsconf.TLSConfig block, so keys
 	// are nested (spring.gorm.mysql.<name>.tls.enabled, ...tls.cert-file, ...).
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// ServiceName is the service discovery name. When set, Addr is ignored and
 	// the connection dials a live instance resolved from the discovery backend.

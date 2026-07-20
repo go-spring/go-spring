@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config holds the configuration parameters for a ClickHouse connection.
@@ -50,9 +50,9 @@ type Config struct {
 
 	// TLS configuration. When TLS.Enabled is set, the native ClickHouse driver
 	// negotiates a secure connection using the *tls.Config produced by the
-	// shared stdlib/starter.TLSConfig builder. Keys are nested
+	// shared tlsconf.TLSConfig builder. Keys are nested
 	// (spring.gorm.clickhouse.<name>.tls.enabled, ...tls.cert-file, ...).
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// ServiceName is the service discovery name. When set, Addr is ignored and
 	// the connection dials a live instance resolved from the discovery backend.

@@ -19,7 +19,7 @@ package StarterMQTT
 import (
 	"time"
 
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config defines MQTT client connection configuration.
@@ -51,7 +51,7 @@ type Config struct {
 
 	// TLS configures transport security for MQTTS. Use a "ssl://" or "tls://"
 	// broker URL together with TLS.Enabled.
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// Will configures the Last Will and Testament (LWT) message the broker
 	// publishes on the client's behalf if it disconnects ungracefully.

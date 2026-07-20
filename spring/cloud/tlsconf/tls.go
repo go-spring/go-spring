@@ -14,16 +14,18 @@
  * limitations under the License.
  */
 
-// Package starter holds the small, zero-dependency cross-cutting helpers that
-// every Go-Spring starter would otherwise re-implement: TLS configuration,
-// health-indicator construction, and startup fail-fast validation. It exists so
-// that a change to any of these three concerns is made in one place instead of
-// across 70+ starter modules.
+// Package tlsconf is the shared, zero-dependency TLS configuration helper used
+// by every Go-Spring starter that terminates or dials TLS. It binds the
+// off-by-default `tls.*` property block to a *tls.Config, loading the key pair
+// and CA bundle from disk when provided.
 //
-// It depends only on stdlib/health and stdlib/errutil and pulls in no
-// third-party business package, keeping it inside the zero-dependency
-// foundation layer. See MIGRATION.md for how each starter archetype adopts it.
-package starter
+// It depends only on the Go standard library and go-spring.org/stdlib/errutil,
+// pulling in no third-party business package, so any module in the repo can
+// adopt it without inheriting a dependency graph. Starters embed TLSConfig
+// under a `tls` key (e.g. `spring.redis.tls.enabled`) and call Build() at
+// construction time; (nil, nil) means "no TLS", which every client library
+// accepts.
+package tlsconf
 
 import (
 	"crypto/tls"
@@ -60,7 +62,7 @@ type TLSConfig struct {
 	ServerName string `value:"${server-name:=}"`
 
 	// InsecureSkipVerify disables peer certificate verification. Intended for
-	// local testing only — never enable it in production.
+	// local testing only - never enable it in production.
 	InsecureSkipVerify bool `value:"${insecure-skip-verify:=false}"`
 }
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package starter
+package tlsconf
 
 import (
 	"crypto/rand"

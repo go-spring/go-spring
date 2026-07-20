@@ -36,6 +36,7 @@ spring/
 ├─ gs/  conf/  aspect/         core: container, config engine, AOP primitive
 ├─ cloud/     distributed coordination (backends usually cross-process)
 │    discovery loadbalance resilience lock messaging transaction event scheduling batch
+│    tlsconf   (shared TLS-config builder consumed by cloud-facing starters)
 ├─ web/       request-handling plane + built-in HTTP
 │    httpsvr httpclt httpx security session validation i18n
 ├─ data/      persistence

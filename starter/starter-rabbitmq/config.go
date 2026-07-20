@@ -19,7 +19,7 @@ package StarterRabbitMQ
 import (
 	"time"
 
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config defines RabbitMQ connection configuration.
@@ -39,8 +39,8 @@ type Config struct {
 	// TLS configures transport encryption. It is activated either explicitly by
 	// TLS.Enabled=true or implicitly when the URL uses the "amqps://" scheme;
 	// the certificate files are optional and only needed for a custom CA or
-	// mTLS. Uses the shared stdlib/starter TLS block so property keys are
+	// mTLS. Uses the shared spring/cloud/tlsconf block so property keys are
 	// uniform across starters (cert-file / key-file / ca-file / server-name /
 	// insecure-skip-verify).
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 }

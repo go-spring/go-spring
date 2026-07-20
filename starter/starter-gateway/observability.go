@@ -26,7 +26,6 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/spring/actuator/health"
-	"go-spring.org/spring/starter"
 )
 
 // Metrics accumulates per-route request counters exposed as Prometheus text on
@@ -149,7 +148,7 @@ func line(b *strings.Builder, route, class string, v int64) {
 // not a reason to fail the whole gateway's readiness (it may still serve
 // other routes).
 func newGatewayHealth(tbl *RouteTable) health.Indicator {
-	return starter.NewIndicator("gateway", func(ctx context.Context) error {
+	return health.NewIndicator("gateway", func(ctx context.Context) error {
 		if tbl.compiled.Load() == nil {
 			return fmt.Errorf("gateway: route table not loaded")
 		}

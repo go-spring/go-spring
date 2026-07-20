@@ -19,7 +19,7 @@ package StarterKafka
 import (
 	"time"
 
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config defines Kafka client configuration.
@@ -40,10 +40,10 @@ type Config struct {
 	SASL SASLConfig `value:"${sasl}"`
 
 	// TLS configures transport encryption, disabled by default. It uses the
-	// shared stdlib/starter TLS block so property keys are uniform across
+	// shared spring/cloud/tlsconf block so property keys are uniform across
 	// starters (cert-file / key-file / ca-file / server-name /
 	// insecure-skip-verify).
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// Producer tunes producer-side batching, compression and acks.
 	Producer ProducerConfig `value:"${producer}"`

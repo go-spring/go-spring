@@ -19,7 +19,7 @@ package StarterLockConsul
 import (
 	"time"
 
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config binds one Consul-backed distributed-lock instance under
@@ -55,5 +55,5 @@ type Config struct {
 	// when TLS.Enabled is true; otherwise the client dials in plaintext.
 	// TLS.ServerName overrides the SNI/hostname checked against the server
 	// certificate when dialing by IP.
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 }

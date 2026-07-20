@@ -23,10 +23,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
+	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/spring/starter"
 )
 
 func init() {
@@ -70,7 +70,7 @@ type Config struct {
 	WriteTimeout time.Duration     `value:"${writeTimeout:=5s}"`
 	IdleTimeout  time.Duration     `value:"${idleTimeout:=60s}"`
 	MaxBodySize  int               `value:"${maxBodySize:=0}"`
-	TLS          starter.TLSConfig `value:"${tls}"`
+	TLS          tlsconf.TLSConfig `value:"${tls}"`
 	Health       HealthConfig      `value:"${health}"`
 }
 

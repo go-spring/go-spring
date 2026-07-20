@@ -25,7 +25,7 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 var driverRegistry = map[string]Driver{}
@@ -75,7 +75,7 @@ type Config struct {
 	// selected by the URI scheme; these fields only customize the trust store
 	// and client certificate. They are ignored for the plaintext "bolt"/"neo4j"
 	// schemes.
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// Driver specifies which Neo4j driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
@@ -103,7 +103,7 @@ type Config struct {
 // settings. The CA certificate (if any) is loaded into conf.TlsConfig, and a
 // client certificate (if any) is installed as a static certificate provider for
 // mutual TLS. Both only take effect for the "+s"/"+ssc" URI schemes.
-func applyTLS(t starter.TLSConfig, conf *neo4j.Config) error {
+func applyTLS(t tlsconf.TLSConfig, conf *neo4j.Config) error {
 	if t.CAFile != "" {
 		pem, err := os.ReadFile(t.CAFile)
 		if err != nil {

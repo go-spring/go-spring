@@ -19,7 +19,7 @@ package StarterLockEtcd
 import (
 	"time"
 
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config binds one etcd-backed distributed-lock instance under
@@ -50,9 +50,9 @@ type Config struct {
 	KeyPrefix string `value:"${key-prefix:=/lock/}"`
 
 	// TLS configures optional transport-layer security. Off by default. Uses
-	// the shared zero-dependency TLS block from stdlib/starter so every starter
-	// exposes the same tls.* keys.
-	TLS starter.TLSConfig `value:"${tls}"`
+	// the shared spring/cloud/tlsconf block so every starter exposes the same
+	// tls.* keys.
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 }
 
 // ttlSeconds returns the session TTL in whole seconds, clamped to a minimum of

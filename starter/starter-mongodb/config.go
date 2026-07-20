@@ -19,7 +19,7 @@ package StarterMongoDB
 import (
 	"time"
 
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config defines MongoDB client connection configuration.
@@ -63,9 +63,9 @@ type Config struct {
 	MaxConnIdleTime time.Duration `value:"${max-conn-idle-time:=0}"`
 
 	// TLS configures transport encryption for the connection. It is the shared
-	// zero-dependency block from stdlib/starter; leave TLS.Enabled=false to
-	// negotiate no TLS (unless the URI itself requests it).
-	TLS starter.TLSConfig `value:"${tls}"`
+	// block from spring/cloud/tlsconf; leave TLS.Enabled=false to negotiate no
+	// TLS (unless the URI itself requests it).
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// ServiceName resolves the connection address through a registered discovery
 	// backend instead of relying solely on the URI hosts. When set, a LiveDialer

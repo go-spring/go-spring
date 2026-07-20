@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
+	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/spring/starter"
 )
 
 func init() {
@@ -58,7 +58,7 @@ type Config struct {
 	Protocol      string            `value:"${protocol:=binary}"`
 	Transport     string            `value:"${transport:=none}"`
 	BufferSize    int               `value:"${bufferSize:=4096}"`
-	TLS           starter.TLSConfig `value:"${tls}"`
+	TLS           tlsconf.TLSConfig `value:"${tls}"`
 }
 
 // SimpleThriftServer adapts a thrift.TSimpleServer to the Go-Spring server lifecycle.

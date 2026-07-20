@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"go-spring.org/spring/cloud/resilience"
-	"go-spring.org/spring/starter"
+	"go-spring.org/spring/cloud/tlsconf"
 )
 
 // Config defines NATS client connection configuration.
@@ -51,7 +51,7 @@ type Config struct {
 	NKeyFile string `value:"${nkey-file:=}"`
 
 	// TLS configures the transport security for the connection.
-	TLS starter.TLSConfig `value:"${tls}"`
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// MaxReconnects is the maximum number of reconnect attempts,
 	// -1 means unlimited, default is 60.

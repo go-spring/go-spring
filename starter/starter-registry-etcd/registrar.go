@@ -24,7 +24,6 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/spring/starter"
 )
 
 // instanceValue is the JSON payload stored at an instance key. A discovery
@@ -111,7 +110,7 @@ func (r *etcdRegistrar) keyFor(reg discovery.Registration) string {
 // so the entry stays live until Deregister or process death. Registering the
 // same instance again refreshes it: the previous lease is revoked first.
 func (r *etcdRegistrar) Register(ctx context.Context, reg discovery.Registration) error {
-	if err := starter.RequireField("registry-etcd", "addr", reg.Addr); err != nil {
+	if err := errutil.RequireField("registry-etcd", "addr", reg.Addr); err != nil {
 		return err
 	}
 	val, err := json.Marshal(instanceValue{

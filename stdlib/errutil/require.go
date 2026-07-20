@@ -14,13 +14,9 @@
  * limitations under the License.
  */
 
-package starter
+package errutil
 
-import (
-	"strings"
-
-	"go-spring.org/stdlib/errutil"
-)
+import "strings"
 
 // RequireField returns a fail-fast error when a required configuration value is
 // empty, using the standard "<component>: <field> is required" wording that the
@@ -28,12 +24,12 @@ import (
 // name (e.g. "redis", "mail"); field is the human-readable property name (e.g.
 // "host", "addr"). It returns nil when the value is present.
 //
-//	if err := starter.RequireField("mail", "host", cfg.Host); err != nil {
+//	if err := errutil.RequireField("mail", "host", cfg.Host); err != nil {
 //	    return nil, err
 //	}
 func RequireField(component, field, value string) error {
 	if strings.TrimSpace(value) == "" {
-		return errutil.Explain(nil, "%s: %s is required", component, field)
+		return Explain(nil, "%s: %s is required", component, field)
 	}
 	return nil
 }
@@ -44,9 +40,9 @@ func RequireField(component, field, value string) error {
 // "<component>: one of <a> or <b> is required". It returns nil as soon as any
 // value is present.
 //
-//	if err := starter.RequireAny("http-client",
-//	    starter.Field{Name: "addr", Value: cfg.Addr},
-//	    starter.Field{Name: "service-name", Value: cfg.ServiceName},
+//	if err := errutil.RequireAny("http-client",
+//	    errutil.Field{Name: "addr", Value: cfg.Addr},
+//	    errutil.Field{Name: "service-name", Value: cfg.ServiceName},
 //	); err != nil {
 //	    return nil, err
 //	}
@@ -58,7 +54,7 @@ func RequireAny(component string, fields ...Field) error {
 		}
 		names = append(names, f.Name)
 	}
-	return errutil.Explain(nil, "%s: one of %s is required", component, strings.Join(names, " or "))
+	return Explain(nil, "%s: one of %s is required", component, strings.Join(names, " or "))
 }
 
 // Field is a named configuration value passed to RequireAny.

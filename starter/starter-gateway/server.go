@@ -25,22 +25,22 @@ import (
 	"os"
 
 	"go-spring.org/log"
+	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/spring/starter"
 )
 
 // ServerConfig configures the gateway's own listen port. It is deliberately
 // separate from the business web server so both can run in one process on
 // distinct ports.
 //
-// The nested TLS block reuses the shared starter.TLSConfig for its cert/key/CA
+// The nested TLS block reuses the shared tlsconf.TLSConfig for its cert/key/CA
 // fields; for the gateway CAFile means "PEM bundle of client CAs" (presence
 // enables mTLS), which is the server-side counterpart of the shared struct's
 // generic "verify the peer" role.
 type ServerConfig struct {
 	Addr string            `value:"${addr:=:9440}"`
-	TLS  starter.TLSConfig `value:"${tls}"`
+	TLS  tlsconf.TLSConfig `value:"${tls}"`
 }
 
 // GatewayServer adapts the gateway to the Go-Spring server lifecycle. It listens
