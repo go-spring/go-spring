@@ -8,6 +8,24 @@ To decide whether a convention is worth writing down, ask yourself three things:
 2. Does breaking it cause real consequences — build failures, review rejections, even production incidents? If so, record it first.
 3. Is it already explained elsewhere (code comments, CLAUDE.md, CODING_STYLE.md)? If so, link to it rather than repeat it.
 
+## How Knowledge Is Layered
+
+Constraints are layered, and references flow one way. Follow this when adding or
+reorganizing any rule:
+
+- **One home per rule.** Every rule lives in exactly one document. Cross-cutting
+  rules — those spanning directories or defining relationships between them — home
+  in the entry docs: [ARCHITECTURE.md](ARCHITECTURE.md) for code/directory
+  boundaries, this file for conventions. Module-local rules home in that module's
+  own `DESIGN.md`; do not lift them into an entry doc, or the rule drifts away from
+  the code it governs.
+- **Relocate, don't summarize.** To consolidate a duplicated rule, move it to its
+  home and replace the original with a link. Never write a summary and keep the
+  original too — that produces copies that drift apart.
+- **References point one way.** Entry docs point down to detailed docs. A detailed
+  doc may point back up to the single owner of a cross-cutting rule, but avoid
+  bidirectional link loops.
+
 ## Output Format
 
 - Start every reply with "Hi,Go-Spring.".
@@ -18,12 +36,10 @@ Shared conventions for projects using Go-Spring live in [layout/docs/agent-rules
 
 ## Project Structure
 
-- No `go.mod` at the repo root; each subproject owns its own Go module.
-- Four-layer dependency structure, flowing one way and never in reverse:
-  - **`stdlib/`** — foundation layer, **zero dependencies**, common utilities shared across modules.
-  - **`spring/`** — core container layer, implements IoC container and dependency injection; depends on no third-party business package (Redis, GORM, ...).
-  - **`starter-*/`** — integration layer, integrates third-party services (Redis, GORM, ...) on top of core abstractions.
-  - **`gs-*/`** — tooling layer, project scaffolding, code generation, and other dev tools.
+The directory-boundary map, the one-way four-layer dependency model
+(`stdlib`/`log` → `spring` → `starter-*`/`gs-*`), the "where does new code go?"
+decision guide, and per-layer non-goals all live in
+[ARCHITECTURE.md](ARCHITECTURE.md) — its single owner.
 
 ## Coding Style
 

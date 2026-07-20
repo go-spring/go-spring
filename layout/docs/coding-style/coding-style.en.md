@@ -21,6 +21,27 @@ This document defines the coding principles, idioms, and style conventions for t
 - **Explicit bean conflict resolution**: Beans of the same name and type must not rely on implicit override; select explicitly via mutually exclusive conditions (`Condition`).
 - **Starter first**: Before wiring an external component (Redis / MySQL / Kafka, etc.), check whether `starter/` already provides one; reuse it instead of writing initialization from scratch.
 
+### 1.1 Extensibility and Extension Points
+
+Extensibility is a judgment call, not a reflex. It lives in tension with Section 0 (Simple Over Clever) and Section 7 (YAGNI): a speculative extension point is over-engineering, while a missing one forces a rewrite later. Resolve the tension with a threshold, not a slogan.
+
+- **Leave a seam only when it crosses a line — otherwise don't**: One-off internal logic gets no extension point. Add one only when **any** of these holds: (a) it's part of an outward contract that other modules or downstream projects depend on; (b) a second implementation is already foreseeable (a second backend / driver / strategy), not merely imaginable; (c) users are expected to replace the default behavior. Absent these, write the direct implementation and refactor when a real second case arrives.
+- **When you do open a seam, keep it single and narrow**: Open the one widest seam for a concern (e.g. `RoundTripper` for HTTP) rather than cutting extension points at several layers, and expose only the minimal method set needed to swap the implementation. Narrower is easier to implement and harder to misuse.
+- **Framework code plays by stricter rules**: The above is the *application-level* stance. Go-Spring itself (`stdlib/` / `spring/` / `starter/`) is a framework that must serve every scenario, so there extension points are *mandatory* and built-ins must ride the very seams they expose. That duty, and the catalog of accepted extension-point shapes (driver registry, seam interface, Provider/Contributor, functional hook), live in the framework's `ARCHITECTURE.md` §5 and `starter/DESIGN.md` §2 — reuse those shapes rather than inventing a new mechanism.
+
+### 1.2 Abstraction Ownership and Configuration Seams
+
+- **Abstractions belong to the consumer, not the implementer**: Define an interface on the side that uses it (or in a neutral `stdlib` package), never in the implementation package; implementations depend on the abstraction, not the reverse.
+- **Program to interfaces at API boundaries**: Public API parameters and fields take interfaces or function types where substitution matters, so callers can inject stand-ins and tests can inject fakes.
+- **Configuration is an extension point**: Multiple implementations of one capability share a single config prefix (`spring.kafka`, `spring.lock`, …); switching implementation changes only the `import`, never the config keys or business code.
+- **Fail fast at the seam**: Selecting an unknown driver / implementation must error at startup, never silently fall back to a default.
+
+### 1.3 API Evolution and Backward Compatibility
+
+- **Internal code: change it outright**: For non-exported code and code not yet consumed outside its module, just change it. Don't keep renamed `_vars`, re-exports, or `// removed` comments as compatibility shims (mirrors the root `CLAUDE.md` rule).
+- **Outward contracts: change with care**: An exported API that downstream projects depend on is a contract. Prefer adding over breaking; evaluate blast radius before a breaking change.
+- **Deprecate, don't ambush**: When a stable outward API genuinely must go, mark it with a `// Deprecated:` comment pointing to the replacement and allow a transition window before removal. This deprecation flow applies only to published stable APIs — it is the deliberate exception to "change it outright" above, not a contradiction of it.
+
 ## 2. Naming Conventions
 
 - **Package names**: All lowercase, short and descriptive (`errutil`, `assert`, `gs`); no underscores or camelCase, and don't repeat the package's contents.

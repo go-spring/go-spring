@@ -14,9 +14,8 @@ not belong here.
 
 ## 1. Module Layout
 
-- **One starter, one Go module.** There is no `go.mod` at the repo root; each
-  starter owns its own module and dependency graph. This keeps a Redis app from
-  pulling in Kafka's transitive dependencies.
+- **One starter, one Go module.** Each starter owns its own module and dependency
+  graph, so a Redis app never pulls in Kafka's transitive dependencies.
 - **Fixed file skeleton.** A starter directory contains `starter.go` (bean
   registration + lifecycle), `config.go` (the bound `Config` struct and any
   driver registry), `README.md` / `README_CN.md`, and an `example/` module that
@@ -27,9 +26,10 @@ not belong here.
   string), and their smoke module is `example-config/`.
 - **Apache License header** on every source file (see
   [../LICENSE_HEADER](../LICENSE_HEADER)).
-- **Internal deps resolve through `go.work`, never `require`.** Modules in this
-  workspace depend on each other via the workspace file; adding a `require` on an
-  internal module sends `go mod tidy` to the proxy and 404s.
+- **Repo-wide module rules apply** (no root `go.mod`; one module per subproject;
+  internal deps resolve through `go.work`, never `require`). These are owned by
+  [../ARCHITECTURE.md §1](../ARCHITECTURE.md); adding a `require` on an in-workspace
+  module sends `go mod tidy` to the proxy and 404s.
 
 ## 2. The Five Archetypes
 

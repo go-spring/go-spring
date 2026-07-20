@@ -6,6 +6,8 @@ This file applies to the Go-Spring framework repository and to all projects buil
 
 Keep it simple. Don't add defensive code for edge cases unless driven by external input, a real bug, or a clear requirement.
 
+Extensibility is a judgment call, not a reflex: in application code, leave an extension point only when it crosses a line (an outward contract / a second implementation already foreseeable / users expected to replace the default). See the coding-style guide, "Extensibility and Extension Points".
+
 Follow existing code patterns and project style unless the user explicitly asks otherwise.
 
 ## Coding Style

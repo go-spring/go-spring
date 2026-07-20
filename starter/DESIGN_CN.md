@@ -11,8 +11,8 @@ starter 是**集成模块**:只负责把某一个第三方服务或框架接入 
 
 ## 1. 模块布局
 
-- **一个 starter 一个 Go module。** 仓库根目录没有 `go.mod`,每个 starter 独立管理
-  自己的 module 与依赖图,避免用 Redis 的应用被迫拉进 Kafka 的传递依赖。
+- **一个 starter 一个 Go module。** 每个 starter 独立管理自己的 module 与依赖图,
+  避免用 Redis 的应用被迫拉进 Kafka 的传递依赖。
 - **固定文件骨架。** 一个 starter 目录包含 `starter.go`(bean 注册 + 生命周期)、
   `config.go`(绑定用的 `Config` 结构体及 driver 注册表)、`README.md` /
   `README_CN.md`,以及仅用于冒烟和集成的 `example/` module —— 不放
@@ -21,8 +21,9 @@ starter 是**集成模块**:只负责把某一个第三方服务或框架接入 
   (没有绑定 `Config` —— 连接参数从导入 source 串解析),冒烟 module 为
   `example-config/`。
 - **每个源文件都要有 Apache License 头**(见 [../LICENSE_HEADER](../LICENSE_HEADER))。
-- **内部依赖靠 `go.work` 解析,不写 `require`。** 工作区内模块互相依赖通过 workspace
-  文件解析;给内部模块加 `require` 会让 `go mod tidy` 去 proxy 拉包并 404。
+- **仓库级 module 规则同样适用**(根无 `go.mod`;一子项目一 module;内部依赖靠
+  `go.work` 解析、不写 `require`)。这些规则由 [../ARCHITECTURE_CN.md §1](../ARCHITECTURE_CN.md)
+  单一持有;给工作区内模块加 `require` 会让 `go mod tidy` 去 proxy 拉包并 404。
 
 ## 2. 五种形态
 
