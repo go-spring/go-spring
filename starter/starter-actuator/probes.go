@@ -20,7 +20,7 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/stdlib/health"
+	"go-spring.org/spring/health"
 )
 
 // componentStatus is the per-indicator entry reported under the probe endpoints.

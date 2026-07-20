@@ -19,9 +19,9 @@ package StarterRedigo
 import (
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 func init() {

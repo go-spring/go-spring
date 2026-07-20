@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 var driverRegistry = map[string]Driver{}

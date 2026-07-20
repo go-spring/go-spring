@@ -23,7 +23,7 @@ import (
 
 	"examples/proto"
 
-	"go-spring.org/stdlib/httpsvr"
+	"go-spring.org/spring/httpsvr"
 )
 
 var _ proto.ManagerService = &ManagerServer{}

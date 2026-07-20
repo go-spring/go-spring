@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/stdlib/cache"
+	"go-spring.org/spring/cache"
 )
 
 // redisByteStore adapts a Redis client to cache.ByteStore, the byte-oriented

@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 )
 
 // dnsResolver is the subset of net.Resolver the DNS backend needs. Abstracting

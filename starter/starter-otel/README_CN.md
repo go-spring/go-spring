@@ -132,7 +132,7 @@ Metrics，位于 `${spring.observability.metrics}`：
 actuator 管理端口（`:9370`）上——可与自身的独立 server 并存，也可完全取而代之。
 运维方由此**只抓一个端口**即可同时拿到探针与指标。
 
-这通过零依赖的 `go-spring.org/stdlib/endpoint` 缝隙实现：`starter-otel` 把抓取
+这通过零依赖的 `go-spring.org/spring/endpoint` 缝隙实现：`starter-otel` 把抓取
 handler 导出为 `endpoint.Endpoint` bean，actuator 将所有此类 bean 挂载到管理
 server。两个 starter 互不 import。
 

@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/stdlib/resilience"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/starter"
 )
 
 // Config holds the configuration parameters for a MySQL connection.

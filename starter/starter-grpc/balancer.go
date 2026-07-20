@@ -17,10 +17,10 @@
 package StarterGrpc
 
 // This file is the client-side load-balancing adapter that plugs the
-// framework-neutral [go-spring.org/stdlib/loadbalance] strategies into gRPC's
+// framework-neutral [go-spring.org/spring/loadbalance] strategies into gRPC's
 // own resolver + balancer machinery. It is the reference RPC integration called
 // for by the load-balancing task: a company adapts its naming service once via
-// [go-spring.org/stdlib/discovery], and any gRPC client picks instances through
+// [go-spring.org/spring/discovery], and any gRPC client picks instances through
 // a Go-Spring strategy simply by dialing a "gsdiscovery:///<service>" target
 // with the matching service config — no per-client wiring.
 //
@@ -38,8 +38,8 @@ import (
 	"context"
 	"fmt"
 
-	"go-spring.org/stdlib/discovery"
-	"go-spring.org/stdlib/loadbalance"
+	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/loadbalance"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"

@@ -30,7 +30,7 @@
   (`${...:=}` 空默认合法),再转 `url.Values` 传给
   `clientcredentials.Config.EndpointParams`——Auth0 `audience` /
   Azure `resource` 因此免代码改动可用。
-- **韧性在这里作最外层。**starter 把 `stdlib/resilience` 作为 transport
+- **韧性在这里作最外层。**starter 把 `spring/resilience` 作为 transport
   的最外层包装(重试可重挑、熔断按逻辑名聚合)。开启是同一实例内的纯
   配置开关。
 
@@ -51,4 +51,4 @@
   ——弃选。**两者产出的类型不同(`*http.Client` 与 `*oauth2.Config`),
   字段也不同;分前缀让两个表面各自清晰。
 - **资源服务器校验放本 starter——弃选。**属于*服务端*(`starter-security-jwt`
-  + `stdlib/security`),不该混进客户端配置表面。
+  + `spring/security`),不该混进客户端配置表面。

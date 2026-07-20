@@ -26,10 +26,10 @@
 // the process exits (the drain the graceful-shutdown orchestration expects).
 //
 // The three trigger kinds — cron, fixed-rate and fixed-delay — come from
-// [go-spring.org/stdlib/scheduling]. Multi-replica de-duplication is opt-in per
+// [go-spring.org/spring/scheduling]. Multi-replica de-duplication is opt-in per
 // job via the `lock` config key, which names a lock.Locker bean contributed by
 // starter-lock-{redis,etcd,consul}; only the replica that wins the lock runs the
-// fire. See [go-spring.org/stdlib/lock].
+// fire. See [go-spring.org/spring/lock].
 //
 // Register jobs from the application:
 //
@@ -46,8 +46,8 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/lock"
-	"go-spring.org/stdlib/scheduling"
+	"go-spring.org/spring/lock"
+	"go-spring.org/spring/scheduling"
 )
 
 func init() {

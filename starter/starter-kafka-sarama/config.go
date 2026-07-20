@@ -16,7 +16,7 @@
 
 package StarterKafkaSarama
 
-import "go-spring.org/stdlib/starter"
+import "go-spring.org/spring/starter"
 
 // Config defines Kafka client configuration.
 //

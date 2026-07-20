@@ -18,7 +18,7 @@ package StarterLockRedis
 
 import "time"
 
-// Config configures one Redis-backed [go-spring.org/stdlib/lock.Locker] instance
+// Config configures one Redis-backed [go-spring.org/spring/lock.Locker] instance
 // bound under spring.lock.<name>. It intentionally does not carry Redis
 // connection details: locking reuses an existing *redis.Client bean registered
 // by starter-go-redis, so switching between share-a-cluster / dedicated-cluster

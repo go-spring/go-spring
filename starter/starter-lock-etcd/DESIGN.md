@@ -42,7 +42,7 @@ backed by etcd concurrency sessions.
   `starter.TLSConfig` from `stdlib/starter`; `Enabled` gates it, then
   `CertFile`/`KeyFile` (mutual TLS) and `CAFile` (server verification)
   match every other Go-Spring starter.
-- **No `go mod tidy` against the proxy.** `stdlib/lock` is workspace-local;
+- **No `go mod tidy` against the proxy.** `spring/lock` is workspace-local;
   tidy would 404.
 
 ## 4. Trade-offs / Alternatives Rejected

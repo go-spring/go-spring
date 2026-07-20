@@ -27,7 +27,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 // ServerConfig configures the gateway's own listen port. It is deliberately

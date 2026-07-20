@@ -65,7 +65,7 @@ fetches.EachRecord(func(r *kgo.Record) {
 ## Messaging Binder
 
 Beyond the raw client, this starter can expose a broker-neutral
-`messaging.Binder` (from `go-spring.org/stdlib/messaging`), so application code
+`messaging.Binder` (from `go-spring.org/spring/messaging`), so application code
 publishes and consumes `*messaging.Message` envelopes without depending on the
 franz-go API — swapping the broker underneath does not touch business code.
 

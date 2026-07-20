@@ -13,8 +13,8 @@ be released on shutdown.
 - Binds each `spring.bigcache.instances.<name>` entry to a
   `*bigcache.BigCache` bean via `gs.Group`. No single-instance default
   (see `project_client_starter_multiinstance`).
-- Registers a `stdlib/cache` driver named `bigcache` so callers using
-  the `cache.Cache` abstraction — including `stdlib/cache`'s
+- Registers a `spring/cache` driver named `bigcache` so callers using
+  the `cache.Cache` abstraction — including `spring/cache`'s
   MultiLevel — can pick this backend by name without importing bigcache
   directly.
 - No cross-process coherence: the cache lives in the process's own
@@ -31,7 +31,7 @@ be released on shutdown.
   `Close` leaks that goroutine per instance. The starter wires
   `destroy` for exactly this reason (`project_starter_bigcache`).
 - **`AsCache` adapter registers with the driver registry.** The
-  starter's contribution to `stdlib/cache` is via the driver registry
+  starter's contribution to `spring/cache` is via the driver registry
   (see `project_stdlib_cache`) so callers write `cache: bigcache` in a
   cache config without importing bigcache directly.
 - **`check.sh` needs no docker.** In-process cache has no service
@@ -43,7 +43,7 @@ be released on shutdown.
   `MaxEntriesInWindow` × `MaxEntrySize` roughly bounds the pre-allocated
   backing memory. Runtime resize is not supported.
 - **Entries are `[]byte`.** Application types must be
-  encoded/decoded by callers; the `stdlib/cache` MultiLevel path uses
+  encoded/decoded by callers; the `spring/cache` MultiLevel path uses
   JSON via the shared `ByteStore` seam.
 - **`LifeWindow` is TTL, not per-entry.** All entries in one instance
   share the TTL. Different TTL classes = different named instances.
@@ -55,6 +55,6 @@ be released on shutdown.
   keeps the codebase small. bigcache was chosen for stability and
   known-good GC behavior (`project_starter_bigcache`).
 - **Auto-loader / refresh cache — rejected.** Loader semantics belong to
-  the cache abstraction layer (`stdlib/cache`), not to a backend
+  the cache abstraction layer (`spring/cache`), not to a backend
   starter. The starter contributes the store; the abstraction
   contributes loader/refresh policies.

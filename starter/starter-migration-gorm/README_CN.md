@@ -5,7 +5,7 @@
 > 项目已正式发布，欢迎使用！
 
 `starter-migration-gorm` 在应用启动时运行
-[`go-spring.org/stdlib/migration`](../../stdlib/migration) 定义的数据库结构迁移能力，
+[`go-spring.org/spring/migration`](../../spring/migration) 定义的数据库结构迁移能力，
 底层复用应用已注册的 [gorm](https://gorm.io) `*gorm.DB` bean。它是把 **Flyway** /
 **Liquibase** 放到 classpath 的 Go-Spring 等价物——带版本、带校验和、只向前的迁移，
 在第一个请求到达之前完成——但用 Go 惯用法达到等价效果，而非复刻它们的 XML/DSL 机制。

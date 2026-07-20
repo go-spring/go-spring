@@ -70,7 +70,7 @@ item, err := s.Memcached.Get("key")
 * **健康检查 / readiness**：客户端的 `Ping()` 会探测所有 server，可直接在注入的客户端上调用做健康探测。
 * **连接池 / 超时**：`timeout` 与 `max-idle-conns` 对应客户端每 server 的 socket 超时和空闲连接池，为 0 时回退到驱动默认值（100ms / 2）。
 * **认证**：`bradfitz/gomemcache` 驱动未实现 SASL，因此不暴露认证字段，请在网络层（VPC/安全组）限制访问。
-* **共享缓存后端**：`AsCache(client, codec)` 将客户端适配为 `stdlib/cache.Cache`,作为多级缓存的共享(远端)层。
+* **共享缓存后端**：`AsCache(client, codec)` 将客户端适配为 `spring/cache.Cache`,作为多级缓存的共享(远端)层。
   值用 codec 序列化(传 nil 默认 JSON);缓存未命中映射为普通 miss。
 
 ## 可观测

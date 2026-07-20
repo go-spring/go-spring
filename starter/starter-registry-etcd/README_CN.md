@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-registry-etcd` 把**当前实例**注册进 etcd 集群 —— 它是 Go-Spring 客户端服务
-发现(`stdlib/discovery`)的注册侧对应物,相当于 Spring Cloud `ServiceRegistry` 的注册
+发现(`spring/discovery`)的注册侧对应物,相当于 Spring Cloud `ServiceRegistry` 的注册
 方向,以 etcd 租约(lease)为底座。
 
 适用于**虚机 / 裸机 / 混合**部署,即平台不替你注册实例的场景。**纯 Kubernetes**
@@ -68,7 +68,7 @@ spring.registry.metadata.version=v1
 | `ttl` | `15s` | 租约时长;实例存活期间持续保活。向上取整到整秒。 |
 | `key-prefix` | `/services/` | 拼在每个键之前,便于多应用共享一个集群。 |
 | `tls.*` | (关闭) | 可选客户端 TLS(`enabled`、`cert-file`、`key-file`、`ca-file`)。 |
-| `name` | `default` | 本 registrar 在 `stdlib/discovery` registrar 注册表中的名字。 |
+| `name` | `default` | 本 registrar 在 `spring/discovery` registrar 注册表中的名字。 |
 
 实例配置,绑定于 `spring.registry`(与后端无关 —— 切换注册中心后端只需替换匿名导入,
 无需迁移配置):
@@ -88,7 +88,7 @@ spring.registry.metadata.version=v1
 ## 工作原理
 
 - 在容器的 bean 注册阶段,starter 构建一个 etcd `discovery.Registrar` 并以 `name`
-  放进 `stdlib/discovery` 的 registrar 注册表。它会探测集群(一次 `Status` 调用),
+  放进 `spring/discovery` 的 registrar 注册表。它会探测集群(一次 `Status` 调用),
   不可达的 etcd 会让启动失败。公司可用另一个名字注册自己的 `Registrar`,再把
   `spring.registry.backend` 指向它。
 - 导出的 `gs.Server` 按 `backend` 解析后端,等待就绪,然后 `Register` 实例:它申请一个

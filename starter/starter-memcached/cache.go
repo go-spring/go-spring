@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/stdlib/cache"
+	"go-spring.org/spring/cache"
 )
 
 // memcachedByteStore adapts a memcached client to cache.ByteStore. A cache miss

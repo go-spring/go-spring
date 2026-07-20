@@ -244,7 +244,7 @@ func TestServerTemplateWithoutRPCsOmitsUnusedImports(t *testing.T) {
 	for _, name := range []string{`"context"`, `"net/http"`} {
 		require.That(t, strings.Contains(src, name)).False()
 	}
-	require.String(t, src).Contains(`"go-spring.org/stdlib/httpsvr"`)
+	require.String(t, src).Contains(`"go-spring.org/spring/httpsvr"`)
 }
 
 func TestTypeTemplateEnumAsStringUnquotesJSONString(t *testing.T) {

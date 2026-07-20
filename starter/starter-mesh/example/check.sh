@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Smoke test for service-mesh mode built on go-spring.org/stdlib/discovery and
-# go-spring.org/stdlib/loadbalance. The example runs the same client code twice —
+# Smoke test for service-mesh mode built on go-spring.org/spring/discovery and
+# go-spring.org/spring/loadbalance. The example runs the same client code twice —
 # mesh off and mesh on — asserting that mesh off spreads requests across three
 # real endpoints while mesh on degrades to a single stable endpoint and never
 # resolves the discovery backend. It self-asserts and exits non-zero on failure,

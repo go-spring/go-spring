@@ -17,12 +17,12 @@ publishes is named under `${spring.http-client}` and injected by name.
   watches and resilience executors.
 - **Out of scope:** the interface definitions and code-generation (that
   is `gs-http-gen`); the actual load-balancing algorithms (that is
-  `stdlib/loadbalance`); resilience policies (that is
-  `stdlib/resilience`).
+  `spring/loadbalance`); resilience policies (that is
+  `spring/resilience`).
 
 ## 2. Transport Composition — outer to inner
 
-The chain assembled by `stdlib/httpx.NewTransport` is:
+The chain assembled by `spring/httpx.NewTransport` is:
 
 ```
 resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp base
@@ -47,7 +47,7 @@ resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp
   §2.2 for client starters even though HTTP does not have a specific
   driver registry here.
 - **Generated code depends only on stdlib.** `gs-http-gen` output
-  imports `net/http` + `stdlib/httpclt` — never a specific starter.
+  imports `net/http` + `spring/httpclt` — never a specific starter.
   Declarative dispatch works through generated code (no runtime proxy),
   and the code has a `HTTPClient *http.Client` seam populated by DI.
 - **`managedTransport` carries a `closeFn`.** The starter's destroy

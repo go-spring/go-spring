@@ -3,12 +3,12 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-lock-k8s` 为 Go-Spring 提供**基于 Kubernetes Lease 的分布式锁与选主**能力,
-**无需任何外部中间件**。它用 `coordination.k8s.io/Lease` 对象为 `stdlib/lock` 提供后端
+**无需任何外部中间件**。它用 `coordination.k8s.io/Lease` 对象为 `spring/lock` 提供后端
 ——正是 `kube-controller-manager --leader-elect` 与 spring-cloud-kubernetes 所用的机制
 ——因此集群内应用只依赖控制面本身即可完成选主或守护独占逻辑。
 
 空导入本 starter 并声明一条 `spring.lock.<name>` 配置,即注册一个名为 `<name>` 的
-`lock.Locker` bean(来自 `stdlib/lock`)。业务代码只注入 `lock.Locker` / 构建
+`lock.Locker` bean(来自 `spring/lock`)。业务代码只注入 `lock.Locker` / 构建
 `lock.Election`,从不感知本包;因此在共用 `spring.lock` 前缀下切换到 etcd/consul/redis
 后端只需改一行空导入。
 

@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-batch-redis` contributes a Redis-backed
-[`batch.JobRepository`](../../stdlib/batch) bean to a Go-Spring application, so
+[`batch.JobRepository`](../../spring/batch) bean to a Go-Spring application, so
 chunk jobs and short-lived tasks persist their progress in Redis and survive a
 process restart from the last committed chunk.
 
@@ -53,7 +53,7 @@ starter refuses to silently default to some arbitrary Redis instance.
 ### 3. Inject `batch.JobRepository`
 
 ```go
-import "go-spring.org/stdlib/batch"
+import "go-spring.org/spring/batch"
 
 type Service struct {
     Repo batch.JobRepository `autowire:"jobs"`

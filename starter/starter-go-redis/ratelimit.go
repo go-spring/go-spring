@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/resilience"
 )
 
 // redisTokenBucket is the atomic token-bucket refill/consume, evaluated entirely

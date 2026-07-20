@@ -20,8 +20,8 @@ import (
 	"context"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/stdlib/health"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/health"
+	"go-spring.org/spring/starter"
 )
 
 // newClientHealth builds an indicator for a single/sentinel client. It is

@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/stdlib/session"
+	"go-spring.org/spring/session"
 )
 
 // Store is a Redis-backed [session.SessionStore]. It embeds the interface value

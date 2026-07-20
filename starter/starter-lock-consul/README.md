@@ -5,7 +5,7 @@
 `starter-lock-consul` integrates [Consul](https://www.consul.io/) as a
 **distributed-lock backend** for the framework-agnostic `lock.Locker`
 abstraction in
-[`go-spring.org/stdlib/lock`](../../stdlib/lock). Blank-importing this starter
+[`go-spring.org/spring/lock`](../../spring/lock). Blank-importing this starter
 registers one `lock.Locker` bean per entry under `spring.lock.<name>`, each
 backed by a Consul session with automatic renewal.
 
@@ -41,7 +41,7 @@ spring.lock.jobs.key-prefix=demo/lock/
 ### 3. Inject and use `lock.Locker`
 
 ```go
-import "go-spring.org/stdlib/lock"
+import "go-spring.org/spring/lock"
 
 type Service struct {
     Locker lock.Locker `autowire:"jobs"`

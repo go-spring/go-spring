@@ -39,7 +39,7 @@ backed by Consul sessions and `api.Lock`.
 - **KeyPrefix defaults to `lock/`.** Multiple apps sharing one Consul
   cluster differentiate their key spaces via prefix rather than colliding
   on flat keys.
-- **No `go mod tidy` against the proxy.** `stdlib/lock` is workspace-local.
+- **No `go mod tidy` against the proxy.** `spring/lock` is workspace-local.
 
 ## 4. Trade-offs / Alternatives Rejected
 

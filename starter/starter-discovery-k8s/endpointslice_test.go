@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 

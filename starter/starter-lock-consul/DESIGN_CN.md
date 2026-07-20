@@ -30,7 +30,7 @@ starter：贡献 Consul session + `api.Lock` 后端的 `lock.Locker` 命名 bean
   `TLS.Enabled=true` 及对应 cert/CA 字段。只设 `Scheme=https` 会拨号失败。
 - **KeyPrefix 默认 `lock/`。** 多个应用共用一个 Consul 集群时，通过前缀区分
   key 空间，而不是在扁平 key 上撞车。
-- **不能对 proxy 跑 `go mod tidy`。** `stdlib/lock` 是 workspace 本地包。
+- **不能对 proxy 跑 `go mod tidy`。** `spring/lock` 是 workspace 本地包。
 
 ## 4. 权衡 / 已否决方案
 

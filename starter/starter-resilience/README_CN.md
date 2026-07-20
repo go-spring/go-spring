@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-resilience` 把 [alibaba/sentinel-golang][sentinel] 注册为
-[`stdlib/resilience`](../../stdlib/resilience) 韧性框架的推荐 driver。空导入
+[`spring/resilience`](../../spring/resilience) 韧性框架的推荐 driver。空导入
 后,任何选择 `driver=sentinel` 的 starter 或用户代码——HTTP RoundTripper、
 Dialer、入站 Handler、重试策略——都能在同一份中立 `Policy` 之上获得自适应
 限流、熔断与并发隔离。
@@ -34,7 +34,7 @@ import _ "go-spring.org/starter-resilience"
 
 ### 2. 让上层适配器指向 sentinel driver
 
-一切构筑在 `stdlib/resilience` 上的 starter/库都按名字选择 driver。以
+一切构筑在 `spring/resilience` 上的 starter/库都按名字选择 driver。以
 `starter-oauth2-client` 为例,它读取
 `spring.http.client.<name>.resilience.driver`:
 
@@ -50,7 +50,7 @@ spring.http.client.default.resilience.timeout=1s
 ### 3. 或直接使用
 
 ```go
-import "go-spring.org/stdlib/resilience"
+import "go-spring.org/spring/resilience"
 
 driver, _ := resilience.MustGetDriver("sentinel")
 exec, _ := driver.NewExecutor(resilience.Policy{
@@ -90,10 +90,10 @@ dial := resilience.NewDialer(baseDialer, exec, "upstream")
 `RateLimit`、`ErrorThreshold`、`MaxConcurrent` 落成 sentinel 规则;
 `MaxRetries` 与 `Timeout` 由 executor 在 sentinel entry 之外完成,因为
 sentinel 本身不建模这两者。sentinel 的阻断原因会被映射为中立 sentinel,
-调用方仅依赖 `stdlib/resilience`。
+调用方仅依赖 `spring/resilience`。
 
 ## Default driver
 
-`stdlib/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
+`spring/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
 生产链路上得到实打实的限流与熔断,请导入本 starter;若无需即可继续使用
 `default`。

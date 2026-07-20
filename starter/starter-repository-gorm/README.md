@@ -5,7 +5,7 @@
 > The project has been officially released, welcome to use!
 
 `starter-repository-gorm` is the [gorm](https://gorm.io)-backed implementation of
-the framework-neutral [`go-spring.org/stdlib/repository`](../../stdlib/repository)
+the framework-neutral [`go-spring.org/spring/repository`](../../spring/repository)
 abstraction. It translates a `repository.Query` into gorm's chained builder and
 returns a ready-to-use generic `repository.Repository[T, ID]` over any
 `*gorm.DB` — the Go-idiomatic equivalent of a Spring Data JPA repository, without
@@ -32,7 +32,7 @@ The natural shape inside a service constructor:
 ```go
 import (
     reposgorm "go-spring.org/starter-repository-gorm"
-    "go-spring.org/stdlib/repository"
+    "go-spring.org/spring/repository"
     "gorm.io/gorm"
 )
 

@@ -32,11 +32,16 @@ one way only — never in reverse**:
 
 Verified dependency facts (do not violate):
 
-- `stdlib/` has **zero third-party dependencies** — standard library only.
+- `stdlib/` has **zero third-party dependencies** — standard library only. It is a
+  general-purpose utility library (a completion of the Go standard library:
+  types, encoding, collections, ...); it holds **no capability abstractions**.
 - `log/` depends on `stdlib/` (plus an ANTLR parser for its config grammar); it is
   a foundation module, not part of `spring`.
 - `spring/` depends on `log/` and `stdlib/`, and on **no third-party business
-  package** (no Redis, GORM, Kafka, ...).
+  package** (no Redis, GORM, Kafka, ...). Beyond the IoC container it hosts the
+  framework's **capability abstractions** (interface + driver registry) as
+  subpackages — `spring/cache`, `spring/lock`, `spring/discovery`,
+  `spring/resilience`, ... — whose concrete backends live in `starter-*`.
 - `starter-*` and `gs-*` sit on top and may pull third-party packages.
 - Nothing in a lower layer may import a higher layer. A `starter` importing
   another `starter`, or `spring` importing a `starter`, is a layering violation.
@@ -49,9 +54,9 @@ on an in-workspace module sends `go mod tidy` to the proxy and 404s. See the
 
 | Directory | Layer | Purpose (one line) | Belongs here | Does **not** belong here | Deep dive |
 |---|---|---|---|---|---|
-| `stdlib/` | foundation | Zero-dependency utilities & capability abstractions shared across modules | Pure Go helpers; capability interfaces + driver registries (cache, lock, discovery, resilience, ...) | Any third-party import; container/DI logic; anything that wires a real backend | [stdlib/README.md](stdlib/README.md) |
+| `stdlib/` | foundation | Zero-dependency general-purpose utilities (a completion of the Go standard library) | Pure Go helpers — types, encoding, collections, hashing, text, ... | Any third-party import; capability abstractions / driver registries (those live in `spring/`); container/DI logic | [stdlib/README.md](stdlib/README.md) |
 | `log/` | foundation | Structured logging model, config grammar, adapters | The logging model, appenders, field encoding, log config parser | Business logging; hard deps on `spring` | [log/DESIGN.md](log/DESIGN.md) |
-| `spring/` | core | IoC container, dependency injection, app lifecycle, built-in HTTP server, conf | Bean model, injection, start/stop state machine, config binding/refresh, minimal HTTP server | Third-party business packages; integration code; a full web framework (see §4) | [spring/DESIGN.md](spring/DESIGN.md) |
+| `spring/` | core | IoC container, dependency injection, app lifecycle, built-in HTTP server, conf, and the framework's capability abstractions | Bean model, injection, start/stop state machine, config binding/refresh, minimal HTTP server; capability interfaces + driver registries (cache, lock, discovery, resilience, ...) | Third-party business packages; integration code that wires a real backend; a full web framework (see §4) | [spring/DESIGN.md](spring/DESIGN.md) |
 | `starter/` | integration | One module per third-party service/framework, wired into the IoC container | `starter-*` modules following the five archetypes; the family design guide | Business logic; deployment scaffolding; cross-starter shared helper packages | [starter/DESIGN.md](starter/DESIGN.md) |
 | `gs/` | tooling | Dev tools: scaffolding (`gs`), GUI, code generation (`gs-http-gen`), mocking (`gs-mock`) | CLI/codegen/tooling that operates *on* projects | Runtime framework code; anything imported by a running app | [gs/README.md](gs/README.md) |
 | `contrib/` | demo | Runnable examples showing how third-party frameworks are wired the Go-Spring way | Per-framework runnable variants; smoke tests | Reusable modules (those become `starter-*`); deployment scaffolding | [contrib/DIRECTORY_CONVENTIONS.md](contrib/DIRECTORY_CONVENTIONS.md) |
@@ -76,12 +81,14 @@ Answer top-down; the first match wins.
    config-prefix behavior.
 3. **Is it a dev-time tool** (scaffolding, codegen, mocking, GUI) that operates
    *on* projects rather than running inside them? → `gs/gs-*`.
-4. **Is it container / DI / lifecycle / config / built-in-HTTP logic** with no
-   third-party business dependency? → `spring/`.
-5. **Is it a reusable utility or a capability abstraction** (interface + driver
-   registry) with **zero third-party dependencies**? → `stdlib/` (or `log/` if it
-   is logging). If it needs a third-party import, it is not stdlib — it belongs in
-   a `starter` that provides the concrete backend.
+4. **Is it container / DI / lifecycle / config / built-in-HTTP logic, or a
+   capability abstraction** (interface + driver registry, e.g. cache, lock,
+   discovery, resilience) with no third-party business dependency? → `spring/`
+   (a subpackage). If it needs a third-party import, the abstraction stays in
+   `spring/` but the concrete backend belongs in a `starter`.
+5. **Is it a reusable general-purpose utility** (types, encoding, collections,
+   ...) with **zero third-party dependencies** and no framework/capability
+   concern? → `stdlib/` (or `log/` if it is logging).
 6. **Is it documentation?** Author in `website/`; never hand-edit `docs/`.
 
 Two recurring traps:
@@ -91,10 +98,12 @@ Two recurring traps:
   ([starter/DESIGN.md §3](starter/DESIGN.md), "Duplication is currently tolerated
   over premature abstraction"). Duplicate first; a consolidation pass may come
   later.
-- *"This abstraction needs a Redis client, I'll put it in stdlib."* No — the
-  moment a third-party import is required it leaves the foundation layer. The
-  pattern is: **abstraction + driver registry in `stdlib/`, concrete backend in a
-  `starter`** (see `stdlib/cache`, `stdlib/lock`, `stdlib/discovery`).
+- *"This abstraction needs a Redis client, I'll put it in stdlib."* No — two
+  things are wrong. It is not a pure utility (it is a capability abstraction, so
+  its home is `spring/`, not `stdlib/`), and the moment a third-party import is
+  required it cannot live in either foundation layer. The pattern is:
+  **abstraction + driver registry in `spring/`, concrete backend in a `starter`**
+  (see `spring/cache`, `spring/lock`, `spring/discovery`).
 
 ## 4. Scope Red Lines (non-goals)
 
@@ -133,10 +142,10 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
   architecture fails by omission, not by a visible bug.
 - **Built-ins ride the same seams they expose.** Go-Spring's own built-in
   implementations must go through the very extension points offered to users,
-  never a privileged private path — `stdlib/cache`'s Memory backend,
-  `resilience`'s built-in strategies, and the starter archetypes all consume
-  their own registries/interfaces. If a built-in can't be expressed through the
-  public seam, the seam is wrong, not the built-in.
+  never a privileged private path — `spring/cache`'s Memory backend,
+  `spring/resilience`'s built-in strategies, and the starter archetypes all
+  consume their own registries/interfaces. If a built-in can't be expressed
+  through the public seam, the seam is wrong, not the built-in.
 - **This is a framework-layer duty, not a universal one.** Downstream business
   code (apps stamped from `layout/`, and `examples/` / `contrib/`) follows YAGNI
   instead: leave a seam only when a real second case crosses the line (see the
@@ -144,7 +153,7 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
   is crossed almost by definition; a business app's rarely is.
 
 The concrete extension-point shapes (driver registry, seam interface,
-Provider/Contributor, functional hook) and the "abstraction in `stdlib`, backend
+Provider/Contributor, functional hook) and the "abstraction in `spring`, backend
 in `starter`" rule are catalogued in §2–§3 above and in
 [starter/DESIGN.md §2](starter/DESIGN.md).
 

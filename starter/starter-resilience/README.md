@@ -4,7 +4,7 @@
 
 `starter-resilience` registers [alibaba/sentinel-golang][sentinel] as the
 recommended driver for the resilience framework defined in
-[`stdlib/resilience`](../../stdlib/resilience). Blank-import it and any starter
+[`spring/resilience`](../../spring/resilience). Blank-import it and any starter
 or user code that selects `driver=sentinel` — HTTP round-trippers, dialers,
 inbound handlers, retry policies — gets adaptive rate limiting, circuit
 breaking, and bulkhead isolation on top of the same neutral `Policy`.
@@ -35,7 +35,7 @@ then `resilience.RegisterDriver("sentinel", ...)`.
 
 ### 2. Point an adapter at the sentinel driver
 
-Any starter or library built on `stdlib/resilience` selects a driver by name.
+Any starter or library built on `spring/resilience` selects a driver by name.
 For example, `starter-oauth2-client` reads
 `spring.http.client.<name>.resilience.driver`:
 
@@ -51,7 +51,7 @@ spring.http.client.default.resilience.timeout=1s
 ### 3. Or drive it directly
 
 ```go
-import "go-spring.org/stdlib/resilience"
+import "go-spring.org/spring/resilience"
 
 driver, _ := resilience.MustGetDriver("sentinel")
 exec, _ := driver.NewExecutor(resilience.Policy{
@@ -94,10 +94,10 @@ loaded lazily on the first entry:
 `MaxRetries` and `Timeout` are applied by the executor around sentinel's
 entry check, since sentinel itself models neither. Sentinel block reasons are
 mapped onto the neutral sentinels so callers depend only on
-`stdlib/resilience`.
+`spring/resilience`.
 
 ## Default driver
 
-`stdlib/resilience` ships a zero-dependency `default` driver used for tests
+`spring/resilience` ships a zero-dependency `default` driver used for tests
 and lightweight setups. Import this starter to get production-grade
 throttling and breaking; keep `default` if you do not need it.

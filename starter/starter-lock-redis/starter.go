@@ -34,7 +34,7 @@
 //	}
 //
 // Leader election is available for free via lock.NewElection over the same
-// Locker (see [go-spring.org/stdlib/lock.Election]).
+// Locker (see [go-spring.org/spring/lock.Election]).
 package StarterLockRedis
 
 import (
@@ -44,7 +44,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/stdlib/lock"
+	"go-spring.org/spring/lock"
 )
 
 func init() {

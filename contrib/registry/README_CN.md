@@ -40,7 +40,7 @@ RPC 框架、也不是协议,而是 **注册中心本身**:provider 启动时把
 因此这里的发现是 **纯客户端** 的——把 Service 名解析成存活的 Pod 端点——与上面
 「先注册再发现」的示例形态不同,这也是它做成可复用 **starter** 而非本目录下 demo 的
 原因:[`starter/starter-discovery-k8s`](../../starter/starter-discovery-k8s)。它以
-两种模式实现 `stdlib/discovery`:headless Service DNS(零依赖、免 RBAC)与
+两种模式实现 `spring/discovery`:headless Service DNS(零依赖、免 RBAC)与
 EndpointSlice informer(实时,client-go + `get/list/watch endpointslices` RBAC)。
 该 starter 自带 K8s manifest 与示例;本目录下不提供 docker-compose demo,因为该机制
 需要真实集群,而非单个容器。

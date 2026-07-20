@@ -4,7 +4,7 @@
 
 `starter-registry-etcd` registers the **current instance** into an etcd cluster —
 the provider-side counterpart to Go-Spring's client-side discovery
-(`stdlib/discovery`). It is the Go-Spring equivalent of Spring Cloud's
+(`spring/discovery`). It is the Go-Spring equivalent of Spring Cloud's
 `ServiceRegistry` registration direction, backed by etcd leases.
 
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
@@ -74,7 +74,7 @@ Connection, bound under `spring.registry.etcd`:
 | `ttl` | `15s` | Lease duration; the registrar keeps it alive while up. Rounded up to whole seconds. |
 | `key-prefix` | `/services/` | Prepended to every key so apps can share a cluster. |
 | `tls.*` | (off) | Optional client TLS (`enabled`, `cert-file`, `key-file`, `ca-file`). |
-| `name` | `default` | Name this registrar is published under in the `stdlib/discovery` registrar registry. |
+| `name` | `default` | Name this registrar is published under in the `spring/discovery` registrar registry. |
 
 Instance, bound under `spring.registry` (backend-agnostic — switching registry
 backends is a blank-import swap, not a config migration):
@@ -95,7 +95,7 @@ can reconstruct an `Endpoint`.
 ## How It Works
 
 - During the container's bean-registration phase the starter builds an etcd
-  `discovery.Registrar` and puts it in the `stdlib/discovery` registrar registry
+  `discovery.Registrar` and puts it in the `spring/discovery` registrar registry
   under `name`. It probes the cluster (a `Status` call) so an unreachable etcd
   fails startup. A company can register its own `Registrar` under a different
   name and point `spring.registry.backend` at it.

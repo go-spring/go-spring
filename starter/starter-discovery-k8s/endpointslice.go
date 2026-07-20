@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 )
 
 // serviceNameLabel is the well-known label Kubernetes sets on every

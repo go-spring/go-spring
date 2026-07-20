@@ -19,7 +19,7 @@ package StarterTransactionTCC
 import (
 	"context"
 
-	"go-spring.org/stdlib/transaction/tcc"
+	"go-spring.org/spring/transaction/tcc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

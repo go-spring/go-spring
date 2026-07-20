@@ -59,7 +59,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"go-spring.org/stdlib/httpclt"
+	"go-spring.org/spring/httpclt"
 )
 {{- end}}
 
@@ -70,7 +70,7 @@ import (
 //
 // HTTPClient carries the transport every call runs on. Leave it nil to use
 // http.DefaultClient, or inject an *http.Client whose Transport adds service
-// discovery, load balancing and resilience (see go-spring.org/stdlib/httpx and
+// discovery, load balancing and resilience (see go-spring.org/spring/httpx and
 // starter-http-client) — the generated call sites are unchanged either way.
 type Client struct {
 	Target     string

@@ -22,7 +22,7 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 

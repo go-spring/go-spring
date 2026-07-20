@@ -27,7 +27,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/lock"
+	"go-spring.org/spring/lock"
 
 	_ "go-spring.org/starter-lock-consul"
 )

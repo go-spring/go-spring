@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-validation` 把 [go-playground/validator][gpv] 注册为
-[`stdlib/validation`](../../stdlib/validation) 抽象的 `default` driver。空导入
+[`spring/validation`](../../spring/validation) 抽象的 `default` driver。空导入
 后,任何 `validation.Validate(ctx, "default", v)` 调用——无论来自 `conf.Bind`
 校验后置,还是 Web 请求处理——都会用带 `validate:"..."` 标签的结构体规则完成
 校验。
@@ -43,7 +43,7 @@ type SignupRequest struct {
 ### 3. 校验
 
 ```go
-import "go-spring.org/stdlib/validation"
+import "go-spring.org/spring/validation"
 
 if err := validation.Validate(ctx, "default", &req); err != nil {
     // err 是 validation.ValidationErrors——每条失败规则一个 FieldError
@@ -56,7 +56,7 @@ if err := validation.Validate(ctx, "default", &req); err != nil {
 
 ## i18n
 
-搭配 [`stdlib/i18n`](../../stdlib/i18n) 可做本地化输出,不用硬编码消息:
+搭配 [`spring/i18n`](../../spring/i18n) 可做本地化输出,不用硬编码消息:
 
 ```properties
 # messages_en.yaml

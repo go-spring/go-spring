@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-registry-consul` 把**当前实例**注册进 Consul 服务注册中心 —— 它是
-Go-Spring 客户端服务发现(`stdlib/discovery`)的注册侧对应物,相当于 Spring Cloud
+Go-Spring 客户端服务发现(`spring/discovery`)的注册侧对应物,相当于 Spring Cloud
 `ServiceRegistry` / `@EnableDiscoveryClient` 的注册方向。
 
 适用于**虚机 / 裸机 / 混合**部署,即平台不替你注册实例的场景。**纯 Kubernetes**
@@ -65,7 +65,7 @@ spring.registry.metadata.version=v1
 | `datacenter` | (空) | 注册到的 datacenter,空则用 agent 的。 |
 | `token` | (空) | ACL token。 |
 | `namespace` | (空) | Consul Enterprise namespace。 |
-| `name` | `default` | 本 registrar 在 `stdlib/discovery` registrar 注册表中的名字。 |
+| `name` | `default` | 本 registrar 在 `spring/discovery` registrar 注册表中的名字。 |
 | `ttl` | `15s` | TTL 健康检查;starter 以 TTL 一半的间隔心跳。 |
 | `deregister-critical-after` | `1m` | 检查持续 critical 超过此时长(如崩溃后),Consul 自动摘除实例。 |
 
@@ -84,7 +84,7 @@ spring.registry.metadata.version=v1
 ## 工作原理
 
 - 在容器的 bean 注册阶段,starter 构建一个 Consul `discovery.Registrar` 并以 `name`
-  放进 `stdlib/discovery` 的 registrar 注册表 —— 与 `starter-discovery-k8s` 注册发现
+  放进 `spring/discovery` 的 registrar 注册表 —— 与 `starter-discovery-k8s` 注册发现
   后端的方式一致。公司可用另一个名字注册自己的 `Registrar`,再把
   `spring.registry.backend` 指向它。
 - 导出的 `gs.Server` 按 `backend` 解析后端,等待就绪,然后带一个 Consul **TTL 健康

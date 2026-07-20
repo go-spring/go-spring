@@ -25,7 +25,6 @@ Each module is independent and can be used separately. Detailed documentation is
 
 | Module | Description |
 |--------|-------------|
-| [aspect](./aspect/) | AOP-equivalent interceptor chain for cross-cutting concerns (transaction, cache, audit, timing) |
 | [ctxcache](./ctxcache/) | Context-based caching utilities |
 | [errutil](./errutil/) | Error handling utilities, provides error wrapping, stack trace capture and more |
 | [fileutil](./fileutil/) | File system utilities |
@@ -34,8 +33,6 @@ Each module is independent and can be used separately. Detailed documentation is
 | [funcutil](./funcutil/) | Function utilities, lazy evaluation, partial application and more |
 | [goutil](./goutil/) | Generic Go language utilities, context cancellation control and more |
 | [hashutil](./hashutil/) | Hashing utilities |
-| [httpclt](./httpclt/) | HTTP client utilities |
-| [httpsvr](./httpsvr/) | HTTP server utilities |
 | [iterutil](./iterutil/) | Iterator and loop processing utilities |
 | [jsonflow](./jsonflow/) | JSON streaming processing toolkit |
 | [listutil](./listutil/) | List and linked list utilities |

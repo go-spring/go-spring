@@ -23,13 +23,13 @@ order→inventory 需要一个*客户端侧*的 `discovery.Discovery`,而只有
 
 **在示例中桥接**,通过 `internal/consuldisc`——一个由 Consul catalog 支撑的
 `discovery.Discovery`,用 `discovery.Register("consul", …)` 注册。它证明了
-`stdlib/discovery` 抽象足以填补这个缺口,但一个一等公民 `starter-discovery-consul`
+`spring/discovery` 抽象足以填补这个缺口,但一个一等公民 `starter-discovery-consul`
 可以省掉这段每应用重写的代码。**反哺**:候选新 starter。
 
 ## 3. `lb://` 经全局注册表而非 bean 解析 —— *顺序注意点*
 
 网关经由 `discovery.MustGet(name)` 解析 `lb://` 上游——用的是进程级全局的
-`stdlib/discovery` 注册表,而不是 IoC 容器。所以 `discovery.Register(...)` 必须在
+`spring/discovery` 注册表,而不是 IoC 容器。所以 `discovery.Register(...)` 必须在
 `init()` 里跑(先于路由编译),而且它是一个全局副作用,不是可注入的 bean。把全局
 注册表和基于 bean 的接线混在一起很容易出错;示例把 `Register` 调用放在每个 `main`
 的 `init` 里,紧挨着空导入,让顺序一目了然。

@@ -27,7 +27,7 @@ import (
 	"net/http"
 
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/httpx"
+	"go-spring.org/spring/httpx"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 

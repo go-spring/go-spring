@@ -5,7 +5,7 @@
 `starter-mesh` 属于 global / infrastructure 形态(见
 [starter/DESIGN.md](../DESIGN.md) §2.4),仅用于翻转客户端 discovery + 负载
 均衡使用的**进程级 mesh 开关**。它落在 *starter* 层是为了让"接线动作"位于
-集成层;真正的退化逻辑与开关的**唯一真源**留在 `stdlib/discovery`。
+集成层;真正的退化逻辑与开关的**唯一真源**留在 `spring/discovery`。
 
 ## 1. 职责与边界
 
@@ -17,7 +17,7 @@
 
 ## 2. 关键决策——单开关,集中退化
 
-开关是 `stdlib/discovery` 内的单个进程级 `atomic.Bool`,不做逐 starter 分支。
+开关是 `spring/discovery` 内的单个进程级 `atomic.Bool`,不做逐 starter 分支。
 每一处客户端 seam 只在两个位置读取它:
 
 - `discovery.NewClientDialer` / `NewLiveDialer`:mesh 开 → 构造 `meshDialer`,

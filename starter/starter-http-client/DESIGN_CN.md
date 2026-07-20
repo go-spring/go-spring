@@ -14,11 +14,11 @@
   tracing + 服务发现感知的负载均衡 + 韧性;注册 destroy 释放服务发现 watch
   与 resilience executor。
 - **不在范围内:**接口定义与代码生成(`gs-http-gen`);具体负载均衡算法
-  (`stdlib/loadbalance`);韧性策略(`stdlib/resilience`)。
+  (`spring/loadbalance`);韧性策略(`spring/resilience`)。
 
 ## 2. Transport 组合——由外到内
 
-`stdlib/httpx.NewTransport` 装配的链路:
+`spring/httpx.NewTransport` 装配的链路:
 
 ```
 resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp base
@@ -38,7 +38,7 @@ resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp ba
   变更。契合家族规则 §2.2 的 client starter 约束(HTTP 无独立 driver
   注册表)。
 - **生成代码只依赖 stdlib。**`gs-http-gen` 输出只 import `net/http` +
-  `stdlib/httpclt`,绝不 import 具体 starter。声明式通过代码生成(无运行
+  `spring/httpclt`,绝不 import 具体 starter。声明式通过代码生成(无运行
   时代理),代码带 `HTTPClient *http.Client` 缝隙供 DI 填充。
 - **`managedTransport` 带 `closeFn`。**starter destroy 把 transport 断言
   为 `io.Closer` 并释放其内的服务发现 watch 与 `resilience.Executor`,

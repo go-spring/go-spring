@@ -125,11 +125,11 @@ app.shutdown.timeout=30s
 ## 健康指示器
 
 探针会聚合由其它 bean 贡献的健康检查。任何被导出为 `health.Indicator`
-（来自零依赖的 `go-spring.org/stdlib/health` 包）的 bean 都会被自动收集——无需任何
+（来自零依赖的 `go-spring.org/spring/health` 包）的 bean 都会被自动收集——无需任何
 逐组件的注册 API，也无需 import 本 starter：
 
 ```go
-import "go-spring.org/stdlib/health"
+import "go-spring.org/spring/health"
 
 type dbHealth struct{ db *sql.DB }
 
@@ -168,7 +168,7 @@ func (h *dbHealth) HealthGroups() []health.Group {
 
 actuator 还能承载 Prometheus `/metrics` 端点，让运维方**只抓一个管理端口**即可同时拿到
 探针与指标，而无需指标 exporter 另起一个服务器。这一能力通过 `starter-otel` 开启：任何
-被导出为 `endpoint.Endpoint`（来自零依赖的 `go-spring.org/stdlib/endpoint` 包）的 bean
+被导出为 `endpoint.Endpoint`（来自零依赖的 `go-spring.org/spring/endpoint` 包）的 bean
 都会被挂载到管理端口，而 `starter-otel` 的 Prometheus exporter 恰好贡献了这样一个 bean
 ——本 starter 不 import otel，也无需额外接线：
 

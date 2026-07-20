@@ -60,4 +60,4 @@ an SBA clone.
   observability stack instead of asking this starter to grow.
 - If a real need for richer per-instance introspection emerges, it can be
   addressed by extending `starter-actuator` (more endpoint contributions
-  through `stdlib/endpoint`) rather than by expanding this dashboard.
+  through `spring/endpoint`) rather than by expanding this dashboard.

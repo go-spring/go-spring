@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-lock-etcd` 是 [`go-spring.org/stdlib/lock`](../../stdlib/lock)
+`starter-lock-etcd` 是 [`go-spring.org/spring/lock`](../../spring/lock)
 分布式锁抽象的 etcd 后端实现。空导入本 starter 会为每个配置实例注册一个
 `lock.Locker` Bean；切换到 Redis 或 Consul 只需换空导入，业务代码无需改动。
 
@@ -36,7 +36,7 @@ spring.lock.main.key-prefix=/lock/
 ### 3. 注入 `lock.Locker`
 
 ```go
-import "go-spring.org/stdlib/lock"
+import "go-spring.org/spring/lock"
 
 type Service struct {
     Locker lock.Locker `autowire:"main"`

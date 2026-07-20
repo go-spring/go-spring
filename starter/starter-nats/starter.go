@@ -24,7 +24,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/resilience"
 )
 
 // Conn wraps a NATS connection together with an optional JetStream context.

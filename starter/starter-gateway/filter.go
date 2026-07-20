@@ -25,7 +25,7 @@ import (
 	"sync"
 
 	"go-spring.org/log"
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/resilience"
 )
 
 // FilterFactory builds a self-contained [Filter] from its config arguments (the

@@ -29,7 +29,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/session"
+	"go-spring.org/spring/session"
 
 	// Blank-import both starters: starter-go-redis publishes the *redis.Client
 	// under spring.go-redis.<name>, and starter-session-redis contributes a

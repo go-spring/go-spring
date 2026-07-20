@@ -30,14 +30,14 @@ go get go-spring.org/starter-http-client
 ```
 
 生成的 `Client` 只持有一个 `*http.Client`。本 starter 为每个配置项注册一个
-`*http.Client`,其 `http.RoundTripper` 由 [`stdlib/httpx`](../../stdlib/httpx)
+`*http.Client`,其 `http.RoundTripper` 由 [`spring/httpx`](../../spring/httpx)
 用三个可组合的 stdlib 抽象装配而成,全部收敛在同一个 `http.RoundTripper` 缝隙上:
 
-* [`discovery`](../../stdlib/discovery) —— 设置了 `service-name` 时,`LiveDialer`
+* [`discovery`](../../spring/discovery) —— 设置了 `service-name` 时,`LiveDialer`
   持续维护最新的端点快照;
-* [`loadbalance`](../../stdlib/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
+* [`loadbalance`](../../spring/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
   (任意已注册策略,并可选离群剔除),传输层随即把请求主机改写为该端点;
-* [`resilience`](../../stdlib/resilience) —— 可选的执行器包裹整条链路,使限流、
+* [`resilience`](../../spring/resilience) —— 可选的执行器包裹整条链路,使限流、
   熔断与重试保护每一次调用。由于它位于负载均衡器**之外**,重试会重新挑选一个
   新端点,而熔断器则以逻辑服务名为键。
 

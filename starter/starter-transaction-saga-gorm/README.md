@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-transaction-saga-gorm` contributes a **durable, gorm-backed**
-[`transaction.Store`](../../stdlib/transaction) so a Go-Spring application can
+[`transaction.Store`](../../spring/transaction) so a Go-Spring application can
 recover Sagas a crash left in flight. It is the persistence side-car for
 [`starter-transaction-saga`](../starter-transaction-saga): the coordinator
 writes its saga log here, and the startup recovery `Runner` reads back

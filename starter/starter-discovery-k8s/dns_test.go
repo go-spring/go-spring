@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 

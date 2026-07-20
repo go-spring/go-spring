@@ -18,7 +18,7 @@ package StarterBatchRedis
 
 import "time"
 
-// Config configures one Redis-backed [go-spring.org/stdlib/batch.JobRepository]
+// Config configures one Redis-backed [go-spring.org/spring/batch.JobRepository]
 // instance bound under spring.batch-repository.<name>. It intentionally does
 // not carry Redis connection details: the repository reuses an existing
 // *redis.Client bean registered by starter-go-redis, so switching between

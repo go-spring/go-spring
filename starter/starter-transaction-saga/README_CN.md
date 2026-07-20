@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-transaction-saga` 把
-[`go-spring.org/stdlib/transaction`](../../stdlib/transaction) 中定义的 **Saga**
+[`go-spring.org/spring/transaction`](../../spring/transaction) 中定义的 **Saga**
 分布式事务能力接入 Go-Spring 应用。它以进程内 Coordinator + aspect 链的形式
 提供 `@GlobalTransactional(SAGA)` 的 Go 惯用等价物,而不复刻 Seata 的
 TC/TM/RM 角色,也不依赖字节码魔法。
@@ -121,7 +121,7 @@ Coordinator 与恢复扫描会同时接过它,无需改动业务代码。
 `tracing=true` 时,Coordinator 每个 Step 阶段发一个 otel 子 span
 (`saga.action <step>`、`saga.compensate <step>`),带上 `saga.id`、
 `saga.step`、`saga.phase` 属性;失败会记录到 span。`Observer` 缝隙放在
-Coordinator 上,故 `stdlib/transaction` 不必依赖 otel。
+Coordinator 上,故 `spring/transaction` 不必依赖 otel。
 
 ## 许可
 

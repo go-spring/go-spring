@@ -32,7 +32,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/stdlib/lock"
+	"go-spring.org/spring/lock"
 )
 
 func init() {

@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-batch` runs [`stdlib/batch`](../../stdlib/batch) jobs — chunk-oriented
+`starter-batch` runs [`spring/batch`](../../spring/batch) jobs — chunk-oriented
 batches and one-shot Cloud Tasks — as part of the Go-Spring application
 lifecycle. Blank-import it, register a `JobDefinition` per job, and either flip
 `run-on-startup=true` (Cloud Task) or trigger the job through the exported
@@ -16,7 +16,7 @@ launches are drained before the process exits.
 
 The engine, `Reader`/`Processor`/`Writer` interfaces, `JobRepository` seam and
 the in-process memory repository all come from the zero-dependency
-[`stdlib/batch`](../../stdlib/batch) package; this starter is the thin
+[`spring/batch`](../../spring/batch) package; this starter is the thin
 integration layer that binds configuration and the IoC container to it. Durable
 backends (Redis, SQL, ...) are separate starters that contribute their own
 `batch.JobRepository` bean.
@@ -43,7 +43,7 @@ so the runner collects it and matches it to its config entry by name.
 ```go
 import (
     starter "go-spring.org/starter-batch"
-    "go-spring.org/stdlib/batch"
+    "go-spring.org/spring/batch"
 )
 
 var reportStep = batch.Func("generate", func(ctx context.Context) error {
@@ -98,7 +98,7 @@ and calls `Launch`:
 import (
     scheduler "go-spring.org/starter-scheduler"
     starter   "go-spring.org/starter-batch"
-    "go-spring.org/stdlib/batch"
+    "go-spring.org/spring/batch"
 )
 
 type NightlyReconcile struct {

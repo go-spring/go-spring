@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-lock-etcd` is the etcd-backed implementation of the
-[`go-spring.org/stdlib/lock`](../../stdlib/lock) distributed-lock abstraction.
+[`go-spring.org/spring/lock`](../../spring/lock) distributed-lock abstraction.
 Blank-importing this starter registers one `lock.Locker` bean per configured
 instance; switching the backend to Redis or Consul is a blank-import swap and
 no business code changes.
@@ -39,7 +39,7 @@ empty `endpoints` fails fast at startup.
 ### 3. Inject the `lock.Locker`
 
 ```go
-import "go-spring.org/stdlib/lock"
+import "go-spring.org/spring/lock"
 
 type Service struct {
     Locker lock.Locker `autowire:"main"`

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// Command example demonstrates go-spring.org/stdlib/validation and
-// go-spring.org/stdlib/i18n end to end, using go-playground/validator via a
+// Command example demonstrates go-spring.org/spring/validation and
+// go-spring.org/spring/i18n end to end, using go-playground/validator via a
 // blank import of starter-validation as the driver:
 //
 //   - config-binding path: a struct is populated with conf.Bind, then validated
@@ -36,8 +36,8 @@ import (
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/stdlib/i18n"
-	"go-spring.org/stdlib/validation"
+	"go-spring.org/spring/i18n"
+	"go-spring.org/spring/validation"
 
 	_ "go-spring.org/starter-validation" // registers the "default" driver
 )

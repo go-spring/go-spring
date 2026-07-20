@@ -19,7 +19,7 @@ package StarterTransactionSaga
 import (
 	"context"
 
-	"go-spring.org/stdlib/transaction"
+	"go-spring.org/spring/transaction"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

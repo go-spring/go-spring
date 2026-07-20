@@ -16,7 +16,7 @@
 
 package StarterSessionRedis
 
-// Config configures one Redis-backed [go-spring.org/stdlib/session.SessionStore]
+// Config configures one Redis-backed [go-spring.org/spring/session.SessionStore]
 // instance bound under spring.session.redis.<name>. Like the lock starter it
 // carries no Redis connection details: session storage reuses an existing
 // *redis.Client bean registered by starter-go-redis, so switching between

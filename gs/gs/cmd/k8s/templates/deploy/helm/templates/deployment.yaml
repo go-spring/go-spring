@@ -36,7 +36,7 @@ spec:
             - name: GS_SPRING_PROFILES_ACTIVE
               value: "k8s"
             # Downward API -> GS_ env -> property tree (pod.name, pod.namespace, ...).
-            # Consumed by go-spring.org/stdlib/podinfo.PodInfo.
+            # Consumed by go-spring.org/spring/podinfo.PodInfo.
             - name: GS_POD_NAME
               valueFrom:
                 fieldRef:

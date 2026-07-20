@@ -21,7 +21,7 @@ import (
 	"net/http"
 
 	"go-spring.org/log"
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"

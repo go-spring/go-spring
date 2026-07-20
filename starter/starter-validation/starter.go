@@ -16,7 +16,7 @@
 
 // Package StarterValidation registers go-playground/validator as the default
 // validation driver for the abstraction defined in
-// [go-spring.org/stdlib/validation].
+// [go-spring.org/spring/validation].
 //
 // It is enabled purely by a blank import:
 //
@@ -40,7 +40,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"go-spring.org/stdlib/validation"
+	"go-spring.org/spring/validation"
 )
 
 func init() {

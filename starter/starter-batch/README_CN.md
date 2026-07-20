@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-batch` 以 Go-Spring 应用生命周期的一部分运行
-[`stdlib/batch`](../../stdlib/batch) 定义的批处理任务——分块(chunk)长批与一次性
+[`spring/batch`](../../spring/batch) 定义的批处理任务——分块(chunk)长批与一次性
 Cloud Task 都覆盖。空导入后,为每个批任务注册一个 `JobDefinition`,然后要么在配置
 里打开 `run-on-startup=true`(Cloud Task),要么在另一个 server(比如
 `starter-scheduler`)里通过导出的 `*Launcher` bean 触发它。
@@ -14,7 +14,7 @@ Cloud Task 都覆盖。空导入后,为每个批任务注册一个 `JobDefinitio
 时,进程退出前会先排空在途运行。
 
 引擎、`Reader`/`Processor`/`Writer` 接口、`JobRepository` 缝隙以及进程内 memory
-repository 全部来自零依赖的 [`stdlib/batch`](../../stdlib/batch) 包;本 starter
+repository 全部来自零依赖的 [`spring/batch`](../../spring/batch) 包;本 starter
 只是把配置与 IoC 容器接入其上的薄集成层。持久化后端(Redis、SQL 等)是独立的
 starter,各自贡献自己的 `batch.JobRepository` bean。
 
@@ -40,7 +40,7 @@ import _ "go-spring.org/starter-batch"
 ```go
 import (
     starter "go-spring.org/starter-batch"
-    "go-spring.org/stdlib/batch"
+    "go-spring.org/spring/batch"
 )
 
 var reportStep = batch.Func("generate", func(ctx context.Context) error {
@@ -92,7 +92,7 @@ starter 支持两种触发方式,对应 Spring Batch 的两种常见用法:
 import (
     scheduler "go-spring.org/starter-scheduler"
     starter   "go-spring.org/starter-batch"
-    "go-spring.org/stdlib/batch"
+    "go-spring.org/spring/batch"
 )
 
 type NightlyReconcile struct {

@@ -23,7 +23,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/gs-http-gen/lib/pathidl"
-	"go-spring.org/stdlib/httpsvr"
+	"go-spring.org/spring/httpsvr"
 )
 
 func init() {

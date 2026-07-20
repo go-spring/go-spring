@@ -38,7 +38,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/repository"
+	"go-spring.org/spring/repository"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

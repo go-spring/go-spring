@@ -5,8 +5,8 @@
 > The project has been officially released, welcome to use!
 
 `starter-mesh` provides a single, process-global switch that degrades Go-Spring's
-client-side service discovery (`stdlib/discovery`) and load balancing
-(`stdlib/loadbalance`) to a pass-through when the application runs inside a
+client-side service discovery (`spring/discovery`) and load balancing
+(`spring/loadbalance`) to a pass-through when the application runs inside a
 service mesh.
 
 ## Why
@@ -45,7 +45,7 @@ spring.mesh.enabled=true
 ```
 
 That is all. Every client starter that resolves a `service-name` through
-`stdlib/discovery` and every `stdlib/loadbalance` Pool degrades automatically —
+`spring/discovery` and every `spring/loadbalance` Pool degrades automatically —
 no per-component change. The switch is read once at startup, before any client
 builds its dialer.
 
@@ -65,11 +65,11 @@ not decided.
 
 ## What changes when enabled
 
-- **`stdlib/discovery`** — `NewClientDialer` / `NewLiveDialer` skip resolving and
+- **`spring/discovery`** — `NewClientDialer` / `NewLiveDialer` skip resolving and
   watching the backend and expose a single stable endpoint whose address is the
   service name. In Kubernetes that name resolves via DNS to the Service
   ClusterIP, which the sidecar intercepts and load-balances across the pods.
-- **`stdlib/loadbalance`** — a `Pool` returns that single endpoint directly,
+- **`spring/loadbalance`** — a `Pool` returns that single endpoint directly,
   with no strategy selection and no outlier ejection (a lone mesh endpoint must
   never be evicted).
 - **Tracing** is unaffected: the OTel global propagator still injects headers, so

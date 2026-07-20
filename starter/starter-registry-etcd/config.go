@@ -19,7 +19,7 @@ package StarterRegistryEtcd
 import (
 	"time"
 
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 // EtcdConfig binds the etcd cluster connection under ${spring.registry.etcd}.

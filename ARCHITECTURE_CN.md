@@ -25,9 +25,13 @@
 
 已核实的依赖事实(不可违反):
 
-- `stdlib/` **零三方依赖**——只用标准库。
+- `stdlib/` **零三方依赖**——只用标准库。它是一个通用工具库(对 Go 标准库的补齐:
+  类型、编解码、集合……),**不含任何能力抽象**。
 - `log/` 依赖 `stdlib/`(外加一个 ANTLR 解析器用于其配置语法);它是基础模块,不属于 `spring`。
 - `spring/` 依赖 `log/` 和 `stdlib/`,且**不依赖任何三方业务包**(不引 Redis、GORM、Kafka……)。
+  除 IoC 容器外,它还以子包形式承载框架的**能力抽象**(接口 + driver 注册表)——
+  `spring/cache`、`spring/lock`、`spring/discovery`、`spring/resilience`……——
+  其具体后端落在 `starter-*`。
 - `starter-*` 与 `gs-*` 位于上层,可以引入三方包。
 - 下层模块不得 import 上层。`starter` import 另一个 `starter`、或 `spring` import `starter`,都是分层违规。
 
@@ -37,9 +41,9 @@
 
 | 目录 | 层 | 用途(一句话) | 属于这里 | **不**属于这里 | 深入阅读 |
 |---|---|---|---|---|---|
-| `stdlib/` | 基础 | 零依赖工具与跨模块共享的能力抽象 | 纯 Go 工具;能力接口 + driver 注册表(cache、lock、discovery、resilience……) | 任何三方 import;容器/DI 逻辑;接真实后端的代码 | [stdlib/README.md](stdlib/README_CN.md) |
+| `stdlib/` | 基础 | 零依赖的通用工具(对 Go 标准库的补齐) | 纯 Go 工具——类型、编解码、集合、哈希、文本…… | 任何三方 import;能力抽象 / driver 注册表(它们在 `spring/`);容器/DI 逻辑 | [stdlib/README.md](stdlib/README_CN.md) |
 | `log/` | 基础 | 结构化日志模型、配置语法、适配器 | 日志模型、appender、字段编码、日志配置解析器 | 业务日志;对 `spring` 的硬依赖 | [log/DESIGN.md](log/DESIGN_CN.md) |
-| `spring/` | 核心 | IoC 容器、依赖注入、应用生命周期、内置 HTTP Server、conf | Bean 模型、注入、启停状态机、配置绑定/刷新、极简 HTTP Server | 三方业务包;集成代码;完整 Web 框架(见 §4) | [spring/DESIGN.md](spring/DESIGN_CN.md) |
+| `spring/` | 核心 | IoC 容器、依赖注入、应用生命周期、内置 HTTP Server、conf,以及框架的能力抽象 | Bean 模型、注入、启停状态机、配置绑定/刷新、极简 HTTP Server;能力接口 + driver 注册表(cache、lock、discovery、resilience……) | 三方业务包;接真实后端的集成代码;完整 Web 框架(见 §4) | [spring/DESIGN.md](spring/DESIGN_CN.md) |
 | `starter/` | 集成 | 每个三方服务/框架一个 module,接入 IoC 容器 | 遵循五形态的 `starter-*` 模块;家族设计指南 | 业务逻辑;部署脚手架;跨 starter 的共享 helper 包 | [starter/DESIGN.md](starter/DESIGN_CN.md) |
 | `gs/` | 工具 | 开发工具:脚手架(`gs`)、GUI、代码生成(`gs-http-gen`)、mock(`gs-mock`) | 作用*于*项目的 CLI/codegen/工具 | 运行时框架代码;任何被运行中应用 import 的东西 | [gs/README.md](gs/README.md) |
 | `contrib/` | 示例 | 展示三方框架如何按 Go-Spring 方式接线的可运行示例 | 各框架可运行变体;冒烟测试 | 可复用模块(那些应成为 `starter-*`);部署脚手架 | [contrib/DIRECTORY_CONVENTIONS.md](contrib/DIRECTORY_CONVENTIONS.md) |
@@ -61,16 +65,22 @@
    → `starter/` 下的 `starter-*` 模块。从
    [starter/DESIGN.md §2](starter/DESIGN_CN.md) 选定形态——它决定生命周期、端口和配置前缀行为。
 3. **它是开发期工具**(脚手架、codegen、mock、GUI),作用*于*项目而非运行在项目内?→ `gs/gs-*`。
-4. **它是容器 / DI / 生命周期 / 配置 / 内置 HTTP 逻辑**,且无三方业务依赖?→ `spring/`。
-5. **它是可复用工具或能力抽象**(接口 + driver 注册表),且**零三方依赖**?→ `stdlib/`(若是日志则 `log/`)。若它需要三方 import,那它就不是 stdlib——应放进提供具体后端的 `starter`。
+4. **它是容器 / DI / 生命周期 / 配置 / 内置 HTTP 逻辑,或某个能力抽象**
+   (接口 + driver 注册表,如 cache、lock、discovery、resilience),且无三方业务依赖?
+   → `spring/`(作为子包)。若它需要三方 import,抽象仍留在 `spring/`,具体后端放进
+   `starter`。
+5. **它是可复用的通用工具**(类型、编解码、集合……),**零三方依赖**且不涉及框架/能力
+   关注点?→ `stdlib/`(若是日志则 `log/`)。
 6. **它是文档吗?** 在 `website/` 里写;永不手改 `docs/`。
 
 两个反复出现的陷阱:
 
 - *"我就加个两个 starter 共用的小 helper。"* 不行——跨 starter 的共享 helper 包目前被禁止
   ([starter/DESIGN.md §3](starter/DESIGN_CN.md) "当前容忍重复而非过早抽象")。先重复;提取收敛可能晚点再做。
-- *"这个抽象需要 Redis 客户端,我放 stdlib 吧。"* 不行——一旦需要三方 import,它就离开了基础层。
-  正确模式是:**抽象 + driver 注册表放 `stdlib/`,具体后端放 `starter`**(见 `stdlib/cache`、`stdlib/lock`、`stdlib/discovery`)。
+- *"这个抽象需要 Redis 客户端,我放 stdlib 吧。"* 不行——两处都错。它不是纯工具(它是能力
+  抽象,家在 `spring/` 而非 `stdlib/`),且一旦需要三方 import 就不能待在任一基础层。
+  正确模式是:**抽象 + driver 注册表放 `spring/`,具体后端放 `starter`**
+  (见 `spring/cache`、`spring/lock`、`spring/discovery`)。
 
 ## 4. 范围红线(非目标)
 
@@ -87,10 +97,10 @@
 Go-Spring 的存在意义是服务所有团队的全场景;它无法交付一套固定功能就指望正好合用。所以在框架各层——`stdlib/`、`spring/`、`starter/`——**扩展点不是可选项**:
 
 - **每个能力都留一处缝。** 能力抽象定义接口 + driver 注册表,具体行为插在其后。框架没预料到的场景也必须有路进来——否则架构是以"缺失"的方式失效,而非以一个看得见的 bug 失效。
-- **内置功能走它对外暴露的同一处缝。** Go-Spring 自己的内置实现必须经由提供给用户的那些扩展点,绝不走特权私有路径——`stdlib/cache` 的 Memory 后端、`resilience` 的内置策略、starter 各形态,都在消费自己的注册表/接口。若某个内置功能无法经由公开缝表达,那是缝错了,不是内置错了。
+- **内置功能走它对外暴露的同一处缝。** Go-Spring 自己的内置实现必须经由提供给用户的那些扩展点,绝不走特权私有路径——`spring/cache` 的 Memory 后端、`spring/resilience` 的内置策略、starter 各形态,都在消费自己的注册表/接口。若某个内置功能无法经由公开缝表达,那是缝错了,不是内置错了。
 - **这是框架层的职责,不是普适要求。** 下游业务代码(`layout/` stamp 出的应用,以及 `examples/` / `contrib/`)反而遵循 YAGNI:仅当真实的第二个场景越过判断线时才留缝(见编码风格文档「可扩展性与扩展点」)。框架的判断线几乎是天生被跨过的;业务应用的则很少。
 
-具体的扩展点形态(driver 注册表、seam 接口、Provider/Contributor、函数式钩子)以及"抽象放 `stdlib`、后端放 `starter`"的规则,已在上文 §2–§3 与 [starter/DESIGN.md §2](starter/DESIGN_CN.md) 中登记。
+具体的扩展点形态(driver 注册表、seam 接口、Provider/Contributor、函数式钩子)以及"抽象放 `spring`、后端放 `starter`"的规则,已在上文 §2–§3 与 [starter/DESIGN.md §2](starter/DESIGN_CN.md) 中登记。
 
 ## 6. 相关文档
 

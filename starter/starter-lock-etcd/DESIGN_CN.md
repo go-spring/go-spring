@@ -34,7 +34,7 @@ starter：贡献 etcd concurrency session 后端的 `lock.Locker` 命名 bean。
 - **TLS 使用共享块。** `TLS` 字段是 `stdlib/starter` 的 `starter.TLSConfig`;
   `Enabled` 是开关,`CertFile`/`KeyFile`(mTLS)与 `CAFile`(服务端校验)
   与所有 Go-Spring starter 保持一致。
-- **不能对 proxy 跑 `go mod tidy`。** `stdlib/lock` 是 workspace 本地包；
+- **不能对 proxy 跑 `go mod tidy`。** `spring/lock` 是 workspace 本地包；
   tidy 会 404。
 
 ## 4. 权衡 / 已否决方案

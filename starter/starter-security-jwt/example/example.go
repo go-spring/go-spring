@@ -29,7 +29,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterSecurityJWT "go-spring.org/starter-security-jwt"
-	"go-spring.org/stdlib/security"
+	"go-spring.org/spring/security"
 )
 
 // secret is the shared HMAC key. It matches spring.security.jwt.api.secret in

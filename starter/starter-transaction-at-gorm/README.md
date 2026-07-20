@@ -6,7 +6,7 @@
 
 `starter-transaction-at-gorm` contributes the **AT (Automatic Transaction)**
 distributed-transaction capability defined in
-[`go-spring.org/stdlib/transaction/at`](../../stdlib/transaction/at) to a
+[`go-spring.org/spring/transaction/at`](../../spring/transaction/at) to a
 Go-Spring application, backed by [gorm](https://gorm.io). It is the Go-idiomatic
 equivalent of **Seata AT**, reached without replicating Seata's TC/TM/RM roles.
 

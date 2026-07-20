@@ -19,7 +19,7 @@ package StarterRabbitMQ
 import (
 	"time"
 
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 // Config defines RabbitMQ connection configuration.

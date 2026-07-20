@@ -45,7 +45,7 @@ already registers every Pod behind a Service. Discovery is therefore
 is a different shape from the register-then-discover examples above, and why it
 is a reusable **starter** rather than a demo here:
 [`starter/starter-discovery-k8s`](../../starter/starter-discovery-k8s). It
-implements `stdlib/discovery` in two modes: headless-Service DNS (zero
+implements `spring/discovery` in two modes: headless-Service DNS (zero
 dependency, no RBAC) and an EndpointSlice informer (real-time, client-go +
 `get/list/watch endpointslices` RBAC). The starter carries its own K8s manifests
 and example; there is no docker-compose demo under this directory because the

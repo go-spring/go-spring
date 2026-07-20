@@ -12,12 +12,12 @@ Predicates are `func(*http.Request) bool`, Filters are
 ## 1. Responsibilities & Boundaries
 
 - **In scope:** route table binding + hot reload, `lb://` upstream via
-  `stdlib/discovery` + `stdlib/loadbalance`, and a `FilterWrapper` seam
+  `spring/discovery` + `spring/loadbalance`, and a `FilterWrapper` seam
   through which pluggable filters (jwt-auth, lua) mount without a hard
   import.
 - **Out of scope:** runtime DSL / rules engine, control-plane sync,
   L4/TCP proxying. Resilience (retry/circuit-breaker/rate-limit) is
-  delegated to `stdlib/resilience`, not reimplemented.
+  delegated to `spring/resilience`, not reimplemented.
 
 ## 2. Key Abstractions
 

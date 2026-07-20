@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package StarterBatch runs [go-spring.org/stdlib/batch] jobs as part of the
+// Package StarterBatch runs [go-spring.org/spring/batch] jobs as part of the
 // Go-Spring application lifecycle. Blank-importing this package registers a
 // batch runner that:
 //
@@ -62,7 +62,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/batch"
+	"go-spring.org/spring/batch"
 )
 
 // enabled matches when the starter is not explicitly disabled. It is the

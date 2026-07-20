@@ -21,7 +21,7 @@ identity provider. It ships no user store, no MFA, and no social-login
 aggregation; the resource-owner login is a seam (`UserAuthFunc`) the
 application plugs its own session/login into. It is not a port of Spring
 Security's `SecurityFilterChain` DSL — the equivalent Web-security filter chain
-is assembled from ordinary `net/http` middleware in `stdlib/security`
+is assembled from ordinary `net/http` middleware in `spring/security`
 (`Chain` / `CORS` / `CSRF` / `Authenticate` / `Authorize`).
 
 ## Installation
@@ -80,7 +80,7 @@ gs.Provide(func(as *StarterOAuth2Server.AuthServer) *gs.HttpServeMux {
 
 ### 4. Protect Resources with the Filter Chain
 
-The unified Web-security filter chain lives in `stdlib/security`. Compose the
+The unified Web-security filter chain lives in `spring/security`. Compose the
 concerns in order — CORS, then authentication, then authorization — with
 `security.Chain`:
 

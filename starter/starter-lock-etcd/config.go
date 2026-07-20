@@ -19,7 +19,7 @@ package StarterLockEtcd
 import (
 	"time"
 
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 // Config binds one etcd-backed distributed-lock instance under

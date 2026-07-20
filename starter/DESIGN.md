@@ -129,7 +129,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   backends — they serve both configuration and service discovery. These two are
   different integration points in Go-Spring, so they live in different starters:
   the **config** role is a config-provider starter (this archetype); the
-  **discovery** role is client-side (`stdlib/discovery`, §3) or framework-native
+  **discovery** role is client-side (`spring/discovery`, §3) or framework-native
   (`contrib/registry/`, §3). A config-provider starter does the config role and
   nothing else. The naming mirrors Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`).
@@ -201,7 +201,7 @@ application can load configuration from it at startup and hot-reload at runtime.
     seam, and only when a concrete requirement lands.
 - **Client-side discovery is already unified; provider registration is not.**
   Client starters resolve a `ServiceName` to live endpoints through
-  `stdlib/discovery` (`LiveDialer` injected via the driver's dialer hook); this
+  `spring/discovery` (`LiveDialer` injected via the driver's dialer hook); this
   is generic across infrastructure clients. RPC *provider* registration stays
   framework-native per the principle above. When `ServiceName` is empty the
   client dials the address directly, unchanged. For examples of framework-native
@@ -226,7 +226,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   concerns. (1) Registering *this process* into an external registry
   (Nacos/Consul/Eureka) — the Spring Cloud `@EnableDiscoveryClient` direction —
   is a generic, transport-agnostic capability, provided via the
-  `stdlib/discovery` `Registrar` abstraction (`Register`/`Deregister` with
+  `spring/discovery` `Registrar` abstraction (`Register`/`Deregister` with
   backend-owned TTL/heartbeat, reusing the same driver-registry seam as
   `Discovery`) and its first backend `starter-registry-consul`. (2) Registering
   an RPC framework's *services* stays framework-native per the bullet above.

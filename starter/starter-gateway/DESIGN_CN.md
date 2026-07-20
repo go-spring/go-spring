@@ -10,11 +10,11 @@ http.Handler`,路由即函数组合,不做运行时 DSL。
 
 ## 1. 职责与边界
 
-- **在范围内:**路由表绑定 + 热更新;`lb://` 上游经 `stdlib/discovery` +
-  `stdlib/loadbalance`;`FilterWrapper` 缝隙让 jwt-auth、lua 等可插拔 filter
+- **在范围内:**路由表绑定 + 热更新;`lb://` 上游经 `spring/discovery` +
+  `spring/loadbalance`;`FilterWrapper` 缝隙让 jwt-auth、lua 等可插拔 filter
   免硬 import 挂载。
 - **不在范围内:**运行时 DSL / 规则引擎、控制面同步、L4/TCP 代理。韧性
-  (重试 / 熔断 / 限流)交给 `stdlib/resilience`,不重造。
+  (重试 / 熔断 / 限流)交给 `spring/resilience`,不重造。
 
 ## 2. 关键抽象
 

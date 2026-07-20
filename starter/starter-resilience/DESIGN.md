@@ -5,7 +5,7 @@
 `starter-resilience` is a **global / infrastructure** starter (see
 [starter/DESIGN.md](../DESIGN.md) §2.4) that registers
 [alibaba/sentinel-golang][sentinel] as the recommended driver for
-`stdlib/resilience`. It registers no bean and opens no port; a blank
+`spring/resilience`. It registers no bean and opens no port; a blank
 import is enough for any adapter to select `driver=sentinel`.
 
 [sentinel]: https://github.com/alibaba/sentinel-golang
@@ -16,7 +16,7 @@ import is enough for any adapter to select `driver=sentinel`.
   `resilience.RegisterDriver("sentinel", ...)`. Translate a
   backend-neutral `resilience.Policy` into sentinel rules per resource.
 - **Out of scope:** deciding *where* resilience is applied — that is the
-  adapter's job. `stdlib/resilience` ships three seams
+  adapter's job. `spring/resilience` ships three seams
   (`NewRoundTripper` for HTTP clients, `NewDialer` for connection dial,
   `NewHandler` for HTTP inbound admission); this starter never chooses
   between them.
@@ -25,7 +25,7 @@ import is enough for any adapter to select `driver=sentinel`.
 
 - **No single universal per-request seam.** Every client library has a
   different hook (oauth2 → `http.RoundTripper`, go-redis → `redis.Hook`,
-  gorm → plugin callback, MQ → call-site helper). `stdlib/resilience`
+  gorm → plugin callback, MQ → call-site helper). `spring/resilience`
   keeps a neutral `Executor.Execute(ctx, resource, fn)` and lets each
   adapter bridge to its own shape. This starter provides the *engine*,
   not the *seam*.
@@ -39,7 +39,7 @@ import is enough for any adapter to select `driver=sentinel`.
   the budget.
 - **Block reasons map to neutral sentinels.** `BlockTypeCircuitBreaking
   → ErrCircuitOpen`, `BlockTypeIsolation → ErrBulkheadFull`, default
-  `→ ErrRateLimited`. Callers depend only on `stdlib/resilience`; the
+  `→ ErrRateLimited`. Callers depend only on `spring/resilience`; the
   sentinel dependency is a starter-side detail.
 
 ## 3. Constraints
@@ -55,7 +55,7 @@ import is enough for any adapter to select `driver=sentinel`.
 
 ## 4. Zero-dependency fallback
 
-`stdlib/resilience` ships a built-in `default` driver (token bucket +
+`spring/resilience` ships a built-in `default` driver (token bucket +
 consecutive-failure breaker + retry + timeout, zero third-party
 dependencies) so the framework works out of the box and tests do not
 need to pull sentinel. This starter's value shows up on production
@@ -64,7 +64,7 @@ matter.
 
 ## 5. Trade-offs / Alternatives Rejected
 
-- **Making `stdlib/resilience` depend on sentinel — rejected.** The
+- **Making `spring/resilience` depend on sentinel — rejected.** The
   four-layer rule keeps the foundation zero-dep; this starter is one
   concrete implementation, not the abstraction.
 - **A single dialer / RoundTripper seam for every library — rejected.**

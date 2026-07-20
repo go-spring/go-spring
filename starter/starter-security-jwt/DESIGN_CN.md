@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-security-jwt` 属于 **Contributor** 形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.3),基于零依赖抽象 `stdlib/security`
+[starter/DESIGN.md](../DESIGN.md) §2.3),基于零依赖抽象 `spring/security`
 提供 Spring Security 的 JWT 资源服务器等价能力。不开端口,以中间件形式挂到
 已有的 `*gs.HttpServeMux`。
 
@@ -14,13 +14,13 @@
   `Wrap(next http.Handler)` 缝隙及对非 HTTP 传输可复用的
   `security.TokenValidator`。
 - **不在范围内:**签发 token(那是 `starter-oauth2-server` 的事);授权
-  *策略*(那是 `stdlib/security` 的 aspect / middleware);用户存储 / 登录 UI。
+  *策略*(那是 `spring/security` 的 aspect / middleware);用户存储 / 登录 UI。
 
 ## 2. 关键抽象与缝隙
 
-- **`stdlib/security`——零依赖抽象。**本 starter 是其中一种具体实现。
-  `TokenValidator` 是 driver 缝隙(注册表式——与 `stdlib/discovery`、
-  `stdlib/resilience` 同款)。`Principal` + `Authentication` 是中立类型,
+- **`spring/security`——零依赖抽象。**本 starter 是其中一种具体实现。
+  `TokenValidator` 是 driver 缝隙(注册表式——与 `spring/discovery`、
+  `spring/resilience` 同款)。`Principal` + `Authentication` 是中立类型,
   自带 `HasAuthority` / `HasAnyAuthority` / `HasAllAuthorities` 帮助函数,
   均 nil-safe,`!Authenticated` 时短路返回 `false`。
 - **同一 bean,两个挂载点。**

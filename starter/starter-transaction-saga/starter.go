@@ -15,7 +15,7 @@
  */
 
 // Package StarterTransactionSaga contributes the Saga distributed-transaction
-// capability defined in [go-spring.org/stdlib/transaction] to a Go-Spring
+// capability defined in [go-spring.org/spring/transaction] to a Go-Spring
 // application. It is enabled by a blank import:
 //
 //	import _ "go-spring.org/starter-transaction-saga"
@@ -56,7 +56,7 @@ package StarterTransactionSaga
 
 import (
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/transaction"
+	"go-spring.org/spring/transaction"
 )
 
 // enabled matches when the starter is not explicitly disabled.

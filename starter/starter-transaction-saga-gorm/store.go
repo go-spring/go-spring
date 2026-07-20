@@ -22,7 +22,7 @@ import (
 	"errors"
 	"time"
 
-	"go-spring.org/stdlib/transaction"
+	"go-spring.org/spring/transaction"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

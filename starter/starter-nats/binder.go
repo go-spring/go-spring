@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/stdlib/messaging"
+	"go-spring.org/spring/messaging"
 )
 
 // NewBinder adapts a NATS connection to the broker-neutral messaging.Binder, so

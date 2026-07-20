@@ -4,7 +4,7 @@
 
 `starter-registry-consul` registers the **current instance** into a Consul
 service registry — the provider-side counterpart to Go-Spring's client-side
-discovery (`stdlib/discovery`). It is the Go-Spring equivalent of Spring Cloud's
+discovery (`spring/discovery`). It is the Go-Spring equivalent of Spring Cloud's
 `ServiceRegistry` / `@EnableDiscoveryClient` registration direction.
 
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
@@ -71,7 +71,7 @@ Connection, bound under `spring.registry.consul`:
 | `datacenter` | (empty) | Datacenter to register into; empty uses the agent's. |
 | `token` | (empty) | ACL token. |
 | `namespace` | (empty) | Consul Enterprise namespace. |
-| `name` | `default` | Name this registrar is published under in the `stdlib/discovery` registrar registry. |
+| `name` | `default` | Name this registrar is published under in the `spring/discovery` registrar registry. |
 | `ttl` | `15s` | TTL health check; the starter heartbeats at half this interval. |
 | `deregister-critical-after` | `1m` | Consul drops the instance if its check stays critical this long (e.g. after a crash). |
 
@@ -90,7 +90,7 @@ backends is a blank-import swap, not a config migration):
 ## How It Works
 
 - During the container's bean-registration phase the starter builds a Consul
-  `discovery.Registrar` and puts it in the `stdlib/discovery` registrar registry
+  `discovery.Registrar` and puts it in the `spring/discovery` registrar registry
   under `name` — mirroring how `starter-discovery-k8s` registers discovery
   backends. A company can register its own `Registrar` under a different name and
   point `spring.registry.backend` at it.

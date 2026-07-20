@@ -110,7 +110,7 @@ starter.EndSpan(span, err)
 ## 消息 Binder
 
 除原生客户端外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
-(来自 `go-spring.org/stdlib/messaging`),让业务代码收发 `*messaging.Message`
+(来自 `go-spring.org/spring/messaging`),让业务代码收发 `*messaging.Message`
 信封而不依赖 Pulsar 客户端 API —— 底层换 broker 时业务代码无需改动。
 
 从 `pulsar.Client` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):

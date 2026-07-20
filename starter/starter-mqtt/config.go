@@ -19,7 +19,7 @@ package StarterMQTT
 import (
 	"time"
 
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 // Config defines MQTT client connection configuration.

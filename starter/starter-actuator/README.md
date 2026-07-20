@@ -133,12 +133,12 @@ immediate shutdown.
 ## Health Indicators
 
 The probes aggregate health checks contributed by other beans. Any bean
-exported as `health.Indicator` (from the zero-dependency `go-spring.org/stdlib/health`
+exported as `health.Indicator` (from the zero-dependency `go-spring.org/spring/health`
 package) is collected automatically — no per-component registration API and no
 import of this starter:
 
 ```go
-import "go-spring.org/stdlib/health"
+import "go-spring.org/spring/health"
 
 type dbHealth struct{ db *sql.DB }
 
@@ -181,7 +181,7 @@ The actuator can also serve the Prometheus `/metrics` endpoint, so operators
 scrape a **single management port** for probes *and* metrics instead of the
 metrics exporter running its own server. This is opt-in through `starter-otel`:
 any bean exported as `endpoint.Endpoint` (from the zero-dependency
-`go-spring.org/stdlib/endpoint` package) is mounted on the management port, and
+`go-spring.org/spring/endpoint` package) is mounted on the management port, and
 `starter-otel`'s Prometheus exporter contributes exactly such a bean — no import
 of otel by this starter and no extra wiring:
 

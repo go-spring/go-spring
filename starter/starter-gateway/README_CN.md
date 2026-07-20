@@ -14,7 +14,7 @@
 让网关宕机。
 
 上游分为**直连**（`http(s)://host:port`）与**服务发现**（`lb://<service>`）两类，后者复用
-`stdlib/discovery` + `stdlib/loadbalance`。转发经由 `stdlib/resilience` 完成重试／熔断／
+`spring/discovery` + `spring/loadbalance`。转发经由 `spring/resilience` 完成重试／熔断／
 限流，网关还会向 actuator 管理端口贡献 `/gateway/metrics`。
 
 ## 安装
@@ -88,8 +88,8 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 ## 上游与负载均衡
 
 * **直连**：`upstream.target=http://host:port` 直接转发到该地址。
-* **服务发现**：`upstream.target=lb://<service>` 经 `stdlib/discovery` 解析活跃实例，
-  由 `stdlib/loadbalance` 选择其一。可设置 `upstream.balancer`（`round_robin`、
+* **服务发现**：`upstream.target=lb://<service>` 经 `spring/discovery` 解析活跃实例，
+  由 `spring/loadbalance` 选择其一。可设置 `upstream.balancer`（`round_robin`、
   `least_conn`、`consistent_hash`、`weighted`）与 `upstream.discovery`（后端名），
   或通过 `spring.gateway.discovery` 设置网关级默认发现后端。
 

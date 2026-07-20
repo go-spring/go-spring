@@ -45,7 +45,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/batch"
+	"go-spring.org/spring/batch"
 
 	StarterBatch "go-spring.org/starter-batch"
 

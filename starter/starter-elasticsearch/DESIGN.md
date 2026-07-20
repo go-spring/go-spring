@@ -14,7 +14,7 @@ non-obvious decisions worth pinning: a driver registry seam, a nil-op
   default.
 - Runs a one-shot `Info` health check at construction so a bad address,
   bad cert, or bad credential surfaces at boot instead of on first use.
-- Optionally resolves node addresses from `stdlib/discovery` when
+- Optionally resolves node addresses from `spring/discovery` when
   `service-name` is set; otherwise uses the static `Addresses` (or
   `CloudID`).
 
@@ -45,7 +45,7 @@ non-obvious decisions worth pinning: a driver registry seam, a nil-op
   three provisioning modes is used; empty across all is rejected via
   the health check (which cannot reach anything).
 - **`DiscoveryScheme` decides scheme for endpoints.** Endpoints from
-  `stdlib/discovery` carry `host:port` only; the client needs
+  `spring/discovery` carry `host:port` only; the client needs
   `scheme://host:port`, so `discovery-scheme` (`http` / `https`) is
   applied when building addresses.
 - **Smoke pulls ES 8.13 image (cached).** Readiness may take up to

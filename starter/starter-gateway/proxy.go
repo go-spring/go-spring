@@ -23,9 +23,9 @@ import (
 	"net/url"
 
 	"go-spring.org/log"
-	"go-spring.org/stdlib/discovery"
-	"go-spring.org/stdlib/loadbalance"
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/loadbalance"
+	"go-spring.org/spring/resilience"
 )
 
 // picker chooses the concrete target address for one request and returns a done

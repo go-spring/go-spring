@@ -5,7 +5,7 @@
 > 项目已正式发布,欢迎使用!
 
 `starter-repository-gorm` 是与框架无关的
-[`go-spring.org/stdlib/repository`](../../stdlib/repository) 抽象的
+[`go-spring.org/spring/repository`](../../spring/repository) 抽象的
 [gorm](https://gorm.io) 后端实现。它把 `repository.Query` 翻译成 gorm 的链式构造器,
 基于任意 `*gorm.DB` 返回一个开箱即用的泛型 `repository.Repository[T, ID]`——用 Go 惯用法达到
 Spring Data JPA repository 的等价效果,而无需 JPA 或方法名查询解析。
@@ -29,7 +29,7 @@ go get go-spring.org/starter-repository-gorm
 ```go
 import (
     reposgorm "go-spring.org/starter-repository-gorm"
-    "go-spring.org/stdlib/repository"
+    "go-spring.org/spring/repository"
     "gorm.io/gorm"
 )
 

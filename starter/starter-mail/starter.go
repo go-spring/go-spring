@@ -25,7 +25,7 @@ import (
 	"github.com/wneessen/go-mail"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 // Attachment is a file attached to a Message. Filename is the name shown to the

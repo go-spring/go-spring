@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
-	"go-spring.org/stdlib/transaction"
+	"go-spring.org/spring/transaction"
 )
 
 func TestNewCoordinator_TracingToggle(t *testing.T) {

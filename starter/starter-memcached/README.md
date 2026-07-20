@@ -78,7 +78,7 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   connection pool; both fall back to the driver defaults (100ms / 2) when left at 0.
 * **Authentication**: the `bradfitz/gomemcache` driver does not implement SASL, so no auth fields are exposed. Restrict
   access at the network layer (VPC/security group) instead.
-* **Shared cache backend**: `AsCache(client, codec)` adapts the client to `stdlib/cache.Cache` as the shared (far) level
+* **Shared cache backend**: `AsCache(client, codec)` adapts the client to `spring/cache.Cache` as the shared (far) level
   of a multi-level cache. Values are serialized with the codec (nil defaults to JSON); a cache miss maps to a plain miss.
 
 ## Observability

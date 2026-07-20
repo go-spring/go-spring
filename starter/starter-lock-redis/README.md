@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-lock-redis` contributes a Redis-backed
-[`lock.Locker`](../../stdlib/lock) bean to a Go-Spring application, giving you
+[`lock.Locker`](../../spring/lock) bean to a Go-Spring application, giving you
 distributed locks and leader election over an existing Redis (single, sentinel,
 or cluster) with no extra connection.
 
@@ -49,7 +49,7 @@ starter refuses to silently default to some arbitrary Redis instance.
 ### 3. Inject `lock.Locker`
 
 ```go
-import "go-spring.org/stdlib/lock"
+import "go-spring.org/spring/lock"
 
 type Service struct {
     Lock lock.Locker `autowire:"jobs"`
@@ -81,7 +81,7 @@ All keys sit under `spring.lock.<name>`:
 ## Leader election
 
 Leader election is available for free on top of any `lock.Locker` via
-[`lock.NewElection`](../../stdlib/lock/election.go):
+[`lock.NewElection`](../../spring/lock/election.go):
 
 ```go
 el := lock.NewElection(lock.ElectionConfig{

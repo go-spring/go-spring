@@ -15,7 +15,7 @@
  */
 
 // Package StarterRepositoryGorm is the gorm-backed implementation of the
-// framework-neutral [go-spring.org/stdlib/repository] abstraction: it translates
+// framework-neutral [go-spring.org/spring/repository] abstraction: it translates
 // a [repository.Query] into gorm's chained builder and returns a ready-to-use
 // generic [repository.Repository] over any *gorm.DB.
 //
@@ -47,7 +47,7 @@
 package StarterRepositoryGorm
 
 import (
-	"go-spring.org/stdlib/repository"
+	"go-spring.org/spring/repository"
 	"gorm.io/gorm"
 )
 

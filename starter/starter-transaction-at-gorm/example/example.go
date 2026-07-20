@@ -29,7 +29,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	atgorm "go-spring.org/starter-transaction-at-gorm"
-	"go-spring.org/stdlib/transaction/at"
+	"go-spring.org/spring/transaction/at"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

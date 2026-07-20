@@ -25,7 +25,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/starter"
 )
 
 func init() {

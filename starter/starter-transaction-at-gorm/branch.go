@@ -19,7 +19,7 @@ package StarterTransactionATGorm
 import (
 	"context"
 
-	"go-spring.org/stdlib/transaction/at"
+	"go-spring.org/spring/transaction/at"
 	"gorm.io/gorm"
 )
 

@@ -21,8 +21,8 @@ import (
 	"net/http"
 	"time"
 
-	"go-spring.org/stdlib/httpx"
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/httpx"
+	"go-spring.org/spring/resilience"
 )
 
 // Config binds one declarative-HTTP-client instance under

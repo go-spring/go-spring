@@ -19,8 +19,8 @@ package StarterNats
 import (
 	"time"
 
-	"go-spring.org/stdlib/resilience"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/starter"
 )
 
 // Config defines NATS client connection configuration.

@@ -3,14 +3,14 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-discovery-k8s` is a Config-provider-archetype starter (`starter/DESIGN.md`
-§2.5) for `stdlib/discovery`: it contributes named `discovery.Discovery`
+§2.5) for `spring/discovery`: it contributes named `discovery.Discovery`
 backends that resolve a Kubernetes Service name to live Pod endpoints.
 
 ## 1. Responsibilities & Boundaries
 
 - Binds `spring.discovery.k8s.<name>` entries to `discovery.Discovery`
   backends, one per entry, registered in the process-global
-  `stdlib/discovery` registry under `<name>`.
+  `spring/discovery` registry under `<name>`.
 - Discovery backends are **not injectable beans**. Client starters
   (redis / gorm / grpc) reference them by name via a `discovery: <name>`
   field and look them up through `discovery.MustGet`.
@@ -57,5 +57,5 @@ backends that resolve a Kubernetes Service name to live Pod endpoints.
   in EndpointSlices via the platform; a second registrar would duplicate
   and desynchronise.
 - **Baking discovery into every client starter — rejected.** The seam is
-  the `stdlib/discovery` registry; client starters look up by name so
+  the `spring/discovery` registry; client starters look up by name so
   DNS/EndpointSlice/Nacos are interchangeable without touching clients.

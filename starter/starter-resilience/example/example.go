@@ -39,7 +39,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/resilience"
 
 	_ "go-spring.org/starter-resilience"
 )

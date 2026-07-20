@@ -35,7 +35,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 )
 
 // Backend resolves service names against a Consul agent.

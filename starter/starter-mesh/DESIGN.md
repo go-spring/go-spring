@@ -7,7 +7,7 @@
 service-mesh switch used by the client-side discovery and load-balancing
 stack. It sits in the *starter* layer so the toggle stays wired at
 integration time, while the actual degradation logic — and the single source
-of truth — lives in `stdlib/discovery`.
+of truth — lives in `spring/discovery`.
 
 ## 1. Responsibilities & Boundaries
 
@@ -20,7 +20,7 @@ of truth — lives in `stdlib/discovery`.
 
 ## 2. Key Decision — one switch, centralized degradation
 
-The switch is a single process-global `atomic.Bool` in `stdlib/discovery`,
+The switch is a single process-global `atomic.Bool` in `spring/discovery`,
 not per-starter branching. Every client-side seam consults it in exactly
 two places:
 

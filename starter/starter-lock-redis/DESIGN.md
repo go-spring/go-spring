@@ -20,9 +20,9 @@ reusing a `*redis.Client` produced by `starter-go-redis`.
 
 ## 2. Key Abstractions & Seams
 
-- **Seam is the bean type, not a driver string.** `stdlib/lock` deliberately
+- **Seam is the bean type, not a driver string.** `spring/lock` deliberately
   has **no** package-level string driver registry, unlike
-  `stdlib/discovery` or `stdlib/resilience`. Locks need a *live* backend
+  `spring/discovery` or `spring/resilience`. Locks need a *live* backend
   handle (`*redis.Client`), not a declarative policy string; the switch from
   Redis to etcd/consul/k8s is therefore a blank-import swap that changes
   which starter registers the `lock.Locker` bean.

@@ -213,7 +213,7 @@ Body: &req.RequestNameBody,
 
 ## 第三阶段：让运行时优先使用流式编码
 
-修改范围建议放在 `/Users/didi/Go-Spring/stdlib/httpclt/`、`/Users/didi/Go-Spring/stdlib/httpsvr/` 和 `/Users/didi/Go-Spring/stdlib/jsonflow/`。
+修改范围建议放在 `/Users/didi/Go-Spring/spring/httpclt/`、`/Users/didi/Go-Spring/spring/httpsvr/` 和 `/Users/didi/Go-Spring/stdlib/jsonflow/`。
 
 ### 3.1 封装统一入口
 

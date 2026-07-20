@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
-	"go-spring.org/stdlib/validation"
+	"go-spring.org/spring/validation"
 )
 
 type user struct {

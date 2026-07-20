@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-session-redis` contributes a Redis-backed
-[`session.SessionStore`](../../stdlib/session) bean to a Go-Spring application,
+[`session.SessionStore`](../../spring/session) bean to a Go-Spring application,
 so HTTP sessions are shared across replicas: replica A writes, replica B reads —
 the Spring Session equivalent, expressed with a middleware plus config instead of
 `@EnableRedisHttpSession`.
@@ -58,7 +58,7 @@ import (
     "net/http"
 
     "go-spring.org/spring/gs"
-    "go-spring.org/stdlib/session"
+    "go-spring.org/spring/session"
 )
 
 gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {

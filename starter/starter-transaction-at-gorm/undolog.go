@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"go-spring.org/stdlib/transaction/at"
+	"go-spring.org/spring/transaction/at"
 	"gorm.io/gorm"
 )
 

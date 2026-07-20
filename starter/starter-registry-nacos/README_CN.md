@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-registry-nacos` 把**当前实例**注册进 Nacos 命名服务 —— 它是 Go-Spring
-客户端服务发现(`stdlib/discovery`)的注册侧对应物,相当于 Spring Cloud Alibaba
+客户端服务发现(`spring/discovery`)的注册侧对应物,相当于 Spring Cloud Alibaba
 `nacos-discovery` 的注册方向,也是 [starter-config-nacos](../starter-config-nacos)
 配置角色的注册角色对应物(两者是配置前缀各自独立的两个 starter)。
 
@@ -68,7 +68,7 @@ spring.registry.metadata.version=v1
 | `username` | (空) | 认证用户名,匿名集群留空。 |
 | `password` | (空) | 认证密码。 |
 | `timeout-ms` | `5000` | 每次调用超时,含启动探测。 |
-| `name` | `default` | 本 registrar 在 `stdlib/discovery` registrar 注册表中的名字。 |
+| `name` | `default` | 本 registrar 在 `spring/discovery` registrar 注册表中的名字。 |
 
 实例配置,绑定于 `spring.registry`(与后端无关 —— 切换注册中心后端只需替换匿名导入,
 无需迁移配置):
@@ -85,7 +85,7 @@ spring.registry.metadata.version=v1
 ## 工作原理
 
 - 在容器的 bean 注册阶段,starter 构建一个 Nacos `discovery.Registrar` 并以 `name`
-  放进 `stdlib/discovery` 的 registrar 注册表 —— 与 `starter-discovery-k8s` 注册发现
+  放进 `spring/discovery` 的 registrar 注册表 —— 与 `starter-discovery-k8s` 注册发现
   后端的方式一致。它会探测服务端(列举服务),不可达的 Nacos 会让启动失败。公司可用
   另一个名字注册自己的 `Registrar`,再把 `spring.registry.backend` 指向它。
 - 导出的 `gs.Server` 按 `backend` 解析后端,等待就绪,然后把实例注册为**临时实例**。

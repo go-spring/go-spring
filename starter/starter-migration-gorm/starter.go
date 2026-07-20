@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package StarterMigrationGorm runs [go-spring.org/stdlib/migration] schema
+// Package StarterMigrationGorm runs [go-spring.org/spring/migration] schema
 // migrations at application startup, backed by a gorm *gorm.DB the application
 // already registered — the Go-Spring equivalent of putting Flyway/Liquibase on
 // the classpath. Blank-import it and configure one entry per database:
@@ -41,7 +41,7 @@
 // schema never serves traffic.
 //
 // Forward-only and fail-stop, matching Flyway community edition: there is no
-// automatic down-migration. See [go-spring.org/stdlib/migration] for the
+// automatic down-migration. See [go-spring.org/spring/migration] for the
 // checksum-drift and out-of-order safety rails.
 package StarterMigrationGorm
 

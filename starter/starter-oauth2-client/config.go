@@ -20,7 +20,7 @@ import (
 	"net/url"
 	"time"
 
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/resilience"
 	"golang.org/x/oauth2"
 )
 

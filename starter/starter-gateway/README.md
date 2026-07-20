@@ -16,8 +16,8 @@ no gateway-specific machinery. A route that fails to compile leaves the previous
 table in place, so a bad edit never takes the gateway down.
 
 Upstreams are either **direct** (`http(s)://host:port`) or **discovery-backed**
-(`lb://<service>`), the latter reusing `stdlib/discovery` + `stdlib/loadbalance`.
-Forwarding runs through `stdlib/resilience` for retry / circuit-breaking / rate
+(`lb://<service>`), the latter reusing `spring/discovery` + `spring/loadbalance`.
+Forwarding runs through `spring/resilience` for retry / circuit-breaking / rate
 limiting, and the gateway contributes `/gateway/metrics` to the actuator
 management port.
 
@@ -96,7 +96,7 @@ Register your own filter with `StarterGateway.RegisterFilter(name, factory)`.
 
 * **Direct**: `upstream.target=http://host:port` forwards straight to that address.
 * **Discovery**: `upstream.target=lb://<service>` resolves live instances through
-  `stdlib/discovery` and picks one with `stdlib/loadbalance`. Set
+  `spring/discovery` and picks one with `spring/loadbalance`. Set
   `upstream.balancer` (`round_robin`, `least_conn`, `consistent_hash`, `weighted`)
   and `upstream.discovery` (backend name), or a gateway-wide default via
   `spring.gateway.discovery`.

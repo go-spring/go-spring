@@ -12,8 +12,8 @@ goroutine，必须在关停时释放。
 - 用 `gs.Group` 把 `spring.bigcache.instances.<name>` 每条绑到
   `*bigcache.BigCache` bean。不做默认单实例
   （见 `project_client_starter_multiinstance`）。
-- 向 `stdlib/cache` 注册名为 `bigcache` 的 driver，让使用
-  `cache.Cache` 抽象的调用方（包括 `stdlib/cache` 的 MultiLevel）能按名
+- 向 `spring/cache` 注册名为 `bigcache` 的 driver，让使用
+  `cache.Cache` 抽象的调用方（包括 `spring/cache` 的 MultiLevel）能按名
   选此后端，无需直接 import bigcache。
 - 无跨进程一致性：缓存在本进程堆内。两副本各存一份；这是零跳读的代价。
 
@@ -24,7 +24,7 @@ goroutine，必须在关停时释放。
 - **`destroy = Close`。** `LifeWindow > 0` 或 `CleanWindow > 0` 时 bigcache
   会起后台驱逐 goroutine；不 `Close` 就每实例泄一个 goroutine。starter
   接 `destroy` 就为这个（`project_starter_bigcache`）。
-- **`AsCache` 适配器接进 driver 注册表。** starter 对 `stdlib/cache` 的
+- **`AsCache` 适配器接进 driver 注册表。** starter 对 `spring/cache` 的
   贡献走 driver 注册表（见 `project_stdlib_cache`），配置里写
   `cache: bigcache` 即可，不用 import bigcache。
 - **`check.sh` 不需要 docker。** 进程内缓存无服务容器——冒烟就是
@@ -34,7 +34,7 @@ goroutine，必须在关停时释放。
 
 - **容量前置静态。** `Shards` 必须是 2 的幂；`MaxEntriesInWindow` ×
   `MaxEntrySize` 大致框定预分配后备内存。不支持运行时 resize。
-- **值类型是 `[]byte`。** 业务类型由调用方编解码；`stdlib/cache`
+- **值类型是 `[]byte`。** 业务类型由调用方编解码；`spring/cache`
   MultiLevel 路径通过共享 `ByteStore` 缝隙走 JSON。
 - **`LifeWindow` 是全局 TTL 非 per-entry。** 一个实例内所有条目共用 TTL。
   不同 TTL 类=不同命名实例。
@@ -45,5 +45,5 @@ goroutine，必须在关停时释放。
   本就是进程级决策；只挑一家能让代码基更小。bigcache 因稳定性与 GC
   行为已知良好被选中（`project_starter_bigcache`）。
 - **自动 loader / refresh 缓存——否决。** loader 语义属于缓存抽象层
-  （`stdlib/cache`），不属于后端 starter。starter 贡献 store，抽象层贡献
+  （`spring/cache`），不属于后端 starter。starter 贡献 store，抽象层贡献
   loader/refresh 策略。

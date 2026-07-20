@@ -15,7 +15,7 @@ firing once the application is ready and, on `SIGTERM`, in-flight runs are
 drained before the process exits.
 
 The trigger and concurrency primitives come from the zero-dependency
-[`stdlib/scheduling`](../../stdlib/scheduling) package; this starter is the thin
+[`spring/scheduling`](../../spring/scheduling) package; this starter is the thin
 integration layer that binds configuration and the IoC container to it.
 
 ## Installation

@@ -5,7 +5,7 @@
 > 项目已正式发布,欢迎使用!
 
 `starter-mesh` 提供一个进程级全局开关:当应用运行在服务网格中时,把 Go-Spring 的
-客户端服务发现(`stdlib/discovery`)与客户端负载均衡(`stdlib/loadbalance`)退化为
+客户端服务发现(`spring/discovery`)与客户端负载均衡(`spring/loadbalance`)退化为
 直通(pass-through)。
 
 ## 为什么需要
@@ -40,8 +40,8 @@ import _ "go-spring.org/starter-mesh"
 spring.mesh.enabled=true
 ```
 
-就这么简单。凡是通过 `stdlib/discovery` 用 `service-name` 解析的 client starter,
-以及所有 `stdlib/loadbalance` 的 Pool,都会自动退化 —— 无需逐个组件改动。开关在启动
+就这么简单。凡是通过 `spring/discovery` 用 `service-name` 解析的 client starter,
+以及所有 `spring/loadbalance` 的 Pool,都会自动退化 —— 无需逐个组件改动。开关在启动
 时被读取一次,早于任何 client 构造其 dialer。
 
 设置 `spring.mesh.enabled=auto` 可让 starter 从环境自动推断:仅当探测到 sidecar
@@ -58,10 +58,10 @@ spring.mesh.enabled=true
 
 ## 开启后有何变化
 
-- **`stdlib/discovery`** —— `NewClientDialer` / `NewLiveDialer` 跳过对后端的
+- **`spring/discovery`** —— `NewClientDialer` / `NewLiveDialer` 跳过对后端的
   Resolve 与 Watch,只暴露一个稳定端点,其地址即服务名。在 Kubernetes 中该名字经
   DNS 解析到 Service ClusterIP,由 sidecar 拦截并在各 Pod 间做负载均衡。
-- **`stdlib/loadbalance`** —— `Pool` 直接返回这唯一端点,不做算法选择、不做离群剔除
+- **`spring/loadbalance`** —— `Pool` 直接返回这唯一端点,不做算法选择、不做离群剔除
   (唯一的网格端点绝不能被剔除,否则流量黑洞)。
 - **链路追踪不受影响**:OTel 全局 propagator 仍然注入 header,应用与网格的 span 保持
   关联。存在 `starter-otel` 时,它会填充 `discovery.SetTraceInjector` 接缝,于是用

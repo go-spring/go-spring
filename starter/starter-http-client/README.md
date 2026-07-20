@@ -33,15 +33,15 @@ go get go-spring.org/starter-http-client
 
 The generated `Client` holds a single `*http.Client`. The starter registers one
 `*http.Client` per configuration entry, whose `http.RoundTripper` is assembled
-by [`stdlib/httpx`](../../stdlib/httpx) from three composable stdlib
+by [`spring/httpx`](../../spring/httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
-* [`discovery`](../../stdlib/discovery) — when a `service-name` is set, a
+* [`discovery`](../../spring/discovery) — when a `service-name` is set, a
   `LiveDialer` keeps a fresh endpoint snapshot;
-* [`loadbalance`](../../stdlib/loadbalance) — a `Pool` picks one live endpoint
+* [`loadbalance`](../../spring/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier ejection) and the
   transport rewrites the request host to it;
-* [`resilience`](../../stdlib/resilience) — an optional executor wraps the whole
+* [`resilience`](../../spring/resilience) — an optional executor wraps the whole
   chain, so rate limiting, circuit breaking and retry protect every call.
   Because it sits *outside* the balancer, a retry re-picks a fresh endpoint and
   the breaker keys on the logical service name.

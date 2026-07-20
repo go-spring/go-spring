@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/lock"
-	"go-spring.org/stdlib/scheduling"
+	"go-spring.org/spring/lock"
+	"go-spring.org/spring/scheduling"
 )
 
 // Job is the seam between the application and the scheduler: the application

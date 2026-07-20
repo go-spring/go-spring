@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/resilience"
 )
 
 // applyResilience builds an executor from the configured driver and attaches it

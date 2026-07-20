@@ -68,7 +68,7 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 ## 消息 Binder
 
 除原生连接外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
-(来自 `go-spring.org/stdlib/messaging`),让业务代码收发 `*messaging.Message`
+(来自 `go-spring.org/spring/messaging`),让业务代码收发 `*messaging.Message`
 信封而不依赖 `nats.go` API —— 底层换 broker 时业务代码无需改动。
 
 从 `*Conn` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):

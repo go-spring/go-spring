@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-transaction-saga` 属于 **Contributor** 形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.3),把 `stdlib/transaction` 中的 Saga
+[starter/DESIGN.md](../DESIGN.md) §2.3),把 `spring/transaction` 中的 Saga
 分布式事务能力接入 Go-Spring。它以进程内 Coordinator + aspect 链达
 `@GlobalTransactional(SAGA)` 等价效果,不复刻 Seata 的 TC/TM/RM,也不依赖
 字节码魔法。
@@ -29,12 +29,12 @@
   `MemoryStore`;持久化 starter(如 `starter-transaction-saga-gorm`)贡献
   自己的 `transaction.Store` 时,默认自动让位——无需改动业务代码即可开启
   崩溃恢复。
-- **`Observer` 缝隙做 tracing。**`stdlib/transaction` 是零依赖,不能 import
+- **`Observer` 缝隙做 tracing。**`spring/transaction` 是零依赖,不能 import
   otel。starter 提供 `otelObserver`,每个阶段开一个子 span
   (`saga.action|compensate <step>`),走 `starter-otel` 装的 globals——
   零依赖模式下的标准做法(call-site span helper 落在 starter 层)。
-- **重试策略复用 `stdlib/resilience`。**`RetryPolicy = resilience.Policy`
-  (`stdlib/transaction` 中的类型别名),重试经 resilience `default` driver
+- **重试策略复用 `spring/resilience`。**`RetryPolicy = resilience.Policy`
+  (`spring/transaction` 中的类型别名),重试经 resilience `default` driver
   执行,不重造循环。
 
 ## 3. 恢复
@@ -51,7 +51,7 @@
 ## 4. 约束与风险
 
 - **无隔离性。**Saga 无读 / 写屏障——业务边界如需隔离请配合
-  `stdlib/lock`。
+  `spring/lock`。
 - **补偿必须幂等。**任意偏移点上的崩溃都可能重试;Coordinator 收集而非
   首错终止,故补偿链多失败会把每个错误一并放进 `Result.Errors`。
 - **`Compensate` 为 nil = `CompensationFailed`,而非静默跳过。**不可逆
@@ -62,7 +62,7 @@
 ## 5. 取舍 / 弃选方案
 
 - **与 TCC / AT 合并为同一抽象——弃选。**失败语义不同;分包保各自表达力。
-- **`stdlib/transaction` 依赖 otel——弃选。**`Observer` 缝隙保留零依赖
+- **`spring/transaction` 依赖 otel——弃选。**`Observer` 缝隙保留零依赖
   不变量。
 - **在恢复时凭空造 Step——弃选。**Action / Compensate 是函数不可持久化;
   通过 Registry 按方法名重建是唯一正确路径。

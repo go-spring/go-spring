@@ -22,7 +22,7 @@ import (
 	"sync"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/resilience"
 )
 
 // resilienceExecs tracks the resilience executor attached to each client, so the

@@ -22,7 +22,7 @@ import (
 	"sync"
 
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/lock"
+	"go-spring.org/spring/lock"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
 )

@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-lock-consul` 将 [Consul](https://www.consul.io/) 接入
-[`go-spring.org/stdlib/lock`](../../stdlib/lock) 定义的 `lock.Locker`
+[`go-spring.org/spring/lock`](../../spring/lock) 定义的 `lock.Locker`
 抽象，作为**分布式锁后端**。空导入该 starter 会为
 `spring.lock.<name>` 下的每一项注册一个 `lock.Locker` Bean，每个 Bean 各自持有
 一个自动续约的 Consul 会话。
@@ -38,7 +38,7 @@ spring.lock.jobs.key-prefix=demo/lock/
 ### 3. 注入并使用 `lock.Locker`
 
 ```go
-import "go-spring.org/stdlib/lock"
+import "go-spring.org/spring/lock"
 
 type Service struct {
     Locker lock.Locker `autowire:"jobs"`

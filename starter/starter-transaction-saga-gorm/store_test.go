@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
-	"go-spring.org/stdlib/transaction"
+	"go-spring.org/spring/transaction"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

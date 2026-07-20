@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"go-spring.org/stdlib/repository"
+	"go-spring.org/spring/repository"
 	"gorm.io/gorm"
 )
 

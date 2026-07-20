@@ -35,7 +35,7 @@ package StarterTransactionSagaGorm
 
 import (
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/transaction"
+	"go-spring.org/spring/transaction"
 	"gorm.io/gorm"
 )
 

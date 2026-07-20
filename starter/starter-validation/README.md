@@ -4,7 +4,7 @@
 
 `starter-validation` registers [go-playground/validator][gpv] as the `default`
 driver for the abstraction defined in
-[`stdlib/validation`](../../stdlib/validation). Blank-import it and every
+[`spring/validation`](../../spring/validation). Blank-import it and every
 `validation.Validate(ctx, "default", v)` call — whether from `conf.Bind`
 post-validation or a Web request handler — validates structs tagged with
 `validate:"..."`.
@@ -45,7 +45,7 @@ type SignupRequest struct {
 ### 3. Validate
 
 ```go
-import "go-spring.org/stdlib/validation"
+import "go-spring.org/spring/validation"
 
 if err := validation.Validate(ctx, "default", &req); err != nil {
     // err is validation.ValidationErrors — one FieldError per failing rule
@@ -59,7 +59,7 @@ tag becomes the i18n key `validation.<tag>`.
 
 ## i18n
 
-Combine with [`stdlib/i18n`](../../stdlib/i18n) to render localized messages
+Combine with [`spring/i18n`](../../spring/i18n) to render localized messages
 without hard-coding strings:
 
 ```properties

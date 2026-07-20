@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/stdlib/discovery"
+	"go-spring.org/spring/discovery"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/resilience"
-	"go-spring.org/stdlib/starter"
+	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/starter"
 )
 
 var driverRegistry = map[string]Driver{}

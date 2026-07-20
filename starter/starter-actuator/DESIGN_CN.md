@@ -24,7 +24,7 @@ server 的运维对偶物。
   仅用来观察整体聚合。这是刻意的：readiness 探针必须能观察到
   OUT_OF_SERVICE→UP 的翻转，liveness 探针必须在漫长启动期间持续应答否则
   pod 会被过早杀掉。
-- **`health.Indicator` 在 stdlib。** 接口放 `stdlib/health` 而非 starter——
+- **`health.Indicator` 在 stdlib。** 接口放 `spring/health` 而非 starter——
   容器只按显式 `.Export(As[Iface]())` 建索引，且该接口必须对每个贡献者
   （redis / gorm……）都可达而无需 import 本 starter。
 - **`PreStop` 翻转 readiness。** `PreStop` 置 `draining=true`，让 `/readyz`

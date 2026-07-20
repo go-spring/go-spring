@@ -6,7 +6,7 @@
 
 `starter-transaction-tcc` contributes the **TCC (Try / Confirm / Cancel)**
 distributed-transaction capability defined in
-[`go-spring.org/stdlib/transaction/tcc`](../../stdlib/transaction/tcc) to a
+[`go-spring.org/spring/transaction/tcc`](../../spring/transaction/tcc) to a
 Go-Spring application. It is the Go-idiomatic equivalent of Seata TCC, reached
 without replicating Seata's TC/TM/RM roles or requiring bytecode/proxy magic.
 

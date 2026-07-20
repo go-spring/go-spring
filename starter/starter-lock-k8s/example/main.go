@@ -41,7 +41,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/lock"
+	"go-spring.org/spring/lock"
 
 	// Blank-import registers the Lease-backed Locker beans declared under
 	// spring.lock.

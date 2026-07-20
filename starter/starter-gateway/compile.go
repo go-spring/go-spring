@@ -29,8 +29,8 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/discovery"
-	"go-spring.org/stdlib/resilience"
+	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/resilience"
 )
 
 // FilterWrapper is the seam a bean-backed filter (jwt-auth, lua) satisfies:

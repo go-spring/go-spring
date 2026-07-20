@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/stdlib/lock"
+	"go-spring.org/spring/lock"
 )
 
 // unlockScript releases the key only when it still carries the caller's token

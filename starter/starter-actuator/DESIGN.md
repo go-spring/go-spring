@@ -30,7 +30,7 @@ counterpart to the application's business server.
   to see the OUT_OF_SERVICE→UP transition, and a liveness probe must
   answer throughout a long boot so the pod is not killed prematurely.
 - **`health.Indicator` in stdlib.** The interface lives in
-  `stdlib/health`, not in the starter — the container only matches by
+  `spring/health`, not in the starter — the container only matches by
   explicit `.Export(As[Iface]())`, and the interface must be reachable
   to every contributor (redis, gorm, ...) without importing this
   starter.

@@ -8,7 +8,7 @@ Pod behind a Service, so an application should discover peers through that
 capability instead of standing up a second external registry (Nacos/Consul).
 
 Blank-importing this starter and declaring a `spring.discovery.k8s.<name>` entry
-registers a `discovery.Discovery` backend (from `stdlib/discovery`) under
+registers a `discovery.Discovery` backend (from `spring/discovery`) under
 `<name>`. Any client starter that supports discovery — Redis, GORM, ... —
 resolves a Kubernetes **Service name** to live Pod endpoints by setting its
 `discovery: <name>` field. This starter does **client-side discovery only**; it

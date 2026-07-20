@@ -39,7 +39,7 @@ type Config struct {
 // that would silently never fire the way the operator expects.
 type JobConfig struct {
 	// Cron is a standard 5-field cron expression (see
-	// go-spring.org/stdlib/scheduling.ParseCron). Mutually exclusive with
+	// go-spring.org/spring/scheduling.ParseCron). Mutually exclusive with
 	// FixedRate and FixedDelay.
 	Cron string `value:"${cron:=}"`
 

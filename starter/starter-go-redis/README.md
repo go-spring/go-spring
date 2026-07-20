@@ -136,7 +136,7 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   runtime monitoring.
 * **TLS**: enable `tls.enabled` and provide `ca-file` (and `cert-file`/`key-file` for mutual TLS) to dial Redis over TLS;
   see the commented block in [app.properties](example/conf/app.properties).
-* **Distributed cache backend**: `AsCache(client, codec)` adapts the client to `stdlib/cache.Cache`, the shared (far)
+* **Distributed cache backend**: `AsCache(client, codec)` adapts the client to `spring/cache.Cache`, the shared (far)
   level of a multi-level cache. Values are serialized with the codec (nil defaults to JSON).
 * **Global rate limiter**: `NewRateLimiter(client, resilience.LimitPolicy{...})` returns a `resilience.RateLimiter`
   backed by an atomic Lua token bucket, so every replica shares one budget — in contrast to the per-replica builtin.

@@ -4,7 +4,7 @@
 
 `starter-registry-zookeeper` registers the **current instance** into a ZooKeeper
 ensemble — the provider-side counterpart to Go-Spring's client-side discovery
-(`stdlib/discovery`). It is the Go-Spring equivalent of Spring Cloud's
+(`spring/discovery`). It is the Go-Spring equivalent of Spring Cloud's
 `ServiceRegistry` registration direction, backed by ephemeral znodes.
 
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
@@ -72,7 +72,7 @@ Connection, bound under `spring.registry.zookeeper`:
 | `base-path` | `/services` | Persistent parent znode under which service directories are created. |
 | `username` | (empty) | Digest-auth username; enables auth when set. |
 | `password` | (empty) | Digest-auth password. |
-| `name` | `default` | Name this registrar is published under in the `stdlib/discovery` registrar registry. |
+| `name` | `default` | Name this registrar is published under in the `spring/discovery` registrar registry. |
 
 Instance, bound under `spring.registry` (backend-agnostic — switching registry
 backends is a blank-import swap, not a config migration):
@@ -94,7 +94,7 @@ path can reconstruct an `Endpoint`.
 
 - During the container's bean-registration phase the starter connects to the
   ensemble, builds a ZooKeeper `discovery.Registrar`, and puts it in the
-  `stdlib/discovery` registrar registry under `name`. It probes the ensemble (an
+  `spring/discovery` registrar registry under `name`. It probes the ensemble (an
   `Exists` call blocks until the session connects) so an unreachable ZooKeeper
   fails startup. A company can register its own `Registrar` under a different
   name and point `spring.registry.backend` at it.

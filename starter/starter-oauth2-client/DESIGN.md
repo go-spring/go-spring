@@ -42,7 +42,7 @@ protected upstream.
   what makes Auth0 `audience` / Azure `resource` work without a
   code change.
 - **Resilience is layered here, not below.** The starter integrates
-  `stdlib/resilience` as the outermost transport wrap (retry can
+  `spring/resilience` as the outermost transport wrap (retry can
   re-pick, breaker keys by logical name). Enabling it is a config-only
   switch on the same instance.
 
@@ -67,5 +67,5 @@ protected upstream.
   vs `*oauth2.Config`) and have different fields; separate prefixes
   keep both surfaces sharp.
 - **Resource-server validation in this starter — rejected.** It
-  belongs on the *server* side (`starter-security-jwt` + `stdlib/security`),
+  belongs on the *server* side (`starter-security-jwt` + `spring/security`),
   not muxed into the client's config surface.

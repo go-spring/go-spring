@@ -6,14 +6,14 @@
 [starter/DESIGN.md](../DESIGN.md) §2.4) that drives periodic and
 cron-scheduled background jobs as part of the Go-Spring server lifecycle.
 Triggers and concurrency primitives come from the zero-dep
-`stdlib/scheduling` package; this starter is the thin integration layer.
+`spring/scheduling` package; this starter is the thin integration layer.
 
 ## 1. Responsibilities & Boundaries
 
 - **In scope:** collect `Job` beans, match them to `spring.scheduler.jobs.<name>`
-  config, hand each to `stdlib/scheduling`, participate in graceful drain.
+  config, hand each to `spring/scheduling`, participate in graceful drain.
 - **Out of scope:** the trigger algorithms, concurrency policies, and
-  lock semantics (all in `stdlib/scheduling`); locker backends
+  lock semantics (all in `spring/scheduling`); locker backends
   (`starter-lock-*`).
 
 ## 2. Key Decisions
@@ -24,7 +24,7 @@ Triggers and concurrency primitives come from the zero-dep
   This is a deliberate deviation from the design doc's "Runner"
   wording.
 - **`serialTrigger` marker for `fixed-delay`.** Fixed-delay is
-  intrinsically serial: `stdlib/scheduling` implements it as a
+  intrinsically serial: `spring/scheduling` implements it as a
   synchronous next-fire anchored on `LastCompletion`, distinct from
   `fixed-rate` / `cron` which dispatch asynchronously and are governed
   by a `ConcurrencyPolicy` (`skip` / `queue` / `replace`).
@@ -40,7 +40,7 @@ Triggers and concurrency primitives come from the zero-dep
 - **Locks by bean name, adapted at the boundary.**
   `Lockers map[string]lock.Locker autowire:"?"` collects every
   contributed locker keyed by its bean name; the scheduler resolves
-  each job's `lock` field to a name. `stdlib/scheduling` defines its
+  each job's `lock` field to a name. `spring/scheduling` defines its
   own minimal `Locker` / `Lock` interfaces to stay zero-dep, so a
   `lockerAdapter` in the starter bridges `lock.Locker` and bakes
   TTL / renewal options into the adapter.
@@ -66,11 +66,11 @@ Triggers and concurrency primitives come from the zero-dep
 
 - **A goroutine per job with `time.Ticker` — rejected.** Cron, drain,
   overlap policies, and lock-guarded fires need a proper scheduler
-  loop; `stdlib/scheduling` centralizes it.
+  loop; `spring/scheduling` centralizes it.
 - **Auto-derive job names from function pointers — rejected.**
   Function-pointer names are compiler-dependent; explicit bean names
   keep configuration stable.
-- **Reuse `stdlib/lock.Locker` directly in `stdlib/scheduling` —
+- **Reuse `spring/lock.Locker` directly in `spring/scheduling` —
   rejected.** Would drag the whole locker abstraction into the
   zero-dep scheduling package; the adapter at the starter boundary
   keeps both packages clean.

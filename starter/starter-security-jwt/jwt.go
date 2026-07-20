@@ -27,7 +27,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/security"
+	"go-spring.org/spring/security"
 )
 
 var (

@@ -4,7 +4,7 @@
 
 `starter-registry-nacos` registers the **current instance** into a Nacos naming
 service — the provider-side counterpart to Go-Spring's client-side discovery
-(`stdlib/discovery`). It is the Go-Spring equivalent of Spring Cloud Alibaba's
+(`spring/discovery`). It is the Go-Spring equivalent of Spring Cloud Alibaba's
 `nacos-discovery` registration direction, and the registrar counterpart to
 [starter-config-nacos](../starter-config-nacos)'s config role (the two are
 separate starters with separate config prefixes).
@@ -76,7 +76,7 @@ Connection, bound under `spring.registry.nacos`:
 | `username` | (empty) | Auth username; empty for anonymous clusters. |
 | `password` | (empty) | Auth password. |
 | `timeout-ms` | `5000` | Per-call timeout, including the startup probe. |
-| `name` | `default` | Name this registrar is published under in the `stdlib/discovery` registrar registry. |
+| `name` | `default` | Name this registrar is published under in the `spring/discovery` registrar registry. |
 
 Instance, bound under `spring.registry` (backend-agnostic — switching registry
 backends is a blank-import swap, not a config migration):
@@ -93,7 +93,7 @@ backends is a blank-import swap, not a config migration):
 ## How It Works
 
 - During the container's bean-registration phase the starter builds a Nacos
-  `discovery.Registrar` and puts it in the `stdlib/discovery` registrar registry
+  `discovery.Registrar` and puts it in the `spring/discovery` registrar registry
   under `name` — mirroring how `starter-discovery-k8s` registers discovery
   backends. It probes the server (a service listing) so an unreachable Nacos
   fails startup. A company can register its own `Registrar` under a different

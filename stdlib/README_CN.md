@@ -23,7 +23,6 @@
 
 | 模块 | 说明 |
 |--------|-------------|
-| [aspect](./aspect/) | AOP 等价能力，横切关注点（事务、缓存、审计、埋点）的拦截器链 |
 | [ctxcache](./ctxcache/) | 基于 Context 的缓存工具 |
 | [errutil](./errutil/) | 错误处理工具，提供错误包装、栈追踪捕获等功能 |
 | [fileutil](./fileutil/) | 文件系统工具 |
@@ -32,8 +31,6 @@
 | [funcutil](./funcutil/) | 函数工具，延迟求值、偏函数应用等 |
 | [goutil](./goutil/) | Go 通用工具，上下文取消控制等功能 |
 | [hashutil](./hashutil/) | 哈希计算工具 |
-| [httpclt](./httpclt/) | HTTP 客户端工具 |
-| [httpsvr](./httpsvr/) | HTTP 服务端工具 |
 | [iterutil](./iterutil/) | 迭代器和循环处理工具 |
 | [jsonflow](./jsonflow/) | JSON 流式处理工具包 |
 | [listutil](./listutil/) | 列表和链表工具 |

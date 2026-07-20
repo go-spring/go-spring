@@ -4,7 +4,7 @@
 
 `starter-transaction-saga` contributes the **Saga** distributed-transaction
 capability defined in
-[`go-spring.org/stdlib/transaction`](../../stdlib/transaction) to a Go-Spring
+[`go-spring.org/spring/transaction`](../../spring/transaction) to a Go-Spring
 application. It is the Go-idiomatic equivalent of `@GlobalTransactional(SAGA)`,
 reached with an in-process coordinator and an aspect chain rather than by
 replicating Seata's TC/TM/RM roles or requiring bytecode magic.
@@ -131,7 +131,7 @@ recovery scan without any change to business code.
 When `tracing` is true, the coordinator emits an otel child span per step
 phase (`saga.action <step>`, `saga.compensate <step>`) tagged with
 `saga.id`, `saga.step`, and `saga.phase`. Failures are recorded on the span.
-The `Observer` seam lives in the coordinator so `stdlib/transaction` stays
+The `Observer` seam lives in the coordinator so `spring/transaction` stays
 free of an otel dependency.
 
 ## License

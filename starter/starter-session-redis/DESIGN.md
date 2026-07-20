@@ -4,9 +4,9 @@
 
 `starter-session-redis` is a **Contributor**-archetype starter (see
 [starter/DESIGN.md](../DESIGN.md) §2.3) that provides a Redis-backed
-`session.SessionStore` for `stdlib/session`, the Spring Session equivalent
+`session.SessionStore` for `spring/session`, the Spring Session equivalent
 in Go-Spring. It opens no port; it contributes a `SessionStore` bean that
-`stdlib/session.Manager` uses to load and save sessions across replicas.
+`spring/session.Manager` uses to load and save sessions across replicas.
 
 ## 1. Responsibilities & Boundaries
 
@@ -14,12 +14,12 @@ in Go-Spring. It opens no port; it contributes a `SessionStore` bean that
   `session.SessionStore` bean backed by the application's existing
   `*redis.Client`.
 - **Out of scope:** the HTTP `Manager` middleware and cookie handling
-  (that is `stdlib/session`); the redis client itself (that is
+  (that is `spring/session`); the redis client itself (that is
   `starter-go-redis`).
 
 ## 2. Key Abstractions & Seams
 
-`stdlib/session` splits the capability three ways so the starter can plug
+`spring/session` splits the capability three ways so the starter can plug
 in without touching HTTP:
 
 - **`Session`** — id, attributes, `isNew` / `modified` / `invalid` /
@@ -40,7 +40,7 @@ This starter contributes an implementation of `ByteStore` and lets
 - **Bean, not driver registry.** Sessions rely on a *live* Redis client
   the application already wires; registering a live client into a
   package-level registry is wrong for multi-run and multi-test setups.
-  The driver registry in `stdlib/session` only serves static defaults
+  The driver registry in `spring/session` only serves static defaults
   (`"memory"`); Redis rides through `gs.Group` + `TagArg(client)`.
 - **Multi-instance via `gs.Group("${spring.session.redis}", ...)`.**
   Each entry picks a redis bean by name. Empty `client` = fail-fast at
@@ -53,7 +53,7 @@ This starter contributes an implementation of `ByteStore` and lets
 - **No destroy hook.** The starter does not `Close()` the redis client
   (it does not own it); the redis starter's destroy takes care of that.
 
-## 4. Manager decisions (context — lives in `stdlib/session`, mirrored here)
+## 4. Manager decisions (context — lives in `spring/session`, mirrored here)
 
 - **Cookie is always HttpOnly.** No configurable toggle: a JS-readable
   session cookie is almost always a bug, and a `bool` zero value cannot

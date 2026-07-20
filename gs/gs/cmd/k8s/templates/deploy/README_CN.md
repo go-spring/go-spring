@@ -113,7 +113,7 @@ adapter ConfigMap 把 `http_requests_total` 映射成每 Pod 的
 
 Deployment 通过 Downward API 注入 Pod 字段(`GS_POD_NAME`、`GS_POD_NAMESPACE`、
 `GS_POD_IP`、`GS_NODE_NAME`、`GS_POD_SERVICE_ACCOUNT`),并把 labels/annotations
-挂载到 `/etc/podinfo`。在应用里用 `go-spring.org/stdlib/podinfo` 读取:
+挂载到 `/etc/podinfo`。在应用里用 `go-spring.org/spring/podinfo` 读取:
 
 ```go
 gs.Object(&podinfo.PodInfo{})

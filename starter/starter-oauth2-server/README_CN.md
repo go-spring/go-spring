@@ -16,7 +16,7 @@
 本 starter 实现的是 OAuth2/OIDC **协议端点**，而非完整的身份提供方（IdP）。它不附带
 用户存储、不做 MFA、也不做社交登录聚合；资源属主（resource-owner）的登录是一个缝隙
 （`UserAuthFunc`），由应用把自己的会话/登录接进来。它不是 Spring Security
-`SecurityFilterChain` DSL 的移植 —— 等价的 Web 安全过滤链是用 `stdlib/security` 中的
+`SecurityFilterChain` DSL 的移植 —— 等价的 Web 安全过滤链是用 `spring/security` 中的
 普通 `net/http` 中间件（`Chain` / `CORS` / `CSRF` / `Authenticate` / `Authorize`）组装的。
 
 ## 安装
@@ -74,7 +74,7 @@ gs.Provide(func(as *StarterOAuth2Server.AuthServer) *gs.HttpServeMux {
 
 ### 4. 用过滤链保护资源
 
-统一的 Web 安全过滤链位于 `stdlib/security`。用 `security.Chain` 按顺序编排各关注点
+统一的 Web 安全过滤链位于 `spring/security`。用 `security.Chain` 按顺序编排各关注点
 —— 先 CORS，再认证，最后授权：
 
 ```go
