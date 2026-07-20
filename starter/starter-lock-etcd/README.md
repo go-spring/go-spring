@@ -39,7 +39,7 @@ empty `endpoints` fails fast at startup.
 ### 3. Inject the `lock.Locker`
 
 ```go
-import "go-spring.org/spring/lock"
+import "go-spring.org/spring/cloud/lock"
 
 type Service struct {
     Locker lock.Locker `autowire:"main"`

@@ -45,7 +45,7 @@ type SignupRequest struct {
 ### 3. Validate
 
 ```go
-import "go-spring.org/spring/validation"
+import "go-spring.org/spring/web/validation"
 
 if err := validation.Validate(ctx, "default", &req); err != nil {
     // err is validation.ValidationErrors — one FieldError per failing rule

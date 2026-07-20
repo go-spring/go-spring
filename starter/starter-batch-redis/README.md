@@ -53,7 +53,7 @@ starter refuses to silently default to some arbitrary Redis instance.
 ### 3. Inject `batch.JobRepository`
 
 ```go
-import "go-spring.org/spring/batch"
+import "go-spring.org/spring/cloud/batch"
 
 type Service struct {
     Repo batch.JobRepository `autowire:"jobs"`

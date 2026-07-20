@@ -23,7 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"

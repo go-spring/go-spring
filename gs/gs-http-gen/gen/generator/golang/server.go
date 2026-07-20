@@ -69,7 +69,7 @@ import (
 	"net/http"
 	{{- end}}
 
-	"go-spring.org/spring/httpsvr"
+	"go-spring.org/spring/web/httpsvr"
 )
 
 // {{.Service}}Service defines the interface that service must implement.

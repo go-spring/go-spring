@@ -19,7 +19,7 @@ package StarterNats
 import (
 	"time"
 
-	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/cloud/resilience"
 	"go-spring.org/spring/starter"
 )
 

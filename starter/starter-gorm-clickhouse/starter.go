@@ -22,7 +22,7 @@ import (
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/clickhouse"
 	"gorm.io/gorm"

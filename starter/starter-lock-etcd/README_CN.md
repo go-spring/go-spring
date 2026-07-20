@@ -36,7 +36,7 @@ spring.lock.main.key-prefix=/lock/
 ### 3. 注入 `lock.Locker`
 
 ```go
-import "go-spring.org/spring/lock"
+import "go-spring.org/spring/cloud/lock"
 
 type Service struct {
     Locker lock.Locker `autowire:"main"`

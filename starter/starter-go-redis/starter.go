@@ -25,10 +25,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/spring/health"
+	"go-spring.org/spring/actuator/health"
 	"go-spring.org/spring/starter"
 )
 

@@ -21,6 +21,33 @@ gs）中的容器/核心层，提供 IoC 容器、依赖注入接线、分层配
   `PropertiesRefresher`。`spring/gs/internal/...` 全是实现细节，不对
   外承诺。
 
+### 子包分族
+
+除 `gs`/`conf` 外,能力抽象按**关注层**分族(包按其*抽象本体*所属的层归类,而非按最强后端)。
+这是权威族图:
+
+```
+spring/
+├─ gs/  conf/  aspect/         核心:容器、配置引擎、AOP 原语
+├─ cloud/     分布式协作(后端多为跨进程)
+│    discovery loadbalance resilience lock messaging transaction event scheduling batch
+├─ web/       请求处理面 + 内置 HTTP
+│    httpsvr httpclt httpx security session validation i18n
+├─ data/      持久化
+│    cache repository migration
+└─ actuator/  运维 / 探针暴露
+     endpoint health podinfo
+```
+
+归类规则:
+- **`aspect` 是根位核心原语**(零依赖,被 cache/event/security/transaction 依赖)——与 `conf`
+  同档,不是族成员。
+- **看本体而非后端。** `cache` → `data`(本体是通用 KV,Memory 是一等后端),`session` → `web`
+  (本体是 HTTP 请求态管理,分布式 store 只是一种后端),`transaction` → `cloud`(本体是跨服务协调)。
+- **`event`/`scheduling`/`batch` → `cloud`** —— 三者都依赖 `lock` 做跨副本协调。
+- 跨族 import 严格向下(如 `web/httpx → cloud/*`、`data/cache → aspect`、
+  `cloud/event → actuator/health`),依赖图无环。Go 不在编译期强制这一点——它是 review 级不变式。
+
 ## 2. 关键抽象与接缝
 
 - **Bean 注册**。`gs.Provide(objOrCtor, args...)` 在 `init()` 期记下

@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/batch"
+	"go-spring.org/spring/cloud/batch"
 )
 
 var _ JobDefinition = (*staticJob)(nil)

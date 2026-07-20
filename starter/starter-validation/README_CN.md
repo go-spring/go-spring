@@ -43,7 +43,7 @@ type SignupRequest struct {
 ### 3. 校验
 
 ```go
-import "go-spring.org/spring/validation"
+import "go-spring.org/spring/web/validation"
 
 if err := validation.Validate(ctx, "default", &req); err != nil {
     // err 是 validation.ValidationErrors——每条失败规则一个 FieldError

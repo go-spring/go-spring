@@ -25,6 +25,38 @@ Kafka, etc.) — those live one layer up in `starter/`.
   `ReadySignal`, `PropertiesRefresher`. Everything else in
   `spring/gs/internal/...` is implementation detail and off-limits to users.
 
+### Subpackage families
+
+Beyond `gs`/`conf`, the capability abstractions are grouped by **concern layer**
+(a package is filed by the layer its *abstraction body* belongs to, not by its
+strongest backend). This is the authoritative family map:
+
+```
+spring/
+├─ gs/  conf/  aspect/         core: container, config engine, AOP primitive
+├─ cloud/     distributed coordination (backends usually cross-process)
+│    discovery loadbalance resilience lock messaging transaction event scheduling batch
+├─ web/       request-handling plane + built-in HTTP
+│    httpsvr httpclt httpx security session validation i18n
+├─ data/      persistence
+│    cache repository migration
+└─ actuator/  ops / probe exposure
+     endpoint health podinfo
+```
+
+Filing rules:
+- **`aspect` is a root core primitive** (zero deps, depended on by cache/event/
+  security/transaction) — same tier as `conf`, not a family member.
+- **Body, not backend, decides the family.** `cache` → `data` (its body is a
+  generic KV store; Memory is a first-class backend), `session` → `web` (its body
+  is HTTP request-state management; a distributed store is just one backend),
+  `transaction` → `cloud` (its body is cross-service coordination).
+- **`event`/`scheduling`/`batch` → `cloud`** — all depend on `lock` for
+  cross-replica coordination.
+- Cross-family imports flow strictly downward (e.g. `web/httpx → cloud/*`,
+  `data/cache → aspect`, `cloud/event → actuator/health`); the graph is acyclic.
+  Go does not enforce this at compile time — it is a review-level invariant.
+
 ## 2. Key Abstractions & Seams
 
 - **Bean registration.** `gs.Provide(objOrCtor, args...)` records a bean

@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/go-zookeeper/zk"
-	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 

@@ -138,7 +138,7 @@ package) is collected automatically — no per-component registration API and no
 import of this starter:
 
 ```go
-import "go-spring.org/spring/health"
+import "go-spring.org/spring/actuator/health"
 
 type dbHealth struct{ db *sql.DB }
 

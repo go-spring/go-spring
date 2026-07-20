@@ -52,7 +52,7 @@ spring.batch.repository=jobs
 ### 3. 注入 `batch.JobRepository`
 
 ```go
-import "go-spring.org/spring/batch"
+import "go-spring.org/spring/cloud/batch"
 
 type Service struct {
     Repo batch.JobRepository `autowire:"jobs"`

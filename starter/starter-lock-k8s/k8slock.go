@@ -27,7 +27,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/spring/lock"
+	"go-spring.org/spring/cloud/lock"
 )
 
 // k8sLocker implements [lock.Locker] on top of coordination.k8s.io/Lease

@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 

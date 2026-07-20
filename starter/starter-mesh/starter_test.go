@@ -19,7 +19,7 @@ package StarterMesh
 import (
 	"testing"
 
-	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
 )

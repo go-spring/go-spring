@@ -40,7 +40,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"go-spring.org/spring/validation"
+	"go-spring.org/spring/web/validation"
 )
 
 func init() {

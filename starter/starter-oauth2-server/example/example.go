@@ -32,7 +32,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterOAuth2Server "go-spring.org/starter-oauth2-server"
-	"go-spring.org/spring/security"
+	"go-spring.org/spring/web/security"
 )
 
 // secret matches spring.oauth2.server.secret in conf/app.properties. The

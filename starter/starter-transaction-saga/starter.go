@@ -56,7 +56,7 @@ package StarterTransactionSaga
 
 import (
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/transaction"
+	"go-spring.org/spring/cloud/transaction"
 )
 
 // enabled matches when the starter is not explicitly disabled.

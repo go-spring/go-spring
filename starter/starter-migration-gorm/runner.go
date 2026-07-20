@@ -23,7 +23,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/spring/migration"
+	"go-spring.org/spring/data/migration"
 	"gorm.io/gorm"
 )
 

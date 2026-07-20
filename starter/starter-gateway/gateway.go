@@ -18,9 +18,9 @@ package StarterGateway
 
 import (
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/endpoint"
+	"go-spring.org/spring/actuator/endpoint"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/spring/health"
+	"go-spring.org/spring/actuator/health"
 )
 
 func init() {

@@ -38,7 +38,7 @@ spring.lock.jobs.key-prefix=demo/lock/
 ### 3. 注入并使用 `lock.Locker`
 
 ```go
-import "go-spring.org/spring/lock"
+import "go-spring.org/spring/cloud/lock"
 
 type Service struct {
     Locker lock.Locker `autowire:"jobs"`

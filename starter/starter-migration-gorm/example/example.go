@@ -29,7 +29,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	migrationgorm "go-spring.org/starter-migration-gorm"
-	"go-spring.org/spring/migration"
+	"go-spring.org/spring/data/migration"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

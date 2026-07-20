@@ -30,7 +30,7 @@ import (
 	"examples/proto"
 	"examples/server"
 
-	"go-spring.org/spring/httpsvr"
+	"go-spring.org/spring/web/httpsvr"
 )
 
 // init sets the working directory of the program to the directory

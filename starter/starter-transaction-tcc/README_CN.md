@@ -5,7 +5,7 @@
 > 项目已正式发布，欢迎使用！
 
 `starter-transaction-tcc` 将
-[`go-spring.org/spring/transaction/tcc`](../../spring/transaction/tcc) 定义的
+[`go-spring.org/spring/cloud/transaction/tcc`](../../spring/transaction/tcc) 定义的
 **TCC(Try / Confirm / Cancel)** 分布式事务能力接入 Go-Spring 应用。它是 Seata
 TCC 的 Go 惯用法等价实现——不复刻 Seata 的 TC/TM/RM 角色，也不依赖字节码/代理魔法。
 

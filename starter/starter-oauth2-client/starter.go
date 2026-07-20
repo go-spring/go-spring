@@ -21,7 +21,7 @@ import (
 	"net/http"
 
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/cloud/resilience"
 	"golang.org/x/oauth2/clientcredentials"
 )
 

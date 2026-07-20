@@ -58,7 +58,7 @@ import (
     "net/http"
 
     "go-spring.org/spring/gs"
-    "go-spring.org/spring/session"
+    "go-spring.org/spring/web/session"
 )
 
 gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {

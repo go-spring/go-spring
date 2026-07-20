@@ -25,7 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go-spring.org/spring/health"
+	"go-spring.org/spring/actuator/health"
 	"go-spring.org/spring/starter"
 )
 

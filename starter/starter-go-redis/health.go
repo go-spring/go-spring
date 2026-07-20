@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/spring/health"
+	"go-spring.org/spring/actuator/health"
 	"go-spring.org/spring/starter"
 )
 

@@ -36,8 +36,8 @@ import (
 	"os"
 	"sync/atomic"
 
-	"go-spring.org/spring/discovery"
-	"go-spring.org/spring/loadbalance"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/loadbalance"
 )
 
 // countingDiscovery serves a fixed set of endpoints and counts how often it is

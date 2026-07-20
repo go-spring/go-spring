@@ -33,7 +33,7 @@ package StarterResilience
 import (
 	sentinel "github.com/alibaba/sentinel-golang/api"
 
-	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/cloud/resilience"
 )
 
 func init() {

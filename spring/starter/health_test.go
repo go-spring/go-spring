@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"go-spring.org/spring/health"
+	"go-spring.org/spring/actuator/health"
 )
 
 func TestNewIndicator_NameAndProbe(t *testing.T) {

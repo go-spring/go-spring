@@ -32,7 +32,7 @@ The natural shape inside a service constructor:
 ```go
 import (
     reposgorm "go-spring.org/starter-repository-gorm"
-    "go-spring.org/spring/repository"
+    "go-spring.org/spring/data/repository"
     "gorm.io/gorm"
 )
 

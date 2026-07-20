@@ -19,7 +19,7 @@ package starter
 import (
 	"context"
 
-	"go-spring.org/spring/health"
+	"go-spring.org/spring/actuator/health"
 )
 
 // NewIndicator builds a health.Indicator from a name and a probe function,

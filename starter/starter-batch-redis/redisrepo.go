@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/spring/batch"
+	"go-spring.org/spring/cloud/batch"
 )
 
 // redisRepository implements batch.JobRepository over a *redis.Client. It is

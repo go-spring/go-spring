@@ -51,8 +51,8 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/discovery"
-	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/resilience"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"

@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
-	"go-spring.org/spring/transaction/tcc"
+	"go-spring.org/spring/cloud/transaction/tcc"
 )
 
 func okParticipant(name string, confirmed, cancelled *[]string) tcc.Participant {

@@ -22,7 +22,7 @@ import (
 	"regexp"
 	"time"
 
-	"go-spring.org/spring/migration"
+	"go-spring.org/spring/data/migration"
 	"gorm.io/gorm"
 )
 

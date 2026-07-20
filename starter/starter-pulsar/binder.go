@@ -22,7 +22,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"go-spring.org/log"
-	"go-spring.org/spring/messaging"
+	"go-spring.org/spring/cloud/messaging"
 )
 
 // NewBinder adapts a Pulsar client to the broker-neutral messaging.Binder, so

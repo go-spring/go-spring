@@ -30,7 +30,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-transaction-tcc"
-	"go-spring.org/spring/transaction/tcc"
+	"go-spring.org/spring/cloud/transaction/tcc"
 )
 
 // ----------------------------------------------------------------------------

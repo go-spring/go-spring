@@ -62,7 +62,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/batch"
+	"go-spring.org/spring/cloud/batch"
 )
 
 // enabled matches when the starter is not explicitly disabled. It is the

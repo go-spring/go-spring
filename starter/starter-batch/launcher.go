@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/batch"
+	"go-spring.org/spring/cloud/batch"
 	"go-spring.org/stdlib/errutil"
 )
 

@@ -27,7 +27,7 @@ import (
 	"github.com/alibaba/sentinel-golang/core/flow"
 	"github.com/alibaba/sentinel-golang/core/isolation"
 
-	"go-spring.org/spring/resilience"
+	"go-spring.org/spring/cloud/resilience"
 )
 
 // sentinelExecutor maps a backend-neutral resilience.Policy onto sentinel-golang

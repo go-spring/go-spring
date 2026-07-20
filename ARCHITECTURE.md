@@ -40,8 +40,14 @@ Verified dependency facts (do not violate):
 - `spring/` depends on `log/` and `stdlib/`, and on **no third-party business
   package** (no Redis, GORM, Kafka, ...). Beyond the IoC container it hosts the
   framework's **capability abstractions** (interface + driver registry) as
-  subpackages — `spring/cache`, `spring/lock`, `spring/discovery`,
-  `spring/resilience`, ... — whose concrete backends live in `starter-*`.
+  subpackages, grouped by concern into families — `spring/cloud/*`
+  (discovery, loadbalance, resilience, lock, messaging, transaction, event,
+  scheduling, batch), `spring/web/*` (httpsvr, httpclt, httpx, security,
+  session, validation, i18n), `spring/data/*` (cache, repository, migration),
+  `spring/actuator/*` (endpoint, health, podinfo) — whose concrete backends
+  live in `starter-*`. `spring/aspect` sits at the root as a core primitive
+  (zero deps, widely depended on, alongside `gs`/`conf`). The authoritative
+  family map lives in [spring/DESIGN.md](spring/DESIGN.md).
 - `starter-*` and `gs-*` sit on top and may pull third-party packages.
 - Nothing in a lower layer may import a higher layer. A `starter` importing
   another `starter`, or `spring` importing a `starter`, is a layering violation.
@@ -103,7 +109,7 @@ Two recurring traps:
   its home is `spring/`, not `stdlib/`), and the moment a third-party import is
   required it cannot live in either foundation layer. The pattern is:
   **abstraction + driver registry in `spring/`, concrete backend in a `starter`**
-  (see `spring/cache`, `spring/lock`, `spring/discovery`).
+  (see `spring/data/cache`, `spring/cloud/lock`, `spring/cloud/discovery`).
 
 ## 4. Scope Red Lines (non-goals)
 
@@ -142,8 +148,8 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
   architecture fails by omission, not by a visible bug.
 - **Built-ins ride the same seams they expose.** Go-Spring's own built-in
   implementations must go through the very extension points offered to users,
-  never a privileged private path — `spring/cache`'s Memory backend,
-  `spring/resilience`'s built-in strategies, and the starter archetypes all
+  never a privileged private path — `spring/data/cache`'s Memory backend,
+  `spring/cloud/resilience`'s built-in strategies, and the starter archetypes all
   consume their own registries/interfaces. If a built-in can't be expressed
   through the public seam, the seam is wrong, not the built-in.
 - **This is a framework-layer duty, not a universal one.** Downstream business

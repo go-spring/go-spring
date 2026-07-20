@@ -18,7 +18,7 @@ package StarterSwagger
 
 import (
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/endpoint"
+	"go-spring.org/spring/actuator/endpoint"
 )
 
 func init() {

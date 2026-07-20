@@ -19,7 +19,7 @@ package StarterTransactionATGorm
 import (
 	"context"
 
-	"go-spring.org/spring/transaction/at"
+	"go-spring.org/spring/cloud/transaction/at"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

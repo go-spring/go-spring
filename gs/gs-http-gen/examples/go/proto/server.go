@@ -6,7 +6,7 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/spring/httpsvr"
+	"go-spring.org/spring/web/httpsvr"
 )
 
 // ManagerService defines the interface that service must implement.

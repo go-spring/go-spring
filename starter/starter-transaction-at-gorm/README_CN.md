@@ -5,7 +5,7 @@
 > 项目已正式发布，欢迎使用！
 
 `starter-transaction-at-gorm` 将
-[`go-spring.org/spring/transaction/at`](../../spring/transaction/at) 中定义的
+[`go-spring.org/spring/cloud/transaction/at`](../../spring/transaction/at) 中定义的
 **AT（自动事务）** 分布式事务能力接入 Go-Spring 应用，底层基于
 [gorm](https://gorm.io)。它以 Go 惯用法达到与 **Seata AT** 等价的效果，无需复刻
 Seata 的 TC/TM/RM 角色。

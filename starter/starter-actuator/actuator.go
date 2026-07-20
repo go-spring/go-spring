@@ -68,9 +68,9 @@ import (
 	"time"
 
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/endpoint"
+	"go-spring.org/spring/actuator/endpoint"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/spring/health"
+	"go-spring.org/spring/actuator/health"
 )
 
 func init() {

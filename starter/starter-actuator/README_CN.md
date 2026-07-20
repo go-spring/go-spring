@@ -129,7 +129,7 @@ app.shutdown.timeout=30s
 逐组件的注册 API，也无需 import 本 starter：
 
 ```go
-import "go-spring.org/spring/health"
+import "go-spring.org/spring/actuator/health"
 
 type dbHealth struct{ db *sql.DB }
 

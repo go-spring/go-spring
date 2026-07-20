@@ -22,7 +22,7 @@ import (
 	"time"
 
 	reposgorm "go-spring.org/starter-repository-gorm"
-	"go-spring.org/spring/repository"
+	"go-spring.org/spring/data/repository"
 	"go-spring.org/stdlib/testing/assert"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"

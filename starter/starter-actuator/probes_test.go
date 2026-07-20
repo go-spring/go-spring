@@ -23,7 +23,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-spring.org/spring/health"
+	"go-spring.org/spring/actuator/health"
 	"go-spring.org/stdlib/testing/assert"
 )
 

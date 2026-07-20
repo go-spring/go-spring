@@ -22,7 +22,7 @@ import (
 	"sync"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go-spring.org/spring/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/spring/starter"
 )

@@ -43,7 +43,7 @@ so the runner collects it and matches it to its config entry by name.
 ```go
 import (
     starter "go-spring.org/starter-batch"
-    "go-spring.org/spring/batch"
+    "go-spring.org/spring/cloud/batch"
 )
 
 var reportStep = batch.Func("generate", func(ctx context.Context) error {
@@ -98,7 +98,7 @@ and calls `Launch`:
 import (
     scheduler "go-spring.org/starter-scheduler"
     starter   "go-spring.org/starter-batch"
-    "go-spring.org/spring/batch"
+    "go-spring.org/spring/cloud/batch"
 )
 
 type NightlyReconcile struct {

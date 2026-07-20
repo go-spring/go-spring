@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
-	"go-spring.org/spring/cache"
+	"go-spring.org/spring/data/cache"
 )
 
 // bigcacheByteStore adapts a BigCache instance to cache.ByteStore, so a purely

@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"go-spring.org/spring/security"
+	"go-spring.org/spring/web/security"
 	"go-spring.org/stdlib/testing/assert"
 )
 

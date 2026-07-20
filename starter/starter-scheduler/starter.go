@@ -46,8 +46,8 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/spring/lock"
-	"go-spring.org/spring/scheduling"
+	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/spring/cloud/scheduling"
 )
 
 func init() {

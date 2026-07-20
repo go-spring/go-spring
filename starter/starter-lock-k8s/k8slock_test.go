@@ -23,7 +23,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/fake"
 
-	"go-spring.org/spring/lock"
+	"go-spring.org/spring/cloud/lock"
 	"go-spring.org/stdlib/testing/assert"
 )
 
