@@ -8,17 +8,16 @@
 - **Provider 端**:[`Verify`](verify.go) 用每条契约回放真实 handler,断言响应匹配。
   provider 一旦偏离约定,测试就会失败。
 - **Consumer 端**:[`StubServer`](stub.go) 把同一批契约变成一个桩 HTTP 服务,按
-  provider 承诺的样子应答;于是 consumer——即
-  [Task 01 声明式 HTTP 客户端](../../httpx)(其生成的调用点只持有一个
-  `*http.Client`)——可以对着一个忠实替身被独立测试。
+  provider 承诺的样子应答;于是 consumer——即声明式 HTTP 客户端(其调用点
+  只持有一个 `*http.Client`)——可以对着一个忠实替身被独立测试。
 
 因为同一份产物同时喂给两端,consumer 的桩绝不可能编造出 provider 实际不会返回的响应。
 
 ## 为什么不做 Groovy DSL / 不引 YAML 依赖
 
-契约就是普通 Go 结构体。落盘用 **JSON**,以此守住 `stdlib` 的零依赖约定(与
-`spring/i18n` 拒绝 YAML 依赖、只接收已解析输入是同一个理由)。若偏好 YAML,请自行
-反序列化后把得到的 `[]contract.Contract` 交给 `Verify` / `StubServer`。
+契约就是普通 Go 结构体。落盘用 **JSON**,以此守住 `stdlib` 的零依赖约定
+(YAML parser 会破坏它)。若偏好 YAML,请自行反序列化后把得到的
+`[]contract.Contract` 交给 `Verify` / `StubServer`。
 
 ## 契约格式
 

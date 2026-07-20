@@ -37,8 +37,8 @@ type TB interface {
 
 // StubHandler builds an http.Handler that answers each request with the
 // response of the first contract whose Request matches. It is the consumer-side
-// double: point a declarative HTTP client (go-spring.org/spring/httpx) at it and
-// the client sees exactly what the provider promised in the contracts.
+// double: point a declarative HTTP client at it and the client sees exactly
+// what the provider promised in the contracts.
 //
 // A request that matches no contract gets 501 Not Implemented with a body that
 // lists what was tried, so an out-of-contract call fails loudly instead of

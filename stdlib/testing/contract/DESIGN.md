@@ -48,7 +48,7 @@ the stdlib layer, so it depends only on `net/http`, `encoding/json` and
   request shape resolve to the first match. Contract authors keep the request
   shapes disjoint.
 - **Only HTTP.** Message-broker contracts are not modelled here; a broker
-  test uses the `spring/messaging` in-memory driver directly.
+  test uses its broker's own in-memory test driver directly.
 
 ## 4. Trade-offs and Alternatives Rejected
 
@@ -56,8 +56,8 @@ the stdlib layer, so it depends only on `net/http`, `encoding/json` and
   Spring Cloud Contract producer, defeating the interop premise.
 - **JSON, not YAML in stdlib.** YAML would require a parser dependency (or a
   hand-rolled one that will inevitably lag the spec); consumers who prefer
-  YAML unmarshal it themselves and pass in `[]Contract`. This mirrors
-  `spring/i18n`'s zero-dependency stance.
+  YAML unmarshal it themselves and pass in `[]Contract`. This is the same
+  zero-dependency stance the rest of stdlib takes.
 - **Structural equality over rich matchers.** Real contracts either match a
   fixed body or they should not be pinning the body at all. A regex on the
   raw body is available for the few cases that need it.

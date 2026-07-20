@@ -23,15 +23,14 @@
 //     the agreement without a test failure.
 //   - On the consumer side [StubServer] turns the same contracts into a stub
 //     HTTP server that answers exactly as the provider promised, so a consumer
-//     (typically a Task 01 declarative HTTP client — see go-spring.org/spring/httpx)
+//     (typically a declarative HTTP client)
 //     can be tested in isolation against a faithful double.
 //
 // Because one artifact feeds both directions, a consumer stub can never encode
 // a response the provider does not actually return.
 //
 // Contracts are plain Go structs. On disk they are JSON so the package keeps
-// stdlib's zero-dependency rule (mirroring go-spring.org/spring/i18n, which also
-// declines a YAML dependency and takes already-parsed input); callers who prefer
+// stdlib's zero-dependency rule; callers who prefer
 // YAML unmarshal it themselves and hand the resulting []Contract to Verify /
 // StubServer.
 package contract

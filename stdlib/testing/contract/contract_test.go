@@ -25,7 +25,7 @@ import (
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
-	"go-spring.org/spring/testing/contract"
+	"go-spring.org/stdlib/testing/contract"
 )
 
 // greetProvider is the real service under contract: it answers /greet with a

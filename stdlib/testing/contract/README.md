@@ -11,8 +11,8 @@ drives **both** ends of a service-to-service call:
   agreement without a test failure.
 - **Consumer side**: [`StubServer`](stub.go) turns the same contracts into a stub
   HTTP server that answers exactly as the provider promised, so a consumer — a
-  [Task 01 declarative HTTP client](../../httpx) whose generated call site only
-  holds an `*http.Client` — can be tested in isolation against a faithful double.
+  declarative HTTP client whose call site only holds an
+  `*http.Client` — can be tested in isolation against a faithful double.
 
 Because one artifact feeds both directions, a consumer stub can never encode a
 response the provider does not actually return.
@@ -20,9 +20,9 @@ response the provider does not actually return.
 ## Why no Groovy DSL / no YAML dependency
 
 Contracts are plain Go structs. On disk they are **JSON**, so the package keeps
-`stdlib`'s zero-dependency rule (the same reason `spring/i18n` declines a YAML
-dependency and takes already-parsed input). If you prefer YAML, unmarshal it
-yourself and hand the resulting `[]contract.Contract` to `Verify` / `StubServer`.
+`stdlib`'s zero-dependency rule (a YAML parser would break it). If you prefer
+YAML, unmarshal it yourself and hand the resulting `[]contract.Contract` to
+`Verify` / `StubServer`.
 
 ## Contract format
 

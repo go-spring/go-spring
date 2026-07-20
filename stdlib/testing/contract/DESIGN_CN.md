@@ -37,16 +37,16 @@
   stub 响应就违背了整个模式。
 - **stub 确定性作答。** 多个契约对同一请求形状,取首个匹配。契约作者要让
   请求形状互不重叠。
-- **只做 HTTP。** MQ 契约不在此处建模;MQ 测试直接用 `spring/messaging`
-  的 in-memory driver。
+- **只做 HTTP。** MQ 契约不在此处建模;MQ 测试直接用 broker 自身的
+  in-memory 测试 driver。
 
 ## 4. 取舍与被否决方案
 
 - **JSON on disk > Go DSL。** Go DSL 与 Java Spring Cloud Contract 生产
   者互操作不了,违背互通前提。
 - **stdlib 选 JSON 不选 YAML。** YAML 要 parser 依赖(或手写一个必定跟不
-  上规范);偏好 YAML 的调用方自己 unmarshal 后传 `[]Contract`。与
-  `spring/i18n` 同样的零依赖姿势。
+  上规范);偏好 YAML 的调用方自己 unmarshal 后传 `[]Contract`。与 stdlib
+  其余部分同样的零依赖姿势。
 - **结构相等 > 复杂 matcher。** 真契约要么钉固定 body,要么就别钉。少数需
   正则的场景有 raw body 正则可用。
 - **`Verify` 直接跑 `http.Handler`,不起服务器。** 进程内跑得快,同时保
