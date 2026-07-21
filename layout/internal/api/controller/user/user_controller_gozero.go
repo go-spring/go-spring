@@ -7,7 +7,7 @@ package user
 import (
 	"context"
 
-	types "GS_PROJECT_MODULE/idl/gozero/types"
+	types "GS_PROJECT_MODULE/idl/gozero-rest/types"
 	"GS_PROJECT_MODULE/internal/api/controller/user/converter"
 	"GS_PROJECT_MODULE/internal/application/user"
 )

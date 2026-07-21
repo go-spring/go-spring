@@ -4,7 +4,7 @@ package converter
 import (
 	"strconv"
 
-	types "GS_PROJECT_MODULE/idl/gozero/types"
+	types "GS_PROJECT_MODULE/idl/gozero-rest/types"
 	"GS_PROJECT_MODULE/internal/application/order/dto"
 )
 
