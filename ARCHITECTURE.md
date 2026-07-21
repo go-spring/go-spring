@@ -1,4 +1,4 @@
-# Go-Spring Architecture & Boundaries
+<!-- # Go-Spring Architecture & Boundaries
 
 [English](ARCHITECTURE.md) | [中文](ARCHITECTURE_CN.md)
 
@@ -178,4 +178,4 @@ in `starter`" rule are catalogued in §2–§3 above and in
   [layout/DESIGN.en.md](layout/DESIGN.en.md) — per-module internal design.
 - [layout/docs/agent-rules/common-rules.en.md](layout/docs/agent-rules/common-rules.en.md)
   — shared design/coding/testing rules for projects built on Go-Spring.
-- [MANIFESTO.md](MANIFESTO.md) — the long-term "Process as Code" direction.
+- [MANIFESTO.md](MANIFESTO.md) — the long-term "Process as Code" direction. -->

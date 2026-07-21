@@ -1,4 +1,4 @@
-# 项目约定
+<!-- # 项目约定
 
 ## 何时记录一条约定
 
@@ -30,4 +30,4 @@
 
 ## 编码风格
 
-- 每个源文件都必须带有 Apache License 头；模板见 [LICENSE_HEADER](LICENSE_HEADER)。
+- 每个源文件都必须带有 Apache License 头；模板见 [LICENSE_HEADER](LICENSE_HEADER)。 -->

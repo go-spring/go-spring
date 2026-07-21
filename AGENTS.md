@@ -1,4 +1,4 @@
-# Project Conventions
+<!-- # Project Conventions
 
 ## When to Record a Convention
 
@@ -43,4 +43,4 @@ decision guide, and per-layer non-goals all live in
 
 ## Coding Style
 
-- Every source file must carry the Apache License header; see [LICENSE_HEADER](LICENSE_HEADER) for the template.
+- Every source file must carry the Apache License header; see [LICENSE_HEADER](LICENSE_HEADER) for the template. -->

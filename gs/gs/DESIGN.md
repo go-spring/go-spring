@@ -1,4 +1,4 @@
-# gs Design
+<!-- # gs Design
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `gs` is the Toolkit Manager binary in the tooling layer of the Go-Spring
@@ -102,4 +102,4 @@ subcommand not compiled in is dispatched to a sibling `gs-<tool>` binary
   design.
 - **Auto-composition of features rejected.** Features are independent by
   contract; no dependency edges. This keeps `--list-features` a flat menu
-  and matches the "cut from full pack" mental model.
+  and matches the "cut from full pack" mental model. -->

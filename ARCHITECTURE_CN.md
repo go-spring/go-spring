@@ -1,4 +1,4 @@
-# Go-Spring 架构与边界
+<!-- # Go-Spring 架构与边界
 
 [English](ARCHITECTURE.md) | [中文](ARCHITECTURE_CN.md)
 
@@ -112,4 +112,4 @@ Go-Spring 的存在意义是服务所有团队的全场景;它无法交付一套
 - [contrib/DIRECTORY_CONVENTIONS.md](contrib/DIRECTORY_CONVENTIONS.md) —— contrib 示例的布局与命名。
 - [spring/DESIGN.md](spring/DESIGN_CN.md)、[log/DESIGN.md](log/DESIGN_CN.md)、[layout/DESIGN.zh.md](layout/DESIGN.zh.md) —— 各模块内部设计。
 - [layout/docs/agent-rules/common-rules.zh.md](layout/docs/agent-rules/common-rules.zh.md) —— 基于 Go-Spring 的项目共享的设计/编码/测试规则。
-- [MANIFESTO.md](MANIFESTO.md) —— 长期的 "Process as Code" 方向。
+- [MANIFESTO.md](MANIFESTO.md) —— 长期的 "Process as Code" 方向。 -->

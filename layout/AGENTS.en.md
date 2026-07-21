@@ -1,4 +1,4 @@
-# Project Conventions
+<!-- # Project Conventions
 
 ## When to Record a Convention
 
@@ -20,4 +20,4 @@ Shared conventions for projects using Go-Spring live in [common-rules.md](docs/a
 
 Conventions for the `domain` form live in [domain-rules.md](docs/agent-rules/domain-rules.md), which holds the hard rules for layering, boundaries, transactions, and testing, plus collaboration specifics; following that file is enough for AI.
 
-Before changing code or drafting a design, **you must** confirm the target layer and dependency direction against this doc. Do not guess directory purpose from intuition.
+Before changing code or drafting a design, **you must** confirm the target layer and dependency direction against this doc. Do not guess directory purpose from intuition. -->
