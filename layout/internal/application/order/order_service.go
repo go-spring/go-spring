@@ -20,7 +20,7 @@ func init() {
 
 // OrderService orchestrates order creation, including cross-domain user validation.
 type OrderService struct {
-	OrderRepo   *orderrepo.Repo    `autowire:""`
+	OrderRepo   *orderrepo.Repo   `autowire:""`
 	UserService *user.UserService `autowire:""`
 }
 

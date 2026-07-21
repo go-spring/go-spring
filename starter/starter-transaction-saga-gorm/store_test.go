@@ -21,8 +21,8 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/stdlib/testing/assert"
 	"go-spring.org/spring/cloud/transaction"
+	"go-spring.org/stdlib/testing/assert"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

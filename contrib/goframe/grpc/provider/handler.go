@@ -20,8 +20,8 @@ import (
 	"context"
 
 	"go-spring.org/goframe/grpc/idl/echo"
-	goframegrpc "go-spring.org/starter-goframe/grpc"
 	"go-spring.org/spring/gs"
+	goframegrpc "go-spring.org/starter-goframe/grpc"
 	"google.golang.org/grpc"
 )
 

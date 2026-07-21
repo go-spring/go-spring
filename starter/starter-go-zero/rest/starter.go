@@ -34,7 +34,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 
-	"go-spring.org/starter-go-zero/internal/logbridge"
+	"go-spring.org/starter-go-zero/internal/logger"
 )
 
 func init() {
@@ -153,7 +153,7 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// MustNewServer just ran ServiceConf.SetUp(), which called logx.SetUp() and
 	// installed logx's own writer; replace it so go-zero's framework logs flow
 	// into go-spring's log module. Level filtering above still applies.
-	logx.SetWriter(logbridge.NewWriter())
+	logx.SetWriter(logger.NewWriter())
 
 	<-sig.TriggerAndWait()
 

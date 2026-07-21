@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-package StarterTrpc
+// Package logger forwards tRPC's framework logs into go-spring's log module,
+// so an application only configures one logging pipeline. The bridge
+// self-installs via init(): the main StarterTrpc package blank-imports this
+// package, so importing the starter redirects tRPC's default zap console sink
+// into the same sink the application already configures for go-spring's log.
+package logger
 
 import (
 	"context"
@@ -33,7 +38,7 @@ import (
 // tRPC's base Logger interface carries no context.Context (per-request trace
 // correlation is done through log.WithContext binding fields, not through these
 // methods), so forwarded lines use context.Background() and cannot be tagged
-// with an incoming trace_id/span_id on this path — the same limitation the
+// with an incoming trace_id/span_id on this path - the same limitation the
 // non-ctx paths of the other framework bridges have.
 //
 // NOTE: the bridge only redirects "who writes the log". The application must

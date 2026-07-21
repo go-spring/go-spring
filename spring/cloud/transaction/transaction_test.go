@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"go-spring.org/spring/aspect"
-	"go-spring.org/stdlib/testing/assert"
 	"go-spring.org/spring/cloud/transaction"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func act(v any) func(context.Context) (any, error) {

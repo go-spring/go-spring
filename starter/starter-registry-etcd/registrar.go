@@ -21,9 +21,9 @@ import (
 	"encoding/json"
 	"sync"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // instanceValue is the JSON payload stored at an instance key. A discovery

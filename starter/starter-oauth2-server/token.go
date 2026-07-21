@@ -43,7 +43,7 @@ var (
 // running server can always sign.
 type signer struct {
 	method jwt.SigningMethod
-	key    any    // []byte (HMAC), *rsa.PrivateKey, or *ecdsa.PrivateKey
+	key    any // []byte (HMAC), *rsa.PrivateKey, or *ecdsa.PrivateKey
 	kid    string
 	jwks   []byte // precomputed {"keys":[...]} document; an empty set for HMAC
 }

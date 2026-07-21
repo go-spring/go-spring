@@ -23,9 +23,9 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/spring/cloud/discovery"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/spring/cloud/resilience"
 	"go-spring.org/spring/cloud/tlsconf"
+	"go-spring.org/stdlib/errutil"
 )
 
 var driverRegistry = map[string]Driver{}

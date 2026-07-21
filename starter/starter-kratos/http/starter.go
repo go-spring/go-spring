@@ -39,13 +39,13 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.opentelemetry.io/otel"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.opentelemetry.io/otel"
 
-	"go-spring.org/starter-kratos/internal/logbridge"
+	"go-spring.org/starter-kratos/internal/logger"
 )
 
 func init() {
@@ -105,9 +105,9 @@ type HttpServer struct {
 
 // NewHttpServer builds an HttpServer from ${spring.kratos.http.server} config and
 // the registered ServiceRegister bean. The kratos logger bridges framework logs
-// into go-spring's log module (see internal/logbridge).
+// into go-spring's log module (see internal/logger).
 func NewHttpServer(cfg Config, reg ServiceRegister) *HttpServer {
-	return &HttpServer{cfg: cfg, reg: reg, log: logbridge.NewLogger(), done: make(chan struct{})}
+	return &HttpServer{cfg: cfg, reg: reg, log: logger.NewLogger(), done: make(chan struct{})}
 }
 
 // Run builds the kratos HTTP transport server, composes it into a kratos.App

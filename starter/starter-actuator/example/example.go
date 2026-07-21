@@ -32,9 +32,9 @@ import (
 	"time"
 
 	"go-spring.org/log"
+	"go-spring.org/spring/actuator/health"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-actuator"
-	"go-spring.org/spring/actuator/health"
 )
 
 // demoIndicator is a stand-in for a real dependency (a database pool, a cache

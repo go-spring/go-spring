@@ -22,8 +22,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	_ "go-spring.org/starter-kratos/http"
 	"go-spring.org/spring/gs"
+	_ "go-spring.org/starter-kratos/http"
 )
 
 // The provider is a long-lived process: gs.Run() starts the kratos HTTP server

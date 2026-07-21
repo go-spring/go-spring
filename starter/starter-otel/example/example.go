@@ -18,12 +18,12 @@
 // starter-otel (Prometheus metrics exporter) alongside starter-actuator and
 // proves the two Task-4 outcomes end to end, with no per-component wiring:
 //
-//   1. /metrics is served on the actuator's single management port (:9370),
-//      not a separate metrics port — starter-otel contributes its Prometheus
-//      scrape handler as an endpoint.Endpoint and the actuator mounts it.
-//   2. A log line written inside a span carries that span's trace_id/span_id,
-//      so a log can be correlated with its trace — starter-otel installs the
-//      log.FieldsFromContext hook when tracing is enabled.
+//  1. /metrics is served on the actuator's single management port (:9370),
+//     not a separate metrics port — starter-otel contributes its Prometheus
+//     scrape handler as an endpoint.Endpoint and the actuator mounts it.
+//  2. A log line written inside a span carries that span's trace_id/span_id,
+//     so a log can be correlated with its trace — starter-otel installs the
+//     log.FieldsFromContext hook when tracing is enabled.
 package main
 
 import (

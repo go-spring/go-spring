@@ -28,11 +28,11 @@ package StarterLockConsul
 import (
 	"runtime"
 
+	"go-spring.org/spring/cloud/lock"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/spring/cloud/lock"
 )
 
 func init() {

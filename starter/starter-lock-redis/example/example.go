@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/spring/gs"
 
 	// Blank-import both starters: starter-go-redis publishes the *redis.Client
 	// under spring.go-redis.<name>, and starter-lock-redis contributes a

@@ -27,9 +27,9 @@ import (
 
 	"net/http"
 
+	"go-spring.org/spring/actuator/endpoint"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/actuator/endpoint"
 	"go-spring.org/stdlib/flatten"
 	runtimemetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"

@@ -27,8 +27,8 @@ import (
 
 	"dubbo.apache.org/dubbo-go/v3/client"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
-	greet "go-spring.org/registry/zookeeper/idl"
 	"go-spring.org/log"
+	greet "go-spring.org/registry/zookeeper/idl"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-dubbo"
 )

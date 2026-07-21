@@ -46,8 +46,8 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/event"
+	"go-spring.org/spring/gs"
 )
 
 // ConfigChanged is a domain event published when a configuration value changes.

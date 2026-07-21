@@ -57,7 +57,7 @@ type consistentHash struct {
 	rr atomic.Uint64 // fallback cursor for empty HashKey
 
 	mu    sync.Mutex
-	fp    string  // fingerprint of the endpoint set the ring was built from
+	fp    string // fingerprint of the endpoint set the ring was built from
 	ring  []uint32
 	owner map[uint32]discovery.Endpoint
 }

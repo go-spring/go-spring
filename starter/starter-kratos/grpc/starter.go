@@ -39,13 +39,13 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.opentelemetry.io/otel"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.opentelemetry.io/otel"
 
-	"go-spring.org/starter-kratos/internal/logbridge"
+	"go-spring.org/starter-kratos/internal/logger"
 )
 
 func init() {
@@ -105,9 +105,9 @@ type GrpcServer struct {
 
 // NewGrpcServer builds a GrpcServer from ${spring.kratos.grpc.server} config and
 // the registered ServiceRegister bean. The kratos logger bridges framework logs
-// into go-spring's log module (see internal/logbridge).
+// into go-spring's log module (see internal/logger).
 func NewGrpcServer(cfg Config, reg ServiceRegister) *GrpcServer {
-	return &GrpcServer{cfg: cfg, reg: reg, log: logbridge.NewLogger(), done: make(chan struct{})}
+	return &GrpcServer{cfg: cfg, reg: reg, log: logger.NewLogger(), done: make(chan struct{})}
 }
 
 // Run builds the kratos gRPC transport server, composes it into a kratos.App

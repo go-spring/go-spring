@@ -35,9 +35,9 @@ import (
 
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
-	"go-spring.org/stdlib/flatten"
 	"go-spring.org/spring/web/i18n"
 	"go-spring.org/spring/web/validation"
+	"go-spring.org/stdlib/flatten"
 
 	_ "go-spring.org/starter-validation" // registers the "default" driver
 )

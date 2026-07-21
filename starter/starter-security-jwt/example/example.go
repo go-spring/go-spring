@@ -28,8 +28,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	StarterSecurityJWT "go-spring.org/starter-security-jwt"
 	"go-spring.org/spring/web/security"
+	StarterSecurityJWT "go-spring.org/starter-security-jwt"
 )
 
 // secret is the shared HMAC key. It matches spring.security.jwt.api.secret in

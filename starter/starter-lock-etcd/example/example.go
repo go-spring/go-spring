@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/spring/gs"
 
 	// Blank-import the etcd backend. Switching to Redis/Consul is a one-line
 	// change here plus a properties swap under spring.lock.

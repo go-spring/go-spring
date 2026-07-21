@@ -38,7 +38,11 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 
-	"go-spring.org/starter-goframe/internal/logbridge"
+	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
+	// (see internal/logger). The bridge self-installs via init(), so importing
+	// this package routes goframe's own logs into the application's go-spring
+	// log pipeline before g.Server(name) emits its first lifecycle line.
+	_ "go-spring.org/starter-goframe/internal/logger"
 )
 
 func init() {
@@ -91,11 +95,6 @@ type WSServer struct {
 // g.Server(name) is called (ghttp snapshots gsvc.GetRegistry() at construction),
 // and binds the upgrade route via the injected ServiceRegister.
 func NewWSServer(cfg Config, reg ServiceRegister) *WSServer {
-	// Route goframe's own glog logs into go-spring's log module. Installed
-	// before g.Server(name) so ghttp lifecycle and WebSocket upgrade errors flow
-	// through the same pipeline as the business logs.
-	logbridge.Install()
-
 	// Set the global registry first so g.Server(name) picks it up as its
 	// registrar. Ordering matters — ghttp reads it at construction. Skipped when
 	// unconfigured.

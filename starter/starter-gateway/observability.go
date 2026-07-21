@@ -33,9 +33,9 @@ import (
 // prometheus client) so the gateway keeps a minimal footprint; a heavier OTel
 // meter can be layered on later without changing the seam.
 type Metrics struct {
-	mu       sync.RWMutex
-	routes   map[string]*routeMetric
-	inFlight int64
+	mu        sync.RWMutex
+	routes    map[string]*routeMetric
+	inFlight  int64
 	reloadErr int64
 }
 

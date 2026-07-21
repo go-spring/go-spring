@@ -35,18 +35,18 @@ func nextAfter(t *testing.T, expr string, ref time.Time) time.Time {
 
 func TestParseCronErrors(t *testing.T) {
 	cases := []string{
-		"",              // empty
-		"* * * *",       // too few fields
-		"* * * * * *",   // too many fields
-		"60 * * * *",    // minute out of range
-		"* 24 * * *",    // hour out of range
-		"* * 0 * *",     // day-of-month below range
-		"* * * 13 *",    // month out of range
-		"* * * * 8",     // day-of-week out of range
-		"*/0 * * * *",   // zero step
-		"5-1 * * * *",   // inverted range
-		"a * * * *",     // non-numeric
-		"@bogus",        // unknown macro
+		"",            // empty
+		"* * * *",     // too few fields
+		"* * * * * *", // too many fields
+		"60 * * * *",  // minute out of range
+		"* 24 * * *",  // hour out of range
+		"* * 0 * *",   // day-of-month below range
+		"* * * 13 *",  // month out of range
+		"* * * * 8",   // day-of-week out of range
+		"*/0 * * * *", // zero step
+		"5-1 * * * *", // inverted range
+		"a * * * *",   // non-numeric
+		"@bogus",      // unknown macro
 	}
 	for _, c := range cases {
 		_, err := scheduling.ParseCron(c)

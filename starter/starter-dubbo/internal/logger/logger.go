@@ -14,7 +14,14 @@
  * limitations under the License.
  */
 
-package StarterDubbo
+// Package logger forwards dubbo-go's framework logs into go-spring's log
+// module, so an application only configures one logging pipeline. The bridge
+// self-installs via init(): the main StarterDubbo package blank-imports this
+// package, so importing the starter redirects dubbo-go's two layered logger
+// facades - dubbo.apache.org/dubbo-go/v3/logger and
+// github.com/dubbogo/gost/log/logger - into the same sink the application
+// already configures for go-spring's log.
+package logger
 
 import (
 	"context"
@@ -28,15 +35,15 @@ import (
 // gsBridgeLogger implements dubbo-go's Logger interface by forwarding every
 // framework log line into go-spring's log module. Importing this starter puts
 // dubbo-go under go-spring's management, so its internal logs flow through the
-// same pipeline the application already configures for go-spring's log —
+// same pipeline the application already configures for go-spring's log -
 // otherwise dubbo-go's zap default sink prints to stdout, out of band with the
 // app's own logs.
 //
 // Dubbo-go has TWO layered logger facades that share an identical 10-method
 // interface (Debug/Info/Warn/Error/Fatal + f variants):
-//   - dubbo.apache.org/dubbo-go/v3/logger — used by the high-level dubbo-go
+//   - dubbo.apache.org/dubbo-go/v3/logger - used by the high-level dubbo-go
 //     stack (config loader, protocol, registry).
-//   - github.com/dubbogo/gost/log/logger — the underlying facade used by getty
+//   - github.com/dubbogo/gost/log/logger - the underlying facade used by getty
 //     (the classic-Dubbo transport) and much of the internal library code.
 //
 // Setting only the top-level facade leaves getty and low-level modules writing
@@ -69,8 +76,8 @@ func newGSBridgeLogger() *gsBridgeLogger {
 
 // init installs the bridge before any dubbo-go component reads
 // logger.GetLogger(). Both facades keep a package-level variable that is
-// captured by callers at first use, so replacing them here — during Go
-// package init, well before gs.Run() starts the server — is enough to
+// captured by callers at first use, so replacing them here - during Go
+// package init, well before gs.Run() starts the server - is enough to
 // redirect every log line for the lifetime of the process.
 func init() {
 	b := newGSBridgeLogger()

@@ -43,7 +43,11 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 
-	"go-spring.org/starter-goframe/internal/logbridge"
+	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
+	// (see internal/logger). The bridge self-installs via init(), so importing
+	// this package routes goframe's own logs into the application's go-spring
+	// log pipeline before the listener is built.
+	_ "go-spring.org/starter-goframe/internal/logger"
 )
 
 func init() {
@@ -122,11 +126,6 @@ type TCPServer struct {
 // handler is bound by the injected ServiceRegister, so this adapter never names
 // a concrete service.
 func NewTCPServer(cfg Config, reg ServiceRegister) *TCPServer {
-	// Route goframe's own glog logs into go-spring's log module. Installed
-	// before the listener is built so registration errors and other startup
-	// lines flow through the shared pipeline.
-	logbridge.Install()
-
 	// Build the server with a nil handler, then let the injected register bean
 	// attach the service handler via SetHandler — keeping the concrete service
 	// out of this adapter.

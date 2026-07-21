@@ -22,8 +22,8 @@ import (
 	"sort"
 
 	"go-spring.org/log"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/spring/data/migration"
+	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 )
 

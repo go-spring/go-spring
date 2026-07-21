@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-lock-consul"
 )

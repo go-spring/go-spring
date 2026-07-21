@@ -20,8 +20,8 @@ import (
 	"io"
 	"net/http"
 
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/resilience"
+	"go-spring.org/spring/gs"
 	"golang.org/x/oauth2/clientcredentials"
 )
 

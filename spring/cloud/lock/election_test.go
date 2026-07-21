@@ -44,7 +44,7 @@ func TestElectionSingleLeader(t *testing.T) {
 	defer cancel()
 
 	const n = 5
-	var live atomic.Int32   // leaders active right now
+	var live atomic.Int32    // leaders active right now
 	var maxLive atomic.Int32 // high-water mark of concurrent leaders
 
 	var wg sync.WaitGroup

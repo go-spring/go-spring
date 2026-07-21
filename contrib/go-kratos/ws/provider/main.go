@@ -22,8 +22,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	_ "go-spring.org/starter-kratos/ws"
 	"go-spring.org/spring/gs"
+	_ "go-spring.org/starter-kratos/ws"
 )
 
 // The provider is a long-lived process: gs.Run() starts the kratos WebSocket

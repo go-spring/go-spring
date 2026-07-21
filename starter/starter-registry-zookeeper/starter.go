@@ -48,9 +48,9 @@ import (
 	"runtime"
 
 	"go-spring.org/log"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )

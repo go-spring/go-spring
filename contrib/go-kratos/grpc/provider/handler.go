@@ -20,10 +20,10 @@ import (
 	"context"
 
 	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
-	kratosgrpc "go-spring.org/starter-kratos/grpc"
 	v1 "go-spring.org/go-kratos-grpc/idl/helloworld/v1"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	kratosgrpc "go-spring.org/starter-kratos/grpc"
 )
 
 func init() {

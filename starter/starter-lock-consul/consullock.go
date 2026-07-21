@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Consul allows session TTL only in [10s, 86400s]; clamp caller-supplied

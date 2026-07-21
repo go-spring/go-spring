@@ -28,9 +28,9 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/cloud/resilience"
+	"go-spring.org/spring/gs"
 )
 
 // FilterWrapper is the seam a bean-backed filter (jwt-auth, lua) satisfies:
@@ -71,8 +71,8 @@ type RouteTable struct {
 
 	compiled atomic.Pointer[[]*Route]
 
-	mu       sync.Mutex // guards recompilation and lastPtr
-	lastPtr  uintptr    // identity of the last-compiled routes map
+	mu        sync.Mutex // guards recompilation and lastPtr
+	lastPtr   uintptr    // identity of the last-compiled routes map
 	discovery string
 
 	dialerMu sync.Mutex

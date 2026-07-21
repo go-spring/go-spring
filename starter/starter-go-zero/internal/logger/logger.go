@@ -14,11 +14,17 @@
  * limitations under the License.
  */
 
-// Package logbridge forwards go-zero's framework logs (logx) into go-spring's
-// log module, so an application only configures one logging pipeline. It is the
-// single shared implementation used by both the rest and zrpc starters — each
+// Package logger forwards go-zero's framework logs (logx) into go-spring's log
+// module, so an application only configures one logging pipeline. It is the
+// single shared implementation used by both the rest and zrpc starters - each
 // installs it via logx.SetWriter after building its server.
-package logbridge
+//
+// Unlike the dubbo/trpc/kitex/goframe bridges this one cannot self-install via
+// init(): go-zero's rest/zrpc MustNewServer run ServiceConf.SetUp() -> logx.SetUp()
+// which installs logx's own writer, so the bridge must be installed via
+// logx.SetWriter AFTER the server is built. Each sub-starter calls NewWriter()
+// at that point.
+package logger
 
 import (
 	"context"
@@ -35,7 +41,7 @@ import (
 // Trade-off: logx.Writer's methods carry no context.Context, so trace-id
 // propagation via go-spring's FieldsFromContext hook cannot fire on this path.
 // go-zero injects trace/span into `fields` via logx.WithContext, so correlation
-// still travels through — we forward every LogField as a structured field. The
+// still travels through - we forward every LogField as a structured field. The
 // caller (file:line) recorded by go-spring points into this bridge rather than
 // the real emit site; we accept that imprecision because logx buries the real
 // caller behind several internal frames anyway.
@@ -52,8 +58,8 @@ func NewWriter() logx.Writer {
 
 // record is the shared sink used by every logx.Writer method. logx methods have
 // no context.Context (see type doc), so we always pass context.Background();
-// trace/span still arrive as fields. skip=3 walks past record → the calling
-// Writer method → go-spring's own record(), landing as close to the emit site
+// trace/span still arrive as fields. skip=3 walks past record -> the calling
+// Writer method -> go-spring's own record(), landing as close to the emit site
 // as this bridge can get.
 func (w *gsBridgeWriter) record(level log.Level, v any, fields []logx.LogField) {
 	gsFields := make([]log.Field, 0, len(fields)+1)
@@ -89,7 +95,7 @@ func (w *gsBridgeWriter) Info(v any, fields ...logx.LogField) {
 	w.record(log.InfoLevel, v, fields)
 }
 
-// Severe is go-zero's most serious level — used for unrecoverable process-level
+// Severe is go-zero's most serious level - used for unrecoverable process-level
 // failures. Mapped to FatalLevel; go-spring's fatal path does NOT call os.Exit
 // on its own (only the caller of logx.Severe does, if it chooses), so this is
 // purely a level signal.

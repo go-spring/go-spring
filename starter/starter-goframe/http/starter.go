@@ -35,7 +35,11 @@ import (
 	"go-spring.org/stdlib/flatten"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 
-	"go-spring.org/starter-goframe/internal/logbridge"
+	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
+	// (see internal/logger). The bridge self-installs via init(), so importing
+	// this package routes goframe's own logs into the application's go-spring
+	// log pipeline before g.Server(name) emits its first lifecycle line.
+	_ "go-spring.org/starter-goframe/internal/logger"
 )
 
 func init() {
@@ -109,11 +113,6 @@ type HTTPServer struct {
 // construction time), optionally exposes a native Prometheus endpoint, and binds
 // business routes via the injected ServiceRegister.
 func NewHTTPServer(cfg Config, reg ServiceRegister) *HTTPServer {
-	// Route goframe's own glog logs into go-spring's log module. Installed
-	// before g.Server(name) so ghttp lifecycle and gsvc registration lines flow
-	// through the same pipeline as the business logs.
-	logbridge.Install()
-
 	// Set the global registry first so g.Server(name) picks it up as its
 	// registrar. Ordering matters: see ghttp/ghttp_server.go, where the
 	// registrar field is read at server construction. Skipped when unconfigured.

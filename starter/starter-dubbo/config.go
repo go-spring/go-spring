@@ -28,6 +28,12 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/registry"
 	"dubbo.apache.org/dubbo-go/v3/server"
 	"go-spring.org/spring/gs"
+
+	// Side-effect import: installs the dubbo-go -> go-spring log bridge (see
+	// internal/logger). The bridge self-installs via init(), so no symbols are
+	// referenced here - importing this package is what redirects dubbo-go's
+	// own logs into the application's go-spring log pipeline.
+	_ "go-spring.org/starter-dubbo/internal/logger"
 )
 
 func init() {

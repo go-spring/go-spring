@@ -54,7 +54,7 @@ func applyResilience(c Config, db *gorm.DB) error {
 	// Each processor's final registered callback is Replaced with a wrapper that
 	// runs the original under the executor. This covers every SQL op gorm emits.
 	type pStep struct {
-		p    interface {
+		p interface {
 			Get(string) func(*gorm.DB)
 			Replace(string, func(*gorm.DB)) error
 		}

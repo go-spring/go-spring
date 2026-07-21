@@ -67,10 +67,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/actuator/endpoint"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/spring/actuator/health"
+	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {

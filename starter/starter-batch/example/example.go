@@ -44,8 +44,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/batch"
+	"go-spring.org/spring/gs"
 
 	StarterBatch "go-spring.org/starter-batch"
 

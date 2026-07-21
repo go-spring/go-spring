@@ -69,14 +69,14 @@ type HealthConfig struct {
 
 // Config defines gRPC server configuration.
 type Config struct {
-	Addr                 string             `value:"${addr:=:9494}"`
-	ConnectionTimeout    time.Duration      `value:"${connectionTimeout:=0}"`
-	MaxRecvMsgSize       int                `value:"${maxRecvMsgSize:=0}"`
-	MaxSendMsgSize       int                `value:"${maxSendMsgSize:=0}"`
-	MaxConcurrentStreams uint32             `value:"${maxConcurrentStreams:=0}"`
-	Keepalive            KeepaliveConfig    `value:"${keepalive}"`
+	Addr                 string            `value:"${addr:=:9494}"`
+	ConnectionTimeout    time.Duration     `value:"${connectionTimeout:=0}"`
+	MaxRecvMsgSize       int               `value:"${maxRecvMsgSize:=0}"`
+	MaxSendMsgSize       int               `value:"${maxSendMsgSize:=0}"`
+	MaxConcurrentStreams uint32            `value:"${maxConcurrentStreams:=0}"`
+	Keepalive            KeepaliveConfig   `value:"${keepalive}"`
 	TLS                  tlsconf.TLSConfig `value:"${tls}"`
-	Health               HealthConfig       `value:"${health}"`
+	Health               HealthConfig      `value:"${health}"`
 }
 
 // SimpleGrpcServer adapts a grpc.Server to the Go-Spring server lifecycle.

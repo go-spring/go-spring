@@ -23,8 +23,8 @@ import (
 	"sync/atomic"
 
 	"github.com/go-sql-driver/mysql"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"

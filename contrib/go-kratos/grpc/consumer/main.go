@@ -27,9 +27,9 @@ import (
 
 	"github.com/go-kratos/kratos/contrib/registry/etcd/v2"
 	transgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	v1 "go-spring.org/go-kratos-grpc/idl/helloworld/v1"
 	"go-spring.org/spring/gs"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // Consumer holds the client-side settings injected from

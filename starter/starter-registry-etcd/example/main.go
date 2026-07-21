@@ -35,9 +35,9 @@ import (
 	"syscall"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	clientv3 "go.etcd.io/etcd/client/v3"
 
 	// Blank-import registers the etcd registrar and the register-on-ready server.
 	_ "go-spring.org/starter-registry-etcd"

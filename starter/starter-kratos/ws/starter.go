@@ -39,12 +39,12 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	klog "github.com/go-kratos/kratos/v2/log"
 	kws "github.com/tx7do/kratos-transport/transport/websocket"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	clientv3 "go.etcd.io/etcd/client/v3"
 
-	"go-spring.org/starter-kratos/internal/logbridge"
+	"go-spring.org/starter-kratos/internal/logger"
 )
 
 func init() {
@@ -96,9 +96,9 @@ type WsServer struct {
 
 // NewWsServer builds a WsServer from ${spring.kratos.ws.server} config and the
 // registered ServiceRegister bean. The kratos logger bridges framework logs into
-// go-spring's log module (see internal/logbridge).
+// go-spring's log module (see internal/logger).
 func NewWsServer(cfg Config, reg ServiceRegister) *WsServer {
-	return &WsServer{cfg: cfg, reg: reg, log: logbridge.NewLogger(), done: make(chan struct{})}
+	return &WsServer{cfg: cfg, reg: reg, log: logger.NewLogger(), done: make(chan struct{})}
 }
 
 // Run builds the kratos-transport WebSocket server, composes it into a

@@ -58,8 +58,8 @@
 package StarterTransactionATGorm
 
 import (
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/transaction/at"
+	"go-spring.org/spring/gs"
 )
 
 // enabled matches when the starter is not explicitly disabled.

@@ -92,4 +92,3 @@ func Stats(db *gorm.DB) (sql.DBStats, error) {
 	}
 	return sqlDB.Stats(), nil
 }
-

@@ -19,8 +19,8 @@ package StarterBatch
 import (
 	"fmt"
 
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/batch"
+	"go-spring.org/spring/gs"
 )
 
 var _ JobDefinition = (*staticJob)(nil)

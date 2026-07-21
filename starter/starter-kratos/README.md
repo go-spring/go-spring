@@ -84,6 +84,6 @@ binary-payload notes in `ws/starter.go`.
   OpenTelemetry meter, so the exporter and scrape endpoint are owned by `starter-otel` — this starter
   stands up no Prometheus endpoint of its own.
 * **Logging** — kratos' framework logs are bridged into Go-Spring's `log` module (see
-  `internal/logbridge`), so an application configures a single logging pipeline.
+  `internal/logger`), so an application configures a single logging pipeline.
 * **WebSocket** — the WebSocket transport has no middleware chain and is intentionally **not**
   instrumented for tracing or metrics.

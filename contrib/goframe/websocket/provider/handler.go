@@ -18,8 +18,8 @@ package main
 
 import (
 	"github.com/gogf/gf/v2/net/ghttp"
-	goframews "go-spring.org/starter-goframe/ws"
 	"go-spring.org/spring/gs"
+	goframews "go-spring.org/starter-goframe/ws"
 )
 
 func init() {

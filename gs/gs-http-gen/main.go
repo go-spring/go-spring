@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/spf13/cobra"
 	"go-spring.org/gs-http-gen/gen"
 	"go-spring.org/gs-http-gen/gen/docgen"
 	"go-spring.org/gs-http-gen/gen/generator"
 	"go-spring.org/gs-http-gen/lib/version"
-	"github.com/spf13/cobra"
 )
 
 func main() {

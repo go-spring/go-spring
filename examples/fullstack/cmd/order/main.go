@@ -51,10 +51,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
-	StarterSecurityJWT "go-spring.org/starter-security-jwt"
 	"go-spring.org/spring/cloud/discovery"
-	"go-spring.org/spring/web/security"
 	"go-spring.org/spring/cloud/transaction"
+	"go-spring.org/spring/web/security"
+	StarterSecurityJWT "go-spring.org/starter-security-jwt"
 
 	"fullstack/internal/consuldisc"
 

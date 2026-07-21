@@ -49,7 +49,7 @@ func init() {
 type GreetServiceImpl struct{}
 
 // Greet returns a greeting for the request name. The trpclog.Infof call flows
-// through the go-spring log bridge (see starter-trpc/logbridge.go), so the
+// through the go-spring log bridge (see internal/logger), so the
 // framework log line is written by go-spring's log pipeline.
 func (s *GreetServiceImpl) Greet(ctx context.Context, req *greet.GreetRequest) (*greet.GreetResponse, error) {
 	trpclog.Infof("greet request: %s", req.Name)

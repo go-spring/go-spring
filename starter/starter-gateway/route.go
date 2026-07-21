@@ -91,18 +91,18 @@ func (r *Route) match(req *http.Request) bool {
 // deeply nested maps that trip conf binding).
 type RouteRaw struct {
 	// Predicate literals. Absent fields contribute no predicate.
-	Path    string `value:"${predicates.path:=}"`     // ant-style, e.g. /api/orders/**
-	Methods string `value:"${predicates.methods:=}"`  // comma list, e.g. GET,POST
-	Host    string `value:"${predicates.host:=}"`     // exact or *.suffix host
-	Headers string `value:"${predicates.headers:=}"`  // "K:V;K2:V2", all required
-	Queries string `value:"${predicates.queries:=}"`  // "k=v;k2=v2", all required
-	After   string `value:"${predicates.after:=}"`    // RFC3339; match only after this time
+	Path    string `value:"${predicates.path:=}"`    // ant-style, e.g. /api/orders/**
+	Methods string `value:"${predicates.methods:=}"` // comma list, e.g. GET,POST
+	Host    string `value:"${predicates.host:=}"`    // exact or *.suffix host
+	Headers string `value:"${predicates.headers:=}"` // "K:V;K2:V2", all required
+	Queries string `value:"${predicates.queries:=}"` // "k=v;k2=v2", all required
+	After   string `value:"${predicates.after:=}"`   // RFC3339; match only after this time
 
 	// Filter chain, e.g. "stripPrefix(2),addRequestHeader(X-From,gw),retry".
 	Filters string `value:"${filters:=}"`
 
 	Upstream struct {
-		Target    string `value:"${target:=}"`             // lb://name or http(s)://host:port
+		Target    string `value:"${target:=}"` // lb://name or http(s)://host:port
 		Balancer  string `value:"${balancer:=round_robin}"`
 		Discovery string `value:"${discovery:=}"`
 	} `value:"${upstream}"`

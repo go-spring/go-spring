@@ -26,8 +26,8 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/spring/gs"
 
 	// Blank-import the scheduler starter: it registers a gs.Server that drives
 	// every ${spring.scheduler.jobs.<name>} entry against a Job bean of the same

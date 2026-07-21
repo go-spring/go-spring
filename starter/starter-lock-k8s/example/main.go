@@ -40,8 +40,8 @@ import (
 	"k8s.io/client-go/rest"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/spring/gs"
 
 	// Blank-import registers the Lease-backed Locker beans declared under
 	// spring.lock.

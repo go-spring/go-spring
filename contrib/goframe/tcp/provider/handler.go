@@ -20,8 +20,8 @@ import (
 	"bufio"
 
 	"github.com/gogf/gf/v2/net/gtcp"
-	goframetcp "go-spring.org/starter-goframe/tcp"
 	"go-spring.org/spring/gs"
+	goframetcp "go-spring.org/starter-goframe/tcp"
 )
 
 func init() {

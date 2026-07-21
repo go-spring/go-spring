@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/stdlib/hashutil"
 	"go-spring.org/spring/web/httpclt"
+	"go-spring.org/stdlib/hashutil"
 	"go-spring.org/stdlib/jsonflow"
 	"go-spring.org/stdlib/testing/assert"
 )

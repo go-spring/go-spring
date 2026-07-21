@@ -79,6 +79,6 @@ import `go-spring.org/starter-kratos/ws`,在 `spring.kratos.ws.server` 前缀下
 * **Metrics** —— 每个 server 通过 `spring.kratos.<proto>.server.metrics.enable=true` 按需开启。开启后,
   kratos 的 metrics 中间件把请求计数器与延迟直方图记录进进程级全局 OpenTelemetry meter,因此 exporter 与抓取
   端点归 `starter-otel` 所有 —— 本 starter 自己不起任何 Prometheus 端点。
-* **Logging** —— kratos 的框架日志被桥接进 Go-Spring 的 `log` 模块(见 `internal/logbridge`),应用只需配置
+* **Logging** —— kratos 的框架日志被桥接进 Go-Spring 的 `log` 模块(见 `internal/logger`),应用只需配置
   单一的日志管线。
 * **WebSocket** —— WebSocket transport 没有中间件链,有意**不**做 tracing / metrics 埋点。

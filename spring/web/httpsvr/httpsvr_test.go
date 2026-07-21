@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/spring/web/httpsvr"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/hashutil"
-	"go-spring.org/spring/web/httpsvr"
 	"go-spring.org/stdlib/jsonflow"
 )
 

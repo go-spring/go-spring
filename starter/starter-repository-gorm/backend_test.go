@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	reposgorm "go-spring.org/starter-repository-gorm"
 	"go-spring.org/spring/data/repository"
+	reposgorm "go-spring.org/starter-repository-gorm"
 	"go-spring.org/stdlib/testing/assert"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"

@@ -37,7 +37,7 @@ func main() {
 	// The built-in HTTP server is disabled via provider/conf/app.properties;
 	// gs.Run() starts only the Kitex server registered in server.go. starter-kitex
 	// bridges kitex' klog into go-spring's log module from its init() (see
-	// starter-kitex/logbridge.go), so framework logs emitted during bean init
+	// starter-kitex/internal/logger), so framework logs emitted during bean init
 	// already flow through go-spring's log pipeline instead of kitex' default
 	// stderr logger.
 	gs.Run()

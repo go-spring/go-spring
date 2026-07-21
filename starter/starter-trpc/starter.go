@@ -26,6 +26,12 @@ import (
 	"go-spring.org/stdlib/flatten"
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/server"
+
+	// Side-effect import: installs the tRPC -> go-spring log bridge (see
+	// internal/logger). The bridge self-installs via init(), so no symbols are
+	// referenced here - importing this package is what redirects tRPC's own
+	// logs into the application's go-spring log pipeline.
+	_ "go-spring.org/starter-trpc/internal/logger"
 )
 
 func init() {

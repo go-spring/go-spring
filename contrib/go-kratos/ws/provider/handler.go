@@ -20,10 +20,10 @@ import (
 	"context"
 
 	kws "github.com/tx7do/kratos-transport/transport/websocket"
-	kratosws "go-spring.org/starter-kratos/ws"
 	v1 "go-spring.org/go-kratos-ws/idl/helloworld/v1"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	kratosws "go-spring.org/starter-kratos/ws"
 )
 
 // WSHelloMessageType is the application-defined message-type discriminator

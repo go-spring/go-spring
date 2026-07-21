@@ -33,7 +33,11 @@ import (
 	"go-spring.org/stdlib/flatten"
 	"google.golang.org/grpc"
 
-	"go-spring.org/starter-goframe/internal/logbridge"
+	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
+	// (see internal/logger). The bridge self-installs via init(), so importing
+	// this package routes goframe's own logs into the application's go-spring
+	// log pipeline before the first grpcx / gsvc call.
+	_ "go-spring.org/starter-goframe/internal/logger"
 )
 
 func init() {
@@ -88,11 +92,6 @@ type GRPCServer struct {
 // time), and binds the service handler onto the underlying *grpc.Server via the
 // injected ServiceRegister.
 func NewGRPCServer(cfg Config, reg ServiceRegister) *GRPCServer {
-	// Route goframe's own glog logs into go-spring's log module. Installed
-	// before any grpcx / gsvc call so even the very first framework log lands in
-	// the same pipeline as the business logs.
-	logbridge.Install()
-
 	// Set the global registry first so grpcx.Server.New picks it up as its
 	// registrar. Ordering matters: grpcx reads the registrar field at server
 	// construction. Skipped when unconfigured.

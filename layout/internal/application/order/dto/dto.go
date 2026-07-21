@@ -28,8 +28,8 @@ type ListOrdersReq struct {
 
 // ListOrdersResp is the response DTO for order queries.
 type ListOrdersResp struct {
-	Total  int64
-	Items  []*OrderDTO
+	Total int64
+	Items []*OrderDTO
 }
 
 // BatchPayReq is the request DTO for batch payment.

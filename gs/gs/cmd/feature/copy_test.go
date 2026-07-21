@@ -79,11 +79,11 @@ func TestCopy(t *testing.T) {
 		// init.go: server import in the internal group, starter in third-party.
 		got, err := os.ReadFile(filepath.Join(project, "internal/init.go"))
 		assert.That(t, err).Nil()
-		assert.String(t, string(got)).Equal("package domain\n\nimport (\n"+
-			"\t_ \"github.com/you/demo/internal/api/job\"\n"+
-			"\t_ \"github.com/you/demo/internal/api/server/grpcsvr\"\n\n"+
-			"\t_ \"go-spring.org/starter-gorm-mysql\"\n"+
-			"\t_ \"go-spring.org/starter-grpc\"\n"+
+		assert.String(t, string(got)).Equal("package domain\n\nimport (\n" +
+			"\t_ \"github.com/you/demo/internal/api/job\"\n" +
+			"\t_ \"github.com/you/demo/internal/api/server/grpcsvr\"\n\n" +
+			"\t_ \"go-spring.org/starter-gorm-mysql\"\n" +
+			"\t_ \"go-spring.org/starter-grpc\"\n" +
 			")\n")
 	})
 

@@ -22,8 +22,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	_ "go-spring.org/starter-otel"
 	"go-spring.org/spring/gs"
+	_ "go-spring.org/starter-otel"
 )
 
 // The provider is a long-lived process: gs.Run() starts the goframe *ghttp.Server

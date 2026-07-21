@@ -21,8 +21,8 @@ import (
 	"fmt"
 
 	"github.com/elastic/go-elasticsearch/v8"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
 

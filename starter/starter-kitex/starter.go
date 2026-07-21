@@ -30,6 +30,12 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+
+	// Side-effect import: installs the kitex -> go-spring log bridge (see
+	// internal/logger). The bridge self-installs via init(), so no symbols are
+	// referenced here - importing this package is what redirects kitex' own
+	// logs into the application's go-spring log pipeline.
+	_ "go-spring.org/starter-kitex/internal/logger"
 )
 
 func init() {
@@ -75,7 +81,7 @@ type Config struct {
 	// Kitex has no single "SetUp" like dubbo-go/go-zero, so we compose its
 	// native kitex-contrib pieces: an OTel tracing suite and a self-hosting
 	// Prometheus scrape endpoint. Kitex' own klog is bridged into go-spring's
-	// log module unconditionally (see logbridge.go).
+	// log module unconditionally (see internal/logger).
 	Tracing TracingCfg `value:"${tracing}"`
 	Metrics MetricsCfg `value:"${metrics}"`
 }
@@ -216,4 +222,3 @@ func (s *SimpleKitexServer) Stop() error {
 	close(s.done)
 	return err
 }
-

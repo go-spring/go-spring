@@ -46,8 +46,8 @@ import (
 )
 
 const (
-	kvKey       = "gs-config-demo"
-	consulAddr  = "127.0.0.1:8500"
+	kvKey      = "gs-config-demo"
+	consulAddr = "127.0.0.1:8500"
 )
 
 // Demo binds a dynamic configuration field sourced from the imported Consul KV

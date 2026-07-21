@@ -23,8 +23,8 @@ import (
 
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"

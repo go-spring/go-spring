@@ -41,9 +41,9 @@ import (
 
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
+	"go-spring.org/spring/web/session"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/spring/web/session"
 )
 
 func init() {

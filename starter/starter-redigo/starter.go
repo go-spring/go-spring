@@ -18,8 +18,8 @@ package StarterRedigo
 
 import (
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/spring/gs"
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
 

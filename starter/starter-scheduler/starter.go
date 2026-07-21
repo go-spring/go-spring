@@ -44,10 +44,10 @@ import (
 	"context"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/spring/cloud/lock"
 	"go-spring.org/spring/cloud/scheduling"
+	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {
