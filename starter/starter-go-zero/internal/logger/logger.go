@@ -33,7 +33,12 @@ import (
 	"go-spring.org/log"
 )
 
-// gsBridgeWriter implements go-zero's logx.Writer by forwarding every framework
+// goZeroTag tags every forwarded line as an RPC log under "rpc.gozero" so it
+// can be filtered or routed to a dedicated logger later without touching the
+// framework wiring.
+var goZeroTag = log.RegisterRPCTag("gozero", "")
+
+// loggerAdapter implements go-zero's logx.Writer by forwarding every framework
 // log line into go-spring's log module. This lets go-zero's internal logs
 // (transport start/stop, etcd registration, interceptor/middleware errors, stat
 // lines, ...) flow through the same go-spring appender as the business logs.
@@ -45,15 +50,11 @@ import (
 // caller (file:line) recorded by go-spring points into this bridge rather than
 // the real emit site; we accept that imprecision because logx buries the real
 // caller behind several internal frames anyway.
-type gsBridgeWriter struct {
-	tag *log.Tag
-}
+type loggerAdapter struct{}
 
-// NewWriter builds the bridge, tagging every forwarded line as an RPC log under
-// "rpc.gozero" so it can be filtered or routed to a dedicated logger later
-// without touching the framework wiring. Install it with logx.SetWriter.
+// NewWriter builds the bridge. Install it with logx.SetWriter.
 func NewWriter() logx.Writer {
-	return &gsBridgeWriter{tag: log.RegisterRPCTag("gozero", "")}
+	return &loggerAdapter{}
 }
 
 // record is the shared sink used by every logx.Writer method. logx methods have
@@ -61,37 +62,37 @@ func NewWriter() logx.Writer {
 // trace/span still arrive as fields. skip=3 walks past record -> the calling
 // Writer method -> go-spring's own record(), landing as close to the emit site
 // as this bridge can get.
-func (w *gsBridgeWriter) record(level log.Level, v any, fields []logx.LogField) {
+func (w *loggerAdapter) record(level log.Level, v any, fields []logx.LogField) {
 	gsFields := make([]log.Field, 0, len(fields)+1)
 	gsFields = append(gsFields, log.Msgf("%v", v))
 	for _, f := range fields {
 		gsFields = append(gsFields, log.Any(f.Key, f.Value))
 	}
-	log.Record(context.Background(), level, w.tag, 3, gsFields...)
+	log.Record(context.Background(), level, goZeroTag, 3, gsFields...)
 }
 
 // Alert is used by go-zero for alertable events (e.g. custom app-level alerts
 // emitted via logx.Alert). Mapped to ErrorLevel; go-spring has no distinct
 // alert channel and the caller is expected to already be paging on ErrorLevel.
-func (w *gsBridgeWriter) Alert(v any) {
+func (w *loggerAdapter) Alert(v any) {
 	w.record(log.ErrorLevel, v, nil)
 }
 
 // Close is a no-op: go-spring's logger lifecycle is managed by the root
 // appender, not by this bridge, so there is nothing to flush here.
-func (w *gsBridgeWriter) Close() error {
+func (w *loggerAdapter) Close() error {
 	return nil
 }
 
-func (w *gsBridgeWriter) Debug(v any, fields ...logx.LogField) {
+func (w *loggerAdapter) Debug(v any, fields ...logx.LogField) {
 	w.record(log.DebugLevel, v, fields)
 }
 
-func (w *gsBridgeWriter) Error(v any, fields ...logx.LogField) {
+func (w *loggerAdapter) Error(v any, fields ...logx.LogField) {
 	w.record(log.ErrorLevel, v, fields)
 }
 
-func (w *gsBridgeWriter) Info(v any, fields ...logx.LogField) {
+func (w *loggerAdapter) Info(v any, fields ...logx.LogField) {
 	w.record(log.InfoLevel, v, fields)
 }
 
@@ -99,24 +100,24 @@ func (w *gsBridgeWriter) Info(v any, fields ...logx.LogField) {
 // failures. Mapped to FatalLevel; go-spring's fatal path does NOT call os.Exit
 // on its own (only the caller of logx.Severe does, if it chooses), so this is
 // purely a level signal.
-func (w *gsBridgeWriter) Severe(v any) {
+func (w *loggerAdapter) Severe(v any) {
 	w.record(log.FatalLevel, v, nil)
 }
 
 // Slow marks a "slow" event (e.g. a slow SQL / slow call). No dedicated slow
 // level in go-spring, so mapped to WarnLevel where operators typically watch
 // for latency signals.
-func (w *gsBridgeWriter) Slow(v any, fields ...logx.LogField) {
+func (w *loggerAdapter) Slow(v any, fields ...logx.LogField) {
 	w.record(log.WarnLevel, v, fields)
 }
 
 // Stack is used by logx to emit a stack trace at ERROR severity.
-func (w *gsBridgeWriter) Stack(v any) {
+func (w *loggerAdapter) Stack(v any) {
 	w.record(log.ErrorLevel, v, nil)
 }
 
 // Stat is periodic statistical output (e.g. logx's built-in stat lines).
 // Mapped to InfoLevel; it is informational by intent, not a warning.
-func (w *gsBridgeWriter) Stat(v any, fields ...logx.LogField) {
+func (w *loggerAdapter) Stat(v any, fields ...logx.LogField) {
 	w.record(log.InfoLevel, v, fields)
 }

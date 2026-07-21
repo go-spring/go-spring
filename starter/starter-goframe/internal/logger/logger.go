@@ -30,10 +30,10 @@ import (
 	"go-spring.org/log"
 )
 
-// gsGoFrameTag tags every forwarded line as an RPC log under "rpc.goframe" so
+// goFrameTag tags every forwarded line as an RPC log under "rpc.goframe" so
 // the go-spring sink can route or filter goframe internals separately from
 // business logs, matching the go-kratos / go-zero bridge pattern.
-var gsGoFrameTag = log.RegisterRPCTag("goframe", "")
+var goFrameTag = log.RegisterRPCTag("goframe", "")
 
 // handler is a glog.Handler that forwards every framework log line into
 // go-spring's log module. With it installed, ghttp/grpcx/gtcp lifecycle events,
@@ -70,7 +70,7 @@ func handler(ctx context.Context, in *glog.HandlerInput) {
 	// skip=2 walks past this handler and go-spring's own record() frame, but
 	// the caller printed by the sink is still inherently unreliable across
 	// glog's internal doPrint layers - same trade-off the kratos bridge notes.
-	log.Record(ctx, toGSLevel(in.Level), gsGoFrameTag, 2, fields...)
+	log.Record(ctx, toGSLevel(in.Level), goFrameTag, 2, fields...)
 }
 
 // toGSLevel maps glog's bitmask level constants onto go-spring's levels. glog

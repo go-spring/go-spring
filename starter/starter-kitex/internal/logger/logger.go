@@ -30,7 +30,12 @@ import (
 	"go-spring.org/log"
 )
 
-// gsBridgeLogger implements kitex' klog.FullLogger by forwarding every framework
+// kitexTag tags every forwarded line as an RPC log under "rpc.kitex" so it
+// can be filtered or routed to a dedicated logger later without touching the
+// framework wiring.
+var kitexTag = log.RegisterRPCTag("kitex", "")
+
+// loggerAdapter implements kitex' klog.FullLogger by forwarding every framework
 // log line into go-spring's log module. Importing this starter puts kitex under
 // go-spring's management: its server wiring, etcd resolver events, transport
 // errors and handler klog calls all flow through the same pipeline the
@@ -49,24 +54,13 @@ import (
 // still configure a go-spring log sink (e.g. a root FileLogger under
 // ${logging.logger}); without one, forwarded kitex logs land on go-spring's
 // default console rather than the app's own output.
-type gsBridgeLogger struct {
-	tag *log.Tag
-}
-
-// newGSBridgeLogger builds the bridge, tagging every forwarded line as an RPC
-// log under "rpc.kitex" so it can be filtered or routed to a dedicated logger
-// later without touching the framework wiring. It returns klog.FullLogger so
-// klog.SetLogger accepts it directly (FullLogger is the composite of Logger,
-// FormatLogger, CtxLogger and Control).
-func newGSBridgeLogger() klog.FullLogger {
-	return &gsBridgeLogger{tag: log.RegisterRPCTag("kitex", "")}
-}
+type loggerAdapter struct{}
 
 // init installs the bridge before any kitex component captures klog's default
 // logger, so every log line for the lifetime of the process is redirected into
 // go-spring's log module.
 func init() {
-	klog.SetLogger(newGSBridgeLogger())
+	klog.SetLogger(&loggerAdapter{})
 }
 
 // toGSLevel maps klog levels onto go-spring's levels. kitex has a Notice level
@@ -98,8 +92,8 @@ func toGSLevel(level klog.Level) log.Level {
 // of record + the caller klog method + go-spring's Record so the recorded
 // caller site points at the framework code that invoked klog rather than at
 // this bridge (best-effort - see the type doc).
-func (l *gsBridgeLogger) record(ctx context.Context, level klog.Level, msg string) {
-	log.Record(ctx, toGSLevel(level), l.tag, 3, log.Msg(msg))
+func (l *loggerAdapter) record(ctx context.Context, level klog.Level, msg string) {
+	log.Record(ctx, toGSLevel(level), kitexTag, 3, log.Msg(msg))
 }
 
 // Logger - v...any methods. kitex passes no context on this signature, so
@@ -107,49 +101,49 @@ func (l *gsBridgeLogger) record(ctx context.Context, level klog.Level, msg strin
 // path. Callers inside kitex are almost always framework internals (startup,
 // transport wiring), not per-request code.
 
-func (l *gsBridgeLogger) Trace(v ...any) {
+func (l *loggerAdapter) Trace(v ...any) {
 	l.record(context.Background(), klog.LevelTrace, fmt.Sprint(v...))
 }
-func (l *gsBridgeLogger) Debug(v ...any) {
+func (l *loggerAdapter) Debug(v ...any) {
 	l.record(context.Background(), klog.LevelDebug, fmt.Sprint(v...))
 }
-func (l *gsBridgeLogger) Info(v ...any) {
+func (l *loggerAdapter) Info(v ...any) {
 	l.record(context.Background(), klog.LevelInfo, fmt.Sprint(v...))
 }
-func (l *gsBridgeLogger) Notice(v ...any) {
+func (l *loggerAdapter) Notice(v ...any) {
 	l.record(context.Background(), klog.LevelNotice, fmt.Sprint(v...))
 }
-func (l *gsBridgeLogger) Warn(v ...any) {
+func (l *loggerAdapter) Warn(v ...any) {
 	l.record(context.Background(), klog.LevelWarn, fmt.Sprint(v...))
 }
-func (l *gsBridgeLogger) Error(v ...any) {
+func (l *loggerAdapter) Error(v ...any) {
 	l.record(context.Background(), klog.LevelError, fmt.Sprint(v...))
 }
-func (l *gsBridgeLogger) Fatal(v ...any) {
+func (l *loggerAdapter) Fatal(v ...any) {
 	l.record(context.Background(), klog.LevelFatal, fmt.Sprint(v...))
 }
 
 // FormatLogger - printf-style, same background-context caveat as Logger.
 
-func (l *gsBridgeLogger) Tracef(format string, v ...any) {
+func (l *loggerAdapter) Tracef(format string, v ...any) {
 	l.record(context.Background(), klog.LevelTrace, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) Debugf(format string, v ...any) {
+func (l *loggerAdapter) Debugf(format string, v ...any) {
 	l.record(context.Background(), klog.LevelDebug, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) Infof(format string, v ...any) {
+func (l *loggerAdapter) Infof(format string, v ...any) {
 	l.record(context.Background(), klog.LevelInfo, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) Noticef(format string, v ...any) {
+func (l *loggerAdapter) Noticef(format string, v ...any) {
 	l.record(context.Background(), klog.LevelNotice, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) Warnf(format string, v ...any) {
+func (l *loggerAdapter) Warnf(format string, v ...any) {
 	l.record(context.Background(), klog.LevelWarn, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) Errorf(format string, v ...any) {
+func (l *loggerAdapter) Errorf(format string, v ...any) {
 	l.record(context.Background(), klog.LevelError, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) Fatalf(format string, v ...any) {
+func (l *loggerAdapter) Fatalf(format string, v ...any) {
 	l.record(context.Background(), klog.LevelFatal, fmt.Sprintf(format, v...))
 }
 
@@ -158,25 +152,25 @@ func (l *gsBridgeLogger) Fatalf(format string, v ...any) {
 // request and correlate this log line with its span. Handlers should prefer
 // these methods (klog.CtxInfof etc.) over the non-ctx variants above.
 
-func (l *gsBridgeLogger) CtxTracef(ctx context.Context, format string, v ...any) {
+func (l *loggerAdapter) CtxTracef(ctx context.Context, format string, v ...any) {
 	l.record(ctx, klog.LevelTrace, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) CtxDebugf(ctx context.Context, format string, v ...any) {
+func (l *loggerAdapter) CtxDebugf(ctx context.Context, format string, v ...any) {
 	l.record(ctx, klog.LevelDebug, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) CtxInfof(ctx context.Context, format string, v ...any) {
+func (l *loggerAdapter) CtxInfof(ctx context.Context, format string, v ...any) {
 	l.record(ctx, klog.LevelInfo, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) CtxNoticef(ctx context.Context, format string, v ...any) {
+func (l *loggerAdapter) CtxNoticef(ctx context.Context, format string, v ...any) {
 	l.record(ctx, klog.LevelNotice, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) CtxWarnf(ctx context.Context, format string, v ...any) {
+func (l *loggerAdapter) CtxWarnf(ctx context.Context, format string, v ...any) {
 	l.record(ctx, klog.LevelWarn, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) CtxErrorf(ctx context.Context, format string, v ...any) {
+func (l *loggerAdapter) CtxErrorf(ctx context.Context, format string, v ...any) {
 	l.record(ctx, klog.LevelError, fmt.Sprintf(format, v...))
 }
-func (l *gsBridgeLogger) CtxFatalf(ctx context.Context, format string, v ...any) {
+func (l *loggerAdapter) CtxFatalf(ctx context.Context, format string, v ...any) {
 	l.record(ctx, klog.LevelFatal, fmt.Sprintf(format, v...))
 }
 
@@ -186,5 +180,5 @@ func (l *gsBridgeLogger) CtxFatalf(ctx context.Context, format string, v ...any)
 // have no meaning here. Leaving them as stubs keeps the klog.FullLogger
 // contract satisfied without pretending to honor calls we would silently
 // discard.
-func (l *gsBridgeLogger) SetLevel(klog.Level) {}
-func (l *gsBridgeLogger) SetOutput(io.Writer) {}
+func (l *loggerAdapter) SetLevel(klog.Level) {}
+func (l *loggerAdapter) SetOutput(io.Writer) {}

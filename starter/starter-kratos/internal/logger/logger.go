@@ -30,7 +30,12 @@ import (
 	"go-spring.org/log"
 )
 
-// gsBridgeLogger implements kratos' log.Logger by forwarding every framework log
+// kratosTag tags every forwarded line as an RPC log under "rpc.kratos" so it
+// can be filtered or routed to a dedicated logger later without touching the
+// framework wiring.
+var kratosTag = log.RegisterRPCTag("kratos", "")
+
+// loggerAdapter implements kratos' log.Logger by forwarding every framework log
 // line into go-spring's log module. This lets kratos' internal logs (transport
 // start/stop, etcd registration, middleware errors, ...) flow through the same
 // go-spring appender as the business logs.
@@ -40,15 +45,11 @@ import (
 // path, and the caller (file:line) recorded by go-spring points into this bridge
 // rather than the real emit site. We deliberately keep the structured fields and
 // accept the caller imprecision (see the log-bridge design discussion).
-type gsBridgeLogger struct {
-	tag *log.Tag
-}
+type loggerAdapter struct{}
 
-// NewLogger builds the bridge, tagging every forwarded line as an RPC log under
-// "rpc.kratos" so it can be filtered or routed to a dedicated logger later
-// without touching the framework wiring. Pass it to kratos.Logger.
+// NewLogger builds the bridge. Pass it to kratos.Logger.
 func NewLogger() klog.Logger {
-	return &gsBridgeLogger{tag: log.RegisterRPCTag("kratos", "")}
+	return &loggerAdapter{}
 }
 
 // toGSLevel maps kratos log levels onto go-spring's levels. kratos has no Trace
@@ -75,7 +76,7 @@ func toGSLevel(level klog.Level) log.Level {
 // the "msg" key and the level under "level" (injected by kratos' own level
 // valuer). We lift "msg" into the event message, drop the redundant "level" (the
 // event already carries it), and forward everything else as structured fields.
-func (l *gsBridgeLogger) Log(level klog.Level, keyvals ...any) error {
+func (l *loggerAdapter) Log(level klog.Level, keyvals ...any) error {
 	// kratos guarantees pairs, but guard against a stray odd count like kratos'
 	// own Helper does, so a malformed call still logs rather than panics.
 	if len(keyvals)%2 != 0 {
@@ -100,6 +101,6 @@ func (l *gsBridgeLogger) Log(level klog.Level, keyvals ...any) error {
 	// No context is available on kratos' Log signature (see type doc). skip=2
 	// steps out of this method and go-spring's record(), but the caller is
 	// inherently unreliable across the framework's logging layers.
-	log.Record(context.Background(), toGSLevel(level), l.tag, 2, fields...)
+	log.Record(context.Background(), toGSLevel(level), kratosTag, 2, fields...)
 	return nil
 }
