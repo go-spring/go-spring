@@ -51,18 +51,11 @@ func init() {
 // each service supplies its own register bean.
 type ServiceRegister func(svr *server.Server) error
 
-// ProtocolCfg configures a single Dubbo protocol listener. The map key under
-// ${spring.dubbo.server.protocols} is the dubbo-go protocol name (e.g. "tri",
-// "dubbo", "jsonrpc", "rest") and is passed straight through, so any dubbo-go
-// protocol works without changing this starter.
-type ProtocolCfg struct {
-	Ip     string            `value:"${ip:=}"`     // listen address; empty means dubbo-go's default (bind-all)
-	Port   int               `value:"${port}"`     // required: a registered service needs a known port
-	Params map[string]string `value:"${params:=}"` // extra protocol params, escape hatch
-}
-
-// ServerConfig defines Dubbo server configuration: the map-driven protocols, the
-// role-specific registry selection, and the common provider-level knobs. Every
+// ServerConfig defines Dubbo server configuration: the provider-level defaults,
+// the role-specific registry selection, and the filter tuning knobs. Protocols
+// are no longer server-scoped — they live on the global ${spring.dubbo.protocols}
+// node and are inherited from the shared Instance; this config only carries the
+// fallback decision (none configured → a single Triple:20000 listener). Every
 // field is optional and empty/zero values are skipped so dubbo-go keeps its own
 // default.
 //
@@ -103,10 +96,6 @@ type ServerConfig struct {
 	// (e.g. long-tail filters) passed straight through to dubbo-go.
 	Params map[string]string `value:"${params:=}"`
 
-	// Protocols are map-driven: only configured entries are enabled, so one
-	// server can expose several protocols at once.
-	Protocols map[string]ProtocolCfg `value:"${protocols:=}"`
-
 	// RegistryIDs selects which of the global ${spring.dubbo.registries} this
 	// server publishes to. Empty means every global registry.
 	RegistryIDs []string `value:"${registry-ids:=}"`
@@ -127,10 +116,12 @@ func NewSimpleDubboServer(cfg ServerConfig, d *Instance, reg ServiceRegister) *S
 	return &SimpleDubboServer{cfg: cfg, d: d, reg: reg, done: make(chan struct{})}
 }
 
-// buildOptions translates ServerConfig into dubbo-go server options. With no
-// protocol configured, a Triple listener on port 20000 is used. Registries are
-// selected by RegistryIDs (empty means all).
-func (c *ServerConfig) buildOptions(global map[string]RegistryCfg) ([]server.ServerOption, error) {
+// buildOptions translates ServerConfig into dubbo-go server options. Protocols
+// are the global ${spring.dubbo.protocols} from the Instance (injected into the
+// server by ins.NewServer, so they need no server-side Option here); only when
+// that set is empty does this server fall back to a Triple:20000 listener.
+// Registries are selected by RegistryIDs (empty means all).
+func (c *ServerConfig) buildOptions(protocols map[string]ProtocolCfg, global map[string]RegistryCfg) ([]server.ServerOption, error) {
 	var opts []server.ServerOption
 
 	// Provider-wide defaults.
@@ -201,31 +192,18 @@ func (c *ServerConfig) buildOptions(global map[string]RegistryCfg) ([]server.Ser
 		opts = append(opts, server.WithServerAdaptiveService())
 	}
 
-	// Protocol listeners.
-	if len(c.Protocols) == 0 {
-		// Default: a single Triple listener on port 20000.
+	// Protocol listeners come from the global ${spring.dubbo.protocols} block on
+	// the Instance: dubbo-go's ins.NewServer already injects them via
+	// SetServerProtocols, so when any are configured there is nothing to add
+	// here (re-adding would duplicate the listeners). Only when none are
+	// configured globally does this server stand up its own Triple:20000
+	// fallback, so a server with no explicit protocols still serves.
+	if len(protocols) == 0 {
 		opts = append(opts, server.WithServerProtocol(
 			protocol.WithID("tri"),
 			protocol.WithProtocol("tri"),
 			protocol.WithPort(20000),
 		))
-	} else {
-		for name, pc := range c.Protocols {
-			// The map key is the dubbo-go protocol name; WithID keeps each
-			// entry distinct in the server's protocol map.
-			pOpts := []protocol.ServerOption{
-				protocol.WithID(name),
-				protocol.WithProtocol(name),
-				protocol.WithPort(pc.Port),
-			}
-			if pc.Ip != "" {
-				pOpts = append(pOpts, protocol.WithIp(pc.Ip))
-			}
-			if len(pc.Params) > 0 {
-				pOpts = append(pOpts, protocol.WithParams(pc.Params))
-			}
-			opts = append(opts, server.WithServerProtocol(pOpts...))
-		}
 	}
 
 	// Registry publish targets, selected from the global block by RegistryIDs.
@@ -245,7 +223,7 @@ func (c *ServerConfig) buildOptions(global map[string]RegistryCfg) ([]server.Ser
 // goroutine while Run parks on the done channel; Stop closes done to hand
 // control back to Go-Spring's shutdown sequence.
 func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-	opts, err := s.cfg.buildOptions(s.d.Registries())
+	opts, err := s.cfg.buildOptions(s.d.Protocols(), s.d.Registries())
 	if err != nil {
 		return err
 	}

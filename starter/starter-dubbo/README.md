@@ -37,13 +37,15 @@ spring.http.server.enabled=false
 spring.dubbo.application.name=greet-example
 spring.dubbo.registries.etcd.protocol=etcdv3
 spring.dubbo.registries.etcd.address=127.0.0.1:2379
-spring.dubbo.server.protocols.tri.port=20000
+spring.dubbo.protocols.tri.name=tri
+spring.dubbo.protocols.tri.port=20000
 ```
 
 `spring.dubbo.application.name` is **required**: server and client share a single
 dubbo `Instance` that uses the name as the metrics/registry identity, so the
 starter fails fast if it is missing. Other application fields are optional:
-`organization`, `module`, `version`, `owner`, `environment`.
+`organization`, `module`, `group`, `version`, `owner`, `environment`,
+`metadata-type` (`local` default / `remote`).
 
 `spring.dubbo.registries` is also **required** and is the single source of truth
 for registries — defined once at the top level, never inline under server/client.
@@ -62,9 +64,28 @@ spring.dubbo.registries.nacos.address=127.0.0.1:8848
 # a server (or client) selects registries by ID; empty means all
 spring.dubbo.server.registry-ids=etcd
 
-# multiple protocols on one server
-spring.dubbo.server.protocols.tri.port=20000
-spring.dubbo.server.protocols.dubbo.port=20001
+# protocols are a global node too: defined once at the top level, inherited by the server
+spring.dubbo.protocols.tri.port=20000
+spring.dubbo.protocols.dubbo.port=20001
+```
+
+`spring.dubbo.protocols` is a **global** node, sibling to `registries`/`application`:
+protocol listeners are defined once per process on the shared `Instance` and
+inherited by the server (no need to redeclare them under `${spring.dubbo.server}`).
+The map key is the protocol ID; `name` is the dubbo-go protocol type
+(`dubbo`/`tri`/`grpc`/`rest`/`jsonrpc`, defaults to the key when empty). If no
+protocols are configured at all, the server falls back to a single Triple:20000
+listener.
+
+Graceful shutdown is likewise a global node, `${spring.dubbo.shutdown}`; all
+fields optional, omitted keeps dubbo-go's defaults (60s overall timeout, 3s per
+step, 3s consumer-update wait, internal signal on):
+
+```properties
+spring.dubbo.shutdown.timeout=60s
+spring.dubbo.shutdown.step-timeout=3s
+spring.dubbo.shutdown.consumer-update-wait-time=3s
+# spring.dubbo.shutdown.internal-signal=false   # disable the internal-signal shutdown trigger
 ```
 
 All settings under `${spring.dubbo.server}` are optional; empty/zero values are
@@ -89,7 +110,7 @@ spring.dubbo.server.not-register=false
 spring.dubbo.server.adaptive-service=false
 ```
 
-Per-protocol (`protocols.<name>`): `port`, `ip`, `params.<k>`.
+Per-protocol (top-level `protocols.<id>`): `name`, `port`, `ip`, `params.<k>`.
 Per-registry (`registries.<name>`): `address`, `namespace`, `group`,
 `username`, `password`, `timeout` (e.g. `5s`), `ttl` (e.g. `15m`), `weight`,
 `zone`, `simplified`, `preferred`, `params.<k>`.
@@ -261,6 +282,7 @@ observability with zero configuration:
 spring.dubbo.metrics.enable=true
 spring.dubbo.metrics.port=9090
 spring.dubbo.metrics.path=/metrics
+spring.dubbo.metrics.push-gateway-address=   # when set, also push to this Prometheus pushgateway
 
 # Tracing — OTel, on by default with the stdout exporter
 spring.dubbo.tracing.enable=true
@@ -327,12 +349,13 @@ asserted end-to-end by `runTest`:
 
 ## Notes
 
-- Protocols are map-driven under `${spring.dubbo.server.protocols}` (map key =
-  dubbo-go protocol name; only configured entries are enabled). Registries are
-  defined once at the top level under `${spring.dubbo.registries}` and each role
-  selects them by ID via `registry-ids` (empty means all). Empty option fields
-  are skipped. With no protocol configured, a Triple listener on port `20000` is
-  used as the default.
+- Protocols are a global map-driven node under `${spring.dubbo.protocols}`
+  (map key = protocol ID; `name` = dubbo-go protocol type, defaulting to the key;
+  only configured entries are enabled, inherited by the server from the shared
+  Instance). Registries are defined once at the top level under
+  `${spring.dubbo.registries}` and each role selects them by ID via `registry-ids`
+  (empty means all). Empty option fields are skipped. With no protocol configured,
+  a Triple listener on port `20000` is used as the default.
 - The Dubbo server is enabled by default; disable it with
   `spring.dubbo.server.enabled=false`.
 - Only a `ServiceRegister` bean is required to activate the server.
