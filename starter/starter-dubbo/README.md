@@ -117,17 +117,39 @@ Per-registry (`registries.<name>`): `address`, `namespace`, `group`,
 
 ### 3. Register your service
 
-Refer to the [example.go](example/example.go) file. A `ServiceRegister` is a
-function that registers a service onto the Dubbo `server.Server`; it returns an
-error because Dubbo's generated `Register*Handler` functions do.
+Refer to the [example.go](example/example.go) file. `StarterDubbo.RegisterService` registers the
+code-generated register function (e.g. `greet.RegisterGreetServiceHandler`) and the handler instance
+as a `ServiceRegister` bean. `SimpleDubboServer` collects every `ServiceRegister` bean
+(`autowire:"?"` slice autowire, sorted by name) and invokes them all at startup, so one server can
+drive any number of Dubbo services.
 
 ```go
-gs.Provide(func() StarterDubbo.ServiceRegister {
-    return func(svr *server.Server) error {
-        return greet.RegisterGreetServiceHandler(svr, &GreetProvider{})
-    }
-})
+// T is inferred from the generated handler's parameter type (the handler
+// interface); &GreetProvider{} is converted to that interface at the call site
+// (a Go generics limitation: a concrete value can't match a type parameter
+// inferred as an interface).
+StarterDubbo.RegisterService("greet", greet.RegisterGreetServiceHandler,
+    greet.GreetServiceHandler(&GreetProvider{}))
 ```
+
+`"greet"` is the key under `${spring.dubbo.server.services.<name>}`. `RegisterService` binds the
+whole `${spring.dubbo.server}` (carrying `Services`) into the register bean, then at registration
+time extracts `Services["greet"]` and turns it into `server.ServiceOption` (including one
+`WithMethod` per configured method) passed to the generated handler. With no config, no option is
+passed and the provider-wide defaults apply.
+
+```properties
+# per-service override + per-method tuning (${spring.dubbo.server.services.<name>}.methods.<method>)
+spring.dubbo.server.services.greet.cluster=failover
+spring.dubbo.server.services.greet.methods.Greet.retries=3
+spring.dubbo.server.services.greet.methods.Greet.timeout=5s
+```
+
+> Classic protocols (dubbo/jsonrpc/rest) have no generated handler, so they use a closure form: T is
+> the concrete `*GreetProvider`, and the closure threads `WithInterface` plus the per-service options
+> into `svr.Register`. See
+> [contrib/dubbo-go/dubbo/provider/handler.go](../../contrib/dubbo-go/dubbo/provider/handler.go).
+
 
 ## Client
 
@@ -362,9 +384,9 @@ asserted end-to-end by `runTest`:
    `client.WithClientURL`, invokes `Greet`, and receives the request name back
    as the greeting, verifying the standard request/response path.
 2. **Service-agnostic server** — `SimpleDubboServer` knows nothing about
-   `GreetService`. It depends only on a `ServiceRegister` bean, so the same
-   server drives any Dubbo service; the concrete registration lives in the
-   application layer.
+   `GreetService`. It collects `ServiceRegister` beans (one per `RegisterService`
+   call), so the same server drives any number of Dubbo services; the concrete
+   registration lives in the application layer.
 
 ## Notes
 
@@ -377,6 +399,6 @@ asserted end-to-end by `runTest`:
   a Triple listener on port `20000` is used as the default.
 - The Dubbo server is enabled by default; disable it with
   `spring.dubbo.server.enabled=false`.
-- Only a `ServiceRegister` bean is required to activate the server.
+- At least one `ServiceRegister` bean (i.e. one `RegisterService` call) is required to activate the server.
 - `spring.dubbo.application.name` is required; metrics (Prometheus) and tracing
   (OTel/stdout) are built in and on by default — see [Observability](#observability-built-in).

@@ -19,22 +19,21 @@ package main
 import (
 	"context"
 
-	"dubbo.apache.org/dubbo-go/v3/server"
 	greet "go-spring.org/dubbo-go/triple/idl"
-	"go-spring.org/spring/gs"
 	StarterDubbo "go-spring.org/starter-dubbo"
 )
 
 func init() {
-	// Provide a StarterDubbo.ServiceRegister bean that binds the GreetProvider
-	// to the Dubbo server. starter-dubbo's SimpleDubboServer depends only on this
-	// function type, so the concrete service is wired here without the server
-	// ever knowing about greet.GreetServiceHandler.
-	gs.Provide(func() StarterDubbo.ServiceRegister {
-		return func(svr *server.Server) error {
-			return greet.RegisterGreetServiceHandler(svr, &GreetProvider{})
-		}
-	})
+	// Register the GreetProvider as a Dubbo service via starter-dubbo's helper.
+	// RegisterService binds ${spring.dubbo.server.services.greet} (per-service
+	// overrides, including per-method tuning under .methods) and turns it into
+	// dubbo-go server.ServiceOption passed to the generated handler - so the
+	// service is exported with that config without the server knowing about
+	// greet.GreetServiceHandler. T is inferred from the generated handler's
+	// parameter type (the handler interface); the concrete &GreetProvider{} is
+	// converted to that interface at the call site (a Go generics limitation).
+	StarterDubbo.RegisterService("greet", greet.RegisterGreetServiceHandler,
+		greet.GreetServiceHandler(&GreetProvider{}))
 }
 
 // GreetProvider implements the GreetServiceHandler interface generated from

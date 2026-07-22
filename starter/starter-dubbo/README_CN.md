@@ -110,17 +110,34 @@ spring.dubbo.server.adaptive-service=false
 
 ### 3. 注册 Dubbo 服务
 
-参见 [example.go](example/example.go) 文件。`ServiceRegister` 是一个把服务注册到 Dubbo
-`server.Server` 上的函数；因为 Dubbo 生成的 `Register*Handler` 会返回 error，所以它也返回
-error。
+参见 [example.go](example/example.go) 文件。`StarterDubbo.RegisterService` 把生成器（如
+`greet.RegisterGreetServiceHandler`）和 handler 实例注册成一个 `ServiceRegister` Bean，
+`SimpleDubboServer` 收集所有 `ServiceRegister` Bean（`autowire:"?"` 切片装配，按名排序）并在
+启动时逐个调用，因此同一个服务器可驱动任意多个 Dubbo 服务。
 
 ```go
-gs.Provide(func() StarterDubbo.ServiceRegister {
-    return func(svr *server.Server) error {
-        return greet.RegisterGreetServiceHandler(svr, &GreetProvider{})
-    }
-})
+// T 由生成器参数类型推断为 handler 接口；&GreetProvider{} 在调用点显式转成该接口
+// （Go 泛型限制：具体值不能直接匹配推断为接口的类型参数）。
+StarterDubbo.RegisterService("greet", greet.RegisterGreetServiceHandler,
+    greet.GreetServiceHandler(&GreetProvider{}))
 ```
+
+`"greet"` 是 `${spring.dubbo.server.services.<name>}` 下的键名。`RegisterService` 把整个
+`${spring.dubbo.server}`（含 `Services`）绑进 register Bean，注册时从 `Services["greet"]`
+取出 per-service 配置，拼装成 `server.ServiceOption`（含逐 method 的 `WithMethod`）传给生成器。
+未配置则无 option，沿用 provider-wide 默认值。
+
+```properties
+# per-service 覆盖 + per-method 调优（${spring.dubbo.server.services.<name>}.methods.<method>）
+spring.dubbo.server.services.greet.cluster=failover
+spring.dubbo.server.services.greet.methods.Greet.retries=3
+spring.dubbo.server.services.greet.methods.Greet.timeout=5s
+```
+
+> 经典协议（dubbo/jsonrpc/rest）没有生成器，用闭包形式：T 取具体类型
+> `*GreetProvider`，闭包把 `WithInterface` 与 per-service option 透传给 `svr.Register`，
+> 详见 [contrib/dubbo-go/dubbo/provider/handler.go](../../contrib/dubbo-go/dubbo/provider/handler.go)。
+
 
 ## 客户端
 
@@ -332,9 +349,9 @@ trace-id,记录的调用位置(file:line)也会指向桥接层而非真实打点
 1. **一元 Greet 调用**：服务端通过 Triple 协议在配置端口导出 `greet.GreetService`。客户端用
    `client.WithClientURL` 直连并调用 `Greet`，拿到原样返回的请求名作为问候语，验证标准的
    请求/响应链路。
-2. **服务无关的服务器**：`SimpleDubboServer` 完全不认识 `GreetService`，只依赖一个
-   `ServiceRegister` Bean，因此同一个服务器可驱动任意 Dubbo 服务；具体注册逻辑放在
-   应用层。
+2. **服务无关的服务器**：`SimpleDubboServer` 完全不认识 `GreetService`，只收集
+   `ServiceRegister` Bean（每个 `RegisterService` 调用一个），因此同一个服务器可驱动任意
+   多个 Dubbo 服务；具体注册逻辑放在应用层。
 
 ## 说明
 
@@ -344,6 +361,6 @@ trace-id,记录的调用位置(file:line)也会指向桥接层而非真实打点
   各角色通过 `registry-ids` 按 ID 选择（留空表示全部）。空字段会被跳过。未配置任何
   协议时，默认使用 20000 端口的 Triple 监听。
 - Dubbo 服务器默认开启，可通过 `spring.dubbo.server.enabled=false` 关闭。
-- 只需要注册一个 `ServiceRegister` Bean 即可激活整个服务器。
+- 至少注册一个 `ServiceRegister` Bean（即调用一次 `RegisterService`）即可激活整个服务器。
 - `spring.dubbo.application.name` 必填；metrics（Prometheus）与 tracing（OTel/stdout）
   内置且默认开启 —— 参见[可观测性](#可观测性内置)。

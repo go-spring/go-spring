@@ -21,26 +21,25 @@ import (
 
 	"dubbo.apache.org/dubbo-go/v3/server"
 	greet "go-spring.org/dubbo-go/dubbo/idl"
-	"go-spring.org/spring/gs"
 	StarterDubbo "go-spring.org/starter-dubbo"
 )
 
 func init() {
-	// Provide a StarterDubbo.ServiceRegister bean that binds the GreetProvider
-	// to the Dubbo server. starter-dubbo's SimpleDubboServer depends only on this
-	// function type, so the concrete service is wired here without the server
-	// ever knowing about the greet interface.
-	//
-	// server.WithInterface(...) is what makes this the classic Dubbo protocol
-	// rather than a bare RPC exposure: the provider registers into etcd under
-	// the Java-style dotted interface name so cross-language consumers (Java
-	// Dubbo included) can dial it by the same name.
-	gs.Provide(func() StarterDubbo.ServiceRegister {
-		return func(svr *server.Server) error {
-			return svr.Register(&GreetProvider{}, nil,
-				server.WithInterface(greet.GreetServiceInterface))
-		}
-	})
+	// Register the GreetProvider via starter-dubbo's helper. RegisterService
+	// binds ${spring.dubbo.server.services.greet} (per-service overrides +
+	// per-method tuning) into the register bean and turns it into dubbo-go
+	// server.ServiceOption, threaded here into the reflective svr.Register
+	// alongside the essential WithInterface. T is the concrete *GreetProvider
+	// (classic Dubbo has no generated handler, so a closure wraps svr.Register).
+	// server.WithInterface is what makes this classic Dubbo rather than a bare
+	// RPC exposure: the provider registers into etcd under the Java-style dotted
+	// interface name so cross-language consumers (Java Dubbo included) can dial
+	// it by the same name.
+	StarterDubbo.RegisterService("greet",
+		func(svr *server.Server, hdlr *GreetProvider, opts ...server.ServiceOption) error {
+			opts = append([]server.ServiceOption{server.WithInterface(greet.GreetServiceInterface)}, opts...)
+			return svr.Register(hdlr, nil, opts...)
+		}, &GreetProvider{})
 }
 
 // GreetProvider implements the classic-Dubbo GreetService. The method

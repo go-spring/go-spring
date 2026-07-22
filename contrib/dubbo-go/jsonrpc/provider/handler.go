@@ -21,7 +21,6 @@ import (
 
 	"dubbo.apache.org/dubbo-go/v3/server"
 	greet "go-spring.org/dubbo-go/jsonrpc/idl"
-	"go-spring.org/spring/gs"
 	StarterDubbo "go-spring.org/starter-dubbo"
 )
 
@@ -36,12 +35,11 @@ func init() {
 	// wire is /<interface-name>, and the JSON-RPC "method" field carries the
 	// method name — so cross-language consumers can hand-craft an HTTP POST
 	// and invoke the service directly.
-	gs.Provide(func() StarterDubbo.ServiceRegister {
-		return func(svr *server.Server) error {
-			return svr.Register(&GreetProvider{}, nil,
-				server.WithInterface(greet.GreetServiceInterface))
-		}
-	})
+	StarterDubbo.RegisterService("greet",
+		func(svr *server.Server, hdlr *GreetProvider, opts ...server.ServiceOption) error {
+			opts = append([]server.ServiceOption{server.WithInterface(greet.GreetServiceInterface)}, opts...)
+			return svr.Register(hdlr, nil, opts...)
+		}, &GreetProvider{})
 }
 
 // GreetProvider implements the JSON-RPC GreetService. As with the classic-Dubbo

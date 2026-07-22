@@ -18,8 +18,10 @@ package StarterDubbo
 
 import (
 	"context"
+	"runtime"
 	"time"
 
+	"dubbo.apache.org/dubbo-go/v3/config"
 	"dubbo.apache.org/dubbo-go/v3/protocol"
 	"dubbo.apache.org/dubbo-go/v3/server"
 	"go-spring.org/spring/gs"
@@ -99,21 +101,223 @@ type ServerConfig struct {
 	// RegistryIDs selects which of the global ${spring.dubbo.registries} this
 	// server publishes to. Empty means every global registry.
 	RegistryIDs []string `value:"${registry-ids:=}"`
+
+	// Services carries per-service overrides under ${spring.dubbo.server.services.<name>}
+	// (keyed by the name passed to RegisterService). Empty fields fall back to the
+	// provider-wide defaults above - dubbo-go merges provider-wide (SetProvider)
+	// with these per-service ServiceOptions, service taking priority. Each entry
+	// may also carry per-method tuning under .methods.<method>. Mirrors
+	// dubbo-go.json's provider.services node (this starter's "server" = "provider").
+	Services map[string]ServiceCfg `value:"${services:=}"`
+}
+
+// ServiceCfg holds per-service overrides under ${spring.dubbo.server.services.<name>},
+// the per-service counterpart to ServerConfig's provider-wide defaults. Every
+// field is optional; empty/zero keeps the provider-wide default (dubbo-go merges
+// them, service-level wins). Methods carries per-method tuning. Mirrors
+// dubbo-go.json's services.<name> (only fields with a v3 server.ServiceOption are
+// surfaced; interface/max_message_size/tracing-key and service-level
+// tps-limit-interval have no v3 service-level Option).
+//
+// Enum-like fields accept the dubbo-go names:
+//   - Cluster:       failover(default)|failfast|failsafe|failback|forking|available|broadcast|zoneAware
+//   - LoadBalance:   random(default)|roundrobin|leastactive|consistenthashing|p2c
+//   - Serialization: hessian2|protobuf|msgpack|json
+type ServiceCfg struct {
+	Group                       string               `value:"${group:=}"`
+	Version                     string               `value:"${version:=}"`
+	Cluster                     string               `value:"${cluster:=}"`
+	LoadBalance                 string               `value:"${load-balance:=}"`
+	Serialization               string               `value:"${serialization:=}"`
+	Retries                     int                  `value:"${retries:=-1}"` // negative means unset; 0 explicitly disables
+	Filter                      string               `value:"${filter:=}"`
+	Token                       string               `value:"${token:=}"`
+	AccessLog                   string               `value:"${access-log:=}"`
+	Auth                        string               `value:"${auth:=}"`
+	Tag                         string               `value:"${tag:=}"`
+	Warmup                      time.Duration        `value:"${warmup:=}"`
+	NotRegister                 bool                 `value:"${not-register:=false}"`
+	ProtocolIDs                 []string             `value:"${protocol-ids:=}"`
+	RegistryIDs                 []string             `value:"${registry-ids:=}"`
+	TpsLimiter                  string               `value:"${tps-limiter:=}"`
+	TpsLimitRate                int                  `value:"${tps-limit-rate:=-1}"`
+	TpsLimitStrategy            string               `value:"${tps-limit-strategy:=}"`
+	TpsLimitRejectedHandler     string               `value:"${tps-limit-rejected-handler:=}"`
+	ExecuteLimit                string               `value:"${execute-limit:=}"` // v3 service-level takes a string
+	ExecuteLimitRejectedHandler string               `value:"${execute-limit-rejected-handler:=}"`
+	ParamSign                   string               `value:"${param-sign:=}"`
+	Params                      map[string]string    `value:"${params:=}"`
+	Methods                     map[string]MethodCfg `value:"${methods:=}"`
+}
+
+// options translates a ServiceCfg into dubbo-go server.ServiceOptions: the
+// per-service overrides plus one server.WithMethod per configured method.
+// Empty/zero fields are skipped so the provider-wide default applies.
+func (s ServiceCfg) options() []server.ServiceOption {
+	var opts []server.ServiceOption
+	if s.Group != "" {
+		opts = append(opts, server.WithGroup(s.Group))
+	}
+	if s.Version != "" {
+		opts = append(opts, server.WithVersion(s.Version))
+	}
+	if s.Cluster != "" {
+		opts = append(opts, server.WithCluster(s.Cluster))
+	}
+	if s.LoadBalance != "" {
+		opts = append(opts, server.WithLoadBalance(s.LoadBalance))
+	}
+	if s.Serialization != "" {
+		opts = append(opts, server.WithSerialization(s.Serialization))
+	}
+	if s.Retries >= 0 {
+		opts = append(opts, server.WithRetries(s.Retries))
+	}
+	if s.Filter != "" {
+		opts = append(opts, server.WithFilter(s.Filter))
+	}
+	if s.Token != "" {
+		opts = append(opts, server.WithToken(s.Token))
+	}
+	if s.AccessLog != "" {
+		opts = append(opts, server.WithAccesslog(s.AccessLog))
+	}
+	if s.Auth != "" {
+		opts = append(opts, server.WithAuth(s.Auth))
+	}
+	if s.Tag != "" {
+		opts = append(opts, server.WithTag(s.Tag))
+	}
+	if s.Warmup > 0 {
+		opts = append(opts, server.WithWarmUp(s.Warmup))
+	}
+	if s.NotRegister {
+		opts = append(opts, server.WithNotRegister())
+	}
+	if len(s.ProtocolIDs) > 0 {
+		opts = append(opts, server.WithProtocolIDs(s.ProtocolIDs))
+	}
+	if len(s.RegistryIDs) > 0 {
+		opts = append(opts, server.WithRegistryIDs(s.RegistryIDs))
+	}
+	if s.TpsLimiter != "" {
+		opts = append(opts, server.WithTpsLimiter(s.TpsLimiter))
+	}
+	if s.TpsLimitRate >= 0 {
+		opts = append(opts, server.WithTpsLimitRate(s.TpsLimitRate))
+	}
+	if s.TpsLimitStrategy != "" {
+		opts = append(opts, server.WithTpsLimitStrategy(s.TpsLimitStrategy))
+	}
+	if s.TpsLimitRejectedHandler != "" {
+		opts = append(opts, server.WithTpsLimitRejectedHandler(s.TpsLimitRejectedHandler))
+	}
+	if s.ExecuteLimit != "" {
+		opts = append(opts, server.WithExecuteLimit(s.ExecuteLimit))
+	}
+	if s.ExecuteLimitRejectedHandler != "" {
+		opts = append(opts, server.WithExecuteLimitRejectedHandler(s.ExecuteLimitRejectedHandler))
+	}
+	if s.ParamSign != "" {
+		opts = append(opts, server.WithParamSign(s.ParamSign))
+	}
+	for k, v := range s.Params {
+		opts = append(opts, server.WithParam(k, v))
+	}
+	// Per-method tuning: one WithMethod per configured method, each carrying its
+	// own MethodOption set. The map key is the dubbo-go method name; it defaults
+	// MethodCfg.Name when Name is not explicitly set, so the config attaches to
+	// the right method.
+	for name, m := range s.Methods {
+		if m.Name == "" {
+			m.Name = name
+		}
+		if mopts := m.options(); len(mopts) > 0 {
+			opts = append(opts, server.WithMethod(mopts...))
+		}
+	}
+	return opts
+}
+
+// MethodCfg holds per-method tuning under
+// ${spring.dubbo.server.services.<name>.methods.<method>}, overriding the
+// service/provider defaults for that one method. The map key is the dubbo-go
+// method name; Name is optional (defaults to the key). All fields optional;
+// empty/zero keeps the service/provider default. Mirrors dubbo-go.json's
+// method node; every field has a v3 config.MethodOption.
+type MethodCfg struct {
+	Name                        string        `value:"${name:=}"`
+	Retries                     int           `value:"${retries:=-1}"`
+	LoadBalance                 string        `value:"${load-balance:=}"`
+	Weight                      int64         `value:"${weight:=-1}"`
+	TpsLimitInterval            int           `value:"${tps-limit-interval:=-1}"`
+	TpsLimitRate                int           `value:"${tps-limit-rate:=-1}"`
+	TpsLimitStrategy            string        `value:"${tps-limit-strategy:=}"`
+	ExecuteLimit                int           `value:"${execute-limit:=-1}"` // v3 method-level takes an int (unlike service-level string)
+	ExecuteLimitRejectedHandler string        `value:"${execute-limit-rejected-handler:=}"`
+	Sticky                      bool          `value:"${sticky:=false}"`
+	Timeout                     time.Duration `value:"${timeout:=}"`
+}
+
+// options translates a MethodCfg into dubbo-go config.MethodOptions (passed to a
+// service via server.WithMethod). Empty/zero fields are skipped.
+func (m MethodCfg) options() []config.MethodOption {
+	var opts []config.MethodOption
+	if m.Name != "" {
+		opts = append(opts, config.WithName(m.Name))
+	}
+	if m.Retries >= 0 {
+		opts = append(opts, config.WithRetries(m.Retries))
+	}
+	if m.LoadBalance != "" {
+		opts = append(opts, config.WithLoadBalance(m.LoadBalance))
+	}
+	if m.Weight >= 0 {
+		opts = append(opts, config.WithWeight(m.Weight))
+	}
+	if m.TpsLimitInterval >= 0 {
+		opts = append(opts, config.WithTpsLimitInterval(m.TpsLimitInterval))
+	}
+	if m.TpsLimitRate >= 0 {
+		opts = append(opts, config.WithTpsLimitRate(m.TpsLimitRate))
+	}
+	if m.TpsLimitStrategy != "" {
+		opts = append(opts, config.WithTpsLimitStrategy(m.TpsLimitStrategy))
+	}
+	if m.ExecuteLimit >= 0 {
+		opts = append(opts, config.WithExecuteLimit(m.ExecuteLimit))
+	}
+	if m.ExecuteLimitRejectedHandler != "" {
+		opts = append(opts, config.WithExecuteLimitRejectedHandler(m.ExecuteLimitRejectedHandler))
+	}
+	if m.Sticky {
+		opts = append(opts, config.WithSticky())
+	}
+	if m.Timeout > 0 {
+		opts = append(opts, config.WithRequestTimeout(m.Timeout))
+	}
+	return opts
 }
 
 // SimpleDubboServer adapts a Dubbo-go server.Server to the Go-Spring server lifecycle.
 type SimpleDubboServer struct {
-	cfg  ServerConfig
-	d    *Instance
-	reg  ServiceRegister
+	cfg ServerConfig
+	d   *Instance
+	// Regs collects every ServiceRegister bean - one per RegisterService call,
+	// or a single legacy gs.Provide(func() ServiceRegister{...}). gs autowires the
+	// slice (autowire:"?" keeps it optional; the OnBean[ServiceRegister] gate is
+	// what actually decides whether a server stands up). Each is invoked once in
+	// Run, so multi-service apps just call RegisterService per stub.
+	Regs []ServiceRegister `autowire:"?"`
 	svr  *server.Server
 	done chan struct{}
 }
 
-// NewSimpleDubboServer creates a SimpleDubboServer from ${spring.dubbo.server} configuration
-// and the shared *Instance (global registries and observability).
-func NewSimpleDubboServer(cfg ServerConfig, d *Instance, reg ServiceRegister) *SimpleDubboServer {
-	return &SimpleDubboServer{cfg: cfg, d: d, reg: reg, done: make(chan struct{})}
+// NewSimpleDubboServer creates a SimpleDubboServer from ${spring.dubbo.server}
+// configuration and the shared *Instance (global registries and observability).
+// The ServiceRegister beans are autowired into Regs after construction.
+func NewSimpleDubboServer(cfg ServerConfig, d *Instance) *SimpleDubboServer {
+	return &SimpleDubboServer{cfg: cfg, d: d, done: make(chan struct{})}
 }
 
 // buildOptions translates ServerConfig into dubbo-go server options. Protocols
@@ -233,7 +437,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if err != nil {
 		return errutil.Explain(err, "failed to create dubbo server")
 	}
-	if err = s.reg(svr); err != nil {
+	if err = s.regAll(svr); err != nil {
 		return errutil.Explain(err, "failed to register dubbo service")
 	}
 	s.svr = svr
@@ -258,4 +462,66 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 func (s *SimpleDubboServer) Stop() error {
 	close(s.done)
 	return nil
+}
+
+// regAll invokes every collected ServiceRegister bean against the assembled
+// server. Each bean registers one service with its own per-service/per-method
+// options already baked in (see RegisterService).
+func (s *SimpleDubboServer) regAll(svr *server.Server) error {
+	for _, reg := range s.Regs {
+		if err := reg(svr); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RegisterService registers a Dubbo service as a ServiceRegister bean, so
+// SimpleDubboServer invokes it (alongside any others) when the server starts.
+// Pass the code-generated register function (e.g. greet.RegisterGreetServiceHandler,
+// shape func(*server.Server, <handler>, ...server.ServiceOption) error) and the
+// handler value:
+//
+//	StarterDubbo.RegisterService("greet", greet.RegisterGreetServiceHandler,
+//	    greet.GreetServiceHandler(&GreetProvider{}))
+//
+// T is inferred from register's handler parameter (the generated handler
+// interface, e.g. greet.GreetServiceHandler). hdlr is typed T, so the app
+// converts the concrete handler to that interface at the call site - a Go
+// generics limitation: a concrete value does not match a type parameter
+// inferred as an interface, so the explicit conversion is what lets the
+// signature stay type-safe (no runtime assertion).
+//
+// The starter only provides this helper; the app calls it explicitly per service
+// (like RegisterReference on the client side). It binds the global
+// ${spring.dubbo.server} config (carrying the Services map) into the register
+// bean, then at registration time extracts ${spring.dubbo.server.services.<name>}
+// and turns it into dubbo-go server.ServiceOption via ServiceCfg.options (per-
+// service overrides + one server.WithMethod per configured method), passing
+// those opts into register. Empty fields keep the provider-wide defaults; if
+// <name> is not configured at all, no ServiceOption is passed and the service
+// runs on provider-wide defaults.
+//
+// name is the key under ${spring.dubbo.server.services} to bind. Multiple
+// services = multiple RegisterService calls; SimpleDubboServer collects and
+// invokes them all.
+//
+// Must be called before gs.Run() (e.g. in main or an init), like gs.Provide.
+func RegisterService[T any](name string, register func(*server.Server, T, ...server.ServiceOption) error, hdlr T) {
+	b := gs.Provide(func(cfg ServerConfig) ServiceRegister {
+		return func(svr *server.Server) error {
+			var opts []server.ServiceOption
+			if svc, ok := cfg.Services[name]; ok {
+				opts = svc.options()
+			}
+			return register(svr, hdlr, opts...)
+		}
+	}, gs.IndexArg(0, gs.TagArg("${spring.dubbo.server}")))
+	// gs.Provide records its own call site (inside this helper) as the bean's
+	// source location. Override it with the app's call site so the bean points
+	// where RegisterService was invoked - transparent vs. calling gs.Provide
+	// inline, which matters now that this is a shared library helper.
+	if _, file, line, ok := runtime.Caller(1); ok {
+		b.SetFileLine(file, line)
+	}
 }

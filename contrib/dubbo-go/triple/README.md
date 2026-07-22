@@ -85,7 +85,7 @@ regenerates only those files without touching the refactored business code.
 | Concern         | Dubbo-go scaffold                          | Go-Spring version                                                              |
 | --------------- | ------------------------------------------ | ------------------------------------------------------------------------------ |
 | Startup         | `srv.Serve()` blocks in `main()`           | starter-dubbo's `SimpleDubboServer` implements `gs.Server`; `gs.Run()` drives Run/Stop |
-| Handler wiring  | `RegisterGreetServiceHandler(srv, &impl)`  | `gs.Provide(func() StarterDubbo.ServiceRegister { ... })` binds a service-agnostic register |
+| Handler wiring  | `RegisterGreetServiceHandler(srv, &impl)`  | `StarterDubbo.RegisterService(...)` binds a service-agnostic register (+ per-service/method config) |
 | Server enable   | always on                                  | conditional on a `ServiceRegister` bean via `gs.OnBean`                        |
 | Port            | hard-coded default                         | `${spring.dubbo.protocols.tri.port}` from `conf/app.properties`         |
 | Registration    | none (direct)                              | top-level `${spring.dubbo.registries.etcdv3}` config → etcd                    |
