@@ -7,9 +7,10 @@
 # go.mod files in this workspace stay aligned and don't drift apart.
 #
 # This file is DESCRIPTIVE for tooling, not enforced by the build. Run
-# `gs versions check` to report modules whose require versions deviate from
-# this baseline, `gs versions diff` for the per-module detail, and
-# `gs versions apply <module>` to align a single module's go.mod.
+# `./scripts/versions.sh check` to report modules whose require versions
+# deviate from this baseline, `./scripts/versions.sh diff` for the per-module
+# detail, and `./scripts/versions.sh apply <module>` to align a single
+# module's go.mod. (Maintainer-only; not part of the gs user toolkit.)
 #
 # Internal modules (go-spring.org/...) are intentionally absent: the workspace
 # resolves them through go.work, so they must never be pinned via require.
@@ -17,8 +18,8 @@
 # Blessed Go toolchain version.
 go: "1.26"
 
-# Versions known to break the toolchain or codegen. `gs versions check` flags a
-# module (or this file) that lands on a disabled version.
+# Versions known to break the toolchain or codegen. Recorded for reference; the
+# governance check does not yet enforce this list.
 disabled:
   go:
     # go1.26.0's runtime.Version() carries an "-X:jsonv2" build suffix that

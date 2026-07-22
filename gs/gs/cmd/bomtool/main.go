@@ -14,7 +14,22 @@
  * limitations under the License.
  */
 
-package cmd
+// Command bomtool implements Go-Spring's BOM-style version governance: a single
+// versions.yaml at the repo root records the "blessed" third-party dependency
+// versions, and this tool scans every go.mod under go.work to report where
+// modules deviate from that baseline.
+//
+// This is a MAINTAINER tool for the go-spring mono-repo itself. It is NOT
+// compiled into the gs binary users install - that keeps workspace-BOM
+// governance out of the user-facing command surface (a single-module user
+// project has no versions.yaml and no go.work, so the command would only
+// confuse them). Invoke it through scripts/versions.sh.
+//
+// The scan is read-only by default; only apply writes, and only to one module
+// at a time, so it never conflicts with concurrent work on other modules.
+// Internal modules (the go-spring.org/... workspace members) are resolved via
+// go.work and must never be pinned through require, so they are skipped.
+package main
 
 import (
 	"fmt"
@@ -33,25 +48,25 @@ import (
 // baselineFile is the name of the version manifest at the repo root.
 const baselineFile = "versions.yaml"
 
-// NewVersionsCmd builds the `gs versions` subcommand: BOM-style dependency
-// version governance. It reads versions.yaml at the repo root (the blessed
-// third-party versions) and scans every go.mod under go.work to report — and,
-// on request, align — modules that drift from that baseline.
-//
-// The default paths (check, diff) are read-only so the command is safe to run
-// in CI and never conflicts with concurrent module work; only `apply` writes,
-// and only to a single named module at a time.
-func NewVersionsCmd() *cobra.Command {
-	c := &cobra.Command{
-		Use:          "versions",
-		Short:        "check module dependency versions against versions.yaml (BOM governance)",
-		Example:      "  gs versions check\n  gs versions diff\n  gs versions apply starter/starter-config-etcd",
+func main() {
+	root := &cobra.Command{
+		Use:   "bomtool",
+		Short: "Go-Spring repo BOM governance (maintainer-only; not part of the gs user toolkit)",
+		Long: `bomtool governs third-party dependency versions across the go-spring workspace
+against versions.yaml at the repo root (the BOM). It scans every go.mod under
+go.work and reports - or, on request, aligns - modules that drift from the
+baseline.
+
+MAINTAINER-ONLY: this is governance for the go-spring mono-repo itself, not a
+command in the gs toolkit users install. Invoke it via scripts/versions.sh so
+version governance stays out of the gs --help listing.`,
+		Example:      "  ./scripts/versions.sh check\n  ./scripts/versions.sh diff\n  ./scripts/versions.sh apply starter/starter-config-etcd",
 		SilenceUsage: true,
 	}
-	c.AddCommand(newVersionsCheckCmd())
-	c.AddCommand(newVersionsDiffCmd())
-	c.AddCommand(newVersionsApplyCmd())
-	return c
+	root.AddCommand(newCheckCmd(), newDiffCmd(), newApplyCmd())
+	if err := root.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
 
 // loadRootBaseline finds the repo root from the cwd, loads versions.yaml, and
@@ -72,7 +87,7 @@ func loadRootBaseline() (root string, base *bom.Baseline, err error) {
 	return root, base, nil
 }
 
-func newVersionsCheckCmd() *cobra.Command {
+func newCheckCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:          "check",
 		Short:        "report modules whose dependency versions drift from the baseline (non-zero exit on drift)",
@@ -94,13 +109,13 @@ func newVersionsCheckCmd() *cobra.Command {
 		}
 		printDriftTable(drifts)
 		fmt.Printf("\n[ERROR] %d version drift(s) from versions.yaml\n", len(drifts))
-		// Non-zero exit for CI. SilenceUsage keeps cobra from printing usage.
-		return errutil.Explain(fmt.Errorf("version drift detected"), "gs versions check")
+		// Non-zero exit for check scripts. SilenceUsage keeps cobra from printing usage.
+		return errutil.Explain(fmt.Errorf("version drift detected"), "bomtool check")
 	}
 	return c
 }
 
-func newVersionsDiffCmd() *cobra.Command {
+func newDiffCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:          "diff",
 		Short:        "show per-dependency detail of how modules deviate from the baseline",
@@ -126,7 +141,7 @@ func newVersionsDiffCmd() *cobra.Command {
 	return c
 }
 
-func newVersionsApplyCmd() *cobra.Command {
+func newApplyCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:          "apply <module>",
 		Short:        "align a single module's go.mod to the baseline (writes one go.mod)",
@@ -150,7 +165,7 @@ func newVersionsApplyCmd() *cobra.Command {
 		for _, d := range changes {
 			fmt.Printf("[INFO] %s: %s %s -> %s\n", d.Dir, d.Dep, d.Found, d.Baseline)
 		}
-		fmt.Printf("[INFO] aligned %d require(s) in %s; run `gs go mod tidy` in that module to settle go.sum\n",
+		fmt.Printf("[INFO] aligned %d require(s) in %s; run `go mod tidy` in that module to settle go.sum\n",
 			len(changes), changes[0].Dir)
 		return nil
 	}
@@ -170,7 +185,7 @@ func printDriftTable(drifts []bom.Drift) {
 }
 
 // printDiffByDep groups deviations by dependency, showing the blessed version
-// once and the deviating modules beneath it — the view for human remediation
+// once and the deviating modules beneath it - the view for human remediation
 // decisions.
 func printDiffByDep(drifts []bom.Drift) {
 	byDep := map[string][]bom.Drift{}

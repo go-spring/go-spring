@@ -25,34 +25,29 @@ import (
 	"syscall"
 	"time"
 
-	"dubbo.apache.org/dubbo-go/v3/client"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
-	"go-spring.org/log"
 	greet "go-spring.org/observability/idl"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	_ "go-spring.org/starter-dubbo"
+	"go-spring.org/starter-dubbo"
 )
 
-// Consumer discovers the GreetService through the registry and calls it. The
-// Dubbo client is the default client bean provided by starter-dubbo (built from
-// ${spring.dubbo.client} + the top-level ${spring.dubbo.registries}), injected
-// here the same way the redis example autowires *redis.Client into its Service
-// bean.
+// Consumer discovers the GreetService through the registry and calls it. Rather
+// than holding the raw *client.Client and rebuilding the stub on every call, it
+// depends on the greet.GreetService stub bean (registered in main below via
+// StarterDubbo.RegisterReference, which itself is built from starter-dubbo's
+// named "greet" client) - the same layering real apps use: a business bean
+// depends on the typed RPC stub, the stub depends on the client.
 type Consumer struct {
-	Client *client.Client `autowire:""`
+	Svc greet.GreetService `autowire:""`
 }
 
-// Greet dials the GreetService by its protobuf-declared interface name
-// (greet.GreetService, baked into the Triple-generated stub) and invokes the
-// Greet method through the typed stub. Unlike the classic Dubbo/Hessian2
-// sibling, Triple has a code-generated stub, so we build it from the injected
-// client and call svc.Greet directly — no reflective conn.CallUnary.
+// Greet invokes the Greet RPC through the autowired typed stub. Triple has a
+// code-generated stub, so the stub bean calls c.Svc.Greet directly - no
+// reflective conn.CallUnary, and the stub is built once (when the bean is
+// wired), not on every call.
 func (c *Consumer) Greet(ctx context.Context, name string) (string, error) {
-	svc, err := greet.NewGreetService(c.Client)
-	if err != nil {
-		return "", err
-	}
-	resp, err := svc.Greet(ctx, &greet.GreetRequest{Name: name})
+	resp, err := c.Svc.Greet(ctx, &greet.GreetRequest{Name: name})
 	if err != nil {
 		return "", err
 	}
@@ -60,6 +55,14 @@ func (c *Consumer) Greet(ctx context.Context, name string) (string, error) {
 }
 
 func main() {
+	// Register the Triple-generated GreetService stub as a bean (instead of
+	// rebuilding it on every call). StarterDubbo.RegisterReference wires the
+	// named "greet" client and the per-reference config under
+	// ${spring.dubbo.references.greet} into the stub constructor - a starter
+	// helper reusable for any stub. The stub bean is then autowired into
+	// Consumer below (business bean -> RPC stub -> client).
+	StarterDubbo.RegisterReference("greet", greet.NewGreetService)
+
 	// Consumer is not referenced by any other bean, so register it as a root
 	// object and grab the handle to drive the one-shot call from runTest.
 	svrBean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())

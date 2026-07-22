@@ -128,6 +128,42 @@ type Caller struct {
 // svc, _ := greet.NewGreetService(c.Orders)
 ```
 
+## 引用（Reference）
+
+上文的客户端 Bean 是原始的 `*client.Client`。真实应用自动装配的是每个 proto 生成的
+**类型化 stub**（如 `greet.GreetService`），而非原始客户端。`RegisterReference` 把这样的
+stub 注册为 Bean，由具名客户端与按引用的调优参数装配：
+
+```go
+import StarterDubbo "go-spring.org/starter-dubbo"
+
+func main() {
+    // 把 greet.GreetService stub 注册为 Bean。"greet" 选中具名客户端 Bean；
+    // ${spring.dubbo.references.greet} 提供按 stub 的调优参数。
+    StarterDubbo.RegisterReference("greet", greet.NewGreetService)
+    // ...
+}
+
+type Caller struct {
+    Svc greet.GreetService `autowire:""` // 按 stub 类型自动装配
+}
+```
+
+引用**不会**像客户端那样按配置自动注册：类型化 stub 及其 `NewXxxService` 构造函数是
+应用侧的生成代码，starter 无法感知，因此应用必须为每个 stub 显式调用 `RegisterReference`。
+正是这一次显式调用保证了自动装配是类型安全的；该辅助函数只负责把装配方式（具名客户端 +
+引用配置）标准化，让每个 stub 的注册方式保持一致。
+
+每个引用在 `${spring.dubbo.references.<name>}` 下调优——它是 `${spring.dubbo.client.<name>}`
+的引用级对应物，为该 stub 覆盖客户端级默认值。所有字段可选；留空则保留 dubbo-go 默认值：
+
+```properties
+spring.dubbo.references.greet.timeout=3s               # 单次请求超时；覆盖客户端级
+spring.dubbo.references.greet.retries=2                # 仅在 cluster=failover（默认）下生效；-1 保留 dubbo-go 默认，0 禁用
+spring.dubbo.references.greet.cluster=failover         # failover(默认)|failfast|failsafe|failback|forking|available|broadcast|zoneAware
+spring.dubbo.references.greet.load-balance=roundrobin  # random(默认)|roundrobin|leastactive|consistenthashing|p2c
+```
+
 ## Filter（过滤器）
 
 dubbo-go 内置了一组 filter，并在两端各启用一条默认链,因此无需配置即有合理行为。

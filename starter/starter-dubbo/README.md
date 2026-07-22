@@ -133,6 +133,46 @@ type Caller struct {
 // svc, _ := greet.NewGreetService(c.Orders)
 ```
 
+## References
+
+The client beans above are raw `*client.Client`s. Real apps autowire the
+**typed stub** generated from each proto (e.g. `greet.GreetService`), not the
+raw client. `RegisterReference` registers such a stub as a bean, wired from a
+named client and per-reference tuning:
+
+```go
+import StarterDubbo "go-spring.org/starter-dubbo"
+
+func main() {
+    // Register the greet.GreetService stub as a bean. "greet" selects the named
+    // client bean; ${spring.dubbo.references.greet} supplies per-stub tuning.
+    StarterDubbo.RegisterReference("greet", greet.NewGreetService)
+    // ...
+}
+
+type Caller struct {
+    Svc greet.GreetService `autowire:""` // autowired by stub type
+}
+```
+
+References are **not** auto-registered from config like clients are: a typed stub
+and its `NewXxxService` constructor are app-specific generated code the starter
+cannot see, so the app must call `RegisterReference` for each stub. That explicit
+call is what keeps the autowire typed; the helper only standardizes the wiring
+(named client + reference config) so every stub is registered the same way.
+
+Each reference is tuned under `${spring.dubbo.references.<name>}` - the
+reference-level counterpart to `${spring.dubbo.client.<name>}`, overriding the
+client-level default for this one stub. All fields are optional; empty keeps
+dubbo-go's default:
+
+```properties
+spring.dubbo.references.greet.timeout=3s               # per-request timeout; overrides client-level
+spring.dubbo.references.greet.retries=2                # only with cluster=failover (default); -1 keeps dubbo-go default, 0 disables
+spring.dubbo.references.greet.cluster=failover         # failover(default)|failfast|failsafe|failback|forking|available|broadcast|zoneAware
+spring.dubbo.references.greet.load-balance=roundrobin  # random(default)|roundrobin|leastactive|consistenthashing|p2c
+```
+
 ## Filters
 
 dubbo-go ships a set of built-in filters and enables a default chain on each

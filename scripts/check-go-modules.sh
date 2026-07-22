@@ -165,6 +165,20 @@ if ! command_exists modernize; then
     install_modernize
 fi
 
+# ---------------------------------------------------------------------------
+# BOM version drift: fail if any governed module's require versions deviate
+# from versions.yaml. Maintainer governance check; not part of the gs user
+# toolkit. See gs/gs/VERSIONS.md.
+# ---------------------------------------------------------------------------
+print_separator
+echo "BOM version drift (versions.yaml)"
+print_separator
+if ! "${REPO_ROOT}/scripts/versions.sh" check; then
+    echo "Remediate with: ./scripts/versions.sh diff"
+    echo "                ./scripts/versions.sh apply <module>"
+    has_findings=1
+fi
+
 module_dirs=$(find . -name go.mod \
     ! -path '*/vendor/*' \
     ! -path '*/node_modules/*' \

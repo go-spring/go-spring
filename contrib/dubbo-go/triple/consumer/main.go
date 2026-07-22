@@ -25,12 +25,11 @@ import (
 	"syscall"
 	"time"
 
-	"dubbo.apache.org/dubbo-go/v3/client"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
 	greet "go-spring.org/dubbo-go/triple/idl"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	_ "go-spring.org/starter-dubbo"
+	"go-spring.org/starter-dubbo"
 )
 
 // Consumer calls the GreetService discovered through the registry. Rather than
@@ -57,18 +56,13 @@ func (c *Consumer) Greet(ctx context.Context, name string) (string, error) {
 }
 
 func main() {
-	// GreetService is the Triple-generated RPC stub. Register it as a bean
-	// instead of rebuilding it on every call. Two args are injected into the
-	// stub constructor: starter-dubbo's named "greet" client bean
-	// (gs.TagArg("greet")), and a per-reference config bound from
-	// ${spring.dubbo.references.greet} (timeout/retries/cluster/load-balance -
-	// see referenceConfig). The config is turned into client.ReferenceOption
-	// and passed to NewGreetService, so the stub honors it on every call. The
-	// stub bean is then autowired into Consumer below - the layering real apps
-	// use (business bean -> RPC stub -> client).
-	gs.Provide(func(cli *client.Client, cfg referenceConfig) (greet.GreetService, error) {
-		return greet.NewGreetService(cli, cfg.options()...)
-	}, gs.IndexArg(0, gs.TagArg("greet")), gs.IndexArg(1, gs.TagArg("${spring.dubbo.references.greet}")))
+	// Register the Triple-generated GreetService stub as a bean (instead of
+	// rebuilding it on every call). StarterDubbo.RegisterReference wires the
+	// named "greet" client and the per-reference config under
+	// ${spring.dubbo.references.greet} into the stub constructor - a starter
+	// helper reusable for any stub. The stub bean is then autowired into
+	// Consumer below (business bean -> RPC stub -> client).
+	StarterDubbo.RegisterReference("greet", greet.NewGreetService)
 
 	// Consumer is not referenced by any other bean, so register it as a root
 	// object and grab the handle to drive the one-shot call from runTest.
