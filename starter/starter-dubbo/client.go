@@ -20,51 +20,45 @@ import (
 	"time"
 
 	"dubbo.apache.org/dubbo-go/v3/client"
-	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
-	// Multi-instance only: bind a map under "${spring.dubbo.client}" and register
-	// one named *client.Client per entry, matching the client-starter archetype
-	// (no default singleton). Hand-rolled instead of gs.Group so each binds its
-	// own ClientConfig while sharing the injected *Instance. Gated only on the
-	// property; an entry declared without registries fails fast on the missing
-	// *Instance dependency rather than being skipped.
-	gs.Module(gs.OnProperty("spring.dubbo.client"),
-		func(r gs.BeanProvider, p flatten.Storage) error {
-			var params struct {
-				Instances map[string]ClientConfig `value:"${spring.dubbo.client}"`
-			}
-			if err := conf.Bind(p, &params); err != nil {
-				return err
-			}
-			for name, cfg := range params.Instances {
-				r.Provide(
-					NewClient,
-					gs.IndexArg(0, gs.ValueArg(cfg)),
-				).Name(name) // configured explicitly; the module gate is the only condition
-			}
-			return nil
-		})
+	// The single Dubbo consumer (client) for the process, bound from the global
+	// ${spring.dubbo.client} node. dubbo-go's config model has one consumer per
+	// process (mirrored by dubbo-go.json's single "consumer" object), so unlike
+	// most go-spring client starters this is a single default bean, not a map.
+	// Per-stub tuning lives under ${spring.dubbo.client.references.<name>} and
+	// overrides these defaults per reference (see reference.go). Gated on the
+	// *Instance bean (no registries → no client) and the property; OnProperty is
+	// a prefix check, so setting any spring.dubbo.client.* sub-key (including a
+	// references entry) stands the client up.
+	gs.Provide(
+		NewClient,
+		gs.IndexArg(0, gs.TagArg("${spring.dubbo.client}")),
+	).Condition(gs.OnBean[*Instance](), gs.OnProperty("spring.dubbo.client"))
 }
 
-// ClientConfig defines the client-role configuration under
-// ${spring.dubbo.client.<name>} for each named instance. Every field is optional.
+// ClientConfig is the consumer-level (client) configuration under the global
+// ${spring.dubbo.client} node — the process-wide defaults every reference
+// inherits unless it overrides per-stub. Every field is optional; empty/zero
+// keeps dubbo-go's own default. (dubbo-go.json's consumer also exposes proxy /
+// adaptive-service / tracing-key / max-wait-time-for-service-discovery, but v3
+// has no clean client-level Option for them, so they are intentionally not
+// surfaced here.)
 type ClientConfig struct {
-	Protocol    string        `value:"${protocol:=}"`     // dubbo(default)|tri|triple|jsonrpc
-	Timeout     time.Duration `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"
-	RegistryIDs []string      `value:"${registry-ids:=}"` // select global registries by ID; empty means all
-
-	Filter string            `value:"${filter:=}"` // comma-separated filter chain; use "-name" to drop one from dubbo-go's default chain
-	Params map[string]string `value:"${params:=}"` // escape hatch for consumer-level filter parameters
+	Protocol    string        `value:"${protocol:=}"`      // dubbo(default)|tri|triple|jsonrpc
+	Timeout     time.Duration `value:"${timeout:=}"`       // per-request timeout, e.g. "3s"
+	RegistryIDs []string      `value:"${registry-ids:=}"`   // select global registries by ID; empty means all
+	Filter      string        `value:"${filter:=}"`        // comma-separated filter chain; use "-name" to drop one from dubbo-go's default chain
+	Params      map[string]string `value:"${params:=}"`    // escape hatch for consumer-level filter parameters
+	Check       bool          `value:"${check:=true}"`     // false disables startup check (provider presence)
 }
 
-// NewClient builds a *client.Client from a ClientConfig and the shared *Instance,
-// serving both the default client and every named instance. Registries are
-// selected by RegistryIDs (empty means all); the client inherits the Instance's
-// metrics and tracing.
+// NewClient builds the single *client.Client from the global ClientConfig and
+// the shared *Instance. Registries are selected by RegistryIDs (empty means
+// all); the client inherits the Instance's metrics and tracing. Per-stub
+// overrides are applied later on each reference (see ReferenceConfig.options).
 func NewClient(cfg ClientConfig, d *Instance) (*client.Client, error) {
 	var opts []client.ClientOption
 
@@ -85,6 +79,9 @@ func NewClient(cfg ClientConfig, d *Instance) (*client.Client, error) {
 	}
 	if len(cfg.Params) > 0 {
 		opts = append(opts, client.WithClientParams(cfg.Params))
+	}
+	if !cfg.Check {
+		opts = append(opts, client.WithClientNoCheck())
 	}
 	registries, err := selectRegistries(d.Registries(), cfg.RegistryIDs)
 	if err != nil {

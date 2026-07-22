@@ -88,10 +88,10 @@ struct with the matching method signature and hand-written
 # Disable the built-in HTTP server; the provider exposes only the REST endpoint.
 spring.http.server.enabled=false
 
-# REST bind port; the key under ${spring.dubbo.server.protocols} is the
+# REST bind port; the key under ${spring.dubbo.protocols} is the
 # dubbo-go protocol name. REST on 20003 (20000/20001/20002 are reserved for
 # the Triple/Dubbo/JSON-RPC siblings so all four can coexist on one host).
-spring.dubbo.server.protocols.rest.port=20003
+spring.dubbo.protocols.rest.port=20003
 
 # etcd registry, defined once under ${spring.dubbo.registries}: the map key is
 # a logical registry ID (type defaults to the key). Roles reference it by ID via

@@ -105,20 +105,19 @@ spring.http.server.enabled=false
 # by default. Matches docker-compose.yml.
 spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 
-# Provider protocol listener; the key under ${spring.dubbo.server.protocols} is
+# Provider protocol listener; the key under ${spring.dubbo.protocols} is
 # the dubbo-go protocol name. Classic Dubbo on 20001 (20000 is reserved for the
 # Triple sibling so both can coexist on one host).
-spring.dubbo.server.protocols.dubbo.port=20001
+spring.dubbo.protocols.dubbo.port=20001
 ```
 
-The Dubbo **client** is provided by starter-dubbo as a named bean (the `greet`
-entry under `${spring.dubbo.client}`) built on top of the shared
-`${spring.dubbo.registries}`; the consumer autowires it and dials the service.
-Multiple named clients can be declared under `${spring.dubbo.client}`
-(bean name = the map key). To run two registries of the same type, give each a
-distinct map-key ID and set `protocol` explicitly, e.g.
-`spring.dubbo.registries.bj.protocol=etcdv3` / `...sh.protocol=etcdv3`, then let
-each role pick with `registry-ids` (e.g. `spring.dubbo.client.greet.registry-ids=bj`).
+The Dubbo **client** is provided by starter-dubbo as a single process-wide bean
+(built from `${spring.dubbo.client}` on top of the shared
+`${spring.dubbo.registries}`); the consumer autowires it by type and dials the
+service. To run two registries of the same type, give each a distinct map-key ID
+and set `protocol` explicitly, e.g. `spring.dubbo.registries.bj.protocol=etcdv3`
+/ `...sh.protocol=etcdv3`, then let the client (or a per-reference entry) pick
+with `registry-ids` (e.g. `spring.dubbo.client.registry-ids=bj`).
 
 ## Run
 

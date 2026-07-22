@@ -131,42 +131,45 @@ gs.Provide(func() StarterDubbo.ServiceRegister {
 
 ## Client
 
-The starter also exposes Dubbo clients as beans, gated on the same `*Instance`
-(a project without registries gets none). Clients are multi-instance only: each
-entry under `${spring.dubbo.client}` is a named client whose key becomes the bean
-name. Registries and observability are inherited from the shared `Instance`, so a
-client only carries protocol/timeout/registry-ids.
+The starter also exposes a Dubbo client as a bean, gated on the same `*Instance`
+(a project without registries gets none). Unlike most go-spring client starters,
+the dubbo client is a **single process-wide instance** - mirroring dubbo-go.json's
+single `consumer` node: dubbo-go has one consumer per process, so
+`${spring.dubbo.client}` is a single object (not a map) and produces one default
+`*client.Client` bean. Registries and observability are inherited from the shared
+`Instance`, so the client only carries consumer-level defaults:
 
 ```properties
-spring.dubbo.client.orders.protocol=tri        # dubbo(default)|tri|triple|jsonrpc
-spring.dubbo.client.orders.timeout=3s          # per-request timeout, e.g. "3s"
-spring.dubbo.client.orders.registry-ids=etcd   # select global registries by ID; empty means all
-spring.dubbo.client.legacy.protocol=dubbo
+spring.dubbo.client.protocol=tri        # dubbo(default)|tri|triple|jsonrpc
+spring.dubbo.client.timeout=3s          # per-request timeout, e.g. "3s"
+spring.dubbo.client.registry-ids=etcd   # select global registries by ID; empty means all
+spring.dubbo.client.filter=             # comma-separated filter chain; "-name" drops one
+spring.dubbo.client.check=true          # false disables the startup provider-presence check
 ```
 
-Inject each by its key, then build your generated stub:
+When you need the raw `*client.Client` (e.g. classic Dubbo with no stub, using
+`Dial`+`CallUnary`), autowire it by type:
 
 ```go
 type Caller struct {
-    Orders *client.Client `autowire:"orders"`
-    Legacy *client.Client `autowire:"legacy"`
+    Client *client.Client `autowire:""` // autowire the single client by type
 }
-// svc, _ := greet.NewGreetService(c.Orders)
 ```
 
 ## References
 
-The client beans above are raw `*client.Client`s. Real apps autowire the
+The client bean above is a raw `*client.Client`. Real apps autowire the
 **typed stub** generated from each proto (e.g. `greet.GreetService`), not the
-raw client. `RegisterReference` registers such a stub as a bean, wired from a
-named client and per-reference tuning:
+raw client. `RegisterReference` registers such a stub as a bean, wired from the
+single client (by type) and per-reference tuning:
 
 ```go
 import StarterDubbo "go-spring.org/starter-dubbo"
 
 func main() {
-    // Register the greet.GreetService stub as a bean. "greet" selects the named
-    // client bean; ${spring.dubbo.references.greet} supplies per-stub tuning.
+    // Register the greet.GreetService stub as a bean. "greet" is the reference
+    // key (matches ${spring.dubbo.client.references.greet}); the single client
+    // is injected by type.
     StarterDubbo.RegisterReference("greet", greet.NewGreetService)
     // ...
 }
@@ -180,18 +183,31 @@ References are **not** auto-registered from config like clients are: a typed stu
 and its `NewXxxService` constructor are app-specific generated code the starter
 cannot see, so the app must call `RegisterReference` for each stub. That explicit
 call is what keeps the autowire typed; the helper only standardizes the wiring
-(named client + reference config) so every stub is registered the same way.
+(single client + reference config) so every stub is registered the same way.
 
-Each reference is tuned under `${spring.dubbo.references.<name>}` - the
-reference-level counterpart to `${spring.dubbo.client.<name>}`, overriding the
-client-level default for this one stub. All fields are optional; empty keeps
-dubbo-go's default:
+Each reference is tuned under `${spring.dubbo.client.references.<name>}` - the
+reference-level counterpart to `${spring.dubbo.client}`, overriding the
+consumer-level default for this one stub (protocol/registry-ids/filter included,
+so different stubs using different protocols/registries in one process need no
+extra clients). All fields are optional; empty keeps dubbo-go's default (or the
+consumer-level default for inherited fields):
 
 ```properties
-spring.dubbo.references.greet.timeout=3s               # per-request timeout; overrides client-level
-spring.dubbo.references.greet.retries=2                # only with cluster=failover (default); -1 keeps dubbo-go default, 0 disables
-spring.dubbo.references.greet.cluster=failover         # failover(default)|failfast|failsafe|failback|forking|available|broadcast|zoneAware
-spring.dubbo.references.greet.load-balance=roundrobin  # random(default)|roundrobin|leastactive|consistenthashing|p2c
+spring.dubbo.client.references.greet.protocol=tri             # overrides client-level protocol
+spring.dubbo.client.references.greet.registry-ids=etcd        # overrides client-level registry-ids
+spring.dubbo.client.references.greet.timeout=3s               # per-request timeout; overrides client-level
+spring.dubbo.client.references.greet.retries=2                # only with cluster=failover (default); -1 keeps dubbo-go default, 0 disables
+spring.dubbo.client.references.greet.cluster=failover         # failover(default)|failfast|failsafe|failback|forking|available|broadcast|zoneAware
+spring.dubbo.client.references.greet.load-balance=roundrobin  # random(default)|roundrobin|leastactive|consistenthashing|p2c
+```
+
+Typical multi-protocol-per-stub setup (one client default, per-reference override):
+
+```properties
+spring.dubbo.client.protocol=tri                          # default protocol
+spring.dubbo.client.references.orders.timeout=3s          # orders keeps the default tri
+spring.dubbo.client.references.legacy.protocol=dubbo      # legacy opts into dubbo
+spring.dubbo.client.references.legacy.timeout=5s
 ```
 
 ## Filters
@@ -245,12 +261,15 @@ spring.dubbo.server.param-sign=true
 spring.dubbo.server.params.some-filter-key=some-value
 ```
 
-On the **client** side, `filter` and `params` mirror the server, scoped per named
-instance:
+On the **client** side, `filter` and `params` mirror the server, at consumer
+level (under `${spring.dubbo.client}`) and overridable per reference:
 
 ```properties
-spring.dubbo.client.orders.filter=cshutdown,active
-spring.dubbo.client.orders.params.some-filter-key=some-value
+spring.dubbo.client.filter=cshutdown,active
+spring.dubbo.client.params.some-filter-key=some-value
+# or per reference:
+spring.dubbo.client.references.orders.filter=cshutdown,active
+spring.dubbo.client.references.orders.params.some-filter-key=some-value
 ```
 
 ### Filters that cannot be configured here

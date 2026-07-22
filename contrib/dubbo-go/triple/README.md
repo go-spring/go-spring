@@ -87,7 +87,7 @@ regenerates only those files without touching the refactored business code.
 | Startup         | `srv.Serve()` blocks in `main()`           | starter-dubbo's `SimpleDubboServer` implements `gs.Server`; `gs.Run()` drives Run/Stop |
 | Handler wiring  | `RegisterGreetServiceHandler(srv, &impl)`  | `gs.Provide(func() StarterDubbo.ServiceRegister { ... })` binds a service-agnostic register |
 | Server enable   | always on                                  | conditional on a `ServiceRegister` bean via `gs.OnBean`                        |
-| Port            | hard-coded default                         | `${spring.dubbo.server.protocols.tri.port}` from `conf/app.properties`         |
+| Port            | hard-coded default                         | `${spring.dubbo.protocols.tri.port}` from `conf/app.properties`         |
 | Registration    | none (direct)                              | top-level `${spring.dubbo.registries.etcdv3}` config → etcd                    |
 | Discovery       | consumer `WithClientURL("host:port")`      | consumer autowires the default `*client.Client` bean, resolves by interface name from etcd |
 | Shutdown        | process-owned                              | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, deregisters from etcd)     |
@@ -137,21 +137,20 @@ spring.http.server.enabled=false
 # by default. Matches docker-compose.yml.
 spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 
-# Provider protocol listener; the key under ${spring.dubbo.server.protocols} is
+# Provider protocol listener; the key under ${spring.dubbo.protocols} is
 # the dubbo-go protocol name. Triple on 20000 (20001 is reserved for the classic
 # Dubbo/Hessian2 sibling so both can coexist on one host).
-spring.dubbo.server.protocols.tri.port=20000
+spring.dubbo.protocols.tri.port=20000
 ```
 
-The Dubbo **client** is provided by starter-dubbo as a named bean (the `greet`
-entry under `${spring.dubbo.client}`) built on top of the shared
-`${spring.dubbo.registries}`; the consumer autowires it and dials the service
-through the Triple-generated stub. Multiple named clients can be declared under
-`${spring.dubbo.client}` (bean name = the map key). To run two
-registries of the same type, give each a distinct map-key ID and set `protocol`
-explicitly, e.g. `spring.dubbo.registries.bj.protocol=etcdv3` /
-`...sh.protocol=etcdv3`, then let each role pick with `registry-ids` (e.g.
-`spring.dubbo.client.greet.registry-ids=bj`).
+The Dubbo **client** is provided by starter-dubbo as a single process-wide bean
+(built from `${spring.dubbo.client}` on top of the shared
+`${spring.dubbo.registries}`); the consumer autowires it by type and dials the
+service through the Triple-generated stub. To run two registries of the same
+type, give each a distinct map-key ID and set `protocol` explicitly, e.g.
+`spring.dubbo.registries.bj.protocol=etcdv3` / `...sh.protocol=etcdv3`, then let
+the client (or a per-reference entry) pick with `registry-ids` (e.g.
+`spring.dubbo.client.registry-ids=bj`).
 
 ## Run
 

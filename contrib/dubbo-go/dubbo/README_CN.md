@@ -89,18 +89,16 @@ spring.http.server.enabled=false
 # 与 docker-compose.yml 一致。
 spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 
-# Provider 协议监听;${spring.dubbo.server.protocols} 下的 key 即 dubbo-go 协议名。
+# Provider 协议监听;${spring.dubbo.protocols} 下的 key 即 dubbo-go 协议名。
 # 经典 Dubbo 在 20001(20000 留给 Triple 兄弟,便于两者同机共存)。
-spring.dubbo.server.protocols.dubbo.port=20001
+spring.dubbo.protocols.dubbo.port=20001
 ```
 
-Dubbo **client** 由 starter-dubbo 作为具名 bean(`greet` 项,位于 `${spring.dubbo.client}` 下)提供,由
-`${spring.dubbo.client}` 加顶层 `${spring.dubbo.registries}` 构建;consumer 直接
-autowire 它并 dial 服务。可在 `${spring.dubbo.client}` 下声明多个命名
-client(bean 名 = map key)。若要运行两个同类型注册中心,给各自一个不同的 map-key
-ID 并显式设置 `protocol`,例如 `spring.dubbo.registries.bj.protocol=etcdv3` /
-`...sh.protocol=etcdv3`,再让各角色用 registry-ids 挑选(如
-`spring.dubbo.client.greet.registry-ids=bj`)。
+Dubbo **client** 由 starter-dubbo 作为进程级单 bean(由 `${spring.dubbo.client}`
+加顶层 `${spring.dubbo.registries}` 构建)提供;consumer 按类型 autowire 它并 dial
+服务。若要运行两个同类型注册中心,给各自一个不同的 map-key ID 并显式设置 `protocol`,
+例如 `spring.dubbo.registries.bj.protocol=etcdv3` / `...sh.protocol=etcdv3`,再让
+client(或逐引用条目)用 registry-ids 挑选(如 `spring.dubbo.client.registry-ids=bj`)。
 
 ## 运行
 

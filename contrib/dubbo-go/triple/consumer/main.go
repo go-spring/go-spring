@@ -35,7 +35,7 @@ import (
 // Consumer calls the GreetService discovered through the registry. Rather than
 // holding the raw *client.Client and rebuilding the stub on every call, it
 // depends on the greet.GreetService stub bean (registered in main below, which
-// itself is built from starter-dubbo's named "greet" client) - the same layering
+// itself is built from starter-dubbo's single global client) - the same layering
 // real apps use: a business bean depends on the typed RPC stub, the stub depends
 // on the client, the same way the redis example autowires *redis.Client into its
 // Service bean.
@@ -58,10 +58,10 @@ func (c *Consumer) Greet(ctx context.Context, name string) (string, error) {
 func main() {
 	// Register the Triple-generated GreetService stub as a bean (instead of
 	// rebuilding it on every call). StarterDubbo.RegisterReference wires the
-	// named "greet" client and the per-reference config under
-	// ${spring.dubbo.references.greet} into the stub constructor - a starter
-	// helper reusable for any stub. The stub bean is then autowired into
-	// Consumer below (business bean -> RPC stub -> client).
+	// single global client (autowired by type) and the per-reference config
+	// under ${spring.dubbo.client.references.greet} into the stub constructor -
+	// a starter helper reusable for any stub. The stub bean is then autowired
+	// into Consumer below (business bean -> RPC stub -> client).
 	StarterDubbo.RegisterReference("greet", greet.NewGreetService)
 
 	// Consumer is not referenced by any other bean, so register it as a root

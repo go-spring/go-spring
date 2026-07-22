@@ -125,39 +125,39 @@ gs.Provide(func() StarterDubbo.ServiceRegister {
 ## 客户端
 
 Starter 同样以 Bean 形式提供 Dubbo 客户端，其开启条件与服务端相同的 `*Instance`
-（没有注册中心的项目不会得到任何客户端）。客户端为多实例：`${spring.dubbo.client}` 下的每一项都是一个具名客户端，其键名即 Bean 名称。
-注册中心与可观测性都从共享的 `Instance` 继承，因此客户端本身只需关心
-protocol/timeout/registry-ids。
+（没有注册中心的项目不会得到任何客户端）。与多数 go-spring 客户端 starter 不同，dubbo 客户端
+是**进程级单实例**--对齐 dubbo-go.json 里单一的 `consumer` 节点：dubbo-go 一个进程只有一个
+consumer，`${spring.dubbo.client}` 是单对象（不是 map），产出单个默认 `*client.Client` Bean。
+注册中心与可观测性都从共享的 `Instance` 继承，因此客户端本身只承载 consumer 级默认值：
 
 ```properties
-spring.dubbo.client.orders.protocol=tri        # dubbo(默认)|tri|triple|jsonrpc
-spring.dubbo.client.orders.timeout=3s          # 单次请求超时，如 "3s"
-spring.dubbo.client.orders.registry-ids=etcd   # 按 ID 选择全局注册中心；留空表示全部
-spring.dubbo.client.legacy.protocol=dubbo
+spring.dubbo.client.protocol=tri        # dubbo(默认)|tri|triple|jsonrpc
+spring.dubbo.client.timeout=3s          # 单次请求超时，如 "3s"
+spring.dubbo.client.registry-ids=etcd   # 按 ID 选择全局注册中心；留空表示全部
+spring.dubbo.client.filter=             # 逗号分隔 filter 链；"-name" 去掉某项
+spring.dubbo.client.check=true          # false 关闭启动期 provider 在线检查
 ```
 
-按键名注入后，再构建生成的 stub：
+需要原始 `*client.Client`（如 classic Dubbo 无 stub、用 `Dial`+`CallUnary`）时按类型装配：
 
 ```go
 type Caller struct {
-    Orders *client.Client `autowire:"orders"`
-    Legacy *client.Client `autowire:"legacy"`
+    Client *client.Client `autowire:""` // 按类型装配单 client
 }
-// svc, _ := greet.NewGreetService(c.Orders)
 ```
 
 ## 引用（Reference）
 
 上文的客户端 Bean 是原始的 `*client.Client`。真实应用自动装配的是每个 proto 生成的
 **类型化 stub**（如 `greet.GreetService`），而非原始客户端。`RegisterReference` 把这样的
-stub 注册为 Bean，由具名客户端与按引用的调优参数装配：
+stub 注册为 Bean，由单 client（按类型装配）与按引用的调优参数装配：
 
 ```go
 import StarterDubbo "go-spring.org/starter-dubbo"
 
 func main() {
-    // 把 greet.GreetService stub 注册为 Bean。"greet" 选中具名客户端 Bean；
-    // ${spring.dubbo.references.greet} 提供按 stub 的调优参数。
+    // 把 greet.GreetService stub 注册为 Bean。"greet" 是引用键名（对应
+    // ${spring.dubbo.client.references.greet}）；单 client 按类型注入。
     StarterDubbo.RegisterReference("greet", greet.NewGreetService)
     // ...
 }
@@ -169,17 +169,30 @@ type Caller struct {
 
 引用**不会**像客户端那样按配置自动注册：类型化 stub 及其 `NewXxxService` 构造函数是
 应用侧的生成代码，starter 无法感知，因此应用必须为每个 stub 显式调用 `RegisterReference`。
-正是这一次显式调用保证了自动装配是类型安全的；该辅助函数只负责把装配方式（具名客户端 +
+正是这一次显式调用保证了自动装配是类型安全的；该辅助函数只负责把装配方式（单 client +
 引用配置）标准化，让每个 stub 的注册方式保持一致。
 
-每个引用在 `${spring.dubbo.references.<name>}` 下调优——它是 `${spring.dubbo.client.<name>}`
-的引用级对应物，为该 stub 覆盖客户端级默认值。所有字段可选；留空则保留 dubbo-go 默认值：
+每个引用在 `${spring.dubbo.client.references.<name>}` 下调优——它是 `${spring.dubbo.client}`
+的引用级对应物，为该 stub 覆盖 consumer 级默认值（连 protocol/registry-ids/filter 都可逐 stub
+覆盖，所以一个进程内不同 stub 用不同协议/注册中心无需多个 client）。所有字段可选；留空则保留
+dubbo-go 默认值或 consumer 级默认值：
 
 ```properties
-spring.dubbo.references.greet.timeout=3s               # 单次请求超时；覆盖客户端级
-spring.dubbo.references.greet.retries=2                # 仅在 cluster=failover（默认）下生效；-1 保留 dubbo-go 默认，0 禁用
-spring.dubbo.references.greet.cluster=failover         # failover(默认)|failfast|failsafe|failback|forking|available|broadcast|zoneAware
-spring.dubbo.references.greet.load-balance=roundrobin  # random(默认)|roundrobin|leastactive|consistenthashing|p2c
+spring.dubbo.client.references.greet.protocol=tri             # 覆盖客户端级 protocol
+spring.dubbo.client.references.greet.registry-ids=etcd        # 覆盖客户端级 registry-ids
+spring.dubbo.client.references.greet.timeout=3s               # 单次请求超时；覆盖客户端级
+spring.dubbo.client.references.greet.retries=2                # 仅在 cluster=failover（默认）下生效；-1 保留 dubbo-go 默认，0 禁用
+spring.dubbo.client.references.greet.cluster=failover         # failover(默认)|failfast|failsafe|failback|forking|available|broadcast|zoneAware
+spring.dubbo.client.references.greet.load-balance=roundrobin  # random(默认)|roundrobin|leastactive|consistenthashing|p2c
+```
+
+不同 stub 用不同协议的典型写法（单 client 给默认，逐引用覆盖）：
+
+```properties
+spring.dubbo.client.protocol=tri                          # 默认协议
+spring.dubbo.client.references.orders.timeout=3s          # orders 用默认 tri
+spring.dubbo.client.references.legacy.protocol=dubbo      # legacy 单独用 dubbo
+spring.dubbo.client.references.legacy.timeout=5s
 ```
 
 ## Filter（过滤器）
@@ -230,11 +243,15 @@ spring.dubbo.server.param-sign=true
 spring.dubbo.server.params.some-filter-key=some-value
 ```
 
-**客户端**侧的 `filter` 与 `params` 与服务端对称，按具名实例区分：
+**客户端**侧的 `filter` 与 `params` 与服务端对称，在 consumer 级（`${spring.dubbo.client}`）
+设置，也可逐引用覆盖：
 
 ```properties
-spring.dubbo.client.orders.filter=cshutdown,active
-spring.dubbo.client.orders.params.some-filter-key=some-value
+spring.dubbo.client.filter=cshutdown,active
+spring.dubbo.client.params.some-filter-key=some-value
+# 或逐引用：
+spring.dubbo.client.references.orders.filter=cshutdown,active
+spring.dubbo.client.references.orders.params.some-filter-key=some-value
 ```
 
 ### 无法在此处配置的 filter
