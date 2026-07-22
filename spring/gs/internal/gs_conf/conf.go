@@ -30,6 +30,8 @@
 //
 //  1. **Command-line arguments** - Highest precedence
 //  2. **Operating system environment variables**
+//     - Values loaded from a `.env` file (only when the variable is not
+//     already set, so real environment variables take precedence)
 //  3. **Profile-specific configuration** (`app-{profile}.yaml` etc.)
 //     - Imports declared in profile configuration files (`spring.app.imports`)
 //     - The profile-specific configuration file itself
@@ -64,6 +66,10 @@ func NewAppConfig() *AppConfig {
 
 // Refresh refreshes the configuration by merging multiple sources.
 func (c *AppConfig) Refresh() (flatten.Storage, error) {
+	if err := loadDotEnv(); err != nil {
+		return nil, errutil.Explain(err, "load .env file failed")
+	}
+
 	env := extractEnvironments()
 	cmd, err := extractCmdArgs()
 	if err != nil {
