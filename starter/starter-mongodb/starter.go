@@ -36,9 +36,9 @@ var liveDialers sync.Map // *mongo.Client -> *discovery.LiveDialer
 func init() {
 
 	// Register multiple MongoDB clients as a group.
-	// Each instance is created according to the configuration in "${spring.mongodb.instances}".
+	// Each instance is created according to the configuration in "${spring.mongodb}".
 	// This allows defining multiple MongoDB clients dynamically.
-	gs.Group("${spring.mongodb.instances}", newClient, destroyClient)
+	gs.Group("${spring.mongodb}", newClient, destroyClient)
 }
 
 // newClient creates a new MongoDB client based on the provided configuration,

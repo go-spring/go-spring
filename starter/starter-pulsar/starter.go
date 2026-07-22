@@ -33,9 +33,9 @@ import (
 func init() {
 
 	// Register multiple Pulsar clients as a group.
-	// Each instance is created according to the configuration in "${spring.pulsar.instances}".
+	// Each instance is created according to the configuration in "${spring.pulsar}".
 	// This allows defining multiple Pulsar clients dynamically.
-	gs.Group("${spring.pulsar.instances}", newClient, destroyClient)
+	gs.Group("${spring.pulsar}", newClient, destroyClient)
 }
 
 // newClient builds a Pulsar client with authentication, TLS, connection-event

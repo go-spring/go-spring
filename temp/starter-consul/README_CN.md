@@ -26,8 +26,10 @@ import _ "go-spring.org/starter-consul"
 在项目的[配置文件](example/conf/app.properties)中添加 Consul 配置，比如：
 
 ```properties
-spring.consul.address=127.0.0.1:8500
+spring.consul.a.address=127.0.0.1:8500
 ```
+
+`spring.consul` 下的每一项都是一个具名客户端：键名（`a`、`b` ……）即注入时使用的 bean 名称。
 
 ### 3. 注入 Consul 实例
 
@@ -37,7 +39,7 @@ spring.consul.address=127.0.0.1:8500
 import "github.com/hashicorp/consul/api"
 
 type Service struct {
-    Consul *api.Client `autowire:"__default__"`
+    Consul *api.Client `autowire:"a"`
 }
 ```
 
@@ -62,4 +64,4 @@ pair, _, err := s.Consul.KV().Get("key", nil)
 
 ## 高级功能
 
-* **支持多 Consul 实例**：可以在配置文件的 `spring.consul.instances` 下定义多个 Consul 实例，并在项目中使用 name 进行引用。
+* **多 Consul 实例**：在 `spring.consul` 下为每一项定义一个具名客户端，按其键名分别注入。

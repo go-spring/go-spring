@@ -95,21 +95,17 @@ func main() {
 
 ## Starter 复用
 
-当同一类组件在多个项目里反复接入时，单个项目里的注册代码就应该沉淀为 Starter。Starter 的主题不是“再封装一层 API”，而是稳定配置前缀、启用条件、默认 Bean 名、多实例规则和资源释放方式。
+当同一类组件在多个项目里反复接入时，单个项目里的注册代码就应该沉淀为 Starter。Starter 的主题不是“再封装一层 API”，而是稳定配置前缀、启用条件、Bean 命名、多实例规则和资源释放方式。
 
-默认单实例和多实例可以共享一套组件约定。
+多实例配置直接放在组件前缀下，所有实例共享一套组件约定。
 
 ```go
 func init() {
-	gs.Provide(newClient, gs.TagArg("${spring.gorm}")).
-		Condition(gs.OnProperty("spring.gorm.dsn")).
-		Name("__default__")
-
-	gs.Group("${spring.gorm.instances}", newClient, nil)
+	gs.Group("${spring.gorm}", newClient, nil)
 }
 ```
 
-默认实例由 `spring.gorm.dsn` 触发，多实例来自 `spring.gorm.instances` 字典。`Provide`、`Module`、`Group`、`Condition`、`TagArg` 和 Destroy 回调仍然是 Go-Spring 原有能力，Starter 只是把这些能力组合成可复用包。
+每个实例都是 `spring.gorm` 下的一个条目，字典 key 即为 Bean 名称。`Provide`、`Module`、`Group`、`Condition`、`TagArg` 和 Destroy 回调仍然是 Go-Spring 原有能力，Starter 只是把这些能力组合成可复用包。
 
 组件复用解决的是“跨项目接入如何保持一致”。如果某段初始化只服务于一个项目，直接写在应用里更清楚；如果配置命名、生命周期和多实例规则开始重复，Starter 才成为合适边界。
 

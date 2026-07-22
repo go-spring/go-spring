@@ -47,10 +47,9 @@ func init() {
 	// Basic usage
 	gs.Provide(NewDB)
 
-	// Complete usage: configuration injection + conditional enablement + naming + lifecycle management
+	// Complete usage: configuration injection + conditional enablement + lifecycle management
 	gs.Provide(NewDB, gs.TagArg("${spring.gorm}")).
 		Condition(gs.OnProperty("spring.gorm.dsn")). // Create only when the property exists
-		Name("__default__").                         // Bean name
 		Destroy(CloseDB)                             // Clean up resources on destroy
 }
 
@@ -117,9 +116,9 @@ import (
 )
 
 func init() {
-	// Create multiple DB instances from the spring.gorm.instances configuration dictionary
+	// Create multiple DB instances from the spring.gorm configuration dictionary
 	// Each instance uses one item from the configuration
-	gs.Group("${spring.gorm.instances}", NewDB, CloseDB)
+	gs.Group("${spring.gorm}", NewDB, CloseDB)
 }
 ```
 
@@ -128,40 +127,31 @@ This type of configuration is usually written as a dictionary: the key is the Be
 ```yaml
 spring:
   gorm:
-    instances:
-      db1:
-        dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
-      db2:
-        dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+    db1:
+      dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+    db2:
+      dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
 ```
 
 After registration through `gs.Group`, the Starter does not need to manually parse arrays or write separate registration code for each instance.
 
 ## Custom Starter
 
-Official Starters usually use the registration pattern of "default single instance + optional multiple instances".
+Official Starters register one named client per entry under the component prefix (multi-instance only, with no default singleton).
 Custom Starters are also recommended to follow this convention so that application-side configuration and usage remain more consistent.
 
 ```go
 func init() {
-	// Register the default single instance.
-	// This instance is created only when spring.gorm.dsn is configured.
-	gs.Provide(newClient, gs.TagArg("${spring.gorm}")).
-		Condition(gs.OnProperty("spring.gorm.dsn")).
-		Name("__default__")
-
 	// Register multiple instances.
-	// Each instance is created from the configuration in spring.gorm.instances.
-	gs.Group("${spring.gorm.instances}", newClient, nil)
+	// Each entry under spring.gorm is one named instance whose key is the Bean name.
+	gs.Group("${spring.gorm}", newClient, nil)
 }
 ```
 
 It is recommended to follow these naming and configuration conventions:
 
 - Use `spring.xxx` or `spring.xxx.yyy` as the configuration prefix, and keep it consistent with the component name.
-- Use `__default__` as the Bean name for the default single instance.
-- The default single instance should preferably be triggered by a key configuration item, such as `spring.xxx.addr`.
-- Multi-instance configuration should preferably be placed uniformly under the `spring.xxx.instances` configuration dictionary.
+- Each entry under the prefix is one named instance; the dictionary key is the Bean name the application injects.
 - Resource components should provide a `Destroy` function to ensure that connections, file handles, or background tasks can be gracefully released when the application stops.
 
 ## Official Starters

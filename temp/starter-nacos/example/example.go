@@ -45,8 +45,8 @@ const (
 )
 
 type Service struct {
-	Config config_client.IConfigClient `autowire:"__default__"`
-	Naming naming_client.INamingClient `autowire:"__default__"`
+	Config config_client.IConfigClient `autowire:"a"`
+	Naming naming_client.INamingClient `autowire:"a"`
 }
 
 func main() {

@@ -24,13 +24,13 @@ import _ "go-spring.org/starter-nats"
 
 ### 2. Configure the NATS Connections
 
-Define one or more named connections under `spring.nats.instances.<name>` in your
+Define one or more named connections under `spring.nats.<name>` in your
 project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.nats.instances.main.url=nats://127.0.0.1:4222
-spring.nats.instances.main.jetstream.enabled=true
-spring.nats.instances.work.url=nats://127.0.0.1:4222
+spring.nats.main.url=nats://127.0.0.1:4222
+spring.nats.main.jetstream.enabled=true
+spring.nats.work.url=nats://127.0.0.1:4222
 ```
 
 ### 3. Inject the NATS Connection
@@ -109,10 +109,10 @@ and other NATS features the binder does not model.
 
 ## Advanced Features
 
-* **JetStream**: Set `spring.nats.instances.<name>.jetstream.enabled=true` to expose
+* **JetStream**: Set `spring.nats.<name>.jetstream.enabled=true` to expose
   a JetStream context on `Conn.JetStream` for that instance, derived from the same
   connection.
-* **Multiple connections**: Every entry under `spring.nats.instances` becomes an
+* **Multiple connections**: Every entry under `spring.nats` becomes an
   independently configured `*Conn` bean; inject them by name to talk to different
   clusters or JetStream domains.
 * **Health check**: `Conn.Healthy()` reflects the live state of the auto-reconnecting
@@ -121,7 +121,7 @@ and other NATS features the binder does not model.
 * **Authentication**: Beyond username/password and token, the starter supports NATS 2.x
   decentralized auth via a credentials file (`creds-file`) or an nkey seed file
   (`nkey-file`).
-* **TLS**: Set `spring.nats.instances.<name>.tls.enabled=true` to negotiate TLS.
+* **TLS**: Set `spring.nats.<name>.tls.enabled=true` to negotiate TLS.
   Optionally pin a CA bundle (`tls.ca-file`) and supply a client certificate
   (`tls.cert-file`/`tls.key-file`) for mutual TLS.
 
@@ -161,7 +161,7 @@ Why call-site helpers instead of a wrapped connection:
 
 ## Configuration
 
-Each connection under `spring.nats.instances.<name>` reads the following properties:
+Each connection under `spring.nats.<name>` reads the following properties:
 
 | Property | Default | Description |
 | --- | --- | --- |

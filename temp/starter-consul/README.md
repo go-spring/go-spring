@@ -26,8 +26,11 @@ import _ "go-spring.org/starter-consul"
 Add Consul configuration in your project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.consul.address=127.0.0.1:8500
+spring.consul.a.address=127.0.0.1:8500
 ```
+
+Each entry under `spring.consul` is a named client: the key (`a`, `b`, ...) becomes the
+bean name you inject.
 
 ### 3. Inject the Consul Instance
 
@@ -37,7 +40,7 @@ Refer to the [example.go](example/example.go) file.
 import "github.com/hashicorp/consul/api"
 
 type Service struct {
-    Consul *api.Client `autowire:"__default__"`
+    Consul *api.Client `autowire:"a"`
 }
 ```
 
@@ -62,5 +65,5 @@ The [example.go](example/example.go) runTest demonstrates three core Consul feat
 
 ## Advanced Features
 
-* **Supports multiple Consul instances**: You can define multiple Consul instances under
-  `spring.consul.instances` in the configuration file and reference them by name.
+* **Multiple Consul instances**: Define one named client per entry under `spring.consul`
+  and inject each by its key.

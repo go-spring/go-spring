@@ -31,7 +31,7 @@
   `"db"` 订阅者会响应 `"db.pool"` 事件，反之亦然。
 - **按实例名选传输。** `Conn` 通过
   `autowire:"${spring.config.bus.nats-instance:=config-bus}"` 注入，让应用
-  决定 `spring.nats.instances.*` 下的哪个 NATS 实例承载 bus。
+  决定 `spring.nats.*` 下的哪个 NATS 实例承载 bus。
 
 ## 3. 约束
 

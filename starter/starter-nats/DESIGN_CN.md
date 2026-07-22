@@ -8,7 +8,7 @@ NATS 同一连接同时承载 core + JetStream 两套 API。
 
 ## 1. 职责与边界
 
-- 用 `gs.Group` 把 `spring.nats.instances.<name>` 每条绑到 `*Conn` bean；
+- 用 `gs.Group` 把 `spring.nats.<name>` 每条绑到 `*Conn` bean；
   不做默认单实例（本仓库 client 类 starter 一律仅多实例，见
   `project_starter_capability_backlog`）。
 - `Conn` 内嵌 `*nats.Conn`，调用方仍能直接在 bean 上用

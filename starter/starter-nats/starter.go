@@ -59,8 +59,8 @@ func (c *Conn) Healthy() bool {
 func init() {
 	// Register multiple NATS connections as a group.
 	// Each instance is created according to the configuration in
-	// "${spring.nats.instances}", allowing multiple connections dynamically.
-	gs.Group("${spring.nats.instances}", newConn, destroyConn)
+	// "${spring.nats}", allowing multiple connections dynamically.
+	gs.Group("${spring.nats}", newConn, destroyConn)
 }
 
 // newConn dials NATS and, when configured, derives a JetStream context from the

@@ -34,7 +34,7 @@ import (
 )
 
 type Service struct {
-	Consul *api.Client `autowire:"__default__"`
+	Consul *api.Client `autowire:"a"`
 }
 
 func main() {

@@ -9,7 +9,7 @@ with a small twist: the injected bean is a wrapper around
 
 ## 1. Responsibilities & Boundaries
 
-- Binds each `spring.nats.instances.<name>` entry to a `*Conn` bean via
+- Binds each `spring.nats.<name>` entry to a `*Conn` bean via
   `gs.Group`; there is no default single-instance bean (client starters
   in this repo are multi-instance only, see `project_starter_capability_backlog`).
 - `Conn` embeds `*nats.Conn` so callers keep `Publish`/`Subscribe`/

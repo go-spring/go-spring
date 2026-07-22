@@ -47,10 +47,9 @@ func init() {
 	// 基础用法
 	gs.Provide(NewDB)
 
-	// 完整用法：配置注入 + 条件启用 + 命名 + 生命周期管理
+	// 完整用法：配置注入 + 条件启用 + 生命周期管理
 	gs.Provide(NewDB, gs.TagArg("${spring.gorm}")).
 		Condition(gs.OnProperty("spring.gorm.dsn")). // 属性存在时才创建
-		Name("__default__").                         // Bean 名称
 		Destroy(CloseDB)                             // 销毁时清理资源
 }
 
@@ -117,9 +116,9 @@ import (
 )
 
 func init() {
-	// 根据 spring.gorm.instances 配置字典创建多个 DB 实例
+	// 根据 spring.gorm 配置字典创建多个 DB 实例
 	// 每个实例使用其中一项配置
-	gs.Group("${spring.gorm.instances}", NewDB, CloseDB)
+	gs.Group("${spring.gorm}", NewDB, CloseDB)
 }
 ```
 
@@ -128,40 +127,31 @@ func init() {
 ```yaml
 spring:
   gorm:
-    instances:
-      db1:
-        dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
-      db2:
-        dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+    db1:
+      dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+    db2:
+      dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
 ```
 
 通过 `gs.Group` 注册后，Starter 不需要手动解析数组，也不需要为每个实例单独编写注册代码。
 
 ## 自定义 Starter
 
-官方 Starter 通常采用“默认单实例 + 可选多实例”的注册模式。
+官方 Starter 在组件前缀下为每个条目注册一个命名客户端（仅多实例，无默认单实例）。
 自定义 Starter 也建议遵循这一约定，这样应用侧的配置和使用方式会更加统一。
 
 ```go
 func init() {
-	// 注册默认单实例。
-	// 只有配置了 spring.gorm.dsn 时，这个实例才会被创建。
-	gs.Provide(newClient, gs.TagArg("${spring.gorm}")).
-		Condition(gs.OnProperty("spring.gorm.dsn")).
-		Name("__default__")
-
 	// 注册多实例。
-	// 每个实例都会根据 spring.gorm.instances 中的配置创建。
-	gs.Group("${spring.gorm.instances}", newClient, nil)
+	// spring.gorm 下的每个条目是一个命名实例，字典 key 即为 Bean 名称。
+	gs.Group("${spring.gorm}", newClient, nil)
 }
 ```
 
 建议遵循以下命名与配置规范：
 
 - 配置前缀使用 `spring.xxx` 或 `spring.xxx.yyy` 格式，并与组件名称保持一致。
-- 默认单实例使用 `__default__` 作为 Bean 名称。
-- 默认单实例建议通过关键配置项触发，例如 `spring.xxx.addr`。
-- 多实例配置建议统一放在 `spring.xxx.instances` 配置字典下。
+- 前缀下的每个条目是一个命名实例，字典 key 即为应用注入时使用的 Bean 名称。
 - 资源型组件应提供 `Destroy` 函数，确保应用停止时可以优雅释放连接、文件句柄或后台任务。
 
 ## 官方 Starter

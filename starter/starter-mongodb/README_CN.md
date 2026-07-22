@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-mongodb"
 
 ### 2. 配置 MongoDB 实例
 
-在项目的[配置文件](example/conf/app.properties)中，在 `spring.mongodb.instances.<name>`
+在项目的[配置文件](example/conf/app.properties)中，在 `spring.mongodb.<name>`
 下定义一个或多个具名实例，比如：
 
 ```properties
-spring.mongodb.instances.a.uri=mongodb://127.0.0.1:27017
-spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
+spring.mongodb.a.uri=mongodb://127.0.0.1:27017
+spring.mongodb.b.uri=mongodb://127.0.0.1:27017
 ```
 
 ### 3. 注入 MongoDB 实例
@@ -64,7 +64,7 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
 
 ## 高级功能
 
-* **多 MongoDB 实例**：`spring.mongodb.instances` 下的每一项都会成为一个独立配置的
+* **多 MongoDB 实例**：`spring.mongodb` 下的每一项都会成为一个独立配置的
   `*mongo.Client` bean，按名称注入即可访问不同的集群或数据库。
 
 * **可观测**：每个客户端通过一个 command monitor 桥接进 go-spring 的统一可观测体系，
@@ -80,8 +80,8 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
   自己的命名服务即可。
 
   ```properties
-  spring.mongodb.instances.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
-  spring.mongodb.instances.disc.service-name=mongo-cluster
+  spring.mongodb.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
+  spring.mongodb.disc.service-name=mongo-cluster
   ```
 
   注意：这会绕过 MongoDB 自身的副本集 / mongos 拓扑发现——驱动直接连命名服务给出的地址。

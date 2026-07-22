@@ -28,9 +28,9 @@ import (
 func init() {
 
 	// Register multiple MQTT clients as a group.
-	// Each instance is created according to the configuration in "${spring.mqtt.instances}".
+	// Each instance is created according to the configuration in "${spring.mqtt}".
 	// This allows defining multiple MQTT clients dynamically.
-	gs.Group("${spring.mqtt.instances}", newClient, destroyClient)
+	gs.Group("${spring.mqtt}", newClient, destroyClient)
 }
 
 // newClient creates and connects an MQTT client based on the provided configuration.

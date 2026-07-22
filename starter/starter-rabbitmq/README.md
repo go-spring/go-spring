@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-rabbitmq"
 
 ### 2. Configure the RabbitMQ Instances
 
-Define one or more named instances under `spring.rabbitmq.instances.<name>` in your
+Define one or more named instances under `spring.rabbitmq.<name>` in your
 project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.rabbitmq.instances.a.url=amqp://guest:guest@127.0.0.1:5672/
-spring.rabbitmq.instances.b.url=amqp://guest:guest@127.0.0.1:5672/
+spring.rabbitmq.a.url=amqp://guest:guest@127.0.0.1:5672/
+spring.rabbitmq.b.url=amqp://guest:guest@127.0.0.1:5672/
 ```
 
 ### 3. Inject the RabbitMQ Connection
@@ -147,6 +147,6 @@ features the binder does not model.
 
 ## Advanced Features
 
-* **Multiple RabbitMQ instances**: Every entry under `spring.rabbitmq.instances`
+* **Multiple RabbitMQ instances**: Every entry under `spring.rabbitmq`
   becomes an independently configured `*amqp.Connection` bean; inject them by name
   to talk to different brokers or vhosts.

@@ -10,7 +10,7 @@ switching implementations is a blank-import swap, no config surgery
 
 ## 1. Responsibilities & Boundaries
 
-- Binds each `spring.kafka.instances.<name>` entry to one
+- Binds each `spring.kafka.<name>` entry to one
   `sarama.Client` bean via `gs.Group`. No single-instance default.
 - The exposed bean is `sarama.Client` — producer, consumer group, admin
   clients are constructed by callers on top of the shared client, so a

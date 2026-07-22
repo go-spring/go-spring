@@ -27,25 +27,20 @@ import (
 
 func init() {
 
-	// Register a naming client (service discovery) and a config client
-	// (configuration management). Both are created only when the property
-	// "spring.nacos.ip-addr" is set, using the "${spring.nacos}" configuration.
-	// They are distinct interface types, so both keep the default name.
-	gs.Provide(newNamingClient, gs.TagArg("${spring.nacos}")).
-		Condition(gs.OnProperty("spring.nacos.ip-addr")).
-		Destroy(destroyNamingClient)
-
-	gs.Provide(newConfigClient, gs.TagArg("${spring.nacos}")).
-		Condition(gs.OnProperty("spring.nacos.ip-addr")).
-		Destroy(destroyConfigClient)
-
-	// Register multiple naming clients as a group.
-	// Each instance is created according to the configuration in "${spring.nacos.instances}".
-	gs.Group("${spring.nacos.instances}", newNamingClient, destroyNamingClient)
+	// Multi-instance only: bind a map under "${spring.nacos}" and register one
+	// named naming client and one named config client per entry, matching the
+	// client-starter archetype (no default singleton). The naming client provides
+	// service discovery; the config client provides configuration management.
+	// They are distinct interface types, so an entry keyed "a" yields a naming
+	// client "a" and a config client "a", each injected by name.
+	gs.Group("${spring.nacos}", newNamingClient, destroyNamingClient)
+	gs.Group("${spring.nacos}", newConfigClient, destroyConfigClient)
 
 	// Register the refresh bridge as a root object so it is always created.
 	// It links the "nacos" remote config provider's change listener to the
-	// application's property refresh, enabling hot-reload of bound beans.
+	// application's property refresh, enabling hot-reload of bound beans. The
+	// bridge is independent of the config-client beans above: the remote config
+	// provider manages its own cached clients (see provider.go).
 	gs.Provide(newConfigRefreshBridge).Export(gs.As[gs.Rooter]())
 }
 

@@ -9,7 +9,7 @@ goroutine，必须在关停时释放。
 
 ## 1. 职责与边界
 
-- 用 `gs.Group` 把 `spring.bigcache.instances.<name>` 每条绑到
+- 用 `gs.Group` 把 `spring.bigcache.<name>` 每条绑到
   `*bigcache.BigCache` bean。不做默认单实例
   （见 `project_client_starter_multiinstance`）。
 - 向 `spring/cache` 注册名为 `bigcache` 的 driver，让使用

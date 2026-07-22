@@ -23,14 +23,14 @@ import _ "go-spring.org/starter-kafka"
 
 ### 2. Configure the Kafka Clients
 
-Define one or more named clients under `spring.kafka.instances.<name>` in your
+Define one or more named clients under `spring.kafka.<name>` in your
 project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.kafka.instances.a.brokers=127.0.0.1:9092
-spring.kafka.instances.a.topic=hello
-spring.kafka.instances.a.group=hello-group
-spring.kafka.instances.b.brokers=127.0.0.1:9092
+spring.kafka.a.brokers=127.0.0.1:9092
+spring.kafka.a.topic=hello
+spring.kafka.a.group=hello-group
+spring.kafka.b.brokers=127.0.0.1:9092
 ```
 
 ### 3. Inject the Kafka Client
@@ -106,6 +106,6 @@ transactions, the admin API and other Kafka features the binder does not model.
 
 ## Advanced Features
 
-* **Multiple Kafka clients**: Every entry under `spring.kafka.instances` becomes an
+* **Multiple Kafka clients**: Every entry under `spring.kafka` becomes an
   independently configured `*kgo.Client` bean; inject them by name to talk to
   different clusters or consumer groups.

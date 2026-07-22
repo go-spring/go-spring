@@ -26,14 +26,17 @@ import _ "go-spring.org/starter-nacos"
 在项目的[配置文件](example/conf/app.properties)中添加 Nacos 配置，比如：
 
 ```properties
-spring.nacos.ip-addr=127.0.0.1
-spring.nacos.port=8848
+spring.nacos.a.ip-addr=127.0.0.1
+spring.nacos.a.port=8848
 ```
+
+`spring.nacos` 下的每一项都是一个具名客户端：键名（`a`、`b` ……）即注入时使用的 bean 名称。
+每一项会同时创建一个命名客户端和一个配置客户端。
 
 ### 3. 注入 Nacos 客户端
 
-参见 [example.go](example/example.go) 文件。命名客户端与配置客户端都会被注册，
-按接口类型注入所需的即可。
+参见 [example.go](example/example.go) 文件。每一项都会同时创建命名客户端与配置客户端，
+按接口类型并以该项键名作为 bean 名称注入所需的即可。
 
 ```go
 import (
@@ -42,8 +45,8 @@ import (
 )
 
 type Service struct {
-    Config config_client.IConfigClient `autowire:"__default__"`
-    Naming naming_client.INamingClient `autowire:"__default__"`
+    Config config_client.IConfigClient `autowire:"a"`
+    Naming naming_client.INamingClient `autowire:"a"`
 }
 ```
 
@@ -108,5 +111,5 @@ type Demo struct {
 
 ## 高级功能
 
-* **命名 + 配置客户端**：`INamingClient` 与 `IConfigClient` 都会注册为 `__default__` Bean（接口类型不同）。
-* **支持多命名实例**：可以在配置文件的 `spring.nacos.instances` 下定义多个命名客户端，并在项目中使用 name 进行引用。
+* **命名 + 配置客户端**：`spring.nacos` 下的每一项都会同时创建 `INamingClient` 与 `IConfigClient`（接口类型不同），且共用同一个名称。
+* **多 Nacos 实例**：在 `spring.nacos` 下为每个 Nacos 集群定义一个具名项，按其键名分别注入。

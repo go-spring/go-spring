@@ -27,7 +27,7 @@
 // configuration content, which stays with the config center or local files.
 //
 // Configure the transport by pointing spring.config.bus.nats-instance at a
-// connection defined under spring.nats.instances.* (default instance name
+// connection defined under spring.nats.* (default instance name
 // "config-bus").
 package StarterConfigBus
 

@@ -39,7 +39,7 @@ Define a NATS instance whose name matches `spring.config.bus.nats-instance`
 (default `config-bus`):
 
 ```properties
-spring.nats.instances.config-bus.url=nats://127.0.0.1:4222
+spring.nats.config-bus.url=nats://127.0.0.1:4222
 ```
 
 ### 3. Configure the bus (optional)
@@ -49,7 +49,7 @@ All keys live under `spring.config.bus`:
 | Key             | Default                | Description                                                                 |
 |-----------------|------------------------|-----------------------------------------------------------------------------|
 | `subject`       | `spring.config.refresh`| NATS subject that refresh events are published to and subscribed from.      |
-| `nats-instance` | `config-bus`           | Name of the `spring.nats.instances.*` connection used as the transport.     |
+| `nats-instance` | `config-bus`           | Name of the `spring.nats.*` connection used as the transport.     |
 | `watch-prefixes`| (empty)                | Comma-separated prefixes; when set, only broadcasts whose prefix overlaps one of these (or full-fleet broadcasts) trigger a refresh on this instance. |
 
 ### 4. Broadcast a refresh

@@ -29,9 +29,9 @@ import (
 func init() {
 
 	// Register multiple RabbitMQ connections as a group.
-	// Each instance is created according to the configuration in "${spring.rabbitmq.instances}".
+	// Each instance is created according to the configuration in "${spring.rabbitmq}".
 	// This allows defining multiple RabbitMQ connections dynamically.
-	gs.Group("${spring.rabbitmq.instances}", newClient, destroyClient)
+	gs.Group("${spring.rabbitmq}", newClient, destroyClient)
 }
 
 // newClient dials RabbitMQ. amqp.Dial/DialConfig perform the TCP + AMQP

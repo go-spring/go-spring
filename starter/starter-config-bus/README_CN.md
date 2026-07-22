@@ -35,7 +35,7 @@ import (
 实例:
 
 ```properties
-spring.nats.instances.config-bus.url=nats://127.0.0.1:4222
+spring.nats.config-bus.url=nats://127.0.0.1:4222
 ```
 
 ### 3. 配置总线（可选）
@@ -45,7 +45,7 @@ spring.nats.instances.config-bus.url=nats://127.0.0.1:4222
 | 配置项           | 默认值                  | 说明                                                                     |
 |------------------|-------------------------|--------------------------------------------------------------------------|
 | `subject`        | `spring.config.refresh` | 发布与订阅刷新事件的 NATS 主题。                                          |
-| `nats-instance`  | `config-bus`            | 作为传输通道的 `spring.nats.instances.*` 连接名。                        |
+| `nats-instance`  | `config-bus`            | 作为传输通道的 `spring.nats.*` 连接名。                        |
 | `watch-prefixes` | (空)                    | 逗号分隔的前缀;设置后,仅当广播前缀与其中之一有交集（或为全量广播）时,本实例才刷新。 |
 
 ### 4. 广播刷新

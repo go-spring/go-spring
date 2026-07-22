@@ -26,10 +26,11 @@ import _ "go-spring.org/starter-etcd"
 在项目的[配置文件](example/conf/app.properties)中添加 etcd 配置，比如：
 
 ```properties
-spring.etcd.endpoints=127.0.0.1:2379
+spring.etcd.a.endpoints=127.0.0.1:2379
 ```
 
-多个 endpoint 以英文逗号分隔：`spring.etcd.endpoints=127.0.0.1:2379,127.0.0.1:2380`。
+`spring.etcd` 下的每一项都是一个具名客户端：键名（`a`、`b` ……）即注入时使用的 bean 名称。
+多个 endpoint 以英文逗号分隔：`spring.etcd.a.endpoints=127.0.0.1:2379,127.0.0.1:2380`。
 
 ### 3. 注入 etcd 实例
 
@@ -39,7 +40,7 @@ spring.etcd.endpoints=127.0.0.1:2379
 import clientv3 "go.etcd.io/etcd/client/v3"
 
 type Service struct {
-    Etcd *clientv3.Client `autowire:"__default__"`
+    Etcd *clientv3.Client `autowire:"a"`
 }
 ```
 
@@ -54,7 +55,7 @@ resp, err := s.Etcd.Get(ctx, "key")
 
 ## 高级功能
 
-* **支持多 etcd 实例**：可以在配置文件的 `spring.etcd.instances` 下定义多个 etcd 实例，并在项目中使用 name 进行引用。
+* **多 etcd 实例**：在 `spring.etcd` 下为每一项定义一个具名客户端，按其键名分别注入。
 
 ## 核心功能
 

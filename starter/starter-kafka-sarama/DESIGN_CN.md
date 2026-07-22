@@ -9,7 +9,7 @@
 
 ## 1. 职责与边界
 
-- 用 `gs.Group` 把 `spring.kafka.instances.<name>` 每条绑到 `sarama.Client`
+- 用 `gs.Group` 把 `spring.kafka.<name>` 每条绑到 `sarama.Client`
   bean。不做默认单实例。
 - 暴露的 bean 是 `sarama.Client`——producer、consumer group、admin 客户端
   由调用方在共享 client 上构建，一个连接池服务所有下游角色。

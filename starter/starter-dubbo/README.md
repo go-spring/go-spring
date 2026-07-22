@@ -111,43 +111,26 @@ gs.Provide(func() StarterDubbo.ServiceRegister {
 ## Client
 
 The starter also exposes Dubbo clients as beans, gated on the same `*Instance`
-(a project without registries gets none). Client config lives under
-`${spring.dubbo.client}`; registries and observability are inherited from the
-shared `Instance`, so a client only carries protocol/timeout/registry-ids.
-
-A **default client** bean (name `__default__`) is always available once an
-`Instance` exists:
+(a project without registries gets none). Clients are multi-instance only: each
+entry under `${spring.dubbo.client}` is a named client whose key becomes the bean
+name. Registries and observability are inherited from the shared `Instance`, so a
+client only carries protocol/timeout/registry-ids.
 
 ```properties
-spring.dubbo.client.protocol=tri        # dubbo(default)|tri|triple|jsonrpc
-spring.dubbo.client.timeout=3s          # per-request timeout, e.g. "3s"
-spring.dubbo.client.registry-ids=etcd   # select global registries by ID; empty means all
+spring.dubbo.client.orders.protocol=tri        # dubbo(default)|tri|triple|jsonrpc
+spring.dubbo.client.orders.timeout=3s          # per-request timeout, e.g. "3s"
+spring.dubbo.client.orders.registry-ids=etcd   # select global registries by ID; empty means all
+spring.dubbo.client.legacy.protocol=dubbo
 ```
 
-Inject it with the `__default__` bean name, then build your generated stub:
-
-```go
-type Consumer struct {
-    Client *client.Client `autowire:"__default__"`
-}
-// svc, _ := greet.NewGreetService(c.Client)
-```
-
-For **multiple clients** (different protocols or registry targets), declare
-named instances under `${spring.dubbo.client.instances.<name>}`; each becomes a
-bean named after its map key:
-
-```properties
-spring.dubbo.client.instances.orders.protocol=tri
-spring.dubbo.client.instances.orders.registry-ids=etcd
-spring.dubbo.client.instances.legacy.protocol=dubbo
-```
+Inject each by its key, then build your generated stub:
 
 ```go
 type Caller struct {
     Orders *client.Client `autowire:"orders"`
     Legacy *client.Client `autowire:"legacy"`
 }
+// svc, _ := greet.NewGreetService(c.Orders)
 ```
 
 ## Filters
@@ -201,12 +184,12 @@ spring.dubbo.server.param-sign=true
 spring.dubbo.server.params.some-filter-key=some-value
 ```
 
-On the **client** side, `filter` and `params` mirror the server:
+On the **client** side, `filter` and `params` mirror the server, scoped per named
+instance:
 
 ```properties
-spring.dubbo.client.filter=cshutdown,active
-spring.dubbo.client.params.some-filter-key=some-value
-# also available per named instance, e.g. instances.orders.filter=...
+spring.dubbo.client.orders.filter=cshutdown,active
+spring.dubbo.client.orders.params.some-filter-key=some-value
 ```
 
 ### Filters that cannot be configured here

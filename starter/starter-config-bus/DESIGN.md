@@ -40,7 +40,7 @@ every instance in the fleet.
   versa.
 - **Transport by instance name.** `Conn` is injected via
   `autowire:"${spring.config.bus.nats-instance:=config-bus}"`, so the app
-  chooses which NATS instance under `spring.nats.instances.*` carries the
+  chooses which NATS instance under `spring.nats.*` carries the
   bus.
 
 ## 3. Constraints

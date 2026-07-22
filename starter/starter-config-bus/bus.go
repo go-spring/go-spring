@@ -50,7 +50,7 @@ type RefreshEvent struct {
 //
 // The NATS connection is injected by instance name (spring.config.bus.nats-
 // instance, default "config-bus"); define that instance under
-// spring.nats.instances.* in the usual way.
+// spring.nats.* in the usual way.
 type ConfigBus struct {
 	Conn      *StarterNats.Conn       `autowire:"${spring.config.bus.nats-instance:=config-bus}"`
 	Refresher *gs.PropertiesRefresher `autowire:""`

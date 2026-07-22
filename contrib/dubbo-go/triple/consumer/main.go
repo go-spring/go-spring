@@ -34,12 +34,12 @@ import (
 )
 
 // Consumer discovers the GreetService through the registry and calls it. The
-// Dubbo client is the default client bean provided by starter-dubbo (built from
-// ${spring.dubbo.client} + the top-level ${spring.dubbo.registries}), injected
+// Dubbo client is a named client bean provided by starter-dubbo (the "greet" entry under
+// ${spring.dubbo.client}, plus the top-level ${spring.dubbo.registries}), injected
 // here the same way the redis example autowires *redis.Client into its Service
 // bean.
 type Consumer struct {
-	Client *client.Client `autowire:""`
+	Client *client.Client `autowire:"greet"`
 }
 
 // Greet dials the GreetService by its protobuf-declared interface name

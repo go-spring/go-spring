@@ -34,7 +34,7 @@ import (
 )
 
 type Service struct {
-	Etcd *clientv3.Client `autowire:"__default__"`
+	Etcd *clientv3.Client `autowire:"a"`
 }
 
 func main() {

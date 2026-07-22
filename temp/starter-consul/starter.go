@@ -22,17 +22,11 @@ import (
 )
 
 func init() {
-
-	// Register a single default Consul client.
-	// This client will only be created if the property "spring.consul.address" is set.
-	// It uses the configuration tagged with "${spring.consul}".
-	gs.Provide(newClient, gs.TagArg("${spring.consul}")).
-		Condition(gs.OnProperty("spring.consul.address"))
-
-	// Register multiple Consul clients as a group.
-	// Each instance is created according to the configuration in "${spring.consul.instances}".
-	// This allows defining multiple Consul clients dynamically.
-	gs.Group("${spring.consul.instances}", newClient, nil)
+	// Multi-instance only: bind a map of clients under "${spring.consul}" and
+	// register one named *api.Client per entry, matching the client-starter
+	// archetype (no default singleton). Each entry is an independent Consul
+	// connection.
+	gs.Group("${spring.consul}", newClient, nil)
 }
 
 // newClient creates a new Consul client based on the provided configuration.

@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-mongodb"
 
 ### 2. Configure the MongoDB Instances
 
-Define one or more named instances under `spring.mongodb.instances.<name>` in your
+Define one or more named instances under `spring.mongodb.<name>` in your
 project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.mongodb.instances.a.uri=mongodb://127.0.0.1:27017
-spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
+spring.mongodb.a.uri=mongodb://127.0.0.1:27017
+spring.mongodb.b.uri=mongodb://127.0.0.1:27017
 ```
 
 ### 3. Inject the MongoDB Instance
@@ -64,7 +64,7 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
 
 ## Advanced Features
 
-* **Multiple MongoDB instances**: Every entry under `spring.mongodb.instances`
+* **Multiple MongoDB instances**: Every entry under `spring.mongodb`
   becomes an independently configured `*mongo.Client` bean; inject them by name to
   talk to different clusters or databases.
 
@@ -85,8 +85,8 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
   registers its naming service once via `discovery.Register`.
 
   ```properties
-  spring.mongodb.instances.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
-  spring.mongodb.instances.disc.service-name=mongo-cluster
+  spring.mongodb.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
+  spring.mongodb.disc.service-name=mongo-cluster
   ```
 
   Note: this bypasses MongoDB's own replica-set / mongos topology discovery — the

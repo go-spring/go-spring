@@ -34,9 +34,9 @@ import (
 
 func init() {
 	// Register multiple Kafka clients as a group.
-	// Each instance is created according to the configuration in "${spring.kafka.instances}".
+	// Each instance is created according to the configuration in "${spring.kafka}".
 	// This allows defining multiple Kafka clients dynamically.
-	gs.Group("${spring.kafka.instances}", newClient, destroyClient)
+	gs.Group("${spring.kafka}", newClient, destroyClient)
 }
 
 // pingTimeout bounds the startup connectivity probe.

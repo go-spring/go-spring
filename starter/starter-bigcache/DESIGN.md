@@ -10,7 +10,7 @@ be released on shutdown.
 
 ## 1. Responsibilities & Boundaries
 
-- Binds each `spring.bigcache.instances.<name>` entry to a
+- Binds each `spring.bigcache.<name>` entry to a
   `*bigcache.BigCache` bean via `gs.Group`. No single-instance default
   (see `project_client_starter_multiinstance`).
 - Registers a `spring/cache` driver named `bigcache` so callers using

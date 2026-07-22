@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-pulsar"
 
 ### 2. Configure the Pulsar Clients
 
-Define one or more named clients under `spring.pulsar.instances.<name>` in your
+Define one or more named clients under `spring.pulsar.<name>` in your
 project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.pulsar.instances.a.url=pulsar://127.0.0.1:6650
-spring.pulsar.instances.b.url=pulsar://127.0.0.1:6650
+spring.pulsar.a.url=pulsar://127.0.0.1:6650
+spring.pulsar.b.url=pulsar://127.0.0.1:6650
 ```
 
 ### 3. Inject the Pulsar Client
@@ -78,9 +78,9 @@ native metrics the pure-Prometheus way — the same approach the
 Enable a per-instance `/metrics` endpoint in the configuration file:
 
 ```properties
-spring.pulsar.instances.a.metrics.enabled=true
-spring.pulsar.instances.a.metrics.port=9091
-spring.pulsar.instances.a.metrics.path=/metrics
+spring.pulsar.a.metrics.enabled=true
+spring.pulsar.a.metrics.port=9091
+spring.pulsar.a.metrics.path=/metrics
 ```
 
 Each instance gets its own `prometheus.Registry` and standalone HTTP server, so
@@ -157,6 +157,6 @@ features the binder does not model.
 
 ## Advanced Features
 
-* **Multiple Pulsar clients**: Every entry under `spring.pulsar.instances` becomes
+* **Multiple Pulsar clients**: Every entry under `spring.pulsar` becomes
   an independently configured `pulsar.Client` bean; inject them by name to talk to
   different clusters.

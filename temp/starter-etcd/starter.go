@@ -22,18 +22,11 @@ import (
 )
 
 func init() {
-
-	// Register a single default etcd client.
-	// This client will only be created if the property "spring.etcd.endpoints" is set.
-	// It uses the configuration tagged with "${spring.etcd}".
-	gs.Provide(newClient, gs.TagArg("${spring.etcd}")).
-		Condition(gs.OnProperty("spring.etcd.endpoints")).
-		Destroy(destroyClient)
-
-	// Register multiple etcd clients as a group.
-	// Each instance is created according to the configuration in "${spring.etcd.instances}".
-	// This allows defining multiple etcd clients dynamically.
-	gs.Group("${spring.etcd.instances}", newClient, destroyClient)
+	// Multi-instance only: bind a map of clients under "${spring.etcd}" and
+	// register one named *clientv3.Client per entry, matching the client-starter
+	// archetype (no default singleton). Each entry is an independent etcd cluster
+	// connection, so a destroy hook closes it on shutdown.
+	gs.Group("${spring.etcd}", newClient, destroyClient)
 }
 
 // newClient creates a new etcd client based on the provided configuration.

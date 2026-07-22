@@ -2,7 +2,7 @@
 
 上一课的 HTTP Server 是 Go-Spring 内置组件。它给应用提供的不只是一个 `http.Server`，还包括配置前缀、默认启用条件、路由入口和关闭语义。把视角放到业务项目里，数据库、Redis、客户端、pprof 这类基础设施组件也会遇到同样的问题。
 
-如果每个项目都手写一遍初始化代码，短期看只是多几行 `Provide`。但复制出去的其实还有配置命名、启用条件、默认 Bean 名称、多实例规则和资源释放方式。项目越多，这些约定越容易分叉，组件接入也就变成了另一种重复劳动。
+如果每个项目都手写一遍初始化代码，短期看只是多几行 `Provide`。但复制出去的其实还有配置命名、启用条件、Bean 命名、多实例规则和资源释放方式。项目越多，这些约定越容易分叉，组件接入也就变成了另一种重复劳动。
 
 Starter 要解决的就是组件接入规则的复用问题。它不是另一套容器机制，而是把 Go-Spring 已有的 Bean 注册、配置绑定、条件判断和生命周期回调放进一个独立包。应用侧通过一次导入获得组件能力，组件作者则把接入规则稳定在 Starter 内部。
 
@@ -18,17 +18,16 @@ import _ "go-spring.org/starter-gorm-mysql"
 
 但 Bean 的实例化仍然发生在应用启动和容器解析阶段，并且要满足对应条件。也就是说，Starter 的导入语义是“让组件接入规则可见”，不是“立刻打开数据库连接”。这点很重要，因为 Starter 往往会被多个项目共享，导入本身不应该产生不可控副作用。
 
-## 默认单实例
+## 单实例注册
 
-很多基础设施组件有一个默认实例，例如默认数据库连接或默认 Redis 客户端。这里最适合用 `gs.Provide` 封装，因为构造函数、配置绑定、启用条件和销毁函数都可以挂在同一个 Bean 定义上。
+并非所有组件都需要多实例。当一个组件只提供一个实例时，`gs.Provide` 是最直接的注册方式，因为构造函数、配置绑定、启用条件和销毁函数都可以挂在同一个 Bean 定义上。
 
-默认单实例可以由关键配置项触发，并在容器关闭时释放资源。
+单实例可以由关键配置项触发，并在容器关闭时释放资源。
 
 ```go
 func init() {
 	gs.Provide(NewDB, gs.TagArg("${spring.gorm}")).
 		Condition(gs.OnProperty("spring.gorm.dsn")).
-		Name("__default__").
 		Destroy(CloseDB)
 }
 
@@ -46,9 +45,9 @@ func CloseDB(db *gorm.DB) error {
 }
 ```
 
-`gs.TagArg("${spring.gorm}")` 表示把 `spring.gorm` 子树绑定到构造参数 `Config`。`Condition(gs.OnProperty("spring.gorm.dsn"))` 表示只有关键配置存在时才启用这个 Bean。`Name("__default__")` 给默认实例一个稳定名称，`Destroy(CloseDB)` 则把关闭逻辑交给容器生命周期。
+`gs.TagArg("${spring.gorm}")` 表示把 `spring.gorm` 子树绑定到构造参数 `Config`。`Condition(gs.OnProperty("spring.gorm.dsn"))` 表示只有关键配置存在时才启用这个 Bean。`Destroy(CloseDB)` 则把关闭逻辑交给容器生命周期。
 
-因此，应用侧只需要提供配置。是否启用、怎样构造、叫什么名字、何时释放，都由 Starter 统一表达。默认实例的重点不是“只能有一个”，而是给大多数项目提供一个稳定、低噪音的组件入口。
+因此，应用侧只需要提供配置。是否启用、怎样构造、何时释放，都由 Starter 统一表达。需要说明的是，客户端和资源型 Starter（如数据库、Redis）已统一采用多实例注册，`gs.Provide` 的单实例形式更多用于真正只提供一个实例的组件。
 
 ## 配置驱动注册
 
@@ -77,13 +76,13 @@ func init() {
 
 ## 配置字典生成多实例
 
-默认单实例不能覆盖所有组件。多数据源、多 Redis、多外部客户端这类场景，通常希望配置字典里的每个条目生成一个同类 Bean，并且字典 key 成为 Bean 名称。
+单实例不能覆盖所有组件。多数据源、多 Redis、多外部客户端这类场景，通常希望配置字典里的每个条目生成一个同类 Bean，并且字典 key 成为 Bean 名称。
 
 `gs.Group` 把“配置 Map -> 多个 Bean”的模式固定下来。
 
 ```go
 func init() {
-	gs.Group("${spring.gorm.instances}", NewDB, CloseDB)
+	gs.Group("${spring.gorm}", NewDB, CloseDB)
 }
 ```
 
@@ -92,36 +91,29 @@ func init() {
 ```yaml
 spring:
   gorm:
-    instances:
-      db1:
-        dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
-      db2:
-        dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+    db1:
+      dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+    db2:
+      dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
 ```
 
-`gs.Group` 要求 tag 使用 `${...}` 形式。它会读取 `spring.gorm.instances`，绑定成 `map[string]T`，然后对每个条目调用构造函数。Map 的 key 会成为 Bean 名称，Map 的 value 会作为构造参数传入。如果提供了销毁函数，生成的每个 Bean 都会绑定对应 Destroy 回调。
+`gs.Group` 要求 tag 使用 `${...}` 形式。它会读取 `spring.gorm`，绑定成 `map[string]T`，然后对每个条目调用构造函数。Map 的 key 会成为 Bean 名称，Map 的 value 会作为构造参数传入。如果提供了销毁函数，生成的每个 Bean 都会绑定对应 Destroy 回调。
 
-这让多实例 Starter 不需要自己重复写“遍历配置、命名 Bean、绑定关闭函数”的样板逻辑。配置结构也会更稳定：默认实例放在组件前缀下，多实例放在 `instances` 下。
+这让多实例 Starter 不需要自己重复写“遍历配置、命名 Bean、绑定关闭函数”的样板逻辑。配置结构也更直接：所有实例都是组件前缀下的条目，字典 key 即为 Bean 名称。
 
-## 默认与多实例命名
+## 多实例命名
 
-Starter 的复用价值不只来自少写代码，更来自约定一致。官方 Starter 通常采用“默认单实例 + 可选多实例”的组织方式。
-
-同一个组件可以同时提供默认实例和多实例入口，但两者要有清晰命名边界。
+Starter 的复用价值不只来自少写代码，更来自约定一致。官方 Starter 采用多实例组织方式：组件前缀下的每个条目都是一个命名实例。
 
 ```go
 func init() {
-	gs.Provide(newClient, gs.TagArg("${spring.gorm}")).
-		Condition(gs.OnProperty("spring.gorm.dsn")).
-		Name("__default__")
-
-	gs.Group("${spring.gorm.instances}", newClient, nil)
+	gs.Group("${spring.gorm}", newClient, nil)
 }
 ```
 
-默认单实例使用组件前缀下的关键配置触发，例如 `spring.gorm.dsn`。多实例使用 `spring.gorm.instances` 这样的字典结构，每个字典 key 对应一个 Bean 名称。资源型组件应提供 Destroy 函数，让连接池、客户端或后台资源在容器关闭时释放。
+每个实例直接放在组件前缀下，例如 `spring.gorm.db1`、`spring.gorm.db2`，字典 key 对应 Bean 名称。资源型组件应提供 Destroy 函数，让连接池、客户端或后台资源在容器关闭时释放。
 
-这些约定让不同 Starter 在应用侧看起来一致。反过来，如果每个 Starter 都使用不同前缀、不同默认名称和不同多实例结构，组件封装只是把复杂性从业务代码移动到了配置里。
+这些约定让不同 Starter 在应用侧看起来一致。反过来，如果每个 Starter 都使用不同前缀和不同多实例结构，组件封装只是把复杂性从业务代码移动到了配置里。
 
 ## Starter 边界
 
@@ -133,6 +125,6 @@ Go-Spring 已经提供了一些常见基础设施 Starter，例如 `starter-gorm
 
 ## Starter 机制
 
-Starter 本质上是 Go-Spring 注册能力的封装。`Provide` 适合默认单实例，`Module` 适合配置驱动的动态注册，`Group` 适合从配置字典生成多实例。条件、配置绑定、命名和 Destroy 回调仍然沿用容器原有语义。
+Starter 本质上是 Go-Spring 注册能力的封装。`Provide` 适合单实例，`Module` 适合配置驱动的动态注册，`Group` 适合从配置字典生成多实例。条件、配置绑定、命名和 Destroy 回调仍然沿用容器原有语义。
 
 因此，Starter 机制在 Go-Spring 整体模型里的位置，是沉淀可复用的组件接入规则。它把组件作者需要反复表达的配置、条件、命名和生命周期集中起来，同时让业务代码继续面对普通 Bean。

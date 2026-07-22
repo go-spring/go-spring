@@ -26,23 +26,16 @@ import (
 )
 
 func init() {
-	// Default client (bean "__default__"), gated on the *Instance bean: without a
-	// registry there is nothing to discover, so no Instance means no client. The
-	// optional ${spring.dubbo.client} block carries only protocol/timeout/
-	// registry-ids; registries and observability come from the injected *Instance.
-	gs.Provide(
-		NewClient,
-		gs.IndexArg(0, gs.TagArg("${spring.dubbo.client}")),
-	).Condition(gs.OnBean[*Instance]())
-
-	// Named instances (bean name = map key). Hand-rolled instead of gs.Group so
-	// each binds its own ClientConfig while sharing the injected *Instance. Gated
-	// only on the instances property; an instance declared without registries
-	// fails fast on the missing *Instance dependency rather than being skipped.
-	gs.Module(gs.OnProperty("spring.dubbo.client.instances"),
+	// Multi-instance only: bind a map under "${spring.dubbo.client}" and register
+	// one named *client.Client per entry, matching the client-starter archetype
+	// (no default singleton). Hand-rolled instead of gs.Group so each binds its
+	// own ClientConfig while sharing the injected *Instance. Gated only on the
+	// property; an entry declared without registries fails fast on the missing
+	// *Instance dependency rather than being skipped.
+	gs.Module(gs.OnProperty("spring.dubbo.client"),
 		func(r gs.BeanProvider, p flatten.Storage) error {
 			var params struct {
-				Instances map[string]ClientConfig `value:"${spring.dubbo.client.instances}"`
+				Instances map[string]ClientConfig `value:"${spring.dubbo.client}"`
 			}
 			if err := conf.Bind(p, &params); err != nil {
 				return err
@@ -57,9 +50,8 @@ func init() {
 		})
 }
 
-// ClientConfig defines the client-role configuration under ${spring.dubbo.client}
-// (for the default client) or ${spring.dubbo.client.instances.<name>} (for a
-// named instance). Every field is optional.
+// ClientConfig defines the client-role configuration under
+// ${spring.dubbo.client.<name>} for each named instance. Every field is optional.
 type ClientConfig struct {
 	Protocol    string        `value:"${protocol:=}"`     // dubbo(default)|tri|triple|jsonrpc
 	Timeout     time.Duration `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"

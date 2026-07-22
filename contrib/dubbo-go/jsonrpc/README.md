@@ -109,16 +109,16 @@ spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 spring.dubbo.server.protocols.jsonrpc.port=20002
 ```
 
-The Dubbo **client** is provided by starter-dubbo as a default bean
-(`__default__`) built from `${spring.dubbo.client}` plus the top-level
+The Dubbo **client** is provided by starter-dubbo as a named bean (the `greet`
+entry under `${spring.dubbo.client}`) built on top of the shared
 `${spring.dubbo.registries}`; the consumer autowires it and dials the service.
 `spring.dubbo.client.protocol=jsonrpc` is what makes `NewClient` apply
 `client.WithClientProtocolJsonRPC()` under the hood. Multiple named clients can
-be declared under `${spring.dubbo.client.instances}` (bean name = the map key).
+be declared under `${spring.dubbo.client}` (bean name = the map key).
 To run two registries of the same type, give each a distinct map-key ID and set
 `protocol` explicitly, e.g. `spring.dubbo.registries.bj.protocol=etcdv3` /
 `...sh.protocol=etcdv3`, then let each role pick with `registry-ids` (e.g.
-`spring.dubbo.client.registry-ids=bj`).
+`spring.dubbo.client.greet.registry-ids=bj`).
 
 ## Run
 

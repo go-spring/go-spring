@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-mqtt"
 
 ### 2. Configure the MQTT Clients
 
-Define one or more named clients under `spring.mqtt.instances.<name>` in your
+Define one or more named clients under `spring.mqtt.<name>` in your
 project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.mqtt.instances.a.broker=tcp://127.0.0.1:1883
-spring.mqtt.instances.b.broker=tcp://127.0.0.1:1883
+spring.mqtt.a.broker=tcp://127.0.0.1:1883
+spring.mqtt.b.broker=tcp://127.0.0.1:1883
 ```
 
 ### 3. Inject the MQTT Client
@@ -127,20 +127,20 @@ wildcard topics and other MQTT features the binder does not model.
 
 ## Advanced Features
 
-* **Multiple MQTT clients**: Every entry under `spring.mqtt.instances` becomes an
+* **Multiple MQTT clients**: Every entry under `spring.mqtt` becomes an
   independently configured `mqtt.Client` bean; inject them by name to talk to
   different brokers.
-* **TLS (MQTTS)**: Set `spring.mqtt.instances.<name>.tls.enabled=true` with a
+* **TLS (MQTTS)**: Set `spring.mqtt.<name>.tls.enabled=true` with a
   `ssl://`/`tls://` broker URL to negotiate TLS. Optionally pin a CA bundle
   (`tls.ca-file`) and supply a client certificate (`tls.cert-file`/`tls.key-file`)
   for mutual TLS.
-* **Last Will and Testament (LWT)**: Set `spring.mqtt.instances.<name>.will.topic`
+* **Last Will and Testament (LWT)**: Set `spring.mqtt.<name>.will.topic`
   to have the broker publish a will message on your behalf when the client
   disconnects ungracefully.
 
 ## Configuration
 
-Each client under `spring.mqtt.instances.<name>` reads the following properties:
+Each client under `spring.mqtt.<name>` reads the following properties:
 
 | Property | Default | Description |
 | --- | --- | --- |

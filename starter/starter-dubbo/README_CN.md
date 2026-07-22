@@ -107,42 +107,25 @@ gs.Provide(func() StarterDubbo.ServiceRegister {
 ## 客户端
 
 Starter 同样以 Bean 形式提供 Dubbo 客户端，其开启条件与服务端相同的 `*Instance`
-（没有注册中心的项目不会得到任何客户端）。客户端配置位于 `${spring.dubbo.client}` 下；
+（没有注册中心的项目不会得到任何客户端）。客户端为多实例：`${spring.dubbo.client}` 下的每一项都是一个具名客户端，其键名即 Bean 名称。
 注册中心与可观测性都从共享的 `Instance` 继承，因此客户端本身只需关心
 protocol/timeout/registry-ids。
 
-只要存在 `Instance`，就始终有一个**默认客户端** Bean（名为 `__default__`）：
-
 ```properties
-spring.dubbo.client.protocol=tri        # dubbo(默认)|tri|triple|jsonrpc
-spring.dubbo.client.timeout=3s          # 单次请求超时，如 "3s"
-spring.dubbo.client.registry-ids=etcd   # 按 ID 选择全局注册中心；留空表示全部
+spring.dubbo.client.orders.protocol=tri        # dubbo(默认)|tri|triple|jsonrpc
+spring.dubbo.client.orders.timeout=3s          # 单次请求超时，如 "3s"
+spring.dubbo.client.orders.registry-ids=etcd   # 按 ID 选择全局注册中心；留空表示全部
+spring.dubbo.client.legacy.protocol=dubbo
 ```
 
-用 `__default__` Bean 名注入后，再构建生成的 stub：
-
-```go
-type Consumer struct {
-    Client *client.Client `autowire:"__default__"`
-}
-// svc, _ := greet.NewGreetService(c.Client)
-```
-
-需要**多个客户端**（不同协议或不同注册中心）时，在
-`${spring.dubbo.client.instances.<name>}` 下声明具名实例，每个都会成为以 map key
-命名的 Bean：
-
-```properties
-spring.dubbo.client.instances.orders.protocol=tri
-spring.dubbo.client.instances.orders.registry-ids=etcd
-spring.dubbo.client.instances.legacy.protocol=dubbo
-```
+按键名注入后，再构建生成的 stub：
 
 ```go
 type Caller struct {
     Orders *client.Client `autowire:"orders"`
     Legacy *client.Client `autowire:"legacy"`
 }
+// svc, _ := greet.NewGreetService(c.Orders)
 ```
 
 ## Filter（过滤器）
@@ -193,12 +176,11 @@ spring.dubbo.server.param-sign=true
 spring.dubbo.server.params.some-filter-key=some-value
 ```
 
-**客户端**侧的 `filter` 与 `params` 与服务端对称：
+**客户端**侧的 `filter` 与 `params` 与服务端对称，按具名实例区分：
 
 ```properties
-spring.dubbo.client.filter=cshutdown,active
-spring.dubbo.client.params.some-filter-key=some-value
-# 具名实例同样可用，如 instances.orders.filter=...
+spring.dubbo.client.orders.filter=cshutdown,active
+spring.dubbo.client.orders.params.some-filter-key=some-value
 ```
 
 ### 无法在此处配置的 filter

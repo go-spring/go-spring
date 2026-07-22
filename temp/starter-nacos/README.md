@@ -27,14 +27,18 @@ import _ "go-spring.org/starter-nacos"
 Add Nacos configuration in your project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.nacos.ip-addr=127.0.0.1
-spring.nacos.port=8848
+spring.nacos.a.ip-addr=127.0.0.1
+spring.nacos.a.port=8848
 ```
+
+Each entry under `spring.nacos` is a named client: the key (`a`, `b`, ...) becomes the
+bean name you inject. Both a naming client and a config client are created per entry.
 
 ### 3. Inject the Nacos Clients
 
 Refer to the [example.go](example/example.go) file. Both a naming client and a
-config client are provided; inject whichever you need by its interface type.
+config client are created per entry; inject whichever you need by its interface type
+and the entry's key as the bean name.
 
 ```go
 import (
@@ -43,8 +47,8 @@ import (
 )
 
 type Service struct {
-    Config config_client.IConfigClient `autowire:"__default__"`
-    Naming naming_client.INamingClient `autowire:"__default__"`
+    Config config_client.IConfigClient `autowire:"a"`
+    Naming naming_client.INamingClient `autowire:"a"`
 }
 ```
 
@@ -115,7 +119,7 @@ publish → hot-reload flow.
 
 ## Advanced Features
 
-* **Naming + config clients**: Both `INamingClient` and `IConfigClient` are registered as
-  `__default__` beans (distinct interface types).
-* **Supports multiple naming instances**: You can define multiple naming clients under
-  `spring.nacos.instances` in the configuration file and reference them by name.
+* **Naming + config clients**: Each entry under `spring.nacos` creates both an
+  `INamingClient` and an `IConfigClient` (distinct interface types) under the same name.
+* **Multiple Nacos instances**: Define one named entry per Nacos cluster under
+  `spring.nacos` and inject each by its key.
