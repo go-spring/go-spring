@@ -104,6 +104,17 @@ func runTest() {
 		fmt.Fprintln(os.Stderr, "unexpected X-App header:", got)
 		os.Exit(1)
 	}
+	// Built-in middleware (default-on): every response carries a request id
+	// generated/propagated by the RequestID middleware.
+	if rid := resp.Header.Get("X-Request-Id"); rid == "" {
+		fmt.Fprintln(os.Stderr, "missing X-Request-Id header")
+		os.Exit(1)
+	}
+	// Opt-in middleware: SecureHeaders stamps safe response headers.
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		fmt.Fprintln(os.Stderr, "unexpected X-Content-Type-Options header:", got)
+		os.Exit(1)
+	}
 
 	// Feature 2: path parameter -> JSON body.
 	var echoResp map[string]string
