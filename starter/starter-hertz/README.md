@@ -76,6 +76,18 @@ spring.hertz.server.health.path=/healthz
 spring.hertz.server.tls.enabled=false
 spring.hertz.server.tls.cert-file=
 spring.hertz.server.tls.key-file=
+
+# Built-in middlewares. Recovery, RequestID and AccessLog are on by default;
+# CORS, Gzip and SecureHeaders are off until opted in (see Built-in Middlewares).
+spring.hertz.server.middleware.recovery.enabled=true
+spring.hertz.server.middleware.requestId.enabled=true
+spring.hertz.server.middleware.accessLog.enabled=true
+spring.hertz.server.middleware.accessLog.skipPaths=
+spring.hertz.server.middleware.cors.enabled=false
+spring.hertz.server.middleware.cors.allowedOrigins=
+spring.hertz.server.middleware.gzip.enabled=false
+spring.hertz.server.middleware.gzip.level=5
+spring.hertz.server.middleware.secureHeaders.enabled=false
 ```
 
 ### 4. Run the Application
@@ -91,7 +103,7 @@ func main() {
 The [example.go](example/example.go) file demonstrates three core Hertz
 features and asserts each one via real HTTP calls in `runTest`:
 
-* **Middleware** — a `h.Use(...)` middleware sets the `X-App: go-spring`
+* **Middleware** — the starter installs Recovery, RequestID and AccessLog by default; a `h.Use(...)` middleware sets the `X-App: go-spring`
   response header on every request; the test asserts the header round-trips.
 * **Path parameter + JSON** — `GET /echo/:name` reads `c.Param("name")` and
   responds with `{"message":"Hello, <name>"}`; the test calls
@@ -100,11 +112,49 @@ features and asserts each one via real HTTP calls in `runTest`:
   responds with `{"message":"Hi, <name>"}`; the test calls
   `/greet?name=world` and asserts `message == "Hi, world"`.
 
+## Built-in Middlewares
+
+The starter installs a fixed, ordered set of cross-cutting middlewares on the
+`*server.Hertz` **before** the application's `RouterRegister` runs, so they wrap
+every route. Each is independently toggleable via `spring.hertz.server.middleware.*`.
+Recovery comes from the hertz core; RequestID/CORS/Gzip from hertz-contrib;
+AccessLog and SecureHeaders are self-implemented.
+
+| Middleware | Default | Source | Notes |
+|---|---|---|---|
+| `recovery` | on | core `recovery.Recovery()` | Catches request-goroutine panics; turning it off risks a process crash. The starter uses `server.New` (not `server.Default`) so this is configurable. |
+| `requestId` | on | hertz-contrib/requestid | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
+| `accessLog` | on | self (project `log` pkg) | One structured record per request; Warn on 4xx, Error on 5xx; the health path is auto-skipped. |
+| `cors` | off | hertz-contrib/cors | No safe universal default - supply `allowedOrigins` (or `allowAllOrigins` for dev). Misconfig fails at startup. |
+| `gzip` | off | hertz-contrib/gzip | `level` (1-9, -1=default). |
+| `secureHeaders` | off | self | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`; HSTS only with TLS. (hertz-contrib/secure defaults to a 10-year HSTS + SSL redirect, so it is intentionally not used.) |
+| body limit | on when `maxBodySize>0` | engine option `WithMaxRequestBodySize` | Not a middleware; an over-limit 413 is logged like any response. |
+
+Order (outermost first): `Recovery -> RequestID -> AccessLog -> SecureHeaders -> CORS -> Gzip`.
+Recovery is outermost so it catches panics from every later layer; RequestID runs before AccessLog
+so each access record carries the id; AccessLog wraps the policy middlewares so short-circuit
+responses (204, 403) are still logged.
+
+> **No request-timeout middleware by design.** Go cannot preempt a running handler without the
+> goroutine-buffer hack (which breaks streaming/SSE), so the hard bound stays the Hertz
+> read/write timeouts from `${spring.hertz.server}`. Metrics and tracing are not built in either -
+> use `starter-actuator` and `starter-otel` for those.
+
+To stamp the request id onto business logs, wire the log package's context hook once:
+
+```go
+log.FieldsFromContext = func(ctx context.Context) []log.Field {
+    if rid := StarterHertz.RequestIDFromContext(ctx); rid != "" {
+        return []log.Field{log.String("request_id", rid)}
+    }
+    return nil
+}
+```
+
 ## Advanced Features
 
 * **Framework-owned engine** — the starter builds the `*server.Hertz` from
-  configuration and hands it to your `RouterRegister`; any Hertz option added by
-  `server.Default` (TLS, tracer, custom transport, ...) applies uniformly.
+  configuration and hands it to your `RouterRegister`; any Hertz server option (TLS, tracer, custom transport, ...) applies uniformly.
 * **Managed lifecycle** — the adapter waits for the Go-Spring readiness signal
   before calling `h.Run()`, and calls `h.Shutdown(ctx)` on shutdown.
 * **Opt-in registration** — set `spring.hertz.server.enabled=false` to opt out

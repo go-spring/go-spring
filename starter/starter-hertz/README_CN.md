@@ -73,6 +73,18 @@ spring.hertz.server.health.path=/healthz
 spring.hertz.server.tls.enabled=false
 spring.hertz.server.tls.cert-file=
 spring.hertz.server.tls.key-file=
+
+# 内置中间件。Recovery、RequestID、AccessLog 默认开启；
+# CORS、Gzip、SecureHeaders 默认关闭，按需开启（见"内置中间件"）。
+spring.hertz.server.middleware.recovery.enabled=true
+spring.hertz.server.middleware.requestId.enabled=true
+spring.hertz.server.middleware.accessLog.enabled=true
+spring.hertz.server.middleware.accessLog.skipPaths=
+spring.hertz.server.middleware.cors.enabled=false
+spring.hertz.server.middleware.cors.allowedOrigins=
+spring.hertz.server.middleware.gzip.enabled=false
+spring.hertz.server.middleware.gzip.level=5
+spring.hertz.server.middleware.secureHeaders.enabled=false
 ```
 
 ### 4. 运行应用
@@ -88,7 +100,7 @@ func main() {
 [example.go](example/example.go) 演示了三个核心 Hertz 特性，`runTest` 通过真实
 HTTP 请求逐个断言：
 
-* **中间件（Middleware）**：通过 `h.Use(...)` 注册的中间件为每个响应写入
+* **中间件（Middleware）**：starter 默认安装 Recovery、RequestID、AccessLog；通过 `h.Use(...)` 注册的中间件为每个响应写入
   `X-App: go-spring` 响应头；测试用例校验该 header 是否回传。
 * **路径参数 + JSON**：`GET /echo/:name` 从 `c.Param("name")` 读取路径参数，
   返回 `{"message":"Hello, <name>"}`；测试请求 `/echo/hertz` 并断言
@@ -97,10 +109,45 @@ HTTP 请求逐个断言：
   返回 `{"message":"Hi, <name>"}`；测试请求 `/greet?name=world` 并断言
   `message == "Hi, world"`。
 
+## 内置中间件
+
+starter 在应用的 `RouterRegister` 执行**之前**，按固定顺序在 `*server.Hertz` 上安装一组横切中间件，
+因此它们会包裹所有路由。每个中间件均可通过 `spring.hertz.server.middleware.*` 独立开关。Recovery 来自
+hertz core；RequestID/CORS/Gzip 来自 hertz-contrib；AccessLog 与 SecureHeaders 为自实现。
+
+| 中间件 | 默认 | 来源 | 说明 |
+|---|---|---|---|
+| `recovery` | 开 | core `recovery.Recovery()` | 捕获请求 goroutine 的 panic；关闭可能导致进程崩溃。starter 用 `server.New`（而非 `server.Default`）使其可配置。 |
+| `requestId` | 开 | hertz-contrib/requestid | 生成/透传 `X-Request-Id`，同时写入请求 context（见 `RequestIDFromContext`）。 |
+| `accessLog` | 开 | 自实现（项目 `log` 包） | 每个请求一条结构化访问日志；4xx 记 Warn、5xx 记 Error；健康端点路径自动跳过。 |
+| `cors` | 关 | hertz-contrib/cors | 没有安全的通用默认值，需显式配置 `allowedOrigins`（或开发期用 `allowAllOrigins`）。配置非法会在启动期失败。 |
+| `gzip` | 关 | hertz-contrib/gzip | `level`（1-9，-1=默认）。 |
+| `secureHeaders` | 关 | 自实现 | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`；HSTS 仅在启用 TLS 时生效。（hertz-contrib/secure 默认带 10 年 HSTS + SSL 重定向，故刻意不用。） |
+| 请求体限制 | `maxBodySize>0` 时开 | 引擎选项 `WithMaxRequestBodySize` | 非中间件；超限的 413 会像普通响应一样被记录。 |
+
+顺序（最外层在前）：`Recovery -> RequestID -> AccessLog -> SecureHeaders -> CORS -> Gzip`。
+Recovery 在最外层以兜住后续所有层的 panic；RequestID 在 AccessLog 之前，使每条访问日志都带上请求 id；
+AccessLog 包裹策略类中间件，使短路响应（204、403）也能被记录。
+
+> **设计上不提供请求超时中间件。** Go 无法在不使用 goroutine 缓冲 hack（会破坏流式/SSE）的前提下
+> 抢占正在运行的 handler，因此硬性时限仍由 `${spring.hertz.server}` 的读写超时兜底。
+> 指标与链路追踪同样不内置--请使用 `starter-actuator` 与 `starter-otel`。
+
+若要把请求 id 带到业务日志，配置一次 log 包的 context 钩子即可：
+
+```go
+log.FieldsFromContext = func(ctx context.Context) []log.Field {
+    if rid := StarterHertz.RequestIDFromContext(ctx); rid != "" {
+        return []log.Field{log.String("request_id", rid)}
+    }
+    return nil
+}
+```
+
 ## 高级功能
 
 * **框架托管 engine**：starter 依据配置创建 `*server.Hertz` 并交给你的
-  `RouterRegister`，`server.Default` 附带的 TLS、Tracer、自定义 transport 等选项
+  `RouterRegister`，Hertz 的 TLS、Tracer、自定义 transport 等选项
   统一生效。
 * **托管的生命周期**：适配器会等待 Go-Spring 就绪信号后再调用 `h.Run()`，
   在关闭阶段调用 `h.Shutdown(ctx)`。

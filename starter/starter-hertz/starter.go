@@ -18,12 +18,10 @@ package StarterHertz
 
 import (
 	"context"
-	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
-	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -49,30 +47,14 @@ func init() {
 
 // RouterRegister registers routes and middleware onto the framework-owned
 // *server.Hertz. This function type keeps SimpleHertzServer route-agnostic: the
-// starter creates and configures the engine, while each application supplies its
-// own register bean to wire handlers.
+// starter creates and configures the engine, while each application supplies
+// its own register bean to wire handlers.
+//
+// Built-in cross-cutting middlewares (Recovery, RequestID, AccessLog, and the
+// opt-in CORS/Gzip/SecureHeaders) are installed by the starter before the
+// register runs, so they wrap every application route. Mount only routes and
+// app-specific middleware here.
 type RouterRegister func(h *server.Hertz)
-
-// HealthConfig exposes an optional liveness/readiness endpoint served by the
-// starter. It is disabled by default so applications opt in explicitly.
-type HealthConfig struct {
-	Enabled bool   `value:"${enabled:=false}"`
-	Path    string `value:"${path:=/healthz}"`
-}
-
-// Config defines Hertz server configuration, bound from ${spring.hertz.server}.
-// Unlike gin/echo, Hertz owns its own listener, so the address and the
-// read/write/idle timeouts are passed to the engine via server options rather
-// than a standard http.Server. Field naming mirrors gs.SimpleHttpServerConfig.
-type Config struct {
-	Addr         string            `value:"${addr:=:8003}"`
-	ReadTimeout  time.Duration     `value:"${readTimeout:=5s}"`
-	WriteTimeout time.Duration     `value:"${writeTimeout:=5s}"`
-	IdleTimeout  time.Duration     `value:"${idleTimeout:=60s}"`
-	MaxBodySize  int               `value:"${maxBodySize:=0}"`
-	TLS          tlsconf.TLSConfig `value:"${tls}"`
-	Health       HealthConfig      `value:"${health}"`
-}
 
 // SimpleHertzServer adapts a *server.Hertz to the Go-Spring server lifecycle.
 // The starter builds and configures the engine (address, timeouts, TLS, routes
@@ -83,8 +65,11 @@ type SimpleHertzServer struct {
 }
 
 // NewSimpleHertzServer builds a *server.Hertz listening on the configured
-// address, applies timeout/body/TLS options, and applies the registered
-// RouterRegister.
+// address, applies timeout/body/TLS options and the built-in middlewares, and
+// applies the registered RouterRegister. It uses server.New (not server.Default)
+// so Recovery is configurable via the middleware block. It returns an error
+// when a built-in middleware (notably CORS) is misconfigured, so the server
+// fails fast at startup instead of panicking on the first request.
 func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServer, error) {
 	opts := []config.Option{
 		server.WithHostPorts(cfg.Addr),
@@ -103,7 +88,11 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServ
 		opts = append(opts, server.WithTLS(tlsCfg))
 	}
 
-	h := server.Default(opts...)
+	h := server.New(opts...)
+
+	if err := applyMiddlewares(h, cfg); err != nil {
+		return nil, err
+	}
 
 	// Register the optional health endpoint before application routes so it is
 	// always available and cannot be shadowed by a wildcard route.
