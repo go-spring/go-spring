@@ -5,15 +5,15 @@
 # observability backends (Prometheus, Jaeger, Loki, Promtail) via docker
 # compose, starts the provider (registers com.example.GreetService into etcd,
 # serves REST on :20003, exposes Prometheus metrics on :9090, exports traces to
-# Jaeger, writes JSON logs to logs/), runs the raw dubbo-go consumer (discovers
-# the provider, calls it, self-asserts, and exits non-zero on failure), then
+# Jaeger, writes JSON logs to logs/), runs the consumer (discovers
+# the provider via starter-dubbo's RegisterReference + typed stub, calls it,
+# self-asserts, and exits non-zero on failure), then
 # tears everything down. Skipped gracefully when docker is unavailable.
 #
-# Unlike the Triple/Dubbo/JSON-RPC sibling smoke tests, the consumer here is a
-# STANDALONE raw dubbo-go main() (starter-dubbo's client bean has no REST
-# protocol support), so it is not instrumented and makes only ONE call — the
-# request-volume assertion those siblings make is intentionally omitted; we
-# assert the RPC round-tripped and the metrics endpoint served dubbo_* metrics.
+# Unlike the Triple/Dubbo/JSON-RPC sibling smoke tests, the consumer here makes
+# only ONE call (no batch), so the request-volume assertion those siblings make
+# is intentionally omitted; we assert the RPC round-tripped and the metrics
+# endpoint served dubbo_* metrics.
 #
 # Verification is "endpoint + liveness" (not "data landed"): confirming the
 # metrics/traces/logs are actually queryable in Prometheus/Jaeger/Loki is a

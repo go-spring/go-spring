@@ -30,35 +30,71 @@ import (
 	greet "go-spring.org/dubbo-go/dubbo/idl"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	_ "go-spring.org/starter-dubbo"
+	StarterDubbo "go-spring.org/starter-dubbo"
 )
 
-// Consumer discovers the GreetService through the registry and calls it. The
-// Dubbo client is the single global client bean provided by starter-dubbo (built
-// from ${spring.dubbo.client}, plus the top-level ${spring.dubbo.registries}),
-// injected by type the same way the redis example autowires *redis.Client into
-// its Service bean.
-type Consumer struct {
-	Client *client.Client `autowire:""`
+// ── Typed stub (hand-written; not code-generated) ────────────────────────────
+//
+// For non-Triple protocols there is no code generator, so the typed wrapper
+// lives here in the application. It wraps the raw *client.Client, Dial-ing
+// once at construction time and reusing the same connection for every call,
+// and exposes the same constructor shape as a Triple-generated
+// NewXxxService so it slots into StarterDubbo.RegisterReference.
+
+// GreetService is a typed wrapper around a Dubbo client connection for the
+// GreetService. Business beans autowire *GreetService instead of the raw
+// *client.Client.
+type GreetService struct {
+	conn *client.Connection
 }
 
-// Greet dials the GreetService by its Java-style interface name and invokes the
-// Greet method. Because classic Dubbo has no generated stub (unlike the Triple
-// sibling), the method name and argument list are passed as runtime values via
-// the low-level Connection.CallUnary.
-func (c *Consumer) Greet(ctx context.Context, name string) (string, error) {
-	conn, err := c.Client.Dial(greet.GreetServiceInterface)
-	if err != nil {
+// Greet calls the remote Greet RPC.
+func (s *GreetService) Greet(ctx context.Context, name string) (string, error) {
+	var resp string
+	if err := s.conn.CallUnary(ctx, []any{name}, &resp, greet.MethodGreet); err != nil {
 		return "", err
 	}
-	var resp string
-	if err = conn.CallUnary(ctx, []any{name}, &resp, greet.MethodGreet); err != nil {
+	return resp, nil
+}
+
+// NewGreetService constructs a *GreetService from the global *client.Client.
+// The signature matches a Triple-generated constructor, so it can be passed
+// directly to StarterDubbo.RegisterReference. It Dials the interface once at
+// construction time; every call reuses the same connection.
+func NewGreetService(cli *client.Client, opts ...client.ReferenceOption) (*GreetService, error) {
+	conn, err := cli.Dial(greet.GreetServiceInterface, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &GreetService{conn: conn}, nil
+}
+
+// ── Business bean ────────────────────────────────────────────────────────────
+
+// Consumer calls the GreetService discovered through the registry. It depends
+// on the typed *GreetService stub (registered via RegisterReference below)
+// rather than the raw *client.Client — the same layering real apps use.
+type Consumer struct {
+	Svc *GreetService `autowire:""`
+}
+
+// Greet invokes the Greet RPC through the autowired typed stub. The stub was
+// built once at wiring time (Dial happened in NewGreetService), so every call
+// reuses the same connection — no per-call Dial.
+func (c *Consumer) Greet(ctx context.Context, name string) (string, error) {
+	resp, err := c.Svc.Greet(ctx, name)
+	if err != nil {
 		return "", err
 	}
 	return resp, nil
 }
 
 func main() {
+	// Register the typed GreetService stub as a bean. StarterDubbo.RegisterReference
+	// wires the single global client and the per-reference config under
+	// ${spring.dubbo.client.references.greet} into NewGreetService.
+	StarterDubbo.RegisterReference("greet", NewGreetService)
+
 	// Consumer is not referenced by any other bean, so register it as a root
 	// object and grab the handle to drive the one-shot call from runTest.
 	svrBean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())

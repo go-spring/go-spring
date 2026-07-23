@@ -26,26 +26,22 @@ import (
 	"time"
 
 	"dubbo.apache.org/dubbo-go/v3/client"
-	"dubbo.apache.org/dubbo-go/v3/common/constant"
-	_ "dubbo.apache.org/dubbo-go/v3/imports"
 	"dubbo.apache.org/dubbo-go/v3/protocol/rest/config"
-	"dubbo.apache.org/dubbo-go/v3/registry"
+	_ "dubbo.apache.org/dubbo-go/v3/imports"
 	greet "go-spring.org/dubbo-go/rest/idl"
 	"go-spring.org/spring/gs"
+	StarterDubbo "go-spring.org/starter-dubbo"
 )
 
-// init installs the RestServiceConfig map on the consumer side. The
-// dubbo-go REST protocol resolves the map by `bean.name` on the URL. On
-// the client the id defaults to `ref.InterfaceName` when the Dial call
-// receives only an interface string (no ServiceInfo, no service struct),
-// which is our case — so we key the map by the Java-style interface name
-// instead of the provider-side struct name.
+// ── REST protocol wiring ─────────────────────────────────────────────────────
 //
-// It is a legitimate downside of REST vs. its siblings (Triple /
-// classic-Dubbo / JSON-RPC), which need no such client-side registration.
-// Populating this map is a build-time coupling to the provider's URL
-// layout; changing the path or verb on one side without updating the other
-// silently produces 404s or 405s.
+// The REST protocol needs an HTTP routing table on both the provider and
+// consumer side. This init installs the RestServiceConfigMap — a process-wide
+// singleton that must be populated before the server/client starts. It is the
+// one piece of REST that cannot be hidden behind a typed stub constructor;
+// changing the path or verb on one side without updating the other silently
+// produces 404s or 405s.
+
 func init() {
 	config.SetRestConsumerServiceConfigMap(map[string]*config.RestServiceConfig{
 		greet.GreetServiceInterface: {
@@ -69,15 +65,60 @@ func init() {
 	})
 }
 
-// Consumer holds the client-side settings injected from
-// consumer/conf/app.properties. It never learns the provider's host:port: it
-// resolves a live provider from the same etcd registry the provider published
-// into, by the Java-style interface name in idl/greet.go.
+// ── Typed stub (hand-written; not code-generated) ────────────────────────────
+//
+// For non-Triple protocols there is no code generator, so the typed wrapper
+// lives here in the application. It wraps the raw *client.Client, Dial-ing
+// once at construction time and reusing the same connection for every call,
+// and exposes the same constructor shape as a Triple-generated
+// NewXxxService so it slots into StarterDubbo.RegisterReference.
+
+// GreetService is a typed wrapper around a Dubbo client connection for the
+// GreetService. Business beans autowire *GreetService instead of the raw
+// *client.Client.
+type GreetService struct {
+	conn *client.Connection
+}
+
+// Greet calls the remote Greet RPC.
+func (s *GreetService) Greet(ctx context.Context, name string) (string, error) {
+	var resp string
+	if err := s.conn.CallUnary(ctx, []any{name}, &resp, greet.MethodGreet); err != nil {
+		return "", err
+	}
+	return resp, nil
+}
+
+// NewGreetService constructs a *GreetService from the global *client.Client.
+// The signature matches a Triple-generated constructor, so it can be passed
+// directly to StarterDubbo.RegisterReference. It Dials the interface once at
+// construction time; every call reuses the same connection.
+func NewGreetService(cli *client.Client, opts ...client.ReferenceOption) (*GreetService, error) {
+	conn, err := cli.Dial(greet.GreetServiceInterface, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &GreetService{conn: conn}, nil
+}
+
+// ── Business bean ────────────────────────────────────────────────────────────
+
+// Consumer calls the GreetService discovered through the registry. It depends
+// on the typed *GreetService stub (registered via RegisterReference below)
+// rather than the raw *client.Client — the same layering real apps use.
 type Consumer struct {
-	RegistryAddr string `value:"${dubbo.consumer.registry.etcd:=127.0.0.1:2379}"`
+	Svc *GreetService `autowire:""`
 }
 
 func main() {
+	// Register the typed GreetService stub as a bean. StarterDubbo.RegisterReference
+	// wires the single global client and the per-reference config under
+	// ${spring.dubbo.client.references.greet} into NewGreetService.
+	// The REST-specific RestServiceConfigMap is installed in the init above;
+	// everything else — registry discovery, protocol selection, timeout — flows
+	// through the same config path as the other protocols.
+	StarterDubbo.RegisterReference("greet", NewGreetService)
+
 	// Consumer is not referenced by any other bean, so register it as a root
 	// object and grab the handle to drive the one-shot call from runTest.
 	bean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
@@ -93,48 +134,14 @@ func main() {
 	gs.Run()
 }
 
-// runTest builds a raw dubbo-go client bound to the etcd registry, asks for the
-// GreetService by its Java-style interface name (com.example.GreetService,
-// defined in idl/greet.go), and Dubbo resolves a live provider address from
-// etcd, calls it, and we assert on the echo.
-//
-// Because this is the REST protocol, dubbo-go has no dedicated
-// client.WithClientProtocolREST() shortcut; we instead pass the generic
-// client.WithProtocol(constant.RESTProtocol) as a ReferenceOption on Dial,
-// which sets Reference.Protocol = "rest" so the registry-directory layer
-// filters etcd URLs down to the rest:// entries.
-//
-// The call itself still flows through Connection.CallUnary — the framework
-// hides the fact that the wire is `GET /greet?name=...` behind the same
-// reflective invocation shape used by the classic-Dubbo and JSON-RPC
-// siblings.
+// runTest exercises the Greet RPC end-to-end via the autowired typed stub
+// and asserts on the echoed value.
 func runTest(c *Consumer) {
 	ctx := context.Background()
 
-	cli, err := client.NewClient(
-		client.WithClientRegistry(
-			registry.WithEtcdV3(),
-			registry.WithAddress(c.RegistryAddr),
-		),
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create client: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Pin the protocol at Dial time. Passing it through WithProtocol here
-	// (rather than at NewClient time) matches dubbo-go's own factoring for
-	// protocols that lack a WithClientProtocolXxx shortcut.
-	conn, err := cli.Dial(greet.GreetServiceInterface,
-		client.WithProtocol(constant.RESTProtocol))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to dial %s: %v\n", greet.GreetServiceInterface, err)
-		os.Exit(1)
-	}
-
 	want := "Hello, Dubbo-Go!"
-	var resp string
-	if err := conn.CallUnary(ctx, []any{want}, &resp, greet.MethodGreet); err != nil {
+	resp, err := c.Svc.Greet(ctx, want)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "error calling %s: %v\n", greet.MethodGreet, err)
 		os.Exit(1)
 	}

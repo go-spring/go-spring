@@ -95,9 +95,9 @@ it to find a live provider in etcd and call it.
 
 This example standardizes on **etcd** for easy cross-comparison with the other
 contrib examples. The [kitex-contrib](https://github.com/kitex-contrib) org
-also ships adapters for **Nacos**, **Consul**, **ZooKeeper**, and **Polaris**:
+also ships adapters for **Nacos**, **Consul**, **ZooKeeper**:
 swap `registry-etcd` for the corresponding `registry-nacos` /
-`registry-consul` / `registry-zookeeper` / `registry-polaris` module and use
+`registry-consul` / `registry-zookeeper` module and use
 its `NewXxxRegistry` / `NewXxxResolver` in place of `etcd.NewEtcdRegistry` /
 `etcd.NewEtcdResolver`. With Nacos you can also inspect the registered
 services directly in its built-in `:8848/nacos` console.
