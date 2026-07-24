@@ -93,14 +93,23 @@ func runTest(c *Consumer) {
 
 // init pins the working directory to this consumer/ directory so it loads its
 // own conf/app.properties regardless of the process launch path.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
+	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		panic("cannot resolve caller")
+	if ok {
+		execDir = filepath.Dir(filename)
 	}
-	if err := os.Chdir(filepath.Dir(filename)); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
-	workDir, _ := os.Getwd()
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(workDir)
 }

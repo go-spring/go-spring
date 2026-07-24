@@ -16,29 +16,28 @@
 
 package StarterDubbo
 
-// This file is a faithful Go mirror of dubbo-go.json. Every definition,
-// every property, every nested map matches the upstream schema exactly.
-// It is intentionally independent of the starter's opinionated config types.
+// This file is a faithful Go mirror of dubbo-go.json using go-spring config
+// binding syntax. Bind DubboConfig via gs.TagArg("${spring.dubbo}") — every
+// nested struct uses value:"${...}" tags that resolve relative to that prefix.
+//
+// It is intentionally independent of the starter's opinionated config types
+// (InstanceConfig, ServerConfig, ClientConfig, etc.) and exposes every field
+// the upstream schema defines, including those with no v3 Option yet.
 
-// DubboRoot is the top-level container. The dubbo-go.json schema wraps
-// everything under a single "dubbo" key.
-type DubboRoot struct {
-	Dubbo DubboConfig `json:"dubbo"`
-}
-
-// DubboConfig holds every top-level node that can appear under "dubbo".
+// DubboConfig holds every top-level node that can appear under "dubbo" in
+// dubbo-go.json. Bind it with gs.TagArg("${spring.dubbo}").
 type DubboConfig struct {
-	Profiles       DubboProfiles            `json:"profiles,omitempty"`
-	Application    DubboApplication         `json:"application,omitempty"`
-	Registries     map[string]DubboRegistry `json:"registries,omitempty"`
-	Protocols      map[string]DubboProtocol `json:"protocols,omitempty"`
-	ConfigCenter   DubboConfigCenter        `json:"config-center,omitempty"`
-	MetadataReport DubboMetadataReport      `json:"metadata-report,omitempty"`
-	Provider       DubboProvider            `json:"provider,omitempty"`
-	Consumer       DubboConsumer            `json:"consumer,omitempty"`
-	Metrics        map[string]DubboMetric   `json:"metrics,omitempty"`
-	Tracing        map[string]DubboTracing  `json:"tracing,omitempty"`
-	Shutdown       DubboShutdown            `json:"shutdown,omitempty"`
+	Profiles       DubboProfiles            `value:"${profiles:=}"`
+	Application    DubboApplication         `value:"${application:=}"`
+	Registries     map[string]DubboRegistry `value:"${registries:=}"`
+	Protocols      map[string]DubboProtocol `value:"${protocols:=}"`
+	ConfigCenter   DubboConfigCenter        `value:"${config-center:=}"`
+	MetadataReport DubboMetadataReport      `value:"${metadata-report:=}"`
+	Provider       DubboProvider            `value:"${provider:=}"`
+	Consumer       DubboConsumer            `value:"${consumer:=}"`
+	Metrics        map[string]DubboMetric   `value:"${metrics:=}"`
+	Tracing        map[string]DubboTracing  `value:"${tracing:=}"`
+	Shutdown       DubboShutdown            `value:"${shutdown:=}"`
 }
 
 // --- profiles ---
@@ -46,7 +45,7 @@ type DubboConfig struct {
 // DubboProfiles controls loading and merging of configuration files based on
 // the active profile suffix.
 type DubboProfiles struct {
-	Active string `json:"active,omitempty"` // the file suffix to be loaded
+	Active string `value:"${active:=}"` // the file suffix to be loaded
 }
 
 // --- application ---
@@ -54,215 +53,248 @@ type DubboProfiles struct {
 // DubboApplication holds application metadata for the current process,
 // whether it acts as a provider or a consumer.
 type DubboApplication struct {
-	Organization string `json:"organization,omitempty"` // default "dubbo-go"
-	Name         string `json:"name,omitempty"`         // default "dubbo.io"
-	Module       string `json:"module,omitempty"`       // default "sample"
-	Group        string `json:"group,omitempty"`
-	Version      string `json:"version,omitempty"`
-	Owner        string `json:"owner,omitempty"` // default "dubbo-go"
-	Environment  string `json:"environment,omitempty"`
-	MetadataType string `json:"metadata-type,omitempty"` // "local" or "remote"; default "local"
+	Organization string `value:"${organization:=dubbo-go}"`
+	Name         string `value:"${name:=dubbo.io}"`
+	Module       string `value:"${module:=sample}"`
+	Group        string `value:"${group:=}"`
+	Version      string `value:"${version:=}"`
+	Owner        string `value:"${owner:=dubbo-go}"`
+	Environment  string `value:"${environment:=}"`
+	// MetadataType is "local" or "remote"; default "local".
+	MetadataType string `value:"${metadata-type:=local}"`
 }
 
 // --- registry ---
 
-// DubboRegistry is a single registry-center entry. Keys are free-form
+// DubboRegistry is a single registry-center entry. Map keys are free-form
 // logical IDs validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 type DubboRegistry struct {
-	Protocol     string         `json:"protocol,omitempty"` // nacos|etcdv3|polaris|xds|zookeeper|service-discovery-registry
-	Timeout      string         `json:"timeout,omitempty"`  // default "5s"
-	Group        string         `json:"group,omitempty"`
-	Namespace    string         `json:"namespace,omitempty"`
-	TTL          string         `json:"ttl,omitempty"`     // default "10s"
-	Address      string         `json:"address,omitempty"` // format {protocol}://address
-	Username     string         `json:"username,omitempty"`
-	Password     string         `json:"password,omitempty"`
-	Simplified   bool           `json:"simplified,omitempty"`
-	Preferred    bool           `json:"preferred,omitempty"`     // always use this registry first
-	Zone         string         `json:"zone,omitempty"`          // region for traffic isolation
-	Weight       int            `json:"weight,omitempty"`        // default 100; traffic distribution among registries
-	RegistryType string         `json:"registry-type,omitempty"` // "service" for application-level discovery
-	Params       map[string]any `json:"params,omitempty"`        // extra params passed to the registry impl
+	// Protocol is one of: nacos, etcdv3, polaris, xds, zookeeper,
+	// service-discovery-registry.
+	Protocol  string `value:"${protocol:=}"`
+	Timeout   string `value:"${timeout:=5s}"`
+	Group     string `value:"${group:=}"`
+	Namespace string `value:"${namespace:=}"`
+	TTL       string `value:"${ttl:=10s}"`
+	// Address format: {protocol}://address
+	Address    string `value:"${address:=}"`
+	Username   string `value:"${username:=}"`
+	Password   string `value:"${password:=}"`
+	Simplified bool   `value:"${simplified:=false}"`
+	// Preferred: always use this registry first when set to true.
+	Preferred bool `value:"${preferred:=false}"`
+	// Zone: region for traffic isolation.
+	Zone string `value:"${zone:=}"`
+	// Weight: traffic distribution among registries; default 100.
+	Weight int `value:"${weight:=100}"`
+	// RegistryType: "service" for application-level discovery.
+	RegistryType string         `value:"${registry-type:=}"`
+	Params       map[string]any `value:"${params:=}"`
 }
 
 // --- protocol ---
 
-// DubboProtocol is a single protocol-listener entry. Keys are free-form
+// DubboProtocol is a single protocol-listener entry. Map keys are free-form
 // logical IDs validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 type DubboProtocol struct {
-	Name   string         `json:"name,omitempty"` // dubbo|rest|grpc|filter|jsonrpc|tri|registry; default "dubbo"
-	Ip     string         `json:"ip,omitempty"`
-	Port   float64        `json:"port,omitempty"` // default 20000; schema type is "number"
-	Params map[string]any `json:"params,omitempty"`
+	// Name is one of: dubbo, rest, grpc, filter, jsonrpc, tri, registry;
+	// default "dubbo".
+	Name   string         `value:"${name:=dubbo}"`
+	Ip     string         `value:"${ip:=}"`
+	Port   float64        `value:"${port:=20000}"` // schema type is "number"
+	Params map[string]any `value:"${params:=}"`
 }
 
 // --- config-center ---
 
 // DubboConfigCenter is the remote configuration-center entry.
 type DubboConfigCenter struct {
-	Protocol      string         `json:"protocol,omitempty"` // nacos|apollo|file|zookeeper
-	Address       string         `json:"address,omitempty"`  // format {protocol}://address
-	DataID        string         `json:"data-id,omitempty"`  // data id for nacos
-	AppID         string         `json:"app-id,omitempty"`   // app id for apollo
-	Cluster       string         `json:"cluster,omitempty"`
-	Username      string         `json:"username,omitempty"`
-	Password      string         `json:"password,omitempty"`
-	Group         string         `json:"group,omitempty"`
-	Namespace     string         `json:"namespace,omitempty"`
-	Params        map[string]any `json:"params,omitempty"`         // extra params passed to the config-center impl
-	Timeout       string         `json:"timeout,omitempty"`        // default "5s"
-	FileExtension string         `json:"file-extension,omitempty"` // json|toml|yaml|yml|properties; suffix of config dataId
+	// Protocol is one of: nacos, apollo, file, zookeeper.
+	Protocol  string         `value:"${protocol:=}"`
+	Address   string         `value:"${address:=}"` // format {protocol}://address
+	DataID    string         `value:"${data-id:=}"` // data id for nacos
+	AppID     string         `value:"${app-id:=}"`  // app id for apollo
+	Cluster   string         `value:"${cluster:=}"`
+	Username  string         `value:"${username:=}"`
+	Password  string         `value:"${password:=}"`
+	Group     string         `value:"${group:=}"`
+	Namespace string         `value:"${namespace:=}"`
+	Params    map[string]any `value:"${params:=}"`
+	Timeout   string         `value:"${timeout:=5s}"`
+	// FileExtension is the suffix of config dataId, also the file extension
+	// of config content: json, toml, yaml, yml, properties.
+	FileExtension string `value:"${file-extension:=}"`
 }
 
 // --- metadata-report ---
 
 // DubboMetadataReport is the metadata-report entry.
 type DubboMetadataReport struct {
-	Protocol  string `json:"protocol,omitempty"`
-	Address   string `json:"address,omitempty"` // format {protocol}://address
-	Username  string `json:"username,omitempty"`
-	Password  string `json:"password,omitempty"`
-	Group     string `json:"group,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-	Timeout   string `json:"timeout,omitempty"` // default "20s"
+	Protocol  string `value:"${protocol:=}"`
+	Address   string `value:"${address:=}"` // format {protocol}://address
+	Username  string `value:"${username:=}"`
+	Password  string `value:"${password:=}"`
+	Group     string `value:"${group:=}"`
+	Namespace string `value:"${namespace:=}"`
+	Timeout   string `value:"${timeout:=20s}"`
 }
 
 // --- provider ---
 
 // DubboProvider is the provider-side configuration.
 type DubboProvider struct {
-	Filter                 string                  `json:"filter,omitempty"`
-	Register               bool                    `json:"register,omitempty"`
-	RegistryIDs            []string                `json:"registry-ids,omitempty"`
-	TracingKey             string                  `json:"tracing-key,omitempty"`
-	Proxy                  string                  `json:"proxy,omitempty"` // default "default"
-	AdaptiveService        bool                    `json:"adaptive-service,omitempty"`
-	AdaptiveServiceVerbose bool                    `json:"adaptive-service-verbose,omitempty"`
-	Services               map[string]DubboService `json:"services,omitempty"`
+	Filter                 string                  `value:"${filter:=}"`
+	Register               bool                    `value:"${register:=false}"`
+	RegistryIDs            []string                `value:"${registry-ids:=}"`
+	TracingKey             string                  `value:"${tracing-key:=}"`
+	Proxy                  string                  `value:"${proxy:=default}"`
+	AdaptiveService        bool                    `value:"${adaptive-service:=false}"`
+	AdaptiveServiceVerbose bool                    `value:"${adaptive-service-verbose:=false}"`
+	Services               map[string]DubboService `value:"${services:=}"`
 }
 
-// DubboService is a per-service entry under provider.services. Keys are
+// DubboService is a per-service entry under provider.services. Map keys are
 // free-form logical IDs validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 type DubboService struct {
-	Filter                      string                 `json:"filter,omitempty"`
-	ProtocolIDs                 []string               `json:"protocol-ids,omitempty"`
-	Interface                   string                 `json:"interface,omitempty"`
-	RegistryIDs                 []string               `json:"registry-ids,omitempty"`
-	Cluster                     string                 `json:"cluster,omitempty"`     // default "failover"
-	LoadBalance                 string                 `json:"loadbalance,omitempty"` // random|roundrobin|consistenthashing|leastactive|xdsringhash|p2c; default "random"
-	Retries                     float64                `json:"retries,omitempty"`     // default 2; schema type is "number"
-	Group                       string                 `json:"group,omitempty"`
-	Version                     string                 `json:"version,omitempty"`
-	Serialization               string                 `json:"serialization,omitempty"` // protobuf|hessian2|msgpack|jsonMapStruct
-	Methods                     map[string]DubboMethod `json:"methods,omitempty"`
-	Warmup                      float64                `json:"warmup,omitempty"` // default 600 (ms); schema type is "number"
-	Params                      map[string]any         `json:"params,omitempty"`
-	Token                       string                 `json:"token,omitempty"` // set "true" or "default" to use uuid
-	AccessLog                   string                 `json:"accesslog,omitempty"`
-	TPSLimiter                  string                 `json:"tps.limiter,omitempty"` // method-service|default
-	TPSLimitInterval            int                    `json:"tps.limit.interval,omitempty"`
-	TPSLimitStrategy            string                 `json:"tps.limit.strategy,omitempty"` // threadSafeFixedWindow|slidingWindow|fixedWindow|default
-	TPSLimitRate                int                    `json:"tps.limit.rate,omitempty"`
-	TPSLimitRejectedHandler     string                 `json:"tps.limit.rejected.handler,omitempty"`     // default "log"
-	ExecuteLimit                float64                `json:"execute.limit,omitempty"`                  // schema type is "number"
-	ExecuteLimitRejectedHandler string                 `json:"execute.limit.rejected.handler,omitempty"` // default "log"
-	Auth                        bool                   `json:"auth,omitempty"`                           // default false
-	ParamSign                   bool                   `json:"param.sign,omitempty"`                     // default false
-	Tag                         string                 `json:"tag,omitempty"`
-	MaxMessageSize              int                    `json:"max_message_size,omitempty"` // default 4 (MB)
-	TracingKey                  string                 `json:"tracing-key,omitempty"`
+	Filter      string   `value:"${filter:=}"`
+	ProtocolIDs []string `value:"${protocol-ids:=}"`
+	Interface   string   `value:"${interface:=}"`
+	RegistryIDs []string `value:"${registry-ids:=}"`
+	// Cluster: default "failover".
+	Cluster string `value:"${cluster:=failover}"`
+	// LoadBalance is one of: random, roundrobin, consistenthashing,
+	// leastactive, xdsringhash, p2c; default "random".
+	LoadBalance string `value:"${loadbalance:=random}"`
+	// Retries: retry count; default 2; schema type is "number".
+	Retries float64 `value:"${retries:=2}"`
+	Group   string  `value:"${group:=}"`
+	Version string  `value:"${version:=}"`
+	// Serialization is one of: protobuf, hessian2, msgpack, jsonMapStruct.
+	Serialization string                 `value:"${serialization:=}"`
+	Methods       map[string]DubboMethod `value:"${methods:=}"`
+	// Warmup: service register warm-up time in ms; default 600; schema type "number".
+	Warmup float64        `value:"${warmup:=600}"`
+	Params map[string]any `value:"${params:=}"`
+	// Token: set "true" or "default" to use uuid.
+	Token     string `value:"${token:=}"`
+	AccessLog string `value:"${accesslog:=}"`
+	// TPSLimiter is one of: method-service, default.
+	TPSLimiter       string `value:"${tps.limiter:=}"`
+	TPSLimitInterval int    `value:"${tps.limit.interval:=}"`
+	// TPSLimitStrategy is one of: threadSafeFixedWindow, slidingWindow,
+	// fixedWindow, default.
+	TPSLimitStrategy            string  `value:"${tps.limit.strategy:=}"`
+	TPSLimitRate                int     `value:"${tps.limit.rate:=}"`
+	TPSLimitRejectedHandler     string  `value:"${tps.limit.rejected.handler:=log}"`
+	ExecuteLimit                float64 `value:"${execute.limit:=}"` // schema type "number"
+	ExecuteLimitRejectedHandler string  `value:"${execute.limit.rejected.handler:=log}"`
+	Auth                        bool    `value:"${auth:=false}"`
+	ParamSign                   bool    `value:"${param.sign:=false}"`
+	Tag                         string  `value:"${tag:=}"`
+	// MaxMessageSize: default 4 (MB).
+	MaxMessageSize int    `value:"${max_message_size:=4}"`
+	TracingKey     string `value:"${tracing-key:=}"`
 }
 
 // --- consumer ---
 
 // DubboConsumer is the consumer-side configuration.
 type DubboConsumer struct {
-	Filter                         string                    `json:"filter,omitempty"`
-	RegistryIDs                    []string                  `json:"registry-ids,omitempty"`
-	RequestTimeout                 string                    `json:"request-timeout,omitempty"` // default "3s"
-	Proxy                          string                    `json:"proxy,omitempty"`           // default "default"
-	Check                          bool                      `json:"check,omitempty"`
-	AdaptiveService                bool                      `json:"adaptive-service,omitempty"`
-	TracingKey                     string                    `json:"tracing-key,omitempty"`
-	MaxWaitTimeForServiceDiscovery string                    `json:"max-wait-time-for-service-discovery,omitempty"` // default "3s"
-	References                     map[string]DubboReference `json:"references,omitempty"`
+	Filter                         string                    `value:"${filter:=}"`
+	RegistryIDs                    []string                  `value:"${registry-ids:=}"`
+	RequestTimeout                 string                    `value:"${request-timeout:=3s}"`
+	Proxy                          string                    `value:"${proxy:=default}"`
+	Check                          bool                      `value:"${check:=false}"`
+	AdaptiveService                bool                      `value:"${adaptive-service:=false}"`
+	TracingKey                     string                    `value:"${tracing-key:=}"`
+	MaxWaitTimeForServiceDiscovery string                    `value:"${max-wait-time-for-service-discovery:=3s}"`
+	References                     map[string]DubboReference `value:"${references:=}"`
 }
 
-// DubboReference is a per-reference entry under consumer.references. Keys are
-// free-form logical IDs validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
+// DubboReference is a per-reference entry under consumer.references. Map keys
+// are free-form logical IDs validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 // Note: unlike DubboService, reference has no additionalProperties:false in
 // the schema, so it is open to extra fields.
 type DubboReference struct {
-	Interface     string                 `json:"interface,omitempty"`
-	Check         bool                   `json:"check,omitempty"`
-	URL           string                 `json:"url,omitempty"`
-	Filter        string                 `json:"filter,omitempty"`
-	Protocol      string                 `json:"protocol,omitempty"` // default "tri"
-	RegistryIDs   []string               `json:"registry-ids,omitempty"`
-	Cluster       string                 `json:"cluster,omitempty"`     // default "failover"
-	LoadBalance   string                 `json:"loadbalance,omitempty"` // random|roundrobin|consistenthashing|leastactive|xdsringhash|p2c; default "random"
-	Group         string                 `json:"group,omitempty"`
-	Version       string                 `json:"version,omitempty"`
-	Serialization string                 `json:"serialization,omitempty"` // protobuf|hessian2|msgpack|jsonMapStruct
-	Methods       map[string]DubboMethod `json:"methods,omitempty"`
-	Async         bool                   `json:"async,omitempty"`
-	Params        map[string]any         `json:"params,omitempty"`
-	Generic       bool                   `json:"generic,omitempty"`
-	Sticky        bool                   `json:"sticky,omitempty"`
-	Timeout       string                 `json:"timeout,omitempty"`
-	ForceTag      bool                   `json:"force.tag,omitempty"`
-	TracingKey    string                 `json:"tracing-key,omitempty"`
+	Interface   string   `value:"${interface:=}"`
+	Check       bool     `value:"${check:=false}"`
+	URL         string   `value:"${url:=}"`
+	Filter      string   `value:"${filter:=}"`
+	Protocol    string   `value:"${protocol:=tri}"`
+	RegistryIDs []string `value:"${registry-ids:=}"`
+	// Cluster: default "failover".
+	Cluster string `value:"${cluster:=failover}"`
+	// LoadBalance is one of: random, roundrobin, consistenthashing,
+	// leastactive, xdsringhash, p2c; default "random".
+	LoadBalance string `value:"${loadbalance:=random}"`
+	Group       string `value:"${group:=}"`
+	Version     string `value:"${version:=}"`
+	// Serialization is one of: protobuf, hessian2, msgpack, jsonMapStruct.
+	Serialization string                 `value:"${serialization:=}"`
+	Methods       map[string]DubboMethod `value:"${methods:=}"`
+	Async         bool                   `value:"${async:=false}"`
+	Params        map[string]any         `value:"${params:=}"`
+	Generic       bool                   `value:"${generic:=false}"`
+	Sticky        bool                   `value:"${sticky:=false}"`
+	Timeout       string                 `value:"${timeout:=}"`
+	ForceTag      bool                   `value:"${force.tag:=false}"`
+	TracingKey    string                 `value:"${tracing-key:=}"`
 }
 
 // --- method (shared by services and references) ---
 
-// DubboMethod is a per-method tuning entry. Keys are free-form method names
+// DubboMethod is a per-method tuning entry. Map keys are free-form method names
 // validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 type DubboMethod struct {
-	Name                        string  `json:"name,omitempty"`
-	Retries                     float64 `json:"retries,omitempty"`     // default 2; schema type is "number"
-	LoadBalance                 string  `json:"loadbalance,omitempty"` // random|roundrobin|consistenthashing|leastactive|xdsringhash|p2c; default "random"
-	Weight                      int     `json:"weight,omitempty"`      // default 100
-	TPSLimitInterval            int     `json:"tps.limit.interval,omitempty"`
-	TPSLimitRate                int     `json:"tps.limit.rate,omitempty"`
-	TPSLimitStrategy            string  `json:"tps.limit.strategy,omitempty"`             // threadSafeFixedWindow|slidingWindow|fixedWindow|default
-	ExecuteLimit                float64 `json:"execute.limit,omitempty"`                  // schema type is "number"
-	ExecuteLimitRejectedHandler string  `json:"execute.limit.rejected.handler,omitempty"` // default "log"
-	Sticky                      bool    `json:"sticky,omitempty"`
-	Timeout                     string  `json:"timeout,omitempty"`
+	Name    string  `value:"${name:=}"`
+	Retries float64 `value:"${retries:=2}"` // retry count; schema type "number"
+	// LoadBalance is one of: random, roundrobin, consistenthashing,
+	// leastactive, xdsringhash, p2c; default "random".
+	LoadBalance string `value:"${loadbalance:=random}"`
+	// Weight: default 100.
+	Weight           int `value:"${weight:=100}"`
+	TPSLimitInterval int `value:"${tps.limit.interval:=}"`
+	TPSLimitRate     int `value:"${tps.limit.rate:=}"`
+	// TPSLimitStrategy is one of: threadSafeFixedWindow, slidingWindow,
+	// fixedWindow, default.
+	TPSLimitStrategy            string  `value:"${tps.limit.strategy:=}"`
+	ExecuteLimit                float64 `value:"${execute.limit:=}"` // schema type "number"
+	ExecuteLimitRejectedHandler string  `value:"${execute.limit.rejected.handler:=log}"`
+	Sticky                      bool    `value:"${sticky:=false}"`
+	Timeout                     string  `value:"${timeout:=}"`
 }
 
 // --- metrics ---
 
-// DubboMetric is a single metrics entry. Keys are free-form logical IDs
+// DubboMetric is a single metrics entry. Map keys are free-form logical IDs
 // validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 type DubboMetric struct {
-	Mode               string `json:"mode,omitempty"`      // default "pull"
-	Namespace          string `json:"namespace,omitempty"` // default "dubbo"
-	Enable             bool   `json:"enable,omitempty"`    // default true
-	Port               int    `json:"port,omitempty"`      // default 9090
-	Path               string `json:"path,omitempty"`      // default "/metrics"
-	PushGatewayAddress string `json:"push-gateway-address,omitempty"`
+	Mode               string `value:"${mode:=pull}"`
+	Namespace          string `value:"${namespace:=dubbo}"`
+	Enable             bool   `value:"${enable:=true}"`
+	Port               int    `value:"${port:=9090}"`
+	Path               string `value:"${path:=/metrics}"`
+	PushGatewayAddress string `value:"${push-gateway-address:=}"`
 }
 
 // --- tracing ---
 
-// DubboTracing is a single tracing entry. Keys are free-form logical IDs
+// DubboTracing is a single tracing entry. Map keys are free-form logical IDs
 // validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 type DubboTracing struct {
-	Name        string `json:"name,omitempty"` // default "jaeger"
-	ServiceName string `json:"serviceName,omitempty"`
-	Address     string `json:"address,omitempty"`
-	UseAgent    bool   `json:"use-agent,omitempty"` // default false
+	Name        string `value:"${name:=jaeger}"`
+	ServiceName string `value:"${serviceName:=}"`
+	Address     string `value:"${address:=}"`
+	UseAgent    bool   `value:"${use-agent:=false}"`
 }
 
 // --- shutdown ---
 
 // DubboShutdown configures graceful shutdown behavior.
 type DubboShutdown struct {
-	Timeout                string `json:"timeout,omitempty"`                   // default "60s"
-	StepTimeout            string `json:"step-timeout,omitempty"`              // default "3s"
-	ConsumerUpdateWaitTime string `json:"consumer-update-wait-time,omitempty"` // default "3s"
-	RejectHandler          string `json:"reject-handler,omitempty"`
-	InternalSignal         bool   `json:"internal-signal,omitempty"` // default true
+	Timeout                string `value:"${timeout:=60s}"`
+	StepTimeout            string `value:"${step-timeout:=3s}"`
+	ConsumerUpdateWaitTime string `value:"${consumer-update-wait-time:=3s}"`
+	RejectHandler          string `value:"${reject-handler:=}"`
+	InternalSignal         bool   `value:"${internal-signal:=true}"`
 }

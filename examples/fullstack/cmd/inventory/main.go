@@ -134,13 +134,18 @@ func main() {
 // relative conf/app.properties path resolves regardless of where the process is
 // launched from.
 func init() {
+	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		panic("cannot resolve caller")
+	if ok {
+		execDir = filepath.Dir(filename)
 	}
-	if err := os.Chdir(filepath.Dir(filename)); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
-	wd, _ := os.Getwd()
-	fmt.Println("inventory workdir:", wd)
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

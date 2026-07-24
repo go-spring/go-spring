@@ -94,17 +94,18 @@ func runTest(c *Consumer) {
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
-// init sets the working directory to this consumer/ directory so it loads its
-// own conf/app.properties (consumer/conf/app.properties) regardless of the
-// process launch path. The provider does the same with its own conf, so the two
-// no longer share a file.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
+	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		panic("cannot resolve caller")
+	if ok {
+		execDir = filepath.Dir(filename)
 	}
-	dir := filepath.Dir(filename)
-	if err := os.Chdir(dir); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
 	workDir, err := os.Getwd()

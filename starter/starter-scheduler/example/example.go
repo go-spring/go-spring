@@ -107,14 +107,23 @@ func runTest() {
 
 // init pins the working directory to this source file's directory so relative
 // config paths resolve regardless of how the binary is invoked.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
+	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		panic("cannot resolve source file directory")
+	if ok {
+		execDir = filepath.Dir(filename)
 	}
-	if err := os.Chdir(filepath.Dir(filename)); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
-	wd, _ := os.Getwd()
-	fmt.Println(wd)
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }
