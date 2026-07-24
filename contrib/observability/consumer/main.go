@@ -26,8 +26,8 @@ import (
 	"time"
 
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
-	greet "go-spring.org/observability/idl"
 	"go-spring.org/log"
+	greet "go-spring.org/observability/idl"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-dubbo"
 )

@@ -277,9 +277,9 @@ func NewInstance(cfg InstanceConfig) (*Instance, error) {
 // global (one set per process), mounted on the Instance and inherited by every
 // server built from it.
 type ProtocolCfg struct {
-	Name   string            `value:"${name:=}"`  // protocol type; empty defaults to the map key (ID)
-	Ip     string            `value:"${ip:=}"`    // listen address; empty means dubbo-go's default (bind-all)
-	Port   int               `value:"${port}"`    // required: a registered service needs a known port
+	Name   string            `value:"${name:=}"`   // protocol type; empty defaults to the map key (ID)
+	Ip     string            `value:"${ip:=}"`     // listen address; empty means dubbo-go's default (bind-all)
+	Port   int               `value:"${port}"`     // required: a registered service needs a known port
 	Params map[string]string `value:"${params:=}"` // extra protocol params, escape hatch
 }
 

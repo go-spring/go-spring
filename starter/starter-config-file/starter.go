@@ -16,43 +16,59 @@
 
 // Package StarterConfigFile integrates a mounted directory (or file) as a
 // hot-reloadable configuration source for Go-Spring. Blank-importing this
-// package registers a "file-watch" config provider (see provider.go) that can
-// be consumed via spring.app.imports, together with the bridge that wires file
-// changes into the application-wide property refresh for live hot-reload.
+// package registers a "file-watch" config provider that can be consumed via
+// spring.app.imports, together with the bridge that wires file changes into
+// the application-wide property refresh for live hot-reload.
 //
 // Its primary purpose is Kubernetes: a ConfigMap or Secret mounted as a volume
 // becomes hot-reloadable without any custom code. The kubelet updates such a
-// volume by atomically swapping the "..data" symlink, which the provider's
-// directory watcher (see watch.go) detects and turns into a refresh, so bound
-// gs.Dync fields update within seconds of `kubectl edit configmap`.
+// volume by atomically swapping the "..data" symlink, which the directory
+// watcher detects and turns into a refresh, so bound gs.Dync fields update
+// within seconds of `kubectl edit configmap`.
 //
 // This starter covers local file/volume watching only. Remote configuration
 // centers (Nacos, etcd, Consul) are separate starters.
 package StarterConfigFile
 
 import (
+	"sync"
+
 	"go-spring.org/spring/gs"
 )
 
 func init() {
-	// Register the refresh bridge as a root object so it is always created.
-	// It links the "file-watch" provider's change watcher to the application's
-	// property refresh, enabling hot-reload of bound beans. A stable name keeps
-	// it from colliding with the application's own root beans, which also export
-	// gs.Rooter (an alias for any) under the default bean name.
-	gs.Provide(newConfigRefreshBridge).
-		Name("configFileRefreshBridge").
+	// Register the file-watch controller as both a root bean (so the IoC
+	// container injects its PropertiesRefresher via autowire) and the
+	// "file-watch" config provider (so Load calls go through its method).
+	// Before wiring, TriggerRefresh is a harmless no-op — the startup load
+	// already captured the initial config.
+	gs.Provide(fileWatchController).
+		Name("configFileController").
 		Export(gs.As[gs.Rooter]())
 }
 
-// configRefreshBridge connects file-watch config changes to the
-// application-wide property refresh mechanism.
-type configRefreshBridge struct{}
+// fileWatchController is the global singleton. It is the ONLY place the
+// controller is referenced outside its own methods: the init functions in this
+// file and in provider.go wire it into the IoC container and the conf provider
+// respectively. All other code (Load, ensureWatch, watchLoop, readDir, etc.)
+// operates on the receiver without touching this global.
+var fileWatchController = &configFileController{}
 
-// newConfigRefreshBridge installs the refresh hook used by the "file-watch"
-// config provider. It injects the framework's PropertiesRefresher so that a
-// file change reloads all sources and updates bound gs.Dync fields.
-func newConfigRefreshBridge(r *gs.PropertiesRefresher) *configRefreshBridge {
-	setRefreshHook(r.RefreshProperties)
-	return &configRefreshBridge{}
+// configFileController is the single object that owns the full lifecycle of
+// file-watch configuration: loading files, watching directories, and triggering
+// property refresh on changes.
+type configFileController struct {
+	Refresher *gs.PropertiesRefresher `autowire:""`
+
+	mu      sync.Mutex
+	watched map[string]struct{} // directories already watched
+}
+
+// TriggerRefresh is called by the watcher goroutines when a mounted directory
+// changes. Before the IoC container wires the controller, this is a no-op —
+// the initial config load already captured the state.
+func (c *configFileController) TriggerRefresh() {
+	if c.Refresher != nil {
+		_ = c.Refresher.RefreshProperties()
+	}
 }

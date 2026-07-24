@@ -180,8 +180,8 @@ func TestDyncPoller_AllFields(t *testing.T) {
 		"full-app": {
 			"timeout":     "5000",
 			"retries":     "2",
-				"cluster":     "failover",
-		"loadbalance": "leastactive",
+			"cluster":     "failover",
+			"loadbalance": "leastactive",
 		},
 	})
 	p.poll()

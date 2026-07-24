@@ -43,14 +43,14 @@ import (
 //
 // Note: retries only takes effect with cluster=failover (the default cluster).
 type ReferenceConfig struct {
-	Protocol    string        `value:"${protocol:=}"`      // dubbo(default)|tri|triple|jsonrpc; overrides client-level
-	RegistryIDs []string      `value:"${registry-ids:=}"`  // select global registries by ID; overrides client-level
-	Filter      string        `value:"${filter:=}"`       // comma-separated filter chain; overrides client-level
-	Timeout     time.Duration `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"; overrides client-level
-	Retries     int           `value:"${retries:=-1}"`    // -1 keeps dubbo-go default; 0 disables; >0 retries that many times
-	Cluster     string        `value:"${cluster:=}"`      // cluster strategy
-	LoadBalance string        `value:"${load-balance:=}"` // load-balance strategy
-	Params      map[string]string `value:"${params:=}"`  // escape hatch for reference-level filter parameters
+	Protocol    string            `value:"${protocol:=}"`     // dubbo(default)|tri|triple|jsonrpc; overrides client-level
+	RegistryIDs []string          `value:"${registry-ids:=}"` // select global registries by ID; overrides client-level
+	Filter      string            `value:"${filter:=}"`       // comma-separated filter chain; overrides client-level
+	Timeout     time.Duration     `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"; overrides client-level
+	Retries     int               `value:"${retries:=-1}"`    // -1 keeps dubbo-go default; 0 disables; >0 retries that many times
+	Cluster     string            `value:"${cluster:=}"`      // cluster strategy
+	LoadBalance string            `value:"${load-balance:=}"` // load-balance strategy
+	Params      map[string]string `value:"${params:=}"`       // escape hatch for reference-level filter parameters
 }
 
 // options translates ReferenceConfig into the dubbo-go ReferenceOption list

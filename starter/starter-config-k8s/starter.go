@@ -21,32 +21,51 @@ import (
 )
 
 func init() {
-	// Register the refresh bridge as a root object so it is always created. It
-	// links the "k8s" provider's informer-driven changes to the application's
-	// property refresh, enabling hot-reload of bound beans, and stops the
-	// informers on shutdown via its destructor. A stable name keeps it from
-	// colliding with the application's own root beans, which also export
-	// gs.Rooter (an alias for any) under the default bean name.
-	gs.Provide(newConfigRefreshBridge).
-		Name("configK8sRefreshBridge").
+	// Register the k8s controller as both a root bean (so the IoC container
+	// injects its PropertiesRefresher via autowire) and the "k8s" config
+	// provider (so Load calls go through its method). The controller owns the
+	// informer lifecycle via its destructor. Before wiring, TriggerRefresh is
+	// a harmless no-op — the startup load already captured the initial config.
+	gs.Provide(k8sController).
+		Name("k8sController").
 		Export(gs.As[gs.Rooter]()).
-		Destroy((*configRefreshBridge).stop)
+		Destroy((*k8sCtrl).stop)
 }
 
-// configRefreshBridge connects k8s config changes to the application-wide
-// property refresh mechanism and owns the informer lifecycle.
-type configRefreshBridge struct{}
+// k8sController is the global singleton. It is ONLY referenced in init
+// functions (here and in provider.go). All other code operates on the
+// receiver without touching this global.
+var k8sController = &k8sCtrl{}
 
-// newConfigRefreshBridge installs the refresh hook used by the "k8s" config
-// provider. It injects the framework's PropertiesRefresher so that an object
-// change reloads all sources and updates bound gs.Dync fields.
-func newConfigRefreshBridge(r *gs.PropertiesRefresher) *configRefreshBridge {
-	setRefreshHook(r.RefreshProperties)
-	return &configRefreshBridge{}
+// k8sCtrl is the single object that owns the full lifecycle of k8s
+// configuration: loading ConfigMaps/Secrets, watching via informers, and
+// triggering property refresh.
+type k8sCtrl struct {
+	Refresher *gs.PropertiesRefresher `autowire:""`
+
+	// manager tracks informers so they can be stopped on shutdown.
+	manager *watchManager
+
+	onTrigger func() // test hook; nil in production
 }
 
-// stop tears down every informer started by the provider. It is the bean
-// destructor, invoked once by the container on shutdown.
-func (*configRefreshBridge) stop() {
-	manager.stopAll()
+// TriggerRefresh is called by the informer event handlers when a watched
+// ConfigMap or Secret changes. Before the IoC container wires the controller,
+// this is a no-op — the initial config load already captured the state.
+func (c *k8sCtrl) TriggerRefresh() {
+	if c.onTrigger != nil {
+		c.onTrigger()
+		return
+	}
+	if c.Refresher != nil {
+		_ = c.Refresher.RefreshProperties()
+	}
+}
+
+// stop tears down every informer. It is the bean destructor, invoked once by
+// the container on shutdown.
+func (c *k8sCtrl) stop() {
+	if c.manager != nil {
+		c.manager.stopAll()
+	}
 }

@@ -19,7 +19,6 @@ package StarterConfigK8s
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -31,14 +30,11 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-// k8sClient is the subset of the Kubernetes API used here. It is
-// kubernetes.Interface so both the real clientset and the client-go fake
-// clientset (used in tests) satisfy it without a live cluster.
+// k8sClient is the subset of the Kubernetes API used here.
 type k8sClient = kubernetes.Interface
 
 // buildClient builds a clientset: in-cluster when kubeconfig is empty, otherwise
-// from the kubeconfig file. Built eagerly so a missing ServiceAccount or bad
-// kubeconfig surfaces at config-load time.
+// from the kubeconfig file.
 func buildClient(kubeconfig string) (k8sClient, error) {
 	var (
 		cfg *rest.Config
@@ -62,49 +58,30 @@ func buildClient(kubeconfig string) (k8sClient, error) {
 	return client, nil
 }
 
-// refreshHook holds the callback used to reload application properties when a
-// watched object changes. It is populated by the refresh bridge bean during
-// container wiring (see starter.go). A change that arrives before the bridge is
-// wired is safely ignored; the value is picked up on the next refresh.
-var refreshHook atomic.Pointer[func() error]
-
-// setRefreshHook installs the callback that reloads application properties.
-func setRefreshHook(fn func() error) {
-	refreshHook.Store(&fn)
-}
-
-// triggerRefresh invokes the installed refresh callback, if any.
-func triggerRefresh() {
-	if p := refreshHook.Load(); p != nil {
-		_ = (*p)()
-	}
-}
-
-// watchManager tracks the informers started by this provider so they can be
-// stopped on container shutdown, and deduplicates watchers so repeated Load
-// calls (startup + every refresh) do not stack informers on the same object.
+// watchManager tracks informers so they can be stopped on shutdown, and
+// deduplicates watchers so repeated Load calls do not stack informers.
 type watchManager struct {
 	mu      sync.Mutex
 	watched map[string]struct{}
 	stops   []chan struct{}
 }
 
-var manager = &watchManager{watched: map[string]struct{}{}}
+// ensureWatch starts a namespaced, name-scoped informer on the target object
+// and triggers a full property refresh on every add/update/delete.
+func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
+	if c.manager == nil {
+		c.manager = &watchManager{watched: map[string]struct{}{}}
+	}
 
-// ensureWatch starts a namespaced, name-scoped informer on the target object and
-// triggers a full property refresh on every add/update/delete. It is
-// deduplicated per kind/namespace/name and best-effort: an informer that fails
-// to sync is torn down and the object simply loses hot-reload.
-func ensureWatch(client k8sClient, cs configSource) {
 	id := fmt.Sprintf("%s/%s/%s", cs.kind, cs.namespace, cs.name)
 
-	manager.mu.Lock()
-	if _, ok := manager.watched[id]; ok {
-		manager.mu.Unlock()
+	c.manager.mu.Lock()
+	if _, ok := c.manager.watched[id]; ok {
+		c.manager.mu.Unlock()
 		return
 	}
-	manager.watched[id] = struct{}{}
-	manager.mu.Unlock()
+	c.manager.watched[id] = struct{}{}
+	c.manager.mu.Unlock()
 
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		client,
@@ -126,12 +103,12 @@ func ensureWatch(client k8sClient, cs configSource) {
 	}
 
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(any) { triggerRefresh() },
-		UpdateFunc: func(any, any) { triggerRefresh() },
-		DeleteFunc: func(any) { triggerRefresh() },
+		AddFunc:    func(any) { c.TriggerRefresh() },
+		UpdateFunc: func(any, any) { c.TriggerRefresh() },
+		DeleteFunc: func(any) { c.TriggerRefresh() },
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
-		manager.forget(id)
+		c.manager.forget(id)
 		return
 	}
 
@@ -139,13 +116,13 @@ func ensureWatch(client k8sClient, cs configSource) {
 	factory.Start(stop)
 	if !cache.WaitForCacheSync(stop, informer.HasSynced) {
 		close(stop)
-		manager.forget(id)
+		c.manager.forget(id)
 		return
 	}
 
-	manager.mu.Lock()
-	manager.stops = append(manager.stops, stop)
-	manager.mu.Unlock()
+	c.manager.mu.Lock()
+	c.manager.stops = append(c.manager.stops, stop)
+	c.manager.mu.Unlock()
 }
 
 // forget drops a watcher id so a later Load may retry starting it.
@@ -155,8 +132,7 @@ func (m *watchManager) forget(id string) {
 	m.mu.Unlock()
 }
 
-// stopAll stops every running informer. It is invoked by the refresh bridge
-// bean's destructor on container shutdown.
+// stopAll stops every running informer.
 func (m *watchManager) stopAll() {
 	m.mu.Lock()
 	stops := m.stops

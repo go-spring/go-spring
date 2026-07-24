@@ -44,13 +44,11 @@ func TestParseSource(t *testing.T) {
 	assert.String(t, cs.key).Equal("application.yaml")
 	assert.String(t, cs.format).Equal("yaml")
 
-	// Namespace defaults to "default".
 	cs, err = parseSource("secret/creds")
 	assert.Error(t, err).Nil()
 	assert.String(t, cs.kind).Equal(kindSecret)
 	assert.String(t, cs.namespace).Equal("default")
 
-	// Bad kind and malformed path are rejected up front.
 	_, err = parseSource("deployment/x")
 	assert.Error(t, err).Matches("unsupported k8s config kind")
 	_, err = parseSource("configmap")
@@ -66,11 +64,11 @@ func TestLoadConfigMapYAML(t *testing.T) {
 	cs, err := parseSource("configmap/cm-yaml")
 	assert.Error(t, err).Nil()
 
-	m, err := loadFromClient(client, cs, false)
+	m, err := k8sController.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()
 	assert.String(t, m["server.port"]).Equal("8080")
 	assert.String(t, m["name"]).Equal("demo")
-	manager.stopAll()
+	k8sController.manager.stopAll()
 }
 
 func TestLoadSecretPropsWithKeyFilter(t *testing.T) {
@@ -84,14 +82,13 @@ func TestLoadSecretPropsWithKeyFilter(t *testing.T) {
 	cs, err := parseSource("secret/sec?key=db.properties")
 	assert.Error(t, err).Nil()
 
-	m, err := loadFromClient(client, cs, false)
+	m, err := k8sController.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()
 	assert.String(t, m["db.user"]).Equal("root")
 	assert.String(t, m["db.pass"]).Equal("secret")
-	// The key filter excluded the other entry.
 	_, ok := m["ignore.me"]
 	assert.That(t, ok).False()
-	manager.stopAll()
+	k8sController.manager.stopAll()
 }
 
 func TestLoadOptionalMissing(t *testing.T) {
@@ -99,13 +96,11 @@ func TestLoadOptionalMissing(t *testing.T) {
 	cs, err := parseSource("configmap/absent")
 	assert.Error(t, err).Nil()
 
-	// Optional + not found returns an empty snapshot, not an error.
-	m, err := loadFromClient(client, cs, true)
+	m, err := k8sController.loadFromClient(client, cs, true)
 	assert.Error(t, err).Nil()
 	assert.That(t, m == nil).True()
 
-	// Required + not found is an error.
-	_, err = loadFromClient(client, cs, false)
+	_, err = k8sController.loadFromClient(client, cs, false)
 	assert.Error(t, err).Matches("get configmap")
 }
 
@@ -114,20 +109,18 @@ func TestUnknownExtensionSkippedButKeyFilterErrors(t *testing.T) {
 		"application.yaml": "a: 1\n",
 		"README":           "not config",
 	}))
-	// Without a key filter, the extension-less entry is silently skipped.
 	cs, err := parseSource("configmap/mixed")
 	assert.Error(t, err).Nil()
-	m, err := loadFromClient(client, cs, false)
+	m, err := k8sController.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()
 	assert.String(t, m["a"]).Equal("1")
-	manager.stopAll()
+	k8sController.manager.stopAll()
 
-	// Selecting the extension-less entry with no forced format is an error.
 	cs, err = parseSource("configmap/mixed?key=README")
 	assert.Error(t, err).Nil()
-	_, err = loadFromClient(client, cs, false)
+	_, err = k8sController.loadFromClient(client, cs, false)
 	assert.Error(t, err).Matches("no known format")
-	manager.stopAll()
+	k8sController.manager.stopAll()
 }
 
 func TestHotReloadTriggersRefresh(t *testing.T) {
@@ -138,15 +131,14 @@ func TestHotReloadTriggersRefresh(t *testing.T) {
 	assert.Error(t, err).Nil()
 
 	fired := make(chan struct{}, 8)
-	setRefreshHook(func() error { fired <- struct{}{}; return nil })
-	defer setRefreshHook(nil)
+	oldCtrl := k8sController
+	k8sController = &k8sCtrl{onTrigger: func() { fired <- struct{}{} }}
+	defer func() { k8sController = oldCtrl }()
 
-	_, err = loadFromClient(client, cs, false)
+	_, err = k8sController.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()
-	defer manager.stopAll()
+	defer k8sController.manager.stopAll()
 
-	// The initial informer sync fires the Add handler; drain it, then update the
-	// ConfigMap and expect a refresh from the Update handler.
 	drain(fired)
 	_, err = client.CoreV1().ConfigMaps("default").Update(context.Background(),
 		configMap("live", map[string]string{"application.yaml": "v: 2\n"}), metav1.UpdateOptions{})
@@ -159,7 +151,6 @@ func TestHotReloadTriggersRefresh(t *testing.T) {
 	}
 }
 
-// drain removes any buffered signals so a subsequent wait observes only new ones.
 func drain(ch chan struct{}) {
 	for {
 		select {

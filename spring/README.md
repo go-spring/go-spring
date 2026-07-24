@@ -483,6 +483,15 @@ func init() {
 
 ## 5. ⚙️ Configuration Management
 
+Go-Spring's configuration system is **strictly type-driven**: every configuration
+access must declare a concrete Go type — primitive, struct, map, slice, or a
+registered converter type. There is no `any`/`interface{}` binding path; the
+target type determines how keys are resolved, how layered sources are merged,
+and how values are converted. The same constraint extends to `gs.Dync[T]`:
+dynamic refresh reuses the identical type-checked binding pipeline, so a value
+that fails validation during a hot-reload is rejected atomically without
+partially updating the application state.
+
 Go-Spring provides a **layered-designed, flexible and powerful** configuration management system
 that supports loading configuration from multiple sources, natively meeting enterprise requirements
 such as multi-environment isolation and dynamic updates.

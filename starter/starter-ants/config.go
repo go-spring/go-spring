@@ -22,6 +22,21 @@ import (
 	"github.com/panjf2000/ants/v2"
 )
 
+// Ensure antsPool implements Pool.
+var _ Pool = (*antsPool)(nil)
+
+// antsPool wraps *ants.Pool to implement Pool.
+type antsPool struct {
+	pool *ants.Pool
+}
+
+func (p *antsPool) Submit(task func()) error { return p.pool.Submit(task) }
+func (p *antsPool) Running() int             { return p.pool.Running() }
+func (p *antsPool) Free() int                { return p.pool.Free() }
+func (p *antsPool) Cap() int                 { return p.pool.Cap() }
+func (p *antsPool) Waiting() int             { return p.pool.Waiting() }
+func (p *antsPool) Release()                 { p.pool.Release() }
+
 var driverRegistry = map[string]Driver{}
 
 // panicHandler is an optional handler invoked when a task submitted to a
@@ -74,12 +89,18 @@ type Config struct {
 	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
-// Driver interface defines how to create an ants pool.
+// ---------------------------------------------------------------------------
+// Driver
+// ---------------------------------------------------------------------------
+
+// Driver defines how to create a Pool from configuration.
+// Implementations can customize pool construction, attach observers,
+// or provide entirely different pool backends.
 type Driver interface {
-	CreatePool(c Config) (*ants.Pool, error)
+	CreatePool(c Config) (Pool, error)
 }
 
-// RegisterDriver registers an ants pool driver with the given name.
+// RegisterDriver registers a pool driver with the given name.
 // It panics if the driver name has already been registered.
 func RegisterDriver(name string, driver Driver) {
 	if _, ok := driverRegistry[name]; ok {
@@ -88,12 +109,20 @@ func RegisterDriver(name string, driver Driver) {
 	driverRegistry[name] = driver
 }
 
+// ---------------------------------------------------------------------------
+// DefaultDriver
+// ---------------------------------------------------------------------------
+
 // DefaultDriver is the default implementation of the Driver interface.
+// It creates a standard *ants.Pool wrapped in an antsPool with all
+// registered observers attached.
 type DefaultDriver struct{}
 
 // CreatePool creates a new ants pool based on the provided configuration.
-func (DefaultDriver) CreatePool(c Config) (*ants.Pool, error) {
-	return ants.NewPool(c.Size,
+// The pool is wrapped with all currently registered PoolObservers so that
+// every task submission goes through the observer chain.
+func (DefaultDriver) CreatePool(c Config) (Pool, error) {
+	pool, err := ants.NewPool(c.Size,
 		ants.WithExpiryDuration(c.ExpiryDuration),
 		ants.WithPreAlloc(c.PreAlloc),
 		ants.WithMaxBlockingTasks(c.MaxBlockingTasks),
@@ -101,4 +130,10 @@ func (DefaultDriver) CreatePool(c Config) (*ants.Pool, error) {
 		ants.WithDisablePurge(c.DisablePurge),
 		ants.WithPanicHandler(panicHandler),
 	)
+	if err != nil {
+		return nil, err
+	}
+	return &antsPool{
+		pool: pool,
+	}, nil
 }

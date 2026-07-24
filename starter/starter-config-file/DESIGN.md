@@ -24,10 +24,14 @@ with no custom code.
 
 - **Provider seam.** `conf.RegisterProvider("file-watch", loadWatchedConfig)`.
   The provider runs during `AppConfig.Refresh`, before any bean exists.
-- **Refresh hook.** Container-scope bridge bean `configRefreshBridge` (named
-  `configFileRefreshBridge`, exported as `gs.Rooter`) injects
-  `*gs.PropertiesRefresher` and stores its `RefreshProperties` into an
-  `atomic.Pointer[func() error]`.
+- **Refresh hook.** Container-scope controller bean `configFileController` (named
+  `configFileController`, exported as `gs.Rooter`) injects
+  `*gs.PropertiesRefresher` and stores it directly on the package-level
+  `fileWatchController` singleton. Before wiring, `TriggerRefresh` is a safe
+  no-op; after wiring, it calls `RefreshProperties`. This eliminates the
+  previous `atomic.Pointer[func() error]` indirection — the IoC container's
+  wiring order guarantees the controller is populated before any watcher events
+  need it.
 - **Watch seam.** One fsnotify watcher per directory, deduped via a
   `watched` set so repeat `Load` calls do not create duplicate watches.
 
@@ -52,7 +56,7 @@ with no custom code.
   parsing and reading errors are always fatal so a mistyped format surfaces
   immediately.
 - **The bridge bean must be named.** `gs.Rooter` is `any`; the stable name
-  `configFileRefreshBridge` avoids the `__default__` collision that would
+  `configFileController` avoids the `__default__` collision that would
   otherwise ambiguate with the application's own root beans.
 
 ## 4. Trade-offs / Alternatives Rejected

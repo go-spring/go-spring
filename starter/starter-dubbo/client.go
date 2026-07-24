@@ -47,12 +47,12 @@ func init() {
 // has no clean client-level Option for them, so they are intentionally not
 // surfaced here.)
 type ClientConfig struct {
-	Protocol    string        `value:"${protocol:=}"`      // dubbo(default)|tri|triple|jsonrpc
-	Timeout     time.Duration `value:"${timeout:=}"`       // per-request timeout, e.g. "3s"
-	RegistryIDs []string      `value:"${registry-ids:=}"`   // select global registries by ID; empty means all
-	Filter      string        `value:"${filter:=}"`        // comma-separated filter chain; use "-name" to drop one from dubbo-go's default chain
-	Params      map[string]string `value:"${params:=}"`    // escape hatch for consumer-level filter parameters
-	Check       bool          `value:"${check:=true}"`     // false disables startup check (provider presence)
+	Protocol    string            `value:"${protocol:=}"`     // dubbo(default)|tri|triple|jsonrpc
+	Timeout     time.Duration     `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"
+	RegistryIDs []string          `value:"${registry-ids:=}"` // select global registries by ID; empty means all
+	Filter      string            `value:"${filter:=}"`       // comma-separated filter chain; use "-name" to drop one from dubbo-go's default chain
+	Params      map[string]string `value:"${params:=}"`       // escape hatch for consumer-level filter parameters
+	Check       bool              `value:"${check:=true}"`    // false disables startup check (provider presence)
 }
 
 // NewClient builds the single *client.Client from the global ClientConfig and

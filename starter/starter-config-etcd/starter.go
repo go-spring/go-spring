@@ -16,37 +16,53 @@
 
 // Package StarterConfigEtcd integrates etcd as a remote configuration
 // center for Go-Spring. Blank-importing this package registers an "etcd"
-// config provider (see provider.go) that can be consumed via
-// spring.app.imports, together with the bridge that wires remote config
-// changes into the application-wide property refresh for live hot-reload.
+// config provider that can be consumed via spring.app.imports, together with
+// the bridge that wires remote config changes into the application-wide
+// property refresh for live hot-reload.
 //
 // This starter covers the config-center role only. Service discovery
 // (etcd naming) is a separate concern and is not provided here.
 package StarterConfigEtcd
 
 import (
+	"sync"
+
 	"go-spring.org/spring/gs"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 func init() {
-	// Register the refresh bridge as a root object so it is always created.
-	// It links the "etcd" remote config provider's change watcher to the
-	// application's property refresh, enabling hot-reload of bound beans. A
-	// stable name keeps it from colliding with the application's own root beans,
-	// which also export gs.Rooter (an alias for any) under the default bean name.
-	gs.Provide(newConfigRefreshBridge).
-		Name("etcdConfigRefreshBridge").
+	// Register the etcd controller as both a root bean (so the IoC container
+	// injects its PropertiesRefresher via autowire) and the "etcd" config
+	// provider (so Load calls go through its method). Before wiring,
+	// TriggerRefresh is a harmless no-op — the startup load already captured
+	// the initial config.
+	gs.Provide(etcdController).
+		Name("etcdController").
 		Export(gs.As[gs.Rooter]())
 }
 
-// configRefreshBridge connects remote etcd config changes to the
-// application-wide property refresh mechanism.
-type configRefreshBridge struct{}
+// etcdController is the global singleton. It is ONLY referenced in init
+// functions (here and in provider.go). All other code operates on the
+// receiver without touching this global.
+var etcdController = &etcdCtrl{}
 
-// newConfigRefreshBridge installs the refresh hook used by the "etcd" config
-// provider. It injects the framework's PropertiesRefresher so that a remote
-// config change reloads all sources and updates bound gs.Dync fields.
-func newConfigRefreshBridge(r *gs.PropertiesRefresher) *configRefreshBridge {
-	setRefreshHook(r.RefreshProperties)
-	return &configRefreshBridge{}
+// etcdCtrl is the single object that owns the full lifecycle of etcd
+// configuration: loading keys, watching for changes, and triggering
+// property refresh.
+type etcdCtrl struct {
+	Refresher *gs.PropertiesRefresher `autowire:""`
+
+	mu       sync.Mutex
+	clients  map[string]*clientv3.Client
+	listened map[string]struct{}
+}
+
+// TriggerRefresh is called by the watch goroutines when a watched key
+// changes. Before the IoC container wires the controller, this is a no-op —
+// the initial config load already captured the state.
+func (c *etcdCtrl) TriggerRefresh() {
+	if c.Refresher != nil {
+		_ = c.Refresher.RefreshProperties()
+	}
 }

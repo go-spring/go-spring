@@ -22,12 +22,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader/json"
 	"go-spring.org/spring/conf/reader/prop"
@@ -38,20 +38,13 @@ import (
 )
 
 func init() {
-	// Register "nacos" as a remote configuration provider so that a
-	// spring.app.imports entry such as
-	//
-	//	optional:nacos:127.0.0.1:8848/my-data-id?group=DEFAULT_GROUP&format=properties
-	//
-	// pulls configuration from a Nacos config server at startup and on
-	// every RefreshProperties call.
-	conf.RegisterProvider("nacos", loadNacosConfig)
+	// Register "nacos" as a remote configuration provider. The provider is
+	// the global controller's Load method, so the same object that holds the
+	// PropertiesRefresher (injected via autowire) also serves config loads.
+	conf.RegisterProvider("nacos", nacosController.Load)
 }
 
-// contentReader parses raw configuration bytes into a nested map based on the
-// declared format. It mirrors the readers registered in conf/reader but is
-// keyed by format name rather than file extension, since remote content has no
-// file name.
+// contentReader parses raw configuration bytes into a nested map.
 type contentReader func(b []byte) (map[string]any, error)
 
 var contentReaders = map[string]contentReader{
@@ -64,42 +57,20 @@ var contentReaders = map[string]contentReader{
 	"json":       json.Read,
 }
 
-// refreshHook holds the callback used to reload application properties when a
-// watched remote configuration changes. It is populated by the refresh bridge
-// bean during container wiring (see starter.go). A remote change that arrives
-// before the bridge is wired is safely ignored; the value is picked up on the
-// next refresh.
-var refreshHook atomic.Pointer[func() error]
-
-// setRefreshHook installs the callback that reloads application properties.
-func setRefreshHook(fn func() error) {
-	refreshHook.Store(&fn)
-}
-
-// triggerRefresh invokes the installed refresh callback, if any.
-func triggerRefresh() {
-	if p := refreshHook.Load(); p != nil {
-		_ = (*p)()
-	}
-}
-
 // configSource holds the parsed components of a nacos provider source string.
 type configSource struct {
-	server    string // host:port of the Nacos server
-	dataID    string // config data id
-	group     string // config group, defaults to DEFAULT_GROUP
-	namespace string // namespace id, defaults to public
+	server    string
+	dataID    string
+	group     string
+	namespace string
 	username  string
 	password  string
 	timeoutMs uint64
-	format    string // content format: properties/yaml/toml/json
+	format    string
 }
 
 // parseSource parses a provider source of the form
-//
-//	<host>:<port>/<dataId>?group=..&namespace=..&format=..&username=..&password=..&timeout-ms=..
-//
-// The leading "nacos:" prefix has already been stripped by conf/provider.Load.
+// <host>:<port>/<dataId>?group=..&namespace=..&format=..&username=..&password=..&timeout-ms=..
 func parseSource(source string) (configSource, error) {
 	u, err := url.Parse("nacos://" + source)
 	if err != nil {
@@ -127,7 +98,6 @@ func parseSource(source string) (configSource, error) {
 		cs.group = "DEFAULT_GROUP"
 	}
 	if cs.format == "" {
-		// Fall back to the data id extension, otherwise properties.
 		if ext := strings.TrimPrefix(filepath.Ext(dataID), "."); ext != "" {
 			cs.format = ext
 		} else {
@@ -145,33 +115,34 @@ func parseSource(source string) (configSource, error) {
 	return cs, nil
 }
 
-// clientCache reuses one config client per (server, namespace, credentials)
-// tuple. loadNacosConfig runs at startup and again on every RefreshProperties
-// call, so caching avoids leaking a client and its background goroutines on
-// each refresh.
-var (
-	clientMu    sync.Mutex
-	clientCache = map[string]config_client.IConfigClient{}
-	// listened tracks (client-key, group, dataId) tuples that already have a
-	// change listener, so repeated Load calls do not register duplicates.
-	listened = map[string]struct{}{}
-)
+// mapMutex is a sync.Mutex used to guard the controller's maps.
+type mapMutex = sync.Mutex
 
-// clientFor returns a cached config client for the source, creating one if
-// necessary.
-func clientFor(cs configSource) (config_client.IConfigClient, string, error) {
-	key := cs.server + "|" + cs.namespace + "|" + cs.username + "|" + cs.password
+// nacosConfigClient is the subset of the Nacos config client used here.
+type nacosConfigClient = config_client.IConfigClient
 
-	clientMu.Lock()
-	defer clientMu.Unlock()
+// clientKey builds a cache key for a client.
+func clientKey(cs configSource) string {
+	return cs.server + "|" + cs.namespace + "|" + cs.username + "|" + cs.password
+}
 
-	if cli, ok := clientCache[key]; ok {
-		return cli, key, nil
+// clientFor returns a cached client for the source, creating one if necessary.
+func (c *nacosCtrl) clientFor(cs configSource) (nacosConfigClient, error) {
+	key := clientKey(cs)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.clients == nil {
+		c.clients = map[string]nacosConfigClient{}
+	}
+	if cli, ok := c.clients[key]; ok {
+		return cli, nil
 	}
 
 	host, port, err := splitHostPort(cs.server)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	sc := []constant.ServerConfig{*constant.NewServerConfig(host, port)}
 	cc := constant.NewClientConfig(
@@ -183,10 +154,10 @@ func clientFor(cs configSource) (config_client.IConfigClient, string, error) {
 	)
 	cli, err := clients.NewConfigClient(vo.NacosClientParam{ClientConfig: cc, ServerConfigs: sc})
 	if err != nil {
-		return nil, "", errutil.Explain(err, "create nacos config client for %s failed", cs.server)
+		return nil, errutil.Explain(err, "create nacos config client for %s failed", cs.server)
 	}
-	clientCache[key] = cli
-	return cli, key, nil
+	c.clients[key] = cli
+	return cli, nil
 }
 
 // splitHostPort splits "host:port" into its parts.
@@ -202,24 +173,21 @@ func splitHostPort(server string) (string, uint64, error) {
 	return host, port, nil
 }
 
-// loadNacosConfig implements conf/provider.Provider. It fetches configuration
-// content from Nacos, parses it according to the declared format, and installs
-// a change listener that triggers an application property refresh.
-func loadNacosConfig(optional bool, source string) (map[string]string, error) {
+// Load implements conf/provider.Provider. It fetches configuration content
+// from Nacos, parses it according to the declared format, and installs a
+// change listener that triggers an application property refresh.
+func (c *nacosCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
 		return nil, err
 	}
 
-	cli, key, err := clientFor(cs)
+	cli, err := c.clientFor(cs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Register the change listener before reading so that hot-reload works even
-	// when the data id does not exist yet: a later publish will trigger a
-	// refresh that re-runs this provider and picks up the new value.
-	registerListener(cli, key, cs)
+	c.registerListener(cli, cs)
 
 	content, err := cli.GetConfig(vo.ConfigParam{DataId: cs.dataID, Group: cs.group})
 	if err != nil {
@@ -247,32 +215,31 @@ func loadNacosConfig(optional bool, source string) (map[string]string, error) {
 }
 
 // registerListener installs a Nacos change listener for the given data id,
-// deduplicated across repeated Load calls. On change it triggers a full
-// application property refresh, which re-runs this provider and propagates new
-// values to bound gs.Dync fields.
-func registerListener(cli config_client.IConfigClient, key string, cs configSource) {
-	lk := key + "|" + cs.group + "|" + cs.dataID
+// deduplicated across repeated Load calls.
+func (c *nacosCtrl) registerListener(cli nacosConfigClient, cs configSource) {
+	lk := clientKey(cs) + "|" + cs.group + "|" + cs.dataID
 
-	clientMu.Lock()
-	if _, ok := listened[lk]; ok {
-		clientMu.Unlock()
+	c.mu.Lock()
+	if c.listened == nil {
+		c.listened = map[string]struct{}{}
+	}
+	if _, ok := c.listened[lk]; ok {
+		c.mu.Unlock()
 		return
 	}
-	listened[lk] = struct{}{}
-	clientMu.Unlock()
+	c.listened[lk] = struct{}{}
+	c.mu.Unlock()
 
 	err := cli.ListenConfig(vo.ConfigParam{
 		DataId: cs.dataID,
 		Group:  cs.group,
 		OnChange: func(namespace, group, dataId, data string) {
-			triggerRefresh()
+			c.TriggerRefresh()
 		},
 	})
 	if err != nil {
-		// Listener registration is best-effort: startup still succeeds with a
-		// static snapshot, only losing hot-reload for this data id.
-		clientMu.Lock()
-		delete(listened, lk)
-		clientMu.Unlock()
+		c.mu.Lock()
+		delete(c.listened, lk)
+		c.mu.Unlock()
 	}
 }

@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go-spring.org/spring/conf"
@@ -36,20 +35,13 @@ import (
 )
 
 func init() {
-	// Register "etcd" as a remote configuration provider so that a
-	// spring.app.imports entry such as
-	//
-	//	optional:etcd:127.0.0.1:2379/my-key?format=properties
-	//
-	// pulls configuration from an etcd cluster at startup and on every
-	// RefreshProperties call.
-	conf.RegisterProvider("etcd", loadEtcdConfig)
+	// Register "etcd" as a remote configuration provider. The provider is
+	// the global controller's Load method, so the same object that holds the
+	// PropertiesRefresher (injected via autowire) also serves config loads.
+	conf.RegisterProvider("etcd", etcdController.Load)
 }
 
-// contentReader parses raw configuration bytes into a nested map based on the
-// declared format. It mirrors the readers registered in conf/reader but is
-// keyed by format name rather than file extension, since remote content has no
-// file name.
+// contentReader parses raw configuration bytes into a nested map.
 type contentReader func(b []byte) (map[string]any, error)
 
 var contentReaders = map[string]contentReader{
@@ -62,40 +54,18 @@ var contentReaders = map[string]contentReader{
 	"json":       json.Read,
 }
 
-// refreshHook holds the callback used to reload application properties when a
-// watched remote configuration changes. It is populated by the refresh bridge
-// bean during container wiring (see starter.go). A remote change that arrives
-// before the bridge is wired is safely ignored; the value is picked up on the
-// next refresh.
-var refreshHook atomic.Pointer[func() error]
-
-// setRefreshHook installs the callback that reloads application properties.
-func setRefreshHook(fn func() error) {
-	refreshHook.Store(&fn)
-}
-
-// triggerRefresh invokes the installed refresh callback, if any.
-func triggerRefresh() {
-	if p := refreshHook.Load(); p != nil {
-		_ = (*p)()
-	}
-}
-
 // configSource holds the parsed components of an etcd provider source string.
 type configSource struct {
-	endpoint    string // host:port of the etcd server
-	key         string // the etcd key holding the configuration content
+	endpoint    string
+	key         string
 	username    string
 	password    string
 	dialTimeout time.Duration
-	format      string // content format: properties/yaml/toml/json
+	format      string
 }
 
 // parseSource parses a provider source of the form
-//
-//	<host>:<port>/<key>?format=..&username=..&password=..&dial-timeout=..
-//
-// The leading "etcd:" prefix has already been stripped by conf/provider.Load.
+// <host>:<port>/<key>?format=..&username=..&password=..&dial-timeout=..
 func parseSource(source string) (configSource, error) {
 	u, err := url.Parse("etcd://" + source)
 	if err != nil {
@@ -118,7 +88,6 @@ func parseSource(source string) (configSource, error) {
 		format:   q.Get("format"),
 	}
 	if cs.format == "" {
-		// Fall back to the key extension, otherwise properties.
 		if ext := strings.TrimPrefix(filepath.Ext(key), "."); ext != "" {
 			cs.format = ext
 		} else {
@@ -136,28 +105,29 @@ func parseSource(source string) (configSource, error) {
 	return cs, nil
 }
 
-// clientCache reuses one etcd client per (endpoint, credentials) tuple.
-// loadEtcdConfig runs at startup and again on every RefreshProperties call,
-// so caching avoids leaking a client and its background goroutines on each
-// refresh.
-var (
-	clientMu    sync.Mutex
-	clientCache = map[string]*clientv3.Client{}
-	// listened tracks (client-key, etcd-key) tuples that already have a change
-	// watcher, so repeated Load calls do not register duplicates.
-	listened = map[string]struct{}{}
-)
+// mapMutex is a sync.Mutex used to guard the controller's maps.
+type mapMutex = sync.Mutex
 
-// clientFor returns a cached etcd client for the source, creating one if
-// necessary.
-func clientFor(cs configSource) (*clientv3.Client, string, error) {
-	key := cs.endpoint + "|" + cs.username + "|" + cs.password
+// etcdClient is the subset of the etcd client used here.
+type etcdClient = clientv3.Client
 
-	clientMu.Lock()
-	defer clientMu.Unlock()
+// clientKey builds a cache key for a client.
+func clientKey(cs configSource) string {
+	return cs.endpoint + "|" + cs.username + "|" + cs.password
+}
 
-	if cli, ok := clientCache[key]; ok {
-		return cli, key, nil
+// clientFor returns a cached client for the source, creating one if necessary.
+func (c *etcdCtrl) clientFor(cs configSource) (*clientv3.Client, error) {
+	key := clientKey(cs)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.clients == nil {
+		c.clients = map[string]*clientv3.Client{}
+	}
+	if cli, ok := c.clients[key]; ok {
+		return cli, nil
 	}
 
 	cli, err := clientv3.New(clientv3.Config{
@@ -167,30 +137,27 @@ func clientFor(cs configSource) (*clientv3.Client, string, error) {
 		DialTimeout: cs.dialTimeout,
 	})
 	if err != nil {
-		return nil, "", errutil.Explain(err, "create etcd client for %s failed", cs.endpoint)
+		return nil, errutil.Explain(err, "create etcd client for %s failed", cs.endpoint)
 	}
-	clientCache[key] = cli
-	return cli, key, nil
+	c.clients[key] = cli
+	return cli, nil
 }
 
-// loadEtcdConfig implements conf/provider.Provider. It fetches configuration
-// content from etcd, parses it according to the declared format, and installs
-// a change watcher that triggers an application property refresh.
-func loadEtcdConfig(optional bool, source string) (map[string]string, error) {
+// Load implements conf/provider.Provider. It fetches configuration content
+// from etcd, parses it according to the declared format, and installs a
+// change watcher that triggers an application property refresh.
+func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
 		return nil, err
 	}
 
-	cli, ckey, err := clientFor(cs)
+	cli, err := c.clientFor(cs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Register the change watcher before reading so that hot-reload works even
-	// when the key does not exist yet: a later put will trigger a refresh that
-	// re-runs this provider and picks up the new value.
-	registerWatcher(cli, ckey, cs)
+	c.registerWatcher(cli, cs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -221,29 +188,26 @@ func loadEtcdConfig(optional bool, source string) (map[string]string, error) {
 }
 
 // registerWatcher installs an etcd change watcher for the given key,
-// deduplicated across repeated Load calls. On change it triggers a full
-// application property refresh, which re-runs this provider and propagates new
-// values to bound gs.Dync fields.
-func registerWatcher(cli *clientv3.Client, ckey string, cs configSource) {
-	lk := ckey + "|" + cs.key
+// deduplicated across repeated Load calls.
+func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource) {
+	lk := clientKey(cs) + "|" + cs.key
 
-	clientMu.Lock()
-	if _, ok := listened[lk]; ok {
-		clientMu.Unlock()
+	c.mu.Lock()
+	if c.listened == nil {
+		c.listened = map[string]struct{}{}
+	}
+	if _, ok := c.listened[lk]; ok {
+		c.mu.Unlock()
 		return
 	}
-	listened[lk] = struct{}{}
-	clientMu.Unlock()
+	c.listened[lk] = struct{}{}
+	c.mu.Unlock()
 
-	// Watch registration is synchronous and best-effort: the watch channel is
-	// created here and consumed in a background goroutine. Any error surfaces
-	// as a closed channel with wr.Err() != nil; failing only loses hot-reload
-	// for this key and does not block startup.
 	ch := cli.Watch(context.Background(), cs.key)
 	go func() {
 		for wr := range ch {
 			if len(wr.Events) > 0 {
-				triggerRefresh()
+				c.TriggerRefresh()
 			}
 		}
 	}()

@@ -25,10 +25,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/vault/api"
+
 	"go-spring.org/spring/conf"
 	confjson "go-spring.org/spring/conf/reader/json"
 	"go-spring.org/spring/conf/reader/prop"
@@ -39,22 +39,13 @@ import (
 )
 
 func init() {
-	// Register "vault" as a remote configuration provider so that a
-	// spring.app.imports entry such as
-	//
-	//	optional:vault:127.0.0.1:8200/secret/gs-config-demo?kv-version=2
-	//
-	// pulls configuration from a HashiCorp Vault KV secret at startup and on
-	// every RefreshProperties call. The Vault token is taken from the
-	// environment (VAULT_TOKEN / a token file) by default so it never lives in
-	// a configuration file.
-	conf.RegisterProvider("vault", loadVaultConfig)
+	// Register "vault" as a remote configuration provider. The provider is
+	// the global controller's Load method, so the same object that holds the
+	// PropertiesRefresher (injected via autowire) also serves config loads.
+	conf.RegisterProvider("vault", vaultController.Load)
 }
 
-// contentReader parses raw configuration bytes into a nested map based on the
-// declared format. It is used only in single-field mode (?key=...), where one
-// secret field holds a document; whole-secret mode maps fields directly to
-// properties.
+// contentReader parses raw configuration bytes into a nested map.
 type contentReader func(b []byte) (map[string]any, error)
 
 var contentReaders = map[string]contentReader{
@@ -67,43 +58,22 @@ var contentReaders = map[string]contentReader{
 	"json":       confjson.Read,
 }
 
-// refreshHook holds the callback used to reload application properties when a
-// watched secret changes. It is populated by the refresh bridge bean during
-// container wiring (see starter.go). A change that arrives before the bridge is
-// wired is safely ignored; the value is picked up on the next refresh.
-var refreshHook atomic.Pointer[func() error]
-
-// setRefreshHook installs the callback that reloads application properties.
-func setRefreshHook(fn func() error) {
-	refreshHook.Store(&fn)
-}
-
-// triggerRefresh invokes the installed refresh callback, if any.
-func triggerRefresh() {
-	if p := refreshHook.Load(); p != nil {
-		_ = (*p)()
-	}
-}
-
 // configSource holds the parsed components of a vault provider source string.
 type configSource struct {
-	address   string // scheme://host:port of the Vault server
-	namespace string // enterprise namespace, empty for OSS
-	token     string // resolved Vault token
-	mount     string // KV mount point, e.g. "secret"
-	path      string // secret path under the mount
-	kvVersion int    // 1 or 2
-	key       string // optional single field holding a document
-	format    string // format of that field (single-field mode)
-	prefix    string // optional prefix prepended to produced property keys
-	pollMs    int    // polling interval for change detection
+	address   string
+	namespace string
+	token     string
+	mount     string
+	path      string
+	kvVersion int
+	key       string
+	format    string
+	prefix    string
+	pollMs    int
 }
 
 // parseSource parses a provider source of the form
-//
-//	<host>:<port>/<mount>/<path>?kv-version=..&token=..&namespace=..&scheme=..&key=..&format=..&prefix=..&poll-ms=..
-//
-// The leading "vault:" prefix has already been stripped by conf/provider.Load.
+// <host>:<port>/<mount>/<path>?kv-version=..&token=..&namespace=..&scheme=..&key=..&format=..&prefix=..&poll-ms=..
 func parseSource(source string) (configSource, error) {
 	u, err := url.Parse("vault://" + source)
 	if err != nil {
@@ -137,7 +107,6 @@ func parseSource(source string) (configSource, error) {
 	if cs.format == "" {
 		cs.format = "properties"
 	}
-
 	if v := q.Get("kv-version"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || (n != 1 && n != 2) {
@@ -161,11 +130,7 @@ func parseSource(source string) (configSource, error) {
 	return cs, nil
 }
 
-// resolveToken locates the Vault token, preferring out-of-band sources so the
-// token does not need to live in a configuration file. Order: the token query
-// parameter (discouraged, but allowed for local demos), the VAULT_TOKEN
-// environment variable, then a token file named by the token-file query
-// parameter or the VAULT_TOKEN_FILE environment variable.
+// resolveToken locates the Vault token, preferring out-of-band sources.
 func resolveToken(q url.Values) (string, error) {
 	if v := q.Get("token"); v != "" {
 		return v, nil
@@ -189,98 +154,82 @@ func resolveToken(q url.Values) (string, error) {
 	return "", errutil.Explain(nil, "no vault token found (set VAULT_TOKEN, VAULT_TOKEN_FILE, or the token query parameter)")
 }
 
-// clientCache reuses one Vault client per (address, namespace, token) tuple.
-// loadVaultConfig runs at startup and again on every RefreshProperties call, so
-// caching avoids rebuilding a client on each refresh.
-var (
-	clientMu    sync.Mutex
-	clientCache = map[string]*api.Client{}
-	// listened tracks (client-key, mount, path) tuples that already have a
-	// polling watcher, so repeated Load calls do not start duplicates.
-	listened = map[string]struct{}{}
-	// loadedFP records, per watched tuple, the fingerprint of the secret data
-	// as of the last time loadVaultConfig read it. The polling watcher compares
-	// against this shared value rather than a private baseline, so a change is
-	// detected relative to what the application actually loaded — even when the
-	// secret is created after startup (optional import) between the startup read
-	// and the first poll.
-	loadedFP = map[string]string{}
-)
+// mapMutex is a sync.Mutex used to guard the controller's maps.
+type mapMutex = sync.Mutex
 
-// watchKey identifies a watched secret across the client cache, mount and path.
-func watchKey(key string, cs configSource) string {
-	return key + "|" + cs.mount + "|" + cs.path
-}
+// vaultAPIClient is the subset of the Vault API used here.
+type vaultAPIClient = api.Client
 
-// setLoadedFP records the fingerprint of the data most recently loaded for lk.
-func setLoadedFP(lk, fp string) {
-	clientMu.Lock()
-	loadedFP[lk] = fp
-	clientMu.Unlock()
-}
-
-// getLoadedFP returns the last-loaded fingerprint for lk.
-func getLoadedFP(lk string) string {
-	clientMu.Lock()
-	defer clientMu.Unlock()
-	return loadedFP[lk]
+// clientKey builds a cache key for a client.
+func clientKey(cs configSource) string {
+	return cs.address + "|" + cs.namespace + "|" + cs.token
 }
 
 // clientFor returns a cached client for the source, creating one if necessary.
-// It also returns the cache key so listener registration can dedupe.
-func clientFor(cs configSource) (*api.Client, string, error) {
-	key := cs.address + "|" + cs.namespace + "|" + cs.token
+func (c *vaultCtrl) clientFor(cs configSource) (*api.Client, error) {
+	key := clientKey(cs)
 
-	clientMu.Lock()
-	defer clientMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	if cli, ok := clientCache[key]; ok {
-		return cli, key, nil
+	if c.clients == nil {
+		c.clients = map[string]*api.Client{}
+	}
+	if cli, ok := c.clients[key]; ok {
+		return cli, nil
 	}
 
 	cfg := api.DefaultConfig()
 	cfg.Address = cs.address
 	cli, err := api.NewClient(cfg)
 	if err != nil {
-		return nil, "", errutil.Explain(err, "create vault client for %s failed", cs.address)
+		return nil, errutil.Explain(err, "create vault client for %s failed", cs.address)
 	}
 	cli.SetToken(cs.token)
 	if cs.namespace != "" {
 		cli.SetNamespace(cs.namespace)
 	}
-	clientCache[key] = cli
-	return cli, key, nil
+	c.clients[key] = cli
+	return cli, nil
 }
 
-// loadVaultConfig implements conf/provider.Provider. It reads a KV secret,
-// turns it into a flattened property map, and installs a polling watcher that
-// triggers an application property refresh when the secret changes.
-func loadVaultConfig(optional bool, source string) (map[string]string, error) {
+// watchKey identifies a watched secret.
+func watchKey(cs configSource) string {
+	return clientKey(cs) + "|" + cs.mount + "|" + cs.path
+}
+
+// Load implements conf/provider.Provider. It reads a KV secret, turns it into
+// a flattened property map, and installs a polling watcher that triggers an
+// application property refresh when the secret changes.
+func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
 		return nil, err
 	}
 
-	cli, key, err := clientFor(cs)
+	cli, err := c.clientFor(cs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Register the watcher before reading so that hot-reload works even when
-	// the secret does not exist yet: a later write triggers a refresh that
-	// re-runs this provider and picks up the new value.
-	registerWatch(cli, key, cs)
+	c.registerWatch(cli, cs)
 
-	data, err := readSecret(cli, cs)
+	data, err := c.readSecret(cli, cs)
 	if err != nil {
 		if optional {
 			return nil, nil
 		}
 		return nil, err
 	}
-	// Record the fingerprint of what we just loaded so the polling watcher
-	// detects changes relative to this state rather than an independent seed.
-	setLoadedFP(watchKey(key, cs), fingerprint(data))
+
+	lk := watchKey(cs)
+	c.mu.Lock()
+	if c.loadedFP == nil {
+		c.loadedFP = map[string]string{}
+	}
+	c.loadedFP[lk] = fingerprint(data)
+	c.mu.Unlock()
+
 	if data == nil {
 		if optional {
 			return nil, nil
@@ -290,9 +239,8 @@ func loadVaultConfig(optional bool, source string) (map[string]string, error) {
 	return toProperties(cs, data)
 }
 
-// readSecret fetches the raw KV data map for the source, or nil when the secret
-// does not exist.
-func readSecret(cli *api.Client, cs configSource) (map[string]any, error) {
+// readSecret fetches the raw KV data map for the source.
+func (c *vaultCtrl) readSecret(cli *api.Client, cs configSource) (map[string]any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -317,8 +265,7 @@ func readSecret(cli *api.Client, cs configSource) (map[string]any, error) {
 	return secret.Data, nil
 }
 
-// isNotFound reports whether the error indicates a missing secret rather than a
-// transport or auth failure.
+// isNotFound reports whether the error indicates a missing secret.
 func isNotFound(err error) bool {
 	var respErr *api.ResponseError
 	if errors.As(err, &respErr) {
@@ -327,9 +274,7 @@ func isNotFound(err error) bool {
 	return strings.Contains(err.Error(), "404")
 }
 
-// toProperties turns the raw KV data map into a flattened property map. In
-// whole-secret mode every field becomes a property; in single-field mode
-// (?key=...) the named field is parsed as a document in the declared format.
+// toProperties turns the raw KV data map into a flattened property map.
 func toProperties(cs configSource, data map[string]any) (map[string]string, error) {
 	if cs.key != "" {
 		raw, ok := data[cs.key]
@@ -365,45 +310,44 @@ func withPrefix(prefix string, m map[string]string) map[string]string {
 	return out
 }
 
-// registerWatch spawns a background goroutine that polls the secret and fires
-// triggerRefresh whenever its content changes. Deduplicated across repeated
-// Load calls.
-func registerWatch(cli *api.Client, key string, cs configSource) {
-	lk := watchKey(key, cs)
+// registerWatch spawns a background goroutine that polls the secret.
+func (c *vaultCtrl) registerWatch(cli *api.Client, cs configSource) {
+	lk := watchKey(cs)
 
-	clientMu.Lock()
-	if _, ok := listened[lk]; ok {
-		clientMu.Unlock()
+	c.mu.Lock()
+	if c.listened == nil {
+		c.listened = map[string]struct{}{}
+	}
+	if _, ok := c.listened[lk]; ok {
+		c.mu.Unlock()
 		return
 	}
-	listened[lk] = struct{}{}
-	clientMu.Unlock()
+	c.listened[lk] = struct{}{}
+	c.mu.Unlock()
 
-	go watchLoop(cli, cs, lk)
+	go c.watchLoop(cli, cs, lk)
 }
 
-// watchLoop polls the secret every cs.pollMs and triggers a refresh whenever the
-// polled content fingerprint differs from the one loadVaultConfig last loaded
-// (see loadedFP). triggerRefresh re-runs loadVaultConfig, which updates that
-// shared fingerprint, so a change fires exactly once. Startup does not fire a
-// spurious refresh because the startup load already seeded the fingerprint.
-func watchLoop(cli *api.Client, cs configSource, lk string) {
+// watchLoop polls the secret and triggers a refresh whenever the content
+// fingerprint differs from the last loaded value.
+func (c *vaultCtrl) watchLoop(cli *api.Client, cs configSource, lk string) {
 	interval := time.Duration(cs.pollMs) * time.Millisecond
 	for {
 		time.Sleep(interval)
-		data, err := readSecret(cli, cs)
+		data, err := c.readSecret(cli, cs)
 		if err != nil {
-			continue // transient: retry on next tick
+			continue
 		}
-		if fingerprint(data) != getLoadedFP(lk) {
-			triggerRefresh()
+		c.mu.Lock()
+		fp := c.loadedFP[lk]
+		c.mu.Unlock()
+		if fingerprint(data) != fp {
+			c.TriggerRefresh()
 		}
 	}
 }
 
-// fingerprint produces a stable string representation of a KV data map for
-// change detection. A nil map (missing secret) has a distinct fingerprint from
-// an empty one.
+// fingerprint produces a stable string representation of a KV data map.
 func fingerprint(data map[string]any) string {
 	if data == nil {
 		return "<nil>"

@@ -66,7 +66,7 @@ func init() {
 	// the piece that makes an API-watched ConfigMap/Secret hot-reloadable: the
 	// informer (see informer.go) fires on every add/update/delete and turns that
 	// into a refresh, without waiting on kubelet volume projection.
-	conf.RegisterProvider("k8s", loadK8sConfig)
+	conf.RegisterProvider("k8s", k8sController.Load)
 }
 
 // contentReader parses raw configuration bytes into a nested map based on a
@@ -133,10 +133,10 @@ func parseSource(source string) (configSource, error) {
 	return cs, nil
 }
 
-// loadK8sConfig implements conf/provider.Provider. It reads the target
-// ConfigMap/Secret through the API server, parses its data entries, and installs
-// an informer that triggers an application property refresh on change.
-func loadK8sConfig(optional bool, source string) (map[string]string, error) {
+// Load implements conf/provider.Provider. It reads the target ConfigMap/Secret
+// through the API server, parses its data entries, and installs an informer
+// that triggers an application property refresh on change.
+func (c *k8sCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
 		return nil, err
@@ -149,13 +149,13 @@ func loadK8sConfig(optional bool, source string) (map[string]string, error) {
 		}
 		return nil, err
 	}
-	return loadFromClient(client, cs, optional)
+	return c.loadFromClient(client, cs, optional)
 }
 
 // loadFromClient reads and parses the object through client and installs the
 // change watcher. It is the seam tests use to inject a client-go fake clientset
 // instead of a live cluster.
-func loadFromClient(client k8sClient, cs configSource, optional bool) (map[string]string, error) {
+func (c *k8sCtrl) loadFromClient(client k8sClient, cs configSource, optional bool) (map[string]string, error) {
 	ctx := context.Background()
 	data, err := fetch(ctx, client, cs)
 	if err != nil {
@@ -168,7 +168,7 @@ func loadFromClient(client k8sClient, cs configSource, optional bool) (map[strin
 	// Install the informer before returning so a change that lands right after
 	// the initial read is not missed. Watching is best-effort: a failure only
 	// loses hot-reload for this object, the static snapshot still loads.
-	ensureWatch(client, cs)
+	c.ensureWatch(client, cs)
 
 	m := map[string]string{}
 	if err := parseEntries(cs, data, m); err != nil {

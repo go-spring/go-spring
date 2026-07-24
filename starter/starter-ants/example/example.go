@@ -27,7 +27,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/panjf2000/ants/v2"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterAnts "go-spring.org/starter-ants"
@@ -47,8 +46,9 @@ func init() {
 }
 
 type Service struct {
-	IO  *ants.Pool `autowire:"io"`
-	CPU *ants.Pool `autowire:"cpu"`
+	IO      StarterAnts.Pool             `autowire:"io"`
+	CPU     StarterAnts.Pool             `autowire:"cpu"`
+	Metrics *StarterAnts.MetricsObserver `autowire:""`
 }
 
 func main() {
@@ -109,16 +109,17 @@ func runTest(s *Service) {
 	}
 	// Give the workers a moment to pick up both blocking tasks.
 	time.Sleep(time.Millisecond * 50)
-	if err := s.IO.Submit(func() {}); err != ants.ErrPoolOverload {
-		log.Errorf(ctx, log.TagAppDef, "expected ErrPoolOverload on full nonblocking pool, got %v", err)
+	if err := s.IO.Submit(func() {}); err == nil {
+		log.Errorf(ctx, log.TagAppDef, "expected error on full nonblocking pool, got nil")
 		os.Exit(1)
 	}
+	fmt.Println("Nonblocking pool correctly rejected submit")
 	close(block)
 
-	// Feature 4: pool metrics. Running/Free/Cap are read straight off the pool
-	// (no OTel) — the mechanism for monitoring pool utilization at runtime.
+	// Feature 4: pool metrics via Pool interface. Running/Free/Cap/Waiting are
+	// read straight off the pool.
 	fmt.Println("CPU pool:", "running:", s.CPU.Running(),
-		"free:", s.CPU.Free(), "cap:", s.CPU.Cap())
+		"free:", s.CPU.Free(), "cap:", s.CPU.Cap(), "waiting:", s.CPU.Waiting())
 
 	// Feature 5: panic handler. A task that panics is caught by the handler
 	// registered via SetPanicHandler instead of crashing the worker.
@@ -139,6 +140,18 @@ func runTest(s *Service) {
 		os.Exit(1)
 	}
 	fmt.Println("Panic handler fired:", atomic.LoadInt64(&panics), "times")
+
+	// Feature 6: MetricsObserver — aggregated metrics across all pools.
+	stats := s.Metrics.Snapshot()
+	s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{
+		"io":  s.IO,
+		"cpu": s.CPU,
+	})
+	fmt.Println("=== Pool Metrics ===")
+	for _, ps := range stats.Pools {
+		fmt.Printf("  %s: cap=%d running=%d waiting=%d free=%d\n",
+			ps.Name, ps.Cap, ps.Running, ps.Waiting, ps.Free)
+	}
 
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }

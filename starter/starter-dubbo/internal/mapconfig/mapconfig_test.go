@@ -118,10 +118,10 @@ func TestSetOverrideRule_GeneratesValidYAML(t *testing.T) {
 	dc := NewMapDynamicConfiguration()
 
 	dc.SetOverrideRule("my-app", map[string]string{
-		"timeout":                     "5000",
-		"retries":                     "3",
-		"methods.GetUser.timeout":     "2000",
-		"methods.GetUser.retries":     "5",
+		"timeout":                 "5000",
+		"retries":                 "3",
+		"methods.GetUser.timeout": "2000",
+		"methods.GetUser.retries": "5",
 	})
 
 	key := "my-app" + constant.ConfiguratorSuffix
