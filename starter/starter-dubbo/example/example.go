@@ -35,7 +35,7 @@ import (
 
 func init() {
 	// Register the GreetProvider as a Dubbo service via starter-dubbo's helper.
-	// RegisterService binds ${spring.dubbo.server.services.greet} (per-service
+	// RegisterService binds ${spring.dubbo.provider.services.greet} (per-service
 	// overrides, including per-method tuning under .methods) and turns it into
 	// dubbo-go server.ServiceOption passed to the generated handler - so the
 	// service is exported with that config without the server knowing about

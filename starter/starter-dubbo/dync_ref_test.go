@@ -26,20 +26,36 @@ import (
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
-// setDyncRefs pushes a rule map into the poller's Refs field.
-// gs.Dync[T] is { v atomic.Value }; we use unsafe to set the internal
-// value without going through conf.BindValue. This is a test helper only.
-func setDyncRefs(p *dyncPoller, rules map[string]map[string]string) {
+const testApp = "test-app"
+
+// setDyncConsumer pushes a DubboConsumer into the poller's Consumer field.
+func setDyncConsumer(p *dyncPoller, c DubboConsumer) {
 	type dync struct{ v atomic.Value }
-	(*dync)(unsafe.Pointer(&p.Refs)).v.Store(rules)
+	(*dync)(unsafe.Pointer(&p.Consumer)).v.Store(c)
+}
+
+func newTestPoller() *dyncPoller {
+	return newDyncPoller(DubboApplication{Name: testApp})
+}
+
+// getRule fetches an override rule from the config center.
+func getRule(t *testing.T, dc *mapconfig.MapDynamicConfiguration, key string) string {
+	t.Helper()
+	raw, err := dc.GetRule(key+".configurators", config_center.WithGroup("dubbo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func TestDyncPoller_NoChange(t *testing.T) {
 	dc := mapconfig.Singleton()
-	p := newDyncPoller()
+	p := newTestPoller()
 
-	setDyncRefs(p, map[string]map[string]string{
-		"greet": {"timeout": "3000", "retries": "3"},
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", Timeout: "3000", Retries: 3},
+		},
 	})
 
 	p.poll()
@@ -54,57 +70,59 @@ func TestDyncPoller_NoChange(t *testing.T) {
 
 func TestDyncPoller_ChangeDetected(t *testing.T) {
 	dc := mapconfig.Singleton()
-	p := newDyncPoller()
+	p := newTestPoller()
+	svcKey := "greet.GreetService"
 
-	setDyncRefs(p, map[string]map[string]string{
-		"greet": {"timeout": "3000"},
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", LoadBalance: "roundrobin"},
+		},
 	})
 	p.poll()
 
-	setDyncRefs(p, map[string]map[string]string{
-		"greet": {"timeout": "5000"},
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", LoadBalance: "leastactive"},
+		},
 	})
 	p.poll()
 
-	raw, err := dc.GetRule("greet.configurators", config_center.WithGroup("dubbo"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := getRule(t, dc, svcKey)
 	urls, err := dc.Parser().ParseToUrls(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := urls[0].GetParam("timeout", ""); v != "5000" {
-		t.Fatalf("expected timeout=5000, got %q", v)
+	if v := urls[0].GetParam("loadbalance", ""); v != "leastactive" {
+		t.Fatalf("expected loadbalance=leastactive, got %q", v)
 	}
 }
 
 func TestDyncPoller_EmptyRefsSkipped(t *testing.T) {
 	dc := mapconfig.Singleton()
-	dc.RefreshOverrideRules(nil) // clear leftover state from other tests
-	p := newDyncPoller()
+	dc.RefreshOverrideRules(nil)
+	p := newTestPoller()
 
 	p.poll()
 
 	keys, _ := dc.GetConfigKeysByGroup("dubbo")
 	if keys.Size() != 0 {
-		t.Fatal("expected no keys when Refs is empty")
+		t.Fatal("expected no keys when Consumer is empty")
 	}
 }
 
 func TestDyncPoller_ClusterAndLoadBalance(t *testing.T) {
 	dc := mapconfig.Singleton()
-	p := newDyncPoller()
+	p := newTestPoller()
+	svcKey := "greet.GreetService"
 
-	setDyncRefs(p, map[string]map[string]string{
-		"greet": {"cluster": "failfast", "loadbalance": "roundrobin"},
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", Cluster: "failfast", LoadBalance: "roundrobin"},
+		},
 	})
 	p.poll()
 
-	raw, err := dc.GetRule("greet.configurators", config_center.WithGroup("dubbo"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := getRule(t, dc, svcKey)
 	urls, err := dc.Parser().ParseToUrls(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -118,99 +136,142 @@ func TestDyncPoller_ClusterAndLoadBalance(t *testing.T) {
 	}
 }
 
-func TestDyncPoller_PushesToConfigCenter(t *testing.T) {
+func TestDyncPoller_ConsumerDefaults(t *testing.T) {
 	dc := mapconfig.Singleton()
-	p := newDyncPoller()
+	p := newTestPoller()
+	svcKey := "greet.GreetService"
 
-	setDyncRefs(p, map[string]map[string]string{
-		"my-app": {"timeout": "5000", "retries": "3"},
+	setDyncConsumer(p, DubboConsumer{
+		LoadBalance:    "roundrobin",
+		Cluster:        "failfast",
+		RequestTimeout: "5s",
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", Timeout: "3000"},
+		},
 	})
 	p.poll()
 
-	raw, err := dc.GetRule("my-app.configurators", config_center.WithGroup("dubbo"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Consumer-level defaults published under appName.
+	raw := getRule(t, dc, testApp)
 	urls, err := dc.Parser().ParseToUrls(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	url := urls[0]
-	if v := url.GetParam("timeout", ""); v != "5000" {
-		t.Fatalf("expected timeout=5000, got %q", v)
+	if v := url.GetParam("loadbalance", ""); v != "roundrobin" {
+		t.Fatalf("expected loadbalance=roundrobin, got %q", v)
 	}
-	if v := url.GetParam("retries", ""); v != "3" {
-		t.Fatalf("expected retries=3, got %q", v)
+	if v := url.GetParam("cluster", ""); v != "failfast" {
+		t.Fatalf("expected cluster=failfast, got %q", v)
+	}
+
+	// Per-reference overrides published under the service key.
+	rawRef := getRule(t, dc, svcKey)
+	urlsRef, err := dc.Parser().ParseToUrls(rawRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := urlsRef[0].GetParam("timeout", ""); v != "3000" {
+		t.Fatalf("expected timeout=3000 (reference override), got %q", v)
 	}
 }
 
 func TestDyncPoller_MultipleRefs(t *testing.T) {
 	dc := mapconfig.Singleton()
-	p := newDyncPoller()
+	p := newTestPoller()
 
-	setDyncRefs(p, map[string]map[string]string{
-		"app-a": {"timeout": "3000"},
-		"app-b": {"timeout": "8000"},
-	})
-	p.poll()
-
-	for _, tc := range []struct{ name, expectedTimeout string }{
-		{"app-a", "3000"},
-		{"app-b", "8000"},
-	} {
-		raw, err := dc.GetRule(tc.name+".configurators", config_center.WithGroup("dubbo"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		urls, err := dc.Parser().ParseToUrls(raw)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if v := urls[0].GetParam("timeout", ""); v != tc.expectedTimeout {
-			t.Fatalf("%s: expected timeout=%s, got %q", tc.name, tc.expectedTimeout, v)
-		}
-	}
-}
-
-func TestDyncPoller_AllFields(t *testing.T) {
-	dc := mapconfig.Singleton()
-	p := newDyncPoller()
-
-	setDyncRefs(p, map[string]map[string]string{
-		"full-app": {
-			"timeout":     "5000",
-			"retries":     "2",
-			"cluster":     "failover",
-			"loadbalance": "leastactive",
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"app-a": {Interface: "svc.A", LoadBalance: "random"},
+			"app-b": {Interface: "svc.B", LoadBalance: "p2c"},
 		},
 	})
 	p.poll()
 
-	raw, err := dc.GetRule("full-app.configurators", config_center.WithGroup("dubbo"))
+	// Each reference gets its own service-level rule — no last-wins merge.
+	rawA := getRule(t, dc, "svc.A")
+	urlsA, err := dc.Parser().ParseToUrls(rawA)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if v := urlsA[0].GetParam("loadbalance", ""); v != "random" {
+		t.Fatalf("expected loadbalance=random for svc.A, got %q", v)
+	}
+
+	rawB := getRule(t, dc, "svc.B")
+	urlsB, err := dc.Parser().ParseToUrls(rawB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := urlsB[0].GetParam("loadbalance", ""); v != "p2c" {
+		t.Fatalf("expected loadbalance=p2c for svc.B, got %q", v)
+	}
+}
+
+func TestDyncPoller_AllDynamicFields(t *testing.T) {
+	dc := mapconfig.Singleton()
+	p := newTestPoller()
+	svcKey := "svc.Full"
+
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"full-app": {
+				Interface:     "svc.Full",
+				Cluster:       "failover",
+				LoadBalance:   "leastactive",
+				Group:         "v2",
+				Version:       "1.0",
+				Serialization: "protobuf",
+				Sticky:        true,
+				ForceTag:      true,
+				Timeout:       "5s",
+				Retries:       3,
+				Methods: map[string]DubboMethod{
+					"GetUser": {
+						LoadBalance: "roundrobin",
+						Weight:      200,
+						Sticky:      true,
+						Timeout:     "2s",
+						Retries:     1,
+					},
+				},
+			},
+		},
+	})
+	p.poll()
+
+	raw := getRule(t, dc, svcKey)
 	urls, err := dc.Parser().ParseToUrls(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	url := urls[0]
-	if v := url.GetParam("timeout", ""); v != "5000" {
-		t.Fatalf("expected timeout=5000, got %q", v)
+
+	checks := map[string]string{
+		"cluster":                       "failover",
+		"loadbalance":                   "leastactive",
+		"group":                         "v2",
+		"version":                       "1.0",
+		"serialization":                 "protobuf",
+		"sticky":                        "true",
+		"force.tag":                     "true",
+		"timeout":                       "5s",
+		"retries":                       "3",
+		"methods.GetUser.loadbalance":   "roundrobin",
+		"methods.GetUser.weight":        "200",
+		"methods.GetUser.sticky":        "true",
+		"methods.GetUser.timeout":       "2s",
+		"methods.GetUser.retries":       "1",
 	}
-	if v := url.GetParam("retries", ""); v != "2" {
-		t.Fatalf("expected retries=2, got %q", v)
-	}
-	if v := url.GetParam("cluster", ""); v != "failover" {
-		t.Fatalf("expected cluster=failover, got %q", v)
-	}
-	if v := url.GetParam("loadbalance", ""); v != "leastactive" {
-		t.Fatalf("expected loadbalance=leastactive, got %q", v)
+	for k, expected := range checks {
+		if v := url.GetParam(k, ""); v != expected {
+			t.Fatalf("expected %s=%s, got %q", k, expected, v)
+		}
 	}
 }
 
 func TestDyncPoller_StartAndStop(t *testing.T) {
-	p := newDyncPoller()
+	p := newTestPoller()
 
 	if err := p.Init(); err != nil {
 		t.Fatal(err)
@@ -223,18 +284,99 @@ func TestDyncPoller_StartAndStop(t *testing.T) {
 }
 
 func TestDyncPoller_SnapshotLast(t *testing.T) {
-	p := newDyncPoller()
+	p := newTestPoller()
+	svcKey := "greet.GreetService"
 
-	setDyncRefs(p, map[string]map[string]string{
-		"greet": {"timeout": "3000", "retries": "3"},
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", LoadBalance: "random", Cluster: "failover"},
+		},
 	})
 	p.poll()
 
 	snap := p.snapshotLast()
-	if snap["greet"]["timeout"] != "3000" {
-		t.Fatalf("expected timeout=3000 in snapshot, got %q", snap["greet"]["timeout"])
+	if snap[svcKey]["loadbalance"] != "random" {
+		t.Fatalf("expected loadbalance=random in snapshot, got %q", snap[svcKey]["loadbalance"])
 	}
-	if snap["greet"]["retries"] != "3" {
-		t.Fatalf("expected retries=3 in snapshot, got %q", snap["greet"]["retries"])
+	if snap[svcKey]["cluster"] != "failover" {
+		t.Fatalf("expected cluster=failover in snapshot, got %q", snap[svcKey]["cluster"])
+	}
+}
+
+func TestDyncPoller_ConsumerOnly(t *testing.T) {
+	dc := mapconfig.Singleton()
+	p := newTestPoller()
+
+	setDyncConsumer(p, DubboConsumer{
+		LoadBalance: "roundrobin",
+		Cluster:     "failfast",
+	})
+	p.poll()
+
+	raw := getRule(t, dc, testApp)
+	urls, err := dc.Parser().ParseToUrls(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := urls[0]
+	if v := url.GetParam("loadbalance", ""); v != "roundrobin" {
+		t.Fatalf("expected loadbalance=roundrobin, got %q", v)
+	}
+	if v := url.GetParam("cluster", ""); v != "failfast" {
+		t.Fatalf("expected cluster=failfast, got %q", v)
+	}
+}
+
+func TestDyncPoller_RefWithoutInterface(t *testing.T) {
+	dc := mapconfig.Singleton()
+	p := newTestPoller()
+
+	setDyncConsumer(p, DubboConsumer{
+		LoadBalance: "roundrobin",
+		References: map[string]DubboReference{
+			"greet": {LoadBalance: "random"},
+		},
+	})
+	p.poll()
+
+	// Reference without Interface is skipped, consumer-level defaults apply.
+	raw := getRule(t, dc, testApp)
+	urls, err := dc.Parser().ParseToUrls(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := urls[0].GetParam("loadbalance", ""); v != "roundrobin" {
+		t.Fatalf("expected loadbalance=roundrobin (consumer default), got %q", v)
+	}
+}
+
+func TestDyncPoller_SidePresent(t *testing.T) {
+	dc := mapconfig.Singleton()
+	p := newTestPoller()
+	svcKey := "greet.GreetService"
+
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", LoadBalance: "roundrobin"},
+		},
+	})
+	p.poll()
+
+	raw := getRule(t, dc, svcKey)
+	urls, err := dc.Parser().ParseToUrls(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify both consumer and provider side items are present.
+	if len(urls) != 2 {
+		t.Fatalf("expected 2 URLs (consumer+provider), got %d", len(urls))
+	}
+	consumerSide := urls[0].GetParam("side", "")
+	providerSide := urls[1].GetParam("side", "")
+	if consumerSide != "consumer" {
+		t.Fatalf("expected first URL side=consumer, got %q", consumerSide)
+	}
+	if providerSide != "provider" {
+		t.Fatalf("expected second URL side=provider, got %q", providerSide)
 	}
 }

@@ -17,6 +17,7 @@
 package StarterDubbo
 
 import (
+	"runtime"
 	"time"
 
 	"dubbo.apache.org/dubbo-go/v3/client"
@@ -24,65 +25,68 @@ import (
 )
 
 func init() {
-	// The single Dubbo consumer (client) for the process, bound from the global
-	// ${spring.dubbo.client} node. dubbo-go's config model has one consumer per
-	// process (mirrored by dubbo-go.json's single "consumer" object), so unlike
-	// most go-spring client starters this is a single default bean, not a map.
-	// Per-stub tuning lives under ${spring.dubbo.client.references.<name>} and
-	// overrides these defaults per reference (see reference.go). Gated on the
-	// *Instance bean (no registries → no client) and the property; OnProperty is
-	// a prefix check, so setting any spring.dubbo.client.* sub-key (including a
-	// references entry) stands the client up.
 	gs.Provide(
 		NewClient,
-		gs.IndexArg(0, gs.TagArg("${spring.dubbo.client}")),
-	).Condition(gs.OnBean[*Instance](), gs.OnProperty("spring.dubbo.client"))
+	).Condition(gs.OnBean[*Instance]())
 }
 
-// ClientConfig is the consumer-level (client) configuration under the global
-// ${spring.dubbo.client} node — the process-wide defaults every reference
-// inherits unless it overrides per-stub. Every field is optional; empty/zero
-// keeps dubbo-go's own default. (dubbo-go.json's consumer also exposes proxy /
-// adaptive-service / tracing-key / max-wait-time-for-service-discovery, but v3
-// has no clean client-level Option for them, so they are intentionally not
-// surfaced here.)
-type ClientConfig struct {
-	Protocol    string            `value:"${protocol:=}"`     // dubbo(default)|tri|triple|jsonrpc
-	Timeout     time.Duration     `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"
-	RegistryIDs []string          `value:"${registry-ids:=}"` // select global registries by ID; empty means all
-	Filter      string            `value:"${filter:=}"`       // comma-separated filter chain; use "-name" to drop one from dubbo-go's default chain
-	Params      map[string]string `value:"${params:=}"`       // escape hatch for consumer-level filter parameters
-	Check       bool              `value:"${check:=true}"`    // false disables startup check (provider presence)
-}
-
-// NewClient builds the single *client.Client from the global ClientConfig and
-// the shared *Instance. Registries are selected by RegistryIDs (empty means
-// all); the client inherits the Instance's metrics and tracing. Per-stub
-// overrides are applied later on each reference (see ReferenceConfig.options).
-func NewClient(cfg ClientConfig, d *Instance) (*client.Client, error) {
+// NewClient builds the single *client.Client from the shared *Instance's
+// consumer configuration.
+func NewClient(d *Instance) (*client.Client, error) {
+	cfg := d.Consumer()
 	var opts []client.ClientOption
 
+	// Protocol.
 	switch cfg.Protocol {
 	case "tri", "triple":
 		opts = append(opts, client.WithClientProtocolTriple())
 	case "jsonrpc":
 		opts = append(opts, client.WithClientProtocolJsonRPC())
-	default: // "" or "dubbo"
+	case "dubbo":
 		opts = append(opts, client.WithClientProtocolDubbo())
 	}
 
-	if cfg.Timeout > 0 {
-		opts = append(opts, client.WithClientRequestTimeout(cfg.Timeout))
+	// Consumer-level defaults (inherited by references).
+	if cfg.RequestTimeout != "" {
+		if d, err := time.ParseDuration(cfg.RequestTimeout); err == nil && d > 0 {
+			opts = append(opts, client.WithClientRequestTimeout(d))
+		}
 	}
 	if cfg.Filter != "" {
 		opts = append(opts, client.WithClientFilter(cfg.Filter))
 	}
-	if len(cfg.Params) > 0 {
-		opts = append(opts, client.WithClientParams(cfg.Params))
-	}
 	if !cfg.Check {
 		opts = append(opts, client.WithClientNoCheck())
 	}
+	if len(cfg.RegistryIDs) > 0 {
+		opts = append(opts, client.WithClientRegistryIDs(cfg.RegistryIDs...))
+	}
+	if cfg.Cluster != "" {
+		opts = append(opts, client.WithClientClusterStrategy(cfg.Cluster))
+	}
+	if cfg.LoadBalance != "" {
+		opts = append(opts, client.WithClientLoadBalance(cfg.LoadBalance))
+	}
+	if cfg.Retries > 0 {
+		opts = append(opts, client.WithClientRetries(cfg.Retries))
+	}
+	if cfg.Group != "" {
+		opts = append(opts, client.WithClientGroup(cfg.Group))
+	}
+	if cfg.Version != "" {
+		opts = append(opts, client.WithClientVersion(cfg.Version))
+	}
+	if cfg.Serialization != "" {
+		opts = append(opts, client.WithClientSerialization(cfg.Serialization))
+	}
+	if cfg.Sticky {
+		opts = append(opts, client.WithClientSticky())
+	}
+	if cfg.ForceTag {
+		opts = append(opts, client.WithClientForceTag())
+	}
+
+	// Registries: select from the global block.
 	registries, err := selectRegistries(d.Registries(), cfg.RegistryIDs)
 	if err != nil {
 		return nil, err
@@ -92,4 +96,85 @@ func NewClient(cfg ClientConfig, d *Instance) (*client.Client, error) {
 	}
 
 	return d.NewClient(opts...)
+}
+
+// options translates DubboReference into dubbo-go client.ReferenceOption.
+func (c DubboReference) options() []client.ReferenceOption {
+	var opts []client.ReferenceOption
+	if c.Protocol != "" {
+		opts = append(opts, client.WithProtocol(c.Protocol))
+	}
+	if len(c.RegistryIDs) > 0 {
+		opts = append(opts, client.WithRegistryIDs(c.RegistryIDs...))
+	}
+	if c.Filter != "" {
+		opts = append(opts, client.WithFilter(c.Filter))
+	}
+	if c.Cluster != "" {
+		opts = append(opts, client.WithCluster(c.Cluster))
+	}
+	if c.LoadBalance != "" {
+		opts = append(opts, client.WithLoadBalance(c.LoadBalance))
+	}
+	if c.Timeout != "" {
+		if d, err := time.ParseDuration(c.Timeout); err == nil && d > 0 {
+			opts = append(opts, client.WithRequestTimeout(d))
+		}
+	}
+	if c.Retries > 0 {
+		opts = append(opts, client.WithRetries(c.Retries))
+	}
+	if c.Group != "" {
+		opts = append(opts, client.WithGroup(c.Group))
+	}
+	if c.Version != "" {
+		opts = append(opts, client.WithVersion(c.Version))
+	}
+	if c.Serialization != "" {
+		opts = append(opts, client.WithSerialization(c.Serialization))
+	}
+	if len(c.Params) > 0 {
+		opts = append(opts, client.WithParams(c.Params))
+	}
+	if c.Interface != "" {
+		opts = append(opts, client.WithInterface(c.Interface))
+	}
+	if c.Check {
+		opts = append(opts, client.WithCheck())
+	}
+	if c.URL != "" {
+		opts = append(opts, client.WithURL(c.URL))
+	}
+	if c.Async {
+		opts = append(opts, client.WithAsync())
+	}
+	if c.Generic {
+		opts = append(opts, client.WithGeneric())
+	}
+	if c.Sticky {
+		opts = append(opts, client.WithSticky())
+	}
+	if c.ForceTag {
+		opts = append(opts, client.WithForceTag())
+	}
+	for name, m := range c.Methods {
+		if m.Name == "" {
+			m.Name = name
+		}
+		if mopts := m.options(); len(mopts) > 0 {
+			opts = append(opts, client.WithMethod(mopts...))
+		}
+	}
+	return opts
+}
+
+// RegisterReference registers a Triple-generated RPC stub as a bean.
+// name is the key under ${spring.dubbo.consumer.references} to bind.
+func RegisterReference[T any](name string, ctor func(*client.Client, ...client.ReferenceOption) (T, error)) {
+	b := gs.Provide(func(cli *client.Client, cfg DubboReference) (T, error) {
+		return ctor(cli, cfg.options()...)
+	}, gs.IndexArg(1, gs.TagArg("${spring.dubbo.consumer.references."+name+"}")))
+	if _, file, line, ok := runtime.Caller(1); ok {
+		b.SetFileLine(file, line)
+	}
 }

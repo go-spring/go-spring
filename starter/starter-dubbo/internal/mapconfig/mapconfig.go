@@ -367,6 +367,10 @@ func (dc *MapDynamicConfiguration) safeProcess(listener config_center.Configurat
 	})
 }
 
+// marshalOverrideRule serializes an override rule into YAML understood by
+// dubbo-go's DefaultConfigurationParser. It produces a single ConfiguratorConfig
+// with both consumer-side and provider-side ConfigItems so the rule applies to
+// both roles automatically.
 func marshalOverrideRule(name string, scope string, params map[string]string) string {
 	cfg := parser.ConfiguratorConfig{
 		ConfigVersion: "v2.7.1",
@@ -379,6 +383,13 @@ func marshalOverrideRule(name string, scope string, params map[string]string) st
 				Enabled:    true,
 				Addresses:  []string{constant.AnyHostValue},
 				Side:       "consumer",
+				Parameters: cloneParams(params),
+			},
+			{
+				Type:       parser.GeneralType,
+				Enabled:    true,
+				Addresses:  []string{constant.AnyHostValue},
+				Side:       "provider",
 				Parameters: cloneParams(params),
 			},
 		},
