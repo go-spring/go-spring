@@ -1,0 +1,796 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.dubbo",
+  "type": "object",
+  "properties": {
+    "application": {
+      "type": "object",
+      "properties": {
+        "organization": {
+          "type": "string",
+          "default": "dubbo-go"
+        },
+        "name": {
+          "type": "string",
+          "default": "dubbo.io"
+        },
+        "module": {
+          "type": "string",
+          "default": "sample"
+        },
+        "group": {
+          "type": "string",
+          "default": ""
+        },
+        "version": {
+          "type": "string",
+          "default": ""
+        },
+        "owner": {
+          "type": "string",
+          "default": "dubbo-go"
+        },
+        "environment": {
+          "type": "string",
+          "default": ""
+        },
+        "metadata-type": {
+          "type": "string",
+          "default": "local"
+        }
+      },
+      "default": ""
+    },
+    "registries": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "default": ""
+          },
+          "timeout": {
+            "type": "string",
+            "default": "5s"
+          },
+          "group": {
+            "type": "string",
+            "default": ""
+          },
+          "namespace": {
+            "type": "string",
+            "default": ""
+          },
+          "ttl": {
+            "type": "string",
+            "default": "10s"
+          },
+          "address": {
+            "type": "string",
+            "default": ""
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "simplified": {
+            "type": "boolean",
+            "default": false
+          },
+          "preferred": {
+            "type": "boolean",
+            "default": false
+          },
+          "zone": {
+            "type": "string",
+            "default": ""
+          },
+          "weight": {
+            "type": "integer",
+            "default": 100
+          },
+          "params": {
+            "type": "object",
+            "default": ""
+          }
+        }
+      },
+      "default": ""
+    },
+    "protocols": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "default": "dubbo"
+          },
+          "ip": {
+            "type": "string",
+            "default": ""
+          },
+          "port": {
+            "type": "integer",
+            "default": 0
+          },
+          "params": {
+            "type": "object",
+            "default": ""
+          }
+        }
+      },
+      "default": ""
+    },
+    "metadata-report": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "default": ""
+        },
+        "address": {
+          "type": "string",
+          "default": ""
+        },
+        "username": {
+          "type": "string",
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "default": ""
+        },
+        "group": {
+          "type": "string",
+          "default": ""
+        },
+        "namespace": {
+          "type": "string",
+          "default": ""
+        },
+        "timeout": {
+          "type": "string",
+          "default": "20s"
+        }
+      },
+      "default": ""
+    },
+    "provider": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "string",
+          "default": ""
+        },
+        "registry-ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ""
+        },
+        "services": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "filter": {
+                "type": "string",
+                "default": ""
+              },
+              "protocol-ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": ""
+              },
+              "interface": {
+                "type": "string",
+                "default": ""
+              },
+              "registry-ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": ""
+              },
+              "cluster": {
+                "type": "string",
+                "default": "failover"
+              },
+              "loadbalance": {
+                "type": "string",
+                "default": "random"
+              },
+              "retries": {
+                "type": "integer",
+                "default": 2
+              },
+              "group": {
+                "type": "string",
+                "default": ""
+              },
+              "version": {
+                "type": "string",
+                "default": ""
+              },
+              "serialization": {
+                "type": "string",
+                "default": ""
+              },
+              "methods": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "default": ""
+                    },
+                    "retries": {
+                      "type": "integer",
+                      "default": 2
+                    },
+                    "loadbalance": {
+                      "type": "string",
+                      "default": "random"
+                    },
+                    "weight": {
+                      "type": "integer",
+                      "default": 100
+                    },
+                    "tps.limit.interval": {
+                      "type": "integer",
+                      "default": ""
+                    },
+                    "tps.limit.rate": {
+                      "type": "integer",
+                      "default": ""
+                    },
+                    "tps.limit.strategy": {
+                      "type": "string",
+                      "default": ""
+                    },
+                    "execute.limit": {
+                      "type": "integer",
+                      "default": ""
+                    },
+                    "execute.limit.rejected.handler": {
+                      "type": "string",
+                      "default": ""
+                    },
+                    "sticky": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "timeout": {
+                      "type": "string",
+                      "default": "",
+                      "description": "duration string, e.g. \"3s\""
+                    }
+                  }
+                },
+                "default": ""
+              },
+              "warmup": {
+                "type": "string",
+                "default": "",
+                "description": "duration string, e.g. \"10m\""
+              },
+              "params": {
+                "type": "object",
+                "default": ""
+              },
+              "token": {
+                "type": "string",
+                "default": ""
+              },
+              "accesslog": {
+                "type": "string",
+                "default": ""
+              },
+              "tps.limiter": {
+                "type": "string",
+                "default": ""
+              },
+              "tps.limit.rate": {
+                "type": "integer",
+                "default": 0
+              },
+              "tps.limit.strategy": {
+                "type": "string",
+                "default": ""
+              },
+              "tps.limit.rejected.handler": {
+                "type": "string",
+                "default": ""
+              },
+              "execute.limit": {
+                "type": "string",
+                "default": ""
+              },
+              "execute.limit.rejected.handler": {
+                "type": "string",
+                "default": ""
+              },
+              "auth": {
+                "type": "string",
+                "default": ""
+              },
+              "param-sign": {
+                "type": "string",
+                "default": ""
+              },
+              "tag": {
+                "type": "string",
+                "default": ""
+              },
+              "max_message_size": {
+                "type": "integer",
+                "default": 4
+              },
+              "tracing-key": {
+                "type": "string",
+                "default": ""
+              },
+              "not-register": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          },
+          "default": ""
+        },
+        "protocol-ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ""
+        },
+        "proxy": {
+          "type": "string",
+          "default": "",
+          "description": "no v3 ServerOption; reserved"
+        },
+        "tracing-key": {
+          "type": "string",
+          "default": ""
+        },
+        "adaptive-service": {
+          "type": "boolean",
+          "default": false
+        },
+        "adaptive-service-verbose": {
+          "type": "boolean",
+          "default": false
+        },
+        "group": {
+          "type": "string",
+          "default": ""
+        },
+        "version": {
+          "type": "string",
+          "default": ""
+        },
+        "cluster": {
+          "type": "string",
+          "default": ""
+        },
+        "loadbalance": {
+          "type": "string",
+          "default": ""
+        },
+        "serialization": {
+          "type": "string",
+          "default": ""
+        },
+        "retries": {
+          "type": "integer",
+          "default": 0
+        },
+        "token": {
+          "type": "string",
+          "default": ""
+        },
+        "accesslog": {
+          "type": "string",
+          "default": ""
+        },
+        "auth": {
+          "type": "string",
+          "default": ""
+        },
+        "tag": {
+          "type": "string",
+          "default": ""
+        },
+        "warmup": {
+          "type": "string",
+          "default": "",
+          "description": "duration string, e.g. \"10m\""
+        },
+        "not-register": {
+          "type": "boolean",
+          "default": false
+        },
+        "param-sign": {
+          "type": "string",
+          "default": ""
+        },
+        "params": {
+          "type": "object",
+          "default": ""
+        },
+        "tps-limiter": {
+          "type": "string",
+          "default": ""
+        },
+        "tps-limit-rate": {
+          "type": "integer",
+          "default": 0
+        },
+        "tps-limit-strategy": {
+          "type": "string",
+          "default": ""
+        },
+        "tps-limit-rejected-handler": {
+          "type": "string",
+          "default": ""
+        },
+        "execute-limit": {
+          "type": "string",
+          "default": ""
+        },
+        "execute-limit-rejected-handler": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "default": ""
+    },
+    "consumer": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "string",
+          "default": ""
+        },
+        "registry-ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ""
+        },
+        "protocol": {
+          "type": "string",
+          "default": "",
+          "description": "dubbo|tri|triple|jsonrpc"
+        },
+        "request-timeout": {
+          "type": "string",
+          "default": "",
+          "description": "duration string, e.g. \"3s\""
+        },
+        "check": {
+          "type": "boolean",
+          "default": true
+        },
+        "references": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "interface": {
+                "type": "string",
+                "default": ""
+              },
+              "check": {
+                "type": "boolean",
+                "default": false
+              },
+              "url": {
+                "type": "string",
+                "default": ""
+              },
+              "filter": {
+                "type": "string",
+                "default": ""
+              },
+              "protocol": {
+                "type": "string",
+                "default": ""
+              },
+              "registry-ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": ""
+              },
+              "cluster": {
+                "type": "string",
+                "default": "failover"
+              },
+              "loadbalance": {
+                "type": "string",
+                "default": "random"
+              },
+              "retries": {
+                "type": "integer",
+                "default": 0
+              },
+              "group": {
+                "type": "string",
+                "default": ""
+              },
+              "version": {
+                "type": "string",
+                "default": ""
+              },
+              "serialization": {
+                "type": "string",
+                "default": ""
+              },
+              "methods": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "default": ""
+                    },
+                    "retries": {
+                      "type": "integer",
+                      "default": 2
+                    },
+                    "loadbalance": {
+                      "type": "string",
+                      "default": "random"
+                    },
+                    "weight": {
+                      "type": "integer",
+                      "default": 100
+                    },
+                    "tps.limit.interval": {
+                      "type": "integer",
+                      "default": ""
+                    },
+                    "tps.limit.rate": {
+                      "type": "integer",
+                      "default": ""
+                    },
+                    "tps.limit.strategy": {
+                      "type": "string",
+                      "default": ""
+                    },
+                    "execute.limit": {
+                      "type": "integer",
+                      "default": ""
+                    },
+                    "execute.limit.rejected.handler": {
+                      "type": "string",
+                      "default": ""
+                    },
+                    "sticky": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "timeout": {
+                      "type": "string",
+                      "default": "",
+                      "description": "duration string, e.g. \"3s\""
+                    }
+                  }
+                },
+                "default": ""
+              },
+              "async": {
+                "type": "boolean",
+                "default": false
+              },
+              "params": {
+                "type": "object",
+                "default": ""
+              },
+              "generic": {
+                "type": "boolean",
+                "default": false
+              },
+              "sticky": {
+                "type": "boolean",
+                "default": false
+              },
+              "timeout": {
+                "type": "string",
+                "default": "",
+                "description": "duration string, e.g. \"3s\""
+              },
+              "force.tag": {
+                "type": "boolean",
+                "default": false
+              },
+              "tracing-key": {
+                "type": "string",
+                "default": ""
+              }
+            }
+          },
+          "default": ""
+        },
+        "proxy": {
+          "type": "string",
+          "default": "",
+          "description": "no v3 ClientOption; reserved"
+        },
+        "tracing-key": {
+          "type": "string",
+          "default": ""
+        },
+        "max-wait-time-for-service-discovery": {
+          "type": "string",
+          "default": "",
+          "description": "no v3 ClientOption; reserved"
+        },
+        "cluster": {
+          "type": "string",
+          "default": ""
+        },
+        "loadbalance": {
+          "type": "string",
+          "default": ""
+        },
+        "retries": {
+          "type": "integer",
+          "default": 0
+        },
+        "group": {
+          "type": "string",
+          "default": ""
+        },
+        "version": {
+          "type": "string",
+          "default": ""
+        },
+        "serialization": {
+          "type": "string",
+          "default": ""
+        },
+        "sticky": {
+          "type": "boolean",
+          "default": false
+        },
+        "force.tag": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": ""
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "default": true
+        },
+        "port": {
+          "type": "integer",
+          "default": 9090
+        },
+        "path": {
+          "type": "string",
+          "default": "/metrics"
+        },
+        "push-gateway-address": {
+          "type": "string",
+          "default": ""
+        },
+        "mode": {
+          "type": "string",
+          "default": ""
+        },
+        "namespace": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "default": ""
+    },
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "default": true
+        },
+        "exporter": {
+          "type": "string",
+          "default": "stdout"
+        },
+        "endpoint": {
+          "type": "string",
+          "default": ""
+        },
+        "propagator": {
+          "type": "string",
+          "default": "w3c"
+        },
+        "mode": {
+          "type": "string",
+          "default": "",
+          "description": "always|never|ratio; empty keeps dubbo-go default"
+        },
+        "ratio": {
+          "type": "number",
+          "default": 1.0
+        },
+        "insecure": {
+          "type": "boolean",
+          "default": false
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        },
+        "serviceName": {
+          "type": "string",
+          "default": ""
+        },
+        "address": {
+          "type": "string",
+          "default": ""
+        },
+        "use-agent": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": ""
+    },
+    "shutdown": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "type": "string",
+          "default": "",
+          "description": "duration string, e.g. \"60s\""
+        },
+        "step-timeout": {
+          "type": "string",
+          "default": "",
+          "description": "duration string, e.g. \"3s\""
+        },
+        "consumer-update-wait-time": {
+          "type": "string",
+          "default": "",
+          "description": "duration string, e.g. \"3s\""
+        },
+        "reject-handler": {
+          "type": "string",
+          "default": "",
+          "description": "v3 has no named-handler Option yet; non-empty turns on rejection"
+        },
+        "internal-signal": {
+          "type": "boolean",
+          "default": true
+        },
+        "offline-request-window-timeout": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "default": ""
+    }
+  }
+}

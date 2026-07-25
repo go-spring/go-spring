@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.lock",
+  "type": "object",
+  "properties": {
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "dial-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "ttl": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    },
+    "key-prefix": {
+      "type": "string",
+      "default": "/lock/"
+    },
+    "tls": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.gateway",
+  "type": "object",
+  "properties": {
+    "routes": {
+      "type": "object",
+      "default": ""
+    },
+    "resilience": {
+      "type": "object",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.discovery.k8s",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "default": "dns"
+    },
+    "namespace": {
+      "type": "string",
+      "default": "default"
+    },
+    "port-name": {
+      "type": "string",
+      "default": ""
+    },
+    "port": {
+      "type": "integer",
+      "default": 0
+    },
+    "cluster-domain": {
+      "type": "string",
+      "default": "cluster.local"
+    },
+    "refresh-interval": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10s"
+    },
+    "kubeconfig": {
+      "type": "string",
+      "default": ""
+    },
+    "resync-period": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    }
+  }
+}

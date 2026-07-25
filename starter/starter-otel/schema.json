@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.observability",
+  "type": "object",
+  "properties": {
+    "enable": {
+      "type": "boolean",
+      "default": true
+    },
+    "trace": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "default": true
+        },
+        "exporter": {
+          "type": "string",
+          "default": "otlp-grpc",
+          "description": "otlp-grpc|otlp-http|stdout|none"
+        },
+        "endpoint": {
+          "type": "string",
+          "default": ""
+        },
+        "insecure": {
+          "type": "boolean",
+          "default": true
+        },
+        "sampler-ratio": {
+          "type": "number",
+          "default": 1.0
+        },
+        "propagator": {
+          "type": "string",
+          "default": "w3c",
+          "description": "w3c|none"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "default": true
+        },
+        "exporter": {
+          "type": "string",
+          "default": "otlp-grpc",
+          "description": "otlp-grpc|otlp-http|prometheus|stdout|none"
+        },
+        "endpoint": {
+          "type": "string",
+          "default": ""
+        },
+        "insecure": {
+          "type": "boolean",
+          "default": true
+        },
+        "port": {
+          "type": "integer",
+          "default": 9090
+        },
+        "path": {
+          "type": "string",
+          "default": "/metrics"
+        },
+        "interval": {
+          "type": "string",
+          "description": "push interval for otlp/stdout readers",
+          "default": "10s"
+        },
+        "runtime": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": true
+            },
+            "min-read-mem-stats-interval": {
+              "type": "string",
+              "description": "Duration string, e.g. '5s', '1m', '1h'",
+              "default": "15s"
+            }
+          }
+        }
+      }
+    }
+  }
+}

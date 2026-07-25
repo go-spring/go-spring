@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.go-zero.rest.server",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "default": "go-zero"
+    },
+    "host": {
+      "type": "string",
+      "default": "0.0.0.0"
+    },
+    "port": {
+      "type": "integer",
+      "default": 6060
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "endpoint": {
+      "type": "string",
+      "default": ""
+    },
+    "sampler": {
+      "type": "number",
+      "default": 1.0
+    },
+    "batcher": {
+      "type": "string",
+      "default": "otlpgrpc"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "path": {
+      "type": "string",
+      "default": "/metrics"
+    },
+    "level": {
+      "type": "string",
+      "default": "info"
+    }
+  }
+}

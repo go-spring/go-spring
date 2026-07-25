@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.gorm.clickhouse",
+  "type": "object",
+  "properties": {
+    "user": {
+      "type": "string",
+      "default": "default",
+      "description": "Database username, default \"default\""
+    },
+    "password": {
+      "type": "string",
+      "default": "",
+      "description": "Database password"
+    },
+    "addr": {
+      "type": "string",
+      "default": "",
+      "description": "Database host:port (native protocol, typically 9000; required unless ServiceName is set)"
+    },
+    "db": {
+      "type": "string",
+      "default": "default",
+      "description": "Database name, default \"default\""
+    },
+    "dialTimeout": {
+      "type": "string",
+      "description": "Connection dial timeout, optional",
+      "default": ""
+    },
+    "readTimeout": {
+      "type": "string",
+      "description": "Read timeout, optional",
+      "default": ""
+    },
+    "max-open-conns": {
+      "type": "integer",
+      "default": 0,
+      "description": "Max open connections (0 = unlimited)"
+    },
+    "max-idle-conns": {
+      "type": "integer",
+      "default": 0,
+      "description": "Max idle connections (0 = default 2)"
+    },
+    "conn-max-lifetime": {
+      "type": "string",
+      "description": "Max lifetime of a connection (0 = unlimited)",
+      "default": "0"
+    },
+    "conn-max-idle-time": {
+      "type": "string",
+      "description": "Max idle time of a connection (0 = unlimited)",
+      "default": "0"
+    },
+    "ping-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "slow-threshold": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "tls": {
+      "type": "object"
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    }
+  }
+}

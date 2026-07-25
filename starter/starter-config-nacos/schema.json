@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.app.imports (nacos://...)",
+  "description": "Nacos remote configuration provider. Configured via spring.app.imports URL.",
+  "type": "object",
+  "properties": {
+    "nacos-url": {
+      "type": "string",
+      "description": "URL format: nacos://host:port/data-id?group=xxx&namespace=xxx"
+    }
+  }
+}

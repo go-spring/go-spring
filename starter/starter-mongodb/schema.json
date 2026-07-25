@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.mongodb",
+  "type": "object",
+  "properties": {
+    "uri": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "auth-source": {
+      "type": "string",
+      "default": ""
+    },
+    "auth-mechanism": {
+      "type": "string",
+      "default": ""
+    },
+    "connect-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10s"
+    },
+    "server-selection-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "max-pool-size": {
+      "type": "object",
+      "default": "100"
+    },
+    "min-pool-size": {
+      "type": "object",
+      "default": "0"
+    },
+    "max-conn-idle-time": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "tls": {
+      "type": "object"
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    }
+  }
+}

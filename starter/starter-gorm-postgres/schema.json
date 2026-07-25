@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.gorm.postgres",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "default": "",
+      "description": "Database host (required unless ServiceName is set)"
+    },
+    "port": {
+      "type": "string",
+      "default": "5432",
+      "description": "Database port"
+    },
+    "user": {
+      "type": "string",
+      "description": "Database username"
+    },
+    "password": {
+      "type": "string",
+      "description": "Database password"
+    },
+    "db": {
+      "type": "string",
+      "description": "Database name"
+    },
+    "sslmode": {
+      "type": "string",
+      "default": "disable",
+      "description": "SSL mode, e.g., disable, require, verify-full"
+    },
+    "timezone": {
+      "type": "string",
+      "default": "",
+      "description": "Timezone, e.g., Asia/Shanghai"
+    },
+    "connectTimeout": {
+      "type": "string",
+      "description": "Connection timeout",
+      "default": ""
+    },
+    "sslrootcert": {
+      "type": "string",
+      "default": "",
+      "description": "Path to CA certificate (PEM)"
+    },
+    "sslcert": {
+      "type": "string",
+      "default": "",
+      "description": "Path to client certificate (PEM)"
+    },
+    "sslkey": {
+      "type": "string",
+      "default": "",
+      "description": "Path to client private key (PEM)"
+    },
+    "max-open-conns": {
+      "type": "integer",
+      "default": 0,
+      "description": "Max open connections (0 = unlimited)"
+    },
+    "max-idle-conns": {
+      "type": "integer",
+      "default": 0,
+      "description": "Max idle connections (0 = default 2)"
+    },
+    "conn-max-lifetime": {
+      "type": "string",
+      "description": "Max lifetime of a connection (0 = unlimited)",
+      "default": "0"
+    },
+    "conn-max-idle-time": {
+      "type": "string",
+      "description": "Max idle time of a connection (0 = unlimited)",
+      "default": "0"
+    },
+    "ping-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "slow-threshold": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    }
+  }
+}

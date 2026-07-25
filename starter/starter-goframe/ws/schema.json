@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.goframe.ws.server",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "default": "goframe"
+    },
+    "address": {
+      "type": "string"
+    },
+    "etcd": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

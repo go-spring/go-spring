@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.ants",
+  "type": "object",
+  "properties": {
+    "size": {
+      "type": "integer",
+      "default": 256
+    },
+    "expiry-duration": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "1s"
+    },
+    "pre-alloc": {
+      "type": "boolean",
+      "default": false
+    },
+    "max-blocking-tasks": {
+      "type": "integer",
+      "default": 0
+    },
+    "nonblocking": {
+      "type": "boolean",
+      "default": false
+    },
+    "disable-purge": {
+      "type": "boolean",
+      "default": false
+    },
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    }
+  }
+}

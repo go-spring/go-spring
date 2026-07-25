@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.lock",
+  "type": "object",
+  "properties": {
+    "namespace": {
+      "type": "string",
+      "default": "default"
+    },
+    "kubeconfig": {
+      "type": "string",
+      "default": ""
+    },
+    "key-prefix": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

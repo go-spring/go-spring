@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.kratos.http.server",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "default": "kratos-http"
+    },
+    "network": {
+      "type": "string",
+      "default": ""
+    },
+    "addr": {
+      "type": "string",
+      "default": ""
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "1s"
+    },
+    "enable": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

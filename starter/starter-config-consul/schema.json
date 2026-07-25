@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.app.imports (consul://...)",
+  "description": "Consul KV remote configuration provider. Configured via spring.app.imports URL.",
+  "type": "object",
+  "properties": {
+    "consul-url": {
+      "type": "string",
+      "description": "URL format: consul://host:port/path/to/key?scheme={http|https}&token=xxx"
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.gorm.mysql",
+  "type": "object",
+  "properties": {
+    "user": {
+      "type": "string",
+      "description": "Database username"
+    },
+    "password": {
+      "type": "string",
+      "description": "Database password"
+    },
+    "net": {
+      "type": "string",
+      "default": "",
+      "description": "Network type (tcp, unix), optional"
+    },
+    "addr": {
+      "type": "string",
+      "default": "",
+      "description": "Database host:port or socket path (required unless ServiceName is set)"
+    },
+    "db": {
+      "type": "string",
+      "description": "Database name"
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Connection timeout",
+      "default": ""
+    },
+    "readTimeout": {
+      "type": "string",
+      "description": "Read timeout",
+      "default": ""
+    },
+    "writeTimeout": {
+      "type": "string",
+      "description": "Write timeout",
+      "default": ""
+    },
+    "charset": {
+      "type": "string",
+      "default": "",
+      "description": "Character set, e.g., utf8mb4"
+    },
+    "parseTime": {
+      "type": "boolean",
+      "default": false,
+      "description": "Parse time values into time.Time"
+    },
+    "loc": {
+      "type": "string",
+      "default": "",
+      "description": "Timezone location, e.g., Asia/Shanghai"
+    },
+    "max-open-conns": {
+      "type": "integer",
+      "default": 0,
+      "description": "Max open connections (0 = unlimited)"
+    },
+    "max-idle-conns": {
+      "type": "integer",
+      "default": 0,
+      "description": "Max idle connections (0 = default 2)"
+    },
+    "conn-max-lifetime": {
+      "type": "string",
+      "description": "Max lifetime of a connection (0 = unlimited)",
+      "default": "0"
+    },
+    "conn-max-idle-time": {
+      "type": "string",
+      "description": "Max idle time of a connection (0 = unlimited)",
+      "default": "0"
+    },
+    "ping-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "slow-threshold": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "tls": {
+      "type": "object"
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    },
+    "resilience": {
+      "type": "object",
+      "default": ""
+    }
+  }
+}

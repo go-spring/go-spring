@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.security.jwt",
+  "type": "object",
+  "properties": {
+    "issuer": {
+      "type": "string",
+      "default": ""
+    },
+    "audience": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
+    "algorithm": {
+      "type": "string",
+      "default": ""
+    },
+    "secret": {
+      "type": "string",
+      "default": ""
+    },
+    "public-key": {
+      "type": "string",
+      "default": ""
+    },
+    "public-key-file": {
+      "type": "string",
+      "default": ""
+    },
+    "jwks-url": {
+      "type": "string",
+      "default": ""
+    },
+    "jwks-refresh": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "15m"
+    },
+    "jwks-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10s"
+    },
+    "scope-claim": {
+      "type": "string",
+      "default": "scope"
+    },
+    "roles-claim": {
+      "type": "string",
+      "default": "roles"
+    },
+    "leeway": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "required": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

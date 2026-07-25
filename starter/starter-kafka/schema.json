@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.kafka",
+  "type": "object",
+  "properties": {
+    "brokers": {
+      "type": "string"
+    },
+    "topic": {
+      "type": "string",
+      "default": ""
+    },
+    "group": {
+      "type": "string",
+      "default": ""
+    },
+    "sasl": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "mechanism": {
+          "type": "string",
+          "default": "plain"
+        },
+        "username": {
+          "type": "string",
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "tls": {
+      "type": "object"
+    },
+    "producer": {
+      "type": "object",
+      "properties": {
+        "compression": {
+          "type": "string",
+          "default": ""
+        },
+        "required-acks": {
+          "type": "string",
+          "default": "all"
+        },
+        "max-batch-bytes": {
+          "type": "integer",
+          "default": 0
+        },
+        "linger": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'",
+          "default": "0s"
+        }
+      }
+    }
+  }
+}

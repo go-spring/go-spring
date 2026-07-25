@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.resilience",
+  "description": "Blank-import only; registers 'sentinel' driver with resilience.RegisterDriver",
+  "type": "object",
+  "properties": {}
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.kitex.server",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string"
+    },
+    "service.name": {
+      "type": "string",
+      "default": "kitex"
+    },
+    "registry.etcd": {
+      "type": "string",
+      "default": ""
+    },
+    "compatible-unary-middleware": {
+      "type": "boolean",
+      "default": false
+    },
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "default": false
+        },
+        "endpoint": {
+          "type": "string",
+          "default": "127.0.0.1:4317"
+        },
+        "insecure": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "default": false
+        },
+        "port": {
+          "type": "integer",
+          "default": 9090
+        },
+        "path": {
+          "type": "string",
+          "default": "/metrics"
+        }
+      }
+    }
+  }
+}

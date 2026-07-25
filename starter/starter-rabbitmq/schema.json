@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.rabbitmq",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string"
+    },
+    "vhost": {
+      "type": "string",
+      "default": ""
+    },
+    "heartbeat": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10s"
+    },
+    "tls": {
+      "type": "object"
+    }
+  }
+}

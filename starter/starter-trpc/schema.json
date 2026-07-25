@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.trpc.server",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string"
+    },
+    "service.name": {
+      "type": "string",
+      "default": "trpc.helloworld.greet.GreetService"
+    },
+    "network": {
+      "type": "string",
+      "default": "tcp"
+    },
+    "protocol": {
+      "type": "string",
+      "default": "trpc"
+    }
+  }
+}

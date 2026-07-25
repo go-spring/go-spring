@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.mail",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "default": ""
+    },
+    "port": {
+      "type": "integer",
+      "default": 587
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "auth-type": {
+      "type": "string",
+      "default": "auto"
+    },
+    "from": {
+      "type": "string",
+      "default": ""
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10s"
+    },
+    "tls": {
+      "type": "object"
+    }
+  }
+}

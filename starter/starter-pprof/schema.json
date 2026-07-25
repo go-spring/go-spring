@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.pprof",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string",
+      "default": ":6060"
+    },
+    "token": {
+      "type": "string",
+      "default": ""
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

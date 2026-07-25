@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.grpc.server",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string"
+    },
+    "connectionTimeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "maxRecvMsgSize": {
+      "type": "integer",
+      "default": 0
+    },
+    "maxSendMsgSize": {
+      "type": "integer",
+      "default": 0
+    },
+    "maxConcurrentStreams": {
+      "type": "integer",
+      "default": 0
+    },
+    "keepalive": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'",
+          "default": "0"
+        },
+        "timeout": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'",
+          "default": "0"
+        },
+        "maxConnectionIdle": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'",
+          "default": "0"
+        },
+        "maxConnectionAge": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'",
+          "default": "0"
+        }
+      }
+    },
+    "tls": {
+      "type": "object"
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  }
+}

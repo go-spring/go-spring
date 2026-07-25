@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.nats",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "default": ""
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "token": {
+      "type": "string",
+      "default": ""
+    },
+    "creds-file": {
+      "type": "string",
+      "default": ""
+    },
+    "nkey-file": {
+      "type": "string",
+      "default": ""
+    },
+    "tls": {
+      "type": "object"
+    },
+    "max-reconnects": {
+      "type": "integer",
+      "default": 60
+    },
+    "reconnect-wait": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "2s"
+    },
+    "connect-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "jetstream": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "resilience": {
+      "type": "object",
+      "default": ""
+    }
+  }
+}

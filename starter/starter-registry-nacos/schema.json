@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.registry.nacos",
+  "type": "object",
+  "properties": {
+    "server": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string",
+      "default": ""
+    },
+    "group": {
+      "type": "string",
+      "default": "DEFAULT_GROUP"
+    },
+    "cluster": {
+      "type": "string",
+      "default": "DEFAULT"
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "timeout-ms": {
+      "type": "object",
+      "default": "5000"
+    },
+    "name": {
+      "type": "string",
+      "default": "default"
+    }
+  }
+}

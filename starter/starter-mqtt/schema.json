@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.mqtt",
+  "type": "object",
+  "properties": {
+    "broker": {
+      "type": "string"
+    },
+    "client-id": {
+      "type": "string",
+      "default": ""
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "clean-session": {
+      "type": "boolean",
+      "default": true
+    },
+    "keep-alive": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    },
+    "connect-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10s"
+    },
+    "tls": {
+      "type": "object"
+    },
+    "will": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string",
+          "default": ""
+        },
+        "payload": {
+          "type": "string",
+          "default": ""
+        },
+        "qos": {
+          "type": "object",
+          "default": "0"
+        },
+        "retained": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}

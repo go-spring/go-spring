@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.registry.consul",
+  "type": "object",
+  "properties": {
+    "address": {
+      "type": "string"
+    },
+    "scheme": {
+      "type": "string",
+      "default": "http"
+    },
+    "datacenter": {
+      "type": "string",
+      "default": ""
+    },
+    "token": {
+      "type": "string",
+      "default": ""
+    },
+    "namespace": {
+      "type": "string",
+      "default": ""
+    },
+    "name": {
+      "type": "string",
+      "default": "default"
+    },
+    "ttl": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "15s"
+    },
+    "deregister-critical-after": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "1m"
+    }
+  }
+}

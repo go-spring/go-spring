@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.actuator",
+  "type": "object",
+  "properties": {
+    "spring.actuator.addr": {
+      "type": "string"
+    }
+  }
+}

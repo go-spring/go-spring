@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.transaction.saga.gorm",
+  "type": "object",
+  "properties": {
+    "db": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

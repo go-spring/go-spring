@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.websocket",
+  "type": "object",
+  "properties": {
+    "subprotocols": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
+    "insecureSkipVerify": {
+      "type": "boolean",
+      "default": false
+    },
+    "originPatterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
+    "compressionMode": {
+      "type": "integer",
+      "default": 0
+    },
+    "compressionThreshold": {
+      "type": "integer",
+      "default": 0
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.admin-ui",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string",
+      "default": ":9280"
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
+    "interval": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10s"
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "3s"
+    },
+    "title": {
+      "type": "string",
+      "default": "Go-Spring Admin"
+    }
+  }
+}

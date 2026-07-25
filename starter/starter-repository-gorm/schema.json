@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.repository.gorm",
+  "description": "Library-first gorm implementation of the repository abstraction. No configuration properties — use reposgorm.For[T, ID](db, table, opts...) to create a Repository bean.",
+  "type": "object",
+  "properties": {}
+}

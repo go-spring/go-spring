@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.pulsar",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string"
+    },
+    "operation-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    },
+    "connection-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "token": {
+      "type": "string",
+      "default": ""
+    },
+    "token-from-file": {
+      "type": "boolean",
+      "default": false
+    },
+    "tls-trust-certs-file": {
+      "type": "string",
+      "default": ""
+    },
+    "tls-cert-file": {
+      "type": "string",
+      "default": ""
+    },
+    "tls-key-file": {
+      "type": "string",
+      "default": ""
+    },
+    "tls-allow-insecure": {
+      "type": "boolean",
+      "default": false
+    },
+    "tls-validate-hostname": {
+      "type": "boolean",
+      "default": false
+    },
+    "fail-fast": {
+      "type": "boolean",
+      "default": true
+    },
+    "health-check-topic": {
+      "type": "string",
+      "default": "persistent://public/default/__health_check",
+      "description": "public/default/__health_check}\"`"
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "port": {
+          "type": "integer",
+          "default": 9091
+        },
+        "path": {
+          "type": "string",
+          "default": "/metrics"
+        }
+      }
+    }
+  }
+}

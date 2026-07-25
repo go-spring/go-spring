@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.kratos.ws.server",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "default": "kratos-ws"
+    },
+    "network": {
+      "type": "string",
+      "default": ""
+    },
+    "addr": {
+      "type": "string",
+      "default": ""
+    },
+    "path": {
+      "type": "string",
+      "default": "/"
+    }
+  }
+}

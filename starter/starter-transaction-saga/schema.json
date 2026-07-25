@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.transaction.saga",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "tracing": {
+      "type": "boolean",
+      "default": true
+    },
+    "recover-on-start": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

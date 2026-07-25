@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.casbin",
+  "type": "object",
+  "properties": {
+    "model": {
+      "type": "string",
+      "description": "Path to the model file (model.conf)"
+    },
+    "policy": {
+      "type": "string",
+      "default": "",
+      "description": "Path to the policy file (policy.csv); ignored when Adapter is set"
+    },
+    "autoSave": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether policy mutations are persisted back to the storage"
+    },
+    "adapter": {
+      "type": "string",
+      "default": ""
+    },
+    "watcher": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

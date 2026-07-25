@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.oauth2.client",
+  "type": "object",
+  "properties": {
+    "client-id": {
+      "type": "string"
+    },
+    "client-secret": {
+      "type": "string"
+    },
+    "token-url": {
+      "type": "string"
+    },
+    "scopes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
+    "endpoint-params": {
+      "type": "object",
+      "default": ""
+    },
+    "auth-style": {
+      "type": "string",
+      "default": "auto"
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "resilience": {
+      "type": "object",
+      "default": ""
+    }
+  }
+}

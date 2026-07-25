@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.go-zero.zrpc.server",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "default": "go-zero"
+    },
+    "listen-on": {
+      "type": "string"
+    },
+    "addr": {
+      "type": "string",
+      "default": ""
+    },
+    "key": {
+      "type": "string",
+      "default": ""
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "endpoint": {
+      "type": "string",
+      "default": ""
+    },
+    "sampler": {
+      "type": "number",
+      "default": 1.0
+    },
+    "batcher": {
+      "type": "string",
+      "default": "otlpgrpc"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "port": {
+      "type": "integer",
+      "default": 6060
+    },
+    "path": {
+      "type": "string",
+      "default": "/metrics"
+    },
+    "level": {
+      "type": "string",
+      "default": "info"
+    }
+  }
+}

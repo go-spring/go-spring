@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.batch-repository",
+  "type": "object",
+  "properties": {
+    "client": {
+      "type": "string"
+    },
+    "key-prefix": {
+      "type": "string",
+      "default": ""
+    },
+    "ttl": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    }
+  }
+}

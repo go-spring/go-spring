@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.lock",
+  "type": "object",
+  "properties": {
+    "client": {
+      "type": "string"
+    },
+    "ttl": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    },
+    "renew-interval": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "retry-interval": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "100ms"
+    },
+    "key-prefix": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

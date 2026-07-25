@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.session.redis",
+  "type": "object",
+  "properties": {
+    "client": {
+      "type": "string"
+    },
+    "key-prefix": {
+      "type": "string",
+      "default": "session:"
+    }
+  }
+}

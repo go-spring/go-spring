@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.memcached",
+  "type": "object",
+  "properties": {
+    "servers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "max-idle-conns": {
+      "type": "integer",
+      "default": 0
+    },
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    }
+  }
+}

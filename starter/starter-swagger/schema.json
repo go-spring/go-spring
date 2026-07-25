@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.swagger",
+  "type": "object",
+  "properties": {
+    "basePath": {
+      "type": "string",
+      "default": "/swagger"
+    },
+    "specFile": {
+      "type": "string",
+      "default": "openapi.json"
+    },
+    "title": {
+      "type": "string",
+      "default": "API Documentation"
+    },
+    "assetBaseURL": {
+      "type": "string",
+      "default": "https://unpkg.com/swagger-ui-dist@5",
+      "description": "unpkg.com/swagger-ui-dist@5}\"`"
+    }
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.go-redis",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "default": "single"
+    },
+    "addr": {
+      "type": "string",
+      "default": ""
+    },
+    "master-name": {
+      "type": "string",
+      "default": ""
+    },
+    "sentinel-addrs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
+    "sentinel-password": {
+      "type": "string",
+      "default": ""
+    },
+    "addrs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
+    "max-redirects": {
+      "type": "integer",
+      "default": 0
+    },
+    "route-by-latency": {
+      "type": "boolean",
+      "default": false
+    },
+    "route-randomly": {
+      "type": "boolean",
+      "default": false
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "db": {
+      "type": "integer",
+      "default": 0
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "pool-size": {
+      "type": "integer",
+      "default": 10
+    },
+    "max-idle": {
+      "type": "integer",
+      "default": 5
+    },
+    "max-retries": {
+      "type": "integer",
+      "default": 0
+    },
+    "dial-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "read-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "3s"
+    },
+    "write-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "3s"
+    },
+    "conn-max-lifetime": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "2m"
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    },
+    "tls": {
+      "type": "object"
+    },
+    "resilience": {
+      "type": "object",
+      "default": ""
+    },
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    }
+  }
+}

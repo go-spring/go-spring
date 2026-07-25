@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.oauth2.server",
+  "type": "object",
+  "properties": {
+    "issuer": {
+      "type": "string",
+      "default": ""
+    },
+    "algorithm": {
+      "type": "string",
+      "default": ""
+    },
+    "secret": {
+      "type": "string",
+      "default": ""
+    },
+    "private-key": {
+      "type": "string",
+      "default": ""
+    },
+    "private-key-file": {
+      "type": "string",
+      "default": ""
+    },
+    "key-id": {
+      "type": "string",
+      "default": "default"
+    },
+    "access-token-ttl": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "1h"
+    },
+    "refresh-token-ttl": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "24h"
+    },
+    "code-ttl": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "1m"
+    },
+    "clients": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string",
+            "default": ""
+          },
+          "public": {
+            "type": "boolean",
+            "default": false
+          },
+          "redirect-uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": ""
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": ""
+          },
+          "grant-types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": ""
+          }
+        }
+      },
+      "default": ""
+    }
+  }
+}

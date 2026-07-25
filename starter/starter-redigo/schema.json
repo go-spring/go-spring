@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.redigo",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "db": {
+      "type": "integer",
+      "default": 0
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "pool-size": {
+      "type": "integer",
+      "default": 10
+    },
+    "max-idle": {
+      "type": "integer",
+      "default": 5
+    },
+    "dial-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "read-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "3s"
+    },
+    "write-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "3s"
+    },
+    "conn-max-lifetime": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "2m"
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    },
+    "tls": {
+      "type": "object"
+    },
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.websocket",
+  "type": "object",
+  "properties": {
+    "handshakeTimeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10s"
+    },
+    "readBufferSize": {
+      "type": "integer",
+      "default": 1024
+    },
+    "writeBufferSize": {
+      "type": "integer",
+      "default": 1024
+    },
+    "enableCompression": {
+      "type": "boolean",
+      "default": false
+    },
+    "allowedOrigins": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    }
+  }
+}

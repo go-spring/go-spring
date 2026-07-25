@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.bigcache",
+  "type": "object",
+  "properties": {
+    "shards": {
+      "type": "integer",
+      "default": 1024
+    },
+    "life-window": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "10m"
+    },
+    "clean-window": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "1m"
+    },
+    "max-entries-in-window": {
+      "type": "integer",
+      "default": 600000
+    },
+    "max-entry-size": {
+      "type": "integer",
+      "default": 500
+    },
+    "hard-max-cache-size": {
+      "type": "integer",
+      "default": 0
+    },
+    "stats-enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    }
+  }
+}

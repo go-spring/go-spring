@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.neo4j",
+  "type": "object",
+  "properties": {
+    "uri": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "realm": {
+      "type": "string",
+      "default": ""
+    },
+    "max-connection-pool-size": {
+      "type": "integer",
+      "default": 100
+    },
+    "max-connection-lifetime": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "1h"
+    },
+    "connection-acquisition-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "1m"
+    },
+    "socket-connect-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "max-transaction-retry-time": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    },
+    "tls": {
+      "type": "object"
+    },
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    }
+  }
+}

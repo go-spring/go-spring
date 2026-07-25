@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.echo.server",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string"
+    },
+    "readTimeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "writeTimeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "5s"
+    },
+    "idleTimeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "60s"
+    },
+    "maxBodySize": {
+      "type": "integer",
+      "default": 0
+    },
+    "tls": {
+      "type": "object"
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "path": {
+          "type": "string",
+          "default": "/healthz"
+        }
+      }
+    },
+    "middleware": {
+      "type": "object",
+      "properties": {
+        "recovery": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "requestId": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "accessLog": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "skipPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": ""
+            }
+          }
+        },
+        "cors": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "allowAllOrigins": {
+              "type": "boolean",
+              "default": false
+            },
+            "allowedOrigins": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": ""
+            },
+            "allowedMethods": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": ""
+            },
+            "allowedHeaders": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": ""
+            },
+            "exposeHeaders": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": ""
+            },
+            "allowCredentials": {
+              "type": "boolean",
+              "default": false
+            },
+            "maxAge": {
+              "type": "string",
+              "description": "Duration string, e.g. '5s', '1m', '1h'",
+              "default": "0s"
+            }
+          }
+        },
+        "gzip": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "level": {
+              "type": "integer",
+              "default": 5
+            }
+          }
+        },
+        "secureHeaders": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "hsts": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "maxAge": {
+                  "type": "string",
+                  "description": "Duration string, e.g. '5s', '1m', '1h'",
+                  "default": "0s"
+                },
+                "includeSubDomains": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "preload": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

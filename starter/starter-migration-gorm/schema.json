@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.migration.gorm",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "db-ref": {
+      "type": "string",
+      "default": ""
+    },
+    "source-dir": {
+      "type": "string",
+      "default": ""
+    },
+    "baseline": {
+      "type": "object",
+      "default": "0"
+    },
+    "allow-out-of-order": {
+      "type": "boolean",
+      "default": false
+    },
+    "table": {
+      "type": "string",
+      "default": "schema_migrations"
+    }
+  }
+}

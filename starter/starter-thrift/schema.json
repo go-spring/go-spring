@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.thrift.server",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string"
+    },
+    "clientTimeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "protocol": {
+      "type": "string",
+      "default": "binary"
+    },
+    "transport": {
+      "type": "string",
+      "default": "none"
+    },
+    "bufferSize": {
+      "type": "integer",
+      "default": 4096
+    },
+    "tls": {
+      "type": "object"
+    }
+  }
+}

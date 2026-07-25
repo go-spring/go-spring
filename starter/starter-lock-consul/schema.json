@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.lock",
+  "type": "object",
+  "properties": {
+    "address": {
+      "type": "string"
+    },
+    "scheme": {
+      "type": "string",
+      "default": "http"
+    },
+    "token": {
+      "type": "string",
+      "default": ""
+    },
+    "ttl": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    },
+    "key-prefix": {
+      "type": "string",
+      "default": "lock/"
+    },
+    "tls": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.app.imports (vault://...)",
+  "description": "Vault remote configuration provider. Configured via spring.app.imports URL.",
+  "type": "object",
+  "properties": {
+    "vault-url": {
+      "type": "string",
+      "description": "URL format: vault://host:port/path/to/secret?token=xxx&scheme={http|https}"
+    }
+  }
+}

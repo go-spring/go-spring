@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.http-client",
+  "type": "object",
+  "properties": {
+    "addr": {
+      "type": "string",
+      "default": ""
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": ""
+    },
+    "balancer": {
+      "type": "string",
+      "default": "round_robin"
+    },
+    "eject-threshold": {
+      "type": "integer",
+      "default": 0
+    },
+    "eject-for": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "0"
+    },
+    "resilience": {
+      "type": "object",
+      "default": ""
+    }
+  }
+}

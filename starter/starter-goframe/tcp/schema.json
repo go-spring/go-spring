@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.goframe.tcp.server",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "default": "goframe"
+    },
+    "address": {
+      "type": "string"
+    },
+    "advertise.host": {
+      "type": "string",
+      "default": "127.0.0.1"
+    },
+    "advertise.port": {
+      "type": "integer",
+      "default": 8003
+    },
+    "etcd": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

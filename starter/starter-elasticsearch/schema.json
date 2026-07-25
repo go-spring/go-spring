@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.elasticsearch",
+  "type": "object",
+  "properties": {
+    "addresses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "api-key": {
+      "type": "string",
+      "default": ""
+    },
+    "service-token": {
+      "type": "string",
+      "default": ""
+    },
+    "cloud-id": {
+      "type": "string",
+      "default": ""
+    },
+    "certificate-fingerprint": {
+      "type": "string",
+      "default": ""
+    },
+    "max-retries": {
+      "type": "integer",
+      "default": 3
+    },
+    "disable-retry": {
+      "type": "boolean",
+      "default": false
+    },
+    "compress-request-body": {
+      "type": "boolean",
+      "default": false
+    },
+    "enable-metrics": {
+      "type": "boolean",
+      "default": false
+    },
+    "enable-debug-logger": {
+      "type": "boolean",
+      "default": false
+    },
+    "service-name": {
+      "type": "string",
+      "default": ""
+    },
+    "discovery": {
+      "type": "string",
+      "default": "default"
+    },
+    "discovery-scheme": {
+      "type": "string",
+      "default": "http"
+    },
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    }
+  }
+}

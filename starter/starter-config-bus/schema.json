@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.config.bus",
+  "type": "object",
+  "properties": {
+    "subject": {
+      "type": "string",
+      "default": "spring.config.refresh"
+    },
+    "watch-prefixes": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

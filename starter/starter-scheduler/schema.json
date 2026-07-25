@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.scheduler",
+  "type": "object",
+  "properties": {
+    "jobs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "cron": {
+            "type": "string",
+            "default": ""
+          },
+          "fixed-rate": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          },
+          "fixed-delay": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          },
+          "timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          },
+          "concurrency": {
+            "type": "string",
+            "default": "skip"
+          },
+          "lock": {
+            "type": "string",
+            "default": ""
+          },
+          "lock-key": {
+            "type": "string",
+            "default": ""
+          },
+          "lock-ttl": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "30s"
+          }
+        }
+      },
+      "default": ""
+    },
+    "drain-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    }
+  }
+}

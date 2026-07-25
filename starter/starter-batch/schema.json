@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.batch",
+  "type": "object",
+  "properties": {
+    "repository": {
+      "type": "string",
+      "default": ""
+    },
+    "drain-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    },
+    "jobs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "run-on-startup": {
+            "type": "boolean",
+            "default": false
+          },
+          "params": {
+            "type": "object",
+            "default": ""
+          }
+        }
+      },
+      "default": ""
+    }
+  }
+}
