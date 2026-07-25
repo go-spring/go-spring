@@ -58,9 +58,9 @@ type ObserverConfig struct {
 	Tracing TracingConfig `value:"${tracing}"`
 }
 
-// TracingConfig toggles wrapping the Locker with OTel tracing. Off by default.
+// TracingConfig toggles wrapping the Locker with OTel tracing. On by default.
 type TracingConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // buildClient builds a Kubernetes clientset for c: in-cluster when Kubeconfig

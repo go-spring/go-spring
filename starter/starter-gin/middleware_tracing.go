@@ -38,7 +38,7 @@ const tracerName = "go-spring.org/starter-gin"
 //
 // The middleware rides the OTel globals — when starter-otel is not imported the
 // global TracerProvider and TextMapPropagator are no-ops, so this costs almost
-// nothing and changes no response behaviour. Importing starter-otel is the opt-in.
+// nothing and changes no response behaviour. The middleware is on by default; importing starter-otel activates it.
 func tracingMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract the incoming trace context from headers so the new span joins

@@ -17,8 +17,10 @@
 package gs_core
 
 import (
+	"context"
 	"testing"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs/internal/gs_bean"
 	"go-spring.org/spring/gs/internal/gs_core/injecting"
 	"go-spring.org/spring/gs/internal/gs_core/resolving"
@@ -75,6 +77,7 @@ func (c *Container) Refresh(p flatten.Storage, roots []*gs_bean.BeanDefinition) 
 		return errutil.Explain(nil, "container already refreshed")
 	}
 	c.State = Refreshing
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "container refresh started: %d root beans", len(roots))
 
 	// Step 1: Resolve and prepare all bean definitions.
 	if err := c.Resolving.Refresh(p); err != nil {
@@ -94,5 +97,6 @@ func (c *Container) Refresh(p flatten.Storage, roots []*gs_bean.BeanDefinition) 
 
 	c.State = Refreshed
 	c.Resolving = nil
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "container refresh complete")
 	return nil
 }

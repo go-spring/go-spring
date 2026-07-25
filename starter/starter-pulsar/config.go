@@ -84,8 +84,8 @@ type Config struct {
 // the same approach the contrib/go-zero example uses.
 type MetricsConfig struct {
 	// Enabled turns on the /metrics endpoint for this client instance. Default
-	// is false so importing the starter never binds a port unexpectedly.
-	Enabled bool `value:"${enabled:=false}"`
+	// is true so observability works out of the box.
+	Enabled bool `value:"${enabled:=true}"`
 
 	// Port is the TCP port the /metrics endpoint listens on. Give each instance
 	// a distinct port when more than one has metrics enabled.

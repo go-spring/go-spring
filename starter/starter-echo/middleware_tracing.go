@@ -37,7 +37,7 @@ const tracerName = "go-spring.org/starter-echo"
 //
 // The middleware rides the OTel globals — when starter-otel is not imported the
 // global TracerProvider and TextMapPropagator are no-ops, so this costs almost
-// nothing. Importing starter-otel is the opt-in.
+// nothing. The middleware is on by default; importing starter-otel activates it.
 func tracingMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

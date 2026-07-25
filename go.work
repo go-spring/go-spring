@@ -72,22 +72,28 @@ use (
 	./starter/starter-dubbo/example
 	./starter/starter-echo
 	./starter/starter-echo/example
+		./starter/starter-echo/example-otel
 	./starter/starter-elasticsearch
 	./starter/starter-elasticsearch/example
 	./starter/starter-gateway
 	./starter/starter-gateway/example
 	./starter/starter-gin
 	./starter/starter-gin/example
+	./starter/starter-gin/example-otel
 	./starter/starter-go-redis
 	./starter/starter-go-redis/example
 	./starter/starter-go-zero
 	./starter/starter-go-zero/rest/example
 	./starter/starter-go-zero/zrpc/example
+		./starter/starter-go-zero/rest/example-otel
+		./starter/starter-go-zero/zrpc/example-otel
 	./starter/starter-goframe
 	./starter/starter-goframe/grpc/example
 	./starter/starter-goframe/http/example
 	./starter/starter-goframe/tcp/example
 	./starter/starter-goframe/ws/example
+		./starter/starter-goframe/http/example-otel
+		./starter/starter-goframe/grpc/example-otel
 	./starter/starter-gorm-clickhouse
 	./starter/starter-gorm-clickhouse/example
 	./starter/starter-gorm-mysql
@@ -98,8 +104,10 @@ use (
 	./starter/starter-gorm-sqlserver/example
 	./starter/starter-grpc
 	./starter/starter-grpc/example
+	./starter/starter-grpc/example-otel
 	./starter/starter-hertz
 	./starter/starter-hertz/example
+	./starter/starter-hertz/example-otel
 	./starter/starter-http-client
 	./starter/starter-http-client/example
 	./starter/starter-kafka
@@ -108,6 +116,7 @@ use (
 	./starter/starter-kafka/example
 	./starter/starter-kitex
 	./starter/starter-kitex/example
+		./starter/starter-kitex/example-otel
 	./starter/starter-kratos
 	./starter/starter-lock-consul
 	./starter/starter-lock-consul/example
@@ -171,6 +180,7 @@ use (
 	./starter/starter-swagger/example
 	./starter/starter-thrift
 	./starter/starter-thrift/example
+		./starter/starter-thrift/example-otel
 	./starter/starter-transaction-at-gorm
 	./starter/starter-transaction-at-gorm/example
 	./starter/starter-transaction-saga
@@ -178,6 +188,7 @@ use (
 	./starter/starter-transaction-tcc
 	./starter/starter-transaction-tcc/example
 	./starter/starter-trpc
+		./starter/starter-trpc/example-otel
 	./starter/starter-trpc/example
 	./starter/starter-validation
 	./starter/starter-validation/example

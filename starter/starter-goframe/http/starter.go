@@ -64,7 +64,7 @@ type ServiceRegister func(group *ghttp.RouterGroup)
 // so importing starter-otel lights up spans with no per-server config; without
 // it, the global no-op provider is used. Metrics stay goframe-native (a
 // Prometheus pull endpoint served by this same server) because that is separate
-// from starter-otel's push pipeline; they are off by default.
+// from starter-otel's push pipeline; they are on by default.
 type Config struct {
 	Name    string `value:"${name:=goframe}"`
 	Address string `value:"${address}"`
@@ -78,10 +78,10 @@ type Config struct {
 	} `value:"${registry}"`
 
 	// Metrics exposes goframe's native OTel Prometheus (pull) endpoint on this
-	// same server. Off by default; enable only to scrape goframe's registry. It
+	// same server. On by default so observability works out of the box. It
 	// cannot be unified with starter-otel's metrics pipeline.
 	Metrics struct {
-		Enabled bool   `value:"${enabled:=false}"`
+		Enabled bool   `value:"${enabled:=true}"`
 		Path    string `value:"${path:=/metrics}"`
 	} `value:"${metrics}"`
 }

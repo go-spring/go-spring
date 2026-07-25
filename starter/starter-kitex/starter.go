@@ -77,22 +77,23 @@ type Config struct {
 	Metrics MetricsCfg `value:"${metrics}"`
 }
 
-// TracingCfg configures OTel tracing under ${spring.kitex.server.tracing}. When
-// enabled, spans are exported over OTLP/gRPC to Endpoint (a Jaeger/collector)
-// and a tracing.NewServerSuite() is installed on the server. Metrics are
+// TracingCfg configures OTel tracing under ${spring.kitex.server.tracing}. On
+// by default, so importing starter-otel activates spans with no config change.
+// When enabled, spans are exported over OTLP/gRPC to Endpoint. Metrics are
 // intentionally left to MetricsCfg (Prometheus), so the OTel meter is disabled.
 type TracingCfg struct {
-	Enable   bool   `value:"${enable:=false}"`
+	Enable   bool   `value:"${enable:=true}"`
 	Endpoint string `value:"${endpoint:=127.0.0.1:4317}"`
 	Insecure bool   `value:"${insecure:=true}"`
 }
 
 // MetricsCfg configures Prometheus metrics under ${spring.kitex.server.metrics}.
+// On by default, so importing starter-otel activates metrics with no config change.
 // When enabled, monitor-prometheus stands up its own HTTP server on Port serving
 // Path, independent of the (usually disabled) built-in spring.http.server, for a
 // Prometheus instance to scrape.
 type MetricsCfg struct {
-	Enable bool   `value:"${enable:=false}"`
+	Enable bool   `value:"${enable:=true}"`
 	Port   int    `value:"${port:=9090}"`
 	Path   string `value:"${path:=/metrics}"`
 }

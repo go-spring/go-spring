@@ -37,7 +37,7 @@ const tracerName = "go-spring.org/starter-redigo"
 //
 // The span rides the OTel globals that starter-otel installs. Without
 // starter-otel the global TracerProvider is a no-op, so this costs almost
-// nothing. Importing starter-otel is the opt-in.
+// nothing. The observability wrapper is on by default; importing starter-otel activates it.
 func StartRedisSpan(ctx context.Context, command string, args ...any) (context.Context, trace.Span) {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "redis."+command,
 		trace.WithSpanKind(trace.SpanKindClient),

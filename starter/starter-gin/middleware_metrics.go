@@ -32,7 +32,7 @@ const meterName = "go-spring.org/starter-gin"
 // metricsMiddleware records HTTP request metrics — total count, duration, and
 // in-flight gauge — through the global MeterProvider that starter-otel installs.
 // When starter-otel is not imported the global MeterProvider is a no-op, so this
-// costs almost nothing. Importing starter-otel is the opt-in.
+// costs almost nothing. The middleware is on by default; importing starter-otel activates it.
 func metricsMiddleware() gin.HandlerFunc {
 	meter := otel.GetMeterProvider().Meter(meterName)
 

@@ -39,7 +39,7 @@ import (
 
 func init() {
 	// A nil condition means the module always runs when the starter is imported;
-	// importing starter-otel is the opt-in. The actual on/off is decided inside
+	// importing starter-otel activates the OTel SDK. The actual on/off is decided inside
 	// setup from ${spring.observability.enable} (default true). This must be a
 	// gs.Module, not a plain bean: its body executes during applyModules in the
 	// RefreshPrepare phase, i.e. BEFORE any bean is instantiated. Setting the

@@ -45,7 +45,7 @@ func init() {
 // client; a mismatch corrupts the wire protocol.
 //
 // Observer toggles OTel tracing and metrics via a wrapped TProcessor.
-// Both are off by default; importing starter-otel is the opt-in.
+// Both are on by default; importing starter-otel activates them.
 type Config struct {
 	Addr          string            `value:"${addr}"`
 	ClientTimeout time.Duration     `value:"${clientTimeout:=0}"`
@@ -64,15 +64,15 @@ type ObserverConfig struct {
 }
 
 // TracingConfig toggles wrapping the TProcessor with an OTel tracing wrapper.
-// Off by default.
+// On by default.
 type TracingConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // MetricsConfig toggles wrapping the TProcessor with an OTel metrics wrapper.
-// Off by default.
+// On by default.
 type MetricsConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // SimpleThriftServer adapts a thrift.TSimpleServer to the Go-Spring server lifecycle.

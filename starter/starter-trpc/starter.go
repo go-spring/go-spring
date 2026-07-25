@@ -68,19 +68,20 @@ type Config struct {
 }
 
 // ObserverConfig toggles OTel tracing/metrics filters on the tRPC server.
+// Both are on by default; the filters are no-ops without starter-otel.
 type ObserverConfig struct {
 	Tracing TracingConfig `value:"${tracing}"`
 	Metrics MetricsConfig `value:"${metrics}"`
 }
 
-// TracingConfig toggles the tracing ServerFilter. Off by default.
+// TracingConfig toggles the tracing ServerFilter. On by default.
 type TracingConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
-// MetricsConfig toggles the metrics ServerFilter. Off by default.
+// MetricsConfig toggles the metrics ServerFilter. On by default.
 type MetricsConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // SimpleTrpcServer adapts a tRPC server.Server to the Go-Spring server

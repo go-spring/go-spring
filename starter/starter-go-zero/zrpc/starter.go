@@ -58,7 +58,7 @@ type ServiceRegister func(grpcServer *grpc.Server)
 // can resolve it. Observability follows the same policy as the rest starter:
 // tracing is deferred to starter-otel (Tracing.Disabled defaults to true so the
 // zrpc trace interceptor uses the ambient global OTel provider); metrics stay
-// go-zero-native via the DevServer, off by default.
+// go-zero-native via the DevServer, on by default.
 type Config struct {
 	Name     string `value:"${name:=go-zero}"`
 	ListenOn string `value:"${listen-on}"`
@@ -79,9 +79,9 @@ type Config struct {
 	} `value:"${tracing}"`
 
 	// Metrics: go-zero's DevServer exposes a Prometheus /metrics endpoint on its
-	// own port. Off by default.
+	// own port. On by default.
 	Metrics struct {
-		Enabled bool   `value:"${enabled:=false}"`
+		Enabled bool   `value:"${enabled:=true}"`
 		Port    int    `value:"${port:=6060}"`
 		Path    string `value:"${path:=/metrics}"`
 	} `value:"${metrics}"`

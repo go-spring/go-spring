@@ -17,9 +17,11 @@
 package gs_init
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_bean"
 	"go-spring.org/spring/gs/internal/gs_cond"
@@ -90,6 +92,7 @@ func Beans() []*gs_bean.BeanDefinition {
 // available for all App/IOC containers that reference this global registry.
 func AddBean(bean *gs_bean.BeanDefinition) {
 	beans = append(beans, bean)
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "global bean registered: %s", bean)
 }
 
 // AddModule registers a conditional module in the global registry.
@@ -101,12 +104,14 @@ func AddModule(c gs_cond.PropertyCondition, fn ModuleFunc, file string, line int
 		Condition:  c,
 		FileLine:   fmt.Sprintf("%s:%d", file, line),
 	})
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "global module registered at %s:%d", file, line)
 }
 
 // Clear resets all registered beans and modules, effectively emptying
 // the global registry. This function is primarily used for testing purposes
 // to ensure test isolation by clearing the global state between test runs.
 func Clear() {
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "clear global beans (%d) and modules (%d)", len(beans), len(modules))
 	beans = nil
 	modules = nil
 }

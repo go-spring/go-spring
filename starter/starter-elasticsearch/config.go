@@ -63,8 +63,8 @@ type Config struct {
 	// CompressRequestBody enables gzip compression of request bodies, default is false.
 	CompressRequestBody bool `value:"${compress-request-body:=false}"`
 
-	// EnableMetrics enables the metrics collection of the transport, default is false.
-	EnableMetrics bool `value:"${enable-metrics:=false}"`
+	// EnableMetrics enables the metrics collection of the transport, default is true.
+	EnableMetrics bool `value:"${enable-metrics:=true}"`
 
 	// EnableDebugLogger enables the debug logging of the transport, default is false.
 	EnableDebugLogger bool `value:"${enable-debug-logger:=false}"`

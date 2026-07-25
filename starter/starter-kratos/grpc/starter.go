@@ -24,7 +24,7 @@
 // Etcd.Addr empty for a plain direct-connect server, or set it to publish the
 // service into etcd for discovery under Name. Tracing is deferred to the ambient
 // global OTel provider (import starter-otel to light it up); request metrics are
-// opt-in via Metrics.Enable and feed the same global meter.
+// on by default via Metrics.Enable and feed the same global meter.
 package StarterKratosGrpc
 
 import (
@@ -72,13 +72,13 @@ type Config struct {
 		Addr string `value:"${addr:=}"`
 	} `value:"${etcd}"`
 
-	// Metrics is opt-in. When enabled, the kratos metrics middleware records the
+	// Metrics is on by default. The kratos metrics middleware records the
 	// request counter and latency histogram into the process-global OTel meter —
 	// so the actual exporter and scrape endpoint are owned by starter-otel, not
 	// by this starter. Tracing needs no flag: tracing.Server() always reads the
 	// global tracer (a no-op provider when starter-otel is absent).
 	Metrics struct {
-		Enable bool `value:"${enable:=false}"`
+		Enable bool `value:"${enable:=true}"`
 	} `value:"${metrics}"`
 }
 

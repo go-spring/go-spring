@@ -74,10 +74,9 @@ type Config struct {
 	} `value:"${tracing}"`
 
 	// Metrics: go-zero's DevServer exposes a Prometheus /metrics endpoint on its
-	// own port. Off by default — enable only if scraping go-zero's native
-	// Prometheus registry.
+	// own port. On by default so observability works out of the box.
 	Metrics struct {
-		Enabled bool   `value:"${enabled:=false}"`
+		Enabled bool   `value:"${enabled:=true}"`
 		Port    int    `value:"${port:=6060}"`
 		Path    string `value:"${path:=/metrics}"`
 	} `value:"${metrics}"`

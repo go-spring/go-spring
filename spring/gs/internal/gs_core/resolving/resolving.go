@@ -17,10 +17,12 @@
 package resolving
 
 import (
+	"context"
 	"reflect"
 	"regexp"
 	"slices"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_bean"
 	"go-spring.org/spring/gs/internal/gs_cond"
@@ -75,7 +77,9 @@ func (c *Resolving) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefiniti
 	}
 	b := gs_bean.NewBean(objOrCtor, args...)
 	c.beans = append(c.beans, b)
-	return b.Caller(2)
+	b = b.Caller(2)
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "container bean provided: %s", b)
+	return b
 }
 
 // Refresh performs the full container initialization lifecycle.
@@ -88,16 +92,22 @@ func (c *Resolving) Refresh(p flatten.Storage) error {
 	}
 	c.state = RefreshPrepare
 
-	c.beans = append(gs_init.Beans(), c.beans...)
+	globalBeans := gs_init.Beans()
+	globalModules := gs_init.Modules()
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "resolving phase: merging %d container beans + %d global beans, %d modules", len(c.beans), len(globalBeans), len(globalModules))
+
+	c.beans = append(globalBeans, c.beans...)
 	if err := c.applyModules(p); err != nil {
 		return errutil.Explain(err, "apply modules failed")
 	}
 
 	c.state = Refreshing
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "resolving phase: %d beans after module application", len(c.beans))
 
 	if err := c.scanConfigurations(); err != nil {
 		return errutil.Explain(err, "scan configurations failed")
 	}
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "resolving phase: %d beans after config scanning", len(c.beans))
 
 	if err := c.resolveBeans(p); err != nil {
 		return errutil.Explain(err, "resolve beans failed")
@@ -107,7 +117,9 @@ func (c *Resolving) Refresh(p flatten.Storage) error {
 		return errutil.Explain(err, "check duplicate beans failed")
 	}
 
+	active := len(c.Beans())
 	c.state = Refreshed
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "resolving phase complete: %d active beans", active)
 	return nil
 }
 
@@ -120,12 +132,14 @@ func (c *Resolving) applyModules(p flatten.Storage) error {
 			if ok, err := m.Condition.Matches(ctx); err != nil {
 				return errutil.Explain(err, "failed to apply module at %s", m.FileLine)
 			} else if !ok {
+				log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "module skipped (condition not met): %s", m.FileLine)
 				continue
 			}
 		}
 		if err := m.ModuleFunc(c, p); err != nil {
 			return errutil.Explain(err, "failed to apply module at %s", m.FileLine)
 		}
+		log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "module applied: %s", m.FileLine)
 	}
 	return nil
 }
@@ -144,6 +158,7 @@ func (c *Resolving) scanConfigurations() error {
 			return errutil.Explain(err, "failed to scan configuration bean %s", b)
 		}
 		c.beans = append(c.beans, beans...)
+		log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "config bean scanned: %s -> %d child beans", b, len(beans))
 	}
 	return nil
 }
@@ -210,6 +225,7 @@ func (c *Resolving) scanConfiguration(bd *gs_bean.BeanDefinition) ([]*gs_bean.Be
 			file, line, _ := funcutil.FileLine(m.Func.Interface())
 			b.SetFileLine(file, line)
 			ret = append(ret, b)
+			log.Tracef(context.Background(), gs_bean.TagBeanLifecycle, "config method registered: %s -> %s", m.Name, b)
 			break
 		}
 	}
@@ -258,14 +274,19 @@ func (c *ConditionContext) resolveBean(b *gs_bean.BeanDefinition) error {
 	}
 	b.SetStatus(gs_bean.StatusResolving)
 	for _, cond := range b.Conditions() {
-		if ok, err := cond.Matches(c); err != nil {
+		ok, err := cond.Matches(c)
+		if err != nil {
 			return errutil.Explain(err, "condition matches failed for bean %s", b)
-		} else if !ok {
+		}
+		log.Tracef(context.Background(), gs_bean.TagBeanLifecycle, "condition check: bean=%s condition=%v => %v", b, cond, ok)
+		if !ok {
 			b.SetStatus(gs_bean.StatusDeleted)
+			log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "bean resolved: %s (DELETED, condition %v failed)", b, cond)
 			return nil
 		}
 	}
 	b.SetStatus(gs_bean.StatusResolved)
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "bean resolved: %s (ACTIVE)", b)
 	return nil
 }
 
@@ -301,6 +322,7 @@ func (c *ConditionContext) Find(beanID gs.BeanID) ([]gs.ConditionBean, error) {
 		}
 		found = append(found, b)
 	}
+	log.Tracef(context.Background(), gs_bean.TagBeanLifecycle, "find beans by %s => found %d", beanID, len(found))
 	return found, nil
 }
 
@@ -314,10 +336,12 @@ func (c *Resolving) checkDuplicateBeans() error {
 		for _, t := range append(b.GetExports(), b.GetType()) {
 			beanID := gs.BeanID{Name: b.GetName(), Type: t}
 			if d, ok := beansByID[beanID]; ok {
+				log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "duplicate bean detected: %s conflicts with %s (type=%s)", b, d, t)
 				return errutil.Explain(nil, "found duplicate beans %s and %s", b, d)
 			}
 			beansByID[beanID] = b
 		}
 	}
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "no duplicate beans detected")
 	return nil
 }

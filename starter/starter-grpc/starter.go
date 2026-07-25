@@ -73,21 +73,22 @@ type Config struct {
 
 // ObserverConfig groups the built-in observability interceptors the starter can
 // install on the grpc.Server. Tracing and Metrics ride the OTel globals that
-// starter-otel installs; they are off by default because they only produce
-// output when starter-otel is also imported.
+// starter-otel installs; they are on by default because the interceptors are
+// no-ops when starter-otel is not imported — enabling them upfront saves a
+// config change when adopting OTel.
 type ObserverConfig struct {
 	Tracing TracingConfig `value:"${tracing}"`
 	Metrics MetricsConfig `value:"${metrics}"`
 }
 
-// TracingConfig toggles the gRPC tracing interceptors. Off by default.
+// TracingConfig toggles the gRPC tracing interceptors. On by default.
 type TracingConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
-// MetricsConfig toggles the gRPC metrics interceptors. Off by default.
+// MetricsConfig toggles the gRPC metrics interceptors. On by default.
 type MetricsConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // SimpleGrpcServer adapts a grpc.Server to the Go-Spring server lifecycle.

@@ -95,6 +95,8 @@ func (c *Injecting) RefreshProperties(p flatten.Storage) error {
 // - spring.allow-circular-references: whether lazy circular references are allowed.
 // - spring.force-autowire-is-nullable: whether missing dependencies are treated as nullable.
 func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) {
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "injecting phase: wiring %d root beans, %d total beans", len(roots), len(beans))
+
 	var forceAutowireIsNullable bool
 	{
 		s, _ := c.p.Data().Value("spring.force-autowire-is-nullable")
@@ -111,13 +113,14 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 			beansByType[t] = append(beansByType[t], b)
 		}
 	}
+	log.Tracef(context.Background(), gs_bean.TagBeanLifecycle, "built bean indexes: %d by name, %d by type", len(beansByName), len(beansByType))
 
 	stack := NewStack()
 	defer func() {
 		// If an error occurred, or there are unresolved beans in the stack,
 		// enrich the error message with the dependency path for easier debugging.
 		if err != nil || len(stack.beanStack) > 0 {
-			log.Errorf(context.Background(), log.TagAppDef, "%s", err)
+			log.Errorf(context.Background(), gs_bean.TagBeanLifecycle, "%s", err)
 		}
 	}()
 
@@ -156,6 +159,7 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 	if c.p.ObjectsCount() == 0 {
 		c.p = nil
 	}
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "injecting phase complete: %d beans wired, %d destroyers, %d lazy fields", len(stack.beanDepMap), len(c.destroyers), len(stack.lazyFields))
 	return nil
 }
 
@@ -164,6 +168,7 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 // ensuring that beans are destroyed after the beans they depend on.
 // Any errors returned from destroy methods are logged but do not stop the shutdown process.
 func (c *Injecting) Close() {
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "container closing: %d destroyers to execute", len(c.destroyers))
 	for _, f := range c.destroyers {
 		f()
 	}
@@ -202,6 +207,7 @@ func (c *Injector) findBeans(beanID gs.BeanID) []*gs_bean.BeanDefinition {
 		}
 		beans = ret
 	}
+	log.Tracef(context.Background(), gs_bean.TagBeanLifecycle, "findBeans(%s) => %d beans", beanID, len(beans))
 	return beans
 }
 
@@ -275,6 +281,7 @@ func (c *Injector) getBean(t reflect.Type, tag WireTag, stack *Stack) (*gs_bean.
 
 	if len(foundBeans) == 0 {
 		if tag.nullable {
+			log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "bean not found (nullable): tag=%q type=%s", tag, t)
 			return nil, nil
 		}
 		return nil, errutil.Explain(nil, "cannot find bean for tag %q and type %q", tag, t)
@@ -285,12 +292,14 @@ func (c *Injector) getBean(t reflect.Type, tag WireTag, stack *Stack) (*gs_bean.
 		for _, b := range foundBeans {
 			names = append(names, b.String())
 		}
+		log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "bean ambiguity: tag=%q type=%s candidates=[%s]", tag, t, strings.Join(names, ", "))
 		err := errutil.Explain(nil, "found %d beans for tag %q and type %q, [%s]",
 			len(foundBeans), tag, t, strings.Join(names, ", "))
 		return nil, err
 	}
 
 	b := foundBeans[0]
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "bean matched: tag=%q type=%s => %s", tag, t, b)
 	if c.state == Refreshing {
 		if err := c.wireBean(b, stack); err != nil {
 			return nil, err
@@ -433,6 +442,7 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 			}
 		}
 	}
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "beans collected: type=%s tags=%v => %d beans", t, tags, len(beans))
 	return beans, nil
 }
 
@@ -536,8 +546,8 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 // After completion, bean status is set to StatusWired and popped from the stack.
 func (c *Injector) wireBean(b *gs_bean.BeanDefinition, stack *Stack) error {
 
-	log.Debugf(context.Background(), log.TagAppDef, "push bean %s, status is %s", b, b.GetStatus())
-	defer log.Debugf(context.Background(), log.TagAppDef, "pop bean %s, status is %s", b, b.GetStatus())
+	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "push wire bean %s (status=%s, dependsOn=%d)", b, b.GetStatus(), len(b.GetDependsOn()))
+	defer log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "pop wire bean %s (status=%s)", b, b.GetStatus())
 
 	// If the bean is already being created (StatusCreating), we have a circular dependency
 	// because it's already in the current call stack and being re-entered recursively.
@@ -618,7 +628,7 @@ func (c *Injector) getBeanValue(b *gs_bean.BeanDefinition, stack *Stack) (reflec
 	out, err := b.Callable().Call(NewArgContext(c, stack))
 	if err != nil {
 		if c.forceAutowireIsNullable {
-			log.Warnf(context.Background(), log.TagAppDef, "construct error for bean %s: %v", b, err)
+			log.Warnf(context.Background(), gs_bean.TagBeanLifecycle, "construct error for bean %s: %v", b, err)
 			return reflect.Value{}, nil
 		}
 		return reflect.Value{}, gs.WrapInjectErr(b.String(), err, "call constructor failed")
@@ -628,7 +638,7 @@ func (c *Injector) getBeanValue(b *gs_bean.BeanDefinition, stack *Stack) (reflec
 	if o := out[len(out)-1]; typeutil.IsErrorType(o.Type()) {
 		if err, ok := o.Interface().(error); ok && err != nil {
 			if c.forceAutowireIsNullable {
-				log.Warnf(context.Background(), log.TagAppDef, "construct error for bean %s: %v", b, err)
+				log.Warnf(context.Background(), gs_bean.TagBeanLifecycle, "construct error for bean %s: %v", b, err)
 				return reflect.Value{}, nil
 			}
 			return reflect.Value{}, gs.WrapInjectErr(b.String(), err, "constructor returned error")
@@ -869,7 +879,7 @@ func (s *Stack) getSortedDestroyers() ([]func(), error) {
 			fnValue := reflect.ValueOf(fn)
 			out := fnValue.Call([]reflect.Value{v})
 			if len(out) > 0 && !out[0].IsNil() {
-				log.Errorf(context.Background(), log.TagAppDef, "%v", out[0].Interface())
+				log.Errorf(context.Background(), gs_bean.TagBeanLifecycle, "%v", out[0].Interface())
 			}
 		}
 	}

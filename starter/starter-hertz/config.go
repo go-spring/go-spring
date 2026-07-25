@@ -137,17 +137,18 @@ type HSTSConfig struct {
 }
 
 // TracingConfig toggles the per-request tracing middleware that starts and ends
-// an OTel server span on every request. It is off by default: tracing only
-// produces output when starter-otel is also imported and configured with a
-// non-none exporter.
+// an OTel server span on every request. It is on by default: the middleware is a
+// no-op when starter-otel is not imported, so enabling it upfront means one less
+// config to flip when adopting OTel.
 type TracingConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // MetricsConfig toggles the per-request HTTP metrics middleware that records
 // request count, duration, and in-flight gauge through the global MeterProvider.
-// It is off by default: metrics only produce output when starter-otel is also
-// imported and configured with a non-none exporter.
+// It is on by default: the middleware is a no-op when starter-otel is not
+// imported, so enabling it upfront means one less config to flip when adopting
+// OTel.
 type MetricsConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }

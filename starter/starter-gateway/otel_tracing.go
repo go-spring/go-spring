@@ -34,8 +34,7 @@ const tracerName = "go-spring.org/starter-gateway"
 // operators can filter by route in their tracing backend.
 //
 // When starter-otel is not imported the global TracerProvider and propagator
-// are no-ops, so this adds negligible overhead. Importing starter-otel is the
-// opt-in.
+// are no-ops, so this adds negligible overhead. The tracing config defaults to on, so importing starter-otel activates spans.
 func proxySpan(routeID string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Extract the caller's trace context so the gateway span joins the

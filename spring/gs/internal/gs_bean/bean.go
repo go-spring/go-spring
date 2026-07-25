@@ -18,12 +18,14 @@
 package gs_bean
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"runtime"
 	"slices"
 	"strings"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_arg"
 	"go-spring.org/spring/gs/internal/gs_cond"
@@ -31,6 +33,9 @@ import (
 	"go-spring.org/stdlib/typeutil"
 )
 
+// TagBeanLifecycle is the log tag for bean lifecycle events.
+// It allows independent control of bean-related log levels.
+var TagBeanLifecycle = log.RegisterAppTag("bean", "lifecycle")
 
 // BeanStatus represents the different lifecycle statuses of a bean.
 type BeanStatus int8
@@ -497,5 +502,6 @@ func NewBean(objOrCtor any, ctorArgs ...gs.Arg) *BeanDefinition {
 	if cond != nil {
 		d.Condition(cond)
 	}
+	log.Debugf(context.Background(), TagBeanLifecycle, "bean created: %s", d.String())
 	return d
 }

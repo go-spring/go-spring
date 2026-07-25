@@ -53,9 +53,9 @@ type gatewayConfig struct {
 	Tracing    TracingConfig                `value:"${tracing}"`
 }
 
-// TracingConfig toggles OTel tracing around proxy requests. Off by default.
+// TracingConfig toggles OTel tracing around proxy requests. On by default.
 type TracingConfig struct {
-	Enabled bool `value:"${enabled:=false}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // RouteTable holds the compiled routes and rebuilds them when the bound routes
