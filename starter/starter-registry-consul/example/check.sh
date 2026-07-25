@@ -4,10 +4,10 @@
 #
 #   1. Unit tests — the offline verification (id derivation, addr fail-fast).
 #      The stdlib/discovery Registrar seam itself is covered in that package.
-#   2. End-to-end boot — starts a Consul dev agent in Docker, boots the example
-#      (which registers, reads the catalog back, prints the instance, then
+#   2. End-to-end boot — starts a Consul dev agent via docker compose, boots the
+#      example (which registers, reads the catalog back, prints the instance, then
 #      SIGTERMs itself so the deregister-on-shutdown path runs), and checks the
-#      example saw its own registration. Skipped gracefully without Docker.
+#      example saw its own registration. Skipped gracefully without docker.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -23,13 +23,20 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 0
 fi
 
-name="registry-consul-smoke"
-trap 'docker rm -f "${name}" >/dev/null 2>&1 || true' EXIT
-docker rm -f "${name}" >/dev/null 2>&1 || true
-docker run -d --rm --name "${name}" -p 8500:8500 \
-    hashicorp/consul:1.18 agent -dev -client=0.0.0.0 >/dev/null
+# Prefer the compose v2 plugin, fall back to the standalone docker-compose.
+if docker compose version >/dev/null 2>&1; then
+    compose() { docker compose "$@"; }
+elif command -v docker-compose >/dev/null 2>&1; then
+    compose() { docker-compose "$@"; }
+else
+    echo "WARNING: docker compose not available — skipping example boot"
+    exit 0
+fi
 
-# Wait for the agent to elect a leader (up to 60s).
+trap 'compose down -v >/dev/null 2>&1 || true' EXIT
+compose up -d
+
+# Wait for Consul to elect a leader (up to 60s).
 for _ in $(seq 1 60); do
     if curl -fsS http://127.0.0.1:8500/v1/status/leader 2>/dev/null | grep -q ':'; then
         break

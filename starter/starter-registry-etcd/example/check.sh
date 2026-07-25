@@ -4,10 +4,10 @@
 #
 #   1. Unit tests — the offline verification (id/key derivation, TTL rounding).
 #      The stdlib/discovery Registrar seam itself is covered in that package.
-#   2. End-to-end boot — starts an etcd node in Docker, boots the example (which
-#      registers, reads the keys back, prints the instance, then SIGTERMs itself
-#      so the deregister-on-shutdown path runs), and checks the example saw its
-#      own registration. Skipped gracefully without Docker.
+#   2. End-to-end boot — starts an etcd node via docker compose, boots the
+#      example (which registers, reads the keys back, prints the instance, then
+#      SIGTERMs itself so the deregister-on-shutdown path runs), and checks the
+#      example saw its own registration. Skipped gracefully without docker.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -23,15 +23,18 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 0
 fi
 
-name="registry-etcd-smoke"
-trap 'docker rm -f "${name}" >/dev/null 2>&1 || true' EXIT
-docker rm -f "${name}" >/dev/null 2>&1 || true
-docker run -d --rm --name "${name}" -p 2379:2379 \
-    quay.io/coreos/etcd:v3.5.13 \
-    /usr/local/bin/etcd \
-    --name node1 \
-    --advertise-client-urls http://0.0.0.0:2379 \
-    --listen-client-urls http://0.0.0.0:2379 >/dev/null
+# Prefer the compose v2 plugin, fall back to the standalone docker-compose.
+if docker compose version >/dev/null 2>&1; then
+    compose() { docker compose "$@"; }
+elif command -v docker-compose >/dev/null 2>&1; then
+    compose() { docker-compose "$@"; }
+else
+    echo "WARNING: docker compose not available — skipping example boot"
+    exit 0
+fi
+
+trap 'compose down -v >/dev/null 2>&1 || true' EXIT
+compose up -d
 
 # Wait for etcd to answer health (up to 60s).
 for _ in $(seq 1 60); do

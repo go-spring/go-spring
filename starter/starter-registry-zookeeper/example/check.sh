@@ -4,10 +4,10 @@
 #
 #   1. Unit tests — the offline verification (id/path derivation). The
 #      stdlib/discovery Registrar seam itself is covered in that package.
-#   2. End-to-end boot — starts a ZooKeeper node in Docker, boots the example
-#      (which registers, lists the znodes back, prints the instance, then
+#   2. End-to-end boot — starts a ZooKeeper node via docker compose, boots the
+#      example (which registers, lists the znodes back, prints the instance, then
 #      SIGTERMs itself so the deregister-on-shutdown path runs), and checks the
-#      example saw its own registration. Skipped gracefully without Docker.
+#      example saw its own registration. Skipped gracefully without docker.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -23,10 +23,18 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 0
 fi
 
-name="registry-zookeeper-smoke"
-trap 'docker rm -f "${name}" >/dev/null 2>&1 || true' EXIT
-docker rm -f "${name}" >/dev/null 2>&1 || true
-docker run -d --rm --name "${name}" -p 2181:2181 zookeeper:3.9 >/dev/null
+# Prefer the compose v2 plugin, fall back to the standalone docker-compose.
+if docker compose version >/dev/null 2>&1; then
+    compose() { docker compose "$@"; }
+elif command -v docker-compose >/dev/null 2>&1; then
+    compose() { docker-compose "$@"; }
+else
+    echo "WARNING: docker compose not available — skipping example boot"
+    exit 0
+fi
+
+trap 'compose down -v >/dev/null 2>&1 || true' EXIT
+compose up -d
 
 # Wait for ZooKeeper to answer the "ruok" four-letter command with "imok" (up to 60s).
 for _ in $(seq 1 60); do
