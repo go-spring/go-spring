@@ -3,14 +3,14 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-kafka-sarama` is a Client-archetype starter (`starter/DESIGN.md`
-§2.2) that provisions Sarama `sarama.Client` instances. It coexists with
-`starter-kafka` (franz-go) under the shared `spring.kafka` config prefix —
-switching implementations is a blank-import swap, no config surgery
-(`project_starter_kafka_sarama`).
+§2.2) that provisions Sarama `sarama.Client` instances. It uses the
+`spring.kafka-sarama` config prefix, distinct from `starter-kafka` (franz-go)
+which binds under `spring.kafka` — each targets a different implementation and
+they are never imported together (`project_starter_kafka_sarama`).
 
 ## 1. Responsibilities & Boundaries
 
-- Binds each `spring.kafka.<name>` entry to one
+- Binds each `spring.kafka-sarama.<name>` entry to one
   `sarama.Client` bean via `gs.Group`. No single-instance default.
 - The exposed bean is `sarama.Client` — producer, consumer group, admin
   clients are constructed by callers on top of the shared client, so a
@@ -23,10 +23,10 @@ switching implementations is a blank-import swap, no config surgery
 
 ## 2. Key Abstractions & Seams
 
-- **Shared prefix, not shared bean.** `spring.kafka` is the seam
-  (`feedback_websocket_shared_config_prefix`): both sarama and franz-go
-  read the same tree, but only one is imported per process. Switching
-  is `_ "…/starter-kafka"` ↔ `_ "…/starter-kafka-sarama"`.
+- **Shared prefix, not shared bean.** `spring.kafka-sarama` is the seam
+  (`feedback_websocket_shared_config_prefix`): each Kafka implementation uses
+  its own prefix, so they never conflict. Switching is
+  `_ "…/starter-kafka"` ↔ `_ "…/starter-kafka-sarama"`.
 - **Single client for all roles.** Producers / consumer groups / admin
   built off the shared `sarama.Client` reuse its metadata cache and
   broker connections. The starter does not pre-create these; callers

@@ -25,7 +25,7 @@ import "time"
 type Config struct {
 	// URL is the Pulsar service URL,
 	// e.g., "pulsar://127.0.0.1:6650".
-	URL string `value:"${url}"`
+	URL string `value:"${url}" expr:"$ != ''"`
 
 	// OperationTimeout is the timeout for creating producers, subscribing,
 	// and looking up topics, e.g., "30s".

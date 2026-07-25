@@ -26,7 +26,7 @@ import (
 type Config struct {
 	// URI is the MongoDB connection string,
 	// e.g., "mongodb://127.0.0.1:27017".
-	URI string `value:"${uri}"`
+	URI string `value:"${uri}" expr:"$ != ''"`
 
 	// Username is the username for authentication. When empty, credentials are
 	// taken solely from the URI (if any). Default is empty.

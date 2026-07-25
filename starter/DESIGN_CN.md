@@ -35,10 +35,8 @@ starter 是**集成模块**:只负责把某一个第三方服务或框架接入 
 Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`……)
 类 starter 自持一个网络监听器,通过导出 `gs.Server` bean 接入 Go-Spring 服务生命周期。
 
-- **每个 server 监听各自独立的端口。** server 类 starter 从自己的 `Config` 读取一个
-  独立地址(如 `${spring.grpc.server}` → `addr:=:9494`)。同一进程内的两个 server
-  starter 不得共用端口,由应用分配互不冲突的地址。Contributor 类(§2.3)刻意**不**开
-  端口 —— 它们挂载到应用已运行的 server 上。
+- **端口必须由用户显式配置，不设默认值。** addr 字段 tag 写作 `value:"${addr}"` 不带 `:=` 默认值。端口配置本身即为 server bean 的启动条件：仅在 `OnProperty` 检测到地址已配置时才创建 bean（`Condition(gs.OnProperty("spring.<x>.server.addr"))`）。pprof server 除外，使用统一默认端口 `:6060`。
+  同一进程内的两个 server starter 不得共用端口，由应用分配互不冲突的地址。Contributor 类（§2.3）刻意**不**开端口 —— 它们挂载到应用已运行的 server 上。
 - **提前监听,就绪信号后再 serve。** `Run(ctx, sig)` 先立即绑定监听器,让端口冲突在
   启动期就暴露,再阻塞在 `<-sig.TriggerAndWait()` 之后才 `Serve`。这样保证端口在
   Go-Spring 报告就绪前已绑定,但所有 bean 装配完成前不对外提供流量。
@@ -46,9 +44,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
 - **应用持有路由,starter 持有 server。** 应用提供一个注册函数 bean
   (`RouterRegister`、`ServiceRegister`、`HandlerRegister`……);starter 负责创建并
   配置引擎与传输层。注册函数就是接缝。
-- **默认开启的开关。** 用 `gs.OnProperty("spring.<x>.server.enabled").
-  HavingValue("true").MatchIfMissing()` 控制注册,通常再叠加一个"注册 bean 存在"
-  的条件(`Condition(gs.OnBean[...])`)。
+- **不再使用 `gs.Module` 包装。** server bean 注册直接写在 `init()` 中用 `gs.Provide(...)` 调用。端口配置本身即为启动条件，不再需要 `enabled` 开关或 `OnBean[ServiceRegister]` 条件。
 
 ### 2.2 Client 类(driver 模式 + 多实例)
 
@@ -60,9 +56,9 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   默认单例 + 多实例双注册易误用,且条件单例语义隐晦。应用按名选实例
   (`autowire:"a"`),新增一个实例是纯配置改动。
 - **地址必填 —— fail-fast。** client 绝不能静默回退到 `localhost`。字段默认空
-  (`${addr:=}`),构造函数在没有地址(以及在支持发现的场景下没有 service-name)时
-  于启动期用 `errutil.Explain` 报错。go-spring 的 `expr:` tag 逐字段校验,做不了
-  "addr 或 service-name 二选一"的跨字段规则,所以这条约束写在构造函数里而非 tag 上。
+  (`${addr:=}`)。单字段必填校验通过 `expr` tag 在配置绑定阶段完成（字符串用
+  `expr:"$ != ''"`,切片用 `expr:"len($) > 0"`）。跨字段规则（"addr 或 service-name
+  至少一个"）在构造函数中用 `errutil.RequireAny` 校验,因为 `expr` 不支持跨字段约束。
 - **driver 模式支持可插拔后端。** client 暴露一个 `Driver` 接口加一个包级注册表
   (`RegisterDriver`,重复/空/nil 时 panic)。`DefaultDriver` 内置随包发布;公司可
   注册自己的 driver 并用 `${driver:=...}` 选中,无需 fork starter。这也是注入服务
@@ -128,13 +124,17 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 
 ## 3. 横切约束
 
-- **配置前缀按能力划分,不按实现划分。** 实现**同一**能力的两个 starter 共用一个前缀
-  —— `starter-websocket` 与 `starter-websocket-coder` 都用 `spring.websocket`;
-  `starter-kafka`(franz-go)与 `starter-kafka-sarama` 都用 `spring.kafka`。用户只选
-  一种实现;切换是 blank import 替换,配置零迁移。不要为形式上的隔离按实现拆前缀 ——
-  隔离已由模块独立和 bean 类型不同天然保证。
-- **fail-fast 优先于静默默认。** 必填输入(地址、凭证、模式相关字段)在启动期用清晰的
-  `errutil.Explain` 校验,而不是默认成一个半可用的值。
+- **配置前缀按实现划分,每个 starter 用自己的唯一 key。** 每个 starter 通过自己独有的
+  `${spring.<name>}` 前缀绑定 —— client 类通过 `gs.Group`,server 类通过 `gs.Provide`
+  加 `TagArg`。实现**同一**能力的两个 starter 使用不同前缀（`spring.kafka` 对应
+  franz-go,`spring.kafka-sarama` 对应 sarama；`spring.redis` 对应 go-redis,
+  `spring.redigo` 对应 redigo）。配置 key 本身就是技术选型的显式声明：用户通过写
+  `spring.kafka.xxx` 还是 `spring.kafka-sarama.xxx` 来决定用哪个实现。这同时避免了
+  两个实现被意外同时导入时的 bean 冲突,也让配置文件成为自解释文档。
+- **fail-fast 优先于静默默认。** 必填输入(地址、凭证、模式相关字段)在配置绑定阶段通过
+  `expr` tag 校验（单字段用 `expr:"$ != ''"`,切片用 `expr:"len($) > 0"`）,跨字段
+  规则（"addr 或 service-name 至少一个"）在构造函数中用 `errutil.RequireAny` 校验,
+  因为 `expr` 不跨字段。
 - **生产能力是封装的一部分。** 健康/就绪检查、启动期连接校验、TLS、destroy 回调都被视为
   starter 必须提供的能力,而非可选附加项。TLS 是一个嵌套的 `TLSConfig`
   (`enabled` + cert/key/CA),默认关闭。
@@ -188,7 +188,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 
 1. 定形态(§2);它决定你的生命周期与端口行为。
 2. 独立 module、标准文件骨架、license 头。
-3. 按**能力**选配置前缀(如果你是第二种实现就复用已有前缀)。
+3. 选配置前缀 —— 使用唯一的 `${spring.<name>}` 前缀来标识**本**实现。如果是已有能力的
+   第二种实现,用 `<能力>-<实现>` 格式（如 `spring.kafka-sarama`）,不要复用已有前缀。
 4. Client? → `gs.Group` 多实例、driver 注册表、地址必填 + fail-fast、启动期探测、
    每实例 `Destroy`。
 5. Server? → 自持端口、提前监听/就绪后 serve、优雅 `Stop`、应用提供注册 bean、

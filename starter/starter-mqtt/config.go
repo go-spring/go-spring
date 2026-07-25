@@ -26,7 +26,7 @@ import (
 type Config struct {
 	// Broker is the MQTT broker address,
 	// e.g., "tcp://127.0.0.1:1883".
-	Broker string `value:"${broker}"`
+	Broker string `value:"${broker}" expr:"$ != ''"`
 
 	// ClientID is the client identifier presented to the broker,
 	// default is empty (the client library generates one).

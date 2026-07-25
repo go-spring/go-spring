@@ -27,7 +27,7 @@ import (
 type Config struct {
 	// URL is the NATS server URL, e.g., "nats://127.0.0.1:4222".
 	// Multiple servers may be comma-separated.
-	URL string `value:"${url}"`
+	URL string `value:"${url}" expr:"$ != ''"`
 
 	// Name is the connection name reported to the server, default is empty.
 	Name string `value:"${name:=}"`

@@ -27,7 +27,7 @@ type Config struct {
 	// URL is the AMQP connection URL,
 	// e.g., "amqp://guest:guest@127.0.0.1:5672/".
 	// Use the "amqps://" scheme (or set TLS.Enabled) to negotiate TLS.
-	URL string `value:"${url}"`
+	URL string `value:"${url}" expr:"$ != ''"`
 
 	// Vhost overrides the virtual host parsed from the URL, default is empty.
 	Vhost string `value:"${vhost:=}"`

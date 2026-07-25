@@ -38,7 +38,7 @@ func init() {
 type Config struct {
 	// URI is the Neo4j connection URI, e.g., "neo4j://127.0.0.1:7687" or
 	// "bolt://127.0.0.1:7687". The scheme selects routing and encryption.
-	URI string `value:"${uri}"`
+	URI string `value:"${uri}" expr:"$ != ''"`
 
 	// Username is the Neo4j username. When empty, the client connects with no
 	// authentication.

@@ -5,8 +5,8 @@
 `starter-kafka-sarama` 基于 github.com/IBM/sarama 提供了 Kafka 客户端封装,
 方便在 Go-Spring 应用中集成和使用 Kafka。
 
-它与基于 franz-go 的 [starter-kafka](../starter-kafka) 共用 `spring.kafka`
-配置前缀,因此在两种实现之间切换时只需替换所导入的包。
+它使用 `spring.kafka-sarama` 配置前缀,与基于 franz-go 的
+[starter-kafka](../starter-kafka)（使用 `spring.kafka` 前缀）彼此独立。
 
 ## 安装
 
@@ -29,12 +29,12 @@ import _ "go-spring.org/starter-kafka-sarama"
 在项目的[配置文件](example/conf/app.properties)中添加 Kafka 配置,例如:
 
 ```properties
-spring.kafka.a.brokers=127.0.0.1:9092
-spring.kafka.a.version=3.7.0
-spring.kafka.b.brokers=127.0.0.1:9092
+spring.kafka-sarama.a.brokers=127.0.0.1:9092
+spring.kafka-sarama.a.version=3.7.0
+spring.kafka-sarama.b.brokers=127.0.0.1:9092
 ```
 
-> `spring.kafka.<name>` 下的每个条目都会注册为一个以该名字命名、
+> `spring.kafka-sarama.<name>` 下的每个条目都会注册为一个以该名字命名、
 > 独立配置的 `sarama.Client` bean。
 > `version` 需与目标集群匹配,消费组等特性才能正常工作;
 > 不填时使用 sarama 自带的默认版本。
@@ -109,5 +109,5 @@ starter.EndSpan(span, err)
 
 ## 高级特性
 
-* **支持多个 Kafka 客户端**:可以在配置文件中的 `spring.kafka` 下定义多个
+* **支持多个 Kafka 客户端**:可以在配置文件中的 `spring.kafka-sarama` 下定义多个
   Kafka 客户端,并通过名称引用它们。

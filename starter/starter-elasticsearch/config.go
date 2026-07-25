@@ -31,7 +31,7 @@ func init() {
 type Config struct {
 	// Addresses is the list of Elasticsearch node addresses to connect to,
 	// e.g., "http://127.0.0.1:9200". Multiple addresses can be separated by commas.
-	Addresses []string `value:"${addresses}"`
+	Addresses []string `value:"${addresses}" expr:"len($) > 0"`
 
 	// Username is the username for HTTP Basic Authentication, default is empty.
 	Username string `value:"${username:=}"`

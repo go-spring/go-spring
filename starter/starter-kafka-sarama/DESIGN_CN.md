@@ -3,13 +3,13 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-kafka-sarama` 属于 Client 形态（`starter/DESIGN.md` §2.2），
-提供 Sarama `sarama.Client` 实例。与 `starter-kafka`（franz-go 版）共享
-`spring.kafka` 配置前缀——切换实现是空导入换包，配置不用改
-（`project_starter_kafka_sarama`）。
+提供 Sarama `sarama.Client` 实例。它使用 `spring.kafka-sarama` 配置前缀，
+与 `starter-kafka`（franz-go 版，使用 `spring.kafka` 前缀）彼此独立——两者
+分别对应不同实现，不会同时导入（`project_starter_kafka_sarama`）。
 
 ## 1. 职责与边界
 
-- 用 `gs.Group` 把 `spring.kafka.<name>` 每条绑到 `sarama.Client`
+- 用 `gs.Group` 把 `spring.kafka-sarama.<name>` 每条绑到 `sarama.Client`
   bean。不做默认单实例。
 - 暴露的 bean 是 `sarama.Client`——producer、consumer group、admin 客户端
   由调用方在共享 client 上构建，一个连接池服务所有下游角色。
@@ -21,9 +21,9 @@
 
 ## 2. 关键抽象与缝隙
 
-- **共享前缀，不共享 bean。** `spring.kafka` 是缝隙
-  （`feedback_websocket_shared_config_prefix`）：sarama 与 franz-go 读同
-  一棵树，但每进程只 import 一个。切换=`_ "…/starter-kafka"` ↔
+- **共享前缀，不共享 bean。** `spring.kafka-sarama` 是缝隙
+  （`feedback_websocket_shared_config_prefix`）：各 Kafka 实现使用各自的前缀，
+  不会冲突。切换=`_ "…/starter-kafka"` ↔
   `_ "…/starter-kafka-sarama"`。
 - **单 client 服务所有角色。** 基于共享 `sarama.Client` 构建的 producer /
   consumer group / admin 共用其 metadata 缓存与 broker 连接。starter 不

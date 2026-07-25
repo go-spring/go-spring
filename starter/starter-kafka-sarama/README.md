@@ -6,9 +6,8 @@
 github.com/IBM/sarama, making it easy to integrate and use Kafka in a Go-Spring
 application.
 
-It shares the `spring.kafka` configuration prefix with the franz-go based
-[starter-kafka](../starter-kafka), so switching between the two implementations
-only requires swapping the imported package.
+It binds under the `spring.kafka-sarama` configuration prefix, distinct from the
+franz-go based [starter-kafka](../starter-kafka) which binds under `spring.kafka`.
 
 ## Installation
 
@@ -32,12 +31,12 @@ Add the Kafka configuration to your project's
 [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.kafka.a.brokers=127.0.0.1:9092
-spring.kafka.a.version=3.7.0
-spring.kafka.b.brokers=127.0.0.1:9092
+spring.kafka-sarama.a.brokers=127.0.0.1:9092
+spring.kafka-sarama.a.version=3.7.0
+spring.kafka-sarama.b.brokers=127.0.0.1:9092
 ```
 
-> Each entry under `spring.kafka.<name>` becomes an independently
+> Each entry under `spring.kafka-sarama.<name>` becomes an independently
 > configured `sarama.Client` bean registered under that name.
 > `version` must match the target cluster for features such as
 > consumer groups to behave correctly. When omitted, sarama's own default is
@@ -119,4 +118,4 @@ left out of scope here rather than shipped as a fragile wrapper.
 ## Advanced
 
 * **Multiple Kafka clients**: define multiple clients under
-  `spring.kafka` in the configuration file and reference them by name.
+  `spring.kafka-sarama` in the configuration file and reference them by name.

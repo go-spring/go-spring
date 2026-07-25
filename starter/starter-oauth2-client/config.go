@@ -30,14 +30,14 @@ import (
 // HTTP client when talking to a protected downstream service.
 type Config struct {
 	// ClientID is the OAuth2 client identifier issued by the authorization server.
-	ClientID string `value:"${client-id}"`
+	ClientID string `value:"${client-id}" expr:"$ != ''"`
 
 	// ClientSecret is the OAuth2 client secret issued by the authorization server.
-	ClientSecret string `value:"${client-secret}"`
+	ClientSecret string `value:"${client-secret}" expr:"$ != ''"`
 
 	// TokenURL is the token endpoint that mints access tokens,
 	// e.g., "https://auth.example.com/oauth/token".
-	TokenURL string `value:"${token-url}"`
+	TokenURL string `value:"${token-url}" expr:"$ != ''"`
 
 	// Scopes is the optional list of scopes requested with the token.
 	Scopes []string `value:"${scopes:=}"`

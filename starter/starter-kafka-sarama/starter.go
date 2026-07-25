@@ -32,9 +32,9 @@ func init() {
 	sarama.Logger = newSaramaLogger()
 
 	// Register multiple Kafka clients as a group.
-	// Each instance is created according to the configuration in "${spring.kafka}".
-	// This allows defining multiple Kafka clients dynamically.
-	gs.Group("${spring.kafka}", newClient, destroyClient)
+	// Each instance is created according to the configuration in "${spring.kafka-sarama}".
+	// This allows defining multiple Kafka (sarama) clients dynamically.
+	gs.Group("${spring.kafka-sarama}", newClient, destroyClient)
 }
 
 // newClient creates a shared low-level sarama.Client. Callers derive a

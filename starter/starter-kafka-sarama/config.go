@@ -18,16 +18,15 @@ package StarterKafkaSarama
 
 import "go-spring.org/spring/cloud/tlsconf"
 
-// Config defines Kafka client configuration.
+// Config defines Kafka client configuration via the sarama driver.
 //
-// It shares the "spring.kafka" property prefix with the franz-go based
-// starter-kafka, so switching between the two implementations only requires
-// swapping the imported package. The franz-go only "topic"/"group" keys are
-// simply ignored here, and the sarama only "version" key is ignored there.
+// It binds under the "spring.kafka-sarama" property prefix, distinct from the
+// franz-go based starter-kafka which binds under "spring.kafka". The two
+// starters target different implementations and are never used together.
 type Config struct {
 	// Brokers is a comma-separated list of seed broker addresses,
 	// e.g., "127.0.0.1:9092" or "host1:9092,host2:9092".
-	Brokers string `value:"${brokers}"`
+	Brokers string `value:"${brokers}" expr:"$ != ''"`
 
 	// Version is the Kafka protocol version to negotiate, e.g. "3.7.0".
 	// sarama requires this to match the target cluster for features such as

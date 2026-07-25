@@ -26,7 +26,7 @@ import (
 type Config struct {
 	// Brokers is a comma-separated list of seed broker addresses,
 	// e.g., "127.0.0.1:9092" or "host1:9092,host2:9092".
-	Brokers string `value:"${brokers}"`
+	Brokers string `value:"${brokers}" expr:"$ != ''"`
 
 	// Topic is the topic to consume from, default is empty.
 	// Leave it empty for a produce-only client.

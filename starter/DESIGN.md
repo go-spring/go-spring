@@ -46,11 +46,7 @@ Web (`gin`, `echo`, `hertz`, ...) and RPC (`grpc`, `kitex`, `thrift`,
 `dubbo`, ...) starters own a network listener and plug into the Go-Spring server
 lifecycle by exporting a `gs.Server` bean.
 
-- **Each server binds its own port.** A server starter listens on a distinct
-  address from its own `Config` (e.g. `${spring.grpc.server}` → `addr:=:9494`).
-  Two server starters in one process must not share a port; the application
-  assigns non-conflicting addresses. Contributor starters (§2.3) deliberately do
-  *not* open a port — they mount onto a server the app already runs.
+- **Each server binds its own port, and the port must be explicitly configured.** A server starter reads a distinct address from its own `Config` (e.g. `${spring.grpc.server}` → `addr`). No default value is set — the `addr` tag is written as `value:"${addr}"` without `:=`. The port configuration itself is the server bean's startup gate: the bean is only created when `OnProperty` detects the address is configured (`Condition(gs.OnProperty("spring.<x>.server.addr"))`). Two server starters in one process must not share a port; the application assigns non-conflicting addresses. Contributor starters (§2.3) deliberately do *not* open a port — they mount onto a server the app already runs. The pprof server is the exception and uses a unified default port `:6060`.
 - **Listen early, serve on the ready signal.** `Run(ctx, sig)` binds the
   listener immediately so a port conflict fails startup, then blocks on
   `<-sig.TriggerAndWait()` before `Serve`. This guarantees the socket is bound
@@ -62,10 +58,7 @@ lifecycle by exporting a `gs.Server` bean.
   a register function bean (`RouterRegister`, `ServiceRegister`,
   `HandlerRegister`, ...); the starter creates and configures the engine and its
   transport. Registration is the seam.
-- **Enabled-by-default toggle.** `gs.OnProperty("spring.<x>.server.enabled").
-  HavingValue("true").MatchIfMissing()` gates registration, and it is usually
-  further conditioned on the register bean being present
-  (`Condition(gs.OnBean[...])`).
+- **No `gs.Module` wrapper.** Server bean registration is a direct `gs.Provide(...)` call in `init()`. The port configuration itself is the startup gate — no `enabled` toggle or `OnBean[ServiceRegister]` condition is needed.
 
 ### 2.2 Client starters (driver mode + multi-instance)
 
@@ -80,10 +73,11 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   application selects an instance by name (`autowire:"a"`), and adding a second
   instance is a pure-config change.
 - **Address is required — fail fast.** A client must never silently fall back to
-  `localhost`. Fields default to empty (`${addr:=}`), and the constructor rejects
-  a config with no address (and, where discovery applies, no service name) at
-  startup via `errutil.Explain`. go-spring's `expr:` tag validates one field at a
-  time, so an "addr OR service-name" rule lives in the constructor, not a tag.
+  `localhost`. Fields default to empty (`${addr:=}`). Single-field validation
+  uses the `expr` tag (e.g. `expr:"$ != ''"` on a string, `expr:"len($) > 0"`
+  on a slice), which fails at config-binding time. Cross-field rules ("addr OR
+  service-name") use `errutil.RequireAny` in the constructor, since `expr` cannot
+  express cross-field constraints.
 - **Driver pattern for pluggable backends.** A client exposes a `Driver`
   interface plus a package-level registry (`RegisterDriver`, panic on
   dup/empty/nil). `DefaultDriver` ships built in; a company can register its own
@@ -166,13 +160,16 @@ application can load configuration from it at startup and hot-reload at runtime.
 
 ## 3. Cross-Cutting Constraints
 
-- **Config prefix is per capability, not per implementation.** Two starters that
-  implement the *same* capability share one prefix — `starter-websocket` and
-  `starter-websocket-coder` both use `spring.websocket`; `starter-kafka`
-  (franz-go) and `starter-kafka-sarama` both use `spring.kafka`. Users pick one
-  implementation; switching is a blank-import swap with zero config migration.
-  Do not split the prefix per implementation for cosmetic isolation — isolation
-  already comes from module separation and distinct bean types.
+- **Config prefix is per implementation, not per capability.** Every starter
+  binds under its own unique `${spring.<name>}` prefix — client starters via
+  `gs.Group`, server starters via `gs.Provide` with `TagArg`. Two starters that
+  implement the *same* capability use distinct prefixes (`spring.kafka` for
+  franz-go, `spring.kafka-sarama` for sarama; `spring.redis` for go-redis,
+  `spring.redigo` for redigo). The configuration key itself is an explicit
+  declaration of the technology choice: the user decides by writing
+  `spring.kafka.xxx` vs `spring.kafka-sarama.xxx`. This avoids bean conflicts
+  when both implementations happen to be imported, and makes the config file
+  self-documenting.
 - **Fail-fast over silent defaults.** Required inputs (addresses, credentials,
   mode-specific fields) are validated at startup with a clear `errutil.Explain`
   message rather than defaulted to something that half-works.
@@ -256,8 +253,10 @@ application can load configuration from it at startup and hot-reload at runtime.
 
 1. Pick the archetype (§2); it fixes your lifecycle and port behavior.
 2. Own module, standard file skeleton, license headers.
-3. Choose the config prefix by *capability* (reuse an existing one if you are a
-   second implementation).
+3. Choose the config prefix — use a unique `${spring.<name>}` prefix that
+   identifies *this* implementation. If you are a second implementation of an
+   existing capability, pick `<capability>-<impl>` (e.g. `spring.kafka-sarama`),
+   do not reuse the existing prefix.
 4. Client? → `gs.Group` multi-instance, driver registry, required address with
    fail-fast, startup probe, per-instance `Destroy`.
 5. Server? → own port, listen-early/serve-on-ready, graceful `Stop`,
