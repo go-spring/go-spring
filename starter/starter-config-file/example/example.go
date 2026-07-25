@@ -66,6 +66,10 @@ func main() {
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
+	// Clean up leftover mount from a prior run so the symlink swap
+	// always starts from a known-good state.
+	_ = os.RemoveAll(mountDir)
+
 	// Lay down the initial ConfigMap-style mount before the app starts so the
 	// import resolves at startup.
 	if err := writeConfigMap("demo.message=initial\n"); err != nil {

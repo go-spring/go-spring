@@ -35,3 +35,6 @@ website/.vitepress/cache/
 
 # Git history audit reports
 scripts/git-history-audit/reports/
+
+# Generated example runtime files
+**/example/mount/
