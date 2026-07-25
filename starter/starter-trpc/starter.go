@@ -24,6 +24,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	trpc "trpc.group/trpc-go/trpc-go"
+	"trpc.group/trpc-go/trpc-go/filter"
 	"trpc.group/trpc-go/trpc-go/server"
 
 	// Side-effect import: installs the tRPC -> go-spring log bridge (see
@@ -61,8 +62,25 @@ type Config struct {
 	// It must match the callee name baked into the generated client stub.
 	ServiceName string `value:"${service.name:=trpc.helloworld.greet.GreetService}"`
 	// Network / Protocol default to tRPC's own tcp + trpc wire protocol.
-	Network  string `value:"${network:=tcp}"`
-	Protocol string `value:"${protocol:=trpc}"`
+	Network  string         `value:"${network:=tcp}"`
+	Protocol string         `value:"${protocol:=trpc}"`
+	Observer ObserverConfig `value:"${observer}"`
+}
+
+// ObserverConfig toggles OTel tracing/metrics filters on the tRPC server.
+type ObserverConfig struct {
+	Tracing TracingConfig `value:"${tracing}"`
+	Metrics MetricsConfig `value:"${metrics}"`
+}
+
+// TracingConfig toggles the tracing ServerFilter. Off by default.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
+}
+
+// MetricsConfig toggles the metrics ServerFilter. Off by default.
+type MetricsConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }
 
 // SimpleTrpcServer adapts a tRPC server.Server to the Go-Spring server
@@ -117,6 +135,15 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		},
 	}
 	s.svr = trpc.NewServerWithConfig(cfg)
+
+	// Register observability filters so every RPC gets tracing and/or metrics.
+	// The filters ride the OTel globals; without starter-otel they are no-ops.
+	if s.cfg.Observer.Tracing.Enabled {
+		filter.Register("tracing", TracingServerFilter(), nil)
+	}
+	if s.cfg.Observer.Metrics.Enabled {
+		filter.Register("metrics", MetricsServerFilter(), nil)
+	}
 
 	// Bind the concrete service handler; the adapter itself stays service-agnostic.
 	s.reg(s.svr)

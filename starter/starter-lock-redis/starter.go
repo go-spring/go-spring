@@ -69,6 +69,13 @@ func init() {
 				Export(gs.As[lock.Locker]()).
 				Destroy(destroyLocker)
 			b.SetFileLine(file, line)
+
+			if c.Observer.Tracing.Enabled {
+				w := r.Provide(wrapLockerBean, gs.ValueArg(c), gs.TagArg(c.Client)).
+					Name(name + "-observed").
+					Export(gs.As[lock.Locker]())
+				w.SetFileLine(file, line)
+			}
 		}
 		return nil
 	})

@@ -53,6 +53,19 @@ type Config struct {
 	// the shared spring/cloud/tlsconf block so every starter exposes the same
 	// tls.* keys.
 	TLS tlsconf.TLSConfig `value:"${tls}"`
+
+	// Observer toggles OTel observability around lock operations.
+	Observer ObserverConfig `value:"${observer}"`
+}
+
+// ObserverConfig groups the built-in observability options.
+type ObserverConfig struct {
+	Tracing TracingConfig `value:"${tracing}"`
+}
+
+// TracingConfig toggles wrapping the Locker with OTel tracing. Off by default.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }
 
 // ttlSeconds returns the session TTL in whole seconds, clamped to a minimum of

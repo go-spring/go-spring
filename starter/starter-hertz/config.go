@@ -62,6 +62,8 @@ type MiddlewareConfig struct {
 	Recovery      RecoveryConfig      `value:"${recovery}"`
 	RequestID     RequestIDConfig     `value:"${requestId}"`
 	AccessLog     AccessLogConfig     `value:"${accessLog}"`
+	Tracing       TracingConfig       `value:"${tracing}"`
+	Metrics       MetricsConfig       `value:"${metrics}"`
 	CORS          CORSConfig          `value:"${cors}"`
 	Gzip          GzipConfig          `value:"${gzip}"`
 	SecureHeaders SecureHeadersConfig `value:"${secureHeaders}"`
@@ -132,4 +134,20 @@ type HSTSConfig struct {
 	MaxAge            time.Duration `value:"${maxAge:=0s}"`
 	IncludeSubDomains bool          `value:"${includeSubDomains:=false}"`
 	Preload           bool          `value:"${preload:=false}"`
+}
+
+// TracingConfig toggles the per-request tracing middleware that starts and ends
+// an OTel server span on every request. It is off by default: tracing only
+// produces output when starter-otel is also imported and configured with a
+// non-none exporter.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
+}
+
+// MetricsConfig toggles the per-request HTTP metrics middleware that records
+// request count, duration, and in-flight gauge through the global MeterProvider.
+// It is off by default: metrics only produce output when starter-otel is also
+// imported and configured with a non-none exporter.
+type MetricsConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }

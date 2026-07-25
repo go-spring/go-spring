@@ -68,6 +68,26 @@ type Config struct {
 	Keepalive            KeepaliveConfig   `value:"${keepalive}"`
 	TLS                  tlsconf.TLSConfig `value:"${tls}"`
 	Health               HealthConfig      `value:"${health}"`
+	Observer             ObserverConfig    `value:"${observer}"`
+}
+
+// ObserverConfig groups the built-in observability interceptors the starter can
+// install on the grpc.Server. Tracing and Metrics ride the OTel globals that
+// starter-otel installs; they are off by default because they only produce
+// output when starter-otel is also imported.
+type ObserverConfig struct {
+	Tracing TracingConfig `value:"${tracing}"`
+	Metrics MetricsConfig `value:"${metrics}"`
+}
+
+// TracingConfig toggles the gRPC tracing interceptors. Off by default.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
+}
+
+// MetricsConfig toggles the gRPC metrics interceptors. Off by default.
+type MetricsConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }
 
 // SimpleGrpcServer adapts a grpc.Server to the Go-Spring server lifecycle.
@@ -114,6 +134,21 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 			return nil, errutil.Explain(err, "grpc: build TLS")
 		}
 		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	}
+
+	// Observability interceptors are installed via ServerOptions so they wrap
+	// every registered service. They ride the OTel globals, no-op without otel.
+	if s.cfg.Observer.Tracing.Enabled {
+		opts = append(opts,
+			grpc.UnaryInterceptor(TracingUnaryInterceptor()),
+			grpc.StreamInterceptor(TracingStreamInterceptor()),
+		)
+	}
+	if s.cfg.Observer.Metrics.Enabled {
+		opts = append(opts,
+			grpc.UnaryInterceptor(MetricsUnaryInterceptor()),
+			grpc.StreamInterceptor(MetricsStreamInterceptor()),
+		)
 	}
 	return opts, nil
 }

@@ -47,4 +47,17 @@ type Config struct {
 	// applications sharing a Redis instance use different prefixes to keep
 	// their key spaces disjoint. Empty means keys are used as-is.
 	KeyPrefix string `value:"${key-prefix:=}"`
+
+	// Observer toggles OTel observability around lock operations.
+	Observer ObserverConfig `value:"${observer}"`
+}
+
+// ObserverConfig groups the built-in observability options.
+type ObserverConfig struct {
+	Tracing TracingConfig `value:"${tracing}"`
+}
+
+// TracingConfig toggles wrapping the Locker with OTel tracing. Off by default.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }

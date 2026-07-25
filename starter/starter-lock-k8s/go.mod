@@ -3,6 +3,8 @@ module go-spring.org/starter-lock-k8s
 go 1.26
 
 require (
+	go.opentelemetry.io/otel v1.43.0
+	go.opentelemetry.io/otel/trace v1.43.0
 	k8s.io/apimachinery v0.34.3
 	k8s.io/client-go v0.34.3
 )

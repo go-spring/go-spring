@@ -48,6 +48,19 @@ type Config struct {
 	// resulting name must be a valid DNS-1123 subdomain (lowercase alphanumerics,
 	// '-' and '.'); pick keys accordingly.
 	KeyPrefix string `value:"${key-prefix:=}"`
+
+	// Observer toggles OTel observability around lock operations.
+	Observer ObserverConfig `value:"${observer}"`
+}
+
+// ObserverConfig groups the built-in observability options.
+type ObserverConfig struct {
+	Tracing TracingConfig `value:"${tracing}"`
+}
+
+// TracingConfig toggles wrapping the Locker with OTel tracing. Off by default.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }
 
 // buildClient builds a Kubernetes clientset for c: in-cluster when Kubeconfig

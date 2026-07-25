@@ -61,13 +61,15 @@ func RequestIDFromContext(ctx context.Context) string {
 // applyMiddlewares installs the enabled built-in middlewares onto the engine in
 // a fixed, safe order, all before the application's RouterRegister runs:
 //
-//	Recovery -> RequestID -> AccessLog -> SecureHeaders -> CORS -> Gzip
+//	Recovery -> RequestID -> Tracing -> Metrics -> AccessLog -> SecureHeaders -> CORS -> Gzip
 //
 // Recovery is outermost so it catches panics from every later layer; RequestID
-// runs before AccessLog so each access record carries the request id; AccessLog
-// wraps the policy middlewares so short-circuit responses (204, 403) are still
-// logged. Body limiting is handled by the engine option WithMaxRequestBodySize,
-// not a middleware, so an over-limit 413 is likewise logged.
+// runs before AccessLog so each access record carries the request id; Tracing
+// wraps Metrics and AccessLog so every span captures timing and attributes from
+// both; AccessLog wraps the policy middlewares so short-circuit responses (204,
+// 403) are still logged. Body limiting is handled by the engine option
+// WithMaxRequestBodySize, not a middleware, so an over-limit 413 is likewise
+// logged.
 func applyMiddlewares(h *server.Hertz, cfg Config) error {
 	mw := cfg.Middleware
 
@@ -77,6 +79,12 @@ func applyMiddlewares(h *server.Hertz, cfg Config) error {
 	if mw.RequestID.Enabled {
 		h.Use(requestid.New())
 		h.Use(propagateRequestID)
+	}
+	if mw.Tracing.Enabled {
+		h.Use(tracingMiddleware())
+	}
+	if mw.Metrics.Enabled {
+		h.Use(metricsMiddleware())
 	}
 	if mw.AccessLog.Enabled {
 		h.Use(accessLog(accessLogSkipSet(cfg)))

@@ -43,6 +43,9 @@ func init() {
 // "framed" prepends a length prefix to each message — required by many
 // cross-language clients. Both settings must be paired with a matching
 // client; a mismatch corrupts the wire protocol.
+//
+// Observer toggles OTel tracing and metrics via a wrapped TProcessor.
+// Both are off by default; importing starter-otel is the opt-in.
 type Config struct {
 	Addr          string            `value:"${addr}"`
 	ClientTimeout time.Duration     `value:"${clientTimeout:=0}"`
@@ -50,6 +53,26 @@ type Config struct {
 	Transport     string            `value:"${transport:=none}"`
 	BufferSize    int               `value:"${bufferSize:=4096}"`
 	TLS           tlsconf.TLSConfig `value:"${tls}"`
+	Observer      ObserverConfig    `value:"${observer}"`
+}
+
+// ObserverConfig groups the built-in observability options the starter can
+// apply to the thrift.TProcessor.
+type ObserverConfig struct {
+	Tracing TracingConfig `value:"${tracing}"`
+	Metrics MetricsConfig `value:"${metrics}"`
+}
+
+// TracingConfig toggles wrapping the TProcessor with an OTel tracing wrapper.
+// Off by default.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
+}
+
+// MetricsConfig toggles wrapping the TProcessor with an OTel metrics wrapper.
+// Off by default.
+type MetricsConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }
 
 // SimpleThriftServer adapts a thrift.TSimpleServer to the Go-Spring server lifecycle.
@@ -123,7 +146,11 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	if err != nil {
 		return err
 	}
-	s.svr = thrift.NewTSimpleServer4(s.proc, transport, transFactory, protoFactory)
+	proc := s.proc
+	if s.cfg.Observer.Tracing.Enabled || s.cfg.Observer.Metrics.Enabled {
+		proc = WrapProcessor(proc)
+	}
+	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()
 	if err = s.svr.Serve(); err != nil {
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)

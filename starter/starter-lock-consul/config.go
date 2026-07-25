@@ -56,4 +56,17 @@ type Config struct {
 	// TLS.ServerName overrides the SNI/hostname checked against the server
 	// certificate when dialing by IP.
 	TLS tlsconf.TLSConfig `value:"${tls}"`
+
+	// Observer toggles OTel observability around lock operations.
+	Observer ObserverConfig `value:"${observer}"`
+}
+
+// ObserverConfig groups the built-in observability options.
+type ObserverConfig struct {
+	Tracing TracingConfig `value:"${tracing}"`
+}
+
+// TracingConfig toggles wrapping the Locker with OTel tracing. Off by default.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }

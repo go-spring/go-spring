@@ -50,6 +50,12 @@ type gatewayConfig struct {
 	Routes     gs.Dync[map[string]RouteRaw] `value:"${routes:=}"`
 	Resilience map[string]policyRaw         `value:"${resilience:=}"`
 	Discovery  string                       `value:"${discovery:=}"`
+	Tracing    TracingConfig                `value:"${tracing}"`
+}
+
+// TracingConfig toggles OTel tracing around proxy requests. Off by default.
+type TracingConfig struct {
+	Enabled bool `value:"${enabled:=false}"`
 }
 
 // RouteTable holds the compiled routes and rebuilds them when the bound routes
@@ -234,6 +240,9 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 		h = filters[i](h)
 	}
 	handler := t.instrument(id, h)
+	if t.Cfg.Tracing.Enabled {
+		handler = proxySpan(id, handler)
+	}
 
 	return &Route{ID: id, Predicates: preds, Filters: filters, Upstream: up, handler: handler}, nil
 }
