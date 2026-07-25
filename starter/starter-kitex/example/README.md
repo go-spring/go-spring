@@ -1,6 +1,6 @@
 # starter-kitex Example
 
-Demonstrates Kitex RPC service registration and invocation with starter-kitex.
+Run this example to test Kitex RPC service registration and invocation with `starter-kitex`.
 
 ## Features
 
@@ -16,7 +16,7 @@ cd starter-kitex/example
 go run . -manual
 ```
 
-The service listens on :8888. You can connect and verify with Kitex-generated client code.
+The service listens on `:8888`. You can connect and verify with Kitex-generated client code.
 
 Press `Ctrl+C` to stop the service after verification.
 

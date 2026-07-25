@@ -1,6 +1,6 @@
 # starter-websocket Example
 
-Demonstrates WebSocket text/JSON echo and middleware authentication using starter-websocket.
+Demonstrates WebSocket text/JSON echo and middleware authentication.
 
 ## Features
 
@@ -10,7 +10,7 @@ Demonstrates WebSocket text/JSON echo and middleware authentication using starte
 
 ## Manual Testing
 
-Terminal 1, start the service and keep it running:
+Terminal 1, start the service:
 ```bash
 cd starter-websocket/example
 go run . -manual
@@ -22,7 +22,7 @@ websocat ws://127.0.0.1:9696/echo
 # Type any text, receive echo
 ```
 
-Press Ctrl+C to stop the service after verification.
+Press Ctrl+C to stop the service.
 
 ## Smoke Test
 
@@ -30,4 +30,4 @@ Press Ctrl+C to stop the service after verification.
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

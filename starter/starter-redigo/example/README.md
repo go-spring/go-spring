@@ -1,6 +1,6 @@
 # starter-redigo Example
 
-Demonstrates the Redigo Redis client of starter-redigo.
+Demonstrates Redigo Redis client.
 
 ## Features
 

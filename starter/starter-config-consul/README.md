@@ -7,7 +7,7 @@
 a **remote configuration center** for Go-Spring, built on
 github.com/hashicorp/consul/api. Blank-importing it registers a `consul` config
 provider that pulls application configuration from a Consul agent at startup and
-hot-reloads it at runtime — no restart required.
+hot-reloads it at runtime without restarting.
 
 This starter covers the config-center role only. Service discovery through the
 Consul catalog is a separate concern and is not provided here.
@@ -60,7 +60,7 @@ type Demo struct {
 When the KV value changes, the provider's blocking-query watcher triggers an
 application property refresh, and all bound `gs.Dync` fields are updated
 atomically. See [example-config](example-config/example.go) for the full
-publish -> hot-reload flow.
+publish to hot-reload flow.
 
 ## How It Works
 

@@ -6,7 +6,7 @@
 recommended driver for the resilience framework defined in
 [`spring/resilience`](../../spring/resilience). Blank-import it and any starter
 or user code that selects `driver=sentinel` — HTTP round-trippers, dialers,
-inbound handlers, retry policies — gets adaptive rate limiting, circuit
+inbound handlers, retry policies — receives adaptive rate limiting, circuit
 breaking, and bulkhead isolation on top of the same neutral `Policy`.
 
 It follows the *global / infrastructure* archetype (see
@@ -92,12 +92,12 @@ loaded lazily on the first entry:
 
 `RateLimit`, `ErrorThreshold`, and `MaxConcurrent` become sentinel rules;
 `MaxRetries` and `Timeout` are applied by the executor around sentinel's
-entry check, since sentinel itself models neither. Sentinel block reasons are
+entry check, since sentinel models neither. Sentinel block reasons are
 mapped onto the neutral sentinels so callers depend only on
 `spring/resilience`.
 
 ## Default driver
 
-`spring/resilience` ships a zero-dependency `default` driver used for tests
-and lightweight setups. Import this starter to get production-grade
-throttling and breaking; keep `default` if you do not need it.
+`spring/resilience` ships a zero-dependency `default` driver for tests and
+lightweight setups. Import this starter for production-grade throttling and
+breaking; stick with `default` if you don't need it.

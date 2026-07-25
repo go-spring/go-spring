@@ -20,8 +20,8 @@ This starter implements the OAuth2/OIDC **protocol endpoints**, not a full
 identity provider. It ships no user store, no MFA, and no social-login
 aggregation; the resource-owner login is a seam (`UserAuthFunc`) the
 application plugs its own session/login into. It is not a port of Spring
-Security's `SecurityFilterChain` DSL — the equivalent Web-security filter chain
-is assembled from ordinary `net/http` middleware in `spring/security`
+Security's `SecurityFilterChain` DSL — you assemble the equivalent Web-security
+filter chain from ordinary `net/http` middleware in `spring/security`
 (`Chain` / `CORS` / `CSRF` / `Authenticate` / `Authorize`).
 
 ## Installation
@@ -43,7 +43,7 @@ import _ "go-spring.org/starter-oauth2-server"
 Add configuration in your project's [configuration file](example/conf/app.properties).
 Exactly one signing key must be set — a shared HMAC `secret` (verified by the
 resource server with the same secret) or a PEM `private-key` / `private-key-file`
-(whose public half is published at `/jwks`):
+(when using asymmetric keys, the public half publishes at `/jwks`):
 
 ```properties
 spring.oauth2.server.enabled=true
@@ -103,25 +103,25 @@ mux.Handle("/api/admin", security.Chain(
 
 ## Grants
 
-- **`authorization_code` (+ PKCE)** — the user is authenticated via
-  `UserAuthFunc`, a single-use code is redirected back to the client, and the
+- **`authorization_code` (+ PKCE)** — `UserAuthFunc` authenticates the user,
+  the server redirects a single-use code back to the client, and the
   client redeems it at `/token`. **PKCE is mandatory for public clients**
   (`public: true`); the `code_verifier` presented at `/token` is checked against
   the `code_challenge` captured at `/authorize`.
 - **`client_credentials`** — a confidential client authenticates with its
   secret and receives an access token acting on its own behalf (no refresh
   token).
-- **`refresh_token`** — a refresh token is rotated (single use) for a fresh
+- **`refresh_token`** — the server rotates a refresh token (single use) for a fresh
   access token; the request may narrow, but not widen, the granted scopes.
 
 ## Security Notes
 
-- The signing key is shared with the resource server by configuration; the two
-  never need to talk directly for HMAC, and for asymmetric keys the resource
+- You share the signing key with the resource server through configuration; the
+  two never need to talk directly for HMAC, and for asymmetric keys the resource
   server fetches `/jwks`.
-- `redirect_uri` is validated against the per-client allow-list before it is
-  ever used as a redirect target, closing the open-redirect vector.
-- Client secrets and PKCE verifiers are compared in constant time.
+- `redirect_uri` is validated against the per-client allow-list before the server
+  ever uses it as a redirect target, closing the open-redirect vector.
+- The server compares client secrets and PKCE verifiers in constant time.
 - The authorization codes and refresh tokens are held in process memory
   (single-node); a multi-node deployment should front this with a shared store.
 

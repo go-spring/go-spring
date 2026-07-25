@@ -1,12 +1,12 @@
 # starter-registry-zookeeper Example
 
-Demonstrates ZooKeeper service registration and discovery of starter-registry-zookeeper.
+Demonstrates ZooKeeper service registration and discovery.
 
 ## Features
 
-- **Service Registration**: Register the service to ZooKeeper on startup
-- **Service Discovery**: Query registered znodes via ZK API
-- **Auto Deregistration**: Automatically deregister from ZK on process exit
+- **Service Registration**: Registers the service to ZooKeeper on startup
+- **Service Discovery**: Queries registered znodes via ZK API
+- **Auto Deregistration**: Deregisters from ZK on process exit
 
 > Requires ZooKeeper service running. `check.sh` starts ZooKeeper via docker compose.
 

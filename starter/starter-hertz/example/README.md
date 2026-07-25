@@ -1,6 +1,6 @@
 # starter-hertz Example
 
-Demonstrates HTTP service routing, middleware, and health checks for starter-hertz.
+Run this example to test HTTP service routing, middleware, and health checks for `starter-hertz`.
 
 ## Features
 

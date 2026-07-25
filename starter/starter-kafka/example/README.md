@@ -1,6 +1,6 @@
 # starter-kafka Example
 
-Demonstrates Kafka message production and consumption with starter-kafka.
+Run this example to test Kafka message production and consumption with `starter-kafka`.
 
 ## Features
 
@@ -34,7 +34,7 @@ sleep 10
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

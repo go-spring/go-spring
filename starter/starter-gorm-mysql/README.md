@@ -2,10 +2,8 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
-`starter-gorm-mysql` provides a mysql client wrapper based on gorm,
-making it easy to integrate and use mysql in Go-Spring applications.
+`starter-gorm-mysql` provides a MySQL client wrapper based on gorm for
+Go-Spring applications.
 
 ## Installation
 
@@ -17,15 +15,13 @@ go get go-spring.org/starter-gorm-mysql
 
 ### 1. Import the `starter-gorm-mysql` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-gorm-mysql"
 ```
 
 ### 2. Configure the gorm Instance
 
-Add gorm configuration in your project’s [configuration file](example/conf/app.properties), for example:
+Add gorm configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
 spring.gorm.mysql.primary.user=root
@@ -36,8 +32,6 @@ spring.gorm.mysql.primary.db=test
 
 ### 3. Inject the gorm Instance
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import "gorm.io/gorm"
 
@@ -47,8 +41,6 @@ type Service struct {
 ```
 
 ### 4. Use the gorm Instance
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 var version string
@@ -68,5 +60,4 @@ The [example.go](example/example.go) file demonstrates three core GORM features 
 
 ## Advanced Features
 
-* **Supports multiple gorm instances**: You can define multiple gorm instances in the configuration file and reference
-  them by name in your project.
+* **Supports multiple gorm instances**: you can define multiple gorm instances in the configuration file and reference them by name.

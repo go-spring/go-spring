@@ -6,7 +6,7 @@
 **hot-reloadable configuration source** for Go-Spring, built on
 github.com/fsnotify/fsnotify. Blank-importing it registers a `file-watch`
 config provider that loads application configuration from the path at startup
-and hot-reloads it whenever the files change — no restart required.
+and hot-reloads it whenever the files change without restarting.
 
 Its primary purpose is **Kubernetes**: a `ConfigMap` or `Secret` mounted as a
 volume becomes hot-reloadable without any custom code. The kubelet updates such
@@ -41,7 +41,7 @@ spring.app.imports=file-watch:/etc/config
 ```
 
 The path may be a **directory** (every recognized file in it is read and
-merged) or a **single file**. In both cases the *directory* is watched, so the
+merged) or a **single file**. Both cases watch the *directory*, so the
 K8s `..data` symlink swap on a ConfigMap update is picked up correctly.
 
 Query parameters:

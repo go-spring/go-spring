@@ -1,6 +1,6 @@
 # starter-go-redis Example
 
-Demonstrates the go-redis Redis client for starter-go-redis.
+go-redis Redis client for starter-go-redis.
 
 ## Features
 
@@ -9,7 +9,7 @@ Demonstrates the go-redis Redis client for starter-go-redis.
 - **List operations**: LPUSH/LRANGE operations
 - **Multi-driver support**: Switch between go-redis/redigo drivers
 
-> Requires Redis service running. `check.sh` starts Redis via docker compose.
+> Requires a running Redis service. `check.sh` starts Redis via docker compose.
 
 ## Manual Testing
 
@@ -33,7 +33,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+The service keeps running. Press Ctrl+C to stop.
 
 ## Smoke Test
 

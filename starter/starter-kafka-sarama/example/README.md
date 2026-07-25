@@ -1,6 +1,6 @@
 # starter-kafka-sarama Example
 
-Demonstrates Kafka Sarama client (message production and consumption) with starter-kafka-sarama.
+Run this example to test Kafka Sarama client (message production and consumption) with `starter-kafka-sarama`.
 
 ## Features
 
@@ -34,7 +34,7 @@ sleep 10
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

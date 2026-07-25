@@ -1,6 +1,6 @@
 # starter-resilience Example
 
-Demonstrates Sentinel circuit breaking and rate limiting with starter-resilience.
+Demonstrates Sentinel circuit breaking and rate limiting.
 
 ## Features
 
@@ -26,4 +26,4 @@ resilience seams smoke: OK
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

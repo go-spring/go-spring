@@ -1,12 +1,12 @@
 # starter-registry-nacos Example
 
-Demonstrates Nacos service registration and discovery of starter-registry-nacos.
+Demonstrates Nacos service registration and discovery.
 
 ## Features
 
-- **Service Registration**: Register the service to Nacos on startup
-- **Service Discovery**: Query registered service instances via Nacos Open API
-- **Auto Deregistration**: Automatically deregister from Nacos on process exit
+- **Service Registration**: Registers the service to Nacos on startup
+- **Service Discovery**: Queries registered service instances via Nacos Open API
+- **Auto Deregistration**: Deregisters from Nacos on process exit
 
 > Requires Nacos service running. `check.sh` starts Nacos via docker compose.
 

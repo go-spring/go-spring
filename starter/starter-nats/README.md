@@ -2,9 +2,9 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-nats` provides a NATS client wrapper based on github.com/nats-io/nats.go,
-making it easy to integrate core messaging and JetStream in Go-Spring applications.
-The library is pure Go (no cgo), so cross-compilation stays clean.
+`starter-nats` provides a NATS client wrapper based on github.com/nats-io/nats.go.
+It covers core messaging and JetStream for Go-Spring applications.
+The library is pure Go (no cgo).
 
 ## Installation
 
@@ -129,8 +129,8 @@ and other NATS features the binder does not model.
 
 Distributed tracing is available through native OTel helpers that ride the
 global `TracerProvider` and propagator installed by
-[starter-otel](../starter-otel). Without starter-otel they are no-ops and change
-no message bytes, so instrumenting your code is a safe, zero-config opt-in.
+[starter-otel](../starter-otel). Without starter-otel they are no-ops, so
+instrumenting your code is a safe, zero-config opt-in.
 
 ```go
 import starter "go-spring.org/starter-nats"

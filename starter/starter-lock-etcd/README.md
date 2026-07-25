@@ -5,7 +5,7 @@
 `starter-lock-etcd` is the etcd-backed implementation of the
 [`go-spring.org/spring/lock`](../../spring/lock) distributed-lock abstraction.
 Blank-importing this starter registers one `lock.Locker` bean per configured
-instance; switching the backend to Redis or Consul is a blank-import swap and
+instance; switching the backend to Redis or Consul is a blank-import swap —
 no business code changes.
 
 ## Installation

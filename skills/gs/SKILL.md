@@ -45,6 +45,7 @@ Plan ──确认──▶ Execute ──全绿──▶ Settle
 | 重新生成代码 | 重新生成 / IDL 改了 / `gs-http-gen` / `gs-mock` | [`tools/gen.md`](tools/gen.md) |
 | 接入组件(消费 Starter) | 接 Redis / 接 MySQL / 接 Kafka / 加 Starter | [`tools/wire-starter.md`](tools/wire-starter.md) |
 | 补测试 / 示例 | 补测试 / 加用例 / 加 example | [`tools/add-test.md`](tools/add-test.md) |
+| 文档润色 | 润色文档 / 优化 README / 润色 / 改写文档 / polish doc | [`tools/polish-doc.md`](tools/polish-doc.md) |
 | 创作新 Starter(框架侧) | 新建 starter / 集成新组件到 go-spring | [`tools/new-starter.md`](tools/new-starter.md) 待补充 |
 
 > 构建/测试([`execute/build-test.md`](execute/build-test.md))与报错定位([`execute/fix-compile.md`](execute/fix-compile.md))是 **Execute 的内建验证**,不是可选工具——任何改动后自动执行,Plan 无需显式排入。通用编译/测试报错以 AI 自身调试能力为主;这两份文档只补 go-spring 生态特有的部分(多 module 定位、生成物过期回 `gen` 重生成而非手改、四层依赖边界)。

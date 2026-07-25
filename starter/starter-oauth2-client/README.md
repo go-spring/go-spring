@@ -3,10 +3,10 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-oauth2-client` provides an OAuth2 *client-credentials* HTTP client
-based on [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2), making
-it easy for a Go-Spring application to call a protected downstream service. The
-resulting `*http.Client` fetches and refreshes the bearer token automatically,
-so callers use it like an ordinary HTTP client.
+based on [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2), so a
+Go-Spring application can call a protected downstream service. The resulting
+`*http.Client` fetches and refreshes the bearer token automatically — callers
+use it like any other HTTP client.
 
 ## Installation
 
@@ -50,8 +50,8 @@ type Service struct {
 
 ### 4. Use the HTTP Client
 
-Refer to the [example.go](example/example.go) file. The token is obtained on the
-first request and attached as `Authorization: Bearer <token>` automatically.
+Refer to the [example.go](example/example.go) file. The client obtains the token on
+the first request and attaches it as `Authorization: Bearer <token>` automatically.
 
 ```go
 resp, err := s.Client.Get("https://api.example.com/resource")
@@ -64,7 +64,7 @@ endpoint and a protected resource server, then demonstrates and asserts:
 
 * **Automatic token fetch** — the injected client mints a token via the
   client-credentials grant on the first request.
-* **Transparent bearer injection** — the token is attached to the downstream
+* **Transparent bearer injection** — the client attaches the token to the downstream
   request, which returns `200 OK` from the protected endpoint.
 
 ## Advanced Features
@@ -121,7 +121,7 @@ that [`starter-otel`](../starter-otel) installs.
 
 This is a zero-config opt-in that mirrors go-redis's `redisotel` hooks: import
 `starter-otel` and spans flow automatically; without it the OTel globals are
-no-ops, so no spans are produced and no request bytes change. Instrumentation
+no-ops, so the starter produces no spans and changes no request bytes. Instrumentation
 happens at a single point — the transport shared by the token fetch and the
 returned client — so each token fetch and each downstream call yields exactly
 one span (no double counting).

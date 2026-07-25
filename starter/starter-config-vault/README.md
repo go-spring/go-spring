@@ -6,7 +6,7 @@
 as a **remote configuration center** and **secrets store** for Go-Spring, built
 on github.com/hashicorp/vault/api. Blank-importing it registers a `vault` config
 provider that reads a KV secret at startup, exposes its fields as application
-properties, and hot-reloads them at runtime — no restart required.
+properties, and hot-reloads them at runtime without restarting.
 
 This starter covers the config-center role only. It pairs naturally with the
 [property-level decryption](#property-level-decryption) seam in
@@ -85,7 +85,7 @@ type Demo struct {
 
 When the secret changes, the provider's polling watcher triggers an application
 property refresh, and all bound `gs.Dync` fields are updated atomically. See
-[example-config](example-config/example.go) for the full write → hot-reload
+[example-config](example-config/example.go) for the full write to hot-reload
 flow.
 
 ## Property-level decryption

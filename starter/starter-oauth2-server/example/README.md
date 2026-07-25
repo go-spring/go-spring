@@ -1,6 +1,6 @@
 # starter-oauth2-server Example
 
-Demonstrates OAuth2 authorization server for starter-oauth2-server.
+Demonstrates OAuth2 authorization server.
 
 ## Features
 
@@ -16,7 +16,7 @@ cd starter-oauth2-server/example
 go run . -manual
 ```
 
-The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
+The service keeps running. Press Ctrl+C to exit. Without `-manual`, `runTest()` executes automatically and exits.
 
 ## Smoke Test
 

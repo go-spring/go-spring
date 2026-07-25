@@ -1,6 +1,6 @@
 # starter-scheduler Example
 
-Demonstrates scheduled task scheduling with starter-scheduler.
+Demonstrates scheduled task scheduling.
 
 ## Features
 
@@ -15,7 +15,7 @@ cd starter-scheduler/example
 go run . -manual
 ```
 
-The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
+The service keeps running. Press Ctrl+C to exit. Without `-manual`, `runTest()` executes automatically and exits.
 
 ## Smoke Test
 
@@ -23,4 +23,4 @@ The program keeps running, press Ctrl+C to exit. Without -manual, runTest() exec
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

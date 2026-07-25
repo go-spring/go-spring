@@ -2,12 +2,10 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
-`starter-gin` wires the [gin-gonic/gin](https://github.com/gin-gonic/gin) web framework into Go-Spring.
-The starter owns the `*gin.Engine` and its HTTP server (created from configuration); the application
-only provides a `RouterRegister` bean to mount routes and middleware, and everything is served through
-the Go-Spring server lifecycle.
+`starter-gin` wires the [gin-gonic/gin](https://github.com/gin-gonic/gin) web framework into
+Go-Spring. The starter owns the `*gin.Engine` and its HTTP server (created from configuration); the
+application only provides a `RouterRegister` bean to mount routes and middleware, and everything
+is served through the Go-Spring server lifecycle.
 
 ## Installation
 
@@ -19,15 +17,13 @@ go get go-spring.org/starter-gin
 
 ### 1. Import the `starter-gin` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-gin"
 ```
 
 ### 2. Configure the Gin Server
 
-Add configuration in your project's [configuration file](example/conf/app.properties), for example:
+Add configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
 # Let gin own the HTTP port; disable Go-Spring's built-in server.
@@ -76,8 +72,7 @@ The starter registers its server bean when `spring.gin.server.enabled` is `true`
 ### 3. Provide a `RouterRegister` Bean
 
 The starter creates and configures the `*gin.Engine` (release mode, plus the built-in middlewares
-below) and hands it to your register. Mount routes and middleware there. Refer to the
-[example.go](example/example.go) file.
+below) and hands it to your register. Mount routes and middleware there.
 
 ```go
 gs.Provide(func(c *Controller) StarterGin.RouterRegister {

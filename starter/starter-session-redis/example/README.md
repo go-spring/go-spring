@@ -1,6 +1,6 @@
 # starter-session-redis Example
 
-Demonstrates Redis session management with starter-session-redis.
+Demonstrates Redis session management.
 
 ## Features
 
@@ -33,7 +33,7 @@ docker compose up -d
 go run . -manual
 ```
 
-You can also manually verify with curl:
+Manual curl verification:
 ```bash
 # Terminal 1: Start the service
 go run . -manual
@@ -53,4 +53,4 @@ curl -b /tmp/cookie http://127.0.0.1:9090/b/get
 ./check.sh
 ```
 
-check.sh starts Redis via docker compose, runs the example and verifies sessions, exit code 0 means pass.
+`check.sh` starts Redis via docker compose, runs the example and verifies sessions, exit code 0 means pass.

@@ -1,6 +1,6 @@
 # starter-mqtt Example
 
-Demonstrates the MQTT client with starter-mqtt.
+Run this example to test the MQTT client with `starter-mqtt`.
 
 ## Features
 
@@ -8,7 +8,7 @@ Demonstrates the MQTT client with starter-mqtt.
 - **Message Publishing**: Publish messages to MQTT topics
 - **Message Subscription**: Subscribe to topics and receive messages
 
-> Requires MQTT Broker running. check.sh starts Mosquitto via docker compose.
+> Requires MQTT Broker running. `check.sh` starts Mosquitto via docker compose.
 
 ## Manual Testing
 
@@ -33,7 +33,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+Press Ctrl+C to stop.
 
 ## Smoke Test
 
@@ -41,4 +41,4 @@ The service keeps running. You can verify with corresponding CLI tools. Press Ct
 ./check.sh
 ```
 
-check.sh starts Mosquitto via docker compose, runs the example and verifies messages, exit code 0 means pass.
+`check.sh` starts Mosquitto via docker compose, runs the example and verifies messages, exit code 0 means pass.

@@ -1,6 +1,6 @@
 # starter-grpc Example
 
-Demonstrates gRPC service registration, interceptors, and health checks for starter-grpc.
+Run this example to test gRPC service registration, interceptors, and health checks for `starter-grpc`.
 
 ## Features
 

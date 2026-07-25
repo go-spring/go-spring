@@ -2,8 +2,6 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-mesh` provides a single, process-global switch that degrades Go-Spring's
 client-side service discovery (`spring/discovery`) and load balancing
 (`spring/loadbalance`) to a pass-through when the application runs inside a
@@ -72,9 +70,9 @@ not decided.
 - **`spring/loadbalance`** — a `Pool` returns that single endpoint directly,
   with no strategy selection and no outlier ejection (a lone mesh endpoint must
   never be evicted).
-- **Tracing** is unaffected: the OTel global propagator still injects headers, so
-  application and mesh spans stay correlated. When `starter-otel` is present it
-  fills the `discovery.SetTraceInjector` seam, so wrapping an outbound transport
+- **Tracing** is unaffected: the OTel global propagator injects headers regardless,
+  so application and mesh spans stay correlated. When `starter-otel` is present it
+  fills the `discovery.SetTraceInjector` seam. Wrapping an outbound transport
   with `discovery.TraceRoundTripper` stamps `traceparent` on every request and
   keeps the trace unbroken across the sidecar hop.
 - **Readiness semantics are unchanged** — probes behave the same with or without

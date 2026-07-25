@@ -1,6 +1,6 @@
 # starter-gin Example
 
-Demonstrates HTTP service routing, middleware, and health checks for starter-gin.
+HTTP service routing, middleware, and health checks for starter-gin.
 
 ## Features
 

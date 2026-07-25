@@ -5,11 +5,11 @@
 `starter-transaction-saga` contributes the **Saga** distributed-transaction
 capability defined in
 [`go-spring.org/spring/transaction`](../../spring/transaction) to a Go-Spring
-application. It is the Go-idiomatic equivalent of `@GlobalTransactional(SAGA)`,
+application — the Go-idiomatic equivalent of `@GlobalTransactional(SAGA)`,
 reached with an in-process coordinator and an aspect chain rather than by
 replicating Seata's TC/TM/RM roles or requiring bytecode magic.
 
-It is a **Contributor**-archetype starter (see [DESIGN.md](../DESIGN.md) §2.3):
+A **Contributor**-archetype starter (see [DESIGN.md](../DESIGN.md) §2.3):
 it opens no port and starts no server, only registers beans.
 
 ## Saga vs. TCC — which one?

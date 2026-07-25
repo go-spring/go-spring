@@ -2,12 +2,9 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-pprof` exposes the standard Go `net/http/pprof` endpoints through a
-lightweight, dedicated HTTP server managed by the Go-Spring IoC container. It
-gives Go-Spring applications a simple, configurable way to inspect runtime
-behavior, collect CPU profiles, capture traces, and debug goroutine, heap,
+dedicated HTTP server managed by the Go-Spring IoC container. Use it to inspect
+runtime behavior, collect CPU profiles, capture traces, and debug goroutine, heap,
 thread, mutex, and block profiles.
 
 ## Installation
@@ -19,8 +16,6 @@ go get go-spring.org/starter-pprof
 ## Quick Start
 
 ### 1. Import the `starter-pprof` Package
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 import _ "go-spring.org/starter-pprof"

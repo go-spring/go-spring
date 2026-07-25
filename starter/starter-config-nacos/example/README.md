@@ -1,14 +1,14 @@
 # starter-config-nacos Example
 
-Demonstrates Nacos config management with starter-config-nacos.
+Nacos config management with starter-config-nacos.
 
 ## Features
 
 - **Config loading**: Read config from Nacos data-id
-- **Config hot reload**: Publish new config via Nacos API, application perceives changes in real time
-- **Dync dynamic binding**: Bind config via `Dync[T]`, auto refresh
+- **Config hot reload**: Publish new config via Nacos API; the app picks up changes in real time
+- **Dync dynamic binding**: Bind config via `Dync[T]`; refreshes automatically
 
-> Requires Nacos service running. `check.sh` starts Nacos via docker compose.
+> Requires a running Nacos service. `check.sh` starts Nacos via docker compose.
 
 ## Manual Testing
 
@@ -32,7 +32,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+The service keeps running. Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

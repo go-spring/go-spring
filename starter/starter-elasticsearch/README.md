@@ -2,11 +2,9 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-elasticsearch` provides an Elasticsearch client wrapper based on the
-official [go-elasticsearch](https://github.com/elastic/go-elasticsearch) client,
-making it easy to integrate and use Elasticsearch in Go-Spring applications.
+official [go-elasticsearch](https://github.com/elastic/go-elasticsearch) client.
+Use it to integrate Elasticsearch in Go-Spring applications.
 
 ## Installation
 

@@ -1,6 +1,6 @@
 # starter-validation Example
 
-Demonstrates data validation and i18n internationalization using starter-validation.
+Demonstrates data validation and i18n internationalization.
 
 ## Features
 
@@ -37,4 +37,4 @@ Expected output (English):
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

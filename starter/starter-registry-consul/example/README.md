@@ -1,11 +1,11 @@
 # starter-registry-consul Example
 
-Demonstrates Consul service registration and discovery of starter-registry-consul.
+Demonstrates Consul service registration and discovery.
 
 ## Features
 
-- **Service Registration**: Register the service to Consul catalog on startup
-- **Service Discovery**: Query registered service instances via Consul API
+- **Service Registration**: Registers the service to the Consul catalog on startup
+- **Service Discovery**: Queries registered service instances via Consul API
 - **Health Check**: Consul periodically checks service health status
 
 > Requires Consul service running. `check.sh` starts Consul via docker compose.

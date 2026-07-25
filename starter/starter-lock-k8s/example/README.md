@@ -1,6 +1,6 @@
 # starter-lock-k8s Example
 
-Demonstrates Kubernetes Lease distributed lock with starter-lock-k8s.
+Run this example to test Kubernetes Lease distributed lock with `starter-lock-k8s`.
 
 ## Features
 
@@ -19,7 +19,7 @@ cd starter-lock-k8s/example
 go run . -manual
 ```
 
-Running directly locally will print a notice and exit gracefully. Press `Ctrl+C` to stop after verification.
+Running directly locally prints a notice and exits gracefully. Press `Ctrl+C` to stop after verification.
 
 ## Smoke Test
 

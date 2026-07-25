@@ -1,6 +1,6 @@
 # starter-pprof Example
 
-Demonstrates pprof endpoint token authentication for starter-pprof.
+Demonstrates pprof endpoint token authentication.
 
 ## Features
 
@@ -10,7 +10,7 @@ Demonstrates pprof endpoint token authentication for starter-pprof.
 
 ## Manual Testing
 
-Terminal 1, start the service and keep it running:
+Terminal 1, start the service:
 ```bash
 cd starter-pprof/example
 go run . -manual
@@ -32,7 +32,7 @@ curl -s -o /dev/null -w '%{http_code}' \
 # -> 200
 ```
 
-Press Ctrl+C to stop the service after verification.
+Press Ctrl+C to stop the service.
 
 ## Smoke Test
 

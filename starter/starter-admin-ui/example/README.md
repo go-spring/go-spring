@@ -1,10 +1,10 @@
 # starter-admin-ui Example
 
-Demonstrates the management interface of starter-admin-ui.
+Management interface for starter-admin-ui.
 
 ## Features
 
-- **Management UI**: Provides a Web UI to view application status and configuration
+- **Management UI**: Web UI to view application status and configuration
 
 ## Manual Testing
 

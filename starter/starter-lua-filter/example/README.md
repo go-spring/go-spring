@@ -1,11 +1,11 @@
 # starter-lua-filter Example
 
-Demonstrates Lua script filtering with starter-lua-filter.
+Run this example to test Lua script filtering with `starter-lua-filter`.
 
 ## Features
 
 - **Lua Filter**: Intercept and modify HTTP requests/responses via Lua scripts
-- **Request Interception**: Validates X-App header guard logic
+- **Request Interception**: Validates `X-App` header guard logic
 - **Response Pass-through**: Legitimate requests pass through to business handlers
 
 ## Manual Testing
@@ -33,4 +33,4 @@ Press Ctrl+C to stop the service after verification.
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

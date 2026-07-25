@@ -2,8 +2,6 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-dubbo` wraps [dubbo.apache.org/dubbo-go/v3](https://pkg.go.dev/dubbo.apache.org/dubbo-go/v3)
 for Go-Spring applications. On the **server** side, register your service and the
 starter builds the Dubbo server, drives its lifecycle, and handles graceful
@@ -315,7 +313,7 @@ them to the chain if you want them, but configure them through their own means:
 
 ## Observability (built in)
 
-Metrics and tracing are on by default, so every server and client gets
+Metrics and tracing are on by default. Every server and client gets
 observability with zero configuration:
 
 ```properties
@@ -345,13 +343,13 @@ spring.dubbo.tracing.endpoint=127.0.0.1:4317
 
 ## Logging (built in)
 
-Importing this starter puts dubbo-go under go-spring's management: its internal
-logs are bridged into go-spring's `log` module automatically (installed in an
-`init()`, no configuration needed). Dubbo-go has two layered logger facades —
+Importing this starter puts dubbo-go under go-spring's management. Its internal
+logs are bridged into go-spring's `log` module automatically — installed in an
+`init()`, no configuration needed. Dubbo-go has two layered logger facades:
 `dubbo-go/v3/logger` (the high-level stack) and `dubbogo/gost/log/logger` (getty
-and low-level modules) — and the bridge installs under both, so every framework
-log line flows through the same pipeline as your own go-spring logs instead of
-dubbo-go's default stdout sink.
+and low-level modules) — and the bridge installs under both. Every framework log line flows through
+the same pipeline as your own go-spring logs instead of dubbo-go's default
+stdout sink.
 
 The bridge only redirects *who writes the log*; you must still configure a
 go-spring log sink, otherwise the forwarded lines land on go-spring's default
@@ -401,4 +399,4 @@ asserted end-to-end by `runTest`:
   `spring.dubbo.server.enabled=false`.
 - At least one `ServiceRegister` bean (i.e. one `RegisterService` call) is required to activate the server.
 - `spring.dubbo.application.name` is required; metrics (Prometheus) and tracing
-  (OTel/stdout) are built in and on by default — see [Observability](#observability-built-in).
+  (OTel/stdout) ship enabled by default — see [Observability](#observability-built-in).

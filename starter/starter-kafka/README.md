@@ -2,8 +2,8 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-kafka` provides a Kafka client wrapper based on github.com/twmb/franz-go,
-making it easy to integrate and use Kafka in Go-Spring applications.
+`starter-kafka` provides a Kafka client wrapper based on
+github.com/twmb/franz-go for Go-Spring applications.
 
 ## Installation
 
@@ -15,8 +15,6 @@ go get go-spring.org/starter-kafka
 
 ### 1. Import the `starter-kafka` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-kafka"
 ```
@@ -24,7 +22,7 @@ import _ "go-spring.org/starter-kafka"
 ### 2. Configure the Kafka Clients
 
 Define one or more named clients under `spring.kafka.<name>` in your
-project's [configuration file](example/conf/app.properties), for example:
+project's [configuration file](example/conf/app.properties):
 
 ```properties
 spring.kafka.a.brokers=127.0.0.1:9092
@@ -35,8 +33,7 @@ spring.kafka.b.brokers=127.0.0.1:9092
 
 ### 3. Inject the Kafka Client
 
-Refer to the [example.go](example/example.go) file. Each named instance is registered
-as a `*kgo.Client` bean under that name; inject the one you need by name.
+Each named instance is registered as a `*kgo.Client` bean under that name; inject the one you need by name.
 
 ```go
 import "github.com/twmb/franz-go/pkg/kgo"
@@ -48,8 +45,7 @@ type Service struct {
 
 ### 4. Use the Kafka Client
 
-Refer to the [example.go](example/example.go) file. The same `*kgo.Client`
-produces and consumes records; producing uses `ProduceSync`, consuming uses
+The same `*kgo.Client` produces and consumes records; producing uses `ProduceSync`, consuming uses
 `PollFetches`.
 
 ```go

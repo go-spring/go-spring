@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-kafka-sarama` provides a Kafka client wrapper based on
-github.com/IBM/sarama, making it easy to integrate and use Kafka in a Go-Spring
+github.com/IBM/sarama. Use it to integrate Kafka in a Go-Spring
 application.
 
 It binds under the `spring.kafka-sarama` configuration prefix, distinct from the
@@ -112,8 +112,8 @@ Why call-site helpers instead of a wrapped producer/consumer:
 
 **Metrics**: sarama emits metrics through its own `go-metrics` registry
 (`sarama.Config.MetricRegistry`), a system unrelated to OTel/Prometheus. Bridging
-it requires a third-party `go-metrics`→Prometheus adapter, so it is intentionally
-left out of scope here rather than shipped as a fragile wrapper.
+it requires a third-party `go-metrics` to Prometheus adapter, so it stays out of
+scope rather than shipping as a fragile wrapper.
 
 ## Advanced
 

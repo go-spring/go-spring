@@ -1,6 +1,6 @@
 # starter-gorm-sqlserver Example
 
-Demonstrates SQL Server database connectivity for starter-gorm-sqlserver.
+Run this example to test SQL Server connectivity via `starter-gorm-sqlserver`.
 
 ## Features
 
@@ -30,7 +30,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+Press Ctrl+C to stop.
 
 ## Smoke Test
 

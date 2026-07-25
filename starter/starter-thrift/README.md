@@ -2,12 +2,10 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
-`starter-thrift` provides a lightweight [Apache Thrift](https://thrift.apache.org/)
+`starter-thrift` provides an [Apache Thrift](https://thrift.apache.org/)
 server wrapper for Go-Spring applications: provide a `thrift.TProcessor`
-bean and the starter takes care of listener setup, lifecycle, and
-graceful shutdown via `TSimpleServer`.
+bean and the starter handles listener setup, lifecycle, and graceful shutdown
+via `TSimpleServer`.
 
 ## Installation
 
@@ -18,8 +16,6 @@ go get go-spring.org/starter-thrift
 ## Quick Start
 
 ### 1. Import the `starter-thrift` package
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 import _ "go-spring.org/starter-thrift"
@@ -53,8 +49,6 @@ spring.thrift.server.tls.key-file=
 ```
 
 ### 3. Register your processor
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 gs.Provide(&Controller{})

@@ -1,11 +1,11 @@
 # starter-bigcache Example
 
-Demonstrates in-process hot cache for starter-bigcache.
+In-process hot cache for starter-bigcache.
 
 ## Features
 
 - **SET/GET**: Write cache entries and read them back for verification
-- **TTL Expiry**: Write entries with short TTL, verify they return not-found after expiry
+- **TTL Expiry**: Write entries with a short TTL; verify they return not-found after expiry
 - **HTTP Endpoint**: Read cache values via the `/get` endpoint
 
 ## Manual Testing

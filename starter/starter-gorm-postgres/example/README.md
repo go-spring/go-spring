@@ -1,6 +1,6 @@
 # starter-gorm-postgres Example
 
-Demonstrates PostgreSQL database connectivity for starter-gorm-postgres.
+Run this example to test PostgreSQL connectivity via `starter-gorm-postgres`.
 
 ## Features
 
@@ -30,7 +30,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+Press Ctrl+C to stop.
 
 ## Smoke Test
 

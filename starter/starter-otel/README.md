@@ -21,11 +21,11 @@ component (e.g. gorm plugin)  ──reads──▶  OTel globals (otel.GetTracer
 starter-otel  ──sets at startup───────────────┘  otel.SetTracerProvider / SetMeterProvider
 ```
 
-- **Components depend on the OTel API, not on this starter.** They are decoupled
-  through the OTel process globals.
+- **Components depend on the OTel API, not on this starter.** The OTel process
+  globals decouple them.
 - **Enablement is global and implicit.** Importing `starter-otel` installs real
   providers; omitting it leaves the no-op globals in place.
-- **Timing is guaranteed.** Providers are built eagerly during module setup,
+- **Timing is guaranteed.** The starter builds providers eagerly during module setup,
   which runs before any component bean is constructed, so a component always sees
   a live provider when it installs its plugin.
 
@@ -75,8 +75,8 @@ through these providers.
 
 ## Built-in Exporters
 
-The exporters below are compiled into `starter-otel`; you select one per signal
-via the `exporter` key — no extra dependency or code is needed.
+`starter-otel` compiles the exporters below; you select one per signal
+via the `exporter` key — no extra dependency or code needed.
 
 Trace (`spring.observability.trace.exporter`):
 
@@ -136,7 +136,7 @@ Metrics, under `${spring.observability.metrics}`:
 ## Metrics via the Actuator
 
 When `starter-actuator` is also imported, the Prometheus exporter's scrape
-handler is mounted on the actuator management port (`:9370`) in addition to — or
+handler mounts on the actuator management port (`:9370`) as well as — or
 instead of — its own standalone server. Operators then scrape a **single port**
 for probes *and* metrics.
 
@@ -171,7 +171,7 @@ section for Pod-annotation and `ServiceMonitor` scrape samples.
 
 When tracing is enabled, `starter-otel` installs a `log.FieldsFromContext` hook
 that lifts the active span's `trace_id` and `span_id` off the context onto every
-log record written with that context. A request's logs are then joined to its
+log record written with that context. This joins a request's logs to its
 trace with no per-call-site code:
 
 ```go
@@ -205,7 +205,7 @@ See [example](example) for a runnable, self-asserting smoke test: importing
 `starter-otel` + `starter-actuator` and configuring `${spring.observability}`
 once is enough to (1) correlate a request's logs to its trace via `trace_id` and
 (2) serve otel's Prometheus `/metrics` on the actuator management port — with no
-external services (tracing uses the stdout exporter, metrics are scraped
+external services (tracing uses the stdout exporter, metrics scrape
 in-process).
 
 See [contrib/observability-gorm](../../contrib/observability-gorm) for an
@@ -215,5 +215,5 @@ per-component instrumentation code.
 
 ## Graceful Shutdown
 
-The providers are registered as beans with destroy hooks, so on shutdown the
-buffered spans and metrics are flushed and the exporters are closed cleanly.
+The starter registers the providers as beans with destroy hooks, so on shutdown
+the buffered spans and metrics flush and the exporters close cleanly.

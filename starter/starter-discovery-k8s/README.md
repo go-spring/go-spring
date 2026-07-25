@@ -3,14 +3,14 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-discovery-k8s` provides **Kubernetes-native client-side service
-discovery** for Go-Spring. Inside a cluster the platform already registers every
-Pod behind a Service, so an application should discover peers through that
-capability instead of standing up a second external registry (Nacos/Consul).
+discovery** for Go-Spring. The platform registers every Pod behind a Service
+in-cluster, so an application discovers peers through that capability instead of
+standing up a second registry (Nacos/Consul).
 
 Blank-importing this starter and declaring a `spring.discovery.k8s.<name>` entry
 registers a `discovery.Discovery` backend (from `spring/discovery`) under
 `<name>`. Any client starter that supports discovery — Redis, GORM, ... —
-resolves a Kubernetes **Service name** to live Pod endpoints by setting its
+resolves a Kubernetes **Service name** to live Pod endpoints via its
 `discovery: <name>` field. This starter does **client-side discovery only**; it
 never registers a service (the platform does that).
 
@@ -88,7 +88,7 @@ Bound under `spring.discovery.k8s.<name>`:
 ## How It Works
 
 - Registration happens during the container's bean-registration phase, before
-  any client constructor runs — so when a Redis/GORM client calls
+  any client constructor runs — when a Redis/GORM client calls
   `discovery.MustGet("<name>")`, the backend is already present.
 - **DNS mode** resolves `<service>.<namespace>.svc.<cluster-domain>`. With
   `port-name` set it issues an SRV query (`_<port-name>._tcp.<fqdn>`) for

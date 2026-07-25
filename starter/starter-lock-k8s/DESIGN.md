@@ -55,8 +55,7 @@ backed by Kubernetes `coordination.k8s.io/Lease` objects.
 ## 4. Trade-offs / Alternatives Rejected
 
 - **Custom CRD — rejected.** Lease is a standard, GA API; requiring a
-  custom CRD would break every stock cluster and every developer's local
-  minikube.
+  custom CRD would break every stock cluster and local minikube.
 - **Reusing client-go's `leaderelection.LeaderElector` — rejected.** That
   helper owns its own loop with callbacks; it does not model an on-demand
   `Acquire(key)` API, so the lock semantics would leak through the

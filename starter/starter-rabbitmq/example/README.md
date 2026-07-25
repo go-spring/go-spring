@@ -1,12 +1,12 @@
 # starter-rabbitmq Example
 
-Demonstrates the RabbitMQ messaging client of starter-rabbitmq.
+Demonstrates RabbitMQ messaging client.
 
 ## Features
 
 - **Default Exchange**: Publish/consume messages via the default exchange
-- **Queue Declaration**: Automatically declare queues
-- **Message Acknowledgment**: Auto ack after consuming
+- **Queue Declaration**: Automatically declares queues
+- **Message Acknowledgment**: Auto acks after consuming
 
 > Requires RabbitMQ service running. `check.sh` starts RabbitMQ via docker compose.
 
@@ -35,7 +35,7 @@ sleep 10
 go run . -manual
 ```
 
-Open `http://127.0.0.1:15672` (guest/guest) in browser to view the management UI.
+Open `http://127.0.0.1:15672` (guest/guest) in your browser to view the management UI.
 
 ## Smoke Test
 
@@ -43,4 +43,4 @@ Open `http://127.0.0.1:15672` (guest/guest) in browser to view the management UI
 ./check.sh
 ```
 
-`check.sh` starts RabbitMQ via docker compose, runs the example and verifies the messages, exit code 0 means pass.
+`check.sh` starts RabbitMQ via docker compose, runs the example and verifies messages, exit code 0 means pass.

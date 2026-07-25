@@ -2,15 +2,12 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-migration-gorm` runs the schema-migration capability defined in
 [`go-spring.org/spring/migration`](../../spring/migration) at application
 startup, backed by a [gorm](https://gorm.io) `*gorm.DB` bean the application
-already registered. It is the Go-Spring equivalent of putting **Flyway** or
-**Liquibase** on the classpath — versioned, checksum-guarded, forward-only
-migrations applied before the first request — reached with idiomatic Go rather
-than by replicating their XML/DSL machinery.
+already registered. It is equivalent to putting **Flyway** or
+**Liquibase** on the classpath -- versioned, checksum-guarded, forward-only
+migrations applied before the first request.
 
 It is a **client-form-variant integration** starter (see [DESIGN.md](../DESIGN.md)
 §2.2): it consumes a named `*gorm.DB` bean rather than opening a connection of

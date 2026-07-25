@@ -6,7 +6,7 @@
 configuration center** for Go-Spring, built on
 github.com/nacos-group/nacos-sdk-go/v2. Blank-importing it registers a `nacos`
 config provider that pulls application configuration from a Nacos config server
-at startup and hot-reloads it at runtime — no restart required.
+at startup and hot-reloads it at runtime without restarting.
 
 This starter covers the config-center role only. Service discovery (Nacos
 naming) is a separate concern and is not provided here.
@@ -61,7 +61,7 @@ type Demo struct {
 When the remote config changes, the provider's change listener triggers an
 application property refresh, and all bound `gs.Dync` fields are updated
 atomically. See [example-config](example-config/example.go) for the full
-publish → hot-reload flow.
+publish to hot-reload flow.
 
 ## How It Works
 

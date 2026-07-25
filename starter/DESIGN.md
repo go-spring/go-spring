@@ -2,10 +2,9 @@
 
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
-This document captures the design constraints that every official Go-Spring
-starter follows. It is meant to keep the family consistent and to guide anyone
-adding a new starter. For the domain-based catalog of what exists today, see
-[README.md](README.md).
+Design constraints that every official Go-Spring starter follows — to keep the
+family consistent and guide anyone adding a new starter. For the domain-based
+catalog of what exists today, see [README.md](README.md).
 
 A starter is an *integration module*: it wires one third-party service or
 framework into the Go-Spring IoC container and server lifecycle, and nothing
@@ -185,7 +184,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   `spring/actuator/health.NewIndicator` (factory for that package's
   `Indicator` interface), `stdlib/errutil.RequireField`/`RequireAny`
   (formatting sugar over `errutil.Explain`). Starters import these directly.
-  A *new* cross-cutting concern that no existing package naturally owns is
+  A *new* cross-cutting concern that no existing package currently owns is
   still inlined per-starter until a second home materializes - do not
   pre-emptively create a shared package for it.
 - **Prefer framework-native registration and discovery; unify only where none

@@ -1,6 +1,6 @@
 # starter-mesh Example
 
-Demonstrates the service mesh pattern with starter-mesh.
+Run this example to test the service mesh pattern with `starter-mesh`.
 
 ## Features
 
@@ -26,4 +26,4 @@ OK: mesh mode degrades discovery + load balancing to a pass-through
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

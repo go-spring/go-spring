@@ -2,10 +2,8 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
-`starter-go-redis` provides a Redis client wrapper based on go-redis,
-making it easy to integrate and use Redis in Go-Spring applications.
+`starter-go-redis` provides a Redis client wrapper based on go-redis for
+Go-Spring applications.
 
 ## Installation
 
@@ -17,23 +15,19 @@ go get go-spring.org/starter-go-redis
 
 ### 1. Import the `starter-go-redis` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-go-redis"
 ```
 
 ### 2. Configure the Redis Instance
 
-Add Redis configuration in your project’s [configuration file](example/conf/app.properties), for example:
+Add Redis configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
 spring.go-redis.main.addr=127.0.0.1:6379
 ```
 
 ### 3. Inject the Redis Instance
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 import "github.com/redis/go-redis/v9"
@@ -44,8 +38,6 @@ type Service struct {
 ```
 
 ### 4. Use the Redis Instance
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 str, err := s.Redis.Get(r.Context(), "key").Result()
@@ -121,11 +113,10 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 
 ## Advanced Features
 
-* **Supports multiple Redis instances**: You can define multiple Redis instances in the configuration file and reference
-  them by name in your project.
+* **Supports multiple Redis instances**: you can define multiple Redis instances in the configuration file and reference them by name.
 * **Multiple topologies**: `mode` selects `single` (default), `sentinel`, or `cluster` — see the Topologies section
   above. Cluster instances are exposed as `*redis.ClusterClient`; single/sentinel as `*redis.Client`.
-* **Support Redis extensions**: You can extend Redis functionality by implementing the `Driver` interface — see the
+* **Support Redis extensions**: implement the `Driver` interface to extend Redis functionality — see the
   example implementation `AnotherRedisDriver`. Cluster support is an optional `ClusterDriver` interface, so existing
   custom drivers keep compiling unchanged.
 * **Startup connection validation (fail-fast)**: after building the client the starter issues a `Ping`; a misconfigured

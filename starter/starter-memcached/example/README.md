@@ -1,13 +1,13 @@
 # starter-memcached Example
 
-Demonstrates the Memcached client with starter-memcached.
+Run this example to test the Memcached client with `starter-memcached`.
 
 ## Features
 
 - **String SET/GET**: Write and read string key-value pairs
 - **Multi-Driver Support**: Switch between different Memcached drivers
 
-> Requires Memcached service running. check.sh starts Memcached via docker compose.
+> Requires Memcached service running. `check.sh` starts Memcached via docker compose.
 
 ## Manual Testing
 
@@ -31,7 +31,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+Press Ctrl+C to stop.
 
 ## Smoke Test
 
@@ -39,4 +39,4 @@ The service keeps running. You can verify with corresponding CLI tools. Press Ct
 ./check.sh
 ```
 
-check.sh starts Memcached via docker compose, runs the example and verifies operations, exit code 0 means pass.
+`check.sh` starts Memcached via docker compose, runs the example and verifies operations, exit code 0 means pass.

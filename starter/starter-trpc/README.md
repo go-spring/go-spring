@@ -2,12 +2,12 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-trpc` provides a lightweight [trpc-group/trpc-go](https://github.com/trpc-group/trpc-go)
+`starter-trpc` provides a [trpc-group/trpc-go](https://github.com/trpc-group/trpc-go)
 server wrapper for Go-Spring applications: register your service, and the
 starter builds the tRPC server, drives its lifecycle, and shuts it down
 gracefully alongside every other Go-Spring server.
 
-The deliberate design point: unify tRPC-Go's configuration into Go-Spring's
+The design point: unify tRPC-Go's configuration into Go-Spring's
 property system. The starter translates properties under the
 `spring.trpc.server` prefix into a tRPC `*Config`, then calls
 `trpc.NewServerWithConfig(cfg)` — **no `trpc_go.yaml` file is used**.
@@ -21,8 +21,6 @@ go get go-spring.org/starter-trpc
 ## Quick Start
 
 ### 1. Import the `starter-trpc` package
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 import StarterTrpc "go-spring.org/starter-trpc"
@@ -40,8 +38,7 @@ spring.trpc.server.service.name=trpc.helloworld.greet.GreetService
 
 ### 3. Register your service
 
-Refer to the [example.go](example/example.go) file. Wrap the generated
-`xxx.RegisterXxxServiceService` in a `StarterTrpc.ServiceRegister` bean — the
+Wrap the generated `xxx.RegisterXxxServiceService` in a `StarterTrpc.ServiceRegister` bean — the
 starter builds the `*server.Server` and calls this to bind your handler, so it
 never depends on generated code:
 

@@ -70,7 +70,7 @@ _ = svc.Bus.Publish("db")
 
 Every instance subscribing to the subject re-runs `RefreshProperties`, so all
 bound `gs.Dync` fields update live. See [example](example/example.go) for the
-full broadcast → refresh flow.
+full broadcast to refresh flow.
 
 ## How It Works
 

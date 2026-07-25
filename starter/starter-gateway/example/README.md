@@ -1,12 +1,12 @@
 # starter-gateway Example
 
-Demonstrates API gateway proxying and filters with starter-gateway.
+API gateway proxying and filters with starter-gateway.
 
 ## Features
 
 - **Reverse Proxy**: Forwards requests to backend upstream services
 - **Request Filter**: `addRequestHeader` filter injects the `X-From` header
-- **End-to-End Verification**: Starts an embedded backend, verifies the full proxy + filter pipeline
+- **End-to-End Verification**: Starts an embedded backend and verifies the full proxy + filter pipeline
 
 ## Manual Testing
 

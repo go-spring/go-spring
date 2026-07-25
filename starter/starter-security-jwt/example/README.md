@@ -1,6 +1,6 @@
 # starter-security-jwt Example
 
-Demonstrates JWT authentication with starter-security-jwt.
+Demonstrates JWT authentication.
 
 ## Features
 
@@ -10,7 +10,7 @@ Demonstrates JWT authentication with starter-security-jwt.
 
 ## Manual Testing
 
-Terminal 1, start the service and keep it running:
+Terminal 1, start the service:
 ```bash
 cd starter-security-jwt/example
 go run . -manual
@@ -27,7 +27,7 @@ curl -i -H 'Authorization: Bearer <token>' http://127.0.0.1:9090/me
 # -> HTTP/1.1 200 OK
 ```
 
-Press Ctrl+C to stop the service after verification.
+Press Ctrl+C to stop the service.
 
 ## Smoke Test
 
@@ -35,4 +35,4 @@ Press Ctrl+C to stop the service after verification.
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

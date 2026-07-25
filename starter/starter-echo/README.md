@@ -2,12 +2,10 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
-`starter-echo` wires the [labstack/echo](https://github.com/labstack/echo) web framework into Go-Spring.
-The starter owns the `*echo.Echo` and its HTTP server (created from configuration); the application only
-provides a `RouterRegister` bean to mount routes and middleware, and everything is served through the
-Go-Spring server lifecycle.
+`starter-echo` wires the [labstack/echo](https://github.com/labstack/echo) web framework into
+Go-Spring. The starter owns the `*echo.Echo` and its HTTP server (created from configuration); the
+application only provides a `RouterRegister` bean to mount routes and middleware, and everything
+is served through the Go-Spring server lifecycle.
 
 ## Installation
 
@@ -19,15 +17,13 @@ go get go-spring.org/starter-echo
 
 ### 1. Import the `starter-echo` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-echo"
 ```
 
 ### 2. Configure the Echo Server
 
-Add configuration in your project's [configuration file](example/conf/app.properties), for example:
+Add configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
 # Let echo own the HTTP port; disable Go-Spring's built-in server.
@@ -75,8 +71,7 @@ The starter registers its server bean when `spring.echo.server.enabled` is `true
 ### 3. Provide a `RouterRegister` Bean
 
 The starter creates and configures the `*echo.Echo` (banner hidden, plus the built-in middlewares
-below) and hands it to your register. Mount routes and middleware there. Refer to the
-[example.go](example/example.go) file.
+below) and hands it to your register. Mount routes and middleware there.
 
 ```go
 gs.Provide(func(c *Controller) StarterEcho.RouterRegister {

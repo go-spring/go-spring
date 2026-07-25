@@ -1,14 +1,14 @@
 # starter-config-etcd Example
 
-Demonstrates etcd KV config management with starter-config-etcd.
+etcd KV config management with starter-config-etcd.
 
 ## Features
 
 - **Config loading**: Read config items from etcd KV
-- **Config hot reload**: Modify KV via etcd API, application perceives changes in real time
-- **Dync dynamic binding**: Bind config via `Dync[T]`, auto refresh
+- **Config hot reload**: Modify KV via etcd API; the app picks up changes in real time
+- **Dync dynamic binding**: Bind config via `Dync[T]`; refreshes automatically
 
-> Requires etcd service running. `check.sh` starts etcd via docker compose.
+> Requires a running etcd service. `check.sh` starts etcd via docker compose.
 
 ## Manual Testing
 
@@ -32,7 +32,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+The service keeps running. Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

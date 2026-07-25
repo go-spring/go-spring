@@ -3,8 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-memcached` provides a Memcached client wrapper based on
-[gomemcache](https://github.com/bradfitz/gomemcache), making it easy to
-integrate and use Memcached in Go-Spring applications.
+[gomemcache](https://github.com/bradfitz/gomemcache) for Go-Spring applications.
 
 ## Installation
 
@@ -16,23 +15,19 @@ go get go-spring.org/starter-memcached
 
 ### 1. Import the `starter-memcached` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-memcached"
 ```
 
 ### 2. Configure the Memcached Instance
 
-Add Memcached configuration in your project’s [configuration file](example/conf/app.properties), for example:
+Add Memcached configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
 spring.memcached.main.servers=127.0.0.1:11211
 ```
 
 ### 3. Inject the Memcached Instance
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 import "github.com/bradfitz/gomemcache/memcache"
@@ -43,8 +38,6 @@ type Service struct {
 ```
 
 ### 4. Use the Memcached Instance
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 err := s.Memcached.Set(&memcache.Item{Key: "key", Value: []byte("value")})
@@ -61,9 +54,8 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 
 ## Advanced Features
 
-* **Supports multiple Memcached instances**: You can define multiple Memcached instances in the configuration file and
-  reference them by name in your project.
-* **Support Memcached extensions**: You can extend Memcached functionality by implementing the `Driver` interface — see
+* **Supports multiple Memcached instances**: you can define multiple instances in the configuration file and reference them by name.
+* **Support Memcached extensions**: implement the `Driver` interface to extend Memcached functionality — see
   the example implementation `AnotherMemcachedDriver`.
 * **Startup connection validation (fail-fast)**: after building the client the starter issues a `Ping` against every
   configured server; an unreachable server fails the boot instead of the first request.

@@ -1,6 +1,6 @@
 # starter-neo4j Example
 
-Demonstrates Neo4j graph database client for starter-neo4j.
+Demonstrates Neo4j graph database client.
 
 ## Features
 
@@ -32,7 +32,7 @@ docker compose up -d
 go run . -manual
 ```
 
-Open `http://127.0.0.1:7474` in browser to view Neo4j Browser.
+Open `http://127.0.0.1:7474` in your browser to view Neo4j Browser.
 
 ## Smoke Test
 

@@ -2,8 +2,6 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-hertz` adapts the [CloudWeGo Hertz](https://github.com/cloudwego/hertz)
 HTTP framework to the Go-Spring server lifecycle. The starter owns the
 `*server.Hertz` and its listener (address from configuration); the application
@@ -21,8 +19,6 @@ go get go-spring.org/starter-hertz
 
 ### 1. Import the `starter-hertz` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-hertz"
 ```
@@ -30,8 +26,7 @@ import _ "go-spring.org/starter-hertz"
 ### 2. Provide a `RouterRegister` Bean
 
 The starter creates the `*server.Hertz` on the configured address and hands it
-to your register; you mount middleware and routes there. Refer to the
-[example.go](example/example.go) file.
+to your register; mount middleware and routes there.
 
 ```go
 gs.Provide(func(c *Controller) StarterHertz.RouterRegister {

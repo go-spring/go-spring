@@ -2,14 +2,11 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-websocket` contributes a configured `*websocket.Upgrader` built on
 [gorilla/websocket](https://github.com/gorilla/websocket) to a Go-Spring
 application. It does **not** own an HTTP server or a listening port: a WebSocket
-connection is just an HTTP `Upgrade`, so you mount your WebSocket routes onto
-whatever HTTP server the application already runs (net/http, gin, echo,
-hertz, ...).
+connection is an HTTP `Upgrade`, so mount your WebSocket routes onto whatever
+HTTP server the application already runs (net/http, gin, echo, hertz, ...).
 
 ## Installation
 
@@ -21,8 +18,7 @@ go get go-spring.org/starter-websocket
 
 ### 1. Import the `starter-websocket` Package
 
-Refer to the [example.go](example/example.go) file. A blank import is enough —
-you only need its `init()` to register the `*websocket.Upgrader` provider:
+A blank import is enough -- only its `init()` registers the `*websocket.Upgrader` provider:
 
 ```go
 import _ "go-spring.org/starter-websocket"

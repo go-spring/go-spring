@@ -2,14 +2,11 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-repository-gorm` is the [gorm](https://gorm.io)-backed implementation of
 the framework-neutral [`go-spring.org/spring/repository`](../../spring/repository)
 abstraction. It translates a `repository.Query` into gorm's chained builder and
 returns a ready-to-use generic `repository.Repository[T, ID]` over any
-`*gorm.DB` — the Go-idiomatic equivalent of a Spring Data JPA repository, without
-JPA or method-name query parsing.
+`*gorm.DB`.
 
 It is a **library-first integration module**, not a blank-import starter: a
 repository is parameterised over a domain type the application owns, so there is

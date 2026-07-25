@@ -1,11 +1,11 @@
 # starter-otel Example
 
-Demonstrates OpenTelemetry tracing and log correlation for starter-otel.
+Demonstrates OpenTelemetry tracing and log correlation.
 
 ## Features
 
-- **Trace-Log correlation**: After creating a Span, logs automatically carry trace_id/span_id
-- **Span export**: Spans are correctly recorded and exported to the configured exporter
+- **Trace-Log correlation**: After creating a Span, logs automatically carry `trace_id`/`span_id`
+- **Span export**: Spans are recorded and exported to the configured exporter
 
 ## Manual Testing
 
@@ -14,7 +14,7 @@ cd starter-otel/example
 go run . -manual
 ```
 
-The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
+The service keeps running. Press Ctrl+C to exit. Without `-manual`, `runTest()` executes automatically and exits.
 
 ## Smoke Test
 

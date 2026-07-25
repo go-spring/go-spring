@@ -1,6 +1,6 @@
 # starter-trpc Example
 
-Demonstrates tRPC service registration and invocation using starter-trpc.
+Demonstrates tRPC service registration and invocation.
 
 ## Features
 
@@ -10,15 +10,15 @@ Demonstrates tRPC service registration and invocation using starter-trpc.
 
 ## Manual Testing
 
-Terminal 1, start the service and keep it running:
+Terminal 1, start the service:
 ```bash
 cd starter-trpc/example
 go run . -manual
 ```
 
-The service is listening on :8000. You can connect and verify using tRPC-generated client proxy code.
+The service listens on :8000. Connect and verify using tRPC-generated client proxy code.
 
-Press Ctrl+C to stop the service after verification.
+Press Ctrl+C to stop the service.
 
 ## Smoke Test
 
@@ -26,4 +26,4 @@ Press Ctrl+C to stop the service after verification.
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

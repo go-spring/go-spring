@@ -2,12 +2,10 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
-`starter-kitex` provides a lightweight [github.com/cloudwego/kitex](https://pkg.go.dev/github.com/cloudwego/kitex)
-server wrapper for Go-Spring applications: register your service, and the
-starter takes care of server construction, optional etcd registration,
-lifecycle, and graceful shutdown.
+`starter-kitex` provides a [github.com/cloudwego/kitex](https://pkg.go.dev/github.com/cloudwego/kitex)
+server wrapper for Go-Spring applications: register your service, and the starter
+handles server construction, optional etcd registration, lifecycle, and graceful
+shutdown.
 
 ## Installation
 
@@ -18,8 +16,6 @@ go get go-spring.org/starter-kitex
 ## Quick Start
 
 ### 1. Import the `starter-kitex` package
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 import StarterKitex "go-spring.org/starter-kitex"
@@ -38,8 +34,7 @@ spring.kitex.server.compatible-unary-middleware=true
 
 ### 3. Register your service
 
-Refer to the [example.go](example/example.go) file. Wrap the generated
-`xxxservice.RegisterService` in a `StarterKitex.ServiceRegister` bean — the
+Wrap the generated `xxxservice.RegisterService` in a `StarterKitex.ServiceRegister` bean — the
 starter builds the raw `server.Server` and calls this to bind your handler,
 so it never depends on generated code:
 

@@ -1,14 +1,14 @@
 # starter-config-vault Example
 
-Demonstrates Vault encrypted config management with starter-config-vault.
+Vault encrypted config management with starter-config-vault.
 
 ## Features
 
 - **Encrypted config**: Read encrypted config items from Vault
 - **Config decryption**: Decrypt config values via AES key
-- **Config hot reload**: Application perceives changes in real time after publishing new encrypted values
+- **Config hot reload**: The app picks up changes in real time after publishing new encrypted values
 
-> Requires Vault service running. `check.sh` starts Vault via docker compose.
+> Requires a running Vault service. `check.sh` starts Vault via docker compose.
 
 ## Manual Testing
 
@@ -32,7 +32,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+The service keeps running. Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

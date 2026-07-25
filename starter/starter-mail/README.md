@@ -3,13 +3,12 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-mail` provides an SMTP mailer wrapper based on
-github.com/wneessen/go-mail, making it easy to send transactional email
-(notifications, alerts, verification codes) from Go-Spring applications. The
-library is pure Go, so cross-compilation stays clean.
+github.com/wneessen/go-mail. Send transactional email (notifications, alerts,
+verification codes) from Go-Spring applications. The library is pure Go.
 
-It sends only — there is no IMAP/POP3 receiving — and ships no template engine:
-the caller renders the HTML body itself and passes the final string in, so you
-keep full control over templating.
+It sends only — there is no IMAP/POP3 receiving — and ships no template engine.
+The caller renders the HTML body and passes the final string in, keeping full
+control over templating.
 
 ## Installation
 

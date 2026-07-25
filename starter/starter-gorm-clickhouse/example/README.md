@@ -1,6 +1,6 @@
 # starter-gorm-clickhouse Example
 
-Demonstrates ClickHouse database connectivity for starter-gorm-clickhouse.
+Run this example to test ClickHouse connectivity via `starter-gorm-clickhouse`.
 
 ## Features
 
@@ -30,7 +30,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+Press Ctrl+C to stop.
 
 ## Smoke Test
 

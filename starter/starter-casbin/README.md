@@ -2,11 +2,9 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
-`starter-casbin` provides a [Casbin](https://casbin.org) access-control wrapper,
-making it easy to build authorization (RBAC/ABAC/ACL) into Go-Spring applications.
-The enforcer is registered as a bean and consumed purely by injection.
+`starter-casbin` provides a [Casbin](https://casbin.org) access-control wrapper for
+Go-Spring applications. The enforcer is registered as a bean and consumed by
+injection.
 
 ## Installation
 
@@ -18,8 +16,6 @@ go get go-spring.org/starter-casbin
 
 ### 1. Import the `starter-casbin` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-casbin"
 ```
@@ -27,8 +23,8 @@ import _ "go-spring.org/starter-casbin"
 ### 2. Provide a Model and a Policy
 
 Casbin needs a [model file](example/conf/model.conf) (the matching rules) and a
-[policy file](example/conf/policy.csv) (the rules themselves). Then declare an
-enforcer instance in your [configuration file](example/conf/app.properties):
+[policy file](example/conf/policy.csv) (the rules themselves). Then declare an enforcer instance in your
+[configuration file](example/conf/app.properties):
 
 ```properties
 spring.casbin.rbac.model=./conf/model.conf
@@ -38,10 +34,6 @@ spring.casbin.rbac.policy=./conf/policy.csv
 The last key segment (`rbac`) is the bean name.
 
 ### 3. Inject the Enforcer
-
-Refer to the [example.go](example/example.go) file. Bind by the instance name.
-The bean is a `*StarterCasbin.Enforcer` that embeds `*casbin.Enforcer`, so all the
-usual methods (`Enforce`, `AddPolicy`, ...) are available directly.
 
 ```go
 import StarterCasbin "go-spring.org/starter-casbin"

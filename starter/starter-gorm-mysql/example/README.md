@@ -1,13 +1,13 @@
 # starter-gorm-mysql Example
 
-Demonstrates MySQL database connectivity for starter-gorm-mysql.
+MySQL database connectivity for starter-gorm-mysql.
 
 ## Features
 
 - **Database connection**: Connect to MySQL via GORM
 - **Version query**: Run `SELECT VERSION()` to verify connectivity
 
-> Requires MySQL service running. `check.sh` starts MySQL via docker compose.
+> Requires a running MySQL service. `check.sh` starts MySQL via docker compose.
 
 ## Manual Testing
 
@@ -30,7 +30,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+The service keeps running. Press Ctrl+C to stop.
 
 ## Smoke Test
 

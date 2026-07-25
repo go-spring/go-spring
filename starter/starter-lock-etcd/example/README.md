@@ -1,6 +1,6 @@
 # starter-lock-etcd Example
 
-Demonstrates etcd distributed lock with starter-lock-etcd.
+Run this example to test etcd distributed lock with `starter-lock-etcd`.
 
 ## Features
 
@@ -33,7 +33,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

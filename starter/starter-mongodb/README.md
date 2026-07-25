@@ -2,8 +2,8 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-mongodb` provides a MongoDB client wrapper based on go.mongodb.org/mongo-driver/v2,
-making it easy to integrate and use MongoDB in Go-Spring applications.
+`starter-mongodb` provides a MongoDB client wrapper based on
+go.mongodb.org/mongo-driver/v2 for Go-Spring applications.
 
 ## Installation
 
@@ -15,8 +15,6 @@ go get go-spring.org/starter-mongodb
 
 ### 1. Import the `starter-mongodb` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-mongodb"
 ```
@@ -24,7 +22,7 @@ import _ "go-spring.org/starter-mongodb"
 ### 2. Configure the MongoDB Instances
 
 Define one or more named instances under `spring.mongodb.<name>` in your
-project's [configuration file](example/conf/app.properties), for example:
+project's [configuration file](example/conf/app.properties):
 
 ```properties
 spring.mongodb.a.uri=mongodb://127.0.0.1:27017
@@ -33,8 +31,7 @@ spring.mongodb.b.uri=mongodb://127.0.0.1:27017
 
 ### 3. Inject the MongoDB Instance
 
-Refer to the [example.go](example/example.go) file. Each named instance is registered
-as a `*mongo.Client` bean under that name; inject the one you need by name.
+Each named instance is registered as a `*mongo.Client` bean under that name; inject the one you need by name.
 
 ```go
 import "go.mongodb.org/mongo-driver/v2/mongo"
@@ -45,8 +42,6 @@ type Service struct {
 ```
 
 ### 4. Use the MongoDB Instance
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 coll := s.Mongo.Database("test").Collection("kv")

@@ -5,8 +5,8 @@
 `starter-config-etcd` integrates [etcd](https://etcd.io/) as a **remote
 configuration center** for Go-Spring, built on go.etcd.io/etcd/client/v3.
 Blank-importing it registers an `etcd` config provider that pulls application
-configuration from an etcd cluster at startup and hot-reloads it at runtime —
-no restart required.
+configuration from an etcd cluster at startup and hot-reloads it at runtime
+without restarting.
 
 This starter covers the config-center role only. Service discovery (etcd
 naming) is a separate concern and is not provided here.
@@ -58,7 +58,7 @@ type Demo struct {
 
 When the etcd key changes, the provider's watcher triggers an application
 property refresh, and all bound `gs.Dync` fields are updated atomically. See
-[example-config](example-config/example.go) for the full publish -> hot-reload
+[example-config](example-config/example.go) for the full publish to hot-reload
 flow.
 
 ## How It Works

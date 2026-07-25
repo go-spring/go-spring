@@ -2,11 +2,8 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-neo4j` provides a Neo4j client wrapper based on the official
-neo4j-go-driver, making it easy to integrate and use the Neo4j graph database in
-Go-Spring applications.
+neo4j-go-driver for Go-Spring applications.
 
 ## Installation
 
@@ -18,15 +15,13 @@ go get go-spring.org/starter-neo4j
 
 ### 1. Import the `starter-neo4j` Package
 
-Refer to the [example.go](example/example.go) file.
-
 ```go
 import _ "go-spring.org/starter-neo4j"
 ```
 
 ### 2. Configure the Neo4j Instance
 
-Add Neo4j configuration in your project's [configuration file](example/conf/app.properties), for example:
+Add Neo4j configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
 spring.neo4j.graph.uri=bolt://127.0.0.1:7687
@@ -35,8 +30,6 @@ spring.neo4j.graph.password=password
 ```
 
 ### 3. Inject the Neo4j Instance
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 import "github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -47,8 +40,6 @@ type Service struct {
 ```
 
 ### 4. Use the Neo4j Instance
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 res, err := neo4j.ExecuteQuery(ctx, s.Neo4j,
@@ -67,9 +58,8 @@ The [example.go](example/example.go) file demonstrates the following core Neo4j 
 
 ## Advanced Features
 
-* **Supports multiple Neo4j instances**: You can define multiple Neo4j instances in the configuration file and reference
-  them by name in your project.
-* **Support Neo4j extensions**: You can extend Neo4j functionality by implementing the `Driver` interface — see the
+* **Supports multiple Neo4j instances**: you can define multiple Neo4j instances in the configuration file and reference them by name.
+* **Support Neo4j extensions**: implement the `Driver` interface to extend Neo4j functionality — see the
   example implementation `AnotherNeo4jDriver`.
 * **Service discovery**: set `service-name` on an instance to resolve its address
   through a registered discovery backend instead of the URI host. The endpoint is

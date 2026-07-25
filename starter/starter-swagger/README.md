@@ -68,14 +68,14 @@ The [example.go](example/example.go) program demonstrates and asserts three thin
 
 ## Design Notes
 
-* **No vendored assets**: the CSS/JS bundle is loaded from a CDN
+* **No vendored assets**: the starter loads the CSS/JS bundle from a CDN
   (`spring.swagger.assetBaseURL`, default `unpkg.com/swagger-ui-dist@5`) at
-  runtime, so the starter ships only a small HTML shell. Point it at a
+  runtime, so it ships only a small HTML shell. Point it at a
   self-hosted mirror for air-gapped environments.
-* **Fail fast**: the OpenAPI document is read once at startup; a missing or
+* **Fail fast**: the starter reads the OpenAPI document once at startup; a missing or
   unreadable spec surfaces immediately rather than 404ing after the app is live.
-* **No port of its own**: the UI is contributed as a bean/`endpoint.Endpoint`;
-  it is mounted on a server the application already runs (the actuator's
+* **No port of its own**: the starter contributes the UI as a bean/`endpoint.Endpoint`;
+  it mounts on a server the application already runs (the actuator's
   management port or the app's own HTTP server).
 * **Toggle without code changes**: set `spring.swagger.enabled=false` to disable
   the docs in production while keeping the import.

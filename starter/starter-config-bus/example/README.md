@@ -1,13 +1,13 @@
 # starter-config-bus Example
 
-Demonstrates config bus dynamic refresh with starter-config-bus.
+Config bus dynamic refresh with starter-config-bus.
 
 ## Features
 
-- **Config hot reload**: Publish new values via config bus, application perceives changes in real time
-- **Dync dynamic binding**: Bind config items via `Dync[T]`, values refresh automatically
+- **Config hot reload**: Publish new values via config bus; the app picks up changes in real time
+- **Dync dynamic binding**: Bind config items via `Dync[T]`; values refresh automatically
 
-> Requires Redis service running (config bus depends on Redis as message channel). `check.sh` starts Redis via docker compose.
+> Requires Redis (config bus uses Redis as the message channel). `check.sh` starts Redis via docker compose.
 
 ## Manual Testing
 
@@ -31,7 +31,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+The service keeps running. Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

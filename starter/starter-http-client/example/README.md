@@ -1,6 +1,6 @@
 # starter-http-client Example
 
-Demonstrates the HTTP client for starter-http-client, including service discovery and distributed tracing.
+Run this example to test the HTTP client for `starter-http-client`, including service discovery and distributed tracing.
 
 ## Features
 
@@ -16,7 +16,7 @@ cd starter-http-client/example
 go run . -manual
 ```
 
-The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
+The program keeps running, press Ctrl+C to exit. Without `-manual`, `runTest()` executes automatically and exits.
 
 ## Smoke Test
 

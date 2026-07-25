@@ -1,6 +1,6 @@
 # starter-echo Example
 
-Demonstrates HTTP service routing, middleware, and health checks with starter-echo.
+HTTP service routing, middleware, and health checks with starter-echo.
 
 ## Features
 

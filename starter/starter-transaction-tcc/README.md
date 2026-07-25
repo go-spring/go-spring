@@ -7,10 +7,10 @@
 `starter-transaction-tcc` contributes the **TCC (Try / Confirm / Cancel)**
 distributed-transaction capability defined in
 [`go-spring.org/spring/cloud/transaction/tcc`](../../spring/transaction/tcc) to a
-Go-Spring application. It is the Go-idiomatic equivalent of Seata TCC, reached
+Go-Spring application — the Go-idiomatic equivalent of Seata TCC, reached
 without replicating Seata's TC/TM/RM roles or requiring bytecode/proxy magic.
 
-It is a **Contributor**-archetype starter (see [DESIGN.md](../DESIGN.md) §2.3):
+A **Contributor**-archetype starter (see [DESIGN.md](../DESIGN.md) §2.3):
 it opens no port and starts no server, only registers beans.
 
 ## TCC vs. Saga — which one?

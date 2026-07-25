@@ -3,17 +3,15 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-http-client` is the runtime half of Go-Spring's **declarative HTTP
-client** — the equivalent of Spring's OpenFeign / `@HttpExchange`. You declare a
-remote service as an interface in an IDL, generate the call sites with
-[`gs-http-gen`](../../gs/gs-http-gen), and inject an already-assembled
+client**. Declare a remote service as an interface in an IDL, generate the call
+sites with [`gs-http-gen`](../../gs/gs-http-gen), and inject an assembled
 `*http.Client` into the generated client. Service discovery, load balancing,
-resilience and trace propagation are wired for you, so a microservice call no
-longer means hand-building a dialer and a circuit breaker per client.
+resilience and trace propagation are wired for you.
 
-Go has no runtime proxy, so unlike Feign the call sites are produced at build
-time by code generation rather than reflection — the same declarative
-experience with no runtime magic. The generated code only imports stdlib
-(`net/http` + `httpclt`); this starter supplies the transport it runs on.
+Go has no runtime proxy, so call sites are produced at build time by code
+generation rather than reflection — same declarative experience, no runtime
+magic. The generated code only imports stdlib (`net/http` + `httpclt`); this
+starter supplies the transport it runs on.
 
 ## Installation
 
@@ -135,11 +133,11 @@ must be set, and `discovery` is mandatory when routing by service name.
 
 ## Observability
 
-The base transport is [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)-instrumented,
-so every outbound request emits a client span and injects a W3C `traceparent`
+The base transport is [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)-instrumented.
+Every outbound request emits a client span and injects a W3C `traceparent`
 header through the OpenTelemetry globals that [`starter-otel`](../starter-otel)
-installs. Without `starter-otel` the globals are no-ops — no spans, no header
-changes. This is the same zero-config opt-in the other client starters use.
+installs. Without `starter-otel` the globals are no-ops. This is the same
+zero-config opt-in the other client starters use.
 
 ## Switching Resilience Backends
 

@@ -1,6 +1,6 @@
 # starter-lock-redis Example
 
-Demonstrates Redis distributed lock with starter-lock-redis.
+Run this example to test Redis distributed lock with `starter-lock-redis`.
 
 ## Features
 
@@ -33,7 +33,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

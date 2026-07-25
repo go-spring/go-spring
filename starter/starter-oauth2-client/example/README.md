@@ -1,12 +1,12 @@
 # starter-oauth2-client Example
 
-Demonstrates OAuth2 client for starter-oauth2-client.
+Demonstrates OAuth2 client for token acquisition and bearer authentication.
 
 ## Features
 
-- **Token acquisition**: Automatically obtains access token from the authorization server
-- **Bearer authentication**: Attaches token to the Authorization header of downstream requests
-- **Auto-refresh**: Automatically refreshes token upon expiry
+- **Token acquisition**: Gets an access token from the authorization server
+- **Bearer authentication**: Attaches the token to the Authorization header of downstream requests
+- **Auto-refresh**: Refreshes the token on expiry
 
 ## Manual Testing
 
@@ -15,7 +15,7 @@ cd starter-oauth2-client/example
 go run . -manual
 ```
 
-The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
+The service keeps running. Press Ctrl+C to exit. Without `-manual`, `runTest()` executes automatically and exits.
 
 ## Smoke Test
 

@@ -1,6 +1,6 @@
 # starter-mongodb Example
 
-Demonstrates the MongoDB client with starter-mongodb.
+Run this example to test the MongoDB client with `starter-mongodb`.
 
 ## Features
 
@@ -8,7 +8,7 @@ Demonstrates the MongoDB client with starter-mongodb.
 - **CRUD Operations**: Insert documents, query documents
 - **Connection Pool**: Connection pool configuration and management
 
-> Requires MongoDB service running. check.sh starts MongoDB via docker compose.
+> Requires MongoDB service running. `check.sh` starts MongoDB via docker compose.
 
 ## Manual Testing
 
@@ -33,7 +33,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+Press Ctrl+C to stop.
 
 ## Smoke Test
 
@@ -41,4 +41,4 @@ The service keeps running. You can verify with corresponding CLI tools. Press Ct
 ./check.sh
 ```
 
-check.sh starts MongoDB via docker compose, runs the example and verifies operations, exit code 0 means pass.
+`check.sh` starts MongoDB via docker compose, runs the example and verifies operations, exit code 0 means pass.

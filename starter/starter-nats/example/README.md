@@ -1,6 +1,6 @@
 # starter-nats Example
 
-Demonstrates the NATS messaging client with starter-nats.
+Demonstrates NATS messaging client.
 
 ## Features
 
@@ -8,7 +8,7 @@ Demonstrates the NATS messaging client with starter-nats.
 - **Multi-Connection Isolation**: Two independent connections, main and work
 - **Message Publish/Subscribe**: Publish and subscribe to messages via NATS
 
-> Requires NATS service running. check.sh starts NATS via docker compose.
+> Requires NATS service running. `check.sh` starts NATS via docker compose.
 
 ## Manual Testing
 
@@ -34,7 +34,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+The service keeps running. Press Ctrl+C to stop.
 
 ## Smoke Test
 
@@ -42,4 +42,4 @@ The service keeps running. You can verify with corresponding CLI tools. Press Ct
 ./check.sh
 ```
 
-check.sh starts NATS via docker compose, runs the example and verifies messages, exit code 0 means pass.
+`check.sh` starts NATS via docker compose, runs the example and verifies messages, exit code 0 means pass.

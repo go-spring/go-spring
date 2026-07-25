@@ -9,10 +9,10 @@ them, participates in graceful shutdown, and can de-duplicate jobs across
 replicas via a distributed lock.
 
 It follows the *global / infrastructure* archetype (see
-[starter/DESIGN.md](../DESIGN.md) §2.4): it opens no network port. Instead it
-exports a `gs.Server` so the scheduler joins the server lifecycle — jobs start
-firing once the application is ready and, on `SIGTERM`, in-flight runs are
-drained before the process exits.
+[starter/DESIGN.md](../DESIGN.md) §2.4): it opens no network port. It exports a
+`gs.Server` so the scheduler joins the server lifecycle — jobs start firing once
+the application is ready and, on `SIGTERM`, in-flight runs drain before the
+process exits.
 
 The trigger and concurrency primitives come from the zero-dependency
 [`spring/scheduling`](../../spring/scheduling) package; this starter is the thin
@@ -91,7 +91,7 @@ construction.
 ## Multi-replica de-duplication
 
 To ensure a job runs on only one replica at a time, point its `lock` at a
-`lock.Locker` bean contributed by `starter-lock-{redis,etcd,consul}`. Each fire
+`lock.Locker` bean from `starter-lock-{redis,etcd,consul}`. Each fire
 acquires the lock; the loser skips.
 
 ```properties

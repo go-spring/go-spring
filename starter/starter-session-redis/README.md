@@ -4,7 +4,7 @@
 
 `starter-session-redis` contributes a Redis-backed
 [`session.SessionStore`](../../spring/session) bean to a Go-Spring application,
-so HTTP sessions are shared across replicas: replica A writes, replica B reads —
+so replicas share HTTP sessions: replica A writes, replica B reads —
 the Spring Session equivalent, expressed with a middleware plus config instead of
 `@EnableRedisHttpSession`.
 
@@ -48,7 +48,7 @@ starter refuses to silently default to some arbitrary Redis instance.
 
 ### 3. Inject the store and mount the session middleware
 
-The store is exported behind the `session.SessionStore` interface. Hand it to a
+The store exports behind the `session.SessionStore` interface. Hand it to a
 `session.Manager` and wrap your handler; the middleware reads the session id from
 the request cookie, loads the session into the context, and writes it back before
 the response headers are sent.
@@ -111,7 +111,7 @@ config.
 * **Session-fixation defense** — `Session.RenewID()` rotates the id (deleting the
   old Redis entry) while preserving attributes; call it right after login.
 * **Lazy allocation** — a visitor who never writes to the session gets no cookie
-  and creates no Redis entry; the id is issued on the first `Set`.
+  and creates no Redis entry; the first `Set` issues the id.
 * **Secure ids** — 256 bits of `crypto/rand`, so ids are unguessable.
 * **Fail-fast configuration** — a missing `client` refuses to boot instead of
   surfacing on the first session read.

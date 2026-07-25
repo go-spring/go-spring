@@ -2,13 +2,11 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
 `starter-transaction-at-gorm` contributes the **AT (Automatic Transaction)**
 distributed-transaction capability defined in
 [`go-spring.org/spring/cloud/transaction/at`](../../spring/transaction/at) to a
-Go-Spring application, backed by [gorm](https://gorm.io). It is the Go-idiomatic
-equivalent of **Seata AT**, reached without replicating Seata's TC/TM/RM roles.
+Go-Spring application, backed by [gorm](https://gorm.io). It is equivalent to
+**Seata AT**, reached without replicating Seata's TC/TM/RM roles.
 
 AT's defining trait is **transparency**: you write no compensation code. A gorm
 plugin intercepts each DML statement, captures a *before-image* (and, for

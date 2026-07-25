@@ -1,11 +1,11 @@
 # starter-casbin Example
 
-Demonstrates RBAC access control for starter-casbin.
+RBAC access control for starter-casbin.
 
 ## Features
 
 - **Policy File Loading**: Load RBAC policies from `model.conf` and `policy.csv`
-- **Permission Enforcement**: Judge whether subject/object/action is allowed via the `/enforce` endpoint
+- **Permission Enforcement**: Check whether subject/object/action is allowed via the `/enforce` endpoint
 - **Policy Hot Reload**: Watch policy file changes via Watcher
 
 ## Manual Testing

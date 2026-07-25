@@ -5,9 +5,9 @@
 `starter-security-jwt` turns a Go-Spring application into an OAuth2/OIDC
 **resource server**: it verifies JWT bearer tokens on incoming requests and, on
 success, attaches the authenticated identity to the request context. It sits at
-the `net/http` layer as a middleware, so it stays agnostic to whichever web
-framework (gin/echo/hertz/net-http) serves the routes behind it, and it also
-implements `security.TokenValidator` so tokens can be verified programmatically
+the `net/http` layer as middleware, so it stays agnostic to whichever web
+framework (gin/echo/hertz/net-http) serves the routes behind it. It also
+implements `security.TokenValidator` so you can verify tokens programmatically
 on non-HTTP transports.
 
 ## Installation
@@ -46,7 +46,7 @@ spring.security.jwt.api.secret=example-shared-secret
 
 ### 3. Wire the Authenticator into the HTTP Server
 
-The authenticator is injected by its config sub-key (`api`) and wraps your
+Inject the authenticator by its config sub-key (`api`) and wrap your
 business handler. Handing the wrapped handler to a `*gs.HttpServeMux` places
 authentication in front of the server. Refer to the [example.go](example/example.go) file.
 
@@ -88,7 +88,7 @@ All keys live under `spring.security.jwt.<name>`:
 | `public-key` | — | inline PEM RSA/ECDSA public key |
 | `public-key-file` | — | path to a PEM public key file |
 | `jwks-url` | — | remote JWKS endpoint |
-| `jwks-refresh` | `15m` | how long a fetched JWKS is cached before refresh |
+| `jwks-refresh` | `15m` | cache duration for a fetched JWKS before refresh |
 | `jwks-timeout` | `10s` | per-fetch HTTP timeout for JWKS |
 | `scope-claim` | `scope` | claim carrying granted scopes (space-delimited string or array) |
 | `roles-claim` | `roles` | claim carrying granted roles (string or array) |
@@ -110,8 +110,8 @@ The [example.go](example/example.go) program demonstrates and asserts:
 ## Advanced Features
 
 * **Three key sources**: HMAC secret, asymmetric PEM public key (RSA or ECDSA),
-  or a remote JWKS endpoint whose keys are fetched at startup, cached, and
-  refreshed on interval or on an unknown `kid` (absorbing key rotation).
+  or a remote JWKS endpoint. The starter fetches keys at startup, caches them,
+  and refreshes on interval or on an unknown `kid` (absorbing key rotation).
 * **Algorithm-confusion protection**: HMAC algorithms are never accepted for an
   asymmetric key source, blocking the classic "sign the token with the public
   key as an HMAC secret" attack. Pin `algorithm` to lock down further.

@@ -57,10 +57,9 @@ import is enough for any adapter to select `driver=sentinel`.
 
 `spring/resilience` ships a built-in `default` driver (token bucket +
 consecutive-failure breaker + retry + timeout, zero third-party
-dependencies) so the framework works out of the box and tests do not
-need to pull sentinel. This starter's value shows up on production
-traffic where sentinel's adaptive flow control and tunable breakers
-matter.
+dependencies) so the framework works out of the box and tests don't
+pull sentinel. This starter's value shows up on production traffic
+where sentinel's adaptive flow control and tunable breakers shine.
 
 ## 5. Trade-offs / Alternatives Rejected
 
@@ -68,7 +67,7 @@ matter.
   four-layer rule keeps the foundation zero-dep; this starter is one
   concrete implementation, not the abstraction.
 - **A single dialer / RoundTripper seam for every library — rejected.**
-  `LiveDialer` is the only truly universal seam, but only covers
+  `LiveDialer` is the only universal seam, and it only covers
   connection establishment; per-request hooks live where each library
   chose to put them.
 - **`otelsarama`-style upstream wrapper for MQ — rejected.** The

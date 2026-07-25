@@ -1,6 +1,6 @@
 # starter-swagger Example
 
-Demonstrates Swagger UI integration with starter-swagger.
+Demonstrates Swagger UI integration.
 
 ## Features
 
@@ -10,7 +10,7 @@ Demonstrates Swagger UI integration with starter-swagger.
 
 ## Manual Testing
 
-Terminal 1, start the service and keep it running:
+Terminal 1, start the service:
 ```bash
 cd starter-swagger/example
 go run . -manual
@@ -25,7 +25,7 @@ curl http://127.0.0.1:9090/swagger/doc.json
 # -> OpenAPI spec JSON
 ```
 
-Press Ctrl+C to stop the service after verification.
+Press Ctrl+C to stop the service.
 
 ## Smoke Test
 
@@ -33,4 +33,4 @@ Press Ctrl+C to stop the service after verification.
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

@@ -11,7 +11,7 @@ It follows the *Contributor* archetype (see
 [starter/DESIGN.md](../DESIGN.md)): the starter exports no port and holds no
 client of its own. It reuses the `*redis.Client` bean registered by
 `starter-go-redis` and contributes a bean behind the framework-neutral
-`lock.Locker` seam. Switching the lock backend to etcd or consul is therefore a
+`lock.Locker` seam, so switching the lock backend to etcd or consul is a
 blank-import swap — no business code changes.
 
 ## Installation
@@ -80,7 +80,7 @@ All keys sit under `spring.lock.<name>`:
 
 ## Leader election
 
-Leader election is available for free on top of any `lock.Locker` via
+Leader election is available on top of any `lock.Locker` via
 [`lock.NewElection`](../../spring/lock/election.go):
 
 ```go
@@ -94,7 +94,7 @@ el := lock.NewElection(lock.ElectionConfig{
 go el.Run(ctx)
 ```
 
-Because election is defined against the `Locker` interface, it works identically
+Election is defined against the `Locker` interface, so it works identically
 over Redis, etcd, consul, or the bundled in-memory locker.
 
 ## Guarantees

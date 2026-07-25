@@ -1,6 +1,6 @@
 # starter-actuator Example
 
-Demonstrates health check, readiness probe, and startup probe endpoints for starter-actuator.
+Health check, readiness probe, and startup probe endpoints for starter-actuator.
 
 ## Features
 
@@ -8,7 +8,7 @@ Demonstrates health check, readiness probe, and startup probe endpoints for star
 - **Readiness Probe `/readiness`**: Aggregates custom HealthIndicators, reflecting dependency status
 - **Startup Probe `/startup`**: Reflects startup completion status
 - **Application Info `/info`**: Exposes application metadata
-- **Dynamic Toggle**: Verify readiness status changes by toggling HealthIndicator
+- **Dynamic Toggle**: Toggle a HealthIndicator to verify readiness status changes
 
 ## Manual Testing
 

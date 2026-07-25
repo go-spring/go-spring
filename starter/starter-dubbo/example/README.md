@@ -1,10 +1,10 @@
 # starter-dubbo Example
 
-Demonstrates Dubbo RPC service registration and invocation with starter-dubbo.
+Dubbo RPC service registration and invocation with starter-dubbo.
 
 ## Features
 
-- **RPC Call**: Client calls the `Greet` method via the Triple protocol, verifying request/response correctness
+- **RPC Call**: Client calls the `Greet` method via the Triple protocol and verifies request/response correctness
 - **Service Registration**: Registers `GreetProvider` as a Dubbo service via `RegisterService`
 
 ## Manual Testing

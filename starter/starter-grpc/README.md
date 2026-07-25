@@ -2,11 +2,9 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> The project has been officially released, welcome to use!
-
-`starter-grpc` provides a lightweight [google.golang.org/grpc](https://pkg.go.dev/google.golang.org/grpc)
-server wrapper for Go-Spring applications: register your service, and the
-starter takes care of listener setup, lifecycle, and graceful shutdown.
+`starter-grpc` provides a [google.golang.org/grpc](https://pkg.go.dev/google.golang.org/grpc)
+server wrapper for Go-Spring applications: register your service, and the starter
+handles listener setup, lifecycle, and graceful shutdown.
 
 ## Installation
 
@@ -17,8 +15,6 @@ go get go-spring.org/starter-grpc
 ## Quick Start
 
 ### 1. Import the `starter-grpc` package
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 import StarterGrpc "go-spring.org/starter-grpc"
@@ -54,8 +50,6 @@ spring.grpc.server.tls.key-file=
 ```
 
 ### 3. Register your service
-
-Refer to the [example.go](example/example.go) file.
 
 ```go
 gs.Provide(&Controller{})

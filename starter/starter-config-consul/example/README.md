@@ -1,14 +1,14 @@
 # starter-config-consul Example
 
-Demonstrates Consul KV config management with starter-config-consul.
+Consul KV config management with starter-config-consul.
 
 ## Features
 
 - **Config loading**: Read config items from Consul KV
-- **Config hot reload**: Modify KV via Consul API, application perceives changes in real time
-- **Dync dynamic binding**: Bind config via `Dync[T]`, auto refresh
+- **Config hot reload**: Modify KV via Consul API; the app picks up changes in real time
+- **Dync dynamic binding**: Bind config via `Dync[T]`; refreshes automatically
 
-> Requires Consul service running. `check.sh` starts Consul via docker compose.
+> Requires a running Consul service. `check.sh` starts Consul via docker compose.
 
 ## Manual Testing
 
@@ -32,7 +32,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+The service keeps running. Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

@@ -69,7 +69,7 @@ field within seconds, no restart.
 | `kubeconfig` | (empty) | Path to a kubeconfig; empty uses in-cluster auth. |
 
 Each `data` entry is parsed as a config document by its key's extension
-(`application.yaml` → YAML) and flattened into properties, mirroring the file
+(`application.yaml` to YAML) and flattened into properties, mirroring the file
 starter's directory semantics; entries with an unknown extension and no forced
 `format` are skipped (unless selected explicitly via `key`).
 

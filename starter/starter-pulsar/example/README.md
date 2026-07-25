@@ -1,6 +1,6 @@
 # starter-pulsar Example
 
-Demonstrates Apache Pulsar messaging client for starter-pulsar.
+Demonstrates Apache Pulsar messaging client.
 
 ## Features
 

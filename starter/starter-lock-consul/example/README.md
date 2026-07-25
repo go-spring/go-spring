@@ -1,6 +1,6 @@
 # starter-lock-consul Example
 
-Demonstrates Consul Session distributed lock with starter-lock-consul.
+Run this example to test Consul Session distributed lock with `starter-lock-consul`.
 
 ## Features
 
@@ -33,7 +33,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
+Press `Ctrl+C` to stop.
 
 ## Smoke Test
 

@@ -5,14 +5,14 @@
 `starter-lock-k8s` provides a **Kubernetes-Lease-backed distributed lock and
 leader election** for Go-Spring, with **no external middleware**. It backs
 `spring/lock` with `coordination.k8s.io/Lease` objects — the same mechanism
-`kube-controller-manager --leader-elect` and spring-cloud-kubernetes use — so an
-in-cluster application elects a leader or guards an exclusive section using only
-the control plane it already runs on.
+`kube-controller-manager --leader-elect` and spring-cloud-kubernetes use —
+so an in-cluster application elects a leader or guards an exclusive section
+using only the control plane it already runs on.
 
 Blank-importing this starter and declaring a `spring.lock.<name>` entry
 registers one `lock.Locker` bean (from `spring/lock`) under `<name>`. Business
 code injects `lock.Locker` / builds a `lock.Election` and never sees this
-package, so switching to the etcd/consul/redis backend is a blank-import swap
+package; switching to the etcd/consul/redis backend is a blank-import swap
 under the shared `spring.lock` prefix.
 
 ## Installation
@@ -74,8 +74,8 @@ Bound under `spring.lock.<name>`:
 | `kubeconfig` | (empty) | Path to a kubeconfig; empty uses in-cluster ServiceAccount auth. |
 | `key-prefix` | (empty) | Prepended to each lock key to form the Lease name. The result must be a valid DNS-1123 name. |
 
-Lock timing (`TTL`, renew, retry) is not configured here: it is carried by the
-per-acquire `lock.Option` values and their defaults, so the same knobs work
+Lock timing (`TTL`, renew, retry) is not configured here: per-acquire
+`lock.Option` values and their defaults carry it, so the same knobs work
 identically across every backend.
 
 ## How It Works

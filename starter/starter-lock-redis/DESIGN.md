@@ -4,8 +4,8 @@
 
 `starter-lock-redis` is a Contributor-archetype starter (`starter/DESIGN.md`
 §2.3) in the integration layer. It contributes named `lock.Locker` beans
-backed by Redis; it opens no listener and holds no connection of its own,
-reusing a `*redis.Client` produced by `starter-go-redis`.
+backed by Redis, reusing a `*redis.Client` produced by `starter-go-redis`;
+it opens no listener and holds no connection of its own.
 
 ## 1. Responsibilities & Boundaries
 
@@ -23,9 +23,9 @@ reusing a `*redis.Client` produced by `starter-go-redis`.
 - **Seam is the bean type, not a driver string.** `spring/lock` deliberately
   has **no** package-level string driver registry, unlike
   `spring/discovery` or `spring/resilience`. Locks need a *live* backend
-  handle (`*redis.Client`), not a declarative policy string; the switch from
-  Redis to etcd/consul/k8s is therefore a blank-import swap that changes
-  which starter registers the `lock.Locker` bean.
+  handle (`*redis.Client`), not a declarative policy string; switching
+  from Redis to etcd/consul/k8s is a blank-import swap that changes which
+  starter registers the `lock.Locker` bean.
 - **Instance-to-client wiring via `TagArg`.** The `Config.Client` field
   names the `*redis.Client` bean under `spring.go-redis.<Client>`. The
   starter wires the two by calling `gs.TagArg(c.Client)` on the provide
@@ -38,8 +38,8 @@ reusing a `*redis.Client` produced by `starter-go-redis`.
 
 - **`Client` is required.** An empty `spring.lock.<name>.client` is rejected
   at boot via `errutil.Explain`. Silently defaulting to some arbitrary
-  Redis instance would hide a misconfiguration until the first `Acquire`,
-  potentially in production.
+  Redis instance would hide a misconfiguration until the first `Acquire`
+  (possibly in production).
 - **Destroy stops renewal, not the client.** `destroyLocker` calls
   `Locker.Close()`, which stops the background renewal goroutine per held
   lock. It never calls `Close` on the injected `*redis.Client` — that

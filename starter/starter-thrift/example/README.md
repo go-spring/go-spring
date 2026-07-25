@@ -1,6 +1,6 @@
 # starter-thrift Example
 
-Demonstrates Thrift RPC service registration, middleware decorators, and multi-protocol configuration with starter-thrift.
+Demonstrates Thrift RPC service registration, middleware decorators, and multi-protocol configuration.
 
 ## Features
 
@@ -10,15 +10,15 @@ Demonstrates Thrift RPC service registration, middleware decorators, and multi-p
 
 ## Manual Testing
 
-Terminal 1, start the service and keep it running:
+Terminal 1, start the service:
 ```bash
 cd starter-thrift/example
 go run . -manual
 ```
 
-The service is listening on :9292 (compact protocol + framed transport). You can connect and verify using Thrift-generated client code.
+The service listens on :9292 (compact protocol + framed transport). Connect and verify using Thrift-generated client code.
 
-Press Ctrl+C to stop the service after verification.
+Press Ctrl+C to stop the service.
 
 ## Smoke Test
 
@@ -26,4 +26,4 @@ Press Ctrl+C to stop the service after verification.
 ./check.sh
 ```
 
-check.sh runs the example and waits for self-test to complete, exit code 0 means pass.
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

@@ -1,13 +1,13 @@
 # starter-elasticsearch Example
 
-Demonstrates the Elasticsearch client with starter-elasticsearch.
+Elasticsearch client with starter-elasticsearch.
 
 ## Features
 
-- **Cluster Connectivity**: Verifies ES cluster connection via HealthCheck
+- **Cluster Connectivity**: Verify ES cluster connection via HealthCheck
 - **Index Operations**: Create index, write document, query document
 
-> Requires a running Elasticsearch service. `check.sh` starts Elasticsearch via docker compose.
+> Requires a running Elasticsearch service. `check.sh` starts ES via docker compose.
 
 ## Manual Testing
 
@@ -32,7 +32,7 @@ docker compose up -d
 go run . -manual
 ```
 
-The service keeps running, you can verify with the corresponding CLI tools. Press `Ctrl+C` to exit the service.
+The service keeps running. Press `Ctrl+C` to exit.
 
 ## Smoke Test
 

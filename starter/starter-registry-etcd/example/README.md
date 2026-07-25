@@ -1,12 +1,12 @@
 # starter-registry-etcd Example
 
-Demonstrates etcd service registration and discovery of starter-registry-etcd.
+Demonstrates etcd service registration and discovery.
 
 ## Features
 
-- **Service Registration**: Register the service to etcd on startup
-- **Service Discovery**: Query registered service keys via etcd API
-- **Auto Deregistration**: Automatically deregister from etcd on process exit
+- **Service Registration**: Registers the service to etcd on startup
+- **Service Discovery**: Queries registered service keys via etcd API
+- **Auto Deregistration**: Deregisters from etcd on process exit
 
 > Requires etcd service running. `check.sh` starts etcd via docker compose.
 

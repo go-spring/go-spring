@@ -1,13 +1,13 @@
 # starter-mail Example
 
-Demonstrates email sending with starter-mail.
+Run this example to test email sending with `starter-mail`.
 
 ## Features
 
 - **Email Sending**: Send emails via SMTP
 - **Connection Verification**: Verify SMTP server connectivity
 
-> Requires SMTP service (Mailpit/MailHog) running. check.sh starts Mailpit via docker compose.
+> Requires SMTP service (Mailpit/MailHog) running. `check.sh` starts Mailpit via docker compose.
 
 ## Manual Testing
 
@@ -33,7 +33,7 @@ go run . -manual
 open http://127.0.0.1:8025
 ```
 
-The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
+Press Ctrl+C to stop.
 
 ## Smoke Test
 
@@ -41,4 +41,4 @@ The service keeps running. You can verify with corresponding CLI tools. Press Ct
 ./check.sh
 ```
 
-check.sh starts Mailpit via docker compose, runs the example and verifies email sending, exit code 0 means pass.
+`check.sh` starts Mailpit via docker compose, runs the example and verifies email sending, exit code 0 means pass.
