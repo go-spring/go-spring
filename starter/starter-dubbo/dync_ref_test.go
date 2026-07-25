@@ -248,20 +248,20 @@ func TestDyncPoller_AllDynamicFields(t *testing.T) {
 	url := urls[0]
 
 	checks := map[string]string{
-		"cluster":                       "failover",
-		"loadbalance":                   "leastactive",
-		"group":                         "v2",
-		"version":                       "1.0",
-		"serialization":                 "protobuf",
-		"sticky":                        "true",
-		"force.tag":                     "true",
-		"timeout":                       "5s",
-		"retries":                       "3",
-		"methods.GetUser.loadbalance":   "roundrobin",
-		"methods.GetUser.weight":        "200",
-		"methods.GetUser.sticky":        "true",
-		"methods.GetUser.timeout":       "2s",
-		"methods.GetUser.retries":       "1",
+		"cluster":                     "failover",
+		"loadbalance":                 "leastactive",
+		"group":                       "v2",
+		"version":                     "1.0",
+		"serialization":               "protobuf",
+		"sticky":                      "true",
+		"force.tag":                   "true",
+		"timeout":                     "5s",
+		"retries":                     "3",
+		"methods.GetUser.loadbalance": "roundrobin",
+		"methods.GetUser.weight":      "200",
+		"methods.GetUser.sticky":      "true",
+		"methods.GetUser.timeout":     "2s",
+		"methods.GetUser.retries":     "1",
 	}
 	for k, expected := range checks {
 		if v := url.GetParam(k, ""); v != expected {
