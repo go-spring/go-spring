@@ -234,7 +234,7 @@ func TestResolving(t *testing.T) {
 		{
 			b := r.Provide(&http.Server{}).
 				Condition(gs_cond.OnBean[*http.ServeMux]())
-			assert.That(t, b.GetName()).Equal("__default__")
+			assert.That(t, b.GetName()).Equal("*http.Server")
 		}
 		{
 			b := r.Provide(http.NewServeMux).Name("ServeMux-1").
@@ -279,12 +279,12 @@ func TestResolving(t *testing.T) {
 			names = append(names, b.GetName())
 		}
 		assert.That(t, names).Equal([]string{
-			"__default__",
+			"*http.Server",
 			"ServeMux-2",
 			"TestBean",
 			"TestBean-2",
 			"TestBean-3",
-			"__default__",
+			"*resolving.ChildBean",
 			"a",
 			"b",
 			"TestBean_NewChild",

@@ -31,8 +31,6 @@ import (
 	"go-spring.org/stdlib/typeutil"
 )
 
-// DefaultName is the default name assigned to a bean, regardless of its type.
-const DefaultName = "__default__"
 
 // BeanStatus represents the different lifecycle statuses of a bean.
 type BeanStatus int8
@@ -495,7 +493,7 @@ func NewBean(objOrCtor any, ctorArgs ...gs.Arg) *BeanDefinition {
 		}
 	}
 
-	d := &BeanDefinition{f: f, t: t, v: v, name: DefaultName, status: StatusDefault}
+	d := &BeanDefinition{f: f, t: t, v: v, name: t.String(), status: StatusDefault}
 	if cond != nil {
 		d.Condition(cond)
 	}

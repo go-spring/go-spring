@@ -48,7 +48,7 @@ func init() {
 	// provider (so Load calls go through its method). Before wiring,
 	// TriggerRefresh is a harmless no-op — the startup load already captured
 	// the initial config.
-	gs.Provide(consulController).Name("consulController").Export(gs.As[gs.Rooter]())
+	gs.Provide(consulController).Export(gs.As[gs.Rooter]())
 
 	// Register "consul" as a remote configuration provider. The provider is
 	// the global controller's Load method, so the same object that holds the

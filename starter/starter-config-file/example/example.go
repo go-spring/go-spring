@@ -77,7 +77,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	demo := gs.Provide(&Demo{}).Name("demo").Export(gs.As[gs.Rooter]())
+	demo := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
 
 	if !*manual {
 		go func() {

@@ -19,6 +19,7 @@ This document defines the coding principles, idioms, and style conventions for t
 - **Avoid global state**: Don't use global variables; obtain configuration, singletons, and clients through Go-Spring's IoC/DI injection.
 - **Startup-time injection**: IoC/DI wiring completes at startup; don't introduce runtime dynamic injection.
 - **Explicit bean conflict resolution**: Beans of the same name and type must not rely on implicit override; select explicitly via mutually exclusive conditions (`Condition`).
+	- **Prefer default bean names**: When registering a bean with `gs.Provide`, do not pass an explicit name unless the bean must be resolved by that name (multi-instance config matching, disambiguating same-type beans, etc.). In all other cases, let the container assign the default name.
 - **Starter first**: Before wiring an external component (Redis / MySQL / Kafka, etc.), check whether `starter/` already provides one; reuse it instead of writing initialization from scratch.
 
 ### 1.1 Extensibility and Extension Points

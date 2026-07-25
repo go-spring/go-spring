@@ -195,11 +195,11 @@ func init() {
 	gs.Provide(event.New).Destroy(func(b event.Bus) error { return b.Close() })
 
 	// Listener beans, each exported as event.Listener so the container collects
-	// them without any per-listener registration API. Distinct names keep the
-	// unnamed-bean default from colliding when several share the same export.
-	gs.Provide(&validateListener{}).Name("validateListener").Export(gs.As[event.Listener]())
-	gs.Provide(&applyListener{}).Name("applyListener").Export(gs.As[event.Listener]())
-	gs.Provide(&auditListener{}).Name("auditListener").Export(gs.As[event.Listener]())
+	// them without any per-listener registration API. Each listener is a distinct
+	// struct type, so the default bean names won't collide.
+	gs.Provide(&validateListener{}).Export(gs.As[event.Listener]())
+	gs.Provide(&applyListener{}).Export(gs.As[event.Listener]())
+	gs.Provide(&auditListener{}).Export(gs.As[event.Listener]())
 
 	// The application Runner.
 	gs.Provide(&demo{}).Export(gs.As[gs.Runner]())

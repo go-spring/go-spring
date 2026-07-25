@@ -119,7 +119,7 @@ func main() {
 	gs.Provide(func(db *gorm.DB) repository.Repository[Person, int64] {
 		return reposgorm.For[Person, int64](db, "people",
 			repository.WithPrincipal(currentUser))
-	}).Name("personRepo")
+	})
 
 	svcBean := gs.Provide(&PersonService{}).Export(gs.As[gs.Rooter]())
 
