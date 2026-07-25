@@ -1,27 +1,27 @@
 # starter-oauth2-server Example
 
-演示 starter-oauth2-server 的 OAuth2 授权服务器。
+Demonstrates OAuth2 authorization server for starter-oauth2-server.
 
-## 功能验证
+## Features
 
-- **授权端点**：`/oauth2/authorize` 处理授权请求
-- **Token 端点**：`/oauth2/token` 签发 access token
-- **Token 验证**：资源服务器通过 HMAC 验证 token
-- **安全过滤器**：CORS + 认证 + 授权统一过滤器链
+- **Authorization endpoint**: `/oauth2/authorize` handles authorization requests
+- **Token endpoint**: `/oauth2/token` issues access tokens
+- **Token verification**: Resource server verifies tokens via HMAC
+- **Security filters**: CORS + authentication + authorization unified filter chain
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-oauth2-server/example
 go run . -manual
 ```
 
-程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
+The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

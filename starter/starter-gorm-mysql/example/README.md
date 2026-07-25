@@ -1,41 +1,41 @@
 # starter-gorm-mysql Example
 
-演示 starter-gorm-mysql 的 MySQL 数据库连接。
+Demonstrates MySQL database connectivity for starter-gorm-mysql.
 
-## 功能验证
+## Features
 
-- **数据库连接**：通过 GORM 连接 MySQL
-- **版本查询**：执行 `SELECT VERSION()` 验证连通性
+- **Database connection**: Connect to MySQL via GORM
+- **Version query**: Run `SELECT VERSION()` to verify connectivity
 
-> 需要 MySQL 服务运行。`check.sh` 通过 docker compose 启动 MySQL。
+> Requires MySQL service running. `check.sh` starts MySQL via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-gorm-mysql/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 MySQL version: ...
 ```
 
-需要先启动 MySQL：
+Start MySQL first:
 ```bash
-# 启动 MySQL
+# Start MySQL
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 MySQL，运行示例并验证连接，退出码 0 表示通过。
+`check.sh` starts MySQL via docker compose, runs the example and verifies connectivity, exit code 0 means pass.

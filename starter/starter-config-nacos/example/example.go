@@ -69,8 +69,10 @@ func main() {
 	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
 
 	if !*manual {
-		time.Sleep(500 * time.Millisecond)
-		runTest(demoBean.Interface().(*Demo))
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			runTest(demoBean.Interface().(*Demo))
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")

@@ -1,29 +1,29 @@
 # starter-resilience Example
 
-演示 starter-resilience 的 Sentinel 熔断与限流。
+Demonstrates Sentinel circuit breaking and rate limiting with starter-resilience.
 
-## 功能验证
+## Features
 
-- **限流（Server 侧）**：5 QPS 限流，超出部分返回 429
-- **熔断（Client 侧）**：连续 3 次拒绝拨号后熔断器打开
-- **Sentinel 驱动**：通过 Sentinel 实现 resilience 语义
+- **Rate Limiting (Server Side)**: 5 QPS rate limit, excess requests return 429
+- **Circuit Breaking (Client Side)**: Circuit breaker opens after 3 consecutive rejected dials
+- **Sentinel Driven**: Resilience semantics implemented via Sentinel
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-resilience/example
 go run .
 ```
 
-预期输出：
+Expected output:
 ```
 resilience seams smoke: OK
 ```
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+check.sh runs the example and waits for self-test to complete, exit code 0 means pass.

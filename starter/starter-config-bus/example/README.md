@@ -1,42 +1,42 @@
 # starter-config-bus Example
 
-演示 starter-config-bus 的配置总线动态刷新。
+Demonstrates config bus dynamic refresh with starter-config-bus.
 
-## 功能验证
+## Features
 
-- **配置热更新**：通过配置总线发布新值，应用实时感知变化
-- **Dync 动态绑定**：通过 `Dync[T]` 绑定配置项，值自动刷新
+- **Config hot reload**: Publish new values via config bus, application perceives changes in real time
+- **Dync dynamic binding**: Bind config items via `Dync[T]`, values refresh automatically
 
-> 需要 Redis 服务运行（配置总线依赖 Redis 作为消息通道）。`check.sh` 通过 docker compose 启动 Redis。
+> Requires Redis service running (config bus depends on Redis as message channel). `check.sh` starts Redis via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-config-bus/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 initial value
 updated value
 ```
 
-需要先启动 Redis：
+Start Redis first:
 ```bash
-# 启动 Redis
+# Start Redis
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Redis，运行示例并验证配置刷新，退出码 0 表示通过。
+`check.sh` starts Redis via docker compose, runs the example and verifies config refresh, exit code 0 means pass.

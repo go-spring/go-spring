@@ -1,44 +1,44 @@
 # starter-go-redis Example
 
-演示 starter-go-redis 的 go-redis Redis 客户端。
+Demonstrates the go-redis Redis client for starter-go-redis.
 
-## 功能验证
+## Features
 
-- **String SET/GET**：写入和读取字符串键值
-- **Hash 操作**：HSET/HGET 操作
-- **List 操作**：LPUSH/LRANGE 操作
-- **多 Driver 支持**：可切换 go-redis/redigo driver
+- **String SET/GET**: Write and read string key-value pairs
+- **Hash operations**: HSET/HGET operations
+- **List operations**: LPUSH/LRANGE operations
+- **Multi-driver support**: Switch between go-redis/redigo drivers
 
-> 需要 Redis 服务运行。`check.sh` 通过 docker compose 启动 Redis。
+> Requires Redis service running. `check.sh` starts Redis via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-go-redis/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 SET foo bar: OK
 GET foo: bar
 ```
 
-需要先启动 Redis：
+Start Redis first:
 ```bash
-# 启动 Redis
+# Start Redis
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Redis，运行示例并验证操作，退出码 0 表示通过。
+`check.sh` starts Redis via docker compose, runs the example and verifies operations, exit code 0 means pass.

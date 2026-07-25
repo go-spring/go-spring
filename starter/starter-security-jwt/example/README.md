@@ -1,38 +1,38 @@
 # starter-security-jwt Example
 
-演示 starter-security-jwt 的 JWT 认证。
+Demonstrates JWT authentication with starter-security-jwt.
 
-## 功能验证
+## Features
 
-- **JWT 认证**：通过 JWT token 验证请求身份
-- **无 Token 拒绝**：缺少 token 的请求返回 401
-- **有效 Token 放行**：携带有效 token 的请求到达业务 handler
+- **JWT Authentication**: Verifies request identity via JWT token
+- **Missing Token Rejection**: Requests without a token return 401
+- **Valid Token Allowance**: Requests carrying a valid token reach the business handler
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-security-jwt/example
 go run . -manual
 ```
 
-终端 2，执行验证命令：
+Terminal 2, run verification commands:
 ```bash
-# 无 Token -> 401
+# No Token -> 401
 curl -i http://127.0.0.1:9090/me
 # -> HTTP/1.1 401 Unauthorized
 
-# 有 Token -> 200
+# With Token -> 200
 curl -i -H 'Authorization: Bearer <token>' http://127.0.0.1:9090/me
 # -> HTTP/1.1 200 OK
 ```
 
-验证完成后 `Ctrl+C` 退出服务。
+Press Ctrl+C to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+check.sh runs the example and waits for self-test to complete, exit code 0 means pass.

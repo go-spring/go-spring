@@ -54,8 +54,10 @@ func main() {
 	}, gs.TagArg("guard"))
 
 	if !*manual {
-		time.Sleep(time.Millisecond * 500)
-		runTest()
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest()
+		}()
 	} else {
 
 		// Run the Go-Spring application.

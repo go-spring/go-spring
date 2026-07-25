@@ -1,24 +1,24 @@
 # starter-echo Example
 
-演示 starter-echo 的 HTTP 服务路由、中间件与健康检查。
+Demonstrates HTTP service routing, middleware, and health checks with starter-echo.
 
-## 功能验证
+## Features
 
-- **路由**：`/echo/:name` 路径参数 + JSON 响应
-- **路由组**：`/api/greet` 查询参数路由
-- **中间件**：自定义 `X-App` 响应头注入
-- **内置中间件**：`X-Request-Id`、`X-Content-Type-Options` 安全头
-- **健康检查**：`/healthz` 端点
+- **Routing**: `/echo/:name` path parameter + JSON response
+- **Route Groups**: `/api/greet` query parameter route
+- **Middleware**: Custom `X-App` response header injection
+- **Built-in Middleware**: `X-Request-Id`, `X-Content-Type-Options` security headers
+- **Health Check**: `/healthz` endpoint
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-echo/example
 go run . -manual
 ```
 
-终端 2，执行验证命令：
+Terminal 2, run verification commands:
 ```bash
 curl http://localhost:8002/echo/echo
 # -> {"message":"Hello, echo"}
@@ -36,12 +36,12 @@ curl http://localhost:8002/healthz
 # -> ok
 ```
 
-验证完成后 `Ctrl+C` 退出服务。
+Press `Ctrl+C` to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

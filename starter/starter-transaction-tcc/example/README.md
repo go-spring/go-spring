@@ -1,26 +1,26 @@
 # starter-transaction-tcc Example
 
-演示 starter-transaction-tcc 的 TCC 分布式事务（Try-Confirm-Cancel 模式）。
+Demonstrates TCC distributed transactions (Try-Confirm-Cancel mode) using starter-transaction-tcc.
 
-## 功能验证
+## Features
 
-- **提交路径**：Try → Confirm，两个服务数据一致
-- **回滚路径**：Try → Cancel，数据恢复到事务前状态
-- **事务协调**：Coordinator 管理 TCC 各阶段
+- **Commit path**: Try → Confirm, data consistent across both services
+- **Rollback path**: Try → Cancel, data restored to pre-transaction state
+- **Transaction coordination**: Coordinator manages each TCC phase
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-transaction-tcc/example
 go run . -manual
 ```
 
-程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
+The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+check.sh runs the example and waits for self-test to complete, exit code 0 means pass.

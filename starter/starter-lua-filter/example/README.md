@@ -1,22 +1,22 @@
 # starter-lua-filter Example
 
-演示 starter-lua-filter 的 Lua 脚本过滤器。
+Demonstrates Lua script filtering with starter-lua-filter.
 
-## 功能验证
+## Features
 
-- **Lua 过滤器**：通过 Lua 脚本拦截和修改 HTTP 请求/响应
-- **请求拦截**：验证 X-App header 的 guard 逻辑
-- **响应透传**：合法请求透传到业务 handler
+- **Lua Filter**: Intercept and modify HTTP requests/responses via Lua scripts
+- **Request Interception**: Validates X-App header guard logic
+- **Response Pass-through**: Legitimate requests pass through to business handlers
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-lua-filter/example
 go run . -manual
 ```
 
-终端 2，执行验证命令：
+Terminal 2, run verification commands:
 ```bash
 curl -H 'X-App: go-spring' http://127.0.0.1:9090/hello
 # -> 200 OK
@@ -25,12 +25,12 @@ curl http://127.0.0.1:9090/hello
 # -> 403 Forbidden
 ```
 
-验证完成后 `Ctrl+C` 退出服务。
+Press Ctrl+C to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+check.sh runs the example and waits for self-test to complete, exit code 0 means pass.

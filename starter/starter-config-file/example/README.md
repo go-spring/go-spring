@@ -1,26 +1,26 @@
 # starter-config-file Example
 
-演示 starter-config-file 的本地文件配置热更新。
+Demonstrates local file config hot reload with starter-config-file.
 
-## 功能验证
+## Features
 
-- **配置加载**：从 `conf/app.properties` 读取初始值
-- **文件监听**：通过 `Dync[T]` 监听文件变化，自动热更新
-- **动态值验证**：修改文件后配置值实时变化
+- **Config loading**: Read initial values from `conf/app.properties`
+- **File watching**: Watch file changes via `Dync[T]`, auto hot reload
+- **Dynamic value verification**: Config values update in real time after file modification
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-config-file/example
 go run . -manual
 ```
 
-程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
+The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for its self-test to complete, exit code 0 means pass.

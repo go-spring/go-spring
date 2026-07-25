@@ -1,29 +1,29 @@
 # starter-kitex Example
 
-演示 starter-kitex 的 Kitex RPC 服务注册与调用。
+Demonstrates Kitex RPC service registration and invocation with starter-kitex.
 
-## 功能验证
+## Features
 
-- **RPC 调用**：客户端通过 `Echo` 方法往返，请求消息原样返回
-- **服务注册**：通过 `ServiceRegister` 将 `EchoServiceImpl` 绑定到 Kitex Server
-- **直连模式**：无需注册中心，客户端直接通过 `host:port` 连接
+- **RPC Invocation**: The client round-trips via the `Echo` method, which returns the request message as-is
+- **Service Registration**: Bind `EchoServiceImpl` to the Kitex Server via `ServiceRegister`
+- **Direct Connection Mode**: No registry required; the client connects directly via `host:port`
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-kitex/example
 go run . -manual
 ```
 
-服务正在 :8888 监听。可以用 Kitex 生成的客户端代码连接验证。
+The service listens on :8888. You can connect and verify with Kitex-generated client code.
 
-验证完成后 `Ctrl+C` 退出服务。
+Press `Ctrl+C` to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

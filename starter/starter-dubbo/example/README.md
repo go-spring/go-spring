@@ -1,37 +1,37 @@
 # starter-dubbo Example
 
-演示 starter-dubbo 的 Dubbo RPC 服务注册与调用。
+Demonstrates Dubbo RPC service registration and invocation with starter-dubbo.
 
-## 功能验证
+## Features
 
-- **RPC 调用**：客户端通过 Triple 协议调用 `Greet` 方法，验证请求/响应正确性
-- **服务注册**：通过 `RegisterService` 将 `GreetProvider` 注册为 Dubbo 服务
+- **RPC Call**: Client calls the `Greet` method via the Triple protocol, verifying request/response correctness
+- **Service Registration**: Registers `GreetProvider` as a Dubbo service via `RegisterService`
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-dubbo/example
 go run . -manual
 ```
 
-终端 2，运行客户端验证脚本：
+Terminal 2, run the client verification script:
 ```bash
 go run check_client.go
 ```
 
-预期输出：
+Expected output:
 ```
 Response from server: Hello, Dubbo-Go!
 OK: Dubbo RPC verified
 ```
 
-验证完成后 `Ctrl+C` 退出服务。
+Press `Ctrl+C` to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

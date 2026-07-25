@@ -77,8 +77,10 @@ func main() {
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	if !*manual {
-		time.Sleep(500 * time.Millisecond)
-		runTest()
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			runTest()
+		}()
 	} else {
 
 		// Run the Go-Spring application. The actuator serves on :9370 by default:

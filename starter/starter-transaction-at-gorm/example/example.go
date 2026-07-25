@@ -183,8 +183,10 @@ func main() {
 	svcBean := gs.Provide(newBankService).Export(gs.As[gs.Rooter]())
 
 	if !*manual {
-		time.Sleep(time.Millisecond * 500)
-		runTest(svcBean.Interface().(*BankService))
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest(svcBean.Interface().(*BankService))
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")

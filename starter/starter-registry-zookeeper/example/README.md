@@ -1,40 +1,40 @@
 # starter-registry-zookeeper Example
 
-演示 starter-registry-zookeeper 的 ZooKeeper 服务注册与发现。
+Demonstrates ZooKeeper service registration and discovery of starter-registry-zookeeper.
 
-## 功能验证
+## Features
 
-- **服务注册**：启动时将服务注册到 ZooKeeper
-- **服务发现**：通过 ZK API 查询已注册的 znode
-- **自动注销**：进程退出时自动从 ZK 注销
+- **Service Registration**: Register the service to ZooKeeper on startup
+- **Service Discovery**: Query registered znodes via ZK API
+- **Auto Deregistration**: Automatically deregister from ZK on process exit
 
-> 需要 ZooKeeper 服务运行。`check.sh` 通过 docker compose 启动 ZooKeeper。
+> Requires ZooKeeper service running. `check.sh` starts ZooKeeper via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-registry-zookeeper/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 instances found: ...
 ```
 
-需要先启动 ZooKeeper：
+Start ZooKeeper first:
 ```bash
-# 启动 ZooKeeper
+# Start ZooKeeper
 docker compose up -d
 
-# 运行示例
+# Run the example
 go run . -manual
 ```
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 ZooKeeper，运行示例并验证注册，退出码 0 表示通过。
+`check.sh` starts ZooKeeper via docker compose, runs the example and verifies registration, exit code 0 means pass.

@@ -55,7 +55,7 @@ func init() {
 	// "file-watch" config provider (so Load calls go through its method).
 	// Before wiring, TriggerRefresh is a harmless no-op — the startup load
 	// already captured the initial config.
-	gs.Provide(fileWatchController).Export(gs.As[gs.Rooter]())
+	gs.Provide(fileWatchController).Name("fileWatchController").Export(gs.As[gs.Rooter]())
 
 	// Register "file-watch" as a configuration provider so that a
 	// spring.app.imports entry such as

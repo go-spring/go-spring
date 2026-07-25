@@ -87,8 +87,10 @@ func main() {
 	appBean := gs.Provide(newApp).Export(gs.As[gs.Rooter]())
 
 	if !*manual {
-		time.Sleep(time.Millisecond * 500)
-		runTest(appBean.Interface().(*App))
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest(appBean.Interface().(*App))
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")

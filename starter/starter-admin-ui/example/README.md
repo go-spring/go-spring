@@ -1,27 +1,27 @@
 # starter-admin-ui Example
 
-演示 starter-admin-ui 的管理界面。
+Demonstrates the management interface of starter-admin-ui.
 
-## 功能验证
+## Features
 
-- **管理界面**：提供 Web UI 查看应用状态和配置
+- **Management UI**: Provides a Web UI to view application status and configuration
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-admin-ui/example
 go run . -manual
 ```
 
-终端 2，浏览器打开 `http://127.0.0.1:9280` 查看管理界面。
+Terminal 2, open `http://127.0.0.1:9280` in browser to view the management interface.
 
-验证完成后 `Ctrl+C` 退出服务。
+Press Ctrl+C to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

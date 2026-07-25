@@ -1,48 +1,48 @@
 # starter-gin Example
 
-演示 starter-gin 的 HTTP 服务路由、中间件与健康检查。
+Demonstrates HTTP service routing, middleware, and health checks for starter-gin.
 
-## 功能验证
+## Features
 
-- **路由**：`/echo/:name` 路径参数 + JSON 响应
-- **路由**：`/greet` 查询参数 + JSON 响应
-- **中间件**：自定义 `X-App` 响应头注入
-- **内置中间件**：`X-Request-Id`、`X-Content-Type-Options` 安全头
-- **健康检查**：`/healthz` 端点
+- **Routing**: `/echo/:name` path parameter + JSON response
+- **Routing**: `/greet` query parameter + JSON response
+- **Middleware**: Custom `X-App` response header injection
+- **Built-in middleware**: `X-Request-Id`, `X-Content-Type-Options` security headers
+- **Health check**: `/healthz` endpoint
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-gin/example
 go run . -manual
 ```
 
-终端 2，执行验证命令：
+Terminal 2, run verification commands:
 ```bash
-# 路径参数路由
+# Path parameter routing
 curl http://localhost:8001/echo/gin
 # -> {"message":"Hello, gin"}
 
-# 查询参数路由
+# Query parameter routing
 curl 'http://localhost:8001/greet?name=world'
 # -> {"message":"Hi, world"}
 
-# 中间件注入的响应头
+# Middleware-injected response header
 curl -v http://localhost:8001/echo/gin 2>&1 | grep -i x-app
 # -> X-App: go-spring
 
-# 健康检查
+# Health check
 curl http://localhost:8001/healthz
 # -> ok
 ```
 
-验证完成后 `Ctrl+C` 退出服务。
+Press Ctrl+C to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

@@ -1,28 +1,28 @@
 # starter-pprof Example
 
-演示 starter-pprof 的 pprof 端点 Token 鉴权。
+Demonstrates pprof endpoint token authentication for starter-pprof.
 
-## 功能验证
+## Features
 
-- **Token 鉴权**：无 Token 的请求返回 401 Unauthorized
-- **Bearer Token**：携带 `Authorization: Bearer s3cr3t` 的请求正常访问
-- **pprof 端点**：`/debug/pprof/`、`/debug/pprof/heap`、`/debug/pprof/cmdline`
+- **Token authentication**: Requests without a token return 401 Unauthorized
+- **Bearer Token**: Requests with `Authorization: Bearer s3cr3t` access normally
+- **pprof endpoints**: `/debug/pprof/`, `/debug/pprof/heap`, `/debug/pprof/cmdline`
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-pprof/example
 go run . -manual
 ```
 
-终端 2，执行验证命令：
+Terminal 2, run verification commands:
 ```bash
-# 无 Token -> 401
+# No token -> 401
 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9981/debug/pprof/
 # -> 401
 
-# 有 Token -> 200
+# With token -> 200
 curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer s3cr3t' \
   http://127.0.0.1:9981/debug/pprof/
 # -> 200
@@ -32,12 +32,12 @@ curl -s -o /dev/null -w '%{http_code}' \
 # -> 200
 ```
 
-验证完成后 `Ctrl+C` 退出服务。
+Press Ctrl+C to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

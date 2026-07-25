@@ -84,8 +84,10 @@ func main() {
 	}, gs.TagArg("web"))
 
 	if !*manual {
-		time.Sleep(500 * time.Millisecond)
-		runTest()
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			runTest()
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")

@@ -1,43 +1,43 @@
 # starter-elasticsearch Example
 
-演示 starter-elasticsearch 的 Elasticsearch 客户端。
+Demonstrates the Elasticsearch client with starter-elasticsearch.
 
-## 功能验证
+## Features
 
-- **集群连通性**：通过 HealthCheck 验证 ES 集群连接
-- **索引操作**：创建索引、写入文档、查询文档
+- **Cluster Connectivity**: Verifies ES cluster connection via HealthCheck
+- **Index Operations**: Create index, write document, query document
 
-> 需要 Elasticsearch 服务运行。`check.sh` 通过 docker compose 启动 Elasticsearch。
+> Requires a running Elasticsearch service. `check.sh` starts Elasticsearch via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-elasticsearch/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 cluster health: green
 document indexed
 document found
 ```
 
-需要先启动 Elasticsearch：
+Start Elasticsearch first:
 ```bash
-# 启动 ES
+# Start ES
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keep running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running, you can verify with the corresponding CLI tools. Press `Ctrl+C` to exit the service.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Elasticsearch，运行示例并验证操作，退出码 0 表示通过。
+`check.sh` starts Elasticsearch via docker compose, runs the example and verifies operations, exit code 0 means pass.

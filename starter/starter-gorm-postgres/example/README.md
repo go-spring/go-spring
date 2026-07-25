@@ -1,41 +1,41 @@
 # starter-gorm-postgres Example
 
-演示 starter-gorm-postgres 的 PostgreSQL 数据库连接。
+Demonstrates PostgreSQL database connectivity for starter-gorm-postgres.
 
-## 功能验证
+## Features
 
-- **数据库连接**：通过 GORM 连接 PostgreSQL
-- **版本查询**：执行 `SELECT version()` 验证连通性
+- **Database connection**: Connect to PostgreSQL via GORM
+- **Version query**: Run `SELECT version()` to verify connectivity
 
-> 需要 PostgreSQL 服务运行。`check.sh` 通过 docker compose 启动 PostgreSQL。
+> Requires PostgreSQL service running. `check.sh` starts PostgreSQL via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-gorm-postgres/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 PostgreSQL version: ...
 ```
 
-需要先启动 PostgreSQL：
+Start PostgreSQL first:
 ```bash
-# 启动 PostgreSQL
+# Start PostgreSQL
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 PostgreSQL，运行示例并验证连接，退出码 0 表示通过。
+`check.sh` starts PostgreSQL via docker compose, runs the example and verifies connectivity, exit code 0 means pass.

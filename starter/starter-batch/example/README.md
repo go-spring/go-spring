@@ -1,34 +1,34 @@
 # starter-batch Example
 
-演示 starter-batch 的批处理任务执行与断点续传。
+Demonstrates batch job execution and checkpoint-based resume for starter-batch.
 
-## 功能验证
+## Features
 
-- **两阶段执行**：Phase 1 崩溃模拟断点，Phase 2 从断点恢复
-- **断点续传**：崩溃后重启从上次 checkpoint 继续执行
-- **Job 注册**：通过 `JobDefinition` 接口注册批处理任务
+- **Two-Phase Execution**: Phase 1 simulates a checkpoint crash, Phase 2 resumes from checkpoint
+- **Checkpoint Resume**: After a crash, restart continues from the last checkpoint
+- **Job Registration**: Register batch jobs via the `JobDefinition` interface
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-batch/example
 go run . -manual
 ```
 
-预期输出（两阶段自动执行，Phase 2 从断点恢复并完成）：
+Expected output (two phases execute automatically, Phase 2 resumes from checkpoint and completes):
 ```
 phase 1: ...
 phase 2: ...
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running, can verify with corresponding CLI tools. Press `Ctrl+C` to exit.
 
-需要 Docker 环境运行完整冒烟测试（依赖 MySQL）。
+Requires Docker environment to run full smoke test (depends on MySQL).
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 MySQL，运行示例并验证断点续传，退出码 0 表示通过。
+`check.sh` starts MySQL via docker compose, runs the example and verifies checkpoint resume, exit code 0 means pass.

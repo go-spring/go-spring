@@ -1,44 +1,44 @@
 # starter-mail Example
 
-演示 starter-mail 的邮件发送。
+Demonstrates email sending with starter-mail.
 
-## 功能验证
+## Features
 
-- **邮件发送**：通过 SMTP 发送邮件
-- **连接验证**：验证 SMTP 服务器连通性
+- **Email Sending**: Send emails via SMTP
+- **Connection Verification**: Verify SMTP server connectivity
 
-> 需要 SMTP 服务（Mailpit/MailHog）运行。`check.sh` 通过 docker compose 启动 Mailpit。
+> Requires SMTP service (Mailpit/MailHog) running. check.sh starts Mailpit via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-mail/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 mail sent successfully
 ```
 
-需要先启动 Mailpit：
+Start Mailpit first:
 ```bash
-# 启动 Mailpit
+# Start Mailpit
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keep running)
 go run . -manual
 
-# 查看发送的邮件
+# View sent emails
 open http://127.0.0.1:8025
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Mailpit，运行示例并验证邮件发送，退出码 0 表示通过。
+check.sh starts Mailpit via docker compose, runs the example and verifies email sending, exit code 0 means pass.

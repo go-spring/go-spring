@@ -73,13 +73,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demo := gs.Provide(&Demo{}).Name("demo").Export(gs.As[gs.Rooter]())
 
 	if !*manual {
-		time.Sleep(500 * time.Millisecond)
-		runTest(demoBean.Interface().(*Demo))
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest(demo.Interface().(*Demo))
+		}()
 	} else {
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")

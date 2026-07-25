@@ -1,45 +1,45 @@
 # starter-pulsar Example
 
-演示 starter-pulsar 的 Apache Pulsar 消息客户端。
+Demonstrates Apache Pulsar messaging client for starter-pulsar.
 
-## 功能验证
+## Features
 
-- **消息发布**：向 Pulsar topic 发送消息
-- **消息消费**：订阅 topic 并接收消息
-- **消息确认**：消费后确认（ack）
+- **Message publishing**: Sends messages to a Pulsar topic
+- **Message consumption**: Subscribes to a topic and receives messages
+- **Message acknowledgment**: Acknowledges (ack) after consumption
 
-> 需要 Pulsar 服务运行。`check.sh` 通过 docker compose 启动 Pulsar。
+> Requires Pulsar service running. `check.sh` starts Pulsar via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-pulsar/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 subscribed
 published
 message received
 ```
 
-需要先启动 Pulsar：
+Start Pulsar first:
 ```bash
-# 启动 Pulsar
+# Start Pulsar
 docker compose up -d
 
-# 等待 Pulsar 就绪
+# Wait for Pulsar to be ready
 sleep 15
 
-# 运行示例
+# Run example
 go run . -manual
 ```
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Pulsar，运行示例并验证消息，退出码 0 表示通过。
+`check.sh` starts Pulsar via docker compose, runs the example and verifies messages, exit code 0 means pass.

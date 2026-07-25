@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-go run . &
+go run -gcflags="all=-N -l" . &
 pid=$!
 ( sleep 40; kill -9 "${pid}" 2>/dev/null ) &
 watchdog=$!

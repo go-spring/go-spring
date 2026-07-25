@@ -1,22 +1,22 @@
 # starter-casbin Example
 
-演示 starter-casbin 的 RBAC 权限控制。
+Demonstrates RBAC access control for starter-casbin.
 
-## 功能验证
+## Features
 
-- **策略文件加载**：从 `model.conf` 和 `policy.csv` 加载 RBAC 策略
-- **权限判断**：通过 `/enforce` 端点判断 subject/object/action 是否允许
-- **策略热更新**：通过 Watcher 监听策略文件变化
+- **Policy File Loading**: Load RBAC policies from `model.conf` and `policy.csv`
+- **Permission Enforcement**: Judge whether subject/object/action is allowed via the `/enforce` endpoint
+- **Policy Hot Reload**: Watch policy file changes via Watcher
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-casbin/example
 go run . -manual
 ```
 
-终端 2，执行验证命令：
+Terminal 2, run verification commands:
 ```bash
 curl 'http://127.0.0.1:9090/enforce?sub=alice&obj=/data&act=write'
 # -> allow
@@ -25,12 +25,12 @@ curl 'http://127.0.0.1:9090/enforce?sub=bob&obj=/data&act=write'
 # -> deny
 ```
 
-验证完成后 `Ctrl+C` 退出服务。
+Press Ctrl+C to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

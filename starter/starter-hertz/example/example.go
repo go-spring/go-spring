@@ -83,8 +83,10 @@ func main() {
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	if !*manual {
-		time.Sleep(time.Millisecond * 500)
-		runTest()
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest()
+		}()
 	} else {
 
 		// Configuration lives under ./conf/app.properties; the built-in HTTP

@@ -144,8 +144,10 @@ func main() {
 	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 
 	if !*manual {
-		time.Sleep(500 * time.Millisecond)
-		runTest(svrBean.Interface().(*Service))
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			runTest(svrBean.Interface().(*Service))
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")

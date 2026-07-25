@@ -1,44 +1,44 @@
 # starter-mqtt Example
 
-演示 starter-mqtt 的 MQTT 客户端。
+Demonstrates the MQTT client with starter-mqtt.
 
-## 功能验证
+## Features
 
-- **连接状态**：验证 MQTT broker 连接健康
-- **消息发布**：向 MQTT topic 发布消息
-- **消息订阅**：订阅 topic 并接收消息
+- **Connection Status**: Verify MQTT broker connection health
+- **Message Publishing**: Publish messages to MQTT topics
+- **Message Subscription**: Subscribe to topics and receive messages
 
-> 需要 MQTT Broker 运行。`check.sh` 通过 docker compose 启动 Mosquitto。
+> Requires MQTT Broker running. check.sh starts Mosquitto via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-mqtt/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 connected
 published
 message received
 ```
 
-需要先启动 MQTT Broker：
+Start MQTT Broker first:
 ```bash
-# 启动 Mosquitto
+# Start Mosquitto
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keep running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Mosquitto，运行示例并验证消息，退出码 0 表示通过。
+check.sh starts Mosquitto via docker compose, runs the example and verifies messages, exit code 0 means pass.

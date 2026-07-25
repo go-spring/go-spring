@@ -1,22 +1,22 @@
 # starter-swagger Example
 
-演示 starter-swagger 的 Swagger UI 集成。
+Demonstrates Swagger UI integration with starter-swagger.
 
-## 功能验证
+## Features
 
-- **Swagger UI**：提供交互式 API 文档界面
-- **OpenAPI Spec**：自动生成 OpenAPI 规范 JSON
-- **API 测试**：通过 UI 直接测试 API 端点
+- **Swagger UI**: Provides an interactive API documentation interface
+- **OpenAPI Spec**: Auto-generates OpenAPI specification JSON
+- **API Testing**: Test API endpoints directly through the UI
 
-## 手动验证
+## Manual Testing
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-swagger/example
 go run . -manual
 ```
 
-终端 2，执行验证命令：
+Terminal 2, run verification commands:
 ```bash
 curl http://127.0.0.1:9090/swagger/index.html
 # -> Swagger UI HTML
@@ -25,12 +25,12 @@ curl http://127.0.0.1:9090/swagger/doc.json
 # -> OpenAPI spec JSON
 ```
 
-验证完成后 `Ctrl+C` 退出服务。
+Press Ctrl+C to stop the service after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+check.sh runs the example and waits for self-test to complete, exit code 0 means pass.

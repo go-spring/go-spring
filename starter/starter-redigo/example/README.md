@@ -1,40 +1,40 @@
 # starter-redigo Example
 
-演示 starter-redigo 的 Redigo Redis 客户端。
+Demonstrates the Redigo Redis client of starter-redigo.
 
-## 功能验证
+## Features
 
-- **String SET/GET**：写入和读取字符串键值
-- **多 Driver 支持**：可切换 redigo/go-redis driver
+- **String SET/GET**: Write and read string key-value pairs
+- **Multi-Driver Support**: Switchable redigo/go-redis driver
 
-> 需要 Redis 服务运行。`check.sh` 通过 docker compose 启动 Redis。
+> Requires Redis service running. `check.sh` starts Redis via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-redigo/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 SET foo bar: OK
 GET foo: bar
 ```
 
-需要先启动 Redis：
+Start Redis first:
 ```bash
-# 启动 Redis
+# Start Redis
 docker compose up -d
 
-# 运行示例
+# Run the example
 go run . -manual
 ```
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Redis，运行示例并验证操作，退出码 0 表示通过。
+`check.sh` starts Redis via docker compose, runs the example and verifies the operations, exit code 0 means pass.

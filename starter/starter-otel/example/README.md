@@ -1,25 +1,25 @@
 # starter-otel Example
 
-演示 starter-otel 的 OpenTelemetry 链路追踪与日志关联。
+Demonstrates OpenTelemetry tracing and log correlation for starter-otel.
 
-## 功能验证
+## Features
 
-- **Trace ↔ Log 关联**：创建 Span 后，日志自动携带 trace_id/span_id
-- **Span 导出**：Span 正确记录并导出到配置的 exporter
+- **Trace-Log correlation**: After creating a Span, logs automatically carry trace_id/span_id
+- **Span export**: Spans are correctly recorded and exported to the configured exporter
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-otel/example
 go run . -manual
 ```
 
-程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
+The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

@@ -1,26 +1,26 @@
 # starter-transaction-at-gorm Example
 
-演示 starter-transaction-at-gorm 的 AT 分布式事务（Seata AT 模式）。
+Demonstrates AT distributed transactions (Seata AT mode) using starter-transaction-at-gorm.
 
-## 功能验证
+## Features
 
-- **提交路径**：正常事务提交，两个数据库一致
-- **回滚路径**：事务失败后自动回滚，数据恢复到事务前状态
-- **写写隔离**：并发写操作的事务隔离保证
+- **Commit path**: Normal transaction commit, two databases remain consistent
+- **Rollback path**: Automatic rollback on transaction failure, data restored to pre-transaction state
+- **Write-write isolation**: Transaction isolation guarantees for concurrent write operations
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-transaction-at-gorm/example
 go run . -manual
 ```
 
-程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
+The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+check.sh runs the example and waits for self-test to complete, exit code 0 means pass.

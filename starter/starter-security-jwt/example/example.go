@@ -71,8 +71,10 @@ func main() {
 	}, gs.TagArg("api"))
 
 	if !*manual {
-		time.Sleep(time.Millisecond * 500)
-		runTest()
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest()
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")

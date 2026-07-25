@@ -1,56 +1,56 @@
 # starter-session-redis Example
 
-演示 starter-session-redis 的 Redis Session 管理。
+Demonstrates Redis session management with starter-session-redis.
 
-## 功能验证
+## Features
 
-- **跨副本共享**：副本 A 写入 session，副本 B 读取（共享 Redis 存储）
-- **Session 持久化**：Session 数据存储在 Redis，进程重启不丢失
-- **Cookie 传递**：通过 Cookie 传递 session ID
+- **Cross-Replica Sharing**: Replica A writes session, Replica B reads (shared Redis storage)
+- **Session Persistence**: Session data stored in Redis, survives process restarts
+- **Cookie Passing**: Session ID passed via Cookie
 
-> 需要 Redis 服务运行。`check.sh` 通过 docker compose 启动 Redis。
+> Requires a running Redis service. `check.sh` starts Redis via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-session-redis/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 session set: ok
 session get: ok
 cross-replica sharing: OK
 ```
 
-需要先启动 Redis：
+Start Redis first:
 ```bash
-# 启动 Redis
+# Start Redis
 docker compose up -d
 
-# 运行示例
+# Run the example
 go run . -manual
 ```
 
-也可以手动 curl 验证：
+You can also manually verify with curl:
 ```bash
-# 终端1：启动服务
+# Terminal 1: Start the service
 go run . -manual
 
-# 终端2：A 写入 session
+# Terminal 2: A writes session
 curl -c /tmp/cookie http://127.0.0.1:9090/a/set?user=alice
 # -> ok
 
-# 终端2：B 读取 session（共享 Redis）
+# Terminal 2: B reads session (shared Redis)
 curl -b /tmp/cookie http://127.0.0.1:9090/b/get
 # -> alice
 ```
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Redis，运行示例并验证 session，退出码 0 表示通过。
+check.sh starts Redis via docker compose, runs the example and verifies sessions, exit code 0 means pass.

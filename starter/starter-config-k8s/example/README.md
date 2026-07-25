@@ -1,30 +1,30 @@
 # starter-config-k8s Example
 
-演示 starter-config-k8s 的 Kubernetes ConfigMap 配置加载。
+Demonstrates Kubernetes ConfigMap config loading with starter-config-k8s.
 
-## 功能验证
+## Features
 
-- **ConfigMap 加载**：从 K8s ConfigMap 读取配置
-- **热更新**：监听 ConfigMap 变化并动态刷新
+- **ConfigMap loading**: Read config from K8s ConfigMap
+- **Hot reload**: Watch ConfigMap changes and refresh dynamically
 
-> 注意：此示例需要在 Kubernetes 集群中运行。`check.sh` 在无集群环境下会跳过。
+> Note: This example needs to run inside a Kubernetes cluster. `check.sh` will skip when no cluster environment is available.
 
-## 手动验证
+## Manual Testing
 
-需要在 K8s 集群中运行。
+Needs to run inside a K8s cluster.
 
-终端 1，启动服务并保持运行：
+Terminal 1, start the service and keep it running:
 ```bash
 cd starter-config-k8s/example
 go run . -manual
 ```
 
-本地直接运行会打印提示并正常退出。验证完成后 `Ctrl+C` 退出。
+Running directly on local machine will print a message and exit normally. Press `Ctrl+C` to stop after verification.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例，无 K8s 集群时自动跳过。
+`check.sh` runs the example, automatically skips when no K8s cluster is available.

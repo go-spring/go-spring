@@ -1,46 +1,46 @@
 # starter-rabbitmq Example
 
-演示 starter-rabbitmq 的 RabbitMQ 消息客户端。
+Demonstrates the RabbitMQ messaging client of starter-rabbitmq.
 
-## 功能验证
+## Features
 
-- **默认交换机**：通过默认 exchange 发布/消费消息
-- **队列声明**：自动声明队列
-- **消息确认**：消费后自动 ack
+- **Default Exchange**: Publish/consume messages via the default exchange
+- **Queue Declaration**: Automatically declare queues
+- **Message Acknowledgment**: Auto ack after consuming
 
-> 需要 RabbitMQ 服务运行。`check.sh` 通过 docker compose 启动 RabbitMQ。
+> Requires RabbitMQ service running. `check.sh` starts RabbitMQ via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-rabbitmq/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 published to queue "hello"
 consumed from queue "hello": value
 ```
 
-需要先启动 RabbitMQ：
+Start RabbitMQ first:
 ```bash
-# 启动 RabbitMQ
+# Start RabbitMQ
 docker compose up -d
 
-# 等待 RabbitMQ 就绪
+# Wait for RabbitMQ to be ready
 sleep 10
 
-# 运行示例
+# Run the example
 go run . -manual
 ```
 
-浏览器打开 `http://127.0.0.1:15672`（guest/guest）查看管理界面。
+Open `http://127.0.0.1:15672` (guest/guest) in browser to view the management UI.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 RabbitMQ，运行示例并验证消息，退出码 0 表示通过。
+`check.sh` starts RabbitMQ via docker compose, runs the example and verifies the messages, exit code 0 means pass.

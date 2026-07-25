@@ -1,23 +1,23 @@
 # starter-nats Example
 
-演示 starter-nats 的 NATS 消息客户端。
+Demonstrates the NATS messaging client with starter-nats.
 
-## 功能验证
+## Features
 
-- **连接健康**：验证 NATS 连接健康状态
-- **多连接隔离**：main 和 work 两个独立连接
-- **消息发布/订阅**：通过 NATS 发布和订阅消息
+- **Connection Health**: Verify NATS connection health status
+- **Multi-Connection Isolation**: Two independent connections, main and work
+- **Message Publish/Subscribe**: Publish and subscribe to messages via NATS
 
-> 需要 NATS 服务运行。`check.sh` 通过 docker compose 启动 NATS。
+> Requires NATS service running. check.sh starts NATS via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-nats/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 main connection: healthy
 work connection: healthy
@@ -25,21 +25,21 @@ message published
 message received
 ```
 
-需要先启动 NATS：
+Start NATS first:
 ```bash
-# 启动 NATS
+# Start NATS
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keep running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 NATS，运行示例并验证消息，退出码 0 表示通过。
+check.sh starts NATS via docker compose, runs the example and verifies messages, exit code 0 means pass.

@@ -1,27 +1,27 @@
 # starter-http-client Example
 
-演示 starter-http-client 的 HTTP 客户端，含服务发现与链路追踪。
+Demonstrates the HTTP client for starter-http-client, including service discovery and distributed tracing.
 
-## 功能验证
+## Features
 
-- **直连模式**：通过固定地址调用后端
-- **服务发现**：通过 discovery 查找服务实例
-- **链路追踪**：集成 OpenTelemetry，自动传播 traceparent
-- **请求/响应**：验证 Echo 往返
+- **Direct mode**: Call backend via fixed address
+- **Service discovery**: Discover service instances via discovery
+- **Distributed tracing**: Integrated OpenTelemetry, automatic traceparent propagation
+- **Request/Response**: Verify Echo round-trip
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-http-client/example
 go run . -manual
 ```
 
-程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
+The program keeps running, press Ctrl+C to exit. Without -manual, runTest() executes automatically and exits.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.

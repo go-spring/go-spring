@@ -83,8 +83,10 @@ func main() {
 	})
 
 	if !*manual {
-		time.Sleep(time.Millisecond * 500)
-		runTest(svrBean.Interface().(*Service))
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest(svrBean.Interface().(*Service))
+		}()
 	} else {
 
 		// Run the Go-Spring application.

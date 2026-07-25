@@ -1,43 +1,43 @@
 # starter-neo4j Example
 
-演示 starter-neo4j 的 Neo4j 图数据库客户端。
+Demonstrates Neo4j graph database client for starter-neo4j.
 
-## 功能验证
+## Features
 
-- **连接健康**：验证 Neo4j 数据库连通性
-- **Cypher 查询**：执行 Cypher 查询语句
-- **多 Driver 支持**：可切换不同 Neo4j driver
+- **Connection health**: Verifies Neo4j database connectivity
+- **Cypher queries**: Executes Cypher query statements
+- **Multi-driver support**: Supports switching between different Neo4j drivers
 
-> 需要 Neo4j 服务运行。`check.sh` 通过 docker compose 启动 Neo4j。
+> Requires Neo4j service running. `check.sh` starts Neo4j via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-neo4j/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 health check: OK
 query executed
 ```
 
-需要先启动 Neo4j：
+Start Neo4j first:
 ```bash
-# 启动 Neo4j
+# Start Neo4j
 docker compose up -d
 
-# 运行示例
+# Run example
 go run . -manual
 ```
 
-浏览器打开 `http://127.0.0.1:7474` 查看 Neo4j Browser。
+Open `http://127.0.0.1:7474` in browser to view Neo4j Browser.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Neo4j，运行示例并验证查询，退出码 0 表示通过。
+`check.sh` starts Neo4j via docker compose, runs the example and verifies the query, exit code 0 means pass.

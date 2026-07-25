@@ -1,43 +1,43 @@
 # starter-config-etcd Example
 
-演示 starter-config-etcd 的 etcd KV 配置管理。
+Demonstrates etcd KV config management with starter-config-etcd.
 
-## 功能验证
+## Features
 
-- **配置加载**：从 etcd KV 读取配置项
-- **配置热更新**：通过 etcd API 修改 KV，应用实时感知变化
-- **Dync 动态绑定**：通过 `Dync[T]` 绑定配置，自动刷新
+- **Config loading**: Read config items from etcd KV
+- **Config hot reload**: Modify KV via etcd API, application perceives changes in real time
+- **Dync dynamic binding**: Bind config via `Dync[T]`, auto refresh
 
-> 需要 etcd 服务运行。`check.sh` 通过 docker compose 启动 etcd。
+> Requires etcd service running. `check.sh` starts etcd via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-config-etcd/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 initial value
 updated value
 ```
 
-需要先启动 etcd：
+Start etcd first:
 ```bash
-# 启动 etcd
+# Start etcd
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 etcd，运行示例并验证配置刷新，退出码 0 表示通过。
+`check.sh` starts etcd via docker compose, runs the example and verifies config refresh, exit code 0 means pass.

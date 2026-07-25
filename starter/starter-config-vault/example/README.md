@@ -1,43 +1,43 @@
 # starter-config-vault Example
 
-演示 starter-config-vault 的 Vault 加密配置管理。
+Demonstrates Vault encrypted config management with starter-config-vault.
 
-## 功能验证
+## Features
 
-- **加密配置**：从 Vault 读取加密的配置项
-- **配置解密**：通过 AES 密钥解密配置值
-- **配置热更新**：发布新的加密值后应用实时感知
+- **Encrypted config**: Read encrypted config items from Vault
+- **Config decryption**: Decrypt config values via AES key
+- **Config hot reload**: Application perceives changes in real time after publishing new encrypted values
 
-> 需要 Vault 服务运行。`check.sh` 通过 docker compose 启动 Vault。
+> Requires Vault service running. `check.sh` starts Vault via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-config-vault/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 initial value
 updated value
 ```
 
-需要先启动 Vault：
+Start Vault first:
 ```bash
-# 启动 Vault
+# Start Vault
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Vault，运行示例并验证配置刷新，退出码 0 表示通过。
+`check.sh` starts Vault via docker compose, runs the example and verifies config refresh, exit code 0 means pass.

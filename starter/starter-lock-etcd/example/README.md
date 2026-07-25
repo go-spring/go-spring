@@ -1,44 +1,44 @@
 # starter-lock-etcd Example
 
-演示 starter-lock-etcd 的 etcd 分布式锁。
+Demonstrates etcd distributed lock with starter-lock-etcd.
 
-## 功能验证
+## Features
 
-- **锁获取**：通过 etcd Lease 获取分布式锁
-- **锁竞争**：多个实例竞争同一把锁，只有一个获取成功
-- **锁释放**：任务完成后释放锁，或 TTL 过期自动释放
+- **Lock Acquisition**: Acquire a distributed lock via etcd Lease
+- **Lock Contention**: Multiple instances compete for the same lock, only one succeeds
+- **Lock Release**: Release the lock after the task completes, or auto-release on TTL expiry
 
-> 需要 etcd 服务运行。`check.sh` 通过 docker compose 启动 etcd。
+> Requires etcd service running. `check.sh` starts etcd via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-lock-etcd/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 lock acquired
 task completed
 lock released
 ```
 
-需要先启动 etcd：
+Start etcd first:
 ```bash
-# 启动 etcd
+# Start etcd
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run the example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press `Ctrl+C` to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 etcd，运行示例并验证锁，退出码 0 表示通过。
+`check.sh` starts etcd via docker compose, runs the example and verifies locking, exit code 0 means pass.

@@ -1,43 +1,43 @@
 # starter-registry-nacos Example
 
-演示 starter-registry-nacos 的 Nacos 服务注册与发现。
+Demonstrates Nacos service registration and discovery of starter-registry-nacos.
 
-## 功能验证
+## Features
 
-- **服务注册**：启动时将服务注册到 Nacos
-- **服务发现**：通过 Nacos Open API 查询已注册的服务实例
-- **自动注销**：进程退出时自动从 Nacos 注销
+- **Service Registration**: Register the service to Nacos on startup
+- **Service Discovery**: Query registered service instances via Nacos Open API
+- **Auto Deregistration**: Automatically deregister from Nacos on process exit
 
-> 需要 Nacos 服务运行。`check.sh` 通过 docker compose 启动 Nacos。
+> Requires Nacos service running. `check.sh` starts Nacos via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-registry-nacos/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 instances found: ...
 ```
 
-需要先启动 Nacos：
+Start Nacos first:
 ```bash
-# 启动 Nacos
+# Start Nacos
 docker compose up -d
 
-# 运行示例
+# Run the example
 go run . -manual
 
-# 查看注册的服务
+# View registered services
 curl 'http://127.0.0.1:8848/nacos/v1/ns/instance/list?serviceName=go-spring'
 ```
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 Nacos，运行示例并验证注册，退出码 0 表示通过。
+`check.sh` starts Nacos via docker compose, runs the example and verifies registration, exit code 0 means pass.

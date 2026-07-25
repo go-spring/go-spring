@@ -162,8 +162,10 @@ func main() {
 	runnerBean := gs.Provide(&Runner{}).Export(gs.As[gs.Rooter]())
 
 	if !*manual {
-		time.Sleep(500 * time.Millisecond)
-		runTest(runnerBean.Interface().(*Runner))
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			runTest(runnerBean.Interface().(*Runner))
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")

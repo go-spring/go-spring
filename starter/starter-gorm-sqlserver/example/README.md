@@ -1,41 +1,41 @@
 # starter-gorm-sqlserver Example
 
-演示 starter-gorm-sqlserver 的 SQL Server 数据库连接。
+Demonstrates SQL Server database connectivity for starter-gorm-sqlserver.
 
-## 功能验证
+## Features
 
-- **数据库连接**：通过 GORM 连接 SQL Server
-- **版本查询**：执行 `SELECT @@VERSION` 验证连通性
+- **Database connection**: Connect to SQL Server via GORM
+- **Version query**: Run `SELECT @@VERSION` to verify connectivity
 
-> 需要 SQL Server 服务运行。`check.sh` 通过 docker compose 启动 SQL Server。
+> Requires SQL Server service running. `check.sh` starts SQL Server via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-gorm-sqlserver/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 SQL Server version: ...
 ```
 
-需要先启动 SQL Server：
+Start SQL Server first:
 ```bash
-# 启动 SQL Server
+# Start SQL Server
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 SQL Server，运行示例并验证连接，退出码 0 表示通过。
+`check.sh` starts SQL Server via docker compose, runs the example and verifies connectivity, exit code 0 means pass.

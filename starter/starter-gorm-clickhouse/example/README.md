@@ -1,41 +1,41 @@
 # starter-gorm-clickhouse Example
 
-演示 starter-gorm-clickhouse 的 ClickHouse 数据库连接。
+Demonstrates ClickHouse database connectivity for starter-gorm-clickhouse.
 
-## 功能验证
+## Features
 
-- **数据库连接**：通过 GORM 连接 ClickHouse
-- **版本查询**：执行 `SELECT version()` 验证连通性
+- **Database connection**: Connect to ClickHouse via GORM
+- **Version query**: Run `SELECT version()` to verify connectivity
 
-> 需要 ClickHouse 服务运行。`check.sh` 通过 docker compose 启动 ClickHouse。
+> Requires ClickHouse service running. `check.sh` starts ClickHouse via docker compose.
 
-## 手动验证
+## Manual Testing
 
 ```bash
 cd starter-gorm-clickhouse/example
 go run . -manual
 ```
 
-预期输出：
+Expected output:
 ```
 ClickHouse version: ...
 ```
 
-需要先启动 ClickHouse：
+Start ClickHouse first:
 ```bash
-# 启动 ClickHouse
+# Start ClickHouse
 docker compose up -d
 
-# 运行示例（manual 模式，保持运行）
+# Run example (manual mode, keeps running)
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+The service keeps running. You can verify with corresponding CLI tools. Press Ctrl+C to stop.
 
-## 冒烟测试
+## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` 通过 docker compose 启动 ClickHouse，运行示例并验证连接，退出码 0 表示通过。
+`check.sh` starts ClickHouse via docker compose, runs the example and verifies connectivity, exit code 0 means pass.

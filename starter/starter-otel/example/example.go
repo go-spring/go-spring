@@ -61,8 +61,10 @@ func main() {
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	if !*manual {
-		time.Sleep(700 * time.Millisecond)
-		runTest()
+		go func() {
+			time.Sleep(700 * time.Millisecond)
+			runTest()
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")
