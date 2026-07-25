@@ -37,13 +37,20 @@
 package StarterBatchRedis
 
 import (
+	"context"
 	"runtime"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/batch"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+)
+
+var (
+	// starterTag identifies logs emitted by the batch redis starter.
+	starterTag = log.RegisterInfraTag("starter_batch_redis", "")
 )
 
 func init() {
@@ -62,6 +69,7 @@ func init() {
 				return errutil.Explain(nil, "batch-redis: instance %q missing required property %q",
 					name, "spring.batch-repository."+name+".client")
 			}
+			log.Debugf(context.Background(), starterTag, "creating batch redis repository name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
 			// TagArg injects the *redis.Client bean by name — this is the
 			// seam that ties the JobRepository to a specific redis instance.
 			b := r.Provide(newRedisRepository, gs.ValueArg(c), gs.TagArg(c.Client)).

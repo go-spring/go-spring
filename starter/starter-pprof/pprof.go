@@ -27,6 +27,11 @@ import (
 	"go-spring.org/spring/gs"
 )
 
+var (
+	// starterTag identifies logs emitted by the pprof starter.
+	starterTag = log.RegisterInfraTag("starter_pprof", "")
+)
+
 func init() {
 	// Registers a SimplePProfServer bean in the IoC container. It is given a
 	// distinct name so it coexists with the application's main HTTP server,
@@ -84,7 +89,7 @@ func NewSimplePProfServer(c Config) *SimplePProfServer {
 	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
 
 	if !c.authEnabled() && !isLoopback(c.Address) {
-		log.Warnf(context.Background(), log.TagAppDef,
+		log.Warnf(context.Background(), starterTag,
 			"pprof server listening on %q without authentication; set spring.pprof.token or username/password, or bind to loopback",
 			c.Address)
 	}

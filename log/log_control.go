@@ -17,7 +17,6 @@
 package log
 
 import (
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/ordered"
 )
 
@@ -26,8 +25,7 @@ import (
 type LoggerInfo struct {
 	// Name is the configured logger name (RootLoggerName for the root logger).
 	Name string
-	// Level is the effective minimum level (upper-case, e.g. "INFO"). It
-	// reflects a runtime override if one has been applied via SetLoggerLevel.
+	// Level is the effective minimum level (upper-case, e.g. "INFO").
 	Level string
 }
 
@@ -50,28 +48,6 @@ func Loggers() []LoggerInfo {
 	return out
 }
 
-// SetLoggerLevel overrides the level range of a configured logger at runtime.
-//
-// name is a logger name reported by Loggers (use RootLoggerName for the root
-// logger). level is parsed by ParseLevelRange, so it accepts forms like "INFO"
-// or "INFO~ERROR". The change takes effect immediately for subsequent events.
-// It returns an error for an unknown logger name or an invalid level.
-func SetLoggerLevel(name, level string) error {
-	r, err := ParseLevelRange(level)
-	if err != nil {
-		return err
-	}
-
-	global.mutex.Lock()
-	defer global.mutex.Unlock()
-
-	l, ok := global.named[name]
-	if !ok {
-		return errutil.Explain(nil, "logger %q not found", name)
-	}
-	l.SetLevel(r)
-	return nil
-}
 
 // AvailableLevels returns the selectable log level names (upper-case), ordered
 // from most to least verbose. Bounds-only levels (NONE, MAX) are excluded.

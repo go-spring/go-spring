@@ -50,6 +50,11 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
+var (
+	// starterTag identifies logs emitted by the consul registry starter.
+	starterTag = log.RegisterInfraTag("starter_registry_consul", "")
+)
+
 func init() {
 	// Activated only when a Consul address is set. The module callback runs in
 	// the bean-registration phase — before any Server.Run — so the registrar is
@@ -61,6 +66,7 @@ func init() {
 		if err := conf.Bind(p, &cc, "${spring.registry.consul}"); err != nil {
 			return err
 		}
+		log.Debugf(context.Background(), starterTag, "creating consul registrar name=%s address=%s ttl=%s", cc.Name, cc.Address, cc.TTL)
 		if _, ok := discovery.GetRegistrar(cc.Name); ok {
 			return errutil.Explain(nil, "registry-consul: registrar %q already registered", cc.Name)
 		}
@@ -69,6 +75,7 @@ func init() {
 			return errutil.Explain(err, "registry-consul: build registrar %q", cc.Name)
 		}
 		discovery.RegisterRegistrar(cc.Name, reg)
+		log.Infof(context.Background(), starterTag, "registered consul registrar name=%s address=%s", cc.Name, cc.Address)
 
 		bean := r.Provide(func() *Server { return &Server{} }).
 			Name("registryServer").
@@ -112,11 +119,12 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
+	log.Debugf(ctx, starterTag, "registering service=%s id=%s addr=%s weight=%d", s.reg.ServiceName, s.reg.ID, s.reg.Addr, s.reg.Weight)
 	if err := s.registrar.Register(ctx, s.reg); err != nil {
+		log.Errorf(ctx, starterTag, "register service=%s failed: %v", s.reg.ServiceName, err)
 		return errutil.Explain(err, "registry: register %q", s.reg.ServiceName)
 	}
-	log.Infof(ctx, log.TagAppDef, "registry: registered %q at %s (backend %q)",
-		s.reg.ServiceName, s.reg.Addr, s.Config.Backend)
+	log.Infof(ctx, starterTag, "registered %q at %s (backend=%q)", s.reg.ServiceName, s.reg.Addr, s.Config.Backend)
 
 	<-ctx.Done()
 	return nil
@@ -141,6 +149,6 @@ func (s *Server) deregister(ctx context.Context) {
 		return
 	}
 	if err := s.registrar.Deregister(ctx, s.reg); err != nil {
-		log.Warnf(ctx, log.TagAppDef, "registry: deregister %q: %v", s.reg.ServiceName, err)
+		log.Warnf(ctx, starterTag, "deregister %q: %v", s.reg.ServiceName, err)
 	}
 }

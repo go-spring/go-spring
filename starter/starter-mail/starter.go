@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/wneessen/go-mail"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
@@ -69,6 +70,11 @@ type Mailer struct {
 	from   string
 }
 
+var (
+	// starterTag identifies logs emitted by the mail starter.
+	starterTag = log.RegisterInfraTag("starter_mail", "")
+)
+
 func init() {
 	// Register multiple SMTP mailers as a group. Each instance is created from
 	// the configuration under "${spring.mail}", so adding a second mailer is a
@@ -87,6 +93,8 @@ func newMailer(c Config) (*Mailer, error) {
 	if err := errutil.RequireField("mail", "host", c.Host); err != nil {
 		return nil, err
 	}
+
+	log.Debugf(context.Background(), starterTag, "creating mailer host=%s port=%d auth=%s tls=%s from=%s", c.Host, c.Port, c.AuthType, c.TLS.Mode, c.From)
 
 	opts := []mail.Option{
 		mail.WithPort(c.Port),
@@ -140,6 +148,7 @@ func newMailer(c Config) (*Mailer, error) {
 		return nil, errutil.Explain(err, "mail: closing startup probe connection failed")
 	}
 
+	log.Infof(context.Background(), starterTag, "mailer created host=%s port=%d", c.Host, c.Port)
 	return &Mailer{client: client, from: c.From}, nil
 }
 

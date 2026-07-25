@@ -17,6 +17,7 @@
 package StarterOAuth2Server
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"go-spring.org/log"
 )
 
 // UserAuthFunc authenticates the end-user at the authorization endpoint and, on
@@ -55,8 +57,11 @@ type AuthServer struct {
 func newAuthServer(c Config) (*AuthServer, error) {
 	sgn, err := newSigner(c)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create signer failed: %v", err)
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "oauth2 server created issuer=%s accessTokenTTL=%s refreshTokenTTL=%s clients=%d",
+		c.Issuer, c.AccessTokenTTL, c.RefreshTokenTTL, len(c.Clients))
 	return &AuthServer{cfg: c, signer: sgn, store: newStore()}, nil
 }
 

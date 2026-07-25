@@ -25,6 +25,7 @@
 package StarterConfigNacos
 
 import (
+	"context"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -35,6 +36,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader/json"
 	"go-spring.org/spring/conf/reader/prop"
@@ -62,7 +64,10 @@ func init() {
 // nacosController is the global singleton. It is ONLY referenced in init
 // functions. All other code operates on the
 // receiver without touching this global.
-var nacosController = &nacosCtrl{}
+var (
+	starterTag      = log.RegisterInfraTag("starter_config_nacos", "")
+	nacosController = &nacosCtrl{}
+)
 
 // nacosCtrl is the single object that owns the full lifecycle of nacos
 // configuration: loading configs, listening for changes, and triggering
@@ -213,11 +218,15 @@ func splitHostPort(server string) (string, uint64, error) {
 func (c *nacosCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
+	log.Debugf(context.Background(), starterTag, "loading nacos config from server=%s group=%s dataId=%s format=%s", cs.server, cs.group, cs.dataID, cs.format)
+
 	cli, err := c.clientFor(cs)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create nacos client for server=%s failed: %v", cs.server, err)
 		return nil, err
 	}
 
@@ -226,14 +235,18 @@ func (c *nacosCtrl) Load(optional bool, source string) (map[string]string, error
 	content, err := cli.GetConfig(vo.ConfigParam{DataId: cs.dataID, Group: cs.group})
 	if err != nil {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config get %s/%s failed (skipped): %v", cs.group, cs.dataID, err)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "get nacos config %s/%s failed: %v", cs.group, cs.dataID, err)
 		return nil, errutil.Explain(err, "get nacos config %s/%s failed", cs.group, cs.dataID)
 	}
 	if content == "" {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config %s/%s is empty (skipped)", cs.group, cs.dataID)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "nacos config %s/%s is empty", cs.group, cs.dataID)
 		return nil, errutil.Explain(nil, "nacos config %s/%s is empty", cs.group, cs.dataID)
 	}
 
@@ -243,8 +256,11 @@ func (c *nacosCtrl) Load(optional bool, source string) (map[string]string, error
 	}
 	m, err := r([]byte(content))
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "parse nacos config %s/%s as %s failed: %v", cs.group, cs.dataID, cs.format, err)
 		return nil, errutil.Explain(err, "parse nacos config %s/%s as %s failed", cs.group, cs.dataID, cs.format)
 	}
+
+	log.Infof(context.Background(), starterTag, "loaded nacos config from %s/%s keys=%d", cs.group, cs.dataID, len(m))
 	return flatten.Flatten(m), nil
 }
 

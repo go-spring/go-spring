@@ -27,6 +27,7 @@ import (
 	"github.com/kitex-contrib/obs-opentelemetry/provider"
 	"github.com/kitex-contrib/obs-opentelemetry/tracing"
 	etcd "github.com/kitex-contrib/registry-etcd"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 
@@ -36,6 +37,8 @@ import (
 	// logs into the application's go-spring log pipeline.
 	_ "go-spring.org/starter-kitex/internal/logger"
 )
+
+var kitexTag = log.RegisterAppTag("kitex", "starter")
 
 func init() {
 	gs.Provide(
@@ -116,6 +119,7 @@ type SimpleKitexServer struct {
 // NewSimpleKitexServer creates a SimpleKitexServer from ${spring.kitex.server}
 // config and the registered ServiceRegister bean.
 func NewSimpleKitexServer(cfg Config, reg ServiceRegister) *SimpleKitexServer {
+	log.Debugf(context.Background(), kitexTag, "kitex server created addr=%s service=%s", cfg.Addr, cfg.ServiceName)
 	return &SimpleKitexServer{cfg: cfg, reg: reg, done: make(chan struct{})}
 }
 
@@ -189,6 +193,7 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
+	log.Infof(ctx, kitexTag, "kitex server starting on %s", s.cfg.Addr)
 	errCh := make(chan error, 1)
 	go func() {
 		// Run binds the listener, registers into etcd and then blocks.
@@ -197,6 +202,9 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	select {
 	case err = <-errCh:
+		if err != nil {
+			log.Errorf(ctx, kitexTag, "kitex server failed on %s: %v", s.cfg.Addr, err)
+		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:
 		return nil
@@ -207,6 +215,7 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // etcd, and signals Run to return so Go-Spring can complete shutdown. It also
 // shuts down the OTel provider set up in Run to flush pending spans.
 func (s *SimpleKitexServer) Stop() error {
+	log.Infof(context.Background(), kitexTag, "kitex server shutting down on %s", s.cfg.Addr)
 	err := s.svr.Stop()
 	if s.otelProvider != nil {
 		_ = s.otelProvider.Shutdown(context.Background())

@@ -23,13 +23,17 @@
 package StarterHTTPClient
 
 import (
+	"context"
 	"io"
 	"net/http"
 
 	"go-spring.org/spring/gs"
 	"go-spring.org/spring/web/httpx"
+	"go-spring.org/log"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
+
+var starterTag = log.RegisterInfraTag("http_client", "")
 
 func init() {
 	// Multi-instance only: bind a map of clients under "${spring.http-client}"
@@ -47,14 +51,18 @@ func init() {
 // how trace context rides across service boundaries. stdlib/httpx then layers
 // discovery + load balancing and, when enabled, resilience on top of that base.
 func newClient(c Config) (*http.Client, error) {
+	log.Debugf(context.Background(), starterTag, "creating http client, addr=%s service-name=%s timeout=%v", c.Addr, c.ServiceName, c.Timeout)
+
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
 	base := otelhttp.NewTransport(http.DefaultTransport)
 	rt, closeFn, err := httpx.NewTransport(c.toTransportConfig(base))
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "http-client: create transport failed: %v", err)
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "http client initialized, addr=%s service-name=%s", c.Addr, c.ServiceName)
 	return &http.Client{
 		Transport: &managedTransport{rt: rt, closeFn: closeFn},
 		Timeout:   c.Timeout,
@@ -64,6 +72,7 @@ func newClient(c Config) (*http.Client, error) {
 // destroyClient releases the discovery watch and resilience executor behind an
 // instance by closing its transport.
 func destroyClient(client *http.Client) error {
+	log.Debugf(context.Background(), starterTag, "http client destroyed")
 	if c, ok := client.Transport.(io.Closer); ok {
 		return c.Close()
 	}

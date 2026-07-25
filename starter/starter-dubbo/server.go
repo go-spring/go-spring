@@ -24,10 +24,13 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/config"
 	"dubbo.apache.org/dubbo-go/v3/protocol"
 	"dubbo.apache.org/dubbo-go/v3/server"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
+
+var dubboServerTag = log.RegisterAppTag("dubbo", "starter")
 
 func init() {
 	enableSimpleDubboServer := gs.OnProperty("spring.dubbo.provider.enabled").
@@ -188,6 +191,7 @@ type SimpleDubboServer struct {
 // NewSimpleDubboServer creates a SimpleDubboServer from the shared *Instance's
 // provider configuration.
 func NewSimpleDubboServer(d *Instance) *SimpleDubboServer {
+	log.Debugf(context.Background(), dubboServerTag, "dubbo server created")
 	return &SimpleDubboServer{d: d, done: make(chan struct{})}
 }
 
@@ -310,6 +314,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
+	log.Infof(ctx, dubboServerTag, "dubbo server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- svr.Serve()
@@ -317,6 +322,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	select {
 	case err = <-errCh:
+		log.Errorf(ctx, dubboServerTag, "dubbo server failed: %v", err)
 		return errutil.Explain(err, "failed to serve dubbo server")
 	case <-s.done:
 		return nil
@@ -325,6 +331,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 // Stop signals Run to return so Go-Spring can complete its shutdown sequence.
 func (s *SimpleDubboServer) Stop() error {
+	log.Infof(context.Background(), dubboServerTag, "dubbo server shutting down")
 	close(s.done)
 	return nil
 }

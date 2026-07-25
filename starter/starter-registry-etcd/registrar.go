@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -73,6 +74,7 @@ func newEtcdRegistrar(c EtcdConfig) (*etcdRegistrar, error) {
 		TLS:         tlsCfg,
 	})
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create etcd client for endpoints=%v failed: %v", c.Endpoints, err)
 		return nil, errutil.Explain(err, "registry-etcd: failed to create etcd client")
 	}
 	// Fail-fast readiness probe: a Status against the first endpoint proves the

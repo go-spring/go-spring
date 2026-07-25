@@ -17,13 +17,17 @@
 package StarterKafkaSarama
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/IBM/sarama"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 )
+
+var starterTag = log.RegisterInfraTag("kafka_sarama", "")
 
 func init() {
 	// Bridge sarama's package-level logger into go-spring's log so
@@ -49,6 +53,8 @@ func init() {
 // non-empty Brokers() check guards against future sarama changes that might
 // otherwise swallow a fully empty cluster.
 func newClient(c Config) (sarama.Client, error) {
+	log.Debugf(context.Background(), starterTag, "creating kafka sarama client, brokers=%s", c.Brokers)
+
 	cfg := sarama.NewConfig()
 	if c.Version != "" {
 		v, err := sarama.ParseKafkaVersion(c.Version)
@@ -69,6 +75,7 @@ func newClient(c Config) (sarama.Client, error) {
 	if c.TLS.Enabled {
 		tc, err := c.TLS.Build()
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "kafka sarama: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "kafka: build TLS")
 		}
 		cfg.Net.TLS.Enable = true
@@ -81,12 +88,15 @@ func newClient(c Config) (sarama.Client, error) {
 
 	cl, err := sarama.NewClient(strings.Split(c.Brokers, ","), cfg)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "kafka sarama: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 	if len(cl.Brokers()) == 0 {
 		cl.Close()
+		log.Errorf(context.Background(), starterTag, "kafka sarama: no brokers after metadata fetch: %s", c.Brokers)
 		return nil, fmt.Errorf("kafka client has no brokers after metadata fetch: %s", c.Brokers)
 	}
+	log.Infof(context.Background(), starterTag, "kafka sarama client initialized, brokers=%s", c.Brokers)
 	return cl, nil
 }
 

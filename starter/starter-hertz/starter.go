@@ -22,9 +22,12 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
+
+var hertzTag = log.RegisterAppTag("hertz", "starter")
 
 func init() {
 	gs.Provide(
@@ -92,16 +95,28 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServ
 	}
 
 	register(h)
+
+	addr := cfg.Addr
+	tlsEnabled := cfg.TLS.Enabled
+	log.Debugf(context.Background(), hertzTag, "hertz server created addr=%s tls=%v readTimeout=%s writeTimeout=%s idleTimeout=%s",
+		addr, tlsEnabled, cfg.ReadTimeout, cfg.WriteTimeout, cfg.IdleTimeout)
+
 	return &SimpleHertzServer{h: h}, nil
 }
 
 // Run starts the Hertz engine after Go-Spring signals readiness.
 func (s *SimpleHertzServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	return s.h.Run()
+	log.Infof(ctx, hertzTag, "hertz server starting")
+	if err := s.h.Run(); err != nil {
+		log.Errorf(ctx, hertzTag, "hertz server failed: %v", err)
+		return err
+	}
+	return nil
 }
 
 // Stop gracefully shuts the Hertz engine down.
 func (s *SimpleHertzServer) Stop() error {
+	log.Infof(context.Background(), hertzTag, "hertz server shutting down")
 	return s.h.Shutdown(context.Background())
 }

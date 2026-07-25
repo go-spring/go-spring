@@ -29,7 +29,10 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/log"
 )
+
+var starterTag = log.RegisterInfraTag("go_redis", "")
 
 func init() {
 	// Register Redis clients as a group, one per entry under "${spring.go-redis}".
@@ -74,29 +77,37 @@ func init() {
 // installs; when starter-otel is absent those globals are no-ops, so this stays
 // a zero-config opt-in that needs no per-component adaptation.
 func newClient(c Config) (*redis.Client, error) {
+	log.Debugf(context.Background(), starterTag, "creating redis client, addr=%s mode=%s", c.Addr, c.Mode)
+
 	if err := validateConfig(c); err != nil {
 		return nil, err
 	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
+		log.Errorf(context.Background(), starterTag, "redis driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(c)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "redis: create client failed: %v", err)
 		return nil, err
 	}
 	if err := instrument(client); err != nil {
+		log.Errorf(context.Background(), starterTag, "redis: instrument client failed: %v", err)
 		_ = client.Close()
 		return nil, err
 	}
 	if err := failFastPing(c, client); err != nil {
+		log.Errorf(context.Background(), starterTag, "redis: startup ping failed: %v", err)
 		_ = destroyClient(client)
 		return nil, err
 	}
 	if err := applyResilience(c, client); err != nil {
+		log.Errorf(context.Background(), starterTag, "redis: resilience setup failed: %v", err)
 		_ = destroyClient(client)
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "redis client initialized, addr=%s mode=%s", c.Addr, c.Mode)
 	return client, nil
 }
 
@@ -104,33 +115,42 @@ func newClient(c Config) (*redis.Client, error) {
 // driver must implement ClusterDriver; the redisotel hooks attach per-node via
 // ClusterClient.OnNewNode, so tracing/metrics cover every node discovered.
 func newClusterClient(c Config) (*redis.ClusterClient, error) {
+	log.Debugf(context.Background(), starterTag, "creating redis cluster client, addrs=%v", c.Addrs)
+
 	if err := validateConfig(c); err != nil {
 		return nil, err
 	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
+		log.Errorf(context.Background(), starterTag, "redis driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
 	cd, ok := d.(ClusterDriver)
 	if !ok {
+		log.Errorf(context.Background(), starterTag, "redis driver %q does not support cluster mode", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver %q does not support cluster mode", c.Driver)
 	}
 	client, err := cd.CreateClusterClient(c)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "redis: create cluster client failed: %v", err)
 		return nil, err
 	}
 	if err := instrument(client); err != nil {
+		log.Errorf(context.Background(), starterTag, "redis: instrument cluster client failed: %v", err)
 		_ = client.Close()
 		return nil, err
 	}
 	if err := failFastPing(c, client); err != nil {
+		log.Errorf(context.Background(), starterTag, "redis: cluster startup ping failed: %v", err)
 		_ = client.Close()
 		return nil, err
 	}
 	if err := applyResilience(c, client); err != nil {
+		log.Errorf(context.Background(), starterTag, "redis: cluster resilience setup failed: %v", err)
 		_ = destroyClusterClient(client)
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "redis cluster client initialized, addrs=%v", c.Addrs)
 	return client, nil
 }
 
@@ -199,6 +219,7 @@ func destroyClient(client *redis.Client) error {
 	closeResilience(client)
 	if v, ok := liveDialers.LoadAndDelete(client); ok {
 		_ = v.(*discovery.LiveDialer).Stop()
+		log.Debugf(context.Background(), starterTag, "redis client destroyed, discovery dialer stopped")
 	}
 	return client.Close()
 }
@@ -207,5 +228,6 @@ func destroyClient(client *redis.Client) error {
 // LiveDialer, so there is no discovery watch to stop.
 func destroyClusterClient(client *redis.ClusterClient) error {
 	closeResilience(client)
+	log.Debugf(context.Background(), starterTag, "redis cluster client destroyed")
 	return client.Close()
 }

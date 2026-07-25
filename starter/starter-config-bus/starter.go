@@ -32,7 +32,13 @@
 package StarterConfigBus
 
 import (
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the config bus starter.
+	starterTag = log.RegisterInfraTag("starter_config_bus", "")
 )
 
 func init() {

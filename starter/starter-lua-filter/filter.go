@@ -17,6 +17,7 @@
 package StarterLuaFilter
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
@@ -50,6 +51,7 @@ func newFilter(c Config) (*Filter, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "lua filter created script=%s", c.Script)
 	f := &Filter{name: c.Script, script: c.Script}
 	f.proto.Store(proto)
 	f.pool.New = func() any {
@@ -155,7 +157,7 @@ func (f *Filter) install(L *lua.LState, st *reqState) {
 
 	// log(msg) bridges script logging into the go-spring log pipeline.
 	L.SetGlobal("log", L.NewFunction(func(l *lua.LState) int {
-		log.Infof(st.r.Context(), log.TagAppDef, "[lua %s] %s", f.name, l.CheckString(1))
+		log.Infof(st.r.Context(), starterTag, "[%s] %s", f.name, l.CheckString(1))
 		return 0
 	}))
 }

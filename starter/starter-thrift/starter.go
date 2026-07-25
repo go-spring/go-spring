@@ -22,10 +22,13 @@ import (
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
+
+var thriftTag = log.RegisterAppTag("thrift", "starter")
 
 func init() {
 	gs.Provide(
@@ -84,6 +87,8 @@ type SimpleThriftServer struct {
 
 // NewSimpleThriftServer creates a SimpleThriftServer from ${spring.thrift.server} configuration.
 func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor) *SimpleThriftServer {
+	log.Debugf(context.Background(), thriftTag, "thrift server created addr=%s protocol=%s transport=%s",
+		cfg.Addr, cfg.Protocol, cfg.Transport)
 	return &SimpleThriftServer{cfg: cfg, proc: proc}
 }
 
@@ -152,7 +157,9 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	}
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()
+	log.Infof(ctx, thriftTag, "thrift server starting on %s", s.cfg.Addr)
 	if err = s.svr.Serve(); err != nil {
+		log.Errorf(ctx, thriftTag, "thrift server failed on %s: %v", s.cfg.Addr, err)
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil
@@ -161,5 +168,6 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 // Stop gracefully stops the underlying Thrift server, interrupting the accept
 // loop and waiting for in-flight requests to drain.
 func (s *SimpleThriftServer) Stop() error {
+	log.Infof(context.Background(), thriftTag, "thrift server shutting down on %s", s.cfg.Addr)
 	return s.svr.Stop()
 }

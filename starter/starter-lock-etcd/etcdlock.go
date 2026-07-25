@@ -23,6 +23,7 @@ import (
 
 	"go-spring.org/spring/cloud/lock"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
 )
@@ -44,12 +45,15 @@ type etcdLocker struct {
 // unreachable within DialTimeout so a misconfigured application never boots
 // with a silently broken lock backend.
 func newEtcdLocker(c Config) (*etcdLocker, error) {
+	log.Debugf(context.Background(), starterTag, "creating etcd locker, endpoints=%v key-prefix=%s", c.Endpoints, c.KeyPrefix)
+
 	if len(c.Endpoints) == 0 {
 		return nil, errutil.Explain(nil, "lock-etcd: endpoints is required")
 	}
 
 	tlsCfg, err := c.TLS.Build()
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "lock-etcd: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "lock-etcd: build TLS")
 	}
 
@@ -61,6 +65,7 @@ func newEtcdLocker(c Config) (*etcdLocker, error) {
 		TLS:         tlsCfg,
 	})
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "lock-etcd: create client failed: %v", err)
 		return nil, errutil.Explain(err, "lock-etcd: failed to create etcd client")
 	}
 
@@ -70,10 +75,12 @@ func newEtcdLocker(c Config) (*etcdLocker, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.DialTimeout)
 	defer cancel()
 	if _, err := cli.Status(ctx, c.Endpoints[0]); err != nil {
+		log.Errorf(context.Background(), starterTag, "lock-etcd: startup probe failed for %s: %v", c.Endpoints[0], err)
 		_ = cli.Close()
 		return nil, errutil.Explain(err, "lock-etcd: startup probe failed for %s", c.Endpoints[0])
 	}
 
+	log.Infof(context.Background(), starterTag, "etcd locker initialized, endpoints=%v", c.Endpoints)
 	return &etcdLocker{
 		client:    cli,
 		keyPrefix: c.KeyPrefix,

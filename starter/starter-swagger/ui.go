@@ -17,11 +17,14 @@
 package StarterSwagger
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"strings"
+
+	"go-spring.org/log"
 )
 
 // pageTemplate is the minimal Swagger UI shell. The heavy assets (CSS + JS
@@ -83,6 +86,7 @@ func NewUI(cfg Config) (*UI, error) {
 		return nil, fmt.Errorf("swagger: rendering page: %w", err)
 	}
 
+	log.Infof(context.Background(), starterTag, "swagger ui configured basePath=%s specFile=%s", cfg.BasePath, cfg.SpecFile)
 	return &UI{
 		basePath: base,
 		specURL:  specURL,

@@ -21,6 +21,7 @@ import (
 	"net"
 	"strconv"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	trpc "trpc.group/trpc-go/trpc-go"
@@ -33,6 +34,8 @@ import (
 	// logs into the application's go-spring log pipeline.
 	_ "go-spring.org/starter-trpc/internal/logger"
 )
+
+var trpcTag = log.RegisterAppTag("trpc", "starter")
 
 func init() {
 	gs.Provide(
@@ -104,6 +107,8 @@ type SimpleTrpcServer struct {
 // NewSimpleTrpcServer creates a SimpleTrpcServer from ${spring.trpc.server}
 // config and the registered ServiceRegister bean.
 func NewSimpleTrpcServer(cfg Config, reg ServiceRegister) *SimpleTrpcServer {
+	log.Debugf(context.Background(), trpcTag, "trpc server created addr=%s service=%s network=%s protocol=%s",
+		cfg.Addr, cfg.ServiceName, cfg.Network, cfg.Protocol)
 	return &SimpleTrpcServer{cfg: cfg, reg: reg, done: make(chan struct{})}
 }
 
@@ -151,6 +156,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
+	log.Infof(ctx, trpcTag, "trpc server starting on %s", s.cfg.Addr)
 	errCh := make(chan error, 1)
 	go func() {
 		// Serve binds the listener and blocks until Close/ a signal.
@@ -159,6 +165,9 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	select {
 	case err = <-errCh:
+		if err != nil {
+			log.Errorf(ctx, trpcTag, "trpc server failed on %s: %v", s.cfg.Addr, err)
+		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:
 		return nil
@@ -168,6 +177,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop closes the underlying tRPC server, which unblocks Serve, then signals Run
 // to return so Go-Spring can complete shutdown.
 func (s *SimpleTrpcServer) Stop() error {
+	log.Infof(context.Background(), trpcTag, "trpc server shutting down on %s", s.cfg.Addr)
 	if s.svr != nil {
 		_ = s.svr.Close(nil)
 	}

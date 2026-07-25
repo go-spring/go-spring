@@ -31,9 +31,17 @@
 package StarterResilience
 
 import (
+	"context"
+
 	sentinel "github.com/alibaba/sentinel-golang/api"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/resilience"
+)
+
+var (
+	// starterTag identifies logs emitted by the resilience starter.
+	starterTag = log.RegisterInfraTag("starter_resilience", "")
 )
 
 func init() {
@@ -43,6 +51,7 @@ func init() {
 		panic("starter-resilience: sentinel init failed: " + err.Error())
 	}
 	resilience.RegisterDriver("sentinel", sentinelDriver{})
+	log.Infof(context.Background(), starterTag, "registered sentinel resilience driver")
 }
 
 type sentinelDriver struct{}

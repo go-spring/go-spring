@@ -26,6 +26,7 @@ import (
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
@@ -45,6 +46,8 @@ var netSeq atomic.Uint64
 
 // tlsSeq makes each registered custom TLS config name unique.
 var tlsSeq atomic.Uint64
+
+var starterTag = log.RegisterInfraTag("gorm_mysql", "")
 
 type discoveryConn struct {
 	ld      *discovery.LiveDialer
@@ -74,6 +77,8 @@ func newClient(c Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
 	}
 
+	log.Debugf(context.Background(), starterTag, "creating gorm mysql client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
+
 	// Resolve the TLS DSN parameter. The shared TLS builder returns a fully
 	// materialized *tls.Config when TLS is enabled (empty CAFile falls back to
 	// the host's system root set; ServerName/InsecureSkipVerify honored), or
@@ -82,6 +87,7 @@ func newClient(c Config) (*gorm.DB, error) {
 	var tlsName string
 	tlsCfg, err := c.TLS.Build()
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm mysql: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "gorm-mysql: build TLS")
 	}
 	if tlsCfg != nil {
@@ -98,11 +104,13 @@ func newClient(c Config) (*gorm.DB, error) {
 	if c.ServiceName != "" {
 		d, err := discovery.MustGet(c.Discovery)
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "gorm mysql: get discovery backend failed: %v", err)
 			deregisterTLS(tlsName)
 			return nil, err
 		}
 		ld, err := discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "gorm mysql: create live dialer for %s failed: %v", c.ServiceName, err)
 			deregisterTLS(tlsName)
 			return nil, err
 		}
@@ -120,15 +128,18 @@ func newClient(c Config) (*gorm.DB, error) {
 
 	db, err := gorm.Open(gormmysql.Open(dsn), gormConfig(c))
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm mysql: open failed: %v", err)
 		cleanup(conn, tlsName)
 		return nil, err
 	}
 	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("mysql"))); err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm mysql: install otel plugin failed: %v", err)
 		cleanup(conn, tlsName)
 		return nil, err
 	}
 	// Fail fast: verify connectivity and apply pool settings at creation time.
 	if err := applyPool(db, c); err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm mysql: ping failed: %v", err)
 		cleanup(conn, tlsName)
 		if sqlDB, derr := db.DB(); derr == nil {
 			_ = sqlDB.Close()
@@ -136,6 +147,7 @@ func newClient(c Config) (*gorm.DB, error) {
 		return nil, err
 	}
 	if err := applyResilience(c, db); err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm mysql: resilience setup failed: %v", err)
 		cleanup(conn, tlsName)
 		if sqlDB, derr := db.DB(); derr == nil {
 			_ = sqlDB.Close()
@@ -148,6 +160,7 @@ func newClient(c Config) (*gorm.DB, error) {
 	if tlsName != "" {
 		tlsConfigs.Store(db, tlsName)
 	}
+	log.Infof(context.Background(), starterTag, "gorm mysql client initialized, addr=%s db=%s", c.Addr, c.DB)
 	return db, nil
 }
 
@@ -177,6 +190,7 @@ func destroyClient(db *gorm.DB) error {
 		conn := v.(*discoveryConn)
 		_ = conn.ld.Stop()
 		mysql.DeregisterDialContext(conn.netName)
+		log.Debugf(context.Background(), starterTag, "gorm mysql client destroyed, discovery dialer stopped")
 	}
 	if v, ok := tlsConfigs.LoadAndDelete(db); ok {
 		mysql.DeregisterTLSConfig(v.(string))

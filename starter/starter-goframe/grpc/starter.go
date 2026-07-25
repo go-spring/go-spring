@@ -29,6 +29,7 @@ import (
 	etcdreg "github.com/gogf/gf/contrib/registry/etcd/v2"
 	"github.com/gogf/gf/contrib/rpc/grpcx/v2"
 	"github.com/gogf/gf/v2/net/gsvc"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"google.golang.org/grpc"
 
@@ -38,6 +39,8 @@ import (
 	// log pipeline before the first grpcx / gsvc call.
 	_ "go-spring.org/starter-goframe/internal/logger"
 )
+
+var goframeGRPCTag = log.RegisterAppTag("goframe_grpc", "starter")
 
 func init() {
 	gs.Provide(NewGRPCServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.grpc.server}"))).
@@ -89,6 +92,9 @@ func NewGRPCServer(cfg Config, reg ServiceRegister) *GRPCServer {
 		gsvc.SetRegistry(etcdreg.New(cfg.Registry.Etcd))
 	}
 
+	log.Debugf(context.Background(), goframeGRPCTag, "goframe grpc server created name=%s address=%s registry=%s",
+		cfg.Name, cfg.Address, cfg.Registry.Etcd)
+
 	grpcCfg := grpcx.Server.NewConfig()
 	grpcCfg.Name = cfg.Name
 	grpcCfg.Address = cfg.Address
@@ -109,6 +115,7 @@ func NewGRPCServer(cfg Config, reg ServiceRegister) *GRPCServer {
 // owned by the Go-Spring lifecycle.
 func (s *GRPCServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
+	log.Infof(ctx, goframeGRPCTag, "goframe grpc server starting")
 	s.svr.Start()
 	<-s.done
 	return nil
@@ -117,6 +124,7 @@ func (s *GRPCServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop gracefully stops the underlying grpcx server (which deregisters from etcd
 // when a registry is set and calls grpc.Server.GracefulStop) and unblocks Run.
 func (s *GRPCServer) Stop() error {
+	log.Infof(context.Background(), goframeGRPCTag, "goframe grpc server shutting down")
 	s.svr.Stop()
 	close(s.done)
 	return nil

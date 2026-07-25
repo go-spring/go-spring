@@ -28,6 +28,7 @@ import (
 
 	"go-spring.org/spring/cloud/lock"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 )
 
 // k8sLocker implements [lock.Locker] on top of coordination.k8s.io/Lease
@@ -50,10 +51,14 @@ type k8sLocker struct {
 // a missing ServiceAccount or bad kubeconfig fails at boot rather than on the
 // first Acquire.
 func newK8sLocker(c Config) (*k8sLocker, error) {
+	log.Debugf(context.Background(), starterTag, "creating k8s locker, namespace=%s key-prefix=%s", c.Namespace, c.KeyPrefix)
+
 	client, err := buildClient(c)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "lock-k8s: build client failed: %v", err)
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "k8s locker initialized, namespace=%s", c.Namespace)
 	return newK8sLockerWithClient(client, c.Namespace, c.KeyPrefix), nil
 }
 

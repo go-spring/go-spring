@@ -17,12 +17,19 @@
 package StarterWebsocket
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the websocket starter.
+	starterTag = log.RegisterInfraTag("starter_websocket", "")
 )
 
 func init() {
@@ -71,5 +78,7 @@ func NewUpgrader(cfg Config) *websocket.Upgrader {
 			return slices.Contains(allowed, r.Header.Get("Origin"))
 		}
 	}
+	log.Debugf(context.Background(), starterTag, "websocket upgrader created handshakeTimeout=%s readBuf=%d writeBuf=%d compression=%v origins=%v",
+		cfg.HandshakeTimeout, cfg.ReadBufferSize, cfg.WriteBufferSize, cfg.EnableCompression, cfg.AllowedOrigins)
 	return u
 }

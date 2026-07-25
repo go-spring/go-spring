@@ -30,6 +30,8 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
+var starterTag = log.RegisterInfraTag("pulsar", "")
+
 func init() {
 
 	// Register multiple Pulsar clients as a group.
@@ -46,6 +48,8 @@ func init() {
 // TopicPartitions lookup against HealthCheckTopic so a bad URL, wrong token or
 // TLS mismatch fails at startup instead of on first message.
 func newClient(c Config) (pulsar.Client, error) {
+	log.Debugf(context.Background(), starterTag, "creating pulsar client, url=%s fail-fast=%v", c.URL, c.FailFast)
+
 	opts := pulsar.ClientOptions{
 		URL:                        c.URL,
 		OperationTimeout:           c.OperationTimeout,
@@ -81,6 +85,7 @@ func newClient(c Config) (pulsar.Client, error) {
 
 	cl, err := pulsar.NewClient(opts)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "pulsar: create client failed: %v", err)
 		if srv != nil {
 			_ = srv.Shutdown(context.Background())
 		}
@@ -89,6 +94,7 @@ func newClient(c Config) (pulsar.Client, error) {
 
 	if c.FailFast {
 		if _, err = cl.TopicPartitions(c.HealthCheckTopic); err != nil {
+			log.Errorf(context.Background(), starterTag, "pulsar: fail-fast probe failed on %s (topic=%s): %v", c.URL, c.HealthCheckTopic, err)
 			cl.Close()
 			if srv != nil {
 				_ = srv.Shutdown(context.Background())
@@ -99,6 +105,7 @@ func newClient(c Config) (pulsar.Client, error) {
 	if srv != nil {
 		metricsServers.Store(cl, srv)
 	}
+	log.Infof(context.Background(), starterTag, "pulsar client initialized, url=%s", c.URL)
 	return cl, nil
 }
 

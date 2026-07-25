@@ -25,6 +25,7 @@ import (
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 )
 
 func init() {
@@ -33,6 +34,8 @@ func init() {
 	// This allows defining multiple neo4j instances dynamically.
 	gs.Group("${spring.neo4j}", newClient, destroyClient)
 }
+
+var starterTag = log.RegisterInfraTag("neo4j", "")
 
 // newClient creates a new Neo4j client based on the provided configuration.
 // After the driver is built, connectivity is verified so that misconfiguration
@@ -49,9 +52,12 @@ func init() {
 // discovery backend (c.Discovery) and spliced into the URI host; see the
 // ServiceName field docs for the startup-only limitation.
 func newClient(c Config) (neo4j.DriverWithContext, error) {
+	log.Debugf(context.Background(), starterTag, "creating neo4j client, uri=%s service-name=%s driver=%s", c.URI, c.ServiceName, c.Driver)
+
 	if c.ServiceName != "" {
 		uri, err := resolveURI(c)
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "neo4j: resolve service-name failed: %v", err)
 			return nil, err
 		}
 		c.URI = uri
@@ -59,10 +65,12 @@ func newClient(c Config) (neo4j.DriverWithContext, error) {
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
+		log.Errorf(context.Background(), starterTag, "neo4j driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "neo4j driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(c)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "neo4j: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create neo4j client")
 	}
 
@@ -70,9 +78,11 @@ func newClient(c Config) (neo4j.DriverWithContext, error) {
 	ctx, cancel := verifyContext(c.SocketConnectTimeout)
 	defer cancel()
 	if err := client.VerifyConnectivity(ctx); err != nil {
+		log.Errorf(context.Background(), starterTag, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
 		_ = client.Close(context.Background())
 		return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
 	}
+	log.Infof(context.Background(), starterTag, "neo4j client initialized, uri=%s", c.URI)
 	return client, nil
 }
 

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
@@ -50,6 +51,7 @@ func newConsulRegistrar(c ConsulConfig) (*consulRegistrar, error) {
 		Namespace:  c.Namespace,
 	})
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create consul client for address=%s failed: %v", c.Address, err)
 		return nil, err
 	}
 	return &consulRegistrar{

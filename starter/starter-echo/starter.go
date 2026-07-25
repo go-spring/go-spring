@@ -23,9 +23,12 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
+
+var echoTag = log.RegisterAppTag("echo", "starter")
 
 func init() {
 	gs.Provide(
@@ -77,16 +80,21 @@ func NewSimpleEchoServer(register RouterRegister, cfg Config) (*SimpleEchoServer
 
 	register(e)
 
+	addr := cfg.Address
+	tlsEnabled := cfg.TLS.Enabled
+	log.Debugf(context.Background(), echoTag, "echo server created addr=%s tls=%v readTimeout=%s writeTimeout=%s idleTimeout=%s",
+		addr, tlsEnabled, cfg.ReadTimeout, cfg.WriteTimeout, cfg.IdleTimeout)
+
 	return &SimpleEchoServer{
 		svr: &http.Server{
-			Addr:              cfg.Address,
+			Addr:              addr,
 			Handler:           e,
 			ReadTimeout:       cfg.ReadTimeout,
 			ReadHeaderTimeout: cfg.ReadTimeout,
 			WriteTimeout:      cfg.WriteTimeout,
 			IdleTimeout:       cfg.IdleTimeout,
 		},
-		tls:      cfg.TLS.Enabled,
+		tls:      tlsEnabled,
 		certFile: cfg.TLS.CertFile,
 		keyFile:  cfg.TLS.KeyFile,
 	}, nil
@@ -100,13 +108,18 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		return errutil.Explain(err, "failed to listen on %s", s.svr.Addr)
 	}
 	<-sig.TriggerAndWait()
+	log.Infof(ctx, echoTag, "echo server starting on %s (tls=%v)", s.svr.Addr, s.tls)
 	if s.tls {
 		err = s.svr.ServeTLS(ln, s.certFile, s.keyFile)
 	} else {
 		err = s.svr.Serve(ln)
 	}
 	if errors.Is(err, http.ErrServerClosed) {
+		log.Debugf(ctx, echoTag, "echo server stopped on %s", s.svr.Addr)
 		return nil
+	}
+	if err != nil {
+		log.Errorf(ctx, echoTag, "echo server failed on %s: %v", s.svr.Addr, err)
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
@@ -114,5 +127,6 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop gracefully shuts the HTTP server down, allowing in-flight requests to
 // complete.
 func (s *SimpleEchoServer) Stop() error {
+	log.Infof(context.Background(), echoTag, "echo server shutting down on %s", s.svr.Addr)
 	return s.svr.Shutdown(context.Background())
 }

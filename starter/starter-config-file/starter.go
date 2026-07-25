@@ -31,6 +31,7 @@
 package StarterConfigFile
 
 import (
+	"context"
 	"maps"
 	"net/url"
 	"os"
@@ -39,6 +40,7 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader/json"
 	"go-spring.org/spring/conf/reader/prop"
@@ -76,7 +78,10 @@ func init() {
 // file and in provider.go wire it into the IoC container and the conf provider
 // respectively. All other code (Load, ensureWatch, watchLoop, readDir, etc.)
 // operates on the receiver without touching this global.
-var fileWatchController = &configFileController{}
+var (
+	starterTag          = log.RegisterInfraTag("starter_config_file", "")
+	fileWatchController = &configFileController{}
+)
 
 // configFileController is the single object that owns the full lifecycle of
 // file-watch configuration: loading files, watching directories, and triggering
@@ -147,14 +152,19 @@ func parseSource(source string) (configSource, error) {
 func (c *configFileController) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
+
+	log.Debugf(context.Background(), starterTag, "loading file-watch config from path=%s format=%s", cs.path, cs.format)
 
 	info, err := os.Stat(cs.path)
 	if err != nil {
 		if os.IsNotExist(err) && optional {
+			log.Warnf(context.Background(), starterTag, "optional config path %s not found (skipped)", cs.path)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "stat %s failed: %v", cs.path, err)
 		return nil, errutil.Explain(err, "file-watch: stat %s failed", cs.path)
 	}
 
@@ -178,6 +188,8 @@ func (c *configFileController) Load(optional bool, source string) (map[string]st
 			return nil, err
 		}
 	}
+
+	log.Infof(context.Background(), starterTag, "loaded file-watch config from path=%s keys=%d", cs.path, len(m))
 	return m, nil
 }
 

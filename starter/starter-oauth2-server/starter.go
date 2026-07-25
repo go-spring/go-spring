@@ -17,7 +17,13 @@
 package StarterOAuth2Server
 
 import (
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the oauth2 server starter.
+	starterTag = log.RegisterInfraTag("starter_oauth2_server", "")
 )
 
 func init() {

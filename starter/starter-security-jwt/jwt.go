@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"go-spring.org/log"
 	"go-spring.org/spring/web/security"
 	"go-spring.org/stdlib/errutil"
 )
@@ -57,6 +58,8 @@ func newAuthenticator(c Config) (*Authenticator, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	log.Debugf(context.Background(), starterTag, "creating jwt authenticator source=%v issuer=%s algorithm=%s required=%v", src, c.Issuer, c.Algorithm, c.Required)
 
 	methods, err := validMethods(c, src)
 	if err != nil {

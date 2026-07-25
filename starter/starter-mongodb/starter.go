@@ -25,6 +25,7 @@ import (
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
@@ -32,6 +33,8 @@ import (
 // liveDialers tracks the discovery-backed dialer behind each client, so
 // destroyClient can stop the background watch on teardown.
 var liveDialers sync.Map // *mongo.Client -> *discovery.LiveDialer
+
+var starterTag = log.RegisterInfraTag("mongodb", "")
 
 func init() {
 
@@ -53,6 +56,8 @@ func init() {
 // address changes take effect without rebuilding the client. When c.ServiceName
 // is empty this dials the URI hosts directly, unchanged from before.
 func newClient(c Config) (*mongo.Client, error) {
+	log.Debugf(context.Background(), starterTag, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
+
 	opts := options.Client().ApplyURI(c.URI)
 	opts.SetMonitor(newCommandMonitor())
 	if c.ConnectTimeout > 0 {
@@ -78,6 +83,7 @@ func newClient(c Config) (*mongo.Client, error) {
 	}
 	tlsCfg, err := c.TLS.Build()
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "mongodb: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "mongodb: build TLS")
 	}
 	if tlsCfg != nil {
@@ -88,10 +94,12 @@ func newClient(c Config) (*mongo.Client, error) {
 	if c.ServiceName != "" {
 		d, err := discovery.MustGet(c.Discovery)
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "mongodb: get discovery backend failed: %v", err)
 			return nil, err
 		}
 		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "mongodb: create live dialer for %s failed: %v", c.ServiceName, err)
 			return nil, err
 		}
 		// The LiveDialer ignores the dialed address and picks a live endpoint;
@@ -101,6 +109,7 @@ func newClient(c Config) (*mongo.Client, error) {
 
 	client, err := mongo.Connect(opts)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "mongodb: connect failed: %v", err)
 		if ld != nil {
 			_ = ld.Stop()
 		}
@@ -111,6 +120,7 @@ func newClient(c Config) (*mongo.Client, error) {
 	ctx, cancel := pingContext(c.ConnectTimeout)
 	defer cancel()
 	if err := client.Ping(ctx, nil); err != nil {
+		log.Errorf(context.Background(), starterTag, "mongodb: ping failed uri=%s: %v", c.URI, err)
 		_ = client.Disconnect(context.Background())
 		if ld != nil {
 			_ = ld.Stop()
@@ -120,6 +130,7 @@ func newClient(c Config) (*mongo.Client, error) {
 	if ld != nil {
 		liveDialers.Store(client, ld)
 	}
+	log.Infof(context.Background(), starterTag, "mongodb client initialized, uri=%s", c.URI)
 	return client, nil
 }
 
@@ -143,6 +154,7 @@ func pingContext(timeout time.Duration) (context.Context, context.CancelFunc) {
 func destroyClient(client *mongo.Client) error {
 	if v, ok := liveDialers.LoadAndDelete(client); ok {
 		_ = v.(*discovery.LiveDialer).Stop()
+		log.Debugf(context.Background(), starterTag, "mongodb client destroyed, discovery dialer stopped")
 	}
 	return client.Disconnect(context.Background())
 }

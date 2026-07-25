@@ -37,13 +37,20 @@
 package StarterSessionRedis
 
 import (
+	"context"
 	"runtime"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/spring/web/session"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+)
+
+var (
+	// starterTag identifies logs emitted by the session redis starter.
+	starterTag = log.RegisterInfraTag("starter_session_redis", "")
 )
 
 func init() {
@@ -61,6 +68,7 @@ func init() {
 				return errutil.Explain(nil, "session-redis: instance %q missing required property %q",
 					name, "spring.session.redis."+name+".client")
 			}
+			log.Debugf(context.Background(), starterTag, "creating session store name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
 			// TagArg injects the *redis.Client bean by name — this is the seam
 			// that ties the store to a specific redis instance.
 			b := r.Provide(newStore, gs.ValueArg(c), gs.TagArg(c.Client)).

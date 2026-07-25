@@ -17,10 +17,18 @@
 package StarterCasbin
 
 import (
+	"context"
+
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/persist"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+)
+
+var (
+	// starterTag identifies logs emitted by the casbin starter.
+	starterTag = log.RegisterInfraTag("starter_casbin", "")
 )
 
 func init() {
@@ -52,6 +60,9 @@ func newEnforcer(c Config) (*Enforcer, error) {
 		e   *casbin.Enforcer
 		err error
 	)
+
+	log.Debugf(context.Background(), starterTag, "creating casbin enforcer model=%s adapter=%s watcher=%s", c.Model, c.Adapter, c.Watcher)
+
 	if c.Adapter != "" {
 		a, ok := lookupAdapter(c.Adapter)
 		if !ok {
@@ -62,6 +73,7 @@ func newEnforcer(c Config) (*Enforcer, error) {
 		e, err = casbin.NewEnforcer(c.Model, c.Policy)
 	}
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create casbin enforcer failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create casbin enforcer")
 	}
 	e.EnableAutoSave(c.AutoSave)

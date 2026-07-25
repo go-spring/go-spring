@@ -65,6 +65,11 @@ import (
 	"go-spring.org/spring/gs"
 )
 
+var (
+	// starterTag identifies logs emitted by the batch starter.
+	starterTag = log.RegisterInfraTag("starter_batch", "")
+)
+
 // enabled matches when the starter is not explicitly disabled. It is the
 // baseline gate for both bean contributions so an app that sets
 // spring.batch.enabled=false pays nothing.
@@ -139,16 +144,16 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			log.Infof(runCtx, log.TagAppDef, "batch: launching job %q on startup", jobName)
+			log.Infof(runCtx, starterTag, "batch: launching job %q on startup", jobName)
 			je, err := s.Launcher.Launch(runCtx, jobName, params)
 			if err != nil {
-				log.Errorf(runCtx, log.TagAppDef, "batch: job %q failed: %v", jobName, err)
+				log.Errorf(runCtx, starterTag, "batch: job %q failed: %v", jobName, err)
 				return
 			}
-			log.Infof(runCtx, log.TagAppDef, "batch: job %q finished with status=%s", jobName, je.Status)
+			log.Infof(runCtx, starterTag, "batch: job %q finished with status=%s", jobName, je.Status)
 		}()
 	}
-	log.Infof(ctx, log.TagAppDef,
+	log.Infof(ctx, starterTag,
 		"batch runner started (%d job definition(s), %d run-on-startup)", len(s.Launcher.Names()), launched)
 
 	<-ctx.Done()
@@ -178,7 +183,7 @@ func (s *Server) Stop() error {
 	case <-done:
 		return nil
 	case <-time.After(timeout):
-		log.Warnf(context.Background(), log.TagAppDef,
+		log.Warnf(context.Background(), starterTag,
 			"batch: drain timed out after %s; abandoning in-flight launches", timeout)
 		return nil
 	}

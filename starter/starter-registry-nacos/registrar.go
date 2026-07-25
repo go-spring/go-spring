@@ -25,6 +25,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
@@ -63,6 +64,7 @@ func newNacosRegistrar(c NacosConfig) (*nacosRegistrar, error) {
 	)
 	client, err := clients.NewNamingClient(vo.NacosClientParam{ClientConfig: cc, ServerConfigs: sc})
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create nacos naming client for server=%s failed: %v", c.Server, err)
 		return nil, errutil.Explain(err, "registry-nacos: create naming client for %s", c.Server)
 	}
 

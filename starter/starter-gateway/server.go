@@ -30,6 +30,8 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
+var gatewayTag = log.RegisterAppTag("gateway", "starter")
+
 // ServerConfig configures the gateway's own listen port. It is deliberately
 // separate from the business web server so both can run in one process on
 // distinct ports.
@@ -53,6 +55,7 @@ type GatewayServer struct {
 }
 
 func newGatewayServer(tbl *RouteTable) *GatewayServer {
+	log.Debugf(context.Background(), gatewayTag, "gateway server created")
 	return &GatewayServer{tbl: tbl}
 }
 
@@ -118,8 +121,9 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "gateway: serving on %s", s.Cfg.Addr)
+	log.Infof(ctx, gatewayTag, "gateway: serving on %s", s.Cfg.Addr)
 	if err = s.svr.Serve(listener); err != nil && err != http.ErrServerClosed {
+		log.Errorf(ctx, gatewayTag, "gateway: failed to serve on %s: %v", s.Cfg.Addr, err)
 		return errutil.Explain(err, "gateway: failed to serve on %s", s.Cfg.Addr)
 	}
 	return nil
@@ -127,5 +131,6 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 // Stop gracefully shuts the server down, letting in-flight requests finish.
 func (s *GatewayServer) Stop() error {
+	log.Infof(context.Background(), gatewayTag, "gateway: shutting down on %s", s.Cfg.Addr)
 	return s.svr.Shutdown(context.Background())
 }

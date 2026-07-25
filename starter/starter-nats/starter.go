@@ -56,6 +56,8 @@ func (c *Conn) Healthy() bool {
 	return c.Conn != nil && c.Conn.IsConnected()
 }
 
+var starterTag = log.RegisterInfraTag("nats", "")
+
 func init() {
 	// Register multiple NATS connections as a group.
 	// Each instance is created according to the configuration in
@@ -67,6 +69,8 @@ func init() {
 // same connection. Connection-layer events (async errors, disconnect, reconnect,
 // close) are bridged into go-spring's log so they show up alongside app logs.
 func newConn(c Config) (*Conn, error) {
+	log.Debugf(context.Background(), starterTag, "creating nats connection, url=%s name=%s", c.URL, c.Name)
+
 	ctx := context.Background()
 
 	opts := []nats.Option{
@@ -110,6 +114,7 @@ func newConn(c Config) (*Conn, error) {
 	if c.TLS.Enabled {
 		tlsCfg, err := c.TLS.Build()
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "nats: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "nats: build TLS")
 		}
 		if tlsCfg != nil {
@@ -121,6 +126,7 @@ func newConn(c Config) (*Conn, error) {
 
 	nc, err := nats.Connect(c.URL, opts...)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "nats: connect failed url=%s: %v", c.URL, err)
 		return nil, errutil.Explain(err, "failed to connect nats: %s", c.URL)
 	}
 
@@ -128,15 +134,18 @@ func newConn(c Config) (*Conn, error) {
 	if c.JetStream.Enabled {
 		js, err := jetstream.New(nc)
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "nats: create jetstream context failed: %v", err)
 			nc.Close()
 			return nil, errutil.Explain(err, "failed to create jetstream context")
 		}
 		conn.JetStream = js
 	}
 	if err := applyResilience(c, conn); err != nil {
+		log.Errorf(context.Background(), starterTag, "nats: resilience setup failed: %v", err)
 		nc.Close()
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "nats connection initialized, url=%s", c.URL)
 	return conn, nil
 }
 

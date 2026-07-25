@@ -40,11 +40,18 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/web/validation"
+)
+
+var (
+	// starterTag identifies logs emitted by the validation starter.
+	starterTag = log.RegisterInfraTag("starter_validation", "")
 )
 
 func init() {
 	validation.RegisterDriver("default", playgroundDriver{})
+	log.Debugf(context.Background(), starterTag, "registered default validation driver (go-playground/validator)")
 }
 
 type playgroundDriver struct{}

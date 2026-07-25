@@ -110,10 +110,14 @@ func (s *AppStarter) startApp() error {
 	// Print banner
 	printBanner()
 
+	log.Infof(context.Background(), log.TagAppDef, "application starting")
+
 	// Apply user configuration
 	if s.cfg != nil {
 		s.cfg(s.app)
 	}
+
+	log.Debugf(context.Background(), log.TagAppDef, "configuration applied, starting app")
 
 	// Start application
 	if err := s.app.Start(); err != nil {
@@ -122,6 +126,7 @@ func (s *AppStarter) startApp() error {
 		return err
 	}
 
+	log.Infof(context.Background(), log.TagAppDef, "application started successfully")
 	return nil
 }
 

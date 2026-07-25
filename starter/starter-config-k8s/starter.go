@@ -17,7 +17,13 @@
 package StarterConfigK8s
 
 import (
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the k8s config center starter.
+	starterTag = log.RegisterInfraTag("starter_config_k8s", "")
 )
 
 func init() {

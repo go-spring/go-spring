@@ -17,11 +17,16 @@
 package StarterRedigo
 
 import (
+	"context"
+
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 )
+
+var starterTag = log.RegisterInfraTag("redigo", "")
 
 func init() {
 	// Register multiple Redis clients as a group.
@@ -32,6 +37,8 @@ func init() {
 
 // newClient creates a new Redis client based on the provided configuration.
 func newClient(c Config) (*redis.Pool, error) {
+	log.Debugf(context.Background(), starterTag, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
+
 	if err := errutil.RequireAny("redis",
 		errutil.Field{Name: "addr", Value: c.Addr},
 		errutil.Field{Name: "service-name", Value: c.ServiceName},
@@ -40,10 +47,12 @@ func newClient(c Config) (*redis.Pool, error) {
 	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
+		log.Errorf(context.Background(), starterTag, "redigo driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
 	pool, err := d.CreateClient(c)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "redigo: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
 	// Fail fast: the redigo pool dials lazily, so borrow one connection and
@@ -52,9 +61,11 @@ func newClient(c Config) (*redis.Pool, error) {
 	conn := pool.Get()
 	defer func() { _ = conn.Close() }()
 	if _, err := conn.Do("PING"); err != nil {
+		log.Errorf(context.Background(), starterTag, "redigo: startup ping failed: %v", err)
 		_ = pool.Close()
 		return nil, errutil.Explain(err, "redis: startup ping failed")
 	}
+	log.Infof(context.Background(), starterTag, "redigo client initialized, addr=%s", c.Addr)
 	return pool, nil
 }
 
@@ -62,6 +73,7 @@ func newClient(c Config) (*redis.Pool, error) {
 func destroyClient(pool *redis.Pool) error {
 	if v, ok := liveDialers.LoadAndDelete(pool); ok {
 		_ = v.(*discovery.LiveDialer).Stop()
+		log.Debugf(context.Background(), starterTag, "redigo client destroyed, discovery dialer stopped")
 	}
 	return pool.Close()
 }

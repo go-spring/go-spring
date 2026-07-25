@@ -17,8 +17,16 @@
 package StarterWebsocketCoder
 
 import (
+	"context"
+
 	"github.com/coder/websocket"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the websocket coder starter.
+	starterTag = log.RegisterInfraTag("starter_websocket_coder", "")
 )
 
 func init() {
@@ -54,6 +62,8 @@ type Config struct {
 // NewAcceptOptions builds a *websocket.AcceptOptions from ${spring.websocket}
 // configuration.
 func NewAcceptOptions(cfg Config) *websocket.AcceptOptions {
+	log.Debugf(context.Background(), starterTag, "websocket accept options created subprotocols=%v compression=%d origins=%v",
+		cfg.Subprotocols, cfg.CompressionMode, cfg.OriginPatterns)
 	return &websocket.AcceptOptions{
 		Subprotocols:         cfg.Subprotocols,
 		InsecureSkipVerify:   cfg.InsecureSkipVerify,

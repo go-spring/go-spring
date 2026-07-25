@@ -33,7 +33,10 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/log"
 )
+
+var starterTag = log.RegisterInfraTag("lock_consul", "")
 
 func init() {
 	// Register one Locker bean per entry under "${spring.lock}". We bind the

@@ -17,7 +17,15 @@
 package StarterLuaFilter
 
 import (
+	"context"
+
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the lua filter starter.
+	starterTag = log.RegisterInfraTag("starter_lua_filter", "")
 )
 
 func init() {
@@ -29,6 +37,7 @@ func init() {
 	// The destroy callback closes the pooled Lua VMs at shutdown so their
 	// runtime resources are released.
 	gs.Group("${spring.lua.filter}", newFilter, destroyFilter)
+	log.Debugf(context.Background(), starterTag, "lua filter group registered")
 }
 
 // destroyFilter releases the VM pool held by a filter.

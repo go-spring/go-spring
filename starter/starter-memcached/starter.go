@@ -17,10 +17,15 @@
 package StarterMemcached
 
 import (
+	"context"
+
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 )
+
+var starterTag = log.RegisterInfraTag("memcached", "")
 
 func init() {
 	// Register multiple Memcached clients as a group.
@@ -34,22 +39,28 @@ func init() {
 
 // newClient creates a new Memcached client based on the provided configuration.
 func newClient(c Config) (*memcache.Client, error) {
+	log.Debugf(context.Background(), starterTag, "creating memcached client, servers=%v service-name=%s", c.Servers, c.ServiceName)
+
 	if len(c.Servers) == 0 && c.ServiceName == "" {
 		return nil, errutil.Explain(nil, "memcached: one of servers or service-name must be set")
 	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
+		log.Errorf(context.Background(), starterTag, "memcached driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "memcached driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(c)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "memcached: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create memcached client")
 	}
 	// Fail fast: probe every configured server with a PING at startup so a
 	// misconfigured or unreachable server surfaces during boot rather than on
 	// the first request.
 	if err := client.Ping(); err != nil {
+		log.Errorf(context.Background(), starterTag, "memcached: startup ping failed: %v", err)
 		return nil, errutil.Explain(err, "memcached: startup ping failed")
 	}
+	log.Infof(context.Background(), starterTag, "memcached client initialized, servers=%v", c.Servers)
 	return client, nil
 }

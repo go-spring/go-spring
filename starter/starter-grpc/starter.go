@@ -21,6 +21,7 @@ import (
 	"net"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -30,6 +31,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 )
+
+var grpcTag = log.RegisterAppTag("grpc", "starter")
 
 func init() {
 	gs.Provide(
@@ -100,6 +103,7 @@ type SimpleGrpcServer struct {
 
 // NewSimpleGrpcServer creates a SimpleGrpcServer from ${spring.grpc.server} configuration.
 func NewSimpleGrpcServer(cfg Config, reg ServiceRegister) *SimpleGrpcServer {
+	log.Debugf(context.Background(), grpcTag, "grpc server created addr=%s", cfg.Addr)
 	return &SimpleGrpcServer{cfg: cfg, reg: reg}
 }
 
@@ -174,10 +178,13 @@ func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	listener, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
+		log.Errorf(ctx, grpcTag, "grpc server failed to listen on %s: %v", s.cfg.Addr, err)
 		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
 	}
 	<-sig.TriggerAndWait()
+	log.Infof(ctx, grpcTag, "grpc server starting on %s", s.cfg.Addr)
 	if err = s.svr.Serve(listener); err != nil {
+		log.Errorf(ctx, grpcTag, "grpc server failed on %s: %v", s.cfg.Addr, err)
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil
@@ -185,6 +192,7 @@ func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 // Stop gracefully stops the underlying gRPC server.
 func (s *SimpleGrpcServer) Stop() error {
+	log.Infof(context.Background(), grpcTag, "grpc server shutting down on %s", s.cfg.Addr)
 	s.svr.GracefulStop()
 	return nil
 }

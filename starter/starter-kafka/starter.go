@@ -32,6 +32,8 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
+var starterTag = log.RegisterInfraTag("kafka", "")
+
 func init() {
 	// Register multiple Kafka clients as a group.
 	// Each instance is created according to the configuration in "${spring.kafka}".
@@ -52,6 +54,8 @@ const pingTimeout = 10 * time.Second
 // credentials or TLS mismatch fail fast at startup instead of surfacing on the
 // first produce/consume.
 func newClient(c Config) (*kgo.Client, error) {
+	log.Debugf(context.Background(), starterTag, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
+
 	kt := kotel.NewKotel(
 		kotel.WithTracer(kotel.NewTracer()),
 		kotel.WithMeter(kotel.NewMeter()),
@@ -79,6 +83,7 @@ func newClient(c Config) (*kgo.Client, error) {
 	if c.TLS.Enabled {
 		tc, err := c.TLS.Build()
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "kafka: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "kafka: build TLS")
 		}
 		opts = append(opts, kgo.DialTLSConfig(tc))
@@ -92,15 +97,18 @@ func newClient(c Config) (*kgo.Client, error) {
 
 	cl, err := kgo.NewClient(opts...)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "kafka: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
 	if err = cl.Ping(ctx); err != nil {
+		log.Errorf(context.Background(), starterTag, "kafka: ping failed: %v", err)
 		cl.Close()
 		return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
 	}
+	log.Infof(context.Background(), starterTag, "kafka client initialized, brokers=%s", c.Brokers)
 	return cl, nil
 }
 

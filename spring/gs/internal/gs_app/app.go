@@ -276,6 +276,7 @@ func (app *App) initLog(p flatten.Storage) error {
 	if !p.Exists(loggingKey) { // no logging
 		return nil
 	}
+	log.Debugf(app.ctx, log.TagAppDef, "initializing logging system from configuration")
 	s := flatten.NewPrefixedStorage(p, loggingKey+".")
 	return log.Refresh(s)
 }

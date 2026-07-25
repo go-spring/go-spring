@@ -26,6 +26,8 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
+var starterTag = log.RegisterInfraTag("rabbitmq", "")
+
 func init() {
 
 	// Register multiple RabbitMQ connections as a group.
@@ -41,10 +43,13 @@ func init() {
 // the AMQP layer is usable, then close/block notifiers are bridged into
 // go-spring's log so broker-driven events land alongside app logs.
 func newClient(c Config) (*amqp.Connection, error) {
+	log.Debugf(context.Background(), starterTag, "creating rabbitmq connection, url=%s vhost=%s", c.URL, c.Vhost)
+
 	ctx := context.Background()
 
 	tc, err := c.TLS.Build()
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "rabbitmq: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "rabbitmq: build TLS")
 	}
 	useTLS := tc != nil || strings.HasPrefix(strings.ToLower(c.URL), "amqps://")
@@ -63,12 +68,14 @@ func newClient(c Config) (*amqp.Connection, error) {
 		conn, err = amqp.Dial(c.URL)
 	}
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "rabbitmq: dial failed url=%s: %v", c.URL, err)
 		return nil, errutil.Explain(err, "failed to dial rabbitmq: %s", c.URL)
 	}
 
 	// Confirm the AMQP channel layer is usable, not just the TCP handshake.
 	ch, err := conn.Channel()
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "rabbitmq: open probe channel failed url=%s: %v", c.URL, err)
 		_ = conn.Close()
 		return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
 	}
@@ -101,6 +108,7 @@ func newClient(c Config) (*amqp.Connection, error) {
 		}
 	}()
 
+	log.Infof(context.Background(), starterTag, "rabbitmq connection initialized, url=%s", c.URL)
 	return conn, nil
 }
 

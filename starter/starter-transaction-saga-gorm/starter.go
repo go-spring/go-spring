@@ -34,9 +34,17 @@
 package StarterTransactionSagaGorm
 
 import (
+	"context"
+
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/transaction"
 	"go-spring.org/spring/gs"
 	"gorm.io/gorm"
+)
+
+var (
+	// starterTag identifies logs emitted by the transaction saga-gorm starter.
+	starterTag = log.RegisterInfraTag("starter_transaction_saga_gorm", "")
 )
 
 func init() {
@@ -52,7 +60,9 @@ func init() {
 // *gorm.DB, creating the saga_snapshots table if absent (fail-fast on error).
 func newGormStore(_ gormConfig, db *gorm.DB) (transaction.Store, error) {
 	if err := db.AutoMigrate(&sagaSnapshot{}); err != nil {
+		log.Errorf(context.Background(), starterTag, "auto-migrate saga_snapshots failed: %v", err)
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "gorm saga store created")
 	return &gormStore{db: db}, nil
 }

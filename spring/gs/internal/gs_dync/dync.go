@@ -28,12 +28,14 @@
 package gs_dync
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -167,6 +169,8 @@ func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 		return nil
 	}
 
+	log.Debugf(context.Background(), log.TagAppDef, "refreshing %d dynamic objects", len(p.objects))
+
 	// First pre-refresh all dynamic values;
 	// if validation passes, commit the updates.
 	if err = p.refreshObjects(p.objects, false); err != nil {
@@ -175,6 +179,7 @@ func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 	if err = p.refreshObjects(p.objects, true); err != nil {
 		return errutil.Explain(err, "apply dynamic configuration (commit) failed")
 	}
+	log.Debugf(context.Background(), log.TagAppDef, "dynamic objects refreshed successfully")
 	return nil
 }
 

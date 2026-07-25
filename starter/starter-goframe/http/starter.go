@@ -31,6 +31,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/net/gsvc"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 
@@ -40,6 +41,8 @@ import (
 	// log pipeline before g.Server(name) emits its first lifecycle line.
 	_ "go-spring.org/starter-goframe/internal/logger"
 )
+
+var goframeHTTPTag = log.RegisterAppTag("goframe_http", "starter")
 
 func init() {
 	gs.Provide(NewHTTPServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.http.server}"))).
@@ -109,6 +112,9 @@ func NewHTTPServer(cfg Config, reg ServiceRegister) *HTTPServer {
 		gsvc.SetRegistry(etcdreg.New(cfg.Registry.Etcd))
 	}
 
+	log.Debugf(context.Background(), goframeHTTPTag, "goframe http server created name=%s address=%s registry=%s metrics=%v",
+		cfg.Name, cfg.Address, cfg.Registry.Etcd, cfg.Metrics.Enabled)
+
 	s := &HTTPServer{done: make(chan struct{})}
 
 	svr := g.Server(cfg.Name)
@@ -153,7 +159,9 @@ func (s *HTTPServer) initMetrics(svr *ghttp.Server, cfg Config) {
 // called, keeping the server bean alive for the container.
 func (s *HTTPServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
+	log.Infof(ctx, goframeHTTPTag, "goframe http server starting")
 	if err := s.svr.Start(); err != nil {
+		log.Errorf(ctx, goframeHTTPTag, "goframe http server start failed: %v", err)
 		return err
 	}
 	<-s.done
@@ -164,6 +172,7 @@ func (s *HTTPServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // etcd when a registry is set), flushes the metric provider if any, and unblocks
 // Run.
 func (s *HTTPServer) Stop() error {
+	log.Infof(context.Background(), goframeHTTPTag, "goframe http server shutting down")
 	err := s.svr.Shutdown()
 	if s.metricStop != nil {
 		_ = s.metricStop(context.Background())

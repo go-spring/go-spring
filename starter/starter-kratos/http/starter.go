@@ -39,6 +39,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -46,6 +47,8 @@ import (
 
 	"go-spring.org/starter-kratos/internal/logger"
 )
+
+var kratosHTTPTag = log.RegisterAppTag("kratos_http", "starter")
 
 func init() {
 	gs.Provide(NewHttpServer, gs.IndexArg(0, gs.TagArg("${spring.kratos.http.server}"))).
@@ -97,6 +100,8 @@ type HttpServer struct {
 // the registered ServiceRegister bean. The kratos logger bridges framework logs
 // into go-spring's log module (see internal/logger).
 func NewHttpServer(cfg Config, reg ServiceRegister) *HttpServer {
+	log.Debugf(context.Background(), kratosHTTPTag, "kratos http server created name=%s addr=%s network=%s timeout=%s",
+		cfg.Name, cfg.Addr, cfg.Network, cfg.Timeout)
 	return &HttpServer{cfg: cfg, reg: reg, log: logger.NewLogger(), done: make(chan struct{})}
 }
 
@@ -162,6 +167,7 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
+	log.Infof(ctx, kratosHTTPTag, "kratos http server starting on %s", s.cfg.Addr)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- s.app.Run()
@@ -169,6 +175,9 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	select {
 	case err := <-errCh:
+		if err != nil {
+			log.Errorf(ctx, kratosHTTPTag, "kratos http app exited with error: %v", err)
+		}
 		return errutil.Explain(err, "kratos http app exited with error")
 	case <-s.done:
 		return s.app.Stop()
@@ -178,6 +187,7 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop signals Run to tear down the kratos.App so Go-Spring can complete its
 // shutdown sequence.
 func (s *HttpServer) Stop() error {
+	log.Infof(context.Background(), kratosHTTPTag, "kratos http server shutting down on %s", s.cfg.Addr)
 	close(s.done)
 	return nil
 }

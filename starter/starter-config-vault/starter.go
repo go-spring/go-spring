@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/vault/api"
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	confjson "go-spring.org/spring/conf/reader/json"
 	"go-spring.org/spring/conf/reader/prop"
@@ -65,7 +66,10 @@ func init() {
 // vaultController is the global singleton. It is ONLY referenced in init
 // functions. All other code operates on the
 // receiver without touching this global.
-var vaultController = &vaultCtrl{}
+var (
+	starterTag      = log.RegisterInfraTag("starter_config_vault", "")
+	vaultController = &vaultCtrl{}
+)
 
 // vaultCtrl is the single object that owns the full lifecycle of vault
 // configuration: loading secrets, polling for changes, and triggering
@@ -241,11 +245,15 @@ func watchKey(cs configSource) string {
 func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
+	log.Debugf(context.Background(), starterTag, "loading vault config from address=%s mount=%s path=%s kvVersion=%d key=%s format=%s", cs.address, cs.mount, cs.path, cs.kvVersion, cs.key, cs.format)
+
 	cli, err := c.clientFor(cs)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create vault client for address=%s failed: %v", cs.address, err)
 		return nil, err
 	}
 
@@ -254,6 +262,7 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 	data, err := c.readSecret(cli, cs)
 	if err != nil {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config read secret %s/%s failed (skipped): %v", cs.mount, cs.path, err)
 			return nil, nil
 		}
 		return nil, err
@@ -269,11 +278,19 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 
 	if data == nil {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config secret %s/%s not found (skipped)", cs.mount, cs.path)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "vault secret %s/%s not found", cs.mount, cs.path)
 		return nil, errutil.Explain(nil, "vault secret %s/%s not found", cs.mount, cs.path)
 	}
-	return toProperties(cs, data)
+
+	props, err := toProperties(cs, data)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof(context.Background(), starterTag, "loaded vault config from %s/%s keys=%d", cs.mount, cs.path, len(props))
+	return props, nil
 }
 
 // readSecret fetches the raw KV data map for the source.

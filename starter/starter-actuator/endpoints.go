@@ -61,41 +61,6 @@ func (s *Server) handleLoggers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// setLoggerRequest is the body of POST /loggers/{name}.
-type setLoggerRequest struct {
-	ConfiguredLevel string `json:"configuredLevel"`
-}
-
-// handleSetLogger overrides a logger's level at runtime. The path selects the
-// logger (use "root" for the root logger) and the body carries the new level.
-// Returns 204 on success, 400 for a missing/invalid level, and 404 for an
-// unknown logger.
-func (s *Server) handleSetLogger(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-
-	var req setLoggerRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		return
-	}
-	if strings.TrimSpace(req.ConfiguredLevel) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "configuredLevel is required"})
-		return
-	}
-
-	if err := log.SetLoggerLevel(name, req.ConfiguredLevel); err != nil {
-		// An unknown logger name is a client error against a missing resource; a
-		// malformed level is a bad request. Both surface the underlying message.
-		code := http.StatusBadRequest
-		if strings.Contains(err.Error(), "not found") {
-			code = http.StatusNotFound
-		}
-		writeJSON(w, code, map[string]any{"error": err.Error()})
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // handleEnv reports the merged configuration as a flat, masked property source.
 // Values whose keys name secrets or that are ENC(...) placeholders are redacted.
 func (s *Server) handleEnv(w http.ResponseWriter, r *http.Request) {

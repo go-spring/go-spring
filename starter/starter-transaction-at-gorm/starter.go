@@ -58,8 +58,16 @@
 package StarterTransactionATGorm
 
 import (
+	"context"
+
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/transaction/at"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the transaction at-gorm starter.
+	starterTag = log.RegisterInfraTag("starter_transaction_at_gorm", "")
 )
 
 // enabled matches when the starter is not explicitly disabled.
@@ -89,5 +97,6 @@ func newCoordinator(c Config, lock at.GlobalLock) at.Coordinator {
 	if c.Tracing {
 		opts = append(opts, at.WithObserver(otelObserver{}))
 	}
+	log.Infof(context.Background(), starterTag, "at coordinator created tracing=%v", c.Tracing)
 	return at.NewCoordinator(opts...)
 }

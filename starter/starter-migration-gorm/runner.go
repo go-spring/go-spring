@@ -60,7 +60,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	for _, name := range names {
 		e := r.Entries[name]
 		if !e.Enabled {
-			log.Infof(ctx, log.TagAppDef, "migration: entry %q disabled, skipping", name)
+			log.Infof(ctx, starterTag, "migration: entry %q disabled, skipping", name)
 			continue
 		}
 		db, err := r.pickDB(name, e)
@@ -80,7 +80,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		if err != nil {
 			return errutil.Explain(err, "migration: entry %q", name)
 		}
-		log.Infof(ctx, log.TagAppDef, "migration: entry %q applied %d migration(s)", name, len(applied))
+		log.Infof(ctx, starterTag, "migration: entry %q applied %d migration(s)", name, len(applied))
 	}
 	return nil
 }

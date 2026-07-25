@@ -67,11 +67,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/actuator/endpoint"
 	"go-spring.org/spring/actuator/health"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
+
+var actuatorTag = log.RegisterAppTag("actuator", "")
 
 func init() {
 	// Register the actuator as a gs.Server under a distinct name so it coexists
@@ -126,31 +129,41 @@ type Server struct {
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	ln, err := net.Listen("tcp", s.Address)
 	if err != nil {
+		log.Errorf(ctx, actuatorTag, "failed to listen on %s: %v", s.Address, err)
 		return errutil.Explain(err, "actuator: failed to listen on %s", s.Address)
 	}
 
+	log.Infof(ctx, actuatorTag, "actuator listening on %s", s.Address)
+
 	mux := http.NewServeMux()
-	// Probe endpoints: z-suffixed canonical paths plus legacy aliases.
+
+	// Probe endpoints — K8s convention.
 	mux.HandleFunc("GET /healthz", s.handleLiveness)
-	mux.HandleFunc("GET /health", s.handleLiveness)
 	mux.HandleFunc("GET /readyz", s.handleReadiness)
-	mux.HandleFunc("GET /readiness", s.handleReadiness)
 	mux.HandleFunc("GET /startupz", s.handleStartup)
+
+	// Probe endpoints — Spring Boot Actuator convention.
+	mux.HandleFunc("GET /health", s.handleLiveness)
+	mux.HandleFunc("GET /readiness", s.handleReadiness)
 	mux.HandleFunc("GET /startup", s.handleStartup)
+
 	// Introspection endpoints.
 	mux.HandleFunc("GET /info", s.handleInfo)
 	mux.HandleFunc("GET /loggers", s.handleLoggers)
-	mux.HandleFunc("POST /loggers/{name}", s.handleSetLogger)
+
 	mux.HandleFunc("GET /env", s.handleEnv)
 	mux.HandleFunc("GET /configprops", s.handleConfigProps)
 	mux.HandleFunc("GET /threaddump", s.handleThreadDump)
+
 	// Mount every contributed endpoint (e.g. otel's Prometheus /metrics) on the
 	// same management port. Each owns its full path; they are registered after
 	// the built-ins so a contributor cannot shadow /health etc. (ServeMux panics
 	// on a duplicate pattern, surfacing a misconfiguration at startup).
 	for _, ep := range s.Endpoints {
 		mux.Handle(ep.Path(), ep)
+		log.Debugf(ctx, actuatorTag, "registered endpoint: %s", ep.Path())
 	}
+
 	s.svr = &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -168,8 +181,10 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	err = s.svr.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
+		log.Infof(ctx, actuatorTag, "actuator server closed gracefully")
 		return nil
 	}
+	log.Errorf(ctx, actuatorTag, "actuator serve error: %v", err)
 	return errutil.Explain(err, "actuator: failed to serve on %s", s.Address)
 }
 
@@ -178,6 +193,7 @@ func (s *Server) Stop() error {
 	if s.svr == nil {
 		return nil
 	}
+	log.Debugf(context.Background(), actuatorTag, "stopping actuator server")
 	return s.svr.Shutdown(context.Background())
 }
 
@@ -227,12 +243,4 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(v)
-}
-
-// decodeJSON decodes a request body into v, rejecting unknown fields and bodies
-// larger than 64 KiB so a malformed or oversized POST cannot exhaust memory.
-func decodeJSON(r *http.Request, v any) error {
-	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 64<<10))
-	dec.DisallowUnknownFields()
-	return dec.Decode(v)
 }

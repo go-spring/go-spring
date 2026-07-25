@@ -17,14 +17,21 @@
 package StarterDiscoveryK8s
 
 import (
+	"context"
 	"io"
 	"runtime"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+)
+
+var (
+	// starterTag identifies logs emitted by the k8s discovery starter.
+	starterTag = log.RegisterInfraTag("starter_discovery_k8s", "")
 )
 
 func init() {
@@ -50,11 +57,13 @@ func init() {
 			if _, ok := discovery.Get(name); ok {
 				return errutil.Explain(nil, "discovery-k8s: backend %q already registered", name)
 			}
+			log.Debugf(context.Background(), starterTag, "creating k8s discovery backend name=%s mode=%s namespace=%s", name, c.Mode, c.Namespace)
 			b, err := newBackend(c)
 			if err != nil {
 				return errutil.Explain(err, "discovery-k8s: build backend %q", name)
 			}
 			discovery.Register(name, b)
+			log.Infof(context.Background(), starterTag, "registered k8s discovery backend name=%s mode=%s", name, c.Mode)
 			mgr.add(b)
 		}
 		bean := r.Provide(func() *manager { return mgr }).Destroy((*manager).Stop)

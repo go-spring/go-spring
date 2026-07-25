@@ -63,8 +63,16 @@
 package StarterTransactionTCC
 
 import (
+	"context"
+
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/transaction/tcc"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the transaction tcc starter.
+	starterTag = log.RegisterInfraTag("starter_transaction_tcc", "")
 )
 
 // enabled matches when the starter is not explicitly disabled.
@@ -108,5 +116,6 @@ func newCoordinator(c Config, store tcc.Store) tcc.Coordinator {
 	if c.Tracing {
 		opts = append(opts, tcc.WithObserver(otelObserver{}))
 	}
+	log.Infof(context.Background(), starterTag, "tcc coordinator created tracing=%v", c.Tracing)
 	return tcc.NewCoordinator(opts...)
 }

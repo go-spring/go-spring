@@ -74,8 +74,8 @@ func (b *ConfigBus) subscribe() error {
 		var ev RefreshEvent
 		if len(m.Data) > 0 {
 			if err := json.Unmarshal(m.Data, &ev); err != nil {
-				log.Warnf(context.Background(), log.TagAppDef,
-					"config bus: ignoring malformed refresh event: %v", err)
+				log.Warnf(context.Background(), starterTag,
+					"ignoring malformed refresh event: %v", err)
 				return
 			}
 		}
@@ -83,17 +83,18 @@ func (b *ConfigBus) subscribe() error {
 			return
 		}
 		if err := b.Refresher.RefreshProperties(); err != nil {
-			log.Errorf(context.Background(), log.TagAppDef,
+			log.Errorf(context.Background(), starterTag,
 				"config bus: property refresh failed: %v", err)
 			return
 		}
-		log.Infof(context.Background(), log.TagAppDef,
+		log.Infof(context.Background(), starterTag,
 			"config bus: refreshed properties on event (prefix=%q origin=%q)", ev.Prefix, ev.Origin)
 	})
 	if err != nil {
 		return errutil.Explain(err, "config bus: subscribe to %q failed", b.Config.Subject)
 	}
 	b.sub = sub
+	log.Infof(context.Background(), starterTag, "subscribed to bus subject=%s prefixes=%v", b.Config.Subject, b.prefixes)
 	return nil
 }
 

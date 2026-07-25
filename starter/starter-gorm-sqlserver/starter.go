@@ -26,6 +26,7 @@ import (
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/log"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
@@ -34,6 +35,8 @@ import (
 // liveDialers tracks the discovery-backed dialer behind each client, so
 // destroyClient can stop the watch when the client is torn down.
 var liveDialers sync.Map // *gorm.DB -> *discovery.LiveDialer
+
+var starterTag = log.RegisterInfraTag("gorm_sqlserver", "")
 
 func init() {
 	// Register multiple GORM clients as a group.
@@ -57,33 +60,43 @@ func newClient(c Config) (*gorm.DB, error) {
 	if c.Host == "" && c.ServiceName == "" {
 		return nil, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
 	}
+
+	log.Debugf(context.Background(), starterTag, "creating gorm sqlserver client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
+
 	if c.ServiceName == "" {
 		db, err := gorm.Open(sqlserver.Open(c.DSN()), gormConfig(c))
 		if err != nil {
+			log.Errorf(context.Background(), starterTag, "gorm sqlserver: open failed: %v", err)
 			return nil, err
 		}
 		if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("microsoft.sql_server"))); err != nil {
+			log.Errorf(context.Background(), starterTag, "gorm sqlserver: install otel plugin failed: %v", err)
 			return nil, err
 		}
 		if err := applyPool(db, c); err != nil {
+			log.Errorf(context.Background(), starterTag, "gorm sqlserver: ping failed: %v", err)
 			if sqlDB, derr := db.DB(); derr == nil {
 				_ = sqlDB.Close()
 			}
 			return nil, err
 		}
+		log.Infof(context.Background(), starterTag, "gorm sqlserver client initialized, host=%s db=%s", c.Host, c.DB)
 		return db, nil
 	}
 
 	d, err := discovery.MustGet(c.Discovery)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm sqlserver: get discovery backend failed: %v", err)
 		return nil, err
 	}
 	ld, err := discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm sqlserver: create live dialer for %s failed: %v", c.ServiceName, err)
 		return nil, err
 	}
 	msCfg, err := msdsn.Parse(c.DSN())
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm sqlserver: parse DSN failed: %v", err)
 		_ = ld.Stop()
 		return nil, err
 	}
@@ -93,21 +106,25 @@ func newClient(c Config) (*gorm.DB, error) {
 
 	db, err := gorm.Open(sqlserver.New(sqlserver.Config{Conn: sqlDB}), gormConfig(c))
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm sqlserver: open with discovery failed: %v", err)
 		_ = ld.Stop()
 		_ = sqlDB.Close()
 		return nil, err
 	}
 	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("microsoft.sql_server"))); err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm sqlserver: install otel plugin failed: %v", err)
 		_ = ld.Stop()
 		_ = sqlDB.Close()
 		return nil, err
 	}
 	if err := applyPool(db, c); err != nil {
+		log.Errorf(context.Background(), starterTag, "gorm sqlserver: ping failed: %v", err)
 		_ = ld.Stop()
 		_ = sqlDB.Close()
 		return nil, err
 	}
 	liveDialers.Store(db, ld)
+	log.Infof(context.Background(), starterTag, "gorm sqlserver client initialized, service-name=%s db=%s", c.ServiceName, c.DB)
 	return db, nil
 }
 
@@ -116,6 +133,7 @@ func newClient(c Config) (*gorm.DB, error) {
 func destroyClient(db *gorm.DB) error {
 	if v, ok := liveDialers.LoadAndDelete(db); ok {
 		_ = v.(*discovery.LiveDialer).Stop()
+		log.Debugf(context.Background(), starterTag, "gorm sqlserver client destroyed, discovery dialer stopped")
 	}
 	if sqlDB, err := db.DB(); err == nil {
 		return sqlDB.Close()

@@ -17,6 +17,7 @@
 package StarterAnts
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -26,7 +27,10 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/log"
 )
+
+var starterTag = log.RegisterInfraTag("ants", "")
 
 func init() {
 	// Register multiple pools under ${spring.ants}. Each map key becomes a
@@ -60,14 +64,19 @@ func init() {
 // createPool resolves the configured Driver and wraps the resulting pool
 // with all registered observers for the given name.
 func createPool(name string, c Config) (Pool, error) {
+	log.Debugf(context.Background(), starterTag, "creating ants pool %q, size=%d driver=%s", name, c.Size, c.Driver)
+
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
+		log.Errorf(context.Background(), starterTag, "ants driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "ants driver not found: %s", c.Driver)
 	}
 	pool, err := d.CreatePool(c)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "ants: create pool %q failed: %v", name, err)
 		return nil, err
 	}
+	log.Infof(context.Background(), starterTag, "ants pool %q initialized, size=%d", name, c.Size)
 	// Wrap the pool's Submit to route through the observer chain.
 	return &observedPool{
 		Pool: pool,

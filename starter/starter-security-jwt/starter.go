@@ -17,7 +17,13 @@
 package StarterSecurityJWT
 
 import (
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+)
+
+var (
+	// starterTag identifies logs emitted by the security jwt starter.
+	starterTag = log.RegisterInfraTag("starter_security_jwt", "")
 )
 
 func init() {

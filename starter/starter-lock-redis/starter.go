@@ -45,7 +45,10 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/log"
 )
+
+var starterTag = log.RegisterInfraTag("lock_redis", "")
 
 func init() {
 	_, file, line, _ := runtime.Caller(0)

@@ -27,6 +27,7 @@ import (
 
 	"net/http"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/actuator/endpoint"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -35,6 +36,11 @@ import (
 	"go.opentelemetry.io/otel"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+)
+
+var (
+	// starterTag identifies logs emitted by the otel starter.
+	starterTag = log.RegisterInfraTag("starter_otel", "")
 )
 
 func init() {
@@ -59,8 +65,11 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		return err
 	}
 	if !cfg.Enable {
+		log.Infof(context.Background(), starterTag, "observability disabled; skipping OTel setup")
 		return nil
 	}
+
+	log.Debugf(context.Background(), starterTag, "setting up OTel with service=%s trace_enable=%v metrics_enable=%v", cfg.ServiceName, cfg.Trace.Enable, cfg.Metrics.Enable)
 
 	res, err := newResource(cfg.ServiceName)
 	if err != nil {
@@ -89,6 +98,8 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		// Propagate trace context on outbound requests (via the discovery
 		// seam) so downstream services and mesh sidecars share one trace.
 		installTracePropagation()
+
+		log.Infof(context.Background(), starterTag, "trace provider initialized exporter=%s propagator=%s", cfg.Trace.Exporter, cfg.Trace.Propagator)
 	}
 
 	if cfg.Metrics.Enable && cfg.Metrics.Exporter != "none" {
@@ -128,6 +139,8 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 					Export(gs.As[endpoint.Endpoint]())
 			}
 		}
+
+		log.Infof(context.Background(), starterTag, "metrics provider initialized exporter=%s runtime_metrics=%v", cfg.Metrics.Exporter, cfg.Metrics.Runtime.Enable)
 	}
 
 	return nil

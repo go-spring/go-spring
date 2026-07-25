@@ -17,9 +17,11 @@
 package StarterOAuth2Client
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -89,6 +91,8 @@ func newTokenSource(c Config) (*TokenSource, error) {
 		AuthStyle:      c.authStyle(),
 		EndpointParams: c.endpointParams(),
 	}
+
+	log.Debugf(context.Background(), starterTag, "creating oauth2 token source clientID=%s tokenURL=%s", c.ClientID, c.TokenURL)
 
 	ctx := otelContext(c.Timeout)
 

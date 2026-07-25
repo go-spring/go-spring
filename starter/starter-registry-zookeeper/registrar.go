@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/go-zookeeper/zk"
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
@@ -55,6 +56,7 @@ func newZookeeperRegistrar(c ZookeeperConfig) (*zkRegistrar, error) {
 	}
 	conn, _, err := zk.Connect(c.Servers, c.SessionTimeout)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "connect zookeeper servers=%v failed: %v", c.Servers, err)
 		return nil, errutil.Explain(err, "registry-zookeeper: connect to %v", c.Servers)
 	}
 	if c.Username != "" || c.Password != "" {

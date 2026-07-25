@@ -50,6 +50,8 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
+var starterTag = log.RegisterInfraTag("scheduler", "")
+
 func init() {
 	// Register the scheduler as a gs.Server under a distinct name so it coexists
 	// with any HTTP/RPC server the app also runs. Enabled by default, but only
@@ -85,6 +87,8 @@ type Server struct {
 // than surfacing on a later fire. Scheduling begins only after the application
 // is ready, so jobs never race application startup.
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
+	log.Debugf(context.Background(), starterTag, "scheduler starting with %d job(s)", len(s.Config.Jobs))
+
 	s.sched = scheduling.NewScheduler(scheduling.WithObserver(s.observe))
 
 	if err := s.build(); err != nil {

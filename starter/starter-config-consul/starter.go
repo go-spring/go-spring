@@ -25,6 +25,7 @@
 package StarterConfigConsul
 
 import (
+	"context"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader/json"
 	"go-spring.org/spring/conf/reader/prop"
@@ -56,10 +58,15 @@ func init() {
 	conf.RegisterProvider("consul", consulController.Load)
 }
 
-// consulController is the global singleton. It is ONLY referenced in init
-// functions. All other code operates on the
-// receiver without touching this global.
-var consulController = &consulCtrl{}
+var (
+	// starterTag identifies logs emitted by the consul config center starter.
+	starterTag = log.RegisterInfraTag("starter_config_consul", "")
+
+	// consulController is the global singleton. It is ONLY referenced in init
+	// functions. All other code operates on the
+	// receiver without touching this global.
+	consulController = &consulCtrl{}
+)
 
 // consulCtrl is the single object that owns the full lifecycle of consul
 // configuration: loading KV entries, watching for changes, and triggering
@@ -176,11 +183,15 @@ func (c *consulCtrl) clientFor(cs configSource) (*api.Client, error) {
 func (c *consulCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
+	log.Debugf(context.Background(), starterTag, "loading config from address=%s kvPath=%s format=%s", cs.address, cs.kvPath, cs.format)
+
 	cli, err := c.clientFor(cs)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create client for address=%s failed: %v", cs.address, err)
 		return nil, err
 	}
 
@@ -189,20 +200,26 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 	pair, _, err := cli.KV().Get(cs.kvPath, &api.QueryOptions{Datacenter: cs.datacenter})
 	if err != nil {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config get kv %s failed (skipped): %v", cs.kvPath, err)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "get consul kv %s failed: %v", cs.kvPath, err)
 		return nil, errutil.Explain(err, "get consul kv %s failed", cs.kvPath)
 	}
 	if pair == nil {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config kv %s not found (skipped)", cs.kvPath)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "consul kv %s not found", cs.kvPath)
 		return nil, errutil.Explain(nil, "consul kv %s not found", cs.kvPath)
 	}
 	if len(pair.Value) == 0 {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config kv %s is empty (skipped)", cs.kvPath)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "consul kv %s is empty", cs.kvPath)
 		return nil, errutil.Explain(nil, "consul kv %s is empty", cs.kvPath)
 	}
 
@@ -212,8 +229,11 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 	}
 	m, err := r(pair.Value)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "parse consul kv %s as %s failed: %v", cs.kvPath, cs.format, err)
 		return nil, errutil.Explain(err, "parse consul kv %s as %s failed", cs.kvPath, cs.format)
 	}
+
+	log.Infof(context.Background(), starterTag, "loaded consul config from kvPath=%s keys=%d", cs.kvPath, len(m))
 	return flatten.Flatten(m), nil
 }
 

@@ -42,6 +42,11 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
+var (
+	// starterTag identifies logs emitted by the mesh starter.
+	starterTag = log.RegisterInfraTag("starter_mesh", "")
+)
+
 func init() {
 	// A gs.Module, not a bean: its body runs during applyModules in the
 	// RefreshPrepare phase, before any bean is instantiated. Setting the mesh
@@ -66,7 +71,7 @@ func setup(_ gs.BeanProvider, p flatten.Storage) error {
 	}
 	discovery.SetMeshMode(enabled)
 	if enabled {
-		log.Infof(context.Background(), log.TagAppDef,
+		log.Infof(context.Background(), starterTag,
 			"service-mesh mode enabled: client-side discovery and load balancing degrade to pass-through; the sidecar owns them")
 	}
 	return nil
@@ -79,7 +84,7 @@ func setup(_ gs.BeanProvider, p flatten.Storage) error {
 func resolveMeshMode(mode string) (bool, error) {
 	if strings.EqualFold(strings.TrimSpace(mode), "auto") {
 		detected := discovery.DetectMesh()
-		log.Infof(context.Background(), log.TagAppDef,
+		log.Infof(context.Background(), starterTag,
 			"service-mesh mode=auto: sidecar %s", map[bool]string{true: "detected", false: "not detected"}[detected])
 		return detected, nil
 	}

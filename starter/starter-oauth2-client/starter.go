@@ -17,12 +17,19 @@
 package StarterOAuth2Client
 
 import (
+	"context"
 	"io"
 	"net/http"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"golang.org/x/oauth2/clientcredentials"
+)
+
+var (
+	// starterTag identifies logs emitted by the oauth2 client starter.
+	starterTag = log.RegisterInfraTag("starter_oauth2_client", "")
 )
 
 func init() {
@@ -52,6 +59,8 @@ func newClient(c Config) (*http.Client, error) {
 		AuthStyle:      c.authStyle(),
 		EndpointParams: c.endpointParams(),
 	}
+
+	log.Debugf(context.Background(), starterTag, "creating oauth2 client clientID=%s tokenURL=%s timeout=%s resilience=%v", c.ClientID, c.TokenURL, c.Timeout, c.Resilience.Enabled)
 
 	client := cfg.Client(otelContext(c.Timeout))
 	if c.Timeout > 0 {

@@ -33,11 +33,14 @@ import (
 	"github.com/zeromicro/go-zero/core/service"
 	"github.com/zeromicro/go-zero/core/trace"
 	"github.com/zeromicro/go-zero/zrpc"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"google.golang.org/grpc"
 
 	"go-spring.org/starter-go-zero/internal/logger"
 )
+
+var gozeroZrpcTag = log.RegisterAppTag("gozero_zrpc", "starter")
 
 func init() {
 	gs.Provide(NewZrpcServer, gs.IndexArg(0, gs.TagArg("${spring.go-zero.zrpc.server}"))).
@@ -107,6 +110,7 @@ type ZrpcServer struct {
 // NewZrpcServer builds a ZrpcServer from ${spring.go-zero.zrpc.server} config
 // and the registered ServiceRegister bean.
 func NewZrpcServer(cfg Config, reg ServiceRegister) *ZrpcServer {
+	log.Debugf(context.Background(), gozeroZrpcTag, "go-zero zrpc server created listenOn=%s name=%s", cfg.ListenOn, cfg.Name)
 	return &ZrpcServer{cfg: cfg, reg: reg, done: make(chan struct{})}
 }
 
@@ -158,6 +162,7 @@ func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
+	log.Infof(ctx, gozeroZrpcTag, "go-zero zrpc server starting on %s", s.cfg.ListenOn)
 	errCh := make(chan error, 1)
 	go func() {
 		// Start binds the listener, registers the provider under Etcd.Key when
@@ -177,6 +182,7 @@ func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 // Stop signals Run to return so Go-Spring can complete its shutdown sequence.
 func (s *ZrpcServer) Stop() error {
+	log.Infof(context.Background(), gozeroZrpcTag, "go-zero zrpc server shutting down on %s", s.cfg.ListenOn)
 	close(s.done)
 	return nil
 }

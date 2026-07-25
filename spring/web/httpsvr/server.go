@@ -20,7 +20,11 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"go-spring.org/log"
 )
+
+var webServerTag = log.RegisterAppTag("web", "server")
 
 // RequestContext abstracts an HTTP request lifecycle context.
 // It provides unified access to the request, response writer.
@@ -107,6 +111,7 @@ type SimpleServer struct {
 
 // NewSimpleServer creates a SimpleServer bound to the given address.
 func NewSimpleServer(addr string) *SimpleServer {
+	log.Debugf(context.Background(), webServerTag, "creating simple HTTP server: addr=%s", addr)
 	mux := http.NewServeMux()
 	svr := &http.Server{
 		Addr:    addr,

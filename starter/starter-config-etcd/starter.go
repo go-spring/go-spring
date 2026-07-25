@@ -40,6 +40,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/log"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -60,7 +61,10 @@ func init() {
 // etcdController is the global singleton. It is ONLY referenced in init
 // functions. All other code operates on the
 // receiver without touching this global.
-var etcdController = &etcdCtrl{}
+var (
+	starterTag     = log.RegisterInfraTag("starter_config_etcd", "")
+	etcdController = &etcdCtrl{}
+)
 
 // etcdCtrl is the single object that owns the full lifecycle of etcd
 // configuration: loading keys, watching for changes, and triggering
@@ -184,11 +188,15 @@ func (c *etcdCtrl) clientFor(cs configSource) (*clientv3.Client, error) {
 func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
+	log.Debugf(context.Background(), starterTag, "loading etcd config from endpoint=%s key=%s format=%s", cs.endpoint, cs.key, cs.format)
+
 	cli, err := c.clientFor(cs)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create etcd client for endpoint=%s failed: %v", cs.endpoint, err)
 		return nil, err
 	}
 
@@ -199,14 +207,18 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 	resp, err := cli.Get(ctx, cs.key)
 	if err != nil {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config get key %s failed (skipped): %v", cs.key, err)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "get etcd key %s failed: %v", cs.key, err)
 		return nil, errutil.Explain(err, "get etcd key %s failed", cs.key)
 	}
 	if len(resp.Kvs) == 0 {
 		if optional {
+			log.Warnf(context.Background(), starterTag, "optional config key %s is empty (skipped)", cs.key)
 			return nil, nil
 		}
+		log.Errorf(context.Background(), starterTag, "etcd key %s is empty", cs.key)
 		return nil, errutil.Explain(nil, "etcd key %s is empty", cs.key)
 	}
 
@@ -217,8 +229,11 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 	}
 	m, err := r(content)
 	if err != nil {
+		log.Errorf(context.Background(), starterTag, "parse etcd key %s as %s failed: %v", cs.key, cs.format, err)
 		return nil, errutil.Explain(err, "parse etcd key %s as %s failed", cs.key, cs.format)
 	}
+
+	log.Infof(context.Background(), starterTag, "loaded etcd config from key=%s keys=%d", cs.key, len(m))
 	return flatten.Flatten(m), nil
 }
 
