@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -43,7 +44,10 @@ func (s *Service) coll() *mongo.Collection {
 	return s.Mongo.Database("test").Collection("kv")
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.
@@ -70,12 +74,17 @@ func main() {
 		_, _ = w.Write([]byte("OK"))
 	})
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest(svrBean.Interface().(*Service))
-	}()
+	} else {
 
-	// Run the Go-Spring application.
+		// Run the Go-Spring application.
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 
 	// Example usage:

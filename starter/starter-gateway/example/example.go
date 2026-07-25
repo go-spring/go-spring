@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -42,18 +43,26 @@ import (
 // via http://127.0.0.1:19000.
 const backendAddr = "127.0.0.1:19000"
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Start the upstream the gateway proxies to. It echoes the (post-filter) path
 	// and reflects the X-From header the addRequestHeader filter injects, so the
 	// test can prove both proxying and filtering happened.
 	startBackend()
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest()
-	}()
+	} else {
 
-	// Run the Go-Spring application. The gateway server listens on :9440.
+		// Run the Go-Spring application. The gateway server listens on :9440.
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 
 	// Example usage:

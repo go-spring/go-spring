@@ -10,29 +10,22 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-lua-filter/example
-go run .
+go run . -manual
 ```
 
-预期输出（断言通过后程序自动退出）：
-```
-allow
-deny
-```
-
-也可以手动 curl 验证：
+终端 2，执行验证命令：
 ```bash
-# 终端1：启动服务
-go run .
-
-# 终端2
 curl -H 'X-App: go-spring' http://127.0.0.1:9090/hello
 # -> 200 OK
 
 curl http://127.0.0.1:9090/hello
 # -> 403 Forbidden
 ```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

@@ -28,6 +28,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,15 +47,22 @@ import (
 // servicePath matches ${spring.registry.zookeeper.base-path} + service name.
 const servicePath = "/services/orders"
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
-	go func() {
+	flag.Parse()
+	if !*manual {
 		// Wait past readiness so registration has happened, then verify.
 		time.Sleep(time.Second)
 		verifyOnce()
 		// One-shot: stop the app so the example terminates (and deregisters) on its own.
 		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

@@ -12,14 +12,10 @@
 
 ```bash
 cd starter-oauth2-client/example
-go run .
+go run . -manual
 ```
 
-预期输出（断言通过后程序自动退出）：
-```
-token acquired
-resource accessed
-```
+程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
 
 ## 冒烟测试
 

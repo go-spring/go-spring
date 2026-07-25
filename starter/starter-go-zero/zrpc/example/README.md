@@ -8,25 +8,19 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-go-zero/zrpc/example
-go run .
+go run . -manual
 ```
 
-预期输出：
-```
-Health status from server: SERVING
-```
-
-也可以使用 grpcurl 手动验证：
+终端 2，执行验证命令：
 ```bash
-# 终端1：启动服务
-go run .
-
-# 终端2
 grpcurl -plaintext localhost:8081 grpc.health.v1.Health/Check
 # -> {"status":"SERVING"}
 ```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

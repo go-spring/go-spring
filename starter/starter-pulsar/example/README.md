@@ -14,7 +14,7 @@
 
 ```bash
 cd starter-pulsar/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -33,7 +33,7 @@ docker compose up -d
 sleep 15
 
 # 运行示例
-go run .
+go run . -manual
 ```
 
 ## 冒烟测试

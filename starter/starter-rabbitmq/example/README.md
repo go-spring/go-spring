@@ -14,7 +14,7 @@
 
 ```bash
 cd starter-rabbitmq/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -32,7 +32,7 @@ docker compose up -d
 sleep 10
 
 # 运行示例
-go run .
+go run . -manual
 ```
 
 浏览器打开 `http://127.0.0.1:15672`（guest/guest）查看管理界面。

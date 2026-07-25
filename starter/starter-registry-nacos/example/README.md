@@ -14,7 +14,7 @@
 
 ```bash
 cd starter-registry-nacos/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -28,7 +28,7 @@ instances found: ...
 docker compose up -d
 
 # 运行示例
-go run .
+go run . -manual
 
 # 查看注册的服务
 curl 'http://127.0.0.1:8848/nacos/v1/ns/instance/list?serviceName=go-spring'

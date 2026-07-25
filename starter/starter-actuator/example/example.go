@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -65,23 +66,31 @@ func init() {
 	gs.Provide(dep).Export(gs.As[health.Indicator]())
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Unset env vars that leak from the developer shell so runs are reproducible
 	// and consistent with sibling starter examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
-	go func() {
+	if !*manual {
 		time.Sleep(500 * time.Millisecond)
 		runTest()
-	}()
+	} else {
 
-	// Run the Go-Spring application. The actuator serves on :9370 by default:
-	//
-	// ~ curl http://127.0.0.1:9370/health
-	// ~ curl http://127.0.0.1:9370/readiness
-	// ~ curl http://127.0.0.1:9370/info
+		// Run the Go-Spring application. The actuator serves on :9370 by default:
+		//
+		// ~ curl http://127.0.0.1:9370/health
+		// ~ curl http://127.0.0.1:9370/readiness
+		// ~ curl http://127.0.0.1:9370/info
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

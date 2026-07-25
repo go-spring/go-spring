@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,7 +44,10 @@ var (
 	lockedCount atomic.Int64 // fixed-rate job guarded by a lock
 )
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// A Job bean per unit of work. scheduler.Provide names the bean after the job
 	// and exports it as Job, so the scheduler collects it and matches it to its
 	// ${spring.scheduler.jobs.<name>} config entry.
@@ -72,12 +76,16 @@ func main() {
 		_ = ml.Close()
 	})
 
-	go func() {
+	if !*manual {
 		// Give readiness a moment to trigger and the scheduler to fire a few times.
 		time.Sleep(1500 * time.Millisecond)
 		runTest()
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

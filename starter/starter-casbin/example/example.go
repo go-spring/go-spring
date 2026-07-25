@@ -17,6 +17,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -87,7 +88,10 @@ func (w *localWatcher) Update() error {
 
 func (w *localWatcher) Close() {}
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Seed a writable policy file from the checked-in fixture and register the
 	// adapter + watcher the config points at, before the container starts.
 	seedPolicy()
@@ -108,12 +112,17 @@ func main() {
 		_, _ = w.Write([]byte("deny"))
 	})
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest(svrBean.Interface().(*Service))
-	}()
+	} else {
 
-	// Run the Go-Spring application.
+		// Run the Go-Spring application.
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 
 	// Example usage:

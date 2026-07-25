@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,16 +41,23 @@ type Service struct {
 	Singleton lock.Locker `autowire:"singleton"`
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Here `s` is not referenced by any other object, so we register it as a
 	// root bean to keep it in the container graph.
 	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 
-	go func() {
+	if !*manual {
 		time.Sleep(500 * time.Millisecond)
 		runTest(svrBean.Interface().(*Service))
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

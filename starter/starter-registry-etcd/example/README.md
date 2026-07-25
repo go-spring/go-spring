@@ -14,7 +14,7 @@
 
 ```bash
 cd starter-registry-etcd/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -28,7 +28,7 @@ instances found: ...
 docker compose up -d
 
 # 运行示例
-go run .
+go run . -manual
 
 # 查看注册的 key
 etcdctl get --prefix /go-spring/

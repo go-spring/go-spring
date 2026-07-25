@@ -12,36 +12,32 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-gin/example
-go run .
+go run . -manual
 ```
 
-预期输出：
-```
-Response from server: {"message":"Hello, gin"}
-Response from server: {"message":"Hi, world"}
-Health from server: ok
-```
-
-也可以手动 curl 验证：
+终端 2，执行验证命令：
 ```bash
-# 终端1：启动服务
-go run .
-
-# 终端2：测试各端点
+# 路径参数路由
 curl http://localhost:8001/echo/gin
 # -> {"message":"Hello, gin"}
 
+# 查询参数路由
 curl 'http://localhost:8001/greet?name=world'
 # -> {"message":"Hi, world"}
 
+# 中间件注入的响应头
 curl -v http://localhost:8001/echo/gin 2>&1 | grep -i x-app
 # -> X-App: go-spring
 
+# 健康检查
 curl http://localhost:8001/healthz
 # -> ok
 ```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

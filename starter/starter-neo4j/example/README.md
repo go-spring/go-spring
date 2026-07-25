@@ -14,7 +14,7 @@
 
 ```bash
 cd starter-neo4j/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -29,7 +29,7 @@ query executed
 docker compose up -d
 
 # 运行示例
-go run .
+go run . -manual
 ```
 
 浏览器打开 `http://127.0.0.1:7474` 查看 Neo4j Browser。

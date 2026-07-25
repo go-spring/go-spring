@@ -33,6 +33,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -150,18 +151,25 @@ type Runner struct {
 	Client   *redis.Client          `autowire:"cache"`
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	gs.Provide(&reconcileJob{}).
 		Name(jobName).
 		Export(gs.As[StarterBatch.JobDefinition]())
 
 	runnerBean := gs.Provide(&Runner{}).Export(gs.As[gs.Rooter]())
 
-	go func() {
+	if !*manual {
 		time.Sleep(500 * time.Millisecond)
 		runTest(runnerBean.Interface().(*Runner))
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

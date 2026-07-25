@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -136,15 +137,22 @@ func (s *OrderService) place(ctx context.Context, txID string, qty, cost int) (t
 	})
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	svc := newOrderService()
 	svcBean := gs.Provide(svc).Export(gs.As[gs.Rooter]())
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest(svcBean.Interface().(*OrderService))
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

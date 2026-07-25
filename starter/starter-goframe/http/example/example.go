@@ -17,6 +17,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,16 +50,23 @@ func init() {
 	})
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest()
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

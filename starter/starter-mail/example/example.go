@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -39,15 +40,22 @@ type Service struct {
 	Notify *StarterMail.Mailer `autowire:"notify"`
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// `s` is not referenced by any other bean, so register it as a root object.
 	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest(svrBean.Interface().(*Service))
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

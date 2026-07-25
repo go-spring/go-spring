@@ -31,6 +31,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -62,7 +63,10 @@ type ElectionDemo struct {
 	Locker lock.Locker `autowire:""`
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Unset shell-leaked env vars so runs are reproducible across examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
@@ -73,9 +77,17 @@ func main() {
 	clusterAvailable := kubeconfig != "" || inClusterErr == nil
 
 	if !clusterAvailable {
+		if *manual {
+			fmt.Println("=== Manual verification mode ===")
+			fmt.Println("No K8s cluster reachable — wiring-only mode.")
+			fmt.Println("The container will start, show wiring, then exit.")
+			fmt.Println("Press Ctrl+C to stop, or see deploy/ for in-cluster run.")
+		}
 		log.Infof(context.Background(), log.TagAppDef,
 			"no cluster reachable (no KUBECONFIG, not in-cluster); showing wiring only. See deploy/ to run leader election in a cluster.")
-		go selfTerminateAfter(500 * time.Millisecond)
+		if !*manual {
+			go selfTerminateAfter(500 * time.Millisecond)
+		}
 		gs.Run()
 		return
 	}
@@ -84,10 +96,16 @@ func main() {
 	// Drive the election from a goroutine once bean injection has completed,
 	// mirroring sibling starter examples; the container populates demo.Locker
 	// during startup.
-	go func() {
-		time.Sleep(800 * time.Millisecond)
-		demo.runElection()
-	}()
+	if !*manual {
+		go func() {
+			time.Sleep(800 * time.Millisecond)
+			demo.runElection()
+		}()
+	} else {
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running in K8s cluster. Leader election is active.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Configure(func(app gs.App) {
 		// Declare one Lease-backed Locker named "default". Namespace defaults to
 		// "default"; kubeconfig is only set when running out-of-cluster.

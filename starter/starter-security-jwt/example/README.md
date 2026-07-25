@@ -10,23 +10,14 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-security-jwt/example
-go run .
+go run . -manual
 ```
 
-预期输出（断言通过后程序自动退出）：
-```
-401 without token
-200 with valid token
-```
-
-也可以手动 curl 验证：
+终端 2，执行验证命令：
 ```bash
-# 终端1：启动服务
-go run .
-
-# 终端2
 # 无 Token -> 401
 curl -i http://127.0.0.1:9090/me
 # -> HTTP/1.1 401 Unauthorized
@@ -35,6 +26,8 @@ curl -i http://127.0.0.1:9090/me
 curl -i -H 'Authorization: Bearer <token>' http://127.0.0.1:9090/me
 # -> HTTP/1.1 200 OK
 ```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

@@ -11,12 +11,15 @@
 
 ## 手动验证
 
+需要在 K8s 集群中运行。
+
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-discovery-k8s/example
-go run .
+go run . -manual
 ```
 
-需要在 K8s 集群中运行，本地直接运行会打印"not in cluster"提示。
+本地直接运行会打印提示并正常退出。验证完成后 `Ctrl+C` 退出。
 
 ## 冒烟测试
 

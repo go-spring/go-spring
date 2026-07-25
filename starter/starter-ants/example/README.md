@@ -15,18 +15,10 @@
 
 ```bash
 cd starter-ants/example
-go run .
+go run . -manual
 ```
 
-预期输出（断言通过后程序自动退出）：
-```
-Nonblocking pool correctly rejected submit
-CPU pool: running: 0 free: 8 cap: 8 waiting: 0
-Panic handler fired: 1 times
-=== Pool Metrics ===
-  io: cap=2 running=0 waiting=0 free=2
-  cpu: cap=8 running=0 waiting=0 free=8
-```
+程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
 
 ## 冒烟测试
 

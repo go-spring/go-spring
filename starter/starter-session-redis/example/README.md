@@ -14,7 +14,7 @@
 
 ```bash
 cd starter-session-redis/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -30,13 +30,13 @@ cross-replica sharing: OK
 docker compose up -d
 
 # 运行示例
-go run .
+go run . -manual
 ```
 
 也可以手动 curl 验证：
 ```bash
 # 终端1：启动服务
-go run .
+go run . -manual
 
 # 终端2：A 写入 session
 curl -c /tmp/cookie http://127.0.0.1:9090/a/set?user=alice

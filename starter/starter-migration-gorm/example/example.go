@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"embed"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,7 +72,10 @@ func openDB() (*gorm.DB, error) {
 	return db, nil
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// The *gorm.DB bean and the migration.Source bean are both named "app" to
 	// match the spring.migration.app config entry; the starter matches DB, source
 	// and config entry by that shared name.
@@ -82,11 +86,15 @@ func main() {
 
 	appBean := gs.Provide(newApp).Export(gs.As[gs.Rooter]())
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest(appBean.Interface().(*App))
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

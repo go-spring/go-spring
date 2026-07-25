@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,7 +33,10 @@ import (
 	StarterLuaFilter "go-spring.org/starter-lua-filter"
 )
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Provide a *gs.HttpServeMux whose handler is the business mux wrapped by
 	// the "guard" Lua filter. Because gs registers the default HttpServeMux only
 	// when none is present, this custom one wins and every request passes
@@ -49,12 +53,17 @@ func main() {
 		return &gs.HttpServeMux{Handler: guard.Wrap(mux)}
 	}, gs.TagArg("guard"))
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest()
-	}()
+	} else {
 
-	// Run the Go-Spring application.
+		// Run the Go-Spring application.
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 
 	// Example usage:

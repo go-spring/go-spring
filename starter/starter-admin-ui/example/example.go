@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -79,7 +80,10 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Bring up two fake actuator instances that the Admin UI is configured to
 	// poll. Ports match the ones referenced in conf/app.properties.
 	(&fakeActuator{name: "alpha", port: 19371}).start()
@@ -89,7 +93,7 @@ func main() {
 	// synchronous seed poll runs; unbound targets would show as DOWN.
 	time.Sleep(200 * time.Millisecond)
 
-	go func() {
+	if !*manual {
 		// Wait for the Admin UI to bind (:9280) and complete at least one
 		// poll cycle after startup.
 		waitForPort("127.0.0.1:9280", 5*time.Second)
@@ -97,8 +101,11 @@ func main() {
 		// exists, but wait one full poll interval so a second sweep runs.
 		time.Sleep(1500 * time.Millisecond)
 		runTest()
-	}()
-
+	} else {
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

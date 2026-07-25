@@ -13,7 +13,7 @@
 
 ```bash
 cd starter-gorm-sqlserver/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -26,9 +26,11 @@ SQL Server version: ...
 # 启动 SQL Server
 docker compose up -d
 
-# 运行示例
-go run .
+# 运行示例（manual 模式，保持运行）
+go run . -manual
 ```
+
+服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

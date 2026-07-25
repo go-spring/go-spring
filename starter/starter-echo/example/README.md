@@ -12,24 +12,14 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-echo/example
-go run .
+go run . -manual
 ```
 
-预期输出：
-```
-Response from server: {"message":"Hello, echo"}
-Response from server: {"message":"Hi, world"}
-Health from server: ok
-```
-
-也可以手动 curl 验证：
+终端 2，执行验证命令：
 ```bash
-# 终端1：启动服务
-go run .
-
-# 终端2：测试各端点
 curl http://localhost:8002/echo/echo
 # -> {"message":"Hello, echo"}
 
@@ -45,6 +35,8 @@ curl -v http://localhost:8002/echo/echo 2>&1 | grep -i x-request-id
 curl http://localhost:8002/healthz
 # -> ok
 ```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

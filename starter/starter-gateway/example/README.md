@@ -10,26 +10,20 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-gateway/example
-go run .
+go run . -manual
 ```
 
-预期输出（断言通过后程序自动退出）：
-```
-echo: /api/echo, from: go-spring-gateway
-```
-
-也可以手动 curl 验证：
+终端 2，执行验证命令：
 ```bash
-# 终端1：启动服务
-go run .
-
-# 终端2
 curl -i http://127.0.0.1:9440/api/echo
 # -> HTTP/1.1 200 OK
 # -> echo: /api/echo, from: go-spring-gateway
 ```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

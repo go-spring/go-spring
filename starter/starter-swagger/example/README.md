@@ -10,23 +10,14 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-swagger/example
-go run .
+go run . -manual
 ```
 
-预期输出（断言通过后程序自动退出）：
-```
-Swagger UI accessible
-OpenAPI spec returned
-```
-
-也可以手动验证：
+终端 2，执行验证命令：
 ```bash
-# 终端1：启动服务
-go run .
-
-# 终端2
 curl http://127.0.0.1:9090/swagger/index.html
 # -> Swagger UI HTML
 
@@ -34,7 +25,7 @@ curl http://127.0.0.1:9090/swagger/doc.json
 # -> OpenAPI spec JSON
 ```
 
-浏览器打开 `http://127.0.0.1:9090/swagger/index.html` 查看交互式文档。
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

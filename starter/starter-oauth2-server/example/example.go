@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,7 +43,10 @@ const secret = "example-shared-secret"
 
 const base = "http://127.0.0.1:9090"
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Build the application's single HTTP handler. It mounts the authorization
 	// server's endpoints under /oauth2 and protects the business API with the
 	// unified security filter chain (CORS + authentication + authorization).
@@ -88,11 +92,15 @@ func main() {
 		return &gs.HttpServeMux{Handler: mux}
 	})
 
-	go func() {
+	if !*manual {
 		time.Sleep(500 * time.Millisecond)
 		runTest()
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

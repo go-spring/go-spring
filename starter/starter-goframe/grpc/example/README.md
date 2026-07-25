@@ -8,26 +8,20 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-goframe/grpc/example
-go run .
+go run . -manual
 ```
 
-预期输出：
-```
-Response from server: hello
-```
-
-也可以使用 grpcurl 手动验证：
+终端 2，执行验证命令：
 ```bash
-# 终端1：启动服务
-go run .
-
-# 终端2
 grpcurl -plaintext -d '{"message":"hello"}' \
   localhost:8001 echo.EchoService/Echo
 # -> {"message":"hello"}
 ```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

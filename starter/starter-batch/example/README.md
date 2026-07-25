@@ -12,7 +12,7 @@
 
 ```bash
 cd starter-batch/example
-go run .
+go run . -manual
 ```
 
 预期输出（两阶段自动执行，Phase 2 从断点恢复并完成）：
@@ -20,6 +20,8 @@ go run .
 phase 1: ...
 phase 2: ...
 ```
+
+服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
 
 需要 Docker 环境运行完整冒烟测试（依赖 MySQL）。
 

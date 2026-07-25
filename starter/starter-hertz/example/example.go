@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -73,18 +74,26 @@ func (c *Controller) Greet(ctx context.Context, r *app.RequestContext) {
 	r.JSON(consts.StatusOK, map[string]string{"message": "Hi, " + name})
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest()
-	}()
+	} else {
 
-	// Configuration lives under ./conf/app.properties; the built-in HTTP
-	// server is disabled there because Hertz drives its own on :8003.
+		// Configuration lives under ./conf/app.properties; the built-in HTTP
+		// server is disabled there because Hertz drives its own on :8003.
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

@@ -29,6 +29,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,15 +54,22 @@ const (
 	targetService = "demo"
 )
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
-	go func() {
+	flag.Parse()
+	if !*manual {
 		// Give the container a moment to register the backend during refresh.
 		time.Sleep(500 * time.Millisecond)
 		resolveOnce()
 		// One-shot: stop the app so the example terminates on its own.
 		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

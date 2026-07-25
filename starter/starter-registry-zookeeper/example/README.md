@@ -14,7 +14,7 @@
 
 ```bash
 cd starter-registry-zookeeper/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -28,7 +28,7 @@ instances found: ...
 docker compose up -d
 
 # 运行示例
-go run .
+go run . -manual
 ```
 
 ## 冒烟测试

@@ -13,7 +13,7 @@
 
 ```bash
 cd starter-redigo/example
-go run .
+go run . -manual
 ```
 
 预期输出：
@@ -28,7 +28,7 @@ GET foo: bar
 docker compose up -d
 
 # 运行示例
-go run .
+go run . -manual
 ```
 
 ## 冒烟测试

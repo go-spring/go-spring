@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -57,7 +58,10 @@ type Service struct {
 	DiscES *elasticsearch.Client `autowire:"disc"`
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// You can change the `driver` property in the configuration file
 	// and check the used Elasticsearch driver via logs.
 
@@ -107,10 +111,16 @@ func main() {
 		_, _ = io.Copy(w, res.Body)
 	})
 
-	go func() {
-		time.Sleep(time.Millisecond * 500)
-		runTest(svrBean.Interface().(*Service))
-	}()
+	if !*manual {
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest(svrBean.Interface().(*Service))
+		}()
+	} else {
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 
 	// Run the Go-Spring application.
 	gs.Run()

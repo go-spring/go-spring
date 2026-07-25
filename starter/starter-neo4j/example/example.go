@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -54,7 +55,10 @@ func (s *Service) query(ctx context.Context, cypher string, params map[string]an
 	return neo4j.ExecuteQuery(ctx, s.Neo4j, cypher, params, neo4j.EagerResultTransformer)
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// You can change the `driver` property in the configuration file
 	// and check the used Neo4j driver via logs.
 
@@ -93,12 +97,17 @@ func main() {
 		_, _ = w.Write([]byte(fmt.Sprintf("%v", age)))
 	})
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest(svrBean.Interface().(*Service))
-	}()
+	} else {
 
-	// Run the Go-Spring application.
+		// Run the Go-Spring application.
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 
 	// Example usage:

@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -55,7 +56,10 @@ type Service struct {
 	ClusterRedis   *redis.ClusterClient `autowire:"cluster"`
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// You can change the `driver` property in the configuration file
 	// and check the used Redis driver via logs.
 
@@ -107,12 +111,17 @@ func main() {
 		_, _ = w.Write([]byte(d.String()))
 	})
 
-	go func() {
+	if !*manual {
 		time.Sleep(time.Millisecond * 500)
 		runTest(svrBean.Interface().(*Service))
-	}()
+	} else {
 
-	// Run the Go-Spring application.
+		// Run the Go-Spring application.
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 
 	// Example usage:

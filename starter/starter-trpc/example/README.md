@@ -10,15 +10,15 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-trpc/example
-go run .
+go run . -manual
 ```
 
-预期输出：
-```
-response from server: Hello, Go-Spring!
-```
+服务正在 :8000 监听。可以用 tRPC 生成的客户端 proxy 代码连接验证。
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

@@ -10,15 +10,15 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-kitex/example
-go run .
+go run . -manual
 ```
 
-预期输出：
-```
-Response from server: Hello, Kitex!
-```
+服务正在 :8888 监听。可以用 Kitex 生成的客户端代码连接验证。
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

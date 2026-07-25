@@ -8,15 +8,19 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-goframe/ws/example
-go run .
+go run . -manual
 ```
 
-预期输出：
+终端 2，使用 websocat 测试：
+```bash
+websocat ws://127.0.0.1:8002/echo
+# 输入 ping，收到 ping
 ```
-Response from server: ping
-```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

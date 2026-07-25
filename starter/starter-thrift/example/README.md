@@ -10,16 +10,15 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-thrift/example
-go run .
+go run . -manual
 ```
 
-预期输出：
-```
-Response from server: Hello, Thrift!
-Response from server: Middleware works!
-```
+服务正在 :9292 监听（compact 协议 + framed 传输）。可以用 Thrift 生成的客户端代码连接验证。
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

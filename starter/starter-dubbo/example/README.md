@@ -9,17 +9,24 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-dubbo/example
-go run .
+go run . -manual
+```
+
+终端 2，运行客户端验证脚本：
+```bash
+go run check_client.go
 ```
 
 预期输出：
 ```
 Response from server: Hello, Dubbo-Go!
+OK: Dubbo RPC verified
 ```
 
-程序通过 `runTest()` 自动发起客户端调用并断言响应结果，断言失败时以非零退出码退出。
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

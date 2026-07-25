@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,15 +59,25 @@ func (s *GreetProvider) Greet(ctx context.Context, req *greet.GreetRequest) (*gr
 	return &greet.GreetResponse{Greeting: req.Name}, nil
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
-	go func() {
-		time.Sleep(time.Millisecond * 500)
-		runTest()
-	}()
+	if !*manual {
+		go func() {
+			time.Sleep(time.Millisecond * 500)
+			runTest()
+		}()
+	} else {
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Use check_client.sh in another terminal,")
+		fmt.Println("or run: go run .  (without -manual) for a one-shot smoke test.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 
 	// The built-in HTTP server is disabled via conf/app.properties; gs.Run()
 	// starts only the Dubbo server registered by starter-dubbo. No inline

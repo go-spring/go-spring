@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,7 +44,10 @@ import (
 // long wait. Every request that carries a session slides this deadline forward.
 const idleTimeout = 2 * time.Second
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// mgrA and mgrB share ONE Redis-backed store. They model two replicas: no
 	// in-process state is shared between them, only Redis. What A writes, B reads.
 	gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {
@@ -79,11 +83,15 @@ func main() {
 		return &gs.HttpServeMux{Handler: mux}
 	}, gs.TagArg("web"))
 
-	go func() {
+	if !*manual {
 		time.Sleep(500 * time.Millisecond)
 		runTest()
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

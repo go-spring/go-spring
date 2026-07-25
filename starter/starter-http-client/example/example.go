@@ -39,6 +39,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -117,7 +118,10 @@ func startFlakyBackend(addr string) {
 	_ = http.ListenAndServe(addr, mux)
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Install a real tracer provider and the W3C propagator so the starter's
 	// otelhttp base transport produces a valid client span and injects a
 	// traceparent header. Without this the global tracer is a no-op and nothing
@@ -139,11 +143,15 @@ func main() {
 
 	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 
-	go func() {
+	if !*manual {
 		time.Sleep(500 * time.Millisecond)
 		runTest(svrBean.Interface().(*Service))
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 

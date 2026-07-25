@@ -10,18 +10,19 @@
 
 ## 手动验证
 
+终端 1，启动服务并保持运行：
 ```bash
 cd starter-websocket-coder/example
-go run .
+go run . -manual
 ```
 
-预期输出：
+终端 2，使用 websocat 测试：
+```bash
+websocat ws://127.0.0.1:9797/echo
+# 输入任意文本，收到回声
 ```
-Response from server: Hello, WebSocket!
-Response from server: Hi, world
-Response from server: /guard accepted request with X-App header
-Response from server: /guard rejected request without X-App header (status 403)
-```
+
+验证完成后 `Ctrl+C` 退出服务。
 
 ## 冒烟测试
 

@@ -34,6 +34,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,7 +56,10 @@ type Demo struct {
 	Message gs.Dync[string] `value:"${demo.message:=none}"`
 }
 
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
 func main() {
+	flag.Parse()
 	// Unset env vars that leak from the developer shell so runs are reproducible
 	// and consistent with sibling starter examples.
 	_ = os.Unsetenv("_")
@@ -71,11 +75,15 @@ func main() {
 
 	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
 
-	go func() {
+	if !*manual {
 		time.Sleep(500 * time.Millisecond)
 		runTest(demoBean.Interface().(*Demo))
-	}()
+	} else {
 
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
 	gs.Run()
 }
 
