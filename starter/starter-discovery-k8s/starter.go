@@ -58,7 +58,7 @@ func init() {
 				return errutil.Explain(nil, "discovery-k8s: backend %q already registered", name)
 			}
 			log.Debugf(context.Background(), starterTag, "creating k8s discovery backend name=%s mode=%s namespace=%s", name, c.Mode, c.Namespace)
-			b, err := newBackend(c)
+			b, err := newBackend(&gs.ContextProvider{Context: context.Background()}, c)
 			if err != nil {
 				return errutil.Explain(err, "discovery-k8s: build backend %q", name)
 			}

@@ -164,7 +164,8 @@ func httpGet(url string) (string, error) {
 func init() {
 	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
-	if ok {		execDir = filepath.Dir(filename)
+	if ok {
+		execDir = filepath.Dir(filename)
 	}
 	err := os.Chdir(execDir)
 	if err != nil {

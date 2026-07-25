@@ -17,11 +17,13 @@
 package StarterOAuth2Server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"go-spring.org/spring/gs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -57,7 +59,7 @@ func newTestServer(t *testing.T) *AuthServer {
 			},
 		},
 	}
-	s, err := newAuthServer(cfg)
+	s, err := newAuthServer(&gs.ContextProvider{Context: context.Background()}, cfg)
 	if err != nil {
 		t.Fatalf("newAuthServer: %v", err)
 	}

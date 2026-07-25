@@ -17,8 +17,6 @@
 package StarterMQTT
 
 import (
-	"context"
-
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -36,10 +34,9 @@ func init() {
 }
 
 // newClient creates and connects an MQTT client based on the provided configuration.
-func newClient(c Config) (mqtt.Client, error) {
-	log.Debugf(context.Background(), starterTag, "creating mqtt client, broker=%s client-id=%s", c.Broker, c.ClientID)
-
-	ctx := context.Background()
+func newClient(cp *gs.ContextProvider, c Config) (mqtt.Client, error) {
+	ctx := cp.Context
+	log.Debugf(ctx, starterTag, "creating mqtt client, broker=%s client-id=%s", c.Broker, c.ClientID)
 
 	opts := mqtt.NewClientOptions().
 		AddBroker(c.Broker).
@@ -64,7 +61,7 @@ func newClient(c Config) (mqtt.Client, error) {
 
 	tlsCfg, err := c.TLS.Build()
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "mqtt: build TLS failed: %v", err)
+		log.Errorf(ctx, starterTag, "mqtt: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "mqtt: build TLS")
 	}
 	if tlsCfg != nil {
@@ -79,10 +76,10 @@ func newClient(c Config) (mqtt.Client, error) {
 	token := client.Connect()
 	token.Wait()
 	if err := token.Error(); err != nil {
-		log.Errorf(context.Background(), starterTag, "mqtt: connect failed broker=%s: %v", c.Broker, err)
+		log.Errorf(ctx, starterTag, "mqtt: connect failed broker=%s: %v", c.Broker, err)
 		return nil, err
 	}
-	log.Infof(context.Background(), starterTag, "mqtt client initialized, broker=%s", c.Broker)
+	log.Infof(ctx, starterTag, "mqtt client initialized, broker=%s", c.Broker)
 	return client, nil
 }
 

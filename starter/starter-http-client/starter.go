@@ -27,9 +27,9 @@ import (
 	"io"
 	"net/http"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/spring/web/httpx"
-	"go-spring.org/log"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -50,8 +50,9 @@ func init() {
 // the OTel globals starter-otel installs (a no-op when it is absent), which is
 // how trace context rides across service boundaries. stdlib/httpx then layers
 // discovery + load balancing and, when enabled, resilience on top of that base.
-func newClient(c Config) (*http.Client, error) {
-	log.Debugf(context.Background(), starterTag, "creating http client, addr=%s service-name=%s timeout=%v", c.Addr, c.ServiceName, c.Timeout)
+func newClient(cp *gs.ContextProvider, c Config) (*http.Client, error) {
+	ctx := cp.Context
+	log.Debugf(ctx, starterTag, "creating http client, addr=%s service-name=%s timeout=%v", c.Addr, c.ServiceName, c.Timeout)
 
 	if err := c.validate(); err != nil {
 		return nil, err
@@ -59,10 +60,10 @@ func newClient(c Config) (*http.Client, error) {
 	base := otelhttp.NewTransport(http.DefaultTransport)
 	rt, closeFn, err := httpx.NewTransport(c.toTransportConfig(base))
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "http-client: create transport failed: %v", err)
+		log.Errorf(ctx, starterTag, "http-client: create transport failed: %v", err)
 		return nil, err
 	}
-	log.Infof(context.Background(), starterTag, "http client initialized, addr=%s service-name=%s", c.Addr, c.ServiceName)
+	log.Infof(ctx, starterTag, "http client initialized, addr=%s service-name=%s", c.Addr, c.ServiceName)
 	return &http.Client{
 		Transport: &managedTransport{rt: rt, closeFn: closeFn},
 		Timeout:   c.Timeout,

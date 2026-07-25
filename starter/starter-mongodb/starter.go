@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/log"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
@@ -55,8 +55,9 @@ func init() {
 // ContextDialer, so each new connection dials a currently-live instance and
 // address changes take effect without rebuilding the client. When c.ServiceName
 // is empty this dials the URI hosts directly, unchanged from before.
-func newClient(c Config) (*mongo.Client, error) {
-	log.Debugf(context.Background(), starterTag, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
+func newClient(cp *gs.ContextProvider, c Config) (*mongo.Client, error) {
+	ctx := cp.Context
+	log.Debugf(ctx, starterTag, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
 	opts := options.Client().ApplyURI(c.URI)
 	opts.SetMonitor(newCommandMonitor())
@@ -83,7 +84,7 @@ func newClient(c Config) (*mongo.Client, error) {
 	}
 	tlsCfg, err := c.TLS.Build()
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "mongodb: build TLS failed: %v", err)
+		log.Errorf(ctx, starterTag, "mongodb: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "mongodb: build TLS")
 	}
 	if tlsCfg != nil {
@@ -94,12 +95,12 @@ func newClient(c Config) (*mongo.Client, error) {
 	if c.ServiceName != "" {
 		d, err := discovery.MustGet(c.Discovery)
 		if err != nil {
-			log.Errorf(context.Background(), starterTag, "mongodb: get discovery backend failed: %v", err)
+			log.Errorf(ctx, starterTag, "mongodb: get discovery backend failed: %v", err)
 			return nil, err
 		}
-		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+		ld, err = discovery.NewLiveDialer(ctx, d, c.ServiceName)
 		if err != nil {
-			log.Errorf(context.Background(), starterTag, "mongodb: create live dialer for %s failed: %v", c.ServiceName, err)
+			log.Errorf(ctx, starterTag, "mongodb: create live dialer for %s failed: %v", c.ServiceName, err)
 			return nil, err
 		}
 		// The LiveDialer ignores the dialed address and picks a live endpoint;
@@ -109,7 +110,7 @@ func newClient(c Config) (*mongo.Client, error) {
 
 	client, err := mongo.Connect(opts)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "mongodb: connect failed: %v", err)
+		log.Errorf(ctx, starterTag, "mongodb: connect failed: %v", err)
 		if ld != nil {
 			_ = ld.Stop()
 		}
@@ -117,10 +118,10 @@ func newClient(c Config) (*mongo.Client, error) {
 	}
 
 	// Fail fast: verify the server is reachable before handing out the client.
-	ctx, cancel := pingContext(c.ConnectTimeout)
+	pingCtx, cancel := pingContext(ctx, c.ConnectTimeout)
 	defer cancel()
-	if err := client.Ping(ctx, nil); err != nil {
-		log.Errorf(context.Background(), starterTag, "mongodb: ping failed uri=%s: %v", c.URI, err)
+	if err := client.Ping(pingCtx, nil); err != nil {
+		log.Errorf(ctx, starterTag, "mongodb: ping failed uri=%s: %v", c.URI, err)
 		_ = client.Disconnect(context.Background())
 		if ld != nil {
 			_ = ld.Stop()
@@ -130,7 +131,7 @@ func newClient(c Config) (*mongo.Client, error) {
 	if ld != nil {
 		liveDialers.Store(client, ld)
 	}
-	log.Infof(context.Background(), starterTag, "mongodb client initialized, uri=%s", c.URI)
+	log.Infof(ctx, starterTag, "mongodb client initialized, uri=%s", c.URI)
 	return client, nil
 }
 
@@ -142,11 +143,11 @@ func HealthCheck(ctx context.Context, client *mongo.Client) error {
 
 // pingContext derives a context for the startup ping, bounded by the connect
 // timeout when set so the probe cannot hang indefinitely.
-func pingContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+func pingContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	return context.WithTimeout(context.Background(), timeout)
+	return context.WithTimeout(ctx, timeout)
 }
 
 // destroyClient disconnects the MongoDB client and stops any discovery watch

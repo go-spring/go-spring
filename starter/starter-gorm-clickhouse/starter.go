@@ -21,10 +21,10 @@ import (
 	"sync"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/log"
 	"gorm.io/driver/clickhouse"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
@@ -54,12 +54,13 @@ func init() {
 // new connection reaches a live instance resolved from the discovery backend
 // and address changes take effect without rebuilding the client. When
 // c.ServiceName is empty this is a plain DSN dial, unchanged from before.
-func newClient(c Config) (*gorm.DB, error) {
+func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
+	ctx := cp.Context
 	if c.Addr == "" && c.ServiceName == "" {
 		return nil, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
 	}
 
-	log.Debugf(context.Background(), starterTag, "creating gorm clickhouse client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
+	log.Debugf(ctx, starterTag, "creating gorm clickhouse client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
 
 	var (
 		db  *gorm.DB
@@ -74,7 +75,7 @@ func newClient(c Config) (*gorm.DB, error) {
 	if !useNative {
 		db, err = gorm.Open(clickhouse.Open(c.DSN()), gormConfig(c))
 		if err != nil {
-			log.Errorf(context.Background(), starterTag, "gorm clickhouse: open failed: %v", err)
+			log.Errorf(ctx, starterTag, "gorm clickhouse: open failed: %v", err)
 			return nil, err
 		}
 	} else {
@@ -91,7 +92,7 @@ func newClient(c Config) (*gorm.DB, error) {
 		if c.TLS.Enabled {
 			tlsCfg, terr := c.TLS.Build()
 			if terr != nil {
-				log.Errorf(context.Background(), starterTag, "gorm clickhouse: build TLS failed: %v", terr)
+				log.Errorf(ctx, starterTag, "gorm clickhouse: build TLS failed: %v", terr)
 				return nil, errutil.Explain(terr, "gorm-clickhouse: build TLS")
 			}
 			opts.TLS = tlsCfg
@@ -99,12 +100,12 @@ func newClient(c Config) (*gorm.DB, error) {
 		if c.ServiceName != "" {
 			d, derr := discovery.MustGet(c.Discovery)
 			if derr != nil {
-				log.Errorf(context.Background(), starterTag, "gorm clickhouse: get discovery backend failed: %v", derr)
+				log.Errorf(ctx, starterTag, "gorm clickhouse: get discovery backend failed: %v", derr)
 				return nil, derr
 			}
-			ld, derr = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+			ld, derr = discovery.NewLiveDialer(ctx, d, c.ServiceName)
 			if derr != nil {
-				log.Errorf(context.Background(), starterTag, "gorm clickhouse: create live dialer for %s failed: %v", c.ServiceName, derr)
+				log.Errorf(ctx, starterTag, "gorm clickhouse: create live dialer for %s failed: %v", c.ServiceName, derr)
 				return nil, derr
 			}
 			opts.DialContext = ld.Dial
@@ -112,7 +113,7 @@ func newClient(c Config) (*gorm.DB, error) {
 		sqlDB := ch.OpenDB(opts)
 		db, err = gorm.Open(clickhouse.New(clickhouse.Config{Conn: sqlDB}), gormConfig(c))
 		if err != nil {
-			log.Errorf(context.Background(), starterTag, "gorm clickhouse: open with native driver failed: %v", err)
+			log.Errorf(ctx, starterTag, "gorm clickhouse: open with native driver failed: %v", err)
 			if ld != nil {
 				_ = ld.Stop()
 			}
@@ -121,7 +122,7 @@ func newClient(c Config) (*gorm.DB, error) {
 		}
 	}
 	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("clickhouse"))); err != nil {
-		log.Errorf(context.Background(), starterTag, "gorm clickhouse: install otel plugin failed: %v", err)
+		log.Errorf(ctx, starterTag, "gorm clickhouse: install otel plugin failed: %v", err)
 		if ld != nil {
 			_ = ld.Stop()
 		}
@@ -129,7 +130,7 @@ func newClient(c Config) (*gorm.DB, error) {
 	}
 	// Fail fast: verify connectivity and apply pool settings at creation time.
 	if err := applyPool(db, c); err != nil {
-		log.Errorf(context.Background(), starterTag, "gorm clickhouse: ping failed: %v", err)
+		log.Errorf(ctx, starterTag, "gorm clickhouse: ping failed: %v", err)
 		if ld != nil {
 			_ = ld.Stop()
 		}
@@ -141,7 +142,7 @@ func newClient(c Config) (*gorm.DB, error) {
 	if ld != nil {
 		liveDialers.Store(db, ld)
 	}
-	log.Infof(context.Background(), starterTag, "gorm clickhouse client initialized, addr=%s db=%s", c.Addr, c.DB)
+	log.Infof(ctx, starterTag, "gorm clickhouse client initialized, addr=%s db=%s", c.Addr, c.DB)
 	return db, nil
 }
 

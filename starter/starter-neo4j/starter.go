@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/log"
 )
 
 func init() {
@@ -51,13 +51,14 @@ var starterTag = log.RegisterInfraTag("neo4j", "")
 // When c.ServiceName is set, the address is resolved once through the registered
 // discovery backend (c.Discovery) and spliced into the URI host; see the
 // ServiceName field docs for the startup-only limitation.
-func newClient(c Config) (neo4j.DriverWithContext, error) {
-	log.Debugf(context.Background(), starterTag, "creating neo4j client, uri=%s service-name=%s driver=%s", c.URI, c.ServiceName, c.Driver)
+func newClient(cp *gs.ContextProvider, c Config) (neo4j.DriverWithContext, error) {
+	ctx := cp.Context
+	log.Debugf(ctx, starterTag, "creating neo4j client, uri=%s service-name=%s driver=%s", c.URI, c.ServiceName, c.Driver)
 
 	if c.ServiceName != "" {
-		uri, err := resolveURI(c)
+		uri, err := resolveURI(ctx, c)
 		if err != nil {
-			log.Errorf(context.Background(), starterTag, "neo4j: resolve service-name failed: %v", err)
+			log.Errorf(ctx, starterTag, "neo4j: resolve service-name failed: %v", err)
 			return nil, err
 		}
 		c.URI = uri
@@ -65,24 +66,24 @@ func newClient(c Config) (neo4j.DriverWithContext, error) {
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(context.Background(), starterTag, "neo4j driver not found: %s", c.Driver)
+		log.Errorf(ctx, starterTag, "neo4j driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "neo4j driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(c)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "neo4j: create client failed: %v", err)
+		log.Errorf(ctx, starterTag, "neo4j: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create neo4j client")
 	}
 
 	// Fail fast: verify the server is reachable before handing out the driver.
-	ctx, cancel := verifyContext(c.SocketConnectTimeout)
+	vctx, cancel := verifyContext(ctx, c.SocketConnectTimeout)
 	defer cancel()
-	if err := client.VerifyConnectivity(ctx); err != nil {
-		log.Errorf(context.Background(), starterTag, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
-		_ = client.Close(context.Background())
+	if err := client.VerifyConnectivity(vctx); err != nil {
+		log.Errorf(ctx, starterTag, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
+		_ = client.Close(ctx)
 		return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
 	}
-	log.Infof(context.Background(), starterTag, "neo4j client initialized, uri=%s", c.URI)
+	log.Infof(ctx, starterTag, "neo4j client initialized, uri=%s", c.URI)
 	return client, nil
 }
 
@@ -92,12 +93,12 @@ func newClient(c Config) (neo4j.DriverWithContext, error) {
 // endpoints are preferred; backends that do not track health yield all endpoints
 // as eligible. This is a one-shot resolution because the neo4j driver exposes no
 // dialer injection point (see Config.ServiceName).
-func resolveURI(c Config) (string, error) {
+func resolveURI(ctx context.Context, c Config) (string, error) {
 	backend, err := discovery.MustGet(c.Discovery)
 	if err != nil {
 		return "", err
 	}
-	eps, err := backend.Resolve(context.Background(), c.ServiceName)
+	eps, err := backend.Resolve(ctx, c.ServiceName)
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
 	}
@@ -127,11 +128,11 @@ func HealthCheck(ctx context.Context, client neo4j.DriverWithContext) error {
 
 // verifyContext derives a context for the startup connectivity check, bounded by
 // the socket connect timeout when set so the probe cannot hang indefinitely.
-func verifyContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+func verifyContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
-	return context.WithTimeout(context.Background(), timeout)
+	return context.WithTimeout(ctx, timeout)
 }
 
 // destroyClient closes the Neo4j client.

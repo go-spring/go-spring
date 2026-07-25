@@ -48,7 +48,6 @@ func Loggers() []LoggerInfo {
 	return out
 }
 
-
 // AvailableLevels returns the selectable log level names (upper-case), ordered
 // from most to least verbose. Bounds-only levels (NONE, MAX) are excluded.
 func AvailableLevels() []string {

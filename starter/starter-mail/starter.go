@@ -89,12 +89,14 @@ func init() {
 // newMailer builds a Mailer from config. It fails fast on a missing host or an
 // unknown auth/TLS mode, and probes the server once at startup so a
 // misconfiguration surfaces at boot rather than on the first send.
-func newMailer(c Config) (*Mailer, error) {
+func newMailer(cp *gs.ContextProvider, c Config) (*Mailer, error) {
+	ctx := cp.Context
+
 	if err := errutil.RequireField("mail", "host", c.Host); err != nil {
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "creating mailer host=%s port=%d auth=%s tls=%s from=%s", c.Host, c.Port, c.AuthType, c.TLS.Mode, c.From)
+	log.Debugf(ctx, starterTag, "creating mailer host=%s port=%d auth=%s tls=%s from=%s", c.Host, c.Port, c.AuthType, c.TLS.Mode, c.From)
 
 	opts := []mail.Option{
 		mail.WithPort(c.Port),
@@ -139,7 +141,7 @@ func newMailer(c Config) (*Mailer, error) {
 
 	// Fail fast: dial the server once and close it so a bad host, port, auth, or
 	// TLS setting is caught at startup instead of on the first send.
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 	if err := client.DialWithContext(ctx); err != nil {
 		return nil, errutil.Explain(err, "mail: startup dial to %s:%d failed", c.Host, c.Port)
@@ -148,7 +150,7 @@ func newMailer(c Config) (*Mailer, error) {
 		return nil, errutil.Explain(err, "mail: closing startup probe connection failed")
 	}
 
-	log.Infof(context.Background(), starterTag, "mailer created host=%s port=%d", c.Host, c.Port)
+	log.Infof(ctx, starterTag, "mailer created host=%s port=%d", c.Host, c.Port)
 	return &Mailer{client: client, from: c.From}, nil
 }
 

@@ -17,8 +17,6 @@
 package StarterNats
 
 import (
-	"context"
-
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go-spring.org/log"
@@ -68,10 +66,10 @@ func init() {
 // newConn dials NATS and, when configured, derives a JetStream context from the
 // same connection. Connection-layer events (async errors, disconnect, reconnect,
 // close) are bridged into go-spring's log so they show up alongside app logs.
-func newConn(c Config) (*Conn, error) {
-	log.Debugf(context.Background(), starterTag, "creating nats connection, url=%s name=%s", c.URL, c.Name)
+func newConn(cp *gs.ContextProvider, c Config) (*Conn, error) {
+	ctx := cp.Context
 
-	ctx := context.Background()
+	log.Debugf(ctx, starterTag, "creating nats connection, url=%s name=%s", c.URL, c.Name)
 
 	opts := []nats.Option{
 		nats.Name(c.Name),
@@ -114,7 +112,7 @@ func newConn(c Config) (*Conn, error) {
 	if c.TLS.Enabled {
 		tlsCfg, err := c.TLS.Build()
 		if err != nil {
-			log.Errorf(context.Background(), starterTag, "nats: build TLS failed: %v", err)
+			log.Errorf(ctx, starterTag, "nats: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "nats: build TLS")
 		}
 		if tlsCfg != nil {
@@ -126,7 +124,7 @@ func newConn(c Config) (*Conn, error) {
 
 	nc, err := nats.Connect(c.URL, opts...)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "nats: connect failed url=%s: %v", c.URL, err)
+		log.Errorf(ctx, starterTag, "nats: connect failed url=%s: %v", c.URL, err)
 		return nil, errutil.Explain(err, "failed to connect nats: %s", c.URL)
 	}
 
@@ -134,18 +132,18 @@ func newConn(c Config) (*Conn, error) {
 	if c.JetStream.Enabled {
 		js, err := jetstream.New(nc)
 		if err != nil {
-			log.Errorf(context.Background(), starterTag, "nats: create jetstream context failed: %v", err)
+			log.Errorf(ctx, starterTag, "nats: create jetstream context failed: %v", err)
 			nc.Close()
 			return nil, errutil.Explain(err, "failed to create jetstream context")
 		}
 		conn.JetStream = js
 	}
 	if err := applyResilience(c, conn); err != nil {
-		log.Errorf(context.Background(), starterTag, "nats: resilience setup failed: %v", err)
+		log.Errorf(ctx, starterTag, "nats: resilience setup failed: %v", err)
 		nc.Close()
 		return nil, err
 	}
-	log.Infof(context.Background(), starterTag, "nats connection initialized, url=%s", c.URL)
+	log.Infof(ctx, starterTag, "nats connection initialized, url=%s", c.URL)
 	return conn, nil
 }
 

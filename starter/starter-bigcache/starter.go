@@ -20,9 +20,9 @@ import (
 	"context"
 
 	"github.com/allegro/bigcache/v3"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/log"
 )
 
 var starterTag = log.RegisterInfraTag("bigcache", "")
@@ -38,20 +38,21 @@ func init() {
 }
 
 // newClient creates a new BigCache instance based on the provided configuration.
-func newClient(c Config) (*bigcache.BigCache, error) {
-	log.Debugf(context.Background(), starterTag, "creating bigcache instance, shards=%d max-size=%d", c.Shards, c.MaxEntrySize)
+func newClient(cp *gs.ContextProvider, c Config) (*bigcache.BigCache, error) {
+	ctx := cp.Context
+	log.Debugf(ctx, starterTag, "creating bigcache instance, shards=%d max-size=%d", c.Shards, c.MaxEntrySize)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(context.Background(), starterTag, "bigcache driver not found: %s", c.Driver)
+		log.Errorf(ctx, starterTag, "bigcache driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "bigcache driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(c)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "bigcache: create instance failed: %v", err)
+		log.Errorf(ctx, starterTag, "bigcache: create instance failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create bigcache instance")
 	}
-	log.Infof(context.Background(), starterTag, "bigcache instance initialized, shards=%d", c.Shards)
+	log.Infof(ctx, starterTag, "bigcache instance initialized, shards=%d", c.Shards)
 	return client, nil
 }
 

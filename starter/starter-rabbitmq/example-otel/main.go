@@ -40,8 +40,8 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	starter "go-spring.org/starter-rabbitmq"
 	_ "go-spring.org/starter-otel"
+	starter "go-spring.org/starter-rabbitmq"
 )
 
 const queueName = "hello"

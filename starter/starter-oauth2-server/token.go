@@ -17,6 +17,7 @@
 package StarterOAuth2Server
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"encoding/base64"
@@ -50,7 +51,7 @@ type signer struct {
 
 // newSigner resolves the single configured key source and signing algorithm and
 // precomputes the JWKS document.
-func newSigner(c Config) (*signer, error) {
+func newSigner(ctx context.Context, c Config) (*signer, error) {
 	hasSecret := c.Secret != ""
 	hasPEM := c.PrivateKey != "" || c.PrivateKeyFile != ""
 	switch {

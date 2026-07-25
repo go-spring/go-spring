@@ -53,8 +53,9 @@ const pingTimeout = 10 * time.Second
 // After the client is built it is pinged so a misconfigured broker list, bad
 // credentials or TLS mismatch fail fast at startup instead of surfacing on the
 // first produce/consume.
-func newClient(c Config) (*kgo.Client, error) {
-	log.Debugf(context.Background(), starterTag, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
+func newClient(cp *gs.ContextProvider, c Config) (*kgo.Client, error) {
+	ctx := cp.Context
+	log.Debugf(ctx, starterTag, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
 
 	kt := kotel.NewKotel(
 		kotel.WithTracer(kotel.NewTracer()),
@@ -83,7 +84,7 @@ func newClient(c Config) (*kgo.Client, error) {
 	if c.TLS.Enabled {
 		tc, err := c.TLS.Build()
 		if err != nil {
-			log.Errorf(context.Background(), starterTag, "kafka: build TLS failed: %v", err)
+			log.Errorf(ctx, starterTag, "kafka: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "kafka: build TLS")
 		}
 		opts = append(opts, kgo.DialTLSConfig(tc))
@@ -97,18 +98,18 @@ func newClient(c Config) (*kgo.Client, error) {
 
 	cl, err := kgo.NewClient(opts...)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "kafka: create client failed: %v", err)
+		log.Errorf(ctx, starterTag, "kafka: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
-	if err = cl.Ping(ctx); err != nil {
-		log.Errorf(context.Background(), starterTag, "kafka: ping failed: %v", err)
+	if err = cl.Ping(pingCtx); err != nil {
+		log.Errorf(ctx, starterTag, "kafka: ping failed: %v", err)
 		cl.Close()
 		return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
 	}
-	log.Infof(context.Background(), starterTag, "kafka client initialized, brokers=%s", c.Brokers)
+	log.Infof(ctx, starterTag, "kafka client initialized, brokers=%s", c.Brokers)
 	return cl, nil
 }
 

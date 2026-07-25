@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -111,7 +112,7 @@ func (c Config) validate() error {
 }
 
 // newBackend builds the discovery.Discovery backend for the given Config.
-func newBackend(c Config) (discovery.Discovery, error) {
+func newBackend(cp *gs.ContextProvider, c Config) (discovery.Discovery, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}

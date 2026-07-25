@@ -486,7 +486,7 @@ func Module(c PropertyCondition, fn ModuleFunc) {
 //	    serviceB:  # <- "serviceB" becomes the bean name
 //	      baseURL: "http://b.example.com"
 //	      timeout: 60s
-func Group[T any, R any](tag string, fn func(c T) (R, error), d func(R) error) {
+func Group[T any, R any](tag string, fn func(cp *ContextProvider, c T) (R, error), d func(R) error) {
 	if inited {
 		panic("gs.Group can only be called in init function")
 	}

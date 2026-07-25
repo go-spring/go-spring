@@ -24,9 +24,10 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/spring/cloud/lock"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/log"
+	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Consul allows session TTL only in [10s, 86400s]; clamp caller-supplied
@@ -56,8 +57,9 @@ type consulLocker struct {
 // newConsulLocker builds a locker plus its api.Client from a bound Config. It
 // fails fast when Address is empty (see starter.go), and normalises the TTL
 // into consul's accepted range.
-func newConsulLocker(c Config) (*consulLocker, error) {
-	log.Debugf(context.Background(), starterTag, "creating consul locker, address=%s key-prefix=%s", c.Address, c.KeyPrefix)
+func newConsulLocker(cp *gs.ContextProvider, c Config) (*consulLocker, error) {
+	ctx := cp.Context
+	log.Debugf(ctx, starterTag, "creating consul locker, address=%s key-prefix=%s", c.Address, c.KeyPrefix)
 
 	if c.Address == "" {
 		return nil, errutil.Explain(nil, "lock-consul: address is required")
@@ -90,7 +92,7 @@ func newConsulLocker(c Config) (*consulLocker, error) {
 
 	cli, err := api.NewClient(cfg)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "lock-consul: create client for %s failed: %v", c.Address, err)
+		log.Errorf(ctx, starterTag, "lock-consul: create client for %s failed: %v", c.Address, err)
 		return nil, errutil.Explain(err, "lock-consul: create client for %s failed", c.Address)
 	}
 
@@ -109,7 +111,7 @@ func newConsulLocker(c Config) (*consulLocker, error) {
 	if kp == "" {
 		kp = "lock/"
 	}
-	log.Infof(context.Background(), starterTag, "consul locker initialized, address=%s", c.Address)
+	log.Infof(ctx, starterTag, "consul locker initialized, address=%s", c.Address)
 	return &consulLocker{
 		client:    cli,
 		keyPrefix: kp,

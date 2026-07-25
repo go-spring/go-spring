@@ -17,7 +17,6 @@
 package StarterOAuth2Server
 
 import (
-	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
@@ -27,6 +26,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
 )
 
 // UserAuthFunc authenticates the end-user at the authorization endpoint and, on
@@ -54,13 +54,14 @@ type AuthServer struct {
 
 // newAuthServer builds the server, failing fast on an ambiguous or unparsable
 // signing key.
-func newAuthServer(c Config) (*AuthServer, error) {
-	sgn, err := newSigner(c)
+func newAuthServer(cp *gs.ContextProvider, c Config) (*AuthServer, error) {
+	ctx := cp.Context
+	sgn, err := newSigner(ctx, c)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create signer failed: %v", err)
+		log.Errorf(ctx, starterTag, "create signer failed: %v", err)
 		return nil, err
 	}
-	log.Infof(context.Background(), starterTag, "oauth2 server created issuer=%s accessTokenTTL=%s refreshTokenTTL=%s clients=%d",
+	log.Infof(ctx, starterTag, "oauth2 server created issuer=%s accessTokenTTL=%s refreshTokenTTL=%s clients=%d",
 		c.Issuer, c.AccessTokenTTL, c.RefreshTokenTTL, len(c.Clients))
 	return &AuthServer{cfg: c, signer: sgn, store: newStore()}, nil
 }

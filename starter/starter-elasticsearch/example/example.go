@@ -136,7 +136,7 @@ func runTest(s *Service) {
 	ctx := context.Background()
 
 	// Feature 1: readiness probe — verify cluster connectivity.
-	if err := StarterElasticsearch.HealthCheck(s.ES); err != nil {
+	if err := StarterElasticsearch.HealthCheck(ctx, s.ES); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "HealthCheck failed: %v", err)
 		os.Exit(1)
 	}
@@ -186,7 +186,7 @@ func runTest(s *Service) {
 	// Feature 5: the discovery-backed client. Its node addresses came from the
 	// registered discovery backend (service-name=es-cluster), not from conf's
 	// static addresses, so a successful cluster probe proves discovery is wired.
-	if err := StarterElasticsearch.HealthCheck(s.DiscES); err != nil {
+	if err := StarterElasticsearch.HealthCheck(ctx, s.DiscES); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "discovery HealthCheck failed: %v", err)
 		os.Exit(1)
 	}

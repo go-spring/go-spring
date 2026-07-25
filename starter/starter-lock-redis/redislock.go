@@ -22,8 +22,9 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/spring/cloud/lock"
 	"go-spring.org/log"
+	"go-spring.org/spring/cloud/lock"
+	"go-spring.org/spring/gs"
 )
 
 // unlockScript releases the key only when it still carries the caller's token
@@ -73,9 +74,10 @@ type redisLocker struct {
 // newRedisLocker builds a locker over an already-constructed *redis.Client.
 // The client's lifecycle (Ping, Close, ...) is owned by starter-go-redis;
 // this locker never closes it.
-func newRedisLocker(c Config, client *redis.Client) (*redisLocker, error) {
-	log.Debugf(context.Background(), starterTag, "creating redis locker, client=%s key-prefix=%s", c.Client, c.KeyPrefix)
-	log.Infof(context.Background(), starterTag, "redis locker initialized, client=%s", c.Client)
+func newRedisLocker(cp *gs.ContextProvider, c Config, client *redis.Client) (*redisLocker, error) {
+	ctx := cp.Context
+	log.Debugf(ctx, starterTag, "creating redis locker, client=%s key-prefix=%s", c.Client, c.KeyPrefix)
+	log.Infof(ctx, starterTag, "redis locker initialized, client=%s", c.Client)
 	return &redisLocker{
 		cfg:    c,
 		client: client,

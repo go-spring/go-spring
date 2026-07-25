@@ -40,8 +40,8 @@ import (
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	StarterRedigo "go-spring.org/starter-redigo"
 	_ "go-spring.org/starter-otel"
+	StarterRedigo "go-spring.org/starter-redigo"
 )
 
 func init() {

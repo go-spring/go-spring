@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader/json"
 	"go-spring.org/spring/conf/reader/prop"
@@ -40,7 +41,6 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/log"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 

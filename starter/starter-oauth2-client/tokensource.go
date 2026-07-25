@@ -17,7 +17,6 @@
 package StarterOAuth2Client
 
 import (
-	"context"
 	"sync/atomic"
 	"time"
 
@@ -82,7 +81,9 @@ func (t *TokenSource) Expiry() time.Time {
 // newTokenSource builds a *TokenSource over an oauth2.TokenSource that mints and
 // refreshes bearer tokens via the client-credentials grant. The underlying
 // source caches the current token and refreshes it automatically once expired.
-func newTokenSource(c Config) (*TokenSource, error) {
+func newTokenSource(cp *gs.ContextProvider, c Config) (*TokenSource, error) {
+	ctx := cp.Context
+
 	cfg := &clientcredentials.Config{
 		ClientID:       c.ClientID,
 		ClientSecret:   c.ClientSecret,
@@ -92,9 +93,9 @@ func newTokenSource(c Config) (*TokenSource, error) {
 		EndpointParams: c.endpointParams(),
 	}
 
-	log.Debugf(context.Background(), starterTag, "creating oauth2 token source clientID=%s tokenURL=%s", c.ClientID, c.TokenURL)
+	log.Debugf(ctx, starterTag, "creating oauth2 token source clientID=%s tokenURL=%s", c.ClientID, c.TokenURL)
 
-	ctx := otelContext(c.Timeout)
+	ctx = otelContext(c.Timeout)
 
 	return &TokenSource{src: cfg.TokenSource(ctx)}, nil
 }

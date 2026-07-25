@@ -27,6 +27,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
 	"go-spring.org/spring/web/security"
 	"go-spring.org/stdlib/errutil"
 )
@@ -53,13 +54,14 @@ type Authenticator struct {
 // newAuthenticator builds an Authenticator from its configuration, failing fast
 // when the key source is ambiguous, the PEM key cannot be parsed, or the JWKS
 // endpoint cannot be reached at startup.
-func newAuthenticator(c Config) (*Authenticator, error) {
+func newAuthenticator(cp *gs.ContextProvider, c Config) (*Authenticator, error) {
+	ctx := cp.Context
 	src, err := c.source()
 	if err != nil {
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "creating jwt authenticator source=%v issuer=%s algorithm=%s required=%v", src, c.Issuer, c.Algorithm, c.Required)
+	log.Debugf(ctx, starterTag, "creating jwt authenticator source=%v issuer=%s algorithm=%s required=%v", src, c.Issuer, c.Algorithm, c.Required)
 
 	methods, err := validMethods(c, src)
 	if err != nil {

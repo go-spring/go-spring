@@ -41,9 +41,10 @@ func init() {
 // registered discovery backend (c.Discovery) and override c.Addresses; see the
 // ServiceName field docs for the startup-only limitation. When c.ServiceName is
 // empty the static Addresses (or CloudID) are used unchanged.
-func newClient(c Config) (*elasticsearch.Client, error) {
+func newClient(cp *gs.ContextProvider, c Config) (*elasticsearch.Client, error) {
+	ctx := cp.Context
 	if c.ServiceName != "" {
-		addrs, err := resolveAddresses(c)
+		addrs, err := resolveAddresses(ctx, c)
 		if err != nil {
 			return nil, err
 		}
@@ -58,7 +59,7 @@ func newClient(c Config) (*elasticsearch.Client, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create elasticsearch client")
 	}
-	if err := HealthCheck(client); err != nil {
+	if err := HealthCheck(ctx, client); err != nil {
 		return nil, errutil.Explain(err, "failed to reach elasticsearch cluster")
 	}
 	return client, nil
@@ -68,12 +69,12 @@ func newClient(c Config) (*elasticsearch.Client, error) {
 // backend and returns the endpoints as "scheme://host:port" node addresses. It
 // fails fast when no backend is registered or the service currently has no
 // endpoints. This is a one-shot resolution at startup (see Config.ServiceName).
-func resolveAddresses(c Config) ([]string, error) {
+func resolveAddresses(ctx context.Context, c Config) ([]string, error) {
 	backend, err := discovery.MustGet(c.Discovery)
 	if err != nil {
 		return nil, err
 	}
-	eps, err := backend.Resolve(context.Background(), c.ServiceName)
+	eps, err := backend.Resolve(ctx, c.ServiceName)
 	if err != nil {
 		return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 	}
@@ -92,8 +93,8 @@ func resolveAddresses(c Config) ([]string, error) {
 // health endpoint. A context is always passed to Info because the transport's
 // OpenTelemetry instrumentation derives its span from it and panics on a nil
 // parent context.
-func HealthCheck(client *elasticsearch.Client) error {
-	res, err := client.Info(client.Info.WithContext(context.Background()))
+func HealthCheck(ctx context.Context, client *elasticsearch.Client) error {
+	res, err := client.Info(client.Info.WithContext(ctx))
 	if err != nil {
 		return err
 	}

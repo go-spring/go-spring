@@ -17,6 +17,7 @@
 package StarterSecurityJWT
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -27,9 +28,12 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"go-spring.org/spring/gs"
 	"go-spring.org/spring/web/security"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+var testCP = &gs.ContextProvider{Context: context.Background()}
 
 // signHS mints an HS256 token signed with secret.
 func signHS(t *testing.T, secret string, claims jwt.MapClaims) string {
@@ -84,7 +88,7 @@ func TestValidMethods(t *testing.T) {
 }
 
 func TestAuthenticator_ValidateHS(t *testing.T) {
-	a, err := newAuthenticator(Config{
+	a, err := newAuthenticator(testCP, Config{
 		Secret:     "topsecret",
 		Issuer:     "iss-a",
 		ScopeClaim: "scope",
@@ -109,7 +113,7 @@ func TestAuthenticator_ValidateHS(t *testing.T) {
 }
 
 func TestAuthenticator_RejectsWrongIssuer(t *testing.T) {
-	a, err := newAuthenticator(Config{Secret: "s", Issuer: "iss-a"})
+	a, err := newAuthenticator(testCP, Config{Secret: "s", Issuer: "iss-a"})
 	assert.Error(t, err).Nil()
 	token := signHS(t, "s", jwt.MapClaims{"iss": "iss-b", "exp": time.Now().Add(time.Hour).Unix()})
 	_, err = a.Validate(t.Context(), token)
@@ -117,7 +121,7 @@ func TestAuthenticator_RejectsWrongIssuer(t *testing.T) {
 }
 
 func TestAuthenticator_RejectsExpired(t *testing.T) {
-	a, err := newAuthenticator(Config{Secret: "s"})
+	a, err := newAuthenticator(testCP, Config{Secret: "s"})
 	assert.Error(t, err).Nil()
 	token := signHS(t, "s", jwt.MapClaims{"exp": time.Now().Add(-time.Hour).Unix()})
 	_, err = a.Validate(t.Context(), token)
@@ -125,7 +129,7 @@ func TestAuthenticator_RejectsExpired(t *testing.T) {
 }
 
 func TestAuthenticator_Audience(t *testing.T) {
-	a, err := newAuthenticator(Config{Secret: "s", Audience: []string{"svc-a"}})
+	a, err := newAuthenticator(testCP, Config{Secret: "s", Audience: []string{"svc-a"}})
 	assert.Error(t, err).Nil()
 
 	ok := signHS(t, "s", jwt.MapClaims{"aud": "svc-a", "exp": time.Now().Add(time.Hour).Unix()})
@@ -139,7 +143,7 @@ func TestAuthenticator_Audience(t *testing.T) {
 
 func TestAuthenticator_ValidatePEM(t *testing.T) {
 	token, pubPEM := signRS(t, jwt.MapClaims{"sub": "u", "exp": time.Now().Add(time.Hour).Unix()})
-	a, err := newAuthenticator(Config{PublicKey: pubPEM})
+	a, err := newAuthenticator(testCP, Config{PublicKey: pubPEM})
 	assert.Error(t, err).Nil()
 	auth, err := a.Validate(t.Context(), token)
 	assert.Error(t, err).Nil()
@@ -150,7 +154,7 @@ func TestAuthenticator_ValidatePEM(t *testing.T) {
 // public key bytes as an HMAC secret against a PEM-configured authenticator.
 func TestAuthenticator_AlgConfusion(t *testing.T) {
 	_, pubPEM := signRS(t, jwt.MapClaims{"sub": "u"})
-	a, err := newAuthenticator(Config{PublicKey: pubPEM})
+	a, err := newAuthenticator(testCP, Config{PublicKey: pubPEM})
 	assert.Error(t, err).Nil()
 	forged := signHS(t, pubPEM, jwt.MapClaims{"sub": "attacker", "exp": time.Now().Add(time.Hour).Unix()})
 	_, err = a.Validate(t.Context(), forged)
@@ -158,7 +162,7 @@ func TestAuthenticator_AlgConfusion(t *testing.T) {
 }
 
 func TestWrap_MissingTokenRequired(t *testing.T) {
-	a, err := newAuthenticator(Config{Secret: "s", Required: true})
+	a, err := newAuthenticator(testCP, Config{Secret: "s", Required: true})
 	assert.Error(t, err).Nil()
 	h := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
 
@@ -168,7 +172,7 @@ func TestWrap_MissingTokenRequired(t *testing.T) {
 }
 
 func TestWrap_MissingTokenOptional(t *testing.T) {
-	a, err := newAuthenticator(Config{Secret: "s", Required: false})
+	a, err := newAuthenticator(testCP, Config{Secret: "s", Required: false})
 	assert.Error(t, err).Nil()
 	var reached bool
 	h := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +188,7 @@ func TestWrap_MissingTokenOptional(t *testing.T) {
 }
 
 func TestWrap_ValidTokenAttachesAuth(t *testing.T) {
-	a, err := newAuthenticator(Config{Secret: "s"})
+	a, err := newAuthenticator(testCP, Config{Secret: "s"})
 	assert.Error(t, err).Nil()
 	token := signHS(t, "s", jwt.MapClaims{"sub": "u", "exp": time.Now().Add(time.Hour).Unix()})
 
@@ -204,7 +208,7 @@ func TestWrap_ValidTokenAttachesAuth(t *testing.T) {
 }
 
 func TestWrap_InvalidToken401(t *testing.T) {
-	a, err := newAuthenticator(Config{Secret: "s"})
+	a, err := newAuthenticator(testCP, Config{Secret: "s"})
 	assert.Error(t, err).Nil()
 	h := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
