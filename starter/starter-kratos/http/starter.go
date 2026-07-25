@@ -41,7 +41,6 @@ import (
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/otel"
 
@@ -49,18 +48,9 @@ import (
 )
 
 func init() {
-	// Importing the starter is the opt-in; the module still guards on
-	// spring.kratos.http.server.enabled (default true). The server only
-	// materializes when the application supplies a ServiceRegister bean, keeping
-	// HttpServer independent of any concrete proto-generated service.
-	enabled := gs.OnProperty("spring.kratos.http.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enabled, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(NewHttpServer, gs.IndexArg(0, gs.TagArg("${spring.kratos.http.server}"))).
-			Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(NewHttpServer, gs.IndexArg(0, gs.TagArg("${spring.kratos.http.server}"))).
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.kratos.http.server.addr"))
 }
 
 // ServiceRegister binds services onto a kratos HTTP transport server. Extracting
@@ -74,7 +64,7 @@ type ServiceRegister func(hs *khttp.Server) error
 type Config struct {
 	Name    string        `value:"${name:=kratos-http}"`
 	Network string        `value:"${network:=}"`
-	Addr    string        `value:"${addr:=0.0.0.0:8000}"`
+	Addr    string        `value:"${addr}"`
 	Timeout time.Duration `value:"${timeout:=1s}"`
 
 	// Etcd service discovery. Empty Addr disables registration (direct-connect).

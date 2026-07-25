@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"go-spring.org/spring/cloud/tlsconf"
-	"go-spring.org/spring/gs"
 )
 
 // HealthConfig exposes an optional liveness/readiness endpoint served by the
@@ -31,16 +30,16 @@ type HealthConfig struct {
 }
 
 // Config defines Echo server configuration, bound from ${spring.echo.server}.
-// The embedded gs.SimpleHttpServerConfig carries the address and read/header/
-// write/idle timeouts; the extra fields add HTTPS, a request-body size limit,
-// an optional health endpoint, and the built-in middleware block without
-// touching the spring core struct.
+// Address must be explicitly configured; the server won't start without it.
 type Config struct {
-	gs.SimpleHttpServerConfig
-	MaxBodySize int64             `value:"${maxBodySize:=0}"`
-	TLS         tlsconf.TLSConfig `value:"${tls}"`
-	Health      HealthConfig      `value:"${health}"`
-	Middleware  MiddlewareConfig  `value:"${middleware}"`
+	Address      string            `value:"${addr}"`
+	ReadTimeout  time.Duration     `value:"${readTimeout:=5s}"`
+	WriteTimeout time.Duration     `value:"${writeTimeout:=5s}"`
+	IdleTimeout  time.Duration     `value:"${idleTimeout:=60s}"`
+	MaxBodySize  int64             `value:"${maxBodySize:=0}"`
+	TLS          tlsconf.TLSConfig `value:"${tls}"`
+	Health       HealthConfig      `value:"${health}"`
+	Middleware   MiddlewareConfig  `value:"${middleware}"`
 }
 
 // MiddlewareConfig groups the built-in middlewares the starter can install on

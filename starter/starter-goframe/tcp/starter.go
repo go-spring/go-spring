@@ -41,7 +41,6 @@ import (
 	"github.com/gogf/gf/v2/net/gsvc"
 	"github.com/gogf/gf/v2/net/gtcp"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 
 	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
 	// (see internal/logger). The bridge self-installs via init(), so importing
@@ -51,18 +50,9 @@ import (
 )
 
 func init() {
-	// Importing the starter is the opt-in; the module still guards on
-	// spring.goframe.tcp.server.enabled (default true). The gtcp.Server only
-	// materialises when the application supplies a ServiceRegister bean, keeping
-	// TCPServer service-agnostic — each service supplies its own handler.
-	enabled := gs.OnProperty("spring.goframe.tcp.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enabled, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(NewTCPServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.tcp.server}"))).
-			Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(NewTCPServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.tcp.server}"))).
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.goframe.tcp.server.address"))
 }
 
 // ServiceRegister binds a connection handler onto the raw *gtcp.Server that
@@ -83,7 +73,7 @@ type Config struct {
 	Name string `value:"${name:=goframe}"`
 
 	// Address is the gtcp.Server bind address, e.g. ":8003".
-	Address string `value:"${address:=:8003}"`
+	Address string `value:"${address}"`
 
 	// AdvertiseHost/Port is the endpoint published into etcd. Because gtcp binds
 	// on Address and never asks the OS for a public IP, the consumer would fail

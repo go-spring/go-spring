@@ -20,34 +20,26 @@ import (
 	"go-spring.org/spring/actuator/endpoint"
 	"go-spring.org/spring/actuator/health"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
-	// The gateway serves as soon as it is enabled (default on): its "routes" are
-	// config, not application-registered functions, so — unlike the grpc starter —
-	// it does not additionally require an app-provided registration bean.
-	enable := gs.OnProperty("spring.gateway.server.enabled").HavingValue("true").MatchIfMissing()
+	// Shared metrics collector for the route table and the /metrics endpoint.
+	gs.Provide(newMetrics)
 
-	gs.Module(enable, func(r gs.BeanProvider, p flatten.Storage) error {
-		// Shared metrics collector for the route table and the /metrics endpoint.
-		r.Provide(newMetrics)
+	// The compiled, hot-reloadable route table. Its ${spring.gateway} config
+	// and optional FilterWrapper beans (jwt-auth, lua) are populated by field
+	// injection; route compilation is deferred to server startup (warmup).
+	gs.Provide(newRouteTable)
 
-		// The compiled, hot-reloadable route table. Its ${spring.gateway} config
-		// and optional FilterWrapper beans (jwt-auth, lua) are populated by field
-		// injection; route compilation is deferred to server startup (warmup).
-		r.Provide(newRouteTable)
+	// The listen-port server, wired into graceful drain as a gs.Server. Named
+	// so it coexists with the application's main HTTP server (which also
+	// exports gs.Server) without a duplicate-bean clash.
+	gs.Provide(newGatewayServer).
+		Name("gatewayServer").
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.gateway.server.addr"))
 
-		// The listen-port server, wired into graceful drain as a gs.Server. Named
-		// so it coexists with the application's main HTTP server (which also
-		// exports gs.Server) without a duplicate-bean clash.
-		r.Provide(newGatewayServer).
-			Name("gatewayServer").
-			Export(gs.As[gs.Server]())
-
-		// Contribute /gateway/metrics to the actuator and report gateway health.
-		r.Provide(newMetricsEndpoint).Export(gs.As[endpoint.Endpoint]())
-		r.Provide(newGatewayHealth).Export(gs.As[health.Indicator]())
-		return nil
-	})
+	// Contribute /gateway/metrics to the actuator and report gateway health.
+	gs.Provide(newMetricsEndpoint).Export(gs.As[endpoint.Endpoint]())
+	gs.Provide(newGatewayHealth).Export(gs.As[health.Indicator]())
 }

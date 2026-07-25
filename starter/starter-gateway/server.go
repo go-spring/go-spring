@@ -39,7 +39,7 @@ import (
 // enables mTLS), which is the server-side counterpart of the shared struct's
 // generic "verify the peer" role.
 type ServerConfig struct {
-	Addr string            `value:"${addr:=:9440}"`
+	Addr string            `value:"${addr}"`
 	TLS  tlsconf.TLSConfig `value:"${tls}"`
 }
 

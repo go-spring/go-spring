@@ -36,7 +36,6 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/net/gsvc"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 
 	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
 	// (see internal/logger). The bridge self-installs via init(), so importing
@@ -46,18 +45,9 @@ import (
 )
 
 func init() {
-	// Importing the starter is the opt-in; the module still guards on
-	// spring.goframe.ws.server.enabled (default true). The *ghttp.Server only
-	// materialises when the application supplies a ServiceRegister bean, keeping
-	// WSServer service-agnostic — each service binds its own upgrade route.
-	enabled := gs.OnProperty("spring.goframe.ws.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enabled, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(NewWSServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.ws.server}"))).
-			Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(NewWSServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.ws.server}"))).
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.goframe.ws.server.address"))
 }
 
 // ServiceRegister binds routes onto the raw *ghttp.Server that WSServer wraps.
@@ -75,7 +65,7 @@ type ServiceRegister func(s *ghttp.Server)
 // fields mirror the http sibling — gsvc registration hangs off the HTTP server.
 type Config struct {
 	Name    string `value:"${name:=goframe}"`
-	Address string `value:"${address:=:8002}"`
+	Address string `value:"${address}"`
 
 	// Registry publishes the server into etcd for discovery. Leave etcd empty
 	// (the default) for a plain server with no registration.

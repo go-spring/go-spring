@@ -25,23 +25,14 @@ import (
 	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
-	enableSimpleThriftServer := gs.OnProperty("spring.thrift.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enableSimpleThriftServer, func(r gs.BeanProvider, p flatten.Storage) error {
-
-		// Register the Thrift server
-		// when a processor is available.
-		r.Provide(
-			NewSimpleThriftServer,
-			gs.IndexArg(0, gs.TagArg("${spring.thrift.server}")),
-		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[thrift.TProcessor]())
-		return nil
-	})
+	gs.Provide(
+		NewSimpleThriftServer,
+		gs.IndexArg(0, gs.TagArg("${spring.thrift.server}")),
+	).Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.thrift.server.addr"))
 }
 
 // Config defines Thrift server configuration.
@@ -53,7 +44,7 @@ func init() {
 // cross-language clients. Both settings must be paired with a matching
 // client; a mismatch corrupts the wire protocol.
 type Config struct {
-	Addr          string            `value:"${addr:=:9292}"`
+	Addr          string            `value:"${addr}"`
 	ClientTimeout time.Duration     `value:"${clientTimeout:=0}"`
 	Protocol      string            `value:"${protocol:=binary}"`
 	Transport     string            `value:"${transport:=none}"`

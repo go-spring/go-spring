@@ -26,6 +26,10 @@ not belong here.
   string), and their smoke module is `example-config/`.
 - **Apache License header** on every source file (see
   [../LICENSE_HEADER](../LICENSE_HEADER)).
+- **`example/` owns its own `go.mod`.** Every starter example is a standalone Go
+  module (added to `go.work`), not a package within the starter module. Its module
+  path follows the directory structure: `go-spring.org/<starter-name>/example`.
+  Internal deps resolve through `go.work`, never `require`.
 - **Repo-wide module rules apply** (no root `go.mod`; one module per subproject;
   internal deps resolve through `go.work`, never `require`). These are owned by
   [../ARCHITECTURE.md §1](../ARCHITECTURE.md); adding a `require` on an in-workspace

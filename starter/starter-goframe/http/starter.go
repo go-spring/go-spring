@@ -32,7 +32,6 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/net/gsvc"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 
 	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
@@ -43,19 +42,9 @@ import (
 )
 
 func init() {
-	// Importing the starter is the opt-in; the module still guards on
-	// spring.goframe.http.server.enabled (default true) so it can be turned off
-	// without dropping the import. The *ghttp.Server only materialises when the
-	// application supplies a ServiceRegister bean, keeping HTTPServer
-	// service-agnostic — each service registers its own routes.
-	enabled := gs.OnProperty("spring.goframe.http.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enabled, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(NewHTTPServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.http.server}"))).
-			Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(NewHTTPServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.http.server}"))).
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.goframe.http.server.address"))
 }
 
 // ServiceRegister binds business routes onto the response-wrapping router group
@@ -78,7 +67,7 @@ type ServiceRegister func(group *ghttp.RouterGroup)
 // from starter-otel's push pipeline; they are off by default.
 type Config struct {
 	Name    string `value:"${name:=goframe}"`
-	Address string `value:"${address:=:8000}"`
+	Address string `value:"${address}"`
 
 	// Registry publishes the server into etcd for discovery. Leave etcd empty
 	// (the default) for a plain server with no registration — ghttp reads

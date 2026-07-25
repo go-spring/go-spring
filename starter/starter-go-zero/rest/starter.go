@@ -32,25 +32,14 @@ import (
 	"github.com/zeromicro/go-zero/core/trace"
 	"github.com/zeromicro/go-zero/rest"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 
 	"go-spring.org/starter-go-zero/internal/logger"
 )
 
 func init() {
-	// Importing the starter is the opt-in; the module still guards on
-	// spring.go-zero.rest.server.enabled (default true) so it can be turned off
-	// without dropping the import. The rest.Server only materializes when the
-	// application supplies a HandlerRegister bean, keeping RestServer
-	// service-agnostic — each service registers its own routes.
-	enabled := gs.OnProperty("spring.go-zero.rest.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enabled, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(NewRestServer, gs.IndexArg(0, gs.TagArg("${spring.go-zero.rest.server}"))).
-			Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[HandlerRegister]())
-		return nil
-	})
+	gs.Provide(NewRestServer, gs.IndexArg(0, gs.TagArg("${spring.go-zero.rest.server}"))).
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.go-zero.rest.server.port"))
 }
 
 // HandlerRegister attaches handlers onto a *rest.Server. Extracting registration
@@ -72,7 +61,7 @@ type HandlerRegister func(server *rest.Server)
 type Config struct {
 	Name string `value:"${name:=go-zero}"`
 	Host string `value:"${host:=0.0.0.0}"`
-	Port int    `value:"${port:=8888}"`
+	Port int    `value:"${port}"`
 
 	// Tracing: defer to starter-otel by default (Disabled=true). Endpoint /
 	// Sampler / Batcher only take effect when Disabled=false, i.e. go-zero

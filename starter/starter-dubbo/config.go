@@ -119,7 +119,7 @@ type DubboProtocol struct {
 	// default "dubbo".
 	Name   string         `value:"${name:=dubbo}"`
 	Ip     string         `value:"${ip:=}"`
-	Port   int            `value:"${port:=20000}"`
+	Port   int            `value:"${port:=0}"`
 	Params map[string]any `value:"${params:=}"`
 }
 

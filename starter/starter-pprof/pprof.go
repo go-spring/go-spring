@@ -47,7 +47,7 @@ func init() {
 type Config struct {
 	// Address is the listen address. It defaults to a loopback-only bind so
 	// pprof is not reachable off-host unless the operator opts in.
-	Address string `value:"${addr:=127.0.0.1:9981}"`
+	Address string `value:"${addr:=:6060}"`
 
 	// Token, when set, requires each request to present it either as a
 	// "Authorization: Bearer <token>" header or a "?token=<token>" query

@@ -30,7 +30,6 @@ import (
 	"github.com/gogf/gf/contrib/rpc/grpcx/v2"
 	"github.com/gogf/gf/v2/net/gsvc"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 	"google.golang.org/grpc"
 
 	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
@@ -41,18 +40,9 @@ import (
 )
 
 func init() {
-	// Importing the starter is the opt-in; the module still guards on
-	// spring.goframe.grpc.server.enabled (default true). The grpcx server only
-	// materialises when the application supplies a ServiceRegister bean, keeping
-	// GRPCServer service-agnostic — each service registers its own handler.
-	enabled := gs.OnProperty("spring.goframe.grpc.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enabled, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(NewGRPCServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.grpc.server}"))).
-			Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(NewGRPCServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.grpc.server}"))).
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.goframe.grpc.server.address"))
 }
 
 // ServiceRegister binds a service handler onto the raw *grpc.Server that
@@ -67,7 +57,7 @@ type ServiceRegister func(s grpc.ServiceRegistrar)
 // RPCs off the global OpenTelemetry TracerProvider that starter-otel installs.
 type Config struct {
 	Name    string `value:"${name:=goframe}"`
-	Address string `value:"${address:=:8001}"`
+	Address string `value:"${address}"`
 
 	// Registry publishes the server into etcd for discovery. Leave etcd empty
 	// (the default) for a plain server with no registration — grpcx reads

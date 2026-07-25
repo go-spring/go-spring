@@ -23,7 +23,6 @@ import (
 
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/server"
 
@@ -35,19 +34,11 @@ import (
 )
 
 func init() {
-	// Server side: gated on a ServiceRegister bean — no service to expose means
-	// no server, so the client-only apps are never forced to stand one up.
-	// Config is read from the ${spring.trpc.server} prefix.
-	enableSimpleTrpcServer := gs.OnProperty("spring.trpc.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enableSimpleTrpcServer, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(
-			NewSimpleTrpcServer,
-			gs.IndexArg(0, gs.TagArg("${spring.trpc.server}")),
-		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(
+		NewSimpleTrpcServer,
+		gs.IndexArg(0, gs.TagArg("${spring.trpc.server}")),
+	).Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.trpc.server.addr"))
 }
 
 // ServiceRegister binds a service handler onto a tRPC server.Server. This
@@ -65,7 +56,7 @@ type ServiceRegister func(s *server.Server)
 // conf/app.properties like every other Go-Spring service.
 type Config struct {
 	// Addr is the host:port the service listens on, split into tRPC's IP/Port.
-	Addr string `value:"${addr:=127.0.0.1:8000}"`
+	Addr string `value:"${addr}"`
 	// ServiceName is the fully-qualified tRPC service name (trpc.app.server.service).
 	// It must match the callee name baked into the generated client stub.
 	ServiceName string `value:"${service.name:=trpc.helloworld.greet.GreetService}"`

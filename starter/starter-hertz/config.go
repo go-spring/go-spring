@@ -36,7 +36,7 @@ type HealthConfig struct {
 // (WithMaxRequestBodySize), not a middleware. The Middleware block adds the
 // built-in cross-cutting middlewares.
 type Config struct {
-	Addr         string            `value:"${addr:=:8003}"`
+	Addr         string            `value:"${addr}"`
 	ReadTimeout  time.Duration     `value:"${readTimeout:=5s}"`
 	WriteTimeout time.Duration     `value:"${writeTimeout:=5s}"`
 	IdleTimeout  time.Duration     `value:"${idleTimeout:=60s}"`

@@ -24,7 +24,6 @@ import (
 	"go-spring.org/spring/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -33,19 +32,11 @@ import (
 )
 
 func init() {
-	enableSimpleGrpcServer := gs.OnProperty("spring.grpc.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enableSimpleGrpcServer, func(r gs.BeanProvider, p flatten.Storage) error {
-
-		// Register the gRPC server
-		// when a service register is available.
-		r.Provide(
-			NewSimpleGrpcServer,
-			gs.IndexArg(0, gs.TagArg("${spring.grpc.server}")),
-		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(
+		NewSimpleGrpcServer,
+		gs.IndexArg(0, gs.TagArg("${spring.grpc.server}")),
+	).Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.grpc.server.addr"))
 }
 
 // ServiceRegister registers services on a grpc.Server.
@@ -69,7 +60,7 @@ type HealthConfig struct {
 
 // Config defines gRPC server configuration.
 type Config struct {
-	Addr                 string            `value:"${addr:=:9494}"`
+	Addr                 string            `value:"${addr}"`
 	ConnectionTimeout    time.Duration     `value:"${connectionTimeout:=0}"`
 	MaxRecvMsgSize       int               `value:"${maxRecvMsgSize:=0}"`
 	MaxSendMsgSize       int               `value:"${maxSendMsgSize:=0}"`

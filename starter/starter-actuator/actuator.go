@@ -79,8 +79,7 @@ func init() {
 	// Enabled by default: the endpoints are cheap and the value — K8s probes,
 	// registry health checks — is high.
 	gs.Provide(&Server{}).
-		Name("actuatorServer").
-		Condition(gs.OnProperty("spring.actuator.enabled").HavingValue("true").MatchIfMissing()).
+		Condition(gs.OnProperty("spring.actuator.addr")).
 		Export(gs.As[gs.Server]())
 }
 
@@ -98,7 +97,7 @@ type Server struct {
 	// Address is the management listen address. It defaults to :9370, distinct
 	// from the main HTTP server (:9090) and the pprof server (127.0.0.1:9981),
 	// and binds all interfaces so in-cluster probes can reach it.
-	Address string `value:"${spring.actuator.addr:=:9370}"`
+	Address string `value:"${spring.actuator.addr}"`
 
 	// Indicators are all beans exported as health.Indicator. Optional: an app
 	// with no indicators still gets liveness/readiness/info.

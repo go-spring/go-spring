@@ -29,7 +29,6 @@ import (
 	etcd "github.com/kitex-contrib/registry-etcd"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 
 	// Side-effect import: installs the kitex -> go-spring log bridge (see
 	// internal/logger). The bridge self-installs via init(), so no symbols are
@@ -39,19 +38,11 @@ import (
 )
 
 func init() {
-	// Server side: gated on a ServiceRegister bean — no service to expose means
-	// no server, so client-only apps are never forced to stand one up. Config is
-	// read from the ${spring.kitex.server} prefix.
-	enableSimpleKitexServer := gs.OnProperty("spring.kitex.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enableSimpleKitexServer, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(
-			NewSimpleKitexServer,
-			gs.IndexArg(0, gs.TagArg("${spring.kitex.server}")),
-		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(
+		NewSimpleKitexServer,
+		gs.IndexArg(0, gs.TagArg("${spring.kitex.server}")),
+	).Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.kitex.server.addr"))
 }
 
 // ServiceRegister binds a service handler onto a raw Kitex server.Server. This
@@ -62,7 +53,7 @@ type ServiceRegister func(svr server.Server) error
 
 // Config defines Kitex server configuration, bound from ${spring.kitex.server}.
 type Config struct {
-	Addr        string `value:"${addr:=:8888}"`
+	Addr        string `value:"${addr}"`
 	ServiceName string `value:"${service.name:=kitex}"`
 
 	// RegistryAddr is the etcd registry address. Empty (the default) runs a

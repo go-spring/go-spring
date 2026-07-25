@@ -34,25 +34,15 @@ import (
 	"github.com/zeromicro/go-zero/core/trace"
 	"github.com/zeromicro/go-zero/zrpc"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 	"google.golang.org/grpc"
 
 	"go-spring.org/starter-go-zero/internal/logger"
 )
 
 func init() {
-	// Importing the starter is the opt-in; the module still guards on
-	// spring.go-zero.zrpc.server.enabled (default true). The zrpc server only
-	// materializes when the application supplies a ServiceRegister bean, keeping
-	// ZrpcServer independent of any concrete pb-generated service.
-	enabled := gs.OnProperty("spring.go-zero.zrpc.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enabled, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(NewZrpcServer, gs.IndexArg(0, gs.TagArg("${spring.go-zero.zrpc.server}"))).
-			Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(NewZrpcServer, gs.IndexArg(0, gs.TagArg("${spring.go-zero.zrpc.server}"))).
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.go-zero.zrpc.server.listen-on"))
 }
 
 // ServiceRegister registers services on a grpc.Server. Extracting registration
@@ -71,7 +61,7 @@ type ServiceRegister func(grpcServer *grpc.Server)
 // go-zero-native via the DevServer, off by default.
 type Config struct {
 	Name     string `value:"${name:=go-zero}"`
-	ListenOn string `value:"${listen-on:=0.0.0.0:8081}"`
+	ListenOn string `value:"${listen-on}"`
 
 	// Etcd service discovery. Empty Addr disables registration (direct-connect).
 	Etcd struct {

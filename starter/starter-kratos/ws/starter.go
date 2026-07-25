@@ -41,25 +41,15 @@ import (
 	kws "github.com/tx7do/kratos-transport/transport/websocket"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"go-spring.org/starter-kratos/internal/logger"
 )
 
 func init() {
-	// Importing the starter is the opt-in; the module still guards on
-	// spring.kratos.ws.server.enabled (default true). The server only
-	// materializes when the application supplies a ServiceRegister bean, keeping
-	// WsServer independent of any concrete message handler.
-	enabled := gs.OnProperty("spring.kratos.ws.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enabled, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(NewWsServer, gs.IndexArg(0, gs.TagArg("${spring.kratos.ws.server}"))).
-			Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
-		return nil
-	})
+	gs.Provide(NewWsServer, gs.IndexArg(0, gs.TagArg("${spring.kratos.ws.server}"))).
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.kratos.ws.server.addr"))
 }
 
 // ServiceRegister binds message handlers onto a kratos-transport WebSocket
@@ -73,7 +63,7 @@ type ServiceRegister func(ws *kws.Server) error
 type Config struct {
 	Name    string `value:"${name:=kratos-ws}"`
 	Network string `value:"${network:=}"`
-	Addr    string `value:"${addr:=0.0.0.0:9002}"`
+	Addr    string `value:"${addr}"`
 	Path    string `value:"${path:=/}"`
 
 	// Etcd service discovery. Empty Addr disables registration (direct-connect).

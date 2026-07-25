@@ -24,25 +24,14 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
-	enableSimpleHertzServer := gs.OnProperty("spring.hertz.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enableSimpleHertzServer, func(r gs.BeanProvider, p flatten.Storage) error {
-
-		// Register a Hertz-backed HTTP server when the application provides a
-		// RouterRegister bean. The starter owns the *server.Hertz and its
-		// listener (address from ${spring.hertz.server}); the app only supplies
-		// the route/middleware registration.
-		r.Provide(
-			NewSimpleHertzServer,
-			gs.IndexArg(1, gs.TagArg("${spring.hertz.server}")),
-		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[RouterRegister]())
-		return nil
-	})
+	gs.Provide(
+		NewSimpleHertzServer,
+		gs.IndexArg(1, gs.TagArg("${spring.hertz.server}")),
+	).Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.hertz.server.addr"))
 }
 
 // RouterRegister registers routes and middleware onto the framework-owned
