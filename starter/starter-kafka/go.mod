@@ -8,6 +8,7 @@ require (
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
+	go.opentelemetry.io/otel v1.43.0
 )
 
 require (
@@ -31,13 +32,12 @@ require (
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

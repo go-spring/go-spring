@@ -13,7 +13,6 @@ require (
 	go-spring.org/spring v1.3.4
 	go-spring.org/starter-go-redis v1.3.4
 	go-spring.org/starter-gorm-mysql v1.3.4
-	go-spring.org/starter-websocket v1.3.4
 	go-spring.org/stdlib v0.1.7
 	google.golang.org/protobuf v1.36.11
 	gorm.io/gorm v1.31.1
@@ -75,11 +74,11 @@ require (
 	go.mongodb.org/mongo-driver/v2 v2.6.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/net v0.54.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gorm.io/driver/mysql v1.6.0 // indirect
 )

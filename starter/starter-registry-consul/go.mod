@@ -24,6 +24,6 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/net v0.54.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 )
