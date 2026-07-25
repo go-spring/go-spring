@@ -1,0 +1,221 @@
+/*
+ * Copyright 2025 The Go-Spring Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Package main is the observability example for starter-gorm-sqlserver.
+//
+// It runs SQL Server CRUD operations through an otelsql-instrumented GORM client,
+// verifies client spans reach Jaeger, then self-exits. Traces are exported
+// via OTLP/gRPC to Jaeger (docker-compose).
+//
+// Run with -manual to keep the server running for interactive exploration.
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"syscall"
+	"time"
+
+	"go-spring.org/spring/gs"
+	"gorm.io/gorm"
+
+	_ "go-spring.org/starter-gorm-sqlserver"
+	_ "go-spring.org/starter-otel"
+)
+
+// KV is a small demo model. `key` and `value` are reserved words in SQL Server,
+// so we map the columns to `kkey` / `vvalue` via GORM tags.
+type KV struct {
+	ID    uint   `gorm:"primaryKey"`
+	Key   string `gorm:"column:kkey;size:64;uniqueIndex"`
+	Value string `gorm:"column:vvalue;size:255"`
+}
+
+type Service struct {
+	DB          *gorm.DB `autowire:"primary"`
+	DiscoveryDB *gorm.DB `autowire:"discovery"`
+}
+
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
+func main() {
+	flag.Parse()
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
+
+	// Here `s` is not referenced by any other object,
+	// so we need to register it as a root object.
+	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
+
+	http.HandleFunc("/sqlserver_version", func(w http.ResponseWriter, r *http.Request) {
+		s := svrBean.Interface().(*Service)
+		var version string
+		err := s.DB.Raw("SELECT @@VERSION").Scan(&version).Error
+		if err != nil {
+			_, _ = w.Write([]byte(err.Error()))
+			return
+		}
+		_, _ = w.Write([]byte(version))
+	})
+
+	if !*manual {
+		go func() {
+			time.Sleep(700 * time.Millisecond)
+			runTest(svrBean.Interface().(*Service))
+		}()
+	} else {
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Open Jaeger at http://localhost:16686")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
+	gs.Run()
+}
+
+func runTest(s *Service) {
+	var version string
+	if err := s.DB.Raw("SELECT @@VERSION").Scan(&version).Error; err != nil {
+		fmt.Fprintln(os.Stderr, "query failed:", err)
+		os.Exit(1)
+	}
+	if version == "" {
+		fmt.Fprintln(os.Stderr, "empty version")
+		os.Exit(1)
+	}
+
+	// Ensure the test is deterministic/idempotent across repeated smoke runs.
+	if err := s.DB.Migrator().DropTable(&KV{}); err != nil {
+		fmt.Fprintln(os.Stderr, "drop table failed:", err)
+		os.Exit(1)
+	}
+
+	// Feature 1: AutoMigrate — create the table from the model.
+	if err := s.DB.AutoMigrate(&KV{}); err != nil {
+		fmt.Fprintln(os.Stderr, "auto migrate failed:", err)
+		os.Exit(1)
+	}
+	if !s.DB.Migrator().HasTable(&KV{}) {
+		fmt.Fprintln(os.Stderr, "table not created")
+		os.Exit(1)
+	}
+
+	// Feature 2: Create + First (basic CRUD).
+	if err := s.DB.Create(&KV{Key: "key", Value: "value"}).Error; err != nil {
+		fmt.Fprintln(os.Stderr, "create failed:", err)
+		os.Exit(1)
+	}
+	var got KV
+	if err := s.DB.First(&got, "kkey = ?", "key").Error; err != nil {
+		fmt.Fprintln(os.Stderr, "first failed:", err)
+		os.Exit(1)
+	}
+	if got.Value != "value" {
+		fmt.Fprintln(os.Stderr, "unexpected value after create:", got.Value)
+		os.Exit(1)
+	}
+
+	// Feature 3: Transaction — update the row inside a transaction.
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		return tx.Model(&KV{}).Where("kkey = ?", "key").
+			Update("vvalue", "value2").Error
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "transaction failed:", err)
+		os.Exit(1)
+	}
+	var updated KV
+	if err := s.DB.First(&updated, "kkey = ?", "key").Error; err != nil {
+		fmt.Fprintln(os.Stderr, "first (post-tx) failed:", err)
+		os.Exit(1)
+	}
+	if updated.Value != "value2" {
+		fmt.Fprintln(os.Stderr, "unexpected value after tx:", updated.Value)
+		os.Exit(1)
+	}
+
+	fmt.Println("Response from server:", version, "kv:", updated.Value)
+
+	// Feature 4: the discovery-backed client. Its address came from the
+	// registered discovery backend (service-name=sqlserver-cluster), not from
+	// conf's dummy host/port, so a successful round-trip proves discovery is wired.
+	var discVersion string
+	if err := s.DiscoveryDB.Raw("SELECT @@VERSION").Scan(&discVersion).Error; err != nil {
+		fmt.Fprintln(os.Stderr, "discovery query failed:", err)
+		os.Exit(1)
+	}
+	if discVersion == "" {
+		fmt.Fprintln(os.Stderr, "discovery empty version")
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered server:", discVersion)
+
+	// Wait for collector to flush, then verify traces appear in Jaeger.
+	time.Sleep(3 * time.Second)
+
+	traces, err := httpGet("http://127.0.0.1:16686/api/traces?service=gorm-sqlserver-otel-example&limit=1")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Jaeger API request failed:", err)
+		os.Exit(1)
+	}
+	if !strings.Contains(traces, `"data":[`) {
+		fmt.Fprintln(os.Stderr, "no traces found in Jaeger for service 'gorm-sqlserver-otel-example'")
+		os.Exit(1)
+	}
+	fmt.Println("OK: traces found in Jaeger for service 'gorm-sqlserver-otel-example'")
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+func httpGet(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	return string(b), err
+}
+
+// ----------------------------------------------------------------------------
+// Change working directory
+// ----------------------------------------------------------------------------
+
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
+func init() {
+	var execDir string
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		execDir = filepath.Dir(filename)
+	}
+	err := os.Chdir(execDir)
+	if err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
+}

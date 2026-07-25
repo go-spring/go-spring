@@ -1,0 +1,19 @@
+# Observability backend for starter-lock-redis example-otel.
+#   app --OTLP/gRPC--> Jaeger (:4317, native OTLP endpoint)
+#   app --redis--> redis (single-node)
+
+services:
+  redis:
+    image: redis:7
+    container_name: lock-redis-otel-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: lock-redis-otel-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - 127.0.0.1:16686:16686
+      - 127.0.0.1:4317:4317

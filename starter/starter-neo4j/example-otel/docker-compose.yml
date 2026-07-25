@@ -1,0 +1,22 @@
+# Observability backend for starter-neo4j example-otel.
+#   app --OTLP/gRPC--> Jaeger (:4317, native OTLP endpoint)
+#   app --bolt--> neo4j
+
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: neo4j-otel-neo4j
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: neo4j-otel-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - 127.0.0.1:16686:16686
+      - 127.0.0.1:4317:4317

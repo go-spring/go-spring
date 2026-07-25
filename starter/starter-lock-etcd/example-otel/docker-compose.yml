@@ -1,0 +1,19 @@
+services:
+  etcd:
+    image: bitnami/etcd:3.5
+    container_name: lock-etcd-otel-etcd
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+    ports:
+      - "127.0.0.1:2379:2379"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: lock-etcd-otel-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - 127.0.0.1:16686:16686
+      - 127.0.0.1:4317:4317

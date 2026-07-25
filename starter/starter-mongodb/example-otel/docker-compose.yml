@@ -1,0 +1,19 @@
+# Observability backend for starter-mongodb example-otel.
+#   app --OTLP/gRPC--> Jaeger (:4317, native OTLP endpoint)
+#   app --mongo-driver--> mongodb (single-node)
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: starter-mongodb
+    ports:
+      - "127.0.0.1:27017:27017"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: mongodb-otel-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - 127.0.0.1:16686:16686
+      - 127.0.0.1:4317:4317

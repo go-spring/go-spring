@@ -1,0 +1,15 @@
+services:
+  memcached:
+    image: memcached:1.6
+    container_name: starter-memcached
+    ports:
+      - "127.0.0.1:11211:11211"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: memcached-otel-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - 127.0.0.1:16686:16686
+      - 127.0.0.1:4317:4317

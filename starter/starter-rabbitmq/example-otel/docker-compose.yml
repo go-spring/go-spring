@@ -1,0 +1,20 @@
+# Observability backend for starter-rabbitmq example-otel.
+#   app --OTLP/gRPC--> Jaeger (:4317, native OTLP endpoint)
+#   app --amqp--> rabbitmq (management UI on :15672)
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq-otel-rabbitmq
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: rabbitmq-otel-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - 127.0.0.1:16686:16686
+      - 127.0.0.1:4317:4317
