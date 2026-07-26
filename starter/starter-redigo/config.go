@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/spring/cloud/discovery"
-	"go-spring.org/spring/cloud/tlsconf"
+	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/experimental/cloud/tlsconf"
 	"go-spring.org/stdlib/errutil"
 )
 

@@ -91,16 +91,6 @@ require (
 	gorm.io/plugin/opentelemetry v0.1.16 // indirect
 )
 
-replace go-spring.org/starter-gorm-mysql => ../
+replace go-spring.org/starter-otel => ../../experimental/starter-otel
 
-replace go-spring.org/starter-otel => ../../starter-otel
-
-replace go-spring.org/spring => ../../../spring
-
-replace go-spring.org/log => ../../../log
-
-replace go-spring.org/starter-actuator => ../../starter-actuator
-
-replace go-spring.org/stdlib => ../../../stdlib
-
-replace go-spring.org/gs-mock => ../../../gs/gs-mock
+replace go-spring.org/starter-actuator => ../../experimental/starter-actuator

@@ -21,7 +21,7 @@ import (
 	"errors"
 	"sync"
 
-	"go-spring.org/spring/cloud/resilience"
+	"go-spring.org/spring/experimental/cloud/resilience"
 	"gorm.io/gorm"
 )
 

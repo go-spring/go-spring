@@ -92,16 +92,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace go-spring.org/starter-gin => ../
+replace go-spring.org/starter-otel => ../../experimental/starter-otel
 
-replace go-spring.org/starter-otel => ../../starter-otel
-
-replace go-spring.org/spring => ../../../spring
-
-replace go-spring.org/log => ../../../log
-
-replace go-spring.org/starter-actuator => ../../starter-actuator
-
-replace go-spring.org/stdlib => ../../../stdlib
-
-replace go-spring.org/gs-mock => ../../../gs/gs-mock
+replace go-spring.org/starter-actuator => ../../experimental/starter-actuator

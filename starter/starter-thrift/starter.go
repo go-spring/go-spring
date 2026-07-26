@@ -23,7 +23,7 @@ import (
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/log"
-	"go-spring.org/spring/cloud/tlsconf"
+	"go-spring.org/spring/experimental/cloud/tlsconf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )

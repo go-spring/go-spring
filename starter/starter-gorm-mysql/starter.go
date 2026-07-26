@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"go-spring.org/log"
-	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/experimental/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	gormmysql "gorm.io/driver/mysql"

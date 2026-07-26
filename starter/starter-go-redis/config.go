@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/spring/cloud/discovery"
-	"go-spring.org/spring/cloud/resilience"
-	"go-spring.org/spring/cloud/tlsconf"
+	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/experimental/cloud/resilience"
+	"go-spring.org/spring/experimental/cloud/tlsconf"
 	"go-spring.org/stdlib/errutil"
 )
 

@@ -38,8 +38,8 @@ import (
 	"context"
 	"fmt"
 
-	"go-spring.org/spring/cloud/discovery"
-	"go-spring.org/spring/cloud/loadbalance"
+	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/experimental/cloud/loadbalance"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"

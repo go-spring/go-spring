@@ -19,7 +19,7 @@ package StarterGin
 import (
 	"time"
 
-	"go-spring.org/spring/cloud/tlsconf"
+	"go-spring.org/spring/experimental/cloud/tlsconf"
 )
 
 // HealthConfig exposes an optional liveness/readiness endpoint served by the

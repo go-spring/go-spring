@@ -1,0 +1,294 @@
+/*
+ * Copyright 2025 The Go-Spring Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"go-spring.org/log"
+	"go-spring.org/spring/experimental/actuator/health"
+	"go-spring.org/spring/gs"
+	_ "go-spring.org/starter-actuator"
+)
+
+// demoIndicator is a stand-in for a real dependency (a database pool, a cache
+// client, ...). Any bean exported as health.Indicator is folded into the
+// actuator's /readiness aggregate with no extra wiring; here we register one so
+// the smoke test can observe both the UP and DOWN paths.
+type demoIndicator struct {
+	down atomic.Bool
+}
+
+func (d *demoIndicator) HealthName() string { return "demo:dependency" }
+
+func (d *demoIndicator) CheckHealth(ctx context.Context) error {
+	if d.down.Load() {
+		return errors.New("dependency unavailable")
+	}
+	return nil
+}
+
+// dep is registered as a health.Indicator and kept here so runTest can toggle
+// it to exercise the DOWN path.
+var dep = &demoIndicator{}
+
+func init() {
+	// Contribute the indicator to the actuator. Because the actuator collects
+	// every bean exported as health.Indicator, this is the whole integration —
+	// no import of the actuator package and no per-component registration API.
+	gs.Provide(dep).Export(gs.As[health.Indicator]())
+}
+
+var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
+func main() {
+	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling starter examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
+
+	if !*manual {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			runTest()
+		}()
+	} else {
+
+		// Run the Go-Spring application. The actuator serves on :9370 by default:
+		//
+		// ~ curl http://127.0.0.1:9370/health
+		// ~ curl http://127.0.0.1:9370/readiness
+		// ~ curl http://127.0.0.1:9370/info
+
+		fmt.Println("=== Manual verification mode ===")
+		fmt.Println("Server is running. Follow the README commands in another terminal.")
+		fmt.Println("Press Ctrl+C to stop.")
+	}
+	gs.Run()
+}
+
+// runTest asserts the endpoints behave as documented: /health is always UP,
+// /readiness reflects the aggregated indicator (UP, then DOWN once the
+// dependency is toggled, then UP again), /startup reports readiness completion,
+// and /info returns build metadata. It then triggers a graceful shutdown and
+// asserts the drain sequence flips /readiness to OUT_OF_SERVICE while liveness
+// stays up. It exits non-zero on any failure.
+func runTest() {
+	const base = "http://127.0.0.1:9370"
+
+	// Liveness is up as soon as the process serves.
+	mustStatus(base+"/health", http.StatusOK)
+	fmt.Println("health OK")
+
+	// The app has reported readiness and the dependency is healthy -> 200.
+	mustStatus(base+"/readiness", http.StatusOK)
+	fmt.Println("readiness UP")
+
+	// Startup has completed (readiness barrier crossed) -> 200.
+	mustStatus(base+"/startup", http.StatusOK)
+	fmt.Println("startup OK")
+
+	// Build info is served.
+	mustStatus(base+"/info", http.StatusOK)
+	fmt.Println("info OK")
+
+	// The z-suffixed canonical probe paths behave like their legacy aliases.
+	mustStatus(base+"/healthz", http.StatusOK)
+	mustStatus(base+"/readyz", http.StatusOK)
+	mustStatus(base+"/startupz", http.StatusOK)
+	fmt.Println("healthz/readyz/startupz OK")
+
+	// loggers: the root logger is listed at INFO, a DEBUG line is suppressed,
+	// then after raising the level to DEBUG it is emitted. This proves the
+	// runtime level override wired through the log control seam takes effect.
+	body := mustBody(base + "/loggers")
+	if !strings.Contains(body, `"root"`) || !strings.Contains(body, `"configuredLevel": "INFO"`) {
+		fail("/loggers did not report root at INFO: " + body)
+	}
+	log.Debugf(context.Background(), log.TagAppDef, "debug-before-should-not-appear")
+	mustStatusMethod(http.MethodPost, base+"/loggers/root", `{"configuredLevel":"DEBUG"}`, http.StatusNoContent)
+	if body = mustBody(base + "/loggers"); !strings.Contains(body, `"configuredLevel": "DEBUG"`) {
+		fail("/loggers did not reflect the DEBUG override: " + body)
+	}
+	log.Debugf(context.Background(), log.TagAppDef, "debug-after-should-appear")
+	// An unknown logger is 404; an invalid level is 400.
+	mustStatusMethod(http.MethodPost, base+"/loggers/nope", `{"configuredLevel":"DEBUG"}`, http.StatusNotFound)
+	mustStatusMethod(http.MethodPost, base+"/loggers/root", `{"configuredLevel":"BOGUS"}`, http.StatusBadRequest)
+	fmt.Println("loggers level override OK")
+
+	// env: ordinary values pass through; secret-named keys and ENC(...) values
+	// are masked.
+	body = mustBody(base + "/env")
+	if !strings.Contains(body, "jdbc:mysql://localhost:3306/demo") {
+		fail("/env dropped an ordinary property: " + body)
+	}
+	if strings.Contains(body, "super-secret-pw") || strings.Contains(body, "abcdef123456") || strings.Contains(body, "9f8a7b6c5d") {
+		fail("/env leaked a secret value: " + body)
+	}
+	fmt.Println("env masking OK")
+
+	// configprops: same masking over the nested tree view.
+	body = mustBody(base + "/configprops")
+	if strings.Contains(body, "super-secret-pw") || strings.Contains(body, "9f8a7b6c5d") {
+		fail("/configprops leaked a secret value: " + body)
+	}
+	fmt.Println("configprops masking OK")
+
+	// threaddump: a goroutine stack dump is served as text.
+	body = mustBody(base + "/threaddump")
+	if !strings.Contains(body, "goroutine ") {
+		fail("/threaddump did not return a goroutine dump: " + body)
+	}
+	fmt.Println("threaddump OK")
+
+	// Toggle the dependency down; readiness must now fail with 503 while
+	// liveness stays up (a degraded dependency must not trip liveness).
+	dep.down.Store(true)
+	mustStatus(base+"/readiness", http.StatusServiceUnavailable)
+	mustStatus(base+"/health", http.StatusOK)
+	fmt.Println("readiness DOWN when dependency down, health still UP")
+
+	// Restore the dependency so the subsequent 503 is attributable to draining,
+	// not to the indicator.
+	dep.down.Store(false)
+	mustStatus(base+"/readiness", http.StatusOK)
+
+	// Trigger graceful shutdown. With app.shutdown.pre-stop-delay set, the
+	// framework flips readiness to OUT_OF_SERVICE and keeps serving for the drain
+	// window before stopping. Poll until /readiness reports 503 while /health
+	// stays 200, proving the pod would be drained from Service endpoints before
+	// it stops accepting traffic.
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if statusOf(base+"/readiness") == http.StatusServiceUnavailable {
+			mustStatus(base+"/health", http.StatusOK)
+			fmt.Println("readiness OUT_OF_SERVICE during drain, health still UP")
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	fmt.Fprintln(os.Stderr, "readiness did not flip to OUT_OF_SERVICE during drain")
+	os.Exit(1)
+}
+
+// statusOf returns the HTTP status code for a GET of url, or -1 on error (for
+// example once the server has stopped serving at the end of the drain window).
+func statusOf(url string) int {
+	resp, err := http.Get(url)
+	if err != nil {
+		return -1
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	return resp.StatusCode
+}
+
+// mustStatus fetches url and exits the process non-zero unless the response
+// status matches want.
+func mustStatus(url string, want int) {
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request failed:", url, err)
+		os.Exit(1)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != want {
+		fmt.Fprintf(os.Stderr, "unexpected status for %s: got %d want %d\n", url, resp.StatusCode, want)
+		os.Exit(1)
+	}
+}
+
+// mustStatusMethod issues a request with the given method and body and exits
+// non-zero unless the response status matches want.
+func mustStatusMethod(method, url, body string, want int) {
+	req, err := http.NewRequest(method, url, bytes.NewBufferString(body))
+	if err != nil {
+		fail(fmt.Sprintf("build request %s %s: %v", method, url, err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fail(fmt.Sprintf("request %s %s: %v", method, url, err))
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != want {
+		fail(fmt.Sprintf("unexpected status for %s %s: got %d want %d", method, url, resp.StatusCode, want))
+	}
+}
+
+// mustBody GETs url and returns the response body as a string, exiting non-zero
+// on a transport error or non-200 status.
+func mustBody(url string) string {
+	resp, err := http.Get(url)
+	if err != nil {
+		fail(fmt.Sprintf("request %s: %v", url, err))
+	}
+	b, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fail(fmt.Sprintf("unexpected status for %s: got %d want 200", url, resp.StatusCode))
+	}
+	return string(b)
+}
+
+// fail prints a message to stderr and exits non-zero.
+func fail(msg string) {
+	fmt.Fprintln(os.Stderr, msg)
+	os.Exit(1)
+}
+
+// ----------------------------------------------------------------------------
+// Change working directory
+// ----------------------------------------------------------------------------
+
+// init sets the working directory of the application to the directory
+// where this source file resides, so relative config lookups (conf/) resolve
+// against the source location rather than the process launch path.
+func init() {
+	var execDir string
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		execDir = filepath.Dir(filename)
+	}
+	if err := os.Chdir(execDir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
+}

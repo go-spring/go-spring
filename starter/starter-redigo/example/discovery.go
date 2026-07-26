@@ -19,7 +19,7 @@ package main
 import (
 	"context"
 
-	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/experimental/cloud/discovery"
 )
 
 // This file plays the part a company's adapter would: it implements the single
