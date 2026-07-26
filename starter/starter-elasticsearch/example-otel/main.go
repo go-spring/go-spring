@@ -50,7 +50,7 @@ func init() {
 // AnotherESDriver is a custom implementation of the Driver interface.
 type AnotherESDriver struct{}
 
-func (AnotherESDriver) CreateClient(c StarterElasticsearch.Config) (*elasticsearch.Client, error) {
+func (AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config) (*elasticsearch.Client, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherESDriver::CreateClient")
 	return elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: c.Addresses,

@@ -42,7 +42,7 @@ func init() {
 // AnotherMemcachedDriver is a custom implementation of the Driver interface.
 type AnotherMemcachedDriver struct{}
 
-func (AnotherMemcachedDriver) CreateClient(c StarterMemcached.Config) (*memcache.Client, error) {
+func (AnotherMemcachedDriver) CreateClient(ctx context.Context, c StarterMemcached.Config) (*memcache.Client, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherMemcachedDriver::CreateClient")
 	return memcache.New(c.Servers...), nil
 }

@@ -51,7 +51,7 @@ func init() {
 // AnotherRedisDriver is a custom implementation of the Driver interface.
 type AnotherRedisDriver struct{}
 
-func (AnotherRedisDriver) CreateClient(c StarterRedigo.Config) (*redis.Pool, error) {
+func (AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config) (*redis.Pool, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient")
 	return &redis.Pool{
 		Dial: func() (redis.Conn, error) {

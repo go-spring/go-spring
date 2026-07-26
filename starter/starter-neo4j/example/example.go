@@ -40,7 +40,7 @@ func init() {
 // AnotherNeo4jDriver is a custom implementation of the Driver interface.
 type AnotherNeo4jDriver struct{}
 
-func (AnotherNeo4jDriver) CreateClient(c StarterNeo4j.Config) (neo4j.DriverWithContext, error) {
+func (AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config) (neo4j.DriverWithContext, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherNeo4jDriver::CreateClient")
 	return neo4j.NewDriverWithContext(c.URI, neo4j.BasicAuth(c.Username, c.Password, c.Realm))
 }

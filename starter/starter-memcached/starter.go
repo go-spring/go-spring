@@ -48,7 +48,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*memcache.Client, error) {
 		log.Errorf(ctx, starterTag, "memcached driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "memcached driver not found: %s", c.Driver)
 	}
-	client, err := d.CreateClient(c)
+	client, err := d.CreateClient(ctx, c)
 	if err != nil {
 		log.Errorf(ctx, starterTag, "memcached: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create memcached client")

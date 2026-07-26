@@ -17,6 +17,7 @@
 package StarterNeo4j
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -129,7 +130,7 @@ func applyTLS(t tlsconf.TLSConfig, conf *neo4j.Config) error {
 
 // Driver interface defines how to create a Neo4j client.
 type Driver interface {
-	CreateClient(c Config) (neo4j.DriverWithContext, error)
+	CreateClient(ctx context.Context, c Config) (neo4j.DriverWithContext, error)
 }
 
 // RegisterDriver registers a Neo4j driver with the given name.
@@ -145,7 +146,7 @@ func RegisterDriver(name string, driver Driver) {
 type DefaultDriver struct{}
 
 // CreateClient creates a new Neo4j client based on the provided configuration.
-func (DefaultDriver) CreateClient(c Config) (neo4j.DriverWithContext, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config) (neo4j.DriverWithContext, error) {
 	auth := neo4j.NoAuth()
 	if c.Username != "" {
 		auth = neo4j.BasicAuth(c.Username, c.Password, c.Realm)

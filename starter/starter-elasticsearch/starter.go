@@ -55,7 +55,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*elasticsearch.Client, error) 
 	if !ok {
 		return nil, errutil.Explain(nil, "elasticsearch driver not found: %s", c.Driver)
 	}
-	client, err := d.CreateClient(c)
+	client, err := d.CreateClient(ctx, c)
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create elasticsearch client")
 	}

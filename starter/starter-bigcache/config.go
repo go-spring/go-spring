@@ -76,7 +76,7 @@ type Config struct {
 
 // Driver interface defines how to create a BigCache instance.
 type Driver interface {
-	CreateClient(c Config) (*bigcache.BigCache, error)
+	CreateClient(ctx context.Context, c Config) (*bigcache.BigCache, error)
 }
 
 // RegisterDriver registers a BigCache driver with the given name.
@@ -92,7 +92,7 @@ func RegisterDriver(name string, driver Driver) {
 type DefaultDriver struct{}
 
 // CreateClient creates a new BigCache instance based on the provided configuration.
-func (DefaultDriver) CreateClient(c Config) (*bigcache.BigCache, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*bigcache.BigCache, error) {
 	conf := bigcache.DefaultConfig(c.LifeWindow)
 	conf.Shards = c.Shards
 	conf.CleanWindow = c.CleanWindow
@@ -101,5 +101,5 @@ func (DefaultDriver) CreateClient(c Config) (*bigcache.BigCache, error) {
 	conf.HardMaxCacheSize = c.HardMaxCacheSize
 	conf.StatsEnabled = c.StatsEnabled
 	conf.OnRemove = onRemove
-	return bigcache.New(context.Background(), conf)
+	return bigcache.New(ctx, conf)
 }

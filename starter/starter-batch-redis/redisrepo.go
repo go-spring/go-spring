@@ -29,6 +29,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/spring/cloud/batch"
+	"go-spring.org/spring/gs"
 )
 
 // redisRepository implements batch.JobRepository over a *redis.Client. It is
@@ -57,7 +58,7 @@ type redisRepository struct {
 // starter-go-redis; this repository never closes it. Constructor validation is
 // deliberately minimal: the only unrecoverable configuration error is a nil
 // client, which would surface as a nil-deref on the first call otherwise.
-func newRedisRepository(c Config, client *redis.Client) (batch.JobRepository, error) {
+func newRedisRepository(cp *gs.ContextProvider, c Config, client *redis.Client) (batch.JobRepository, error) {
 	if client == nil {
 		return nil, errors.New("batch-redis: nil *redis.Client")
 	}

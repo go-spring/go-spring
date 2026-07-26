@@ -191,7 +191,7 @@ func (r ResilienceConfig) policy() resilience.Policy {
 // Driver interface defines how to create a single/sentinel Redis client, whose
 // bean type is *redis.Client.
 type Driver interface {
-	CreateClient(c Config) (*redis.Client, error)
+	CreateClient(ctx context.Context, c Config) (*redis.Client, error)
 }
 
 // ClusterDriver is an optional interface a Driver may also implement to support
@@ -200,7 +200,7 @@ type Driver interface {
 // to compile unchanged. The starter type-asserts to ClusterDriver only when
 // Mode=cluster.
 type ClusterDriver interface {
-	CreateClusterClient(c Config) (*redis.ClusterClient, error)
+	CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, error)
 }
 
 // RegisterDriver registers a Redis driver with the given name.
@@ -233,7 +233,7 @@ var (
 //
 // In sentinel mode the client connects to the master resolved by c.MasterName
 // through c.SentinelAddrs; service discovery is not used.
-func (DefaultDriver) CreateClient(c Config) (*redis.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client, error) {
 	tlsConfig, err := c.TLS.Build()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
@@ -279,7 +279,7 @@ func (DefaultDriver) CreateClient(c Config) (*redis.Client, error) {
 		// NewClientDialer centralizes the discovery/mesh decision: normally it
 		// resolves c.Discovery and keeps the endpoint set fresh; in mesh mode it
 		// skips the backend and dials the stable Service address for the sidecar.
-		ld, err = discovery.NewClientDialer(context.Background(), c.Discovery, c.ServiceName)
+		ld, err = discovery.NewClientDialer(ctx, c.Discovery, c.ServiceName)
 		if err != nil {
 			return nil, err
 		}
@@ -298,7 +298,7 @@ func (DefaultDriver) CreateClient(c Config) (*redis.Client, error) {
 // CreateClusterClient creates a cluster Redis client seeded by c.Addrs. The bean
 // type is *redis.ClusterClient. Cluster mode self-discovers its nodes, so
 // c.ServiceName / LiveDialer is not used here.
-func (DefaultDriver) CreateClusterClient(c Config) (*redis.ClusterClient, error) {
+func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, error) {
 	tlsConfig, err := c.TLS.Build()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")

@@ -48,8 +48,8 @@ func init() {
 			// createPool returns Pool (interface), but gs.Provide registers
 			// the concrete type. Export(gs.As[Pool]()) makes it available
 			// for autowire by the Pool interface.
-			r.Provide(func() (Pool, error) {
-				return createPool(name, c)
+			r.Provide(func(cp *gs.ContextProvider) (Pool, error) {
+				return createPool(cp.Context, name, c)
 			}).Name(name).Destroy(destroyPool)
 		}
 		return nil
@@ -63,20 +63,20 @@ func init() {
 
 // createPool resolves the configured Driver and wraps the resulting pool
 // with all registered observers for the given name.
-func createPool(name string, c Config) (Pool, error) {
-	log.Debugf(context.Background(), starterTag, "creating ants pool %q, size=%d driver=%s", name, c.Size, c.Driver)
+func createPool(ctx context.Context, name string, c Config) (Pool, error) {
+	log.Debugf(ctx, starterTag, "creating ants pool %q, size=%d driver=%s", name, c.Size, c.Driver)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(context.Background(), starterTag, "ants driver not found: %s", c.Driver)
+		log.Errorf(ctx, starterTag, "ants driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "ants driver not found: %s", c.Driver)
 	}
 	pool, err := d.CreatePool(c)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "ants: create pool %q failed: %v", name, err)
+		log.Errorf(ctx, starterTag, "ants: create pool %q failed: %v", name, err)
 		return nil, err
 	}
-	log.Infof(context.Background(), starterTag, "ants pool %q initialized, size=%d", name, c.Size)
+	log.Infof(ctx, starterTag, "ants pool %q initialized, size=%d", name, c.Size)
 	// Wrap the pool's Submit to route through the observer chain.
 	return &observedPool{
 		Pool: pool,

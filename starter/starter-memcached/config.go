@@ -67,7 +67,7 @@ type Config struct {
 
 // Driver interface defines how to create a Memcached client.
 type Driver interface {
-	CreateClient(c Config) (*memcache.Client, error)
+	CreateClient(ctx context.Context, c Config) (*memcache.Client, error)
 }
 
 // RegisterDriver registers a Memcached driver with the given name.
@@ -88,14 +88,14 @@ type DefaultDriver struct{}
 // registered discovery backend (c.Discovery) instead of using c.Servers. This
 // is a one-shot resolve at startup: gomemcache hashes keys onto a fixed server
 // set, so the membership is fixed for the client's lifetime.
-func (DefaultDriver) CreateClient(c Config) (*memcache.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*memcache.Client, error) {
 	servers := c.Servers
 	if c.ServiceName != "" {
 		d, err := discovery.MustGet(c.Discovery)
 		if err != nil {
 			return nil, err
 		}
-		eps, err := d.Resolve(context.Background(), c.ServiceName)
+		eps, err := d.Resolve(ctx, c.ServiceName)
 		if err != nil {
 			return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
 		}

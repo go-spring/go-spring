@@ -93,7 +93,7 @@ type Config struct {
 
 // Driver interface defines how to create a Redis client.
 type Driver interface {
-	CreateClient(c Config) (*redis.Pool, error)
+	CreateClient(ctx context.Context, c Config) (*redis.Pool, error)
 }
 
 // RegisterDriver registers a Redis driver with the given name.
@@ -116,7 +116,7 @@ type DefaultDriver struct{}
 // Combined with c.ConnMaxLifetime, pooled connections recycle onto updated
 // addresses without rebuilding the pool. When c.ServiceName is empty this is a
 // plain Addr dial, unchanged from before.
-func (DefaultDriver) CreateClient(c Config) (*redis.Pool, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Pool, error) {
 	tlsConfig, err := c.TLS.Build()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
@@ -128,7 +128,7 @@ func (DefaultDriver) CreateClient(c Config) (*redis.Pool, error) {
 		if err != nil {
 			return nil, err
 		}
-		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+		ld, err = discovery.NewLiveDialer(ctx, d, c.ServiceName)
 		if err != nil {
 			return nil, err
 		}

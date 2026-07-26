@@ -52,7 +52,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*redis.Pool, error) {
 		log.Errorf(ctx, starterTag, "redigo driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
-	pool, err := d.CreateClient(c)
+	pool, err := d.CreateClient(ctx, c)
 	if err != nil {
 		log.Errorf(ctx, starterTag, "redigo: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")

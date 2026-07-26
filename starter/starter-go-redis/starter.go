@@ -88,7 +88,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*redis.Client, error) {
 		log.Errorf(ctx, starterTag, "redis driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
-	client, err := d.CreateClient(c)
+	client, err := d.CreateClient(ctx, c)
 	if err != nil {
 		log.Errorf(ctx, starterTag, "redis: create client failed: %v", err)
 		return nil, err
@@ -132,7 +132,7 @@ func newClusterClient(cp *gs.ContextProvider, c Config) (*redis.ClusterClient, e
 		log.Errorf(ctx, starterTag, "redis driver %q does not support cluster mode", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver %q does not support cluster mode", c.Driver)
 	}
-	client, err := cd.CreateClusterClient(c)
+	client, err := cd.CreateClusterClient(ctx, c)
 	if err != nil {
 		log.Errorf(ctx, starterTag, "redis: create cluster client failed: %v", err)
 		return nil, err

@@ -17,6 +17,8 @@
 package StarterElasticsearch
 
 import (
+	"context"
+
 	"github.com/elastic/elastic-transport-go/v8/elastictransport"
 	"github.com/elastic/go-elasticsearch/v8"
 )
@@ -97,7 +99,7 @@ type Config struct {
 
 // Driver interface defines how to create an Elasticsearch client.
 type Driver interface {
-	CreateClient(c Config) (*elasticsearch.Client, error)
+	CreateClient(ctx context.Context, c Config) (*elasticsearch.Client, error)
 }
 
 // RegisterDriver registers an Elasticsearch driver with the given name.
@@ -117,7 +119,7 @@ type DefaultDriver struct{}
 // the transport emit client spans through the OTel global TracerProvider that
 // starter-otel installs; when starter-otel is absent that global is a no-op, so
 // this stays a zero-config opt-in that needs no per-component adaptation.
-func (DefaultDriver) CreateClient(c Config) (*elasticsearch.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*elasticsearch.Client, error) {
 	return elasticsearch.NewClient(elasticsearch.Config{
 		Addresses:              c.Addresses,
 		Username:               c.Username,

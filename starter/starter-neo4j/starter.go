@@ -69,7 +69,7 @@ func newClient(cp *gs.ContextProvider, c Config) (neo4j.DriverWithContext, error
 		log.Errorf(ctx, starterTag, "neo4j driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "neo4j driver not found: %s", c.Driver)
 	}
-	client, err := d.CreateClient(c)
+	client, err := d.CreateClient(ctx, c)
 	if err != nil {
 		log.Errorf(ctx, starterTag, "neo4j: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create neo4j client")

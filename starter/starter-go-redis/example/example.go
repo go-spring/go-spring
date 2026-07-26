@@ -41,7 +41,7 @@ func init() {
 // AnotherRedisDriver is a custom implementation of the Driver interface.
 type AnotherRedisDriver struct{}
 
-func (AnotherRedisDriver) CreateClient(c StarterGoRedis.Config) (*redis.Client, error) {
+func (AnotherRedisDriver) CreateClient(ctx context.Context, c StarterGoRedis.Config) (*redis.Client, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient")
 	return redis.NewClient(&redis.Options{
 		Addr:     c.Addr,
