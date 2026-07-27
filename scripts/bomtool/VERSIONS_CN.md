@@ -32,7 +32,7 @@ dependencies:
 
 ## 命令
 
-全部经 `scripts/versions.sh` 调用(内部执行 `gs/gs` 下的 `go run ./cmd/bomtool`):
+全部经 `scripts/versions.sh` 调用(内部执行 repo root 下的 `go run ./scripts/bomtool`):
 
 | 命令 | 作用 |
 | --- | --- |

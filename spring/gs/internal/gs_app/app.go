@@ -182,6 +182,12 @@ type App struct {
 	// read-only introspection via EnvProvider. It is swapped atomically on
 	// every (re)load so a concurrent env snapshot never sees a torn state.
 	env atomic.Pointer[flatten.LayeredStorage]
+
+	// started is set to true after the IoC container has been fully wired
+	// (app.c.Refresh returned successfully). RefreshProperties refuses to
+	// run before this flag is set to avoid operating on a partially-wired
+	// container.
+	started atomic.Bool
 }
 
 // NewApp creates a new App instance with an initialized root context.
@@ -229,6 +235,9 @@ func (app *App) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefinition {
 //   - All dynamic field updates are atomic
 //   - If validation fails, no partial updates are applied
 func (app *App) RefreshProperties() error {
+	if !app.started.Load() {
+		return errutil.Explain(nil, "app not started yet, cannot refresh properties")
+	}
 	if app.p == nil {
 		return errutil.Explain(nil, "app.p is nil")
 	}
@@ -323,6 +332,12 @@ func (app *App) Start() error {
 	if err = app.c.Refresh(p, roots); err != nil {
 		return err
 	}
+
+	// Mark the app as started so RefreshProperties is allowed from now on.
+	// This must happen after the container is fully wired — before this
+	// point, RefreshProperties is a no-op-or-error because the wiring graph
+	// isn't ready.
+	app.started.Store(true)
 
 	// If there are no dynamic fields, clear the configuration
 	if app.c.DynamicObjectsCount() == 0 {

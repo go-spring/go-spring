@@ -34,8 +34,8 @@ resolves them through `go.work`, so they must never be pinned via `require`.
 
 ## Commands
 
-All invoked through `scripts/versions.sh` (which runs `go run ./cmd/bomtool` in
-`gs/gs`):
+All invoked through `scripts/versions.sh` (which runs `go run ./scripts/bomtool` from
+the repo root):
 
 | Command | Effect |
 | --- | --- |

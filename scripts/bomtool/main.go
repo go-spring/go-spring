@@ -40,8 +40,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go-spring.org/gs/internal/bom"
-	"go-spring.org/gs/internal/runcmd"
+	"go-spring.org/tools/bomtool/bom"
+	"go-spring.org/tools/bomtool/runcmd"
 	"go-spring.org/stdlib/errutil"
 )
 

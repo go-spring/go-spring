@@ -30,8 +30,10 @@ use (
 	./examples/fullstack
 	./examples/miniapi
 	./examples/startup
+	./gs/experimental/gs-gui
+	./gs/experimental/gs-k8s
+	./gs/experimental/gs-serve
 	./gs/gs
-	./gs/gs-gui
 	./gs/gs-http-gen
 	./gs/gs-http-gen/examples/go
 	./gs/gs-mock
@@ -39,6 +41,7 @@ use (
 	./log
 	./log/benchmarks/fields
 	./log/benchmarks/logs
+	./scripts/bomtool
 	./spring
 	./spring/experimental/cloud/event/example
 	./starter/experimental/starter-actuator

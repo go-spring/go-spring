@@ -14,25 +14,18 @@
  * limitations under the License.
  */
 
-// Package k8s holds the Kubernetes deploy scaffolding templates compiled into
-// the gs binary and renders them into a project. The templates are embedded
-// (not fetched from the layout repo) so `gs k8s` is self-contained and works
-// offline, mirroring how the feature manifest is embedded.
-package k8s
+package main
 
 import (
 	"bytes"
 	"embed"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
-
 	"strings"
-
-	"go-spring.org/gs/internal/runcmd"
-	"go-spring.org/stdlib/errutil"
 )
 
 // Deploy format selectors. A project uses exactly one; the other tree under
@@ -81,7 +74,7 @@ func Write(destDir string, replaces map[string]string, force bool, format string
 		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
-			return errutil.Explain(err, "resolve template path %q", path)
+			return fmt.Errorf("resolve template path %q: %w", path, err)
 		}
 
 		// Skip the deploy tree that doesn't match the chosen format.
@@ -107,21 +100,21 @@ func Write(destDir string, replaces map[string]string, force bool, format string
 
 		b, err := templates.ReadFile(path)
 		if err != nil {
-			return errutil.Explain(err, "read template %q", path)
+			return fmt.Errorf("read template %q: %w", path, err)
 		}
 		for _, old := range keys {
 			b = bytes.ReplaceAll(b, []byte(old), []byte(replaces[old]))
 		}
 
 		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-			return errutil.Explain(err, "create directory for %q", outPath)
+			return fmt.Errorf("create directory for %q: %w", outPath, err)
 		}
 		if err := os.WriteFile(outPath, b, 0o644); err != nil {
-			return errutil.Explain(err, "write %q", outPath)
+			return fmt.Errorf("write %q: %w", outPath, err)
 		}
 
 		log.Printf("[INFO] writing %s", rel)
-		if runcmd.Verbosity >= runcmd.LevelCommand {
+		if verbosity >= 1 {
 			log.Printf("[DEBUG] -> %s", outPath)
 		}
 		return nil

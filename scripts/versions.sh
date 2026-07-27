@@ -11,9 +11,9 @@
 #   ./scripts/versions.sh diff             per-dependency deviation detail
 #   ./scripts/versions.sh apply <module>   align one module's go.mod to baseline
 #
-# See gs/gs/VERSIONS.md for the governance model.
+# See scripts/bomtool/VERSIONS.md for the governance model.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT/gs/gs"
-exec go run ./cmd/bomtool "$@"
+cd "$REPO_ROOT"
+exec go run ./scripts/bomtool "$@"
