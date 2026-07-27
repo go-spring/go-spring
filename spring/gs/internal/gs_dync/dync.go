@@ -22,9 +22,12 @@
 // themselves during IOC container initialization and can be batch-refreshed at runtime.
 //
 // Two-phase refresh:
-//  1. Pre-refresh (commit=false): Validates all values against new configuration.
-//     On failure, the old configuration is preserved and no changes are applied.
-//  2. Commit (commit=true): Atomically applies validated configuration to all values.
+//  1. Validate (onValid): Bind every value against the new configuration without
+//     applying it. On failure, the old configuration is preserved and no changes
+//     are applied.
+//  2. Commit (onCommit): Atomically apply the validated values.
+//
+// After commit, onFinish fires the registered change listeners with the previous value.
 package gs_dync
 
 import (
@@ -42,14 +45,17 @@ import (
 )
 
 // refreshable represents a dynamically refreshed configuration value.
-// Only Value[T] implements this interface; keep it narrow so two-phase refresh can rely on
-// pre-refresh and commit executing the same binding path without supporting generic rollback.
+// Only Value[T] implements this interface; keep it narrow so two-phase refresh can
+// rely on validate and commit executing the same binding path without supporting
+// generic rollback.
 type refreshable interface {
-	onRefresh(prop flatten.Storage, param conf.BindParam, commit bool) error
+	onValid(prop flatten.Storage, param conf.BindParam) (newVal any, err error)
+	onCommit(newVal any) (oldVal any)
+	onFinish(newVal, oldVal any)
 }
 
 // Value represents a thread-safe container that stores a dynamic configuration value.
-// Its value can be updated atomically via onRefresh.
+// Its value is updated atomically through the two-phase refresh driven by Properties.
 //
 // Key features:
 //   - Type-safe: Generic type parameter ensures compile-time type safety.
@@ -64,13 +70,13 @@ type refreshable interface {
 //	}
 //
 // During IOC initialization, the field is bound to configuration.
-// At runtime, calling Properties.Refresh() updates all registered Value fields atomically.
+// At runtime, calling Properties.Refresh updates all registered Value fields atomically.
 type Value[T any] struct {
-	v atomic.Value
+	v        atomic.Value // T
+	listener atomic.Value // func(newVal, oldVal T)
 }
 
-// Value retrieves the current value stored in the object.
-// If no value is set, it returns the zero value for the type T.
+// Value returns the current value, or the zero value of T if none has been set.
 func (r *Value[T]) Value() T {
 	v, ok := r.v.Load().(T)
 	if !ok {
@@ -80,17 +86,41 @@ func (r *Value[T]) Value() T {
 	return v
 }
 
-// onRefresh updates the stored value with new properties if commit is true.
-func (r *Value[T]) onRefresh(prop flatten.Storage, param conf.BindParam, commit bool) error {
+// OnChanged registers a listener invoked with the new and previous values after a
+// refresh commits. At most one listener is supported; calling OnChanged again when
+// a listener is already registered is a no-op (TODO: log a warning in that case).
+func (r *Value[T]) OnChanged(l func(newVal, oldVal T)) {
+	prev, ok := r.listener.Load().(func(newVal, oldVal T))
+	if !ok || prev == nil {
+		r.listener.Store(l)
+		return
+	}
+	// TODO: log a warning; a listener is already registered and will not be overwritten.
+}
+
+// onValid binds a new value from prop without applying it. The returned newVal is
+// committed later by onCommit.
+func (r *Value[T]) onValid(prop flatten.Storage, param conf.BindParam) (newVal any, err error) {
 	t := reflect.TypeFor[T]()
 	v := reflect.New(t).Elem()
 	if err := conf.BindValue(prop, v, t, param, nil); err != nil {
-		return errutil.Explain(err, "bind dynamic value failed")
+		return nil, errutil.Explain(err, "bind dynamic value failed")
 	}
-	if commit {
-		r.v.Store(v.Interface())
+	return v.Interface(), nil
+}
+
+// onCommit atomically stores newVal and returns the value it replaced.
+func (r *Value[T]) onCommit(newVal any) (oldVal any) {
+	return r.v.Swap(newVal)
+}
+
+// onFinish fires the registered change listener with the new and previous values, if any.
+func (r *Value[T]) onFinish(newVal, oldVal any) {
+	l, ok := r.listener.Load().(func(newVal, oldVal T))
+	if !ok || l == nil {
+		return
 	}
-	return nil
+	l(newVal.(T), oldVal.(T))
 }
 
 // MarshalJSON serializes the stored value as JSON.
@@ -98,32 +128,32 @@ func (r *Value[T]) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.v.Load())
 }
 
-// refreshObject represents an object bound to dynamic properties that can be refreshed.
+// refreshObject pairs a refreshable value with the binding parameters used to refresh it.
 type refreshObject struct {
-	target refreshable    // The refreshable object.
-	param  conf.BindParam // Parameters used for refreshing.
+	target refreshable    // the value being refreshed
+	param  conf.BindParam // binding parameters (key/path) used to resolve the value
 }
 
-// Properties manages dynamic properties and refreshable objects.
+// Properties manages dynamic properties and the refreshable values bound to them.
 // It serves two distinct phases:
 //
-// 1. Initialization Phase (IOC Container Startup):
+// 1. Initialization (IOC container startup):
 //   - RefreshField is called for each configuration-bound field
-//   - Registers refreshable objects in the internal objects slice
-//   - Sets initial configuration values immediately (commit=true)
+//   - Registers refreshable fields for later batch refresh
+//   - Binds and commits initial values immediately
 //
-// 2. Runtime Phase (Dynamic Configuration Updates):
+// 2. Runtime (dynamic configuration updates):
 //   - Refresh is called with new configuration data
 //   - Executes two-phase refresh: validate all values first, then commit
 //   - On validation failure, automatically restores the previous configuration
-//   - Thread-safe: All operations are protected by RWMutex
+//   - Thread-safe: all operations are protected by a RWMutex
 type Properties struct {
-	prop    flatten.Storage  // The current properties.
-	lock    sync.RWMutex     // A read-write lock for thread-safe access.
-	objects []*refreshObject // List of refreshable objects bound to the properties.
+	prop    flatten.Storage  // current property source
+	lock    sync.RWMutex     // guards prop and objects
+	objects []*refreshObject // refreshable values registered during IOC init
 }
 
-// New creates and returns a new Properties instance.
+// New creates and returns a new Properties instance backed by p.
 func New(p flatten.Storage) *Properties {
 	return &Properties{
 		prop: p,
@@ -147,7 +177,7 @@ func (p *Properties) ObjectsCount() int {
 // Refresh updates the properties and refreshes all bound values using a two-phase commit.
 //
 // This method is designed for runtime dynamic configuration updates. It validates all
-// values before committing them, so validation failure does not apply partial updates.
+// values before committing them, so a validation failure applies no partial updates.
 // It is thread-safe.
 func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 	if prop == nil {
@@ -157,11 +187,11 @@ func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	old := p.prop
+	oldProp := p.prop
 	p.prop = prop
 	defer func() {
 		if err != nil {
-			p.prop = old
+			p.prop = oldProp
 		}
 	}()
 
@@ -171,97 +201,115 @@ func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 
 	log.Debugf(context.Background(), log.TagAppDef, "refreshing %d dynamic objects", len(p.objects))
 
-	// First pre-refresh all dynamic values;
-	// if validation passes, commit the updates.
-	if err = p.refreshObjects(p.objects, false); err != nil {
-		return errutil.Explain(err, "validate dynamic configuration (pre-refresh) failed")
+	newValues, err := p.onValid(p.objects)
+	if err != nil {
+		return errutil.Explain(err, "validate dynamic configuration failed")
 	}
-	if err = p.refreshObjects(p.objects, true); err != nil {
-		return errutil.Explain(err, "apply dynamic configuration (commit) failed")
+
+	oldValues := make([]any, 0, len(p.objects))
+	for i, obj := range p.objects {
+		oldVal := obj.target.onCommit(newValues[i])
+		oldValues = append(oldValues, oldVal)
 	}
+
+	for i, obj := range p.objects {
+		obj.target.onFinish(newValues[i], oldValues[i])
+	}
+
 	log.Debugf(context.Background(), log.TagAppDef, "dynamic objects refreshed successfully")
 	return nil
 }
 
-// Errors represents a collection of errors.
+// Errors collects multiple errors and renders them as a single message.
 type Errors struct {
-	arr []error
+	errs []error
 }
 
-// Len returns the number of errors.
+// Len returns the number of collected errors.
 func (e *Errors) Len() int {
-	return len(e.arr)
+	return len(e.errs)
 }
 
-// Append adds an error to the collection if it is non-nil.
+// Append adds err to the collection if it is non-nil.
 func (e *Errors) Append(err error) {
 	if err != nil {
-		e.arr = append(e.arr, err)
+		e.errs = append(e.errs, err)
 	}
 }
 
-// Error concatenates all errors into a single string.
+// Error concatenates all collected errors, separated by "; ".
 func (e *Errors) Error() string {
 	var sb strings.Builder
-	for i, err := range e.arr {
+	for i, err := range e.errs {
 		sb.WriteString(err.Error())
-		if i < len(e.arr)-1 {
+		if i < len(e.errs)-1 {
 			sb.WriteString("; ")
 		}
 	}
 	return sb.String()
 }
 
-// refreshObjects refreshes all provided objects and aggregates errors.
-func (p *Properties) refreshObjects(objects []*refreshObject, commit bool) error {
-	ret := &Errors{}
+// onValid runs the validate phase for every object and collects the resulting new
+// values. Errors are aggregated rather than short-circuited so that all binding
+// problems are reported in a single pass.
+func (p *Properties) onValid(objects []*refreshObject) (newValues []any, _ error) {
+	retErr := &Errors{}
+	newValues = make([]any, 0, len(objects))
 	for _, obj := range objects {
-		err := obj.target.onRefresh(p.prop, obj.param, commit)
+		newVal, err := obj.target.onValid(p.prop, obj.param)
 		if err != nil {
-			ret.Append(errutil.Explain(err, "refresh dynamic object %s (key=%s) failed", obj.param.Path, obj.param.Key))
+			retErr.Append(errutil.Explain(err, "refresh dynamic object %s (key=%s) failed", obj.param.Path, obj.param.Key))
 		}
+		newValues = append(newValues, newVal)
 	}
-	if ret.Len() == 0 {
-		return nil
+	if retErr.Len() == 0 {
+		return newValues, nil
 	}
-	return ret
+	return newValues, retErr
 }
 
-// filter is used to selectively refresh objects and fields during IOC initialization.
+// filter implements conf.Filter to intercept refreshable values encountered while
+// binding a struct during IOC initialization.
 type filter struct {
 	*Properties
 }
 
-// Do attempts to refresh a single object if it implements the refreshable interface.
+// Do attempts to bind i as a refreshable value. If i is refreshable, it validates and
+// commits the value immediately and registers it for later batch refresh; otherwise it
+// lets the caller fall back to normal binding.
 //
-// This method is invoked by conf.BindValue during the IOC container initialization phase
-// when processing struct fields with `value` tags.
-//
-// Note: This always uses commit=true because it's only called during initialization,
-// not during runtime dynamic refreshes.
+// This method is invoked by conf.BindValue while processing struct fields with `value`
+// tags. It commits immediately because it runs only during initialization, not during
+// runtime refresh - runtime refreshes go through Properties.Refresh.
 func (f *filter) Do(i any, param conf.BindParam) (bool, error) {
 	v, ok := i.(refreshable)
 	if !ok || v == nil {
 		return false, nil
 	}
+	newVal, err := v.onValid(f.prop, param)
+	if err != nil {
+		return true, err
+	}
+	v.onCommit(newVal)
 	f.objects = append(f.objects, &refreshObject{
 		target: v,
 		param:  param,
 	})
-	return true, v.onRefresh(f.prop, param, true)
+	return true, nil
 }
 
-// RefreshField refreshes a field of a bean and optionally registers it as refreshable.
+// RefreshField binds a configuration value to v and, when v is (or contains) a
+// refreshable field, registers it for future batch refreshes.
 //
-// This method is exclusively used during the IOC container initialization phase to:
-//  1. Bind configuration values to struct fields
-//  2. Register fields that implement refreshable for future batch refreshes
+// This method is used exclusively during IOC container initialization to:
+//  1. Bind configuration values to struct fields.
+//  2. Register fields that implement refreshable for later Refresh calls.
 //
 // Parameters:
-//   - v: Reflect value of the field (must be a pointer to the actual field)
-//   - param: Binding parameters including configuration key and path
+//   - v: Reflect value of the field (must be a pointer to the target field).
+//   - param: Binding parameters, including the configuration key and path.
 //
-// Note: For runtime configuration updates, use Refresh method instead.
+// For runtime configuration updates, use Refresh instead.
 func (p *Properties) RefreshField(v reflect.Value, param conf.BindParam) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()

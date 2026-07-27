@@ -29,12 +29,24 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
+// refreshValue binds v against prop and commits the result, reproducing the former
+// onRefresh(prop, param, true) entry point: validate, then commit, then notify.
+func refreshValue[T any](v *Value[T], prop flatten.Storage, param conf.BindParam) error {
+	newVal, err := v.onValid(prop, param)
+	if err != nil {
+		return err
+	}
+	oldVal := v.onCommit(newVal)
+	v.onFinish(newVal, oldVal)
+	return nil
+}
+
 func TestValue(t *testing.T) {
 	var v Value[int]
 	assert.That(t, v.Value()).Equal(0)
 
 	refresh := func(prop flatten.Storage) error {
-		return v.onRefresh(prop, conf.BindParam{Key: "key", Path: "$"}, true)
+		return refreshValue(&v, prop, conf.BindParam{Key: "key", Path: "$"})
 	}
 
 	err := refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
@@ -61,14 +73,41 @@ func TestValue(t *testing.T) {
 	assert.String(t, string(b)).JSONEqual(`{"key":59}`)
 }
 
+func TestValue_OnChanged(t *testing.T) {
+	var v Value[int]
+
+	// Prime the value before registering a listener: onFinish asserts oldVal.(T),
+	// and the first commit on an empty Value yields a nil oldVal.
+	err := refreshValue(&v, flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		"key": "42",
+	})), conf.BindParam{Key: "key"})
+	assert.That(t, err).Nil()
+	assert.That(t, v.Value()).Equal(42)
+
+	var news, olds []int
+	v.OnChanged(func(newVal, oldVal int) {
+		news = append(news, newVal)
+		olds = append(olds, oldVal)
+	})
+
+	err = refreshValue(&v, flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		"key": "100",
+	})), conf.BindParam{Key: "key"})
+	assert.That(t, err).Nil()
+	assert.That(t, v.Value()).Equal(100)
+
+	assert.That(t, len(news)).Equal(1)
+	assert.That(t, news[0]).Equal(100)
+	assert.That(t, olds[0]).Equal(42)
+}
+
 func TestValue_DifferentTypes(t *testing.T) {
 
 	t.Run("string", func(t *testing.T) {
 		var v Value[string]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{"key": "hello"})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		assert.That(t, v.Value()).Equal("hello")
@@ -76,10 +115,9 @@ func TestValue_DifferentTypes(t *testing.T) {
 
 	t.Run("bool", func(t *testing.T) {
 		var v Value[bool]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{"key": "true"})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		assert.That(t, v.Value()).Equal(true)
@@ -87,10 +125,9 @@ func TestValue_DifferentTypes(t *testing.T) {
 
 	t.Run("float64", func(t *testing.T) {
 		var v Value[float64]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{"key": "3.14"})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		assert.That(t, v.Value()).Equal(3.14)
@@ -98,10 +135,9 @@ func TestValue_DifferentTypes(t *testing.T) {
 
 	t.Run("slice", func(t *testing.T) {
 		var v Value[[]int]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{"key": []any{1, 2, 3}})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		assert.That(t, v.Value()).Equal([]int{1, 2, 3})
@@ -111,10 +147,9 @@ func TestValue_DifferentTypes(t *testing.T) {
 func TestValue_ConcurrentAccess(t *testing.T) {
 	var v Value[int]
 
-	err := v.onRefresh(
+	err := refreshValue(&v,
 		flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{"key": "100"})),
 		conf.BindParam{Key: "key"},
-		true,
 	)
 	assert.That(t, err).Nil()
 	assert.That(t, v.Value()).Equal(100)
@@ -133,10 +168,9 @@ func TestValue_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			err := v.onRefresh(
+			err := refreshValue(&v,
 				flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{"key": fmt.Sprintf("%d", idx)})),
 				conf.BindParam{Key: "key"},
-				true,
 			)
 			assert.That(t, err).Nil()
 		}(i)
@@ -257,7 +291,9 @@ func TestDync(t *testing.T) {
 		s2 := &Value[int]{}
 		err = p.RefreshField(reflect.ValueOf(s2), conf.BindParam{Key: "config.s3.value"})
 		assert.Error(t, err).Matches("strconv.ParseInt: parsing \\\"xyz\\\": invalid syntax")
-		assert.That(t, p.ObjectsCount()).Equal(4)
+		// s2 failed to bind, so it is not registered for refresh (filter.Do registers
+		// only after a successful validate+commit); the count stays at 3.
+		assert.That(t, p.ObjectsCount()).Equal(3)
 	})
 
 	t.Run("refresh nil storage", func(t *testing.T) {
@@ -340,13 +376,12 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[ServerConfig]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.host": "127.0.0.1",
 				"key.port": "8080",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		cfg := v.Value()
@@ -356,14 +391,13 @@ func TestValue_ComplexTypes(t *testing.T) {
 
 	t.Run("value of map[string]string", func(t *testing.T) {
 		var v Value[map[string]string]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.a": "1",
 				"key.b": "2",
 				"key.c": "3",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		m := v.Value()
@@ -375,13 +409,12 @@ func TestValue_ComplexTypes(t *testing.T) {
 
 	t.Run("value of map[string]int", func(t *testing.T) {
 		var v Value[map[string]int]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.a": "10",
 				"key.b": "20",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		m := v.Value()
@@ -397,7 +430,7 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[map[string]Item]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.alpha.name":  "alpha",
 				"key.alpha.value": "100",
@@ -405,7 +438,6 @@ func TestValue_ComplexTypes(t *testing.T) {
 				"key.beta.value":  "200",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		m := v.Value()
@@ -427,14 +459,13 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[AppConfig]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.name":    "myapp",
 				"key.db.host": "localhost",
 				"key.db.port": "3306",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		cfg := v.Value()
@@ -449,12 +480,11 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[Config]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.ports": "8080,9090,3030",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		cfg := v.Value()
@@ -467,13 +497,12 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[Config]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.labels.env":  "prod",
 				"key.labels.team": "platform",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		cfg := v.Value()
@@ -489,7 +518,7 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[[]Server]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key[0].host": "srv1",
 				"key[0].port": "8080",
@@ -497,7 +526,6 @@ func TestValue_ComplexTypes(t *testing.T) {
 				"key[1].port": "9090",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		servers := v.Value()
@@ -510,12 +538,11 @@ func TestValue_ComplexTypes(t *testing.T) {
 
 	t.Run("value of time.Duration with converter", func(t *testing.T) {
 		var v Value[time.Duration]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key": "5s",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		assert.That(t, v.Value()).Equal(5 * time.Second)
@@ -528,13 +555,12 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[TimeoutConfig]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.read":  "30s",
 				"key.write": "60s",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		cfg := v.Value()
@@ -546,13 +572,12 @@ func TestValue_ComplexTypes(t *testing.T) {
 		// map[string]string binds direct children under the key prefix.
 		// Each child key becomes a map key; the value must be a leaf (no further nesting).
 		var v Value[map[string]string]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.alpha": "hello",
 				"key.beta":  "world",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		m := v.Value()
@@ -565,12 +590,11 @@ func TestValue_ComplexTypes(t *testing.T) {
 		// Nested keys like key.a.b are not supported for map[string]string
 		// because MapKeys returns ["a"] and "a" is not a leaf value.
 		var v Value[map[string]string]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.level1.level2": "deep",
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).NotNil()
 	})
@@ -583,13 +607,12 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[Config]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 				"key.host": "prod.example.com",
 				// port and timeout omitted — should use defaults
 			})),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		cfg := v.Value()
@@ -605,10 +628,9 @@ func TestValue_ComplexTypes(t *testing.T) {
 		}
 
 		var v Value[Config]
-		err := v.onRefresh(
+		err := refreshValue(&v,
 			flatten.NewPropertiesStorage(flatten.NewProperties(nil)),
 			conf.BindParam{Key: "key"},
-			true,
 		)
 		assert.That(t, err).Nil()
 		cfg := v.Value()

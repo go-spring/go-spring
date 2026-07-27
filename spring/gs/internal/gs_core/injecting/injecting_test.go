@@ -994,7 +994,7 @@ func TestDyncValue(t *testing.T) {
 		beans := []*gs_bean.BeanDefinition{b1, b2}
 		err := r.Refresh(extractBeans(beans))
 		assert.That(t, err).Nil()
-		assert.That(t, r.p).Nil()
+		assert.That(t, r.props).Nil()
 		//assert.That(t, r.beansByName).Nil()
 		//assert.That(t, r.beansByType).Nil()
 
@@ -1023,7 +1023,7 @@ func TestDyncValue(t *testing.T) {
 		}
 		err := r.Refresh(extractBeans(beans))
 		assert.That(t, err).Nil()
-		assert.That(t, r.p).NotNil()
+		assert.That(t, r.props).NotNil()
 		//assert.That(t, r.beansByName).Nil()
 		//assert.That(t, r.beansByType).Nil()
 	})

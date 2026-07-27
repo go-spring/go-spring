@@ -343,28 +343,28 @@ type DubboShutdown struct {
 // inherit the observability config; both roles depend on it, so its existence
 // enables the rest of the starter.
 type Instance struct {
-	ins *dubbo.Instance
-	Cfg DubboConfig
+	ins    *dubbo.Instance
+	Config DubboConfig
 }
 
 // Registries returns the global registries from Cfg.
 func (d *Instance) Registries() map[string]DubboRegistry {
-	return d.Cfg.Registries
+	return d.Config.Registries
 }
 
 // Protocols returns the global protocol listeners from Cfg.
 func (d *Instance) Protocols() map[string]DubboProtocol {
-	return d.Cfg.Protocols
+	return d.Config.Protocols
 }
 
 // Consumer returns the consumer config from Cfg.
 func (d *Instance) Consumer() DubboConsumer {
-	return d.Cfg.Consumer
+	return d.Config.Consumer
 }
 
 // Provider returns the provider config from Cfg.
 func (d *Instance) Provider() DubboProvider {
-	return d.Cfg.Provider
+	return d.Config.Provider
 }
 
 // NewServer builds a *server.Server from the shared instance, inheriting its
@@ -379,8 +379,9 @@ func (d *Instance) NewClient(opts ...client.ClientOption) (*client.Client, error
 	return d.ins.NewClient(opts...)
 }
 
-// NewInstance builds the shared *dubbo.Instance from cfg and captures the global
-// registries and protocols.
+// NewInstance builds the shared *dubbo.Instance from cfg - mounting protocols,
+// metrics, tracing, and shutdown config - and wraps it with cfg in an Instance
+// so the server/client roles can read the bound config later.
 func NewInstance(cfg DubboConfig) (*Instance, error) {
 	app := cfg.Application
 	if app.Name == "" {
@@ -465,7 +466,7 @@ func NewInstance(cfg DubboConfig) (*Instance, error) {
 	}
 
 	// Shutdown.
-	if sd := cfg.Shutdown; sd.any() {
+	if sd := cfg.Shutdown; sd.anySet() {
 		sopts := []graceful_shutdown.Option{}
 		if sd.Timeout != "" {
 			if d, err := time.ParseDuration(sd.Timeout); err == nil && d > 0 {
@@ -502,7 +503,7 @@ func NewInstance(cfg DubboConfig) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Instance{ins: ins, Cfg: cfg}, nil
+	return &Instance{ins: ins, Config: cfg}, nil
 }
 
 // options translates DubboProtocol into dubbo-go protocol.ServerOptions.
@@ -525,8 +526,8 @@ func (pc DubboProtocol) options(id string) []protocol.ServerOption {
 	return pOpts
 }
 
-// any reports whether any shutdown field was set.
-func (sd DubboShutdown) any() bool {
+// anySet reports whether any shutdown field was set.
+func (sd DubboShutdown) anySet() bool {
 	return sd.Timeout != "" || sd.StepTimeout != "" ||
 		sd.ConsumerUpdateWaitTime != "" || sd.OfflineRequestWindowTimeout != "" ||
 		sd.RejectHandler != "" || !sd.InternalSignal

@@ -51,30 +51,28 @@ const (
 // It handles bean creation, dependency injection, lifecycle management,
 // dynamic property updates, and destroy callbacks.
 type Injecting struct {
-	// Dynamic properties provider
-	p *gs_dync.Properties
-	// Cleanup functions in reverse order
-	destroyers []func()
+	props      *gs_dync.Properties // dynamic property provider
+	destroyers []func()            // destroy callbacks, in reverse dependency order
 }
 
 // New creates a new Injecting instance.
 func New(p flatten.Storage) *Injecting {
 	return &Injecting{
-		p: gs_dync.New(p),
+		props: gs_dync.New(p),
 	}
 }
 
 // DynamicObjectsCount returns the number of objects that can be dynamically refreshed.
 func (c *Injecting) DynamicObjectsCount() int {
-	if c.p == nil {
+	if c.props == nil {
 		return 0
 	}
-	return c.p.ObjectsCount()
+	return c.props.ObjectsCount()
 }
 
 // RefreshProperties updates the dynamic properties in the container.
 func (c *Injecting) RefreshProperties(p flatten.Storage) error {
-	if err := c.p.Refresh(p); err != nil {
+	if err := c.props.Refresh(p); err != nil {
 		return errutil.Explain(err, "refresh dynamic properties failed")
 	}
 	return nil
@@ -83,7 +81,7 @@ func (c *Injecting) RefreshProperties(p flatten.Storage) error {
 // Refresh wires all provided beans and prepares them for use.
 // It performs the following operations:
 //
-//  1. Builds indexes for bean lookup by name and type (by name and by type).
+//  1. Builds indexes for bean lookup by name and type.
 //  2. Wires all root beans (entry points of the dependency graph), recursively wiring dependencies.
 //  3. Handles fields tagged with ',lazy' for deferred injection.
 //     Note: lazy wiring only applies to explicitly marked fields and does not
@@ -92,18 +90,17 @@ func (c *Injecting) RefreshProperties(p flatten.Storage) error {
 //  5. Cleans up metadata.
 //
 // Behavior is influenced by properties:
-// - spring.allow-circular-references: whether lazy circular references are allowed.
 // - spring.force-autowire-is-nullable: whether missing dependencies are treated as nullable.
 func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) {
 	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "injecting phase: wiring %d root beans, %d total beans", len(roots), len(beans))
 
 	var forceAutowireIsNullable bool
 	{
-		s, _ := c.p.Data().Value("spring.force-autowire-is-nullable")
+		s, _ := c.props.Data().Value("spring.force-autowire-is-nullable")
 		forceAutowireIsNullable, _ = strconv.ParseBool(s)
 	}
 
-	// Index beans by name and type for lookup
+	// Step 1: Build bean indexes for lookup by name and type.
 	beansByName := make(map[string][]*gs_bean.BeanDefinition)
 	beansByType := make(map[reflect.Type][]*gs_bean.BeanDefinition)
 	for _, b := range beans {
@@ -117,8 +114,7 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 
 	stack := NewStack()
 	defer func() {
-		// If an error occurred, or there are unresolved beans in the stack,
-		// enrich the error message with the dependency path for easier debugging.
+		// If wiring failed or beans remain on the stack, log the error for debugging.
 		if err != nil || len(stack.beanStack) > 0 {
 			log.Errorf(context.Background(), gs_bean.TagBeanLifecycle, "%s", err)
 		}
@@ -126,13 +122,13 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 
 	r := &Injector{
 		state:                   RefreshDefault,
-		p:                       c.p,
+		props:                   c.props,
 		beansByName:             beansByName,
 		beansByType:             beansByType,
 		forceAutowireIsNullable: forceAutowireIsNullable,
 	}
 
-	// Step 1: Wire all root beans.
+	// Step 2: Wire all root beans.
 	r.state = Refreshing
 	for _, b := range roots {
 		if err = r.wireBean(b, stack); err != nil {
@@ -141,23 +137,23 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 	}
 	r.state = Refreshed
 
-	// Step 2: Handle lazy fields caused by circular dependencies.
+	// Step 3: Wire lazy-injected fields deferred during step 2.
 	for _, f := range stack.lazyFields {
 		tag := strings.TrimSuffix(f.tag, ",lazy")
-		if err = r.autowire(f.v, tag, stack); err != nil {
-			return gs.WrapInjectErr(f.b.String(), err)
+		if err = r.autowire(f.value, tag, stack); err != nil {
+			return gs.WrapInjectErr(f.bean.String(), err)
 		}
 	}
 
-	// Step 3: Collect destroyer callbacks in dependency-safe order.
+	// Step 4: Collect destroyer callbacks in dependency-safe order.
 	c.destroyers, err = stack.getSortedDestroyers()
 	if err != nil {
 		return err
 	}
 
-	// Step 4: Clean up metadata.
-	if c.p.ObjectsCount() == 0 {
-		c.p = nil
+	// Step 5: Clean up metadata.
+	if c.props.ObjectsCount() == 0 {
+		c.props = nil
 	}
 	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "injecting phase complete: %d beans wired, %d destroyers, %d lazy fields", len(stack.beanDepMap), len(c.destroyers), len(stack.lazyFields))
 	return nil
@@ -184,7 +180,7 @@ func (c *Injecting) Close() {
 // - Respecting forceAutowireIsNullable flag to treat missing dependencies as optional.
 type Injector struct {
 	state                   refreshState                               // Current wiring state
-	p                       *gs_dync.Properties                        // Property resolver
+	props                   *gs_dync.Properties                        // Property resolver
 	beansByName             map[string][]*gs_bean.BeanDefinition       // Beans indexed by name
 	beansByType             map[reflect.Type][]*gs_bean.BeanDefinition // Beans indexed by type
 	forceAutowireIsNullable bool                                       // Treat missing references as nullable
@@ -345,26 +341,26 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 			}
 
 			// Find beans with the specified name
-			var founds []int
+			var matched []int
 			for i, b := range beans {
 				if item.beanName == b.GetName() {
-					founds = append(founds, i)
+					matched = append(matched, i)
 				}
 			}
 
 			// Error if there are multiple beans with the same name
-			if len(founds) > 1 {
+			if len(matched) > 1 {
 				var names []string
-				for _, i := range founds {
+				for _, i := range matched {
 					names = append(names, beans[i].String())
 				}
 				err := errutil.Explain(nil, "found %d beans for tag %q and type %q, [%s]",
-					len(founds), item, t, strings.Join(names, ", "))
+					len(matched), item, t, strings.Join(names, ", "))
 				return nil, err
 			}
 
 			// Error if no matching bean is found (unless the tag is nullable)
-			if len(founds) == 0 {
+			if len(matched) == 0 {
 				if item.nullable {
 					continue
 				}
@@ -373,9 +369,9 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 
 			// Classify beans as before or after the '*'
 			if foundAny {
-				afterAny = append(afterAny, founds[0])
+				afterAny = append(afterAny, matched[0])
 			} else {
-				beforeAny = append(beforeAny, founds[0])
+				beforeAny = append(beforeAny, matched[0])
 			}
 		}
 
@@ -453,7 +449,7 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 // - Populates slices/maps with wired bean values, sorting slices by bean name.
 func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 	// Resolve placeholder expressions (e.g., ${...}) from configuration
-	str, err := conf.Resolve(c.p.Data(), str)
+	str, err := conf.Resolve(c.props.Data(), str)
 	if err != nil {
 		return err
 	}
@@ -514,7 +510,7 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 					ret.SetMapIndex(reflect.ValueOf(b.GetName()), b.GetValue())
 				}
 				v.Set(ret)
-			default: // for linter
+			default: // unreachable: only Slice and Map reach this block
 			}
 			return nil
 		}
@@ -727,7 +723,7 @@ func (c *Injector) wireStruct(b *gs_bean.BeanDefinition, v reflect.Value, t refl
 		if ok {
 			// Handle lazy-injected fields
 			if strings.HasSuffix(tag, ",lazy") {
-				f := LazyField{b: b, v: fv, path: fieldPath, tag: tag}
+				f := LazyField{bean: b, value: fv, path: fieldPath, tag: tag}
 				stack.lazyFields = append(stack.lazyFields, f)
 			} else {
 				if err := c.autowire(fv, tag, stack); err != nil {
@@ -754,7 +750,7 @@ func (c *Injector) wireStruct(b *gs_bean.BeanDefinition, v reflect.Value, t refl
 				}
 			} else {
 				// Refresh the field value from configuration
-				if err := c.p.RefreshField(fv.Addr(), subParam); err != nil {
+				if err := c.props.RefreshField(fv.Addr(), subParam); err != nil {
 					return gs.WrapInjectErr(b.String(), err)
 				}
 			}
@@ -794,10 +790,10 @@ func (d *beanDep) dependOn(b *gs_bean.BeanDefinition) {
 
 // LazyField represents a field in a struct that should be injected lazily.
 type LazyField struct {
-	b    *gs_bean.BeanDefinition // The bean that owns this field
-	v    reflect.Value           // The field value that will be injected later
-	path string                  // Hierarchical path of the field
-	tag  string                  // Original tag (e.g. "autowire") for this field
+	bean  *gs_bean.BeanDefinition // The bean that owns this field
+	value reflect.Value           // The field value that will be injected later
+	path  string                  // Hierarchical path of the field
+	tag   string                  // Original tag (e.g. "autowire") for this field
 }
 
 // Stack holds per-refresh state used while wiring beans.
@@ -852,8 +848,8 @@ func (s *Stack) popBean() {
 // getBeforeDeps returns beanDeps that the given beanDep depends on.
 // These must appear BEFORE it in topological sort order (creation order).
 // Inversion happens later when we iterate from Back() for destruction.
-func getBeforeDeps(beanDeps *list.List, i any) *list.List {
-	d := i.(*beanDep)
+func getBeforeDeps(beanDeps *list.List, elem any) *list.List {
+	d := elem.(*beanDep)
 	result := list.New()
 	for e := beanDeps.Front(); e != nil; e = e.Next() {
 		c := e.Value.(*beanDep)
@@ -919,12 +915,12 @@ func NewArgContext(c *Injector, stack *Stack) *ArgContext {
 
 // Has checks whether a configuration key is present.
 func (a *ArgContext) Has(key string) bool {
-	return a.c.p.Data().Exists(key)
+	return a.c.props.Data().Exists(key)
 }
 
 // Prop retrieves a property value, with optional default.
 func (a *ArgContext) Prop(key string) (string, bool) {
-	return a.c.p.Data().Value(key)
+	return a.c.props.Data().Value(key)
 }
 
 // Find retrieves beans matching the given selector.
@@ -945,7 +941,7 @@ func (a *ArgContext) Check(c gs.Condition) (bool, error) {
 // Bind binds configuration data into the provided reflect.Value
 // based on the given struct tag.
 func (a *ArgContext) Bind(v reflect.Value, tag string) error {
-	return conf.Bind(a.c.p.Data(), v, tag)
+	return conf.Bind(a.c.props.Data(), v, tag)
 }
 
 // Wire performs dependency injection on the given reflect.Value

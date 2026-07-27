@@ -19,7 +19,6 @@ package StarterDubbo
 import (
 	"sync/atomic"
 	"testing"
-	"time"
 	"unsafe"
 
 	"dubbo.apache.org/dubbo-go/v3/config_center"
@@ -270,16 +269,25 @@ func TestDyncPoller_AllDynamicFields(t *testing.T) {
 	}
 }
 
-func TestDyncPoller_StartAndStop(t *testing.T) {
+func TestDyncPoller_Init(t *testing.T) {
+	dc := mapconfig.Singleton()
+	dc.RefreshOverrideRules(nil)
 	p := newTestPoller()
+
+	setDyncConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", Timeout: "3000"},
+		},
+	})
 
 	if err := p.Init(); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(50 * time.Millisecond)
 
-	if err := p.Close(); err != nil {
-		t.Fatal(err)
+	// Init must push the initial rules even though OnChanged does not fire on
+	// the init bind (RefreshField runs onCommit, not onFinish).
+	if raw := getRule(t, dc, "greet.GreetService"); raw == "" {
+		t.Fatal("expected initial override push on Init")
 	}
 }
 

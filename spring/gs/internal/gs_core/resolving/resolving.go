@@ -68,9 +68,9 @@ func (c *Resolving) Beans() []*gs_bean.BeanDefinition {
 }
 
 // Provide registers a new bean definition in the container.
-// - objOrCtor can be an existing instance or a constructor function.
-// - Panics if the container is already Refreshing or Refreshed.
-// - Returns the BeanDefinition with caller information populated.
+// objOrCtor may be an existing instance or a constructor function. It panics if
+// the container is already Refreshing or Refreshed. The returned BeanDefinition
+// has caller information populated.
 func (c *Resolving) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefinition {
 	if c.state >= Refreshing {
 		panic("container is already refreshing or refreshed")
@@ -126,7 +126,7 @@ func (c *Resolving) Refresh(p flatten.Storage) error {
 // applyModules iterates over all globally registered modules and executes
 // those without a condition or whose conditions match the given context.
 func (c *Resolving) applyModules(p flatten.Storage) error {
-	ctx := &ConditionContext{p: p, c: c}
+	ctx := &ConditionContext{props: p, r: c}
 	for _, m := range gs_init.Modules() {
 		if m.Condition != nil {
 			if ok, err := m.Condition.Matches(ctx); err != nil {
@@ -176,28 +176,29 @@ func (c *Resolving) scanConfiguration(bd *gs_bean.BeanDefinition) ([]*gs_bean.Be
 	)
 
 	param := bd.GetConfiguration()
-	ss := param.Includes
-	if len(ss) == 0 {
-		ss = []string{"New.*"}
+
+	patterns := param.Includes
+	if len(patterns) == 0 {
+		patterns = []string{"New.*"}
 	}
-	for _, s := range ss {
-		p, err := regexp.Compile(s)
+	for _, s := range patterns {
+		rx, err := regexp.Compile(s)
 		if err != nil {
 			return nil, errutil.Explain(err, "invalid regexp '%s'", s)
 		}
-		includes = append(includes, p)
+		includes = append(includes, rx)
 	}
 
-	ss = param.Excludes
-	for _, s := range ss {
-		p, err := regexp.Compile(s)
+	patterns = param.Excludes
+	for _, s := range patterns {
+		rx, err := regexp.Compile(s)
 		if err != nil {
 			return nil, errutil.Explain(err, "invalid regexp '%s'", s)
 		}
-		excludes = append(excludes, p)
+		excludes = append(excludes, rx)
 	}
 
-	var ret []*gs_bean.BeanDefinition
+	var children []*gs_bean.BeanDefinition
 	n := bd.GetType().NumMethod()
 	for i := range n {
 		m := bd.GetType().Method(i)
@@ -224,21 +225,21 @@ func (c *Resolving) scanConfiguration(bd *gs_bean.BeanDefinition) ([]*gs_bean.Be
 				Condition(gs_cond.OnBeanID(bd.BeanID()))
 			file, line, _ := funcutil.FileLine(m.Func.Interface())
 			b.SetFileLine(file, line)
-			ret = append(ret, b)
+			children = append(children, b)
 			log.Tracef(context.Background(), gs_bean.TagBeanLifecycle, "config method registered: %s -> %s", m.Name, b)
 			break
 		}
 	}
-	return ret, nil
+	return children, nil
 }
 
 // isBeanMatched checks whether a bean matches the given type and name selector.
-func isBeanMatched(t reflect.Type, s string, b *gs_bean.BeanDefinition) bool {
-	if s != "" && s != b.GetName() {
+func isBeanMatched(beanType reflect.Type, name string, b *gs_bean.BeanDefinition) bool {
+	if name != "" && name != b.GetName() {
 		return false
 	}
-	if t != nil && t != b.GetType() {
-		if !slices.Contains(b.GetExports(), t) {
+	if beanType != nil && beanType != b.GetType() {
+		if !slices.Contains(b.GetExports(), beanType) {
 			return false
 		}
 	}
@@ -249,7 +250,7 @@ func isBeanMatched(t reflect.Type, s string, b *gs_bean.BeanDefinition) bool {
 // Each bean's status is updated: StatusResolved if all conditions pass,
 // or StatusDeleted if any condition fails.
 func (c *Resolving) resolveBeans(p flatten.Storage) error {
-	ctx := &ConditionContext{p: p, c: c}
+	ctx := &ConditionContext{props: p, r: c}
 	for _, b := range c.beans {
 		if err := ctx.resolveBean(b); err != nil {
 			return errutil.Explain(err, "failed to resolve bean %s", b)
@@ -260,8 +261,8 @@ func (c *Resolving) resolveBeans(p flatten.Storage) error {
 
 // ConditionContext represents the context for evaluating bean conditions.
 type ConditionContext struct {
-	c *Resolving
-	p flatten.Storage
+	r     *Resolving
+	props flatten.Storage
 }
 
 // resolveBean evaluates all conditions of the given bean within this context.
@@ -292,13 +293,13 @@ func (c *ConditionContext) resolveBean(b *gs_bean.BeanDefinition) error {
 
 // Has returns true if the given configuration key exists in the storage.
 func (c *ConditionContext) Has(key string) bool {
-	return c.p.Exists(key)
+	return c.props.Exists(key)
 }
 
 // Prop returns the string value of the given configuration key.
 // Returns (value, true) if the key exists, ("", false) otherwise.
 func (c *ConditionContext) Prop(key string) (string, bool) {
-	return c.p.Value(key)
+	return c.props.Value(key)
 }
 
 // Find searches for all active beans matching the given BeanID (type and/or name).
@@ -307,7 +308,7 @@ func (c *ConditionContext) Prop(key string) (string, bool) {
 // Returns a slice of ConditionBean and an error if any resolution fails.
 func (c *ConditionContext) Find(beanID gs.BeanID) ([]gs.ConditionBean, error) {
 	var found []gs.ConditionBean
-	for _, b := range c.c.beans {
+	for _, b := range c.r.beans {
 		if b.GetStatus() == gs_bean.StatusResolving || b.GetStatus() == gs_bean.StatusDeleted {
 			continue
 		}

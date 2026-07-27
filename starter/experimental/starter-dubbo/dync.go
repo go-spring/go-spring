@@ -20,75 +20,53 @@ import (
 	"maps"
 	"strconv"
 	"sync"
-	"time"
 
 	"go-spring.org/spring/gs"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
-const pollInterval = 5 * time.Second
-
 func init() {
-	gs.Provide(newDyncPoller, gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}")))
+	gs.Provide(newDyncPoller, gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}"))).InitMethod("Init")
 }
 
 // dyncPoller watches ${spring.dubbo.consumer} (the entire consumer node:
 // consumer-level defaults + per-reference overrides + per-method tuning) via
-// gs.Dync. When the config changes (hot-reload), the poller diffs against the
-// last snapshot and pushes the dynamically-applicable fields into the in-memory
-// config center as flat dubbo URL params.
+// gs.Dync. On each hot-reload (delivered as a Dync change callback), it diffs
+// against the last snapshot and pushes the dynamically-applicable fields into
+// the in-memory config center as flat dubbo URL params.
 //
 // Dynamic fields are those dubbo-go reads from URL params at call time:
 // timeout, retries, loadbalance, cluster, group, version, serialization,
 // sticky, force.tag, weight, and per-method tps/execute tuning.
 // Filter is NOT dynamic — it is frozen into the invoker chain at Refer time.
 type dyncPoller struct {
-	dc      *mapconfig.MapDynamicConfiguration
-	appName string
+	dynCfg  *mapconfig.MapDynamicConfiguration // in-memory config center overrides are pushed into
+	appName string                             // application name, used as the app-level override key
 
 	// Consumer is the entire consumer node under ${spring.dubbo.consumer},
 	// hot-reloaded by go-spring on RefreshProperties.
 	Consumer gs.Dync[DubboConsumer] `value:"${spring.dubbo.consumer}"`
 
-	mu   sync.Mutex
-	last map[string]map[string]string
-	done chan struct{}
+	mu   sync.Mutex                   // guards last
+	last map[string]map[string]string // last pushed override snapshot, for change detection
 }
 
 // newDyncPoller creates the poller bean.
 func newDyncPoller(app DubboApplication) *dyncPoller {
 	return &dyncPoller{
-		dc:      mapconfig.Singleton(),
+		dynCfg:  mapconfig.Singleton(),
 		appName: app.Name,
 		last:    make(map[string]map[string]string),
-		done:    make(chan struct{}),
 	}
 }
 
-// Init starts the background polling goroutine.
+// Init registers a change callback on the consumer Dync and pushes the current
+// override rules once. Subsequent hot-reloads fire the callback, which re-runs
+// poll; poll's internal diff skips no-op refreshes.
 func (p *dyncPoller) Init() error {
-	go p.loop()
+	p.Consumer.OnChanged(func(_, _ DubboConsumer) { p.poll() })
+	p.poll() // initial push: OnChanged does not fire on the init bind
 	return nil
-}
-
-// Close stops the polling goroutine.
-func (p *dyncPoller) Close() error {
-	close(p.done)
-	return nil
-}
-
-func (p *dyncPoller) loop() {
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-	p.poll()
-	for {
-		select {
-		case <-ticker.C:
-			p.poll()
-		case <-p.done:
-			return
-		}
-	}
 }
 
 func (p *dyncPoller) poll() {
@@ -107,7 +85,7 @@ func (p *dyncPoller) poll() {
 		return
 	}
 
-	p.dc.RefreshOverrideRules(rules)
+	p.dynCfg.RefreshOverrideRules(rules)
 }
 
 // consumerToOverrideRules converts a DubboConsumer into the flat

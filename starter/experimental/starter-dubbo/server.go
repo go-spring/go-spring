@@ -182,10 +182,10 @@ func parseDuration(s string) (time.Duration, error) {
 
 // SimpleDubboServer adapts a Dubbo-go server.Server to the Go-Spring server lifecycle.
 type SimpleDubboServer struct {
-	d    *Instance
-	Regs []ServiceRegister `autowire:"?"`
-	svr  *server.Server
-	done chan struct{}
+	d    *Instance         // shared dubbo instance facade
+	Regs []ServiceRegister `autowire:"?"` // service registrations collected via DI
+	svr  *server.Server    // the assembled dubbo server, set in Run
+	done chan struct{}     // closed in Stop to signal Run to return
 }
 
 // NewSimpleDubboServer creates a SimpleDubboServer from the shared *Instance's
