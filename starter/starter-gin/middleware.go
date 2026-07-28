@@ -20,7 +20,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
@@ -31,7 +30,7 @@ import (
 )
 
 // accessLogTag categorizes the structured access records emitted by the
-// starter's AccessLog middleware (registered as the "_app_gin_access" tag).
+// Observe middleware (registered as the "_app_gin_access" tag).
 var accessLogTag = log.RegisterAppTag("gin", "access")
 
 // requestIDCtxKey is the context key under which the RequestID middleware
@@ -56,42 +55,44 @@ func RequestIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-// applyMiddlewares installs the enabled built-in middlewares onto the engine in
-// a fixed, safe order, all before the application's RouterRegister runs:
+// applyMiddlewares installs the built-in middlewares onto the engine in a fixed,
+// safe order, all before the application's RouterRegister runs:
 //
-//	Recovery -> RequestID -> Tracing -> Metrics -> AccessLog -> SecureHeaders -> CORS -> Gzip -> BodyLimit
+//	Observe -> RequestID -> SecureHeaders -> CORS -> Gzip -> BodyLimit
 //
-// Recovery is outermost so it catches panics from every later layer; RequestID
-// runs before AccessLog so each access record carries the request id; Tracing
-// wraps Metrics and AccessLog so every span captures timing and attributes from
-// both; AccessLog wraps the policy middlewares so short-circuit responses (413,
-// 204, 403) are still logged. BodyLimit sits inside the chain so an over-limit
-// 413 is logged and recovered like any other response.
+// Observe (outermost) bundles Recovery + Tracing + Metrics + AccessLog into one
+// per-request lifecycle so a single deferred finalize owns every signal's
+// end-of-request work - including on a handler panic, where the old
+// separate-middlewares design leaked spans and in-flight gauges. These four are
+// mandatory and always on for the built-in gin server. RequestID runs inside
+// Observe so each access record carries the request id and stays within the
+// recovered span. The policy middlewares (SecureHeaders/CORS/Gzip/BodyLimit) sit
+// inside the chain so short-circuit responses (413, 204, 403) are still
+// observed; BodyLimit is innermost so an over-limit 413 is handled like any
+// other response.
 func applyMiddlewares(e *gin.Engine, cfg Config) error {
 	mw := cfg.Middleware
 
-	if mw.Recovery.Enabled {
-		e.Use(gin.Recovery())
+	// Observe is outermost: it recovers panics, starts the OTel server span,
+	// records HTTP metrics, and emits the access log. Always on - no toggle.
+	// The health endpoint path is folded into the access-log skip list so
+	// liveness/readiness probes don't flood the log.
+	accessCfg := mw.AccessLog
+	if cfg.Health.Enabled && cfg.Health.Path != "" {
+		accessCfg.SkipPaths = append(append([]string{}, accessCfg.SkipPaths...), cfg.Health.Path)
 	}
+	e.Use(observe(accessCfg))
+
 	if mw.RequestID.Enabled {
 		header := mw.RequestID.Header
 		if header == "" {
 			header = "X-Request-Id"
 		}
 		e.Use(requestid.New(requestid.WithCustomHeaderStrKey(requestid.HeaderStrKey(header))))
-		e.Use(propagateRequestID)
-	}
-	if mw.Tracing.Enabled {
-		e.Use(tracingMiddleware())
-	}
-	if mw.Metrics.Enabled {
-		e.Use(metricsMiddleware())
-	}
-	if mw.AccessLog.Enabled {
-		e.Use(accessLog(accessLogSkipSet(cfg)))
+		e.Use(propagateRequestID())
 	}
 	if mw.SecureHeaders.Enabled {
-		e.Use(secureHeaders(mw.SecureHeaders, cfg.TLS.Enabled))
+		e.Use(secureHeaders(mw.SecureHeaders))
 	}
 	if mw.CORS.Enabled {
 		h, err := corsMiddleware(mw.CORS)
@@ -109,89 +110,39 @@ func applyMiddlewares(e *gin.Engine, cfg Config) error {
 	return nil
 }
 
-// accessLogSkipSet builds the set of paths the access log should not record. It
-// merges the operator-configured skip list with the health endpoint path, so
-// liveness/readiness probes never flood the log.
-func accessLogSkipSet(cfg Config) map[string]struct{} {
-	skip := make(map[string]struct{}, len(cfg.Middleware.AccessLog.SkipPaths)+1)
-	for _, p := range cfg.Middleware.AccessLog.SkipPaths {
-		skip[p] = struct{}{}
-	}
-	if cfg.Health.Enabled && cfg.Health.Path != "" {
-		skip[cfg.Health.Path] = struct{}{}
-	}
-	return skip
-}
-
 // propagateRequestID copies the id set by gin-contrib/requestid onto the request
 // context so downstream handlers and the project log package can read it.
-func propagateRequestID(c *gin.Context) {
-	if rid := requestid.Get(c); rid != "" {
-		ctx := context.WithValue(c.Request.Context(), requestIDCtxKey{}, rid)
-		c.Request = c.Request.WithContext(ctx)
-	}
-	c.Next()
-}
-
-// accessLog emits one structured record per request via the project log package.
-// The level follows the response status: Warn for 4xx, Error for 5xx, Info
-// otherwise, so failures stand out without filtering.
-func accessLog(skip map[string]struct{}) gin.HandlerFunc {
+func propagateRequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
-		c.Next()
-
-		path := c.Request.URL.Path
-		if _, ok := skip[path]; ok {
-			return
-		}
-
-		fields := []log.Field{
-			log.String("method", c.Request.Method),
-			log.String("path", path),
-			log.Int("status", c.Writer.Status()),
-			log.Int("size", c.Writer.Size()),
-			log.String("ip", c.ClientIP()),
-			log.String("latency", time.Since(start).String()),
-		}
 		if rid := requestid.Get(c); rid != "" {
-			fields = append(fields, log.String("request_id", rid))
-		}
-
-		ctx := c.Request.Context()
-		switch status := c.Writer.Status(); {
-		case status >= http.StatusInternalServerError:
-			log.Error(ctx, accessLogTag, fields...)
-		case status >= http.StatusBadRequest:
-			log.Warn(ctx, accessLogTag, fields...)
-		default:
-			log.Info(ctx, accessLogTag, fields...)
+			ctx := context.WithValue(c.Request.Context(), requestIDCtxKey{}, rid)
+			c.Request = c.Request.WithContext(ctx)
 		}
 	}
 }
 
-// bodyLimit caps the request body size. It replaces the previous
-// http.MaxBytesHandler wrapper that sat outside the gin chain and let an
-// over-limit 413 bypass Recovery/AccessLog; in-chain, the 413 is logged and
-// recovered like any other response.
+// bodyLimit caps the request body size. It sits inside the middleware chain so
+// an over-limit 413 is observed - logged, recovered, and metered - like any
+// other response, rather than short-circuiting around Observe.
 func bodyLimit(max int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, max)
-		c.Next()
 	}
 }
 
 // secureHeaders sets a small, safe set of response headers. HSTS is emitted
-// only when TLS is enabled, the operator explicitly opts in, and a max-age is
-// configured.
-func secureHeaders(cfg SecureHeadersConfig, tlsEnabled bool) gin.HandlerFunc {
+// only on TLS connections, when the operator explicitly opts in and a max-age
+// is configured. Checking c.Request.TLS per request is equivalent to gating on
+// the server's tls.enabled flag, since a single http.Server is either all-TLS
+// or all-plain - so the flag need not be threaded in as a separate argument.
+func secureHeaders(cfg SecureHeadersConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h := c.Writer.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
 
-		if cfg.HSTS.Enabled && tlsEnabled && cfg.HSTS.MaxAge > 0 {
+		if cfg.HSTS.Enabled && c.Request.TLS != nil && cfg.HSTS.MaxAge > 0 {
 			v := "max-age=" + strconv.FormatInt(int64(cfg.HSTS.MaxAge.Seconds()), 10)
 			if cfg.HSTS.IncludeSubDomains {
 				v += "; includeSubDomains"
@@ -201,7 +152,6 @@ func secureHeaders(cfg SecureHeadersConfig, tlsEnabled bool) gin.HandlerFunc {
 			}
 			h.Set("Strict-Transport-Security", v)
 		}
-		c.Next()
 	}
 }
 

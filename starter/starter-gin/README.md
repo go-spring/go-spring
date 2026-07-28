@@ -49,13 +49,13 @@ spring.gin.server.tls.enabled=false
 spring.gin.server.tls.cert-file=
 spring.gin.server.tls.key-file=
 
-# Built-in middlewares. Recovery, RequestID and AccessLog are on by default;
+# Built-in middlewares. Recovery, Tracing, Metrics and AccessLog are bundled
+# into the always-on Observe middleware (no toggle); RequestID is on by default;
 # CORS, Gzip and SecureHeaders are off until opted in (see Built-in Middlewares).
-spring.gin.server.middleware.recovery.enabled=true
 spring.gin.server.middleware.requestId.enabled=true
 spring.gin.server.middleware.requestId.header=X-Request-Id
-spring.gin.server.middleware.accessLog.enabled=true
 spring.gin.server.middleware.accessLog.skipPaths=
+spring.gin.server.middleware.accessLog.payload.enabled=true
 spring.gin.server.middleware.cors.enabled=false
 spring.gin.server.middleware.cors.allowedOrigins=
 spring.gin.server.middleware.gzip.enabled=false
@@ -86,9 +86,9 @@ gs.Provide(func(c *Controller) StarterGin.RouterRegister {
 
 The [example](example/example.go) demonstrates three features exercised end-to-end via real HTTP:
 
-* **Middleware** — the starter installs Recovery, RequestID and AccessLog by default (plus opt-in
-  CORS/Gzip/SecureHeaders); the register adds a custom middleware that
-  sets an `X-App: go-spring` response header on every request.
+* **Middleware** — the starter installs Recovery, Tracing, Metrics and AccessLog by default (bundled
+  into one Observe middleware, plus RequestID and opt-in CORS/Gzip/SecureHeaders); the register adds a
+  custom middleware that sets an `X-App: go-spring` response header on every request.
 * **Path parameter + JSON** — `GET /echo/:name` returns `{"message":"Hello, <name>"}` using
   `ctx.Param` and `ctx.JSON`.
 * **Query parameter** — `GET /greet?name=...` reads `ctx.Query("name")` and returns
@@ -97,28 +97,28 @@ The [example](example/example.go) demonstrates three features exercised end-to-e
 ## Built-in Middlewares
 
 The starter installs a fixed, ordered set of cross-cutting middlewares on the `*gin.Engine` **before**
-the application's `RouterRegister` runs, so they wrap every route. Each is independently toggleable via
-`spring.gin.server.middleware.*`.
+the application's `RouterRegister` runs, so they wrap every route. Recovery, Tracing, Metrics and
+AccessLog are mandatory and always on (bundled into one `Observe` middleware - no toggle); RequestID is
+on by default; the rest are off until opted in via `spring.gin.server.middleware.*`.
 
 | Middleware | Default | Source | Notes |
 |---|---|---|---|
-| `recovery` | on | `gin.Recovery()` | Catches request-goroutine panics; turning it off risks a process crash. |
+| `observe` | on (always) | self | Bundles Recovery + Tracing + Metrics + AccessLog into one per-request lifecycle: a single deferred finalize ends the span, records metrics, and emits the access log even on a handler panic. Tracing/Metrics ride the OTel globals (no-op without `starter-otel`); the access log is Warn on 4xx, Error on 5xx, auto-skips the health path, carries `request_id`/`trace_id`/`span_id`, and (via `accessLog.payload.enabled`, default on) captures request body+query+headers and response body, each capped at 512 KiB with binary content masked. SSE responses (`text/event-stream`) are logged per flushed event in real time, not buffered to stream close. |
 | `requestId` | on | `gin-contrib/requestid` | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
-| `accessLog` | on | self (project `log` pkg) | One structured record per request; Warn on 4xx, Error on 5xx; the health path is auto-skipped. |
 | `cors` | off | `gin-contrib/cors` | No safe universal default - supply `allowedOrigins` (or `allowAllOrigins` for dev). Misconfig fails at startup. |
 | `gzip` | off | `gin-contrib/gzip` | `level` (1-9, -1=default), `minLength` (0=compress all). |
 | `secureHeaders` | off | self | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`; HSTS only with TLS. |
 | body limit | on when `maxBodySize>0` | self | In-chain; an over-limit 413 is logged like any response. |
 
-Order (outermost first): `Recovery -> RequestID -> AccessLog -> SecureHeaders -> CORS -> Gzip -> BodyLimit`.
-Recovery is outermost so it catches panics from every later layer; RequestID runs before AccessLog so each
-access record carries the id; AccessLog wraps the policy middlewares so short-circuit responses (413, 204,
-403) are still logged.
+Order (outermost first): `Observe -> RequestID -> SecureHeaders -> CORS -> Gzip -> BodyLimit`.
+Observe is outermost so its single defer recovers panics from every later layer and finalizes the span,
+metrics, and access log together; RequestID runs inside Observe so each access record carries the id and
+stays within the recovered span; the policy middlewares sit inside the chain so short-circuit responses
+(413, 204, 403) are still observed.
 
 > **No request-timeout middleware by design.** Go cannot preempt a running handler without the
 > goroutine-buffer hack (which breaks streaming/SSE), so the hard bound stays the `http.Server`
-> read/write timeouts from `SimpleHttpServerConfig`. Metrics and tracing are not built in either - use
-> `starter-actuator` and `starter-otel` (otelgin) for those.
+> read/write timeouts from `SimpleHttpServerConfig`.
 
 To stamp the request id onto business logs, wire the log package's context hook once:
 

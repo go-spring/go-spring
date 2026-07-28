@@ -45,7 +45,6 @@ func init() {
 			// every response so callers can identify the service.
 			e.Use(func(ctx *gin.Context) {
 				ctx.Header("X-App", "go-spring")
-				ctx.Next()
 			})
 
 			// Feature 2: path parameter + JSON response.

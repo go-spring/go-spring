@@ -42,33 +42,20 @@ type Config struct {
 	Middleware   MiddlewareConfig  `value:"${middleware}"`
 }
 
-// MiddlewareConfig groups the built-in middlewares the starter can install on
-// the *gin.Engine before the application's RouterRegister runs. Each block is
-// independently toggleable so an application can opt out of any default.
+// MiddlewareConfig groups the opt-in built-in middlewares the starter can
+// install on the *gin.Engine before the application's RouterRegister runs.
 //
-// Only Recovery, RequestID and AccessLog are on by default - the three that are
-// universally safe and expected of a production server. CORS, Gzip and
-// SecureHeaders change request/response behavior or carry security trade-offs,
-// so they stay off until an operator opts in.
-//
-// Tracing and Metrics ride the OTel globals that starter-otel installs; they
-// are on by default because the middleware is a no-op when starter-otel is not
-// imported — enabling them upfront saves a config change when adopting OTel.
+// Recovery, Tracing, Metrics and AccessLog are not listed here: they are bundled
+// into the single always-on Observe middleware (see middleware_observe.go) and
+// are mandatory for the built-in gin server - there is no toggle. RequestID is
+// on by default; CORS, Gzip and SecureHeaders change request/response behavior
+// or carry security trade-offs, so they stay off until an operator opts in.
 type MiddlewareConfig struct {
-	Recovery      RecoveryConfig      `value:"${recovery}"`
 	RequestID     RequestIDConfig     `value:"${requestId}"`
 	AccessLog     AccessLogConfig     `value:"${accessLog}"`
-	Tracing       TracingConfig       `value:"${tracing}"`
-	Metrics       MetricsConfig       `value:"${metrics}"`
 	CORS          CORSConfig          `value:"${cors}"`
 	Gzip          GzipConfig          `value:"${gzip}"`
 	SecureHeaders SecureHeadersConfig `value:"${secureHeaders}"`
-}
-
-// RecoveryConfig toggles gin.Recovery. It is on by default: an unrecovered
-// panic in a request goroutine would otherwise crash the whole process.
-type RecoveryConfig struct {
-	Enabled bool `value:"${enabled:=true}"`
 }
 
 // RequestIDConfig toggles per-request id generation and propagation. It is on
@@ -81,13 +68,22 @@ type RequestIDConfig struct {
 	Header  string `value:"${header:=X-Request-Id}"`
 }
 
-// AccessLogConfig toggles structured access logging through the project log
-// package (not gin's stdout logger). It is on by default; the configured health
-// endpoint path is auto-skipped so probes do not flood the log. Records are
+// AccessLogConfig holds options for the always-on access log emitted by the
+// Observe middleware (one structured record per request via the project log
+// package). The configured health endpoint path is auto-skipped in addition to
+// any operator-supplied skip list, so probes do not flood the log. Records are
 // emitted at Warn for 4xx and Error for 5xx so failures stand out.
 type AccessLogConfig struct {
-	Enabled   bool     `value:"${enabled:=true}"`
-	SkipPaths []string `value:"${skipPaths:=}"`
+	SkipPaths []string      `value:"${skipPaths:=}"`
+	Payload   PayloadConfig `value:"${payload}"`
+}
+
+// PayloadConfig controls request/response payload capture in the access log for
+// troubleshooting: the request body + query + headers and the response body.
+// Redaction is handled by the log layer (key-based masking); here we only cap
+// the captured size and skip binary/streaming content. On by default.
+type PayloadConfig struct {
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // CORSConfig enables gin-contrib/cors. It is off by default: cross-origin
@@ -131,21 +127,4 @@ type HSTSConfig struct {
 	MaxAge            time.Duration `value:"${maxAge:=0s}"`
 	IncludeSubDomains bool          `value:"${includeSubDomains:=false}"`
 	Preload           bool          `value:"${preload:=false}"`
-}
-
-// TracingConfig toggles the per-request tracing middleware that starts and ends
-// an OTel server span on every request through StarterOTel.StartServerSpan. It
-// is on by default: the middleware is a no-op when starter-otel is not imported,
-// so enabling it upfront means one less config to flip when adopting OTel.
-type TracingConfig struct {
-	Enabled bool `value:"${enabled:=true}"`
-}
-
-// MetricsConfig toggles the per-request HTTP metrics middleware that records
-// request count, duration, and in-flight gauge through the global MeterProvider.
-// It is on by default: the middleware is a no-op when starter-otel is not
-// imported, so enabling it upfront means one less config to flip when adopting
-// OTel.
-type MetricsConfig struct {
-	Enabled bool `value:"${enabled:=true}"`
 }

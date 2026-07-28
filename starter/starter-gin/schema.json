@@ -44,15 +44,6 @@
     "middleware": {
       "type": "object",
       "properties": {
-        "recovery": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "default": true
-            }
-          }
-        },
         "requestId": {
           "type": "object",
           "properties": {
@@ -69,34 +60,21 @@
         "accessLog": {
           "type": "object",
           "properties": {
-            "enabled": {
-              "type": "boolean",
-              "default": true
-            },
             "skipPaths": {
               "type": "array",
               "items": {
                 "type": "string"
               },
               "default": ""
-            }
-          }
-        },
-        "tracing": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "default": false
-            }
-          }
-        },
-        "metrics": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "default": false
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
             }
           }
         },
