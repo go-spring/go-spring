@@ -43,10 +43,13 @@ func init() {
 // starter creates and configures the engine and its HTTP server, while each
 // application supplies its own register bean to wire handlers.
 //
-// The starter installs its built-in cross-cutting middlewares before the
-// register runs, so they wrap every application route: Observe (Recovery +
-// Tracing + Metrics + AccessLog, always on), RequestID, and the opt-in
-// CORS/Gzip/SecureHeaders. Mount only routes and app-specific middleware here.
+// When the built-in middleware set is enabled (middleware.enabled, default
+// true), the starter installs it before the register runs so it wraps every
+// application route: Observe (Recovery + Tracing + Metrics + AccessLog),
+// RequestID, and the opt-in CORS/Gzip/SecureHeaders. When an application
+// disables the set, the register owns the entire chain - including Recovery -
+// and must install its own middleware before registering routes. Mount only
+// routes and app-specific middleware here.
 type RouterRegister func(e *gin.Engine)
 
 // SimpleGinServer adapts a Gin engine to the Go-Spring server lifecycle. It
@@ -68,8 +71,10 @@ func NewSimpleGinServer(register RouterRegister, cfg Config) (*SimpleGinServer, 
 	gin.SetMode(gin.ReleaseMode)
 	e := gin.New()
 
-	if err := applyMiddlewares(e, cfg); err != nil {
-		return nil, err
+	if cfg.Middleware.Enabled {
+		if err := applyMiddlewares(e, cfg); err != nil {
+			return nil, err
+		}
 	}
 
 	// Register the optional health endpoint before application routes so it is
@@ -92,6 +97,8 @@ func NewSimpleGinServer(register RouterRegister, cfg Config) (*SimpleGinServer, 
 			Addr:              addr,
 			Handler:           e,
 			ReadTimeout:       cfg.ReadTimeout,
+			// No separate header-timeout config: read-header time reuses
+			// readTimeout (also bounds slowloris-style slow-header attacks).
 			ReadHeaderTimeout: cfg.ReadTimeout,
 			WriteTimeout:      cfg.WriteTimeout,
 			IdleTimeout:       cfg.IdleTimeout,

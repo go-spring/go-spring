@@ -25,13 +25,8 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
-	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
-
-// accessLogTag categorizes the structured access records emitted by the
-// Observe middleware (registered as the "_app_gin_access" tag).
-var accessLogTag = log.RegisterAppTag("gin", "access")
 
 // requestIDCtxKey is the context key under which the RequestID middleware
 // stores the request id on the request context, so business code and the log
@@ -64,7 +59,8 @@ func RequestIDFromContext(ctx context.Context) string {
 // per-request lifecycle so a single deferred finalize owns every signal's
 // end-of-request work - including on a handler panic, where the old
 // separate-middlewares design leaked spans and in-flight gauges. These four are
-// mandatory and always on for the built-in gin server. RequestID runs inside
+// mandatory and always on whenever the built-in set is enabled (the default).
+// RequestID runs inside
 // Observe so each access record carries the request id and stays within the
 // recovered span. The policy middlewares (SecureHeaders/CORS/Gzip/BodyLimit) sit
 // inside the chain so short-circuit responses (413, 204, 403) are still
@@ -104,8 +100,8 @@ func applyMiddlewares(e *gin.Engine, cfg Config) error {
 	if mw.Gzip.Enabled {
 		e.Use(gzipMiddleware(mw.Gzip))
 	}
-	if cfg.MaxBodySize > 0 {
-		e.Use(bodyLimit(cfg.MaxBodySize))
+	if bl := mw.BodyLimit.MaxSize; bl > 0 {
+		e.Use(bodyLimit(bl))
 	}
 	return nil
 }

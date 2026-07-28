@@ -36,12 +36,8 @@ spring.gin.server.addr=:8001
 
 # 超时（继承自 SimpleHttpServerConfig）。
 spring.gin.server.readTimeout=5s
-spring.gin.server.headerTimeout=1s
 spring.gin.server.writeTimeout=5s
 spring.gin.server.idleTimeout=60s
-
-# 请求体大小上限（字节，0 表示不限制）。
-spring.gin.server.maxBodySize=1048576
 
 # 可选的、由 starter 提供的存活探针端点。
 spring.gin.server.health.enabled=true
@@ -52,8 +48,10 @@ spring.gin.server.tls.enabled=false
 spring.gin.server.tls.cert-file=
 spring.gin.server.tls.key-file=
 
-# 内置中间件。Recovery、Tracing、Metrics、AccessLog 合并进常开的 Observe 中间件（无开关）；
+# 内置中间件。`enabled` 总开关（默认 true）整体启停内置中间件；关闭后由注册器接管整条链
+# （含 Recovery）。开启时，Recovery、Tracing、Metrics、AccessLog 合并进常开的 Observe 中间件；
 # RequestID 默认开启；CORS、Gzip、SecureHeaders 默认关闭，按需开启（见"内置中间件"）。
+spring.gin.server.middleware.enabled=true
 spring.gin.server.middleware.requestId.enabled=true
 spring.gin.server.middleware.requestId.header=X-Request-Id
 spring.gin.server.middleware.accessLog.skipPaths=
@@ -63,6 +61,8 @@ spring.gin.server.middleware.cors.allowedOrigins=
 spring.gin.server.middleware.gzip.enabled=false
 spring.gin.server.middleware.gzip.level=5
 spring.gin.server.middleware.secureHeaders.enabled=false
+# 请求体上限 1 MiB（0 = 不限制）；超限返回 413，像普通响应一样被记录。
+spring.gin.server.middleware.bodyLimit.maxSize=1048576
 ```
 
 当 `spring.gin.server.enabled` 为 `true`（默认）且应用提供了 `RouterRegister` Bean 时，
@@ -98,7 +98,9 @@ gs.Provide(func(c *Controller) StarterGin.RouterRegister {
 ## 内置中间件
 
 starter 在应用的 `RouterRegister` 执行**之前**，按固定顺序在 `*gin.Engine` 上安装一组横切中间件，
-因此它们会包裹所有路由。Recovery、Tracing、Metrics、AccessLog 为必选且常开（合并进一个 `Observe` 中间件，无开关）；RequestID 默认开启；其余默认关闭，按需通过 `spring.gin.server.middleware.*` 开启。
+因此它们会包裹所有路由。`middleware.enabled` 总开关（默认 true）整体启停这组中间件；应用置为 `false` 时，
+starter 不安装任何内置中间件，由注册器接管整条链——含 Recovery。开启时，Recovery、Tracing、Metrics、AccessLog
+为必选且常开（合并进一个 `Observe` 中间件）；RequestID 默认开启；其余默认关闭，按需通过 `spring.gin.server.middleware.*` 开启。
 
 | 中间件 | 默认 | 来源 | 说明 |
 |---|---|---|---|
@@ -107,7 +109,7 @@ starter 在应用的 `RouterRegister` 执行**之前**，按固定顺序在 `*gi
 | `cors` | 关 | `gin-contrib/cors` | 没有安全的通用默认值，需显式配置 `allowedOrigins`（或开发期用 `allowAllOrigins`）。配置非法会在启动期失败。 |
 | `gzip` | 关 | `gin-contrib/gzip` | `level`（1-9，-1=默认）、`minLength`（0=全部压缩）。 |
 | `secureHeaders` | 关 | 自实现 | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`；HSTS 仅在启用 TLS 时生效。 |
-| 请求体限制 | `maxBodySize>0` 时开 | 自实现 | 位于链内，超限的 413 会像普通响应一样被记录。 |
+| `bodyLimit` | `maxSize>0` 时开 | 自实现 | 位于链内，超限的 413 会像普通响应一样被记录。 |
 
 顺序（最外层在前）：`Observe -> RequestID -> SecureHeaders -> CORS -> Gzip -> BodyLimit`。
 Observe 在最外层，由其单一 defer 兜住后续所有层的 panic 并统一收尾 span、指标与访问日志；RequestID 位于 Observe 内部，使每条访问日志都带上请求 id 并落在被 recover 的 span 之内；策略类中间件位于链内，使短路响应（413、204、403）也能被观测到。

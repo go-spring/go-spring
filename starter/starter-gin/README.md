@@ -33,12 +33,8 @@ spring.gin.server.addr=:8001
 
 # Timeouts (inherited from SimpleHttpServerConfig).
 spring.gin.server.readTimeout=5s
-spring.gin.server.headerTimeout=1s
 spring.gin.server.writeTimeout=5s
 spring.gin.server.idleTimeout=60s
-
-# Request-body size cap in bytes (0 = unlimited).
-spring.gin.server.maxBodySize=1048576
 
 # Optional starter-served liveness endpoint.
 spring.gin.server.health.enabled=true
@@ -49,9 +45,12 @@ spring.gin.server.tls.enabled=false
 spring.gin.server.tls.cert-file=
 spring.gin.server.tls.key-file=
 
-# Built-in middlewares. Recovery, Tracing, Metrics and AccessLog are bundled
-# into the always-on Observe middleware (no toggle); RequestID is on by default;
-# CORS, Gzip and SecureHeaders are off until opted in (see Built-in Middlewares).
+# Built-in middlewares. The `enabled` master switch (default true) turns the
+# whole built-in set on/off; when false the register owns the entire chain,
+# including Recovery. With it on, Recovery/Tracing/Metrics/AccessLog are bundled
+# into the always-on Observe middleware; RequestID is on by default; CORS, Gzip
+# and SecureHeaders are off until opted in (see Built-in Middlewares).
+spring.gin.server.middleware.enabled=true
 spring.gin.server.middleware.requestId.enabled=true
 spring.gin.server.middleware.requestId.header=X-Request-Id
 spring.gin.server.middleware.accessLog.skipPaths=
@@ -61,6 +60,8 @@ spring.gin.server.middleware.cors.allowedOrigins=
 spring.gin.server.middleware.gzip.enabled=false
 spring.gin.server.middleware.gzip.level=5
 spring.gin.server.middleware.secureHeaders.enabled=false
+# Cap request bodies at 1 MiB (0 = unlimited); over-limit -> 413, logged like any response.
+spring.gin.server.middleware.bodyLimit.maxSize=1048576
 ```
 
 The starter registers its server bean when `spring.gin.server.enabled` is `true` (default) and a
@@ -97,9 +98,11 @@ The [example](example/example.go) demonstrates three features exercised end-to-e
 ## Built-in Middlewares
 
 The starter installs a fixed, ordered set of cross-cutting middlewares on the `*gin.Engine` **before**
-the application's `RouterRegister` runs, so they wrap every route. Recovery, Tracing, Metrics and
-AccessLog are mandatory and always on (bundled into one `Observe` middleware - no toggle); RequestID is
-on by default; the rest are off until opted in via `spring.gin.server.middleware.*`.
+the application's `RouterRegister` runs, so they wrap every route. The `middleware.enabled` master
+switch (default true) turns the whole set on; when an application sets it to `false`, the starter
+installs nothing and the register owns the entire chain - including Recovery. With the set on,
+Recovery, Tracing, Metrics and AccessLog are mandatory and always on (bundled into one `Observe`
+middleware); RequestID is on by default; the rest are off until opted in via `spring.gin.server.middleware.*`.
 
 | Middleware | Default | Source | Notes |
 |---|---|---|---|
@@ -108,7 +111,7 @@ on by default; the rest are off until opted in via `spring.gin.server.middleware
 | `cors` | off | `gin-contrib/cors` | No safe universal default - supply `allowedOrigins` (or `allowAllOrigins` for dev). Misconfig fails at startup. |
 | `gzip` | off | `gin-contrib/gzip` | `level` (1-9, -1=default), `minLength` (0=compress all). |
 | `secureHeaders` | off | self | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`; HSTS only with TLS. |
-| body limit | on when `maxBodySize>0` | self | In-chain; an over-limit 413 is logged like any response. |
+| `bodyLimit` | on when `maxSize>0` | self | In-chain; an over-limit 413 is logged like any response. |
 
 Order (outermost first): `Observe -> RequestID -> SecureHeaders -> CORS -> Gzip -> BodyLimit`.
 Observe is outermost so its single defer recovers panics from every later layer and finalizes the span,

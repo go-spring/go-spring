@@ -36,26 +36,35 @@ type Config struct {
 	ReadTimeout  time.Duration     `value:"${readTimeout:=5s}"`
 	WriteTimeout time.Duration     `value:"${writeTimeout:=5s}"`
 	IdleTimeout  time.Duration     `value:"${idleTimeout:=60s}"`
-	MaxBodySize  int64             `value:"${maxBodySize:=0}"`
 	TLS          tlsconf.TLSConfig `value:"${tls}"`
 	Health       HealthConfig      `value:"${health}"`
 	Middleware   MiddlewareConfig  `value:"${middleware}"`
 }
 
-// MiddlewareConfig groups the opt-in built-in middlewares the starter can
-// install on the *gin.Engine before the application's RouterRegister runs.
+// MiddlewareConfig groups the built-in middlewares the starter can install on
+// the *gin.Engine before the application's RouterRegister runs.
 //
-// Recovery, Tracing, Metrics and AccessLog are not listed here: they are bundled
-// into the single always-on Observe middleware (see middleware_observe.go) and
-// are mandatory for the built-in gin server - there is no toggle. RequestID is
-// on by default; CORS, Gzip and SecureHeaders change request/response behavior
-// or carry security trade-offs, so they stay off until an operator opts in.
+// Enabled is the master switch (default true). When false the starter installs
+// none of its built-in middlewares and the application's RouterRegister owns the
+// whole chain - including Recovery, which is otherwise mandatory. Use it as the
+// "full control" escape hatch; to swap a single piece, prefer the per-middleware
+// toggles below rather than disabling the entire set.
+//
+// When Enabled is true, Observe bundles Recovery + Tracing + Metrics + AccessLog
+// into one always-on middleware (see observe.go) so a single deferred finalize
+// owns every signal's end-of-request work, including on a handler panic.
+// RequestID is on by default; CORS, Gzip and SecureHeaders change
+// request/response behavior or carry security trade-offs, so they stay off until
+// an operator opts in. BodyLimit is off by default and active only when
+// maxSize>0.
 type MiddlewareConfig struct {
+	Enabled       bool                `value:"${enabled:=true}"`
 	RequestID     RequestIDConfig     `value:"${requestId}"`
 	AccessLog     AccessLogConfig     `value:"${accessLog}"`
 	CORS          CORSConfig          `value:"${cors}"`
 	Gzip          GzipConfig          `value:"${gzip}"`
 	SecureHeaders SecureHeadersConfig `value:"${secureHeaders}"`
+	BodyLimit     BodyLimitConfig     `value:"${bodyLimit}"`
 }
 
 // RequestIDConfig toggles per-request id generation and propagation. It is on
@@ -127,4 +136,13 @@ type HSTSConfig struct {
 	MaxAge            time.Duration `value:"${maxAge:=0s}"`
 	IncludeSubDomains bool          `value:"${includeSubDomains:=false}"`
 	Preload           bool          `value:"${preload:=false}"`
+}
+
+// BodyLimitConfig caps the request body size via an in-chain middleware. It is
+// off by default (maxSize=0 = unlimited); when maxSize>0 an over-large body is
+// rejected with 413, observed like any other response. BodyLimit sits innermost
+// so the 413 is logged, metered and recovered together with the rest of the
+// request rather than short-circuiting around Observe.
+type BodyLimitConfig struct {
+	MaxSize int64 `value:"${maxSize:=0}"`
 }

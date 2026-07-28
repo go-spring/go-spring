@@ -68,6 +68,10 @@ const (
 // a single access record is therefore bounded to ~1 MiB.
 const payloadCaptureLimit = 512 * 1024
 
+// accessLogTag categorizes the structured access records emitted by the
+// Observe middleware (registered as the "_app_gin_access" tag).
+var accessLogTag = log.RegisterAppTag("gin", "access")
+
 // limitedBuffer is a bytes buffer that silently discards writes past max, so a
 // runaway body or response can't exhaust memory. It reports all bytes as
 // written so a TeeReader feeding it never blocks or errors.
@@ -235,7 +239,9 @@ func flattenHeaders(h http.Header) string {
 //   - Metrics: records request duration and an in-flight gauge.
 //   - AccessLog: emits one structured access record per request.
 //
-// All four are mandatory and always on - there is no toggle. They are unified
+// All four are mandatory and always on whenever the built-in middleware set is
+// enabled (the default); disabling the set (middleware.enabled=false) opts out
+// of all of them at once, leaving recovery to the application. They are unified
 // here rather than chained as separate middlewares so that one deferred
 // finalize owns every signal's end-of-request work. That fixes two problems
 // the separate-middlewares design had:
