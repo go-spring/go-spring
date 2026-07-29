@@ -1,161 +1,154 @@
-<div>
- <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" height="*" alt="logo"/>
+# Go-Spring: Make Go Service Development as Simple as Spring Boot, and Then Some
+
+<div align="center">
+ <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" alt="logo"/>
 </div>
-<br/>
 
-> Go-Spring 是一个由众多子项目组成的大型生态。建议大家为这个总览仓库点亮 ⭐，这样能够更直观地展示 Go-Spring 的整体价值。
+> **If you think this is just another Go framework, keep reading.**
+>
+> Go-Spring takes the battle-tested paradigms from two decades of Java Spring—dependency injection, auto-configuration, the Starter mechanism—and reimagines them in idiomatic Go. Spring rescued Java from EJB hell, turning heavyweight applications into composable, reusable, modular engineering. Go-Spring aims to give Go developers that same superpower.
+>
+> **But that's not the whole story.** Go-Spring is attempting something bigger: [Process as Code](MANIFESTO.md)—treating the software development process itself as an assemblable, reusable, versionable "application." Application assembly and development workflows share the same IoC philosophy; only the assembly target shifts from runtime components to development actions. It's a bold direction, and a hypothesis worth testing.
 
-> Go-Spring is a large ecosystem with many sub-projects. We recommend starring this overview repository so that the full
-> value of Go-Spring can be more clearly recognized.
+## The Ecosystem
 
-Go-Spring 是对传统 Go 项目开发痛点的一次有力回应。它借鉴了 Java 社区 Spring / Spring Boot
-的成功经验，以依赖注入和自动配置为核心基础，把“开箱即用”设为首要目标。同时，它坚持 Go
-社区简洁高效的哲学，融合了代码生成等优秀理念，在保持轻量与灵活的前提下，带来全新的开发体验。Go-Spring 不仅降低了项目搭建的复杂度，更为
-Go 应用开发提供了里程碑式的突破。
+Go-Spring is not a single repository—it's a complete R&D ecosystem composed of a **core framework, 70+ Starters, developer tooling, example applications, and project templates**. Each layer has a clear role; use what you need.
 
-Go-Spring is a bold response to the challenges of traditional Go project development. Inspired by the success of Spring
-and Spring Boot in the Java community, it builds on dependency injection and auto-configuration as its foundation, with
-“out-of-the-box” usability as a top priority. At the same time, it stays true to Go’s philosophy of simplicity and
-efficiency, incorporating ideas like code generation to deliver a fresh development experience. Go-Spring not only
-reduces project setup complexity but also represents a milestone breakthrough for Go application development.
+| Layer | Role | Key Projects |
+|---|---|---|
+| **Foundation** | Zero-dependency utilities + structured logging engine | [`stdlib`](stdlib/), [`log`](log/) |
+| **Core** | IoC container, DI, config engine, application lifecycle, capability abstractions | [`spring`](spring/) (with `cloud/`, `web/`, `data/`, `actuator/` capability families) |
+| **Integration** | 70+ pluggable Starters for third-party services and frameworks | [`starter/`](starter/) — Gin, gRPC, Redis, MySQL, Kafka, Dubbo, Kitex… |
+| **Tooling** | CLI, code generation, mocking | [`gs`](gs/gs), [`gs-http-gen`](gs/gs-http-gen), [`gs-mock`](gs/gs-mock) |
+| **Examples & Templates** | End-to-end example apps + project scaffolds | [`examples/`](examples/), [`contrib/`](contrib/), [`layout/`](layout/) |
 
-## 特性
+Full module inventory and architecture constraints: [ARCHITECTURE.md](ARCHITECTURE.md).
 
-1. **开箱即用 & 无侵入设计** (**Out-of-the-box & Non-intrusive Design**)  
-   提供即插即用的能力，不强制框架结构，让开发者专注于业务逻辑。  
-   Works immediately without enforcing rigid framework structures, letting developers focus on business logic.
+## Why Go-Spring
 
+### Out-of-the-Box, Zero Intrusion
 
-2. **依赖注入与自动装配** (**Dependency Injection & Auto-configuration**)  
-   借鉴 Spring 的 Starter 机制，实现灵活的依赖管理与自动配置，支撑开箱即用体验。  
-   Inspired by Spring’s Starter mechanism, it enables flexible dependency management and automatic setup to support an
-   out-of-the-box experience.
+Every capability ships as a **Starter**. No inheritance, no adapters, no sprawling initialization boilerplate in `main.go`—`import` a starter and it automatically wires your components into the application lifecycle. The framework doesn't hijack `main()`, doesn't impose routing groups, doesn't mandate a directory layout. You write business logic your way; the framework handles assembly and lifecycle.
 
+### Dependency Injection, the Go Way
 
-3. **统一的基础设施框架** (**Unified Infrastructure Frameworks**)  
-   提供可扩展的配置系统与日志系统，为依赖注入和自动装配打下坚实基础。  
-   Provides extensible configuration and logging systems that serve as the foundation for DI and auto-configuration.
+No reflection magic, no `@Autowired` annotations, no XML configuration. Every dependency is declared explicitly through **constructor parameters** and wired by type automatically:
 
+```go
+gs.Provide(func(db *gorm.DB) *UserService {
+    return &UserService{db: db}
+})
+```
 
-4. **模块化项目脚手架** (**Modular Project Scaffolding**)  
-   基于 **modulith** 模块化理念，快速生成项目结构，提升工程组织性与可维护性。  
-   Generates project structures based on the **modulith** modularization concept, improving organization and
-   maintainability.
+Declare what you need, expose what you provide—nothing more.
 
+### Unified Runtime Model: Runners & Servers
 
-5. **IDLs-First 设计理念** (**IDLs-First Philosophy**)  
-   采用现代化 IDL 语法，支持可空、嵌入、模板等特性，推动契约驱动的开发模式。  
-   Adopts modern IDL syntax with support for nullable types, embedding, templates, and more—promoting contract-first
-   development.
+Go-Spring distills all service patterns into two abstractions:
 
+- **Runner** — A one-shot execution unit (scheduled tasks, batch processing, startup-only logic). The container collects all Runners and executes them in configured order.
+- **Server** — A long-lived service (HTTP, gRPC, Thrift, WebSocket…). The container handles `ListenAndServe` and graceful shutdown; `ReadySignal` notifies when the service is ready.
 
-6. **多协议代码生成** (**Multi-protocol Code Generation**)  
-   内置代码生成工具，支持 HTTP、gRPC、Thrift 等多种协议，减少重复工作。  
-   Built-in code generators support HTTP, gRPC, Thrift, and other protocols, reducing repetitive work.
+No manual signal handling, no goroutine lifecycle management—the framework has you covered.
 
+### Built-in Enterprise Infrastructure
 
-7. **抽象化运行模型** (**Abstracted Runtime Models**)  
-   通过 **Runner、Job、Server** 三种核心模型，统一抽象多种服务形态，简化扩展与集成。  
-   Introduces three unified models—**Runner, Job, Server**—to simplify integration and support multiple service types.
+| Domain | Capability | Coverage |
+|---|---|---|
+| **Configuration** | Multi-source layered merging (CLI → env vars → config files → remote config centers), type-safe binding, dynamic refresh | Nacos, Consul, Etcd, K8s ConfigMap, Vault |
+| **Logging** | Structured logging model, concise config DSL, pluggable Appenders | Console, File, custom |
+| **Service Discovery** | Unified `Discovery` abstraction, multiple registry backends | Consul, Etcd, Nacos, Zookeeper, Polaris, K8s |
+| **Distributed Coordination** | Distributed locks, messaging, transactions, events, scheduling, batch processing | Lock (4 backends), Kafka, Pulsar, RabbitMQ, NATS, MQTT, Saga, TCC, AT |
+| **Observability** | Unified OpenTelemetry integration—one line of config enables full tracing and metrics | starter-otel + per-starter example-otel |
+| **Security** | Access control, OAuth2, JWT, Session | Casbin (RBAC/ABAC/ACL), OAuth2 Client/Server, JWT, distributed Session |
 
+### A Rich Starter Ecosystem — 70+ Modules
 
-8. **丰富的组件生态** (**Rich Component Ecosystem**)  
-   提供 MySQL、Redis 等常用中间件的 Starter，真正做到即插即用。  
-   Provides ready-to-use Starters for common middleware like MySQL and Redis.
+Each starter is an independent Go module. Pull in only what you need; the dependency graph stays clean:
 
+- **Web Frameworks**: Gin, Echo, Hertz, go-zero, GoFrame, Kratos
+- **RPC Frameworks**: gRPC, Kitex, Thrift, tRPC, Dubbo-go, go-zero/zrpc, GoFrame/gRPC, Kratos/gRPC
+- **WebSocket**: Gorilla, Coder, GoFrame, Kratos
+- **Databases**: MySQL, PostgreSQL, SQL Server, ClickHouse, MongoDB, Neo4j, Elasticsearch
+- **Caching**: Redis (go-redis / redigo dual drivers), Memcached, BigCache
+- **Message Queues**: Kafka (franz-go / Sarama dual drivers), Pulsar, RabbitMQ, NATS, MQTT
+- **Config Centers**: File, Consul, Etcd, Nacos, K8s ConfigMap, Vault, Config Bus
+- **Service Registries**: Consul, Etcd, Nacos, Zookeeper, K8s
+- **Distributed Primitives**: Locks (Consul/Etcd/K8s/Redis), Transactions (Saga/TCC/AT), Scheduler, Batch, Goroutine Pool
+- **Security**: Casbin, OAuth2 Client/Server, JWT, Session-Redis
+- **Observability**: OpenTelemetry (Tracing + Metrics), pprof, Actuator, Admin UI
+- **More**: Mail, Lua Filters, Swagger, Validation, Repository Pattern, Data Migration, API Gateway, Service Mesh, Resilience
 
-9. **无缝测试集成** (**Seamless Testing Integration**)  
-   与 `go test` 深度集成，提供简洁高效的单元测试支持。  
-   Deeply integrates with `go test` to deliver simple yet powerful unit testing capabilities.
+> Full categorized list: [starter/README.md](starter/README.md).
 
-## 模块 (Modules)
+### Powerful Toolchain
 
-| 模块名<br>Module Name                                                    | 描述<br>Description                                                        |
-|-----------------------------------------------------------------------|--------------------------------------------------------------------------|
-| [go-spring :: log](https://go-spring.org/log)                  | 前后端统一的日志库<br>Unified front-end and back-end log                          |
-| [spring-base :: assert](https://github.com/go-spring/spring-base)     | 用于 Go 单测的断言库<br>An assertion library for Go unit tests                   |
-| [spring](https://go-spring.org/spring)               | 核心项目<br>Core project                                                     |
-| [gs-mock](https://go-spring.org/gs-mock)                       | 现代化的、类型安全的 Go 语言 mocking 库<br>A modern, type-safe mocking library for Go |
-| [starter-gorm-mysql](https://go-spring.org/starter-gorm-mysql) | gorm mysql 启动器<br>Starter for gorm with mysql                            |
-| [starter-redigo](https://go-spring.org/starter-redigo)         | redigo 启动器<br>Starter for redigo                                         |
-| [starter-go-redis](https://go-spring.org/starter-go-redis)     | go-redis 启动器<br>Starter for go-redis                                     |
-| [gs-http-gen](https://go-spring.org/gs-http-gen)               | 基于 IDL 的 HTTP 代码生成工具<br>HTTP code generation tool based on IDL files     |
-| [gs](https://go-spring.org/gs)                                 | Go-Spring 工具管理器<br>Go-Spring Tools Manager                               |
-| [gs-init](https://go-spring.org/gs-init)                       | 创建新项目的工具<br>Create new projects                                          |
-| [gs-add](https://go-spring.org/gs-add)                         | 为项目添加新组件的工具<br>Add new components                                        |
-| [gs-gen](https://go-spring.org/gs-gen)                         | 根据 IDL 文件生成 Go 服务端代码<br>Generate go server code based on IDL files       |
-| [skeleton](https://github.com/go-spring/skeleton)                     | 实践 modulith 的项目骨架<br>Modulith practice project skeleton                  |
+| Tool | Purpose |
+|---|---|
+| `gs` | One-stop CLI: create projects, add components, generate code, run services |
+| `gs-http-gen` | Modern IDL syntax → HTTP server + declarative client code generation (nullable types, generics, embedding—OpenFeign-equivalent) |
+| `gs-mock` | Type-safe Go mock library with native generics support and concurrency safety |
 
-## 文档 (Documentation)
+### Seamless Testing Integration
 
-中文文档位于 [website/cn/docs](website/cn/docs) 目录，英文文档位于 [website/en/docs](website/en/docs) 目录，包含总览、快速入门、专题指南、示例、组件集成、FAQ、贡献指南和更新日志等内容。
-Project documentation is available in the [website/en/docs](website/en/docs) directory, including overview, getting started, guides, examples,
-integrations, FAQ, contribution guide, and changelog.
+Deeply integrated with `go test`. Use `gs.RunTest()` to boot a real container in tests, with real dependencies—no need to mock everything. When you do need mocks, `gs-mock` provides type-safe method/function-level mocking that's goroutine-safe via context-based data isolation.
 
-如果你希望通过完整示例循序渐进地了解 Go-Spring，可以参考
-[go-spring-first](https://github.com/lvan100/go-spring-first)，其中整理了 10 个入门示例。  
-If you prefer learning Go-Spring through complete, progressive examples, see
-[go-spring-first](https://github.com/lvan100/go-spring-first), which provides 10 getting-started examples.
+## Get Started in One Minute
 
-## 开箱 (Getting Started)
-
-1. 安装 [gs](https://go-spring.org/gs) 工具。Install the [gs](https://go-spring.org/gs) tool.
-
-```shell
+```bash
+# 1. Install the gs tool
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/go-spring/gs/HEAD/install.sh)"
-```
 
-2. 创建项目。Create a project.
+# 2. Create a project
+gs init --module github.com/yourname/yourproject
 
-```shell
-gs init --module my-git/my-group/my-module
-```
-
-3. 运行程序。 Run the program.
-
-```shell
+# 3. Run it
 go run main.go
 ```
 
-> 你可以找到更多的[文档](website/cn/docs)和[示例](website/cn/docs/3.examples)。
-> Find more [docs](website/en/docs) and [examples](website/en/docs/3.examples).
+## Documentation
 
-## 贡献 (Contribution)
+| Document | Description |
+|---|---|
+| [Overview](website/en/docs/0.overview/) | Introduction, AI engineering philosophy, Claude Code best practices |
+| [Getting Started](website/en/docs/1.getting-started/) | Project creation, development, running |
+| [Guides](website/en/docs/2.guides/) | Configuration, IoC, lifecycle, logging, HTTP server, components, testing, http-gen |
+| [Examples](website/en/docs/3.examples/) | Complete example index |
+| [Integrations](website/en/docs/4.integrations/) | Detailed integration docs for each starter |
+| [FAQ](website/en/docs/5.faq.md) | Frequently asked questions |
+| [Contributing](website/en/docs/6.contributing.md) | How to contribute |
+| [Changelog](website/en/docs/7.changelog.md) | Version history |
 
-如何成为贡献者？提交有意义的 PR 或者需求，并被采纳。  
-How to become a contributor? Submit meaningful PRs or feature requests, and have them accepted.
+If you prefer learning through complete, progressive examples, see [go-spring-first](https://github.com/lvan100/go-spring-first), which provides 10 getting-started examples.
 
-## 交流 (Communication)
+## Contributing
+
+How to become a contributor? Submit meaningful PRs or feature requests, and have them accepted. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+
+## Community
 
 <table style="border: none;">
 <tr style="border: none;">
-<td style="text-align: center; border:none;"><img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq(1).jpeg" width="*" height="180"  alt=""/></td>
-<td style="text-align: center; border:none;"><img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/go-spring-action.jpg" width="*" height="180"  alt=""/></td>
-</tr> 
+<td style="text-align: center; border:none;"><img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq(1).jpeg" width="*" height="180" alt="QQ Group QR"/></td>
+<td style="text-align: center; border:none;"><img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/go-spring-action.jpg" width="*" height="180" alt="WeChat Official Account QR"/></td>
+</tr>
 <tr style="border: none;">
-<td style="text-align: center; border:none;">QQ群号: 721077608</td>
-<td style="text-align: center; border:none;">公众号: GoSpring实战</td>
+<td style="text-align: center; border:none;">QQ Group: 721077608</td>
+<td style="text-align: center; border:none;">WeChat: GoSpring实战</td>
 </tr>
 </table>
 
-## 捐赠 (Donation)
+## Donation
 
-<img src="https://raw.githubusercontent.com/go-spring/go-spring/master/sponsor.png" width="140" height="*" />
+<img src="https://raw.githubusercontent.com/go-spring/go-spring/master/sponsor.png" width="140" />
 
-为了推动 Go-Spring 的持续发展，我们诚挚邀请您支持本项目。您的捐赠将帮助我们更快地迭代功能、完善生态，并壮大社区力量。
-
-To drive the continuous growth of Go-Spring, we warmly invite your support. Your donation will help us iterate faster,
-improve the ecosystem, and strengthen the community.
+To drive the continuous growth of Go-Spring, we warmly invite your support. Your donation will help us iterate faster, improve the ecosystem, and strengthen the community.
 
 ## Star History
 
-<img src="https://api.star-history.com/svg?repos=go-spring/go-spring&type=Date" width="600" alt=""/>
+<img src="https://api.star-history.com/svg?repos=go-spring/go-spring&type=Date" width="600" alt="Star History"/>
 
-## 鸣谢 (Thanks)
+## License
 
-Thanks to JetBrains' IntelliJ IDEA product for providing a convenient and efficient code editing and testing
-environment.
-
-## 许可证 (License)
-
-The Go-Spring is released under version 2.0 of the Apache License.
+Go-Spring is released under version 2.0 of the [Apache License](LICENSE).
