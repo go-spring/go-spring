@@ -106,10 +106,10 @@ func runAdd(m *feature.Manifest, keys []string) error {
 
 	pkgName := toPascal(moduleLeaf(meta.Module))
 	replaces := map[string]string{
-		"GS_PROJECT_MODULE": meta.Module,
-		"GS_PROJECT_NAME":   pkgName,
-		"GS_PROJECT_LANG":   meta.Lang,
-		"GS_LAYOUT_VERSION": meta.LayoutVersion,
+		feature.ModulePlaceholder: meta.Module,
+		"GS_PROJECT_NAME":         pkgName,
+		"GS_PROJECT_LANG":         meta.Lang,
+		"GS_LAYOUT_VERSION":       meta.LayoutVersion,
 	}
 
 	log.Printf("[INFO] Copying features: %s", strings.Join(keys, ", "))

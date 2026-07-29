@@ -31,6 +31,8 @@ import (
 var ginTag = log.RegisterAppTag("gin", "starter")
 
 func init() {
+	gin.SetMode(gin.ReleaseMode)
+
 	gs.Provide(
 		NewSimpleGinServer,
 		gs.IndexArg(1, gs.TagArg("${spring.gin.server}")),
@@ -68,7 +70,6 @@ type SimpleGinServer struct {
 // built-in middleware (notably CORS) is misconfigured, so the server fails fast
 // at startup instead of panicking on the first request.
 func NewSimpleGinServer(register RouterRegister, cfg Config) (*SimpleGinServer, error) {
-	gin.SetMode(gin.ReleaseMode)
 	e := gin.New()
 
 	if cfg.Middleware.Enabled {
@@ -94,9 +95,9 @@ func NewSimpleGinServer(register RouterRegister, cfg Config) (*SimpleGinServer, 
 
 	return &SimpleGinServer{
 		svr: &http.Server{
-			Addr:              addr,
-			Handler:           e,
-			ReadTimeout:       cfg.ReadTimeout,
+			Addr:        addr,
+			Handler:     e,
+			ReadTimeout: cfg.ReadTimeout,
 			// No separate header-timeout config: read-header time reuses
 			// readTimeout (also bounds slowloris-style slow-header attacks).
 			ReadHeaderTimeout: cfg.ReadTimeout,

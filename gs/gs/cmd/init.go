@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"go-spring.org/gs/cmd/feature"
@@ -98,6 +99,59 @@ func NewInitCmd() *cobra.Command {
 	return c
 }
 
+// bindFeatureFlags registers one boolean flag per manifest feature on c (the
+// flag name IS the feature key) and returns a collector that reports which
+// features the user selected. It is shared by `gs init` (which prunes the
+// unselected) and `gs add` (which copies the selected), so both expose the
+// same feature vocabulary.
+//
+// Features carry no per-flag parameters today, so a plain bool suffices; if
+// structural params are added later this becomes a value flag.
+func bindFeatureFlags(c *cobra.Command, m *feature.Manifest) func() map[string]struct{} {
+	for _, f := range m.Features {
+		c.Flags().Bool(f.Key, false, f.Desc)
+	}
+	return func() map[string]struct{} {
+		sel := make(map[string]struct{})
+		for _, f := range m.Features {
+			if v, _ := c.Flags().GetBool(f.Key); v {
+				sel[f.Key] = struct{}{}
+			}
+		}
+		return sel
+	}
+}
+
+// formatFeatures renders the manifest grouped by category, for `--list-features`.
+func formatFeatures(m *feature.Manifest) string {
+	byCat := map[string][]feature.Feature{}
+	var cats []string
+	for _, f := range m.Features {
+		cat := f.Category
+		if cat == "" {
+			cat = "other"
+		}
+		if _, seen := byCat[cat]; !seen {
+			cats = append(cats, cat)
+		}
+		byCat[cat] = append(byCat[cat], f)
+	}
+	sort.Strings(cats)
+
+	var sb strings.Builder
+	tw := tabwriter.NewWriter(&sb, 0, 0, 2, ' ', 0)
+	for _, cat := range cats {
+		fmt.Fprintf(tw, "%s:\n", cat)
+		fs := byCat[cat]
+		sort.Slice(fs, func(i, j int) bool { return fs[i].Key < fs[j].Key })
+		for _, f := range fs {
+			fmt.Fprintf(tw, "  --%s\t%s\n", f.Key, f.Desc)
+		}
+	}
+	_ = tw.Flush()
+	return sb.String()
+}
+
 // runInit is the RunE handler for `gs init`. The caller must have already
 // validated module via gomodule.CheckPath and lang against supportedLangs.
 // selected names the features to keep; every other manifest feature is pruned
@@ -138,10 +192,10 @@ func runInit(module, lang string, m *feature.Manifest, selected map[string]struc
 	}
 
 	replaces := map[string]string{
-		"GS_PROJECT_MODULE": module,
-		"GS_PROJECT_NAME":   pkgName,
-		"GS_PROJECT_LANG":   lang,
-		"GS_LAYOUT_VERSION": layoutVersion,
+		feature.ModulePlaceholder: module,
+		"GS_PROJECT_NAME":         pkgName,
+		"GS_PROJECT_LANG":         lang,
+		"GS_LAYOUT_VERSION":       layoutVersion,
 	}
 
 	log.Println("[INFO] Rewriting module path and package names")

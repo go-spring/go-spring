@@ -22,13 +22,6 @@ import (
 	"go-spring.org/spring/experimental/cloud/tlsconf"
 )
 
-// HealthConfig exposes an optional liveness/readiness endpoint served by the
-// starter. It is disabled by default so applications opt in explicitly.
-type HealthConfig struct {
-	Enabled bool   `value:"${enabled:=false}"`
-	Path    string `value:"${path:=/healthz}"`
-}
-
 // Config defines Gin server configuration, bound from ${spring.gin.server}.
 // Address must be explicitly configured; the server won't start without it.
 type Config struct {
@@ -39,6 +32,13 @@ type Config struct {
 	TLS          tlsconf.TLSConfig `value:"${tls}"`
 	Health       HealthConfig      `value:"${health}"`
 	Middleware   MiddlewareConfig  `value:"${middleware}"`
+}
+
+// HealthConfig exposes an optional liveness/readiness endpoint served by the
+// starter. It is disabled by default so applications opt in explicitly.
+type HealthConfig struct {
+	Enabled bool   `value:"${enabled:=false}"`
+	Path    string `value:"${path:=/healthz}"`
 }
 
 // MiddlewareConfig groups the built-in middlewares the starter can install on
@@ -55,8 +55,7 @@ type Config struct {
 // owns every signal's end-of-request work, including on a handler panic.
 // RequestID is on by default; CORS, Gzip and SecureHeaders change
 // request/response behavior or carry security trade-offs, so they stay off until
-// an operator opts in. BodyLimit is off by default and active only when
-// maxSize>0.
+// an operator opts in.
 type MiddlewareConfig struct {
 	Enabled       bool                `value:"${enabled:=true}"`
 	RequestID     RequestIDConfig     `value:"${requestId}"`
@@ -64,7 +63,6 @@ type MiddlewareConfig struct {
 	CORS          CORSConfig          `value:"${cors}"`
 	Gzip          GzipConfig          `value:"${gzip}"`
 	SecureHeaders SecureHeadersConfig `value:"${secureHeaders}"`
-	BodyLimit     BodyLimitConfig     `value:"${bodyLimit}"`
 }
 
 // RequestIDConfig toggles per-request id generation and propagation. It is on
@@ -119,14 +117,20 @@ type GzipConfig struct {
 	MinLength int  `value:"${minLength:=0}"`
 }
 
-// SecureHeadersConfig toggles a small set of safe response headers
-// (X-Content-Type-Options, X-Frame-Options, Referrer-Policy). It is off by
-// default. HSTS is emitted only when TLS is enabled and explicitly opted in,
+// SecureHeadersConfig toggles a small set of safe response headers. It is off
+// by default. When enabled, X-Content-Type-Options:nosniff is always set (it
+// has no downside); frameOptions (default DENY) and referrerPolicy (default
+// no-referrer) are configurable - set either to "" to omit that header, e.g.
+// frameOptions=SAMEORIGIN when the app needs same-origin iframing, or
+// referrerPolicy=strict-origin-when-cross-origin to preserve referrer-based
+// attribution. HSTS is emitted only when TLS is enabled and explicitly opted in,
 // since sending Strict-Transport-Security over plain HTTP is a no-op that can
 // mislead operators into thinking transport is pinned.
 type SecureHeadersConfig struct {
-	Enabled bool       `value:"${enabled:=false}"`
-	HSTS    HSTSConfig `value:"${hsts}"`
+	Enabled        bool       `value:"${enabled:=false}"`
+	FrameOptions   string     `value:"${frameOptions:=DENY}"`
+	ReferrerPolicy string     `value:"${referrerPolicy:=no-referrer}"`
+	HSTS           HSTSConfig `value:"${hsts}"`
 }
 
 // HSTSConfig controls the Strict-Transport-Security header, emitted only on
@@ -136,13 +140,4 @@ type HSTSConfig struct {
 	MaxAge            time.Duration `value:"${maxAge:=0s}"`
 	IncludeSubDomains bool          `value:"${includeSubDomains:=false}"`
 	Preload           bool          `value:"${preload:=false}"`
-}
-
-// BodyLimitConfig caps the request body size via an in-chain middleware. It is
-// off by default (maxSize=0 = unlimited); when maxSize>0 an over-large body is
-// rejected with 413, observed like any other response. BodyLimit sits innermost
-// so the 413 is logged, metered and recovered together with the rest of the
-// request rather than short-circuiting around Observe.
-type BodyLimitConfig struct {
-	MaxSize int64 `value:"${maxSize:=0}"`
 }

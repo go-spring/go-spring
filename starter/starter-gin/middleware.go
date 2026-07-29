@@ -23,8 +23,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
-	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -53,40 +53,52 @@ func RequestIDFromContext(ctx context.Context) string {
 // applyMiddlewares installs the built-in middlewares onto the engine in a fixed,
 // safe order, all before the application's RouterRegister runs:
 //
-//	Observe -> RequestID -> SecureHeaders -> CORS -> Gzip -> BodyLimit
+//	RequestID -> Observe -> SecureHeaders -> CORS -> Gzip -> responseCapture
 //
-// Observe (outermost) bundles Recovery + Tracing + Metrics + AccessLog into one
-// per-request lifecycle so a single deferred finalize owns every signal's
-// end-of-request work - including on a handler panic, where the old
-// separate-middlewares design leaked spans and in-flight gauges. These four are
-// mandatory and always on whenever the built-in set is enabled (the default).
-// RequestID runs inside
-// Observe so each access record carries the request id and stays within the
-// recovered span. The policy middlewares (SecureHeaders/CORS/Gzip/BodyLimit) sit
-// inside the chain so short-circuit responses (413, 204, 403) are still
-// observed; BodyLimit is innermost so an over-limit 413 is handled like any
-// other response.
+// RequestID is outermost so the request id is on the request context from the
+// very start. Observe can then read it via RequestIDFromContext at any point -
+// at entry, mid-request, or in its end-of-request finalize - rather than only in
+// the defer. That decouples id availability from Observe's internal read
+// timing, so future changes inside Observe (e.g. stamping the id onto the span
+// at start) can't break it. (Running outside Observe means a panic in RequestID
+// itself would escape recovery - but its body is trivial and cannot panic;
+// handler panics are still recovered, since Observe's defer still catches them.)
+//
+// Observe bundles Recovery + Tracing + Metrics + AccessLog into one per-request
+// lifecycle so a single deferred finalize owns every signal's end-of-request
+// work - including on a handler panic, where the old separate-middlewares
+// design leaked spans and in-flight gauges. These four are mandatory and always
+// on whenever the built-in set is enabled (the default). The policy middlewares
+// (SecureHeaders/CORS/Gzip) sit inside the chain so short-circuit responses
+// (204, 403) are still observed. responseCapture is innermost (when payload
+// capture is on): it wraps the response writer inside gzip, so it records the
+// UNCOMPRESSED bytes the handler writes - not the compressed wire bytes - and
+// publishes them for Observe's access log. Splitting capture out of Observe
+// keeps it inside gzip (Observe is outer, outside gzip); were capture still in
+// Observe, gzip would sit inside it and resp.body would be compressed garbage.
 func applyMiddlewares(e *gin.Engine, cfg Config) error {
 	mw := cfg.Middleware
 
-	// Observe is outermost: it recovers panics, starts the OTel server span,
-	// records HTTP metrics, and emits the access log. Always on - no toggle.
-	// The health endpoint path is folded into the access-log skip list so
-	// liveness/readiness probes don't flood the log.
-	accessCfg := mw.AccessLog
-	if cfg.Health.Enabled && cfg.Health.Path != "" {
-		accessCfg.SkipPaths = append(append([]string{}, accessCfg.SkipPaths...), cfg.Health.Path)
-	}
-	e.Use(observe(accessCfg))
-
+	// RequestID is outermost: it stamps the request id onto the request context
+	// (and the response header) before anything else runs, so Observe and every
+	// inner middleware can read it at any point via RequestIDFromContext.
 	if mw.RequestID.Enabled {
 		header := mw.RequestID.Header
 		if header == "" {
 			header = "X-Request-Id"
 		}
-		e.Use(requestid.New(requestid.WithCustomHeaderStrKey(requestid.HeaderStrKey(header))))
-		e.Use(propagateRequestID())
+		e.Use(requestID(header))
 	}
+
+	// Observe: recovers panics, starts the OTel server span, records HTTP
+	// metrics, and emits the access log. Always on - no toggle. The health
+	// endpoint path is folded into the access-log skip list so liveness/
+	// readiness probes don't flood the log.
+	accessCfg := mw.AccessLog
+	if cfg.Health.Enabled && cfg.Health.Path != "" {
+		accessCfg.SkipPaths = append(append([]string{}, accessCfg.SkipPaths...), cfg.Health.Path)
+	}
+	e.Use(observe(accessCfg))
 	if mw.SecureHeaders.Enabled {
 		e.Use(secureHeaders(mw.SecureHeaders))
 	}
@@ -100,29 +112,39 @@ func applyMiddlewares(e *gin.Engine, cfg Config) error {
 	if mw.Gzip.Enabled {
 		e.Use(gzipMiddleware(mw.Gzip))
 	}
-	if bl := mw.BodyLimit.MaxSize; bl > 0 {
-		e.Use(bodyLimit(bl))
+	// responseCapture is innermost so it sees the uncompressed bytes the handler
+	// writes - inside gzip (and any response transformer). Observe reads its
+	// capture via the gin context. Only installed when payload capture is on.
+	if mw.AccessLog.Payload.Enabled {
+		e.Use(responseCapture())
 	}
 	return nil
 }
 
-// propagateRequestID copies the id set by gin-contrib/requestid onto the request
-// context so downstream handlers and the project log package can read it.
-func propagateRequestID() gin.HandlerFunc {
+// requestID installs the per-request id. It honors an incoming id on the
+// configured header (so a caller or upstream proxy can supply one), generates a
+// UUID v4 otherwise, echoes the id on the response header so callers and logs
+// can correlate the request end to end, and stores it on the request context
+// (requestIDCtxKey) so business code, the log package's FieldsFromContext hook,
+// and the Observe middleware all read the same value via RequestIDFromContext.
+//
+// It is installed outermost (before Observe), so the id is on the request
+// context from the very start and Observe can read it at any point - not only in
+// its end-of-request finalize; future changes inside Observe can't break id
+// availability. It wraps c.Request.Context() rather than a fresh context, so
+// any value an outer layer attaches is preserved (and Observe in turn wraps
+// this id-bearing context when it attaches its span, so the id survives into the
+// span's context). The response header is set before c.Next so short-circuit
+// responses (403) still carry the id.
+func requestID(header string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if rid := requestid.Get(c); rid != "" {
-			ctx := context.WithValue(c.Request.Context(), requestIDCtxKey{}, rid)
-			c.Request = c.Request.WithContext(ctx)
+		rid := c.GetHeader(header)
+		if rid == "" {
+			rid = uuid.NewString()
 		}
-	}
-}
-
-// bodyLimit caps the request body size. It sits inside the middleware chain so
-// an over-limit 413 is observed - logged, recovered, and metered - like any
-// other response, rather than short-circuiting around Observe.
-func bodyLimit(max int64) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, max)
+		c.Header(header, rid)
+		ctx := context.WithValue(c.Request.Context(), requestIDCtxKey{}, rid)
+		c.Request = c.Request.WithContext(ctx)
 	}
 }
 
@@ -135,8 +157,12 @@ func secureHeaders(cfg SecureHeadersConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h := c.Writer.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("X-Frame-Options", "DENY")
-		h.Set("Referrer-Policy", "no-referrer")
+		if cfg.FrameOptions != "" {
+			h.Set("X-Frame-Options", cfg.FrameOptions)
+		}
+		if cfg.ReferrerPolicy != "" {
+			h.Set("Referrer-Policy", cfg.ReferrerPolicy)
+		}
 
 		if cfg.HSTS.Enabled && c.Request.TLS != nil && cfg.HSTS.MaxAge > 0 {
 			v := "max-age=" + strconv.FormatInt(int64(cfg.HSTS.MaxAge.Seconds()), 10)

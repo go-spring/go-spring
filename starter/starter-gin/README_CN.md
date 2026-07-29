@@ -61,8 +61,8 @@ spring.gin.server.middleware.cors.allowedOrigins=
 spring.gin.server.middleware.gzip.enabled=false
 spring.gin.server.middleware.gzip.level=5
 spring.gin.server.middleware.secureHeaders.enabled=false
-# 请求体上限 1 MiB（0 = 不限制）；超限返回 413，像普通响应一样被记录。
-spring.gin.server.middleware.bodyLimit.maxSize=1048576
+spring.gin.server.middleware.secureHeaders.frameOptions=DENY
+spring.gin.server.middleware.secureHeaders.referrerPolicy=no-referrer
 ```
 
 当 `spring.gin.server.enabled` 为 `true`（默认）且应用提供了 `RouterRegister` Bean 时，
@@ -108,11 +108,10 @@ starter 不安装任何内置中间件，由注册器接管整条链——含 Re
 | `requestId` | 开 | `gin-contrib/requestid` | 生成/透传 `X-Request-Id`，同时写入请求 context（见 `RequestIDFromContext`）。 |
 | `cors` | 关 | `gin-contrib/cors` | 没有安全的通用默认值，需显式配置 `allowedOrigins`（或开发期用 `allowAllOrigins`）。配置非法会在启动期失败。 |
 | `gzip` | 关 | `gin-contrib/gzip` | `level`（1-9，-1=默认）、`minLength`（0=全部压缩）。 |
-| `secureHeaders` | 关 | 自实现 | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`；HSTS 仅在启用 TLS 时生效。 |
-| `bodyLimit` | `maxSize>0` 时开 | 自实现 | 位于链内，超限的 413 会像普通响应一样被记录。 |
+| `secureHeaders` | 关 | 自实现 | `X-Content-Type-Options`（始终 nosniff）+ 可配置 `frameOptions`（默认 DENY）/`referrerPolicy`（默认 no-referrer）；HSTS 仅在启用 TLS 时生效。 |
 
-顺序（最外层在前）：`Observe -> RequestID -> SecureHeaders -> CORS -> Gzip -> BodyLimit`。
-Observe 在最外层，由其单一 defer 兜住后续所有层的 panic 并统一收尾 span、指标与访问日志；RequestID 位于 Observe 内部，使每条访问日志都带上请求 id 并落在被 recover 的 span 之内；策略类中间件位于链内，使短路响应（413、204、403）也能被观测到。
+顺序（最外层在前）：`Observe -> RequestID -> SecureHeaders -> CORS -> Gzip`。
+Observe 在最外层，由其单一 defer 兜住后续所有层的 panic 并统一收尾 span、指标与访问日志；RequestID 位于 Observe 内部，使每条访问日志都带上请求 id 并落在被 recover 的 span 之内；策略类中间件位于链内，使短路响应（204、403）也能被观测到。
 
 > **设计上不提供请求超时中间件。** Go 无法在不使用 goroutine 缓冲 hack（会破坏流式/SSE）的前提下
 > 抢占正在运行的 handler，因此硬性时限仍由 `SimpleHttpServerConfig` 中 `http.Server` 的读写超时兜底。

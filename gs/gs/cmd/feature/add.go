@@ -26,11 +26,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-// modulePlaceholder is the token every layout file uses in place of the real
-// Go module path. Copy resolves it from replaces so copied artifacts and the
-// import lines inserted into internal/init.go carry the project's real path.
-const modulePlaceholder = "GS_PROJECT_MODULE"
-
 // Copy adds the artifacts of every selected feature into an existing project,
 // the inverse of Prune. For `gs add`: the layout superset is fetched at the
 // project's pinned version into layoutDir, and each selected feature's Owns
@@ -75,7 +70,7 @@ func Copy(projectDir, layoutDir string, m *Manifest, selected map[string]struct{
 		}
 	}
 	if len(addImports) > 0 {
-		modulePrefix := replaces[modulePlaceholder]
+		modulePrefix := replaces[ModulePlaceholder]
 		if err := insertInitImports(filepath.Join(projectDir, filepath.FromSlash(initImportsFile)), addImports, modulePrefix); err != nil {
 			return err
 		}

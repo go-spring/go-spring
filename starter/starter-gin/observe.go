@@ -27,7 +27,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -96,93 +95,6 @@ func (l *limitedBuffer) Write(p []byte) (int, error) {
 type bodyTee struct {
 	io.Reader
 	io.Closer
-}
-
-// teeResponseWriter wraps gin's ResponseWriter to observe response bytes. For a
-// normal response it copies writes into a capture buffer for the end-of-request
-// access log. For an SSE response (text/event-stream) it instead accumulates
-// writes and logs each flushed chunk in real time (see sseLogger), so a live
-// stream's events hit the log as they are sent - not all at once on disconnect.
-type teeResponseWriter struct {
-	gin.ResponseWriter
-	capture *limitedBuffer
-	sse     *sseLogger
-}
-
-func (w *teeResponseWriter) Write(b []byte) (int, error) {
-	if w.sse != nil && isSSEContentType(w.Header().Get("Content-Type")) {
-		w.sse.active = true
-		w.sse.buf.Write(b)
-	} else if w.capture != nil {
-		w.capture.Write(b)
-	}
-	return w.ResponseWriter.Write(b)
-}
-
-func (w *teeResponseWriter) WriteString(s string) (int, error) {
-	return w.Write([]byte(s))
-}
-
-// Flush forwards the flush to the client and, for an SSE response, emits a log
-// record for the events written since the last flush.
-func (w *teeResponseWriter) Flush() {
-	w.ResponseWriter.Flush()
-	if w.sse != nil && w.sse.active {
-		w.sse.flush()
-	}
-}
-
-// finalizeSSE flushes any trailing unflushed SSE bytes and reports how many
-// event records were logged and whether this response was SSE.
-func (w *teeResponseWriter) finalizeSSE() (count int, wasSSE bool) {
-	if w.sse == nil || !w.sse.active {
-		return 0, false
-	}
-	w.sse.flush()
-	return w.sse.count, true
-}
-
-// sseLogger emits one access-log record per flushed SSE chunk, in real time, so
-// a streaming response is observable as it happens rather than only on close.
-type sseLogger struct {
-	c      *gin.Context
-	tag    *log.Tag
-	buf    limitedBuffer
-	seq    int
-	count  int
-	active bool
-}
-
-func (s *sseLogger) flush() {
-	if s.buf.buf.Len() == 0 {
-		return
-	}
-	s.seq++
-	s.count++
-	fields := []log.Field{
-		log.Int("event.seq", s.seq),
-		log.String("resp.event", s.buf.buf.String()),
-	}
-	if rid := requestid.Get(s.c); rid != "" {
-		fields = append(fields, log.String("request_id", rid))
-	}
-	if sc := trace.SpanContextFromContext(s.c.Request.Context()); sc.IsValid() {
-		fields = append(fields,
-			log.String("trace_id", sc.TraceID().String()),
-			log.String("span_id", sc.SpanID().String()),
-		)
-	}
-	log.Info(s.c.Request.Context(), s.tag, fields...)
-	s.buf.buf.Reset()
-}
-
-// isSSEContentType reports whether the content type is text/event-stream.
-func isSSEContentType(ct string) bool {
-	ct = strings.ToLower(strings.TrimSpace(ct))
-	if i := strings.IndexByte(ct, ';'); i >= 0 {
-		ct = ct[:i]
-	}
-	return ct == "text/event-stream"
 }
 
 // payloadString returns the captured bytes as a loggable string, or a
@@ -323,7 +235,7 @@ func observe(cfg AccessLogConfig) gin.HandlerFunc {
 			trace.WithSpanKind(trace.SpanKindServer),
 		)
 		// Request attributes, set up front so they appear even when a later
-		// middleware (e.g. body limit) short-circuits.
+		// middleware (e.g. a CORS preflight) short-circuits.
 		reqAttrs := []attribute.KeyValue{
 			attribute.String(attrHTTPRequestMethod, method),
 			attribute.String(attrURLScheme, urlScheme),
@@ -356,23 +268,17 @@ func observe(cfg AccessLogConfig) gin.HandlerFunc {
 		activeRequests.Add(c.Request.Context(), 1, inflightAttrs)
 		start := time.Now()
 
-		// Optionally capture request/response payload for the access log.
-		// Redaction is the log layer's job; here we only wrap the body and
-		// writer so bytes still flow through unchanged to handler and client.
-		var reqBody, respBody *limitedBuffer
-		var tw *teeResponseWriter
+		// Optionally capture the request body for the access log. The response
+		// body is captured by the innermost responseCapture middleware (which
+		// sits inside gzip so it records uncompressed bytes); Observe reads it
+		// via the gin context in its finalize. Redaction is the log layer's job;
+		// here we only wrap the request body so bytes still flow through
+		// unchanged to the handler.
+		var reqBody *limitedBuffer
 		if cfg.Payload.Enabled {
 			reqBody = &limitedBuffer{max: payloadCaptureLimit}
-			respBody = &limitedBuffer{max: payloadCaptureLimit}
-			sseLog := &sseLogger{
-				c:   c,
-				tag: accessLogTag,
-				buf: limitedBuffer{max: payloadCaptureLimit},
-			}
-			tw = &teeResponseWriter{ResponseWriter: c.Writer, capture: respBody, sse: sseLog}
 			origBody := c.Request.Body
 			c.Request.Body = bodyTee{io.TeeReader(origBody, reqBody), origBody}
-			c.Writer = tw
 		}
 
 		defer func() {
@@ -456,7 +362,7 @@ func observe(cfg AccessLogConfig) gin.HandlerFunc {
 				if userAgent != "" {
 					fields = append(fields, log.String(attrUserAgentOriginal, userAgent))
 				}
-				if rid := requestid.Get(c); rid != "" {
+				if rid := RequestIDFromContext(c.Request.Context()); rid != "" {
 					fields = append(fields, log.String("request_id", rid))
 				}
 				if sc.IsValid() {
@@ -475,10 +381,11 @@ func observe(cfg AccessLogConfig) gin.HandlerFunc {
 					)
 				}
 				if cfg.Payload.Enabled {
+					cw := getResponseCapture(c)
 					var sseCount int
 					var wasSSE bool
-					if tw != nil {
-						sseCount, wasSSE = tw.finalizeSSE()
+					if cw != nil {
+						sseCount, wasSSE = cw.finalizeSSE()
 					}
 					fields = append(fields,
 						log.String("req.body", payloadString(reqBody.buf.Bytes(), c.Request.Header.Get("Content-Type"))),
@@ -487,8 +394,8 @@ func observe(cfg AccessLogConfig) gin.HandlerFunc {
 					)
 					if wasSSE {
 						fields = append(fields, log.Int("event.count", sseCount))
-					} else {
-						fields = append(fields, log.String("resp.body", payloadString(respBody.buf.Bytes(), c.Writer.Header().Get("Content-Type"))))
+					} else if cw != nil {
+						fields = append(fields, log.String("resp.body", payloadString(cw.capturedBody(), c.Writer.Header().Get("Content-Type"))))
 					}
 				}
 				switch {

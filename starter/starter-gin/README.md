@@ -60,8 +60,8 @@ spring.gin.server.middleware.cors.allowedOrigins=
 spring.gin.server.middleware.gzip.enabled=false
 spring.gin.server.middleware.gzip.level=5
 spring.gin.server.middleware.secureHeaders.enabled=false
-# Cap request bodies at 1 MiB (0 = unlimited); over-limit -> 413, logged like any response.
-spring.gin.server.middleware.bodyLimit.maxSize=1048576
+spring.gin.server.middleware.secureHeaders.frameOptions=DENY
+spring.gin.server.middleware.secureHeaders.referrerPolicy=no-referrer
 ```
 
 The starter registers its server bean when `spring.gin.server.enabled` is `true` (default) and a
@@ -110,14 +110,13 @@ middleware); RequestID is on by default; the rest are off until opted in via `sp
 | `requestId` | on | `gin-contrib/requestid` | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
 | `cors` | off | `gin-contrib/cors` | No safe universal default - supply `allowedOrigins` (or `allowAllOrigins` for dev). Misconfig fails at startup. |
 | `gzip` | off | `gin-contrib/gzip` | `level` (1-9, -1=default), `minLength` (0=compress all). |
-| `secureHeaders` | off | self | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`; HSTS only with TLS. |
-| `bodyLimit` | on when `maxSize>0` | self | In-chain; an over-limit 413 is logged like any response. |
+| `secureHeaders` | off | self | `X-Content-Type-Options` (always nosniff) + configurable `frameOptions` (default DENY) / `referrerPolicy` (default no-referrer); HSTS only with TLS. |
 
-Order (outermost first): `Observe -> RequestID -> SecureHeaders -> CORS -> Gzip -> BodyLimit`.
+Order (outermost first): `Observe -> RequestID -> SecureHeaders -> CORS -> Gzip`.
 Observe is outermost so its single defer recovers panics from every later layer and finalizes the span,
 metrics, and access log together; RequestID runs inside Observe so each access record carries the id and
 stays within the recovered span; the policy middlewares sit inside the chain so short-circuit responses
-(413, 204, 403) are still observed.
+(204, 403) are still observed.
 
 > **No request-timeout middleware by design.** Go cannot preempt a running handler without the
 > goroutine-buffer hack (which breaks streaming/SSE), so the hard bound stays the `http.Server`

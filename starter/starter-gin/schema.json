@@ -153,6 +153,16 @@
               "type": "boolean",
               "default": false
             },
+            "frameOptions": {
+              "type": "string",
+              "default": "DENY",
+              "description": "X-Frame-Options value: DENY, SAMEORIGIN, or empty to omit the header."
+            },
+            "referrerPolicy": {
+              "type": "string",
+              "default": "no-referrer",
+              "description": "Referrer-Policy value (e.g. no-referrer, same-origin, strict-origin-when-cross-origin); empty to omit."
+            },
             "hsts": {
               "type": "object",
               "properties": {
@@ -174,16 +184,6 @@
                   "default": false
                 }
               }
-            }
-          }
-        },
-        "bodyLimit": {
-          "type": "object",
-          "properties": {
-            "maxSize": {
-              "type": "integer",
-              "default": 0,
-              "description": "Max request body size in bytes. 0 = no limit. When >0 an over-large body is rejected with 413."
             }
           }
         }
