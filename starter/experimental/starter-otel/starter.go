@@ -24,13 +24,15 @@ package StarterOTel
 
 import (
 	"context"
-
 	"net/http"
 
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/experimental/actuator/endpoint"
 	"go-spring.org/spring/gs"
+	"go-spring.org/starter-otel/correlation"
+	"go-spring.org/starter-otel/metric"
+	"go-spring.org/starter-otel/trace"
 	"go-spring.org/stdlib/flatten"
 	runtimemetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
@@ -71,17 +73,17 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 
 	log.Debugf(context.Background(), starterTag, "setting up OTel with service=%s trace_enable=%v metrics_enable=%v", cfg.ServiceName, cfg.Trace.Enable, cfg.Metrics.Enable)
 
-	res, err := newResource(cfg.ServiceName)
+	res, err := trace.NewResource(cfg.ServiceName)
 	if err != nil {
 		return err
 	}
 
 	if cfg.Trace.Enable && cfg.Trace.Exporter != "none" {
-		tp, err := newTracerProvider(cfg.Trace, res)
+		tp, err := trace.NewTracerProvider(cfg.Trace, res)
 		if err != nil {
 			return err
 		}
-		prop, err := newPropagator(cfg.Trace.Propagator)
+		prop, err := trace.NewPropagator(cfg.Trace.Propagator)
 		if err != nil {
 			return err
 		}
@@ -94,16 +96,16 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		})
 		// Correlate logs with traces: install the log hook that stamps every
 		// record with the active span's trace_id/span_id.
-		installLogCorrelation()
+		correlation.InstallLogCorrelation()
 		// Propagate trace context on outbound requests (via the discovery
 		// seam) so downstream services and mesh sidecars share one trace.
-		installTracePropagation()
+		correlation.InstallTracePropagation()
 
 		log.Infof(context.Background(), starterTag, "trace provider initialized exporter=%s propagator=%s", cfg.Trace.Exporter, cfg.Trace.Propagator)
 	}
 
 	if cfg.Metrics.Enable && cfg.Metrics.Exporter != "none" {
-		mp, ps, err := newMeterProvider(cfg.Metrics, res)
+		mp, ps, err := metric.NewMeterProvider(cfg.Metrics, res)
 		if err != nil {
 			return err
 		}
@@ -127,15 +129,15 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		// Pull-based (prometheus) exporter: contribute the scrape handler as an
 		// endpoint.Endpoint so starter-actuator, if present, serves /metrics on
 		// the shared management port — no cross-starter import. The dedicated
-		// server (ps.server) is optional and only runs when metrics.port>0.
+		// server (ps.Server) is optional and only runs when metrics.port>0.
 		if ps != nil {
-			if ps.server != nil {
-				r.Provide(ps.server).Destroy(func(srv *http.Server) error {
+			if ps.Server != nil {
+				r.Provide(ps.Server).Destroy(func(srv *http.Server) error {
 					return srv.Shutdown(context.Background())
 				})
 			}
-			if ps.handler != nil {
-				r.Provide(newMetricsEndpoint(cfg.Metrics.Path, ps.handler)).
+			if ps.Handler != nil {
+				r.Provide(metric.NewEndpoint(cfg.Metrics.Path, ps.Handler)).
 					Export(gs.As[endpoint.Endpoint]())
 			}
 		}

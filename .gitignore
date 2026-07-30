@@ -30,6 +30,9 @@ vendor/
 # IDE files
 .idea/
 
+# Claude files
+.claude/plans/
+
 # VitePress development cache
 website/.vitepress/cache/
 
@@ -38,3 +41,7 @@ scripts/git-history-audit/reports/
 
 # Generated example runtime files
 **/example/mount/
+
+# Compiled example binaries
+**/example/example
+**/example-otel/example-otel

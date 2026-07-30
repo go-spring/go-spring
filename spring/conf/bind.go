@@ -532,6 +532,17 @@ func bindStruct(p flatten.Storage, v reflect.Value, t reflect.Type, param BindPa
 			}
 		}
 	}
+
+	// After all fields are bound, run cross-field validation if the
+	// struct implements the Validator interface. This allows types to
+	// check inter-field constraints (e.g. "min ≤ max") that can't be
+	// expressed with per-field expr tags.
+	if validator, ok := v.Addr().Interface().(Validator); ok {
+		if err := validator.Validate(); err != nil {
+			return errutil.Explain(err, "validation failed at path %s", param.Path)
+		}
+	}
+
 	return nil
 }
 

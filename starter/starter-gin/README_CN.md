@@ -56,6 +56,9 @@ spring.gin.server.middleware.requestId.enabled=true
 spring.gin.server.middleware.requestId.header=X-Request-Id
 spring.gin.server.middleware.accessLog.skipPaths=
 spring.gin.server.middleware.accessLog.payload.enabled=true
+spring.gin.server.middleware.accessLog.payload.limit=524288
+spring.gin.server.middleware.accessLog.metrics.sseDistributions=true
+spring.gin.server.middleware.accessLog.metrics.activeRequests=false
 spring.gin.server.middleware.cors.enabled=false
 spring.gin.server.middleware.cors.allowedOrigins=
 spring.gin.server.middleware.gzip.enabled=false
@@ -104,7 +107,7 @@ starter 不安装任何内置中间件，由注册器接管整条链——含 Re
 
 | 中间件 | 默认 | 来源 | 说明 |
 |---|---|---|---|
-| `observe` | 常开（必选） | 自实现 | 将 Recovery、Tracing、Metrics、AccessLog 合并进单一请求生命周期：一个 defer 同时结束 span、记录指标、输出访问日志，即使 handler panic 也能正确收尾。Tracing/Metrics 搭载 OTel 全局对象（未引入 `starter-otel` 时为 no-op）；访问日志 4xx 记 Warn、5xx 记 Error，自动跳过健康端点，携带 `request_id`/`trace_id`/`span_id`，并通过 `accessLog.payload.enabled`（默认开）抓取请求 body+query+headers 与响应 body，各 512 KiB 截断，二进制内容打占位符。SSE 响应（`text/event-stream`）按每次 flush 实时逐事件落盘，不缓冲到流关闭。 |
+| `observe` | 常开（必选） | 自实现 | 将 Recovery、Tracing、Metrics、AccessLog 合并进单一请求生命周期：一个 defer 同时结束 span、记录指标、输出访问日志，即使 handler panic 也能正确收尾。Tracing/Metrics 搭载 OTel 全局对象（未引入 `starter-otel` 时为 no-op）；访问日志 4xx 记 Warn、5xx 记 Error，自动跳过健康端点，携带 `request_id`/`trace_id`/`span_id`，并通过 `accessLog.payload.enabled`（默认开）抓取请求 body+query+headers 与响应 body，各 512 KiB 截断，二进制内容打占位符。SSE 响应（`text/event-stream`）按每次 flush 实时逐事件落盘（不缓冲到流关闭），并由常开的 `http.server.sse.events` 计数器逐事件累加、记入 `http.server.sse.event.size` 与 `http.server.sse.event.interval` 直方图（采样无关，是 p99 事件大小 / 卡顿告警分布的可靠来源，弥补被采样的 span）、在请求 server span 下逐事件开一个 `sse.event` 子 span（duration 为距上一个事件的间隔），无论是否开启 payload 抓取都常开：事件速率与分布进指标，事件时间线在链路上呈现为子 span 链，关闭 payload 抓取的生产配置下仍可观测。SSE 流在 `http.server.request.duration` 上带 `http.response.stream=sse` 维度，便于在大盘/告警里过滤掉、不混入慢请求分位。 |
 | `requestId` | 开 | `gin-contrib/requestid` | 生成/透传 `X-Request-Id`，同时写入请求 context（见 `RequestIDFromContext`）。 |
 | `cors` | 关 | `gin-contrib/cors` | 没有安全的通用默认值，需显式配置 `allowedOrigins`（或开发期用 `allowAllOrigins`）。配置非法会在启动期失败。 |
 | `gzip` | 关 | `gin-contrib/gzip` | `level`（1-9，-1=默认）、`minLength`（0=全部压缩）。 |

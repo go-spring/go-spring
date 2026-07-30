@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/starter-otel/metric"
+	"go-spring.org/starter-otel/trace"
 	"go-spring.org/stdlib/testing/assert"
 	runtimemetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 )
@@ -36,23 +38,23 @@ import (
 // ${spring.observability.metrics.runtime.enable} is true — proving runtime.*
 // metrics reach the exporter with zero per-project code.
 func TestRuntimeMetricsExposed(t *testing.T) {
-	cfg := MetricsConfig{
+	cfg := metric.MetricsConfig{
 		Enable:   true,
 		Exporter: "prometheus",
 		Port:     19099,
 		Path:     "/metrics",
 	}
 
-	res, err := newResource("runtime-smoke")
+	res, err := trace.NewResource("runtime-smoke")
 	assert.Error(t, err).Nil()
 
-	mp, ps, err := newMeterProvider(cfg, res)
+	mp, ps, err := metric.NewMeterProvider(cfg, res)
 	assert.Error(t, err).Nil()
 	assert.That(t, ps).NotNil()
-	assert.That(t, ps.server).NotNil()
+	assert.That(t, ps.Server).NotNil()
 	defer func() {
 		_ = mp.Shutdown(context.Background())
-		_ = ps.server.Shutdown(context.Background())
+		_ = ps.Server.Shutdown(context.Background())
 	}()
 
 	err = runtimemetrics.Start(runtimemetrics.WithMeterProvider(mp))

@@ -117,13 +117,16 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if err != nil {
 		return errutil.Explain(err, "failed to listen on %s", s.svr.Addr)
 	}
+
 	<-sig.TriggerAndWait()
 	log.Infof(ctx, ginTag, "gin server starting on %s (tls=%v)", s.svr.Addr, s.tls)
+
 	if s.tls {
 		err = s.svr.ServeTLS(ln, s.certFile, s.keyFile)
 	} else {
 		err = s.svr.Serve(ln)
 	}
+
 	if errors.Is(err, http.ErrServerClosed) {
 		log.Debugf(ctx, ginTag, "gin server stopped on %s", s.svr.Addr)
 		return nil

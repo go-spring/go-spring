@@ -77,12 +77,19 @@ type RequestIDConfig struct {
 
 // AccessLogConfig holds options for the always-on access log emitted by the
 // Observe middleware (one structured record per request via the project log
-// package). The configured health endpoint path is auto-skipped in addition to
-// any operator-supplied skip list, so probes do not flood the log. Records are
-// emitted at Warn for 4xx and Error for 5xx so failures stand out.
+// package). Records are emitted at Warn for 4xx and Error for 5xx so failures
+// stand out.
 type AccessLogConfig struct {
+	// SkipPaths suppresses every signal (span, metric, access log) for matching
+	// requests, so chatty endpoints (health probes, high-frequency polls) don't
+	// flood the backends. An entry matches the concrete request path (e.g.
+	// /healthz) OR the matched gin route pattern (e.g. /users/:id), so a RESTful
+	// route can be skipped without listing every concrete id. The configured
+	// health endpoint path is auto-appended. A panic on a skipped path is still
+	// recorded - skip never silences failures.
 	SkipPaths []string      `value:"${skipPaths:=}"`
 	Payload   PayloadConfig `value:"${payload}"`
+	Metrics   MetricsConfig `value:"${metrics}"`
 }
 
 // PayloadConfig controls request/response payload capture in the access log for
@@ -91,6 +98,37 @@ type AccessLogConfig struct {
 // the captured size and skip binary/streaming content. On by default.
 type PayloadConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
+	// Limit caps how many bytes of the request body and of the response body are
+	// captured per request (each, independently). With payload capture on, a
+	// single access record is therefore bounded to ~2x Limit. Defaults to 512 KiB,
+	// enough for typical JSON/form payloads without letting a runaway body exhaust
+	// memory. Set higher only if you need to capture large bodies for debugging.
+	Limit int `value:"${limit:=524288}"`
+}
+
+// MetricsConfig toggles optional metrics emitted by the Observe and
+// responseCapture middlewares. The http.server.request.duration histogram is
+// always on (disabling it would blind the server's basic latency view);
+// middleware.enabled=false is the escape hatch for opting out entirely. The
+// metrics below are individually toggleable.
+type MetricsConfig struct {
+	// SSEDistributions toggles the per-event http.server.sse.event.size and
+	// http.server.sse.event.interval histograms. They are sampling-independent
+	// sources for "p99 event size" and "stall/alert" dashboards that the sampled
+	// per-event child span can't back. On by default; turn off when SSE event-size
+	// or interval distributions aren't needed to spare the (small) per-event
+	// record cost on high-event-rate streams.
+	SSEDistributions bool `value:"${sseDistributions:=true}"`
+
+	// ActiveRequests toggles the http.server.active_requests in-flight gauge.
+	// Off by default: for short-lived HTTP requests the in-flight count is
+	// derivable from QPS and latency (Little's law) and duplicates lower-level
+	// runtime gauges (goroutine count), so the per-request +1/-1 bookkeeping is
+	// not worth it. Turn it on for long-lived connections - notably SSE streams,
+	// where each in-flight request holds a connection/goroutine for seconds to
+	// minutes and the in-flight count is a capacity-planning essential that
+	// latency/QPS alone can't surface.
+	ActiveRequests bool `value:"${activeRequests:=false}"`
 }
 
 // CORSConfig enables gin-contrib/cors. It is off by default: cross-origin

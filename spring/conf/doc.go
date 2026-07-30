@@ -109,6 +109,48 @@ Register custom validation functions:
 
 For more expression syntax see: https://github.com/expr-lang/expr
 
+# Cross-Field Validation
+
+Per-field expr tags cannot express relationships between fields. For
+constraints that span multiple fields, implement the Validator interface
+on your configuration struct. Validate is called automatically after all
+struct fields are bound, including for nested structs inside slices and
+maps.
+
+	type ServerConfig struct {
+	    Host string `value:"${host}"`
+	    Port int    `value:"${port:=0}"`
+	}
+
+	func (c *ServerConfig) Validate() error {
+	    if c.Port > 0 && c.Host == "" {
+	        return fmt.Errorf("host required when port is set")
+	    }
+	    if c.Port < 0 || c.Port > 65535 {
+	        return fmt.Errorf("port %d out of range [0, 65535]", c.Port)
+	    }
+	    return nil
+	}
+
+Validation is hierarchical: each nested struct can carry its own
+cross-field rules, and they are validated independently from the bottom
+up. This composes naturally with expr tags — a struct can use both
+per-field and cross-field validation at the same time.
+
+Comparison with constructor validation:
+
+	                   | conf.Validator    | constructor body
+	-------------------|-------------------|-------------------
+	conf.Bind path     | ✓ (automatic)     | ✗ (not called)
+	gs.TagArg path     | ✓ (automatic)     | ✓ (manual)
+	external deps      | ✗ (no injection) | ✓ (can inject beans)
+	consistent across  | ✓                 | depends on caller
+	binding entrypoints
+
+Use Validator when the constraint is intrinsic to the type itself;
+use constructor validation when the check needs access to other beans
+or external state.
+
 # Loading Configuration
 
 conf.Load accepts a source URI in the format:

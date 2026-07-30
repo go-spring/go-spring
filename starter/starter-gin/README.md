@@ -55,6 +55,9 @@ spring.gin.server.middleware.requestId.enabled=true
 spring.gin.server.middleware.requestId.header=X-Request-Id
 spring.gin.server.middleware.accessLog.skipPaths=
 spring.gin.server.middleware.accessLog.payload.enabled=true
+spring.gin.server.middleware.accessLog.payload.limit=524288
+spring.gin.server.middleware.accessLog.metrics.sseDistributions=true
+spring.gin.server.middleware.accessLog.metrics.activeRequests=false
 spring.gin.server.middleware.cors.enabled=false
 spring.gin.server.middleware.cors.allowedOrigins=
 spring.gin.server.middleware.gzip.enabled=false
@@ -106,7 +109,7 @@ middleware); RequestID is on by default; the rest are off until opted in via `sp
 
 | Middleware | Default | Source | Notes |
 |---|---|---|---|
-| `observe` | on (always) | self | Bundles Recovery + Tracing + Metrics + AccessLog into one per-request lifecycle: a single deferred finalize ends the span, records metrics, and emits the access log even on a handler panic. Tracing/Metrics ride the OTel globals (no-op without `starter-otel`); the access log is Warn on 4xx, Error on 5xx, auto-skips the health path, carries `request_id`/`trace_id`/`span_id`, and (via `accessLog.payload.enabled`, default on) captures request body+query+headers and response body, each capped at 512 KiB with binary content masked. SSE responses (`text/event-stream`) are logged per flushed event in real time, not buffered to stream close. |
+| `observe` | on (always) | self | Bundles Recovery + Tracing + Metrics + AccessLog into one per-request lifecycle: a single deferred finalize ends the span, records metrics, and emits the access log even on a handler panic. Tracing/Metrics ride the OTel globals (no-op without `starter-otel`); the access log is Warn on 4xx, Error on 5xx, auto-skips the health path, carries `request_id`/`trace_id`/`span_id`, and (via `accessLog.payload.enabled`, default on) captures request body+query+headers and response body, each capped at 512 KiB with binary content masked. SSE responses (`text/event-stream`) are logged per flushed event in real time (not buffered to stream close) and, always on regardless of payload capture, counted by an `http.server.sse.events` counter, recorded into `http.server.sse.event.size` and `http.server.sse.event.interval` histograms (the sampling-independent source for p99 event size / stall-alert distributions that the sampled span can't back), and stamped as an `sse.event` child span under the request's server span (its duration is the interval since the previous event) - so event rate and distributions show in metrics and the event timeline shows as a chain of child spans on the trace, surviving a production config that turns payload capture off. SSE streams are tagged `http.response.stream=sse` on `http.server.request.duration` so their (often long) durations can be filtered out of slow-request percentiles. |
 | `requestId` | on | `gin-contrib/requestid` | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
 | `cors` | off | `gin-contrib/cors` | No safe universal default - supply `allowedOrigins` (or `allowAllOrigins` for dev). Misconfig fails at startup. |
 | `gzip` | off | `gin-contrib/gzip` | `level` (1-9, -1=default), `minLength` (0=compress all). |

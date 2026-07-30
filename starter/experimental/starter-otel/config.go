@@ -16,7 +16,10 @@
 
 package StarterOTel
 
-import "time"
+import (
+	"go-spring.org/starter-otel/metric"
+	"go-spring.org/starter-otel/trace"
+)
 
 // Config is the single, framework-level observability configuration bound to
 // ${spring.observability}. It is the one place trace/metrics providers are
@@ -24,49 +27,8 @@ import "time"
 // providers through the OTel process globals set by this starter, so a project
 // configures observability once here instead of adapting each component.
 type Config struct {
-	Enable      bool          `value:"${enable:=true}"`
-	ServiceName string        `value:"${service-name:=${spring.application.name:=go-spring-app}}"`
-	Trace       TraceConfig   `value:"${trace}"`
-	Metrics     MetricsConfig `value:"${metrics}"`
-}
-
-// TraceConfig configures the shared TracerProvider under
-// ${spring.observability.trace}. Exporter selects the span backend; Endpoint is
-// required for the otlp exporters. SamplerRatio drives a ParentBased ratio
-// sampler (>=1 always, <=0 never). Empty/zero values keep OTel SDK defaults.
-type TraceConfig struct {
-	Enable       bool    `value:"${enable:=true}"`
-	Exporter     string  `value:"${exporter:=otlp-grpc}"` // otlp-grpc|otlp-http|stdout|none
-	Endpoint     string  `value:"${endpoint:=}"`
-	Insecure     bool    `value:"${insecure:=true}"`
-	SamplerRatio float64 `value:"${sampler-ratio:=1.0}"`
-	Propagator   string  `value:"${propagator:=w3c}"` // w3c|none
-}
-
-// MetricsConfig configures the shared MeterProvider under
-// ${spring.observability.metrics}. The prometheus exporter is pull-based and
-// serves Path on Port; the otlp/stdout exporters are push-based on Interval.
-// Empty/zero values keep OTel SDK defaults.
-type MetricsConfig struct {
-	Enable   bool                 `value:"${enable:=true}"`
-	Exporter string               `value:"${exporter:=otlp-grpc}"` // otlp-grpc|otlp-http|prometheus|stdout|none
-	Endpoint string               `value:"${endpoint:=}"`
-	Insecure bool                 `value:"${insecure:=true}"`
-	Port     int                  `value:"${port:=9090}"`
-	Path     string               `value:"${path:=/metrics}"`
-	Interval time.Duration        `value:"${interval:=10s}"` // push interval for otlp/stdout readers
-	Runtime  RuntimeMetricsConfig `value:"${runtime}"`
-}
-
-// RuntimeMetricsConfig controls Go runtime instrumentation under
-// ${spring.observability.metrics.runtime}. When enabled the starter feeds Go
-// runtime metrics (GC, heap/alloc, goroutine count, GOMAXPROCS, scheduling)
-// into the shared MeterProvider, so they surface through whichever metrics
-// exporter is configured without any per-project wiring. This is continuous
-// metrics, complementing starter-pprof's on-demand profile dumps.
-type RuntimeMetricsConfig struct {
-	Enable bool `value:"${enable:=true}"`
-	// MinReadMemStatsInterval caps how often runtime.ReadMemStats is called,
-	// which is stop-the-world; zero keeps the instrumentation's own default.
-	MinReadMemStatsInterval time.Duration `value:"${min-read-mem-stats-interval:=15s}"`
+	Enable      bool                `value:"${enable:=true}"`
+	ServiceName string              `value:"${service-name:=${spring.application.name:=go-spring-app}}"`
+	Trace       trace.TraceConfig   `value:"${trace}"`
+	Metrics     metric.MetricsConfig `value:"${metrics}"`
 }

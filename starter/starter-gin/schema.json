@@ -74,6 +74,26 @@
                 "enabled": {
                   "type": "boolean",
                   "default": true
+                },
+                "limit": {
+                  "type": "integer",
+                  "default": 524288,
+                  "description": "Max bytes captured per request body and per response body (each, independently). Defaults to 512 KiB."
+                }
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "sseDistributions": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Toggle the per-event http.server.sse.event.size and http.server.sse.event.interval histograms. Core metrics (request.duration, sse.events) are always on."
+                },
+                "activeRequests": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Toggle the http.server.active_requests in-flight gauge. Off by default (low value for short requests; derivable from QPS+latency). Turn on for long-lived connections (SSE), where in-flight count is a capacity essential."
                 }
               }
             }

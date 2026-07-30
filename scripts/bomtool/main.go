@@ -40,9 +40,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/tools/bomtool/bom"
 	"go-spring.org/tools/bomtool/runcmd"
-	"go-spring.org/stdlib/errutil"
 )
 
 // baselineFile is the name of the version manifest at the repo root.

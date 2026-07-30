@@ -17,6 +17,7 @@
 package conf_test
 
 import (
+	"fmt"
 	"image"
 	"io"
 	"reflect"
@@ -945,5 +946,202 @@ func TestStructBinding(t *testing.T) {
 			Name: "Bob",
 			Age:  30,
 		})
+	})
+}
+
+// ——————————————————————————————————————
+// Validator interface tests
+// ——————————————————————————————————————
+
+// RangeValidator implements conf.Validator for cross-field min/max checking.
+type RangeValidator struct {
+	Min int `value:"${min:=0}"`
+	Max int `value:"${max:=100}"`
+}
+
+func (r *RangeValidator) Validate() error {
+	if r.Min > r.Max {
+		return fmt.Errorf("min (%d) must be less than or equal to max (%d)", r.Min, r.Max)
+	}
+	return nil
+}
+
+// ServerValidator implements conf.Validator for host/port dependency.
+type ServerValidator struct {
+	Host string `value:"${host}"`
+	Port int    `value:"${port:=0}"`
+}
+
+func (s *ServerValidator) Validate() error {
+	if s.Port > 0 && s.Host == "" {
+		return fmt.Errorf("host is required when port is set")
+	}
+	if s.Port < 0 || s.Port > 65535 {
+		return fmt.Errorf("port %d out of range [0, 65535]", s.Port)
+	}
+	return nil
+}
+
+// ParentContainsValidator is a struct that nests a Validator-implementing field.
+type ParentContainsValidator struct {
+	Server ServerValidator `value:"${server}"`
+	Name   string          `value:"${name:=default}"`
+}
+
+func TestValidator(t *testing.T) {
+
+	t.Run("struct implements Validator — called on bind", func(t *testing.T) {
+		var r RangeValidator
+		p := flatten.NewPropertiesStorage(flatten.NewProperties(nil))
+		err := conf.Bind(p, &r)
+		assert.That(t, err).Nil()
+		assert.That(t, r.Min).Equal(0)
+		assert.That(t, r.Max).Equal(100)
+	})
+
+	t.Run("struct implements Validator — validation error", func(t *testing.T) {
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"min": "200",
+			"max": "100",
+		}))
+		var r RangeValidator
+		err := conf.Bind(p, &r)
+		assert.Error(t, err).Matches("min \\(200\\) must be less than or equal to max \\(100\\)")
+	})
+
+	t.Run("nested struct implements Validator — called recursively", func(t *testing.T) {
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"server": map[string]any{
+				"host": "localhost",
+				"port": 8080,
+			},
+			"name": "my-server",
+		}))
+		var s ParentContainsValidator
+		err := conf.Bind(p, &s)
+		assert.That(t, err).Nil()
+		assert.That(t, s.Server.Host).Equal("localhost")
+		assert.That(t, s.Server.Port).Equal(8080)
+		assert.That(t, s.Name).Equal("my-server")
+	})
+
+	t.Run("nested struct Validator — validation error propagates", func(t *testing.T) {
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"server": map[string]any{
+				"host": "",
+				"port": 8080,
+			},
+			"name": "bad-server",
+		}))
+		var s ParentContainsValidator
+		err := conf.Bind(p, &s)
+		assert.Error(t, err).Matches("host is required when port is set")
+	})
+
+	t.Run("Validator inside a slice — each element validated", func(t *testing.T) {
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"ranges": []any{
+				map[string]any{"min": 1, "max": 10},
+				map[string]any{"min": 5, "max": 15},
+			},
+		}))
+		var s struct {
+			Ranges []RangeValidator `value:"${ranges}"`
+		}
+		err := conf.Bind(p, &s)
+		assert.That(t, err).Nil()
+		assert.That(t, len(s.Ranges)).Equal(2)
+		assert.That(t, s.Ranges[0].Min).Equal(1)
+		assert.That(t, s.Ranges[0].Max).Equal(10)
+		assert.That(t, s.Ranges[1].Min).Equal(5)
+		assert.That(t, s.Ranges[1].Max).Equal(15)
+	})
+
+	t.Run("Validator inside a slice — element error propagates", func(t *testing.T) {
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"ranges": []any{
+				map[string]any{"min": 1, "max": 10},
+				map[string]any{"min": 50, "max": 15}, // invalid
+			},
+		}))
+		var s struct {
+			Ranges []RangeValidator `value:"${ranges}"`
+		}
+		err := conf.Bind(p, &s)
+		assert.Error(t, err).Matches("min \\(50\\) must be less than or equal to max \\(15\\)")
+	})
+
+	t.Run("Validator inside a map — each value validated", func(t *testing.T) {
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"limits": map[string]any{
+				"a": map[string]any{"min": 1, "max": 10},
+				"b": map[string]any{"min": 5, "max": 15},
+			},
+		}))
+		var s struct {
+			Limits map[string]RangeValidator `value:"${limits}"`
+		}
+		err := conf.Bind(p, &s)
+		assert.That(t, err).Nil()
+		assert.That(t, len(s.Limits)).Equal(2)
+		assert.That(t, s.Limits["a"].Min).Equal(1)
+		assert.That(t, s.Limits["a"].Max).Equal(10)
+		assert.That(t, s.Limits["b"].Min).Equal(5)
+		assert.That(t, s.Limits["b"].Max).Equal(15)
+	})
+
+	t.Run("Validator inside a map — value error propagates", func(t *testing.T) {
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"limits": map[string]any{
+				"a": map[string]any{"min": 10, "max": 5}, // invalid
+			},
+		}))
+		var s struct {
+			Limits map[string]RangeValidator `value:"${limits}"`
+		}
+		err := conf.Bind(p, &s)
+		assert.Error(t, err).Matches("min \\(10\\) must be less than or equal to max \\(5\\)")
+	})
+
+	t.Run("type does not implement Validator — no-op", func(t *testing.T) {
+		var d Data
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"name": "Alice",
+			"age":  30,
+		}))
+		err := conf.Bind(p, &d)
+		assert.That(t, err).Nil()
+		assert.That(t, d.Name).Equal("Alice")
+		assert.That(t, d.Age).Equal(30)
+	})
+
+	t.Run("Validator with expr tag — both compose", func(t *testing.T) {
+		// expr validates per-field, Validator validates cross-field
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"host": "localhost",
+			"port": 8080,
+		}))
+		var s struct {
+			Host string `value:"${host}" expr:"len($) > 0"`
+			Port int    `value:"${port}" expr:"$ > 0"`
+		}
+		err := conf.Bind(p, &s)
+		assert.That(t, err).Nil()
+		assert.That(t, s.Host).Equal("localhost")
+		assert.That(t, s.Port).Equal(8080)
+	})
+
+	t.Run("Validator with embedded struct", func(t *testing.T) {
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+			"min": "1",
+			"max": "10",
+		}))
+		var s struct {
+			RangeValidator
+		}
+		err := conf.Bind(p, &s)
+		assert.That(t, err).Nil()
+		assert.That(t, s.RangeValidator.Min).Equal(1)
+		assert.That(t, s.RangeValidator.Max).Equal(10)
 	})
 }

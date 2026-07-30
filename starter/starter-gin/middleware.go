@@ -70,8 +70,9 @@ func RequestIDFromContext(ctx context.Context) string {
 // design leaked spans and in-flight gauges. These four are mandatory and always
 // on whenever the built-in set is enabled (the default). The policy middlewares
 // (SecureHeaders/CORS/Gzip) sit inside the chain so short-circuit responses
-// (204, 403) are still observed. responseCapture is innermost (when payload
-// capture is on): it wraps the response writer inside gzip, so it records the
+// (204, 403) are still observed. responseCapture is innermost (always installed;
+// body capture is gated by the payload flag, but the SSE per-event hook is on
+// regardless): it wraps the response writer inside gzip, so it records the
 // UNCOMPRESSED bytes the handler writes - not the compressed wire bytes - and
 // publishes them for Observe's access log. Splitting capture out of Observe
 // keeps it inside gzip (Observe is outer, outside gzip); were capture still in
@@ -99,9 +100,11 @@ func applyMiddlewares(e *gin.Engine, cfg Config) error {
 		accessCfg.SkipPaths = append(append([]string{}, accessCfg.SkipPaths...), cfg.Health.Path)
 	}
 	e.Use(observe(accessCfg))
+
 	if mw.SecureHeaders.Enabled {
 		e.Use(secureHeaders(mw.SecureHeaders))
 	}
+
 	if mw.CORS.Enabled {
 		h, err := corsMiddleware(mw.CORS)
 		if err != nil {
@@ -109,15 +112,25 @@ func applyMiddlewares(e *gin.Engine, cfg Config) error {
 		}
 		e.Use(h)
 	}
+
 	if mw.Gzip.Enabled {
 		e.Use(gzipMiddleware(mw.Gzip))
 	}
+
 	// responseCapture is innermost so it sees the uncompressed bytes the handler
-	// writes - inside gzip (and any response transformer). Observe reads its
-	// capture via the gin context. Only installed when payload capture is on.
-	if mw.AccessLog.Payload.Enabled {
-		e.Use(responseCapture())
-	}
+	// writes - inside gzip (and any response transformer). It is always
+	// installed: the SSE per-event hook (the http.server.sse.events counter,
+	// plus real-time per-event logging when payload capture is on) runs
+	// regardless of payload capture, so SSE observability stays on in production
+	// where payload capture is typically off. Body capture for the access log's
+	// resp.body is gated inside by the payload flag, so turning payload capture
+	// off drops only the body-copy cost. Observe reads its capture via the gin
+	// context.
+	e.Use(responseCapture(
+		mw.AccessLog.Payload.Enabled,
+		mw.AccessLog.Payload.Limit,
+		mw.AccessLog.Metrics.SSEDistributions,
+	))
 	return nil
 }
 
@@ -193,10 +206,12 @@ func corsMiddleware(cfg CORSConfig) (gin.HandlerFunc, error) {
 	}
 	if len(c.AllowMethods) == 0 {
 		c.AllowMethods = []string{
-			http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch,
-			http.MethodDelete, http.MethodHead, http.MethodOptions,
+			http.MethodGet, http.MethodPost, http.MethodPut,
+			http.MethodPatch, http.MethodDelete,
+			http.MethodHead, http.MethodOptions,
 		}
 	}
+
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
