@@ -114,7 +114,7 @@ require (
 
 replace go-spring.org/starter-kitex => ../
 
-replace go-spring.org/starter-otel => ../../starter-otel
+replace go-spring.org/starter-otel => ../../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../starter-actuator
 

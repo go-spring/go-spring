@@ -68,6 +68,6 @@ require (
 
 replace go-spring.org/starter-mail => ../
 
-replace go-spring.org/starter-otel => ../../starter-otel
+replace go-spring.org/starter-otel => ../../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../starter-actuator

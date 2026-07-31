@@ -35,7 +35,8 @@ func init() {
 
 	gs.Provide(
 		NewSimpleGinServer,
-		gs.IndexArg(1, gs.TagArg("${spring.gin.server}")),
+		gs.IndexArg(1, gs.TagArg("?")),
+		gs.IndexArg(2, gs.TagArg("${spring.gin.server}")),
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.gin.server.addr"))
 }
@@ -50,9 +51,29 @@ func init() {
 // application route: Observe (Recovery + Tracing + Metrics + AccessLog),
 // RequestID, and the opt-in CORS/Gzip/SecureHeaders. When an application
 // disables the set, the register owns the entire chain - including Recovery -
-// and must install its own middleware before registering routes. Mount only
-// routes and app-specific middleware here.
+// and may call ApplyMiddlewares (or the individual constructors) itself to place
+// the built-ins wherever it likes. Mount only routes and app-specific middleware
+// here.
 type RouterRegister func(e *gin.Engine)
+
+// EngineMiddleware installs middleware onto the framework-owned *gin.Engine at
+// server startup, before the built-in middleware set runs. Provide one as a bean
+// to run application middleware on the OUTSIDE of the built-in chain - e.g. an
+// auth or trace-context middleware that must run before RequestID and Observe -
+// without disabling the defaults:
+//
+//	gs.Provide(func() StarterGin.EngineMiddleware {
+//	    return func(e *gin.Engine) { e.Use(myAuthMiddleware) }
+//	})
+//
+// It is injected as a single nullable bean (the "?" autowire tag in the starter's
+// init), so it is nil when no EngineMiddleware bean is provided - no config or
+// ceremony required, and providing more than one fails the container with an
+// ambiguity error (a single hook is enough: install e.Use(...) as many times as
+// needed inside it). It runs only when the built-in set is enabled; in manual
+// mode (middleware.enabled=false) the application owns the whole chain via its
+// RouterRegister and calls ApplyMiddlewares directly, so the hook is irrelevant.
+type EngineMiddleware func(e *gin.Engine)
 
 // SimpleGinServer adapts a Gin engine to the Go-Spring server lifecycle. It
 // owns a standard http.Server so it can serve either plaintext HTTP or, when
@@ -69,11 +90,22 @@ type SimpleGinServer struct {
 // server configured from ${spring.gin.server}. It returns an error when a
 // built-in middleware (notably CORS) is misconfigured, so the server fails fast
 // at startup instead of panicking on the first request.
-func NewSimpleGinServer(register RouterRegister, cfg Config) (*SimpleGinServer, error) {
+//
+// outer is the application-supplied EngineMiddleware hook (nullable - nil when
+// none is provided); it runs before the built-in set so app middleware sits on
+// the outside of the chain. cfg is bound from ${spring.gin.server}.
+func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config) (*SimpleGinServer, error) {
 	e := gin.New()
 
+	// Run the application-supplied outer hook first, so it wraps the built-in
+	// chain (it ends up outermost - before RequestID). nil when the app
+	// provides no EngineMiddleware bean.
+	if outer != nil {
+		outer(e)
+	}
+
 	if cfg.Middleware.Enabled {
-		if err := applyMiddlewares(e, cfg); err != nil {
+		if err := ApplyMiddlewares(e, cfg); err != nil {
 			return nil, err
 		}
 	}

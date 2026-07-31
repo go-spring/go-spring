@@ -87,6 +87,6 @@ require (
 
 replace go-spring.org/starter-kafka-sarama => ../
 
-replace go-spring.org/starter-otel => ../../starter-otel
+replace go-spring.org/starter-otel => ../../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../starter-actuator

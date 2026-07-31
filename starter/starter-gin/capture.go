@@ -78,7 +78,12 @@ const respCaptureKey = "_gs_gin_resp_capture"
 // per-event child spans, per-event log) measured inside gzip on uncompressed
 // bytes. The layers are complementary, not duplicated: request-level signals
 // belong only on the outer side, event-level signals only on the inner.
-func responseCapture(payloadEnabled bool, payloadLimit int, sseDistributions bool) gin.HandlerFunc {
+//
+// Exported so an application that disables the built-in set (middleware.enabled
+// = false) and owns its chain can install the innermost capture wrapper at a
+// chosen point - it must sit inside any response transformer (e.g. gzip) so it
+// records uncompressed bytes. See ApplyMiddlewares for the full chain.
+func ResponseCapture(payloadEnabled bool, payloadLimit int, sseDistributions bool) gin.HandlerFunc {
 	tracer := newSSETracer()
 	metrics := newSSEMetrics(sseDistributions)
 	accessLog := newSSEAccessLog(payloadEnabled, payloadLimit)

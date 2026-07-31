@@ -56,6 +56,15 @@ type HealthConfig struct {
 // RequestID is on by default; CORS, Gzip and SecureHeaders change
 // request/response behavior or carry security trade-offs, so they stay off until
 // an operator opts in.
+//
+// When Enabled is false the starter installs none of its built-in middlewares
+// and the application's RouterRegister owns the whole chain - including
+// Recovery. The exported ApplyMiddlewares and the individual constructors
+// (RequestID, Observe, SecureHeaders, CORS, Gzip, ResponseCapture) let the
+// application compose the standard set at a chosen point (e.g. running its own
+// middleware before/after/between the built-ins) by injecting Config via the
+// the same ${spring.gin.server} tag the starter uses. The EngineMiddleware hook
+// (the easy path) is ignored in this mode, since the application owns the chain.
 type MiddlewareConfig struct {
 	Enabled       bool                `value:"${enabled:=true}"`
 	RequestID     RequestIDConfig     `value:"${requestId}"`

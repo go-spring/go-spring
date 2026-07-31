@@ -89,6 +89,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace go-spring.org/starter-otel => ../../experimental/starter-otel
+replace go-spring.org/starter-otel => ../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../experimental/starter-actuator

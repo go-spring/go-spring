@@ -378,11 +378,11 @@ func runStream(t *testing.T, payloadEnabled, sseDistributions, activeRequests bo
 
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.Use(observe(AccessLogConfig{
+	e.Use(Observe(AccessLogConfig{
 		Payload: PayloadConfig{Enabled: payloadEnabled},
 		Metrics: MetricsConfig{SSEDistributions: sseDistributions, ActiveRequests: activeRequests},
 	}))
-	e.Use(responseCapture(payloadEnabled, payloadCaptureLimitForTest, sseDistributions))
+	e.Use(ResponseCapture(payloadEnabled, payloadCaptureLimitForTest, sseDistributions))
 	e.GET("/stream", handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/stream", nil)
@@ -704,11 +704,11 @@ func runSkip(t *testing.T, path string, handler gin.HandlerFunc) (*captureMeter,
 
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.Use(observe(AccessLogConfig{
+	e.Use(Observe(AccessLogConfig{
 		SkipPaths: []string{"/healthz"},
 		Metrics:   MetricsConfig{ActiveRequests: true},
 	}))
-	e.Use(responseCapture(false, payloadCaptureLimitForTest, false))
+	e.Use(ResponseCapture(false, payloadCaptureLimitForTest, false))
 	e.GET("/healthz", handler)
 	e.GET("/api", handler)
 
@@ -769,11 +769,11 @@ func runSkipRoute(t *testing.T, skipPaths []string, reg func(e *gin.Engine), req
 
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.Use(observe(AccessLogConfig{
+	e.Use(Observe(AccessLogConfig{
 		SkipPaths: skipPaths,
 		Metrics:   MetricsConfig{ActiveRequests: true},
 	}))
-	e.Use(responseCapture(false, payloadCaptureLimitForTest, false))
+	e.Use(ResponseCapture(false, payloadCaptureLimitForTest, false))
 	reg(e)
 
 	req := httptest.NewRequest(http.MethodGet, requestPath, nil)
@@ -914,5 +914,138 @@ func TestObserve_404RouteIsEmpty(t *testing.T) {
 	}
 	if got := len(h.values()); got != 1 {
 		t.Fatalf("404 duration records=%d, want 1 (404 is observed, not skipped)", got)
+	}
+}
+
+// --- EngineMiddleware + manual composition ---------------------------------
+
+// applyOuter reproduces NewSimpleGinServer's nullable-single-hook ordering: a
+// nil EngineMiddleware is a no-op, a non-nil one runs before ApplyMiddlewares.
+// Used by the ordering test so it mirrors the real ctor's body, not a bespoke
+// loop.
+func applyOuter(e *gin.Engine, outer EngineMiddleware) {
+	if outer != nil {
+		outer(e)
+	}
+}
+
+// An EngineMiddleware hook runs BEFORE the built-in chain, so app middleware
+// ends up outermost (before RequestID). Here a hook stamps X-Outer; the built-in
+// RequestID still stamps X-Request-Id. Both must be present, and X-Outer must
+// wrap RequestID (the hook's e.Use ran first). This locks the ordering
+// NewSimpleGinServer relies on: the outer hook, then ApplyMiddlewares.
+func TestEngineMiddleware_RunsBeforeBuiltins(t *testing.T) {
+	prevMeter := otel.GetMeterProvider()
+	cm := &captureMeter{}
+	otel.SetMeterProvider(&captureProvider{m: cm})
+	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
+
+	gin.SetMode(gin.TestMode)
+	e := gin.New()
+
+	// The hook stamps a header so we can see it wrapped the chain.
+	outer := EngineMiddleware(func(e *gin.Engine) {
+		e.Use(func(c *gin.Context) { c.Header("X-Outer", "yes") })
+	})
+	applyOuter(e, outer)
+	if err := ApplyMiddlewares(e, Config{
+		Middleware: MiddlewareConfig{
+			Enabled:   true,
+			RequestID: RequestIDConfig{Enabled: true},
+		},
+	}); err != nil {
+		t.Fatalf("ApplyMiddlewares: %v", err)
+	}
+	e.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	e.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-Outer"); got != "yes" {
+		t.Fatalf("X-Outer=%q, want \"yes\" (outer hook must run before built-ins)", got)
+	}
+	if rid := rec.Header().Get("X-Request-Id"); rid == "" {
+		t.Fatalf("X-Request-Id missing (built-in RequestID must still run after the hook)")
+	}
+}
+
+// A nil EngineMiddleware (the case when no bean is provided - the "?" nullable
+// injection) is a no-op: ApplyMiddlewares still runs and the server still works.
+// This locks the nullable-single-hook contract NewSimpleGinServer relies on.
+func TestEngineMiddleware_NilIsNoOp(t *testing.T) {
+	prevMeter := otel.GetMeterProvider()
+	cm := &captureMeter{}
+	otel.SetMeterProvider(&captureProvider{m: cm})
+	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
+
+	gin.SetMode(gin.TestMode)
+	e := gin.New()
+
+	// nil hook - mirrors the nullable-injection case (no EngineMiddleware bean).
+	applyOuter(e, nil)
+	if err := ApplyMiddlewares(e, Config{
+		Middleware: MiddlewareConfig{
+			Enabled:   true,
+			RequestID: RequestIDConfig{Enabled: true},
+		},
+	}); err != nil {
+		t.Fatalf("ApplyMiddlewares: %v", err)
+	}
+	e.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	e.ServeHTTP(rec, req)
+
+	// No outer header, but the built-in chain still ran (RequestID present).
+	if got := rec.Header().Get("X-Outer"); got != "" {
+		t.Fatalf("X-Outer=%q, want \"\" (nil hook must not install anything)", got)
+	}
+	if rid := rec.Header().Get("X-Request-Id"); rid == "" {
+		t.Fatalf("X-Request-Id missing (built-ins must still run with a nil outer hook)")
+	}
+}
+
+// In manual mode (middleware.enabled=false) the starter installs nothing, but an
+// application can call ApplyMiddlewares itself from its RouterRegister to place
+// the built-ins at a chosen point - here after an app middleware (so the app
+// middleware is outermost). The standard signals (request id, span) still fire,
+// proving ApplyMiddlewares is usable standalone.
+func TestApplyMiddlewares_ManualComposition(t *testing.T) {
+	ct := &captureTracer{}
+	prevTracer := otel.GetTracerProvider()
+	otel.SetTracerProvider(&captureTracerProvider{t: ct})
+	t.Cleanup(func() { otel.SetTracerProvider(prevTracer) })
+
+	gin.SetMode(gin.TestMode)
+	e := gin.New()
+
+	// App middleware first (outermost), then the built-in set via ApplyMiddlewares.
+	e.Use(func(c *gin.Context) { c.Header("X-App", "manual") })
+	if err := ApplyMiddlewares(e, Config{
+		Middleware: MiddlewareConfig{
+			Enabled:   true,
+			RequestID: RequestIDConfig{Enabled: true},
+		},
+	}); err != nil {
+		t.Fatalf("ApplyMiddlewares: %v", err)
+	}
+	e.GET("/m", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/m", nil)
+	e.ServeHTTP(rec, req)
+
+	// App middleware (outermost) + built-in RequestID both fired.
+	if got := rec.Header().Get("X-App"); got != "manual" {
+		t.Fatalf("X-App=%q, want \"manual\" (app middleware must run)", got)
+	}
+	if rid := rec.Header().Get("X-Request-Id"); rid == "" {
+		t.Fatalf("X-Request-Id missing (ApplyMiddlewares must install RequestID in manual mode)")
+	}
+	// Built-in Observe fired too: a server span was created.
+	if got := len(ct.spansByName("GET /m")); got != 1 {
+		t.Fatalf("server spans \"GET /m\"=%d, want 1 (ApplyMiddlewares must install Observe)", got)
 	}
 }

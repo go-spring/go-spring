@@ -151,7 +151,12 @@ func isLoggableContentType(ct string) bool {
 // panics mark the span errored and set error.type; a panic additionally records
 // an exception event. 4xx does neither, per the convention that client errors
 // are not server errors.
-func observe(cfg AccessLogConfig) gin.HandlerFunc {
+//
+// Exported so an application that disables the built-in set (middleware.enabled
+// = false) and owns its chain can install the unified observe middleware at a
+// chosen point. See ApplyMiddlewares for the full chain and the manual-mode
+// recipe.
+func Observe(cfg AccessLogConfig) gin.HandlerFunc {
 	// Build the skip set once at registration; the skip check consults it per
 	// request. applyMiddlewares folds the health endpoint path into cfg.SkipPaths
 	// so liveness/readiness probes don't flood the backends.
@@ -203,6 +208,9 @@ func observe(cfg AccessLogConfig) gin.HandlerFunc {
 			c.Request = c.Request.WithContext(ctx)
 			inflight = metrics.Begin(c.Request.Context(), facts)
 		}
+
+		// Capture the request body (gated by payload capture) for the access
+		// log's req.body field; a distinct phase from the span/gauge entry ops.
 		reqBody := logger.CaptureBody(c.Request)
 
 		// One deferred finalize owns every signal's end-of-request work, so a

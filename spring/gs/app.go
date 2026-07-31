@@ -140,6 +140,7 @@ func Run() {
 // termination signals (e.g., SIGTERM, Ctrl+C) to trigger a graceful shutdown.
 func (s *AppStarter) Run() {
 	defer log.Destroy()
+	defer runStoppers(s.app.Context())
 
 	// Error has already been logged
 	if err := s.startApp(); err != nil {
@@ -196,6 +197,7 @@ func RunTest(t *testing.T, f any) {
 // starts the application, executes the test, and ensures graceful shutdown.
 func (s *AppStarter) RunTest(t *testing.T, f any) {
 	defer log.Destroy()
+	defer runStoppers(s.app.Context())
 
 	ft, fv, err := validateRunTestFunc(f)
 	if err != nil {

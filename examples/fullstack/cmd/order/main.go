@@ -57,8 +57,7 @@ import (
 	StarterSecurityJWT "go-spring.org/starter-security-jwt"
 
 	"fullstack/internal/consuldisc"
-
-	StarterOTel "go-spring.org/starter-otel"
+	"fullstack/internal/serverspan"
 
 	// Contributor + provider starters, enabled by blank import.
 	_ "go-spring.org/starter-actuator"
@@ -284,7 +283,7 @@ func main() {
 // trace when the caller propagated one.
 func traceServer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, span := StarterOTel.StartServerSpan(r.Context(), r.Header, "order", r.Method+" "+r.URL.Path)
+		ctx, span := serverspan.StartServerSpan(r.Context(), r.Header, "order", r.Method+" "+r.URL.Path)
 		defer span.End()
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

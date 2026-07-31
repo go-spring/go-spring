@@ -69,6 +69,6 @@ require (
 
 replace go-spring.org/starter-oauth2-client => ../
 
-replace go-spring.org/starter-otel => ../../starter-otel
+replace go-spring.org/starter-otel => ../../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../starter-actuator

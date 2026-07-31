@@ -63,8 +63,6 @@ use (
 	./starter/experimental/starter-config-consul/example
 	./starter/experimental/starter-config-etcd
 	./starter/experimental/starter-config-etcd/example
-	./starter/experimental/starter-config-file
-	./starter/experimental/starter-config-file/example
 	./starter/experimental/starter-config-k8s
 	./starter/experimental/starter-config-k8s/example
 	./starter/experimental/starter-config-nacos
@@ -73,11 +71,6 @@ use (
 	./starter/experimental/starter-config-vault/example
 	./starter/experimental/starter-discovery-k8s
 	./starter/experimental/starter-discovery-k8s/example
-	./starter/experimental/starter-dubbo
-	./starter/experimental/starter-dubbo/example
-	./starter/experimental/starter-echo
-	./starter/experimental/starter-echo/example
-	./starter/experimental/starter-echo/example-otel
 	./starter/experimental/starter-elasticsearch
 	./starter/experimental/starter-elasticsearch/example
 	./starter/experimental/starter-elasticsearch/example-otel
@@ -98,12 +91,12 @@ use (
 	./starter/experimental/starter-gorm-clickhouse
 	./starter/experimental/starter-gorm-clickhouse/example
 	./starter/experimental/starter-gorm-clickhouse/example-otel
-	./starter/experimental/starter-gorm-postgres
-	./starter/experimental/starter-gorm-postgres/example
-	./starter/experimental/starter-gorm-postgres/example-otel
 	./starter/experimental/starter-gorm-sqlserver
 	./starter/experimental/starter-gorm-sqlserver/example
 	./starter/experimental/starter-gorm-sqlserver/example-otel
+	./starter/experimental/starter-grpc
+	./starter/experimental/starter-grpc/example
+	./starter/experimental/starter-grpc/example-otel
 	./starter/experimental/starter-hertz
 	./starter/experimental/starter-hertz/example
 	./starter/experimental/starter-hertz/example-otel
@@ -159,8 +152,6 @@ use (
 	./starter/experimental/starter-oauth2-client/example-otel
 	./starter/experimental/starter-oauth2-server
 	./starter/experimental/starter-oauth2-server/example
-	./starter/experimental/starter-otel
-	./starter/experimental/starter-otel/example
 	./starter/experimental/starter-pulsar
 	./starter/experimental/starter-pulsar/example
 	./starter/experimental/starter-pulsar/example-otel
@@ -188,6 +179,9 @@ use (
 	./starter/experimental/starter-session-redis/example
 	./starter/experimental/starter-swagger
 	./starter/experimental/starter-swagger/example
+	./starter/experimental/starter-thrift
+	./starter/experimental/starter-thrift/example
+	./starter/experimental/starter-thrift/example-otel
 	./starter/experimental/starter-transaction-at-gorm
 	./starter/experimental/starter-transaction-at-gorm/example
 	./starter/experimental/starter-transaction-at-gorm/example-otel
@@ -201,8 +195,13 @@ use (
 	./starter/experimental/starter-trpc/example-otel
 	./starter/experimental/starter-validation
 	./starter/experimental/starter-validation/example
-	./starter/experimental/starter-websocket-coder
-	./starter/experimental/starter-websocket-coder/example
+	./starter/starter-config-file
+	./starter/starter-config-file/example
+	./starter/starter-dubbo
+	./starter/starter-dubbo/example
+	./starter/starter-echo
+	./starter/starter-echo/example
+	./starter/starter-echo/example-otel
 	./starter/starter-gin
 	./starter/starter-gin/example
 	./starter/starter-gin/example-otel
@@ -212,18 +211,19 @@ use (
 	./starter/starter-gorm-mysql
 	./starter/starter-gorm-mysql/example
 	./starter/starter-gorm-mysql/example-otel
-	./starter/starter-grpc
-	./starter/starter-grpc/example
-	./starter/starter-grpc/example-otel
+	./starter/starter-gorm-postgres
+	./starter/starter-gorm-postgres/example
+	./starter/starter-gorm-postgres/example-otel
+	./starter/starter-otel
+	./starter/starter-otel/example
 	./starter/starter-pprof
 	./starter/starter-pprof/example
 	./starter/starter-redigo
 	./starter/starter-redigo/example
 	./starter/starter-redigo/example-otel
-	./starter/starter-thrift
-	./starter/starter-thrift/example
-	./starter/starter-thrift/example-otel
 	./starter/starter-websocket
+	./starter/starter-websocket-coder
+	./starter/starter-websocket-coder/example
 	./starter/starter-websocket/example
 	./stdlib
 )

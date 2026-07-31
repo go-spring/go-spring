@@ -107,9 +107,10 @@ func AddModule(c gs_cond.PropertyCondition, fn ModuleFunc, file string, line int
 	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "global module registered at %s:%d", file, line)
 }
 
-// Clear resets all registered beans and modules, effectively emptying
-// the global registry. This function is primarily used for testing purposes
-// to ensure test isolation by clearing the global state between test runs.
+// Clear resets all registered beans and modules, effectively emptying the
+// global registry. This function is called at the end of a non-test Refresh
+// (bean/module definitions are build artifacts no longer needed once the graph
+// is wired) and between tests for isolation.
 func Clear() {
 	log.Debugf(context.Background(), gs_bean.TagBeanLifecycle, "clear global beans (%d) and modules (%d)", len(beans), len(modules))
 	beans = nil

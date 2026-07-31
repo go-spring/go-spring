@@ -41,7 +41,8 @@ import (
 	"go-spring.org/spring/gs"
 
 	StarterGin "go-spring.org/starter-gin"
-	StarterOTel "go-spring.org/starter-otel"
+
+	"fullstack/internal/serverspan"
 
 	// Actuator management server (probes) + otel (tracing/metrics + log link).
 	_ "go-spring.org/starter-actuator"
@@ -120,7 +121,7 @@ func (s *store) release(c *gin.Context) {
 // installs the global propagator) and starts a server span, so this service's
 // spans and logs join the caller's trace instead of starting a disconnected one.
 func traceMiddleware(c *gin.Context) {
-	ctx, span := StarterOTel.StartServerSpan(c.Request.Context(), c.Request.Header, "inventory", c.Request.Method+" "+c.FullPath())
+	ctx, span := serverspan.StartServerSpan(c.Request.Context(), c.Request.Header, "inventory", c.Request.Method+" "+c.FullPath())
 	defer span.End()
 	c.Request = c.Request.WithContext(ctx)
 	c.Next()

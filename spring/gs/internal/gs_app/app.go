@@ -394,7 +394,12 @@ func (app *App) Start() error {
 //  1. All servers are stopped concurrently
 //  2. Waits for all server goroutines to complete
 //  3. Closes the IoC container
-//  4. Cleans up and destroys the logging system
+//
+// Process-global cleanup (gs.RegisterStopper stoppers, which include the logging
+// system) is NOT done here: it lives in the top-level defer in Run/RunTest so the
+// same cleanup also covers the Start-failure path that never reaches here. The
+// defer runs right after this returns, preserving the intended sequence:
+// servers stop -> container closes -> stoppers flush (log last).
 func (app *App) WaitForShutdown() {
 	// Block until the root context is cancelled
 	<-app.ctx.Done()
@@ -449,7 +454,6 @@ func (app *App) WaitForShutdown() {
 
 	app.c.Close()
 	log.Infof(app.ctx, log.TagAppDef, "shutdown complete")
-	log.Destroy()
 }
 
 // ShutDown initiates a graceful shutdown of the application.

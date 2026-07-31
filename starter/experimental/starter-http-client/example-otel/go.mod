@@ -71,6 +71,6 @@ replace go-spring.org/starter-http-client => ../
 
 replace go-spring.org/starter-http-client/example => ../example
 
-replace go-spring.org/starter-otel => ../../starter-otel
+replace go-spring.org/starter-otel => ../../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../starter-actuator
