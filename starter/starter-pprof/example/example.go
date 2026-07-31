@@ -35,8 +35,6 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
-	// Unset env vars that leak from the developer shell so runs are reproducible
-	// and consistent with sibling starter examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -47,13 +45,11 @@ func main() {
 			runTest()
 		}()
 	} else {
-
-		// Run the Go-Spring application.
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")
 	}
+
 	gs.Run()
 
 	// Example usage (the pprof starter serves its endpoints on 127.0.0.1:9981

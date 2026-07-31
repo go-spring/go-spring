@@ -37,6 +37,8 @@ spring.websocket.readBufferSize=1024
 spring.websocket.writeBufferSize=1024
 # 启用 permessage-deflate 压缩。
 spring.websocket.enableCompression=false
+# 服务端声明的子协议，握手时按顺序协商。
+spring.websocket.subprotocols=
 # 与请求 Origin 头做匹配的来源白名单。留空则沿用 gorilla 默认的同源策略；
 # 单独填写 "*" 表示接受任意来源。
 spring.websocket.allowedOrigins=

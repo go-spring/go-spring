@@ -20,6 +20,13 @@
       "type": "boolean",
       "default": false
     },
+    "subprotocols": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ""
+    },
     "allowedOrigins": {
       "type": "array",
       "items": {

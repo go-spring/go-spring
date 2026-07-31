@@ -17,19 +17,12 @@
 package StarterWebsocket
 
 import (
-	"context"
 	"net/http"
 	"slices"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-)
-
-var (
-	// starterTag identifies logs emitted by the websocket starter.
-	starterTag = log.RegisterInfraTag("starter_websocket", "")
 )
 
 func init() {
@@ -55,6 +48,12 @@ type Config struct {
 	WriteBufferSize   int           `value:"${writeBufferSize:=1024}"`
 	EnableCompression bool          `value:"${enableCompression:=false}"`
 
+	// Subprotocols lists the server's supported subprotocols in order of
+	// preference. During the handshake the first match against the client's
+	// requested protocols is negotiated; if none match, no subprotocol is
+	// selected. Empty leaves the negotiation to the caller's code.
+	Subprotocols []string `value:"${subprotocols:=}"`
+
 	// AllowedOrigins is an explicit allowlist matched against the request's
 	// Origin header. Empty keeps gorilla's default same-origin policy; a single
 	// "*" entry accepts any origin (use with care).
@@ -68,6 +67,7 @@ func NewUpgrader(cfg Config) *websocket.Upgrader {
 		ReadBufferSize:    cfg.ReadBufferSize,
 		WriteBufferSize:   cfg.WriteBufferSize,
 		EnableCompression: cfg.EnableCompression,
+		Subprotocols:      cfg.Subprotocols,
 	}
 	if len(cfg.AllowedOrigins) > 0 {
 		allowed := cfg.AllowedOrigins
@@ -78,7 +78,5 @@ func NewUpgrader(cfg Config) *websocket.Upgrader {
 			return slices.Contains(allowed, r.Header.Get("Origin"))
 		}
 	}
-	log.Debugf(context.Background(), starterTag, "websocket upgrader created handshakeTimeout=%s readBuf=%d writeBuf=%d compression=%v origins=%v",
-		cfg.HandshakeTimeout, cfg.ReadBufferSize, cfg.WriteBufferSize, cfg.EnableCompression, cfg.AllowedOrigins)
 	return u
 }

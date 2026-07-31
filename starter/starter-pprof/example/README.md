@@ -1,5 +1,7 @@
 # starter-pprof Example
 
+[English](README.md) | [中文](README_CN.md)
+
 Demonstrates pprof endpoint token authentication.
 
 ## Features

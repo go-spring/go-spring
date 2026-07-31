@@ -1,5 +1,7 @@
 # starter-pprof Example
 
+[English](README.md) | [中文](README_CN.md)
+
 演示 starter-pprof 的 pprof 端点 Token 鉴权。
 
 ## 功能验证

@@ -148,16 +148,25 @@ func main() {
 			runTest()
 		}()
 	} else {
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")
 	}
+
 	gs.Run()
+
+	// Example usage (every route is guarded by the requireApp middleware, so each
+	// dial must carry the X-App: go-spring header; Origin must also match
+	// spring.websocket.allowedOrigins, hence the second header):
+	//
+	// ~ websocat ws://127.0.0.1:9696/echo -H "X-App: go-spring" -H "Origin: http://127.0.0.1:9696"
+	// ~ websocat ws://127.0.0.1:9696/json -H "X-App: go-spring" -H "Origin: http://127.0.0.1:9696"  # type {"name":"world"}
+	// ~ websocat ws://127.0.0.1:9696/echo                                                          # -> 403 Forbidden
 }
 
 func runTest() {
 	ctx := context.Background()
+
 	// Carry the X-App header the middleware requires, plus an Origin that
 	// matches spring.websocket.allowedOrigins so the upgrader's origin check
 	// accepts the handshake.
@@ -166,13 +175,24 @@ func runTest() {
 		"Origin": []string{"http://127.0.0.1:9696"},
 	}
 
-	// Feature 1: text echo on /echo (middleware allowed).
-	echoConn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:9696/echo", authHeader)
+	// A dialer that requests the echo.v1 subprotocol so the server-side
+	// negotiation (spring.websocket.subprotocols) is exercised end-to-end.
+	dialer := *websocket.DefaultDialer
+	dialer.Subprotocols = []string{"echo.v1"}
+
+	// Feature 1: text echo on /echo (middleware allowed). Request the
+	// server-advertised subprotocol so negotiation is exercised.
+	echoConn, _, err := dialer.Dial("ws://127.0.0.1:9696/echo", authHeader)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "Failed to connect /echo: %v", err)
 		os.Exit(1)
 	}
 	defer echoConn.Close()
+
+	if sp := echoConn.Subprotocol(); sp != "echo.v1" {
+		log.Errorf(ctx, log.TagAppDef, "unexpected negotiated subprotocol: %q", sp)
+		os.Exit(1)
+	}
 
 	if err = echoConn.WriteMessage(websocket.TextMessage, []byte("Hello, WebSocket!")); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "Error sending text message: %v", err)

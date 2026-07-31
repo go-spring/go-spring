@@ -36,6 +36,8 @@ spring.websocket.readBufferSize=1024
 spring.websocket.writeBufferSize=1024
 # Enable permessage-deflate compression.
 spring.websocket.enableCompression=false
+# Subprotocols the server advertises, negotiated in order during the handshake.
+spring.websocket.subprotocols=
 # Origin allowlist matched against the request's Origin header. Empty keeps
 # gorilla's default same-origin policy; a single "*" accepts any origin.
 spring.websocket.allowedOrigins=

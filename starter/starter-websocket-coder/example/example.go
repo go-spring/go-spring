@@ -149,12 +149,20 @@ func main() {
 			runTest()
 		}()
 	} else {
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")
 	}
+
 	gs.Run()
+
+	// Example usage (every route is guarded by the requireApp middleware, so each
+	// dial must carry the X-App: go-spring header; pass --protocol echo.v1 to
+	// negotiate the subprotocol the server advertises):
+	//
+	// ~ websocat ws://127.0.0.1:9797/echo -H "X-App: go-spring" --protocol echo.v1
+	// ~ websocat ws://127.0.0.1:9797/json -H "X-App: go-spring"   # type {"name":"world"}
+	// ~ websocat ws://127.0.0.1:9797/echo                         # -> 403 Forbidden
 }
 
 func runTest() {

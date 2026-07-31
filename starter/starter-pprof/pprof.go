@@ -17,7 +17,6 @@
 package StarterPProf
 
 import (
-	"context"
 	"crypto/subtle"
 	"net"
 	"net/http"
@@ -27,32 +26,18 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-var (
-	// starterTag identifies logs emitted by the pprof starter.
-	starterTag = log.RegisterInfraTag("starter_pprof", "")
-)
-
-func init() {
-	// Registers a SimplePProfServer bean in the IoC container. It is given a
-	// distinct name so it coexists with the application's main HTTP server,
-	// which also exports gs.Server under the default name.
-	gs.Provide(
-		NewSimplePProfServer,
-		gs.TagArg("${spring.pprof}"),
-	).Name("pprofServer").Condition(
-		gs.OnProperty("spring.pprof.enabled").HavingValue("true").MatchIfMissing(),
-	).Export(gs.As[gs.Server]())
-}
+var pprofTag = log.RegisterAppTag("pprof", "")
 
 // Config configures the dedicated pprof HTTP server. pprof endpoints expose
-// sensitive runtime internals (goroutine stacks, heap, CPU profiles), so the
-// defaults are deliberately conservative: the server binds to loopback only and
-// callers opt into remote exposure explicitly. When a non-loopback Address is
-// used, configure Token or Username/Password so the endpoints are not open.
+// sensitive runtime internals (goroutine stacks, heap, CPU profiles), so they
+// must not be reachable unauthenticated off-host. The default address binds to
+// all interfaces (:9981) for operational convenience; when that is used without
+// any authentication the constructor logs a warning. Lock it down by binding to
+// loopback (127.0.0.1:9981) or by setting Token / Username+Password.
 type Config struct {
-	// Address is the listen address. It defaults to a loopback-only bind so
-	// pprof is not reachable off-host unless the operator opts in.
-	Address string `value:"${addr:=:6060}"`
+	// Address is the listen address. It defaults to ":9981" (all interfaces);
+	// use 127.0.0.1:9981 to restrict access to the local host.
+	Address string `value:"${addr:=:9981}"`
 
 	// Token, when set, requires each request to present it either as a
 	// "Authorization: Bearer <token>" header or a "?token=<token>" query
@@ -78,7 +63,7 @@ type SimplePProfServer struct {
 // registers the standard pprof handlers, wraps them with the configured
 // authentication guard, and warns when the endpoints would be reachable
 // off-host without any authentication.
-func NewSimplePProfServer(c Config) *SimplePProfServer {
+func NewSimplePProfServer(ctx *gs.ContextProvider, c Config) *SimplePProfServer {
 	mux := http.NewServeMux()
 
 	// Register pprof handlers
@@ -89,8 +74,8 @@ func NewSimplePProfServer(c Config) *SimplePProfServer {
 	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
 
 	if !c.authEnabled() && !isLoopback(c.Address) {
-		log.Warnf(context.Background(), starterTag,
-			"pprof server listening on %q without authentication; set spring.pprof.token or username/password, or bind to loopback",
+		log.Warnf(ctx.Context, pprofTag,
+			"pprof server listening on %q without authentication; set ${spring.pprof.token} or ${spring.pprof.username}/${spring.pprof.password}",
 			c.Address)
 	}
 
@@ -101,8 +86,8 @@ func NewSimplePProfServer(c Config) *SimplePProfServer {
 }
 
 // guard wraps h with the configured authentication scheme. With no scheme
-// configured it returns h unchanged (safe because the default bind is
-// loopback-only).
+// configured it returns h unchanged; the constructor warns when that would
+// leave the endpoints reachable off-host.
 func (c Config) guard(h http.Handler) http.Handler {
 	if !c.authEnabled() {
 		return h

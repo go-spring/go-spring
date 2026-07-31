@@ -3,9 +3,13 @@
   "title": "spring.pprof",
   "type": "object",
   "properties": {
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
     "addr": {
       "type": "string",
-      "default": ":6060"
+      "default": ":9981"
     },
     "token": {
       "type": "string",
