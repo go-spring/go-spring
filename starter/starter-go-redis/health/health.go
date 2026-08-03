@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package StarterGoRedis
+package health2
 
 import (
 	"context"
@@ -27,14 +27,14 @@ import (
 // registered once per configured instance and exported as health.Indicator, so
 // an application that also imports starter-actuator gets Redis readiness folded
 // into /readiness with no extra wiring.
-func newClientHealth(name string, client *redis.Client) health.Indicator {
+func NewClientHealth(name string, client *redis.Client) health.Indicator {
 	return health.NewIndicator("redis:"+name, func(ctx context.Context) error {
 		return client.Ping(ctx).Err()
 	})
 }
 
 // newClusterHealth builds an indicator for a cluster client.
-func newClusterHealth(name string, client *redis.ClusterClient) health.Indicator {
+func NewClusterHealth(name string, client *redis.ClusterClient) health.Indicator {
 	return health.NewIndicator("redis:"+name, func(ctx context.Context) error {
 		return client.Ping(ctx).Err()
 	})

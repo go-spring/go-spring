@@ -53,8 +53,8 @@ use (
 	./starter/experimental/starter-batch
 	./starter/experimental/starter-batch-redis
 	./starter/experimental/starter-batch/example
-	./starter/experimental/starter-bigcache
-	./starter/experimental/starter-bigcache/example
+	./starter/starter-bigcache
+	./starter/starter-bigcache/example
 	./starter/experimental/starter-casbin
 	./starter/experimental/starter-casbin/example
 	./starter/experimental/starter-config-bus
@@ -129,9 +129,9 @@ use (
 	./starter/experimental/starter-mail
 	./starter/experimental/starter-mail/example
 	./starter/experimental/starter-mail/example-otel
-	./starter/experimental/starter-memcached
-	./starter/experimental/starter-memcached/example
-	./starter/experimental/starter-memcached/example-otel
+	./starter/starter-memcached
+	./starter/starter-memcached/example
+	./starter/starter-memcached/example-otel
 	./starter/experimental/starter-mesh
 	./starter/experimental/starter-mesh/example
 	./starter/experimental/starter-migration-gorm

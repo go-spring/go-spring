@@ -21,8 +21,11 @@ import (
 
 	"github.com/allegro/bigcache/v3"
 	"go-spring.org/log"
+	"go-spring.org/spring/data/cache"
 	"go-spring.org/spring/gs"
+	cache2 "go-spring.org/starter-bigcache/cache"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 )
 
 var starterTag = log.RegisterInfraTag("bigcache", "")
@@ -35,6 +38,22 @@ func init() {
 	// BigCache spawns a background eviction goroutine, so Close must be called
 	// on shutdown to release it — the destroy callback handles that.
 	gs.Group("${spring.bigcache}", newClient, destroyClient)
+}
+
+// init registers the "bigcache" cache driver so a *bigcache.BigCache registered
+// under ${spring.bigcache} can be exposed as a cache.Cache via:
+//
+//	spring.cache.<name>.driver = bigcache:<bigcache-instance-name>
+//
+// The beanID selects which BigCache bean to wrap; the implementation lives in
+// starter-bigcache/cache.
+func init() {
+	cache.RegisterDriver("bigcache", func(beanID string) gs.ModuleFunc {
+		return func(r gs.BeanProvider, p flatten.Storage) error {
+			r.Provide(cache2.NewCache, gs.TagArg(beanID)).Name(beanID)
+			return nil
+		}
+	})
 }
 
 // newClient creates a new BigCache instance based on the provided configuration.

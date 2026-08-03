@@ -24,10 +24,13 @@ import (
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
 	"go-spring.org/spring/cloud/actuator/health"
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/conf"
+	"go-spring.org/spring/data/cache"
 	"go-spring.org/spring/gs"
+	cache2 "go-spring.org/starter-go-redis/cache"
+	health2 "go-spring.org/starter-go-redis/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
@@ -56,18 +59,34 @@ func init() {
 				b.SetFileLine(file, line)
 				// Contribute a health indicator for this instance, injecting the
 				// client just registered above by name.
-				h := r.Provide(newClientHealth, gs.ValueArg(name), gs.TagArg(name)).Export(gs.As[health.Indicator]())
+				h := r.Provide(health2.NewClientHealth, gs.ValueArg(name), gs.TagArg(name)).Export(gs.As[health.Indicator]())
 				h.SetFileLine(file, line)
 			case "cluster":
 				b := r.Provide(newClusterClient, gs.ValueArg(c)).Name(name).Destroy(destroyClusterClient)
 				b.SetFileLine(file, line)
-				h := r.Provide(newClusterHealth, gs.ValueArg(name), gs.TagArg(name)).Export(gs.As[health.Indicator]())
+				h := r.Provide(health2.NewClusterHealth, gs.ValueArg(name), gs.TagArg(name)).Export(gs.As[health.Indicator]())
 				h.SetFileLine(file, line)
 			default:
 				return errutil.Explain(nil, "redis: invalid mode %q for instance %q (want single/sentinel/cluster)", c.Mode, name)
 			}
 		}
 		return nil
+	})
+}
+
+// init registers the "go-redis" cache driver so a *redis.Client registered under
+// ${spring.go-redis} can be exposed as a cache.Cache via:
+//
+//	spring.cache.<name>.driver = go-redis:<redis-instance-name>
+//
+// The beanID selects which client bean to wrap; the implementation lives in
+// starter-go-redis/cache.
+func init() {
+	cache.RegisterDriver("go-redis", func(beanID string) gs.ModuleFunc {
+		return func(r gs.BeanProvider, p flatten.Storage) error {
+			r.Provide(cache2.NewCache, gs.TagArg(beanID)).Name(beanID)
+			return nil
+		}
 	})
 }
 

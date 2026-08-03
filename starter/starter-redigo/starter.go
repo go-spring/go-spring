@@ -22,8 +22,11 @@ import (
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/data/cache"
 	"go-spring.org/spring/gs"
+	cache2 "go-spring.org/starter-redigo/cache"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 )
 
 var starterTag = log.RegisterInfraTag("redigo", "")
@@ -33,6 +36,22 @@ func init() {
 	// Each instance is created according to the configuration in "${spring.redigo}".
 	// This allows defining multiple redis instances dynamically.
 	gs.Group("${spring.redigo}", newClient, destroyClient)
+}
+
+// init registers the "redigo" cache driver so a *redis.Pool registered under
+// ${spring.redigo} can be exposed as a cache.Cache via:
+//
+//	spring.cache.<name>.driver = redigo:<redigo-instance-name>
+//
+// The beanID selects which pool bean to wrap; the implementation lives in
+// starter-redigo/cache.
+func init() {
+	cache.RegisterDriver("redigo", func(beanID string) gs.ModuleFunc {
+		return func(r gs.BeanProvider, p flatten.Storage) error {
+			r.Provide(cache2.NewCache, gs.TagArg(beanID)).Name(beanID)
+			return nil
+		}
+	})
 }
 
 // newClient creates a new Redis client based on the provided configuration.

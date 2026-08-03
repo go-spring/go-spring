@@ -22,8 +22,11 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/log"
 	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/data/cache"
 	"go-spring.org/spring/gs"
+	cache2 "go-spring.org/starter-memcached/cache"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 )
 
 var starterTag = log.RegisterInfraTag("memcached", "")
@@ -37,6 +40,22 @@ func init() {
 	// method, so the destroy callback only stops any discovery Resolver watch
 	// behind the client (added when ServiceName is set).
 	gs.Group("${spring.memcached}", newClient, destroyClient)
+}
+
+// init registers the "memcached" cache driver so a *memcache.Client registered
+// under ${spring.memcached} can be exposed as a cache.Cache via:
+//
+//	spring.cache.<name>.driver = memcached:<memcached-instance-name>
+//
+// The beanID selects which memcache client bean to wrap; the implementation
+// lives in starter-memcached/cache.
+func init() {
+	cache.RegisterDriver("memcached", func(beanID string) gs.ModuleFunc {
+		return func(r gs.BeanProvider, p flatten.Storage) error {
+			r.Provide(cache2.NewCache, gs.TagArg(beanID)).Name(beanID)
+			return nil
+		}
+	})
 }
 
 // newClient creates a new Memcached client based on the provided configuration.
