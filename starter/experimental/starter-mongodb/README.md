@@ -74,10 +74,13 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
 
 * **Service discovery**: set `service-name` on an instance to resolve its address
   through a registered discovery backend instead of the URI hosts. A
-  `LiveDialer` is injected as the client's dialer, so each new connection reaches
-  a currently-live instance and address changes take effect without rebuilding
-  the client. Select the backend with `discovery` (default `default`); a company
-  registers its naming service once via `discovery.Register`.
+  Resolver-backed dialer is injected as the client's dialer, so each new
+  connection reaches a currently-live instance and address changes take effect
+  without rebuilding the client. Select the backend with `discovery` (default
+  `default`); a company registers its naming service once via
+  `discovery.Register`. In mesh mode (`mesh.Enabled()`) the sidecar owns
+  discovery+LB, so `service-name` is skipped and the URI hosts are dialed
+  directly.
 
   ```properties
   spring.mongodb.disc.uri=mongodb://0.0.0.0:0/?directConnection=true

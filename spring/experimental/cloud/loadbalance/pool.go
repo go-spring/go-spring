@@ -17,28 +17,28 @@
 package loadbalance
 
 import (
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 // EndpointSource supplies the current live endpoint snapshot. A
-// [discovery.LiveDialer] satisfies it directly (its Endpoints method already
-// tracks the backend via Watch), so a Pool reuses that machinery instead of
-// re-implementing discovery.
+// [discovery.Resolver] satisfies it directly (its Endpoints method tracks the
+// backend via Watch), so a Pool reuses that machinery instead of re-implementing
+// discovery.
 type EndpointSource interface {
 	Endpoints() []discovery.Endpoint
 }
 
 // Pool is the runtime that ties client-side load balancing together. On every
 // [Pool.Pick] it takes the live endpoint snapshot from an [EndpointSource]
-// (kept fresh by discovery Watch), drops endpoints that discovery marks
-// unhealthy or that the ejection [Tracker] has evicted, and hands the survivors
-// to a [Balancer] to choose one.
+// (kept fresh by discovery Watch), drops endpoints the naming service marks
+// disabled or unhealthy and that the ejection [Tracker] has evicted, and hands
+// the survivors to a [Balancer] to choose one.
 //
-// This is where the two halves of health eviction (task 2.2) meet: discovery
-// Watch handles instances coming and going, while the Tracker handles instances
-// that are still registered but failing. Neither is allowed to black-hole all
-// traffic — each filter falls back to its input when it would otherwise empty
-// the set.
+// This is where the two halves of health eviction meet: discovery Watch handles
+// instances coming and going, while the Tracker handles instances that are still
+// registered but failing. Each filter falls back to its input rather than
+// emptying the set — except Disabled instances, which are excluded outright (an
+// operator-or-provider-disabled instance must never receive traffic).
 type Pool struct {
 	src     EndpointSource
 	bal     Balancer
@@ -49,13 +49,13 @@ type Pool struct {
 type PoolOption func(*Pool)
 
 // WithTracker attaches an outlier-ejection [Tracker] to the pool. Without it,
-// eviction is disabled and only discovery's own Healthy flag filters endpoints.
+// eviction is disabled and only the discovery endpoint flags filter endpoints.
 func WithTracker(t *Tracker) PoolOption {
 	return func(p *Pool) { p.tracker = t }
 }
 
 // NewPool builds a [Pool] over src using balancer bal. src is typically a
-// *discovery.LiveDialer so the candidate set follows the naming service in real
+// *discovery.Resolver so the candidate set follows the naming service in real
 // time; bal is any strategy from this package.
 func NewPool(src EndpointSource, bal Balancer, opts ...PoolOption) *Pool {
 	p := &Pool{src: src, bal: bal}
@@ -70,27 +70,20 @@ func NewPool(src EndpointSource, bal Balancer, opts ...PoolOption) *Pool {
 // finishes: it advances least-conn accounting and feeds the ejection tracker,
 // so skipping it defeats health eviction.
 //
-// It returns [ErrNoAvailable] only when the source has no endpoints at all.
+// It returns [ErrNoAvailable] when the source has no endpoints, or every
+// endpoint is disabled.
 func (p *Pool) Pick(info PickInfo) (Result, error) {
 	eps := p.src.Endpoints()
 	if len(eps) == 0 {
 		return Result{}, ErrNoAvailable
 	}
 
-	// Mesh mode: a sidecar already load-balances, so degrade to a pass-through.
-	// The source exposes a single stable endpoint (the Service ClusterIP; see
-	// discovery.newMeshDialer); return it directly with no strategy selection
-	// and no tracker eviction — a lone mesh endpoint must never be ejected or
-	// traffic would black-hole. Read the switch here, at the Pool assembly
-	// point, so no balancer/starter has to special-case it.
-	if discovery.MeshMode() {
-		return Result{Endpoint: eps[0], Done: func(DoneInfo) {}}, nil
+	// Discovery-driven filtering: follow the [discovery.Endpoint] contract —
+	// prefer !Disabled && Healthy, degrade to !Disabled, never Disabled.
+	candidates := eligible(eps)
+	if len(candidates) == 0 {
+		return Result{}, ErrNoAvailable
 	}
-
-	// Discovery-driven filtering: prefer instances the naming service reports
-	// healthy. If the backend does not track health (none marked healthy) fall
-	// back to all, matching discovery.LiveDialer.Pick so discovery still works.
-	candidates := healthy(eps)
 
 	// Ejection filtering: drop instances the tracker has evicted for repeated
 	// failures. Eligible falls back to its input if everything is evicted.
@@ -116,17 +109,22 @@ func (p *Pool) Pick(info PickInfo) (Result, error) {
 	return res, nil
 }
 
-// healthy returns the endpoints marked Healthy, or eps unchanged when none are
-// (so backends that do not report health are not filtered to nothing).
-func healthy(eps []discovery.Endpoint) []discovery.Endpoint {
+// eligible returns the !Disabled && Healthy endpoints, degrading to the
+// non-disabled ones when none are healthy. Disabled instances never enter the
+// set. It mirrors [discovery.Resolver.Pick] so both selection layers agree.
+func eligible(eps []discovery.Endpoint) []discovery.Endpoint {
 	out := eps[:0:0]
 	for _, ep := range eps {
-		if ep.Healthy {
+		if !ep.Disabled && ep.Healthy {
 			out = append(out, ep)
 		}
 	}
 	if len(out) == 0 {
-		return eps
+		for _, ep := range eps {
+			if !ep.Disabled {
+				out = append(out, ep)
+			}
+		}
 	}
 	return out
 }

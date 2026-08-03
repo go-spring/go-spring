@@ -64,7 +64,7 @@ var (
 // RegisterStopper makes a process-global resource stopper available under name.
 // It panics on empty name or nil stopper. A repeated registration under the same
 // name replaces the previous one (last-wins) - this mirrors how a module's setup
-// installs other process globals (otel.SetTracerProvider, discovery.SetTraceInjector)
+// installs other process globals (otel.SetTracerProvider, StarterOTel.SetTraceInjector)
 // and lets a setup that re-runs across app instances in one process (e.g. sequential
 // gs.RunTest runs) rebind the stopper to the current resource instead of panicking.
 func RegisterStopper(name string, s Stopper) {

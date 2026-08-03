@@ -24,7 +24,7 @@
 //		  application.properties -> ..data/application.properties  (symlink)
 //
 //	 1. app.properties imports config from the mount via
-//	    spring.app.imports=file-watch:./mount?format=properties
+//	    spring.app.imports=file-watch:./mount/application.properties
 //	 2. A bean binds demo.message to a gs.Dync[string] field.
 //	 3. The test rewrites the ConfigMap the way the kubelet does — write a new
 //	    timestamped dir, then atomically rename ..data onto it. The provider's

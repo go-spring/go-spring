@@ -17,7 +17,7 @@
 package loadbalance
 
 import (
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 // ZoneAware is the registered name of the default zone-aware strategy (local

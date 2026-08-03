@@ -38,7 +38,7 @@ import (
 	"context"
 	"fmt"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/experimental/cloud/loadbalance"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
@@ -247,7 +247,7 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 	}
 	service := target.Endpoint()
 
-	d, err := discovery.MustGet(backend)
+	d, err := discovery.GetDiscovery(backend)
 	if err != nil {
 		return nil, err
 	}
@@ -264,12 +264,12 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 	}
 	r.push(eps)
 
-	w, err := d.Watch(ctx, service)
+	ch, err := d.Watch(ctx, service)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("loadbalance: watch %q via %q: %w", service, backend, err)
 	}
-	r.watcher = w
+	r.ch = ch
 	go r.watchLoop()
 	return r, nil
 }
@@ -277,7 +277,7 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 type discoveryResolver struct {
 	cc      resolver.ClientConn
 	service string
-	watcher discovery.Watcher
+	ch      <-chan discovery.WatchResult
 	cancel  context.CancelFunc
 }
 
@@ -294,12 +294,11 @@ func (r *discoveryResolver) push(eps []discovery.Endpoint) {
 }
 
 func (r *discoveryResolver) watchLoop() {
-	for {
-		eps, err := r.watcher.Next()
-		if err != nil {
+	for res := range r.ch {
+		if res.Err != nil {
 			return
 		}
-		r.push(eps)
+		r.push(res.Endpoints)
 	}
 }
 
@@ -309,7 +308,4 @@ func (r *discoveryResolver) ResolveNow(resolver.ResolveNowOptions) {}
 
 func (r *discoveryResolver) Close() {
 	r.cancel()
-	if r.watcher != nil {
-		_ = r.watcher.Stop()
-	}
 }

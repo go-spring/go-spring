@@ -40,10 +40,7 @@ import (
 	"github.com/hashicorp/vault/api"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
-	confjson "go-spring.org/spring/conf/reader/json"
-	"go-spring.org/spring/conf/reader/prop"
-	"go-spring.org/spring/conf/reader/toml"
-	"go-spring.org/spring/conf/reader/yaml"
+	"go-spring.org/spring/conf/reader"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -90,19 +87,6 @@ func (c *vaultCtrl) TriggerRefresh() {
 	if c.Refresher != nil {
 		_ = c.Refresher.RefreshProperties()
 	}
-}
-
-// contentReader parses raw configuration bytes into a nested map.
-type contentReader func(b []byte) (map[string]any, error)
-
-var contentReaders = map[string]contentReader{
-	"properties": prop.Read,
-	"props":      prop.Read,
-	"yaml":       yaml.Read,
-	"yml":        yaml.Read,
-	"toml":       toml.Read,
-	"tml":        toml.Read,
-	"json":       confjson.Read,
 }
 
 // configSource holds the parsed components of a vault provider source string.
@@ -339,11 +323,7 @@ func toProperties(cs configSource, data map[string]any) (map[string]string, erro
 		if !ok {
 			return nil, errutil.Explain(nil, "vault field %q is not a string document", cs.key)
 		}
-		r, ok := contentReaders[cs.format]
-		if !ok {
-			return nil, errutil.Explain(nil, "unsupported vault config format %q", cs.format)
-		}
-		m, err := r([]byte(s))
+		m, err := reader.Read(cs.format, []byte(s))
 		if err != nil {
 			return nil, errutil.Explain(err, "parse vault field %q as %s failed", cs.key, cs.format)
 		}

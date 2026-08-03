@@ -19,22 +19,40 @@ package StarterMongoDB
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// liveDialers tracks the discovery-backed dialer behind each client, so
+// liveDialers tracks the discovery-backed resolver behind each client, so
 // destroyClient can stop the background watch on teardown.
-var liveDialers sync.Map // *mongo.Client -> *discovery.LiveDialer
+var liveDialers sync.Map // *mongo.Client -> *discovery.Resolver
 
 var starterTag = log.RegisterInfraTag("mongodb", "")
+
+// dialerWrapper adapts the discovery Resolver's Pick-based selection to the
+// mongo driver's options.ContextDialer interface. The dialed address is taken
+// from the Resolver, so the address argument from the driver is ignored.
+type dialerWrapper struct {
+	pick func() (discovery.Endpoint, error)
+	dial func(ctx context.Context, network, address string) (net.Conn, error)
+}
+
+func (d *dialerWrapper) DialContext(ctx context.Context, network, _ string) (net.Conn, error) {
+	ep, err := d.pick()
+	if err != nil {
+		return nil, err
+	}
+	return d.dial(ctx, network, ep.Addr)
+}
 
 func init() {
 
@@ -50,11 +68,13 @@ func init() {
 // misconfiguration or an unreachable server fails fast at startup rather than
 // on first use.
 //
-// When c.ServiceName is set, the address is resolved through the registered
-// discovery backend (c.Discovery): a LiveDialer is injected as the client's
-// ContextDialer, so each new connection dials a currently-live instance and
-// address changes take effect without rebuilding the client. When c.ServiceName
-// is empty this dials the URI hosts directly, unchanged from before.
+// When c.ServiceName is set and mesh mode is off, the address is resolved
+// through the registered discovery backend (c.Discovery): a Resolver-backed
+// dialer is injected as the client's ContextDialer, so each new connection
+// dials a currently-live instance picked by the Resolver and address changes
+// take effect without rebuilding the client. In mesh mode a sidecar owns
+// discovery+LB, so the URI hosts are dialed directly. When c.ServiceName is
+// empty this dials the URI hosts directly, unchanged from before.
 func newClient(cp *gs.ContextProvider, c Config) (*mongo.Client, error) {
 	ctx := cp.Context
 	log.Debugf(ctx, starterTag, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
@@ -91,28 +111,33 @@ func newClient(cp *gs.ContextProvider, c Config) (*mongo.Client, error) {
 		opts.SetTLSConfig(tlsCfg)
 	}
 
-	var ld *discovery.LiveDialer
-	if c.ServiceName != "" {
-		d, err := discovery.MustGet(c.Discovery)
+	var resolver *discovery.Resolver
+	if c.ServiceName != "" && !mesh.Enabled() {
+		// Client-side discovery: resolve the service name and pick a live
+		// endpoint per new connection. In mesh mode a sidecar owns
+		// discovery+LB, so skip this and connect straight to the configured
+		// URI hosts.
+		d, err := discovery.GetDiscovery(c.Discovery)
 		if err != nil {
 			log.Errorf(ctx, starterTag, "mongodb: get discovery backend failed: %v", err)
 			return nil, err
 		}
-		ld, err = discovery.NewLiveDialer(ctx, d, c.ServiceName)
+		resolver, err = discovery.NewResolver(ctx, d, c.ServiceName)
 		if err != nil {
-			log.Errorf(ctx, starterTag, "mongodb: create live dialer for %s failed: %v", c.ServiceName, err)
+			log.Errorf(ctx, starterTag, "mongodb: create resolver for %s failed: %v", c.ServiceName, err)
 			return nil, err
 		}
-		// The LiveDialer ignores the dialed address and picks a live endpoint;
-		// its DialContext matches the options.ContextDialer interface directly.
-		opts.SetDialer(ld)
+		nd := &net.Dialer{Timeout: c.ConnectTimeout}
+		// The injected dialer ignores the URI address and picks a live
+		// endpoint via the Resolver on each new connection.
+		opts.SetDialer(&dialerWrapper{pick: resolver.Pick, dial: nd.DialContext})
 	}
 
 	client, err := mongo.Connect(opts)
 	if err != nil {
 		log.Errorf(ctx, starterTag, "mongodb: connect failed: %v", err)
-		if ld != nil {
-			_ = ld.Stop()
+		if resolver != nil {
+			_ = resolver.Stop()
 		}
 		return nil, fmt.Errorf("mongodb: create client: %w", err)
 	}
@@ -123,13 +148,13 @@ func newClient(cp *gs.ContextProvider, c Config) (*mongo.Client, error) {
 	if err := client.Ping(pingCtx, nil); err != nil {
 		log.Errorf(ctx, starterTag, "mongodb: ping failed uri=%s: %v", c.URI, err)
 		_ = client.Disconnect(context.Background())
-		if ld != nil {
-			_ = ld.Stop()
+		if resolver != nil {
+			_ = resolver.Stop()
 		}
 		return nil, fmt.Errorf("mongodb: ping %s: %w", c.URI, err)
 	}
-	if ld != nil {
-		liveDialers.Store(client, ld)
+	if resolver != nil {
+		liveDialers.Store(client, resolver)
 	}
 	log.Infof(ctx, starterTag, "mongodb client initialized, uri=%s", c.URI)
 	return client, nil
@@ -154,8 +179,8 @@ func pingContext(ctx context.Context, timeout time.Duration) (context.Context, c
 // behind it.
 func destroyClient(client *mongo.Client) error {
 	if v, ok := liveDialers.LoadAndDelete(client); ok {
-		_ = v.(*discovery.LiveDialer).Stop()
-		log.Debugf(context.Background(), starterTag, "mongodb client destroyed, discovery dialer stopped")
+		_ = v.(*discovery.Resolver).Stop()
+		log.Debugf(context.Background(), starterTag, "mongodb client destroyed, discovery resolver stopped")
 	}
 	return client.Disconnect(context.Background())
 }

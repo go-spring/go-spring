@@ -14,18 +14,19 @@
  * limitations under the License.
  */
 
-// Command example is a self-contained smoke test for service-mesh mode. It
-// needs no external services or docker: it registers one static discovery
-// backend that serves three endpoints for "echo-svc", then runs the exact same
-// client code twice — once with mesh mode off, once with it on — and asserts
-// the two acceptance behaviours:
+// Command example is a self-contained smoke test for the service-mesh switch
+// (spring/cloud/mesh). It needs no external services or docker: it registers one
+// static discovery backend that serves three endpoints for "echo-svc", then runs
+// the same client code twice — once with mesh off, once with it on — exercising
+// "approach A" (each caller branches on mesh.Enabled):
 //
-//  1. mesh OFF — client-side discovery + load balancing are active: the
-//     round-robin Pool spreads requests evenly across the three real endpoints,
-//     and the discovery backend is resolved.
-//  2. mesh ON  — both layers degrade to a pass-through: every request goes to a
-//     single stable endpoint (the service name the sidecar intercepts), the
-//     balancer does not select, and the discovery backend is never consulted.
+//  1. mesh OFF — client-side discovery + load balancing are active: build a
+//     discovery.Resolver + round-robin Pool, which spreads requests evenly
+//     across the three real endpoints, and the discovery backend is resolved.
+//  2. mesh ON  — a sidecar owns discovery+LB, so the app skips discovery
+//     entirely and connects to the service's single stable address (the service
+//     name); the balancer is not built and the discovery backend is never
+//     consulted.
 //
 // The process exits 0 only if both assertions hold.
 package main
@@ -36,7 +37,8 @@ import (
 	"os"
 	"sync/atomic"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/experimental/cloud/loadbalance"
 )
 
@@ -52,18 +54,18 @@ func (d *countingDiscovery) Resolve(context.Context, string) ([]discovery.Endpoi
 	return d.eps, nil
 }
 
-func (d *countingDiscovery) Watch(context.Context, string) (discovery.Watcher, error) {
-	return noopWatcher{}, nil
+func (d *countingDiscovery) Watch(ctx context.Context, _ string) (<-chan discovery.WatchResult, error) {
+	ch := make(chan discovery.WatchResult, 1)
+	ch <- discovery.WatchResult{Endpoints: d.eps}
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+	return ch, nil
 }
 
-// noopWatcher never yields; the smoke does not exercise topology changes.
-type noopWatcher struct{}
-
-func (noopWatcher) Next() ([]discovery.Endpoint, error) { select {} }
-func (noopWatcher) Stop() error                         { return nil }
-
 func fatalf(format string, args ...any) {
-	fmt.Printf("FAIL: "+format+"\n", args...)
+	fmt.Printf("FAIL: " + format + "\n", args...)
 	os.Exit(1)
 }
 
@@ -75,25 +77,40 @@ var backend = &countingDiscovery{eps: []discovery.Endpoint{
 	{Addr: "10.0.0.3:8080", Healthy: true},
 }}
 
-// distribute builds a live dialer + round-robin pool for the service under the
-// given mesh setting, picks n times, and returns the per-endpoint hit counts
-// plus how many times the discovery backend was resolved.
-func distribute(mesh bool, n int) (map[string]int, int64) {
+// distribute runs n picks against the service under the given mesh setting,
+// following approach A: mesh off builds a Resolver + round-robin Pool; mesh on
+// skips discovery and targets the service's single stable address directly. It
+// returns the per-endpoint hit counts plus how often the backend was resolved.
+func distribute(meshOn bool, n int) (map[string]int, int64) {
 	backend.resolves.Store(0)
-	discovery.SetMeshMode(mesh)
+	mesh.SetEnabled(meshOn)
 
-	ld, err := discovery.NewClientDialer(context.Background(), "default", serviceName)
-	if err != nil {
-		fatalf("build dialer (mesh=%v): %v", mesh, err)
-	}
-	defer ld.Stop()
-
-	pool := loadbalance.NewPool(ld, loadbalance.NewRoundRobin())
 	hits := map[string]int{}
+	if meshOn {
+		// A sidecar owns discovery+LB; the app connects straight to the service's
+		// stable address and never consults the discovery backend.
+		for range n {
+			hits[serviceName]++
+		}
+		return hits, backend.resolves.Load()
+	}
+
+	// Normal mode: resolve the service and load-balance across the live endpoints.
+	dis, err := discovery.GetDiscovery("default")
+	if err != nil {
+		fatalf("get discovery (mesh=%v): %v", meshOn, err)
+	}
+	rsv, err := discovery.NewResolver(context.Background(), dis, serviceName)
+	if err != nil {
+		fatalf("build resolver (mesh=%v): %v", meshOn, err)
+	}
+	defer rsv.Stop()
+
+	pool := loadbalance.NewPool(rsv, loadbalance.NewRoundRobin())
 	for range n {
 		r, err := pool.Pick(loadbalance.PickInfo{})
 		if err != nil {
-			fatalf("pick (mesh=%v): %v", mesh, err)
+			fatalf("pick (mesh=%v): %v", meshOn, err)
 		}
 		hits[r.Endpoint.Addr]++
 		if r.Done != nil {
@@ -104,11 +121,11 @@ func distribute(mesh bool, n int) (map[string]int, int64) {
 }
 
 func main() {
-	discovery.Register("default", backend)
+	discovery.RegisterDiscovery("default", backend)
 
 	const n = 30
 
-	// Phase 1: mesh off — LB active, even spread across the three endpoints.
+	// Phase 1: mesh off — discovery + LB active, even spread across the three.
 	hits, resolves := distribute(false, n)
 	fmt.Printf("mesh OFF: hits=%v resolves=%d\n", hits, resolves)
 	if len(hits) != 3 {
@@ -123,8 +140,8 @@ func main() {
 		fatalf("mesh off: discovery backend was never resolved")
 	}
 
-	// Phase 2: mesh on — same code, degraded to a single stable endpoint and the
-	// backend is never touched.
+	// Phase 2: mesh on — same intent, but the app skips discovery and targets the
+	// service's stable address; the backend is never touched.
 	hits, resolves = distribute(true, n)
 	fmt.Printf("mesh ON:  hits=%v resolves=%d\n", hits, resolves)
 	if len(hits) != 1 {
@@ -137,5 +154,5 @@ func main() {
 		fatalf("mesh on: discovery backend was resolved %d times (should be bypassed)", resolves)
 	}
 
-	fmt.Println("OK: mesh mode degrades discovery + load balancing to a pass-through")
+	fmt.Println("OK: mesh mode bypasses client-side discovery (approach A)")
 }

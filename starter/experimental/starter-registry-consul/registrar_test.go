@@ -22,15 +22,15 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestServiceID(t *testing.T) {
 	// An explicit ID is used verbatim.
-	assert.That(t, serviceID(discovery.Registration{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
+	assert.That(t, serviceID(discovery.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
 	// Otherwise it is derived from name and addr so restarts replace the entry.
-	assert.That(t, serviceID(discovery.Registration{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
+	assert.That(t, serviceID(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
 }
 
 func TestRegister_BadAddr(t *testing.T) {
@@ -40,9 +40,9 @@ func TestRegister_BadAddr(t *testing.T) {
 	assert.Error(t, err).Nil()
 	r := &consulRegistrar{client: client, ttl: time.Second, heartbeats: map[string]chan struct{}{}}
 
-	err = r.Register(context.Background(), discovery.Registration{ServiceName: "orders", Addr: "no-port"})
+	err = r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "no-port"})
 	assert.Error(t, err).Matches("must be host:port")
 
-	err = r.Register(context.Background(), discovery.Registration{ServiceName: "orders", Addr: "host:abc"})
+	err = r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "host:abc"})
 	assert.Error(t, err).Matches("non-numeric port")
 }

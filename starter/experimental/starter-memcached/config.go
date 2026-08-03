@@ -18,14 +18,24 @@ package StarterMemcached
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/stdlib/errutil"
 )
 
 var driverRegistry = map[string]Driver{}
+
+// resolvers tracks the discovery-backed Resolver behind each client built by
+// DefaultDriver, so destroyClient can stop the background watch on shutdown.
+// gomemcache shards keys across a static server set chosen at client creation,
+// so the live endpoint updates from the watch are NOT re-applied to the client
+// mid-flight — the Resolver is kept only to own the watch lifecycle and to
+// provide a Stop hook. A changing cluster membership requires a restart.
+var resolvers sync.Map // *memcache.Client -> *discovery.Resolver
 
 func init() {
 	RegisterDriver("DefaultDriver", DefaultDriver{})
@@ -39,13 +49,14 @@ type Config struct {
 	Servers []string `value:"${servers:=}"`
 
 	// ServiceName is the service discovery name for the Memcached cluster. When
-	// set, Servers is ignored and the server list is resolved once at startup
-	// through the registered discovery backend.
+	// set (and mesh mode is not enabled), Servers is ignored and the server list
+	// is resolved once at startup through the registered discovery backend.
 	//
 	// Note: gomemcache shards keys across a static server set chosen at client
 	// creation, so — unlike the dialer-based redis starters — the address list
 	// is resolved a single time at boot (fail-fast) rather than kept live. A
-	// changing cluster membership requires a restart to pick up.
+	// changing cluster membership requires a restart to pick up. In mesh mode
+	// discovery is skipped entirely and Servers is used as-is.
 	ServiceName string `value:"${service-name:=}"`
 
 	// Discovery selects which registered discovery backend resolves ServiceName.
@@ -84,22 +95,32 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new Memcached client based on the provided configuration.
 //
-// When c.ServiceName is set, the server list is resolved once through the
-// registered discovery backend (c.Discovery) instead of using c.Servers. This
-// is a one-shot resolve at startup: gomemcache hashes keys onto a fixed server
-// set, so the membership is fixed for the client's lifetime.
+// When c.ServiceName is set (and mesh mode is not enabled), the server list is
+// resolved through the registered discovery backend (c.Discovery) instead of
+// using c.Servers. A discovery.Resolver seeds the snapshot with an explicit
+// Resolve and keeps it fresh via a background Watch; gomemcache hashes keys
+// onto a fixed server set chosen at client creation, so only the initial
+// snapshot is applied to the client — the Resolver is retained solely to own
+// the watch lifecycle (Stop on shutdown).
+//
+// In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
+// discovery+LB, so the client connects straight to the configured static
+// Servers list (the service's stable DNS address).
 func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*memcache.Client, error) {
 	servers := c.Servers
-	if c.ServiceName != "" {
-		d, err := discovery.MustGet(c.Discovery)
+	var resolver *discovery.Resolver
+	if c.ServiceName != "" && !mesh.Enabled() {
+		d, err := discovery.GetDiscovery(c.Discovery)
 		if err != nil {
 			return nil, err
 		}
-		eps, err := d.Resolve(ctx, c.ServiceName)
+		resolver, err = discovery.NewResolver(ctx, d, c.ServiceName)
 		if err != nil {
 			return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
 		}
+		eps := resolver.Endpoints()
 		if len(eps) == 0 {
+			_ = resolver.Stop()
 			return nil, errutil.Explain(nil, "memcached: discovery returned no endpoints for %q", c.ServiceName)
 		}
 		servers = make([]string, 0, len(eps))
@@ -113,6 +134,9 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*memcache.Clie
 	}
 	if c.MaxIdleConns > 0 {
 		client.MaxIdleConns = c.MaxIdleConns
+	}
+	if resolver != nil {
+		resolvers.Store(client, resolver)
 	}
 	return client, nil
 }

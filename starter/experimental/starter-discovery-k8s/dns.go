@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 // dnsResolver is the subset of net.Resolver the DNS backend needs. Abstracting
@@ -113,10 +113,12 @@ func (d *dnsDiscovery) resolveA(ctx context.Context, name string) ([]discovery.E
 	return eps, nil
 }
 
-// Watch polls Resolve on RefreshInterval and yields a fresh snapshot whenever
-// the endpoint set changes. DNS offers no push notification, so polling is the
-// only option; RefreshInterval trades change-detection latency for query load.
-func (d *dnsDiscovery) Watch(ctx context.Context, name string) (discovery.Watcher, error) {
+// Watch polls Resolve on RefreshInterval and pushes a fresh snapshot on the
+// returned channel whenever the endpoint set changes. DNS offers no push
+// notification, so polling is the only option; RefreshInterval trades
+// change-detection latency for query load. The first result carries the current
+// snapshot; the channel closes when ctx is cancelled.
+func (d *dnsDiscovery) Watch(ctx context.Context, name string) (<-chan discovery.WatchResult, error) {
 	interval := d.cfg.RefreshInterval
 	if interval <= 0 {
 		interval = 10 * time.Second
@@ -125,72 +127,37 @@ func (d *dnsDiscovery) Watch(ctx context.Context, name string) (discovery.Watche
 	if err != nil {
 		return nil, err
 	}
-	w := &dnsWatcher{
-		d:        d,
-		name:     name,
-		interval: interval,
-		last:     addrKey(init),
-		ch:       make(chan []discovery.Endpoint, 1),
-		done:     make(chan struct{}),
-	}
-	go w.loop()
-	return w, nil
-}
-
-// dnsWatcher re-resolves the Service on a ticker and pushes a snapshot on each
-// observed change.
-type dnsWatcher struct {
-	d        *dnsDiscovery
-	name     string
-	interval time.Duration
-	last     string
-	ch       chan []discovery.Endpoint
-	done     chan struct{}
-}
-
-func (w *dnsWatcher) loop() {
-	t := time.NewTicker(w.interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-w.done:
-			return
-		case <-t.C:
-			eps, err := w.d.Resolve(context.Background(), w.name)
-			if err != nil {
-				// Transient DNS failures are skipped; the next tick retries.
-				continue
-			}
-			key := addrKey(eps)
-			if key == w.last {
-				continue
-			}
-			w.last = key
+	ch := make(chan discovery.WatchResult, 1)
+	ch <- discovery.WatchResult{Endpoints: init} // seed: the current snapshot
+	go func() {
+		defer close(ch)
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		last := addrKey(init)
+		for {
 			select {
-			case w.ch <- eps:
-			case <-w.done:
+			case <-ctx.Done():
 				return
+			case <-t.C:
+				eps, err := d.Resolve(context.Background(), name)
+				if err != nil {
+					// Transient DNS failures are skipped; the next tick retries.
+					continue
+				}
+				key := addrKey(eps)
+				if key == last {
+					continue
+				}
+				last = key
+				select {
+				case ch <- discovery.WatchResult{Endpoints: eps}:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
-	}
-}
-
-func (w *dnsWatcher) Next() ([]discovery.Endpoint, error) {
-	select {
-	case eps := <-w.ch:
-		return eps, nil
-	case <-w.done:
-		return nil, context.Canceled
-	}
-}
-
-func (w *dnsWatcher) Stop() error {
-	select {
-	case <-w.done:
-	default:
-		close(w.done)
-	}
-	return nil
+	}()
+	return ch, nil
 }
 
 // sortEndpoints orders endpoints by address for a stable snapshot, so change

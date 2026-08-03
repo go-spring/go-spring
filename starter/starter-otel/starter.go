@@ -29,7 +29,6 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/experimental/actuator/endpoint"
-	"go-spring.org/spring/experimental/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-otel/metric"
 	"go-spring.org/starter-otel/trace"
@@ -117,11 +116,11 @@ func setupTrace(cfg trace.TraceConfig, res *resource.Resource) error {
 	// from ${spring.observability.trace.propagator} (W3C traceparent and/or
 	// B3), so outbound requests carry the active trace context and a
 	// downstream service - or mesh sidecar (Istio/Envoy) on the path -
-	// joins the same trace instead of starting a new one. Filling
-	// discovery.SetTraceInjector here keeps stdlib free of an OTel
-	// dependency: importing the one starter that owns the propagator lights
-	// up propagation everywhere with no per-component wiring.
-	discovery.SetTraceInjector(func(ctx context.Context, header http.Header) {
+	// joins the same trace instead of starting a new one. starter-otel owns
+	// the propagator, so installing the injector here lights up outbound
+	// propagation (via TraceRoundTripper) everywhere with no per-component
+	// wiring.
+	SetTraceInjector(func(ctx context.Context, header http.Header) {
 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(header))
 	})
 

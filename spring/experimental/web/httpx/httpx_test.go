@@ -22,7 +22,7 @@ import (
 	"sync"
 	"testing"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/experimental/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -34,25 +34,13 @@ func (s stubDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, e
 	return s.eps, nil
 }
 
-func (s stubDiscovery) Watch(context.Context, string) (discovery.Watcher, error) {
-	return &stubWatcher{}, nil
-}
-
-type stubWatcher struct{ done chan struct{} }
-
-func (w *stubWatcher) Next() ([]discovery.Endpoint, error) {
-	if w.done == nil {
-		w.done = make(chan struct{})
-	}
-	<-w.done
-	return nil, context.Canceled
-}
-
-func (w *stubWatcher) Stop() error {
-	if w.done != nil {
-		close(w.done)
-	}
-	return nil
+func (s stubDiscovery) Watch(ctx context.Context, _ string) (<-chan discovery.WatchResult, error) {
+	ch := make(chan discovery.WatchResult)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+	return ch, nil
 }
 
 // recordRT records the host of every request it sees and returns a canned status.
@@ -101,7 +89,7 @@ func TestNewTransport_AddrPinsHost(t *testing.T) {
 }
 
 func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
-	discovery.Register("stub-httpx", stubDiscovery{eps: []discovery.Endpoint{
+	discovery.RegisterDiscovery("stub-httpx", stubDiscovery{eps: []discovery.Endpoint{
 		{Addr: "10.0.0.1:9000", Healthy: true},
 		{Addr: "10.0.0.2:9000", Healthy: true},
 	}})
@@ -132,7 +120,7 @@ func TestNewTransport_FailFast(t *testing.T) {
 	assert.Error(t, err).Matches("no backend registered")
 
 	// Unknown balancer strategy -> fail fast.
-	discovery.Register("stub-httpx-2", stubDiscovery{eps: []discovery.Endpoint{{Addr: "1.2.3.4:80"}}})
+	discovery.RegisterDiscovery("stub-httpx-2", stubDiscovery{eps: []discovery.Endpoint{{Addr: "1.2.3.4:80"}}})
 	_, _, err = NewTransport(Config{ServiceName: "x", Discovery: "stub-httpx-2", Balancer: "no-such-lb"})
 	assert.Error(t, err).Matches("no strategy registered")
 }

@@ -2,16 +2,22 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-config-file` integrates a mounted directory (or a single file) as a
-**hot-reloadable configuration source** for Go-Spring, built on
-github.com/fsnotify/fsnotify. Blank-importing it registers a `file-watch`
-config provider that loads application configuration from the path at startup
-and hot-reloads it whenever the files change without restarting.
+`starter-config-file` integrates **local filesystem configuration** as
+**hot-reloadable configuration sources** for Go-Spring, built on
+github.com/fsnotify/fsnotify. One blank-import registers **two** providers that
+cover the two distinct shapes of a Kubernetes ConfigMap/Secret mount:
 
-Its primary purpose is **Kubernetes**: a `ConfigMap` or `Secret` mounted as a
-volume becomes hot-reloadable without any custom code. The kubelet updates such
-a volume by atomically swapping the `..data` symlink, which this provider's
-directory watcher detects and turns into a live property refresh.
+- **`file-watch`** — a single configuration document (a ConfigMap key holding
+  `application.yaml`). For layered overrides, declare one `file-watch` import
+  per file in priority order; later imports win, the same rule
+  `spring.app.imports` uses for every other source.
+- **`configtree`** — a directory of scalar key files (a Secret / env-style
+  ConfigMap mount). Each file's path becomes a dotted property key and its
+  unparsed content the value; paths are unique, so there is no priority problem.
+
+Both watch the parent directory (never the file itself), so the kubelet's atomic
+`..data` symlink swap on a ConfigMap/Secret update is detected and turned into a
+live property refresh without a restart.
 
 This starter covers local file/volume watching only. Remote configuration
 centers (Nacos, etcd, Consul) are separate starters.
@@ -30,30 +36,27 @@ go get go-spring.org/starter-config-file
 import _ "go-spring.org/starter-config-file"
 ```
 
-### 2. Import config from a mounted path
+### 2. Import config from a single file
 
 Declare the import in your configuration file using the provider syntax
-`[optional:]file-watch:<path>[?format=..]`:
+`[optional:]file-watch:<file>`:
 
 ```properties
-# Watch a mounted ConfigMap/Secret directory (recommended for K8s):
-spring.app.imports=file-watch:/etc/config
+# A single mounted ConfigMap/Secret key file (recommended for K8s):
+spring.app.imports=file-watch:/etc/config/application.yaml
+
+# Layered overrides: later imports win.
+spring.app.imports=file-watch:/etc/app/application.yaml
+spring.app.imports=file-watch:/etc/app/application-prod.yaml
 ```
 
-The path may be a **directory** (every recognized file in it is read and
-merged) or a **single file**. Both cases watch the *directory*, so the
-K8s `..data` symlink swap on a ConfigMap update is picked up correctly.
-
-Query parameters:
-
-| Key      | Default            | Description                                                        |
-|----------|--------------------|--------------------------------------------------------------------|
-| `format` | by file extension  | Force a format for all files: `properties`/`yaml`/`toml`/`json`. Use this when ConfigMap keys have no extension. |
-
-By default files are parsed by extension (`.properties`, `.yaml`/`.yml`,
-`.toml`/`.tml`, `.json`); files with an unknown extension are skipped. Prefix
-with `optional:` so the application still starts when the path does not exist
-yet.
+The path must be a **single file** (a directory is rejected — use the
+`configtree` provider for directories). It is parsed by extension
+(`.properties`, `.yaml`/`.yml`, `.toml`/`.tml`, `.json`) through the shared conf
+reader registry. The watcher always registers on the file's parent directory, so
+the K8s `..data` symlink swap on a ConfigMap update is picked up correctly.
+Prefix with `optional:` so the application still starts when the file does not
+exist yet.
 
 ### 3. Bind a dynamic field
 
@@ -67,9 +70,8 @@ type Demo struct {
 
 When a watched file changes, the provider's watcher triggers an application
 property refresh, and all bound `gs.Dync` fields are updated atomically. See
-[example-config](example-config/example.go) for the full flow — it reproduces
-the exact Kubernetes `..data` atomic symlink swap and asserts the bound field
-hot-reloads.
+[example](example/example.go) for the full flow — it reproduces the exact
+Kubernetes `..data` atomic symlink swap and asserts the bound field hot-reloads.
 
 ## Kubernetes example
 
@@ -84,21 +86,56 @@ volumes:
 ```
 
 ```properties
-spring.app.imports=file-watch:/etc/config
+# Point at the specific key file that holds your config document.
+spring.app.imports=file-watch:/etc/config/application.yaml
 ```
 
 `kubectl edit configmap my-app-config` (or a new rollout) updates the volume;
 bound `gs.Dync` fields refresh within seconds, without restarting the pod.
 
+## configtree — directory of scalar keys
+
+Use `configtree` when each file is **one scalar value** rather than a whole
+config document — the shape of a Kubernetes Secret or env-style ConfigMap mount.
+The provider walks the tree; each leaf file becomes one property whose key is
+its dotted relative path and whose value is its trimmed raw content (not parsed).
+
+```properties
+# A Secret mount: db.user, db.password, server.port (one value per file)
+spring.app.imports=configtree:/etc/secret
+```
+
+```
+/etc/secret/
+  db.user          -> "alice"        # property db.user=alice
+  db.password      -> "s3cr3t"       # property db.password=s3cr3t
+  server.port      -> "8080"         # property server.port=8080
+```
+
+K8s Secret/ConfigMap mounts are flat (one file per key; dots in key names are
+allowed, so `db.user` is a valid key). `configtree` also supports genuinely
+nested trees (`db/user` → property `db.user`); entries whose name starts with `.`
+(`..data`, timestamped dirs) are skipped at every level. No `?format=` is
+accepted — values are raw strings. See
+[example-configtree](example-configtree/example.go) for the full hot-reload flow.
+
+### file-watch vs configtree
+
+| Shape | Provider | Priority |
+|---|---|---|
+| One whole config document | `file-watch:<file>` | multiple files compose via `spring.app.imports` order |
+| Many scalar key files | `configtree:<dir>` | none needed — paths are unique, keys never collide |
+
 ## How It Works
 
-- On startup, `spring.app.imports` invokes the `file-watch` provider, which
-  reads the mounted path, parses each file, and starts a **directory** watcher.
+- On startup, `spring.app.imports` invokes the `file-watch` / `configtree`
+  provider, which reads the source and starts a watcher on its **parent
+  directory** (every directory in the tree, for `configtree`).
 - Kubernetes updates a mounted ConfigMap/Secret by writing a fresh timestamped
-  data directory and atomically renaming the `..data` symlink onto it. Watching
-  the directory (not the individual files) is what makes this observable —
-  entries whose name begins with `.` (`..data`, the timestamped dirs) are
-  skipped, while the real key symlinks are read through `..data`.
+  data directory and atomically renaming the `..data` symlink onto it. The key
+  file you import is a symlink resolved through `..data`, so its inode changes on
+  every update — which is why the watch is on the parent directory (stable)
+  rather than the file itself (whose inode is swapped on each update).
 - A change fires the watcher, which calls the framework's
   `PropertiesRefresher`. That reloads all configuration sources (re-running this
   provider) and re-binds every `gs.Dync` field via a two-phase, atomic commit.

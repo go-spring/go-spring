@@ -21,7 +21,7 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
@@ -74,8 +74,8 @@ func newClient(cp *gs.ContextProvider, c Config) (*redis.Pool, error) {
 // destroyClient closes the Redis pool and stops any discovery watch behind it.
 func destroyClient(pool *redis.Pool) error {
 	if v, ok := liveDialers.LoadAndDelete(pool); ok {
-		_ = v.(*discovery.LiveDialer).Stop()
-		log.Debugf(context.Background(), starterTag, "redigo client destroyed, discovery dialer stopped")
+		_ = v.(*discovery.Resolver).Stop()
+		log.Debugf(context.Background(), starterTag, "redigo client destroyed, discovery resolver stopped")
 	}
 	return pool.Close()
 }

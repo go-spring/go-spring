@@ -37,6 +37,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,7 +52,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/experimental/cloud/transaction"
 	"go-spring.org/spring/experimental/web/security"
 	StarterSecurityJWT "go-spring.org/starter-security-jwt"
@@ -89,7 +90,7 @@ type Flags struct {
 
 func init() {
 	// Publish the Consul-backed discovery backend before anything resolves through
-	// it (the gateway and this service both use discovery.MustGet(discoveryName)).
+	// it (the gateway and this service both use discovery.GetDiscovery(discoveryName)).
 	if err := consuldisc.Register(discoveryName, consulAddr); err != nil {
 		panic(err)
 	}
@@ -189,17 +190,24 @@ type inventoryClient struct {
 
 func (c *inventoryClient) client() (*http.Client, error) {
 	c.once.Do(func() {
-		dis, err := discovery.MustGet(discoveryName)
+		dis, err := discovery.GetDiscovery(discoveryName)
 		if err != nil {
 			c.err = err
 			return
 		}
-		ld, err := discovery.NewLiveDialer(context.Background(), dis, "inventory")
+		rsv, err := discovery.NewResolver(context.Background(), dis, "inventory")
 		if err != nil {
 			c.err = err
 			return
 		}
-		c.hc = &http.Client{Transport: &http.Transport{DialContext: ld.DialContext}}
+		nd := &net.Dialer{}
+		c.hc = &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			ep, err := rsv.Pick()
+			if err != nil {
+				return nil, err
+			}
+			return nd.DialContext(ctx, "tcp", ep.Addr)
+		}}}
 	})
 	return c.hc, c.err
 }

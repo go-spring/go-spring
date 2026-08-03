@@ -74,10 +74,11 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
   面向 v1 驱动，与此处使用的 v2 驱动类型不兼容。）
 
 * **服务发现**：在实例上设置 `service-name` 后，地址将通过已注册的 discovery 后端解析，
-  而非直接使用 URI 中的 host。框架会注入一个 `LiveDialer` 作为客户端的 dialer，
+  而非直接使用 URI 中的 host。框架会注入一个基于 `discovery.Resolver` 的 dialer，
   于是每条新建连接都会连到当前存活的实例，地址变更无需重建客户端即可生效。
   用 `discovery` 选择后端（默认 `default`）；公司通过 `discovery.Register` 注册一次
-  自己的命名服务即可。
+  自己的命名服务即可。在 mesh 模式（`mesh.Enabled()`）下由 sidecar 接管服务发现与负载均衡，
+  此时会跳过 `service-name`，直接拨号到 URI 中的 host。
 
   ```properties
   spring.mongodb.disc.uri=mongodb://0.0.0.0:0/?directConnection=true

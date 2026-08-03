@@ -22,16 +22,18 @@ import (
 )
 
 // DialFunc is the shape of the connection-establishing hook exposed by common
-// clients — it matches net.Dialer.DialContext as well as
-// [go-spring.org/spring/discovery.LiveDialer.DialContext], which resolves a live
-// service endpoint before each dial.
+// clients — it matches net.Dialer.DialContext as well as the dialer closure a
+// caller builds around a [go-spring.org/spring/discovery.Resolver] (Pick a live
+// endpoint, then dial its Addr), which resolves a live service endpoint before
+// each dial.
 type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
 // NewDialer wraps base so every connection attempt flows through exec. It is the
-// client-side dialer seam of the framework: pairing it with a discovery
-// LiveDialer gives service-to-service calls circuit breaking, retry and a
-// bulkhead at the point connections are made, without the client library
-// knowing anything about resilience.
+// client-side dialer seam of the framework: pairing it with a discovery-backed
+// dialer (one built on a [go-spring.org/spring/discovery.Resolver]) gives
+// service-to-service calls circuit breaking, retry and a bulkhead at the point
+// connections are made, without the client library knowing anything about
+// resilience.
 //
 // Because a dialer is already scoped to one service, resource is a fixed label
 // (typically the service name) shared by every dial through it. When exec is nil
@@ -41,7 +43,7 @@ type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 // The coverage is coarser than the HTTP/RPC seams: protection keys on the dial,
 // so the breaker trips on connection failures (refused, timed out) rather than
 // on per-request errors of an already-open connection. That is exactly the level
-// at which the widely reusable discovery LiveDialer operates.
+// at which a discovery-backed dialer operates.
 func NewDialer(base DialFunc, exec Executor, resource string) DialFunc {
 	if exec == nil {
 		return base

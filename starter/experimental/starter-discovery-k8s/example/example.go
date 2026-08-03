@@ -38,7 +38,7 @@ import (
 	"time"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 
 	// Blank-import registers the Kubernetes discovery backend(s) declared under
@@ -79,7 +79,7 @@ func main() {
 // call, not to assert on a cluster that may be absent.
 func resolveOnce() {
 	ctx := context.Background()
-	d, err := discovery.MustGet(backendName)
+	d, err := discovery.GetDiscovery(backendName)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not registered: %v", backendName, err)
 		return

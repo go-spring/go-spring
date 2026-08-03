@@ -22,8 +22,9 @@
 // abstractions a microservice call needs, all behind the single http.RoundTripper
 // seam already used by resilience and the otelhttp transport:
 //
-//   - discovery — when a ServiceName is given, a [discovery.LiveDialer] keeps a
-//     fresh endpoint snapshot via Watch;
+//   - discovery — when a ServiceName is given (and mesh mode is off), a
+//     [discovery.Resolver] keeps a fresh endpoint snapshot via Watch; in mesh
+//     mode a sidecar owns discovery+LB, so this layer is skipped;
 //   - loadbalance — a [loadbalance.Pool] picks one live endpoint per request
 //     (any of the registered strategies, plus optional outlier ejection) and the
 //     transport rewrites the request host to it;
@@ -42,7 +43,8 @@ import (
 	"net/http"
 	"time"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/experimental/cloud/loadbalance"
 	"go-spring.org/spring/experimental/cloud/resilience"
 )
@@ -103,20 +105,23 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 		base = http.DefaultTransport
 	}
 
-	var ld *discovery.LiveDialer
+	var rsv *discovery.Resolver
 	closeFns := []func() error{}
 
-	// Discovery + load balancing: only when a service name is configured.
-	if cfg.ServiceName != "" {
-		d, err := discovery.MustGet(cfg.Discovery)
+	// Discovery + load balancing: only when a service name is configured AND
+	// mesh mode is off. In mesh mode a sidecar owns discovery+LB, so skip this
+	// layer and let requests flow to whatever host the caller set (the service's
+	// stable mesh address).
+	if cfg.ServiceName != "" && !mesh.Enabled() {
+		d, err := discovery.GetDiscovery(cfg.Discovery)
 		if err != nil {
 			return nil, nil, err
 		}
-		ld, err = discovery.NewLiveDialer(context.Background(), d, cfg.ServiceName)
+		rsv, err = discovery.NewResolver(context.Background(), d, cfg.ServiceName)
 		if err != nil {
 			return nil, nil, err
 		}
-		closeFns = append(closeFns, ld.Stop)
+		closeFns = append(closeFns, rsv.Stop)
 
 		balName := cfg.Balancer
 		if balName == "" {
@@ -124,7 +129,7 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 		}
 		bal, err := loadbalance.New(balName)
 		if err != nil {
-			_ = ld.Stop()
+			_ = rsv.Stop()
 			return nil, nil, err
 		}
 
@@ -136,7 +141,9 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 			})
 			opts = append(opts, loadbalance.WithTracker(t))
 		}
-		pool := loadbalance.NewPool(ld, bal, opts...)
+		// *discovery.Resolver satisfies loadbalance.EndpointSource via its
+		// Endpoints() method, so the Pool follows the naming service in real time.
+		pool := loadbalance.NewPool(rsv, bal, opts...)
 		base = &balancedTransport{base: base, pool: pool}
 	} else if cfg.Addr != "" {
 		// Direct mode: pin every request to the configured address so callers

@@ -27,8 +27,8 @@ type Config struct {
 	//     deployment without a mesh, where the application's own client-side
 	//     discovery and load balancing must stay active.
 	//   - auto  — infer from the environment: mesh mode turns on only when a
-	//     sidecar is detected (see discovery.DetectMesh). The explicit true/false
-	//     remains the single source of truth; auto is just the inference used when
-	//     the operator has not decided.
+	//     sidecar is detected (see mesh.Detect). The explicit true/false remains
+	//     the single source of truth; auto is just the inference used when the
+	//     operator has not decided.
 	Enabled string `value:"${enabled:=false}"`
 }

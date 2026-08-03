@@ -25,7 +25,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -64,7 +64,7 @@ func newConsulRegistrar(c ConsulConfig) (*consulRegistrar, error) {
 
 // serviceID returns the Consul service instance id: the caller-supplied ID, or a
 // stable one derived from the service name and advertised address.
-func serviceID(reg discovery.Registration) string {
+func serviceID(reg discovery.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -74,7 +74,7 @@ func serviceID(reg discovery.Registration) string {
 // Register publishes reg with a TTL health check, passes the check immediately
 // so the instance is healthy without waiting a full TTL, then keeps it passing
 // on a background heartbeat until Deregister.
-func (r *consulRegistrar) Register(_ context.Context, reg discovery.Registration) error {
+func (r *consulRegistrar) Register(_ context.Context, reg discovery.Instance) error {
 	host, portStr, err := net.SplitHostPort(reg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "registry-consul: addr %q must be host:port", reg.Addr)
@@ -142,7 +142,7 @@ func (r *consulRegistrar) heartbeat(checkID string, stop <-chan struct{}) {
 // Deregister stops the heartbeat and removes the instance. It is idempotent:
 // deregistering an instance that is not registered is a no-op that still asks
 // Consul to drop the id (harmless if already gone).
-func (r *consulRegistrar) Deregister(_ context.Context, reg discovery.Registration) error {
+func (r *consulRegistrar) Deregister(_ context.Context, reg discovery.Instance) error {
 	id := serviceID(reg)
 	r.mu.Lock()
 	if stop, ok := r.heartbeats[id]; ok {

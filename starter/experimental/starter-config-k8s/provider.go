@@ -42,10 +42,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
-	"go-spring.org/spring/conf/reader/json"
-	"go-spring.org/spring/conf/reader/prop"
-	"go-spring.org/spring/conf/reader/toml"
-	"go-spring.org/spring/conf/reader/yaml"
+	"go-spring.org/spring/conf/reader"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
@@ -68,21 +65,6 @@ func init() {
 	// informer (see informer.go) fires on every add/update/delete and turns that
 	// into a refresh, without waiting on kubelet volume projection.
 	conf.RegisterProvider("k8s", k8sController.Load)
-}
-
-// contentReader parses raw configuration bytes into a nested map based on a
-// declared format name. Used both for the forced "format" query and for the
-// per-entry format inferred from a ConfigMap/Secret data key's extension.
-type contentReader func(b []byte) (map[string]any, error)
-
-var contentReaders = map[string]contentReader{
-	"properties": prop.Read,
-	"props":      prop.Read,
-	"yaml":       yaml.Read,
-	"yml":        yaml.Read,
-	"toml":       toml.Read,
-	"tml":        toml.Read,
-	"json":       json.Read,
 }
 
 // configSource holds the parsed components of a "k8s" provider source.
@@ -127,7 +109,7 @@ func parseSource(source string) (configSource, error) {
 		return configSource{}, errutil.Explain(nil, "unsupported k8s config kind %q (want %q or %q)", kind, kindConfigMap, kindSecret)
 	}
 	if cs.format != "" {
-		if _, ok := contentReaders[cs.format]; !ok {
+		if !reader.Has(cs.format) {
 			return configSource{}, errutil.Explain(nil, "unsupported k8s config format %q", cs.format)
 		}
 	}
@@ -236,7 +218,7 @@ func parseEntries(cs configSource, data map[string][]byte, m map[string]string) 
 			if i := strings.LastIndex(name, "."); i >= 0 {
 				ext = name[i+1:]
 			}
-			if _, ok := contentReaders[ext]; !ok {
+			if !reader.Has(ext) {
 				if cs.key != "" {
 					return errutil.Explain(nil, "k8s config: entry %q has no known format; set format=", name)
 				}
@@ -244,7 +226,7 @@ func parseEntries(cs configSource, data map[string][]byte, m map[string]string) 
 			}
 			format = ext
 		}
-		parsed, err := contentReaders[format](content)
+		parsed, err := reader.Read(format, content)
 		if err != nil {
 			return errutil.Explain(err, "k8s config: parse entry %q", name)
 		}

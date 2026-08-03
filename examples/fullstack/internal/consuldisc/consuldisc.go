@@ -35,7 +35,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 // Backend resolves service names against a Consul agent.
@@ -45,14 +45,14 @@ type Backend struct {
 
 // Register builds a Consul-backed Discovery for the agent at addr (e.g.
 // "127.0.0.1:8500") and publishes it in the stdlib/discovery registry under
-// name, so discovery.MustGet(name) (used by the gateway) and any LiveDialer find
+// name, so discovery.GetDiscovery(name) (used by the gateway) and any LiveDialer find
 // it. It is meant to be called once at process start.
 func Register(name, addr string) error {
 	b, err := New(addr)
 	if err != nil {
 		return err
 	}
-	discovery.Register(name, b)
+	discovery.RegisterDiscovery(name, b)
 	return nil
 }
 
@@ -74,11 +74,36 @@ func (b *Backend) Resolve(ctx context.Context, name string) ([]discovery.Endpoin
 	return toEndpoints(entries), nil
 }
 
-// Watch subscribes to name via Consul blocking queries. Each catalog change
-// yields a fresh snapshot from Watcher.Next.
-func (b *Backend) Watch(ctx context.Context, name string) (discovery.Watcher, error) {
+// Watch subscribes to name via Consul blocking queries, pushing a fresh full
+// snapshot on the returned channel each time the catalog's modify index
+// advances. The first result carries the current snapshot; the channel closes
+// when ctx is cancelled or a terminal error is delivered.
+func (b *Backend) Watch(ctx context.Context, name string) (<-chan discovery.WatchResult, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	return &watcher{backend: b, name: name, ctx: ctx, cancel: cancel}, nil
+	w := &watcher{backend: b, name: name, ctx: ctx}
+	ch := make(chan discovery.WatchResult, 1)
+	go func() {
+		defer cancel()
+		defer close(ch)
+		for {
+			eps, err := w.next()
+			if err != nil {
+				if ctx.Err() == nil {
+					select {
+					case ch <- discovery.WatchResult{Err: err}:
+					case <-ctx.Done():
+					}
+				}
+				return
+			}
+			select {
+			case ch <- discovery.WatchResult{Endpoints: eps}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch, nil
 }
 
 // toEndpoints maps Consul service entries to discovery endpoints. It prefers the
@@ -101,22 +126,21 @@ func toEndpoints(entries []*api.ServiceEntry) []discovery.Endpoint {
 	return eps
 }
 
-// watcher streams snapshots for one service using Consul blocking queries: each
-// Next call blocks until the catalog's modify index advances past the last one
-// it saw, then returns the new endpoint set. A WaitTime bounds the block so a
-// stopped watcher (context cancelled) unblocks promptly.
+// watcher drives one service's blocking-query loop. next blocks until the
+// catalog's modify index advances past the last one seen, then returns the new
+// endpoint set. A WaitTime bounds the block so a cancelled context unblocks
+// promptly.
 type watcher struct {
 	backend   *Backend
 	name      string
 	lastIndex uint64
 	ctx       context.Context
-	cancel    context.CancelFunc
 }
 
-// Next blocks for the next snapshot. It loops past block timeouts (index
-// unchanged) so callers only ever see real changes, and returns an error once
-// the watcher is stopped.
-func (w *watcher) Next() ([]discovery.Endpoint, error) {
+// next blocks for the next snapshot. It loops past block timeouts (index
+// unchanged) so callers only ever see real changes, and returns ctx.Err() once
+// the context is cancelled.
+func (w *watcher) next() ([]discovery.Endpoint, error) {
 	for {
 		if err := w.ctx.Err(); err != nil {
 			return nil, err
@@ -137,10 +161,4 @@ func (w *watcher) Next() ([]discovery.Endpoint, error) {
 		w.lastIndex = meta.LastIndex
 		return toEndpoints(entries), nil
 	}
-}
-
-// Stop cancels the blocking query and releases the watch. Safe to call twice.
-func (w *watcher) Stop() error {
-	w.cancel()
-	return nil
 }

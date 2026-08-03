@@ -38,10 +38,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
-	"go-spring.org/spring/conf/reader/json"
-	"go-spring.org/spring/conf/reader/prop"
-	"go-spring.org/spring/conf/reader/toml"
-	"go-spring.org/spring/conf/reader/yaml"
+	"go-spring.org/spring/conf/reader"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -87,19 +84,6 @@ func (c *nacosCtrl) TriggerRefresh() {
 	if c.Refresher != nil {
 		_ = c.Refresher.RefreshProperties()
 	}
-}
-
-// contentReader parses raw configuration bytes into a nested map.
-type contentReader func(b []byte) (map[string]any, error)
-
-var contentReaders = map[string]contentReader{
-	"properties": prop.Read,
-	"props":      prop.Read,
-	"yaml":       yaml.Read,
-	"yml":        yaml.Read,
-	"toml":       toml.Read,
-	"tml":        toml.Read,
-	"json":       json.Read,
 }
 
 // configSource holds the parsed components of a nacos provider source string.
@@ -250,11 +234,7 @@ func (c *nacosCtrl) Load(optional bool, source string) (map[string]string, error
 		return nil, errutil.Explain(nil, "nacos config %s/%s is empty", cs.group, cs.dataID)
 	}
 
-	r, ok := contentReaders[cs.format]
-	if !ok {
-		return nil, errutil.Explain(nil, "unsupported nacos config format %q", cs.format)
-	}
-	m, err := r([]byte(content))
+	m, err := reader.Read(cs.format, []byte(content))
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "parse nacos config %s/%s as %s failed: %v", cs.group, cs.dataID, cs.format, err)
 		return nil, errutil.Explain(err, "parse nacos config %s/%s as %s failed", cs.group, cs.dataID, cs.format)

@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -57,7 +57,7 @@ func newESD(t *testing.T, cfg Config, objs ...*discoveryv1.EndpointSlice) *endpo
 	return &endpointSliceDiscovery{
 		cfg:      cfg,
 		client:   client,
-		watchers: map[*endpointSliceWatcher]struct{}{},
+		watchers: map[*watcherHandle]struct{}{},
 	}
 }
 
@@ -111,13 +111,14 @@ func TestEndpointSlice_WatchDetectsScaleUp(t *testing.T) {
 		),
 	)
 
-	w, err := esd.Watch(context.Background(), "svc")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := esd.Watch(ctx, "svc")
 	assert.Error(t, err).Nil()
-	defer w.Stop()
 
 	// Initial sync pushes the starting snapshot.
-	eps := nextWithTimeout(t, w, 2*time.Second)
-	assert.Slice(t, addrsOf(eps)).Equal([]string{"10.0.0.1:8080"})
+	r := recvWithTimeout(t, ch, 2*time.Second)
+	assert.Slice(t, addrsOf(r.Endpoints)).Equal([]string{"10.0.0.1:8080"})
 
 	// Scale up: update the slice to add a second endpoint.
 	updated := slice("svc-1",
@@ -130,8 +131,8 @@ func TestEndpointSlice_WatchDetectsScaleUp(t *testing.T) {
 	_, err = esd.client.DiscoveryV1().EndpointSlices("ns").Update(context.Background(), updated, metav1.UpdateOptions{})
 	assert.Error(t, err).Nil()
 
-	eps = nextWithTimeout(t, w, 2*time.Second)
-	assert.Slice(t, addrsOf(eps)).Equal([]string{"10.0.0.1:8080", "10.0.0.2:8080"})
+	r = recvWithTimeout(t, ch, 2*time.Second)
+	assert.Slice(t, addrsOf(r.Endpoints)).Equal([]string{"10.0.0.1:8080", "10.0.0.2:8080"})
 }
 
 func TestEndpointSlice_CloseStopsWatchers(t *testing.T) {
@@ -141,13 +142,19 @@ func TestEndpointSlice_CloseStopsWatchers(t *testing.T) {
 			[]discoveryv1.EndpointPort{{Name: strptr("grpc"), Port: i32ptr(8080)}},
 		),
 	)
-	w, err := esd.Watch(context.Background(), "svc")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := esd.Watch(ctx, "svc")
 	assert.Error(t, err).Nil()
 
-	// Drain the initial snapshot queued on cache sync, then Close: the next
-	// read must observe the stopped watcher rather than block forever.
-	nextWithTimeout(t, w, 2*time.Second)
+	// Drain the initial snapshot queued on cache sync, then Close: the channel
+	// must close rather than block forever.
+	recvWithTimeout(t, ch, 2*time.Second)
 	assert.Error(t, esd.Close()).Nil()
-	_, err = w.Next()
-	assert.Error(t, err).Is(context.Canceled)
+	select {
+	case _, ok := <-ch:
+		assert.That(t, ok).False() // closed
+	case <-time.After(2 * time.Second):
+		t.Fatal("watch channel did not close after Close")
+	}
 }

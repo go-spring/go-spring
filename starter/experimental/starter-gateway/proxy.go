@@ -23,7 +23,7 @@ import (
 	"net/url"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/experimental/cloud/loadbalance"
 	"go-spring.org/spring/experimental/cloud/resilience"
 )
@@ -75,7 +75,7 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	if disName == "" {
 		disName = t.discovery
 	}
-	dialer, err := t.liveDialer(disName, up.Service)
+	dialer, err := t.resolver(disName, up.Service)
 	if err != nil {
 		return nil, err
 	}
@@ -90,10 +90,10 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	return loadbalance.NewPool(dialer, bal), nil
 }
 
-// liveDialer returns a cached LiveDialer for name, creating one (and its
-// background watch) on first use. Dialers are keyed by discovery backend + name
-// and reused across route-table recompiles.
-func (t *RouteTable) liveDialer(disName, name string) (*discovery.LiveDialer, error) {
+// resolver returns a cached [discovery.Resolver] for name, creating one (and
+// its background watch) on first use. Resolvers are keyed by discovery backend
+// + name and reused across route-table recompiles.
+func (t *RouteTable) resolver(disName, name string) (*discovery.Resolver, error) {
 	if disName == "" {
 		return nil, &parseError{what: "lb:// upstream without a discovery backend (set upstream.discovery or spring.gateway.discovery)", token: name}
 	}
@@ -103,11 +103,11 @@ func (t *RouteTable) liveDialer(disName, name string) (*discovery.LiveDialer, er
 	if d, ok := t.dialers[key]; ok {
 		return d, nil
 	}
-	dis, err := discovery.MustGet(disName)
+	dis, err := discovery.GetDiscovery(disName)
 	if err != nil {
 		return nil, err
 	}
-	d, err := discovery.NewLiveDialer(t.ctx, dis, name)
+	d, err := discovery.NewResolver(t.ctx, dis, name)
 	if err != nil {
 		return nil, err
 	}

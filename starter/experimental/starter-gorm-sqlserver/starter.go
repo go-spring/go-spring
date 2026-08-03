@@ -19,12 +19,14 @@ package StarterGormSqlserver
 import (
 	"context"
 	"database/sql"
+	"net"
 	"sync"
 
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/sqlserver"
@@ -32,9 +34,25 @@ import (
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
-// liveDialers tracks the discovery-backed dialer behind each client, so
+// liveDialers tracks the discovery-backed resolver behind each client, so
 // destroyClient can stop the watch when the client is torn down.
-var liveDialers sync.Map // *gorm.DB -> *discovery.LiveDialer
+var liveDialers sync.Map // *gorm.DB -> *discovery.Resolver
+
+// resolverDialer adapts a discovery.Resolver to mssql's Dialer interface
+// (DialContext(ctx, network, addr)). The network and addr arguments are ignored
+// — the dialer picks a live endpoint via the Resolver on every call.
+type resolverDialer struct {
+	r  *discovery.Resolver
+	nd *net.Dialer
+}
+
+func (d resolverDialer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
+	ep, err := d.r.Pick()
+	if err != nil {
+		return nil, err
+	}
+	return d.nd.DialContext(ctx, "tcp", ep.Addr)
+}
 
 var starterTag = log.RegisterInfraTag("gorm_sqlserver", "")
 
@@ -51,11 +69,12 @@ func init() {
 // when starter-otel is absent those globals are no-ops, so this stays a
 // zero-config, zero-overhead opt-in that needs no per-component adaptation.
 //
-// When c.ServiceName is set, the connection is routed through a LiveDialer that
-// resolves the service name against the configured discovery backend on every
-// dial. The mssql Connector.Dialer hook accepts our LiveDialer directly since
-// its DialContext signature matches mssql.Dialer. When c.ServiceName is empty
-// this stays a plain DSN dial, unchanged from before.
+// When c.ServiceName is set (and mesh mode is off), the connection is routed
+// through a Resolver that resolves the service name against the configured
+// discovery backend on every dial. The mssql Connector.Dialer hook accepts our
+// resolverDialer adapter, which implements mssql.Dialer. In mesh mode a sidecar
+// owns discovery+LB, so the configured Host is used as-is. When c.ServiceName
+// is empty this stays a plain DSN dial, unchanged from before.
 func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 	ctx := cp.Context
 	if c.Host == "" && c.ServiceName == "" {
@@ -64,7 +83,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 
 	log.Debugf(ctx, starterTag, "creating gorm sqlserver client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
 
-	if c.ServiceName == "" {
+	if c.ServiceName == "" || mesh.Enabled() {
 		db, err := gorm.Open(sqlserver.Open(c.DSN()), gormConfig(c))
 		if err != nil {
 			log.Errorf(ctx, starterTag, "gorm sqlserver: open failed: %v", err)
@@ -85,14 +104,14 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 		return db, nil
 	}
 
-	d, err := discovery.MustGet(c.Discovery)
+	d, err := discovery.GetDiscovery(c.Discovery)
 	if err != nil {
 		log.Errorf(ctx, starterTag, "gorm sqlserver: get discovery backend failed: %v", err)
 		return nil, err
 	}
-	ld, err := discovery.NewLiveDialer(ctx, d, c.ServiceName)
+	ld, err := discovery.NewResolver(ctx, d, c.ServiceName)
 	if err != nil {
-		log.Errorf(ctx, starterTag, "gorm sqlserver: create live dialer for %s failed: %v", c.ServiceName, err)
+		log.Errorf(ctx, starterTag, "gorm sqlserver: create resolver for %s failed: %v", c.ServiceName, err)
 		return nil, err
 	}
 	msCfg, err := msdsn.Parse(c.DSN())
@@ -102,7 +121,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 		return nil, err
 	}
 	connector := mssql.NewConnectorConfig(msCfg)
-	connector.Dialer = ld
+	connector.Dialer = resolverDialer{r: ld, nd: &net.Dialer{}}
 	sqlDB := sql.OpenDB(connector)
 
 	db, err := gorm.Open(sqlserver.New(sqlserver.Config{Conn: sqlDB}), gormConfig(c))
@@ -133,7 +152,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 // underlying connection pool.
 func destroyClient(db *gorm.DB) error {
 	if v, ok := liveDialers.LoadAndDelete(db); ok {
-		_ = v.(*discovery.LiveDialer).Stop()
+		_ = v.(*discovery.Resolver).Stop()
 		log.Debugf(context.Background(), starterTag, "gorm sqlserver client destroyed, discovery dialer stopped")
 	}
 	if sqlDB, err := db.DB(); err == nil {

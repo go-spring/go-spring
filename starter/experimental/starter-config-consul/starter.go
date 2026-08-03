@@ -35,10 +35,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
-	"go-spring.org/spring/conf/reader/json"
-	"go-spring.org/spring/conf/reader/prop"
-	"go-spring.org/spring/conf/reader/toml"
-	"go-spring.org/spring/conf/reader/yaml"
+	"go-spring.org/spring/conf/reader"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -86,20 +83,6 @@ func (c *consulCtrl) TriggerRefresh() {
 	if c.Refresher != nil {
 		_ = c.Refresher.RefreshProperties()
 	}
-}
-
-// contentReader parses raw configuration bytes into a nested map based on the
-// declared format.
-type contentReader func(b []byte) (map[string]any, error)
-
-var contentReaders = map[string]contentReader{
-	"properties": prop.Read,
-	"props":      prop.Read,
-	"yaml":       yaml.Read,
-	"yml":        yaml.Read,
-	"toml":       toml.Read,
-	"tml":        toml.Read,
-	"json":       json.Read,
 }
 
 // configSource holds the parsed components of a consul provider source string.
@@ -223,11 +206,7 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 		return nil, errutil.Explain(nil, "consul kv %s is empty", cs.kvPath)
 	}
 
-	r, ok := contentReaders[cs.format]
-	if !ok {
-		return nil, errutil.Explain(nil, "unsupported consul config format %q", cs.format)
-	}
-	m, err := r(pair.Value)
+	m, err := reader.Read(cs.format, pair.Value)
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "parse consul kv %s as %s failed: %v", cs.kvPath, cs.format, err)
 		return nil, errutil.Explain(err, "parse consul kv %s as %s failed", cs.kvPath, cs.format)

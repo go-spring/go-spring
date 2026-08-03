@@ -17,8 +17,11 @@
 package StarterMemcached
 
 import (
+	"context"
+
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/log"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
@@ -30,9 +33,10 @@ func init() {
 	// Each instance is created according to the configuration in "${spring.memcached}".
 	// This allows defining multiple memcached instances dynamically.
 	//
-	// The memcache client keeps a lazy connection pool and exposes no Close method,
-	// so no destroy callback is needed.
-	gs.Group("${spring.memcached}", newClient, nil)
+	// The memcache client keeps a lazy connection pool and exposes no Close
+	// method, so the destroy callback only stops any discovery Resolver watch
+	// behind the client (added when ServiceName is set).
+	gs.Group("${spring.memcached}", newClient, destroyClient)
 }
 
 // newClient creates a new Memcached client based on the provided configuration.
@@ -62,4 +66,15 @@ func newClient(cp *gs.ContextProvider, c Config) (*memcache.Client, error) {
 	}
 	log.Infof(ctx, starterTag, "memcached client initialized, servers=%v", c.Servers)
 	return client, nil
+}
+
+// destroyClient stops any discovery Resolver watch behind the client. The
+// memcache client itself keeps a lazy connection pool with no Close method, so
+// nothing is closed here — only the background watch (if any) is released.
+func destroyClient(client *memcache.Client) error {
+	if v, ok := resolvers.LoadAndDelete(client); ok {
+		_ = v.(*discovery.Resolver).Stop()
+		log.Debugf(context.Background(), starterTag, "memcached client destroyed, discovery resolver stopped")
+	}
+	return nil
 }

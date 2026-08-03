@@ -23,7 +23,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -39,7 +39,7 @@ func init() {
 	// "${spring.discovery.k8s}", keyed by name. The registration happens in the
 	// module callback (the bean-registration phase), which runs before any
 	// client starter's bean constructor — so by the time a Redis/GORM client
-	// calls discovery.MustGet("<name>") the backend is already present.
+	// calls discovery.GetDiscovery("<name>") the backend is already present.
 	//
 	// A backend is *not* an injectable bean; like a discovery adapter it lives
 	// in the stdlib/discovery registry. We register a single lifecycle bean
@@ -54,7 +54,7 @@ func init() {
 		for name, c := range m {
 			// Skip a name already claimed by another adapter (e.g. a company's
 			// own discovery.Register), rather than panicking on the duplicate.
-			if _, ok := discovery.Get(name); ok {
+			if _, err := discovery.GetDiscovery(name); err == nil {
 				return errutil.Explain(nil, "discovery-k8s: backend %q already registered", name)
 			}
 			log.Debugf(context.Background(), starterTag, "creating k8s discovery backend name=%s mode=%s namespace=%s", name, c.Mode, c.Namespace)
@@ -62,7 +62,7 @@ func init() {
 			if err != nil {
 				return errutil.Explain(err, "discovery-k8s: build backend %q", name)
 			}
-			discovery.Register(name, b)
+			discovery.RegisterDiscovery(name, b)
 			log.Infof(context.Background(), starterTag, "registered k8s discovery backend name=%s mode=%s", name, c.Mode)
 			mgr.add(b)
 		}

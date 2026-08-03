@@ -18,20 +18,22 @@ package StarterRedigo
 
 import (
 	"context"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/experimental/cloud/tlsconf"
 	"go-spring.org/stdlib/errutil"
 )
 
 var driverRegistry = map[string]Driver{}
 
-// liveDialers tracks the discovery-backed dialer behind each pool built by
+// liveDialers tracks the discovery-backed Resolver behind each pool built by
 // DefaultDriver, so destroyClient can stop the background watch on shutdown.
-var liveDialers sync.Map // *redis.Pool -> *discovery.LiveDialer
+var liveDialers sync.Map // *redis.Pool -> *discovery.Resolver
 
 func init() {
 	RegisterDriver("DefaultDriver", DefaultDriver{})
@@ -110,25 +112,33 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new Redis client based on the provided configuration.
 //
-// When c.ServiceName is set, the address is resolved through the registered
-// discovery backend (c.Discovery) instead of c.Addr: a LiveDialer keeps the
-// endpoint set fresh and the pool dials a live instance for each new connection.
+// When c.ServiceName is set (and mesh mode is not enabled), the address is
+// resolved through the registered discovery backend (c.Discovery) instead of
+// c.Addr: a discovery.Resolver keeps the endpoint set fresh via a background
+// watch and the pool dials a live instance (Pick) for each new connection.
 // Combined with c.ConnMaxLifetime, pooled connections recycle onto updated
 // addresses without rebuilding the pool. When c.ServiceName is empty this is a
 // plain Addr dial, unchanged from before.
+//
+// In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
+// discovery+LB, so the pool connects straight to the configured static Addr
+// (the service's stable DNS address).
 func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Pool, error) {
 	tlsConfig, err := c.TLS.Build()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
 	}
 
-	var ld *discovery.LiveDialer
-	if c.ServiceName != "" {
-		d, err := discovery.MustGet(c.Discovery)
+	var resolver *discovery.Resolver
+	if c.ServiceName != "" && !mesh.Enabled() {
+		// Client-side discovery: resolve the service name and pick a live
+		// endpoint per new connection. In mesh mode a sidecar owns
+		// discovery+LB, so skip this and connect straight to c.Addr.
+		d, err := discovery.GetDiscovery(c.Discovery)
 		if err != nil {
 			return nil, err
 		}
-		ld, err = discovery.NewLiveDialer(ctx, d, c.ServiceName)
+		resolver, err = discovery.NewResolver(ctx, d, c.ServiceName)
 		if err != nil {
 			return nil, err
 		}
@@ -156,12 +166,23 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Pool, e
 					redis.DialTLSSkipVerify(c.TLS.InsecureSkipVerify),
 				)
 			}
-			// With service discovery the LiveDialer picks a live endpoint and
-			// ignores the static c.Addr passed below.
-			if ld != nil {
-				opts = append(opts, redis.DialContextFunc(ld.DialContext))
+			// addr is the static target; with service discovery the resolver
+			// overrides it by picking a live endpoint.
+			addr := c.Addr
+			if resolver != nil {
+				nd := &net.Dialer{Timeout: c.DialTimeout}
+				opts = append(opts, redis.DialContextFunc(func(ctx context.Context, network, _ string) (net.Conn, error) {
+					ep, err := resolver.Pick()
+					if err != nil {
+						return nil, err
+					}
+					return nd.DialContext(ctx, network, ep.Addr)
+				}))
+				// Addr becomes a label for the pool; the dialer picks a live
+				// endpoint.
+				addr = c.ServiceName
 			}
-			conn, err := redis.Dial("tcp", c.Addr, opts...)
+			conn, err := redis.Dial("tcp", addr, opts...)
 			if err != nil {
 				return nil, err
 			}
@@ -175,8 +196,8 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Pool, e
 			return conn, nil
 		},
 	}
-	if ld != nil {
-		liveDialers.Store(pool, ld)
+	if resolver != nil {
+		liveDialers.Store(pool, resolver)
 	}
 	return pool, nil
 }

@@ -18,15 +18,12 @@
 //
 // When the application runs inside a mesh (Istio/Envoy, Linkerd, ...) the
 // injected sidecar already performs service discovery and load balancing.
-// Leaving the application's own client-side discovery (stdlib/discovery) and
-// load balancing (stdlib/loadbalance) enabled on top of that balances traffic
-// twice and lets locality/outlier logic fight the mesh. Importing this starter
-// and setting ${spring.mesh.enabled}=true degrades both layers to a
-// pass-through: names resolve to the stable Service address the sidecar
-// intercepts, and the balancer stops selecting.
-//
-// The switch is read once here, at startup, and applied centrally in the
-// discovery/loadbalance factory points — no client starter special-cases it.
+// Leaving the application's own client-side discovery and load balancing
+// enabled on top of that balances traffic twice and lets locality/outlier logic
+// fight the mesh. Importing this starter and setting ${spring.mesh.enabled}=true
+// turns the switch on; client starters and the load-balance Pool read it
+// ([mesh.Enabled]) and degrade to a pass-through so the sidecar owns those
+// concerns.
 package StarterMesh
 
 import (
@@ -36,8 +33,8 @@ import (
 	"strings"
 
 	"go-spring.org/log"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/conf"
-	"go-spring.org/spring/experimental/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 )
@@ -57,9 +54,9 @@ func init() {
 }
 
 // setup binds ${spring.mesh}, resolves the mode to a boolean and applies the
-// switch to stdlib/discovery, which stdlib/loadbalance also reads. A false value
-// (the default) is applied too, so an imported-but-disabled starter leaves the
-// client-side stack fully active.
+// switch ([mesh.SetEnabled]), which client starters and the load-balance Pool
+// also read. A false value (the default) is applied too, so an
+// imported-but-disabled starter leaves the client-side stack fully active.
 func setup(_ gs.BeanProvider, p flatten.Storage) error {
 	var cfg Config
 	if err := conf.Bind(p, &cfg, "${spring.mesh}"); err != nil {
@@ -69,7 +66,7 @@ func setup(_ gs.BeanProvider, p flatten.Storage) error {
 	if err != nil {
 		return err
 	}
-	discovery.SetMeshMode(enabled)
+	mesh.SetEnabled(enabled)
 	if enabled {
 		log.Infof(context.Background(), starterTag,
 			"service-mesh mode enabled: client-side discovery and load balancing degrade to pass-through; the sidecar owns them")
@@ -78,12 +75,12 @@ func setup(_ gs.BeanProvider, p flatten.Storage) error {
 }
 
 // resolveMeshMode turns the configured ${spring.mesh.enabled} value into the
-// boolean the discovery layer consumes. "auto" infers from the environment via
-// discovery.DetectMesh; any other value is parsed as a boolean, keeping the
-// explicit true/false as the single source of truth.
+// boolean the mesh switch consumes. "auto" infers from the environment via
+// [mesh.Detect]; any other value is parsed as a boolean, keeping the explicit
+// true/false as the single source of truth.
 func resolveMeshMode(mode string) (bool, error) {
 	if strings.EqualFold(strings.TrimSpace(mode), "auto") {
-		detected := discovery.DetectMesh()
+		detected := mesh.Detect()
 		log.Infof(context.Background(), starterTag,
 			"service-mesh mode=auto: sidecar %s", map[bool]string{true: "detected", false: "not detected"}[detected])
 		return detected, nil

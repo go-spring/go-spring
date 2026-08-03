@@ -19,7 +19,7 @@ package loadbalance
 import (
 	"sync"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 func init() { Register(Weighted, func() Balancer { return newWeighted() }) }

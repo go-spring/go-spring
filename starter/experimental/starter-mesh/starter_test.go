@@ -19,13 +19,13 @@ package StarterMesh
 import (
 	"testing"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // runSetup binds props through the starter's setup, exercising the real
-// ${spring.mesh} → discovery.SetMeshMode wiring.
+// ${spring.mesh} → mesh.SetEnabled wiring.
 func runSetup(t *testing.T, props map[string]string) {
 	t.Helper()
 	st := flatten.NewPropertiesStorage(flatten.NewProperties(props))
@@ -33,23 +33,23 @@ func runSetup(t *testing.T, props map[string]string) {
 }
 
 func TestSetup_EnablesMeshFromConfig(t *testing.T) {
-	t.Cleanup(func() { discovery.SetMeshMode(false) })
+	t.Cleanup(func() { mesh.SetEnabled(false) })
 
 	runSetup(t, map[string]string{"spring.mesh.enabled": "true"})
-	assert.That(t, discovery.MeshMode()).True()
+	assert.That(t, mesh.Enabled()).True()
 }
 
 func TestSetup_DefaultDisabled(t *testing.T) {
-	t.Cleanup(func() { discovery.SetMeshMode(false) })
+	t.Cleanup(func() { mesh.SetEnabled(false) })
 
 	// A stale on-state must be turned back off when config omits the flag.
-	discovery.SetMeshMode(true)
+	mesh.SetEnabled(true)
 	runSetup(t, map[string]string{})
-	assert.That(t, discovery.MeshMode()).False()
+	assert.That(t, mesh.Enabled()).False()
 }
 
 func TestSetup_InvalidValueErrors(t *testing.T) {
-	t.Cleanup(func() { discovery.SetMeshMode(false) })
+	t.Cleanup(func() { mesh.SetEnabled(false) })
 
 	st := flatten.NewPropertiesStorage(flatten.NewProperties(map[string]string{"spring.mesh.enabled": "maybe"}))
 	assert.Error(t, setup(nil, st)).NotNil()

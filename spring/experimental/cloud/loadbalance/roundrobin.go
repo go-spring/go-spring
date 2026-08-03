@@ -19,7 +19,7 @@ package loadbalance
 import (
 	"sync/atomic"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 func init() { Register(RoundRobin, func() Balancer { return &roundRobin{} }) }

@@ -38,7 +38,7 @@ package StarterDiscoveryK8s
 import (
 	"time"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )

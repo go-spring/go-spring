@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 // Tracker is the load-balancing layer's health-eviction (outlier detection)

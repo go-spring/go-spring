@@ -19,6 +19,7 @@ package reader
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"go-spring.org/spring/conf/reader/json"
 	"go-spring.org/spring/conf/reader/prop"
@@ -31,7 +32,7 @@ var readers = map[string]Reader{}
 
 func init() {
 	Register(json.Read, ".json")
-	Register(prop.Read, ".properties")
+	Register(prop.Read, ".properties", ".props")
 	Register(yaml.Read, ".yaml", ".yml")
 	Register(toml.Read, ".toml", ".tml")
 }
@@ -56,17 +57,40 @@ func Register(r Reader, ext ...string) {
 	}
 }
 
+// Read parses b according to format, which may be a format name ("yaml") or an
+// extension (".yaml") — they are the same registry key, with or without the
+// leading dot. Use ReadFile when the bytes come from a file on disk.
+func Read(format string, b []byte) (map[string]any, error) {
+	r, ok := lookup(format)
+	if !ok {
+		return nil, errutil.Explain(nil, "unsupported config format %q", format)
+	}
+	return r(b)
+}
+
+// Has reports whether a reader is registered for format (name or extension).
+// Use it to validate or probe a format without parsing.
+func Has(format string) bool {
+	_, ok := lookup(format)
+	return ok
+}
+
+// lookup resolves format (name or extension, with or without the dot) to a
+// registered Reader.
+func lookup(format string) (Reader, bool) {
+	if format != "" && !strings.HasPrefix(format, ".") {
+		format = "." + format
+	}
+	r, ok := readers[format]
+	return r, ok
+}
+
 // ReadFile reads a file and parses its content based on file extension.
 // Returns an error if the file cannot be read or the file type is unsupported.
 func ReadFile(file string) (map[string]any, error) {
-	ext := filepath.Ext(file)
-	r, ok := readers[ext]
-	if !ok {
-		return nil, errutil.Explain(nil, "unsupported file type %s", ext)
-	}
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
-	return r(b)
+	return Read(filepath.Ext(file), b)
 }

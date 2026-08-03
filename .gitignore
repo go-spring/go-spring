@@ -40,8 +40,8 @@ website/.vitepress/cache/
 scripts/git-history-audit/reports/
 
 # Generated example runtime files
-**/example/mount/
+**/example*/mount/
 
 # Compiled example binaries
 **/example/example
-**/example-otel/example-otel
+**/example-*/example-*

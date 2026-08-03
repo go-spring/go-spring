@@ -26,7 +26,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -85,7 +85,7 @@ func newNacosRegistrar(c NacosConfig) (*nacosRegistrar, error) {
 // Register publishes reg as an ephemeral Nacos instance. The SDK then keeps it
 // alive with its own heartbeat until Deregister. Registering the same ip:port
 // again refreshes the entry.
-func (r *nacosRegistrar) Register(_ context.Context, reg discovery.Registration) error {
+func (r *nacosRegistrar) Register(_ context.Context, reg discovery.Instance) error {
 	host, port, err := splitAddr(reg.Addr)
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func (r *nacosRegistrar) Register(_ context.Context, reg discovery.Registration)
 
 // Deregister removes the instance. It is idempotent: deregistering an instance
 // that is not registered is a no-op on the Nacos side.
-func (r *nacosRegistrar) Deregister(_ context.Context, reg discovery.Registration) error {
+func (r *nacosRegistrar) Deregister(_ context.Context, reg discovery.Instance) error {
 	host, port, err := splitAddr(reg.Addr)
 	if err != nil {
 		return err

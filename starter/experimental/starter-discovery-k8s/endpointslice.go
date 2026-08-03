@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 // serviceNameLabel is the well-known label Kubernetes sets on every
@@ -50,7 +50,19 @@ type endpointSliceDiscovery struct {
 	client kubernetes.Interface
 
 	mu       sync.Mutex
-	watchers map[*endpointSliceWatcher]struct{}
+	watchers map[*watcherHandle]struct{}
+}
+
+// watcherHandle is the bookkeeping for one live watch: done closes to stop the
+// informer factory and the result channel (exactly once, via stopOnce). Tracked
+// by the parent so Close can tear every watch down as a shutdown safety net.
+type watcherHandle struct {
+	done     chan struct{}
+	stopOnce sync.Once
+}
+
+func (h *watcherHandle) stop() {
+	h.stopOnce.Do(func() { close(h.done) })
 }
 
 // newEndpointSliceDiscovery builds a client (in-cluster when Kubeconfig is
@@ -69,7 +81,7 @@ func newEndpointSliceDiscovery(cfg Config) (*endpointSliceDiscovery, error) {
 	return &endpointSliceDiscovery{
 		cfg:      cfg,
 		client:   client,
-		watchers: map[*endpointSliceWatcher]struct{}{},
+		watchers: map[*watcherHandle]struct{}{},
 	}, nil
 }
 
@@ -113,9 +125,10 @@ func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string) ([]di
 }
 
 // Watch starts an informer scoped to the Service's EndpointSlices and pushes a
-// fresh snapshot on every add/update/delete. The caller owns Stop, which tears
-// the informer down.
-func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string) (discovery.Watcher, error) {
+// fresh full snapshot on the returned channel on every add/update/delete. The
+// first result carries the snapshot at cache-sync time; the channel closes when
+// ctx is cancelled or Close stops the backend.
+func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string) (<-chan discovery.WatchResult, error) {
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		d.client,
 		d.cfg.ResyncPeriod,
@@ -127,105 +140,101 @@ func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string) (discov
 	informer := factory.Discovery().V1().EndpointSlices().Informer()
 	lister := factory.Discovery().V1().EndpointSlices().Lister().EndpointSlices(d.cfg.Namespace)
 
-	w := &endpointSliceWatcher{
-		parent: d,
-		cfg:    d.cfg,
-		name:   name,
-		lister: lister,
-		ch:     make(chan []discovery.Endpoint, 1),
-		done:   make(chan struct{}),
+	// Informer handlers only signal a change; they never touch the result
+	// channel. A single goroutine (below) owns the channel — it is the sole
+	// writer and the sole closer, so there is no send-after-close race.
+	updates := make(chan struct{}, 1)
+	enqueue := func() {
+		select {
+		case updates <- struct{}{}:
+		default:
+		}
 	}
-
-	// Every store mutation recomputes the snapshot from the informer cache and
-	// pushes the latest (a full snapshot, coalescing bursts via emit).
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(any) { w.emit() },
-		UpdateFunc: func(any, any) { w.emit() },
-		DeleteFunc: func(any) { w.emit() },
+		AddFunc:    func(any) { enqueue() },
+		UpdateFunc: func(any, any) { enqueue() },
+		DeleteFunc: func(any) { enqueue() },
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
 		return nil, fmt.Errorf("discovery-k8s: add informer handler for %q: %w", name, err)
 	}
 
-	factory.Start(w.done)
-	if !cache.WaitForCacheSync(w.done, informer.HasSynced) {
-		w.Stop()
+	h := &watcherHandle{done: make(chan struct{})}
+	factory.Start(h.done)
+	if !cache.WaitForCacheSync(h.done, informer.HasSynced) {
+		h.stop()
 		return nil, fmt.Errorf("discovery-k8s: cache sync failed for %q", name)
 	}
 
+	cfg := d.cfg
+	snapshotCh := make(chan discovery.WatchResult, 1)
+	var last string
+	snapshot := func() {
+		slices, err := lister.List(labels.Everything())
+		if err != nil {
+			return
+		}
+		eps := slicesToEndpoints(cfg, slices)
+		sortEndpoints(eps)
+		// Skip unchanged snapshots: the cache-sync burst fires one Add event per
+		// object, which would otherwise queue stale duplicates ahead of a real
+		// change (mirrors dnsDiscovery.Watch's addrKey guard).
+		if key := addrKey(eps); key == last {
+			return
+		} else {
+			last = key
+		}
+		select {
+		case snapshotCh <- discovery.WatchResult{Endpoints: eps}:
+		case <-h.done:
+		}
+	}
+
+	// Seed the current snapshot before the writer goroutine starts, so the first
+	// result is the state at watch time.
+	snapshot()
+
 	d.mu.Lock()
-	d.watchers[w] = struct{}{}
+	d.watchers[h] = struct{}{}
 	d.mu.Unlock()
-	return w, nil
+
+	go func() {
+		defer close(snapshotCh)
+		defer d.untrack(h)
+		for {
+			select {
+			case <-ctx.Done():
+				h.stop()
+				return
+			case <-h.done:
+				return // Close() stopped this watch.
+			case <-updates:
+				snapshot()
+			}
+		}
+	}()
+	return snapshotCh, nil
 }
 
-// Close stops any watchers still running, a safety net for shutdown when a
-// consumer forgot to Stop its watcher.
+// untrack removes a watch handle from the parent's tracking set.
+func (d *endpointSliceDiscovery) untrack(h *watcherHandle) {
+	d.mu.Lock()
+	delete(d.watchers, h)
+	d.mu.Unlock()
+}
+
+// Close stops every still-running watch, a safety net for shutdown when a
+// consumer forgot to cancel its watch context.
 func (d *endpointSliceDiscovery) Close() error {
 	d.mu.Lock()
-	ws := make([]*endpointSliceWatcher, 0, len(d.watchers))
-	for w := range d.watchers {
-		ws = append(ws, w)
+	ws := make([]*watcherHandle, 0, len(d.watchers))
+	for h := range d.watchers {
+		ws = append(ws, h)
 	}
 	d.mu.Unlock()
-	for _, w := range ws {
-		_ = w.Stop()
+	for _, h := range ws {
+		h.stop()
 	}
-	return nil
-}
-
-// endpointSliceWatcher streams snapshots computed from an informer cache.
-type endpointSliceWatcher struct {
-	parent *endpointSliceDiscovery
-	cfg    Config
-	name   string
-	lister interface {
-		List(selector labels.Selector) ([]*discoveryv1.EndpointSlice, error)
-	}
-	ch       chan []discovery.Endpoint
-	done     chan struct{}
-	stopOnce sync.Once
-}
-
-// emit recomputes the snapshot from the informer cache and delivers the latest
-// to Next, dropping a stale queued snapshot so the consumer always sees current
-// state rather than a backlog.
-func (w *endpointSliceWatcher) emit() {
-	slices, err := w.lister.List(labels.Everything())
-	if err != nil {
-		return
-	}
-	eps := slicesToEndpoints(w.cfg, slices)
-	sortEndpoints(eps)
-	// Coalesce: drop a pending snapshot before queuing the newest.
-	select {
-	case <-w.ch:
-	default:
-	}
-	select {
-	case w.ch <- eps:
-	case <-w.done:
-	}
-}
-
-func (w *endpointSliceWatcher) Next() ([]discovery.Endpoint, error) {
-	select {
-	case eps := <-w.ch:
-		return eps, nil
-	case <-w.done:
-		return nil, context.Canceled
-	}
-}
-
-func (w *endpointSliceWatcher) Stop() error {
-	w.stopOnce.Do(func() {
-		close(w.done)
-		if w.parent != nil {
-			w.parent.mu.Lock()
-			delete(w.parent.watchers, w)
-			w.parent.mu.Unlock()
-		}
-	})
 	return nil
 }
 

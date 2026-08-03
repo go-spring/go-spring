@@ -68,10 +68,13 @@ type Config struct {
 	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// ServiceName resolves the connection address through a registered discovery
-	// backend instead of relying solely on the URI hosts. When set, a LiveDialer
-	// is injected as the client's ContextDialer, so every new connection reaches
-	// a currently-live instance and address changes take effect without
-	// rebuilding the client. When empty, the URI hosts are dialed directly.
+	// backend instead of relying solely on the URI hosts. When set (and mesh mode
+	// is off), a Resolver-backed dialer is injected as the client's ContextDialer,
+	// so every new connection reaches a currently-live instance and address
+	// changes take effect without rebuilding the client. In mesh mode the sidecar
+	// owns discovery+LB, so ServiceName is ignored and the URI hosts are dialed
+	// directly. When ServiceName is empty (in non-mesh mode), the URI hosts are
+	// dialed directly.
 	//
 	// Note: this bypasses MongoDB's own topology discovery (replica set / mongos)
 	// — the driver dials whatever the naming service hands out. Use it when the

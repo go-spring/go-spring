@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -110,9 +110,9 @@ func TestDNS_WatchDetectsChange(t *testing.T) {
 		ClusterDomain: "cluster.local", RefreshInterval: 10 * time.Millisecond,
 	}, f)
 
-	w, err := d.Watch(context.Background(), "redis")
+	ch, err := d.Watch(context.Background(), "redis")
 	assert.Error(t, err).Nil()
-	defer w.Stop()
+	recvWithTimeout(t, ch, time.Second) // drain the seed snapshot (one endpoint)
 
 	// Simulate a scale-up: the next poll must surface the new endpoint.
 	f.set(nil, []net.IPAddr{
@@ -120,45 +120,43 @@ func TestDNS_WatchDetectsChange(t *testing.T) {
 		{IP: net.ParseIP("10.0.0.2")},
 	})
 
-	eps := nextWithTimeout(t, w, time.Second)
-	assert.Slice(t, addrsOf(eps)).Equal([]string{"10.0.0.1:6379", "10.0.0.2:6379"})
+	r := recvWithTimeout(t, ch, time.Second)
+	assert.Slice(t, addrsOf(r.Endpoints)).Equal([]string{"10.0.0.1:6379", "10.0.0.2:6379"})
 }
 
-func TestDNS_WatchStopUnblocksNext(t *testing.T) {
+func TestDNS_WatchCancelClosesChannel(t *testing.T) {
 	f := &fakeResolver{}
 	f.set(nil, []net.IPAddr{{IP: net.ParseIP("10.0.0.1")}})
 	d := newDNSDiscovery(Config{
 		Mode: ModeDNS, Namespace: "ns", Port: 6379,
 		ClusterDomain: "cluster.local", RefreshInterval: time.Hour,
 	}, f)
-	w, err := d.Watch(context.Background(), "redis")
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := d.Watch(ctx, "redis")
 	assert.Error(t, err).Nil()
+	recvWithTimeout(t, ch, time.Second) // drain the seed snapshot
 
-	_ = w.Stop()
-	_, err = w.Next()
-	assert.Error(t, err).Is(context.Canceled)
-	// Stop is idempotent.
-	assert.Error(t, w.Stop()).Nil()
+	cancel()
+	select {
+	case _, ok := <-ch:
+		assert.That(t, ok).False() // channel must be closed
+	case <-time.After(time.Second):
+		t.Fatal("watch channel did not close after ctx cancel")
+	}
 }
 
-// nextWithTimeout fails the test if the watcher does not yield within d.
-func nextWithTimeout(t *testing.T, w discovery.Watcher, d time.Duration) []discovery.Endpoint {
+// recvWithTimeout fails the test if the watch channel does not yield a snapshot
+// within d.
+func recvWithTimeout(t *testing.T, ch <-chan discovery.WatchResult, d time.Duration) discovery.WatchResult {
 	t.Helper()
-	type result struct {
-		eps []discovery.Endpoint
-		err error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		eps, err := w.Next()
-		ch <- result{eps, err}
-	}()
 	select {
-	case r := <-ch:
-		assert.Error(t, r.err).Nil()
-		return r.eps
+	case r, ok := <-ch:
+		if !ok {
+			t.Fatal("watch channel closed before yielding a snapshot")
+		}
+		return r
 	case <-time.After(d):
-		t.Fatal("watcher did not yield a snapshot in time")
-		return nil
+		t.Fatal("watch did not yield a snapshot in time")
+		return discovery.WatchResult{}
 	}
 }

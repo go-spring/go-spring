@@ -25,7 +25,7 @@
 //   - [Balancer] is the pluggable selection strategy (round-robin, least-conn,
 //     consistent-hash, weighted, zone-aware). It is pure: given a candidate
 //     endpoint set and a [PickInfo] it returns one [Result].
-//   - [Pool] binds a live discovery source (via [discovery.LiveDialer]) and a
+//   - [Pool] binds a live discovery source (via [discovery.Resolver]) and a
 //     [Tracker] (outlier ejection) to a Balancer, so the candidate set stays
 //     fresh as instances come and go and unhealthy instances are evicted.
 //
@@ -41,7 +41,7 @@ import (
 	"sort"
 	"sync"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 // ErrNoAvailable is returned by a [Balancer] or [Pool] when there is no eligible
@@ -112,7 +112,7 @@ var (
 
 // Register makes a [Balancer] strategy available under name. It panics if name
 // is empty, f is nil, or name is already registered, matching the driver-registry
-// idiom used across stdlib (discovery.Register, resilience.RegisterDriver) so
+// idiom used across stdlib (discovery.RegisterDiscovery, resilience.RegisterDriver) so
 // duplicate wiring fails loudly at init.
 func Register(name string, f Factory) {
 	if name == "" {

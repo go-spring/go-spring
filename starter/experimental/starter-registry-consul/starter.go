@@ -44,7 +44,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -67,7 +67,7 @@ func init() {
 			return err
 		}
 		log.Debugf(context.Background(), starterTag, "creating consul registrar name=%s address=%s ttl=%s", cc.Name, cc.Address, cc.TTL)
-		if _, ok := discovery.GetRegistrar(cc.Name); ok {
+		if _, err := discovery.GetRegistrar(cc.Name); err == nil {
 			return errutil.Explain(nil, "registry-consul: registrar %q already registered", cc.Name)
 		}
 		reg, err := newConsulRegistrar(cc)
@@ -93,7 +93,7 @@ type Server struct {
 	Config RegistrationConfig `value:"${spring.registry}"`
 
 	registrar discovery.Registrar
-	reg       discovery.Registration
+	reg       discovery.Instance
 }
 
 // Run resolves the configured backend and, once the application is ready,
@@ -104,12 +104,12 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if s.Config.ServiceName == "" || s.Config.Addr == "" {
 		return errutil.Explain(nil, "registry: ${spring.registry.service-name} and ${spring.registry.addr} are required")
 	}
-	r, err := discovery.MustGetRegistrar(s.Config.Backend)
+	r, err := discovery.GetRegistrar(s.Config.Backend)
 	if err != nil {
 		return err
 	}
 	s.registrar = r
-	s.reg = discovery.Registration{
+	s.reg = discovery.Instance{
 		ServiceName: s.Config.ServiceName,
 		ID:          s.Config.ID,
 		Addr:        s.Config.Addr,

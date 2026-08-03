@@ -19,12 +19,14 @@ package StarterGormMySql
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 	"sync/atomic"
 
 	"github.com/go-sql-driver/mysql"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	gormmysql "gorm.io/driver/mysql"
@@ -50,7 +52,7 @@ var tlsSeq atomic.Uint64
 var starterTag = log.RegisterInfraTag("gorm_mysql", "")
 
 type discoveryConn struct {
-	ld      *discovery.LiveDialer
+	ld      *discovery.Resolver
 	netName string
 }
 
@@ -67,11 +69,13 @@ func init() {
 // when starter-otel is absent those globals are no-ops, so this stays a
 // zero-config, zero-overhead opt-in that needs no per-component adaptation.
 //
-// When c.ServiceName is set, the address is resolved through the registered
-// discovery backend: a LiveDialer is bound to a unique mysql dial network name
-// and the DSN routes through it, so each new connection reaches a live instance
-// and address changes take effect without rebuilding the client. When
-// c.ServiceName is empty this is a plain Addr dial, unchanged from before.
+// When c.ServiceName is set (and mesh mode is off), the address is resolved
+// through the registered discovery backend: a Resolver is bound to a unique
+// mysql dial network name and the DSN routes through it, so each new connection
+// reaches a live instance and address changes take effect without rebuilding
+// the client. In mesh mode a sidecar owns discovery+LB, so the configured Addr
+// is used as-is. When c.ServiceName is empty this is a plain Addr dial,
+// unchanged from before.
 func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 	ctx := cp.Context
 
@@ -103,21 +107,30 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 	dsn := c.DSN()
 
 	var conn *discoveryConn
-	if c.ServiceName != "" {
-		d, err := discovery.MustGet(c.Discovery)
+	if c.ServiceName != "" && !mesh.Enabled() {
+		d, err := discovery.GetDiscovery(c.Discovery)
 		if err != nil {
 			log.Errorf(ctx, starterTag, "gorm mysql: get discovery backend failed: %v", err)
 			deregisterTLS(tlsName)
 			return nil, err
 		}
-		ld, err := discovery.NewLiveDialer(ctx, d, c.ServiceName)
+		ld, err := discovery.NewResolver(ctx, d, c.ServiceName)
 		if err != nil {
-			log.Errorf(ctx, starterTag, "gorm mysql: create live dialer for %s failed: %v", c.ServiceName, err)
+			log.Errorf(ctx, starterTag, "gorm mysql: create resolver for %s failed: %v", c.ServiceName, err)
 			deregisterTLS(tlsName)
 			return nil, err
 		}
 		netName := fmt.Sprintf("gsdisco_%s_%d", c.ServiceName, netSeq.Add(1))
-		mysql.RegisterDialContext(netName, ld.Dial)
+		nd := &net.Dialer{}
+		// mysql.DialContextFunc is 2-arg: func(ctx, addr string) (net.Conn, error).
+		// The addr is ignored; the dialer picks a live endpoint via the Resolver.
+		mysql.RegisterDialContext(netName, func(ctx context.Context, _ string) (net.Conn, error) {
+			ep, perr := ld.Pick()
+			if perr != nil {
+				return nil, perr
+			}
+			return nd.DialContext(ctx, "tcp", ep.Addr)
+		})
 
 		// Route the DSN through the registered dialer; Addr becomes a label the
 		// dialer ignores since it picks a live endpoint itself.

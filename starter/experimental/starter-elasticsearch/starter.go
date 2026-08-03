@@ -19,9 +19,12 @@ package StarterElasticsearch
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/elastic/go-elasticsearch/v8"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/log"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
@@ -33,59 +36,89 @@ func init() {
 	gs.Group("${spring.elasticsearch}", newClient, destroyClient)
 }
 
+var starterTag = log.RegisterInfraTag("elasticsearch", "")
+
+// resolvers tracks the discovery-backed resolver behind each client, so
+// destroyClient can stop the background watch on teardown. The elasticsearch
+// client exposes no dialer injection point, so the Resolver is only consulted
+// once at startup (to derive the node address list); the watch is kept running
+// only to honor the unified lifecycle and is stopped on shutdown.
+var resolvers sync.Map // *elasticsearch.Client -> *discovery.Resolver
+
 // newClient creates a new Elasticsearch client based on the provided
 // configuration. The cluster is probed once at startup so that misconfiguration
 // or an unreachable cluster fails fast rather than on first use.
 //
-// When c.ServiceName is set, the node addresses are resolved once through the
-// registered discovery backend (c.Discovery) and override c.Addresses; see the
-// ServiceName field docs for the startup-only limitation. When c.ServiceName is
-// empty the static Addresses (or CloudID) are used unchanged.
+// When c.ServiceName is set and mesh mode is off, a Resolver is built against
+// the registered discovery backend (c.Discovery), its current endpoint snapshot
+// is turned into "scheme://host:port" node addresses, and those override
+// c.Addresses. Because the elasticsearch client exposes no dialer injection
+// point, this is a one-shot resolution at startup — the Resolver is kept alive
+// only to keep the lifecycle uniform with the other client starters and is
+// stopped on shutdown. In mesh mode the sidecar owns discovery+LB, so the static
+// Addresses (or CloudID) are used unchanged. See Config.ServiceName.
 func newClient(cp *gs.ContextProvider, c Config) (*elasticsearch.Client, error) {
 	ctx := cp.Context
-	if c.ServiceName != "" {
-		addrs, err := resolveAddresses(ctx, c)
+	var resolver *discovery.Resolver
+	if c.ServiceName != "" && !mesh.Enabled() {
+		addrs, r, err := resolveAddresses(ctx, c)
 		if err != nil {
 			return nil, err
 		}
+		resolver = r
 		c.Addresses = addrs
 	}
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
+		if resolver != nil {
+			_ = resolver.Stop()
+		}
 		return nil, errutil.Explain(nil, "elasticsearch driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(ctx, c)
 	if err != nil {
+		if resolver != nil {
+			_ = resolver.Stop()
+		}
 		return nil, errutil.Explain(err, "failed to create elasticsearch client")
 	}
 	if err := HealthCheck(ctx, client); err != nil {
+		_ = client.Close(context.Background())
+		if resolver != nil {
+			_ = resolver.Stop()
+		}
 		return nil, errutil.Explain(err, "failed to reach elasticsearch cluster")
+	}
+	if resolver != nil {
+		resolvers.Store(client, resolver)
 	}
 	return client, nil
 }
 
-// resolveAddresses resolves c.ServiceName through the registered discovery
-// backend and returns the endpoints as "scheme://host:port" node addresses. It
-// fails fast when no backend is registered or the service currently has no
-// endpoints. This is a one-shot resolution at startup (see Config.ServiceName).
-func resolveAddresses(ctx context.Context, c Config) ([]string, error) {
-	backend, err := discovery.MustGet(c.Discovery)
+// resolveAddresses builds a discovery Resolver for c.ServiceName and returns the
+// current endpoint snapshot as "scheme://host:port" node addresses together with
+// the Resolver (so the caller can stop its background watch on shutdown). It
+// fails fast when no backend is registered or the service has no endpoints.
+func resolveAddresses(ctx context.Context, c Config) ([]string, *discovery.Resolver, error) {
+	backend, err := discovery.GetDiscovery(c.Discovery)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	eps, err := backend.Resolve(ctx, c.ServiceName)
+	r, err := discovery.NewResolver(ctx, backend, c.ServiceName)
 	if err != nil {
-		return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
+		return nil, nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 	}
+	eps := r.Endpoints()
 	if len(eps) == 0 {
-		return nil, errutil.Explain(nil, "elasticsearch: discovery %q returned no endpoints for %q", c.Discovery, c.ServiceName)
+		_ = r.Stop()
+		return nil, nil, errutil.Explain(nil, "elasticsearch: discovery %q returned no endpoints for %q", c.Discovery, c.ServiceName)
 	}
 	addrs := make([]string, 0, len(eps))
 	for _, ep := range eps {
 		addrs = append(addrs, fmt.Sprintf("%s://%s", c.DiscoveryScheme, ep.Addr))
 	}
-	return addrs, nil
+	return addrs, r, nil
 }
 
 // HealthCheck reports whether the Elasticsearch cluster is reachable by issuing
@@ -105,10 +138,12 @@ func HealthCheck(ctx context.Context, client *elasticsearch.Client) error {
 	return nil
 }
 
-// destroyClient releases the Elasticsearch client. The v8 client holds no
-// closable resources (its transport uses net/http with idle-connection reuse),
-// so there is nothing to close; this callback exists only to keep the
-// group's lifecycle handling uniform with the other clients.
+// destroyClient releases the Elasticsearch client and stops any discovery
+// resolver behind it.
 func destroyClient(client *elasticsearch.Client) error {
-	return nil
+	if v, ok := resolvers.LoadAndDelete(client); ok {
+		_ = v.(*discovery.Resolver).Stop()
+		log.Debugf(context.Background(), starterTag, "elasticsearch client destroyed, discovery resolver stopped")
+	}
+	return client.Close(context.Background())
 }

@@ -14,78 +14,57 @@
  * limitations under the License.
  */
 
-// Package StarterConfigFile integrates a mounted directory (or file) as a
-// hot-reloadable configuration source for Go-Spring. Blank-importing this
-// package registers a "file-watch" config provider that can be consumed via
-// spring.app.imports, together with the bridge that wires file changes into
-// the application-wide property refresh for live hot-reload.
+// Package StarterConfigFile integrates local filesystem configuration as
+// hot-reloadable configuration sources for Go-Spring. One blank-import registers
+// two providers that share a single watch + refresh bridge:
 //
-// Its primary purpose is Kubernetes: a ConfigMap or Secret mounted as a volume
-// becomes hot-reloadable without any custom code. The kubelet updates such a
-// volume by atomically swapping the "..data" symlink, which the directory
-// watcher detects and turns into a refresh, so bound gs.Dync fields update
-// within seconds of `kubectl edit configmap`.
+//   - "file-watch" (filewatch.go) — one configuration document per import (a
+//     ConfigMap key holding application.yaml), parsed by extension. Layered
+//     overrides compose via spring.app.imports order; it never merges a directory.
+//   - "configtree" (configtree.go) — a directory of scalar key files (a Secret /
+//     env-style ConfigMap mount). Each leaf file maps to one property keyed by
+//     its dotted relative path, valued by its unparsed content.
+//
+// Both watch the parent directory (never the file itself), so the kubelet's
+// atomic "..data" symlink swap on a Kubernetes ConfigMap/Secret update is
+// detected and turned into a live property refresh without a restart.
 //
 // This starter covers local file/volume watching only. Remote configuration
 // centers (Nacos, etcd, Consul) are separate starters.
 package StarterConfigFile
 
 import (
-	"context"
-	"maps"
-	"net/url"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/conf/reader/json"
-	"go-spring.org/spring/conf/reader/prop"
-	"go-spring.org/spring/conf/reader/toml"
-	"go-spring.org/spring/conf/reader/yaml"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
 
-func init() {
-	// Register the file-watch controller as both a root bean (so the IoC
-	// container injects its PropertiesRefresher via autowire) and the
-	// "file-watch" config provider (so Load calls go through its method).
-	// Before wiring, TriggerRefresh is a harmless no-op — the startup load
-	// already captured the initial config.
-	gs.Provide(fileWatchController).Export(gs.As[gs.Rooter]())
-
-	// Register "file-watch" as a configuration provider so that a
-	// spring.app.imports entry such as
-	//
-	//	optional:file-watch:/etc/config?format=properties
-	//
-	// loads configuration from a mounted directory (or single file) at startup
-	// and, whenever the mount changes, triggers a full property refresh.
-	//
-	// The provider is the global controller's Load method, so the same object
-	// that holds the PropertiesRefresher (injected via autowire by the IoC
-	// container) also serves config loads — no separate hook wiring needed.
-	conf.RegisterProvider("file-watch", fileWatchController.Load)
-}
-
-// fileWatchController is the global singleton. It is the ONLY place the
-// controller is referenced outside its own methods: the init functions in this
-// file and in provider.go wire it into the IoC container and the conf provider
-// respectively. All other code (Load, ensureWatch, watchLoop, readDir, etc.)
-// operates on the receiver without touching this global.
+// starterTag is the infra log tag shared by both providers. fileWatchController
+// is the global singleton: the only places it is referenced outside its own
+// methods are the init functions (bean wiring here; provider registration in
+// filewatch.go and configtree.go). All other code operates on the receiver.
 var (
 	starterTag          = log.RegisterInfraTag("starter_config_file", "")
 	fileWatchController = &configFileController{}
 )
 
-// configFileController is the single object that owns the full lifecycle of
-// file-watch configuration: loading files, watching directories, and triggering
-// property refresh on changes.
+func init() {
+	// Register the shared controller as a root bean so the IoC container injects
+	// its PropertiesRefresher via autowire. Each provider registers itself in its
+	// own init (file-watch in filewatch.go, configtree in configtree.go). Before
+	// wiring, TriggerRefresh is a harmless no-op — the startup load already
+	// captured the initial config.
+	gs.Provide(fileWatchController).Export(gs.As[gs.Rooter]())
+}
+
+// configFileController owns the lifecycle shared by both providers: it holds the
+// IoC-injected PropertiesRefresher and the deduplicated set of watched
+// directories. The per-provider Load methods (Load in filewatch.go,
+// LoadConfigTree in configtree.go) read config; ensureWatch/watchLoop deliver
+// change events; TriggerRefresh fans them out into a full application property
+// refresh.
 type configFileController struct {
 	Refresher *gs.PropertiesRefresher `autowire:""`
 
@@ -93,112 +72,19 @@ type configFileController struct {
 	watched map[string]struct{} // directories already watched
 }
 
-// TriggerRefresh is called by the watcher goroutines when a mounted directory
-// changes. Before the IoC container wires the controller, this is a no-op —
-// the initial config load already captured the state.
+// TriggerRefresh is called by the watcher goroutines when a watched directory
+// changes. Before the IoC container wires the controller, this is a no-op — the
+// initial config load already captured the state.
 func (c *configFileController) TriggerRefresh() {
 	if c.Refresher != nil {
 		_ = c.Refresher.RefreshProperties()
 	}
 }
 
-// contentReader parses raw configuration bytes into a nested map based on a
-// declared format name (rather than a file extension).
-type contentReader func(b []byte) (map[string]any, error)
-
-var contentReaders = map[string]contentReader{
-	"properties": prop.Read,
-	"props":      prop.Read,
-	"yaml":       yaml.Read,
-	"yml":        yaml.Read,
-	"toml":       toml.Read,
-	"tml":        toml.Read,
-	"json":       json.Read,
-}
-
-// configSource holds the parsed components of a file-watch provider source.
-type configSource struct {
-	path   string // absolute or relative path to a directory or a single file
-	format string // optional format override applied to all files
-}
-
-// parseSource parses a provider source of the form <path>[?format=..]. The
-// leading "file-watch:" prefix has already been stripped by conf/provider.Load.
-func parseSource(source string) (configSource, error) {
-	path := source
-	var format string
-	if p, query, ok := strings.Cut(source, "?"); ok {
-		path = p
-		q, err := url.ParseQuery(query)
-		if err != nil {
-			return configSource{}, errutil.Explain(err, "invalid file-watch query in %q", source)
-		}
-		format = q.Get("format")
-	}
-	if path == "" {
-		return configSource{}, errutil.Explain(nil, "missing path in file-watch source %q", source)
-	}
-	if format != "" {
-		if _, ok := contentReaders[format]; !ok {
-			return configSource{}, errutil.Explain(nil, "unsupported file-watch format %q", format)
-		}
-	}
-	return configSource{path: path, format: format}, nil
-}
-
-// Load implements conf/provider.Provider. It reads configuration from the
-// mounted path, parses it, and installs a directory watcher that triggers an
-// application property refresh on change.
-func (c *configFileController) Load(optional bool, source string) (map[string]string, error) {
-	cs, err := parseSource(source)
-	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
-		return nil, err
-	}
-
-	log.Debugf(context.Background(), starterTag, "loading file-watch config from path=%s format=%s", cs.path, cs.format)
-
-	info, err := os.Stat(cs.path)
-	if err != nil {
-		if os.IsNotExist(err) && optional {
-			log.Warnf(context.Background(), starterTag, "optional config path %s not found (skipped)", cs.path)
-			return nil, nil
-		}
-		log.Errorf(context.Background(), starterTag, "stat %s failed: %v", cs.path, err)
-		return nil, errutil.Explain(err, "file-watch: stat %s failed", cs.path)
-	}
-
-	// Watch the directory (the mount point), not the individual file: Kubernetes
-	// updates a ConfigMap/Secret by writing a new timestamped directory and
-	// atomically renaming the "..data" symlink, so a per-file watch would be
-	// left pointing at a stale inode after the first update.
-	watchDir := cs.path
-	if !info.IsDir() {
-		watchDir = filepath.Dir(cs.path)
-	}
-	c.ensureWatch(watchDir)
-
-	m := map[string]string{}
-	if info.IsDir() {
-		if err = c.readDir(cs, m); err != nil {
-			return nil, err
-		}
-	} else {
-		if err = c.readOneFile(cs.path, cs.format, m); err != nil {
-			return nil, err
-		}
-	}
-
-	log.Infof(context.Background(), starterTag, "loaded file-watch config from path=%s keys=%d", cs.path, len(m))
-	return m, nil
-}
-
-// --- directory watching ---
-
 // ensureWatch starts a background directory watcher for dir, deduplicated so
 // repeated Load calls (startup + every refresh) do not stack watchers on the
-// same mount. Watching is best-effort: if a watcher cannot be created, startup
-// still succeeds with a static snapshot, only losing hot-reload for this mount.
+// same directory. Watching is best-effort: if a watcher cannot be created,
+// startup still succeeds with a static snapshot, only losing hot-reload.
 func (c *configFileController) ensureWatch(dir string) {
 	c.mu.Lock()
 	if c.watched == nil {
@@ -244,60 +130,4 @@ func (c *configFileController) watchLoop(w *fsnotify.Watcher) {
 			}
 		}
 	}
-}
-
-// --- file reading ---
-
-// readDir merges every eligible file in a mounted directory into m. Entries
-// whose name begins with '.' are skipped: this excludes the Kubernetes
-// projected-volume bookkeeping ("..data", "..2025_01_01_..." temp dirs) as well
-// as dotfiles, while the real config keys (symlinks into "..data") are read.
-func (c *configFileController) readDir(cs configSource, m map[string]string) error {
-	entries, err := os.ReadDir(cs.path)
-	if err != nil {
-		return errutil.Explain(err, "file-watch: read dir %s failed", cs.path)
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-		full := filepath.Join(cs.path, name)
-		fi, statErr := os.Stat(full)
-		if statErr != nil || fi.IsDir() {
-			continue
-		}
-		if cs.format == "" {
-			if _, ok := contentReaders[strings.TrimPrefix(filepath.Ext(name), ".")]; !ok {
-				continue
-			}
-		}
-		if err = c.readOneFile(full, cs.format, m); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// readOneFile parses a single file (by forced format, or by extension when
-// format is empty) and merges its flattened keys into m.
-func (c *configFileController) readOneFile(path, format string, m map[string]string) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return errutil.Explain(err, "file-watch: read %s failed", path)
-	}
-	r := contentReaders[format] // nil when format == ""
-	if r == nil {
-		ext := strings.TrimPrefix(filepath.Ext(path), ".")
-		var ok bool
-		if r, ok = contentReaders[ext]; !ok {
-			return errutil.Explain(nil, "file-watch: unsupported file type %q", path)
-		}
-	}
-	parsed, err := r(b)
-	if err != nil {
-		return errutil.Explain(err, "file-watch: parse %s failed", path)
-	}
-	maps.Copy(m, flatten.Flatten(parsed))
-	return nil
 }

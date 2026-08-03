@@ -18,11 +18,13 @@ package StarterGormClickhouse
 
 import (
 	"context"
+	"net"
 	"sync"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/clickhouse"
@@ -30,9 +32,9 @@ import (
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
-// liveDialers tracks the discovery-backed dialer behind each client, so
+// liveDialers tracks the discovery-backed resolver behind each client, so
 // destroyClient can stop the watch when the client is torn down.
-var liveDialers sync.Map // *gorm.DB -> *discovery.LiveDialer
+var liveDialers sync.Map // *gorm.DB -> *discovery.Resolver
 
 var starterTag = log.RegisterInfraTag("gorm_clickhouse", "")
 
@@ -49,11 +51,13 @@ func init() {
 // when starter-otel is absent those globals are no-ops, so this stays a
 // zero-config, zero-overhead opt-in that needs no per-component adaptation.
 //
-// When c.ServiceName is set, the connection is routed through a LiveDialer:
-// the ClickHouse native driver builds a *sql.DB with our DialContext, so each
-// new connection reaches a live instance resolved from the discovery backend
-// and address changes take effect without rebuilding the client. When
-// c.ServiceName is empty this is a plain DSN dial, unchanged from before.
+// When c.ServiceName is set (and mesh mode is off), the connection is routed
+// through a Resolver: the ClickHouse native driver builds a *sql.DB with our
+// DialContext, so each new connection reaches a live instance resolved from the
+// discovery backend and address changes take effect without rebuilding the
+// client. In mesh mode a sidecar owns discovery+LB, so the configured Addr is
+// used as-is. When c.ServiceName is empty this is a plain DSN dial, unchanged
+// from before.
 func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 	ctx := cp.Context
 	if c.Addr == "" && c.ServiceName == "" {
@@ -65,13 +69,15 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 	var (
 		db  *gorm.DB
 		err error
-		ld  *discovery.LiveDialer
+		ld  *discovery.Resolver
 	)
 
 	// The native driver (ch.OpenDB) is required whenever we must inject a custom
 	// TLS config or a discovery-backed dialer, neither of which the URL-style DSN
-	// can express. Otherwise the plain DSN path stays as before.
-	useNative := c.ServiceName != "" || c.TLS.Enabled
+	// can express. Otherwise the plain DSN path stays as before. Mesh mode skips
+	// discovery (sidecar owns it) but may still need native for TLS.
+	useDiscovery := c.ServiceName != "" && !mesh.Enabled()
+	useNative := useDiscovery || c.TLS.Enabled
 	if !useNative {
 		db, err = gorm.Open(clickhouse.Open(c.DSN()), gormConfig(c))
 		if err != nil {
@@ -97,18 +103,27 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 			}
 			opts.TLS = tlsCfg
 		}
-		if c.ServiceName != "" {
-			d, derr := discovery.MustGet(c.Discovery)
+		if useDiscovery {
+			d, derr := discovery.GetDiscovery(c.Discovery)
 			if derr != nil {
 				log.Errorf(ctx, starterTag, "gorm clickhouse: get discovery backend failed: %v", derr)
 				return nil, derr
 			}
-			ld, derr = discovery.NewLiveDialer(ctx, d, c.ServiceName)
+			ld, derr = discovery.NewResolver(ctx, d, c.ServiceName)
 			if derr != nil {
-				log.Errorf(ctx, starterTag, "gorm clickhouse: create live dialer for %s failed: %v", c.ServiceName, derr)
+				log.Errorf(ctx, starterTag, "gorm clickhouse: create resolver for %s failed: %v", c.ServiceName, derr)
 				return nil, derr
 			}
-			opts.DialContext = ld.Dial
+			// ch.Options.DialContext is 2-arg: func(ctx, addr string) (net.Conn, error).
+			// The addr is ignored; the dialer picks a live endpoint via the Resolver.
+			nd := &net.Dialer{}
+			opts.DialContext = func(ctx context.Context, _ string) (net.Conn, error) {
+				ep, perr := ld.Pick()
+				if perr != nil {
+					return nil, perr
+				}
+				return nd.DialContext(ctx, "tcp", ep.Addr)
+			}
 		}
 		sqlDB := ch.OpenDB(opts)
 		db, err = gorm.Open(clickhouse.New(clickhouse.Config{Conn: sqlDB}), gormConfig(c))
@@ -150,7 +165,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 // underlying connection pool.
 func destroyClient(db *gorm.DB) error {
 	if v, ok := liveDialers.LoadAndDelete(db); ok {
-		_ = v.(*discovery.LiveDialer).Stop()
+		_ = v.(*discovery.Resolver).Stop()
 		log.Debugf(context.Background(), starterTag, "gorm clickhouse client destroyed, discovery dialer stopped")
 	}
 	if sqlDB, err := db.DB(); err == nil {

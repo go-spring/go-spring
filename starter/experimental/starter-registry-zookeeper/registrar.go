@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-zookeeper/zk"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -80,7 +80,7 @@ func newZookeeperRegistrar(c ZookeeperConfig) (*zkRegistrar, error) {
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
 // or a stable one derived from the service name and advertised address.
-func instanceID(reg discovery.Registration) string {
+func instanceID(reg discovery.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -88,14 +88,14 @@ func instanceID(reg discovery.Registration) string {
 }
 
 // pathFor returns the znode an instance is written to: basePath/service/id.
-func (r *zkRegistrar) pathFor(reg discovery.Registration) string {
+func (r *zkRegistrar) pathFor(reg discovery.Instance) string {
 	return r.basePath + "/" + reg.ServiceName + "/" + instanceID(reg)
 }
 
 // Register writes reg as an ephemeral znode, creating the persistent parent
 // directories on demand. Re-registering the same instance replaces the node so
 // the entry is refreshed rather than duplicated.
-func (r *zkRegistrar) Register(_ context.Context, reg discovery.Registration) error {
+func (r *zkRegistrar) Register(_ context.Context, reg discovery.Instance) error {
 	if reg.Addr == "" {
 		return errutil.Explain(nil, "registry-zookeeper: addr is required")
 	}
@@ -131,7 +131,7 @@ func (r *zkRegistrar) Register(_ context.Context, reg discovery.Registration) er
 
 // Deregister removes the instance znode. It is idempotent: deregistering an
 // instance that is not registered (ErrNoNode) is a no-op.
-func (r *zkRegistrar) Deregister(_ context.Context, reg discovery.Registration) error {
+func (r *zkRegistrar) Deregister(_ context.Context, reg discovery.Instance) error {
 	path := r.pathFor(reg)
 	if err := r.conn.Delete(path, -1); err != nil && !errors.Is(err, zk.ErrNoNode) {
 		return errutil.Explain(err, "registry-zookeeper: deregister %q", reg.ServiceName)

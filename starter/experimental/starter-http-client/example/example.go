@@ -46,12 +46,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/experimental/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go.opentelemetry.io/otel"
@@ -132,10 +131,10 @@ func main() {
 	// A static discovery backend that resolves serviceName to the two healthy
 	// instances. Registering it under "static" matches discovery=static in the
 	// config; the "discovered" client watches it through the LiveDialer.
-	discovery.Register("static", &staticDiscovery{eps: []discovery.Endpoint{
-		{Addr: addrBackendA, Healthy: true},
-		{Addr: addrBackendB, Healthy: true},
-	}})
+	discovery.RegisterDiscovery("static", discovery.NewStaticDiscovery(
+		discovery.Endpoint{Addr: addrBackendA, Healthy: true},
+		discovery.Endpoint{Addr: addrBackendB, Healthy: true},
+	))
 
 	go startBackend(addrBackendA, "backend-A")
 	go startBackend(addrBackendB, "backend-B")
@@ -230,43 +229,6 @@ func runTest(s *Service) {
 func fail(format string, args ...any) {
 	log.Errorf(context.Background(), log.TagAppDef, format, args...)
 	os.Exit(1)
-}
-
-// staticDiscovery is a fixed, in-memory discovery.Discovery for the smoke test:
-// it always resolves to the same endpoint set and never pushes updates.
-type staticDiscovery struct {
-	eps []discovery.Endpoint
-}
-
-func (d *staticDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, error) {
-	return d.eps, nil
-}
-
-func (d *staticDiscovery) Watch(context.Context, string) (discovery.Watcher, error) {
-	return &staticWatcher{eps: d.eps, done: make(chan struct{})}, nil
-}
-
-// staticWatcher yields the initial snapshot once, then blocks until stopped —
-// enough for the LiveDialer to seed its endpoint set for load balancing.
-type staticWatcher struct {
-	eps      []discovery.Endpoint
-	done     chan struct{}
-	sent     bool
-	stopOnce sync.Once
-}
-
-func (w *staticWatcher) Next() ([]discovery.Endpoint, error) {
-	if !w.sent {
-		w.sent = true
-		return w.eps, nil
-	}
-	<-w.done
-	return nil, context.Canceled
-}
-
-func (w *staticWatcher) Stop() error {
-	w.stopOnce.Do(func() { close(w.done) })
-	return nil
 }
 
 // init sets the working directory of the application to the directory

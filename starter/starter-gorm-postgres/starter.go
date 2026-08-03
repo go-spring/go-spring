@@ -18,12 +18,14 @@ package StarterGormPostgres
 
 import (
 	"context"
+	"net"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/postgres"
@@ -31,9 +33,9 @@ import (
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
-// liveDialers tracks the discovery-backed dialer behind each client, so
+// liveDialers tracks the discovery-backed resolver behind each client, so
 // destroyClient can stop the background watch when the client is torn down.
-var liveDialers sync.Map // *gorm.DB -> *discovery.LiveDialer
+var liveDialers sync.Map // *gorm.DB -> *discovery.Resolver
 
 var starterTag = log.RegisterInfraTag("gorm_postgres", "")
 
@@ -50,11 +52,12 @@ func init() {
 // when starter-otel is absent those globals are no-ops, so this stays a
 // zero-config, zero-overhead opt-in that needs no per-component adaptation.
 //
-// When c.ServiceName is set, the address is resolved through the registered
-// discovery backend: a LiveDialer is bound to the pgx DialFunc so each new
-// physical connection reaches a live instance and address changes take effect
-// without rebuilding the client. When c.ServiceName is empty this is a plain
-// DSN dial, unchanged from before.
+// When c.ServiceName is set (and mesh mode is off), the address is resolved
+// through the registered discovery backend: a Resolver is bound to the pgx
+// DialFunc so each new physical connection reaches a live instance and address
+// changes take effect without rebuilding the client. In mesh mode a sidecar
+// owns discovery+LB, so the configured Host is used as-is. When c.ServiceName
+// is empty this is a plain DSN dial, unchanged from before.
 func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 	ctx := cp.Context
 	if c.Host == "" && c.ServiceName == "" {
@@ -66,24 +69,24 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 	var (
 		db  *gorm.DB
 		err error
-		ld  *discovery.LiveDialer
+		ld  *discovery.Resolver
 	)
 
-	if c.ServiceName == "" {
+	if c.ServiceName == "" || mesh.Enabled() {
 		db, err = gorm.Open(postgres.Open(c.DSN()), gormConfig(c))
 		if err != nil {
 			log.Errorf(ctx, starterTag, "gorm postgres: open failed: %v", err)
 			return nil, err
 		}
 	} else {
-		d, err := discovery.MustGet(c.Discovery)
+		d, err := discovery.GetDiscovery(c.Discovery)
 		if err != nil {
 			log.Errorf(ctx, starterTag, "gorm postgres: get discovery backend failed: %v", err)
 			return nil, err
 		}
-		ld, err = discovery.NewLiveDialer(ctx, d, c.ServiceName)
+		ld, err = discovery.NewResolver(ctx, d, c.ServiceName)
 		if err != nil {
-			log.Errorf(ctx, starterTag, "gorm postgres: create live dialer for %s failed: %v", c.ServiceName, err)
+			log.Errorf(ctx, starterTag, "gorm postgres: create resolver for %s failed: %v", c.ServiceName, err)
 			return nil, err
 		}
 		pgxCfg, err := pgx.ParseConfig(c.DSN())
@@ -92,10 +95,17 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 			_ = ld.Stop()
 			return nil, err
 		}
-		// LiveDialer.DialContext matches pgconn.DialFunc exactly:
-		// func(ctx context.Context, network, addr string) (net.Conn, error).
-		// It ignores the addr and connects to a live instance.
-		pgxCfg.DialFunc = ld.DialContext
+		// pgconn.DialFunc is 3-arg: func(ctx, network, addr string) (net.Conn, error).
+		// Both network and addr are ignored; the dialer picks a live endpoint via
+		// the Resolver and dials it over TCP.
+		nd := &net.Dialer{}
+		pgxCfg.DialFunc = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			ep, perr := ld.Pick()
+			if perr != nil {
+				return nil, perr
+			}
+			return nd.DialContext(ctx, "tcp", ep.Addr)
+		}
 		sqlDB := stdlib.OpenDB(*pgxCfg)
 		db, err = gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), gormConfig(c))
 		if err != nil {
@@ -135,7 +145,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 // underlying connection pool.
 func destroyClient(db *gorm.DB) error {
 	if v, ok := liveDialers.LoadAndDelete(db); ok {
-		_ = v.(*discovery.LiveDialer).Stop()
+		_ = v.(*discovery.Resolver).Stop()
 		log.Debugf(context.Background(), starterTag, "gorm postgres client destroyed, discovery dialer stopped")
 	}
 	if sqlDB, err := db.DB(); err == nil {

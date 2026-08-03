@@ -41,7 +41,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/experimental/cloud/loadbalance"
 	StarterGrpc "go-spring.org/starter-grpc"
 	"go-spring.org/starter-grpc/example/idl/proto"
@@ -127,20 +127,23 @@ func (d *disco) Resolve(_ context.Context, _ string) ([]discovery.Endpoint, erro
 	return append([]discovery.Endpoint(nil), d.eps...), nil
 }
 
-func (d *disco) Watch(_ context.Context, _ string) (discovery.Watcher, error) {
-	w := &watcher{d: d, ch: make(chan []discovery.Endpoint, 1), done: make(chan struct{})}
+func (d *disco) Watch(ctx context.Context, _ string) (<-chan discovery.WatchResult, error) {
+	ch := make(chan discovery.WatchResult, 1)
+	w := &watcher{ch: ch}
 	d.mu.Lock()
 	d.ws[w] = struct{}{}
 	d.mu.Unlock()
-	return w, nil
+	go func() {
+		<-ctx.Done()
+		d.mu.Lock()
+		delete(d.ws, w)
+		d.mu.Unlock()
+		close(ch)
+	}()
+	return ch, nil
 }
 
-type watcher struct {
-	d    *disco
-	ch   chan []discovery.Endpoint
-	done chan struct{}
-	once sync.Once
-}
+type watcher struct{ ch chan discovery.WatchResult }
 
 func (w *watcher) notify(eps []discovery.Endpoint) {
 	snap := append([]discovery.Endpoint(nil), eps...)
@@ -150,28 +153,9 @@ func (w *watcher) notify(eps []discovery.Endpoint) {
 	default:
 	}
 	select {
-	case w.ch <- snap:
+	case w.ch <- discovery.WatchResult{Endpoints: snap}:
 	default:
 	}
-}
-
-func (w *watcher) Next() ([]discovery.Endpoint, error) {
-	select {
-	case eps := <-w.ch:
-		return eps, nil
-	case <-w.done:
-		return nil, fmt.Errorf("watcher stopped")
-	}
-}
-
-func (w *watcher) Stop() error {
-	w.once.Do(func() {
-		w.d.mu.Lock()
-		delete(w.d.ws, w)
-		w.d.mu.Unlock()
-		close(w.done)
-	})
-	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +215,7 @@ func main() {
 
 	// Register the backends under a discovery name and a short-fused balancer.
 	d := newDisco(eps)
-	discovery.Register("default", d)
+	discovery.RegisterDiscovery("default", d)
 	StarterGrpc.RegisterBalancer(smokeBalancer, loadbalance.RoundRobin,
 		loadbalance.TrackerConfig{Threshold: 3, EjectFor: 2 * time.Second})
 

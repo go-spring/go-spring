@@ -61,8 +61,8 @@ use (
 	./starter/experimental/starter-config-bus/example
 	./starter/experimental/starter-config-consul
 	./starter/experimental/starter-config-consul/example
-	./starter/experimental/starter-config-etcd
-	./starter/experimental/starter-config-etcd/example
+	./starter/starter-config-etcd
+	./starter/starter-config-etcd/example
 	./starter/experimental/starter-config-k8s
 	./starter/experimental/starter-config-k8s/example
 	./starter/experimental/starter-config-nacos
@@ -160,8 +160,8 @@ use (
 	./starter/experimental/starter-rabbitmq/example-otel
 	./starter/experimental/starter-registry-consul
 	./starter/experimental/starter-registry-consul/example
-	./starter/experimental/starter-registry-etcd
-	./starter/experimental/starter-registry-etcd/example
+	./starter/starter-registry-etcd
+	./starter/starter-registry-etcd/example
 	./starter/experimental/starter-registry-nacos
 	./starter/experimental/starter-registry-nacos/example
 	./starter/experimental/starter-registry-zookeeper
@@ -197,6 +197,7 @@ use (
 	./starter/experimental/starter-validation/example
 	./starter/starter-config-file
 	./starter/starter-config-file/example
+	./starter/starter-config-file/example-configtree
 	./starter/starter-dubbo
 	./starter/starter-dubbo/example
 	./starter/starter-echo

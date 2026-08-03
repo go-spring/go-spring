@@ -49,7 +49,7 @@ func TestProperties_Load(t *testing.T) {
 
 	t.Run("unsupported ext", func(t *testing.T) {
 		_, err := conf.Load("./testdata/config/app.unknown")
-		assert.Error(t, err).Matches("unsupported file type .unknown")
+		assert.Error(t, err).Matches("unsupported config format")
 	})
 
 	t.Run("syntax error", func(t *testing.T) {

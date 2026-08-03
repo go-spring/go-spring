@@ -26,7 +26,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/experimental/actuator/health"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -220,7 +220,7 @@ func pingTimeout(c Config) time.Duration {
 func destroyClient(client *redis.Client) error {
 	closeResilience(client)
 	if v, ok := liveDialers.LoadAndDelete(client); ok {
-		_ = v.(*discovery.LiveDialer).Stop()
+		_ = v.(*discovery.Resolver).Stop()
 		log.Debugf(context.Background(), starterTag, "redis client destroyed, discovery dialer stopped")
 	}
 	return client.Close()

@@ -24,7 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 )
 
 // defaultReplicas is the number of virtual nodes placed on the ring per

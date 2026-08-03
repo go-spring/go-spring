@@ -19,11 +19,13 @@ package StarterNeo4j
 import (
 	"context"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
+	"go-spring.org/spring/cloud/mesh"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
@@ -37,6 +39,13 @@ func init() {
 
 var starterTag = log.RegisterInfraTag("neo4j", "")
 
+// resolvers tracks the discovery-backed resolver behind each client, so
+// destroyClient can stop the background watch on teardown. The neo4j driver
+// exposes no dialer injection point, so the Resolver is only consulted once at
+// startup (to splice a live endpoint into the URI); the watch is kept running
+// only to honor the unified lifecycle and is stopped on shutdown.
+var resolvers sync.Map // neo4j.DriverWithContext -> *discovery.Resolver
+
 // newClient creates a new Neo4j client based on the provided configuration.
 // After the driver is built, connectivity is verified so that misconfiguration
 // or an unreachable server fails fast at startup rather than on first query.
@@ -48,30 +57,42 @@ var starterTag = log.RegisterInfraTag("neo4j", "")
 // is left to the application (wrap ExecuteQuery / session calls with an OTel span
 // where needed). This is a documented gap, not an oversight.
 //
-// When c.ServiceName is set, the address is resolved once through the registered
-// discovery backend (c.Discovery) and spliced into the URI host; see the
-// ServiceName field docs for the startup-only limitation.
+// When c.ServiceName is set and mesh mode is off, a Resolver is built against
+// the registered discovery backend (c.Discovery), one endpoint is picked, and
+// its address is spliced into the URI host. Because the neo4j driver exposes no
+// dialer injection point, this is a one-shot resolution at startup — the
+// Resolver is kept alive only to keep the lifecycle uniform with the other
+// client starters and is stopped on shutdown. In mesh mode the sidecar owns
+// discovery+LB, so the URI is used unchanged. See Config.ServiceName.
 func newClient(cp *gs.ContextProvider, c Config) (neo4j.DriverWithContext, error) {
 	ctx := cp.Context
 	log.Debugf(ctx, starterTag, "creating neo4j client, uri=%s service-name=%s driver=%s", c.URI, c.ServiceName, c.Driver)
 
-	if c.ServiceName != "" {
-		uri, err := resolveURI(ctx, c)
+	var resolver *discovery.Resolver
+	if c.ServiceName != "" && !mesh.Enabled() {
+		uri, r, err := resolveURI(ctx, c)
 		if err != nil {
 			log.Errorf(ctx, starterTag, "neo4j: resolve service-name failed: %v", err)
 			return nil, err
 		}
+		resolver = r
 		c.URI = uri
 	}
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
 		log.Errorf(ctx, starterTag, "neo4j driver not found: %s", c.Driver)
+		if resolver != nil {
+			_ = resolver.Stop()
+		}
 		return nil, errutil.Explain(nil, "neo4j driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(ctx, c)
 	if err != nil {
 		log.Errorf(ctx, starterTag, "neo4j: create client failed: %v", err)
+		if resolver != nil {
+			_ = resolver.Stop()
+		}
 		return nil, errutil.Explain(err, "failed to create neo4j client")
 	}
 
@@ -81,43 +102,45 @@ func newClient(cp *gs.ContextProvider, c Config) (neo4j.DriverWithContext, error
 	if err := client.VerifyConnectivity(vctx); err != nil {
 		log.Errorf(ctx, starterTag, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
 		_ = client.Close(ctx)
+		if resolver != nil {
+			_ = resolver.Stop()
+		}
 		return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
+	}
+	if resolver != nil {
+		resolvers.Store(client, resolver)
 	}
 	log.Infof(ctx, starterTag, "neo4j client initialized, uri=%s", c.URI)
 	return client, nil
 }
 
-// resolveURI resolves c.ServiceName through the registered discovery backend and
-// returns c.URI with its host replaced by a live endpoint. It fails fast when no
-// backend is registered or the service currently has no endpoints. Healthy
-// endpoints are preferred; backends that do not track health yield all endpoints
-// as eligible. This is a one-shot resolution because the neo4j driver exposes no
-// dialer injection point (see Config.ServiceName).
-func resolveURI(ctx context.Context, c Config) (string, error) {
-	backend, err := discovery.MustGet(c.Discovery)
+// resolveURI builds a discovery Resolver for c.ServiceName, picks one live
+// endpoint, and returns c.URI with its host replaced by that endpoint's address
+// together with the Resolver (so the caller can stop its background watch on
+// shutdown). It fails fast when no backend is registered or the service has no
+// eligible endpoints. This is a one-shot pick because the neo4j driver exposes
+// no dialer injection point (see Config.ServiceName).
+func resolveURI(ctx context.Context, c Config) (string, *discovery.Resolver, error) {
+	backend, err := discovery.GetDiscovery(c.Discovery)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	eps, err := backend.Resolve(ctx, c.ServiceName)
+	r, err := discovery.NewResolver(ctx, backend, c.ServiceName)
 	if err != nil {
-		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
+		return "", nil, errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
 	}
-	if len(eps) == 0 {
-		return "", errutil.Explain(nil, "neo4j: discovery %q returned no endpoints for %q", c.Discovery, c.ServiceName)
-	}
-	addr := eps[0].Addr
-	for _, ep := range eps {
-		if ep.Healthy {
-			addr = ep.Addr
-			break
-		}
+	ep, err := r.Pick()
+	if err != nil {
+		_ = r.Stop()
+		return "", nil, errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}
 	u, err := url.Parse(c.URI)
 	if err != nil {
-		return "", errutil.Explain(err, "neo4j: parse uri %s", c.URI)
+		_ = r.Stop()
+		return "", nil, errutil.Explain(err, "neo4j: parse uri %s", c.URI)
 	}
-	u.Host = addr
-	return u.String(), nil
+	u.Host = ep.Addr
+	return u.String(), r, nil
 }
 
 // HealthCheck reports whether the Neo4j driver can reach the server. It is a
@@ -135,7 +158,12 @@ func verifyContext(ctx context.Context, timeout time.Duration) (context.Context,
 	return context.WithTimeout(ctx, timeout)
 }
 
-// destroyClient closes the Neo4j client.
+// destroyClient closes the Neo4j client and stops any discovery resolver
+// behind it.
 func destroyClient(client neo4j.DriverWithContext) error {
+	if v, ok := resolvers.LoadAndDelete(client); ok {
+		_ = v.(*discovery.Resolver).Stop()
+		log.Debugf(context.Background(), starterTag, "neo4j client destroyed, discovery resolver stopped")
+	}
 	return client.Close(context.Background())
 }

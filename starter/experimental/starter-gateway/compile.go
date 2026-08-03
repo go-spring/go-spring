@@ -28,7 +28,7 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/cloud/discovery"
+	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/experimental/cloud/resilience"
 	"go-spring.org/spring/gs"
 )
@@ -82,7 +82,7 @@ type RouteTable struct {
 	discovery string
 
 	dialerMu sync.Mutex
-	dialers  map[string]*discovery.LiveDialer
+	dialers  map[string]*discovery.Resolver
 
 	// execs pools resilience executors by policy name so routes sharing a policy
 	// share breaker/limiter state. Rebuilt on each recompile.
@@ -97,7 +97,7 @@ func newRouteTable(cp *gs.ContextProvider, m *Metrics) *RouteTable {
 	return &RouteTable{
 		ctx:     cp.Context,
 		metrics: m,
-		dialers: map[string]*discovery.LiveDialer{},
+		dialers: map[string]*discovery.Resolver{},
 	}
 }
 
