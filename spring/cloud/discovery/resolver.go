@@ -36,34 +36,41 @@ import (
 // decision layer over discovery, mirroring how loadbalance.Pick sits above
 // discovery for per-request RPC selection.
 type Resolver struct {
-	name     string
+	q        Query   // materialized lookup, for error messages
+	opts     []Option // replayed into Resolve/Watch on (re)open
 	eps      atomic.Pointer[[]Endpoint]
 	next     atomic.Uint64
 	cancel   context.CancelFunc
 	stopOnce sync.Once
 }
 
-// NewResolver returns a Resolver for name. It seeds the snapshot with one
-// explicit [Discovery.Resolve] — a synchronous read of the current state that
-// also fails fast when the service is unknown — then opens a [Discovery.Watch]
-// to keep that snapshot fresh. The caller owns the lifecycle and must call Stop
-// to release the background watch; Stop cancels the derived context, which
-// closes the watch channel and ends the loop.
-func NewResolver(ctx context.Context, d Discovery, name string) (*Resolver, error) {
+// NewResolver returns a Resolver for name, narrowed by opts (e.g.
+// [WithScheme]). It seeds the snapshot with one explicit [Discovery.Resolve] —
+// a synchronous read of the current state that also fails fast when the service
+// is unknown — then opens a [Discovery.Watch] to keep that snapshot fresh. The
+// caller owns the lifecycle and must call Stop to release the background watch;
+// Stop cancels the derived context, which closes the watch channel and ends the
+// loop.
+//
+// name is required; opts are the same [Option] values Resolve/Watch take, so a
+// starter wires scheme as discovery.NewResolver(ctx, d, c.ServiceName,
+// discovery.WithScheme(c.Scheme)) and a starter that does not care about scheme
+// passes none.
+func NewResolver(ctx context.Context, d Discovery, name string, opts ...Option) (*Resolver, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
-	eps, err := d.Resolve(ctx, name)
+	eps, err := d.Resolve(ctx, name, opts...)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("discovery: resolve %q: %w", name, err)
 	}
-	ch, err := d.Watch(ctx, name)
+	ch, err := d.Watch(ctx, name, opts...)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("discovery: watch %q: %w", name, err)
 	}
 
-	r := &Resolver{name: name, cancel: cancel}
+	r := &Resolver{q: NewQuery(name, opts...), opts: opts, cancel: cancel}
 	r.eps.Store(&eps)
 	go r.loop(ch)
 	return r, nil
@@ -96,7 +103,7 @@ func (r *Resolver) Endpoints() []Endpoint {
 func (r *Resolver) Pick() (Endpoint, error) {
 	eps := *r.eps.Load()
 	if len(eps) == 0 {
-		return Endpoint{}, fmt.Errorf("discovery: no endpoints for %q", r.name)
+		return Endpoint{}, fmt.Errorf("discovery: no endpoints for %q", r.q)
 	}
 
 	eligible := eps[:0:0]
@@ -113,7 +120,7 @@ func (r *Resolver) Pick() (Endpoint, error) {
 		}
 	}
 	if len(eligible) == 0 {
-		return Endpoint{}, fmt.Errorf("discovery: no eligible (non-disabled) endpoints for %q", r.name)
+		return Endpoint{}, fmt.Errorf("discovery: no eligible (non-disabled) endpoints for %q", r.q)
 	}
 
 	i := r.next.Add(1) - 1

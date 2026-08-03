@@ -71,7 +71,6 @@ Connection, bound under `spring.registry.consul`:
 | `datacenter` | (empty) | Datacenter to register into; empty uses the agent's. |
 | `token` | (empty) | ACL token. |
 | `namespace` | (empty) | Consul Enterprise namespace. |
-| `name` | `default` | Name this registrar is published under in the `spring/discovery` registrar registry. |
 | `ttl` | `15s` | TTL health check; the starter heartbeats at half this interval. |
 | `deregister-critical-after` | `1m` | Consul drops the instance if its check stays critical this long (e.g. after a crash). |
 
@@ -85,19 +84,14 @@ backends is a blank-import swap, not a config migration):
 | `id` | (empty) | Instance id override; empty derives a stable one from `service-name` + `addr`. |
 | `weight` | `0` | Load-balancing weight; `0` uses Consul's default. |
 | `metadata.*` | (none) | Arbitrary key/value attributes stored with the instance. |
-| `backend` | `default` | Which registrar backend to publish to, by its registry name. |
 
 ## How It Works
 
-- During the container's bean-registration phase the starter builds a Consul
-  `discovery.Registrar` and puts it in the `spring/discovery` registrar registry
-  under `name` — mirroring how `starter-discovery-k8s` registers discovery
-  backends. A company can register its own `Registrar` under a different name and
-  point `spring.registry.backend` at it.
-- The exported `gs.Server` resolves the backend by `backend`, waits for
-  readiness, then `Register`s the instance with a Consul **TTL health check**. It
-  passes the check immediately and keeps it passing on a background heartbeat at
-  half the TTL.
+- During bean construction the starter builds the Consul
+  registrar and wires it into the exported `gs.Server`.
+- The exported `gs.Server` waits for readiness, then `Register`s the instance
+  with a Consul **TTL health check**. It passes the check immediately and keeps
+  it passing on a background heartbeat at half the TTL.
 - On shutdown `PreStop` deregisters the instance (stopping the heartbeat and
   removing it from Consul) before the pre-stop delay, so discovery removes it
   while in-flight requests keep being served. `Stop` deregisters again as an

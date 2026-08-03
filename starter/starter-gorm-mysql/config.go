@@ -64,6 +64,11 @@ type Config struct {
 	// ServiceName is the service discovery name. When set, Addr is ignored and
 	// the connection dials a live instance resolved from the discovery backend.
 	ServiceName string `value:"${service-name:=}"`
+	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
+	// "https"). Empty (the default) returns every scheme; set it when a service
+	// exposes both plain and secure instances and this client should reach only
+	// one. Only consulted when ServiceName is set.
+	Scheme string `value:"${scheme:=}"`
 	// Discovery selects which registered discovery backend resolves ServiceName.
 	// Only consulted when ServiceName is set; defaults to "default".
 	Discovery string `value:"${discovery:=default}"`

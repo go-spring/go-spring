@@ -21,20 +21,19 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestInstanceID(t *testing.T) {
 	// An explicit ID is used verbatim.
-	assert.That(t, instanceID(discovery.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
+	assert.That(t, instanceID(instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
 	// Otherwise it is derived from name and addr so restarts replace the entry.
-	assert.That(t, instanceID(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
+	assert.That(t, instanceID(instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
 }
 
 func TestKeyFor(t *testing.T) {
 	r := &etcdRegistrar{keyPrefix: "/services/"}
-	got := r.keyFor(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
+	got := r.keyFor(instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
 	assert.That(t, got).Equal("/services/orders/orders-1.2.3.4:80")
 }
 
@@ -52,7 +51,7 @@ func TestDeregisterIdempotent(t *testing.T) {
 	// not touch the (nil) client, so shutdown can call it unconditionally as an
 	// idempotent fallback after PreStop has already run.
 	r := &etcdRegistrar{keyPrefix: "/services/", holds: map[string]*hold{}}
-	reg := discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}
+	reg := instance{ServiceName: "orders", Addr: "1.2.3.4:80"}
 	assert.That(t, r.Deregister(context.Background(), reg)).Nil()
 	// A second call is likewise a no-op.
 	assert.That(t, r.Deregister(context.Background(), reg)).Nil()

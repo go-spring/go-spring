@@ -23,10 +23,10 @@
 // exported as [Endpoint] and mounts each on its mux, exactly as it collects
 // health indicators. The seam lives in the zero-dependency foundation layer so
 // both the contributor (e.g. starter-otel) and the collector (starter-actuator)
-// depend only on stdlib, never on each other.
+// depend only on this package, never on each other.
 //
 // This mirrors health.Indicator: a small interface any starter can implement to
-// plug into the actuator with no cross-module dependency beyond stdlib.
+// plug into the actuator with no cross-module dependency beyond this package.
 package endpoint
 
 import "net/http"

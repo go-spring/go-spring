@@ -30,11 +30,11 @@ import (
 // stubDiscovery serves a fixed endpoint set and a watcher that never updates.
 type stubDiscovery struct{ eps []discovery.Endpoint }
 
-func (s stubDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, error) {
+func (s stubDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
 	return s.eps, nil
 }
 
-func (s stubDiscovery) Watch(ctx context.Context, _ string) (<-chan discovery.WatchResult, error) {
+func (s stubDiscovery) Watch(ctx context.Context, _ string, _ ...discovery.Option) (<-chan discovery.WatchResult, error) {
 	ch := make(chan discovery.WatchResult)
 	go func() {
 		<-ctx.Done()
@@ -117,7 +117,7 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 func TestNewTransport_FailFast(t *testing.T) {
 	// ServiceName set but discovery backend not registered -> fail fast.
 	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: "no-such-backend"})
-	assert.Error(t, err).Matches("no backend registered")
+	assert.Error(t, err).Matches("no Discovery registered")
 
 	// Unknown balancer strategy -> fail fast.
 	discovery.RegisterDiscovery("stub-httpx-2", stubDiscovery{eps: []discovery.Endpoint{{Addr: "1.2.3.4:80"}}})

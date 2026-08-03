@@ -15,7 +15,7 @@
  */
 
 // Package StarterRegistryNacos registers the current instance into a Nacos
-// naming service — the provider-side counterpart to client-side discovery.
+// naming service - the provider-side counterpart to client-side discovery.
 //
 // It exists for VM / bare-metal / hybrid deployments where the platform does
 // not register instances for you. In pure Kubernetes the platform already
@@ -23,12 +23,12 @@
 // to *discover* peers and not register at all. RPC-framework provider
 // registration is out of scope and stays framework-native (starter/DESIGN §3);
 // this starter publishes a plain instance (any transport) to Nacos. It is the
-// registrar counterpart to starter-config-nacos's config role — the two are
+// registrar counterpart to starter-config-nacos's config role - the two are
 // separate starters with separate config prefixes.
 //
 // This is a global / infrastructure-archetype starter (starter/DESIGN §2.4): it
 // opens no port. It exports a gs.Server so registration plugs into the server
-// lifecycle — the instance is published once the application is ready and
+// lifecycle - the instance is published once the application is ready and
 // deregistered as shutdown begins (via PreStop), so discovery stops handing it
 // out before it actually stops serving. That ordering is what makes a rolling
 // restart lossless.
@@ -42,14 +42,10 @@ package StarterRegistryNacos
 
 import (
 	"context"
-	"runtime"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
 
 var (
@@ -58,33 +54,32 @@ var (
 )
 
 func init() {
-	// Activated only when a Nacos server is set. The module callback runs in the
-	// bean-registration phase — before any Server.Run — so the registrar is in
-	// the stdlib/discovery registry by the time the register server looks it up.
-	// Registering the backend here (not as a bean) mirrors starter-discovery-k8s.
-	_, file, line, _ := runtime.Caller(0)
-	gs.Module(gs.OnProperty("spring.registry.nacos.server"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var nc NacosConfig
-		if err := conf.Bind(p, &nc, "${spring.registry.nacos}"); err != nil {
-			return err
-		}
-		log.Debugf(context.Background(), starterTag, "creating nacos registrar name=%s server=%s group=%s", nc.Name, nc.Server, nc.Group)
-		if _, err := discovery.GetRegistrar(nc.Name); err == nil {
-			return errutil.Explain(nil, "registry-nacos: registrar %q already registered", nc.Name)
-		}
-		reg, err := newNacosRegistrar(nc)
-		if err != nil {
-			return errutil.Explain(err, "registry-nacos: build registrar %q", nc.Name)
-		}
-		discovery.RegisterRegistrar(nc.Name, reg)
-		log.Infof(context.Background(), starterTag, "registered nacos registrar name=%s server=%s", nc.Name, nc.Server)
+	// Activated only when a Nacos server is set. The constructor binds
+	// NacosConfig from ${spring.registry.nacos} and builds the Nacos registrar,
+	// probing the server so an unreachable one fails startup. The instance to
+	// advertise is bound separately into Server.Config from ${spring.registry}.
+	// The registrar is a local value held by the Server, not a globally
+	// registered backend: this starter owns the full register/deregister
+	// lifecycle.
+	gs.Provide(
+		NewServer,
+		gs.TagArg("${spring.registry.nacos}"),
+	).Name("registryServer").
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.registry.nacos.server"))
+}
 
-		bean := r.Provide(func() *Server { return &Server{} }).
-			Name("registryServer").
-			Export(gs.As[gs.Server]())
-		bean.SetFileLine(file, line)
-		return nil
-	})
+// NewServer builds the Nacos registrar from c and returns the Server that
+// publishes this instance on ready and deregisters on shutdown. It probes the
+// server (a service listing) so a misconfigured or unreachable Nacos fails
+// fast at startup rather than surfacing on the first Register.
+func NewServer(c NacosConfig) (*Server, error) {
+	log.Debugf(context.Background(), starterTag, "creating nacos registrar server=%s group=%s", c.Server, c.Group)
+	reg, err := newNacosRegistrar(c)
+	if err != nil {
+		return nil, errutil.Explain(err, "registry-nacos: build registrar")
+	}
+	return &Server{registrar: reg}, nil
 }
 
 // Server publishes this instance to a service registry as part of the Go-Spring
@@ -94,24 +89,18 @@ type Server struct {
 	// Config is bound from ${spring.registry}.
 	Config RegistrationConfig `value:"${spring.registry}"`
 
-	registrar discovery.Registrar
-	reg       discovery.Instance
+	registrar *nacosRegistrar
+	reg       instance
 }
 
-// Run resolves the configured backend and, once the application is ready,
-// publishes this instance, then blocks until shutdown. It validates required
-// fields before signalling readiness so a misconfiguration fails startup rather
-// than surfacing later.
+// Run publishes this instance once the application is ready, then blocks until
+// shutdown. It validates required fields before signalling readiness so a
+// misconfiguration fails startup rather than surfacing later.
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if s.Config.ServiceName == "" || s.Config.Addr == "" {
 		return errutil.Explain(nil, "registry: ${spring.registry.service-name} and ${spring.registry.addr} are required")
 	}
-	r, err := discovery.GetRegistrar(s.Config.Backend)
-	if err != nil {
-		return err
-	}
-	s.registrar = r
-	s.reg = discovery.Instance{
+	s.reg = instance{
 		ServiceName: s.Config.ServiceName,
 		ID:          s.Config.ID,
 		Addr:        s.Config.Addr,
@@ -126,14 +115,14 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 		log.Errorf(ctx, starterTag, "register service=%s failed: %v", s.reg.ServiceName, err)
 		return errutil.Explain(err, "registry: register %q", s.reg.ServiceName)
 	}
-	log.Infof(ctx, starterTag, "registered %q at %s (backend=%q)", s.reg.ServiceName, s.reg.Addr, s.Config.Backend)
+	log.Infof(ctx, starterTag, "registered %q at %s", s.reg.ServiceName, s.reg.Addr)
 
 	<-ctx.Done()
 	return nil
 }
 
-// PreStop deregisters the instance as soon as shutdown begins — before the
-// pre-stop delay and before any server stops — so discovery removes it while
+// PreStop deregisters the instance as soon as shutdown begins - before the
+// pre-stop delay and before any server stops - so discovery removes it while
 // in-flight requests keep being served (the lossless-drain sequence).
 func (s *Server) PreStop(ctx context.Context) {
 	s.deregister(ctx)

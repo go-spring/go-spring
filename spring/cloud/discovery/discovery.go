@@ -26,8 +26,9 @@
 // A company adapts its own naming service by implementing the single
 // [Discovery] interface and registering one or more fully-built backends via
 // [RegisterDiscovery]; every client starter then resolves names through a named
-// Discovery without any per-component adaptation. A symmetric write side
-// ([Registrar] / [Instance]) covers publishing this process to a registry.
+// Discovery without any per-component adaptation. Publishing this process to a
+// registry (the provider-side write) is handled by a registry starter such as
+// starter-registry-etcd, not by this package.
 package discovery
 
 import (
@@ -78,6 +79,106 @@ type Endpoint struct {
 	Metadata map[string]string
 }
 
+// Query is the materialized form of a discovery lookup: the required service
+// name plus whatever optional dimensions the caller narrowed on. Callers rarely
+// build one by hand — [Resolve], [Watch], and [NewResolver] take name and a
+// variadic [Option] slice and build it internally; backends build one with
+// [NewQuery] to turn the Option slice they receive into values they can read.
+type Query struct {
+	// Name is the logical service name to look up. Required.
+	Name string
+
+	// Scheme narrows the result to one transport scheme. It is "" (the default)
+	// when the caller passed no [WithScheme], which means "no narrowing — return
+	// every scheme the service exposes". When non-empty ("tls", "https", "grpc",
+	// ...) a backend returns only endpoints whose [Endpoint.Scheme] matches, per
+	// [FilterByScheme]. It lets one service name expose both plain and secure
+	// instances and have a caller pick one without filtering client-side.
+	Scheme string
+
+	// Tag narrows the lookup to instances carrying tag — a Consul service tag, a
+	// registry label, or any backend-specific marker that partitions a service's
+	// instances and is part of the registry query (not a generic field on
+	// [Endpoint]). It is "" (the default) when the caller passed no [WithTag].
+	//
+	// Unlike [Query.Scheme], tag has no package-level filter ([FilterByScheme]):
+	// tag is part of the registry's own query (Consul's Health().Service takes
+	// the tag server-side), so a backend that supports tags honors it in its
+	// registry call, and a backend that does not (the static backend, k8s DNS,
+	// ...) silently ignores it. That asymmetry is intentional — only dimensions
+	// with a generic [Endpoint] representation get a shared filter.
+	Tag string
+
+	// Group narrows the lookup to one registry group, e.g. a Nacos group that
+	// partitions a service's instances. It is "" (the default) when the caller
+	// passed no [WithGroup]. As with [Query.Tag], group is backend-interpreted
+	// with no package-level filter.
+	//
+	// Note the deployment nuance: in registries like Nacos, group (and
+	// namespace) are often bound per backend at construction — one [Discovery]
+	// adapter serves one namespace+group — rather than selected per query. Such
+	// deployments leave this empty and configure the group on the backend; this
+	// field is for the rarer per-query group narrowing.
+	Group string
+}
+
+// Option narrows a [Query]. The zero-length Option set means "no narrowing":
+// resolve every endpoint the service exposes, in every scheme/tag/group. Each
+// exported Option (WithScheme, WithTag, WithGroup, ...) sets one optional
+// dimension; future dimensions are added as further WithX functions without
+// breaking existing call sites or backends, which is why the lookup is
+// name-plus-options rather than a growing positional parameter list.
+type Option func(*Query)
+
+// WithScheme narrows the lookup to endpoints whose [Endpoint.Scheme] matches s.
+// An empty s is a no-op (it leaves the "any scheme" default), so passing
+// conditionally — discovery.WithScheme(cfg.Scheme) — needs no guard. Matching
+// follows [FilterByScheme]: the empty scheme and "tcp" are treated as the same
+// "plain TCP" scheme, so WithScheme("tcp") selects both "" and "tcp" endpoints.
+func WithScheme(s string) Option {
+	return func(q *Query) {
+		if s != "" {
+			q.Scheme = s
+		}
+	}
+}
+
+// WithTag narrows the lookup to instances carrying tag (a Consul service tag, a
+// registry label, ...). An empty t is a no-op. Honoring tag is backend-specific
+// and has no package-level filter — see [Query.Tag].
+func WithTag(t string) Option {
+	return func(q *Query) {
+		if t != "" {
+			q.Tag = t
+		}
+	}
+}
+
+// WithGroup narrows the lookup to one registry group (a Nacos group, ...). An
+// empty g is a no-op. Honoring group is backend-specific and has no
+// package-level filter — see [Query.Group] for the per-query vs per-backend
+// nuance.
+func WithGroup(g string) Option {
+	return func(q *Query) {
+		if g != "" {
+			q.Group = g
+		}
+	}
+}
+
+// NewQuery materializes name plus opts into a [Query]. It is the canonical way a
+// [Discovery] backend turns the variadic Option slice it receives from
+// Resolve/Watch into values it can read: q := NewQuery(name, opts...), then use
+// q.Name, q.Scheme, q.Tag, q.Group. name is required but not validated here — a backend that
+// needs a non-empty name checks it itself.
+func NewQuery(name string, opts ...Option) Query {
+	q := Query{Name: name}
+	for _, o := range opts {
+		o(&q)
+	}
+	return q
+}
+
 // Discovery is the single interface a company adapts to its naming service.
 //
 // It owns only naming — "given a logical name, which live addresses exist?" —
@@ -90,15 +191,20 @@ type Endpoint struct {
 //
 // Implementations must be safe for concurrent use.
 type Discovery interface {
-	// Resolve returns the current snapshot of endpoints for name. It is called
-	// once at cold start, before a client establishes its first connection.
-	Resolve(ctx context.Context, name string) ([]Endpoint, error)
+	// Resolve returns the current snapshot of endpoints for name, narrowed by
+	// opts (e.g. [WithScheme]). It is called once at cold start, before a client
+	// establishes its first connection. A backend that receives a non-empty
+	// Scheme option returns only matching endpoints — apply [FilterByScheme] to
+	// the raw result to honor that contract uniformly.
+	Resolve(ctx context.Context, name string, opts ...Option) ([]Endpoint, error)
 
-	// Watch opens a subscription to name and returns a channel carrying a
-	// [WatchResult] each time the service's endpoint set changes. The first
-	// result carries the CURRENT set immediately, so a long-lived caller need
-	// not Resolve first; later results carry successive full snapshots as the
-	// topology changes.
+	// Watch opens a subscription to name, narrowed by opts (e.g. [WithScheme]),
+	// and returns a channel carrying a [WatchResult] each time the service's
+	// endpoint set changes. The first result carries the CURRENT set immediately,
+	// so a long-lived caller need not Resolve first; later results carry
+	// successive full snapshots as the topology changes. As with Resolve, a
+	// non-empty Scheme option means the subscription delivers only matching
+	// endpoints.
 	//
 	// The channel closes when the subscription ends — either because ctx is
 	// cancelled or because the backend emitted a terminal [WatchResult.Err]; a
@@ -108,7 +214,7 @@ type Discovery interface {
 	// resources: there is no separate Stop method, no Watcher handle to close.
 	// Reconnect with backoff, when wanted, is the caller's responsibility, not
 	// Watch's.
-	Watch(ctx context.Context, name string) (<-chan WatchResult, error)
+	Watch(ctx context.Context, name string, opts ...Option) (<-chan WatchResult, error)
 }
 
 // WatchResult is one element delivered on a [Discovery.Watch] channel: either a
@@ -176,8 +282,8 @@ var (
 //
 // It is deliberately distinct from "Register" in the service-registration
 // sense: publishing a service instance to a registry (the provider-side write,
-// handled by a Registrar) is a different operation from plugging a Discovery
-// adapter into this package.
+// handled by a registry starter such as starter-registry-etcd) is a different
+// operation from plugging a Discovery adapter into this package.
 //
 // It panics on empty name, nil Discovery, or a duplicate name — mirroring the
 // driver-registry idiom used elsewhere (e.g. starter-go-redis RegisterDriver) —
@@ -234,16 +340,50 @@ type staticBackend struct {
 	eps []Endpoint
 }
 
-func (b *staticBackend) Resolve(context.Context, string) ([]Endpoint, error) {
-	return append([]Endpoint(nil), b.eps...), nil
+func (b *staticBackend) Resolve(_ context.Context, _ string, opts ...Option) ([]Endpoint, error) {
+	return FilterByScheme(append([]Endpoint(nil), b.eps...), NewQuery("", opts...).Scheme), nil
 }
 
-func (b *staticBackend) Watch(ctx context.Context, _ string) (<-chan WatchResult, error) {
+func (b *staticBackend) Watch(ctx context.Context, _ string, opts ...Option) (<-chan WatchResult, error) {
+	eps := FilterByScheme(append([]Endpoint(nil), b.eps...), NewQuery("", opts...).Scheme)
 	ch := make(chan WatchResult, 1)
-	ch <- WatchResult{Endpoints: append([]Endpoint(nil), b.eps...)}
+	ch <- WatchResult{Endpoints: eps}
 	go func() {
 		<-ctx.Done()
 		close(ch)
 	}()
 	return ch, nil
+}
+
+// FilterByScheme returns eps restricted to those whose [Endpoint.Scheme] matches
+// scheme, or eps unchanged when scheme is "". It is the canonical implementation
+// of the Scheme narrowing every backend applies to its raw results before
+// returning them, so the matching rule lives in one place.
+//
+// The empty scheme and "tcp" are treated as equivalent ("plain TCP"), mirroring
+// the [Endpoint.Scheme] convention: WithScheme("tcp") therefore selects both
+// "" and "tcp" endpoints, and WithScheme("") (no narrowing) returns everything.
+// Any other value matches exactly.
+func FilterByScheme(eps []Endpoint, scheme string) []Endpoint {
+	if scheme == "" {
+		return eps
+	}
+	want := normalizeScheme(scheme)
+	out := eps[:0:0]
+	for _, e := range eps {
+		if normalizeScheme(e.Scheme) == want {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// normalizeScheme collapses the empty string and "tcp" to the same plain-TCP
+// bucket so they match each other; every other scheme is left as-is. Keeping
+// this unexported forces all scheme comparisons through [FilterByScheme].
+func normalizeScheme(s string) string {
+	if s == "" || s == "tcp" {
+		return ""
+	}
+	return s
 }

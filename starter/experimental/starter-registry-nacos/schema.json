@@ -29,10 +29,6 @@
     "timeout-ms": {
       "type": "object",
       "default": "5000"
-    },
-    "name": {
-      "type": "string",
-      "default": "default"
     }
   }
 }

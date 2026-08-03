@@ -59,6 +59,12 @@ type Config struct {
 	// set by the generated client) — no discovery, no load balancing.
 	ServiceName string
 
+	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
+	// "https"). Empty (the default) returns every scheme; set it when a service
+	// exposes both plain and secure instances and this client should reach only
+	// one. Only consulted when ServiceName is set.
+	Scheme string
+
 	// Addr is the direct "host:port" used when ServiceName is empty. The transport
 	// rewrites every request to it, so the injected client fully owns addressing
 	// and the generated client's Target field need not be set.
@@ -117,7 +123,7 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 		if err != nil {
 			return nil, nil, err
 		}
-		rsv, err = discovery.NewResolver(context.Background(), d, cfg.ServiceName)
+		rsv, err = discovery.NewResolver(context.Background(), d, cfg.ServiceName, discovery.WithScheme(cfg.Scheme))
 		if err != nil {
 			return nil, nil, err
 		}

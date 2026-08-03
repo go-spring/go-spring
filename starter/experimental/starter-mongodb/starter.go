@@ -122,7 +122,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*mongo.Client, error) {
 			log.Errorf(ctx, starterTag, "mongodb: get discovery backend failed: %v", err)
 			return nil, err
 		}
-		resolver, err = discovery.NewResolver(ctx, d, c.ServiceName)
+		resolver, err = discovery.NewResolver(ctx, d, c.ServiceName, discovery.WithScheme(c.Scheme))
 		if err != nil {
 			log.Errorf(ctx, starterTag, "mongodb: create resolver for %s failed: %v", c.ServiceName, err)
 			return nil, err

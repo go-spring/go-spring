@@ -4,8 +4,7 @@
 `discovery` is a framework-agnostic, zero-dependency abstraction for
 **client-side** service discovery. It answers one question for infrastructure
 clients (Redis, MySQL, MongoDB, Kafka, ...): *"given a logical service name,
-which live host:port addresses can I connect to right now?"* — and the symmetric
-write question for a provider: *"publish this process to a registry."*
+which live host:port addresses can I connect to right now?"
 
 It owns **naming only**. Selection policy (round-robin, weighted,
 consistent-hash, zone-aware) and traffic feedback (failure ejection) live one
@@ -29,11 +28,8 @@ lets one naming adapter serve every client.
   owns the socket and its connection pool.
 - **Optional `Catalog`** — a separate interface (`Services`) for backends that
   can enumerate service names; backends that cannot simply don't implement it.
-- **Write side** — `Registrar` interface (`Register` / `Deregister`) and
-  `Instance{ServiceName, ID, Addr, Scheme, Weight, Disabled, Metadata}` for
-  publishing this process to a registry (Nacos, Consul, ...).
-- **Package-level registries** — `RegisterDiscovery` / `GetDiscovery` and
-  `RegisterRegistrar` / `GetRegistrar`, with descriptive not-found errors.
+- **Package-level read registry** - `RegisterDiscovery` / `GetDiscovery`, with a
+  descriptive not-found error listing every registered name.
 
 ## Usage
 
@@ -68,16 +64,8 @@ if err != nil { return err }
 conn, err := net.Dial("tcp", ep.Addr)   // the client owns the socket + pool
 ```
 
-Publish this process to a registry (via a starter):
+Publishing this process to a registry is handled by a registry starter
+(`starter-registry-etcd` / `-nacos` / `-consul` / `-zookeeper`), not by this
+package; see those starters and [../../starter/DESIGN.md §3](../../starter/DESIGN.md).
 
-```go
-r, _ := discovery.GetRegistrar("consul")
-_ = r.Register(ctx, discovery.Instance{
-	ServiceName: "orders",
-	Addr:        "10.0.0.5:8080",
-	Metadata:    map[string]string{"zone": "us-east-1a"},
-})
-```
-
-See [DESIGN.md](DESIGN.md) for the layering, the read/write split, and the
-trade-offs.
+See [DESIGN.md](DESIGN.md) for the layering and the trade-offs.

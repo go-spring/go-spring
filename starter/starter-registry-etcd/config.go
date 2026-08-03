@@ -52,17 +52,12 @@ type EtcdConfig struct {
 	// the shared spring/cloud/tlsconf block so every starter exposes the same
 	// tls.* keys.
 	TLS tlsconf.TLSConfig `value:"${tls}"`
-
-	// Name is the key this etcd registrar is published under in the
-	// stdlib/discovery registrar registry. The register server selects a backend
-	// by this name via ${spring.registry.backend}; keep both at "default" for the
-	// common single-registry case.
-	Name string `value:"${name:=default}"`
 }
 
 // RegistrationConfig binds the instance to advertise, under ${spring.registry}.
-// These fields are backend-agnostic: switching from etcd to another registry
-// backend is a blank-import swap, not a config migration (starter/DESIGN §3).
+// These fields describe the instance itself and are independent of which
+// registry backend this starter ships; swapping backends means swapping the
+// starter (and thus this struct's home), not a config migration.
 type RegistrationConfig struct {
 	// ServiceName is the logical name to publish — the same name discovery
 	// clients later resolve. Required.
@@ -83,11 +78,6 @@ type RegistrationConfig struct {
 	// Metadata is arbitrary key/value attributes stored with the instance
 	// (zone, unit, version, ...), bound from ${spring.registry.metadata.*}.
 	Metadata map[string]string `value:"${metadata:=}"`
-
-	// Backend selects which registrar backend to publish to, by the name it was
-	// registered under in the stdlib/discovery registrar registry. Defaults to
-	// "default", matching EtcdConfig.Name's default.
-	Backend string `value:"${backend:=default}"`
 }
 
 // ttlSeconds returns the lease TTL in whole seconds, clamped to a minimum of one

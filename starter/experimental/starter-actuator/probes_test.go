@@ -23,16 +23,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-spring.org/spring/experimental/actuator/health"
+	"go-spring.org/spring/cloud/actuator/health"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// stubIndicator is a readiness-group indicator whose health and criticality are
-// controlled by the test.
+// stubIndicator is a test indicator whose health, criticality, and probe
+// groups are controlled by the test. A nil groups field means "no opinion",
+// which groupsOf routes to the default (readiness + startup).
 type stubIndicator struct {
 	name     string
 	err      error
 	critical bool
+	groups   []health.Group
 }
 
 func (s stubIndicator) HealthName() string { return s.name }
@@ -40,6 +42,8 @@ func (s stubIndicator) HealthName() string { return s.name }
 func (s stubIndicator) CheckHealth(context.Context) error { return s.err }
 
 func (s stubIndicator) IsCritical() bool { return s.critical }
+
+func (s stubIndicator) HealthGroups() []health.Group { return s.groups }
 
 // readyServer builds a Server that has already crossed its readiness barrier and
 // is not draining, so handleReadiness reflects only the indicator aggregate.
@@ -81,4 +85,33 @@ func TestReadiness_NonCriticalDownStaysUp(t *testing.T) {
 	assert.Number(t, rec.Code).Equal(http.StatusOK)
 	// Its per-component status is still surfaced for observability.
 	assert.String(t, rec.Body.String()).Contains(`"redis:cache"`)
+}
+
+// The next four tests pin the default-routing invariant: an indicator that
+// declines to declare groups is routed to readiness + startup (never liveness),
+// so a dependency check can never trigger a pod restart. This logic now lives
+// in the collector (moved out of the health package), so it is tested here.
+
+func TestGroupsOf_AppliesDefaultWhenEmpty(t *testing.T) {
+	ind := stubIndicator{name: "x"}
+	assert.Slice(t, groupsOf(ind)).
+		Equal([]health.Group{health.GroupReadiness, health.GroupStartup})
+}
+
+func TestGroupsOf_UsesExplicitGroupsWhenSet(t *testing.T) {
+	ind := stubIndicator{name: "x", groups: []health.Group{health.GroupLiveness}}
+	assert.Slice(t, groupsOf(ind)).Equal([]health.Group{health.GroupLiveness})
+}
+
+func TestInGroup_DefaultCoversReadinessAndStartupNeverLiveness(t *testing.T) {
+	ind := stubIndicator{name: "x"}
+	assert.That(t, inGroup(ind, health.GroupReadiness)).True()
+	assert.That(t, inGroup(ind, health.GroupStartup)).True()
+	assert.That(t, inGroup(ind, health.GroupLiveness)).False()
+}
+
+func TestInGroup_ExplicitGroupOnly(t *testing.T) {
+	ind := stubIndicator{name: "x", groups: []health.Group{health.GroupLiveness}}
+	assert.That(t, inGroup(ind, health.GroupLiveness)).True()
+	assert.That(t, inGroup(ind, health.GroupReadiness)).False()
 }

@@ -20,13 +20,32 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/spring/experimental/actuator/health"
+	"go-spring.org/spring/cloud/actuator/health"
 )
 
 // componentStatus is the per-indicator entry reported under the probe endpoints.
 type componentStatus struct {
 	Status health.Status `json:"status"`
 	Error  string        `json:"error,omitempty"`
+}
+
+// groupsOf returns the probe groups an indicator contributes to, applying the
+// default (readiness + startup) when HealthGroups returns empty.
+func groupsOf(ind health.Indicator) []health.Group {
+	if len(ind.HealthGroups()) > 0 {
+		return ind.HealthGroups()
+	}
+	return []health.Group{health.GroupReadiness, health.GroupStartup}
+}
+
+// inGroup reports whether an indicator contributes to the given probe group.
+func inGroup(ind health.Indicator, group health.Group) bool {
+	for _, g := range groupsOf(ind) {
+		if g == group {
+			return true
+		}
+	}
+	return false
 }
 
 // checkGroup runs every indicator that contributes to the given probe group and
@@ -43,12 +62,12 @@ func (s *Server) checkGroup(ctx context.Context, group health.Group) (health.Sta
 	overall := health.StatusUp
 	components := make(map[string]componentStatus)
 	for _, ind := range s.Indicators {
-		if !health.InGroup(ind, group) {
+		if !inGroup(ind, group) {
 			continue
 		}
 		if err := ind.CheckHealth(ctx); err != nil {
 			components[ind.HealthName()] = componentStatus{Status: health.StatusDown, Error: err.Error()}
-			if health.IsCritical(ind) {
+			if ind.IsCritical() {
 				overall = health.StatusDown
 			}
 		} else {

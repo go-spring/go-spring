@@ -114,7 +114,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 			deregisterTLS(tlsName)
 			return nil, err
 		}
-		ld, err := discovery.NewResolver(ctx, d, c.ServiceName)
+		ld, err := discovery.NewResolver(ctx, d, c.ServiceName, discovery.WithScheme(c.Scheme))
 		if err != nil {
 			log.Errorf(ctx, starterTag, "gorm mysql: create resolver for %s failed: %v", c.ServiceName, err)
 			deregisterTLS(tlsName)

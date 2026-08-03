@@ -74,10 +74,8 @@ Connection, bound under `spring.registry.etcd`:
 | `ttl` | `15s` | Lease duration; the registrar keeps it alive while up. Rounded up to whole seconds. |
 | `key-prefix` | `/services/` | Prepended to every key so apps can share a cluster. |
 | `tls.*` | (off) | Optional client TLS (`enabled`, `cert-file`, `key-file`, `ca-file`). |
-| `name` | `default` | Name this registrar is published under in the `spring/discovery` registrar registry. |
 
-Instance, bound under `spring.registry` (backend-agnostic — switching registry
-backends is a blank-import swap, not a config migration):
+Instance, bound under `spring.registry` (describes the instance itself, independent of the registry backend):
 
 | Key | Default | Description |
 | --- | --- | --- |
@@ -86,7 +84,6 @@ backends is a blank-import swap, not a config migration):
 | `id` | (empty) | Instance id override; empty derives a stable one from `service-name` + `addr`. |
 | `weight` | `0` | Load-balancing weight stored with the instance. |
 | `metadata.*` | (none) | Arbitrary key/value attributes stored with the instance. |
-| `backend` | `default` | Which registrar backend to publish to, by its registry name. |
 
 The instance is stored as JSON (`service_name`, `addr`, `weight`, `metadata`) at
 `<key-prefix><service-name>/<id>`, so a discovery backend reading the same prefix
@@ -94,14 +91,12 @@ can reconstruct an `Endpoint`.
 
 ## How It Works
 
-- During the container's bean-registration phase the starter builds an etcd
-  `discovery.Registrar` and puts it in the `spring/discovery` registrar registry
-  under `name`. It probes the cluster (a `Status` call) so an unreachable etcd
-  fails startup. A company can register its own `Registrar` under a different
-  name and point `spring.registry.backend` at it.
-- The exported `gs.Server` resolves the backend by `backend`, waits for
-  readiness, then `Register`s the instance: it grants a **lease**, writes the key
-  under that lease, and keeps the lease alive with a background keep-alive.
+- During bean construction the starter builds the etcd
+  registrar and wires it into the exported `gs.Server`. It probes the cluster
+  (a `Status` call) so an unreachable etcd fails startup.
+- The exported `gs.Server` waits for readiness, then `Register`s the instance:
+  it grants a **lease**, writes the key under that lease, and keeps the lease
+  alive with a background keep-alive.
 - On shutdown `PreStop` deregisters the instance (stops the keep-alive and
   revokes the lease, deleting the key) before the pre-stop delay, so discovery
   removes it while in-flight requests keep being served. `Stop` deregisters again

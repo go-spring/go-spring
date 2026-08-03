@@ -15,7 +15,7 @@
  */
 
 // Package StarterRegistryConsul registers the current instance into a Consul
-// service registry — the provider-side counterpart to client-side discovery.
+// service registry - the provider-side counterpart to client-side discovery.
 //
 // It exists for VM / bare-metal / hybrid deployments where the platform does
 // not register instances for you. In pure Kubernetes the platform already
@@ -26,7 +26,7 @@
 //
 // This is a global / infrastructure-archetype starter (starter/DESIGN §2.4): it
 // opens no port. It exports a gs.Server so registration plugs into the server
-// lifecycle — the instance is published once the application is ready and
+// lifecycle - the instance is published once the application is ready and
 // deregistered as shutdown begins (via PreStop), so discovery stops handing it
 // out before it actually stops serving. That ordering is what makes a rolling
 // restart lossless.
@@ -40,14 +40,10 @@ package StarterRegistryConsul
 
 import (
 	"context"
-	"runtime"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
 
 var (
@@ -56,33 +52,31 @@ var (
 )
 
 func init() {
-	// Activated only when a Consul address is set. The module callback runs in
-	// the bean-registration phase — before any Server.Run — so the registrar is
-	// in the stdlib/discovery registry by the time the register server looks it
-	// up. Registering the backend here (not as a bean) mirrors starter-discovery-k8s.
-	_, file, line, _ := runtime.Caller(0)
-	gs.Module(gs.OnProperty("spring.registry.consul.address"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var cc ConsulConfig
-		if err := conf.Bind(p, &cc, "${spring.registry.consul}"); err != nil {
-			return err
-		}
-		log.Debugf(context.Background(), starterTag, "creating consul registrar name=%s address=%s ttl=%s", cc.Name, cc.Address, cc.TTL)
-		if _, err := discovery.GetRegistrar(cc.Name); err == nil {
-			return errutil.Explain(nil, "registry-consul: registrar %q already registered", cc.Name)
-		}
-		reg, err := newConsulRegistrar(cc)
-		if err != nil {
-			return errutil.Explain(err, "registry-consul: build registrar %q", cc.Name)
-		}
-		discovery.RegisterRegistrar(cc.Name, reg)
-		log.Infof(context.Background(), starterTag, "registered consul registrar name=%s address=%s", cc.Name, cc.Address)
+	// Activated only when a Consul address is set. The constructor binds
+	// ConsulConfig from ${spring.registry.consul} and builds the Consul
+	// registrar. The instance to advertise is bound separately into Server.Config
+	// from ${spring.registry}. The registrar is a local value held by the Server,
+	// not a globally registered backend: this starter owns the full
+	// register/deregister lifecycle.
+	gs.Provide(
+		NewServer,
+		gs.TagArg("${spring.registry.consul}"),
+	).Name("registryServer").
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnProperty("spring.registry.consul.address"))
+}
 
-		bean := r.Provide(func() *Server { return &Server{} }).
-			Name("registryServer").
-			Export(gs.As[gs.Server]())
-		bean.SetFileLine(file, line)
-		return nil
-	})
+// NewServer builds the Consul registrar from c and returns the Server that
+// publishes this instance on ready and deregisters on shutdown. Consul's agent
+// client does not dial eagerly, so a bad address surfaces on the first Register
+// rather than here.
+func NewServer(c ConsulConfig) (*Server, error) {
+	log.Debugf(context.Background(), starterTag, "creating consul registrar address=%s ttl=%s", c.Address, c.TTL)
+	reg, err := newConsulRegistrar(c)
+	if err != nil {
+		return nil, errutil.Explain(err, "registry-consul: build registrar")
+	}
+	return &Server{registrar: reg}, nil
 }
 
 // Server publishes this instance to a service registry as part of the Go-Spring
@@ -92,24 +86,18 @@ type Server struct {
 	// Config is bound from ${spring.registry}.
 	Config RegistrationConfig `value:"${spring.registry}"`
 
-	registrar discovery.Registrar
-	reg       discovery.Instance
+	registrar *consulRegistrar
+	reg       instance
 }
 
-// Run resolves the configured backend and, once the application is ready,
-// publishes this instance, then blocks until shutdown. It validates required
-// fields before signalling readiness so a misconfiguration fails startup rather
-// than surfacing later.
+// Run publishes this instance once the application is ready, then blocks until
+// shutdown. It validates required fields before signalling readiness so a
+// misconfiguration fails startup rather than surfacing later.
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if s.Config.ServiceName == "" || s.Config.Addr == "" {
 		return errutil.Explain(nil, "registry: ${spring.registry.service-name} and ${spring.registry.addr} are required")
 	}
-	r, err := discovery.GetRegistrar(s.Config.Backend)
-	if err != nil {
-		return err
-	}
-	s.registrar = r
-	s.reg = discovery.Instance{
+	s.reg = instance{
 		ServiceName: s.Config.ServiceName,
 		ID:          s.Config.ID,
 		Addr:        s.Config.Addr,
@@ -124,14 +112,14 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 		log.Errorf(ctx, starterTag, "register service=%s failed: %v", s.reg.ServiceName, err)
 		return errutil.Explain(err, "registry: register %q", s.reg.ServiceName)
 	}
-	log.Infof(ctx, starterTag, "registered %q at %s (backend=%q)", s.reg.ServiceName, s.reg.Addr, s.Config.Backend)
+	log.Infof(ctx, starterTag, "registered %q at %s", s.reg.ServiceName, s.reg.Addr)
 
 	<-ctx.Done()
 	return nil
 }
 
-// PreStop deregisters the instance as soon as shutdown begins — before the
-// pre-stop delay and before any server stops — so discovery removes it while
+// PreStop deregisters the instance as soon as shutdown begins - before the
+// pre-stop delay and before any server stops - so discovery removes it while
 // in-flight requests keep being served (the lossless-drain sequence).
 func (s *Server) PreStop(ctx context.Context) {
 	s.deregister(ctx)

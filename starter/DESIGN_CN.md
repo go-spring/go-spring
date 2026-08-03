@@ -170,16 +170,20 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   `discovery.NewClientDialer` 获取 dialer(如 `starter-go-redis`),这样无需逐个分支
   即可感知开关;仍直接调用 `NewLiveDialer` 的也会退化,但在 mesh 模式下仍需已注册后端。
   代码不删除 —— 关掉开关即恢复完整的客户端行为。
-- **实例级注册(ServiceRegistry)已提供;RPC 框架 provider 注册仍不统一。** 别把两种
-  "注册"混为一谈。(1)把**本进程**注册进外部注册中心(Nacos/Consul/Eureka)—— 即
-  Spring Cloud `@EnableDiscoveryClient` 的方向 —— 是与传输无关的通用能力,已通过
-  `spring/discovery` 的 `Registrar` 抽象(`Register`/`Deregister` + 由后端自持的
-  TTL/心跳,复用与 `Discovery` 相同的 driver 注册表 seam)及其首个后端
-  `starter-registry-consul` 提供。(2)注册某 RPC 框架的**服务**仍按上一条保持框架
-  原生。纯 Kubernetes 下两者都不需要 —— 平台已把每个 Pod 注册在 Service 之后(用
-  `starter-discovery-k8s` 去发现);`Registrar` 是给虚机 / 裸机 / 混合部署用的。这个
-  "注册自己"的 starter 属全局 / 基础设施形态(§2.4):导出一个 `gs.Server`,应用就绪后
-  注册、`PreStop` 时注销,使滚动重启无损。
+- **实例级注册按 starter 各自提供;RPC 框架 provider 注册仍不统一。** 别把两种
+  "注册"混为一谈。(1)把**本进程**注册进外部注册中心
+  (Nacos/Consul/Eureka/ZooKeeper)-- 即 Spring Cloud `@EnableDiscoveryClient` 的方向
+  -- 是与传输无关的通用能力。它**不是** `spring/discovery` 里的共享抽象:每个
+  `starter-registry-<backend>`(etcd/nacos/consul/zookeeper)自持完整的注册 / 注销
+  生命周期 -- registrar 是注入导出 `gs.Server` 的本地值,而非全局注册的后端;换后端
+  就是换 starter。所有 registry starter 共守一条规则:**Register 必须自续约**
+  (TTL、心跳或临时节点),correctness 绝不依赖 `Deregister` 被调用 -- 进程若崩溃
+  (SIGKILL、OOM)未及注销,注册中心也须在保活静默后自行摘除;`Deregister` 只是干净
+  停机时的快捷路径。(2)注册某 RPC 框架的**服务**仍按上一条保持框架原生。纯 Kubernetes
+  下两者都不需要 -- 平台已把每个 Pod 注册在 Service 之后(用 `starter-discovery-k8s`
+  去发现);实例级注册是给虚机 / 裸机 / 混合部署用的。每个 registry starter 属全局 /
+  基础设施形态(§2.4):导出一个 `gs.Server`,应用就绪后注册、`PreStop` 时注销,使滚动
+  重启无损。
 - **可观测遵循"中心定义、边缘桥接"。** starter 通过 OTel 全局输出,或用 `SetLogger`
   钩子把库的内部日志桥接进 go-spring `log`;桥接时必须同时补一个 go-spring
   `FileLogger` sink,否则会丢掉 console 输出。

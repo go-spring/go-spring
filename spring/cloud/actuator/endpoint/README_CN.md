@@ -8,13 +8,13 @@
 ## 特性
 
 - 单一接口 `Endpoint { Path() string; http.Handler }`。
-- 与 `go-spring.org/spring/health.Indicator` 同构:贡献方与收集方都只依赖
-  stdlib,不产生跨 starter 依赖。
+- 与 `health.Indicator`(姊妹包 `health`)同构:贡献方与收集方都只依赖
+  本包,不产生跨 starter 依赖。
 
 ## 安装
 
 ```
-go get go-spring.org/stdlib
+go get go-spring.org/spring
 ```
 
 ## 用法
@@ -27,7 +27,7 @@ import (
 
     "github.com/prometheus/client_golang/prometheus/promhttp"
     "go-spring.org/gs"
-    "go-spring.org/spring/actuator/endpoint"
+    "go-spring.org/spring/cloud/actuator/endpoint"
 )
 
 type promEndpoint struct{ http.Handler }

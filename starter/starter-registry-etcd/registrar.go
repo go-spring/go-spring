@@ -22,10 +22,21 @@ import (
 	"sync"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
+
+// instance is the instance this process advertises to the etcd registry. It is
+// the local write-side value built from RegistrationConfig in Server.Run; the
+// crash-safety contract every registry starter follows lives in starter/DESIGN
+// §3 (Register must self-renew so correctness never depends on Deregister).
+type instance struct {
+	ServiceName string
+	ID          string
+	Addr        string
+	Weight      int
+	Metadata    map[string]string
+}
 
 // instanceValue is the JSON payload stored at an instance key. A discovery
 // backend reading the same prefix reconstructs an Endpoint from it.
@@ -39,7 +50,6 @@ type instanceValue struct {
 // etcdRegistrar publishes instances to an etcd cluster. Each instance is written
 // under a key bound to its own lease and kept alive by a background keep-alive;
 // if the process dies the lease expires and etcd deletes the key automatically.
-// It implements discovery.Registrar.
 type etcdRegistrar struct {
 	client    *clientv3.Client
 	keyPrefix string
@@ -95,7 +105,7 @@ func newEtcdRegistrar(c EtcdConfig) (*etcdRegistrar, error) {
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
 // or a stable one derived from the service name and advertised address.
-func instanceID(reg discovery.Instance) string {
+func instanceID(reg instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -104,14 +114,14 @@ func instanceID(reg discovery.Instance) string {
 
 // keyFor returns the etcd key an instance is written under: prefix + service +
 // "/" + instance id.
-func (r *etcdRegistrar) keyFor(reg discovery.Instance) string {
+func (r *etcdRegistrar) keyFor(reg instance) string {
 	return r.keyPrefix + reg.ServiceName + "/" + instanceID(reg)
 }
 
 // Register grants a lease, writes the instance under it, and starts a keep-alive
 // so the entry stays live until Deregister or process death. Registering the
 // same instance again refreshes it: the previous lease is revoked first.
-func (r *etcdRegistrar) Register(ctx context.Context, reg discovery.Instance) error {
+func (r *etcdRegistrar) Register(ctx context.Context, reg instance) error {
 	if err := errutil.RequireField("registry-etcd", "addr", reg.Addr); err != nil {
 		return err
 	}
@@ -163,7 +173,7 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg discovery.Instance) er
 
 // Deregister stops the keep-alive and revokes the lease, which deletes the key.
 // It is idempotent: deregistering an instance that is not registered is a no-op.
-func (r *etcdRegistrar) Deregister(ctx context.Context, reg discovery.Instance) error {
+func (r *etcdRegistrar) Deregister(ctx context.Context, reg instance) error {
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]

@@ -132,11 +132,11 @@ func TestCatalogIsOptional(t *testing.T) {
 // optional-Catalog assertion can be exercised in the negative.
 type discoveryOnly struct{}
 
-func (discoveryOnly) Resolve(context.Context, string) ([]Endpoint, error) {
+func (discoveryOnly) Resolve(context.Context, string, ...Option) ([]Endpoint, error) {
 	return nil, nil
 }
 
-func (discoveryOnly) Watch(context.Context, string) (<-chan WatchResult, error) {
+func (discoveryOnly) Watch(context.Context, string, ...Option) (<-chan WatchResult, error) {
 	return nil, nil
 }
 
@@ -164,6 +164,66 @@ func TestNewStaticDiscovery(t *testing.T) {
 	again, _ := d.Resolve(context.Background(), "any")
 	if again[0].Addr == "mutated" {
 		t.Fatal("Resolve must return a copy, not the internal slice")
+	}
+}
+
+func TestSchemeOptionNarrows(t *testing.T) {
+	// One service exposing three schemes: plain (""), tls, and grpc.
+	d := NewStaticDiscovery(
+		Endpoint{Addr: "10.0.0.1:80", Scheme: "", Healthy: true},
+		Endpoint{Addr: "10.0.0.1:443", Scheme: "tls", Healthy: true},
+		Endpoint{Addr: "10.0.0.1:9090", Scheme: "grpc", Healthy: true},
+	)
+
+	// No option: every scheme comes back.
+	all, err := d.Resolve(context.Background(), "svc")
+	if err != nil || len(all) != 3 {
+		t.Fatalf("Resolve without scheme = %v, err %v — want 3 endpoints", all, err)
+	}
+
+	// WithScheme("tls"): only the tls endpoint.
+	tls, err := d.Resolve(context.Background(), "svc", WithScheme("tls"))
+	if err != nil || len(tls) != 1 || tls[0].Scheme != "tls" {
+		t.Fatalf("Resolve(tls) = %+v, err %v — want the single tls endpoint", tls, err)
+	}
+
+	// WithScheme("grpc"): only the grpc endpoint.
+	grpc, err := d.Resolve(context.Background(), "svc", WithScheme("grpc"))
+	if err != nil || len(grpc) != 1 || grpc[0].Scheme != "grpc" {
+		t.Fatalf("Resolve(grpc) = %+v, err %v — want the single grpc endpoint", grpc, err)
+	}
+
+	// WithScheme("tcp") matches the plain "" endpoint (the documented tcp/"" plain
+	// equivalence), not the tls/grpc ones.
+	plain, err := d.Resolve(context.Background(), "svc", WithScheme("tcp"))
+	if err != nil || len(plain) != 1 || plain[0].Addr != "10.0.0.1:80" {
+		t.Fatalf("Resolve(tcp) = %+v, err %v — want the plain endpoint", plain, err)
+	}
+
+	// WithScheme("") is a no-op: behaves like no option at all.
+	noop, err := d.Resolve(context.Background(), "svc", WithScheme(""))
+	if err != nil || len(noop) != 3 {
+		t.Fatalf("Resolve(\"\") = %d endpoints, want 3 (no-op)", len(noop))
+	}
+}
+
+func TestQueryOptionsCompose(t *testing.T) {
+	// NewQuery applies every option; an empty option set leaves narrowing at its
+	// zero defaults. This is the plumbing backends rely on to read opts.
+	q := NewQuery("svc",
+		WithScheme("tls"),
+		WithTag("v2"),
+		WithGroup("prod"),
+	)
+	if q.Name != "svc" || q.Scheme != "tls" || q.Tag != "v2" || q.Group != "prod" {
+		t.Fatalf("NewQuery = %+v, want all four dimensions set", q)
+	}
+
+	// Empty values are no-ops, so conditionally passing a config field needs no
+	// guard - WithScheme("") leaves the default.
+	q2 := NewQuery("svc", WithScheme(""), WithTag(""), WithGroup(""))
+	if q2.Scheme != "" || q2.Tag != "" || q2.Group != "" {
+		t.Fatalf("empty options should be no-ops, got %+v", q2)
 	}
 }
 

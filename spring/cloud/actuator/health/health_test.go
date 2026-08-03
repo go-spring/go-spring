@@ -21,37 +21,45 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestNewIndicator_NameAndProbe(t *testing.T) {
 	want := errors.New("down")
 	ind := NewIndicator("redis:cache", func(context.Context) error { return want })
-	assert.Equal(t, "redis:cache", ind.HealthName())
-	assert.Equal(t, want, ind.CheckHealth(context.Background()))
+
+	assert.String(t, ind.HealthName()).Equal("redis:cache")
+	assert.Error(t, ind.CheckHealth(context.Background())).Is(want)
 }
 
 func TestNewIndicator_Defaults(t *testing.T) {
+	// Without options the indicator is critical and declares no explicit
+	// groups (HealthGroups returns nil), so the collector applies its default
+	// routing. CheckHealth reflects whatever the probe returns.
 	ind := NewIndicator("x", func(context.Context) error { return nil })
-	// No WithGroups: must fall back to package defaults (readiness + startup),
-	// which means Grouped must NOT be implemented.
-	_, grouped := ind.(Grouped)
-	assert.False(t, grouped, "default indicator must not implement Grouped")
-	assert.Equal(t, []Group{GroupReadiness, GroupStartup}, GroupsOf(ind))
-	assert.True(t, IsCritical(ind), "default indicator must be critical")
+
+	assert.That(t, ind.IsCritical()).True()
+	assert.Slice(t, ind.HealthGroups()).Nil()
+	assert.Error(t, ind.CheckHealth(context.Background())).Nil()
 }
 
 func TestNewIndicator_WithGroups(t *testing.T) {
 	ind := NewIndicator("x", func(context.Context) error { return nil },
 		WithGroups(GroupLiveness))
-	g, ok := ind.(Grouped)
-	assert.True(t, ok)
-	assert.Equal(t, []Group{GroupLiveness}, g.HealthGroups())
-	assert.True(t, InGroup(ind, GroupLiveness))
-	assert.False(t, InGroup(ind, GroupReadiness))
+
+	assert.Slice(t, ind.HealthGroups()).Equal([]Group{GroupLiveness})
 }
 
 func TestNewIndicator_NonCritical(t *testing.T) {
 	ind := NewIndicator("x", func(context.Context) error { return nil }, NonCritical())
-	assert.False(t, IsCritical(ind))
+
+	assert.That(t, ind.IsCritical()).False()
+}
+
+func TestNewIndicator_CombinesOptions(t *testing.T) {
+	ind := NewIndicator("x", func(context.Context) error { return nil },
+		WithGroups(GroupStartup, GroupReadiness), NonCritical())
+
+	assert.Slice(t, ind.HealthGroups()).Equal([]Group{GroupStartup, GroupReadiness})
+	assert.That(t, ind.IsCritical()).False()
 }

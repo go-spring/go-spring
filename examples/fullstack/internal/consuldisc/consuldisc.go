@@ -65,22 +65,28 @@ func New(addr string) (*Backend, error) {
 	return &Backend{client: client}, nil
 }
 
-// Resolve returns the current healthy endpoints for name.
-func (b *Backend) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
-	entries, _, err := b.client.Health().Service(name, "", true, (&api.QueryOptions{}).WithContext(ctx))
+// Resolve returns the current healthy endpoints for name. opts narrow the
+// result: [discovery.WithTag] is passed to Consul's service query server-side,
+// [discovery.WithScheme] filters the returned endpoints by transport scheme.
+func (b *Backend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	q := discovery.NewQuery(name, opts...)
+	entries, _, err := b.client.Health().Service(name, q.Tag, true, (&api.QueryOptions{}).WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("consuldisc: resolve %q: %w", name, err)
 	}
-	return toEndpoints(entries), nil
+	return discovery.FilterByScheme(toEndpoints(entries), q.Scheme), nil
 }
 
 // Watch subscribes to name via Consul blocking queries, pushing a fresh full
 // snapshot on the returned channel each time the catalog's modify index
 // advances. The first result carries the current snapshot; the channel closes
-// when ctx is cancelled or a terminal error is delivered.
-func (b *Backend) Watch(ctx context.Context, name string) (<-chan discovery.WatchResult, error) {
+// when ctx is cancelled or a terminal error is delivered. opts narrow the
+// subscription: [discovery.WithTag] is passed to Consul's service query
+// server-side, [discovery.WithScheme] filters each snapshot by transport scheme.
+func (b *Backend) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	w := &watcher{backend: b, name: name, ctx: ctx}
+	q := discovery.NewQuery(name, opts...)
+	w := &watcher{backend: b, name: name, tag: q.Tag, scheme: q.Scheme, ctx: ctx}
 	ch := make(chan discovery.WatchResult, 1)
 	go func() {
 		defer cancel()
@@ -133,6 +139,8 @@ func toEndpoints(entries []*api.ServiceEntry) []discovery.Endpoint {
 type watcher struct {
 	backend   *Backend
 	name      string
+	tag       string // narrowing from WithTag; "" = any
+	scheme    string // narrowing from WithScheme; "" = any
 	lastIndex uint64
 	ctx       context.Context
 }
@@ -146,7 +154,7 @@ func (w *watcher) next() ([]discovery.Endpoint, error) {
 			return nil, err
 		}
 		q := (&api.QueryOptions{WaitIndex: w.lastIndex, WaitTime: 30 * time.Second}).WithContext(w.ctx)
-		entries, meta, err := w.backend.client.Health().Service(w.name, "", true, q)
+		entries, meta, err := w.backend.client.Health().Service(w.name, w.tag, true, q)
 		if err != nil {
 			if w.ctx.Err() != nil {
 				return nil, w.ctx.Err()
@@ -159,6 +167,6 @@ func (w *watcher) next() ([]discovery.Endpoint, error) {
 			continue
 		}
 		w.lastIndex = meta.LastIndex
-		return toEndpoints(entries), nil
+		return discovery.FilterByScheme(toEndpoints(entries), w.scheme), nil
 	}
 }

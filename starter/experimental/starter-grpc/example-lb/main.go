@@ -121,13 +121,13 @@ func (d *disco) set(eps []discovery.Endpoint) {
 	}
 }
 
-func (d *disco) Resolve(_ context.Context, _ string) ([]discovery.Endpoint, error) {
+func (d *disco) Resolve(_ context.Context, _ string, _ ...discovery.Option) ([]discovery.Endpoint, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return append([]discovery.Endpoint(nil), d.eps...), nil
 }
 
-func (d *disco) Watch(ctx context.Context, _ string) (<-chan discovery.WatchResult, error) {
+func (d *disco) Watch(ctx context.Context, _ string, _ ...discovery.Option) (<-chan discovery.WatchResult, error) {
 	ch := make(chan discovery.WatchResult, 1)
 	w := &watcher{ch: ch}
 	d.mu.Lock()

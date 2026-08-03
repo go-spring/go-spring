@@ -1,7 +1,7 @@
 # endpoint Design
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
-`endpoint` is a stdlib (zero-dependency foundation) seam that lets one
+`endpoint` is a zero-dependency foundation package: a seam that lets one
 starter contribute an HTTP path to another starter's management server
 without either importing the other. It sits alongside `health.Indicator`
 and is used by the same pattern.
@@ -21,9 +21,10 @@ and is used by the same pattern.
 - **Interface-based collection under the DI container's `Export`
   contract.** Go-Spring's container matches beans to injection points by
   concrete type plus the interfaces they explicitly `Export`. Placing this
-  interface in stdlib means the contributor (e.g. `starter-otel` exposing
-  `/metrics`) and the collector (`starter-actuator`) both depend on stdlib
-  only. Neither imports the other, honouring `starter/DESIGN.md` §3.
+  interface in the foundation package means the contributor (e.g.
+  `starter-otel` exposing `/metrics`) and the collector (`starter-actuator`)
+  both depend on this package only. Neither imports the other, honouring
+  `starter/DESIGN.md` §3.
 - **`Path()` is a value, not a wiring detail.** The contributor owns the
   path; the collector's job is purely to mount whatever it is told. This
   keeps the interface stable even as more paths (`/build-info`,

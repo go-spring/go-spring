@@ -66,12 +66,20 @@ func (d *dnsDiscovery) fqdn(service string) string {
 // is set it performs an SRV lookup (address and port come from the record);
 // otherwise it performs an A/AAAA lookup and pairs each IP with the configured
 // Port. A headless Service publishes records only for ready addresses by
-// default, so returned endpoints are marked Healthy.
-func (d *dnsDiscovery) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
+// default, so returned endpoints are marked Healthy. opts narrow the result;
+// [discovery.WithScheme] filters by transport scheme.
+func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	var eps []discovery.Endpoint
+	var err error
 	if d.cfg.PortName != "" {
-		return d.resolveSRV(ctx, name)
+		eps, err = d.resolveSRV(ctx, name)
+	} else {
+		eps, err = d.resolveA(ctx, name)
 	}
-	return d.resolveA(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return discovery.FilterByScheme(eps, discovery.NewQuery("", opts...).Scheme), nil
 }
 
 // resolveSRV looks up "_<port-name>._tcp.<fqdn>" and turns each SRV record into
@@ -118,12 +126,12 @@ func (d *dnsDiscovery) resolveA(ctx context.Context, name string) ([]discovery.E
 // notification, so polling is the only option; RefreshInterval trades
 // change-detection latency for query load. The first result carries the current
 // snapshot; the channel closes when ctx is cancelled.
-func (d *dnsDiscovery) Watch(ctx context.Context, name string) (<-chan discovery.WatchResult, error) {
+func (d *dnsDiscovery) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
 	interval := d.cfg.RefreshInterval
 	if interval <= 0 {
 		interval = 10 * time.Second
 	}
-	init, err := d.Resolve(ctx, name)
+	init, err := d.Resolve(ctx, name, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +147,7 @@ func (d *dnsDiscovery) Watch(ctx context.Context, name string) (<-chan discovery
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				eps, err := d.Resolve(context.Background(), name)
+				eps, err := d.Resolve(context.Background(), name, opts...)
 				if err != nil {
 					// Transient DNS failures are skipped; the next tick retries.
 					continue

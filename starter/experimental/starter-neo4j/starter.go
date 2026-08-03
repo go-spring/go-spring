@@ -125,7 +125,7 @@ func resolveURI(ctx context.Context, c Config) (string, *discovery.Resolver, err
 	if err != nil {
 		return "", nil, err
 	}
-	r, err := discovery.NewResolver(ctx, backend, c.ServiceName)
+	r, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return "", nil, errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
 	}

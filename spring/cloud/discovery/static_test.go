@@ -49,15 +49,16 @@ func (s *staticDiscovery) set(name string, eps ...Endpoint) {
 	s.eps[name] = eps
 }
 
-func (s *staticDiscovery) Resolve(_ context.Context, name string) ([]Endpoint, error) {
+func (s *staticDiscovery) Resolve(_ context.Context, name string, opts ...Option) ([]Endpoint, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]Endpoint(nil), s.eps[name]...), nil
+	return FilterByScheme(append([]Endpoint(nil), s.eps[name]...), NewQuery("", opts...).Scheme), nil
 }
 
-func (s *staticDiscovery) Watch(ctx context.Context, name string) (<-chan WatchResult, error) {
+func (s *staticDiscovery) Watch(ctx context.Context, name string, opts ...Option) (<-chan WatchResult, error) {
+	scheme := NewQuery("", opts...).Scheme
 	s.mu.Lock()
-	eps := append([]Endpoint(nil), s.eps[name]...)
+	eps := FilterByScheme(append([]Endpoint(nil), s.eps[name]...), scheme)
 	s.mu.Unlock()
 
 	ch := make(chan WatchResult, 8)

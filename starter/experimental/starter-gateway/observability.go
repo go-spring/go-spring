@@ -25,7 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go-spring.org/spring/experimental/actuator/health"
+	"go-spring.org/spring/cloud/actuator/health"
 )
 
 // Metrics accumulates per-route request counters exposed as Prometheus text on

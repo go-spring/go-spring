@@ -24,9 +24,21 @@ import (
 
 	"github.com/go-zookeeper/zk"
 	"go-spring.org/log"
-	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
+
+// instance is the instance this process advertises to the ZooKeeper registry.
+// It is the local write-side value built from RegistrationConfig in Server.Run;
+// the crash-safety contract every registry starter follows lives in
+// starter/DESIGN §3 (Register must self-renew so correctness never depends on
+// Deregister).
+type instance struct {
+	ServiceName string
+	ID          string
+	Addr        string
+	Weight      int
+	Metadata    map[string]string
+}
 
 // instanceValue is the JSON payload stored at an instance znode. A discovery
 // backend reading the same base path reconstructs an Endpoint from it.
@@ -40,7 +52,6 @@ type instanceValue struct {
 // zkRegistrar publishes instances to a ZooKeeper ensemble as ephemeral znodes.
 // An ephemeral node lives only as long as the client session, so ZooKeeper
 // removes it automatically when the process dies without Deregister.
-// It implements discovery.Registrar.
 type zkRegistrar struct {
 	conn     *zk.Conn
 	basePath string
@@ -80,7 +91,7 @@ func newZookeeperRegistrar(c ZookeeperConfig) (*zkRegistrar, error) {
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
 // or a stable one derived from the service name and advertised address.
-func instanceID(reg discovery.Instance) string {
+func instanceID(reg instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -88,14 +99,14 @@ func instanceID(reg discovery.Instance) string {
 }
 
 // pathFor returns the znode an instance is written to: basePath/service/id.
-func (r *zkRegistrar) pathFor(reg discovery.Instance) string {
+func (r *zkRegistrar) pathFor(reg instance) string {
 	return r.basePath + "/" + reg.ServiceName + "/" + instanceID(reg)
 }
 
 // Register writes reg as an ephemeral znode, creating the persistent parent
 // directories on demand. Re-registering the same instance replaces the node so
 // the entry is refreshed rather than duplicated.
-func (r *zkRegistrar) Register(_ context.Context, reg discovery.Instance) error {
+func (r *zkRegistrar) Register(_ context.Context, reg instance) error {
 	if reg.Addr == "" {
 		return errutil.Explain(nil, "registry-zookeeper: addr is required")
 	}
@@ -131,7 +142,7 @@ func (r *zkRegistrar) Register(_ context.Context, reg discovery.Instance) error 
 
 // Deregister removes the instance znode. It is idempotent: deregistering an
 // instance that is not registered (ErrNoNode) is a no-op.
-func (r *zkRegistrar) Deregister(_ context.Context, reg discovery.Instance) error {
+func (r *zkRegistrar) Deregister(_ context.Context, reg instance) error {
 	path := r.pathFor(reg)
 	if err := r.conn.Delete(path, -1); err != nil && !errors.Is(err, zk.ErrNoNode) {
 		return errutil.Explain(err, "registry-zookeeper: deregister %q", reg.ServiceName)

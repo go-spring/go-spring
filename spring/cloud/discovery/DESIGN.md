@@ -13,10 +13,9 @@ MongoDB, Kafka, gRPC.
   - Read side — `Discovery` (`Resolve` + `Watch`), `Endpoint`, `WatchResult`,
     the optional `Catalog`, and `Resolver` (the stateful, watch-refreshed
     endpoint picker).
-  - Write side — `Registrar` (`Register` + `Deregister`) and `Instance`, the
-    traffic-agnostic "publish this process" counterpart.
-  - Package-level backend registries (`RegisterDiscovery` / `GetDiscovery`,
-    `RegisterRegistrar` / `GetRegistrar`).
+  - Package-level read backend registry (`RegisterDiscovery` / `GetDiscovery`); the
+    write side (publishing this process) lives in the `starter-registry-*`
+    starters, not here.
 - **Refuses:**
   - **No selection policy, no traffic feedback.** `Resolver.Pick` is minimal
     round-robin. Strategies (weighted, least-conn, consistent-hash, zone-aware)
@@ -63,22 +62,11 @@ MongoDB, Kafka, gRPC.
   reached by name). Forcing enumeration onto `Discovery` would make those
   backends lie with empty lists or panics. Consumers type-assert
   `d.(Catalog)` when they need it.
-- **`Registrar` is the write-side counterpart.** `Register` MUST be
-  self-renewing (heartbeat / TTL / "ephemeral"): if the process dies without
-  `Deregister`, the registry expires the instance on its own. Correctness never
-  depends on `Deregister` being called; `Deregister` is just the prompt,
-  graceful path. There is intentionally **no `Update` method** — re-`Register`
-  with the same ID is idempotent refresh, which is how Consul and Nacos natively
-  implement "modify an instance" (and kratos / kitex expose only
-  Register/Deregister).
-- **`Instance` mirrors `Endpoint`.** `Scheme`, `Weight`, `Disabled`, `Metadata`
-  carry over; `Endpoint` adds probe-driven `Healthy`, `Instance` carries the
-  publisher-only `ID`.
-- **Package-level registries with init-time panics** mirror the driver-registry
+- **Package-level read registry with init-time panics** mirrors the driver-registry
   idiom (e.g. starter-go-redis `RegisterDriver`). Empty name, nil backend, or a
-  duplicate is a wiring bug, not a runtime condition. `GetDiscovery` /
-  `GetRegistrar` return a descriptive error listing the registered names, so a
-  typo or a missing starter is obvious at construction time.
+  duplicate is a wiring bug, not a runtime condition. `GetDiscovery` returns a
+  descriptive error listing the registered names, so a typo or a missing starter
+  is obvious at construction time.
 
 ## 3. Constraints
 
@@ -93,18 +81,18 @@ MongoDB, Kafka, gRPC.
   terminal `WatchResult.Err`; the consumer then stops ranging and keeps serving
   from the last snapshot, since stale addresses are safer than none. Reconnect
   with backoff, when wanted, is the caller's responsibility, not `Watch`'s.
-- The two registries (`discoveries`, `registrars`) use independent mutexes; no
-  operation spans both, so the read and write sides need not serialize against
-  each other.
+- The read backend registry (`discoveries`) is guarded by its own mutex; no other
+  package state touches it.
 
 ## 4. Trade-offs / Alternatives Rejected
 
-- **Client-side only; no unified RPC-framework `Registrar`.** kitex
-  `registry.Registry`, kratos `registry.Registrar`, dubbo-go's config-only
+- **Client-side only.** This package does naming - resolve a name to live
+  addresses. Publishing this process to a registry lives in the
+  `starter-registry-*` starters (etcd/nacos/consul/zookeeper), and RPC-framework
+  provider registration stays framework-native per §1; neither belongs here.
+  kitex `registry.Registry`, kratos `registry.Registrar`, dubbo-go's config-only
   registration and go-zero's `discov.EtcdConf` differ enough that a wrapper is
-  just a translator. Framework-native registration is used everywhere it
-  exists; `Registrar` covers only the traffic-agnostic case (bare gRPC / thrift
-  / HTTP, VM / bare-metal / hybrid).
+  just a translator, which is why none is imposed.
 - **`Resolver.Pick` is minimal round-robin, not weighted / consistent-hash.**
   Strategy belongs one layer up; keeping discovery focused prevents overlap with
   `loadbalance` (which owns strategy + eviction).
@@ -113,10 +101,6 @@ MongoDB, Kafka, gRPC.
   send be the seed (no separate Resolve-then-Watch dance), and reads as the
   idiomatic Go stream shape (`for r := range ch`). Errors travel on the channel
   as a `WatchResult.Err`.
-- **`Endpoint` and `Instance` are separate structs, not one unified type.** A
-  single struct (kratos `ServiceInstance`) would force each side to carry fields
-  only meaningful on the other (`ID` write-only, `Healthy` read-only). Splitting
-  is honest about the asymmetry.
 - **Mesh switch and trace propagation live outside this package.** Earlier
   drafts kept a mesh branch inside the resolver and a trace seam here; both were
   removed because neither is discovery's concern, and the mesh branch could not

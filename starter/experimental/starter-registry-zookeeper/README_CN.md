@@ -66,10 +66,8 @@ spring.registry.metadata.version=v1
 | `base-path` | `/services` | 创建服务目录所在的持久父 znode。 |
 | `username` | (空) | digest 认证用户名,设置即启用认证。 |
 | `password` | (空) | digest 认证密码。 |
-| `name` | `default` | 本 registrar 在 `spring/discovery` registrar 注册表中的名字。 |
 
-实例配置,绑定于 `spring.registry`(与后端无关 —— 切换注册中心后端只需替换匿名导入,
-无需迁移配置):
+实例配置,绑定于 `spring.registry`(描述实例本身,与注册中心后端无关):
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -78,7 +76,6 @@ spring.registry.metadata.version=v1
 | `id` | (空) | 实例 id 覆盖;空则由 `service-name` + `addr` 推导出稳定 id。 |
 | `weight` | `0` | 随实例存储的负载均衡权重。 |
 | `metadata.*` | (无) | 随实例存储的任意键值属性。 |
-| `backend` | `default` | 按注册表名字选择发布到哪个 registrar 后端。 |
 
 实例以 JSON(`service_name`、`addr`、`weight`、`metadata`)存储于
 `<base-path>/<service-name>/<id>`,列举同一 base 路径的 discovery 后端即可还原成
@@ -86,12 +83,11 @@ spring.registry.metadata.version=v1
 
 ## 工作原理
 
-- 在容器的 bean 注册阶段,starter 连接集群、构建一个 ZooKeeper `discovery.Registrar`
-  并以 `name` 放进 `spring/discovery` 的 registrar 注册表。它会探测集群(一次 `Exists`
-  调用会阻塞到会话连上),不可达的 ZooKeeper 会让启动失败。公司可用另一个名字注册自己的
-  `Registrar`,再把 `spring.registry.backend` 指向它。
-- 导出的 `gs.Server` 按 `backend` 解析后端,等待就绪,然后 `Register` 实例:按需创建
-  持久父目录,并把实例写成一个**临时**叶子节点。
+- 在 bean 构造阶段,starter 连接集群、构建好 ZooKeeper registrar 并注入导出的
+  `gs.Server`。它会探测集群(一次 `Exists` 调用会阻塞到会话连上),不可达的 ZooKeeper
+  会让启动失败。
+- 导出的 `gs.Server` 等待就绪,然后 `Register` 实例:按需创建持久父目录,并把实例写成一个
+  **临时**叶子节点。
 - 停机时 `PreStop` 在 pre-stop 延迟之前注销实例(删除该 znode),让发现体系在在途请求
   仍被服务时就摘掉它。`Stop` 作为幂等兜底再次注销。若进程崩溃,会话过期后 ZooKeeper
   自动删除该节点。

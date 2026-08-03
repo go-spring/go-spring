@@ -68,10 +68,8 @@ spring.registry.metadata.version=v1
 | `ttl` | `15s` | 租约时长;实例存活期间持续保活。向上取整到整秒。 |
 | `key-prefix` | `/services/` | 拼在每个键之前,便于多应用共享一个集群。 |
 | `tls.*` | (关闭) | 可选客户端 TLS(`enabled`、`cert-file`、`key-file`、`ca-file`)。 |
-| `name` | `default` | 本 registrar 在 `spring/discovery` registrar 注册表中的名字。 |
 
-实例配置,绑定于 `spring.registry`(与后端无关 —— 切换注册中心后端只需替换匿名导入,
-无需迁移配置):
+实例配置,绑定于 `spring.registry`(描述实例本身,与注册中心后端无关):
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -80,19 +78,16 @@ spring.registry.metadata.version=v1
 | `id` | (空) | 实例 id 覆盖;空则由 `service-name` + `addr` 推导出稳定 id。 |
 | `weight` | `0` | 随实例存储的负载均衡权重。 |
 | `metadata.*` | (无) | 随实例存储的任意键值属性。 |
-| `backend` | `default` | 按注册表名字选择发布到哪个 registrar 后端。 |
 
 实例以 JSON(`service_name`、`addr`、`weight`、`metadata`)存储于
 `<key-prefix><service-name>/<id>`,读取同一前缀的 discovery 后端即可还原成 `Endpoint`。
 
 ## 工作原理
 
-- 在容器的 bean 注册阶段,starter 构建一个 etcd `discovery.Registrar` 并以 `name`
-  放进 `spring/discovery` 的 registrar 注册表。它会探测集群(一次 `Status` 调用),
-  不可达的 etcd 会让启动失败。公司可用另一个名字注册自己的 `Registrar`,再把
-  `spring.registry.backend` 指向它。
-- 导出的 `gs.Server` 按 `backend` 解析后端,等待就绪,然后 `Register` 实例:它申请一个
-  **租约**、把键写在该租约下,并用后台 keep-alive 保活租约。
+- 在 bean 构造阶段,starter 构建好 etcd registrar 并注入导出的 `gs.Server`。
+  它会探测集群(一次 `Status` 调用),不可达的 etcd 会让启动失败。
+- 导出的 `gs.Server` 等待就绪,然后 `Register` 实例:它申请一个**租约**、把键写在该租约下,
+  并用后台 keep-alive 保活租约。
 - 停机时 `PreStop` 在 pre-stop 延迟之前注销实例(停 keep-alive、撤销租约并删除键),让
   发现体系在在途请求仍被服务时就摘掉它。`Stop` 作为幂等兜底再次注销。若进程崩溃,租约
   过期后 etcd 自动删除该键。

@@ -9,13 +9,13 @@ and mounts it — no cross-starter import required.
 ## Features
 
 - Single interface `Endpoint { Path() string; http.Handler }`.
-- Mirrors `go-spring.org/spring/health.Indicator`: contributor and collector
-  depend only on stdlib, never on each other.
+- Mirrors `health.Indicator` (in the sibling `health` package): contributor
+  and collector depend only on this package, never on each other.
 
 ## Installation
 
 ```
-go get go-spring.org/stdlib
+go get go-spring.org/spring
 ```
 
 ## Usage
@@ -29,7 +29,7 @@ import (
 
     "github.com/prometheus/client_golang/prometheus/promhttp"
     "go-spring.org/gs"
-    "go-spring.org/spring/actuator/endpoint"
+    "go-spring.org/spring/cloud/actuator/endpoint"
 )
 
 type promEndpoint struct{ http.Handler }

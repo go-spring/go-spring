@@ -33,10 +33,6 @@
     },
     "tls": {
       "type": "object"
-    },
-    "name": {
-      "type": "string",
-      "default": "default"
     }
   }
 }

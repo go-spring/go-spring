@@ -228,21 +228,28 @@ application can load configuration from it at startup and hot-reload at runtime.
   directly also degrade, but require a registered backend even in mesh mode. The
   code is not removed — flipping the switch off restores full client-side
   behavior.
-- **Instance-level registration (ServiceRegistry) is provided; RPC-framework
-  provider registration is not.** Do not conflate two different "registration"
-  concerns. (1) Registering *this process* into an external registry
-  (Nacos/Consul/Eureka) — the Spring Cloud `@EnableDiscoveryClient` direction —
-  is a generic, transport-agnostic capability, provided via the
-  `spring/discovery` `Registrar` abstraction (`Register`/`Deregister` with
-  backend-owned TTL/heartbeat, reusing the same driver-registry seam as
-  `Discovery`) and its first backend `starter-registry-consul`. (2) Registering
-  an RPC framework's *services* stays framework-native per the bullet above.
-  Neither is needed in pure Kubernetes, where the platform registers every Pod
-  behind a Service (discover with `starter-discovery-k8s`); the `Registrar`
-  exists for VM / bare-metal / hybrid deployments. The register-me starter is a
-  global/infrastructure archetype (§2.4): it exports a `gs.Server` that registers
-  once the app is ready and deregisters on `PreStop`, so a rolling restart is
-  lossless.
+- **Instance-level registration is per-starter; RPC-framework provider
+  registration is not.** Do not conflate two different "registration" concerns.
+  (1) Registering *this process* into an external registry
+  (Nacos/Consul/Eureka/ZooKeeper) - the Spring Cloud `@EnableDiscoveryClient`
+  direction - is a generic, transport-agnostic capability. It is **not** a shared
+  abstraction in `spring/discovery`: each `starter-registry-<backend>`
+  (etcd/nacos/consul/zookeeper) owns its full register/deregister lifecycle -
+  the registrar is a local value wired into the exported `gs.Server`, not a
+  globally registered backend, and swapping backends means swapping the starter.
+  The one shared rule every registry starter follows: **Register must
+  self-renew** (TTL, heartbeat, or an ephemeral node) so that correctness never
+  depends on `Deregister` being called - a process that crashes (SIGKILL, OOM)
+  without deregistering must still be removed by the registry once its
+  keep-alive goes silent; `Deregister` is only the prompt, graceful path for
+  clean shutdown. (2) Registering an RPC framework's *services* stays
+  framework-native per the bullet above. Neither is needed in pure Kubernetes,
+  where the platform registers every Pod behind a Service (discover with
+  `starter-discovery-k8s`); instance-level registration exists for VM /
+  bare-metal / hybrid deployments. Each registry starter is a
+  global/infrastructure archetype (§2.4): it exports a `gs.Server` that
+  registers once the app is ready and deregisters on `PreStop`, so a rolling
+  restart is lossless.
 - **Observability is central-define, edge-bridge.** The starter emits through
   the OTel globals or bridges the library's internal logs into go-spring `log`
   via a `SetLogger` hook; it must also add a go-spring `FileLogger` sink or the

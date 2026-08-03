@@ -107,8 +107,9 @@ func (d *endpointSliceDiscovery) selector(name string) string {
 }
 
 // Resolve lists the Service's EndpointSlices once and flattens them into the
-// current endpoint set.
-func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
+// current endpoint set. opts narrow the result; [discovery.WithScheme] filters
+// by transport scheme.
+func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
 	list, err := d.client.DiscoveryV1().EndpointSlices(d.cfg.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: d.selector(name),
 	})
@@ -120,6 +121,7 @@ func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string) ([]di
 		slices = append(slices, &list.Items[i])
 	}
 	eps := slicesToEndpoints(d.cfg, slices)
+	eps = discovery.FilterByScheme(eps, discovery.NewQuery("", opts...).Scheme)
 	sortEndpoints(eps)
 	return eps, nil
 }
@@ -128,7 +130,8 @@ func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string) ([]di
 // fresh full snapshot on the returned channel on every add/update/delete. The
 // first result carries the snapshot at cache-sync time; the channel closes when
 // ctx is cancelled or Close stops the backend.
-func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string) (<-chan discovery.WatchResult, error) {
+func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
+	scheme := discovery.NewQuery("", opts...).Scheme
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		d.client,
 		d.cfg.ResyncPeriod,
@@ -175,6 +178,7 @@ func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string) (<-chan
 			return
 		}
 		eps := slicesToEndpoints(cfg, slices)
+		eps = discovery.FilterByScheme(eps, scheme)
 		sortEndpoints(eps)
 		// Skip unchanged snapshots: the cache-sync burst fires one Add event per
 		// object, which would otherwise queue stale duplicates ahead of a real

@@ -25,10 +25,6 @@
     "password": {
       "type": "string",
       "default": ""
-    },
-    "name": {
-      "type": "string",
-      "default": "default"
     }
   }
 }

@@ -105,7 +105,7 @@ func resolveAddresses(ctx context.Context, c Config) ([]string, *discovery.Resol
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := discovery.NewResolver(ctx, backend, c.ServiceName)
+	r, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 	}

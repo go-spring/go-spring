@@ -109,7 +109,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 				log.Errorf(ctx, starterTag, "gorm clickhouse: get discovery backend failed: %v", derr)
 				return nil, derr
 			}
-			ld, derr = discovery.NewResolver(ctx, d, c.ServiceName)
+			ld, derr = discovery.NewResolver(ctx, d, c.ServiceName, discovery.WithScheme(c.Scheme))
 			if derr != nil {
 				log.Errorf(ctx, starterTag, "gorm clickhouse: create resolver for %s failed: %v", c.ServiceName, derr)
 				return nil, derr

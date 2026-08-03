@@ -109,7 +109,7 @@ func newClient(cp *gs.ContextProvider, c Config) (*gorm.DB, error) {
 		log.Errorf(ctx, starterTag, "gorm sqlserver: get discovery backend failed: %v", err)
 		return nil, err
 	}
-	ld, err := discovery.NewResolver(ctx, d, c.ServiceName)
+	ld, err := discovery.NewResolver(ctx, d, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		log.Errorf(ctx, starterTag, "gorm sqlserver: create resolver for %s failed: %v", c.ServiceName, err)
 		return nil, err

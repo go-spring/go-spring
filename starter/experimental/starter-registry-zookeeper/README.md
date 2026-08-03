@@ -72,7 +72,6 @@ Connection, bound under `spring.registry.zookeeper`:
 | `base-path` | `/services` | Persistent parent znode under which service directories are created. |
 | `username` | (empty) | Digest-auth username; enables auth when set. |
 | `password` | (empty) | Digest-auth password. |
-| `name` | `default` | Name this registrar is published under in the `spring/discovery` registrar registry. |
 
 Instance, bound under `spring.registry` (backend-agnostic — switching registry
 backends is a blank-import swap, not a config migration):
@@ -84,7 +83,6 @@ backends is a blank-import swap, not a config migration):
 | `id` | (empty) | Instance id override; empty derives a stable one from `service-name` + `addr`. |
 | `weight` | `0` | Load-balancing weight stored with the instance. |
 | `metadata.*` | (none) | Arbitrary key/value attributes stored with the instance. |
-| `backend` | `default` | Which registrar backend to publish to, by its registry name. |
 
 The instance is stored as JSON (`service_name`, `addr`, `weight`, `metadata`) at
 `<base-path>/<service-name>/<id>`, so a discovery backend listing the same base
@@ -92,15 +90,13 @@ path can reconstruct an `Endpoint`.
 
 ## How It Works
 
-- During the container's bean-registration phase the starter connects to the
-  ensemble, builds a ZooKeeper `discovery.Registrar`, and puts it in the
-  `spring/discovery` registrar registry under `name`. It probes the ensemble (an
-  `Exists` call blocks until the session connects) so an unreachable ZooKeeper
-  fails startup. A company can register its own `Registrar` under a different
-  name and point `spring.registry.backend` at it.
-- The exported `gs.Server` resolves the backend by `backend`, waits for
-  readiness, then `Register`s the instance: it creates the persistent parent
-  directories on demand and writes the instance as an **ephemeral** leaf znode.
+- During bean construction the starter connects to the
+  ensemble, builds the ZooKeeper registrar, and wires it into the exported
+  `gs.Server`. It probes the ensemble (an `Exists` call blocks until the
+  session connects) so an unreachable ZooKeeper fails startup.
+- The exported `gs.Server` waits for readiness, then `Register`s the instance:
+  it creates the persistent parent directories on demand and writes the
+  instance as an **ephemeral** leaf znode.
 - On shutdown `PreStop` deregisters the instance (deletes the znode) before the
   pre-stop delay, so discovery removes it while in-flight requests keep being
   served. `Stop` deregisters again as an idempotent fallback. If the process

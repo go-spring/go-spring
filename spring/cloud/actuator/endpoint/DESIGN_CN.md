@@ -1,9 +1,9 @@
 # endpoint 设计
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
-`endpoint` 是位于 stdlib(零依赖基础层)的一个 seam:让一个 starter 向另一个
+`endpoint` 是零依赖基础包:一个 seam,让一个 starter 向另一个
 starter 的管理端口贡献 HTTP 路径,而两边都不必 import 对方。与
-`health.Indicator` 位置相同、用法一致。
+`health.Indicator`(姊妹包 `health`)位置相同、用法一致。
 
 ## 1. 职责与边界
 
@@ -18,9 +18,9 @@ starter 的管理端口贡献 HTTP 路径,而两边都不必 import 对方。与
 ## 2. 关键抽象与缝隙
 
 - **基于接口的收集,配合容器 `Export` 契约。** Go-Spring 容器只按具体类型 +
-  bean 显式 `Export` 的接口做类型索引。把接口放在 stdlib 里,让贡献方(如
-  `starter-otel` 暴露 `/metrics`)与收集方(`starter-actuator`)都只依赖
-  stdlib,不互相 import,遵守 `starter/DESIGN.md` §3。
+  bean 显式 `Export` 的接口做类型索引。把接口放在基础包里,让贡献方(如
+  `starter-otel` 暴露 `/metrics`)与收集方(`starter-actuator`)都只依赖本包,
+  不互相 import,遵守 `starter/DESIGN.md` §3。
 - **`Path()` 是值,不是接线细节。** 贡献方拥有路径,收集方只负责按告知挂载。
   即使日后累加更多路径(`/build-info` / `/threaddump` ...),接口仍稳定。
 

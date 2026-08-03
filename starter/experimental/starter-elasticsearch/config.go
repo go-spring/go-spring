@@ -82,6 +82,12 @@ type Config struct {
 	// static Addresses (or CloudID) are used unchanged.
 	ServiceName string `value:"${service-name:=}"`
 
+	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
+	// "https"). Empty (the default) returns every scheme; set it when a service
+	// exposes both plain and secure instances and this client should reach only
+	// one. Only consulted when ServiceName is set.
+	Scheme string `value:"${scheme:=}"`
+
 	// Discovery selects which registered discovery backend resolves ServiceName.
 	// It is only consulted when ServiceName is set. A company registers its
 	// naming service once via discovery.Register; the default backend name is

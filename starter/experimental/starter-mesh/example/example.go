@@ -49,12 +49,12 @@ type countingDiscovery struct {
 	resolves atomic.Int64
 }
 
-func (d *countingDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, error) {
+func (d *countingDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
 	d.resolves.Add(1)
 	return d.eps, nil
 }
 
-func (d *countingDiscovery) Watch(ctx context.Context, _ string) (<-chan discovery.WatchResult, error) {
+func (d *countingDiscovery) Watch(ctx context.Context, _ string, _ ...discovery.Option) (<-chan discovery.WatchResult, error) {
 	ch := make(chan discovery.WatchResult, 1)
 	ch <- discovery.WatchResult{Endpoints: d.eps}
 	go func() {

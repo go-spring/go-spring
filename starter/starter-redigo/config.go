@@ -78,6 +78,13 @@ type Config struct {
 	// When set, Addr is ignored and the actual address is resolved via service discovery.
 	ServiceName string `value:"${service-name:=}"`
 
+	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
+	// "https"). Empty (the default) returns every scheme; set it when a service
+	// exposes both plain and secure instances and this client should reach only
+	// one. Only consulted when ServiceName is set. Field layout matches
+	// starter-go-redis.
+	Scheme string `value:"${scheme:=}"`
+
 	// Discovery selects which registered discovery backend resolves ServiceName.
 	// It is only consulted when ServiceName is set. A company registers its
 	// naming service once via discovery.Register; the default backend name is
@@ -138,7 +145,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Pool, e
 		if err != nil {
 			return nil, err
 		}
-		resolver, err = discovery.NewResolver(ctx, d, c.ServiceName)
+		resolver, err = discovery.NewResolver(ctx, d, c.ServiceName, discovery.WithScheme(c.Scheme))
 		if err != nil {
 			return nil, err
 		}

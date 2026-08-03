@@ -72,6 +72,11 @@
       "type": "string",
       "default": ""
     },
+    "scheme": {
+      "type": "string",
+      "default": "",
+      "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
+    },
     "discovery": {
       "type": "string",
       "default": "default"

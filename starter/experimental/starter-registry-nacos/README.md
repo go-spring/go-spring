@@ -76,7 +76,6 @@ Connection, bound under `spring.registry.nacos`:
 | `username` | (empty) | Auth username; empty for anonymous clusters. |
 | `password` | (empty) | Auth password. |
 | `timeout-ms` | `5000` | Per-call timeout, including the startup probe. |
-| `name` | `default` | Name this registrar is published under in the `spring/discovery` registrar registry. |
 
 Instance, bound under `spring.registry` (backend-agnostic — switching registry
 backends is a blank-import swap, not a config migration):
@@ -88,20 +87,15 @@ backends is a blank-import swap, not a config migration):
 | `id` | (empty) | Accepted for parity; unused by Nacos, which identifies an instance by `ip:port`. |
 | `weight` | `0` | Load-balancing weight; `0` falls back to Nacos's default of `1`. |
 | `metadata.*` | (none) | Arbitrary key/value attributes stored with the instance. |
-| `backend` | `default` | Which registrar backend to publish to, by its registry name. |
 
 ## How It Works
 
-- During the container's bean-registration phase the starter builds a Nacos
-  `discovery.Registrar` and puts it in the `spring/discovery` registrar registry
-  under `name` — mirroring how `starter-discovery-k8s` registers discovery
-  backends. It probes the server (a service listing) so an unreachable Nacos
-  fails startup. A company can register its own `Registrar` under a different
-  name and point `spring.registry.backend` at it.
-- The exported `gs.Server` resolves the backend by `backend`, waits for
-  readiness, then `Register`s the instance as **ephemeral**. The Nacos SDK keeps
-  it alive with its own background heartbeat, and Nacos drops it automatically if
-  the process dies without deregistering.
+- During bean construction the starter builds the Nacos
+  registrar and wires it into the exported `gs.Server`. It probes the server
+  (a service listing) so an unreachable Nacos fails startup.
+- The exported `gs.Server` waits for readiness, then `Register`s the instance as
+  **ephemeral**. The Nacos SDK keeps it alive with its own background heartbeat,
+  and Nacos drops it automatically if the process dies without deregistering.
 - On shutdown `PreStop` deregisters the instance before the pre-stop delay, so
   discovery removes it while in-flight requests keep being served. `Stop`
   deregisters again as an idempotent fallback.

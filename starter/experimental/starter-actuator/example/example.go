@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/experimental/actuator/health"
+	"go-spring.org/spring/cloud/actuator/health"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-actuator"
 )

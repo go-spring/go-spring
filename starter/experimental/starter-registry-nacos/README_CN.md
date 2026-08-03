@@ -68,10 +68,8 @@ spring.registry.metadata.version=v1
 | `username` | (空) | 认证用户名,匿名集群留空。 |
 | `password` | (空) | 认证密码。 |
 | `timeout-ms` | `5000` | 每次调用超时,含启动探测。 |
-| `name` | `default` | 本 registrar 在 `spring/discovery` registrar 注册表中的名字。 |
 
-实例配置,绑定于 `spring.registry`(与后端无关 —— 切换注册中心后端只需替换匿名导入,
-无需迁移配置):
+实例配置,绑定于 `spring.registry`(描述实例本身,与注册中心后端无关):
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -80,16 +78,13 @@ spring.registry.metadata.version=v1
 | `id` | (空) | 为与其他后端对齐而保留;Nacos 不用,它以 `ip:port` 标识实例。 |
 | `weight` | `0` | 负载均衡权重;`0` 回退为 Nacos 默认的 `1`。 |
 | `metadata.*` | (无) | 随实例存储的任意键值属性。 |
-| `backend` | `default` | 按注册表名字选择发布到哪个 registrar 后端。 |
 
 ## 工作原理
 
-- 在容器的 bean 注册阶段,starter 构建一个 Nacos `discovery.Registrar` 并以 `name`
-  放进 `spring/discovery` 的 registrar 注册表 —— 与 `starter-discovery-k8s` 注册发现
-  后端的方式一致。它会探测服务端(列举服务),不可达的 Nacos 会让启动失败。公司可用
-  另一个名字注册自己的 `Registrar`,再把 `spring.registry.backend` 指向它。
-- 导出的 `gs.Server` 按 `backend` 解析后端,等待就绪,然后把实例注册为**临时实例**。
-  Nacos SDK 以后台心跳保活;若进程未注销就退出,Nacos 会自动摘除。
+- 在 bean 构造阶段,starter 构建好 Nacos registrar 并注入导出的 `gs.Server`。
+  它会探测服务端(列举服务),不可达的 Nacos 会让启动失败。
+- 导出的 `gs.Server` 等待就绪,然后把实例注册为**临时实例**。Nacos SDK 以后台心跳保活;
+  若进程未注销就退出,Nacos 会自动摘除。
 - 停机时 `PreStop` 在 pre-stop 延迟之前注销实例,让发现体系在在途请求仍被服务时就摘掉
   它。`Stop` 作为幂等兜底再次注销。
 

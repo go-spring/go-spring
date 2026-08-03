@@ -26,15 +26,25 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/log"
-	"go-spring.org/spring/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
+
+// instance is the instance this process advertises to the Nacos registry. It is
+// the local write-side value built from RegistrationConfig in Server.Run; the
+// crash-safety contract every registry starter follows lives in starter/DESIGN
+// §3 (Register must self-renew so correctness never depends on Deregister).
+type instance struct {
+	ServiceName string
+	ID          string
+	Addr        string
+	Weight      int
+	Metadata    map[string]string
+}
 
 // nacosRegistrar publishes instances to a Nacos naming service. Instances are
 // registered as ephemeral, so the Nacos SDK keeps them alive with its own
 // background heartbeat and Nacos drops them automatically if the process dies
 // without Deregister — no heartbeat goroutine is needed here.
-// It implements discovery.Registrar.
 type nacosRegistrar struct {
 	client  naming_client.INamingClient
 	group   string
@@ -85,7 +95,7 @@ func newNacosRegistrar(c NacosConfig) (*nacosRegistrar, error) {
 // Register publishes reg as an ephemeral Nacos instance. The SDK then keeps it
 // alive with its own heartbeat until Deregister. Registering the same ip:port
 // again refreshes the entry.
-func (r *nacosRegistrar) Register(_ context.Context, reg discovery.Instance) error {
+func (r *nacosRegistrar) Register(_ context.Context, reg instance) error {
 	host, port, err := splitAddr(reg.Addr)
 	if err != nil {
 		return err
@@ -119,7 +129,7 @@ func (r *nacosRegistrar) Register(_ context.Context, reg discovery.Instance) err
 
 // Deregister removes the instance. It is idempotent: deregistering an instance
 // that is not registered is a no-op on the Nacos side.
-func (r *nacosRegistrar) Deregister(_ context.Context, reg discovery.Instance) error {
+func (r *nacosRegistrar) Deregister(_ context.Context, reg instance) error {
 	host, port, err := splitAddr(reg.Addr)
 	if err != nil {
 		return err

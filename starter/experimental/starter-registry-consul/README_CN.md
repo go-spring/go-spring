@@ -65,12 +65,10 @@ spring.registry.metadata.version=v1
 | `datacenter` | (空) | 注册到的 datacenter,空则用 agent 的。 |
 | `token` | (空) | ACL token。 |
 | `namespace` | (空) | Consul Enterprise namespace。 |
-| `name` | `default` | 本 registrar 在 `spring/discovery` registrar 注册表中的名字。 |
 | `ttl` | `15s` | TTL 健康检查;starter 以 TTL 一半的间隔心跳。 |
 | `deregister-critical-after` | `1m` | 检查持续 critical 超过此时长(如崩溃后),Consul 自动摘除实例。 |
 
-实例配置,绑定于 `spring.registry`(与后端无关 —— 切换注册中心后端只需替换匿名导入,
-无需迁移配置):
+实例配置,绑定于 `spring.registry`(描述实例本身,与注册中心后端无关):
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -79,16 +77,12 @@ spring.registry.metadata.version=v1
 | `id` | (空) | 实例 id 覆盖;空则由 `service-name` + `addr` 推导出稳定 id。 |
 | `weight` | `0` | 负载均衡权重;`0` 用 Consul 默认。 |
 | `metadata.*` | (无) | 随实例存储的任意键值属性。 |
-| `backend` | `default` | 按注册表名字选择发布到哪个 registrar 后端。 |
 
 ## 工作原理
 
-- 在容器的 bean 注册阶段,starter 构建一个 Consul `discovery.Registrar` 并以 `name`
-  放进 `spring/discovery` 的 registrar 注册表 —— 与 `starter-discovery-k8s` 注册发现
-  后端的方式一致。公司可用另一个名字注册自己的 `Registrar`,再把
-  `spring.registry.backend` 指向它。
-- 导出的 `gs.Server` 按 `backend` 解析后端,等待就绪,然后带一个 Consul **TTL 健康
-  检查**`Register` 实例。它立即让检查通过,并以 TTL 一半的间隔在后台心跳保活。
+- 在 bean 构造阶段,starter 构建好 Consul registrar 并注入导出的 `gs.Server`。
+- 导出的 `gs.Server` 等待就绪,然后带一个 Consul **TTL 健康检查**`Register` 实例。它
+  立即让检查通过,并以 TTL 一半的间隔在后台心跳保活。
 - 停机时 `PreStop` 在 pre-stop 延迟之前注销实例(停心跳并从 Consul 摘除),让发现体系
   在在途请求仍被服务时就摘掉它。`Stop` 作为幂等兜底再次注销。
 
