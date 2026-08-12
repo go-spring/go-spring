@@ -147,7 +147,7 @@ To drive the continuous growth of Go-Spring, we warmly invite your support. Your
 
 ## Star History
 
-<img src="https://api.star-history.com/svg?repos=go-spring/go-spring&type=Date" width="600" alt="Star History"/>
+<img src="https://star-history.dera.page/svg?repos=go-spring/go-spring&type=Date" width="600" alt="Star History"/>
 
 ## License
 

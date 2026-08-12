@@ -146,7 +146,7 @@ go run main.go
 
 ## Star History
 
-<img src="https://api.star-history.com/svg?repos=go-spring/go-spring&type=Date" width="600" alt="Star History"/>
+<img src="https://star-history.dera.page/svg?repos=go-spring/go-spring&type=Date" width="600" alt="Star History"/>
 
 ## 许可证
 
