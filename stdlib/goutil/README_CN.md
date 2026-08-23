@@ -7,8 +7,7 @@
 包内覆盖 `func(ctx)`（`Go`）与 `func(ctx) (T, error)`（`GoValue`）两种签名，每次启动都
 返回带 `Wait()` 的句柄，无需手写 channel 或维护 `sync.WaitGroup`。另有两个兄弟入口补全
 这条链路：`SafeRun` 同步执行函数并把 panic 转成正常返回路径上的 error；`ReportPanic`
-把你自己的 recover 站点拿到的 panic 值经同一个 `OnPanic` 回调上报。它不是 worker 池、
-信号量或取消框架 —— `errgroup`、`semaphore` 之类留在 `golang.org/x/sync`。
+把你自己的 recover 站点拿到的 panic 值经同一个 `OnPanic` 回调上报。
 
 ## 使用方式
 
@@ -213,17 +212,18 @@ func ProcessBatch(items []Item) error {
 }
 ```
 
-### 与其他方案的对比
+### API 列表
 
-| 方案 | Panic 恢复 | Context 控制 | 返回值 | 同步等待 |
-|------|-----------|-------------|--------|---------|
-| go func() | ❌ | ✅ | ✅ | ❌ |
-| errgroup.Group | ❌ | ✅ | ✅ | ✅ |
-| **goutil** | ✅ | ✅ | ✅ | ✅ |
+- `Go(ctx context.Context, f func(ctx context.Context), mode CancelMode) *Status` —— 启动带 panic 恢复的 goroutine，`Status.Wait()` 等待结束
+- `GoValue[T any](ctx context.Context, f GoValueFunc[T], mode CancelMode) *ValueStatus[T]` —— 同上，但捕获 `(T, error)`；panic 被恢复后转成 `Wait()` 返回的 error
+- `SafeRun(ctx context.Context, f func(ctx context.Context) error) error` —— 同步执行 `f`，把 panic 转成返回的 error
+- `ReportPanic(ctx context.Context, recovered any)` —— 把已 recover 的 panic 值上报给 `OnPanic`（用于自己的 recover 站点）
+- `OnPanic func(ctx context.Context, info PanicInfo)` —— 全局 panic 回调，默认打印到 stdout
+- `CancelMode`：`InheritCancel`（透传 context）/ `DetachCancel`（`context.WithoutCancel`）
 
 ## 关键设计
 
-`goutil` 属于零依赖的 `stdlib` 层 —— 是 goroutine 启动的薄封装，不是并发框架。
+`goutil` 是 goroutine 启动的薄封装，不是并发框架。
 
 - **全局 `OnPanic` 缝隙**：一个包级 `var`，应用在初始化时覆盖它以接入日志 / 监控栈。
   刻意选择"变量"而不是 getter/setter：整个进程只有一个配置点，set-once 已经够用。
@@ -234,10 +234,6 @@ func ProcessBatch(items []Item) error {
   `ValueStatus[T].Wait` 还会把恢复到的 panic 转成 error 返回，所以 `GoValue` 调用方
   只需要看一个错误通道，无论失败来自 `return err` 还是 `panic`。
 
-约束：`OnPanic` 在 recover 后的同一个 goroutine 内执行，慢钩子或钩子本身 panic 都会
-挡住它本应观察的关停路径 —— 保持它简短，且绝不能 panic。默认 `OnPanic` 通过
-`fmt.Printf` 直接打印到 stdout（给测试和小程序用的零配置行为），正式服务必须覆盖。
-
 ## 许可证
 
-Apache License 2.0
+Apache License 2.0，详见 [LICENSE](../../LICENSE)。

@@ -3,9 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `listutil` gives Go's `container/list` a generic, type-safe skin and adds a few
-convenience helpers for slices and writers. Part of the zero-dependency `stdlib`
-layer: every method is a one-liner over the embedded stdlib type, plus the
-small utilities that show up repeatedly in framework code.
+convenience helpers for slices and writers. 
 
 ## Usage
 
@@ -36,18 +34,6 @@ API surface:
   - `WriteStrings(w io.Writer, values ...string) error` — write strings in
     order, stopping at the first error.
 
-## Design
-
-- **Restore compile-time typing, not a rewrite**: every method forwards to the
-  embedded `container/list` type; not a linked-list rewrite, not a functional
-  collections library.
-- **`Element[T]` embeds `*list.Element` by pointer** so `Valid()` can safely
-  compare it to nil; the zero value is a valid "nil" end-of-iteration marker.
-- **`AllOfList` panics on mixed types** — deliberate: it uses `e.Value.(T)`. A
-  type-checked variant would need an `ok, err` shape most callers don't want.
-- **No foreign-list check**: the wrapper does not verify an `Element[T]` comes
-  from the same list — `container/list` itself panics there, no extra check.
-
 ## License
 
-Apache License 2.0
+Apache License 2.0. See [LICENSE](../../LICENSE).

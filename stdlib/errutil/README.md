@@ -2,8 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`errutil` is a lightweight utility package for structured error handling, part
-of the zero-dependency `stdlib` layer; every helper is a pure function over
+`errutil` is a lightweight utility package for structured error handling; every helper is a pure function over
 Go's built-in `error` type. It provides two orthogonal wrapping verbs:
 **`Explain`** adds human-readable meaning — *what* went wrong in business
 terms, user-facing and semantic — while **`Stack`** adds call-path context —
@@ -96,14 +95,6 @@ if err := errutil.RequireAny("http-client",
 - **Deliberately not a stack-trace library.** `Stack` records a name for each
   step; it does not capture `runtime.Callers` frames. Anything richer belongs
   in a dedicated tracing package.
-- **Zero third-party imports.** `errutil` sits at the very bottom of the
-  stdlib layer and is imported by most other stdlib packages. Format strings
-  follow `fmt` semantics; passing a `%w` verb explicitly would wrap twice —
-  callers should not.
-- **Precondition helpers live here, not in a config package**: they are
-  imperative runtime checks expressed through `Explain` — pure string tests,
-  no dependency on the config engine — covering cross-field rules that
-  declarative per-field validation cannot express.
 
 ## License
 

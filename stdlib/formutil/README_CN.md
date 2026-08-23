@@ -1,9 +1,9 @@
 # formutil
+
 [English](README.md) | [中文](README_CN.md)
 
 `formutil` 提供 Go 值与表单键值（`url.Values`、`[]string`）之间的泛型编解码
-工具，供 Go-Spring 的 HTTP 客户端 / 服务端绑定代码使用。属于零依赖的
-`stdlib` 层；本包不做校验——唯一的横向规则是范围检查，其它都交由上层。
+工具，供 Go-Spring 的 HTTP 客户端 / 服务端绑定代码使用。
 
 ## 使用方式
 
@@ -26,15 +26,43 @@ _ = formutil.EncodeString(v, "name", "alice")
 _ = formutil.EncodeIntPtr[int64](v, "opt", nil) // 缺省
 ```
 
-### API
+### API 列表
 
-- 对 `bool`、有 / 无符号整数、浮点数、`string`、字节切片以及任意 JSON 提供
-  对称的 `Decode<Type>` / `Encode<Type>` 对。
-- `<Type>Ptr` 变体（`Bytes` / `JSON` / `List` 除外）：编码时 `nil` 表示
-  "字段缺省"，解码时返回 `*T`。
-- 通过泛型 `DecodeList` / `EncodeList` 处理重复字段。
-- 整数 / 浮点数解码借助 `stdlib/mathutil` 做溢出检查。
-- JSON 编解码委托给 `stdlib/jsonflow`。
+#### 解码（`[]string` → Go 值）
+
+| 函数 | 说明 |
+|---|---|
+| `DecodeBool(key string, values []string) (bool, error)` | 解码 `bool` |
+| `DecodeBoolPtr(key string, values []string) (*bool, error)` | 解码为 `*bool` |
+| `DecodeInt[T ~int64\|~int32\|~int16\|~int8\|~int](key, values) (T, error)` | 解码有符号整数，溢出检查 |
+| `DecodeIntPtr[...](...) (*T, error)` | 解码为 `*T` |
+| `DecodeUint[T ~uint64\|~uint32\|~uint16\|~uint8\|~uint](...) (T, error)` | 解码无符号整数，溢出检查 |
+| `DecodeUintPtr[...](...) (*T, error)` | 解码为 `*T` |
+| `DecodeFloat[T ~float64\|~float32](...) (T, error)` | 解码浮点数，溢出检查 |
+| `DecodeFloatPtr[...](...) (*T, error)` | 解码为 `*T` |
+| `DecodeString(key, values) (string, error)` | 解码 `string` |
+| `DecodeStringPtr(key, values) (*string, error)` | 解码为 `*string` |
+| `DecodeBytes(key, values) ([]byte, error)` | 解码字节切片（标准 base64） |
+| `DecodeJSON[T any](key, values) (T, error)` | 解码任意 JSON（委托 `stdlib/jsonflow`） |
+| `DecodeList[T any](key string, values []string, fn Decoder[T]) ([]T, error)` | 用 `fn` 逐个解码重复字段 |
+
+#### 编码（Go 值 → `url.Values`）
+
+| 函数 | 说明 |
+|---|---|
+| `EncodeBool(m url.Values, key string, val bool) error` | 编码 `bool` |
+| `EncodeBoolPtr(m, key, val *bool) error` | `nil` 时省略该字段 |
+| `EncodeInt[T ~int64\|~int32\|~int16\|~int8\|~int](m, key, val T) error` | 编码有符号整数 |
+| `EncodeIntPtr[...](m, key, val *T) error` | `nil` 时省略该字段 |
+| `EncodeUint[T ~uint64\|~uint32\|~uint16\|~uint8\|~uint](m, key, val T) error` | 编码无符号整数 |
+| `EncodeUintPtr[...](m, key, val *T) error` | `nil` 时省略该字段 |
+| `EncodeFloat[T ~float64\|~float32](m, key, val T) error` | 编码浮点数 |
+| `EncodeFloatPtr[...](m, key, val *T) error` | `nil` 时省略该字段 |
+| `EncodeString(m, key, val string) error` | 编码 `string` |
+| `EncodeStringPtr(m, key, val *string) error` | `nil` 时省略该字段 |
+| `EncodeBytes(m, key, val []byte) error` | 编码字节切片（标准 base64） |
+| `EncodeJSON[T any](m, key, val T) error` | 编码任意 JSON（委托 `stdlib/jsonflow`） |
+| `EncodeList[T any](m, key string, values []T, fn Encoder[T]) error` | 用 `fn` 逐个编码切片 |
 
 ### 规则
 
@@ -44,21 +72,6 @@ _ = formutil.EncodeIntPtr[int64](v, "opt", nil) // 缺省
 - `DecodeBytes` / `EncodeBytes` 使用标准 base64。
 - `EncodeXxxPtr` 在指针为 `nil` 时完全省略该字段。
 
-## 关键设计
-
-只提供单字段、原始类型级别的编解码，结构体绑定交给调用方（HTTP 框架的
-binder / 声明式 client）；编码与解码对称，写字段的代码能读回同一字段。
-
-- 泛型函数集（`Decode/EncodeInt[T]`）而非每类型一个文件：接口扁平，代码
-  生成器可按字段类型对应到一个函数。
-- 解码入参统一 `[]string`，与 `url.Values[key]` 对齐；编码侧 `nil` 指针表示
-  缺省，绑定器无需位图就能区分"未设置"与"零值"。
-- 字节切片用 base64、JSON 委托 `stdlib/jsonflow`，锁死规范表达，使同一
-  binder 的两端天生对齐。
-- 约束：除 `stdlib` 内部包外零依赖；浮点数无论类型宽窄都按
-  `strconv.FormatFloat(..., 'f', -1, 64)` 格式化，`T = float32` 时丢失精度
-  信息；溢出错误是 `errutil.Explain` 的普通错误串而非 sentinel。
-
-## License
+## 许可证
 
 Apache License 2.0，详见 [LICENSE](../../LICENSE)。

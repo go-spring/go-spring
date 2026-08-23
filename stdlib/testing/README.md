@@ -15,12 +15,22 @@ import (
 )
 ```
 
-The module holds four packages: `assert` and `require` (the two public entry points), `internal` (the shared engine), and `testcase` (the shared suite that keeps both entry points in check). The former `testing/container` package was removed on 2026-08-16 — repo convention runs docker-dependent integration tests out-of-process via `check.sh`, and in-process container scenarios can use `testcontainers-go` directly; `testing/contract` has moved to `cloud/contract`.
-
 ### assert vs require
 
 - **`assert`** does not stop the test when an assertion fails: later assertions are still checked, which is useful when you want one run to report every failure at once.
 - **`require`** stops the test immediately on the first failure — for critical preconditions whose absence would make later assertions panic or misbehave, e.g. verifying an object is non-nil before touching it.
+
+Use `require` when a failed check invalidates everything after it (the value being unwrapped is nil, the fixture failed to set up); use `assert` when multiple independent assertions in one test are informative on their own. The two are routinely mixed in a single test:
+
+```go
+func TestUser(t *testing.T) {
+    user := loadUser()
+    require.That(t, user).NotNil() // stop here if nil — the next line would panic
+
+    assert.String(t, user.Email).IsEmail()
+    assert.Number(t, user.Age).GreaterThan(0)
+}
+```
 
 ### Basic Example
 
@@ -95,14 +105,14 @@ Usable with any type.
 | `False(...msg)` | Verify that the boolean value is `false` |
 | `Nil(...msg)` | Verify that the value is `nil` (correctly handles nil in interface types) |
 | `NotNil(...msg)` | Verify that the value is not `nil` |
-| `Equal(expected, ...msg)` | Deep comparison using `reflect.DeepEqual` |
-| `NotEqual(expected, ...msg)` | Verify not deeply equal |
-| `Same(expected, ...msg)` | Exact comparison using `==` (identical per Go `==`) |
-| `NotSame(expected, ...msg)` | Comparison using `!=` |
-| `TypeOf(interface, ...msg)` | Verify that the type is assignable to the target type |
-| `Implements(interface, ...msg)` | Verify that the type implements the specified interface |
-| `Has(expected, ...msg)` | Call the value's `Has` method, verify it returns `true` |
-| `Contains(expected, ...msg)` | Call the value's `Contains` method, verify it returns `true` |
+| `Equal(expect, ...msg)` | Deep comparison using `reflect.DeepEqual` |
+| `NotEqual(expect, ...msg)` | Verify not deeply equal |
+| `Same(expect, ...msg)` | Exact comparison using `==` (identical per Go `==`) |
+| `NotSame(expect, ...msg)` | Comparison using `!=` |
+| `TypeOf(expect, ...msg)` | Verify that the type is assignable to the target type |
+| `Implements(expect, ...msg)` | Verify that the type implements the specified interface |
+| `Has(expect, ...msg)` | Call the value's `Has` method, verify it returns `true` |
+| `Contains(expect, ...msg)` | Call the value's `Contains` method, verify it returns `true` |
 
 #### Error Assertions (Error)
 
@@ -229,16 +239,7 @@ Top-level function used to detect whether a function panics.
 |--------|-------------|
 | `Panic(t, fn, pattern, ...msg)` | Assert that `fn` panics, and the panic message matches the regex `pattern` |
 
-## Design
-
-**One engine, two thin wrappers.** The fluent API and every check live in `internal`; `assert` and `require` only set the `fatalOnFailure` flag and delegate — that bool is the only behavioural difference between the two modes. `internal` is unexported on purpose: every callable API goes through a mode wrapper, so the fail-fast / fail-continue choice stays explicit at call sites.
-
-**`internal.TestingT` seam.** Every assertion function accepts this minimal `*testing.T` surface (`Helper` / `Error` / `Fatal`), so the same library works with a real `*testing.T`, a subtest, and an outer harness that fakes it — the `testcase` suite itself drives assertions through `internal.MockTestingT` to record and verify failure messages.
-
-**Standard library only.** `stdlib/testing` and its subpackages import nothing but the Go standard library (plus each other); any other dependency would leak into every module's test binary. `stdlib/errutil` appears only in the `testcase` suite's test files, never in the engine.
-
-**Rebuilt instead of depending on testify.** Two-mode fluent assertion is simple enough that owning it removes a mandatory third-party dependency for every stdlib consumer; the API stays intentionally close to testify for muscle memory, but the implementation is ours. Likewise, one shared `testcase` suite beats duplicating tests per package — separate copies would drift as the two modes evolve separately.
-
 ## License
 
-Apache License 2.0
+`testing` is distributed under the Apache License 2.0. See
+[LICENSE](../../LICENSE) for details.

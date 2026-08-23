@@ -37,7 +37,7 @@ for each event {
 }
 ```
 
-### API
+### API 列表
 
 | 方法 | 说明 |
 |---|---|
@@ -58,6 +58,6 @@ for each event {
 - **按字节截断，不按字符截断**：多字节 UTF-8 字符（中文、emoji）可能在尾部被劈开，`Bytes()`/`String()` 留下非法 UTF-8。好在 UTF-8 自同步，截断点之前的内容不受影响，要干净字符串用 `strings.ToValidUTF8` 处理一次即可。
 - **不可并发使用**，跟 `bytes.Buffer` 一样。上限构造时定一次就不再变，`Reset` 只清内容、不动上限。
 
-## License
+## 许可证
 
 `bufutil` 基于 Apache License 2.0 发布，详见 [LICENSE](../../LICENSE)。

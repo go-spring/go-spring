@@ -45,7 +45,7 @@ func ListOf[T any](items ...T) *list.List {
 // The caller must ensure that every element stored in the list is of type T.
 // If an element has a different type, this function will panic at runtime.
 //
-// If the list is nil or empty, an empty slice is returned.
+// If the list is nil or empty, a nil slice is returned.
 func AllOfList[T any](l *list.List) []T {
 	if l == nil || l.Len() == 0 {
 		return nil

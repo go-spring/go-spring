@@ -14,17 +14,10 @@
  * limitations under the License.
  */
 
-// Package httputil provides small, OTel-free helpers for server starters (gin,
-// echo, fiber, ...) to derive OpenTelemetry HTTP semantic-convention attribute
-// values from an inbound request, plus a header-flattening convenience.
-//
-// The semconv functions compute only the *values* (strings/ints) for the
-// attributes - they return plain Go types, not otel attribute.KeyValue, so the
-// package stays free of any OTel dependency. Callers wrap the results with
-// attribute.String/Int as needed.
-//
-// The conventions followed are the OTel HTTP semconv stable since v1.27.0:
-// url.scheme, network.protocol.version, server.address, server.port.
+// Package httputil provides small helpers for deriving common values from an
+// HTTP request - the scheme, the protocol version, and the server address and
+// port - plus a header-flattening convenience. All functions return plain Go
+// types (string/int) and depend only on the standard library.
 package httputil
 
 import (
@@ -35,8 +28,8 @@ import (
 	"strings"
 )
 
-// Scheme returns the OTel url.scheme value for a request: "https" when it
-// arrived over TLS, "http" otherwise.
+// Scheme returns the scheme of a request: "https" when it arrived over TLS,
+// "http" otherwise.
 func Scheme(r *http.Request) string {
 	if r.TLS != nil {
 		return "https"
@@ -44,10 +37,10 @@ func Scheme(r *http.Request) string {
 	return "http"
 }
 
-// ProtocolVersion maps a request's Proto ("HTTP/1.1", "HTTP/2.0", ...) to the
-// OTel network.protocol.version value ("1.1", "2", "3"). It takes the proto
-// string rather than a *http.Request so non-HTTP/1.1 transports (gRPC, HTTP/3
-// via quic) that obtain the protocol version elsewhere can reuse it.
+// ProtocolVersion maps a request's Proto ("HTTP/1.1", "HTTP/2.0", ...) to its
+// version number ("1.1", "2", "3"). It takes the proto string rather than a
+// *http.Request so non-HTTP/1.1 transports (gRPC, HTTP/3 via quic) that obtain
+// the protocol version elsewhere can reuse it.
 func ProtocolVersion(proto string) string {
 	switch proto {
 	case "HTTP/1.0":
@@ -63,11 +56,9 @@ func ProtocolVersion(proto string) string {
 	}
 }
 
-// ServerAddrPort splits a Host header value into the OTel server.address (host)
-// and server.port. The port is returned as 0 when absent or the scheme default
-// (80 for http, 443 for https), since the semconv makes server.port
-// conditionally required only when non-default. scheme is the url.scheme value
-// ("http"/"https"), typically from [Scheme].
+// ServerAddrPort splits a Host header value into its host and port. The port is
+// returned as 0 when absent or equal to the scheme's default (80 for http, 443
+// for https). scheme is "http"/"https", typically from [Scheme].
 func ServerAddrPort(host, scheme string) (addr string, port int) {
 	addr = host
 	if h, p, err := net.SplitHostPort(host); err == nil {

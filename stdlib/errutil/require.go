@@ -14,12 +14,6 @@
  * limitations under the License.
  */
 
-// require.go holds errutil's precondition helpers, RequireField and RequireAny.
-// See the package doc for how they complement spring/conf's declarative `expr:`
-// tag. They are intentionally general — pure string checks with no dependency
-// on the config engine — so they apply to any string field, not only bound
-// configuration.
-
 package errutil
 
 import "strings"

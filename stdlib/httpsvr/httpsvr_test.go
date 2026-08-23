@@ -21,6 +21,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -242,4 +243,27 @@ func TestStream(t *testing.T) {
 	// Each event is one SSE frame: a "data: " line terminated by a blank line,
 	// otherwise spec-compliant clients never dispatch the event.
 	assert.That(t, strings.Count(body, "data: \"world\"\n\n")).Equal(5)
+}
+
+func TestRequestContext(t *testing.T) {
+	// GetRequestContext returns nil when no RequestContext was stored.
+	assert.That(t, httpsvr.GetRequestContext(context.Background())).Nil()
+
+	// Drive the request through a ServeMux pattern so PathValue is populated.
+	var rc httpsvr.RequestContext
+	var gotW http.ResponseWriter
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+		gotW = w
+		rc = httpsvr.NewSimpleContext(r, w)
+	})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/users/42", nil))
+
+	assert.String(t, rc.PathValue("id")).Equal("42")
+	assert.That(t, rc.Request().URL.Path).Equal("/v1/users/42")
+	assert.That(t, rc.ResponseWriter()).Equal(gotW)
+
+	ctx := httpsvr.WithRequestContext(context.Background(), rc)
+	assert.That(t, httpsvr.GetRequestContext(ctx)).Equal(rc)
 }

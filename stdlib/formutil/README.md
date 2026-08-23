@@ -1,11 +1,10 @@
 # formutil
+
 [English](README.md) | [中文](README_CN.md)
 
 `formutil` provides generic encode / decode helpers between Go values and
 form-style key-value maps (`url.Values`, `[]string`), used by the Go-Spring
-HTTP client / server binding code. Part of the zero-dependency `stdlib`
-layer; not a validator — range checking is the only cross-cutting rule here,
-everything else is delegated.
+HTTP client / server binding code.
 
 ## Usage
 
@@ -30,13 +29,41 @@ _ = formutil.EncodeIntPtr[int64](v, "opt", nil) // omitted
 
 ### API
 
-- Symmetric `Decode<Type>` / `Encode<Type>` pairs for `bool`, signed and
-  unsigned integers, floats, `string`, byte slices, and arbitrary JSON.
-- `<Type>Ptr` variants (except `Bytes` / `JSON` / `List`) that treat `nil` as
-  "absent" on encode and return `*T` on decode.
-- Generic `DecodeList` / `EncodeList` for repeated form fields.
-- Overflow-safe integer / float decoding via `stdlib/mathutil`.
-- JSON encoding delegates to `stdlib/jsonflow`.
+#### Decode (`[]string` → Go values)
+
+| Function | Description |
+|---|---|
+| `DecodeBool(key string, values []string) (bool, error)` | Decode a `bool` |
+| `DecodeBoolPtr(key string, values []string) (*bool, error)` | Decode into `*bool` |
+| `DecodeInt[T ~int64\|~int32\|~int16\|~int8\|~int](key, values) (T, error)` | Decode a signed integer, overflow-checked |
+| `DecodeIntPtr[...](...) (*T, error)` | Decode into `*T` |
+| `DecodeUint[T ~uint64\|~uint32\|~uint16\|~uint8\|~uint](...) (T, error)` | Decode an unsigned integer, overflow-checked |
+| `DecodeUintPtr[...](...) (*T, error)` | Decode into `*T` |
+| `DecodeFloat[T ~float64\|~float32](...) (T, error)` | Decode a float, overflow-checked |
+| `DecodeFloatPtr[...](...) (*T, error)` | Decode into `*T` |
+| `DecodeString(key, values) (string, error)` | Decode a `string` |
+| `DecodeStringPtr(key, values) (*string, error)` | Decode into `*string` |
+| `DecodeBytes(key, values) ([]byte, error)` | Decode a byte slice (standard base64) |
+| `DecodeJSON[T any](key, values) (T, error)` | Decode arbitrary JSON (delegates to `stdlib/jsonflow`) |
+| `DecodeList[T any](key string, values []string, fn Decoder[T]) ([]T, error)` | Decode repeated fields one by one via `fn` |
+
+#### Encode (Go values → `url.Values`)
+
+| Function | Description |
+|---|---|
+| `EncodeBool(m url.Values, key string, val bool) error` | Encode a `bool` |
+| `EncodeBoolPtr(m, key, val *bool) error` | Omit the field when `nil` |
+| `EncodeInt[T ~int64\|~int32\|~int16\|~int8\|~int](m, key, val T) error` | Encode a signed integer |
+| `EncodeIntPtr[...](m, key, val *T) error` | Omit the field when `nil` |
+| `EncodeUint[T ~uint64\|~uint32\|~uint16\|~uint8\|~uint](m, key, val T) error` | Encode an unsigned integer |
+| `EncodeUintPtr[...](m, key, val *T) error` | Omit the field when `nil` |
+| `EncodeFloat[T ~float64\|~float32](m, key, val T) error` | Encode a float |
+| `EncodeFloatPtr[...](m, key, val *T) error` | Omit the field when `nil` |
+| `EncodeString(m, key, val string) error` | Encode a `string` |
+| `EncodeStringPtr(m, key, val *string) error` | Omit the field when `nil` |
+| `EncodeBytes(m, key, val []byte) error` | Encode a byte slice (standard base64) |
+| `EncodeJSON[T any](m, key, val T) error` | Encode arbitrary JSON (delegates to `stdlib/jsonflow`) |
+| `EncodeList[T any](m, key string, values []T, fn Encoder[T]) error` | Encode a slice one by one via `fn` |
 
 ### Rules
 
@@ -47,24 +74,6 @@ _ = formutil.EncodeIntPtr[int64](v, "opt", nil) // omitted
   value would not fit `T`.
 - `DecodeBytes` / `EncodeBytes` use standard base64.
 - `EncodeXxxPtr` omits the field entirely when the pointer is `nil`.
-
-## Design
-
-Single-field, primitive helpers only — struct-level binding stays in the
-caller; encode/decode pairs are symmetric so the code that emits a field can
-parse it back.
-
-- Generic functions (`Decode/EncodeInt[T]`) instead of type-per-file: flat
-  surface, one generator-targetable function per field type.
-- Decode input is `[]string` to match `url.Values[key]`; a `nil` pointer
-  means absent on encode, so a binder can tell "unset" from "zero" without a
-  bitmap.
-- Base64 for bytes and JSON via `stdlib/jsonflow` lock in canonical wire
-  formats, so a binder pair agrees by construction.
-- Constraints: zero non-`stdlib` dependencies; floats always format as
-  `strconv.FormatFloat(..., 'f', -1, 64)`, losing precision info for
-  `T = float32`; overflow errors are plain `errutil.Explain` strings, not
-  typed sentinels.
 
 ## License
 

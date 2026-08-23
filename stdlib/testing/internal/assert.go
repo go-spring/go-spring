@@ -14,11 +14,6 @@
  * limitations under the License.
  */
 
-// Package internal is the shared assertion engine behind the assert and
-// require entry points. The fluent API and every check live here; assert and
-// require only set the fatalOnFailure flag and delegate, so the fail-fast /
-// fail-continue choice stays explicit at call sites. It is unexported on
-// purpose - every callable API goes through a mode wrapper.
 package internal
 
 import (

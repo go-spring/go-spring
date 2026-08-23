@@ -28,6 +28,13 @@ import (
 	"go-spring.org/stdlib/typeutil"
 )
 
+func TestIsFuncType(t *testing.T) {
+	assert.That(t, typeutil.IsFuncType(reflect.TypeFor[func()]())).True()
+	assert.That(t, typeutil.IsFuncType(reflect.TypeFor[func(x int) error]())).True()
+	assert.That(t, typeutil.IsFuncType(reflect.TypeFor[int]())).False()
+	assert.That(t, typeutil.IsFuncType(reflect.TypeFor[*struct{}]())).False()
+}
+
 func TestIsErrorType(t *testing.T) {
 	err := errutil.Explain(nil, "error")
 	assert.That(t, typeutil.IsErrorType(reflect.TypeOf(err))).True()

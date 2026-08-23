@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`httpsvr` 是极薄的 HTTP 服务端工具包：基于 Go 1.22+ `ServeMux` 的 `Server` 缝隙、`RequestContext` 抽象、以及 JSON / SSE 泛型 handler。它是 `stdlib/httpclt` 的服务端对偶——生成 handler 所插入的服务端骨架——同样位于 `stdlib` 零依赖层：仅用 `net/http` 与仓库内 `jsonflow` / `ctxcache` / `errutil`。
+`httpsvr` 是极薄的 HTTP 服务端工具包：基于 Go 1.22+ `ServeMux` 的 `Server` 缝隙、`RequestContext` 抽象、以及 JSON / SSE 泛型 handler。它是 `stdlib/httpclt` 的服务端对偶——生成 handler 所插入的服务端骨架。
 
 ## 使用方式
 
@@ -39,23 +39,59 @@ func main() {
 }
 ```
 
-API 概览：
+### API 列表
 
-- `Server` 接口 + `SimpleServer`——基于 `http.ServeMux`，支持方法级 pattern（`"GET /users/{id}"`）。
-- `RequestContext` 接口 + `SimpleContext`——统一 `*http.Request` / `http.ResponseWriter` / `PathValue` 访问，可经 `WithRequestContext` / `GetRequestContext` 存 / 取 `context.Context`。
-- `RequestObject`（`Bind` + `Validate`）与 `ReadRequest`——按 `Content-Type` 选 JSON 或 form 解码，不识别时用首字节嗅探，仅对 POST/PUT/PATCH 解析 body。
-- `HandleJSON[Req, Resp]`——泛型 JSON handler 包装，写 `application/json` 并初始化 `ctxcache`。
-- `HandleStream[Req, Resp]` + `Event[T]`——SSE，支持 `id` / `event` / `retry` 字段。
-- 可覆写的 `ErrorHandler` 与 `ReadBody`（默认上限 10 MiB）。
+| API | 说明 |
+|---|---|
+| `Server`（接口）/ `Router` | 路由缝隙：`Route(Router)` 注册一条路由（Method + Pattern + Handler） |
+| `NewSimpleServer(addr)` / `SimpleServer` | 默认 `Server` 实现，基于 `http.ServeMux`，Go 1.22+ 方法级 pattern |
+| `RequestContext` / `SimpleContext` / `NewSimpleContext` | 请求/响应对抽象，含 `PathValue` |
+| `WithRequestContext` / `GetRequestContext` | 向 `context.Context` 存 / 取 `RequestContext` |
+| `NewRequestContext` | 工厂类型：`func(r *http.Request, w http.ResponseWriter) RequestContext` |
+| `RequestObject`（接口） | `Bind(*http.Request) error` + `Validate() error` |
+| `ReadRequest(r, obj)` | 先解码 body（按 Content-Type 选 JSON / form），再 `Bind`，再 `Validate` |
+| `ReadBody`（var） | 可覆写的 body 读取，默认上限 10 MiB |
+| `ErrorHandler`（var） | 可覆写的错误出口，默认 500 + 错误信息 |
+| `HandleJSON[Req, Resp]` | 泛型 JSON handler 包装 |
+| `HandleStream[Req, Resp, T]` + `Event[T]` | SSE handler 包装；`Resp` 须为 `*Event[T]` |
+| `NewEvent[T]` / `Event[T]` 方法 | 构造一条 SSE 事件：`ID` / `Event` / `Data` / `Retry` 设置器 + `Has*` / `Get*` |
 
-## 关键设计
+## Server：路由缝隙
 
-- **边界**：提供路由缝隙（`Server.Route`），starter 可在其上换任意底层 router 实现；提供 JSON / SSE 泛型 handler 包装，让 Go 1.22+ 生成 handler 只是薄适配器，而不重写解析/校验/编帧。拒绝成为完整 web 框架：无中间件链、无绑定 tag 魔法、无 DI——这些属于 starter 层或用户代码。
-- **缝隙**：`Server` 接口只有一个方法 `Route(Router)`——starter 想换 router（chi / gin……）实现这一个即可，其他不动。`RequestContext` 是请求/响应对，通过 `WithRequestContext` 存进 `context.Context`，即使 handler 只拿到 `ctx`（经 `ctxcache` 等）也能取回 writer。`ReadBody` 与 `ErrorHandler` 刻意可变，应用可下调 body 上限或改用 JSON 错误体格式，而无需包装 `HandleJSON`。
-- **body 解析规则**：只对 `POST` / `PUT` / `PATCH` 读 body；其他方法跳过 `decodeBody`，带 body 的 `GET` 视作无 body。`ReadRequest` 按 `Content-Type` 选 JSON / form，不识别时用首字节嗅探，让漏设 header 的 body 也能解析。`RequestObject.Bind` 在 body 解码之后运行；解码失败直接短路、不会调用 `Bind`，故对带 body 的方法 `Bind` 可假定字段已解码填充。
-- **响应编帧**：JSON 路径在 handler 执行前就设 `Content-Type: application/json`，业务 handler 不会忘设。`HandleStream` 要求 `http.ResponseWriter` 实现 `http.Flusher`，否则经 `ErrorHandler` 报 500——包装 writer 时不能丢失 Flusher。
-- **被否决方案**：不做自定义 router——Go 1.22 的 `http.ServeMux` 已支持方法级 pattern，足以承担本包的缝隙职责，引第三方 router 会破坏零依赖约定。不内置中间件切片——链式装配属于更高层（`cloud/experimental/security` 的中间件、各家族自带的方法级装饰器，或 starter 包装 `Server.Route` 缝隙），在这里内置会锁死顺序。JSON / form 两条编码路径 + 首字节嗅探——更完整的内容协商延后：真实 API 要么 JSON 要么 `x-www-form-urlencoded`，嗅探覆盖漏设 header 的常见场景。
+`Server` 接口只有一个方法 `Route(Router)`：
 
-## License
+- `SimpleServer` 是默认实现——基于 `http.ServeMux`，支持方法级 pattern（`"GET /users/{id}"`）。
+- starter 想换底层 router（chi / gin……）只需实现这一个方法，其他不动。
 
-Apache License 2.0
+为什么不提供可插拔的 router 抽象？Go 1.22 的 `http.ServeMux` 已支持方法级 pattern，足以承担本包的缝隙职责；引第三方 router 会破坏零依赖约定。反过来，本包也不做绑定 tag 魔法、无中间件链、无 DI——这些属于 starter 层或用户代码。
+
+## RequestContext：请求/响应对
+
+`RequestContext` 接口 + `SimpleContext` 统一 `*http.Request` / `http.ResponseWriter` / `PathValue` 访问，可经 `WithRequestContext` / `GetRequestContext` 存 / 取 `context.Context`。
+
+它的价值在于：即使 handler 只拿到 `ctx`（经 `ctxcache` 等中间机制传递），也能取回 writer 完成响应。
+
+## 请求解析：ReadRequest 与 RequestObject
+
+`RequestObject`（`Bind` + `Validate`）与 `ReadRequest` 负责按 `Content-Type` 选 JSON 或 form 解码：
+
+- **方法门槛**：只对 `POST` / `PUT` / `PATCH` 读 body；其他方法跳过 `decodeBody`，带 body 的 `GET` 视作无 body。
+- **内容协商**：按 `Content-Type` 选 JSON / form，不识别时用首字节嗅探——漏设 header 的 body 也能解析。真实 API 要么 JSON 要么 `x-www-form-urlencoded`，嗅探已覆盖常见场景；更完整的内容协商延后。
+- **Bind 时机**：`RequestObject.Bind` 在 body 解码之后运行；解码失败直接短路、不会调用 `Bind`，故对带 body 的方法 `Bind` 可假定字段已解码填充。
+
+Body 读取经可覆写的 `ReadBody`（默认上限 10 MiB），应用可下调上限而无需包装 `HandleJSON`。
+
+## 响应编帧：HandleJSON 与 HandleStream
+
+- `HandleJSON[Req, Resp]` 是泛型 JSON handler 包装，写 `application/json` 并初始化 `ctxcache`。`Content-Type` 在 handler 执行前就已设置，业务 handler 不会忘设。
+- `HandleStream[Req, Resp]` + `Event[T]` 提供 SSE，支持 `id` / `event` / `retry` 字段。它要求 `http.ResponseWriter` 实现 `http.Flusher`，否则经 `ErrorHandler` 报 500——包装 writer 时不能丢失 Flusher。
+
+错误出口统一走可覆写的 `ErrorHandler`，应用可改用 JSON 错误体格式，同样无需包装 `HandleJSON`。
+
+## 横切能力的归属
+
+本包不内置中间件切片——链式装配属于更高层：`cloud/experimental/security` 的中间件、各家族自带的方法级装饰器，或 starter 包装 `Server.Route` 缝隙。在这里内置会锁死顺序。
+
+## 许可证
+
+Apache License 2.0，详见 [LICENSE](../../LICENSE)。

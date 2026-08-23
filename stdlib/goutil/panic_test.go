@@ -61,8 +61,8 @@ func TestReportPanicReachesHandler(t *testing.T) {
 }
 
 // TestSafeRunConvertsPanic proves a panic becomes an error on the normal
-// return path (with the panic value and stack in the message) — the property
-// scheduler jobs and message handlers rely on.
+// return path (naming the panic value, stack goes to OnPanic instead) — the
+// property scheduler jobs and message handlers rely on.
 func TestSafeRunConvertsPanic(t *testing.T) {
 	var reported any
 	withTestOnPanic(t, func(_ context.Context, info PanicInfo) { reported = info.Panic })

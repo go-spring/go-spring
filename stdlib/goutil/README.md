@@ -10,9 +10,7 @@ launch returns a handle with `Wait()` for joining without hand-rolled channels
 or `sync.WaitGroup` bookkeeping. Two sibling entry points complete the story:
 `SafeRun` runs a function synchronously and converts a panic into an error on
 the normal return path, and `ReportPanic` reports an already-recovered panic
-value (from your own recover sites) through the same `OnPanic` callback. It is not a worker pool, semaphore, or
-cancellation framework — `errgroup`, `semaphore`, and friends stay in
-`golang.org/x/sync`.
+value (from your own recover sites) through the same `OnPanic` callback.
 
 ## Usage
 
@@ -218,17 +216,18 @@ func ProcessBatch(items []Item) error {
 }
 ```
 
-### Comparison with Other Approaches
+### API
 
-| Approach | Panic Recovery | Context Control | Return Values | Synchronization |
-|----------|---------------|-----------------|---------------|-----------------|
-| go func() | ❌ | ✅ | ✅ | ❌ |
-| errgroup.Group | ❌ | ✅ | ✅ | ✅ |
-| **goutil** | ✅ | ✅ | ✅ | ✅ |
+- `Go(ctx context.Context, f func(ctx context.Context), mode CancelMode) *Status` — launch a goroutine with panic recovery; `Status.Wait()` joins it
+- `GoValue[T any](ctx context.Context, f GoValueFunc[T], mode CancelMode) *ValueStatus[T]` — same, capturing `(T, error)`; a recovered panic comes back as an error from `Wait()`
+- `SafeRun(ctx context.Context, f func(ctx context.Context) error) error` — run `f` synchronously, converting a panic into the returned error
+- `ReportPanic(ctx context.Context, recovered any)` — report an already-recovered panic value to `OnPanic` (use at your own recover sites)
+- `OnPanic func(ctx context.Context, info PanicInfo)` — global panic callback; default prints to stdout
+- `CancelMode`: `InheritCancel` (pass the context through) / `DetachCancel` (`context.WithoutCancel`)
 
 ## Design
 
-`goutil` is part of the zero-dependency `stdlib` layer — a thin wrapper, not
+`goutil` is a thin wrapper, not
 a concurrency framework.
 
 - **Global `OnPanic` seam**: a package-level `var` that applications overwrite
@@ -244,12 +243,6 @@ a concurrency framework.
   an error, so `GoValue` callers see one error channel whether the failure
   came from `return err` or a `panic`.
 
-Constraints: `OnPanic` runs inside the recovering goroutine — a slow or
-panicking hook stalls the shutdown path it should observe, so keep it cheap
-and never let it panic. The default `OnPanic` prints to stdout via
-`fmt.Printf` (zero-config for tests and small programs); override it in
-anything serious.
-
 ## License
 
-Apache License 2.0
+Apache License 2.0. See [LICENSE](../../LICENSE).

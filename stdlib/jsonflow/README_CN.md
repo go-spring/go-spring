@@ -7,9 +7,7 @@
 经过它，因此整个代码库共享同一套默认行为（map key 稳定排序、nil map / slice 输出为
 `null`）。它在带合理默认值的 `Marshal` / `Unmarshal` / `MarshalWrite` /
 `UnmarshalRead` API 之上，还提供泛型 `Encode<T>` / `Decode<T>` 工具，用于手写流式
-编解码、代码生成以及自定义 `JSONEncoder` / `JSONDecoder` 实现。属于零依赖的
-`stdlib` 层（依赖 `encoding/json/v2` 与 stdlib 内部包）。它不是 schema 库 —— 字段
-顺序、发现、校验都归调用方。
+编解码、代码生成以及自定义 `JSONEncoder` / `JSONDecoder` 实现。
 
 ## 使用方式
 
@@ -19,16 +17,18 @@
 import "go-spring.org/stdlib/jsonflow"
 ```
 
-### 顶层 API
+### API 列表
 
 - `Marshal(v, opts...) ([]byte, error)`
 - `MarshalIndent(v, prefix, indent string) ([]byte, error)`
 - `MarshalWrite(w io.Writer, v, opts...) error`
 - `Unmarshal(b []byte, v) error`
 - `UnmarshalRead(r io.Reader, v) error`
+- `NewEncoder(w io.Writer) Encoder` / `NewDecoder(r io.Reader) Decoder`——
+  面向手写 `JSONEncoder` / `JSONDecoder` 实现的流式编码器 / 解码器。
 
-若 `v` 实现 `JSONEncoder` / `JSONDecoder`，则优先走这两个接口；否则走标准
-`encoding/json/v2` 路径。
+若 `v` 实现 `JSONEncoder` / `JSONDecoder`，则优先走这两个接口——这是值想自己控制
+线上格式的可选钩子，代码生成器主要用它；否则走标准 `encoding/json/v2` 路径。
 
 ### 选项
 
@@ -57,11 +57,26 @@ Decoders（`Decoder = json.Decoder`）：
 
 - `DecodeBool`、`DecodeInt[T]`、`DecodeUint[T]`、`DecodeFloat[T]`、
   `DecodeString`、`DecodeBytes`（base64）、`DecodeAny[T]`、`DecodeObject`。
-- `DecodeArray`、`DecodeMap` 为高阶组合子。
+- `DecodeArray`、`DecodeMap` 为高阶组合子：`DecodeArray[T](parseFn)`、
+  `DecodeMap[K,V](parseKey, parseVal)` 组合出按类型的解码器，无需捕获框架级状态。
 - `DecodeObjectBegin` / `DecodeObjectEnd` / `DecodeEOF` 用于框架化。
+- Map key 解码器：`DecodeIntKey`、`DecodeUintKey`。
 - 对应的 `Parse*` 变体供自定义 `parseFn` 回调复用。
 - 除 `Bytes` 外每个标量都有 `Ptr` 变体：JSON 为 `null` 时返回 `nil`；
   `DecodeBytes` 自身处理 `null`。
+
+标量工具是泛型的：`EncodeInt[T ~int|...]` 等在叶子层避免反射；配合
+`mathutil.Overflow*`，Decoder 会在数值静默扩大前拒绝越界。
+
+几个边界形态值得注意：
+
+- `EncodeFloat` 把 `NaN`、`+Inf`、`-Inf` 分别映射为字符串 `"NaN"`、
+  `"Infinity"`、`"-Infinity"`。这是为了让输出仍是合法 JSON，代价是往返时解码方
+  必须理解这种约定。
+- `DecodeBytes` 把 `null` 处理为"返回 nil、无错误"，而 `DecodeString` 把
+  `null` 视为错误。字节切片常见可选，字符串通常不可选，形态反映了这一点。
+- 数值 map key 在 `ParseIntKey` / `ParseUintKey` 中同时接受 `"..."` 与 `0`
+  两种 token —— `encoding/json/v2` 会把数值 map key 序列化成字符串。
 
 ### 示例
 
@@ -85,35 +100,12 @@ func (u *User) EncodeJSON(e jsonflow.Encoder) error {
 b, _ := jsonflow.Marshal(&User{Name: "alice", Age: 30})
 ```
 
-## 关键设计
+## 依赖与兼容
 
-- **`JSONEncoder` / `JSONDecoder` 缝隙**：值想自己控制线上格式的可选钩子。
-  `Marshal` / `UnmarshalRead` 会先做类型断言，再退回 `encoding/json/v2`。
-  代码生成器主要用它。
-- **密封的 `MarshalOptions`**：`JSONOptions` 上带有未导出的 `NotForPublicUse{}`
-  参数，把选项集封闭。新增能力都以新的包级类型出现（`Indent`、`NilSliceAsNull`
-  等），牺牲外部扩展性换来 API 稳定。
-- **稳定默认**：`NilSliceAsNull(true)`、`NilMapAsNull(true)`、
-  `Deterministic(true)` 恒先追加，然后再让用户选项覆盖 —— golden 测试与缓存
-  key 因此跨进程运行时都稳定。
-- **泛型标量工具**：`EncodeInt[T ~int|...]` 等在叶子层避免反射；配合
-  `mathutil.Overflow*`，Decoder 会在数值静默扩大前拒绝越界。
-- **高阶组合子**：`DecodeArray[T](parseFn)`、`DecodeMap[K,V](parseKey, parseVal)`
-  组合出按类型的解码器，无需捕获框架级状态。
-
-### 约束与取舍
-
-- 依赖 `encoding/json/v2`，只支持 Go 1.26+，没有 v1 兼容层。流式工具对
-  `internal/json` 编程 —— 它是厂商中立的 token 接口缝隙（Encoder、Decoder、
-  Kind）；`internal/jsonv2` 是它唯一的适配器，基于 `encoding/json/v2` 实现。
-- `EncodeFloat` 把 `NaN`、`+Inf`、`-Inf` 分别映射为字符串 `"NaN"`、
-  `"Infinity"`、`"-Infinity"`。这是为了让输出仍是合法 JSON，代价是往返时解码方
-  必须理解这种约定。
-- `DecodeBytes` 把 `null` 处理为"返回 nil、无错误"，而 `DecodeString` 把
-  `null` 视为错误。字节切片常见可选，字符串通常不可选，形态反映了这一点。
-- 数值 map key 在 `ParseIntKey` / `ParseUintKey` 中同时接受 `"..."` 与 `0`
-  两种 token —— `encoding/json/v2` 会把数值 map key 序列化成字符串。
+依赖 `encoding/json/v2`，只支持 Go 1.26+，没有 v1 兼容层。流式工具对
+`internal/json` 编程——它是厂商中立的 token 接口缝隙（Encoder、Decoder、
+Kind）；`internal/jsonv2` 是它唯一的适配器，基于 `encoding/json/v2` 实现。
 
 ## 许可证
 
-Apache License 2.0
+Apache License 2.0，详见 [LICENSE](../../LICENSE)。

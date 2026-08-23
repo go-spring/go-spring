@@ -19,10 +19,6 @@
 It provides carefully crafted tools that complement the Go standard library,
 making everyday Go development more convenient and enjoyable.
 
-Each module is independent and can be used separately — the whole module graph
-pulls only the Go standard library. Every package directory holds a single
-README covering its positioning, usage and key design decisions.
-
 ## Available Modules
 
 ### Web & Network

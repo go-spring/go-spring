@@ -22,6 +22,11 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
+func TestSentinelErrors(t *testing.T) {
+	assert.Error(t, ErrForbiddenMethod).String("forbidden method")
+	assert.Error(t, ErrUnimplementedMethod).String("unimplemented method")
+}
+
 func TestRequireField(t *testing.T) {
 	assert.Error(t, RequireField("mail", "host", "smtp.example.com")).Nil()
 	assert.Error(t, RequireField("mail", "host", "  x  ")).Nil()

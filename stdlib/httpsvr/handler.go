@@ -333,7 +333,10 @@ func HandleStream[Req RequestObject, Resp *Event[T], T any](w http.ResponseWrite
 	ctx, cancel := ctxcache.Init(r.Context())
 	defer cancel()
 
-	h(ctx, req, responses)
-	close(responses)
+	func() {
+		defer close(responses)
+		h(ctx, req, responses)
+	}()
+
 	<-done
 }

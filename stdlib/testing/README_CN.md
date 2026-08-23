@@ -15,12 +15,22 @@ import (
 )
 ```
 
-模块内共四个包：`assert` 与 `require`（两个对外入口）、`internal`（共享引擎）、`testcase`（约束两个入口不漂移的共享测试套）。原 `testing/container` 包已于 2026-08-16 删除——仓库约定 docker 相关集成测试走进程外 `check.sh`，进程内容器场景可直接用 `testcontainers-go`；`testing/contract` 已迁往 `cloud/contract`。
-
 ### assert vs require
 
 - **`assert`** 在断言失败时不终止测试：后续断言依然会被检查，适合希望一次运行报告全部失败的场景。
 - **`require`** 在断言失败时立即终止测试——适合关键前置条件不满足、后续断言可能 panic 或出错的场景，例如先验证对象非空再继续操作。
+
+当一次失败会让后面的检查全部无意义时（被 unwrap 的值是 nil、fixture 没装配成功）用 `require`；多个独立断言各自有意义时用 `assert`。两者常在同一个测试里混用：
+
+```go
+func TestUser(t *testing.T) {
+    user := loadUser()
+    require.That(t, user).NotNil() // nil 就停——不然下一行 panic
+
+    assert.String(t, user.Email).IsEmail()
+    assert.Number(t, user.Age).GreaterThan(0)
+}
+```
 
 ### 基本示例
 
@@ -95,14 +105,14 @@ func TestExample(t *testing.T) {
 | `False(...msg)` | 验证布尔值为 `false` |
 | `Nil(...msg)` | 验证值为 `nil`（正确处理接口类型中的 nil）|
 | `NotNil(...msg)` | 验证值不为 `nil` |
-| `Equal(expected, ...msg)` | 使用 `reflect.DeepEqual` 深度比较是否相等 |
-| `NotEqual(expected, ...msg)` | 验证不深度相等 |
-| `Same(expected, ...msg)` | 使用 `==` 比较是否完全相同（按 Go 的 `==` 判定）|
-| `NotSame(expected, ...msg)` | 使用 `!=` 比较是否不同 |
-| `TypeOf(interface, ...msg)` | 验证类型可赋值给目标类型 |
-| `Implements(interface, ...msg)` | 验证类型实现了指定接口 |
-| `Has(expected, ...msg)` | 调用值的 `Has` 方法，验证返回 `true` |
-| `Contains(expected, ...msg)` | 调用值的 `Contains` 方法，验证返回 `true` |
+| `Equal(expect, ...msg)` | 使用 `reflect.DeepEqual` 深度比较是否相等 |
+| `NotEqual(expect, ...msg)` | 验证不深度相等 |
+| `Same(expect, ...msg)` | 使用 `==` 比较是否完全相同（按 Go 的 `==` 判定）|
+| `NotSame(expect, ...msg)` | 使用 `!=` 比较是否不同 |
+| `TypeOf(expect, ...msg)` | 验证类型可赋值给目标类型 |
+| `Implements(expect, ...msg)` | 验证类型实现了指定接口 |
+| `Has(expect, ...msg)` | 调用值的 `Has` 方法，验证返回 `true` |
+| `Contains(expect, ...msg)` | 调用值的 `Contains` 方法，验证返回 `true` |
 
 #### 错误断言 (Error)
 
@@ -229,16 +239,6 @@ func TestExample(t *testing.T) {
 |------|------|
 | `Panic(t, fn, pattern, ...msg)` | 断言 `fn` 会发生 panic，并且 panic 信息匹配正则表达式 `pattern` |
 
-## 关键设计
-
-**一个引擎、两个薄包装。** fluent API 与全部检查逻辑都在 `internal`；`assert` 与 `require` 只设置 `fatalOnFailure` 标志然后转派——该 bool 是两个模式唯一的行为差异。`internal` 刻意不导出：对外可调 API 必须走模式包装，让失败停止 / 失败继续的选择在调用点显式。
-
-**`internal.TestingT` 缝隙。** 所有断言函数都接收这个 `*testing.T` 最小接口（`Helper` / `Error` / `Fatal`），因此同一套库在真 `*testing.T`、subtest、以及外层伪 harness 里都能跑——`testcase` 套件本身就是用 `internal.MockTestingT` 驱动断言、记录并校验失败信息的。
-
-**只用标准库。** `stdlib/testing` 及其子包只 import Go 标准库（以及彼此）；任何其他依赖都会漏进每个模块的测试二进制。`stdlib/errutil` 只出现在 `testcase` 套件的测试文件里，引擎本身不引。
-
-**自己实现而非依赖 testify。** 两模式 fluent 断言足够简单，自己扛掉了一个每个 stdlib 用户必须带的第三方依赖；API 有意接近 testify（肌肉记忆），但实现是我们自己的。同理，一套共享 `testcase` 套件优于各包复制测试——分开两份必然随两个模式的各自演化而漂移。
-
 ## 许可证
 
-Apache License 2.0
+`testing` 基于 Apache License 2.0 发布，详见 [LICENSE](../../LICENSE)。
