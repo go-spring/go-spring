@@ -178,7 +178,7 @@ func startConsume(ctx context.Context, ext *primitive.MessageExt) (context.Conte
 // no-op executor; fault wraps it when an injector is registered (nil-safe
 // otherwise).
 func applyResilience(c Config, cl *Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "rocketmq", c.Observability)
 	cl.exec = exec
 	cl.resource = resource

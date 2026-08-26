@@ -33,17 +33,27 @@ import (
 // would, rather than short-circuiting at the boundary where none of those
 // mechanisms are in play.
 //
-// in is the injector to fault with. When in != nil it is used directly — the
-// path tests and [cloud/loadtest] take to inject an explicit, locally-built
-// injector. When in == nil the process-wide injector ([InjectorFor]) is resolved
-// LAZILY on each Execute: this lets client starters pass fault.InjectorFor() at
-// wiring time (in their InitMethod) even though starter-govern registers the
-// injector later, at Runner time — mirroring how [resilience.ExecutorFor] defers
-// provider resolution to call time. When no injector is registered either way,
-// fn runs once untouched (zero-config transparency).
+// The process-wide injector ([InjectorFor]) is resolved LAZILY on each Execute:
+// this lets client starters wrap at wiring time (in their InitMethod) even
+// though starter-govern registers the injector later, at Runner time — mirroring
+// how [resilience.ExecutorFor] defers provider resolution to call time. When no
+// injector is registered, fn runs once untouched (zero-config transparency).
 //
 // nil inner => returns nil.
-func WrapExecutor(inner resilience.Executor, in *Injector) resilience.Executor {
+func WrapExecutor(inner resilience.Executor) resilience.Executor {
+	if inner == nil {
+		return inner
+	}
+	return &faultExecutor{inner: inner}
+}
+
+// WrapExecutorWith is [WrapExecutor] with an explicitly supplied injector: in
+// is used directly on every Execute instead of resolving [InjectorFor]. This is
+// the path tests and [cloud/loadtest] take to inject an explicit, locally-built
+// injector.
+//
+// nil inner => returns nil.
+func WrapExecutorWith(inner resilience.Executor, in *Injector) resilience.Executor {
 	if inner == nil {
 		return inner
 	}

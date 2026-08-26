@@ -22,6 +22,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"go-spring.org/stdlib/errutil"
+
+	observe "go-spring.org/cloud/observe"
 )
 
 // Config binds one Kubernetes-Lease-backed distributed-lock instance under
@@ -56,6 +58,11 @@ type Config struct {
 // ObserverConfig groups the built-in observability options.
 type ObserverConfig struct {
 	Tracing TracingConfig `value:"${tracing}"`
+
+	// Observability configures the access log emitted by the shared
+	// observe-lock adapter (level off/brief/detailed, per-op skips). Blank
+	// level means brief.
+	Observability observe.ObserveConfig `value:"${observability:=}"`
 }
 
 // TracingConfig toggles wrapping the Locker with OTel tracing. On by default.

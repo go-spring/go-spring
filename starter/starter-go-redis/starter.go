@@ -83,7 +83,7 @@ func init() {
 	StarterCache.RegisterDriver("go-redis", func(beanID string) gs.ModuleFunc {
 		return func(r gs.BeanProvider, p flatten.Storage) error {
 			r.Provide(func(c *Client) *cache.Cache {
-				return &cache.Cache{ByteCache: bytecache.NewByteCache(c.UniversalClient)}
+				return cache.New(bytecache.NewByteCache(c.UniversalClient))
 			}, gs.TagArg(beanID)).Name(beanID)
 			return nil
 		}

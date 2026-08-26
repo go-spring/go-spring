@@ -51,11 +51,13 @@ bean is registered under that same name, so inject it by that name.
 ```go
 type User struct{ Name string }
 
-// typed — val must be a pointer; JSON is the default codec.
+// typed — val must be a pointer; the codec is fixed at construction
+// (New(bc, WithCodec(...))), JSON by default.
 err := c.Get(ctx, "user:42", &user)        // cache.ErrMiss if absent
 _  = c.Set(ctx, "user:42", user, 5*time.Minute)
 
-// raw bytes — bypass the codec.
+// raw bytes — bypass the codec; an explicit codec at the call site
+// covers caches that must hold mixed formats.
 b, err := c.GetBytes(ctx, "icon:42")       // (nil, cache.ErrMiss) if absent
 _  = c.SetBytes(ctx, "icon:42", png, 0)    // non-positive ttl = no expiry
 ```

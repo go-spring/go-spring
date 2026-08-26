@@ -90,15 +90,58 @@ func (c TLSConfig) Build() (*tls.Config, error) {
 		cfg.Certificates = []tls.Certificate{cert}
 	}
 	if c.CAFile != "" {
-		pem, err := os.ReadFile(c.CAFile)
+		pool, err := c.loadCAPool()
 		if err != nil {
-			return nil, errutil.Explain(err, "tls: failed to read CA file")
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, errutil.Explain(nil, "tls: no certificates found in CA file %s", c.CAFile)
+			return nil, err
 		}
 		cfg.RootCAs = pool
 	}
 	return cfg, nil
+}
+
+// BuildServer turns the config into a server-side *tls.Config, or (nil, nil)
+// when TLS is disabled. Server semantics differ from [TLSConfig.Build] in two
+// ways:
+//
+//   - CAFile is the bundle of CAs trusted to sign CLIENT certificates: it sets
+//     ClientCAs and turns on RequireAndVerifyClientCert, i.e. requesting a CA
+//     file enables mutual TLS. Leave it empty for one-way TLS.
+//   - ServerName and InsecureSkipVerify are client-side knobs; on the server
+//     they describe verifying the peer WE dial, so both are ignored here.
+//
+// Errors are wrapped with the same generic "tls:" prefix as [TLSConfig.Build].
+func (c TLSConfig) BuildServer() (*tls.Config, error) {
+	if !c.Enabled {
+		return nil, nil
+	}
+	cfg := &tls.Config{}
+	if c.CertFile != "" || c.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		if err != nil {
+			return nil, errutil.Explain(err, "tls: failed to load key pair")
+		}
+		cfg.Certificates = []tls.Certificate{cert}
+	}
+	if c.CAFile != "" {
+		pool, err := c.loadCAPool()
+		if err != nil {
+			return nil, err
+		}
+		cfg.ClientCAs = pool
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+	return cfg, nil
+}
+
+// loadCAPool reads the CA bundle from disk into an x509 pool.
+func (c TLSConfig) loadCAPool() (*x509.CertPool, error) {
+	pem, err := os.ReadFile(c.CAFile)
+	if err != nil {
+		return nil, errutil.Explain(err, "tls: failed to read CA file")
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, errutil.Explain(nil, "tls: no certificates found in CA file %s", c.CAFile)
+	}
+	return pool, nil
 }

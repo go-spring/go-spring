@@ -16,7 +16,7 @@
 
 // Package validation defines a framework-agnostic, zero-dependency abstraction
 // for struct validation, split from its implementations exactly like
-// [go-spring.org/cloud/governance/resilience] and [go-spring.org/spring/discovery].
+// [go-spring.org/cloud/governance/resilience] and [go-spring.org/cloud/discovery].
 //
 // It answers one question — "is this struct well-formed?" — for the two binding
 // paths in the framework:
@@ -36,8 +36,8 @@
 // that name the field, the rule that failed and its parameter. Because the same
 // list must render in whatever language the caller speaks, validation does not
 // import an i18n package; instead [ValidationErrors.Localize] takes a message
-// lookup function, letting [go-spring.org/spring/i18n] (or anything else) plug
-// in without a hard dependency.
+// lookup function, letting [go-spring.org/cloud/experimental/web/i18n] (or
+// anything else) plug in without a hard dependency.
 package validation
 
 import (

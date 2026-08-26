@@ -46,11 +46,11 @@ beanID 指定要包裹哪个后端 client bean;cache bean 就以该 beanID 注�
 ```go
 type User struct{ Name string }
 
-// 类型化 —— val 必须是指针;默认 JSON 编解码。
+// 类型化 —— val 必须是指针;codec 在构造期固定(New(bc, WithCodec(...))),默认 JSON。
 err := c.Get(ctx, "user:42", &user)        // 不存在返回 cache.ErrMiss
 _  = c.Set(ctx, "user:42", user, 5*time.Minute)
 
-// 裸字节 —— 绕过 codec。
+// 裸字节 —— 绕过 codec;需混存多种格式的 cache 在调用点显式给 codec。
 b, err := c.GetBytes(ctx, "icon:42")       // 不存在返回 (nil, cache.ErrMiss)
 _  = c.SetBytes(ctx, "icon:42", png, 0)    // ttl 非正 = 永不过期
 ```

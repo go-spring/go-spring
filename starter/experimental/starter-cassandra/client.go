@@ -64,7 +64,7 @@ type Client struct {
 func (o *Client) Init() error {
 	o.obs = observe.NewDB("cassandra", o.Observability)
 	o.resource = resilience.ResourceLabel("cassandra", o.cfg.Hosts[0])
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	exec = resilobserve.WrapExecutor(exec, "cassandra", o.Observability)
 	o.exec = exec
 	return nil

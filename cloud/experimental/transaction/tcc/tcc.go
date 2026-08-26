@@ -21,7 +21,7 @@
 //
 // # Why a separate pattern from Saga
 //
-// [go-spring.org/spring/transaction] provides Saga: each step's forward Action
+// [go-spring.org/cloud/experimental/transaction] provides Saga: each step's forward Action
 // takes real effect immediately, and a later failure undoes the earlier steps by
 // running a compensating business function. That gives eventual consistency but
 // no isolation — a committed-then-compensated value is briefly visible.
@@ -79,6 +79,7 @@ package tcc
 import (
 	"context"
 
+	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/cloud/governance/resilience"
 )
 
@@ -238,6 +239,19 @@ func (p Phase) String() string {
 	}
 }
 
+// TxPhase converts this phase to the shared [transaction.Phase] so the
+// coordinator can report it through the family-wide [transaction.Observer].
+func (p Phase) TxPhase() transaction.Phase {
+	switch p {
+	case PhaseConfirm:
+		return transaction.PhaseConfirm
+	case PhaseCancel:
+		return transaction.PhaseCancel
+	default:
+		return transaction.PhaseTry
+	}
+}
+
 // ParticipantError attributes an error to a specific participant and phase, so a
 // caller inspecting a failed [Result] knows exactly which try, confirm or cancel
 // broke.
@@ -299,14 +313,10 @@ type Coordinator interface {
 	Recover(ctx context.Context, t Transaction) (Result, error)
 }
 
-// Observer is the observability seam. The coordinator calls [Observer.Begin]
-// around every participant phase; the returned end function is invoked with the
-// phase's error (nil on success). A starter implements this to open an otel span
-// per phase without stdlib depending on otel. A nil Observer disables
-// observation entirely.
-type Observer interface {
-	// Begin is called just before a phase runs. The returned context is used for
-	// that phase (so a span can propagate through ctx); the returned end func is
-	// called exactly once when the phase finishes.
-	Begin(ctx context.Context, txID, participant string, phase Phase) (context.Context, func(err error))
-}
+// Observer is the observability seam, shared with the whole transaction family
+// via [transaction.Observer]: the coordinator calls Begin around every
+// participant phase, passing the transaction ID, the participant's name and the
+// phase converted with [Phase.TxPhase]. A starter implements it once (see
+// cloud/observe/transaction) to open an otel span per phase without the core
+// packages depending on otel. A nil Observer disables observation entirely.
+type Observer = transaction.Observer

@@ -71,6 +71,17 @@ var MessagingSemConv = SemConv{
 	ArgKey:    "messaging.destination.name",
 }
 
+// ResilienceSemConv is the semantic convention for resilience-protected calls
+// (the observe/resilience executor bridge): metrics under resilience.*, span
+// kind internal. The "operation" of a resilience call is the protected resource
+// name, so OpKey names it resilience.resource.
+var ResilienceSemConv = SemConv{
+	Domain:    "resilience",
+	SystemKey: "resilience.system",
+	OpKey:     "resilience.resource",
+	ArgKey:    "resilience.arg",
+}
+
 // statusKey labels the coarse ok/error dimension on metrics and the access log.
 // It is the kit's own attribute (not OTel semconv): the status code is the
 // metric dimension, the error detail lives on the span/log.
@@ -281,7 +292,7 @@ func (s *Span) End(err error, attrs ...attribute.KeyValue) {
 		s.span.End()
 	}
 
-	if o.cfg.enabled() {
+	if o.cfg.Enabled() {
 		o.emitLog(s.ctx, s.op, s.arg, dur, err)
 	}
 }
@@ -295,7 +306,7 @@ func (o *Observer) emitLog(ctx context.Context, op, arg string, dur time.Duratio
 		log.String(statusKey, statusOf(err)),
 		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 	}
-	if o.cfg.detailed() && arg != "" {
+	if o.cfg.Detailed() && arg != "" {
 		fields = append(fields, log.String(o.sc.ArgKey, boundArg(arg, o.cfg.maxArg())))
 	}
 	if err != nil {

@@ -57,7 +57,7 @@ type Client struct {
 // governance is off the resolved executor is a transparent no-op.
 func (o *Client) Init() error {
 	o.resource = resourceLabel(o.cfg)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	exec = resilobserve.WrapExecutor(exec, "redis", o.Observability)
 	o.exec = exec
 	// Layer order (go-redis hooks are FIFO — first added is outermost):

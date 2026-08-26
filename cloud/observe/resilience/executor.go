@@ -16,11 +16,12 @@
 
 // Package resilobserve is the shared resilience-instrumentation adapter for the
 // go-spring observability story. It wraps any [resilience.Executor] so each
-// Execute emits a trace span + call counter (classified by outcome) + duration
-// histogram + access log — making circuit-breaker trips, rate-limit rejects and
-// bulkhead rejections visible in production instead of being a black box, which
-// is the gap the core resilience package leaves by design (it deliberately does
-// no metric/trace/log).
+// Execute emits the observe kit's three signals (internal span + duration/
+// in-flight metric + access log) via [observe.New] with ResilienceSemConv, plus
+// a call counter classified by outcome — making circuit-breaker trips,
+// rate-limit rejects and bulkhead rejections visible in production instead of
+// being a black box, which is the gap the core resilience package leaves by
+// design (it deliberately does no metric/trace/log).
 //
 // It lives in the observe package for the same reason observe-gorm /
 // observe-lock / observe-transaction exist: the otel-free spring core defines
@@ -38,57 +39,40 @@ package resilobserve
 import (
 	"context"
 	"errors"
-	"time"
 
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// tracerName identifies the OTel tracer/meter for this kit.
-const tracerName = "go-spring.org/cloud/observe/resilience"
-
-// durationBuckets mirror observe's client-op buckets so resilience latency
-// shares the same scale as the downstream client calls it protects.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
-// WrapExecutor returns a [resilience.Executor] that wraps inner, emitting a
-// trace span + call counter + duration histogram + access log for each Execute,
-// with the outcome classified as one of: success, rate_limited, circuit_open,
-// bulkhead_full, timeout, error. Pass the system label (e.g. "redis", "gorm",
-// "grpc") so metrics from several protected clients are distinguishable. cfg
-// controls the access log (off/brief/detailed). A nil inner returns nil — no
-// wrapper, so an unarmed client stays untouched.
+// WrapExecutor returns a [resilience.Executor] that wraps inner, emitting the
+// observe kit's three signals for each Execute plus a call counter with the
+// outcome classified as one of: success, rate_limited, circuit_open,
+// bulkhead_full, timeout, error (attached as the resilience.outcome attribute).
+// Pass the system label (e.g. "redis", "gorm", "grpc") so metrics from several
+// protected clients are distinguishable. cfg controls the access log
+// (off/brief/detailed). A nil inner returns nil — no wrapper, so an unarmed
+// client stays untouched.
 func WrapExecutor(inner resilience.Executor, system string, cfg observe.ObserveConfig) resilience.Executor {
 	if inner == nil {
 		return nil
 	}
-	meter := otel.Meter(tracerName)
+	meter := otel.Meter("go-spring.org/cloud/observe/resilience")
 	calls, _ := meter.Int64Counter("resilience.calls",
 		metric.WithDescription("Number of resilience-protected calls by outcome"),
 		metric.WithUnit("{call}"))
-	duration, _ := meter.Float64Histogram("resilience.operation.duration",
-		metric.WithDescription("Duration of resilience-protected "+system+" calls"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	active, _ := meter.Int64UpDownCounter("resilience.active_requests",
-		metric.WithDescription("Number of in-flight resilience-protected "+system+" calls"),
-		metric.WithUnit("{request}"))
 	breakerChanges, _ := meter.Int64Counter("resilience.breaker.state_change",
 		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
 		metric.WithUnit("{event}"))
 	w := &wrappedExecutor{
 		inner:          inner,
 		system:         system,
-		tracer:         otel.Tracer(tracerName),
+		obs:            observe.New(system, observe.ResilienceSemConv, trace.SpanKindInternal, cfg),
 		calls:          calls,
-		duration:       duration,
-		active:         active,
 		breakerChanges: breakerChanges,
 		logTag:         log.RegisterAppTag(system, "resilience"),
 		cfg:            cfg,
@@ -106,10 +90,8 @@ func WrapExecutor(inner resilience.Executor, system string, cfg observe.ObserveC
 type wrappedExecutor struct {
 	inner          resilience.Executor
 	system         string
-	tracer         trace.Tracer
+	obs            *observe.Observer
 	calls          metric.Int64Counter
-	duration       metric.Float64Histogram
-	active         metric.Int64UpDownCounter
 	breakerChanges metric.Int64Counter
 	logTag         *log.Tag
 	cfg            observe.ObserveConfig
@@ -125,7 +107,7 @@ func (w *wrappedExecutor) OnBreakerStateChange(resource string, from, to resilie
 		attribute.String("from", from.String()),
 		attribute.String("to", to.String()),
 	))
-	if w.cfg.Level != "off" {
+	if w.cfg.Enabled() {
 		fields := []log.Field{
 			log.String("resilience.resource", resource),
 			log.String("from", from.String()),
@@ -141,36 +123,22 @@ func (w *wrappedExecutor) OnBreakerStateChange(resource string, from, to resilie
 	}
 }
 
+// Execute runs the inner executor under the observe kit: Start opens an internal
+// span (resilience.system/resource attributes) and bumps the in-flight gauge,
+// and End records the duration histogram, balances the gauge, ends the span and
+// emits the access log. The only resilience-specific additions on this path are
+// the outcome-classified call counter and the resilience.outcome attribute
+// attached through Span.End.
 func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
-	baseAttrs := []attribute.KeyValue{
-		attribute.String("resilience.system", w.system),
-		attribute.String("resilience.resource", resource),
-	}
-	ctx, span := w.tracer.Start(ctx, "resilience.execute",
-		trace.WithSpanKind(trace.SpanKindInternal),
-		trace.WithAttributes(baseAttrs...))
-	w.active.Add(ctx, 1, metric.WithAttributes(baseAttrs...))
-
-	start := time.Now()
+	ctx, sp := w.obs.Start(ctx, resource, "")
 	err := w.inner.Execute(ctx, resource, fn)
 	outcome := classifyOutcome(err)
-	dur := time.Since(start)
-
-	obsAttrs := append(baseAttrs, attribute.String("resilience.outcome", outcome))
-	w.calls.Add(ctx, 1, metric.WithAttributes(obsAttrs...))
-	w.duration.Record(ctx, dur.Seconds(), metric.WithAttributes(obsAttrs...))
-	w.active.Add(ctx, -1, metric.WithAttributes(baseAttrs...))
-
-	span.SetAttributes(attribute.String("resilience.outcome", outcome))
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		span.RecordError(err)
-	}
-	span.End()
-
-	if w.cfg.Level != "off" {
-		w.emitLog(ctx, resource, outcome, dur, err)
-	}
+	w.calls.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("resilience.system", w.system),
+		attribute.String("resilience.resource", resource),
+		attribute.String("resilience.outcome", outcome),
+	))
+	sp.End(err, attribute.String("resilience.outcome", outcome))
 	return err
 }
 
@@ -201,22 +169,4 @@ func classifyOutcome(err error) string {
 	default:
 		return "error"
 	}
-}
-
-// emitLog writes one access record per Execute. A protection reject
-// (rate_limited/circuit_open/bulkhead_full/timeout) is logged at Warn — it is
-// a service-level degradation worth flagging; a normal downstream error is also
-// Warn; success is Info.
-func (w *wrappedExecutor) emitLog(ctx context.Context, resource, outcome string, dur time.Duration, err error) {
-	fields := []log.Field{
-		log.String("resilience.resource", resource),
-		log.String("resilience.outcome", outcome),
-		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-	}
-	if err != nil {
-		fields = append(fields, log.Any("error", err))
-		log.Warn(ctx, w.logTag, fields...)
-		return
-	}
-	log.Info(ctx, w.logTag, fields...)
 }

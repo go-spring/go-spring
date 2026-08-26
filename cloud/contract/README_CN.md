@@ -45,8 +45,8 @@
 contracts, _ := contract.Load("testdata/greet.contract.json")
 
 // Provider 端——真实 handler 一旦偏离任一契约即失败。
-contract.Verify(t, greetHandler(), contracts)          // 进程内 http.Handler
-contract.Verify(t, "http://127.0.0.1:8080", contracts) // 或一个运行中的 base URL
+contract.VerifyHandler(t, greetHandler(), contracts)     // 进程内 http.Handler
+contract.Verify(t, "http://127.0.0.1:8080", contracts)    // 或一个运行中的 base URL
 
 // Consumer 端——被测 consumer 调用的桩。
 stub := contract.StubServer(t, contracts)

@@ -19,6 +19,7 @@ package tlsconf
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -79,6 +80,35 @@ func TestTLSConfig_Build_ValidKeyPairAndCA(t *testing.T) {
 	require.NotNil(t, cfg)
 	assert.Len(t, cfg.Certificates, 1)
 	assert.NotNil(t, cfg.RootCAs)
+}
+
+// TestTLSConfig_BuildServer covers the server-side semantics: CAFile becomes
+// ClientCAs + RequireAndVerifyClientCert (mTLS), and the client-only knobs
+// ServerName / InsecureSkipVerify are ignored.
+func TestTLSConfig_BuildServer(t *testing.T) {
+	// Disabled: same (nil, nil) contract as Build.
+	cfg, err := TLSConfig{Enabled: false}.BuildServer()
+	require.NoError(t, err)
+	assert.Nil(t, cfg)
+
+	dir := t.TempDir()
+	certPath, keyPath := writeSelfSignedPair(t, dir)
+
+	// No CAFile: one-way TLS, no client-cert requirement.
+	cfg, err = TLSConfig{Enabled: true, CertFile: certPath, KeyFile: keyPath,
+		ServerName: "ignored", InsecureSkipVerify: true}.BuildServer()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Len(t, cfg.Certificates, 1)
+	assert.Nil(t, cfg.ClientCAs)
+	assert.Empty(t, cfg.ServerName)
+	assert.False(t, cfg.InsecureSkipVerify)
+
+	// CAFile present: client CAs loaded and mTLS required.
+	cfg, err = TLSConfig{Enabled: true, CertFile: certPath, KeyFile: keyPath, CAFile: certPath}.BuildServer()
+	require.NoError(t, err)
+	assert.NotNil(t, cfg.ClientCAs)
+	assert.Equal(t, tls.RequireAndVerifyClientCert, cfg.ClientAuth)
 }
 
 // writeSelfSignedPair writes a self-signed cert/key pair and returns their

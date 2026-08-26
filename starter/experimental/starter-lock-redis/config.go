@@ -16,7 +16,11 @@
 
 package StarterLockRedis
 
-import "time"
+import (
+	"time"
+
+	observe "go-spring.org/cloud/observe"
+)
 
 // Config configures one Redis-backed [go-spring.org/spring/lock.Locker] instance
 // bound under spring.lock.<name>. It intentionally does not carry Redis
@@ -55,6 +59,11 @@ type Config struct {
 // ObserverConfig groups the built-in observability options.
 type ObserverConfig struct {
 	Tracing TracingConfig `value:"${tracing}"`
+
+	// Observability configures the access log emitted by the shared
+	// observe-lock adapter (level off/brief/detailed, per-op skips). Blank
+	// level means brief.
+	Observability observe.ObserveConfig `value:"${observability:=}"`
 }
 
 // TracingConfig toggles wrapping the Locker with OTel tracing. On by default.

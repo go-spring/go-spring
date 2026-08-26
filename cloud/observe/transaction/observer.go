@@ -16,12 +16,13 @@
 
 // Package transactionobserve is the shared distributed-transaction
 // instrumentation adapter for the go-spring observability story. It provides
-// [transaction.Observer], [tcc.Observer] and [at.Observer] implementations that
-// open one OTel child span per transaction phase, so the saga/tcc/at starters
-// share one implementation instead of copy-pasting an otelObserver each.
+// [transaction.Observer] implementations (one named type per model, sharing one
+// Begin) that open one OTel child span per transaction phase, so the saga/tcc/at
+// starters share one implementation instead of copy-pasting an otelObserver
+// each.
 //
-// It lives in the observe package (rather than inside the otel-free spring core
-// that defines the Observer interfaces, or copy-pasted per starter) for the same
+// It lives in the observe package (rather than inside the otel-free core
+// that defines the Observer interface, or copy-pasted per starter) for the same
 // reason observe-gorm and observe-lock exist: N starters, one shared adapter.
 // Everything rides the otel globals starter-otel installs; without it the
 // global tracer is a no-op, so an unconfigured app pays almost nothing.
@@ -35,8 +36,6 @@ import (
 	"context"
 
 	"go-spring.org/cloud/experimental/transaction"
-	"go-spring.org/cloud/experimental/transaction/at"
-	"go-spring.org/cloud/experimental/transaction/tcc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -61,9 +60,9 @@ func beginSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (c
 	}
 }
 
-// SagaObserver implements [transaction.Observer] by opening one child span per
-// Saga step phase: "saga.action <step>" or "saga.compensate <step>", tagged
-// with the saga id, step name and phase.
+// SagaObserver implements [transaction.Observer] for the Saga model by opening
+// one child span per step phase: "saga.action <step>" or
+// "saga.compensate <step>", tagged with the saga id, step name and phase.
 type SagaObserver struct{}
 
 var _ transaction.Observer = SagaObserver{}
@@ -71,9 +70,9 @@ var _ transaction.Observer = SagaObserver{}
 // Begin starts a span for one saga step phase. The returned function ends the
 // span, recording the error when the phase failed so a compensated (or failed)
 // saga is visible in the trace.
-func (SagaObserver) Begin(ctx context.Context, sagaID, step string, phase transaction.Phase) (context.Context, func(error)) {
+func (SagaObserver) Begin(ctx context.Context, txID, step string, phase transaction.Phase) (context.Context, func(error)) {
 	return beginSpan(ctx, sagaSpanName(phase, step),
-		attribute.String("saga.id", sagaID),
+		attribute.String("saga.id", txID),
 		attribute.String("saga.step", step),
 		attribute.String("saga.phase", phase.String()),
 	)
@@ -86,17 +85,18 @@ func sagaSpanName(phase transaction.Phase, step string) string {
 	return "saga.action " + step
 }
 
-// TccObserver implements [tcc.Observer] by opening one child span per
-// participant phase: "tcc.try/confirm/cancel <participant>", tagged with the
-// transaction id, participant name and phase.
+// TccObserver implements [transaction.Observer] for the TCC model (it is what
+// [tcc.Observer] aliases) by opening one child span per participant phase:
+// "tcc.try/confirm/cancel <participant>", tagged with the transaction id,
+// participant name and phase.
 type TccObserver struct{}
 
-var _ tcc.Observer = TccObserver{}
+var _ transaction.Observer = TccObserver{}
 
 // Begin starts a span for one participant phase. The returned function ends the
 // span, recording the error when the phase failed so a cancelled (or failed)
 // transaction is visible in the trace.
-func (TccObserver) Begin(ctx context.Context, txID, participant string, phase tcc.Phase) (context.Context, func(error)) {
+func (TccObserver) Begin(ctx context.Context, txID, participant string, phase transaction.Phase) (context.Context, func(error)) {
 	return beginSpan(ctx, tccSpanName(phase, participant),
 		attribute.String("tcc.id", txID),
 		attribute.String("tcc.participant", participant),
@@ -104,37 +104,38 @@ func (TccObserver) Begin(ctx context.Context, txID, participant string, phase tc
 	)
 }
 
-func tccSpanName(phase tcc.Phase, participant string) string {
+func tccSpanName(phase transaction.Phase, participant string) string {
 	switch phase {
-	case tcc.PhaseConfirm:
+	case transaction.PhaseConfirm:
 		return "tcc.confirm " + participant
-	case tcc.PhaseCancel:
+	case transaction.PhaseCancel:
 		return "tcc.cancel " + participant
 	default:
 		return "tcc.try " + participant
 	}
 }
 
-// AtObserver implements [at.Observer] by opening one child span per branch
-// second-phase operation: "at.commit <branch>" or "at.rollback <branch>",
-// tagged with the global transaction id, branch id and phase.
+// AtObserver implements [transaction.Observer] for the AT model (it is what
+// [at.Observer] aliases) by opening one child span per branch second-phase
+// operation: "at.commit <branch>" or "at.rollback <branch>", tagged with the
+// global transaction id, branch id and phase.
 type AtObserver struct{}
 
-var _ at.Observer = AtObserver{}
+var _ transaction.Observer = AtObserver{}
 
 // Begin starts a span for one branch phase. The returned function ends the
 // span, recording the error when the phase failed so a failed commit/rollback
 // is visible in the trace.
-func (AtObserver) Begin(ctx context.Context, xid, branch string, phase at.Phase) (context.Context, func(error)) {
+func (AtObserver) Begin(ctx context.Context, txID, branch string, phase transaction.Phase) (context.Context, func(error)) {
 	return beginSpan(ctx, atSpanName(phase, branch),
-		attribute.String("at.xid", xid),
+		attribute.String("at.xid", txID),
 		attribute.String("at.branch", branch),
 		attribute.String("at.phase", phase.String()),
 	)
 }
 
-func atSpanName(phase at.Phase, branch string) string {
-	if phase == at.PhaseRollback {
+func atSpanName(phase transaction.Phase, branch string) string {
+	if phase == transaction.PhaseRollback {
 		return "at.rollback " + branch
 	}
 	return "at.commit " + branch

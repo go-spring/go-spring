@@ -49,10 +49,30 @@ import (
 // + access log) via the shared observe kit, riding the OTel globals starter-otel
 // installs. Call them around Publish and inside the Subscribe callback.
 
+// The observers are built lazily (sync.Once) so a blank import of this starter
+// no longer pays the observe-kit construction at package init — only apps that
+// actually call the span helpers build them.
 var (
-	pubObs = observe.NewProducer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
-	subObs = observe.NewConsumer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
+	defaultObsOnce sync.Once
+	pubObs         *observe.Observer
+	subObs         *observe.Observer
 )
+
+func pubObserver() *observe.Observer {
+	defaultObsOnce.Do(func() {
+		pubObs = observe.NewProducer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
+		subObs = observe.NewConsumer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
+	})
+	return pubObs
+}
+
+func subObserver() *observe.Observer {
+	defaultObsOnce.Do(func() {
+		pubObs = observe.NewProducer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
+		subObs = observe.NewConsumer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
+	})
+	return subObs
+}
 
 // StartPublishSpan opens a producer observation for a publish to topic. Call
 // right before client.Publish and End the returned span once the token resolves:
@@ -62,7 +82,7 @@ var (
 //	_ = tok.Wait()
 //	StarterMQTT.EndSpan(sp, tok.Error())
 func StartPublishSpan(ctx context.Context, topic string) (context.Context, *observe.Span) {
-	return pubObs.Start(ctx, "publish", topic)
+	return pubObserver().Start(ctx, "publish", topic)
 }
 
 // StartConsumeSpan opens a consumer observation for an inbound message. Call at
@@ -74,7 +94,7 @@ func StartPublishSpan(ctx context.Context, topic string) (context.Context, *obse
 //	    StarterMQTT.EndSpan(sp, err)
 //	})
 func StartConsumeSpan(ctx context.Context, msg mqtt.Message) (context.Context, *observe.Span) {
-	return subObs.Start(ctx, "consume", msg.Topic())
+	return subObserver().Start(ctx, "consume", msg.Topic())
 }
 
 // EndSpan records err (if any) on the span and ends it.
@@ -106,7 +126,7 @@ var resilienceResources sync.Map // mqtt.Client -> string
 // zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
 // transparent no-op executor; fault wraps it when enabled.
 func applyResilience(c Config, cl mqtt.Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "mqtt", c.Observability)
 	resilienceExecs.Store(cl, exec)
 	resilienceResources.Store(cl, resource)

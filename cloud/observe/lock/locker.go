@@ -16,80 +16,74 @@
 
 // Package lockobserve is the shared distributed-lock instrumentation adapter
 // for the go-spring observability story. It wraps any [lock.Locker] so Acquire
-// and TryAcquire emit an OTel client span labelled with the lock backend's
-// [lock.system] semantic-convention value (e.g. "redis", "etcd", "consul",
-// "k8s") — the same trace signal every lock starter previously emitted.
+// and TryAcquire emit the observe kit's full three signals — trace span +
+// duration/in-flight metric + access log — through [observe.New] with a lock
+// semantic convention (lock.system / lock.key attributes, metrics under
+// lock.operation.duration), instead of the trace-only wrapper this bridge used
+// to be.
 //
 // It lives in the observe package (rather than copy-pasted into each lock
 // starter, or inside the otel-free spring core that defines [lock.Locker]) so
 // the four lock starters share one implementation instead of duplicating a
-// ~70-line wrapper each, differing only in the system label. A starter installs it with
-// its backend's system value:
+// ~70-line wrapper each, differing only in the system label. A starter installs
+// it with its backend's system value and its per-instance observability config:
 //
-//	locker = lockobserve.WrapLocker("redis", inner)
+//	locker = lockobserve.WrapLocker("redis", c.Observer.Observability, inner)
 package lockobserve
 
 import (
 	"context"
 
 	"go-spring.org/cloud/experimental/lock"
-	"go.opentelemetry.io/otel"
+	observe "go-spring.org/cloud/observe"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// tracerName identifies spans emitted by this adapter, following the
-// convention used by the other shared observe adapters.
-const tracerName = "go-spring.org/cloud/observe/lock"
+// lockSemConv is the lock namespace: metrics under lock.*, attributes
+// lock.system / lock.operation with the key captured as lock.key (in detailed
+// log mode and as a span attribute).
+var lockSemConv = observe.SemConv{
+	Domain:    "lock",
+	SystemKey: "lock.system",
+	OpKey:     "lock.operation",
+	ArgKey:    "lock.key",
+}
 
-// WrapLocker returns a [lock.Locker] that wraps Acquire and TryAcquire with
-// OTel client spans labelled lock.system=system and lock.key=<key>. When
-// starter-otel is not imported the global TracerProvider is a no-op, so the
-// wrapper adds negligible overhead and changes no behaviour.
-func WrapLocker(system string, inner lock.Locker) lock.Locker {
-	return &observedLocker{system: system, inner: inner}
+// WrapLocker returns a [lock.Locker] that wraps Acquire and TryAcquire with the
+// observe kit's three signals, labelled lock.system=system and lock.key=<key>.
+// cfg controls the access log (off/brief/detailed). When starter-otel is not
+// imported the global OTel providers are no-ops, so the wrapper adds negligible
+// overhead and changes no behaviour.
+func WrapLocker(system string, cfg observe.ObserveConfig, inner lock.Locker) lock.Locker {
+	return &observedLocker{
+		obs:   observe.New(system, lockSemConv, trace.SpanKindClient, cfg),
+		inner: inner,
+	}
 }
 
 type observedLocker struct {
-	system string
-	inner  lock.Locker
+	obs   *observe.Observer
+	inner lock.Locker
 }
 
 func (l *observedLocker) Acquire(ctx context.Context, key string, opts ...lock.Option) (lock.Lock, error) {
-	ctx, span := otel.Tracer(tracerName).Start(ctx, "lock.acquire",
-		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(
-			attribute.String("lock.key", key),
-			attribute.String("lock.system", l.system),
-		),
-	)
+	ctx, sp := l.obs.Start(ctx, "acquire", key)
 	held, err := l.inner.Acquire(ctx, key, opts...)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		span.RecordError(err)
-	}
-	span.End()
+	sp.End(err)
 	return held, err
 }
 
 func (l *observedLocker) TryAcquire(ctx context.Context, key string, opts ...lock.Option) (lock.Lock, bool, error) {
-	ctx, span := otel.Tracer(tracerName).Start(ctx, "lock.try_acquire",
-		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(
-			attribute.String("lock.key", key),
-			attribute.String("lock.system", l.system),
-		),
-	)
+	ctx, sp := l.obs.Start(ctx, "try_acquire", key)
 	held, ok, err := l.inner.TryAcquire(ctx, key, opts...)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		span.RecordError(err)
-	}
+	var attrs []attribute.KeyValue
 	if !ok {
-		span.SetAttributes(attribute.Bool("lock.acquired", false))
+		// A missed TryAcquire is not an error (err stays nil): record the miss
+		// explicitly so the span/metric dimension separates it from a win.
+		attrs = append(attrs, attribute.Bool("lock.acquired", false))
 	}
-	span.End()
+	sp.End(err, attrs...)
 	return held, ok, err
 }
 

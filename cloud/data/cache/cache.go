@@ -22,7 +22,10 @@
 // [ByteCache.GetBytes]/[ByteCache.SetBytes]/[ByteCache.Delete] primitives a
 // remote client maps 1:1 to its native API. A [Cache] struct wraps a ByteCache
 // and layers a pluggable [Codec] (default [JSONCodec]) on top, exposing typed
-// [Cache.Get]/[Cache.Set] that cross the bytes/any boundary. A missing key is
+// [Cache.Get]/[Cache.Set] that cross the bytes/any boundary. The codec is a
+// construction attribute — set once via [WithCodec] on [New] — not a per-call
+// parameter; a cache that must hold values in different formats uses the raw
+// GetBytes/SetBytes with an explicit codec at the call site. A missing key is
 // reported as [ErrMiss], distinct from a backend error, so callers fall through
 // to the source of truth only on a real miss.
 //
@@ -60,32 +63,65 @@ type ByteCache interface {
 }
 
 // Cache is the typed façade over a [ByteCache]. It embeds a ByteCache and adds
-// [Cache.Get]/[Cache.Set], which cross the bytes/any boundary through a
-// pluggable [Codec] (default [JSONCodec]); the raw [ByteCache.GetBytes]/
-// [ByteCache.SetBytes]/[ByteCache.Delete] methods are promoted unchanged for
-// callers that already hold bytes. A zero Cache is not usable - its ByteCache
-// field must be set before any method is called. Since the embedded ByteCache
-// must be safe for concurrent use, a Cache wrapping it is too.
+// [Cache.Get]/[Cache.Set], which cross the bytes/any boundary through the
+// [Codec] fixed at construction (default [JSONCodec]); the raw
+// [ByteCache.GetBytes]/[ByteCache.SetBytes]/[ByteCache.Delete] methods are
+// promoted unchanged for callers that already hold bytes — or need to mix
+// formats under one backend with an explicit codec. Since the embedded
+// ByteCache must be safe for concurrent use, a Cache wrapping it is too.
 type Cache struct {
 	ByteCache
+
+	// codec is resolved once at construction; a nil codec means [JSONCodec].
+	codec Codec
 }
 
+// New wraps bc in a [Cache] with its codec fixed by opts (default
+// [JSONCodec] via [WithCodec]). It is the canonical constructor: a Cache
+// built by hand must at least set the embedded ByteCache before use.
+func New(bc ByteCache, opts ...Option) *Cache {
+	c := &Cache{ByteCache: bc}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
+}
+
+// Option customizes a [Cache] at construction.
+type Option func(*Cache)
+
+// WithCodec sets the [Codec] the [Cache]'s typed Get/Set use to cross the
+// bytes/any boundary. A nil codec is ignored, so passing a conditionally
+// resolved codec needs no guard.
+func WithCodec(c Codec) Option {
+	return func(cc *Cache) {
+		if c != nil {
+			cc.codec = c
+		}
+	}
+}
+
+// codecOr returns the cache's codec, or the default [JSONCodec] when none was
+// set at construction.
+func (c Cache) codecOr() Codec { return resolveCodec(c.codec) }
+
 // Get decodes the value stored under key into val (which must be a pointer),
-// using codec (default [JSONCodec]) to cross the bytes/any boundary. A missing
-// key is reported as [ErrMiss]; any other error is a backend failure. On a
-// miss the caller typically falls through to the source of truth.
-func (c Cache) Get(ctx context.Context, key string, val any, codec ...Codec) error {
+// using the cache's [Codec] (default [JSONCodec]) to cross the bytes/any
+// boundary. A missing key is reported as [ErrMiss]; any other error is a
+// backend failure. On a miss the caller typically falls through to the source
+// of truth.
+func (c Cache) Get(ctx context.Context, key string, val any) error {
 	b, err := c.GetBytes(ctx, key)
 	if err != nil {
 		return err
 	}
-	return ResolveCodec(codec).Unmarshal(b, val)
+	return c.codecOr().Unmarshal(b, val)
 }
 
-// Set encodes val with codec (default [JSONCodec]) and stores it under key for
-// ttl. A non-positive ttl means the entry does not expire.
-func (c Cache) Set(ctx context.Context, key string, val any, ttl time.Duration, codec ...Codec) error {
-	b, err := ResolveCodec(codec).Marshal(val)
+// Set encodes val with the cache's [Codec] (default [JSONCodec]) and stores it
+// under key for ttl. A non-positive ttl means the entry does not expire.
+func (c Cache) Set(ctx context.Context, key string, val any, ttl time.Duration) error {
+	b, err := c.codecOr().Marshal(val)
 	if err != nil {
 		return err
 	}

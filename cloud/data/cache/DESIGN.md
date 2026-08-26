@@ -66,11 +66,12 @@ a named backend into a bean.
   one type with the full surface, backends implement the narrowest one. The
   cost — a future live-value in-process backend would have to serialize — is
   accepted; use bigcache for an in-process tier.
-- **Per-call codec, not per-instance.** `Get`/`Set` take an optional codec so
-  one cache can serve mixed types; the default is JSON and a mismatched codec
-  fails loudly on decode rather than corrupting silently. The struct form would
-  make a per-instance codec field cheap, but per-call covers the common case
-  without it.
+- **Instance codec, not per-call.** The codec is fixed at construction
+  (`New(bc, WithCodec(...))`, default JSON) rather than a per-call parameter:
+  a cache's format is a property of the cache, and a mismatched codec fails
+  loudly on decode rather than corrupting silently. A cache that must hold
+  mixed formats drops to the promoted raw `GetBytes`/`SetBytes` with an
+  explicit codec at the call site.
 - **Cache bean named by backend beanID.** The config slot (`spring.cache.X`)
   is only an iteration key; the bean name is the beanID suffix, coupling cache
   identity to the backend client. Intentional: one client → one cache name,

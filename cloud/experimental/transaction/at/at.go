@@ -21,7 +21,7 @@
 //
 // # Why a separate pattern from Saga and TCC
 //
-// [go-spring.org/spring/transaction] (Saga) and [go-spring.org/cloud/experimental/transaction/tcc]
+// [go-spring.org/cloud/experimental/transaction] (Saga) and [go-spring.org/cloud/experimental/transaction/tcc]
 // (TCC) both require the developer to write the reverse operation by hand: a
 // Saga step supplies a Compensate function, a TCC participant supplies Cancel.
 // AT removes that burden. A branch's compensation is *derived automatically*
@@ -65,6 +65,7 @@ package at
 import (
 	"context"
 
+	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/cloud/governance/resilience"
 )
 
@@ -222,6 +223,15 @@ func (p Phase) String() string {
 	}
 }
 
+// TxPhase converts this phase to the shared [transaction.Phase] so the
+// coordinator can report it through the family-wide [transaction.Observer].
+func (p Phase) TxPhase() transaction.Phase {
+	if p == PhaseRollback {
+		return transaction.PhaseRollback
+	}
+	return transaction.PhaseCommit
+}
+
 // Branch is one resource (typically a database) participating in a global AT
 // transaction. It is implemented by a backend starter that knows how to persist
 // undo logs and restore rows for its concrete ORM/driver; the [Coordinator]
@@ -295,14 +305,10 @@ type Coordinator interface {
 	Rollback(ctx context.Context, xid string) error
 }
 
-// Observer is the observability seam. The coordinator calls [Observer.Begin]
-// around every branch's second-phase operation; the returned end function is
-// invoked with the operation's error (nil on success). A starter implements this
-// to open an otel span per branch phase without stdlib depending on otel. A nil
-// Observer disables observation entirely.
-type Observer interface {
-	// Begin is called just before a branch phase runs. The returned context is used
-	// for that phase (so a span can propagate through ctx); the returned end func is
-	// called exactly once when the phase finishes.
-	Begin(ctx context.Context, xid, branch string, phase Phase) (context.Context, func(err error))
-}
+// Observer is the observability seam, shared with the whole transaction family
+// via [transaction.Observer]: the coordinator calls Begin around every branch's
+// second-phase operation, passing the XID, the branch's ID and the phase
+// converted with [Phase.TxPhase]. A starter implements it once (see
+// cloud/observe/transaction) to open an otel span per branch phase without the
+// core packages depending on otel. A nil Observer disables observation entirely.
+type Observer = transaction.Observer

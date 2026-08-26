@@ -25,23 +25,55 @@ import (
 	"strings"
 )
 
-// Verify replays every contract's request against the provider and asserts the
-// provider's answer matches the contract's Response. It is the provider-side
-// half of the agreement: a provider that drifts from any contract fails here.
+// Verify replays every contract's request against a live provider at baseURL
+// and asserts the provider's answer matches the contract's Response. It is the
+// provider-side half of the agreement: a provider that drifts from any contract
+// fails here. To exercise a handler in-process without a socket, use
+// [VerifyHandler].
 //
-// target is either a base URL string ("http://127.0.0.1:8080", to hit a running
-// server) or an http.Handler (to exercise the mux in-process without a socket).
 // Failures are reported per contract with tb.Errorf and do not stop the run, so
-// one Verify call surfaces every mismatch at once (assert-style, not fail-fast).
-func Verify(tb TB, target any, contracts []Contract) {
+// one call surfaces every mismatch at once (assert-style, not fail-fast).
+func Verify(tb TB, baseURL string, contracts []Contract) {
 	tb.Helper()
+	base := strings.TrimRight(baseURL, "/")
+	verifyExec(tb, contracts, func(req Request) (int, http.Header, []byte) {
+		r := buildRequest(req)
+		full, _ := url.Parse(base + r.URL.RequestURI())
+		r.URL = full
+		r.RequestURI = ""
+		resp, err := http.DefaultClient.Do(r)
+		if err != nil {
+			return 0, http.Header{}, []byte(err.Error())
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, resp.Header, b
+	})
+}
 
-	exec, err := executorFor(target)
-	if err != nil {
-		tb.Fatalf("contract: verify: %v", err)
-		return
-	}
+// VerifyHandler is [Verify] for an in-process http.Handler: the contracts are
+// replayed through httptest instead of a socket, which is faster and needs no
+// port. A live server (e.g. one started by the app's own framework) is better
+// covered by Verify against its real base URL.
+func VerifyHandler(tb TB, h http.Handler, contracts []Contract) {
+	tb.Helper()
+	verifyExec(tb, contracts, func(req Request) (int, http.Header, []byte) {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, buildRequest(req))
+		res := rec.Result()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, res.Header, b
+	})
+}
 
+// executor runs one contract request and returns the provider's status, headers
+// and body. Both entry points (live URL vs in-process handler) collapse to this
+// signature so the assertion loop is identical for both.
+type executor func(Request) (int, http.Header, []byte)
+
+// verifyExec asserts every contract against the provider behind exec.
+func verifyExec(tb TB, contracts []Contract, exec executor) {
+	tb.Helper()
 	for _, c := range contracts {
 		status, header, body := exec(c.Request)
 
@@ -56,42 +88,6 @@ func Verify(tb TB, target any, contracts []Contract) {
 		if !bodyEqual(c.Response.Body, body) {
 			tb.Errorf("contract %q: body = %s, want %s", c.Name, body, c.Response.Body)
 		}
-	}
-}
-
-// executor runs one contract request and returns the provider's status, headers
-// and body. The two targets (live URL vs in-process handler) collapse to this
-// signature so the assertion loop above is identical for both.
-type executor func(Request) (int, http.Header, []byte)
-
-// executorFor builds an executor for a base URL string or an http.Handler.
-func executorFor(target any) (executor, error) {
-	switch t := target.(type) {
-	case string:
-		base := strings.TrimRight(t, "/")
-		return func(req Request) (int, http.Header, []byte) {
-			r := buildRequest(req)
-			full, _ := url.Parse(base + r.URL.RequestURI())
-			r.URL = full
-			r.RequestURI = ""
-			resp, err := http.DefaultClient.Do(r)
-			if err != nil {
-				return 0, http.Header{}, []byte(err.Error())
-			}
-			defer func() { _ = resp.Body.Close() }()
-			b, _ := io.ReadAll(resp.Body)
-			return resp.StatusCode, resp.Header, b
-		}, nil
-	case http.Handler:
-		return func(req Request) (int, http.Header, []byte) {
-			rec := httptest.NewRecorder()
-			t.ServeHTTP(rec, buildRequest(req))
-			res := rec.Result()
-			b, _ := io.ReadAll(res.Body)
-			return res.StatusCode, res.Header, b
-		}, nil
-	default:
-		return nil, &badTargetError{}
 	}
 }
 
@@ -119,11 +115,4 @@ func buildRequest(req Request) *http.Request {
 		r.Header.Set(k, v)
 	}
 	return r
-}
-
-// badTargetError reports an unsupported Verify target type.
-type badTargetError struct{}
-
-func (*badTargetError) Error() string {
-	return "target must be a base URL string or an http.Handler"
 }

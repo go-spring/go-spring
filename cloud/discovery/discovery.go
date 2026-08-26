@@ -33,7 +33,6 @@ package discovery
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -108,23 +107,11 @@ type Query struct {
 	// ...) silently ignores it. That asymmetry is intentional — only dimensions
 	// with a generic [Endpoint] representation get a shared filter.
 	Tag string
-
-	// Group narrows the lookup to one registry group, e.g. a Nacos group that
-	// partitions a service's instances. It is "" (the default) when the caller
-	// passed no [WithGroup]. As with [Query.Tag], group is backend-interpreted
-	// with no package-level filter.
-	//
-	// Note the deployment nuance: in registries like Nacos, group (and
-	// namespace) are often bound per backend at construction — one [Discovery]
-	// adapter serves one namespace+group — rather than selected per query. Such
-	// deployments leave this empty and configure the group on the backend; this
-	// field is for the rarer per-query group narrowing.
-	Group string
 }
 
 // Option narrows a [Query]. The zero-length Option set means "no narrowing":
-// resolve every endpoint the service exposes, in every scheme/tag/group. Each
-// exported Option (WithScheme, WithTag, WithGroup, ...) sets one optional
+// resolve every endpoint the service exposes, in every scheme/tag. Each
+// exported Option (WithScheme, WithTag, ...) sets one optional
 // dimension; future dimensions are added as further WithX functions without
 // breaking existing call sites or backends, which is why the lookup is
 // name-plus-options rather than a growing positional parameter list.
@@ -154,22 +141,10 @@ func WithTag(t string) Option {
 	}
 }
 
-// WithGroup narrows the lookup to one registry group (a Nacos group, ...). An
-// empty g is a no-op. Honoring group is backend-specific and has no
-// package-level filter — see [Query.Group] for the per-query vs per-backend
-// nuance.
-func WithGroup(g string) Option {
-	return func(q *Query) {
-		if g != "" {
-			q.Group = g
-		}
-	}
-}
-
 // NewQuery materializes name plus opts into a [Query]. It is the canonical way a
 // [Discovery] backend turns the variadic Option slice it receives from
 // Resolve/Watch into values it can read: q := NewQuery(name, opts...), then use
-// q.Name, q.Scheme, q.Tag, q.Group. name is required but not validated here — a backend that
+// q.Name, q.Scheme, q.Tag. name is required but not validated here — a backend that
 // needs a non-empty name checks it itself.
 func NewQuery(name string, opts ...Option) Query {
 	q := Query{Name: name}
@@ -248,18 +223,12 @@ type WatchResult struct {
 //
 // A backend that supports enumeration but currently knows no services returns
 // (nil, nil); a backend that cannot enumerate simply does not implement
-// Catalog. ErrUnsupported exists for the rare wrapper that must implement the
-// interface yet delegates to a non-Catalog backend.
+// Catalog.
 type Catalog interface {
 	// Services returns the names of every service the backend currently knows
 	// about. The order is unspecified; callers that need a stable order sort.
 	Services(ctx context.Context) ([]string, error)
 }
-
-// ErrUnsupported is returned by a Catalog implementation whose delegate cannot
-// list service names. Backends that merely lack the capability should not
-// implement Catalog at all.
-var ErrUnsupported = errors.New("discovery: service enumeration not supported")
 
 // discoveriesMu guards discoveries. It is independent of registrarsMu (in
 // registrar.go): the two registries are written only during init and read only

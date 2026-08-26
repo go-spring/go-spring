@@ -164,18 +164,14 @@ func (d scheduledDriver) Drive(ctx context.Context, invoke func(context.Context)
 		rps := d.schedule(time.Since(start))
 		if rps <= 0 {
 			// Nothing to dispatch right now; re-evaluate shortly.
-			select {
-			case <-ctx.Done():
-			case <-time.After(repollInterval):
-			}
+			time.Sleep(repollInterval)
 			continue
 		}
 		interval := time.Duration(float64(time.Second) / rps)
 		interval = max(interval, time.Nanosecond)
-		select {
-		case <-ctx.Done():
-		case <-time.After(interval):
-		}
+		// A plain Sleep (not a timer select) keeps this example-grade driver
+		// simple; cancellation is noticed on the next loop iteration.
+		time.Sleep(interval)
 		if ctx.Err() != nil {
 			break
 		}

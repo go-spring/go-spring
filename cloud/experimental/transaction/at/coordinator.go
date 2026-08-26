@@ -160,7 +160,7 @@ func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase 
 
 	end := func(error) {}
 	if c.observer != nil {
-		ctx, end = c.observer.Begin(ctx, xid, b.ID(), phase)
+		ctx, end = c.observer.Begin(ctx, xid, b.ID(), phase.TxPhase())
 	}
 	err := runWithPolicy(ctx, c.retry, b.ID(), func(ctx context.Context) error {
 		return fn(ctx, xid)

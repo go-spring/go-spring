@@ -75,11 +75,16 @@ const (
 	DefaultBrief = levelBrief
 )
 
-// enabled reports whether the access log emits at the configured level.
-func (c ObserveConfig) enabled() bool { return c.Level != levelOff }
+// Enabled reports whether the access log emits at the configured level. An
+// unset Level ("") behaves as the "brief" default, so only "off" silences the
+// log signal. Exported so adapters outside this package (e.g. the resilience
+// and lock bridges) gate their logging through the same semantics instead of
+// comparing the Level literal themselves.
+func (c ObserveConfig) Enabled() bool { return c.Level != levelOff }
 
-// detailed reports whether the operation argument is captured into the log.
-func (c ObserveConfig) detailed() bool { return c.Level == levelDetailed }
+// Detailed reports whether the operation argument is captured into the log.
+// Exported for the same reason as Enabled.
+func (c ObserveConfig) Detailed() bool { return c.Level == levelDetailed }
 
 // maxArg returns the argument capture bound, defaulting to 512 when unset.
 func (c ObserveConfig) maxArg() int {

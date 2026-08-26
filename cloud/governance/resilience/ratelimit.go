@@ -101,18 +101,7 @@ var (
 // driver-registry idiom used elsewhere ([RegisterDriver], discovery.Register) so
 // duplicate wiring fails loudly at init.
 func RegisterLimiter(name string, d LimiterDriver) {
-	if name == "" {
-		panic("resilience: register limiter with empty name")
-	}
-	if d == nil {
-		panic("resilience: register nil limiter driver for " + name)
-	}
-	limiterMu.Lock()
-	defer limiterMu.Unlock()
-	if _, ok := limiterRegistry[name]; ok {
-		panic("resilience: limiter driver already registered: " + name)
-	}
-	limiterRegistry[name] = d
+	registerInto("limiter driver", limiterRegistry, &limiterMu, name, d)
 }
 
 // GetLimiter returns the [LimiterDriver] registered under name, or an error

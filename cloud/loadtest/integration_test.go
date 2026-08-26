@@ -44,7 +44,7 @@ func TestIntegration_LoadFaultBreaker(t *testing.T) {
 	t.Cleanup(func() { _ = exec.Close() })
 
 	// Fault wraps the executor: every call returns an injected error.
-	fexec := fault.WrapExecutor(exec, fault.NewInjector(fault.Config{
+	fexec := fault.WrapExecutorWith(exec, fault.NewInjector(fault.Config{
 		Enabled: true, Rate: 1, Error: "generic",
 	}))
 
@@ -58,24 +58,24 @@ func TestIntegration_LoadFaultBreaker(t *testing.T) {
 		Driver(ClosedLoop{Concurrency: 8}).
 		Duration(200*time.Millisecond).
 		Assert("breaker-opened", func(_ context.Context, r *Result) error {
-			if r.Circuit == 0 {
-				return fmt.Errorf("breaker never opened under fault (circuit=%d)", r.Circuit)
+			if r.Buckets[BucketCircuit] == 0 {
+				return fmt.Errorf("breaker never opened under fault (circuit=%d)", r.Buckets[BucketCircuit])
 			}
 			return nil
 		}).
 		Assert("faults-counted", func(_ context.Context, r *Result) error {
 			// Injected faults drove the breaker open; the injected bucket must be
 			// non-zero (the failures that tripped it before it opened).
-			if r.Injected == 0 {
+			if r.Buckets[BucketInjected] == 0 {
 				return fmt.Errorf("no injected faults recorded")
 			}
 			return nil
 		}).
 		Run(context.Background(), op)
 
-	assert.That(t, r.Passed()).True()     // both assertions held
-	assert.That(t, r.Circuit > 0).True()  // breaker opened, requests rejected as circuit-open
-	assert.That(t, r.Injected > 0).True() // the injected failures that tripped it
+	assert.That(t, r.Passed()).True()                    // both assertions held
+	assert.That(t, r.Buckets[BucketCircuit] > 0).True()  // breaker opened, requests rejected as circuit-open
+	assert.That(t, r.Buckets[BucketInjected] > 0).True() // the injected failures that tripped it
 }
 
 // TestIntegration_ScopeRealTrafficSkipsFault proves fault.Scope gates the
@@ -88,7 +88,7 @@ func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
 	assert.Error(t, err).Nil()
 	t.Cleanup(func() { _ = exec.Close() })
 
-	fexec := fault.WrapExecutor(exec, fault.NewInjector(fault.Config{
+	fexec := fault.WrapExecutorWith(exec, fault.NewInjector(fault.Config{
 		Enabled: true, Rate: 1, Error: "generic", Scope: "real", // skip load-test traffic
 	}))
 	op := func(ctx context.Context) error {
@@ -98,7 +98,7 @@ func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
 	r := New().Driver(ClosedLoop{Concurrency: 4}).Duration(150*time.Millisecond).
 		Run(context.Background(), op)
 	// Load-test traffic is excluded by scope "real": no faults, no breaker trip.
-	assert.That(t, r.Injected).Equal(int64(0))
-	assert.That(t, r.Circuit).Equal(int64(0))
+	assert.That(t, r.Buckets[BucketInjected]).Equal(int64(0))
+	assert.That(t, r.Buckets[BucketCircuit]).Equal(int64(0))
 	assert.That(t, r.Errors()).Equal(int64(0))
 }

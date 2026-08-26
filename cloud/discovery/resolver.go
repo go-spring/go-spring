@@ -19,7 +19,6 @@ package discovery
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync"
 	"sync/atomic"
 
@@ -48,7 +47,7 @@ type Resolver struct {
 }
 
 // NewResolver returns a Resolver watching name through the Discovery registered
-// as backend, narrowed by opts (e.g. [WithScheme], [WithTag], [WithGroup]). It
+// as backend, narrowed by opts (e.g. [WithScheme], [WithTag]). It
 // is the single constructor every infrastructure-client starter (Redis, MySQL,
 // MongoDB, ...) and every discovery-aware transport (the gateway, httpx) reuses:
 // each reduces its config to (backend, name) plus options and calls this.
@@ -162,23 +161,3 @@ func (r *Resolver) Stop() error {
 	r.stopOnce.Do(r.cancel)
 	return nil
 }
-
-// CloserFunc adapts a plain function to io.Closer, so a client starter's Driver
-// can hand back the teardown for whatever it built (e.g. stopping a discovery
-// resolver watch) without keeping a client->resolver side-channel registry. A
-// nil CloserFunc is a valid no-op Close.
-type CloserFunc func() error
-
-// Close implements io.Closer. It is a no-op for a nil CloserFunc.
-func (f CloserFunc) Close() error {
-	if f == nil {
-		return nil
-	}
-	return f()
-}
-
-// NopCloser returns an io.Closer whose Close is a no-op, for a client starter's
-// Driver that needs no extra teardown (e.g. one that never created a discovery
-// resolver). It is the shared no-op the redigo/go-redis starters used to define
-// privately.
-func NopCloser() io.Closer { return CloserFunc(nil) }

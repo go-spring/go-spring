@@ -23,6 +23,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/goutil"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -33,7 +34,7 @@ import (
 //
 // The returned io.Closer is the teardown for anything the driver built beyond
 // the client itself — for DefaultDriver that is the discovery resolver's
-// background watch; a driver with nothing to clean up returns discovery.NopCloser().
+// background watch; a driver with nothing to clean up returns goutil.NopCloser().
 // (*Client).Close calls it on shutdown.
 type Driver interface {
 	CreateClient(ctx context.Context, c Config) (*redis.Client, io.Closer, error)
@@ -111,7 +112,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client,
 			TLSConfig:        tlsConfig,
 		})
 		// Sentinel self-discovers its master; no background resolver to stop.
-		return client, discovery.NopCloser(), nil
+		return client, goutil.NopCloser(), nil
 	}
 
 	opts := &redis.Options{
@@ -151,9 +152,9 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client,
 	// without the starter keeping a client->resolver registry. No resolver
 	// (plain Addr / mesh / sentinel) → no-op.
 	client := redis.NewClient(opts)
-	stop := discovery.NopCloser()
+	stop := goutil.NopCloser()
 	if resolver != nil {
-		stop = discovery.CloserFunc(resolver.Stop)
+		stop = goutil.CloserFunc(resolver.Stop)
 	}
 	return client, stop, nil
 }
@@ -183,5 +184,5 @@ func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config) (*redis.
 		TLSConfig:       tlsConfig,
 	})
 	// Cluster self-discovers its nodes; no background resolver to stop.
-	return client, discovery.NopCloser(), nil
+	return client, goutil.NopCloser(), nil
 }

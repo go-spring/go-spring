@@ -13,9 +13,10 @@ directory; the HTTP engine itself still depends only on `net/http` and
 
 - Define one `Contract` shape (`Name`, `Request`, `Response`) that both ends
   read.
-- Provide `Verify(t, handler, contracts)` — the producer test that replays
-  every contract's request against a real `http.Handler` and asserts the
-  actual response matches.
+- Provide `VerifyHandler(t, handler, contracts)` — the producer test that
+  replays every contract's request against a real `http.Handler` and asserts
+  the actual response matches — plus `Verify(t, baseURL, contracts)` for a
+  live server reached over a socket.
 - Provide `StubServer(contracts)` — the consumer test double that answers
   incoming HTTP calls using the contracts' promised responses.
 - Refuse to invent a Go-only DSL. Contracts on disk are JSON so a Java
@@ -37,7 +38,7 @@ directory; the HTTP engine itself still depends only on `net/http` and
   library uses. Numeric precision and key order are not part of the match.
 - **`StubServer` returns a plain `*httptest.Server`.** The consumer test dials
   it like any HTTP server; no `contract`-specific client is needed.
-- **`FromFS(fsys, glob)` helper** loads contract files from an `fs.FS`, so
+- **`LoadFS(fsys, glob)` helper** loads contract files from an `fs.FS`, so
   tests can embed contracts via `go:embed` and both consumer and producer
   read from the same embedded set.
 
@@ -54,6 +55,10 @@ directory; the HTTP engine itself still depends only on `net/http` and
 - **Only HTTP today.** gRPC / Thrift engines, when they arrive, are sibling
   packages under this directory. Message-broker contracts are not modelled
   here; a broker test uses its broker's own in-memory test driver directly.
+- **Sibling protocol packages do not share types with this one.** A grpc or
+  thrift engine under this directory keeps its own Contract/envelope types and
+  SDK imports; what is shared is the directory and the present-only matching
+  semantic, not code.
 
 ## 4. Trade-offs and Alternatives Rejected
 
@@ -65,6 +70,7 @@ directory; the HTTP engine itself still depends only on `net/http` and
   dependency-free even though the cloud module could afford the parser.
 - **Structural equality over rich matchers.** Real contracts either match a
   fixed body or they should not be pinning the body at all.
-- **`Verify` uses `http.Handler`, not a live server.** Running the tests in
-  process is fast and keeps the producer's mounted middleware in play; a
-  live-server variant is a wrapper the caller can build if needed.
+- **`VerifyHandler` uses `http.Handler`, not a live server.** Running the
+  tests in process is fast and keeps the producer's mounted middleware in
+  play; `Verify` covers the live-server case against a real base URL, sharing
+  one assertion loop.

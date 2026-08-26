@@ -33,7 +33,6 @@ type TB interface {
 	Cleanup(func())
 	Errorf(format string, args ...any)
 	Fatalf(format string, args ...any)
-	Skipf(format string, args ...any)
 }
 
 // StubHandler builds an http.Handler that answers each request with the

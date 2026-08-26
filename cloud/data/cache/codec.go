@@ -30,9 +30,9 @@ type Codec interface {
 	Unmarshal(data []byte, v any) error
 }
 
-// JSONCodec is the default [Codec]: it encodes values with encoding/json. It is
-// a usable zero-value; pass an instance to [Cache.Get]/[Cache.Set] only to
-// override the default for a value that is not JSON-friendly.
+// JSONCodec is the default [Codec]: it encodes values with encoding/json. A
+// cache whose values are not JSON-friendly selects another codec at
+// construction via [WithCodec].
 type JSONCodec struct{}
 
 // Marshal implements [Codec].
@@ -45,12 +45,12 @@ func (JSONCodec) Unmarshal(data []byte, v any) error {
 	return json.Unmarshal(data, v)
 }
 
-// ResolveCodec returns the codec to use for a Get/Set call: the first provided
-// codec, or [JSONCodec] when none is given. The [Cache] struct calls it to
-// apply the default consistently instead of re-deriving it.
-func ResolveCodec(codec []Codec) Codec {
-	if len(codec) > 0 && codec[0] != nil {
-		return codec[0]
+// resolveCodec returns the codec a [Cache] should use: the one fixed at its
+// construction, or [JSONCodec] when none was set. The [Cache] methods call it
+// so the default is applied consistently instead of re-derived per call.
+func resolveCodec(codec Codec) Codec {
+	if codec != nil {
+		return codec
 	}
 	return JSONCodec{}
 }

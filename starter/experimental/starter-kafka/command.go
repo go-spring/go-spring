@@ -97,7 +97,7 @@ var resilienceResources sync.Map // *kgo.Client -> string
 // When governance is off, ExecutorFor yields a transparent no-op executor; fault
 // wraps it when an injector is registered (nil-safe otherwise).
 func applyResilience(c Config, cl *kgo.Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "kafka", c.Observability)
 	resilienceExecs.Store(cl, exec)
 	resilienceResources.Store(cl, resource)

@@ -20,23 +20,19 @@ import (
 	"time"
 )
 
-// Config binds the resilience knobs from go-spring ${...} value tags and yields
-// a [Policy] for the selected driver. It exists so every client starter
-// (starter-go-redis, starter-gorm-mysql, starter-nats, starter-oauth2-client,
-// starter-http-client) embeds one shared binding instead of copy-pasting a
-// private ResilienceConfig each. A zero Config (Enabled false) is a no-op.
+// PolicyConfig binds the resilience policy knobs from go-spring ${...} value
+// tags and yields a [Policy]. It is the policy-only half of [Config]: no
+// Enabled/Driver, because those are deployment-level switches. The governance
+// center embeds it per Default/Rule (govern.default.*, govern.rules[n].*), so
+// the on/off switch and backend selection stay process-wide at the top of
+// ${govern} (govern.enabled, govern.driver) instead of being re-bindable per
+// resource.
 //
 // Every field uses the same kebab-case key style and the same defaults as the
 // historical per-starter configs, so existing ${resilience.*} properties keep
 // working unchanged; the newer knobs (max-concurrent, backoff, max-duration,
 // breaker-strategy) all default to off.
-type Config struct {
-	// Enabled turns resilience on. When false the host client is unchanged.
-	Enabled bool `value:"${enabled:=false}"`
-
-	// Driver names the registered resilience backend ("default" or "sentinel").
-	Driver string `value:"${driver:=default}"`
-
+type PolicyConfig struct {
 	// --- rate limit ---
 
 	// RateLimit caps sustained throughput in operations per second (0 disables).
@@ -111,10 +107,27 @@ type Config struct {
 	RetryPredicateFn func(error) bool
 }
 
-// Policy maps the bound Config onto the driver-neutral [Policy]. It is the
-// single translation point every client starter uses, replacing the per-starter
-// policy() copies.
-func (c Config) Policy() Policy {
+// Config is what a client starter embeds: the policy knobs ([PolicyConfig])
+// plus the per-starter Enabled switch and Driver selection, all bound under the
+// starter's own prefix (e.g. ${resilience.enabled}, ${resilience.driver}). It
+// composes PolicyConfig rather than repeating it, so a starter that embeds
+// Config keeps exactly its old binding surface, while governance — which owns
+// Enabled/Driver centrally — embeds only the PolicyConfig half.
+type Config struct {
+	PolicyConfig
+
+	// Enabled turns resilience on. When false the host client is unchanged.
+	Enabled bool `value:"${enabled:=false}"`
+
+	// Driver names the registered resilience backend ("default" or "sentinel").
+	Driver string `value:"${driver:=default}"`
+}
+
+// Policy maps the bound policy config onto the driver-neutral [Policy]. It is
+// the single translation point every client starter uses, replacing the
+// per-starter policy() copies. Defined on PolicyConfig (and thus reachable as
+// Config.Policy too via embedding).
+func (c PolicyConfig) Policy() Policy {
 	return Policy{
 		RateLimit:           c.RateLimit,
 		Burst:               c.Burst,

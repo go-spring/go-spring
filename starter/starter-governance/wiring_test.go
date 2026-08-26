@@ -40,7 +40,7 @@ func setDyncGov(w *wiring, cfg governance.Config) {
 func govCfg(timeoutMs int, fc fault.Config) governance.Config {
 	return governance.Config{
 		Enabled: true,
-		Default: resilience.Config{Enabled: true, AttemptTimeout: time.Duration(timeoutMs) * time.Millisecond},
+		Default: resilience.PolicyConfig{AttemptTimeout: time.Duration(timeoutMs) * time.Millisecond},
 		Fault:   fc,
 	}
 }

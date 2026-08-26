@@ -75,9 +75,12 @@ type Config struct {
 
 	// Default is the policy applied to every resource that no Rule matches.
 	// Most deployments set only this and let every resource share it; per-resource
-	// exceptions go under Rules. Bind via govern.default.* (e.g.
-	// govern.default.timeout=500ms).
-	Default resilience.Config `value:"${default:=}"`
+	// exceptions go under Rules. It embeds resilience.PolicyConfig — NOT
+	// resilience.Config — so only policy knobs are bindable here; the on/off
+	// switch and backend selection are process-wide at the top of ${govern}
+	// ([Config.Enabled], [Config.Driver]) and deliberately NOT re-bindable per
+	// resource. Bind via govern.default.* (e.g. govern.default.attempt-timeout=500ms).
+	Default resilience.PolicyConfig `value:"${default:=}"`
 
 	// Rules are per-resource policy entries. PolicyFor returns the first Rule
 	// whose Resources contains the label; when no Rule matches it returns
@@ -113,16 +116,17 @@ type Config struct {
 // Rule is one per-resource policy entry. Resources are the resource labels it
 // applies to (exact match against any of them); the first matching Rule in
 // [Config.Rules] wins, so list specific Rules before broad ones. The embedded
-// resilience.Config supplies the policy fields and binds at the same key as the
-// Rule (govern.rules[n].timeout, .max-retries, ...), since gs promotes value
-// tags through an embedded struct.
+// resilience.PolicyConfig supplies the policy fields and binds at the same key
+// as the Rule (govern.rules[n].attempt-timeout, .max-retries, ...), since gs
+// promotes value tags through an embedded struct. Like Default it carries no
+// Enabled/Driver: those are process-wide, not per-resource.
 type Rule struct {
 	// Resources are the resource labels this Rule matches, exact-compare. A
 	// resource label is what a starter passes to the executor/fault seam — e.g.
 	// "redis:cache", "gorm:mysql:primary", "http:user-svc", "gin::8080". Comma-
 	// separated for multiple. Empty matches nothing (use Default instead).
 	Resources []string `value:"${resources:=}"`
-	resilience.Config
+	resilience.PolicyConfig
 }
 
 // Center is the runtime governance authority. It holds an atomic snapshot of
@@ -156,11 +160,6 @@ type Center struct {
 	// hot-reload; its config is swapped in place from the adopt sink.
 	injector *fault.Injector
 
-	// labelExecs memoizes the executor built per resource label so the
-	// governance subscription (Register) is armed exactly once per label, even
-	// if resilience.ExecutorFor hands the label to the provider concurrently on
-	// first use.
-	labelExecs sync.Map // label -> resilience.Executor
 }
 
 // subscriber is one client's interest in the policy for a label. last is the
@@ -278,18 +277,17 @@ func (c *Center) bindDefault(s Source) {
 // resilience.RegisterExecutorProvider. For a resource label it builds the
 // executor the center resolves (the center's driver + the label's policy) and
 // subscribes it to policy changes — so a hot-reload of ${govern} refreshes the
-// executor in place. Memoized per label so the subscription is armed once.
+// executor in place. It is a pure function: the ONLY memoization is the
+// LoadOrStore cache in resilience.resolve (provider.go), which also guarantees
+// this provider is invoked at most once per label, so the Register
+// subscription is armed exactly once even under concurrent first use.
 func (c *Center) executorFor(label string) resilience.Executor {
-	if v, ok := c.labelExecs.Load(label); ok {
-		return v.(resilience.Executor)
-	}
 	exec, err := resilience.NewExecutor(c.Driver(), c.PolicyFor(label))
 	if err != nil || exec == nil {
 		return nil // resilience.resolve falls back to a no-op executor
 	}
 	c.Register(label, func(p resilience.Policy) { _ = exec.Refresh(p) })
-	actual, _ := c.labelExecs.LoadOrStore(label, exec)
-	return actual.(resilience.Executor)
+	return exec
 }
 
 // Destroy closes the active source when it happens to be closeable (the

@@ -71,7 +71,7 @@ func init() {
 	StarterCache.RegisterDriver("bigcache", func(beanID string) gs.ModuleFunc {
 		return func(r gs.BeanProvider, p flatten.Storage) error {
 			r.Provide(func(c *Cache) *cache.Cache {
-				return &cache.Cache{ByteCache: bytecache.NewByteCache(c.BigCache)}
+				return cache.New(bytecache.NewByteCache(c.BigCache))
 			}, gs.TagArg(beanID)).Name(beanID)
 			return nil
 		}

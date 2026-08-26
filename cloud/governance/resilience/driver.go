@@ -35,6 +35,26 @@ var (
 	registry = map[string]Driver{}
 )
 
+// registerInto is the shared body of the Driver and LimiterDriver
+// registrations: the empty-name / nil-driver / duplicate-name panic triple and
+// the guarded map insert. kind only feeds the panic messages. The registries
+// stay separate maps with separate interfaces (no type merging) — this only
+// removes the copy-pasted guard boilerplate.
+func registerInto[T any](kind string, m map[string]T, mu *sync.RWMutex, name string, v T) {
+	if name == "" {
+		panic("resilience: register " + kind + " with empty name")
+	}
+	if any(v) == nil {
+		panic("resilience: register nil " + kind + " for " + name)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if _, ok := m[name]; ok {
+		panic("resilience: " + kind + " already registered: " + name)
+	}
+	m[name] = v
+}
+
 // The bundled "default" driver: a self-contained implementation with no
 // third-party dependencies, so the framework is usable out of the box and in
 // tests. Production deployments select the recommended sentinel-golang driver
@@ -65,18 +85,7 @@ func (defaultDriver) NewExecutor(p Policy) (Executor, error) {
 // idiom used elsewhere (discovery.Register, starter-go-redis RegisterDriver) so
 // duplicate wiring fails loudly at init.
 func RegisterDriver(name string, d Driver) {
-	if name == "" {
-		panic("resilience: register with empty name")
-	}
-	if d == nil {
-		panic("resilience: register nil driver for " + name)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if _, ok := registry[name]; ok {
-		panic("resilience: driver already registered: " + name)
-	}
-	registry[name] = d
+	registerInto("driver", registry, &mu, name, d)
 }
 
 // GetDriver returns the [Driver] registered under name, or an error that lists

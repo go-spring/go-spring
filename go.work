@@ -2,7 +2,7 @@ go 1.26.1
 
 use (
 	./cloud
-	./cloud/event/example
+	./cloud/experimental/event/example
 	./contrib/dubbo-go/dubbo
 	./contrib/dubbo-go/jsonrpc
 	./contrib/dubbo-go/rest

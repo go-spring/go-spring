@@ -32,7 +32,7 @@
 //
 //   - It provides no isolation. Intermediate states of a Saga are visible to
 //     other readers between steps, so business code must guard against dirty
-//     reads itself (a "processing" status flag, a per-key [go-spring.org/spring/lock]).
+//     reads itself (a "processing" status flag, a per-key [go-spring.org/cloud/experimental/lock]).
 //     This is a Saga, not XA — do not treat it as one.
 //   - It does not parse SQL or generate undo logs (that would be the AT model,
 //     deliberately left out — see the design note). Compensation is a business
@@ -154,28 +154,33 @@ func (s Status) String() string {
 	}
 }
 
-// Phase distinguishes a step's forward action from its compensation, used by
-// [StepError] and [Observer] to label what was running.
-type Phase int
+// Phase labels what a coordinator was running when it called [Observer], so the
+// same [Observer] implementation can instrument the Saga, TCC and AT models
+// defined in this package family. It is a typed string: every phase constant
+// below names itself, and a variant belonging to another model is still a valid
+// Phase (no "Unknown" fallback) — coordinators in sub-packages pass their own
+// phases as Phase values via their conversion methods.
+type Phase string
 
 const (
-	// PhaseAction is the forward operation.
-	PhaseAction Phase = iota
-	// PhaseCompensate is the reverse (undo) operation.
-	PhaseCompensate
+	// PhaseAction is a Saga step's forward operation.
+	PhaseAction Phase = "Action"
+	// PhaseCompensate is a Saga step's reverse (undo) operation.
+	PhaseCompensate Phase = "Compensate"
+	// PhaseTry is a TCC participant's reserve operation.
+	PhaseTry Phase = "Try"
+	// PhaseConfirm is a TCC participant's commit-the-reservation operation.
+	PhaseConfirm Phase = "Confirm"
+	// PhaseCancel is a TCC participant's release-the-reservation operation.
+	PhaseCancel Phase = "Cancel"
+	// PhaseCommit is an AT branch's drop-undo-logs operation.
+	PhaseCommit Phase = "Commit"
+	// PhaseRollback is an AT branch's restore-from-before-image operation.
+	PhaseRollback Phase = "Rollback"
 )
 
 // String renders the phase for logs and spans.
-func (p Phase) String() string {
-	switch p {
-	case PhaseAction:
-		return "Action"
-	case PhaseCompensate:
-		return "Compensate"
-	default:
-		return "Unknown"
-	}
-}
+func (p Phase) String() string { return string(p) }
 
 // StepError attributes an error to a specific step and phase, so a caller
 // inspecting a failed [Result] knows exactly which action or compensation broke.
@@ -237,14 +242,19 @@ type Coordinator interface {
 	Recover(ctx context.Context, s Saga) (Result, error)
 }
 
-// Observer is the observability seam. The coordinator calls [Observer.Begin]
-// around every step phase; the returned end function is invoked with the phase's
-// error (nil on success). A starter implements this to open an otel span per
-// step — one child span for the action, one for each compensation — without
-// stdlib depending on otel. A nil Observer disables observation entirely.
+// Observer is the observability seam shared by the whole transaction family
+// (Saga here, TCC in [go-spring.org/cloud/experimental/transaction/tcc], AT in
+// [go-spring.org/cloud/experimental/transaction/at]). A coordinator calls
+// [Observer.Begin] around every step / participant / branch phase; the returned
+// end function is invoked with the phase's error (nil on success). A starter
+// implements this once to open an otel span per phase for all three models —
+// without the core packages depending on otel. A nil Observer disables
+// observation entirely.
 type Observer interface {
-	// Begin is called just before a phase runs. The returned context is used for
-	// that phase (so a span can propagate through ctx); the returned end func is
-	// called exactly once when the phase finishes.
-	Begin(ctx context.Context, sagaID, step string, phase Phase) (context.Context, func(err error))
+	// Begin is called just before a phase runs. txID is the transaction's
+	// idempotency id (saga ID, TCC transaction ID or AT XID), step is the step /
+	// participant / branch name, and phase labels the operation. The returned
+	// context is used for that phase (so a span can propagate through ctx); the
+	// returned end func is called exactly once when the phase finishes.
+	Begin(ctx context.Context, txID, step string, phase Phase) (context.Context, func(err error))
 }

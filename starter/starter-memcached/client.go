@@ -71,7 +71,7 @@ type Client struct {
 func (c *Client) Init() error {
 	c.obs = observe.NewDB("memcached", c.Observability)
 	c.resource = resilience.ResourceLabel("memcached", c.name)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(c.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(c.resource))
 	c.exec = resilobserve.WrapExecutor(exec, "memcached", c.Observability)
 	return nil
 }

@@ -18,7 +18,6 @@ package discovery
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -140,12 +139,6 @@ func (discoveryOnly) Watch(context.Context, string, ...Option) (<-chan WatchResu
 	return nil, nil
 }
 
-func TestErrUnsupportedIsSentinel(t *testing.T) {
-	if !errors.Is(ErrUnsupported, ErrUnsupported) {
-		t.Fatal("ErrUnsupported should be usable with errors.Is")
-	}
-}
-
 func TestNewStaticDiscovery(t *testing.T) {
 	d := NewStaticDiscovery(
 		Endpoint{Addr: "10.0.0.1:8080", Healthy: true},
@@ -213,16 +206,15 @@ func TestQueryOptionsCompose(t *testing.T) {
 	q := NewQuery("svc",
 		WithScheme("tls"),
 		WithTag("v2"),
-		WithGroup("prod"),
 	)
-	if q.Name != "svc" || q.Scheme != "tls" || q.Tag != "v2" || q.Group != "prod" {
-		t.Fatalf("NewQuery = %+v, want all four dimensions set", q)
+	if q.Name != "svc" || q.Scheme != "tls" || q.Tag != "v2" {
+		t.Fatalf("NewQuery = %+v, want all three dimensions set", q)
 	}
 
 	// Empty values are no-ops, so conditionally passing a config field needs no
 	// guard - WithScheme("") leaves the default.
-	q2 := NewQuery("svc", WithScheme(""), WithTag(""), WithGroup(""))
-	if q2.Scheme != "" || q2.Tag != "" || q2.Group != "" {
+	q2 := NewQuery("svc", WithScheme(""), WithTag(""))
+	if q2.Scheme != "" || q2.Tag != "" {
 		t.Fatalf("empty options should be no-ops, got %+v", q2)
 	}
 }

@@ -121,7 +121,7 @@ func (c Config) toTransportConfig(base http.RoundTripper, exec resilience.Execut
 	// attach to; fault.WrapExecutor is nil-safe when no injector is registered.
 	cfg.Executor = exec
 	cfg.WrapExec = func(e resilience.Executor) resilience.Executor {
-		return resilobserve.WrapExecutor(fault.WrapExecutor(e, fault.InjectorFor()), "http", c.Observability)
+		return resilobserve.WrapExecutor(fault.WrapExecutor(e), "http", c.Observability)
 	}
 	return cfg
 }

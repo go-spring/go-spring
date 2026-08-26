@@ -45,6 +45,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"go-spring.org/cloud/governance/fault"
@@ -63,8 +64,8 @@ type Config struct {
 }
 
 // Error-bucket labels produced by [DefaultClassify]. A custom [Classify] may
-// return these (counted in the typed fields below) or any other label (counted
-// in [Result.Buckets]).
+// return these or any other label; all labels land in [Result.Buckets] and
+// [Result.Print] outputs these five in the listed order before custom ones.
 const (
 	BucketCircuit     = "circuit"
 	BucketRateLimited = "rate-limited"
@@ -72,6 +73,10 @@ const (
 	BucketInjected    = "fault-injected"
 	BucketOther       = "other"
 )
+
+// builtinBuckets fixes the display order of the built-in labels in
+// [Result.Print] so reports stay diffable regardless of map iteration order.
+var builtinBuckets = [...]string{BucketCircuit, BucketRateLimited, BucketBulkhead, BucketInjected, BucketOther}
 
 // Result is the aggregate of a run. Latencies is sorted ascending so
 // [Result.Percentile] can index directly.
@@ -81,17 +86,8 @@ type Result struct {
 	QPS       float64
 	Latencies []time.Duration
 
-	// Error buckets, classified via [DefaultClassify] (or a custom classifier's
-	// returns of the same labels). Custom labels accumulate in Buckets.
-	Circuit     int64
-	RateLimited int64
-	Bulkhead    int64
-	Injected    int64
-	Other       int64
-
-	// Buckets holds counts for custom error labels a pluggable [Classify]
-	// returned (anything outside the five labels above). Empty under the
-	// default classifier. [Result.Errors] folds these into its total.
+	// Buckets maps each error label (see the Bucket* constants and any custom
+	// [Classify] labels) to its count. [Result.Errors] sums it.
 	Buckets map[string]int64
 
 	// Driver names the scheduling [Driver] that produced this result
@@ -110,19 +106,20 @@ type Result struct {
 
 // Errors reports the total across all error buckets, custom included.
 func (r *Result) Errors() int64 {
-	var custom int64
+	var total int64
 	for _, v := range r.Buckets {
-		custom += v
+		total += v
 	}
-	return r.Circuit + r.RateLimited + r.Bulkhead + r.Injected + r.Other + custom
+	return total
 }
 
-// Percentile returns the p-quantile (0..1) of the latency sample, or 0 when the
-// run produced no samples.
+// Percentile returns the p-quantile of the latency sample, or 0 when the run
+// produced no samples. p is clamped to [0, 1].
 func (r *Result) Percentile(p float64) time.Duration {
 	if len(r.Latencies) == 0 {
 		return 0
 	}
+	p = min(max(p, 0), 1)
 	return r.Latencies[int(float64(len(r.Latencies)-1)*p)]
 }
 
@@ -184,12 +181,27 @@ func (r *Result) Print(w io.Writer) {
 			r.Percentile(0.50), r.Percentile(0.90), r.Percentile(0.99),
 			r.Percentile(0.999), r.Latencies[len(r.Latencies)-1])
 	}
-	fmt.Fprintf(w, "errors by class:  circuit=%d  rate-limited=%d  bulkhead=%d  injected=%d  other=%d",
-		r.Circuit, r.RateLimited, r.Bulkhead, r.Injected, r.Other)
-	if len(r.Buckets) > 0 {
-		fmt.Fprintf(w, "  custom=%v", r.Buckets)
+	fmt.Fprintf(w, "errors by class:")
+	if len(r.Buckets) == 0 {
+		fmt.Fprintf(w, "  none\n")
+	} else {
+		for _, b := range builtinBuckets {
+			fmt.Fprintf(w, "  %s=%d", b, r.Buckets[b])
+		}
+		// Custom labels follow the built-ins, in a stable (sorted) order so
+		// reports stay diffable across runs.
+		var custom []string
+		for k := range r.Buckets {
+			if !slices.Contains(builtinBuckets[:], k) {
+				custom = append(custom, k)
+			}
+		}
+		slices.Sort(custom)
+		for _, k := range custom {
+			fmt.Fprintf(w, "  %s=%d", k, r.Buckets[k])
+		}
+		fmt.Fprintf(w, "\n")
 	}
-	fmt.Fprintf(w, "\n")
 	if r.NumGC > 0 {
 		fmt.Fprintf(w, "gc  cycles=%d  avg-pause=%s\n", r.NumGC, r.GCPauseAvg.Truncate(time.Microsecond))
 	}

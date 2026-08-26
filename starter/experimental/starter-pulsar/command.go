@@ -153,15 +153,36 @@ func EndSpan(span trace.Span, err error) {
 // the binder path uses a default "brief" level; the manual helpers above remain
 // for apps that want explicit control.
 
+// The observers are built lazily (sync.Once) so a blank import of this starter
+// no longer pays the observe-kit construction (log tag registration, OTel
+// instrument creation) at package init — only apps that actually publish or
+// consume through the binder path build them.
 var (
-	defaultPubObs = observe.NewProducer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
-	defaultSubObs = observe.NewConsumer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
+	defaultObsOnce sync.Once
+	defaultPubObs  *observe.Observer
+	defaultSubObs  *observe.Observer
 )
+
+func pubObserver() *observe.Observer {
+	defaultObsOnce.Do(func() {
+		defaultPubObs = observe.NewProducer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
+		defaultSubObs = observe.NewConsumer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
+	})
+	return defaultPubObs
+}
+
+func subObserver() *observe.Observer {
+	defaultObsOnce.Do(func() {
+		defaultPubObs = observe.NewProducer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
+		defaultSubObs = observe.NewConsumer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
+	})
+	return defaultSubObs
+}
 
 // startProduce opens a producer observation and injects W3C trace context into
 // msg.Properties. topic is the producer's destination (the binder passes it).
 func startProduce(ctx context.Context, topic string, msg *pulsar.ProducerMessage) (context.Context, *observe.Span) {
-	ctx, sp := defaultPubObs.Start(ctx, "publish", topic)
+	ctx, sp := pubObserver().Start(ctx, "publish", topic)
 	if msg.Properties == nil {
 		msg.Properties = make(map[string]string)
 	}
@@ -173,7 +194,7 @@ func startProduce(ctx context.Context, topic string, msg *pulsar.ProducerMessage
 // a consumer observation. For the binder's consume loop.
 func startConsume(ctx context.Context, msg pulsar.Message) (context.Context, *observe.Span) {
 	ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.MapCarrier(msg.Properties()))
-	return defaultSubObs.Start(ctx, "consume", msg.Topic())
+	return subObserver().Start(ctx, "consume", msg.Topic())
 }
 
 // -----------------------------------------------------------------------------
@@ -201,7 +222,7 @@ var resilienceResources sync.Map // pulsar.Client -> string
 // When governance is off, ExecutorFor yields a transparent no-op executor; fault
 // wraps it when an injector is registered (nil-safe otherwise).
 func applyResilience(c Config, cl pulsar.Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "pulsar", c.Observability)
 	resilienceExecs.Store(cl, exec)
 	resilienceResources.Store(cl, resource)

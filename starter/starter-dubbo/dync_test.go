@@ -404,12 +404,12 @@ func TestDyncPoller_GovernOverride(t *testing.T) {
 	reset := governance.Arm(governance.Config{
 		Enabled: true,
 		Driver:  "default",
-		Default: resilience.Config{Enabled: true, AttemptTimeout: 2 * time.Second, MaxRetries: 4},
+		Default: resilience.PolicyConfig{AttemptTimeout: 2 * time.Second, MaxRetries: 4},
 		// Per-reference override: a different timeout for one service. The key is
 		// the full dubbo resource label ("dubbo:" + colonSeparatedKey).
 		Rules: []governance.Rule{{
 			Resources: []string{"dubbo:greet.GreetService::"},
-			Config:    resilience.Config{Enabled: true, AttemptTimeout: 500 * time.Millisecond, MaxRetries: 1},
+			PolicyConfig: resilience.PolicyConfig{AttemptTimeout: 500 * time.Millisecond, MaxRetries: 1},
 		}},
 	})
 	t.Cleanup(reset) // don't leak into other tests
@@ -463,7 +463,7 @@ func TestDyncPoller_GovernOverride(t *testing.T) {
 func TestDyncPoller_GovernDisabledIsNoop(t *testing.T) {
 	dc := mapconfig.Singleton()
 	// Disabled authority: Enabled=false even though Default has a policy.
-	reset := governance.Arm(governance.Config{Enabled: false, Default: resilience.Config{Enabled: true, AttemptTimeout: 2 * time.Second}})
+	reset := governance.Arm(governance.Config{Enabled: false, Default: resilience.PolicyConfig{AttemptTimeout: 2 * time.Second}})
 	t.Cleanup(reset)
 	p := &dyncPoller{dynCfg: mapconfig.Singleton(), appName: testApp,
 		last: make(map[string]map[string]string), regged: make(map[string]bool)}

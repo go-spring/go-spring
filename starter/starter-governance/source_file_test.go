@@ -28,12 +28,10 @@ import (
 )
 
 const rulesV1 = `govern.enabled=true
-govern.default.enabled=true
 govern.default.attempt-timeout=100ms
 `
 
 const rulesV2 = `govern.enabled=true
-govern.default.enabled=true
 govern.default.attempt-timeout=300ms
 govern.default.max-retries=1
 `
@@ -43,14 +41,12 @@ govern.default.max-retries=1
 const rulesV1YAML = `govern:
   enabled: true
   default:
-    enabled: true
     attempt-timeout: 100ms
 `
 
 const rulesV2YAML = `govern:
   enabled: true
   default:
-    enabled: true
     attempt-timeout: 300ms
     max-retries: 1
 `
@@ -88,7 +84,7 @@ func TestFileSource_InitialSnapshot(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	cfg := s.Snapshot()
-	if !cfg.Enabled || !cfg.Default.Enabled || cfg.Default.AttemptTimeout != 100*time.Millisecond {
+	if !cfg.Enabled || cfg.Default.AttemptTimeout != 100*time.Millisecond {
 		t.Fatalf("initial snapshot wrong: %+v", cfg)
 	}
 }

@@ -232,7 +232,7 @@ var resilienceResources sync.Map // *amqp.Connection -> string
 // zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
 // transparent no-op executor; fault wraps it when enabled.
 func applyResilience(c Config, conn *amqp.Connection, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "rabbitmq", c.Observability)
 	resilienceExecs.Store(conn, exec)
 	resilienceResources.Store(conn, resource)

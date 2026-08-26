@@ -160,7 +160,7 @@ func EndSpan(span trace.Span, err error) {
 // zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
 // transparent no-op executor; fault wraps it when enabled.
 func applyResilience(c Config, conn *Conn, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	// Wrap so breaker trips / rejects / retries emit span + counter + histogram
 	// + access log (the resilience core emits none). nil-safe, no-op without
 	// starter-otel.

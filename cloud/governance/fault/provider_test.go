@@ -56,7 +56,7 @@ func TestInjectorFor_RegisterRoundTrip(t *testing.T) {
 }
 
 // TestWrapExecutor_LazyGlobalInjector is the regression test for the ordering
-// fix: a starter wires fault.WrapExecutor(inner, fault.InjectorFor()) in its
+// fix: a starter wires fault.WrapExecutor(inner) in its
 // Init, BEFORE starter-govern has registered the injector (Runner time). The
 // captured injector is nil, so the fault layer must resolve InjectorFor() lazily
 // on each Execute — otherwise fault never applies.
@@ -65,9 +65,9 @@ func TestWrapExecutor_LazyGlobalInjector(t *testing.T) {
 
 	inner := &noopExec{}
 	// Simulate wiring at Init time: InjectorFor() is nil (not registered yet).
-	exec := WrapExecutor(inner, InjectorFor())
+	exec := WrapExecutor(inner)
 	if exec == nil {
-		t.Fatal("WrapExecutor(inner, nil) returned nil; want a lazy faultExecutor")
+		t.Fatal("WrapExecutor(inner) returned nil; want a lazy faultExecutor")
 	}
 
 	// Before an injector is registered, Execute is a transparent pass-through.
@@ -94,7 +94,7 @@ func TestWrapExecutor_ExplicitInjector(t *testing.T) {
 	t.Cleanup(resetInjector)
 	inner := &noopExec{}
 	inj := NewInjector(Config{Enabled: true, Rate: 1, Error: "reset"})
-	exec := WrapExecutor(inner, inj)
+	exec := WrapExecutorWith(inner, inj)
 	err := exec.Execute(context.Background(), "redis", func(context.Context) error {
 		t.Fatal("fn should not run")
 		return nil

@@ -58,11 +58,11 @@ func TestRun_ClassifiesErrors(t *testing.T) {
 				return errors.New("boom")
 			}
 		})
-	assert.That(t, r.Circuit > 0).True()
-	assert.That(t, r.RateLimited > 0).True()
-	assert.That(t, r.Bulkhead > 0).True()
-	assert.That(t, r.Injected > 0).True()
-	assert.That(t, r.Other > 0).True()
+	assert.That(t, r.Buckets[BucketCircuit] > 0).True()
+	assert.That(t, r.Buckets[BucketRateLimited] > 0).True()
+	assert.That(t, r.Buckets[BucketBulkhead] > 0).True()
+	assert.That(t, r.Buckets[BucketInjected] > 0).True()
+	assert.That(t, r.Buckets[BucketOther] > 0).True()
 	assert.That(t, r.Errors()).Equal(r.Ops)
 }
 

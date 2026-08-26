@@ -120,7 +120,7 @@ func TestNewRunner_AssertVerdict(t *testing.T) {
 }
 
 // TestNewRunner_CustomClassifyBuckets verifies a custom classifier routes unknown
-// errors into Result.Buckets while the built-in labels still map to typed fields.
+// errors into Result.Buckets alongside the built-in labels.
 func TestNewRunner_CustomClassifyBuckets(t *testing.T) {
 	busy := errors.New("busy")
 	timeout := errors.New("timeout")
@@ -144,13 +144,13 @@ func TestNewRunner_CustomClassifyBuckets(t *testing.T) {
 	assert.That(t, r.Buckets["busy"] > 0).True()
 	assert.That(t, r.Errors() == r.Buckets["busy"]).True() // all errors counted
 
-	// Default classifier still routes resilience sentinels to typed fields.
+	// The custom classifier still delegates resilience sentinels to the builtin labels.
 	inj := fault.ErrInjected
 	r2 := New().Driver(ClosedLoop{Concurrency: 1}).Duration(20*time.Millisecond).
 		Classify(custom).
 		Run(context.Background(), func(context.Context) error { return inj })
-	assert.That(t, r2.Injected > 0).True()
-	assert.That(t, len(r2.Buckets) == 0).True()
+	assert.That(t, r2.Buckets[BucketInjected] > 0).True()
+	assert.That(t, len(r2.Buckets) == 1).True()
 }
 
 // TestNewRunner_AssertGCPauseRequiresCapture confirms GC assertion is trivially

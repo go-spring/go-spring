@@ -86,7 +86,7 @@ func (o *Client) Init() error {
 	obs := observe.NewDB("elasticsearch", o.Observability, observe.WithoutTrace())
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resourceLabel(o.cfg)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	// Wrap the executor with observe-resilience so circuit-breaker trips,
 	// rate-limit rejects, bulkhead rejections and retries emit a span + call
 	// counter (by outcome) + duration histogram + access log.

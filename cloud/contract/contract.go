@@ -18,9 +18,10 @@
 // declarative contract (a request shape paired with the response it must
 // produce) drives both ends of a service-to-service call.
 //
-//   - On the provider side [Verify] replays every contract against the real
-//     handler and asserts the response matches — the provider cannot drift from
-//     the agreement without a test failure.
+//   - On the provider side [VerifyHandler] replays every contract against the
+//     real handler (or [Verify] against a live server's base URL) and asserts
+//     the response matches — the provider cannot drift from the agreement
+//     without a test failure.
 //   - On the consumer side [StubServer] turns the same contracts into a stub
 //     HTTP server that answers exactly as the provider promised, so a consumer
 //     (typically a declarative HTTP client)

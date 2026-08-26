@@ -69,7 +69,7 @@ func init() {
 	StarterCache.RegisterDriver("memcached", func(beanID string) gs.ModuleFunc {
 		return func(r gs.BeanProvider, p flatten.Storage) error {
 			r.Provide(func(c *Client) *cache.Cache {
-				return &cache.Cache{ByteCache: bytecache.NewByteCache(c.Client)}
+				return cache.New(bytecache.NewByteCache(c.Client))
 			}, gs.TagArg(beanID)).Name(beanID)
 			return nil
 		}

@@ -39,6 +39,7 @@ package mesh
 import (
 	"os"
 	"strings"
+	"sync"
 )
 
 // ModeEnv is the environment variable that selects mesh mode. See the package
@@ -73,9 +74,20 @@ var envPrefixes = []string{
 // mesh, inferred from sidecar-injected environment variables. It performs no
 // network I/O and is safe to call at startup.
 //
+// The result is computed once and cached ([sync.OnceValue]): the environment
+// does not change during a process's lifetime, and scanning os.Environ on every
+// call (the "auto" default of [Enabled]) would walk the whole environment per
+// lookup. Tests that mutate env vars call the package-internal resetDetect to
+// drop the cache.
+//
 // It backs the "auto" mode of [Enabled]: when GS_MESH is unset or "auto", this
 // inference decides whether mesh mode is on.
-func Detect() bool {
+func Detect() bool { return detectOnce() }
+
+var detectOnce = sync.OnceValue(detectEnv)
+
+// detectEnv is the uncached body of [Detect].
+func detectEnv() bool {
 	for _, kv := range os.Environ() {
 		for _, p := range envPrefixes {
 			if strings.HasPrefix(kv, p) {
@@ -85,3 +97,7 @@ func Detect() bool {
 	}
 	return false
 }
+
+// resetDetect drops [Detect]'s cache. Test-only: it exists because tests mutate
+// the process environment, which the cache would otherwise hide.
+func resetDetect() { detectOnce = sync.OnceValue(detectEnv) }

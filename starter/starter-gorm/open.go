@@ -92,7 +92,7 @@ func (o *DB) Init() error {
 			return err
 		}
 	}
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	exec = resilobserve.WrapExecutor(exec, o.engine, o.Observability)
 	o.exec = exec
 	if err := gormresilience.ApplyCallbacks(o.DB, exec, o.resource); err != nil {

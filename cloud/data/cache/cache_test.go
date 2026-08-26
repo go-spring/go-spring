@@ -41,28 +41,11 @@ func TestJSONCodecRoundTrip(t *testing.T) {
 	assert.That(t, out).Equal(in)
 }
 
-func TestResolveCodec(t *testing.T) {
-	// No override, or an explicit nil, both fall back to the default JSONCodec.
-	assert.That(t, cache.ResolveCodec(nil)).Equal(cache.JSONCodec{})
-	assert.That(t, cache.ResolveCodec([]cache.Codec{nil})).Equal(cache.JSONCodec{})
-
-	// A provided codec wins.
-	custom := &fakeCodec{}
-	assert.That(t, cache.ResolveCodec([]cache.Codec{custom})).Equal(custom)
-}
-
 func TestErrMiss(t *testing.T) {
 	// ErrMiss is a sentinel a caller distinguishes from a real backend error.
 	assert.That(t, errors.Is(cache.ErrMiss, cache.ErrMiss)).True()
 	assert.That(t, errors.Is(errors.New("boom"), cache.ErrMiss)).False()
 }
-
-// fakeCodec is a no-op Codec used only to prove ResolveCodec returns the
-// caller's codec by identity rather than the default.
-type fakeCodec struct{}
-
-func (fakeCodec) Marshal(v any) ([]byte, error)   { return nil, nil }
-func (fakeCodec) Unmarshal(b []byte, v any) error { return nil }
 
 // fakeByteCache is an in-memory ByteCache for exercising the Cache façade
 // without a real backend. It stores raw bytes and reports ErrMiss on absent
@@ -118,7 +101,7 @@ func (markerCodec) Unmarshal(data []byte, v any) error {
 
 func TestCacheRoundTrip(t *testing.T) {
 	bc := newFakeByteCache()
-	c := cache.Cache{ByteCache: bc}
+	c := cache.New(bc)
 
 	type user struct{ Name string }
 	in := user{Name: "ada"}
@@ -136,7 +119,7 @@ func TestCacheRoundTrip(t *testing.T) {
 }
 
 func TestCacheGetMiss(t *testing.T) {
-	c := cache.Cache{ByteCache: newFakeByteCache()}
+	c := cache.New(newFakeByteCache())
 	var v any
 	err := c.Get(context.Background(), "absent", &v)
 	assert.That(t, errors.Is(err, cache.ErrMiss)).True()
@@ -144,7 +127,7 @@ func TestCacheGetMiss(t *testing.T) {
 
 func TestCacheDelete(t *testing.T) {
 	bc := newFakeByteCache()
-	c := cache.Cache{ByteCache: bc}
+	c := cache.New(bc)
 
 	assert.That(t, c.Set(context.Background(), "k", 42, 0)).Nil()
 	assert.That(t, c.Delete(context.Background(), "k")).Nil()
@@ -155,14 +138,34 @@ func TestCacheDelete(t *testing.T) {
 
 func TestCacheCustomCodec(t *testing.T) {
 	bc := newFakeByteCache()
-	c := cache.Cache{ByteCache: bc}
+	c := cache.New(bc, cache.WithCodec(markerCodec{}))
 
 	in := map[string]any{"n": float64(7)}
-	assert.That(t, c.Set(context.Background(), "k", in, 0, markerCodec{})).Nil()
-	// The caller's codec ran, not the default JSON.
+	assert.That(t, c.Set(context.Background(), "k", in, 0)).Nil()
+	// The construction-time codec ran, not the default JSON.
 	assert.That(t, bytes.HasPrefix(bc.m["k"], []byte("MARKER:"))).True()
 
 	var out map[string]any
-	assert.That(t, c.Get(context.Background(), "k", &out, markerCodec{})).Nil()
+	assert.That(t, c.Get(context.Background(), "k", &out)).Nil()
 	assert.That(t, out["n"]).Equal(float64(7))
+}
+
+func TestCacheMixedFormatsViaBytes(t *testing.T) {
+	// A cache that must hold two formats backs off the typed surface: store
+	// through SetBytes with an explicit codec, read back through GetBytes and
+	// decode with the matching codec - both promoted/raw methods on the same
+	// Cache.
+	bc := newFakeByteCache()
+	c := cache.New(bc)
+
+	in := 7
+	raw, err := markerCodec{}.Marshal(in)
+	assert.That(t, err).Nil()
+	assert.That(t, c.SetBytes(context.Background(), "m", raw, 0)).Nil()
+
+	got, err := c.GetBytes(context.Background(), "m")
+	assert.That(t, err).Nil()
+	var out int
+	assert.That(t, markerCodec{}.Unmarshal(got, &out)).Nil()
+	assert.That(t, out).Equal(in)
 }

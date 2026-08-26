@@ -37,7 +37,7 @@
 // The abstraction is deliberately split from any backend. A [Scheduler] runs
 // entirely in-process; when the same job must run on only one replica of a
 // multi-replica deployment, attach a distributed lock with [WithLock] (see
-// [go-spring.org/spring/lock]) so only the lock holder executes each fire.
+// [go-spring.org/cloud/experimental/lock]) so only the lock holder executes each fire.
 //
 // Cron parsing lives in this package on purpose: keeping it here preserves the
 // zero-dependency contract of stdlib and avoids pulling a third-party cron
@@ -126,11 +126,12 @@ func (p ConcurrencyPolicy) String() string {
 }
 
 // Locker acquires a named lock for multi-replica de-duplication. It is a minimal
-// interface — just "try to take this key once" — declared here so the package
-// keeps its zero-dependency contract. A [go-spring.org/spring/lock.Locker] does
-// not satisfy it directly (its TryAcquire returns lock.Lock and takes
-// lock.Option), so the integration layer adapts one, baking in TTL/renew
-// choices; that keeps this abstraction free of the lock package.
+// consumer interface — just "try to take this key once" — defined here, at the
+// consumer, rather than by importing [go-spring.org/cloud/experimental/lock]:
+// scheduling needs only a single-shot try-acquire, and a
+// [go-spring.org/cloud/experimental/lock.Locker] does not satisfy it directly
+// (its TryAcquire returns lock.Lock and takes lock.Option), so the integration
+// layer adapts one, baking in TTL/renew choices.
 type Locker interface {
 	// TryAcquire attempts to take key once without blocking. ok reports whether
 	// it was acquired; when ok is false the lock is held elsewhere. A non-nil err

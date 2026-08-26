@@ -19,10 +19,8 @@ package StarterGateway
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"net"
 	"net/http"
-	"os"
 
 	"go-spring.org/cloud/tlsconf"
 	"go-spring.org/log"
@@ -70,31 +68,12 @@ func (s *GatewayServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route.handler.ServeHTTP(w, r)
 }
 
-// tlsConfig builds the *tls.Config from the bound TLS settings, failing fast if
-// certificate files are missing or unreadable.
+// tlsConfig builds the server-side *tls.Config from the bound TLS settings via
+// tlsconf.BuildServer, failing fast if certificate files are missing or
+// unreadable. A configured CAFile means "bundle of client CAs" and turns on
+// mTLS (RequireAndVerifyClientCert).
 func (s *GatewayServer) tlsConfig() (*tls.Config, error) {
-	t := s.Cfg.TLS
-	if !t.Enabled {
-		return nil, nil
-	}
-	cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
-	if err != nil {
-		return nil, errutil.Explain(err, "gateway: failed to load TLS key pair")
-	}
-	cfg := &tls.Config{Certificates: []tls.Certificate{cert}}
-	if t.CAFile != "" {
-		pem, err := os.ReadFile(t.CAFile)
-		if err != nil {
-			return nil, errutil.Explain(err, "gateway: failed to read client CA")
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, errutil.Explain(nil, "gateway: no certificates found in %s", t.CAFile)
-		}
-		cfg.ClientCAs = pool
-		cfg.ClientAuth = tls.RequireAndVerifyClientCert
-	}
-	return cfg, nil
+	return s.Cfg.TLS.BuildServer()
 }
 
 // Run listens immediately, then serves after readiness is signaled, aligning the

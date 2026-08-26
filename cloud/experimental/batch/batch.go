@@ -36,7 +36,8 @@
 //     one-step [Job].
 //
 // The abstraction is deliberately split from any backend, exactly like
-// [go-spring.org/spring/lock]: the progress store is the [JobRepository] seam.
+// [go-spring.org/cloud/experimental/lock]: the progress store is the
+// [JobRepository] seam.
 // A [NewMemoryRepository] ships built in for tests and single-process use; a
 // durable backend (Redis, a database, ...) is a separate integration module
 // that contributes a JobRepository bean. There is no global driver registry —

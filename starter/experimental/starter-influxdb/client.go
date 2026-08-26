@@ -77,7 +77,7 @@ func (o *Client) Init() error {
 	obs := observe.NewDB("influxdb", o.Observability)
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resilience.ResourceLabel("influxdb", o.cfg.ServerURL)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	exec = resilobserve.WrapExecutor(exec, "influxdb", o.Observability)
 	o.exec = exec
 	if o.dyn != nil {

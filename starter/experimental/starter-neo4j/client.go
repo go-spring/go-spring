@@ -73,7 +73,7 @@ type Client struct {
 // executor is a transparent no-op.
 func (o *Client) Init() error {
 	o.resource = resilience.ResourceLabel("neo4j", o.cfg.ServiceName, o.cfg.URI)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	o.exec = resilobserve.WrapExecutor(exec, "neo4j", o.Observability)
 	return nil
 }

@@ -75,7 +75,7 @@ type Cache struct {
 func (c *Cache) Init() error {
 	c.obs = observe.NewDB("bigcache", c.Observability)
 	c.resource = resilience.ResourceLabel("bigcache", c.name)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(c.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(c.resource))
 	c.exec = resilobserve.WrapExecutor(exec, "bigcache", c.Observability)
 	return nil
 }

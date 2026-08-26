@@ -66,7 +66,7 @@ func (o *Client) Init() error {
 		o.slot.obs = observe.NewDB("tdengine", o.Observability)
 	}
 	o.resource = resourceLabel(o.cfg)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	exec = resilobserve.WrapExecutor(exec, "tdengine", o.Observability)
 	o.exec = exec
 	if o.slot != nil {

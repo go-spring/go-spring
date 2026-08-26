@@ -51,8 +51,8 @@ equality** (key order and whitespace ignored).
 contracts, _ := contract.Load("testdata/greet.contract.json")
 
 // Provider side — fails if the real handler drifts from any contract.
-contract.Verify(t, greetHandler(), contracts)          // in-process http.Handler
-contract.Verify(t, "http://127.0.0.1:8080", contracts) // or a running base URL
+contract.VerifyHandler(t, greetHandler(), contracts)     // in-process http.Handler
+contract.Verify(t, "http://127.0.0.1:8080", contracts)    // or a running base URL
 
 // Consumer side — a stub the consumer under test calls.
 stub := contract.StubServer(t, contracts)

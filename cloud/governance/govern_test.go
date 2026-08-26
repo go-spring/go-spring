@@ -32,7 +32,7 @@ func dur(d int) time.Duration { return time.Duration(d) * time.Millisecond }
 func enabledTimeout(d int) Config {
 	return Config{
 		Enabled: true,
-		Default: resilience.Config{Enabled: true, AttemptTimeout: dur(d)},
+		Default: resilience.PolicyConfig{AttemptTimeout: dur(d)},
 	}
 }
 
@@ -57,7 +57,7 @@ func TestConfig_FaultEmbedding(t *testing.T) {
 	// resolves from Default/Rules unaffected.
 	cfg := Config{
 		Enabled: true,
-		Default: resilience.Config{Enabled: true, AttemptTimeout: dur(100)},
+		Default: resilience.PolicyConfig{AttemptTimeout: dur(100)},
 		Fault:   fault.Config{Enabled: true, Rate: 0.5, Error: "generic"},
 	}
 	if !cfg.Fault.Enabled || cfg.Fault.Rate != 0.5 || cfg.Fault.Error != "generic" {
@@ -83,10 +83,10 @@ func TestPolicyFor_Default(t *testing.T) {
 func TestPolicyFor_RuleReplacesDefault(t *testing.T) {
 	c := NewCenter(Config{
 		Enabled: true,
-		Default: resilience.Config{Enabled: true, AttemptTimeout: dur(100), MaxRetries: 1},
+		Default: resilience.PolicyConfig{AttemptTimeout: dur(100), MaxRetries: 1},
 		Rules: []Rule{{
-			Resources: []string{"redis:cache"},
-			Config:    resilience.Config{Enabled: true, AttemptTimeout: dur(50)}, // no MaxRetries
+			Resources:          []string{"redis:cache"},
+			PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(50)}, // no MaxRetries
 		}},
 	})
 	p := c.PolicyFor("redis:cache")
@@ -110,8 +110,8 @@ func TestPolicyFor_FirstMatchingRuleWins(t *testing.T) {
 	c := NewCenter(Config{
 		Enabled: true,
 		Rules: []Rule{
-			{Resources: []string{"redis:cache"}, Config: resilience.Config{Enabled: true, AttemptTimeout: dur(10)}},
-			{Resources: []string{"redis:cache"}, Config: resilience.Config{Enabled: true, AttemptTimeout: dur(20)}},
+			{Resources: []string{"redis:cache"}, PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(10)}},
+			{Resources: []string{"redis:cache"}, PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(20)}},
 		},
 	})
 	if p := c.PolicyFor("redis:cache"); p.Timeout != dur(10) {
@@ -120,8 +120,8 @@ func TestPolicyFor_FirstMatchingRuleWins(t *testing.T) {
 	// A Rule with empty Resources matches nothing (use Default instead).
 	c2 := NewCenter(Config{
 		Enabled: true,
-		Default: resilience.Config{Enabled: true, AttemptTimeout: dur(100)},
-		Rules:   []Rule{{Config: resilience.Config{Enabled: true, AttemptTimeout: dur(50)}}},
+		Default: resilience.PolicyConfig{AttemptTimeout: dur(100)},
+		Rules:   []Rule{{PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(50)}}},
 	})
 	if p := c2.PolicyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("empty-Resources rule must not match: want default 100ms, got %v", p.Timeout)
@@ -130,7 +130,7 @@ func TestPolicyFor_FirstMatchingRuleWins(t *testing.T) {
 
 func TestPolicyFor_DisabledIsPassThrough(t *testing.T) {
 	// Enabled=false makes the center a no-op even when Default is set.
-	c := NewCenter(Config{Enabled: false, Default: resilience.Config{Enabled: true, AttemptTimeout: dur(100)}})
+	c := NewCenter(Config{Enabled: false, Default: resilience.PolicyConfig{AttemptTimeout: dur(100)}})
 	if p := c.PolicyFor("redis:cache"); !p.IsZero() {
 		t.Fatalf("disabled center must yield zero policy, got %+v", p)
 	}
@@ -152,7 +152,7 @@ func TestRefresh_NotifiesOnlyChangedLabels(t *testing.T) {
 	c := NewCenter(Config{
 		Enabled: true,
 		Driver:  "default",
-		Default: resilience.Config{Enabled: true, AttemptTimeout: dur(100)},
+		Default: resilience.PolicyConfig{AttemptTimeout: dur(100)},
 	})
 
 	var redisN, gormN int
@@ -166,8 +166,8 @@ func TestRefresh_NotifiesOnlyChangedLabels(t *testing.T) {
 	// Change only redis:cache. gorm must NOT be notified (its policy unchanged).
 	cfg := enabledTimeout(100)
 	cfg.Rules = []Rule{{
-		Resources: []string{"redis:cache"},
-		Config:    resilience.Config{Enabled: true, AttemptTimeout: dur(200)},
+		Resources:          []string{"redis:cache"},
+		PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(200)},
 	}}
 	c.Refresh(cfg)
 	if redisN != 2 {

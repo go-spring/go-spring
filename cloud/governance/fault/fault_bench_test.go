@@ -47,7 +47,7 @@ func BenchmarkFaultExecutor_Disabled(b *testing.B) {
 	d, _ := resilience.GetDriver("default")
 	raw, _ := d.NewExecutor(resilience.Policy{})
 	defer func() { _ = raw.Close() }()
-	exec := WrapExecutor(raw, NewInjector(Config{})) // Enabled false
+	exec := WrapExecutorWith(raw, NewInjector(Config{})) // Enabled false
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
@@ -61,7 +61,7 @@ func BenchmarkFaultExecutor_Injecting(b *testing.B) {
 	d, _ := resilience.GetDriver("default")
 	raw, _ := d.NewExecutor(resilience.Policy{})
 	defer func() { _ = raw.Close() }()
-	exec := WrapExecutor(raw, NewInjector(Config{Enabled: true, Rate: 1, Error: "generic"}))
+	exec := WrapExecutorWith(raw, NewInjector(Config{Enabled: true, Rate: 1, Error: "generic"}))
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {

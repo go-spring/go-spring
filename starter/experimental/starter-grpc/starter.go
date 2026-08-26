@@ -150,7 +150,7 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	}
 
 	if s.cfg.TLS.Enabled {
-		tlsCfg, err := s.cfg.TLS.Build()
+		tlsCfg, err := s.cfg.TLS.BuildServer()
 		if err != nil {
 			return nil, errutil.Explain(err, "grpc: build TLS")
 		}

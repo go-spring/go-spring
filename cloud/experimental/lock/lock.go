@@ -24,7 +24,7 @@
 // election) and only the holder proceeds; the others wait or skip.
 //
 // The abstraction is split from its backends deliberately. Unlike
-// [go-spring.org/cloud/governance/resilience] and [go-spring.org/spring/discovery], there
+// [go-spring.org/cloud/governance/resilience] and [go-spring.org/cloud/discovery], there
 // is no global string-keyed driver registry, because a lock backend needs a live
 // client (a Redis connection, an etcd/consul client) rather than a declarative
 // policy. The seam is therefore the [Locker] interface itself: each backend ships

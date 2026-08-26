@@ -21,7 +21,7 @@ import (
 	"embed"
 	"testing"
 
-	migration "go-spring.org/cloud/data/experimental/data/migration"
+	migration "go-spring.org/cloud/data/migration"
 	StarterMigrationGorm "go-spring.org/starter-migration-gorm"
 	"go-spring.org/stdlib/testing/assert"
 	sqlite "gorm.io/driver/sqlite"

@@ -51,9 +51,10 @@
   嵌入 `ByteCache`,裸方法原样提升——调用方看到一个完整表面的类型,后端实现最窄
   的那个。代价——将来若有"存活值"的进程内后端就得序列化——可接受(进程内用
   bigcache)。
-- **codec 放在调用级,而非实例级。** `Get`/`Set` 接受可选 codec,让一个 cache 能
-  服务混合类型;默认 JSON,codec 不匹配会在 decode 时显式报错而非静默损坏。结构体
-  形式让实例级 codec 字段近乎免费,但调用级已覆盖常见场景,无需引入。
+- **codec 放在实例级,而非调用级。** codec 在构造期固定(`New(bc, WithCodec(...))`,
+  默认 JSON),不是逐调用参数:cache 的格式是 cache 自身的属性,codec 不匹配会在
+  decode 时显式报错而非静默损坏。需要混存多种格式的 cache 退回提升的裸方法
+  `GetBytes`/`SetBytes`,在调用点显式给 codec。
 - **cache bean 按后端 beanID 命名。** 配置槽(`spring.cache.X`)只是遍历键,bean
   名是 beanID 后缀,把 cache 身份耦到后端 client。有意为之:一个 client → 一个
   cache 名,重复接线在 init 期 panic,而非静默覆盖。

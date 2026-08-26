@@ -25,6 +25,9 @@
 package governance
 
 import (
+	"sync"
+	"sync/atomic"
+
 	"go-spring.org/cloud/governance/resilience"
 )
 
@@ -43,16 +46,29 @@ var global = NewCenter(Config{})
 // queues callbacks until live, then fires them. It cannot key off global itself
 // being non-nil, because global is never nil (it starts as a disabled Center).
 var (
-	live     bool
+	live atomic.Bool
+
+	// readyMu guards readyCbs, the [OnReady] callback queue. OnReady is a cold
+	// path (startup registration), so a plain mutex is fine; it closes the race
+	// between a late OnReady and markLive: whichever wins, each callback runs
+	// exactly once — either from the queue at GoLive time or immediately.
+	readyMu  sync.Mutex
 	readyCbs []func()
 )
 
 // markLive flags the authority armed and fires every callback queued via
-// [OnReady]. Wiring-time only (single goroutine), so the queue needs no lock.
+// [OnReady]. The atomic CompareAndSwap guarantees exactly-once firing even if
+// GoLive is somehow invoked concurrently; callbacks run outside readyMu so a
+// callback may itself call OnReady (which now fires immediately) without
+// self-deadlocking.
 func markLive() {
-	live = true
+	if !live.CompareAndSwap(false, true) {
+		return
+	}
+	readyMu.Lock()
 	cbs := readyCbs
 	readyCbs = nil
+	readyMu.Unlock()
 	for _, cb := range cbs {
 		cb()
 	}
@@ -127,11 +143,18 @@ func CloseActiveSource() error { return global.Destroy() }
 // starter (also a Rooter) has armed governance; OnReady guarantees the caller
 // re-runs its work once governance is live, without depending on bean order.
 func OnReady(cb func()) {
-	if live {
+	if live.Load() {
+		cb()
+		return
+	}
+	readyMu.Lock()
+	if live.Load() { // went live while we waited on the lock: fire now
+		readyMu.Unlock()
 		cb()
 		return
 	}
 	readyCbs = append(readyCbs, cb)
+	readyMu.Unlock()
 }
 
 // Arm installs an authority built from cfg onto the singleton and returns a
@@ -147,5 +170,8 @@ func Arm(cfg Config) (reset func()) {
 // the live flag. It is the cleanup counterpart to [Arm].
 func Reset() {
 	global = NewCenter(Config{})
-	live = false
+	readyMu.Lock()
+	live.Store(false)
+	readyCbs = nil
+	readyMu.Unlock()
 }

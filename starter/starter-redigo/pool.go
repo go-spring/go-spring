@@ -198,7 +198,7 @@ func (o *Pool) setupResilience(obs observe.ObserveConfig) error {
 	// configured the seam yields a transparent no-op executor, so this call is
 	// always safe. Resolution is deferred to call time, hence the order of this
 	// setup relative to starter-govern's wiring is irrelevant.
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 
 	o.exec = resilobserve.WrapExecutor(exec, "redigo", obs)
 	return nil

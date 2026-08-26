@@ -18,14 +18,21 @@ package StarterLockRedis
 
 import (
 	"go-spring.org/cloud/experimental/lock"
-	"go-spring.org/cloud/observe/lock"
+	"go-spring.org/cloud/observe"
+	lockobserve "go-spring.org/cloud/observe/lock"
 )
 
-func wrapLockerBean(c Config, inner lock.Locker) lock.Locker { return WrapLocker(inner) }
+func wrapLockerBean(c Config, inner lock.Locker) lock.Locker {
+	return WrapLocker(c.Observer.Observability, inner)
+}
 
-// WrapLocker returns a lock.Locker whose Acquire/TryAcquire are wrapped with
-// OTel client spans (lock.system="redis"). The implementation lives in the
-// shared observe-lock adapter so every lock backend shares one wrapper instead
-// of copy-pasting it per starter. When starter-otel is not imported the global
-// TracerProvider is a no-op, so the wrapper adds negligible overhead.
-func WrapLocker(inner lock.Locker) lock.Locker { return lockobserve.WrapLocker("redis", inner) }
+// WrapLocker returns a lock.Locker whose Acquire/TryAcquire are wrapped with the
+// observe kit's three signals (trace span + duration/in-flight metric + access
+// log; lock.system="redis"). The implementation lives in the shared observe-lock
+// adapter so every lock backend shares one wrapper instead of copy-pasting it
+// per starter. cfg flows the instance's observer.observability config (log
+// level, per-op skips) into the adapter. When starter-otel is not imported the
+// global OTel providers are no-ops, so the wrapper adds negligible overhead.
+func WrapLocker(cfg observe.ObserveConfig, inner lock.Locker) lock.Locker {
+	return lockobserve.WrapLocker("redis", cfg, inner)
+}

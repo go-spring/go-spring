@@ -215,7 +215,7 @@ func (c *coordinator) runPhase(ctx context.Context, txID string, p Participant, 
 
 	end := func(error) {}
 	if c.observer != nil {
-		ctx, end = c.observer.Begin(ctx, txID, p.Name, phase)
+		ctx, end = c.observer.Begin(ctx, txID, p.Name, phase.TxPhase())
 	}
 
 	var result any

@@ -63,7 +63,7 @@ func TestContract_BothDirections(t *testing.T) {
 
 	// Provider side: replay every contract against the real handler. If the
 	// provider drifted (wrong status, header or body) this would fail.
-	contract.Verify(t, greetProvider(), contracts)
+	contract.VerifyHandler(t, greetProvider(), contracts)
 
 	// Consumer side: build a stub from the same contracts and drive it with an
 	// http.Client — the stand-in for a Task 01 declarative HTTP client whose
@@ -104,7 +104,7 @@ func TestVerify_DetectsProviderDrift(t *testing.T) {
 	})
 
 	rec := &recordingTB{}
-	contract.Verify(rec, drifted, contracts)
+	contract.VerifyHandler(rec, drifted, contracts)
 	assert.Number(t, rec.errors).GreaterThan(0, "Verify must report the drift")
 }
 
@@ -130,7 +130,6 @@ func (r *recordingTB) Helper()                   {}
 func (r *recordingTB) Cleanup(func())            {}
 func (r *recordingTB) Errorf(string, ...any)     { r.errors++ }
 func (r *recordingTB) Fatalf(f string, a ...any) { r.errors++ }
-func (r *recordingTB) Skipf(string, ...any)      {}
 
 // ExampleStubServer shows the consumer-side flow end to end.
 func ExampleStubServer() {
@@ -213,7 +212,7 @@ func TestVerify_RawByteBody(t *testing.T) {
 		_, _ = io.WriteString(w, "plain ok\n")
 	})
 	rec := &recordingTB{}
-	contract.Verify(rec, same, plain)
+	contract.VerifyHandler(rec, same, plain)
 	assert.That(t, rec.errors).Equal(0)
 
 	// Different raw body must be reported.
@@ -221,6 +220,6 @@ func TestVerify_RawByteBody(t *testing.T) {
 		_, _ = io.WriteString(w, "plain drift")
 	})
 	rec = &recordingTB{}
-	contract.Verify(rec, drifted, plain)
+	contract.VerifyHandler(rec, drifted, plain)
 	assert.Number(t, rec.errors).GreaterThan(0, "raw-byte mismatch must be reported")
 }

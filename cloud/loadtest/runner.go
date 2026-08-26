@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud/governance/traffic"
@@ -31,7 +30,8 @@ import (
 // Classify maps an op's error to a bucket label. The default ([DefaultClassify])
 // uses the resilience + fault taxonomy; supply your own via [Runner.Classify]
 // to add custom buckets (they land in [Result.Buckets]) — for example to split
-// "other" into per-handler or per-status breakdowns.
+// "other" into per-handler or per-status breakdowns. A classifier that returns
+// "" (or any label equal to [BucketOther]) is counted under "other".
 type Classify func(error) string
 
 // Runner is the full-featured load-test entry: pick a scheduling [Driver], a
@@ -150,85 +150,59 @@ func (r *Runner) Run(ctx context.Context, op Op) *Result {
 	return res
 }
 
-// recorder collects per-op latency and classified error buckets. Latency
-// appending takes a mutex (the recorder is shared across the driver's
-// goroutines); error counters are atomic for the five built-in labels and fall
-// back to a mutex'd map for custom labels, so the default classifier never
-// contends on the map.
+// recorder collects per-op latency and classified error buckets. Both the
+// latency slice and the bucket map live under one mutex (the recorder is shared
+// across the driver's goroutines); this is example-grade tooling, so a single
+// lock instead of per-label atomics is the simpler trade.
 type recorder struct {
-	ops      atomic.Int64
-	circuit  atomic.Int64
-	rate     atomic.Int64
-	bulk     atomic.Int64
-	injected atomic.Int64
-	other    atomic.Int64
-
 	classify Classify
 
 	mu        sync.Mutex
-	custom    map[string]int64
+	buckets   map[string]int64
 	latencies []time.Duration
+	ops       int64
 }
 
 func newRecorder(classify Classify) *recorder {
 	if classify == nil {
 		classify = DefaultClassify
 	}
-	return &recorder{classify: classify, custom: map[string]int64{}}
+	return &recorder{classify: classify, buckets: map[string]int64{}}
 }
 
 func (r *recorder) observe(lat time.Duration, err error) {
 	r.mu.Lock()
 	r.latencies = append(r.latencies, lat)
+	r.ops++
+	if err != nil {
+		label := r.classify(err)
+		if label == "" {
+			label = BucketOther
+		}
+		r.buckets[label]++
+	}
 	r.mu.Unlock()
-	r.ops.Add(1)
-	if err == nil {
-		return
-	}
-	label := r.classify(err)
-	switch label {
-	case BucketCircuit:
-		r.circuit.Add(1)
-	case BucketRateLimited:
-		r.rate.Add(1)
-	case BucketBulkhead:
-		r.bulk.Add(1)
-	case BucketInjected:
-		r.injected.Add(1)
-	case BucketOther, "":
-		r.other.Add(1)
-	default:
-		// custom label
-		r.mu.Lock()
-		r.custom[label]++
-		r.mu.Unlock()
-	}
 }
 
 func (r *recorder) result(elapsed time.Duration) *Result {
 	r.mu.Lock()
 	lats := make([]time.Duration, len(r.latencies))
 	copy(lats, r.latencies)
-	buckets := make(map[string]int64, len(r.custom))
-	maps.Copy(buckets, r.custom)
+	buckets := make(map[string]int64, len(r.buckets))
+	maps.Copy(buckets, r.buckets)
+	ops := r.ops
 	r.mu.Unlock()
 	slices.Sort(lats)
 
 	qps := 0.0
-	ops := r.ops.Load()
 	if elapsed > 0 {
 		qps = float64(ops) / elapsed.Seconds()
 	}
 	return &Result{
-		Ops:         ops,
-		Elapsed:     elapsed,
-		QPS:         qps,
-		Latencies:   lats,
-		Circuit:     r.circuit.Load(),
-		RateLimited: r.rate.Load(),
-		Bulkhead:    r.bulk.Load(),
-		Injected:    r.injected.Load(),
-		Other:       r.other.Load(),
-		Buckets:     buckets,
+		Ops:       ops,
+		Elapsed:   elapsed,
+		QPS:       qps,
+		Latencies: lats,
+		Buckets:   buckets,
 	}
 }

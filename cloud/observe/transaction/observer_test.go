@@ -20,8 +20,6 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/experimental/transaction"
-	"go-spring.org/cloud/experimental/transaction/at"
-	"go-spring.org/cloud/experimental/transaction/tcc"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -31,12 +29,12 @@ func TestSagaSpanName(t *testing.T) {
 }
 
 func TestTccSpanName(t *testing.T) {
-	assert.That(t, tccSpanName(tcc.PhaseTry, "Stock")).Equal("tcc.try Stock")
-	assert.That(t, tccSpanName(tcc.PhaseConfirm, "Stock")).Equal("tcc.confirm Stock")
-	assert.That(t, tccSpanName(tcc.PhaseCancel, "Stock")).Equal("tcc.cancel Stock")
+	assert.That(t, tccSpanName(transaction.PhaseTry, "Stock")).Equal("tcc.try Stock")
+	assert.That(t, tccSpanName(transaction.PhaseConfirm, "Stock")).Equal("tcc.confirm Stock")
+	assert.That(t, tccSpanName(transaction.PhaseCancel, "Stock")).Equal("tcc.cancel Stock")
 }
 
 func TestAtSpanName(t *testing.T) {
-	assert.That(t, atSpanName(at.PhaseCommit, "branch-1")).Equal("at.commit branch-1")
-	assert.That(t, atSpanName(at.PhaseRollback, "branch-1")).Equal("at.rollback branch-1")
+	assert.That(t, atSpanName(transaction.PhaseCommit, "branch-1")).Equal("at.commit branch-1")
+	assert.That(t, atSpanName(transaction.PhaseRollback, "branch-1")).Equal("at.rollback branch-1")
 }

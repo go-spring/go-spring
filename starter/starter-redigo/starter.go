@@ -85,7 +85,7 @@ func init() {
 	StarterCache.RegisterDriver("redigo", func(beanID string) gs.ModuleFunc {
 		return func(r gs.BeanProvider, p flatten.Storage) error {
 			r.Provide(func(w *Pool) *cache.Cache {
-				return &cache.Cache{ByteCache: bytecache.NewByteCache(w.Pool)}
+				return cache.New(bytecache.NewByteCache(w.Pool))
 			}, gs.TagArg(beanID)).Name(beanID)
 			return nil
 		}

@@ -29,7 +29,7 @@ import (
 var ErrLockConflict = errors.New("at: global row lock conflict")
 
 // MemoryGlobalLock is a zero-dependency, concurrency-safe in-process [GlobalLock].
-// It is the AT equivalent of [go-spring.org/spring/lock.MemoryLocker]: it holds
+// It is the AT equivalent of [go-spring.org/cloud/experimental/lock.MemoryLocker]: it holds
 // row locks in a map keyed by [LockKey], owning each by XID. It provides real
 // write-write isolation for a single process (several goroutines driving
 // concurrent global transactions); a multi-process deployment needs a shared

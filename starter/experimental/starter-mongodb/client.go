@@ -97,7 +97,7 @@ func (d *dialerWrapper) DialContext(ctx context.Context, network, address string
 func (o *Client) Init() error {
 	o.obs.Store(observe.NewDB("mongodb", o.Observability))
 	o.resource = resilience.ResourceLabel("mongodb", o.cfg.ServiceName, o.cfg.URI)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource), fault.InjectorFor())
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	exec = resilobserve.WrapExecutor(exec, "mongodb", o.Observability)
 	o.exec = exec
 	// Wrap the current (plain/discovery) dial with the policy and swap it into
