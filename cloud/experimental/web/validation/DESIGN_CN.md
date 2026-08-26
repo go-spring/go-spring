@@ -26,8 +26,9 @@
 - `ValidationErrors.Localize(msg)`——让 validation 不 import i18n 的关键缝
   隙。翻译缺失(`msg` 返 `""`)时回退到 `FieldError.Default()`,输出永不为
   空。
-- Web 缝隙:`Handle[T](v, decode, render, next)` 是 `aspect.NewHandler` /
-  `resilience.NewHandler` 的传输层对应物。`WriteError` 已导出,做自定义 binder
+- Web 缝隙:`Handle[T](v, decode, render, next)` 与各协议 starter 自建
+  admission 中间件(见 starter-gin / starter-grpc 的 admission)同构,
+  都是传输层的最小装饰器。`WriteError` 已导出,做自定义 binder
   的 adapter 可复用 400 body 形状(`{"errors":[...]}`)。
 - `Decoder[T] = func(*http.Request, *T) error`。默认 `JSONDecoder`;gin /
   echo / hertz 适配器可以提供自家 binder 而不丢失校验外壳。

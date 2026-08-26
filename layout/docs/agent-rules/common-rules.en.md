@@ -12,7 +12,7 @@ Follow existing code patterns and project style unless the user explicitly asks 
 
 ## Coding Style
 
-See [coding-style.md](../coding-style/coding-style.md), covering naming, formatting and organization, error handling, testing, concurrency, Go idioms, and more.
+See [coding-style.md](../coding-style/coding-style.en.md), covering naming, formatting and organization, error handling, testing, concurrency, Go idioms, and more.
 
 ## Code Hygiene
 

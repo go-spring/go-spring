@@ -17,11 +17,6 @@
 package resilience
 
 import (
-	"context"
-	"errors"
-	"io"
-	"net"
-	"syscall"
 	"time"
 )
 
@@ -91,11 +86,10 @@ type Policy struct {
 	MaxRetries int
 
 	// RetryPredicate reports whether err should trigger another attempt. A nil
-	// predicate retries on every non-nil error (the historical behavior): set it
-	// to [DefaultRetryPredicate] for a safe, network-classification default, or
-	// supply your own for protocol-specific classification (e.g. only retry
-	// idempotent verbs). It is consulted after each attempt; a [Retryable] error
-	// overrides it.
+	// predicate retries on every non-nil error (the historical behavior); supply
+	// your own for protocol-specific classification (e.g. only retry idempotent
+	// verbs). It is consulted after each attempt; a [Retryable] error overrides
+	// it.
 	RetryPredicate func(err error) bool
 
 	// InitialInterval is the backoff before the first retry. 0 disables backoff
@@ -170,42 +164,4 @@ func (p Policy) BreakerActive() bool {
 // without teaching the executor about that client library.
 type Retryable interface {
 	Retryable() bool
-}
-
-// DefaultRetryPredicate retries on transient/network failures and deliberately
-// suppresses retry on caller cancellation ([context.Canceled]) and on
-// non-network errors (which usually signal a definite "no" — bad request,
-// validation, auth). It is a safe default for idempotent reads; non-idempotent
-// writes should pass a stricter predicate or return a [Retryable] error.
-//
-// It is opt-in: a zero [Policy.RetryPredicate] keeps the historical "retry on
-// every error" behavior. Assign it explicitly when you want this classification.
-func DefaultRetryPredicate(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.Canceled) {
-		return false
-	}
-	// A per-attempt timeout surfaces as DeadlineExceeded and is retryable; a
-	// caller-wide deadline expiry also surfaces as DeadlineExceeded but the loop
-	// has already stopped on ctx.Err() before consulting the predicate.
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return true
-	}
-	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) {
-		return true
-	}
-	var ne net.Error
-	if errors.As(err, &ne) {
-		return ne.Timeout()
-	}
-	var s *httpStatusError
-	if errors.As(err, &s) {
-		return s.retryable
-	}
-	return false
 }

@@ -24,7 +24,7 @@
 
 ## 快速开始
 
-Import 路径: `go-spring.org/spring/security`。
+Import 路径: `go-spring.org/cloud/experimental/security`。
 
 资源服务器把安全过滤链挂在业务 handler 之前:
 
@@ -35,7 +35,7 @@ import (
     "context"
     "net/http"
 
-    "go-spring.org/spring/web/security"
+    "go-spring.org/cloud/experimental/security"
 )
 
 type myValidator struct{ /* ... */ }

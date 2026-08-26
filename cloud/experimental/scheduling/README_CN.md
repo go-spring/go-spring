@@ -14,13 +14,13 @@
   并发运行;fixed-delay 天然串行。
 - 每次运行的 `WithTimeout` 到期后 cancel job 的 ctx。
 - `WithLock(locker, key)`——通过极简本地 `Locker` 接口在多副本间去重。
-  `spring/lock.Locker` 由集成层(`starter-scheduler`)桥接为该本地接口,让本
+  `cloud/experimental/lock.Locker` 由集成层(`starter-scheduler`)桥接为该本地接口,让本
   包保持零依赖。
 - 运行 panic-guard,`Stop` 时确定性 drain,可选 `Observer` 钩子上报指标/日志。
 
 ## 快速开始
 
-Import 路径: `go-spring.org/spring/scheduling`。
+Import 路径: `go-spring.org/cloud/experimental/scheduling`。
 
 ```go
 package main
@@ -30,7 +30,7 @@ import (
     "log"
     "time"
 
-    "go-spring.org/spring/cloud/scheduling"
+    "go-spring.org/cloud/experimental/scheduling"
 )
 
 func main() {
@@ -62,5 +62,5 @@ func main() {
 
 cron 表达式用 `scheduling.Cron("*/5 * * * *")`(表达式非法直接 panic),或
 `scheduling.ParseCron` 自行处理错误。多副本去重使用 `starter-scheduler`——它
-会把 `spring/lock.Locker` 桥接到本包的本地 `Locker` 接口并烤入 TTL / 续期选
+会把 `cloud/experimental/lock.Locker` 桥接到本包的本地 `Locker` 接口并烤入 TTL / 续期选
 项。

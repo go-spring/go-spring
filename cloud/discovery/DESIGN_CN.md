@@ -15,7 +15,7 @@ Kafka / gRPC 通吃。
 - **不做:**
   - **不做选择策略,不做流量反馈。** `Resolver.Pick` 只是最简 round-robin。策略
     (weighted / least-conn / consistent-hash / zone-aware)与失败摘除归
-    `go-spring.org/spring/cloud/loadbalance`,它在 discovery **之上**。命名是共享的、
+    `go-spring.org/cloud/loadbalance`,它在 discovery **之上**。命名是共享的、
     按拓扑慢变速;选择与反馈是每消费者、每请求的。混在一起会让一个共享的注册中心
     读者被某个吵闹消费者的失败污染。
   - **不认识 mesh。** "我在不在 mesh 里"是部署问题,与名字解析正交;开关住在

@@ -57,7 +57,7 @@ type Demo struct {
 
 KV 值变更时，Provider 的阻塞查询 watcher 会触发一次应用属性刷新，所有绑定的
 `gs.Dync` 字段都会被原子更新。完整的“发布 -> 热更新”流程参见
-[example-config](example-config/example.go)。
+[example-config](example/example.go)。
 
 ## 工作原理
 

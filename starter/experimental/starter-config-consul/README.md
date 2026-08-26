@@ -59,7 +59,7 @@ type Demo struct {
 
 When the KV value changes, the provider's blocking-query watcher triggers an
 application property refresh, and all bound `gs.Dync` fields are updated
-atomically. See [example-config](example-config/example.go) for the full
+atomically. See [example-config](example/example.go) for the full
 publish to hot-reload flow.
 
 ## How It Works

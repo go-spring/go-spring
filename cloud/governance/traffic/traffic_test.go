@@ -19,6 +19,7 @@ package traffic
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,81 +108,40 @@ func TestCarrierNilSafe(t *testing.T) {
 	assert.False(t, c.Has("k"))
 }
 
-func TestPropagatorExtractInjectHTTP(t *testing.T) {
-	p := NewPropagator()
-	require.Equal(t, HeaderLoadTest, p.HTTPHeader)
-	require.Equal(t, MetaKeyLoadTest, p.MetaKey)
-
-	// inbound: header present => ctx tagged
-	req := &http.Request{Header: http.Header{}}
-	req.Header.Set(HeaderLoadTest, "1")
-	ctx := p.ExtractHTTP(context.Background(), req)
-	assert.True(t, IsLoadTest(ctx))
-	assert.Equal(t, "http-header", Source(ctx))
-
-	// inbound: header absent => ctx unchanged
-	plain := &http.Request{Header: http.Header{}}
-	out := p.ExtractHTTP(context.Background(), plain)
-	assert.False(t, IsLoadTest(out))
-
-	// outbound: tagged ctx => header written
-	outReq := &http.Request{Header: http.Header{}}
-	p.InjectHTTP(ctx, outReq)
-	assert.Equal(t, "1", outReq.Header.Get(HeaderLoadTest))
-
-	// outbound: untagged ctx => no header
-	outPlain := &http.Request{Header: http.Header{}}
-	p.InjectHTTP(context.Background(), outPlain)
-	assert.Empty(t, outPlain.Header.Get(HeaderLoadTest))
-}
-
-func TestPropagatorExtractInjectCarrier(t *testing.T) {
-	p := NewPropagator()
-
-	// inbound: metadata carrier present => ctx tagged
-	md := Carrier{MetaKeyLoadTest: []string{"1"}}
-	ctx := p.ExtractCarrier(context.Background(), md, "grpc-metadata")
-	assert.True(t, IsLoadTest(ctx))
-	assert.Equal(t, "grpc-metadata", Source(ctx))
-
-	// inbound: carrier without marker => unchanged
-	assert.False(t, IsLoadTest(p.ExtractCarrier(context.Background(), Carrier{}, "grpc-metadata")))
-
-	// outbound: tagged ctx => carrier written
-	out := Carrier{}
-	p.InjectCarrier(ctx, out)
-	assert.True(t, out.Has(MetaKeyLoadTest))
-
-	// outbound: untagged ctx => carrier untouched
-	out2 := Carrier{}
-	p.InjectCarrier(context.Background(), out2)
-	assert.False(t, out2.Has(MetaKeyLoadTest))
-}
-
-func TestPropagatorCustomHeader(t *testing.T) {
-	p := &Propagator{HTTPHeader: "X-Stress", MetaKey: "x-stress"}
-
-	req := &http.Request{Header: http.Header{}}
-	req.Header.Set("X-Stress", "1")
-	ctx := p.ExtractHTTP(context.Background(), req)
-	assert.True(t, IsLoadTest(ctx))
-
-	outReq := &http.Request{Header: http.Header{}}
-	p.InjectHTTP(ctx, outReq)
-	assert.Equal(t, "1", outReq.Header.Get("X-Stress"))
-	// default header must NOT be set when customised
-	assert.Empty(t, outReq.Header.Get(HeaderLoadTest))
-}
-
-func TestPackageLevelHelpers(t *testing.T) {
-	req := &http.Request{Header: http.Header{}}
+func TestExtractInjectHTTP(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set(HeaderLoadTest, "1")
 	ctx := ExtractHTTP(context.Background(), req)
 	assert.True(t, IsLoadTest(ctx))
+	assert.Equal(t, "http-header", Source(ctx))
 
-	outReq := &http.Request{Header: http.Header{}}
+	plain := httptest.NewRequest(http.MethodGet, "/", nil)
+	assert.False(t, IsLoadTest(ExtractHTTP(context.Background(), plain)))
+
+	outReq := httptest.NewRequest(http.MethodGet, "/", nil)
 	InjectHTTP(ctx, outReq)
 	assert.Equal(t, "1", outReq.Header.Get(HeaderLoadTest))
+
+	outPlain := httptest.NewRequest(http.MethodGet, "/", nil)
+	InjectHTTP(context.Background(), outPlain)
+	assert.Equal(t, "", outPlain.Header.Get(HeaderLoadTest))
+}
+
+func TestExtractInjectCarrier(t *testing.T) {
+	md := Carrier{MetaKeyLoadTest: []string{"1"}}
+	ctx := ExtractCarrier(context.Background(), md, MetaKeyLoadTest, "grpc-metadata")
+	assert.True(t, IsLoadTest(ctx))
+	assert.Equal(t, "grpc-metadata", Source(ctx))
+
+	assert.False(t, IsLoadTest(ExtractCarrier(context.Background(), Carrier{}, MetaKeyLoadTest, "grpc-metadata")))
+
+	out := Carrier{}
+	InjectCarrier(ctx, out, MetaKeyLoadTest)
+	assert.Equal(t, []string{"1"}, out[MetaKeyLoadTest])
+
+	out2 := Carrier{}
+	InjectCarrier(context.Background(), out2, MetaKeyLoadTest)
+	assert.Nil(t, out2[MetaKeyLoadTest])
 }
 
 func TestExtractHTTPHeaderCaseInsensitive(t *testing.T) {

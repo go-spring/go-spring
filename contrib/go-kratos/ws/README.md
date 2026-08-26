@@ -7,7 +7,7 @@ Go-Spring way: `gs.Run()` owns the lifecycle, the service is an IoC bean, and
 the kratos WebSocket transport server (via
 [`github.com/tx7do/kratos-transport`](https://github.com/tx7do/kratos-transport),
 pinned to v1.3.1) is contributed by the
-[`starter-kratos/ws`](../../../starter/starter-kratos) starter instead of
+[`starter-kratos/ws`](../../../starter/experimental/starter-kratos) starter instead of
 hand-wired in `main()`.
 
 Unlike the HTTP and gRPC halves, kratos-transport WebSocket carries

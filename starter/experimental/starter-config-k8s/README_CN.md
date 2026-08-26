@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-config-k8s` **直接通过 API Server 读取 Kubernetes ConfigMap 或 Secret**,作为
-可热更新的配置源。它与 [starter-config-file](../starter-config-file) 互补:file starter 监听
+可热更新的配置源。它与 [starter-config-file](../../starter-config-file) 互补:file starter 监听
 挂载卷,受 kubelet 投影延迟影响(Secret 轮转约 1 分钟);本 starter 用 client-go informer 直接
 watch 对象,`kubectl edit configmap` 数秒内即可传播到绑定的 `gs.Dync` 字段,且可跨
 ServiceAccount 有权读取的任意命名空间。

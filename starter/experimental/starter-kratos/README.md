@@ -28,7 +28,7 @@ go get go-spring.org/starter-kratos
 
 ## Quick Start — HTTP
 
-See the example under [contrib/go-kratos/http](../../contrib/go-kratos/http).
+See the example under [contrib/go-kratos/http](../../../contrib/go-kratos/http).
 
 ### 1. Import the sub-package
 
@@ -75,7 +75,7 @@ binary-payload notes in `ws/starter.go`.
 
 ## Observability
 
-* **Tracing** — deferred to [`starter-otel`](../starter-otel). The HTTP and gRPC servers install
+* **Tracing** — deferred to [`starter-otel`](../../starter-otel). The HTTP and gRPC servers install
   kratos' `tracing.Server()` middleware, which emits spans through the global OpenTelemetry
   `TracerProvider`; when `starter-otel` is imported it installs that provider and spans are exported
   automatically, with no per-server configuration. Absent `starter-otel`, the middleware is a no-op.

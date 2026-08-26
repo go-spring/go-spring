@@ -23,7 +23,7 @@ once at a time across a deployment.
 
 ## Quick Start
 
-Import path: `go-spring.org/spring/lock`.
+Import path: `go-spring.org/cloud/experimental/lock`.
 
 ```go
 package main
@@ -33,7 +33,7 @@ import (
     "log"
     "time"
 
-    "go-spring.org/spring/cloud/lock"
+    "go-spring.org/cloud/experimental/lock"
 )
 
 func main() {

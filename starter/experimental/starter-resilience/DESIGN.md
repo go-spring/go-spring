@@ -3,9 +3,9 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-resilience` is a **global / infrastructure** starter (see
-[starter/DESIGN.md](../DESIGN.md) §2.4) that registers
+[starter/DESIGN.md](../../DESIGN.md) §2.4) that registers
 [alibaba/sentinel-golang][sentinel] as the recommended driver for
-`spring/resilience`. It registers no bean and opens no port; a blank
+`cloud/governance/resilience`. It registers no bean and opens no port; a blank
 import is enough for any adapter to select `driver=sentinel`.
 
 [sentinel]: https://github.com/alibaba/sentinel-golang
@@ -16,16 +16,16 @@ import is enough for any adapter to select `driver=sentinel`.
   `resilience.RegisterDriver("sentinel", ...)`. Translate a
   backend-neutral `resilience.Policy` into sentinel rules per resource.
 - **Out of scope:** deciding *where* resilience is applied — that is the
-  adapter's job. `spring/resilience` ships three seams
-  (`NewRoundTripper` for HTTP clients, `NewDialer` for connection dial,
-  `NewHandler` for HTTP inbound admission); this starter never chooses
-  between them.
+  adapter's job. `cloud/governance/resilience` ships the client seams
+  (`NewRoundTripper` for HTTP clients, `NewDialer` for connection dial);
+  inbound admission middlewares are built by the protocol starters on the
+  `governance.ExecutorFor` seam. This starter never chooses between them.
 
 ## 2. Key Decisions
 
 - **No single universal per-request seam.** Every client library has a
   different hook (oauth2 → `http.RoundTripper`, go-redis → `redis.Hook`,
-  gorm → plugin callback, MQ → call-site helper). `spring/resilience`
+  gorm → plugin callback, MQ → call-site helper). `cloud/governance/resilience`
   keeps a neutral `Executor.Execute(ctx, resource, fn)` and lets each
   adapter bridge to its own shape. This starter provides the *engine*,
   not the *seam*.
@@ -39,7 +39,7 @@ import is enough for any adapter to select `driver=sentinel`.
   the budget.
 - **Block reasons map to neutral sentinels.** `BlockTypeCircuitBreaking
   → ErrCircuitOpen`, `BlockTypeIsolation → ErrBulkheadFull`, default
-  `→ ErrRateLimited`. Callers depend only on `spring/resilience`; the
+  `→ ErrRateLimited`. Callers depend only on `cloud/governance/resilience`; the
   sentinel dependency is a starter-side detail.
 
 ## 3. Constraints
@@ -55,7 +55,7 @@ import is enough for any adapter to select `driver=sentinel`.
 
 ## 4. Zero-dependency fallback
 
-`spring/resilience` ships a built-in `default` driver (token bucket +
+`cloud/governance/resilience` ships a built-in `default` driver (token bucket +
 consecutive-failure breaker + retry + timeout, zero third-party
 dependencies) so the framework works out of the box and tests don't
 pull sentinel. This starter's value shows up on production traffic
@@ -63,7 +63,7 @@ where sentinel's adaptive flow control and tunable breakers shine.
 
 ## 5. Trade-offs / Alternatives Rejected
 
-- **Making `spring/resilience` depend on sentinel — rejected.** The
+- **Making `cloud/governance/resilience` depend on sentinel — rejected.** The
   four-layer rule keeps the foundation zero-dep; this starter is one
   concrete implementation, not the abstraction.
 - **A single dialer / RoundTripper seam for every library — rejected.**

@@ -5,7 +5,7 @@
 layer. It gives Go the effect of Seata AT — undo/rollback derived automatically
 from before-images captured at the resource — without pulling any SQL/ORM
 knowledge into stdlib. Sibling patterns Saga and TCC live in
-[`spring/transaction`](../DESIGN.md) and [`spring/transaction/tcc`](../tcc/DESIGN.md).
+[`cloud/experimental/transaction`](../DESIGN.md) and [`cloud/experimental/transaction/tcc`](../tcc/DESIGN.md).
 
 ## 1. Responsibilities and Boundaries
 
@@ -78,8 +78,8 @@ knowledge into stdlib. Sibling patterns Saga and TCC live in
   in sibling packages precisely because their compensation semantics differ.
 - **Per-resource branch bean, no driver registry.** A branch needs a live
   connection and its ORM's DML interception, not a declarative policy, so the
-  seam is the interface type — the same choice `spring/lock` and
-  `spring/batch` make.
+  seam is the interface type — the same choice `cloud/experimental/lock` and
+  `cloud/experimental/batch` make.
 - **In-process coordinator first.** A single service driving several databases
   is the dominant Go topology; an external Seata TC would add a coordination
   hop for a case most services do not have. The interface stays open so a

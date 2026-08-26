@@ -3,8 +3,8 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-transaction-saga` is a **Contributor**-archetype starter (see
-[starter/DESIGN.md](../DESIGN.md) §2.3) that wires the Saga
-distributed-transaction capability from `spring/transaction` into a
+[starter/DESIGN.md](../../DESIGN.md) §2.3) that wires the Saga
+distributed-transaction capability from `cloud/experimental/transaction` into a
 Go-Spring application. An in-process coordinator + plain decorator reaches
 `@GlobalTransactional(SAGA)` equivalence, without replicating Seata
 TC/TM/RM roles or bytecode magic.
@@ -34,13 +34,13 @@ TC/TM/RM roles or bytecode magic.
   durable-store starter (e.g. `starter-transaction-saga-gorm`)
   contributing its own `transaction.Store` displaces the default —
   crash recovery switches on without any change to business code.
-- **`Observer` seam for tracing.** `spring/transaction` is zero-dep and
+- **`Observer` seam for tracing.** `cloud/experimental/transaction` is zero-dep and
   cannot import otel. The starter provides an `otelObserver` that opens
   one child span per phase (`saga.action|compensate <step>`) on the
   globals `starter-otel` installs — the standard zero-dep pattern
   (call-site span helpers live in the starter layer).
-- **Retry policy reuses `spring/resilience`.** `RetryPolicy =
-  resilience.Policy` (an alias in `spring/transaction`), so retries
+- **Retry policy reuses `cloud/governance/resilience`.** `RetryPolicy =
+  resilience.Policy` (an alias in `cloud/experimental/transaction`), so retries
   are executed through the resilience `default` driver rather than
   a second retry loop.
 
@@ -64,7 +64,7 @@ TC/TM/RM roles or bytecode magic.
 ## 4. Constraints & Risks
 
 - **No isolation.** Saga has no read/write barrier — pair with
-  `spring/lock` at the business boundary if you need one.
+  `cloud/experimental/lock` at the business boundary if you need one.
 - **Compensations must be idempotent.** A crash can retry them at any
   offset; the coordinator collects, not first-error terminates, so a
   compensation chain with multiple failures gathers every error into
@@ -78,7 +78,7 @@ TC/TM/RM roles or bytecode magic.
 
 - **Merge with TCC / AT into one abstraction — rejected.** Different
   failure semantics; separate packages keep each expressive.
-- **`spring/transaction` depending on otel — rejected.** The `Observer`
+- **`cloud/experimental/transaction` depending on otel — rejected.** The `Observer`
   seam keeps the zero-dep invariant intact.
 - **Fabricate steps at recovery time — rejected.** Actions and
   Compensations are functions and are not persisted; the registry, keyed

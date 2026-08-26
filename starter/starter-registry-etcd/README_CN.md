@@ -3,13 +3,13 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-registry-etcd` 把**当前实例**注册进 etcd 集群 —— 它是 Go-Spring 客户端服务
-发现(`spring/discovery`)的注册侧对应物 —— **并**提供消费侧的 etcd discovery 后端,
+发现(`cloud/discovery`)的注册侧对应物 —— **并**提供消费侧的 etcd discovery 后端,
 一个 starter 覆盖命名体系的两半,相当于 Spring Cloud `ServiceRegistry` +
 `DiscoveryClient`,以 etcd 租约(lease)为底座。
 
 适用于**虚机 / 裸机 / 混合**部署,即平台不替你注册实例的场景。**纯 Kubernetes**
 下则完全用不到本 starter:平台已把每个 Pod 注册在 Service 之后,你用
-[starter-discovery-k8s](../starter-discovery-k8s) 去**发现**对端即可,无需注册。
+[starter-discovery-k8s](../experimental/starter-discovery-k8s) 去**发现**对端即可,无需注册。
 
 本 starter 注册的是一个**朴素实例**(任意传输协议 —— HTTP、gRPC……)。RPC 框架的
 provider 注册仍保持框架原生,不在本 starter 范围内(见
@@ -120,5 +120,5 @@ spring.discovery.etcd.prod.key-prefix=/services/
 ## 冒烟测试
 
 [example/check.sh](example/check.sh) 先跑单测,再(在有 Docker 时)启动一个 etcd 节点,
-启动 [example](example/main.go)(注册、回读键、然后向自己发 SIGTERM 以触发注销路径),
+启动 [example](example/example.go)(注册、回读键、然后向自己发 SIGTERM 以触发注销路径),
 并断言实例已出现。无 Docker 时优雅跳过。

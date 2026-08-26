@@ -13,7 +13,7 @@ JWT `TokenValidator`(无自有端口);`starter-oauth2-server` 负责签发令牌
   的具体实现在 starter 或调用方应用中。
 - Web filter 链放在本包内,因为它只是普通 net/http 胶水且无外部依赖,并与
   装饰器侧的 `Require` 相对应,共同覆盖传输与方法两层。
-- 不是 session 库(见 `spring/session`),不是 OAuth2 授权服务器(见
+- 不是 session 库(见 `cloud/experimental/session`),不是 OAuth2 授权服务器(见
   `starter-oauth2-server`)。
 
 ## 2. 关键抽象与缝隙

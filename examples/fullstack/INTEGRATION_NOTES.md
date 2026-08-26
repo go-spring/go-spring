@@ -25,14 +25,14 @@ gateway's `lb://order` and order→inventory need a *client-side*
 
 **Bridged in the sample** via `internal/consuldisc`, a Consul-catalog-backed
 `discovery.Discovery` registered with `discovery.Register("consul", …)`. It
-proves the `spring/discovery` abstraction is sufficient to close the gap, but a
+proves the `cloud/discovery` abstraction is sufficient to close the gap, but a
 first-class `starter-discovery-consul` would remove this per-app code. **Feeds
 back**: candidate new starter.
 
 ## 3. `lb://` resolves through a global registry, not a bean — *ordering note*
 
 The gateway resolves an `lb://` upstream via `discovery.MustGet(name)` — the
-process-global `spring/discovery` registry, not the IoC container. So
+process-global `cloud/discovery` registry, not the IoC container. So
 `discovery.Register(...)` must run in `init()` (before route compilation), and it
 is a global side effect, not an injectable bean. Mixing a global registry with
 bean-based wiring is easy to get wrong; the sample keeps the `Register` call in

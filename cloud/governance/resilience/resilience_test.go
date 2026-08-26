@@ -19,13 +19,11 @@ package resilience
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -429,30 +427,6 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 	assert.Error(t, fail()).Is(ErrCircuitOpen)
 }
 
-func TestDefaultRetryPredicateCases(t *testing.T) {
-	// Retryable cases.
-	assert.That(t, DefaultRetryPredicate(context.DeadlineExceeded)).True()
-	assert.That(t, DefaultRetryPredicate(io.EOF)).True()
-	assert.That(t, DefaultRetryPredicate(io.ErrUnexpectedEOF)).True()
-	assert.That(t, DefaultRetryPredicate(syscall.ECONNREFUSED)).True()
-
-	// A net.Error that is a timeout is retryable.
-	toErr := &timeoutNetErr{}
-	assert.That(t, DefaultRetryPredicate(toErr)).True()
-
-	// Caller cancellation is NOT retryable.
-	assert.That(t, DefaultRetryPredicate(context.Canceled)).False()
-
-	// A plain generic error is NOT retryable under the default predicate.
-	assert.That(t, DefaultRetryPredicate(errors.New("whatever"))).False()
-
-	// An httpStatusError is retryable only for 5xx.
-	assert.That(t, DefaultRetryPredicate(&httpStatusError{status: 500, retryable: true})).True()
-	assert.That(t, DefaultRetryPredicate(&httpStatusError{status: 400, retryable: false})).False()
-
-	// nil is not retryable.
-	assert.That(t, DefaultRetryPredicate(nil)).False()
-}
 
 type timeoutNetErr struct{}
 

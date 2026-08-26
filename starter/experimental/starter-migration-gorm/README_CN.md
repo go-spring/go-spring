@@ -5,12 +5,12 @@
 > 项目已正式发布，欢迎使用！
 
 `starter-migration-gorm` 在应用启动时运行
-[`go-spring.org/spring/migration`](../../spring/migration) 定义的数据库结构迁移能力，
+[`go-spring.org/cloud/data/migration`](../../../cloud/data/migration) 定义的数据库结构迁移能力，
 底层复用应用已注册的 [gorm](https://gorm.io) `*gorm.DB` bean。它是把 **Flyway** /
 **Liquibase** 放到 classpath 的 Go-Spring 等价物——带版本、带校验和、只向前的迁移，
 在第一个请求到达之前完成——但用 Go 惯用法达到等价效果，而非复刻它们的 XML/DSL 机制。
 
-它是**客户端形态变体的集成 starter**（见 [DESIGN.md](../DESIGN.md) §2.2）：它消费一个
+它是**客户端形态变体的集成 starter**（见 [DESIGN.md](../../DESIGN.md) §2.2）：它消费一个
 命名的 `*gorm.DB` bean，而不是自己开连接；并且是多实例的——在 `spring.migration.<name>`
 下可绑定多个数据库。它导出的是 `gs.Runner` 而非 server：Runner 在所有 bean 装配完成之后、
 任何 server 开始服务之前运行，这正是结构迁移需要的时序——表在第一个请求到达 repository 或
@@ -125,4 +125,4 @@ applied, err := migration.NewRunner(store, src, migration.Options{}).Migrate(ctx
 
 ## 许可证
 
-Apache 2.0。见 [LICENSE](../../LICENSE)。
+Apache 2.0。见 [LICENSE](../../../LICENSE)。

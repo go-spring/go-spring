@@ -69,9 +69,9 @@ consumer.Ack(msg)
 ### Metrics(原生 Prometheus)
 
 pulsar-client-go 没有 OTel contrib,但客户端始终会把 producer/consumer/连接指标上报到
-一个 `prometheus.Registerer`。go-spring 的可观测层([starter-otel](../starter-otel))是
+一个 `prometheus.Registerer`。go-spring 的可观测层([starter-otel](../../starter-otel))是
 独立的 OTel 流水线,因此与其硬塞一个脆弱的桥接,本 starter 选择用纯 Prometheus 的方式暴露
-pulsar 的原生指标——与 [contrib/go-zero](../../contrib/go-zero) 示例一致的做法。
+pulsar 的原生指标——与 [contrib/go-zero](../../../contrib/go-zero) 示例一致的做法。
 
 在配置文件中为实例开启 `/metrics` 端点:
 
@@ -110,7 +110,7 @@ starter.EndSpan(span, err)
 ## 消息 Binder
 
 除原生客户端外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
-(来自 `go-spring.org/spring/messaging`),让业务代码收发 `*messaging.Message`
+(来自 `go-spring.org/cloud/experimental/messaging`),让业务代码收发 `*messaging.Message`
 信封而不依赖 Pulsar 客户端 API —— 底层换 broker 时业务代码无需改动。
 
 从 `pulsar.Client` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):

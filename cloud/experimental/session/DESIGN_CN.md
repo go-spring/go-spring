@@ -8,7 +8,7 @@
 
 - 从请求进入 manager middleware 到响应 header 写出之间,拥有 session 全生命
   周期:load / create / attach / mutate / write-back / rotate / destroy。
-- 不是身份提供者。session 属性可任意存,但"调用者是谁"来自 `spring/security`。
+- 不是身份提供者。session 属性可任意存,但"调用者是谁"来自 `cloud/experimental/security`。
 - 不是分布式存储。`SessionStore` 是缝隙;远端 store 通过实现 `ByteStore` 贡
   献 bean。
 

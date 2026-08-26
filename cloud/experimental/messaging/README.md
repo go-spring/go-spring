@@ -24,7 +24,7 @@ rewrite.
 
 ## Quick Start
 
-Import path: `go-spring.org/spring/messaging`.
+Import path: `go-spring.org/cloud/experimental/messaging`.
 
 ```go
 package main
@@ -33,7 +33,7 @@ import (
     "context"
     "log"
 
-    "go-spring.org/spring/cloud/messaging"
+    "go-spring.org/cloud/experimental/messaging"
 )
 
 func run(ctx context.Context, binder messaging.Binder) error {

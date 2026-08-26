@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-oauth2-server` 属于 **Contributor** 形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.3),在进程内实现 OAuth2 / OIDC 授权
+[starter/DESIGN.md](../../DESIGN.md) §2.3),在进程内实现 OAuth2 / OIDC 授权
 服务器。不开端口;通过 `Handler()` 挂到应用已有的 HTTP server。
 
 ## 1. 职责与边界

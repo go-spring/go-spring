@@ -4,7 +4,7 @@
 
 `starter-registry-nacos` registers the **current instance** into a Nacos naming
 service — the provider-side counterpart to Go-Spring's client-side discovery
-(`spring/discovery`). It is the Go-Spring equivalent of Spring Cloud Alibaba's
+(`cloud/discovery`). It is the Go-Spring equivalent of Spring Cloud Alibaba's
 `nacos-discovery` registration direction, and the registrar counterpart to
 [starter-config-nacos](../starter-config-nacos)'s config role (the two are
 separate starters with separate config prefixes).
@@ -17,11 +17,11 @@ register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to
 Nacos. RPC-framework provider registration stays framework-native and is out of
-scope (see [starter/DESIGN §3](../DESIGN.md)).
+scope (see [starter/DESIGN §3](../../DESIGN.md)).
 
 ## Archetype
 
-Global / infrastructure (see [starter/DESIGN §2.4](../DESIGN.md)): it opens no
+Global / infrastructure (see [starter/DESIGN §2.4](../../DESIGN.md)): it opens no
 port. It exports a `gs.Server` so registration plugs into the server lifecycle —
 the instance is published **once the application is ready** and deregistered
 **as shutdown begins** (via `PreStop`), so discovery stops handing it out before
@@ -103,7 +103,7 @@ backends is a blank-import swap, not a config migration):
 ## Smoke Test
 
 [example/check.sh](example/check.sh) runs the unit tests, then — if Docker is
-available — starts a Nacos standalone server, boots [example](example/main.go)
+available — starts a Nacos standalone server, boots [example](example/example.go)
 (which registers, reads the naming service back, then SIGTERMs itself so the
 deregister path runs), and asserts the instance appeared. It is skipped
 gracefully without Docker.

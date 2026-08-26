@@ -30,7 +30,7 @@ endpoint, then hand its host:port to `gtcp.NewNetConn`.
 
 The server lifecycle (including the manual gsvc register/deregister) and glog
 log bridge are **not** hand-rolled here anymore: they live in the reusable
-[`starter-goframe/tcp`](../../../starter/starter-goframe) module. This example
+[`starter-goframe/tcp`](../../../starter/experimental/starter-goframe) module. This example
 just imports that starter and supplies a `ServiceRegister` bean.
 
 ## Topology

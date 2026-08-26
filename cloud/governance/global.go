@@ -16,8 +16,8 @@
 
 // This file holds the governance singleton and its public facade. The
 // governance authority is a process singleton, but callers never hold or name a
-// [*Center]: they call the package-level functions (Enabled, PolicyFor,
-// Register, OnReady). [*Center] is an internal implementation detail.
+// [*center]: they call the package-level functions (Enabled, PolicyFor,
+// Register, OnReady). [*center] is an internal implementation detail.
 // This mirrors the neutral global seams the package already exposes for
 // resilience ([resilience.ExecutorFor]) and fault injection, but is the direct
 // surface for callers (like starter-dubbo) that already import governance.
@@ -39,10 +39,10 @@ import (
 // during wiring (or a test) and only read after, the plain pointer needs no
 // atomic or mutex — the starter establishes the happens-before edge between
 // wiring and server start.
-var global = NewCenter(Config{})
+var global = newCenter(Config{})
 
 // live marks whether global has been armed with real config — set by
-// [Center.Init] (production) or [Arm] (tests), cleared by [Reset]. [OnReady]
+// [center.goLive] (production) or [Arm] (tests), cleared by [Reset]. [OnReady]
 // queues callbacks until live, then fires them. It cannot key off global itself
 // being non-nil, because global is never nil (it starts as a disabled Center).
 var (
@@ -77,22 +77,22 @@ func markLive() {
 // Enabled reports whether governance is armed. Before the authority is live it
 // returns false (the singleton starts as a disabled Center) — the same as a
 // registered-but-disabled authority.
-func Enabled() bool { return global.Enabled() }
+func Enabled() bool { return global.enabled() }
 
 // Driver returns the configured resilience driver name, defaulting to "default"
 // when unset (including before the authority is live).
-func Driver() string { return global.Driver() }
+func Driver() string { return global.driver() }
 
 // PolicyFor returns the resolved policy for label. Before the authority is live
 // it returns a zero (pass-through) policy. It is the function callers use instead
-// of holding a [*Center]: pass your resource label, get the policy.
-func PolicyFor(label string) resilience.Policy { return global.PolicyFor(label) }
+// of holding a [*center]: pass your resource label, get the policy.
+func PolicyFor(label string) resilience.Policy { return global.policyFor(label) }
 
 // Register subscribes cb to policy changes for label, arms it immediately with
 // the current resolved policy, and returns that policy. This is how a caller
-// subscribes to governance hot-reload without ever touching a [*Center].
+// subscribes to governance hot-reload without ever touching a [*center].
 func Register(label string, cb func(resilience.Policy)) resilience.Policy {
-	return global.Register(label, cb)
+	return global.register(label, cb)
 }
 
 // SetSource installs s as the governance config source, replacing the default
@@ -135,7 +135,7 @@ func GoLive() { global.goLive() }
 // Close (the [Source] contract keeps Close optional); otherwise it is a no-op.
 // It is the shutdown counterpart to [BindDefault]/[GoLive], called by the
 // wiring starter on app teardown.
-func CloseActiveSource() error { return global.Destroy() }
+func CloseActiveSource() error { return global.destroy() }
 
 // OnReady registers cb to fire exactly once when the authority goes live. If it
 // is already live, cb fires immediately. gs wires Rooters before Runners, so a
@@ -161,7 +161,7 @@ func OnReady(cb func()) {
 // reset function that restores the disabled default. It is the non-gs wiring
 // path: tests (and any standalone use without gs) drive governance through it.
 func Arm(cfg Config) (reset func()) {
-	global = NewCenter(cfg)
+	global = newCenter(cfg)
 	markLive()
 	return Reset
 }
@@ -169,7 +169,7 @@ func Arm(cfg Config) (reset func()) {
 // Reset restores the singleton to a disabled (zero-config) authority and clears
 // the live flag. It is the cleanup counterpart to [Arm].
 func Reset() {
-	global = NewCenter(Config{})
+	global = newCenter(Config{})
 	readyMu.Lock()
 	live.Store(false)
 	readyCbs = nil

@@ -3,13 +3,13 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-session-redis` contributes a Redis-backed
-[`session.SessionStore`](../../spring/session) bean to a Go-Spring application,
+[`session.SessionStore`](../../../cloud/experimental/session) bean to a Go-Spring application,
 so replicas share HTTP sessions: replica A writes, replica B reads —
 the Spring Session equivalent, expressed with a middleware plus config instead of
 `@EnableRedisHttpSession`.
 
 It follows the *Contributor* archetype (see
-[starter/DESIGN.md](../DESIGN.md)): the starter exports no port and holds no
+[starter/DESIGN.md](../../DESIGN.md)): the starter exports no port and holds no
 client of its own. It reuses the `*redis.Client` bean registered by
 `starter-go-redis` and contributes a bean behind the framework-neutral
 `session.SessionStore` seam. Switching the session backend to any other
@@ -58,7 +58,7 @@ import (
     "net/http"
 
     "go-spring.org/spring/gs"
-    "go-spring.org/spring/web/session"
+    "go-spring.org/cloud/experimental/session"
 )
 
 gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {

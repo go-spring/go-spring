@@ -1022,7 +1022,7 @@ Go-Spring 是一个开源社区驱动的项目，我们欢迎**所有形式的�
 - 贡献新功能
 - 分享你的使用经验
 
-请查阅 [CONTRIBUTING.md](CONTRIBUTING.md) 获取参与方式。
+请查阅 [CONTRIBUTING.md](../CONTRIBUTING.md) 获取参与方式。
 
 ### 💬 QQ 交流群
 
@@ -1042,4 +1042,4 @@ Go-Spring 是一个开源社区驱动的项目，我们欢迎**所有形式的�
 
 ### 🛡️ License
 
-Apache License 2.0，详见 [LICENSE](LICENSE)。
+Apache License 2.0，详见 [LICENSE](../LICENSE)。

@@ -97,14 +97,6 @@ type PolicyConfig struct {
 	// MaxDuration caps the wall time of the whole call across all retries
 	// (0 = no total cap).
 	MaxDuration time.Duration `value:"${max-duration:=0}"`
-
-	// RetryPredicateFn, when non-nil, is set on the produced [Policy] as
-	// [Policy.RetryPredicate]. It is NOT bound from value tags (funcs cannot
-	// be): a client adapter assigns it in code after binding Config, e.g. a
-	// write-suppressing predicate for non-idempotent commands. Adapters that
-	// need classification should prefer returning a [Retryable]-implementing
-	// error from inside fn over setting this.
-	RetryPredicateFn func(error) bool
 }
 
 // Config is what a client starter embeds: the policy knobs ([PolicyConfig])
@@ -139,7 +131,6 @@ func (c PolicyConfig) Policy() Policy {
 		BreakerWindow:       c.BreakerWindow,
 		MaxConcurrent:       c.MaxConcurrent,
 		MaxRetries:          c.MaxRetries,
-		RetryPredicate:      c.RetryPredicateFn,
 		InitialInterval:     c.InitialInterval,
 		Multiplier:          c.Multiplier,
 		MaxInterval:         c.MaxInterval,

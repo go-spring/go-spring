@@ -26,7 +26,7 @@ Consumer 端也是对称的：goframe 没有一个理解 `gsvc://<name>` 的原�
 endpoint，然后把 host:port 交给 `gtcp.NewNetConn`。
 
 server 生命周期(含手写的 gsvc 注册/注销)与 glog 日志桥接已不再在这里手写:
-它们都放进了可复用的 [`starter-goframe/tcp`](../../../starter/starter-goframe)
+它们都放进了可复用的 [`starter-goframe/tcp`](../../../starter/experimental/starter-goframe)
 模块。本示例只是导入该 starter 并提供一个 `ServiceRegister` bean。
 
 ## 拓扑

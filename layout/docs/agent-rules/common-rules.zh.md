@@ -12,7 +12,7 @@
 
 ## 编码风格
 
-参见 [coding-style.md](../coding-style/coding-style.md)，涵盖命名、格式与组织、错误处理、测试、并发、Go 习惯等风格取向。
+参见 [coding-style.md](../coding-style/coding-style.zh.md)，涵盖命名、格式与组织、错误处理、测试、并发、Go 习惯等风格取向。
 
 ## 代码卫生
 

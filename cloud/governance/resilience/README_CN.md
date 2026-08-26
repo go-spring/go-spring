@@ -13,11 +13,12 @@
 - 中立拒绝错误:`ErrRateLimited`、`ErrCircuitOpen`、`ErrBulkheadFull`。
 - 内置 `"default"` 驱动 —— 进程内、零依赖。推荐的生产驱动 `sentinel` 在
   `starter/starter-resilience`。
-- 三个可 opt-in 的适配 seam:
+- 两个客户端适配 seam:
   - `NewRoundTripper` —— HTTP client `http.RoundTripper`(覆盖面最广)。
   - `NewDialer` —— 连接级 `DialFunc`,匹配
     `discovery.LiveDialer.DialContext`。
-  - `NewHandler` —— 入站 HTTP admission;拒绝时 429 / 503。
+- 入站 admission 不在本包:各协议 starter 用 `governance.ExecutorFor` seam
+  自建中间件(拒绝时 429 / 503;见 starter-gin / starter-grpc 的 admission)。
 - `Fallback(ctx, exec, resource, fn, degrade)` —— 组合任意 executor 的降级
   helper。
 - 独立 `RateLimiter` + `LimiterDriver` 注册表(内置 token bucket / sliding
@@ -26,7 +27,7 @@
 ## 安装
 
 ```
-go get go-spring.org/stdlib
+go get go-spring.org/cloud
 ```
 
 ## 用法
@@ -54,17 +55,11 @@ client := &http.Client{
 }
 ```
 
-与 `spring/discovery` 在拨号层组合:
+与 `cloud/discovery` 在拨号层组合:
 
 ```go
 ld, _ := discovery.NewClientDialer(ctx, "default", "orders")
 dial  := resilience.NewDialer(ld.DialContext, exec, "orders")
-```
-
-对入站请求限流:
-
-```go
-handler := resilience.NewHandler(mux, exec, func(r *http.Request) string { return r.URL.Path })
 ```
 
 独立 RateLimiter(全局分布式配额靠 starter 提供驱动):

@@ -17,13 +17,13 @@ each statement, and rollback restores rows from those images automatically.
   backend.
 - `Observer` seam for otel spans (nil disables observation).
 - `RetryPolicy = resilience.Policy` alias for second-phase retries.
-- `GlobalAT(coord)` aspect — the AT `@GlobalTransactional` equivalent; no
+- `GlobalAT(coord)` decorator — the AT `@GlobalTransactional` equivalent; no
   per-method registry needed.
 
 ## Usage
 
 Wire the coordinator with a global lock and wrap business methods with the
-aspect:
+decorator:
 
 ```go
 package main
@@ -31,24 +31,25 @@ package main
 import (
     "context"
 
-    "go-spring.org/spring/aspect"
-    "go-spring.org/spring/cloud/transaction/at"
+    "go-spring.org/cloud/experimental/transaction/at"
 )
 
 var coord = at.NewCoordinator(
     at.WithGlobalLock(&at.MemoryGlobalLock{}),
 )
 
-// The GORM backend registers each branch via the resource interceptor when
-// it sees an XID on the context; business code just runs plain SQL.
-var interceptors = []aspect.Interceptor{
-    at.GlobalAT(coord),
-}
+// global is the AT @GlobalTransactional equivalent: wrap the business method
+// by hand (there is no shared interceptor protocol — each call site nests its
+// own decorator). The GORM backend registers each branch when it sees an XID
+// on the context; business code just runs plain SQL.
+var global = at.GlobalAT(coord)
 
 func PlaceOrder(ctx context.Context) error {
     // Any writes made via the AT-aware ORM below are captured and, on error
     // return, undone automatically.
-    return nil
+    return global(ctx, "PlaceOrder", func(ctx context.Context) error {
+        return nil // real business logic here
+    })
 }
 ```
 

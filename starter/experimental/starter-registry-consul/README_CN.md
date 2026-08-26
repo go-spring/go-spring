@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-registry-consul` 把**当前实例**注册进 Consul 服务注册中心 —— 它是
-Go-Spring 客户端服务发现(`spring/discovery`)的注册侧对应物,相当于 Spring Cloud
+Go-Spring 客户端服务发现(`cloud/discovery`)的注册侧对应物,相当于 Spring Cloud
 `ServiceRegistry` / `@EnableDiscoveryClient` 的注册方向。
 
 适用于**虚机 / 裸机 / 混合**部署,即平台不替你注册实例的场景。**纯 Kubernetes**
@@ -12,11 +12,11 @@ Go-Spring 客户端服务发现(`spring/discovery`)的注册侧对应物,相当�
 
 本 starter 注册的是一个**朴素实例**(任意传输协议 —— HTTP、gRPC……)。RPC 框架的
 provider 注册仍保持框架原生,不在本 starter 范围内(见
-[starter/DESIGN_CN.md §3](../DESIGN_CN.md))。
+[starter/DESIGN_CN.md §3](../../DESIGN_CN.md))。
 
 ## 形态
 
-全局 / 基础设施类(见 [starter/DESIGN_CN.md §2.4](../DESIGN_CN.md)):不开端口。
+全局 / 基础设施类(见 [starter/DESIGN_CN.md §2.4](../../DESIGN_CN.md)):不开端口。
 它导出一个 `gs.Server`,让注册接入服务生命周期 —— **应用就绪后**注册实例,**停机
 开始时**(经 `PreStop`)注销,使发现体系在实例真正停止服务之前就把它摘除。正是这个
 顺序让滚动重启无损。
@@ -89,5 +89,5 @@ spring.registry.metadata.version=v1
 ## 冒烟测试
 
 [example/check.sh](example/check.sh) 先跑单测,再(在有 Docker 时)启动一个 Consul
-dev agent,启动 [example](example/main.go)(注册、回读 catalog、然后向自己发 SIGTERM
+dev agent,启动 [example](example/example.go)(注册、回读 catalog、然后向自己发 SIGTERM
 以触发注销路径),并断言实例已出现。无 Docker 时优雅跳过。

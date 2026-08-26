@@ -75,7 +75,7 @@ fmt.Println(string(msg.Value))
 ## 可观测
 
 分布式链路追踪通过原生 OTel 辅助函数提供,它们依赖
-[starter-otel](../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
+[starter-otel](../../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
 starter-otel 时它们是空操作,也不会改动任何消息字节,因此埋点是安全、零配置的可选项。
 
 ```go

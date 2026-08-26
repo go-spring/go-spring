@@ -17,7 +17,7 @@ goframe `gclient` 的 discovery 中间件从同一 etcd 解析出可用地址再
 两个协议被拆到两个平级子模块中。gRPC 版本见 [`../grpc`](../grpc)。
 
 server 生命周期、日志桥接和可选的指标已不再在这里手写:它们都放进了可复用的
-[`starter-goframe/http`](../../../starter/starter-goframe) 模块。本示例只是导入
+[`starter-goframe/http`](../../../starter/experimental/starter-goframe) 模块。本示例只是导入
 该 starter 并提供一个 `ServiceRegister` bean;链路追踪交给
 [`starter-otel`](../../../starter/starter-otel)。
 

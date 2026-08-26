@@ -29,7 +29,7 @@ replica B read it, with no change to business handlers.
 
 ## Quick Start
 
-Import path: `go-spring.org/spring/session`.
+Import path: `go-spring.org/cloud/experimental/session`.
 
 ```go
 package main
@@ -39,7 +39,7 @@ import (
     "net/http"
     "time"
 
-    "go-spring.org/spring/web/session"
+    "go-spring.org/cloud/experimental/session"
 )
 
 func main() {

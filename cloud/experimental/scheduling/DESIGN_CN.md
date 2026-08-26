@@ -22,7 +22,7 @@
   scheduler 通过类型断言识别并**在 loop 内同步跑**,让下一次触发从上一次完成
   时刻计算;其他 trigger 则脱离 loop 由 concurrency 策略调度。
 - `Locker` / `Lock` **在本包内声明极简形态**("TryAcquire 返回本地 `Lock`"),
-  保零依赖。`spring/lock.Locker` 不直接满足——集成层
+  保零依赖。`cloud/experimental/lock.Locker` 不直接满足——集成层
   (`starter-scheduler`)桥接,并把 TTL / 续期选项烤进适配器。
 - `Observer` 在每次运行和每次跳过后触发;`Skipped=true` 时
   `Reason="policy"` 或 `"lock"`——两种被吞掉的路径。
@@ -53,6 +53,6 @@
   叠;在其上加策略是雷。
 - **无 cron 秒字段**。标准 5 段最少意外;分钟以下用 `FixedRate` /
   `FixedDelay` 更自然。
-- **锁走适配器,不直接 import**。避免把 `spring/lock` 拉进本包,保层次独立
+- **锁走适配器,不直接 import**。避免把 `cloud/experimental/lock` 拉进本包,保层次独立
   性;调用方可以提供任意极简 `Locker`(内存、测试替身...),不用引入 lock 抽
   象。

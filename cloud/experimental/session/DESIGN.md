@@ -11,7 +11,7 @@ the bundled `Memory` store keeps stdlib self-testing.
   middleware to the moment its response headers are written: load / create /
   attach / mutate / write-back / rotate / destroy.
 - Not the identity provider. Session attributes are arbitrary; who a caller
-  is comes from `spring/security`.
+  is comes from `cloud/experimental/security`.
 - Not a distributed store. `SessionStore` is the seam; remote stores
   contribute a bean implemented on `ByteStore`.
 

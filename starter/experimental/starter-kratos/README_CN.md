@@ -27,7 +27,7 @@ go get go-spring.org/starter-kratos
 
 ## 快速开始 —— HTTP
 
-参见 [contrib/go-kratos/http](../../contrib/go-kratos/http) 下的示例。
+参见 [contrib/go-kratos/http](../../../contrib/go-kratos/http) 下的示例。
 
 ### 1. Import 子包
 
@@ -73,7 +73,7 @@ import `go-spring.org/starter-kratos/ws`,在 `spring.kratos.ws.server` 前缀下
 
 ## 可观测
 
-* **Tracing** —— 让路给 [`starter-otel`](../starter-otel)。HTTP 与 gRPC server 安装 kratos 的
+* **Tracing** —— 让路给 [`starter-otel`](../../starter-otel)。HTTP 与 gRPC server 安装 kratos 的
   `tracing.Server()` 中间件,通过全局 OpenTelemetry `TracerProvider` 发出 span;当 import 了 `starter-otel`
   时它会装上该 provider,span 自动导出,无需任何 per-server 配置。缺少 `starter-otel` 时,该中间件为 no-op。
 * **Metrics** —— 每个 server 通过 `spring.kratos.<proto>.server.metrics.enable=true` 按需开启。开启后,

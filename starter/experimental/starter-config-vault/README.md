@@ -85,7 +85,7 @@ type Demo struct {
 
 When the secret changes, the provider's polling watcher triggers an application
 property refresh, and all bound `gs.Dync` fields are updated atomically. See
-[example-config](example-config/example.go) for the full write to hot-reload
+[example-config](example/example.go) for the full write to hot-reload
 flow.
 
 ## Property-level decryption

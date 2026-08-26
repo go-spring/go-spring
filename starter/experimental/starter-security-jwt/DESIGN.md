@@ -3,9 +3,9 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-security-jwt` is a **Contributor**-archetype starter (see
-[starter/DESIGN.md](../DESIGN.md) §2.3) that implements the JWT
+[starter/DESIGN.md](../../DESIGN.md) §2.3) that implements the JWT
 resource-server side of Spring Security's authentication story on top of
-the zero-dep `spring/security` abstraction. It opens no port; it mounts as
+the zero-dep `cloud/experimental/security` abstraction. It opens no port; it mounts as
 middleware onto an existing `*gs.HttpServeMux`.
 
 ## 1. Responsibilities & Boundaries
@@ -16,14 +16,14 @@ middleware onto an existing `*gs.HttpServeMux`.
   a matching `security.TokenValidator` for non-HTTP transports.
 - **Out of scope:** issuing tokens (that is `starter-oauth2-server`);
   authorization *policy* (that is aspect / middleware sugar in
-  `spring/security`); user store / login UI.
+  `cloud/experimental/security`); user store / login UI.
 
 ## 2. Key Abstractions & Seams
 
-- **`spring/security` — zero-dependency abstraction.** The starter is one
+- **`cloud/experimental/security` — zero-dependency abstraction.** The starter is one
   concrete implementation of that shape. `TokenValidator` is the driver
-  seam (registry-style — the same pattern `spring/discovery` and
-  `spring/resilience` use). `Principal` + `Authentication` are neutral
+  seam (registry-style — the same pattern `cloud/discovery` and
+  `cloud/governance/resilience` use). `Principal` + `Authentication` are neutral
   types with `HasAuthority` / `HasAnyAuthority` / `HasAllAuthorities`
   helpers, all nil-safe and short-circuit `false` when not authenticated.
 - **Two mount points from one bean.**

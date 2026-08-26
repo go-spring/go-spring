@@ -8,7 +8,7 @@ which live host:port addresses can I connect to right now?"
 
 It owns **naming only**. Selection policy (round-robin, weighted,
 consistent-hash, zone-aware) and traffic feedback (failure ejection) live one
-layer up in `go-spring.org/spring/cloud/loadbalance`; the service-mesh switch
+layer up in `go-spring.org/cloud/loadbalance`; the service-mesh switch
 lives in `go-spring.org/cloud/mesh`; trace propagation lives in
 `starter-otel`. Keeping this package free of policy, mesh, and tracing is what
 lets one naming adapter serve every client.

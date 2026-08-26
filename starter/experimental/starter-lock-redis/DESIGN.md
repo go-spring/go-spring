@@ -20,9 +20,9 @@ it opens no listener and holds no connection of its own.
 
 ## 2. Key Abstractions & Seams
 
-- **Seam is the bean type, not a driver string.** `spring/lock` deliberately
+- **Seam is the bean type, not a driver string.** `cloud/experimental/lock` deliberately
   has **no** package-level string driver registry, unlike
-  `spring/discovery` or `spring/resilience`. Locks need a *live* backend
+  `cloud/discovery` or `cloud/governance/resilience`. Locks need a *live* backend
   handle (`*redis.Client`), not a declarative policy string; switching
   from Redis to etcd/consul/k8s is a blank-import swap that changes which
   starter registers the `lock.Locker` bean.

@@ -8,7 +8,7 @@ in-cluster, so an application discovers peers through that capability instead of
 standing up a second registry (Nacos/Consul).
 
 Blank-importing this starter and declaring a `spring.discovery.k8s.<name>` entry
-registers a `discovery.Discovery` backend (from `spring/discovery`) under
+registers a `discovery.Discovery` backend (from `cloud/discovery`) under
 `<name>`. Any client starter that supports discovery — Redis, GORM, ... —
 resolves a Kubernetes **Service name** to live Pod endpoints via its
 `discovery: <name>` field. This starter does **client-side discovery only**; it
@@ -67,7 +67,7 @@ spring.go-redis.cache.discovery=k8s            # this backend
 ```
 
 The Redis client now dials a live Pod of the `my-redis` Service, refreshed as
-Pods come and go. See [example/main.go](example/main.go) for resolving a Service
+Pods come and go. See [example/main.go](example/example.go) for resolving a Service
 directly through `discovery.MustGet`.
 
 ## Configuration

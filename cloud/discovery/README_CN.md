@@ -6,7 +6,7 @@
 的 host:port 有哪些?"*
 
 它**只管命名**。选择策略(round-robin / 加权 / 一致性哈希 / zone-aware)和流量反馈
-(失败摘除)在上一层 `go-spring.org/spring/cloud/loadbalance`;mesh 开关在
+(失败摘除)在上一层 `go-spring.org/cloud/loadbalance`;mesh 开关在
 `go-spring.org/cloud/mesh`;链路追踪传播在 `starter-otel`。本包不碰策略、
 不碰 mesh、不碰 trace,正是"一次适配、所有客户端通吃"的前提。
 

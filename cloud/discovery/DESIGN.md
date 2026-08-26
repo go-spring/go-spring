@@ -19,7 +19,7 @@ MongoDB, Kafka, gRPC.
 - **Refuses:**
   - **No selection policy, no traffic feedback.** `Resolver.Pick` is minimal
     round-robin. Strategies (weighted, least-conn, consistent-hash, zone-aware)
-    and failure ejection belong in `go-spring.org/spring/cloud/loadbalance`,
+    and failure ejection belong in `go-spring.org/cloud/loadbalance`,
     which sits *above* discovery. Naming is shared and changes on the slow
     topology timescale; selection and feedback are per-consumer and per-request.
     Mixing them couples a shared registry reader to one noisy consumer's

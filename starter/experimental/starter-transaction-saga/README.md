@@ -4,12 +4,12 @@
 
 `starter-transaction-saga` contributes the **Saga** distributed-transaction
 capability defined in
-[`go-spring.org/spring/transaction`](../../spring/transaction) to a Go-Spring
+[`go-spring.org/cloud/experimental/transaction`](../../../cloud/experimental/transaction) to a Go-Spring
 application — the Go-idiomatic equivalent of `@GlobalTransactional(SAGA)`,
 reached with an in-process coordinator and a plain decorator rather than by
 replicating Seata's TC/TM/RM roles or requiring bytecode magic.
 
-A **Contributor**-archetype starter (see [DESIGN.md](../DESIGN.md) §2.3):
+A **Contributor**-archetype starter (see [DESIGN.md](../../DESIGN.md) §2.3):
 it opens no port and starts no server, only registers beans.
 
 ## Saga vs. TCC — which one?
@@ -132,9 +132,9 @@ recovery scan without any change to business code.
 When `tracing` is true, the coordinator emits an otel child span per step
 phase (`saga.action <step>`, `saga.compensate <step>`) tagged with
 `saga.id`, `saga.step`, and `saga.phase`. Failures are recorded on the span.
-The `Observer` seam lives in the coordinator so `spring/transaction` stays
+The `Observer` seam lives in the coordinator so `cloud/experimental/transaction` stays
 free of an otel dependency.
 
 ## License
 
-Apache 2.0. See [LICENSE](../../LICENSE).
+Apache 2.0. See [LICENSE](../../../LICENSE).

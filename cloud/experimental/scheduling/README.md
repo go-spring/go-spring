@@ -17,14 +17,14 @@ lifecycle.
   for fixed-rate / cron; fixed-delay is intrinsically serial.
 - Per-run `WithTimeout` cancels the job's context after the deadline.
 - `WithLock(locker, key)` — multi-replica de-duplication via a minimal local
-  `Locker` interface. A `spring/lock.Locker` is adapted by the integration
+  `Locker` interface. A `cloud/experimental/lock.Locker` is adapted by the integration
   layer (`starter-scheduler`) so this package stays dependency-free.
 - Panic-guarded runs, deterministic drain on `Stop`, optional `Observer` hook
   for metrics / logging.
 
 ## Quick Start
 
-Import path: `go-spring.org/spring/scheduling`.
+Import path: `go-spring.org/cloud/experimental/scheduling`.
 
 ```go
 package main
@@ -34,7 +34,7 @@ import (
     "log"
     "time"
 
-    "go-spring.org/spring/cloud/scheduling"
+    "go-spring.org/cloud/experimental/scheduling"
 )
 
 func main() {
@@ -67,5 +67,5 @@ func main() {
 For a cron schedule use `scheduling.Cron("*/5 * * * *")` (panics on bad
 expression) or `scheduling.ParseCron` when you want to handle the error. For
 multi-replica de-duplication use `starter-scheduler`, which adapts
-`spring/lock.Locker` and bakes TTL / renew options into the local `Locker`
+`cloud/experimental/lock.Locker` and bakes TTL / renew options into the local `Locker`
 this package expects.

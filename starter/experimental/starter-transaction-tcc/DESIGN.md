@@ -3,9 +3,9 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-transaction-tcc` is a **Contributor**-archetype starter (see
-[starter/DESIGN.md](../DESIGN.md) §2.3) that contributes the TCC
+[starter/DESIGN.md](../../DESIGN.md) §2.3) that contributes the TCC
 (Try / Confirm / Cancel) distributed-transaction capability from
-`spring/transaction/tcc`. It targets short, strongly-consistent flows
+`cloud/experimental/transaction/tcc`. It targets short, strongly-consistent flows
 that need a resource *held* between the try and the commit.
 
 ## 1. Responsibilities & Boundaries
@@ -28,7 +28,7 @@ Failure semantics differ enough that merging would dilute expressiveness:
 | Isolation | none | reservation invisible until confirm |
 | `Compensate == nil` | irreversible step (allowed) | programming error |
 
-The `spring/transaction/tcc/` subpackage lives inside the `stdlib`
+The `cloud/experimental/transaction/tcc/` subpackage lives inside the `stdlib`
 module (no new `go.mod`) but is deliberately not folded into the Saga
 `transaction` package.
 

@@ -3,13 +3,13 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-transaction-saga-gorm` contributes a **durable, gorm-backed**
-[`transaction.Store`](../../spring/transaction) so a Go-Spring application can
+[`transaction.Store`](../../../cloud/experimental/transaction) so a Go-Spring application can
 recover Sagas a crash left in flight. It is the persistence side-car for
 [`starter-transaction-saga`](../starter-transaction-saga): the coordinator
 writes its saga log here, and the startup recovery `Runner` reads back
 in-flight snapshots.
 
-It is a **Contributor**-archetype starter (see [DESIGN.md](../DESIGN.md)
+It is a **Contributor**-archetype starter (see [DESIGN.md](../../DESIGN.md)
 §2.3): it opens no port. The saga starter registers its in-memory default
 Store with `gs.OnMissingBean`, so contributing this Store makes the default
 step aside — crash recovery is switched on with **no code change**.
@@ -81,4 +81,4 @@ Bound under `${spring.transaction.saga.gorm}`.
 
 ## License
 
-Apache 2.0. See [LICENSE](../../LICENSE).
+Apache 2.0. See [LICENSE](../../../LICENSE).

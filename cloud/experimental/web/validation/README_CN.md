@@ -1,8 +1,8 @@
 # validation
 [English](README.md) | [中文](README_CN.md)
 
-`validation` 是与框架无关、零依赖的结构体校验抽象,与 `spring/resilience`、
-`spring/discovery` 同款范式:抽象与实现拆开。它回答"这个 struct 是否合法?"
+`validation` 是与框架无关、零依赖的结构体校验抽象,与 `cloud/governance/resilience`、
+`cloud/discovery` 同款范式:抽象与实现拆开。它回答"这个 struct 是否合法?"
 ——同时服务配置绑定与入站 Web 请求两条路径。
 
 ## 特性
@@ -14,7 +14,7 @@
   / `MustGetDriver`);`starter-validation` 在 blank import 时把
   `go-playground/validator` 注册为 `"default"` driver。
 - `ValidationErrors.Localize(msg func(key, args...) string)` 通过任意查询函
-  数渲染逐字段消息——通常用 `spring/i18n` 的 `i18n.Localizer(src, ctx)` 绑
+  数渲染逐字段消息——通常用 `cloud/experimental/web/i18n` 的 `i18n.Localizer(src, ctx)` 绑
   定。本包不直接 import i18n。
 - Web 缝隙:泛型 `Handle[T](v, decode, render, next)` 返回 `http.Handler`——
   先解码、后校验,校验失败以结构化 JSON 400 短路,不让脏数据进入业务代码。默
@@ -24,7 +24,7 @@
 
 ## 快速开始
 
-Import 路径: `go-spring.org/spring/validation`。
+Import 路径: `go-spring.org/cloud/experimental/web/validation`。
 
 ```go
 package main
@@ -34,7 +34,7 @@ import (
     "log"
     "net/http"
 
-    "go-spring.org/spring/web/validation"
+    "go-spring.org/cloud/experimental/web/validation"
     _ "go-spring.org/starter/starter-validation" // 注册 "default" driver
 )
 

@@ -7,8 +7,8 @@ targets short, strongly-consistent transactions where a Try phase reserves
 resources without exposing final results, and a global Confirm or Cancel
 resolves them.
 
-Sibling patterns Saga and AT live in [`spring/transaction`](../README.md) and
-[`spring/transaction/at`](../at/README.md).
+Sibling patterns Saga and AT live in [`cloud/experimental/transaction`](../README.md) and
+[`cloud/experimental/transaction/at`](../at/README.md).
 
 ## Features
 
@@ -36,7 +36,7 @@ import (
     "context"
     "fmt"
 
-    "go-spring.org/spring/cloud/transaction/tcc"
+    "go-spring.org/cloud/experimental/transaction/tcc"
 )
 
 func main() {

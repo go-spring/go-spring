@@ -4,7 +4,7 @@
 
 `starter-http-client` 是 Go-Spring **声明式 HTTP 客户端**的运行时部分——对标
 Spring 的 OpenFeign / `@HttpExchange`。你在 IDL 中把远程服务声明为一个接口,用
-[`gs-http-gen`](../../gs/gs-http-gen) 生成调用代码,再把一个已经装配好的
+[`gs-http-gen`](../../../gs/gs-http-gen) 生成调用代码,再把一个已经装配好的
 `*http.Client` 注入到生成的客户端里。服务发现、负载均衡、韧性(限流/熔断/重试)
 以及链路追踪透传都已替你接好,一次微服务调用不再需要为每个客户端手工拼装拨号器
 和熔断器。
@@ -30,14 +30,14 @@ go get go-spring.org/starter-http-client
 ```
 
 生成的 `Client` 只持有一个 `*http.Client`。本 starter 为每个配置项注册一个
-`*http.Client`,其 `http.RoundTripper` 由 [`spring/httpx`](../../spring/httpx)
+`*http.Client`,其 `http.RoundTripper` 由 [`cloud/experimental/httpx`](../../../cloud/experimental/httpx)
 用三个可组合的 stdlib 抽象装配而成,全部收敛在同一个 `http.RoundTripper` 缝隙上:
 
-* [`discovery`](../../spring/discovery) —— 设置了 `service-name` 时,`LiveDialer`
+* [`discovery`](../../../cloud/discovery) —— 设置了 `service-name` 时,`LiveDialer`
   持续维护最新的端点快照;
-* [`loadbalance`](../../spring/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
+* [`loadbalance`](../../../cloud/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
   (任意已注册策略,并可选离群剔除),传输层随即把请求主机改写为该端点;
-* [`resilience`](../../spring/resilience) —— 可选的执行器包裹整条链路,使限流、
+* [`resilience`](../../../cloud/governance/resilience) —— 可选的执行器包裹整条链路,使限流、
   熔断与重试保护每一次调用。由于它位于负载均衡器**之外**,重试会重新挑选一个
   新端点,而熔断器则以逻辑服务名为键。
 
@@ -127,7 +127,7 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 
 底层传输经 [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)
 埋点,因此每次出站请求都会产生一个客户端 span,并通过
-[`starter-otel`](../starter-otel) 安装的 OpenTelemetry 全局对象注入 W3C
+[`starter-otel`](../../starter-otel) 安装的 OpenTelemetry 全局对象注入 W3C
 `traceparent` 头。没有 `starter-otel` 时这些全局对象是空实现——不产生 span,也不
 改动请求字节。这与其他客户端类 starter 采用的零配置开箱一致。
 

@@ -30,7 +30,7 @@ profile in `layout`).
 
 ## 3. Constraints
 
-- `spring/podinfo` is a **subpackage of `go-spring.org/stdlib`**, not its own
+- `cloud/actuator/podinfo` is a **subpackage of `go-spring.org/stdlib`**, not its own
   module. It has no separate `go.mod` and it does not appear in `go.work`.
 - The struct carries `value` tags but never imports the IoC container, so it
   stays in the zero-dependency layer. Callers register it with

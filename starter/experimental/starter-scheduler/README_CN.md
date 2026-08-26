@@ -7,12 +7,12 @@
 starter 负责驱动它们、参与优雅停机,并可借助分布式锁在多副本间去重。
 
 它属于 *global / infrastructure*(全局 / 基础设施)形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.4):不开监听端口,而是导出一个 `gs.Server`,
+[starter/DESIGN.md](../../DESIGN.md) §2.4):不开监听端口,而是导出一个 `gs.Server`,
 让调度器加入 server 生命周期——应用就绪后任务才开始触发;收到 `SIGTERM` 时,进程
 退出前会先排空在途运行。
 
 触发与并发原语来自零依赖的
-[`spring/scheduling`](../../spring/scheduling) 包;本 starter 只是把配置与 IoC 容器
+[`cloud/experimental/scheduling`](../../../cloud/experimental/scheduling) 包;本 starter 只是把配置与 IoC 容器
 接入其上的薄集成层。
 
 ## 安装

@@ -4,7 +4,7 @@
 
 `starter-transaction-at-gorm` contributes the **AT (Automatic Transaction)**
 distributed-transaction capability defined in
-[`go-spring.org/spring/cloud/transaction/at`](../../spring/transaction/at) to a
+[`go-spring.org/cloud/experimental/transaction/at`](../../../cloud/experimental/transaction/at) to a
 Go-Spring application, backed by [gorm](https://gorm.io). It is equivalent to
 **Seata AT**, reached without replicating Seata's TC/TM/RM roles.
 
@@ -15,7 +15,7 @@ your business data, and acquires a global row lock for write-write isolation. On
 a global rollback the coordinator restores every changed row automatically from
 that undo log.
 
-It is a **Contributor**-archetype starter (see [DESIGN.md](../DESIGN.md) §2.3):
+It is a **Contributor**-archetype starter (see [DESIGN.md](../../DESIGN.md) §2.3):
 it opens no port and starts no server, only registers beans.
 
 ## Saga vs. TCC vs. AT — which one?
@@ -143,4 +143,4 @@ Bound under `${spring.transaction.at}` (shared with Saga and TCC under the
 
 ## License
 
-Apache 2.0. See [LICENSE](../../LICENSE).
+Apache 2.0. See [LICENSE](../../../LICENSE).

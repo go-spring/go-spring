@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-repository-gorm` is the [gorm](https://gorm.io)-backed implementation of
-the framework-neutral [`go-spring.org/spring/repository`](../../spring/repository)
+the framework-neutral [`go-spring.org/cloud/data/repository`](../../../cloud/data/repository)
 abstraction. It translates a `repository.Query` into gorm's chained builder and
 returns a ready-to-use generic `repository.Repository[T, ID]` over any
 `*gorm.DB`.
@@ -29,7 +29,7 @@ The natural shape inside a service constructor:
 ```go
 import (
     reposgorm "go-spring.org/starter-repository-gorm"
-    "go-spring.org/spring/data/repository"
+    "go-spring.org/cloud/data/repository"
     "gorm.io/gorm"
 )
 
@@ -100,7 +100,7 @@ always ride gorm's parameter binding.
 ## Design
 
 This is a database-integration module built on the shared starter conventions —
-see [starter/DESIGN.md](../DESIGN.md). A second store (e.g. Mongo) is a separate
+see [starter/DESIGN.md](../../DESIGN.md). A second store (e.g. Mongo) is a separate
 `repository.Backend` implementation and does not touch this module or the
 abstraction.
 

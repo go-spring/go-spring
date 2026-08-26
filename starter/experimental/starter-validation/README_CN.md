@@ -3,13 +3,13 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-validation` 把 [go-playground/validator][gpv] 注册为
-[`spring/validation`](../../spring/validation) 抽象的 `default` driver。空导入
+[`cloud/experimental/web/validation`](../../../cloud/experimental/web/validation) 抽象的 `default` driver。空导入
 后,任何 `validation.Validate(ctx, "default", v)` 调用——无论来自 `conf.Bind`
 校验后置,还是 Web 请求处理——都会用带 `validate:"..."` 标签的结构体规则完成
 校验。
 
 它属于 *global / infrastructure*(全局 / 基础设施)形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.4):不注册 bean,也不开监听端口。第三方
+[starter/DESIGN.md](../../DESIGN.md) §2.4):不注册 bean,也不开监听端口。第三方
 校验器只在这里引入——绝不进 `stdlib`——从而让基础层保持零依赖承诺。
 
 [gpv]: https://github.com/go-playground/validator
@@ -43,7 +43,7 @@ type SignupRequest struct {
 ### 3. 校验
 
 ```go
-import "go-spring.org/spring/web/validation"
+import "go-spring.org/cloud/experimental/web/validation"
 
 if err := validation.Validate(ctx, "default", &req); err != nil {
     // err 是 validation.ValidationErrors——每条失败规则一个 FieldError
@@ -56,7 +56,7 @@ if err := validation.Validate(ctx, "default", &req); err != nil {
 
 ## i18n
 
-搭配 [`spring/i18n`](../../spring/i18n) 可做本地化输出,不用硬编码消息:
+搭配 [`cloud/experimental/web/i18n`](../../../cloud/experimental/web/i18n) 可做本地化输出,不用硬编码消息:
 
 ```properties
 # messages_en.yaml

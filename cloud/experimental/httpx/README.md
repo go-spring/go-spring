@@ -24,7 +24,7 @@ sites are produced by `gs-http-gen`; a generated client only holds an
 ## Usage
 
 ```go
-import "go-spring.org/spring/web/httpx"
+import "go-spring.org/cloud/experimental/httpx"
 
 rt, closeFn, err := httpx.NewTransport(httpx.Config{
     ServiceName: "user-svc",     // omit for direct-address mode

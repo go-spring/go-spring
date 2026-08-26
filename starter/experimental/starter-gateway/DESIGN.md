@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-gateway` is a **Server-archetype** starter (see
-[starter/DESIGN.md](../DESIGN.md) §2.1) that runs an independent API gateway
+[starter/DESIGN.md](../../DESIGN.md) §2.1) that runs an independent API gateway
 on its own port (default `:9440`). It lands the Spring Cloud Gateway
 Route/Predicate/Filter model with Go idioms rather than a runtime DSL:
 Predicates are `func(*http.Request) bool`, Filters are
@@ -12,12 +12,12 @@ Predicates are `func(*http.Request) bool`, Filters are
 ## 1. Responsibilities & Boundaries
 
 - **In scope:** route table binding + hot reload, `lb://` upstream via
-  `spring/discovery` + `spring/loadbalance`, and a `FilterWrapper` seam
+  `cloud/discovery` + `cloud/loadbalance`, and a `FilterWrapper` seam
   through which pluggable filters (jwt-auth, lua) mount without a hard
   import.
 - **Out of scope:** runtime DSL / rules engine, control-plane sync,
   L4/TCP proxying. Resilience (retry/circuit-breaker/rate-limit) is
-  delegated to `spring/resilience`, not reimplemented.
+  delegated to `cloud/governance/resilience`, not reimplemented.
 
 ## 2. Key Abstractions
 

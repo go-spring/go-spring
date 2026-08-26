@@ -12,7 +12,7 @@
 - 通过 `Store` 持久化 saga 日志,让崩溃进程能续跑补偿;只做**后向恢复**。
 - 暴露 `Observer` 缝隙——starter 接 otel,stdlib 不 import otel。
 - 拒绝隔离。saga 中间态对其他读者可见,业务代码自己防脏读(状态位 /
-  `spring/lock`)。
+  `cloud/experimental/lock`)。
 - 拒绝 SQL 解析 / 生成 undo log:那是 AT,放在 `transaction/at`,是刻意分开
   的缝隙。
 

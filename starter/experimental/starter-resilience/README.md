@@ -4,13 +4,13 @@
 
 `starter-resilience` registers [alibaba/sentinel-golang][sentinel] as the
 recommended driver for the resilience framework defined in
-[`spring/resilience`](../../spring/resilience). Blank-import it and any starter
+[`cloud/governance/resilience`](../../../cloud/governance/resilience). Blank-import it and any starter
 or user code that selects `driver=sentinel` — HTTP round-trippers, dialers,
 inbound handlers, retry policies — receives adaptive rate limiting, circuit
 breaking, and bulkhead isolation on top of the same neutral `Policy`.
 
 It follows the *global / infrastructure* archetype (see
-[starter/DESIGN.md](../DESIGN.md) §2.4): it registers no bean and opens no
+[starter/DESIGN.md](../../DESIGN.md) §2.4): it registers no bean and opens no
 port. `sentinel.InitDefault` runs at import time so a broken environment
 fails loudly on boot rather than on first use.
 
@@ -35,7 +35,7 @@ then `resilience.RegisterDriver("sentinel", ...)`.
 
 ### 2. Point an adapter at the sentinel driver
 
-Any starter or library built on `spring/resilience` selects a driver by name.
+Any starter or library built on `cloud/governance/resilience` selects a driver by name.
 For example, `starter-oauth2-client` reads
 `spring.http.client.<name>.resilience.driver`:
 
@@ -61,9 +61,6 @@ exec, _ := driver.NewExecutor(resilience.Policy{
     MaxRetries:     3,
     Timeout:        time.Second,
 })
-
-// server-side admission
-handler := resilience.NewHandler(mux, exec, func(*http.Request) string { return "hello" })
 
 // client-side transport
 client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
@@ -94,10 +91,10 @@ loaded lazily on the first entry:
 `MaxRetries` and `Timeout` are applied by the executor around sentinel's
 entry check, since sentinel models neither. Sentinel block reasons are
 mapped onto the neutral sentinels so callers depend only on
-`spring/resilience`.
+`cloud/governance/resilience`.
 
 ## Default driver
 
-`spring/resilience` ships a zero-dependency `default` driver for tests and
+`cloud/governance/resilience` ships a zero-dependency `default` driver for tests and
 lightweight setups. Import this starter for production-grade throttling and
 breaking; stick with `default` if you don't need it.

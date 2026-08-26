@@ -51,64 +51,6 @@ func (c Carrier) Set(key string) {
 	c[key] = []string{"1"}
 }
 
-// Propagator ferries the load-test marker across a process boundary. It carries
-// the carrier-key names so an installation that has standardised on a different
-// header (e.g. "X-Stress", "X-Shadow") can customise once at startup rather
-// than rewire every starter. The zero value is NOT usable; always construct via
-// [NewPropagator].
-type Propagator struct {
-	// HTTPHeader is the key read/written on an [net/http.Header]. Defaults to
-	// [HeaderLoadTest].
-	HTTPHeader string
-	// MetaKey is the key read/written on a gRPC metadata.MD (a [Carrier]).
-	// Defaults to [MetaKeyLoadTest].
-	MetaKey string
-}
-
-// NewPropagator returns a Propagator using the package defaults
-// ([HeaderLoadTest], [MetaKeyLoadTest]).
-func NewPropagator() *Propagator {
-	return &Propagator{
-		HTTPHeader: HeaderLoadTest,
-		MetaKey:    MetaKeyLoadTest,
-	}
-}
-
-// ExtractHTTP returns ctx tagged as load-test traffic when req carries the
-// marker header; otherwise it returns ctx unchanged. The marker's source is
-// recorded as "http-header" so [Source] can report the entry point in logs.
-//
-// It is the inbound seam for HTTP servers: a gin/echo/hertz middleware calls
-// ExtractHTTP on the incoming request and threads the returned ctx through the
-// handler chain.
-//
-// The header lookup goes through [net/http.Header.Get], which canonicalises the
-// key, so any case spelling of the header name matches. The raw [Carrier] map
-// helpers are NOT used here because HTTP header keys are textproto-canonicalised
-// on insert (e.g. "X-LoadTest" is stored as "X-Loadtest"), which a plain map
-// lookup would miss.
-func (p *Propagator) ExtractHTTP(ctx context.Context, req *http.Request) context.Context {
-	if p == nil || req == nil {
-		return ctx
-	}
-	if !isTruthy(req.Header.Get(p.HTTPHeader)) {
-		return ctx
-	}
-	return WithLoadTest(ctx, "http-header")
-}
-
-// InjectHTTP writes the marker header onto req when ctx is a load-test context;
-// otherwise it is a no-op. It is the outbound seam for HTTP clients: before
-// sending a request, an http.RoundTripper (or the starter's transport) calls
-// InjectHTTP so the downstream hop can recognise the traffic. The header is set
-// via [net/http.Header.Set] so the key is canonicalised correctly.
-func (p *Propagator) InjectHTTP(ctx context.Context, req *http.Request) {
-	if p == nil || req == nil || !IsLoadTest(ctx) {
-		return
-	}
-	req.Header.Set(p.HTTPHeader, "1")
-}
-
 // IsAffirmative reports whether s is an affirmative load-test marker value
 // ("1", "true", "on", "yes", "t", case-insensitive). Server starters (gin,
 // echo, hertz, ...) use it to test a raw inbound header/metadata value before
@@ -129,39 +71,58 @@ func isTruthy(s string) bool {
 	return false
 }
 
-// ExtractCarrier is the inbound seam for non-HTTP protocols whose metadata is a
-// [Carrier] (notably gRPC metadata.MD). It tags ctx when c carries the marker
-// under p.MetaKey; the source is recorded as source (e.g. "grpc-metadata").
-func (p *Propagator) ExtractCarrier(ctx context.Context, c Carrier, source string) context.Context {
-	if p == nil || !c.Has(p.MetaKey) {
+// ExtractHTTP tags ctx as load-test traffic when req carries the default
+// marker header ([HeaderLoadTest]); otherwise it returns ctx unchanged. The
+// marker's source is recorded as "http-header" so [Source] can report the
+// entry point in logs.
+//
+// It is the inbound seam for HTTP servers: a gin/echo/hertz middleware calls
+// ExtractHTTP on the incoming request and threads the returned ctx through
+// the handler chain.
+//
+// The header lookup goes through [net/http.Header.Get], which canonicalises
+// the key, so any case spelling of the header name matches. The raw [Carrier]
+// map helpers are NOT used here because HTTP header keys are textproto-
+// canonicalised on insert (e.g. "X-LoadTest" is stored as "X-Loadtest"),
+// which a plain map lookup would miss.
+func ExtractHTTP(ctx context.Context, req *http.Request) context.Context {
+	if req == nil || !isTruthy(req.Header.Get(HeaderLoadTest)) {
+		return ctx
+	}
+	return WithLoadTest(ctx, "http-header")
+}
+
+// InjectHTTP writes the default marker header ([HeaderLoadTest]) onto req when
+// ctx is a load-test context; otherwise it is a no-op. It is the outbound seam
+// for HTTP clients: before sending a request, an http.RoundTripper (or the
+// starter's transport) calls InjectHTTP so the downstream hop can recognise
+// the traffic. The header is set via [net/http.Header.Set] so the key is
+// canonicalised correctly.
+func InjectHTTP(ctx context.Context, req *http.Request) {
+	if req == nil || !IsLoadTest(ctx) {
+		return
+	}
+	req.Header.Set(HeaderLoadTest, "1")
+}
+
+// ExtractCarrier is the inbound seam for non-HTTP protocols whose metadata is
+// a [Carrier] (notably gRPC metadata.MD). It tags ctx when c carries the
+// marker under key; the source is recorded as source (e.g. "grpc-metadata").
+// Pass [MetaKeyLoadTest] for the default metadata key (gRPC lowercases keys
+// itself, so no canonicalisation happens here).
+func ExtractCarrier(ctx context.Context, c Carrier, key, source string) context.Context {
+	if !c.Has(key) {
 		return ctx
 	}
 	return WithLoadTest(ctx, source)
 }
 
-// InjectCarrier is the outbound seam for non-HTTP protocols whose metadata is a
-// [Carrier]. When ctx is a load-test context it writes the marker under
-// p.MetaKey; otherwise it is a no-op.
-func (p *Propagator) InjectCarrier(ctx context.Context, c Carrier) {
-	if p == nil || !IsLoadTest(ctx) {
+// InjectCarrier is the outbound seam for non-HTTP protocols whose metadata is
+// a [Carrier]. When ctx is a load-test context it writes the marker under
+// key; otherwise it is a no-op.
+func InjectCarrier(ctx context.Context, c Carrier, key string) {
+	if !IsLoadTest(ctx) {
 		return
 	}
-	c.Set(p.MetaKey)
-}
-
-// defaultPropagator is the shared package-default Propagator; the package-level
-// helpers below delegate to it so convenience callers do not allocate per call.
-// It is never mutated, so concurrent use is safe.
-var defaultPropagator = NewPropagator()
-
-// ExtractHTTP tags ctx from the inbound request's default header
-// ([HeaderLoadTest]). It delegates to the package-default [Propagator].
-func ExtractHTTP(ctx context.Context, req *http.Request) context.Context {
-	return defaultPropagator.ExtractHTTP(ctx, req)
-}
-
-// InjectHTTP writes the default marker header ([HeaderLoadTest]) onto req when
-// ctx is a load-test context. It delegates to the package-default [Propagator].
-func InjectHTTP(ctx context.Context, req *http.Request) {
-	defaultPropagator.InjectHTTP(ctx, req)
+	c.Set(key)
 }

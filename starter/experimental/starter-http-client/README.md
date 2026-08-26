@@ -4,7 +4,7 @@
 
 `starter-http-client` is the runtime half of Go-Spring's **declarative HTTP
 client**. Declare a remote service as an interface in an IDL, generate the call
-sites with [`gs-http-gen`](../../gs/gs-http-gen), and inject an assembled
+sites with [`gs-http-gen`](../../../gs/gs-http-gen), and inject an assembled
 `*http.Client` into the generated client. Service discovery, load balancing,
 resilience and trace propagation are wired for you.
 
@@ -31,15 +31,15 @@ go get go-spring.org/starter-http-client
 
 The generated `Client` holds a single `*http.Client`. The starter registers one
 `*http.Client` per configuration entry, whose `http.RoundTripper` is assembled
-by [`spring/httpx`](../../spring/httpx) from three composable stdlib
+by [`cloud/experimental/httpx`](../../../cloud/experimental/httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
-* [`discovery`](../../spring/discovery) — when a `service-name` is set, a
+* [`discovery`](../../../cloud/discovery) — when a `service-name` is set, a
   `LiveDialer` keeps a fresh endpoint snapshot;
-* [`loadbalance`](../../spring/loadbalance) — a `Pool` picks one live endpoint
+* [`loadbalance`](../../../cloud/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier ejection) and the
   transport rewrites the request host to it;
-* [`resilience`](../../spring/resilience) — an optional executor wraps the whole
+* [`resilience`](../../../cloud/governance/resilience) — an optional executor wraps the whole
   chain, so rate limiting, circuit breaking and retry protect every call.
   Because it sits *outside* the balancer, a retry re-picks a fresh endpoint and
   the breaker keys on the logical service name.
@@ -135,7 +135,7 @@ must be set, and `discovery` is mandatory when routing by service name.
 
 The base transport is [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)-instrumented.
 Every outbound request emits a client span and injects a W3C `traceparent`
-header through the OpenTelemetry globals that [`starter-otel`](../starter-otel)
+header through the OpenTelemetry globals that [`starter-otel`](../../starter-otel)
 installs. Without `starter-otel` the globals are no-ops. This is the same
 zero-config opt-in the other client starters use.
 

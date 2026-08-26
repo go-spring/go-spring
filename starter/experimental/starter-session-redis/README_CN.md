@@ -3,11 +3,11 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-session-redis` 为 Go-Spring 应用贡献一个 Redis 后端的
-[`session.SessionStore`](../../spring/session) bean,使 HTTP 会话可在多副本间共享:
+[`session.SessionStore`](../../../cloud/experimental/session) bean,使 HTTP 会话可在多副本间共享:
 副本 A 写入,副本 B 读取——这是 Spring Session 的等价能力,用「中间件 + 配置」达成,
 而非照搬 `@EnableRedisHttpSession` 注解体系。
 
-它遵循 *Contributor*(贡献者)形态(见 [starter/DESIGN.md](../DESIGN.md)):starter
+它遵循 *Contributor*(贡献者)形态(见 [starter/DESIGN.md](../../DESIGN.md)):starter
 不开端口、自身不持有客户端。它复用 `starter-go-redis` 注册的 `*redis.Client` bean,
 在框架中立的 `session.SessionStore` 缝隙背后贡献一个 bean。因此把会话后端切换到任何
 其它分布式存储,只是一次 blank-import 的替换——业务代码不变。
@@ -54,7 +54,7 @@ import (
     "net/http"
 
     "go-spring.org/spring/gs"
-    "go-spring.org/spring/web/session"
+    "go-spring.org/cloud/experimental/session"
 )
 
 gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {

@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-oauth2-client` is a **Contributor**-archetype starter (see
-[starter/DESIGN.md](../DESIGN.md) §2.3) that publishes ready-to-use
+[starter/DESIGN.md](../../DESIGN.md) §2.3) that publishes ready-to-use
 `*http.Client` and `oauth2.TokenSource` beans that transparently obtain
 and refresh OAuth2 tokens on the caller's behalf. It opens no port; the
 resulting client is injected wherever the application talks to a
@@ -42,7 +42,7 @@ protected upstream.
   what makes Auth0 `audience` / Azure `resource` work without a
   code change.
 - **Resilience is layered here, not below.** The starter integrates
-  `spring/resilience` as the outermost transport wrap (retry can
+  `cloud/governance/resilience` as the outermost transport wrap (retry can
   re-pick, breaker keys by logical name). Enabling it is a config-only
   switch on the same instance.
 
@@ -67,5 +67,5 @@ protected upstream.
   vs `*oauth2.Config`) and have different fields; separate prefixes
   keep both surfaces sharp.
 - **Resource-server validation in this starter — rejected.** It
-  belongs on the *server* side (`starter-security-jwt` + `spring/security`),
+  belongs on the *server* side (`starter-security-jwt` + `cloud/experimental/security`),
   not muxed into the client's config surface.

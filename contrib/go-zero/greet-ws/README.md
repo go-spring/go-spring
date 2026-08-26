@@ -30,7 +30,7 @@ Two consequences follow, both intentional:
 This is a runnable example, **not** a reusable starter module. The
 `rest.Server` → `gs.Server` adapter and the logx→go-spring log bridge are not
 inlined here; they live in the reusable
-[`starter-go-zero/rest`](../../../starter/starter-go-zero) module (the very same
+[`starter-go-zero/rest`](../../../starter/experimental/starter-go-zero) module (the very same
 one `greet-api` uses), which this example imports. The example only supplies a
 `HandlerRegister` bean whose route upgrades to WebSocket.
 

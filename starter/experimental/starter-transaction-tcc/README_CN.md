@@ -5,11 +5,11 @@
 > 项目已正式发布，欢迎使用！
 
 `starter-transaction-tcc` 将
-[`go-spring.org/spring/cloud/transaction/tcc`](../../spring/transaction/tcc) 定义的
+[`go-spring.org/cloud/experimental/transaction/tcc`](../../../cloud/experimental/transaction/tcc) 定义的
 **TCC(Try / Confirm / Cancel)** 分布式事务能力接入 Go-Spring 应用。它是 Seata
 TCC 的 Go 惯用法等价实现——不复刻 Seata 的 TC/TM/RM 角色，也不依赖字节码/代理魔法。
 
-它属于 **Contributor**(贡献者)形态 starter(见 [DESIGN.md](../DESIGN.md) §2.3):
+它属于 **Contributor**(贡献者)形态 starter(见 [DESIGN.md](../../DESIGN.md) §2.3):
 不监听端口、不启动服务，只注册 bean。
 
 ## TCC 还是 Saga?
@@ -130,4 +130,4 @@ place := tcc.GlobalTCC(coord, reg)
 
 ## 许可证
 
-Apache 2.0，见 [LICENSE](../../LICENSE)。
+Apache 2.0，见 [LICENSE](../../../LICENSE)。

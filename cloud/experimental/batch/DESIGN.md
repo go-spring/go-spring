@@ -24,7 +24,7 @@ a separate starter that supplies a `JobRepository` bean.
 - **`JobRepository` interface as the backend seam.** There is no global driver
   registry. A backend needs a live client (a Redis conn, a `*sql.DB`), not a
   declarative policy, so the seam is the bean type — the same choice
-  `spring/lock` makes. `NewMemoryRepository()` ships for tests and single-shot
+  `cloud/experimental/lock` makes. `NewMemoryRepository()` ships for tests and single-shot
   runs; a durable starter contributes a real bean.
 - **Instance identity = `(Name, Params)`.** `ObtainExecution` derives a stable
   `instanceKey` (sha1 of sorted params) so re-running with the same params

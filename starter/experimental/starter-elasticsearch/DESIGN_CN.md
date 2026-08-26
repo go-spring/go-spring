@@ -12,7 +12,7 @@ driver 注册表缝隙、空实现 `destroy`、discovery 只在启动期生效�
   `*elasticsearch.Client` bean。不做默认单实例。
 - 构造时跑一次性 `Info` 健康检查，让坏地址/坏证书/坏凭据在启动暴露而不是
   首次使用时才炸。
-- 若配置了 `service-name`，从 `spring/discovery` 解析节点地址；否则使用
+- 若配置了 `service-name`，从 `cloud/discovery` 解析节点地址；否则使用
   静态 `Addresses`（或 `CloudID`）。
 
 ## 2. 关键抽象与缝隙
@@ -35,7 +35,7 @@ driver 注册表缝隙、空实现 `destroy`、discovery 只在启动期生效�
 
 - **`Addresses` 或 `CloudID` 或 `ServiceName`。** 三种供给模式仅用一种；
   三者都空时，health check 无处可去，启动失败。
-- **`DiscoveryScheme` 决定端点 scheme。** `spring/discovery` 返的端点仅带
+- **`DiscoveryScheme` 决定端点 scheme。** `cloud/discovery` 返的端点仅带
   `host:port`；client 需要 `scheme://host:port`，构造地址时补上
   `discovery-scheme`（`http` / `https`）。
 - **冒烟拉 ES 8.13 镜像（已缓存）。** 首启 readiness 最多 120s

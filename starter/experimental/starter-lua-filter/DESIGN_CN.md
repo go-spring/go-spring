@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-lua-filter` 属于 **Contributor** 形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.3),让应用把 Lua 脚本作为可编程 filter
+[starter/DESIGN.md](../../DESIGN.md) §2.3),让应用把 Lua 脚本作为可编程 filter
 挂进 HTTP 管道——即 Kong / APISIX / Envoy / OpenResty 在网关数据面做的事。
 
 ## 1. 定位——HTTP filter,不是脚本 bean
@@ -21,8 +21,8 @@ request/response。进程内的动态逻辑用 Go 中间件 / CEL / WASM 更合�
 挂载点为 `spring/gs/http.go` 中的 `*gs.HttpServeMux`:框架仅在
 `OnMissingBean[*HttpServeMux]` 时提供默认 mux,故用户 `gs.Provide` 一个包
 了 filter 的 `*gs.HttpServeMux` 就能抢占。mux 与框架无关——gin/echo/hertz
-最终都塌缩成 `http.Handler`——不需要逐框架适配。`spring/web` 目前是空
-占位,故这道 handler 缝隙是天然归宿。
+最终都塌缩成 `http.Handler`——不需要逐框架适配。`cloud/experimental/web` 目前
+只有 i18n/validation 两家,故这道 handler 缝隙是天然归宿。
 
 ## 3. 实现要点
 

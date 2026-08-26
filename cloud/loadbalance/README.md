@@ -2,7 +2,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `loadbalance` is the client-side load-balancing layer on top of
-`go-spring.org/spring/discovery`. Discovery answers "which instances exist
+`go-spring.org/cloud/discovery`. Discovery answers "which instances exist
 right now?"; this package answers "given that live set, which one do I send
 this request to?" — and evicts instances that keep failing.
 
@@ -41,7 +41,7 @@ import (
     "context"
 
     "go-spring.org/cloud/discovery"
-    "go-spring.org/spring/cloud/loadbalance"
+    "go-spring.org/cloud/loadbalance"
 )
 
 ld, err := discovery.NewClientDialer(ctx, "default", "orders")

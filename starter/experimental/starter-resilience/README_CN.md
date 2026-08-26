@@ -3,13 +3,13 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-resilience` 把 [alibaba/sentinel-golang][sentinel] 注册为
-[`spring/resilience`](../../spring/resilience) 韧性框架的推荐 driver。空导入
+[`cloud/governance/resilience`](../../../cloud/governance/resilience) 韧性框架的推荐 driver。空导入
 后,任何选择 `driver=sentinel` 的 starter 或用户代码——HTTP RoundTripper、
 Dialer、入站 Handler、重试策略——都能在同一份中立 `Policy` 之上获得自适应
 限流、熔断与并发隔离。
 
 它属于 *global / infrastructure*(全局 / 基础设施)形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.4):不注册 bean,也不开监听端口。
+[starter/DESIGN.md](../../DESIGN.md) §2.4):不注册 bean,也不开监听端口。
 `sentinel.InitDefault` 在 import 时就执行,故环境异常在启动时立刻炸出,
 而不是等到第一次调用时才暴露。
 
@@ -34,7 +34,7 @@ import _ "go-spring.org/starter-resilience"
 
 ### 2. 让上层适配器指向 sentinel driver
 
-一切构筑在 `spring/resilience` 上的 starter/库都按名字选择 driver。以
+一切构筑在 `cloud/governance/resilience` 上的 starter/库都按名字选择 driver。以
 `starter-oauth2-client` 为例,它读取
 `spring.http.client.<name>.resilience.driver`:
 
@@ -60,9 +60,6 @@ exec, _ := driver.NewExecutor(resilience.Policy{
     MaxRetries:     3,
     Timeout:        time.Second,
 })
-
-// 服务端准入
-handler := resilience.NewHandler(mux, exec, func(*http.Request) string { return "hello" })
 
 // 客户端传输
 client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
@@ -90,10 +87,10 @@ dial := resilience.NewDialer(baseDialer, exec, "upstream")
 `RateLimit`、`ErrorThreshold`、`MaxConcurrent` 落成 sentinel 规则;
 `MaxRetries` 与 `Timeout` 由 executor 在 sentinel entry 之外完成,因为
 sentinel 本身不建模这两者。sentinel 的阻断原因会被映射为中立 sentinel,
-调用方仅依赖 `spring/resilience`。
+调用方仅依赖 `cloud/governance/resilience`。
 
 ## Default driver
 
-`spring/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
+`cloud/governance/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
 生产链路上得到实打实的限流与熔断,请导入本 starter;若无需即可继续使用
 `default`。

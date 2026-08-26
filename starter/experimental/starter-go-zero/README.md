@@ -92,7 +92,7 @@ gs.Provide(func() gozerozrpc.ServiceRegister {
 
 ## Observability
 
-* **Tracing** — deferred to [`starter-otel`](../starter-otel) by default (`tracing.disabled=true`).
+* **Tracing** — deferred to [`starter-otel`](../../starter-otel) by default (`tracing.disabled=true`).
   go-zero's REST/gRPC middleware emit spans through the global OpenTelemetry `TracerProvider`; when
   `starter-otel` is imported it installs that provider and the spans are exported automatically, no
   per-server configuration. Set `tracing.disabled=false` (with `tracing.endpoint`) to use go-zero's

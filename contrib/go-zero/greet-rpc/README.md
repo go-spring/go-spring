@@ -21,7 +21,7 @@ next door in [`../greet-api`](../greet-api).
 This is a runnable example, **not** a reusable starter module. The
 `zrpc.RpcServer` → `gs.Server` adapter (including the etcd registration and the
 logx→go-spring log bridge) is not inlined here; it lives in the reusable
-[`starter-go-zero/zrpc`](../../../starter/starter-go-zero) module, which this
+[`starter-go-zero/zrpc`](../../../starter/experimental/starter-go-zero) module, which this
 example imports. The example only supplies a `ServiceRegister` bean.
 
 ## Why zRPC, and why is there no etcd here for the REST sibling?

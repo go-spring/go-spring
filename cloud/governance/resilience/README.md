@@ -16,11 +16,13 @@ Redis Hook, GORM plugin, ...); a distributed rate limiter uses the parallel
   `ErrBulkheadFull`.
 - Bundled `"default"` driver — in-process, zero dependencies. Recommended
   production driver `sentinel` lives in `starter/starter-resilience`.
-- Three seams for opt-in adaptation:
+- Two client seams for opt-in adaptation:
   - `NewRoundTripper` — HTTP client `http.RoundTripper` (widest coverage).
   - `NewDialer` — connection-level `DialFunc` (matches
     `discovery.LiveDialer.DialContext`).
-  - `NewHandler` — inbound HTTP admission; 429 / 503 on rejection.
+- Inbound admission is NOT built here: protocol starters build their own
+  middleware on the `governance.ExecutorFor` seam (429 / 503 on rejection;
+  see starter-gin / starter-grpc admission).
 - `Fallback(ctx, exec, resource, fn, degrade)` — graceful degradation
   helper that composes with any executor.
 - Standalone `RateLimiter` + `LimiterDriver` registry (built-in token
@@ -30,7 +32,7 @@ Redis Hook, GORM plugin, ...); a distributed rate limiter uses the parallel
 ## Installation
 
 ```
-go get go-spring.org/stdlib
+go get go-spring.org/cloud
 ```
 
 ## Usage
@@ -58,17 +60,11 @@ client := &http.Client{
 }
 ```
 
-Combine with `spring/discovery` at the dial layer:
+Combine with `cloud/discovery` at the dial layer:
 
 ```go
 ld, _ := discovery.NewClientDialer(ctx, "default", "orders")
 dial  := resilience.NewDialer(ld.DialContext, exec, "orders")
-```
-
-Rate-limit inbound requests:
-
-```go
-handler := resilience.NewHandler(mux, exec, func(r *http.Request) string { return r.URL.Path })
 ```
 
 Standalone RateLimiter (distributed budget via a starter):

@@ -19,7 +19,7 @@ resolver 从同一 etcd 解析出可用地址。
 server 与两条不同的 codegen 流水线,没必要硬塞进一个 provider。
 
 server 生命周期和 glog 日志桥接已不再在这里手写:它们都放进了可复用的
-[`starter-goframe/grpc`](../../../starter/starter-goframe) 模块。本示例只是导入
+[`starter-goframe/grpc`](../../../starter/experimental/starter-goframe) 模块。本示例只是导入
 该 starter 并提供一个 `ServiceRegister` bean。
 
 ## 拓扑

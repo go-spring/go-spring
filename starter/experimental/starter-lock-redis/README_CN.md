@@ -3,10 +3,10 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-lock-redis` 为 Go-Spring 应用贡献一个基于 Redis 的
-[`lock.Locker`](../../spring/lock) Bean，在已有的 Redis（single / sentinel /
+[`lock.Locker`](../../../cloud/experimental/lock) Bean，在已有的 Redis（single / sentinel /
 cluster）上提供分布式锁与 Leader 选举，且不额外维护连接。
 
-它属于 *Contributor* 形态（见 [starter/DESIGN.md](../DESIGN.md)）：
+它属于 *Contributor* 形态（见 [starter/DESIGN.md](../../DESIGN.md)）：
 Starter 本身不占端口，也不持有自己的客户端；它复用 `starter-go-redis` 已注册的
 `*redis.Client`，仅在 `lock.Locker` 这个与框架无关的接缝上贡献一个 Bean。
 从 Redis 切换到 etcd/consul 只需要换一个 blank import，业务代码不动。
@@ -46,7 +46,7 @@ spring.lock.jobs.key-prefix=myapp:
 ### 3. 注入 `lock.Locker`
 
 ```go
-import "go-spring.org/spring/cloud/lock"
+import "go-spring.org/cloud/experimental/lock"
 
 type Service struct {
     Lock lock.Locker `autowire:"jobs"`
@@ -78,7 +78,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 ## Leader 选举
 
 在任意 `lock.Locker` 之上通过
-[`lock.NewElection`](../../spring/lock/election.go) 即可获得 Leader 选举能力：
+[`lock.NewElection`](../../../cloud/experimental/lock/election.go) 即可获得 Leader 选举能力：
 
 ```go
 el := lock.NewElection(lock.ElectionConfig{

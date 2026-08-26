@@ -70,7 +70,7 @@ _ = ch.PublishWithContext(ctx, "", "hello", false, false, amqp.Publishing{Body: 
 ## 可观测性
 
 分布式链路追踪通过原生 OTel 辅助函数提供,依赖
-[starter-otel](../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
+[starter-otel](../../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
 starter-otel 时它们为 no-op,也不改动任何消息字节,因此埋点是安全的零配置可选项。
 
 ```go
@@ -100,7 +100,7 @@ starter.EndSpan(span, err)
 ## 消息 Binder
 
 除原生连接外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
-(来自 `go-spring.org/spring/messaging`),让业务代码收发 `*messaging.Message`
+(来自 `go-spring.org/cloud/experimental/messaging`),让业务代码收发 `*messaging.Message`
 信封而不依赖 `amqp` API —— 底层换 broker 时业务代码无需改动。
 
 从 `*amqp.Connection` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):

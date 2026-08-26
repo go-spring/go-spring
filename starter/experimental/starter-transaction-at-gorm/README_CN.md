@@ -5,7 +5,7 @@
 > 项目已正式发布，欢迎使用！
 
 `starter-transaction-at-gorm` 将
-[`go-spring.org/spring/cloud/transaction/at`](../../spring/transaction/at) 中定义的
+[`go-spring.org/cloud/experimental/transaction/at`](../../../cloud/experimental/transaction/at) 中定义的
 **AT（自动事务）** 分布式事务能力接入 Go-Spring 应用，底层基于
 [gorm](https://gorm.io)。它以 Go 惯用法达到与 **Seata AT** 等价的效果，无需复刻
 Seata 的 TC/TM/RM 角色。
@@ -15,7 +15,7 @@ AT 最大的特点是**无侵入**：你不用编写任何补偿代码。一个 
 原子提交的 `at_undo_log` 记录，并获取全局行锁以实现写-写隔离。全局回滚时，协调器
 依据 undo log 自动还原每一行被改动的数据。
 
-它属于 **Contributor** 形态的 starter（见 [DESIGN.md](../DESIGN.md) §2.3）：不开端口、
+它属于 **Contributor** 形态的 starter（见 [DESIGN.md](../../DESIGN.md) §2.3）：不开端口、
 不启动服务，只注册 bean。
 
 ## Saga vs. TCC vs. AT —— 如何选型？
@@ -130,4 +130,4 @@ place := at.GlobalAT(coord)
 
 ## 许可证
 
-Apache 2.0，见 [LICENSE](../../LICENSE)。
+Apache 2.0，见 [LICENSE](../../../LICENSE)。

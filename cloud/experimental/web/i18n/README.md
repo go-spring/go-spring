@@ -27,7 +27,7 @@ into the foundation layer.
 
 ## Quick Start
 
-Import path: `go-spring.org/spring/i18n`.
+Import path: `go-spring.org/cloud/experimental/web/i18n`.
 
 ```go
 package main
@@ -36,7 +36,7 @@ import (
     "context"
     "fmt"
 
-    "go-spring.org/spring/web/i18n"
+    "go-spring.org/cloud/experimental/web/i18n"
 )
 
 func main() {

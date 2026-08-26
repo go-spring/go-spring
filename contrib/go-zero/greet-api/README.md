@@ -31,7 +31,7 @@ This is the HTTP half of the go-zero examples; the zRPC/gRPC half — same
 This is a runnable example, **not** a reusable starter module. The
 `rest.Server` → `gs.Server` adapter and the logx→go-spring log bridge are not
 inlined here; they live in the reusable
-[`starter-go-zero/rest`](../../../starter/starter-go-zero) module, which this
+[`starter-go-zero/rest`](../../../starter/experimental/starter-go-zero) module, which this
 example imports. The example only supplies a `HandlerRegister` bean.
 
 ## Topology

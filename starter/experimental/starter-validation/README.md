@@ -4,13 +4,13 @@
 
 `starter-validation` registers [go-playground/validator][gpv] as the `default`
 driver for the abstraction defined in
-[`spring/validation`](../../spring/validation). Blank-import it and every
+[`cloud/experimental/web/validation`](../../../cloud/experimental/web/validation). Blank-import it and every
 `validation.Validate(ctx, "default", v)` call — whether from `conf.Bind`
 post-validation or a Web request handler — validates structs tagged with
 `validate:"..."`.
 
 It follows the *global / infrastructure* archetype (see
-[starter/DESIGN.md](../DESIGN.md) §2.4): it registers no bean and opens no
+[starter/DESIGN.md](../../DESIGN.md) §2.4): it registers no bean and opens no
 port. The third-party validator is pulled in here — never in `stdlib` — so
 the foundation layer keeps its zero-dependency guarantee.
 
@@ -45,7 +45,7 @@ type SignupRequest struct {
 ### 3. Validate
 
 ```go
-import "go-spring.org/spring/web/validation"
+import "go-spring.org/cloud/experimental/web/validation"
 
 if err := validation.Validate(ctx, "default", &req); err != nil {
     // err is validation.ValidationErrors — one FieldError per failing rule
@@ -59,7 +59,7 @@ tag becomes the i18n key `validation.<tag>`.
 
 ## i18n
 
-Combine with [`spring/i18n`](../../spring/i18n) to render localized messages
+Combine with [`cloud/experimental/web/i18n`](../../../cloud/experimental/web/i18n) to render localized messages
 without hard-coding strings:
 
 ```properties

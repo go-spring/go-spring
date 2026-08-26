@@ -5,7 +5,7 @@
 A [go-kratos](https://github.com/go-kratos/kratos) `Greeter` example driven the
 Go-Spring way: `gs.Run()` owns the lifecycle, the service is an IoC bean, and
 the kratos HTTP transport server is contributed by the
-[`starter-kratos/http`](../../../starter/starter-kratos) starter instead of
+[`starter-kratos/http`](../../../starter/experimental/starter-kratos) starter instead of
 hand-wired in `main()`.
 
 The provider registers itself into an **etcd registry** on startup; the

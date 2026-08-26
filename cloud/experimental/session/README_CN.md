@@ -23,7 +23,7 @@ Web / SSO 部署可以做到副本 A 写会话、副本 B 读会话,业务 handl
 
 ## 快速开始
 
-Import 路径: `go-spring.org/spring/session`。
+Import 路径: `go-spring.org/cloud/experimental/session`。
 
 ```go
 package main
@@ -33,7 +33,7 @@ import (
     "net/http"
     "time"
 
-    "go-spring.org/spring/web/session"
+    "go-spring.org/cloud/experimental/session"
 )
 
 func main() {

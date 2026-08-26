@@ -4,7 +4,7 @@
 
 `starter-registry-etcd` registers the **current instance** into an etcd cluster —
 the provider-side counterpart to Go-Spring's client-side discovery
-(`spring/discovery`) — **and** provides the consumer-side etcd discovery
+(`cloud/discovery`) — **and** provides the consumer-side etcd discovery
 backend, so one starter serves both halves of the naming idiom. It is the
 Go-Spring equivalent of Spring Cloud's `ServiceRegistry` + `DiscoveryClient`,
 backed by etcd leases.
@@ -12,7 +12,7 @@ backed by etcd leases.
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
 register instances for you. In **pure Kubernetes** you would not use this
 starter at all: the platform already registers every Pod behind a Service, so
-you discover peers with [starter-discovery-k8s](../starter-discovery-k8s) and
+you discover peers with [starter-discovery-k8s](../experimental/starter-discovery-k8s) and
 register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to
@@ -137,7 +137,7 @@ selection, mirroring the nacos adapter.
 ## Smoke Test
 
 [example/check.sh](example/check.sh) runs the unit tests, then — if Docker is
-available — starts an etcd node, boots [example](example/main.go) (which
+available — starts an etcd node, boots [example](example/example.go) (which
 registers, reads the keys back, then SIGTERMs itself so the deregister path
 runs), and asserts the instance appeared. It is skipped gracefully without
 Docker.

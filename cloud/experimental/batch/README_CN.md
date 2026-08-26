@@ -28,7 +28,7 @@ import (
     "context"
     "fmt"
 
-    "go-spring.org/spring/cloud/batch"
+    "go-spring.org/cloud/experimental/batch"
 )
 
 func main() {

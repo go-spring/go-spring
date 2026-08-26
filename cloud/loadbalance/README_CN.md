@@ -1,7 +1,7 @@
 # loadbalance
 [English](README.md) | [中文](README_CN.md)
 
-`loadbalance` 是 `go-spring.org/spring/discovery` 之上的客户端负载均衡层。
+`loadbalance` 是 `go-spring.org/cloud/discovery` 之上的客户端负载均衡层。
 discovery 回答"当下有哪些实例";本包回答"给这份实时集合,该发到哪一个",
 并把持续失败的实例摘除。
 
@@ -37,7 +37,7 @@ import (
     "context"
 
     "go-spring.org/cloud/discovery"
-    "go-spring.org/spring/cloud/loadbalance"
+    "go-spring.org/cloud/loadbalance"
 )
 
 ld, err := discovery.NewClientDialer(ctx, "default", "orders")

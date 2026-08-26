@@ -1,7 +1,7 @@
 # starter-ratelimit-redis
 
 Redis-backed distributed rate limiting for Go-Spring: it contributes
-[`resilience.LimiterDriver`](../../cloud/governance/resilience/ratelimit.go) instances
+[`resilience.LimiterDriver`](../../../cloud/governance/resilience/ratelimit.go) instances
 whose token buckets live in Redis, so every replica of a service shares one
 global budget instead of limiting independently per process.
 

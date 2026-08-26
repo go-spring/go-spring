@@ -80,7 +80,7 @@ type Demo struct {
 
 secret 变更时,提供者的轮询 watcher 触发一次应用属性刷新,所有绑定的
 `gs.Dync` 字段原子更新。完整的 写入 → 热更新 流程见
-[example-config](example-config/example.go)。
+[example-config](example/example.go)。
 
 ## 属性级解密
 

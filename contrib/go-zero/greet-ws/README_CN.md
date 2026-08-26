@@ -24,7 +24,7 @@
 
 这是一个可运行的示例，**不是**可复用的 starter 模块。`rest.Server` →
 `gs.Server` 适配器与 logx→go-spring log 桥接不再内联在此，而是放在可复用的
-[`starter-go-zero/rest`](../../../starter/starter-go-zero) 模块里（与 `greet-api`
+[`starter-go-zero/rest`](../../../starter/experimental/starter-go-zero) 模块里（与 `greet-api`
 用的是同一个），由本示例导入；示例本身只提供一个路由会升级为 WebSocket 的
 `HandlerRegister` bean。
 

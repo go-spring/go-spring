@@ -28,24 +28,24 @@ package main
 import (
     "context"
 
-    "go-spring.org/spring/aspect"
-    "go-spring.org/spring/cloud/transaction/at"
+    "go-spring.org/cloud/experimental/transaction/at"
 )
 
 var coord = at.NewCoordinator(
     at.WithGlobalLock(&at.MemoryGlobalLock{}),
 )
 
-// GORM 后端在 context 上看到 XID 时,通过资源 interceptor 注册 branch;
-// 业务代码依然写普通 SQL。
-var interceptors = []aspect.Interceptor{
-    at.GlobalAT(coord),
-}
+// global 是 AT 的 @GlobalTransactional 等价物:手工包裹业务方法(没有共享
+// 拦截器协议——每个调用点自己嵌套装饰器)。GORM 后端在 context 上看到
+// XID 时注册 branch;业务代码依然写普通 SQL。
+var global = at.GlobalAT(coord)
 
 func PlaceOrder(ctx context.Context) error {
     // 经 AT-aware ORM 写入的语句会自动被抓 before-image;函数返错就自动
     // 回滚。
-    return nil
+    return global(ctx, "PlaceOrder", func(ctx context.Context) error {
+        return nil // 真正的业务逻辑
+    })
 }
 ```
 

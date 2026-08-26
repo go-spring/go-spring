@@ -4,7 +4,7 @@
 
 | 子包 | 角色 | 说明 |
 |------|------|------|
-| `.` (package governance) | **控制面** | 集中式治理中心 `Center`：单一可热更 `Config` → 一次 fan-out。client 注入 `*Center` 调 `PolicyFor`/`Register`。 |
+| `.` (package governance) | **控制面** | 集中式治理中心：单一可热更 `Config` → 一次 fan-out。`center` 纯内部，client 只调包级门面 `PolicyFor`/`Register`。 |
 | `resilience/` | **原语** | 防御原语：熔断 / 限流 / 重试 / 退避 / `Executor` 接缝。叶子包，不依赖治理家族其他成员。 |
 | `fault/` | **混沌面** | 故障注入（fault injection），借用 `Executor` 接缝注入失败。与 resilience 互为攻防。 |
 | `traffic/` | **流量识别面** | 压测/灰度流量标识的识别与传播。 |
@@ -15,7 +15,7 @@
 
 ```
 ${govern} gs.Dync ──dyncSource 适配──┐
-governance.Source bean ──────────────┼──→ Center（单一活跃源）→ adopt → Refresh + fault.SetConfig
+governance.Source bean ──────────────┼──→ center（单一活跃源）→ adopt → Refresh + fault.SetConfig
 governance.SetSource(任意实现) ───────┘
 ```
 

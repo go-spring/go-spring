@@ -47,8 +47,8 @@ func TestConfig_FaultEmbedding(t *testing.T) {
 	if zero.Fault.Enabled {
 		t.Fatal("zero Config.Fault should be disabled")
 	}
-	c := NewCenter(zero)
-	if p := c.PolicyFor("x"); p.Timeout != 0 {
+	c := newCenter(zero)
+	if p := c.policyFor("x"); p.Timeout != 0 {
 		t.Fatalf("zero config PolicyFor: want no timeout, got %v", p.Timeout)
 	}
 
@@ -63,25 +63,25 @@ func TestConfig_FaultEmbedding(t *testing.T) {
 	if !cfg.Fault.Enabled || cfg.Fault.Rate != 0.5 || cfg.Fault.Error != "generic" {
 		t.Fatalf("Config.Fault not preserved: %+v", cfg.Fault)
 	}
-	cc := NewCenter(cfg)
-	if p := cc.PolicyFor("redis:cache"); p.Timeout != dur(100) {
+	cc := newCenter(cfg)
+	if p := cc.policyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("PolicyFor with Fault set: want timeout 100ms, got %v", p.Timeout)
 	}
 }
 
 func TestPolicyFor_Default(t *testing.T) {
-	c := NewCenter(enabledTimeout(100))
-	if p := c.PolicyFor("redis:cache"); p.Timeout != dur(100) {
+	c := newCenter(enabledTimeout(100))
+	if p := c.policyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("PolicyFor default: want timeout 100ms, got %v", p.Timeout)
 	}
 	// Unknown label also falls back to Default.
-	if p := c.PolicyFor("anything:else"); p.Timeout != dur(100) {
+	if p := c.policyFor("anything:else"); p.Timeout != dur(100) {
 		t.Fatalf("PolicyFor fallback: want timeout 100ms, got %v", p.Timeout)
 	}
 }
 
 func TestPolicyFor_RuleReplacesDefault(t *testing.T) {
-	c := NewCenter(Config{
+	c := newCenter(Config{
 		Enabled: true,
 		Default: resilience.PolicyConfig{AttemptTimeout: dur(100), MaxRetries: 1},
 		Rules: []Rule{{
@@ -89,7 +89,7 @@ func TestPolicyFor_RuleReplacesDefault(t *testing.T) {
 			PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(50)}, // no MaxRetries
 		}},
 	})
-	p := c.PolicyFor("redis:cache")
+	p := c.policyFor("redis:cache")
 	if p.Timeout != dur(50) {
 		t.Fatalf("rule timeout: want 50ms, got %v", p.Timeout)
 	}
@@ -99,7 +99,7 @@ func TestPolicyFor_RuleReplacesDefault(t *testing.T) {
 		t.Fatalf("rule must replace not merge: want MaxRetries 0, got %d", p.MaxRetries)
 	}
 	// A label no Rule matches still gets Default.
-	if p := c.PolicyFor("redis:other"); p.Timeout != dur(100) {
+	if p := c.policyFor("redis:other"); p.Timeout != dur(100) {
 		t.Fatalf("unmatched label: want default 100ms, got %v", p.Timeout)
 	}
 }
@@ -107,57 +107,57 @@ func TestPolicyFor_RuleReplacesDefault(t *testing.T) {
 func TestPolicyFor_FirstMatchingRuleWins(t *testing.T) {
 	// When two Rules match the same label, the earlier one wins — so list
 	// specific Rules before broad ones.
-	c := NewCenter(Config{
+	c := newCenter(Config{
 		Enabled: true,
 		Rules: []Rule{
 			{Resources: []string{"redis:cache"}, PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(10)}},
 			{Resources: []string{"redis:cache"}, PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(20)}},
 		},
 	})
-	if p := c.PolicyFor("redis:cache"); p.Timeout != dur(10) {
+	if p := c.policyFor("redis:cache"); p.Timeout != dur(10) {
 		t.Fatalf("first matching rule should win: want 10ms, got %v", p.Timeout)
 	}
 	// A Rule with empty Resources matches nothing (use Default instead).
-	c2 := NewCenter(Config{
+	c2 := newCenter(Config{
 		Enabled: true,
 		Default: resilience.PolicyConfig{AttemptTimeout: dur(100)},
 		Rules:   []Rule{{PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(50)}}},
 	})
-	if p := c2.PolicyFor("redis:cache"); p.Timeout != dur(100) {
+	if p := c2.policyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("empty-Resources rule must not match: want default 100ms, got %v", p.Timeout)
 	}
 }
 
 func TestPolicyFor_DisabledIsPassThrough(t *testing.T) {
 	// Enabled=false makes the center a no-op even when Default is set.
-	c := NewCenter(Config{Enabled: false, Default: resilience.PolicyConfig{AttemptTimeout: dur(100)}})
-	if p := c.PolicyFor("redis:cache"); !p.IsZero() {
+	c := newCenter(Config{Enabled: false, Default: resilience.PolicyConfig{AttemptTimeout: dur(100)}})
+	if p := c.policyFor("redis:cache"); !p.IsZero() {
 		t.Fatalf("disabled center must yield zero policy, got %+v", p)
 	}
-	if c.Enabled() {
+	if c.enabled() {
 		t.Fatal("Enabled() should be false")
 	}
 }
 
 func TestRegister_ArmsImmediately(t *testing.T) {
-	c := NewCenter(enabledTimeout(100))
+	c := newCenter(enabledTimeout(100))
 	var got resilience.Policy
-	c.Register("redis:cache", func(p resilience.Policy) { got = p })
+	c.register("redis:cache", func(p resilience.Policy) { got = p })
 	if got.Timeout != dur(100) {
 		t.Fatalf("Register should arm cb with current policy, got timeout %v", got.Timeout)
 	}
 }
 
 func TestRefresh_NotifiesOnlyChangedLabels(t *testing.T) {
-	c := NewCenter(Config{
+	c := newCenter(Config{
 		Enabled: true,
 		Driver:  "default",
 		Default: resilience.PolicyConfig{AttemptTimeout: dur(100)},
 	})
 
 	var redisN, gormN int
-	c.Register("redis:cache", func(p resilience.Policy) { redisN++ })
-	c.Register("gorm:mysql:primary", func(p resilience.Policy) { gormN++ })
+	c.register("redis:cache", func(p resilience.Policy) { redisN++ })
+	c.register("gorm:mysql:primary", func(p resilience.Policy) { gormN++ })
 	// Register arms once each.
 	if redisN != 1 || gormN != 1 {
 		t.Fatalf("after register: redis=%d gorm=%d, want 1/1", redisN, gormN)
@@ -169,47 +169,47 @@ func TestRefresh_NotifiesOnlyChangedLabels(t *testing.T) {
 		Resources:          []string{"redis:cache"},
 		PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(200)},
 	}}
-	c.Refresh(cfg)
+	c.refresh(cfg)
 	if redisN != 2 {
 		t.Fatalf("redis must be notified on its policy change: got %d, want 2", redisN)
 	}
 	if gormN != 1 {
 		t.Fatalf("gorm must NOT be notified when its policy is unchanged: got %d, want 1", gormN)
 	}
-	if p := c.PolicyFor("redis:cache"); p.Timeout != dur(200) {
+	if p := c.policyFor("redis:cache"); p.Timeout != dur(200) {
 		t.Fatalf("post-refresh redis policy: want 200ms, got %v", p.Timeout)
 	}
 
 	// A no-op refresh (same config) notifies nobody.
-	c.Refresh(cfg)
+	c.refresh(cfg)
 	if redisN != 2 || gormN != 1 {
 		t.Fatalf("no-op refresh must not notify: redis=%d gorm=%d, want 2/1", redisN, gormN)
 	}
 }
 
 func TestRefresh_DefaultChangeFansOutToAllUnoverridden(t *testing.T) {
-	c := NewCenter(enabledTimeout(100))
+	c := newCenter(enabledTimeout(100))
 	var a, b int
-	c.Register("redis:cache", func(p resilience.Policy) { a++ })
-	c.Register("gorm:mysql:primary", func(p resilience.Policy) { b++ })
+	c.register("redis:cache", func(p resilience.Policy) { a++ })
+	c.register("gorm:mysql:primary", func(p resilience.Policy) { b++ })
 	// Both read Default; changing Default must notify both.
-	c.Refresh(enabledTimeout(300))
+	c.refresh(enabledTimeout(300))
 	if a != 2 || b != 2 {
 		t.Fatalf("default change should fan out to both: a=%d b=%d, want 2/2", a, b)
 	}
-	if p := c.PolicyFor("redis:cache"); p.Timeout != dur(300) {
+	if p := c.policyFor("redis:cache"); p.Timeout != dur(300) {
 		t.Fatalf("post default-change: want 300ms, got %v", p.Timeout)
 	}
 }
 
 func TestDriver(t *testing.T) {
-	c := NewCenter(Config{Enabled: true, Driver: "sentinel"})
-	if d := c.Driver(); d != "sentinel" {
+	c := newCenter(Config{Enabled: true, Driver: "sentinel"})
+	if d := c.driver(); d != "sentinel" {
 		t.Fatalf("Driver: want sentinel, got %s", d)
 	}
 	// Defaults to "default" when unset.
-	c2 := NewCenter(Config{Enabled: true})
-	if d := c2.Driver(); d != "default" {
+	c2 := newCenter(Config{Enabled: true})
+	if d := c2.driver(); d != "default" {
 		t.Fatalf("Driver default: want default, got %s", d)
 	}
 }
@@ -245,7 +245,7 @@ func TestSource_PushSourceDrivesCenter(t *testing.T) {
 // a config pushed from ANY source swaps both the resilience snapshot and the
 // fault injector's config (the injector pointer itself is never rebuilt).
 func TestSource_AdoptSwapsFaultConfig(t *testing.T) {
-	c := NewCenter(Config{})
+	c := newCenter(Config{})
 	c.injector = fault.NewInjector(fault.Config{})
 	if c.injector.Config().Enabled {
 		t.Fatal("precondition: injector should start disabled")
@@ -255,7 +255,7 @@ func TestSource_AdoptSwapsFaultConfig(t *testing.T) {
 	cfg.Fault = fault.Config{Enabled: true, Rate: 0.5}
 	c.adopt(cfg)
 
-	if p := c.PolicyFor("x"); p.Timeout != dur(100) {
+	if p := c.policyFor("x"); p.Timeout != dur(100) {
 		t.Fatalf("adopt resilience side: want 100ms, got %v", p.Timeout)
 	}
 	if !c.injector.Config().Enabled || c.injector.Config().Rate != 0.5 {
@@ -263,9 +263,9 @@ func TestSource_AdoptSwapsFaultConfig(t *testing.T) {
 	}
 
 	// adopt with a nil injector (pre-Init center) must not panic.
-	c2 := NewCenter(Config{})
+	c2 := newCenter(Config{})
 	c2.adopt(enabledTimeout(50))
-	if p := c2.PolicyFor("x"); p.Timeout != dur(50) {
+	if p := c2.policyFor("x"); p.Timeout != dur(50) {
 		t.Fatalf("adopt without injector: want 50ms, got %v", p.Timeout)
 	}
 }
@@ -276,25 +276,25 @@ func TestSource_AdoptSwapsFaultConfig(t *testing.T) {
 // so stale callbacks must no-op instead of being retracted).
 func TestSetSource_LateArm_StaleGuard(t *testing.T) {
 	pushA := NewPushSource(enabledTimeout(100))
-	c := NewCenter(Config{})
+	c := newCenter(Config{})
 	c.setSource(pushA)
-	if p := c.PolicyFor("x"); p.Timeout != dur(100) {
+	if p := c.policyFor("x"); p.Timeout != dur(100) {
 		t.Fatalf("source A snapshot: want 100ms, got %v", p.Timeout)
 	}
 
 	pushB := NewPushSource(enabledTimeout(200))
 	c.setSource(pushB)
-	if p := c.PolicyFor("x"); p.Timeout != dur(200) {
+	if p := c.policyFor("x"); p.Timeout != dur(200) {
 		t.Fatalf("source B snapshot should replace A: want 200ms, got %v", p.Timeout)
 	}
 
 	// A's pushes are stale now; B's still drive the center.
 	pushA.Push(enabledTimeout(999))
-	if p := c.PolicyFor("x"); p.Timeout != dur(200) {
+	if p := c.policyFor("x"); p.Timeout != dur(200) {
 		t.Fatalf("stale source A push must be dropped: want 200ms, got %v", p.Timeout)
 	}
 	pushB.Push(enabledTimeout(300))
-	if p := c.PolicyFor("x"); p.Timeout != dur(300) {
+	if p := c.policyFor("x"); p.Timeout != dur(300) {
 		t.Fatalf("source B push should apply: want 300ms, got %v", p.Timeout)
 	}
 }
@@ -315,19 +315,19 @@ func TestSetSource_NilPanics(t *testing.T) {
 // installs its source only when none is bound — an earlier explicit SetSource
 // always wins, which is what lets a pre-wiring SetSource take over the default.
 func TestBindDefault_RespectsExplicitSource(t *testing.T) {
-	c := NewCenter(Config{})
+	c := newCenter(Config{})
 	explicit := NewPushSource(enabledTimeout(100))
 	c.setSource(explicit)
 
 	c.bindDefault(NewPushSource(enabledTimeout(999))) // must be ignored
-	if p := c.PolicyFor("x"); p.Timeout != dur(100) {
+	if p := c.policyFor("x"); p.Timeout != dur(100) {
 		t.Fatalf("BindDefault must not override an explicit source: want 100ms, got %v", p.Timeout)
 	}
 
 	// With nothing bound, BindDefault takes effect.
-	c2 := NewCenter(Config{})
+	c2 := newCenter(Config{})
 	c2.bindDefault(NewPushSource(enabledTimeout(200)))
-	if p := c2.PolicyFor("x"); p.Timeout != dur(200) {
+	if p := c2.policyFor("x"); p.Timeout != dur(200) {
 		t.Fatalf("BindDefault should bind when nothing is bound: want 200ms, got %v", p.Timeout)
 	}
 }
@@ -376,10 +376,10 @@ func TestPushSource_Concurrent(t *testing.T) {
 // a source implementing Close is closed; one without Close is left alone.
 func TestDestroy_ClosesCloseableSource(t *testing.T) {
 	// With a closeable source.
-	c := NewCenter(Config{})
+	c := newCenter(Config{})
 	src := newCloseableSource(Config{})
 	c.setSource(src)
-	if err := c.Destroy(); err != nil {
+	if err := c.destroy(); err != nil {
 		t.Fatal(err)
 	}
 	if !src.closed {
@@ -387,9 +387,9 @@ func TestDestroy_ClosesCloseableSource(t *testing.T) {
 	}
 
 	// With a plain PushSource (no Close method): Destroy is a no-op.
-	c2 := NewCenter(Config{})
+	c2 := newCenter(Config{})
 	c2.setSource(NewPushSource(Config{}))
-	if err := c2.Destroy(); err != nil {
+	if err := c2.destroy(); err != nil {
 		t.Fatal(err)
 	}
 }

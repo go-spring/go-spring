@@ -45,6 +45,7 @@ import (
 
 	"github.com/hashicorp/vault/api"
 	"go-spring.org/log"
+	"go-spring.org/spring/conf/decrypt/aes"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-config-vault"

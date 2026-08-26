@@ -4,7 +4,7 @@
 
 一个以 Go-Spring 方式驱动的 [go-kratos](https://github.com/go-kratos/kratos)
 `Greeter` 示例:`gs.Run()` 掌管生命周期,服务是一个 IoC bean,kratos HTTP transport
-server 由 [`starter-kratos/http`](../../../starter/starter-kratos) starter 贡献,而非在
+server 由 [`starter-kratos/http`](../../../starter/experimental/starter-kratos) starter 贡献,而非在
 `main()` 里手工接线。
 
 provider 启动时把自己注册进 **etcd 注册中心**;consumer 从不知道 provider 的 host:port,

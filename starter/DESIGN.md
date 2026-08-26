@@ -150,7 +150,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   backends — they serve both configuration and service discovery. These two are
   different integration points in Go-Spring, so they live in different starters:
   the **config** role is a config-provider starter (this archetype); the
-  **discovery** role is client-side (`spring/discovery`, §3) or framework-native
+  **discovery** role is client-side (`cloud/discovery`, §3) or framework-native
   (`contrib/registry/`, §3). A config-provider starter does the config role and
   nothing else. The naming mirrors Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`).
@@ -212,8 +212,8 @@ application can load configuration from it at startup and hot-reload at runtime.
   package.** The three concerns every starter touches - TLS config, health
   indicator construction, fail-fast validation - each have a single home
   decided by their nature, not by who consumes them:
-  `spring/cloud/tlsconf.TLSConfig` (config fields -> `*tls.Config`),
-  `spring/actuator/health.NewIndicator` (factory for that package's
+  `cloud/tlsconf.TLSConfig` (config fields -> `*tls.Config`),
+  `cloud/actuator/health.NewIndicator` (factory for that package's
   `Indicator` interface), `stdlib/errutil.RequireField`/`RequireAny`
   (formatting sugar over `errutil.Explain`). Starters import these directly.
   A *new* cross-cutting concern that no existing package currently owns is
@@ -240,7 +240,7 @@ application can load configuration from it at startup and hot-reload at runtime.
     seam, and only when a concrete requirement lands.
 - **Client-side discovery is already unified; provider registration is not.**
   Client starters resolve a `ServiceName` to live endpoints through
-  `spring/discovery` (`LiveDialer` injected via the driver's dialer hook); this
+  `cloud/discovery` (`LiveDialer` injected via the driver's dialer hook); this
   is generic across infrastructure clients. RPC *provider* registration stays
   framework-native per the principle above. When `ServiceName` is empty the
   client dials the address directly, unchanged. For examples of framework-native
@@ -267,7 +267,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   (1) Registering *this process* into an external registry
   (Nacos/Consul/Eureka/ZooKeeper) - the Spring Cloud `@EnableDiscoveryClient`
   direction - is a generic, transport-agnostic capability. It is **not** a shared
-  abstraction in `spring/discovery`: each `starter-registry-<backend>`
+  abstraction in `cloud/discovery`: each `starter-registry-<backend>`
   (etcd/nacos/consul/zookeeper) owns its full register/deregister lifecycle -
   the registrar is a local value wired into the exported `gs.Server`, not a
   globally registered backend, and swapping backends means swapping the starter.

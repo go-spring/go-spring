@@ -18,7 +18,7 @@ consumer 不知道 provider 的 host:port,而是从同一 etcd 解析出可用�
 
 这是一个**可运行示例**,并非可复用的 starter 模块。`zrpc.RpcServer` →
 `gs.Server` 适配器(含 etcd 注册与 logx→go-spring log 桥接)不再内联在此,
-而是放在可复用的 [`starter-go-zero/zrpc`](../../../starter/starter-go-zero)
+而是放在可复用的 [`starter-go-zero/zrpc`](../../../starter/experimental/starter-go-zero)
 模块里,由本示例导入;示例本身只提供一个 `ServiceRegister` bean。
 
 ## 为什么用 zRPC?为什么 REST 那边没有 etcd?

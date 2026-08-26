@@ -4,7 +4,7 @@
 
 `starter-config-k8s` reads a **Kubernetes ConfigMap or Secret directly through
 the API server** as a hot-reloadable configuration source. It complements
-[starter-config-file](../starter-config-file): the file starter watches a volume
+[starter-config-file](../../starter-config-file): the file starter watches a volume
 mount and inherits the kubelet's projection latency (~1 min for Secret
 rotation); this starter opens a client-go informer straight onto the object, so
 a `kubectl edit configmap` propagates to bound `gs.Dync` fields within seconds

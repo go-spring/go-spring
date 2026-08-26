@@ -29,7 +29,7 @@ import (
     "context"
     "fmt"
 
-    "go-spring.org/spring/cloud/transaction"
+    "go-spring.org/cloud/experimental/transaction"
 )
 
 func main() {

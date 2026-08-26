@@ -108,7 +108,7 @@ resp, err := s.Client.Get("https://api.example.com/resource")
 token 端点交换与下游业务请求均已接入分布式链路追踪。starter 使用
 [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)
 包裹底层 `*http.Client` 的 transport,因此每一次出站请求都会通过
-[`starter-otel`](../starter-otel) 安装的 OpenTelemetry 全局对象产生一个 client span。
+[`starter-otel`](../../starter-otel) 安装的 OpenTelemetry 全局对象产生一个 client span。
 
 这是一项零配置、可选启用的能力,与 go-redis 的 `redisotel` hook 思路一致:引入
 `starter-otel` 即自动产生 span;不引入时 OTel 全局对象为 no-op,既不产生 span 也不

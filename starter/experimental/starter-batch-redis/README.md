@@ -3,12 +3,12 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-batch-redis` contributes a Redis-backed
-[`batch.JobRepository`](../../spring/batch) bean to a Go-Spring application, so
+[`batch.JobRepository`](../../../cloud/experimental/batch) bean to a Go-Spring application, so
 chunk jobs and short-lived tasks persist their progress in Redis and survive a
 process restart from the last committed chunk.
 
 It follows the *Contributor* archetype (see
-[starter/DESIGN.md](../DESIGN.md)): the starter exports no port and holds no
+[starter/DESIGN.md](../../DESIGN.md)): the starter exports no port and holds no
 client of its own. It reuses the `*redis.Client` bean registered by
 `starter-go-redis` and contributes a bean behind the framework-neutral
 `batch.JobRepository` seam. Switching the repository backend to a SQL database
@@ -53,7 +53,7 @@ starter refuses to silently default to some arbitrary Redis instance.
 ### 3. Inject `batch.JobRepository`
 
 ```go
-import "go-spring.org/spring/cloud/batch"
+import "go-spring.org/cloud/experimental/batch"
 
 type Service struct {
     Repo batch.JobRepository `autowire:"jobs"`

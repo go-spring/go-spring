@@ -116,7 +116,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **按角色拆,不按后端拆。** Nacos、Consul、etcd 都是**双能力**后端 —— 既做配置也做
   服务发现。这两者在 Go-Spring 里是不同的接入点,因此落在不同 starter:**config**
   角色是配置 Provider 类 starter(本形态);**discovery** 角色走 client 侧
-  (`spring/discovery`,§3)或框架原生(`contrib/registry/`,§3)。配置 Provider 类
+  (`cloud/discovery`,§3)或框架原生(`contrib/registry/`,§3)。配置 Provider 类
   starter 只做 config 角色,别的都不做。命名对标 Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`)。
 - **它注册的是 provider,不是 bean。** 接缝是 `init()` 里的
@@ -174,7 +174,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     Apache Thrift(`starter-thrift`)、纯 HTTP web(gin/echo/hertz)。只有这些才值得
     做 Go-Spring 注册 seam,且要等具体需求落地。
 - **client 侧发现已统一,provider 注册不统一。** client 类 starter 可通过
-  `spring/discovery`(由 driver 的 dialer 钩子注入 `LiveDialer`)把 `ServiceName`
+  `cloud/discovery`(由 driver 的 dialer 钩子注入 `LiveDialer`)把 `ServiceName`
   解析成实时端点,这对各基础设施客户端是通用的。RPC 的 **provider** 注册按上述原则
   保持框架原生。`ServiceName` 为空时 client 按地址直连,行为不变。各框架原生注册进
   consul/etcd/nacos/zookeeper/polaris 的示例见 `contrib/registry/`。
@@ -191,7 +191,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **实例级注册按 starter 各自提供;RPC 框架 provider 注册仍不统一。** 别把两种
   "注册"混为一谈。(1)把**本进程**注册进外部注册中心
   (Nacos/Consul/Eureka/ZooKeeper)-- 即 Spring Cloud `@EnableDiscoveryClient` 的方向
-  -- 是与传输无关的通用能力。它**不是** `spring/discovery` 里的共享抽象:每个
+  -- 是与传输无关的通用能力。它**不是** `cloud/discovery` 里的共享抽象:每个
   `starter-registry-<backend>`(etcd/nacos/consul/zookeeper)自持完整的注册 / 注销
   生命周期 -- registrar 是注入导出 `gs.Server` 的本地值,而非全局注册的后端;换后端
   就是换 starter。所有 registry starter 共守一条规则:**Register 必须自续约**

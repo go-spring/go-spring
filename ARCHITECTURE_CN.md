@@ -47,8 +47,8 @@
 | 目录 | 层 | 用途(一句话) | 属于这里 | **不**属于这里 | 深入阅读 |
 |---|---|---|---|---|---|
 | `stdlib/` | 基础 | 零依赖的通用工具(对 Go 标准库的补齐) | 纯 Go 工具——类型、编解码、集合、哈希、文本…… | 任何三方 import;能力抽象 / driver 注册表(它们在 `spring/`);容器/DI 逻辑 | [stdlib/README.md](stdlib/README_CN.md) |
-| `log/` | 基础 | 结构化日志模型、配置语法、适配器 | 日志模型、appender、字段编码、日志配置解析器 | 业务日志;对 `spring` 的硬依赖 | [log/DESIGN.md](log/DESIGN_CN.md) |
-| `spring/` | 核心 | IoC 容器、依赖注入、应用生命周期、分层配置引擎——纯核心(`gs` + `conf`) | Bean 模型、注入、启停状态机、配置绑定/刷新 | 三方业务包;能力抽象(在 `cloud/`);接真实后端的集成代码 | [spring/DESIGN.md](spring/DESIGN_CN.md) |
+| `log/` | 基础 | 结构化日志模型、配置语法、适配器 | 日志模型、appender、字段编码、日志配置解析器 | 业务日志;对 `spring` 的硬依赖 | [log/DESIGN.md](log/README_CN.md) |
+| `spring/` | 核心 | IoC 容器、依赖注入、应用生命周期、分层配置引擎——纯核心(`gs` + `conf`) | Bean 模型、注入、启停状态机、配置绑定/刷新 | 三方业务包;能力抽象(在 `cloud/`);接真实后端的集成代码 | [spring/DESIGN.md](spring/README_CN.md) |
 | `cloud/` | 生态 | 容器无关的能力抽象:治理、discovery、缓存、repository、i18n/validation…… | 可脱离容器使用的生态接口 + driver 缝 | 任何 spring import;三方 SDK;gs 接线(归 starter) | [cloud/](cloud/) 各家族文档 |
 | `starter/` | 集成 | 每个三方服务/框架一个 module,接入 IoC 容器 | 遵循五形态的 `starter-*` 模块;家族设计指南 | 业务逻辑;部署脚手架;跨 starter 的共享 helper 包 | [starter/DESIGN.md](starter/DESIGN_CN.md) |
 | `gs/` | 工具 | 开发工具:脚手架(`gs`)、GUI、代码生成(`gs-http-gen`)、mock(`gs-mock`) | 作用*于*项目的 CLI/codegen/工具 | 运行时框架代码;任何被运行中应用 import 的东西 | [gs/README.md](gs/README.md) |
@@ -112,6 +112,6 @@ Go-Spring 的存在意义是服务所有团队的全场景;它无法交付一套
 - [CLAUDE.md](CLAUDE.zh.md) —— 何时记录约定;输出与编码规则。
 - [starter/DESIGN.md](starter/DESIGN_CN.md) —— 五种 starter 形态及全部横切约束(仓库中最深的规则集)。
 - [contrib/DIRECTORY_CONVENTIONS.md](contrib/DIRECTORY_CONVENTIONS.md) —— contrib 示例的布局与命名。
-- [spring/DESIGN.md](spring/DESIGN_CN.md)、[log/DESIGN.md](log/DESIGN_CN.md)、[layout/DESIGN.zh.md](layout/DESIGN.zh.md) —— 各模块内部设计。
+- [spring/DESIGN.md](spring/README_CN.md)、[log/DESIGN.md](log/README_CN.md)、[layout/DESIGN.zh.md](layout/DESIGN.zh.md) —— 各模块内部设计。
 - [layout/docs/agent-rules/common-rules.zh.md](layout/docs/agent-rules/common-rules.zh.md) —— 基于 Go-Spring 的项目共享的设计/编码/测试规则。
 - [MANIFESTO.md](MANIFESTO.md) —— 长期的 "Process as Code" 方向。 -->

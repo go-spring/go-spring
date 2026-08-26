@@ -65,7 +65,7 @@ spring.goframe.http.server.registry.etcd=127.0.0.1:2379
 
 ## 可观测性
 
-* **追踪** — 让路给 [`starter-otel`](../starter-otel)。goframe 的 `ghttp`/`grpcx` 会基于全局
+* **追踪** — 让路给 [`starter-otel`](../../starter-otel)。goframe 的 `ghttp`/`grpcx` 会基于全局
   OpenTelemetry `TracerProvider` 自动埋点;导入 `starter-otel` 即安装该 provider,span 自动导出,
   无需按服务器单独配置。
 * **指标** — `http` 子包可在同一服务器上暴露 goframe 原生的 OTel Prometheus(pull)端点。默认关闭,

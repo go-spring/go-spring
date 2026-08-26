@@ -24,10 +24,10 @@ govern 把这 11 份 Dync 收敛成 **全进程唯一一个**。
 ```
                     ${govern}   ← 默认配置源
                         │
-              gs.Dync[governance.Config]   （Center.Gov，由 cloud/governance 持有）
+              gs.Dync[governance.Config]   （由 cloud/governance 持有）
                         │  dyncSource 适配为 Source 契约
                         ▼
-                governance.Center.adopt(cfg) → Refresh(cfg) + fault SetConfig
+                governance.center.adopt(cfg) → refresh(cfg) + fault SetConfig
                         │
             ┌───────────┼────────────┬───────────┬───────────┐
             ▼           ▼            ▼           ▼           ▼
@@ -39,9 +39,9 @@ govern 把这 11 份 Dync 收敛成 **全进程唯一一个**。
         时回调         时回调
 ```
 
-- **根**：`cloud/governance` 里的 Center 单例，持有唯一的 `gs.Dync[governance.Config]`，绑定 `${govern}`。
-- **叶**：每个 client starter 在自己的 setup 阶段调一次 `Center.Register(label, cb)`，把自己登记为某个资源 label 的订阅者。
-- **分发**：配置变化时 `Center.Refresh` 重算每个订阅者所属 label 的 policy，**只在变化时**回调。
+- **根**：`cloud/governance` 里的 center 单例，持有唯一的 `gs.Dync[governance.Config]`，绑定 `${govern}`。
+- **叶**：每个 client starter 在自己的 setup 阶段调一次 `governance.Register(label, cb)`，把自己登记为某个资源 label 的订阅者。
+- **分发**：配置变化时 center 的 `refresh` 重算每个订阅者所属 label 的 policy，**只在变化时**回调。
 
 ### 2.1 感知层：Source 契约（2026-08-15 起）
 
@@ -55,7 +55,7 @@ govern 把这 11 份 Dync 收敛成 **全进程唯一一个**。
 
 > ⚠️ 看到代码里"到处都是 Register"是正常现象——这不是重复配置，而是 fan-out 拓扑的叶子节点。Dync 数从 11 → 1，Register 数多恰恰是"精确分发"的实现方式。
 
-> **client 怎么拿到 executor（2026-08-14 重构后）**：client starter **不再注入 `*governance.Center`**，而是调中立函数 `resilience.ExecutorFor(资源label)` 拿到自己的 executor——零 govern 耦合。cloud/governance 在启动时（作为一个 `gs.Runner`，gs 自动收集执行）把治理中心注册成 `ExecutorFor` 背后的 provider；上面的 `Register(label, cb)` 扇出由 provider 内部按 label 自动完成，client 不感知。`ExecutorFor` 返回的 executor 每次 Execute 时 lazy resolve（全局 memoize），与 provider 注册先后无关；无 provider 时返回透传 noop。唯一例外是 **dubbo**（URL-param 模型，仍注入 Center 直接读 `PolicyFor` 字段）。seam 代码见 [cloud/governance/resilience/provider.go](../resilience/provider.go)。
+> **client 怎么拿到 executor（2026-08-14 重构后）**：client starter **不注入治理中心**，而是调中立函数 `resilience.ExecutorFor(资源label)` 拿到自己的 executor——零 govern 耦合。cloud/governance 在启动时（作为一个 `gs.Runner`，gs 自动收集执行）把治理中心注册成 `ExecutorFor` 背后的 provider；上面的 `Register(label, cb)` 扇出由 provider 内部按 label 自动完成，client 不感知。`ExecutorFor` 返回的 executor 每次 Execute 时 lazy resolve（全局 memoize），与 provider 注册先后无关；无 provider 时返回透传 noop。唯一例外是 **dubbo**（URL-param 模型，直接走门面 `PolicyFor` 读策略）。seam 代码见 [cloud/governance/resilience/provider.go](resilience/provider.go)。
 
 ## 3. 为什么是 per-label Register，而不是一个全局回调
 
@@ -70,10 +70,10 @@ per-label Register 配合"上次交付值"（`subscriber.last`）做**选择性�
 
 | 不变量 | 如何保证 | 代码位置 |
 |---|---|---|
-| 热路径无锁 | `cfg atomic.Pointer[Config]`，`PolicyFor` 只做一次原子 load | `Center.PolicyFor` |
-| 选择性分发 | 每个订阅者记 `last`，`Refresh` 时 DeepEqual 比对，未变不回调 | `Center.Refresh` |
-| 回调在锁外执行 | 锁内只收集 `todo`，锁外逐个调用；回调里再调 Center 不会自死锁 | `Center.Refresh` |
-| Disabled 即透传 | center 未启用时 `PolicyFor` 返回零值 `Policy{}`，executor 成为透明直连 | `Center.PolicyFor` |
+| 热路径无锁 | `cfg atomic.Pointer[Config]`，`PolicyFor` 只做一次原子 load | `PolicyFor`（门面 → center） |
+| 选择性分发 | 每个订阅者记 `last`，`Refresh` 时 DeepEqual 比对，未变不回调 | center.`refresh` |
+| 回调在锁外执行 | 锁内只收集 `todo`，锁外逐个调用；回调里再调门面不会自死锁 | center.`refresh` |
+| Disabled 即透传 | center 未启用时 `PolicyFor` 返回零值 `Policy{}`，executor 成为透明直连 | `PolicyFor`（门面 → center） |
 | 不导入 cloud/governance 也是 no-op | center 是无条件单例，未配 `${govern}` 时 `Enabled()==false` | `cloud/governance` |
 
 ## 5. 公共 API
@@ -91,12 +91,13 @@ type Rule struct {
     resilience.Config           // 内嵌：策略字段直接绑在 rules[N].*（gs 提升内嵌 value tag）
 }
 
-func NewCenter(cfg Config) *Center
-func (c *Center) Enabled() bool
-func (c *Center) Driver() string
-func (c *Center) PolicyFor(label string) resilience.Policy   // 读路径，无锁；遍历 Rules 找首个命中，否则 Default
-func (c *Center) Register(label string, cb func(resilience.Policy)) resilience.Policy
-func (c *Center) Refresh(cfg Config)                          // cloud/governance 的唯一 OnChanged 调它
+// center 纯内部：类型系统不设导出，全仓只有包级门面
+func Enabled() bool
+func Driver() string
+func PolicyFor(label string) resilience.Policy   // 读路径，无锁；遍历 Rules 找首个命中，否则 Default
+func Register(label string, cb func(resilience.Policy)) resilience.Policy
+func SetSource(s Source) / BindDefault(src Source) / GoLive() / CloseActiveSource() error
+func OnReady(cb func()) / Arm(cfg Config) / Reset()
 ```
 
 **为什么是 `Rules` 列表而不是 `map[label]`**：资源 label 用冒号分段（`gorm:mysql:orders-db`）。若 label 做 map key，冒号进到 YAML key 位置会让映射解析错乱（每个 key 都得加引号、漏一个就静默解析错）。改成列表后，label 退到 `resources` 值的位置——冒号在值里，properties 不转义、YAML 不加引号，两种格式都干净。`PolicyFor` 遍历 Rules（每进程就几条，O(n) 可忽略）找首个 `Resources` 含 label 的，找不到回落 Default。
@@ -105,7 +106,7 @@ func (c *Center) Refresh(cfg Config)                          // cloud/governanc
 
 ## 6. 资源标签（label）约定
 
-label 是 `PolicyFor` / `Register` 的 key，决定一条策略归属哪个资源。所有 starter 通过 [`resilience.ResourceLabel`](../resilience/config.go) 统一拼接：第一个非空 name 拼到 prefix 后，都没有则只用 prefix。
+label 是 `PolicyFor` / `Register` 的 key，决定一条策略归属哪个资源。所有 starter 通过 [`resilience.ResourceLabel`](resilience/config.go) 统一拼接：第一个非空 name 拼到 prefix 后，都没有则只用 prefix。
 
 | starter | label 格式 | 示例 |
 |---|---|---|
@@ -140,7 +141,7 @@ dubbo 有自己的 URL-param 治理模型（timeout / retries / loadbalance / cl
 
 - **label**：应用级 `dubbo:<app>` + 每个 reference 的 `dubbo:<interface>:<version>:<group>`，由 `dubboResourceLabels` 产出。
 - **桥接**：[`starter-dubbo/dync.go`](../../starter/starter-dubbo/dync.go) 的 `poll` 把 center 的 `PolicyFor` 翻译成 dubbo 参数——`Policy.Timeout` 写成毫秒数的 `timeout`，`Policy.MaxRetries` 写成 `retries`（cluster-failover 级别，不是 resilience 层 retry）。
-- **热更新**：对每个 dubbo label 调 `Center.Register`，回调里重新 `poll` 并 `RefreshOverrideRules` 推给 dubbo-go 的动态配置层。
+- **热更新**：对每个 dubbo label 调门面 `governance.Register`，回调里重新 `poll` 并 `RefreshOverrideRules` 推给 dubbo-go 的动态配置层。
 - **dubbo 专属旋钮**（loadbalance / cluster / serialization）留在 dubbo 自己的配置段，不进 govern。
 
 > Register 的回调里会重入 `poll`，所以 dubbo 在锁**外**收集待注册 label、锁**内**去重登记，避免持锁跨 `Register` 自死锁。这是回调在锁外执行这一不变量（§4）的一个具体应用。
@@ -152,7 +153,7 @@ fault（"放火"）已**收进治理中心**,和 resilience 共用同一个 `${g
 **集中形态比 resilience 更简单——没有 per-label 解析,只有一个全局 injector。** 区别在于:
 
 - `resilience.Policy` **没有**内置的多资源定向能力,redis 和 gorm 是两个独立 Policy 对象,所以 center 必须按 label 解析出"属于你的那一个"。
-- [`fault.Config`](../fault/config.go) **天生带**多资源定向:`Rules []Rule` 每条有自己的 `Resources / Rate / Latency / Error`,一份 Config 即可描述"redis 打 0.5 错误、gorm 加延迟、其余全量慢调用"。所以 fault 不需要 per-label injector,一个全局 injector 在 `maybe(resource)` 时按 Rules 分发即可。
+- [`fault.Config`](fault/config.go) **天生带**多资源定向:`Rules []Rule` 每条有自己的 `Resources / Rate / Latency / Error`,一份 Config 即可描述"redis 打 0.5 错误、gorm 加延迟、其余全量慢调用"。所以 fault 不需要 per-label injector,一个全局 injector 在 `maybe(resource)` 时按 Rules 分发即可。
 
 starter 侧通过中立 seam 接入,零耦合 cloud/governance:
 

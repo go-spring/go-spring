@@ -124,7 +124,7 @@ The adapter ConfigMap maps `http_requests_total` to a per-pod
 The Deployment injects Pod fields via the Downward API (`GS_POD_NAME`,
 `GS_POD_NAMESPACE`, `GS_POD_IP`, `GS_NODE_NAME`, `GS_POD_SERVICE_ACCOUNT`) and
 mounts labels/annotations at `/etc/podinfo`. Read them in the app with
-`go-spring.org/spring/podinfo`:
+`go-spring.org/cloud/actuator/podinfo`:
 
 ```go
 gs.Object(&podinfo.PodInfo{})

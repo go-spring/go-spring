@@ -82,25 +82,11 @@ func (e *faultExecutor) Execute(ctx context.Context, resource string, fn func(co
 	if in == nil {
 		return e.inner.Execute(ctx, resource, fn)
 	}
+	// Each attempt runs through the injector's shared Gate sequence (scope
+	// gating, guardrails, latency, error) before the real fn — a fault flows
+	// through retry/breaker/timeout exactly as a real downstream failure would.
 	wrapped := func(attemptCtx context.Context) error {
-		// Gate injection on the configured Scope vs the call's load-test marker
-		// before consulting the rate/latency rules: when the scope excludes
-		// this traffic class the call passes through untouched.
-		if !ScopeApplies(in.Config(), attemptCtx) {
-			return fn(attemptCtx)
-		}
-		inject, sleep, injErr := in.maybe(resource)
-		if sleep > 0 && !resilience.SleepFor(attemptCtx, sleep) {
-			// The latency sleep was cancelled (caller cancel or budget expiry);
-			// surface the context error so the executor stops retrying.
-			if err := attemptCtx.Err(); err != nil {
-				return err
-			}
-		}
-		if inject {
-			return injErr
-		}
-		return fn(attemptCtx)
+		return in.Gate(attemptCtx, resource, fn)
 	}
 	return e.inner.Execute(ctx, resource, wrapped)
 }

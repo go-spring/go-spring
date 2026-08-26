@@ -26,7 +26,7 @@ do this?" (`HasAnyAuthority`, `Require`, `Authorize`).
 
 ## Quick Start
 
-Import path: `go-spring.org/spring/security`.
+Import path: `go-spring.org/cloud/experimental/security`.
 
 A resource server wires the security filter chain in front of business
 handlers:
@@ -38,7 +38,7 @@ import (
     "context"
     "net/http"
 
-    "go-spring.org/spring/web/security"
+    "go-spring.org/cloud/experimental/security"
 )
 
 type myValidator struct{ /* ... */ }

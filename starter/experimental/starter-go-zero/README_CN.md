@@ -89,7 +89,7 @@ gs.Provide(func() gozerozrpc.ServiceRegister {
 
 ## 可观测性
 
-* **Tracing** —— 默认交给 [`starter-otel`](../starter-otel)（`tracing.disabled=true`）。go-zero 的
+* **Tracing** —— 默认交给 [`starter-otel`](../../starter-otel)（`tracing.disabled=true`）。go-zero 的
   REST/gRPC 中间件通过全局 OpenTelemetry `TracerProvider` 产生 span；只要引入 `starter-otel`，它会装好
   全局 provider，span 自动导出，无需在 server 侧再配置。若想改用 go-zero 原生 OTLP 导出，设
   `tracing.disabled=false`（并配 `tracing.endpoint`）。

@@ -80,7 +80,7 @@ fmt.Println(string(msg.Value))
 
 Distributed tracing is available through native OTel helpers that ride the
 global `TracerProvider` and propagator installed by
-[starter-otel](../starter-otel). Without starter-otel they are no-ops and change
+[starter-otel](../../starter-otel). Without starter-otel they are no-ops and change
 no message bytes, so instrumenting your code is a safe, zero-config opt-in.
 
 ```go

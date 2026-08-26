@@ -66,10 +66,10 @@ consumer.Ack(msg)
 
 pulsar-client-go has no OTel contrib, but the client always emits
 producer/consumer/connection metrics into a `prometheus.Registerer`. go-spring's
-observability layer ([starter-otel](../starter-otel)) is a separate OTel
+observability layer ([starter-otel](../../starter-otel)) is a separate OTel
 pipeline, so rather than force a fragile bridge, this starter exposes pulsar's
 native metrics the pure-Prometheus way — the same approach the
-[contrib/go-zero](../../contrib/go-zero) example uses.
+[contrib/go-zero](../../../contrib/go-zero) example uses.
 
 Enable a per-instance `/metrics` endpoint in the configuration file:
 
@@ -111,7 +111,7 @@ starter.EndSpan(span, err)
 ## Messaging Binder
 
 Beyond the raw client, this starter can expose a broker-neutral
-`messaging.Binder` (from `go-spring.org/spring/messaging`), so application code
+`messaging.Binder` (from `go-spring.org/cloud/experimental/messaging`), so application code
 publishes and consumes `*messaging.Message` envelopes without depending on the
 Pulsar client API — swapping the broker underneath does not touch business code.
 

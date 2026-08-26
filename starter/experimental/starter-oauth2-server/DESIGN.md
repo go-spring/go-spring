@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-oauth2-server` is a **Contributor**-archetype starter (see
-[starter/DESIGN.md](../DESIGN.md) §2.3) that implements an in-process
+[starter/DESIGN.md](../../DESIGN.md) §2.3) that implements an in-process
 OAuth2 / OIDC authorization server. It opens no port; it exposes a
 `Handler()` that the application mounts on its existing HTTP server.
 

@@ -2,7 +2,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `loadbalance` 在 discovery 快照之上添策略层与离群摘除。它是 stdlib(零依赖)
-包,只 import `go-spring.org/spring/discovery`;RPC 框架适配(gRPC balancer /
+包,只 import `go-spring.org/cloud/discovery`;RPC 框架适配(gRPC balancer /
 kitex loadbalancer 等)在各自 starter 里把此内核翻译成框架的 picker。
 
 ## 1. 职责与边界

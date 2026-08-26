@@ -1,7 +1,7 @@
 # starter-ratelimit-redis
 
 Go-Spring 的 Redis 分布式限流：向 resilience 注册表贡献
-[`resilience.LimiterDriver`](../../cloud/governance/resilience/ratelimit.go)
+[`resilience.LimiterDriver`](../../../cloud/governance/resilience/ratelimit.go)
 实例，令牌桶状态放在 Redis 里，服务多副本共享同一个全局预算，而不是
 每个进程各自限流。
 

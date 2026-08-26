@@ -23,7 +23,7 @@ different codegen pipelines; nothing forces them into a single provider.
 
 The server lifecycle and glog log bridge are **not** hand-rolled here anymore:
 they live in the reusable
-[`starter-goframe/grpc`](../../../starter/starter-goframe) module. This example
+[`starter-goframe/grpc`](../../../starter/experimental/starter-goframe) module. This example
 just imports that starter and supplies a `ServiceRegister` bean.
 
 ## Topology

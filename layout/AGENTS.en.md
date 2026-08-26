@@ -14,10 +14,10 @@ To decide whether a convention is worth writing down, ask yourself three things:
 
 ## Shared Conventions
 
-Shared conventions for projects using Go-Spring live in [common-rules.md](docs/agent-rules/common-rules.md), covering design principles, coding style, error handling, testing, and more.
+Shared conventions for projects using Go-Spring live in [common-rules.md](docs/agent-rules/common-rules.en.md), covering design principles, coding style, error handling, testing, and more.
 
 ## domain Directory Conventions
 
-Conventions for the `domain` form live in [domain-rules.md](docs/agent-rules/domain-rules.md), which holds the hard rules for layering, boundaries, transactions, and testing, plus collaboration specifics; following that file is enough for AI.
+Conventions for the `domain` form live in [domain-rules.md](docs/agent-rules/domain-rules.en.md), which holds the hard rules for layering, boundaries, transactions, and testing, plus collaboration specifics; following that file is enough for AI.
 
 Before changing code or drafting a design, **you must** confirm the target layer and dependency direction against this doc. Do not guess directory purpose from intuition. -->

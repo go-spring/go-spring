@@ -35,7 +35,7 @@ s.BindHandler("/echo", func(r *ghttp.Request) {
 不再"写响应体"，而是"升级连接、原样回帧"。
 
 server 生命周期与 glog 日志桥接已不再在这里手写:它们都放进了可复用的
-[`starter-goframe/ws`](../../../starter/starter-goframe) 模块。本示例只是导入
+[`starter-goframe/ws`](../../../starter/experimental/starter-goframe) 模块。本示例只是导入
 该 starter 并提供一个 `ServiceRegister` bean。
 
 ## 拓扑

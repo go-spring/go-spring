@@ -21,9 +21,9 @@
 // gateway — govern collapses that to ONE refreshable [Config] and ONE fan-out.
 //
 // The governance authority is a process singleton, but callers never hold or
-// name a [*Center]: the package exposes a set of free functions (the "facade" in
+// name a [*center]: the package exposes a set of free functions (the "facade" in
 // global.go — [Enabled], [Driver], [PolicyFor], [Register], [OnReady]) that are
-// the sole public surface. [*Center] is an internal implementation detail,
+// the sole public surface. [*center] is an internal implementation detail,
 // built and registered by starter-govern; nothing outside this package ever
 // obtains one. This mirrors the neutral global seams the package already exposes
 // for resilience ([resilience.ExecutorFor]) and fault injection, but is the
@@ -57,10 +57,10 @@ import (
 
 // Config is the single source of truth for governance. starter-govern binds it
 // once under ${govern} via gs.Dync; every client reads a resolved policy from
-// the [Center] instead of carrying its own resilience config. Driver/Enabled
+// the [center] instead of carrying its own resilience config. Driver/Enabled
 // live at the top level so all resources share one backend selection and one
 // on/off switch; per-resource policies live under Rules, matched by the same
-// label passed to [Center.PolicyFor] (e.g. "redis:cache", "gorm:mysql:primary",
+// label passed to [center.policyFor] (e.g. "redis:cache", "gorm:mysql:primary",
 // "gin:api", "dubbo:com.example.Foo:1.0.0").
 type Config struct {
 	// Enabled gates the whole center. When false, PolicyFor always returns a
@@ -103,7 +103,7 @@ type Config struct {
 	// Fault is the process-wide fault-injection config (chaos engineering), a
 	// sibling concern to resilience governance that rides the SAME ${govern}
 	// Dync rather than its own. starter-govern builds one global *fault.Injector
-	// from it (in [Center.Init]) and registers it behind the neutral
+	// from it (in [center.goLive]) and registers it behind the neutral
 	// [fault.InjectorFor] seam, so every client/server starter resolves fault
 	// injection through that seam instead of each binding its own gs.Dync. Per-
 	// resource fault differences live under fault.Config.Rules (matched by the
@@ -130,7 +130,7 @@ type Rule struct {
 }
 
 // Center is the runtime governance authority. It holds an atomic snapshot of
-// the current [Config] and, on [Center.Refresh], notifies every registered
+// the current [Config] and, on [center.refresh], notifies every registered
 // subscriber whose resolved policy changed — so a single config push fans out
 // to all clients through one OnChanged handler, not one per starter bean.
 // Safe for concurrent use.
@@ -139,8 +139,8 @@ type Rule struct {
 // contract. The gs wiring (binding ${govern} into the default source, arming
 // the seams, marking the authority live) lives in starter-governance's wiring
 // bean, which drives this package's facade ([BindDefault], [GoLive]).
-// [NewCenter] is the direct construction path used by tests and [Arm].
-type Center struct {
+// [newCenter] is the direct construction path used by tests and [Arm].
+type center struct {
 	cfg atomic.Pointer[Config]
 
 	mu   sync.Mutex
@@ -176,12 +176,12 @@ type subscriber struct {
 // panic on non-comparable dynamic types).
 type sourceHandle struct{ src Source }
 
-// NewCenter snapshots cfg and returns a Center that resolves policies from it.
+// newCenter snapshots cfg and returns a Center that resolves policies from it.
 // The cfg is adopted atomically; callers mutate it only via Refresh. This is the
 // direct construction path (tests, [Arm]); the starter-managed path uses the
 // package singleton in global.go plus [BindDefault] and [GoLive].
-func NewCenter(cfg Config) *Center {
-	c := &Center{subs: map[string][]*subscriber{}}
+func newCenter(cfg Config) *center {
+	c := &center{subs: map[string][]*subscriber{}}
 	c.cfg.Store(&cfg)
 	return c
 }
@@ -192,7 +192,7 @@ func NewCenter(cfg Config) *Center {
 // callbacks). Idempotent. The wiring starter calls it once after binding the
 // default source; registering the seams here (rather than in a Runner.Run) is
 // safe: both resolve lazily at call time.
-func (c *Center) goLive() {
+func (c *center) goLive() {
 	if c.injector != nil {
 		return
 	}
@@ -204,11 +204,11 @@ func (c *Center) goLive() {
 }
 
 // adopt applies one config from whatever source: it fans resilience out via
-// [Center.Refresh] AND swaps the fault injector's config. It is the single sink
+// [center.refresh] AND swaps the fault injector's config. It is the single sink
 // for ALL source pushes, which is what keeps the fault chain source-agnostic —
 // fault.Config always rides inside [Config], so any Source drives it for free.
-func (c *Center) adopt(cfg Config) {
-	c.Refresh(cfg)
+func (c *center) adopt(cfg Config) {
+	c.refresh(cfg)
 	if c.injector != nil {
 		c.injector.SetConfig(cfg.Fault)
 	}
@@ -219,7 +219,7 @@ func (c *Center) adopt(cfg Config) {
 // snapshot. The explicit snapshot adopt mirrors gs.Dync's contract that
 // OnChanged does not fire on the init bind — Subscribe delivers changes only,
 // Snapshot seeds the present.
-func (c *Center) bindSource(s Source) {
+func (c *center) bindSource(s Source) {
 	h := &sourceHandle{src: s}
 	c.srcMu.Lock()
 	c.src = h
@@ -234,7 +234,7 @@ func (c *Center) bindSource(s Source) {
 }
 
 // isActive reports whether h is still the bound source handle.
-func (c *Center) isActive(h *sourceHandle) bool {
+func (c *center) isActive(h *sourceHandle) bool {
 	c.srcMu.Lock()
 	defer c.srcMu.Unlock()
 	return c.src == h
@@ -247,7 +247,7 @@ func (c *Center) isActive(h *sourceHandle) bool {
 // avoids a pending-registration state entirely, and works on the standalone
 // path (Arm-built centers, tests) where nothing would ever consume a pending
 // value.
-func (c *Center) setSource(s Source) {
+func (c *center) setSource(s Source) {
 	if s == nil {
 		panic("governance: SetSource(nil)")
 	}
@@ -261,7 +261,7 @@ func (c *Center) setSource(s Source) {
 // not atomic with concurrent SetSource, but wiring runs single-threaded before
 // the app serves; the guard machinery makes a lost race harmless anyway (the
 // loser's callbacks go stale).
-func (c *Center) bindDefault(s Source) {
+func (c *center) bindDefault(s Source) {
 	if s == nil {
 		return
 	}
@@ -281,19 +281,19 @@ func (c *Center) bindDefault(s Source) {
 // LoadOrStore cache in resilience.resolve (provider.go), which also guarantees
 // this provider is invoked at most once per label, so the Register
 // subscription is armed exactly once even under concurrent first use.
-func (c *Center) executorFor(label string) resilience.Executor {
-	exec, err := resilience.NewExecutor(c.Driver(), c.PolicyFor(label))
+func (c *center) executorFor(label string) resilience.Executor {
+	exec, err := resilience.NewExecutor(c.driver(), c.policyFor(label))
 	if err != nil || exec == nil {
 		return nil // resilience.resolve falls back to a no-op executor
 	}
-	c.Register(label, func(p resilience.Policy) { _ = exec.Refresh(p) })
+	c.register(label, func(p resilience.Policy) { _ = exec.Refresh(p) })
 	return exec
 }
 
 // Destroy closes the active source when it happens to be closeable (the
 // [Source] contract keeps Close optional — see source.go), else it is a no-op:
 // the center itself holds only in-memory subscribers and an atomic snapshot.
-func (c *Center) Destroy() error {
+func (c *center) destroy() error {
 	c.srcMu.Lock()
 	h := c.src
 	c.srcMu.Unlock()
@@ -307,7 +307,7 @@ func (c *Center) Destroy() error {
 
 // Enabled reports whether the center is armed. When false, PolicyFor returns a
 // transparent pass-through policy and Register arms clients with a zero Policy.
-func (c *Center) Enabled() bool {
+func (c *center) enabled() bool {
 	if cfg := c.cfg.Load(); cfg != nil {
 		return cfg.Enabled
 	}
@@ -317,7 +317,7 @@ func (c *Center) Enabled() bool {
 // Driver returns the configured resilience driver name, defaulting to "default"
 // when unset. Clients use it to resolve the Executor backend once, centrally,
 // rather than each reading its own ${...driver} knob.
-func (c *Center) Driver() string {
+func (c *center) driver() string {
 	if cfg := c.cfg.Load(); cfg != nil && cfg.Driver != "" {
 		return cfg.Driver
 	}
@@ -332,7 +332,7 @@ const resilienceDefaultDriver = "default"
 // pass-through. The read is lock-free (atomic pointer load), so the hot path —
 // every protected call's caller reads nothing here, only the executor setup
 // does — never contends.
-func (c *Center) PolicyFor(label string) resilience.Policy {
+func (c *center) policyFor(label string) resilience.Policy {
 	cfg := c.cfg.Load()
 	if cfg == nil || !cfg.Enabled {
 		return resilience.Policy{}
@@ -346,7 +346,7 @@ func (c *Center) PolicyFor(label string) resilience.Policy {
 }
 
 // Register subscribes cb to policy changes for label and arms it immediately
-// with the current resolved policy. cb is then invoked whenever [Refresh]
+// with the current resolved policy. cb is then invoked whenever [refresh]
 // produces a different policy for label. This is how a client replaces its
 // per-bean OnChanged handler: one Register per resource, all driven by the
 // center's single Dync.
@@ -357,8 +357,8 @@ func (c *Center) PolicyFor(label string) resilience.Policy {
 // resilience.Executor.Refresh satisfies that.
 //
 // The returned policy is the value cb was armed with.
-func (c *Center) Register(label string, cb func(resilience.Policy)) resilience.Policy {
-	cur := c.PolicyFor(label)
+func (c *center) register(label string, cb func(resilience.Policy)) resilience.Policy {
+	cur := c.policyFor(label)
 	c.mu.Lock()
 	c.subs[label] = append(c.subs[label], &subscriber{last: cur, cb: cb})
 	c.mu.Unlock()
@@ -374,7 +374,7 @@ func (c *Center) Register(label string, cb func(resilience.Policy)) resilience.P
 // Notifications are collected under the lock (so last is updated consistently)
 // but delivered outside it. A subscriber whose policy is unchanged is not
 // notified, keeping a localized change from churning unrelated executors.
-func (c *Center) Refresh(cfg Config) {
+func (c *center) refresh(cfg Config) {
 	c.cfg.Store(&cfg)
 	type pending struct {
 		cb func(resilience.Policy)
@@ -383,7 +383,7 @@ func (c *Center) Refresh(cfg Config) {
 	var todo []pending
 	c.mu.Lock()
 	for label, list := range c.subs {
-		next := c.PolicyFor(label)
+		next := c.policyFor(label)
 		for _, s := range list {
 			if !policyEqual(s.last, next) {
 				s.last = next

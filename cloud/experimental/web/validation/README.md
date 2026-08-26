@@ -2,8 +2,8 @@
 [English](README.md) | [中文](README_CN.md)
 
 `validation` is a framework-agnostic, zero-dependency abstraction for struct
-validation, split from its implementations the same way `spring/resilience`
-and `spring/discovery` are. It answers "is this struct well-formed?" for both
+validation, split from its implementations the same way `cloud/governance/resilience`
+and `cloud/discovery` are. It answers "is this struct well-formed?" for both
 configuration binding and inbound Web requests.
 
 ## Features
@@ -15,7 +15,7 @@ configuration binding and inbound Web requests.
   `GetDriver` / `MustGetDriver`); `starter-validation` registers a
   `go-playground/validator` driver as `"default"` on blank import.
 - `ValidationErrors.Localize(msg func(key, args...) string)` renders per-field
-  messages through any lookup function — typically bound to `spring/i18n`
+  messages through any lookup function — typically bound to `cloud/experimental/web/i18n`
   with `i18n.Localizer(src, ctx)`. This package never imports i18n directly.
 - Web seam: generic `Handle[T](v, decode, render, next)` returns an
   `http.Handler` that decodes, validates and rejects with structured JSON
@@ -25,7 +25,7 @@ configuration binding and inbound Web requests.
 
 ## Quick Start
 
-Import path: `go-spring.org/spring/validation`.
+Import path: `go-spring.org/cloud/experimental/web/validation`.
 
 ```go
 package main
@@ -35,7 +35,7 @@ import (
     "log"
     "net/http"
 
-    "go-spring.org/spring/web/validation"
+    "go-spring.org/cloud/experimental/web/validation"
     _ "go-spring.org/starter/starter-validation" // registers "default" driver
 )
 

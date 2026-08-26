@@ -30,7 +30,9 @@ The recommended production driver (`go-playground/validator`) lives in
   importing i18n. Missing translations (`msg` returns `""`) fall back to
   `FieldError.Default()` so output is never blank.
 - Web seam: `Handle[T](v, decode, render, next)` is the transport-level
-  equivalent of `aspect.NewHandler` / `resilience.NewHandler`. `WriteError`
+  counterpart of the hand-written admission middlewares the protocol
+  starters build for themselves (see starter-gin / starter-grpc
+  admission). `WriteError`
   is exported so adapters that do their own binding can reuse the exact
   400 body shape (`{"errors":[...]}`).
 - `Decoder[T] = func(*http.Request, *T) error`. `JSONDecoder` is the

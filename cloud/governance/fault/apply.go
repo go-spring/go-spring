@@ -18,17 +18,17 @@ package fault
 
 import (
 	"context"
-	"time"
 
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
 )
 
-// ScopeApplies reports whether fault injection should run for a call, given the
+// scopeApplies reports whether fault injection should run for a call, given the
 // live config's Scope and the call's load-test marker. Scope "" (or unknown)
 // injects into all traffic; "real" skips load-test calls; "loadtest" skips real
 // calls. It is the shared gate used by both the client-side [WrapExecutor] and
 // the server-side [Apply], so the two directions honour the same scoping rule.
-func ScopeApplies(c Config, ctx context.Context) bool {
+func scopeApplies(c Config, ctx context.Context) bool {
 	switch c.Scope {
 	case "real":
 		return !traffic.IsLoadTest(ctx)
@@ -39,37 +39,47 @@ func ScopeApplies(c Config, ctx context.Context) bool {
 	}
 }
 
-// Apply gates fn with the injector's fault rules, applying the configured
-// latency before fn and returning the injected error instead of calling fn when
-// the rate hits. It is the SERVER-side fault seam — a gin middleware or gRPC
-// interceptor wraps its handler call with Apply to inject faults into inbound
-// traffic, mirroring how [WrapExecutor] gates outbound/client calls. Both
-// directions share the same [Injector] (so one Dync-driven config drives either)
-// and the same [ScopeApplies] rule + MaxDuration/MaxAffected guardrails.
+// Gate gates fn with the injector's fault rules, applying the configured
+// latency before fn and returning the injected error instead of calling fn
+// when the rate hits. It is the ONE shared fault sequence — both directions
+// (the client-side [WrapExecutor] per-attempt closure and the server-side
+// [Apply]) run through it, so scope gating, guardrails and cancellation
+// semantics cannot drift apart.
 //
-// nil in => fn runs untouched (zero-config transparency). The latency sleep is
-// cancellable via ctx; on cancel the context error is returned so the server's
-// own timeout/budget logic reacts. Apply does NOT retry — retry is a client
-// concern; for the full retry/timeout/breaker treatment on a client call use
-// [WrapExecutor] with a resilience.Executor.
-func Apply(ctx context.Context, in *Injector, resource string, fn func() error) error {
-	if in == nil {
-		return fn()
-	}
+// fn receives the caller's (or the executor's per-attempt) context so
+// cancellation propagates into the real operation. The latency sleep is
+// cancellable via ctx; on cancel the context error is returned so the
+// caller's own timeout/budget logic reacts rather than retrying blindly.
+// Gate does NOT retry — retry is a client concern; for the full
+// retry/timeout/breaker treatment on a client call use [WrapExecutor] with a
+// resilience.Executor.
+func (in *Injector) Gate(ctx context.Context, resource string, fn func(context.Context) error) error {
 	c := in.Config()
-	if !c.Enabled || !ScopeApplies(c, ctx) {
-		return fn()
+	if !c.Enabled || !scopeApplies(c, ctx) {
+		return fn(ctx)
 	}
 	inject, sleep, injErr := in.maybe(resource)
-	if sleep > 0 {
-		select {
-		case <-time.After(sleep):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	if sleep > 0 && !resilience.SleepFor(ctx, sleep) {
+		return ctx.Err()
 	}
 	if inject {
 		return injErr
 	}
-	return fn()
+	return fn(ctx)
+}
+
+// Apply gates fn with the injector's fault rules. It is the SERVER-side fault
+// seam — a gin middleware or gRPC interceptor wraps its handler call with
+// Apply to inject faults into inbound traffic, mirroring how [WrapExecutor]
+// gates outbound/client calls. Both directions share the same [Injector] (so
+// one Dync-driven config drives either), the same [Injector.Gate] sequence and
+// the same MaxDuration/MaxAffected guardrails.
+//
+// nil in => fn runs untouched (zero-config transparency). Apply does NOT
+// retry — retry is a client concern; see [Injector.Gate].
+func Apply(ctx context.Context, in *Injector, resource string, fn func() error) error {
+	if in == nil {
+		return fn()
+	}
+	return in.Gate(ctx, resource, func(context.Context) error { return fn() })
 }

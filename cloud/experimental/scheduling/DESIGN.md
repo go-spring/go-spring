@@ -28,7 +28,7 @@ participates in graceful shutdown.
   everything else is dispatched off the loop under the concurrency policy.
 - `Locker` / `Lock` are declared **locally in this package** with a minimal
   shape ("TryAcquire returns local `Lock`") so the package stays dependency-
-  free. `spring/lock.Locker` does not satisfy it directly — the integration
+  free. `cloud/experimental/lock.Locker` does not satisfy it directly — the integration
   layer (`starter-scheduler`) adapts one, baking TTL / renew choices into
   the adapter.
 - `Observer` fires after every run **and** every skip; `Skipped=true` with
@@ -66,7 +66,7 @@ participates in graceful shutdown.
 - **No cron seconds field**. Standard 5-field expressions are the least
   surprising; scheduling at sub-minute granularity is better served by
   `FixedRate` / `FixedDelay`.
-- **Lock adapter, not direct import**. Keeping `spring/lock` out of this
+- **Lock adapter, not direct import**. Keeping `cloud/experimental/lock` out of this
   package preserves layer independence and lets a caller supply any
   minimal `Locker` (in-memory, test double, ...) without pulling the lock
   abstraction.

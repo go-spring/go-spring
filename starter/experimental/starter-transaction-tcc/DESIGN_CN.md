@@ -3,8 +3,8 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-transaction-tcc` 属于 **Contributor** 形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.3),贡献
-`spring/transaction/tcc` 中的 TCC(Try / Confirm / Cancel)分布式事务能力。
+[starter/DESIGN.md](../../DESIGN.md) §2.3),贡献
+`cloud/experimental/transaction/tcc` 中的 TCC(Try / Confirm / Cancel)分布式事务能力。
 面向"资源需在 try 与 commit 之间被持有"的短链强一致场景。
 
 ## 1. 职责与边界
@@ -25,7 +25,7 @@
 | 隔离性 | 无 | Confirm 前对业务不可见 |
 | `Compensate == nil` | 不可逆步骤(允许) | 编程错误 |
 
-`spring/transaction/tcc/` 子包位于 `stdlib` 模块内(不新增 `go.mod`),但
+`cloud/experimental/transaction/tcc/` 子包位于 `stdlib` 模块内(不新增 `go.mod`),但
 **有意不并入 Saga 的 `transaction` 包**。
 
 ## 3. 关键决策

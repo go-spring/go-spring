@@ -68,7 +68,7 @@ Leave it empty for a plain server that clients dial directly.
 
 ## Observability
 
-* **Tracing** — deferred to [`starter-otel`](../starter-otel). goframe's `ghttp`/`grpcx` auto-instrument
+* **Tracing** — deferred to [`starter-otel`](../../starter-otel). goframe's `ghttp`/`grpcx` auto-instrument
   requests off the global OpenTelemetry `TracerProvider`; importing `starter-otel` installs that provider
   and spans are exported automatically, with no per-server configuration.
 * **Metrics** — the `http` sub-package can expose goframe's native OTel Prometheus (pull) endpoint on the

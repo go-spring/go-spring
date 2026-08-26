@@ -4,7 +4,7 @@
 
 `starter-registry-consul` registers the **current instance** into a Consul
 service registry — the provider-side counterpart to Go-Spring's client-side
-discovery (`spring/discovery`). It is the Go-Spring equivalent of Spring Cloud's
+discovery (`cloud/discovery`). It is the Go-Spring equivalent of Spring Cloud's
 `ServiceRegistry` / `@EnableDiscoveryClient` registration direction.
 
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
@@ -15,11 +15,11 @@ register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to
 Consul. RPC-framework provider registration stays framework-native and is out of
-scope (see [starter/DESIGN §3](../DESIGN.md)).
+scope (see [starter/DESIGN §3](../../DESIGN.md)).
 
 ## Archetype
 
-Global / infrastructure (see [starter/DESIGN §2.4](../DESIGN.md)): it opens no
+Global / infrastructure (see [starter/DESIGN §2.4](../../DESIGN.md)): it opens no
 port. It exports a `gs.Server` so registration plugs into the server lifecycle —
 the instance is published **once the application is ready** and deregistered
 **as shutdown begins** (via `PreStop`), so discovery stops handing it out before
@@ -100,7 +100,7 @@ backends is a blank-import swap, not a config migration):
 ## Smoke Test
 
 [example/check.sh](example/check.sh) runs the unit tests, then — if Docker is
-available — starts a Consul dev agent, boots [example](example/main.go) (which
+available — starts a Consul dev agent, boots [example](example/example.go) (which
 registers, reads the catalog back, then SIGTERMs itself so the deregister path
 runs), and asserts the instance appeared. It is skipped gracefully without
 Docker.

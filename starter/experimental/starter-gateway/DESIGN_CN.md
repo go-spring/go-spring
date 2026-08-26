@@ -3,18 +3,18 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-gateway` 属于 **Server** 形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.1),以独立端口(默认 `:9440`)运行独立
+[starter/DESIGN.md](../../DESIGN.md) §2.1),以独立端口(默认 `:9440`)运行独立
 API 网关。它以 Go 惯用法落地 Spring Cloud Gateway 的 Route/Predicate/Filter
 模型:Predicate=`func(*http.Request) bool`,Filter=`func(next http.Handler)
 http.Handler`,路由即函数组合,不做运行时 DSL。
 
 ## 1. 职责与边界
 
-- **在范围内:**路由表绑定 + 热更新;`lb://` 上游经 `spring/discovery` +
-  `spring/loadbalance`;`FilterWrapper` 缝隙让 jwt-auth、lua 等可插拔 filter
+- **在范围内:**路由表绑定 + 热更新;`lb://` 上游经 `cloud/discovery` +
+  `cloud/loadbalance`;`FilterWrapper` 缝隙让 jwt-auth、lua 等可插拔 filter
   免硬 import 挂载。
 - **不在范围内:**运行时 DSL / 规则引擎、控制面同步、L4/TCP 代理。韧性
-  (重试 / 熔断 / 限流)交给 `spring/resilience`,不重造。
+  (重试 / 熔断 / 限流)交给 `cloud/governance/resilience`,不重造。
 
 ## 2. 关键抽象
 

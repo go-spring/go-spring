@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-swagger` is a **Contributor**-archetype starter (see
-[starter/DESIGN.md](../DESIGN.md) §2.3) that serves a Swagger UI over an
+[starter/DESIGN.md](../../DESIGN.md) §2.3) that serves a Swagger UI over an
 already-generated `openapi.json`. It opens no port; when
 `starter-actuator` is present it auto-mounts on the actuator; otherwise
 the application mounts the returned `http.Handler`.

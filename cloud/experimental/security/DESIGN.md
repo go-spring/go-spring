@@ -15,7 +15,7 @@ code sees only `security.*`.
 - Web filter chain is bundled here because it is plain net/http glue with no
   external dependency, and it is the transport-side counterpart of the
   decorator-side `Require`.
-- Not a session library (see `spring/session`), not an OAuth2 authorization
+- Not a session library (see `cloud/experimental/session`), not an OAuth2 authorization
   server (see `starter-oauth2-server`).
 
 ## 2. Key Abstractions & Seams

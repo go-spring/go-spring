@@ -19,7 +19,7 @@
 
 ## 快速开始
 
-Import 路径: `go-spring.org/spring/lock`。
+Import 路径: `go-spring.org/cloud/experimental/lock`。
 
 ```go
 package main
@@ -29,7 +29,7 @@ import (
     "log"
     "time"
 
-    "go-spring.org/spring/cloud/lock"
+    "go-spring.org/cloud/experimental/lock"
 )
 
 func main() {

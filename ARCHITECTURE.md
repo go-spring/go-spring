@@ -63,8 +63,8 @@ on an in-workspace module sends `go mod tidy` to the proxy and 404s. See the
 | Directory | Layer | Purpose (one line) | Belongs here | Does **not** belong here | Deep dive |
 |---|---|---|---|---|---|
 | `stdlib/` | foundation | Zero-dependency general-purpose utilities (a completion of the Go standard library) | Pure Go helpers — types, encoding, collections, hashing, text, ... | Any third-party import; capability abstractions / driver registries (those live in `spring/`); container/DI logic | [stdlib/README.md](stdlib/README.md) |
-| `log/` | foundation | Structured logging model, config grammar, adapters | The logging model, appenders, field encoding, log config parser | Business logging; hard deps on `spring` | [log/DESIGN.md](log/DESIGN.md) |
-| `spring/` | core | IoC container, dependency injection, app lifecycle, layered config engine — the pure core (`gs` + `conf`) | Bean model, injection, start/stop state machine, config binding/refresh | Third-party business packages; capability abstractions (those live in `cloud/`); integration code that wires a real backend | [spring/DESIGN.md](spring/DESIGN.md) |
+| `log/` | foundation | Structured logging model, config grammar, adapters | The logging model, appenders, field encoding, log config parser | Business logging; hard deps on `spring` | [log/DESIGN.md](log/README.md) |
+| `spring/` | core | IoC container, dependency injection, app lifecycle, layered config engine — the pure core (`gs` + `conf`) | Bean model, injection, start/stop state machine, config binding/refresh | Third-party business packages; capability abstractions (those live in `cloud/`); integration code that wires a real backend | [spring/DESIGN.md](spring/README.md) |
 | `cloud/` | ecosystem | Container-free capability abstractions: governance, discovery, cache, repository, i18n/validation, ... | Ecosystem interfaces + driver seams usable with or without the container | Any spring import; third-party SDKs; gs wiring (that belongs in a starter) | [cloud/](cloud/) per-family docs |
 | `starter/` | integration | One module per third-party service/framework, wired into the IoC container | `starter-*` modules following the five archetypes; the family design guide | Business logic; deployment scaffolding; a *new* shared-helper package living only to serve starters (use an existing natural home instead - see trap below) | [starter/DESIGN.md](starter/DESIGN.md) |
 | `gs/` | tooling | Dev tools: scaffolding (`gs`), GUI, code generation (`gs-http-gen`), mocking (`gs-mock`) | CLI/codegen/tooling that operates *on* projects | Runtime framework code; anything imported by a running app | [gs/README.md](gs/README.md) |
@@ -178,7 +178,7 @@ in `starter`" rule are catalogued in §2–§3 above and in
   cross-cutting constraint (the deepest ruleset in the repo).
 - [contrib/DIRECTORY_CONVENTIONS.md](contrib/DIRECTORY_CONVENTIONS.md) — contrib
   example layout and naming.
-- [spring/DESIGN.md](spring/DESIGN.md), [log/DESIGN.md](log/DESIGN.md),
+- [spring/DESIGN.md](spring/README.md), [log/DESIGN.md](log/README.md),
   [layout/DESIGN.en.md](layout/DESIGN.en.md) — per-module internal design.
 - [layout/docs/agent-rules/common-rules.en.md](layout/docs/agent-rules/common-rules.en.md)
   — shared design/coding/testing rules for projects built on Go-Spring.

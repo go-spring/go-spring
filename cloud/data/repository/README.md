@@ -41,7 +41,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/spring/data/repository"
+    "go-spring.org/cloud/data/repository"
 )
 
 type User struct {
@@ -81,7 +81,7 @@ func demo(repo repository.Repository[User, int64]) error {
 
 `Repository` is obtained from `repository.New(backend, opts...)` over a
 `Backend`. The gorm implementation and its `For[T, ID](db, table)` factory live
-in [`starter-repository-gorm`](../../starter/starter-repository-gorm); a second
+in [`starter-repository-gorm`](../../../starter/experimental/starter-repository-gorm); a second
 store (Mongo) is just another `Backend` and leaves this package untouched.
 
 ## Design

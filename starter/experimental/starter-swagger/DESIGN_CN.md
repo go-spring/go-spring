@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-swagger` 属于 **Contributor** 形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.3),基于已生成的 `openapi.json`
+[starter/DESIGN.md](../../DESIGN.md) §2.3),基于已生成的 `openapi.json`
 提供 Swagger UI。不开端口;当 `starter-actuator` 在时自动挂到 actuator,
 否则应用自行挂载返回的 `http.Handler`。
 

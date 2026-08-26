@@ -5,8 +5,8 @@
 Seata TCC。面向短、强一致的事务:Try 阶段预留资源但不暴露最终结果,全局
 Confirm / Cancel 决定去留。
 
-姊妹模式 Saga、AT 分别在 [`spring/transaction`](../README.md) 与
-[`spring/transaction/at`](../at/README.md)。
+姊妹模式 Saga、AT 分别在 [`cloud/experimental/transaction`](../README.md) 与
+[`cloud/experimental/transaction/at`](../at/README.md)。
 
 ## 特性
 
@@ -32,7 +32,7 @@ import (
     "context"
     "fmt"
 
-    "go-spring.org/spring/cloud/transaction/tcc"
+    "go-spring.org/cloud/experimental/transaction/tcc"
 )
 
 func main() {

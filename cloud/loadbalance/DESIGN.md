@@ -3,7 +3,7 @@
 
 `loadbalance` layers strategy and outlier ejection on top of the discovery
 snapshot. It is a stdlib (zero-dependency) package that imports only
-`go-spring.org/spring/discovery`; RPC-framework adapters (gRPC balancer,
+`go-spring.org/cloud/discovery`; RPC-framework adapters (gRPC balancer,
 kitex loadbalancer, ...) translate this core into their picker interface in
 their starters.
 

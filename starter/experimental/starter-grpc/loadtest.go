@@ -57,5 +57,5 @@ func extractLoadTest(ctx context.Context) context.Context {
 	if !ok {
 		return ctx
 	}
-	return traffic.NewPropagator().ExtractCarrier(ctx, traffic.Carrier(md), "grpc-metadata")
+	return traffic.ExtractCarrier(ctx, traffic.Carrier(md), traffic.MetaKeyLoadTest, "grpc-metadata")
 }

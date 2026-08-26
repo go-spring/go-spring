@@ -18,11 +18,11 @@ import (
 )
 ```
 
-> **client starter 不需要 import（也不注入）govern。** 每个 client（redis/gorm/http/…）只调中立函数 `resilience.ExecutorFor(资源label)` 拿到它的 executor——不知道 govern 的存在。cloud/governance 内置了这段接线（`starter.go`），在进程启动时把治理中心注册成那个 executor 的来源（`gs.Runner` 保证执行，跟 actuator 同机制）。这是 2026-08-14 的重构：之前每个 client 注入 `*governance.Center`，现在零 govern 耦合。详见 [DESIGN_CN.md](./DESIGN_CN.md)。
+> **client starter 不需要 import（也不注入）govern。** 每个 client（redis/gorm/http/…）只调中立函数 `resilience.ExecutorFor(资源label)` 拿到它的 executor——不知道 govern 的存在。cloud/governance 内置了这段接线（`starter.go`），在进程启动时把治理中心注册成那个 executor 的来源（`gs.Runner` 保证执行，跟 actuator 同机制）。这是 2026-08-14 的重构：之前每个 client 注入治理中心，现在零 govern 耦合。详见 [DESIGN_CN.md](./DESIGN_CN.md)。
 
 **不 import cloud/governance 时**：没有 provider 注册，`ExecutorFor` 返回透传的 noop executor，resilience 完全旁路（直连后端），不会报错。所以"没配治理"和"不能用 starter"是两回事。
 
-**例外：starter-dubbo**。dubbo 走自己的 URL-param 治理模型（timeout/retries 是 dubbo 参数，不走 resilience executor），所以它仍直接注入 `*governance.Center` 读 `PolicyFor` 的字段。这是唯一保留注入的 client。
+**例外：starter-dubbo**。dubbo 走自己的 URL-param 治理模型（timeout/retries 是 dubbo 参数，不走 resilience executor），所以它直接走门面 `governance.PolicyFor` 读策略字段（center 类型本身不导出，谁也注入不了）。这是唯一的直接门面消费 client。
 
 ---
 
@@ -46,7 +46,7 @@ govern.default.open-duration=5s     # 熔断持续 5s 后半开试探
 
 配完这 7 行，项目里的 redis、gorm、mongo、http-client……全部自动套用这套超时/重试/限流/熔断，且**热重载**——改完文件不用重启。
 
-> `govern.default.*` 下的可用字段就是 `resilience.Config` 的全部旋钮：`timeout` / `max-retries` / `rate-limit` / `burst` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`。字段含义见 [cloud/governance/resilience/config.go](../resilience/config.go)。
+> `govern.default.*` 下的可用字段就是 `resilience.Config` 的全部旋钮：`timeout` / `max-retries` / `rate-limit` / `burst` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`。字段含义见 [cloud/governance/resilience/config.go](resilience/config.go)。
 
 ---
 
@@ -296,5 +296,5 @@ import (
 | 用 `govern.override.<label>` 旧写法 | 已改为 `govern.rules[N].resources=<label>`。label 放值里，别再当 key（冒号会废掉 YAML）。 |
 | 不知道资源 label 是什么 | 配 `service-name` 让 label 稳定可读；查 DESIGN_CN.md §6 表。 |
 | 多 starter 项目写 `fault.enabled=true` 以为只烧一个 | fault 当前是全进程共享开关，会烧所有 starter。用 `fault.rules[].resources` 定向。 |
-| 没 import cloud/governance | Center 为 nil，resilience 完全旁路，不报错但也不生效。 |
+| 没 import cloud/governance | 门面未生效，resilience 完全旁路，不报错但也不生效。 |
 | 改了配置没生效 | 确认走了热重载（file-watch / 配置中心）；govern 的单 Dync 本身支持热重载，但要看配置源是否推送了变更。 |

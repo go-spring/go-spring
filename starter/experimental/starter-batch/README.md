@@ -2,21 +2,21 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-batch` runs [`spring/batch`](../../spring/batch) jobs — chunk-oriented
+`starter-batch` runs [`cloud/experimental/batch`](../../../cloud/experimental/batch) jobs — chunk-oriented
 batches and one-shot Cloud Tasks — as part of the Go-Spring application
 lifecycle. Blank-import it, register a `JobDefinition` per job, and either flip
 `run-on-startup=true` (Cloud Task) or trigger the job through the exported
 `*Launcher` bean from another server (e.g. `starter-scheduler`).
 
 It follows the *global / infrastructure* archetype (see
-[starter/DESIGN.md](../DESIGN.md) §2.4): it opens no network port. Instead it
+[starter/DESIGN.md](../../DESIGN.md) §2.4): it opens no network port. Instead it
 exports a `gs.Server` so the runner joins the server lifecycle — startup
 launches begin once the application is ready and, on `SIGTERM`, in-flight
 launches are drained before the process exits.
 
 The engine, `Reader`/`Processor`/`Writer` interfaces, `JobRepository` seam and
 the in-process memory repository all come from the zero-dependency
-[`spring/batch`](../../spring/batch) package; this starter is the thin
+[`cloud/experimental/batch`](../../../cloud/experimental/batch) package; this starter is the thin
 integration layer that binds configuration and the IoC container to it. Durable
 backends (Redis, SQL, ...) are separate starters that contribute their own
 `batch.JobRepository` bean.
@@ -43,7 +43,7 @@ so the runner collects it and matches it to its config entry by name.
 ```go
 import (
     starter "go-spring.org/starter-batch"
-    "go-spring.org/spring/cloud/batch"
+    "go-spring.org/cloud/experimental/batch"
 )
 
 var reportStep = batch.Func("generate", func(ctx context.Context) error {
@@ -98,7 +98,7 @@ and calls `Launch`:
 import (
     scheduler "go-spring.org/starter-scheduler"
     starter   "go-spring.org/starter-batch"
-    "go-spring.org/spring/cloud/batch"
+    "go-spring.org/cloud/experimental/batch"
 )
 
 type NightlyReconcile struct {

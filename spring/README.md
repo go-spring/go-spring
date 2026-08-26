@@ -1185,7 +1185,7 @@ Go-Spring is an open source community-driven project, we welcome **all forms of 
 - Contribute new features
 - Share your usage experience
 
-Please check [CONTRIBUTING.md](CONTRIBUTING.md) for how to participate.
+Please check [CONTRIBUTING.md](../CONTRIBUTING.md) for how to participate.
 
 ### 💬 QQ Group
 
@@ -1206,4 +1206,4 @@ which greatly facilitates project development.
 
 ### 🛡️ License
 
-Apache License 2.0, see [LICENSE](LICENSE) for details.
+Apache License 2.0, see [LICENSE](../LICENSE) for details.

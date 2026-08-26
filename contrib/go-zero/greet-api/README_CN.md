@@ -26,7 +26,7 @@
 
 这是一个**可运行示例**,并非可复用的 starter 模块。`rest.Server` →
 `gs.Server` 适配器与 logx→go-spring log 桥接不再内联在此,而是放在可复用的
-[`starter-go-zero/rest`](../../../starter/starter-go-zero) 模块里,由本示例导入;
+[`starter-go-zero/rest`](../../../starter/experimental/starter-go-zero) 模块里,由本示例导入;
 示例本身只提供一个 `HandlerRegister` bean。
 
 ## 拓扑

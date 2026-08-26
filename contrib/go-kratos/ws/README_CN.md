@@ -6,7 +6,7 @@
 `Greeter` 示例:`gs.Run()` 掌管生命周期,服务是一个 IoC bean,kratos WebSocket
 transport server(经
 [`github.com/tx7do/kratos-transport`](https://github.com/tx7do/kratos-transport),
-锁定 v1.3.1)由 [`starter-kratos/ws`](../../../starter/starter-kratos)
+锁定 v1.3.1)由 [`starter-kratos/ws`](../../../starter/experimental/starter-kratos)
 starter 贡献,而非在 `main()` 里手工接线。
 
 与 HTTP、gRPC 两半不同,kratos-transport WebSocket 承载的是**应用自定义的帧消息,

@@ -20,7 +20,7 @@
 ## 用法
 
 ```go
-import "go-spring.org/spring/web/httpx"
+import "go-spring.org/cloud/experimental/httpx"
 
 rt, closeFn, err := httpx.NewTransport(httpx.Config{
     ServiceName: "user-svc",     // 直连模式留空

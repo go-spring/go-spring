@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`gs-gui` is an external [gs](../gs) tool that provides a browser-based wizard
+`gs-gui` is an external [gs](../../gs) tool that provides a browser-based wizard
 for creating Go-Spring projects. It is a thin front-end over `gs init`.
 
 ## Usage

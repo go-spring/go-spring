@@ -117,7 +117,7 @@ instrumented for distributed tracing. The starter wraps the underlying
 `*http.Client` transport with
 [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp),
 so every outbound request emits a client span through the OpenTelemetry globals
-that [`starter-otel`](../starter-otel) installs.
+that [`starter-otel`](../../starter-otel) installs.
 
 This is a zero-config opt-in that mirrors go-redis's `redisotel` hooks: import
 `starter-otel` and spans flow automatically; without it the OTel globals are

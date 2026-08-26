@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`gs-gui` 是 [gs](../gs) 的一个外部工具,提供浏览器化的 Go-Spring 项目创建向导。
+`gs-gui` 是 [gs](../../gs) 的一个外部工具,提供浏览器化的 Go-Spring 项目创建向导。
 它是 `gs init` 的一层轻量前端。
 
 ## 使用

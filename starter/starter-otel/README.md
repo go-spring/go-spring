@@ -140,7 +140,7 @@ handler mounts on the actuator management port (`:9370`) as well as — or
 instead of — its own standalone server. Operators then scrape a **single port**
 for probes *and* metrics.
 
-This works through the zero-dependency `go-spring.org/spring/endpoint` seam:
+This works through the zero-dependency `go-spring.org/cloud/actuator/endpoint` seam:
 `starter-otel` exports its scrape handler as an `endpoint.Endpoint` bean, and the
 actuator mounts every such bean on its management server. Neither starter imports
 the other.

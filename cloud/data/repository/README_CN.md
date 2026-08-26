@@ -33,7 +33,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/spring/data/repository"
+    "go-spring.org/cloud/data/repository"
 )
 
 type User struct {
@@ -72,7 +72,7 @@ func demo(repo repository.Repository[User, int64]) error {
 ```
 
 `Repository` 由 `repository.New(backend, opts...)` 基于 `Backend` 构造。gorm 实现及其
-`For[T, ID](db, table)` 工厂位于 [`starter-repository-gorm`](../../starter/starter-repository-gorm);
+`For[T, ID](db, table)` 工厂位于 [`starter-repository-gorm`](../../../starter/experimental/starter-repository-gorm);
 第二种存储(Mongo)只是再实现一份 `Backend`,不改动本包。
 
 ## 设计

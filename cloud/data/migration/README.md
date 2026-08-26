@@ -39,7 +39,7 @@ import (
     "context"
     "embed"
 
-    "go-spring.org/spring/data/migration"
+    "go-spring.org/cloud/data/migration"
 )
 
 //go:embed migrations

@@ -21,7 +21,7 @@ XML/注解 DSL。持久化后端(Redis / 数据库)由 starter 单独贡献
 
 - **`JobRepository` 接口 = 后端缝隙。** 无全局 driver 注册表。后端需要活对
   象(Redis conn / `*sql.DB`),不是声明式策略,所以缝隙 = bean 类型——与
-  `spring/lock` 同款。`NewMemoryRepository()` 内建给测试与单进程用;持久化
+  `cloud/experimental/lock` 同款。`NewMemoryRepository()` 内建给测试与单进程用;持久化
   starter 贡献真实 bean。
 - **Instance 身份 = `(Name, Params)`。** `ObtainExecution` 对 name + 排序后的
   params 做 sha1 得到 `instanceKey`:同 params 重跑就是 resume,改一个 param

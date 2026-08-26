@@ -68,7 +68,7 @@ The [example](example/example.go) demonstrates three core RabbitMQ patterns:
 
 Distributed tracing is available through native OTel helpers that ride the
 global `TracerProvider` and propagator installed by
-[starter-otel](../starter-otel). Without starter-otel they are no-ops and change
+[starter-otel](../../starter-otel). Without starter-otel they are no-ops and change
 no message bytes, so instrumenting your code is a safe, zero-config opt-in.
 
 ```go
@@ -100,7 +100,7 @@ Why call-site helpers instead of a wrapped channel/publisher:
 ## Messaging Binder
 
 Beyond the raw connection, this starter can expose a broker-neutral
-`messaging.Binder` (from `go-spring.org/spring/messaging`), so application code
+`messaging.Binder` (from `go-spring.org/cloud/experimental/messaging`), so application code
 publishes and consumes `*messaging.Message` envelopes without depending on the
 `amqp` API — swapping the broker underneath does not touch business code.
 

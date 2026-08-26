@@ -17,7 +17,7 @@ different failure semantics and it is honest to keep them separate.
 - Expose an `Observer` seam so a starter can attach otel spans without stdlib
   importing otel.
 - Refuse isolation. Intermediate saga states are visible to concurrent readers;
-  business code must guard dirty reads with a status flag or a `spring/lock`.
+  business code must guard dirty reads with a status flag or a `cloud/experimental/lock`.
 - Refuse SQL parsing / undo-log generation. That would be the AT model, which
   lives in `transaction/at` and is explicitly a separate seam.
 

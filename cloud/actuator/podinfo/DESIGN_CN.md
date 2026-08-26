@@ -23,7 +23,7 @@
 
 ## 3. 约束
 
-- `spring/podinfo` 是 `go-spring.org/stdlib` 的**子包**,非独立 module:无独立
+- `cloud/actuator/podinfo` 是 `go-spring.org/stdlib` 的**子包**,非独立 module:无独立
   `go.mod`,不出现在 `go.work` 中。
 - struct 带 `value` 标签但不 import IoC 容器,守住零依赖。调用方用
   `gs.Object(&podinfo.PodInfo{})` 注册。

@@ -57,7 +57,7 @@ type Demo struct {
 
 远程配置变更时，Provider 的变更监听器会触发一次应用属性刷新，所有绑定的 `gs.Dync`
 字段都会被原子更新。完整的“发布 → 热更新”流程参见
-[example-config](example-config/example.go)。
+[example-config](example/example.go)。
 
 ## 工作原理
 

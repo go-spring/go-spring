@@ -21,7 +21,7 @@ sibling modules. For the gRPC variant, see [`../grpc`](../grpc).
 
 The server lifecycle, log bridge and optional metrics are **not** hand-rolled
 here anymore: they live in the reusable
-[`starter-goframe/http`](../../../starter/starter-goframe) module. This example
+[`starter-goframe/http`](../../../starter/experimental/starter-goframe) module. This example
 just imports that starter and supplies a `ServiceRegister` bean; tracing is
 deferred to [`starter-otel`](../../../starter/starter-otel).
 

@@ -40,7 +40,7 @@ same graceful shutdown path — with **only the `/echo` handler swapped** from
 
 The server lifecycle and glog log bridge are **not** hand-rolled here anymore:
 they live in the reusable
-[`starter-goframe/ws`](../../../starter/starter-goframe) module. This example
+[`starter-goframe/ws`](../../../starter/experimental/starter-goframe) module. This example
 just imports that starter and supplies a `ServiceRegister` bean.
 
 ## Topology
