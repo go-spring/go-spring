@@ -62,3 +62,30 @@ func run(ctx context.Context, binder messaging.Binder) error {
 `Binder` 由 broker starter(`starter-nats`、`starter-kafka` ...)提供;这些
 starter 也会把原生 client bean(如 `*nats.Conn`、`*kgo.Client`)导出,作为
 本抽象刻意不覆盖的 broker 专有能力的逃生舱。
+
+## 重试与死信
+
+默认情况下,handler 错误会交给 binder 的失败路径(nack / broker 重投)。两个可组合
+的 handler 把这个行为框定住:
+
+- `Retry(h, RetryPolicy)` —— 进程内重试 handler,最多 `MaxRetries` 次,指数退避
+  (`InitialInterval`、`Multiplier`、`MaxInterval`);任一次成功即 ack,耗尽后返回
+  最后一个错误,交回 broker 接管。
+- `DeadLetter(h, dlq, RetryPolicy)` —— 重试耗尽后把消息发布到 `dlq` publisher
+  (通常绑定 `"<queue>.dlq"`)并 ack 原消息,broker 停止重投。副本携带原 headers
+  外加 `x-dlq-error` / `x-dlq-retries` / `x-dlq-key`。若 DLQ 发布本身失败,返回
+  原错误(nack)—— 丢死信比重新投递更糟。
+
+```go
+dlq, _ := binder.NewPublisher(ctx, "orders.dlq")
+_ = sub.Subscribe(ctx, messaging.DeadLetter(
+    messaging.SafeHandler(handle),
+    dlq,
+    messaging.RetryPolicy{MaxRetries: 2, InitialInterval: 100 * time.Millisecond},
+))
+```
+
+`Retry` 要包在 `SafeHandler` 外面(`Retry(SafeHandler(h), p)`),panic 只转换一次
+并与普通失败同样重试。有原生死信能力的 broker(RabbitMQ DLX、RocketMQ DLQ
+topic)可直接配置,此时无需 `DeadLetter` —— 两条路线都携带原始 payload,只有
+失败元数据的载体不同。

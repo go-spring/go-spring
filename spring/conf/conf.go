@@ -93,6 +93,12 @@ func Load(source string) (*flatten.Properties, error) {
 // Supports default values: ${key:=default}.
 // If no tag is provided, uses ${ROOT} (binds from the root).
 // Supports binding to structs, maps, slices, and primitive types.
+//
+// Property keys are matched exactly. There is deliberately no "relaxed
+// binding" (Spring Boot's foo-bar / fooBar / foo_bar / FOO_BAR equivalence):
+// normalizing key spellings adds a layer of implicit rules that makes it hard
+// to tell which key actually matched, and hard to debug when one doesn't.
+// Write the key exactly as it appears in the properties source.
 func Bind(p flatten.Storage, i any, tag ...string) error {
 
 	s := "${ROOT}"

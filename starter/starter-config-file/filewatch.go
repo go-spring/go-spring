@@ -19,7 +19,7 @@
 // extension (delegated to the shared conf reader registry). Use it for a whole
 // configuration document — e.g. a Kubernetes ConfigMap/Secret key that carries
 // an application.yaml. For layered overrides, declare one file-watch import per
-// file in priority order (later imports win), the same way spring.app.imports
+// file in priority order (later imports win), the same way spring.config.import
 // composes every other source. file-watch does NOT merge a directory — use the
 // sibling "configtree" provider for a directory of scalar key files.
 
@@ -38,7 +38,7 @@ import (
 )
 
 func init() {
-	// Register "file-watch" as a configuration provider so a spring.app.imports
+	// Register "file-watch" as a configuration provider so a spring.config.import
 	// entry such as
 	//
 	//	optional:file-watch:/etc/config/application.yaml

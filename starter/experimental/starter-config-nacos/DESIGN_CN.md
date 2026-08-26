@@ -23,7 +23,7 @@
 ## 2. 关键抽象与缝隙
 
 - **Provider 缝隙。** 扩展点只有 `conf.RegisterProvider("nacos", loadNacosConfig)`；
-  应用通过 `spring.app.imports=[optional:]nacos:...` 消费。provider 运行在
+  应用通过 `spring.config.import=[optional:]nacos:...` 消费。provider 运行在
   `AppConfig.Refresh` 阶段，早于任何 bean 存在，因此从 source 串**自建 SDK
   client**，不能通过依赖注入拿。
 - **Client 缓存。** Nacos SDK client 按连接串元组缓存。否则每次刷新都会新建

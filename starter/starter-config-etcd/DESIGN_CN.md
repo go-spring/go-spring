@@ -23,7 +23,7 @@
 ## 2. 关键抽象与缝隙
 
 - **Provider 缝隙。** 扩展点只有 `conf.RegisterProvider("etcd", etcdController.Load)`；
-  应用通过 `spring.app.imports=[optional:]etcd:...` 消费。provider 运行在
+  应用通过 `spring.config.import=[optional:]etcd:...` 消费。provider 运行在
   `AppConfig.Refresh` 阶段，早于任何 bean 存在，因此必须**自建 client**，不能
   通过依赖注入拿。
 - **Client 缓存。** `clientv3.Client` 按 `(endpoint, username, password)`

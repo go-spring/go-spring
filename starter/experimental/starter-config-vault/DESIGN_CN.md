@@ -23,7 +23,7 @@
 ## 2. 关键抽象与缝隙
 
 - **Provider 缝隙。** 扩展点只有 `conf.RegisterProvider("vault", loadVaultConfig)`；
-  应用通过 `spring.app.imports=[optional:]vault:...` 消费。provider 运行在
+  应用通过 `spring.config.import=[optional:]vault:...` 消费。provider 运行在
   `AppConfig.Refresh` 阶段，早于任何 bean 存在。
 - **Token 走带外通道解析。** 顺序：`?token=` 查询串（不推荐）→ `VAULT_TOKEN`
   环境变量 → 由 `?token-file=` 或 `VAULT_TOKEN_FILE` 指定的 token 文件。

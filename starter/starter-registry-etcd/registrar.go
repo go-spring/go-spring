@@ -59,10 +59,13 @@ type etcdRegistrar struct {
 	holds map[string]*hold // instance key -> its lease keep-alive
 }
 
-// hold tracks the lease and keep-alive goroutine backing one registered key.
+// hold tracks the lease and keep-alive goroutine backing one registered key,
+// plus the last payload written under it so a weight update can rewrite the
+// full instanceValue without rebuilding the lease.
 type hold struct {
 	leaseID clientv3.LeaseID
 	cancel  context.CancelFunc
+	reg     instance
 }
 
 // newEtcdRegistrar builds a *clientv3.Client from c and returns a registrar. It
@@ -166,7 +169,39 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg instance) error {
 		old.cancel()
 		_, _ = r.client.Revoke(context.Background(), old.leaseID)
 	}
-	r.holds[key] = &hold{leaseID: grant.ID, cancel: cancel}
+	r.holds[key] = &hold{leaseID: grant.ID, cancel: cancel, reg: reg}
+	r.mu.Unlock()
+	return nil
+}
+
+// UpdateWeight rewrites reg's key with a new weight on its existing lease —
+// no lease is granted, revoked or re-kept-alive, so the instance never
+// disappears from discovery mid-update and watchers simply see a new value
+// for the same key. It fails if reg was never registered through Register.
+func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int) error {
+	key := r.keyFor(reg)
+	r.mu.Lock()
+	h, ok := r.holds[key]
+	r.mu.Unlock()
+	if !ok {
+		return errutil.Explain(nil, "registry-etcd: update weight for unregistered instance %q", key)
+	}
+	updated := h.reg
+	updated.Weight = weight
+	val, err := json.Marshal(instanceValue{
+		ServiceName: updated.ServiceName,
+		Addr:        updated.Addr,
+		Weight:      updated.Weight,
+		Metadata:    updated.Metadata,
+	})
+	if err != nil {
+		return errutil.Explain(err, "registry-etcd: marshal instance %q", updated.ServiceName)
+	}
+	if _, err := r.client.Put(ctx, key, string(val), clientv3.WithLease(h.leaseID)); err != nil {
+		return errutil.Explain(err, "registry-etcd: update weight put %q", key)
+	}
+	r.mu.Lock()
+	h.reg = updated
 	r.mu.Unlock()
 	return nil
 }

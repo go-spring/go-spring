@@ -18,7 +18,7 @@
 // value -> bean hot-reload link:
 //
 //  1. app.properties imports config from etcd via
-//     spring.app.imports=optional:etcd:.../gs-config-demo?...
+//     spring.config.import=optional:etcd:.../gs-config-demo?...
 //  2. A bean binds demo.message to a gs.Dync[string] field.
 //  3. The example publishes a new value to etcd; the provider's change
 //     watcher triggers a property refresh, and the bound field updates

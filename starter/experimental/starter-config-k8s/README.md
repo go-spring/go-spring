@@ -11,7 +11,7 @@ a `kubectl edit configmap` propagates to bound `gs.Dync` fields within seconds
 and can target any namespace the ServiceAccount may read.
 
 Blank-importing this starter registers a `k8s` config provider consumed via
-`spring.app.imports`. This is a **provider-only** starter: there is no injectable
+`spring.config.import`. This is a **provider-only** starter: there is no injectable
 config bean; connection parameters come from the source string.
 
 | Starter | Mechanism | Dependencies | RBAC | When |
@@ -38,7 +38,7 @@ import _ "go-spring.org/starter-config-k8s"
 Source form: `<kind>/<name>[?namespace=..&key=..&format=..&kubeconfig=..]`.
 
 ```properties
-spring.app.imports=k8s:configmap/app-config?namespace=default&key=application.yaml
+spring.config.import=k8s:configmap/app-config?namespace=default&key=application.yaml
 ```
 
 - `secret/<name>` reads a Secret instead (its `data` is already base64-decoded).

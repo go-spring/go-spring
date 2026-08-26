@@ -147,6 +147,42 @@ func (r *nacosRegistrar) Deregister(_ context.Context, reg instance) error {
 	return nil
 }
 
+// UpdateWeight re-publishes reg with a new weight via the naming service's
+// UpdateInstance. Because the instance stays ephemeral, its heartbeat keeps
+// running and discovery subscribers (the Nacos push channel) receive the new
+// weight without any re-registration. Mirrors the etcd registrar's
+// UpdateWeight so both starters offer the same optional hot-reload API.
+func (r *nacosRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) error {
+	host, port, err := splitAddr(reg.Addr)
+	if err != nil {
+		return err
+	}
+	// Same convention as Register: weight 0 means "no traffic" in Nacos, so
+	// keep the unweighted default at 1.
+	w := float64(weight)
+	if w <= 0 {
+		w = 1
+	}
+	ok, err := r.client.UpdateInstance(vo.UpdateInstanceParam{
+		Ip:          host,
+		Port:        port,
+		ServiceName: reg.ServiceName,
+		GroupName:   r.group,
+		ClusterName: r.cluster,
+		Weight:      w,
+		Enable:      true,
+		Ephemeral:   true,
+		Metadata:    reg.Metadata,
+	})
+	if err != nil {
+		return errutil.Explain(err, "registry-nacos: update weight %q", reg.ServiceName)
+	}
+	if !ok {
+		return errutil.Explain(nil, "registry-nacos: update weight %q was rejected by the server", reg.ServiceName)
+	}
+	return nil
+}
+
 // splitAddr splits a "host:port" advertised address into a host and numeric
 // port, returning an explanatory error on either malformation.
 func splitAddr(addr string) (string, uint64, error) {

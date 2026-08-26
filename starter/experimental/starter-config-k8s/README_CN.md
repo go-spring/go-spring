@@ -8,7 +8,7 @@
 watch 对象,`kubectl edit configmap` 数秒内即可传播到绑定的 `gs.Dync` 字段,且可跨
 ServiceAccount 有权读取的任意命名空间。
 
-空导入本 starter 会注册一个 `k8s` 配置 provider,通过 `spring.app.imports` 消费。这是一个
+空导入本 starter 会注册一个 `k8s` 配置 provider,通过 `spring.config.import` 消费。这是一个
 **纯 provider** starter:没有可注入的配置 bean,连接参数从 source 串解析。
 
 | Starter | 机制 | 依赖 | RBAC | 适用 |
@@ -35,7 +35,7 @@ import _ "go-spring.org/starter-config-k8s"
 source 形式:`<kind>/<name>[?namespace=..&key=..&format=..&kubeconfig=..]`。
 
 ```properties
-spring.app.imports=k8s:configmap/app-config?namespace=default&key=application.yaml
+spring.config.import=k8s:configmap/app-config?namespace=default&key=application.yaml
 ```
 
 - `secret/<name>` 改为读取 Secret(其 `data` 已完成 base64 解码)。

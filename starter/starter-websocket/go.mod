@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	go-spring.org/spring v1.3.4
+	go-spring.org/stdlib v0.1.7
 )
 
 require (
@@ -21,10 +22,9 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go-spring.org/log v0.1.4 // indirect
-	go-spring.org/stdlib v0.1.7 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

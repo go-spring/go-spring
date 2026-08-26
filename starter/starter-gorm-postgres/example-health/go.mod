@@ -29,9 +29,9 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/cloud v0.0.0 // indirect
-	go-spring.org/starter-gorm v0.0.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go-spring.org/log v0.1.4 // indirect
+	go-spring.org/starter-gorm v0.0.0 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.45.0 // indirect
@@ -41,16 +41,16 @@ require (
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
-	gorm.io/gorm v1.31.1 // indirect
+	gorm.io/gorm v1.31.2 // indirect
 )
 
 replace (
 	go-spring.org/cloud => ../../../cloud
-	go-spring.org/starter-gorm => ../../../starter/starter-gorm
 	go-spring.org/starter-actuator => ../../experimental/starter-actuator
+	go-spring.org/starter-gorm => ../../../starter/starter-gorm
 	go-spring.org/starter-gorm-postgres => ..
 	go-spring.org/stdlib => ../../../stdlib
 )

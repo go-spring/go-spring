@@ -281,6 +281,13 @@ func (c *Injector) getBean(t reflect.Type, tag WireTag, stack *Stack) (*gs_bean.
 		return nil, errutil.Explain(nil, "cannot find bean for tag %q and type %q", tag, t)
 	}
 
+	// Multiple candidates are an error, not a "pick the best one" situation.
+	// Java Spring resolves this with @Primary; Go-Spring deliberately does not
+	// offer an equivalent, because the container would then be silently choosing
+	// on your behalf. Instead, resolve the conflict explicitly:
+	//   1. name the bean you want in the wire tag, e.g. autowire:"primary";
+	//   2. or register the beans under condition flags (e.g. OnProperty) so
+	//      only one of them exists at runtime.
 	if len(foundBeans) > 1 {
 		var names []string
 		for _, b := range foundBeans {
@@ -346,7 +353,10 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 				}
 			}
 
-			// Error if there are multiple beans with the same name
+			// Error if there are multiple beans with the same name: later
+			// registrations never override earlier ones, and there is no
+			// @Primary-style winner. Make the beans mutually exclusive with
+			// condition flags (e.g. OnProperty) so only one registers.
 			if len(matched) > 1 {
 				var names []string
 				for _, i := range matched {

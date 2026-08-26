@@ -117,10 +117,16 @@ type DubboRegistry struct {
 type DubboProtocol struct {
 	// Name is one of: dubbo, rest, grpc, filter, jsonrpc, tri, registry;
 	// default "dubbo".
-	Name   string         `value:"${name:=dubbo}"`
-	Ip     string         `value:"${ip:=}"`
-	Port   int            `value:"${port:=0}"`
-	Params map[string]any `value:"${params:=}"`
+	Name string `value:"${name:=dubbo}"`
+	Ip   string `value:"${ip:=}"`
+	Port int    `value:"${port:=0}"`
+
+	// Params carries protocol-specific parameters. It is map[string]string —
+	// NOT map[string]any — because the conf binder only binds value-type maps;
+	// map[string]any made ANY protocols.* key fail the whole ${spring.dubbo}
+	// binding and silently drop the Instance bean. protocol.WithParams takes
+	// any, so the string map passes through unchanged.
+	Params map[string]string `value:"${params:=}"`
 }
 
 // --- metadata-report ---

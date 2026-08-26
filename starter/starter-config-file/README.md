@@ -10,7 +10,7 @@ cover the two distinct shapes of a Kubernetes ConfigMap/Secret mount:
 - **`file-watch`** — a single configuration document (a ConfigMap key holding
   `application.yaml`). For layered overrides, declare one `file-watch` import
   per file in priority order; later imports win, the same rule
-  `spring.app.imports` uses for every other source.
+  `spring.config.import` uses for every other source.
 - **`configtree`** — a directory of scalar key files (a Secret / env-style
   ConfigMap mount). Each file's path becomes a dotted property key and its
   unparsed content the value; paths are unique, so there is no priority problem.
@@ -43,11 +43,11 @@ Declare the import in your configuration file using the provider syntax
 
 ```properties
 # A single mounted ConfigMap/Secret key file (recommended for K8s):
-spring.app.imports=file-watch:/etc/config/application.yaml
+spring.config.import=file-watch:/etc/config/application.yaml
 
 # Layered overrides: later imports win.
-spring.app.imports=file-watch:/etc/app/application.yaml
-spring.app.imports=file-watch:/etc/app/application-prod.yaml
+spring.config.import=file-watch:/etc/app/application.yaml
+spring.config.import=file-watch:/etc/app/application-prod.yaml
 ```
 
 The path must be a **single file** (a directory is rejected — use the
@@ -87,7 +87,7 @@ volumes:
 
 ```properties
 # Point at the specific key file that holds your config document.
-spring.app.imports=file-watch:/etc/config/application.yaml
+spring.config.import=file-watch:/etc/config/application.yaml
 ```
 
 `kubectl edit configmap my-app-config` (or a new rollout) updates the volume;
@@ -102,7 +102,7 @@ its dotted relative path and whose value is its trimmed raw content (not parsed)
 
 ```properties
 # A Secret mount: db.user, db.password, server.port (one value per file)
-spring.app.imports=configtree:/etc/secret
+spring.config.import=configtree:/etc/secret
 ```
 
 ```
@@ -123,12 +123,12 @@ accepted — values are raw strings. See
 
 | Shape | Provider | Priority |
 |---|---|---|
-| One whole config document | `file-watch:<file>` | multiple files compose via `spring.app.imports` order |
+| One whole config document | `file-watch:<file>` | multiple files compose via `spring.config.import` order |
 | Many scalar key files | `configtree:<dir>` | none needed — paths are unique, keys never collide |
 
 ## How It Works
 
-- On startup, `spring.app.imports` invokes the `file-watch` / `configtree`
+- On startup, `spring.config.import` invokes the `file-watch` / `configtree`
   provider, which reads the source and starts a watcher on its **parent
   directory** (every directory in the tree, for `configtree`).
 - Kubernetes updates a mounted ConfigMap/Secret by writing a fresh timestamped

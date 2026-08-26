@@ -25,16 +25,16 @@ fi
 trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
-# Wait for the Nacos HTTP port and the gRPC port (9848) that the v2 SDK uses.
-# Nacos boot is slow, so allow up to 90s.
+# Wait for the Nacos readiness endpoint (and thus the HTTP port the publish
+# call uses). A raw TCP probe (/dev/tcp) both fails in some shells and accepts
+# before Nacos finishes booting, racing the example's first publish; the
+# readiness endpoint is the real signal. Nacos boot is slow, allow up to 3min.
 for _ in $(seq 1 90); do
-    if (exec 3<>/dev/tcp/127.0.0.1/9848) 2>/dev/null; then
-        exec 3>&- 3<&- 2>/dev/null || true
+    if curl -fsS "http://127.0.0.1:8848/nacos/v1/console/health/readiness" >/dev/null 2>&1; then
         break
     fi
-    sleep 1
+    sleep 2
 done
-sleep 5
 
 go run . &
 pid=$!

@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 一个 config-provider starter（starter/DESIGN.md §2.5）：在
-`spring.app.imports` 下注册 `apollo` provider，形态照 starter-config-nacos。
+`spring.config.import` 下注册 `apollo` provider，形态照 starter-config-nacos。
 
 ## 1. 职责与边界
 
@@ -34,4 +34,17 @@
   询；OpenAPI 需手写通知循环。
 - **仅冷加载 example vs docker 化 quick-start**：quick-start 要 MySQL +
   configservice/admin/portal 三件套；starter 的契约是 provider seam，mock
-  config service 即可端到端覆盖，无需整栈。
+  config service 即可端到端覆盖，无需整栈。2026-08-26 真实尝试过
+  `docker pull apolloconfig/apollo-quick-start`，本环境到 registry 网络不可达
+  （`registry-1.docker.io ... i/o timeout`），故不提供 compose 文件，
+  `check.sh` 改跑自包含 mock 冒烟。
+
+## 5. 客户端选型
+
+**agollo v4（github.com/apolloconfig/agollo/v4, v4.4.0）而非手写 net/http
+client。** agollo 是社区推荐的 Apollo Go 客户端，自带 notifications/v2
+长轮询、命名空间内存缓存、本地文件备份与 secret 签名。用标准库自实现
+`/configs/{appId}/{cluster}/{ns}` 加 `/notifications/v2` 是有记录的备选方案，
+仅在 GOPROXY 拉不到 agollo 时启用——实际拉到了，备选未启用。唯一代价：
+agollo 在 client 创建时固定 `NamespaceName`，所以 namespace 进 client 缓存
+key（§2）。

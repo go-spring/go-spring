@@ -18,7 +18,7 @@
 // version -> bean hot-reload link:
 //
 //  1. app.properties imports config from Nacos via
-//     spring.app.imports=optional:nacos:.../gs-config-demo?...
+//     spring.config.import=optional:nacos:.../gs-config-demo?...
 //  2. A bean binds demo.message to a gs.Dync[string] field.
 //  3. The example publishes a new value to Nacos; the provider's change
 //     listener triggers a property refresh, and the bound field updates

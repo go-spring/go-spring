@@ -18,10 +18,13 @@ package StarterGrpc
 
 import (
 	"context"
+	"errors"
 
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/observe/resilience"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // resilienceInterceptors are the unary/stream wrappers built from the server's
@@ -58,6 +61,13 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 // resilienceUnaryInterceptor runs each unary RPC through the executor so the
 // configured rate-limit / bulkhead / breaker (admission) policy is enforced
 // before the handler runs.
+//
+// Admission rejections are mapped to semantic gRPC status codes so consumers
+// that branch on status code (retry policies, circuit breakers, dashboards)
+// can tell "this client is being throttled" from an arbitrary handler failure:
+// rate/bulkhead rejections are ResourceExhausted, an open circuit is
+// Unavailable. Without the mapping they cross the wire as codes.Unknown,
+// which no consumer can act on.
 func resilienceUnaryInterceptor(exec resilience.Executor, resource string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		var resp any
@@ -66,6 +76,23 @@ func resilienceUnaryInterceptor(exec resilience.Executor, resource string) grpc.
 			resp, e = handler(ctx, req)
 			return e
 		})
-		return resp, err
+		return resp, mapAdmissionError(err)
+	}
+}
+
+// mapAdmissionError translates resilience admission rejections into semantic
+// gRPC status errors; every other error (handler failure, injected fault, ...)
+// passes through untouched.
+func mapAdmissionError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, resilience.ErrRateLimited), errors.Is(err, resilience.ErrBulkheadFull):
+		return status.Error(codes.ResourceExhausted, err.Error())
+	case errors.Is(err, resilience.ErrCircuitOpen):
+		return status.Error(codes.Unavailable, err.Error())
+	default:
+		return err
 	}
 }

@@ -32,9 +32,11 @@
 //	          liveness group (usually none), so a degraded dependency never
 //	          trips a liveness restart.
 //	/readyz   (alias /readiness) readiness: 200 only after the app reports ready
-//	          AND every readiness-group indicator passes; 503 otherwise. During
-//	          graceful shutdown it flips to 503 OUT_OF_SERVICE (see PreStop) so
-//	          Kubernetes drains the pod before servers stop.
+//	          AND every readiness-group indicator passes; 503 otherwise. When
+//	          only non-critical indicators fail the status is DEGRADED with 200
+//	          (still serving; failures visible per-component). During graceful
+//	          shutdown it flips to 503 OUT_OF_SERVICE (see PreStop) so Kubernetes
+//	          drains the pod before servers stop.
 //	/startupz (alias /startup)   startup: 503 until the app has finished starting
 //	          AND every startup-group indicator passes, then 200. Backs a K8s
 //	          startupProbe so a slow boot is not killed by the liveness probe.
@@ -50,6 +52,15 @@
 //	GET  /configprops merged configuration as a nested tree, secrets masked.
 //	GET  /threaddump  goroutine stack dump (text/plain), the Go analogue of a
 //	                  JVM thread dump.
+//	GET  /beans       the container's bean list [{name, type}]. The gs core
+//	                  does not export bean enumeration, so this reads a
+//	                  contributed BeanLister bean; without one it reports that
+//	                  boundary (see beans.go).
+//
+// The introspection endpoints (and contributed endpoints such as /metrics) are
+// gated by spring.actuator.endpoints.include / .exclude: a non-empty include
+// is a whitelist, exclude always applies. The probe endpoints are always
+// registered — filtering them would break the Kubernetes contract.
 //
 // Health indicators are contributed by other beans: any bean exported as
 // health.Indicator (a redis client wrapper, a gorm pool wrapper, ...) is
@@ -63,6 +74,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -118,9 +130,85 @@ type Server struct {
 	// introspection is unavailable.
 	Config *gs.PropertiesRefresher `autowire:"?"`
 
+	// BeanRegistry optionally supplies the container's bean list for the
+	// /beans endpoint. The gs core deliberately does not export bean
+	// enumeration (the global registry lives in an internal package and is
+	// cleared after wiring), so no default implementation exists; see
+	// beans.go for the exact boundary. When nil, /beans reports the boundary
+	// instead of an empty (misleading) list.
+	BeanRegistry BeanLister `autowire:"?"`
+
+	// EndpointInclude is the comma-separated endpoint whitelist
+	// (spring.actuator.endpoints.include). When non-empty, only the named
+	// endpoints are registered (whitelist mode). Endpoint names are the path
+	// without the leading slash: info, loggers, env, configprops, threaddump,
+	// beans, and a contributed endpoint's own path (e.g. "metrics"). Probe
+	// endpoints (/healthz, /readyz, /startupz and their aliases) are always
+	// registered: filtering them would break the Kubernetes contract.
+	EndpointInclude string `value:"${spring.actuator.endpoints.include:=}"`
+
+	// EndpointExclude is the comma-separated endpoint blacklist
+	// (spring.actuator.endpoints.exclude). It always applies, including in
+	// whitelist mode: include first selects, exclude then removes.
+	EndpointExclude string `value:"${spring.actuator.endpoints.exclude:=}"`
+
 	svr      *http.Server
 	ready    atomic.Bool
 	draining atomic.Bool
+}
+
+// route pairs an introspection endpoint's HTTP pattern with the filter name it
+// is registered under (the path without the leading slash).
+type route struct {
+	name    string
+	pattern string
+	handler http.HandlerFunc
+}
+
+// introspectionRoutes lists the actuator's built-in introspection endpoints.
+// They are registered only when the include/exclude filter admits them; the
+// probe endpoints (/healthz, /readyz, /startupz and aliases) are deliberately
+// not in this table — they are always registered so the Kubernetes contract
+// cannot be broken by a filtering typo.
+func (s *Server) introspectionRoutes() []route {
+	return []route{
+		{"info", "GET /info", s.handleInfo},
+		{"loggers", "GET /loggers", s.handleLoggers},
+		{"env", "GET /env", s.handleEnv},
+		{"configprops", "GET /configprops", s.handleConfigProps},
+		{"threaddump", "GET /threaddump", s.handleThreadDump},
+		{"beans", "GET /beans", s.handleBeans},
+	}
+}
+
+// endpointEnabled reports whether the named endpoint passes the include/exclude
+// filter. include non-empty means whitelist mode: everything not listed is off.
+// exclude always applies, including inside a whitelist. Matching is exact and
+// case-insensitive on the endpoint name.
+func (s *Server) endpointEnabled(ctx context.Context, name string) bool {
+	if s.EndpointInclude != "" && !nameListed(s.EndpointInclude, name) {
+		log.Debugf(ctx, actuatorTag, "endpoint %s disabled: not in include list", name)
+		return false
+	}
+	if nameListed(s.EndpointExclude, name) {
+		log.Debugf(ctx, actuatorTag, "endpoint %s disabled: in exclude list", name)
+		return false
+	}
+	return true
+}
+
+// nameListed reports whether name appears in the comma-separated,
+// case-insensitive list. An empty list matches nothing.
+func nameListed(list, name string) bool {
+	if list == "" {
+		return false
+	}
+	for _, item := range strings.Split(list, ",") {
+		if strings.EqualFold(strings.TrimSpace(item), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // Run binds the management listener and begins serving immediately. It
@@ -147,19 +235,25 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	mux.HandleFunc("GET /readiness", s.handleReadiness)
 	mux.HandleFunc("GET /startup", s.handleStartup)
 
-	// Introspection endpoints.
-	mux.HandleFunc("GET /info", s.handleInfo)
-	mux.HandleFunc("GET /loggers", s.handleLoggers)
-
-	mux.HandleFunc("GET /env", s.handleEnv)
-	mux.HandleFunc("GET /configprops", s.handleConfigProps)
-	mux.HandleFunc("GET /threaddump", s.handleThreadDump)
+	// Introspection endpoints — registered through the include/exclude filter.
+	for _, rt := range s.introspectionRoutes() {
+		if !s.endpointEnabled(ctx, rt.name) {
+			continue
+		}
+		mux.HandleFunc(rt.pattern, rt.handler)
+	}
 
 	// Mount every contributed endpoint (e.g. otel's Prometheus /metrics) on the
-	// same management port. Each owns its full path; they are registered after
-	// the built-ins so a contributor cannot shadow /health etc. (ServeMux panics
-	// on a duplicate pattern, surfacing a misconfiguration at startup).
+	// same management port, subject to the same include/exclude filter (an
+	// endpoint's name is its path without the leading slash). Each owns its full
+	// path; they are registered after the built-ins so a contributor cannot
+	// shadow /health etc. (ServeMux panics on a duplicate pattern, surfacing a
+	// misconfiguration at startup).
 	for _, ep := range s.Endpoints {
+		name := strings.TrimPrefix(ep.Path(), "/")
+		if !s.endpointEnabled(ctx, name) {
+			continue
+		}
 		mux.Handle(ep.Path(), ep)
 		log.Debugf(ctx, actuatorTag, "registered endpoint: %s", ep.Path())
 	}

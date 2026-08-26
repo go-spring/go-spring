@@ -56,8 +56,8 @@ kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
 
 cat "${out}"
-if ! grep -q "registered key=" "${out}"; then
-    echo "FAIL: example did not observe its own registration in etcd"
+if ! grep -q "discovered endpoint=" "${out}"; then
+    echo "FAIL: example did not discover its own registration via the etcd discovery backend"
     rm -f "${out}"
     exit 1
 fi

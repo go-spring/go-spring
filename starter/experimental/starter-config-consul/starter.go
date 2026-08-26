@@ -16,7 +16,7 @@
 
 // Package StarterConfigConsul integrates Consul KV as a remote configuration
 // center for Go-Spring. Blank-importing this package registers a "consul"
-// config provider that can be consumed via spring.app.imports, together with
+// config provider that can be consumed via spring.config.import, together with
 // the bridge that wires remote KV changes into the application-wide property
 // refresh for live hot-reload.
 //
@@ -72,8 +72,14 @@ type consulCtrl struct {
 	Refresher *gs.PropertiesRefresher `autowire:""`
 
 	mu       sync.Mutex
-	clients  map[string]*api.Client
+	clients  map[string]kvAPI
 	listened map[string]struct{}
+}
+
+// kvAPI is the slice of the Consul API surface this starter consumes. It
+// exists so tests can fake the KV backend without a live Consul agent.
+type kvAPI interface {
+	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 }
 
 // TriggerRefresh is called by the watcher goroutines when a watched KV entry
@@ -139,21 +145,22 @@ func clientKey(cs configSource) string {
 	return cs.address + "|" + cs.scheme + "|" + cs.token + "|" + cs.datacenter
 }
 
-// clientFor returns a cached client for the source, creating one if necessary.
-func (c *consulCtrl) clientFor(cs configSource) (*api.Client, error) {
+// clientFor returns a cached KV handle for the source, creating one if
+// necessary.
+func (c *consulCtrl) clientFor(cs configSource) (kvAPI, error) {
 	key := clientKey(cs)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.clients == nil {
-		c.clients = map[string]*api.Client{}
+		c.clients = map[string]kvAPI{}
 	}
 	if cli, ok := c.clients[key]; ok {
 		return cli, nil
 	}
 
-	cli, err := api.NewClient(&api.Config{
+	raw, err := api.NewClient(&api.Config{
 		Address:    cs.address,
 		Scheme:     cs.scheme,
 		Token:      cs.token,
@@ -162,8 +169,9 @@ func (c *consulCtrl) clientFor(cs configSource) (*api.Client, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "create consul client for %s failed", cs.address)
 	}
-	c.clients[key] = cli
-	return cli, nil
+	kv := raw.KV()
+	c.clients[key] = kv
+	return kv, nil
 }
 
 // Load implements conf/provider.Provider. It fetches configuration content
@@ -187,7 +195,7 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 
 	c.registerWatch(cli, cs)
 
-	pair, _, err := cli.KV().Get(cs.kvPath, &api.QueryOptions{Datacenter: cs.datacenter})
+	pair, _, err := cli.Get(cs.kvPath, &api.QueryOptions{Datacenter: cs.datacenter})
 	if err != nil {
 		if optional {
 			log.Warnf(context.Background(), starterTag, "optional config get kv %s failed (skipped): %v", cs.kvPath, err)
@@ -225,7 +233,7 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 
 // registerWatch spawns a background goroutine that runs a Consul blocking
 // query against the given KV path. Deduplicated across repeated Load calls.
-func (c *consulCtrl) registerWatch(cli *api.Client, cs configSource) {
+func (c *consulCtrl) registerWatch(cli kvAPI, cs configSource) {
 	lk := clientKey(cs) + "|" + cs.kvPath
 
 	c.mu.Lock()
@@ -243,17 +251,16 @@ func (c *consulCtrl) registerWatch(cli *api.Client, cs configSource) {
 }
 
 // watchLoop runs the blocking-query loop for a single KV path.
-func (c *consulCtrl) watchLoop(cli *api.Client, cs configSource) {
+func (c *consulCtrl) watchLoop(cli kvAPI, cs configSource) {
 	var lastIndex uint64
 	initialized := false
 	for {
-		pair, meta, err := cli.KV().Get(cs.kvPath, &api.QueryOptions{
+		_, meta, err := cli.Get(cs.kvPath, &api.QueryOptions{
 			Datacenter: cs.datacenter,
 			WaitIndex:  lastIndex,
 			WaitTime:   5 * time.Minute,
 		})
 		if err != nil {
-			_ = pair
 			time.Sleep(2 * time.Second)
 			continue
 		}

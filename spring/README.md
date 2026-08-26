@@ -550,7 +550,7 @@ Priorities are listed from highest to lowest below:
 > which matches intuition.
 
 > **💡 Configuration Import Rule**
-> Both base configuration and profile configuration support importing external configurations via `spring.app.imports`,
+> Both base configuration and profile configuration support importing external configurations via `spring.config.import`,
 > **Later imported configurations have higher priority than the file's original configuration**,
 > overriding in import order.
 
@@ -594,11 +594,11 @@ suitable for storing general base configuration:
 ./conf/app.yaml
 ./conf/app.properties
 ```
-Base configuration supports importing external configurations via `spring.app.imports`.
+Base configuration supports importing external configurations via `spring.config.import`.
 
 #### Configuration Import (import)
 Both base configuration and profile configuration support importing external configurations
-via `spring.app.imports`, making it easy to split and reuse:
+via `spring.config.import`, making it easy to split and reuse:
 
 ```yaml
 # app.yaml

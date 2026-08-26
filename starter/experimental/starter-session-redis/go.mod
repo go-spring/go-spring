@@ -16,13 +16,14 @@ require (
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
@@ -31,6 +32,9 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-require go-spring.org/cloud v0.0.0
+require (
+	github.com/alicebob/miniredis/v2 v2.38.0
+	go-spring.org/cloud v0.0.0
+)
 
 replace go-spring.org/cloud => ../../../cloud

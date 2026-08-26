@@ -123,7 +123,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   `conf.RegisterProvider(name, fn)`,不是 `gs.Provide`。配置 Provider 类 starter
   不产生可注入的 bean;应用只需 blank import。这也是它带 `provider.go` 而没有
   `config.go` 的原因。
-- **provider 在容器存在之前运行。** `spring.app.imports=`
+- **provider 在容器存在之前运行。** `spring.config.import=`
   `[optional:]<name>:<host>:<port>/<key>?<query>` 会在 `AppConfig.Refresh` 阶段
   调用 provider,此时任何 bean 都还没装配。因此它拿不到 client bean —— 只能从 source
   串自建 client,并按连接维度缓存该 client,避免每次 refresh 泄漏 goroutine。连接参数

@@ -18,6 +18,8 @@ package lock_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -153,6 +155,98 @@ func TestMemoryAcquireBlocksUntilReleased(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Acquire did not proceed after release")
 	}
+}
+
+func TestMemoryConcurrentTryAcquireSingleWinner(t *testing.T) {
+	m := lock.NewMemoryLocker()
+	defer m.Close()
+	ctx := context.Background()
+
+	// N goroutines race for the same key with distinct tokens: exactly one must
+	// win, and the winner's token must be the one recorded on the handle.
+	const n = 16
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	winners := 0
+	var held lock.Lock
+	for i := range n {
+		wg.Go(func() {
+			l, ok, err := m.TryAcquire(ctx, "race", lock.WithToken(fmt.Sprintf("t%d", i)), lock.WithRenewInterval(-1))
+			mu.Lock()
+			defer mu.Unlock()
+			if err == nil && ok {
+				winners++
+				held = l
+			}
+		})
+	}
+	wg.Wait()
+
+	assert.That(t, winners).Equal(1)
+	assert.That(t, held.Token()).NotEqual("")
+	assert.Error(t, held.Unlock(ctx)).Nil()
+}
+
+func TestMemoryUnlockAfterTakeoverReturnsErrNotHeld(t *testing.T) {
+	// Token fencing: the first holder's lease expires, a second acquisition
+	// reclaims the key, and the stale holder's Unlock must surface ErrNotHeld
+	// instead of silently releasing the new owner's lock.
+	m := lock.NewMemoryLocker()
+	defer m.Close()
+	ctx := context.Background()
+
+	stale, ok, _ := m.TryAcquire(ctx, "fence", lock.WithToken("stale"),
+		lock.WithTTL(20*time.Millisecond), lock.WithRenewInterval(-1))
+	assert.That(t, ok).True()
+
+	time.Sleep(40 * time.Millisecond)
+	fresh, ok, _ := m.TryAcquire(ctx, "fence", lock.WithToken("fresh"), lock.WithRenewInterval(-1))
+	assert.That(t, ok).True()
+
+	err := stale.Unlock(ctx)
+	assert.Error(t, err).Is(lock.ErrNotHeld)
+
+	// The takeover must not have released the fresh holder's lock.
+	_, ok, _ = m.TryAcquire(ctx, "fence", lock.WithRenewInterval(-1))
+	assert.That(t, ok).False()
+	assert.Error(t, fresh.Unlock(ctx)).Nil()
+}
+
+func TestMemoryDistinctTokensPerAcquisition(t *testing.T) {
+	// Without an explicit token each acquisition draws its own fencing token.
+	m := lock.NewMemoryLocker()
+	defer m.Close()
+	ctx := context.Background()
+
+	l1, _, _ := m.TryAcquire(ctx, "k1", lock.WithRenewInterval(-1))
+	l2, _, _ := m.TryAcquire(ctx, "k2", lock.WithRenewInterval(-1))
+	defer l2.Unlock(ctx)
+	defer l1.Unlock(ctx)
+	assert.That(t, l1.Token()).NotEqual("")
+	assert.That(t, l1.Token()).NotEqual(l2.Token())
+}
+
+func TestMemoryCloseStopsRenew(t *testing.T) {
+	// After Close, renewal stops: a held lock with a short TTL expires on its
+	// own even though the handle was never unlocked.
+	m := lock.NewMemoryLocker()
+	ctx := context.Background()
+
+	l, ok, _ := m.TryAcquire(ctx, "k", lock.WithTTL(40*time.Millisecond), lock.WithRenewInterval(10*time.Millisecond))
+	assert.That(t, ok).True()
+	_ = l
+
+	assert.Error(t, m.Close()).Nil()
+	time.Sleep(80 * time.Millisecond)
+
+	_, ok, _ = m.TryAcquire(ctx, "k", lock.WithRenewInterval(-1))
+	assert.That(t, ok).True() // lease expired once renew loops stopped
+}
+
+func TestMemoryCloseIdempotent(t *testing.T) {
+	m := lock.NewMemoryLocker()
+	assert.Error(t, m.Close()).Nil()
+	assert.Error(t, m.Close()).Nil() // second Close is a no-op
 }
 
 func TestMemoryAcquireHonoursContext(t *testing.T) {

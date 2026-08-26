@@ -4,8 +4,10 @@
 
 `starter-registry-etcd` registers the **current instance** into an etcd cluster —
 the provider-side counterpart to Go-Spring's client-side discovery
-(`spring/discovery`). It is the Go-Spring equivalent of Spring Cloud's
-`ServiceRegistry` registration direction, backed by etcd leases.
+(`spring/discovery`) — **and** provides the consumer-side etcd discovery
+backend, so one starter serves both halves of the naming idiom. It is the
+Go-Spring equivalent of Spring Cloud's `ServiceRegistry` + `DiscoveryClient`,
+backed by etcd leases.
 
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
 register instances for you. In **pure Kubernetes** you would not use this
@@ -63,6 +65,8 @@ key on its own. A client elsewhere resolves it by reading the same key prefix.
 
 ## Configuration
 
+### Registering (this instance)
+
 Connection, bound under `spring.registry.etcd`:
 
 | Key | Default | Description |
@@ -88,6 +92,33 @@ Instance, bound under `spring.registry` (describes the instance itself, independ
 The instance is stored as JSON (`service_name`, `addr`, `weight`, `metadata`) at
 `<key-prefix><service-name>/<id>`, so a discovery backend reading the same prefix
 can reconstruct an `Endpoint`.
+
+### Discovering (other instances)
+
+The consumer half is a `cloud/discovery` backend registered per etcd cluster
+under `spring.discovery.etcd.<name>` — the same named-adapter idiom as
+starter-registry-nacos. A client starter cites the name and resolves through it:
+
+```properties
+spring.discovery.etcd.prod.endpoints=127.0.0.1:2379
+spring.discovery.etcd.prod.key-prefix=/services/
+```
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `endpoints` | (required) | etcd cluster nodes; setting them activates the block. |
+| `username` / `password` | (empty) | Auth credentials; empty for anonymous clusters. |
+| `dial-timeout` | `5s` | Bounds the initial connect and the startup probe. |
+| `key-prefix` | `/services/` | Must match the registering applications' prefix. |
+| `tls.*` | (off) | Optional client TLS. |
+
+`key-prefix` must match the registrars' prefix or nothing resolves. Health is
+derived from key liveness: an instance key only exists while its lease is alive,
+so every key found is a live instance — no probing protocol is needed. The
+backend also implements `discovery.Catalog` (`Services()` enumerates every
+service with at least one live key), so gateways can build routes dynamically.
+An optional `scheme` metadata key on the registered instance carries transport
+selection, mirroring the nacos adapter.
 
 ## How It Works
 

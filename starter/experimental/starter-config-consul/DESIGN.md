@@ -25,7 +25,7 @@ holds no configuration state of its own.
 
 - **Provider seam.** `conf.RegisterProvider("consul", loadConsulConfig)` is the
   only extension point; the application consumes it via
-  `spring.app.imports=[optional:]consul:...`. The provider runs during
+  `spring.config.import=[optional:]consul:...`. The provider runs during
   `AppConfig.Refresh`, before any bean exists, so it must build its own client
   from the source string rather than take a client through injection.
 - **Client cache.** Consul clients are cached per

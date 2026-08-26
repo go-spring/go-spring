@@ -142,6 +142,17 @@ func (s *Server) StopContext(ctx context.Context) error {
 	return nil
 }
 
+// UpdateWeight re-advertises this instance with a new weight via Nacos
+// UpdateInstance: the entry stays live and subscribers receive the new weight
+// on their next push. It is an optional runtime API — call it after Run has
+// registered the instance.
+func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
+	if s.registrar == nil || s.reg.Addr == "" {
+		return errutil.Explain(nil, "registry-nacos: instance not registered yet")
+	}
+	return s.registrar.UpdateWeight(ctx, s.reg, weight)
+}
+
 func (s *Server) deregister(ctx context.Context) {
 	if s.registrar == nil {
 		return

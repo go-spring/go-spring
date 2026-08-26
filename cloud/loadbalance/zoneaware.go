@@ -17,6 +17,8 @@
 package loadbalance
 
 import (
+	"strings"
+
 	"go-spring.org/cloud/discovery"
 )
 
@@ -35,10 +37,16 @@ func init() {
 }
 
 // NewZoneAware returns a locality-aware [Balancer]. It prefers endpoints whose
-// Metadata[zoneKey] equals the caller's [PickInfo.Zone], delegating the final
+// Metadata[zoneKey] matches the caller's [PickInfo.Zone], delegating the final
 // choice among the local subset to delegate. When the caller advertises no zone,
-// or no endpoint matches it, the balancer spills over to the full set so traffic
-// is never black-holed just because the local zone is empty.
+// or no endpoint matches any of its levels, the balancer spills over to the
+// full set so traffic is never black-holed just because the local zones are
+// empty.
+//
+// PickInfo.Zone may carry a single zone ("cn-north-1a" — the classic usage) or
+// an ordered fallback list ("cn-north-1a,cn-north-1": my rack, then my zone).
+// Levels are tried left to right and the first level with at least one match
+// wins; see [zoneLevels] for how a level matches an endpoint.
 //
 // This keeps traffic in-zone (lower latency, no cross-zone egress cost) under
 // normal conditions while degrading gracefully during a zonal outage.
@@ -58,20 +66,52 @@ func (b *zoneAware) Pick(eps []discovery.Endpoint, info PickInfo) (Result, error
 	if len(eps) == 0 {
 		return Result{}, ErrNoAvailable
 	}
-	if info.Zone == "" {
+	levels := zoneLevels(info.Zone)
+	if len(levels) == 0 {
 		return b.delegate.Pick(eps, info)
 	}
 
-	local := eps[:0:0]
-	for _, ep := range eps {
-		if ep.Metadata[b.zoneKey] == info.Zone {
-			local = append(local, ep)
+	for _, level := range levels {
+		local := eps[:0:0]
+		for _, ep := range eps {
+			if zoneMatch(ep.Metadata[b.zoneKey], level) {
+				local = append(local, ep)
+			}
+		}
+		if len(local) > 0 {
+			return b.delegate.Pick(local, info)
 		}
 	}
-	if len(local) == 0 {
-		// No instance in the caller's zone: spill over to every endpoint rather
-		// than fail, trading locality for availability.
-		return b.delegate.Pick(eps, info)
+	// No instance in any of the caller's zone levels: spill over to every
+	// endpoint rather than fail, trading locality for availability.
+	return b.delegate.Pick(eps, info)
+}
+
+// zoneLevels parses the caller's zone hint into an ordered fallback list: a
+// comma-separated string yields its non-empty trimmed parts in order, anything
+// else yields the single value (possibly none when empty).
+func zoneLevels(zone string) []string {
+	if zone == "" {
+		return nil
 	}
-	return b.delegate.Pick(local, info)
+	parts := strings.Split(zone, ",")
+	levels := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			levels = append(levels, v)
+		}
+	}
+	return levels
+}
+
+// zoneMatch reports whether an endpoint's zone satisfies a fallback level. A
+// level matches on exact equality ("cn-north-1a" == "cn-north-1a") or when the
+// endpoint's zone extends it: level "cn-north-1" also matches endpoint
+// "cn-north-1a", so a zone-level hint keeps traffic inside the availability
+// zone before spilling region-wide. Sibling names never match ("cn-north-1"
+// does not match "cn-north-2"); an unlucky name that merely shares the prefix
+// ("cn-north-12") does — acceptable for the hierarchical naming schemes this
+// targets, since the ordered list lets callers fall through anyway.
+func zoneMatch(epZone, level string) bool {
+	return epZone == level || strings.HasPrefix(epZone, level)
 }

@@ -32,7 +32,7 @@ Declare the import in your configuration file using the provider syntax
 `[optional:]consul:<host>:<port>/<kv-path>?<query>`:
 
 ```properties
-spring.app.imports=optional:consul:127.0.0.1:8500/gs-config-demo?format=properties
+spring.config.import=optional:consul:127.0.0.1:8500/gs-config-demo?format=properties
 ```
 
 Query parameters:
@@ -64,7 +64,7 @@ publish to hot-reload flow.
 
 ## How It Works
 
-- On startup, `spring.app.imports` invokes the `consul` provider, which builds a
+- On startup, `spring.config.import` invokes the `consul` provider, which builds a
   Consul API client from the source string, reads the KV path, and starts a
   blocking-query watcher against it.
 - A KV change bumps the query's `LastIndex`, which fires the framework's

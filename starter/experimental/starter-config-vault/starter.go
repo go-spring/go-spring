@@ -16,7 +16,7 @@
 
 // Package StarterConfigVault integrates HashiCorp Vault as a remote
 // configuration center for Go-Spring. Blank-importing this package registers a
-// "vault" config provider that can be consumed via spring.app.imports, together
+// "vault" config provider that can be consumed via spring.config.import, together
 // with the bridge that wires secret changes into the application-wide property
 // refresh for live hot-reload.
 //

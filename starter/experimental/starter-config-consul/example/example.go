@@ -18,7 +18,7 @@
 // KV -> bean hot-reload link:
 //
 //  1. app.properties imports config from Consul via
-//     spring.app.imports=optional:consul:.../gs-config-demo?...
+//     spring.config.import=optional:consul:.../gs-config-demo?...
 //  2. A bean binds demo.message to a gs.Dync[string] field.
 //  3. The example publishes a new value to Consul; the provider's blocking
 //     query wakes up on the index bump, triggers a property refresh, and the

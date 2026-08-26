@@ -158,7 +158,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   `conf.RegisterProvider(name, fn)` called in `init()`, not `gs.Provide`. A
   config-provider starter produces no injectable bean; the application just
   blank-imports it. This is why it carries `provider.go` and no `config.go`.
-- **The provider runs before the container exists.** `spring.app.imports=`
+- **The provider runs before the container exists.** `spring.config.import=`
   `[optional:]<name>:<host>:<port>/<key>?<query>` invokes the provider during
   `AppConfig.Refresh`, before any bean is wired. It therefore cannot inject a
   client bean — it builds its own client from the source string, and caches that

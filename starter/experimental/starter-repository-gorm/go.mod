@@ -1,11 +1,11 @@
 module go-spring.org/starter-repository-gorm
 
-go 1.26
+go 1.26.1
 
 require (
 	go-spring.org/stdlib v0.1.7
 	gorm.io/driver/sqlite v1.6.0
-	gorm.io/gorm v1.31.1
+	gorm.io/gorm v1.31.2
 )
 
 require (
@@ -13,7 +13,7 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	go-spring.org/cloud v0.0.0
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
 
 replace go-spring.org/cloud => ../../../cloud

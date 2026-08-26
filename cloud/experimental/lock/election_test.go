@@ -142,3 +142,56 @@ func TestElectionFailover(t *testing.T) {
 	assert.That(t, b.IsLeader()).True()
 	assert.That(t, resigned.Load()).Equal(int32(1))
 }
+
+// TestElectionFailoverOnLeaseExpiry proves leadership transfers when the leader
+// effectively dies without unlocking: its lease expires, a follower reclaims the
+// key, and the dead leader's OnElected ctx is cancelled via Lost().
+func TestElectionFailoverOnLeaseExpiry(t *testing.T) {
+	m := lock.NewMemoryLocker()
+	defer m.Close()
+
+	// The "dead" leader: renew disabled, short TTL — it never refreshes.
+	deadCtx, cancelDead := context.WithCancel(context.Background())
+	defer cancelDead()
+	lost := make(chan struct{}, 1)
+	resigned := make(chan struct{}, 1)
+	dead := lock.NewElection(lock.ElectionConfig{
+		Locker:        m,
+		Key:           "leader",
+		TTL:           30 * time.Millisecond,
+		RenewInterval: -1, // no renew: lease expires under it
+		RetryInterval: 5 * time.Millisecond,
+		OnElected:     func(ctx context.Context) { <-ctx.Done(); lost <- struct{}{} },
+		OnResigned:    func() { resigned <- struct{}{} },
+	})
+	go func() { _ = dead.Run(deadCtx) }()
+	time.Sleep(10 * time.Millisecond) // let it win
+
+	// The follower campaigns and must take over once the lease expires.
+	tookOver := make(chan struct{}, 1)
+	follower := lock.NewElection(lock.ElectionConfig{
+		Locker:        m,
+		Key:           "leader",
+		RetryInterval: 5 * time.Millisecond,
+		OnElected:     func(context.Context) { tookOver <- struct{}{} },
+	})
+	go func() { _ = follower.Run(context.Background()) }()
+
+	select {
+	case <-lost:
+	case <-time.After(2 * time.Second):
+		t.Fatal("dead leader was not notified of loss after lease expiry")
+	}
+	select {
+	case <-resigned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("dead leader did not resign after lease expiry")
+	}
+	select {
+	case <-tookOver:
+	case <-time.After(2 * time.Second):
+		t.Fatal("follower did not take over after lease expiry")
+	}
+	assert.That(t, follower.IsLeader()).True()
+	cancelDead()
+}

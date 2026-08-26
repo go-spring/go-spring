@@ -4,10 +4,10 @@ go 1.26.1
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
-	go-spring.org/spring v1.3.4 // indirect
+	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
 	gorm.io/driver/mysql v1.6.0
-	gorm.io/gorm v1.31.1 // indirect
+	gorm.io/gorm v1.31.2 // indirect
 )
 
 // Local, not-yet-published observe kit and gorm bridge. Removed once tagged.
@@ -38,7 +38,7 @@ require (
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 

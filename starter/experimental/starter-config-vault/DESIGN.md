@@ -29,7 +29,7 @@ independent.
 
 - **Provider seam.** `conf.RegisterProvider("vault", loadVaultConfig)` is the
   only extension point; the application consumes it via
-  `spring.app.imports=[optional:]vault:...`. The provider runs during
+  `spring.config.import=[optional:]vault:...`. The provider runs during
   `AppConfig.Refresh`, before any bean exists.
 - **Token resolution is out-of-band.** Order: `?token=` query (discouraged) →
   `VAULT_TOKEN` env → token file from `?token-file=` or `VAULT_TOKEN_FILE`.

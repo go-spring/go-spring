@@ -26,7 +26,7 @@ holds no configuration state of its own.
 
 - **Provider seam.** `conf.RegisterProvider("nacos", loadNacosConfig)` is the
   only extension point; the application consumes it via
-  `spring.app.imports=[optional:]nacos:...`. The provider runs during
+  `spring.config.import=[optional:]nacos:...`. The provider runs during
   `AppConfig.Refresh`, before any bean exists, so it builds its own SDK
   client from the source string rather than take one through injection.
 - **Client cache.** Nacos SDK clients are cached per connection tuple. Without

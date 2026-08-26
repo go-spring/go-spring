@@ -2,7 +2,11 @@ module go-spring.org/starter-go-redis/example-resilience
 
 go 1.26.1
 
-require github.com/redis/go-redis/v9 v9.21.0 // indirect
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
+	github.com/redis/go-redis/v9 v9.21.0 // indirect
+)
 
 require (
 	go-spring.org/cloud v0.0.0

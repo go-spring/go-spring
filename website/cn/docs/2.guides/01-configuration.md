@@ -514,13 +514,13 @@ func init() {
 注册之后，你就可以在配置导入中使用这个自定义 Provider 了：
 
 ```properties
-# 在 spring.app.imports 中使用自定义 provider
+# 在 spring.config.import 中使用自定义 provider
 # 格式: <provider>:<source>
-spring.app.imports=envjson:APP_CONFIG
+spring.config.import=envjson:APP_CONFIG
 
 # 也可以标记为可选，如果不存在也不报错
 # 格式: optional:<provider>:<source>
-spring.app.imports=optional:envjson:LOCAL_OVERRIDES
+spring.config.import=optional:envjson:LOCAL_OVERRIDES
 ```
 
 这里 `APP_CONFIG` 就是环境变量的名称，使用前先设置好它：
@@ -786,10 +786,10 @@ spring.profiles.active=dev,metrics
 
 ```properties
 # 在主配置中导入其他配置文件，逗号分隔多个
-spring.app.imports=./dev.properties,http://config-server/app.properties
+spring.config.import=./dev.properties,http://config-server/app.properties
 
 # optional: 前缀表示这个配置文件是可选的，如果不存在也不会报错
-spring.app.imports=optional:./local.overrides
+spring.config.import=optional:./local.overrides
 ```
 
 无论是基础配置还是 Profile 配置，都可以使用导入功能。

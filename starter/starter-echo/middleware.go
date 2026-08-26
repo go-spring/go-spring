@@ -18,6 +18,7 @@ package StarterEcho
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -150,7 +151,14 @@ func buildFault() echo.MiddlewareFunc {
 			err := fault.Apply(c.Request().Context(), fault.InjectorFor(), "echo", func() error {
 				return next(c)
 			})
-			if err != nil && !c.Response().Committed {
+			// Only an INJECTED fault (or a latency cancelled by the request
+			// deadline) surfaces as 503 — the server is "unavailable" for this
+			// request. A handler's own error (echo.ErrNotFound, an HTTPError
+			// from the chain, ...) must pass through so Echo's
+			// HTTPErrorHandler renders it, exactly as gin's buildFault lets
+			// handler errors reach the engine.
+			var inj *fault.InjectedError
+			if err != nil && !c.Response().Committed && errors.As(err, &inj) {
 				return c.String(http.StatusServiceUnavailable, "service unavailable")
 			}
 			return err

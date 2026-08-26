@@ -7,6 +7,8 @@ require (
 	go-spring.org/spring v1.3.4
 )
 
+require github.com/fsnotify/fsnotify v1.9.0 // indirect
+
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bytedance/mockey v1.4.6 // indirect

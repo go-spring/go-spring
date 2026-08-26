@@ -18,7 +18,7 @@
 //
 //  1. The Vault remote configuration provider and its secret -> bean
 //     hot-reload link. app.properties imports a config document from a Vault
-//     KV secret via spring.app.imports=optional:vault:.../secret/gs-config-demo.
+//     KV secret via spring.config.import=optional:vault:.../secret/gs-config-demo.
 //     A bean binds demo.message to a gs.Dync[string] field; when the example
 //     writes a new value to Vault, the provider's polling watcher triggers a
 //     property refresh and the bound field updates without a restart.

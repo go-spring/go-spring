@@ -13,7 +13,9 @@ this request to?" — and evicts instances that keep failing.
   - `least_conn` — picks the endpoint with fewest in-flight requests.
   - `consistent_hash` — FNV-32 ring with virtual nodes; hash-key affinity.
   - `weighted` — nginx smooth weighted round-robin (SWRR).
-  - `zone_aware` — locality preference over a delegate balancer.
+  - `zone_aware` — locality preference over a delegate balancer; the zone
+    hint accepts an ordered fallback list (`"cn-north-1a,cn-north-1"` =
+    rack first, then availability zone, then spill-over).
 - `Factory` registry (`Register` / `New`) — strategies register themselves
   in `init` and can be swapped by name.
 - `Tracker` — outlier-ejection with consecutive-failure threshold + half-open
@@ -67,4 +69,13 @@ Route on a hash key or zone by populating `PickInfo`:
 
 ```go
 res, _ := pool.Pick(loadbalance.PickInfo{Ctx: ctx, HashKey: userID, Zone: "us-east-1a"})
+```
+
+`Zone` also accepts an ordered comma-separated fallback list — tried left to
+right, first level with a match wins, and only when every level is empty does
+it spill over to any instance:
+
+```go
+// my rack, then my availability zone, then anywhere.
+res, _ := pool.Pick(loadbalance.PickInfo{Ctx: ctx, Zone: "us-east-1a,us-east-1"})
 ```

@@ -31,7 +31,7 @@ Declare the import in your configuration file using the provider syntax
 `[optional:]etcd:<host>:<port>/<key>?<query>`:
 
 ```properties
-spring.app.imports=optional:etcd:127.0.0.1:2379/gs-config-demo?format=properties
+spring.config.import=optional:etcd:127.0.0.1:2379/gs-config-demo?format=properties
 ```
 
 Query parameters:
@@ -63,7 +63,7 @@ flow.
 
 ## How It Works
 
-- On startup, `spring.app.imports` invokes the `etcd` provider, which builds a
+- On startup, `spring.config.import` invokes the `etcd` provider, which builds a
   clientv3 from the source string, reads the key, and installs an
   `etcd Watch` on it.
 - A key change delivers a watch event, which calls the framework's

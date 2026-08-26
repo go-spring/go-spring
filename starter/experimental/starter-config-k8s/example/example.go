@@ -43,7 +43,7 @@ import (
 	"go-spring.org/spring/gs"
 
 	// Blank-import registers the "k8s" config provider consumed via
-	// spring.app.imports.
+	// spring.config.import.
 	_ "go-spring.org/starter-config-k8s"
 )
 

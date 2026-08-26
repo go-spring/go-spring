@@ -450,7 +450,7 @@ Go-Spring 采用清晰的**优先级分层**设计，高优先级配置会自动
 > **后加载的配置优先级更高**，越靠近运行时的配置越优先，符合直觉。  
 
 > **💡 配置导入规则**  
-> 无论是基础配置还是 profile 配置，都支持通过 `spring.app.imports` 导入外部配置，  
+> 无论是基础配置还是 profile 配置，都支持通过 `spring.config.import` 导入外部配置，  
 > **后导入的配置优先级高于文件自身原有配置**，按导入顺序依次覆盖。
 
 ### 3️⃣ 📝 各配置来源详细说明
@@ -487,10 +487,10 @@ export GS_SPRING_PROFILES_ACTIVE=dev
 ./conf/app.yaml
 ./conf/app.properties
 ```
-基础配置中支持通过 `spring.app.imports` 导入外部配置。
+基础配置中支持通过 `spring.config.import` 导入外部配置。
 
 #### 配置导入（import）
-无论是基础配置还是 profile 配置，都支持通过 `spring.app.imports` 导入外部配置，方便拆分和复用：
+无论是基础配置还是 profile 配置，都支持通过 `spring.config.import` 导入外部配置，方便拆分和复用：
 
 ```yaml
 # app.yaml

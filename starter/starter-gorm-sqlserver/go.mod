@@ -4,10 +4,10 @@ go 1.26.1
 
 require (
 	github.com/microsoft/go-mssqldb v1.8.2
-	go-spring.org/spring v1.3.4 // indirect
+	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
 	gorm.io/driver/sqlserver v1.6.1
-	gorm.io/gorm v1.31.1
+	gorm.io/gorm v1.31.2
 )
 
 // Local, not-yet-published observe kit and gorm bridge. Removed once tagged.
@@ -39,10 +39,10 @@ require (
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
@@ -51,5 +51,7 @@ require go-spring.org/cloud v0.0.0
 replace go-spring.org/cloud => ../../cloud
 
 require go-spring.org/starter-gorm v0.0.0
+
+require golang.org/x/net v0.58.0 // indirect
 
 replace go-spring.org/starter-gorm => ../../starter/starter-gorm

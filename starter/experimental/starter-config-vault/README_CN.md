@@ -31,7 +31,7 @@ import _ "go-spring.org/starter-config-vault"
 在配置文件中按 `[optional:]vault:<host>:<port>/<mount>/<path>?<query>` 语法声明导入:
 
 ```properties
-spring.app.imports=optional:vault:127.0.0.1:8200/secret/gs-config-demo?kv-version=2
+spring.config.import=optional:vault:127.0.0.1:8200/secret/gs-config-demo?kv-version=2
 ```
 
 查询参数:
@@ -114,7 +114,7 @@ conf.RegisterDecryptDriver("kms", func() (decrypt.Decryptor, error) { ... })
 
 ## 工作原理
 
-- 启动时 `spring.app.imports` 调用 `vault` 提供者:据 source 字符串建客户端、解析
+- 启动时 `spring.config.import` 调用 `vault` 提供者:据 source 字符串建客户端、解析
   token、读取 KV secret、启动轮询 watcher。
 - secret 变更在下一次轮询被检测到,调用框架的 `PropertiesRefresher`,重新加载所有
   配置源(重跑本提供者)并通过两阶段原子提交重绑所有 `gs.Dync` 字段。

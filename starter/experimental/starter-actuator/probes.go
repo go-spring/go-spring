@@ -51,15 +51,21 @@ func inGroup(ind health.Indicator, group health.Group) bool {
 // checkGroup runs every indicator that contributes to the given probe group and
 // reports the aggregate status plus per-component detail. An indicator that does
 // not declare its groups defaults to readiness+startup (never liveness), so a
-// dependency check can never fail a liveness probe. A DOWN indicator lowers the
-// aggregate only when it is critical (the default); a non-critical indicator's
-// failure is still reported per-component but does not take the pod out of
-// rotation. With no matching indicator the group is trivially UP.
+// dependency check can never fail a liveness probe. The aggregation maps:
+//
+//	every indicator UP                        -> UP
+//	only non-critical indicators DOWN         -> DEGRADED (200: still serving)
+//	any critical indicator DOWN               -> DOWN (503: out of rotation)
+//
+// A non-critical indicator's failure is still reported per-component but does
+// not take the pod out of rotation. With no matching indicator the group is
+// trivially UP.
 func (s *Server) checkGroup(ctx context.Context, group health.Group) (health.Status, map[string]componentStatus) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 
 	overall := health.StatusUp
+	degraded := false
 	components := make(map[string]componentStatus)
 	for _, ind := range s.Indicators {
 		if !inGroup(ind, group) {
@@ -69,16 +75,23 @@ func (s *Server) checkGroup(ctx context.Context, group health.Group) (health.Sta
 			components[ind.HealthName()] = componentStatus{Status: health.StatusDown, Error: err.Error()}
 			if ind.IsCritical() {
 				overall = health.StatusDown
+			} else {
+				degraded = true
 			}
 		} else {
 			components[ind.HealthName()] = componentStatus{Status: health.StatusUp}
 		}
 	}
+	if overall == health.StatusUp && degraded {
+		overall = health.StatusDegraded
+	}
 	return overall, components
 }
 
-// writeProbe writes a probe response: the aggregate status, 503 when down, and
-// the per-component map when any indicator contributed.
+// writeProbe writes a probe response: the aggregate status, 503 only when DOWN,
+// and the per-component map when any indicator contributed. DEGRADED keeps 200:
+// the app is still serving traffic, only a tolerable dependency is failing, and
+// the failure detail is visible in the components map.
 func writeProbe(w http.ResponseWriter, status health.Status, components map[string]componentStatus) {
 	code := http.StatusOK
 	if status == health.StatusDown {

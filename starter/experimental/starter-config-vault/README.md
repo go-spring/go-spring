@@ -34,7 +34,7 @@ Declare the import in your configuration file using the provider syntax
 `[optional:]vault:<host>:<port>/<mount>/<path>?<query>`:
 
 ```properties
-spring.app.imports=optional:vault:127.0.0.1:8200/secret/gs-config-demo?kv-version=2
+spring.config.import=optional:vault:127.0.0.1:8200/secret/gs-config-demo?kv-version=2
 ```
 
 Query parameters:
@@ -123,7 +123,7 @@ example ships an `ENC(...)` value end-to-end.
 
 ## How It Works
 
-- On startup, `spring.app.imports` invokes the `vault` provider, which builds a
+- On startup, `spring.config.import` invokes the `vault` provider, which builds a
   client from the source string, resolves the token, reads the KV secret, and
   starts a polling watcher.
 - A change to the secret is detected on the next poll, which calls the

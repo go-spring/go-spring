@@ -172,6 +172,55 @@ func TestZoneAware(t *testing.T) {
 	assert.Number(t, m3["a"]+m3["b"]+m3["c"]).Equal(3)
 }
 
+func TestZoneAwareLevels(t *testing.T) {
+	set := []discovery.Endpoint{
+		{Addr: "rack", Metadata: map[string]string{"zone": "cn-north-1a"}},
+		{Addr: "az", Metadata: map[string]string{"zone": "cn-north-1b"}},
+		{Addr: "region", Metadata: map[string]string{"zone": "cn-north-2"}},
+	}
+	b := NewZoneAware("zone", NewRoundRobin())
+
+	// Exact first level wins: only the rack-local instance is picked.
+	m := counts(t, b, set, PickInfo{Zone: "cn-north-1a"}, 5)
+	assert.Number(t, m["rack"]).Equal(5)
+
+	// Hierarchical fallback: the az-level hint matches same-AZ endpoints
+	// (1a, 1b) but never the sibling region cn-north-2.
+	m = counts(t, b, set, PickInfo{Zone: "cn-north-1"}, 6)
+	assert.Number(t, m["rack"]+m["az"]).Equal(6)
+	assert.Number(t, m["region"]).Equal(0)
+
+	// Ordered multi-level: rack first; with the rack instance gone the az
+	// level takes over; only when both are empty does it spill everywhere.
+	subset := set[1:]
+	m = counts(t, b, subset, PickInfo{Zone: "cn-north-1a,cn-north-1"}, 4)
+	assert.Number(t, m["az"]).Equal(4)
+	m = counts(t, b, subset, PickInfo{Zone: "cn-north-1a,cn-north-2"}, 4)
+	assert.Number(t, m["region"]).Equal(4)
+	m = counts(t, b, []discovery.Endpoint{set[2]}, PickInfo{Zone: "cn-north-1a,cn-north-1"}, 3)
+	assert.Number(t, m["region"]).Equal(3)
+
+	// All levels empty: full spill-over, never a black hole.
+	m = counts(t, b, set, PickInfo{Zone: "cn-south-1,cn-south-2"}, 3)
+	assert.Number(t, len(m)).Equal(3)
+
+	// The classic single-zone usage is unchanged by the list support.
+	m = counts(t, b, set, PickInfo{Zone: "cn-north-2"}, 3)
+	assert.Number(t, m["region"]).Equal(3)
+}
+
+func TestZoneLevels(t *testing.T) {
+	assert.That(t, len(zoneLevels(""))).Equal(0)
+	assert.Slice(t, zoneLevels("cn-north-1a")).Length(1)
+	assert.Slice(t, zoneLevels(" cn-north-1a , cn-north-1 ")).Length(2)
+	assert.Slice(t, zoneLevels("a,,b")).Length(2)
+	assert.That(t, zoneMatch("cn-north-1a", "cn-north-1a")).True()
+	assert.That(t, zoneMatch("cn-north-1a", "cn-north-1")).True()
+	assert.That(t, zoneMatch("cn-north-2", "cn-north-1")).False()
+	assert.That(t, zoneMatch("cn-north-12", "cn-north-1")).True() // documented hierarchy edge
+	assert.That(t, zoneMatch("", "cn-north-1")).False()
+}
+
 func TestRegistry(t *testing.T) {
 	for _, name := range []string{RoundRobin, LeastConn, ConsistentHash, Weighted, ZoneAware} {
 		b, err := New(name)

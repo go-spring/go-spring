@@ -144,3 +144,24 @@ zero-config opt-in the other client starters use.
 `resilience.driver=default` uses the bundled, zero-dependency implementation.
 Switching to Sentinel is `driver=sentinel` plus a blank import of
 [`starter-resilience`](../starter-resilience), with no code change.
+
+## Imperative Calls (RestTemplate Style)
+
+Generated clients are the primary form, but a one-off call needs no IDL: the
+generic helpers in [api.go](api.go) build an `httpclt.Metadata` and dispatch
+through the same `httpclt.DoRequest` seam — so imperative calls ride the exact
+same transport (discovery, load balancing, resilience, tracing) as generated
+ones; `target` is the same route key (addr or service name).
+
+```go
+type Order struct{ ID int `json:"id"` }
+
+resp, order, err := StarterHTTPClient.Get[Order](ctx, "orders-svc", "/orders/1")
+_, order, err = StarterHTTPClient.Post[Order](ctx, "10.0.0.5:8080", "/orders", body,
+    StarterHTTPClient.WithQuery("src=cli"), httpclt.WithHeader(h))
+```
+
+`Put`, `Delete`, and the fully-explicit `Call[T](ctx, method, target, path,
+body, opts...)` round out the set; `WithScheme("https")` selects a TLS route.
+Note the runtime decodes with `jsonflow`, which matches field names strictly —
+plain struct tags, no case folding.

@@ -33,10 +33,10 @@
 //     - Values loaded from a `.env` file (only when the variable is not
 //     already set, so real environment variables take precedence)
 //  3. **Profile-specific configuration** (`app-{profile}.yaml` etc.)
-//     - Imports declared in profile configuration files (`spring.app.imports`)
+//     - Imports declared in profile configuration files (`spring.config.import`)
 //     - The profile-specific configuration file itself
 //  4. **Application base configuration** (`app.yaml` etc.)
-//     - Imports declared in application configuration files (`spring.app.imports`)
+//     - Imports declared in application configuration files (`spring.config.import`)
 //     - The base application configuration file itself
 //  5. **Built-in default properties** - Lowest precedence
 package gs_conf
@@ -154,7 +154,7 @@ func dedupe(arr []string) []string {
 // that are resolved before loading.
 //
 // Non-existent files are skipped, while other loading errors abort the process.
-// Loaded files may declare additional imports via spring.app.imports.
+// Loaded files may declare additional imports via spring.config.import.
 func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) error {
 	extensions := []string{".properties", ".yaml", ".yml", ".toml", ".tml", ".json"}
 
@@ -208,14 +208,14 @@ func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) e
 }
 
 // loadFileImports loads additional configuration files declared by
-// the property `spring.app.imports`.
+// the property `spring.config.import`.
 //
 // Only one level of import is processed: imports declared inside an
 // imported file are silently ignored (the imported file's own
-// spring.app.imports key is never read).
+// spring.config.import key is never read).
 func loadFileImports(l *flatten.LayeredStorage, p *flatten.Properties, activeProfiles []string) error {
 	var i struct {
-		Imports []string `value:"${spring.app.imports:=}"`
+		Imports []string `value:"${spring.config.import:=}"`
 	}
 	if err := conf.Bind(flatten.NewPropertiesStorage(p), &i); err != nil {
 		return errutil.Explain(err, "bind imports config failed")

@@ -8,7 +8,7 @@ hot-reloadable configuration source for Go-Spring. It registers two providers
 that share one watch + refresh bridge:
 
 - **`file-watch`** — one configuration document per import (a ConfigMap key
-  holding `application.yaml`). Layered overrides compose via `spring.app.imports`
+  holding `application.yaml`). Layered overrides compose via `spring.config.import`
   order; the provider never merges a directory.
 - **`configtree`** — a directory of scalar key files (a Secret / env-style
   ConfigMap mount). Each leaf file maps to one property keyed by its dotted
@@ -50,7 +50,7 @@ that share one watch + refresh bridge:
 ## 3. Constraints
 
 - **Single file only; a directory is an error.** Priority belongs to the
-  `spring.app.imports` line order (the framework's layered storage), not to a
+  `spring.config.import` line order (the framework's layered storage), not to a
   directory's contents — merging arbitrary files into one key set has no
   well-defined precedence, so file-watch refuses to do it. Layered overrides
   are expressed as one file-watch import per file in priority order.

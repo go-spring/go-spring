@@ -12,7 +12,9 @@ discovery 回答"当下有哪些实例";本包回答"给这份实时集合,该�
   - `least_conn` —— 选择当前在途最少的实例。
   - `consistent_hash` —— FNV-32 环 + 虚拟节点;按 hash key 亲和。
   - `weighted` —— nginx 平滑加权轮询(SWRR)。
-  - `zone_aware` —— 本地优先 + 内层 balancer 承载最终选择。
+  - `zone_aware` —— 本地优先 + 内层 balancer 承载最终选择;zone 提示支持
+    有序回退列表(`"cn-north-1a,cn-north-1"` = 先本机房、再本可用区、最后
+    溢出)。
 - `Factory` 注册表(`Register` / `New`)—— 策略在 `init` 中自注册,按名切换。
 - `Tracker` —— 连续失败阈值 + 半开探测的离群点摘除,按 endpoint 地址键,
   可查询,故 `Pool` 能在路由前主动剔除。
@@ -63,4 +65,12 @@ for {
 
 ```go
 res, _ := pool.Pick(loadbalance.PickInfo{Ctx: ctx, HashKey: userID, Zone: "us-east-1a"})
+```
+
+`Zone` 也接受逗号分隔的有序回退列表 —— 从左到右逐级尝试,第一级有实例即胜出;
+所有层级都为空时才溢出到任意实例:
+
+```go
+// 先本机房,再本可用区,最后任意实例。
+res, _ := pool.Pick(loadbalance.PickInfo{Ctx: ctx, Zone: "us-east-1a,us-east-1"})
 ```

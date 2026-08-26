@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.app.imports (file://...)",
-  "description": "Local file configuration provider. Configured via spring.app.imports URL.",
+  "title": "spring.config.import (file://...)",
+  "description": "Local file configuration provider. Configured via spring.config.import URL.",
   "type": "object",
   "properties": {
     "file-url": {

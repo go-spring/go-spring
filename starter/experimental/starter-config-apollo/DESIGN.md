@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 A config-provider starter (starter/DESIGN.md §2.5): registers an `apollo`
-provider under `spring.app.imports`, mirroring starter-config-nacos's shape.
+provider under `spring.config.import`, mirroring starter-config-nacos's shape.
 
 ## 1. Responsibilities & Boundaries
 
@@ -38,4 +38,19 @@ provider under `spring.app.imports`, mirroring starter-config-nacos's shape.
 - **Cold-load-only example vs dockerized quick-start**: the quick-start needs
   a MySQL + configservice/admin/portal trio; the starter's contract is the
   provider seam, so a mock config service exercises it end-to-end without the
-  stack.
+  stack. A real `docker pull apolloconfig/apollo-quick-start` was attempted
+  (2026-08-26); the registry is network-unreachable from this environment
+  (`registry-1.docker.io ... i/o timeout`), so no compose file is provided and
+  `check.sh` runs the self-contained mock smoke instead.
+
+## 5. Client Choice
+
+**agollo v4 (github.com/apolloconfig/agollo/v4, v4.4.0) over a hand-rolled
+net/http client.** agollo is the community-recommended Apollo Go client with
+the notifications/v2 long-polling loop, in-memory namespace cache, local-file
+backup and secret signing already built. Reimplementing
+`/configs/{appId}/{cluster}/{ns}` plus `/notifications/v2` on the standard
+library was the recorded fallback, to be used only if agollo could not be
+fetched from GOPROXY — it could, so the fallback stays unused. The one
+concession: agollo fixes `NamespaceName` at client creation, hence the
+namespace in the client cache key (§2).

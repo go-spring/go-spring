@@ -4,7 +4,7 @@
 
 `starter-config-apollo` 接入 [Apollo](https://github.com/apolloconfig/apollo)
 作为远程配置中心。空白导入即注册 `apollo` 配置 provider，经
-`spring.app.imports` 消费，通过 agollo 的变更通知实现实时热刷新。
+`spring.config.import` 消费，通过 agollo 的变更通知实现实时热刷新。
 
 ## 安装
 
@@ -23,7 +23,7 @@ import _ "go-spring.org/starter-config-apollo"
 ### 2. 配置
 
 ```properties
-spring.app.imports=optional:apollo:127.0.0.1:8080/application?appId=demo&format=properties
+spring.config.import=optional:apollo:127.0.0.1:8080/application?appId=demo&format=properties
 ```
 
 ### 3. 使用

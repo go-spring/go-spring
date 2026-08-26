@@ -1,6 +1,6 @@
 services:
   consul:
-    image: hashicorp/consul:1.19
+    image: hashicorp/consul:1.18
     container_name: starter-consul-config
     command: agent -dev -client=0.0.0.0
     ports:

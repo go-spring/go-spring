@@ -18,7 +18,7 @@
 // hot-reloadable configuration source, read directly through the API server
 // rather than through a mounted volume. Blank-importing this package registers a
 // "k8s" config provider (see provider.go) that can be consumed via
-// spring.app.imports, together with the bridge that wires API-driven changes
+// spring.config.import, together with the bridge that wires API-driven changes
 // into the application-wide property refresh for live hot-reload.
 //
 // It complements starter-config-file. The file starter watches a volume mount
@@ -54,7 +54,7 @@ const (
 )
 
 func init() {
-	// Register "k8s" as a configuration provider so that a spring.app.imports
+	// Register "k8s" as a configuration provider so that a spring.config.import
 	// entry such as
 	//
 	//	optional:k8s:configmap/app-config?namespace=default&key=application.yaml

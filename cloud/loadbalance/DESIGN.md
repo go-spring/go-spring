@@ -26,7 +26,11 @@ their starters.
   only owns selection state (rr cursor / hash ring / SWRR current-weight /
   least-conn in-flight); the caller owns discovery and eviction. This keeps
   strategies composable (`zone_aware` wraps another `Balancer`) and lets
-  the same balancer be reused as topology churns.
+  the same balancer be reused as topology churns. `zone_aware` reads
+  `PickInfo.Zone` as an ordered fallback list (comma-separated, prefix
+  hierarchy: `"cn-north-1"` matches endpoint `"cn-north-1a"`), falling
+  through level by level and spilling over only when every level is empty —
+  the single-zone usage is unchanged.
 - **`Factory` (not `Balancer`) is registered.** Balancers hold mutable
   per-target state, so each target must get its own instance; storing a
   factory in the registry enforces that.

@@ -176,7 +176,7 @@ func TestAppConfig(t *testing.T) {
 		err := os.WriteFile(importedProps, []byte("db.host=imported-host\ndb.port=3306"), 0644)
 		assert.That(t, err).Nil()
 		appProps := tmpDir + "/app.properties"
-		err = os.WriteFile(appProps, []byte("spring.app.name=main-app\nspring.app.imports="+importedProps+"\ndb.user=admin"), 0644)
+		err = os.WriteFile(appProps, []byte("spring.app.name=main-app\nspring.config.import="+importedProps+"\ndb.user=admin"), 0644)
 		assert.That(t, err).Nil()
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)
@@ -201,7 +201,7 @@ func TestAppConfig(t *testing.T) {
 		t.Cleanup(clean)
 		tmpDir := t.TempDir()
 		appProps := tmpDir + "/app.properties"
-		err := os.WriteFile(appProps, []byte("spring.app.name=test\nspring.app.imports=/nonexistent/file.properties"), 0644)
+		err := os.WriteFile(appProps, []byte("spring.app.name=test\nspring.config.import=/nonexistent/file.properties"), 0644)
 		assert.That(t, err).Nil()
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)
@@ -213,7 +213,7 @@ func TestAppConfig(t *testing.T) {
 		t.Cleanup(clean)
 		tmpDir := t.TempDir()
 		appProps := tmpDir + "/app.properties"
-		err := os.WriteFile(appProps, []byte("spring.app.imports=${missing.key}"), 0644)
+		err := os.WriteFile(appProps, []byte("spring.config.import=${missing.key}"), 0644)
 		assert.That(t, err).Nil()
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)

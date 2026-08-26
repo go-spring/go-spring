@@ -513,13 +513,13 @@ func init() {
 After registration, you can use this custom Provider in configuration imports:
 
 ```properties
-# Use a custom provider in spring.app.imports
+# Use a custom provider in spring.config.import
 # Format: <provider>:<source>
-spring.app.imports=envjson:APP_CONFIG
+spring.config.import=envjson:APP_CONFIG
 
 # It can also be marked as optional so no error is reported if it does not exist
 # Format: optional:<provider>:<source>
-spring.app.imports=optional:envjson:LOCAL_OVERRIDES
+spring.config.import=optional:envjson:LOCAL_OVERRIDES
 ```
 
 Here, `APP_CONFIG` is the name of the environment variable. Set it before use:
@@ -785,10 +785,10 @@ This is when you can use configuration imports:
 
 ```properties
 # Import other configuration files in the main configuration, separated by commas
-spring.app.imports=./dev.properties,http://config-server/app.properties
+spring.config.import=./dev.properties,http://config-server/app.properties
 
 # The optional: prefix means this configuration file is optional, and no error is reported if it does not exist
-spring.app.imports=optional:./local.overrides
+spring.config.import=optional:./local.overrides
 ```
 
 Imports can be used in both base configuration and Profile configuration.

@@ -21,7 +21,9 @@ kitex loadbalancer 等)在各自 starter 里把此内核翻译成框架的 picke
 - **`Balancer.Pick(eps, info)` 每次都收候选集合。** balancer 只持有选择态
   (rr 游标 / hash 环 / SWRR current-weight / least-conn 在途),discovery 与
   摘除由调用方持有。故策略可组合(`zone_aware` 内嵌另一个 `Balancer`),拓扑
-  抖动时同一 balancer 可持续使用。
+  抖动时同一 balancer 可持续使用。`zone_aware` 把 `PickInfo.Zone` 读成有序
+  回退列表(逗号分隔,前缀层级:`"cn-north-1"` 可匹配 endpoint
+  `"cn-north-1a"`),逐级下探,全部为空才溢出 —— 单 zone 用法保持不变。
 - **注册 `Factory`(不是 `Balancer` 实例)。** balancer 有可变的 per-target
   状态,每 target 必须独立实例;注册工厂强制这一点。
 - **`Result.Done` 闭环请求生命周期。** `least_conn` 在 `Done` 中递减在途;

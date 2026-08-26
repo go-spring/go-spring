@@ -27,7 +27,7 @@ holds no configuration state of its own.
 
 - **Provider seam.** `conf.RegisterProvider("etcd", etcdController.Load)` is the
   only extension point; the application consumes it via
-  `spring.app.imports=[optional:]etcd:...`. The provider runs during
+  `spring.config.import=[optional:]etcd:...`. The provider runs during
   `AppConfig.Refresh`, before any bean exists, so it must build its own
   client from the source string rather than take one through injection.
 - **Client cache.** `clientv3.Client`s are cached per

@@ -20,7 +20,7 @@
 //
 //   - "file-watch" (filewatch.go) — one configuration document per import (a
 //     ConfigMap key holding application.yaml), parsed by extension. Layered
-//     overrides compose via spring.app.imports order; it never merges a directory.
+//     overrides compose via spring.config.import order; it never merges a directory.
 //   - "configtree" (configtree.go) — a directory of scalar key files (a Secret /
 //     env-style ConfigMap mount). Each leaf file maps to one property keyed by
 //     its dotted relative path, valued by its unparsed content.

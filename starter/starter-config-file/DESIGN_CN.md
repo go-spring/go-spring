@@ -7,7 +7,7 @@
 provider，共用同一套监听 + 刷新桥接：
 
 - **`file-watch`** —— 每次 import 一份配置文档（承载 `application.yaml` 的
-  ConfigMap key）。分层覆盖靠 `spring.app.imports` 行序叠加；provider 绝不合并目录。
+  ConfigMap key）。分层覆盖靠 `spring.config.import` 行序叠加；provider 绝不合并目录。
 - **`configtree`** —— 标量 key 文件目录（Secret / env 风格 ConfigMap 挂载）。每个
   叶子文件成为一个属性：key 为带点的相对路径，value 为未解析的内容。
 
@@ -37,7 +37,7 @@ provider，共用同一套监听 + 刷新桥接：
 
 ## 3. 约束
 
-- **file-watch 只接受单个文件，传目录即报错。** 优先级归属于 `spring.app.imports` 的行序
+- **file-watch 只接受单个文件，传目录即报错。** 优先级归属于 `spring.config.import` 的行序
   （框架的分层存储），而非目录内容——把任意文件合并进同一个属性集没有良定义的
   先后，因此 file-watch 拒绝这么做。分层覆盖应按优先级每个文件写一行 import。
 - **只监听父目录/树中目录，永不监听文件本身。** kubelet 更新 ConfigMap / Secret 卷时会写

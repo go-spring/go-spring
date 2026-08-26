@@ -65,3 +65,34 @@ Obtain the `Binder` from a broker starter (`starter-nats`, `starter-kafka`,
 ...); those starters also expose their raw client bean (e.g. `*nats.Conn`,
 `*kgo.Client`) as an escape hatch for broker-specific features this
 abstraction deliberately does not model.
+
+## Retry & Dead-Letter
+
+A handler error is surfaced to the binder's failure path (nack / broker
+redelivery) by default. Two composable handlers bound that behavior:
+
+- `Retry(h, RetryPolicy)` — retries the handler in-process up to
+  `MaxRetries` times with exponential backoff (`InitialInterval`,
+  `Multiplier`, `MaxInterval`); a success on any attempt acks, exhaustion
+  returns the last error so the broker takes over.
+- `DeadLetter(h, dlq, RetryPolicy)` — after retries are exhausted, publishes
+  the message to the `dlq` publisher (typically bound to `"<queue>.dlq"`)
+  and acks the original so the broker stops redelivering. The copy carries
+  the original headers plus `x-dlq-error` / `x-dlq-retries` / `x-dlq-key`.
+  If the DLQ publish itself fails, the original error is returned (nack) —
+  losing a dead letter is worse than redelivering.
+
+```go
+dlq, _ := binder.NewPublisher(ctx, "orders.dlq")
+_ = sub.Subscribe(ctx, messaging.DeadLetter(
+    messaging.SafeHandler(handle),
+    dlq,
+    messaging.RetryPolicy{MaxRetries: 2, InitialInterval: 100 * time.Millisecond},
+))
+```
+
+Wrap `Retry` OUTSIDE `SafeHandler` (`Retry(SafeHandler(h), p)`) so a panic
+converts to an error once and is retried like any other failure. Brokers
+with native dead-lettering (RabbitMQ DLX, RocketMQ DLQ topics) can be
+configured instead, at which point `DeadLetter` is unnecessary — both routes
+carry the original payload; only the failure metadata differs.

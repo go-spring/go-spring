@@ -3,8 +3,9 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-registry-etcd` 把**当前实例**注册进 etcd 集群 —— 它是 Go-Spring 客户端服务
-发现(`spring/discovery`)的注册侧对应物,相当于 Spring Cloud `ServiceRegistry` 的注册
-方向,以 etcd 租约(lease)为底座。
+发现(`spring/discovery`)的注册侧对应物 —— **并**提供消费侧的 etcd discovery 后端,
+一个 starter 覆盖命名体系的两半,相当于 Spring Cloud `ServiceRegistry` +
+`DiscoveryClient`,以 etcd 租约(lease)为底座。
 
 适用于**虚机 / 裸机 / 混合**部署,即平台不替你注册实例的场景。**纯 Kubernetes**
 下则完全用不到本 starter:平台已把每个 Pod 注册在 Service 之后,你用
@@ -81,6 +82,30 @@ spring.registry.metadata.version=v1
 
 实例以 JSON(`service_name`、`addr`、`weight`、`metadata`)存储于
 `<key-prefix><service-name>/<id>`,读取同一前缀的 discovery 后端即可还原成 `Endpoint`。
+
+### 发现(消费侧)
+
+消费侧是按 etcd 集群注册的 `cloud/discovery` 后端,配置于
+`spring.discovery.etcd.<name>` —— 与 starter-registry-nacos 相同的具名适配器
+惯例。client starter 引用这个名字,经它解析:
+
+```properties
+spring.discovery.etcd.prod.endpoints=127.0.0.1:2379
+spring.discovery.etcd.prod.key-prefix=/services/
+```
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `endpoints` | (必填) | etcd 集群节点;设置它即启用该块。 |
+| `username` / `password` | (空) | 认证凭据,匿名集群留空。 |
+| `dial-timeout` | `5s` | 限定初次连接与启动探测耗时。 |
+| `key-prefix` | `/services/` | 必须与注册方的 prefix 一致,否则解析不到。 |
+| `tls.*` | (关闭) | 可选客户端 TLS。 |
+
+健康由键的存活性推导:实例键只在租约存活期间存在,因此找到的每个键都是活实例 ——
+无需探测协议。后端同时实现 `discovery.Catalog`(`Services()` 枚举所有仍有活键的
+服务),网关可据此动态构建路由。注册实例元数据里可选的 `scheme` 键承担传输选择,
+与 nacos 适配器对齐。
 
 ## 工作原理
 

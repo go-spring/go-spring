@@ -29,7 +29,7 @@ import _ "go-spring.org/starter-config-nacos"
 `[optional:]nacos:<host>:<port>/<dataId>?<query>`：
 
 ```properties
-spring.app.imports=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
+spring.config.import=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
 ```
 
 查询参数：
@@ -61,7 +61,7 @@ type Demo struct {
 
 ## 工作原理
 
-- 启动时，`spring.app.imports` 会调用 `nacos` Provider：它从 source 串自建配置客户端、
+- 启动时，`spring.config.import` 会调用 `nacos` Provider：它从 source 串自建配置客户端、
   拉取 data id，并注册变更监听器。
 - 远端变更触发监听器，回调框架的 `PropertiesRefresher`：重新加载所有配置源（重跑本
   Provider），并通过两阶段原子提交重新绑定所有 `gs.Dync` 字段。

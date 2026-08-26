@@ -19,6 +19,8 @@ package transaction_test
 import (
 	"context"
 	"errors"
+	"strconv"
+	"sync"
 	"testing"
 
 	"go-spring.org/cloud/experimental/transaction"
@@ -369,4 +371,139 @@ func TestRecover_WithoutStoreErrors(t *testing.T) {
 	coord := transaction.NewCoordinator()
 	_, err := coord.Recover(context.Background(), transaction.Saga{ID: "x"})
 	assert.Error(t, err).NotNil()
+}
+
+// TestExecute_ConcurrentSagasOnSharedStore drives many sagas concurrently
+// through one coordinator and store: each must reach its own terminal status
+// with its own results, and the shared store must stay race-free.
+func TestExecute_ConcurrentSagasOnSharedStore(t *testing.T) {
+	store := &transaction.MemoryStore{}
+	coord := transaction.NewCoordinator(transaction.WithStore(store))
+
+	const n = 16
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			id := "concurrent-" + strconv.Itoa(i)
+			gift := "r" + strconv.Itoa(i)
+			_, err := coord.Execute(context.Background(), transaction.Saga{
+				ID: id,
+				Steps: []transaction.Step{
+					{Name: "a", Action: func(context.Context) (any, error) { return gift, nil },
+						Compensate: func(context.Context, any) error { return nil }},
+					{Name: "b", Action: func(context.Context) (any, error) {
+						if i%2 == 0 {
+							return nil, errors.New("boom")
+						}
+						return nil, nil
+					}},
+				},
+			})
+			if i%2 == 0 && err == nil {
+				t.Errorf("saga %s should have failed", id)
+			}
+			if i%2 == 1 && err != nil {
+				t.Errorf("saga %s should have committed: %v", id, err)
+			}
+		})
+	}
+	wg.Wait()
+
+	// Even i: failed + compensated => terminal log kept. Odd i: committed => log deleted.
+	pending, err := store.Pending(context.Background())
+	assert.Error(t, err).Nil()
+	assert.That(t, len(pending)).Equal(0) // none left Running
+	for i := range n {
+		_, err := store.Load(context.Background(), "concurrent-"+strconv.Itoa(i))
+		if i%2 == 1 {
+			assert.Error(t, err).Is(transaction.ErrSnapshotNotFound)
+		} else {
+			assert.Error(t, err).Nil()
+		}
+	}
+}
+
+// TestMemoryStore_ConcurrentAccess exercises the store's own lock from many
+// goroutines across all four operations.
+func TestMemoryStore_ConcurrentAccess(t *testing.T) {
+	store := &transaction.MemoryStore{}
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Go(func() {
+			id := "s" + strconv.Itoa(i)
+			_ = store.Save(context.Background(), id, transaction.Snapshot{
+				ID: id, Status: transaction.StatusRunning,
+				Completed:   []string{"a"},
+				StepResults: map[string]any{"a": 1},
+			})
+			_, _ = store.Load(context.Background(), id)
+			_, _ = store.Pending(context.Background())
+			_ = store.Delete(context.Background(), id)
+		})
+	}
+	wg.Wait()
+}
+
+// TestRecover_CompensationFailureIsTerminalAndIdempotent proves that when
+// recovery's compensation fails, the terminal CompensationFailed log makes a
+// second Recover a no-op instead of replaying the failed compensation.
+func TestRecover_CompensationFailureIsTerminalAndIdempotent(t *testing.T) {
+	ctx := context.Background()
+	store := &transaction.MemoryStore{}
+	assert.Error(t, store.Save(ctx, "f1", transaction.Snapshot{
+		ID: "f1", Status: transaction.StatusRunning,
+		Completed: []string{"a"}, StepResults: map[string]any{"a": "ra"},
+	})).Nil()
+
+	calls := 0
+	coord := transaction.NewCoordinator(transaction.WithStore(store))
+	saga := transaction.Saga{ID: "f1", Steps: []transaction.Step{
+		{Name: "a", Action: act("ra"),
+			Compensate: func(context.Context, any) error { calls++; return errors.New("restore broke") }},
+	}}
+
+	res, err := coord.Recover(ctx, saga)
+	assert.Error(t, err).Nil()
+	assert.That(t, res.Status).Equal(transaction.StatusCompensationFailed)
+	assert.That(t, calls).Equal(1)
+
+	// Second recovery: already terminal, nothing replays.
+	res, err = coord.Recover(ctx, saga)
+	assert.Error(t, err).Nil()
+	assert.That(t, res.Status).Equal(transaction.StatusCompensationFailed)
+	assert.That(t, calls).Equal(1)
+}
+
+// TestStepErrorErrorAndUnwrap covers the error plumbing callers rely on with
+// errors.Is / errors.As.
+func TestStepErrorErrorAndUnwrap(t *testing.T) {
+	inner := errors.New("boom")
+	se := &transaction.StepError{Step: "a", Phase: transaction.PhaseCompensate, Err: inner}
+	assert.That(t, se.Error()).Equal("transaction: step a Compensate: boom")
+	assert.That(t, errors.Is(se, inner)).True()
+	var target *transaction.StepError
+	assert.That(t, errors.As(se, &target)).True()
+	assert.That(t, target.Step).Equal("a")
+}
+
+func TestStatusAndPhaseStrings(t *testing.T) {
+	assert.That(t, transaction.StatusRunning.String()).Equal("Running")
+	assert.That(t, transaction.StatusCompensationFailed.String()).Equal("CompensationFailed")
+	assert.That(t, transaction.PhaseAction.String()).Equal("Action")
+}
+
+// TestStepRegistry_RegisterCopiesAndLookup proves the registry snapshots the
+// slice it is given, so later caller mutations cannot change behaviour.
+func TestStepRegistry_RegisterCopiesAndLookup(t *testing.T) {
+	reg := transaction.NewStepRegistry()
+	steps := []transaction.Step{{Name: "a", Action: act(1)}}
+	reg.Register("Svc.Do", steps...)
+	steps[0].Name = "mutated"
+
+	got, ok := reg.Lookup("Svc.Do")
+	assert.That(t, ok).True()
+	assert.That(t, got[0].Name).Equal("a")
+
+	_, ok = reg.Lookup("Other")
+	assert.That(t, ok).False()
 }

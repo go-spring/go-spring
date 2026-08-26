@@ -7,7 +7,7 @@ Go-Spring 的**可热更新配置源**。空导入一次即注册**两个** Prov
 ConfigMap/Secret 挂载的两种形态：
 
 - **`file-watch`** —— 单份配置文档（承载 `application.yaml` 的 ConfigMap key）。要做分层覆盖，
-  按优先级每个文件写一行 import，后声明的覆盖先声明的，规则与 `spring.app.imports` 组合其它
+  按优先级每个文件写一行 import，后声明的覆盖先声明的，规则与 `spring.config.import` 组合其它
   配置源完全一致。
 - **`configtree`** —— 标量 key 文件目录（Secret / env 风格 ConfigMap 挂载）。每个文件的路径成为
   带点的属性 key、未解析的内容成为 value；路径唯一，因此天然没有优先级问题。
@@ -38,11 +38,11 @@ import _ "go-spring.org/starter-config-file"
 
 ```properties
 # 监听挂载的 ConfigMap/Secret 单个 key 文件（K8s 推荐用法）：
-spring.app.imports=file-watch:/etc/config/application.yaml
+spring.config.import=file-watch:/etc/config/application.yaml
 
 # 分层覆盖：后声明的覆盖先声明的。
-spring.app.imports=file-watch:/etc/app/application.yaml
-spring.app.imports=file-watch:/etc/app/application-prod.yaml
+spring.config.import=file-watch:/etc/app/application.yaml
+spring.config.import=file-watch:/etc/app/application-prod.yaml
 ```
 
 `path` 必须是**单个文件**（传目录会被拒绝——目录场景请用 configtree provider）。按扩展名
@@ -78,7 +78,7 @@ volumes:
 
 ```properties
 # 指向承载你配置文档的那个具体 key 文件。
-spring.app.imports=file-watch:/etc/config/application.yaml
+spring.config.import=file-watch:/etc/config/application.yaml
 ```
 
 执行 `kubectl edit configmap my-app-config`（或触发一次新的发布）更新 volume 后，绑定的
@@ -92,7 +92,7 @@ value 为 trim 后的**裸内容**（不解析）。
 
 ```properties
 # 一个 Secret 挂载：db.user、db.password、server.port（每个文件一个值）
-spring.app.imports=configtree:/etc/secret
+spring.config.import=configtree:/etc/secret
 ```
 
 ```
@@ -111,12 +111,12 @@ K8s Secret/ConfigMap 挂载是扁平的（一个 key 一个文件；key 名允�
 
 | 形态 | Provider | 优先级 |
 |---|---|---|
-| 一整份配置文档 | `file-watch:<file>` | 多文件靠 `spring.app.imports` 行序叠加 |
+| 一整份配置文档 | `file-watch:<file>` | 多文件靠 `spring.config.import` 行序叠加 |
 | 大量标量 key 文件 | `configtree:<dir>` | 无需——路径唯一，key 不会冲突 |
 
 ## 工作原理
 
-- 启动时，`spring.app.imports` 会调用 `file-watch` / `configtree` Provider：读取来源，并在其
+- 启动时，`spring.config.import` 会调用 `file-watch` / `configtree` Provider：读取来源，并在其
   **父目录**（`configtree` 是树中的每个目录）上启动监听器。
 - Kubernetes 更新挂载的 ConfigMap/Secret 时，会先写入一个新的带时间戳的数据目录，再原子地把
   `..data` 软链重命名指向它。你 import 的 key 文件是经 `..data` 解析的软链，每次更新其 inode

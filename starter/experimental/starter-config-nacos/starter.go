@@ -16,7 +16,7 @@
 
 // Package StarterConfigNacos integrates Nacos as a remote configuration
 // center for Go-Spring. Blank-importing this package registers a "nacos"
-// config provider that can be consumed via spring.app.imports, together with
+// config provider that can be consumed via spring.config.import, together with
 // the bridge that wires remote config changes into the application-wide
 // property refresh for live hot-reload.
 //

@@ -145,6 +145,17 @@ func (s *Server) StopContext(ctx context.Context) error {
 	return nil
 }
 
+// UpdateWeight re-advertises this instance with a new weight on its existing
+// lease: the entry never leaves discovery and watchers (loadbalance pools
+// included) simply observe the new value on their next snapshot. It is an
+// optional runtime API — call it after Run has registered the instance.
+func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
+	if s.registrar == nil || s.reg.Addr == "" {
+		return errutil.Explain(nil, "registry-etcd: instance not registered yet")
+	}
+	return s.registrar.UpdateWeight(ctx, s.reg, weight)
+}
+
 func (s *Server) deregister(ctx context.Context) {
 	if s.registrar == nil {
 		return

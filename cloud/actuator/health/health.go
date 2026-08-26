@@ -44,6 +44,14 @@ const (
 	// StatusDown means the component is unhealthy; a readiness probe should
 	// fail while any required component is down.
 	StatusDown Status = "DOWN"
+
+	// StatusDegraded is an aggregate-only verdict: at least one non-critical
+	// component is DOWN while every critical component is UP. The application
+	// can still serve traffic, so a readiness probe should NOT fail — the
+	// failure stays visible in the per-component detail instead. A single
+	// component is never DEGRADED: it is UP or DOWN; only a collector
+	// aggregating several indicators can produce this status.
+	StatusDegraded Status = "DEGRADED"
 )
 
 // Group identifies which Kubernetes probe an indicator contributes to. The

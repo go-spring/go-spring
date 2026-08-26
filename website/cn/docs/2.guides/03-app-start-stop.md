@@ -281,7 +281,7 @@ go run main.go -Dspring.profiles.active=prod
 例如 `-Dspring.profiles.active=dev,local`。
 框架会按照声明顺序加载 Profile 对应的配置文件，后加载的 Profile 配置可以覆盖先加载的同名配置项。
 
-配置文件支持使用 `spring.app.imports` 导入其他配置文件：
+配置文件支持使用 `spring.config.import` 导入其他配置文件：
 
 ```yaml
 spring:
@@ -292,7 +292,7 @@ spring:
 env: development
 ```
 
-通过 `spring.app.imports` 导入的配置文件与声明它的配置文件处于同一优先级。
+通过 `spring.config.import` 导入的配置文件与声明它的配置文件处于同一优先级。
 当导入的配置文件中包含同名 key 时，以后加载的配置为准。
 此外，导入目前仅支持一层，即被导入的文件不能再声明新的导入，即使声明了也不会生效。
 

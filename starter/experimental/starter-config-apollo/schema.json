@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.app.imports (apollo)",
+  "title": "spring.config.import (apollo)",
   "type": "object",
-  "description": "The apollo provider has no bound prefix; it is consumed via spring.app.imports=optional:apollo:<host>:<port>/<namespace>?appId=&cluster=&secret=&format=",
+  "description": "The apollo provider has no bound prefix; it is consumed via spring.config.import=optional:apollo:<host>:<port>/<namespace>?appId=&cluster=&secret=&format=",
   "properties": {
     "appId": { "type": "string", "description": "required" },
     "cluster": { "type": "string", "default": "default" },

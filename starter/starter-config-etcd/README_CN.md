@@ -28,7 +28,7 @@ import _ "go-spring.org/starter-config-etcd"
 `[optional:]etcd:<host>:<port>/<key>?<query>`：
 
 ```properties
-spring.app.imports=optional:etcd:127.0.0.1:2379/gs-config-demo?format=properties
+spring.config.import=optional:etcd:127.0.0.1:2379/gs-config-demo?format=properties
 ```
 
 查询参数：
@@ -59,7 +59,7 @@ etcd key 变更时，Provider 的 watcher 会触发一次应用属性刷新，�
 
 ## 工作原理
 
-- 启动时，`spring.app.imports` 会调用 `etcd` Provider：它从 source 串自建 clientv3、
+- 启动时，`spring.config.import` 会调用 `etcd` Provider：它从 source 串自建 clientv3、
   读取 key，并对该 key 安装一个 `etcd Watch`。
 - key 变更会推送一次 watch 事件，触发框架的 `PropertiesRefresher`：重新加载所有
   配置源（重跑本 Provider），并通过两阶段原子提交重新绑定所有 `gs.Dync` 字段。

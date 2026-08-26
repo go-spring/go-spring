@@ -29,7 +29,7 @@
 //		  db.password         -> ..data/db.password        (symlink, value "s3cr3t")
 //		  server.port         -> ..data/server.port        (symlink, value "8080")
 //
-//	 1. app.properties imports the tree via spring.app.imports=configtree:./mount
+//	 1. app.properties imports the tree via spring.config.import=configtree:./mount
 //	 2. A bean binds db.user to a gs.Dync[string] field.
 //	 3. The test rewrites the Secret the way the kubelet does — write a new
 //	    timestamped dir, then atomically rename ..data onto it. The provider's

@@ -16,7 +16,7 @@
 
 // Package StarterConfigApollo integrates Apollo as a remote configuration
 // center for Go-Spring. Blank-importing this package registers an "apollo"
-// config provider consumable via spring.app.imports, together with the
+// config provider consumable via spring.config.import, together with the
 // bridge that wires remote config changes into the application-wide property
 // refresh for live hot-reload.
 //
@@ -47,6 +47,29 @@ import (
 type agolloChangeEvent = agstorage.ChangeEvent
 type agolloFullChangeEvent = agstorage.FullChangeEvent
 
+// apolloClient is the slice of agollo.Client the controller actually uses.
+// Narrowing to an interface keeps the type fakeable in tests without
+// standing up the sixteen-method agollo.Client surface (whose Config cannot
+// even be constructed outside agollo).
+type apolloClient interface {
+	// GetConfigContent returns the raw namespace content, or "" when the
+	// namespace has not been synced yet.
+	GetConfigContent(namespace string) string
+	AddChangeListener(listener agstorage.ChangeListener)
+}
+
+// agolloClientAdapter adapts a real agollo.Client to apolloClient.
+type agolloClientAdapter struct {
+	agollo.Client
+}
+
+func (a agolloClientAdapter) GetConfigContent(namespace string) string {
+	if cfg := a.Client.GetConfig(namespace); cfg != nil {
+		return cfg.GetContent()
+	}
+	return ""
+}
+
 var (
 	starterTag    = log.RegisterAppTag("starter_config_apollo", "")
 	apolloControl = &apolloCtrl{}
@@ -63,7 +86,7 @@ type apolloCtrl struct {
 	Refresher *gs.PropertiesRefresher `autowire:""`
 
 	mu       sync.Mutex
-	clients  map[string]agollo.Client
+	clients  map[string]apolloClient
 	listened map[string]struct{}
 }
 
@@ -133,14 +156,14 @@ func clientKey(cs apolloSource) string {
 }
 
 // clientFor returns a cached agollo Client, creating one if necessary.
-func (c *apolloCtrl) clientFor(cs apolloSource) (agollo.Client, error) {
+func (c *apolloCtrl) clientFor(cs apolloSource) (apolloClient, error) {
 	key := clientKey(cs)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.clients == nil {
-		c.clients = map[string]agollo.Client{}
+		c.clients = map[string]apolloClient{}
 	}
 	if cli, ok := c.clients[key]; ok {
 		return cli, nil
@@ -159,8 +182,8 @@ func (c *apolloCtrl) clientFor(cs apolloSource) (agollo.Client, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "create apollo client for %s failed", cs.server)
 	}
-	c.clients[key] = cli
-	return cli, nil
+	c.clients[key] = agolloClientAdapter{Client: cli}
+	return c.clients[key], nil
 }
 
 // Load implements conf/provider.Provider. It fetches the namespace content,
@@ -182,11 +205,7 @@ func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, erro
 	// Install the listener BEFORE the fetch so a later change is never missed.
 	c.registerListener(cli, cs)
 
-	cfg := cli.GetConfig(cs.namespace)
-	content := ""
-	if cfg != nil {
-		content = cfg.GetContent()
-	}
+	content := cli.GetConfigContent(cs.namespace)
 	if content == "" {
 		if optional {
 			log.Warnf(context.Background(), starterTag, "optional apollo namespace %s is empty (skipped)", cs.namespace)
@@ -205,7 +224,7 @@ func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, erro
 
 // registerListener installs an agollo change listener for the client,
 // deduplicated across repeated Load calls.
-func (c *apolloCtrl) registerListener(cli agollo.Client, cs apolloSource) {
+func (c *apolloCtrl) registerListener(cli apolloClient, cs apolloSource) {
 	lk := clientKey(cs)
 
 	c.mu.Lock()

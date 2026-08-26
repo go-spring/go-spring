@@ -2,7 +2,7 @@ module go-spring.org/starter-gorm-postgres/example
 
 go 1.26.1
 
-require gorm.io/gorm v1.31.1
+require gorm.io/gorm v1.31.2
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
@@ -24,7 +24,7 @@ require (
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 

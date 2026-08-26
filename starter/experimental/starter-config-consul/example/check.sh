@@ -25,15 +25,15 @@ fi
 trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
-# Wait for the Consul HTTP API port.
+# Wait for the Consul HTTP API via the leader status endpoint. A raw TCP probe
+# (/dev/tcp) both fails in some shells and accepts before Consul finishes
+# booting; the leader endpoint is the real readiness signal.
 for _ in $(seq 1 60); do
-    if (exec 3<>/dev/tcp/127.0.0.1/8500) 2>/dev/null; then
-        exec 3>&- 3<&- 2>/dev/null || true
+    if curl -fsS "http://127.0.0.1:8500/v1/status/leader" >/dev/null 2>&1; then
         break
     fi
     sleep 1
 done
-sleep 2
 
 go run . &
 pid=$!

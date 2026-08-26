@@ -281,7 +281,7 @@ We can specify multiple Profiles in `spring.profiles.active`, separated by comma
 for example, `-Dspring.profiles.active=dev,local`.
 The framework loads the configuration files corresponding to Profiles in declaration order, and later-loaded Profile configuration can override configuration items with the same name that were loaded earlier.
 
-Configuration files support importing other configuration files with `spring.app.imports`:
+Configuration files support importing other configuration files with `spring.config.import`:
 
 ```yaml
 spring:
@@ -292,7 +292,7 @@ spring:
 env: development
 ```
 
-Configuration files imported through `spring.app.imports` are at the same priority as the configuration file that declares them.
+Configuration files imported through `spring.config.import` are at the same priority as the configuration file that declares them.
 When imported configuration files contain the same key, the configuration loaded later takes precedence.
 In addition, imports currently only support one level; that is, imported files cannot declare new imports, and such declarations will not take effect even if present.
 

@@ -31,7 +31,7 @@ Declare the import in your configuration file using the provider syntax
 `[optional:]nacos:<host>:<port>/<dataId>?<query>`:
 
 ```properties
-spring.app.imports=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
+spring.config.import=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
 ```
 
 Query parameters:
@@ -65,7 +65,7 @@ publish to hot-reload flow.
 
 ## How It Works
 
-- On startup, `spring.app.imports` invokes the `nacos` provider, which builds a
+- On startup, `spring.config.import` invokes the `nacos` provider, which builds a
   config client from the source string, fetches the data id, and registers a
   change listener.
 - A remote change fires the listener, which calls the framework's

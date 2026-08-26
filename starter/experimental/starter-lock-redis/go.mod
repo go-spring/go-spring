@@ -15,7 +15,7 @@ require (
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
@@ -30,11 +30,15 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-require go-spring.org/cloud v0.0.0
+require (
+	github.com/alicebob/miniredis/v2 v2.38.0
+	go-spring.org/cloud v0.0.0
+)
 
 require (
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.45.0 // indirect
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect

@@ -19,6 +19,8 @@ package at
 import (
 	"context"
 	"errors"
+	"strconv"
+	"sync"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -175,4 +177,30 @@ func TestGlobalAT_CommitsOnSuccessRollsBackOnError(t *testing.T) {
 	assert.Error(t, err).Matches("insufficient balance")
 	assert.That(t, rolledBack.rollbacks).Equal(1)
 	assert.That(t, rolledBack.commits).Equal(0)
+}
+
+// TestCoordinator_ConcurrentGlobalTransactions drives several global
+// transactions (distinct rows) through one coordinator and lock concurrently:
+// all must resolve exactly once and the shared lock state must stay race-free.
+func TestCoordinator_ConcurrentGlobalTransactions(t *testing.T) {
+	c := NewCoordinator(WithGlobalLock(&MemoryGlobalLock{}))
+
+	const n = 8
+	branches := make([]*fakeBranch, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			ctx, xid := c.Begin(context.Background())
+			b := &fakeBranch{id: "db" + strconv.Itoa(i)}
+			branches[i] = b
+			assert.Error(t, c.Register(ctx, xid, b)).Nil()
+			assert.Error(t, c.Commit(ctx, xid)).Nil()
+		})
+	}
+	wg.Wait()
+
+	for i := range n {
+		assert.That(t, branches[i].commits).Equal(1)
+		assert.That(t, branches[i].rollbacks).Equal(0)
+	}
 }

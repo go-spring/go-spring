@@ -19,6 +19,8 @@ package tcc
 import (
 	"context"
 	"errors"
+	"strconv"
+	"sync"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -209,4 +211,130 @@ func TestStatusString(t *testing.T) {
 	assert.That(t, StatusCommitted.String()).Equal("Committed")
 	assert.That(t, StatusCancelFailed.String()).Equal("CancelFailed")
 	assert.That(t, PhaseConfirm.String()).Equal("Confirm")
+}
+
+// TestExecute_ConfirmRetriedUnderPolicy proves a transient Confirm failure is
+// retried under the participant's policy and can still commit — the retry path
+// TCC recovery depends on (Confirm must be idempotent because it is retried).
+func TestExecute_ConfirmRetriedUnderPolicy(t *testing.T) {
+	attempts := 0
+	coord := NewCoordinator()
+	res, err := coord.Execute(context.Background(), Transaction{
+		ID: "tx-r1",
+		Participants: []Participant{{
+			Name:  "a",
+			Try:   func(context.Context) (any, error) { return "t", nil },
+			Retry: RetryPolicy{MaxRetries: 1},
+			Confirm: func(context.Context, any) error {
+				attempts++
+				if attempts == 1 {
+					return errors.New("transient")
+				}
+				return nil
+			},
+			Cancel: func(context.Context, any) error { return nil },
+		}},
+	})
+	assert.Error(t, err).Nil()
+	assert.That(t, res.Status).Equal(StatusCommitted)
+	assert.That(t, attempts).Equal(2)
+}
+
+// TestExecute_CancelRetriedUnderPolicy is the rollback mirror: a transient
+// Cancel failure is retried, so the transaction still reaches StatusCancelled.
+func TestExecute_CancelRetriedUnderPolicy(t *testing.T) {
+	cancels := 0
+	coord := NewCoordinator()
+	res, err := coord.Execute(context.Background(), Transaction{
+		ID: "tx-r2",
+		Participants: []Participant{{
+			Name:    "a",
+			Try:     func(context.Context) (any, error) { return "t", nil },
+			Retry:   RetryPolicy{MaxRetries: 1},
+			Confirm: func(context.Context, any) error { return nil },
+			Cancel: func(context.Context, any) error {
+				cancels++
+				if cancels == 1 {
+					return errors.New("transient")
+				}
+				return nil
+			},
+		}, {
+			Name:    "b",
+			Try:     func(context.Context) (any, error) { return nil, errors.New("boom") },
+			Confirm: func(context.Context, any) error { return nil },
+			Cancel:  func(context.Context, any) error { return nil },
+		}},
+	})
+	assert.Error(t, err).Matches("boom")
+	assert.That(t, res.Status).Equal(StatusCancelled)
+	assert.That(t, cancels).Equal(2)
+}
+
+func TestExecute_RejectsDuplicateParticipantNames(t *testing.T) {
+	coord := NewCoordinator()
+	_, err := coord.Execute(context.Background(), Transaction{
+		ID:           "tx-dup",
+		Participants: []Participant{okParticipant(&tracer{}, "a"), okParticipant(&tracer{}, "a")},
+	})
+	assert.Error(t, err).Matches("duplicate participant name")
+}
+
+// TestExecute_ConcurrentTransactions drives many transactions concurrently
+// through one coordinator and store, so the shared log writes stay race-free
+// and every transaction reaches its own terminal status.
+func TestExecute_ConcurrentTransactions(t *testing.T) {
+	store := &MemoryStore{}
+	coord := NewCoordinator(WithStore(store))
+
+	const n = 16
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			_, _ = coord.Execute(context.Background(), Transaction{
+				ID: "concurrent-" + strconv.Itoa(i),
+				Participants: []Participant{{
+					Name:    "a",
+					Try:     func(context.Context) (any, error) { return nil, nil },
+					Confirm: func(context.Context, any) error { return nil },
+					Cancel:  func(context.Context, any) error { return nil },
+				}},
+			})
+		})
+	}
+	wg.Wait()
+
+	pending, err := store.Pending(context.Background())
+	assert.Error(t, err).Nil()
+	assert.That(t, len(pending)).Equal(0) // all committed, logs deleted
+}
+
+// TestRecover_ConfirmFailedIsTerminal proves a confirm that keeps failing during
+// recovery leaves a terminal log, so a second Recover does not replay it.
+func TestRecover_ConfirmFailedIsTerminal(t *testing.T) {
+	ctx := context.Background()
+	store := &MemoryStore{}
+	assert.Error(t, store.Save(ctx, "tx-cf", Snapshot{
+		ID: "tx-cf", Status: StatusConfirming,
+		Tried: []string{"a"}, TryResults: map[string]any{"a": "tok"},
+	})).Nil()
+
+	confirms := 0
+	coord := NewCoordinator(WithStore(store))
+	tx := Transaction{ID: "tx-cf", Participants: []Participant{{
+		Name:    "a",
+		Try:     func(context.Context) (any, error) { return "tok", nil },
+		Confirm: func(context.Context, any) error { confirms++; return errors.New("still down") },
+		Cancel:  func(context.Context, any) error { return nil },
+	}}}
+
+	res, err := coord.Recover(ctx, tx)
+	assert.Error(t, err).Nil()
+	assert.That(t, res.Status).Equal(StatusConfirmFailed)
+	assert.That(t, confirms).Equal(1)
+
+	res, err = coord.Recover(ctx, tx)
+	assert.Error(t, err).Nil()
+	assert.That(t, res.Status).Equal(StatusConfirmFailed)
+	assert.That(t, confirms).Equal(1) // terminal: not replayed
 }
