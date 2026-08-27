@@ -43,10 +43,18 @@ their starters.
   *before* a call is routed. A `resilience.Executor` rejects only at
   invocation and is not queryable — a proper source of truth for LB-layer
   eviction, but the wrong shape here.
-- **`Pool` merges the two health signals.** `discovery.Endpoint.Healthy` and
+- **`Pool` merges the health signals.** `discovery.Endpoint.Healthy` and
   `Tracker.Eligible` are applied in sequence; both fall back to their input
   when a filter would empty the set. The final `Pool.Pick` result carries
   a wrapped `Done` that feeds the tracker.
+- **Zero weight drains.** After the health filters, `Pool.Pick` drops
+  endpoints whose weight is 0 — the runtime drain signal an operator (or the
+  registrar's `UpdateWeight(0)`) writes to the naming service. The filter is
+  uniform across strategies, not a weighted-only concern, and falls back to
+  its input when every endpoint is zero-weighted: an unnormalized snapshot
+  (registrants predating the weight contract store 0 for "default") must not
+  black-hole the pool, it just degrades to an even split. Negative weights are
+  misconfiguration, not a drain signal — those endpoints stay in rotation.
 
 ## 3. Constraints
 

@@ -84,8 +84,19 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (neo4j.DriverWi
 // applyTLS configures the encryption-related fields of conf from the shared TLS
 // settings. The CA certificate (if any) is loaded into conf.TlsConfig, and a
 // client certificate (if any) is installed as a static certificate provider for
-// mutual TLS. Both only take effect for the "+s"/"+ssc" URI schemes.
+// mutual TLS. Both only take effect for the "+s"/"+ssc" URI schemes — Enabled
+// does not control encryption here (the URI scheme does), it is a placeholder
+// kept for config-shape parity.
 func applyTLS(t tlsconf.TLSConfig, conf *neo4j.Config) error {
+	if t.CAFile != "" || t.ServerName != "" || t.InsecureSkipVerify {
+		conf.TlsConfig = &tls.Config{}
+	}
+	if t.ServerName != "" {
+		conf.TlsConfig.ServerName = t.ServerName
+	}
+	if t.InsecureSkipVerify {
+		conf.TlsConfig.InsecureSkipVerify = true
+	}
 	if t.CAFile != "" {
 		pem, err := os.ReadFile(t.CAFile)
 		if err != nil {
@@ -95,7 +106,7 @@ func applyTLS(t tlsconf.TLSConfig, conf *neo4j.Config) error {
 		if !pool.AppendCertsFromPEM(pem) {
 			return fmt.Errorf("neo4j: no certificates parsed from %s", t.CAFile)
 		}
-		conf.TlsConfig = &tls.Config{RootCAs: pool}
+		conf.TlsConfig.RootCAs = pool
 	}
 	if t.CertFile != "" || t.KeyFile != "" {
 		provider, err := auth.NewStaticClientCertificateProvider(

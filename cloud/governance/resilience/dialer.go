@@ -23,14 +23,14 @@ import (
 
 // DialFunc is the shape of the connection-establishing hook exposed by common
 // clients — it matches net.Dialer.DialContext as well as the dialer closure a
-// caller builds around a [go-spring.org/spring/discovery.Resolver] (Pick a live
+// caller builds around a [go-spring.org/cloud/discovery.Resolver] (Pick a live
 // endpoint, then dial its Addr), which resolves a live service endpoint before
 // each dial.
 type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
 // NewDialer wraps base so every connection attempt flows through exec. It is the
 // client-side dialer seam of the framework: pairing it with a discovery-backed
-// dialer (one built on a [go-spring.org/spring/discovery.Resolver]) gives
+// dialer (one built on a [go-spring.org/cloud/discovery.Resolver]) gives
 // service-to-service calls circuit breaking, retry and a bulkhead at the point
 // connections are made, without the client library knowing anything about
 // resilience.

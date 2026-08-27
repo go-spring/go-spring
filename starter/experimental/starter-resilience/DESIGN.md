@@ -67,7 +67,7 @@ where sentinel's adaptive flow control and tunable breakers shine.
   four-layer rule keeps the foundation zero-dep; this starter is one
   concrete implementation, not the abstraction.
 - **A single dialer / RoundTripper seam for every library — rejected.**
-  `LiveDialer` is the only universal seam, and it only covers
+  `Resolver` is the only universal seam, and it only covers
   connection establishment; per-request hooks live where each library
   chose to put them.
 - **`otelsarama`-style upstream wrapper for MQ — rejected.** The

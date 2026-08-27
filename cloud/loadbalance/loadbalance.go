@@ -15,7 +15,7 @@
  */
 
 // Package loadbalance is the client-side load-balancing layer that sits on top
-// of [go-spring.org/spring/discovery].
+// of [go-spring.org/cloud/discovery].
 //
 // Discovery answers "which instances exist right now?"; this package answers
 // the next question — "given that live set, which one do I send this request

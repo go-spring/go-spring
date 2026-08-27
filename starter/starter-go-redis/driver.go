@@ -80,7 +80,7 @@ var (
 // topologies return *redis.Client.
 //
 // In single mode, when c.ServiceName is set the address is resolved through the
-// registered discovery backend (c.Discovery) instead of c.Addr: a LiveDialer
+// registered discovery backend (c.Discovery) instead of c.Addr: a Resolver
 // keeps the endpoint set fresh and the client dials a live instance on each new
 // connection. Combined with c.ConnMaxLifetime, connections recycle onto updated
 // addresses without rebuilding the client. When c.ServiceName is empty this is a
@@ -161,7 +161,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client,
 
 // CreateClusterClient creates a cluster Redis client seeded by c.Addrs. The bean
 // type is *redis.ClusterClient. Cluster mode self-discovers its nodes, so
-// c.ServiceName / LiveDialer is not used here.
+// c.ServiceName / the discovery resolver is not used here.
 func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, io.Closer, error) {
 	tlsConfig, err := c.TLS.Build()
 	if err != nil {

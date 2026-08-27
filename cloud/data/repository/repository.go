@@ -114,8 +114,6 @@ type Backend[T any, ID comparable] interface {
 	ExistsByID(ctx context.Context, id ID) (bool, error)
 	// Delete removes id (absent id is not an error).
 	Delete(ctx context.Context, id ID) error
-	// Count returns the total number of entities.
-	Count(ctx context.Context) (int64, error)
 	// FindAll returns the entities matching q's filters/sort/window.
 	FindAll(ctx context.Context, q Query) ([]T, error)
 	// CountBy returns the number of entities matching q's filters, ignoring its
@@ -193,8 +191,10 @@ func (r *repo[T, ID]) Delete(ctx context.Context, id ID) error {
 	return r.backend.Delete(ctx, id)
 }
 
+// Count returns the total number of entities. It is a store-neutral
+// composition — CountBy over an empty Query — same source as FindPage's Total.
 func (r *repo[T, ID]) Count(ctx context.Context) (int64, error) {
-	return r.backend.Count(ctx)
+	return r.backend.CountBy(ctx, Query{})
 }
 
 func (r *repo[T, ID]) FindAll(ctx context.Context, q Query) ([]T, error) {

@@ -18,21 +18,14 @@ package StarterLockConsul
 
 import (
 	"go-spring.org/cloud/experimental/lock"
-	"go-spring.org/cloud/observe"
 	lockobserve "go-spring.org/cloud/observe/lock"
 )
 
+// wrapLockerBean wraps the instance's locker with the shared observe-lock
+// adapter (trace span + duration/in-flight metric + access log;
+// lock.system="consul"). cfg flows the instance's observer.observability
+// config into the adapter. When starter-otel is not imported the global
+// OTel providers are no-ops, so the wrapper adds negligible overhead.
 func wrapLockerBean(c Config, inner lock.Locker) lock.Locker {
-	return WrapLocker(c.Observer.Observability, inner)
-}
-
-// WrapLocker returns a lock.Locker whose Acquire/TryAcquire are wrapped with the
-// observe kit's three signals (trace span + duration/in-flight metric + access
-// log; lock.system="consul"). The implementation lives in the shared observe-lock
-// adapter so every lock backend shares one wrapper instead of copy-pasting it
-// per starter. cfg flows the instance's observer.observability config (log
-// level, per-op skips) into the adapter. When starter-otel is not imported the
-// global OTel providers are no-ops, so the wrapper adds negligible overhead.
-func WrapLocker(cfg observe.ObserveConfig, inner lock.Locker) lock.Locker {
-	return lockobserve.WrapLocker("consul", cfg, inner)
+	return lockobserve.WrapLocker("consul", c.Observer.Observability, inner)
 }

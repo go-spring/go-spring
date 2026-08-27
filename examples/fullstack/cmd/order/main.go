@@ -67,8 +67,8 @@ import (
 	_ "go-spring.org/starter-transaction-saga"
 )
 
-// discoveryName is the stdlib/discovery registry key under which the Consul
-// resolver is published; the order->inventory LiveDialer looks it up by this
+// discoveryName is the cloud/discovery registry key under which the Consul
+// resolver is published; the order->inventory Resolver looks it up by this
 // name. It matches the gateway's spring.gateway.routes.orders.upstream.discovery.
 const discoveryName = "consul"
 
@@ -179,7 +179,7 @@ func writeJSON(w http.ResponseWriter, code int, body string) {
 }
 
 // inventoryClient talks to service B through Consul discovery. It builds one
-// LiveDialer lazily (on first use, by which time B has registered) and reuses it;
+// Resolver lazily (on first use, by which time B has registered) and reuses it;
 // requests target the logical host "inventory" and the dialer connects to a live
 // instance, ignoring that host.
 type inventoryClient struct {

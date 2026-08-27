@@ -174,7 +174,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     Apache Thrift(`starter-thrift`)、纯 HTTP web(gin/echo/hertz)。只有这些才值得
     做 Go-Spring 注册 seam,且要等具体需求落地。
 - **client 侧发现已统一,provider 注册不统一。** client 类 starter 可通过
-  `cloud/discovery`(由 driver 的 dialer 钩子注入 `LiveDialer`)把 `ServiceName`
+  `cloud/discovery`(由 driver 的 dialer 钩子注入 `Resolver`)把 `ServiceName`
   解析成实时端点,这对各基础设施客户端是通用的。RPC 的 **provider** 注册按上述原则
   保持框架原生。`ServiceName` 为空时 client 按地址直连,行为不变。各框架原生注册进
   consul/etcd/nacos/zookeeper/polaris 的示例见 `contrib/registry/`。

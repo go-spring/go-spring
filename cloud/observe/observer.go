@@ -36,8 +36,8 @@ const tracerName = "go-spring.org/cloud/observe"
 
 // durationBuckets are the OTel histogram boundaries for operation duration (in
 // seconds). They span the range that matters for client ops — sub-millisecond
-// cache hits through multi-second queries — mirroring the server-side buckets
-// used by starter-gin so client and server latencies share a scale.
+// cache hits through multi-second queries — the OTel HTTP semconv
+// recommended duration buckets, shared by the server-side starters.
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
 
 // SemConv describes one OTel semantic-convention namespace: the metric-name

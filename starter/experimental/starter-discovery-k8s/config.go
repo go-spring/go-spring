@@ -15,7 +15,7 @@
  */
 
 // Package StarterDiscoveryK8s integrates Kubernetes-native service discovery
-// into Go-Spring's client-side discovery abstraction (stdlib/discovery).
+// into Go-Spring's client-side discovery abstraction (cloud/discovery).
 //
 // Inside a cluster the platform already registers every Pod behind a Service,
 // so an application should discover peers through that platform capability

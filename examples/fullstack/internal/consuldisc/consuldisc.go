@@ -17,7 +17,7 @@
 // Package consuldisc is a small, client-side [discovery.Discovery] backed by the
 // Consul catalog. starter-registry-consul is a *register-side* starter (it
 // advertises this instance into Consul); it does not ship a client-side resolver.
-// The unified stdlib/discovery abstraction is exactly the seam meant to close
+// The unified cloud/discovery abstraction is exactly the seam meant to close
 // that gap, so the reference app supplies its own Consul-backed Discovery here
 // and registers it once via discovery.Register — the gateway's lb://order route
 // and the order service's order->inventory call then resolve through it with no
@@ -44,8 +44,8 @@ type Backend struct {
 }
 
 // Register builds a Consul-backed Discovery for the agent at addr (e.g.
-// "127.0.0.1:8500") and publishes it in the stdlib/discovery registry under
-// name, so discovery.GetDiscovery(name) (used by the gateway) and any LiveDialer find
+// "127.0.0.1:8500") and publishes it in the cloud/discovery registry under
+// name, so discovery.GetDiscovery(name) (used by the gateway) and any Resolver find
 // it. It is meant to be called once at process start.
 func Register(name, addr string) error {
 	b, err := New(addr)

@@ -182,6 +182,8 @@ use (
 	./starter/experimental/starter-swagger/example
 	./starter/experimental/starter-tdengine
 	./starter/experimental/starter-tdengine/example
+	./starter/experimental/starter-outbox-gorm
+	./starter/experimental/starter-outbox-gorm/example
 	./starter/experimental/starter-thrift
 	./starter/experimental/starter-thrift/example
 	./starter/experimental/starter-thrift/example-otel

@@ -56,7 +56,7 @@
 
 - **让 `cloud/governance/resilience` 依赖 sentinel——弃选。**四层规则要求基础层零
   依赖;本 starter 是一种具体实现,而非抽象。
-- **给所有库来一个统一的 dialer / RoundTripper seam——弃选。**`LiveDialer`
+- **给所有库来一个统一的 dialer / RoundTripper seam——弃选。**`Resolver`
   是唯一真通用的 seam,但只覆盖建连;per-request 钩子只能停在各库自选之处。
 - **MQ 用 `otelsarama` 之类上游 wrapper——弃选。**这类 wrapper 已废弃 /
   锁定于特定客户端版本;call-site span helper 老化更慢(见姊妹条 MQ 可

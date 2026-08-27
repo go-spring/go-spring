@@ -68,7 +68,7 @@ spring.go-redis.cache.discovery=k8s            # this backend
 
 The Redis client now dials a live Pod of the `my-redis` Service, refreshed as
 Pods come and go. See [example/main.go](example/example.go) for resolving a Service
-directly through `discovery.MustGet`.
+directly through `discovery.GetDiscovery`.
 
 ## Configuration
 
@@ -89,7 +89,7 @@ Bound under `spring.discovery.k8s.<name>`:
 
 - Registration happens during the container's bean-registration phase, before
   any client constructor runs — when a Redis/GORM client calls
-  `discovery.MustGet("<name>")`, the backend is already present.
+  `discovery.GetDiscovery("<name>")`, the backend is already present.
 - **DNS mode** resolves `<service>.<namespace>.svc.<cluster-domain>`. With
   `port-name` set it issues an SRV query (`_<port-name>._tcp.<fqdn>`) for
   address+port; otherwise an A query paired with `port`. The watcher polls on

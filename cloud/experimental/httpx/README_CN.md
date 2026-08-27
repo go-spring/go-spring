@@ -9,7 +9,7 @@
 ## 特性
 
 - 唯一缝隙:`http.RoundTripper`——与 `resilience`、`otelhttp` 复用同一缝隙。
-- 服务发现 + 负载均衡:配置 `ServiceName` 时接 `discovery.LiveDialer` +
+- 服务发现 + 负载均衡:配置 `ServiceName` 时接 `discovery.Resolver` +
   `loadbalance.Pool`(round-robin / least-conn / consistent-hash / weighted /
   zone-aware),可选离群剔除。
 - 直连模式:只填 `Addr` 即把每次请求重写到该主机,生成客户端的 `Target` 可留空。

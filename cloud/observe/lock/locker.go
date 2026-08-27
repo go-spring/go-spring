@@ -23,7 +23,7 @@
 // to be.
 //
 // It lives in the observe package (rather than copy-pasted into each lock
-// starter, or inside the otel-free spring core that defines [lock.Locker]) so
+// starter, or inside the otel-free abstraction packages that define [lock.Locker]) so
 // the four lock starters share one implementation instead of duplicating a
 // ~70-line wrapper each, differing only in the system label. A starter installs
 // it with its backend's system value and its per-instance observability config:

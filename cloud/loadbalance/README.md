@@ -13,6 +13,12 @@ this request to?" — and evicts instances that keep failing.
   - `least_conn` — picks the endpoint with fewest in-flight requests.
   - `consistent_hash` — FNV-32 ring with virtual nodes; hash-key affinity.
   - `weighted` — nginx smooth weighted round-robin (SWRR).
+A `Weight` of 0 on an endpoint is the runtime drain signal: the pool excludes
+it from picking (every strategy, not just `weighted`), falling back to an even
+split only when every endpoint is zero-weighted so unnormalized snapshots
+never black-hole traffic. Registrars normalize an unset weight to 1 at write
+time, so 0 only ever means "drained on purpose" (e.g. `UpdateWeight(0)`).
+
   - `zone_aware` — locality preference over a delegate balancer; the zone
     hint accepts an ordered fallback list (`"cn-north-1a,cn-north-1"` =
     rack first, then availability zone, then spill-over).
@@ -21,7 +27,7 @@ this request to?" — and evicts instances that keep failing.
 - `Tracker` — outlier-ejection with consecutive-failure threshold + half-open
   probe, keyed by endpoint address; queryable so `Pool` can evict before
   routing.
-- `Pool` — binds an `EndpointSource` (a `discovery.LiveDialer` satisfies it
+- `Pool` — binds an `EndpointSource` (a `discovery.Resolver` satisfies it
   directly), a `Balancer` and an optional `Tracker`; two-stage filtering
   (`Healthy` first, `Tracker.Eligible` next) with a never-black-hole
   guarantee — an empty filter always falls back to its input.
@@ -31,7 +37,7 @@ this request to?" — and evicts instances that keep failing.
 ## Installation
 
 ```
-go get go-spring.org/stdlib
+go get go-spring.org/cloud
 ```
 
 ## Usage

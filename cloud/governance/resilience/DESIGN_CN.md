@@ -36,7 +36,7 @@ sentinel 驱动。
 - **两个客户端 adapter 覆盖实际场景:**
   - `NewRoundTripper` —— 覆盖面最广;任何 `*http.Client` 换 Transport 即接入
     保护。重试用 `Request.GetBody` clone 请求体;5xx 计入熔断失败。
-  - `NewDialer` —— 连接层通用;与 `discovery.LiveDialer.DialContext` 天然
+  - `NewDialer` —— 连接层通用;与 a dial closure over `discovery.Resolver.Pick` 天然
     组合。resource 固定,因为 dialer 本就绑定一个 service。
 
   入站 admission 不在本包:各协议 starter 用 `governance.ExecutorFor` seam
@@ -69,7 +69,7 @@ sentinel 驱动。
   用 `redis.Hook`、GORM 用 plugin callback、MQ 生产者各库形态不同。要用一个
   `Interceptor` 统一,遇到 call-site-only 型钩子(NATS / pulsar)就走不通。
   故选:小而共享的 `Executor` 内核 + 一族手写 adapter —— 与 `discovery` +
-  `LiveDialer` 相同的分层。
+  `Resolver` 相同的分层。
 - **Executor 而非按阶段装饰器。** 单个 `Execute` 内把 rate / breaker /
   bulkhead / retry / timeout 一起做,per-resource 状态(token bucket / breaker
   / 信号量)才协调一致。按阶段独立装饰会让"重试算不算限流"这类语义摇摆。

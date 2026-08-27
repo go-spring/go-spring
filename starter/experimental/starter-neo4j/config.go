@@ -62,9 +62,10 @@ type Config struct {
 
 	// TLS configures the certificate trust used for the encrypted URI schemes
 	// ("bolt+s", "bolt+ssc", "neo4j+s", "neo4j+ssc"). Encryption itself is
-	// selected by the URI scheme; these fields only customize the trust store
-	// and client certificate. They are ignored for the plaintext "bolt"/"neo4j"
-	// schemes.
+	// selected by the URI scheme — tls.enabled does NOT control it here, it is
+	// a placeholder for config-shape parity; these fields only customize the
+	// trust store, peer name and client certificate. They are ignored for the
+	// plaintext "bolt"/"neo4j" schemes.
 	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// Driver specifies which Neo4j driver to use, defaults to DefaultDriver.

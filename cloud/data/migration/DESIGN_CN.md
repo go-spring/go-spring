@@ -1,7 +1,7 @@
 # migration 设计
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
-`migration` 是 stdlib 层零依赖的结构迁移抽象。它让 Go 获得 Flyway / Liquibase 的*效果*
+`migration` 是零依赖的结构迁移抽象。它让 Go 获得 Flyway / Liquibase 的*效果*
 ——带版本、带校验和守卫、只向前、恰好一次地应用迁移——而不复刻它们的 XML/DSL 机制。后端
 （gorm 之上的 MySQL/PostgreSQL/SQLite）作为独立 starter 贡献一个 `Store`。
 
@@ -50,4 +50,4 @@
   高声失败强制了不可变历史纪律，从而让各环境保持一致。
 - **简单语句分割器，而非 SQL 解析器。** `splitStatements` 处理迁移文件承载的 DDL/DML
   （引号/`--` 注释之外的分号）；带内部分号的过程体应放进单语句文件由驱动整体执行，而不足以
-  在 stdlib 中引入完整解析器。
+  在本包中引入完整解析器。

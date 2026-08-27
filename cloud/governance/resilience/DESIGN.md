@@ -46,7 +46,7 @@ sentinel driver from `starter/experimental/starter-resilience`.
     body (`Request.GetBody`); 5xx responses count as failures for the
     breaker.
   - `NewDialer` — coarser but universal at the connection layer; pairs
-    naturally with `discovery.LiveDialer.DialContext`. Resource is fixed
+    naturally with a dial closure over `discovery.Resolver.Pick`. Resource is fixed
     because a dialer is already scoped to one service.
 
   Inbound admission is NOT in this package: each protocol starter builds
@@ -112,7 +112,7 @@ sentinel driver from `starter/experimental/starter-resilience`.
   `Interceptor` interface would break down at the first library whose hook
   is call-site-only (NATS, pulsar). The chosen answer is a small, shared
   `Executor` core plus a family of hand-written adapters — the analogous
-  layering to `discovery` + `LiveDialer`.
+  layering to `discovery` + `Resolver`.
 - **Executor over decorator per stage.** A single `Execute` bundles rate
   limit + breaker + bulkhead + retry + timeout in one call so per-resource
   state (token bucket / breaker / semaphore) is coherent. Decorating each

@@ -11,7 +11,7 @@
 - 把 `spring.discovery.k8s.<name>` 条目绑定到 `discovery.Discovery` 后端，
   每条一个，注册到进程级 `cloud/discovery` 注册表下 `<name>` 名字。
 - Discovery 后端**不是可注入 bean**。客户端 starter（redis / gorm / grpc）
-  用 `discovery: <name>` 字段引用，靠 `discovery.MustGet` 反查。
+  用 `discovery: <name>` 字段引用，靠 `discovery.GetDiscovery` 反查。
 - 注册一个 lifecycle bean（`manager`），仅为在容器关闭时清理后台 informer
   goroutine。
 - 有意只做 client 侧：无 controller、无 CRD、不往注册中心推。K8s 本身是
@@ -21,7 +21,7 @@
 
 - **在任何 client bean 前注册。** 注册在 `gs.Module` 回调（bean 注册阶段）
   执行，框架保证它在任一 client bean 构造函数之前跑——所以 redis/gorm
-  客户端调 `discovery.MustGet` 时不会跟注册表打架。
+  客户端调 `discovery.GetDiscovery` 时不会跟注册表打架。
 - **两种模式共用同一缝隙。** `Mode=dns` 走 headless Service DNS（SRV/A）
   ——零依赖、无 RBAC——由于 DNS 无 push 通道，靠周期重解析。
   `Mode=endpointslice` 用 client-go informer 监听 EndpointSlices，实时更新

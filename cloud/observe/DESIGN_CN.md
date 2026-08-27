@@ -70,10 +70,12 @@ client 接口的共享桥接(lock、resilience executor、transaction observer)�
   每个发射点为一个猜想需求分叉;OTel 是事实标准,其全局提供了零配置
   的 no-op 通路。代价 —— spring 核心不能承载本件 —— 被接受,并以分层
   化解(抽象在核心,桥接在此)。
-- **独立的 observe-gorm / observe-lock / observe-resilience /
-  observe-transaction 模块已收拢为 `go-spring.org/cloud/observe` 的
-  子包**:模块边界被证明只有开销、没有消费者差异;lock/transaction
-  桥接指向 `cloud/experimental/*` 接口,不把 starter 拖进依赖图。
+- **独立的 observe-lock / observe-resilience / observe-transaction
+  模块已收拢为 `go-spring.org/cloud/observe` 的子包**:模块边界被
+  证明只有开销、没有消费者差异;lock/transaction 桥接指向
+  `cloud/experimental/*` 接口,不把 starter 拖进依赖图。gorm 桥是
+  刻意的例外:它住在 `go-spring.org/starter-gorm` 的 `observe` 包,
+  因为本模块不得依赖 gorm。
 - **status 只有两态,metric 上不做错误分类。** 按 client 各自分类错误
   会随后端漂移;唯一值得付出分类成本的是 resilience 桥,所以六值
   taxonomy 放在那里而非通用 Observer。

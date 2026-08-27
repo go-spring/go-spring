@@ -60,7 +60,7 @@ The [example.go](example/example.go) file demonstrates the following core Redis 
 * **Startup connection validation (fail-fast)**: after building the pool the starter borrows a connection and issues a
   `PING`; a misconfigured address or unreachable server fails the boot instead of the first request.
 * **Service discovery**: set `service-name` (and optionally `discovery` to pick a registered backend, default `default`)
-  instead of `addr`; a `LiveDialer` resolves the service through the registered `discovery.Discovery` backend and dials a
+  instead of `addr`; a `Resolver` resolves the service through the registered `discovery.Discovery` backend and dials a
   live endpoint for every new pool connection. Combined with `conn-max-lifetime`, pooled connections recycle onto updated
   addresses without rebuilding the pool. On shutdown the starter stops the background watch. This mirrors
   `starter-go-redis`; see [discovery.go](example/discovery.go) for a backend example.

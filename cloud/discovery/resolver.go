@@ -121,30 +121,39 @@ func (r *Resolver) Endpoints() []Endpoint {
 	return *r.eps.Load()
 }
 
+// Eligible returns the endpoints allowed to receive traffic under the
+// [Endpoint] contract: prefer !Disabled && Healthy, degrade to !Disabled when
+// none are healthy, never Disabled. It is the single shared eligibility rule —
+// [Resolver.Pick] and every selection layer built on top of discovery
+// (e.g. loadbalance) filter through it so the two cannot drift apart.
+func Eligible(eps []Endpoint) []Endpoint {
+	out := eps[:0:0]
+	for _, ep := range eps {
+		if !ep.Disabled && ep.Healthy {
+			out = append(out, ep)
+		}
+	}
+	if len(out) == 0 {
+		for _, ep := range eps {
+			if !ep.Disabled {
+				out = append(out, ep)
+			}
+		}
+	}
+	return out
+}
+
 // Pick selects one eligible endpoint by round-robin. Weight is ignored —
 // weighted selection belongs in loadbalance. Eligibility follows the
-// [Endpoint] contract: prefer !Disabled && Healthy, degrade to !Disabled, never
-// Disabled. It errors when the service has no endpoints, or every endpoint is
-// disabled.
+// [Endpoint] contract via [Eligible]. It errors when the service has no
+// endpoints, or every endpoint is disabled.
 func (r *Resolver) Pick() (Endpoint, error) {
 	eps := *r.eps.Load()
 	if len(eps) == 0 {
 		return Endpoint{}, fmt.Errorf("discovery: no endpoints for %q", r.q)
 	}
 
-	eligible := eps[:0:0]
-	for _, ep := range eps {
-		if !ep.Disabled && ep.Healthy {
-			eligible = append(eligible, ep)
-		}
-	}
-	if len(eligible) == 0 {
-		for _, ep := range eps {
-			if !ep.Disabled {
-				eligible = append(eligible, ep)
-			}
-		}
-	}
+	eligible := Eligible(eps)
 	if len(eligible) == 0 {
 		return Endpoint{}, fmt.Errorf("discovery: no eligible (non-disabled) endpoints for %q", r.q)
 	}

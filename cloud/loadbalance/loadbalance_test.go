@@ -337,3 +337,56 @@ func TestPoolEmpty(t *testing.T) {
 	_, err := p.Pick(PickInfo{})
 	assert.Error(t, err).Is(ErrNoAvailable)
 }
+
+func TestPoolZeroWeightDrains(t *testing.T) {
+	// A zero weight (the drain signal) removes the instance from picking,
+	// across every strategy — here round-robin, which otherwise ignores weight.
+	src := staticSource{
+		{Addr: "a", Healthy: true, Weight: 1},
+		{Addr: "b", Healthy: true, Weight: 0},
+	}
+	p := NewPool(src, NewRoundRobin())
+	for range 10 {
+		r, err := p.Pick(PickInfo{})
+		assert.Error(t, err).Nil()
+		assert.String(t, r.Endpoint.Addr).Equal("a")
+		r.Done(DoneInfo{})
+	}
+}
+
+func TestPoolAllZeroWeightFallsBack(t *testing.T) {
+	// Every endpoint zero-weighted (an unnormalized snapshot from registrants
+	// predating the weight contract): fall back to an even split rather than
+	// blackholing the pool.
+	src := staticSource{
+		{Addr: "a", Healthy: true},
+		{Addr: "b", Healthy: true},
+	}
+	p := NewPool(src, NewRoundRobin())
+	m := map[string]int{}
+	for range 20 {
+		r, err := p.Pick(PickInfo{})
+		assert.Error(t, err).Nil()
+		m[r.Endpoint.Addr]++
+		r.Done(DoneInfo{})
+	}
+	assert.Number(t, m["a"] + m["b"]).Equal(20)
+	assert.Number(t, m["a"]).Equal(10)
+	assert.Number(t, m["b"]).Equal(10)
+}
+
+func TestPoolNegativeWeightKept(t *testing.T) {
+	// Negative weight is misconfiguration, not a drain signal: the instance
+	// stays in rotation (the weighted balancer treats it as the default).
+	src := staticSource{
+		{Addr: "a", Healthy: true, Weight: -1},
+		{Addr: "b", Healthy: true, Weight: 0},
+	}
+	p := NewPool(src, NewRoundRobin())
+	for range 10 {
+		r, err := p.Pick(PickInfo{})
+		assert.Error(t, err).Nil()
+		assert.String(t, r.Endpoint.Addr).Equal("a")
+		r.Done(DoneInfo{})
+	}
+}

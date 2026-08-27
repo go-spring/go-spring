@@ -240,7 +240,7 @@ application can load configuration from it at startup and hot-reload at runtime.
     seam, and only when a concrete requirement lands.
 - **Client-side discovery is already unified; provider registration is not.**
   Client starters resolve a `ServiceName` to live endpoints through
-  `cloud/discovery` (`LiveDialer` injected via the driver's dialer hook); this
+  `cloud/discovery` (`Resolver` injected via the driver's dialer hook); this
   is generic across infrastructure clients. RPC *provider* registration stays
   framework-native per the principle above. When `ServiceName` is empty the
   client dials the address directly, unchanged. For examples of framework-native

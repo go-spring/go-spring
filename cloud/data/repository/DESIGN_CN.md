@@ -1,7 +1,7 @@
 # repository 设计
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
-`repository` 是 stdlib 层零依赖的通用数据访问抽象。它用 Go 泛型达到 Spring Data
+`repository` 是零依赖的通用数据访问抽象。它用 Go 泛型达到 Spring Data
 `CrudRepository` + `PagingAndSortingRepository` 的等价效果——一套面向领域类型的现成持久化操作,
 而非代理生成的方法名解析。存储(gorm、Mongo)通过实现 `Backend` 接缝接入,gorm 实现位于
 `starter-repository-gorm`。
@@ -19,7 +19,8 @@
 
 - **`Backend[T, ID]` 接口作为存储接缝。** 没有全局 driver 注册表。后端绑定的是活跃客户端
   (`*gorm.DB`、Mongo collection),因此选择后端是 bean 类型替换——与 `cloud/experimental/batch`.`JobRepository`、
-  `cloud/experimental/lock` 相同的取舍。`Backend` 刻意与 `Repository` 同形、仅去掉与存储无关的关切,
+  `cloud/experimental/lock` 相同的取舍。`Backend` 只暴露存储原语(`FindAll`、`CountBy` 等);
+  与存储无关的组合(`Count` = 空 `Query` 的 `CountBy`、`FindPage`)位于 `New` 层,
   使实现只是一层薄薄的 `Query` 翻译。
 - **`New` 叠加与存储无关的关切。** 审计与 `FindPage` 组合(列表 + 计数)位于任何后端之上、
   收敛在 `New` 中,新后端无需重复实现。

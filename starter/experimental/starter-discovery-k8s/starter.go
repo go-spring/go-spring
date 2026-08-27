@@ -41,7 +41,7 @@ func init() {
 	// calls discovery.GetDiscovery("<name>") the backend is already present.
 	//
 	// A backend is *not* an injectable bean; like a discovery adapter it lives
-	// in the stdlib/discovery registry. We register a single lifecycle bean
+	// in the cloud/discovery registry. We register a single lifecycle bean
 	// (manager) purely so informer goroutines are stopped on shutdown.
 	gs.Module(gs.OnProperty("spring.discovery.k8s"), func(r gs.BeanProvider, p flatten.Storage) error {
 		mgr := &manager{}

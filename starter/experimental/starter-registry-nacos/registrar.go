@@ -157,10 +157,11 @@ func (r *nacosRegistrar) UpdateWeight(_ context.Context, reg instance, weight in
 	if err != nil {
 		return err
 	}
-	// Same convention as Register: weight 0 means "no traffic" in Nacos, so
-	// keep the unweighted default at 1.
+	// Weight 0 is the drain signal and passes through — Nacos natively treats
+	// 0 as "receive no traffic". Only a negative (misconfigured) weight is
+	// normalized to 1; unlike Register, an unset default never reaches here.
 	w := float64(weight)
-	if w <= 0 {
+	if w < 0 {
 		w = 1
 	}
 	ok, err := r.client.UpdateInstance(vo.UpdateInstanceParam{

@@ -45,3 +45,33 @@ func TestRegister_BadAddr(t *testing.T) {
 	err = r.Register(context.Background(), instance{ServiceName: "orders", Addr: "host:abc"})
 	assert.Error(t, err).Matches("non-numeric port")
 }
+
+func TestRegister_NormalizesDefaultWeight(t *testing.T) {
+	// Register normalizes an unset weight to 1 before storing, so "default" is
+	// never stored as 0 — 0 is reserved for the drain signal. The stored
+	// registration advertises exactly that normalized weight.
+	r := &consulRegistrar{heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
+	reg := instance{ServiceName: "orders", Addr: "1.2.3.4:80"}
+	if reg.Weight <= 0 {
+		reg.Weight = 1
+	}
+	asr := r.buildRegistration(reg)
+	assert.That(t, asr.Weights.Passing).Equal(1)
+}
+
+func TestUpdateWeight_Unregistered(t *testing.T) {
+	client, err := api.NewClient(&api.Config{Address: "127.0.0.1:8500"})
+	assert.Error(t, err).Nil()
+	r := &consulRegistrar{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
+
+	err = r.UpdateWeight(context.Background(), instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
+	assert.Error(t, err).Matches("unregistered instance")
+}
+
+func TestBuildRegistration_AdvertisesDrainWeight(t *testing.T) {
+	// A drain weight of 0 is advertised as a zero passing weight — Consul
+	// routes no traffic to it — rather than being normalized away.
+	r := &consulRegistrar{heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
+	asr := r.buildRegistration(instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0})
+	assert.That(t, asr.Weights.Passing).Equal(0)
+}

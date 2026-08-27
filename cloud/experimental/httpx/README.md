@@ -11,7 +11,7 @@ sites are produced by `gs-http-gen`; a generated client only holds an
 - Single seam: `http.RoundTripper`, the same seam already used by `resilience`
   and `otelhttp`.
 - Discovery + load balancing: when a `ServiceName` is set, wires a
-  `discovery.LiveDialer` and a `loadbalance.Pool` (round-robin, least-conn,
+  `discovery.Resolver` and a `loadbalance.Pool` (round-robin, least-conn,
   consistent-hash, weighted, zone-aware) with optional outlier ejection.
 - Direct addressing: with only `Addr`, rewrites every request to that host — the
   generated client's `Target` need not be set.

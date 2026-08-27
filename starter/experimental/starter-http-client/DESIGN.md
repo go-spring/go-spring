@@ -31,7 +31,7 @@ resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp
 - **otelhttp base.** Always innermost so span propagation includes the
   full downstream path (including rewritten host + LB pick).
 - **discovery + LB.** When `service-name` is non-empty:
-  `discovery.MustGet` + `LiveDialer` + `loadbalance.Pool` — the same
+  `discovery.GetDiscovery` + `Resolver` + `loadbalance.Pool` — the same
   client-side stack every infrastructure client uses. Otherwise a
   `fixedHostTransport` handles the `Addr` case. Both empty → the
   request's own host is used.

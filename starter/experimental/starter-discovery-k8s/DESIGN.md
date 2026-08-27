@@ -13,7 +13,7 @@ backends that resolve a Kubernetes Service name to live Pod endpoints.
   `cloud/discovery` registry under `<name>`.
 - Discovery backends are **not injectable beans**. Client starters
   (redis / gorm / grpc) reference them by name via a `discovery: <name>`
-  field and look them up through `discovery.MustGet`.
+  field and look them up through `discovery.GetDiscovery`.
 - A single lifecycle bean (`manager`) is registered so background
   informer goroutines are torn down on container shutdown.
 - Deliberately client-side only: no controller, no CRD, no push into a
@@ -24,7 +24,7 @@ backends that resolve a Kubernetes Service name to live Pod endpoints.
 - **Register before any client bean.** The registration runs inside a
   `gs.Module` callback (bean-registration phase), which the framework
   executes before any client bean constructor — so a Redis/GORM client
-  calling `discovery.MustGet` never races the registry.
+  calling `discovery.GetDiscovery` never races the registry.
 - **Two modes, one seam.** `Mode=dns` uses headless Service DNS
   (SRV/A) — zero dependency, no RBAC — with a periodic re-resolve loop
   because DNS has no push channel. `Mode=endpointslice` runs a client-go

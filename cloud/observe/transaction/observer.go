@@ -21,9 +21,9 @@
 // starters share one implementation instead of copy-pasting an otelObserver
 // each.
 //
-// It lives in the observe package (rather than inside the otel-free core
-// that defines the Observer interface, or copy-pasted per starter) for the same
-// reason observe-gorm and observe-lock exist: N starters, one shared adapter.
+// It lives in the observe package (rather than inside the otel-free
+// abstraction packages cloud/experimental/transaction that define the Observer
+// interfaces, or copy-pasted per starter): N starters, one shared adapter.
 // Everything rides the otel globals starter-otel installs; without it the
 // global tracer is a no-op, so an unconfigured app pays almost nothing.
 //

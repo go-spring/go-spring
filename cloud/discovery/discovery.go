@@ -51,7 +51,13 @@ type Endpoint struct {
 	// schemes leave it empty.
 	Scheme string
 
-	// Weight is the load-balancing weight; 0 is treated as the default weight.
+	// Weight is the load-balancing weight. 0 set through the naming service is
+	// the runtime drain signal: load-balance pools exclude the instance from
+	// picking (falling back to an even split only when every instance is
+	// zero-weighted, so unnormalized snapshots never blackhole). Negative
+	// values are misconfiguration, treated as the default weight (1). Backends
+	// that do not carry weights leave it empty — registrants normalize an
+	// unset weight to 1 at write time so "default" is never stored as 0.
 	Weight int
 
 	// Disabled reports whether the instance has been administratively removed

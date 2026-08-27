@@ -25,7 +25,7 @@
 // (http.RoundTripper, redis.Hook, gorm plugin, ...).
 //
 // The abstraction is split from its implementations exactly like
-// [go-spring.org/spring/discovery]:
+// [go-spring.org/cloud/discovery]:
 //
 //   - [Policy] is a backend-neutral, declarative description of the desired
 //     protection.

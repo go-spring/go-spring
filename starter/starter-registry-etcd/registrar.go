@@ -128,6 +128,12 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg instance) error {
 	if err := errutil.RequireField("registry-etcd", "addr", reg.Addr); err != nil {
 		return err
 	}
+	// An unset (or misconfigured negative) weight is normalized at write time
+	// so "default" is never stored as 0 — 0 is reserved for the runtime drain
+	// signal, only reachable through UpdateWeight.
+	if reg.Weight <= 0 {
+		reg.Weight = 1
+	}
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,

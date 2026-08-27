@@ -26,8 +26,8 @@ resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp ba
 
 - **otelhttp base 位于最内。**让 span 传播覆盖完整下游路径(含改写后的
   host 与 LB 挑选)。
-- **discovery + LB。**`service-name` 非空时:`discovery.MustGet` +
-  `LiveDialer` + `loadbalance.Pool`——与其它基础设施客户端同款。否则走
+- **discovery + LB。**`service-name` 非空时:`discovery.GetDiscovery` +
+  `Resolver` + `loadbalance.Pool`——与其它基础设施客户端同款。否则走
   `fixedHostTransport`(`Addr` 模式)。两者都为空 → 用请求原 host。
 - **resilience 位于最外。**让**重试可重挑端点**,且**熔断按逻辑服务名**
   (`req.URL.Host` = 生成客户端的 Target)聚合,而非按端点地址。

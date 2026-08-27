@@ -35,6 +35,11 @@ kitex loadbalancer 等)在各自 starter 里把此内核翻译成框架的 picke
 - **`Pool` 合并两种健康信号:** `discovery.Endpoint.Healthy` 与
   `Tracker.Eligible` 顺序应用;两级都在集合被过空时回退到输入。最终
   `Pool.Pick` 的 `Done` 被包了一层,自动喂 Tracker。
+- **零权重摘流:** 健康过滤之后,`Pool.Pick` 剔除权重为 0 的端点——这是运维
+  (或注册器的 `UpdateWeight(0)`)写入命名中心的运行时摘流信号。过滤对所有
+  策略统一生效(不只 weighted),且全为零权重时回退到过滤前集合:未归一化的
+  快照(早于权重契约的注册方以 0 表示"默认")不得黑洞化整个池,只是退化为
+  均等分担。负权重是误配而非摘流信号——这类端点留在轮换中。
 
 ## 3. 不变量
 

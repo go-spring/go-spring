@@ -35,7 +35,7 @@ by [`cloud/experimental/httpx`](../../../cloud/experimental/httpx) from three co
 abstractions, all behind the single `http.RoundTripper` seam:
 
 * [`discovery`](../../../cloud/discovery) — when a `service-name` is set, a
-  `LiveDialer` keeps a fresh endpoint snapshot;
+  `Resolver` keeps a fresh endpoint snapshot;
 * [`loadbalance`](../../../cloud/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier ejection) and the
   transport rewrites the request host to it;

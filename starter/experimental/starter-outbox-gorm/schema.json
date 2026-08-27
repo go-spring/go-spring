@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.outbox",
+  "description": "Transactional outbox relays: one entry per relay instance, each draining one gorm database's outbox_message table to a messaging binder.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "db": {
+        "type": "string",
+        "description": "The *gorm.DB bean name backing the outbox table. Empty autowires the single *gorm.DB bean."
+      },
+      "binder": {
+        "type": "string",
+        "description": "The messaging binder name (as registered by the broker starter, e.g. kafka, nats). Required."
+      },
+      "auto-migrate": {
+        "type": "boolean",
+        "default": false,
+        "description": "Create the outbox_message table at startup. Off by default; create it from the documented DDL when managing schema externally."
+      },
+      "poll-interval": {
+        "type": "string",
+        "default": "1s",
+        "description": "Wait between polls when the table is drained. Minimum 100ms."
+      },
+      "batch-size": {
+        "type": "integer",
+        "default": 100,
+        "description": "Maximum records fetched per poll."
+      },
+      "max-attempts": {
+        "type": "integer",
+        "default": 8,
+        "description": "Total delivery attempts before a record is dead-lettered."
+      },
+      "backoff-base": {
+        "type": "string",
+        "default": "1s",
+        "description": "Retry wait after the first failure; doubled per further failure."
+      },
+      "backoff-max": {
+        "type": "string",
+        "default": "1m",
+        "description": "Cap on one retry wait."
+      },
+      "dlq-suffix": {
+        "type": "string",
+        "default": ".dlq",
+        "description": "Appended to a destination to derive the dead-letter destination. Empty disables the DLQ copy."
+      }
+    },
+    "required": ["binder"]
+  }
+}

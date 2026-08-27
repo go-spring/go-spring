@@ -16,7 +16,7 @@
 
 // Command example-lb is a self-contained smoke test for the gRPC client-side
 // load-balancing adapter (starter-grpc/balancer.go) built on
-// go-spring.org/spring/loadbalance. It needs no external services or docker: it
+// go-spring.org/cloud/loadbalance. It needs no external services or docker: it
 // starts three in-process Echo backends, adapts them through a static discovery
 // backend, and drives one gRPC client that dials "gsdiscovery:///echo".
 //

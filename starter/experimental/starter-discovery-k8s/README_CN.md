@@ -64,7 +64,7 @@ spring.go-redis.cache.discovery=k8s            # 本后端
 ```
 
 此时 Redis 客户端会拨向 `my-redis` Service 的存活 Pod,并随 Pod 上下线刷新。直接通过
-`discovery.MustGet` 解析 Service 的用法见 [example/main.go](example/example.go)。
+`discovery.GetDiscovery` 解析 Service 的用法见 [example/main.go](example/example.go)。
 
 ## 配置项
 
@@ -84,7 +84,7 @@ spring.go-redis.cache.discovery=k8s            # 本后端
 ## 工作原理
 
 - 注册发生在容器的 Bean 注册阶段,早于任何 client 构造函数运行——因此当 Redis/GORM
-  客户端调用 `discovery.MustGet("<name>")` 时,后端已就位。
+  客户端调用 `discovery.GetDiscovery("<name>")` 时,后端已就位。
 - **DNS 模式** 解析 `<service>.<namespace>.svc.<cluster-domain>`。设置了
   `port-name` 时发起 SRV 查询(`_<port-name>._tcp.<fqdn>`)拿到地址+端口;否则用 A
   查询并配上 `port`。watcher 按 `refresh-interval` 轮询,仅在端点集合变化时才推送快照。

@@ -110,6 +110,12 @@ func (r *zkRegistrar) Register(_ context.Context, reg instance) error {
 	if reg.Addr == "" {
 		return errutil.Explain(nil, "registry-zookeeper: addr is required")
 	}
+	// An unset (or misconfigured negative) weight is normalized at write time
+	// so "default" is never stored as 0 — 0 is reserved for the runtime drain
+	// signal, only reachable through UpdateWeight.
+	if reg.Weight <= 0 {
+		reg.Weight = 1
+	}
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,
@@ -136,6 +142,36 @@ func (r *zkRegistrar) Register(_ context.Context, reg instance) error {
 		if _, err := r.conn.Create(path, val, zk.FlagEphemeral, r.acl); err != nil {
 			return errutil.Explain(err, "registry-zookeeper: recreate %q", path)
 		}
+	}
+	return nil
+}
+
+// UpdateWeight rewrites reg's znode with a new weight. The node is set in
+// place — not deleted and recreated — so the ephemeral owner and the watchers
+// are undisturbed and a discovery backend simply sees the new value. A weight
+// of 0 is the drain signal: it serializes as an omitted weight field, which
+// readers reconstruct as 0 and exclude from picking.
+func (r *zkRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) error {
+	if weight < 0 {
+		weight = 1
+	}
+	val, err := json.Marshal(instanceValue{
+		ServiceName: reg.ServiceName,
+		Addr:        reg.Addr,
+		Weight:      weight,
+		Metadata:    reg.Metadata,
+	})
+	if err != nil {
+		return errutil.Explain(err, "registry-zookeeper: marshal instance %q", reg.ServiceName)
+	}
+	path := r.pathFor(reg)
+	if _, stat, err := r.conn.Exists(path); err != nil {
+		return errutil.Explain(err, "registry-zookeeper: stat %q", path)
+	} else if stat == nil {
+		return errutil.Explain(nil, "registry-zookeeper: update weight for unregistered instance %q", path)
+	}
+	if _, err := r.conn.Set(path, val, -1); err != nil {
+		return errutil.Explain(err, "registry-zookeeper: update weight set %q", path)
 	}
 	return nil
 }

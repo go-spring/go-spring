@@ -17,6 +17,7 @@
 package StarterRegistryZookeeper
 
 import (
+	"encoding/json"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -35,4 +36,16 @@ func TestPathFor(t *testing.T) {
 	r := &zkRegistrar{basePath: "/services"}
 	got := r.pathFor(instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
 	assert.That(t, got).Equal("/services/orders/orders-1.2.3.4:80")
+}
+
+func TestInstanceValueDrainEncoding(t *testing.T) {
+	// The drain signal (weight 0) serializes as an omitted weight field —
+	// a reader reconstructs 0 and excludes the instance from picking.
+	b, err := json.Marshal(instanceValue{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0})
+	assert.Error(t, err).Nil()
+	assert.String(t, string(b)).Equal(`{"service_name":"orders","addr":"1.2.3.4:80"}`)
+
+	var v instanceValue
+	assert.Error(t, json.Unmarshal(b, &v)).Nil()
+	assert.Number(t, v.Weight).Equal(0)
 }

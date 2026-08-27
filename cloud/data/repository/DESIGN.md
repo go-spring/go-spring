@@ -1,8 +1,7 @@
 # repository Design
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
-`repository` is the zero-dependency generic data-access abstraction in the
-stdlib layer. It gives Go the *effect* of Spring Data's `CrudRepository` +
+`repository` is the zero-dependency generic data-access abstraction. It gives Go the *effect* of Spring Data's `CrudRepository` +
 `PagingAndSortingRepository` — a ready-made set of persistence operations over a
 domain type — reached with Go generics instead of proxy-generated method-name
 parsing. A store (gorm, Mongo) is contributed by implementing the `Backend`
@@ -26,9 +25,10 @@ seam; the gorm one lives in `starter-repository-gorm`.
 - **`Backend[T, ID]` interface as the store seam.** There is no global driver
   registry. A backend is bound to a live client (a `*gorm.DB`, a Mongo
   collection), so selecting one is a bean-type swap — the same choice
-  `cloud/experimental/batch`.`JobRepository` and `cloud/experimental/lock` make. `Backend` is
-  deliberately the same shape as `Repository` minus the store-neutral concerns,
-  so an implementation is a thin `Query` translation and nothing more.
+  `cloud/experimental/batch`.`JobRepository` and `cloud/experimental/lock` make. `Backend` exposes the
+  store primitives (`FindAll`, `CountBy`, ...); store-neutral compositions
+  (`Count` as `CountBy` over an empty `Query`, `FindPage`) live in `New`, so an
+  implementation is a thin `Query` translation and nothing more.
 - **`New` layers the store-neutral concerns.** Auditing and `FindPage`
   composition (list + count) live above any backend, in `New`, so a new backend
   never re-implements them.

@@ -91,6 +91,8 @@ MeterProvider;不引入时全局是 no-op,trace 和 metric 几乎零开销、不
   计数和 `resilience.breaker.state_change` 事件。
 - `observe/transaction` —— `SagaObserver` / `TccObserver` / `AtObserver`
   为每个事务阶段开一个子 span。
+- `starter-gorm/observe` —— `NewPlugin(system, cfg)` 给 gorm 出三信号;
+  它住在 starter 模块里,因为本包不得依赖 gorm。
 
 ## 安装
 

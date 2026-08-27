@@ -93,12 +93,6 @@ func (b *gormBackend[T, ID]) Delete(ctx context.Context, id ID) error {
 		Where(b.pkColumn+" = ?", id).Delete(new(T)).Error
 }
 
-func (b *gormBackend[T, ID]) Count(ctx context.Context) (int64, error) {
-	var n int64
-	err := b.db.WithContext(ctx).Table(b.table).Count(&n).Error
-	return n, err
-}
-
 func (b *gormBackend[T, ID]) FindAll(ctx context.Context, q repository.Query) ([]T, error) {
 	tx, err := applyFilters(b.db.WithContext(ctx).Table(b.table), q.Filters)
 	if err != nil {

@@ -28,7 +28,7 @@ order→inventory 需要一个*客户端侧*的 `discovery.Discovery`,而只有
 
 ## 3. `lb://` 经全局注册表而非 bean 解析 —— *顺序注意点*
 
-网关经由 `discovery.MustGet(name)` 解析 `lb://` 上游——用的是进程级全局的
+网关经由 `discovery.GetDiscovery(name)` 解析 `lb://` 上游——用的是进程级全局的
 `cloud/discovery` 注册表,而不是 IoC 容器。所以 `discovery.Register(...)` 必须在
 `init()` 里跑(先于路由编译),而且它是一个全局副作用,不是可注入的 bean。把全局
 注册表和基于 bean 的接线混在一起很容易出错;示例把 `Register` 调用放在每个 `main`
@@ -103,8 +103,8 @@ span 中间件(`traceMiddleware` / `traceServer`)才能把 `trace_id` 打进日�
 5. **重复 trace 辅助 —— 已提取。** 两个服务里重复的入站 extract-then-start 已移到
    `StarterOTel.StartServerSpan`——出站注入缝隙的入站对偶。不放进 `stdlib`(零三方依赖
    规则,而这里需要 OTel)。判定不值得提取的:`extractField`(仅一处)、`os.Chdir`
-   工作目录 init(示例样板)、LiveDialer `http.Client`(其可复用内核
-   `discovery.NewLiveDialer` 早已存在)。
+   工作目录 init(示例样板)、discovery 解析版 `http.Client`(其可复用内核
+   `discovery.NewResolver` 早已存在)。
 
 **仍未闭合(反哺,超出去重范围):** 上文第 4 条——trace 熬不过网关这一跳,因为
 `starter-gateway` 有意不依赖 otel、也不起 span。现已具备无需让网关耦合 OTel 即可闭合

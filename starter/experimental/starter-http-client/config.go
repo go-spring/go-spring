@@ -45,7 +45,7 @@ type Config struct {
 	// a fixed address. Mutually exclusive with Addr.
 	ServiceName string `value:"${service-name:=}"`
 
-	// Discovery names the registered discovery backend (from stdlib/discovery)
+	// Discovery names the registered discovery backend (from cloud/discovery)
 	// that resolves ServiceName. Required when ServiceName is set.
 	Discovery string `value:"${discovery:=}"`
 

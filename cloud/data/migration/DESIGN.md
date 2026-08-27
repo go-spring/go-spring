@@ -1,8 +1,7 @@
 # migration Design
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
-`migration` is the zero-dependency schema-migration abstraction in the stdlib
-layer. It gives Go the *effect* of Flyway / Liquibase — versioned, checksum-guarded,
+`migration` is the zero-dependency schema-migration abstraction. It gives Go the *effect* of Flyway / Liquibase — versioned, checksum-guarded,
 forward-only migrations applied exactly once — without copying their XML/DSL
 machinery. A backend (gorm over MySQL/PostgreSQL/SQLite) is contributed as a
 separate starter that supplies a `Store`.
@@ -70,4 +69,4 @@ separate starter that supplies a `Store`.
 - **Simple statement splitter, not a SQL parser.** `splitStatements` handles the
   DDL/DML a migration file carries (semicolons outside quotes/`--` comments);
   procedural bodies with inner semicolons belong in a single-statement file the
-  driver executes whole, rather than justifying a full parser in stdlib.
+  driver executes whole, rather than justifying a full parser in this package.

@@ -31,7 +31,7 @@ back**: candidate new starter.
 
 ## 3. `lb://` resolves through a global registry, not a bean — *ordering note*
 
-The gateway resolves an `lb://` upstream via `discovery.MustGet(name)` — the
+The gateway resolves an `lb://` upstream via `discovery.GetDiscovery(name)` — the
 process-global `cloud/discovery` registry, not the IoC container. So
 `discovery.Register(...)` must run in `init()` (before route compilation), and it
 is a global side effect, not an injectable bean. Mixing a global registry with
@@ -120,8 +120,8 @@ each driven to a verdict against the code above:
    inbound twin of the existing outbound injector seam. Kept out of `stdlib`
    (zero-third-party rule; this needs OTel). Rejected as not worth extracting:
    `extractField` (single use), the `os.Chdir` workdir init (example
-   boilerplate), and the LiveDialer `http.Client` (its reusable core
-   `discovery.NewLiveDialer` already exists).
+   boilerplate), and the discovery-resolver `http.Client` (its reusable core
+   `discovery.NewResolver` already exists).
 
 **Still open (feeds back, out of dedup scope):** item 4 above — the trace does not
 survive the gateway hop because `starter-gateway` is intentionally otel-free and

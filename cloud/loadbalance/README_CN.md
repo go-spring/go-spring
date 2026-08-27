@@ -12,13 +12,18 @@ discovery 回答"当下有哪些实例";本包回答"给这份实时集合,该�
   - `least_conn` —— 选择当前在途最少的实例。
   - `consistent_hash` —— FNV-32 环 + 虚拟节点;按 hash key 亲和。
   - `weighted` —— nginx 平滑加权轮询(SWRR)。
+端点 `Weight` 为 0 是运行时摘流信号:池子将其排除出挑选(所有策略统一,不只
+`weighted`);仅当全部端点都是零权重时回退为均等分担,未归一化的快照不会黑洞化
+流量。注册器写入时会把未设置的权重归一为 1,因此 0 只可能是"有意摘流"
+(如 `UpdateWeight(0)`)。
+
   - `zone_aware` —— 本地优先 + 内层 balancer 承载最终选择;zone 提示支持
     有序回退列表(`"cn-north-1a,cn-north-1"` = 先本机房、再本可用区、最后
     溢出)。
 - `Factory` 注册表(`Register` / `New`)—— 策略在 `init` 中自注册,按名切换。
 - `Tracker` —— 连续失败阈值 + 半开探测的离群点摘除,按 endpoint 地址键,
   可查询,故 `Pool` 能在路由前主动剔除。
-- `Pool` —— 绑定 `EndpointSource`(`discovery.LiveDialer` 直接满足)、
+- `Pool` —— 绑定 `EndpointSource`(`discovery.Resolver` 直接满足)、
   `Balancer`、可选 `Tracker`;两级过滤(先 `Healthy`、后 `Tracker.Eligible`),
   每级空了都回退输入,绝不黑洞流量。
 - 网格模式:`discovery.MeshMode()` 打开时,`Pool.Pick` 降级为单一稳定
@@ -27,7 +32,7 @@ discovery 回答"当下有哪些实例";本包回答"给这份实时集合,该�
 ## 安装
 
 ```
-go get go-spring.org/stdlib
+go get go-spring.org/cloud
 ```
 
 ## 用法

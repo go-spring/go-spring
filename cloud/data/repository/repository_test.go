@@ -62,7 +62,6 @@ func (b *fakeBackend) FindByID(_ context.Context, id int64) (user, bool, error) 
 
 func (b *fakeBackend) ExistsByID(_ context.Context, _ int64) (bool, error) { return true, b.err }
 func (b *fakeBackend) Delete(_ context.Context, _ int64) error             { return b.err }
-func (b *fakeBackend) Count(_ context.Context) (int64, error)              { return b.countBy, b.err }
 
 func (b *fakeBackend) FindAll(_ context.Context, q repository.Query) ([]user, error) {
 	b.lastQuery = q

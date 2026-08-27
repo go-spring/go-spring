@@ -93,3 +93,11 @@ spring.registry.metadata.version=v1
 [example/check.sh](example/check.sh) 先跑单测,再(在有 Docker 时)启动一个 Nacos
 standalone 服务,启动 [example](example/example.go)(注册、回读命名服务、然后向自己发
 SIGTERM 以触发注销路径),并断言实例已出现。无 Docker 时优雅跳过。
+
+
+### 运行时权重调整
+
+`Server.UpdateWeight(ctx, weight)` 不注销实例、仅以新权重重新宣告：消费端
+（loadbalance 池）在下一个发现快照（一个 Watch 推送周期）生效。权重 0 即摘流
+（不接流量但保持注册），是下线前零损失轮转的标准一步。运维也可以直接改注册中心
+里的权重值，效果等同。

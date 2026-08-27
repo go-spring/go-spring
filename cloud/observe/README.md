@@ -99,6 +99,9 @@ of starter-otel.
   classified by outcome and `resilience.breaker.state_change` events.
 - `observe/transaction` — `SagaObserver` / `TccObserver` / `AtObserver`
   open one child span per transaction phase.
+- `starter-gorm/observe` — `NewPlugin(system, cfg)` instruments gorm with
+  the three signals; it lives in the starter module because this package
+  must not depend on gorm.
 
 ## Installation
 

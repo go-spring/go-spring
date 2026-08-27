@@ -27,7 +27,7 @@ http.Handler`,路由即函数组合,不做运行时 DSL。
   autowire:"?"` 收集。`starter-security-jwt`、`starter-lua-filter` 注册
   满足该形状的 bean;gateway 从不 import 它们。
 - **`lb://<service>`。**上游 URL 前缀,通过
-  `discovery.NewLiveDialer` + `loadbalance.Pool.Pick` 解析——与其它 client
+  `discovery.NewResolver` + `loadbalance.Pool.Pick` 解析——与其它 client
   starter 用同一套客户端栈。mesh 模式在其中集中退化,无需网关侧分支。
 
 ## 3. 约束

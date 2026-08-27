@@ -83,12 +83,14 @@ signals under the `lock` convention (`lock.system` / `lock.operation` /
   is the lingua franca and its globals give a zero-config no-op path. The
   cost — the spring core cannot host this kit — is accepted and resolved
   by layering (abstraction in core, bridges here).
-- **Dedicated observe-gorm / observe-lock / observe-resilience /
-  observe-transaction modules were collapsed into subpackages of one
+- **Dedicated observe-lock / observe-resilience / observe-transaction
+  modules were collapsed into subpackages of one
   `go-spring.org/cloud/observe`** once the module boundary proved to be
   overhead without a consumer difference; the lock/transaction bridges
   target `cloud/experimental/*` interfaces without dragging starters into
-  the dependency graph.
+  the dependency graph. The gorm bridge is the deliberate exception: it
+  lives in `go-spring.org/starter-gorm`'s `observe` package, because this
+  module must not depend on gorm.
 - **Binary status, no error taxonomy on the metric.** Classifying error
   kinds per client would drift per backend; the resilience bridge is the
   one place an outcome taxonomy pays for itself, so it lives there (six

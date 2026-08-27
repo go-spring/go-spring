@@ -110,7 +110,7 @@ func main() {
 
 	// A static discovery backend that resolves serviceName to the two healthy
 	// instances. Registering it under "static" matches discovery=static in the
-	// config; the "discovered" client watches it through the LiveDialer.
+	// config; the "discovered" client watches it through the Resolver.
 	discovery.RegisterDiscovery("static", discovery.NewStaticDiscovery(
 		discovery.Endpoint{Addr: addrBackendA, Healthy: true},
 		discovery.Endpoint{Addr: addrBackendB, Healthy: true},

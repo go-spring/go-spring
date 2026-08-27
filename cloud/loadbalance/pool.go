@@ -78,9 +78,10 @@ func (p *Pool) Pick(info PickInfo) (Result, error) {
 		return Result{}, ErrNoAvailable
 	}
 
-	// Discovery-driven filtering: follow the [discovery.Endpoint] contract —
-	// prefer !Disabled && Healthy, degrade to !Disabled, never Disabled.
-	candidates := eligible(eps)
+	// Discovery-driven static eligibility ([discovery.Eligible]: Endpoint
+	// contract filter), distinct from the dynamic ejection filter below
+	// ([Tracker.Eligible]: circuit-breaker-style eviction).
+	candidates := discovery.Eligible(eps)
 	if len(candidates) == 0 {
 		return Result{}, ErrNoAvailable
 	}
@@ -88,6 +89,15 @@ func (p *Pool) Pick(info PickInfo) (Result, error) {
 	// Ejection filtering: drop instances the tracker has evicted for repeated
 	// failures. Eligible falls back to its input if everything is evicted.
 	candidates = p.tracker.Eligible(candidates)
+
+	// Soft drain: drop instances whose weight was set to zero at the naming
+	// service (the runtime traffic-drain signal). Falls back to its input when
+	// every endpoint is zero-weighted — an unnormalized snapshot (registrants
+	// predating the weight contract store 0 for "default") must not blackhole
+	// the pool, it just degrades to an even split.
+	if drained := excludeDrained(candidates); len(drained) > 0 {
+		candidates = drained
+	}
 
 	res, err := p.bal.Pick(candidates, info)
 	if err != nil {
@@ -109,22 +119,17 @@ func (p *Pool) Pick(info PickInfo) (Result, error) {
 	return res, nil
 }
 
-// eligible returns the !Disabled && Healthy endpoints, degrading to the
-// non-disabled ones when none are healthy. Disabled instances never enter the
-// set. It mirrors [discovery.Resolver.Pick] so both selection layers agree.
-func eligible(eps []discovery.Endpoint) []discovery.Endpoint {
-	out := eps[:0:0]
+// excludeDrained drops endpoints with an explicit zero weight (the drain
+// signal). Negative weights are kept — misconfiguration should not silently
+// remove an instance; the weighted balancer still treats them as default.
+// It returns nil when every endpoint is drained, so the caller can fall back.
+func excludeDrained(eps []discovery.Endpoint) []discovery.Endpoint {
+	var kept []discovery.Endpoint
 	for _, ep := range eps {
-		if !ep.Disabled && ep.Healthy {
-			out = append(out, ep)
+		if ep.Weight != 0 {
+			kept = append(kept, ep)
 		}
 	}
-	if len(out) == 0 {
-		for _, ep := range eps {
-			if !ep.Disabled {
-				out = append(out, ep)
-			}
-		}
-	}
-	return out
+	return kept
 }
+

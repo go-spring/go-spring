@@ -23,10 +23,11 @@
 // being a black box, which is the gap the core resilience package leaves by
 // design (it deliberately does no metric/trace/log).
 //
-// It lives in the observe package for the same reason observe-gorm /
-// observe-lock / observe-transaction exist: the otel-free spring core defines
-// the [resilience.Executor] interface, and the instrumentation belongs beside
-// the adapters, not in core. A client starter that already builds an Executor wraps
+// It lives in the observe package because the otel-free abstraction packages
+// (cloud/governance/resilience here, cloud/experimental/lock and
+// cloud/experimental/transaction for the sibling bridges) define the
+// interfaces, and the instrumentation belongs beside the adapters, not beside
+// the abstractions. A client starter that already builds an Executor wraps
 // it once at construction:
 //
 //	exec = resilobserve.WrapExecutor(exec, "redis", c.Observability)
