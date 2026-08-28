@@ -30,16 +30,18 @@ const outboxTableName = "outbox_message"
 // outboxRow is one pending message. It is written by [Publish] inside the
 // business transaction and resolved by the relay's gormStore.
 type outboxRow struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Destination string    `gorm:"column:destination;index:idx_outbox_dispatch,priority:1"`
-	Key         string    `gorm:"column:msg_key"`
-	Payload     []byte    `gorm:"column:payload"`
-	Headers     string    `gorm:"column:headers;type:text"` // JSON map[string]string
-	Status      string    `gorm:"column:status;index:idx_outbox_dispatch,priority:2"`
-	Attempts    int       `gorm:"column:attempts"`
-	NextRetryAt time.Time `gorm:"column:next_retry_at"`
-	LastError   string    `gorm:"column:last_error;type:text"`
-	CreatedAt   time.Time `gorm:"column:created_at"`
+	ID          int64  `gorm:"primaryKey;autoIncrement;column:id"`
+	Destination string `gorm:"column:destination"`
+	Key         string `gorm:"column:msg_key"`
+	Payload     []byte `gorm:"column:payload"`
+	Headers     string `gorm:"column:headers;type:text"` // JSON map[string]string
+	// idx_outbox_dispatch mirrors the relay's Fetch predicate (status +
+	// next_retry_at); the hand-written DDL in the README creates the same one.
+	Status      string     `gorm:"column:status;index:idx_outbox_dispatch,priority:1"`
+	Attempts    int        `gorm:"column:attempts"`
+	NextRetryAt time.Time  `gorm:"column:next_retry_at;index:idx_outbox_dispatch,priority:2"`
+	LastError   string     `gorm:"column:last_error;type:text"`
+	CreatedAt   time.Time  `gorm:"column:created_at"`
 	SentAt      *time.Time `gorm:"column:sent_at"`
 }
 

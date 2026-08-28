@@ -51,7 +51,8 @@
     },
     "db": {
       "type": "integer",
-      "default": 0
+      "default": 0,
+      "description": "Redis database number. Redis Cluster has no databases: a non-zero db with mode=cluster is rejected at startup."
     },
     "username": {
       "type": "string",
@@ -105,13 +106,48 @@
     "tls": {
       "type": "object"
     },
-    "resilience": {
-      "type": "object",
-      "default": ""
-    },
     "driver": {
       "type": "string",
       "default": "DefaultDriver"
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Contributes a health.Indicator bean per instance; set false to disable."
+        }
+      }
+    },
+    "otel": {
+      "type": "object",
+      "properties": {
+        "tracing": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "redisotel tracing hook per instance"
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "redisotel metrics hook per instance"
+            }
+          }
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "description": "Access log config (off/brief/detailed), see observe.ObserveConfig"
     }
   }
 }

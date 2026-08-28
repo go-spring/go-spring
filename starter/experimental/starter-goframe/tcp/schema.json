@@ -18,9 +18,14 @@
       "type": "integer",
       "default": 8003
     },
-    "etcd": {
-      "type": "string",
-      "default": ""
+    "registry": {
+      "type": "object",
+      "properties": {
+        "etcd": {
+          "type": "string",
+          "default": ""
+        }
+      }
     }
   }
 }

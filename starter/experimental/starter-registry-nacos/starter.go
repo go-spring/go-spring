@@ -50,7 +50,7 @@ import (
 
 var (
 	// starterTag identifies logs emitted by the nacos registry starter.
-	starterTag = log.RegisterAppTag("starter_registry_nacos", "")
+	starterTag = log.RegisterAppTag("registry_nacos", "")
 )
 
 func init() {
@@ -102,7 +102,6 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 	s.reg = instance{
 		ServiceName: s.Config.ServiceName,
-		ID:          s.Config.ID,
 		Addr:        s.Config.Addr,
 		Weight:      s.Config.Weight,
 		Metadata:    s.Config.Metadata,
@@ -110,7 +109,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Debugf(ctx, starterTag, "registering service=%s id=%s addr=%s weight=%d", s.reg.ServiceName, s.reg.ID, s.reg.Addr, s.reg.Weight)
+	log.Debugf(ctx, starterTag, "registering service=%s addr=%s weight=%d", s.reg.ServiceName, s.reg.Addr, s.reg.Weight)
 	if err := s.registrar.Register(ctx, s.reg); err != nil {
 		log.Errorf(ctx, starterTag, "register service=%s failed: %v", s.reg.ServiceName, err)
 		return errutil.Explain(err, "registry: register %q", s.reg.ServiceName)

@@ -27,15 +27,12 @@ import (
 
 	gormsqlite "github.com/glebarez/sqlite"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/log"
 	gormcore "go-spring.org/starter-gorm"
 )
 
 // DB is the bean type this starter exposes. It aliases the shared gormcore.DB
 // so the wrapper body, lifecycle and observe/resilience wiring stay in one place.
 type DB = gormcore.DB
-
-var starterTag = log.RegisterAppTag("gorm_sqlite", "")
 
 func init() {
 	gormcore.Register(gormcore.Dialect[Config]{

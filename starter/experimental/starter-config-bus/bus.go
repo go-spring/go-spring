@@ -80,6 +80,9 @@ func (b *ConfigBus) subscribe() error {
 			}
 		}
 		if !b.shouldRefresh(ev.Prefix) {
+			log.Debugf(context.Background(), starterTag,
+				"config bus: ignoring refresh event outside watched prefixes (prefix=%q origin=%q watched=%v)",
+				ev.Prefix, ev.Origin, b.prefixes)
 			return
 		}
 		if err := b.Refresher.RefreshProperties(); err != nil {

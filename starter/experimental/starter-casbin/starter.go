@@ -24,11 +24,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var (
-	// starterTag identifies logs emitted by the casbin starter.
-	starterTag = log.RegisterAppTag("starter_casbin", "")
-)
-
 func init() {
 	// Register multiple Casbin enforcers as a group.
 	// Each instance is created according to the configuration in "${spring.casbin}",
@@ -59,7 +54,15 @@ func newEnforcer(ctx *gs.ContextProvider, name string, c Config) (*Enforcer, err
 		err error
 	)
 
-	log.Debugf(ctx.Context, starterTag, "creating casbin enforcer model=%s adapter=%s watcher=%s", c.Model, c.Adapter, c.Watcher)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating casbin enforcer model=%s adapter=%s watcher=%s", c.Model, c.Adapter, c.Watcher)
+
+	// `policy` and `adapter` are mutually exclusive storage selections: the
+	// enforcer must load from exactly one place. Configuring both is almost
+	// certainly a mistake (one of them would be silently ignored), so fail fast
+	// instead of picking a winner.
+	if c.Adapter != "" && c.Policy != "" {
+		return nil, errutil.Explain(nil, "casbin: `policy` and `adapter` are mutually exclusive, configure only one (policy=%q adapter=%q)", c.Policy, c.Adapter)
+	}
 
 	if c.Adapter != "" {
 		a, ok := lookupAdapter(c.Adapter)
@@ -71,7 +74,7 @@ func newEnforcer(ctx *gs.ContextProvider, name string, c Config) (*Enforcer, err
 		e, err = casbin.NewEnforcer(c.Model, c.Policy)
 	}
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "create casbin enforcer failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "create casbin enforcer failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create casbin enforcer")
 	}
 	e.EnableAutoSave(c.AutoSave)

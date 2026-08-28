@@ -37,6 +37,11 @@ done
 sleep 2
 
 export VAULT_TOKEN=root
+# AES key for decrypting the demo.password=ENC(aes:...) property (see
+# spring/conf/decrypt/aes). Base64 of the 16-byte key "1234567890123456";
+# a real deployment supplies the key out of band (mounted Secret, Vault
+# Agent sink) — it is inlined here only to keep the smoke test self-contained.
+export GS_CONFIG_DECRYPT_AES_KEY="MTIzNDU2Nzg5MDEyMzQ1Ng=="
 go run . &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &

@@ -4,14 +4,17 @@ go 1.26.1
 
 require (
 	github.com/milvus-io/milvus-sdk-go/v2 v2.4.2
-	go-spring.org/log v0.1.4
+	go-spring.org/log v0.1.4 // indirect
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
 )
 
 // Local, not-yet-published observe kit. Removed once the module is tagged.
 
-require go-spring.org/cloud v0.0.0
+require (
+	go-spring.org/cloud v0.0.0
+	google.golang.org/grpc v1.80.0
+)
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
@@ -55,7 +58,6 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260427160629-7cedc36a6bc4 // indirect
-	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/grpc/examples v0.0.0-20250407062114-b368379ef8f6 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

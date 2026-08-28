@@ -122,8 +122,6 @@ func TestWiring_DubboConfigBinding(t *testing.T) {
 			[2]string{"spring.dubbo.registries.demo.username", "u"},
 			[2]string{"spring.dubbo.registries.demo.password", "p"},
 			[2]string{"spring.dubbo.registries.demo.params.extra", "v"},
-			[2]string{"spring.dubbo.metadata-report.protocol", "nacos"},
-			[2]string{"spring.dubbo.metadata-report.address", "nacos://127.0.0.1:2"},
 			[2]string{"spring.dubbo.consumer.protocol", "tri"},
 			[2]string{"spring.dubbo.consumer.request-timeout", "3s"},
 			[2]string{"spring.dubbo.consumer.check", "false"},
@@ -162,10 +160,7 @@ func TestWiring_DubboConfigBinding(t *testing.T) {
 			t.Fatalf("registry params bound wrong: %v", reg.Params)
 		}
 
-		// metadata-report block.
-		if mr := cfg.MetadataReport; mr.Protocol != "nacos" || mr.Address != "nacos://127.0.0.1:2" || mr.Timeout != "20s" {
-			t.Fatalf("metadata-report bound wrong: %+v", mr)
-		}
+		// metadata-report is dead config and was removed: nothing to bind.
 
 		// consumer block and nested references.
 		c := cfg.Consumer
@@ -176,13 +171,13 @@ func TestWiring_DubboConfigBinding(t *testing.T) {
 		if !ok || ref.Interface != "greet.GreetService" || ref.Timeout != "500ms" || ref.Retries != 3 {
 			t.Fatalf("reference greet bound wrong: %+v (ok=%v)", ref, ok)
 		}
-		if ref.Cluster != "failover" || ref.LoadBalance != "random" {
+		if ref.Cluster != "failover" || ref.LoadBalance != "random" || !ref.Check {
 			t.Fatalf("reference tag defaults wrong: %+v", ref)
 		}
 
-		// provider.services block.
+		// provider.services block. retries default is -1 (unset sentinel).
 		svc, ok := cfg.Provider.Services["echo"]
-		if !ok || svc.Interface != "echo.EchoService" || svc.Cluster != "failfast" || svc.Retries != 2 {
+		if !ok || svc.Interface != "echo.EchoService" || svc.Cluster != "failfast" || svc.Retries != -1 {
 			t.Fatalf("service echo bound wrong: %+v (ok=%v)", svc, ok)
 		}
 	})

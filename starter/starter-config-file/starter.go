@@ -34,6 +34,7 @@
 package StarterConfigFile
 
 import (
+	"context"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
@@ -46,7 +47,6 @@ import (
 // methods are the init functions (bean wiring here; provider registration in
 // filewatch.go and configtree.go). All other code operates on the receiver.
 var (
-	starterTag          = log.RegisterAppTag("starter_config_file", "")
 	fileWatchController = &configFileController{}
 )
 
@@ -77,7 +77,10 @@ type configFileController struct {
 // initial config load already captured the state.
 func (c *configFileController) TriggerRefresh() {
 	if c.Refresher != nil {
-		_ = c.Refresher.RefreshProperties()
+		if err := c.Refresher.RefreshProperties(); err != nil {
+			log.Warnf(context.Background(), log.TagAppDef,
+				"property refresh after file change failed, previous snapshot retained: %v", err)
+		}
 	}
 }
 
@@ -98,11 +101,15 @@ func (c *configFileController) ensureWatch(dir string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		c.mu.Unlock()
+		log.Warnf(context.Background(), log.TagAppDef,
+			"create file watcher for %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
 		return
 	}
 	if err = w.Add(dir); err != nil {
 		_ = w.Close()
 		c.mu.Unlock()
+		log.Warnf(context.Background(), log.TagAppDef,
+			"watch directory %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
 		return
 	}
 	c.watched[dir] = struct{}{}
@@ -124,10 +131,11 @@ func (c *configFileController) watchLoop(w *fsnotify.Watcher) {
 				return
 			}
 			c.TriggerRefresh()
-		case _, ok := <-w.Errors:
+		case err, ok := <-w.Errors:
 			if !ok {
 				return
 			}
+			log.Warnf(context.Background(), log.TagAppDef, "file watcher error: %v", err)
 		}
 	}
 }

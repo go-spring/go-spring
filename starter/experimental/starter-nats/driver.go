@@ -109,7 +109,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, er
 	if c.TLS.Enabled {
 		tlsCfg, err := c.TLS.Build()
 		if err != nil {
-			log.Errorf(ctx, starterTag, "nats: build TLS failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, "nats: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "nats: build TLS")
 		}
 		if tlsCfg != nil {
@@ -121,7 +121,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, er
 
 	nc, err := nats.Connect(c.URL, opts...)
 	if err != nil {
-		log.Errorf(ctx, starterTag, "nats: connect failed url=%s: %v", c.URL, err)
+		log.Errorf(ctx, log.TagAppDef, "nats: connect failed url=%s: %v", c.URL, err)
 		return nil, errutil.Explain(err, "failed to connect nats: %s", c.URL)
 	}
 	return nc, nil
@@ -135,16 +135,16 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, er
 // close) are bridged into go-spring's log by the driver's handlers so they show
 // up alongside app logs.
 func newConn(ctx *gs.ContextProvider, name string, c Config) (*Conn, error) {
-	log.Debugf(ctx.Context, starterTag, "creating nats connection, url=%s name=%s", c.URL, c.Name)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating nats connection, url=%s name=%s", c.URL, c.Name)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "nats driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "nats driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "nats driver not found: %s", c.Driver)
 	}
 	nc, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "nats: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "nats: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create nats client: %s", c.URL)
 	}
 
@@ -157,17 +157,17 @@ func newConn(ctx *gs.ContextProvider, name string, c Config) (*Conn, error) {
 	if c.JetStream.Enabled {
 		js, err := jetstream.New(nc)
 		if err != nil {
-			log.Errorf(ctx.Context, starterTag, "nats: create jetstream context failed: %v", err)
+			log.Errorf(ctx.Context, log.TagAppDef, "nats: create jetstream context failed: %v", err)
 			nc.Close()
 			return nil, errutil.Explain(err, "failed to create jetstream context")
 		}
 		conn.JetStream = js
 	}
 	if err := applyResilience(c, conn, resilience.ResourceLabel("nats", c.Name, c.URL)); err != nil {
-		log.Errorf(ctx.Context, starterTag, "nats: resilience setup failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "nats: resilience setup failed: %v", err)
 		nc.Close()
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "nats connection initialized, url=%s", c.URL)
+	log.Infof(ctx.Context, log.TagAppDef, "nats connection initialized, url=%s", c.URL)
 	return conn, nil
 }

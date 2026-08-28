@@ -18,6 +18,7 @@ package StarterRatelimitRedis
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -39,7 +40,11 @@ func newTestDriver(t *testing.T, name string) *Driver {
 	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
 	wrapped := &goredis.Client{UniversalClient: client}
-	return driverFor(name, wrapped)
+	d, err := driverFor(name, wrapped)
+	if err != nil {
+		t.Fatalf("driverFor(%q): %v", name, err)
+	}
+	return d
 }
 
 // newLimiter builds a limiter through the full driver path
@@ -213,7 +218,10 @@ func TestKeyTTLPreventsColdKeyPileup(t *testing.T) {
 	srv := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	d := driverFor("ttl", &goredis.Client{UniversalClient: client})
+	d, err := driverFor("ttl", &goredis.Client{UniversalClient: client})
+	if err != nil {
+		t.Fatalf("driverFor: %v", err)
+	}
 	l := newLimiter(t, d, 2, 4)
 	if _, err := l.Allow(context.Background(), "api"); err != nil {
 		t.Fatal(err)
@@ -226,5 +234,57 @@ func TestKeyTTLPreventsColdKeyPileup(t *testing.T) {
 	// ceil(burst/rate)+1 = 3s for the policy above.
 	if ttl < 2*time.Second || ttl > 4*time.Second {
 		t.Fatalf("ttl = %v, want ~3s", ttl)
+	}
+}
+
+// TestClaimDriverNameDuplicateFailsStartup proves a driver name claimed by two
+// instances of this starter is a clear startup error naming both instances,
+// not a silent shared limiter (and re-claiming by the same instance — a second
+// wiring pass — stays allowed).
+func TestClaimDriverNameDuplicateFailsStartup(t *testing.T) {
+	if err := claimDriverName("dup", "inst-a"); err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	if err := claimDriverName("dup", "inst-a"); err != nil {
+		t.Fatalf("re-claim by same instance: %v", err)
+	}
+	err := claimDriverName("dup", "inst-b")
+	if err == nil {
+		t.Fatal("duplicate claim must fail")
+	}
+	if want := `claimed by both instance "inst-a" and instance "inst-b"`; !strings.Contains(err.Error(), want) {
+		t.Fatalf("error %q does not name both instances", err.Error())
+	}
+}
+
+// TestDriverForCrossModuleDuplicateFails proves a driver name already
+// registered by another module (here: the built-in "default") surfaces as a
+// startup error from the bean ctor instead of the registry's duplicate panic.
+func TestDriverForCrossModuleDuplicateFailsStartup(t *testing.T) {
+	srv := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	_, err := driverFor("default", &goredis.Client{UniversalClient: client})
+	if err == nil {
+		t.Fatal("claiming the built-in \"default\" driver name must fail")
+	}
+	if !strings.Contains(err.Error(), "already registered by another module") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestSlidingWindowPolicyRejected proves an unsupported Algorithm is a loud
+// error at limiter construction, not a silent token-bucket downgrade.
+func TestSlidingWindowPolicyRejected(t *testing.T) {
+	d := newTestDriver(t, "sw")
+	_, err := d.NewRateLimiter(resilience.LimitPolicy{Rate: 10, Algorithm: resilience.SlidingWindow})
+	if err == nil {
+		t.Fatal("SlidingWindow policy must be rejected")
+	}
+	if _, err := d.NewRateLimiter(resilience.LimitPolicy{Rate: 10}); err != nil {
+		t.Fatalf("empty (token-bucket default) policy must pass: %v", err)
+	}
+	if _, err := d.NewRateLimiter(resilience.LimitPolicy{Rate: 10, Algorithm: resilience.TokenBucket}); err != nil {
+		t.Fatalf("explicit token-bucket policy must pass: %v", err)
 	}
 }

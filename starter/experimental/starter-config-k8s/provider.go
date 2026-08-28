@@ -122,19 +122,19 @@ func parseSource(source string) (configSource, error) {
 func (c *k8sCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
+		log.Errorf(context.Background(), log.TagAppDef, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading k8s config from kind=%s name=%s namespace=%s key=%s format=%s", cs.kind, cs.name, cs.namespace, cs.key, cs.format)
+	log.Debugf(context.Background(), log.TagAppDef, "loading k8s config from kind=%s name=%s namespace=%s key=%s format=%s", cs.kind, cs.name, cs.namespace, cs.key, cs.format)
 
 	client, err := buildClient(cs.kubeconfig)
 	if err != nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config build client failed (skipped): %v", err)
+			log.Warnf(context.Background(), log.TagAppDef, "optional config build client failed (skipped): %v", err)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "build k8s client failed: %v", err)
+		log.Errorf(context.Background(), log.TagAppDef, "build k8s client failed: %v", err)
 		return nil, err
 	}
 	return c.loadFromClient(client, cs, optional)
@@ -148,10 +148,10 @@ func (c *k8sCtrl) loadFromClient(client k8sClient, cs configSource, optional boo
 	data, err := fetch(ctx, client, cs)
 	if err != nil {
 		if apierrors.IsNotFound(err) && optional {
-			log.Warnf(context.Background(), starterTag, "optional config %s/%s not found (skipped)", cs.namespace, cs.name)
+			log.Warnf(context.Background(), log.TagAppDef, "optional config %s/%s not found (skipped)", cs.namespace, cs.name)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "fetch k8s %s/%s failed: %v", cs.namespace, cs.name, err)
+		log.Errorf(context.Background(), log.TagAppDef, "fetch k8s %s/%s failed: %v", cs.namespace, cs.name, err)
 		return nil, err
 	}
 
@@ -165,7 +165,7 @@ func (c *k8sCtrl) loadFromClient(client k8sClient, cs configSource, optional boo
 		return nil, err
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded k8s config from %s/%s keys=%d", cs.namespace, cs.name, len(m))
+	log.Infof(context.Background(), log.TagAppDef, "loaded k8s config from %s/%s keys=%d", cs.namespace, cs.name, len(m))
 	return m, nil
 }
 

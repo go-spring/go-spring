@@ -57,10 +57,10 @@ type AuthServer struct {
 func newAuthServer(ctx *gs.ContextProvider, c Config) (*AuthServer, error) {
 	sgn, err := newSigner(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "create signer failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "create signer failed: %v", err)
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "oauth2 server created issuer=%s accessTokenTTL=%s refreshTokenTTL=%s clients=%d",
+	log.Infof(ctx.Context, log.TagAppDef, "oauth2 server created issuer=%s accessTokenTTL=%s refreshTokenTTL=%s clients=%d",
 		c.Issuer, c.AccessTokenTTL, c.RefreshTokenTTL, len(c.Clients))
 	return &AuthServer{cfg: c, signer: sgn, store: newStore()}, nil
 }

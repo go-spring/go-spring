@@ -75,3 +75,22 @@ func TestBuildRegistration_AdvertisesDrainWeight(t *testing.T) {
 	asr := r.buildRegistration(instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0})
 	assert.That(t, asr.Weights.Passing).Equal(0)
 }
+
+func TestReRegister(t *testing.T) {
+	// An unknown id is a no-op (the instance was deregistered; the heartbeat's
+	// recovery path must not resurrect it).
+	r := &consulRegistrar{heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
+	assert.Error(t, r.reRegister("orders-1.2.3.4:80")).Nil()
+
+	// A known id attempts the upsert against the (here unreachable) agent: a
+	// connection error proves the recovery path actually re-registers rather
+	// than silently doing nothing, and that the last advertised value — the
+	// drained weight — is what gets re-registered.
+	client, err := api.NewClient(&api.Config{Address: "127.0.0.1:1"})
+	assert.Error(t, err).Nil()
+	r = &consulRegistrar{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
+	drained := instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0}
+	r.regs["orders-1.2.3.4:80"] = drained
+	asr := r.buildRegistration(drained)
+	assert.That(t, asr.Weights.Passing).Equal(0)
+}

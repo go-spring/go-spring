@@ -34,10 +34,10 @@ spring.gorm.sqlserver.primary.db=master
 ### 3. Inject the gorm Instance
 
 ```go
-import "gorm.io/gorm"
+import starter "go-spring.org/starter-gorm-sqlserver"
 
 type Service struct {
-    DB *gorm.DB `autowire:""`
+    DB *starter.DB `autowire:"primary"` // wrapper embedding *gorm.DB
 }
 ```
 

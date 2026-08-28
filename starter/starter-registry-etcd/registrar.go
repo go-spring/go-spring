@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -50,10 +51,22 @@ type instanceValue struct {
 // etcdRegistrar publishes instances to an etcd cluster. Each instance is written
 // under a key bound to its own lease and kept alive by a background keep-alive;
 // if the process dies the lease expires and etcd deletes the key automatically.
+// If the keep-alive dies instead (etcd restart, lease expired server-side), the
+// registrar re-grants a lease and re-puts the key with exponential backoff, so
+// the entry always comes back without operator action.
 type etcdRegistrar struct {
 	client    *clientv3.Client
 	keyPrefix string
 	ttlSecs   int64
+
+	// backoffBase/backoffCap pace the re-register retry loop after a keep-alive
+	// loss: 1s doubling up to 1min. Fields (not constants) so tests shrink them.
+	backoffBase time.Duration
+	backoffCap  time.Duration
+
+	// publish is the grant+put+keepalive step, a field so tests can fake the
+	// cluster side of the self-healing loop without an etcd server.
+	publish func(h *hold) (<-chan *clientv3.LeaseKeepAliveResponse, error)
 
 	mu    sync.Mutex
 	holds map[string]*hold // instance key -> its lease keep-alive
@@ -61,11 +74,54 @@ type etcdRegistrar struct {
 
 // hold tracks the lease and keep-alive goroutine backing one registered key,
 // plus the last payload written under it so a weight update can rewrite the
-// full instanceValue without rebuilding the lease.
+// full instanceValue without rebuilding the lease — and so the self-healing
+// loop can re-register the current value after a keep-alive loss.
 type hold struct {
 	leaseID clientv3.LeaseID
 	cancel  context.CancelFunc
 	reg     instance
+
+	// done is closed by stop to end the keep-alive drain and the re-register
+	// retry loop; stopOnce makes stop idempotent (Deregister + re-Register).
+	done     chan struct{}
+	stopOnce sync.Once
+}
+
+// newHold builds a hold for reg with its stop signal wired up.
+func newHold(reg instance) *hold {
+	return &hold{reg: reg, done: make(chan struct{})}
+}
+
+// stop cancels the keep-alive context and signals the watcher goroutine to
+// exit. It is idempotent and safe to call from any goroutine; cancel may be
+// nil if a concurrent publish has not stored it yet — publish also checks
+// done after storing, so a stop racing publish still cancels the keep-alive.
+func (h *hold) stop() {
+	h.stopOnce.Do(func() {
+		if h.cancel != nil {
+			h.cancel()
+		}
+		close(h.done)
+	})
+}
+
+// stopped reports whether stop has been called (Deregister or retirement).
+func (h *hold) stopped() bool {
+	select {
+	case <-h.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// stopHold stops h under the registrar lock: hold fields (leaseID, cancel) are
+// written by publish under the same lock, so a stop racing a re-publish never
+// misses the cancel func.
+func (r *etcdRegistrar) stopHold(h *hold) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	h.stop()
 }
 
 // newEtcdRegistrar builds a *clientv3.Client from c and returns a registrar. It
@@ -98,12 +154,16 @@ func newEtcdRegistrar(c EtcdConfig) (*etcdRegistrar, error) {
 		_ = cli.Close()
 		return nil, errutil.Explain(err, "registry-etcd: startup probe failed for %s", c.Endpoints[0])
 	}
-	return &etcdRegistrar{
-		client:    cli,
-		keyPrefix: c.KeyPrefix,
-		ttlSecs:   c.ttlSeconds(),
-		holds:     map[string]*hold{},
-	}, nil
+	r := &etcdRegistrar{
+		client:      cli,
+		keyPrefix:   c.KeyPrefix,
+		ttlSecs:     c.ttlSeconds(),
+		backoffBase: time.Second,
+		backoffCap:  time.Minute,
+		holds:       map[string]*hold{},
+	}
+	r.publish = r.etcdPublish
+	return r, nil
 }
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
@@ -122,8 +182,11 @@ func (r *etcdRegistrar) keyFor(reg instance) string {
 }
 
 // Register grants a lease, writes the instance under it, and starts a keep-alive
-// so the entry stays live until Deregister or process death. Registering the
-// same instance again refreshes it: the previous lease is revoked first.
+// so the entry stays live until Deregister or process death. A watcher goroutine
+// drains keep-alive renewals and, if the keep-alive channel closes (etcd
+// restart, lease lost), re-registers with backoff so the key never silently
+// vanishes. Registering the same instance again refreshes it: the previous
+// lease is revoked first.
 func (r *etcdRegistrar) Register(ctx context.Context, reg instance) error {
 	if err := errutil.RequireField("registry-etcd", "addr", reg.Addr); err != nil {
 		return err
@@ -134,6 +197,39 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg instance) error {
 	if reg.Weight <= 0 {
 		reg.Weight = 1
 	}
+
+	h := newHold(reg)
+	ka, err := r.publish(h)
+	if err != nil {
+		return err
+	}
+
+	key := r.keyFor(reg)
+	r.mu.Lock()
+	// Re-registering the same instance refreshes it: retire the old lease.
+	// (Already under r.mu, so retire inline rather than via stopHold.)
+	if old, ok := r.holds[key]; ok {
+		old.stop()
+		_, _ = r.client.Revoke(context.Background(), old.leaseID)
+	}
+	r.holds[key] = h
+	r.mu.Unlock()
+
+	go r.watchKeepAlive(key, h, ka)
+	return nil
+}
+
+// etcdPublish grants a fresh lease, puts reg's key under it, and starts the
+// keep-alive whose renewal channel the caller must drain. It stores the new
+// lease and cancel func in h so UpdateWeight writes ride the current lease and
+// stop cancels the live keep-alive. It is the single (re-)registration step
+// used by both Register and the self-healing loop.
+func (r *etcdRegistrar) etcdPublish(h *hold) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
+	// Snapshot the payload under the lock: UpdateWeight may rewrite h.reg
+	// concurrently, and a re-publish must carry the latest advertised weight.
+	r.mu.Lock()
+	reg := h.reg
+	r.mu.Unlock()
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,
@@ -141,43 +237,86 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg instance) error {
 		Metadata:    reg.Metadata,
 	})
 	if err != nil {
-		return errutil.Explain(err, "registry-etcd: marshal instance %q", reg.ServiceName)
+		return nil, errutil.Explain(err, "registry-etcd: marshal instance %q", reg.ServiceName)
 	}
-
+	// The publish step runs detached from Register's ctx (the self-healing loop
+	// calls it from its own goroutine), so bound each etcd call by the lease
+	// TTL — a dead cluster fails this step rather than blocking forever.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(r.ttlSecs)*time.Second)
+	defer cancel()
 	grant, err := r.client.Grant(ctx, r.ttlSecs)
 	if err != nil {
-		return errutil.Explain(err, "registry-etcd: grant lease for %q", reg.ServiceName)
+		return nil, errutil.Explain(err, "registry-etcd: grant lease for %q", reg.ServiceName)
 	}
 	key := r.keyFor(reg)
 	if _, err := r.client.Put(ctx, key, string(val), clientv3.WithLease(grant.ID)); err != nil {
 		_, _ = r.client.Revoke(context.Background(), grant.ID)
-		return errutil.Explain(err, "registry-etcd: put %q", key)
+		return nil, errutil.Explain(err, "registry-etcd: put %q", key)
 	}
 
-	// KeepAlive runs until its context is cancelled (on Deregister). The returned
+	// KeepAlive runs until its context is cancelled (on stop). The returned
 	// channel must be drained or the lease will not be renewed.
-	kaCtx, cancel := context.WithCancel(context.Background())
+	kaCtx, kaCancel := context.WithCancel(context.Background())
 	ka, err := r.client.KeepAlive(kaCtx, grant.ID)
 	if err != nil {
-		cancel()
+		kaCancel()
 		_, _ = r.client.Revoke(context.Background(), grant.ID)
-		return errutil.Explain(err, "registry-etcd: keepalive for %q", reg.ServiceName)
+		return nil, errutil.Explain(err, "registry-etcd: keepalive for %q", reg.ServiceName)
 	}
-	go func() {
-		for range ka {
-			// Drain renewals; the lease is kept alive as long as we consume them.
-		}
-	}()
 
 	r.mu.Lock()
-	// Re-registering the same instance refreshes it: retire the old lease.
-	if old, ok := r.holds[key]; ok {
-		old.cancel()
-		_, _ = r.client.Revoke(context.Background(), old.leaseID)
-	}
-	r.holds[key] = &hold{leaseID: grant.ID, cancel: cancel, reg: reg}
+	h.leaseID = grant.ID
+	h.cancel = kaCancel
 	r.mu.Unlock()
-	return nil
+	// A stop that raced this publish (before cancel was stored) could not
+	// cancel the keep-alive context; catch up so it never leaks.
+	if h.stopped() {
+		kaCancel()
+	}
+	return ka, nil
+}
+
+// watchKeepAlive drains keep-alive renewals for one hold. The channel closes
+// when the keep-alive dies (etcd restart, lease expired server-side, or the
+// local stop). Unless the hold was stopped on purpose (Deregister /
+// re-Register), that means the registered key will vanish once the TTL
+// elapses, so it re-runs the publish step with exponential backoff (base 1s
+// doubling, capped at 1min) until the instance is registered again.
+func (r *etcdRegistrar) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.LeaseKeepAliveResponse) {
+	for {
+		// Drain renewals; the lease is kept alive as long as we consume them.
+		// The channel closing is the keep-alive death signal.
+		for range ka {
+		}
+		if h.stopped() {
+			return
+		}
+		log.Errorf(context.Background(), starterTag,
+			"keepalive for key=%s died (etcd unreachable or lease lost); re-registering with backoff", key)
+		backoff := r.backoffBase
+		for {
+			if h.stopped() {
+				return
+			}
+			nka, err := r.publish(h)
+			if err == nil {
+				log.Infof(context.Background(), starterTag, "re-registered key=%s under a new lease", key)
+				ka = nka
+				break
+			}
+			log.Errorf(context.Background(), starterTag,
+				"re-register key=%s failed: %v; retrying in %s", key, err, backoff)
+			select {
+			case <-h.done:
+				return
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+			if backoff > r.backoffCap {
+				backoff = r.backoffCap
+			}
+		}
+	}
 }
 
 // UpdateWeight rewrites reg's key with a new weight on its existing lease —
@@ -225,7 +364,7 @@ func (r *etcdRegistrar) Deregister(ctx context.Context, reg instance) error {
 	if !ok {
 		return nil
 	}
-	h.cancel()
+	r.stopHold(h)
 	if _, err := r.client.Revoke(ctx, h.leaseID); err != nil {
 		return errutil.Explain(err, "registry-etcd: revoke lease for %q", reg.ServiceName)
 	}

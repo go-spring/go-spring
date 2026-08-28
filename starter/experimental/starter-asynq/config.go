@@ -59,7 +59,13 @@ type Config struct {
 	Server ServerConfig `value:"${server}"`
 
 	// Observability configures the per-task access log (off/brief/detailed).
+	// Instance keys (spring.asynq.<name>.observability.*) override the
+	// top-level observability.* keys — see Client.resolveObservability.
 	Observability observe.ObserveConfig `value:"${observability:=}"`
+
+	// Driver specifies which Asynq driver to use; it must match a name
+	// registered via RegisterDriver. Defaults to DefaultDriver.
+	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
 // ServerConfig controls the worker role.

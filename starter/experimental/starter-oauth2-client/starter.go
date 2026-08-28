@@ -30,11 +30,6 @@ import (
 	"golang.org/x/oauth2/clientcredentials"
 )
 
-var (
-	// starterTag identifies logs emitted by the oauth2 client starter.
-	starterTag = log.RegisterAppTag("starter_oauth2_client", "")
-)
-
 func init() {
 	// Register multiple OAuth2 client-credentials HTTP clients as a group.
 	// Each instance is created from the configuration under "${spring.oauth2.client}",
@@ -77,7 +72,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (*http.Client, er
 		EndpointParams: c.endpointParams(),
 	}
 
-	log.Debugf(ctx.Context, starterTag, "creating oauth2 client clientID=%s tokenURL=%s timeout=%s", c.ClientID, c.TokenURL, c.Timeout)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating oauth2 client clientID=%s tokenURL=%s timeout=%s", c.ClientID, c.TokenURL, c.Timeout)
 
 	client := cfg.Client(otelContext(c.Timeout))
 	if c.Timeout > 0 {

@@ -38,8 +38,6 @@ import (
 // so the wrapper body, lifecycle and observe/resilience wiring stay in one place.
 type DB = gormcore.DB
 
-var starterTag = log.RegisterAppTag("gorm_clickhouse", "")
-
 func init() {
 	gormcore.Register(gormcore.Dialect[Config]{
 		Prefix:       "spring.gorm.clickhouse",
@@ -65,7 +63,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
 	}
 
-	log.Debugf(ctx, starterTag, "creating gorm clickhouse client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
+	log.Debugf(ctx, log.TagAppDef, "creating gorm clickhouse client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
 
 	var (
 		dialector = clickhouse.Open(c.DSN())
@@ -92,7 +90,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		if c.TLS.Enabled {
 			tlsCfg, terr := c.TLS.Build()
 			if terr != nil {
-				log.Errorf(ctx, starterTag, "gorm clickhouse: build TLS failed: %v", terr)
+				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build TLS failed: %v", terr)
 				return gormcore.Spec{}, errutil.Explain(terr, "gorm-clickhouse: build TLS")
 			}
 			opts.TLS = tlsCfg
@@ -100,7 +98,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		if useDiscovery {
 			ld, derr := c.NewResolver(ctx)
 			if derr != nil {
-				log.Errorf(ctx, starterTag, "gorm clickhouse: build discovery resolver failed: %v", derr)
+				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build discovery resolver failed: %v", derr)
 				return gormcore.Spec{}, derr
 			}
 			// ch.Options.DialContext is 2-arg: func(ctx, addr string) (net.Conn, error).

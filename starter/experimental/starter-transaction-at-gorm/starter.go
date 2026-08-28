@@ -21,14 +21,16 @@
 //
 //	import _ "go-spring.org/starter-transaction-at-gorm"
 //
-// After that the container holds two beans:
+// After that the container holds three beans:
 //
 //   - an at.GlobalLock — the in-memory global row lock providing write-write
 //     isolation between concurrent global transactions;
 //   - an at.Coordinator — the bundled in-process orchestrator that, on success,
 //     drops every branch's undo logs (second-phase commit) and, on failure,
 //     restores every changed row from its recorded before-image (second-phase
-//     rollback).
+//     rollback);
+//   - a gs.Runner — the startup crash-recovery scan that replays the undo logs
+//     a previous run's crash left behind (see RecoverOnStart).
 //
 // Unlike Saga and TCC, AT needs no business-written compensation and no method
 // registry: compensation is derived automatically from the before-image that a
@@ -66,16 +68,11 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-var (
-	// starterTag identifies logs emitted by the transaction at-gorm starter.
-	// The subType stays at three underscore segments so that with the "app"
-	// root prepended by RegisterAppTag the tag is four segments — the log
-	// package's max tag depth (log.isValidTag).
-	starterTag = log.RegisterAppTag("transaction_at_gorm", "")
-)
-
 // enabled matches when the starter is not explicitly disabled.
 var enabled = gs.OnProperty("spring.transaction.at.enabled").HavingValue("true").MatchIfMissing()
+
+// recoverOnStart matches when startup recovery is not explicitly disabled.
+var recoverOnStart = gs.OnProperty("spring.transaction.at.recover-on-start").HavingValue("true").MatchIfMissing()
 
 func init() {
 	// The default global row lock: in-memory, so the framework stays standalone. It
@@ -92,6 +89,14 @@ func init() {
 	gs.Provide(newCoordinator, gs.TagArg("${spring.transaction.at}"), gs.TagArg("")).
 		Condition(enabled).
 		Export(gs.As[at.Coordinator]())
+
+	// The startup crash-recovery Runner. It scans the at_undo_log table of every
+	// database the AT plugin was installed on (registered at plugin Initialize
+	// time, which is why the plugin must be installed during wiring) and replays
+	// the undo logs a previous run's crash left between phase one and phase two.
+	gs.Provide(newRecoveryRunner).
+		Condition(enabled, recoverOnStart).
+		Export(gs.As[gs.Runner]())
 }
 
 // newCoordinator builds the bundled in-process coordinator over the autowired
@@ -101,6 +106,6 @@ func newCoordinator(c Config, lock at.GlobalLock) at.Coordinator {
 	if c.Tracing {
 		opts = append(opts, at.WithObserver(transactionobserve.AtObserver{}))
 	}
-	log.Infof(context.Background(), starterTag, "at coordinator created tracing=%v", c.Tracing)
+	log.Infof(context.Background(), log.TagAppDef, "at coordinator created tracing=%v", c.Tracing)
 	return at.NewCoordinator(opts...)
 }

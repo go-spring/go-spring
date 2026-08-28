@@ -36,12 +36,13 @@ go get go-spring.org/starter-transaction-saga
 import _ "go-spring.org/starter-transaction-saga"
 ```
 
-容器随即持有三个 bean:
+容器随即持有四个 bean:
 
 - 一个 `transaction.Coordinator`——进程内编排器,按序执行 Step,失败时逆序
   补偿;
 - 一个 `*transaction.StepRegistry`——应用侧按方法名声明 Step;
-- 一个 `transaction.Store`——默认内存实现,可被持久化 Store 顶替(见下)。
+- 一个 `transaction.Store`——默认内存实现,可被持久化 Store 顶替(见下);
+- 一个 `gs.Runner`——对该 Store 的启动恢复扫描。
 
 ### 2. 声明 Step
 
@@ -52,8 +53,8 @@ Action、恢复可能重放 Compensate)。前序 Step 的返回值通过 `StepRe
 ```go
 deductInventory := transaction.Step{
     Name:       "DeductInventory",
-    Action:     func(ctx context.Context, r *transaction.StepResults) (any, error) { ... },
-    Compensate: func(ctx context.Context, r *transaction.StepResults) error { ... },
+    Action:     func(ctx context.Context) (any, error) { ... },
+    Compensate: func(ctx context.Context, result any) error { ... },
 }
 ```
 

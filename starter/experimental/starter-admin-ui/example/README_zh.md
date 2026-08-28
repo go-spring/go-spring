@@ -14,7 +14,12 @@ cd starter-admin-ui/example
 go run . -manual
 ```
 
-终端 2，浏览器打开 `http://127.0.0.1:9280` 查看管理界面。
+终端 2，浏览器打开 `http://127.0.0.1:9280` 查看管理界面。示例配置了
+`spring.admin-ui.token=example-token`，请求需携带该 token，例如：
+
+```bash
+curl -s -H "Authorization: Bearer example-token" http://127.0.0.1:9280/api/status
+```
 
 验证完成后 `Ctrl+C` 退出服务。
 

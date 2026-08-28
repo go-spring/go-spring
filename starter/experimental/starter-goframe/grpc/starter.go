@@ -40,8 +40,6 @@ import (
 	_ "go-spring.org/starter-goframe/internal/logger"
 )
 
-var goframeGRPCTag = log.RegisterAppTag("goframe_grpc", "starter")
-
 func init() {
 	gs.Provide(NewGRPCServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.grpc.server}"))).
 		Export(gs.As[gs.Server]()).
@@ -92,7 +90,7 @@ func NewGRPCServer(cfg Config, reg ServiceRegister) *GRPCServer {
 		gsvc.SetRegistry(etcdreg.New(cfg.Registry.Etcd))
 	}
 
-	log.Debugf(context.Background(), goframeGRPCTag, "goframe grpc server created name=%s address=%s registry=%s",
+	log.Debugf(context.Background(), log.TagAppDef, "goframe grpc server created name=%s address=%s registry=%s",
 		cfg.Name, cfg.Address, cfg.Registry.Etcd)
 
 	grpcCfg := grpcx.Server.NewConfig()
@@ -115,7 +113,7 @@ func NewGRPCServer(cfg Config, reg ServiceRegister) *GRPCServer {
 // owned by the Go-Spring lifecycle.
 func (s *GRPCServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, goframeGRPCTag, "goframe grpc server starting")
+	log.Infof(ctx, log.TagAppDef, "goframe grpc server starting")
 	s.svr.Start()
 	<-s.done
 	return nil
@@ -131,7 +129,7 @@ func (s *GRPCServer) Stop() error {
 // from etcd when a registry is set and calls grpc.Server.GracefulStop) and
 // unblocks Run. grpcx Stop takes no context, so ctx only tags the shutdown log.
 func (s *GRPCServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, goframeGRPCTag, "goframe grpc server shutting down")
+	log.Infof(ctx, log.TagAppDef, "goframe grpc server shutting down")
 	s.svr.Stop()
 	close(s.done)
 	return nil

@@ -42,6 +42,10 @@ func NewResource(serviceName string) (*resource.Resource, error) {
 // RegisterSpanExporter. Endpoint is required for the otlp exporters; an empty
 // endpoint falls back to the exporter's own default (localhost:4317 / :4318).
 func NewTracerProvider(cfg TraceConfig, res *resource.Resource) (*sdktrace.TracerProvider, error) {
+	if cfg.SamplerRatio <= 0 {
+		return nil, fmt.Errorf(
+			"observability: trace.sampler-ratio=%v is invalid: a non-positive ratio drops every trace (config default is 1.0); to disable tracing set spring.observability.trace.exporter=none or spring.observability.trace.enable=false", cfg.SamplerRatio)
+	}
 	f, ok := lookupSpanExporter(cfg.Exporter)
 	if !ok {
 		return nil, unknownExporterErr(cfg.Exporter)
@@ -58,15 +62,15 @@ func NewTracerProvider(cfg TraceConfig, res *resource.Resource) (*sdktrace.Trace
 	), nil
 }
 
-// NewSampler maps a ratio to a ParentBased sampler: >=1 always sample, <=0
-// never, otherwise a TraceID ratio sampler. ParentBased keeps a trace's
+// NewSampler maps a ratio to a ParentBased sampler: >=1 always sample, a
+// value in (0,1) a TraceID ratio sampler. ParentBased keeps a trace's
 // sampling decision consistent once an upstream service has decided.
+// Non-positive ratios are rejected by NewTracerProvider instead of being
+// silently turned into "never sample" (which would drop everything).
 func NewSampler(ratio float64) sdktrace.Sampler {
 	switch {
 	case ratio >= 1:
 		return sdktrace.ParentBased(sdktrace.AlwaysSample())
-	case ratio <= 0:
-		return sdktrace.ParentBased(sdktrace.NeverSample())
 	default:
 		return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))
 	}

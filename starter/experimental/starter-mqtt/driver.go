@@ -82,7 +82,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (mqtt.Client, e
 
 	tlsCfg, err := c.TLS.Build()
 	if err != nil {
-		log.Errorf(ctx, starterTag, "mqtt: build TLS failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "mqtt: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "mqtt: build TLS")
 	}
 	if tlsCfg != nil {

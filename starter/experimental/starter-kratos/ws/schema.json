@@ -18,6 +18,15 @@
     "path": {
       "type": "string",
       "default": "/"
+    },
+    "etcd": {
+      "type": "object",
+      "properties": {
+        "addr": {
+          "type": "string",
+          "default": ""
+        }
+      }
     }
   }
 }

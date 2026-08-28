@@ -3,20 +3,55 @@
   "title": "spring.asynq",
   "type": "object",
   "properties": {
-    "addr": { "type": "string", "description": "Redis server address, host:port" },
-    "username": { "type": "string", "default": "" },
-    "password": { "type": "string", "default": "" },
-    "db": { "type": "integer", "default": 0 },
-    "tls": { "type": "object", "description": "tlsconf shared block" },
-    "concurrency": { "type": "integer", "default": 10 },
-    "queues": { "type": "object", "description": "queue name -> priority weight" },
-    "shutdown-timeout": { "type": "string", "default": "8s" },
+    "addr": {
+      "type": "string",
+      "description": "Redis server address, host:port"
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    },
+    "db": {
+      "type": "integer",
+      "default": 0
+    },
+    "tls": {
+      "type": "object",
+      "description": "tlsconf shared block"
+    },
+    "concurrency": {
+      "type": "integer",
+      "default": 10
+    },
+    "queues": {
+      "type": "object",
+      "description": "queue name -> priority weight"
+    },
+    "shutdown-timeout": {
+      "type": "string",
+      "default": "8s"
+    },
     "server": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean", "default": false, "description": "turn on the worker role" }
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "turn on the worker role"
+        }
       }
     },
-    "observability": { "type": "object", "description": "per-task access log (off/brief/detailed)" }
+    "observability": {
+      "type": "object",
+      "description": "per-task access log (off/brief/detailed)"
+    },
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    }
   }
 }

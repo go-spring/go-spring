@@ -5,7 +5,8 @@
 > 面向 Go-Spring 的轻量"Spring Boot Admin 等价物":一个自包含的 HTML 看板,
 > 定时轮询一组应用实例的 `starter-actuator` 端点,聚合渲染集群健康状态。
 
-`starter-admin-ui` 自持一个独立的 HTTP 端口(默认 `:9280`),后台协程按周期拉取
+`starter-admin-ui` 自持一个独立的 HTTP 端口(配置 `spring.admin-ui.addr` 才激活,
+不配置则不启动任何 server),后台协程按周期拉取
 每个配置实例的 `/health`、`/readiness`、`/startup`、`/info`,以一行一个实例的表格
 展示状态色标、组件级健康、构建信息。
 
@@ -44,14 +45,24 @@ import _ "go-spring.org/starter-admin-ui"
 在项目的[配置文件](example/conf/app.properties)里加入:
 
 ```properties
-spring.admin-ui.enabled=true
+# 配置 addr 即激活 starter(没有 enabled 这个 key)。
 spring.admin-ui.addr=:9280
 spring.admin-ui.instances[0]=http://10.0.0.1:9370
 spring.admin-ui.instances[1]=http://10.0.0.2:9370
 spring.admin-ui.interval=10s
 spring.admin-ui.timeout=3s
 spring.admin-ui.title=Go-Spring Admin
+
+# 可选鉴权(token,或 username+password 二选一)。addr 绑定非 loopback
+# 接口时建议配置;不配置则启动时打告警。
+# spring.admin-ui.token=s3cret
+# spring.admin-ui.username=admin
+# spring.admin-ui.password=pw
 ```
+
+> 迁移说明:旧版本默认在 `:9280` 启用看板(`spring.admin-ui.enabled=true` 且
+> 缺省视为开启)。依赖该行为的用户请补上 `spring.admin-ui.addr=:9280`;
+> `enabled` key 不再读取。
 
 每个 `instances[i]` 是一个 base URL——轮询时会自动拼上 `/health`、`/readiness`、
 `/startup`、`/info`。`instances` 为空时看板仍然可访问,只是显示"未配置实例"。
@@ -114,8 +125,9 @@ JSON 载荷示例:
 
 | 属性 | 默认值 | 说明 |
 | --- | --- | --- |
-| `spring.admin-ui.enabled` | `true` | 是否启用 admin-ui server。 |
-| `spring.admin-ui.addr` | `:9280` | 监听地址。与主 HTTP server(`:9090`)、actuator(`:9370`)、pprof(`127.0.0.1:9981`)刻意错开。 |
+| `spring.admin-ui.addr` | *(无——必填)* | 监听地址;配置它即激活 admin-ui server(没有 `enabled` key)。与主 HTTP server(`:9090`)、actuator(`:9370`)、pprof(`:9981`)刻意错开。 |
+| `spring.admin-ui.token` | *(空)* | 设置后每个请求需带 `Authorization: Bearer <token>`;优先于 username/password。 |
+| `spring.admin-ui.username` / `spring.admin-ui.password` | *(空)* | 两者都设置时启用 HTTP Basic 鉴权。非 loopback 绑定且无任何凭证时,启动打告警。 |
 | `spring.admin-ui.instances` | *(空)* | 要轮询的 actuator base URL 列表。 |
 | `spring.admin-ui.interval` | `10s` | 轮询周期,同时驱动页面自动刷新。 |
 | `spring.admin-ui.timeout` | `3s` | 单个实例单个端点的 HTTP 超时。 |

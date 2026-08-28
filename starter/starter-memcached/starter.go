@@ -29,8 +29,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("memcached", "")
-
 func init() {
 	// Register multiple Memcached clients as a group, one per entry under
 	// "${spring.memcached}". A gs.Module (rather than gs.Group) is used so each
@@ -79,29 +77,29 @@ func init() {
 // newClient creates a new Memcached client based on the provided configuration,
 // wrapped so every operation flows through the observe kit (trace+metric+log).
 func newClient(ctx *gs.ContextProvider, name string, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating memcached client, servers=%v service-name=%s", c.Servers, c.ServiceName)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating memcached client, servers=%v service-name=%s", c.Servers, c.ServiceName)
 
 	if len(c.Servers) == 0 && c.ServiceName == "" {
 		return nil, errutil.Explain(nil, "memcached: one of servers or service-name must be set")
 	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "memcached driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "memcached driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "memcached driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "memcached: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "memcached: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create memcached client")
 	}
 	// Fail fast: probe every configured server with a PING at startup so a
 	// misconfigured or unreachable server surfaces during boot rather than on
 	// the first request.
 	if err := client.Ping(); err != nil {
-		log.Errorf(ctx.Context, starterTag, "memcached: startup ping failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "memcached: startup ping failed: %v", err)
 		return nil, errutil.Explain(err, "memcached: startup ping failed")
 	}
-	log.Infof(ctx.Context, starterTag, "memcached client initialized, servers=%v", c.Servers)
+	log.Infof(ctx.Context, log.TagAppDef, "memcached client initialized, servers=%v", c.Servers)
 	// Return the wrapper; gs field-injects Resilience (gs.Dync, hot-reloadable)
 	// + Observability after this returns, then calls Init (InitMethod)
 	// to build the observer + executor. Close (Destroy) stops any discovery

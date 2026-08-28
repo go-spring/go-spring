@@ -30,8 +30,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("pulsar", "")
-
 func init() {
 
 	// Register multiple Pulsar clients as a group.
@@ -55,11 +53,11 @@ func init() {
 // startup instead of surfacing on the first produce/consume, then the resilience
 // executor is attached.
 func newClient(ctx *gs.ContextProvider, name string, c Config) (pulsar.Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating pulsar client, url=%s fail-fast=%v", c.URL, c.FailFast)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating pulsar client, url=%s fail-fast=%v", c.URL, c.FailFast)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "pulsar driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "pulsar driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "pulsar driver not found: %s", c.Driver)
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
@@ -69,18 +67,18 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (pulsar.Client, e
 
 	if c.FailFast {
 		if _, err = cl.TopicPartitions(c.HealthCheckTopic); err != nil {
-			log.Errorf(ctx.Context, starterTag, "pulsar: fail-fast probe failed on %s (topic=%s): %v", c.URL, c.HealthCheckTopic, err)
+			log.Errorf(ctx.Context, log.TagAppDef, "pulsar: fail-fast probe failed on %s (topic=%s): %v", c.URL, c.HealthCheckTopic, err)
 			cl.Close()
 			shutdownMetrics(cl)
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
 	}
 	if err := applyResilience(c, cl, resilience.ResourceLabel("pulsar", c.URL)); err != nil {
-		log.Errorf(ctx.Context, starterTag, "pulsar: resilience setup failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "pulsar: resilience setup failed: %v", err)
 		cl.Close()
 		shutdownMetrics(cl)
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "pulsar client initialized, url=%s", c.URL)
+	log.Infof(ctx.Context, log.TagAppDef, "pulsar client initialized, url=%s", c.URL)
 	return cl, nil
 }

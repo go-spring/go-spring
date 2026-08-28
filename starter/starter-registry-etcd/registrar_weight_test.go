@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // TestUpdateWeightUnregistered proves the guard: updating an instance that was

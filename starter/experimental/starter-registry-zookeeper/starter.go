@@ -51,11 +51,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var (
-	// starterTag identifies logs emitted by the zookeeper registry starter.
-	starterTag = log.RegisterAppTag("starter_registry_zookeeper", "")
-)
-
 func init() {
 	// Activated only when ZooKeeper servers are set. The constructor binds
 	// ZookeeperConfig from ${spring.registry.zookeeper} and builds the
@@ -78,7 +73,7 @@ func init() {
 // ensemble so a misconfigured or unreachable ZooKeeper fails fast at startup
 // rather than surfacing on the first Register.
 func NewServer(c ZookeeperConfig) (*Server, error) {
-	log.Debugf(context.Background(), starterTag, "creating zookeeper registrar servers=%v", c.Servers)
+	log.Debugf(context.Background(), log.TagAppDef, "creating zookeeper registrar servers=%v", c.Servers)
 	reg, err := newZookeeperRegistrar(c)
 	if err != nil {
 		return nil, errutil.Explain(err, "registry-zookeeper: build registrar")
@@ -114,12 +109,12 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Debugf(ctx, starterTag, "registering service=%s id=%s addr=%s weight=%d", s.reg.ServiceName, s.reg.ID, s.reg.Addr, s.reg.Weight)
+	log.Debugf(ctx, log.TagAppDef, "registering service=%s id=%s addr=%s weight=%d", s.reg.ServiceName, s.reg.ID, s.reg.Addr, s.reg.Weight)
 	if err := s.registrar.Register(ctx, s.reg); err != nil {
-		log.Errorf(ctx, starterTag, "register service=%s failed: %v", s.reg.ServiceName, err)
+		log.Errorf(ctx, log.TagAppDef, "register service=%s failed: %v", s.reg.ServiceName, err)
 		return errutil.Explain(err, "registry: register %q", s.reg.ServiceName)
 	}
-	log.Infof(ctx, starterTag, "registered %q at %s", s.reg.ServiceName, s.reg.Addr)
+	log.Infof(ctx, log.TagAppDef, "registered %q at %s", s.reg.ServiceName, s.reg.Addr)
 
 	<-ctx.Done()
 	return nil
@@ -140,9 +135,13 @@ func (s *Server) Stop() error {
 
 // StopContext deregisters as a fallback should PreStop not have run,
 // propagating the shutdown context into the deregister call. Deregister is
-// idempotent, so a second call is a no-op.
+// idempotent, so a second call is a no-op. It then closes the registrar
+// (stopping the session monitor and the ensemble connection).
 func (s *Server) StopContext(ctx context.Context) error {
 	s.deregister(ctx)
+	if s.registrar != nil {
+		s.registrar.Close()
+	}
 	return nil
 }
 
@@ -163,6 +162,6 @@ func (s *Server) deregister(ctx context.Context) {
 		return
 	}
 	if err := s.registrar.Deregister(ctx, s.reg); err != nil {
-		log.Warnf(ctx, starterTag, "deregister %q: %v", s.reg.ServiceName, err)
+		log.Warnf(ctx, log.TagAppDef, "deregister %q: %v", s.reg.ServiceName, err)
 	}
 }

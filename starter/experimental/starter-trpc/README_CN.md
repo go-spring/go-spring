@@ -96,7 +96,7 @@ Go-Spring 关停时会调用 `SimpleTrpcServer.Stop()`，后者进而调用
 
 ## 说明
 
-- starter 监听 `${spring.trpc.server.addr}`（默认 `127.0.0.1:8000`）。
-- tRPC server 默认启用；可通过 `spring.trpc.server.enabled=false` 关闭。
+- starter 监听 `${spring.trpc.server.addr}`——无默认值。
+- server 仅在设置 `spring.trpc.server.addr` 时激活；不存在 `enabled` key。
 - 只需一个 `ServiceRegister` bean 即可激活 server。
 - 本 starter 使用**直连**方式拨号，不接注册中心，因此运行示例无需 docker。

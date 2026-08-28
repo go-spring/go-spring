@@ -57,11 +57,6 @@ const (
 	mount      = "secret"
 	secretPath = "gs-config-demo"
 	docField   = "application.properties"
-
-	// aesKey is the base64 of the 16-byte key "1234567890123456". A real
-	// deployment supplies the key out of band (a mounted Secret, a Vault Agent
-	// sink); it is inlined here only to keep the smoke test self-contained.
-	aesKey = "MTIzNDU2Nzg5MDEyMzQ1Ng=="
 )
 
 // Demo binds a dynamic configuration field sourced from the Vault secret and a

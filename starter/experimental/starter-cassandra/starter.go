@@ -29,8 +29,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("cassandra", "")
-
 func init() {
 	// Register multiple Cassandra clients as a group, one per entry under
 	// "${spring.cassandra}". A gs.Module (rather than gs.Group) is used so each
@@ -59,7 +57,7 @@ func init() {
 // misconfiguration or an unreachable cluster fails fast rather than on first
 // use.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating cassandra client, hosts=%v keyspace=%s", c.Hosts, c.Keyspace)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating cassandra client, hosts=%v keyspace=%s", c.Hosts, c.Keyspace)
 
 	if (c.Username == "") != (c.Password == "") {
 		return nil, errutil.Explain(nil, "cassandra username and password must be set together")
@@ -67,7 +65,7 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "cassandra driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "cassandra driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "cassandra driver not found: %s", c.Driver)
 	}
 	session, err := d.CreateClient(ctx.Context, c)

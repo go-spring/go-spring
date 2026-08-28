@@ -32,6 +32,7 @@ import (
 	"sync"
 
 	"go-spring.org/cloud/experimental/httpx"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -41,8 +42,6 @@ import (
 	"go-spring.org/stdlib/httpclt"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
-
-var starterTag = log.RegisterAppTag("http_client", "")
 
 // clientConfig couples a bound instance name with its Config for the global
 // assembler.
@@ -106,7 +105,7 @@ func installDispatch(ctx *gs.ContextProvider, cfgs []clientConfig) (*dispatchTra
 		}
 		return resp, nil
 	}
-	log.Infof(ctx.Context, starterTag, "http client initialized, routes=%d", len(d.routes))
+	log.Infof(ctx.Context, log.TagAppDef, "http client initialized, routes=%d", len(d.routes))
 	return d, nil
 }
 
@@ -114,18 +113,33 @@ func installDispatch(ctx *gs.ContextProvider, cfgs []clientConfig) (*dispatchTra
 // discovery/load-balancing/resilience → user middleware. closeFn (when non-nil)
 // releases the discovery watch and resilience executor behind it.
 func assembleTransport(ctx *gs.ContextProvider, name string, c Config) (rt http.RoundTripper, closeFn func() error, err error) {
-	log.Debugf(ctx.Context, starterTag, "assembling http transport, addr=%s service-name=%s", c.Addr, c.ServiceName)
+	log.Debugf(ctx.Context, log.TagAppDef, "assembling http transport, addr=%s service-name=%s", c.Addr, c.ServiceName)
 	if err = c.validate(); err != nil {
 		return nil, nil, err
 	}
-	var base http.RoundTripper = otelhttp.NewTransport(http.DefaultTransport)
+	// TLS: build the transport's TLS config from the tls.* block. nil means the
+	// entry stays on system defaults, so a plain http route is untouched.
+	tlsCfg, err := c.TLS.Build()
+	if err != nil {
+		return nil, nil, errutil.Explain(err, "http-client: entry %q", name)
+	}
+	var baseTransport http.RoundTripper = http.DefaultTransport
+	if tlsCfg != nil {
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.TLSClientConfig = tlsCfg
+		baseTransport = t
+	}
+	var base http.RoundTripper = otelhttp.NewTransport(baseTransport)
 	if f := currentBaseFactory(); f != nil {
 		if custom := f(name, c); custom != nil {
 			base = custom
 		}
 	}
 	resource := httpResourceLabel(c)
-	exec := resilience.ExecutorFor(resource)
+	exec, err := governedExecutor(resource)
+	if err != nil {
+		return nil, nil, err
+	}
 	tcfg := c.toTransportConfig(base, exec)
 	if wrappers := currentTransportWrappers(); len(wrappers) > 0 {
 		tcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
@@ -137,7 +151,7 @@ func assembleTransport(ctx *gs.ContextProvider, name string, c Config) (rt http.
 	}
 	rt, closeFn, err = httpx.NewTransport(tcfg)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "http-client: create transport failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "http-client: create transport failed: %v", err)
 		return nil, nil, err
 	}
 	return rt, closeFn, nil
@@ -153,16 +167,65 @@ func routeKey(c Config) string {
 	return c.ServiceName
 }
 
-// httpResourceLabel derives the governance resource label for an http client,
-// scoped to the service name (discovery mode) or address (direct mode).
+// httpResourceLabel derives the governance resource label for an http client.
+// It is deliberately STABLE across addressing modes: service-name wins whenever
+// it is set (discovery mode, or direct mode where it is kept as a pure label),
+// and only an entry with no service-name at all falls back to its address. A
+// govern rule scoped to "http:<service-name>" therefore keeps matching when the
+// entry switches between direct and discovery addressing.
 func httpResourceLabel(c Config) string {
 	return resilience.ResourceLabel("http", c.ServiceName, c.Addr)
+}
+
+// minRequestsFloor is the minimum sample size this starter enforces on an
+// error-rate breaker resolved for an http resource. resilience's own zero-value
+// floor is 1 — a single failure at a 100% rate trips the breaker immediately,
+// which is too hair-trigger for typical http traffic. Unless a govern rule sets
+// a HIGHER value explicitly, the starter raises MinRequests to this floor. It
+// applies only to policies resolved for http-client resources here in the
+// starter; resilience core defaults are untouched, and the consecutive
+// strategy is unaffected (MinRequests is an error-rate-only knob).
+const minRequestsFloor = 5
+
+// governedExecutor builds the resilience executor for one http resource from
+// the centralized governance authority, applying the starter-level
+// minRequestsFloor to the resolved policy. It subscribes through the
+// governance facade (the same direct-import path starter-dubbo uses) instead of
+// the resilience.ExecutorFor seam, because the floor must see the resolved
+// policy — a seam executor is opaque to it. With governance off (or
+// starter-governance not imported) the armed policy is zero and the executor is
+// a transparent pass-through, exactly as with ExecutorFor; hot-reload works the
+// same way (governance re-invokes the subscriber, the executor Refreshes).
+func governedExecutor(resource string) (resilience.Executor, error) {
+	var exec resilience.Executor
+	refresh := func(p resilience.Policy) {
+		if e := exec; e != nil {
+			_ = e.Refresh(floorMinRequests(p))
+		}
+	}
+	p := floorMinRequests(governance.Register(resource, refresh))
+	e, err := resilience.NewExecutor(governance.Driver(), p)
+	if err != nil {
+		return nil, err
+	}
+	exec = e
+	return exec, nil
+}
+
+// floorMinRequests raises an error-rate policy's MinRequests to
+// minRequestsFloor when unset or lower. A policy that is zero or consecutive
+// is returned unchanged.
+func floorMinRequests(p resilience.Policy) resilience.Policy {
+	if p.ResolvedBreakerStrategy() == resilience.BreakerErrorRate && p.ErrorRateThreshold > 0 && p.MinRequests < minRequestsFloor {
+		p.MinRequests = minRequestsFloor
+	}
+	return p
 }
 
 // destroyDispatch releases every route's discovery watch and resilience
 // executor by closing the dispatch transport.
 func destroyDispatch(d *dispatchTransport) error {
-	log.Debugf(context.Background(), starterTag, "http client destroyed")
+	log.Debugf(context.Background(), log.TagAppDef, "http client destroyed")
 	return d.Close()
 }
 

@@ -75,7 +75,6 @@ spring.registry.metadata.version=v1
 | --- | --- | --- |
 | `service-name` | (必填) | 要发布的逻辑名,也是客户端解析用的名字。 |
 | `addr` | (必填) | 对外通告的可连 `host:port`。 |
-| `id` | (空) | 为与其他后端对齐而保留;Nacos 不用,它以 `ip:port` 标识实例。 |
 | `weight` | `0` | 负载均衡权重;`0` 回退为 Nacos 默认的 `1`。 |
 | `metadata.*` | (无) | 随实例存储的任意键值属性。 |
 
@@ -101,3 +100,12 @@ SIGTERM 以触发注销路径),并断言实例已出现。无 Docker 时优雅�
 （loadbalance 池）在下一个发现快照（一个 Watch 推送周期）生效。权重 0 即摘流
 （不接流量但保持注册），是下线前零损失轮转的标准一步。运维也可以直接改注册中心
 里的权重值，效果等同。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_registry_nacos`（nacos 注册中心）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.registry_nacos.type=Logger
+logger.registry_nacos.level=WARN
+logger.registry_nacos.tag=_app_registry_nacos
+```

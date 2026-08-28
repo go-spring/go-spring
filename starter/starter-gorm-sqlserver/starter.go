@@ -41,8 +41,6 @@ import (
 // so the wrapper body, lifecycle and observe/resilience wiring stay in one place.
 type DB = gormcore.DB
 
-var starterTag = log.RegisterAppTag("gorm_sqlserver", "")
-
 func init() {
 	gormcore.Register(gormcore.Dialect[Config]{
 		Prefix:       "spring.gorm.sqlserver",
@@ -67,7 +65,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
 	}
 
-	log.Debugf(ctx, starterTag, "creating gorm sqlserver client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
+	log.Debugf(ctx, log.TagAppDef, "creating gorm sqlserver client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
 
 	var (
 		dialector gorm.Dialector
@@ -76,13 +74,13 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 
 	ld, err := c.NewResolver(ctx)
 	if err != nil {
-		log.Errorf(ctx, starterTag, "gorm sqlserver: build discovery resolver failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: build discovery resolver failed: %v", err)
 		return gormcore.Spec{}, err
 	}
 	if ld != nil {
 		msCfg, err := msdsn.Parse(c.DSN())
 		if err != nil {
-			log.Errorf(ctx, starterTag, "gorm sqlserver: parse DSN failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: parse DSN failed: %v", err)
 			_ = ld.Stop()
 			return gormcore.Spec{}, err
 		}

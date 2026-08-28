@@ -133,11 +133,117 @@ func (f fakeEndpoint) Path() string { return f.path }
 
 func (f fakeEndpoint) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
-func TestEndpointFilter_DefaultAllOn(t *testing.T) {
+func TestEndpointFilter_SensitiveOffByDefault(t *testing.T) {
+	// Introspection endpoints that expose configuration or internals
+	// (env, configprops, threaddump, loggers, beans) must NOT register unless
+	// explicitly included — an empty include is no longer a free pass.
 	s := &Server{Endpoints: []endpoint.Endpoint{fakeEndpoint{"/metrics"}}}
 	names := registeredNames(s)
-	for _, want := range []string{"info", "loggers", "env", "configprops", "threaddump", "beans", "metrics"} {
-		assert.That(t, names[want]).True()
+	for _, off := range []string{"loggers", "env", "configprops", "threaddump", "beans"} {
+		assert.That(t, names[off]).False()
+	}
+	// /info (build metadata) and contributed endpoints stay default-on.
+	assert.That(t, names["info"]).True()
+	assert.That(t, names["metrics"]).True()
+}
+
+func TestEndpointFilter_SensitiveExplicitInclude(t *testing.T) {
+	// Listing a sensitive endpoint in include turns it on.
+	s := &Server{EndpointInclude: "env"}
+	names := registeredNames(s)
+	assert.That(t, names["env"]).True()
+	assert.That(t, names["configprops"]).False()
+}
+
+func TestEndpointFilter_ExcludeBeatsSensitiveInclude(t *testing.T) {
+	// exclude always wins, even over an explicit include of a sensitive endpoint.
+	s := &Server{EndpointInclude: "env", EndpointExclude: "env"}
+	names := registeredNames(s)
+	assert.That(t, names["env"]).False()
+}
+
+// --- authentication guard ---------------------------------------------------
+
+func TestAuth_BearerToken(t *testing.T) {
+	s := &Server{Token: "s3cret", Address: "127.0.0.1:9370"}
+	h := s.buildHandler(context.Background())
+
+	// No header / wrong token -> 401.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	assert.Number(t, rec.Code).Equal(http.StatusUnauthorized)
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("Authorization", "Bearer wrong")
+	h.ServeHTTP(rec, req)
+	assert.Number(t, rec.Code).Equal(http.StatusUnauthorized)
+
+	// Correct bearer -> 200 (probe endpoints stay open for K8s once authed).
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("Authorization", "Bearer s3cret")
+	h.ServeHTTP(rec, req)
+	assert.Number(t, rec.Code).Equal(http.StatusOK)
+}
+
+func TestAuth_Basic(t *testing.T) {
+	s := &Server{Username: "admin", Password: "pw", Address: "127.0.0.1:9370"}
+	h := s.buildHandler(context.Background())
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/info", nil))
+	assert.Number(t, rec.Code).Equal(http.StatusUnauthorized)
+	assert.String(t, rec.Header().Get("WWW-Authenticate")).Contains("Basic")
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/info", nil)
+	req.SetBasicAuth("admin", "pw")
+	h.ServeHTTP(rec, req)
+	assert.Number(t, rec.Code).Equal(http.StatusOK)
+}
+
+func TestAuth_DisabledByDefault(t *testing.T) {
+	// No credentials configured: the guard is a no-op and loopback serving
+	// needs no header.
+	s := &Server{Address: "127.0.0.1:9370"}
+	h := s.buildHandler(context.Background())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	assert.Number(t, rec.Code).Equal(http.StatusOK)
+}
+
+// --- secret masking ----------------------------------------------------------
+
+func TestMaskValue(t *testing.T) {
+	cases := []struct {
+		key, in, want string
+	}{
+		// Key-name rules.
+		{"demo.datasource.password", "any", "******"},
+		{"auth.access-key", "any", "******"},
+		{"demo.api.token", "any", "******"},
+		// Bare final-segment key variants now caught.
+		{"some.key", "any", "******"},
+		{"aws.key", "any", "******"},
+		{"db.api_key", "any", "******"},
+		{"key", "any", "******"},
+		{"KEY", "any", "******"},
+		// Word-boundary rule: look-alikes are NOT masked.
+		{"demo.monkey", "tail", "tail"},
+		{"demo.keyword", "search", "search"},
+		{"demo.keynote", "talk", "talk"},
+		// ENC(...) placeholder.
+		{"demo.encrypted.value", "ENC(9f8a7b6c5d)", "******"},
+		// URL-embedded credentials: userinfo redacted, rest kept.
+		{"demo.db.url", "mysql://user:pass@host:3306/db", "mysql://******@host:3306/db"},
+		{"demo.redis.addr", "redis://:p%40ss@redis:6379/0", "redis://******@redis:6379/0"},
+		// Ordinary values untouched, including URLs without credentials.
+		{"demo.datasource.url", "jdbc:mysql://localhost:3306/demo", "jdbc:mysql://localhost:3306/demo"},
+	}
+	for _, c := range cases {
+		got := maskValue(c.key, c.in)
+		assert.String(t, got).Equal(c.want)
 	}
 }
 
@@ -161,7 +267,10 @@ func TestEndpointFilter_ExcludeAlwaysApplies(t *testing.T) {
 	names := registeredNames(s)
 	assert.That(t, names["env"]).False()
 	assert.That(t, names["threaddump"]).False()
-	assert.That(t, names["configprops"]).True()
+	// configprops is sensitive: default-off regardless, and exclude would win anyway.
+	assert.That(t, names["configprops"]).False()
+	// A non-sensitive endpoint stays on when not excluded.
+	assert.That(t, names["info"]).True()
 }
 
 func TestEndpointFilter_ExcludeWinsOverInclude(t *testing.T) {

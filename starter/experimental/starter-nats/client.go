@@ -34,7 +34,7 @@ import (
 // the bean; JetStream is non-nil only when jetstream.enabled is set, since it is
 // derived from the same connection rather than opening a second one.
 //
-// When governance is enabled the opt-in PublishGuarded and
+// When governance is enabled the opt-in PublishGuarded(ctx, …) and
 // RequestGuarded methods route the call through a rate-limiter / circuit-
 // breaker executor; the plain Publish/Request remain untouched. nats exposes no
 // reject-capable middleware, so the guard lives at the call site — callers pick
@@ -68,8 +68,12 @@ func (c *Conn) Healthy() bool {
 // When a resilience executor is attached its Close releases any background
 // resources of a production driver.
 func destroyConn(conn *Conn) error {
+	var execErr error
 	if conn.exec != nil {
-		_ = conn.exec.Close()
+		execErr = conn.exec.Close()
 	}
-	return conn.Drain()
+	if err := conn.Drain(); err != nil {
+		return err
+	}
+	return execErr
 }

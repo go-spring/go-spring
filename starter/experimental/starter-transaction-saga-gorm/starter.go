@@ -42,14 +42,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	// starterTag identifies logs emitted by the transaction saga-gorm starter.
-	// The subType stays at three underscore segments so that with the "app"
-	// root prepended by RegisterAppTag the tag is four segments — the log
-	// package's max tag depth (log.isValidTag).
-	starterTag = log.RegisterAppTag("transaction_saga_gorm", "")
-)
-
 func init() {
 	// Register the durable Store only when explicitly selected, exported under the
 	// transaction.Store interface so it satisfies OnMissingBean in the saga
@@ -63,9 +55,9 @@ func init() {
 // *gorm.DB, creating the saga_snapshots table if absent (fail-fast on error).
 func newGormStore(_ gormConfig, db *gorm.DB) (transaction.Store, error) {
 	if err := db.AutoMigrate(&sagaSnapshot{}); err != nil {
-		log.Errorf(context.Background(), starterTag, "auto-migrate saga_snapshots failed: %v", err)
+		log.Errorf(context.Background(), log.TagAppDef, "auto-migrate saga_snapshots failed: %v", err)
 		return nil, err
 	}
-	log.Infof(context.Background(), starterTag, "gorm saga store created")
+	log.Infof(context.Background(), log.TagAppDef, "gorm saga store created")
 	return &gormStore{db: db}, nil
 }

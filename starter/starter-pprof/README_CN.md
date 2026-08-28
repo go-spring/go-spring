@@ -44,12 +44,12 @@ spring.pprof.token=s3cr3t
 http://<host>:9981/debug/pprof/
 ```
 
-配置 token 后，每个请求都必须携带它，可通过 `Authorization: Bearer <token>`
-请求头，或 `?token=<token>` 查询参数传入：
+配置 token 后，每个请求都必须通过 `Authorization: Bearer <token>`
+请求头携带它：
 
 ```bash
 curl -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:9981/debug/pprof/
-curl 'http://127.0.0.1:9981/debug/pprof/heap?token=s3cr3t'
+curl -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:9981/debug/pprof/heap
 ```
 
 ## 核心功能
@@ -70,7 +70,7 @@ curl 'http://127.0.0.1:9981/debug/pprof/heap?token=s3cr3t'
 | --- | --- | --- |
 | `spring.pprof.enabled` | `true` | 是否启用 pprof 服务。 |
 | `spring.pprof.addr` | `:9981` | 监听地址。默认绑定所有接口；使用 `127.0.0.1:9981` 可限制为仅本机访问。 |
-| `spring.pprof.token` | `` | 设置后，每个请求都须通过 `Authorization: Bearer <token>` 或 `?token=<token>` 携带该 token；优先级高于 Basic 鉴权。 |
+| `spring.pprof.token` | `` | 设置后，每个请求都须通过 `Authorization: Bearer <token>` 请求头携带该 token；优先级高于 Basic 鉴权。 |
 | `spring.pprof.username` | `` | HTTP Basic 鉴权用户名（须与 `password` 同时设置）。 |
 | `spring.pprof.password` | `` | HTTP Basic 鉴权密码（须与 `username` 同时设置）。 |
 

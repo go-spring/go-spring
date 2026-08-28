@@ -54,7 +54,7 @@ func (b *binder) NewPublisher(_ context.Context, destination string) (messaging.
 	if err != nil {
 		return nil, err
 	}
-	return &publisher{p: p}, nil
+	return &publisher{cl: b.cl, p: p}, nil
 }
 
 func (b *binder) NewSubscriber(_ context.Context, source, group string) (messaging.Subscriber, error) {
@@ -75,8 +75,13 @@ func (b *binder) NewSubscriber(_ context.Context, source, group string) (messagi
 	return &subscriber{c: c}, nil
 }
 
-// publisher produces envelopes to a fixed topic via its own producer.
-type publisher struct{ p pulsar.Producer }
+// publisher produces envelopes to a fixed topic via its own producer. It holds
+// the owning client so Publish can resolve the client-scoped resilience
+// executor (producers are caller-created and carry no stable identity).
+type publisher struct {
+	cl pulsar.Client
+	p  pulsar.Producer
+}
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	// Carry the load-test marker (if any) in the message Properties so the
@@ -96,13 +101,16 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		pm.Key = msg.Key
 	}
 	ctx, sp := startProduce(ctx, p.p.Topic(), pm)
-	_, err := p.p.Send(ctx, pm)
+	// Route through the same resilience executor the raw client API uses
+	// (GuardedSend): a no-op pass-through when governance is off for this
+	// client, a rejection sentinel when rate-limited/circuit-open.
+	_, err := GuardedSend(ctx, p.cl, p.p, pm)
 	sp.End(err)
 	return err
 }
 
 func (p *publisher) Close() error {
-	p.p.Close()
+	p.p.Close() // pulsar Producer.Close has no error return
 	return nil
 }
 
@@ -146,8 +154,9 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 			if herr != nil {
 				log.Errorf(msgCtx, log.TagAppDef, "pulsar binder handler error on %q: %v", msg.Topic(), herr)
 				s.c.Nack(msg)
-			} else {
-				_ = s.c.Ack(msg)
+			} else if err := s.c.Ack(msg); err != nil {
+				// A failed ack means the broker will redeliver the message.
+				log.Warnf(msgCtx, log.TagAppDef, "pulsar: ack failed on %q, message may be redelivered: %v", msg.Topic(), err)
 			}
 		}
 	}()

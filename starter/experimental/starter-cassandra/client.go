@@ -16,10 +16,11 @@
 
 // client.go is the "resource entity" concept of this starter: the Client
 // wrapper Cassandra sessions are injected as, plus its lifecycle (Init/
-// Destroy), the resource label, and the Exec helper that routes statements
-// through the resilience executor + observer. gocql exposes no reject-
-// capable middleware, so the guard is a wrapper method (the same stance the
-// MQ starters take with GuardedSend).
+// Destroy), the resource label, and the guard seam that routes statements
+// through the resilience executor + observer. gocql exposes no reject-capable
+// middleware, so the guard rides the guarded *Query wrapper every
+// Client.Query/Client.Bind call returns (query.go) — coverage of the normal
+// statement path is transparent, no opt-in helper required.
 package StarterCassandra
 
 import (
@@ -80,19 +81,15 @@ func (o *Client) Destroy() error {
 	return nil
 }
 
-// Exec executes a statement synchronously, routed through the resilience
-// executor and wrapped in an observation. On rejection (rate-limit or open
-// circuit) the statement is never attempted. For iterators and paging, use
-// the embedded session's Query directly — that path is intentionally
-// unguarded, matching the MQ starters' stance on their async paths.
-func (o *Client) Exec(ctx context.Context, stmt string, values ...any) error {
-	call := func(ctx context.Context) error {
-		return o.Session.Query(stmt, values...).WithContext(ctx).Exec()
-	}
+// guard routes call through the client's executor (when armed) and wraps it
+// in an observation (when an observer is armed). It is the single guarded
+// seam every statement path rides — the Query/Bind wrappers in query.go and
+// the Exec alias below.
+func (o *Client) guard(ctx context.Context, op, stmt string, call func(context.Context) error) error {
 	if o.obs != nil {
 		inner := call
 		call = func(ctx context.Context) error {
-			ctx, sp := o.obs.Start(ctx, "exec", stmt)
+			ctx, sp := o.obs.Start(ctx, op, stmt)
 			err := inner(ctx)
 			sp.End(err)
 			return err
@@ -102,4 +99,12 @@ func (o *Client) Exec(ctx context.Context, stmt string, values ...any) error {
 		return call(ctx)
 	}
 	return o.exec.Execute(ctx, o.resource, call)
+}
+
+// Exec executes a statement synchronously through the guarded path. It is now
+// a thin alias over the guarded Query wrapper (kept for callers written
+// against the earlier opt-in helper); Query(...).Exec() is the same call.
+// For iterators and paging use Query(...).Iter(), which is guarded too.
+func (o *Client) Exec(ctx context.Context, stmt string, values ...any) error {
+	return o.Query(stmt, values...).WithContext(ctx).Exec()
 }

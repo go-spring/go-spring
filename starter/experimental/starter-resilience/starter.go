@@ -39,11 +39,6 @@ import (
 	"go-spring.org/log"
 )
 
-var (
-	// starterTag identifies logs emitted by the resilience starter.
-	starterTag = log.RegisterAppTag("starter_resilience", "")
-)
-
 func init() {
 	// Initialise sentinel once at import time. Registration then always succeeds
 	// so a misconfigured environment fails loudly here rather than on first use.
@@ -51,7 +46,7 @@ func init() {
 		panic("starter-resilience: sentinel init failed: " + err.Error())
 	}
 	resilience.RegisterDriver("sentinel", sentinelDriver{})
-	log.Infof(context.Background(), starterTag, "registered sentinel resilience driver")
+	log.Infof(context.Background(), log.TagAppDef, "registered sentinel resilience driver")
 }
 
 type sentinelDriver struct{}

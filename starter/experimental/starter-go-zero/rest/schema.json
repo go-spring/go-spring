@@ -12,36 +12,54 @@
       "default": "0.0.0.0"
     },
     "port": {
-      "type": "integer",
-      "default": 6060
+      "type": "integer"
     },
-    "disabled": {
-      "type": "boolean",
-      "default": true
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "disabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "endpoint": {
+          "type": "string",
+          "default": ""
+        },
+        "sampler": {
+          "type": "number",
+          "default": 1.0
+        },
+        "batcher": {
+          "type": "string",
+          "default": "otlpgrpc"
+        }
+      }
     },
-    "endpoint": {
-      "type": "string",
-      "default": ""
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "port": {
+          "type": "integer",
+          "default": 6060
+        },
+        "path": {
+          "type": "string",
+          "default": "/metrics"
+        }
+      }
     },
-    "sampler": {
-      "type": "number",
-      "default": 1.0
-    },
-    "batcher": {
-      "type": "string",
-      "default": "otlpgrpc"
-    },
-    "enabled": {
-      "type": "boolean",
-      "default": false
-    },
-    "path": {
-      "type": "string",
-      "default": "/metrics"
-    },
-    "level": {
-      "type": "string",
-      "default": "info"
+    "log": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "default": "info"
+        }
+      }
     }
   }
 }

@@ -57,3 +57,27 @@ func TestBuildValidation(t *testing.T) {
 		t.Fatal("build must require host or service-name")
 	}
 }
+
+// TestDSNConnectTimeoutSubSecond proves sub-second connectTimeout rounds up to
+// 1s instead of truncating to 0 (which pgx reads as "no timeout").
+func TestDSNConnectTimeoutSubSecond(t *testing.T) {
+	c := Config{Host: "h", Port: "5432", User: "u", Password: "p", DB: "d", SSLMode: "disable"}
+	c.ConnectTimeout = 500 * time.Millisecond
+	if got := c.DSN(); !strings.Contains(got, "connect_timeout=1") {
+		t.Fatalf("dsn %q must round 500ms up to connect_timeout=1", got)
+	}
+	c.ConnectTimeout = 2500 * time.Millisecond
+	if got := c.DSN(); !strings.Contains(got, "connect_timeout=3") {
+		t.Fatalf("dsn %q must round 2500ms up to connect_timeout=3", got)
+	}
+}
+
+// TestBuildTLSConflict proves tls.enabled with sslmode=disable fails loudly at
+// build time instead of silently dialing plaintext.
+func TestBuildTLSConflict(t *testing.T) {
+	c := Config{Host: "h", Port: "5432", User: "u", Password: "p", DB: "d", SSLMode: "disable"}
+	c.TLS.Enabled = true
+	if _, err := build(context.Background(), c); err == nil || !strings.Contains(err.Error(), "sslmode=disable") {
+		t.Fatalf("tls.enabled + sslmode=disable must fail loudly, got %v", err)
+	}
+}

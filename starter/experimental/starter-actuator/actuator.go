@@ -57,10 +57,20 @@
 //	                  contributed BeanLister bean; without one it reports that
 //	                  boundary (see beans.go).
 //
-// The introspection endpoints (and contributed endpoints such as /metrics) are
-// gated by spring.actuator.endpoints.include / .exclude: a non-empty include
-// is a whitelist, exclude always applies. The probe endpoints are always
-// registered — filtering them would break the Kubernetes contract.
+// The introspection endpoints are gated by spring.actuator.endpoints.include /
+// .exclude. Sensitive introspection endpoints (/env, /configprops, /threaddump,
+// /loggers, /beans) are additionally OFF by default: they expose configuration
+// and internals, so they register only when explicitly listed in .include (an
+// empty include is no longer a free pass for them). /info (build metadata) and
+// contributed endpoints such as /metrics stay default-on; a non-empty include
+// is a whitelist for them, and exclude always applies. The probe endpoints are
+// always registered — filtering them would break the Kubernetes contract.
+//
+// The whole management port can be authenticated with
+// spring.actuator.token (bearer) or spring.actuator.username /
+// spring.actuator.password (HTTP Basic) via the shared stdlib/httpauth guard.
+// When no scheme is configured and the listener binds non-loopback, a WARN is
+// logged at startup.
 //
 // Health indicators are contributed by other beans: any bean exported as
 // health.Indicator (a redis client wrapper, a gorm pool wrapper, ...) is
@@ -83,11 +93,16 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/httpauth"
 )
 
-var actuatorTag = log.RegisterAppTag("actuator", "")
-
 func init() {
+	// Mark that a management server collecting endpoint.Endpoint beans is
+	// linked in, so contributors (e.g. starter-otel's Prometheus /metrics with
+	// metrics.port=0) can WARN at startup when they would otherwise be
+	// silently homeless. See endpoint.MarkServing.
+	endpoint.MarkServing()
+
 	// Register the actuator as a gs.Server under a distinct name so it coexists
 	// with the application's main HTTP server (which also exports gs.Server).
 	// Enabled by default: the endpoints are cheap and the value — K8s probes,
@@ -108,9 +123,10 @@ const checkTimeout = 3 * time.Second
 // health.Indicator (autowire:"?" makes the set optional, so the actuator works
 // with no indicators registered).
 type Server struct {
-	// Address is the management listen address. It defaults to :9370, distinct
-	// from the main HTTP server (:9090) and the pprof server (127.0.0.1:9981),
-	// and binds all interfaces so in-cluster probes can reach it.
+	// Address is the management listen address. There is no default; setting
+	// this key is what activates the starter. Documented layout: main HTTP
+	// server (:9090), actuator (:9370, all interfaces so in-cluster probes can
+	// reach it), pprof (127.0.0.1:9981).
 	Address string `value:"${spring.actuator.addr}"`
 
 	// Indicators are all beans exported as health.Indicator. Optional: an app
@@ -145,12 +161,26 @@ type Server struct {
 	// beans, and a contributed endpoint's own path (e.g. "metrics"). Probe
 	// endpoints (/healthz, /readyz, /startupz and their aliases) are always
 	// registered: filtering them would break the Kubernetes contract.
+	// Sensitive endpoints (env, configprops, threaddump, loggers, beans) are
+	// default-off and require explicit inclusion here even when this list is
+	// empty; listing them in exclude always wins.
 	EndpointInclude string `value:"${spring.actuator.endpoints.include:=}"`
 
 	// EndpointExclude is the comma-separated endpoint blacklist
 	// (spring.actuator.endpoints.exclude). It always applies, including in
 	// whitelist mode: include first selects, exclude then removes.
 	EndpointExclude string `value:"${spring.actuator.endpoints.exclude:=}"`
+
+	// Token, when set, requires an "Authorization: Bearer <token>" header on
+	// every request to the management port (spring.actuator.token). Takes
+	// precedence over Username/Password.
+	Token string `value:"${spring.actuator.token:=}"`
+
+	// Username and Password, when both set, require HTTP Basic authentication
+	// on the management port (spring.actuator.username /
+	// spring.actuator.password).
+	Username string `value:"${spring.actuator.username:=}"`
+	Password string `value:"${spring.actuator.password:=}"`
 
 	svr      *http.Server
 	ready    atomic.Bool
@@ -181,17 +211,34 @@ func (s *Server) introspectionRoutes() []route {
 	}
 }
 
+// sensitiveEndpoints names the introspection endpoints that expose
+// configuration or internals and therefore do NOT register by default: they
+// must be explicitly listed in spring.actuator.endpoints.include. /info is not
+// sensitive (build metadata only); probes are exempt from filtering entirely.
+var sensitiveEndpoints = map[string]bool{
+	"env":         true,
+	"configprops": true,
+	"threaddump":  true,
+	"loggers":     true,
+	"beans":       true,
+}
+
 // endpointEnabled reports whether the named endpoint passes the include/exclude
-// filter. include non-empty means whitelist mode: everything not listed is off.
-// exclude always applies, including inside a whitelist. Matching is exact and
-// case-insensitive on the endpoint name.
+// filter. Sensitive endpoints require explicit inclusion even when include is
+// empty (default-off). Otherwise, include non-empty means whitelist mode:
+// everything not listed is off. exclude always applies, including inside a
+// whitelist. Matching is exact and case-insensitive on the endpoint name.
 func (s *Server) endpointEnabled(ctx context.Context, name string) bool {
+	if sensitiveEndpoints[name] && !nameListed(s.EndpointInclude, name) {
+		log.Debugf(ctx, log.TagAppDef, "endpoint %s disabled: sensitive endpoint not explicitly included", name)
+		return false
+	}
 	if s.EndpointInclude != "" && !nameListed(s.EndpointInclude, name) {
-		log.Debugf(ctx, actuatorTag, "endpoint %s disabled: not in include list", name)
+		log.Debugf(ctx, log.TagAppDef, "endpoint %s disabled: not in include list", name)
 		return false
 	}
 	if nameListed(s.EndpointExclude, name) {
-		log.Debugf(ctx, actuatorTag, "endpoint %s disabled: in exclude list", name)
+		log.Debugf(ctx, log.TagAppDef, "endpoint %s disabled: in exclude list", name)
 		return false
 	}
 	return true
@@ -217,12 +264,44 @@ func nameListed(list, name string) bool {
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	ln, err := net.Listen("tcp", s.Address)
 	if err != nil {
-		log.Errorf(ctx, actuatorTag, "failed to listen on %s: %v", s.Address, err)
+		log.Errorf(ctx, log.TagAppDef, "failed to listen on %s: %v", s.Address, err)
 		return errutil.Explain(err, "actuator: failed to listen on %s", s.Address)
 	}
 
-	log.Infof(ctx, actuatorTag, "actuator listening on %s", s.Address)
+	log.Infof(ctx, log.TagAppDef, "actuator listening on %s", s.Address)
 
+	s.svr = &http.Server{
+		Handler:           s.buildHandler(ctx),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	// Signal this server ready right away (so the app can proceed past its
+	// readiness barrier) and watch the shared channel: it closes once all
+	// servers are ready, at which point /readiness may return UP. We do NOT
+	// block on it before serving — probes must reach us during startup.
+	allReady := sig.TriggerAndWait()
+	go func() {
+		<-allReady
+		s.ready.Store(true)
+	}()
+
+	err = s.svr.Serve(ln)
+	if errors.Is(err, http.ErrServerClosed) {
+		log.Infof(ctx, log.TagAppDef, "actuator server closed gracefully")
+		return nil
+	}
+	log.Errorf(ctx, log.TagAppDef, "actuator serve error: %v", err)
+	return errutil.Explain(err, "actuator: failed to serve on %s", s.Address)
+}
+
+// buildHandler assembles the management port's handler: probe endpoints
+// (unconditional), introspection endpoints (through the include/exclude
+// filter), contributed endpoints (same filter), all wrapped with the
+// authentication guard configured via spring.actuator.token or
+// spring.actuator.username/.password. When no scheme is configured and the
+// listener is reachable off-host, a WARN is logged — the same posture the
+// pprof starter takes.
+func (s *Server) buildHandler(ctx context.Context) http.Handler {
 	mux := http.NewServeMux()
 
 	// Probe endpoints — K8s convention.
@@ -255,31 +334,16 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 			continue
 		}
 		mux.Handle(ep.Path(), ep)
-		log.Debugf(ctx, actuatorTag, "registered endpoint: %s", ep.Path())
+		log.Debugf(ctx, log.TagAppDef, "registered endpoint: %s", ep.Path())
 	}
 
-	s.svr = &http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
+	guard := httpauth.Guard{Token: s.Token, Username: s.Username, Password: s.Password}
+	if !guard.Enabled() && !httpauth.IsLoopback(s.Address) {
+		log.Warnf(ctx, log.TagAppDef,
+			"actuator listening on %q without authentication; set ${spring.actuator.token} or ${spring.actuator.username}/${spring.actuator.password}",
+			s.Address)
 	}
-
-	// Signal this server ready right away (so the app can proceed past its
-	// readiness barrier) and watch the shared channel: it closes once all
-	// servers are ready, at which point /readiness may return UP. We do NOT
-	// block on it before serving — probes must reach us during startup.
-	allReady := sig.TriggerAndWait()
-	go func() {
-		<-allReady
-		s.ready.Store(true)
-	}()
-
-	err = s.svr.Serve(ln)
-	if errors.Is(err, http.ErrServerClosed) {
-		log.Infof(ctx, actuatorTag, "actuator server closed gracefully")
-		return nil
-	}
-	log.Errorf(ctx, actuatorTag, "actuator serve error: %v", err)
-	return errutil.Explain(err, "actuator: failed to serve on %s", s.Address)
+	return guard.Wrap(mux)
 }
 
 // Stop gracefully shuts down the management server.
@@ -293,7 +357,7 @@ func (s *Server) StopContext(ctx context.Context) error {
 	if s.svr == nil {
 		return nil
 	}
-	log.Debugf(ctx, actuatorTag, "stopping actuator server")
+	log.Debugf(ctx, log.TagAppDef, "stopping actuator server")
 	return s.svr.Shutdown(ctx)
 }
 

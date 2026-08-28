@@ -17,9 +17,11 @@
 package StarterDubbo
 
 import (
+	"context"
 	"time"
 
 	"dubbo.apache.org/dubbo-go/v3/client"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
 
@@ -66,7 +68,7 @@ func NewClient(d *Instance) (*client.Client, error) {
 	if cfg.LoadBalance != "" {
 		opts = append(opts, client.WithClientLoadBalance(cfg.LoadBalance))
 	}
-	if cfg.Retries > 0 {
+	if cfg.Retries >= 0 {
 		opts = append(opts, client.WithClientRetries(cfg.Retries))
 	}
 	if cfg.Group != "" {
@@ -120,7 +122,7 @@ func (c DubboReference) options() []client.ReferenceOption {
 			opts = append(opts, client.WithRequestTimeout(d))
 		}
 	}
-	if c.Retries > 0 {
+	if c.Retries >= 0 {
 		opts = append(opts, client.WithRetries(c.Retries))
 	}
 	if c.Group != "" {
@@ -170,7 +172,15 @@ func (c DubboReference) options() []client.ReferenceOption {
 // RegisterReference registers a Triple-generated RPC stub as a bean.
 // name is the key under ${spring.dubbo.consumer.references} to bind.
 func RegisterReference[T any](name string, ctor func(*client.Client, ...client.ReferenceOption) (T, error)) {
-	gs.Provide(func(cli *client.Client, cfg DubboReference) (T, error) {
+	gs.Provide(func(cli *client.Client, d *Instance, cfg DubboReference) (T, error) {
+		// dubbo-go v3 has no per-reference "no check" ReferenceOption: when the
+		// reference asks for check=false but the consumer default is check=true
+		// (the fail-fast default), the opt-out cannot be honored. WARN instead
+		// of failing silently. To opt out, set spring.dubbo.consumer.check=false.
+		if !cfg.Check && d.Consumer().Check {
+			log.Warnf(context.Background(), log.TagAppDef,
+				"dubbo: references.%s.check=false cannot be honored while consumer.check is true (default); set spring.dubbo.consumer.check=false to opt out of the fail-fast check", name)
+		}
 		return ctor(cli, cfg.options()...)
-	}, gs.IndexArg(1, gs.TagArg("${spring.dubbo.consumer.references."+name+"}"))).Caller(2)
+	}, gs.IndexArg(2, gs.TagArg("${spring.dubbo.consumer.references."+name+"}"))).Caller(2)
 }

@@ -18,6 +18,7 @@ package StarterGin
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
@@ -27,8 +28,6 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
-
-var ginTag = log.RegisterAppTag("gin", "starter")
 
 func init() {
 	gin.SetMode(gin.ReleaseMode)
@@ -79,10 +78,9 @@ type EngineMiddleware func(e *gin.Engine)
 // owns a standard http.Server so it can serve either plaintext HTTP or, when
 // TLS is configured, HTTPS.
 type SimpleGinServer struct {
-	svr      *http.Server
-	tls      bool
-	certFile string
-	keyFile  string
+	svr     *http.Server
+	tls     bool
+	tlsConf *tls.Config
 }
 
 // NewSimpleGinServer builds a *gin.Engine with the configured built-in
@@ -125,7 +123,18 @@ func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Con
 
 	addr := cfg.Address
 	tlsEnabled := cfg.TLS.Enabled
-	log.Debugf(context.Background(), ginTag, "gin server created addr=%s tls=%v readTimeout=%s writeTimeout=%s idleTimeout=%s",
+	var tlsConf *tls.Config
+	if tlsEnabled {
+		// BuildServer applies the full ${spring.gin.server.tls.*} block with
+		// server semantics, same as starter-grpc: cert-file/key-file is the
+		// server pair, and ca-file enables mTLS (RequireAndVerifyClientCert).
+		var err error
+		tlsConf, err = cfg.TLS.BuildServer()
+		if err != nil {
+			return nil, errutil.Explain(err, "gin: build TLS")
+		}
+	}
+	log.Debugf(context.Background(), log.TagAppDef, "gin server created addr=%s tls=%v readTimeout=%s writeTimeout=%s idleTimeout=%s",
 		addr, tlsEnabled, cfg.ReadTimeout, cfg.WriteTimeout, cfg.IdleTimeout)
 
 	return &SimpleGinServer{
@@ -139,14 +148,14 @@ func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Con
 			WriteTimeout:      cfg.WriteTimeout,
 			IdleTimeout:       cfg.IdleTimeout,
 		},
-		tls:      tlsEnabled,
-		certFile: cfg.TLS.CertFile,
-		keyFile:  cfg.TLS.KeyFile,
+		tls:     tlsEnabled,
+		tlsConf: tlsConf,
 	}, nil
 }
 
 // Run binds the listener immediately and starts serving after Go-Spring signals
-// readiness. When TLS is enabled it serves HTTPS from the configured cert/key.
+// readiness. When TLS is enabled it serves HTTPS via tls.NewListener with the
+// prebuilt server config (ca-file makes it require client certificates).
 func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	ln, err := net.Listen("tcp", s.svr.Addr)
 	if err != nil {
@@ -154,20 +163,20 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, ginTag, "gin server starting on %s (tls=%v)", s.svr.Addr, s.tls)
+	log.Infof(ctx, log.TagAppDef, "gin server starting on %s (tls=%v)", s.svr.Addr, s.tls)
 
 	if s.tls {
-		err = s.svr.ServeTLS(ln, s.certFile, s.keyFile)
+		err = s.svr.Serve(tls.NewListener(ln, s.tlsConf))
 	} else {
 		err = s.svr.Serve(ln)
 	}
 
 	if errors.Is(err, http.ErrServerClosed) {
-		log.Debugf(ctx, ginTag, "gin server stopped on %s", s.svr.Addr)
+		log.Debugf(ctx, log.TagAppDef, "gin server stopped on %s", s.svr.Addr)
 		return nil
 	}
 	if err != nil {
-		log.Errorf(ctx, ginTag, "gin server failed on %s: %v", s.svr.Addr, err)
+		log.Errorf(ctx, log.TagAppDef, "gin server failed on %s: %v", s.svr.Addr, err)
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
@@ -182,6 +191,6 @@ func (s *SimpleGinServer) Stop() error {
 // allowing in-flight requests to complete. It implements the gs_app.Stopper
 // seam so the shutdown context is propagated to http.Server.Shutdown.
 func (s *SimpleGinServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, ginTag, "gin server shutting down on %s", s.svr.Addr)
+	log.Infof(ctx, log.TagAppDef, "gin server shutting down on %s", s.svr.Addr)
 	return s.svr.Shutdown(ctx)
 }

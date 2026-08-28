@@ -28,8 +28,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var thriftTag = log.RegisterAppTag("thrift", "starter")
-
 func init() {
 	gs.Provide(
 		NewSimpleThriftServer,
@@ -87,7 +85,7 @@ type SimpleThriftServer struct {
 
 // NewSimpleThriftServer creates a SimpleThriftServer from ${spring.thrift.server} configuration.
 func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor) *SimpleThriftServer {
-	log.Debugf(context.Background(), thriftTag, "thrift server created addr=%s protocol=%s transport=%s",
+	log.Debugf(context.Background(), log.TagAppDef, "thrift server created addr=%s protocol=%s transport=%s",
 		cfg.Addr, cfg.Protocol, cfg.Transport)
 	return &SimpleThriftServer{cfg: cfg, proc: proc}
 }
@@ -115,8 +113,13 @@ func (s *SimpleThriftServer) protocolFactory() (thrift.TProtocolFactory, error) 
 		return thrift.NewTCompactProtocolFactoryConf(nil), nil
 	case "json":
 		return thrift.NewTJSONProtocolFactory(), nil
+	case "header":
+		// THeaderProtocol self-frames and carries per-message headers, which is
+		// what makes W3C trace-context propagation possible (see middleware.go).
+		// Pair it with transport "none" (it manages framing itself).
+		return thrift.NewTHeaderProtocolFactoryConf(nil), nil
 	default:
-		return nil, fmt.Errorf("unknown thrift protocol %q (want binary/compact/json)", s.cfg.Protocol)
+		return nil, fmt.Errorf("unknown thrift protocol %q (want binary/compact/json/header)", s.cfg.Protocol)
 	}
 }
 
@@ -157,24 +160,25 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	}
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, thriftTag, "thrift server starting on %s", s.cfg.Addr)
+	log.Infof(ctx, log.TagAppDef, "thrift server starting on %s", s.cfg.Addr)
 	if err = s.svr.Serve(); err != nil {
-		log.Errorf(ctx, thriftTag, "thrift server failed on %s: %v", s.cfg.Addr, err)
+		log.Errorf(ctx, log.TagAppDef, "thrift server failed on %s: %v", s.cfg.Addr, err)
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil
 }
 
-// Stop gracefully stops the underlying Thrift server, interrupting the accept
-// loop and waiting for in-flight requests to drain.
+// Stop stops the underlying Thrift server: it closes the server transport and
+// interrupts the accept loop. thrift's TSimpleServer.Stop does NOT wait for
+// in-flight connections — there is no graceful drain (declared boundary; use
+// mature frameworks for production-grade thrift shutdown).
 func (s *SimpleThriftServer) Stop() error {
 	return s.StopContext(context.Background())
 }
 
-// StopContext gracefully stops the underlying Thrift server, interrupting the
-// accept loop and waiting for in-flight requests to drain. Thrift's Stop takes
-// no context, so ctx only tags the shutdown log.
+// StopContext stops the underlying Thrift server; see Stop for the no-drain
+// semantics. Thrift's Stop takes no context, so ctx only tags the shutdown log.
 func (s *SimpleThriftServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, thriftTag, "thrift server shutting down on %s", s.cfg.Addr)
+	log.Infof(ctx, log.TagAppDef, "thrift server shutting down on %s", s.cfg.Addr)
 	return s.svr.Stop()
 }

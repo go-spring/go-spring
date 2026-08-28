@@ -26,8 +26,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("mqtt", "")
-
 func init() {
 
 	// Register multiple MQTT clients as a group.
@@ -50,31 +48,36 @@ func init() {
 // URL, bad credentials or TLS mismatch fail fast at startup instead of surfacing
 // on the first publish/consume, then the resilience executor is attached.
 func newClient(ctx *gs.ContextProvider, name string, c Config) (mqtt.Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating mqtt client, broker=%s client-id=%s", c.Broker, c.ClientID)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating mqtt client, broker=%s client-id=%s", c.Broker, c.ClientID)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "mqtt driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "mqtt driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "mqtt driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "mqtt: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create mqtt client: %s", c.Broker)
 	}
+
+	// Seed the package-level span-helper observers with this client's
+	// observability config (first client wins) so StartPublishSpan /
+	// StartConsumeSpan honor ${spring.mqtt.<name>.observability.level}.
+	seedObserveConfig(c.Observability)
 
 	token := client.Connect()
 	token.Wait()
 	if err := token.Error(); err != nil {
-		log.Errorf(ctx.Context, starterTag, "mqtt: connect failed broker=%s: %v", c.Broker, err)
+		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: connect failed broker=%s: %v", c.Broker, err)
 		return nil, err
 	}
 	if err := applyResilience(c, client, resilience.ResourceLabel("mqtt", c.Broker)); err != nil {
-		log.Errorf(ctx.Context, starterTag, "mqtt: resilience setup failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: resilience setup failed: %v", err)
 		client.Disconnect(250)
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "mqtt client initialized, broker=%s", c.Broker)
+	log.Infof(ctx.Context, log.TagAppDef, "mqtt client initialized, broker=%s", c.Broker)
 	return client, nil
 }
 

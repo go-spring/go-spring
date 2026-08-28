@@ -47,11 +47,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var (
-	// starterTag identifies logs emitted by the session redis starter.
-	starterTag = log.RegisterAppTag("starter_session_redis", "")
-)
-
 func init() {
 	gs.Module(gs.OnProperty("spring.session.redis"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.session.redis}", func(name string, c Config) error {
@@ -62,7 +57,7 @@ func init() {
 				return errutil.Explain(nil, "session-redis: instance %q missing required property %q",
 					name, "spring.session.redis."+name+".client")
 			}
-			log.Debugf(context.Background(), starterTag, "creating session store name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
+			log.Debugf(context.Background(), log.TagAppDef, "creating session store name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
 			// TagArg injects the *redis.Client bean by name — this is the seam
 			// that ties the store to a specific redis instance.
 			r.Provide(newStore, gs.ValueArg(c), gs.TagArg(c.Client)).

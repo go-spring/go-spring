@@ -170,12 +170,12 @@ func (cl *Client) Close() error {
 	closeResilience(cl)
 	for _, p := range cl.producers {
 		if err := p.Shutdown(); err != nil {
-			log.Errorf(context.Background(), starterTag, "rocketmq: shutdown producer failed: %v", err)
+			log.Errorf(context.Background(), log.TagAppDef, "rocketmq: shutdown producer failed: %v", err)
 		}
 	}
 	for _, c := range cl.consumers {
 		if err := c.Shutdown(); err != nil {
-			log.Errorf(context.Background(), starterTag, "rocketmq: shutdown consumer failed: %v", err)
+			log.Errorf(context.Background(), log.TagAppDef, "rocketmq: shutdown consumer failed: %v", err)
 		}
 	}
 	cl.producers = nil

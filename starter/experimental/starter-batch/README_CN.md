@@ -156,3 +156,12 @@ spring.scheduler.jobs.nightly-reconcile.cron=0 2 * * *
 ## 示例
 
 见 [`example/`](example) 中可运行的演示。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_batch`（批处理任务）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.batch.type=Logger
+logger.batch.level=WARN
+logger.batch.tag=_app_batch
+```

@@ -81,3 +81,13 @@ per-batch ID order only — set the message key for per-entity ordering. See
 `example/` runs the whole pattern on in-memory sqlite and an in-process binder,
 self-asserting atomicity (commit delivers, rollback doesn't), retry-with-backoff
 and dead-lettering. `example/check.sh` is its smoke test.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_outbox` (transactional outbox). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.outbox.type=Logger
+logger.outbox.level=WARN
+logger.outbox.tag=_app_outbox
+```

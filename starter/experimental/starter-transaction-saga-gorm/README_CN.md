@@ -72,7 +72,8 @@ slice/map 字段以 **JSON 编码**存进 text 列,让 schema 与后端无关(�
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `spring.transaction.saga.store` | (未设) | 必须为 `gorm`,本 Store 才会注册。 |
-| `spring.transaction.saga.gorm.db` | `` | 应用注册多个 `*gorm.DB` 时选中命名实例。当前版本始终 autowire 默认实例,该字段仅作信息。 |
+
+`${spring.transaction.saga.gorm}` 前缀当前没有自己的键:`*gorm.DB` 从容器注入(注册多个时取默认实例)。
 
 ## 许可
 

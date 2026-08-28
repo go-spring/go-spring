@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/influxdata/influxdb-client-go/v2/domain"
+	observe "go-spring.org/cloud/observe"
 	health2 "go-spring.org/starter-influxdb/health"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -72,3 +73,37 @@ func TestDynamicTransportSwap(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// TestResolveObservability pins the precedence between the two observability
+// config surfaces: instance-prefixed spring.influxdb.<name>.observability.*
+// (bound into Config.Observability by BindEach) overrides the top-level
+// observability.* keys field-injected into the wrapper. Binding fills the
+// defaults (brief/512/no skips) even when no instance key is present, so only
+// non-default instance values count as "set".
+func TestResolveObservability(t *testing.T) {
+	// Instance unset (binding defaults) -> top-level field wins untouched.
+	w := &Client{Observability: observe.ObserveConfig{
+		Level: "detailed", MaxArgBytes: 1024, SkipOps: []string{"POST /write"},
+	}}
+	w.cfg.Observability = observe.ObserveConfig{Level: "brief", MaxArgBytes: 512}
+	got := w.resolveObservability()
+	assert.That(t, got.Level).Equal("detailed")
+	assert.That(t, got.MaxArgBytes).Equal(1024)
+	assert.That(t, got.SkipOps).Equal([]string{"POST /write"})
+
+	// Instance set -> overrides top-level per field.
+	w.cfg.Observability = observe.ObserveConfig{
+		Level: "off", MaxArgBytes: 2048, SkipOps: []string{"POST /query"},
+	}
+	got = w.resolveObservability()
+	assert.That(t, got.Level).Equal("off")
+	assert.That(t, got.MaxArgBytes).Equal(2048)
+	assert.That(t, got.SkipOps).Equal([]string{"POST /query"})
+
+	// Partial instance override: only the field set to a non-default value
+	// changes; the rest keeps the top-level value.
+	w.cfg.Observability = observe.ObserveConfig{Level: "off", MaxArgBytes: 512}
+	got = w.resolveObservability()
+	assert.That(t, got.Level).Equal("off")
+	assert.That(t, got.MaxArgBytes).Equal(1024)
+}

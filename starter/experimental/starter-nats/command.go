@@ -76,9 +76,17 @@ func extractW3C(ctx context.Context, msg *nats.Msg) context.Context {
 // PublishMsg overrides the embedded *nats.Conn.PublishMsg so every publish flows
 // through the observe kit. When pubObs is nil (observability level "off" leaves
 // the observer present but a no-op; nil only when the field was never set) it
-// delegates unchanged. nats.PublishMsg carries no context, so the producer span
-// is started from context.Background; cross-service linkage still works because
-// the span's context is injected into msg.Header for the consumer to extract.
+// delegates unchanged.
+//
+// KNOWN LIMITATION: nats.go's PublishMsg (v1.38) carries no context parameter,
+// so the producer span necessarily starts from context.Background() — it is a
+// NEW ROOT, not a child of the caller's active trace. Consume-side trace
+// continuation is unaffected: the span's context is injected into msg.Header
+// (injectW3C below), so the binder's consumer span continues this publish span
+// across the broker. Callers that need the publish linked into their own trace
+// must use the manual ctx-aware path: StartPublishSpan(ctx, msg) (which takes
+// the caller's ctx) followed by the embedded c.Conn.PublishMsg(msg) — note that
+// escape hatch emits the span only, no metric/access log.
 func (c *Conn) PublishMsg(msg *nats.Msg) error {
 	if c.pubObs == nil {
 		return c.Conn.PublishMsg(msg)
@@ -184,12 +192,15 @@ func (c *Conn) guard(ctx context.Context, call func(context.Context) error) erro
 // PublishGuarded publishes data on subj, routed through the resilience executor
 // when governance is enabled. When governance is disabled this
 // behaves exactly like the embedded Publish, so enabling protection is a
-// zero-code opt-in on the caller side. Uses a background context because
-// nats.Conn.Publish takes no deadline; use RequestGuarded when a per-attempt
-// timeout matters.
-func (c *Conn) PublishGuarded(subj string, data []byte) error {
-	return c.guard(context.Background(), func(context.Context) error {
-		return c.Publish(subj, data)
+// zero-code opt-in on the caller side. The publish itself flows through the
+// overridden PublishMsg, so the guarded path keeps the publish span/observer
+// instrumentation; the ctx threads the caller's trace into the executor (the
+// producer span still starts from context.Background() — see the PublishMsg
+// limitation note above). Use RequestGuarded when a per-attempt timeout
+// matters.
+func (c *Conn) PublishGuarded(ctx context.Context, subj string, data []byte) error {
+	return c.guard(ctx, func(context.Context) error {
+		return c.PublishMsg(&nats.Msg{Subject: subj, Data: data})
 	})
 }
 

@@ -165,3 +165,13 @@ on the next boot from the last committed checkpoint.
 ## Example
 
 See [`example/`](example) for a runnable demo.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_batch` (batch starter). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.batch.type=Logger
+logger.batch.level=WARN
+logger.batch.tag=_app_batch
+```

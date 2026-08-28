@@ -24,13 +24,15 @@ go get go-spring.org/starter-http-client
 ```
  generated Client (gs-http-gen)      starter-http-client
  ┌───────────────────────────┐       ┌──────────────────────────────────────┐
- │ Greet(ctx, req)           │       │ *http.Client.Transport =              │
- │   HTTPClient ─────────────┼──────▶│   resilience → discovery+LB → otelhttp │
+ │ Greet(ctx, req)           │       │ httpclt.DoRequest (process-global) =  │
+ │   Target ─────────────────┼──────▶│   resilience → discovery+LB → otelhttp │
  └───────────────────────────┘       └──────────────────────────────────────┘
 ```
 
-The generated `Client` holds a single `*http.Client`. The starter registers one
-`*http.Client` per configuration entry, whose `http.RoundTripper` is assembled
+The generated `Client` holds only a `Target`. The starter assembles one
+process-wide `http.RoundTripper` and installs it by replacing
+`httpclt.DoRequest` (the single send seam of `cloud/experimental/httpclt`), so
+generated clients and imperative helpers pick it up with zero wiring. The chain is
 by [`cloud/experimental/httpx`](../../../cloud/experimental/httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
@@ -59,9 +61,9 @@ an `HTTPClient` field.
 import _ "go-spring.org/starter-http-client"
 ```
 
-Each entry under `spring.http-client.<name>` becomes a named `*http.Client`.
-Switching a call between a direct address and a discovered service is a
-config-only change — the call site never changes. See
+Each entry under `spring.http-client.<name>` contributes a route to that
+process-wide transport. Switching a call between a direct address and a
+discovered service is a config-only change — the call site never changes. See
 [example/conf/app.properties](example/conf/app.properties):
 
 ```properties
@@ -73,24 +75,21 @@ spring.http-client.discovered.service-name=greet-svc
 spring.http-client.discovered.discovery=static
 spring.http-client.discovered.balancer=round_robin
 
-# Resilience — breaker trips after 2 consecutive failures.
-spring.http-client.guarded.addr=127.0.0.1:9473
-spring.http-client.guarded.resilience.enabled=true
-spring.http-client.guarded.resilience.error-threshold=2
-spring.http-client.guarded.resilience.open-duration=30s
+# Resilience is NOT configured here: policy lives process-wide under
+# govern.* (starter-governance). Breaker trips after 2 consecutive failures:
+#   govern.enabled=true
+#   govern.default.enabled=true
+#   govern.default.error-threshold=2
+#   govern.default.open-duration=30s
 ```
 
-### 3. Inject the client and call
+### 3. Call
 
-The starter registers one `*http.Client` per key, so inject it by that name and
-set it on the generated client. See [example/example.go](example/example.go):
+Generated clients take the target directly — nothing to inject; the installed
+transport dispatches by target. See [example/example.go](example/example.go):
 
 ```go
-type Service struct {
-    Discovered *http.Client `autowire:"discovered"`
-}
-
-client := &proto.Client{Target: "greet-svc", HTTPClient: s.Discovered}
+client := &proto.Client{Target: "greet-svc"}
 _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 ```
 
@@ -113,23 +112,26 @@ and asserts all four outcomes end to end:
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `spring.http-client.<name>.addr` | — | Direct `host:port`. Mutually exclusive with `service-name`. |
-| `spring.http-client.<name>.service-name` | — | Logical name resolved through discovery. Mutually exclusive with `addr`. |
+| `spring.http-client.<name>.addr` | — | Direct `host:port`. May be combined with `service-name`, which then stays a pure governance label. |
+| `spring.http-client.<name>.service-name` | — | Logical name resolved through discovery; whenever set it is also the governance resource label. |
 | `spring.http-client.<name>.discovery` | — | Registered discovery backend name. Required when `service-name` is set. |
 | `spring.http-client.<name>.balancer` | `round_robin` | Strategy: `round_robin`, `least_conn`, `consistent_hash`, `weighted`, `zone_aware`. |
 | `spring.http-client.<name>.eject-threshold` | `0` | Consecutive failures that eject an endpoint (0 disables). |
 | `spring.http-client.<name>.eject-for` | `0` | How long an ejected endpoint stays out. |
-| `spring.http-client.<name>.timeout` | `0` | Per-request timeout (0 = none). |
-| `spring.http-client.<name>.resilience.enabled` | `false` | Wrap the transport with resilience. |
-| `spring.http-client.<name>.resilience.driver` | `default` | Registered resilience backend (`default`, or `sentinel` via `starter-resilience`). |
-| `spring.http-client.<name>.resilience.rate-limit` | `0` | Sustained requests/sec (0 disables). |
-| `spring.http-client.<name>.resilience.error-threshold` | `0` | Consecutive failures that trip the breaker (0 disables). |
-| `spring.http-client.<name>.resilience.open-duration` | `0` | How long the breaker stays open before a trial. |
-| `spring.http-client.<name>.resilience.max-retries` | `0` | Extra attempts after the first failure. |
-| `spring.http-client.<name>.resilience.attempt-timeout` | `0` | Per-attempt timeout. |
+| `spring.http-client.<name>.observability.level` | `brief` | Access-log gate: `off` / `brief` / `detailed`. |
+| `spring.http-client.<name>.observability.maxArgBytes` | `512` | Argument truncation length in logs. |
+| `spring.http-client.<name>.observability.skipOps` | — | Ops excluded from logging. |
+| `spring.http-client.<name>.tls.enabled` | `false` | Turns the entry's TLS surface on (see the `tls.*` block: cert-file/key-file/ca-file/server-name/insecure-skip-verify). |
 
-The starter fails fast at wiring time: exactly one of `addr` / `service-name`
-must be set, and `discovery` is mandatory when routing by service name.
+Resilience and fault injection have **no keys here**: policy is process-wide
+under `govern.*` (see starter-governance). The governance resource label is
+`http:<service-name>` whenever `service-name` is set (either addressing mode), `http:<addr>` only when no service-name exists. Per-request
+timeout comes from `govern.default.attempt-timeout`.
+
+The starter fails fast at wiring time: at least one of `addr` / `service-name`
+must be set, and `discovery` is mandatory when routing by service name alone
+(no `addr`). Error-rate breakers resolved for `http:*` resources get a starter
+floor of `min-requests=5` (a higher explicit value in the govern rule wins).
 
 ## Observability
 

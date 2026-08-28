@@ -25,7 +25,7 @@ import (
 
 var (
 	// starterTag identifies logs emitted by the lua filter starter.
-	starterTag = log.RegisterAppTag("starter_lua_filter", "")
+	starterTag = log.RegisterAppTag("lua_filter", "")
 )
 
 func init() {

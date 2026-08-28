@@ -42,12 +42,12 @@ With the default configuration, the pprof server binds to all interfaces
 http://<host>:9981/debug/pprof/
 ```
 
-When a token is configured, every request must present it as either an
-`Authorization: Bearer <token>` header or a `?token=<token>` query parameter:
+When a token is configured, every request must present it as an
+`Authorization: Bearer <token>` header:
 
 ```bash
 curl -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:9981/debug/pprof/
-curl 'http://127.0.0.1:9981/debug/pprof/heap?token=s3cr3t'
+curl -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:9981/debug/pprof/heap
 ```
 
 ## Core Features
@@ -70,7 +70,7 @@ The starter reads the following Go-Spring properties:
 | --- | --- | --- |
 | `spring.pprof.enabled` | `true` | Enables or disables the pprof server. |
 | `spring.pprof.addr` | `:9981` | Listen address. Defaults to all interfaces; use `127.0.0.1:9981` to restrict access to the local host. |
-| `spring.pprof.token` | `` | When set, every request must present the token via `Authorization: Bearer <token>` or `?token=<token>`. Takes precedence over basic auth. |
+| `spring.pprof.token` | `` | When set, every request must present the token via an `Authorization: Bearer <token>` header. Takes precedence over basic auth. |
 | `spring.pprof.username` | `` | Username for HTTP Basic authentication (used together with `password`). |
 | `spring.pprof.password` | `` | Password for HTTP Basic authentication (used together with `username`). |
 

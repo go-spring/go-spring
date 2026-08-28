@@ -5,15 +5,67 @@
   "properties": {
     "routes": {
       "type": "object",
-      "default": ""
+      "description": "Route table keyed by route id; hot-reloadable (gs.Dync)",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "priority": { "type": "integer", "default": 0, "description": "Larger priority is matched first; unset keeps id-sorted order" },
+          "predicates": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string", "default": "", "description": "Ant-style path, e.g. /api/orders/**" },
+              "methods": { "type": "string", "default": "", "description": "Comma list, e.g. GET,POST" },
+              "host": { "type": "string", "default": "", "description": "Exact host or *.suffix" },
+              "headers": { "type": "string", "default": "", "description": "\"K:V;K2:V2\" — all required" },
+              "queries": { "type": "string", "default": "", "description": "\"k=v;k2=v2\" — all required" },
+              "after": { "type": "string", "default": "", "description": "RFC3339; match only at/after this time" }
+            }
+          },
+          "filters": { "type": "string", "default": "", "description": "Filter DSL, e.g. stripPrefix(1),addRequestHeader(X-From,gw),requestId(); values may not contain , ( )" },
+          "upstream": {
+            "type": "object",
+            "properties": {
+              "target": { "type": "string", "default": "", "description": "lb://<service> or http(s)://host[:port] (required in practice)" },
+              "balancer": { "type": "string", "default": "round_robin", "description": "round_robin | least_conn | consistent_hash | weighted" },
+              "discovery": { "type": "string", "default": "", "description": "Per-route discovery backend override" }
+            }
+          },
+          "resilience": {
+            "type": "object",
+            "properties": {
+              "policy": { "type": "string", "default": "", "description": "Must name a spring.gateway.resilience.<name> key; policy values live under ${govern} keyed gateway:<name>" }
+            }
+          }
+        }
+      }
     },
     "resilience": {
       "type": "object",
-      "default": ""
+      "description": "Name registry only: keys name executors routes reference via resilience.policy; values ignored (policy lives under ${govern} keyed gateway:<name>)"
     },
-    "discovery": {
-      "type": "string",
-      "default": ""
+    "discovery": { "type": "string", "default": "", "description": "Default discovery backend name for lb:// routes lacking upstream.discovery" },
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true, "description": "OTel tracing around proxy requests" }
+      }
+    },
+    "server": {
+      "type": "object",
+      "description": "The gateway's own listen port; distinct from the business web server",
+      "properties": {
+        "addr": { "type": "string", "description": "Listen address, required (no default by design); setting it activates the server bean — routes without it are never served (startup WARN)" },
+        "tls": {
+          "type": "object",
+          "description": "tlsconf shared block; ca-file = client CA bundle enabling mTLS",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "cert-file": { "type": "string", "default": "" },
+            "key-file": { "type": "string", "default": "" },
+            "ca-file": { "type": "string", "default": "" }
+          }
+        }
+      }
     }
   }
 }

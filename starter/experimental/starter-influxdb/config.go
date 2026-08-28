@@ -38,7 +38,8 @@ type Config struct {
 
 	// Observability configures the per-request span, metric and access log
 	// emitted by the observe transport (off/brief/detailed). Defaults to
-	// "brief".
+	// "brief". Instance keys (spring.influxdb.<name>.observability.*) override
+	// the top-level observability.* keys — see Client.resolveObservability.
 	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which InfluxDB driver to use, defaults to

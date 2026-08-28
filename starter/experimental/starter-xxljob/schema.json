@@ -8,7 +8,6 @@
     "port": { "type": "integer", "description": "executor callback server port (required)" },
     "access-token": { "type": "string", "default": "" },
     "registry-interval": { "type": "string", "default": "10s" },
-    "log-dir": { "type": "string", "default": "./logs" },
-    "observability": { "type": "object" }
+    "log-dir": { "type": "string", "default": "./logs", "description": "directory served via /log; task log files are written by the application's TaskFunc, not the starter" }
   }
 }

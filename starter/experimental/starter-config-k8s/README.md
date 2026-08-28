@@ -75,7 +75,7 @@ starter's directory semantics; entries with an unknown extension and no forced
 
 ## How It Works
 
-- `loadK8sConfig` reads the object once at startup, flattens its `data` entries
+- The provider reads the object once at startup, flattens its `data` entries
   into properties, and installs a namespaced, name-scoped informer.
 - Every add/update/delete on the object triggers a full application property
   refresh, re-running the provider and propagating new values to bound

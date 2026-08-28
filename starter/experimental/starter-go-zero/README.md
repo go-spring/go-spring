@@ -43,7 +43,7 @@ spring.go-zero.rest.server.host=0.0.0.0
 spring.go-zero.rest.server.port=8888
 ```
 
-The starter registers its server bean when `spring.go-zero.rest.server.enabled` is `true` (default)
+The starter registers its server bean when `spring.go-zero.rest.server.port` is set (that key is the on/off switch; there is no `enabled` key)
 **and** the application provides a `HandlerRegister` bean.
 
 ### 3. Provide a `HandlerRegister` bean
@@ -77,7 +77,7 @@ spring.go-zero.zrpc.server.listen-on=0.0.0.0:8081
 # spring.go-zero.zrpc.server.etcd.key=greet.rpc
 ```
 
-The starter registers its server bean when `spring.go-zero.zrpc.server.enabled` is `true` (default)
+The starter registers its server bean when `spring.go-zero.zrpc.server.listen-on` is set (that key is the on/off switch; there is no `enabled` key)
 **and** the application provides a `ServiceRegister` bean.
 
 ### 3. Provide a `ServiceRegister` bean
@@ -98,8 +98,9 @@ gs.Provide(func() gozerozrpc.ServiceRegister {
   per-server configuration. Set `tracing.disabled=false` (with `tracing.endpoint`) to use go-zero's
   own native OTLP export instead.
 * **Metrics** — go-zero does not emit OpenTelemetry metrics; its metrics are Prometheus-only, served
-  from go-zero's own DevServer `/metrics` endpoint. This is **off by default**; enable it with
-  `metrics.enabled=true` when you want to scrape go-zero's native registry. It cannot be unified with
+  from go-zero's own DevServer `/metrics` endpoint. This is **on by default**; disable it with
+  `metrics.enabled=false` if you do not scrape go-zero's native registry (mind the extra listener on
+  `metrics.port`, default 6060). It cannot be unified with
   `starter-otel`'s metrics pipeline.
 * **Logging** — go-zero's framework logs (`logx`) are bridged into Go-Spring's `log` module, so an
   application configures a single logging pipeline. Only `log.level` still applies to `logx`.

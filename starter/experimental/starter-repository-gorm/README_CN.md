@@ -12,7 +12,7 @@ Spring Data JPA repository 的等价效果,而无需 JPA 或方法名查询解�
 
 它是**以库为先的集成模块**,而非空导入型 starter:repository 以应用自有的领域类型为参数,
 因此没有可自动注册的东西。它**与驱动无关**——具体数据库(MySQL、Postgres、SQL Server、
-ClickHouse、sqlite……)由发布 `*gorm.DB` bean 的那个 `starter-gorm-*` 决定。
+ClickHouse、sqlite……)由发布 DB 包装 bean(内嵌 `*gorm.DB`)的那个 `starter-gorm-*` 决定。
 
 ## 安装
 
@@ -50,8 +50,9 @@ func newUserService(db *gorm.DB) *UserService {
 而无需知道它由 gorm 支撑:
 
 ```go
-gs.Provide(func(db *gorm.DB) repository.Repository[User, int64] {
-    return reposgorm.For[User, int64](db, "users",
+gs.Provide(func(db *starter.DB) repository.Repository[User, int64] {
+    // *starter.DB(方言包装类型,内嵌 *gorm.DB)才是被注入的 bean
+    return reposgorm.For[User, int64](db.DB, "users",
         repository.WithPrincipal(currentUser)) // 开启审计 CreatedBy
 }).Name("userRepo")
 ```

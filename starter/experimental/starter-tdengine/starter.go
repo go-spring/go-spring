@@ -30,8 +30,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("tdengine", "")
-
 func init() {
 	// Register multiple TDengine clients as a group, one per entry under
 	// "${spring.tdengine}". A gs.Module (rather than gs.Group) is used so each
@@ -60,11 +58,11 @@ func init() {
 // misconfiguration or an unreachable taosAdapter fails fast rather than on
 // first use.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating tdengine client, dsn-addr=%s", dsnAddr(c.DSN))
+	log.Debugf(ctx.Context, log.TagAppDef, "creating tdengine client, dsn-addr=%s", dsnAddr(c.DSN))
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "tdengine driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "tdengine driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "tdengine driver not found: %s", c.Driver)
 	}
 	cl, err := d.CreateClient(ctx.Context, c)

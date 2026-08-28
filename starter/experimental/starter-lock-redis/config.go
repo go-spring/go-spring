@@ -52,21 +52,16 @@ type Config struct {
 	// their key spaces disjoint. Empty means keys are used as-is.
 	KeyPrefix string `value:"${key-prefix:=}"`
 
-	// Observer toggles OTel observability around lock operations.
-	Observer ObserverConfig `value:"${observer}"`
-}
-
-// ObserverConfig groups the built-in observability options.
-type ObserverConfig struct {
-	Tracing TracingConfig `value:"${tracing}"`
+	// ObserveEnabled toggles the observe-lock instrumentation layer (trace
+	// span + duration/in-flight metric + access log) around the Locker. On by
+	// default: the primary Locker bean under the instance name is already
+	// observed, and callers inject it by that name. Set observe.enabled=false
+	// to get the bare locker. When starter-otel is not imported the OTel
+	// providers are no-ops, so leaving this on costs almost nothing.
+	ObserveEnabled bool `value:"${observe.enabled:=true}"`
 
 	// Observability configures the access log emitted by the shared
 	// observe-lock adapter (level off/brief/detailed, per-op skips). Blank
 	// level means brief.
 	Observability observe.ObserveConfig `value:"${observability:=}"`
-}
-
-// TracingConfig toggles wrapping the Locker with OTel tracing. On by default.
-type TracingConfig struct {
-	Enabled bool `value:"${enabled:=true}"`
 }

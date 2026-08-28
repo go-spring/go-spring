@@ -29,8 +29,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var dubboServerTag = log.RegisterAppTag("dubbo", "starter")
-
 func init() {
 	enableSimpleDubboServer := gs.OnProperty("spring.dubbo.provider.enabled").
 		HavingValue("true").MatchIfMissing()
@@ -66,7 +64,7 @@ func (s DubboService) options() []server.ServiceOption {
 	if s.Serialization != "" {
 		opts = append(opts, server.WithSerialization(s.Serialization))
 	}
-	if s.Retries > 0 {
+	if s.Retries >= 0 {
 		opts = append(opts, server.WithRetries(s.Retries))
 	}
 	if s.Filter != "" {
@@ -139,7 +137,7 @@ func (m DubboMethod) options() []config.MethodOption {
 	if m.Name != "" {
 		opts = append(opts, config.WithName(m.Name))
 	}
-	if m.Retries > 0 {
+	if m.Retries >= 0 {
 		opts = append(opts, config.WithRetries(m.Retries))
 	}
 	if m.LoadBalance != "" {
@@ -190,7 +188,7 @@ type SimpleDubboServer struct {
 // NewSimpleDubboServer creates a SimpleDubboServer from the shared *Instance's
 // provider configuration.
 func NewSimpleDubboServer(d *Instance) *SimpleDubboServer {
-	log.Debugf(context.Background(), dubboServerTag, "dubbo server created")
+	log.Debugf(context.Background(), log.TagAppDef, "dubbo server created")
 	return &SimpleDubboServer{d: d, done: make(chan struct{})}
 }
 
@@ -214,7 +212,7 @@ func (c *DubboProvider) buildOptions(protocols map[string]DubboProtocol, global 
 	if c.Serialization != "" {
 		opts = append(opts, server.WithServerSerialization(c.Serialization))
 	}
-	if c.Retries > 0 {
+	if c.Retries >= 0 {
 		opts = append(opts, server.WithServerRetries(c.Retries))
 	}
 	if c.Filter != "" {
@@ -313,7 +311,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, dubboServerTag, "dubbo server starting")
+	log.Infof(ctx, log.TagAppDef, "dubbo server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- svr.Serve()
@@ -321,7 +319,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	select {
 	case err = <-errCh:
-		log.Errorf(ctx, dubboServerTag, "dubbo server failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "dubbo server failed: %v", err)
 		return errutil.Explain(err, "failed to serve dubbo server")
 	case <-s.done:
 		return nil
@@ -337,7 +335,7 @@ func (s *SimpleDubboServer) Stop() error {
 // sequence. It implements the gs_app.Stopper seam; dubbo-go's shutdown API is
 // not context-aware, so ctx is only used for logging.
 func (s *SimpleDubboServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, dubboServerTag, "dubbo server shutting down")
+	log.Infof(ctx, log.TagAppDef, "dubbo server shutting down")
 	close(s.done)
 	return nil
 }

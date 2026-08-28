@@ -23,7 +23,6 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/mesh"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	health2 "go-spring.org/starter-elasticsearch/health"
@@ -55,8 +54,6 @@ func init() {
 		})
 	})
 }
-
-var starterTag = log.RegisterAppTag("elasticsearch", "")
 
 // newClient creates a new Elasticsearch client based on the provided
 // configuration. The cluster is probed once at startup so that misconfiguration

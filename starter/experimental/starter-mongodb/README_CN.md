@@ -34,13 +34,13 @@ spring.mongodb.b.uri=mongodb://127.0.0.1:27017
 ### 3. 注入 MongoDB 实例
 
 参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
-`*mongo.Client` bean，按名称注入所需实例即可。
+`*StarterMongoDB.Client` bean（内嵌具体的 `*mongo.Client`，所有驱动方法原样提升），按名称注入所需实例即可。
 
 ```go
-import "go.mongodb.org/mongo-driver/v2/mongo"
+import StarterMongoDB "go-spring.org/starter-mongodb"
 
 type Service struct {
-    Mongo *mongo.Client `autowire:"a"`
+    Mongo *StarterMongoDB.Client `autowire:"a"` // 内嵌 *mongo.Client
 }
 ```
 
@@ -65,7 +65,7 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
 ## 高级功能
 
 * **多 MongoDB 实例**：`spring.mongodb` 下的每一项都会成为一个独立配置的
-  `*mongo.Client` bean，按名称注入即可访问不同的集群或数据库。
+  `*StarterMongoDB.Client` bean，按名称注入即可访问不同的集群或数据库。
 
 * **可观测**：每个客户端通过一个 command monitor 桥接进 go-spring 的统一可观测体系，
   为每条 MongoDB 命令经 `starter-otel` 安装的 OpenTelemetry 全局 `TracerProvider`

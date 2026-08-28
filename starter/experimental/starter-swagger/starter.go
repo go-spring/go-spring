@@ -18,13 +18,7 @@ package StarterSwagger
 
 import (
 	"go-spring.org/cloud/actuator/endpoint"
-	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-)
-
-var (
-	// starterTag identifies logs emitted by the swagger starter.
-	starterTag = log.RegisterAppTag("starter_swagger", "")
 )
 
 func init() {

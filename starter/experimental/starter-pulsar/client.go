@@ -29,6 +29,7 @@ import (
 	"sync"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"go-spring.org/log"
 )
 
 // metricsServers tracks the /metrics HTTP server started for each client so
@@ -53,6 +54,8 @@ func destroyClient(cl pulsar.Client) error {
 // paths after the client has been built).
 func shutdownMetrics(cl pulsar.Client) {
 	if v, ok := metricsServers.LoadAndDelete(cl); ok {
-		_ = v.(*http.Server).Shutdown(context.Background())
+		if err := v.(*http.Server).Shutdown(context.Background()); err != nil {
+			log.Warnf(context.Background(), log.TagAppDef, "pulsar: metrics server shutdown failed: %v", err)
+		}
 	}
 }

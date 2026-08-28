@@ -77,7 +77,10 @@ Bound under `${spring.transaction.saga.gorm}`.
 | Key | Default | Description |
 |---|---|---|
 | `spring.transaction.saga.store` | (unset) | Must be `gorm` for this Store to register. |
-| `spring.transaction.saga.gorm.db` | `` | Named `*gorm.DB` instance to select when the app registers several. The first version always autowires the default instance; the field is currently informational. |
+
+The `${spring.transaction.saga.gorm}` prefix currently carries no keys of its
+own: the `*gorm.DB` is autowired from the container (the default instance when
+several are registered).
 
 ## License
 

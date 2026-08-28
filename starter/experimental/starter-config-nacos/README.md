@@ -71,3 +71,13 @@ publish to hot-reload flow.
 - A remote change fires the listener, which calls the framework's
   `PropertiesRefresher`. That reloads all configuration sources (re-running this
   provider) and re-binds every `gs.Dync` field via a two-phase, atomic commit.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_nacos` (nacos config source). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_nacos.type=Logger
+logger.config_nacos.level=WARN
+logger.config_nacos.tag=_app_config_nacos
+```

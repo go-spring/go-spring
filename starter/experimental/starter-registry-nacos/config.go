@@ -56,11 +56,6 @@ type RegistrationConfig struct {
 	// starter never guesses it, so a misconfiguration fails at startup.
 	Addr string `value:"${addr:=}"`
 
-	// ID is accepted for parity with other registry backends but is unused by
-	// Nacos, which identifies an instance by its ip:port within a service and
-	// cluster. Restarting the same address therefore replaces the same entry.
-	ID string `value:"${id:=}"`
-
 	// Weight is the load-balancing weight advertised to clients; 0 falls back to
 	// Nacos's default weight of 1 (0 in Nacos means "receive no traffic").
 	Weight int `value:"${weight:=0}"`

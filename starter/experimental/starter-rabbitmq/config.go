@@ -53,6 +53,14 @@ type Config struct {
 	// driven by their own default level.
 	Observability observe.ObserveConfig `value:"${observability:=}"`
 
+	// Governance enables the resilience/fault guard on this connection, default
+	// is true. Both the raw client API (GuardedPublish) and the messaging
+	// binder's Publish route through the governance center executor; when the
+	// governance center itself is off the executor is a transparent no-op, so
+	// this switch only removes the guard entirely (bare calls) when set to
+	// false.
+	Governance bool `value:"${governance:=true}"`
+
 	// Driver specifies which RabbitMQ driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
 }

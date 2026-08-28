@@ -4,8 +4,7 @@
 
 `starter-http-client` 是 Go-Spring **声明式 HTTP 客户端**的运行时部分——对标
 Spring 的 OpenFeign / `@HttpExchange`。你在 IDL 中把远程服务声明为一个接口,用
-[`gs-http-gen`](../../../gs/gs-http-gen) 生成调用代码,再把一个已经装配好的
-`*http.Client` 注入到生成的客户端里。服务发现、负载均衡、韧性(限流/熔断/重试)
+[`gs-http-gen`](../../../gs/gs-http-gen) 生成调用代码,再设好 `Target` 即可调用。服务发现、负载均衡、韧性(限流/熔断/重试)
 以及链路追踪透传都已替你接好,一次微服务调用不再需要为每个客户端手工拼装拨号器
 和熔断器。
 
@@ -47,7 +46,7 @@ go get go-spring.org/starter-http-client
 
 在 IDL 中描述远程调用(见 [example/idl/greet.idl](example/idl/greet.idl)),用
 `gs-http-gen --client` 生成 Go 客户端。生成的包([example/proto](example/proto))
-提供一个带 `Target` 与 `HTTPClient` 字段的 `Client` 结构体。
+提供一个只含 `Target` 字段的 `Client` 结构体。
 
 ### 2. 引入 starter 并配置客户端实例
 
@@ -55,7 +54,7 @@ go get go-spring.org/starter-http-client
 import _ "go-spring.org/starter-http-client"
 ```
 
-`spring.http-client.<name>` 下的每个配置项都会成为一个具名 `*http.Client`。在
+`spring.http-client.<name>` 下的每个配置项为进程级 transport 贡献一条路由。在
 直连地址与经由发现的服务之间切换,只需改配置——调用代码始终不变。见
 [example/conf/app.properties](example/conf/app.properties):
 
@@ -68,24 +67,21 @@ spring.http-client.discovered.service-name=greet-svc
 spring.http-client.discovered.discovery=static
 spring.http-client.discovered.balancer=round_robin
 
-# 韧性 —— 连续 2 次失败后熔断器打开。
+# 韧性不在这里配置:策略是进程级 govern.*(starter-governance)。连续 2 次失败熔断:
+#   govern.enabled=true
+#   govern.default.enabled=true
+#   govern.default.error-threshold=2
+#   govern.default.open-duration=30s
 spring.http-client.guarded.addr=127.0.0.1:9473
-spring.http-client.guarded.resilience.enabled=true
-spring.http-client.guarded.resilience.error-threshold=2
-spring.http-client.guarded.resilience.open-duration=30s
 ```
 
-### 3. 注入客户端并调用
+### 3. 调用
 
-本 starter 为每个键注册一个 `*http.Client`,按名注入后设置到生成客户端上即可。
-见 [example/example.go](example/example.go):
+生成的客户端直接给 `Target` 即可——无需注入任何东西,已安装的 transport 按 target
+分派。见 [example/example.go](example/example.go):
 
 ```go
-type Service struct {
-    Discovered *http.Client `autowire:"discovered"`
-}
-
-client := &proto.Client{Target: "greet-svc", HTTPClient: s.Discovered}
+client := &proto.Client{Target: "greet-svc"}
 _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 ```
 
@@ -105,23 +101,24 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 
 | 配置键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `spring.http-client.<name>.addr` | — | 直连 `host:port`,与 `service-name` 互斥。 |
-| `spring.http-client.<name>.service-name` | — | 经由发现解析的逻辑名,与 `addr` 互斥。 |
+| `spring.http-client.<name>.addr` | — | 直连 `host:port`;可与 `service-name` 同配,此时 service-name 只作纯治理 label。 |
+| `spring.http-client.<name>.service-name` | — | 经由发现解析的逻辑名;只要设置即同时是治理 resource label。 |
 | `spring.http-client.<name>.discovery` | — | 已注册的发现后端名,设置 `service-name` 时必填。 |
 | `spring.http-client.<name>.balancer` | `round_robin` | 策略:`round_robin`、`least_conn`、`consistent_hash`、`weighted`、`zone_aware`。 |
 | `spring.http-client.<name>.eject-threshold` | `0` | 剔除端点的连续失败次数(0 表示不剔除)。 |
 | `spring.http-client.<name>.eject-for` | `0` | 被剔除端点的隔离时长。 |
-| `spring.http-client.<name>.timeout` | `0` | 单次请求超时(0 表示不限)。 |
-| `spring.http-client.<name>.resilience.enabled` | `false` | 用韧性包裹传输层。 |
-| `spring.http-client.<name>.resilience.driver` | `default` | 已注册的韧性后端(`default`,或经 `starter-resilience` 的 `sentinel`)。 |
-| `spring.http-client.<name>.resilience.rate-limit` | `0` | 持续吞吐(请求/秒,0 表示不限)。 |
-| `spring.http-client.<name>.resilience.error-threshold` | `0` | 触发熔断的连续失败次数(0 表示不熔断)。 |
-| `spring.http-client.<name>.resilience.open-duration` | `0` | 熔断器打开后到试探请求前的保持时长。 |
-| `spring.http-client.<name>.resilience.max-retries` | `0` | 首次失败后的额外重试次数。 |
-| `spring.http-client.<name>.resilience.attempt-timeout` | `0` | 单次尝试的超时。 |
+| `spring.http-client.<name>.observability.level` | `brief` | 访问日志闸门:`off` / `brief` / `detailed`。 |
+| `spring.http-client.<name>.observability.maxArgBytes` | `512` | 日志参数截断长度。 |
+| `spring.http-client.<name>.observability.skipOps` | — | 不记日志的操作。 |
+| `spring.http-client.<name>.tls.enabled` | `false` | 打开该 entry 的 TLS 配置面(完整 `tls.*`:cert-file/key-file/ca-file/server-name/insecure-skip-verify)。 |
 
-本 starter 在装配期即快速失败:`addr` 与 `service-name` 必须且只能设置其一;按
-服务名路由时 `discovery` 必填。
+韧性与故障注入在这里**没有配置 key**:策略是进程级 `govern.*`(见
+starter-governance)。治理资源标签在发现模式下为 `http:<service-name>`,直连模式下为
+`http:<addr>`。单次请求超时来自 `govern.default.attempt-timeout`。
+
+本 starter 在装配期即快速失败:`addr` 与 `service-name` 至少设置其一;仅按
+服务名路由(未配 `addr`)时 `discovery` 必填。解析到 `http:*` 资源的 error-rate
+熔断有 starter 级 `min-requests=5` 下限(govern rule 显式更高值优先)。
 
 ## 可观测性
 

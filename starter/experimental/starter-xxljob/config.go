@@ -16,11 +16,7 @@
 
 package StarterXxljob
 
-import (
-	"time"
-
-	observe "go-spring.org/cloud/observe"
-)
+import "time"
 
 // Config defines one xxl-job executor instance. It speaks the xxl-job
 // executor protocol to an admin (registry/heartbeat/run/kill) over plain
@@ -48,10 +44,9 @@ type Config struct {
 	// the admin.
 	RegistryInterval time.Duration `value:"${registry-interval:=10s}"`
 
-	// LogDir is where the executor writes per-task log files (the /log
-	// callback serves them back to the admin).
+	// LogDir is the directory the executor SERVES per-task log files from via
+	// the /log callback (and creates if absent). The executor itself never
+	// writes task log files — the application's TaskFunc owns writing
+	// <log-dir>/<logId>.log; this starter only owns the reading side.
 	LogDir string `value:"${log-dir:=./logs}"`
-
-	// Observability configures the per-trigger access log (off/brief/detailed).
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 }

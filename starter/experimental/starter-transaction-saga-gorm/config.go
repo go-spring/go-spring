@@ -17,12 +17,7 @@
 package StarterTransactionSagaGorm
 
 // gormConfig binds ${spring.transaction.saga.gorm}. It configures the durable,
-// gorm-backed saga-log Store contributed by this starter.
-type gormConfig struct {
-	// DB names which *gorm.DB instance to use when the application registers
-	// several (as gs.Group named beans). Empty selects the single/default
-	// instance. The first version always autowires that default instance;
-	// selecting a named one dynamically is left for a later revision, so this
-	// field is currently informational.
-	DB string `value:"${db:=}"`
-}
+// gorm-backed saga-log Store contributed by this starter. The prefix currently
+// carries no keys of its own — the *gorm.DB is autowired from the container —
+// but it is kept so future store options land under it without a breaking move.
+type gormConfig struct{}

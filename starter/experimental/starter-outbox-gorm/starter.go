@@ -49,7 +49,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var starterTag = log.RegisterAppTag("outbox_gorm", "")
+var starterTag = log.RegisterAppTag("outbox", "")
 
 func init() {
 	// Register one relay instance per entry under "${spring.outbox}". The relay

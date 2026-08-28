@@ -106,7 +106,7 @@ func init() {
 // observe.ObserveConfig{} (or whatever policy it wants).
 func createPool(ctx *gs.ContextProvider, c Config, obs observe.ObserveConfig) (*Pool, error) {
 
-	log.Debugf(ctx.Context, starterTag, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
 
 	if err := errutil.RequireAny("redis",
 		errutil.Field{Name: "addr", Value: c.Addr},
@@ -117,7 +117,7 @@ func createPool(ctx *gs.ContextProvider, c Config, obs observe.ObserveConfig) (*
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "redigo driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "redigo driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
 
@@ -126,7 +126,7 @@ func createPool(ctx *gs.ContextProvider, c Config, obs observe.ObserveConfig) (*
 	// the project's type.
 	w, err := d.CreateClient(ctx.Context, c, obs)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "redigo: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "redigo: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
 	if w == nil || w.Pool == nil {
@@ -148,7 +148,7 @@ func createPool(ctx *gs.ContextProvider, c Config, obs observe.ObserveConfig) (*
 		}
 	}
 
-	log.Infof(ctx.Context, starterTag, "redigo client initialized, addr=%s", c.Addr)
+	log.Infof(ctx.Context, log.TagAppDef, "redigo client initialized, addr=%s", c.Addr)
 	return w, nil
 }
 

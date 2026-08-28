@@ -86,7 +86,10 @@ The starter builds the server with `NewTSimpleServer4`, exposing both a
 protocol factory and a transport factory:
 
 - **Protocol** (`spring.thrift.server.protocol`): `binary` (default),
-  `compact`, or `json`. The client's protocol factory must match.
+  `compact`, `json`, or `header`. `header` (THeaderProtocol) self-frames and
+  carries per-message headers — the only mode with W3C trace-context
+  propagation; pair it with `transport=none`. The client's protocol factory
+  must match.
 - **Transport** (`spring.thrift.server.transport`): `none` (raw socket,
   the historical default), `buffered`, or `framed`. `framed` prepends a
   length prefix to each message and is required by many cross-language
@@ -105,9 +108,26 @@ concurrent server. The `THsHaServer` / `TThreadPoolServer` variants are
 Java/C++ concepts and do not exist in the Go library — there is no
 "multi-threaded server" to switch to.
 
+## Scope and boundaries
+
+This starter is deliberately the thinnest protocol family in the repo:
+
+- **No graceful drain**: `TSimpleServer.Stop` closes the transport and interrupts
+  the accept loop, but does not wait for in-flight connections. Shutdown is
+  "stop accepting, drop stragglers".
+- **No fault injection / resilience admission / governance hooks**, and none
+  will be added.
+- **Trace propagation only with `protocol=header`**: THeaderProtocol carries
+  per-message headers, so W3C trace-context propagation works. The
+  `binary`/`compact`/`json` wire formats have no header channel; adding one
+  would require a custom protocol envelope (a breaking wire change), so those
+  modes emit a new root span per request.
+
+For production-grade thrift (drain, governance, richer protocol support) use
+mature frameworks — e.g. kitex via `contrib/kitex`.
+
 ## Notes
 
-- The starter listens on `${spring.thrift.server.addr}` (default `:9292`).
-- The Thrift server is enabled by default; disable it with
-  `spring.thrift.server.enabled=false`.
+- The starter listens on `${spring.thrift.server.addr}` — no default; setting that key is what registers the
+  server bean (there is no `enabled` key).
 - Only a `thrift.TProcessor` bean is required to activate the server.

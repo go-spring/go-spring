@@ -46,7 +46,7 @@ spring.kratos.http.server.addr=0.0.0.0:8000
 # spring.kratos.http.server.etcd.addr=127.0.0.1:2379
 ```
 
-当 `spring.kratos.http.server.enabled` 为 `true`(默认)**且**应用提供了 `ServiceRegister` bean 时,
+当设置了 `spring.kratos.http.server.addr`(该 key 即开关,不存在 `enabled` key)**且**应用提供了 `ServiceRegister` bean 时,
 starter 才会注册它的 server bean。
 
 ### 3. 提供 `ServiceRegister` bean
@@ -63,7 +63,7 @@ gs.Provide(func() kratoshttp.ServiceRegister {
 ## 快速开始 —— gRPC
 
 形态与 HTTP 完全一致;把 import 换成 `go-spring.org/starter-kratos/grpc`,配置前缀换成
-`spring.kratos.grpc.server`(默认 addr `0.0.0.0:9000`),用 `v1.RegisterGreeterServer` 注册。
+`spring.kratos.grpc.server`(无默认 addr——设置 `addr` 即激活),用 `v1.RegisterGreeterServer` 注册。
 
 ## 快速开始 —— WebSocket
 
@@ -76,7 +76,7 @@ import `go-spring.org/starter-kratos/ws`,在 `spring.kratos.ws.server` 前缀下
 * **Tracing** —— 让路给 [`starter-otel`](../../starter-otel)。HTTP 与 gRPC server 安装 kratos 的
   `tracing.Server()` 中间件,通过全局 OpenTelemetry `TracerProvider` 发出 span;当 import 了 `starter-otel`
   时它会装上该 provider,span 自动导出,无需任何 per-server 配置。缺少 `starter-otel` 时,该中间件为 no-op。
-* **Metrics** —— 每个 server 通过 `spring.kratos.<proto>.server.metrics.enable=true` 按需开启。开启后,
+* **Metrics** —— 每个 server 默认开启,通过 `spring.kratos.<proto>.server.metrics.enable=false` 关闭。开启后,
   kratos 的 metrics 中间件把请求计数器与延迟直方图记录进进程级全局 OpenTelemetry meter,因此 exporter 与抓取
   端点归 `starter-otel` 所有 —— 本 starter 自己不起任何 Prometheus 端点。
 * **Logging** —— kratos 的框架日志被桥接进 Go-Spring 的 `log` 模块(见 `internal/logger`),应用只需配置

@@ -73,6 +73,7 @@ spring.hertz.server.health.path=/healthz
 spring.hertz.server.tls.enabled=false
 spring.hertz.server.tls.cert-file=
 spring.hertz.server.tls.key-file=
+spring.hertz.server.tls.ca-file==# 可选：配置后强制校验该 CA 签发的客户端证书（mTLS）。
 
 # 内置中间件。Recovery、RequestID、AccessLog 默认开启；
 # CORS、Gzip、SecureHeaders 默认关闭，按需开启（见"内置中间件"）。
@@ -113,11 +114,14 @@ HTTP 请求逐个断言：
 
 starter 在应用的 `RouterRegister` 执行**之前**，按固定顺序在 `*server.Hertz` 上安装一组横切中间件，
 因此它们会包裹所有路由。每个中间件均可通过 `spring.hertz.server.middleware.*` 独立开关。Recovery 来自
-hertz core；RequestID/CORS/Gzip 来自 hertz-contrib；AccessLog 与 SecureHeaders 为自实现。
+hertz core；RequestID/CORS/Gzip 来自 hertz-contrib；LoadTest/Tracing/Metrics/AccessLog/SecureHeaders 为自实现。
 
 | 中间件 | 默认 | 来源 | 说明 |
 |---|---|---|---|
-| `recovery` | 开 | core `recovery.Recovery()` | 捕获请求 goroutine 的 panic；关闭可能导致进程崩溃。starter 用 `server.New`（而非 `server.Default`）使其可配置。 |
+| `recovery` | 开 | core `recovery.Recovery()`（starter 接缝） | 捕获请求 goroutine 的 panic；关闭可能导致进程崩溃。starter 用 `server.New`（而非 `server.Default`）使其可配置。 |
+| `loadtest` | 开 | 自实现 | 请求携带 `X-LoadTest`（可配置）标记头时给请求 context 打标，下游可通过 `traffic.IsLoadTest` 分流。 |
+| `tracing` | 开 | 自实现 | 每请求一个 OTel server span；未引入 `starter-otel` 时为 no-op。 |
+| `metrics` | 开 | 自实现 | 经 OTel 全局记录请求数/时长/在途数；未引入 `starter-otel` 时为 no-op。 |
 | `requestId` | 开 | hertz-contrib/requestid | 生成/透传 `X-Request-Id`，同时写入请求 context（见 `RequestIDFromContext`）。 |
 | `accessLog` | 开 | 自实现（项目 `log` 包） | 每个请求一条结构化访问日志；4xx 记 Warn、5xx 记 Error；健康端点路径自动跳过。 |
 | `cors` | 关 | hertz-contrib/cors | 没有安全的通用默认值，需显式配置 `allowedOrigins`（或开发期用 `allowAllOrigins`）。配置非法会在启动期失败。 |
@@ -125,13 +129,15 @@ hertz core；RequestID/CORS/Gzip 来自 hertz-contrib；AccessLog 与 SecureHead
 | `secureHeaders` | 关 | 自实现 | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`；HSTS 仅在启用 TLS 时生效。（hertz-contrib/secure 默认带 10 年 HSTS + SSL 重定向，故刻意不用。） |
 | 请求体限制 | `maxBodySize>0` 时开 | 引擎选项 `WithMaxRequestBodySize` | 非中间件；超限的 413 会像普通响应一样被记录。 |
 
-顺序（最外层在前）：`Recovery -> RequestID -> AccessLog -> SecureHeaders -> CORS -> Gzip`。
+顺序（最外层在前）：`LoadTest -> Recovery -> RequestID -> Tracing -> Metrics -> AccessLog
+-> SecureHeaders -> CORS -> Gzip -> fault`。fault 注入中间件恒装在最内层（治理中心无
+fault 规则时透明）。
 Recovery 在最外层以兜住后续所有层的 panic；RequestID 在 AccessLog 之前，使每条访问日志都带上请求 id；
 AccessLog 包裹策略类中间件，使短路响应（204、403）也能被记录。
 
 > **设计上不提供请求超时中间件。** Go 无法在不使用 goroutine 缓冲 hack（会破坏流式/SSE）的前提下
 > 抢占正在运行的 handler，因此硬性时限仍由 `${spring.hertz.server}` 的读写超时兜底。
-> 指标与链路追踪同样不内置--请使用 `starter-actuator` 与 `starter-otel`。
+> 链路追踪与指标中间件**已内置**（默认开启，未引入 `starter-otel` 时为 no-op）。
 
 若要把请求 id 带到业务日志，配置一次 log 包的 context 钩子即可：
 
@@ -151,5 +157,13 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
   统一生效。
 * **托管的生命周期**：适配器会等待 Go-Spring 就绪信号后再调用 `h.Run()`，
   在关闭阶段调用 `h.Shutdown(ctx)`。
-* **可选的注册开关**：将 `spring.hertz.server.enabled=false` 可以关闭自动注册
   （默认在存在 `RouterRegister` Bean 时开启）。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_hertz_access`（hertz 访问日志）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.hertz_access.type=Logger
+logger.hertz_access.level=WARN
+logger.hertz_access.tag=_app_hertz_access
+```

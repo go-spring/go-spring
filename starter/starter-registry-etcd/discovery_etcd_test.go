@@ -20,9 +20,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 )
 
 func TestServicePrefix(t *testing.T) {

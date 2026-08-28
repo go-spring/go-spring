@@ -22,7 +22,9 @@ package otlp
 
 import (
 	"context"
+	"time"
 
+	"go-spring.org/starter-otel/internal/probe"
 	"go-spring.org/starter-otel/metric"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
@@ -36,7 +38,8 @@ func init() {
 
 // newGRPC builds an OTLP/gRPC metric exporter wrapped in a periodic reader from
 // the metrics config. Endpoint is optional - empty falls back to the exporter's
-// localhost:4317 default.
+// localhost:4317 default. The exporter connects lazily, so a startup probe
+// WARNs once if the endpoint is not reachable (see internal/probe).
 func newGRPC(cfg metric.MetricsConfig) (sdkmetric.Reader, *metric.PromServe, error) {
 	opts := []otlpmetricgrpc.Option{}
 	if cfg.Endpoint != "" {
@@ -45,6 +48,7 @@ func newGRPC(cfg metric.MetricsConfig) (sdkmetric.Reader, *metric.PromServe, err
 	if cfg.Insecure {
 		opts = append(opts, otlpmetricgrpc.WithInsecure())
 	}
+	probe.WarnOnce("metrics", orDefault(cfg.Endpoint, "localhost:4317"), 3*time.Second)
 	exp, err := otlpmetricgrpc.New(context.Background(), opts...)
 	if err != nil {
 		return nil, nil, err
@@ -54,7 +58,8 @@ func newGRPC(cfg metric.MetricsConfig) (sdkmetric.Reader, *metric.PromServe, err
 
 // newHTTP builds an OTLP/HTTP metric exporter wrapped in a periodic reader from
 // the metrics config. Endpoint is optional - empty falls back to the exporter's
-// localhost:4318 default.
+// localhost:4318 default. The exporter connects lazily, so a startup probe
+// WARNs once if the endpoint is not reachable (see internal/probe).
 func newHTTP(cfg metric.MetricsConfig) (sdkmetric.Reader, *metric.PromServe, error) {
 	opts := []otlpmetrichttp.Option{}
 	if cfg.Endpoint != "" {
@@ -63,9 +68,17 @@ func newHTTP(cfg metric.MetricsConfig) (sdkmetric.Reader, *metric.PromServe, err
 	if cfg.Insecure {
 		opts = append(opts, otlpmetrichttp.WithInsecure())
 	}
+	probe.WarnOnce("metrics", orDefault(cfg.Endpoint, "localhost:4318"), 3*time.Second)
 	exp, err := otlpmetrichttp.New(context.Background(), opts...)
 	if err != nil {
 		return nil, nil, err
 	}
 	return metric.NewPeriodicReader(exp, cfg.Interval), nil, nil
+}
+
+func orDefault(endpoint, def string) string {
+	if endpoint == "" {
+		return def
+	}
+	return endpoint
 }

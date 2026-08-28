@@ -92,7 +92,7 @@ func newTokenSource(ctx *gs.ContextProvider, name string, c Config) (*TokenSourc
 		EndpointParams: c.endpointParams(),
 	}
 
-	log.Debugf(ctx.Context, starterTag, "creating oauth2 token source clientID=%s tokenURL=%s", c.ClientID, c.TokenURL)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating oauth2 token source clientID=%s tokenURL=%s", c.ClientID, c.TokenURL)
 
 	ctx.Context = otelContext(c.Timeout)
 

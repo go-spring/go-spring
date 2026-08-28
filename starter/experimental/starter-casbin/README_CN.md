@@ -62,7 +62,7 @@ ok, err := s.Enforcer.Enforce("alice", "/data", "write")
 | Key        | 说明                                                              | 默认值   |
 |------------|-------------------------------------------------------------------|----------|
 | `model`    | Casbin 模型文件路径                                               | —        |
-| `policy`   | 文件形式的策略文件路径；设置 `adapter` 后忽略                      | —        |
+| `policy`   | 文件形式的策略文件路径；与 `adapter` 互斥                          | —        |
 | `autoSave` | 策略变更是否自动写回存储                                          | `true`   |
 | `adapter`  | 通过 `RegisterAdapter` 注册的 `persist.Adapter` 名称（DB/文件/…） | —        |
 | `watcher`  | 通过 `RegisterWatcher` 注册的 `persist.Watcher` 名称（热更新）    | —        |

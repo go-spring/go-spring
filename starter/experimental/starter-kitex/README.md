@@ -85,9 +85,8 @@ logging.logger.root.layout.type=JSONLayout
 
 ## Notes
 
-- The starter listens on `${spring.kitex.server.addr}` (default `:8888`).
-- The Kitex server is enabled by default; disable it with
-  `spring.kitex.server.enabled=false`.
+- The starter listens on `${spring.kitex.server.addr}` — no default; setting that key is what registers the
+  server bean (there is no `enabled` key).
 - Only a `ServiceRegister` bean is required to activate the server.
 - Set `spring.kitex.server.compatible-unary-middleware=true` for thrift
   services (Kitex's thrift codegen adds it in its generated `NewServer`); leave

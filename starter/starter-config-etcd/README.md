@@ -69,3 +69,13 @@ flow.
 - A key change delivers a watch event, which calls the framework's
   `PropertiesRefresher`. That reloads all configuration sources (re-running this
   provider) and re-binds every `gs.Dync` field via a two-phase, atomic commit.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_etcd` (etcd config source). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_etcd.type=Logger
+logger.config_etcd.level=WARN
+logger.config_etcd.tag=_app_config_etcd
+```

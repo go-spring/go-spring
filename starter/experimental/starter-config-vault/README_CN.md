@@ -99,7 +99,7 @@ db.password={cipher}aes:<base64 密文>
 
 | 变量                         | 说明                                       |
 |------------------------------|--------------------------------------------|
-| `GS_CONFIG_DECRYPT_KEY`      | base64 编码的 AES 密钥(16/24/32 字节)     |
+| `GS_CONFIG_DECRYPT_AES_KEY` | base64 编码的 AES 密钥(16/24/32 字节)     |
 | `GS_CONFIG_DECRYPT_AES_KEY_FILE` | 保存 base64 密钥的文件路径                  |
 
 带标记却无法解密的值会让启动失败,而非降级为损坏的默认值。要接入非对称方案或

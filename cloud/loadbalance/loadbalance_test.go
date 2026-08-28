@@ -370,7 +370,7 @@ func TestPoolAllZeroWeightFallsBack(t *testing.T) {
 		m[r.Endpoint.Addr]++
 		r.Done(DoneInfo{})
 	}
-	assert.Number(t, m["a"] + m["b"]).Equal(20)
+	assert.Number(t, m["a"]+m["b"]).Equal(20)
 	assert.Number(t, m["a"]).Equal(10)
 	assert.Number(t, m["b"]).Equal(10)
 }

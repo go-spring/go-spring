@@ -17,7 +17,8 @@ single internal log bridge:
 | `go-spring.org/starter-goframe/ws` | `*ghttp.Server` (WebSocket upgrade) | `spring.goframe.ws.server` | `ServiceRegister func(*ghttp.Server)` |
 
 Import only the sub-package you need. Each starter registers its server bean when its
-`*.enabled` property is `true` (default) **and** the application provides a `ServiceRegister` bean.
+`*.server.address` property is set (that key is the on/off switch; there is no `enabled` key)
+**and** the application provides a `ServiceRegister` bean.
 
 ## Installation
 
@@ -72,7 +73,7 @@ Leave it empty for a plain server that clients dial directly.
   requests off the global OpenTelemetry `TracerProvider`; importing `starter-otel` installs that provider
   and spans are exported automatically, with no per-server configuration.
 * **Metrics** — the `http` sub-package can expose goframe's native OTel Prometheus (pull) endpoint on the
-  same server. Off by default; enable it with `spring.goframe.http.server.metrics.enabled=true`. It is a
+  same server. On by default; disable it with `spring.goframe.http.server.metrics.enabled=false`. It is a
   separate pipeline from `starter-otel`'s metrics and cannot be unified with it.
 * **Logging** — goframe's framework logs (`glog`) are bridged into Go-Spring's `log` module, so an
   application configures a single logging pipeline.

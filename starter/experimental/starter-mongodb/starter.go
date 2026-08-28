@@ -34,8 +34,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-var starterTag = log.RegisterAppTag("mongodb", "")
-
 func init() {
 	// Register multiple MongoDB clients as a group, one per entry under
 	// "${spring.mongodb}". A gs.Module (rather than gs.Group) is used so each
@@ -80,7 +78,7 @@ func init() {
 // discovery+LB, so the URI hosts are dialed directly. When c.ServiceName is
 // empty this dials the URI hosts directly, unchanged from before.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
 	opts := options.Client().ApplyURI(c.URI)
 	if c.ConnectTimeout > 0 {
@@ -106,7 +104,7 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	}
 	tlsCfg, err := c.TLS.Build()
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "mongodb: build TLS failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "mongodb: build TLS")
 	}
 	if tlsCfg != nil {
@@ -122,7 +120,7 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
 	w.resolver, err = newLiveResolver(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "mongodb: build discovery resolver failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: build discovery resolver failed: %v", err)
 		return nil, err
 	}
 	if w.resolver != nil {
@@ -150,7 +148,7 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 
 	client, err := mongo.Connect(opts)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "mongodb: connect failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: connect failed: %v", err)
 		if w.resolver != nil {
 			_ = w.resolver.Stop()
 		}
@@ -162,14 +160,14 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	pingCtx, cancel := pingContext(ctx.Context, c.ConnectTimeout)
 	defer cancel()
 	if err := client.Ping(pingCtx, nil); err != nil {
-		log.Errorf(ctx.Context, starterTag, "mongodb: ping failed uri=%s: %v", c.URI, err)
+		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: ping failed uri=%s: %v", c.URI, err)
 		_ = client.Disconnect(context.Background())
 		if w.resolver != nil {
 			_ = w.resolver.Stop()
 		}
 		return nil, fmt.Errorf("mongodb: ping %s: %w", c.URI, err)
 	}
-	log.Infof(ctx.Context, starterTag, "mongodb client initialized, uri=%s", c.URI)
+	log.Infof(ctx.Context, log.TagAppDef, "mongodb client initialized, uri=%s", c.URI)
 	return w, nil
 }
 

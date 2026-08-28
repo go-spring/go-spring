@@ -37,8 +37,6 @@ import (
 	"go-spring.org/starter-go-zero/internal/logger"
 )
 
-var gozeroRestTag = log.RegisterAppTag("gozero_rest", "starter")
-
 func init() {
 	gs.Provide(NewRestServer, gs.IndexArg(0, gs.TagArg("${spring.go-zero.rest.server}"))).
 		Export(gs.As[gs.Server]()).
@@ -105,7 +103,7 @@ type RestServer struct {
 // NewRestServer builds a RestServer from ${spring.go-zero.rest.server} config
 // and the registered HandlerRegister bean.
 func NewRestServer(cfg Config, reg HandlerRegister) *RestServer {
-	log.Debugf(context.Background(), gozeroRestTag, "go-zero rest server created host=%s port=%d name=%s", cfg.Host, cfg.Port, cfg.Name)
+	log.Debugf(context.Background(), log.TagAppDef, "go-zero rest server created host=%s port=%d name=%s", cfg.Host, cfg.Port, cfg.Name)
 	return &RestServer{cfg: cfg, reg: reg, done: make(chan struct{})}
 }
 
@@ -149,7 +147,7 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, gozeroRestTag, "go-zero rest server starting on %s:%d", s.cfg.Host, s.cfg.Port)
+	log.Infof(ctx, log.TagAppDef, "go-zero rest server starting on %s:%d", s.cfg.Host, s.cfg.Port)
 	errCh := make(chan error, 1)
 	go func() {
 		// Start binds the listener and blocks until Stop is called.
@@ -175,7 +173,7 @@ func (s *RestServer) Stop() error {
 // sequence. The server teardown itself happens in Run via svr.Stop() (which
 // takes no context), so ctx only tags the shutdown log.
 func (s *RestServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, gozeroRestTag, "go-zero rest server shutting down on %s:%d", s.cfg.Host, s.cfg.Port)
+	log.Infof(ctx, log.TagAppDef, "go-zero rest server shutting down on %s:%d", s.cfg.Host, s.cfg.Port)
 	close(s.done)
 	return nil
 }

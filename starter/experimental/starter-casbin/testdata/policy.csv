@@ -1,0 +1,5 @@
+p, admin, /data, read
+p, admin, /data, write
+p, viewer, /data, read
+g, alice, admin
+g, bob, viewer

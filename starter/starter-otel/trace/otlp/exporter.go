@@ -22,7 +22,9 @@ package otlp
 
 import (
 	"context"
+	"time"
 
+	"go-spring.org/starter-otel/internal/probe"
 	"go-spring.org/starter-otel/trace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -35,7 +37,9 @@ func init() {
 }
 
 // newGRPC builds an OTLP/gRPC span exporter from the trace config. Endpoint is
-// optional - empty falls back to the exporter's localhost:4317 default.
+// optional - empty falls back to the exporter's localhost:4317 default. The
+// exporter connects lazily, so a startup probe WARNs once if the endpoint is
+// not reachable (see internal/probe).
 func newGRPC(cfg trace.TraceConfig) (sdktrace.SpanExporter, error) {
 	opts := []otlptracegrpc.Option{}
 	if cfg.Endpoint != "" {
@@ -44,11 +48,14 @@ func newGRPC(cfg trace.TraceConfig) (sdktrace.SpanExporter, error) {
 	if cfg.Insecure {
 		opts = append(opts, otlptracegrpc.WithInsecure())
 	}
+	probe.WarnOnce("trace", orDefault(cfg.Endpoint, "localhost:4317"), 3*time.Second)
 	return otlptracegrpc.New(context.Background(), opts...)
 }
 
 // newHTTP builds an OTLP/HTTP span exporter from the trace config. Endpoint is
-// optional - empty falls back to the exporter's localhost:4318 default.
+// optional - empty falls back to the exporter's localhost:4318 default. The
+// exporter connects lazily, so a startup probe WARNs once if the endpoint is
+// not reachable (see internal/probe).
 func newHTTP(cfg trace.TraceConfig) (sdktrace.SpanExporter, error) {
 	opts := []otlptracehttp.Option{}
 	if cfg.Endpoint != "" {
@@ -57,5 +64,13 @@ func newHTTP(cfg trace.TraceConfig) (sdktrace.SpanExporter, error) {
 	if cfg.Insecure {
 		opts = append(opts, otlptracehttp.WithInsecure())
 	}
+	probe.WarnOnce("trace", orDefault(cfg.Endpoint, "localhost:4318"), 3*time.Second)
 	return otlptracehttp.New(context.Background(), opts...)
+}
+
+func orDefault(endpoint, def string) string {
+	if endpoint == "" {
+		return def
+	}
+	return endpoint
 }

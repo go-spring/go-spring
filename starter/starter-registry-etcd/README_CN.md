@@ -130,3 +130,12 @@ spring.discovery.etcd.prod.key-prefix=/services/
 （loadbalance 池）在下一个发现快照（一个 Watch 推送周期）生效。权重 0 即摘流
 （不接流量但保持注册），是下线前零损失轮转的标准一步。运维也可以直接改注册中心
 里的权重值，效果等同。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_registry_etcd`（etcd 注册中心）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.registry_etcd.type=Logger
+logger.registry_etcd.level=WARN
+logger.registry_etcd.tag=_app_registry_etcd
+```

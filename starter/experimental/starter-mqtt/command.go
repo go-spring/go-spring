@@ -52,24 +52,61 @@ import (
 // The observers are built lazily (sync.Once) so a blank import of this starter
 // no longer pays the observe-kit construction at package init — only apps that
 // actually call the span helpers build them.
+//
+// Because the span helpers are package-level (they take no client, unlike the
+// nats Conn methods), the observers cannot be per-instance. Instead the first
+// configured client seeds their ObserveConfig from its
+// ${spring.mqtt.<name>.observability} entry (see seedObserveConfig in
+// starter.go wiring); the helpers honor that configured level. Apps using the
+// helpers without any starter-configured client get the observe-kit default
+// (brief).
 var (
 	defaultObsOnce sync.Once
+	obsCfgMu       sync.Mutex
+	obsCfgSeeded   bool
+	obsCfg         = observe.ObserveConfig{Level: observe.DefaultBrief}
 	pubObs         *observe.Observer
 	subObs         *observe.Observer
 )
 
+// seedObserveConfig records the observability config the lazy observers will be
+// built with. Called once per process by the first client the starter wires, so
+// the span helpers honor ${spring.mqtt.<name>.observability.level} rather than
+// always defaulting to brief. Only the first client seeds: with multiple
+// clients configured differently there is no single right answer for a
+// package-level observer, so first-wins is the deterministic, documented rule.
+// Has no effect if the observers were already built (helpers used before any
+// client was wired).
+func seedObserveConfig(cfg observe.ObserveConfig) {
+	obsCfgMu.Lock()
+	defer obsCfgMu.Unlock()
+	if cfg.Level == "" {
+		return // nothing configured; keep the kit default
+	}
+	if !obsCfgSeeded {
+		obsCfg = cfg
+		obsCfgSeeded = true
+	}
+}
+
 func pubObserver() *observe.Observer {
 	defaultObsOnce.Do(func() {
-		pubObs = observe.NewProducer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
-		subObs = observe.NewConsumer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
+		obsCfgMu.Lock()
+		cfg := obsCfg
+		obsCfgMu.Unlock()
+		pubObs = observe.NewProducer("mqtt", cfg)
+		subObs = observe.NewConsumer("mqtt", cfg)
 	})
 	return pubObs
 }
 
 func subObserver() *observe.Observer {
 	defaultObsOnce.Do(func() {
-		pubObs = observe.NewProducer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
-		subObs = observe.NewConsumer("mqtt", observe.ObserveConfig{Level: observe.DefaultBrief})
+		obsCfgMu.Lock()
+		cfg := obsCfg
+		obsCfgMu.Unlock()
+		pubObs = observe.NewProducer("mqtt", cfg)
+		subObs = observe.NewConsumer("mqtt", cfg)
 	})
 	return subObs
 }
@@ -126,6 +163,11 @@ var resilienceResources sync.Map // mqtt.Client -> string
 // zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
 // transparent no-op executor; fault wraps it when enabled.
 func applyResilience(c Config, cl mqtt.Client, resource string) error {
+	// Per-instance opt-out: without an executor attached, guard (and therefore
+	// both GuardedPublish and the binder's Publish) degrades to bare calls.
+	if !c.Governance {
+		return nil
+	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "mqtt", c.Observability)
 	resilienceExecs.Store(cl, exec)

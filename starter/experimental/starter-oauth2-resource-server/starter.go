@@ -27,11 +27,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var (
-	// starterTag identifies logs emitted by the oauth2 resource-server starter.
-	starterTag = log.RegisterAppTag("starter_oauth2_resource", "")
-)
-
 func init() {
 	// One Validator bean per entry under spring.security.oauth2.resource.jwt,
 	// named after its config sub-key and exported as security.TokenValidator,
@@ -44,7 +39,7 @@ func init() {
 			if _, err := c.source(); err != nil {
 				return errutil.Explain(err, "oauth2-resource-server: instance %q", name)
 			}
-			log.Debugf(context.Background(), starterTag, "creating jwt validator name=%s issuer-uri=%s algorithm=%s", name, c.IssuerURI, c.Algorithm)
+			log.Debugf(context.Background(), log.TagAppDef, "creating jwt validator name=%s issuer-uri=%s algorithm=%s", name, c.IssuerURI, c.Algorithm)
 			r.Provide(newValidator, gs.ValueArg(c)).
 				Name(name).
 				Export(gs.As[security.TokenValidator]()).

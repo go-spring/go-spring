@@ -71,6 +71,7 @@ spring.hertz.server.health.path=/healthz
 spring.hertz.server.tls.enabled=false
 spring.hertz.server.tls.cert-file=
 spring.hertz.server.tls.key-file=
+spring.hertz.server.tls.ca-file==# Optional: set to require client certificates signed by this CA (mTLS).
 
 # Built-in middlewares. Recovery, RequestID and AccessLog are on by default;
 # CORS, Gzip and SecureHeaders are off until opted in (see Built-in Middlewares).
@@ -117,7 +118,10 @@ AccessLog and SecureHeaders are self-implemented.
 
 | Middleware | Default | Source | Notes |
 |---|---|---|---|
-| `recovery` | on | core `recovery.Recovery()` | Catches request-goroutine panics; turning it off risks a process crash. The starter uses `server.New` (not `server.Default`) so this is configurable. |
+| `recovery` | on | core `recovery.Recovery()` (starter seam) | Catches request-goroutine panics; turning it off risks a process crash. The starter uses `server.New` (not `server.Default`) so this is configurable. |
+| `loadtest` | on | self | Tags the request context when the `X-LoadTest` (configurable) marker header is present, so downstream code can branch on `traffic.IsLoadTest`. |
+| `tracing` | on | self | OTel server span per request; no-op until `starter-otel` is imported. |
+| `metrics` | on | self | Request count/duration/in-flight via the OTel globals; no-op until `starter-otel` is imported. |
 | `requestId` | on | hertz-contrib/requestid | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
 | `accessLog` | on | self (project `log` pkg) | One structured record per request; Warn on 4xx, Error on 5xx; the health path is auto-skipped. |
 | `cors` | off | hertz-contrib/cors | No safe universal default - supply `allowedOrigins` (or `allowAllOrigins` for dev). Misconfig fails at startup. |
@@ -125,10 +129,12 @@ AccessLog and SecureHeaders are self-implemented.
 | `secureHeaders` | off | self | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`; HSTS only with TLS. (hertz-contrib/secure defaults to a 10-year HSTS + SSL redirect, so it is intentionally not used.) |
 | body limit | on when `maxBodySize>0` | engine option `WithMaxRequestBodySize` | Not a middleware; an over-limit 413 is logged like any response. |
 
-Order (outermost first): `Recovery -> RequestID -> AccessLog -> SecureHeaders -> CORS -> Gzip`.
-Recovery is outermost so it catches panics from every later layer; RequestID runs before AccessLog
-so each access record carries the id; AccessLog wraps the policy middlewares so short-circuit
-responses (204, 403) are still logged.
+Order (outermost first): `LoadTest -> Recovery -> RequestID -> Tracing -> Metrics -> AccessLog
+-> SecureHeaders -> CORS -> Gzip -> fault`. LoadTest is outermost so every later layer can branch
+on `traffic.IsLoadTest`; Recovery catches panics from every later layer; RequestID runs before
+AccessLog so each access record carries the id; AccessLog wraps the policy middlewares so
+short-circuit responses (204, 403) are still logged. A fault-injection middleware is always
+installed innermost (transparent when the governance center has no fault rules).
 
 > **No request-timeout middleware by design.** Go cannot preempt a running handler without the
 > goroutine-buffer hack (which breaks streaming/SSE), so the hard bound stays the Hertz
@@ -152,6 +158,15 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
   configuration and hands it to your `RouterRegister`; any Hertz server option (TLS, tracer, custom transport, ...) applies uniformly.
 * **Managed lifecycle** — the adapter waits for the Go-Spring readiness signal
   before calling `h.Run()`, and calls `h.Shutdown(ctx)` on shutdown.
-* **Opt-in registration** — set `spring.hertz.server.enabled=false` to opt out
   of the automatic server registration (enabled by default when a
   `RouterRegister` bean is present).
+### Log tag
+
+Runtime logs from this module carry the tag `_app_hertz_access` (hertz access log). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.hertz_access.type=Logger
+logger.hertz_access.level=WARN
+logger.hertz_access.tag=_app_hertz_access
+```

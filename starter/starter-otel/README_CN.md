@@ -109,7 +109,7 @@ Trace，位于 `${spring.observability.trace}`：
 | --- | --- | --- |
 | `enable` | `true` | 启用共享的 `TracerProvider`。 |
 | `exporter` | `otlp-grpc` | `otlp-grpc` \| `otlp-http` \| `stdout` \| `none`。 |
-| `endpoint` | （空） | Collector 地址；otlp exporter 必填。 |
+| `endpoint` | （空） | Collector 地址；为空时回落 SDK 默认（localhost:4317/:4318）。 |
 | `insecure` | `true` | 对 otlp exporter 关闭 TLS。 |
 | `sampler-ratio` | `1.0` | ParentBased 比例采样（`>=1` 全采，`<=0` 不采）。 |
 | `propagator` | `w3c` | `w3c`（TraceContext + Baggage）\| `none`。 |
@@ -120,7 +120,7 @@ Metrics，位于 `${spring.observability.metrics}`：
 | --- | --- | --- |
 | `enable` | `true` | 启用共享的 `MeterProvider`。 |
 | `exporter` | `otlp-grpc` | `otlp-grpc` \| `otlp-http` \| `prometheus` \| `stdout` \| `none`。 |
-| `endpoint` | （空） | Collector 地址；otlp exporter 必填。 |
+| `endpoint` | （空） | Collector 地址；为空时回落 SDK 默认（localhost:4317/:4318）。 |
 | `insecure` | `true` | 对 otlp exporter 关闭 TLS。 |
 | `port` | `9090` | 独立 `/metrics` server 的端口（prometheus exporter）。设为 `0` 则不启动独立 server，仅通过 actuator 管理端口暴露 `/metrics`（见[通过 Actuator 暴露指标](#通过-actuator-暴露指标)）。 |
 | `path` | `/metrics` | prometheus 抓取端点的路径（独立 server 与 actuator 挂载共用）。 |
@@ -221,5 +221,5 @@ Collector 侧拿到 GORM 查询 span 和连接池指标。
 
 ## 优雅关闭
 
-provider 以带 destroy 钩子的 bean 形式注册，因此关闭时会 flush 缓冲的 span 和
+provider 以进程级 stopper（gs.RegisterStopper）注册，因此关闭时会 flush 缓冲的 span 和
 metrics 并干净地关闭 exporter。

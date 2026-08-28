@@ -34,8 +34,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("go_redis", "")
-
 func init() {
 	// Register Redis clients as a group, one per entry under "${spring.go-redis}".
 	//
@@ -50,20 +48,25 @@ func init() {
 			switch c.Mode {
 			case "", "single", "sentinel":
 				r.Provide(newClient, gs.IndexArg(1, gs.ValueArg(c))).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
-				// Contribute a health indicator for this instance, injecting the
+				// Contribute a health indicator for this instance unless the
+				// user disabled it (health.enabled=false), injecting the
 				// client just registered above by name.
 				// Inject the concrete *Client by name and pass its
 				// embedded client to the health constructor. Resolving the
 				// redis.UniversalClient interface by tag would not match the
 				// wrapper bean; the concrete type embeds it.
-				r.Provide(func(w *Client) health.Indicator {
-					return health2.NewClientHealth(name, w.UniversalClient)
-				}, gs.TagArg(name)).Name("redis:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+				if c.HealthEnabled {
+					r.Provide(func(w *Client) health.Indicator {
+						return health2.NewClientHealth(name, w.UniversalClient)
+					}, gs.TagArg(name)).Name("redis:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+				}
 			case "cluster":
 				r.Provide(newClusterClient, gs.IndexArg(1, gs.ValueArg(c))).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
-				r.Provide(func(w *Client) health.Indicator {
-					return health2.NewClusterHealth(name, w.UniversalClient)
-				}, gs.TagArg(name)).Name("redis:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+				if c.HealthEnabled {
+					r.Provide(func(w *Client) health.Indicator {
+						return health2.NewClusterHealth(name, w.UniversalClient)
+					}, gs.TagArg(name)).Name("redis:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+				}
 			default:
 				return errutil.Explain(nil, "redis: invalid mode %q for instance %q (want single/sentinel/cluster)", c.Mode, name)
 			}
@@ -97,33 +100,38 @@ func init() {
 // installs; when starter-otel is absent those globals are no-ops, so this stays
 // a zero-config opt-in that needs no per-component adaptation.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating redis client, addr=%s mode=%s", c.Addr, c.Mode)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating redis client, addr=%s mode=%s", c.Addr, c.Mode)
 
 	if err := validateConfig(c); err != nil {
 		return nil, err
 	}
+	// When service discovery owns the address, a configured addr can never take
+	// effect — say so instead of dropping it silently.
+	if c.ServiceName != "" && c.Addr != "" {
+		log.Warnf(ctx.Context, log.TagAppDef, "redis: addr %q is ignored for instance with service-name %q: the address is resolved via service discovery", c.Addr, c.ServiceName)
+	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "redis driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
 	client, stop, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "redis: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis: create client failed: %v", err)
 		return nil, err
 	}
 	w := &Client{UniversalClient: client, cfg: c, stop: stop}
 	if err := instrument(client, c.Otel); err != nil {
-		log.Errorf(ctx.Context, starterTag, "redis: instrument client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis: instrument client failed: %v", err)
 		_ = w.Close()
 		return nil, err
 	}
 	if err := failFastPing(ctx.Context, c, client); err != nil {
-		log.Errorf(ctx.Context, starterTag, "redis: startup ping failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis: startup ping failed: %v", err)
 		_ = w.Close()
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "redis client initialized, addr=%s mode=%s", c.Addr, c.Mode)
+	log.Infof(ctx.Context, log.TagAppDef, "redis client initialized, addr=%s mode=%s", c.Addr, c.Mode)
 	return w, nil
 }
 
@@ -132,38 +140,38 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 // hooks attach per-node via ClusterClient.OnNewNode, so tracing/metrics cover
 // every node discovered.
 func newClusterClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating redis cluster client, addrs=%v", c.Addrs)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating redis cluster client, addrs=%v", c.Addrs)
 
 	if err := validateConfig(c); err != nil {
 		return nil, err
 	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "redis driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
 	cd, ok := d.(ClusterDriver)
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "redis driver %q does not support cluster mode", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis driver %q does not support cluster mode", c.Driver)
 		return nil, errutil.Explain(nil, "redis driver %q does not support cluster mode", c.Driver)
 	}
 	client, stop, err := cd.CreateClusterClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "redis: create cluster client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis: create cluster client failed: %v", err)
 		return nil, err
 	}
 	w := &Client{UniversalClient: client, cfg: c, stop: stop}
 	if err := instrument(client, c.Otel); err != nil {
-		log.Errorf(ctx.Context, starterTag, "redis: instrument cluster client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis: instrument cluster client failed: %v", err)
 		_ = w.Close()
 		return nil, err
 	}
 	if err := failFastPing(ctx.Context, c, client); err != nil {
-		log.Errorf(ctx.Context, starterTag, "redis: cluster startup ping failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis: cluster startup ping failed: %v", err)
 		_ = w.Close()
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "redis cluster client initialized, addrs=%v", c.Addrs)
+	log.Infof(ctx.Context, log.TagAppDef, "redis cluster client initialized, addrs=%v", c.Addrs)
 	return w, nil
 }
 
@@ -192,6 +200,13 @@ func validateConfig(c Config) error {
 		if len(c.Addrs) == 0 {
 			return errutil.Explain(nil, "redis: addrs is required in cluster mode")
 		}
+		// Redis Cluster exposes no databases (only db 0 exists), so a non-zero
+		// db cannot take effect; fail fast instead of silently dropping it.
+		if c.DB != 0 {
+			return errutil.Explain(nil, "redis: db is not supported in cluster mode (redis cluster has no database select), got db=%d", c.DB)
+		}
+	default:
+		return errutil.Explain(nil, "redis: invalid mode %q (want single/sentinel/cluster)", c.Mode)
 	}
 	return nil
 }

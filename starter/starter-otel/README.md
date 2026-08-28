@@ -116,7 +116,7 @@ Trace, under `${spring.observability.trace}`:
 | --- | --- | --- |
 | `enable` | `true` | Enable the shared `TracerProvider`. |
 | `exporter` | `otlp-grpc` | `otlp-grpc` \| `otlp-http` \| `stdout` \| `none`. |
-| `endpoint` | (empty) | Collector address; required for the otlp exporters. |
+| `endpoint` | (empty) | Collector address; empty falls back to the SDK default (localhost:4317/:4318). |
 | `insecure` | `true` | Disable TLS for the otlp exporters. |
 | `sampler-ratio` | `1.0` | ParentBased ratio sampler (`>=1` always, `<=0` never). |
 | `propagator` | `w3c` | `w3c` (TraceContext + Baggage) \| `none`. |
@@ -127,7 +127,7 @@ Metrics, under `${spring.observability.metrics}`:
 | --- | --- | --- |
 | `enable` | `true` | Enable the shared `MeterProvider`. |
 | `exporter` | `otlp-grpc` | `otlp-grpc` \| `otlp-http` \| `prometheus` \| `stdout` \| `none`. |
-| `endpoint` | (empty) | Collector address; required for the otlp exporters. |
+| `endpoint` | (empty) | Collector address; empty falls back to the SDK default (localhost:4317/:4318). |
 | `insecure` | `true` | Disable TLS for the otlp exporters. |
 | `port` | `9090` | Port of the standalone `/metrics` server (prometheus exporter). Set to `0` to skip the standalone server and serve `/metrics` **only** through the actuator management port (see [Metrics via the Actuator](#metrics-via-the-actuator)). |
 | `path` | `/metrics` | Path of the prometheus scrape endpoint (used by both the standalone server and the actuator mount). |
@@ -243,5 +243,5 @@ per-component instrumentation code.
 
 ## Graceful Shutdown
 
-The starter registers the providers as beans with destroy hooks, so on shutdown
-the buffered spans and metrics flush and the exporters close cleanly.
+The starter registers the providers as process-global stoppers (`gs.RegisterStopper`), so on
+shutdown the buffered spans and metrics flush and the exporters close cleanly.

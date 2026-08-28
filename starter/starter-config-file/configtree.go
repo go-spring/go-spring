@@ -54,19 +54,19 @@ func (c *configFileController) LoadConfigTree(optional bool, source string) (map
 		return nil, errutil.Explain(nil, "configtree: missing path")
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading configtree from %s", path)
+	log.Debugf(context.Background(), log.TagAppDef, "loading configtree from %s", path)
 
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && optional {
-			log.Warnf(context.Background(), starterTag, "optional configtree path %s not found (skipped)", path)
+			log.Warnf(context.Background(), log.TagAppDef, "optional configtree path %s not found (skipped)", path)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "stat %s failed: %v", path, err)
+		log.Errorf(context.Background(), log.TagAppDef, "stat %s failed: %v", path, err)
 		return nil, errutil.Explain(err, "configtree: stat %s failed", path)
 	}
 	if !info.IsDir() {
-		log.Errorf(context.Background(), starterTag, "configtree expects a directory, got file %s", path)
+		log.Errorf(context.Background(), log.TagAppDef, "configtree expects a directory, got file %s", path)
 		return nil, errutil.Explain(nil, "configtree expects a directory, got file %s (a single config document belongs to the file-watch provider)", path)
 	}
 
@@ -74,7 +74,7 @@ func (c *configFileController) LoadConfigTree(optional bool, source string) (map
 	if err != nil {
 		return nil, err
 	}
-	log.Infof(context.Background(), starterTag, "loaded configtree from dir=%s keys=%d", path, len(m))
+	log.Infof(context.Background(), log.TagAppDef, "loaded configtree from dir=%s keys=%d", path, len(m))
 	return m, nil
 }
 

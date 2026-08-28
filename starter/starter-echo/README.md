@@ -31,9 +31,8 @@ spring.http.server.enabled=false
 # starter-echo listens on :8002 by default in this example.
 spring.echo.server.addr=:8002
 
-# Timeouts (inherited from SimpleHttpServerConfig).
+# Timeouts (readTimeout doubles as ReadHeaderTimeout).
 spring.echo.server.readTimeout=5s
-spring.echo.server.headerTimeout=1s
 spring.echo.server.writeTimeout=5s
 spring.echo.server.idleTimeout=60s
 
@@ -48,6 +47,7 @@ spring.echo.server.health.path=/healthz
 spring.echo.server.tls.enabled=false
 spring.echo.server.tls.cert-file=
 spring.echo.server.tls.key-file=
+spring.echo.server.tls.ca-file==# Optional: set to require client certificates signed by this CA (mTLS).
 
 # Built-in middlewares. Recovery, RequestID and AccessLog are on by default;
 # CORS, Gzip and SecureHeaders are off until opted in (see Built-in Middlewares).
@@ -62,7 +62,8 @@ spring.echo.server.middleware.gzip.level=5
 spring.echo.server.middleware.secureHeaders.enabled=false
 ```
 
-The starter registers its server bean when `spring.echo.server.enabled` is `true` (default) and a
+The starter registers its server bean when `spring.echo.server.addr` is set (that key is the on/off
+switch; there is no `enabled` key) and a
 `RouterRegister` bean is provided by the application.
 
 > **Port convention** — the three HTTP starters use distinct ports so they can run side by side:
@@ -103,23 +104,29 @@ correlation).
 
 | Middleware | Default | Source | Notes |
 |---|---|---|---|
-| `recovery` | on | `middleware.Recover()` | Catches request-goroutine panics; turning it off risks a process crash. |
+| `recovery` | on | `middleware.Recover()` (starter seam) | Catches request-goroutine panics; turning it off risks a process crash. |
+| `loadtest` | on | self | Tags the request context when the `X-LoadTest` (configurable) marker header is present, so downstream code can branch on `traffic.IsLoadTest`. |
 | `requestId` | on | `middleware.RequestID()` | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
+| `tracing` | on | self | OTel server span per request; no-op until `starter-otel` is imported. |
+| `metrics` | on | self | Request count/duration/in-flight via the OTel globals; no-op until `starter-otel` is imported. |
 | `accessLog` | on | self (project `log` pkg) | One structured record per request; Warn on 4xx, Error on 5xx; the health path is auto-skipped. |
 | `cors` | off | `middleware.CORS()` | No safe universal default - supply `allowedOrigins` (or `allowAllOrigins` for dev). |
 | `gzip` | off | `middleware.Gzip()` | `level` (1-9, -1=default). |
 | `secureHeaders` | off | `middleware.Secure()` | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`; HSTS only with TLS. |
 | body limit | on when `maxBodySize>0` | `middleware.BodyLimit()` | In-chain; an over-limit 413 is logged like any response. |
 
-Order (outermost first): `Recovery -> RequestID -> AccessLog -> SecureHeaders -> CORS -> Gzip -> BodyLimit`.
-Recovery is outermost so it catches panics from every later layer; RequestID runs before AccessLog so each
-access record carries the id; AccessLog wraps the policy middlewares so short-circuit responses (413, 204,
-403) are still logged.
+Order (outermost first): `LoadTest -> Recovery -> RequestID -> Tracing -> Metrics -> AccessLog
+-> SecureHeaders -> CORS -> Gzip -> BodyLimit -> fault`. LoadTest is outermost so every later
+layer can branch on `traffic.IsLoadTest`; Recovery catches panics from every later layer;
+RequestID runs before AccessLog so each access record carries the id; AccessLog wraps the policy
+middlewares so short-circuit responses (413, 204, 403) are still logged. A fault-injection
+middleware is always installed innermost (transparent when the governance center has no fault
+rules).
 
 > **No request-timeout middleware by design.** Go cannot preempt a running handler without the
 > goroutine-buffer hack (which breaks streaming/SSE), so the hard bound stays the `http.Server`
-> read/write timeouts from `SimpleHttpServerConfig`. Metrics and tracing are not built in either - use
-> `starter-actuator` and `starter-otel` for those.
+> read/write timeouts. Tracing and metrics middlewares *are* built in (on by default, no-ops
+> until `starter-otel` is imported).
 
 To stamp the request id onto business logs, wire the log package's context hook once:
 
@@ -138,3 +145,13 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
   standard `SimpleHttpServerConfig` binding.
 * **Full echo ecosystem**: any echo middleware, group, renderer, or binder can be composed on the
   `*echo.Echo` passed to the `RouterRegister`.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_echo_access` (echo access log). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.echo_access.type=Logger
+logger.echo_access.level=WARN
+logger.echo_access.tag=_app_echo_access
+```

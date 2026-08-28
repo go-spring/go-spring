@@ -49,12 +49,14 @@ go get go-spring.org/starter-transaction-at-gorm
 import _ "go-spring.org/starter-transaction-at-gorm"
 ```
 
-The container now holds two beans:
+The container now holds three beans:
 
 - an `at.Coordinator` — the in-process orchestrator that commits (drops undo
   logs) or rolls back (restores from undo logs) every enrolled branch;
 - an `at.GlobalLock` — the in-memory global row lock providing write-write
-  isolation between concurrent global transactions.
+  isolation between concurrent global transactions;
+- a `gs.Runner` — the startup crash-recovery scan that rolls back the undo
+  logs a previous run's crash left behind (see `recover-on-start` below).
 
 ### 2. Enrol each database in AT
 
@@ -140,6 +142,7 @@ Bound under `${spring.transaction.at}` (shared with Saga and TCC under the
 |---|---|---|
 | `spring.transaction.at.enabled` | `true` | Turn the starter's beans on/off. |
 | `spring.transaction.at.tracing` | `true` | Emit an otel child span per branch phase (commit / rollback) on the globals `starter-otel` installs. No-op without it. |
+| `spring.transaction.at.recover-on-start` | `true` | Startup crash recovery: a gs.Runner scans every AT-enrolled database's `at_undo_log` and rolls back the undo logs a previous run's crash left between phase one and phase two. Set `false` when the database is shared between processes. |
 
 ## License
 

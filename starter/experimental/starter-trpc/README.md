@@ -97,9 +97,8 @@ signal co-ownership when embedding tRPC-Go inside another lifecycle owner.
 
 ## Notes
 
-- The starter listens on `${spring.trpc.server.addr}` (default `127.0.0.1:8000`).
-- The tRPC server is enabled by default; disable it with
-  `spring.trpc.server.enabled=false`.
+- The starter listens on `${spring.trpc.server.addr}` — no default.
+- The server activates only when `spring.trpc.server.addr` is set; there is no `enabled` key.
 - Only a `ServiceRegister` bean is required to activate the server.
 - This starter uses **direct-connect** dialing; there is no service registry,
   so no docker is required to run the example.

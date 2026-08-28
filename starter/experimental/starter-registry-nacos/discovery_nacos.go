@@ -66,8 +66,12 @@ type DiscoveryConfig struct {
 	// Group is the service group to resolve within.
 	Group string `value:"${group:=DEFAULT_GROUP}"`
 
-	// Cluster narrows resolution to one Nacos cluster; empty means all.
-	Cluster string `value:"${cluster:=}"`
+	// Cluster narrows resolution to one Nacos cluster. It defaults to
+	// "DEFAULT" — the same cluster the registrar publishes into by default —
+	// so a no-config consumer sees a no-config provider. Set it explicitly to
+	// another cluster to scope resolution there, or to an empty value to
+	// span all clusters.
+	Cluster string `value:"${cluster:=DEFAULT}"`
 
 	// Username / Password authenticate against Nacos when auth is enabled.
 	Username string `value:"${username:=}"`
@@ -83,6 +87,7 @@ func init() {
 			if _, err := discovery.GetDiscovery(name); err == nil {
 				return errutil.Explain(nil, "registry-nacos: discovery backend %q already registered", name)
 			}
+			warnRegistryDivergence(p, name, c)
 			b, err := newNacosDiscovery(c)
 			if err != nil {
 				return errutil.Explain(err, "registry-nacos: build discovery backend %q", name)
@@ -92,6 +97,30 @@ func init() {
 			return nil
 		})
 	})
+}
+
+// warnRegistryDivergence compares a discovery adapter's namespace/group with
+// the registrar's ${spring.registry.nacos} when that side is configured.
+// Registration and discovery live under different config prefixes, so a typo'd
+// namespace or group would otherwise fail silently as an empty instance set;
+// the WARN names the divergence at startup instead. It is only a warning —
+// legitimately pointing discovery at a different Nacos tenant than the one
+// this process registers into is a valid deployment.
+func warnRegistryDivergence(p flatten.Storage, name string, c DiscoveryConfig) {
+	var reg NacosConfig
+	if err := conf.Bind(p, &reg, "${spring.registry.nacos}"); err != nil || reg.Server == "" {
+		return // registrar not in play (or not bindable) — nothing to compare
+	}
+	if reg.Namespace != c.Namespace {
+		log.Warnf(context.Background(), starterTag,
+			"registry-nacos: discovery backend %q uses namespace %q but this instance registers into namespace %q — cross-namespace resolution returns nothing unless that is intended",
+			name, c.Namespace, reg.Namespace)
+	}
+	if reg.Group != c.Group {
+		log.Warnf(context.Background(), starterTag,
+			"registry-nacos: discovery backend %q uses group %q but this instance registers into group %q — cross-group resolution returns nothing unless that is intended",
+			name, c.Group, reg.Group)
+	}
 }
 
 // newNacosDiscovery builds a Discovery backed by a Nacos naming client for c.
@@ -147,15 +176,22 @@ func (d *nacosDiscovery) Resolve(ctx context.Context, name string, opts ...disco
 	return eps, nil
 }
 
+// clusterList returns the configured cluster as a filter, or nil when the
+// cluster is empty (span all clusters).
+func (d *nacosDiscovery) clusterList() []string {
+	if d.cluster == "" {
+		return nil
+	}
+	return []string{d.cluster}
+}
+
 // selectInstances queries Nacos for name's healthy instances within the
 // configured group (and cluster, when set).
 func (d *nacosDiscovery) selectInstances(_ context.Context, name string) ([]model.Instance, error) {
 	p := vo.SelectInstancesParam{}
 	p.ServiceName = name
 	p.GroupName = d.group
-	if d.cluster != "" {
-		p.Clusters = []string{d.cluster}
-	}
+	p.Clusters = d.clusterList()
 	p.HealthyOnly = true
 	instances, err := d.client.SelectInstances(p)
 	if err != nil {
@@ -204,7 +240,7 @@ func (d *nacosDiscovery) Watch(ctx context.Context, name string, opts ...discove
 		record(services)
 	}
 	if err := d.client.Subscribe(&vo.SubscribeParam{
-		ServiceName: name, GroupName: d.group, SubscribeCallback: cb,
+		ServiceName: name, GroupName: d.group, Clusters: d.clusterList(), SubscribeCallback: cb,
 	}); err != nil {
 		return nil, errutil.Explain(err, "registry-nacos: subscribe %s in %s failed", name, d.group)
 	}
@@ -212,7 +248,7 @@ func (d *nacosDiscovery) Watch(ctx context.Context, name string, opts ...discove
 	go func() {
 		defer close(out)
 		defer func() {
-			_ = d.client.Unsubscribe(&vo.SubscribeParam{ServiceName: name, GroupName: d.group, SubscribeCallback: cb})
+			_ = d.client.Unsubscribe(&vo.SubscribeParam{ServiceName: name, GroupName: d.group, Clusters: d.clusterList(), SubscribeCallback: cb})
 		}()
 
 		// Seed the channel with the current set; dedupe against the first

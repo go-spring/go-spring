@@ -28,14 +28,61 @@
       "description": "Duration string, e.g. '5s', '1m', '1h'",
       "default": "0"
     },
-    "timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "0"
-    },
-    "resilience": {
+    "observability": {
       "type": "object",
-      "default": ""
+      "description": "Per-entry resilience access-log config (off/brief/detailed)",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "off",
+            "brief",
+            "detailed"
+          ],
+          "default": "brief"
+        },
+        "maxArgBytes": {
+          "type": "integer",
+          "default": 512
+        },
+        "skipOps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "description": "Per-entry TLS config; wired into the transport's TLS config when enabled",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "cert-file": {
+          "type": "string",
+          "default": ""
+        },
+        "key-file": {
+          "type": "string",
+          "default": ""
+        },
+        "ca-file": {
+          "type": "string",
+          "default": ""
+        },
+        "server-name": {
+          "type": "string",
+          "default": ""
+        },
+        "insecure-skip-verify": {
+          "type": "boolean",
+          "default": false
+        }
+      }
     }
   }
 }

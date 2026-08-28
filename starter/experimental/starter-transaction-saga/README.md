@@ -37,14 +37,15 @@ go get go-spring.org/starter-transaction-saga
 import _ "go-spring.org/starter-transaction-saga"
 ```
 
-The container now holds three beans:
+The container now holds four beans:
 
 - a `transaction.Coordinator` — the in-process orchestrator that runs each
   step and compensates in reverse on failure;
 - a `*transaction.StepRegistry` — where application code declares each
   method's steps;
 - a `transaction.Store` — the in-memory default, replaceable by a durable
-  Store (see below).
+  Store (see below);
+- a `gs.Runner` — the startup recovery scan over that Store.
 
 ### 2. Declare steps
 
@@ -56,8 +57,8 @@ compensation. Return values from earlier steps are visible via
 ```go
 deductInventory := transaction.Step{
     Name:       "DeductInventory",
-    Action:     func(ctx context.Context, r *transaction.StepResults) (any, error) { ... },
-    Compensate: func(ctx context.Context, r *transaction.StepResults) error { ... },
+    Action:     func(ctx context.Context) (any, error) { ... },
+    Compensate: func(ctx context.Context, result any) error { ... },
 }
 ```
 

@@ -35,12 +35,16 @@ spring.bigcache.main.life-window=10m
 Refer to the [example.go](example/example.go) file.
 
 ```go
-import "github.com/allegro/bigcache/v3"
+import StarterBigCache "go-spring.org/starter-bigcache"
 
 type Service struct {
-    Cache *bigcache.BigCache `autowire:"main"`
+    Cache *StarterBigCache.Cache `autowire:"main"`
 }
 ```
+
+The bean is the starter's `*Cache` wrapper (the raw `*bigcache.BigCache` is embedded
+and available as `s.Cache.BigCache`); Get/Set/Delete on it flow through the observe
+and resilience seams.
 
 ### 4. Use the BigCache Instance
 
@@ -66,11 +70,14 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 * **Support BigCache extensions**: You can extend BigCache creation by implementing the `Driver` interface.
 * **Hit/miss statistics**: set `stats-enabled=true` and read `cache.Stats()` for hit/miss/collision counters — the
   read mechanism for cache-effectiveness monitoring.
-* **Eviction/expiry callback**: register `StarterBigCache.SetOnRemove(fn)` before startup to be notified when an entry
-  is evicted or expires. It is a global hook shared by every DefaultDriver-built cache; per-instance callbacks require a
-  custom `Driver`.
+* **Eviction/expiry callback**: register `bigcache.Config.OnRemove` by providing a
+  custom `Driver` (implement `CreateClient` and set the callback on the
+  `bigcache.Config` you build).
 * **Graceful shutdown**: the destroy callback calls `Close()`, stopping the background cleaner goroutine.
-* **Near cache backend**: `AsCache(bc, codec)` adapts a BigCache instance to `cloud/data/cache.Cache` for use as the near
-  (in-process) level of a multi-level cache. Note BigCache expires by a single global `life-window`, so the per-call TTL
-  is ignored; when used purely as a local level, `cache.Memory` (which keeps concrete types without serialization) is
+* **Cache abstraction backend**: importing this starter also registers the
+  `bigcache` cache driver, so `spring.cache.<name>.driver=bigcache:<instance>`
+  exposes the instance as a `cloud/data/cache.Cache` bean (see
+  [starter-cache](../starter-cache)). Note BigCache expires by a single global
+  `life-window`, so the per-call TTL is ignored; when used purely as a local
+  level, `cache.Memory` (which keeps concrete types without serialization) is
   often the better fit.

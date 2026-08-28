@@ -37,7 +37,7 @@
     },
     "connectTimeout": {
       "type": "string",
-      "description": "Connection timeout",
+      "description": "Connection timeout (DSN connect_timeout, whole seconds; sub-second rounds up to 1s)",
       "default": ""
     },
     "sslrootcert": {
@@ -97,6 +97,10 @@
     "discovery": {
       "type": "string",
       "default": "default"
+    },
+    "tls": {
+      "type": "object",
+      "description": "Shared tlsconf block: enabled, cert-file, key-file, ca-file, server-name, insecure-skip-verify. When enabled, the built *tls.Config is injected into the pgx connection; conflicts with sslmode=disable fail at startup."
     }
   }
 }

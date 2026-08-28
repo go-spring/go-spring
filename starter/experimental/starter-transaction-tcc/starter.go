@@ -21,13 +21,16 @@
 //
 //	import _ "go-spring.org/starter-transaction-tcc"
 //
-// After that the container holds two beans:
+// After that the container holds four beans:
 //
 //   - a tcc.Coordinator — the bundled in-process orchestrator that tries every
 //     participant and then confirms all of them, or cancels the tried ones on any
 //     try failure;
 //   - a *tcc.ParticipantRegistry — where application code registers each
-//     TCC method's participants.
+//     TCC method's participants;
+//   - a tcc.Store — the TCC log, in-memory by default (see the durability note
+//     below), replaced by a durable Store when one is contributed;
+//   - a gs.Runner — the startup recovery scan over that Store.
 //
 // Wrap the business method with the decorator to get the
 // @GlobalTransactional(TCC) effect:
@@ -73,11 +76,6 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-var (
-	// starterTag identifies logs emitted by the transaction tcc starter.
-	starterTag = log.RegisterAppTag("starter_transaction_tcc", "")
-)
-
 // enabled matches when the starter is not explicitly disabled.
 var enabled = gs.OnProperty("spring.transaction.tcc.enabled").HavingValue("true").MatchIfMissing()
 
@@ -119,6 +117,6 @@ func newCoordinator(c Config, store tcc.Store) tcc.Coordinator {
 	if c.Tracing {
 		opts = append(opts, tcc.WithObserver(transactionobserve.TccObserver{}))
 	}
-	log.Infof(context.Background(), starterTag, "tcc coordinator created tracing=%v", c.Tracing)
+	log.Infof(context.Background(), log.TagAppDef, "tcc coordinator created tracing=%v", c.Tracing)
 	return tcc.NewCoordinator(opts...)
 }

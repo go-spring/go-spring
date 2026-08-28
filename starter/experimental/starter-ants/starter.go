@@ -30,8 +30,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("ants", "")
-
 func init() {
 	// Register multiple pools under ${spring.ants}. Each map key becomes a
 	// named Pool bean. Observers registered via RegisterObserver are applied
@@ -60,19 +58,19 @@ func init() {
 // createPool resolves the configured Driver and wraps the resulting pool
 // with all registered observers for the given name.
 func createPool(ctx context.Context, name string, c Config) (Pool, error) {
-	log.Debugf(ctx, starterTag, "creating ants pool %q, size=%d driver=%s", name, c.Size, c.Driver)
+	log.Debugf(ctx, log.TagAppDef, "creating ants pool %q, size=%d driver=%s", name, c.Size, c.Driver)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx, starterTag, "ants driver not found: %s", c.Driver)
+		log.Errorf(ctx, log.TagAppDef, "ants driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "ants driver not found: %s", c.Driver)
 	}
 	pool, err := d.CreatePool(c)
 	if err != nil {
-		log.Errorf(ctx, starterTag, "ants: create pool %q failed: %v", name, err)
+		log.Errorf(ctx, log.TagAppDef, "ants: create pool %q failed: %v", name, err)
 		return nil, err
 	}
-	log.Infof(ctx, starterTag, "ants pool %q initialized, size=%d", name, c.Size)
+	log.Infof(ctx, log.TagAppDef, "ants pool %q initialized, size=%d", name, c.Size)
 	// Wrap the pool's Submit to route through the observer chain.
 	return &observedPool{
 		Pool: pool,

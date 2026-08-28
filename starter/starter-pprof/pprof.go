@@ -17,16 +17,13 @@
 package StarterPProf
 
 import (
-	"crypto/subtle"
-	"net"
 	"net/http"
 	"net/http/pprof"
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/httpauth"
 )
-
-var pprofTag = log.RegisterAppTag("pprof", "")
 
 // Config configures the dedicated pprof HTTP server. pprof endpoints expose
 // sensitive runtime internals (goroutine stacks, heap, CPU profiles), so they
@@ -39,19 +36,14 @@ type Config struct {
 	// use 127.0.0.1:9981 to restrict access to the local host.
 	Address string `value:"${addr:=:9981}"`
 
-	// Token, when set, requires each request to present it either as a
-	// "Authorization: Bearer <token>" header or a "?token=<token>" query
-	// parameter. Takes precedence over Username/Password.
+	// Token, when set, requires each request to present it as an
+	// "Authorization: Bearer <token>" header. Takes precedence over
+	// Username/Password.
 	Token string `value:"${token:=}"`
 
 	// Username and Password, when both set, require HTTP Basic authentication.
 	Username string `value:"${username:=}"`
 	Password string `value:"${password:=}"`
-}
-
-// authEnabled reports whether any authentication scheme is configured.
-func (c Config) authEnabled() bool {
-	return c.Token != "" || (c.Username != "" && c.Password != "")
 }
 
 // SimplePProfServer is a simple HTTP server that exposes pprof endpoints.
@@ -73,74 +65,15 @@ func NewSimplePProfServer(ctx *gs.ContextProvider, c Config) *SimplePProfServer 
 	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
 
-	if !c.authEnabled() && !isLoopback(c.Address) {
-		log.Warnf(ctx.Context, pprofTag,
+	guard := httpauth.Guard{Token: c.Token, Username: c.Username, Password: c.Password}
+	if !guard.Enabled() && !httpauth.IsLoopback(c.Address) {
+		log.Warnf(ctx.Context, log.TagAppDef,
 			"pprof server listening on %q without authentication; set ${spring.pprof.token} or ${spring.pprof.username}/${spring.pprof.password}",
 			c.Address)
 	}
 
 	cfg := gs.SimpleHttpServerConfig{Address: c.Address}
 	return &SimplePProfServer{
-		SimpleHttpServer: gs.NewSimpleHttpServer(&gs.HttpServeMux{Handler: c.guard(mux)}, cfg),
+		SimpleHttpServer: gs.NewSimpleHttpServer(&gs.HttpServeMux{Handler: guard.Wrap(mux)}, cfg),
 	}
-}
-
-// guard wraps h with the configured authentication scheme. With no scheme
-// configured it returns h unchanged; the constructor warns when that would
-// leave the endpoints reachable off-host.
-func (c Config) guard(h http.Handler) http.Handler {
-	if !c.authEnabled() {
-		return h
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if c.Token != "" {
-			if !tokenMatches(r, c.Token) {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-		} else {
-			user, pass, ok := r.BasicAuth()
-			if !ok || !constantTimeEqual(user, c.Username) || !constantTimeEqual(pass, c.Password) {
-				w.Header().Set("WWW-Authenticate", `Basic realm="pprof"`)
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-		}
-		h.ServeHTTP(w, r)
-	})
-}
-
-// tokenMatches reports whether the request carries the expected token via a
-// bearer Authorization header or a "token" query parameter.
-func tokenMatches(r *http.Request, want string) bool {
-	if got := r.Header.Get("Authorization"); got != "" {
-		const prefix = "Bearer "
-		if len(got) > len(prefix) && got[:len(prefix)] == prefix &&
-			constantTimeEqual(got[len(prefix):], want) {
-			return true
-		}
-	}
-	return constantTimeEqual(r.URL.Query().Get("token"), want)
-}
-
-// constantTimeEqual compares two strings without leaking their length
-// relationship through timing.
-func constantTimeEqual(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
-}
-
-// isLoopback reports whether addr binds only to a loopback interface. An empty
-// or wildcard host (":9981", "0.0.0.0:9981") is treated as non-loopback.
-func isLoopback(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	if host == "" {
-		return false
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback()
-	}
-	return host == "localhost"
 }

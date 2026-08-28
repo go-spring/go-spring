@@ -20,13 +20,10 @@
 package StarterNats
 
 import (
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("nats", "")
 
 func init() {
 	// Register multiple NATS connections as a group.

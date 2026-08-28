@@ -27,8 +27,33 @@
       "default": ""
     },
     "timeout-ms": {
+      "type": "integer",
+      "default": 5000
+    },
+    "spring.registry.service-name": {
+      "type": "string",
+      "description": "Logical service name to advertise",
+      "default": ""
+    },
+    "spring.registry.addr": {
+      "type": "string",
+      "description": "Advertised host:port of this instance",
+      "default": ""
+    },
+    "spring.registry.weight": {
+      "type": "integer",
+      "default": 0
+    },
+    "spring.registry.metadata": {
       "type": "object",
-      "default": "5000"
+      "description": "Arbitrary key/value attributes stored with the instance",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
-  }
+  },
+  "required": [
+    "spring.registry.service-name",
+    "spring.registry.addr"
+  ]
 }

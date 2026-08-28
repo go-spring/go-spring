@@ -83,3 +83,13 @@ full broadcast to refresh flow.
 - On receipt each subscriber calls the framework's `PropertiesRefresher`, which
   reloads all configuration sources and re-binds every `gs.Dync` field via a
   two-phase, atomic commit.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_bus` (config bus). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_bus.type=Logger
+logger.config_bus.level=WARN
+logger.config_bus.tag=_app_config_bus
+```

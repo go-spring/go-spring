@@ -65,7 +65,8 @@ item, err := s.Memcached.Get("key")
 * **启动期连接校验（fail-fast）**：创建客户端后会对每个配置的 server 执行一次 `Ping`，服务不可达时启动即失败，而非等到首次请求。
 * **服务发现**：配置 `service-name`（可选 `discovery` 指定已注册后端，默认 `default`）替代 `servers`；starter 在启动时通过注册的
   `discovery.Discovery` 后端解析一次 server 列表并据此做 key 分片。由于 gomemcache 在创建客户端时就把 key 哈希到固定的 server
-  集合上，这里的解析是**启动时一次性**的（解析失败或为空则 fail-fast），而非实时 watch —— 集群成员变化需重启才能生效。后端示例参见
+  集合上，这里的解析是**启动时一次性**的（解析失败或为空则 fail-fast），而非实时 watch —— 集群成员变化需重启才能生效。若集群拓扑动态扩缩，建议在 `servers` 中配置
+  serverless/代理类端点（单一稳定地址），把成员管理交给代理层。后端示例参见
   [discovery.go](example/discovery.go)。
 * **健康检查 / readiness**：客户端的 `Ping()` 会探测所有 server，可直接在注入的客户端上调用做健康探测。
 * **连接池 / 超时**：`timeout` 与 `max-idle-conns` 对应客户端每 server 的 socket 超时和空闲连接池，为 0 时回退到驱动默认值（100ms / 2）。

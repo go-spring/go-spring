@@ -84,7 +84,6 @@ backends is a blank-import swap, not a config migration):
 | --- | --- | --- |
 | `service-name` | (required) | Logical name to publish; the same name clients resolve. |
 | `addr` | (required) | Connectable `host:port` advertised to clients. |
-| `id` | (empty) | Accepted for parity; unused by Nacos, which identifies an instance by `ip:port`. |
 | `weight` | `0` | Load-balancing weight; `0` falls back to Nacos's default of `1`. |
 | `metadata.*` | (none) | Arbitrary key/value attributes stored with the instance. |
 
@@ -117,3 +116,13 @@ up on their next discovery snapshot — one Watch push cycle. A weight of 0
 drains the instance (no traffic, still registered), which is the standard
 zero-downtime rotation step before shutdown. Operators can also edit the
 registered weight directly at the registry; the effect is identical.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_registry_nacos` (nacos registry). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.registry_nacos.type=Logger
+logger.registry_nacos.level=WARN
+logger.registry_nacos.tag=_app_registry_nacos
+```

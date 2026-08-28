@@ -50,7 +50,7 @@ type consulRegistrar struct {
 
 	mu         sync.Mutex
 	heartbeats map[string]chan struct{} // service ID -> heartbeat stop channel
-	regs       map[string]instance     // service ID -> last registered value
+	regs       map[string]instance      // service ID -> last registered value
 }
 
 // newConsulRegistrar builds a registrar backed by a Consul client for c.
@@ -63,7 +63,7 @@ func newConsulRegistrar(c ConsulConfig) (*consulRegistrar, error) {
 		Namespace:  c.Namespace,
 	})
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create consul client for address=%s failed: %v", c.Address, err)
+		log.Errorf(context.Background(), log.TagAppDef, "create consul client for address=%s failed: %v", c.Address, err)
 		return nil, err
 	}
 	return &consulRegistrar{
@@ -105,7 +105,11 @@ func (r *consulRegistrar) Register(_ context.Context, reg instance) error {
 	if err := r.client.Agent().ServiceRegister(r.buildRegistration(reg)); err != nil {
 		return errutil.Explain(err, "registry-consul: register %q", reg.ServiceName)
 	}
-	_ = r.client.Agent().UpdateTTL(checkID, "", api.HealthPassing)
+	// The first TTL pass is best-effort: the heartbeat below retries it every
+	// half TTL, so a failure here only delays "passing", it never fails Register.
+	if err := r.client.Agent().UpdateTTL(checkID, "", api.HealthPassing); err != nil {
+		log.Warnf(context.Background(), log.TagAppDef, "consul initial TTL pass for check=%s failed: %v", checkID, err)
+	}
 
 	stop := make(chan struct{})
 	r.mu.Lock()
@@ -117,8 +121,24 @@ func (r *consulRegistrar) Register(_ context.Context, reg instance) error {
 	r.regs[id] = reg
 	r.mu.Unlock()
 
-	go r.heartbeat(checkID, stop)
+	go r.heartbeat(id, stop)
 	return nil
+}
+
+// reRegister re-runs the (idempotent) service upsert for id. It is the
+// self-healing escalation of the heartbeat: if Consul dropped the service —
+// the check went critical past DeregisterCriticalServiceAfter, or the local
+// agent restarted and lost it — UpdateTTL alone can never recover (the check
+// is gone), while ServiceRegister recreates service and check, after which the
+// regular TTL passes keep it alive again.
+func (r *consulRegistrar) reRegister(id string) error {
+	r.mu.Lock()
+	reg, ok := r.regs[id]
+	r.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	return r.client.Agent().ServiceRegister(r.buildRegistration(reg))
 }
 
 // buildRegistration assembles the full Consul service registration for reg —
@@ -174,20 +194,47 @@ func (r *consulRegistrar) UpdateWeight(_ context.Context, reg instance, weight i
 	return nil
 }
 
-// heartbeat re-passes the TTL check at half the TTL until stop is closed.
-func (r *consulRegistrar) heartbeat(checkID string, stop <-chan struct{}) {
+// heartbeat re-passes the TTL check of service id at half the TTL until stop
+// is closed. A failed pass can never be "just dropped": failures are logged
+// (escalating to Error once they persist), and once they do persist the
+// service is re-registered — an idempotent upsert — because if the outage
+// outlasted DeregisterCriticalServiceAfter (or the agent restarted), the
+// check no longer exists and only a re-register brings the instance back.
+func (r *consulRegistrar) heartbeat(id string, stop <-chan struct{}) {
+	checkID := "service:" + id
 	interval := r.ttl / 2
 	if interval <= 0 {
 		interval = r.ttl
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	const persistAfter = 3
+	var failures int
 	for {
 		select {
 		case <-stop:
 			return
 		case <-ticker.C:
-			_ = r.client.Agent().UpdateTTL(checkID, "", api.HealthPassing)
+			err := r.client.Agent().UpdateTTL(checkID, "", api.HealthPassing)
+			if err == nil {
+				failures = 0
+				continue
+			}
+			failures++
+			if failures >= persistAfter {
+				log.Errorf(context.Background(), log.TagAppDef,
+					"consul TTL heartbeat for check=%s failed %d times in a row; re-registering the service to recover: %v",
+					checkID, failures, err)
+				// Re-register (upsert) instead of only logging: recreates the
+				// service and check if Consul already dropped them.
+				if rerr := r.reRegister(id); rerr != nil {
+					log.Errorf(context.Background(), log.TagAppDef,
+						"consul re-register for service=%s failed: %v", id, rerr)
+				}
+			} else {
+				log.Warnf(context.Background(), log.TagAppDef,
+					"consul TTL heartbeat for check=%s failed (%d/%d): %v", checkID, failures, persistAfter, err)
+			}
 		}
 	}
 }

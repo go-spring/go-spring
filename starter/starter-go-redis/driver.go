@@ -23,8 +23,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/stdlib/goutil"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/goutil"
 )
 
 // Driver interface defines how to create a single/sentinel Redis client, whose

@@ -20,7 +20,7 @@ third-party SDK.
   gracefully-stopped service, not a gs.Runner (the same seam starter-asynq
   learned the hard way; see its DESIGN).
 - **Task goroutine + cancellable context** — /run starts the handler on a
-  goroutine and registers a cancel keyed by logId; /kill cancels it. A panic
+  goroutine and registers a cancel keyed by jobId (logId only feeds /api/callback and /log); /kill cancels it. A panic
   is recovered through the shared `goutil.SafeRun` chain, converting to a 500
   callback.
 - **Registration loop** — `register()` runs in the Executor.Run lifecycle:

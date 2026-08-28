@@ -56,9 +56,13 @@
         }
       }
     },
-    "resilience": {
+    "driver": {
+      "type": "string",
+      "default": "DefaultDriver"
+    },
+    "observability": {
       "type": "object",
-      "default": ""
+      "description": "Access log config (off/brief/detailed), see observe.ObserveConfig"
     }
   }
 }

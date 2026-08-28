@@ -54,7 +54,7 @@ ok, err := s.Enforcer.Enforce("alice", "/data", "write")
 | Key        | Description                                                                 | Default |
 |------------|-----------------------------------------------------------------------------|---------|
 | `model`    | Path to the Casbin model file                                               | —       |
-| `policy`   | Path to the file-backed policy; ignored when `adapter` is set               | —       |
+| `policy`   | Path to the file-backed policy; mutually exclusive with `adapter`          | —       |
 | `autoSave` | Persist policy mutations back to the storage                                | `true`  |
 | `adapter`  | Name of a `persist.Adapter` registered via `RegisterAdapter` (DB/file/...)  | —       |
 | `watcher`  | Name of a `persist.Watcher` registered via `RegisterWatcher` (hot reload)   | —       |

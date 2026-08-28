@@ -37,20 +37,26 @@ import _ "go-spring.org/starter-actuator"
 Add actuator configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.actuator.enabled=true
 spring.actuator.addr=:9370
+# Optional: guard the whole management port (bearer token, or HTTP Basic via
+# spring.actuator.username/password). Without any scheme and a non-loopback
+# address, startup logs a WARN.
+# spring.actuator.token=s3cret
 ```
 
 ### 3. Access the Endpoints
+
+Sensitive introspection endpoints (`/loggers`, `/env`, `/configprops`,
+`/threaddump`, `/beans`) are **default-off**: list them in
+`spring.actuator.endpoints.include` to expose them.
 
 ```bash
 curl http://127.0.0.1:9370/healthz     # liveness
 curl http://127.0.0.1:9370/readyz      # readiness (aggregates health indicators)
 curl http://127.0.0.1:9370/startupz    # startup probe (503 until started, then 200)
-curl http://127.0.0.1:9370/info        # build/version info
-curl http://127.0.0.1:9370/loggers     # configured loggers and their levels
-curl http://127.0.0.1:9370/env         # merged configuration (secrets masked)
-curl http://127.0.0.1:9370/threaddump  # goroutine stack dump
+curl http://127.0.0.1:9370/info        # build/version info (default-on)
+# with endpoints.include=loggers,env,configprops,threaddump and token set:
+curl -H 'Authorization: Bearer s3cret' http://127.0.0.1:9370/env
 ```
 
 The legacy paths `/health`, `/readiness`, and `/startup` remain as aliases of
@@ -70,7 +76,10 @@ readinessProbe:
 ## Endpoints
 
 The three probe endpoints map to the Kubernetes container probes. The z-suffixed
-paths are canonical; the older names are kept as aliases.
+paths are canonical; the older names are kept as aliases. The probe endpoints and
+`/info` are registered by default; the sensitive introspection endpoints
+(`/loggers`, `/env`, `/configprops`, `/threaddump`, `/beans`) are **default-off**
+and register only when listed in `spring.actuator.endpoints.include`.
 
 | Endpoint | Method | Meaning |
 | --- | --- | --- |
@@ -79,20 +88,19 @@ paths are canonical; the older names are kept as aliases.
 | `/startupz` (alias `/startup`) | GET | **Startup probe.** Returns `503 OUT_OF_SERVICE` until the app has finished starting **and** every `startup`-group indicator passes, then `200`. Unaffected by drain, so once startup succeeds the kubelet hands off to the liveness probe and a slow boot is not killed. |
 | `/info` | GET | Build/version metadata read from the binary's embedded build info (module path/version, Go toolchain, and the VCS revision/time when built from a checkout). |
 | `/loggers` | GET | Configured loggers with their effective levels, plus the selectable level names. Read-only (a runtime level override is intentionally not implemented). The Go analogue of Spring Boot's `/actuator/loggers`. |
-| `/env` | GET | Merged configuration properties as a flat property source. Secret-named keys (`password`, `token`, `secret`, ...) and `ENC(...)` values are masked. |
+| `/env` | GET | Configuration sources as flat property maps, listed in priority order (highest first), **unmerged** — operators see the original data and judge aggregation themselves. Secret-named keys (`password`, `token`, `secret`, ...) and `ENC(...)` values are masked. |
 | `/configprops` | GET | Merged configuration as a nested tree (the Go analogue of `/actuator/configprops`), with the same masking as `/env`. |
 | `/threaddump` | GET | Goroutine stack dump as `text/plain` — the Go analogue of a JVM thread dump. |
 | `/metrics` | GET | Prometheus scrape endpoint. Present only when `starter-otel` is imported with `spring.observability.metrics.exporter=prometheus` — otel contributes its scrape handler and the actuator mounts it here (see *Metrics & Kubernetes Scraping*). |
 
 ### Log levels
 
-`GET /loggers` reports each configured logger and the selectable levels. It is
+`GET /loggers` reports each configured logger with its effective level. It is
 **read-only** — a runtime level override (`POST /loggers/{name}`) is
 intentionally not implemented:
 
 ```json
 {
-  "levels": ["TRACE","DEBUG","INFO","WARN","ERROR","PANIC","FATAL"],
   "loggers": { "root": { "configuredLevel": "INFO" } }
 }
 ```
@@ -101,8 +109,12 @@ intentionally not implemented:
 
 Values are redacted to `******` when the key matches `password`, `passwd`,
 `secret`, `token`, `credential`, `apikey`/`api-key`, `private-key`, or
-`access-key` (case-insensitive), or when the value is an `ENC(...)` placeholder
-produced by config encryption. All other values pass through unchanged.
+`access-key` (case-insensitive substring), when the key's final separator-delimited
+segment is exactly `key`/`api-key`/`api_key` (`some.key`, `aws.key`; `monkey` and
+`keyword` do NOT match), or when the value is an `ENC(...)` placeholder produced
+by config encryption. A value that is a URL with embedded credentials
+(`redis://user:pass@host`) has only the userinfo part masked
+(`redis://******@host`). All other values pass through unchanged.
 
 ## Graceful Shutdown (Drain)
 
@@ -225,8 +237,11 @@ spec:
 
 | Property | Default | Description |
 | --- | --- | --- |
-| `spring.actuator.enabled` | `true` | Enables or disables the actuator server. |
-| `spring.actuator.addr` | `:9370` | Management listen address. Binds all interfaces by default so in-cluster probes can reach it. Distinct from the main HTTP server (`:9090`) and the pprof server (`127.0.0.1:9981`). |
+| `spring.actuator.addr` | — | Management listen address (required — setting it is what enables the starter). Example `:9370` binds all interfaces so in-cluster probes can reach it. Distinct from the main HTTP server (`:9090`) and the pprof server (`127.0.0.1:9981`). |
+| `spring.actuator.endpoints.include` | `""` | Comma list of endpoints to expose. Sensitive introspection endpoints (`loggers, env, configprops, threaddump, beans`) are default-off and MUST be listed here; a non-empty list is also a whitelist for `info` and contributed endpoints (e.g. `metrics`). Probes are exempt. |
+| `spring.actuator.endpoints.exclude` | `""` | Comma list of endpoints to remove; always applies, including over an explicit include. |
+| `spring.actuator.token` | `""` | Bearer token guarding the whole management port (`Authorization: Bearer <token>`). Takes precedence over Basic. |
+| `spring.actuator.username` / `spring.actuator.password` | `""` | HTTP Basic credentials for the management port (both must be set). Without any scheme and a non-loopback address, startup logs a WARN. |
 
 ## License
 

@@ -33,8 +33,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
-var grpcTag = log.RegisterAppTag("grpc", "starter")
-
 func init() {
 	gs.Provide(
 		NewSimpleGrpcServer,
@@ -119,7 +117,7 @@ type SimpleGrpcServer struct {
 // resolved inside buildResilienceInterceptors via the neutral
 // resilience.ExecutorFor seam, so this server has no coupling to cloud/governance.
 func NewSimpleGrpcServer(cfg Config, reg ServiceRegister) *SimpleGrpcServer {
-	log.Debugf(context.Background(), grpcTag, "grpc server created addr=%s", cfg.Addr)
+	log.Debugf(context.Background(), log.TagAppDef, "grpc server created addr=%s", cfg.Addr)
 	return &SimpleGrpcServer{cfg: cfg, reg: reg}
 }
 
@@ -232,13 +230,13 @@ func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	listener, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
-		log.Errorf(ctx, grpcTag, "grpc server failed to listen on %s: %v", s.cfg.Addr, err)
+		log.Errorf(ctx, log.TagAppDef, "grpc server failed to listen on %s: %v", s.cfg.Addr, err)
 		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
 	}
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, grpcTag, "grpc server starting on %s", s.cfg.Addr)
+	log.Infof(ctx, log.TagAppDef, "grpc server starting on %s", s.cfg.Addr)
 	if err = s.svr.Serve(listener); err != nil {
-		log.Errorf(ctx, grpcTag, "grpc server failed on %s: %v", s.cfg.Addr, err)
+		log.Errorf(ctx, log.TagAppDef, "grpc server failed on %s: %v", s.cfg.Addr, err)
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil
@@ -252,7 +250,7 @@ func (s *SimpleGrpcServer) Stop() error {
 // StopContext gracefully stops the underlying gRPC server. grpc's GracefulStop
 // takes no context, so ctx only tags the shutdown log.
 func (s *SimpleGrpcServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, grpcTag, "grpc server shutting down on %s", s.cfg.Addr)
+	log.Infof(ctx, log.TagAppDef, "grpc server shutting down on %s", s.cfg.Addr)
 	s.svr.GracefulStop()
 	return nil
 }

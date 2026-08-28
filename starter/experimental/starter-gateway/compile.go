@@ -72,6 +72,11 @@ type RouteTable struct {
 	// map and current() recompiles on the next request.
 	Cfg gatewayConfig `value:"${spring.gateway}"`
 
+	// serverAddr mirrors spring.gateway.server.addr (empty when unset) so Init
+	// can warn about routes that will never be served — the server bean is
+	// conditionally registered on that key (gateway.go).
+	serverAddr string `value:"${spring.gateway.server.addr:=}"`
+
 	// Wrappers holds bean-backed filters (jwt-auth, lua) collected by name. It is
 	// populated by field injection after the constructor returns, so route
 	// compilation must be deferred until warmup() runs (see GatewayServer.Run).
@@ -101,6 +106,26 @@ func newRouteTable(ctx *gs.ContextProvider, m *Metrics) *RouteTable {
 		metrics: m,
 		dialers: map[string]*discovery.Resolver{},
 	}
+}
+
+// Init runs after field injection. It warns when routes are configured but the
+// gateway server is not (spring.gateway.server.addr unset): the server bean is
+// conditionally registered on that key, so such routes are never served — an
+// easily missed misconfiguration that is otherwise silent.
+func (t *RouteTable) Init() error {
+	raw := t.Cfg.Routes.Value()
+	if t.serverAddr != "" || len(raw) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(raw))
+	for id := range raw {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	log.Warnf(t.ctx, log.TagAppDef,
+		"gateway: %d route(s) configured but spring.gateway.server.addr is not set, they will not be served: %s",
+		len(ids), strings.Join(ids, ", "))
+	return nil
 }
 
 // warmup compiles the initial route table. It runs after the Wrappers field has
@@ -143,7 +168,9 @@ func (t *RouteTable) Match(req *http.Request) *Route {
 
 // recompile builds a fresh compiled route slice from raw and atomically swaps it
 // in. On any error it leaves the current table untouched and returns the error.
-// Routes are ordered by id for deterministic matching.
+// Routes are ordered by descending priority, ties broken by ascending id — the
+// historical id-sorted order, which stays the documented default when priority
+// is unset.
 func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 	t.mu.Lock()
 
@@ -153,14 +180,24 @@ func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 		return err
 	}
 
-	ids := make([]string, 0, len(raw))
-	for id := range raw {
-		ids = append(ids, id)
+	type keyed struct {
+		id   string
+		prio int
 	}
-	sort.Strings(ids)
+	keys := make([]keyed, 0, len(raw))
+	for id, r := range raw {
+		keys = append(keys, keyed{id: id, prio: r.Priority})
+	}
+	sort.SliceStable(keys, func(i, j int) bool {
+		if keys[i].prio != keys[j].prio {
+			return keys[i].prio > keys[j].prio
+		}
+		return keys[i].id < keys[j].id
+	})
 
-	routes := make([]*Route, 0, len(ids))
-	for _, id := range ids {
+	routes := make([]*Route, 0, len(keys))
+	for _, k := range keys {
+		id := k.id
 		rt, err := t.compileRoute(id, raw[id], execs)
 		if err != nil {
 			t.mu.Unlock()
@@ -259,7 +296,7 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 		handler = proxySpan(id, handler)
 	}
 
-	return &Route{ID: id, Predicates: preds, Filters: filters, Upstream: up, handler: handler}, nil
+	return &Route{ID: id, Priority: raw.Priority, Predicates: preds, Filters: filters, Upstream: up, handler: handler}, nil
 }
 
 // buildFilters parses a route's filter list into an ordered slice of Filters.
@@ -367,7 +404,14 @@ func parseFilterToken(s string) (filterToken, error) {
 	inner := s[open+1 : len(s)-1]
 	var args []string
 	for _, a := range strings.Split(inner, ",") {
-		args = append(args, strings.TrimSpace(a))
+		a = strings.TrimSpace(a)
+		if strings.ContainsAny(a, ",()") {
+			return filterToken{}, &parseError{
+				what:  "filter value (the DSL has no escape for ','/'('/')' — use ${...} placeholders resolved at bind time or a custom filter via RegisterFilter)",
+				token: a,
+			}
+		}
+		args = append(args, a)
 	}
 	return filterToken{name: name, args: args}, nil
 }

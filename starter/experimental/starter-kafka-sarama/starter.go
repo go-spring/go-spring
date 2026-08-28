@@ -21,13 +21,10 @@ package StarterKafkaSarama
 
 import (
 	"github.com/IBM/sarama"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("kafka_sarama", "")
 
 func init() {
 	// Bridge sarama's package-level logger into go-spring's log so

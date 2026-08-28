@@ -39,7 +39,7 @@ spring.redigo.main.addr=127.0.0.1:6379
 import "github.com/gomodule/redigo/redis"
 
 type Service struct {
-    Redis *redis.Client `autowire:""`
+    Redis *StarterRedigo.Pool `autowire:"main"`
 }
 ```
 
@@ -48,8 +48,10 @@ type Service struct {
 参见 [example.go](example/example.go) 文件。
 
 ```go
-str, err := s.Redis.Get(r.Context(), "key").Result()
-str, err := s.Redis.Set(r.Context(), "key", "value", 0).Result()
+c := s.Redis.Get() // 从池里借连接
+defer c.Close()
+str, err := redis.String(c.Do("GET", "key"))
+_, err = c.Do("SET", "key", "value")
 ```
 
 ## 核心功能

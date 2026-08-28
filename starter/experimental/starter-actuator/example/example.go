@@ -101,6 +101,11 @@ func main() {
 func runTest() {
 	const base = "http://127.0.0.1:9370"
 
+	// The management port is guarded by a bearer token: without the header
+	// every endpoint answers 401, including the probes.
+	mustStatusNoAuth(base+"/health", http.StatusUnauthorized)
+	fmt.Println("auth 401 without token OK")
+
 	// Liveness is up as soon as the process serves.
 	mustStatus(base+"/health", http.StatusOK)
 	fmt.Println("health OK")
@@ -133,15 +138,25 @@ func runTest() {
 	fmt.Println("loggers OK")
 
 	// env: ordinary values pass through; secret-named keys and ENC(...) values
-	// are masked.
+	// are masked; URL-embedded credentials have only the userinfo masked.
 	body = mustBody(base + "/env")
 	if !strings.Contains(body, "jdbc:mysql://localhost:3306/demo") {
 		fail("/env dropped an ordinary property: " + body)
 	}
-	if strings.Contains(body, "super-secret-pw") || strings.Contains(body, "abcdef123456") || strings.Contains(body, "9f8a7b6c5d") {
+	if !strings.Contains(body, "redis://******@127.0.0.1:6379/0") {
+		fail("/env did not mask URL userinfo: " + body)
+	}
+	if strings.Contains(body, "super-secret-pw") || strings.Contains(body, "abcdef123456") ||
+		strings.Contains(body, "9f8a7b6c5d") || strings.Contains(body, "cache-pass") ||
+		strings.Contains(body, "AKIA-legacy-credential") {
 		fail("/env leaked a secret value: " + body)
 	}
 	fmt.Println("env masking OK")
+
+	// Sensitive endpoints not in endpoints.include answer 404 even with valid
+	// credentials (this example includes everything except /beans).
+	mustStatus(base+"/beans", http.StatusNotFound)
+	fmt.Println("beans default-excluded OK")
 
 	// configprops: same masking over the nested tree view.
 	body = mustBody(base + "/configprops")
@@ -188,10 +203,28 @@ func runTest() {
 	os.Exit(1)
 }
 
-// statusOf returns the HTTP status code for a GET of url, or -1 on error (for
-// example once the server has stopped serving at the end of the drain window).
+// actuatorToken mirrors spring.actuator.token in conf/app.properties: every
+// request the smoke test makes must present it as a bearer token.
+const actuatorToken = "dev-actuator-token"
+
+// authedGet issues a GET against url, presenting the actuator bearer token
+// unless auth is false.
+func authedGet(url string, auth bool) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if auth {
+		req.Header.Set("Authorization", "Bearer "+actuatorToken)
+	}
+	return http.DefaultClient.Do(req)
+}
+
+// statusOf returns the HTTP status code for an authenticated GET of url, or -1
+// on error (for example once the server has stopped serving at the end of the
+// drain window).
 func statusOf(url string) int {
-	resp, err := http.Get(url)
+	resp, err := authedGet(url, true)
 	if err != nil {
 		return -1
 	}
@@ -200,10 +233,10 @@ func statusOf(url string) int {
 	return resp.StatusCode
 }
 
-// mustStatus fetches url and exits the process non-zero unless the response
-// status matches want.
-func mustStatus(url string, want int) {
-	resp, err := http.Get(url)
+// mustStatusNoAuth fetches url WITHOUT credentials and exits non-zero unless
+// the response status matches want (used to assert the guard rejects).
+func mustStatusNoAuth(url string, want int) {
+	resp, err := authedGet(url, false)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "request failed:", url, err)
 		os.Exit(1)
@@ -216,10 +249,26 @@ func mustStatus(url string, want int) {
 	}
 }
 
-// mustBody GETs url and returns the response body as a string, exiting non-zero
-// on a transport error or non-200 status.
+// mustStatus fetches url with the bearer token and exits the process non-zero
+// unless the response status matches want.
+func mustStatus(url string, want int) {
+	resp, err := authedGet(url, true)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request failed:", url, err)
+		os.Exit(1)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != want {
+		fmt.Fprintf(os.Stderr, "unexpected status for %s: got %d want %d\n", url, resp.StatusCode, want)
+		os.Exit(1)
+	}
+}
+
+// mustBody GETs url with the bearer token and returns the response body as a
+// string, exiting non-zero on a transport error or non-200 status.
 func mustBody(url string) string {
-	resp, err := http.Get(url)
+	resp, err := authedGet(url, true)
 	if err != nil {
 		fail(fmt.Sprintf("request %s: %v", url, err))
 	}

@@ -90,7 +90,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*kgo.Client, e
 	if c.TLS.Enabled {
 		tc, err := c.TLS.Build()
 		if err != nil {
-			log.Errorf(ctx, starterTag, "kafka: build TLS failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, "kafka: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "kafka: build TLS")
 		}
 		opts = append(opts, kgo.DialTLSConfig(tc))

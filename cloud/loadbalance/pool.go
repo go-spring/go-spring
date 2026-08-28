@@ -132,4 +132,3 @@ func excludeDrained(eps []discovery.Endpoint) []discovery.Endpoint {
 	}
 	return kept
 }
-

@@ -95,3 +95,12 @@ end
   因此一次错误编辑绝不会让过滤器失效。
 * **资源清理**：starter 注册了 destroy 回调，在关闭时关闭池中每个 `*lua.LState`，
   释放过滤器创建的 VM。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_lua_filter`（lua 过滤器）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.lua_filter.type=Logger
+logger.lua_filter.level=WARN
+logger.lua_filter.tag=_app_lua_filter
+```

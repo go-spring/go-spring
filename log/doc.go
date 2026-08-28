@@ -40,6 +40,12 @@ Trace and Debug take a lazy field builder so level-disabled call sites allocate 
 		return []log.Field{log.String("user_id", "10001")}
 	})
 
+Register a custom tag only when its logs need to be tuned independently of the main log
+(access logs, retry/circuit-breaker events, background relays, third-party framework bridges);
+everything else should use the default tags [TagAppDef] / [TagBizDef]. An unconfigured tag falls
+back to the default logger — that is the baseline, not a degraded mode. See the package README
+for the full guidance.
+
 # Configuration
 
 Logger topology is loaded from a flat property map; reading and parsing the configuration file

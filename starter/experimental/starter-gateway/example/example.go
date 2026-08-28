@@ -53,8 +53,11 @@ func main() {
 	startBackend()
 
 	if !*manual {
-		time.Sleep(time.Millisecond * 500)
-		runTest()
+		// The smoke assertions must run AFTER the gateway server is up, so
+		// they ride a gs.Runner (runners start after servers are ready) and
+		// do their work in a background goroutine so they don't delay the
+		// readiness signal.
+		gs.Provide(newSmokeRunner).Export(gs.As[gs.Runner]())
 	} else {
 
 		// Run the Go-Spring application. The gateway server listens on :9440.
@@ -73,6 +76,23 @@ func main() {
 	//
 	// ~ curl -i http://127.0.0.1:9440/nope
 	// HTTP/1.1 404 Not Found       # no route matches
+}
+
+// smokeRunner runs the self-assertions once the gateway server is serving.
+type smokeRunner struct{}
+
+// newSmokeRunner returns the runner as a reference-typed bean.
+func newSmokeRunner() *smokeRunner { return &smokeRunner{} }
+
+// Run returns immediately; the assertions run in a background goroutine so a
+// blocking runner cannot delay the application's readiness signal. runTest
+// sends SIGTERM on success, which shuts the application down cleanly.
+func (*smokeRunner) Run(ctx context.Context) error {
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		runTest()
+	}()
+	return nil
 }
 
 // startBackend runs a tiny HTTP upstream that reports the path it received and

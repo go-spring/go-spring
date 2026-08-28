@@ -17,11 +17,11 @@
       "items": {
         "type": "string"
       },
-      "default": ""
+      "default": []
     },
     "endpoint-params": {
       "type": "object",
-      "default": ""
+      "default": {}
     },
     "auth-style": {
       "type": "string",
@@ -32,8 +32,13 @@
       "description": "Duration string, e.g. '5s', '1m', '1h'",
       "default": "0"
     },
-    "resilience": {
-      "type": "object",
+    "spring.oauth2.authcode.auth-url": {
+      "type": "string",
+      "description": "Authorization endpoint per spring.oauth2.authcode.<name> instance"
+    },
+    "spring.oauth2.authcode.redirect-url": {
+      "type": "string",
+      "description": "Callback URL per spring.oauth2.authcode.<name> instance",
       "default": ""
     }
   }

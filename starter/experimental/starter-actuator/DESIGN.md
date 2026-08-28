@@ -48,12 +48,14 @@ counterpart to the application's business server.
 
 ## 3. Constraints
 
-- **Fixed default port `:9370`.** Distinct from the main HTTP server
-  (`:9090`) and pprof (`127.0.0.1:9981`); binds all interfaces so
-  in-cluster probes can reach it.
-- **JSON body limits.** POST `/loggers/{name}` decodes up to 64 KiB with
-  `DisallowUnknownFields` — a malformed or oversized POST cannot
-  exhaust memory or silently ignore typos.
+- **User-configured port.** No default address; the starter activates only
+  when `spring.actuator.addr` is set (same convention as other server
+  starters). Documented layout: main HTTP `:9090`, actuator `:9370`, pprof
+  `127.0.0.1:9981`, actuator binding all interfaces so in-cluster probes can
+  reach it.
+- **`/loggers` is read-only.** A runtime level override
+  (`POST /loggers/{name}`) was considered and rejected; the JSON-body-limit
+  machinery it motivated is therefore moot.
 - **Indicators / Endpoints / Env are optional (`autowire:"?"`).** An app
   with no indicators still gets liveness/readiness/info.
 - **Group semantics.** Liveness ignores non-liveness-group indicators;

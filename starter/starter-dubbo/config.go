@@ -63,7 +63,6 @@ type DubboConfig struct {
 	Application    DubboApplication         `value:"${application:=}"`
 	Registries     map[string]DubboRegistry `value:"${registries:=}"`
 	Protocols      map[string]DubboProtocol `value:"${protocols:=}"`
-	MetadataReport DubboMetadataReport      `value:"${metadata-report:=}"`
 	Provider       DubboProvider            `value:"${provider:=}"`
 	Consumer       DubboConsumer            `value:"${consumer:=}"`
 	Metrics        DubboMetric              `value:"${metrics:=}"`
@@ -129,19 +128,6 @@ type DubboProtocol struct {
 	Params map[string]string `value:"${params:=}"`
 }
 
-// --- metadata-report ---
-
-// DubboMetadataReport is the metadata-report entry.
-type DubboMetadataReport struct {
-	Protocol  string `value:"${protocol:=}"`
-	Address   string `value:"${address:=}"`
-	Username  string `value:"${username:=}"`
-	Password  string `value:"${password:=}"`
-	Group     string `value:"${group:=}"`
-	Namespace string `value:"${namespace:=}"`
-	Timeout   string `value:"${timeout:=20s}"`
-}
-
 // --- provider ---
 
 // DubboProvider is the provider-side configuration. Fields match
@@ -152,7 +138,6 @@ type DubboProvider struct {
 	RegistryIDs            []string                `value:"${registry-ids:=}"`
 	Services               map[string]DubboService `value:"${services:=}"`
 	ProtocolIDs            []string                `value:"${protocol-ids:=}"`
-	Proxy                  string                  `value:"${proxy:=}"` // no v3 ServerOption; reserved
 	TracingKey             string                  `value:"${tracing-key:=}"`
 	AdaptiveService        bool                    `value:"${adaptive-service:=false}"`
 	AdaptiveServiceVerbose bool                    `value:"${adaptive-service-verbose:=false}"`
@@ -163,7 +148,9 @@ type DubboProvider struct {
 	Cluster                     string            `value:"${cluster:=}"`
 	LoadBalance                 string            `value:"${loadbalance:=}"`
 	Serialization               string            `value:"${serialization:=}"`
-	Retries                     int               `value:"${retries:=0}"`
+	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
+	// attempts; >0 = that many retries. Same semantics at every level.
+	Retries                     int               `value:"${retries:=-1}"`
 	Token                       string            `value:"${token:=}"`
 	AccessLog                   string            `value:"${accesslog:=}"`
 	Auth                        string            `value:"${auth:=}"`
@@ -193,7 +180,9 @@ type DubboService struct {
 	// LoadBalance is one of: random, roundrobin, consistenthashing,
 	// leastactive, xdsringhash, p2c; default "random".
 	LoadBalance string `value:"${loadbalance:=random}"`
-	Retries     int    `value:"${retries:=2}"`
+	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
+	// attempts; >0 = that many retries. Same semantics at every level.
+	Retries     int    `value:"${retries:=-1}"`
 	Group       string `value:"${group:=}"`
 	Version     string `value:"${version:=}"`
 	// Serialization is one of: protobuf, hessian2, msgpack, jsonMapStruct.
@@ -214,10 +203,8 @@ type DubboService struct {
 	Auth                        string `value:"${auth:=}"`
 	ParamSign                   string `value:"${param-sign:=}"`
 	Tag                         string `value:"${tag:=}"`
-	// MaxMessageSize: no v3 ServiceOption; reserved.
-	MaxMessageSize int    `value:"${max_message_size:=4}"`
-	TracingKey     string `value:"${tracing-key:=}"`
-	NotRegister    bool   `value:"${not-register:=false}"`
+	TracingKey                  string `value:"${tracing-key:=}"`
+	NotRegister                 bool   `value:"${not-register:=false}"`
 }
 
 // --- consumer ---
@@ -232,14 +219,14 @@ type DubboConsumer struct {
 	RequestTimeout                 string                    `value:"${request-timeout:=}"` // duration string, e.g. "3s"
 	Check                          bool                      `value:"${check:=true}"`
 	References                     map[string]DubboReference `value:"${references:=}"`
-	Proxy                          string                    `value:"${proxy:=}"` // no v3 ClientOption; reserved
 	TracingKey                     string                    `value:"${tracing-key:=}"`
-	MaxWaitTimeForServiceDiscovery string                    `value:"${max-wait-time-for-service-discovery:=}"` // no v3 ClientOption; reserved
 
 	// Consumer-level defaults (client.ClientOption).
 	Cluster       string `value:"${cluster:=}"`
 	LoadBalance   string `value:"${loadbalance:=}"`
-	Retries       int    `value:"${retries:=0}"`
+	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
+	// attempts; >0 = that many retries. Same semantics at every level.
+	Retries       int    `value:"${retries:=-1}"`
 	Group         string `value:"${group:=}"`
 	Version       string `value:"${version:=}"`
 	Serialization string `value:"${serialization:=}"`
@@ -252,7 +239,11 @@ type DubboConsumer struct {
 // Fields match dubbo-go v3 client.ReferenceOption.
 type DubboReference struct {
 	Interface   string   `value:"${interface:=}"`
-	Check       bool     `value:"${check:=false}"`
+	// Check defaults true (fail fast on missing providers), matching the
+	// consumer-level default. Note: dubbo-go v3 has no per-reference
+	// "no check" ReferenceOption, so check=false here is only effective when
+	// consumer.check=false as well - a mismatch is WARNed at startup.
+	Check       bool     `value:"${check:=true}"`
 	URL         string   `value:"${url:=}"`
 	Filter      string   `value:"${filter:=}"`
 	Protocol    string   `value:"${protocol:=}"`
@@ -262,7 +253,9 @@ type DubboReference struct {
 	// LoadBalance is one of: random, roundrobin, consistenthashing,
 	// leastactive, xdsringhash, p2c; default "random".
 	LoadBalance   string                 `value:"${loadbalance:=random}"`
-	Retries       int                    `value:"${retries:=0}"`
+	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
+	// attempts; >0 = that many retries. Same semantics at every level.
+	Retries       int                    `value:"${retries:=-1}"`
 	Group         string                 `value:"${group:=}"`
 	Version       string                 `value:"${version:=}"`
 	Serialization string                 `value:"${serialization:=}"`
@@ -283,7 +276,9 @@ type DubboReference struct {
 // Fields match dubbo-go v3 config.MethodOption.
 type DubboMethod struct {
 	Name    string `value:"${name:=}"`
-	Retries int    `value:"${retries:=2}"`
+	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
+	// attempts; >0 = that many retries. Same semantics at every level.
+	Retries int    `value:"${retries:=-1}"`
 	// LoadBalance is one of: random, roundrobin, consistenthashing,
 	// leastactive, xdsringhash, p2c; default "random".
 	LoadBalance      string `value:"${loadbalance:=random}"`
@@ -307,9 +302,6 @@ type DubboMetric struct {
 	Port               int    `value:"${port:=9090}"`
 	Path               string `value:"${path:=/metrics}"`
 	PushGatewayAddress string `value:"${push-gateway-address:=}"`
-	// Mode/Namespace: no v3 metrics.Option; reserved.
-	Mode      string `value:"${mode:=}"`
-	Namespace string `value:"${namespace:=}"`
 }
 
 // --- tracing ---
@@ -323,11 +315,6 @@ type DubboTracing struct {
 	Mode       string  `value:"${mode:=}"` // always|never|ratio; empty keeps dubbo-go default
 	Ratio      float64 `value:"${ratio:=1.0}"`
 	Insecure   bool    `value:"${insecure:=false}"`
-	// Legacy jaeger fields: no v3 trace.Option; reserved.
-	Name        string `value:"${name:=}"`
-	ServiceName string `value:"${serviceName:=}"`
-	Address     string `value:"${address:=}"`
-	UseAgent    bool   `value:"${use-agent:=false}"`
 }
 
 // --- shutdown ---
@@ -395,6 +382,9 @@ func NewInstance(cfg DubboConfig) (*Instance, error) {
 	}
 	if len(cfg.Registries) == 0 {
 		return nil, errors.New("${spring.dubbo.registries} must define at least one registry")
+	}
+	if err := validateRetries(&cfg); err != nil {
+		return nil, err
 	}
 
 	opts := []dubbo.InstanceOption{dubbo.WithName(app.Name)}
@@ -510,6 +500,47 @@ func NewInstance(cfg DubboConfig) (*Instance, error) {
 		return nil, err
 	}
 	return &Instance{ins: ins, Config: cfg}, nil
+}
+
+// validateRetries rejects retries values below -1. The unified retries
+// semantics are: -1 (the default) = unset / keep dubbo-go's own default,
+// 0 = no retry attempts, >0 = that many retries - at every config level.
+// Anything below -1 has no meaning and is rejected loudly instead of being
+// silently treated as "unset".
+func validateRetries(cfg *DubboConfig) error {
+	check := func(where string, r int) error {
+		if r < -1 {
+			return fmt.Errorf("dubbo: %s.retries=%d is invalid: use -1 (or omit) for unset, 0 to disable retries, >0 for the retry count", where, r)
+		}
+		return nil
+	}
+	if err := check("spring.dubbo.provider", cfg.Provider.Retries); err != nil {
+		return err
+	}
+	for id, svc := range cfg.Provider.Services {
+		if err := check(fmt.Sprintf("spring.dubbo.provider.services.%s", id), svc.Retries); err != nil {
+			return err
+		}
+		for m := range svc.Methods {
+			if err := check(fmt.Sprintf("spring.dubbo.provider.services.%s.methods.%s", id, m), svc.Methods[m].Retries); err != nil {
+				return err
+			}
+		}
+	}
+	if err := check("spring.dubbo.consumer", cfg.Consumer.Retries); err != nil {
+		return err
+	}
+	for id, ref := range cfg.Consumer.References {
+		if err := check(fmt.Sprintf("spring.dubbo.consumer.references.%s", id), ref.Retries); err != nil {
+			return err
+		}
+		for m := range ref.Methods {
+			if err := check(fmt.Sprintf("spring.dubbo.consumer.references.%s.methods.%s", id, m), ref.Methods[m].Retries); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // options translates DubboProtocol into dubbo-go protocol.ServerOptions.

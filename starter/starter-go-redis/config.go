@@ -68,7 +68,9 @@ type Config struct {
 	// Password is the Redis server password, default is empty.
 	Password string `value:"${password:=}"`
 
-	// DB is the Redis database number, default is 0.
+	// DB is the Redis database number, default is 0. Redis Cluster exposes no
+	// databases, so a non-zero DB combined with Mode=cluster is rejected at
+	// startup.
 	DB int `value:"${db:=0}"`
 
 	// Username is the Redis ACL username, default is empty.
@@ -130,6 +132,12 @@ type Config struct {
 
 	// Driver specifies which Redis driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
+
+	// HealthEnabled controls whether the starter contributes a health.Indicator
+	// bean for each instance. It mirrors starter-redigo's switch so operators
+	// can turn the readiness probe off uniformly, e.g. for an instance whose
+	// server is intentionally short-lived. Default is true.
+	HealthEnabled bool `value:"${health.enabled:=true}"`
 }
 
 // OtelConfig toggles the built-in redisotel instrumentation per instance and per

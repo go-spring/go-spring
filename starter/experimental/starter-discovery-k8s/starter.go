@@ -28,11 +28,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var (
-	// starterTag identifies logs emitted by the k8s discovery starter.
-	starterTag = log.RegisterAppTag("starter_discovery_k8s", "")
-)
-
 func init() {
 	// Register one Kubernetes discovery backend per entry under
 	// "${spring.discovery.k8s}", keyed by name. The registration happens in the
@@ -51,13 +46,13 @@ func init() {
 			if _, err := discovery.GetDiscovery(name); err == nil {
 				return errutil.Explain(nil, "discovery-k8s: backend %q already registered", name)
 			}
-			log.Debugf(context.Background(), starterTag, "creating k8s discovery backend name=%s mode=%s namespace=%s", name, c.Mode, c.Namespace)
+			log.Debugf(context.Background(), log.TagAppDef, "creating k8s discovery backend name=%s mode=%s namespace=%s", name, c.Mode, c.Namespace)
 			b, err := newBackend(&gs.ContextProvider{Context: context.Background()}, c)
 			if err != nil {
 				return errutil.Explain(err, "discovery-k8s: build backend %q", name)
 			}
 			discovery.RegisterDiscovery(name, b)
-			log.Infof(context.Background(), starterTag, "registered k8s discovery backend name=%s mode=%s", name, c.Mode)
+			log.Infof(context.Background(), log.TagAppDef, "registered k8s discovery backend name=%s mode=%s", name, c.Mode)
 			mgr.add(b)
 			return nil
 		}); err != nil {

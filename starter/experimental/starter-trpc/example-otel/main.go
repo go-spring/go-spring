@@ -16,7 +16,7 @@
 
 // Package main is the observability example for starter-trpc.
 //
-// It starts a tRPC server with tracing and metrics interceptors enabled,
+// It starts a tRPC server with tracing and metrics filters enabled,
 // sends a batch of RPC calls to generate observability signals, then
 // verifies traces reach Jaeger and self-exits. Traces are exported via
 // OTLP/gRPC to Jaeger (docker-compose) which accepts OTLP natively

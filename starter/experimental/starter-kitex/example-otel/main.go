@@ -16,11 +16,12 @@
 
 // Package main is the observability example for starter-kitex.
 //
-// It starts a Kitex server with tracing and metrics middleware enabled,
-// sends a batch of RPC calls to generate observability signals, then
-// verifies traces reach Jaeger and self-exits. Traces are exported via
-// OTLP/gRPC to Jaeger (docker-compose) which accepts OTLP natively
-// with COLLECTOR_OTLP_ENABLED=true.
+// It starts a Kitex server whose tracing suite attaches to the global OTel
+// pipeline installed by starter-otel (see conf/app.properties), sends a batch
+// of RPC calls to generate observability signals, then verifies traces reach
+// Jaeger and self-exits. Traces are exported via OTLP/gRPC to Jaeger
+// (docker-compose) which accepts OTLP natively with
+// COLLECTOR_OTLP_ENABLED=true.
 //
 // Run with -manual to keep the server running for interactive exploration.
 package main

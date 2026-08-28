@@ -40,10 +40,12 @@ go get go-spring.org/starter-transaction-tcc
 import _ "go-spring.org/starter-transaction-tcc"
 ```
 
-容器中随即出现两个 bean:
+容器中随即出现四个 bean:
 
 - `tcc.Coordinator`——进程内编排器;
-- `*tcc.ParticipantRegistry`——用于声明每个方法的参与者。
+- `*tcc.ParticipantRegistry`——用于声明每个方法的参与者;
+- `tcc.Store`——内存默认日志,可被持久化 Store 替换(见下文);
+- `gs.Runner`——对该 Store 的启动恢复扫描(内存默认下为空转,见下文持久化边界)。
 
 ### 2. 定义参与者
 
@@ -125,8 +127,10 @@ place := tcc.GlobalTCC(coord, reg)
 方法名从 `ParticipantRegistry` 重建参与者,因此你必须在装配期(bean 构造)注册参与者,
 而不能在自定义 `Runner` 里注册。
 
-要让恢复真正生效,请导入持久化 `Store` starter(`spring.transaction.tcc.store=...`);
+要让恢复真正生效,请在自己的模块里贡献一个持久化 `tcc.Store` bean;
 由于内存默认实现以 `gs.OnMissingBean` 注册,持久化 Store 会随即接管协调器与启动恢复扫描。
+(TCC 目前尚无官方持久化 Store starter——需要时可参照
+[`starter-transaction-saga-gorm`](../starter-transaction-saga-gorm) 自行实现。)
 
 ## 许可证
 

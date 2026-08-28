@@ -70,11 +70,6 @@ type Mailer struct {
 	from   string
 }
 
-var (
-	// starterTag identifies logs emitted by the mail starter.
-	starterTag = log.RegisterAppTag("starter_mail", "")
-)
-
 func init() {
 	// Register multiple SMTP mailers as a group. Each instance is created from
 	// the configuration under "${spring.mail}", so adding a second mailer is a
@@ -94,7 +89,7 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config) (*Mailer, error) 
 		return nil, err
 	}
 
-	log.Debugf(ctx.Context, starterTag, "creating mailer host=%s port=%d auth=%s tls=%s from=%s", c.Host, c.Port, c.AuthType, c.TLS.Mode, c.From)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating mailer host=%s port=%d auth=%s tls=%s from=%s", c.Host, c.Port, c.AuthType, c.TLS.Mode, c.From)
 
 	opts := []mail.Option{
 		mail.WithPort(c.Port),
@@ -148,7 +143,7 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config) (*Mailer, error) 
 		return nil, errutil.Explain(err, "mail: closing startup probe connection failed")
 	}
 
-	log.Infof(pctx, starterTag, "mailer created host=%s port=%d", c.Host, c.Port)
+	log.Infof(pctx, log.TagAppDef, "mailer created host=%s port=%d", c.Host, c.Port)
 	return &Mailer{client: client, from: c.From}, nil
 }
 

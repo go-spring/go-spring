@@ -18,7 +18,7 @@
 - **Executor 实现 gs.Server** — 回调服务是长期运行、优雅停止的服务，不
   是 gs.Runner（starter-asynq 刚踩过的 seam，见其 DESIGN）。
 - **任务 goroutine + 可取消 context** — /run 在 goroutine 上启动 handler
-  并按 logId 登记 cancel；/kill 取消它。panic 经共享 `goutil.SafeRun`
+  并按 jobId 登记 cancel（logId 只透传给 /api/callback 与 /log）；/kill 取消它。panic 经共享 `goutil.SafeRun`
   链恢复，转成 500 回调。
 - **注册循环** — `register()` 在 Executor.Run 生命周期里跑：按间隔向每个
   admin 的 /api/registry POST，返回的 closer 在关机时注销。

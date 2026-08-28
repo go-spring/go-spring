@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"go-spring.org/cloud/tlsconf"
 	gormcore "go-spring.org/starter-gorm"
 )
 
@@ -45,6 +46,15 @@ type Config struct {
 	SSLRootCert string `value:"${sslrootcert:=}"` // Path to CA certificate (PEM)
 	SSLCert     string `value:"${sslcert:=}"`     // Path to client certificate (PEM)
 	SSLKey      string `value:"${sslkey:=}"`      // Path to client private key (PEM)
+
+	// TLS is the shared tlsconf.TLSConfig block (nested keys: tls.enabled,
+	// tls.cert-file, tls.key-file, tls.ca-file, tls.server-name,
+	// tls.insecure-skip-verify), symmetric with the mysql starter. When enabled,
+	// the built *tls.Config is injected into the pgx connection config; sslmode
+	// still decides whether TLS is negotiated at all, so tls.enabled together
+	// with sslmode=disable is rejected at startup instead of silently dialing
+	// plaintext.
+	TLS tlsconf.TLSConfig `value:"${tls}"`
 }
 
 // DSN constructs the PostgreSQL Data Source Name based on the configuration.
@@ -86,8 +96,18 @@ func (c Config) DSN() string {
 
 	if c.ConnectTimeout != 0 {
 		sb.WriteString(" connect_timeout=")
-		sb.WriteString(strconv.Itoa(int(c.ConnectTimeout.Seconds())))
+		sb.WriteString(strconv.Itoa(ceilSeconds(c.ConnectTimeout)))
 	}
 
 	return sb.String()
+}
+
+// ceilSeconds rounds a positive duration up to whole seconds. The libpq-style
+// connect_timeout accepts integers only; truncating would turn a sub-second
+// timeout into 0, which pgx reads as "no timeout".
+func ceilSeconds(d time.Duration) int {
+	if d <= 0 {
+		return 0
+	}
+	return int((d + time.Second - 1) / time.Second)
 }

@@ -63,7 +63,9 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   instead of `servers`; the starter resolves the server list once through the registered `discovery.Discovery` backend
   at startup and shards keys across it. Because gomemcache hashes keys onto a fixed server set chosen at client creation,
   the resolve is **one-shot at boot** (fail-fast on empty/failed resolve) rather than a live watch — a changing cluster
-  membership requires a restart. See [discovery.go](example/discovery.go) for a backend example.
+  membership requires a restart. For a topology that grows and shrinks dynamically, put a
+serverless/proxy-style endpoint (a single stable address) in `servers` and let the proxy own
+membership. See [discovery.go](example/discovery.go) for a backend example.
 * **Health check / readiness**: the client's `Ping()` probes all servers and is the readiness signal — call it straight
   off the autowired client.
 * **Connection pool / timeouts**: `timeout` and `max-idle-conns` map to the client's per-server socket timeout and idle

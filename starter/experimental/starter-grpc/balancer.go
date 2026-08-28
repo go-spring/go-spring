@@ -37,9 +37,11 @@ package StarterGrpc
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/log"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
@@ -253,7 +255,7 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &discoveryResolver{cc: cc, service: service, cancel: cancel}
+	r := &discoveryResolver{cc: cc, d: d, backend: backend, service: service, ctx: ctx, cancel: cancel}
 
 	// Seed the client with an initial snapshot before starting the watch so the
 	// first RPC does not race an empty address list.
@@ -269,15 +271,16 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 		cancel()
 		return nil, fmt.Errorf("loadbalance: watch %q via %q: %w", service, backend, err)
 	}
-	r.ch = ch
-	go r.watchLoop()
+	go r.watchLoop(ch)
 	return r, nil
 }
 
 type discoveryResolver struct {
 	cc      resolver.ClientConn
+	d       discovery.Discovery
+	backend string
 	service string
-	ch      <-chan discovery.WatchResult
+	ctx     context.Context
 	cancel  context.CancelFunc
 }
 
@@ -293,12 +296,50 @@ func (r *discoveryResolver) push(eps []discovery.Endpoint) {
 	_ = r.cc.UpdateState(resolver.State{Addresses: addrs})
 }
 
-func (r *discoveryResolver) watchLoop() {
-	for res := range r.ch {
-		if res.Err != nil {
-			return
+// watchLoop keeps the resolved address set current for the lifetime of the
+// resolver. A terminal WatchResult.Err (backend disconnect, auth expiry, ...)
+// or a closed channel does NOT end the loop: the last snapshot stays pushed —
+// stale addresses are safer than none — and the watch is re-established with
+// backoff, because the discovery contract puts reconnection on the caller.
+// The loop exits only when r.ctx is cancelled, i.e. on Close (or clientConn
+// shutdown), so a transient backend disruption can no longer freeze the
+// address set forever.
+// watchRetryBackoff is the initial re-watch delay after a terminal watch
+// error; it doubles per consecutive failure, capped at a minute. It is a var
+// so tests can shrink it.
+var watchRetryBackoff = time.Second
+
+func (r *discoveryResolver) watchLoop(ch <-chan discovery.WatchResult) {
+	backoff := watchRetryBackoff
+	for {
+		for res := range ch {
+			if res.Err != nil {
+				log.Errorf(r.ctx, log.TagAppDef, "grpc resolver watch %q via %q failed, will retry: %v",
+					r.service, r.backend, res.Err)
+				break // channel closes after a terminal Err; reconnect below
+			}
+			r.push(res.Endpoints)
+			backoff = time.Second
 		}
-		r.push(res.Endpoints)
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		// Cap the backoff so a long outage recovers within a minute.
+		if backoff *= 2; backoff > time.Minute {
+			backoff = time.Minute
+		}
+		nch, err := r.d.Watch(r.ctx, r.service)
+		if err != nil {
+			log.Errorf(r.ctx, log.TagAppDef, "grpc resolver re-watch %q via %q failed, will retry: %v",
+				r.service, r.backend, err)
+			continue
+		}
+		// The new subscription's first WatchResult carries the current endpoint
+		// set, so the drain loop below both heals any drift from the outage and
+		// resumes normal streaming.
+		ch = nch
 	}
 }
 

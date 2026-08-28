@@ -30,6 +30,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/log"
 	observe "go-spring.org/cloud/observe"
 	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go.opentelemetry.io/otel"
@@ -232,6 +233,11 @@ var resilienceResources sync.Map // *amqp.Connection -> string
 // zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
 // transparent no-op executor; fault wraps it when enabled.
 func applyResilience(c Config, conn *amqp.Connection, resource string) error {
+	// Per-instance opt-out: without an executor attached, guard (and therefore
+	// both GuardedPublish and the binder's Publish) degrades to bare calls.
+	if !c.Governance {
+		return nil
+	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "rabbitmq", c.Observability)
 	resilienceExecs.Store(conn, exec)
@@ -242,7 +248,9 @@ func applyResilience(c Config, conn *amqp.Connection, resource string) error {
 // closeResilience closes and forgets the executor behind conn, if any.
 func closeResilience(conn *amqp.Connection) {
 	if v, ok := resilienceExecs.LoadAndDelete(conn); ok {
-		_ = v.(resilience.Executor).Close()
+		if err := v.(resilience.Executor).Close(); err != nil {
+			log.Warnf(context.Background(), log.TagAppDef, "rabbitmq: resilience executor close failed: %v", err)
+		}
 	}
 	resilienceResources.Delete(conn)
 }

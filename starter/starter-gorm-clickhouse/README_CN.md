@@ -39,10 +39,10 @@ spring.gorm.clickhouse.primary.db=default
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import "gorm.io/gorm"
+import starter "go-spring.org/starter-gorm-clickhouse"
 
 type Service struct {
-    DB *gorm.DB `autowire:""`
+    DB *starter.DB `autowire:"primary"` // 内嵌 *gorm.DB 的包装
 }
 ```
 

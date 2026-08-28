@@ -10,7 +10,7 @@
     "policy": {
       "type": "string",
       "default": "",
-      "description": "Path to the policy file (policy.csv); ignored when Adapter is set"
+      "description": "Path to the policy file (policy.csv); mutually exclusive with Adapter"
     },
     "autoSave": {
       "type": "boolean",

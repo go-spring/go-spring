@@ -159,7 +159,6 @@ type center struct {
 	// injector is a no-op), so fault can be toggled on at runtime via
 	// hot-reload; its config is swapped in place from the adopt sink.
 	injector *fault.Injector
-
 }
 
 // subscriber is one client's interest in the policy for a label. last is the

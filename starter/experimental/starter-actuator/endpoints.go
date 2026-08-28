@@ -31,15 +31,34 @@ import (
 // so e.g. "spring.datasource.password" and "auth.access-key" both hit.
 var secretKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|credential|api-?key|private-key|access-key)`)
 
-// maskValue redacts a property value when its key names a secret or its value is
+// bareKeyRe matches keys whose FINAL dot/underscore/hyphen-separated segment is
+// exactly "key" or an api-key variant ("some.key", "aws.key", "db.api_key", a
+// bare "key"). Anchored at the end with a leading separator (or start-of-string)
+// so look-alike words are NOT masked: "monkey" has no separator before "key",
+// "keyword" does not end with the bare word. This complements secretKeyRe,
+// whose substring rule already catches "apikey"/"api-key" anywhere in the key.
+var bareKeyRe = regexp.MustCompile(`(?i)(?:^|[.\-_])(?:api[-_]?key|key)$`)
+
+// urlUserinfoRe matches a URL value with embedded credentials, e.g.
+// "mysql://user:pass@host:3306/db" or "redis://:pass@host" (empty username).
+// Captures the scheme prefix so the userinfo can be redacted while keeping the
+// rest of the URL readable.
+var urlUserinfoRe = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)([^/@:\s]+)?:([^/@\s]+)@`)
+
+// maskValue redacts a property value when its key names a secret, its value is
 // an encrypted placeholder (ENC(...), as produced by the config-encryption
-// support). Non-sensitive values pass through unchanged.
+// support), or its value is a URL with embedded credentials (the userinfo part
+// is redacted, keeping the scheme and host readable). Non-sensitive values pass
+// through unchanged.
 func maskValue(key, val string) string {
-	if secretKeyRe.MatchString(key) {
+	if secretKeyRe.MatchString(key) || bareKeyRe.MatchString(key) {
 		return "******"
 	}
 	if strings.HasPrefix(val, "ENC(") && strings.HasSuffix(val, ")") {
 		return "******"
+	}
+	if urlUserinfoRe.MatchString(val) {
+		return urlUserinfoRe.ReplaceAllString(val, `${1}******@`)
 	}
 	return val
 }

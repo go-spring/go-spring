@@ -31,6 +31,36 @@
       "type": "string",
       "description": "Duration string, e.g. '5s', '1m', '1h'",
       "default": "1m"
+    },
+    "spring.registry.service-name": {
+      "type": "string",
+      "description": "Logical service name to advertise",
+      "default": ""
+    },
+    "spring.registry.addr": {
+      "type": "string",
+      "description": "Advertised host:port of this instance",
+      "default": ""
+    },
+    "spring.registry.id": {
+      "type": "string",
+      "description": "Instance id override; empty derives from service-name+addr",
+      "default": ""
+    },
+    "spring.registry.weight": {
+      "type": "integer",
+      "default": 0
+    },
+    "spring.registry.metadata": {
+      "type": "object",
+      "description": "Arbitrary key/value attributes stored with the instance",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
-  }
+  },
+  "required": [
+    "spring.registry.service-name",
+    "spring.registry.addr"
+  ]
 }

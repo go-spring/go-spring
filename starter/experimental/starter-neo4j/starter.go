@@ -56,8 +56,6 @@ func init() {
 	})
 }
 
-var starterTag = log.RegisterAppTag("neo4j", "")
-
 // newClient creates a new Neo4j client based on the provided configuration.
 // After the driver is built, connectivity is verified so that misconfiguration
 // or an unreachable server fails fast at startup rather than on first query.
@@ -77,13 +75,13 @@ var starterTag = log.RegisterAppTag("neo4j", "")
 // client starters and is stopped on shutdown. In mesh mode the sidecar owns
 // discovery+LB, so the URI is used unchanged. See Config.ServiceName.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating neo4j client, uri=%s service-name=%s driver=%s", c.URI, c.ServiceName, c.Driver)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating neo4j client, uri=%s service-name=%s driver=%s", c.URI, c.ServiceName, c.Driver)
 
 	var resolver *discovery.Resolver
 	if c.ServiceName != "" && !mesh.Enabled() {
 		uri, r, err := resolveURI(ctx.Context, c)
 		if err != nil {
-			log.Errorf(ctx.Context, starterTag, "neo4j: resolve service-name failed: %v", err)
+			log.Errorf(ctx.Context, log.TagAppDef, "neo4j: resolve service-name failed: %v", err)
 			return nil, err
 		}
 		resolver = r
@@ -92,7 +90,7 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "neo4j driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "neo4j driver not found: %s", c.Driver)
 		if resolver != nil {
 			_ = resolver.Stop()
 		}
@@ -100,7 +98,7 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	}
 	client, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "neo4j: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "neo4j: create client failed: %v", err)
 		if resolver != nil {
 			_ = resolver.Stop()
 		}
@@ -112,14 +110,14 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	vctx, cancel := verifyContext(ctx.Context, c.SocketConnectTimeout)
 	defer cancel()
 	if err := client.VerifyConnectivity(vctx); err != nil {
-		log.Errorf(ctx.Context, starterTag, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
+		log.Errorf(ctx.Context, log.TagAppDef, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
 		_ = client.Close(ctx.Context)
 		if resolver != nil {
 			_ = resolver.Stop()
 		}
 		return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
 	}
-	log.Infof(ctx.Context, starterTag, "neo4j client initialized, uri=%s", c.URI)
+	log.Infof(ctx.Context, log.TagAppDef, "neo4j client initialized, uri=%s", c.URI)
 	return w, nil
 }
 

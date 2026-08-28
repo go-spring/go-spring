@@ -60,21 +60,21 @@
             "items": {
               "type": "string"
             },
-            "default": ""
+            "default": []
           },
           "scopes": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "default": ""
+            "default": []
           },
           "grant-types": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "default": ""
+            "default": []
           }
         }
       },

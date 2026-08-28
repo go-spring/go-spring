@@ -70,7 +70,7 @@ file starter 的目录语义一致;无可识别扩展名且未强制 `format` �
 
 ## 工作原理
 
-- `loadK8sConfig` 启动时读取一次对象,将其 `data` 展平为属性,并安装一个限定命名空间与名称的
+- provider 启动时读取一次对象,将其 `data` 展平为属性,并安装一个限定命名空间与名称的
   informer。
 - 对象的每次 add/update/delete 触发一次全局属性 refresh,重跑 provider 并把新值传播到绑定的
   `gs.Dync` 字段。refresh 通过一个注入框架 `PropertiesRefresher` 的 `gs.Rooter` 桥接 bean

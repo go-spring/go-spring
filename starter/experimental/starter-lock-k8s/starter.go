@@ -30,13 +30,10 @@ package StarterLockK8s
 
 import (
 	"go-spring.org/cloud/experimental/lock"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("lock_k8s", "")
 
 func init() {
 	// Register one Lease-backed Locker per entry under "${spring.lock}". A
@@ -46,17 +43,15 @@ func init() {
 	// blank-import backend swap possible.
 	gs.Module(gs.OnProperty("spring.lock"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.lock}", func(name string, c Config) error {
-			r.Provide(newK8sLocker, gs.ValueArg(c)).
+			// The bean is wrapped with the observe-lock adapter by default
+			// (see newLocker); observe.enabled=false opts out. There is no
+			// separate "<name>-observed" bean — the primary name is already
+			// observed.
+			r.Provide(newLocker, gs.ValueArg(c)).
 				Name(name).
 				Export(gs.As[lock.Locker]()).
 				Destroy(destroyK8sLocker).
 				Caller(1)
-			if c.Observer.Tracing.Enabled {
-				r.Provide(wrapLockerBean, gs.ValueArg(c), gs.TagArg(name)).
-					Name(name + "-observed").
-					Export(gs.As[lock.Locker]()).
-					Caller(1)
-			}
 			return nil
 		})
 	})
@@ -64,7 +59,8 @@ func init() {
 
 // destroyK8sLocker releases the Locker's backend resources on shutdown. Locks
 // handed out before shutdown own their own renewal goroutines and Lease objects;
-// their leases expire naturally once the process exits.
-func destroyK8sLocker(l *k8sLocker) error {
+// their leases expire naturally once the process exits. The bean is a
+// lock.Locker (possibly observe-wrapped); Close passes through the wrapper.
+func destroyK8sLocker(l lock.Locker) error {
 	return l.Close()
 }

@@ -62,7 +62,7 @@ func init() {
 // functions. All other code operates on the
 // receiver without touching this global.
 var (
-	starterTag      = log.RegisterAppTag("starter_config_nacos", "")
+	starterTag      = log.RegisterAppTag("config_nacos", "")
 	nacosController = &nacosCtrl{}
 )
 

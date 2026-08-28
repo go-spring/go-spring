@@ -77,10 +77,9 @@ each asserted end-to-end by `runTest`:
 2. **Server-side unary interceptor (middleware)** — `LoggingInterceptor` is a
    real `grpc.UnaryServerInterceptor` that logs the invoked method and reads
    the incoming `x-app` metadata key. It is wired into the service via an
-   `interceptedEchoServer` wrapper (because the starter currently constructs
-   `grpc.NewServer()` without exposing `grpc.ServerOption`s, we compose the
-   interceptor chain at the handler layer — the effect is identical to
-   `grpc.ChainUnaryInterceptor`). The client sends `x-app=go-spring` via
+   `interceptedEchoServer` wrapper (for per-service composition; the starter also exposes
+   `StarterGrpc.UseUnaryInterceptor`/`UseStreamInterceptor`, which install app interceptors
+   outermost of the built-in chain via `grpc.ChainUnaryInterceptor`). The client sends `x-app=go-spring` via
    `metadata.NewOutgoingContext` and the call still succeeds, proving the
    interceptor ran without breaking the RPC.
 3. **Response header via `grpc.SetHeader`** — the handler attaches
@@ -89,7 +88,6 @@ each asserted end-to-end by `runTest`:
 
 ## Notes
 
-- The starter listens on `${spring.grpc.server.addr}` (default `:9494`).
-- The gRPC server is enabled by default; disable it with
-  `spring.grpc.server.enabled=false`.
+- The starter listens on `${spring.grpc.server.addr}` — no default; setting that key is what registers the
+  server bean (there is no `enabled` key).
 - Only a `ServiceRegister` bean is required to activate the server.

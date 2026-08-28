@@ -47,11 +47,14 @@ type TaskFunc func(ctx context.Context, param string) error
 // whether it is idle via /idleBeat, interrupts via /kill, and reads task logs
 // via /log.
 type Executor struct {
-	cfg      Config
+	cfg Config
+	// name is the instance name under "${spring.xxljob}" — used for the
+	// health.Indicator name (matching the bean name, like sibling starters).
+	name    string
 	registry map[string]TaskFunc
 
 	mu      sync.Mutex
-	running map[int64]context.CancelFunc // jobID -> cancel, for /kill
+	running map[int64][]*runEntry // jobId -> running runs, for /kill & /idleBeat
 
 	srv  *http.Server
 	ip   string // this host's outbound address, for registration
@@ -72,8 +75,9 @@ func (e *Executor) RegisterHandler(name string, fn TaskFunc) {
 func newExecutor(ctx *gs.ContextProvider, name string, c Config) (*Executor, error) {
 	e := &Executor{
 		cfg:      c,
+		name:     name,
 		registry: map[string]TaskFunc{},
-		running:  map[int64]context.CancelFunc{},
+		running:  map[int64][]*runEntry{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/run", e.handleRun)
@@ -139,6 +143,43 @@ func (e *Executor) prepare() error {
 	return err
 }
 
+// runEntry is one running task, tracked under its jobId so /kill and
+// /idleBeat can find it.
+type runEntry struct {
+	cancel context.CancelFunc
+}
+
+// trackRunning records a running task under its jobId. The admin addresses
+// running jobs by jobId (/kill, /idleBeat), NOT by the per-trigger logId, so
+// the running table is keyed by jobId; logId is only used for the /log and
+// /api/callback paths.
+func (e *Executor) trackRunning(jobID int, cancel context.CancelFunc) *runEntry {
+	entry := &runEntry{cancel: cancel}
+	e.mu.Lock()
+	e.running[int64(jobID)] = append(e.running[int64(jobID)], entry)
+	e.mu.Unlock()
+	return entry
+}
+
+// untrackRunning removes one finished run of a job, dropping the map entry
+// when the last run is gone.
+func (e *Executor) untrackRunning(jobID int, entry *runEntry) {
+	e.mu.Lock()
+	list := e.running[int64(jobID)]
+	for i, en := range list {
+		if en == entry {
+			list = append(list[:i], list[i+1:]...)
+			break
+		}
+	}
+	if len(list) == 0 {
+		delete(e.running, int64(jobID))
+	} else {
+		e.running[int64(jobID)] = list
+	}
+	e.mu.Unlock()
+}
+
 // handleRun runs a task in a new goroutine and returns immediately; the task
 // posts its completion back to the admin via /api/callback (see registry.go).
 func (e *Executor) handleRun(w http.ResponseWriter, r *http.Request) {
@@ -152,16 +193,12 @@ func (e *Executor) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeTriggerResponse(w, 500, "no handler registered for "+p.ExecutorHandler)
 		return
 	}
-	ctx, cancel := context.WithCancel(r.Context())
-	e.mu.Lock()
-	e.running[p.LogID] = cancel
-	e.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	entry := e.trackRunning(p.JobID, cancel)
 
 	go func() {
 		defer func() {
-			e.mu.Lock()
-			delete(e.running, p.LogID)
-			e.mu.Unlock()
+			e.untrackRunning(p.JobID, entry)
 			cancel()
 		}()
 		err := goutil.SafeRun(ctx, func(ctx context.Context) error {
@@ -172,7 +209,11 @@ func (e *Executor) handleRun(w http.ResponseWriter, r *http.Request) {
 			res.code = 500
 			res.msg = err.Error()
 		}
-		e.callback(ctx, p.LogID, res)
+		// Report through a context that survives a /kill cancellation, so the
+		// admin still gets the failure callback for a killed job.
+		cbCtx, cbCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cbCancel()
+		e.callback(cbCtx, p.LogID, p.LogDateTime, res)
 	}()
 	writeTriggerResponse(w, 200, "")
 }
@@ -183,12 +224,16 @@ func (e *Executor) handleBeat(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleIdleBeat answers "are you idle" — the admin uses this for
-// block-strategy decisions (SERIAL_EXECUTION etc).
+// block-strategy decisions (SERIAL_EXECUTION etc). The admin POSTs an
+// IdleBeatParam JSON body keyed by jobId (not logId).
 func (e *Executor) handleIdleBeat(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("jobId")
-	jobID, _ := strconv.ParseInt(id, 10, 64)
+	var p IdleBeatParam
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeTriggerResponse(w, 500, "bad idleBeat param")
+		return
+	}
 	e.mu.Lock()
-	_, running := e.running[jobID]
+	_, running := e.running[p.JobID]
 	e.mu.Unlock()
 	if running {
 		writeTriggerResponse(w, 500, "job running")
@@ -197,15 +242,22 @@ func (e *Executor) handleIdleBeat(w http.ResponseWriter, r *http.Request) {
 	writeTriggerResponse(w, 200, "")
 }
 
-// handleKill cancels a running task's context.
+// handleKill cancels a running task's context. The admin POSTs a KillParam
+// JSON body keyed by jobId, so the running table is looked up by jobId —
+// logId differs per trigger and would never match.
 func (e *Executor) handleKill(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("jobId")
-	jobID, _ := strconv.ParseInt(id, 10, 64)
+	var p KillParam
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeTriggerResponse(w, 500, "bad kill param")
+		return
+	}
 	e.mu.Lock()
-	cancel, ok := e.running[jobID]
+	list := append([]*runEntry(nil), e.running[p.JobID]...)
 	e.mu.Unlock()
-	if ok && cancel != nil {
-		cancel()
+	if len(list) > 0 {
+		for _, entry := range list {
+			entry.cancel()
+		}
 		writeTriggerResponse(w, 200, "")
 		return
 	}
@@ -226,12 +278,16 @@ func (e *Executor) handleLog(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// callback POSTs the task outcome to the admin's /api/callback.
-func (e *Executor) callback(ctx context.Context, logID int64, res handlerResult) {
-	body, _ := json.Marshal(LogResult{
-		FromLineNum: 1, ToLineNum: 1,
-		LogContent: res.msg, IsEnd: true,
-	})
+// callback POSTs the task outcome to the admin's /api/callback. The official
+// admin expects a JSON array of HandleCallbackParam (logId/logDateTime/
+// handleCode/handleMsg), NOT the LogResult shape used by the /log endpoint.
+func (e *Executor) callback(ctx context.Context, logID, logDateTime int64, res handlerResult) {
+	body, _ := json.Marshal([]HandleCallbackParam{{
+		LogID:       logID,
+		LogDateTime: logDateTime,
+		HandleCode:  res.code,
+		HandleMsg:   res.msg,
+	}})
 	for _, base := range e.cfg.AdminAddresses {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 			base+"/api/callback", bytes.NewReader(body))
@@ -249,9 +305,10 @@ func (e *Executor) callback(ctx context.Context, logID int64, res handlerResult)
 }
 
 // Health returns an indicator that reports whether the callback server is
-// serving (the executor is ready).
+// serving (the executor is ready). Named after the instance name, matching
+// the bean name in starter.go (sibling-starters convention).
 func (e *Executor) Health() health.Indicator {
-	return health.NewIndicator("xxljob:"+e.cfg.AppName, func(ctx context.Context) error {
+	return health.NewIndicator("xxljob:"+e.name, func(ctx context.Context) error {
 		if e.srv == nil {
 			return fmt.Errorf("xxljob: executor not started")
 		}

@@ -35,10 +35,10 @@ spring.elasticsearch.docs.addresses=http://127.0.0.1:9200
 Refer to the [example.go](example/example.go) file.
 
 ```go
-import "github.com/elastic/go-elasticsearch/v8"
+import StarterElasticsearch "go-spring.org/starter-elasticsearch"
 
 type Service struct {
-    ES *elasticsearch.Client `autowire:"docs"`
+    ES *StarterElasticsearch.Client `autowire:"docs"` // embeds *elasticsearch.Client
 }
 ```
 

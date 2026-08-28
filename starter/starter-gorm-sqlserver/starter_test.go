@@ -103,3 +103,18 @@ func TestSqlserverNotTriggered(t *testing.T) {
 		}
 	})
 }
+
+// TestDSNTimeoutSubSecond proves sub-second dial/connect timeouts round up to
+// 1s instead of truncating to 0 (which the driver reads as "no timeout").
+func TestDSNTimeoutSubSecond(t *testing.T) {
+	c := Config{User: "u", Password: "p", Host: "h", Port: "1433", DB: "d"}
+	c.DialTimeout = 300 * time.Millisecond
+	c.ConnectTimeout = 500 * time.Millisecond
+	got := c.DSN()
+	if !strings.Contains(got, "dial+timeout=1") {
+		t.Fatalf("dsn %q must round 300ms up to dial+timeout=1", got)
+	}
+	if !strings.Contains(got, "connection+timeout=1") {
+		t.Fatalf("dsn %q must round 500ms up to connection+timeout=1", got)
+	}
+}

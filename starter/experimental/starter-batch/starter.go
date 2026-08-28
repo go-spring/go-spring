@@ -67,7 +67,7 @@ import (
 
 var (
 	// starterTag identifies logs emitted by the batch starter.
-	starterTag = log.RegisterAppTag("starter_batch", "")
+	starterTag = log.RegisterAppTag("batch", "")
 )
 
 // enabled matches when the starter is not explicitly disabled. It is the

@@ -37,9 +37,6 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
-// logTag identifies logs emitted by the prometheus scrape server.
-var logTag = log.RegisterAppTag("starter_otel", "prometheus")
-
 func init() {
 	metric.RegisterMeterExporter("prometheus", newPrometheus)
 }
@@ -86,10 +83,10 @@ func serveMetrics(addr, path string, handler http.Handler) (*http.Server, error)
 	mux := http.NewServeMux()
 	mux.Handle(path, handler)
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	log.Infof(context.Background(), logTag, "prometheus scrape server listening on %s path=%s", ln.Addr(), path)
+	log.Infof(context.Background(), log.TagAppDef, "prometheus scrape server listening on %s path=%s", ln.Addr(), path)
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Errorf(context.Background(), logTag, "prometheus scrape server stopped: %v", err)
+			log.Errorf(context.Background(), log.TagAppDef, "prometheus scrape server stopped: %v", err)
 		}
 	}()
 	return srv, nil

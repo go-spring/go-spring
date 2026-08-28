@@ -128,7 +128,7 @@ func (l *auditListener) Register(bus *event.Bus) {
 // them onto the shared bus, then publishes a ConfigChanged and asserts the
 // synchronous handlers ran in order and the asynchronous audit fired.
 type demo struct {
-	Bus       *event.Bus        `autowire:""`
+	Bus       *event.Bus       `autowire:""`
 	Rec       *recorder        `autowire:""`
 	Listeners []event.Listener `autowire:"?"`
 }

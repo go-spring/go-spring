@@ -52,7 +52,7 @@ spring.registry.metadata.version=v1
 ```
 
 到此即可:启动时注册实例并由 TTL 心跳保活,停机时注销。别处的客户端通过对应注册中心
-的 `discovery.Discovery` 后端按服务名解析到它。
+的后端按服务名解析到它。(注:本 starter 只有注册侧,未提供 Consul discovery 后端。)
 
 ## 配置项
 

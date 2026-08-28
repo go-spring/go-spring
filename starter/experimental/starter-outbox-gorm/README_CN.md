@@ -67,3 +67,12 @@ mysql（8+）与 postgres 上 relay 用 `FOR UPDATE SKIP LOCKED` 取数，多实
 ## 示例
 
 `example/` 在内存 sqlite 与进程内 binder 上跑通整个模式，自断言原子性（提交即投递、回滚不投递）、退避重试与死信。`example/check.sh` 是其冒烟测试。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_outbox`（事务 outbox）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.outbox.type=Logger
+logger.outbox.level=WARN
+logger.outbox.tag=_app_outbox
+```

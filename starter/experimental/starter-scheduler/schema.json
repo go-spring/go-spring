@@ -45,8 +45,7 @@
             "default": "30s"
           }
         }
-      },
-      "default": ""
+      }
     },
     "drain-timeout": {
       "type": "string",

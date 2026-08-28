@@ -32,8 +32,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("rocketmq", "")
-
 func init() {
 
 	// Register multiple RocketMQ clients as a group.
@@ -57,7 +55,7 @@ func init() {
 // surfacing on the first produce/consume, then the resilience executor is
 // attached.
 func newClient(ctx *gs.ContextProvider, name string, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating rocketmq client, name-servers=%v fail-fast=%v", c.NameServers, c.FailFast)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating rocketmq client, name-servers=%v fail-fast=%v", c.NameServers, c.FailFast)
 
 	if (c.AccessKey == "") != (c.SecretKey == "") {
 		return nil, errutil.Explain(nil, "rocketmq access-key and secret-key must be set together (client %s)", name)
@@ -65,7 +63,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (*Client, error) 
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "rocketmq driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "rocketmq driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "rocketmq driver not found: %s", c.Driver)
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
@@ -75,14 +73,14 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (*Client, error) 
 
 	if c.FailFast {
 		if err = probeNameServer(c.NameServers); err != nil {
-			log.Errorf(ctx.Context, starterTag, "rocketmq: fail-fast probe failed on %v: %v", c.NameServers, err)
+			log.Errorf(ctx.Context, log.TagAppDef, "rocketmq: fail-fast probe failed on %v: %v", c.NameServers, err)
 			return nil, errutil.Explain(err, "rocketmq name server probe failed on %v", c.NameServers)
 		}
 	}
-	if err := applyResilience(c, cl, resilience.ResourceLabel("rocketmq", name, strings.Join(c.NameServers, ","))); err != nil {
-		log.Errorf(ctx.Context, starterTag, "rocketmq: resilience setup failed: %v", err)
+	if err := applyResilience(c, cl, resilience.ResourceLabel("rocketmq", strings.Join(c.NameServers, ","))); err != nil {
+		log.Errorf(ctx.Context, log.TagAppDef, "rocketmq: resilience setup failed: %v", err)
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "rocketmq client initialized, name-servers=%v", c.NameServers)
+	log.Infof(ctx.Context, log.TagAppDef, "rocketmq client initialized, name-servers=%v", c.NameServers)
 	return cl, nil
 }

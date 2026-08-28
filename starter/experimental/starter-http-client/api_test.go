@@ -30,11 +30,11 @@ import (
 
 // echoReq records what arrived and answers with a fixed JSON body.
 type echoReq struct {
-	Method string              `json:"method"`
-	Path   string              `json:"path"`
-	Query  string              `json:"query"`
-	Body   map[string]any      `json:"body"`
-	Header http.Header     `json:"header"`
+	Method string         `json:"method"`
+	Path   string         `json:"path"`
+	Query  string         `json:"query"`
+	Body   map[string]any `json:"body"`
+	Header http.Header    `json:"header"`
 }
 
 func newEchoServer(t *testing.T) (*httptest.Server, *echoReq) {

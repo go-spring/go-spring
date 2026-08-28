@@ -151,3 +151,13 @@ up on their next discovery snapshot — one Watch push cycle. A weight of 0
 drains the instance (no traffic, still registered), which is the standard
 zero-downtime rotation step before shutdown. Operators can also edit the
 registered weight directly at the registry; the effect is identical.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_registry_etcd` (etcd registry). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.registry_etcd.type=Logger
+logger.registry_etcd.level=WARN
+logger.registry_etcd.tag=_app_registry_etcd
+```

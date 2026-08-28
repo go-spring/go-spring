@@ -27,8 +27,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var hertzTag = log.RegisterAppTag("hertz", "starter")
-
 func init() {
 	gs.Provide(
 		NewSimpleHertzServer,
@@ -73,7 +71,11 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServ
 		opts = append(opts, server.WithMaxRequestBodySize(cfg.MaxBodySize))
 	}
 	if cfg.TLS.Enabled {
-		tlsCfg, err := cfg.TLS.Build()
+		// BuildServer applies server semantics, same as starter-grpc:
+		// cert-file/key-file is the server pair, and ca-file enables mTLS
+		// (RequireAndVerifyClientCert). Build() is client-semantics and would
+		// ignore CAFile here.
+		tlsCfg, err := cfg.TLS.BuildServer()
 		if err != nil {
 			return nil, errutil.Explain(err, "hertz: build TLS")
 		}
@@ -98,7 +100,7 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServ
 
 	addr := cfg.Addr
 	tlsEnabled := cfg.TLS.Enabled
-	log.Debugf(context.Background(), hertzTag, "hertz server created addr=%s tls=%v readTimeout=%s writeTimeout=%s idleTimeout=%s",
+	log.Debugf(context.Background(), log.TagAppDef, "hertz server created addr=%s tls=%v readTimeout=%s writeTimeout=%s idleTimeout=%s",
 		addr, tlsEnabled, cfg.ReadTimeout, cfg.WriteTimeout, cfg.IdleTimeout)
 
 	return &SimpleHertzServer{h: h}, nil
@@ -107,9 +109,9 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServ
 // Run starts the Hertz engine after Go-Spring signals readiness.
 func (s *SimpleHertzServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, hertzTag, "hertz server starting")
+	log.Infof(ctx, log.TagAppDef, "hertz server starting")
 	if err := s.h.Run(); err != nil {
-		log.Errorf(ctx, hertzTag, "hertz server failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "hertz server failed: %v", err)
 		return err
 	}
 	return nil
@@ -123,6 +125,6 @@ func (s *SimpleHertzServer) Stop() error {
 // StopContext gracefully shuts the Hertz engine down, propagating ctx into the
 // engine's context-aware Shutdown so the drain rides the shutdown context.
 func (s *SimpleHertzServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, hertzTag, "hertz server shutting down")
+	log.Infof(ctx, log.TagAppDef, "hertz server shutting down")
 	return s.h.Shutdown(ctx)
 }

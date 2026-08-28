@@ -52,7 +52,7 @@ import (
 
 var (
 	// starterTag identifies logs emitted by the etcd registry starter.
-	starterTag = log.RegisterAppTag("starter_registry_etcd", "")
+	starterTag = log.RegisterAppTag("registry_etcd", "")
 )
 
 func init() {

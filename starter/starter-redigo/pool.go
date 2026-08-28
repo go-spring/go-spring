@@ -31,8 +31,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var starterTag = log.RegisterAppTag("redigo", "")
-
 // Pool is the wrapper bean redigo pools are injected as. It embeds
 // the concrete *redis.Pool (so Get/Stats/etc. promote unchanged). NewPool
 // assembles it in ONE phase — observer, resilience executor, and the
@@ -268,13 +266,13 @@ func (o *Pool) setupDial() {
 func startupPing(ctx context.Context, pool *redis.Pool) error {
 	conn, err := pool.Dial()
 	if err != nil {
-		log.Errorf(ctx, starterTag, "redigo: startup ping failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "redigo: startup ping failed: %v", err)
 		return errutil.Explain(err, "redis: startup ping failed")
 	}
 	_, pingErr := conn.Do("PING")
 	_ = conn.Close()
 	if pingErr != nil {
-		log.Errorf(ctx, starterTag, "redigo: startup ping failed: %v", pingErr)
+		log.Errorf(ctx, log.TagAppDef, "redigo: startup ping failed: %v", pingErr)
 		return errutil.Explain(pingErr, "redis: startup ping failed")
 	}
 	return nil

@@ -48,9 +48,21 @@ func TestRegisterSpanExporter(t *testing.T) {
 	_ = tp.Shutdown(context.Background())
 
 	// Unknown exporter yields an error naming the registered set.
-	_, err = NewTracerProvider(TraceConfig{Exporter: "does-not-exist"}, mustResource(t))
+	_, err = NewTracerProvider(TraceConfig{Exporter: "does-not-exist", SamplerRatio: 1}, mustResource(t))
 	assert.Error(t, err).NotNil()
 	assert.String(t, err.Error()).Contains(name)
+}
+
+// TestSamplerRatioNonPositiveRejected proves a non-positive sampler ratio
+// (which would silently drop every trace) fails fast with remediation hints
+// instead of being honored as "never sample".
+func TestSamplerRatioNonPositiveRejected(t *testing.T) {
+	for _, ratio := range []float64{0, -0.5} {
+		_, err := NewTracerProvider(TraceConfig{Exporter: "stdout", SamplerRatio: ratio}, mustResource(t))
+		assert.Error(t, err).NotNil()
+		assert.String(t, err.Error()).Contains("sampler-ratio")
+		assert.String(t, err.Error()).Contains("exporter=none")
+	}
 }
 
 func mustResource(t *testing.T) *resource.Resource {

@@ -27,14 +27,11 @@ package StarterLockConsul
 
 import (
 	"go-spring.org/cloud/experimental/lock"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("lock_consul", "")
 
 func init() {
 	// Register one Locker bean per entry under "${spring.lock}". We bind the
@@ -46,18 +43,15 @@ func init() {
 			if c.Address == "" {
 				return errutil.Explain(nil, "lock-consul: spring.lock.%s.address is required", name)
 			}
-			r.Provide(newConsulLocker, gs.ValueArg(c)).
+			// The bean is wrapped with the observe-lock adapter by default
+			// (see newLocker); observe.enabled=false opts out. There is no
+			// separate "<name>-observed" bean — the primary name is already
+			// observed.
+			r.Provide(newLocker, gs.ValueArg(c)).
 				Name(name).
 				Export(gs.As[lock.Locker]()).
 				Destroy(destroyLocker).
 				Caller(1)
-
-			if c.Observer.Tracing.Enabled {
-				r.Provide(wrapLockerBean, gs.ValueArg(c), gs.TagArg(name)).
-					Name(name + "-observed").
-					Export(gs.As[lock.Locker]()).
-					Caller(1)
-			}
 			return nil
 		})
 	})
@@ -65,7 +59,8 @@ func init() {
 
 // destroyLocker is the per-bean destructor. The api.Client itself has no
 // Close, so Close on the locker only guards the sync.Once contract; the actual
-// cleanup work lives in each Lock handle's Unlock.
-func destroyLocker(l *consulLocker) error {
+// cleanup work lives in each Lock handle's Unlock. The bean is a lock.Locker
+// (possibly observe-wrapped); Close passes through the wrapper.
+func destroyLocker(l lock.Locker) error {
 	return l.Close()
 }

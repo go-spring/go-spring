@@ -14,7 +14,11 @@ cd starter-admin-ui/example
 go run . -manual
 ```
 
-Terminal 2, open `http://127.0.0.1:9280` in browser to view the management interface.
+Terminal 2, open `http://127.0.0.1:9280` in browser to view the management interface. The example configures `spring.admin-ui.token=example-token`, so requests must present it, e.g.:
+
+```bash
+curl -s -H "Authorization: Bearer example-token" http://127.0.0.1:9280/api/status
+```
 
 Press Ctrl+C to stop the service after verification.
 

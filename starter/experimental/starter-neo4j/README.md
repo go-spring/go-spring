@@ -32,10 +32,10 @@ spring.neo4j.graph.password=password
 ### 3. Inject the Neo4j Instance
 
 ```go
-import "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+import StarterNeo4j "go-spring.org/starter-neo4j"
 
 type Service struct {
-    Neo4j neo4j.DriverWithContext `autowire:"graph"`
+    Neo4j *StarterNeo4j.Client `autowire:"graph"` // embeds neo4j.DriverWithContext
 }
 ```
 

@@ -42,8 +42,6 @@ import (
 	_ "go-spring.org/starter-goframe/internal/logger"
 )
 
-var goframeHTTPTag = log.RegisterAppTag("goframe_http", "starter")
-
 func init() {
 	gs.Provide(NewHTTPServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.http.server}"))).
 		Export(gs.As[gs.Server]()).
@@ -112,7 +110,7 @@ func NewHTTPServer(cfg Config, reg ServiceRegister) *HTTPServer {
 		gsvc.SetRegistry(etcdreg.New(cfg.Registry.Etcd))
 	}
 
-	log.Debugf(context.Background(), goframeHTTPTag, "goframe http server created name=%s address=%s registry=%s metrics=%v",
+	log.Debugf(context.Background(), log.TagAppDef, "goframe http server created name=%s address=%s registry=%s metrics=%v",
 		cfg.Name, cfg.Address, cfg.Registry.Etcd, cfg.Metrics.Enabled)
 
 	s := &HTTPServer{done: make(chan struct{})}
@@ -159,9 +157,9 @@ func (s *HTTPServer) initMetrics(svr *ghttp.Server, cfg Config) {
 // called, keeping the server bean alive for the container.
 func (s *HTTPServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, goframeHTTPTag, "goframe http server starting")
+	log.Infof(ctx, log.TagAppDef, "goframe http server starting")
 	if err := s.svr.Start(); err != nil {
-		log.Errorf(ctx, goframeHTTPTag, "goframe http server start failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "goframe http server start failed: %v", err)
 		return err
 	}
 	<-s.done
@@ -179,7 +177,7 @@ func (s *HTTPServer) Stop() error {
 // from etcd when a registry is set), flushes the metric provider if any with
 // the shutdown context, and unblocks Run.
 func (s *HTTPServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, goframeHTTPTag, "goframe http server shutting down")
+	log.Infof(ctx, log.TagAppDef, "goframe http server shutting down")
 	err := s.svr.Shutdown()
 	if s.metricStop != nil {
 		_ = s.metricStop(ctx)

@@ -18,7 +18,6 @@ package StarterMilvus
 
 import (
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	health2 "go-spring.org/starter-milvus/health"
@@ -26,14 +25,12 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("milvus", "")
-
 func init() {
 	gs.Module(gs.OnProperty("spring.milvus"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.milvus}", func(name string, c Config) error {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-			).Name(name).Destroy((*Client).Destroy).Caller(1)
+			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			r.Provide(func(w *Client) health.Indicator {
 				return health2.NewClientHealth(name, w)

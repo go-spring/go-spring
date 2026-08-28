@@ -20,12 +20,15 @@
 //
 //	import _ "go-spring.org/starter-transaction-saga"
 //
-// After that the container holds two beans:
+// After that the container holds four beans:
 //
 //   - a transaction.Coordinator — the bundled in-process orchestrator that runs
 //     a Saga's steps and compensates in reverse on failure;
 //   - a *transaction.StepRegistry — where application code registers each
-//     @GlobalTransactional-equivalent method's steps.
+//     @GlobalTransactional-equivalent method's steps;
+//   - a transaction.Store — the in-memory saga log by default, replaced by a
+//     durable Store when one is contributed (see below);
+//   - a gs.Runner — the startup recovery scan over that Store.
 //
 // Wrap the business method with the decorator to get the @GlobalTransactional
 // effect:
@@ -63,11 +66,6 @@ import (
 	"go-spring.org/cloud/observe/transaction"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-)
-
-var (
-	// starterTag identifies logs emitted by the transaction saga starter.
-	starterTag = log.RegisterAppTag("starter_transaction_saga", "")
 )
 
 // enabled matches when the starter is not explicitly disabled.
@@ -112,6 +110,6 @@ func newCoordinator(c Config, store transaction.Store) transaction.Coordinator {
 	if c.Tracing {
 		opts = append(opts, transaction.WithObserver(transactionobserve.SagaObserver{}))
 	}
-	log.Infof(context.Background(), starterTag, "saga coordinator created tracing=%v", c.Tracing)
+	log.Infof(context.Background(), log.TagAppDef, "saga coordinator created tracing=%v", c.Tracing)
 	return transaction.NewCoordinator(opts...)
 }

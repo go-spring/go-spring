@@ -19,6 +19,7 @@ require (
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
@@ -34,6 +35,9 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-require go-spring.org/cloud v0.0.0
+require (
+	go-spring.org/cloud v0.0.0
+	go.opentelemetry.io/otel/sdk v1.45.0
+)
 
 replace go-spring.org/cloud => ../../../cloud

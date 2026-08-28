@@ -10,45 +10,65 @@
     "listen-on": {
       "type": "string"
     },
-    "addr": {
-      "type": "string",
-      "default": ""
+    "etcd": {
+      "type": "object",
+      "properties": {
+        "addr": {
+          "type": "string",
+          "default": ""
+        },
+        "key": {
+          "type": "string",
+          "default": ""
+        }
+      }
     },
-    "key": {
-      "type": "string",
-      "default": ""
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "disabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "endpoint": {
+          "type": "string",
+          "default": ""
+        },
+        "sampler": {
+          "type": "number",
+          "default": 1.0
+        },
+        "batcher": {
+          "type": "string",
+          "default": "otlpgrpc"
+        }
+      }
     },
-    "disabled": {
-      "type": "boolean",
-      "default": true
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "port": {
+          "type": "integer",
+          "default": 6060
+        },
+        "path": {
+          "type": "string",
+          "default": "/metrics"
+        }
+      }
     },
-    "endpoint": {
-      "type": "string",
-      "default": ""
-    },
-    "sampler": {
-      "type": "number",
-      "default": 1.0
-    },
-    "batcher": {
-      "type": "string",
-      "default": "otlpgrpc"
-    },
-    "enabled": {
-      "type": "boolean",
-      "default": false
-    },
-    "port": {
-      "type": "integer",
-      "default": 6060
-    },
-    "path": {
-      "type": "string",
-      "default": "/metrics"
-    },
-    "level": {
-      "type": "string",
-      "default": "info"
+    "log": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "default": "info"
+        }
+      }
     }
   }
 }

@@ -34,9 +34,8 @@ spring.http.server.enabled=false
 # 本示例中 starter-echo 默认监听 :8002。
 spring.echo.server.addr=:8002
 
-# 超时（继承自 SimpleHttpServerConfig）。
+# 超时（readTimeout 兼作 ReadHeaderTimeout）。
 spring.echo.server.readTimeout=5s
-spring.echo.server.headerTimeout=1s
 spring.echo.server.writeTimeout=5s
 spring.echo.server.idleTimeout=60s
 
@@ -51,6 +50,7 @@ spring.echo.server.health.path=/healthz
 spring.echo.server.tls.enabled=false
 spring.echo.server.tls.cert-file=
 spring.echo.server.tls.key-file=
+spring.echo.server.tls.ca-file==# 可选：配置后强制校验该 CA 签发的客户端证书（mTLS）。
 
 # 内置中间件。Recovery、RequestID、AccessLog 默认开启；
 # CORS、Gzip、SecureHeaders 默认关闭，按需开启（见"内置中间件"）。
@@ -65,7 +65,7 @@ spring.echo.server.middleware.gzip.level=5
 spring.echo.server.middleware.secureHeaders.enabled=false
 ```
 
-当 `spring.echo.server.enabled` 为 `true`（默认）且应用提供了 `RouterRegister` Bean 时，
+当设置了 `spring.echo.server.addr`（该 key 即开关，不存在 `enabled` key）且应用提供了 `RouterRegister` Bean 时，
 starter 会自动注册服务器 Bean。
 
 > **端口约定** —— 三个 HTTP starter 使用互不相同的端口，可同时启动：
@@ -103,21 +103,26 @@ starter 在应用的 `RouterRegister` 执行**之前**，按固定顺序在 `*ec
 
 | 中间件 | 默认 | 来源 | 说明 |
 |---|---|---|---|
-| `recovery` | 开 | `middleware.Recover()` | 捕获请求 goroutine 的 panic；关闭可能导致进程崩溃。 |
+| `recovery` | 开 | `middleware.Recover()`（starter 接缝） | 捕获请求 goroutine 的 panic；关闭可能导致进程崩溃。 |
+| `loadtest` | 开 | 自实现 | 请求携带 `X-LoadTest`（可配置）标记头时给请求 context 打标，下游可通过 `traffic.IsLoadTest` 分流。 |
 | `requestId` | 开 | `middleware.RequestID()` | 生成/透传 `X-Request-Id`，同时写入请求 context（见 `RequestIDFromContext`）。 |
+| `tracing` | 开 | 自实现 | 每请求一个 OTel server span；未引入 `starter-otel` 时为 no-op。 |
+| `metrics` | 开 | 自实现 | 经 OTel 全局记录请求数/时长/在途数；未引入 `starter-otel` 时为 no-op。 |
 | `accessLog` | 开 | 自实现（项目 `log` 包） | 每个请求一条结构化访问日志；4xx 记 Warn、5xx 记 Error；健康端点路径自动跳过。 |
 | `cors` | 关 | `middleware.CORS()` | 没有安全的通用默认值，需显式配置 `allowedOrigins`（或开发期用 `allowAllOrigins`）。 |
 | `gzip` | 关 | `middleware.Gzip()` | `level`（1-9，-1=默认）。 |
 | `secureHeaders` | 关 | `middleware.Secure()` | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`；HSTS 仅在启用 TLS 时生效。 |
 | 请求体限制 | `maxBodySize>0` 时开 | `middleware.BodyLimit()` | 位于链内，超限的 413 会像普通响应一样被记录。 |
 
-顺序（最外层在前）：`Recovery -> RequestID -> AccessLog -> SecureHeaders -> CORS -> Gzip -> BodyLimit`。
-Recovery 在最外层以兜住后续所有层的 panic；RequestID 在 AccessLog 之前，使每条访问日志都带上请求 id；
-AccessLog 包裹策略类中间件，使短路响应（413、204、403）也能被记录。
+顺序（最外层在前）：`LoadTest -> Recovery -> RequestID -> Tracing -> Metrics -> AccessLog
+-> SecureHeaders -> CORS -> Gzip -> BodyLimit -> fault`。LoadTest 在最外层使后续所有层可按
+`traffic.IsLoadTest` 分流；Recovery 兜住后续所有层的 panic；RequestID 在 AccessLog 之前，使每条
+访问日志都带上请求 id；AccessLog 包裹策略类中间件，使短路响应（413、204、403）也能被记录。
+fault 注入中间件恒装在最内层（治理中心无 fault 规则时透明）。
 
 > **设计上不提供请求超时中间件。** Go 无法在不使用 goroutine 缓冲 hack（会破坏流式/SSE）的前提下
-> 抢占正在运行的 handler，因此硬性时限仍由 `SimpleHttpServerConfig` 中 `http.Server` 的读写超时兜底。
-> 指标与链路追踪同样不内置--请使用 `starter-actuator` 与 `starter-otel`。
+> 抢占正在运行的 handler，因此硬性时限仍由 `http.Server` 的读写超时兜底。
+> 链路追踪与指标中间件**已内置**（默认开启，未引入 `starter-otel` 时为 no-op）。
 
 若要把请求 id 带到业务日志，配置一次 log 包的 context 钩子即可：
 
@@ -132,7 +137,16 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 
 ## 高级功能
 
-* **自定义服务器配置**：通过 `spring.echo.server.*`（监听地址、TLS、超时等）绑定 `SimpleHttpServerConfig`
+* **自定义服务器配置**：通过 `spring.echo.server.*`（监听地址、TLS、超时等）绑定 starter 自己的 `Config`
   进行调优。
 * **完整的 echo 生态**：任何 echo 中间件、路由分组、渲染器、绑定器都可以在注册器拿到的 `*echo.Echo`
   上自由组合。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_echo_access`（echo 访问日志）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.echo_access.type=Logger
+logger.echo_access.level=WARN
+logger.echo_access.tag=_app_echo_access
+```

@@ -90,7 +90,10 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	if traffic.IsLoadTest(ctx) {
 		recordCarrier{rec}.Set(traffic.MetaKeyLoadTest, "1")
 	}
-	return p.cl.ProduceSync(ctx, rec).FirstErr()
+	// Route through the same resilience executor the raw client API uses
+	// (GuardedProduceSync): a no-op pass-through when governance is off for
+	// this client, a rejection sentinel when rate-limited/circuit-open.
+	return GuardedProduceSync(ctx, p.cl, rec).FirstErr()
 }
 
 func (p *publisher) Close() error { return nil }

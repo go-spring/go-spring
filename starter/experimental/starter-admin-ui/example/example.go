@@ -94,13 +94,15 @@ func main() {
 	time.Sleep(200 * time.Millisecond)
 
 	if !*manual {
-		// Wait for the Admin UI to bind (:9280) and complete at least one
-		// poll cycle after startup.
-		waitForPort("127.0.0.1:9280", 5*time.Second)
-		// Trigger an out-of-band refresh window: the seeded snapshot already
-		// exists, but wait one full poll interval so a second sweep runs.
-		time.Sleep(1500 * time.Millisecond)
-		runTest()
+		// The verification runs alongside gs.Run() (which blocks serving the
+		// dashboard): wait for the Admin UI to bind (:9280), then let one
+		// full poll interval elapse so a second sweep runs after the seed
+		// poll, and assert on the rendered dashboard and JSON API.
+		go func() {
+			waitForPort("127.0.0.1:9280", 5*time.Second)
+			time.Sleep(1500 * time.Millisecond)
+			runTest()
+		}()
 	} else {
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
@@ -113,6 +115,14 @@ func main() {
 // appear as UP, and that the JSON status endpoint reflects the same data.
 // It exits non-zero on any mismatch, then triggers graceful shutdown.
 func runTest() {
+	// Unauthenticated requests must be rejected: the example configures
+	// spring.admin-ui.token, so the httpauth guard returns 401 without it.
+	if code := statusOf("GET", "http://127.0.0.1:9280/api/status", ""); code != http.StatusUnauthorized {
+		fmt.Fprintf(os.Stderr, "expected 401 without token, got %d\n", code)
+		os.Exit(1)
+	}
+	fmt.Println("unauthenticated request rejected with 401")
+
 	// HTML dashboard: must contain both instance URLs and at least one UP pill.
 	body := mustGet("http://127.0.0.1:9280/")
 	for _, want := range []string{
@@ -164,8 +174,50 @@ func runTest() {
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
+// token mirrors conf/app.properties' spring.admin-ui.token; mustGet attaches
+// it as a bearer header so the guard admits the smoke-test requests.
+const token = "example-token"
+
+// statusOf performs a request with an optional bearer token and returns the
+// HTTP status code.
+func statusOf(method, url, tok string) int {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request build failed:", url, err)
+		os.Exit(1)
+	}
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request failed:", url, err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode
+}
+
 func mustGet(url string) string {
-	resp, err := http.Get(url)
+	body, code := get(url)
+	if code != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "unexpected status for %s: %d\n", url, code)
+		os.Exit(1)
+	}
+	return body
+}
+
+// get fetches url with the configured bearer token, returning the body and
+// status code.
+func get(url string) (string, int) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request build failed:", url, err)
+		os.Exit(1)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "GET failed:", url, err)
 		os.Exit(1)
@@ -176,11 +228,7 @@ func mustGet(url string) string {
 		fmt.Fprintln(os.Stderr, "read failed:", url, err)
 		os.Exit(1)
 	}
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "unexpected status for %s: %d\n", url, resp.StatusCode)
-		os.Exit(1)
-	}
-	return string(b)
+	return string(b), resp.StatusCode
 }
 
 func waitForPort(addr string, budget time.Duration) {

@@ -24,10 +24,16 @@ import (
 )
 
 // Config holds the configuration parameters for a SQLite connection. The
-// shared pool/discovery/observe settings come from the embedded gormcore.
-// Common; the fields below are the SQLite-specific connection parameters.
+// shared pool settings come from the embedded gormcore.PoolSettings — sqlite
+// is an in-process engine, so the discovery keys of gormcore.Common are
+// deliberately not bound here. The fields below are the SQLite-specific
+// connection parameters.
 type Config struct {
-	gormcore.Common
+	gormcore.PoolSettings
+
+	// ObserveEnabled is the observe-plugin kill switch, identical in meaning to
+	// the one in gormcore.Common.
+	ObserveEnabled bool `value:"${observe.enabled:=true}"`
 
 	// File is the SQLite database path, or ":memory:" for a per-connection
 	// in-memory database. Required. The URI is built from it via DSN().

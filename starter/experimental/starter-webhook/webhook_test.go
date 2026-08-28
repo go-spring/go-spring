@@ -114,6 +114,46 @@ func TestNotifierSendBadStatus(t *testing.T) {
 	assert.That(t, n.Send(context.Background(), &Notification{Title: "x"}) != nil).True()
 }
 
+// TestNotifierSendBusinessError proves the vendor errcode convention (HTTP
+// 200 + non-zero business code) surfaces as an error, and that a zero code
+// plus channels without the convention still succeed.
+func TestNotifierSendBusinessError(t *testing.T) {
+	cases := []struct {
+		name    string
+		channel string
+		body    string
+		wantErr bool
+	}{
+		{"dingtalk ok", "dingtalk", `{"errcode":0,"errmsg":"ok"}`, false},
+		{"dingtalk err", "dingtalk", `{"errcode":310000,"errmsg":"sign not match"}`, true},
+		{"wecom err", "wecom", `{"errcode":93000,"errmsg":"invalid webhook url"}`, true},
+		{"feishu new ok", "feishu", `{"code":0,"msg":"success"}`, false},
+		{"feishu new err", "feishu", `{"code":19021,"msg":"sign match fail"}`, true},
+		{"feishu legacy err", "feishu", `{"StatusCode":19024,"StatusMessage":"sign match fail"}`, true},
+		{"slack ok text", "slack", "ok", false},
+		{"generic passthrough", "generic", `whatever`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(c.body))
+			}))
+			defer srv.Close()
+			n := &Notifier{
+				cfg:    Config{URL: srv.URL, Channel: c.channel, Timeout: 2 * time.Second},
+				client: &http.Client{Timeout: 2 * time.Second},
+			}
+			err := n.Send(context.Background(), &Notification{Title: "x"})
+			if c.wantErr {
+				assert.That(t, err != nil).True()
+			} else {
+				assert.Error(t, err).Nil()
+			}
+		})
+	}
+}
+
 // TestWithQuery covers the DingTalk signed-URL append, including the
 // preserve-existing-query case.
 func TestWithQuery(t *testing.T) {

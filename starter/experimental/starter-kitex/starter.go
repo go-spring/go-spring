@@ -28,6 +28,7 @@ import (
 	"github.com/kitex-contrib/obs-opentelemetry/tracing"
 	etcd "github.com/kitex-contrib/registry-etcd"
 	"go-spring.org/log"
+	"go.opentelemetry.io/otel"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 
@@ -37,8 +38,6 @@ import (
 	// logs into the application's go-spring log pipeline.
 	_ "go-spring.org/starter-kitex/internal/logger"
 )
-
-var kitexTag = log.RegisterAppTag("kitex", "starter")
 
 func init() {
 	gs.Provide(
@@ -70,20 +69,25 @@ type Config struct {
 	// off for protobuf/gRPC ones.
 	CompatibleUnaryMiddleware bool `value:"${compatible-unary-middleware:=false}"`
 
-	// Observability is opt-in and wired here rather than in each service so a
-	// provider only edits conf/app.properties to light up metrics and tracing.
-	// Kitex has no single "SetUp" like dubbo-go/go-zero, so we compose its
-	// native kitex-contrib pieces: an OTel tracing suite and a self-hosting
-	// Prometheus scrape endpoint. Kitex' own klog is bridged into go-spring's
-	// log module unconditionally (see internal/logger).
+	// Observability is global-first and wired here rather than in each service
+	// so a provider only edits conf/app.properties to light up metrics and
+	// tracing. When go-spring's unified observability (starter-otel) has
+	// installed the process-global OTel providers, the kitex tracing suite
+	// simply attaches to them — kitex never builds a second pipeline. Only
+	// when no global pipeline exists does the starter fall back to building
+	// its own provider, preserving the zero-config experience for kitex-only
+	// setups. Kitex' own klog is bridged into go-spring's log module
+	// unconditionally (see internal/logger).
 	Tracing TracingCfg `value:"${tracing}"`
 	Metrics MetricsCfg `value:"${metrics}"`
 }
 
 // TracingCfg configures OTel tracing under ${spring.kitex.server.tracing}. On
-// by default, so importing starter-otel activates spans with no config change.
-// When enabled, spans are exported over OTLP/gRPC to Endpoint. Metrics are
-// intentionally left to MetricsCfg (Prometheus), so the OTel meter is disabled.
+// by default. Global-first: when a real global TracerProvider is installed
+// (starter-otel), the kitex suite attaches to it and the remaining fields are
+// ignored — the global pipeline owns exporters and sampling. Without a global
+// pipeline the starter builds its own provider exporting OTLP/gRPC to Endpoint
+// (see globalTracingActive for how the decision is made).
 type TracingCfg struct {
 	Enable   bool   `value:"${enable:=true}"`
 	Endpoint string `value:"${endpoint:=127.0.0.1:4317}"`
@@ -91,13 +95,15 @@ type TracingCfg struct {
 }
 
 // MetricsCfg configures Prometheus metrics under ${spring.kitex.server.metrics}.
-// On by default, so importing starter-otel activates metrics with no config change.
-// When enabled, monitor-prometheus stands up its own HTTP server on Port serving
-// Path, independent of the (usually disabled) built-in spring.http.server, for a
-// Prometheus instance to scrape.
+// Enable is on by default, but the dedicated scrape server only starts when
+// Port is explicitly configured — server ports are never defaulted here (the
+// "server ports must be explicitly configured" repo convention). With a global
+// pipeline present and no Port set, kitex RPC metrics (kitex.server.duration
+// histogram recorded by the tracing suite) ride the global metrics exporter
+// instead, so no dedicated endpoint is needed.
 type MetricsCfg struct {
 	Enable bool   `value:"${enable:=true}"`
-	Port   int    `value:"${port:=9090}"`
+	Port   int    `value:"${port:=0}"`
 	Path   string `value:"${path:=/metrics}"`
 }
 
@@ -111,16 +117,114 @@ type SimpleKitexServer struct {
 	svr  server.Server
 	done chan struct{}
 
-	// otelProvider is the OTel SDK provider created when tracing is enabled; it
-	// owns the span exporter and is shut down in Stop to flush pending spans.
+	// otelProvider is the local OTel SDK provider created by the tracing
+	// fallback when no global pipeline is present (see observabilityOptions);
+	// nil when kitex attaches to starter-otel's global pipeline. It owns the
+	// span exporter and is shut down in Stop to flush pending spans.
 	otelProvider provider.OtelProvider
 }
 
 // NewSimpleKitexServer creates a SimpleKitexServer from ${spring.kitex.server}
 // config and the registered ServiceRegister bean.
 func NewSimpleKitexServer(cfg Config, reg ServiceRegister) *SimpleKitexServer {
-	log.Debugf(context.Background(), kitexTag, "kitex server created addr=%s service=%s", cfg.Addr, cfg.ServiceName)
+	log.Debugf(context.Background(), log.TagAppDef, "kitex server created addr=%s service=%s", cfg.Addr, cfg.ServiceName)
 	return &SimpleKitexServer{cfg: cfg, reg: reg, done: make(chan struct{})}
+}
+
+// probeTracer names the tracer used to detect a live global OTel pipeline.
+const probeTracer = "go-spring.org/starter-kitex/probe"
+
+// globalTracingActive reports whether a real (recording) TracerProvider has
+// been installed as the OTel process global — i.e. whether go-spring's unified
+// observability (starter-otel, or any SDK-based provider) owns the pipeline.
+// Without one, otel.Tracer returns the no-op provider whose spans never
+// record, so IsRecording is false.
+//
+// Caveat: a global provider configured with an always-off sampler also yields
+// non-recording spans, so the probe reports "no global pipeline" there and the
+// starter would fall back to its local provider. That configuration drops all
+// spans by design, so no double-pipeline harm results; see USAGE §4.2.
+func globalTracingActive() bool {
+	_, span := otel.Tracer(probeTracer).Start(context.Background(), "kitex-global-pipeline-probe")
+	recording := span.IsRecording()
+	span.End()
+	return recording
+}
+
+// observabilityOptions builds the kitex server options for tracing and metrics
+// under the global-first rule, plus the local OTel provider it may own.
+//
+// Tracing (cfg.Tracing.Enable, default true):
+//
+//	Global pipeline present  → attach tracing.NewServerSuite() only. The suite
+//	                           reads the OTel globals (provider + propagator),
+//	                           so kitex spans and the kitex.server.duration
+//	                           metric flow into the unified pipeline. No
+//	                           provider is created and the TracingCfg endpoint
+//	                           fields are ignored.
+//	No global pipeline       → fall back to building a local provider via
+//	                           provider.NewOpenTelemetryProvider (exporting
+//	                           OTLP/gRPC to TracingCfg.Endpoint) so a kitex-only
+//	                           setup lights up spans with zero extra config,
+//	                           and log a hint toward starter-otel.
+//
+// Metrics (cfg.Metrics.Enable, default true):
+//
+//	Port explicitly set      → stand up monitor-prometheus' dedicated scrape
+//	                           server on that port (explicit opt-in wins over
+//	                           the global pipeline, for a dedicated kitex
+//	                           /metrics next to it).
+//	Port unset (the default) → no dedicated endpoint. With a global pipeline
+//	                           present, kitex RPC metrics ride it through the
+//	                           tracing suite's otel meter. Without one, log
+//	                           how to enable the local endpoint — never
+//	                           default-bind a server port.
+//
+// The returned provider (nil unless the local fallback ran) is stored by the
+// caller and shut down on Stop to flush pending spans.
+func observabilityOptions(cfg Config) (opts []server.Option, localProvider provider.OtelProvider) {
+	active := globalTracingActive()
+
+	if cfg.Tracing.Enable {
+		if active {
+			log.Infof(context.Background(), log.TagAppDef,
+				"kitex tracing attached to the global otel pipeline (starter-otel); kitex tracing.* endpoint keys are ignored")
+		} else {
+			popts := []provider.Option{
+				provider.WithServiceName(cfg.ServiceName),
+				provider.WithExportEndpoint(cfg.Tracing.Endpoint),
+				// Metrics travel through Prometheus (see below), so the OTel meter
+				// is disabled to avoid a second, redundant metrics pipeline.
+				provider.WithEnableMetrics(false),
+			}
+			if cfg.Tracing.Insecure {
+				popts = append(popts, provider.WithInsecure())
+			}
+			localProvider = provider.NewOpenTelemetryProvider(popts...)
+			log.Infof(context.Background(), log.TagAppDef,
+				"kitex tracing running on its own otel provider (endpoint=%s); import starter-otel for unified observability", cfg.Tracing.Endpoint)
+		}
+		opts = append(opts, server.WithSuite(tracing.NewServerSuite()))
+	}
+
+	if cfg.Metrics.Enable {
+		switch {
+		case cfg.Metrics.Port > 0:
+			// NewServerTracer stands up its own HTTP server on this addr serving
+			// the metrics path, independent of the built-in spring.http.server.
+			// Only started on an explicitly configured port; the library calls
+			// log.Fatal on a bind failure, so the port must be operator-chosen.
+			opts = append(opts, server.WithTracer(prometheus.NewServerTracer(
+				fmt.Sprintf(":%d", cfg.Metrics.Port), cfg.Metrics.Path)))
+		case active:
+			log.Infof(context.Background(), log.TagAppDef,
+				"kitex metrics ride the global otel pipeline (kitex.server.duration via the tracing suite); set metrics.port for a dedicated prometheus endpoint")
+		default:
+			log.Infof(context.Background(), log.TagAppDef,
+				"kitex metrics disabled: no global otel pipeline and no metrics.port configured; set spring.kitex.server.metrics.port to start a dedicated prometheus endpoint")
+		}
+	}
+	return opts, localProvider
 }
 
 // Run builds the Kitex server on the configured address and starts serving once
@@ -163,28 +267,13 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	// Observability is layered on last so a provider lights up metrics and
-	// tracing purely from conf/app.properties; tracing/metrics contribute a
-	// suite and a stats tracer to the option set below.
-	if s.cfg.Tracing.Enable {
-		popts := []provider.Option{
-			provider.WithServiceName(s.cfg.ServiceName),
-			provider.WithExportEndpoint(s.cfg.Tracing.Endpoint),
-			// Metrics travel through Prometheus (see below), so the OTel meter is
-			// disabled to avoid a second, redundant metrics pipeline.
-			provider.WithEnableMetrics(false),
-		}
-		if s.cfg.Tracing.Insecure {
-			popts = append(popts, provider.WithInsecure())
-		}
-		s.otelProvider = provider.NewOpenTelemetryProvider(popts...)
-		opts = append(opts, server.WithSuite(tracing.NewServerSuite()))
+	// tracing purely from conf/app.properties; see observabilityOptions for
+	// the global-first pipeline rules.
+	obsOpts, localProvider := observabilityOptions(s.cfg)
+	if localProvider != nil {
+		s.otelProvider = localProvider
 	}
-	if s.cfg.Metrics.Enable {
-		// NewServerTracer stands up its own HTTP server on this addr serving the
-		// metrics path, independent of the built-in spring.http.server.
-		metricsAddr := fmt.Sprintf(":%d", s.cfg.Metrics.Port)
-		opts = append(opts, server.WithTracer(prometheus.NewServerTracer(metricsAddr, s.cfg.Metrics.Path)))
-	}
+	opts = append(opts, obsOpts...)
 
 	s.svr = server.NewServer(opts...)
 	if err = s.reg(s.svr); err != nil {
@@ -193,7 +282,7 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, kitexTag, "kitex server starting on %s", s.cfg.Addr)
+	log.Infof(ctx, log.TagAppDef, "kitex server starting on %s", s.cfg.Addr)
 	errCh := make(chan error, 1)
 	go func() {
 		// Run binds the listener, registers into etcd and then blocks.
@@ -203,7 +292,7 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err = <-errCh:
 		if err != nil {
-			log.Errorf(ctx, kitexTag, "kitex server failed on %s: %v", s.cfg.Addr, err)
+			log.Errorf(ctx, log.TagAppDef, "kitex server failed on %s: %v", s.cfg.Addr, err)
 		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:
@@ -224,7 +313,7 @@ func (s *SimpleKitexServer) Stop() error {
 // threading the shutdown context into the provider's Shutdown. Kitex's Stop
 // takes no context, so ctx is otherwise only used for logging.
 func (s *SimpleKitexServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, kitexTag, "kitex server shutting down on %s", s.cfg.Addr)
+	log.Infof(ctx, log.TagAppDef, "kitex server shutting down on %s", s.cfg.Addr)
 	err := s.svr.Stop()
 	if s.otelProvider != nil {
 		_ = s.otelProvider.Shutdown(ctx)

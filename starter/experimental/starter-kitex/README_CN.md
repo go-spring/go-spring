@@ -83,8 +83,7 @@ logging.logger.root.layout.type=JSONLayout
 
 ## 说明
 
-- Starter 监听地址由 `${spring.kitex.server.addr}` 决定，默认 `:8888`。
-- Kitex 服务器默认开启，可通过 `spring.kitex.server.enabled=false` 关闭。
+- Starter 监听地址由 `${spring.kitex.server.addr}` 决定——无默认值；设置该 key 即注册 server bean（不存在 `enabled` key）。
 - 只需要注册一个 `ServiceRegister` Bean 即可激活整个服务器。
 - Thrift 服务需设置 `spring.kitex.server.compatible-unary-middleware=true`
   （Kitex 的 thrift 代码生成会在其 `NewServer` 中加入该中间件）；protobuf/gRPC 服务

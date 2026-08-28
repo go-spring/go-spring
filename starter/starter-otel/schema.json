@@ -29,12 +29,15 @@
         },
         "sampler-ratio": {
           "type": "number",
-          "default": 1.0
+          "default": 1.0,
+          "description": "must be > 0; non-positive is rejected at startup (use exporter=none/enable=false to disable tracing)",
+          "minimum": 0,
+          "exclusiveMinimum": true
         },
         "propagator": {
           "type": "string",
           "default": "w3c",
-          "description": "w3c|none"
+          "description": "w3c|none; honored independently of trace export"
         }
       }
     },
@@ -86,6 +89,11 @@
           }
         }
       }
+    },
+    "service-name": {
+      "type": "string",
+      "default": "${spring.application.name}",
+      "description": "OTel service.name; falls back to spring.application.name, then go-spring-app"
     }
   }
 }

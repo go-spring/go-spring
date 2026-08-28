@@ -78,6 +78,7 @@ use (
 	./starter/experimental/starter-elasticsearch/example-otel
 	./starter/experimental/starter-gateway
 	./starter/experimental/starter-gateway/example
+	./starter/experimental/starter-gateway/example-otel
 	./starter/experimental/starter-go-zero
 	./starter/experimental/starter-go-zero/rest/example
 	./starter/experimental/starter-go-zero/rest/example-otel

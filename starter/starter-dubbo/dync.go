@@ -191,7 +191,7 @@ func consumerToOverrideRules(appName string, c *DubboConsumer) map[string]map[st
 
 		refParams := make(map[string]string)
 		addIfSet(refParams, "timeout", ref.Timeout)
-		addIfSet(refParams, "retries", retriesStrOverride(ref.Retries))
+		addIfSet(refParams, "retries", retriesStr(ref.Retries))
 		addIfSet(refParams, "loadbalance", ref.LoadBalance)
 		addIfSet(refParams, "cluster", ref.Cluster)
 		addIfSet(refParams, "group", ref.Group)
@@ -206,7 +206,7 @@ func consumerToOverrideRules(appName string, c *DubboConsumer) map[string]map[st
 		for methodName, m := range ref.Methods {
 			prefix := "methods." + methodName + "."
 			addIfSet(refParams, prefix+"timeout", m.Timeout)
-			addIfSet(refParams, prefix+"retries", retriesStrOverride(m.Retries))
+			addIfSet(refParams, prefix+"retries", retriesStr(m.Retries))
 			addIfSet(refParams, prefix+"loadbalance", m.LoadBalance)
 			addIfSet(refParams, prefix+"weight", strconv.FormatInt(m.Weight, 10))
 			addIfSet(refParams, prefix+"sticky", boolToStr(m.Sticky))
@@ -294,18 +294,11 @@ func applyGovernOverride(params map[string]string, p resilience.Policy) {
 	}
 }
 
-// retriesStr returns the retries value as a string, or empty for 0 (not set).
-// Consumer-level defaults use this — retries=0 means "not configured".
+// retriesStr returns the retries value as a string, or empty when unset.
+// Unified semantics at every level: -1 (the default) = unset (nothing
+// published, dubbo-go keeps its own default), 0 = no retry attempts
+// (published as "0"), >0 = that many retries.
 func retriesStr(r int) string {
-	if r <= 0 {
-		return ""
-	}
-	return strconv.Itoa(r)
-}
-
-// retriesStrOverride returns the retries value as a string, allowing 0.
-// Per-reference and per-method overrides use this — retries=0 means "disable retries".
-func retriesStrOverride(r int) string {
 	if r < 0 {
 		return ""
 	}

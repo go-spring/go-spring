@@ -85,7 +85,7 @@ func TestPolicyFor_RuleReplacesDefault(t *testing.T) {
 		Enabled: true,
 		Default: resilience.PolicyConfig{AttemptTimeout: dur(100), MaxRetries: 1},
 		Rules: []Rule{{
-			Resources:          []string{"redis:cache"},
+			Resources:    []string{"redis:cache"},
 			PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(50)}, // no MaxRetries
 		}},
 	})
@@ -166,7 +166,7 @@ func TestRefresh_NotifiesOnlyChangedLabels(t *testing.T) {
 	// Change only redis:cache. gorm must NOT be notified (its policy unchanged).
 	cfg := enabledTimeout(100)
 	cfg.Rules = []Rule{{
-		Resources:          []string{"redis:cache"},
+		Resources:    []string{"redis:cache"},
 		PolicyConfig: resilience.PolicyConfig{AttemptTimeout: dur(200)},
 	}}
 	c.refresh(cfg)

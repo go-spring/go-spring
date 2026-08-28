@@ -35,7 +35,6 @@ import (
 // §3 (Register must self-renew so correctness never depends on Deregister).
 type instance struct {
 	ServiceName string
-	ID          string
 	Addr        string
 	Weight      int
 	Metadata    map[string]string

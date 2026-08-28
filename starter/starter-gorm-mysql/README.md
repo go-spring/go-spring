@@ -36,7 +36,7 @@ spring.gorm.mysql.primary.db=test
 import "gorm.io/gorm"
 
 type Service struct {
-    DB *gorm.DB `autowire:""`
+    DB *starter.DB `autowire:"primary"` // wrapper embedding *gorm.DB
 }
 ```
 

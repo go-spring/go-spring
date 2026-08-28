@@ -30,18 +30,20 @@ spring.redigo.main.addr=127.0.0.1:6379
 ### 3. Inject the Redis Instance
 
 ```go
-import "github.com/gomodule/redigo/redis"
+import StarterRedigo "go-spring.org/starter-redigo"
 
 type Service struct {
-    Redis *redis.Client `autowire:""`
+    Redis *StarterRedigo.Pool `autowire:"main"`
 }
 ```
 
 ### 4. Use the Redis Instance
 
 ```go
-str, err := s.Redis.Get(r.Context(), "key").Result()
-str, err := s.Redis.Set(r.Context(), "key", "value", 0).Result()
+c := s.Redis.Get() // borrow a pooled connection
+defer c.Close()
+str, err := redis.String(c.Do("GET", "key"))
+_, err = c.Do("SET", "key", "value")
 ```
 
 ## Core Features
@@ -57,8 +59,9 @@ The [example.go](example/example.go) file demonstrates the following core Redis 
 * **Supports multiple Redis instances**: you can define multiple Redis instances in the configuration file and reference them by name.
 * **Support Redis extensions**: implement the `Driver` interface to extend Redis functionality — see the
   example implementation `AnotherRedisDriver`.
-* **Startup connection validation (fail-fast)**: after building the pool the starter borrows a connection and issues a
-  `PING`; a misconfigured address or unreachable server fails the boot instead of the first request.
+* **Startup connection validation (opt-in)**: set `startup-ping=true` to borrow a connection and
+  `PING` at boot; with the default `false`, a misconfigured address surfaces on the first command
+  (redigo pools are lazy).
 * **Service discovery**: set `service-name` (and optionally `discovery` to pick a registered backend, default `default`)
   instead of `addr`; a `Resolver` resolves the service through the registered `discovery.Discovery` backend and dials a
   live endpoint for every new pool connection. Combined with `conn-max-lifetime`, pooled connections recycle onto updated

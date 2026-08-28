@@ -75,8 +75,10 @@ The wrapper embeds `*minio.Client`, so every SDK method promotes unchanged.
   `s3:<name>` and folded into `/readiness` by `starter-actuator` when
   imported.
 - **Observability** — every request emits an OTel span, duration metric and
-  access-log line through the observe kit (`observability.level=off` to
-  disable). minio-go ships no OTel instrumentation of its own, so the starter
+  access-log line through the observe kit
+  (`spring.s3.<name>.observability.level=off` to disable; a top-level
+  `observability.*` fallback also works, overridden by instance keys). minio-go
+  ships no OTel instrumentation of its own, so the starter
   transport carries all three signals.
 - **Resilience** — rate limiting, circuit breaking and fault injection are
   enforced on the client's HTTP transport through the governance seams; with

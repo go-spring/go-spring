@@ -83,7 +83,7 @@
           "properties": {
             "enabled": {
               "type": "boolean",
-              "default": false
+              "default": true
             }
           }
         },
@@ -92,7 +92,7 @@
           "properties": {
             "enabled": {
               "type": "boolean",
-              "default": false
+              "default": true
             }
           }
         },
@@ -187,6 +187,20 @@
                   "default": false
                 }
               }
+            }
+          }
+        },
+        "loadtest": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "header": {
+              "type": "string",
+              "default": "X-LoadTest",
+              "description": "Header marking load-test traffic"
             }
           }
         }

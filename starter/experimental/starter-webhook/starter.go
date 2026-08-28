@@ -23,6 +23,8 @@ package StarterWebhook
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -35,8 +37,6 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
-
-var starterTag = log.RegisterAppTag("webhook", "")
 
 // Notification is one outbound webhook message. Title is the headline (shown
 // bold/markdown by most receivers), Text is the body.
@@ -73,7 +73,7 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, err
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err
 	}
-	log.Debugf(ctx.Context, starterTag, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
 
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resilience.ResourceLabel("webhook", name, c.Channel)))
 	exec = resilobserve.WrapExecutor(exec, "webhook", c.Observability)
@@ -115,8 +115,10 @@ func (n *Notifier) Send(ctx context.Context, notification *Notification) error {
 	return err
 }
 
-// post performs the HTTP POST and treats any non-2xx answer (or the vendor
-// error bodies DingTalk/Feishu return with 200) as an error.
+// post performs the HTTP POST and treats any non-2xx answer, or a vendor
+// business error returned with HTTP 200 (DingTalk/WeCom "errcode", Feishu
+// "code"/"StatusCode"), as an error. Channels without a business-code
+// convention (generic, slack) judge success by the HTTP status alone.
 func (n *Notifier) post(ctx context.Context, endpoint string, body []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -128,11 +130,46 @@ func (n *Notifier) post(ctx context.Context, endpoint string, body []byte) error
 		return errutil.Explain(err, "webhook: post failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return errutil.Explain(nil, "webhook: %s returned %s: %s", n.cfg.Channel, resp.Status, string(snippet))
+		return errutil.Explain(nil, "webhook: %s returned %s: %s", n.cfg.Channel, resp.Status, string(respBody))
+	}
+	if msg := businessError(n.cfg.Channel, respBody); msg != "" {
+		return errutil.Explain(nil, "webhook: %s returned %s: %s", n.cfg.Channel, resp.Status, msg)
 	}
 	return nil
+}
+
+// businessError extracts the vendor business error from a 200 response body,
+// or returns "" when the body reports success (or the channel has no
+// business-code convention). Unparseable bodies are treated as success: the
+// HTTP status already said OK.
+func businessError(channel string, body []byte) string {
+	var v struct {
+		Errcode    *int    `json:"errcode"`
+		Errmsg     string  `json:"errmsg"`
+		Code       *int    `json:"code"`
+		Msg        string  `json:"msg"`
+		StatusCode *int    `json:"StatusCode"`
+		StatusMsg  string  `json:"StatusMessage"`
+	}
+	if err := json.Unmarshal(body, &v); err != nil {
+		return ""
+	}
+	switch channel {
+	case "dingtalk", "wecom": // {"errcode":0,"errmsg":"ok"}
+		if v.Errcode != nil && *v.Errcode != 0 {
+			return fmt.Sprintf("errcode=%d errmsg=%q", *v.Errcode, v.Errmsg)
+		}
+	case "feishu": // {"code":0,"msg":"success"} or legacy {"StatusCode":0,"StatusMessage":"success"}
+		if v.Code != nil && *v.Code != 0 {
+			return fmt.Sprintf("code=%d msg=%q", *v.Code, v.Msg)
+		}
+		if v.StatusCode != nil && *v.StatusCode != 0 {
+			return fmt.Sprintf("StatusCode=%d StatusMessage=%q", *v.StatusCode, v.StatusMsg)
+		}
+	}
+	return ""
 }
 
 // withQuery appends extra query parameters (DingTalk's signed pair) to a URL.

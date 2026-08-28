@@ -38,7 +38,7 @@ import (
 
 var (
 	// starterTag identifies logs emitted by the config bus starter.
-	starterTag = log.RegisterAppTag("starter_config_bus", "")
+	starterTag = log.RegisterAppTag("config_bus", "")
 )
 
 func init() {
@@ -46,7 +46,12 @@ func init() {
 	// the refresh listener regardless of whether anything else depends on it)
 	// without its Rooter export colliding with the application's own default
 	// Rooter. Inject it elsewhere via autowire:"configBus".
+	//
+	// The Condition gate means blank-importing the starter alone assembles
+	// nothing: without any spring.config.bus.* property there is no bus, so the
+	// starter can sit on the classpath of apps that never configure NATS.
 	gs.Provide(&ConfigBus{}).
+		Condition(gs.OnProperty("spring.config.bus")).
 		Name("configBus").
 		Init((*ConfigBus).subscribe).
 		Destroy((*ConfigBus).Destroy).

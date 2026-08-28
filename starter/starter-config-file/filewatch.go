@@ -60,20 +60,20 @@ func (c *configFileController) Load(optional bool, source string) (map[string]st
 		return nil, errutil.Explain(nil, "file-watch: missing path")
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading file-watch config from %s", path)
+	log.Debugf(context.Background(), log.TagAppDef, "loading file-watch config from %s", path)
 
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && optional {
-			log.Warnf(context.Background(), starterTag, "optional config path %s not found (skipped)", path)
+			log.Warnf(context.Background(), log.TagAppDef, "optional config path %s not found (skipped)", path)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "stat %s failed: %v", path, err)
+		log.Errorf(context.Background(), log.TagAppDef, "stat %s failed: %v", path, err)
 		return nil, errutil.Explain(err, "file-watch: stat %s failed", path)
 	}
 
 	if info.IsDir() {
-		log.Errorf(context.Background(), starterTag, "file-watch expects a single file, got directory %s", path)
+		log.Errorf(context.Background(), log.TagAppDef, "file-watch expects a single file, got directory %s", path)
 		return nil, errutil.Explain(nil, "file-watch expects a single file, got directory %s (a directory of scalar key files belongs to the configtree provider)", path)
 	}
 
@@ -93,6 +93,6 @@ func (c *configFileController) Load(optional bool, source string) (map[string]st
 	}
 	m := flatten.Flatten(parsed)
 
-	log.Infof(context.Background(), starterTag, "loaded file-watch config from file=%s keys=%d", path, len(m))
+	log.Infof(context.Background(), log.TagAppDef, "loaded file-watch config from file=%s keys=%d", path, len(m))
 	return m, nil
 }

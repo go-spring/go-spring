@@ -55,8 +55,19 @@ type publisher struct {
 	subject string
 }
 
+// headerMsgKey carries the envelope's ordering key across NATS: core NATS
+// subjects have no key concept, so the binder round-trips msg.Key through a
+// reserved message header and restores it on consume.
+const headerMsgKey = "x-msg-key"
+
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	nm := &nats.Msg{Subject: p.subject, Data: msg.Payload, Header: toNatsHeader(msg.Headers)}
+	if msg.Key != "" {
+		if nm.Header == nil {
+			nm.Header = nats.Header{}
+		}
+		nm.Header.Set(headerMsgKey, msg.Key)
+	}
 	// Carry the load-test marker in the NATS message header so the consumer
 	// recognises synthetic load. NATS header Set canonicalises like net/http.
 	if traffic.IsLoadTest(ctx) {
@@ -135,8 +146,10 @@ func toNatsHeader(h map[string]string) nats.Header {
 	return nh
 }
 
-// fromNatsMsg builds a messaging.Message from a received nats.Msg, flattening
-// the multi-valued header into the single-valued envelope form (first value wins).
+// fromNatsMsg builds a messaging.Message from a received nats.Msg. The envelope
+// header form is single-valued, so a multi-valued NATS header keeps only its
+// first value; the transport-internal x-msg-key header is lifted into Message.Key
+// rather than exposed as an application header.
 func fromNatsMsg(nm *nats.Msg) *messaging.Message {
 	var headers map[string]string
 	if len(nm.Header) > 0 {
@@ -145,5 +158,7 @@ func fromNatsMsg(nm *nats.Msg) *messaging.Message {
 			headers[k] = nm.Header.Get(k)
 		}
 	}
-	return &messaging.Message{Payload: nm.Data, Headers: headers}
+	key := nm.Header.Get(headerMsgKey)
+	delete(headers, headerMsgKey)
+	return &messaging.Message{Key: key, Payload: nm.Data, Headers: headers}
 }

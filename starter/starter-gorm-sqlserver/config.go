@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
 	gormcore "go-spring.org/starter-gorm"
 )
 
@@ -40,17 +39,35 @@ type Config struct {
 
 	// Connect/dial timeouts. SQL Server has no DSN-level read/write timeout;
 	// per-operation deadlines are driven through context. A zero value leaves
-	// the driver default in place.
+	// the driver default in place. The DSN parameters take whole seconds, so
+	// sub-second durations round up to 1s rather than truncating to 0 (= no
+	// timeout).
 	DialTimeout    time.Duration `value:"${dialTimeout:=}"`    // TCP dial timeout
 	ConnectTimeout time.Duration `value:"${connectTimeout:=}"` // Login/connection timeout
 
-	// TLS uses the shared tlsconf.TLSConfig block (nested keys:
-	// tls.enabled, tls.insecure-skip-verify, tls.ca-file). SQL Server maps
-	// them onto DSN parameters rather than a *tls.Config: TLS.Enabled →
-	// "encrypt=true"; TLS.InsecureSkipVerify → "TrustServerCertificate=true";
-	// TLS.CAFile → "certificate" (a PEM server certificate / CA path). The
-	// CertFile/KeyFile fields are unused because the DSN has no client-cert slot.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	// TLS binds the tls.* keys the SQL Server DSN can actually express:
+	// tls.enabled → "encrypt=true", tls.insecure-skip-verify →
+	// "TrustServerCertificate=true", tls.ca-file → "certificate". The wider
+	// tlsconf.TLSConfig block is deliberately not used: its client-cert
+	// (cert-file/key-file) and server-name keys have no DSN slot here, so
+	// binding them would advertise dead configuration.
+	TLS TLSConfig `value:"${tls}"`
+}
+
+// TLSConfig is the SQL Server subset of the shared cloud/tlsconf block: only
+// the keys that map onto DSN parameters. mTLS (client certificates) is not
+// expressible through the sqlserver DSN; use a custom connector if you need it.
+type TLSConfig struct {
+	// Enabled turns on encryption ("encrypt=true").
+	Enabled bool `value:"${enabled:=false}"`
+
+	// InsecureSkipVerify maps to "TrustServerCertificate=true": trust the
+	// server's certificate without validating it against a CA. Dev/testing only.
+	InsecureSkipVerify bool `value:"${insecure-skip-verify:=false}"`
+
+	// CAFile is a PEM server certificate / CA path mapped to the DSN
+	// "certificate" parameter.
+	CAFile string `value:"${ca-file:=}"`
 }
 
 // DSN constructs the SQL Server Data Source Name based on the configuration.
@@ -70,11 +87,11 @@ func (c Config) DSN() string {
 
 	if c.DialTimeout != 0 {
 		sb.WriteString("&dial+timeout=")
-		sb.WriteString(strconv.Itoa(int(c.DialTimeout.Seconds())))
+		sb.WriteString(strconv.Itoa(ceilSeconds(c.DialTimeout)))
 	}
 	if c.ConnectTimeout != 0 {
 		sb.WriteString("&connection+timeout=")
-		sb.WriteString(strconv.Itoa(int(c.ConnectTimeout.Seconds())))
+		sb.WriteString(strconv.Itoa(ceilSeconds(c.ConnectTimeout)))
 	}
 	if c.TLS.Enabled {
 		sb.WriteString("&encrypt=true")
@@ -87,4 +104,14 @@ func (c Config) DSN() string {
 		}
 	}
 	return sb.String()
+}
+
+// ceilSeconds rounds a positive duration up to whole seconds. The DSN timeout
+// parameters accept integers only; truncating would turn a sub-second timeout
+// into 0, which the driver reads as "no timeout".
+func ceilSeconds(d time.Duration) int {
+	if d <= 0 {
+		return 0
+	}
+	return int((d + time.Second - 1) / time.Second)
 }

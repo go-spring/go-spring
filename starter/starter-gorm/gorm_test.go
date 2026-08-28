@@ -109,12 +109,14 @@ func withCustomizers(t *testing.T, fs ...DBCustomizer) {
 
 func TestCommonPool(t *testing.T) {
 	c := Common{
-		MaxOpenConns:    10,
-		MaxIdleConns:    5,
-		ConnMaxLifetime: time.Hour,
-		ConnMaxIdleTime: 30 * time.Minute,
-		PingTimeout:     2 * time.Second,
-		SlowThreshold:   100 * time.Millisecond,
+		PoolSettings: PoolSettings{
+			MaxOpenConns:    10,
+			MaxIdleConns:    5,
+			ConnMaxLifetime: time.Hour,
+			ConnMaxIdleTime: 30 * time.Minute,
+			PingTimeout:     2 * time.Second,
+			SlowThreshold:   100 * time.Millisecond,
+		},
 	}
 	p := c.Pool()
 	if p.MaxOpenConns != 10 || p.MaxIdleConns != 5 || p.ConnMaxLifetime != time.Hour ||

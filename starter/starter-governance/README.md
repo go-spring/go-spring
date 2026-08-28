@@ -68,3 +68,13 @@ govern.source.http.headers.authorization=Bearer xxx
 ```
 
 控制台短暂不可用（fetch 失败/非 200/坏文档）保留上一份好配置；文档变更经 DeepEqual 去重后推送。
+### Log tag
+
+Runtime logs from this module carry the tag `_app_governance` (governance center). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.governance.type=Logger
+logger.governance.level=WARN
+logger.governance.tag=_app_governance
+```

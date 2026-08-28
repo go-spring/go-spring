@@ -261,7 +261,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			name:    "invalid syntax extra comma",
-			input:   `Logger { level = "info", , output = "stdout" }`,
+			input:   `Logger { level = "info", log.TagAppDef, output = "stdout" }`,
 			wantErr: true,
 		},
 		{

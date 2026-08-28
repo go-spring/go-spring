@@ -31,4 +31,11 @@ type Config struct {
 	// starter-otel. It defaults to true and costs almost nothing without
 	// starter-otel, since the global tracer is then a no-op.
 	Tracing bool `value:"${tracing:=true}"`
+
+	// RecoverOnStart enables the startup crash-recovery scan: a gs.Runner reads
+	// every AT-enrolled database's at_undo_log table and replays (rolls back) the
+	// undo logs a crash left behind. In this starter's single-process model any
+	// row found at boot is an orphan. Set it to false when the database is shared
+	// with other processes and reconciliation is handled externally.
+	RecoverOnStart bool `value:"${recover-on-start:=true}"`
 }

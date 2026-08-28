@@ -31,12 +31,12 @@ import (
 
 func TestTTLSeconds(t *testing.T) {
 	// Whole seconds pass through.
-	assert.That(t, ttlSeconds(30 * time.Second)).Equal(30)
-	assert.That(t, ttlSeconds(15 * time.Second)).Equal(15)
+	assert.That(t, ttlSeconds(30*time.Second)).Equal(30)
+	assert.That(t, ttlSeconds(15*time.Second)).Equal(15)
 	// Sub-second values round up to the one-second floor etcd requires.
-	assert.That(t, ttlSeconds(500 * time.Millisecond)).Equal(1)
-	assert.That(t, ttlSeconds(1500 * time.Millisecond)).Equal(2)
-	assert.That(t, ttlSeconds(10 * time.Millisecond)).Equal(1)
+	assert.That(t, ttlSeconds(500*time.Millisecond)).Equal(1)
+	assert.That(t, ttlSeconds(1500*time.Millisecond)).Equal(2)
+	assert.That(t, ttlSeconds(10*time.Millisecond)).Equal(1)
 	// Zero/negative falls back to the 30s package default.
 	assert.That(t, ttlSeconds(0)).Equal(30)
 	assert.That(t, ttlSeconds(-time.Second)).Equal(30)
@@ -49,8 +49,8 @@ func TestDefaults_OnlyTTL(t *testing.T) {
 	l := &etcdLocker{defaults: lock.Defaults{TTL: 45 * time.Second}}
 
 	o := lock.Resolve(l.defaults)
-	assert.That(t, o.TTL).Equal(45 * time.Second)      // starter default applied
-	assert.That(t, o.RenewInterval).Equal(o.TTL / 3)   // package default, not a starter one
+	assert.That(t, o.TTL).Equal(45 * time.Second)    // starter default applied
+	assert.That(t, o.RenewInterval).Equal(o.TTL / 3) // package default, not a starter one
 	assert.That(t, o.RetryInterval).Equal(100 * time.Millisecond)
 
 	// A per-call WithTTL always wins over the starter default.

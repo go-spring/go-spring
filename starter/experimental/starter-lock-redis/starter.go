@@ -27,7 +27,9 @@
 // no business code changes.
 //
 // The Locker bean is registered under its config name and exported as
-// lock.Locker, so callers inject it by interface:
+// lock.Locker, so callers inject it by interface. The bean is wrapped with the
+// observe-lock adapter by default (trace span + metric + access log); set
+// spring.lock.<name>.observe.enabled=false for the bare locker:
 //
 //	type Service struct {
 //	    Lock lock.Locker `autowire:"jobs"`
@@ -39,14 +41,11 @@ package StarterLockRedis
 
 import (
 	"go-spring.org/cloud/experimental/lock"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("lock_redis", "")
 
 func init() {
 	gs.Module(gs.OnProperty("spring.lock"), func(r gs.BeanProvider, p flatten.Storage) error {
@@ -59,30 +58,23 @@ func init() {
 					name, "spring.lock."+name+".client")
 			}
 			// TagArg injects the *redis.Client bean by name — this is the
-			// seam that ties the Locker to a specific redis instance.
-			r.Provide(newRedisLocker, gs.ValueArg(c), gs.TagArg(c.Client)).
+			// seam that ties the Locker to a specific redis instance. The bean
+			// is wrapped with the observe-lock adapter by default (see
+			// newLocker); observe.enabled=false opts out. There is no separate
+			// "<name>-observed" bean — the primary name is already observed.
+			r.Provide(newLocker, gs.ValueArg(c), gs.TagArg(c.Client)).
 				Name(name).
 				Export(gs.As[lock.Locker]()).
 				Destroy(destroyLocker).
 				Caller(1)
-
-			if c.Observer.Tracing.Enabled {
-				// Wrap the LOCKER bean (named `name`), not the redis client —
-				// wrapLockerBean's inner param is lock.Locker. Binding by c.Client
-				// (the *redis.Client bean name) was a copy-paste from newRedisLocker
-				// above and would fail wiring when tracing is enabled.
-				r.Provide(wrapLockerBean, gs.ValueArg(c), gs.TagArg(name)).
-					Name(name + "-observed").
-					Export(gs.As[lock.Locker]()).
-					Caller(1)
-			}
 			return nil
 		})
 	})
 }
 
 // destroyLocker stops background renew goroutines. It never touches the
-// injected *redis.Client — starter-go-redis owns that lifecycle.
-func destroyLocker(l *redisLocker) error {
+// injected *redis.Client — starter-go-redis owns that lifecycle. The bean is a
+// lock.Locker (possibly observe-wrapped); Close passes through the wrapper.
+func destroyLocker(l lock.Locker) error {
 	return l.Close()
 }

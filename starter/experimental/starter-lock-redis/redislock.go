@@ -75,8 +75,8 @@ type redisLocker struct {
 // The client's lifecycle (Ping, Close, ...) is owned by starter-go-redis;
 // this locker never closes it.
 func newRedisLocker(ctx *gs.ContextProvider, c Config, client *redis.Client) (*redisLocker, error) {
-	log.Debugf(ctx.Context, starterTag, "creating redis locker, client=%s key-prefix=%s", c.Client, c.KeyPrefix)
-	log.Infof(ctx.Context, starterTag, "redis locker initialized, client=%s", c.Client)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating redis locker, client=%s key-prefix=%s", c.Client, c.KeyPrefix)
+	log.Infof(ctx.Context, log.TagAppDef, "redis locker initialized, client=%s", c.Client)
 	return &redisLocker{
 		cfg:    c,
 		client: client,

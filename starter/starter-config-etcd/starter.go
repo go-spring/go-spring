@@ -58,7 +58,7 @@ func init() {
 // etcdController is the global singleton. It is referenced only from the init
 // function; all other code operates on the receiver without touching this global.
 var (
-	starterTag     = log.RegisterAppTag("starter_config_etcd", "")
+	starterTag     = log.RegisterAppTag("config_etcd", "")
 	etcdController = &etcdCtrl{}
 )
 
@@ -78,7 +78,10 @@ type etcdCtrl struct {
 // the initial config load already captured the state.
 func (c *etcdCtrl) TriggerRefresh() {
 	if c.Refresher != nil {
-		_ = c.Refresher.RefreshProperties()
+		if err := c.Refresher.RefreshProperties(); err != nil {
+			log.Warnf(context.Background(), starterTag,
+				"property refresh after etcd change failed, stale snapshot retained: %v", err)
+		}
 	}
 }
 
@@ -183,7 +186,7 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 		return nil, err
 	}
 
-	c.registerWatcher(cli, cs)
+	c.registerWatcher(cli, cs, optional)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -217,8 +220,11 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 }
 
 // registerWatcher installs an etcd change watcher for the given key,
-// deduplicated across repeated Load calls.
-func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource) {
+// deduplicated across repeated Load calls. optional records whether the import
+// declared the key optional: deleting an optional key is an expected transition
+// (its properties simply disappear), while deleting a required one leaves the
+// last snapshot in place, which the watcher surfaces as a warning.
+func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, optional bool) {
 	lk := clientKey(cs) + "|" + cs.key
 
 	c.mu.Lock()
@@ -235,6 +241,16 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource) {
 	ch := cli.Watch(context.Background(), cs.key)
 	go func() {
 		for wr := range ch {
+			deleted := false
+			for _, ev := range wr.Events {
+				if ev.Type == clientv3.EventTypeDelete {
+					deleted = true
+				}
+			}
+			if deleted && !optional {
+				log.Warnf(context.Background(), starterTag,
+					"etcd key %s deleted; stale snapshot retained until the key is restored", cs.key)
+			}
 			if len(wr.Events) > 0 {
 				c.TriggerRefresh()
 			}

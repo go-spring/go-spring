@@ -21,7 +21,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -95,39 +94,6 @@ func get(t *testing.T, url, authorization string) (int, string) {
 	return doReq(t, req)
 }
 
-func TestIsLoopback(t *testing.T) {
-	// Plain loopback IPs and "localhost" are loopback.
-	assert.That(t, isLoopback("127.0.0.1:9981")).True()
-	assert.That(t, isLoopback("[::1]:9981")).True()
-	assert.That(t, isLoopback("localhost:9981")).True()
-	// Wildcard and public addresses are not: they accept off-host traffic.
-	assert.That(t, isLoopback(":9981")).False()
-	assert.That(t, isLoopback("0.0.0.0:9981")).False()
-	assert.That(t, isLoopback("10.0.0.1:9981")).False()
-	// A bare host without a port still classifies.
-	assert.That(t, isLoopback("127.0.0.1")).True()
-}
-
-func TestTokenMatches(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/debug/pprof/?token=secret", nil)
-	// The token query parameter authenticates.
-	assert.That(t, tokenMatches(req, "secret")).True()
-	assert.That(t, tokenMatches(req, "wrong")).False()
-	// A bearer header authenticates when it matches.
-	req.Header.Set("Authorization", "Bearer secret")
-	assert.That(t, tokenMatches(req, "secret")).True()
-	// A mismatched header falls back to the query parameter, so a valid
-	// ?token= still authenticates.
-	req.Header.Set("Authorization", "Bearer wrong")
-	assert.That(t, tokenMatches(req, "secret")).True()
-	// A non-bearer header is ignored; only the query parameter decides.
-	req.Header.Set("Authorization", "secret")
-	assert.That(t, tokenMatches(req, "secret")).True()
-	// With neither matching, the request is rejected.
-	req.Header.Set("Authorization", "Bearer wrong")
-	assert.That(t, tokenMatches(req, "other")).False()
-}
-
 func TestPProfEndpointsNoAuth(t *testing.T) {
 	// Loopback binding without any auth: the guard is a no-op and every
 	// pprof endpoint is reachable.
@@ -169,9 +135,9 @@ func TestPProfTokenAuth(t *testing.T) {
 	code, _ = get(t, base+"/debug/pprof/", "Bearer s3cret")
 	assert.That(t, code).Equal(http.StatusOK)
 
-	// The ?token= query parameter authenticates too.
+	// The token query parameter is NOT accepted: only the header form is.
 	code, _ = get(t, base+"/debug/pprof/?token=s3cret", "")
-	assert.That(t, code).Equal(http.StatusOK)
+	assert.That(t, code).Equal(http.StatusUnauthorized)
 
 	// Token takes precedence: Basic credentials do not satisfy it.
 	req, err := http.NewRequest(http.MethodGet, base+"/debug/pprof/", nil)

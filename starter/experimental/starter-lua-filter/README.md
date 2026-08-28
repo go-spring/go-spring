@@ -106,3 +106,13 @@ core filter behaviors:
   so a bad edit never takes down the filter.
 * **Resource cleanup**: the starter registers a destroy callback that closes every
   pooled `*lua.LState` on shutdown, releasing the VMs the filter created.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_lua_filter` (lua filter). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.lua_filter.type=Logger
+logger.lua_filter.level=WARN
+logger.lua_filter.tag=_app_lua_filter
+```

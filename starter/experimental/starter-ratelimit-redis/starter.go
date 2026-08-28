@@ -52,11 +52,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var (
-	// starterTag identifies logs emitted by the ratelimit redis starter.
-	starterTag = log.RegisterAppTag("starter_ratelimit_redis", "")
-)
-
 func init() {
 	gs.Module(gs.OnProperty("spring.ratelimit.redis"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.ratelimit.redis}", func(name string, c Config) error {
@@ -70,12 +65,20 @@ func init() {
 			if driver == "" {
 				driver = name
 			}
-			log.Debugf(context.Background(), starterTag, "creating redis limiter driver instance=%s driver=%s client=%s", name, driver, c.Client)
+			// Fail fast on a driver name claimed by another instance of THIS
+			// starter: two instances sharing one name would silently share a
+			// single limiter (the registry only panics on cross-module
+			// duplicates), hiding the misconfiguration until rate limits bleed
+			// across instances in production.
+			if err := claimDriverName(driver, name); err != nil {
+				return err
+			}
+			log.Debugf(context.Background(), log.TagAppDef, "creating redis limiter driver instance=%s driver=%s client=%s", name, driver, c.Client)
 			// TagArg injects the *redis.Client bean by name — the seam that ties
 			// this driver to a specific redis instance. The ctor registers the
 			// driver in the resilience limiter registry under `driver`; Export
 			// makes the bean root-reachable so the registration always runs.
-			r.Provide(func(client *goredis.Client) *Driver {
+			r.Provide(func(client *goredis.Client) (*Driver, error) {
 				return driverFor(driver, client)
 			}, gs.TagArg(c.Client)).
 				Name(name).

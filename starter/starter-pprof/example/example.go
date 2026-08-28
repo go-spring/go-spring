@@ -56,7 +56,7 @@ func main() {
 	// by default and requires the configured token):
 	//
 	// ~ curl -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:9981/debug/pprof/
-	// ~ curl 'http://127.0.0.1:9981/debug/pprof/heap?token=s3cr3t'
+	// ~ curl -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:9981/debug/pprof/heap
 	// ~ curl http://127.0.0.1:9981/debug/pprof/cmdline   # -> 401 Unauthorized
 }
 

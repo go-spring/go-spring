@@ -26,8 +26,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("rabbitmq", "")
-
 func init() {
 
 	// Register multiple RabbitMQ connections as a group.
@@ -55,27 +53,29 @@ func init() {
 // go-spring's log so broker-driven events land alongside app logs, and finally
 // the resilience executor is attached.
 func newClient(ctx *gs.ContextProvider, name string, c Config) (*amqp.Connection, error) {
-	log.Debugf(ctx.Context, starterTag, "creating rabbitmq connection, url=%s vhost=%s", c.URL, c.Vhost)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating rabbitmq connection, url=%s vhost=%s", c.URL, c.Vhost)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "rabbitmq driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "rabbitmq driver not found: %s", c.Driver)
 	}
 	conn, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "rabbitmq: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create rabbitmq client: %s", c.URL)
 	}
 
 	// Confirm the AMQP channel layer is usable, not just the TCP handshake.
 	ch, err := conn.Channel()
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "rabbitmq: open probe channel failed url=%s: %v", c.URL, err)
+		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: open probe channel failed url=%s: %v", c.URL, err)
 		_ = conn.Close()
 		return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
 	}
-	_ = ch.Close()
+	if err := ch.Close(); err != nil {
+		log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq: close probe channel failed url=%s: %v", c.URL, err)
+	}
 
 	// Bridge connection-level events into go-spring's log. NotifyClose fires
 	// once when the connection tears down (server-initiated or network drop);
@@ -104,9 +104,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (*amqp.Connection
 		}
 	}()
 
-	log.Infof(ctx.Context, starterTag, "rabbitmq connection initialized, url=%s", c.URL)
+	log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection initialized, url=%s", c.URL)
 	if err := applyResilience(c, conn, resilience.ResourceLabel("rabbitmq", c.Vhost, c.URL)); err != nil {
-		log.Errorf(ctx.Context, starterTag, "rabbitmq: resilience setup failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: resilience setup failed: %v", err)
 		_ = conn.Close()
 		return nil, err
 	}

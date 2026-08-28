@@ -72,6 +72,29 @@ var (
 )
 ```
 
+#### When to register a custom tag
+
+Most users never care about log tags, and that is by design: an unconfigured tag falls back to the
+default logger, which is the baseline behavior — not a degraded one. A tag is not a module identity;
+it is a tuning handle. Register a custom tag only when you can answer the question
+"who needs to adjust these logs independently of the main log?" Concretely:
+
+1. **Default to `log.TagAppDef` / `log.TagBizDef`.** One-off assembly, lifecycle, and error logs —
+   the vast majority of framework and starter logs — belong here. Do not register a tag just
+   because "this is a module".
+2. **Register a custom tag only for log populations that need independent tuning**: access logs
+   (high volume, separately sampled or sinked), retry/circuit-breaker events, background relays,
+   or logs bridged in from a third-party framework (use `RegisterRPCTag` to keep them contained).
+   If you cannot name the operator who would tune it, use the default tag.
+3. **A registered tag is a public configuration contract.** `logger.<tag>.*` becomes user-visible
+   configuration and must be documented (e.g. in the starter README); a tag that is not documented
+   should not exist.
+
+Naming: `subType` is a short technology or product name (no `starter_` or family prefixes — the
+`_app_` prefix already conveys that, and the 4-segment budget is scarce); the optional `action`
+distinguishes multiple log populations within the same module (e.g. `gin` `access` vs. lifecycle),
+and is left empty otherwise.
+
 ### Logger
 
 A `Logger` is the component that actually processes logs. Different tags can be matched to different loggers,

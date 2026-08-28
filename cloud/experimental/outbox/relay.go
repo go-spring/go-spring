@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/log"
 )
 
 // Relay drains a [Store] to a broker through a [messaging.Binder]. Run it on
@@ -35,13 +36,12 @@ import (
 // need per-entity ordering should set Record.Key so the broker keeps same-key
 // messages ordered.
 type Relay struct {
-	store   Store
-	binder  messaging.Binder
-	cfg     Config
-	obs     []Observer
-	pubsMu  sync.Mutex
-	pubs    map[string]messaging.Publisher // destination → publisher, lazily opened
-	pubOnce sync.Once
+	store  Store
+	binder messaging.Binder
+	cfg    Config
+	obs    []Observer
+	pubsMu sync.Mutex
+	pubs   map[string]messaging.Publisher // destination → publisher, lazily opened
 }
 
 // NewRelay assembles a Relay over store and binder with cfg normalized to its
@@ -111,8 +111,10 @@ func (r *Relay) Run(ctx context.Context) error {
 func (r *Relay) runBatch(ctx context.Context) error {
 	recs, err := r.store.Fetch(ctx, time.Now(), r.cfg.BatchSize)
 	if err != nil {
-		// A failing store is surfaced by the caller (observer/log); the relay
-		// keeps polling rather than crashing the process.
+		// A failing store must not crash the process — the relay keeps
+		// polling — but it must not be silent either: a dead database would
+		// otherwise be indistinguishable from an idle relay.
+		log.Errorf(ctx, log.TagAppDef, "outbox relay: fetch failed (keep polling): %v", err)
 		return nil
 	}
 	for i := range recs {

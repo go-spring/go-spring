@@ -38,7 +38,7 @@ spring.gorm.postgres.primary.sslmode=disable
 import "gorm.io/gorm"
 
 type Service struct {
-    DB *gorm.DB `autowire:""`
+    DB *starter.DB `autowire:"primary"` // wrapper embedding *gorm.DB
 }
 ```
 

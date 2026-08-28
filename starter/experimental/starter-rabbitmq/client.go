@@ -65,7 +65,7 @@ func (b *binder) NewPublisher(_ context.Context, destination string) (messaging.
 		_ = ch.Close()
 		return nil, err
 	}
-	return &publisher{ch: ch, queue: destination}, nil
+	return &publisher{conn: b.conn, ch: ch, queue: destination}, nil
 }
 
 func (b *binder) NewSubscriber(_ context.Context, source, _ string) (messaging.Subscriber, error) {
@@ -80,8 +80,11 @@ func (b *binder) NewSubscriber(_ context.Context, source, _ string) (messaging.S
 	return &subscriber{ch: ch, queue: source}, nil
 }
 
-// publisher sends envelopes to a fixed queue via the default exchange.
+// publisher sends envelopes to a fixed queue via the default exchange. It holds
+// the owning connection so Publish can resolve the connection-scoped resilience
+// executor (channels carry no identity of their own).
 type publisher struct {
+	conn  *amqp.Connection
 	ch    *amqp.Channel
 	queue string
 }
@@ -101,7 +104,10 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		pub.Headers[traffic.MetaKeyLoadTest] = "1"
 	}
 	ctx, sp := startPublish(ctx, p.queue, &pub)
-	err := p.ch.PublishWithContext(ctx, "", p.queue, false, false, pub)
+	// Route through the same resilience executor the raw client API uses
+	// (GuardedPublish): a no-op pass-through when governance is off for this
+	// connection, a rejection sentinel when rate-limited/circuit-open.
+	err := GuardedPublish(ctx, p.conn, p.ch, "", p.queue, false, false, pub)
 	sp.End(err)
 	return err
 }
@@ -140,9 +146,12 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 			sp.End(herr)
 			if herr != nil {
 				log.Errorf(msgCtx, log.TagAppDef, "rabbitmq binder handler error on %q: %v", s.queue, herr)
-				_ = d.Nack(false, true)
-			} else {
-				_ = d.Ack(false)
+				if err := d.Nack(false, true); err != nil {
+					log.Warnf(msgCtx, log.TagAppDef, "rabbitmq: nack failed on %q, message may be redelivered: %v", s.queue, err)
+				}
+			} else if err := d.Ack(false); err != nil {
+				// A failed ack means the broker will redeliver the message.
+				log.Warnf(msgCtx, log.TagAppDef, "rabbitmq: ack failed on %q, message may be redelivered: %v", s.queue, err)
 			}
 		}
 	}()

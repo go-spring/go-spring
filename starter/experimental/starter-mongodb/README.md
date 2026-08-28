@@ -31,13 +31,13 @@ spring.mongodb.b.uri=mongodb://127.0.0.1:27017
 
 ### 3. Inject the MongoDB Instance
 
-Each named instance is registered as a `*mongo.Client` bean under that name; inject the one you need by name.
+Each named instance is registered as a `*StarterMongoDB.Client` bean under that name (it embeds the concrete `*mongo.Client`, so every driver method promotes unchanged); inject the one you need by name.
 
 ```go
-import "go.mongodb.org/mongo-driver/v2/mongo"
+import StarterMongoDB "go-spring.org/starter-mongodb"
 
 type Service struct {
-    Mongo *mongo.Client `autowire:"a"`
+    Mongo *StarterMongoDB.Client `autowire:"a"` // embeds *mongo.Client
 }
 ```
 
@@ -60,7 +60,7 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
 ## Advanced Features
 
 * **Multiple MongoDB instances**: Every entry under `spring.mongodb`
-  becomes an independently configured `*mongo.Client` bean; inject them by name to
+  becomes an independently configured `*StarterMongoDB.Client` bean; inject them by name to
   talk to different clusters or databases.
 
 * **Observability**: each client is bridged into go-spring's unified

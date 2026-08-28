@@ -31,8 +31,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("kafka", "")
-
 func init() {
 	// Register multiple Kafka clients as a group.
 	// Each instance is created according to the configuration in "${spring.kafka}".
@@ -62,32 +60,32 @@ const pingTimeout = 10 * time.Second
 // credentials or TLS mismatch fail fast at startup instead of surfacing on the
 // first produce/consume, then the resilience executor is attached.
 func newClient(ctx *gs.ContextProvider, name string, c Config) (*kgo.Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "kafka driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "kafka driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "kafka driver not found: %s", c.Driver)
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "kafka: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "kafka: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 
 	pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 	defer cancel()
 	if err = cl.Ping(pingCtx); err != nil {
-		log.Errorf(ctx.Context, starterTag, "kafka: ping failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "kafka: ping failed: %v", err)
 		cl.Close()
 		return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
 	}
 	if err := applyResilience(c, cl, resilience.ResourceLabel("kafka", c.Brokers)); err != nil {
-		log.Errorf(ctx.Context, starterTag, "kafka: resilience setup failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "kafka: resilience setup failed: %v", err)
 		cl.Close()
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "kafka client initialized, brokers=%s", c.Brokers)
+	log.Infof(ctx.Context, log.TagAppDef, "kafka client initialized, brokers=%s", c.Brokers)
 	return cl, nil
 }
 
@@ -98,7 +96,14 @@ func destroyClient(cl *kgo.Client) error {
 	closeResilience(cl)
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
-	_ = cl.Flush(ctx)
+	flushErr := cl.Flush(ctx)
 	cl.Close()
+	if flushErr != nil {
+		// A failed flush means buffered produce records were never delivered:
+		// those messages are lost, so shutdown must not swallow the error.
+		log.Errorf(context.Background(), log.TagAppDef,
+			"kafka: flush before close failed, buffered messages may be LOST: %v", flushErr)
+		return flushErr
+	}
 	return nil
 }

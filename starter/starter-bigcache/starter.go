@@ -35,8 +35,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-var starterTag = log.RegisterAppTag("bigcache", "")
-
 func init() {
 	// Register multiple BigCache instances as a group, one per entry under
 	// "${spring.bigcache}". A gs.Module (rather than gs.Group) is used so each
@@ -82,22 +80,22 @@ func init() {
 // wrapped so Get/Set/Delete flow through the observe kit, and registers OTel
 // gauges for its statistics, labeled by the instance name.
 func newClient(ctx *gs.ContextProvider, name string, c Config) (*Cache, error) {
-	log.Debugf(ctx.Context, starterTag, "creating bigcache instance, name=%s shards=%d max-size=%d", name, c.Shards, c.MaxEntrySize)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating bigcache instance, name=%s shards=%d max-size=%d", name, c.Shards, c.MaxEntrySize)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "bigcache driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "bigcache driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "bigcache driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "bigcache: create instance failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "bigcache: create instance failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create bigcache instance")
 	}
 	// Surface hits/misses/collisions/capacity as OTel gauges. Safe no-op when
 	// starter-otel is absent (the OTel globals are no-ops then).
 	registerMetrics(name, client)
-	log.Infof(ctx.Context, starterTag, "bigcache instance initialized, name=%s shards=%d", name, c.Shards)
+	log.Infof(ctx.Context, log.TagAppDef, "bigcache instance initialized, name=%s shards=%d", name, c.Shards)
 	// Return the wrapper; gs field-injects Resilience (gs.Dync, hot-reloadable)
 	// + Observability after this returns, then calls Init (InitMethod)
 	// to build the observer + executor.

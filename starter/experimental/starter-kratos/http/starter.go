@@ -48,8 +48,6 @@ import (
 	"go-spring.org/starter-kratos/internal/logger"
 )
 
-var kratosHTTPTag = log.RegisterAppTag("kratos_http", "starter")
-
 func init() {
 	gs.Provide(NewHttpServer, gs.IndexArg(0, gs.TagArg("${spring.kratos.http.server}"))).
 		Export(gs.As[gs.Server]()).
@@ -100,7 +98,7 @@ type HttpServer struct {
 // the registered ServiceRegister bean. The kratos logger bridges framework logs
 // into go-spring's log module (see internal/logger).
 func NewHttpServer(cfg Config, reg ServiceRegister) *HttpServer {
-	log.Debugf(context.Background(), kratosHTTPTag, "kratos http server created name=%s addr=%s network=%s timeout=%s",
+	log.Debugf(context.Background(), log.TagAppDef, "kratos http server created name=%s addr=%s network=%s timeout=%s",
 		cfg.Name, cfg.Addr, cfg.Network, cfg.Timeout)
 	return &HttpServer{cfg: cfg, reg: reg, log: logger.NewLogger(), done: make(chan struct{})}
 }
@@ -167,7 +165,7 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, kratosHTTPTag, "kratos http server starting on %s", s.cfg.Addr)
+	log.Infof(ctx, log.TagAppDef, "kratos http server starting on %s", s.cfg.Addr)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- s.app.Run()
@@ -176,7 +174,7 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			log.Errorf(ctx, kratosHTTPTag, "kratos http app exited with error: %v", err)
+			log.Errorf(ctx, log.TagAppDef, "kratos http app exited with error: %v", err)
 		}
 		return errutil.Explain(err, "kratos http app exited with error")
 	case <-s.done:
@@ -194,7 +192,7 @@ func (s *HttpServer) Stop() error {
 // its shutdown sequence. The App teardown itself is driven by Run via
 // app.Stop() (which takes no context), so ctx only tags the shutdown log.
 func (s *HttpServer) StopContext(ctx context.Context) error {
-	log.Infof(ctx, kratosHTTPTag, "kratos http server shutting down on %s", s.cfg.Addr)
+	log.Infof(ctx, log.TagAppDef, "kratos http server shutting down on %s", s.cfg.Addr)
 	close(s.done)
 	return nil
 }

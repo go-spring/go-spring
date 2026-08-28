@@ -93,3 +93,13 @@ func init() {
     StarterInfluxdb.RegisterDriver("v1-compat", v1CompatDriver{})
 }
 ```
+### Log tag
+
+Runtime logs from this module carry the tag `_app_influxdb` (influxdb starter). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.influxdb.type=Logger
+logger.influxdb.level=WARN
+logger.influxdb.tag=_app_influxdb
+```

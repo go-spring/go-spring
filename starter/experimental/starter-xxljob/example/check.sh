@@ -17,7 +17,9 @@ wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
 
-if [ "${rc}" -ne 0 ] || ! grep -q "xxl-job round trip OK:" smoke.out; then
+if [ "${rc}" -ne 0 ] || ! grep -q "xxl-job round trip OK:" smoke.out \
+    || ! grep -q "kill round trip OK:" smoke.out \
+    || ! grep -q "callback shape OK:" smoke.out; then
     cat smoke.out >&2 || true
     rm -f smoke.out
     exit 1

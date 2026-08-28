@@ -25,11 +25,24 @@ import "time"
 // It is a value struct (not a bean): the container binds it, the Server holds
 // it, and no other consumer needs to inject it.
 type Config struct {
-	// Addr is the listen address for the Admin UI HTTP server. It defaults to
-	// :9280 — distinct from the application's main HTTP server (:9090), the
-	// actuator management port (:9370), and pprof (127.0.0.1:9981) — so all
-	// four can coexist in a single process during local development.
-	Addr string `value:"${addr:=:9280}"`
+	// Addr is the listen address for the Admin UI HTTP server. There is no
+	// default: setting this key is what activates the starter (matching
+	// starter-actuator's spring.actuator.addr contract). Documented layout:
+	// main HTTP server (:9090), actuator (:9370), admin UI (:9280), pprof
+	// (127.0.0.1:9981), so all four can coexist in a single process.
+	Addr string `value:"${addr:=}"`
+
+	// Token, when set, requires each request to present it as an
+	// "Authorization: Bearer <token>" header. Takes precedence over
+	// Username/Password. The dashboard aggregates operational detail (build
+	// revisions, component errors), so on a non-loopback Addr it should be
+	// protected by Token or Username+Password — otherwise startup logs a
+	// warning.
+	Token string `value:"${token:=}"`
+
+	// Username and Password, when both set, require HTTP Basic authentication.
+	Username string `value:"${username:=}"`
+	Password string `value:"${password:=}"`
 
 	// Instances is the list of actuator base URLs the UI polls, e.g.
 	// "http://10.0.0.1:9370". Empty is intentionally allowed: an operator may

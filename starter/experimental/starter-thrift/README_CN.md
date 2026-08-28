@@ -87,7 +87,9 @@ gs.Provide(func(c *Controller) thrift.TProcessor {
 Starter 通过 `NewTSimpleServer4` 构建服务端，同时暴露协议工厂与传输工厂：
 
 - **协议**（`spring.thrift.server.protocol`）：`binary`（默认）、
-  `compact`、`json`。客户端的协议工厂必须与之匹配。
+  `compact`、`json`、`header`。`header`（THeaderProtocol）自带帧和消息头，
+  是唯一支持 W3C trace 传播的模式，搭配 `transport=none`。客户端的协议工厂
+  必须与之匹配。
 - **传输**（`spring.thrift.server.transport`）：`none`（裸 socket，
   历史默认值）、`buffered`、`framed`。`framed` 会为每条消息添加长度
   前缀，很多跨语言客户端要求使用它。客户端的传输必须与之匹配。
@@ -103,8 +105,22 @@ Go 版 Thrift 库只提供 `TSimpleServer`。虽然名字叫 "Simple"，它的
 goroutine 的并发模型。`THsHaServer` / `TThreadPoolServer` 是 Java/C++
 的概念，Go 库并不提供 —— 不存在可切换的"多线程 server"。
 
+## 边界声明
+
+本 starter 有意做成仓内最薄的协议家族：
+
+- **没有优雅排空**：`TSimpleServer.Stop` 关闭 transport、打断 accept 循环，
+  但不等待在途连接。关停语义是"停止 accept、丢弃滞留者"。
+- **没有 fault 注入 / resilience 准入 / governance 挂点**，也不会加。
+- **trace 传播仅 `protocol=header` 可用**：THeaderProtocol 自带消息头，
+  W3C trace-context 传播可用。`binary`/`compact`/`json` 线上格式没有 header
+  通道，要加必须自定义协议信封（破坏性线上变更），因此这些模式下每个请求
+  都是新的根 span。
+
+生产级 thrift（排空、治理、更完整的协议支持）请用成熟框架——如
+`contrib/kitex` 的 kitex。
+
 ## 说明
 
-- Starter 监听地址由 `${spring.thrift.server.addr}` 决定，默认 `:9292`。
-- Thrift 服务器默认开启，可通过 `spring.thrift.server.enabled=false` 关闭。
+- Starter 监听地址由 `${spring.thrift.server.addr}` 决定——无默认值；设置该 key 即注册 server bean（不存在 `enabled` key）。
 - 只需要注册一个 `thrift.TProcessor` Bean 即可激活整个服务器。

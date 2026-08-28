@@ -13,6 +13,12 @@
     },
     "protocol": {
       "type": "string",
+      "enum": [
+        "binary",
+        "compact",
+        "json",
+        "header"
+      ],
       "default": "binary"
     },
     "transport": {
@@ -25,6 +31,33 @@
     },
     "tls": {
       "type": "object"
+    },
+    "observer": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "tracing": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
     }
   }
 }

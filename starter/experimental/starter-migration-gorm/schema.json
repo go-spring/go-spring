@@ -16,8 +16,8 @@
       "default": ""
     },
     "baseline": {
-      "type": "object",
-      "default": "0"
+      "type": "integer",
+      "default": 0
     },
     "allow-out-of-order": {
       "type": "boolean",

@@ -47,11 +47,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var (
-	// starterTag identifies logs emitted by the batch redis starter.
-	starterTag = log.RegisterAppTag("starter_batch_redis", "")
-)
-
 func init() {
 	gs.Module(gs.OnProperty("spring.batch-repository"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.batch-repository}", func(name string, c Config) error {
@@ -63,7 +58,7 @@ func init() {
 				return errutil.Explain(nil, "batch-redis: instance %q missing required property %q",
 					name, "spring.batch-repository."+name+".client")
 			}
-			log.Debugf(context.Background(), starterTag, "creating batch redis repository name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
+			log.Debugf(context.Background(), log.TagAppDef, "creating batch redis repository name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
 			// TagArg injects the *redis.Client bean by name — this is the
 			// seam that ties the JobRepository to a specific redis instance.
 			r.Provide(newRedisRepository, gs.ValueArg(c), gs.TagArg(c.Client)).

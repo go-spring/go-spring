@@ -48,6 +48,27 @@ type TriggerResponse struct {
 	} `json:"content"`
 }
 
+// KillParam is the /kill request body the admin POSTs to the executor.
+type KillParam struct {
+	JobID int64 `json:"jobId"`
+}
+
+// IdleBeatParam is the /idleBeat request body the admin POSTs to the executor.
+type IdleBeatParam struct {
+	JobID int64 `json:"jobId"`
+}
+
+// HandleCallbackParam is one entry of the JSON array the executor POSTs to the
+// admin's /api/callback when a task completes. This is the official shape
+// (xxl-job admin's com.xx.job.core.biz.model.HandleCallbackParam); the admin
+// rejects anything else silently.
+type HandleCallbackParam struct {
+	LogID       int64  `json:"logId"`
+	LogDateTime int64  `json:"logDateTime"`
+	HandleCode  int    `json:"handleCode"` // 200 = success, 500 = failure
+	HandleMsg   string `json:"handleMsg"`
+}
+
 // RegistryParam is the executor's own registration/heartbeat body sent to the
 // admin's /api/registry endpoint.
 type RegistryParam struct {
@@ -56,8 +77,9 @@ type RegistryParam struct {
 	RegistryValue string `json:"registryValue"` // "http://ip:port/"
 }
 
-// LogResult is the body the executor POSTs back to the admin's /api/callback
-// when a task completes (success, failure, or a failure with the reason).
+// LogResult is the /log response body the executor sends back to the admin
+// when it asks for a task's rolling log file (NOT the /api/callback shape —
+// see HandleCallbackParam).
 type LogResult struct {
 	FromLineNum int    `json:"fromLineNum"`
 	ToLineNum   int    `json:"toLineNum"`

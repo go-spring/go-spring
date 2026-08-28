@@ -17,15 +17,34 @@
 package StarterLockRedis
 
 import (
+	"github.com/redis/go-redis/v9"
+
 	"go-spring.org/cloud/experimental/lock"
 	lockobserve "go-spring.org/cloud/observe/lock"
+	"go-spring.org/spring/gs"
 )
 
-// wrapLockerBean wraps the instance's locker with the shared observe-lock
-// adapter (trace span + duration/in-flight metric + access log;
-// lock.system="redis"). cfg flows the instance's observer.observability
-// config into the adapter. When starter-otel is not imported the global
-// OTel providers are no-ops, so the wrapper adds negligible overhead.
-func wrapLockerBean(c Config, inner lock.Locker) lock.Locker {
-	return lockobserve.WrapLocker("redis", c.Observer.Observability, inner)
+// newLocker is the bean constructor behind the instance name: it builds the
+// redis locker and — by default — wraps it with the shared observe-lock adapter
+// (trace span + duration/in-flight metric + access log; lock.system="redis"),
+// so the primary bean is transparently observed. Instances that opt out via
+// observe.enabled=false get the bare locker. When starter-otel is not imported
+// the global OTel providers are no-ops, so the wrapper adds negligible
+// overhead.
+func newLocker(ctx *gs.ContextProvider, c Config, client *redis.Client) (lock.Locker, error) {
+	inner, err := newRedisLocker(ctx, c, client)
+	if err != nil {
+		return nil, err
+	}
+	return wrapIfObserved(c, inner), nil
+}
+
+// wrapIfObserved is the transparent-default decision: bound configs default
+// observe.enabled=true, so the primary bean is the wrapped locker; an explicit
+// opt-out returns the bare inner locker unchanged.
+func wrapIfObserved(c Config, inner lock.Locker) lock.Locker {
+	if !c.ObserveEnabled {
+		return inner
+	}
+	return lockobserve.WrapLocker("redis", c.Observability, inner)
 }

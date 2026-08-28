@@ -26,11 +26,12 @@ package gormcore
 import (
 	"context"
 	"database/sql"
-	"log"
-	"os"
+	"fmt"
+	"strings"
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/log"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -47,11 +48,11 @@ type PoolConfig struct {
 	SlowThreshold   time.Duration // GORM slow-query log threshold (0 = off)
 }
 
-// Common is the config block every gorm dialect starter shares: connection-pool
-// tuning, service-discovery routing and the observe kill switch. A dialect's
-// Config embeds it (anonymously, so conf binds these fields at the same level)
-// alongside its own connection-specific fields.
-type Common struct {
+// PoolSettings is the transport-agnostic half of the shared config block:
+// connection-pool tuning, the startup ping bound and the slow-query log
+// threshold. Every dialect starter binds these keys, including in-process
+// engines like sqlite that have no network transport at all.
+type PoolSettings struct {
 	// Connection pool tuning. A zero value leaves the database/sql default in
 	// place (see sql.DB.SetMaxOpenConns and friends).
 	MaxOpenConns    int           `value:"${max-open-conns:=0}"`     // Max open connections (0 = unlimited)
@@ -66,6 +67,15 @@ type Common struct {
 	// SlowThreshold enables GORM slow-query logging when > 0: queries slower than
 	// this are logged at warn level.
 	SlowThreshold time.Duration `value:"${slow-threshold:=0}"`
+}
+
+// Common is the config block every network gorm dialect starter shares:
+// PoolSettings plus service-discovery routing and the observe kill switch.
+// A dialect's Config embeds it (anonymously, so conf binds these fields at the
+// same level) alongside its own connection-specific fields. Starters with no
+// network transport (e.g. sqlite) embed only [PoolSettings] instead.
+type Common struct {
+	PoolSettings
 
 	// ServiceName is the service discovery name. When set, the connection dials a
 	// live instance resolved from the discovery backend instead of the configured
@@ -90,7 +100,7 @@ type Common struct {
 }
 
 // Pool extracts the connection-pool and logging settings into a PoolConfig.
-func (c Common) Pool() PoolConfig {
+func (c PoolSettings) Pool() PoolConfig {
 	return PoolConfig{
 		MaxOpenConns:    c.MaxOpenConns,
 		MaxIdleConns:    c.MaxIdleConns,
@@ -110,13 +120,28 @@ func (c Common) NewResolver(ctx context.Context) (*discovery.Resolver, error) {
 	return discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
 }
 
+// logWriter adapts GORM's logger onto the repo log core: every message GORM
+// writes (slow queries at warn level, errors) is emitted through log.Warnf
+// with the default application tag, so slow-query output lands in the
+// configured appenders instead of raw stdout.
+type logWriter struct{}
+
+// Printf implements gorm logger.Writer. GORM calls it once per message with a
+// trailing newline; the newline is stripped before re-logging.
+func (logWriter) Printf(format string, args ...any) {
+	if msg := strings.TrimRight(fmt.Sprintf(format, args...), "\r\n"); msg != "" {
+		log.Warnf(context.Background(), log.TagAppDef, "%s", msg)
+	}
+}
+
 // GormConfig builds the *gorm.Config for a client. When SlowThreshold is set,
-// GORM's logger reports queries slower than the threshold at warn level.
+// GORM's logger reports queries slower than the threshold at warn level
+// through go-spring.org/log (TagAppDef), not the Go standard library.
 func GormConfig(pool PoolConfig) *gorm.Config {
 	cfg := &gorm.Config{}
 	if pool.SlowThreshold > 0 {
 		cfg.Logger = logger.New(
-			log.New(os.Stdout, "\r\n", log.LstdFlags),
+			logWriter{},
 			logger.Config{
 				SlowThreshold: pool.SlowThreshold,
 				LogLevel:      logger.Warn,

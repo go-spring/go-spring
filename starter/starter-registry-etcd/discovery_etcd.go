@@ -40,8 +40,6 @@ import (
 	"strings"
 	"time"
 
-	"go.etcd.io/etcd/api/v3/mvccpb"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 	"go-spring.org/log"
@@ -49,6 +47,8 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // DiscoveryConfig binds one etcd discovery adapter under

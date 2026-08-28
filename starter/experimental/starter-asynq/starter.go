@@ -21,15 +21,11 @@ import (
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	health2 "go-spring.org/starter-asynq/health"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("asynq", "")
 
 func init() {
 	// Register one Asynq instance per entry under "${spring.asynq}". The
@@ -64,9 +60,9 @@ func init() {
 
 // newClient builds the producer Client bean.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	d, ok := driverRegistry["DefaultDriver"]
-	if !ok {
-		return nil, errutil.Explain(nil, "asynq driver not found: DefaultDriver")
+	d, err := lookupDriver(c.Driver)
+	if err != nil {
+		return nil, err
 	}
 	connOpt, err := d.RedisConnOpt(ctx.Context, c)
 	if err != nil {

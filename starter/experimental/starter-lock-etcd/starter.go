@@ -28,14 +28,11 @@ package StarterLockEtcd
 
 import (
 	"go-spring.org/cloud/experimental/lock"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("lock_etcd", "")
 
 func init() {
 	// Register one etcd-backed Locker per entry under "${spring.lock}". A
@@ -48,26 +45,24 @@ func init() {
 			if len(c.Endpoints) == 0 {
 				return errutil.Explain(nil, "lock-etcd: endpoints is required for instance %q", name)
 			}
-			r.Provide(newEtcdLocker, gs.ValueArg(c)).
+			// The bean is wrapped with the observe-lock adapter by default
+			// (see newLocker); observe.enabled=false opts out. There is no
+			// separate "<name>-observed" bean — the primary name is already
+			// observed.
+			r.Provide(newLocker, gs.ValueArg(c)).
 				Name(name).
 				Export(gs.As[lock.Locker]()).
-				Destroy(destroyEtcdLocker).
+				Destroy(destroyLocker).
 				Caller(1)
-
-			if c.Observer.Tracing.Enabled {
-				r.Provide(wrapLockerBean, gs.ValueArg(c), gs.TagArg(name)).
-					Name(name + "-observed").
-					Export(gs.As[lock.Locker]()).
-					Caller(1)
-			}
 			return nil
 		})
 	})
 }
 
-// destroyEtcdLocker releases the shared etcd client. Locks handed out before
+// destroyLocker releases the shared etcd client. Locks handed out before
 // shutdown own their own sessions and are unaffected; their leases expire
-// naturally once the process exits.
-func destroyEtcdLocker(l *etcdLocker) error {
+// naturally once the process exits. The bean is a lock.Locker (possibly
+// observe-wrapped); Close passes through the wrapper.
+func destroyLocker(l lock.Locker) error {
 	return l.Close()
 }

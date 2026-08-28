@@ -20,12 +20,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
+	"google.golang.org/grpc/resolver"
 )
 
 // TestBalancerNameAndServiceConfig pins the naming contract clients dial with:
@@ -147,4 +149,85 @@ func TestPicker_RotatesAndEvictsFailingInstance(t *testing.T) {
 		assert.That(t, r.SubConn.(*fakeSubConn).addr).Equal(good.addr)
 		r.Done(balancer.DoneInfo{})
 	}
+}
+
+// fakeWatchDiscovery hands out successive watch channels: each subscription
+// stream is scripted by the test. It models the discovery contract — the
+// channel closes after a terminal WatchResult.Err, and a fresh Watch call
+// starts a new subscription whose first result carries the current set.
+type fakeWatchDiscovery struct {
+	discovery.Discovery
+	streams []chan discovery.WatchResult
+	calls   int
+}
+
+func (f *fakeWatchDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
+	return nil, nil
+}
+
+func (f *fakeWatchDiscovery) Watch(context.Context, string, ...discovery.Option) (<-chan discovery.WatchResult, error) {
+	ch := f.streams[f.calls]
+	f.calls++
+	return ch, nil
+}
+
+type fakeClientConn struct {
+	resolver.ClientConn
+	states chan resolver.State
+}
+
+func (f *fakeClientConn) UpdateState(s resolver.State) error {
+	f.states <- s
+	return nil
+}
+
+// TestWatchLoop_SurvivesTerminalErr proves the P0 fix: a terminal
+// WatchResult.Err no longer freezes the resolved address set. The loop keeps
+// the last snapshot, re-watches with backoff, and pushes the fresh snapshot
+// delivered by the re-established subscription. It also proves the loop still
+// exits on Close (ctx cancellation).
+func TestWatchLoop_SurvivesTerminalErr(t *testing.T) {
+	watchRetryBackoff = time.Millisecond
+	defer func() { watchRetryBackoff = time.Second }()
+
+	// Subscription 1: good snapshot, then a terminal error and close.
+	ch1 := make(chan discovery.WatchResult, 2)
+	ch1 <- discovery.WatchResult{Endpoints: []discovery.Endpoint{{Addr: "10.0.0.1:80"}}}
+	ch1 <- discovery.WatchResult{Err: errors.New("backend disconnected")}
+	close(ch1)
+	// Subscription 2 (the reconnect): a different, fresh snapshot.
+	ch2 := make(chan discovery.WatchResult, 1)
+	ch2 <- discovery.WatchResult{Endpoints: []discovery.Endpoint{{Addr: "10.0.0.2:80"}}}
+	// Subscription 3: never needed; a blocked channel keeps the loop idle.
+	ch3 := make(chan discovery.WatchResult)
+
+	d := &fakeWatchDiscovery{streams: []chan discovery.WatchResult{ch1, ch2, ch3}}
+	cc := &fakeClientConn{states: make(chan resolver.State, 4)}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	r := &discoveryResolver{cc: cc, d: d, backend: "fake", service: "svc", ctx: ctx, cancel: cancel}
+	go r.watchLoop(ch1)
+
+	got := func() []string {
+		st := <-cc.states
+		var addrs []string
+		for _, a := range st.Addresses {
+			addrs = append(addrs, a.Addr)
+		}
+		return addrs
+	}
+	assert.That(t, got()).Equal([]string{"10.0.0.1:80"}) // pre-error snapshot
+	assert.That(t, got()).Equal([]string{"10.0.0.2:80"}) // post-reconnect snapshot
+
+	// Close must stop the loop even while a re-watch would otherwise follow.
+	r.Close()
+	done := make(chan struct{})
+	go func() { <-ctx.Done(); <-done }()
+	select {
+	case <-time.After(2 * time.Second):
+		t.Fatal("watchLoop did not observe context cancellation promptly")
+	case <-ctx.Done():
+	}
+	close(done)
+	assert.That(t, d.calls).Equal(2)
 }

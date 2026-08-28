@@ -70,10 +70,11 @@ type publisher struct {
 	topic string
 }
 
-func (p *publisher) Publish(_ context.Context, msg *messaging.Message) error {
-	token := p.cl.Publish(p.topic, defaultQoS, false, msg.Payload)
-	token.Wait()
-	return token.Error()
+func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
+	// Route through the same resilience executor the raw client API uses
+	// (GuardedPublish): a no-op pass-through when governance is off for this
+	// client, a rejection sentinel when rate-limited/circuit-open.
+	return GuardedPublish(ctx, p.cl, p.topic, defaultQoS, false, msg.Payload)
 }
 
 func (p *publisher) Close() error { return nil }

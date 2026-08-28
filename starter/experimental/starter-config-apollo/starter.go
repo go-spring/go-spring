@@ -71,7 +71,6 @@ func (a agolloClientAdapter) GetConfigContent(namespace string) string {
 }
 
 var (
-	starterTag    = log.RegisterAppTag("starter_config_apollo", "")
 	apolloControl = &apolloCtrl{}
 )
 
@@ -192,13 +191,13 @@ func (c *apolloCtrl) clientFor(cs apolloSource) (apolloClient, error) {
 func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
+		log.Errorf(context.Background(), log.TagAppDef, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
 	cli, err := c.clientFor(cs)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create apollo client for appId=%s failed: %v", cs.appID, err)
+		log.Errorf(context.Background(), log.TagAppDef, "create apollo client for appId=%s failed: %v", cs.appID, err)
 		return nil, err
 	}
 
@@ -208,7 +207,7 @@ func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, erro
 	content := cli.GetConfigContent(cs.namespace)
 	if content == "" {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional apollo namespace %s is empty (skipped)", cs.namespace)
+			log.Warnf(context.Background(), log.TagAppDef, "optional apollo namespace %s is empty (skipped)", cs.namespace)
 			return nil, nil
 		}
 		return nil, errutil.Explain(nil, "apollo namespace %s is empty", cs.namespace)
@@ -218,7 +217,7 @@ func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, erro
 	if err != nil {
 		return nil, errutil.Explain(err, "parse apollo namespace %s as %s failed", cs.namespace, cs.format)
 	}
-	log.Infof(context.Background(), starterTag, "loaded apollo namespace %s keys=%d", cs.namespace, len(m))
+	log.Infof(context.Background(), log.TagAppDef, "loaded apollo namespace %s keys=%d", cs.namespace, len(m))
 	return flatten.Flatten(m), nil
 }
 

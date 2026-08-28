@@ -61,3 +61,14 @@ func TestReadLog(t *testing.T) {
 	assert.That(t, end).True()
 	_ = content
 }
+
+// TestHandleCallbackParamJSON pins the /api/callback payload against the
+// official admin contract: a JSON array of HandleCallbackParam with
+// logId/logDateTime/handleCode/handleMsg keys.
+func TestHandleCallbackParamJSON(t *testing.T) {
+	body, err := json.Marshal([]HandleCallbackParam{{
+		LogID: 2002, LogDateTime: 1700000000000, HandleCode: 200, HandleMsg: "",
+	}})
+	assert.Error(t, err).Nil()
+	assert.That(t, string(body)).Equal(`[{"logId":2002,"logDateTime":1700000000000,"handleCode":200,"handleMsg":""}]`)
+}

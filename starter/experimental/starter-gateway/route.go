@@ -36,9 +36,6 @@ package StarterGateway
 import (
 	"net/http"
 	"net/url"
-	"time"
-
-	"go-spring.org/cloud/governance/resilience"
 )
 
 // Predicate reports whether a request matches a route. It is the Go-idiomatic
@@ -67,6 +64,7 @@ type Upstream struct {
 // filter chain, an upstream and the resolved forwarding handler.
 type Route struct {
 	ID         string
+	Priority   int
 	Predicates []Predicate
 	Filters    []Filter
 	Upstream   *Upstream
@@ -103,6 +101,10 @@ type RouteRaw struct {
 	// Filter chain, e.g. "stripPrefix(2),addRequestHeader(X-From,gw),retry".
 	Filters string `value:"${filters:=}"`
 
+	// Priority orders route matching: larger values are matched first. Unset
+	// (0) routes keep the historical id-sorted order among themselves.
+	Priority int `value:"${priority:=0}"`
+
 	Upstream struct {
 		Target    string `value:"${target:=}"` // lb://name or http(s)://host:port
 		Balancer  string `value:"${balancer:=round_robin}"`
@@ -121,26 +123,11 @@ type RouteRaw struct {
 // spring.gateway.resilience.<name>.* config keeps binding without error, but they
 // are no longer read: a route's timeout/retry/breaker now comes from ${govern},
 // keyed by the "gateway:<name>" label, not from this struct.
-type policyRaw struct {
-	// Driver names the resilience backend for this policy ("default" or
-	// "sentinel"). Empty means "default". Previously hardcoded to "default",
-	// which blocked gateway routes from using sentinel.
-	Driver string `value:"${driver:=}"`
-
-	RateLimit           float64                    `value:"${rate-limit:=0}"`
-	Burst               int                        `value:"${burst:=0}"`
-	ErrorThreshold      int                        `value:"${error-threshold:=0}"`
-	OpenDuration        time.Duration              `value:"${open-duration:=0}"`
-	BreakerStrategy     resilience.BreakerStrategy `value:"${breaker-strategy:=}"`
-	ErrorRateThreshold  float64                    `value:"${error-rate-threshold:=0}"`
-	MinRequests         int                        `value:"${min-requests:=0}"`
-	BreakerWindow       time.Duration              `value:"${breaker-window:=0}"`
-	MaxConcurrent       int                        `value:"${max-concurrent:=0}"`
-	MaxRetries          int                        `value:"${max-retries:=0}"`
-	InitialInterval     time.Duration              `value:"${initial-interval:=0}"`
-	Multiplier          float64                    `value:"${multiplier:=0}"`
-	MaxInterval         time.Duration              `value:"${max-interval:=0}"`
-	RandomizationFactor float64                    `value:"${randomization-factor:=0}"`
-	Timeout             time.Duration              `value:"${attempt-timeout:=0}"`
-	MaxDuration         time.Duration              `value:"${max-duration:=0}"`
-}
+// policyRaw is the value type of the spring.gateway.resilience.<name> map.
+// Only the map KEYS matter — they name the routes a gateway builds executors
+// for (each resolved via resilience.ExecutorFor, policy driven by the
+// governance center under the "gateway:<name>" label). The value carries no
+// fields: legacy per-route policy knobs were removed when policy moved to
+// ${govern}; unknown sub-keys under spring.gateway.resilience.<name>.* are
+// ignored by the binder.
+type policyRaw struct{}

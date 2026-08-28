@@ -10,9 +10,14 @@
     "address": {
       "type": "string"
     },
-    "etcd": {
-      "type": "string",
-      "default": ""
+    "registry": {
+      "type": "object",
+      "properties": {
+        "etcd": {
+          "type": "string",
+          "default": ""
+        }
+      }
     }
   }
 }

@@ -39,7 +39,7 @@ spring.go-redis.main.addr=127.0.0.1:6379
 import "github.com/redis/go-redis/v9"
 
 type Service struct {
-    Redis *redis.Client `autowire:""`
+    Redis *StarterGoRedis.Client `autowire:"main"` // 内嵌 redis.UniversalClient
 }
 ```
 
@@ -58,7 +58,7 @@ str, err := s.Redis.Set(r.Context(), "key", "value", 0).Result()
 
 ### single（默认）
 
-通过 `addr`（或服务发现的 `service-name`）连接单个节点，bean 类型为 `*redis.Client`。
+通过 `addr`（或服务发现的 `service-name`）连接单个节点，bean 类型为 `*StarterGoRedis.Client`。
 
 ```properties
 spring.go-redis.cache.addr=127.0.0.1:6379
@@ -68,7 +68,7 @@ spring.go-redis.cache.addr=127.0.0.1:6379
 
 ### sentinel（哨兵）
 
-连接由哨兵解析出的主节点组，bean 类型仍是 `*redis.Client`，注入方式与命令集与单机完全一致。
+连接由哨兵解析出的主节点组，bean 类型不变，注入方式与命令集与单机完全一致。
 
 ```properties
 spring.go-redis.cache.mode=sentinel

@@ -12,7 +12,7 @@ It is a **library-first integration module**, not a blank-import starter: a
 repository is parameterised over a domain type the application owns, so there is
 nothing to auto-register. It is **driver-agnostic** — the concrete database
 (MySQL, Postgres, SQL Server, ClickHouse, sqlite, ...) is whichever
-`starter-gorm-*` published the `*gorm.DB` bean.
+`starter-gorm-*` published the DB wrapper bean (embedding `*gorm.DB`).
 
 ## Installation
 
@@ -51,8 +51,9 @@ Register `For` through a plain `gs.Provide` constructor so other beans autowire
 the repository by interface, never learning it is gorm-backed:
 
 ```go
-gs.Provide(func(db *gorm.DB) repository.Repository[User, int64] {
-    return reposgorm.For[User, int64](db, "users",
+gs.Provide(func(db *starter.DB) repository.Repository[User, int64] {
+    // *starter.DB (the dialect wrapper, embedding *gorm.DB) is the injected bean
+    return reposgorm.For[User, int64](db.DB, "users",
         repository.WithPrincipal(currentUser)) // enable audit CreatedBy
 }).Name("userRepo")
 ```

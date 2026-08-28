@@ -41,10 +41,14 @@ go get go-spring.org/starter-transaction-tcc
 import _ "go-spring.org/starter-transaction-tcc"
 ```
 
-The container now holds two beans:
+The container now holds four beans:
 
 - a `tcc.Coordinator` — the in-process orchestrator;
-- a `*tcc.ParticipantRegistry` — where you declare each method's participants.
+- a `*tcc.ParticipantRegistry` — where you declare each method's participants;
+- a `tcc.Store` — the in-memory default log, replaceable by a durable Store
+  (see below);
+- a `gs.Runner` — the startup recovery scan over that Store (a no-op with the
+  in-memory default; see the durability note below).
 
 ### 2. Define participants
 
@@ -135,10 +139,11 @@ participants from the `ParticipantRegistry` keyed by the persisted method name,
 so you MUST register participants at wiring time (bean construction), not from a
 custom `Runner`.
 
-To make recovery meaningful, import a durable-`Store` starter
-(`spring.transaction.tcc.store=...`); because the in-memory default is registered
-with `gs.OnMissingBean`, the durable Store then takes over both the coordinator
-and the startup recovery scan.
+To make recovery meaningful, contribute a durable `tcc.Store` bean from your own
+module; because the in-memory default is registered with `gs.OnMissingBean`, the
+durable Store then takes over both the coordinator and the startup recovery
+scan. (No durable-Store starter is shipped for TCC yet — mirror
+[`starter-transaction-saga-gorm`](../starter-transaction-saga-gorm) if you need one.)
 
 ## License
 

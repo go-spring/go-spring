@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/log"
 	observe "go-spring.org/cloud/observe"
 	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go.opentelemetry.io/otel"
@@ -67,7 +68,7 @@ func newMetricsServer(cfg MetricsConfig) (prometheus.Registerer, *http.Server) {
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			_ = err
+			log.Warnf(context.Background(), log.TagAppDef, "pulsar: metrics server exited unexpectedly: %v", err)
 		}
 	}()
 	return reg, srv
@@ -222,6 +223,11 @@ var resilienceResources sync.Map // pulsar.Client -> string
 // When governance is off, ExecutorFor yields a transparent no-op executor; fault
 // wraps it when an injector is registered (nil-safe otherwise).
 func applyResilience(c Config, cl pulsar.Client, resource string) error {
+	// Per-instance opt-out: without an executor attached, guard (and therefore
+	// both GuardedSend and the binder's Publish) degrades to bare calls.
+	if !c.Governance {
+		return nil
+	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "pulsar", c.Observability)
 	resilienceExecs.Store(cl, exec)
@@ -232,7 +238,9 @@ func applyResilience(c Config, cl pulsar.Client, resource string) error {
 // closeResilience closes and forgets the executor behind cl, if any.
 func closeResilience(cl pulsar.Client) {
 	if v, ok := resilienceExecs.LoadAndDelete(cl); ok {
-		_ = v.(resilience.Executor).Close()
+		if err := v.(resilience.Executor).Close(); err != nil {
+			log.Warnf(context.Background(), log.TagAppDef, "pulsar: resilience executor close failed: %v", err)
+		}
 	}
 	resilienceResources.Delete(cl)
 }

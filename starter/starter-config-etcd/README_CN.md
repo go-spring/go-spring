@@ -63,3 +63,12 @@ etcd key 变更时，Provider 的 watcher 会触发一次应用属性刷新，�
   读取 key，并对该 key 安装一个 `etcd Watch`。
 - key 变更会推送一次 watch 事件，触发框架的 `PropertiesRefresher`：重新加载所有
   配置源（重跑本 Provider），并通过两阶段原子提交重新绑定所有 `gs.Dync` 字段。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_config_etcd`（etcd 配置源）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.config_etcd.type=Logger
+logger.config_etcd.level=WARN
+logger.config_etcd.tag=_app_config_etcd
+```

@@ -29,7 +29,6 @@ import (
 	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/observe/resilience"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/errutil"
 )
 
 // Client is the producer bean: it enqueues tasks into one Asynq queue. It
@@ -38,6 +37,10 @@ import (
 // operation, since enqueue touches Redis).
 type Client struct {
 	*asynq.Client
+	// Observability is field-injected by gs from the top-level
+	// "observability.*" keys. The instance-prefixed
+	// "spring.asynq.<name>.observability.*" keys land in cfg.Observability
+	// and take precedence — see resolveObservability.
 	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	cfg      Config
@@ -46,12 +49,42 @@ type Client struct {
 	obs      *observe.Observer
 }
 
+// resolveObservability merges the two observability config surfaces into the
+// effective policy Init arms:
+//
+//   - the instance-prefixed "spring.asynq.<name>.observability.*" keys, bound
+//     into Config (cfg.Observability) by conf.BindEach;
+//   - the top-level "observability.*" keys, field-injected into the wrapper's
+//     Observability field (an absolute property reference, kept for backward
+//     compatibility with configs that predate the instance keys).
+//
+// Instance-level keys override top-level ones per field. Because binding
+// fills the defaults ("brief" / 512 / no skips) even when no instance key is
+// present, an instance value is only detectable as "set" when it differs
+// from those defaults. Configure one surface only and this caveat
+// disappears.
+func (o *Client) resolveObservability() observe.ObserveConfig {
+	c := o.Observability // top-level fallback
+	i := o.cfg.Observability
+	if i.Level != "" && i.Level != observe.DefaultBrief {
+		c.Level = i.Level
+	}
+	if i.MaxArgBytes != 0 && i.MaxArgBytes != 512 {
+		c.MaxArgBytes = i.MaxArgBytes
+	}
+	if len(i.SkipOps) > 0 {
+		c.SkipOps = i.SkipOps
+	}
+	return c
+}
+
 // Init arms the observe + resilience executor after field injection.
 func (o *Client) Init() error {
-	o.obs = observe.NewProducer("asynq", o.Observability)
+	obsCfg := o.resolveObservability()
+	o.obs = observe.NewProducer("asynq", obsCfg)
 	o.resource = resilience.ResourceLabel("asynq", o.cfg.Addr)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, "asynq", o.Observability)
+	exec = resilobserve.WrapExecutor(exec, "asynq", obsCfg)
 	o.exec = exec
 	return nil
 }
@@ -97,9 +130,11 @@ func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Op
 // populates (RegisterHandler) before the container runs the server, plus the
 // asynq server built from Config. Destroy calls Shutdown, which drains
 // in-flight tasks up to ShutdownTimeout.
+//
+// Unlike the producer Client, the worker emits no observations of its own
+// (per-task handling is asynq's domain — handler errors/panics are recovered
+// and retried by asynq), so it carries no observability config.
 type Server struct {
-	Observability observe.ObserveConfig `value:"${observability:=}"`
-
 	cfg      Config
 	resource string
 	mux      *asynq.ServeMux
@@ -189,9 +224,9 @@ func (o *Server) Destroy() error {
 // newRedisConnOpt builds the RedisConnOpt from Config via the selected
 // driver, shared by the client and server roles.
 func newRedisConnOpt(ctx context.Context, c Config) (asynq.RedisConnOpt, error) {
-	d, ok := driverRegistry["DefaultDriver"]
-	if !ok {
-		return nil, errutil.Explain(nil, "asynq driver not found: DefaultDriver")
+	d, err := lookupDriver(c.Driver)
+	if err != nil {
+		return nil, err
 	}
 	return d.RedisConnOpt(ctx, c)
 }

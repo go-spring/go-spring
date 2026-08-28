@@ -57,8 +57,9 @@ spring.registry.metadata.version=v1
 ```
 
 That is all: on startup the instance is registered and kept alive by a TTL
-heartbeat; on shutdown it is deregistered. A client elsewhere resolves it by
-service name through a `discovery.Discovery` backend for the same registry.
+heartbeat; on shutdown it is deregistered. (This starter is registrar-only: it
+ships no Consul discovery backend — a client elsewhere would need one to
+resolve by service name.)
 
 ## Configuration
 

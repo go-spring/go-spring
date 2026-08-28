@@ -39,8 +39,6 @@ import (
 // so the wrapper body, lifecycle and observe/resilience wiring stay in one place.
 type DB = gormcore.DB
 
-var starterTag = log.RegisterAppTag("gorm_postgres", "")
-
 func init() {
 	gormcore.Register(gormcore.Dialect[Config]{
 		Prefix:       "spring.gorm.postgres",
@@ -65,7 +63,15 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm postgres: one of host or service-name must be set")
 	}
 
-	log.Debugf(ctx, starterTag, "creating gorm postgres client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
+	// TLS.* and sslmode must agree: sslmode still decides whether TLS is
+	// negotiated, so tls.enabled against sslmode=disable would silently dial
+	// plaintext. Fail loudly at startup instead.
+	if c.TLS.Enabled && c.SSLMode == "disable" {
+		return gormcore.Spec{}, errutil.Explain(nil,
+			"gorm postgres: tls.enabled=true conflicts with sslmode=disable; set sslmode to require (or a verifying mode) or turn tls off")
+	}
+
+	log.Debugf(ctx, log.TagAppDef, "creating gorm postgres client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
 
 	var (
 		dialector gorm.Dialector
@@ -74,16 +80,32 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 
 	ld, err := c.NewResolver(ctx)
 	if err != nil {
-		log.Errorf(ctx, starterTag, "gorm postgres: build discovery resolver failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "gorm postgres: build discovery resolver failed: %v", err)
 		return gormcore.Spec{}, err
 	}
-	if ld != nil {
-		pgxCfg, err := pgx.ParseConfig(c.DSN())
-		if err != nil {
-			log.Errorf(ctx, starterTag, "gorm postgres: parse pgx config failed: %v", err)
+
+	// Always go through a parsed pgx config: it validates the DSN once at
+	// startup and gives one injection point for TLS and the discovery dialer.
+	pgxCfg, err := pgx.ParseConfig(c.DSN())
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "gorm postgres: parse pgx config failed: %v", err)
+		if ld != nil {
 			_ = ld.Stop()
-			return gormcore.Spec{}, err
 		}
+		return gormcore.Spec{}, err
+	}
+	if c.TLS.Enabled {
+		tlsCfg, terr := c.TLS.Build()
+		if terr != nil {
+			log.Errorf(ctx, log.TagAppDef, "gorm postgres: build TLS failed: %v", terr)
+			if ld != nil {
+				_ = ld.Stop()
+			}
+			return gormcore.Spec{}, errutil.Explain(terr, "gorm postgres: build TLS")
+		}
+		pgxCfg.TLSConfig = tlsCfg
+	}
+	if ld != nil {
 		// pgconn.DialFunc is 3-arg: func(ctx, network, addr string) (net.Conn, error).
 		// Both network and addr are ignored; the dialer picks a live endpoint via
 		// the Resolver and dials it over TCP.
@@ -95,12 +117,9 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 			}
 			return nd.DialContext(ctx, "tcp", ep.Addr)
 		}
-		dialector = postgres.New(postgres.Config{Conn: stdlib.OpenDB(*pgxCfg)})
 		closer = func() { _ = ld.Stop() }
-	} else {
-		// Plain DSN mode (no discovery): dial the configured host:port directly.
-		dialector = postgres.New(postgres.Config{DSN: c.DSN()})
 	}
+	dialector = postgres.New(postgres.Config{Conn: stdlib.OpenDB(*pgxCfg)})
 
 	closers := []func(){}
 	if closer != nil {

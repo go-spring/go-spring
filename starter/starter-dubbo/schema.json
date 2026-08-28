@@ -127,40 +127,6 @@
       },
       "default": ""
     },
-    "metadata-report": {
-      "type": "object",
-      "properties": {
-        "protocol": {
-          "type": "string",
-          "default": ""
-        },
-        "address": {
-          "type": "string",
-          "default": ""
-        },
-        "username": {
-          "type": "string",
-          "default": ""
-        },
-        "password": {
-          "type": "string",
-          "default": ""
-        },
-        "group": {
-          "type": "string",
-          "default": ""
-        },
-        "namespace": {
-          "type": "string",
-          "default": ""
-        },
-        "timeout": {
-          "type": "string",
-          "default": "20s"
-        }
-      },
-      "default": ""
-    },
     "provider": {
       "type": "object",
       "properties": {
@@ -212,7 +178,7 @@
               },
               "retries": {
                 "type": "integer",
-                "default": 2
+                "default": -1
               },
               "group": {
                 "type": "string",
@@ -237,7 +203,7 @@
                     },
                     "retries": {
                       "type": "integer",
-                      "default": 2
+                      "default": -1
                     },
                     "loadbalance": {
                       "type": "string",
@@ -297,30 +263,6 @@
                 "type": "string",
                 "default": ""
               },
-              "tps.limiter": {
-                "type": "string",
-                "default": ""
-              },
-              "tps.limit.rate": {
-                "type": "integer",
-                "default": 0
-              },
-              "tps.limit.strategy": {
-                "type": "string",
-                "default": ""
-              },
-              "tps.limit.rejected.handler": {
-                "type": "string",
-                "default": ""
-              },
-              "execute.limit": {
-                "type": "string",
-                "default": ""
-              },
-              "execute.limit.rejected.handler": {
-                "type": "string",
-                "default": ""
-              },
               "auth": {
                 "type": "string",
                 "default": ""
@@ -333,10 +275,6 @@
                 "type": "string",
                 "default": ""
               },
-              "max_message_size": {
-                "type": "integer",
-                "default": 4
-              },
               "tracing-key": {
                 "type": "string",
                 "default": ""
@@ -344,6 +282,30 @@
               "not-register": {
                 "type": "boolean",
                 "default": false
+              },
+              "tps-limiter": {
+                "type": "string",
+                "default": ""
+              },
+              "tps-limit-rate": {
+                "type": "integer",
+                "default": 0
+              },
+              "tps-limit-strategy": {
+                "type": "string",
+                "default": ""
+              },
+              "tps-limit-rejected-handler": {
+                "type": "string",
+                "default": ""
+              },
+              "execute-limit": {
+                "type": "string",
+                "default": ""
+              },
+              "execute-limit-rejected-handler": {
+                "type": "string",
+                "default": ""
               }
             }
           },
@@ -355,11 +317,6 @@
             "type": "string"
           },
           "default": ""
-        },
-        "proxy": {
-          "type": "string",
-          "default": "",
-          "description": "no v3 ServerOption; reserved"
         },
         "tracing-key": {
           "type": "string",
@@ -395,7 +352,7 @@
         },
         "retries": {
           "type": "integer",
-          "default": 0
+          "default": -1
         },
         "token": {
           "type": "string",
@@ -496,7 +453,7 @@
               },
               "check": {
                 "type": "boolean",
-                "default": false
+                "default": true
               },
               "url": {
                 "type": "string",
@@ -527,7 +484,7 @@
               },
               "retries": {
                 "type": "integer",
-                "default": 0
+                "default": -1
               },
               "group": {
                 "type": "string",
@@ -552,7 +509,7 @@
                     },
                     "retries": {
                       "type": "integer",
-                      "default": 2
+                      "default": -1
                     },
                     "loadbalance": {
                       "type": "string",
@@ -628,19 +585,9 @@
           },
           "default": ""
         },
-        "proxy": {
-          "type": "string",
-          "default": "",
-          "description": "no v3 ClientOption; reserved"
-        },
         "tracing-key": {
           "type": "string",
           "default": ""
-        },
-        "max-wait-time-for-service-discovery": {
-          "type": "string",
-          "default": "",
-          "description": "no v3 ClientOption; reserved"
         },
         "cluster": {
           "type": "string",
@@ -652,7 +599,7 @@
         },
         "retries": {
           "type": "integer",
-          "default": 0
+          "default": -1
         },
         "group": {
           "type": "string",
@@ -695,14 +642,6 @@
         "push-gateway-address": {
           "type": "string",
           "default": ""
-        },
-        "mode": {
-          "type": "string",
-          "default": ""
-        },
-        "namespace": {
-          "type": "string",
-          "default": ""
         }
       },
       "default": ""
@@ -736,22 +675,6 @@
           "default": 1.0
         },
         "insecure": {
-          "type": "boolean",
-          "default": false
-        },
-        "name": {
-          "type": "string",
-          "default": ""
-        },
-        "serviceName": {
-          "type": "string",
-          "default": ""
-        },
-        "address": {
-          "type": "string",
-          "default": ""
-        },
-        "use-agent": {
           "type": "boolean",
           "default": false
         }

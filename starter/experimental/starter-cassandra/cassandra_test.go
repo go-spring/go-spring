@@ -17,9 +17,12 @@
 package StarterCassandra
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/gocql/gocql"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -45,4 +48,41 @@ func TestParseConsistency(t *testing.T) {
 	}
 	_, err := parseConsistency("bogus")
 	assert.That(t, err != nil).True()
+}
+
+// --- guard (transparent per-statement resilience via the Query wrapper) ---
+
+// newGuardedClient builds a Client whose guard is wired to a real executor
+// from the default resilience driver. The embedded *gocql.Session is nil —
+// the tests drive Client.guard directly with a stubbed call, so no live
+// Cassandra cluster is needed.
+func newGuardedClient(t *testing.T, p resilience.Policy) *Client {
+	d, err := resilience.GetDriver("default")
+	assert.Error(t, err).Nil()
+	exec, err := d.NewExecutor(p)
+	assert.Error(t, err).Nil()
+	return &Client{exec: exec, resource: "cassandra:test"}
+}
+
+// TestGuardPassThrough proves the zero-config stance: a Client with no
+// executor attached runs the call inline and returns its result unchanged.
+func TestGuardPassThrough(t *testing.T) {
+	c := &Client{}
+	boom := errors.New("boom")
+	assert.Error(t, c.guard(context.Background(), "exec", "SELECT 1", func(context.Context) error { return nil })).Nil()
+	assert.Error(t, c.guard(context.Background(), "exec", "SELECT 1", func(context.Context) error { return boom })).Is(boom)
+}
+
+// TestGuardRateLimit confirms the flow-control path: once the burst is spent,
+// the statement is rejected without invoking the call.
+func TestGuardRateLimit(t *testing.T) {
+	c := newGuardedClient(t, resilience.Policy{RateLimit: 1, Burst: 1})
+	var ran int
+	stub := func(context.Context) error {
+		ran++
+		return nil
+	}
+	assert.Error(t, c.guard(context.Background(), "exec", "INSERT INTO t VALUES(1)", stub)).Nil()
+	assert.Error(t, c.guard(context.Background(), "exec", "INSERT INTO t VALUES(2)", stub)).Is(resilience.ErrRateLimited)
+	assert.That(t, ran).Equal(1) // the rejected statement never ran
 }

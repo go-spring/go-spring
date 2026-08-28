@@ -427,7 +427,6 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 	assert.Error(t, fail()).Is(ErrCircuitOpen)
 }
 
-
 type timeoutNetErr struct{}
 
 func (*timeoutNetErr) Error() string   { return "i/o timeout" }

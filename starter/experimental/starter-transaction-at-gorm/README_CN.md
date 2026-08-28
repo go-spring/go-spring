@@ -47,11 +47,13 @@ go get go-spring.org/starter-transaction-at-gorm
 import _ "go-spring.org/starter-transaction-at-gorm"
 ```
 
-容器随即持有两个 bean：
+容器随即持有三个 bean：
 
 - 一个 `at.Coordinator` —— 进程内协调器，对每个登记的分支执行提交（删除 undo log）
   或回滚（依据 undo log 还原）；
-- 一个 `at.GlobalLock` —— 进程内全局行锁，在并发全局事务之间提供写-写隔离。
+- 一个 `at.GlobalLock` —— 进程内全局行锁，在并发全局事务之间提供写-写隔离；
+- 一个 `gs.Runner` —— 启动崩溃恢复扫描，回滚上次运行崩溃遗留的 undo log
+  （见下文 `recover-on-start`）。
 
 ### 2. 为每个数据库启用 AT
 
@@ -127,6 +129,7 @@ place := at.GlobalAT(coord)
 |---|---|---|
 | `spring.transaction.at.enabled` | `true` | 开关本 starter 的 bean。 |
 | `spring.transaction.at.tracing` | `true` | 在 `starter-otel` 安装的全局对象上，为每个分支阶段（提交 / 回滚）开一个 otel 子 span；无 otel 时为空操作。 |
+| `spring.transaction.at.recover-on-start` | `true` | 启动崩溃恢复：gs.Runner 扫描每个已接入库的 `at_undo_log`，回滚上次运行崩溃在一、二阶段之间遗留的 undo log。数据库被多进程共享时设 `false`。 |
 
 ## 许可证
 

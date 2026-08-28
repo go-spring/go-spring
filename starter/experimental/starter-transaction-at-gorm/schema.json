@@ -10,6 +10,10 @@
     "tracing": {
       "type": "boolean",
       "default": true
+    },
+    "recover-on-start": {
+      "type": "boolean",
+      "default": true
     }
   }
 }

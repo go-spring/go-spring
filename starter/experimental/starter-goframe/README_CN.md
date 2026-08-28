@@ -14,7 +14,7 @@ goframe 提供多种传输形态,因此本模块提供 **四个相互独立的�
 | `go-spring.org/starter-goframe/tcp` | `*gtcp.Server`(裸 TCP) | `spring.goframe.tcp.server` | `ServiceRegister func(*gtcp.Server)` |
 | `go-spring.org/starter-goframe/ws` | `*ghttp.Server`(WebSocket 升级) | `spring.goframe.ws.server` | `ServiceRegister func(*ghttp.Server)` |
 
-按需导入对应子包即可。当子包的 `*.enabled` 属性为 `true`(默认)**且**应用提供了 `ServiceRegister`
+按需导入对应子包即可。当子包的 `*.server.address` 属性被设置(该 key 即开关,不存在 `enabled` key)**且**应用提供了 `ServiceRegister`
 bean 时,starter 才会注册其服务器 bean。
 
 ## 安装
@@ -68,7 +68,7 @@ spring.goframe.http.server.registry.etcd=127.0.0.1:2379
 * **追踪** — 让路给 [`starter-otel`](../../starter-otel)。goframe 的 `ghttp`/`grpcx` 会基于全局
   OpenTelemetry `TracerProvider` 自动埋点;导入 `starter-otel` 即安装该 provider,span 自动导出,
   无需按服务器单独配置。
-* **指标** — `http` 子包可在同一服务器上暴露 goframe 原生的 OTel Prometheus(pull)端点。默认关闭,
-  通过 `spring.goframe.http.server.metrics.enabled=true` 开启。它与 `starter-otel` 的指标是两条独立
+* **指标** — `http` 子包可在同一服务器上暴露 goframe 原生的 OTel Prometheus(pull)端点。默认开启,
+  通过 `spring.goframe.http.server.metrics.enabled=false` 关闭。它与 `starter-otel` 的指标是两条独立
   管线,无法统一。
 * **日志** — goframe 框架日志(`glog`)被桥接进 Go-Spring 的 `log` 模块,应用只需配置一条日志管线。

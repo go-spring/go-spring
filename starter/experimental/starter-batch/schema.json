@@ -23,11 +23,13 @@
           },
           "params": {
             "type": "object",
-            "default": ""
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {}
           }
         }
-      },
-      "default": ""
+      }
     }
   }
 }

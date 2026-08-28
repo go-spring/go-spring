@@ -79,9 +79,9 @@ gs.Provide(func(c *Controller) StarterGrpc.ServiceRegister {
    请求/响应链路。
 2. **服务端一元拦截器（中间件）**：`LoggingInterceptor` 是一个真实的
    `grpc.UnaryServerInterceptor`，会打印被调用的方法名并读取入向 metadata 中的
-   `x-app`。因为当前 Starter 内部通过 `grpc.NewServer()` 构造服务器，未暴露
-   `grpc.ServerOption`，示例通过 `interceptedEchoServer` 包装器在 handler 层完成
-   拦截链的组装 —— 效果等同于 `grpc.ChainUnaryInterceptor`。客户端使用
+   `x-app`。此处演示按服务组合拦截器；starter 另提供
+   `StarterGrpc.UseUnaryInterceptor`/`UseStreamInterceptor`，可将应用拦截器装到内置链的最外层
+   （内部经 `grpc.ChainUnaryInterceptor` 组装）。客户端使用
    `metadata.NewOutgoingContext` 发送 `x-app=go-spring`，调用仍然成功，证明拦截器
    已运行且未影响业务返回。
 3. **通过 `grpc.SetHeader` 回写响应头**：handler 在响应头中写入
@@ -89,6 +89,5 @@ gs.Provide(func(c *Controller) StarterGrpc.ServiceRegister {
 
 ## 说明
 
-- Starter 监听地址由 `${spring.grpc.server.addr}` 决定，默认 `:9494`。
-- gRPC 服务器默认开启，可通过 `spring.grpc.server.enabled=false` 关闭。
+- Starter 监听地址由 `${spring.grpc.server.addr}` 决定——无默认值；设置该 key 即注册 server bean（不存在 `enabled` key）。
 - 只需要注册一个 `ServiceRegister` Bean 即可激活整个服务器。

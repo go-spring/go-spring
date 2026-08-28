@@ -106,6 +106,9 @@ func TestDyncPoller_EmptyRefsSkipped(t *testing.T) {
 	dc := mapconfig.Singleton()
 	dc.RefreshOverrideRules(nil)
 	p := newTestPoller()
+	// Retries=-1 = unset (the config-bound default). A zero-value 0 would now
+	// mean an explicit "no retries" and legitimately publish an app rule.
+	setDyncConsumer(p, DubboConsumer{Retries: -1})
 
 	p.poll()
 
@@ -408,7 +411,7 @@ func TestDyncPoller_GovernOverride(t *testing.T) {
 		// Per-reference override: a different timeout for one service. The key is
 		// the full dubbo resource label ("dubbo:" + colonSeparatedKey).
 		Rules: []governance.Rule{{
-			Resources: []string{"dubbo:greet.GreetService::"},
+			Resources:    []string{"dubbo:greet.GreetService::"},
 			PolicyConfig: resilience.PolicyConfig{AttemptTimeout: 500 * time.Millisecond, MaxRetries: 1},
 		}},
 	})

@@ -28,8 +28,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("s3", "")
-
 func init() {
 	// Register multiple S3 clients as a group, one per entry under
 	// "${spring.s3}". A gs.Module (rather than gs.Group) is used so each
@@ -57,11 +55,11 @@ func init() {
 // endpoint is probed once at startup (ListBuckets) so that misconfiguration or
 // an unreachable endpoint fails fast rather than on first use.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating s3 client, endpoint=%s region=%s", c.Endpoint, c.Region)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating s3 client, endpoint=%s region=%s", c.Endpoint, c.Region)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "s3 driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "s3 driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "s3 driver not found: %s", c.Driver)
 	}
 	cl, err := d.CreateClient(ctx.Context, c)

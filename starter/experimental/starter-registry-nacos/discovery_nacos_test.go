@@ -37,11 +37,13 @@ type fakeNamingClient struct {
 	mu       sync.Mutex
 	set      []model.Instance
 	callback func(services []model.Instance, err error)
+	clusters []string
 }
 
 func (f *fakeNamingClient) SelectInstances(p vo.SelectInstancesParam) ([]model.Instance, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.clusters = p.Clusters
 	if !p.HealthyOnly {
 		return nil, nil
 	}
@@ -163,5 +165,29 @@ func TestNacosDiscovery_WatchPushesSnapshots(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("channel not closed after cancel")
+	}
+}
+
+// TestNacosDiscovery_ClusterScope covers the cluster contract: a set cluster
+// narrows queries to that one cluster, an empty cluster spans all clusters
+// (nil filter). This mirrors the registrar's "DEFAULT" default so a no-config
+// consumer sees a no-config provider.
+func TestNacosDiscovery_ClusterScope(t *testing.T) {
+	fake := &fakeNamingClient{set: []model.Instance{inst("10.0.0.1", 8080, 1, true, true)}}
+
+	d := &nacosDiscovery{client: fake, group: "DEFAULT_GROUP", cluster: "DEFAULT"}
+	if _, err := d.Resolve(context.Background(), "order-svc"); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.clusters) != 1 || fake.clusters[0] != "DEFAULT" {
+		t.Fatalf("cluster DEFAULT must narrow the query, got %v", fake.clusters)
+	}
+
+	d = &nacosDiscovery{client: fake, group: "DEFAULT_GROUP", cluster: ""}
+	if _, err := d.Resolve(context.Background(), "order-svc"); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.clusters) != 0 {
+		t.Fatalf("empty cluster must span all clusters (nil filter), got %v", fake.clusters)
 	}
 }

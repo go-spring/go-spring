@@ -33,7 +33,18 @@
       "default": "10s"
     },
     "tls": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "description": "starttls | tls | none",
+          "default": "starttls"
+        },
+        "insecure-skip-verify": {
+          "type": "boolean",
+          "default": false
+        }
+      }
     }
   }
 }

@@ -58,7 +58,7 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-var starterTag = log.RegisterAppTag("starter_governance", "")
+var starterTag = log.RegisterAppTag("governance", "")
 
 // fileSourceConfig is the "file" source's own configuration, bound from
 // ${govern.source.file.*} (the source config lives under govern.*, next to

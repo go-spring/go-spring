@@ -49,6 +49,21 @@ func RegisterDriver(name string, driver Driver) {
 	driverRegistry[name] = driver
 }
 
+// lookupDriver resolves the configured driver name against the registry,
+// defaulting to "DefaultDriver" when unset or empty. An unknown name is a
+// clear error rather than a silent fallback, so a registration typo fails
+// at startup instead of quietly ignoring the custom driver.
+func lookupDriver(name string) (Driver, error) {
+	if name == "" {
+		name = "DefaultDriver"
+	}
+	d, ok := driverRegistry[name]
+	if !ok {
+		return nil, errutil.Explain(nil, "asynq driver not found: %s", name)
+	}
+	return d, nil
+}
+
 // DefaultDriver builds the standard host:port RedisConnOpt.
 type DefaultDriver struct{}
 

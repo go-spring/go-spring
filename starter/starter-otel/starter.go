@@ -39,8 +39,6 @@ import (
 )
 
 var (
-	// starterTag identifies logs emitted by the otel starter.
-	starterTag = log.RegisterAppTag("starter_otel", "")
 
 	// runtimeOnce guards runtimemetrics.Start, which is not idempotent: the OTel
 	// contrib runtime instrumentation registers fresh async callbacks on the
@@ -74,11 +72,11 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		return err
 	}
 	if !cfg.Enable {
-		log.Infof(context.Background(), starterTag, "observability disabled; skipping OTel setup")
+		log.Infof(context.Background(), log.TagAppDef, "observability disabled; skipping OTel setup")
 		return nil
 	}
 
-	log.Debugf(context.Background(), starterTag, "setting up OTel with service=%s trace_enable=%v metrics_enable=%v", cfg.ServiceName, cfg.Trace.Enable, cfg.Metrics.Enable)
+	log.Debugf(context.Background(), log.TagAppDef, "setting up OTel with service=%s trace_enable=%v metrics_enable=%v", cfg.ServiceName, cfg.Trace.Enable, cfg.Metrics.Enable)
 
 	res, err := trace.NewResource(cfg.ServiceName)
 	if err != nil {
@@ -94,15 +92,29 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 	return nil
 }
 
-// setupTrace builds the TracerProvider and propagator from the trace config,
-// installs them as OTel globals, and registers the provider as a
-// process-global stopper (flushed at shutdown via gs.RegisterStopper). Once
-// the global propagator is set, every instrumented client (otelhttp,
-// otelgrpc, ...) propagates the active trace context on outbound requests
-// automatically - no per-component wiring. It is a no-op when tracing is
-// disabled or exporter is "none".
+// setupTrace installs the global text-map propagator and, when tracing is
+// enabled, the TracerProvider. The propagator is honored independently of
+// tracing/exporting: context propagation (extract/inject of trace context and
+// baggage on inbound/outbound requests) is useful on its own even when no
+// spans are exported, so ${spring.observability.trace.propagator} is no
+// longer ignored when trace.enable=false or exporter=none. The provider is a
+// no-op when tracing is disabled or exporter is "none"; in that case the
+// global TracerProvider stays the SDK no-op.
 func setupTrace(cfg trace.TraceConfig, res *resource.Resource) error {
+	// Propagator: always applied (independent of trace export).
+	prop, err := trace.NewPropagator(cfg.Propagator)
+	if err != nil {
+		return err
+	}
+	if prop != nil {
+		otel.SetTextMapPropagator(prop)
+	}
+
 	if !cfg.Enable || cfg.Exporter == "none" {
+		if prop != nil {
+			log.Infof(context.Background(), log.TagAppDef,
+				"trace export disabled; propagator=%s still installed for context propagation", cfg.Propagator)
+		}
 		return nil
 	}
 
@@ -110,19 +122,12 @@ func setupTrace(cfg trace.TraceConfig, res *resource.Resource) error {
 	if err != nil {
 		return err
 	}
-	prop, err := trace.NewPropagator(cfg.Propagator)
-	if err != nil {
-		return err
-	}
 	otel.SetTracerProvider(tp)
-	if prop != nil {
-		otel.SetTextMapPropagator(prop)
-	}
 	// The provider is a process-global resource, so register it as a global
 	// stopper (not a bean destroyer) to flush buffered spans at shutdown.
 	gs.RegisterStopper("otel-trace", tp.Shutdown)
 
-	log.Infof(context.Background(), starterTag, "trace provider initialized exporter=%s propagator=%s", cfg.Exporter, cfg.Propagator)
+	log.Infof(context.Background(), log.TagAppDef, "trace provider initialized exporter=%s propagator=%s", cfg.Exporter, cfg.Propagator)
 	return nil
 }
 
@@ -157,7 +162,7 @@ func setupMetrics(r gs.BeanProvider, cfg metric.MetricsConfig, res *resource.Res
 		if err := startRuntime(opts); err != nil {
 			return err
 		}
-		log.Infof(context.Background(), starterTag, "runtime metrics enabled")
+		log.Infof(context.Background(), log.TagAppDef, "runtime metrics enabled")
 	}
 	// Pull-based (prometheus) exporter: contribute the scrape handler as an
 	// endpoint.Endpoint so starter-actuator, if present, serves /metrics on
@@ -171,9 +176,17 @@ func setupMetrics(r gs.BeanProvider, cfg metric.MetricsConfig, res *resource.Res
 			r.Provide(metric.NewEndpoint(cfg.Path, ps.Handler)).
 				Export(gs.As[endpoint.Endpoint]())
 		}
+		// Homeless-endpoint detection: with metrics.port=0 the scrape handler
+		// is served ONLY through the actuator. If no management server is
+		// linked into the process (endpoint.IsServing()==false), /metrics is
+		// silently unreachable - WARN with remediation instead.
+		if ps.Server == nil && ps.Handler != nil && !endpoint.IsServing() {
+			log.Warnf(context.Background(), log.TagAppDef,
+				"observability: prometheus exporter has no place to serve %s: metrics.port=0 relies on starter-actuator, which is not linked into this process; set spring.observability.metrics.port>0 to start a dedicated scrape server, or import starter-actuator (and set spring.actuator.addr)", cfg.Path)
+		}
 	}
 
-	log.Infof(context.Background(), starterTag, "metrics provider initialized exporter=%s runtime_metrics=%v", cfg.Exporter, cfg.Runtime.Enable)
+	log.Infof(context.Background(), log.TagAppDef, "metrics provider initialized exporter=%s runtime_metrics=%v", cfg.Exporter, cfg.Runtime.Enable)
 	return nil
 }
 

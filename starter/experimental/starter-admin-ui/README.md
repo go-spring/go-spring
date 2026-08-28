@@ -6,7 +6,8 @@
 > a small HTML dashboard that polls the `starter-actuator` endpoints of a list
 > of application instances and renders their aggregated status.
 
-`starter-admin-ui` self-hosts a dedicated HTTP server (`:9280` by default) and
+`starter-admin-ui` self-hosts a dedicated HTTP server (activated by configuring
+`spring.admin-ui.addr`; no server is started without it) and
 runs a background poller that periodically fetches `/health`, `/readiness`,
 `/startup`, and `/info` from each configured instance. The dashboard renders
 one row per instance with color-coded status pills, per-component health, and
@@ -51,14 +52,24 @@ import _ "go-spring.org/starter-admin-ui"
 Add settings to your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.admin-ui.enabled=true
+# Setting addr is what activates the starter (there is no enabled key).
 spring.admin-ui.addr=:9280
 spring.admin-ui.instances[0]=http://10.0.0.1:9370
 spring.admin-ui.instances[1]=http://10.0.0.2:9370
 spring.admin-ui.interval=10s
 spring.admin-ui.timeout=3s
 spring.admin-ui.title=Go-Spring Admin
+
+# Optional auth (either token, or username+password). Recommended whenever
+# addr binds a non-loopback interface; without it startup logs a warning.
+# spring.admin-ui.token=s3cret
+# spring.admin-ui.username=admin
+# spring.admin-ui.password=pw
 ```
+
+> Migration: earlier releases started the dashboard by default on `:9280`
+> (`spring.admin-ui.enabled=true` with match-if-missing). If you relied on
+> that, add `spring.admin-ui.addr=:9280`; the `enabled` key is no longer read.
 
 Each `instances[i]` entry is a base URL — the UI appends `/health`,
 `/readiness`, `/startup`, `/info` when polling. If `instances` is empty the
@@ -129,8 +140,9 @@ operator tool, not a probe target, so there is nothing to flip on drain.
 
 | Property | Default | Description |
 | --- | --- | --- |
-| `spring.admin-ui.enabled` | `true` | Enables or disables the admin-ui server. |
-| `spring.admin-ui.addr` | `:9280` | Listen address. Distinct from the main HTTP server (`:9090`), the actuator (`:9370`), and pprof (`127.0.0.1:9981`). |
+| `spring.admin-ui.addr` | *(none — required)* | Listen address; setting it activates the admin-ui server (no `enabled` key). Distinct from the main HTTP server (`:9090`), the actuator (`:9370`), and pprof (`:9981`). |
+| `spring.admin-ui.token` | *(empty)* | When set, requires `Authorization: Bearer <token>` on every request. Takes precedence over username/password. |
+| `spring.admin-ui.username` / `spring.admin-ui.password` | *(empty)* | When both set, require HTTP Basic auth. Without any credentials on a non-loopback addr, startup logs a warning. |
 | `spring.admin-ui.instances` | *(empty)* | Comma-separated / indexed list of actuator base URLs to poll. |
 | `spring.admin-ui.interval` | `10s` | Poll cadence; also drives the page's auto-refresh. |
 | `spring.admin-ui.timeout` | `3s` | Per-request HTTP timeout when polling one endpoint on one instance. |

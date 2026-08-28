@@ -38,10 +38,10 @@ spring.neo4j.graph.password=password
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+import StarterNeo4j "go-spring.org/starter-neo4j"
 
 type Service struct {
-    Neo4j neo4j.DriverWithContext `autowire:"graph"`
+    Neo4j *StarterNeo4j.Client `autowire:"graph"` // 内嵌 neo4j.DriverWithContext
 }
 ```
 

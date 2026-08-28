@@ -28,9 +28,9 @@ import (
 // countingHandler fails the first failN calls then succeeds, recording the
 // number of attempts it saw.
 type countingHandler struct {
-	failN  int
-	calls  int
-	err    error
+	failN int
+	calls int
+	err   error
 }
 
 func (h *countingHandler) handle(_ context.Context, _ *Message) error {

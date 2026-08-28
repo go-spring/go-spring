@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-zookeeper/zk"
 	"go-spring.org/log"
@@ -51,11 +53,45 @@ type instanceValue struct {
 
 // zkRegistrar publishes instances to a ZooKeeper ensemble as ephemeral znodes.
 // An ephemeral node lives only as long as the client session, so ZooKeeper
-// removes it automatically when the process dies without Deregister.
+// removes it automatically when the process dies without Deregister. The
+// mirror side of that contract: when the session dies but the process lives
+// (ensemble restart, network partition longer than the session timeout), the
+// nodes vanish too — so a monitor goroutine watches the session state and
+// re-creates every registered node once the session is re-established, with
+// exponential backoff. go-zookeeper/zk v1.0.4 exposes no state-change
+// callback, so the monitor polls Conn.State once a second.
 type zkRegistrar struct {
 	conn     *zk.Conn
 	basePath string
 	acl      []zk.ACL
+
+	// backoffBase/backoffCap pace the re-register retry loop after a session
+	// recovery: 1s doubling up to 1min. Fields (not constants) so tests shrink
+	// them.
+	backoffBase time.Duration
+	backoffCap  time.Duration
+
+	// state and reRegister are the session monitor's seams: the real
+	// implementations read Conn.State and re-run the node-creation step, and
+	// tests replace them to drive loss/recovery without an ensemble.
+	state      func() zk.State
+	reRegister func(reg instance) error
+
+	mu   sync.Mutex
+	regs map[string]instance // znode path -> last advertised value
+
+	done     chan struct{}
+	doneOnce sync.Once
+}
+
+// Close stops the session monitor and the connection. It is idempotent.
+func (r *zkRegistrar) Close() {
+	r.doneOnce.Do(func() {
+		close(r.done)
+		if r.conn != nil {
+			r.conn.Close()
+		}
+	})
 }
 
 // newZookeeperRegistrar connects to the ensemble and returns a registrar. The
@@ -67,7 +103,7 @@ func newZookeeperRegistrar(c ZookeeperConfig) (*zkRegistrar, error) {
 	}
 	conn, _, err := zk.Connect(c.Servers, c.SessionTimeout)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "connect zookeeper servers=%v failed: %v", c.Servers, err)
+		log.Errorf(context.Background(), log.TagAppDef, "connect zookeeper servers=%v failed: %v", c.Servers, err)
 		return nil, errutil.Explain(err, "registry-zookeeper: connect to %v", c.Servers)
 	}
 	if c.Username != "" || c.Password != "" {
@@ -82,11 +118,19 @@ func newZookeeperRegistrar(c ZookeeperConfig) (*zkRegistrar, error) {
 		conn.Close()
 		return nil, errutil.Explain(err, "registry-zookeeper: startup probe failed for %v", c.Servers)
 	}
-	return &zkRegistrar{
-		conn:     conn,
-		basePath: strings.TrimRight(c.BasePath, "/"),
-		acl:      zk.WorldACL(zk.PermAll),
-	}, nil
+	r := &zkRegistrar{
+		conn:        conn,
+		basePath:    strings.TrimRight(c.BasePath, "/"),
+		acl:         zk.WorldACL(zk.PermAll),
+		backoffBase: time.Second,
+		backoffCap:  time.Minute,
+		regs:        map[string]instance{},
+		done:        make(chan struct{}),
+	}
+	r.state = r.conn.State
+	r.reRegister = func(reg instance) error { return r.createNode(reg) }
+	go r.monitorSession()
+	return r, nil
 }
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
@@ -105,7 +149,9 @@ func (r *zkRegistrar) pathFor(reg instance) string {
 
 // Register writes reg as an ephemeral znode, creating the persistent parent
 // directories on demand. Re-registering the same instance replaces the node so
-// the entry is refreshed rather than duplicated.
+// the entry is refreshed rather than duplicated. The advertised value is also
+// remembered so the session monitor can re-create the node (with its latest
+// weight) after a session loss.
 func (r *zkRegistrar) Register(_ context.Context, reg instance) error {
 	if reg.Addr == "" {
 		return errutil.Explain(nil, "registry-zookeeper: addr is required")
@@ -116,6 +162,19 @@ func (r *zkRegistrar) Register(_ context.Context, reg instance) error {
 	if reg.Weight <= 0 {
 		reg.Weight = 1
 	}
+	if err := r.createNode(reg); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.regs[r.pathFor(reg)] = reg
+	r.mu.Unlock()
+	return nil
+}
+
+// createNode performs the raw znode write: marshal, create persistent parents,
+// then create (or replace) the ephemeral leaf. It is the single (re-)creation
+// step used by Register and by the session monitor's recovery loop.
+func (r *zkRegistrar) createNode(reg instance) error {
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,
@@ -173,6 +232,13 @@ func (r *zkRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) 
 	if _, err := r.conn.Set(path, val, -1); err != nil {
 		return errutil.Explain(err, "registry-zookeeper: update weight set %q", path)
 	}
+	// Remember the new weight so a post-recovery re-create advertises it.
+	r.mu.Lock()
+	if last, ok := r.regs[path]; ok {
+		last.Weight = weight
+		r.regs[path] = last
+	}
+	r.mu.Unlock()
 	return nil
 }
 
@@ -180,8 +246,100 @@ func (r *zkRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) 
 // instance that is not registered (ErrNoNode) is a no-op.
 func (r *zkRegistrar) Deregister(_ context.Context, reg instance) error {
 	path := r.pathFor(reg)
+	r.mu.Lock()
+	delete(r.regs, path)
+	r.mu.Unlock()
 	if err := r.conn.Delete(path, -1); err != nil && !errors.Is(err, zk.ErrNoNode) {
 		return errutil.Explain(err, "registry-zookeeper: deregister %q", reg.ServiceName)
+	}
+	return nil
+}
+
+// monitorSession polls the connection state once a second. Leaving
+// StateHasSession means the session is going away (or already expired) and the
+// ephemeral nodes will vanish with it; returning to StateHasSession after a
+// loss triggers re-creation of every registered node. Re-creating after a mere
+// blip (a reconnect that never expired the session) is harmless: Register
+// replaces the node, so the entry is refreshed rather than duplicated.
+func (r *zkRegistrar) monitorSession() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	degraded := false
+	for {
+		select {
+		case <-r.done:
+			return
+		case <-ticker.C:
+			wasDegraded := degraded
+			// Plain assignment, not :=, so degraded carries across ticks.
+			var heal bool
+			degraded, heal = reconcileSession(degraded, r.state())
+			if degraded && !wasDegraded {
+				log.Errorf(context.Background(), log.TagAppDef,
+					"zookeeper session lost (state=%s); registered nodes are gone or going, they will be re-created once the session is re-established", r.state())
+			}
+			if heal {
+				r.healAll()
+			}
+		}
+	}
+}
+
+// reconcileSession folds the observed connection state into the degraded flag.
+// It reports whether the session must be considered lost, and whether the
+// session just recovered (a degraded session observed alive again) — the signal
+// to re-create the registered nodes.
+func reconcileSession(degraded bool, st zk.State) (stillDegraded, heal bool) {
+	if st == zk.StateHasSession {
+		return false, degraded
+	}
+	return true, false
+}
+
+// healAll re-creates every registered node after a session recovery. A failed
+// attempt (the session is not usable yet) is retried with exponential backoff
+// (1s doubling, capped at 1min) until all nodes are back or Close is called.
+func (r *zkRegistrar) healAll() {
+	backoff := r.backoffBase
+	for {
+		select {
+		case <-r.done:
+			return
+		default:
+		}
+		if err := r.reRegisterAll(); err == nil {
+			log.Infof(context.Background(), log.TagAppDef, "re-created registered zookeeper node(s) after session recovery")
+			return
+		} else {
+			log.Errorf(context.Background(), log.TagAppDef,
+				"re-create zookeeper node(s) failed: %v; retrying in %s", err, backoff)
+		}
+		select {
+		case <-r.done:
+			return
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > r.backoffCap {
+			backoff = r.backoffCap
+		}
+	}
+}
+
+// reRegisterAll re-runs the node-creation step for every tracked instance.
+// The first failure aborts the pass; healAll retries the whole pass, and
+// createNode is idempotent so partial progress is not a problem.
+func (r *zkRegistrar) reRegisterAll() error {
+	r.mu.Lock()
+	regs := make([]instance, 0, len(r.regs))
+	for _, reg := range r.regs {
+		regs = append(regs, reg)
+	}
+	r.mu.Unlock()
+	for _, reg := range regs {
+		if err := r.reRegister(reg); err != nil {
+			return err
+		}
 	}
 	return nil
 }

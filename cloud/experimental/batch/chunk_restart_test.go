@@ -173,8 +173,8 @@ func TestChunkStep_ReaderWithoutCheckpointerRestartsFromBeginning(t *testing.T) 
 	makeStep := func() batch.Step {
 		r := newSeqReader(total) // no Checkpointer: restarts replay it from zero
 		return &batch.ChunkStep[int, int]{
-			Name:   "replay-all",
-			Reader: batch.ReaderFunc[int](r.Read),
+			Name:      "replay-all",
+			Reader:    batch.ReaderFunc[int](r.Read),
 			Processor: batch.Passthrough[int](),
 			Writer: batch.WriterFunc[int](func(_ context.Context, items []int) error {
 				writes += len(items)
@@ -230,7 +230,7 @@ type closingWriter struct {
 }
 
 func (c *closingWriter) Write(context.Context, []int) error { return nil }
-func (c *closingWriter) Close(context.Context) error       { *c.closed = true; return nil }
+func (c *closingWriter) Close(context.Context) error        { *c.closed = true; return nil }
 
 // TestJob_StepErrorMarksFailed verifies a non-cancellation step error marks both
 // the step and the job StatusFailed with the failure message recorded.
@@ -264,7 +264,7 @@ func TestChunkStep_ProcessorPanicPropagates(t *testing.T) {
 		Processor: batch.ProcessorFunc[int, int](func(context.Context, int) (int, bool, error) {
 			panic("processor exploded")
 		}),
-		Writer:   batch.WriterFunc[int](func(context.Context, []int) error { return nil }),
+		Writer:    batch.WriterFunc[int](func(context.Context, []int) error { return nil }),
 		ChunkSize: 3,
 	}
 

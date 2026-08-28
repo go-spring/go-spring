@@ -52,6 +52,14 @@ var _ resilience.LimiterDriver = (*Driver)(nil)
 // underlying client is captured at call time, so a re-wired container (tests)
 // swaps clients without rebuilding registered limiters.
 func (d *Driver) NewRateLimiter(p resilience.LimitPolicy) (resilience.RateLimiter, error) {
+	// Loud validation instead of silent misbehaviour: this driver maps a policy
+	// onto one atomic Lua token-bucket script, so a SlidingWindow policy (or any
+	// unknown algorithm) would be silently downgraded to a token bucket with a
+	// completely different burst profile. Refuse at wiring time instead.
+	if p.Algorithm != "" && p.Algorithm != resilience.TokenBucket {
+		return nil, fmt.Errorf("ratelimit-redis: driver %q implements %q only, policy asks for %q (set Algorithm to %q or leave it empty)",
+			d.Name, resilience.TokenBucket, p.Algorithm, resilience.TokenBucket)
+	}
 	d.mu.RLock()
 	c := d.client
 	d.mu.RUnlock()
@@ -82,14 +90,44 @@ func (d *Driver) Client() redis.UniversalClient {
 // a second gs.RunTest in the same test binary rebinds instead of panicking.
 var drivers sync.Map // name (string) -> *Driver
 
+// driverOwners records which instance claimed which driver name, so two
+// instances configured with the same name (explicitly via driver=, or by
+// colliding with another instance's defaulted name) fail at startup with an
+// error naming both instances instead of silently sharing one limiter.
+// Re-wiring the same instance (a second gs.RunTest pass) re-claims its own
+// name and stays allowed.
+var (
+	driverOwnerMu sync.Mutex
+	driverOwners  = map[string]string{} // driver name -> instance name
+)
+
+// claimDriverName reserves driver for instance, or returns a friendly startup
+// error when another instance already claimed it.
+func claimDriverName(driver, instance string) error {
+	driverOwnerMu.Lock()
+	defer driverOwnerMu.Unlock()
+	if owner, ok := driverOwners[driver]; ok && owner != instance {
+		return fmt.Errorf("ratelimit-redis: limiter driver name %q claimed by both instance %q and instance %q — set distinct spring.ratelimit.redis.<name>.driver values",
+			driver, owner, instance)
+	}
+	driverOwners[driver] = instance
+	return nil
+}
+
 // driverFor returns the Driver registered under name, creating and registering
 // it with [resilience.RegisterLimiter] on first use, then binding client.
-func driverFor(name string, client *goredis.Client) *Driver {
+// A driver name already registered by someone else (e.g. the built-in
+// "default" driver, or another module's limiter) is a clear startup error
+// instead of the registry's duplicate panic.
+func driverFor(name string, client *goredis.Client) (*Driver, error) {
 	v, ok := drivers.Load(name)
 	if ok {
 		d := v.(*Driver)
 		d.bind(client.UniversalClient)
-		return d
+		return d, nil
+	}
+	if _, err := resilience.GetLimiter(name); err == nil {
+		return nil, fmt.Errorf("ratelimit-redis: limiter driver name %q is already registered by another module", name)
 	}
 	d := &Driver{Name: name}
 	actual, loaded := drivers.LoadOrStore(name, d)
@@ -98,5 +136,5 @@ func driverFor(name string, client *goredis.Client) *Driver {
 	if !loaded {
 		resilience.RegisterLimiter(name, d)
 	}
-	return d
+	return d, nil
 }

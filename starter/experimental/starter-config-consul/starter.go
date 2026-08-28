@@ -56,8 +56,6 @@ func init() {
 }
 
 var (
-	// starterTag identifies logs emitted by the consul config center starter.
-	starterTag = log.RegisterAppTag("starter_config_consul", "")
 
 	// consulController is the global singleton. It is ONLY referenced in init
 	// functions. All other code operates on the
@@ -87,7 +85,10 @@ type kvAPI interface {
 // the initial config load already captured the state.
 func (c *consulCtrl) TriggerRefresh() {
 	if c.Refresher != nil {
-		_ = c.Refresher.RefreshProperties()
+		if err := c.Refresher.RefreshProperties(); err != nil {
+			log.Warnf(context.Background(), log.TagAppDef,
+				"property refresh after consul change failed, stale snapshot retained: %v", err)
+		}
 	}
 }
 
@@ -181,59 +182,63 @@ func (c *consulCtrl) clientFor(cs configSource) (kvAPI, error) {
 func (c *consulCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
+		log.Errorf(context.Background(), log.TagAppDef, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading config from address=%s kvPath=%s format=%s", cs.address, cs.kvPath, cs.format)
+	log.Debugf(context.Background(), log.TagAppDef, "loading config from address=%s kvPath=%s format=%s", cs.address, cs.kvPath, cs.format)
 
 	cli, err := c.clientFor(cs)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create client for address=%s failed: %v", cs.address, err)
+		log.Errorf(context.Background(), log.TagAppDef, "create client for address=%s failed: %v", cs.address, err)
 		return nil, err
 	}
 
-	c.registerWatch(cli, cs)
+	c.registerWatch(cli, cs, optional)
 
 	pair, _, err := cli.Get(cs.kvPath, &api.QueryOptions{Datacenter: cs.datacenter})
 	if err != nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config get kv %s failed (skipped): %v", cs.kvPath, err)
+			log.Warnf(context.Background(), log.TagAppDef, "optional config get kv %s failed (skipped): %v", cs.kvPath, err)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "get consul kv %s failed: %v", cs.kvPath, err)
+		log.Errorf(context.Background(), log.TagAppDef, "get consul kv %s failed: %v", cs.kvPath, err)
 		return nil, errutil.Explain(err, "get consul kv %s failed", cs.kvPath)
 	}
 	if pair == nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config kv %s not found (skipped)", cs.kvPath)
+			log.Warnf(context.Background(), log.TagAppDef, "optional config kv %s not found (skipped)", cs.kvPath)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "consul kv %s not found", cs.kvPath)
+		log.Errorf(context.Background(), log.TagAppDef, "consul kv %s not found", cs.kvPath)
 		return nil, errutil.Explain(nil, "consul kv %s not found", cs.kvPath)
 	}
 	if len(pair.Value) == 0 {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config kv %s is empty (skipped)", cs.kvPath)
+			log.Warnf(context.Background(), log.TagAppDef, "optional config kv %s is empty (skipped)", cs.kvPath)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "consul kv %s is empty", cs.kvPath)
+		log.Errorf(context.Background(), log.TagAppDef, "consul kv %s is empty", cs.kvPath)
 		return nil, errutil.Explain(nil, "consul kv %s is empty", cs.kvPath)
 	}
 
 	m, err := reader.Read(cs.format, pair.Value)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse consul kv %s as %s failed: %v", cs.kvPath, cs.format, err)
+		log.Errorf(context.Background(), log.TagAppDef, "parse consul kv %s as %s failed: %v", cs.kvPath, cs.format, err)
 		return nil, errutil.Explain(err, "parse consul kv %s as %s failed", cs.kvPath, cs.format)
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded consul config from kvPath=%s keys=%d", cs.kvPath, len(m))
+	log.Infof(context.Background(), log.TagAppDef, "loaded consul config from kvPath=%s keys=%d", cs.kvPath, len(m))
 	return flatten.Flatten(m), nil
 }
 
 // registerWatch spawns a background goroutine that runs a Consul blocking
 // query against the given KV path. Deduplicated across repeated Load calls.
-func (c *consulCtrl) registerWatch(cli kvAPI, cs configSource) {
+// optional records whether the import declared the path optional: deleting an
+// optional path is an expected transition (its properties simply disappear),
+// while deleting a required one leaves the last snapshot in place, which the
+// watcher surfaces as a warning.
+func (c *consulCtrl) registerWatch(cli kvAPI, cs configSource, optional bool) {
 	lk := clientKey(cs) + "|" + cs.kvPath
 
 	c.mu.Lock()
@@ -247,15 +252,15 @@ func (c *consulCtrl) registerWatch(cli kvAPI, cs configSource) {
 	c.listened[lk] = struct{}{}
 	c.mu.Unlock()
 
-	go c.watchLoop(cli, cs)
+	go c.watchLoop(cli, cs, optional)
 }
 
 // watchLoop runs the blocking-query loop for a single KV path.
-func (c *consulCtrl) watchLoop(cli kvAPI, cs configSource) {
+func (c *consulCtrl) watchLoop(cli kvAPI, cs configSource, optional bool) {
 	var lastIndex uint64
 	initialized := false
 	for {
-		_, meta, err := cli.Get(cs.kvPath, &api.QueryOptions{
+		pair, meta, err := cli.Get(cs.kvPath, &api.QueryOptions{
 			Datacenter: cs.datacenter,
 			WaitIndex:  lastIndex,
 			WaitTime:   5 * time.Minute,
@@ -279,6 +284,10 @@ func (c *consulCtrl) watchLoop(cli kvAPI, cs configSource) {
 		}
 		if meta.LastIndex > lastIndex {
 			lastIndex = meta.LastIndex
+			if pair == nil && !optional {
+				log.Warnf(context.Background(), log.TagAppDef,
+					"consul kv %s deleted; stale snapshot retained until the key is restored", cs.kvPath)
+			}
 			c.TriggerRefresh()
 		}
 	}

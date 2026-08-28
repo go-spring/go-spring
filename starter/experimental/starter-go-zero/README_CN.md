@@ -40,7 +40,7 @@ spring.go-zero.rest.server.host=0.0.0.0
 spring.go-zero.rest.server.port=8888
 ```
 
-当 `spring.go-zero.rest.server.enabled` 为 `true`（默认）**且**应用提供了 `HandlerRegister` bean 时，
+当设置了 `spring.go-zero.rest.server.port`（该 key 即开关，不存在 `enabled` key）**且**应用提供了 `HandlerRegister` bean 时，
 starter 才会注册 server bean。
 
 ### 3. 提供 `HandlerRegister` bean
@@ -74,7 +74,7 @@ spring.go-zero.zrpc.server.listen-on=0.0.0.0:8081
 # spring.go-zero.zrpc.server.etcd.key=greet.rpc
 ```
 
-当 `spring.go-zero.zrpc.server.enabled` 为 `true`（默认）**且**应用提供了 `ServiceRegister` bean 时，
+当设置了 `spring.go-zero.zrpc.server.listen-on`（该 key 即开关，不存在 `enabled` key）**且**应用提供了 `ServiceRegister` bean 时，
 starter 才会注册 server bean。
 
 ### 3. 提供 `ServiceRegister` bean
@@ -94,7 +94,7 @@ gs.Provide(func() gozerozrpc.ServiceRegister {
   全局 provider，span 自动导出，无需在 server 侧再配置。若想改用 go-zero 原生 OTLP 导出，设
   `tracing.disabled=false`（并配 `tracing.endpoint`）。
 * **Metrics** —— go-zero 不产出 OpenTelemetry metrics，其指标是纯 Prometheus，由 go-zero 自带的
-  DevServer `/metrics` 端点提供。**默认关闭**，需要抓取 go-zero 原生 registry 时用 `metrics.enabled=true`
-  打开。无法与 `starter-otel` 的 metrics 管线统一。
+  DevServer `/metrics` 端点提供。**默认开启**，不抓取 go-zero 原生 registry 时用 `metrics.enabled=false`
+  关闭（注意它会在 `metrics.port`（默认 6060）上多开一个监听）。无法与 `starter-otel` 的 metrics 管线统一。
 * **Logging** —— go-zero 的框架日志（`logx`）桥接进 Go-Spring 的 `log` 模块，应用只需配置一套日志管线。
   桥接后 `logx` 仅 `log.level` 仍然生效。

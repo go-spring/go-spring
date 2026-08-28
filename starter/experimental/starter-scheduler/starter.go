@@ -37,7 +37,7 @@
 //
 // and declare their schedules in configuration:
 //
-//	spring.scheduler.jobs.cleanup.cron=0 */5 * * * *   # every 5 minutes
+//	spring.scheduler.jobs.cleanup.cron=*/5 * * * *   # every 5 minutes
 package StarterScheduler
 
 import (
@@ -48,9 +48,16 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
-var starterTag = log.RegisterAppTag("scheduler", "")
+// tracerName names the otel tracer/meter the job spans ride. Spans go to the
+// GLOBAL pipeline installed by starter-otel (or any SDK provider); this starter
+// never builds its own.
+const tracerName = "go-spring.org/starter-scheduler"
 
 func init() {
 	// Register the scheduler as a gs.Server under a distinct name so it coexists
@@ -87,7 +94,7 @@ type Server struct {
 // than surfacing on a later fire. Scheduling begins only after the application
 // is ready, so jobs never race application startup.
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
-	log.Debugf(context.Background(), starterTag, "scheduler starting with %d job(s)", len(s.Config.Jobs))
+	log.Debugf(context.Background(), log.TagAppDef, "scheduler starting with %d job(s)", len(s.Config.Jobs))
 
 	s.sched = scheduling.NewScheduler(scheduling.WithObserver(s.observe))
 
@@ -185,16 +192,42 @@ func (s *Server) build() error {
 			opts = append(opts, scheduling.WithLock(adapter, key))
 		}
 
-		if _, err := s.sched.Schedule(name, trigger, job.Run, opts...); err != nil {
+		if _, err := s.sched.Schedule(name, trigger, s.instrument(name, job.Run), opts...); err != nil {
 			return errutil.Explain(err, "scheduler: failed to schedule job %q", name)
 		}
 	}
 	return nil
 }
 
-// observe logs each fire outcome. It is the seam where metrics/tracing could be
-// added later (e.g. an otel-backed observer); for now it bridges into go-spring
-// log so operators see runs, skips and failures.
+// instrument wraps a job's Run so each execution opens a span on the GLOBAL
+// otel pipeline (the repo convention for protocol/component starters: never
+// build a local provider here). The tracer comes from otel.Tracer, which is the
+// no-op implementation unless starter-otel (or any SDK-based provider) has
+// installed a global TracerProvider — so without otel the wrap is a zero-cost
+// pass-through. The span carries the job name; the fire outcome (error status,
+// duration) is set from the run's result. Skipped fires emit no span — the log
+// observer below already reports them.
+func (s *Server) instrument(name string, run scheduling.Job) scheduling.Job {
+	return func(ctx context.Context) error {
+		ctx, span := otel.Tracer(tracerName).Start(ctx, "scheduler.job "+name,
+			trace.WithAttributes(
+				attribute.String("scheduler.job.name", name),
+			),
+			trace.WithSpanKind(trace.SpanKindConsumer),
+		)
+		err := run(ctx)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+		return err
+	}
+}
+
+// observe logs each fire outcome. Tracing does not live here: spans wrap the run
+// itself (see instrument), while this observer reports the outcome — including
+// skips, which never reach a run — into go-spring log.
 func (s *Server) observe(ev scheduling.Event) {
 	ctx := context.Background()
 	switch {

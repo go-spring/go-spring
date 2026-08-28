@@ -33,8 +33,10 @@ import _ "go-spring.org/starter-actuator"
 在项目的[配置文件](example/conf/app.properties)中添加：
 
 ```properties
-spring.actuator.enabled=true
 spring.actuator.addr=:9370
+# 可选：给整个管理端口加鉴权（bearer token，或 spring.actuator.username/password
+# 的 HTTP Basic）。都不配且监听非 loopback 地址时，启动打 WARN。
+# spring.actuator.token=s3cret
 ```
 
 ### 3. 访问端点
@@ -45,7 +47,7 @@ curl http://127.0.0.1:9370/readyz      # 就绪（聚合健康指示器）
 curl http://127.0.0.1:9370/startupz    # 启动探针（启动完成前 503，之后 200）
 curl http://127.0.0.1:9370/info        # 构建/版本信息
 curl http://127.0.0.1:9370/loggers     # 已配置的日志器及其级别
-curl http://127.0.0.1:9370/env         # 合并后的配置（敏感值脱敏）
+curl http://127.0.0.1:9370/env         # 按来源分组的配置（未合并，敏感值脱敏）
 curl http://127.0.0.1:9370/threaddump  # goroutine 栈转储
 ```
 
@@ -66,6 +68,9 @@ readinessProbe:
 ## 端点
 
 三个探针端点对应 Kubernetes 容器探针。带 z 后缀的路径为规范路径，旧名保留为别名。
+探针端点与 `/info` 默认注册；敏感自省端点（`/loggers`、`/env`、`/configprops`、
+`/threaddump`、`/beans`）**默认关闭**，只有列入 `spring.actuator.endpoints.include`
+才注册。
 
 | 端点 | 方法 | 含义 |
 | --- | --- | --- |
@@ -73,36 +78,31 @@ readinessProbe:
 | `/readyz`（别名 `/readiness`） | GET | **就绪。** 仅当应用越过就绪屏障**且**所有 `readiness` 分组指示器均通过时返回 `200 {"status":"UP"}`；否则返回 `503`（就绪前及停机排空期间为 `OUT_OF_SERVICE`，组件失败时为 `DOWN`）。 |
 | `/startupz`（别名 `/startup`） | GET | **启动探针。** 应用启动完成**且**所有 `startup` 分组指示器通过前返回 `503 OUT_OF_SERVICE`，之后返回 `200`。不受排空影响，启动成功后 kubelet 即移交存活探针，缓慢启动不会被杀掉。 |
 | `/info` | GET | 从二进制内嵌的 build info 读取构建/版本元数据（模块路径/版本、Go 工具链，以及从代码库构建时的 VCS 版本/时间）。 |
-| `/loggers` | GET | 列出已配置的日志器及其生效级别，并给出可选级别名称。对标 Spring Boot 的 `/actuator/loggers`。 |
-| `/loggers/{name}` | POST | 运行时覆盖某个日志器的级别。请求体 `{"configuredLevel":"DEBUG"}`，根日志器用 `root`。成功返回 `204`，级别非法返回 `400`，日志器不存在返回 `404`。 |
-| `/env` | GET | 合并后的配置属性（扁平属性源）。敏感命名的 key（`password`、`token`、`secret` 等）与 `ENC(...)` 值会被脱敏。 |
-| `/configprops` | GET | 合并后的配置，以嵌套树形式呈现（对标 `/actuator/configprops`），脱敏策略与 `/env` 相同。 |
+| `/loggers` | GET | 列出已配置的日志器及其生效级别。只读（有意不实现运行时改级别，`POST /loggers/{name}` 不存在）。对标 Spring Boot 的 `/actuator/loggers`。默认关闭，需显式 include。 |
+| `/env` | GET | 各配置源的扁平属性表，按优先级排列（高在前）、**未合并**——运维看到原始数据自行判断聚合结果。敏感命名的 key（`password`、`token`、`secret` 等）与 `ENC(...)` 值会被脱敏。 |
+| `/configprops` | GET | 各配置源的嵌套树视图（对标 `/actuator/configprops`），按优先级排列、未合并，脱敏策略与 `/env` 相同。 |
 | `/threaddump` | GET | 以 `text/plain` 返回 goroutine 栈转储——对标 JVM 的线程转储。 |
 | `/metrics` | GET | Prometheus 抓取端点。仅当引入 `starter-otel` 且 `spring.observability.metrics.exporter=prometheus` 时出现——otel 贡献其抓取 handler，由 actuator 挂载于此（见*指标与 Kubernetes 抓取*）。 |
 
 ### 运行时日志级别
 
-`GET /loggers` 列出每个已配置日志器及可设置的级别：
+`GET /loggers` 列出每个已配置日志器及其生效级别。**只读**——运行时改级别
+（`POST /loggers/{name}`）经设计权衡后未实现：
 
 ```json
 {
-  "levels": ["TRACE","DEBUG","INFO","WARN","ERROR","PANIC","FATAL"],
   "loggers": { "root": { "configuredLevel": "INFO" } }
 }
-```
-
-无需重启即可把某个日志器临时提升到 `DEBUG`，用完再改回：
-
-```bash
-curl -X POST http://127.0.0.1:9370/loggers/root \
-  -H 'Content-Type: application/json' -d '{"configuredLevel":"DEBUG"}'
 ```
 
 ### 敏感值脱敏（`/env`、`/configprops`）
 
 当 key 命中 `password`、`passwd`、`secret`、`token`、`credential`、
-`apikey`/`api-key`、`private-key`、`access-key`（不区分大小写），或值为配置加密
-产生的 `ENC(...)` 占位符时，值会被脱敏为 `******`；其余值原样输出。
+`apikey`/`api-key`、`private-key`、`access-key`（不区分大小写子串），或 key 最后
+一个 `.`/`_`/`-` 分段恰好是 `key`/`api-key`/`api_key`（`some.key`、`aws.key` 命中；
+`monkey`、`keyword` 不命中），或值为配置加密产生的 `ENC(...)` 占位符时，值会被脱敏
+为 `******`；值若是内嵌凭据的 URL（`redis://user:pass@host`）则只把 userinfo 部分
+掩为 `redis://******@host`。其余值原样输出。
 
 ## 优雅停机（Drain）
 
@@ -216,8 +216,11 @@ spec:
 
 | 属性 | 默认值 | 说明 |
 | --- | --- | --- |
-| `spring.actuator.enabled` | `true` | 启用/禁用 actuator 服务器。 |
-| `spring.actuator.addr` | `:9370` | 管理端监听地址。默认绑定所有网卡，以便集群内探针可访问。与主 HTTP 服务器（`:9090`）、pprof 服务器（`127.0.0.1:9981`）区分开。 |
+| `spring.actuator.addr` | — | 管理端监听地址（必填——设置该 key 即启用 starter）。示例 `:9370` 绑定所有网卡以便集群内探针访问。与主 HTTP 服务器（`:9090`）、pprof 服务器（`127.0.0.1:9981`）区分开。 |
+| `spring.actuator.endpoints.include` | `""` | 逗号列表。敏感自省端点（`loggers、env、configprops、threaddump、beans`）默认关闭，必须列在这里才暴露；非空列表同时对 `info` 与贡献端点（如 `metrics`）构成白名单。探针豁免。 |
+| `spring.actuator.endpoints.exclude` | `""` | 逗号黑名单，始终生效——显式 include 也会被压掉。 |
+| `spring.actuator.token` | `""` | 保护整个管理端口的 bearer token（`Authorization: Bearer <token>`），优先于 Basic。 |
+| `spring.actuator.username` / `spring.actuator.password` | `""` | 管理端口的 HTTP Basic 凭据（两者都设才生效）。都不配且非 loopback 监听时启动打 WARN。 |
 
 ## 许可证
 

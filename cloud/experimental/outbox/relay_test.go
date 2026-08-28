@@ -38,7 +38,7 @@ type memBinder struct {
 	// failDests makes publishing to these destinations fail until succeeded
 	// times (0 = always fail).
 	failDests map[string]int
-	attempts map[string]int
+	attempts  map[string]int
 }
 
 func newMemBinder(failDests map[string]int) *memBinder {

@@ -47,7 +47,7 @@ spring.kratos.http.server.addr=0.0.0.0:8000
 # spring.kratos.http.server.etcd.addr=127.0.0.1:2379
 ```
 
-The starter registers its server bean when `spring.kratos.http.server.enabled` is `true` (default)
+The starter registers its server bean when `spring.kratos.http.server.addr` is set (that key is the on/off switch; there is no `enabled` key)
 **and** the application provides a `ServiceRegister` bean.
 
 ### 3. Provide a `ServiceRegister` bean
@@ -64,12 +64,12 @@ gs.Provide(func() kratoshttp.ServiceRegister {
 ## Quick Start — gRPC
 
 Identical shape to HTTP; swap the import for `go-spring.org/starter-kratos/grpc`, the config prefix for
-`spring.kratos.grpc.server` (default addr `0.0.0.0:9000`), and register with `v1.RegisterGreeterServer`.
+`spring.kratos.grpc.server` (no default addr — setting `addr` is what activates it), and register with `v1.RegisterGreeterServer`.
 
 ## Quick Start — WebSocket
 
-Import `go-spring.org/starter-kratos/ws`, configure under `spring.kratos.ws.server` (default addr
-`0.0.0.0:9002`, `path=/`), and bind message handlers with `websocket.RegisterServerMessageHandler`.
+Import `go-spring.org/starter-kratos/ws`, configure under `spring.kratos.ws.server` (no default
+addr — setting `addr` is what activates it; `path=/`), and bind message handlers with `websocket.RegisterServerMessageHandler`.
 WebSocket carries application-defined framed messages, not proto RPCs; see the pinned-version and
 binary-payload notes in `ws/starter.go`.
 
@@ -79,7 +79,7 @@ binary-payload notes in `ws/starter.go`.
   kratos' `tracing.Server()` middleware, which emits spans through the global OpenTelemetry
   `TracerProvider`; when `starter-otel` is imported it installs that provider and spans are exported
   automatically, with no per-server configuration. Absent `starter-otel`, the middleware is a no-op.
-* **Metrics** — opt-in per server via `spring.kratos.<proto>.server.metrics.enable=true`. When enabled,
+* **Metrics** — on by default per server; disable with `spring.kratos.<proto>.server.metrics.enable=false`. When enabled,
   kratos' metrics middleware records the request counter and latency histogram into the process-global
   OpenTelemetry meter, so the exporter and scrape endpoint are owned by `starter-otel` — this starter
   stands up no Prometheus endpoint of its own.

@@ -29,6 +29,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/log"
 	observe "go-spring.org/cloud/observe"
 	resilobserve "go-spring.org/cloud/observe/resilience"
 )
@@ -97,6 +98,11 @@ var resilienceResources sync.Map // *kgo.Client -> string
 // When governance is off, ExecutorFor yields a transparent no-op executor; fault
 // wraps it when an injector is registered (nil-safe otherwise).
 func applyResilience(c Config, cl *kgo.Client, resource string) error {
+	// Per-instance opt-out: without an executor attached, guard (and therefore
+	// both GuardedProduceSync and the binder's Publish) degrades to bare calls.
+	if !c.Governance {
+		return nil
+	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilobserve.WrapExecutor(exec, "kafka", c.Observability)
 	resilienceExecs.Store(cl, exec)
@@ -107,7 +113,9 @@ func applyResilience(c Config, cl *kgo.Client, resource string) error {
 // closeResilience closes and forgets the executor behind cl, if any.
 func closeResilience(cl *kgo.Client) {
 	if v, ok := resilienceExecs.LoadAndDelete(cl); ok {
-		_ = v.(resilience.Executor).Close()
+		if err := v.(resilience.Executor).Close(); err != nil {
+			log.Warnf(context.Background(), log.TagAppDef, "kafka: resilience executor close failed: %v", err)
+		}
 	}
 	resilienceResources.Delete(cl)
 }

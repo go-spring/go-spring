@@ -47,6 +47,7 @@ spring.gin.server.health.path=/healthz
 spring.gin.server.tls.enabled=false
 spring.gin.server.tls.cert-file=
 spring.gin.server.tls.key-file=
+spring.gin.server.tls.ca-file==# 可选：配置后强制校验该 CA 签发的客户端证书（mTLS）。
 
 # 内置中间件。`enabled` 总开关（默认 true）整体启停内置中间件；关闭后由注册器接管整条链
 # （含 Recovery）。开启时，Recovery、Tracing、Metrics、AccessLog 合并进常开的 Observe 中间件；
@@ -68,8 +69,8 @@ spring.gin.server.middleware.secureHeaders.frameOptions=DENY
 spring.gin.server.middleware.secureHeaders.referrerPolicy=no-referrer
 ```
 
-当 `spring.gin.server.enabled` 为 `true`（默认）且应用提供了 `RouterRegister` Bean 时，
-starter 会自动注册服务器 Bean。
+当设置了 `spring.gin.server.addr`（该 key 即开关，不存在 `enabled` key）且应用提供了
+`RouterRegister` Bean 时，starter 会自动注册服务器 Bean。
 
 > **端口约定** —— 三个 HTTP starter 使用互不相同的端口，可同时启动：
 > `starter-gin` → `:8001`，`starter-echo` → `:8002`，`starter-hertz` → `:8003`。
@@ -136,3 +137,12 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
   进行调优。
 * **完整的 gin 生态**：任何 gin 中间件、路由分组、渲染器、绑定器都可以在注册器拿到的 `*gin.Engine`
   上自由组合。
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_gin_access`（gin 访问日志）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.gin_access.type=Logger
+logger.gin_access.level=WARN
+logger.gin_access.tag=_app_gin_access
+```

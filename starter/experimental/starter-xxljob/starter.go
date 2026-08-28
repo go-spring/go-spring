@@ -21,13 +21,10 @@ package StarterXxljob
 
 import (
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("xxljob", "")
 
 func init() {
 	gs.Module(gs.OnProperty("spring.xxljob"), func(r gs.BeanProvider, p flatten.Storage) error {

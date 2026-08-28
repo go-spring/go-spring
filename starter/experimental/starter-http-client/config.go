@@ -26,6 +26,7 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/observe/resilience"
+	"go-spring.org/cloud/tlsconf"
 )
 
 // Config binds one declarative-HTTP-client entry under
@@ -42,7 +43,10 @@ type Config struct {
 	Addr string `value:"${addr:=}"`
 
 	// ServiceName routes through service discovery and load balancing instead of
-	// a fixed address. Mutually exclusive with Addr.
+	// a fixed address. It may also be set ALONGSIDE Addr: Addr then pins the
+	// direct address while ServiceName remains the (stable) governance resource
+	// label — so switching an entry between direct and discovery addressing does
+	// not silently change the key govern.rules match on.
 	ServiceName string `value:"${service-name:=}"`
 
 	// Discovery names the registered discovery backend (from cloud/discovery)
@@ -61,37 +65,35 @@ type Config struct {
 	// Ignored when EjectThreshold is 0.
 	EjectFor time.Duration `value:"${eject-for:=0}"`
 
-	// Timeout bounds each request made by the client. 0 means no timeout.
-	Timeout time.Duration `value:"${timeout:=0}"`
-
 	// Observability configures the resilience access log (off/brief/detailed)
 	// emitted alongside the trace span + metrics that observe-resilience wraps
 	// the executor with.
 	Observability observe.ObserveConfig `value:"${observability:=}"`
+
+	// TLS configures the certificate surface for https targets: a client key
+	// pair (tls.cert-file/key-file), a CA bundle (tls.ca-file), the expected
+	// peer name (tls.server-name) and an insecure escape hatch. Off by default;
+	// when enabled it is wired into the transport's TLS config, so
+	// WithScheme("https") gets verifiable TLS instead of system defaults.
+	TLS tlsconf.TLSConfig `value:"${tls:=}"`
 }
 
-// ResilienceConfig binds the backend-neutral resilience knobs exposed by
-// Resilience binds the backend-neutral resilience knobs shared by every client
-// starter (see [resilience.Config]). Driver selects which registered backend
-// enforces them: "default" (bundled) or "sentinel" (blank-import
-// starter-resilience). It mirrors the shape used by starter-oauth2-client so the
-// two client families read the same in configuration.
-//
-// Keep MaxRetries at 0 unless requests are idempotent: the client may issue
-// POSTs and other non-idempotent verbs, and a retry re-sends them.
+// Resilience and fault policy are NOT bound here: they live process-wide under
+// govern.* (starter-governance). Keep govern retry counts at 0 unless requests
+// are idempotent: the client may issue POSTs and other non-idempotent verbs,
+// and a retry re-sends them.
 
 // validate enforces the addr-or-service-name fail-fast rule shared by client
-// starters: exactly one addressing mode, and discovery is mandatory when
-// routing by service name. go-spring's expr: tag validates one field at a time,
-// so this cross-field rule lives here rather than in a tag.
+// starters: at least one of them must be set, Addr selects direct addressing
+// (with ServiceName kept as a pure governance label), and discovery is
+// mandatory when routing by service name alone. go-spring's expr: tag validates
+// one field at a time, so this cross-field rule lives here rather than in a tag.
 func (c Config) validate() error {
 	switch {
 	case c.Addr == "" && c.ServiceName == "":
 		return fmt.Errorf("http-client: one of addr or service-name is required")
-	case c.Addr != "" && c.ServiceName != "":
-		return fmt.Errorf("http-client: addr and service-name are mutually exclusive")
-	case c.ServiceName != "" && c.Discovery == "":
-		return fmt.Errorf("http-client: discovery is required when service-name is set")
+	case c.Addr == "" && c.Discovery == "":
+		return fmt.Errorf("http-client: discovery is required when service-name is set without addr")
 	}
 	return nil
 }
@@ -102,8 +104,14 @@ func (c Config) validate() error {
 // transparent no-op when governance is off); it is handed to httpx directly, and
 // WrapExec layers fault (innermost) + observe-resilience on top of it.
 func (c Config) toTransportConfig(base http.RoundTripper, exec resilience.Executor) httpx.Config {
+	serviceName := c.ServiceName
+	if c.Addr != "" {
+		// Direct addressing: service-name (when set) is a pure governance label,
+		// NOT a discovery target — blank it so httpx pins Addr without a resolver.
+		serviceName = ""
+	}
 	cfg := httpx.Config{
-		ServiceName:    c.ServiceName,
+		ServiceName:    serviceName,
 		Addr:           c.Addr,
 		Discovery:      c.Discovery,
 		Balancer:       c.Balancer,

@@ -88,3 +88,12 @@ func init() {
     StarterInfluxdb.RegisterDriver("v1-compat", v1CompatDriver{})
 }
 ```
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_influxdb`（influxdb 客户端）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.influxdb.type=Logger
+logger.influxdb.level=WARN
+logger.influxdb.tag=_app_influxdb
+```

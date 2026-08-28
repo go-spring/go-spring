@@ -45,29 +45,29 @@ import (
 // non-empty Brokers() check guards against future sarama changes that might
 // otherwise swallow a fully empty cluster.
 func newClient(ctx *gs.ContextProvider, name string, c Config) (sarama.Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating kafka sarama client, brokers=%s", c.Brokers)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka sarama client, brokers=%s", c.Brokers)
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		log.Errorf(ctx.Context, starterTag, "kafka driver not found: %s", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "kafka driver not found: %s", c.Driver)
 		return nil, errutil.Explain(nil, "kafka driver not found: %s", c.Driver)
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, starterTag, "kafka sarama: create client failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 	if len(cl.Brokers()) == 0 {
 		cl.Close()
-		log.Errorf(ctx.Context, starterTag, "kafka sarama: no brokers after metadata fetch: %s", c.Brokers)
+		log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: no brokers after metadata fetch: %s", c.Brokers)
 		return nil, fmt.Errorf("kafka client has no brokers after metadata fetch: %s", c.Brokers)
 	}
 	if err := applyResilience(c, cl, resilience.ResourceLabel("kafka", c.Brokers)); err != nil {
-		log.Errorf(ctx.Context, starterTag, "kafka sarama: resilience setup failed: %v", err)
+		log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: resilience setup failed: %v", err)
 		_ = cl.Close()
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "kafka sarama client initialized, brokers=%s", c.Brokers)
+	log.Infof(ctx.Context, log.TagAppDef, "kafka sarama client initialized, brokers=%s", c.Brokers)
 	return cl, nil
 }
 

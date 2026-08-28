@@ -27,12 +27,12 @@
     },
     "dialTimeout": {
       "type": "string",
-      "description": "TCP dial timeout",
+      "description": "TCP dial timeout (DSN dial+timeout, whole seconds; sub-second rounds up to 1s)",
       "default": ""
     },
     "connectTimeout": {
       "type": "string",
-      "description": "Login/connection timeout",
+      "description": "Login/connection timeout (DSN connection+timeout, whole seconds; sub-second rounds up to 1s)",
       "default": ""
     },
     "max-open-conns": {
@@ -66,7 +66,22 @@
       "default": "0"
     },
     "tls": {
-      "type": "object"
+      "type": "object",
+      "description": "TLS block (sqlserver subset): enabled, insecure-skip-verify, ca-file only.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "insecure-skip-verify": {
+          "type": "boolean",
+          "default": false
+        },
+        "ca-file": {
+          "type": "string",
+          "default": ""
+        }
+      }
     },
     "service-name": {
       "type": "string",

@@ -29,8 +29,8 @@ curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer s3cr3t' \
   http://127.0.0.1:9981/debug/pprof/
 # -> 200
 
-curl -s -o /dev/null -w '%{http_code}' \
-  'http://127.0.0.1:9981/debug/pprof/heap?token=s3cr3t'
+curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer s3cr3t' \
+  http://127.0.0.1:9981/debug/pprof/heap
 # -> 200
 ```
 

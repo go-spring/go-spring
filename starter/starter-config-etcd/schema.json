@@ -7,6 +7,37 @@
     "etcd-url": {
       "type": "string",
       "description": "URL format: etcd://host:port/path/to/key"
+    },
+    "govern.source.etcd": {
+      "type": "object",
+      "description": "Governance rules source bound at govern.source.etcd.*",
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "description": "Etcd endpoint, required"
+        },
+        "key": {
+          "type": "string",
+          "description": "KV key holding the rules document, required"
+        },
+        "username": {
+          "type": "string",
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "default": ""
+        },
+        "format": {
+          "type": "string",
+          "description": "Override document format; inferred from key extension by default",
+          "default": ""
+        }
+      },
+      "required": [
+        "endpoint",
+        "key"
+      ]
     }
   }
 }

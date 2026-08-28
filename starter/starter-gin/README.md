@@ -44,6 +44,7 @@ spring.gin.server.health.path=/healthz
 spring.gin.server.tls.enabled=false
 spring.gin.server.tls.cert-file=
 spring.gin.server.tls.key-file=
+spring.gin.server.tls.ca-file==# Optional: set to require client certificates signed by this CA (mTLS).
 
 # Built-in middlewares. The `enabled` master switch (default true) turns the
 # whole built-in set on/off; when false the register owns the entire chain,
@@ -67,8 +68,9 @@ spring.gin.server.middleware.secureHeaders.frameOptions=DENY
 spring.gin.server.middleware.secureHeaders.referrerPolicy=no-referrer
 ```
 
-The starter registers its server bean when `spring.gin.server.enabled` is `true` (default) and a
-`RouterRegister` bean is provided by the application.
+The starter registers its server bean when `spring.gin.server.addr` is set (that key is the
+on/off switch; there is no `enabled` key) and a `RouterRegister` bean is provided by the
+application.
 
 > **Port convention** — the three HTTP starters use distinct ports so they can run side by side:
 > `starter-gin` → `:8001`, `starter-echo` → `:8002`, `starter-hertz` → `:8003`.
@@ -142,3 +144,13 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
   standard `SimpleHttpServerConfig` binding.
 * **Full gin ecosystem**: any gin middleware, route group, renderer, or binder can be composed on the
   `*gin.Engine` passed to the `RouterRegister`.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_gin_access` (gin access log). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.gin_access.type=Logger
+logger.gin_access.level=WARN
+logger.gin_access.tag=_app_gin_access
+```

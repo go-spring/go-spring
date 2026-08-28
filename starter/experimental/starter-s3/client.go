@@ -47,8 +47,11 @@ import (
 // builds the observe+resilience transport and swaps it in.
 type Client struct {
 	*minio.Client
-	// Observability is field-injected by gs and configures the observe
-	// transport (spans + metrics + access log per request).
+	// Observability is field-injected by gs from the top-level
+	// "observability.*" keys and configures the observe transport (spans +
+	// metrics + access log per request). The instance-prefixed
+	// "spring.s3.<name>.observability.*" keys land in cfg.Observability and
+	// take precedence — see resolveObservability.
 	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// cfg is the connection config, retained for the resilience resource label.
@@ -64,6 +67,36 @@ type Client struct {
 	resource string
 }
 
+// resolveObservability merges the two observability config surfaces into the
+// effective policy Init arms:
+//
+//   - the instance-prefixed "spring.s3.<name>.observability.*" keys, bound
+//     into Config (cfg.Observability) by conf.BindEach;
+//   - the top-level "observability.*" keys, field-injected into the wrapper's
+//     Observability field (an absolute property reference, kept for backward
+//     compatibility with configs that predate the instance keys).
+//
+// Instance-level keys override top-level ones. Because binding fills the
+// defaults ("brief" / 512 / no skips) even when no instance key is present, an
+// instance value is only detectable as "set" when it differs from those
+// defaults — setting an instance key back to its default value therefore
+// cannot override a non-default top-level value. Configure one surface only
+// and this caveat disappears.
+func (o *Client) resolveObservability() observe.ObserveConfig {
+	c := o.Observability // top-level fallback
+	i := o.cfg.Observability
+	if i.Level != "" && i.Level != observe.DefaultBrief {
+		c.Level = i.Level
+	}
+	if i.MaxArgBytes != 0 && i.MaxArgBytes != 512 {
+		c.MaxArgBytes = i.MaxArgBytes
+	}
+	if len(i.SkipOps) > 0 {
+		c.SkipOps = i.SkipOps
+	}
+	return c
+}
+
 // Init is the gs InitMethod: gs field-injects Observability after newClient
 // returns, then calls this. It builds the observe transport (needs
 // Observability) and resolves the executor through the neutral
@@ -76,14 +109,15 @@ func (o *Client) Init() error {
 	// minio-go ships no OTel instrumentation of its own, so unlike
 	// starter-elasticsearch the observe transport carries all three signals:
 	// span + metric + access log.
-	obs := observe.NewDB("s3", o.Observability)
+	obsCfg := o.resolveObservability()
+	obs := observe.NewDB("s3", obsCfg)
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resilience.ResourceLabel("s3", o.cfg.Endpoint)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	// Wrap the executor with observe-resilience so circuit-breaker trips,
 	// rate-limit rejects, bulkhead rejections and retries emit a span + call
 	// counter (by outcome) + duration histogram + access log.
-	exec = resilobserve.WrapExecutor(exec, "s3", o.Observability)
+	exec = resilobserve.WrapExecutor(exec, "s3", obsCfg)
 	o.exec = exec
 	if o.dyn != nil {
 		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,

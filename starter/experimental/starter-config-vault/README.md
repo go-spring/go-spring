@@ -107,7 +107,7 @@ in a config file:
 
 | Variable                     | Description                                        |
 |------------------------------|----------------------------------------------------|
-| `GS_CONFIG_DECRYPT_KEY`      | base64-encoded AES key (16/24/32 bytes)            |
+| `GS_CONFIG_DECRYPT_AES_KEY` | base64-encoded AES key (16/24/32 bytes)            |
 | `GS_CONFIG_DECRYPT_AES_KEY_FILE` | path to a file holding the base64-encoded key      |
 
 A value that carries a marker but cannot be decrypted fails startup rather than

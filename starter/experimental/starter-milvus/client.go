@@ -14,35 +14,55 @@
  * limitations under the License.
  */
 
-// client.go is the resource entity + lifecycle of this starter. Milvus's SDK
-// exposes no reject-capable interceptor seam (gRPC dial options are build-time
-// only, not a per-op guard), so there is no per-operation resilience — the
-// wrapper is a thin holder with a fail-fast probe and health check, matching
-// the cassandra iterator-path stance (see DESIGN).
+// client.go is the resource entity + lifecycle of this starter. The Milvus SDK
+// is gRPC-based and accepts dial options, so the per-RPC resilience guard is
+// installed as a client interceptor chain (see guard.go) — every RPC the
+// wrapper's embedded client issues is protected without opt-in at the call
+// site, matching the transparent per-request stance of the other NoSQL
+// starters.
 package StarterMilvus
 
 import (
 	"context"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	observe "go-spring.org/cloud/observe"
+	"go-spring.org/cloud/observe/resilience"
 )
 
 // Client is the bean Milvus connections are injected as. It embeds the SDK's
 // client.Client interface (so every method promotes unchanged) and holds the
-// config for the health probe.
+// config plus the guard slot the interceptors consult.
 type Client struct {
 	client.Client
-	cfg Config
+	// Observability is field-injected by gs and configures the observation of
+	// guard decisions (rate-limit/breaker rejections emit a span + call
+	// counter + duration histogram + access log).
+	Observability observe.ObserveConfig `value:"${observability:=}"`
+	cfg           Config
+	// slot is armed by Init; the gRPC interceptors read it on every RPC.
+	slot *guardSlot
+	// exec is the resilience executor, resolved via resilience.ExecutorFor;
+	// no-op when governance is off.
+	exec resilience.Executor
+	// resource is the resilience resource key ("milvus:<addr>") exec scopes
+	// limiter/breaker state by.
+	resource string
 }
 
-// newClient builds the Milvus client and probes it once so a wrong address or
-// bad credential fails fast at startup instead of on first query.
+// newClient builds the Milvus client — with the guard interceptors installed
+// on the dial options — and probes it once so a wrong address or bad
+// credential fails fast at startup instead of on first query.
 func newClient(ctx context.Context, c Config) (*Client, error) {
+	slot := &guardSlot{}
 	cl, err := client.NewClient(ctx, client.Config{
-		Address:  c.Addr,
-		Username: c.Username,
-		Password: c.Password,
-		DBName:   c.Database,
+		Address:     c.Addr,
+		Username:    c.Username,
+		Password:    c.Password,
+		DBName:      c.Database,
+		DialOptions: guardDialOptions(slot),
 	})
 	if err != nil {
 		return nil, err
@@ -52,11 +72,29 @@ func newClient(ctx context.Context, c Config) (*Client, error) {
 		_ = cl.Close()
 		return nil, err
 	}
-	return &Client{Client: cl, cfg: c}, nil
+	return &Client{Client: cl, cfg: c, slot: slot}, nil
 }
 
-// Destroy closes the connection.
+// Init is the gs InitMethod: gs field-injects Observability after newClient
+// returns, then calls this. It resolves the executor through the neutral
+// [resilience.ExecutorFor] seam (backed by starter-govern's governance center
+// when imported), wraps it with the process-wide fault injector and
+// observe-resilience, and arms the slot the interceptors read. When governance
+// is off the resolved executor is a transparent no-op.
+func (o *Client) Init() error {
+	o.resource = resilience.ResourceLabel("milvus", o.cfg.Addr)
+	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
+	exec = resilobserve.WrapExecutor(exec, "milvus", o.Observability)
+	o.exec = exec
+	o.slot.arm(exec, o.resource)
+	return nil
+}
+
+// Destroy closes the resilience executor (if armed) and the connection.
 func (o *Client) Destroy() error {
+	if o.exec != nil {
+		_ = o.exec.Close()
+	}
 	return o.Client.Close()
 }
 

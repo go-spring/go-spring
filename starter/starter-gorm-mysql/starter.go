@@ -40,8 +40,6 @@ import (
 // so the wrapper body, lifecycle and observe/resilience wiring stay in one place.
 type DB = gormcore.DB
 
-var starterTag = log.RegisterAppTag("gorm_mysql", "")
-
 // tlsSeq makes each registered custom TLS config name unique.
 var tlsSeq atomic.Uint64
 
@@ -70,7 +68,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		return gormcore.Spec{}, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
 	}
 
-	log.Debugf(ctx, starterTag, "creating gorm mysql client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
+	log.Debugf(ctx, log.TagAppDef, "creating gorm mysql client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
 
 	var (
 		discoCloser func()
@@ -84,7 +82,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 	// unique name and reference it in the DSN as tls=<name>.
 	tlsCfg, err := c.TLS.Build()
 	if err != nil {
-		log.Errorf(ctx, starterTag, "gorm mysql: build TLS failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "gorm mysql: build TLS failed: %v", err)
 		return gormcore.Spec{}, errutil.Explain(err, "gorm-mysql: build TLS")
 	}
 	if tlsCfg != nil {
@@ -100,7 +98,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 
 	conn, err := newDiscoveryConn(ctx, c)
 	if err != nil {
-		log.Errorf(ctx, starterTag, "gorm mysql: build discovery dialer failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "gorm mysql: build discovery dialer failed: %v", err)
 		if tlsCloser != nil {
 			tlsCloser()
 		}

@@ -63,7 +63,7 @@ type DefaultDriver struct{}
 func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*amqp.Connection, error) {
 	tc, err := c.TLS.Build()
 	if err != nil {
-		log.Errorf(ctx, starterTag, "rabbitmq: build TLS failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "rabbitmq: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "rabbitmq: build TLS")
 	}
 	useTLS := tc != nil || strings.HasPrefix(strings.ToLower(c.URL), "amqps://")
@@ -82,7 +82,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*amqp.Connecti
 		conn, err = amqp.Dial(c.URL)
 	}
 	if err != nil {
-		log.Errorf(ctx, starterTag, "rabbitmq: dial failed url=%s: %v", c.URL, err)
+		log.Errorf(ctx, log.TagAppDef, "rabbitmq: dial failed url=%s: %v", c.URL, err)
 		return nil, errutil.Explain(err, "failed to dial rabbitmq: %s", c.URL)
 	}
 	return conn, nil

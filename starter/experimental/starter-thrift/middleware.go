@@ -80,11 +80,62 @@ func WrapProcessor(inner thrift.TProcessor) thrift.TProcessor {
 	}
 }
 
+// tHeaderCarrier adapts a thrift.THeaderMap to propagation.TextMapCarrier so
+// the global OTel propagator (W3C trace context by default) can read the
+// headers a THeaderProtocol client attached to the request message.
+type tHeaderCarrier struct {
+	m thrift.THeaderMap
+}
+
+func (c tHeaderCarrier) Get(key string) string { return c.m[key] }
+
+func (c tHeaderCarrier) Set(key, value string) { c.m[key] = value }
+
+func (c tHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c.m))
+	for k := range c.m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// replayProtocol serves the first ReadMessageBegin call from a message begin
+// already consumed by observedProcessor (which needed it to reach the frame
+// headers before starting the span), then delegates everything else to the
+// inner protocol. All other TProtocol methods delegate untouched.
+type replayProtocol struct {
+	thrift.TProtocol
+	name   string
+	typeID thrift.TMessageType
+	seqID  int32
+	used   bool
+}
+
+func (p *replayProtocol) ReadMessageBegin(ctx context.Context) (string, thrift.TMessageType, int32, error) {
+	if !p.used {
+		p.used = true
+		return p.name, p.typeID, p.seqID, nil
+	}
+	return p.TProtocol.ReadMessageBegin(ctx)
+}
+
 func (p *observedProcessor) Process(ctx context.Context, in, out thrift.TProtocol) (bool, thrift.TException) {
-	// The thrift context does not carry trace propagation headers natively.
-	// A server span is started here as a new root span; cross-service
-	// propagation requires a carrier in the protocol itself, which varies
-	// by Thrift transport and is out of scope for this starter.
+	// Trace propagation is only possible when the request carries headers,
+	// which on the wire means THeaderProtocol (protocol=header). The headers
+	// of a frame are only available after its message begin has been read, so
+	// the message begin is consumed here, the W3C trace context extracted, and
+	// the message begin replayed to the inner processor via replayProtocol.
+	// With binary/compact/json protocols there is no header channel at all;
+	// each request gets a new root span (documented boundary, see USAGE.md).
+	if hp, ok := in.(*thrift.THeaderProtocol); ok {
+		name, typeID, seqID, err := hp.ReadMessageBegin(ctx)
+		if err != nil {
+			return false, thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err.Error())
+		}
+		ctx = otel.GetTextMapPropagator().Extract(ctx, tHeaderCarrier{m: hp.GetReadHeaders()})
+		in = &replayProtocol{TProtocol: hp, name: name, typeID: typeID, seqID: seqID}
+	}
+
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "thrift.process",
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(

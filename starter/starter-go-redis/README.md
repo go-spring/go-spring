@@ -30,10 +30,10 @@ spring.go-redis.main.addr=127.0.0.1:6379
 ### 3. Inject the Redis Instance
 
 ```go
-import "github.com/redis/go-redis/v9"
+import StarterGoRedis "go-spring.org/starter-go-redis"
 
 type Service struct {
-    Redis *redis.Client `autowire:""`
+    Redis *StarterGoRedis.Client `autowire:"main"` // embeds redis.UniversalClient
 }
 ```
 

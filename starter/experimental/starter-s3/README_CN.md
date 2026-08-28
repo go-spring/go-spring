@@ -69,8 +69,9 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
 - **每实例健康指示器** — 同一探针注册为 `s3:<name>`，导入
   `starter-actuator` 后自动并入 `/readiness`。
 - **可观测** — 每个请求经 observe kit 产出 OTel span、耗时指标与访问
-  日志（`observability.level=off` 关闭）。minio-go 自身不带 OTel 埋点，
-  因此由 starter 的传输层承载全部三信号。
+  日志（`spring.s3.<name>.observability.level=off` 关闭；顶层
+  `observability.*` 作为回退面，被实例 key 覆盖）。minio-go 自身不带
+  OTel 埋点，因此由 starter 的传输层承载全部三信号。
 - **韧性** — 限流、熔断、故障注入在客户端 HTTP 传输层经治理 seam 强制
   执行；未导入 `starter-governance` 时传输层仅做观测。
 

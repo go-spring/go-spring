@@ -29,7 +29,10 @@
 // plug into the actuator with no cross-module dependency beyond this package.
 package endpoint
 
-import "net/http"
+import (
+	"net/http"
+	"sync/atomic"
+)
 
 // Endpoint is an operational HTTP handler contributed to the actuator's
 // management server by another module.
@@ -45,3 +48,19 @@ type Endpoint interface {
 	// http.Handler serves requests to Path.
 	http.Handler
 }
+
+// serving is flipped by the management server (starter-actuator) at init. A
+// contributor that relies on the actuator to serve its endpoint (e.g.
+// starter-otel's Prometheus /metrics with metrics.port=0) can then WARN at
+// startup when nothing will actually mount it - instead of running with a
+// silently homeless endpoint.
+var serving atomic.Bool
+
+// MarkServing records that a management server collecting [Endpoint] beans is
+// linked into the process. The actuator calls it from an init; contributors
+// never do.
+func MarkServing() { serving.Store(true) }
+
+// IsServing reports whether a management server is present. False means
+// contributed Endpoint beans have nothing to mount them.
+func IsServing() bool { return serving.Load() }

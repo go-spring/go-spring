@@ -20,9 +20,23 @@
       "description": "Duration string, e.g. '5s', '1m', '1h'",
       "default": "1s"
     },
-    "enable": {
-      "type": "boolean",
-      "default": false
+    "etcd": {
+      "type": "object",
+      "properties": {
+        "addr": {
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "default": true
+        }
+      }
     }
   }
 }

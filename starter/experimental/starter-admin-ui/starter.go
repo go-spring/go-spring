@@ -31,7 +31,7 @@
 // is one HTML page, one poller goroutine, zero third-party dependencies.
 //
 // Form: Server. The starter self-hosts its own HTTP listener on a dedicated
-// port (:9280 by default) and exports a gs.Server bean; it participates in
+// port (activated by spring.admin-ui.addr) and exports a gs.Server bean; it participates in
 // the framework's ready signal and graceful shutdown just like starter-actuator
 // and starter-pprof. See starter/DESIGN_CN.md §2.1.
 package StarterAdminUI
@@ -50,18 +50,21 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/httpauth"
 )
 
 func init() {
 	// Register the Admin UI as a distinct gs.Server so it coexists with the
-	// main HTTP server, the actuator, and pprof. Default-on: like starter-
-	// actuator, the value is high (a one-glance view of the cluster) and the
-	// cost is a single idle goroutine when Instances is empty.
+	// main HTTP server, the actuator, and pprof. Activation follows the
+	// starter-actuator contract: the server is assembled only when
+	// spring.admin-ui.addr is configured — a server starter ships dark unless
+	// the operator gives it a port.
 	gs.Provide(&Server{}).
 		Name("adminUIServer").
-		Condition(gs.OnProperty("spring.admin-ui.enabled").HavingValue("true").MatchIfMissing()).
+		Condition(gs.OnProperty("spring.admin-ui.addr")).
 		Export(gs.As[gs.Server]())
 }
 
@@ -132,12 +135,8 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// table. Bounded by the poll timeout, so this cannot delay startup.
 	s.refresh(ctx)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", s.handleDashboard)
-	mux.HandleFunc("GET /api/status", s.handleStatusJSON)
-
 	s.svr = &http.Server{
-		Handler:           mux,
+		Handler:           s.newHandler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -396,6 +395,26 @@ func statusOf(body map[string]any) string {
 		return v
 	}
 	return "UNKNOWN"
+}
+
+// newHandler builds the HTTP handler for the dashboard and JSON API, wrapped
+// with the configured authentication guard (spring.admin-ui.token or
+// .username/.password). When no guard is configured and Addr binds a
+// non-loopback interface, startup logs a warning: the dashboard aggregates
+// operational detail (instance URLs, build revisions, component errors) that
+// should not be readable off-host unauthenticated.
+func (s *Server) newHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", s.handleDashboard)
+	mux.HandleFunc("GET /api/status", s.handleStatusJSON)
+
+	guard := httpauth.Guard{Token: s.Config.Token, Username: s.Config.Username, Password: s.Config.Password}
+	if !guard.Enabled() && !httpauth.IsLoopback(s.Config.Addr) {
+		log.Warnf(context.Background(), log.TagAppDef,
+			"admin-ui server listening on %q without authentication; set ${spring.admin-ui.token} or ${spring.admin-ui.username}/${spring.admin-ui.password}",
+			s.Config.Addr)
+	}
+	return guard.Wrap(mux)
 }
 
 // handleDashboard renders the aggregated view as HTML from the latest snapshot.

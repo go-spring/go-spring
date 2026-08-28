@@ -5,7 +5,22 @@
   "properties": {
     "addr": {
       "type": "string",
-      "default": ":9280"
+      "description": "Listen address; setting this key activates the starter (no default)."
+    },
+    "token": {
+      "type": "string",
+      "description": "Optional bearer token guarding the dashboard",
+      "default": ""
+    },
+    "username": {
+      "type": "string",
+      "description": "Optional HTTP Basic username (with password)",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "description": "Optional HTTP Basic password (with username)",
+      "default": ""
     },
     "instances": {
       "type": "array",
