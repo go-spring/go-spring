@@ -22,10 +22,6 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-// ZoneAware is the registered name of the default zone-aware strategy (local
-// zone preference over a round-robin delegate, reading the "zone" metadata key).
-const ZoneAware = "zone_aware"
-
 // DefaultZoneKey is the [discovery.Endpoint.Metadata] key a zone-aware balancer
 // reads to learn an instance's locality when none is given explicitly.
 const DefaultZoneKey = "zone"
@@ -34,6 +30,14 @@ func init() {
 	Register(ZoneAware, func() Balancer {
 		return NewZoneAware(DefaultZoneKey, NewRoundRobin())
 	})
+}
+
+// zoneAware is a filter, not a strategy: it narrows the candidate set to the
+// best-matching zone level and delegates the actual choice, so it composes
+// with any [Balancer] (round-robin inside the zone, least-conn, ...).
+type zoneAware struct {
+	zoneKey  string
+	delegate Balancer
 }
 
 // NewZoneAware returns a locality-aware [Balancer]. It prefers endpoints whose
@@ -46,7 +50,7 @@ func init() {
 // PickInfo.Zone may carry a single zone ("cn-north-1a" — the classic usage) or
 // an ordered fallback list ("cn-north-1a,cn-north-1": my rack, then my zone).
 // Levels are tried left to right and the first level with at least one match
-// wins; see [zoneLevels] for how a level matches an endpoint.
+// wins; see [parseZoneLevels] for how a level matches an endpoint.
 //
 // This keeps traffic in-zone (lower latency, no cross-zone egress cost) under
 // normal conditions while degrading gracefully during a zonal outage.
@@ -57,29 +61,24 @@ func NewZoneAware(zoneKey string, delegate Balancer) Balancer {
 	return &zoneAware{zoneKey: zoneKey, delegate: delegate}
 }
 
-type zoneAware struct {
-	zoneKey  string
-	delegate Balancer
-}
-
-func (b *zoneAware) Pick(eps []discovery.Endpoint, info PickInfo) (Result, error) {
+func (b *zoneAware) Pick(eps []discovery.Endpoint, info PickInfo) (discovery.Endpoint, error) {
 	if len(eps) == 0 {
-		return Result{}, ErrNoAvailable
+		return discovery.Endpoint{}, ErrNoAvailable
 	}
-	levels := zoneLevels(info.Zone)
+	levels := parseZoneLevels(info.Zone)
 	if len(levels) == 0 {
 		return b.delegate.Pick(eps, info)
 	}
 
 	for _, level := range levels {
-		local := eps[:0:0]
+		matched := eps[:0:0]
 		for _, ep := range eps {
 			if zoneMatch(ep.Metadata[b.zoneKey], level) {
-				local = append(local, ep)
+				matched = append(matched, ep)
 			}
 		}
-		if len(local) > 0 {
-			return b.delegate.Pick(local, info)
+		if len(matched) > 0 {
+			return b.delegate.Pick(matched, info)
 		}
 	}
 	// No instance in any of the caller's zone levels: spill over to every
@@ -87,10 +86,16 @@ func (b *zoneAware) Pick(eps []discovery.Endpoint, info PickInfo) (Result, error
 	return b.delegate.Pick(eps, info)
 }
 
-// zoneLevels parses the caller's zone hint into an ordered fallback list: a
+// Complete forwards to the delegate so strategies composed under zone_aware
+// keep their per-request accounting.
+func (b *zoneAware) Complete(ep discovery.Endpoint, err error) {
+	b.delegate.Complete(ep, err)
+}
+
+// parseZoneLevels parses the caller's zone hint into an ordered fallback list: a
 // comma-separated string yields its non-empty trimmed parts in order, anything
 // else yields the single value (possibly none when empty).
-func zoneLevels(zone string) []string {
+func parseZoneLevels(zone string) []string {
 	if zone == "" {
 		return nil
 	}

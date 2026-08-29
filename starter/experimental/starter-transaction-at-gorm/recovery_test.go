@@ -92,7 +92,7 @@ func TestATRecovery_ReplaysOrphanedUndoLogs(t *testing.T) {
 	assert.Error(t, db.Model(&account{}).Where("id = ?", 7).Count(&n).Error).Nil()
 	assert.That(t, n).Equal(int64(0)) // insert undone
 	assert.Error(t, db.Model(&account{}).Where("id = ?", 2).Count(&n).Error).Nil()
-	assert.That(t, n).Equal(int64(1)) // delete re-inserted
+	assert.That(t, n).Equal(int64(1))                     // delete re-inserted
 	assert.That(t, undoCount(t, db, xid)).Equal(int64(0)) // logs dropped
 }
 

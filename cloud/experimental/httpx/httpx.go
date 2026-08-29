@@ -26,7 +26,7 @@
 //     [discovery.Resolver] keeps a fresh endpoint snapshot via Watch; in mesh
 //     mode a sidecar owns discovery+LB, so this layer is skipped;
 //   - loadbalance — a [loadbalance.Pool] picks one live endpoint per request
-//     (any of the registered strategies, plus optional outlier ejection) and the
+//     (any of the registered strategies, plus optional outlier suspension) and the
 //     transport rewrites the request host to it;
 //   - resilience — an optional [resilience] executor wraps the whole chain so
 //     rate limiting, circuit breaking and retry protect every call; because it
@@ -78,13 +78,13 @@ type Config struct {
 	// least_conn, consistent_hash, weighted, zone_aware). Defaults to round_robin.
 	Balancer string
 
-	// EjectThreshold is the consecutive-failure count that ejects an endpoint
-	// from the pool (outlier ejection). 0 disables ejection.
-	EjectThreshold int
+	// SuspendThreshold is the consecutive-failure count that suspends an endpoint
+	// from the pool (outlier suspension). 0 disables suspension.
+	SuspendThreshold int
 
-	// EjectFor is how long an ejected endpoint stays out before a half-open
-	// trial. Ignored when EjectThreshold is 0.
-	EjectFor time.Duration
+	// SuspendFor is how long a suspended endpoint stays out before a half-open
+	// trial. Ignored when SuspendThreshold is 0.
+	SuspendFor time.Duration
 
 	// ResilienceDriver names the registered resilience backend to protect calls
 	// with. Empty disables resilience (the chain is a transparent pass-through).
@@ -160,10 +160,10 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 		}
 
 		var opts []loadbalance.PoolOption
-		if cfg.EjectThreshold > 0 {
+		if cfg.SuspendThreshold > 0 {
 			t := loadbalance.NewTracker(loadbalance.TrackerConfig{
-				Threshold: cfg.EjectThreshold,
-				EjectFor:  cfg.EjectFor,
+				Threshold:  cfg.SuspendThreshold,
+				SuspendFor: cfg.SuspendFor,
 			})
 			opts = append(opts, loadbalance.WithTracker(t))
 		}
@@ -235,7 +235,7 @@ func (t *trafficTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 // balancedTransport rewrites each request to a live endpoint chosen by the pool
-// and reports the outcome back so least-conn accounting and outlier ejection see
+// and reports the outcome back so least-conn accounting and outlier suspension see
 // every call. It sits below the resilience layer, so retries pick afresh.
 type balancedTransport struct {
 	base http.RoundTripper
@@ -243,7 +243,7 @@ type balancedTransport struct {
 }
 
 func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	res, err := t.pool.Pick(loadbalance.PickInfo{Ctx: req.Context()})
+	ep, err := t.pool.Pick(loadbalance.PickInfo{})
 	if err != nil {
 		return nil, err
 	}
@@ -251,13 +251,11 @@ func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	// Clone before mutating: net/http may retry and the resilience layer above
 	// reuses the original request across attempts.
 	r := req.Clone(req.Context())
-	r.URL.Host = res.Endpoint.Addr
-	r.Host = res.Endpoint.Addr
+	r.URL.Host = ep.Addr
+	r.Host = ep.Addr
 
 	resp, err := t.base.RoundTrip(r)
-	if res.Done != nil {
-		res.Done(loadbalance.DoneInfo{Err: err})
-	}
+	t.pool.Complete(ep, err)
 	return resp, err
 }
 

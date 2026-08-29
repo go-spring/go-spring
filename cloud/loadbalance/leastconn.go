@@ -22,19 +22,8 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-func init() { Register(LeastConn, func() Balancer { return newLeastConn() }) }
-
-// NewLeastConn returns a least-connections [Balancer]: each request goes to the
-// endpoint currently serving the fewest in-flight requests. This adapts to
-// slow instances automatically — a backend that is struggling accumulates
-// in-flight requests and stops being picked until it drains.
-//
-// The caller MUST invoke the returned [Result.Done] when the request finishes;
-// otherwise the in-flight count leaks and that endpoint is starved.
-func NewLeastConn() Balancer { return newLeastConn() }
-
-func newLeastConn() *leastConn {
-	return &leastConn{inflight: map[string]int{}}
+func init() {
+	Register(LeastConn, NewLeastConn)
 }
 
 // leastConn tracks in-flight request counts per endpoint address. Counts persist
@@ -48,12 +37,24 @@ type leastConn struct {
 	rr uint64
 }
 
-func (b *leastConn) Pick(eps []discovery.Endpoint, _ PickInfo) (Result, error) {
+// NewLeastConn returns a least-connections [Balancer]: each request goes to the
+// endpoint currently serving the fewest in-flight requests. This adapts to
+// slow instances automatically — a backend that is struggling accumulates
+// in-flight requests and stops being picked until it drains.
+//
+// The caller MUST invoke [Balancer.Complete] when the request finishes;
+// otherwise the in-flight count leaks and that endpoint is starved.
+func NewLeastConn() Balancer {
+	return &leastConn{inflight: map[string]int{}}
+}
+
+func (b *leastConn) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, error) {
 	if len(eps) == 0 {
-		return Result{}, ErrNoAvailable
+		return discovery.Endpoint{}, ErrNoAvailable
 	}
 
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	// Scan for the minimum in-flight count. Start the scan at a rotating offset
 	// so that among endpoints tied at the minimum the choice rotates.
 	start := int(b.rr % uint64(len(eps)))
@@ -70,23 +71,18 @@ func (b *leastConn) Pick(eps []discovery.Endpoint, _ PickInfo) (Result, error) {
 	}
 	ep := eps[best]
 	b.inflight[ep.Addr]++
-	b.mu.Unlock()
+	return ep, nil
+}
 
-	done := false
-	return Result{
-		Endpoint: ep,
-		Done: func(DoneInfo) {
-			b.mu.Lock()
-			defer b.mu.Unlock()
-			if done {
-				return // guard against a double Done leaking the counter negative
-			}
-			done = true
-			if n := b.inflight[ep.Addr]; n <= 1 {
-				delete(b.inflight, ep.Addr)
-			} else {
-				b.inflight[ep.Addr] = n - 1
-			}
-		},
-	}, nil
+// Complete decrements the in-flight count for ep.Addr. The count reaching zero
+// deletes the entry, so a repeated Complete for the same request is a harmless
+// no-op rather than a negative count.
+func (b *leastConn) Complete(ep discovery.Endpoint, _ error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if n := b.inflight[ep.Addr]; n <= 1 {
+		delete(b.inflight, ep.Addr)
+	} else {
+		b.inflight[ep.Addr] = n - 1
+	}
 }

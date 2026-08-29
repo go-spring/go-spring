@@ -22,12 +22,9 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-func init() { Register(RoundRobin, func() Balancer { return &roundRobin{} }) }
-
-// NewRoundRobin returns a stateless round-robin [Balancer] that cycles evenly
-// through the candidate set, ignoring weight. It is the simplest strategy and a
-// good default when instances are homogeneous.
-func NewRoundRobin() Balancer { return &roundRobin{} }
+func init() {
+	Register(RoundRobin, NewRoundRobin)
+}
 
 // roundRobin holds only a monotonically increasing cursor; the candidate set is
 // supplied on every Pick, so no per-endpoint bookkeeping is needed.
@@ -35,10 +32,18 @@ type roundRobin struct {
 	next atomic.Uint64
 }
 
-func (b *roundRobin) Pick(eps []discovery.Endpoint, _ PickInfo) (Result, error) {
+// NewRoundRobin returns a stateless round-robin [Balancer] that cycles evenly
+// through the candidate set, ignoring weight. It is the simplest strategy and a
+// good default when instances are homogeneous.
+func NewRoundRobin() Balancer { return &roundRobin{} }
+
+func (b *roundRobin) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, error) {
 	if len(eps) == 0 {
-		return Result{}, ErrNoAvailable
+		return discovery.Endpoint{}, ErrNoAvailable
 	}
 	i := b.next.Add(1) - 1
-	return Result{Endpoint: eps[int(i%uint64(len(eps)))]}, nil
+	return eps[int(i%uint64(len(eps)))], nil
 }
+
+// Complete is a no-op: round-robin keeps no per-request state.
+func (b *roundRobin) Complete(discovery.Endpoint, error) {}

@@ -23,77 +23,81 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-// Tracker is the load-balancing layer's health-eviction (outlier detection)
-// mechanism. It watches the success/failure outcome of balanced requests per
-// endpoint and temporarily evicts an instance that fails repeatedly, then lets
-// it back in on a half-open trial once a cool-down elapses.
+// suspendState is one endpoint address's suspension bookkeeping. suspendedAt
+// doubles as the state flag: zero means "not suspended", non-zero is when the
+// current cool-down window started.
+type suspendState struct {
+	failures    int
+	halfOpen    bool
+	suspendedAt time.Time
+}
+
+// TrackerConfig configures outlier suspension.
+type TrackerConfig struct {
+	// Threshold is the number of consecutive failures that suspends an endpoint.
+	// 0 (or negative) disables suspension entirely.
+	Threshold int
+
+	// SuspendFor is how long an endpoint stays suspended before a half-open trial
+	// request is allowed through. Defaults to 5s when unset (and suspension is
+	// enabled), matching the resilience breaker default.
+	SuspendFor time.Duration
+}
+
+// Tracker is the load-balancing layer's outlier-suspension mechanism. It
+// watches the success/failure outcome of balanced requests per endpoint and
+// temporarily suspends an instance that fails repeatedly, then lets it back in
+// on a half-open trial once a cool-down elapses.
 //
 // It is the LB-layer counterpart to the circuit breaker in
 // [go-spring.org/cloud/governance/resilience]: same consecutive-failure + half-open
 // semantics, but keyed by endpoint address and *queryable* so a [Pool] can drop
 // bad instances from the candidate set proactively rather than only rejecting a
-// call after it is routed. The same [DoneInfo.Err] signal that feeds a
+// call after it is routed. The same Complete-err signal that feeds a
 // resilience Executor feeds a Tracker, so the two stay consistent without one
 // depending on the other.
 //
-// A Tracker with Threshold <= 0 is disabled: [Tracker.Eligible] returns every
+// A Tracker with Threshold <= 0 is disabled: [Tracker.Allows] returns every
 // endpoint and [Tracker.Record] is a no-op, so wiring one in stays a transparent
-// pass-through until eviction is configured.
+// pass-through until suspension is configured.
 type Tracker struct {
-	threshold int
-	ejectFor  time.Duration
+	// cfg is the normalized copy of the [TrackerConfig] passed to NewTracker
+	// (SuspendFor's default applied), kept as one value so adding a config
+	// field does not grow this struct.
+	cfg TrackerConfig
 
-	// now is the clock, injectable so tests can drive ejection windows
+	// now is the clock, injectable so tests can drive suspension windows
 	// deterministically. Defaults to time.Now.
 	now func() time.Time
 
 	mu     sync.Mutex
-	states map[string]*ejectState
+	states map[string]*suspendState
 }
 
-type ejectState struct {
-	failures  int
-	ejectedAt time.Time
-	halfOpen  bool
-}
-
-// TrackerConfig configures outlier ejection.
-type TrackerConfig struct {
-	// Threshold is the number of consecutive failures that ejects an endpoint.
-	// 0 (or negative) disables eviction entirely.
-	Threshold int
-
-	// EjectFor is how long an endpoint stays evicted before a half-open trial
-	// request is allowed through. Defaults to 5s when unset (and eviction is
-	// enabled), matching the resilience breaker default.
-	EjectFor time.Duration
-}
-
-// NewTracker builds a [Tracker] from cfg.
+// NewTracker builds a [Tracker] from cfg. A zero SuspendFor is normalized to
+// the 5s default here so the tracker stores one settled config.
 func NewTracker(cfg TrackerConfig) *Tracker {
-	ejectFor := cfg.EjectFor
-	if ejectFor <= 0 {
-		ejectFor = 5 * time.Second
+	if cfg.SuspendFor <= 0 {
+		cfg.SuspendFor = 5 * time.Second
 	}
 	return &Tracker{
-		threshold: cfg.Threshold,
-		ejectFor:  ejectFor,
-		now:       time.Now,
-		states:    map[string]*ejectState{},
+		cfg:    cfg,
+		now:    time.Now,
+		states: map[string]*suspendState{},
 	}
 }
 
-// Eligible returns the subset of eps that may currently receive traffic,
-// dropping endpoints that are ejected and still cooling down. An ejected
+// Allows returns the subset of eps that may currently receive traffic,
+// dropping endpoints that are suspended and still cooling down. A suspended
 // endpoint whose cool-down has elapsed is admitted (half-open trial) so it can
 // prove itself. When the tracker is disabled it returns eps unchanged.
 //
-// Eligible never returns an empty slice when eps is non-empty solely due to
-// eviction: if every endpoint is ejected it returns eps unchanged, because
+// Allows never returns an empty slice when eps is non-empty solely due to
+// suspension: if every endpoint is suspended it returns eps unchanged, because
 // black-holing all traffic is worse than probing a degraded instance. The
 // caller (Pool) applies its own final fallback too.
-func (t *Tracker) Eligible(eps []discovery.Endpoint) []discovery.Endpoint {
-	if t == nil || t.threshold <= 0 || len(eps) == 0 {
+func (t *Tracker) Allows(eps []discovery.Endpoint) []discovery.Endpoint {
+	if t == nil || t.cfg.Threshold <= 0 || len(eps) == 0 {
 		return eps
 	}
 	t.mu.Lock()
@@ -111,16 +115,16 @@ func (t *Tracker) Eligible(eps []discovery.Endpoint) []discovery.Endpoint {
 	return out
 }
 
-// admitLocked reports whether addr may receive a request, advancing an ejected
+// admitLocked reports whether addr may receive a request, advancing a suspended
 // endpoint into the half-open trial state once its cool-down has elapsed. Caller
 // holds t.mu.
 func (t *Tracker) admitLocked(addr string) bool {
 	s := t.states[addr]
-	if s == nil || s.ejectedAt.IsZero() {
+	if s == nil || s.suspendedAt.IsZero() {
 		return true // never failed, or recovered
 	}
-	if t.now().Sub(s.ejectedAt) < t.ejectFor {
-		return false // ejected, cooling down
+	if t.now().Sub(s.suspendedAt) < t.cfg.SuspendFor {
+		return false // suspended, cooling down
 	}
 	s.halfOpen = true // cool-down elapsed: admit a trial request
 	return true
@@ -128,10 +132,10 @@ func (t *Tracker) admitLocked(addr string) bool {
 
 // Record folds a request outcome back into the tracker. success=true clears the
 // endpoint's failure state (or closes a half-open trial); success=false counts
-// toward eviction (or re-ejects a failed half-open trial). It is a no-op when
+// toward suspension (or re-suspends a failed half-open trial). It is a no-op when
 // the tracker is disabled.
 func (t *Tracker) Record(addr string, success bool) {
-	if t == nil || t.threshold <= 0 {
+	if t == nil || t.cfg.Threshold <= 0 {
 		return
 	}
 	t.mu.Lock()
@@ -139,38 +143,38 @@ func (t *Tracker) Record(addr string, success bool) {
 
 	s := t.states[addr]
 	if s == nil {
-		s = &ejectState{}
+		s = &suspendState{}
 		t.states[addr] = s
 	}
 	if success {
 		s.failures = 0
-		s.ejectedAt = time.Time{}
+		s.suspendedAt = time.Time{}
 		s.halfOpen = false
 		return
 	}
 	if s.halfOpen {
 		// Trial request failed: restart the cool-down window.
 		s.halfOpen = false
-		s.ejectedAt = t.now()
+		s.suspendedAt = t.now()
 		return
 	}
 	s.failures++
-	if s.failures >= t.threshold {
-		s.ejectedAt = t.now()
+	if s.failures >= t.cfg.Threshold {
+		s.suspendedAt = t.now()
 	}
 }
 
-// Ejected reports whether addr is currently evicted and still cooling down. It
-// is primarily a test/inspection helper; routing decisions go through Eligible.
-func (t *Tracker) Ejected(addr string) bool {
-	if t == nil || t.threshold <= 0 {
+// Suspended reports whether addr is currently suspended and still cooling down. It
+// is primarily a test/inspection helper; routing decisions go through Allows.
+func (t *Tracker) Suspended(addr string) bool {
+	if t == nil || t.cfg.Threshold <= 0 {
 		return false
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	s := t.states[addr]
-	if s == nil || s.ejectedAt.IsZero() {
+	if s == nil || s.suspendedAt.IsZero() {
 		return false
 	}
-	return t.now().Sub(s.ejectedAt) < t.ejectFor
+	return t.now().Sub(s.suspendedAt) < t.cfg.SuspendFor
 }

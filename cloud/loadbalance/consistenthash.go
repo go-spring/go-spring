@@ -33,7 +33,23 @@ import (
 const defaultReplicas = 100
 
 func init() {
-	Register(ConsistentHash, func() Balancer { return NewConsistentHash(defaultReplicas) })
+	Register(ConsistentHash, func() Balancer {
+		return NewConsistentHash(defaultReplicas)
+	})
+}
+
+// consistentHash keeps a hash ring cached against the current endpoint set.
+// The ring is the expensive part (replicas × endpoints entries), so it is
+// rebuilt only when the set's fingerprint changes instead of on every pick.
+type consistentHash struct {
+	replicas int
+
+	rr atomic.Uint64 // fallback cursor for empty HashKey
+
+	mu    sync.Mutex
+	fp    string // fingerprint of the endpoint set the ring was built from
+	ring  []uint32
+	owner map[uint32]discovery.Endpoint
 }
 
 // NewConsistentHash returns a consistent-hashing [Balancer]. Requests carrying
@@ -51,26 +67,15 @@ func NewConsistentHash(replicas int) Balancer {
 	return &consistentHash{replicas: replicas}
 }
 
-type consistentHash struct {
-	replicas int
-
-	rr atomic.Uint64 // fallback cursor for empty HashKey
-
-	mu    sync.Mutex
-	fp    string // fingerprint of the endpoint set the ring was built from
-	ring  []uint32
-	owner map[uint32]discovery.Endpoint
-}
-
-func (b *consistentHash) Pick(eps []discovery.Endpoint, info PickInfo) (Result, error) {
+func (b *consistentHash) Pick(eps []discovery.Endpoint, info PickInfo) (discovery.Endpoint, error) {
 	if len(eps) == 0 {
-		return Result{}, ErrNoAvailable
+		return discovery.Endpoint{}, ErrNoAvailable
 	}
 	if info.HashKey == "" {
 		// No key to hash on: behave like round-robin so unkeyed traffic still
 		// spreads instead of hammering one instance.
 		i := b.rr.Add(1) - 1
-		return Result{Endpoint: eps[int(i%uint64(len(eps)))]}, nil
+		return eps[int(i%uint64(len(eps)))], nil
 	}
 
 	b.mu.Lock()
@@ -83,8 +88,11 @@ func (b *consistentHash) Pick(eps []discovery.Endpoint, info PickInfo) (Result, 
 	}
 	ep := b.owner[b.ring[i]]
 	b.mu.Unlock()
-	return Result{Endpoint: ep}, nil
+	return ep, nil
 }
+
+// Complete is a no-op: the ring cache is rebuilt from Pick inputs, not outcomes.
+func (b *consistentHash) Complete(discovery.Endpoint, error) {}
 
 // rebuild reconstructs the ring only when the endpoint set changed, keyed by a
 // cheap order-independent fingerprint. Caller holds b.mu.
@@ -108,6 +116,9 @@ func (b *consistentHash) rebuild(eps []discovery.Endpoint) {
 	b.fp = fp
 }
 
+// hashKey maps a string (request key or "addr#replica") onto the 32-bit ring
+// space. FNV-1a is enough here: it is fast and the ring only needs spread,
+// not cryptographic strength.
 func hashKey(s string) uint32 {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(s))

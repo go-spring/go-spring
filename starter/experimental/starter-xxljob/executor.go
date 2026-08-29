@@ -50,7 +50,7 @@ type Executor struct {
 	cfg Config
 	// name is the instance name under "${spring.xxljob}" — used for the
 	// health.Indicator name (matching the bean name, like sibling starters).
-	name    string
+	name     string
 	registry map[string]TaskFunc
 
 	mu      sync.Mutex

@@ -220,6 +220,8 @@ On any stage error the compiled table is left untouched (keep-last-good, §4.2).
 | `upstream.target` | string | — | **Required in practice**: `lb://<service>` or `http(s)://host[:port]`. Missing/malformed → `parseError` (compile.go:379-392). | Route fails to compile. |
 | `upstream.balancer` | string | `round_robin` | One of `round_robin`, `least_conn`, `consistent_hash`, `weighted` (cloud/loadbalance). Unknown name → compile error. | Per-upstream; two routes to one service may differ while sharing the discovery watch. |
 | `upstream.discovery` | string | "" | Per-route backend override of top-level `discovery`. | |
+| `upstream.suspend-threshold` | int | 0 (off) | Consecutive failures before an lb:// upstream instance is suspended (outlier suspension, cloud/loadbalance `Tracker`); 0 disables. | A zombie instance (up but failing) stops receiving traffic for the cool-down instead of yielding periodic 502s. |
+| `upstream.suspend-for` | string | `""` | Go duration (e.g. `30s`); how long a suspended instance stays out before a half-open trial. Empty/0 keeps the tracker's 5s default. | Malformed value → compile error at reload, previous table kept. |
 | `resilience.policy` | string | "" | Must name an existing `spring.gateway.resilience.<name>` key. ⚠ Coupling: unknown name → `unknown resilience policy` compile error (compile.go:236). | Startup failure / reload keeps old table. |
 
 ⚠ **Precedence coupling**: when no route sets `priority`, matching order is sorted by route id

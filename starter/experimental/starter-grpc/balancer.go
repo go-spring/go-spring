@@ -30,7 +30,7 @@ package StarterGrpc
 //     into the stream of address snapshots gRPC consumes, so instances coming
 //     and going are reflected in real time (task 2.2, Watch side);
 //   - a base.PickerBuilder per strategy that selects among the READY SubConns
-//     using a loadbalance.Balancer and an ejection loadbalance.Tracker, so a
+//     using a loadbalance.Balancer and an suspension loadbalance.Tracker, so a
 //     failing-but-still-registered instance is evicted and later readmitted
 //     (task 2.2, breaker side).
 
@@ -53,10 +53,10 @@ import (
 // backend, or "gsdiscovery://<backend>/<service>" to select a named backend.
 const Scheme = "gsdiscovery"
 
-// defaultTracker is the ejection policy attached to the pre-registered
+// defaultTracker is the suspension policy attached to the pre-registered
 // per-strategy balancers: five consecutive failures evict an instance for 30s
 // before a half-open trial. Tune by registering a balancer with RegisterBalancer.
-var defaultTracker = loadbalance.TrackerConfig{Threshold: 5, EjectFor: 30_000_000_000} // 30s
+var defaultTracker = loadbalance.TrackerConfig{Threshold: 5, SuspendFor: 30_000_000_000} // 30s
 
 func init() {
 	resolver.Register(discoveryResolverBuilder{})
@@ -86,7 +86,7 @@ func LoadBalancingConfig(strategy string) string {
 // RegisterBalancer registers a gRPC balancer under name that selects instances
 // using the loadbalance strategy and evicts failing ones per tc. The built-in
 // strategies are pre-registered in init; call this to register a custom name
-// (e.g. per service, for isolated ejection state) or a non-default ejection
+// (e.g. per service, for isolated suspension state) or a non-default suspension
 // policy. It panics on an unknown strategy or a duplicate name, matching gRPC's
 // own balancer.Register contract.
 func RegisterBalancer(name, strategy string, tc loadbalance.TrackerConfig) {
@@ -122,7 +122,7 @@ func WithZone(ctx context.Context, zone string) context.Context {
 }
 
 func pickInfoFrom(info balancer.PickInfo) loadbalance.PickInfo {
-	pi := loadbalance.PickInfo{Ctx: info.Ctx}
+	var pi loadbalance.PickInfo
 	if info.Ctx != nil {
 		if v, ok := info.Ctx.Value(hashKeyCtxKey).(string); ok {
 			pi.HashKey = v
@@ -175,8 +175,8 @@ func endpointFromAddr(a resolver.Address) discovery.Endpoint {
 // Picker
 // ---------------------------------------------------------------------------
 
-// gsPickerBuilder holds the strategy and ejection tracker shared across picker
-// rebuilds so round-robin cursors, least-conn counts and ejection windows
+// gsPickerBuilder holds the strategy and suspension tracker shared across picker
+// rebuilds so round-robin cursors, least-conn counts and suspension windows
 // survive topology changes. A distinct name (see RegisterBalancer) gets its own
 // state; sharing a name across services is safe because all state is keyed by
 // endpoint address.
@@ -210,26 +210,22 @@ func (p *gsPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// gRPC has already narrowed p.eps to READY SubConns (dead instances are
 	// dropped here — the "kill an instance" path). The tracker layers breaker-
 	// style eviction on top for instances that are connectable but failing.
-	candidates := p.tracker.Eligible(p.eps)
+	candidates := p.tracker.Allows(p.eps)
 
-	r, err := p.bal.Pick(candidates, pickInfoFrom(info))
+	ep, err := p.bal.Pick(candidates, pickInfoFrom(info))
 	if err != nil {
 		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
 	}
-	sc, ok := p.byAddr[r.Endpoint.Addr]
+	sc, ok := p.byAddr[ep.Addr]
 	if !ok {
 		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
 	}
 
-	addr := r.Endpoint.Addr
-	inner := r.Done
 	return balancer.PickResult{
 		SubConn: sc,
 		Done: func(di balancer.DoneInfo) {
-			if inner != nil {
-				inner(loadbalance.DoneInfo{Err: di.Err})
-			}
-			p.tracker.Record(addr, di.Err == nil)
+			p.bal.Complete(ep, di.Err)
+			p.tracker.Record(ep.Addr, di.Err == nil)
 		},
 	}, nil
 }

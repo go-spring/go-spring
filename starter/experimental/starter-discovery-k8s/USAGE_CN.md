@@ -156,7 +156,7 @@ Kubernetes 没有 `UpdateWeight`；摘除 Pod 是平台的职责，走同一条 
 - **缩容 / 删 Pod** → EndpointSlice 收缩 → informer delete 事件 → 重算 → 地址从快照消失 →
   客户端池不再选中它。
 - **readiness 翻 false**（探针失败）→ 端点仍在 slice 但 `Conditions.Ready=false` →
-  `Healthy=false` → pick 时被 `discovery.Eligible` 排除（`endpointslice.go:257`、
+  `Healthy=false` → pick 时被 `discovery.Allows` 排除（`endpointslice.go:257`、
   `cloud/discovery/discovery.go:65-77`）。dns 模式则表现为记录消失（headless DNS 只发布
   ready 地址，`dns.go:67-70`），滞后 DNS TTL + refresh-interval。
 - weight 语义：仅 SRV 记录带 weight（`dns.go:97`）；该处 `Weight == 0` 同样进入 pool 的
@@ -199,7 +199,7 @@ get/list/watch）。backend 名（map key）必须等于客户端 `discovery:` �
    要等 DNS TTL + `refresh-interval` 才可见。
 4. **not-ready 摘流（weight=0 类比）**：破坏 readiness 探针
    （`kubectl patch deploy/demo -p '{"spec":{"template":{"spec":{"containers":[{"name":"demo","readinessProbe":{"tcpSocket":{"port":9999}}}]}}}}'`）
-   → 滚动出的 Pod not-ready → endpointslice 显示 `healthy=false`（Eligible 排除）；dns 模式
+   → 滚动出的 Pod not-ready → endpointslice 显示 `healthy=false`（Allows 排除）；dns 模式
    直接丢记录。
 5. **watch channel 卫生**：停掉消费端——即使某个 consumer 泄漏了 watch ctx，
    `manager.Destroy` 也会关闭所有 informer（`starter.go:79-86`、`endpointslice.go:230-243`）。

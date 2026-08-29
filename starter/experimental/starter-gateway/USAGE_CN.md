@@ -216,6 +216,8 @@ gs.Run()
 | `upstream.target` | string | — | **事实必填**:`lb://<service>` 或 `http(s)://host[:port]`。缺失/畸形 → `parseError`(compile.go:379-392)。 | 路由编译失败。 |
 | `upstream.balancer` | string | `round_robin` | 取值 `round_robin`、`least_conn`、`consistent_hash`、`weighted`(cloud/loadbalance)。未知名字 → 编译错误。 | 每 upstream 独立;同一服务的两条路由可用不同策略并共享同一条 discovery watch。 |
 | `upstream.discovery` | string | "" | 覆盖顶层 `discovery` 的每路由后端。 | |
+| `upstream.suspend-threshold` | int | 0(关) | lb:// upstream 实例连续失败多少次被停牌(outlier suspension,cloud/loadbalance `Tracker`);0 不启用。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
+| `upstream.suspend-for` | string | `""` | Go duration(如 `30s`);停牌多久后半开试探放回。空/0 用 tracker 的 5s 默认。 | 值非法 → reload 时编译错误,保留旧路由表。 |
 | `resilience.policy` | string | "" | 必须指向已存在的 `spring.gateway.resilience.<name>` key。⚠ 耦合:未知名字 → `unknown resilience policy` 编译错误(compile.go:236)。 | 启动失败 / reload 保留旧表。 |
 
 ⚠ **优先级耦合**:没有任何路由配 `priority` 时,匹配顺序按路由 id 排序(compile.go)。

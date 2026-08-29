@@ -31,10 +31,10 @@ type EndpointSource interface {
 // Pool is the runtime that ties client-side load balancing together. On every
 // [Pool.Pick] it takes the live endpoint snapshot from an [EndpointSource]
 // (kept fresh by discovery Watch), drops endpoints the naming service marks
-// disabled or unhealthy and that the ejection [Tracker] has evicted, and hands
+// disabled or unhealthy and that the suspension [Tracker] has suspended, and hands
 // the survivors to a [Balancer] to choose one.
 //
-// This is where the two halves of health eviction meet: discovery Watch handles
+// This is where the two halves of health removal meet: discovery Watch handles
 // instances coming and going, while the Tracker handles instances that are still
 // registered but failing. Each filter falls back to its input rather than
 // emptying the set — except Disabled instances, which are excluded outright (an
@@ -48,8 +48,8 @@ type Pool struct {
 // PoolOption configures a [Pool].
 type PoolOption func(*Pool)
 
-// WithTracker attaches an outlier-ejection [Tracker] to the pool. Without it,
-// eviction is disabled and only the discovery endpoint flags filter endpoints.
+// WithTracker attaches an outlier-suspension [Tracker] to the pool. Without it,
+// suspension is disabled and only the discovery endpoint flags filter endpoints.
 func WithTracker(t *Tracker) PoolOption {
 	return func(p *Pool) { p.tracker = t }
 }
@@ -65,30 +65,30 @@ func NewPool(src EndpointSource, bal Balancer, opts ...PoolOption) *Pool {
 	return p
 }
 
-// Pick selects one live, healthy, non-evicted endpoint via the configured
-// balancer. The returned [Result.Done] must be invoked when the request
-// finishes: it advances least-conn accounting and feeds the ejection tracker,
-// so skipping it defeats health eviction.
+// Pick selects one live, healthy, non-suspended endpoint via the configured
+// balancer. The caller must invoke [Pool.Complete] with the picked endpoint
+// when the request finishes: it advances least-conn accounting and feeds the
+// suspension tracker, so skipping it defeats health suspension.
 //
 // It returns [ErrNoAvailable] when the source has no endpoints, or every
 // endpoint is disabled.
-func (p *Pool) Pick(info PickInfo) (Result, error) {
+func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
 	eps := p.src.Endpoints()
 	if len(eps) == 0 {
-		return Result{}, ErrNoAvailable
+		return discovery.Endpoint{}, ErrNoAvailable
 	}
 
-	// Discovery-driven static eligibility ([discovery.Eligible]: Endpoint
-	// contract filter), distinct from the dynamic ejection filter below
-	// ([Tracker.Eligible]: circuit-breaker-style eviction).
-	candidates := discovery.Eligible(eps)
+	// Discovery-driven static admission ([discovery.Allows]: Endpoint
+	// contract filter), distinct from the dynamic suspension filter below
+	// ([Tracker.Allows]: circuit-breaker-style suspension).
+	candidates := discovery.Allows(eps)
 	if len(candidates) == 0 {
-		return Result{}, ErrNoAvailable
+		return discovery.Endpoint{}, ErrNoAvailable
 	}
 
-	// Ejection filtering: drop instances the tracker has evicted for repeated
-	// failures. Eligible falls back to its input if everything is evicted.
-	candidates = p.tracker.Eligible(candidates)
+	// Suspension filtering: drop instances the tracker has suspended for repeated
+	// failures. Allows falls back to its input if everything is suspended.
+	candidates = p.tracker.Allows(candidates)
 
 	// Soft drain: drop instances whose weight was set to zero at the naming
 	// service (the runtime traffic-drain signal). Falls back to its input when
@@ -99,24 +99,18 @@ func (p *Pool) Pick(info PickInfo) (Result, error) {
 		candidates = drained
 	}
 
-	res, err := p.bal.Pick(candidates, info)
-	if err != nil {
-		return Result{}, err
-	}
+	return p.bal.Pick(candidates, info)
+}
 
-	// Wrap the balancer's Done so the tracker sees every outcome even for
-	// strategies (round-robin, hash, weighted) that supply no Done of their own.
-	addr := res.Endpoint.Addr
-	inner := res.Done
-	res.Done = func(di DoneInfo) {
-		if inner != nil {
-			inner(di)
-		}
-		if p.tracker != nil {
-			p.tracker.Record(addr, di.Err == nil)
-		}
+// Complete settles the request that Pick issued to ep: it advances the
+// balancer's own accounting and records the outcome with the suspension tracker
+// (when attached), so every strategy — not just least-conn — feeds suspension.
+// Invoke it exactly once per picked endpoint, after the request ends.
+func (p *Pool) Complete(ep discovery.Endpoint, err error) {
+	p.bal.Complete(ep, err)
+	if p.tracker != nil {
+		p.tracker.Record(ep.Addr, err == nil)
 	}
-	return res, nil
 }
 
 // excludeDrained drops endpoints with an explicit zero weight (the drain

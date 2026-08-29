@@ -26,11 +26,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
+	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -261,7 +262,7 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 		return nil, err
 	}
 
-	up, err := parseUpstream(raw.Upstream.Target, raw.Upstream.Balancer, raw.Upstream.Discovery)
+	up, err := parseUpstream(raw.Upstream.Target, raw.Upstream.Balancer, raw.Upstream.Discovery, raw.Upstream.SuspendThreshold, raw.Upstream.SuspendFor)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +419,9 @@ func parseFilterToken(s string) (filterToken, error) {
 
 // parseUpstream parses a route's upstream target into an Upstream. A target of
 // lb://<service> is discovery-backed; http(s)://host[:port] is direct.
-func parseUpstream(target, balancer, disc string) (*Upstream, error) {
+// suspendFor is the raw "suspend-for" duration string ("" keeps the 0 default;
+// the pool applies the 30s fallback when only the threshold is configured).
+func parseUpstream(target, balancer, disc string, suspendThreshold int, suspendFor string) (*Upstream, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return nil, &parseError{what: "missing upstream target", token: ""}
@@ -427,11 +430,30 @@ func parseUpstream(target, balancer, disc string) (*Upstream, error) {
 		if svc == "" {
 			return nil, &parseError{what: "lb:// upstream without a service name", token: target}
 		}
-		return &Upstream{Service: svc, Balancer: balancer, Discovery: disc}, nil
+		d, err := parseSuspendFor(suspendFor)
+		if err != nil {
+			return nil, err
+		}
+		return &Upstream{Service: svc, Balancer: balancer, Discovery: disc, SuspendThreshold: suspendThreshold, SuspendFor: d}, nil
 	}
 	u, err := url.Parse(target)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, &parseError{what: "upstream target (want lb://name or http(s)://host)", token: target}
 	}
 	return &Upstream{URL: u}, nil
+}
+
+// parseSuspendFor parses the "suspend-for" duration string (Go syntax, e.g.
+// "30s"). Empty is 0 — "use the default". A non-empty string that fails
+// time.ParseDuration is a compile error so typos surface at reload, not as a
+// silently ignored value.
+func parseSuspendFor(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, &parseError{what: "upstream.suspend-for (want a Go duration like \"30s\" or \"1m\")", token: s}
+	}
+	return d, nil
 }

@@ -28,9 +28,9 @@ import (
 	"github.com/kitex-contrib/obs-opentelemetry/tracing"
 	etcd "github.com/kitex-contrib/registry-etcd"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel"
 
 	// Side-effect import: installs the kitex -> go-spring log bridge (see
 	// internal/logger). The bridge self-installs via init(), so no symbols are

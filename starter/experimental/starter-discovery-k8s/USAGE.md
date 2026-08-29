@@ -162,7 +162,7 @@ Kubernetes has no `UpdateWeight`; draining a Pod is the platform's job and flows
 - **Scale down / pod delete** → EndpointSlice shrinks → informer delete event → recompute → the
   address disappears from the snapshot → the client pool stops picking it.
 - **Readiness flips false** (probe failure) → the endpoint stays in the slice but `Conditions.Ready`
-  becomes false → `Healthy=false` → excluded by `discovery.Eligible` at pick time
+  becomes false → `Healthy=false` → excluded by `discovery.Allows` at pick time
   (`endpointslice.go:257`, `cloud/discovery/discovery.go:65-77`). dns mode instead sees the record
   disappear (headless DNS publishes ready addresses only, `dns.go:67-70`), after DNS-TTL +
   refresh-interval lag.
@@ -206,7 +206,7 @@ Prereq: `kubectl` with a dev cluster; provider applied per §1.
    picking the address. In dns mode the same change surfaces only after DNS TTL + `refresh-interval`.
 4. **Not-ready drain (weight=0 analogue)**: break the readiness probe
    (`kubectl patch deploy/demo -p '{"spec":{"template":{"spec":{"containers":[{"name":"demo","readinessProbe":{"tcpSocket":{"port":9999}}}]}}}}'`)
-   → rolling Pods turn not-ready → endpointslice mode shows `healthy=false` (excluded by Eligible);
+   → rolling Pods turn not-ready → endpointslice mode shows `healthy=false` (excluded by Allows);
    dns mode drops the record entirely.
 5. **Watch channel hygiene**: stop the consumer — `manager.Destroy` closes every informer even if a
    consumer leaked its watch context (`starter.go:79-86`, `endpointslice.go:230-243`).

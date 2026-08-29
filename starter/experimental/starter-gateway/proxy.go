@@ -30,7 +30,7 @@ import (
 
 // picker chooses the concrete target address for one request and returns a done
 // callback the proxy invokes with the request outcome (feeding load-balancer
-// accounting and outlier ejection). For a direct upstream the address is fixed
+// accounting and outlier suspension). For a direct upstream the address is fixed
 // and done is a no-op.
 type picker func(r *http.Request) (target *url.URL, done func(err error), err error)
 
@@ -52,16 +52,12 @@ func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 		return nil, err
 	}
 	return func(r *http.Request) (*url.URL, func(error), error) {
-		res, err := pool.Pick(loadbalance.PickInfo{Ctx: r.Context(), HashKey: clientIP(r)})
+		ep, err := pool.Pick(loadbalance.PickInfo{HashKey: clientIP(r)})
 		if err != nil {
 			return nil, nil, err
 		}
-		u := &url.URL{Scheme: "http", Host: res.Endpoint.Addr}
-		done := func(err error) {
-			if res.Done != nil {
-				res.Done(loadbalance.DoneInfo{Err: err})
-			}
-		}
+		u := &url.URL{Scheme: "http", Host: ep.Addr}
+		done := func(err error) { pool.Complete(ep, err) }
 		return u, done, nil
 	}, nil
 }
@@ -69,7 +65,10 @@ func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 // poolFor returns the load-balancing pool for an lb:// service, building (and
 // caching) the live dialer once per (discovery,service) pair. The balancer is
 // per-upstream so different routes to the same service may use different
-// strategies while sharing one discovery watch.
+// strategies while sharing one discovery watch. Outlier suspension (upstream
+// suspend-threshold/suspend-for) is likewise per-upstream: an instance that
+// fails repeatedly is dropped from the pool's candidate set for the cool-down,
+// so a zombie upstream stops generating 502s until it proves itself again.
 func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	disName := up.Discovery
 	if disName == "" {
@@ -87,7 +86,15 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loadbalance.NewPool(dialer, bal), nil
+	var opts []loadbalance.PoolOption
+	if up.SuspendThreshold > 0 {
+		tr := loadbalance.NewTracker(loadbalance.TrackerConfig{
+			Threshold:  up.SuspendThreshold,
+			SuspendFor: up.SuspendFor, // 0 keeps the tracker's 5s default
+		})
+		opts = append(opts, loadbalance.WithTracker(tr))
+	}
+	return loadbalance.NewPool(dialer, bal, opts...), nil
 }
 
 // resolver returns a cached [discovery.Resolver] for name, creating one (and

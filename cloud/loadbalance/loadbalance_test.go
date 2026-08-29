@@ -18,6 +18,7 @@ package loadbalance
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -49,12 +50,10 @@ func counts(t *testing.T, b Balancer, set []discovery.Endpoint, info PickInfo, n
 	t.Helper()
 	m := map[string]int{}
 	for range n {
-		r, err := b.Pick(set, info)
+		ep, err := b.Pick(set, info)
 		assert.Error(t, err).Nil()
-		m[r.Endpoint.Addr]++
-		if r.Done != nil {
-			r.Done(DoneInfo{})
-		}
+		m[ep.Addr]++
+		b.Complete(ep, nil)
 	}
 	return m
 }
@@ -89,8 +88,8 @@ func TestWeighted(t *testing.T) {
 	b2 := NewWeighted()
 	var seq []string
 	for range 7 {
-		r, _ := b2.Pick(set, PickInfo{})
-		seq = append(seq, r.Endpoint.Addr)
+		ep, _ := b2.Pick(set, PickInfo{})
+		seq = append(seq, ep.Addr)
 	}
 	run := 0
 	maxRun := 0
@@ -119,17 +118,25 @@ func TestLeastConn(t *testing.T) {
 
 	// Two picks without releasing: each must land on a different endpoint since
 	// the first one is now at in-flight 1.
-	r1, err := b.Pick(set, PickInfo{})
+	e1, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
-	r2, err := b.Pick(set, PickInfo{})
+	e2, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.String(t, r1.Endpoint.Addr).NotEqual(r2.Endpoint.Addr)
+	assert.String(t, e1.Addr).NotEqual(e2.Addr)
 
-	// Release r1's endpoint; it now has the fewest in-flight and must be chosen.
-	r1.Done(DoneInfo{})
-	r3, err := b.Pick(set, PickInfo{})
+	// Release e1; it now has the fewest in-flight and must be chosen.
+	b.Complete(e1, nil)
+	e3, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.String(t, r3.Endpoint.Addr).Equal(r1.Endpoint.Addr)
+	assert.String(t, e3.Addr).Equal(e1.Addr)
+
+	// A repeated Complete for the same request is a harmless no-op: the count
+	// deletes at zero instead of going negative (interface contract).
+	b.Complete(e1, nil)
+	b.Complete(e1, nil)
+	e4, err := b.Pick(set, PickInfo{})
+	assert.Error(t, err).Nil()
+	assert.String(t, e4.Addr).Equal(e1.Addr) // e1's count was not driven negative
 }
 
 func TestConsistentHash(t *testing.T) {
@@ -140,9 +147,9 @@ func TestConsistentHash(t *testing.T) {
 	first, err := b.Pick(set, PickInfo{HashKey: "user-42"})
 	assert.Error(t, err).Nil()
 	for range 20 {
-		r, err := b.Pick(set, PickInfo{HashKey: "user-42"})
+		ep, err := b.Pick(set, PickInfo{HashKey: "user-42"})
 		assert.Error(t, err).Nil()
-		assert.String(t, r.Endpoint.Addr).Equal(first.Endpoint.Addr)
+		assert.String(t, ep.Addr).Equal(first.Addr)
 	}
 
 	// Empty key falls back to round-robin spread rather than one instance.
@@ -170,6 +177,26 @@ func TestZoneAware(t *testing.T) {
 	// No zone hint delegates over everything.
 	m3 := counts(t, b, set, PickInfo{}, 3)
 	assert.Number(t, m3["a"]+m3["b"]+m3["c"]).Equal(3)
+}
+
+func TestZoneAwareCompleteForwards(t *testing.T) {
+	// Complete must reach the delegate so a stateful strategy composed under
+	// zone_aware (least-conn here) keeps its per-request accounting.
+	b := NewZoneAware("zone", NewLeastConn())
+	set := []discovery.Endpoint{
+		{Addr: "a", Metadata: map[string]string{"zone": "z1"}},
+		{Addr: "b", Metadata: map[string]string{"zone": "z1"}},
+	}
+	e1, err := b.Pick(set, PickInfo{Zone: "z1"})
+	assert.Error(t, err).Nil()
+	e2, err := b.Pick(set, PickInfo{Zone: "z1"})
+	assert.Error(t, err).Nil()
+	assert.String(t, e1.Addr).NotEqual(e2.Addr) // in-flight count survived the wrap
+
+	b.Complete(e1, nil)
+	e3, err := b.Pick(set, PickInfo{Zone: "z1"})
+	assert.Error(t, err).Nil()
+	assert.String(t, e3.Addr).Equal(e1.Addr) // decrement reached the delegate
 }
 
 func TestZoneAwareLevels(t *testing.T) {
@@ -210,10 +237,10 @@ func TestZoneAwareLevels(t *testing.T) {
 }
 
 func TestZoneLevels(t *testing.T) {
-	assert.That(t, len(zoneLevels(""))).Equal(0)
-	assert.Slice(t, zoneLevels("cn-north-1a")).Length(1)
-	assert.Slice(t, zoneLevels(" cn-north-1a , cn-north-1 ")).Length(2)
-	assert.Slice(t, zoneLevels("a,,b")).Length(2)
+	assert.That(t, len(parseZoneLevels(""))).Equal(0)
+	assert.Slice(t, parseZoneLevels("cn-north-1a")).Length(1)
+	assert.Slice(t, parseZoneLevels(" cn-north-1a , cn-north-1 ")).Length(2)
+	assert.Slice(t, parseZoneLevels("a,,b")).Length(2)
 	assert.That(t, zoneMatch("cn-north-1a", "cn-north-1a")).True()
 	assert.That(t, zoneMatch("cn-north-1a", "cn-north-1")).True()
 	assert.That(t, zoneMatch("cn-north-2", "cn-north-1")).False()
@@ -222,7 +249,7 @@ func TestZoneLevels(t *testing.T) {
 }
 
 func TestRegistry(t *testing.T) {
-	for _, name := range []string{RoundRobin, LeastConn, ConsistentHash, Weighted, ZoneAware} {
+	for _, name := range []string{RoundRobin, LeastConn, ConsistentHash, Weighted, ZoneAware, Random, P2C} {
 		b, err := New(name)
 		assert.Error(t, err).Nil()
 		assert.That(t, b).NotNil()
@@ -236,41 +263,41 @@ func TestRegistry(t *testing.T) {
 	assert.Panic(t, func() { Register(RoundRobin, NewRoundRobin) }, "already registered")
 }
 
-func TestTrackerEjectAndRecover(t *testing.T) {
+func TestTrackerSuspendAndRecover(t *testing.T) {
 	now := time.Unix(0, 0)
-	tr := NewTracker(TrackerConfig{Threshold: 2, EjectFor: time.Second})
+	tr := NewTracker(TrackerConfig{Threshold: 2, SuspendFor: time.Second})
 	tr.now = func() time.Time { return now }
 
 	// One failure is below threshold: still eligible.
 	tr.Record("a", false)
-	assert.That(t, tr.Ejected("a")).False()
-	assert.Slice(t, addrs(tr.Eligible(eps("a", "b")))).Length(2)
+	assert.That(t, tr.Suspended("a")).False()
+	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Length(2)
 
-	// Second consecutive failure trips ejection.
+	// Second consecutive failure trips suspension.
 	tr.Record("a", false)
-	assert.That(t, tr.Ejected("a")).True()
-	assert.Slice(t, addrs(tr.Eligible(eps("a", "b")))).Equal([]string{"b"})
+	assert.That(t, tr.Suspended("a")).True()
+	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Equal([]string{"b"})
 
-	// Still cooling down before EjectFor elapses.
+	// Still cooling down before SuspendFor elapses.
 	now = now.Add(500 * time.Millisecond)
-	assert.Slice(t, addrs(tr.Eligible(eps("a", "b")))).Equal([]string{"b"})
+	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Equal([]string{"b"})
 
 	// Cool-down elapsed: a half-open trial admits "a" again.
 	now = now.Add(600 * time.Millisecond)
-	assert.Slice(t, addrs(tr.Eligible(eps("a", "b")))).Length(2)
+	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Length(2)
 
 	// A successful trial fully restores it.
 	tr.Record("a", true)
-	assert.That(t, tr.Ejected("a")).False()
+	assert.That(t, tr.Suspended("a")).False()
 
-	// If the trial fails instead, it re-ejects for another window.
+	// If the trial fails instead, it re-suspends for another window.
 	tr.Record("a", false)
 	tr.Record("a", false)
-	assert.That(t, tr.Ejected("a")).True()
+	assert.That(t, tr.Suspended("a")).True()
 	now = now.Add(1100 * time.Millisecond)
-	tr.Eligible(eps("a")) // admit trial -> half-open
+	tr.Allows(eps("a"))   // admit trial -> half-open
 	tr.Record("a", false) // trial fails
-	assert.That(t, tr.Ejected("a")).True()
+	assert.That(t, tr.Suspended("a")).True()
 }
 
 func TestTrackerDisabled(t *testing.T) {
@@ -278,8 +305,21 @@ func TestTrackerDisabled(t *testing.T) {
 	tr.Record("a", false)
 	tr.Record("a", false)
 	tr.Record("a", false)
-	assert.That(t, tr.Ejected("a")).False()
-	assert.Slice(t, addrs(tr.Eligible(eps("a", "b")))).Length(2)
+	assert.That(t, tr.Suspended("a")).False()
+	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Length(2)
+}
+
+func TestTrackerAllSuspendedFallsBack(t *testing.T) {
+	// Black-holing all traffic is worse than probing a degraded instance: when
+	// every endpoint is suspended, Allows returns its input unchanged.
+	now := time.Unix(0, 0)
+	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr.now = func() time.Time { return now }
+	tr.Record("a", false)
+	tr.Record("b", false)
+	assert.That(t, tr.Suspended("a")).True()
+	assert.That(t, tr.Suspended("b")).True()
+	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Equal([]string{"a", "b"})
 }
 
 // staticSource is a fixed EndpointSource for pool tests.
@@ -296,39 +336,39 @@ func TestPoolHealthFilter(t *testing.T) {
 	p := NewPool(src, NewRoundRobin())
 	m := map[string]int{}
 	for range 20 {
-		r, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		m[r.Endpoint.Addr]++
-		r.Done(DoneInfo{})
+		m[ep.Addr]++
+		p.Complete(ep, nil)
 	}
 	// The unhealthy instance is never picked.
 	assert.Number(t, m["b"]).Equal(0)
 	assert.Number(t, m["a"]+m["c"]).Equal(20)
 }
 
-func TestPoolEvictionViaDone(t *testing.T) {
+func TestPoolEvictionViaComplete(t *testing.T) {
 	src := staticSource(eps("a", "b"))
-	tr := NewTracker(TrackerConfig{Threshold: 2, EjectFor: time.Minute})
+	tr := NewTracker(TrackerConfig{Threshold: 2, SuspendFor: time.Minute})
 	p := NewPool(src, NewRoundRobin(), WithTracker(tr))
 
-	// Drive "a" to failure through the pool's Done wiring, twice, to eject it.
+	// Drive "a" to failure through the pool's Complete wiring, twice, to suspend it.
 	for range 5 {
-		r, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		if r.Endpoint.Addr == "a" {
-			r.Done(DoneInfo{Err: errors.New("boom")})
+		if ep.Addr == "a" {
+			p.Complete(ep, errors.New("boom"))
 		} else {
-			r.Done(DoneInfo{})
+			p.Complete(ep, nil)
 		}
 	}
-	assert.That(t, tr.Ejected("a")).True()
+	assert.That(t, tr.Suspended("a")).True()
 
 	// Subsequent picks avoid the evicted instance.
 	for range 10 {
-		r, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		assert.String(t, r.Endpoint.Addr).Equal("b")
-		r.Done(DoneInfo{})
+		assert.String(t, ep.Addr).Equal("b")
+		p.Complete(ep, nil)
 	}
 }
 
@@ -336,6 +376,28 @@ func TestPoolEmpty(t *testing.T) {
 	p := NewPool(staticSource(nil), NewRoundRobin())
 	_, err := p.Pick(PickInfo{})
 	assert.Error(t, err).Is(ErrNoAvailable)
+}
+
+func TestPoolWithoutTracker(t *testing.T) {
+	// No WithTracker: the nil tracker is a transparent pass-through (nil-receiver
+	// methods), and Complete with failures must not suspend anything.
+	src := staticSource(eps("a", "b"))
+	p := NewPool(src, NewRoundRobin())
+	for range 10 {
+		ep, err := p.Pick(PickInfo{})
+		assert.Error(t, err).Nil()
+		p.Complete(ep, errors.New("boom")) // failures, but no tracker attached
+	}
+	// Both endpoints keep receiving traffic.
+	m := map[string]int{}
+	for range 10 {
+		ep, err := p.Pick(PickInfo{})
+		assert.Error(t, err).Nil()
+		m[ep.Addr]++
+		p.Complete(ep, nil)
+	}
+	assert.Number(t, m["a"]).Equal(5)
+	assert.Number(t, m["b"]).Equal(5)
 }
 
 func TestPoolZeroWeightDrains(t *testing.T) {
@@ -347,10 +409,10 @@ func TestPoolZeroWeightDrains(t *testing.T) {
 	}
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
-		r, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		assert.String(t, r.Endpoint.Addr).Equal("a")
-		r.Done(DoneInfo{})
+		assert.String(t, ep.Addr).Equal("a")
+		p.Complete(ep, nil)
 	}
 }
 
@@ -365,10 +427,10 @@ func TestPoolAllZeroWeightFallsBack(t *testing.T) {
 	p := NewPool(src, NewRoundRobin())
 	m := map[string]int{}
 	for range 20 {
-		r, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		m[r.Endpoint.Addr]++
-		r.Done(DoneInfo{})
+		m[ep.Addr]++
+		p.Complete(ep, nil)
 	}
 	assert.Number(t, m["a"]+m["b"]).Equal(20)
 	assert.Number(t, m["a"]).Equal(10)
@@ -384,9 +446,45 @@ func TestPoolNegativeWeightKept(t *testing.T) {
 	}
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
-		r, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		assert.String(t, r.Endpoint.Addr).Equal("a")
-		r.Done(DoneInfo{})
+		assert.String(t, ep.Addr).Equal("a")
+		p.Complete(ep, nil)
 	}
+}
+
+func TestConsistentHashTopologyChange(t *testing.T) {
+	// Adding an endpoint must move only a small fraction of keys (the whole
+	// point of consistent hashing): with 4 endpoints joining a 3-endpoint set
+	// (~4/7 of traffic should shift in expectation), the vast majority of
+	// 200 keys stay put.
+	b := NewConsistentHash(100)
+	before := map[string]string{}
+	keys := make([]string, 0, 200)
+	for i := range 200 {
+		k := "key-" + strconv.Itoa(i)
+		keys = append(keys, k)
+		ep, err := b.Pick(eps("a", "b", "c"), PickInfo{HashKey: k})
+		assert.Error(t, err).Nil()
+		before[k] = ep.Addr
+	}
+	moved := 0
+	for _, k := range keys {
+		ep, err := b.Pick(eps("a", "b", "c", "d", "e", "f", "g"), PickInfo{HashKey: k})
+		assert.Error(t, err).Nil()
+		if ep.Addr != before[k] {
+			moved++
+		}
+	}
+	// Expected movement is 3/7 (~86 of 200) with some slack; a modulo-based
+	// scheme would move ~100%.
+	assert.Number(t, moved).LessThan(120)
+	assert.Number(t, moved).GreaterThan(40)
+}
+
+func TestFingerprintOrderIndependent(t *testing.T) {
+	a := eps("a", "b", "c")
+	b := eps("c", "a", "b")
+	assert.String(t, fingerprint(a)).Equal(fingerprint(b))
+	assert.String(t, fingerprint(a)).NotEqual(fingerprint(eps("a", "b")))
 }

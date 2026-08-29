@@ -98,6 +98,9 @@ Register your own filter with `StarterGateway.RegisterFilter(name, factory)`.
 * **Discovery**: `upstream.target=lb://<service>` resolves live instances through
   `cloud/discovery` and picks one with `cloud/loadbalance`. Set
   `upstream.balancer` (`round_robin`, `least_conn`, `consistent_hash`, `weighted`)
+  plus optional outlier suspension (`upstream.suspend-threshold` /
+  `upstream.suspend-for`): an upstream instance that fails repeatedly is
+  suspended for a cool-down and readmitted via a half-open trial
   and `upstream.discovery` (backend name), or a gateway-wide default via
   `spring.gateway.discovery`.
 

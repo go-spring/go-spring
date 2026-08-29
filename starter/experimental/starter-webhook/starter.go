@@ -146,12 +146,12 @@ func (n *Notifier) post(ctx context.Context, endpoint string, body []byte) error
 // HTTP status already said OK.
 func businessError(channel string, body []byte) string {
 	var v struct {
-		Errcode    *int    `json:"errcode"`
-		Errmsg     string  `json:"errmsg"`
-		Code       *int    `json:"code"`
-		Msg        string  `json:"msg"`
-		StatusCode *int    `json:"StatusCode"`
-		StatusMsg  string  `json:"StatusMessage"`
+		Errcode    *int   `json:"errcode"`
+		Errmsg     string `json:"errmsg"`
+		Code       *int   `json:"code"`
+		Msg        string `json:"msg"`
+		StatusCode *int   `json:"StatusCode"`
+		StatusMsg  string `json:"StatusMessage"`
 	}
 	if err := json.Unmarshal(body, &v); err != nil {
 		return ""

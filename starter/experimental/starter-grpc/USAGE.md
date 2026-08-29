@@ -257,11 +257,11 @@ Rationale (from the source comments, verified):
   not race an empty address list.
 - Select a strategy purely via service config: `grpc.WithDefaultServiceConfig(
   StarterGrpc.LoadBalancingConfig(strategy))`. Balancer names are `gs_round_robin`, `gs_least_conn`,
-  `gs_consistent_hash`, `gs_weighted`, `gs_zone_aware` (pre-registered in init with ejection
+  `gs_consistent_hash`, `gs_weighted`, `gs_zone_aware` (pre-registered in init with suspension
   defaults: 5 consecutive failures → evicted 30s, then half-open trial).
 - Per-call hints: `WithHashKey` (consistent-hash affinity), `WithZone` (zone-aware preference).
 - Weight=0 endpoints are filtered by the strategies themselves (pool-wide drain semantics);
-  `RegisterBalancer(name, strategy, trackerConfig)` registers a custom name for isolated ejection
+  `RegisterBalancer(name, strategy, trackerConfig)` registers a custom name for isolated suspension
   state (panics on unknown strategy or duplicate name, matching grpc-go's own contract).
 - example-lb/main.go is the executable proof: even spread, eviction + half-open readmission, and
   discovery-kill drop — all asserted in-process.

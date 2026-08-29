@@ -12,7 +12,7 @@ sites are produced by `gs-http-gen`; a generated client only holds an
   and `otelhttp`.
 - Discovery + load balancing: when a `ServiceName` is set, wires a
   `discovery.Resolver` and a `loadbalance.Pool` (round-robin, least-conn,
-  consistent-hash, weighted, zone-aware) with optional outlier ejection.
+  consistent-hash, weighted, zone-aware) with optional outlier suspension.
 - Direct addressing: with only `Addr`, rewrites every request to that host — the
   generated client's `Target` need not be set.
 - Optional `resilience` executor wrapping the whole chain, so a retry re-enters

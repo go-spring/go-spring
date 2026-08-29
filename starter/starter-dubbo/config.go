@@ -60,14 +60,14 @@ func init() {
 // DubboConfig holds every top-level node that can appear under "dubbo" in
 // dubbo-go.json. Bind it with gs.TagArg("${spring.dubbo}").
 type DubboConfig struct {
-	Application    DubboApplication         `value:"${application:=}"`
-	Registries     map[string]DubboRegistry `value:"${registries:=}"`
-	Protocols      map[string]DubboProtocol `value:"${protocols:=}"`
-	Provider       DubboProvider            `value:"${provider:=}"`
-	Consumer       DubboConsumer            `value:"${consumer:=}"`
-	Metrics        DubboMetric              `value:"${metrics:=}"`
-	Tracing        DubboTracing             `value:"${tracing:=}"`
-	Shutdown       DubboShutdown            `value:"${shutdown:=}"`
+	Application DubboApplication         `value:"${application:=}"`
+	Registries  map[string]DubboRegistry `value:"${registries:=}"`
+	Protocols   map[string]DubboProtocol `value:"${protocols:=}"`
+	Provider    DubboProvider            `value:"${provider:=}"`
+	Consumer    DubboConsumer            `value:"${consumer:=}"`
+	Metrics     DubboMetric              `value:"${metrics:=}"`
+	Tracing     DubboTracing             `value:"${tracing:=}"`
+	Shutdown    DubboShutdown            `value:"${shutdown:=}"`
 }
 
 // --- application ---
@@ -143,11 +143,11 @@ type DubboProvider struct {
 	AdaptiveServiceVerbose bool                    `value:"${adaptive-service-verbose:=false}"`
 
 	// Provider-wide defaults (server.ServerOption).
-	Group                       string            `value:"${group:=}"`
-	Version                     string            `value:"${version:=}"`
-	Cluster                     string            `value:"${cluster:=}"`
-	LoadBalance                 string            `value:"${loadbalance:=}"`
-	Serialization               string            `value:"${serialization:=}"`
+	Group         string `value:"${group:=}"`
+	Version       string `value:"${version:=}"`
+	Cluster       string `value:"${cluster:=}"`
+	LoadBalance   string `value:"${loadbalance:=}"`
+	Serialization string `value:"${serialization:=}"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
 	Retries                     int               `value:"${retries:=-1}"`
@@ -182,9 +182,9 @@ type DubboService struct {
 	LoadBalance string `value:"${loadbalance:=random}"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
-	Retries     int    `value:"${retries:=-1}"`
-	Group       string `value:"${group:=}"`
-	Version     string `value:"${version:=}"`
+	Retries int    `value:"${retries:=-1}"`
+	Group   string `value:"${group:=}"`
+	Version string `value:"${version:=}"`
 	// Serialization is one of: protobuf, hessian2, msgpack, jsonMapStruct.
 	Serialization string                 `value:"${serialization:=}"`
 	Methods       map[string]DubboMethod `value:"${methods:=}"`
@@ -213,17 +213,17 @@ type DubboService struct {
 // dubbo-go v3 client.ClientOption — process-wide defaults every reference
 // inherits unless overridden per-reference.
 type DubboConsumer struct {
-	Filter                         string                    `value:"${filter:=}"`
-	RegistryIDs                    []string                  `value:"${registry-ids:=}"`
-	Protocol                       string                    `value:"${protocol:=}"`        // dubbo|tri|triple|jsonrpc
-	RequestTimeout                 string                    `value:"${request-timeout:=}"` // duration string, e.g. "3s"
-	Check                          bool                      `value:"${check:=true}"`
-	References                     map[string]DubboReference `value:"${references:=}"`
-	TracingKey                     string                    `value:"${tracing-key:=}"`
+	Filter         string                    `value:"${filter:=}"`
+	RegistryIDs    []string                  `value:"${registry-ids:=}"`
+	Protocol       string                    `value:"${protocol:=}"`        // dubbo|tri|triple|jsonrpc
+	RequestTimeout string                    `value:"${request-timeout:=}"` // duration string, e.g. "3s"
+	Check          bool                      `value:"${check:=true}"`
+	References     map[string]DubboReference `value:"${references:=}"`
+	TracingKey     string                    `value:"${tracing-key:=}"`
 
 	// Consumer-level defaults (client.ClientOption).
-	Cluster       string `value:"${cluster:=}"`
-	LoadBalance   string `value:"${loadbalance:=}"`
+	Cluster     string `value:"${cluster:=}"`
+	LoadBalance string `value:"${loadbalance:=}"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
 	Retries       int    `value:"${retries:=-1}"`
@@ -238,7 +238,7 @@ type DubboConsumer struct {
 // are free-form logical IDs validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 // Fields match dubbo-go v3 client.ReferenceOption.
 type DubboReference struct {
-	Interface   string   `value:"${interface:=}"`
+	Interface string `value:"${interface:=}"`
 	// Check defaults true (fail fast on missing providers), matching the
 	// consumer-level default. Note: dubbo-go v3 has no per-reference
 	// "no check" ReferenceOption, so check=false here is only effective when
@@ -252,7 +252,7 @@ type DubboReference struct {
 	Cluster string `value:"${cluster:=failover}"`
 	// LoadBalance is one of: random, roundrobin, consistenthashing,
 	// leastactive, xdsringhash, p2c; default "random".
-	LoadBalance   string                 `value:"${loadbalance:=random}"`
+	LoadBalance string `value:"${loadbalance:=random}"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
 	Retries       int                    `value:"${retries:=-1}"`
@@ -275,10 +275,10 @@ type DubboReference struct {
 // validated against ^[_a-zA-Z][a-zA-Z\d_-]*$.
 // Fields match dubbo-go v3 config.MethodOption.
 type DubboMethod struct {
-	Name    string `value:"${name:=}"`
+	Name string `value:"${name:=}"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
-	Retries int    `value:"${retries:=-1}"`
+	Retries int `value:"${retries:=-1}"`
 	// LoadBalance is one of: random, roundrobin, consistenthashing,
 	// leastactive, xdsringhash, p2c; default "random".
 	LoadBalance      string `value:"${loadbalance:=random}"`

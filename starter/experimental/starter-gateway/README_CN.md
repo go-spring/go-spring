@@ -91,7 +91,9 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 * **服务发现**：`upstream.target=lb://<service>` 经 `cloud/discovery` 解析活跃实例，
   由 `cloud/loadbalance` 选择其一。可设置 `upstream.balancer`（`round_robin`、
   `least_conn`、`consistent_hash`、`weighted`）与 `upstream.discovery`（后端名），
-  或通过 `spring.gateway.discovery` 设置网关级默认发现后端。
+  或通过 `spring.gateway.discovery` 设置网关级默认发现后端；还可选配离群停牌
+  （`upstream.suspend-threshold` / `upstream.suspend-for`）——连续失败的实例被
+  停牌冷却,期满后经半开试探放回。
 
 ## 韧性（Resilience）
 

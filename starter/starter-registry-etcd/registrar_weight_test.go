@@ -93,12 +93,10 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 		lb := loadbalance.NewWeighted()
 		m := map[string]int{}
 		for range n {
-			r, err := lb.Pick(eps, loadbalance.PickInfo{})
+			ep, err := lb.Pick(eps, loadbalance.PickInfo{})
 			assert.Error(t, err).Nil()
-			m[r.Endpoint.Addr]++
-			if r.Done != nil {
-				r.Done(loadbalance.DoneInfo{})
-			}
+			m[ep.Addr]++
+			lb.Complete(ep, nil)
 		}
 		return m
 	}

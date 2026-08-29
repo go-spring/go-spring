@@ -30,8 +30,8 @@ import (
 	// Routes are pure config (see conf/app.properties): the gateway listens on
 	// :9440, proxies /api/** to an in-process upstream on :19000, and emits
 	// traces to the OTLP endpoint plus Prometheus metrics on :9090.
-	_ "go-spring.org/starter-otel"
 	_ "go-spring.org/starter-gateway"
+	_ "go-spring.org/starter-otel"
 )
 
 // backendAddr is the in-process upstream the gateway forwards to.

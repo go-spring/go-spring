@@ -23,7 +23,7 @@
 // It asserts the three acceptance behaviours end to end:
 //
 //  1. Even distribution — round-robin spreads requests evenly across instances.
-//  2. Breaker eviction + recovery — a backend that starts failing is ejected
+//  2. Breaker eviction + recovery — a backend that starts failing is suspended
 //     within a few requests (traffic stops reaching it), then readmitted after
 //     it recovers and the cool-down elapses.
 //  3. Kill an instance — removing a backend from discovery and stopping it makes
@@ -51,7 +51,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// smokeBalancer is a round-robin balancer with a short-fused ejection tracker so
+// smokeBalancer is a round-robin balancer with a short-fused suspension tracker so
 // the breaker phases finish quickly (3 failures evict, 2s cool-down).
 const smokeBalancer = "gs_smoke"
 
@@ -217,7 +217,7 @@ func main() {
 	d := newDisco(eps)
 	discovery.RegisterDiscovery("default", d)
 	StarterGrpc.RegisterBalancer(smokeBalancer, loadbalance.RoundRobin,
-		loadbalance.TrackerConfig{Threshold: 3, EjectFor: 2 * time.Second})
+		loadbalance.TrackerConfig{Threshold: 3, SuspendFor: 2 * time.Second})
 
 	conn, err := grpc.NewClient(
 		StarterGrpc.Scheme+":///echo",
@@ -251,7 +251,7 @@ func main() {
 	// -----------------------------------------------------------------
 	backends["A"].h.fail.Store(true)
 
-	// Warm-up burst: A returns errors until three consecutive failures eject it.
+	// Warm-up burst: A returns errors until three consecutive failures suspend it.
 	_, errs = send(client, 20)
 	if errs == 0 {
 		fatalf("phase 2: expected some failures from A before eviction")
@@ -263,7 +263,7 @@ func main() {
 	}
 	fmt.Printf("phase 2a OK: failing A evicted, traffic on %v\n", hits)
 
-	// Recover A and wait past the ejection cool-down; the half-open trial should
+	// Recover A and wait past the suspension cool-down; the half-open trial should
 	// readmit it.
 	backends["A"].h.fail.Store(false)
 	time.Sleep(2500 * time.Millisecond)

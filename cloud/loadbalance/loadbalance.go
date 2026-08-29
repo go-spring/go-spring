@@ -24,10 +24,11 @@
 //
 //   - [Balancer] is the pluggable selection strategy (round-robin, least-conn,
 //     consistent-hash, weighted, zone-aware). It is pure: given a candidate
-//     endpoint set and a [PickInfo] it returns one [Result].
+//     endpoint set and a [PickInfo] it returns one endpoint, plus the
+//     Complete method that settles the request it issued.
 //   - [Pool] binds a live discovery source (via [discovery.Resolver]) and a
-//     [Tracker] (outlier ejection) to a Balancer, so the candidate set stays
-//     fresh as instances come and go and unhealthy instances are evicted.
+//     [Tracker] (outlier suspension) to a Balancer, so the candidate set stays
+//     fresh as instances come and go and unhealthy instances are suspended.
 //
 // The package has zero third-party dependencies; RPC-framework adapters (gRPC
 // balancer.Builder, kitex loadbalance.Loadbalancer, ...) live in their starters
@@ -35,7 +36,6 @@
 package loadbalance
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -44,18 +44,34 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
+// Names of the built-in strategies, registered by their respective files.
+// The names appear in service configs and gRPC LB config, so they are stable.
+// New strategies are admitted only after a survey of industry practice and a
+// real consumer; implementation variants with equivalent semantics (maglev,
+// rendezvous hashing; peak-ewma beside p2c) are deliberately out.
+const (
+	RoundRobin     = "round_robin"
+	LeastConn      = "least_conn"
+	ConsistentHash = "consistent_hash"
+	Weighted       = "weighted"
+	ZoneAware      = "zone_aware"
+	Random         = "random"
+	P2C            = "p2c"
+)
+
 // ErrNoAvailable is returned by a [Balancer] or [Pool] when there is no eligible
-// endpoint to pick — the candidate set is empty after discovery and eviction
+// endpoint to pick — the candidate set is empty after discovery and suspension
 // filtering.
 var ErrNoAvailable = errors.New("loadbalance: no available endpoint")
 
 // PickInfo carries the per-request inputs a [Balancer] may route on. All fields
 // are optional; a plain round-robin balancer ignores them entirely.
+//
+// The struct admits a field only when a strategy consumes it (the request ctx
+// stays out — no strategy reads it and every call site has it in hand). The
+// leading candidates for future fields are Subset (canary metadata routing,
+// the biggest gap) and Attempt (retry avoidance); both wait for a consumer.
 type PickInfo struct {
-	// Ctx is the request context. Balancers may read routing hints from it but
-	// must not retain it beyond the Pick call.
-	Ctx context.Context
-
 	// HashKey selects the instance for hash-based strategies (consistent hash).
 	// Requests sharing a HashKey land on the same instance while the topology is
 	// stable. Ignored by strategies that do not hash.
@@ -67,37 +83,30 @@ type PickInfo struct {
 	Zone string
 }
 
-// Result is the outcome of a [Balancer.Pick]: the chosen endpoint plus an
-// optional Done callback the caller invokes once the request finishes.
-type Result struct {
-	// Endpoint is the selected instance.
-	Endpoint discovery.Endpoint
-
-	// Done reports the request outcome back to the balancer. It is non-nil for
-	// strategies that keep per-request state (least-conn decrements its in-flight
-	// count) or that feed an ejection [Tracker]. Callers should always invoke it
-	// when non-nil, exactly once, after the call completes. It is safe to guard
-	// with `if r.Done != nil`.
-	Done func(DoneInfo)
-}
-
-// DoneInfo describes how a balanced request ended. It is passed to [Result.Done].
-type DoneInfo struct {
-	// Err is the request's final error, or nil on success. Ejection trackers
-	// treat a non-nil Err as a failure signal for the picked endpoint.
-	Err error
-}
-
 // Balancer selects one endpoint from a live candidate set per request. The
 // candidate slice is supplied on every call (the caller owns discovery and
-// eviction), so a Balancer only needs to hold selection state such as a
-// round-robin cursor or a hash ring cache. Implementations must be safe for
-// concurrent use.
+// suspension filtering), so a Balancer only needs to hold selection state such as a
+// round-robin cursor or a hash ring cache — binding the set at construction
+// would force a rebuild on every topology change and zero that state, and a
+// push model would duplicate the discovery snapshot per balancer. All state
+// must be keyed by endpoint address (never by index or order) so an arbitrary
+// topology change adapts: a removed address is cleaned up or drains, and a
+// returning address resumes with its state intact. Implementations must be
+// safe for concurrent use.
 type Balancer interface {
 	// Pick returns one endpoint from eps for the given info. eps is the already
 	// filtered eligible set; Pick must not mutate it. It returns [ErrNoAvailable]
 	// when eps is empty.
-	Pick(eps []discovery.Endpoint, info PickInfo) (Result, error)
+	Pick(eps []discovery.Endpoint, info PickInfo) (discovery.Endpoint, error)
+
+	// Complete marks the request that Pick issued to ep as finished: err is the
+	// request's final error, nil on success. Strategies that keep per-request
+	// state settle it here (least-conn decrements its in-flight count);
+	// stateless strategies declare a no-op so callers never nil-check. The
+	// two-method shape keeps the hot path free of per-request closures. Callers
+	// must invoke it exactly once per picked endpoint, after the request ends
+	// (least_conn tolerates a repeat — its count deletes at zero).
+	Complete(ep discovery.Endpoint, err error)
 }
 
 // Factory builds a fresh, independent [Balancer]. The registry stores factories
@@ -146,11 +155,3 @@ func New(name string) (Balancer, error) {
 	mu.RUnlock()
 	return f(), nil
 }
-
-// Names of the built-in strategies, registered by their respective files.
-const (
-	RoundRobin     = "round_robin"
-	LeastConn      = "least_conn"
-	ConsistentHash = "consistent_hash"
-	Weighted       = "weighted"
-)

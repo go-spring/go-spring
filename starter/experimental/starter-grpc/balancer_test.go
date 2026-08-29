@@ -86,7 +86,7 @@ type fakeSubConn struct {
 }
 
 // newTestPickerBuilder builds a picker over a round-robin strategy with the
-// default ejection policy (5 consecutive failures evict for a long window).
+// default suspension policy (5 consecutive failures evict for a long window).
 func newTestPickerBuilder(t *testing.T) *gsPickerBuilder {
 	t.Helper()
 	bal, err := loadbalance.New(loadbalance.RoundRobin)
@@ -105,7 +105,7 @@ func TestPickerBuild_NoReadySubConns(t *testing.T) {
 
 // TestPicker_RotatesAndEvictsFailingInstance covers the core client-side
 // behavior without a registry: the round-robin picker rotates across READY
-// SubConns, Done(true/false) feeds the ejection tracker, and after the
+// SubConns, Done(true/false) feeds the suspension tracker, and after the
 // threshold of consecutive failures the failing instance is evicted from
 // eligibility — leaving the healthy one to serve every pick.
 func TestPicker_RotatesAndEvictsFailingInstance(t *testing.T) {
@@ -116,7 +116,7 @@ func TestPicker_RotatesAndEvictsFailingInstance(t *testing.T) {
 		bad:  {Address: addrFromEndpoint(discovery.Endpoint{Addr: bad.addr, Healthy: true, Weight: 1})},
 	}})
 
-	// Drain the ejection window so the test does not wait 30s for readmission.
+	// Drain the suspension window so the test does not wait 30s for readmission.
 	t.Cleanup(func() {})
 
 	ctx := context.Background()
@@ -130,10 +130,10 @@ func TestPicker_RotatesAndEvictsFailingInstance(t *testing.T) {
 	// Round-robin rotated across both instances.
 	assert.That(t, seen[good.addr] && seen[bad.addr]).True()
 
-	// Drive the bad instance past the ejection threshold: record a failure
+	// Drive the bad instance past the suspension threshold: record a failure
 	// whenever it is picked (a success on the good instance clears ITS streak,
 	// so only the bad one accumulates). After 5 consecutive failures it is
-	// ejected, so every subsequent pick lands on the good instance.
+	// suspended, so every subsequent pick lands on the good instance.
 	for i := 0; i < 12; i++ {
 		r, err := picker.Pick(balancer.PickInfo{Ctx: ctx})
 		assert.That(t, err).Nil()

@@ -36,6 +36,7 @@ package StarterGateway
 import (
 	"net/http"
 	"net/url"
+	"time"
 )
 
 // Predicate reports whether a request matches a route. It is the Go-idiomatic
@@ -58,6 +59,13 @@ type Upstream struct {
 	Service   string   // lb://<service-name>, resolved via discovery
 	Balancer  string   // loadbalance strategy name; empty defaults to round_robin
 	Discovery string   // discovery backend name; empty uses the gateway default
+
+	// SuspendThreshold is the consecutive-failure count that suspends an
+	// upstream instance (outlier suspension). 0 (the default) disables it.
+	SuspendThreshold int
+	// SuspendFor is how long a suspended instance stays out before a half-open
+	// trial. Defaults to 30s when SuspendThreshold is set and this is 0.
+	SuspendFor time.Duration
 }
 
 // Route is a fully compiled routing rule: a set of predicates (AND-combined), a
@@ -109,6 +117,10 @@ type RouteRaw struct {
 		Target    string `value:"${target:=}"` // lb://name or http(s)://host:port
 		Balancer  string `value:"${balancer:=round_robin}"`
 		Discovery string `value:"${discovery:=}"`
+		// SuspendThreshold: consecutive failures before an lb:// upstream
+		// instance is suspended (outlier suspension). 0 disables it.
+		SuspendThreshold int    `value:"${suspend-threshold:=0}"`
+		SuspendFor       string `value:"${suspend-for:=}"` // Go duration, e.g. "30s"; default 30s
 	} `value:"${upstream}"`
 
 	Resilience struct {

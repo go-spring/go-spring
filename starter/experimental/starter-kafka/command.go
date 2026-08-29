@@ -29,9 +29,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/log"
 	observe "go-spring.org/cloud/observe"
 	resilobserve "go-spring.org/cloud/observe/resilience"
+	"go-spring.org/log"
 )
 
 // newObserveHook builds a kgo hook that emits a per-message access log through

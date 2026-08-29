@@ -1,38 +1,11 @@
 # loadbalance
+
 [English](README.md) | [中文](README_CN.md)
 
 `loadbalance` is the client-side load-balancing layer on top of
 `go-spring.org/cloud/discovery`. Discovery answers "which instances exist
 right now?"; this package answers "given that live set, which one do I send
-this request to?" — and evicts instances that keep failing.
-
-## Features
-
-- Five built-in strategies (each registered under a stable name):
-  - `round_robin` — stateless, cycles evenly.
-  - `least_conn` — picks the endpoint with fewest in-flight requests.
-  - `consistent_hash` — FNV-32 ring with virtual nodes; hash-key affinity.
-  - `weighted` — nginx smooth weighted round-robin (SWRR).
-A `Weight` of 0 on an endpoint is the runtime drain signal: the pool excludes
-it from picking (every strategy, not just `weighted`), falling back to an even
-split only when every endpoint is zero-weighted so unnormalized snapshots
-never black-hole traffic. Registrars normalize an unset weight to 1 at write
-time, so 0 only ever means "drained on purpose" (e.g. `UpdateWeight(0)`).
-
-  - `zone_aware` — locality preference over a delegate balancer; the zone
-    hint accepts an ordered fallback list (`"cn-north-1a,cn-north-1"` =
-    rack first, then availability zone, then spill-over).
-- `Factory` registry (`Register` / `New`) — strategies register themselves
-  in `init` and can be swapped by name.
-- `Tracker` — outlier-ejection with consecutive-failure threshold + half-open
-  probe, keyed by endpoint address; queryable so `Pool` can evict before
-  routing.
-- `Pool` — binds an `EndpointSource` (a `discovery.Resolver` satisfies it
-  directly), a `Balancer` and an optional `Tracker`; two-stage filtering
-  (`Healthy` first, `Tracker.Eligible` next) with a never-black-hole
-  guarantee — an empty filter always falls back to its input.
-- Mesh mode: when `discovery.MeshMode()` is on, `Pool.Pick` degrades to a
-  single stable endpoint and skips eviction so the sidecar owns LB.
+this request to?" — and suspends instances that keep failing.
 
 ## Installation
 
@@ -40,48 +13,126 @@ time, so 0 only ever means "drained on purpose" (e.g. `UpdateWeight(0)`).
 go get go-spring.org/cloud
 ```
 
-## Usage
+## Quick start
 
 ```go
 import (
     "context"
+    "time"
 
     "go-spring.org/cloud/discovery"
     "go-spring.org/cloud/loadbalance"
 )
 
-ld, err := discovery.NewClientDialer(ctx, "default", "orders")
+rsv, err := discovery.NewResolver(ctx, "default", "orders")
 if err != nil { return err }
-defer ld.Stop()
+defer rsv.Stop()
 
 bal, _ := loadbalance.New(loadbalance.RoundRobin)
 tracker := loadbalance.NewTracker(loadbalance.TrackerConfig{
-    Threshold: 3,
-    EjectFor:  5 * time.Second,
+    Threshold:  3,              // consecutive failures before suspension
+    SuspendFor: 5 * time.Second, // half-open trial after a 5s cool-down
 })
-pool := loadbalance.NewPool(ld, bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(rsv, bal, loadbalance.WithTracker(tracker))
 
 for {
-    res, err := pool.Pick(loadbalance.PickInfo{Ctx: ctx})
+    ep, err := pool.Pick(loadbalance.PickInfo{})
     if err != nil { return err }
-    err = call(res.Endpoint.Addr) // your RPC/HTTP call
-    if res.Done != nil {
-        res.Done(loadbalance.DoneInfo{Err: err})
-    }
+    err = call(ep.Addr)     // your RPC/HTTP call
+    pool.Complete(ep, err)  // must be paired: settles accounting + feeds the tracker
 }
 ```
 
-Route on a hash key or zone by populating `PickInfo`:
+## Pool: assembly and filtering
+
+`Pool` glues three things into a runtime: an endpoint source, a strategy, and
+an optional `Tracker`.
 
 ```go
-res, _ := pool.Pick(loadbalance.PickInfo{Ctx: ctx, HashKey: userID, Zone: "us-east-1a"})
+pool := loadbalance.NewPool(rsv, bal, loadbalance.WithTracker(tracker))
 ```
 
-`Zone` also accepts an ordered comma-separated fallback list — tried left to
-right, first level with a match wins, and only when every level is empty does
-it spill over to any instance:
+- **The endpoint source** is anything implementing
+  `Endpoints() []discovery.Endpoint`; a `discovery.Resolver` satisfies it
+  directly — it tracks discovery Watch internally, so the snapshot is always
+  fresh. A four-line fixed source works in tests.
+- Each `Pick` filters in order: **discovery eligibility** (disabled/unhealthy
+  instances) → **suspension** (instances cooling down in the `Tracker`) →
+  **zero-weight drain** (instances whose weight was set to 0). The survivors
+  go to the strategy. No filter may empty a non-empty set — traffic is never
+  black-holed.
+- **Mesh mode** (`discovery.MeshMode()` on) degrades to a single stable
+  endpoint automatically — the sidecar owns LB, no code change needed.
+
+## Balancer: strategies
+
+The strategy decides "which survivor wins". Seven are built in, registered
+under stable names; `New` fetches by name, `Register` adds your own.
+
+| Scenario | Strategy | Why |
+|---|---|---|
+| Homogeneous instances, no special need | `round_robin` | simplest, zero state |
+| Uneven instance performance (slow disk, GC pressure) | `least_conn` or `p2c` | adapts by in-flight count / measured latency |
+| Widely varying request durations (e.g. export endpoints) | `p2c` | in-flight is a lagging signal; p2c's EWMA tells busy from slow |
+| Session / cache affinity needed | `consistent_hash` | same key lands on the same instance; scaling moves few keys |
+| Mixed instance classes (4C8G vs 8C16G) | `weighted` | splits by capacity, interleaved smoothly |
+| Multi-AZ / multi-region deployment | `zone_aware` | local first, level-by-level fallback, saves cross-zone latency and egress |
+| Very high concurrency, stateless is fine | `random` | no shared cursor, no atomic hotspot |
+
+Strategies come in two kinds: **stateless** (round_robin, weighted,
+consistent_hash, random — `Complete` is a no-op) and **stateful** (least_conn
+keeps an in-flight table; p2c keeps a latency model). All state is keyed by
+endpoint address, so instances coming and going — or a reordered snapshot —
+never disturbs the state of the survivors.
+
+A custom strategy implements the `Balancer` interface and registers like any
+built-in:
 
 ```go
-// my rack, then my availability zone, then anywhere.
-res, _ := pool.Pick(loadbalance.PickInfo{Ctx: ctx, Zone: "us-east-1a,us-east-1"})
+loadbalance.Register("my_strategy", func() loadbalance.Balancer {
+    return &myBalancer{} // implement Pick and Complete; be concurrency-safe
+})
 ```
+
+Under retry, simply `Pick` again per attempt — the candidate set is re-filtered
+each time, so there is no (and needs no) failed-endpoint blacklist API;
+persistent failures are removed by the `Tracker` automatically.
+
+## PickInfo: routing hints
+
+`Pick`'s second argument carries what this request may route on. All fields
+are optional; stateless strategies ignore them:
+
+```go
+// Hash-key affinity (consumed by consistent_hash).
+ep, _ := pool.Pick(loadbalance.PickInfo{HashKey: userID})
+
+// Zone locality (consumed by zone_aware); accepts an ordered fallback
+// list, tried level by level, spilling over only when every level is empty.
+ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
+```
+
+## Tracker: outlier suspension
+
+The `Tracker` covers the failure mode discovery cannot see: an instance that
+is still registered and passes health checks but keeps failing real requests
+(a zombie). It learns only from `Complete(err)` — no extra calls:
+
+```
+healthy --consecutive failures reach Threshold--> suspended (cooling down for
+SuspendFor, no longer picked)
+                        |
+                  cool-down elapses → half-open trial (one request admitted)
+          success → state cleared, back in service
+          failure → re-suspended, cycle repeats
+```
+
+A single success resets the failure count, so sporadic failures never
+trigger suspension; when every instance is suspended the filter falls back to
+the full set. `Threshold <= 0` (or no `WithTracker`) is fully transparent.
+
+## The Pick/Complete contract
+
+The two calls must be paired **exactly once**. Skipping `Complete`:
+`least_conn`'s in-flight count leaks (that instance starves), `p2c`'s latency
+model drifts, and the `Tracker` goes blind (suspension stops working).

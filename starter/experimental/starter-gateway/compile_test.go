@@ -39,25 +39,33 @@ func newTestTable(t *testing.T) *RouteTable {
 func TestRecompilePriorityOrder(t *testing.T) {
 	tbl := newTestTable(t)
 	raw := map[string]RouteRaw{
-		"a-first":  {Upstream: struct { // id sorts first, no priority
-			Target    string `value:"${target:=}"`
-			Balancer  string `value:"${balancer:=round_robin}"`
-			Discovery string `value:"${discovery:=}"`
+		"a-first": {Upstream: struct { // id sorts first, no priority
+			Target           string `value:"${target:=}"`
+			Balancer         string `value:"${balancer:=round_robin}"`
+			Discovery        string `value:"${discovery:=}"`
+			SuspendThreshold int    `value:"${suspend-threshold:=0}"`
+			SuspendFor       string `value:"${suspend-for:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"b-catchall": {Priority: 10, Upstream: struct {
-			Target    string `value:"${target:=}"`
-			Balancer  string `value:"${balancer:=round_robin}"`
-			Discovery string `value:"${discovery:=}"`
+			Target           string `value:"${target:=}"`
+			Balancer         string `value:"${balancer:=round_robin}"`
+			Discovery        string `value:"${discovery:=}"`
+			SuspendThreshold int    `value:"${suspend-threshold:=0}"`
+			SuspendFor       string `value:"${suspend-for:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"c-second": {Priority: 5, Upstream: struct {
-			Target    string `value:"${target:=}"`
-			Balancer  string `value:"${balancer:=round_robin}"`
-			Discovery string `value:"${discovery:=}"`
+			Target           string `value:"${target:=}"`
+			Balancer         string `value:"${balancer:=round_robin}"`
+			Discovery        string `value:"${discovery:=}"`
+			SuspendThreshold int    `value:"${suspend-threshold:=0}"`
+			SuspendFor       string `value:"${suspend-for:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"d-tie": {Priority: 10, Upstream: struct { // ties with b-catchall -> id order
-			Target    string `value:"${target:=}"`
-			Balancer  string `value:"${balancer:=round_robin}"`
-			Discovery string `value:"${discovery:=}"`
+			Target           string `value:"${target:=}"`
+			Balancer         string `value:"${balancer:=round_robin}"`
+			Discovery        string `value:"${discovery:=}"`
+			SuspendThreshold int    `value:"${suspend-threshold:=0}"`
+			SuspendFor       string `value:"${suspend-for:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 	}
 	if err := tbl.recompile(raw); err != nil {
