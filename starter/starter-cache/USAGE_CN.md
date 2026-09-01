@@ -1,10 +1,10 @@
 # starter-cache 使用说明 — 参考手册
 
 详细使用文档。模块全景见 [starter/README](../README.md)。所有行为声明均已对源码核对：本 starter
-源码（`starter.go`、`starter_test.go`）、缓存抽象（`cloud/data/cache/cache.go`、`codec.go`）与四个
+源码（`starter.go`、`starter_test.go`）、缓存抽象（`cloud/cache/cache.go`、`codec.go`）与四个
 后端 driver 注册（`starter-go-redis/starter.go`、`starter-redigo/starter.go`、
 `starter-bigcache/starter.go`、`starter-memcached/starter.go`）。**缓存语义本身（miss 与错误的
-区分、codec、TTL）见 `cloud/data/cache` 文档** —— 下文均为 go-spring 的接线增量：driver 注册表、
+区分、codec、TTL）见 `cloud/cache` 文档** —— 下文均为 go-spring 的接线增量：driver 注册表、
 `${spring.cache}` 模块与其暴露的 bean。
 
 **激活条件**：任一 `spring.cache.*` key —— 模块为 `gs.OnProperty("spring.cache")` 前缀匹配
@@ -75,7 +75,7 @@ import (
     "net/http"
     "time"
 
-    "go-spring.org/cloud/data/cache"
+    "go-spring.org/cloud/cache"
     "go-spring.org/spring/gs"
 )
 
@@ -327,7 +327,7 @@ façade 自身每个缓存条目仅 1 个 key；工程示例的后端实例贡�
    bean）；且 `Driver` 类型签名 `func(beanID string) gs.ModuleFunc` 不破坏式改动就无法携带条目
    名。候选：bean 以条目名命名，beanID 仅用于查找。（既有，本轮已钉到 file:line）
 3. **模块无 README**（只有 USAGE）；driver 注册表契约只存在于代码注释。（既有）
-4. 本轮新增：façade codec 在 starter 路径上硬连 JSON —— `cloud/data/cache` 有 `WithCodec`，但
+4. 本轮新增：façade codec 在 starter 路径上硬连 JSON —— `cloud/cache` 有 `WithCodec`，但
    没有 driver 传选项，也没有配置面。
 5. 本轮新增：模块遍历缓存条目 map 时不查重同一 `(driver, beanID)` —— 失败形态是晚期的
    duplicate-bean 装配错误，而非早期点名条目的 `invalid driver` 式报错。

@@ -31,7 +31,7 @@ import (
 	"slices"
 	"sync"
 
-	"go-spring.org/cloud/experimental/httpx"
+	"go-spring.org/cloud/httpx"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"

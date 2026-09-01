@@ -32,7 +32,6 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -210,7 +209,7 @@ func applyResilience(c Config, client sarama.Client, resource string) error {
 	// Wrap so breaker trips / rejects / retries emit span + counter + histogram
 	// + access log (the resilience core emits none). nil-safe, no-op without
 	// starter-otel.
-	exec = resilobserve.WrapExecutor(exec, "kafka", c.Observability)
+	exec = resilience.WrapExecutor(exec, "kafka", c.Observability)
 	resilienceExecs.Store(client, exec)
 	resilienceResources.Store(client, resource)
 	return nil

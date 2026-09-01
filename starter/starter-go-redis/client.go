@@ -29,7 +29,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 )
 
 // Client is the wrapper bean go-redis clients are injected as. It
@@ -58,7 +57,7 @@ type Client struct {
 func (o *Client) Init() error {
 	o.resource = resourceLabel(o.cfg)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, "redis", o.Observability)
+	exec = resilience.WrapExecutor(exec, "redis", o.Observability)
 	o.exec = exec
 	// Layer order (go-redis hooks are FIFO — first added is outermost):
 	//

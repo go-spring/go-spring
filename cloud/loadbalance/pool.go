@@ -30,15 +30,15 @@ type EndpointSource interface {
 
 // Pool is the runtime that ties client-side load balancing together. On every
 // [Pool.Pick] it takes the live endpoint snapshot from an [EndpointSource]
-// (kept fresh by discovery Watch), drops endpoints the naming service marks
-// disabled or unhealthy and that the suspension [Tracker] has suspended, and hands
-// the survivors to a [Balancer] to choose one.
+// (kept fresh by discovery Watch), filters it, and hands the survivors to a
+// [Balancer] to choose one.
 //
-// This is where the two halves of health removal meet: discovery Watch handles
-// instances coming and going, while the Tracker handles instances that are still
-// registered but failing. Each filter falls back to its input rather than
-// emptying the set — except Disabled instances, which are excluded outright (an
-// operator-or-provider-disabled instance must never receive traffic).
+// The filter chain has three stages: static admission (Disabled or unhealthy
+// per the discovery endpoint flags), suspension ([Tracker], for instances
+// still registered but failing), and soft drain (zero weight at the naming
+// service). Pick owns the fallbacks: a filter that would empty the set is
+// skipped, except Disabled — a disabled endpoint never receives traffic even
+// when it is the only one left.
 type Pool struct {
 	src     EndpointSource
 	bal     Balancer
@@ -78,25 +78,28 @@ func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
 		return discovery.Endpoint{}, ErrNoAvailable
 	}
 
-	// Discovery-driven static admission ([discovery.Allows]: Endpoint
-	// contract filter), distinct from the dynamic suspension filter below
-	// ([Tracker.Allows]: circuit-breaker-style suspension).
+	// Static admission: the shared Endpoint contract filter (never Disabled,
+	// prefer Healthy). It returns empty only when every endpoint is disabled —
+	// an explicit exclusion that must not be overridden by any fallback below.
 	candidates := discovery.Allows(eps)
 	if len(candidates) == 0 {
 		return discovery.Endpoint{}, ErrNoAvailable
 	}
 
-	// Suspension filtering: drop instances the tracker has suspended for repeated
-	// failures. Allows falls back to its input if everything is suspended.
-	candidates = p.tracker.Allows(candidates)
+	// The filters below are pure: when one would empty the set, the pre-filter
+	// set stays — black-holing the pool is worse than probing degraded
+	// instances.
+
+	// Suspension: drop instances the tracker has suspended for repeated
+	// failures.
+	if active := p.tracker.Admissible(candidates); len(active) > 0 {
+		candidates = active
+	}
 
 	// Soft drain: drop instances whose weight was set to zero at the naming
-	// service (the runtime traffic-drain signal). Falls back to its input when
-	// every endpoint is zero-weighted — an unnormalized snapshot (registrants
-	// predating the weight contract store 0 for "default") must not blackhole
-	// the pool, it just degrades to an even split.
-	if drained := excludeDrained(candidates); len(drained) > 0 {
-		candidates = drained
+	// service (the runtime traffic-drain signal).
+	if live := excludeDrained(candidates); len(live) > 0 {
+		candidates = live
 	}
 
 	return p.bal.Pick(candidates, info)
@@ -116,7 +119,10 @@ func (p *Pool) Complete(ep discovery.Endpoint, err error) {
 // excludeDrained drops endpoints with an explicit zero weight (the drain
 // signal). Negative weights are kept — misconfiguration should not silently
 // remove an instance; the weighted balancer still treats them as default.
-// It returns nil when every endpoint is drained, so the caller can fall back.
+// It is a pure filter: when every endpoint is drained it returns nil and the
+// fallback belongs to the caller. Callers may legitimately see all-zero
+// snapshots, where registrants predate the weight contract and store 0 for
+// "default".
 func excludeDrained(eps []discovery.Endpoint) []discovery.Endpoint {
 	var kept []discovery.Endpoint
 	for _, ep := range eps {

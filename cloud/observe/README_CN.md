@@ -83,14 +83,6 @@ MeterProvider;不引入时全局是 no-op,trace 和 metric 几乎零开销、不
 
 ## 共享桥接
 
-- `observe/lock` —— `WrapLocker(system, cfg, inner)` 包装任意
-  `lock.Locker` 出三信号(`lock.*` 指标;TryAcquire 未命中记
-  `lock.acquired=false`)。
-- `observe/resilience` —— `WrapExecutor(inner, system, cfg)` 包装任意
-  `resilience.Executor`:三信号外加按 outcome 分类的 `resilience.calls`
-  计数和 `resilience.breaker.state_change` 事件。
-- `observe/transaction` —— `SagaObserver` / `TccObserver` / `AtObserver`
-  为每个事务阶段开一个子 span。
 - `starter-gorm/observe` —— `NewPlugin(system, cfg)` 给 gorm 出三信号;
   它住在 starter 模块里,因为本包不得依赖 gorm。
 

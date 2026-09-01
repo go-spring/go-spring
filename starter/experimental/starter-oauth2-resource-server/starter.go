@@ -19,7 +19,7 @@ package StarterOauth2ResourceServer
 import (
 	"context"
 
-	"go-spring.org/cloud/experimental/security"
+	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

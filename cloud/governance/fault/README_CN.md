@@ -37,7 +37,7 @@ import (
 // (governance 关闭/尚未注册)时 Execute 惰性解析 InjectorFor(),
 // 镜像 resilience.ExecutorFor 的延迟解析。
 exec := fault.WrapExecutor(resilience.ExecutorFor(resource), fault.InjectorFor())
-exec = resilobserve.WrapExecutor(exec, "redis", observability)
+exec = resilience.WrapExecutor(exec, "redis", observability)
 
 // server 侧:per-call 解析(nil injector 即透明直通)
 err := fault.Apply(ctx, fault.InjectorFor(), "gin", func() error { return next(ctx) })

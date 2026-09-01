@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 )
 

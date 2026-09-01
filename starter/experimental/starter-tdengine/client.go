@@ -26,7 +26,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 )
 
 // Client is the wrapper bean TDengine connections are injected as. It embeds
@@ -67,7 +66,7 @@ func (o *Client) Init() error {
 	}
 	o.resource = resourceLabel(o.cfg)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, "tdengine", o.Observability)
+	exec = resilience.WrapExecutor(exec, "tdengine", o.Observability)
 	o.exec = exec
 	if o.slot != nil {
 		o.slot.exec = exec

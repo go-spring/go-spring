@@ -28,7 +28,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/experimental/session"
+	"go-spring.org/cloud/session"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
@@ -60,7 +60,7 @@ func main() {
 		// Replica A: writes an attribute.
 		mux.Handle("/a/set", mgrA.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			s, _ := session.FromContext(r.Context())
-			s.Set("user", r.URL.Query().Get("user"))
+			session.Set(s, "user", r.URL.Query().Get("user"))
 			_, _ = w.Write([]byte("ok"))
 		})))
 
@@ -75,8 +75,8 @@ func main() {
 		// Replica B: reads the attribute A wrote — only possible via the shared store.
 		mux.Handle("/b/get", mgrB.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			s, _ := session.FromContext(r.Context())
-			if v, ok := s.Get("user"); ok {
-				_, _ = w.Write([]byte(v.(string)))
+			if v, ok, _ := session.Get[string](s, "user"); ok {
+				_, _ = w.Write([]byte(v))
 			}
 		})))
 

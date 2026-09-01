@@ -33,7 +33,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 	"go-spring.org/log"
 )
 
@@ -111,7 +110,7 @@ func (o *Client) Init() error {
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resilience.ResourceLabel("influxdb", o.cfg.ServerURL)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, "influxdb", obsCfg)
+	exec = resilience.WrapExecutor(exec, "influxdb", obsCfg)
 	o.exec = exec
 	if o.dyn != nil {
 		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,

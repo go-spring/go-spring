@@ -47,7 +47,7 @@ import (
     "net/http"
 
     "github.com/golang-jwt/jwt/v5"
-    "go-spring.org/cloud/experimental/security"
+    "go-spring.org/cloud/security"
     "go-spring.org/spring/gs"
     StarterOAuth2Server "go-spring.org/starter-oauth2-server"
 )

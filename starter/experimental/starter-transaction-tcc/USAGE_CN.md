@@ -6,7 +6,7 @@
 （docker-compose 起 Jaeger），以及被封装的协调器
 [`go-spring.org/cloud/experimental/transaction/tcc`](../../../cloud/experimental/transaction/tcc)
 （`tcc.go` / `coordinator.go` / `global.go` / `store.go`）；tracing 部分为
-[`cloud/observe/transaction/observer.go`](../../../cloud/observe/transaction/observer.go)。
+[`cloud/experimental/transaction/observe.go`](../../../cloud/experimental/transaction/observe.go)。
 **TCC 模式自身的语义（Try/Confirm/Cancel 及参与者三义务 —— 幂等、空回滚、防悬挂）属于
 分布式事务通识** —— 见 [Seata TCC 模式文档](https://seata.apache.org/docs/user/anchor?version=1.7.0)
 与 README 的"Participant obligations"；本页只写 go-spring 的增量。
@@ -310,7 +310,7 @@ group。
 | key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `spring.transaction.tcc.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` —— 缺省即开启。`false` 导入模块但不贡献任何 bean。 | 误设 `false` → 无 Coordinator bean → 装配期 autowire `tcc.Coordinator` 失败（可见）。 |
-| `spring.transaction.tcc.tracing` | bool | `true` | 构造时挂 `transactionobserve.TccObserver{}` → 在 starter-otel 全局上为每个参与者相位开一个 otel 子 span（`tcc.try/confirm/cancel <name>`）。无 starter-otel 时是 no-op。 | 期望 trace 却没引 starter-otel → 什么都没有，且无任何告警。 |
+| `spring.transaction.tcc.tracing` | bool | `true` | 构造时挂 `transaction.TccObserver{}` → 在 starter-otel 全局上为每个参与者相位开一个 otel 子 span（`tcc.try/confirm/cancel <name>`）。无 starter-otel 时是 no-op。 | 期望 trace 却没引 starter-otel → 什么都没有，且无任何告警。 |
 | `spring.transaction.tcc.recover-on-start` | bool | `true` | 注册恢复 `gs.Runner`：扫描 `Store.Pending()` 找**非终态**快照（`Trying`/`Confirming`/`Cancelling`）并推向已决结果 —— `Confirming` 正向 Confirm，否则逆向 Cancel。⚠ **与 store seam 耦合且当前为死 key**：没有随仓的持久化 TCC Store starter；内存 store 重启后扫描恒空。自备 `tcc.Store` bean 才能激活。 | 持久化 store 下设 `false` → 崩溃遗留事务永不收敛（静默不一致）；无持久化 store 设 `true` → no-op、无告警。 |
 
 由**其他模块**持有的联动 key：`spring.observability.*`（starter-otel）。注意代码中**不存在**

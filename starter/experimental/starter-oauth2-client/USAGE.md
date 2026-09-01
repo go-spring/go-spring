@@ -200,7 +200,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
 5. `resilience.NewRoundTripper` executes the request through the executor resolved for
    resource label `oauth2:<client-id>` — retry / circuit breaker / rate limit policy from
    the governance center; transparent no-op when governance is off. The executor is
-   additionally wrapped by `resilobserve.WrapExecutor` so trips/rejects/retries emit
+   additionally wrapped by `resilience.WrapExecutor` so trips/rejects/retries emit
    span + counter + histogram + access log.
 6. `otelhttp` emits the client span (method/url); without starter-otel these are no-ops.
 7. Response unwinds; on 401 the oauth2 layer does not retry (client_credentials has no

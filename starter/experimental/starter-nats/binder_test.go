@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 )
 
 func TestToNatsHeader(t *testing.T) {

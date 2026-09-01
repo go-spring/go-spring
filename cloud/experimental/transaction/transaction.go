@@ -32,7 +32,7 @@
 //
 //   - It provides no isolation. Intermediate states of a Saga are visible to
 //     other readers between steps, so business code must guard against dirty
-//     reads itself (a "processing" status flag, a per-key [go-spring.org/cloud/experimental/lock]).
+//     reads itself (a "processing" status flag, a per-key [go-spring.org/cloud/lock]).
 //     This is a Saga, not XA — do not treat it as one.
 //   - It does not parse SQL or generate undo logs (that would be the AT model,
 //     deliberately left out — see the design note). Compensation is a business

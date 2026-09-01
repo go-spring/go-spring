@@ -27,7 +27,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 	"go-spring.org/spring/gs"
 )
 
@@ -84,7 +83,7 @@ func (o *Client) Init() error {
 	o.obs = observe.NewProducer("asynq", obsCfg)
 	o.resource = resilience.ResourceLabel("asynq", o.cfg.Addr)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, "asynq", obsCfg)
+	exec = resilience.WrapExecutor(exec, "asynq", obsCfg)
 	o.exec = exec
 	return nil
 }

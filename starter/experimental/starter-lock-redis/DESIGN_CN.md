@@ -17,7 +17,7 @@ starter：贡献 Redis 后端的 `lock.Locker` 命名 bean；不开监听、不�
 
 ## 2. 关键抽象与缝隙
 
-- **缝隙是 bean 类型，不是 driver 字符串。** `cloud/experimental/lock` 有意**不**设置
+- **缝隙是 bean 类型，不是 driver 字符串。** `cloud/lock` 有意**不**设置
   包级字符串 driver 注册表，与 `cloud/discovery`、`cloud/governance/resilience` 不同。
   锁需要**活的**后端句柄（`*redis.Client`），而不是声明式策略；换 Redis 为
   etcd/consul/k8s 是空导入换包，改变的是哪个 starter 注册 `lock.Locker` bean。

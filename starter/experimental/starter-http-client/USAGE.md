@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
 the starter source (`starter.go`, `config.go`, `api.go`, `extension.go`), the assembler
-`cloud/experimental/httpx/httpx.go`, the runtime seam `stdlib/httpclt/httpclt.go`, and the runnable
+`cloud/httpx/httpx.go`, the runtime seam `stdlib/httpclt/httpclt.go`, and the runnable
 [example/](example/) (self-asserting smoke), [example-load/](example-load/),
 [example-otel/](example-otel/). **HTTP semantics are [net/http](https://pkg.go.dev/net/http)'s and
 trace semantics are [W3C Trace Context / OTel](https://opentelemetry.io/docs/specs/otel/trace/)** —
@@ -239,7 +239,7 @@ Rationale (from the source comments, verified):
    the breaker records ONE outcome for the whole call (§2.2).
 5. balancedTransport `pool.Pick()` selects a live endpoint (round_robin etc.), clones the request
    and rewrites `URL.Host`/`Host` to the instance address, reports the outcome back via
-   `res.Done` so least-conn accounting and outlier ejection see every call (httpx.go:245-262).
+   `res.Done` so least-conn accounting and outlier suspension see every call (httpx.go:245-262).
 6. otelhttp transport opens the client span, injects `traceparent`, dials.
 7. The response unwinds: span ends (with `resilience.outcome` if the executor wrapped it),
    `resilience.calls{outcome=...}` counted, access log emitted per `observability.level`.
@@ -269,8 +269,8 @@ Keys under `spring.http-client.<name>.*` (cross-checked with
 | `service-name` | string | "" | Discovery mode: logical name resolved via the named backend; ALWAYS the governance resource label when set (discovery or direct mode). With `addr` set it is not a discovery target. | Neither set → fail fast; set without `addr` and without `discovery` → fail fast. |
 | `discovery` | string | "" | Names a backend registered via `discovery.RegisterDiscovery`. Required iff `service-name` set without `addr` (config.go validate). | Missing → fail fast. Unknown name → wiring-time error from `discovery.NewResolver` (httpx.go:131). |
 | `balancer` | string | round_robin | LB strategy: `round_robin`, `least_conn`, `consistent_hash`, `weighted`, `zone_aware`. Unknown name fails at wiring (`loadbalance.New`, httpx.go:156). | Typos surface at boot, not per request. |
-| `eject-threshold` | int | 0 | Consecutive failures before an endpoint is ejected from the pool (outlier ejection). 0 disables. | Without it a dead instance keeps receiving round-robin share; pair with resilience so the breaker absorbs the failures. |
-| `eject-for` | duration | 0 | How long an ejected endpoint stays out before a half-open trial. Ignored when `eject-threshold=0`. | 0 with ejection on → immediate trial re-entry (thrash). |
+| `suspend-threshold` | int | 0 | Consecutive failures before an endpoint is suspended from the pool (outlier suspension). 0 disables. | Without it a dead instance keeps receiving round-robin share; pair with resilience so the breaker absorbs the failures. |
+| `suspend-for` | duration | 0 | How long an suspended endpoint stays out before a half-open trial. Ignored when `suspend-threshold=0`. | 0 with suspension on → immediate trial re-entry (thrash). |
 | `observability.level` | string | brief | Access-log gate for the executor wrap: off / brief / detailed (observe/config.go:50). | brief is ON by default — expect one log record per protected call. |
 | `observability.maxArgBytes` | int | 512 | Argument truncation in those logs. | Large bodies silently truncated. |
 | `observability.skipOps` | []string | "" | Ops excluded from access logging. | |
@@ -346,7 +346,7 @@ The `guarded` route targets the always-500 backend on :9473 with
    change from a network/500 error to `circuit open`, wait out `open-duration` (30s) with the
    backend restored — the half-open trial succeeds and the breaker closes.
 3. Observe the trip: `resilience.breaker.state_change{from=...,to=...}` counter increments and a
-   state-change log line is emitted (observe/resilience/executor.go:98-110).
+   state-change log line is emitted (cloud/governance/resilience/observe.go:98-110).
 
 ### 4.4 Fault injection (no restart)
 

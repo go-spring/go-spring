@@ -30,7 +30,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 )
 
 // Client is the wrapper bean S3 clients are injected as. It embeds the
@@ -117,7 +116,7 @@ func (o *Client) Init() error {
 	// Wrap the executor with observe-resilience so circuit-breaker trips,
 	// rate-limit rejects, bulkhead rejections and retries emit a span + call
 	// counter (by outcome) + duration histogram + access log.
-	exec = resilobserve.WrapExecutor(exec, "s3", obsCfg)
+	exec = resilience.WrapExecutor(exec, "s3", obsCfg)
 	o.exec = exec
 	if o.dyn != nil {
 		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,

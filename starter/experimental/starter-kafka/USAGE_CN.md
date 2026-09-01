@@ -50,7 +50,7 @@ import (
 
     "github.com/twmb/franz-go/pkg/kgo"
     "go-spring.org/cloud/actuator/health"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/spring/gs"
     StarterKafka "go-spring.org/starter-kafka"
 )
@@ -155,7 +155,7 @@ gs.Run()
   │   3. Ping 10s 超时——坏 brokers/凭证/TLS 让启动失败，
   │      而不是等第一次 produce 才暴露                                [starter.go:50,76-82]
   │   4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor(
-  │      "kafka:<brokers>")) → resilobserve.WrapExecutor，以
+  │      "kafka:<brokers>")) → resilience.WrapExecutor，以
   │      client 指针索引进包级 sync.Map                              [command.go:99-105]
   ├─ 无 Init 钩子；*kgo.Client bean 在 ctor 后即就绪
   ├─ Destroy(destroyClient) [starter.go:95-102]:
@@ -209,7 +209,7 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
 
 绑定到 source `hello` 的 subscriber 上 `Subscribe(ctx, handler)` [client.go:109-144]：
 
-1. `messaging.SafeHandler` 把 handler panic 转为 error 路径 [client.go:112]。
+1. `messaging.Recover` 把 handler panic 转为 error 路径 [client.go:112]。
 2. 一个后台 goroutine 在 ctx（经 `context.WithoutCancel` + Close 持有的 cancel）上轮询
    `cl.PollFetches` [client.go:113]。
 3. poll 错误打日志（tag `log.TagAppDef`），`context.Canceled` 抑制 [client.go:121-127]。
@@ -233,7 +233,7 @@ franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [comm
 - guard 解析 `cl` 上挂的 executor；没有（governance 关）则原样内联执行——与
   `cl.ProduceSync` 行为一致。
 - governance 开启时，调用先过 `fault.WrapExecutor(resilience.ExecutorFor(...))` 再过
-  `resilobserve.WrapExecutor` [command.go:100-101]：运行时故障注入与 resilience 结果
+  `resilience.WrapExecutor` [command.go:100-101]：运行时故障注入与 resilience 结果
   metric 包住 produce，资源标签 `kafka:<brokers>`
   （`resilience.ResourceLabel("kafka", c.Brokers)` [starter.go:83]，格式 `prefix:name`
   [resilience/config.go:151-158]）。
@@ -395,7 +395,7 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 设计嫌疑（审计台账；自上一版承继，均未修复）：
 
 - binder 丢弃 `NewSubscriber` 的 `group` 实参，source 失配静默过滤 [client.go:68,129-131]——违背 fail-fast。
-- 消费 handler 错误只打日志，无 nack/重投 [client.go:137-139]——与 SafeHandler 注释的说法相悖 [client.go:110-112]。
+- 消费 handler 错误只打日志，无 nack/重投 [client.go:137-139]——与 Recover 注释的说法相悖 [client.go:110-112]。
 - ~~`destroyClient` 丢弃 Flush 错误~~已修：Flush 失败记 ERROR（点名丢数据后果）并从 destroy 钩子向上返回。
 - starter 不注册 health indicator（家族不对称：go-redis/redigo 都注册）。
 - resilience executor 以 `*kgo.Client` 指针为键存包级 sync.Map [command.go:81-85]——自定义 Driver 返回包装 client 会静默跳过 guard。

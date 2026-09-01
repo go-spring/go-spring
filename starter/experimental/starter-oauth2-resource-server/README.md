@@ -3,7 +3,7 @@
 Turns a Go-Spring application into an OAuth2 resource server: it verifies
 incoming JWT bearer tokens against a trusted issuer and exposes the result
 behind the framework-neutral `security.TokenValidator` seam from
-`go-spring.org/cloud/experimental/security`.
+`go-spring.org/cloud/security`.
 
 One `Validator` bean is registered per entry under
 `spring.security.oauth2.resource.jwt.<name>` — configuration is the enable
@@ -37,7 +37,7 @@ spring.security.oauth2.resource.jwt.api.audiences=orders-api
 
 ```go
 import (
-    "go-spring.org/cloud/experimental/security"
+    "go-spring.org/cloud/security"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-oauth2-resource-server"

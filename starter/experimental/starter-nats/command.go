@@ -34,7 +34,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -172,7 +171,7 @@ func applyResilience(c Config, conn *Conn, resource string) error {
 	// Wrap so breaker trips / rejects / retries emit span + counter + histogram
 	// + access log (the resilience core emits none). nil-safe, no-op without
 	// starter-otel.
-	exec = resilobserve.WrapExecutor(exec, "nats", c.Observability)
+	exec = resilience.WrapExecutor(exec, "nats", c.Observability)
 	conn.exec = exec
 	conn.resource = resource
 	return nil

@@ -67,7 +67,7 @@ import (
     "context"
 
     amqp "github.com/rabbitmq/amqp091-go"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
 
@@ -213,7 +213,7 @@ gs.Run()
 ```
 fault.WrapExecutor( resilience.ExecutorFor(resource) )   ← 外层
         │
-   resilobserve.WrapExecutor(exec, "rabbitmq", c.Observability)  ← 包在它外面
+   resilience.WrapExecutor(exec, "rabbitmq", c.Observability)  ← 包在它外面
         │
    你的调用（ch.PublishWithContext）                       ← 最内层
 ```
@@ -245,7 +245,7 @@ Publish [client.go:89-107]：
 
 Consume [client.go:122-150]：
 
-1. handler 先包 `messaging.SafeHandler` —— panic 转为正常 error 路径，不再
+1. handler 先包 `messaging.Recover` —— panic 转为正常 error 路径，不再
    冲散 SDK goroutine [client.go:125]。
 2. `Consume(autoAck=false)`；后台循环 range delivery channel [client.go:126-133]。
 3. 每条投递：`startConsume` 从 headers 提取上游 trace 并开启消费者观测

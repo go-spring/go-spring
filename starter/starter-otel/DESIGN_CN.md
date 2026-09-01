@@ -15,7 +15,8 @@
   不宜由 starter 绑死一种安装器，故交由应用自行掌握（见示例）。
 - 接线模型是**隐式全局**，不是逐 bean 注入：导入 starter 即是启用；每个
   OTel-aware 库都读全局。
-- 把 provider 导出为 bean **只是为了** 关停顺序。调用方并不 autowire 它。
+- provider 不是 bean。它们是模块 setup 阶段装入的进程全局，经
+  `gs.RegisterStopper` 关停——该时机在所有 server 停止、容器关闭之后。
 - 可选地把 Prometheus `/metrics` handler 贡献为 `endpoint.Endpoint`，让
   `starter-actuator`（如有）在共享管理端口上挂载，跨 starter 无 import。
 
@@ -47,8 +48,15 @@
   （比如 trace 开 metrics 关）。
 - **Prometheus exporter 是 pull 型。** 二选一：port=0（挂 actuator）或
   port>0（独立 server），不能都用。
-- **关停顺序重要。** provider 注册为带 `Destroy` 的 bean，让积压 span/metrics
-  在其他 bean（仍可能 emit）关闭前 flush。
+- **关停顺序：server → 容器 → OTel flush → 日志。** provider 注册为进程级
+  stopper（`gs.RegisterStopper`），运行时只在所有 server 停止、容器关闭后才
+  调用——此刻不再有任何新 span/metric 产生。flush 的 ctx 无 deadline
+  （`context.WithoutCancel`），最后一批数据会等导出完成，不会被关停超时掐断。
+- **硬杀进程丢什么。** `Shutdown` 是唯一的 flush 点。进程没跑到 stopper 就
+  死掉（SIGKILL、`os.Exit`、server 优雅退出永不返回），缓冲数据即丢：
+  trace 最多一个 BatchSpanProcessor 队列（默认 2048 条 / 5 s 批超时），
+  metric 最多一个 PeriodicReader 采集周期（默认 60 s）。pull 型 Prometheus
+  exporter 无缓冲——只在被抓取时现算，不存在积压可丢。
 
 ## 4. 权衡 / 已否决方案
 

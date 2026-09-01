@@ -19,8 +19,7 @@ package StarterLockRedis
 import (
 	"github.com/redis/go-redis/v9"
 
-	"go-spring.org/cloud/experimental/lock"
-	lockobserve "go-spring.org/cloud/observe/lock"
+	"go-spring.org/cloud/lock"
 	"go-spring.org/spring/gs"
 )
 
@@ -46,5 +45,5 @@ func wrapIfObserved(c Config, inner lock.Locker) lock.Locker {
 	if !c.ObserveEnabled {
 		return inner
 	}
-	return lockobserve.WrapLocker("redis", c.Observability, inner)
+	return lock.WrapLocker("redis", c.Observability, inner)
 }

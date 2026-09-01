@@ -65,7 +65,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
 
@@ -98,7 +98,7 @@ func (c *Consumer) Init(ctx context.Context) error {
     return c.Sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
         log.Infof(ctx, log.TagAppDef, "order received: %s trace-id-from-header=%v",
             string(m.Payload), m.Headers["traceparent"])
-        return nil // 返回 error 走 SafeHandler 错误路径
+        return nil // 返回 error 走 Recover 错误路径
     })
 }
 ```
@@ -187,7 +187,7 @@ gs.Run()
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
   │           [driver.go:158-164]
   ├─ applyResilience：fault.WrapExecutor(resilience.ExecutorFor(resource)) 再包
-  │           resilobserve.WrapExecutor —— 治理关闭时是透明 no-op executor
+  │           resilience.WrapExecutor —— 治理关闭时是透明 no-op executor
   │           [driver.go:166; command.go:162-174]
   ├─ Run / 就绪
   └─ SIGTERM：destroyConn → exec.Close()（错误在 Drain 后向上返回）再 Conn.Drain()
@@ -226,7 +226,7 @@ gs.Run()
 
 ### 2.3 一次消费，逐层走读（binder 路径）
 
-`sub.Subscribe(handler)` [binder.go:79-116]：handler 包进 `messaging.SafeHandler`
+`sub.Subscribe(handler)` [binder.go:79-116]：handler 包进 `messaging.Recover`
 （panic → error 路径，不冲垮 SDK goroutine）[binder.go:86-88]；group 非空时走
 `QueueSubscribe`（竞争消费），否则 `Subscribe` [binder.go:105-110]。每条消息：
 
@@ -257,7 +257,7 @@ executor 只经**方法**式选装入口触达 [command.go:152-160]：
 
 `applyResilience` 内部包裹顺序 [command.go:162-174]：`ExecutorFor(resource)`（治理中心
 背书；治理关闭时透明 no-op）→ `fault.WrapExecutor`（故障注入）→
-`resilobserve.WrapExecutor(exec, "nats", Observability)`（为熔断跳闸/拒绝/重试发
+`resilience.WrapExecutor(exec, "nats", Observability)`（为熔断跳闸/拒绝/重试发
 span/counter/histogram——resilience 核心自身不发）。拒绝时 guarded 调用返回
 resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/请求不会被调用
 ——[resilience_test.go:63-84] 有证明。`resource` 是 `nats:<name>` (colon format; falls back to `nats:<url>` when name unset)（按连接而非

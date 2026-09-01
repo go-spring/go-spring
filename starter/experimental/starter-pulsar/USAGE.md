@@ -68,7 +68,7 @@ import (
     "context"
 
     "github.com/apache/pulsar-client-go/pulsar"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/spring/gs"
     StarterPulsar "go-spring.org/starter-pulsar"
 )
@@ -194,7 +194,7 @@ gs.Run()
   │       that exercises address+auth+TLS without producing; failure →
   │       cl.Close + metrics shutdown + boot error                       [starter.go:68-75]
   │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor("pulsar:<url>"))
-  │       → resilobserve.WrapExecutor → indexed by client                [command.go:224-230]
+  │       → resilience.WrapExecutor → indexed by client                [command.go:224-230]
   ├─ readiness: no health indicator exists — the probe is boot-time only
   └─ SIGTERM → destroyClient [client.go:44-49]: closeResilience (executor Close)
        → cl.Close() (releases all producers/consumers) → shutdownMetrics (:port server)
@@ -219,7 +219,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
 Wrap order inside `applyResilience` [command.go:225-226]: `resilience.ExecutorFor(resource)`
 (core breaker/limiter/retry) → wrapped by `fault.WrapExecutor` (runtime fault injection sits
 OUTSIDE the executor — injected faults do not consume breaker budget) → wrapped by
-`resilobserve.WrapExecutor` (outcome counters + access log outermost).
+`resilience.WrapExecutor` (outcome counters + access log outermost).
 
 **NOT guarded** (each deliberate, per source comments):
 - `producer.SendAsync` — intentionally untouched; the async path has no synchronous outcome
@@ -253,7 +253,7 @@ OUTSIDE the executor — injected faults do not consume breaker budget) → wrap
 
 `sub.Subscribe(handler)` starts one background loop [binder.go:119-155]:
 
-1. Handler is wrapped in `messaging.SafeHandler` — a panic becomes a normal error → Nack →
+1. Handler is wrapped in `messaging.Recover` — a panic becomes a normal error → Nack →
    redelivery, never an SDK-goroutine crash [binder.go:121-123].
 2. Loop ctx derives from `context.WithoutCancel(ctx)` — Close cancels it explicitly, the
    caller's ctx cancellation does not [binder.go:123].
@@ -371,7 +371,7 @@ metrics server [client.go:44-58]. Subscriber Close drains its loop before consum
 | Consumer never gets messages | Wrong subscription name / Shared vs topic semantics | `group` maps 1:1 to subscription; empty group derives `go-spring-<topic>` [binder.go:63-66]. |
 | Expecting token auth, broker refuses | mTLS cert+key set → token ignored (priority order) [driver.go:83-90] | Remove cert/key or disable mTLS requirement. |
 | Breaker never trips under load | Traffic goes through binder Publish or SendAsync — unguarded (§2.2) | Route through GuardedSend. |
-| Handler panic kills nothing but message reappears | SafeHandler converts panic → Nack | Expected; fix the handler. |
+| Handler panic kills nothing but message reappears | Recover converts panic → Nack | Expected; fix the handler. |
 
 ## 6. Design Health
 

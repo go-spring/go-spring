@@ -63,7 +63,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/experimental/transaction/at"
-	"go-spring.org/cloud/observe/transaction"
+	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -104,7 +104,7 @@ func init() {
 func newCoordinator(c Config, lock at.GlobalLock) at.Coordinator {
 	opts := []at.Option{at.WithGlobalLock(lock)}
 	if c.Tracing {
-		opts = append(opts, at.WithObserver(transactionobserve.AtObserver{}))
+		opts = append(opts, at.WithObserver(transaction.AtObserver{}))
 	}
 	log.Infof(context.Background(), log.TagAppDef, "at coordinator created tracing=%v", c.Tracing)
 	return at.NewCoordinator(opts...)

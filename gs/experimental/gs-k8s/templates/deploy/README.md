@@ -63,8 +63,7 @@ The startupProbe **budget** ≈ `periodSeconds × failureThreshold`. The default
 What determines cold start is **not** bean wiring (reflection wiring of a few
 hundred beans is sub-millisecond). It is the startup-time I/O that starters do
 **on purpose** to fail fast: DB/Redis dials, config-center first fetch,
-discovery informer sync, and — if you use `starter-migration-gorm` — schema
-migrations. Size the budget against your **p99 boot**, not p50.
+discovery informer sync, and — if you use a migration starter — schema migrations. Size the budget against your **p99 boot**, not p50.
 
 | App profile | Boot dominated by | `periodSeconds` | `failureThreshold` | budget |
 |---|---|---|---|---|

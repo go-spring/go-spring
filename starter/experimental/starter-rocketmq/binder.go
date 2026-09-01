@@ -18,14 +18,15 @@ package StarterRocketmq
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
-	"go-spring.org/cloud/experimental/messaging"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 )
 
@@ -82,6 +83,7 @@ type publisher struct {
 }
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
+	messaging.EnsureMessageID(msg)
 	m := primitive.NewMessage(p.topic, msg.Payload)
 	if msg.Key != "" {
 		m.WithKeys([]string{msg.Key})
@@ -114,9 +116,9 @@ type subscriber struct {
 }
 
 func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) error {
-	// SafeHandler converts a handler panic into the normal error path
+	// Recover converts a handler panic into the normal error path
 	// (nack/redelivery) instead of unwinding into the SDK goroutine.
-	handler = messaging.SafeHandler(handler)
+	handler = messaging.Recover(handler)
 	// Subscribe must be called before Start: the SDK builds its subscription
 	// data from the Subscribe calls, then Start kicks off rebalancing.
 	err := s.c.Subscribe(s.topic, consumer.MessageSelector{
@@ -152,10 +154,14 @@ func (s *subscriber) Close() error {
 
 // fromMessageExt builds a messaging.Message from a received MessageExt.
 func fromMessageExt(ext *primitive.MessageExt) *messaging.Message {
-	return &messaging.Message{
+	m := &messaging.Message{
 		Key:       ext.GetProperty(primitive.PropertyKeys),
 		Payload:   ext.Body,
 		Headers:   ext.GetProperties(),
 		Timestamp: time.UnixMilli(ext.StoreTimestamp),
 	}
+	// Surface the broker's redelivery count as the reserved header so the
+	// handler can decide retry vs dead-letter without in-process state.
+	m.SetHeader(messaging.HeaderDeliveryAttempt, strconv.FormatInt(int64(ext.ReconsumeTimes)+1, 10))
+	return m
 }

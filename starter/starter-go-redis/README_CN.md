@@ -128,7 +128,7 @@ Dragonfly 与 Kvrocks 说 Redis 线协议，因此本 starter 可直接驱动它
 * **连接池运行时监控**：`client.PoolStats()` 返回连接池实时计数（命中、未命中、总连接/空闲连接）。
 * **TLS**：开启 `tls.enabled` 并提供 `ca-file`（双向 TLS 再加 `cert-file`/`key-file`）即可通过 TLS 连接 Redis，
   详见 [app.properties](example/conf/app.properties) 中的注释示例。
-* **分布式缓存后端**：`AsCache(client, codec)` 将客户端适配为 `cloud/data/cache.Cache`,作为多级缓存的共享(远端)层。
+* **分布式缓存后端**：`AsCache(client, codec)` 将客户端适配为 `cloud/cache.Cache`,作为多级缓存的共享(远端)层。
   值用 codec 序列化(传 nil 默认 JSON)。
 * **全局限流器**：`NewRateLimiter(client, resilience.LimitPolicy{...})` 返回基于原子 Lua 令牌桶的
   `resilience.RateLimiter`,所有副本共享同一配额——区别于每副本独立的内置限流器。

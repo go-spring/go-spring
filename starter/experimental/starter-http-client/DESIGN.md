@@ -22,7 +22,7 @@ publishes is named under `${spring.http-client}` and injected by name.
 
 ## 2. Transport Composition — outer to inner
 
-The chain assembled by `cloud/experimental/httpx.NewTransport` is:
+The chain assembled by `cloud/httpx.NewTransport` is:
 
 ```
 resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp base
@@ -72,14 +72,14 @@ resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp
   break by-service circuit-breaking and let the same endpoint absorb
   every retry.
 
-## 5. Trade-offs / Alternatives Rejected
+## 5. Trade-offs / Alternatives Rsuspended
 
-- **Runtime reflection-based proxy — rejected.** Go has no equivalent of
+- **Runtime reflection-based proxy — rsuspended.** Go has no equivalent of
   Java's dynamic proxy; declarative clients ride code generation,
   keeping the runtime cost equal to a hand-written client.
-- **Resilience *inside* the LB — rejected.** Retries would stick to
+- **Resilience *inside* the LB — rsuspended.** Retries would stick to
   the same endpoint; breakers would key per address, blowing the
   logical-service abstraction.
-- **Shared default `http.Client` bean — rejected.** Same reason all
+- **Shared default `http.Client` bean — rsuspended.** Same reason all
   client starters dropped the default singleton: dual registration was
   error-prone and the conditional-singleton semantics were opaque.

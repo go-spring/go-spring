@@ -29,7 +29,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 )
 
 // Client is the bean Milvus connections are injected as. It embeds the SDK's
@@ -84,7 +83,7 @@ func newClient(ctx context.Context, c Config) (*Client, error) {
 func (o *Client) Init() error {
 	o.resource = resilience.ResourceLabel("milvus", o.cfg.Addr)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, "milvus", o.Observability)
+	exec = resilience.WrapExecutor(exec, "milvus", o.Observability)
 	o.exec = exec
 	o.slot.arm(exec, o.resource)
 	return nil

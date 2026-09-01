@@ -6,7 +6,7 @@ runnable [example/](example/) (`bash example/check.sh`) and [example-otel/](exam
 (Jaeger via docker-compose), and the wrapped coordinator in
 [`go-spring.org/cloud/experimental/transaction/tcc`](../../../cloud/experimental/transaction/tcc)
 (`tcc.go`, `coordinator.go`, `global.go`, `store.go`); tracing via
-[`cloud/observe/transaction/observer.go`](../../../cloud/observe/transaction/observer.go).
+[`cloud/experimental/transaction/observe.go`](../../../cloud/experimental/transaction/observe.go).
 **TCC pattern semantics (Try/Confirm/Cancel, and the participant obligations — idempotence,
 empty rollback, anti-hanging) are distributed-transaction literature** — see
 [Seata TCC mode](https://seata.apache.org/docs/user/anchor?version=1.7.0) and the README's
@@ -304,7 +304,7 @@ group.
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.transaction.tcc.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` — absent means ON. `false` imports the module without contributing any bean. | `false` by accident → no Coordinator bean → autowire of `tcc.Coordinator` fails at wiring (visible). |
-| `spring.transaction.tcc.tracing` | bool | `true` | Attaches `transactionobserve.TccObserver{}` at construction → one otel child span per participant phase (`tcc.try/confirm/cancel <name>`) on the starter-otel globals. No-op without starter-otel. | Expecting traces without starter-otel → nothing, and no warning anywhere. |
+| `spring.transaction.tcc.tracing` | bool | `true` | Attaches `transaction.TccObserver{}` at construction → one otel child span per participant phase (`tcc.try/confirm/cancel <name>`) on the starter-otel globals. No-op without starter-otel. | Expecting traces without starter-otel → nothing, and no warning anywhere. |
 | `spring.transaction.tcc.recover-on-start` | bool | `true` | Registers the recovery `gs.Runner`: scans `Store.Pending()` for NON-terminal snapshots (`Trying`/`Confirming`/`Cancelling`) and drives each to its decided outcome — forward Confirm for `Confirming`, backward Cancel otherwise. ⚠ **Coupled to the store seam AND currently dead**: no durable TCC Store starter ships; with the in-memory store the scan is always empty after a restart. Contribute your own `tcc.Store` bean to activate it. | `false` with a durable store → crash-stranded transactions never resolved (silently inconsistent); `true` without one → no-op, no warning. |
 
 Related keys owned by OTHER modules: `spring.observability.*` (starter-otel). Note there is NO

@@ -71,7 +71,7 @@ err = c.Start()
 
 ## 消息 Binder
 
-`NewBinder` 把 client 适配到协议无关的 `cloud/experimental/messaging`
+`NewBinder` 把 client 适配到协议无关的 `cloud/messaging`
 抽象，业务代码不依赖 RocketMQ API。destination/source 是主题，group 映射
 为 RocketMQ 消费组（集群模式）。
 

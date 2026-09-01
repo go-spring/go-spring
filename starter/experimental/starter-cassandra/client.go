@@ -30,7 +30,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 )
 
 // Client is the wrapper bean Cassandra sessions are injected as. It embeds
@@ -66,7 +65,7 @@ func (o *Client) Init() error {
 	o.obs = observe.NewDB("cassandra", o.Observability)
 	o.resource = resilience.ResourceLabel("cassandra", o.cfg.Hosts[0])
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, "cassandra", o.Observability)
+	exec = resilience.WrapExecutor(exec, "cassandra", o.Observability)
 	o.exec = exec
 	return nil
 }

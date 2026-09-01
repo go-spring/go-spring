@@ -66,7 +66,7 @@ package service
 import (
     "context"
 
-    "go-spring.org/cloud/data/cache"
+    "go-spring.org/cloud/cache"
     "go-spring.org/spring/gs"
     StarterBigCache "go-spring.org/starter-bigcache"
 )
@@ -152,7 +152,7 @@ gs.Run()
   ├─ gs field-injects Cache.Observability (${observability:=})
   ├─ Init [client.go:75-81]: observe.NewDB("bigcache", ...) → resource label
   │   "bigcache:<name>" → fault.WrapExecutor(resilience.ExecutorFor(...))
-  │   → resilobserve.WrapExecutor
+  │   → resilience.WrapExecutor
   ├─ your Runner uses Get/Set/Delete (each = span + executor + access log)
   └─ SIGTERM → Destroy [client.go:85-90]: exec.Close → BigCache.Close
       (stops the background eviction goroutine — hence the mandatory destroy)

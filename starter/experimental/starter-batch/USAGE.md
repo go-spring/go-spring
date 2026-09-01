@@ -4,7 +4,7 @@ Detailed usage reference. Overview: [README.md](README.md). All behavior claims 
 against the starter source (`starter.go`, `job.go`, `launcher.go`, `config.go`) and the
 self-asserting [example/](example/) (`example/check.sh` — docker Redis + two-phase
 crash/resume smoke). **Batch semantics (chunk steps, restart checkpoints, job execution
-model) live in [cloud/experimental/batch](../../../cloud/experimental/batch)** — only the
+model) live in [cloud/batch](../../../cloud/batch)** — only the
 go-spring wiring is covered here.
 
 **Activation**: blank import + at least one `JobDefinition` bean. Both starter beans gate on
@@ -49,7 +49,7 @@ import (
     _ "go-spring.org/starter-batch-redis"
     _ "go-spring.org/starter-go-redis"
 
-    "go-spring.org/cloud/experimental/batch"
+    "go-spring.org/cloud/batch"
     "go-spring.org/spring/gs"
     StarterBatch "go-spring.org/starter-batch"
 )

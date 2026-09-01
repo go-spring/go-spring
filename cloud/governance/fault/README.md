@@ -47,7 +47,7 @@ import (
 // nil (governance off / not registered yet) it defers to InjectorFor() on each
 // Execute, mirroring resilience.ExecutorFor's lazy resolution.
 exec := fault.WrapExecutor(resilience.ExecutorFor(resource), fault.InjectorFor())
-exec = resilobserve.WrapExecutor(exec, "redis", observability)
+exec = resilience.WrapExecutor(exec, "redis", observability)
 
 // server side: resolve per call (nil injector => transparent pass-through)
 err := fault.Apply(ctx, fault.InjectorFor(), "gin", func() error { return next(ctx) })

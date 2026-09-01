@@ -91,14 +91,6 @@ of starter-otel.
 
 ## Shared bridges
 
-- `observe/lock` — `WrapLocker(system, cfg, inner)` wraps any
-  `lock.Locker` with the three signals (`lock.*` metrics,
-  `lock.acquired=false` on a missed TryAcquire).
-- `observe/resilience` — `WrapExecutor(inner, system, cfg)` wraps any
-  `resilience.Executor`: three signals plus a `resilience.calls` counter
-  classified by outcome and `resilience.breaker.state_change` events.
-- `observe/transaction` — `SagaObserver` / `TccObserver` / `AtObserver`
-  open one child span per transaction phase.
 - `starter-gorm/observe` — `NewPlugin(system, cfg)` instruments gorm with
   the three signals; it lives in the starter module because this package
   must not depend on gorm.

@@ -1,7 +1,7 @@
 # transaction Design
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
-`transaction` 在零依赖 stdlib 层提供 Saga——最终一致性形态的分布式事务。它以
+`transaction` 在 cloud 层提供 Saga——最终一致性形态的分布式事务。它以
 "效果"替换 Seata Saga + Spring `@GlobalTransactional`:有序的可补偿步骤,失
 败按逆序回滚。TCC 与 AT 分别在 `tcc` / `at` 子包——两种模式的失败语义不同,
 拆开更诚实。
@@ -10,9 +10,10 @@
 
 - 编排可补偿业务步骤:`Action` 正向,后一步失败则按逆序跑 `Compensate`。
 - 通过 `Store` 持久化 saga 日志,让崩溃进程能续跑补偿;只做**后向恢复**。
-- 暴露 `Observer` 缝隙——starter 接 otel,stdlib 不 import otel。
+- 暴露 `Observer` 缝隙;父包自带 otel 观察者(`SagaObserver` / `TccObserver` /
+  `AtObserver`,见 observe.go),各模型子包保持不依赖 otel。
 - 拒绝隔离。saga 中间态对其他读者可见,业务代码自己防脏读(状态位 /
-  `cloud/experimental/lock`)。
+  `cloud/lock`)。
 - 拒绝 SQL 解析 / 生成 undo log:那是 AT,放在 `transaction/at`,是刻意分开
   的缝隙。
 

@@ -27,7 +27,7 @@ import (
 	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -76,6 +76,7 @@ type publisher struct {
 }
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
+	messaging.EnsureMessageID(msg)
 	rec := &kgo.Record{
 		Topic:   p.topic,
 		Value:   msg.Payload,
@@ -110,9 +111,9 @@ type subscriber struct {
 }
 
 func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) error {
-	// SafeHandler converts a handler panic into the normal error path
+	// Recover converts a handler panic into the normal error path
 	// (nack/redelivery) instead of unwinding into the SDK goroutine.
-	handler = messaging.SafeHandler(handler)
+	handler = messaging.Recover(handler)
 	loopCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	s.cancel = cancel
 	s.done = make(chan struct{})

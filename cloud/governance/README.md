@@ -69,9 +69,9 @@ traffic      ← 纯叶子
 ## 不属于治理家族（仍在 cloud/ 下平级存在）
 
 - `cloud/loadbalance`、`cloud/discovery` — 端点选择与服务注册，与 discovery 成对。
-- `cloud/actuator`、`cloud/event`、`cloud/mesh`、`cloud/tlsconf` — 运维/事件/网格/TLS，独立关注点。
-- `cloud/loadtest`、`cloud/experimental` — 测试工具与孵化器。
-- `cloud/observe` — 可观测性（独立 module，otel 桥，含 `observe/resilience` 等治理桥接）。
+- `cloud/actuator`、`cloud/mesh`、`cloud/tlsconf` — 运维/网格/TLS，独立关注点。
+- `cloud/loadtest` — 测试工具；`cloud/experimental/transaction` — 分布式事务（仍在孵化）。
+- `cloud/observe` — 可观测性核心（三信号 kit）；resilience 的插桩在本包自身（`resilience/observe.go` 的 `WrapExecutor`）。
 
 ## 配置
 

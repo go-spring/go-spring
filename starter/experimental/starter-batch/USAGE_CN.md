@@ -4,7 +4,7 @@
 （`starter.go`、`job.go`、`launcher.go`、`config.go`）与自断言的 [example/](example/)
 （`example/check.sh` —— docker Redis + 两阶段崩溃/恢复冒烟）。**批处理语义（chunk step、
 重启 checkpoint、job 执行模型）见
-[cloud/experimental/batch](../../../cloud/experimental/batch)** —— 下文只写 go-spring 的接线。
+[cloud/batch](../../../cloud/batch)** —— 下文只写 go-spring 的接线。
 
 **激活方式**：blank import + 至少一个 `JobDefinition` bean。两个 starter bean 都以
 `gs.OnBean[JobDefinition]()` 为条件（starter.go 的 `init`），导入 starter 但不注册 job
@@ -48,7 +48,7 @@ import (
     _ "go-spring.org/starter-batch-redis"
     _ "go-spring.org/starter-go-redis"
 
-    "go-spring.org/cloud/experimental/batch"
+    "go-spring.org/cloud/batch"
     "go-spring.org/spring/gs"
     StarterBatch "go-spring.org/starter-batch"
 )

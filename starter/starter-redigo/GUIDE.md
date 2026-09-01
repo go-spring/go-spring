@@ -379,7 +379,7 @@ spring.cache.kv.driver=redigo:cache
 ```
 
 ```go
-import "go-spring.org/cloud/data/cache"
+import "go-spring.org/cloud/cache"
 
 type Service struct {
     KV *cache.Cache `autowire:"kv"`

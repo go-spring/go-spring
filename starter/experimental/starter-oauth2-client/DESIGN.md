@@ -67,5 +67,5 @@ protected upstream.
   vs `*oauth2.Config`) and have different fields; separate prefixes
   keep both surfaces sharp.
 - **Resource-server validation in this starter — rejected.** It
-  belongs on the *server* side (`starter-security-jwt` + `cloud/experimental/security`),
+  belongs on the *server* side (`starter-security-jwt` + `cloud/security`),
   not muxed into the client's config surface.

@@ -15,7 +15,7 @@
  */
 
 // Package StarterCache is the gs wiring between ${spring.cache} properties and
-// the container-free cache abstraction (cloud/data/cache): it owns the
+// the container-free cache abstraction (cloud/cache): it owns the
 // backend driver registry and the conditional module that turns each
 // spring.cache.<name> entry into a Cache bean. Backend starters (bigcache,
 // memcached, redigo, go-redis) register their drivers here, so importing any

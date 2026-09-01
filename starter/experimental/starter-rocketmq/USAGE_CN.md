@@ -66,7 +66,7 @@ import (
     "context"
 
     "github.com/apache/rocketmq-client-go/v2/primitive"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
     StarterRocketmq "go-spring.org/starter-rocketmq"
@@ -182,7 +182,7 @@ gs.Run()
   │    4. FailFast 探测：TCP dial，首个可达地址即通过，每地址 3s 预算；
   │       失败 → 启动失败                                                     [driver.go:146-160]
   │    5. applyResilience：fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │       → resilobserve.WrapExecutor → 挂到 Client                          [command.go:180-186]
+  │       → resilience.WrapExecutor → 挂到 Client                          [command.go:180-186]
   ├─ 应用按 `autowire:"<name>"` 注入 *Client
   ├─ 应用自行随时创建 producer/consumer/binder（均在锁内注册到 Client）       [client.go:104-157]
   └─ SIGTERM → Client.Close：先 closeResilience，再逐个 Shutdown 已注册的
@@ -208,7 +208,7 @@ GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
        └─ exec.Execute(ctx, "rocketmq:<name-servers>", call)     — resilience.Executor
             applyResilience 中的内层构建顺序 [command.go:181-182]：
             fault.Injector（外）→ resilience 核心（限流/熔断/...）
-            → resilobserve 观察器（最内，6 种 outcome）→ producer.SendSync
+            → resilience 观察器（最内，6 种 outcome）→ producer.SendSync
 ```
 
 - executor 只包裹 `GuardedSend` 的同步 `SendSync`。**未守护**：binder 的 `Publish`
@@ -240,7 +240,7 @@ GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
 
 SDK push-consumer 协程回调 starter 的 handler [binder.go:125-141]：
 
-1. Subscribe 时已用 `messaging.SafeHandler` 预包裹：handler panic 转为普通错误
+1. Subscribe 时已用 `messaging.Recover` 预包裹：handler panic 转为普通错误
    （nack/重投），不会 unwind 进 SDK 协程 [binder.go:119]。
 2. 每条消息：`startConsume` 从 user properties 提取上游 trace 并打开 "consume" 观测
    [command.go:160-163]。
@@ -319,7 +319,7 @@ name-servers——须与 govern 规则一致）：
 
 - 压 `GuardedSend` → 拒绝返回 `resilience.ErrRateLimited`，发送未被调用，出现
   `resilience.outcome=rate_limited` 的 `_app_rocketmq_resilience` 记录
-  [observe/resilience/executor.go:66-78]。
+  [cloud/governance/resilience/observe.go:66-78]。
 - 同策略下压 binder 的 `Publish` → 毫无反应：该路径绕过 executor（§2.2）。
   这个不对称正是本演练要验证的点。
 

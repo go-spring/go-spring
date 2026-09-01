@@ -41,7 +41,7 @@ import (
 
 	"k8s.io/client-go/rest"
 
-	"go-spring.org/cloud/experimental/lock"
+	"go-spring.org/cloud/lock"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 

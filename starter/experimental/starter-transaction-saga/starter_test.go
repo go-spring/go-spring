@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/experimental/transaction"
-	"go-spring.org/cloud/observe/transaction"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -37,7 +36,7 @@ func TestOtelObserver_DrivesSagaWithoutPanic(t *testing.T) {
 	// With no TracerProvider installed the otel global is a no-op, but the
 	// observer must still return a usable context and an end func that records the
 	// outcome without panicking — exercised here through a real compensation path.
-	coord := transaction.NewCoordinator(transaction.WithObserver(transactionobserve.SagaObserver{}))
+	coord := transaction.NewCoordinator(transaction.WithObserver(transaction.SagaObserver{}))
 
 	compensated := false
 	res, err := coord.Execute(context.Background(), transaction.Saga{

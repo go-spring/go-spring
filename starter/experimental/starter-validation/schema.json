@@ -1,7 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.validation",
-  "description": "Blank-import only; registers 'default' validation driver backed by go-playground/validator. No configuration properties.",
-  "type": "object",
-  "properties": {}
-}

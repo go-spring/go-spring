@@ -118,7 +118,7 @@ switch to a JSON error envelope, again without wrapping `HandleJSON`.
 ## Where cross-cutting concerns live
 
 The package ships no middleware slice — chains belong at higher layers: the
-`cloud/experimental/security` middleware chain, per-family method-level
+`cloud/security` middleware chain, per-family method-level
 decorators, or a starter wrapping the `Server.Route` seam. Baking one in here
 would force users into that ordering.
 

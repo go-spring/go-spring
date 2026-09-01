@@ -25,7 +25,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 )
 
 // Client wraps *memcache.Client so every operation flows through the
@@ -72,7 +71,7 @@ func (c *Client) Init() error {
 	c.obs = observe.NewDB("memcached", c.Observability)
 	c.resource = resilience.ResourceLabel("memcached", c.name)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(c.resource))
-	c.exec = resilobserve.WrapExecutor(exec, "memcached", c.Observability)
+	c.exec = resilience.WrapExecutor(exec, "memcached", c.Observability)
 	return nil
 }
 

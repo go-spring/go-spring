@@ -51,7 +51,7 @@
 ## 4. 约束与风险
 
 - **无隔离性。**Saga 无读 / 写屏障——业务边界如需隔离请配合
-  `cloud/experimental/lock`。
+  `cloud/lock`。
 - **补偿必须幂等。**任意偏移点上的崩溃都可能重试;Coordinator 收集而非
   首错终止,故补偿链多失败会把每个错误一并放进 `Result.Errors`。
 - **`Compensate` 为 nil = `CompensationFailed`,而非静默跳过。**不可逆

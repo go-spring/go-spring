@@ -88,7 +88,6 @@ HTTP server the application already runs (no own port).
 | `starter-influxdb` | [influxdb-client-go/v2](https://github.com/influxdata/influxdb-client-go) | InfluxDB 2.x time-series database |
 | `starter-tdengine` | [driver-go/v3 (taosWS)](https://github.com/taosdata/driver-go) | TDengine time-series database (websocket, zero CGO) |
 | `starter-cassandra` | [gocql](https://github.com/gocql/gocql) | Cassandra / ScyllaDB wide-column database |
-| `starter-repository-gorm` | [gorm](https://gorm.io/) | Generic `repository.Repository[T,ID]` (CRUD + paging + audit) over any gorm `*gorm.DB` |
 
 ## Cache
 
@@ -148,6 +147,7 @@ HTTP server the application already runs (no own port).
 | Starter | Underlying library | Notes |
 | --- | --- | --- |
 | `starter-mail` | [wneessen/go-mail](https://github.com/wneessen/go-mail) | SMTP mailer (HTML/attachments/multi-recipient); send-only, no template engine |
+| `starter-migration-goose` | [goose](https://github.com/pressly/goose) | Goose schema migrations at startup over any gorm `*gorm.DB` (forward-only, fail-fast) |
 | `starter-webhook` | stdlib only | Chat webhooks: generic + DingTalk/Feishu/WeCom/Slack payload formats, HMAC signing, zero dependencies |
 
 ## Observability / Diagnostics

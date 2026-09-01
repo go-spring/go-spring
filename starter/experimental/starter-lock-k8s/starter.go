@@ -29,7 +29,7 @@
 package StarterLockK8s
 
 import (
-	"go-spring.org/cloud/experimental/lock"
+	"go-spring.org/cloud/lock"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"

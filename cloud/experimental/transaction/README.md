@@ -1,7 +1,7 @@
 # transaction
 [English](README.md) | [中文](README_CN.md)
 
-`transaction` is the zero-dependency Saga abstraction for cross-resource and
+`transaction` is the framework-agnostic Saga abstraction for cross-resource and
 cross-service consistency — the Go-idiomatic equivalent of Seata Saga and
 Spring's `@GlobalTransactional`. A long-running business operation is expressed
 as an ordered list of compensable `Step`s; when a step fails, the already-
@@ -19,7 +19,8 @@ For TCC and AT patterns see the subpackages
   starter-supplied bean.
 - `Recover(ctx, s)` — backward recovery: replays compensation for whatever the
   crashed process might have effected.
-- `Observer` seam for otel spans without stdlib depending on otel.
+- `Observer` seam; bundled otel observers (`SagaObserver` / `TccObserver` /
+  `AtObserver`) in the parent package, model subpackages stay otel-free.
 - `StepRegistry` + `GlobalTransactional(coord, reg)` — the decorator-level
   `@GlobalTransactional` equivalent, keyed by method name.
 - Step-level `RetryPolicy` (aliased to `resilience.Policy`) reuses the same

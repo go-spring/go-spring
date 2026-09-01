@@ -81,7 +81,7 @@ still bridged into go-spring's log for operational visibility.
 ## Messaging Binder
 
 Beyond the raw client, this starter can expose a broker-neutral
-`messaging.Binder` (from `go-spring.org/cloud/experimental/messaging`), so application code
+`messaging.Binder` (from `go-spring.org/cloud/messaging`), so application code
 publishes and consumes `*messaging.Message` envelopes without depending on the
 paho MQTT API — swapping the broker underneath does not touch business code.
 

@@ -43,8 +43,8 @@ package StarterScheduler
 import (
 	"context"
 
-	"go-spring.org/cloud/experimental/lock"
-	"go-spring.org/cloud/experimental/scheduling"
+	"go-spring.org/cloud/lock"
+	"go-spring.org/cloud/scheduling"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"

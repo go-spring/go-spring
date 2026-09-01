@@ -70,7 +70,7 @@ package router
 import (
     "net/http"
 
-    "go-spring.org/cloud/experimental/security"
+    "go-spring.org/cloud/security"
     "go-spring.org/spring/gs"
     StarterSecurityJWT "go-spring.org/starter-security-jwt"
 )

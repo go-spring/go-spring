@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/resilience"
 )
 

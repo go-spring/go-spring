@@ -162,7 +162,7 @@ Watch 仅用于持有 watch 生命周期 —— **成员变更不会热应用**�
 2. `guardErr` 经 `resilience.Run` 在 resilience executor 下执行操作（`command.go:174-181`）：
    limiter/breaker 以资源 `memcached:<instance-name>` 隔离（`client.go:73`）；
    `memcache.ErrCacheMiss` 计为成功，miss 不会触发熔断（`command.go:168`）；executor 先包
-   fault（`fault.WrapExecutor`，`client.go:74`）再包 observe（`resilobserve.WrapExecutor`，
+   fault（`fault.WrapExecutor`，`client.go:74`）再包 observe（`resilience.WrapExecutor`，
    `client.go:75`）。governance 关闭时为透明 no-op。
 3. 内嵌的 `*memcache.Client` 执行实际写入；end 回调以错误收尾 span。
 

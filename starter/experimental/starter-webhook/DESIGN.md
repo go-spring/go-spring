@@ -23,7 +23,7 @@ the resilience seam, which every client starter in this repo carries.
   secret; `Send` builds the payload, wraps the POST in a `webhook.send`
   producer span, and routes it through `fault.WrapExecutor(
   resilience.ExecutorFor("webhook:<name>:<channel>"), fault.InjectorFor())`
-  wrapped by `resilobserve.WrapExecutor` — the same neutral-seam stack every
+  wrapped by `resilience.WrapExecutor` — the same neutral-seam stack every
   client starter uses, zero coupling to starter-governance.
 - **`buildPayload` (payload.go)** — pure function channel → (body, extra
   query). DingTalk's 加签 appends `timestamp`/`sign` to the URL; Feishu's

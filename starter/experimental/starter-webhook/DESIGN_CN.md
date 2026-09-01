@@ -19,7 +19,7 @@
 - **`Notifier`（starter.go）** — 一个端点 + 一个通道 + 一个签名密钥；
   `Send` 构建载荷、把 POST 包进 `webhook.send` producer span，并路由穿过
   `fault.WrapExecutor(resilience.ExecutorFor("webhook:<name>:<channel>"),
-  fault.InjectorFor())` 加 `resilobserve.WrapExecutor` —— 与所有客户端
+  fault.InjectorFor())` 加 `resilience.WrapExecutor` —— 与所有客户端
   starter 相同的中性 seam 栈，与 starter-governance 零耦合。
 - **`buildPayload`（payload.go）** — 纯函数 通道 →（body, 额外 query）。
   钉钉加签向 URL 追加 `timestamp`/`sign`；飞书签名进 body；两者都是对

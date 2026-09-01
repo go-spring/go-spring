@@ -178,7 +178,7 @@ gs.Run()
   │     [starter.go:160-169] —— server 挂掉失败的是启动，不是第一条查询
   ├─ gs 字段注入 Client.Observability（${observability:=} —— 顶层 key，见 §3.3 ⚠）
   ├─ Init [client.go:97]：NewDB("mongodb", ...) observer → 资源标签
-  │   → fault.WrapExecutor(resilience.ExecutorFor(resource)) → resilobserve.WrapExecutor
+  │   → fault.WrapExecutor(resilience.ExecutorFor(resource)) → resilience.WrapExecutor
   │   → 换入 dialerWrapper.dial = resilience.NewDialer(base, exec, resource)
   ├─ 就绪：mongo:<name> 指示器对真实 server 跑 client.Ping
   └─ SIGTERM → Destroy [client.go:112]：exec.Close → resolver.Stop → client.Disconnect

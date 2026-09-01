@@ -230,7 +230,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
   为 no-op。
 - **Tracing 在 Metrics 之前**：span 同时包住 metrics 观测，时长与状态落在同一 trace 上下文。
 - **Resilience 在 Fault/Recover 之前**：准入控制在做事之前裁决；executor 被
-  `resilobserve.WrapExecutor` 包裹，熔断/拒绝自身会打 span + counter + histogram。
+  `resilience.WrapExecutor` 包裹，熔断/拒绝自身会打 span + counter + histogram。
 - **Fault 位于策略最内层**（fault.go）："安装在最内层，让注入的错误回穿 tracing/metrics/
   resilience 被观测到"——你放的火自己看得见。
 - **Recover 最内层**（recover.go）："grpc-go 自身对 handler panic 不做任何 recover"；转换出的

@@ -83,7 +83,7 @@ spring.registry.metadata.version=v1
 **Consumer side.** This starter does not ship a Consul discovery backend. The intended seam is
 `cloud/discovery`: register one Consul-backed `Discovery` under a name, then any client starter's
 `discovery:` field resolves through it (the reference implementation is
-`examples/fullstack/internal/consuldisc`, ~60 lines):
+`consuldisc`, ~60 lines, the adapter this example ships):
 
 ```go
 // consumer_side/discovery.go — call once at startup.
@@ -149,7 +149,7 @@ Timeline (all `starter.go`):
 ### 2.2 WATCH path (consumer side)
 
 This starter has no watch; consumers use the `cloud/discovery` seam. The reference Consul backend
-(`examples/fullstack/internal/consuldisc`) uses Consul blocking queries: each catalog change returns
+`consuldisc` uses Consul blocking queries: each catalog change returns
 a fresh full snapshot, which the `discovery.Resolver`/loadbalance `Pool` consumes. Change detection
 and weight-0 filtering are the pool's: `excludeDrained` drops `Weight == 0` endpoints, falling back
 to the full set only when every endpoint is drained (`cloud/loadbalance/pool.go:93-134`).
@@ -245,7 +245,7 @@ All runtime logs carry `log.TagAppDef`: `creating consul registrar`, `registerin
 Suspect ledger:
 
 - No shipped consumer side: every user must hand-roll a Consul `discovery.Discovery`
-  (~60 lines, cf. `examples/fullstack/internal/consuldisc`) — candidate for a
+  (~60 lines — candidate for a
   starter-discovery-consul sibling.
 - Drain relies on Consul's Passing-weight semantics; a consumer backend that ignores Weights
   silently breaks weight-0 drain — the contract lives only in docs.

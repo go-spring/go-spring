@@ -76,7 +76,7 @@ automatically when the application closes.
 ## Messaging Binder
 
 `NewBinder` adapts the client to the broker-neutral
-`cloud/experimental/messaging` abstraction, so business code stays free of the
+`cloud/messaging` abstraction, so business code stays free of the
 RocketMQ API. destination/source strings are topics; the group maps to a
 RocketMQ consumer group (clustering mode).
 

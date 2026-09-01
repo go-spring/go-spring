@@ -24,7 +24,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/resilience"
 )
 

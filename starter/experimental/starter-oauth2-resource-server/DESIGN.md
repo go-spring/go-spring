@@ -3,7 +3,7 @@
 ## Position
 
 This starter is the assembly layer between the `security` abstraction in
-`cloud/experimental/security` and the `golang-jwt/jwt/v5` library. The
+`cloud/security` and the `golang-jwt/jwt/v5` library. The
 abstraction owns the seams (`TokenValidator`, `Authenticate`/`Authorize`
 middleware, context propagation); this starter owns exactly one thing: turning
 configuration into a working JWT `TokenValidator` bean. It exports no port and
@@ -51,7 +51,7 @@ must not depend on each other.
   config key itself. The package-global `security.RegisterValidator` registry
   is deliberately not used: registering a live, config-derived validator into
   a process-global map is wrong across tests and restarts (the same reasoning
-  documented in `cloud/experimental/session`'s registry).
+  documented in `cloud/session`'s registry).
 - **No middleware of its own** — transport composition (401 vs pass-through,
   authority checks) already lives in `security.Authenticate`/`Authorize`;
   duplicating it here would fork the policy.

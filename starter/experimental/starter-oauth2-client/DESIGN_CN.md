@@ -51,4 +51,4 @@
   ——弃选。**两者产出的类型不同(`*http.Client` 与 `*oauth2.Config`),
   字段也不同;分前缀让两个表面各自清晰。
 - **资源服务器校验放本 starter——弃选。**属于*服务端*(`starter-security-jwt`
-  + `cloud/experimental/security`),不该混进客户端配置表面。
+  + `cloud/security`),不该混进客户端配置表面。

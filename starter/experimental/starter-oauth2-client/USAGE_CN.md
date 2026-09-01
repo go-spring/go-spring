@@ -191,7 +191,7 @@ governance 开启时的 `s.Client.Get("https://api.example.com/resource")`:
    `Authorization: Bearer <token>` 头。
 5. `resilience.NewRoundTripper` 经资源标签 `oauth2:<client-id>` 解析出的 executor 执行
    请求——retry/熔断/限流策略来自治理中心;governance 关闭时是透明空操作。executor 又被
-   `resilobserve.WrapExecutor` 包了一层,trip/reject/retry 会发 span + 计数 + 直方图 +
+   `resilience.WrapExecutor` 包了一层,trip/reject/retry 会发 span + 计数 + 直方图 +
    访问日志。
 6. `otelhttp` 发 client span(method/url);无 starter-otel 时为空操作。
 7. 响应解栈;401 时 oauth2 层不重试(client_credentials 无 refresh token)——下一次调用

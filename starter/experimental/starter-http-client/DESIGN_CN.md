@@ -18,7 +18,7 @@
 
 ## 2. Transport 组合——由外到内
 
-`cloud/experimental/httpx.NewTransport` 装配的链路:
+`cloud/httpx.NewTransport` 装配的链路:
 
 ```
 resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp base

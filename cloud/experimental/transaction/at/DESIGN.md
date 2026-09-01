@@ -78,8 +78,8 @@ knowledge into stdlib. Sibling patterns Saga and TCC live in
   in sibling packages precisely because their compensation semantics differ.
 - **Per-resource branch bean, no driver registry.** A branch needs a live
   connection and its ORM's DML interception, not a declarative policy, so the
-  seam is the interface type — the same choice `cloud/experimental/lock` and
-  `cloud/experimental/batch` make.
+  seam is the interface type — the same choice `cloud/lock` and
+  `cloud/batch` make.
 - **In-process coordinator first.** A single service driving several databases
   is the dominant Go topology; an external Seata TC would add a coordination
   hop for a case most services do not have. The interface stays open so a

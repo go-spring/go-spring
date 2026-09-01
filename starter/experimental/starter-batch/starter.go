@@ -60,7 +60,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/experimental/batch"
+	"go-spring.org/cloud/batch"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )

@@ -187,7 +187,7 @@ gs.Run()
   ├─ gs 字段注入 Client.Observability（${observability:=}）
   ├─ Init [client.go:74-79]：resource = resilience.ResourceLabel("neo4j",
   │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilobserve.WrapExecutor(exec, "neo4j", Observability)——治理关闭时
+  │   → resilience.WrapExecutor(exec, "neo4j", Observability)——治理关闭时
   │   executor 为透明 no-op
   ├─ readiness：指示器每次探测跑 VerifyConnectivity
   └─ SIGTERM → Destroy [client.go:89-95]：exec.Close → stopLiveResolver →
@@ -214,7 +214,7 @@ neo4j.ExecuteQuery / Query）（client.go:81-88 注释）。
 | `StarterNeo4j.RunWithResilience` | 仅把任意 session/事务代码套进韧性保护（无 span/指标/日志） | 可选 |
 | `StarterNeo4j.StartSpan` / `EndSpan` | 为手工 `driver.NewSession` 操作补 span + 指标 + 访问日志 | 可选 |
 | 健康指示器 `neo4j:<name>` | 每次 actuator 探测跑 `VerifyConnectivity` | 自动，恒注册 |
-| Init 里的 `resilobserve.WrapExecutor` | 受保护执行的 outcome 指标（`resilience.*`），由实例级 `observability.*` 块控制 | 治理开启时自动 |
+| Init 里的 `resilience.WrapExecutor` | 受保护执行的 outcome 指标（`resilience.*`），由实例级 `observability.*` 块控制 | 治理开启时自动 |
 
 `Query` 的 span/指标/日志挂在**包级**默认 observer 上（`observe.NewDB("neo4j",
 Level: brief)`，command.go:46），随 starter-otel 安装的 OTel globals——实例级
@@ -300,7 +300,7 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|---------|-------------------------|------------------------------|
-| `observability.level` | string | `brief` | 控制 **resilience-executor** 的访问日志（Init 里的 `resilobserve.WrapExecutor`），不是 Query 的访问日志（那是包级 `brief`，§2.2）。`off` 只静默日志信号。 | 指望它调 Query 日志 → 无效果，反直觉。 |
+| `observability.level` | string | `brief` | 控制 **resilience-executor** 的访问日志（Init 里的 `resilience.WrapExecutor`），不是 Query 的访问日志（那是包级 `brief`，§2.2）。`off` 只静默日志信号。 | 指望它调 Query 日志 → 无效果，反直觉。 |
 | `observability.maxArgBytes` | int | 512 | detailed 模式下参数捕获上限。 | — |
 | `observability.skipOps` | list | — | 对列出的 op 名同时抑制 span+指标+日志。 | — |
 

@@ -4,7 +4,7 @@
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
 （`starter.go`、`config.go`、`redislock.go`、`observe.go`）、共享抽象
-[cloud/experimental/lock](../../../cloud/experimental/lock) 与自校验的 [example/](example)
+[cloud/lock](../../../cloud/lock) 与自校验的 [example/](example)
 （`example/check.sh`）核实。Redis 自身语义（SET NX PX、脚本、过期）见
 [Redis 官方文档](https://redis.io/docs/latest/commands/set/)——本文只写 go-spring 的增量。
 
@@ -66,7 +66,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/experimental/lock"
+    "go-spring.org/cloud/lock"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
 )
@@ -160,7 +160,7 @@ gs.Run()
 Provide 整体移除，观测改为 `newLocker` 内的透明默认。
 ### 2.2 三层时序解析（所有锁后端共享）
 
-TTL / renew / retry 经 `lock.Resolve`（cloud/experimental/lock/defaults.go）解析，高层优先
+TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高层优先
 ——本 starter 喂入**全部三个**旋钮：
 
 | 层 | 来源 | key |

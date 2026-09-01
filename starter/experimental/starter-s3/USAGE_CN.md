@@ -163,7 +163,7 @@ gs.Run()
   │    └─ gs 字段注入 Client.Observability 后调用 Init()：
   │          obs := observe.NewDB("s3", ...) → obsTransport（span+metric+访问日志）
   │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3:<endpoint>"))
-  │          exec := resilobserve.WrapExecutor(exec, "s3", ...)  // outcome span/计数
+  │          exec := resilience.WrapExecutor(exec, "s3", ...)  // outcome span/计数
   │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, → resource))
   ├─ Run / 服务：readyz 并入每个 s3:<name> 指示器（需 starter-actuator）
   └─ SIGTERM：Destroy() 关闭 resilience executor；minio 侧无会话可关
@@ -188,7 +188,7 @@ atomic.Value，因为活动的 tripper 是多种具体类型之一；见 client.
 2. Resilience round-tripper：请求进入按资源 `s3:<endpoint>` 解析的 executor——引入
    starter-governance 后 retry / rate-limit / circuit-breaker / bulkhead 生效（经治理
    中心可热切换），否则透明直通；进程级 fault 注入器（`fault.InjectorFor`，nil 安全）
-   可为演练注入失败。`resilobserve.WrapExecutor` 为熔断跳闸、限流拒绝、隔舱拒绝发出
+   可为演练注入失败。`resilience.WrapExecutor` 为熔断跳闸、限流拒绝、隔舱拒绝发出
    outcome span + 调用计数 + 时长直方图 + 访问日志。
 3. obsTransport（command.go:38）：以操作名 `"PUT /bucket/key"`（方法 + URL path）
    开 per-request observer span，跑底层 `http.DefaultTransport`，带错误结束 span ——
@@ -258,7 +258,7 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 ### 4.5 fault/resilience 演练（需 starter-governance）
 
 按端点资源标签 `s3:127.0.0.1:9000` 配置治理规则：对该资源的 `fault.rate` 让一部分
-上传经 executor 失败——可通过 `resilobserve.WrapExecutor` 的 outcome span/计数观测。
+上传经 executor 失败——可通过 `resilience.WrapExecutor` 的 outcome span/计数观测。
 改回规则文件即撤火（经治理 source 热切换）。⚠ 注意 retry 按 round-trip 重试而非按流：
 大 body 上传可能重发 body。
 

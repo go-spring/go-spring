@@ -165,7 +165,7 @@ gs.Run()
   ├─ gs 字段注入 Client.Observability（${observability:=}）[client.go:42]
   ├─ Init [client.go:64]：resourceLabel（"tdengine:<dsn addr>"）→
   │     fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │     resilobserve.WrapExecutor → NewDB("tdengine", cfg) 观察器装到 slot 上
+  │     resilience.WrapExecutor → NewDB("tdengine", cfg) 观察器装到 slot 上
   ├─ readiness：指示器对每实例跑 db.PingContext
   └─ SIGTERM → Destroy [client.go:81]：exec.Close → db.Close
 ```

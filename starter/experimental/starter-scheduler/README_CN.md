@@ -12,7 +12,7 @@ starter 负责驱动它们、参与优雅停机,并可借助分布式锁在多�
 退出前会先排空在途运行。
 
 触发与并发原语来自零依赖的
-[`cloud/experimental/scheduling`](../../../cloud/experimental/scheduling) 包;本 starter 只是把配置与 IoC 容器
+[`cloud/scheduling`](../../../cloud/scheduling) 包;本 starter 只是把配置与 IoC 容器
 接入其上的薄集成层。
 
 ## 安装

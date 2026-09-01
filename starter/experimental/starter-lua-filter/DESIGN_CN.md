@@ -21,8 +21,8 @@ request/response。进程内的动态逻辑用 Go 中间件 / CEL / WASM 更合�
 挂载点为 `spring/gs/http.go` 中的 `*gs.HttpServeMux`:框架仅在
 `OnMissingBean[*HttpServeMux]` 时提供默认 mux,故用户 `gs.Provide` 一个包
 了 filter 的 `*gs.HttpServeMux` 就能抢占。mux 与框架无关——gin/echo/hertz
-最终都塌缩成 `http.Handler`——不需要逐框架适配。`cloud/experimental/web` 目前
-只有 i18n/validation 两家,故这道 handler 缝隙是天然归宿。
+最终都塌缩成 `http.Handler`——不需要逐框架适配。i18n/validation 现在
+就在 `cloud/i18n`、`cloud/validation`;filter 缝隙若落地,自成 `cloud/` 包。
 
 ## 3. 实现要点
 

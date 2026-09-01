@@ -5,7 +5,7 @@ against the starter source (`starter.go`, `config.go`, `job.go`) and the runnabl
 [example/](example/) (smoke: `example/check.sh`, no docker) plus
 [example-otel/](example-otel/) (docker-gated Jaeger). **Trigger semantics — cron parsing,
 fixed-rate/fixed-delay, concurrency policies — come from
-[go-spring.org/cloud/experimental/scheduling](../../../cloud/experimental/scheduling)**;
+[go-spring.org/cloud/scheduling](../../../cloud/scheduling)**;
 this starter wires them into the gs lifecycle and adds per-job cross-replica locks.
 
 **Activation**: the scheduler bean `schedulerServer` is provided when `spring.scheduler.enabled`
@@ -51,7 +51,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/experimental/lock"
+    "go-spring.org/cloud/lock"
     "go-spring.org/spring/gs"
 
     scheduler "go-spring.org/starter-scheduler"

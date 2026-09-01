@@ -2,7 +2,7 @@
 
 把 Go-Spring 应用变成 OAuth2 资源服务器：校验请求携带的 JWT Bearer
 Token，并把结果挂到框架中立的 `security.TokenValidator`
-抽象（`go-spring.org/cloud/experimental/security`）上。
+抽象（`go-spring.org/cloud/security`）上。
 
 每个 `spring.security.oauth2.resource.jwt.<name>` 条目注册一个
 `Validator` bean——配置即开关，只导入包而不配置不会装配任何东西。
@@ -34,7 +34,7 @@ spring.security.oauth2.resource.jwt.api.audiences=orders-api
 
 ```go
 import (
-    "go-spring.org/cloud/experimental/security"
+    "go-spring.org/cloud/security"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-oauth2-resource-server"

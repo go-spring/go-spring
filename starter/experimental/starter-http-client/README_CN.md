@@ -29,7 +29,7 @@ go get go-spring.org/starter-http-client
 ```
 
 生成的 `Client` 只持有一个 `*http.Client`。本 starter 为每个配置项注册一个
-`*http.Client`,其 `http.RoundTripper` 由 [`cloud/experimental/httpx`](../../../cloud/experimental/httpx)
+`*http.Client`,其 `http.RoundTripper` 由 [`cloud/httpx`](../../../cloud/httpx)
 用三个可组合的 stdlib 抽象装配而成,全部收敛在同一个 `http.RoundTripper` 缝隙上:
 
 * [`discovery`](../../../cloud/discovery) —— 设置了 `service-name` 时,`Resolver`
@@ -105,8 +105,8 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 | `spring.http-client.<name>.service-name` | — | 经由发现解析的逻辑名;只要设置即同时是治理 resource label。 |
 | `spring.http-client.<name>.discovery` | — | 已注册的发现后端名,设置 `service-name` 时必填。 |
 | `spring.http-client.<name>.balancer` | `round_robin` | 策略:`round_robin`、`least_conn`、`consistent_hash`、`weighted`、`zone_aware`。 |
-| `spring.http-client.<name>.eject-threshold` | `0` | 剔除端点的连续失败次数(0 表示不剔除)。 |
-| `spring.http-client.<name>.eject-for` | `0` | 被剔除端点的隔离时长。 |
+| `spring.http-client.<name>.suspend-threshold` | `0` | 剔除端点的连续失败次数(0 表示不剔除)。 |
+| `spring.http-client.<name>.suspend-for` | `0` | 被剔除端点的隔离时长。 |
 | `spring.http-client.<name>.observability.level` | `brief` | 访问日志闸门:`off` / `brief` / `detailed`。 |
 | `spring.http-client.<name>.observability.maxArgBytes` | `512` | 日志参数截断长度。 |
 | `spring.http-client.<name>.observability.skipOps` | — | 不记日志的操作。 |

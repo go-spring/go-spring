@@ -21,11 +21,10 @@ import (
 	"net/http"
 	"time"
 
-	"go-spring.org/cloud/experimental/httpx"
+	"go-spring.org/cloud/httpx"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -57,13 +56,13 @@ type Config struct {
 	// least_conn, consistent_hash, weighted, or zone_aware.
 	Balancer string `value:"${balancer:=round_robin}"`
 
-	// EjectThreshold is the consecutive-failure count that ejects a failing
-	// endpoint from the pool (outlier ejection). 0 disables ejection.
-	EjectThreshold int `value:"${eject-threshold:=0}"`
+	// SuspendThreshold is the consecutive-failure count that suspends a failing
+	// endpoint from the pool (outlier suspension). 0 disables suspension.
+	SuspendThreshold int `value:"${suspend-threshold:=0}"`
 
-	// EjectFor is how long an ejected endpoint stays out before a trial request.
-	// Ignored when EjectThreshold is 0.
-	EjectFor time.Duration `value:"${eject-for:=0}"`
+	// SuspendFor is how long an suspended endpoint stays out before a trial request.
+	// Ignored when SuspendThreshold is 0.
+	SuspendFor time.Duration `value:"${suspend-for:=0}"`
 
 	// Observability configures the resilience access log (off/brief/detailed)
 	// emitted alongside the trace span + metrics that observe-resilience wraps
@@ -115,8 +114,8 @@ func (c Config) toTransportConfig(base http.RoundTripper, exec resilience.Execut
 		Addr:           c.Addr,
 		Discovery:      c.Discovery,
 		Balancer:       c.Balancer,
-		EjectThreshold: c.EjectThreshold,
-		EjectFor:       c.EjectFor,
+		SuspendThreshold: c.SuspendThreshold,
+		SuspendFor:       c.SuspendFor,
 		Base:           base,
 	}
 	// Attach the executor and the fault + observe-resilience wrap hooks. Both
@@ -129,7 +128,7 @@ func (c Config) toTransportConfig(base http.RoundTripper, exec resilience.Execut
 	// attach to; fault.WrapExecutor is nil-safe when no injector is registered.
 	cfg.Executor = exec
 	cfg.WrapExec = func(e resilience.Executor) resilience.Executor {
-		return resilobserve.WrapExecutor(fault.WrapExecutor(e), "http", c.Observability)
+		return resilience.WrapExecutor(fault.WrapExecutor(e), "http", c.Observability)
 	}
 	return cfg
 }

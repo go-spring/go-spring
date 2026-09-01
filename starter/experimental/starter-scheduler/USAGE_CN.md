@@ -4,7 +4,7 @@
 （`starter.go`、`config.go`、`job.go`）与可运行的 [example/](example/)（冒烟：
 `example/check.sh`，无需 docker）及 [example-otel/](example-otel/)（docker 门控 Jaeger）
 核实。**触发器语义——cron 解析、fixed-rate/fixed-delay、并发策略——来自
-[go-spring.org/cloud/experimental/scheduling](../../../cloud/experimental/scheduling)**；
+[go-spring.org/cloud/scheduling](../../../cloud/scheduling)**；
 本 starter 把它们接进 gs 生命周期并加上按 job 的跨副本锁。
 
 **激活条件**：`spring.scheduler.enabled` 为 true（**默认开**，`MatchIfMissing`）**且**
@@ -49,7 +49,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/experimental/lock"
+    "go-spring.org/cloud/lock"
     "go-spring.org/spring/gs"
 
     scheduler "go-spring.org/starter-scheduler"

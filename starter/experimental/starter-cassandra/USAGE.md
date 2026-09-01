@@ -152,7 +152,7 @@ gs.Run()
   ├─ gs field-injects Client.Observability (${observability:=} — top-level absolute key)
   ├─ Init [client.go:64]: observe.NewDB("cassandra", …) → resource label
   │     → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │     → resilobserve.WrapExecutor — exec chain complete
+  │     → resilience.WrapExecutor — exec chain complete
   ├─ readiness: indicator queries system.local per instance
   └─ SIGTERM → Destroy [client.go:75]: exec.Close (if armed) → Session.Close
 ```
@@ -209,7 +209,7 @@ breaker/limiter/metrics/access-log as long as they start from `Client.Query`/`Cl
 
 Layer order on `Exec` (outside-in): observer start → fault injector (fault.WrapExecutor,
 process-wide) → resilience executor (governance center) → gocql. The resilience observer
-(`resilobserve.WrapExecutor`) adds outcome counters around the executor itself, so injected
+(`resilience.WrapExecutor`) adds outcome counters around the executor itself, so injected
 faults and breaker rejections are both counted and logged.
 
 ### 2.4 Driver seam

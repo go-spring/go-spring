@@ -88,7 +88,7 @@ fmt.Println(out.Message)
 实际接线参考 `starter-http-client`：它组装进程级 `dispatchTransport`，按
 `req.Host`（即 Target）分派到各自配置好的 transport，整体替换 `httpclt.DoRequest`
 ——生成代码对此完全无感。discovery、负载均衡、resilience、trace 透传等能力的
-组合实现见 `go-spring.org/cloud/experimental/httpx`。
+组合实现见 `go-spring.org/cloud/httpx`。
 
 ## 许可证
 

@@ -67,7 +67,7 @@ import (
     "context"
 
     "github.com/apache/pulsar-client-go/pulsar"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/spring/gs"
     StarterPulsar "go-spring.org/starter-pulsar"
 )
@@ -193,7 +193,7 @@ gs.Run()
   │       覆盖地址+认证+TLS 的 lookup（不产生消息）；失败 →
   │       cl.Close + metrics 下线 + 启动报错                              [starter.go:68-75]
   │    4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor("pulsar:<url>"))
-  │       → resilobserve.WrapExecutor → 按 client 索引                     [command.go:224-230]
+  │       → resilience.WrapExecutor → 按 client 索引                     [command.go:224-230]
   ├─ 就绪：无 health indicator —— 探测只在启动期生效
   └─ SIGTERM → destroyClient [client.go:44-49]：closeResilience（executor Close）
        → cl.Close()（释放全部 producer/consumer）→ shutdownMetrics（:port server）
@@ -217,7 +217,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
 
 `applyResilience` 内部包裹顺序 [command.go:225-226]：`resilience.ExecutorFor(resource)`
 （核心熔断/限流/重试）→ `fault.WrapExecutor`（运行期故障注入在 executor **外**——注入的
-故障不消耗熔断预算）→ `resilobserve.WrapExecutor`（outcome 计数 + 访问日志最外层）。
+故障不消耗熔断预算）→ `resilience.WrapExecutor`（outcome 计数 + 访问日志最外层）。
 
 **未保护面**（均有源码注释说明是有意的）：
 - `producer.SendAsync` —— 刻意不碰；异步路径没有可拒绝的同步结果 [command.go:261-263]。
@@ -248,7 +248,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
 
 `sub.Subscribe(handler)` 启动一个后台循环 [binder.go:119-155]：
 
-1. handler 先包 `messaging.SafeHandler` —— panic 转为普通错误 → Nack → 重投，绝不会
+1. handler 先包 `messaging.Recover` —— panic 转为普通错误 → Nack → 重投，绝不会
    打穿 SDK goroutine [binder.go:121-123]。
 2. 循环 ctx 派生自 `context.WithoutCancel(ctx)` —— 只有 Close 显式取消，调用方 ctx
    取消不影响 [binder.go:123]。
@@ -365,7 +365,7 @@ server [client.go:44-58]。subscriber Close 先排空循环再 consumer.Close
 | 消费者收不到消息 | 订阅名不对 / Shared 与 topic 语义 | `group` 与订阅 1:1；空 group 派生 `go-spring-<topic>` [binder.go:63-66]。 |
 | 期望 token 认证，broker 拒绝 | mTLS cert+key 已设置 → token 被忽略（优先级）[driver.go:83-90] | 去掉 cert/key，或放宽 broker 的 mTLS。 |
 | 压测下熔断从不打开 | 流量走 binder Publish 或 SendAsync —— 未保护（§2.2） | 改走 GuardedSend。 |
-| handler panic 什么都不打死，但消息重现 | SafeHandler 把 panic 转为 Nack | 预期行为；修 handler。 |
+| handler panic 什么都不打死，但消息重现 | Recover 把 panic 转为 Nack | 预期行为；修 handler。 |
 
 ## 6. 设计体检表
 

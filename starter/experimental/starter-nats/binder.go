@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/traffic"
 )
 
@@ -61,6 +61,7 @@ type publisher struct {
 const headerMsgKey = "x-msg-key"
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
+	messaging.EnsureMessageID(msg)
 	nm := &nats.Msg{Subject: p.subject, Data: msg.Payload, Header: toNatsHeader(msg.Headers)}
 	if msg.Key != "" {
 		if nm.Header == nil {
@@ -94,9 +95,9 @@ type subscriber struct {
 }
 
 func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) error {
-	// SafeHandler converts a handler panic into the normal error path
+	// Recover converts a handler panic into the normal error path
 	// (nack/redelivery) instead of unwinding into the SDK goroutine.
-	handler = messaging.SafeHandler(handler)
+	handler = messaging.Recover(handler)
 	cb := func(nm *nats.Msg) {
 		// startConsume extracts the upstream trace, opens a consumer span +
 		// metric + access log; nil-safe when observability is off.

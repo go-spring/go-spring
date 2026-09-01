@@ -27,7 +27,7 @@ import (
 	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 )
@@ -90,6 +90,7 @@ type publisher struct {
 }
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
+	messaging.EnsureMessageID(msg)
 	pub := amqp.Publishing{
 		Body:      msg.Payload,
 		Headers:   toAMQPTable(msg.Headers),
@@ -126,9 +127,9 @@ type subscriber struct {
 }
 
 func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) error {
-	// SafeHandler converts a handler panic into the normal error path
+	// Recover converts a handler panic into the normal error path
 	// (nack/redelivery) instead of unwinding into the SDK goroutine.
-	handler = messaging.SafeHandler(handler)
+	handler = messaging.Recover(handler)
 	deliveries, err := s.ch.Consume(s.queue, "", false, false, false, false, nil)
 	if err != nil {
 		return err
@@ -194,10 +195,16 @@ func fromDelivery(d *amqp.Delivery) *messaging.Message {
 			}
 		}
 	}
-	return &messaging.Message{
+	m := &messaging.Message{
 		Key:       d.MessageId,
 		Payload:   d.Body,
 		Headers:   headers,
 		Timestamp: d.Timestamp,
 	}
+	// AMQP exposes only a redelivered flag (no count): surface it as the
+	// reserved header, "2" meaning "at least the second delivery".
+	if d.Redelivered {
+		m.SetHeader(messaging.HeaderDeliveryAttempt, "2")
+	}
+	return m
 }

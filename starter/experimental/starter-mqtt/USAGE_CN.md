@@ -70,7 +70,7 @@ import (
     "fmt"
 
     mqtt "github.com/eclipse/paho.mqtt.golang"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/spring/gs"
     StarterMQTT "go-spring.org/starter-mqtt"
 )
@@ -199,7 +199,7 @@ paho.mqtt.golang 没有钩子/插件扩展点，所以不存在透明 client 包
 ```
 applyResilience [command.go:128-134]：
   exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt:<broker>"))   // 治理中心
-  exec = resilobserve.WrapExecutor(exec, "mqtt", c.Observability)      // observe 桥
+  exec = resilience.WrapExecutor(exec, "mqtt", c.Observability)      // observe 桥
   以 mqtt.Client 值为键存入 sync.Map
 
 GuardedPublish [command.go:166-172]：
@@ -219,7 +219,7 @@ GuardedPublish [command.go:166-172]：
   与 binder 的 `Publish` 都走 executor
   [command.go:156-172]。
 - `Subscribe` / `Unsubscribe` / 订阅回调 —— 没有对应的 guard。
-- binder 订阅 handler：只有 panic 保护（`messaging.SafeHandler` 把 panic 转成 error）
+- binder 订阅 handler：只有 panic 保护（`messaging.Recover` 把 panic 转成 error）
   [client.go:92]；该 error 之后仅记日志 [client.go:95-97]。
 
 治理关闭时 `ExecutorFor` 返回透明的 no-op executor，`GuardedPublish` 的行为与裸
@@ -243,7 +243,7 @@ span 助手：
 
 **binder 消费** —— 在 topic `sensors/temp` 上 `sub.Subscribe(ctx, handler)`：
 
-1. handler 被 `messaging.SafeHandler` 包裹（panic → error）[client.go:92]。
+1. handler 被 `messaging.Recover` 包裹（panic → error）[client.go:92]。
 2. `cl.Subscribe(topic, 1, callback)` + `token.Wait()` —— 错误（非法 topic 过滤器、
    无 broker）同步返回 [client.go:93-100]。
 3. 每次投递，callback 从 paho 消息构造 `messaging.Message`：**只有 Payload**。
@@ -383,7 +383,7 @@ kill -9 <pid>   # 非正常退出 → broker 代发 will "offline"（按配置 r
 
 设计嫌疑（审计台账；上轮条目均未修复）：
 
-- binder handler 出错仅记日志；`SafeHandler` 注释宣称的 "nack/redelivery" 是 MQTT 3.1.1
+- binder handler 出错仅记日志；`Recover` 注释宣称的 "nack/redelivery" 是 MQTT 3.1.1
   fire-and-forget 回调给不了的 [client.go:90-97]。
 - ~~span 助手的 observer 硬编码 `DefaultBrief`，无视
   `spring.mqtt.<name>.observability.level`~~ 已修：第一个被装配的 client 用自己的

@@ -67,7 +67,7 @@ package service
 import (
     "context"
 
-    "go-spring.org/cloud/data/cache"
+    "go-spring.org/cloud/cache"
     "go-spring.org/spring/gs"
     StarterGoRedis "go-spring.org/starter-go-redis"
 )
@@ -168,7 +168,7 @@ gs.Run()
   │   → failFastPing (unconditional, bounded by dial-timeout or 5s) [starter.go:218]
   ├─ gs field-injects Client.Observability (${observability:=})
   ├─ Init [client.go:58]: resourceLabel → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilobserve.WrapExecutor → applyObservability (access-log hook)
+  │   → resilience.WrapExecutor → applyObservability (access-log hook)
   │   → AddHook(resilienceHook) — command chain complete
   ├─ readiness: probes flip UP (indicator runs client.Ping)
   └─ SIGTERM → Destroy [client.go:82]: exec.Close → stop discovery watch → client.Close

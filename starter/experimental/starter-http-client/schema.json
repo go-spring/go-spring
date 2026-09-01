@@ -19,11 +19,11 @@
       "type": "string",
       "default": "round_robin"
     },
-    "eject-threshold": {
+    "suspend-threshold": {
       "type": "integer",
       "default": 0
     },
-    "eject-for": {
+    "suspend-for": {
       "type": "string",
       "description": "Duration string, e.g. '5s', '1m', '1h'",
       "default": "0"

@@ -79,7 +79,7 @@ content, err := s.Config.GetConfig(vo.ConfigParam{DataId: "key", Group: "DEFAULT
 `[optional:]nacos:<host>:<port>/<dataId>?<query>`：
 
 ```properties
-spring.app.imports=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
+spring.config.import=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
 ```
 
 查询参数：

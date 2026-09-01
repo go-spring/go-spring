@@ -4,7 +4,7 @@
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
 （`starter.go`、`config.go`、`k8slock.go`、`observe.go`）、共享抽象
-[cloud/experimental/lock](../../../cloud/experimental/lock) 与 [example/](example)（含集群内
+[cloud/lock](../../../cloud/lock) 与 [example/](example)（含集群内
 运行的 `deploy/`）核实。Lease 语义对齐 client-go 的 leader election——见
 [Kubernetes Lease API](https://kubernetes.io/docs/concepts/architecture/leases/)；本文只写
 go-spring 的增量。
@@ -66,7 +66,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/experimental/lock"
+    "go-spring.org/cloud/lock"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
 )
@@ -153,7 +153,7 @@ goroutine**（`k8slock.go` tryOnce），各持有互不影响。
 
 ### 2.2 三层时序解析（所有锁后端共享）
 
-TTL / renew / retry 经 `lock.Resolve`（cloud/experimental/lock/defaults.go）解析，高层优先：
+TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高层优先：
 
 | 层 | 来源 | 本后端 |
 |----|------|--------|

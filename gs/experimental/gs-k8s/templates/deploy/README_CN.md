@@ -59,7 +59,7 @@ startupProbe 的**预算** ≈ `periodSeconds × failureThreshold`。默认值
 
 决定冷启动的**不是 bean 装配**(几百个 bean 的反射接线是亚毫秒级),而是各
 starter **有意为之**的启动期 I/O fail-fast:DB/Redis 拨号、配置中心首拉、
-服务发现 informer sync,以及——如果用了 `starter-migration-gorm`——schema 迁移。
+服务发现 informer sync,以及——如果用了迁移 starter——schema 迁移。
 按你的 **p99 启动**、而非 p50 来定预算。
 
 | 应用画像 | 启动耗时主要来自 | `periodSeconds` | `failureThreshold` | 预算 |

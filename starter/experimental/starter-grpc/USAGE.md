@@ -223,7 +223,7 @@ Rationale (from the source comments, verified):
 - **Tracing before Metrics**: the span wraps the metrics observation too, so duration and status
   land on the same trace context.
 - **Resilience before Fault/Recover**: admission control decides before work is attempted; its
-  executor is wrapped with `resilobserve.WrapExecutor` so trips/rejects emit span + counter +
+  executor is wrapped with `resilience.WrapExecutor` so trips/rejects emit span + counter +
   histogram themselves.
 - **Fault innermost-of-policy** (fault.go): "installed innermost so an injected error flows back
   through tracing/metrics/resilience and is observed" — you can observe the fire you set.

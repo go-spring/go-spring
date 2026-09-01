@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"gorm.io/gorm"
 )
 

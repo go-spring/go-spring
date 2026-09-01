@@ -31,15 +31,15 @@ go get go-spring.org/starter-http-client
 
 The generated `Client` holds only a `Target`. The starter assembles one
 process-wide `http.RoundTripper` and installs it by replacing
-`httpclt.DoRequest` (the single send seam of `cloud/experimental/httpclt`), so
+`httpclt.DoRequest` (the single send seam of `stdlib/httpclt`), so
 generated clients and imperative helpers pick it up with zero wiring. The chain is
-by [`cloud/experimental/httpx`](../../../cloud/experimental/httpx) from three composable stdlib
+by [`cloud/httpx`](../../../cloud/httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
 * [`discovery`](../../../cloud/discovery) — when a `service-name` is set, a
   `Resolver` keeps a fresh endpoint snapshot;
 * [`loadbalance`](../../../cloud/loadbalance) — a `Pool` picks one live endpoint
-  per request (any registered strategy, plus optional outlier ejection) and the
+  per request (any registered strategy, plus optional outlier suspension) and the
   transport rewrites the request host to it;
 * [`resilience`](../../../cloud/governance/resilience) — an optional executor wraps the whole
   chain, so rate limiting, circuit breaking and retry protect every call.
@@ -116,8 +116,8 @@ and asserts all four outcomes end to end:
 | `spring.http-client.<name>.service-name` | — | Logical name resolved through discovery; whenever set it is also the governance resource label. |
 | `spring.http-client.<name>.discovery` | — | Registered discovery backend name. Required when `service-name` is set. |
 | `spring.http-client.<name>.balancer` | `round_robin` | Strategy: `round_robin`, `least_conn`, `consistent_hash`, `weighted`, `zone_aware`. |
-| `spring.http-client.<name>.eject-threshold` | `0` | Consecutive failures that eject an endpoint (0 disables). |
-| `spring.http-client.<name>.eject-for` | `0` | How long an ejected endpoint stays out. |
+| `spring.http-client.<name>.suspend-threshold` | `0` | Consecutive failures that suspend an endpoint (0 disables). |
+| `spring.http-client.<name>.suspend-for` | `0` | How long an suspended endpoint stays out. |
 | `spring.http-client.<name>.observability.level` | `brief` | Access-log gate: `off` / `brief` / `detailed`. |
 | `spring.http-client.<name>.observability.maxArgBytes` | `512` | Argument truncation length in logs. |
 | `spring.http-client.<name>.observability.skipOps` | — | Ops excluded from logging. |

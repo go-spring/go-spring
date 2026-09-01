@@ -17,7 +17,6 @@
 package loadbalance
 
 import (
-	"hash/fnv"
 	"slices"
 	"sort"
 	"strconv"
@@ -25,6 +24,7 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/hashutil"
 )
 
 // defaultReplicas is the number of virtual nodes placed on the ring per
@@ -80,7 +80,7 @@ func (b *consistentHash) Pick(eps []discovery.Endpoint, info PickInfo) (discover
 
 	b.mu.Lock()
 	b.rebuild(eps)
-	h := hashKey(info.HashKey)
+	h := hashutil.FNV1a32(info.HashKey)
 	// First point on the ring at or after h, wrapping around to the start.
 	i := sort.Search(len(b.ring), func(i int) bool { return b.ring[i] >= h })
 	if i == len(b.ring) {
@@ -105,7 +105,7 @@ func (b *consistentHash) rebuild(eps []discovery.Endpoint) {
 	owner := make(map[uint32]discovery.Endpoint, len(eps)*b.replicas)
 	for _, ep := range eps {
 		for i := 0; i < b.replicas; i++ {
-			point := hashKey(ep.Addr + "#" + strconv.Itoa(i))
+			point := hashutil.FNV1a32(ep.Addr + "#" + strconv.Itoa(i))
 			ring = append(ring, point)
 			owner[point] = ep
 		}
@@ -116,22 +116,13 @@ func (b *consistentHash) rebuild(eps []discovery.Endpoint) {
 	b.fp = fp
 }
 
-// hashKey maps a string (request key or "addr#replica") onto the 32-bit ring
-// space. FNV-1a is enough here: it is fast and the ring only needs spread,
-// not cryptographic strength.
-func hashKey(s string) uint32 {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(s))
-	return h.Sum32()
-}
-
 // fingerprint is an order-independent digest of the addresses in eps, used to
 // detect when the ring must be rebuilt. XOR of per-address hashes is
 // commutative, so a reordered but otherwise identical set keeps the same ring.
 func fingerprint(eps []discovery.Endpoint) string {
 	var x uint64
 	for _, ep := range eps {
-		x ^= uint64(hashKey(ep.Addr))
+		x ^= uint64(hashutil.FNV1a32(ep.Addr))
 	}
 	return strconv.FormatUint(x, 16) + ":" + strconv.Itoa(len(eps))
 }

@@ -23,7 +23,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	"go-spring.org/cloud/experimental/lock"
+	"go-spring.org/cloud/lock"
 	"go-spring.org/stdlib/testing/assert"
 )
 

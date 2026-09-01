@@ -25,7 +25,7 @@ package StarterRedigo
 
 import (
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/data/cache"
+	"go-spring.org/cloud/cache"
 	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"

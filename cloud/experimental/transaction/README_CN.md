@@ -1,7 +1,7 @@
 # transaction
 [English](README.md) | [中文](README_CN.md)
 
-`transaction` 是零依赖的 Saga 抽象,面向跨资源 / 跨服务的最终一致性——Go 惯
+`transaction` 是与框架无关的 Saga 抽象,面向跨资源 / 跨服务的最终一致性——Go 惯
 用法版的 Seata Saga + Spring `@GlobalTransactional`。长业务被表达为一串可补偿
 的 `Step`;某步失败,之前成功的步骤按逆序执行 `Compensate`。
 
@@ -15,7 +15,8 @@ TCC / AT 见子包 [`transaction/tcc`](tcc/README.md) 与
 - `Store` 缝隙持久化 saga 日志;内建 `MemoryStore`;持久化后端由 starter 贡献
   bean。
 - `Recover(ctx, s)` 后向恢复:重放崩溃进程可能已副作用的补偿。
-- `Observer` 缝隙——otel 不进 stdlib。
+- `Observer` 缝隙;父包自带 otel 观察者(`SagaObserver` / `TccObserver` /
+  `AtObserver`),模型子包不依赖 otel。
 - `StepRegistry` + `GlobalTransactional(coord, reg)`——装饰器级的
   `@GlobalTransactional` 等价物,按方法名匹配。
 - 步骤级 `RetryPolicy`(等价 `resilience.Policy`)复用出站韧性的同一套配置。

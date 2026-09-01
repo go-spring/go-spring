@@ -52,7 +52,7 @@ pool := loadbalance.NewPool(rsv, bal, loadbalance.WithTracker(tracker))
 
 - **端点来源**是任何实现 `Endpoints() []discovery.Endpoint` 的对象,
   `discovery.Resolver` 直接满足——它内部跟着 discovery Watch 走,快照永远是
-  新的。测试里也可以用四行的固定来源。
+  新的。
 - 每次 `Pick` 依次过滤:**discovery 资格**(禁用/不健康的实例)→ **摘除**
   (`Tracker` 冷却中的实例)→ **零权重摘流**(权重为 0 的实例),幸存者交给
   策略挑选。每级过滤都保证不把非空集合滤成空集——绝不黑洞流量。

@@ -29,7 +29,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -179,7 +178,7 @@ func startConsume(ctx context.Context, ext *primitive.MessageExt) (context.Conte
 // otherwise).
 func applyResilience(c Config, cl *Client, resource string) error {
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilobserve.WrapExecutor(exec, "rocketmq", c.Observability)
+	exec = resilience.WrapExecutor(exec, "rocketmq", c.Observability)
 	cl.exec = exec
 	cl.resource = resource
 	return nil

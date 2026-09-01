@@ -176,7 +176,7 @@ gs.Run()
   │    fallback; instance-prefixed spring.influxdb.<name>.observability.*
   │    overrides it per field — Client.resolveObservability [client.go])
   ├─ Init [client.go:76]: build Observer (NewDB "influxdb") + obsTransport;
-  │    resolve executor = resilobserve.WrapExecutor(fault.WrapExecutor(
+  │    resolve executor = resilience.WrapExecutor(fault.WrapExecutor(
   │    resilience.ExecutorFor("influxdb:<server-url>"))); dyn.Swap the
   │    resilience round-tripper in — observe+governance are live from now on
   ├─ readiness: indicators flip UP (each probe = one /health round trip)
@@ -246,7 +246,7 @@ observability policy is field-injected only *after* the ctor returns. DefaultDri
 installs a pass-through `dynamicTransport` [driver.go:66-72] and Init swaps the real chain in
 [client.go:83-86]. Requests racing between construction and Init simply ride
 http.DefaultTransport. A custom driver that does not install one gets a client with no
-observe/resilience transport — resilience is then unavailable for that client
+governance/resilience observe 桥 — resilience is then unavailable for that client
 [starter.go:74-79]; the per-call `WritePoints` executor still works.
 
 ---

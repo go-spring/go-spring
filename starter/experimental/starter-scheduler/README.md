@@ -15,7 +15,7 @@ the application is ready and, on `SIGTERM`, in-flight runs drain before the
 process exits.
 
 The trigger and concurrency primitives come from the zero-dependency
-[`cloud/experimental/scheduling`](../../../cloud/experimental/scheduling) package; this starter is the thin
+[`cloud/scheduling`](../../../cloud/scheduling) package; this starter is the thin
 integration layer that binds configuration and the IoC container to it.
 
 ## Installation

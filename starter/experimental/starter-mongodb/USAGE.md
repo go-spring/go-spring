@@ -182,7 +182,7 @@ gs.Run()
   │     [starter.go:160-169] — a dead server fails the BOOT, not the first query
   ├─ gs field-injects Client.Observability (${observability:=} — a top-level key, see §3.3 ⚠)
   ├─ Init [client.go:97]: NewDB("mongodb", ...) observer → resource label
-  │   → fault.WrapExecutor(resilience.ExecutorFor(resource)) → resilobserve.WrapExecutor
+  │   → fault.WrapExecutor(resilience.ExecutorFor(resource)) → resilience.WrapExecutor
   │   → swap dialerWrapper.dial = resilience.NewDialer(base, exec, resource)
   ├─ readiness: mongo:<name> indicator runs client.Ping against the live server
   └─ SIGTERM → Destroy [client.go:112]: exec.Close → resolver.Stop → client.Disconnect

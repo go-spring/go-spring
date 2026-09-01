@@ -176,7 +176,7 @@ gs.Run()
   ├─ Init [client.go:76]：observe.NewDB("elasticsearch", ..., WithoutTrace())
   │    → obsTransport（指标 + 访问日志，无 span）
   │    → fault.WrapExecutor(resilience.ExecutorFor(resource))——治理 seam
-  │    → resilobserve.WrapExecutor(...)——outcome 计数 + resilience span
+  │    → resilience.WrapExecutor(...)——outcome 计数 + resilience span
   │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, →resource)) [client.go:86-92]
   ├─ 就绪：指示器转 UP（执行 client.Info）
   └─ SIGTERM → Destroy [client.go:98]：exec.Close → 停 discovery watch → client.Close
@@ -196,7 +196,7 @@ elasticsearch API（Index/Get/...）
   → elastictransport 重试循环（MaxRetries / DisableRetry）
   → dynamicTransport（RWMutex 间接层；Init 换入前直通 http.DefaultTransport）
   → resilience roundTripper：executor = fault.InjectorFor → 限流/熔断/bulkhead/重试，
-      其外再包 resilobserve（每次 Execute 的 span + outcome 计数 + 访问日志）
+      其外再包 resilience（每次 Execute 的 span + outcome 计数 + 访问日志）
   → obsTransport：db.client.operation.duration 直方图 + db.client.active_requests gauge
       + _app_elasticsearch_access 日志（以 WithoutTrace 构建——不重复出 span）
   → http.DefaultTransport → 网络
@@ -208,7 +208,7 @@ elasticsearch API（Index/Get/...）
   `elasticsearch.Config.Instrumentation`，因此 span 覆盖重试；kit 以 `WithoutTrace()`
   构建，只补 metric+log 缺口 [client.go:77-78]。
 - **resilience 位于 kit 的 observe transport 之外**——与 go-redis 相反（那边访问日志包
-  在熔断器外）。这里用 `resilobserve.WrapExecutor` 包 executor 本身，使熔断跳闸/限流
+  在熔断器外）。这里用 `resilience.WrapExecutor` 包 executor 本身，使熔断跳闸/限流
   拒绝获得**自己的** span + outcome 计数，而 obsTransport 在被保护调用内部记录 HTTP
   结果。
 - **用 dynamicTransport 而非固定 transport**：ES 的 transport 在构造期固定、事后无法
@@ -388,10 +388,10 @@ spring.elasticsearch.disc.service-name=es-cluster
   哑地址写法是权宜而非设计（候选：service-name/cloud-id 存在时放宽 expr）。
 - 与兄弟 starter 不同没有 `tls.*` 块——TLS 分散在三个 key 加 URL scheme
   （`https://` 地址、`cloud-id`、`certificate-fingerprint`）。
-- 自定义 driver 静默丢失 observe/resilience transport 换入——无告警、无 hook。
+- 自定义 driver 静默丢失 governance/resilience observe 桥 换入——无告警、无 hook。
 - discovery 启动期一次性解析；Resolver 仅为生命周期对称而保活（死重 + 误导性的存活语义）。
 - schema.json 的 `enable-metrics` 默认值（`false`）与代码（`true`）不一致——schema 非
   生成物，会漂移。
 - 健康指示器无 opt-out key（与 go-redis 同款家族不对称；redigo 有 `health.enabled`）。
 - 本 starter 的 resilience 位于 observe transport 之外，go-redis 则在内——家族间分层
-  不同；resilobserve 桥补偿了缺口，但跨家族的 span/指标发射点翻倍。
+  不同；resilience 桥补偿了缺口，但跨家族的 span/指标发射点翻倍。

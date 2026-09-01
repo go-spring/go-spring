@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
 against the starter source (`starter.go`, `config.go`, `store.go`), the shared abstraction
-[cloud/experimental/session](../../../cloud/experimental/session), and the self-asserting
+[cloud/session](../../../cloud/session), and the self-asserting
 [example/](example) (`example/check.sh`). Session semantics (cookie handling, idle timeout,
 `RenewID`) live in the session package; Redis semantics are [Redis docs](https://redis.io/docs/latest/commands/set/) —
 everything below is go-spring's increment.
@@ -61,7 +61,7 @@ import (
     "net/http"
     "time"
 
-    "go-spring.org/cloud/experimental/session"
+    "go-spring.org/cloud/session"
     "go-spring.org/spring/gs"
 )
 

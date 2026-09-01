@@ -63,7 +63,6 @@ import (
 	"context"
 
 	"go-spring.org/cloud/experimental/transaction"
-	"go-spring.org/cloud/observe/transaction"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -108,7 +107,7 @@ func init() {
 func newCoordinator(c Config, store transaction.Store) transaction.Coordinator {
 	opts := []transaction.Option{transaction.WithStore(store)}
 	if c.Tracing {
-		opts = append(opts, transaction.WithObserver(transactionobserve.SagaObserver{}))
+		opts = append(opts, transaction.WithObserver(transaction.SagaObserver{}))
 	}
 	log.Infof(context.Background(), log.TagAppDef, "saga coordinator created tracing=%v", c.Tracing)
 	return transaction.NewCoordinator(opts...)

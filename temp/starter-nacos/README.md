@@ -85,7 +85,7 @@ Declare the import in your configuration file using the provider syntax
 `[optional:]nacos:<host>:<port>/<dataId>?<query>`:
 
 ```properties
-spring.app.imports=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
+spring.config.import=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
 ```
 
 Query parameters:

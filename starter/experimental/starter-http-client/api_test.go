@@ -112,9 +112,9 @@ func TestWithQueryAndHeader(t *testing.T) {
 	assert.That(t, captured.Header.Get("X-Trace")).Equal("abc")
 }
 
-func TestWithQueryRejectsMalformed(t *testing.T) {
+func TestWithQueryRsuspendsMalformed(t *testing.T) {
 	// An unencodable query string must surface as an error, not a silently
-	// dropped query (url.ParseQuery rejects e.g. a bare '%').
+	// dropped query (url.ParseQuery rsuspends e.g. a bare '%').
 	svr, _ := newEchoServer(t)
 	type resp struct{}
 	_, _, err := Get[resp](context.Background(), targetOf(svr), "/x", WithQuery("%zz"))

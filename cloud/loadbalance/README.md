@@ -55,7 +55,7 @@ pool := loadbalance.NewPool(rsv, bal, loadbalance.WithTracker(tracker))
 - **The endpoint source** is anything implementing
   `Endpoints() []discovery.Endpoint`; a `discovery.Resolver` satisfies it
   directly — it tracks discovery Watch internally, so the snapshot is always
-  fresh. A four-line fixed source works in tests.
+  fresh.
 - Each `Pick` filters in order: **discovery eligibility** (disabled/unhealthy
   instances) → **suspension** (instances cooling down in the `Tracker`) →
   **zero-weight drain** (instances whose weight was set to 0). The survivors

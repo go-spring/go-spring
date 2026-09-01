@@ -51,7 +51,7 @@ import (
 
     "github.com/twmb/franz-go/pkg/kgo"
     "go-spring.org/cloud/actuator/health"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/spring/gs"
     StarterKafka "go-spring.org/starter-kafka"
 )
@@ -157,7 +157,7 @@ gs.Run()
   │   3. Ping with 10s timeout — bad brokers/credentials/TLS fail the
   │      boot instead of the first produce                                [starter.go:50,76-82]
   │   4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor(
-  │      "kafka:<brokers>")) → resilobserve.WrapExecutor, indexed by
+  │      "kafka:<brokers>")) → resilience.WrapExecutor, indexed by
   │      client pointer in package-level sync.Maps                        [command.go:99-105]
   ├─ no Init hook; the *kgo.Client bean is ready after the ctor
   ├─ Destroy(destroyClient) [starter.go:95-102]:
@@ -212,7 +212,7 @@ starter's lifecycle concerns [driver.go:62-66 comment].
 
 `Subscribe(ctx, handler)` on a subscriber bound to source `hello` [client.go:109-144]:
 
-1. `messaging.SafeHandler` converts handler panics into the error path [client.go:112].
+1. `messaging.Recover` converts handler panics into the error path [client.go:112].
 2. One background goroutine polls `cl.PollFetches` on a context derived from the Subscribe ctx
    via `context.WithoutCancel` + a cancel func held for Close [client.go:113].
 3. Poll errors are logged (tag `log.TagAppDef`), `context.Canceled` suppressed [client.go:121-127].
@@ -237,7 +237,7 @@ franz-go's async `Produce` returns immediately, so only the synchronous path can
 - guard resolves the executor attached to `cl`; without one (governance off) it runs inline —
   identical to `cl.ProduceSync`.
 - With governance on, the call passes through `fault.WrapExecutor(resilience.ExecutorFor(...))`
-  then `resilobserve.WrapExecutor` [command.go:100-101] — runtime fault injection and resilience
+  then `resilience.WrapExecutor` [command.go:100-101] — runtime fault injection and resilience
   outcome metrics around the produce; resource label `kafka:<brokers>` (format `prefix:name`,
   [resilience/config.go:151-158]).
 - On rejection (rate-limit / open breaker) the produce is **never invoked**; the rejection error
@@ -398,7 +398,7 @@ franz-go reconnects automatically (its own semantics).
 Design suspects (audit ledger; carried over from the previous edition, none fixed since):
 
 - binder drops `NewSubscriber`'s `group` arg and silently filters on `source` mismatch [client.go:68,129-131] — violates fail-fast.
-- consume handler errors only logged, no nack/redelivery [client.go:137-139] — contradicts the SafeHandler comment's framing [client.go:110-112].
+- consume handler errors only logged, no nack/redelivery [client.go:137-139] — contradicts the Recover comment's framing [client.go:110-112].
 - ~~`destroyClient` discards the Flush error~~ fixed: Flush failure now logs an ERROR naming
   the data-loss consequence and propagates out of the destroy hook.
 - no health indicator from the starter (family asymmetry: go-redis/redigo register one).

@@ -17,8 +17,9 @@ per-component adaptation.
   ship one opinionated installer, so the app owns it (see the example).
 - Wiring model is **implicit-global**, not per-bean: importing the
   starter is the opt-in; every OTel-aware library reads the globals.
-- Exports the providers as beans **only** for shutdown ordering. Callers
-  do not autowire them.
+- Providers are not beans. They are process globals installed at module
+  setup and torn down via `gs.RegisterStopper`, which runs after all
+  servers have stopped and the IoC container has closed.
 - Optionally contributes a Prometheus `/metrics` handler as an
   `endpoint.Endpoint`, so `starter-actuator` — if present — serves it on
   the shared management port without any cross-starter import.
@@ -55,9 +56,20 @@ per-component adaptation.
   false` but per-pillar (e.g. traces on, metrics off).
 - **Prometheus exporter is pull-based.** Choose port=0 (mount via
   actuator) or port>0 (dedicated server). Both cannot be used.
-- **Shutdown order matters.** Providers are registered as beans with
-  `Destroy` hooks so pending spans/metrics flush before other beans
-  (which may still emit) tear down.
+- **Shutdown order: servers → container → OTel flush → log.** The
+  providers are registered as process-global stoppers
+  (`gs.RegisterStopper`), which the runtime invokes only after every
+  server has stopped and the container has closed — no new spans/metrics
+  can be produced by then. The flush context carries no deadline
+  (`context.WithoutCancel`), so the final batch waits for the export to
+  finish rather than being cut short by shutdown timeouts.
+- **What a hard kill loses.** `Shutdown` is the only flush point. If the
+  process dies without running stoppers (SIGKILL, `os.Exit`, a server
+  whose graceful shutdown never returns), buffered data is dropped:
+  traces up to one BatchSpanProcessor queue (default 2048 spans /
+  5 s batch timeout), metrics up to one PeriodicReader interval
+  (default 60 s). The pull-based Prometheus exporter keeps no buffer —
+  it only computes at scrape time, so there is nothing pending to lose.
 
 ## 4. Trade-offs / Alternatives Rejected
 

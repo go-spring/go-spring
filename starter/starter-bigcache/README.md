@@ -76,7 +76,7 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 * **Graceful shutdown**: the destroy callback calls `Close()`, stopping the background cleaner goroutine.
 * **Cache abstraction backend**: importing this starter also registers the
   `bigcache` cache driver, so `spring.cache.<name>.driver=bigcache:<instance>`
-  exposes the instance as a `cloud/data/cache.Cache` bean (see
+  exposes the instance as a `cloud/cache.Cache` bean (see
   [starter-cache](../starter-cache)). Note BigCache expires by a single global
   `life-window`, so the per-call TTL is ignored; when used purely as a local
   level, `cache.Memory` (which keeps concrete types without serialization) is

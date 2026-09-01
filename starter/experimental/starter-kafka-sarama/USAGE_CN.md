@@ -174,7 +174,7 @@ gs.Run()
   │       爆雷 [client.go:42-46 注释, driver.go:63-96]
   │    3. 防御性 fail-fast：len(Brokers())==0 → close + 启动报错 [client.go:60-64]
   │    4. applyResilience：fault.Wrap(ExecutorFor("kafka:<brokers>")) →
-  │       resilobserve.WrapExecutor（span/计数/直方图/访问日志）→ 以 client
+  │       resilience.WrapExecutor（span/计数/直方图/访问日志）→ 以 client
   │       为键存入 sync.Map [client.go:65-69, command.go:208-217]
   ├─ 派生 bean 归你所有：注入 client 处用 sarama.New*FromClient 自建
   └─ SIGTERM → Destroy：closeResilience（exec.Close、清 map）→ cl.Close()
@@ -191,7 +191,7 @@ gs.Run()
 
 ```
 SendMessage / SendMessages
-  → resilobserve executor 包装（span + outcome 计数 + duration + 访问日志）
+  → resilience executor 包装（span + outcome 计数 + duration + 访问日志）
     → fault.WrapExecutor（govern.fault 启用时注入故障）
       → resilience executor（breaker / rate limit / retry，策略来自治理中心）
         → 内层 p.SendMessage（真实 sarama）

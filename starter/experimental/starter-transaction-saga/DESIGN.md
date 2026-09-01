@@ -64,7 +64,7 @@ TC/TM/RM roles or bytecode magic.
 ## 4. Constraints & Risks
 
 - **No isolation.** Saga has no read/write barrier — pair with
-  `cloud/experimental/lock` at the business boundary if you need one.
+  `cloud/lock` at the business boundary if you need one.
 - **Compensations must be idempotent.** A crash can retry them at any
   offset; the coordinator collects, not first-error terminates, so a
   compensation chain with multiple failures gathers every error into

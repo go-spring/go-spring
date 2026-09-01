@@ -21,7 +21,6 @@ import (
 	"errors"
 
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/observe/resilience"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -52,7 +51,7 @@ type resilienceInterceptors struct {
 func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors, bool) {
 	resource := resilience.ResourceLabel("grpc", s.cfg.Addr)
 	exec := resilience.ExecutorFor(resource)
-	exec = resilobserve.WrapExecutor(exec, "grpc", s.cfg.Observability)
+	exec = resilience.WrapExecutor(exec, "grpc", s.cfg.Observability)
 	return resilienceInterceptors{
 		unary: resilienceUnaryInterceptor(exec, resource),
 	}, true

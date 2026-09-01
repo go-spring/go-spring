@@ -67,7 +67,7 @@ import (
     "context"
 
     "github.com/apache/rocketmq-client-go/v2/primitive"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
     StarterRocketmq "go-spring.org/starter-rocketmq"
@@ -183,7 +183,7 @@ gs.Run()
   │    4. FailFast probe: TCP dial, first reachable addr wins, 3s budget
   │       per address; failure → boot error                                    [driver.go:146-160]
   │    5. applyResilience: fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │       → resilobserve.WrapExecutor → attached to the Client                [command.go:180-186]
+  │       → resilience.WrapExecutor → attached to the Client                [command.go:180-186]
   ├─ app injects *Client wherever `autowire:"<name>"` appears
   ├─ app creates producers/consumers/binder at its own pace (each registered
   │  on the Client under a mutex)                                             [client.go:104-157]
@@ -211,7 +211,7 @@ GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
        └─ exec.Execute(ctx, "rocketmq:<name-servers>", call)     — resilience.Executor
             layers inside-out as built in applyResilience [command.go:181-182]:
             fault.Injector (outer) → resilience core (rate limit / breaker / ...)
-            → resilobserve observer (innermost, 6 outcomes) → producer.SendSync
+            → resilience observer (innermost, 6 outcomes) → producer.SendSync
 ```
 
 - The executor wraps **only** `GuardedSend`'s synchronous `SendSync`. **NOT guarded**: the binder's
@@ -245,7 +245,7 @@ GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
 
 The SDK push-consumer goroutines invoke the starter's handler [binder.go:125-141]:
 
-1. `messaging.SafeHandler` was pre-wrapped at Subscribe so a handler panic becomes a normal
+1. `messaging.Recover` was pre-wrapped at Subscribe so a handler panic becomes a normal
    error (nack/redelivery) instead of unwinding the SDK goroutine [binder.go:119].
 2. Per message: `startConsume` extracts the upstream trace from the user properties and opens a
    "consume" observation [command.go:160-163].
@@ -325,7 +325,7 @@ comma-joined name-servers — check it matches your govern rules):
 
 - Hammer `GuardedSend` → rejections return `resilience.ErrRateLimited`, the send is never invoked,
   and `_app_rocketmq_resilience` records appear with `resilience.outcome=rate_limited`
-  [observe/resilience/executor.go:66-78].
+  [cloud/governance/resilience/observe.go:66-78].
 - Hammer the binder's `Publish` with the same policy → nothing happens: that path bypasses the
   executor (§2.2). This asymmetry is the drill's point.
 

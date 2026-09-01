@@ -2,7 +2,8 @@ go 1.26.1
 
 use (
 	./cloud
-	./cloud/experimental/event/example
+	./cloud/i18n/example
+	./cloud/validation/example
 	./contrib/dubbo-go/dubbo
 	./contrib/dubbo-go/jsonrpc
 	./contrib/dubbo-go/rest
@@ -23,12 +24,6 @@ use (
 	./contrib/registry/nacos
 	./contrib/registry/polaris
 	./contrib/registry/zookeeper
-	./examples/bookman
-	./examples/chatAI
-	./examples/cloudnative
-	./examples/fullstack
-	./examples/miniapi
-	./examples/startup
 	./gs/experimental/gs-gui
 	./gs/experimental/gs-k8s
 	./gs/experimental/gs-serve
@@ -121,10 +116,10 @@ use (
 	./starter/experimental/starter-lua-filter
 	./starter/experimental/starter-lua-filter/example
 	./starter/experimental/starter-mail
+	./starter/experimental/starter-migration-goose
+	./starter/experimental/starter-migration-goose/example
 	./starter/experimental/starter-mail/example
 	./starter/experimental/starter-mail/example-otel
-	./starter/experimental/starter-migration-gorm
-	./starter/experimental/starter-migration-gorm/example
 	./starter/experimental/starter-milvus
 	./starter/experimental/starter-milvus/example
 	./starter/experimental/starter-mongodb
@@ -163,8 +158,6 @@ use (
 	./starter/experimental/starter-registry-nacos/example
 	./starter/experimental/starter-registry-zookeeper
 	./starter/experimental/starter-registry-zookeeper/example
-	./starter/experimental/starter-repository-gorm
-	./starter/experimental/starter-repository-gorm/example
 	./starter/experimental/starter-resilience
 	./starter/experimental/starter-resilience/example
 	./starter/experimental/starter-rocketmq
@@ -199,8 +192,6 @@ use (
 	./starter/experimental/starter-trpc
 	./starter/experimental/starter-trpc/example
 	./starter/experimental/starter-trpc/example-otel
-	./starter/experimental/starter-validation
-	./starter/experimental/starter-validation/example
 	./starter/experimental/starter-webhook
 	./starter/experimental/starter-webhook/example
 	./starter/experimental/starter-xxljob

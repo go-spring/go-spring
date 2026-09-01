@@ -150,7 +150,7 @@ gs.Run()
   ├─ gs 字段注入 Client.Observability（${observability:=} —— 顶层绝对 key）
   ├─ Init [client.go:64]：observe.NewDB("cassandra", …) → resource label
   │     → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │     → resilobserve.WrapExecutor —— exec 链就绪
+  │     → resilience.WrapExecutor —— exec 链就绪
   ├─ readiness：每个实例的 indicator 查询 system.local
   └─ SIGTERM → Destroy [client.go:75]：exec.Close（若已武装）→ Session.Close
 ```
@@ -201,7 +201,7 @@ access-log。
 
 `Exec` 的分层顺序（由外向内）：observer start → fault 注入器（fault.WrapExecutor，
 进程级）→ resilience 执行器（治理中心）→ gocql。resilience observer
-（`resilobserve.WrapExecutor`）在执行器外再加 outcome 计数，因此注入故障与 breaker
+（`resilience.WrapExecutor`）在执行器外再加 outcome 计数，因此注入故障与 breaker
 拒绝都会被计数和记录。
 
 ### 2.4 Driver 构造缝

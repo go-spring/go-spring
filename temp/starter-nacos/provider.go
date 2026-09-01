@@ -39,7 +39,7 @@ import (
 
 func init() {
 	// Register "nacos" as a remote configuration provider so that a
-	// spring.app.imports entry such as
+	// spring.config.import entry such as
 	//
 	//	optional:nacos:127.0.0.1:8848/my-data-id?group=DEFAULT_GROUP&format=properties
 	//

@@ -1,7 +1,7 @@
 # resilience
 [English](README.md) | [中文](README_CN.md)
 
-`resilience` is a framework-agnostic, zero-dependency abstraction for
+`resilience` is a framework-agnostic client-fault-tolerance abstraction for
 client-side fault tolerance: rate limiting, circuit breaking, bulkhead
 isolation, retry, per-attempt timeout, and fallback. Client starters plug
 the single `Executor` seam into their own request hook (HTTP RoundTripper,

@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 )
 
 // memBinder is an in-memory [messaging.Binder]: publishers either capture

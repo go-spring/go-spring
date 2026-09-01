@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"go-spring.org/cloud/experimental/security"
+	"go-spring.org/cloud/security"
 )
 
 var ctx = context.Background()

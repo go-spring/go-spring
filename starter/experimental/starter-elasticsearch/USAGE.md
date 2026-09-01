@@ -168,7 +168,7 @@ gs.Run()
   ├─ Init [client.go:76]: observe.NewDB("elasticsearch", ..., WithoutTrace())
   │    → obsTransport (metric + access log, no span)
   │    → fault.WrapExecutor(resilience.ExecutorFor(resource)) — governance seams
-  │    → resilobserve.WrapExecutor(...) — outcome counter + resilience span
+  │    → resilience.WrapExecutor(...) — outcome counter + resilience span
   │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, →resource)) [client.go:86-92]
   ├─ readiness: indicator flips UP (runs client.Info)
   └─ SIGTERM → Destroy [client.go:98]: exec.Close → stop discovery watch → client.Close
@@ -188,7 +188,7 @@ elasticsearch API (Index/Get/...)
   → elastictransport retry loop (MaxRetries / DisableRetry)
   → dynamicTransport (RWMutex indirection; http.DefaultTransport until Init swaps)
   → resilience roundTripper: executor = fault.InjectorFor → limiter/breaker/bulkhead/retry,
-      itself wrapped by resilobserve (span + outcome counter + access log per Execute)
+      itself wrapped by resilience (span + outcome counter + access log per Execute)
   → obsTransport: db.client.operation.duration histogram + db.client.active_requests gauge
       + _app_elasticsearch_access log (built WithoutTrace — no duplicate span)
   → http.DefaultTransport → network
@@ -201,7 +201,7 @@ Rationale (source comments, [command.go:17-41] and [client.go:56-95]):
   built `WithoutTrace()` and only fills the metric+log gap [client.go:77-78].
 - **Resilience OUTSIDE the kit's observe transport** — deliberate difference from go-redis
   (where the access log wraps the breaker). Here the resilience executor itself is wrapped by
-  `resilobserve.WrapExecutor`, so breaker trips / rate-limit rejections get their *own* span +
+  `resilience.WrapExecutor`, so breaker trips / rate-limit rejections get their *own* span +
   outcome counter, while obsTransport records the HTTP outcome inside the protected call.
 - **dynamicTransport instead of a fixed transport**: the ES transport is fixed at construction
   and cannot be swapped on the client afterwards; the indirection keeps the resilience policy
@@ -388,7 +388,7 @@ Design suspects (audit ledger; first three carried over from the previous doc):
   the expr when service-name/cloud-id present).
 - No `tls.*` block unlike sibling starters — TLS lives in three different keys plus the URL
   scheme (`https://` addresses, `cloud-id`, `certificate-fingerprint`).
-- Custom drivers silently lose the observe/resilience transport swap — no warning, no hook.
+- Custom drivers silently lose the governance/resilience observe 桥 swap — no warning, no hook.
 - Discovery is one-shot at startup; the Resolver is kept alive only for lifecycle symmetry
   (dead weight + misleading liveness).
 - schema.json `enable-metrics` default (`false`) disagrees with the code (`true`) — schema is
@@ -396,5 +396,5 @@ Design suspects (audit ledger; first three carried over from the previous doc):
 - Health indicator has no opt-out key (same family asymmetry as go-redis; redigo has
   `health.enabled`).
 - Resilience sits OUTSIDE the observe transport here but INSIDE for go-redis — per-family
-  layering differs; the resilobserve bridge compensates but doubles span/metric emission
+  layering differs; the resilience bridge compensates but doubles span/metric emission
   points across families.

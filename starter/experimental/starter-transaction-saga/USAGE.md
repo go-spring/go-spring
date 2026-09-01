@@ -4,7 +4,7 @@ Detailed usage reference. Overview: [README.md](README.md). All behavior claims 
 against the starter source (`starter.go`, `config.go`, `recovery.go`, `starter_test.go`) and the
 wrapped coordinator in [`go-spring.org/cloud/experimental/transaction`](../../../cloud/experimental/transaction)
 (`coordinator.go`, `global.go`, `store.go`, `transaction.go`), plus
-[`cloud/observe/transaction/observer.go`](../../../cloud/observe/transaction/observer.go) for tracing.
+[`cloud/experimental/transaction/observe.go`](../../../cloud/experimental/transaction/observe.go) for tracing.
 **Saga pattern semantics (forward steps + reverse compensation, when to pick Saga over TCC/AT) are
 distributed-transaction literature** — see [Seata Saga mode](https://seata.apache.org/docs/user/saga)
 and the README comparison table; this page covers only the go-spring increment.
@@ -305,7 +305,7 @@ TOP-LEVEL absolute keys under `spring.transaction.saga` — the starter binds on
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.transaction.saga.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` — absent means ON. `false` imports the module without contributing any bean (useful when a test binary wants the types but not the wiring). | `false` by accident → no Coordinator bean → autowire of `transaction.Coordinator` fails at wiring (visible, not silent). |
-| `spring.transaction.saga.tracing` | bool | `true` | Attaches `transactionobserve.SagaObserver{}` at coordinator construction → one otel child span per step phase on the starter-otel globals. No-op (no spans, no warnings) without starter-otel. | Expecting traces without starter-otel → nothing; also no error anywhere. |
+| `spring.transaction.saga.tracing` | bool | `true` | Attaches `transaction.SagaObserver{}` at coordinator construction → one otel child span per step phase on the starter-otel globals. No-op (no spans, no warnings) without starter-otel. | Expecting traces without starter-otel → nothing; also no error anywhere. |
 | `spring.transaction.saga.recover-on-start` | bool | `true` | Registers the recovery `gs.Runner` that scans `Store.Pending()` for `StatusRunning` snapshots and compensates each (backward recovery). ⚠ **Coupled to the store seam**: with the default in-memory `MemoryStore` the scan is always empty after a restart — the key is effectively dead unless a durable Store starter (e.g. `spring.transaction.saga.store=gorm` + starter-transaction-saga-gorm) is active. | Setting `false` with a durable store → crash-stranded sagas are NEVER compensated (silently inconsistent); setting `true` without one → no-op, no warning. |
 
 Related keys owned by OTHER modules that interact here (not this starter's surface):

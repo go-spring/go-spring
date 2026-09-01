@@ -32,7 +32,7 @@ type suspendState struct {
 	suspendedAt time.Time
 }
 
-// TrackerConfig configures outlier suspension.
+// TrackerConfig is the configuration for a [Tracker].
 type TrackerConfig struct {
 	// Threshold is the number of consecutive failures that suspends an endpoint.
 	// 0 (or negative) disables suspension entirely.
@@ -58,12 +58,11 @@ type TrackerConfig struct {
 // depending on the other.
 //
 // A Tracker with Threshold <= 0 is disabled: [Tracker.Allows] returns every
-// endpoint and [Tracker.Record] is a no-op, so wiring one in stays a transparent
-// pass-through until suspension is configured.
+// endpoint and [Tracker.Record] is a no-op. It is safe to attach a disabled
+// Tracker — it has no effect until Threshold is set.
 type Tracker struct {
 	// cfg is the normalized copy of the [TrackerConfig] passed to NewTracker
-	// (SuspendFor's default applied), kept as one value so adding a config
-	// field does not grow this struct.
+	// (SuspendFor's default applied).
 	cfg TrackerConfig
 
 	// now is the clock, injectable so tests can drive suspension windows
@@ -75,7 +74,7 @@ type Tracker struct {
 }
 
 // NewTracker builds a [Tracker] from cfg. A zero SuspendFor is normalized to
-// the 5s default here so the tracker stores one settled config.
+// the 5s default here.
 func NewTracker(cfg TrackerConfig) *Tracker {
 	if cfg.SuspendFor <= 0 {
 		cfg.SuspendFor = 5 * time.Second
@@ -87,16 +86,25 @@ func NewTracker(cfg TrackerConfig) *Tracker {
 	}
 }
 
-// Allows returns the subset of eps that may currently receive traffic,
-// dropping endpoints that are suspended and still cooling down. A suspended
-// endpoint whose cool-down has elapsed is admitted (half-open trial) so it can
-// prove itself. When the tracker is disabled it returns eps unchanged.
+// Allows returns the subset of eps that may currently receive traffic:
+// endpoints that are suspended and still cooling down are dropped, while a
+// suspended endpoint whose cool-down has elapsed is admitted (half-open
+// trial). When the tracker is disabled it returns eps unchanged.
 //
-// Allows never returns an empty slice when eps is non-empty solely due to
-// suspension: if every endpoint is suspended it returns eps unchanged, because
-// black-holing all traffic is worse than probing a degraded instance. The
-// caller (Pool) applies its own final fallback too.
+// If every endpoint is suspended it falls back to eps — black-holing all
+// traffic is worse than probing a degraded instance. Callers that own this
+// fallback themselves should use [Admissible] instead.
 func (t *Tracker) Allows(eps []discovery.Endpoint) []discovery.Endpoint {
+	out := t.Admissible(eps)
+	if len(out) == 0 {
+		return eps
+	}
+	return out
+}
+
+// Admissible is [Allows] without the fallback: when every endpoint is
+// suspended it returns an empty slice, leaving that decision to the caller.
+func (t *Tracker) Admissible(eps []discovery.Endpoint) []discovery.Endpoint {
 	if t == nil || t.cfg.Threshold <= 0 || len(eps) == 0 {
 		return eps
 	}
@@ -108,9 +116,6 @@ func (t *Tracker) Allows(eps []discovery.Endpoint) []discovery.Endpoint {
 		if t.admitLocked(ep.Addr) {
 			out = append(out, ep)
 		}
-	}
-	if len(out) == 0 {
-		return eps
 	}
 	return out
 }

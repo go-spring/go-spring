@@ -27,7 +27,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/experimental/lock"
+	"go-spring.org/cloud/lock"
 	"go-spring.org/spring/gs"
 
 	// Blank-import the scheduler starter: it registers a gs.Server that drives

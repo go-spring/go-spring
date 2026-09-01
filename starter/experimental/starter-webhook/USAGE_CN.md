@@ -141,7 +141,7 @@ gs.Run()
   │    ├─ 用空 Notification 干跑一次 buildPayload——校验 channel 取值、
   │    │   （dingtalk/feishu）签名可用性，全程无网络请求
   │    ├─ exec := fault.WrapExecutor(resilience.ExecutorFor("webhook:<name>:<channel>"))
-  │    ├─ exec := resilobserve.WrapExecutor(exec, "webhook", c.Observability)
+  │    ├─ exec := resilience.WrapExecutor(exec, "webhook", c.Observability)
   │    └─ &http.Client{Timeout: c.Timeout} —— 每 notifier 一个 client，不池化
   ├─ bean 就绪：*Notifier 注入所有 `autowire:"<name>"` 处
   ├─ Run / 服务：无后台 goroutine、无探测（理由见顶部激活说明）
@@ -170,7 +170,7 @@ resilience 资源标签为 `webhook:<name>:<channel>`——按实例**且**按�
    scheme://host，签名 URL 不进遥测）。
 3. **Executor** —— POST 闭包经资源标签下的治理 executor：引入 starter-governance 后
    限流 / 熔断 / retry（若经治理配置）/ fault 注入生效，否则透明直通。
-   `resilobserve.WrapExecutor` 按级别发 outcome span + 调用计数 + 时长直方图 +
+   `resilience.WrapExecutor` 按级别发 outcome span + 调用计数 + 时长直方图 +
    访问日志。手工构造的零值 Notifier（测试场景）没有 executor，直接 POST——
    Send 两种情况都可用。
 4. **POST** —— `n.post`：`Content-Type: application/json`，client 受 `timeout` 约束；
@@ -202,7 +202,7 @@ wrapper-field tag）。
 | `channel` | string | generic | `generic`\|`dingtalk`\|`feishu`\|`wecom`\|`slack`；决定 payload 构建器、签名方案，以及 resilience 标签第三段。 | 未知值 → 启动期经干跑 buildPayload 报错（报错文案见 §2.2）。 |
 | `secret` | string | — | DingTalk 加签（SEC...）或 Feishu 签名密钥；generic/wecom/slack **忽略**。 | ⚠ 配在错误渠道被静默忽略——未签名消息在 Send 时被接收方拒绝。 |
 | `timeout` | duration | 5s | 约束一次 POST（`http.Client.Timeout`）。 | 过小 → 慢平台出现客户端超时；executor（按治理策略）可能重试放大负载。 |
-| `observability` | struct | brief | 每次发送的访问日志/metric/span 级别（`off`\|`brief`\|`detailed`），实例前缀下的子 key `observability.level` / `.maxArgBytes`（默认 512）/ `.skipOps`；喂给 `resilobserve.WrapExecutor`。 | `off` 去掉逐发送日志；`detailed` 按 maxArgBytes 记录 payload 字节。 |
+| `observability` | struct | brief | 每次发送的访问日志/metric/span 级别（`off`\|`brief`\|`detailed`），实例前缀下的子 key `observability.level` / `.maxArgBytes`（默认 512）/ `.skipOps`；喂给 `resilience.WrapExecutor`。 | `off` 去掉逐发送日志；`detailed` 按 maxArgBytes 记录 payload 字节。 |
 
 ---
 

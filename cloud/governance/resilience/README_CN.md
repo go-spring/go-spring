@@ -1,7 +1,7 @@
 # resilience
 [English](README.md) | [中文](README_CN.md)
 
-`resilience` 是零依赖、框架无关的客户端容错抽象:限流、熔断、bulkhead 隔离、
+`resilience` 是框架无关的客户端容错抽象:限流、熔断、bulkhead 隔离、
 重试、每次尝试超时、降级。客户端 starter 把单一 `Executor` seam 插入自家请求
 钩子(HTTP RoundTripper / Redis Hook / GORM plugin ...);分布式限流走并列的
 `RateLimiter` seam。

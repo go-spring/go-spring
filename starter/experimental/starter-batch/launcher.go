@@ -19,7 +19,7 @@ package StarterBatch
 import (
 	"context"
 
-	"go-spring.org/cloud/experimental/batch"
+	"go-spring.org/cloud/batch"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )

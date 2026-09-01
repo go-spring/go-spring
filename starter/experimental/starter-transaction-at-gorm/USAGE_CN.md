@@ -257,7 +257,7 @@ gs.Run()
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `spring.transaction.at.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()`（starter.go:70）。`false` 不装配任何 bean——只引入模块。 | `false` → 容器装配时注入 `at.Coordinator`/`at.GlobalLock` 失败（无此 bean）；运行期写入不被捕获、静默退化为非 AT。 |
-| `spring.transaction.at.tracing` | bool | `true` | coordinator 构造时追加 `at.WithObserver(transactionobserve.AtObserver{})`（starter.go:93-94）。每个 branch 阶段一个 span：`at.commit <branch>` / `at.rollback <branch>`，属性 `at.xid` / `at.branch` / `at.phase`（cloud/observe/transaction/observer.go:129-142）。 | `false`（或 `true` 但没引 starter-otel）：静默——无 span、无告警。 |
+| `spring.transaction.at.tracing` | bool | `true` | coordinator 构造时追加 `at.WithObserver(transaction.AtObserver{})`（starter.go:93-94）。每个 branch 阶段一个 span：`at.commit <branch>` / `at.rollback <branch>`，属性 `at.xid` / `at.branch` / `at.phase`（cloud/experimental/transaction/observe.go）。 | `false`（或 `true` 但没引 starter-otel）：静默——无 span、无告警。 |
 | `spring.transaction.at.recover-on-start` | bool | `true` | 注册崩溃恢复 gs.Runner（starter.go:95-99、recovery.go）。启动时扫描每个已接入库的 `at_undo_log`，逐个回滚孤儿 XID（见 §4.3）。 | `false` → 崩溃遗留的孤儿 undo log 不被回放：`at_undo_log` 持续增长，一阶段的业务变更保持已应用，需人工对账。 |
 
 无枚举 key；无联动 key。注意"接入"旋钮（resource id、哪些库加入）是**代码不是配置**——

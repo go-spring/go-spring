@@ -117,7 +117,7 @@ Two recurring traps:
   its home is `spring/`, not `stdlib/`), and the moment a third-party import is
   required it cannot live in either foundation layer. The pattern is:
   **abstraction + driver registry in `spring/`, concrete backend in a `starter`**
-  (see `cloud/data/cache`, `cloud/lock`, `cloud/discovery`).
+  (see `cloud/cache`, `cloud/lock`, `cloud/discovery`).
 
 ## 4. Scope Red Lines (non-goals)
 
@@ -156,7 +156,7 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
   architecture fails by omission, not by a visible bug.
 - **Built-ins ride the same seams they expose.** Go-Spring's own built-in
   implementations must go through the very extension points offered to users,
-  never a privileged private path — `cloud/data/cache`'s Memory backend,
+  never a privileged private path — `cloud/cache`'s Memory backend,
   `cloud/resilience`'s built-in strategies, and the starter archetypes all
   consume their own registries/interfaces. If a built-in can't be expressed
   through the public seam, the seam is wrong, not the built-in.

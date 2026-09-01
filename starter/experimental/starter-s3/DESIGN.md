@@ -38,7 +38,7 @@ below.
 - **Resilience** — `resilience.NewRoundTripper` wraps the observe transport
   with the executor resolved through the neutral seams
   (`resilience.ExecutorFor` + `fault.WrapExecutor(…, fault.InjectorFor())`,
-  then `resilobserve.WrapExecutor`), scoped by
+  then `resilience.WrapExecutor`), scoped by
   `resilience.ResourceLabel("s3", endpoint)`.
 
 ## 3. Constraints

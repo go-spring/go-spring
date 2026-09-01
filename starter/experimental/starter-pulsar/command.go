@@ -35,7 +35,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -229,7 +228,7 @@ func applyResilience(c Config, cl pulsar.Client, resource string) error {
 		return nil
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilobserve.WrapExecutor(exec, "pulsar", c.Observability)
+	exec = resilience.WrapExecutor(exec, "pulsar", c.Observability)
 	resilienceExecs.Store(cl, exec)
 	resilienceResources.Store(cl, resource)
 	return nil

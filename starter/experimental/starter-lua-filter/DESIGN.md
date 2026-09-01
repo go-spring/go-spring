@@ -26,9 +26,9 @@ Mounting rides on `spring/gs/http.go`'s `*gs.HttpServeMux`: the framework
 supplies a default mux only under `OnMissingBean[*HttpServeMux]`, so the
 application registers a wrapped mux that inserts filters. The mux is
 framework-neutral — gin/echo/hertz all collapse to `http.Handler` at some
-point — so no per-framework adapter is needed. `cloud/experimental/web` hosts
-only the i18n/validation families today, so it is the natural home for a
-filter seam.
+point — so no per-framework adapter is needed. The i18n/validation
+packages live at `cloud/i18n` and `cloud/validation` today; a filter seam,
+if it ever lands, gets its own `cloud/` package.
 
 ## 3. Implementation choices
 

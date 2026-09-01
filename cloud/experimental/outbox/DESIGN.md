@@ -23,7 +23,7 @@ databases.
 shares a "global transaction + compensation" problem domain with Coordinators
 and Stores; the outbox has no such concepts. Its only bloodline is messaging:
 it reuses `Message`, `Binder` and the DLQ header contract. The package imports
-only `cloud/experimental/messaging` plus the standard library — no gorm, no
+only `cloud/messaging` plus the standard library — no gorm, no
 spring, no otel.
 
 ## Shape

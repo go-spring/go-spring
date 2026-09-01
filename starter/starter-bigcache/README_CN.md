@@ -71,6 +71,6 @@ value, err := s.Cache.Get("key")
 * **优雅关闭**：destroy 回调会调用 `Close()`，停止后台清理 goroutine。
 * **缓存抽象后端**：引入本 starter 即注册 `bigcache` cache driver，
   `spring.cache.<name>.driver=bigcache:<instance>` 可将实例暴露为
-  `cloud/data/cache.Cache` bean（见 [starter-cache](../starter-cache)）。
+  `cloud/cache.Cache` bean（见 [starter-cache](../starter-cache)）。
   注意 BigCache 按单一全局 `life-window` 过期,因此每次调用的 TTL 会被忽略;若纯粹作为本地层,通常更适合用
   `cache.Memory`(不序列化、保留具体类型)。

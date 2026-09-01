@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/resilience"
 )
 

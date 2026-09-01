@@ -158,7 +158,7 @@ gs.Run()
   │   credential never reaches "serving"
   ├─ Init [client.go]: resource = ResourceLabel("milvus", addr) →
   │   fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │   resilobserve.WrapExecutor(exec, "milvus", Observability) → slot.arm — the
+  │   resilience.WrapExecutor(exec, "milvus", Observability) → slot.arm — the
   │   interceptors guard every RPC from here on; governance off → no-op executor
   ├─ readiness: indicator repeats the same ListCollections probe periodically
   └─ SIGTERM → Destroy [client.go]: exec.Close() then o.Client.Close() — closes the gRPC conn
@@ -183,7 +183,7 @@ That is the whole story, plus the guard. **The guard is a gRPC interceptor chain
 interceptors (unary + stream-open) appended — additive, not a replacement. The
 interceptors read a per-client slot that `Init` arms with
 `fault.WrapExecutor(resilience.ExecutorFor("milvus:<addr>"))` wrapped in
-`resilobserve.WrapExecutor` (governance off → no-op, passthrough; the fail-fast probe in
+`resilience.WrapExecutor` (governance off → no-op, passthrough; the fail-fast probe in
 `newClient` runs pre-Init and relies on that passthrough). Every RPC — collections,
 indexes, search, insert — rides it with zero call-site changes, the same transparent
 per-request stance as the other NoSQL starters. What observability also exists: the
@@ -205,7 +205,7 @@ All keys live under `spring.milvus.<name>.` — bound per-instance via `conf.Bin
 | `database` | string | `default` | Passed as `DBName` to `client.NewClient` [client.go:45]. | Nonexistent DB → fail-fast probe (ListCollections) errors at boot. |
 | `username` | string | `""` | Auth credential; both halves must be set together when the cluster has auth on. ⚠ `username` without `password` (or vice versa) is silently half-sent. | Wrong pair → fail-fast probe fails at boot with the server's auth error. |
 | `password` | string | `""` | See `username`. | See `username`. |
-| `observability` | group | empty | Field-injected onto the wrapper and read by `Init` to observe the guard execution (`resilobserve.WrapExecutor`): spans, outcome metrics (`resilience.*`), access log for every guarded RPC. `off` silences the log signal only. | Expecting per-RPC spans of *unguarded* traffic (governance off) → nothing is emitted; the executor is a no-op. |
+| `observability` | group | empty | Field-injected onto the wrapper and read by `Init` to observe the guard execution (`resilience.WrapExecutor`): spans, outcome metrics (`resilience.*`), access log for every guarded RPC. `off` silences the log signal only. | Expecting per-RPC spans of *unguarded* traffic (governance off) → nothing is emitted; the executor is a no-op. |
 
 No `driver` registry, no `mode` (one topology: standalone/cluster is server-side), no
 discovery, no otel keys — governance (resilience + fault) arrives via the shared

@@ -68,7 +68,7 @@ import (
     "context"
 
     amqp "github.com/rabbitmq/amqp091-go"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
 
@@ -214,7 +214,7 @@ The executor attached to each connection is built inside-out in `applyResilience
 ```
 fault.WrapExecutor( resilience.ExecutorFor(resource) )   ← outer
         │
-   resilobserve.WrapExecutor(exec, "rabbitmq", c.Observability)  ← wrapped around it
+   resilience.WrapExecutor(exec, "rabbitmq", c.Observability)  ← wrapped around it
         │
    your call (ch.PublishWithContext)                       ← innermost
 ```
@@ -248,7 +248,7 @@ Publish [client.go:89-107]:
 
 Consume [client.go:122-150]:
 
-1. Handler wrapped in `messaging.SafeHandler` — a panic becomes a normal error path
+1. Handler wrapped in `messaging.Recover` — a panic becomes a normal error path
    instead of unwinding into the SDK goroutine [client.go:125].
 2. `Consume(autoAck=false)`; a background loop ranges the delivery channel [client.go:126-133].
 3. Per delivery: `startConsume` extracts the upstream trace from the headers and opens

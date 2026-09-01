@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
 against the starter source (`starter.go`, `config.go`, `k8slock.go`, `observe.go`), the shared
-abstraction [cloud/experimental/lock](../../../cloud/experimental/lock), and the
+abstraction [cloud/lock](../../../cloud/lock), and the
 [example/](example) (including `deploy/` for in-cluster runs). Lease semantics mirror client-go
 leader election — see the [Kubernetes Lease API](https://kubernetes.io/docs/concepts/architecture/leases/);
 everything below is go-spring's increment.
@@ -65,7 +65,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/experimental/lock"
+    "go-spring.org/cloud/lock"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
 )
@@ -151,7 +151,7 @@ renewal goroutine** (`k8slock.go tryOnce`), so holds are independent of each oth
 
 ### 2.2 Three-layer timing resolution (all lock backends)
 
-TTL / renew / retry resolve through `lock.Resolve` (cloud/experimental/lock/defaults.go), higher
+TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/defaults.go), higher
 layer wins:
 
 | Layer | Source | This backend |

@@ -78,7 +78,7 @@ Reader 的实现最好保持纯粹。它应该只处理语法解析和结构转�
 
 如果配置内容的格式没有变，但它不在默认的本地配置文件里，而是在环境变量、数据库、对象存储、Kubernetes ConfigMap、etcd、Nacos 或公司内部配置中心里，这时候就需要扩展 Provider，来把外部来源中的配置读进来。
 
-Go-Spring 默认的配置加载主要围绕本地文件展开。其他来源如果要接入启动期配置流程，可以通过扩展 Provider 和 `spring.app.imports` 配置项的方式引入。
+Go-Spring 默认的配置加载主要围绕本地文件展开。其他来源如果要接入启动期配置流程，可以通过扩展 Provider 和 `spring.config.import` 配置项的方式引入。
 
 | 来源 | 适用场景 |
 |------|----------|
@@ -116,22 +116,22 @@ func init() {
 
 这里大家可能会问，为什么上面的 Provider 没有使用 Reader 来解析 JSON？因为 `envjson` 已经表明环境变量的值就是 JSON。Provider 直接使用 `json.Unmarshal` 解析即可，不需要再绕回文件 Reader。
 
-### spring.app.imports
+### spring.config.import
 
-Provider 注册以后，需要通过 `spring.app.imports` 才能使用。`spring.app.imports` 允许在一个配置文件中引用其他配置。
+Provider 注册以后，需要通过 `spring.config.import` 才能使用。`spring.config.import` 允许在一个配置文件中引用其他配置。
 
-`spring.app.imports` 支持逗号分隔的多个配置来源。每个配置来源由 Provider 名称、来源地址和可选的 `optional:` 标记组成，中间用冒号分隔。
+`spring.config.import` 支持逗号分隔的多个配置来源。每个配置来源由 Provider 名称、来源地址和可选的 `optional:` 标记组成，中间用冒号分隔。
 
 比如下面这个例子就是上面 envjson Provider 的使用示例。它表示从环境变量 `APP_CONFIG` 中读取 JSON 配置。
 
 ```properties
-spring.app.imports=envjson:APP_CONFIG
+spring.config.import=envjson:APP_CONFIG
 ```
 
 下面这个例子展示了 `optional:` 的用法。它表示从环境变量 `LOCAL_OVERRIDES` 中读取 JSON 配置，但如果这个环境变量不存在，也不会报错。
 
 ```properties
-spring.app.imports=optional:envjson:LOCAL_OVERRIDES
+spring.config.import=optional:envjson:LOCAL_OVERRIDES
 ```
 
 此时，`APP_CONFIG` 和 `LOCAL_OVERRIDES` 的值应该是一段完整的 JSON 字符串，例如：

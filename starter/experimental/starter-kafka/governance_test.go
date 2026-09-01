@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/resilience"
 )
 

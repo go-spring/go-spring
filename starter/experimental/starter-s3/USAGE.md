@@ -168,7 +168,7 @@ gs.Run()
   │    └─ gs field-injects Client.Observability, then Init():
   │          obs := observe.NewDB("s3", ...) → obsTransport (span+metric+access log)
   │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3:<endpoint>"))
-  │          exec := resilobserve.WrapExecutor(exec, "s3", ...)  // outcome spans/counter
+  │          exec := resilience.WrapExecutor(exec, "s3", ...)  // outcome spans/counter
   │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, → resource))
   ├─ Run / serve: readyz folds in every s3:<name> indicator (needs starter-actuator)
   └─ SIGTERM: Destroy() closes the resilience executor; minio holds no session to close
@@ -195,7 +195,7 @@ runs, requests pass straight through to `http.DefaultTransport`.
    `s3:<endpoint>` — retry / rate-limit / circuit-breaker / bulkhead when starter-governance
    arms them (hot-reloadable through the governance center), transparent pass-through
    otherwise; the process-wide fault injector (`fault.InjectorFor`, nil-safe) may inject
-   failures for drills. `resilobserve.WrapExecutor` emits an outcome span + call counter +
+   failures for drills. `resilience.WrapExecutor` emits an outcome span + call counter +
    duration histogram + access log for breaker trips, limit rejects, bulkhead rejections.
 3. obsTransport (command.go:38): starts the per-request observer span with operation
    `"PUT /bucket/key"` (method + URL path), runs the base `http.DefaultTransport`, ends the
@@ -273,7 +273,7 @@ resolution path (top-level `observability.*` acts as the fallback surface).
 
 Arms per endpoint resource label `s3:127.0.0.1:9000`: a governance rule with
 `fault.rate` against that resource makes a fraction of uploads fail through the executor —
-observable as outcome-tagged spans/counters from `resilobserve.WrapExecutor`. Flip the rule
+observable as outcome-tagged spans/counters from `resilience.WrapExecutor`. Flip the rule
 file to withdraw (hot-reload through the governance source). ⚠ note the retry policy retries
 per round-trip, not per stream: uploads with large bodies may re-send the body.
 

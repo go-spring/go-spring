@@ -32,7 +32,6 @@ import (
 
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -76,7 +75,7 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, err
 	log.Debugf(ctx.Context, log.TagAppDef, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
 
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resilience.ResourceLabel("webhook", name, c.Channel)))
-	exec = resilobserve.WrapExecutor(exec, "webhook", c.Observability)
+	exec = resilience.WrapExecutor(exec, "webhook", c.Observability)
 	return &Notifier{
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},

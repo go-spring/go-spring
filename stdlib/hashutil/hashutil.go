@@ -23,6 +23,14 @@ import (
 	"hash/fnv"
 )
 
+// FNV1a32 computes the 32-bit FNV-1a hash of the given string using
+// the standard library hash/fnv implementation.
+func FNV1a32(s string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum32()
+}
+
 // FNV1a64 computes the 64-bit FNV-1a hash of the given string using
 // the standard library hash/fnv implementation.
 //

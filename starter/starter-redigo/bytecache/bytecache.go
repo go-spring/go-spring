@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud/data/cache"
+	"go-spring.org/cloud/cache"
 )
 
 type redigoCache struct{ pool *redis.Pool }

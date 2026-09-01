@@ -155,7 +155,7 @@ gs.Run()
   │   cl.Close() + 启动失败——地址/凭据错，进程到不了 "serving"
   ├─ Init [client.go]：resource = ResourceLabel("milvus", addr) →
   │   fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │   resilobserve.WrapExecutor(exec, "milvus", Observability) → slot.arm——此后每个
+  │   resilience.WrapExecutor(exec, "milvus", Observability) → slot.arm——此后每个
   │   RPC 都过守卫；治理关闭 → no-op executor
   ├─ readiness：指示器周期性重复同一个 ListCollections 探针
   └─ SIGTERM → Destroy [client.go]：exec.Close() 后 o.Client.Close() 关闭 gRPC 连接
@@ -177,7 +177,7 @@ gs.Run()
 dial options，SDK 自己的 `DefaultGrpcOpts`（keepalive、连接退避、2GB 收包上限）被先补
 回、再追加守卫拦截器（unary + stream 建流）——是叠加不是替换。拦截器读每 client 一个
 slot，`Init` 用 `fault.WrapExecutor(resilience.ExecutorFor("milvus:<addr>"))` 外包
-`resilobserve.WrapExecutor` 武装它（治理关闭 → no-op 透传；构造期的 fail-fast 探针在
+`resilience.WrapExecutor` 武装它（治理关闭 → no-op 透传；构造期的 fail-fast 探针在
 Init 之前跑，正依赖该透传）。collection/index/search/insert 等全部 RPC 零改动过守卫，
 与其他 NoSQL starter 的透明逐请求口径一致。实际存在的可观测性另有健康指示器：
 `milvus:<name>` 恒注册，探针即 wrapper 自带的 `Health(ctx)`，一次 `ListCollections`
@@ -197,7 +197,7 @@ starter-Pool 的绝对属性规则）。已用 `grep -rhoE 'value:"[^"]+"'` 双�
 | `database` | string | `default` | 作为 `DBName` 传给 `client.NewClient` [client.go:45]。 | 库不存在 → fail-fast 探针（ListCollections）启动期报错。 |
 | `username` | string | `""` | 鉴权凭据；集群开鉴权时两半必须成对设置。⚠ 只设 `username` 不设 `password`（或反之）会被静默发送一半。 | 配错 → 启动期探针失败，携带服务端鉴权错误。 |
 | `password` | string | `""` | 见 `username`。 | 见 `username`。 |
-| `observability` | group | 空 | 字段注入到 wrapper，由 `Init` 读取以观测守卫执行（`resilobserve.WrapExecutor`）：每个受守卫 RPC 的 span、outcome 指标（`resilience.*`）、访问日志。`off` 只静默日志信号。 | 期待治理关闭时（未受保护流量）的逐 RPC span → 什么都不发；executor 是 no-op。 |
+| `observability` | group | 空 | 字段注入到 wrapper，由 `Init` 读取以观测守卫执行（`resilience.WrapExecutor`）：每个受守卫 RPC 的 span、outcome 指标（`resilience.*`）、访问日志。`off` 只静默日志信号。 | 期待治理关闭时（未受保护流量）的逐 RPC span → 什么都不发；executor 是 no-op。 |
 
 无 `driver` 注册表、无 `mode`（单机/集群是服务端拓扑）、无服务发现、无 otel key——
 治理（resilience + fault）经共享 `govern.*` 规则由逐 RPC 守卫消费，没有 milvus 专属

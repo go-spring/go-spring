@@ -21,8 +21,8 @@ import (
 	"errors"
 	"testing"
 
+	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/cloud/experimental/transaction/tcc"
-	"go-spring.org/cloud/observe/transaction"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -46,7 +46,7 @@ func TestOtelObserver_DrivesTCCWithoutPanic(t *testing.T) {
 	// With no TracerProvider installed the otel global is a no-op, but the observer
 	// must still return a usable context and an end func that records the outcome
 	// without panicking — exercised here through a real cancel path.
-	coord := tcc.NewCoordinator(tcc.WithObserver(transactionobserve.TccObserver{}))
+	coord := tcc.NewCoordinator(tcc.WithObserver(transaction.TccObserver{}))
 
 	var confirmed, cancelled []string
 	res, err := coord.Execute(context.Background(), tcc.Transaction{

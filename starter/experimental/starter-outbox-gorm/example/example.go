@@ -34,7 +34,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	outboxgorm "go-spring.org/starter-outbox-gorm"

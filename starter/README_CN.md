@@ -84,7 +84,6 @@
 | `starter-influxdb` | [influxdb-client-go/v2](https://github.com/influxdata/influxdb-client-go) | InfluxDB 2.x 时序数据库 |
 | `starter-tdengine` | [driver-go/v3 (taosWS)](https://github.com/taosdata/driver-go) | TDengine 时序数据库（websocket，零 CGO） |
 | `starter-cassandra` | [gocql](https://github.com/gocql/gocql) | Cassandra / ScyllaDB 宽表数据库 |
-| `starter-repository-gorm` | [gorm](https://gorm.io/) | 基于任意 gorm `*gorm.DB` 的通用 `repository.Repository[T,ID]`(CRUD + 分页 + 审计) |
 
 ## 缓存
 
@@ -137,6 +136,7 @@
 | Starter | 底层库 | 说明 |
 | --- | --- | --- |
 | `starter-mail` | [wneessen/go-mail](https://github.com/wneessen/go-mail) | SMTP 发信（HTML/附件/多收件人）；只发信，不含模板引擎 |
+| `starter-migration-goose` | [goose](https://github.com/pressly/goose) | 启动期 goose schema 迁移，作用于任意 gorm `*gorm.DB`（只进不退、fail-fast） |
 | `starter-webhook` | 仅标准库 | 聊天 webhook：generic + 钉钉/飞书/企微/Slack 载荷格式与 HMAC 加签，零第三方依赖 |
 
 ## 可观测 / 诊断

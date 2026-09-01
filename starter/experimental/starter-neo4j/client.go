@@ -27,7 +27,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 )
 
 // Client is the wrapper bean Neo4j drivers are injected as. It
@@ -74,7 +73,7 @@ type Client struct {
 func (o *Client) Init() error {
 	o.resource = resilience.ResourceLabel("neo4j", o.cfg.ServiceName, o.cfg.URI)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	o.exec = resilobserve.WrapExecutor(exec, "neo4j", o.Observability)
+	o.exec = resilience.WrapExecutor(exec, "neo4j", o.Observability)
 	return nil
 }
 

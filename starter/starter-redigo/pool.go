@@ -26,7 +26,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -198,7 +197,7 @@ func (o *Pool) setupResilience(obs observe.ObserveConfig) error {
 	// setup relative to starter-govern's wiring is irrelevant.
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 
-	o.exec = resilobserve.WrapExecutor(exec, "redigo", obs)
+	o.exec = resilience.WrapExecutor(exec, "redigo", obs)
 	return nil
 }
 

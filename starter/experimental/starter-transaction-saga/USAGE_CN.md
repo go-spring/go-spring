@@ -4,7 +4,7 @@
 `starter.go` / `config.go` / `recovery.go` / `starter_test.go`，以及被封装的协调器
 [`go-spring.org/cloud/experimental/transaction`](../../../cloud/experimental/transaction) 的
 `coordinator.go` / `global.go` / `store.go` / `transaction.go`，tracing 部分为
-[`cloud/observe/transaction/observer.go`](../../../cloud/observe/transaction/observer.go)）。
+[`cloud/experimental/transaction/observe.go`](../../../cloud/experimental/transaction/observe.go)）。
 **Saga 模式自身的语义（前向步骤 + 逆向补偿、Saga/TCC/AT 选型）属于分布式事务通识** —— 见
 [Seata Saga 模式文档](https://seata.apache.org/docs/user/saga) 与 README 对比表；本页只写
 go-spring 的增量。
@@ -298,7 +298,7 @@ in the log"（coordinator.go）。重试复用 `resilience.Policy`（"default" e
 | key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `spring.transaction.saga.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` —— 缺省即开启。`false` 导入模块但不贡献任何 bean（测试二进制要类型不要装配时有用）。 | 误设 `false` → 无 Coordinator bean → 装配期 autowire `transaction.Coordinator` 失败（可见，不静默）。 |
-| `spring.transaction.saga.tracing` | bool | `true` | 协调器构造时挂 `transactionobserve.SagaObserver{}` → 在 starter-otel 全局上为每个步骤相位开一个 otel 子 span。无 starter-otel 时是 no-op（无 span 也无告警）。 | 期望 trace 却没引 starter-otel → 什么都没有；且任何地方都不报错。 |
+| `spring.transaction.saga.tracing` | bool | `true` | 协调器构造时挂 `transaction.SagaObserver{}` → 在 starter-otel 全局上为每个步骤相位开一个 otel 子 span。无 starter-otel 时是 no-op（无 span 也无告警）。 | 期望 trace 却没引 starter-otel → 什么都没有；且任何地方都不报错。 |
 | `spring.transaction.saga.recover-on-start` | bool | `true` | 注册恢复 `gs.Runner`：扫描 `Store.Pending()` 找 `StatusRunning` 快照并逐个补偿（backward recovery）。⚠ **与 store seam 耦合**：默认内存 `MemoryStore` 重启后扫描恒空 —— 除非持久化 Store starter 生效（如 `spring.transaction.saga.store=gorm` + starter-transaction-saga-gorm），此 key 实际是死 key。 | 持久化 store 下设 `false` → 崩溃遗留 saga 永不补偿（静默不一致）；无持久化 store 设 `true` → no-op、无告警。 |
 
 由**其他模块**持有、在此联动的 key（不属于本 starter 配置面）：

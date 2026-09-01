@@ -69,7 +69,7 @@ import (
     "fmt"
 
     mqtt "github.com/eclipse/paho.mqtt.golang"
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/spring/gs"
     StarterMQTT "go-spring.org/starter-mqtt"
 )
@@ -195,7 +195,7 @@ guards** [command.go:17-27]:
 ```
 applyResilience [command.go:128-134]:
   exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt:<broker>"))   // governance center
-  exec = resilobserve.WrapExecutor(exec, "mqtt", c.Observability)      // observe bridge
+  exec = resilience.WrapExecutor(exec, "mqtt", c.Observability)      // observe bridge
   stored in sync.Map keyed by the mqtt.Client value
 
 GuardedPublish [command.go:166-172]:
@@ -216,7 +216,7 @@ per topic [starter.go:70, resilience/config.go:151-155].
   only `GuardedPublish` and the binder's `Publish` route through the executor
   [command.go:156-172, client.go].
 - `Subscribe` / `Unsubscribe` / subscription callbacks — no guard exists for them.
-- binder subscribe handlers: guarded only against panics (`messaging.SafeHandler`
+- binder subscribe handlers: guarded only against panics (`messaging.Recover`
   converts a panic into an error) [client.go:92]; the error is then only logged
   [client.go:95-97].
 
@@ -244,7 +244,7 @@ span helper wrapped around it:
 
 **Binder consume** — `sub.Subscribe(ctx, handler)` on topic `sensors/temp`:
 
-1. handler is wrapped in `messaging.SafeHandler` (panic → error) [client.go:92].
+1. handler is wrapped in `messaging.Recover` (panic → error) [client.go:92].
 2. `cl.Subscribe(topic, 1, callback)` + `token.Wait()` — errors (bad topic filter,
    no broker) return synchronously [client.go:93-100].
 3. per delivery, the callback builds a `messaging.Message` from the paho message:
@@ -387,7 +387,7 @@ kill -9 <pid>   # ungraceful → will "offline" (retained per config) is publish
 
 Design suspects (audit ledger; none fixed since last pass):
 
-- Binder handler errors are only logged; `SafeHandler`'s comment claims "nack/redelivery"
+- Binder handler errors are only logged; `Recover`'s comment claims "nack/redelivery"
   that MQTT 3.1.1's fire-and-forget callback cannot deliver [client.go:90-97].
 - ~~The span-helper observers hardcode `DefaultBrief` and ignore
   `spring.mqtt.<name>.observability.level`~~ Fixed: the first wired client seeds the

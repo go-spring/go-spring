@@ -25,7 +25,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 )
 
 // --- per-operation observe wrapper -------------------------------------------
@@ -76,7 +75,7 @@ func (c *Cache) Init() error {
 	c.obs = observe.NewDB("bigcache", c.Observability)
 	c.resource = resilience.ResourceLabel("bigcache", c.name)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(c.resource))
-	c.exec = resilobserve.WrapExecutor(exec, "bigcache", c.Observability)
+	c.exec = resilience.WrapExecutor(exec, "bigcache", c.Observability)
 	return nil
 }
 

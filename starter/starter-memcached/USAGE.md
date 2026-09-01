@@ -170,7 +170,7 @@ entirely and `servers` is used as-is (sidecar owns discovery+LB, `driver.go:69-7
    (`command.go:174-181`): limiter/breaker scoped to resource `memcached:<instance-name>`
    (`client.go:73`); `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
    (`command.go:168`); the executor is fault-wrapped (`fault.WrapExecutor`, `client.go:74`) and
-   observe-wrapped (`resilobserve.WrapExecutor`, `client.go:75`). With governance off it is a
+   observe-wrapped (`resilience.WrapExecutor`, `client.go:75`). With governance off it is a
    transparent no-op.
 3. The embedded `*memcache.Client` performs the actual write; the end callback closes the span with
    the error.

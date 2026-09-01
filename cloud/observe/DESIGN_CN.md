@@ -9,8 +9,9 @@ client 接口的共享桥接(lock、resilience executor、transaction observer)�
 ## 1. 职责与边界
 
 - **做:** 定义 `Observer` / `Span` / `SemConv` / `ObserveConfig`,内置
-  DB / messaging / resilience 三套约定,并承载共享桥接
-  (`observe/lock`、`observe/resilience`、`observe/transaction`)。
+  DB / messaging / resilience 三套约定。领域包的插桩放在领域包自身
+  (`experimental/lock.WrapLocker`、`experimental/transaction.SagaObserver`、
+  `governance/resilience.WrapExecutor` 等)。
 - **不做:**
   - 不做 OTel 引导。本件只读 OTel 全局;安装 provider 是 starter-otel
     的事。
@@ -73,7 +74,8 @@ client 接口的共享桥接(lock、resilience executor、transaction observer)�
 - **独立的 observe-lock / observe-resilience / observe-transaction
   模块已收拢为 `go-spring.org/cloud/observe` 的子包**:模块边界被
   证明只有开销、没有消费者差异;lock/transaction 桥接指向
-  `cloud/experimental/*` 接口,不把 starter 拖进依赖图。gorm 桥是
+  cloud 领域包(`cloud/lock`、`cloud/transaction`、
+  `cloud/governance/resilience`)接口,不把 starter 拖进依赖图。gorm 桥是
   刻意的例外:它住在 `go-spring.org/starter-gorm` 的 `observe` 包,
   因为本模块不得依赖 gorm。
 - **status 只有两态,metric 上不做错误分类。** 按 client 各自分类错误

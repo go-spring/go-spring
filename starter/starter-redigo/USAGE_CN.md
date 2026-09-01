@@ -68,7 +68,7 @@ import (
     "time"
 
     "github.com/gomodule/redigo/redis"
-    "go-spring.org/cloud/data/cache"
+    "go-spring.org/cloud/cache"
     "go-spring.org/spring/gs"
     StarterRedigo "go-spring.org/starter-redigo"
 )

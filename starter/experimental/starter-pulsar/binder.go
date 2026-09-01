@@ -22,7 +22,7 @@ import (
 	"sync"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 )
@@ -84,6 +84,7 @@ type publisher struct {
 }
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
+	messaging.EnsureMessageID(msg)
 	// Carry the load-test marker (if any) in the message Properties so the
 	// consumer can recognise synthetic load. Copy the header map rather than
 	// mutate the caller's when injecting, to avoid surprising the publisher.
@@ -125,9 +126,9 @@ type subscriber struct {
 }
 
 func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) error {
-	// SafeHandler converts a handler panic into the normal error path
+	// Recover converts a handler panic into the normal error path
 	// (nack/redelivery) instead of unwinding into the SDK goroutine.
-	handler = messaging.SafeHandler(handler)
+	handler = messaging.Recover(handler)
 	loopCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	s.cancel = cancel
 	s.done = make(chan struct{})

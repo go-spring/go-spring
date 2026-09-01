@@ -25,7 +25,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/observe/resilience"
 )
 
 // buildAdmission builds the inbound admission middleware. The resilience
@@ -42,7 +41,7 @@ import (
 func buildAdmission(cfg Config) (gin.HandlerFunc, error) {
 	resource := resilience.ResourceLabel("gin", cfg.Address)
 	exec := resilience.ExecutorFor(resource)
-	exec = resilobserve.WrapExecutor(exec, "gin", cfg.Observability)
+	exec = resilience.WrapExecutor(exec, "gin", cfg.Observability)
 	return resilienceAdmission(exec, resource), nil
 }
 

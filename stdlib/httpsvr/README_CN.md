@@ -90,7 +90,7 @@ Body 读取经可覆写的 `ReadBody`（默认上限 10 MiB），应用可下调
 
 ## 横切能力的归属
 
-本包不内置中间件切片——链式装配属于更高层：`cloud/experimental/security` 的中间件、各家族自带的方法级装饰器，或 starter 包装 `Server.Route` 缝隙。在这里内置会锁死顺序。
+本包不内置中间件切片——链式装配属于更高层：`cloud/security` 的中间件、各家族自带的方法级装饰器，或 starter 包装 `Server.Route` 缝隙。在这里内置会锁死顺序。
 
 ## 许可证
 

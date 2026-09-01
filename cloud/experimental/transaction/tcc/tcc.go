@@ -316,7 +316,7 @@ type Coordinator interface {
 // Observer is the observability seam, shared with the whole transaction family
 // via [transaction.Observer]: the coordinator calls Begin around every
 // participant phase, passing the transaction ID, the participant's name and the
-// phase converted with [Phase.TxPhase]. A starter implements it once (see
-// cloud/observe/transaction) to open an otel span per phase without the core
-// packages depending on otel. A nil Observer disables observation entirely.
+// phase converted with [Phase.TxPhase]. The parent package ships a ready
+// implementation, transaction.TccObserver (see observe.go there), that opens
+// one otel span per phase. A nil Observer disables observation entirely.
 type Observer = transaction.Observer

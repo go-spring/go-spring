@@ -1,7 +1,7 @@
 # starter-http-client 使用说明 — 参考手册
 
 详细使用文档,概览见 [README_CN.md](README_CN.md)。所有行为声明均已对照 starter 源码
-(`starter.go`、`config.go`、`api.go`、`extension.go`)、装配器 `cloud/experimental/httpx/httpx.go`、
+(`starter.go`、`config.go`、`api.go`、`extension.go`)、装配器 `cloud/httpx/httpx.go`、
 发送 seam `stdlib/httpclt/httpclt.go` 及可运行的 [example/](example/)(自断言冒烟)、
 [example-load/](example-load/)、[example-otel/](example-otel/) 核实。**HTTP 语义归
 [net/http](https://pkg.go.dev/net/http),trace 语义归
@@ -230,7 +230,7 @@ gs.Run()
    整个调用只记录**一次**结果(§2.2)。
 5. balancedTransport `pool.Pick()` 选一个存活实例(round_robin 等),克隆请求并把
    `URL.Host`/`Host` 改写为实例地址,经 `res.Done` 回报结果——least-conn 统计与
-   outlier ejection 因此能看到每次调用(httpx.go:245-262)。
+   outlier suspension 因此能看到每次调用(httpx.go:245-262)。
 6. otelhttp transport 打开 client span、注入 `traceparent`、建连。
 7. 响应回卷:span 结束(executor 包过则带 `resilience.outcome`)、计数
    `resilience.calls{outcome=...}`、按 `observability.level` 出访问日志。
@@ -260,8 +260,8 @@ gs.Run()
 | `service-name` | string | "" | 发现模式:经指定后端解析的逻辑名;只要设置了就同时是治理 resource label(发现与直连模式皆是)。配了 `addr` 时它不是发现目标。 | 都不配 → 快速失败;只配 service-name 不配 `addr`/`discovery` → 快速失败。 |
 | `discovery` | string | "" | 经 `discovery.RegisterDiscovery` 注册的后端名。`service-name` 未配 `addr` 时必填(config.go validate)。 | 缺失 → 快速失败。名字未知 → `discovery.NewResolver` 装配期报错(httpx.go:131)。 |
 | `balancer` | string | round_robin | LB 策略:`round_robin`、`least_conn`、`consistent_hash`、`weighted`、`zone_aware`。未知名装配期失败(`loadbalance.New`,httpx.go:156)。 | 拼错在启动期暴露,不是逐请求。 |
-| `eject-threshold` | int | 0 | 连续失败多少次将实例逐出池(outlier ejection)。0 关闭。 | 不配则死实例一直吃轮询份额;配合 resilience 让熔断兜住失败。 |
-| `eject-for` | duration | 0 | 被逐出实例多久后放回做 half-open 试探。`eject-threshold=0` 时忽略。 | 开了逐出但配 0 → 立即试探回弹(抖动)。 |
+| `suspend-threshold` | int | 0 | 连续失败多少次将实例逐出池(outlier suspension)。0 关闭。 | 不配则死实例一直吃轮询份额;配合 resilience 让熔断兜住失败。 |
+| `suspend-for` | duration | 0 | 被逐出实例多久后放回做 half-open 试探。`suspend-threshold=0` 时忽略。 | 开了逐出但配 0 → 立即试探回弹(抖动)。 |
 | `observability.level` | string | brief | executor 包裹层的访问日志开关:off / brief / detailed(observe/config.go:50)。 | brief 默认**开**——预期每次受保护调用一条日志。 |
 | `observability.maxArgBytes` | int | 512 | 日志中参数截断长度。 | 大 body 被静默截断。 |
 | `observability.skipOps` | []string | "" | 不记访问日志的操作名。 | |
@@ -331,7 +331,7 @@ kill %1
 2. 用自己的 binary 做等价手工演练:杀掉后端、循环调用,观察错误从网络/500 错误变为
    `circuit open`;恢复后端后等 `open-duration`(30s)——half-open 试探成功、熔断闭合。
 3. 观察跳变:`resilience.breaker.state_change{from=...,to=...}` 计数器递增并输出状态
-   迁移日志(observe/resilience/executor.go:98-110)。
+   迁移日志(cloud/governance/resilience/observe.go:98-110)。
 
 ### 4.4 故障注入(免重启)
 

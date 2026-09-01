@@ -2,10 +2,10 @@
 
 Detailed usage reference. For the module map see [starter/README](../README.md). All behavior claims are
 verified against the starter source (`starter.go`, `starter_test.go`), the cache abstraction
-(`cloud/data/cache/cache.go`, `codec.go`), and the four backend driver registrations
+(`cloud/cache/cache.go`, `codec.go`), and the four backend driver registrations
 (`starter-go-redis/starter.go`, `starter-redigo/starter.go`, `starter-bigcache/starter.go`,
 `starter-memcached/starter.go`). **Cache semantics themselves (miss vs error, codec, TTL) are
-documented in `cloud/data/cache`** — everything below is the go-spring wiring increment: the driver
+documented in `cloud/cache`** — everything below is the go-spring wiring increment: the driver
 registry, the `${spring.cache}` module, and the bean it exposes.
 
 **Activation**: any `spring.cache.*` key — the module is `gs.OnProperty("spring.cache")`, a prefix
@@ -78,7 +78,7 @@ import (
     "net/http"
     "time"
 
-    "go-spring.org/cloud/data/cache"
+    "go-spring.org/cloud/cache"
     "go-spring.org/spring/gs"
 )
 
@@ -343,7 +343,7 @@ Suspect ledger (kept from previous audit + this pass):
 3. **Module has no README** (only USAGE); the driver-registry contract lives in code comments.
    (pre-existing)
 4. New this pass: façade codec is hardwired to JSON through the starter path — `WithCodec` exists
-   in `cloud/data/cache` but no driver passes options; no config surface either.
+   in `cloud/cache` but no driver passes options; no config surface either.
 5. New this pass: the module iterates the cache-entry map with no dedup guard against the same
    `(driver, beanID)` appearing twice — the failure is a late duplicate-bean wiring error rather
    than an early `invalid driver`-style message naming the entry.

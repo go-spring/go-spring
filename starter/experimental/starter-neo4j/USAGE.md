@@ -184,7 +184,7 @@ gs.Run()
   ├─ gs field-injects Client.Observability (${observability:=})
   ├─ Init [client.go:74-79]: resource = resilience.ResourceLabel("neo4j",
   │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilobserve.WrapExecutor(exec, "neo4j", Observability) — no-op
+  │   → resilience.WrapExecutor(exec, "neo4j", Observability) — no-op
   │   executor when governance is off
   ├─ readiness: indicator runs VerifyConnectivity per probe
   └─ SIGTERM → Destroy [client.go:89-95]: exec.Close → stopLiveResolver →
@@ -212,7 +212,7 @@ command.go:31-44 comments call this a documented gap, not an oversight). What ex
 | `StarterNeo4j.RunWithResilience` | wraps arbitrary session/transaction code in the resilience guard only (no span/metric/log) | opt-in |
 | `StarterNeo4j.StartSpan` / `EndSpan` | manual span + metric + access log for ops you drive via `driver.NewSession` | opt-in |
 | health indicator `neo4j:<name>` | `VerifyConnectivity` per actuator probe | automatic, always |
-| `resilobserve.WrapExecutor` in Init | outcome metrics (`resilience.*`) for guarded executions, gated by the per-instance `observability.*` block | automatic when governance on |
+| `resilience.WrapExecutor` in Init | outcome metrics (`resilience.*`) for guarded executions, gated by the per-instance `observability.*` block | automatic when governance on |
 
 `Query`'s span/metric/log ride a **package-level** default observer (`observe.NewDB("neo4j",
 Level: brief)`, command.go:46) on the OTel globals starter-otel installs — the per-instance
@@ -301,7 +301,7 @@ IndexArg(1)), not the absolute-property Pool rule.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `observability.level` | string | `brief` | Gates the **resilience-executor** access log (via `resilobserve.WrapExecutor` in Init), not `Query`'s access log (that one is the package-level `brief`, §2.2). `off` silences only the log signal. | Expecting it to tune Query's log → no effect, surprising. |
+| `observability.level` | string | `brief` | Gates the **resilience-executor** access log (via `resilience.WrapExecutor` in Init), not `Query`'s access log (that one is the package-level `brief`, §2.2). `off` silences only the log signal. | Expecting it to tune Query's log → no effect, surprising. |
 | `observability.maxArgBytes` | int | 512 | Bound of argument capture in detailed mode. | — |
 | `observability.skipOps` | list | — | Suppresses span+metric+log for listed op names. | — |
 

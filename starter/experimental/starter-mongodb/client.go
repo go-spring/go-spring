@@ -30,7 +30,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	"go-spring.org/cloud/observe/resilience"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -98,7 +97,7 @@ func (o *Client) Init() error {
 	o.obs.Store(observe.NewDB("mongodb", o.Observability))
 	o.resource = resilience.ResourceLabel("mongodb", o.cfg.ServiceName, o.cfg.URI)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, "mongodb", o.Observability)
+	exec = resilience.WrapExecutor(exec, "mongodb", o.Observability)
 	o.exec = exec
 	// Wrap the current (plain/discovery) dial with the policy and swap it into
 	// the shared dialer the driver already holds.

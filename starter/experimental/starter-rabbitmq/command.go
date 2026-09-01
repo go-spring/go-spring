@@ -31,7 +31,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -239,7 +238,7 @@ func applyResilience(c Config, conn *amqp.Connection, resource string) error {
 		return nil
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilobserve.WrapExecutor(exec, "rabbitmq", c.Observability)
+	exec = resilience.WrapExecutor(exec, "rabbitmq", c.Observability)
 	resilienceExecs.Store(conn, exec)
 	resilienceResources.Store(conn, resource)
 	return nil

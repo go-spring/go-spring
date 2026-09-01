@@ -31,7 +31,6 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -249,7 +248,7 @@ func (t *RouteTable) buildExecutors() (map[string]resilience.Executor, error) {
 		exec := resilience.ExecutorFor("gateway:" + name)
 		// Wrap so breaker trips / rejects / retries emit span + counter +
 		// histogram + access log (the resilience core emits none).
-		out[name] = resilobserve.WrapExecutor(exec, "gateway:"+name, observe.ObserveConfig{})
+		out[name] = resilience.WrapExecutor(exec, "gateway:"+name, observe.ObserveConfig{})
 	}
 	return out, nil
 }

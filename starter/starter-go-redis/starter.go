@@ -23,7 +23,7 @@ import (
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/data/cache"
+	"go-spring.org/cloud/cache"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

@@ -10,8 +10,10 @@ client interfaces (lock, resilience executor, transaction observer).
 ## 1. Responsibilities & Boundaries
 
 - **Does:** define `Observer` / `Span` / `SemConv` / `ObserveConfig`, ship
-  the DB / messaging / resilience conventions, and host the shared bridges
-  (`observe/lock`, `observe/resilience`, `observe/transaction`).
+  the DB / messaging / resilience conventions. Instrumentation for the domain
+  packages lives in the domain packages themselves
+  (`experimental/lock.WrapLocker`, `experimental/transaction.SagaObserver`,
+  `governance/resilience.WrapExecutor` et al.).
 - **Refuses:**
   - No OTel bootstrap. The kit reads the OTel globals; installing providers
     is starter-otel's job.
@@ -87,7 +89,8 @@ signals under the `lock` convention (`lock.system` / `lock.operation` /
   modules were collapsed into subpackages of one
   `go-spring.org/cloud/observe`** once the module boundary proved to be
   overhead without a consumer difference; the lock/transaction bridges
-  target `cloud/experimental/*` interfaces without dragging starters into
+  target the cloud domain packages (`cloud/lock`, `cloud/transaction`,
+  `cloud/governance/resilience`) without dragging starters into
   the dependency graph. The gorm bridge is the deliberate exception: it
   lives in `go-spring.org/starter-gorm`'s `observe` package, because this
   module must not depend on gorm.

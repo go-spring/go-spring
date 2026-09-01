@@ -144,7 +144,7 @@ gs.Run()
   │    ├─ dry-run buildPayload with an empty Notification — validates channel value and
   │    │   (for dingtalk/feishu) that signing works, WITHOUT any network call
   │    ├─ exec := fault.WrapExecutor(resilience.ExecutorFor("webhook:<name>:<channel>"))
-  │    ├─ exec := resilobserve.WrapExecutor(exec, "webhook", c.Observability)
+  │    ├─ exec := resilience.WrapExecutor(exec, "webhook", c.Observability)
   │    └─ &http.Client{Timeout: c.Timeout} — per-notifier client, no pooling
   ├─ bean ready: *Notifier injected wherever `autowire:"<name>"` appears
   ├─ Run / serve: no background goroutines, no probe (rationale in §Activation)
@@ -175,7 +175,7 @@ so two notifiers on the same URL but different names get independent breaker/lim
 3. **Executor** — the POST closure runs through the governance executor under the resource
    label: rate limit / circuit breaking / retry (if configured via governance) / fault
    injection when starter-governance is armed; transparent pass-through otherwise.
-   `resilobserve.WrapExecutor` emits the outcome span + call counter + duration histogram +
+   `resilience.WrapExecutor` emits the outcome span + call counter + duration histogram +
    access log per level. A hand-built zero-value Notifier (tests) has no executor and posts
    directly — Send stays usable either way.
 4. **POST** — `n.post`: `Content-Type: application/json`, client bounded by `timeout`;
@@ -209,7 +209,7 @@ wrapper-field tag here).
 | `channel` | string | generic | `generic`\|`dingtalk`\|`feishu`\|`wecom`\|`slack`; selects payload builder + signing scheme + the resilience label's third segment. | Unknown value → startup error from the dry-run buildPayload (exact message in §2.2). |
 | `secret` | string | — | DingTalk 加签 (SEC...) or Feishu signing secret; **ignored** by generic/wecom/slack. | ⚠ Secret on the wrong channel is silently unused — unsigned messages get rejected by the receiver at Send time. |
 | `timeout` | duration | 5s | Bounds one POST (`http.Client.Timeout`). | Too small → slow chat platforms produce client timeouts; the executor may retry (per governance policy) amplifying load. |
-| `observability` | struct | brief | Per-send access log/metrics/span level (`off`\|`brief`\|`detailed`), sub-keys `observability.level` / `.maxArgBytes` (default 512) / `.skipOps` under the instance prefix; feeds `resilobserve.WrapExecutor`. | `off` removes the per-send log; `detailed` logs payload bytes up to maxArgBytes. |
+| `observability` | struct | brief | Per-send access log/metrics/span level (`off`\|`brief`\|`detailed`), sub-keys `observability.level` / `.maxArgBytes` (default 512) / `.skipOps` under the instance prefix; feeds `resilience.WrapExecutor`. | `off` removes the per-send log; `detailed` logs payload bytes up to maxArgBytes. |
 
 ---
 

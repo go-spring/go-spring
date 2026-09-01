@@ -172,7 +172,7 @@ gs.Run()
   │    实例前缀 spring.influxdb.<name>.observability.* 按字段覆盖——见
   │    Client.resolveObservability [client.go]）
   ├─ Init [client.go:76]：构建 Observer（NewDB "influxdb"）+ obsTransport；
-  │    解析 executor = resilobserve.WrapExecutor(fault.WrapExecutor(
+  │    解析 executor = resilience.WrapExecutor(fault.WrapExecutor(
   │    resilience.ExecutorFor("influxdb:<server-url>")))；dyn.Swap 换入
   │    resilience round-tripper——观测+治理自此生效
   ├─ 就绪：指示器翻 UP（每次探测 = 一趟 /health 往返）

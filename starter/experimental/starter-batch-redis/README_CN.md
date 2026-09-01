@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-batch-redis` 为 Go-Spring 应用贡献一个基于 Redis 的
-[`batch.JobRepository`](../../../cloud/experimental/batch) Bean，让 chunk 作业和短生命周期
+[`batch.JobRepository`](../../../cloud/batch) Bean，让 chunk 作业和短生命周期
 任务把进度持久化到 Redis：进程崩溃后从最后一次已提交的 chunk 恢复，不会
 重复处理已经写入的数据。
 
@@ -52,7 +52,7 @@ spring.batch.repository=jobs
 ### 3. 注入 `batch.JobRepository`
 
 ```go
-import "go-spring.org/cloud/experimental/batch"
+import "go-spring.org/cloud/batch"
 
 type Service struct {
     Repo batch.JobRepository `autowire:"jobs"`

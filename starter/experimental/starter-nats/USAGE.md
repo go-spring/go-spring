@@ -66,7 +66,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/experimental/messaging"
+    "go-spring.org/cloud/messaging"
     "go-spring.org/log"
     "go-spring.org/spring/gs"
 
@@ -100,7 +100,7 @@ func (c *Consumer) Init(ctx context.Context) error {
     return c.Sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
         log.Infof(ctx, log.TagAppDef, "order received: %s trace-id-from-header=%v",
             string(m.Payload), m.Headers["traceparent"])
-        return nil // error return → SafeHandler error path
+        return nil // error return → Recover error path
     })
 }
 ```
@@ -189,7 +189,7 @@ gs.Run()
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
   │           [driver.go:158-164]
   ├─ applyResilience: fault.WrapExecutor(resilience.ExecutorFor(resource)) wrapped in
-  │           resilobserve.WrapExecutor — no-op executor when governance is off
+  │           resilience.WrapExecutor — no-op executor when governance is off
   │           [driver.go:166; command.go:162-174]
   ├─ Run / readiness
   └─ SIGTERM: destroyConn → exec.Close() (error returned after Drain) then Conn.Drain()
@@ -229,7 +229,7 @@ What this path does NOT get: resilience (guarded methods are separate, §2.4).
 
 ### 2.3 One consume, layer by layer (binder path)
 
-`sub.Subscribe(handler)` [binder.go:79-116]: handler wrapped in `messaging.SafeHandler`
+`sub.Subscribe(handler)` [binder.go:79-116]: handler wrapped in `messaging.Recover`
 (panic → error path, not SDK-goroutine crash) [binder.go:86-88]; `Subscribe` vs
 `QueueSubscribe` on non-empty group (competing consumers) [binder.go:105-110]. Per message:
 
@@ -260,7 +260,7 @@ resilience executor is reached only through opt-in **methods** [command.go:152-1
 
 Wrap order inside `applyResilience` [command.go:162-174]: `ExecutorFor(resource)` (governance
 center-backed; transparent no-op when governance off) → `fault.WrapExecutor` (fault injection) →
-`resilobserve.WrapExecutor(exec, "nats", Observability)` (spans/counters/histograms for breaker
+`resilience.WrapExecutor(exec, "nats", Observability)` (spans/counters/histograms for breaker
 trips, rejects, retries — the resilience core emits none). On rejection the guarded call returns
 a resilience sentinel (`ErrRateLimited` / `ErrCircuitOpen`) and the underlying publish/request
 is never invoked — proven by [resilience_test.go:63-84]. The `resource` is

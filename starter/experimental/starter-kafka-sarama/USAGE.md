@@ -178,7 +178,7 @@ gs.Run()
   │       [client.go:42-46 comment, driver.go:63-96]
   │    3. defensive fail-fast: len(Brokers())==0 → close + boot error [client.go:60-64]
   │    4. applyResilience: fault.Wrap(ExecutorFor("kafka:<brokers>")) →
-  │       resilobserve.WrapExecutor → sync.Map indexed by client
+  │       resilience.WrapExecutor → sync.Map indexed by client
   │       [client.go:65-69, command.go:208-217]
   ├─ derived beans are YOURS: sarama.New*FromClient wherever you inject the client
   └─ SIGTERM → Destroy: closeResilience (exec.Close, forget maps) → cl.Close()
@@ -196,7 +196,7 @@ returned unchanged — wrapping is a zero-risk unconditional idiom. Guarded surf
 
 ```
 SendMessage / SendMessages
-  → resilobserve executor wrapper (span + outcome counters + duration + access log)
+  → resilience executor wrapper (span + outcome counters + duration + access log)
     → fault.WrapExecutor (injected faults when govern.fault enabled)
       → resilience executor (breaker / rate limit / retry, policy from governance center)
         → inner p.SendMessage (real sarama)

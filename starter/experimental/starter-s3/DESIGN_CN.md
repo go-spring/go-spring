@@ -34,7 +34,7 @@ starter）；差异点在下面单独说明。
 - **韧性** — `resilience.NewRoundTripper` 把 observe 传输包上进中性 seam
   解出的执行器（`resilience.ExecutorFor` +
   `fault.WrapExecutor(…, fault.InjectorFor())`，再
-  `resilobserve.WrapExecutor`），以
+  `resilience.WrapExecutor`），以
   `resilience.ResourceLabel("s3", endpoint)` 圈定作用域。
 
 ## 3. 约束

@@ -26,7 +26,7 @@ import (
 	"context"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud/experimental/messaging"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 )
 
@@ -88,9 +88,9 @@ type subscriber struct {
 }
 
 func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) error {
-	// SafeHandler converts a handler panic into the normal error path
+	// Recover converts a handler panic into the normal error path
 	// (nack/redelivery) instead of unwinding into the SDK goroutine.
-	handler = messaging.SafeHandler(handler)
+	handler = messaging.Recover(handler)
 	token := s.cl.Subscribe(s.topic, defaultQoS, func(_ mqtt.Client, m mqtt.Message) {
 		msg := &messaging.Message{Payload: m.Payload()}
 		if err := handler(context.Background(), msg); err != nil {

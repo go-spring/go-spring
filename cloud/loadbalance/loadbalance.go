@@ -38,7 +38,8 @@ package loadbalance
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"sync"
 
 	"go-spring.org/cloud/discovery"
@@ -67,9 +68,8 @@ var ErrNoAvailable = errors.New("loadbalance: no available endpoint")
 // PickInfo carries the per-request inputs a [Balancer] may route on. All fields
 // are optional; a plain round-robin balancer ignores them entirely.
 //
-// The struct admits a field only when a strategy consumes it (the request ctx
-// stays out — no strategy reads it and every call site has it in hand). The
-// leading candidates for future fields are Subset (canary metadata routing,
+// The struct admits a field only when a strategy consumes it. The leading
+// candidates for future fields are Subset (canary metadata routing,
 // the biggest gap) and Attempt (retry avoidance); both wait for a consumer.
 type PickInfo struct {
 	// HashKey selects the instance for hash-based strategies (consistent hash).
@@ -120,9 +120,7 @@ var (
 )
 
 // Register makes a [Balancer] strategy available under name. It panics if name
-// is empty, f is nil, or name is already registered, matching the driver-registry
-// idiom used across stdlib (discovery.RegisterDiscovery, resilience.RegisterDriver) so
-// duplicate wiring fails loudly at init.
+// is empty, f is nil, or name is already registered.
 func Register(name string, f Factory) {
 	if name == "" {
 		panic("loadbalance: register with empty name")
@@ -144,12 +142,8 @@ func New(name string) (Balancer, error) {
 	mu.RLock()
 	f, ok := registry[name]
 	if !ok {
-		names := make([]string, 0, len(registry))
-		for k := range registry {
-			names = append(names, k)
-		}
+		names := slices.Sorted(maps.Keys(registry))
 		mu.RUnlock()
-		sort.Strings(names)
 		return nil, fmt.Errorf("loadbalance: no strategy registered as %q (registered: %v)", name, names)
 	}
 	mu.RUnlock()

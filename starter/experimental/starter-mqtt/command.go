@@ -30,7 +30,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 )
 
 // MQTT observability is driven by these kit-backed helpers rather than a
@@ -169,7 +168,7 @@ func applyResilience(c Config, cl mqtt.Client, resource string) error {
 		return nil
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilobserve.WrapExecutor(exec, "mqtt", c.Observability)
+	exec = resilience.WrapExecutor(exec, "mqtt", c.Observability)
 	resilienceExecs.Store(cl, exec)
 	resilienceResources.Store(cl, resource)
 	return nil

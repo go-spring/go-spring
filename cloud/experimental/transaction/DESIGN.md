@@ -2,7 +2,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `transaction` supplies the Saga abstraction — the eventual-consistency form of
-distributed transaction — in the zero-dependency `stdlib` layer. It replaces
+distributed transaction — in the framework-agnostic cloud layer. It replaces
 Seata Saga and Spring's `@GlobalTransactional` at the *effect* level: an
 ordered list of compensable steps whose failures roll back in reverse. TCC and
 AT live in the `tcc` and `at` subpackages, chosen because each pattern has
@@ -14,10 +14,11 @@ different failure semantics and it is honest to keep them separate.
   failure of a later step, in reverse order.
 - Persist a saga log via `Store` so a crashed process can resume compensation;
   backward recovery only.
-- Expose an `Observer` seam so a starter can attach otel spans without stdlib
-  importing otel.
+- Expose an `Observer` seam; the parent package ships otel-backed observers
+  (`SagaObserver` / `TccObserver` / `AtObserver`, see observe.go) while the
+  model subpackages stay otel-free.
 - Refuse isolation. Intermediate saga states are visible to concurrent readers;
-  business code must guard dirty reads with a status flag or a `cloud/experimental/lock`.
+  business code must guard dirty reads with a status flag or a `cloud/lock`.
 - Refuse SQL parsing / undo-log generation. That would be the AT model, which
   lives in `transaction/at` and is explicitly a separate seam.
 

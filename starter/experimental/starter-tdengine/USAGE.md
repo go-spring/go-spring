@@ -169,7 +169,7 @@ gs.Run()
   ├─ gs field-injects Client.Observability (${observability:=}) [client.go:42]
   ├─ Init [client.go:64]: resourceLabel ("tdengine:<dsn addr>") →
   │     fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │     resilobserve.WrapExecutor → observer NewDB("tdengine", cfg) armed on the slot
+  │     resilience.WrapExecutor → observer NewDB("tdengine", cfg) armed on the slot
   ├─ readiness: indicator runs db.PingContext per instance
   └─ SIGTERM → Destroy [client.go:81]: exec.Close → db.Close
 ```

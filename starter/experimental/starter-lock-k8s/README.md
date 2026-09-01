@@ -4,13 +4,13 @@
 
 `starter-lock-k8s` provides a **Kubernetes-Lease-backed distributed lock and
 leader election** for Go-Spring, with **no external middleware**. It backs
-`cloud/experimental/lock` with `coordination.k8s.io/Lease` objects — the same mechanism
+`cloud/lock` with `coordination.k8s.io/Lease` objects — the same mechanism
 `kube-controller-manager --leader-elect` and spring-cloud-kubernetes use —
 so an in-cluster application elects a leader or guards an exclusive section
 using only the control plane it already runs on.
 
 Blank-importing this starter and declaring a `spring.lock.<name>` entry
-registers one `lock.Locker` bean (from `cloud/experimental/lock`) under `<name>`. Business
+registers one `lock.Locker` bean (from `cloud/lock`) under `<name>`. Business
 code injects `lock.Locker` / builds a `lock.Election` and never sees this
 package; switching to the etcd/consul/redis backend is a blank-import swap
 under the shared `spring.lock` prefix.

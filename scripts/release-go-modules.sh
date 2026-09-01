@@ -83,10 +83,6 @@ done
 
 LAYOUT_DIRS=(
     "layout"
-    "examples/bookman"
-    "examples/chatAI"
-    "examples/miniapi"
-    "examples/startup"
 )
 
 # ---------------------------------------------------------------------------

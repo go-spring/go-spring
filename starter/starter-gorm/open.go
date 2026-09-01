@@ -22,7 +22,6 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	observe "go-spring.org/cloud/observe"
-	resilobserve "go-spring.org/cloud/observe/resilience"
 	gormobserve "go-spring.org/starter-gorm/observe"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"gorm.io/gorm"
@@ -93,7 +92,7 @@ func (o *DB) Init() error {
 		}
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilobserve.WrapExecutor(exec, o.engine, o.Observability)
+	exec = resilience.WrapExecutor(exec, o.engine, o.Observability)
 	o.exec = exec
 	if err := gormresilience.ApplyCallbacks(o.DB, exec, o.resource); err != nil {
 		return err

@@ -57,8 +57,8 @@ Seata AT 的效果——由资源侧捕获的 before-image 自动派生 undo / r
 - **自动补偿 > 手写补偿。** 这是 AT 的定义——业务只写正向 SQL。Saga / TCC 
   独立成子包,正因补偿语义完全不同。
 - **每资源一个 branch bean,不做 driver 注册表。** branch 需要活连接与 ORM
-  DML 拦截,不是声明式策略;缝隙 = 接口类型,与 `cloud/experimental/lock` /
-  `cloud/experimental/batch` 同款。
+  DML 拦截,不是声明式策略;缝隙 = 接口类型,与 `cloud/lock` /
+  `cloud/batch` 同款。
 - **先做进程内 coordinator。** 单服务带若干数据库是 Go 主流拓扑;外部
   Seata TC 是加一跳,大多服务不需要。接口开着,starter 后面可以接远程。
 - **不做读隔离。** 真 AT 读隔离要经 coordinator 看其他在途事务状态,给每次
