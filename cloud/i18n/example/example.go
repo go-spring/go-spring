@@ -15,9 +15,9 @@
  */
 
 // Command example demonstrates cloud/i18n end to end: locale carried on the
-// context, per-locale resolution with default-locale fallback, a nested bundle
-// ingested via AddParsed, missing-key behaviour, and the Localizer pairing
-// with validation.ValidationErrors.Localize.
+// context, per-locale resolution with default-locale fallback, bundle
+// registration via Add/AddBundle, missing-key behaviour, and the Localizer
+// pairing with validation.ValidationErrors.Localize.
 //
 // It self-asserts every expectation and exits non-zero on mismatch, so it
 // doubles as the package's smoke test. No external services are required.
@@ -42,18 +42,15 @@ func main() {
 }
 
 func run() error {
-	// 1. The bundle: en as the fallback locale, explicit templates for en and
-	// zh, plus a nested map in the shape a yaml/json reader produces.
-	src := i18n.NewMapSource(i18n.WithFallbackLocale("en")).
-		Add("en", "greet", "Hello, {0}!").
-		Add("zh", "greet", "你好, {0}!").
-		Add("zh", "farewell", "再见, {0}!")
-
-	src.AddParsed("zh", map[string]any{
-		"validation": map[string]any{
-			"email": "{0} 不是合法邮箱",
-		},
-	})
+	// 1. The bundle: en as the default locale, single templates via Add and a
+	// whole locale bundle via AddBundle.
+	src := i18n.NewMapSource(i18n.WithDefaultLocale("en")).
+		AddMessage("en", "greet", "Hello, {0}!").
+		AddMessage("zh", "greet", "你好, {0}!").
+		AddMessage("zh", "farewell", "再见, {0}!").
+		AddBundle("zh", map[string]string{
+			"validation.email": "{0} 不是合法邮箱",
+		})
 
 	// 2. Resolve per request locale (middleware would set this once from
 	// Accept-Language).
@@ -64,7 +61,7 @@ func run() error {
 	}
 
 	// 3. Missing key: farewell exists only in zh, so an en request finds it in
-	// neither the request locale nor the fallback locale — the key itself comes
+	// neither the request locale nor the default locale — the key itself comes
 	// back with an error wrapping ErrMessageNotFound.
 	en := i18n.WithLocale(context.Background(), "en")
 	msg, err := src.Message(en, "farewell", "Go-Spring")
@@ -73,10 +70,10 @@ func run() error {
 	}
 	fmt.Println("missing ->", msg, err)
 
-	// 4. The nested map landed under a dot-joined key.
+	// 4. The bundle's dot-joined key resolves.
 	msg, err = src.Message(zh, "validation.email", "SignUp.Email")
 	if err != nil || msg != "SignUp.Email 不是合法邮箱" {
-		return fmt.Errorf("AddParsed key: %q, %v", msg, err)
+		return fmt.Errorf("bundle key: %q, %v", msg, err)
 	}
 
 	// 5. The validation pairing: Localizer curries the source into the

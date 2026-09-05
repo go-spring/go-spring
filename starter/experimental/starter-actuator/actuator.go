@@ -131,14 +131,14 @@ type Server struct {
 
 	// Indicators are all beans exported as health.Indicator. Optional: an app
 	// with no indicators still gets liveness/readiness/info.
-	Indicators []health.Indicator `autowire:"?"`
+	Indicators []*health.Indicator `autowire:"?"`
 
 	// Endpoints are all beans exported as endpoint.Endpoint. Optional: a
 	// component (e.g. starter-otel's Prometheus /metrics) contributes its handler
 	// here and it is mounted on this same management port, so operators scrape
 	// one port instead of each component running its own server. The actuator
 	// does not import those components — the seam is the stdlib interface.
-	Endpoints []endpoint.Endpoint `autowire:"?"`
+	Endpoints []*endpoint.Endpoint `autowire:"?"`
 
 	// Config exposes a read-only snapshot of the merged configuration (via
 	// PropertiesRefresher.Snapshot) for the /env and /configprops endpoints.
@@ -329,12 +329,12 @@ func (s *Server) buildHandler(ctx context.Context) http.Handler {
 	// shadow /health etc. (ServeMux panics on a duplicate pattern, surfacing a
 	// misconfiguration at startup).
 	for _, ep := range s.Endpoints {
-		name := strings.TrimPrefix(ep.Path(), "/")
+		name := strings.TrimPrefix(ep.Path, "/")
 		if !s.endpointEnabled(ctx, name) {
 			continue
 		}
-		mux.Handle(ep.Path(), ep)
-		log.Debugf(ctx, log.TagAppDef, "registered endpoint: %s", ep.Path())
+		mux.Handle(ep.Path, ep.Handler)
+		log.Debugf(ctx, log.TagAppDef, "registered endpoint: %s", ep.Path)
 	}
 
 	guard := httpauth.Guard{Token: s.Token, Username: s.Username, Password: s.Password}

@@ -56,8 +56,8 @@ func TestRegisterMultiInstance(t *testing.T) {
 		app.Property("spring.gorm.fake.orders.file", "orders.db")
 		app.Property("spring.gorm.fake.audit.file", "audit.db")
 	}).RunTest(t, func(s *struct {
-		DBs  []*DB              `autowire:""`
-		Inds []health.Indicator `autowire:""`
+		DBs  []*DB               `autowire:""`
+		Inds []*health.Indicator `autowire:""`
 	}) {
 		if len(s.DBs) != 2 {
 			t.Fatalf("want 2 DB beans, got %d", len(s.DBs))
@@ -70,9 +70,9 @@ func TestRegisterMultiInstance(t *testing.T) {
 
 		names := map[string]bool{}
 		for _, ind := range s.Inds {
-			names[ind.HealthName()] = true
-			if err := ind.CheckHealth(context.Background()); err != nil {
-				t.Fatalf("indicator %s must check UP: %v", ind.HealthName(), err)
+			names[ind.Name] = true
+			if err := ind.Probe(context.Background()); err != nil {
+				t.Fatalf("indicator %s must check UP: %v", ind.Name, err)
 			}
 		}
 		if !names["gorm:fake:orders"] || !names["gorm:fake:audit"] {
@@ -86,8 +86,8 @@ func TestRegisterMultiInstance(t *testing.T) {
 // container starts fine and the injections resolve empty).
 func TestRegisterNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {
-		DBs  []*DB              `autowire:""`
-		Inds []health.Indicator `autowire:""`
+		DBs  []*DB               `autowire:""`
+		Inds []*health.Indicator `autowire:""`
 	}) {
 		if len(s.DBs) != 0 {
 			t.Fatalf("no DB beans should register without config, got %d", len(s.DBs))

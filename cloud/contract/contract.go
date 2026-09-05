@@ -41,6 +41,7 @@
 package contract
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -58,6 +59,51 @@ type Contract struct {
 	Response Response `json:"response"`
 }
 
+// Values maps a name to its values — the url.Values / http.Header shape, so
+// multi-valued names (?tag=a&tag=b, repeated Set-Cookie) are modelled the same
+// way the standard library models them. In JSON each name accepts either a
+// single string or an array of strings:
+//
+//	{"name": "Ada"}      // one value
+//	{"tag": ["a", "b"]}  // several values
+//
+// A single string desugars to a one-element slice, so both spellings mean the
+// same thing on the Go side.
+type Values map[string][]string
+
+// UnmarshalJSON accepts, per name, either a JSON string or an array of JSON
+// strings; anything else is an error.
+func (v *Values) UnmarshalJSON(b []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	out := make(Values, len(raw))
+	for k, rv := range raw {
+		var one string
+		if err := json.Unmarshal(rv, &one); err == nil {
+			out[k] = []string{one}
+			continue
+		}
+		var many []string
+		if err := json.Unmarshal(rv, &many); err != nil {
+			return fmt.Errorf("value of %q must be a string or an array of strings", k)
+		}
+		out[k] = many
+	}
+	*v = out
+	return nil
+}
+
+// Get returns the first value of name, or "" — the url.Values.Get /
+// http.Header.Get convention.
+func (v Values) Get(name string) string {
+	if vs := v[name]; len(vs) > 0 {
+		return vs[0]
+	}
+	return ""
+}
+
 // Request is the request side of a contract. Only the fields that are set take
 // part in matching: an empty Query/Headers map imposes no constraint, and a nil
 // Body means the body is not inspected. This lets a contract pin just the parts
@@ -67,33 +113,31 @@ type Request struct {
 	Method string `json:"method"`
 	// Path is the request path, e.g. "/greet". Required.
 	Path string `json:"path"`
-	// Query lists query parameters that must be present with these exact values.
-	Query map[string]string `json:"query,omitempty"`
-	// Headers lists request headers that must be present with these exact values.
-	Headers map[string]string `json:"headers,omitempty"`
-	// Body, when non-nil, must match the incoming body by JSON structural
-	// equality (key order and formatting are ignored).
+	// Query lists query parameters that must be present: for each name, the
+	// request must carry exactly the listed values — same set, any order, same
+	// count. Names not listed are unconstrained.
+	Query Values `json:"query,omitempty"`
+	// Headers lists request headers under the same exact-match rule as Query.
+	Headers Values `json:"headers,omitempty"`
+	// Body, when non-nil, must match the incoming body. JSON bodies compare by
+	// structure (key order and formatting ignored); form bodies (per the
+	// Content-Type) compare by parsed parameter set (pair order and encoding
+	// ignored); anything else compares by raw bytes.
 	Body json.RawMessage `json:"body,omitempty"`
 }
 
 // Response is the response side of a contract: what the stub replays and what
 // the provider is verified against.
 type Response struct {
-	// Status is the HTTP status code. Defaults to 200 when zero.
+	// Status is the HTTP status code. Required; it must be in 100-599.
 	Status int `json:"status"`
-	// Headers are response headers to set (stub) or assert (verify).
-	Headers map[string]string `json:"headers,omitempty"`
-	// Body is the response body. When it is valid JSON, verification compares by
-	// JSON structural equality; otherwise it compares raw bytes.
+	// Headers are response headers to set (stub) or assert (verify), under the
+	// same exact-match rule as Request.Query.
+	Headers Values `json:"headers,omitempty"`
+	// Body is the response body. JSON bodies compare by structural equality,
+	// form bodies (per the Content-Type) by parsed parameter set, anything else
+	// by raw bytes.
 	Body json.RawMessage `json:"body,omitempty"`
-}
-
-// status returns the effective status code, defaulting to 200.
-func (r Response) status() int {
-	if r.Status == 0 {
-		return 200
-	}
-	return r.Status
 }
 
 // Load reads one or more JSON files and returns the contracts they contain.
@@ -118,8 +162,8 @@ func Load(paths ...string) ([]Contract, error) {
 
 // LoadFS is like [Load] but reads every file matching glob from fsys, which is
 // handy with an embed.FS of contract fixtures shipped alongside a test.
-func LoadFS(fsys fs.FS, glob string) ([]Contract, error) {
-	matches, err := fs.Glob(fsys, glob)
+func LoadFS(fsys fs.FS, pattern string) ([]Contract, error) {
+	matches, err := fs.Glob(fsys, pattern)
 	if err != nil {
 		return nil, err
 	}
@@ -141,23 +185,43 @@ func LoadFS(fsys fs.FS, glob string) ([]Contract, error) {
 // decode parses a file body as either a single contract or an array of them,
 // deciding by the first non-space byte so both on-disk layouts are accepted.
 func decode(data []byte) ([]Contract, error) {
-	for _, b := range data {
-		switch b {
-		case ' ', '\t', '\r', '\n':
-			continue
-		case '[':
-			var cs []Contract
-			if err := json.Unmarshal(data, &cs); err != nil {
-				return nil, err
-			}
-			return cs, nil
-		default:
-			var c Contract
-			if err := json.Unmarshal(data, &c); err != nil {
-				return nil, err
-			}
-			return []Contract{c}, nil
-		}
+	if data = bytes.TrimSpace(data); len(data) == 0 {
+		return nil, nil
 	}
-	return nil, nil
+	if data[0] == '[' {
+		var cs []Contract
+		if err := json.Unmarshal(data, &cs); err != nil {
+			return nil, err
+		}
+		for i := range cs {
+			if err := cs[i].validate(); err != nil {
+				return nil, err
+			}
+		}
+		return cs, nil
+	}
+	var c Contract
+	if err := json.Unmarshal(data, &c); err != nil {
+		return nil, err
+	}
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	return []Contract{c}, nil
+}
+
+// validate fails fast on a contract missing its required fields, so a broken
+// file surfaces at Load time with a pointed message instead of as an
+// indirect "no contract matched" at stub or verify time.
+func (c *Contract) validate() error {
+	if c.Request.Method == "" {
+		return fmt.Errorf("contract %q: request.method is required", c.Name)
+	}
+	if c.Request.Path == "" {
+		return fmt.Errorf("contract %q: request.path is required", c.Name)
+	}
+	if c.Response.Status < 100 || c.Response.Status > 599 {
+		return fmt.Errorf("contract %q: response.status %d is missing or not a valid HTTP status code", c.Name, c.Response.Status)
+	}
+	return nil
 }

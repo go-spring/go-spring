@@ -2,7 +2,7 @@
 
 A gorm-backed transactional outbox for Go-Spring: business writes and message
 publishes commit atomically in one database transaction, then a background
-relay drains the `outbox_message` table to any registered `messaging.Binder`
+relay drains the `outbox_message` table to any registered `messaging.Driver`
 (kafka, nats, ...). The neutral core lives in `cloud/experimental/outbox`.
 
 ## Wiring
@@ -10,12 +10,12 @@ relay drains the `outbox_message` table to any registered `messaging.Binder`
 Blank-import the starter and add one entry per relay under `spring.outbox`:
 
 ```properties
-spring.outbox.main.binder=kafka
+spring.outbox.main.driver=kafka
 spring.outbox.main.auto-migrate=true
 ```
 
 Each entry autowires a `*gorm.DB` (from whichever gorm driver starter you
-already use; `db` selects a named bean), resolves the binder at startup,
+already use; `db` selects a named bean), resolves the driver at startup,
 contributes a health indicator (`outbox:<name>`) and runs the relay loop on
 the bean's Init/Destroy — graceful shutdown drains in-flight records.
 
@@ -64,7 +64,7 @@ its own. MySQL 5.7 lacks `SKIP LOCKED` — run a single relay instance there.
 | key | default | meaning |
 |---|---|---|
 | `db` | (autowire) | `*gorm.DB` bean name backing the table |
-| `binder` | — required | messaging binder name (kafka, nats, ...) |
+| `driver` | — required | messaging driver name (kafka, nats, ...) |
 | `auto-migrate` | `false` | create the table at startup |
 | `poll-interval` | `1s` | wait between drained polls (floor 100ms) |
 | `batch-size` | `100` | records fetched per poll |
@@ -78,7 +78,7 @@ per-batch ID order only — set the message key for per-entity ordering. See
 
 ## Example
 
-`example/` runs the whole pattern on in-memory sqlite and an in-process binder,
+`example/` runs the whole pattern on in-memory sqlite and an in-process driver,
 self-asserting atomicity (commit delivers, rollback doesn't), retry-with-backoff
 and dead-lettering. `example/check.sh` is its smoke test.
 ### Log tag

@@ -28,10 +28,10 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var driverRegistry = map[string]Driver{}
@@ -107,7 +107,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, er
 		opts = append(opts, opt)
 	}
 	if c.TLS.Enabled {
-		tlsCfg, err := c.TLS.Build()
+		tlsCfg, err := c.TLS.BuildClient()
 		if err != nil {
 			log.Errorf(ctx, log.TagAppDef, "nats: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "nats: build TLS")
@@ -149,11 +149,10 @@ func newConn(ctx *gs.ContextProvider, name string, c Config) (*Conn, error) {
 	}
 
 	conn := &Conn{Conn: nc}
-	// Attach the observe kit (trace+metric+log) for publishes and consumes.
-	// Nil-safe: when the level is "off" the observers are still set (the kit
-	// honors Level), so PublishMsg/startConsume route through them.
-	conn.pubObs = observe.NewProducer("nats", c.Observability)
-	conn.subObs = observe.NewConsumer("nats", c.Observability)
+	// Attach the instrumentation (trace+metric+log, see observe.go) for
+	// publishes and consumes.
+	conn.pubObs = newObserver(trace.SpanKindProducer)
+	conn.subObs = newObserver(trace.SpanKindConsumer)
 	if c.JetStream.Enabled {
 		js, err := jetstream.New(nc)
 		if err != nil {

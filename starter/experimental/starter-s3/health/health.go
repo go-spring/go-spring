@@ -30,9 +30,9 @@ import (
 //
 // The probe lists buckets: it verifies both endpoint reachability and that the
 // credential pair is accepted.
-func NewClientHealth(name string, client *minio.Client) health.Indicator {
-	return health.NewIndicator("s3:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, client *minio.Client) *health.Indicator {
+	return &health.Indicator{Name: "s3:" + name, Probe: func(ctx context.Context) error {
 		_, err := client.ListBuckets(ctx)
 		return err
-	})
+	}}
 }

@@ -11,9 +11,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.45.0
 )
 
-// Local, not-yet-published observe kit. Removed once the module is tagged.
-
-require go-spring.org/cloud v0.0.0
+require (
+	go-spring.org/cloud v0.0.0
+	go.opentelemetry.io/otel/metric v1.45.0
+)
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
@@ -43,7 +44,6 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect

@@ -20,7 +20,7 @@
 // [governance.Source] backend delivers) into a governance.Config.
 //
 // It deliberately lives as a SUBPACKAGE of starter-governance, not inside
-// cloud/governance: parsing needs spring/conf's value-tag binder, and the
+// cloud/governance: parsing needs spring/conf's value-tag driver, and the
 // cloud module must not depend on the spring module at all. Being a subpackage
 // also means importing it does NOT run the starter's root-package wiring init
 // (Go only initializes packages actually imported), so the nacos/etcd source

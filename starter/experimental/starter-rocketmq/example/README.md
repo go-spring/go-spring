@@ -1,7 +1,7 @@
 # starter-rocketmq example
 
 A minimal publish/consume round trip through the broker-neutral
-`messaging.Binder`: the app subscribes to the `hello` topic in group
+`messaging.Driver`: the app subscribes to the `hello` topic in group
 `hello-group`, publishes a message with a key and a custom header, and asserts
 the consumer receives the same body and header. It self-exits (`SIGTERM`) once
 the round trip succeeds; any failure exits non-zero.

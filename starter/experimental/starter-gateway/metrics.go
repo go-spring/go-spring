@@ -25,6 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go-spring.org/cloud/actuator/endpoint"
 	"go-spring.org/cloud/actuator/health"
 )
 
@@ -95,17 +96,18 @@ func (t *RouteTable) instrument(id string, next http.Handler) http.Handler {
 	})
 }
 
-// metricsEndpoint contributes GET /gateway/metrics to the actuator management
-// server (endpoint.Endpoint seam) rendering the counters in Prometheus text
-// format. The path is distinct from the actuator's built-ins and from a
-// separate otel /metrics so both can coexist.
+// metricsEndpoint renders the counters in Prometheus text format. The path is
+// distinct from the actuator's built-ins and from a separate otel /metrics so
+// both can coexist.
 type metricsEndpoint struct {
 	m *Metrics
 }
 
-func newMetricsEndpoint(m *Metrics) *metricsEndpoint { return &metricsEndpoint{m: m} }
-
-func (e *metricsEndpoint) Path() string { return "/gateway/metrics" }
+// newMetricsEndpoint contributes GET /gateway/metrics to the actuator
+// management server (endpoint.Endpoint seam).
+func newMetricsEndpoint(m *Metrics) *endpoint.Endpoint {
+	return &endpoint.Endpoint{Path: "/gateway/metrics", Handler: &metricsEndpoint{m: m}}
+}
 
 func (e *metricsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m := e.m
@@ -147,11 +149,11 @@ func line(b *strings.Builder, route, class string, v int64) {
 // has zero live instances is a per-route concern surfaced via metrics/logs,
 // not a reason to fail the whole gateway's readiness (it may still serve
 // other routes).
-func newGatewayHealth(tbl *RouteTable) health.Indicator {
-	return health.NewIndicator("gateway", func(ctx context.Context) error {
+func newGatewayHealth(tbl *RouteTable) *health.Indicator {
+	return &health.Indicator{Name: "gateway", Probe: func(ctx context.Context) error {
 		if tbl.compiled.Load() == nil {
 			return fmt.Errorf("gateway: route table not loaded")
 		}
 		return nil
-	})
+	}}
 }

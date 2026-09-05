@@ -78,14 +78,14 @@ The practical consequence: producer and consumer spans cannot be linked across
 the broker. Connection-layer events (connect, connection lost, reconnecting) are
 still bridged into go-spring's log for operational visibility.
 
-## Messaging Binder
+## Messaging Driver
 
 Beyond the raw client, this starter can expose a broker-neutral
-`messaging.Binder` (from `go-spring.org/cloud/messaging`), so application code
+`messaging.Driver` (from `go-spring.org/cloud/messaging`), so application code
 publishes and consumes `*messaging.Message` envelopes without depending on the
 paho MQTT API — swapping the broker underneath does not touch business code.
 
-Register the binder as a bean from an `mqtt.Client` (select the named instance
+Register the driver as a bean from an `mqtt.Client` (select the named instance
 with `gs.TagArg`):
 
 ```go
@@ -94,17 +94,17 @@ import (
     StarterMQTT "go-spring.org/starter-mqtt"
 )
 
-gs.Provide(StarterMQTT.NewBinder, gs.TagArg("a"))
+gs.Provide(StarterMQTT.NewDriver, gs.TagArg("a"))
 ```
 
 Then publish and subscribe through the envelope:
 
 ```go
-pub, _ := binder.NewPublisher(ctx, "orders")
+pub, _ := driver.NewPublisher(ctx, "orders")
 defer pub.Close()
 _ = pub.Publish(ctx, &messaging.Message{Payload: []byte("hello")})
 
-sub, _ := binder.NewSubscriber(ctx, "orders", "")
+sub, _ := driver.NewSubscriber(ctx, "orders", "")
 defer sub.Close()
 _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
     // handle m.Payload
@@ -113,13 +113,13 @@ _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
 ```
 
 `destination` and `source` are topics, published and subscribed at QoS 1. This
-binder is **payload-only**: MQTT 3.1.1 carries no per-message metadata, so
+driver is **payload-only**: MQTT 3.1.1 carries no per-message metadata, so
 `Key`, `Headers` and `Timestamp` are not transmitted, and — uniquely among the
-binders — **no trace context or spans are emitted** (there is nowhere to ride
+drivers — **no trace context or spans are emitted** (there is nowhere to ride
 them). `group` is unused because 3.1.1 has no shared subscriptions. The paho
 callback is fire-and-forget with no ack/nack, so a handler error is only logged.
 The raw `mqtt.Client` bean stays available for retained messages, custom QoS,
-wildcard topics and other MQTT features the binder does not model.
+wildcard topics and other MQTT features the driver does not model.
 
 ## Advanced Features
 

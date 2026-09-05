@@ -1,12 +1,21 @@
 # tlsconf
+
 [English](README.md) | [中文](README_CN.md)
 
 `tlsconf` is the shared TLS configuration helper used by every Go-Spring
-starter that terminates or dials TLS. It binds the off-by-default `tls.*`
-property block to a `*tls.Config`, loading the key pair and CA bundle from
-disk when provided. It depends only on the Go standard library and
-`go-spring.org/stdlib/errutil`, so any module in the repo can adopt it
-without inheriting a dependency graph.
+starter that terminates or dials TLS (redis, gorm dialects, kafka, nats,
+mqtt, grpc, gin, gateway, neo4j, cassandra, registry/lock backends, ...).
+It binds the off-by-default `tls.*` property block to a `*tls.Config`,
+loading the key pair and CA bundle from disk when provided. It depends
+only on the Go standard library and `go-spring.org/stdlib/errutil`, so
+any module in the repo can adopt it without inheriting a dependency
+graph.
+
+## Installation
+
+```
+go get go-spring.org/cloud
+```
 
 ## Embedding
 
@@ -28,18 +37,28 @@ type Config struct {
 | `tls.server-name` | empty | Override the name checked against the peer cert (dial-by-IP, discovery labels). |
 | `tls.insecure-skip-verify` | `false` | Disable verification. Local testing only. |
 
-## Build (client side)
+The config surface is shared across 20+ starters, so the semantics are
+too: an operator moving between redis, kafka, and grpc finds the same
+`tls.enabled` / `cert-file` / `ca-file` knobs behaving the same way.
+
+## BuildClient (client side)
 
 ```go
-tlsCfg, err := c.TLS.Build()
+tlsCfg, err := c.TLS.BuildClient()
 if err != nil { return err }
 client := somelib.NewClient(somelib.WithTLS(tlsCfg))
 ```
 
-When `enabled=false`, `Build` returns `(nil, nil)` — "no TLS" — which
-every client library accepts as a nil `*tls.Config`. `CAFile` sets
-`RootCAs`; errors carry a generic `tls:` prefix, wrap with
-`errutil.Explain(err, "redis: ...")` for a component-specific one.
+When `enabled=false`, `BuildClient` returns `(nil, nil)` — "no TLS" — which
+every client library accepts as a nil `*tls.Config`, so starters pass the
+result straight through with no branching. `CAFile` sets `RootCAs`; on
+the client it is always just the root set for verification, never an
+mTLS trigger. `MinVersion` follows the `crypto/tls` default; starters
+needing a stricter floor can set `MinVersion` on the returned config.
+
+Errors carry a generic `tls:` prefix (`BuildClient` does not know which
+component it serves); wrap with `errutil.Explain(err, "redis: ...")` for
+a component-specific one.
 
 ## BuildServer (server side)
 
@@ -57,10 +76,12 @@ Server semantics differ in two ways:
   server they would describe verifying the peer *we* dial, so both are
   ignored.
 
-As with `Build`, `enabled=false` yields `(nil, nil)`.
+As with `BuildClient`, `enabled=false` yields `(nil, nil)`.
 
-## Installation
+## Boundaries
 
-```
-go get go-spring.org/cloud
-```
+- The package stops at producing the `*tls.Config`: no provider setup,
+  no listener wrapping. The starter hands the result to its library or
+  `tls.NewListener`.
+- No certificate reloading / rotation. `BuildClient` is called once at
+  construction; rotation is a lifecycle concern of the starter.

@@ -30,9 +30,9 @@ import (
 //
 // The probe scans system.local on the contact point: one round trip that
 // verifies protocol, auth and cluster state.
-func NewClientHealth(name string, session *gocql.Session) health.Indicator {
-	return health.NewIndicator("cassandra:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, session *gocql.Session) *health.Indicator {
+	return &health.Indicator{Name: "cassandra:" + name, Probe: func(ctx context.Context) error {
 		var release string
 		return session.Query("SELECT release_version FROM system.local").WithContext(ctx).Scan(&release)
-	})
+	}}
 }

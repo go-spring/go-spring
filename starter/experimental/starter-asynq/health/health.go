@@ -30,8 +30,8 @@ import (
 // connOpt is the Redis connection option the caller (the starter) already
 // resolved from Config; keeping it as a parameter avoids this subpackage
 // depending on the starter's private Config type.
-func NewClientHealth(name string, connOpt asynq.RedisConnOpt) health.Indicator {
-	return health.NewIndicator("asynq:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, connOpt asynq.RedisConnOpt) *health.Indicator {
+	return &health.Indicator{Name: "asynq:" + name, Probe: func(ctx context.Context) error {
 		insp := asynq.NewInspector(connOpt)
 		defer insp.Close()
 		// GetQueueInfo returns nil,nil for an empty queue; a reachable Redis
@@ -39,5 +39,5 @@ func NewClientHealth(name string, connOpt asynq.RedisConnOpt) health.Indicator {
 		// should fail the probe.
 		_, err := insp.GetQueueInfo("default")
 		return err
-	})
+	}}
 }

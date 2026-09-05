@@ -7,7 +7,7 @@
 - **服务发现**:redis 地址通过已注册的发现后端(`service-name`)解析,而非硬编码配置——只有 解析→拨号→服务 全部成功,round-trip 才会成功。
 - **韧性**:开启 `resilience.enabled` 后,每条命令都通过内置 `"default"` executor;超过 `rate-limit` 的突发被以 `ErrRateLimited` 拒绝。韧性配置本身是 `gs.Dync` 字段,可热更新。
 - **健康检查**:每实例的 redis `health.Indicator` 被 `starter-actuator` 在 `:9370` 聚合——`/readyz` 反映连接池状态。
-- **可观测性**:redisotel + observe kit 依托 OTel 全局。
+- **可观测性**:redisotel + starter 内置访问日志依托 OTel 全局。
 
 ## 布局
 

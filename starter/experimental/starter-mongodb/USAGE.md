@@ -176,16 +176,16 @@ import starter-mongodb
 gs.Run()
   ├─ ctor newClient [starter.go:80]: ApplyURI → timeouts/pool/auth → tls.Build
   │   → SetMonitor(command monitor, lazy observer) [starter.go:118]
-  │   → newLiveResolver (discovery watch when service-name set, mesh off) [starter.go:121]
+  │   → newPickPool (loader-backed endpoint picker when service-name set, mesh off) [starter.go:121]
   │   → SetDialer(shared dialerWrapper) [starter.go:147]
   │   → mongo.Connect → fail-fast Ping bounded by connect-timeout (10s fallback)
   │     [starter.go:160-169] — a dead server fails the BOOT, not the first query
-  ├─ gs field-injects Client.Observability (${observability:=} — a top-level key, see §3.3 ⚠)
-  ├─ Init [client.go:97]: NewDB("mongodb", ...) observer → resource label
-  │   → fault.WrapExecutor(resilience.ExecutorFor(resource)) → resilience.WrapExecutor
+  ├─ Init [client.go:90]: newDBObserver("mongodb") → module-local observer (span + metric + access log)
+  │   → fault.WrapExecutor(resilience.ExecutorFor(resource)) → resilience.WrapExecutor(exec, "mongodb")
   │   → swap dialerWrapper.dial = resilience.NewDialer(base, exec, resource)
   ├─ readiness: mongo:<name> indicator runs client.Ping against the live server
-  └─ SIGTERM → Destroy [client.go:112]: exec.Close → resolver.Stop → client.Disconnect
+  └─ SIGTERM → Destroy [client.go:112]: exec.Close → client.Disconnect
+      (the loader holds no resources, so nothing discovery-related is released)
 ```
 
 ### 2.2 The two seams — and the asymmetry that shapes them
@@ -198,8 +198,8 @@ startners do in one hook chain into two seams:
   Started/Succeeded/Failed events, correlated by (connection id, request id). Every command —
   insert, find, ping, hello — opens a span + bumps the in-flight gauge in Started and closes
   them in Succeeded/Failed. The monitor reads the observer lazily via an atomic pointer
-  because it is installed in the ctor, before gs field-injects `Observability`; the nil guard
-  covers the startup ping path ([command.go:41-45]).
+  because it is installed in the ctor, before `Init` builds the observer; the nil guard
+  covers the startup ping path ([command.go:39-45]).
 - **Resilience/fault ride the dial layer**: `Init` wraps the dial function with
   `resilience.NewDialer` — breaker/limiter/bulkhead/timeout/fault apply **per new connection**,
   not per command. Already-open pooled connections run at full speed ([client.go:47-51]).
@@ -211,9 +211,8 @@ The dial swap works without rebuilding the client because the ctor hands the dri
 `dialerWrapper` whose `dial` field `Init` later mutates ([starter.go:143-147], [client.go:104-106]).
 
 Why hand-rolled instead of otelmongo: the official instrumentation targets the v1 driver and
-its CommandMonitor type is incompatible with v2; the bridge here delegates to the shared
-observe kit so MongoDB emits the same vocabulary as every other client starter
-([command.go:47-52]).
+its CommandMonitor type is incompatible with v2; the bridge here is module-local
+([observe.go]) so MongoDB emits the same vocabulary as every other client starter.
 
 ### 2.3 One command through the layers: `FindOne` on the direct instance
 
@@ -223,12 +222,12 @@ observe kit so MongoDB emits the same vocabulary as every other client starter
    resilience executor asks for a permit (resource label `mongodb:<service-name or uri>` —
    per instance, [client.go:99]); over the rate limit the dial is rejected and the operation
    surfaces `resilience.ErrRateLimited`. With service-name set, the base dial first asks the
-   discovery Resolver to pick a live endpoint and ignores the URI address ([starter.go:130-137]).
+   loader-backed `Pool` to pick a live endpoint and ignores the URI address ([starter.go:130-137]).
 3. The driver sends the `find` command; the command monitor's `Started` fires:
    `obs.Start(ctx, "find", "test")` — span name = command name, argument = database name.
 4. The reply fires `Succeeded` (or `Failed`): the span ends, `db.client.operation.duration`
    is recorded, the in-flight gauge is balanced, and one `_app_mongodb_access` log record is
-   emitted at Info (Warn + `error` field on failure).
+   emitted (error → Warn; success with the database-name argument → Debug; plain success → Info).
 5. A **reused pooled connection skips step 2 entirely** — that is the dial-only resilience
    seam in action.
 
@@ -237,7 +236,7 @@ observe kit so MongoDB emits the same vocabulary as every other client starter
 ## 3. Per-key behavior reference
 
 Instance keys live under `spring.mongodb.<name>.` (bound via `conf.BindEach`).
-Exception: the observability block is a **top-level** key (see §3.3 ⚠).
+There are no observability keys — observation is unconditional (see §3.3).
 
 ### 3.1 Connection & addressing
 
@@ -253,9 +252,9 @@ Exception: the observability block is a **top-level** key (see §3.3 ⚠).
 | `max-pool-size` | uint64 | `100` | Max connections per server. 0 would mean "use default" — but the starter passes 100 explicitly when unset. | Too small → ops queue waiting for a pool slot. |
 | `min-pool-size` | uint64 | `0` | Min pooled connections (always applied, even 0). | — |
 | `max-conn-idle-time` | duration | `0` | 0 = no limit; e.g. `5m` prunes idle conns. ⚠ With `service-name`, a finite value recycles connections onto updated endpoints without a restart. | `0` + discovery → conns linger on a removed endpoint until they break. |
-| `service-name` | string | — | Resolve addressing via the registered discovery backend; a Resolver-backed dialer replaces the URI hosts per connection [starter.go:126-137]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the resolver is actually consulted. |
+| `service-name` | string | — | Resolve addressing via the registered discovery backend; a loader-backed (Pool-`Pick`) dialer replaces the URI hosts per connection [starter.go:126-137]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the loader/pool is actually consulted. |
 | `scheme` | string | — | Narrows discovery endpoints to one transport scheme (e.g. `tls`). Only consulted when service-name is set. | — |
-| `discovery` | string | `default` | Which registered discovery backend resolves service-name. | Unregistered backend → boot error from discovery.NewResolver. |
+| `discovery` | string | `default` | Which registered discovery backend resolves service-name. | Unregistered backend → boot error from discovery.NewLoader. |
 | `tls.*` | group | off | Shared `tlsconf` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:105-112]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
 
 ### 3.2 Resilience / fault (govern.*, not under the instance prefix)
@@ -270,14 +269,10 @@ policy manifests as rejected *connections*; a fault injection fires per dial, no
 
 ### 3.3 Observability
 
-| Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
-|-----|------|---------|-------------------------|------------------------------|
-| `observability.level` | string | `brief` | Access log: `off` / `brief` / `detailed` (detailed appends the argument = database name). ⚠ This is bound as `Client.Observability` with `${observability:=}` — a **top-level absolute property** (`observability.level=...`), NOT `spring.mongodb.<name>.observability.level`; one setting is shared by all instances. | Setting it under the instance prefix → silently ignored, log stays `brief`. |
-| `observability.maxArgBytes` | int | `512` | Bound of the captured argument in detailed mode. ⚠ Same top-level rule. | — |
-| `observability.skipOps` | list | — | Suppresses span + metric + log together for listed command names (`find`, `insert`, `ping`, ...). ⚠ Same top-level rule. | — |
-
-Trace and metric themselves have **no per-instance switch** here: they ride the OTel globals
-that starter-otel installs (`spring.observability.*`); without starter-otel they are no-ops.
+There are **no per-module observability config keys** (no level, no skip list, no argument
+cap): observation is always on and emits through module-local instrumentation ([observe.go]).
+Trace and metric ride the OTel globals that starter-otel installs
+(`spring.observability.*`); without starter-otel they are no-ops.
 
 There is no `driver` key — this starter has no driver registry ([driver.go:17-21]).
 
@@ -303,11 +298,12 @@ curl -s :9090/metrics | grep db.client
 # db.client.operation_duration_seconds...{db.operation="find",db.system="mongodb",status="ok"}
 # db.client.active_requests{db.operation=...,db.system="mongodb"}
 grep _app_mongodb_access app.log | tail -1
-# brief: db.operation=find status=ok duration_ms=1.2 ; failure adds error=... at Warn
+# db.operation=find status=ok duration_ms=1.2 ; success with the db-name argument at Debug,
+# plain success at Info, failure adds error=... at Warn
 ```
 
-- Spans: named after the MongoDB command (`find`, `insert`, `ping`), attribute
-  `db.system=mongodb`, `db.operation=<command>`, `db.statement=<database>` in detailed mode.
+- Spans: named after the MongoDB command (`find`, `insert`, `ping`), attributes
+  `db.system=mongodb`, `db.operation=<command>`, `db.statement=<database>` (truncated at 512 bytes).
 - The startup ping is also observed — unless the observer is still nil (pre-Init), which the
   monitor's nil guard covers ([command.go:44-45]).
 
@@ -341,8 +337,8 @@ percentiles and an error breakdown; faults fire at the dial seam (fresh connecti
 
 ### 4.5 Discovery address recycling
 
-Scale/move the backing instance; every **new** connection asks the Resolver for a live
-endpoint. With `max-conn-idle-time=5m` the pool fully migrates within that window without a
+Scale/move the backing instance; every **new** connection asks the loader-backed `Pool` for a
+live endpoint. With `max-conn-idle-time=5m` the pool fully migrates within that window without a
 restart. Verify via `_app_mongodb_access` records or by stopping the old endpoint and watching
 `mongo:<name>` health stay UP.
 
@@ -359,8 +355,6 @@ restart. Verify via `_app_mongodb_access` records or by stopping the old endpoin
 | Ops fail with `ErrRateLimited` under burst | Governance rate-limit on the dial seam | Raise `govern.<driver>.rate-limit` or `max-pool-size`/`min-pool-size` (warm pool skips dials). |
 | Breaker never opens despite slow queries | By design — resilience is dial-layer only; slow-but-connected commands are invisible to it | Alert on `db.client.operation.duration` instead; see §2.2. |
 | No spans/metrics though commands work | starter-otel not imported — the monitor rides the OTel globals | `_ "go-spring.org/starter-otel"` + `spring.observability.*`. |
-| `observability.level=detailed` has no effect | Key set under the instance prefix; binding is top-level | Use `observability.level=detailed` at the top level (§3.3 ⚠). |
-| Access log too chatty (every `ping`/`find`) | brief level logs every command | `observability.skipOps=ping,hello` or `observability.level=off` (log only). |
 | Injecting `*mongo.Client` fails | The bean is the wrapper `*StarterMongoDB.Client` | Autowire the wrapper type; driver methods promote unchanged. |
 
 ---
@@ -369,18 +363,16 @@ restart. Verify via `_app_mongodb_access` records or by stopping the old endpoin
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 14 instance keys + tls group + 3 top-level observability |
+| Config keys | 14 instance keys + tls group |
 | Required | 1 (`uri`) |
 | Quickstart external deps | 1 (MongoDB) |
-| "Watch out" entries | 6 (directConnection, top-level observability ×3 counted once, warm-pool bypass, username-gated credential) |
+| "Watch out" entries | 4 (directConnection, warm-pool bypass, username-gated credential) |
 
 Design suspects (audit ledger; kept from the previous edition, additions marked NEW):
 
 - `service-name` silently disables driver topology discovery and needs the user's
   `directConnection=true` cooperation — the starter cannot inject it itself (URI is opaque).
 - Health indicator has no disable switch (family asymmetry: redigo has `health.enabled`).
-- Per-instance `observability` binds as a **top-level** key shared by all instances rather
-  than under the instance prefix — surprising and undocumented in config.go.
 - Resilience is dial-layer only; users expecting per-command breaker semantics (as in
   starter-go-redis) get silent non-protection for warm-pool command failures. Re-audited in
   the 2026-08-28 guard-unification pass and confirmed **SDK-blocked at the command level**:
@@ -389,8 +381,5 @@ Design suspects (audit ledger; kept from the previous edition, additions marked 
   constructible outside the driver, and `ClientOptions` exposes no command-executor
   override. The dial layer plus the command monitor (observation) is therefore the deepest
   reachable seam; revisit if the v2 driver grows a reject-capable hook.
-- (NEW) `command.go` bridges to the observe kit with span arg = database name only; command
-  documents (filter/update) are never captured even in detailed mode — deliberate (payload
-  safety) but makes `detailed` barely differ from `brief` for MongoDB.
 - (NEW) The health indicator Provide relies on `gs.TagArg(name)` to fetch the wrapper by bean
   name — correct today, but a second Client-typed bean family would make the tag ambiguous.

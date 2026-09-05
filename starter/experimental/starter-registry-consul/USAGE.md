@@ -150,9 +150,10 @@ Timeline (all `starter.go`):
 
 This starter has no watch; consumers use the `cloud/discovery` seam. The reference Consul backend
 `consuldisc` uses Consul blocking queries: each catalog change returns
-a fresh full snapshot, which the `discovery.Resolver`/loadbalance `Pool` consumes. Change detection
-and weight-0 filtering are the pool's: `excludeDrained` drops `Weight == 0` endpoints, falling back
-to the full set only when every endpoint is drained (`cloud/loadbalance/pool.go:93-134`).
+a fresh full snapshot, which a discovery `Loader` reads and the loadbalance `Pool` (via
+`SourceFunc`) consumes. Change detection and weight-0 filtering are the pool's: `excludeDrained`
+drops `Weight == 0` endpoints, falling back to the full set only when every endpoint is drained
+(`cloud/loadbalance/pool.go:93-134`).
 
 ### 2.3 DRAIN path — UpdateWeight(0)
 

@@ -20,7 +20,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/model"
@@ -81,7 +80,7 @@ func TestNacosDiscovery_Resolve(t *testing.T) {
 		inst("10.0.0.1", 8080, 10, true, true),
 		{Ip: "10.0.0.2", Port: 8443, Weight: 5, Enable: false, Healthy: true, Metadata: map[string]string{"scheme": "tls"}},
 	}}
-	d := &nacosDiscovery{client: fake, group: "DEFAULT_GROUP"}
+	d := &nacosDiscovery{client: fake, group: "DEFAULT_GROUP", entries: map[string]*nacosEntry{}}
 
 	eps, err := d.Resolve(context.Background(), "order-svc")
 	if err != nil {
@@ -107,64 +106,32 @@ func TestNacosDiscovery_Resolve(t *testing.T) {
 	}
 }
 
-// TestNacosDiscovery_WatchPushesSnapshots covers the watch chain: the channel
-// seeds with the current set, a Nacos push delivers the new snapshot, a no-op
-// re-push delivers nothing, and cancelling ctx closes the channel.
-func TestNacosDiscovery_WatchPushesSnapshots(t *testing.T) {
+// TestNacosDiscovery_PushRefreshesSnapshot covers the internal freshness chain:
+// the first Resolve seeds the cache and subscribes, and a later Nacos push
+// refreshes it so the next Resolve observes the new snapshot.
+func TestNacosDiscovery_PushRefreshesSnapshot(t *testing.T) {
 	fake := &fakeNamingClient{set: []model.Instance{inst("10.0.0.1", 8080, 10, true, true)}}
-	d := &nacosDiscovery{client: fake, group: "DEFAULT_GROUP"}
+	d := &nacosDiscovery{client: fake, group: "DEFAULT_GROUP", entries: map[string]*nacosEntry{}}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch, err := d.Watch(ctx, "order-svc")
+	eps, err := d.Resolve(context.Background(), "order-svc")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// First result carries the current set.
-	select {
-	case r := <-ch:
-		if len(r.Endpoints) != 1 || r.Endpoints[0].Addr != "10.0.0.1:8080" {
-			t.Fatalf("seed snapshot wrong: %+v", r.Endpoints)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("no seed snapshot")
+	if len(eps) != 1 || eps[0].Addr != "10.0.0.1:8080" {
+		t.Fatalf("seed snapshot wrong: %+v", eps)
 	}
 
-	// A Nacos push with one more instance delivers the new full snapshot.
+	// A Nacos push with one more instance refreshes the cache.
 	fake.push([]model.Instance{
 		inst("10.0.0.1", 8080, 10, true, true),
 		inst("10.0.0.2", 8080, 10, true, true),
 	})
-	select {
-	case r := <-ch:
-		if len(r.Endpoints) != 2 {
-			t.Fatalf("pushed snapshot wrong: %+v", r.Endpoints)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("no snapshot after push")
+	eps, err = d.Resolve(context.Background(), "order-svc")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// A byte-equal re-push is suppressed (no churn).
-	fake.push([]model.Instance{
-		inst("10.0.0.1", 8080, 10, true, true),
-		inst("10.0.0.2", 8080, 10, true, true),
-	})
-	select {
-	case r := <-ch:
-		t.Fatalf("no-op re-push must not deliver, got %+v", r.Endpoints)
-	case <-time.After(300 * time.Millisecond):
-	}
-
-	// Cancelling ctx closes the channel (the caller's only stop signal).
-	cancel()
-	select {
-	case _, ok := <-ch:
-		if ok {
-			t.Fatal("channel must be closed after cancel")
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("channel not closed after cancel")
+	if len(eps) != 2 {
+		t.Fatalf("pushed snapshot wrong: %+v", eps)
 	}
 }
 
@@ -175,7 +142,7 @@ func TestNacosDiscovery_WatchPushesSnapshots(t *testing.T) {
 func TestNacosDiscovery_ClusterScope(t *testing.T) {
 	fake := &fakeNamingClient{set: []model.Instance{inst("10.0.0.1", 8080, 1, true, true)}}
 
-	d := &nacosDiscovery{client: fake, group: "DEFAULT_GROUP", cluster: "DEFAULT"}
+	d := &nacosDiscovery{client: fake, group: "DEFAULT_GROUP", cluster: "DEFAULT", entries: map[string]*nacosEntry{}}
 	if _, err := d.Resolve(context.Background(), "order-svc"); err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +150,7 @@ func TestNacosDiscovery_ClusterScope(t *testing.T) {
 		t.Fatalf("cluster DEFAULT must narrow the query, got %v", fake.clusters)
 	}
 
-	d = &nacosDiscovery{client: fake, group: "DEFAULT_GROUP", cluster: ""}
+	d = &nacosDiscovery{client: fake, group: "DEFAULT_GROUP", cluster: "", entries: map[string]*nacosEntry{}}
 	if _, err := d.Resolve(context.Background(), "order-svc"); err != nil {
 		t.Fatal(err)
 	}

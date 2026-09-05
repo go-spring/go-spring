@@ -38,10 +38,6 @@
       "default": true,
       "description": "Probe the first name server address with a TCP dial at startup"
     },
-    "observability": {
-      "type": "object",
-      "description": "Per-operation access log config (off/brief/detailed), see observe.ObserveConfig"
-    },
     "driver": {
       "type": "string",
       "default": "DefaultDriver"

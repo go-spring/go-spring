@@ -44,13 +44,3 @@ func (JSONCodec) Marshal(v any) ([]byte, error) {
 func (JSONCodec) Unmarshal(data []byte, v any) error {
 	return json.Unmarshal(data, v)
 }
-
-// resolveCodec returns the codec a [Cache] should use: the one fixed at its
-// construction, or [JSONCodec] when none was set. The [Cache] methods call it
-// so the default is applied consistently instead of re-derived per call.
-func resolveCodec(codec Codec) Codec {
-	if codec != nil {
-		return codec
-	}
-	return JSONCodec{}
-}

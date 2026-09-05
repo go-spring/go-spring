@@ -18,8 +18,8 @@
 // [redis.Hook] layers that instrument each command, mirroring starter-redigo's
 // conn.go. Two hooks ride the client's hook chain (FIFO, first added outermost):
 //
-//	observeHook     — the access log (trace+metric come from redisotel, installed
-//	                  by instrument() in starter.go, so this layer is log-only)
+//	observeHook     — the access log (see observe.go; trace+metric come from
+//	                  redisotel, installed by instrument() in starter.go)
 //	resilienceHook  — the breaker/retry/rate-limit executor (innermost)
 //
 // Their relative order is established by Init in client.go and is a semantic
@@ -33,7 +33,6 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // resilienceHook routes every Redis command (and pipeline) through the executor.
@@ -100,45 +99,6 @@ func (h *resilienceHook) run(ctx context.Context, setErr func(error), call func(
 		setErr(err)
 	}
 	return err
-}
-
-// applyObservability attaches an access-log Hook to client. go-redis already
-// emits trace+metric via redisotel (InstrumentTracing/InstrumentMetrics in
-// instrument()), so the Hook's Observer is built with WithoutTraceAndMetric:
-// the kit only fills the access-log gap, avoiding duplicate spans/metrics. The
-// log rides the caller's ctx, so it picks up redisotel's span for trace_id
-// correlation. When ObserveConfig.Level is "off" the Observer emits nothing, so the
-// Hook is a no-op pass-through.
-func applyObservability(cfg observe.ObserveConfig, client redis.UniversalClient) {
-	obs := observe.NewDB("redis", cfg, observe.WithoutTraceAndMetric())
-	client.AddHook(&observeHook{obs: obs})
-}
-
-// observeHook emits a per-command access log around every Redis command and
-// pipeline. It does not emit spans or metrics (those come from redisotel); it
-// only drives the Observer's log path.
-type observeHook struct{ obs *observe.Observer }
-
-var _ redis.Hook = (*observeHook)(nil)
-
-func (h *observeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
-
-func (h *observeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
-	return func(ctx context.Context, cmd redis.Cmder) error {
-		_, sp := h.obs.Start(ctx, cmd.FullName(), "")
-		err := next(ctx, cmd)
-		sp.End(nilAsSuccess(err))
-		return err
-	}
-}
-
-func (h *observeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
-	return func(ctx context.Context, cmds []redis.Cmder) error {
-		_, sp := h.obs.Start(ctx, "pipeline", "")
-		err := next(ctx, cmds)
-		sp.End(nilAsSuccess(err))
-		return err
-	}
 }
 
 // nilAsSuccess treats redis.Nil (a cache miss / "key not found") as success so

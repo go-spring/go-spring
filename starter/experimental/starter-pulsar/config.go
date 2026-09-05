@@ -16,11 +16,7 @@
 
 package StarterPulsar
 
-import (
-	"time"
-
-	observe "go-spring.org/cloud/observe"
-)
+import "time"
 
 // Config defines Pulsar client configuration.
 //
@@ -78,14 +74,8 @@ type Config struct {
 	// Metrics exposes the pulsar client's native Prometheus metrics.
 	Metrics MetricsConfig `value:"${metrics}"`
 
-	// Observability configures the per-operation access log emitted by the
-	// resilience executor (off/brief/detailed). Defaults to "brief". This
-	// complements the package-level trace helpers in command.go, which are
-	// driven by their own default level.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
-
 	// Governance enables the resilience/fault guard on this client, default is
-	// true. Both the raw client API (GuardedSend) and the messaging binder's
+	// true. Both the raw client API (GuardedSend) and the messaging driver's
 	// Publish route through the governance center executor; when the governance
 	// center itself is off the executor is a transparent no-op, so this switch
 	// only removes the guard entirely (bare calls) when set to false.

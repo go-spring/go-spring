@@ -18,62 +18,125 @@ package lock
 
 import (
 	"context"
+	"time"
 
-	observe "go-spring.org/cloud/observe"
+	"go-spring.org/log"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// lockSemConv is the lock namespace: metrics under lock.*, attributes
-// lock.system / lock.operation with the key captured as lock.key (in detailed
-// log mode and as a span attribute).
-var lockSemConv = observe.SemConv{
-	Domain:    "lock",
-	SystemKey: "lock.system",
-	OpKey:     "lock.operation",
-	ArgKey:    "lock.key",
+// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
+// HTTP semconv recommended set.
+var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
+var (
+	// lockTag is the static log tag for the lock access log; the backend's
+	// system is a log field, not part of the tag.
+	lockTag = log.RegisterAppTag("lock", "")
+
+	lockTracer = otel.Tracer("go-spring.org/cloud/lock")
+)
+
+// newDuration builds the lock.operation.duration histogram from whatever
+// meter provider is current — created per Wrap, not at package init, so an
+// SDK installed later than this package's init still receives the records.
+func newDuration() metric.Float64Histogram {
+	h, _ := otel.Meter("go-spring.org/cloud/lock").Float64Histogram("lock.operation.duration",
+		metric.WithDescription("Duration of lock acquire operations"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
+	return h
 }
 
-// WrapLocker returns a [Locker] that wraps Acquire and TryAcquire with the
-// observe kit's three signals (trace span + duration/in-flight metric +
-// access log), labelled lock.system=system and lock.key=<key>. cfg controls
-// the access log (off/brief/detailed). When starter-otel is not imported the
-// global OTel providers are no-ops, so the wrapper adds negligible overhead
-// and changes no behaviour.
+// WrapLocker returns a [Locker] that wraps Acquire and TryAcquire with a
+// client span, the lock.operation.duration metric, and an access log,
+// labelled with the backend's system value. When starter-otel is not imported
+// the global OTel providers are no-ops, so the wrapper adds negligible
+// overhead and changes no behaviour.
 //
-// A lock starter installs it with its backend's system value and its
-// per-instance observability config:
+// A lock starter installs it with its backend's system value:
 //
-//	locker = lock.WrapLocker("redis", c.Observer.Observability, inner)
-func WrapLocker(system string, cfg observe.ObserveConfig, inner Locker) Locker {
-	return &observedLocker{
-		obs:   observe.New(system, lockSemConv, trace.SpanKindClient, cfg),
-		inner: inner,
-	}
+//	locker = lock.WrapLocker("redis", inner)
+func WrapLocker(system string, inner Locker) Locker {
+	return &observedLocker{system: system, inner: inner, duration: newDuration()}
 }
 
 type observedLocker struct {
-	obs   *observe.Observer
-	inner Locker
+	system   string
+	inner    Locker
+	duration metric.Float64Histogram
+}
+
+// start opens the operation's client span.
+func (l *observedLocker) start(ctx context.Context, op, key string) (context.Context, trace.Span) {
+	return lockTracer.Start(ctx, op,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("lock.system", l.system),
+			attribute.String("lock.operation", op),
+			attribute.String("lock.key", key),
+		))
+}
+
+// record emits the duration metric and the access log for one finished
+// operation. The log level carries the outcome: an error at Warn, a
+// TryAcquire miss at Info, a plain success at Debug (lock acquire is frequent
+// and uninteresting until it fails or misses).
+func (l *observedLocker) record(ctx context.Context, op, key string, start time.Time, err error, acquired bool) {
+	status := "ok"
+	if err == nil && !acquired {
+		status = "missed"
+	}
+	dur := float64(time.Since(start).Nanoseconds()) / 1e6
+	l.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+		attribute.String("system", l.system),
+		attribute.String("operation", op),
+		attribute.String("status", status),
+	))
+
+	common := func() []log.Field {
+		return []log.Field{
+			log.String("system", l.system),
+			log.String("operation", op),
+			log.String("key", key),
+			log.Float("duration_ms", dur),
+		}
+	}
+	switch {
+	case err != nil:
+		fields := append(common(), log.Any("error", err))
+		log.Warn(ctx, lockTag, fields...)
+	case !acquired:
+		fields := append(common(), log.String("status", status))
+		log.Info(ctx, lockTag, fields...)
+	default:
+		log.Debug(ctx, lockTag, common)
+	}
 }
 
 func (l *observedLocker) Acquire(ctx context.Context, key string, opts ...Option) (Lock, error) {
-	ctx, sp := l.obs.Start(ctx, "acquire", key)
+	start := time.Now()
+	ctx, span := l.start(ctx, "acquire", key)
 	held, err := l.inner.Acquire(ctx, key, opts...)
-	sp.End(err)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
+	l.record(ctx, "acquire", key, start, err, err == nil)
 	return held, err
 }
 
 func (l *observedLocker) TryAcquire(ctx context.Context, key string, opts ...Option) (Lock, bool, error) {
-	ctx, sp := l.obs.Start(ctx, "try_acquire", key)
+	start := time.Now()
+	ctx, span := l.start(ctx, "try_acquire", key)
 	held, ok, err := l.inner.TryAcquire(ctx, key, opts...)
-	var attrs []attribute.KeyValue
-	if !ok {
-		// A missed TryAcquire is not an error (err stays nil): record the miss
-		// explicitly so the span/metric dimension separates it from a win.
-		attrs = append(attrs, attribute.Bool("lock.acquired", false))
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 	}
-	sp.End(err, attrs...)
+	span.End()
+	l.record(ctx, "try_acquire", key, start, err, err == nil && ok)
 	return held, ok, err
 }
 

@@ -126,8 +126,6 @@ spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
 
 # observe-lock 适配器的访问日志粒度（以下为默认值）。
-# spring.lock.jobs.observability.level=brief
-# spring.lock.jobs.observability.maxArgBytes=512
 ```
 
 **验证**（本地 Consul agent，可用 `example/docker-compose.yml`）：
@@ -166,7 +164,7 @@ buildLock），取消一个句柄不影响其他句柄。
 
 ### 2.2 三层时序解析（所有锁后端共享）
 
-TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高层优先：
+TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层优先：
 
 | 层 | 来源 | 本后端 |
 |----|------|--------|
@@ -211,9 +209,6 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高�
 | `key-prefix` | string | `lock/` | 拼在每个锁 key 前，让共享一个 Consul 集群的多个应用互不冲突。 | 前缀相同的两个应用会互相争锁。 |
 | `tls.enabled` | bool | `false` | 应用共享 `tlsconf` 块（`server-name`、`ca-file`、`cert-file`、`key-file`、`insecure-skip-verify`）。 | 开了没材料 → 启动期建 client 报错（fail fast）。 |
 | `observe.enabled` | bool | `true` | 默认用 observe-lock 适配器包装 `<name>` 主 Locker bean（trace span + metric + 访问日志）。`false` = 裸 locker。 | 迁移：`<name>-observed` bean 已移除，请注入 `<name>`。 |
-| `observability.level` | string | `brief` | observe-lock 适配器访问日志粒度：`off`/`brief`/`detailed`（detailed 记录锁 key）。 | 非法值 → 启动期绑定错误。 |
-| `observability.maxArgBytes` | int | `512` | 记录锁 key 的字节上限。 | 过低会截断 detailed 日志里的 key。 |
-| `observability.skipOps` | []string | — | 从访问日志排除的操作（`acquire`、`try_acquire`）。 | 拼错则静默无效。 |
 
 ⚠ 本 starter **没有** `renew-interval`/`retry-interval` key：Consul 自动续约 session 且
 在内部阻塞（§2.2 第 2 层）。实例权重（`Weight=0` 摘流）是注册中心/负载均衡概念，与锁

@@ -16,15 +16,13 @@
 
 // command.go is the "command seam" concept of this starter: the observe
 // transport layer — the OpenTelemetry instrumentation and the obsTransport
-// round-tripper that emits a duration metric + access log per request. It
-// mirrors starter-redigo's command.go (the per-command instrumentation layers).
+// round-tripper that emits a duration metric + access log per request.
 package StarterElasticsearch
 
 import (
 	"net/http"
 
 	"github.com/elastic/elastic-transport-go/v8/elastictransport"
-	observe "go-spring.org/cloud/observe"
 )
 
 // newOtelInstrumentation builds the transport-level OpenTelemetry
@@ -38,14 +36,14 @@ func newOtelInstrumentation() *elastictransport.ElasticsearchOpenTelemetry {
 }
 
 // obsTransport wraps the underlying HTTP round-tripper so each request emits a
-// duration metric + access log via the observe kit. Init builds it
-// with WithoutTrace: the trace span comes from newOtelInstrumentation above
-// (applied at the elastictransport.Perform layer, above this round-tripper), so
-// the kit only fills the metric+log gap - no duplicate span. The operation is
-// derived from the request method + URL path (e.g. "POST /index/_search").
+// duration metric + access log (see observe.go — no span here: the trace span
+// comes from newOtelInstrumentation above, applied at the
+// elastictransport.Perform layer, so emitting one here would duplicate it). The
+// operation is derived from the request method + URL path (e.g. "POST
+// /index/_search").
 type obsTransport struct {
 	base http.RoundTripper
-	obs  *observe.Observer
+	obs  *dbObserver
 }
 
 func (t *obsTransport) RoundTrip(req *http.Request) (*http.Response, error) {

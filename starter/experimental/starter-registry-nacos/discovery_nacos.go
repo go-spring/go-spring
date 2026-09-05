@@ -15,9 +15,11 @@
  */
 
 // This file adds the CONSUMER half of Nacos service discovery to the registry
-// starter: a cloud/discovery Discovery backend that resolves and watches
+// starter: a cloud/discovery Discovery backend that serves snapshots of
 // instances from Nacos naming. Registration (the provider half, registrar.go)
-// and discovery now share one starter and one naming client idiom.
+// and discovery now share one starter and one naming client idiom. Freshness is
+// internal: the first Resolve of a service subscribes to Nacos pushes that keep
+// the cached snapshot current, so later calls are in-memory reads.
 //
 // Like starter-discovery-k8s, backends are named adapters in the discovery
 // registry, not injectable beans: configure one block per Nacos cluster under
@@ -35,7 +37,6 @@ import (
 	"net"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
@@ -156,23 +157,59 @@ func newNacosDiscovery(c DiscoveryConfig) (*nacosDiscovery, error) {
 	return &nacosDiscovery{client: client, group: c.Group, cluster: c.Cluster}, nil
 }
 
-// nacosDiscovery resolves and watches service instances in one Nacos
-// namespace/group. It implements [discovery.Discovery].
+// nacosDiscovery serves snapshots of service instances in one Nacos
+// namespace/group. It implements [discovery.Discovery]. The first Resolve of a
+// service seeds a per-service cache and subscribes to Nacos pushes that keep
+// it current; later calls are in-memory reads.
 type nacosDiscovery struct {
 	client  naming_client.INamingClient
 	group   string
 	cluster string
+
+	mu      sync.Mutex // guards entries
+	entries map[string]*nacosEntry
 }
 
-// Resolve returns the current healthy instance set for name.
-func (d *nacosDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
-	instances, err := d.selectInstances(ctx, name)
-	if err != nil {
-		return nil, err
+// nacosEntry is the cached snapshot for one service name. eps holds the FULL
+// (unfiltered) set; scheme narrowing happens per Resolve call.
+type nacosEntry struct {
+	mu     sync.Mutex // guards eps; held across the seed so subscribe runs once
+	eps    []discovery.Endpoint
+	seeded bool
+}
+
+// entry returns (creating if needed) the cache entry for name.
+func (d *nacosDiscovery) entry(name string) *nacosEntry {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	e, ok := d.entries[name]
+	if !ok {
+		e = &nacosEntry{}
+		d.entries[name] = e
 	}
-	eps := instancesToEndpoints(instances)
-	eps = discovery.FilterByScheme(eps, discovery.NewQuery("", opts...).Scheme)
-	sortEndpoints(eps)
+	return e
+}
+
+// Resolve returns the current healthy instance set for name. The first call
+// pays the seed query (bounded by ctx) and opens the Nacos subscription; later
+// calls read the cache.
+func (d *nacosDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	e := d.entry(name)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.seeded {
+		instances, err := d.selectInstances(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		if err := d.subscribe(name, e); err != nil {
+			return nil, err
+		}
+		e.eps = instancesToEndpoints(instances)
+		sortEndpoints(e.eps)
+		e.seeded = true
+	}
+	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
 	return eps, nil
 }
 
@@ -200,84 +237,24 @@ func (d *nacosDiscovery) selectInstances(_ context.Context, name string) ([]mode
 	return instances, nil
 }
 
-// Watch subscribes to name's instance set and pushes a fresh full snapshot on
-// the returned channel on every Nacos push. The first result carries the
-// current set (from an explicit query — the SDK's first callback delivery is
-// an implementation detail, the channel contract is not); the channel closes
-// when ctx is cancelled, which also unsubscribes.
-//
-// Channel discipline follows starter-discovery-k8s: the Nacos callback never
-// touches the channel — it only records the latest snapshot and signals; a
-// single goroutine owns the channel as sole writer and closer, so there is no
-// send-after-close race.
-func (d *nacosDiscovery) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
-	scheme := discovery.NewQuery("", opts...).Scheme
-
-	out := make(chan discovery.WatchResult, 1)
-	updates := make(chan struct{}, 1)
-	var mu sync.Mutex
-	var latest []discovery.Endpoint
-	record := func(instances []model.Instance) {
-		eps := instancesToEndpoints(instances)
-		eps = discovery.FilterByScheme(eps, scheme)
-		sortEndpoints(eps)
-		mu.Lock()
-		latest = eps
-		mu.Unlock()
-		select {
-		case updates <- struct{}{}:
-		default: // a pending signal is enough; snapshots are full, not deltas
-		}
-	}
-
+// subscribe registers e's Nacos push callback, which refreshes the cache on
+// every push. A failed push keeps the stale snapshot — stale addresses are
+// safer than none. The subscription lives for the backend's lifetime.
+func (d *nacosDiscovery) subscribe(name string, e *nacosEntry) error {
 	cb := func(services []model.Instance, err error) {
 		if err != nil {
-			// A failed push keeps the last snapshot: stale addresses are
-			// safer than none (the Discovery contract's own degradation rule).
-			log.Warnf(context.Background(), starterTag, "registry-nacos: watch %s callback error (keeping last snapshot): %v", name, err)
+			log.Warnf(context.Background(), starterTag, "registry-nacos: push for %s failed (keeping last snapshot): %v", name, err)
 			return
 		}
-		record(services)
+		eps := instancesToEndpoints(services)
+		sortEndpoints(eps)
+		e.mu.Lock()
+		e.eps = eps
+		e.mu.Unlock()
 	}
-	if err := d.client.Subscribe(&vo.SubscribeParam{
+	return d.client.Subscribe(&vo.SubscribeParam{
 		ServiceName: name, GroupName: d.group, Clusters: d.clusterList(), SubscribeCallback: cb,
-	}); err != nil {
-		return nil, errutil.Explain(err, "registry-nacos: subscribe %s in %s failed", name, d.group)
-	}
-
-	go func() {
-		defer close(out)
-		defer func() {
-			_ = d.client.Unsubscribe(&vo.SubscribeParam{ServiceName: name, GroupName: d.group, Clusters: d.clusterList(), SubscribeCallback: cb})
-		}()
-
-		// Seed the channel with the current set; dedupe against the first
-		// callback delivery when Nacos also fires it with the same content.
-		if instances, err := d.selectInstances(ctx, name); err == nil {
-			record(instances)
-		} else {
-			log.Warnf(context.Background(), starterTag, "registry-nacos: initial query for %s failed (waiting for first push): %v", name, err)
-		}
-
-		var lastKey string
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-updates:
-				mu.Lock()
-				eps := latest
-				mu.Unlock()
-				key := endpointsKey(eps)
-				if key == lastKey {
-					continue // no-op re-delivery must not churn consumers
-				}
-				lastKey = key
-				out <- discovery.WatchResult{Endpoints: eps}
-			}
-		}
-	}()
-	return out, nil
+	})
 }
 
 // instancesToEndpoints maps Nacos instances to discovery endpoints. Enable
@@ -300,23 +277,4 @@ func instancesToEndpoints(instances []model.Instance) []discovery.Endpoint {
 // sortEndpoints orders endpoints by address so snapshots are comparable.
 func sortEndpoints(eps []discovery.Endpoint) {
 	sort.Slice(eps, func(i, j int) bool { return eps[i].Addr < eps[j].Addr })
-}
-
-// endpointsKey renders a snapshot as a comparable string for change
-// detection.
-func endpointsKey(eps []discovery.Endpoint) string {
-	var b strings.Builder
-	for _, e := range eps {
-		b.WriteString(e.Addr)
-		b.WriteByte(',')
-		b.WriteString(e.Scheme)
-		b.WriteByte(',')
-		b.WriteString(strconv.Itoa(e.Weight))
-		b.WriteByte(';')
-		b.WriteString(strconv.FormatBool(e.Disabled))
-		b.WriteByte(',')
-		b.WriteString(strconv.FormatBool(e.Healthy))
-		b.WriteByte('|')
-	}
-	return b.String()
 }

@@ -54,7 +54,7 @@ func init() {
 			).Name(name).Init((*Cache).Init).Destroy((*Cache).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
-			r.Provide(func(c *Cache) health.Indicator { return health2.NewBigCacheHealth(name, c.BigCache) }, gs.TagArg(name)).Name("bigcache:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			r.Provide(func(c *Cache) *health.Indicator { return health2.NewBigCacheHealth(name, c.BigCache) }, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
 			return nil
 		})
 	})
@@ -77,7 +77,7 @@ func init() {
 }
 
 // newClient creates a new BigCache instance based on the provided configuration,
-// wrapped so Get/Set/Delete flow through the observe kit, and registers OTel
+// wrapped so Get/Set/Delete flow through the module-local observe layer, and registers OTel
 // gauges for its statistics, labeled by the instance name.
 func newClient(ctx *gs.ContextProvider, name string, c Config) (*Cache, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating bigcache instance, name=%s shards=%d max-size=%d", name, c.Shards, c.MaxEntrySize)
@@ -96,9 +96,8 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (*Cache, error) {
 	// starter-otel is absent (the OTel globals are no-ops then).
 	registerMetrics(name, client)
 	log.Infof(ctx.Context, log.TagAppDef, "bigcache instance initialized, name=%s shards=%d", name, c.Shards)
-	// Return the wrapper; gs field-injects Resilience (gs.Dync, hot-reloadable)
-	// + Observability after this returns, then calls Init (InitMethod)
-	// to build the observer + executor.
+	// Return the wrapper; gs calls Init (InitMethod) after this returns to
+	// build the observer + executor.
 	return &Cache{BigCache: client, name: name}, nil
 }
 

@@ -117,10 +117,7 @@ spring.go-redis.cluster.route-by-latency=true
 spring.cache.main.driver=go-redis:main
 
 # --- 可观测 -----------------------------------------------------------------
-# 访问日志详略（tag _app_redis_access）。注意：observability.* 是顶层 key，
-# 全部 client starter/实例共享（wrapper 字段按绝对引用绑定 ${observability:=}），
-# 不在 spring.go-redis.<name> 之下。默认 "brief"；"detailed" 附带命令+key。
-observability.level=detailed
+# 访问日志（tag _app_redis_access）默认输出，经 logger 配置过滤；带 key 的成功记录走 Debug。
 # redisotel 的 span/连接池指标默认开启，挂在 starter-otel 的全局管线上。
 
 # --- actuator + otel ------------------------------------------------------
@@ -162,7 +159,6 @@ gs.Run()
   ├─ 构造 newClient [starter.go:97]：validateConfig → 查 driver → driver.CreateClient
   │   → instrument()（redisotel tracing+metrics，由 otel.* 开关门控）
   │   → failFastPing（无条件执行，上限 dial-timeout 或 5s）[starter.go:218]
-  ├─ gs 字段注入 Client.Observability（${observability:=}）
   ├─ Init [client.go:58]：resourceLabel → fault.WrapExecutor(resilience.ExecutorFor(resource))
   │   → resilience.WrapExecutor → applyObservability（访问日志 hook）
   │   → AddHook(resilienceHook)——命令链装配完成
@@ -186,8 +182,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 - **redisotel 最外层**：在构造期由 `instrument()` 添加，早于 Init 加的其余层。span 因此
   覆盖 starter 加的全部层，访问日志也借用 redisotel 的 span 上下文做 trace_id 关联。
 - **observeHook 在熔断器之外**：一条访问日志覆盖整个重试循环——记录的是最终结果而非
-  每次尝试。它以 `WithoutTraceAndMetric()` 构建 [command.go:112]，不重复发 span/指标
-  （redisotel 已负责），只补日志缺口。
+  每次尝试。它天然只发日志 [observe.go]：redisotel 已负责 span/指标，hook 只补日志缺口。
 - **resilienceHook 最内层**：保护决策贴近网络；其拒绝正是外层随后要观测的对象。
 - 两个 hook 的 `DialHook` 都不动——建连是 discovery 的职责，不是命令级保护 [command.go:39-41]。
 
@@ -210,7 +205,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 ### 2.4 服务发现寻址与连接回收（single 模式）
 
 设置 `service-name` 后，DefaultDriver 替换 go-redis 的 dialer：每次新建连接都调用
-`resolver.Pick()` 取一个存活端点 [driver.go:141-147]，resolver 后台保鲜端点集。配合
+`lb.Pick()`(round-robin loadbalance.Pool)取一个存活端点 [driver.go:141-154]，resolver 后台保鲜端点集。配合
 `conn-max-lifetime`（默认 2m），连接**无需重建客户端**就能换到更新后的地址——这也是默认值
 取较短 2m 而非"无限"的原因 [config.go:95-97]。此时 `addr` 不生效——两者都配置时启动会打 WARN 点名被忽略的 `addr`（example 故意配 dummy
 `0.0.0.0:0` 来证明这点）。sentinel/cluster 模式下设置 `service-name` 会在启动期被拒绝：
@@ -260,9 +255,6 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 |-----|------|--------|------------|----------|
 | `otel.tracing.enabled` | bool | true | 挂 redisotel span。无 starter-otel 时为 no-op。 | 关掉又期待 trace → 静默无告警。 |
 | `otel.metrics.enabled` | bool | true | 挂 redisotel 连接池/命中指标。同上。 | — |
-| `observability.level` | string | `brief` | 访问日志：`off` / `brief` / `detailed`（附带命令+key）。 | `off` 只静默日志；trace/metric 照发。 |
-| `observability.maxArgBytes` | int | 512 | detailed 模式参数截断上限。 | 过小 → 参数被截断。 |
-| `observability.skipOps` | list | — | 对列出的操作名同时抑制 span+metric+log。 | — |
 
 ### 3.4 cache driver 引用语法
 
@@ -300,7 +292,7 @@ spring.go-redis.main.service-name=redis-cluster
 spring.go-redis.main.conn-max-lifetime=30s
 ```
 
-扩缩/迁移后端实例；在 conn-max-lifetime 内新连接即拨到更新端点（每次拨号 resolver.Pick）。
+扩缩/迁移后端实例；在 conn-max-lifetime 内新连接即拨到更新端点（每次拨号经 round-robin pool 选点）。
 观察 `PoolStats()`（TotalConns/Hits）或 redisotel 连接池指标确认无需重启的回收。
 
 ### 4.4 验证 cache driver 接线（门面 SET，裸客户端 GET）
@@ -333,7 +325,7 @@ executor 无需重启即刷新。
 | 启动 WARN "addr ... is ignored" | single 模式同时配了 `addr` 和 `service-name` | 无害；删 `addr` 或留着当标签——寻址归服务发现。 |
 | 命令正常但健康 DOWN | 指示器带 ctx ping；查 ACL/只读副本 | 看 /readiness 里组件的错误详情。 |
 | 注入的 bean 无 span/指标 | 未引入 starter-otel | redisotel 挂 OTel 全局；补 import。 |
-| 没有访问日志 | `observability.level=off`，或日志 tag 被过滤 | 设 `detailed`；检查 `_app_redis_access` 的 logger 配置。 |
+| 没有访问日志 | logger 配置过滤了 `_app_redis_access` 或 Debug 级别（带 key 成功走 Debug） | 检查 `_app_redis_access` 的 logger 配置。 |
 | 怀疑 GET miss 触发熔断 | 不会——redis.Nil 判为成功 [command.go:94] | 找真实后端错误；miss 已排除。 |
 | cache bean 注入失败 | 门面 bean 名取自 redis 实例名而非 spring.cache key | 按 `<redis-实例名>` 注入；见 starter-cache USAGE。 |
 
@@ -341,7 +333,7 @@ executor 无需重启即刷新。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 实例 25 个 + tls 组 + otel(2) + observability(3) |
+| 配置 key 总数 | 实例 25 个 + tls 组 + otel(2) |
 | 其中必填 | 每种模式 1 组（addr/service-name、master-name+sentinel-addrs 或 addrs） |
 | quickstart 前置外部依赖 | 1（Redis） |
 | "注意/坑" 条数 | 6 |

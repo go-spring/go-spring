@@ -21,7 +21,6 @@ import (
 	"errors"
 	"testing"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -36,7 +35,7 @@ func (fakeExecutor) Close() error           { return nil }
 func (fakeExecutor) Refresh(p Policy) error { return nil }
 
 func TestWrapExecutor_NilInnerReturnsNil(t *testing.T) {
-	assert.That(t, WrapExecutor(nil, "redis", observe.ObserveConfig{})).Nil()
+	assert.That(t, WrapExecutor(nil, "redis")).Nil()
 }
 
 func TestClassifyOutcome(t *testing.T) {
@@ -71,7 +70,7 @@ func TestWrapExecutor_PassesErrorThrough(t *testing.T) {
 		context.DeadlineExceeded,
 		errors.New("downstream"),
 	} {
-		exec := WrapExecutor(fakeExecutor{err: err}, "redis", observe.ObserveConfig{Level: "off"})
+		exec := WrapExecutor(fakeExecutor{err: err}, "redis")
 		got := exec.Execute(context.Background(), "svc", func(ctx context.Context) error { return nil })
 		assert.That(t, errors.Is(got, err)).True()
 	}

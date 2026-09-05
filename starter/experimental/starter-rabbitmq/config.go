@@ -21,7 +21,6 @@ package StarterRabbitMQ
 import (
 	"time"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -47,15 +46,9 @@ type Config struct {
 	// insecure-skip-verify).
 	TLS tlsconf.TLSConfig `value:"${tls}"`
 
-	// Observability configures the per-operation access log emitted by the
-	// resilience executor (off/brief/detailed). Defaults to "brief". This
-	// complements the package-level trace helpers in observability.go, which are
-	// driven by their own default level.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
-
 	// Governance enables the resilience/fault guard on this connection, default
 	// is true. Both the raw client API (GuardedPublish) and the messaging
-	// binder's Publish route through the governance center executor; when the
+	// driver's Publish route through the governance center executor; when the
 	// governance center itself is off the executor is a transparent no-op, so
 	// this switch only removes the guard entirely (bare calls) when set to
 	// false.

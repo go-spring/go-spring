@@ -61,10 +61,10 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (mqtt.Client, err
 		return nil, errutil.Explain(err, "failed to create mqtt client: %s", c.Broker)
 	}
 
-	// Seed the package-level span-helper observers with this client's
-	// observability config (first client wins) so StartPublishSpan /
-	// StartConsumeSpan honor ${spring.mqtt.<name>.observability.level}.
-	seedObserveConfig(c.Observability)
+	// Build the package-level span-helper observers (StartPublishSpan /
+	// StartConsumeSpan) from the current OTel meter provider; the first wired
+	// client wins.
+	buildObservers()
 
 	token := client.Connect()
 	token.Wait()

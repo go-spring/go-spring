@@ -67,17 +67,17 @@ func main() {
 	gs.Run()
 }
 
-// runTest publishes a message through the messaging.Binder and consumes it
-// back, proving the whole produce/push-consume round trip works. The binder
+// runTest publishes a message through the messaging.Driver and consumes it
+// back, proving the whole produce/push-consume round trip works. The driver
 // path also exercises trace injection/extraction (a no-op here) and the
 // load-test marker propagation.
 func runTest(s *Service) {
 	ctx := context.Background()
 
-	binder := starter.NewBinder(s.Client)
+	driver := starter.NewDriver(s.Client)
 
 	// Subscribe before publishing so the message is not missed.
-	sub, err := binder.NewSubscriber(ctx, topic, group)
+	sub, err := driver.NewSubscriber(ctx, topic, group)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "SUBSCRIBE failed: %v", err)
 		os.Exit(1)
@@ -91,7 +91,7 @@ func runTest(s *Service) {
 		os.Exit(1)
 	}
 
-	pub, err := binder.NewPublisher(ctx, topic)
+	pub, err := driver.NewPublisher(ctx, topic)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "PUBLISH failed: %v", err)
 		os.Exit(1)

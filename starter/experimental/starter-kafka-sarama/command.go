@@ -31,9 +31,9 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
-	observe "go-spring.org/cloud/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Why these are call-site helpers rather than a wrapped producer/consumer:
@@ -55,29 +55,28 @@ import (
 // starter-otel the global TracerProvider is a no-op and the global propagator is
 // a no-op, so these helpers cost almost nothing and change no message bytes.
 
-// Package-level kit observers back the helpers. kafka-sarama's helpers are the
-// instrumentation API (there is no binder), so a default "brief" level is used.
-// The observers are built lazily (sync.Once) so a blank import of this starter
-// no longer pays the observe-kit construction at package init — only apps that
-// actually call the helpers build them.
+// Package-level observers back the helpers; kafka-sarama's helpers are the
+// instrumentation API (there is no driver). They are built lazily (sync.Once)
+// so a blank import of this starter pays no instrument construction at package
+// init — only apps that actually call the helpers build them (see observe.go).
 var (
 	defaultObsOnce sync.Once
-	defaultPubObs  *observe.Observer
-	defaultSubObs  *observe.Observer
+	defaultPubObs  *observer
+	defaultSubObs  *observer
 )
 
-func pubObserver() *observe.Observer {
+func pubObserver() *observer {
 	defaultObsOnce.Do(func() {
-		defaultPubObs = observe.NewProducer("kafka", observe.ObserveConfig{Level: observe.DefaultBrief})
-		defaultSubObs = observe.NewConsumer("kafka", observe.ObserveConfig{Level: observe.DefaultBrief})
+		defaultPubObs = newObserver("publish", trace.SpanKindProducer)
+		defaultSubObs = newObserver("consume", trace.SpanKindConsumer)
 	})
 	return defaultPubObs
 }
 
-func subObserver() *observe.Observer {
+func subObserver() *observer {
 	defaultObsOnce.Do(func() {
-		defaultPubObs = observe.NewProducer("kafka", observe.ObserveConfig{Level: observe.DefaultBrief})
-		defaultSubObs = observe.NewConsumer("kafka", observe.ObserveConfig{Level: observe.DefaultBrief})
+		defaultPubObs = newObserver("publish", trace.SpanKindProducer)
+		defaultSubObs = newObserver("consume", trace.SpanKindConsumer)
 	})
 	return defaultSubObs
 }
@@ -91,8 +90,8 @@ func subObserver() *observe.Observer {
 //	_, span := StarterKafkaSarama.StartProducerSpan(ctx, msg)
 //	_, _, err := producer.SendMessage(msg)
 //	StarterKafkaSarama.EndSpan(span, err)
-func StartProducerSpan(ctx context.Context, msg *sarama.ProducerMessage) (context.Context, *observe.Span) {
-	ctx, sp := pubObserver().Start(ctx, "publish", msg.Topic)
+func StartProducerSpan(ctx context.Context, msg *sarama.ProducerMessage) (context.Context, *Span) {
+	ctx, sp := pubObserver().Start(ctx, msg.Topic)
 	otel.GetTextMapPropagator().Inject(ctx, producerCarrier{msg})
 	// Carry the load-test marker in a record header so the consumer recognises
 	// synthetic load.
@@ -109,17 +108,17 @@ func StartProducerSpan(ctx context.Context, msg *sarama.ProducerMessage) (contex
 //	_, span := StarterKafkaSarama.StartConsumerSpan(ctx, msg)
 //	err := handle(ctx, msg)
 //	StarterKafkaSarama.EndSpan(span, err)
-func StartConsumerSpan(ctx context.Context, msg *sarama.ConsumerMessage) (context.Context, *observe.Span) {
+func StartConsumerSpan(ctx context.Context, msg *sarama.ConsumerMessage) (context.Context, *Span) {
 	ctx = otel.GetTextMapPropagator().Extract(ctx, consumerCarrier{msg})
 	// Extract the load-test marker the producer put in a record header.
 	if traffic.IsAffirmative(consumerCarrier{msg}.Get(traffic.MetaKeyLoadTest)) {
 		ctx = traffic.WithLoadTest(ctx, "kafka-sarama-header")
 	}
-	return subObserver().Start(ctx, "consume", msg.Topic)
+	return subObserver().Start(ctx, msg.Topic)
 }
 
 // EndSpan records err (if any) on the span and ends it.
-func EndSpan(span *observe.Span, err error) {
+func EndSpan(span *Span, err error) {
 	span.End(err)
 }
 
@@ -209,7 +208,7 @@ func applyResilience(c Config, client sarama.Client, resource string) error {
 	// Wrap so breaker trips / rejects / retries emit span + counter + histogram
 	// + access log (the resilience core emits none). nil-safe, no-op without
 	// starter-otel.
-	exec = resilience.WrapExecutor(exec, "kafka", c.Observability)
+	exec = resilience.WrapExecutor(exec, "kafka")
 	resilienceExecs.Store(client, exec)
 	resilienceResources.Store(client, resource)
 	return nil

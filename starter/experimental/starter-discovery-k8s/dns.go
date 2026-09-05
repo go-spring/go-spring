@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go-spring.org/cloud/discovery"
@@ -42,9 +43,25 @@ type dnsResolver interface {
 // Pod already has. The trade-off versus the informer mode is propagation
 // latency (bounded by DNS TTL plus RefreshInterval) and the absence of
 // per-endpoint metadata such as zone.
+//
+// Freshness is internal: snapshots are cached per service for RefreshInterval,
+// so a read is a DNS query at most once per interval and an in-memory read in
+// between. DNS offers no push notification, so a read-through TTL cache is the
+// whole freshness story.
 type dnsDiscovery struct {
 	cfg Config
 	res dnsResolver
+
+	mu      sync.Mutex // guards entries
+	entries map[string]*dnsEntry
+}
+
+// dnsEntry is the cached snapshot for one service name. eps holds the FULL
+// (unfiltered) set; scheme narrowing happens per Resolve call.
+type dnsEntry struct {
+	mu        sync.Mutex // guards eps/fetchedAt; held across the fetch so it runs once per TTL window
+	eps       []discovery.Endpoint
+	fetchedAt time.Time
 }
 
 // newDNSDiscovery builds a DNS-mode backend. A nil res selects
@@ -53,7 +70,7 @@ func newDNSDiscovery(cfg Config, res dnsResolver) *dnsDiscovery {
 	if res == nil {
 		res = net.DefaultResolver
 	}
-	return &dnsDiscovery{cfg: cfg, res: res}
+	return &dnsDiscovery{cfg: cfg, res: res, entries: map[string]*dnsEntry{}}
 }
 
 // fqdn builds the cluster-internal FQDN for a Service name:
@@ -66,20 +83,46 @@ func (d *dnsDiscovery) fqdn(service string) string {
 // is set it performs an SRV lookup (address and port come from the record);
 // otherwise it performs an A/AAAA lookup and pairs each IP with the configured
 // Port. A headless Service publishes records only for ready addresses by
-// default, so returned endpoints are marked Healthy. opts narrow the result;
-// [discovery.WithScheme] filters by transport scheme.
+// default, so returned endpoints are marked Healthy. A result older than
+// RefreshInterval triggers a re-fetch (bounded by ctx); younger ones read the
+// cache. opts narrow the result; [discovery.WithScheme] filters by transport
+// scheme.
 func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
-	var eps []discovery.Endpoint
-	var err error
+	interval := d.cfg.RefreshInterval
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+
+	d.mu.Lock()
+	e, ok := d.entries[name]
+	if !ok {
+		e = &dnsEntry{}
+		d.entries[name] = e
+	}
+	d.mu.Unlock()
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.eps == nil || time.Since(e.fetchedAt) >= interval {
+		eps, err := d.fetch(ctx, name)
+		if err != nil {
+			// A failed refresh serves the stale snapshot; the next call retries.
+			if e.eps == nil {
+				return nil, err
+			}
+		} else {
+			e.eps, e.fetchedAt = eps, time.Now()
+		}
+	}
+	return discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme), nil
+}
+
+// fetch runs the live DNS query for name.
+func (d *dnsDiscovery) fetch(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	if d.cfg.PortName != "" {
-		eps, err = d.resolveSRV(ctx, name)
-	} else {
-		eps, err = d.resolveA(ctx, name)
+		return d.resolveSRV(ctx, name)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return discovery.FilterByScheme(eps, discovery.NewQuery("", opts...).Scheme), nil
+	return d.resolveA(ctx, name)
 }
 
 // resolveSRV looks up "_<port-name>._tcp.<fqdn>" and turns each SRV record into
@@ -119,53 +162,6 @@ func (d *dnsDiscovery) resolveA(ctx context.Context, name string) ([]discovery.E
 	}
 	sortEndpoints(eps)
 	return eps, nil
-}
-
-// Watch polls Resolve on RefreshInterval and pushes a fresh snapshot on the
-// returned channel whenever the endpoint set changes. DNS offers no push
-// notification, so polling is the only option; RefreshInterval trades
-// change-detection latency for query load. The first result carries the current
-// snapshot; the channel closes when ctx is cancelled.
-func (d *dnsDiscovery) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
-	interval := d.cfg.RefreshInterval
-	if interval <= 0 {
-		interval = 10 * time.Second
-	}
-	init, err := d.Resolve(ctx, name, opts...)
-	if err != nil {
-		return nil, err
-	}
-	ch := make(chan discovery.WatchResult, 1)
-	ch <- discovery.WatchResult{Endpoints: init} // seed: the current snapshot
-	go func() {
-		defer close(ch)
-		t := time.NewTicker(interval)
-		defer t.Stop()
-		last := addrKey(init)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				eps, err := d.Resolve(context.Background(), name, opts...)
-				if err != nil {
-					// Transient DNS failures are skipped; the next tick retries.
-					continue
-				}
-				key := addrKey(eps)
-				if key == last {
-					continue
-				}
-				last = key
-				select {
-				case ch <- discovery.WatchResult{Endpoints: eps}:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
-	return ch, nil
 }
 
 // sortEndpoints orders endpoints by address for a stable snapshot, so change

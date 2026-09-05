@@ -78,6 +78,6 @@ _, err = c.Do("SET", "key", "value")
 
 ## 可观测
 
-与 `starter-go-redis`（使用官方 `redisotel` 钩子）不同，redigo 没有官方的 OpenTelemetry 埋点，社区也没有一个能在不包装每条
-命令的前提下干净接入连接层的等价方案。为避免引入脆弱的包装层，本 starter **有意不内置**可观测。需要对缓存访问做 tracing/metrics
-的应用，建议改用 `starter-go-redis`，或在调用侧自行埋点。
+与 `starter-go-redis`（使用官方 `redisotel` 钩子）不同，redigo 没有官方的 OpenTelemetry 埋点。本 starter 因此自带模块内观测层：
+每条池化命令经过 client span（`db.system`/`db.operation`/`db.statement` 属性）、`db.client.operation.duration` 直方图，以及
+tag 为 `_app_redigo_access` 的访问日志。未导入 starter-otel 时三者均为空操作。

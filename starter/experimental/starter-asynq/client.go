@@ -26,7 +26,6 @@ import (
 	"github.com/hibiken/asynq"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/spring/gs"
 )
 
@@ -36,54 +35,19 @@ import (
 // operation, since enqueue touches Redis).
 type Client struct {
 	*asynq.Client
-	// Observability is field-injected by gs from the top-level
-	// "observability.*" keys. The instance-prefixed
-	// "spring.asynq.<name>.observability.*" keys land in cfg.Observability
-	// and take precedence — see resolveObservability.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	cfg      Config
 	resource string
 	exec     resilience.Executor
-	obs      *observe.Observer
+	obs      *observer
 }
 
-// resolveObservability merges the two observability config surfaces into the
-// effective policy Init arms:
-//
-//   - the instance-prefixed "spring.asynq.<name>.observability.*" keys, bound
-//     into Config (cfg.Observability) by conf.BindEach;
-//   - the top-level "observability.*" keys, field-injected into the wrapper's
-//     Observability field (an absolute property reference, kept for backward
-//     compatibility with configs that predate the instance keys).
-//
-// Instance-level keys override top-level ones per field. Because binding
-// fills the defaults ("brief" / 512 / no skips) even when no instance key is
-// present, an instance value is only detectable as "set" when it differs
-// from those defaults. Configure one surface only and this caveat
-// disappears.
-func (o *Client) resolveObservability() observe.ObserveConfig {
-	c := o.Observability // top-level fallback
-	i := o.cfg.Observability
-	if i.Level != "" && i.Level != observe.DefaultBrief {
-		c.Level = i.Level
-	}
-	if i.MaxArgBytes != 0 && i.MaxArgBytes != 512 {
-		c.MaxArgBytes = i.MaxArgBytes
-	}
-	if len(i.SkipOps) > 0 {
-		c.SkipOps = i.SkipOps
-	}
-	return c
-}
-
-// Init arms the observe + resilience executor after field injection.
+// Init arms the observer and the resilience executor after injection.
 func (o *Client) Init() error {
-	obsCfg := o.resolveObservability()
-	o.obs = observe.NewProducer("asynq", obsCfg)
+	o.obs = newObserver()
 	o.resource = resilience.ResourceLabel("asynq", o.cfg.Addr)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "asynq", obsCfg)
+	exec = resilience.WrapExecutor(exec, "asynq")
 	o.exec = exec
 	return nil
 }
@@ -110,7 +74,7 @@ func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Op
 	if o.obs != nil {
 		inner := call
 		call = func(ctx context.Context) error {
-			ctx, sp := o.obs.Start(ctx, "enqueue", task.Type())
+			ctx, sp := o.obs.start(ctx, "enqueue", task.Type())
 			err := inner(ctx)
 			sp.End(err)
 			return err

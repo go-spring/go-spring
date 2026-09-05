@@ -40,8 +40,8 @@ func TestSafeHandlerPassThrough(t *testing.T) {
 	}
 }
 
-// TestSafeHandlerConvertsPanic proves the protection the binders rely on: a
-// panicking handler surfaces as an error (the binder's normal nack/redelivery
+// TestSafeHandlerConvertsPanic proves the protection the drivers rely on: a
+// panicking handler surfaces as an error (the driver's normal nack/redelivery
 // path) instead of unwinding into the SDK's delivery goroutine.
 func TestSafeHandlerConvertsPanic(t *testing.T) {
 	err := Recover(func(context.Context, *Message) error {

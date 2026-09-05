@@ -26,7 +26,7 @@
 //   - DYNAMIC CONFIG: a gs.Dync[string] field is bound to a watched file; editing
 //     it hot-reloads the value with no restart.
 //   - OBSERVABILITY: the wrapper Get/Set/Delete emit span+metric+log via the
-//     observe kit, and the cache-stat gauges ride the OTel globals.
+//     built-in observe layer, and the cache-stat gauges ride the OTel globals.
 //
 // Unlike redis/gorm, bigcache is a purely in-process heap cache with no external
 // server, so the example is SELF-CONTAINED: there is no service discovery of an

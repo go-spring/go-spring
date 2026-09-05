@@ -188,7 +188,7 @@ gs.Run()
   │    ├─ useDiscovery = service-name != "" && !mesh.Enabled()
   │    ├─ useNative = useDiscovery || TLS.Enabled
   │    │    native: ch.Options{Addr, Auth, Dial/ReadTimeout}
-  │    │      + opts.TLS = tlsconf.Build()          (when TLS on)
+  │    │      + opts.TLS = tlsconf.BuildClient()          (when TLS on)
   │    │      + opts.DialContext = resolver pick     (when discovery)
   │    │      → clickhouse.New(Config{Conn: ch.OpenDB(opts)})
   │    └─ plain path: clickhouse.Open(DSN)           (no TLS, no discovery)
@@ -206,7 +206,7 @@ custom `*tls.Config` nor a discovery-backed dialer — so either forces the nati
 
 The native driver's `ch.Options.DialContext` is a 2-arg `func(ctx, addr string)` — the
 starter's implementation **ignores the addr argument** and dials `ep.Addr` from
-`resolver.Pick()` (starter.go:107-113), so every new pool connection lands on a
+the round-robin pick pool (starter.go:107-113), so every new pool connection lands on a
 currently-live instance; address changes take effect without rebuilding the client. With
 `service-name` set, `addr` is never dialed — but `build` still requires a non-empty
 `addr` **or** `service-name`, and on the native path `opts.Addr = []string{c.Addr}` is
@@ -247,7 +247,7 @@ Keys under `spring.gorm.clickhouse.<name>.*`. Common keys (10) and wrapper `obse
 
 Unlike sqlserver (DSN params), ClickHouse TLS is a real `*tls.Config`: enabling it **switches
 the starter to the native driver path** (`useNative`, starter.go:78) and sets
-`opts.TLS = c.TLS.Build()` — **no `secure_connection` / `https` DSN parameter is ever
+`opts.TLS = c.TLS.BuildClient()` — **no `secure_connection` / `https` DSN parameter is ever
 emitted**. All six keys are live here:
 
 | Key | Default | Behavior |

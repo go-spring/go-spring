@@ -23,16 +23,15 @@ import (
     "go-spring.org/cloud/loadbalance"
 )
 
-rsv, err := discovery.NewResolver(ctx, "default", "orders")
+resolver, err := discovery.NewResolver(ctx, "default", "orders")
 if err != nil { return err }
-defer rsv.Stop()
 
 bal, _ := loadbalance.New(loadbalance.RoundRobin)
 tracker := loadbalance.NewTracker(loadbalance.TrackerConfig{
     Threshold:  3,               // 连续失败 3 次摘除
     SuspendFor: 5 * time.Second, // 摘除 5s 后半开试探
 })
-pool := loadbalance.NewPool(rsv, bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, loadbalance.WithTracker(tracker))
 
 for {
     ep, err := pool.Pick(loadbalance.PickInfo{})
@@ -47,12 +46,12 @@ for {
 `Pool` 把三样东西粘成运行时:一个端点来源、一个策略、一个可选的 `Tracker`。
 
 ```go
-pool := loadbalance.NewPool(rsv, bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, loadbalance.WithTracker(tracker))
 ```
 
-- **端点来源**是任何实现 `Endpoints() []discovery.Endpoint` 的对象,
-  `discovery.Resolver` 直接满足——它内部跟着 discovery Watch 走,快照永远是
-  新的。
+- **端点来源**是任何实现 `Endpoints() ([]discovery.Endpoint, error)` 的对象,
+  通过 `loadbalance.SourceFunc(resolver)` 接入 discovery `Resolver`——新鲜度全在
+  discovery 后端内部,每次 `Pick` 都重读最新快照。
 - 每次 `Pick` 依次过滤:**discovery 资格**(禁用/不健康的实例)→ **摘除**
   (`Tracker` 冷却中的实例)→ **零权重摘流**(权重为 0 的实例),幸存者交给
   策略挑选。每级过滤都保证不把非空集合滤成空集——绝不黑洞流量。

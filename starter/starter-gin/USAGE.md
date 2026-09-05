@@ -242,7 +242,6 @@ All keys live under `spring.gin.server.*`. Reconciled against
 | `writeTimeout` / `idleTimeout` | duration | 5s / 60s | Passed to `http.Server`. | keep-alive churn if idleTimeout too low. |
 | `tls.enabled` + `cert-file`/`key-file` | bool/strings | off | Switches `Serve` to a TLS listener built via `tlsconf.BuildServer` (same semantics as starter-grpc). `ca-file` **enables mTLS**: ClientCAs + `RequireAndVerifyClientCert` — clients must present a certificate signed by that CA. `server-name`/`insecure-skip-verify` are client-side keys — bound but dead on a server. | Setting `ca-file` casually → all clients without certs rejected. |
 | `health.enabled` / `health.path` | bool / string | false / `/healthz` | Starter-served liveness route, registered before app routes; path auto-appended to access-log skip set (middleware.go:115-117). | Custom path is auto-skipped too — only if health.enabled. |
-| `observability.level` / `.maxArgBytes` / `.skipOps` | string/int/list | brief / 512 / — | cloud/observe `ObserveConfig`; controls the observe-resilience wrapper's access-log verbosity around admission. | — |
 
 ### 3.2 Middleware groups (`middleware.*`)
 
@@ -356,7 +355,7 @@ fault/admission can scope to marked traffic.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 40 starter-local (+7 tls, +3 observability) |
+| Config keys | 40 starter-local (+7 tls) |
 | Required | 1 (`addr`) |
 | Quickstart external deps | 0 (collector only for full observability) |
 | "Watch out" entries | 6 |
@@ -378,3 +377,4 @@ Design suspects (audit ledger; carried over from the previous edition):
 6. **Still open** — example-resilience's doc comment and README still cite the nonexistent
    `spring.gin.server.resilience.enabled` key (admission is governance-driven since the
    `${govern}` center landed; the conf is correct, the prose is stale).
+

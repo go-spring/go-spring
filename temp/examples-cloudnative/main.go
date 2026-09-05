@@ -83,23 +83,22 @@ type Config struct {
 // UP and DOWN probe paths.
 var depDown atomic.Bool
 
-// dep is a health.Indicator built with the health.NewIndicator helper; it stands
-// in for a real dependency (a database pool, a cache client, ...). The actuator
-// collects every bean exported as health.Indicator, so this is the whole
-// integration — no import of the actuator package and no per-component
-// registration API.
-var dep = health.NewIndicator(
-	"demo:dependency",
-	func(ctx context.Context) error {
+// dep stands in for a real dependency's health check (a database pool, a
+// cache client, ...). The actuator collects every bean exported as
+// health.Indicator, so this is the whole integration — no import of the
+// actuator package and no per-component registration API.
+var dep = &health.Indicator{
+	Name: "demo:dependency",
+	// A dependency belongs to readiness (and startup), never liveness, so a
+	// degraded dependency takes the pod out of rotation without restarting it.
+	Groups: []health.Group{health.GroupReadiness, health.GroupStartup},
+	Probe: func(ctx context.Context) error {
 		if depDown.Load() {
 			return errors.New("dependency unavailable")
 		}
 		return nil
 	},
-	// A dependency belongs to readiness (and startup), never liveness, so a
-	// degraded dependency takes the pod out of rotation without restarting it.
-	health.WithGroups(health.GroupReadiness, health.GroupStartup),
-)
+}
 
 // exec is the resilience executor built from the builtin "default" driver. It
 // is shared by the /limited route and by the arbitrary-function demo.
@@ -122,7 +121,7 @@ func init() {
 	// collects every bean exported as health.Indicator, this is the whole
 	// integration — no import of the actuator package and no per-component
 	// registration API.
-	gs.Provide(dep).Export(gs.As[health.Indicator]())
+	gs.Provide(dep)
 
 	// The config bean is a root object so the container creates it eagerly and
 	// binds its Dync field at startup.

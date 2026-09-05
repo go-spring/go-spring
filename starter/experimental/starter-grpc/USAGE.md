@@ -129,8 +129,6 @@ spring.grpc.server.observer.tracing.enabled=true
 spring.grpc.server.observer.metrics.enabled=true
 
 # Access-log verbosity for the observe layer (level: brief|full|off).
-spring.grpc.server.observability.level=brief
-spring.grpc.server.observability.maxArgBytes=512
 
 # --- observability (starter-otel; mirror of example-otel/conf) ----------------
 spring.observability.service-name=demo
@@ -290,9 +288,6 @@ All keys under `spring.grpc.server.*`. Reconciled with
 | `loadtest.enabled` | bool | true | Installs LoadTest interceptors reading `x-loadtest` metadata (lowercase — grpc metadata keys are lower-case). | false → load-test marker invisible; fault `scope: loadtest` never fires. |
 | `observer.tracing.enabled` | bool | true | Installs tracing interceptors riding OTel globals; no-op without starter-otel (no warning). ⚠ example-otel's conf uses `interceptor.tracing.*` — a dead path; only the default-true saves it. | Prefix typo → silently the default. |
 | `observer.metrics.enabled` | bool | true | Installs metrics interceptors; same no-op caveat. | Same. |
-| `observability.level` | string | brief | cloud/observe ObserveConfig: `brief`/`full`/`off` verbosity for the observe-resilience access-log side. | |
-| `observability.maxArgBytes` | int | 512 | Arg-capture cap in the observe layer. | |
-| `observability.skipOps` | []string | — | Ops to skip in the observe access log. | |
 
 ---
 
@@ -377,13 +372,13 @@ the shared goutil panic chain (`goutil.ReportPanic`) — visible in log and span
 | Stream RPCs bypass rate limit | Admission is unary-only by design | Guard streams with a user interceptor (`UseStreamInterceptor`). |
 | GOAWAY / connection churn | Aggressive `keepalive.time` vs client ping rate | grpc keepalive semantics; relax server params. |
 | LB client: `ErrNoSubConnAvailable` at startup | Discovery backend missing / no healthy endpoints; or unknown balancer name in service config | Register the backend (`discovery.RegisterDiscovery`) and use `BalancerName`/`LoadBalancingConfig`. |
-| LB stops updating after a discovery error | `watchLoop` returns permanently on a `WatchResult.Err` | Restart the client; tracked as a design suspect. |
+| LB stops updating after a discovery error | A failed `Resolve` logs and keeps the last snapshot; the next poll tick retries | Nothing — pollLoop retries automatically. |
 
 ## 6. Design Health
 
 | Metric | Value |
 |--------|-------|
-| Config keys (leaf, incl. tls/observability) | 21 |
+| Config keys (leaf, incl. tls) | 20 |
 | Required | 1 (`addr`) |
 | Quickstart external deps | 0 (collector only for full observability) |
 | "Watch out" entries | 6 |
@@ -396,9 +391,8 @@ Design suspects (kept from the previous audit, updated):
 2. example/conf comment claims a ":9494 default" — there is none; `addr` is required.
 3. Resilience admission covers unary only; stream RPCs skip it (admission.go builds no stream
    interceptor).
-4. `observability.*` binds cloud/observe config but only the observe-resilience wrapper consumes
-   it; the access-log side is largely unused.
 5. NEW: example-otel conf uses dead prefix `spring.grpc.server.interceptor.*` (works only because
    defaults are true) — config-surface trap.
-6. NEW: balancer.go `watchLoop` exits permanently on a watch error (comment acknowledges the
-   push path is best-effort); a transient discovery error freezes the address set.
+6. RESOLVED (2026-09-04): the resolver now polls `Resolve` (`pollLoop`) — a failed read keeps
+   the last snapshot and the next tick retries, so a transient discovery error no longer freezes
+   the address set.

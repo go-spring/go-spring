@@ -145,7 +145,7 @@ gs.Run()
   │    ├─ host/service-name presence check (one must be set)
   │    ├─ DSN(): "host=.. port=.. user=.. password=.. dbname=.. sslmode=.." (+ optional parts)
   │    └─ discovery (service-name set, mesh off): pgx.ParseConfig(DSN) once, then the pgx
-  │         DialFunc is replaced with a Resolver.Pick-backed dialer; plain mode uses the
+  │         DialFunc is replaced with a pool-backed round-robin dialer; plain mode uses the
   │         DSN directly
   ├─ gormcore.Open: gorm.Open -> ApplyPool (incl. startup ping, ping-timeout bound)
   │    -> ApplyDBCustomizers -> *DB bean (Name=<name>, Init, Destroy)
@@ -165,7 +165,7 @@ replaced pgx `DialFunc` in discovery mode) → pgx executes.
 **Why pgx `DialFunc` and not a DSN rewrite**: unlike the mysql driver (custom dial network names),
 pgx exposes the dial hook directly on its parsed config. `build` calls `pgx.ParseConfig` once and
 swaps `DialFunc` for a closure that ignores the network/addr arguments and dials
-`Resolver.Pick()`'s endpoint over TCP. Consequence: in discovery mode `host`/`port` never reach the
+the pick pool's endpoint over TCP. Consequence: in discovery mode `host`/`port` never reach the
 network, but they **must still parse as a valid pgx DSN** — `ParseConfig` runs before the swap, so a
 non-numeric or out-of-range `port` fails the build even though the value is never dialed. (The
 example uses `host=0.0.0.0 port=5432` as plausible dummies.)

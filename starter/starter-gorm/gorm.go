@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -92,10 +93,9 @@ type Common struct {
 
 	// ObserveEnabled is the hard per-instance kill switch for the gorm observe
 	// plugin (trace span + metric + access log on every Create/Query/Update/
-	// Delete). Defaults to true. Distinct from observability.level (which only
-	// controls access-log detail, leaving span/metric on): when false the plugin
-	// is not installed at all, so no per-query callbacks run — for high-throughput
-	// instances where the instrumentation overhead is unwanted.
+	// Delete). Defaults to true; when false the plugin is not installed at all,
+	// so no per-query callbacks run — for high-throughput instances where the
+	// instrumentation overhead is unwanted.
 	ObserveEnabled bool `value:"${observe.enabled:=true}"`
 }
 
@@ -112,12 +112,29 @@ func (c PoolSettings) Pool() PoolConfig {
 }
 
 // NewResolver resolves the registered discovery backend for this config into a
-// Resolver that keeps the service's endpoint set fresh via a background watch. It
-// returns (nil, nil) when ServiceName is unset or mesh mode is enabled (a sidecar
-// owns discovery+LB), in which case the caller dials the configured address
-// directly. The caller owns the lifecycle and must stop the resolver it returns.
-func (c Common) NewResolver(ctx context.Context) (*discovery.Resolver, error) {
+// by-name resolver that re-reads the service's live endpoint snapshot. It returns
+// (nil, nil) when ServiceName is unset or mesh mode is enabled (a sidecar owns
+// discovery+LB), in which case the caller dials the configured address
+// directly. Freshness lives inside the backend, so there is nothing to release.
+func (c Common) NewResolver(ctx context.Context) (discovery.Resolver, error) {
 	return discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+}
+
+// NewPickPool builds the shared per-connection endpoint selector over the
+// resolver from [Common.NewResolver]: a round-robin loadbalance.Pool the dialect
+// starter's DialContext calls on every new connection. It returns
+// (nil, nil) when discovery is not in effect; otherwise the pool (and its
+// source resolver, which has no resources to release).
+func (c Common) NewPickPool(ctx context.Context) (*loadbalance.Pool, discovery.Resolver, error) {
+	resolver, err := c.NewResolver(ctx)
+	if err != nil || resolver == nil {
+		return nil, resolver, err
+	}
+	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	if err != nil {
+		return nil, nil, err
+	}
+	return loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal), resolver, nil
 }
 
 // logWriter adapts GORM's logger onto the repo log core: every message GORM

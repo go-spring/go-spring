@@ -45,5 +45,5 @@ func wrapIfObserved(c Config, inner lock.Locker) lock.Locker {
 	if !c.ObserveEnabled {
 		return inner
 	}
-	return lock.WrapLocker("redis", c.Observability, inner)
+	return lock.WrapLocker("redis", inner)
 }

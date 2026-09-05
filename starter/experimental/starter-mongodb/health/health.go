@@ -27,8 +27,8 @@ import (
 // once per configured instance and exported as health.Indicator, so an
 // application that also imports starter-actuator gets MongoDB readiness folded
 // into /readiness with no extra wiring.
-func NewClientHealth(name string, client *mongo.Client) health.Indicator {
-	return health.NewIndicator("mongo:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, client *mongo.Client) *health.Indicator {
+	return &health.Indicator{Name: "mongo:" + name, Probe: func(ctx context.Context) error {
 		return client.Ping(ctx, nil)
-	})
+	}}
 }

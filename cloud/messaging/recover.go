@@ -29,10 +29,10 @@ import (
 // crash the process or silently kill the delivery loop, depending on the
 // SDK.
 //
-// The converted error takes the binder's normal failure path (nack /
+// The converted error takes the driver's normal failure path (nack /
 // redelivery, exactly like a handler error), so a poisoned message behaves
 // the same whether the handler signals failure by error or by panic. Every
-// binder in this family wraps the application handler with Recover at
+// driver in this family wraps the application handler with Recover at
 // Subscribe time; applications only need it directly when they drive a
 // broker client by hand.
 func Recover(h Handler) Handler {

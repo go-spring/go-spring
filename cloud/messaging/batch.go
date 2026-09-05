@@ -21,7 +21,7 @@ import "context"
 // BatchPublisher is the optional batch-send capability a Publisher may also
 // implement. It is deliberately not part of [Publisher]: not every broker
 // SDK exposes a native batch API, so the interface lives one assertion away
-// and [BatchPublish] downgrades gracefully to one-by-one sends.
+// and [PublishBatch] downgrades gracefully to one-by-one sends.
 type BatchPublisher interface {
 	// PublishBatch sends msgs in one broker-side batch when the broker
 	// supports it. It fails atomically where the broker does and reports
@@ -29,11 +29,11 @@ type BatchPublisher interface {
 	PublishBatch(ctx context.Context, msgs []*Message) error
 }
 
-// BatchPublish sends msgs through p in one call. When p also implements
+// PublishBatch sends msgs through p in one call. When p also implements
 // [BatchPublisher] the batch path is used; otherwise each message is
 // published in order, stopping at the first error (earlier messages are
-// already sent — BatchPublish is not transactional).
-func BatchPublish(ctx context.Context, p Publisher, msgs ...*Message) error {
+// already sent — PublishBatch is not transactional).
+func PublishBatch(ctx context.Context, p Publisher, msgs ...*Message) error {
 	if bp, ok := p.(BatchPublisher); ok {
 		return bp.PublishBatch(ctx, msgs)
 	}

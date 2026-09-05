@@ -4,7 +4,7 @@
 
 `starter-rocketmq` provides [RocketMQ](https://rocketmq.apache.org/) support for
 Go-Spring: multi-instance `rocketmq.Client` beans with fail-fast startup
-probes, optional ACL credentials, a broker-neutral `messaging.Binder`, OTel
+probes, optional ACL credentials, a broker-neutral `messaging.Driver`, OTel
 tracing helpers, and opt-in call-site resilience on the synchronous send path.
 It is built on the official [rocketmq-client-go](https://github.com/apache/rocketmq-client-go)
 v2 client and works against RocketMQ 4.x and 5.x clusters through the
@@ -73,41 +73,39 @@ automatically when the application closes.
 - **Log bridge** — the client library's internal logs are routed into
   go-spring's log.
 
-## Messaging Binder
+## Messaging Driver
 
-`NewBinder` adapts the client to the broker-neutral
+`NewDriver` adapts the client to the broker-neutral
 `cloud/messaging` abstraction, so business code stays free of the
 RocketMQ API. destination/source strings are topics; the group maps to a
 RocketMQ consumer group (clustering mode).
 
 ```go
-func ProvideBinder(cl *StarterRocketmq.Client) messaging.Binder {
-    return StarterRocketmq.NewBinder(cl)
+func ProvideDriver(cl *StarterRocketmq.Client) messaging.Driver {
+    return StarterRocketmq.NewDriver(cl)
 }
 ```
 
 ```go
-sub, _ := binder.NewSubscriber(ctx, "orders", "order-service")
+sub, _ := driver.NewSubscriber(ctx, "orders", "order-service")
 _ = sub.Subscribe(ctx, func(ctx context.Context, msg *messaging.Message) error {
     fmt.Println(string(msg.Payload), msg.Headers)
     return nil // a non-nil error asks RocketMQ to redeliver
 })
-pub, _ := binder.NewPublisher(ctx, "orders")
+pub, _ := driver.NewPublisher(ctx, "orders")
 _ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("...")})
 ```
 
-The binder injects/extracts W3C trace context and the load-test marker into
+The driver injects/extracts W3C trace context and the load-test marker into
 the message user properties, so traces link producer to consumer and
 synthetic load stays recognisable downstream.
 
 ## Observability
 
 - **Tracing**: `StartProducerSpan` / `StartConsumerSpan` / `EndSpan` wrap raw
-  sends and handlers in OTel spans; the binder path is instrumented
+  sends and handlers in OTel spans; the driver path is instrumented
   automatically. Everything rides the globals installed by `starter-otel`
   and is a no-op without it. See `example-otel/`.
-- **Access log**: the binder emits per-message observations through the
-  observe kit at the `brief` level by default.
 
 ## Resilience
 

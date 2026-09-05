@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/actuator/endpoint"
+	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -39,7 +40,7 @@ func (f fakeLister) Beans() []BeanDescriptor { return f.beans }
 // --- health DEGRADED aggregation -------------------------------------------
 
 func TestReadiness_NonCriticalDownIsDegraded(t *testing.T) {
-	cache := stubIndicator{name: "redis:cache", err: errors.New("connection refused"), critical: false}
+	cache := &health.Indicator{Name: "redis:cache", Probe: func(context.Context) error { return errors.New("connection refused") }, Optional: true}
 	rec := doReadiness(readyServer(cache))
 
 	// A tolerable dependency failing lowers the verdict to DEGRADED but keeps
@@ -52,8 +53,8 @@ func TestReadiness_NonCriticalDownIsDegraded(t *testing.T) {
 func TestReadiness_CriticalDownDominatesDegraded(t *testing.T) {
 	// One non-critical AND one critical failure: DOWN wins — any critical
 	// failure takes the pod out of rotation regardless of degraded extras.
-	cache := stubIndicator{name: "redis:cache", err: errors.New("connection refused"), critical: false}
-	db := stubIndicator{name: "mysql:orders", err: errors.New("dial timeout"), critical: true}
+	cache := &health.Indicator{Name: "redis:cache", Probe: func(context.Context) error { return errors.New("connection refused") }, Optional: true}
+	db := &health.Indicator{Name: "mysql:orders", Probe: func(context.Context) error { return errors.New("dial timeout") }, Optional: false}
 	rec := doReadiness(readyServer(cache, db))
 
 	assert.Number(t, rec.Code).Equal(http.StatusServiceUnavailable)
@@ -62,7 +63,7 @@ func TestReadiness_CriticalDownDominatesDegraded(t *testing.T) {
 }
 
 func TestStartup_NonCriticalDownIsDegraded(t *testing.T) {
-	cache := stubIndicator{name: "redis:cache", err: errors.New("connection refused"), critical: false}
+	cache := &health.Indicator{Name: "redis:cache", Probe: func(context.Context) error { return errors.New("connection refused") }, Optional: true}
 	s := readyServer(cache)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/startupz", nil)
@@ -118,7 +119,7 @@ func registeredNames(s *Server) map[string]bool {
 		}
 	}
 	for _, ep := range s.Endpoints {
-		name := strings.TrimPrefix(ep.Path(), "/")
+		name := strings.TrimPrefix(ep.Path, "/")
 		if s.endpointEnabled(context.Background(), name) {
 			names[name] = true
 		}
@@ -126,18 +127,12 @@ func registeredNames(s *Server) map[string]bool {
 	return names
 }
 
-// fakeEndpoint is a contributed endpoint (like otel's /metrics).
-type fakeEndpoint struct{ path string }
-
-func (f fakeEndpoint) Path() string { return f.path }
-
-func (f fakeEndpoint) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
 func TestEndpointFilter_SensitiveOffByDefault(t *testing.T) {
 	// Introspection endpoints that expose configuration or internals
 	// (env, configprops, threaddump, loggers, beans) must NOT register unless
 	// explicitly included — an empty include is no longer a free pass.
-	s := &Server{Endpoints: []endpoint.Endpoint{fakeEndpoint{"/metrics"}}}
+	s := &Server{Endpoints: []*endpoint.Endpoint{&endpoint.Endpoint{Path: "/metrics"}}}
 	names := registeredNames(s)
 	for _, off := range []string{"loggers", "env", "configprops", "threaddump", "beans"} {
 		assert.That(t, names[off]).False()
@@ -250,7 +245,7 @@ func TestMaskValue(t *testing.T) {
 func TestEndpointFilter_IncludeWhitelist(t *testing.T) {
 	s := &Server{
 		EndpointInclude: "env, metrics",
-		Endpoints:       []endpoint.Endpoint{fakeEndpoint{"/metrics"}},
+		Endpoints:       []*endpoint.Endpoint{&endpoint.Endpoint{Path: "/metrics"}},
 	}
 	names := registeredNames(s)
 	assert.That(t, names["env"]).True()

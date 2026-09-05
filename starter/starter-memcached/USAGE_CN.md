@@ -132,7 +132,6 @@ import starter-memcached
 gs.Run()
   ├─ 配置绑定：${spring.memcached.<name>} → Config（value tag）       config.go:24-61
   ├─ newClient：校验、CreateClient、启动 PING（fail-fast）           starter.go:79-101
-  ├─ gs 向包装 bean 字段注入 Observability                            client.go:50
   ├─ Client.Init：observer + resilience/fault executor               client.go:71-76
   ├─ 就绪：健康指示器把 Ping 折入 /readiness                          health/health.go:33-36
   └─ 停机：Client.Destroy —— 释放 executor、停 discovery watch        client.go:83-90
@@ -145,10 +144,10 @@ gomemcache 的 `Ping` 探测全部已配置服务器，`servers` 里一个死节
 ### 2.2 服务发现寻址流程
 
 设置 `service-name`（且非 mesh 模式）时，`DefaultDriver.CreateClient` 用 `discovery` 指名的
-后端（默认 `"default"`）、按 `scheme` 过滤构建 `discovery.Resolver`（`driver.go:70`、
-`driver.go:111-112`）。**仅初始快照**成为 client 的 server 列表：空快照使启动失败并报
-`memcached: discovery returned no endpoints for %q`（`driver.go:75-79`）。Resolver 的后台
-Watch 仅用于持有 watch 生命周期 —— **成员变更不会热应用**，因为 gomemcache 在创建时把 key
+后端（默认 `"default"`）、按 `scheme` 过滤构建 discovery `Loader`（`driver.go:70`、
+`driver.go:100-102`）。**仅初始快照**成为 client 的 server 列表：空快照使启动失败并报
+`memcached: discovery returned no endpoints for %q`（`driver.go:73-79`）。loader 是一次性
+快照读——无后台 watch、无资源可释放 —— **成员变更不会热应用**，因为 gomemcache 在创建时把 key
 哈希到固定 server 集（`driver.go:60-66`、`driver.go:90-96`）。集群成员变化需要重启——没有动态成员机制；若拓扑动态扩缩，请把 `servers` 指向 serverless/代理类端点（单一稳定地址），由代理层管理成员。mesh
 模式下完全跳过 discovery，`servers` 原样使用（sidecar 负责发现+LB，`driver.go:69-70` 注释）。
 
@@ -156,14 +155,14 @@ Watch 仅用于持有 watch 生命周期 —— **成员变更不会热应用**�
 
 `Client.Set(item)`（`command.go:70-75`）：
 
-1. `instrument("set", item.Key)` 开启 observe span。gomemcache API 无 context，span 是用
-   `context.Background()` 的**根 span** —— 不与调用方请求 trace 关联（`command.go:38-40`，
-   局限 documented 于 `client.go:37-41`）。
+1. `instrument("set", item.Key)` 开启模块本地 observer 的 client span（`observe.go`）。
+   gomemcache API 无 context，span 是用 `context.Background()` 的**根 span** —— 不与调用方
+   请求 trace 关联（`command.go:38-40`，局限 documented 于 `client.go:37-41`）。
 2. `guardErr` 经 `resilience.Run` 在 resilience executor 下执行操作（`command.go:174-181`）：
    limiter/breaker 以资源 `memcached:<instance-name>` 隔离（`client.go:73`）；
    `memcache.ErrCacheMiss` 计为成功，miss 不会触发熔断（`command.go:168`）；executor 先包
-   fault（`fault.WrapExecutor`，`client.go:74`）再包 observe（`resilience.WrapExecutor`，
-   `client.go:75`）。governance 关闭时为透明 no-op。
+   fault（`fault.WrapExecutor`，`client.go:73`）再包 observe（`resilience.WrapExecutor`，
+   `client.go:74`）。governance 关闭时为透明 no-op。
 3. 内嵌的 `*memcache.Client` 执行实际写入；end 回调以错误收尾 span。
 
 全部 17 个操作（get/get_and_touch/get_multi/touch/set/add/replace/append/prepend/cas/delete/
@@ -195,7 +194,6 @@ starter）。
 | `timeout` | duration | 0 | 每请求 socket 读/写超时；0 = gomemcache 默认 100ms（config.go:54） | 过低 → 高压下伪超时 |
 | `max-idle-conns` | int | 0 | 每 server 保留的空闲连接数；0 = driver 默认 2（config.go:58） | 过低 → 重连抖动 |
 | `driver` | string | `DefaultDriver` | 选择已注册 `Driver`（config.go:61）。自定义 driver 用 `RegisterDriver` 注册；重名 panic（driver.go:45-49） | 未知名 → 构造错误 `memcached driver not found`（starter.go:87-88） |
-| `observability`（在包装 bean 上，顶层） | ObserveConfig | 空 | 共享 observe kit 的 span/metric/log 配置，由 gs 字段注入（client.go:50）。⚠ 它解析为**顶层共享 key** —— 所有 memcached 实例（及读取同一表达式的其他 starter）共享一份值，无法按实例配置 | 缺省 → 默认 observe 行为 |
 
 无 `resilience` key：resilience/fault 来自治理中心（starter-governance 的 `govern.*` 配置），
 按资源 `memcached:<instance-name>` 隔离。
@@ -223,9 +221,9 @@ starter）。
 7. **多实例**：`cache` 与 `session` 实例并存（bean 名 = map key，`starter.go:47-50`）；两个
    项指向同一服务器也是独立 bean、独立 executor（资源标签 `memcached:cache` 与
    `memcached:session`）。
-8. **可观测**：import starter-otel 后，每个操作出现名为 `memcached.get`/`memcached.set`/...
-   的 span（根 span，§2.3）；时长/在飞指标与访问日志来自共享 observe kit
-   （`observe.NewDB("memcached", ...)`，`client.go:72`）。
+8. **可观测**：import starter-otel 后，每次调用出现以操作名（`get`/`set`/...）命名的
+   span（根 span，§2.3）；`db.client.operation.duration` 直方图与访问日志来自模块本地
+   observer（`observe.go`）。
 
 ---
 
@@ -250,7 +248,7 @@ starter）。
 
 | 指标 | 数值 |
 |--------|------|
-| 配置 key | 9（7 连接 + 1 共享 observability + 1 经 cache 桥命名） |
+| 配置 key | 8（7 连接 + 1 经 cache 桥命名） |
 | 必填 | 1（`servers` 与 `service-name` 二选一） |
 | quickstart 前置外部依赖 | 1（memcached，docker） |
 | "注意/坑"条数 | 4 |
@@ -260,8 +258,6 @@ starter）。
 - ~~无健康指示器~~ —— **已解决**：每个实例现已注册导出的 `health.Indicator`
   `memcache:<name>`（`starter.go:53`、`health/health.go:33-36`）；配合 starter-actuator
   自动折入 `/readiness`，无需额外接线。
-- `observability` 解析为顶层共享 key —— 所有实例共享一份配置，无法按实例调可观测
-  （`client.go:50`）。跨家族嫌疑（沿自上一版）。
 - discovery watch 仅管生命周期：成员变更需重启（gomemcache 结构性约束，`driver.go:60-66`）
   —— 可考虑 rebuild seam 或 client 原子替换模式（参照 dubbo 动态超时的 swap 方案）。
 - span 为根 span（gomemcache API 无 context）—— trace 关联弱于 redis/gorm starter

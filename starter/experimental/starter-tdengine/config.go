@@ -18,8 +18,6 @@ package StarterTdengine
 
 import (
 	"time"
-
-	observe "go-spring.org/cloud/observe"
 )
 
 // Config defines the TDengine client configuration.
@@ -40,11 +38,6 @@ type Config struct {
 
 	// ConnMaxLifetime retires connections after this age (0 = never).
 	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=0s}"`
-
-	// Observability configures the per-statement span, metric and access log
-	// emitted at the connection seam (off/brief/detailed). Defaults to
-	// "brief".
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which TDengine driver to use, defaults to
 	// DefaultDriver.

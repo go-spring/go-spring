@@ -150,22 +150,24 @@ func TestCacheCustomCodec(t *testing.T) {
 	assert.That(t, out["n"]).Equal(float64(7))
 }
 
-func TestCacheMixedFormatsViaBytes(t *testing.T) {
-	// A cache that must hold two formats backs off the typed surface: store
-	// through SetBytes with an explicit codec, read back through GetBytes and
-	// decode with the matching codec - both promoted/raw methods on the same
-	// Cache.
+func TestCachePerCallCodec(t *testing.T) {
+	// One cache, two formats: entries stick to the construction codec (here
+	// the JSON default), exceptions pass a codec to that single call.
 	bc := newFakeByteCache()
 	c := cache.New(bc)
 
-	in := 7
-	raw, err := markerCodec{}.Marshal(in)
-	assert.That(t, err).Nil()
-	assert.That(t, c.SetBytes(context.Background(), "m", raw, 0)).Nil()
+	assert.That(t, c.Set(context.Background(), "json", 7, 0)).Nil()
+	assert.That(t, c.Set(context.Background(), "marked", 7, 0, cache.WithCodec(markerCodec{}))).Nil()
 
-	got, err := c.GetBytes(context.Background(), "m")
-	assert.That(t, err).Nil()
-	var out int
-	assert.That(t, markerCodec{}.Unmarshal(got, &out)).Nil()
-	assert.That(t, out).Equal(in)
+	// The per-call codec ran for "marked", the default for "json".
+	assert.That(t, bytes.HasPrefix(bc.m["marked"], []byte("MARKER:"))).True()
+	assert.That(t, bytes.HasPrefix(bc.m["json"], []byte("MARKER:"))).False()
+
+	var n int
+	assert.That(t, c.Get(context.Background(), "marked", &n, cache.WithCodec(markerCodec{}))).Nil()
+	assert.That(t, n).Equal(7)
+
+	// Wrong codec on decode fails loudly instead of returning garbage.
+	var s string
+	assert.That(t, c.Get(context.Background(), "marked", &s)).NotNil()
 }

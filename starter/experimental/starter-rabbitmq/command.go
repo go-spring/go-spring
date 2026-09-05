@@ -30,7 +30,6 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -176,23 +175,41 @@ func (c deliveryCarrier) Keys() []string {
 var _ propagation.TextMapCarrier = publishingCarrier{}
 var _ propagation.TextMapCarrier = deliveryCarrier{}
 
-// --- binder auto path (kit-backed) -------------------------------------------
+// --- driver auto path (observed) ----------------------------------------------
 //
-// The messaging.Binder drives publish/consume through the observe kit (3 signals)
-// via these package-level observers. They use a default "brief" level; the bean
-// is a raw *amqp.Connection (no wrapper to carry per-instance config), so the
-// binder path cannot bind a per-instance ObserveConfig — the manual helpers above
-// remain for apps that want explicit control.
+// The messaging.Driver drives publish/consume through the module-local observer
+// in observe.go (span+metric+access log). The manual helpers above remain for
+// apps that want explicit span control.
 
+// The observers are built lazily (sync.Once) so a blank import of this starter
+// pays no OTel instrument creation at package init — only apps that actually
+// publish or consume through the driver path build them.
 var (
-	defaultPubObs = observe.NewProducer("rabbitmq", observe.ObserveConfig{Level: observe.DefaultBrief})
-	defaultSubObs = observe.NewConsumer("rabbitmq", observe.ObserveConfig{Level: observe.DefaultBrief})
+	defaultObsOnce sync.Once
+	defaultPubObs  *observer
+	defaultSubObs  *observer
 )
 
+func pubObserver() *observer {
+	defaultObsOnce.Do(func() {
+		defaultPubObs = newObserver(trace.SpanKindProducer)
+		defaultSubObs = newObserver(trace.SpanKindConsumer)
+	})
+	return defaultPubObs
+}
+
+func subObserver() *observer {
+	defaultObsOnce.Do(func() {
+		defaultPubObs = newObserver(trace.SpanKindProducer)
+		defaultSubObs = newObserver(trace.SpanKindConsumer)
+	})
+	return defaultSubObs
+}
+
 // startPublish opens a producer observation and injects the W3C trace context
-// into pub.Headers. For the binder's publish path.
-func startPublish(ctx context.Context, routingKey string, pub *amqp.Publishing) (context.Context, *observe.Span) {
-	ctx, sp := defaultPubObs.Start(ctx, "publish", routingKey)
+// into pub.Headers. For the driver's publish path.
+func startPublish(ctx context.Context, routingKey string, pub *amqp.Publishing) (context.Context, obsSpan) {
+	ctx, sp := pubObserver().Start(ctx, "publish", routingKey)
 	if pub.Headers == nil {
 		pub.Headers = amqp.Table{}
 	}
@@ -201,14 +218,14 @@ func startPublish(ctx context.Context, routingKey string, pub *amqp.Publishing) 
 }
 
 // startConsume extracts the upstream trace from the delivery and opens a consumer
-// observation. For the binder's consume loop.
-func startConsume(ctx context.Context, d *amqp.Delivery) (context.Context, *observe.Span) {
+// observation. For the driver's consume loop.
+func startConsume(ctx context.Context, d *amqp.Delivery) (context.Context, obsSpan) {
 	ctx = otel.GetTextMapPropagator().Extract(ctx, deliveryCarrier{d})
 	dest := d.Exchange
 	if dest == "" {
 		dest = d.RoutingKey
 	}
-	return defaultSubObs.Start(ctx, "consume", dest)
+	return subObserver().Start(ctx, "consume", dest)
 }
 
 // resilienceExecs tracks the resilience executor attached to each connection,
@@ -233,12 +250,12 @@ var resilienceResources sync.Map // *amqp.Connection -> string
 // transparent no-op executor; fault wraps it when enabled.
 func applyResilience(c Config, conn *amqp.Connection, resource string) error {
 	// Per-instance opt-out: without an executor attached, guard (and therefore
-	// both GuardedPublish and the binder's Publish) degrades to bare calls.
+	// both GuardedPublish and the driver's Publish) degrades to bare calls.
 	if !c.Governance {
 		return nil
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "rabbitmq", c.Observability)
+	exec = resilience.WrapExecutor(exec, "rabbitmq")
 	resilienceExecs.Store(conn, exec)
 	resilienceResources.Store(conn, resource)
 	return nil

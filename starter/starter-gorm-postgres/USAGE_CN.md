@@ -144,7 +144,7 @@ gs.Run()
   │    ├─ host/service-name 存在性检查（必须设其一）
   │    ├─ DSN(): "host=.. port=.. user=.. password=.. dbname=.. sslmode=.."（+ 可选段）
   │    └─ 服务发现（设了 service-name 且 mesh 关闭）：先 pgx.ParseConfig(DSN)，再把 pgx
-  │         DialFunc 替换为基于 Resolver.Pick 的拨号闭包；直连模式直接用 DSN
+  │         DialFunc 替换为基于 round-robin pick pool 的拨号闭包；直连模式直接用 DSN
   ├─ gormcore.Open：gorm.Open -> ApplyPool（含启动 ping、ping-timeout 上限）
   │    -> ApplyDBCustomizers -> *DB bean（Name=<name>，Init，Destroy）
   ├─ 健康指示器 "gorm:postgres:<name>" 以 health.Indicator 导出
@@ -161,7 +161,7 @@ before/after 回调开启 span（`db.system=postgresql`）、记录 `db.client.o
 
 **为什么用 pgx `DialFunc` 而非改写 DSN**：与 mysql 驱动（自定义拨号 network 名）不同，pgx
 直接在解析后的配置上暴露拨号钩子。`build` 调一次 `pgx.ParseConfig`，然后把 `DialFunc` 换成
-忽略 network/addr 参数、经 `Resolver.Pick()` 选端点走 TCP 拨号的闭包。推论：发现模式下
+忽略 network/addr 参数、经 round-robin pool 选端点走 TCP 拨号的闭包。推论：发现模式下
 `host`/`port` 不会到达网络，但**必须能解析为合法 pgx DSN**——`ParseConfig` 在替换之前运行，
 因此 `port` 非数字或越界会让 build 失败，尽管该值永远不会被拨号。（example 用
 `host=0.0.0.0 port=5432` 作占位。）

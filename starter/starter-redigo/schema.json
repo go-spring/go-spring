@@ -81,16 +81,6 @@
           "description": "Contributes a health.Indicator bean per instance; set false to disable."
         }
       }
-    },
-    "observe": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Wrap the Pool with the observe adapter; false = bare pool"
-        }
-      }
     }
   }
 }

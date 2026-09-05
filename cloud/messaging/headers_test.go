@@ -51,7 +51,7 @@ func (f *fakePub) Publish(_ context.Context, m *Message) error {
 
 func (f *fakePub) Close() error { return nil }
 
-// fakeBatchPub also implements BatchPublisher so BatchPublish takes the batch path.
+// fakeBatchPub also implements BatchPublisher so PublishBatch takes the batch path.
 type fakeBatchPub struct {
 	fakePub
 	batched [][]*Message
@@ -63,25 +63,25 @@ func (f *fakeBatchPub) PublishBatch(_ context.Context, msgs []*Message) error {
 	return nil
 }
 
-func TestBatchPublishFallsBackToLoop(t *testing.T) {
+func TestPublishBatchFallsBackToLoop(t *testing.T) {
 	p := &fakePub{}
-	err := BatchPublish(context.Background(), p,
+	err := PublishBatch(context.Background(), p,
 		&Message{Key: "a"}, &Message{Key: "b"}, &Message{Key: "c"})
 	assert.Error(t, err).Nil()
 	assert.Number(t, len(p.msgs)).Equal(3)
 }
 
-func TestBatchPublishStopsAtFirstError(t *testing.T) {
+func TestPublishBatchStopsAtFirstError(t *testing.T) {
 	p := &fakePub{fail: 2}
-	err := BatchPublish(context.Background(), p,
+	err := PublishBatch(context.Background(), p,
 		&Message{Key: "a"}, &Message{Key: "b"}, &Message{Key: "c"})
 	assert.Error(t, err).NotNil()
 	assert.Number(t, len(p.msgs)).Equal(2) // third never sent
 }
 
-func TestBatchPublishUsesBatchPath(t *testing.T) {
+func TestPublishBatchUsesBatchPath(t *testing.T) {
 	p := &fakeBatchPub{}
-	err := BatchPublish(context.Background(), p,
+	err := PublishBatch(context.Background(), p,
 		&Message{Key: "a"}, &Message{Key: "b"})
 	assert.Error(t, err).Nil()
 	assert.Number(t, len(p.batched)).Equal(1)

@@ -16,8 +16,8 @@ InfluxDB 特有的决策是写路径与异步错误排出。
 
 ## 2. 关键抽象与 Seam
 
-- **`Client` 包装 bean** — 内嵌 `influxdb2.Client` 并字段注入
-  `Observability`。SDK 在构造期固定 `*http.Client`
+- **`Client` 包装 bean** — 内嵌 `influxdb2.Client`。SDK 在构造期固定
+  `*http.Client`
   （`Options.SetHTTPClient`），因此 DefaultDriver 安装 `dynamicTransport`
   间接层，Init 把 observe+韧性 round-tripper 换进去 —— 与
   starter-s3/starter-elasticsearch 同一机制。

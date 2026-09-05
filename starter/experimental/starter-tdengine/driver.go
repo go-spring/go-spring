@@ -28,7 +28,6 @@ import (
 
 	taosws "github.com/taosdata/driver-go/v3/taosWS"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -84,13 +83,12 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*Client, error
 	return &Client{DB: db, cfg: c, slot: slot}, nil
 }
 
-// clientSlot carries the executor + observer Init arms after gs field-injects
-// Observability. Connections consult it on every statement; before Init it is
-// transparent (nil exec, nil obs).
+// clientSlot carries the executor + observer Init arms. Connections consult it
+// on every statement; before Init it is transparent (nil exec, nil obs).
 type clientSlot struct {
 	exec     resilience.Executor
 	resource string
-	obs      *observe.Observer
+	obs      *dbObserver
 }
 
 // guardedConnector wraps a driver.Connector so every connection it hands out

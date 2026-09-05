@@ -5,11 +5,14 @@
 它在可插拔的调度 `Driver` 下、限定的时长内驱动一个 `Op`,记录时延与分类
 后的错误分布,再跑健康 `Assert` 断言,让一次压测能给出裁定 —— "保护栈扛
 住了、信号没丢" —— 而不只是产出一堆数字。它是 example 级工具,不是生产
-代码。
+代码:需要统计严谨性的场合请用真正的压测工具。
+
+可运行、自校验的独立演示在 [example](example/example.go)
+(`./example/check.sh` 退出码 0)。
 
 ## 快速开始
 
-传统一行式(闭环、N 个 worker):
+一行式(闭环、N 个 worker):
 
 ```go
 res := loadtest.Run(ctx, loadtest.Config{Concurrency: 50, Duration: 30 * time.Second}, op)
@@ -31,36 +34,41 @@ if !res.Passed() { /* 裁定 FAILED */ }
 res.Print(os.Stdout)
 ```
 
-## 四个 seam
+`Op` 是 `func(ctx) error`——成功返回 nil;由各 starter 的 main 提供具体客
+户端调用。每个 op 的 context 都打了压测流量标记(`traffic.WithLoadTest`),
+下游客户端据此识别合成流量(`cloud/governance/traffic` 的影子表路由、故障
+注入范围、指标打标都依赖它)。
 
-- **`Driver` 决定操作何时发。** `Drive` 收到的 `invoke` 已自带计时与记
-  录,driver 只管节奏与并发,且必须等它启动的所有 invoke 完成后才能返
-  回。内置:
-  - `ClosedLoop{Concurrency: N}` —— N 个 worker 尽快循环;吞吐随时延
-    自限("N 个并发用户"模型)。
-  - `OpenLoop(rps, maxConcurrent)` —— 固定到达率、与时延无关;暴露闭
-    环自节流藏住的尾延迟行为。
-  - `Ramp(from, to, over, max)` —— RPS 线性爬坡后保持。
-  - `Staircase(max, steps...)` —— `Step{RPS, Duration}` 阶梯。
-  - `Scheduled(schedule, max)` —— 任意 `Schedule`
-    (`func(elapsed) float64`),可建模突发/昼夜/回放形态;返回 `<= 0`
-    暂停派发。
-  - 自定义 `Driver` 可建模任意流量形状;报告里默认用 `%T` 类型名。
-- **`Schedule`** 是开环家族背后的步调函数;见 `ConstantSchedule`、
-  `LinearRamp`、`StepSchedule`。
-- **`Assert` 定义"扛住"的标准。** `func(ctx, *Result) error`,nil 即通
-  过。内置:`AssertMinQPS`、`AssertErrorRateBelow`、`AssertP99Below`、
-  `AssertGCPauseAvgBelow`(需 `Runner.CaptureGC(true)`)。`Result` 或
-  runtime 能读到的都可以自己断 —— "熔断开过"、"metric registry 拿到
-  了预期样本数"、"无 goroutine 泄漏"。
-- **`Classify` 决定错误如何入桶。** `func(error) string`;默认
-  (`DefaultClassify`)用 resilience + fault 分类法。返回 `""` 计入
-  `other`。
+## 选 driver
 
-## 错误桶
+`Driver` 决定 op **何时**触发;计时与记录由 runner 负责,driver 只做调度。
 
-`Result.Buckets` 把每个错误标签映射到计数。内置标签(常量,
-  `Result.Print` 固定按此顺序输出,保证报告可 diff):
+| Driver | 形状 |
+|---|---|
+| `ClosedLoop{Concurrency: N}` | N 个 worker 循环、op 返回即再发;吞吐自限("N 个并发用户") |
+| `OpenLoop(rps, maxConcurrent)` | 固定到达速率、与延迟无关;暴露闭环自限流掩盖的尾部队列行为 |
+| `Ramp(from, to, over, max)` | RPS 线性爬坡后保持 |
+| `Staircase(max, steps...)` | `Step{RPS, Duration}` 阶梯 |
+| `Scheduled(schedule, max)` | 任意 `Schedule`(`func(elapsed) float64`),突发/昼夜/回放形状;返回 `<= 0` 暂停发送 |
+
+`Schedule` 积木:`ConstantSchedule`、`LinearRamp`、`StepSchedule`。自定义
+`Driver` 可建模任意形状;契约只有两条——每个调度的 op 调一次 invoke,且所
+有已启动的 invoke 结束后才返回(不丢尾部时延)。
+
+## 给出裁定
+
+`Assert` 是 `func(ctx, *Result) error`,nil 即通过。内建:
+`AssertMinQPS`、`AssertErrorRateBelow`、`AssertP99Below`、
+`AssertGCPauseAvgBelow`(需 `Runner.CaptureGC(true)`)。自定义断言可读
+`Result` 与 runtime 的一切——"熔断器开过"、"指标注册表有了样本"、"无
+goroutine 泄漏"。
+
+不注册断言的 run 无从失败(`Passed()` 恒 true)。
+
+## 错误分桶
+
+`Result.Buckets` 把每个错误标签映射到计数。内建标签(`Result.Print` 固定
+按此顺序输出,报告可 diff):
 
 | 常量 | 标签 | 含义 |
 |---|---|---|
@@ -70,14 +78,14 @@ res.Print(os.Stdout)
 | `BucketInjected` | `fault-injected` | `fault.IsInjected` |
 | `BucketOther` | `other` | 其余全部 |
 
-自定义 `Classify` 的标签进同一张 map;`Print` 先按上列顺序输出五个内置
-桶,再按字典序输出自定义标签。
+`Classify`(`Runner.Classify`)替换默认分类器(`DefaultClassify`)以增加自
+定义桶——比如把 "other" 拆成按状态码的分布;自定义标签按字母序排在内建
+之后。返回 `""` 计入 `other`,自定义分类器不会丢错误。
 
-## 压测流量标记
+## 边界
 
-每个操作的 context 在派发前经 `traffic.WithLoadTest` 打标,全链路下游
-client 都能识别合成流量(`traffic.IsLoadTest`) —— 影子表路由、fault
-注入范围、指标标注都以此为准。
+单锁 recorder、`time.Sleep`  pacing、阈值判定而非置信区间——example 规模
+下的合理取舍,不是基准测试工具。
 
 ## 安装
 

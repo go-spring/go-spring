@@ -35,9 +35,12 @@
 ]
 ```
 
-一个文件可放单个契约对象或其数组。只有你设置了的请求字段才参与匹配:空的
-`query`/`headers` 不构成约束,`body` 为空则不检查其内容。合法 JSON 的 body 按
-**结构等价**比较(忽略键顺序与空白)。
+一个文件可放单个契约对象或其数组。`request.method`、`request.path` 与
+`response.status` 必填——[Load] 会直接拒绝缺失它们(或 `response.status` 超出
+合法范围)的契约,而不是等运行期报一句间接的 "no contract matched"。只有你
+设置了的请求字段才参与匹配:空的 `query`/`headers` 不构成约束,`body` 为空则
+不检查其内容。`query`/`headers` 按单值钉住——没列出的 key 就是不约束,多值
+key 留空不建模。合法 JSON 的 body 按**结构等价**比较(忽略键顺序与空白)。
 
 ## 用法
 

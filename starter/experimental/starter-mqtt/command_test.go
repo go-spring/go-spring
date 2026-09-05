@@ -17,45 +17,36 @@
 package StarterMQTT
 
 import (
+	"context"
 	"testing"
-
-	observe "go-spring.org/cloud/observe"
 )
 
-// resetObsCfgForTest restores the seed state so the seeding tests are
-// order-independent and leave the package defaults in place for other tests.
-func resetObsCfgForTest(t *testing.T) {
-	t.Helper()
-	obsCfgMu.Lock()
-	obsCfg = observe.ObserveConfig{Level: observe.DefaultBrief}
-	obsCfgSeeded = false
-	obsCfgMu.Unlock()
-}
-
-// TestSeedObserveConfigFirstWins verifies the span-helper observer seeding
-// rule: the first configured client's observability config wins, later clients
-// (which may carry a different level) do not overwrite it, and a level set
-// before any seeding reaches the observer construction.
-func TestSeedObserveConfigFirstWins(t *testing.T) {
-	defer resetObsCfgForTest(t)
-	seedObserveConfig(observe.ObserveConfig{Level: "off"})
-	seedObserveConfig(observe.ObserveConfig{Level: "detailed"})
-
-	obsCfgMu.Lock()
-	defer obsCfgMu.Unlock()
-	if obsCfg.Level != "off" {
-		t.Fatalf("first-seeded level should win: want off, got %q", obsCfg.Level)
+// TestSpanHelpersNoOpWithoutOTel verifies the span helpers run against the
+// no-op OTel globals: StartPublishSpan/StartConsumeSpan build the local
+// observers lazily and End records the outcome without panicking, so a blank
+// import of this starter is safe without starter-otel.
+func TestSpanHelpersNoOpWithoutOTel(t *testing.T) {
+	ctx := context.Background()
+	_, sp := StartPublishSpan(ctx, "sensors/temp")
+	if sp == nil {
+		t.Fatal("publish span should not be nil")
 	}
+	sp.End(nil)
+
+	_, sp2 := StartConsumeSpan(ctx, fakeMessage("sensors/temp"))
+	if sp2 == nil {
+		t.Fatal("consume span should not be nil")
+	}
+	sp2.End(context.Canceled)
 }
 
-// TestSeedObserveConfigEmptyKeepsDefault verifies an unconfigured client
-// (empty level) does not clobber the kit default the helpers fall back to.
-func TestSeedObserveConfigEmptyKeepsDefault(t *testing.T) {
-	defer resetObsCfgForTest(t)
-	seedObserveConfig(observe.ObserveConfig{})
-	obsCfgMu.Lock()
-	defer obsCfgMu.Unlock()
-	if obsCfg.Level != observe.DefaultBrief {
-		t.Fatalf("empty seed should keep the default: want %q, got %q", observe.DefaultBrief, obsCfg.Level)
-	}
-}
+// fakeMessage is a minimal mqtt.Message carrying only the topic.
+type fakeMessage string
+
+func (m fakeMessage) Duplicate() bool   { return false }
+func (m fakeMessage) Qos() byte         { return 0 }
+func (m fakeMessage) Retained() bool    { return false }
+func (m fakeMessage) Topic() string     { return string(m) }
+func (m fakeMessage) MessageID() uint16 { return 0 }
+func (m fakeMessage) Payload() []byte   { return nil }
+func (m fakeMessage) Ack()              {}

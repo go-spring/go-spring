@@ -55,7 +55,7 @@ rows, err := s.Client.QueryContext(ctx, "SELECT COUNT(*) FROM power.meters")
 - **fail-fast 启动探活 + 健康指示器** — 启动期一次 `PingContext`，
   `tdengine:<name>` 指示器供 `starter-actuator` 聚合。
 - **逐语句韧性 + 可观测** — 语句经守卫过的 driver.Conn 流动：限流、熔断、
-  故障注入、逐语句 span + 指标 + 访问日志，全部在字段注入后武装。
+  故障注入、逐语句 span + 指标 + 访问日志，全部在 Init 里武装。
 - **websocket 线路、零 CGO** — 支持任何运行 taosAdapter 的 TDengine
   ≥ 3.3.6；`wss://` DSN 即 TLS。
 

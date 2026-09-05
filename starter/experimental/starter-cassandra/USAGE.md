@@ -1,7 +1,7 @@
 # starter-cassandra Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `config.go`, `client.go`, `driver.go`,
+against the starter source (`starter.go`, `config.go`, `client.go`, `driver.go`, `observe.go`,
 `health/health.go`) and the runnable [example/](example/) (self-asserting smoke via
 `example/check.sh`) — file:line spot-checks in brackets below. **CQL semantics and the gocql API
 are [gocql's own documentation](https://pkg.go.dev/github.com/gocql/gocql)** (ScyllaDB speaks the
@@ -102,14 +102,6 @@ spring.cassandra.a.consistency=local-quorum
 spring.cassandra.b.hosts=127.0.0.1
 spring.cassandra.b.keyspace=demo
 
-# --- observability ---------------------------------------------------------
-# Access-log detail for the Exec helper (tag _app_cassandra_access). NOTE:
-# observability.* is a TOP-LEVEL key shared by all client starters/instances
-# (the wrapper field binds ${observability:=} as an absolute reference,
-# client.go:44) — it is NOT under spring.cassandra.<name>. Setting
-# spring.cassandra.a.observability.level writes a dead copy (config.go:65).
-observability.level=detailed
-
 # --- actuator + otel ------------------------------------------------------
 spring.actuator.addr=:9370
 spring.observability.service-name=demo
@@ -149,10 +141,9 @@ gs.Run()
   ├─ ctor newClient [starter.go:59]:
   │     username/password pairing check → driver lookup → driver.CreateClient
   │     → HealthCheck probe (fail fast, see below)
-  ├─ gs field-injects Client.Observability (${observability:=} — top-level absolute key)
-  ├─ Init [client.go:64]: observe.NewDB("cassandra", …) → resource label
+  ├─ Init [client.go:59]: newDBObserver("cassandra") → resource label
   │     → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │     → resilience.WrapExecutor — exec chain complete
+  │     → resilience.WrapExecutor(exec, "cassandra") — exec chain complete
   ├─ readiness: indicator queries system.local per instance
   └─ SIGTERM → Destroy [client.go:75]: exec.Close (if armed) → Session.Close
 ```
@@ -182,8 +173,8 @@ against the earlier opt-in helper). Every statement execution method — `Exec`,
 `Client.Exec(ctx, stmt, values...)` / `Client.Query(...).Exec()` [client.go, query.go]:
 
 1. `obs.Start(ctx, "exec", stmt)` opens a client-kind span named `exec` with the statement as
-   the bounded `arg` attribute, bumps the in-flight gauge, and starts an access-log record.
-   No-op span/metric without starter-otel's globals; the access log always emits.
+   the bounded `db.statement` attribute, bumps the in-flight gauge, and starts an access-log
+   record. No-op span/metric without starter-otel's globals; the access log always emits.
 2. `exec.Execute(ctx, resource, call)` asks the governance executor for a permit — limiter/
    breaker scoped to the resource label `cassandra:<hosts[0]>` (per instance, keyed on the
    FIRST host only [client.go:66]). On rejection the statement is **never attempted**.
@@ -225,8 +216,7 @@ custom drivers via `RegisterDriver(name, Driver)` (duplicate names panic); selec
 ## 3. Per-key behavior reference
 
 All keys live under `spring.cassandra.<name>.` — bound per instance via `conf.BindEach` (the
-ctor's `Config` arg), NOT the absolute-property starter-Pool rule. One exception: the live
-`observability.*` block is a **top-level** key (see §1 note).
+ctor's `Config` arg), NOT the absolute-property starter-Pool rule.
 
 ### 3.1 Connection & session
 
@@ -248,25 +238,20 @@ ctor's `Config` arg), NOT the absolute-property starter-Pool rule. One exception
 
 ### 3.2 Instrumentation
 
-| Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
-|-----|------|---------|-------------------------|------------------------------|
-| `observability.level` (top-level) | string | `brief` | Access log for `Exec` only: `off` / `brief` / `detailed` (detailed adds the statement, bounded). Shared across ALL client starters/instances [client.go:44]. | Set under `spring.cassandra.<name>.` → silently dead (config.go:65 binds a copy nobody reads). |
-| `observability.maxArgBytes` (top-level) | int | 512 | Bound of the captured statement in detailed mode and as span attribute. | Too small → truncated statements. |
-| `observability.skipOps` (top-level) | list | — | Suppresses span+metric+log together for listed op names — here the only op is `exec`. | — |
-
-No `otel.*` keys exist in this starter (unlike starter-go-redis): the observer rides the OTel
+There are no observability config keys in this starter — instrumentation is always on.
+No `otel.*` keys exist either (unlike starter-go-redis): the observer rides the OTel
 globals directly; import starter-otel or spans/metrics are no-ops. No service-discovery keys
 either — no `service-name`, no `scheme`, no `discovery`.
 
 ### 3.3 Metrics / log field reference (as emitted by Exec)
 
 - Metrics: `db.client.operation.duration` (histogram, seconds), `db.client.active_requests`
-  (UpDownCounter) — attribute `system=cassandra`, `op=exec`, status ok/error
-  (cloud/observe observer.go:185-201).
-- Access log: tag `_app_cassandra_access` (`log.RegisterAppTag("cassandra","access")`,
-  observer.go:195), one record per Exec with system/op/status/duration; detailed adds the
-  statement.
-- Span: name `exec`, kind client, db attributes per the observe kit's DB SemConv.
+  (UpDownCounter) — attributes `db.system=cassandra`, `db.operation` (observe.go).
+- Access log: tag `_app_cassandra_access` (`log.RegisterAppTag("cassandra","access")`),
+  one record per Exec at the log package's native levels: error → Warn; success with the
+  statement argument (truncated to 512 bytes) → Debug; plain success → Info.
+- Span: name `exec`, kind client, with `db.system` / `db.operation` / `db.statement`
+  attributes (statement truncated to 512 bytes).
 
 ---
 
@@ -285,7 +270,7 @@ docker start cassandra-example
 
 ```bash
 grep _app_cassandra_access app.log | tail -1
-# brief: system=cassandra op=exec status=ok duration=...
+# system=cassandra op=exec status=ok duration=...
 curl -s :9370/metrics | grep db.client   # duration histogram + active_requests
 ```
 
@@ -319,7 +304,7 @@ docker stop cassandra-example && go run .
 | Boot fails "unknown consistency" | Typo in `consistency`; enum is exact-match | Use one of the nine listed values [driver.go:117]. |
 | Boot fails "cassandra driver not found" | `driver` names nothing registered | Register via `RegisterDriver` in an init, or drop the key (DefaultDriver). |
 | No spans/metrics from Exec | starter-otel not imported | The observer rides the OTel globals; import starter-otel (access log still emits). |
-| No access-log lines at all | `observability.level=off`, or the key was set under `spring.cassandra.<name>.` (dead copy) | Set the TOP-LEVEL `observability.level=detailed`; check the logger's tag filter for `_app_cassandra_access`. |
+| No access-log lines at all | The logger's level filter drops Debug/Info, or the `_app_cassandra_access` tag is filtered | Check the logger's level and its tag filter for `_app_cassandra_access`. |
 | Breaker/limiter never triggers | Calls use the raw `*gocql.Session` (e.g. a session obtained elsewhere), or a batch, or chained configurators that dropped the wrapper | Start statements from `Client.Query`/`Client.Bind`/`Client.Exec` (§2.3). |
 | Two instances share one breaker unexpectedly | Resource label is `cassandra:<hosts[0]>` [client.go:66] | By design (multi-seed configs collapse to the first host); split contact lists if isolation is needed. |
 | Health DOWN though Exec works | Probe scans system.local with the indicator ctx; check permissions/timeout | Inspect the component error body in /readiness. |
@@ -328,7 +313,7 @@ docker stop cassandra-example && go run .
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 10 instance keys + tls group (6) + top-level observability (3) |
+| Config keys | 10 instance keys + tls group (6) |
 | Required | 1 (`hosts`) |
 | Quickstart external deps | 1 (Cassandra) |
 | "Watch out" entries | 4 |
@@ -337,9 +322,6 @@ Design suspects (audit ledger — kept from the previous audit, still true):
 
 - ~~Only `Exec` is guarded/observed~~ Fixed: the guarded `*Query` wrapper covers the normal
   statement path (§2.3); batches and deep `Iter` paging remain outside the guard.
-- `Config.Observability` is bound under the instance prefix but dead — the live copy is the
-  wrapper's top-level field [config.go:65 vs client.go:44]; a user configuring
-  `spring.cassandra.<name>.observability.level` gets silence. Candidate: delete the dead field.
 - Resource label uses `hosts[0]` only, so multi-seed configs share one resilience bucket keyed
   on the first host.
 - Health indicator has no opt-out key (family asymmetry with redigo's `health.enabled`).

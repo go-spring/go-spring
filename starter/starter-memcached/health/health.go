@@ -30,8 +30,8 @@ import (
 //
 // gomemcache's Ping carries no context, so the probe cannot honor a deadline;
 // the client's own dial/read timeouts bound it.
-func NewClientHealth(name string, client *memcache.Client) health.Indicator {
-	return health.NewIndicator("memcache:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, client *memcache.Client) *health.Indicator {
+	return &health.Indicator{Name: "memcache:" + name, Probe: func(ctx context.Context) error {
 		return client.Ping()
-	})
+	}}
 }

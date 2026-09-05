@@ -22,7 +22,7 @@
 // It depends only on the Go standard library and go-spring.org/stdlib/errutil,
 // pulling in no third-party business package, so any module in the repo can
 // adopt it without inheriting a dependency graph. Starters embed TLSConfig
-// under a `tls` key (e.g. `spring.redis.tls.enabled`) and call Build() at
+// under a `tls` key (e.g. `spring.redis.tls.enabled`) and call BuildClient() at
 // construction time; (nil, nil) means "no TLS", which every client library
 // accepts.
 package tlsconf
@@ -66,7 +66,8 @@ type TLSConfig struct {
 	InsecureSkipVerify bool `value:"${insecure-skip-verify:=false}"`
 }
 
-// Build turns the config into a *tls.Config, or (nil, nil) when TLS is
+// BuildClient turns the config into a client-side *tls.Config, or (nil, nil)
+// when TLS is
 // disabled so a caller can pass the result straight through to a library that
 // treats a nil *tls.Config as "no TLS". It loads the key pair and CA bundle
 // from disk when provided.
@@ -74,7 +75,7 @@ type TLSConfig struct {
 // Errors are wrapped with a generic "tls:" prefix; a starter that wants a
 // component-specific prefix should wrap the returned error with
 // errutil.Explain(err, "redis: ...").
-func (c TLSConfig) Build() (*tls.Config, error) {
+func (c TLSConfig) BuildClient() (*tls.Config, error) {
 	if !c.Enabled {
 		return nil, nil
 	}
@@ -100,8 +101,8 @@ func (c TLSConfig) Build() (*tls.Config, error) {
 }
 
 // BuildServer turns the config into a server-side *tls.Config, or (nil, nil)
-// when TLS is disabled. Server semantics differ from [TLSConfig.Build] in two
-// ways:
+// when TLS is disabled. Server semantics differ from [TLSConfig.BuildClient]
+// in two ways:
 //
 //   - CAFile is the bundle of CAs trusted to sign CLIENT certificates: it sets
 //     ClientCAs and turns on RequireAndVerifyClientCert, i.e. requesting a CA
@@ -109,7 +110,7 @@ func (c TLSConfig) Build() (*tls.Config, error) {
 //   - ServerName and InsecureSkipVerify are client-side knobs; on the server
 //     they describe verifying the peer WE dial, so both are ignored here.
 //
-// Errors are wrapped with the same generic "tls:" prefix as [TLSConfig.Build].
+// Errors are wrapped with the same generic "tls:" prefix as [TLSConfig.BuildClient].
 func (c TLSConfig) BuildServer() (*tls.Config, error) {
 	if !c.Enabled {
 		return nil, nil

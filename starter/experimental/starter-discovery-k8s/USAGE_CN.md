@@ -140,8 +140,8 @@ DNS，集群外 resolve 报 lookup 错误（example 将其视为 warning 后干�
    （`endpointslice.go:198-199`）；此后每个 add/update/delete 触发一次重算。ctx 取消或
    `Close()` 时 channel 关闭（`endpointslice.go:205-219`）。
 
-下游由 `discovery.Resolver` 把 channel 变成 `Endpoints()` 快照，loadbalance `Pool` 每次
-`Pick` 读取——这就是向客户端连接池的"端点推送"。
+下游 discovery `Loader` 读该后端快照（由这个 channel 保鲜），把它变成 `Endpoints()`
+来源供 loadbalance `Pool` 每次 `Pick` 读取——这就是向客户端连接池的"端点推送"。
 
 ### 2.2 WATCH 路径 —— dns 模式
 
@@ -204,7 +204,7 @@ get/list/watch）。backend 名（map key）必须等于客户端 `discovery:` �
 5. **watch channel 卫生**：停掉消费端——即使某个 consumer 泄漏了 watch ctx，
    `manager.Destroy` 也会关闭所有 informer（`starter.go:79-86`、`endpointslice.go:230-243`）。
 6. **启动 fail-fast（endpointslice）**：集群外不带 `kubeconfig` 启动 → 报错并指出修法。
-   单测覆盖：`dns_test.go`、`endpointslice_test.go`（fake resolver + fake clientset 覆盖
+   单测覆盖：`dns_test.go`、`endpointslice_test.go`（fake loader source + fake clientset 覆盖
    resolve、端口选择、ready/zone 元数据、watch-on-scale——`check.sh` 实际断言的就是这些）。
 
 运行期日志均带 `log.TagAppDef`；本 starter 不发 metrics/trace（可观测由各客户端池自行承担）。

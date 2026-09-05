@@ -102,7 +102,6 @@ spring.webhook.alert.timeout=5s
 # --- notifier "report": plain JSON POST to a self-built receiver -------------
 spring.webhook.report.url=http://127.0.0.1:18080/hook
 spring.webhook.report.channel=generic
-# spring.webhook.report.observability.level=brief   # per-instance, ctor-bound
 
 # --- observability (starter-otel) ---------------------------------------------
 spring.observability.service-name=demo
@@ -200,7 +199,7 @@ receiver). Those surface on first Send.
 ## 3. Per-key behavior reference
 
 Prefix `spring.webhook.<name>.*` — all keys are ctor-bound into `Config` (config.go), i.e.
-instance-prefixed, including the observability sub-struct (unlike starter-s3, there is no
+instance-prefixed (unlike starter-s3, there is no
 wrapper-field tag here).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -209,7 +208,6 @@ wrapper-field tag here).
 | `channel` | string | generic | `generic`\|`dingtalk`\|`feishu`\|`wecom`\|`slack`; selects payload builder + signing scheme + the resilience label's third segment. | Unknown value → startup error from the dry-run buildPayload (exact message in §2.2). |
 | `secret` | string | — | DingTalk 加签 (SEC...) or Feishu signing secret; **ignored** by generic/wecom/slack. | ⚠ Secret on the wrong channel is silently unused — unsigned messages get rejected by the receiver at Send time. |
 | `timeout` | duration | 5s | Bounds one POST (`http.Client.Timeout`). | Too small → slow chat platforms produce client timeouts; the executor may retry (per governance policy) amplifying load. |
-| `observability` | struct | brief | Per-send access log/metrics/span level (`off`\|`brief`\|`detailed`), sub-keys `observability.level` / `.maxArgBytes` (default 512) / `.skipOps` under the instance prefix; feeds `resilience.WrapExecutor`. | `off` removes the per-send log; `detailed` logs payload bytes up to maxArgBytes. |
 
 ---
 
@@ -248,8 +246,7 @@ in the observability stream instead of reaching the platform.
 ### 4.4 Observability drill
 
 With starter-otel imported, send once and read: span `webhook.send` (kind PRODUCER,
-attributes as in §2.2 step 2), duration histogram, access log line (level from
-`observability.level`; `detailed` includes body bytes up to `maxArgBytes`). Verify the
+attributes as in §2.2 step 2) and duration histogram. Verify the
 redaction property: the span attribute is `webhook.destination.host=scheme://host`, never
 the signed URL.
 
@@ -279,7 +276,7 @@ at startup — that is the dry-run working.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 5 (+3 observability.* sub-keys, instance-prefixed) |
+| Config keys | 5 |
 | Required | 1 (`url`) |
 | Quickstart external deps | 0 (example runs its own receiver) |
 | "Watch out" entries | 4 |
@@ -294,3 +291,4 @@ Design suspects (for the audit ledger; first one carried over from the previous 
   only via governance policy, which is easy to leave unconfigured.
 - NEW: `plainText` (payload.go:129) is unused by the send path — dead helper, candidate for
   deletion.
+

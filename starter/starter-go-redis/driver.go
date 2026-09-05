@@ -23,6 +23,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/goutil"
 )
@@ -89,7 +90,7 @@ var (
 // In sentinel mode the client connects to the master resolved by c.MasterName
 // through c.SentinelAddrs; service discovery is not used.
 func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client, io.Closer, error) {
-	tlsConfig, err := c.TLS.Build()
+	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, nil, errutil.Explain(err, "redis: build TLS")
 	}
@@ -136,10 +137,18 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client,
 	}
 	if resolver != nil {
 		nd := &net.Dialer{Timeout: c.DialTimeout}
-		// Addr becomes a label for the pool; the dialer picks a live endpoint.
+		// Addr becomes a label for the pool; the dialer picks a live endpoint
+		// through the shared loadbalance machinery (round-robin, per connection).
+		// Freshness lives inside the discovery backend, so the resolver has no
+		// resources to release.
+		bal, err := loadbalance.New(loadbalance.RoundRobin)
+		if err != nil {
+			return nil, nil, err
+		}
+		lb := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal)
 		opts.Addr = c.ServiceName
 		opts.Dialer = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			ep, err := resolver.Pick()
+			ep, err := lb.Pick(loadbalance.PickInfo{})
 			if err != nil {
 				return nil, err
 			}
@@ -147,23 +156,15 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client,
 		}
 	}
 
-	// The driver owns the resolver's lifecycle: return its Stop as the teardown
-	// closer so (*Client).Close can stop the background watch
-	// without the starter keeping a client->resolver registry. No resolver
-	// (plain Addr / mesh / sentinel) → no-op.
 	client := redis.NewClient(opts)
-	stop := goutil.NopCloser()
-	if resolver != nil {
-		stop = goutil.CloserFunc(resolver.Stop)
-	}
-	return client, stop, nil
+	return client, goutil.NopCloser(), nil
 }
 
 // CreateClusterClient creates a cluster Redis client seeded by c.Addrs. The bean
 // type is *redis.ClusterClient. Cluster mode self-discovers its nodes, so
 // c.ServiceName / the discovery resolver is not used here.
 func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, io.Closer, error) {
-	tlsConfig, err := c.TLS.Build()
+	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, nil, errutil.Explain(err, "redis: build TLS")
 	}

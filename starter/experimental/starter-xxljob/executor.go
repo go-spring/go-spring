@@ -307,13 +307,13 @@ func (e *Executor) callback(ctx context.Context, logID, logDateTime int64, res h
 // Health returns an indicator that reports whether the callback server is
 // serving (the executor is ready). Named after the instance name, matching
 // the bean name in starter.go (sibling-starters convention).
-func (e *Executor) Health() health.Indicator {
-	return health.NewIndicator("xxljob:"+e.name, func(ctx context.Context) error {
+func (e *Executor) Health() *health.Indicator {
+	return &health.Indicator{Name: "xxljob:"+e.name, Probe: func(ctx context.Context) error {
 		if e.srv == nil {
 			return fmt.Errorf("xxljob: executor not started")
 		}
 		return nil
-	})
+	}}
 }
 
 func writeTriggerResponse(w http.ResponseWriter, code int, msg string) {

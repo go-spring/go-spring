@@ -52,6 +52,7 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // registers the actuator Server bean
@@ -70,18 +71,18 @@ type Config struct {
 // UP and DOWN probe paths.
 var depDown atomic.Bool
 
-// dep is a health.Indicator built with health.NewIndicator; the actuator
+// dep stands in for a real dependency's health check; the actuator
 // aggregates every bean exported as health.Indicator.
-var dep = health.NewIndicator(
-	"demo:dependency",
-	func(ctx context.Context) error {
+var dep = &health.Indicator{
+	Name:   "demo:dependency",
+	Groups: []health.Group{health.GroupReadiness, health.GroupStartup},
+	Probe: func(ctx context.Context) error {
 		if depDown.Load() {
 			return errors.New("dependency unavailable")
 		}
 		return nil
 	},
-	health.WithGroups(health.GroupReadiness, health.GroupStartup),
-)
+}
 
 // exec is the resilience executor built from the builtin "default" driver.
 var exec resilience.Executor
@@ -93,7 +94,7 @@ func init() {
 		discovery.Endpoint{Addr: "127.0.0.1:8082", Healthy: true},
 	))
 
-	gs.Provide(dep).Export(gs.As[health.Indicator]())
+	gs.Provide(dep)
 	gs.Provide(&Config{}).Export(gs.As[gs.Rooter]())
 }
 
@@ -177,15 +178,18 @@ func runTest() {
 	fmt.Println("health: readiness aggregate OK (UP -> DOWN when dependency down -> UP)")
 
 	// --- 2. Discovery ----------------------------------------------------
-	r, err := discovery.NewResolver(ctx, "static", "cloudnative-echo")
+	resolver, err := discovery.NewResolver(ctx, "static", "cloudnative-echo")
 	if err != nil {
 		fail("new resolver: %v", err)
 	}
-	ep, err := r.Pick()
+	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	if err != nil {
+		fail("new balancer: %v", err)
+	}
+	ep, err := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal).Pick(loadbalance.PickInfo{})
 	if err != nil {
 		fail("resolve: %v", err)
 	}
-	_ = r.Stop()
 	if ep.Addr != "127.0.0.1:8082" {
 		fail("unexpected resolved addr: %s", ep.Addr)
 	}

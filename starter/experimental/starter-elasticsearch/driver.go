@@ -90,34 +90,29 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*elasticsearch
 	return client, nil
 }
 
-// resolveAddresses builds a discovery Resolver for c.ServiceName and returns the
-// current endpoint snapshot as "scheme://host:port" node addresses together with
-// the Resolver (so the caller can stop its background watch on shutdown). It
-// fails fast when no backend is registered or the service has no endpoints. It
-// must only be called when service discovery is in effect (the caller has already
-// gated on service-name being set and mesh mode being off).
-func resolveAddresses(ctx context.Context, c Config) ([]string, *discovery.Resolver, error) {
-	r, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+// resolveAddresses resolves c.ServiceName through the registered discovery
+// backend and returns the current live endpoint snapshot as "scheme://host:port"
+// node addresses. Because the elasticsearch client exposes no dialer injection
+// point this is a one-shot read at startup (the resolver has no background watch
+// and no resources to release). It fails fast when no backend is registered or
+// the service has no endpoints. It must only be called when service discovery
+// is in effect (the caller has already gated on service-name being set and mesh
+// mode being off).
+func resolveAddresses(ctx context.Context, c Config) ([]string, error) {
+	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
-		return nil, nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
+		return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 	}
-	eps := r.Endpoints()
+	eps, err := resolver()
+	if err != nil {
+		return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
+	}
 	if len(eps) == 0 {
-		_ = r.Stop()
-		return nil, nil, errutil.Explain(nil, "elasticsearch: discovery %q returned no endpoints for %q", c.Discovery, c.ServiceName)
+		return nil, errutil.Explain(nil, "elasticsearch: discovery %q returned no endpoints for %q", c.Discovery, c.ServiceName)
 	}
 	addrs := make([]string, 0, len(eps))
 	for _, ep := range eps {
 		addrs = append(addrs, fmt.Sprintf("%s://%s", c.DiscoveryScheme, ep.Addr))
 	}
-	return addrs, r, nil
-}
-
-// stopLiveResolver stops the discovery watch behind a client. It is the
-// Close-half of the discovery lifecycle, symmetric with resolveAddresses; it is a
-// no-op for clients that never had a resolver.
-func stopLiveResolver(r *discovery.Resolver) {
-	if r != nil {
-		_ = r.Stop()
-	}
+	return addrs, nil
 }

@@ -24,8 +24,8 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/messaging"
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
@@ -33,7 +33,7 @@ import (
 var errGovernanceStub = errors.New("governance: rejected by test stub")
 
 // stubExecutor counts Execute calls and always rejects, so a test can assert
-// the binder path went through the executor without a live broker.
+// the driver path went through the executor without a live broker.
 type stubExecutor struct{ called atomic.Int32 }
 
 func (s *stubExecutor) Execute(context.Context, string, func(context.Context) error) error {
@@ -84,17 +84,17 @@ func TestApplyResilienceToggle(t *testing.T) {
 	closeResilience(cl)
 }
 
-// TestBinderPublishGuarded verifies the binder's Publish routes through the
+// TestDriverPublishGuarded verifies the driver's Publish routes through the
 // resilience executor the direct client API uses: with an executor attached,
 // the publish is rejected and paho's Publish never runs; with no executor
 // (governance off) the underlying client is published to directly.
-func TestBinderPublishGuarded(t *testing.T) {
+func TestDriverPublishGuarded(t *testing.T) {
 	cl := &fakeMQTTClient{}
 	stub := &stubExecutor{}
 	resilienceExecs.Store(cl, stub)
 	resilienceResources.Store(cl, "mqtt:test")
 
-	b := NewBinder(cl)
+	b := NewDriver(cl)
 	pub, err := b.NewPublisher(context.Background(), "t")
 	if err != nil {
 		t.Fatal(err)

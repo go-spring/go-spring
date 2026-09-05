@@ -11,8 +11,7 @@
 | --- | --- |
 | `MessageSource` | 唯一的接口:`Message(ctx, key, args...) (string, error)`。想接数据库/配置中心,自己实现它。 |
 | `WithLocale(ctx, locale)` / `LocaleFrom(ctx)` | locale 随 context 传递——中间件从 `Accept-Language` 设一次,下游所有调用自动取到。 |
-| `NewMapSource(fallbackLocale)` | 内建内存后端:locale → key → 模板。`Add`/`AddMap` 注册模板(可链式)。 |
-| `AddParsed(locale, m)` | 接收 yaml/json reader 解析出的嵌套 map;`map[string]any` 与 `map[any]any` 两种嵌套都会被拍平成点连接的 key。 |
+| `NewMapSource(WithDefaultLocale)` | 内建内存后端:locale → key → 模板。`Add` 注册单条模板,`AddBundle` 注册整个 locale 的 bundle(可链式)。 |
 | `Localizer(src, ctx)` | 把 `MessageSource` 柯里化成 `func(key, args...) string`——正是 `validation.ValidationErrors.Localize` 要的形状。 |
 | `ErrMessageNotFound` | "key 不存在"错误包装的哨兵。缺失时返回的字符串就是 key 本身。 |
 
@@ -21,7 +20,7 @@
 ### 1. 按请求 locale 解析消息
 
 ```go
-src := i18n.NewMapSource(WithFallbackLocale("en")).
+src := i18n.NewMapSource(WithDefaultLocale("en")).
     Add("en", "hello", "Hello, {0}!").
     Add("zh", "hello", "你好, {0}!")
 
@@ -37,15 +36,12 @@ fmt.Println(msg) // 你好, Go-Spring!
 ### 2. 喂入别处解析好的 bundle
 
 本包不读文件——解析器属于接线层(spring/conf reader、远程配置中心)。
-把解析出的 map 交进来:
+把解析出的 map 交进来;key 就是 map 里写的名字(点连接只是惯例,不是要求):
 
 ```go
-src.AddParsed("en", map[string]any{
-    "validation": map[string]any{
-        "email": "{0} must be a valid email",
-    },
+src.AddBundle("en", map[string]string{
+    "validation.email": "{0} must be a valid email",
 })
-// 注册成 key "validation.email"
 ```
 
 ### 3. 配合 validation 错误

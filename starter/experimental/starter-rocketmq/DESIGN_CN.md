@@ -10,9 +10,9 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
 
 - **负责**：`spring.rocketmq.<name>` 组的 bean 生命周期（多实例、容器托管
   停机）、公共选项应用到其创建的每个生产者/消费者、rlog 到 go-spring 日志
-  的桥接、fail-fast 名字服务探针、`messaging.Binder` 适配、OTel span 助手、
+  的桥接、fail-fast 名字服务探针、`messaging.Driver` 适配、OTel span 助手、
   `GuardedSend` 韧性 seam。
-- **不负责**：消息序列化（payload 保持 `[]byte`）、顺序语义（binder 是并发
+- **不负责**：消息序列化（payload 保持 `[]byte`）、顺序语义（driver 是并发
   消费的；顺序/事务消息走原生 client）、topic 管理、broker 健康探测（见
   §3）。
 
@@ -25,7 +25,7 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
 - **`Driver`（driver.go）** — 构造 seam：注册表 + DefaultDriver 装配包装
   bean。rlog 桥是进程级全局的，所以在 DefaultDriver 内部只安装一次，而非
   每实例一次。
-- **`NewBinder`（binder.go）** — 适配 `messaging.Binder`：每个 publisher 一
+- **`NewDriver`（driver.go）** — 适配 `messaging.Driver`：每个 publisher 一
   个已启动生产者，每个 subscriber 一个已启动推送消费者（按 SDK 契约先
   `Subscribe` 后 `Start`）。handler 错误映射为 `ConsumeRetryLater`（broker
   重投），nil 映射为 `ConsumeSuccess`。W3C trace 上下文与压测标记经
@@ -42,7 +42,7 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
   （`internal.ChangeInstanceNameToPID`），因此多生产者进程留空是安全的；
   显式设置 `instance-name` 则让底层远端客户端共享同一个连接池。
 - 推送消费者必须先 `Subscribe` 再 `Start`；包装器的 `NewPushConsumer`
-  因此返回未启动的消费者，由 binder 在内部完成这套顺序。
+  因此返回未启动的消费者，由 driver 在内部完成这套顺序。
 - fail-fast 探针是 TCP 拨号而非 broker 往返：RocketMQ 远端层是惰性连接，
   拨号是唯一廉价、无副作用、与拓扑无关的探针。它能抓出配错的地址，抓
   不出 ACL 错误。
@@ -60,6 +60,3 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
   gRPC 客户端还是 RC 质量、模块布局别扭（根模块 `+incompatible`）、且必须
   5.x 代理；v2 客户端是 Apache 官方稳定路径，经 NameServer 协议同时支持
   4.x 与 5.x 集群。
-- **binder 自动埋点用包级默认 `brief` vs. 每实例配置**：包装 bean 上有每实例
-  的 `Observability`，但一个 binder 服务任意多个目的地，所以 binder 路径用
-  包级默认；显式控制仍可通过手动 span 助手获得。

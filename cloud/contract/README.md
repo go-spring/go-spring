@@ -40,10 +40,15 @@ it yourself and hand the resulting `[]contract.Contract` to `Verify` /
 ]
 ```
 
-A file holds one contract object or an array of them. Only the request fields you
-set take part in matching: an empty `query`/`headers` imposes no constraint, and a
-nil `body` is not inspected. Bodies that are valid JSON compare by **structural
-equality** (key order and whitespace ignored).
+A file holds one contract object or an array of them. `request.method`,
+`request.path` and `response.status` are required — [Load] rejects a contract
+missing them (or carrying an out-of-range `response.status`) instead of failing
+later as an indirect "no contract matched". Only the request fields you set take
+part in matching: an empty `query`/`headers` imposes no constraint, and a nil
+`body` is not inspected. `query`/`headers` pin single values — a key you do not
+list is simply not constrained, so multi-value keys are left unpinned rather
+than modelled. Bodies that are valid JSON
+compare by **structural equality** (key order and whitespace ignored).
 
 ## Usage
 

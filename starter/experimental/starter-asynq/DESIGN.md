@@ -23,9 +23,9 @@ opt-in, a worker Server (dequeue + run).
   (see spring/DESIGN.md §4).
 - **`Client.Enqueue` guard** — the synchronous enqueue touches Redis and is
   the overload-sensitive path; it routes through the neutral
-  `resilience.ExecutorFor` / `fault.InjectorFor` seams and an
-  `observe.NewProducer` span, degrading to `Client.EnqueueContext` when
-  governance is off.
+  `resilience.ExecutorFor` / `fault.InjectorFor` seams and the starter's own
+  producer observation (observe.go), degrading to `Client.EnqueueContext`
+  when governance is off.
 - **`Server` implements `gs.Server`, not `gs.Runner`** — this is the
   load-bearing seam. gs.Runner is a startup-time, must-not-block interface
   (migrations, cache warm); gs.Server is the long-running, gracefully-stopped

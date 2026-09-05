@@ -108,10 +108,6 @@ spring.bigcache.hot.stats-enabled=true
 spring.bigcache.cold.life-window=30m
 spring.bigcache.cold.shards=1024
 
-# --- per-instance observability ----------------------------------------------
-# Access log (tag _app_bigcache_access); "detailed" adds the cache key.
-spring.bigcache.hot.observability.level=detailed
-
 # --- cache façade -------------------------------------------------------------
 spring.cache.demo.driver=bigcache:hot
 
@@ -149,8 +145,7 @@ gs.Run()
   │   (bigcache.DefaultConfig(LifeWindow) + knobs → bigcache.New)
   │   → registerMetrics(name, client) — OTel observable gauges [starter.go:144-156]
   │   NOTE: no connectivity probe — there is nothing to probe (in-process heap)
-  ├─ gs field-injects Cache.Observability (${observability:=})
-  ├─ Init [client.go:75-81]: observe.NewDB("bigcache", ...) → resource label
+  ├─ Init [client.go]: newDBObserver() → resource label
   │   "bigcache:<name>" → fault.WrapExecutor(resilience.ExecutorFor(...))
   │   → resilience.WrapExecutor
   ├─ your Runner uses Get/Set/Delete (each = span + executor + access log)
@@ -201,9 +196,6 @@ All keys live under `spring.bigcache.<name>.`.
 | `hard-max-cache-size` | int | 0 | Hard memory cap in MB; 0 = unlimited. | Set without need → early eviction (oldest entries dropped). |
 | `stats-enabled` | bool | false | bigcache per-key hit/miss stats. ⚠ The starter's OTel gauges read `Stats()` — several show 0 unless this is on (they pull whatever Stats() returns [starter.go:124-132]). | Off → gauges read zero while Len/Capacity still work. |
 | `driver` | string | `DefaultDriver` | Selects a registered Driver. | Unknown → boot error "bigcache driver not found". |
-| `observability.level` | string | `brief` | Access log off/brief/detailed (tag `_app_bigcache_access`). | — |
-| `observability.maxArgBytes` | int | 512 | Key capture bound in detailed mode. | — |
-| `observability.skipOps` | list | — | Suppress span+metric+log for listed op names (`get`/`set`/`delete`). | — |
 
 **Metrics** (meter `go-spring.org/starter-bigcache`, attribute `cache.name=<name>`): observable
 gauges `bigcache.hits`, `bigcache.misses`, `bigcache.delete_hits`, `bigcache.delete_misses`,
@@ -238,7 +230,7 @@ instance is registered and folded into readiness.
 # generate traffic via your Runner, then:
 curl -s :9370/metrics | grep 'bigcache_'
 # bigcache_hits{cache.name="hot"} grows only with stats-enabled=true
-grep _app_bigcache_access app.log | tail -3   # op=get/set/delete + key (detailed)
+grep _app_bigcache_access app.log | tail -3   # op=get/set/delete + key (debug level)
 ```
 
 ### 4.3 Eviction drill (example's "evict" instance)
@@ -282,7 +274,7 @@ A façade miss returns `cache.ErrMiss`; the wrapper returns `bigcache.ErrEntryNo
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 8 instance keys + observability(3) |
+| Config keys | 8 instance keys |
 | Required | 0 |
 | Quickstart external deps | 0 |
 | "Watch out" entries | 4 |

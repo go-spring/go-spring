@@ -40,26 +40,25 @@ import (
 // UP and DOWN probe paths.
 var depDown atomic.Bool
 
-// dep is a health.Indicator built with the health.NewIndicator helper; it stands
-// in for a real dependency (a database pool, a cache client, ...). Any bean
-// exported as health.Indicator is folded into the actuator's /readiness
-// aggregate with no extra wiring; here we register one so the smoke test can
-// observe both the UP and DOWN paths.
-var dep = health.NewIndicator(
-	"demo:dependency",
-	func(ctx context.Context) error {
+// dep stands in for a real dependency's health check (a database pool, a
+// cache client, ...). Any bean exported as health.Indicator is folded into
+// the actuator's /readiness aggregate with no extra wiring; here we register
+// one so the smoke test can observe both the UP and DOWN paths.
+var dep = &health.Indicator{
+	Name: "demo:dependency",
+	Probe: func(ctx context.Context) error {
 		if depDown.Load() {
 			return errors.New("dependency unavailable")
 		}
 		return nil
 	},
-)
+}
 
 func init() {
 	// Contribute the indicator to the actuator. Because the actuator collects
 	// every bean exported as health.Indicator, this is the whole integration —
 	// no import of the actuator package and no per-component registration API.
-	gs.Provide(dep).Export(gs.As[health.Indicator]())
+	gs.Provide(dep)
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

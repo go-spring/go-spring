@@ -18,8 +18,6 @@ package StarterRocketmq
 
 import (
 	"time"
-
-	observe "go-spring.org/cloud/observe"
 )
 
 // Config defines RocketMQ client configuration.
@@ -60,12 +58,6 @@ type Config struct {
 	// RocketMQ's remoting layer connects lazily and would otherwise swallow
 	// the error until the first produce/consume.
 	FailFast bool `value:"${fail-fast:=true}"`
-
-	// Observability configures the per-operation access log emitted by the
-	// resilience executor (off/brief/detailed). Defaults to "brief". This
-	// complements the OTel span helpers in command.go, which ride their own
-	// global provider.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which RocketMQ driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`

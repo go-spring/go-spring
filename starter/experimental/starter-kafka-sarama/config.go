@@ -17,7 +17,6 @@
 package StarterKafkaSarama
 
 import (
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -47,12 +46,6 @@ type Config struct {
 
 	// Producer tunes producer-side compression and acks.
 	Producer ProducerConfig `value:"${producer}"`
-
-	// Observability configures the per-operation access log emitted by the
-	// resilience executor (off/brief/detailed). Defaults to "brief". This
-	// complements the package-level trace helpers in observability.go, which are
-	// driven by their own default level.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which Kafka driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`

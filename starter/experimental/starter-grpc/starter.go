@@ -21,7 +21,6 @@ import (
 	"net"
 	"time"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/tlsconf"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -82,7 +81,6 @@ type Config struct {
 	Health               HealthConfig          `value:"${health}"`
 	LoadTest             LoadTestConfig        `value:"${loadtest}"`
 	Observer             ObserverConfig        `value:"${observer}"`
-	Observability        observe.ObserveConfig `value:"${observability:=}"`
 }
 
 // ObserverConfig groups the built-in observability interceptors the starter can

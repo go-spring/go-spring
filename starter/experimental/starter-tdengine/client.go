@@ -25,20 +25,14 @@ import (
 
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // Client is the wrapper bean TDengine connections are injected as. It embeds
-// the *sql.DB pool (so every database/sql method promotes unchanged) and
-// field-injects the observability policy. newClient returns one; gs
-// field-injects Observability, then calls Init (InitMethod) to build the
-// observer + executor and arm them on the connection slot the driver
-// installed.
+// the *sql.DB pool (so every database/sql method promotes unchanged).
+// newClient returns one; gs calls Init (InitMethod) to build the observer +
+// executor and arm them on the connection slot the driver installed.
 type Client struct {
 	*sql.DB
-	// Observability is field-injected by gs and configures the per-statement
-	// observation (spans + metrics + access log).
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// cfg is the connection config, retained for the resource label.
 	cfg Config
@@ -53,8 +47,7 @@ type Client struct {
 	resource string
 }
 
-// Init is the gs InitMethod: gs field-injects Observability after newClient
-// returns, then calls this. It builds the per-statement observer and resolves
+// Init is the gs InitMethod: it builds the per-statement observer and resolves
 // the executor through the neutral [resilience.ExecutorFor] seam (backed by
 // starter-govern's governance center when imported), wraps it with the
 // process-wide fault injector and observe-resilience, and arms both on the
@@ -62,11 +55,11 @@ type Client struct {
 // transparent no-op (statements are observe-only).
 func (o *Client) Init() error {
 	if o.slot != nil {
-		o.slot.obs = observe.NewDB("tdengine", o.Observability)
+		o.slot.obs = newDBObserver("tdengine")
 	}
 	o.resource = resourceLabel(o.cfg)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "tdengine", o.Observability)
+	exec = resilience.WrapExecutor(exec, "tdengine")
 	o.exec = exec
 	if o.slot != nil {
 		o.slot.exec = exec

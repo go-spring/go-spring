@@ -77,6 +77,7 @@ membership. See [discovery.go](example/discovery.go) for a backend example.
 
 ## Observability
 
-`bradfitz/gomemcache` ships no official OpenTelemetry instrumentation, and there is no clean community equivalent that
-hooks the client without wrapping every operation. Rather than bolt on a fragile wrapper, observability is intentionally
-**not** built into this starter; instrument at the call site if you need tracing/metrics on cache access.
+`bradfitz/gomemcache` ships no official OpenTelemetry instrumentation. The starter therefore emits its own: every
+operation goes through a module-local observe layer (client span with `db.system`/`db.operation`/`db.statement`
+attributes, the `db.client.operation.duration` histogram, and an access log tagged `_app_memcached_access`). All three
+are no-ops unless `starter-otel` installs providers.

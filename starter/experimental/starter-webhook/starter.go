@@ -75,7 +75,7 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, err
 	log.Debugf(ctx.Context, log.TagAppDef, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
 
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resilience.ResourceLabel("webhook", name, c.Channel)))
-	exec = resilience.WrapExecutor(exec, "webhook", c.Observability)
+	exec = resilience.WrapExecutor(exec, "webhook")
 	return &Notifier{
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},

@@ -29,6 +29,7 @@ import (
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	httpsvr "go-spring.org/starter-http-server"
 
 	// Blank-importing the starter registers the validators configured under
 	// spring.security.oauth2.resource.jwt.
@@ -62,12 +63,12 @@ func main() {
 
 		// The security chain: identify the caller first, then gate routes with
 		// authority checks.
-		mux.Handle("/orders", security.Authorize("orders:read")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mux.Handle("/orders", httpsvr.Authorize("orders:read")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("orders ok"))
 		})))
-		handler := security.Chain(
-			security.Authenticate(v, true),
-			security.Authorize(),
+		handler := httpsvr.Chain(
+			httpsvr.Authenticate(v, true),
+			httpsvr.Authorize(),
 		)(mux)
 		return &gs.HttpServeMux{Handler: handler}
 	}, gs.TagArg("api"))

@@ -33,6 +33,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/log"
 )
 
 // serviceNameLabel is the well-known label Kubernetes sets on every
@@ -40,17 +41,45 @@ import (
 // slices for one Service.
 const serviceNameLabel = "kubernetes.io/service-name"
 
+// k8sTag labels this starter's log lines.
+var k8sTag = log.RegisterAppTag("discovery_k8s", "")
+
 // endpointSliceDiscovery resolves a Service through its EndpointSlices using a
 // client-go informer. Compared with dns mode it is real-time (informer events
 // fire on scale up/down) and carries per-endpoint metadata (zone, ready state),
 // at the cost of a client-go dependency and get/list/watch RBAC on
 // endpointslices.
+//
+// Freshness is internal: the first Resolve of a service lists the slices once
+// (seed) and starts a scoped informer that keeps the cached snapshot current;
+// later calls are in-memory reads.
 type endpointSliceDiscovery struct {
 	cfg    Config
 	client kubernetes.Interface
 
-	mu       sync.Mutex
+	mu       sync.Mutex // guards entries and watchers
+	entries  map[string]*esEntry
 	watchers map[*watcherHandle]struct{}
+}
+
+// esEntry is the cached snapshot for one service name. eps holds the FULL
+// (unfiltered) set; scheme narrowing happens per Resolve call.
+type esEntry struct {
+	mu     sync.Mutex // guards eps; held across the seed fetch so it runs once
+	eps    []discovery.Endpoint
+	seeded bool
+}
+
+// entry returns (creating if needed) the cache entry for name.
+func (d *endpointSliceDiscovery) entry(name string) *esEntry {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	e, ok := d.entries[name]
+	if !ok {
+		e = &esEntry{}
+		d.entries[name] = e
+	}
+	return e
 }
 
 // watcherHandle is the bookkeeping for one live watch: done closes to stop the
@@ -81,6 +110,7 @@ func newEndpointSliceDiscovery(cfg Config) (*endpointSliceDiscovery, error) {
 	return &endpointSliceDiscovery{
 		cfg:      cfg,
 		client:   client,
+		entries:  map[string]*esEntry{},
 		watchers: map[*watcherHandle]struct{}{},
 	}, nil
 }
@@ -106,10 +136,29 @@ func (d *endpointSliceDiscovery) selector(name string) string {
 	return labels.SelectorFromSet(labels.Set{serviceNameLabel: name}).String()
 }
 
-// Resolve lists the Service's EndpointSlices once and flattens them into the
-// current endpoint set. opts narrow the result; [discovery.WithScheme] filters
-// by transport scheme.
+// Resolve returns the current endpoint set for name. The first call pays the
+// seed list (bounded by ctx) and starts the scoped informer that keeps the
+// cache current; later calls read the cache. opts narrow the result;
+// [discovery.WithScheme] filters by transport scheme.
 func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	e := d.entry(name)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.seeded {
+		eps, err := d.listSlices(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		e.eps, e.seeded = eps, true
+		go d.watchInformer(name, e)
+	}
+	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
+	sortEndpoints(eps)
+	return eps, nil
+}
+
+// listSlices lists the Service's EndpointSlices once and flattens them.
+func (d *endpointSliceDiscovery) listSlices(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	list, err := d.client.DiscoveryV1().EndpointSlices(d.cfg.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: d.selector(name),
 	})
@@ -121,17 +170,15 @@ func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string, opts 
 		slices = append(slices, &list.Items[i])
 	}
 	eps := slicesToEndpoints(d.cfg, slices)
-	eps = discovery.FilterByScheme(eps, discovery.NewQuery("", opts...).Scheme)
 	sortEndpoints(eps)
 	return eps, nil
 }
 
-// Watch starts an informer scoped to the Service's EndpointSlices and pushes a
-// fresh full snapshot on the returned channel on every add/update/delete. The
-// first result carries the snapshot at cache-sync time; the channel closes when
-// ctx is cancelled or Close stops the backend.
-func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
-	scheme := discovery.NewQuery("", opts...).Scheme
+// watchInformer runs the scoped informer behind name's cache entry, refreshing
+// it from the informer cache on every add/update/delete until Close stops the
+// backend. A failed refresh keeps the stale snapshot — stale addresses are
+// safer than none.
+func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		d.client,
 		d.cfg.ResyncPeriod,
@@ -143,9 +190,7 @@ func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string, opts ..
 	informer := factory.Discovery().V1().EndpointSlices().Informer()
 	lister := factory.Discovery().V1().EndpointSlices().Lister().EndpointSlices(d.cfg.Namespace)
 
-	// Informer handlers only signal a change; they never touch the result
-	// channel. A single goroutine (below) owns the channel — it is the sole
-	// writer and the sole closer, so there is no send-after-close race.
+	// Informer handlers only signal a change; they never touch the entry.
 	updates := make(chan struct{}, 1)
 	enqueue := func() {
 		select {
@@ -159,65 +204,39 @@ func (d *endpointSliceDiscovery) Watch(ctx context.Context, name string, opts ..
 		DeleteFunc: func(any) { enqueue() },
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
-		return nil, fmt.Errorf("discovery-k8s: add informer handler for %q: %w", name, err)
+		log.Warnf(context.Background(), k8sTag, "informer handler for %q failed (%v); serving seed/stale snapshots", name, err)
+		return
 	}
 
 	h := &watcherHandle{done: make(chan struct{})}
 	factory.Start(h.done)
 	if !cache.WaitForCacheSync(h.done, informer.HasSynced) {
 		h.stop()
-		return nil, fmt.Errorf("discovery-k8s: cache sync failed for %q", name)
+		log.Warnf(context.Background(), k8sTag, "cache sync for %q failed; serving seed snapshots", name)
+		return
 	}
-
-	cfg := d.cfg
-	snapshotCh := make(chan discovery.WatchResult, 1)
-	var last string
-	snapshot := func() {
-		slices, err := lister.List(labels.Everything())
-		if err != nil {
-			return
-		}
-		eps := slicesToEndpoints(cfg, slices)
-		eps = discovery.FilterByScheme(eps, scheme)
-		sortEndpoints(eps)
-		// Skip unchanged snapshots: the cache-sync burst fires one Add event per
-		// object, which would otherwise queue stale duplicates ahead of a real
-		// change (mirrors dnsDiscovery.Watch's addrKey guard).
-		if key := addrKey(eps); key == last {
-			return
-		} else {
-			last = key
-		}
-		select {
-		case snapshotCh <- discovery.WatchResult{Endpoints: eps}:
-		case <-h.done:
-		}
-	}
-
-	// Seed the current snapshot before the writer goroutine starts, so the first
-	// result is the state at watch time.
-	snapshot()
 
 	d.mu.Lock()
 	d.watchers[h] = struct{}{}
 	d.mu.Unlock()
 
-	go func() {
-		defer close(snapshotCh)
-		defer d.untrack(h)
-		for {
-			select {
-			case <-ctx.Done():
-				h.stop()
-				return
-			case <-h.done:
-				return // Close() stopped this watch.
-			case <-updates:
-				snapshot()
+	cfg := d.cfg
+	for {
+		select {
+		case <-h.done:
+			return // Close() stopped this informer.
+		case <-updates:
+			slices, err := lister.List(labels.Everything())
+			if err != nil {
+				continue
 			}
+			eps := slicesToEndpoints(cfg, slices)
+			sortEndpoints(eps)
+			e.mu.Lock()
+			e.eps = eps
+			e.mu.Unlock()
 		}
-	}()
-	return snapshotCh, nil
+	}
 }
 
 // untrack removes a watch handle from the parent's tracking set.

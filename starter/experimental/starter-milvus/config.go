@@ -16,9 +16,7 @@
 
 package StarterMilvus
 
-import (
-	observe "go-spring.org/cloud/observe"
-)
+import ()
 
 // Config defines one Milvus connection.
 type Config struct {
@@ -31,7 +29,4 @@ type Config struct {
 	// Username / Password authenticate when the Milvus cluster has auth on.
 	Username string `value:"${username:=}"`
 	Password string `value:"${password:=}"`
-
-	// Observability configures the per-request access log (off/brief/detailed).
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 }

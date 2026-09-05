@@ -30,16 +30,16 @@ type componentStatus struct {
 }
 
 // groupsOf returns the probe groups an indicator contributes to, applying the
-// default (readiness + startup) when HealthGroups returns empty.
-func groupsOf(ind health.Indicator) []health.Group {
-	if len(ind.HealthGroups()) > 0 {
-		return ind.HealthGroups()
+// default (readiness + startup) when Groups is empty.
+func groupsOf(ind *health.Indicator) []health.Group {
+	if len(ind.Groups) > 0 {
+		return ind.Groups
 	}
 	return []health.Group{health.GroupReadiness, health.GroupStartup}
 }
 
 // inGroup reports whether an indicator contributes to the given probe group.
-func inGroup(ind health.Indicator, group health.Group) bool {
+func inGroup(ind *health.Indicator, group health.Group) bool {
 	for _, g := range groupsOf(ind) {
 		if g == group {
 			return true
@@ -71,15 +71,15 @@ func (s *Server) checkGroup(ctx context.Context, group health.Group) (health.Sta
 		if !inGroup(ind, group) {
 			continue
 		}
-		if err := ind.CheckHealth(ctx); err != nil {
-			components[ind.HealthName()] = componentStatus{Status: health.StatusDown, Error: err.Error()}
-			if ind.IsCritical() {
+		if err := ind.Probe(ctx); err != nil {
+			components[ind.Name] = componentStatus{Status: health.StatusDown, Error: err.Error()}
+			if !ind.Optional {
 				overall = health.StatusDown
 			} else {
 				degraded = true
 			}
 		} else {
-			components[ind.HealthName()] = componentStatus{Status: health.StatusUp}
+			components[ind.Name] = componentStatus{Status: health.StatusUp}
 		}
 	}
 	if overall == health.StatusUp && degraded {

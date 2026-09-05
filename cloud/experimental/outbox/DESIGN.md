@@ -22,7 +22,7 @@ databases.
 `cloud/experimental/transaction`. The transaction family (saga / tcc / at)
 shares a "global transaction + compensation" problem domain with Coordinators
 and Stores; the outbox has no such concepts. Its only bloodline is messaging:
-it reuses `Message`, `Binder` and the DLQ header contract. The package imports
+it reuses `Message`, `Driver` and the DLQ header contract. The package imports
 only `cloud/messaging` plus the standard library — no gorm, no
 spring, no otel.
 
@@ -30,7 +30,7 @@ spring, no otel.
 
 ```
              (business tx)                      (background)
-  Publish(tx, dest, msg) ──► outbox table ──► Relay ──Binder──► broker
+  Publish(tx, dest, msg) ──► outbox table ──► Relay ──Driver──► broker
   (in starter-outbox-gorm)    (Store impl)      │
                                                   ├─ ok ──► MarkSent
                                                   ├─ fail ─► MarkFailed (backoff)

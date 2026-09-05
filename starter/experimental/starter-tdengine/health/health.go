@@ -30,8 +30,8 @@ import (
 //
 // The probe pings the pool, which draws a websocket connection and exercises
 // the server's action chain.
-func NewClientHealth(name string, db *sql.DB) health.Indicator {
-	return health.NewIndicator("tdengine:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, db *sql.DB) *health.Indicator {
+	return &health.Indicator{Name: "tdengine:" + name, Probe: func(ctx context.Context) error {
 		return db.PingContext(ctx)
-	})
+	}}
 }

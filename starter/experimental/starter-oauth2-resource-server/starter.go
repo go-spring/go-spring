@@ -31,7 +31,7 @@ func init() {
 	// One Validator bean per entry under spring.security.oauth2.resource.jwt,
 	// named after its config sub-key and exported as security.TokenValidator,
 	// so an application injects the seam (and composes it with
-	// security.Authenticate / Require) without depending on this package's
+	// a server family's Authenticate middleware or security.Require) without depending on this package's
 	// concrete types. An empty map registers nothing — configuration is the
 	// enable switch.
 	gs.Module(gs.OnProperty("spring.security.oauth2.resource.jwt"), func(r gs.BeanProvider, p flatten.Storage) error {

@@ -116,8 +116,6 @@ spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
 
 # observe-lock 适配器的访问日志粒度（以下为默认值）。
-# spring.lock.jobs.observability.level=brief
-# spring.lock.jobs.observability.maxArgBytes=512
 ```
 
 **验证**（本地 Redis，可用 `example/docker-compose.yml`）：
@@ -160,7 +158,7 @@ gs.Run()
 Provide 整体移除，观测改为 `newLocker` 内的透明默认。
 ### 2.2 三层时序解析（所有锁后端共享）
 
-TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高层优先
+TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层优先
 ——本 starter 喂入**全部三个**旋钮：
 
 | 层 | 来源 | key |
@@ -211,9 +209,6 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高�
 | `retry-interval` | duration | `100ms` | 竞争时 `Acquire` 的轮询间隔。 | 过低打爆 Redis；过高拉高故障转移时延。 |
 | `key-prefix` | string | — | 拼在每个 key 前再进 Redis，让共享一个 Redis 的多应用键空间不冲突。 | 跨应用共享前缀 → 互相争锁。 |
 | `observe.enabled` | bool | `true` | 默认用 observe-lock 适配器包装 `<name>` 主 Locker bean（trace span + metric + 访问日志）。`false` = 裸 locker。 | 迁移：`<name>-observed` bean 已移除，请注入 `<name>`。 |
-| `observability.level` | string | `brief` | 访问日志粒度 `off`/`brief`/`detailed`（detailed 记录锁 key）。 | 非法值 → 启动期绑定错误。 |
-| `observability.maxArgBytes` | int | `512` | 记录锁 key 的字节上限。 | 过低会截断日志里的 key。 |
-| `observability.skipOps` | []string | — | 从访问日志排除的操作（`acquire`、`try_acquire`）。 | 拼错则静默无效。 |
 
 ⚠ 本 starter 暴露全部三个时序旋钮，与 consul/etcd（仅 TTL）、k8s（无）不同——Redis 没有
 服务端 session 管理，renew/retry 只能放客户端。

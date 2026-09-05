@@ -28,9 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -88,9 +86,6 @@ type RouteTable struct {
 	lastPtr   uintptr    // identity of the last-compiled routes map
 	discovery string
 
-	dialerMu sync.Mutex
-	dialers  map[string]*discovery.Resolver
-
 	// execs pools resilience executors by policy name so routes sharing a policy
 	// share breaker/limiter state. Rebuilt on each recompile.
 	execs map[string]resilience.Executor
@@ -104,7 +99,6 @@ func newRouteTable(ctx *gs.ContextProvider, m *Metrics) *RouteTable {
 	return &RouteTable{
 		ctx:     ctx.Context,
 		metrics: m,
-		dialers: map[string]*discovery.Resolver{},
 	}
 }
 
@@ -210,19 +204,6 @@ func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 	t.execs = execs
 	atomic.StoreUintptr(&t.lastPtr, reflect.ValueOf(raw).Pointer())
 
-	// Drop cached discovery resolvers no longer referenced by any route so a
-	// service removed from the route config stops its background watch.
-	keep := map[string]bool{}
-	for _, rt := range routes {
-		disName := rt.Upstream.Discovery
-		if disName == "" {
-			disName = t.discovery
-		}
-		if rt.Upstream.Service != "" {
-			keep[disName+"|"+rt.Upstream.Service] = true
-		}
-	}
-	t.stopOrphanedDialers(keep)
 	t.mu.Unlock()
 	return nil
 }
@@ -248,7 +229,7 @@ func (t *RouteTable) buildExecutors() (map[string]resilience.Executor, error) {
 		exec := resilience.ExecutorFor("gateway:" + name)
 		// Wrap so breaker trips / rejects / retries emit span + counter +
 		// histogram + access log (the resilience core emits none).
-		out[name] = resilience.WrapExecutor(exec, "gateway:"+name, observe.ObserveConfig{})
+		out[name] = resilience.WrapExecutor(exec, "gateway:"+name)
 	}
 	return out, nil
 }

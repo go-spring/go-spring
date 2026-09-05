@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -48,40 +47,6 @@ func TestConfigDefaults(t *testing.T) {
 	var c Config
 	assert.That(t, c.Server.Enabled).False()
 	assert.That(t, c.Concurrency).Equal(0) // zero value; asynq default is 10 at runtime
-}
-
-// TestResolveObservability pins the precedence between the two observability
-// config surfaces: instance-prefixed spring.asynq.<name>.observability.*
-// (bound into Config.Observability by BindEach) overrides the top-level
-// observability.* keys field-injected into the wrapper. Binding fills the
-// defaults (brief/512/no skips) even when no instance key is present, so only
-// non-default instance values count as "set".
-func TestResolveObservability(t *testing.T) {
-	// Instance unset (binding defaults) -> top-level field wins untouched.
-	w := &Client{Observability: observe.ObserveConfig{
-		Level: "detailed", MaxArgBytes: 1024, SkipOps: []string{"enqueue/x"},
-	}}
-	w.cfg.Observability = observe.ObserveConfig{Level: "brief", MaxArgBytes: 512}
-	got := w.resolveObservability()
-	assert.That(t, got.Level).Equal("detailed")
-	assert.That(t, got.MaxArgBytes).Equal(1024)
-	assert.That(t, got.SkipOps).Equal([]string{"enqueue/x"})
-
-	// Instance set -> overrides top-level per field.
-	w.cfg.Observability = observe.ObserveConfig{
-		Level: "off", MaxArgBytes: 2048, SkipOps: []string{"enqueue/y"},
-	}
-	got = w.resolveObservability()
-	assert.That(t, got.Level).Equal("off")
-	assert.That(t, got.MaxArgBytes).Equal(2048)
-	assert.That(t, got.SkipOps).Equal([]string{"enqueue/y"})
-
-	// Partial instance override: only the field set to a non-default value
-	// changes; the rest keeps the top-level value.
-	w.cfg.Observability = observe.ObserveConfig{Level: "off", MaxArgBytes: 512}
-	got = w.resolveObservability()
-	assert.That(t, got.Level).Equal("off")
-	assert.That(t, got.MaxArgBytes).Equal(1024)
 }
 
 // fakeDriver is a Driver stub recording that it was selected.

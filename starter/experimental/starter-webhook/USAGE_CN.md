@@ -99,7 +99,6 @@ spring.webhook.alert.timeout=5s
 # --- notifier "report"：向自建 receiver 的纯 JSON POST -------------------------
 spring.webhook.report.url=http://127.0.0.1:18080/hook
 spring.webhook.report.channel=generic
-# spring.webhook.report.observability.level=brief   # 按实例，ctor 绑定
 
 # --- 可观测（starter-otel）----------------------------------------------------
 spring.observability.service-name=demo
@@ -193,7 +192,7 @@ secret（签名会被计算，但接收方不校验）。这些都在首次 Send
 ## 3. 逐 key 行为参考
 
 前缀 `spring.webhook.<name>.*` —— 所有 key 均为 ctor 绑定的 `Config`（config.go），
-即**带实例前缀**，包括 observability 子结构（与 starter-s3 不同，这里没有
+即**带实例前缀**（与 starter-s3 不同，这里没有
 wrapper-field tag）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -202,7 +201,6 @@ wrapper-field tag）。
 | `channel` | string | generic | `generic`\|`dingtalk`\|`feishu`\|`wecom`\|`slack`；决定 payload 构建器、签名方案，以及 resilience 标签第三段。 | 未知值 → 启动期经干跑 buildPayload 报错（报错文案见 §2.2）。 |
 | `secret` | string | — | DingTalk 加签（SEC...）或 Feishu 签名密钥；generic/wecom/slack **忽略**。 | ⚠ 配在错误渠道被静默忽略——未签名消息在 Send 时被接收方拒绝。 |
 | `timeout` | duration | 5s | 约束一次 POST（`http.Client.Timeout`）。 | 过小 → 慢平台出现客户端超时；executor（按治理策略）可能重试放大负载。 |
-| `observability` | struct | brief | 每次发送的访问日志/metric/span 级别（`off`\|`brief`\|`detailed`），实例前缀下的子 key `observability.level` / `.maxArgBytes`（默认 512）/ `.skipOps`；喂给 `resilience.WrapExecutor`。 | `off` 去掉逐发送日志；`detailed` 按 maxArgBytes 记录 payload 字节。 |
 
 ---
 
@@ -240,8 +238,7 @@ starter 自身没有可热切换的东西；引入 starter-governance 后，改�
 ### 4.4 可观测演练
 
 引入 starter-otel 后发送一次并读：span `webhook.send`（kind PRODUCER，属性见 §2.2
-第 2 步）、时长直方图、访问日志行（级别来自 `observability.level`；`detailed` 按
-`maxArgBytes` 带 body 字节）。验证脱敏性质：span 属性是
+第 2 步）、时长直方图。验证脱敏性质：span 属性是
 `webhook.destination.host=scheme://host`，绝不带签名 URL。
 
 ### 4.5 渠道矩阵演练
@@ -270,7 +267,7 @@ example 的 generic receiver 也能当 slack/wecom/feishu 的 payload 检查器�
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 5（另 3 个实例前缀 observability.* 子 key） |
+| 配置 key 总数 | 5 |
 | 其中必填 | 1（`url`） |
 | quickstart 前置外部依赖 | 0（example 自带 receiver） |
 | "注意/坑" 条数 | 4 |
@@ -284,3 +281,4 @@ example 的 generic receiver 也能当 slack/wecom/feishu 的 payload 检查器�
 - 新增：无内建 retry，尽管 webhook 是典型的 at-least-once 场景——retry 只存在于
   治理策略中，容易被漏配。
 - 新增：`plainText`（payload.go:129）发送路径未使用——死辅助函数，建议删除。
+

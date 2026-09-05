@@ -30,8 +30,8 @@ import (
 // instance is registered) without a round-trip. It is exported as
 // health.Indicator, so an application that also imports starter-actuator gets
 // the instance folded into /readiness with no extra wiring.
-func NewBigCacheHealth(name string, _ *bigcache.BigCache) health.Indicator {
-	return health.NewIndicator("bigcache:"+name, func(ctx context.Context) error {
+func NewBigCacheHealth(name string, _ *bigcache.BigCache) *health.Indicator {
+	return &health.Indicator{Name: "bigcache:" + name, Probe: func(ctx context.Context) error {
 		return nil
-	})
+	}}
 }

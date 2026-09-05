@@ -20,10 +20,6 @@
       "description": "Duration string, e.g. '30m'",
       "default": "0s"
     },
-    "observability": {
-      "type": "object",
-      "description": "Per-statement span/metric/access-log config (off/brief/detailed), see observe.ObserveConfig"
-    },
     "driver": {
       "type": "string",
       "default": "DefaultDriver"

@@ -64,10 +64,6 @@
     "resilience": {
       "type": "object",
       "default": ""
-    },
-    "observability": {
-      "type": "object",
-      "default": ""
     }
   }
 }

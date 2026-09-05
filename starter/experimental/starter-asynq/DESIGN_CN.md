@@ -19,8 +19,8 @@ starter。一个实例产出生产者 Client（入队）与可选启用的 worke
   `server.enabled=true`）。worker 是 opt-in：长期消费者是运维的显式决策，
   契合 no-autoconfig-exclude 立场（见 spring/DESIGN.md §4）。
 - **`Client.Enqueue` 守卫** — 同步入队触 Redis、是过载敏感路径；经中立的
-  `resilience.ExecutorFor` / `fault.InjectorFor` seam 与
-  `observe.NewProducer` span，治理关闭时退化为 `Client.EnqueueContext`。
+  `resilience.ExecutorFor` / `fault.InjectorFor` seam 与 starter 自带的生产
+  观测（observe.go），治理关闭时退化为 `Client.EnqueueContext`。
 - **`Server` 实现 `gs.Server` 而非 `gs.Runner`** — 这是承重 seam。gs.Runner
   是启动期、禁止阻塞的接口（迁移、缓存预热）；gs.Server 才是长期运行、
   优雅停止的服务接口。误用 gs.Runner 会阻塞启动并破坏信号处理。

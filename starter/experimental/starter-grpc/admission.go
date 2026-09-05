@@ -41,7 +41,7 @@ type resilienceInterceptors struct {
 // no-op executor (fn runs once, untouched). Hot-reload is driven on the backing
 // executor by the provider. The executor is wrapped with observe-resilience so
 // breaker trips / rate rejects / bulkhead rejects emit span + counter +
-// histogram + access log.
+// histogram.
 //
 // Inbound resilience is admission control: set RateLimit / MaxConcurrent to
 // protect the server from overload; ErrRateLimited / ErrBulkheadFull /
@@ -51,7 +51,7 @@ type resilienceInterceptors struct {
 func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors, bool) {
 	resource := resilience.ResourceLabel("grpc", s.cfg.Addr)
 	exec := resilience.ExecutorFor(resource)
-	exec = resilience.WrapExecutor(exec, "grpc", s.cfg.Observability)
+	exec = resilience.WrapExecutor(exec, "grpc")
 	return resilienceInterceptors{
 		unary: resilienceUnaryInterceptor(exec, resource),
 	}, true

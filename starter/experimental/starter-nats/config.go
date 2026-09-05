@@ -21,7 +21,6 @@ package StarterNats
 import (
 	"time"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -67,12 +66,6 @@ type Config struct {
 
 	// JetStream configures the JetStream context derived from this connection.
 	JetStream JetStreamConfig `value:"${jetstream}"`
-
-	// Observability configures the per-operation instrumentation (producer span +
-	// duration/in-flight metric + access log off/brief/detailed) emitted by the
-	// Conn.PublishMsg wrapper and the binder's consume callback. Defaults to
-	// "brief".
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which NATS driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`

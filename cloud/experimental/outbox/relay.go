@@ -27,7 +27,7 @@ import (
 	"go-spring.org/log"
 )
 
-// Relay drains a [Store] to a broker through a [messaging.Binder]. Run it on
+// Relay drains a [Store] to a broker through a [messaging.Driver]. Run it on
 // one goroutine per relay instance; multiple relays against the same store are
 // safe as long as the Store honors its concurrency contract.
 //
@@ -37,20 +37,20 @@ import (
 // messages ordered.
 type Relay struct {
 	store  Store
-	binder messaging.Binder
+	driver messaging.Driver
 	cfg    Config
 	obs    []Observer
 	pubsMu sync.Mutex
 	pubs   map[string]messaging.Publisher // destination → publisher, lazily opened
 }
 
-// NewRelay assembles a Relay over store and binder with cfg normalized to its
+// NewRelay assembles a Relay over store and driver with cfg normalized to its
 // defaults. Observers receive publish/retry/dead events; they are called
 // synchronously from the relay loop.
-func NewRelay(store Store, binder messaging.Binder, cfg Config, obs ...Observer) *Relay {
+func NewRelay(store Store, driver messaging.Driver, cfg Config, obs ...Observer) *Relay {
 	return &Relay{
 		store:  store,
-		binder: binder,
+		driver: driver,
 		cfg:    cfg.withDefaults(),
 		obs:    obs,
 	}
@@ -63,7 +63,7 @@ func (r *Relay) publisher(ctx context.Context, destination string) (messaging.Pu
 	if p, ok := r.pubs[destination]; ok {
 		return p, nil
 	}
-	p, err := r.binder.NewPublisher(ctx, destination)
+	p, err := r.driver.NewPublisher(ctx, destination)
 	if err != nil {
 		return nil, fmt.Errorf("outbox: open publisher for %q: %w", destination, err)
 	}

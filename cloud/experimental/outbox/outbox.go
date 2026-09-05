@@ -24,7 +24,7 @@
 // Consumers must be idempotent (or key messages and de-duplicate).
 //
 // This package is broker-neutral: the Relay publishes through a
-// [messaging.Binder], so any broker starter (kafka, nats, ...) works as the
+// [messaging.Driver], so any broker starter (kafka, nats, ...) works as the
 // delivery side. The write side — inserting into the outbox table inside the
 // business transaction — lives with each storage backend starter (e.g.
 // starter-outbox-gorm), because it needs the transaction handle.
@@ -41,17 +41,17 @@ type Record struct {
 	// within a batch, so the backend should allocate IDs monotonically.
 	ID int64
 
-	// Destination is the binder destination (topic / subject / queue name).
+	// Destination is the driver destination (topic / subject / queue name).
 	Destination string
 
 	// Key is the optional partitioning / ordering key passed through to the
-	// binder; brokers with keyed streams keep same-key messages ordered.
+	// driver; brokers with keyed streams keep same-key messages ordered.
 	Key string
 
 	// Payload is the opaque message body.
 	Payload []byte
 
-	// Headers carries string metadata, passed through to the binder and
+	// Headers carries string metadata, passed through to the driver and
 	// doubled as the trace-context carrier, as in [messaging.Message].
 	Headers map[string]string
 

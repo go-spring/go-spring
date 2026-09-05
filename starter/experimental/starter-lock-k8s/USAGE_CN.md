@@ -107,8 +107,6 @@ spring.lock.default.namespace=default
 # spring.lock.default.key-prefix=demo-
 
 # observe-lock 适配器的访问日志粒度（以下为默认值）。
-# spring.lock.default.observability.level=brief
-# spring.lock.default.observability.maxArgBytes=512
 ```
 
 **deploy/rbac.yaml** —— ServiceAccount 需要在目标 namespace 拥有
@@ -153,12 +151,12 @@ goroutine**（`k8slock.go` tryOnce），各持有互不影响。
 
 ### 2.2 三层时序解析（所有锁后端共享）
 
-TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高层优先：
+TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层优先：
 
 | 层 | 来源 | 本后端 |
 |----|------|--------|
 | 1. 每次调用 option | `lock.WithTTL` / `WithRenewInterval` / `WithRetryInterval` | 本 starter 喂入的**唯一一层**——完全没有时序 key |
-| 2. starter 默认 | 无 | 直接用 `lock.Apply(opts...)`（等价于零 Defaults） |
+| 2. starter 默认 | 无 | 直接用 `lock.Resolve(lock.DefaultOptions{}, opts...)`（零默认层） |
 | 3. 包默认 | TTL `30s`、renew `TTL/3`、retry `100ms` | 兜底层 1 未设置的项 |
 
 解析后的 TTL 写入 Lease 的 `leaseDurationSeconds`——整秒、向上取整、下限 1 秒
@@ -168,7 +166,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高�
 
 `TryAcquire(ctx, "demo-leader")`：
 
-1. `lock.Apply(opts...)` —— TTL/renew/retry 来自每次调用的 option 或包默认；无
+1. `lock.Resolve(lock.DefaultOptions{}, opts...)` —— TTL/renew/retry 来自每次调用的 option 或包默认；无
    `WithToken` 时生成 fencing token。
 2. 在 Lease `<namespace>/<keyPrefix+key>` 上构建 `resourcelock.LeaseLock`
    （`Identity = token`），执行一次 **acquire-or-renew**（`tryAcquireOrRenew`，对齐
@@ -199,9 +197,6 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/defaults.go）解析，高�
 | `kubeconfig` | string | — | 集群外 kubeconfig 路径；空则用集群内 ServiceAccount 配置。 | 集群外留空 → 启动报 `in-cluster config (set kubeconfig when running outside a cluster)`。 |
 | `key-prefix` | string | — | 拼在每个锁 key 前构成 Lease 名。结果必须是合法 DNS-1123 subdomain。 | 名字非法（下划线、大写）→ acquire 时 Lease 创建/更新被拒。 |
 | `observe.enabled` | bool | `true` | 默认用 observe-lock 适配器包装 `<name>` 主 Locker bean（trace span + metric + 访问日志）。`false` = 裸 locker。 | 迁移：`<name>-observed` bean 已移除，请注入 `<name>`。 |
-| `observability.level` | string | `brief` | 访问日志粒度 `off`/`brief`/`detailed`（detailed 记录锁 key）。 | 非法值 → 启动期绑定错误。 |
-| `observability.maxArgBytes` | int | `512` | 记录锁 key 的字节上限。 | 过低会截断日志里的 key。 |
-| `observability.skipOps` | []string | — | 从访问日志排除的操作（`acquire`、`try_acquire`）。 | 拼错则静默无效。 |
 
 ⚠ 本 starter **完全没有时序 key**：TTL/renew/retry 只走每次调用的 `lock.Option`（§2.2）。
 实例权重（`Weight=0` 摘流）是注册中心/负载均衡概念，与锁后端无关。

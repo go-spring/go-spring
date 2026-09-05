@@ -61,6 +61,5 @@ type Config struct {
 	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
-// Resilience and Observability are no longer fields of Config: they moved onto
-// the Client wrapper bean, field-injected by gs (Resilience via
-// gs.Dync, hot-reloadable) and consumed by Init (the gs InitMethod).
+// Resilience is not a field of Config: it comes from the governance center
+// (starter-govern) and is consumed by Client.Init (the gs InitMethod).

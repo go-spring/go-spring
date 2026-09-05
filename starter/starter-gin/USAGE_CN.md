@@ -40,7 +40,7 @@ func main() { gs.Run() }
 
 ## 2. 全量配置参考
 
-key 在 `spring.gin.server.*` 下(含 tls/observability 约 57 个)。只有 `addr` 必填,其余全有默认。
+key 在 `spring.gin.server.*` 下(含 tls 约 54 个)。只有 `addr` 必填,其余全有默认。
 
 | Key | 类型 | 默认值 | 说明 |
 |-----|------|--------|------|
@@ -48,7 +48,6 @@ key 在 `spring.gin.server.*` 下(含 tls/observability 约 57 个)。只有 `ad
 | `readTimeout` / `writeTimeout` / `idleTimeout` | duration | 5s / 5s / 60s | readTimeout 兼作 ReadHeaderTimeout |
 | `tls.enabled` / `tls.cert-file` / `tls.key-file` / `tls.ca-file` | | false / — / — / — | 走 `tlsconf.BuildServer`(与 starter-grpc 同语义);配置 `ca-file` 即开启 **mTLS**(ClientCAs + `RequireAndVerifyClientCert`,客户端必须出示该 CA 签发的证书)。`server-name`/`insecure-skip-verify` 是客户端 key,server 侧无效。 |
 | `health.enabled` / `health.path` | bool / string | false / /healthz | |
-| `observability.level` / `maxArgBytes` / `skipOps` | | brief / 512 / — | 韧性访问日志 |
 | `middleware.enabled` | bool | true | 总开关;false = 手动模式,自己调导出的中间件函数 |
 
 中间件子 key(均在 `middleware.*` 下,各自带 `.enabled`):
@@ -107,3 +106,4 @@ Observe 之内。)手动模式导出 `ApplyMiddlewares`、`LoadTest`、`RequestI
 4. `middleware.enabled=false` 时 `EngineMiddleware` 被静默忽略。
 5. 指标创建错误被丢弃(`_, _ =`)。
 6. example-resilience 的文档注释仍引用不存在的 `resilience.enabled` key。
+

@@ -32,24 +32,15 @@ import (
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 )
 
 // Client is the wrapper bean InfluxDB clients are injected as. It embeds the
-// concrete influxdb2.Client (so every generated method promotes unchanged)
-// and field-injects the observability policy. newClient returns one; gs
-// field-injects Observability, then calls Init (InitMethod) to build the
-// observe transport + executor and swap them into the client's dynamic
-// transport.
+// concrete influxdb2.Client (so every generated method promotes unchanged).
+// newClient returns one; gs calls Init (InitMethod) to build the observe
+// transport + executor and swap them into the client's dynamic transport.
 type Client struct {
 	influxdb2.Client
-	// Observability is field-injected by gs from the top-level
-	// "observability.*" keys and configures the observe transport (spans +
-	// metrics + access log per request). The instance-prefixed
-	// "spring.influxdb.<name>.observability.*" keys land in cfg.Observability
-	// and take precedence — see resolveObservability.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// cfg is the connection config, retained for the write helpers and the
 	// resilience resource label.
@@ -67,37 +58,7 @@ type Client struct {
 	errOnce sync.Once
 }
 
-// resolveObservability merges the two observability config surfaces into the
-// effective policy Init arms:
-//
-//   - the instance-prefixed "spring.influxdb.<name>.observability.*" keys,
-//     bound into Config (cfg.Observability) by conf.BindEach;
-//   - the top-level "observability.*" keys, field-injected into the wrapper's
-//     Observability field (an absolute property reference, kept for backward
-//     compatibility with configs that predate the instance keys).
-//
-// Instance-level keys override top-level ones per field. Because binding
-// fills the defaults ("brief" / 512 / no skips) even when no instance key is
-// present, an instance value is only detectable as "set" when it differs
-// from those defaults. Configure one surface only and this caveat
-// disappears.
-func (o *Client) resolveObservability() observe.ObserveConfig {
-	c := o.Observability // top-level fallback
-	i := o.cfg.Observability
-	if i.Level != "" && i.Level != observe.DefaultBrief {
-		c.Level = i.Level
-	}
-	if i.MaxArgBytes != 0 && i.MaxArgBytes != 512 {
-		c.MaxArgBytes = i.MaxArgBytes
-	}
-	if len(i.SkipOps) > 0 {
-		c.SkipOps = i.SkipOps
-	}
-	return c
-}
-
-// Init is the gs InitMethod: gs field-injects Observability after newClient
-// returns, then calls this. It builds the observe transport (influxdb-client-go
+// Init is the gs InitMethod: it builds the observe transport (influxdb-client-go
 // ships no OTel instrumentation of its own, so the transport carries all three
 // signals) and resolves the executor through the neutral
 // [resilience.ExecutorFor] seam, wraps it with the process-wide fault injector
@@ -105,12 +66,11 @@ func (o *Client) resolveObservability() observe.ObserveConfig {
 // transport. When governance is off the resolved executor is a transparent
 // no-op (the transport is effectively observe-only).
 func (o *Client) Init() error {
-	obsCfg := o.resolveObservability()
-	obs := observe.NewDB("influxdb", obsCfg)
+	obs := newDBObserver("influxdb")
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resilience.ResourceLabel("influxdb", o.cfg.ServerURL)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "influxdb", obsCfg)
+	exec = resilience.WrapExecutor(exec, "influxdb")
 	o.exec = exec
 	if o.dyn != nil {
 		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,

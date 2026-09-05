@@ -27,6 +27,7 @@ import (
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/log"
 	gormcore "go-spring.org/starter-gorm"
@@ -88,7 +89,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 			ReadTimeout: c.ReadTimeout,
 		}
 		if c.TLS.Enabled {
-			tlsCfg, terr := c.TLS.Build()
+			tlsCfg, terr := c.TLS.BuildClient()
 			if terr != nil {
 				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build TLS failed: %v", terr)
 				return gormcore.Spec{}, errutil.Explain(terr, "gorm-clickhouse: build TLS")
@@ -96,7 +97,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 			opts.TLS = tlsCfg
 		}
 		if useDiscovery {
-			ld, derr := c.NewResolver(ctx)
+			lb, _, derr := c.NewPickPool(ctx)
 			if derr != nil {
 				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build discovery resolver failed: %v", derr)
 				return gormcore.Spec{}, derr
@@ -105,13 +106,13 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 			// The addr is ignored; the dialer picks a live endpoint via the Resolver.
 			nd := &net.Dialer{}
 			opts.DialContext = func(ctx context.Context, _ string) (net.Conn, error) {
-				ep, perr := ld.Pick()
+				ep, perr := lb.Pick(loadbalance.PickInfo{})
 				if perr != nil {
 					return nil, perr
 				}
 				return nd.DialContext(ctx, "tcp", ep.Addr)
 			}
-			closer = func() { _ = ld.Stop() }
+			closer = nil
 		}
 		dialector = clickhouse.New(clickhouse.Config{Conn: ch.OpenDB(opts)})
 	}
@@ -133,5 +134,5 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 // Discovery dialer — a client can be dialed straight from a configured Addr, or
 // (when ServiceName is set and mesh mode is off) through a discovery resolver
 // whose background watch keeps the endpoint set fresh. The resolver (built by
-// [gormcore.Common.NewResolver]) is adapted to the native driver's DialContext,
+// [gormcore.Common.NewPickPool]) is adapted to the native driver's DialContext,
 // and its watch is stopped via the closer [build] attaches to the client.

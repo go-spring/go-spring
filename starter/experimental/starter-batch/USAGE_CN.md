@@ -48,7 +48,7 @@ import (
     _ "go-spring.org/starter-batch-redis"
     _ "go-spring.org/starter-go-redis"
 
-    "go-spring.org/cloud/batch"
+    "go-spring.org/cloud/experimental/batch"
     "go-spring.org/spring/gs"
     StarterBatch "go-spring.org/starter-batch"
 )

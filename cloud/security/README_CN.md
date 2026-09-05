@@ -4,7 +4,7 @@
 `security` 是与框架无关、零依赖的认证与授权抽象——Spring Security 等价能力
 用 Go 惯用法表达,而非对其 filter-chain 机制的移植。它回答两个问题:"调用
 者是谁?"(挂在请求 context 上的 `Authentication`)与"这个调用者能做什么?"
-(`HasAnyAuthority`、`Require`、`Authorize`)。
+(`HasAnyAuthority`、`Require`)。
 
 ## 特性
 
@@ -17,16 +17,24 @@
   `resilience.RegisterDriver` 同构。
 - 方法级安全:`Require(authorities...)` 返回普通装饰器——`@PreAuthorize` 的
   等价物,与其他横切按普通函数嵌套组合。
-- HTTP 中间件链:`Chain`、`Authenticate`、`Authorize`、`CORS`、`CSRF`
-  (double-submit-cookie)——普通 `func(http.Handler) http.Handler` 装饰器,
-  不是自建 filter 注册中心。
 - `WithAuthentication` / `FromContext` 用于 context 传递。
+- 共享纯函数,保证各家族中间件行为不漂移:`ParseBearerToken`、
+  `NewCSRFToken` / `MatchCSRFToken`(常量时间比较)、
+  `DefaultCSRFCookieName` / `DefaultCSRFHeaderName`。
+
+## HTTP 中间件
+
+本包刻意不提供 HTTP 中间件:各 server 家族基于共享身份模型、用自家惯用法
+自行装配——stdlib 的 `http.Handler` 装饰器在 `starter-http-server`,
+`gin.HandlerFunc` 在 `starter-gin`,`echo.MiddlewareFunc` 在
+`starter-echo`。CORS 同理(`starter-http-server` 自带一份;gin 用
+`gin-contrib/cors`,echo 用其内建)。
 
 ## 快速开始
 
 Import 路径: `go-spring.org/cloud/security`。
 
-资源服务器把安全过滤链挂在业务 handler 之前:
+validator 产出身份;由 server 家族中间件挂到请求上:
 
 ```go
 package main
@@ -36,6 +44,7 @@ import (
     "net/http"
 
     "go-spring.org/cloud/security"
+    httpsvr "go-spring.org/starter-http-server"
 )
 
 type myValidator struct{ /* ... */ }
@@ -59,10 +68,9 @@ func main() {
         _, _ = w.Write([]byte("ok"))
     })
 
-    chain := security.Chain(
-        security.CORS(security.CORSConfig{AllowedOrigins: []string{"*"}}),
-        security.Authenticate(v, true),
-        security.Authorize("orders:read"),
+    chain := httpsvr.Chain(
+        httpsvr.Authenticate(v, true),
+        httpsvr.Authorize("orders:read"),
     )
     _ = http.ListenAndServe(":8080", chain(mux))
 }
@@ -74,6 +82,6 @@ func main() {
 err := security.Require("orders:write")(ctx, svc.placeOrder)
 ```
 
-JWT 资源服务器 starter(`starter-security-jwt`)提供具体 `TokenValidator` 并
-`Wrap` 服务 mux;授权服务器 starter(`starter-oauth2-server`)签发
-`Authenticate` 校验的令牌。
+JWT 资源服务器 starter(`starter-security-jwt`)提供具体
+`TokenValidator`;授权服务器 starter(`starter-oauth2-server`)签发中间件
+校验的令牌。

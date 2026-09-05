@@ -56,16 +56,16 @@ func init() {
 				// redis.UniversalClient interface by tag would not match the
 				// wrapper bean; the concrete type embeds it.
 				if c.HealthEnabled {
-					r.Provide(func(w *Client) health.Indicator {
+					r.Provide(func(w *Client) *health.Indicator {
 						return health2.NewClientHealth(name, w.UniversalClient)
-					}, gs.TagArg(name)).Name("redis:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+					}, gs.TagArg(name)).Name("redis:" + name).Caller(1)
 				}
 			case "cluster":
 				r.Provide(newClusterClient, gs.IndexArg(1, gs.ValueArg(c))).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				if c.HealthEnabled {
-					r.Provide(func(w *Client) health.Indicator {
+					r.Provide(func(w *Client) *health.Indicator {
 						return health2.NewClusterHealth(name, w.UniversalClient)
-					}, gs.TagArg(name)).Name("redis:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+					}, gs.TagArg(name)).Name("redis:" + name).Caller(1)
 				}
 			default:
 				return errutil.Explain(nil, "redis: invalid mode %q for instance %q (want single/sentinel/cluster)", c.Mode, name)
@@ -94,8 +94,8 @@ func init() {
 }
 
 // newClient creates a single or sentinel Redis client, wrapped in an
-// Client so gs can field-inject resilience + observability and
-// Init (InitMethod) can arm them. The redisotel hooks emit client
+// Client so Init (InitMethod) can arm resilience and the access log.
+// The redisotel hooks emit client
 // spans and connection-pool metrics through the OTel globals that starter-otel
 // installs; when starter-otel is absent those globals are no-ops, so this stays
 // a zero-config opt-in that needs no per-component adaptation.

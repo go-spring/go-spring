@@ -17,12 +17,12 @@
 // Package StarterOutboxGorm contributes a gorm-backed transactional outbox:
 // business writes and message publishes commit atomically in one database
 // transaction, then a background relay drains the outbox_message table to a
-// messaging binder (kafka, nats, ...). Enable one relay instance per entry
+// messaging driver (kafka, nats, ...). Enable one relay instance per entry
 // under spring.outbox:
 //
 //	import _ "go-spring.org/starter-outbox-gorm"
 //
-//	# spring.outbox.main.binder=kafka
+//	# spring.outbox.main.driver=kafka
 //	# spring.outbox.main.auto-migrate=true
 //
 // The write side is a plain function, not a bean — it runs inside the
@@ -66,9 +66,9 @@ func init() {
 				Export(gs.As[gs.Rooter]()).Caller(1)
 
 			// Health indicator probes the backing database through gorm.
-			r.Provide(func(db *gorm.DB) health.Indicator {
+			r.Provide(func(db *gorm.DB) *health.Indicator {
 				return health2.NewRelayHealth(name, db)
-			}, gs.TagArg(c.DB)).Name("outbox:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			}, gs.TagArg(c.DB)).Name("outbox:" + name).Caller(1)
 			return nil
 		})
 	})
@@ -90,12 +90,12 @@ func newRelay(_ *gs.ContextProvider, c Config, db *gorm.DB, name string) (*Relay
 	return &Relay{cfg: c, name: name, db: db}, nil
 }
 
-// Init resolves the binder, optionally migrates the table, and starts the
-// relay loop in the background. Binder resolution happens here (run time), not
-// at construction, so broker starters that register their binder later in the
+// Init resolves the driver, optionally migrates the table, and starts the
+// relay loop in the background. Driver resolution happens here (run time), not
+// at construction, so broker starters that register their driver later in the
 // bootstrap still work.
 func (o *Relay) Init() error {
-	binder, err := messaging.GetBinder(o.cfg.Binder)
+	driver, err := messaging.GetDriver(o.cfg.Driver)
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "outbox %q: %v", o.name, err)
 		return err
@@ -106,7 +106,7 @@ func (o *Relay) Init() error {
 			return err
 		}
 	}
-	o.relay = outbox.NewRelay(newStore(o.db), binder, o.cfg.relayConfig(), logObserver{})
+	o.relay = outbox.NewRelay(newStore(o.db), driver, o.cfg.relayConfig(), logObserver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	o.cancel, o.done = cancel, make(chan struct{})
 	go func() {
@@ -114,7 +114,7 @@ func (o *Relay) Init() error {
 		_ = o.relay.Run(ctx)
 		_ = o.relay.Close()
 	}()
-	log.Infof(context.Background(), starterTag, "outbox relay %q started (binder=%s)", o.name, o.cfg.Binder)
+	log.Infof(context.Background(), starterTag, "outbox relay %q started (driver=%s)", o.name, o.cfg.Driver)
 	return nil
 }
 

@@ -19,7 +19,7 @@ Redis Hook, GORM plugin, ...); a distributed rate limiter uses the parallel
 - Two client seams for opt-in adaptation:
   - `NewRoundTripper` — HTTP client `http.RoundTripper` (widest coverage).
   - `NewDialer` — connection-level `DialFunc` (matches
-    a dial closure over `discovery.Resolver.Pick`).
+    a dial closure over a round-robin pick pool).
 - Inbound admission is NOT built here: protocol starters build their own
   middleware on the `governance.ExecutorFor` seam (429 / 503 on rejection;
   see starter-gin / starter-grpc admission).

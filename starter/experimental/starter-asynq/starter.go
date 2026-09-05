@@ -50,9 +50,9 @@ func init() {
 			if err != nil {
 				return err
 			}
-			r.Provide(func() health.Indicator {
+			r.Provide(func() *health.Indicator {
 				return health2.NewClientHealth(name, connOpt)
-			}).Name("asynq:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			}).Name("asynq:" + name).Caller(1)
 			return nil
 		})
 	})

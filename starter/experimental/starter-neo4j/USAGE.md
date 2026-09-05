@@ -125,8 +125,7 @@ spring.neo4j.analytics.password=password
 spring.neo4j.analytics.max-connection-pool-size=50
 spring.neo4j.analytics.connection-acquisition-timeout=30s
 
-# --- observability (per-instance observability.* drives the resilience
-#     executor's observation only — see §3.4) --------------------------------
+# --- observability (starter-otel: OTLP exporter + prometheus) ---------------
 spring.observability.service-name=demo
 spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
@@ -181,11 +180,10 @@ gs.Run()
   │   └─ fail-fast VerifyConnectivity, bounded by socket-connect-timeout or
   │      5s; on failure the client, resolver are closed and the boot aborts
   │      [starter.go:109-119, 132-137]
-  ├─ gs field-injects Client.Observability (${observability:=})
-  ├─ Init [client.go:74-79]: resource = resilience.ResourceLabel("neo4j",
+  ├─ Init [client.go:68-69]: resource = resilience.ResourceLabel("neo4j",
   │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilience.WrapExecutor(exec, "neo4j", Observability) — no-op
-  │   executor when governance is off
+  │   → resilience.WrapExecutor(exec, "neo4j") — no-op executor when
+  │   governance is off
   ├─ readiness: indicator runs VerifyConnectivity per probe
   └─ SIGTERM → Destroy [client.go:89-95]: exec.Close → stopLiveResolver →
       driver.Close(context.Background())
@@ -212,21 +210,22 @@ command.go:31-44 comments call this a documented gap, not an oversight). What ex
 | `StarterNeo4j.RunWithResilience` | wraps arbitrary session/transaction code in the resilience guard only (no span/metric/log) | opt-in |
 | `StarterNeo4j.StartSpan` / `EndSpan` | manual span + metric + access log for ops you drive via `driver.NewSession` | opt-in |
 | health indicator `neo4j:<name>` | `VerifyConnectivity` per actuator probe | automatic, always |
-| `resilience.WrapExecutor` in Init | outcome metrics (`resilience.*`) for guarded executions, gated by the per-instance `observability.*` block | automatic when governance on |
+| `resilience.WrapExecutor` in Init | outcome metrics (`resilience.*`) for guarded executions | automatic when governance on |
 
-`Query`'s span/metric/log ride a **package-level** default observer (`observe.NewDB("neo4j",
-Level: brief)`, command.go:46) on the OTel globals starter-otel installs — the per-instance
-`observability.*` block does not retune it (command.go:42-44 comment: the kit cannot bind to a
-free-function call path).
+`Query`'s span/metric/log ride a **package-level** default observer (built lazily on first
+use, command.go:50) that emits through this module's own instrumentation ([observe.go]) on the
+OTel globals starter-otel installs — there is no config gate on it; the access log always
+emits via the package observer at the log package's native levels.
 
-Emissions when `Query` is used (observe kit, `cloud/observe/observer.go:58-63, 184-195`):
+Emissions when `Query` is used:
 
 - span: kind client, name = `op` (`"query"` for `Query`), attributes `db.system=neo4j`,
-  `db.operation=<op>`, `db.statement=<Cypher, bounded>` in detailed mode
+  `db.operation=<op>`, `db.statement=<Cypher, truncated at 512 bytes>`
 - metrics: `db.client.operation.duration` (histogram, seconds) and
   `db.client.active_requests` (in-flight gauge), both labeled with db.system/operation
 - access log: one record per call under log tag `_app_neo4j_access` (`log.RegisterAppTag`)
-  at level `brief` (system/op/status/duration/error)
+  at native levels — error → Warn; success with the captured Cypher argument → Debug;
+  plain success → Info
 
 ### 2.3 One query through the actual layers: `Query(... "MATCH ...")`
 
@@ -299,14 +298,13 @@ IndexArg(1)), not the absolute-property Pool rule.
 
 ### 3.4 Instrumentation
 
-| Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
-|-----|------|---------|-------------------------|------------------------------|
-| `observability.level` | string | `brief` | Gates the **resilience-executor** access log (via `resilience.WrapExecutor` in Init), not `Query`'s access log (that one is the package-level `brief`, §2.2). `off` silences only the log signal. | Expecting it to tune Query's log → no effect, surprising. |
-| `observability.maxArgBytes` | int | 512 | Bound of argument capture in detailed mode. | — |
-| `observability.skipOps` | list | — | Suppresses span+metric+log for listed op names. | — |
+There are **no instrumentation config keys** (no level, no skip list, no argument cap): the
+helpers' observation is unconditional and emitted by module-local instrumentation
+([observe.go]); trace/metric ride the OTel globals starter-otel installs
+(`spring.observability.*`).
 
-Reconciliation: the 15 `value:"..."` tags in the starter (14 Config fields + the wrapper's
-`observability`) are exactly the keys above — `grep -rhoE 'value:"[^"]+"'` matches both ways.
+Reconciliation: the 14 `value:"..."` tags in the starter (Config fields) are exactly the keys
+above — `grep -rhoE 'value:"[^"]+"'` matches both ways.
 
 ---
 
@@ -326,7 +324,8 @@ docker start starter-neo4j       # flips back UP on the next probe — no restar
 
 ```bash
 grep _app_neo4j_access app.log | tail -1
-# brief record: system=neo4j op=query status ok duration=...  (only for StarterNeo4j.Query)
+# system=neo4j op=query status ok duration=...  (only for StarterNeo4j.Query;
+# success with Cypher at Debug, plain success at Info, failure at Warn)
 curl -s :9090/metrics | grep -E 'db.client.(operation.duration|active_requests)'
 # per-Query duration histogram + in-flight gauge, db.system=neo4j
 # Jaeger (example-otel compose): span "query" with db.statement=<Cypher>
@@ -371,7 +370,6 @@ app (or let a platform do it) to re-resolve.
 | Boot fails "neo4j: resolve service X" | `service-name` set but no backend registered under `discovery` | Register the backend (example/discovery.go) or drop service-name. |
 | Queries work but no spans/metrics/access log | Code calls `neo4j.ExecuteQuery` directly, bypassing the seam | Swap to `StarterNeo4j.Query` / wrap with `StartSpan` (§2.2); import starter-otel for real export. |
 | No protection though governance is on | Session code not routed through `Query`/`RunWithResilience`, or a raw driver passed (type-assert misses) | Route through the helpers; always pass the `*Client` wrapper [command.go:111-116]. |
-| `observability.level=off` but access log still emits | It gates the resilience-executor log, not Query's package-level `brief` observer | Known asymmetry (§3.4); silence via log tag config for `_app_neo4j_access`. |
 | TLS settings appear to do nothing | URI scheme is plain `bolt://`/`neo4j://` | Switch scheme to `neo4j+s://`/`bolt+s://`; tls.* only customizes trust for encrypted schemes [driver.go:84-89]. |
 | Discovery endpoint changed, client still dials the old address | One-shot resolution — no dialer hook in the driver | Rebuild/restart the client (§2.4); or front with mesh/sidecar LB. |
 
@@ -379,10 +377,10 @@ app (or let a platform do it) to re-resolve.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 14 instance keys + tls group (4) + observability (3) |
+| Config keys | 14 instance keys + tls group (4) |
 | Required | 1 (`uri`) |
 | Quickstart external deps | 1 (Neo4j) |
-| "Watch out" entries | 7 |
+| "Watch out" entries | 6 |
 
 Design suspects (audit ledger — kept from the previous audit, plus new):
 
@@ -396,9 +394,6 @@ Design suspects (audit ledger — kept from the previous audit, plus new):
   automatically once they are used (no resilience flag). Covered by resilience_test.go.
 - `Query` type-asserts its driver argument back to `*Client` to find the executor — a
   differently-typed custom driver silently loses the guard (command.go:111-116).
-- Access log uses a package-level default observer rather than the per-instance
-  `observability` block, so the same-named config keys gate two different things
-  (command.go:42-46 vs client.go:77) — a config-semantics trap.
 - `tls.enabled` is a dead placeholder key here (scheme owns encryption) — candidate for a
   slimmer tls shape (driver.go:84-89); one-shot discovery resolution (vs live re-resolution
   in every other client starter) is forced by the missing dialer hook (§2.4).

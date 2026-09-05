@@ -121,7 +121,7 @@ type DubboProtocol struct {
 	Port int    `value:"${port:=0}"`
 
 	// Params carries protocol-specific parameters. It is map[string]string —
-	// NOT map[string]any — because the conf binder only binds value-type maps;
+	// NOT map[string]any — because the conf driver only binds value-type maps;
 	// map[string]any made ANY protocols.* key fail the whole ${spring.dubbo}
 	// binding and silently drop the Instance bean. protocol.WithParams takes
 	// any, so the string map passes through unchanged.

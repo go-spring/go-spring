@@ -19,8 +19,8 @@ paths and the async error drain.
 
 ## 2. Key Abstractions & Seams
 
-- **`Client` wrapper bean** — embeds `influxdb2.Client` and field-injects
-  `Observability`. The SDK fixes the `*http.Client` at construction
+- **`Client` wrapper bean** — embeds `influxdb2.Client`. The SDK fixes the
+  `*http.Client` at construction
   (`Options.SetHTTPClient`), so DefaultDriver installs a `dynamicTransport`
   indirection and Init swaps the observe+resilience round-tripper in — the
   same mechanism starter-s3/starter-elasticsearch use.

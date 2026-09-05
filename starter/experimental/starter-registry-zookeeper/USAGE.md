@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
 the starter source (`starter.go`, `registrar.go`, `config.go`, `registrar_test.go`), the
-`cloud/discovery` seam (`cloud/discovery/discovery.go`, `cloud/discovery/resolver.go`,
+`cloud/discovery` seam (`cloud/discovery/discovery.go`, `cloud/discovery/loader.go`,
 `cloud/loadbalance/pool.go`) and the runnable [example/](example/) (`example/check.sh` runs unit
 tests + a docker-compose ZooKeeper end-to-end boot). **ZooKeeper's own semantics (sessions,
 ephemeral znodes, watchers, digest auth) are
@@ -96,7 +96,7 @@ self-describing JSON (`registrar.go:44-50`): list the children of
 ```go
 // consumer_side/discovery.go — call once at startup.
 func registerZkDiscovery(name, servers, basePath string) error {
-    b, err := zkdisc.New(servers, basePath) // ChildrenW/GetW → snapshot → WatchResult
+    b, err := zkdisc.New(servers, basePath) // ChildrenW/GetW → snapshot → internal cache
     if err != nil { return err }
     discovery.RegisterDiscovery(name, b)    // cloud/discovery seam
     return nil
@@ -184,12 +184,11 @@ mirrors how the pool consumes snapshots:
    session expiry — ZooKeeper's own watch event, not our code).
 2. The backend lists children and `Get`s each one's data (an instance-id child per instance,
    `registrar.go:101-104`); `GetW` covers in-place data rewrites (weight changes).
-3. Each event yields a fresh full `[]discovery.Endpoint` snapshot, pushed as one
-   `WatchResult` on the channel returned by `Discovery.Watch`
-   (`cloud/discovery/discovery.go:182-198`). Change detection is per-snapshot — the backend does
-   not diff; consumers treat every result as authoritative.
-4. `discovery.NewResolver` consumes the channel and swaps its endpoint set
-   (`cloud/discovery/resolver.go:57-108`); the loadbalance `Pool` picks from that set.
+3. Each event yields a fresh full `[]discovery.Endpoint` snapshot, stored into the backend's
+   internal cache (`cloud/discovery/discovery.go`). The backend does not diff; every stored
+   snapshot is authoritative.
+4. A discovery `Loader` re-reads the backend snapshot on every call
+   (`cloud/discovery/loader.go`); the loadbalance `Pool` (via `SourceFunc`) picks from that set.
 
 ### 2.4 DRAIN path — UpdateWeight(0)
 

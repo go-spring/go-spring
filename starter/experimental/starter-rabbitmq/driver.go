@@ -61,7 +61,7 @@ type DefaultDriver struct{}
 // channel, the notifier log bridge, or the resilience wiring, which are the
 // starter's lifecycle concerns (see newClient in starter.go).
 func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*amqp.Connection, error) {
-	tc, err := c.TLS.Build()
+	tc, err := c.TLS.BuildClient()
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "rabbitmq: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "rabbitmq: build TLS")

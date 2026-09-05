@@ -127,11 +127,7 @@ spring.redigo.discovery.service-name=redis-cluster
 spring.redigo.discovery.conn-max-lifetime=30s
 
 # --- 观测 -----------------------------------------------------------------
-# 实例级硬开关（span+metric+log 一并关），默认 true。
-spring.redigo.main.observe.enabled=true
-# 访问日志详细度是全局 observability.* 策略（全部 client starter 共享），
-# 这里不像 starter-go-redis 那样按实例配置：
-observability.level=brief
+# span + 时延指标 + 访问日志为内置且无条件；未导入 starter-otel 时均为 no-op。
 
 # --- 健康 -------------------------------------------------------------------
 # 默认 true；设 false 可让非关键缓存不卷入聚合健康
@@ -168,14 +164,13 @@ import starter-redigo
   └─ 任一 spring.redigo.* key 存在时 gs.Module(OnProperty("spring.redigo")) 触发
         └─ conf.BindEach("${spring.redigo}") → 每个 <name> 一份 Config
               ├─ Provide(createPool).Name(<name>).Destroy(destroyPool)
-              │    ctor 参数：ContextProvider、Config（IndexArg 1）、全局
-              │    observability.* 策略（IndexArg 2，TagArg）[starter.go:60-64]
+              │    ctor 参数：ContextProvider、Config（IndexArg 1）
               └─ health.enabled 时 → Provide 名为 "redigo:<name>" 的 health.Indicator
 
 gs.Run()
   ├─ 构造 createPool [starter.go:107]：RequireAny(addr|service-name) → 查 driver
   │   → d.CreateClient（= NewPool）：TLS 构建 → discovery resolver → 原始池
-  │     → observer（observe.enabled 时）→ resilience executor → setupDial
+  │     → observer → resilience executor → setupDial
   │     → startup-ping（仅 startup-ping=true 时）[starter.go:144-149]
   │   注意：没有独立 InitMethod——池在返回时即完整就绪 [pool.go:36-37]
   ├─ 你的 bean Init 可调用 UseCommandInterceptor（自此之后拨的连接生效）
@@ -193,7 +188,7 @@ resolver 的后台 watch [pool.go:137-140]。
 
 ```
 用户拦截器（先注册的在外）
-  → observe 层（span + 时延/在途指标 + 访问日志）
+  → observe 层（span + 时延指标 + 访问日志）
     → resilience executor（熔断/限流/重试/超时）
       → 内层 Do 调用 → Redis
 ```
@@ -214,7 +209,7 @@ bean Init 里注册。
 
 1. 你的拦截器（若有）先跑；可改写或短路。
 2. observe 层开名为 `get` 的 span，参数摘要是 `GET key`（只记命令+首个参数——值永不入日志；
-   受 MaxArgBytes 截断 [conn.go:215-220]）。ctx 是**调用方**的 context，span 因此挂到请求
+   截断到 512 字节 [observe.go]）。ctx 是**调用方**的 context，span 因此挂到请求
    trace 上，attempt-timeout 也能打断调用。
 3. resilience 层向 executor（resource 标签 `redigo:<地址或服务名>`，按池
    [pool.go:190]）申请许可；可重试失败会重新驱动内层调用。
@@ -233,7 +228,7 @@ bean Init 里注册。
 pool.Get()（你的代码）
   ├─ 有空闲连接？→ 复用（MaxConnLifetime=conn-max-lifetime 限定复用时长）
   └─ 否则 Dial：凭据/TLS/SELECT db → 设置了 service-name 时 discovery
-     resolver.Pick() 选端点 [pool.go:104-120] → wrapConn 折叠洋葱
+     round-robin pool 选端点 [pool.go:104-120] → wrapConn 折叠洋葱
   ├→ 你 Do/DoContext 命令（每条都走 用户 → observe → resilience → 网络）
   └→ conn.Close()：归还空闲池（redigo 语义）
 停机：Pool.Close() —— executor、resolver watch，最后是池本身
@@ -245,7 +240,7 @@ pool.Get()（你的代码）
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.redigo.<name>.` 下（全局 `observability.*` 策略除外）。
+所有 key 位于 `spring.redigo.<name>.` 下。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
@@ -262,9 +257,7 @@ pool.Get()（你的代码）
 | `tls.*` | group | off | 客户端 TLS；key 与 starter-go-redis 对齐。 | 配一半 → tls.Build 启动报错。 |
 | `driver` | string | `DefaultDriver` | 选择已注册 Driver。 | 未知 → 启动报 "redigo driver not found"。 |
 | `startup-ping` | bool | false | 可选启动探测：拨一条裸连接并 PING [pool.go:266-279]。⚠ 默认关——池是惰性的，坏地址要到首条命令才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
-| `observe.enabled` | bool | true | 实例级硬开关（span+metric+log）。false 时 Conn 近零开销直通（仍包装以保持 DoContext 透明）。 | false + 期待 trace → 静默。 |
 | `health.enabled` | bool | true | 注册 `redigo:<name>` 指示器；false 让池不卷入聚合健康。 | false → readiness 静默漏掉该池。 |
-| `observability.level` / `.maxArgBytes` / `.skipOps`（全局 key） | — | brief / 512 / — | 由 ctor 第 2 参 `${observability:=}` 绑定——全部 client starter 共享的全局策略，非实例级 [starter.go:60-64]。 | `spring.redigo.<n>.observability.level` 不存在——与 starter-go-redis 不对称。 |
 
 **扩展点**：
 
@@ -331,7 +324,7 @@ v, _ := redis.String(s.Main.Get().(*StarterRedigo.Conn).Do("GET", "k"))  // 读�
 | 启动报 "one of addr/service-name required" | 两个 key 都没配 | 恰好配一个。 |
 | 拦截器不生效 | 注册晚于连接拨出 | 流量前来 bean Init 里注册 [pool.go:151-157]。 |
 | span 没挂到请求 trace | 用了 `Do`/`DoWithTimeout`（根 span） | 改 `DoContext` [conn.go:74-79]。 |
-| 完全没有 span/指标/日志 | `observe.enabled=false` | 重新打开，或检查 starter-otel。 |
+| 完全没有 span/指标/日志 | 未导入 starter-otel | 导入 starter-otel 安装 provider。 |
 | 时延尖刺但无报错 | 池耗尽 + `Wait:true` | 调大 `pool-size`；盯 Stats()。 |
 | 自定义 driver 的池没有插桩 | driver 返回了裸池 | 用 NewPool/NewConn 装配返回包装 Pool；createPool 只回填 cfg [starter.go:95-99]。 |
 | 怀疑 miss 触发熔断 | 不会——ErrNil 判为成功 | 找真实失败。 |
@@ -340,11 +333,11 @@ v, _ := redis.String(s.Main.Get().(*StarterRedigo.Conn).Do("GET", "k"))  // 读�
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 实例 18 个 + tls 组 + 全局 observability 2 个 |
+| 配置 key 总数 | 实例 17 个 + tls 组 |
 | 其中必填 | 1（`addr` 或 `service-name`） |
 | quickstart 前置外部依赖 | 1（Redis） |
 | "注意/坑" 条数 | 6 |
 
 设计嫌疑清单：`startup-ping` 此处可选而 starter-go-redis 无条件执行（家族不对称，
-config.go:85-91 有记载）；访问日志详细度只有全局 `observability.*` 而 go-redis 按实例绑定；
+config.go:85-91 有记载）；
 借出的连接要拿到 `DoContext` 需要类型断言（`pool.Get()` 返回 `redis.Conn`）。

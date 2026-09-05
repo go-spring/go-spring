@@ -17,7 +17,7 @@ named `<name>` via `conf.BindEach` [starter.go:35-39]. There is no health indica
 
 ## 1. Complete worked project
 
-A service that publishes sensor readings and consumes them through the broker-neutral `messaging.Binder`, with probes, metrics and runtime governance. File tree:
+A service that publishes sensor readings and consumes them through the broker-neutral `messaging.Driver`, with probes, metrics and runtime governance. File tree:
 
 ```
 demo/
@@ -59,7 +59,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**service.go** — raw client for the guarded publish path, binder for the envelope path:
+**service.go** — raw client for the guarded publish path, driver for the envelope path:
 
 ```go
 package service
@@ -80,9 +80,9 @@ type Service struct {
 }
 
 func init() {
-    // The binder is NOT auto-provided: adapt the raw client yourself and
+    // The driver is NOT auto-provided: adapt the raw client yourself and
     // export the bean. destination/source strings are MQTT topics.
-    gs.Provide(StarterMQTT.NewBinder, gs.TagArg("a")).Export(gs.As[messaging.Binder]())
+    gs.Provide(StarterMQTT.NewDriver, gs.TagArg("a")).Export(gs.As[messaging.Driver]())
 
     gs.Provide(func(s *Service) gs.Runner {
         return func(ctx context.Context) error {
@@ -92,8 +92,8 @@ func init() {
             err := StarterMQTT.GuardedPublish(ctx, s.Client, "sensors/temp", 1, false, []byte("21.5"))
             StarterMQTT.EndSpan(sp, err)
 
-            // (b) binder consume — envelope API, payload-only mapping.
-            b := StarterMQTT.NewBinder(s.Client)
+            // (b) driver consume — envelope API, payload-only mapping.
+            b := StarterMQTT.NewDriver(s.Client)
             sub, _ := b.NewSubscriber(ctx, "sensors/temp", "")
             return sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
                 fmt.Println("received:", string(m.Payload))
@@ -117,10 +117,6 @@ spring.mqtt.a.client-id=demo-publisher
 spring.mqtt.a.will.topic=demo/status
 spring.mqtt.a.will.payload=offline
 spring.mqtt.a.will.qos=1
-
-# Access log level for GUARDED calls AND the span helpers (helpers are seeded
-# from the FIRST configured client's observability entry; first-wins).
-spring.mqtt.a.observability.level=detailed
 
 # MQTTS: switch broker to ssl://host:8883 and enable the tls group:
 # spring.mqtt.a.tls.enabled=true
@@ -170,7 +166,7 @@ gs.Run()
   │    2. driver.CreateClient: assembles paho options (broker, id,
   │       credentials, clean-session, keep-alive, connect-timeout),
   │       bridges connect/lost/reconnecting events into go-spring log  [driver.go:73-81],
-  │       builds TLS (tlsconf Build) and registers the will            [driver.go:83-94]
+  │       builds TLS (tlsconf BuildClient) and registers the will            [driver.go:83-94]
   │    3. client.Connect() + token.Wait() — fail-fast probe: a dead
   │       broker, bad credentials or TLS mismatch abort the boot       [starter.go:64-69]
   │    4. applyResilience — attaches the governance executor, indexed
@@ -195,7 +191,7 @@ guards** [command.go:17-27]:
 ```
 applyResilience [command.go:128-134]:
   exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt:<broker>"))   // governance center
-  exec = resilience.WrapExecutor(exec, "mqtt", c.Observability)      // observe bridge
+  exec = resilience.WrapExecutor(exec, "mqtt")                       // observe bridge
   stored in sync.Map keyed by the mqtt.Client value
 
 GuardedPublish [command.go:166-172]:
@@ -213,10 +209,10 @@ per topic [starter.go:70, resilience/config.go:151-155].
 **What is NOT guarded** (verified):
 
 - plain `client.Publish` called directly on the client bean — bypasses resilience entirely;
-  only `GuardedPublish` and the binder's `Publish` route through the executor
+  only `GuardedPublish` and the driver's `Publish` route through the executor
   [command.go:156-172, client.go].
 - `Subscribe` / `Unsubscribe` / subscription callbacks — no guard exists for them.
-- binder subscribe handlers: guarded only against panics (`messaging.Recover`
+- driver subscribe handlers: guarded only against panics (`messaging.Recover`
   converts a panic into an error) [client.go:92]; the error is then only logged
   [client.go:95-97].
 
@@ -229,20 +225,19 @@ When governance is off, `ExecutorFor` yields a transparent no-op executor, so
 span helper wrapped around it:
 
 1. `StartPublishSpan(ctx, topic)` opens a producer observation named `publish` with
-   `messaging.destination.name = topic` [command.go:84-86, observer.go:213-232].
+   `messaging.destination.name = topic` [command.go, observe.go].
 2. `guard` resolves the executor for this client from the sync.Map [command.go:148-153].
 3. fault injection check (govern.fault.* policy, if enabled).
 4. resilience policy: rate limiter / circuit breaker on resource `mqtt:<broker>`;
    on rejection the sentinel error returns and **paho Publish is never invoked**
    [command.go:160-163].
-5. observe bridge records the guarded call's outcome (span/metric/access log driven by
-   `observability.*` config).
+5. observe bridge records the guarded call's outcome (span/metric/access log).
 6. `cl.Publish(topic, qos, retained, payload)` hands off to paho's outbound queue;
    `token.Wait()` blocks until the packet is written (QoS 0) or the PUBACK/PUBCOMP
    arrives (QoS 1/2) [command.go:164-171].
 7. `EndSpan(sp, err)` records the outcome and closes the observation [command.go:100-103].
 
-**Binder consume** — `sub.Subscribe(ctx, handler)` on topic `sensors/temp`:
+**Driver consume** — `sub.Subscribe(ctx, handler)` on topic `sensors/temp`:
 
 1. handler is wrapped in `messaging.Recover` (panic → error) [client.go:92].
 2. `cl.Subscribe(topic, 1, callback)` + `token.Wait()` — errors (bad topic filter,
@@ -256,7 +251,7 @@ span helper wrapped around it:
 5. `sub.Close()` → `Unsubscribe(topic)` + wait; the token error is returned (the only
    error NOT discarded on this path) [client.go:103-107].
 
-The binder is fixed at QoS 1 (`defaultQoS`) and `retained=false` on publish; retained
+The driver is fixed at QoS 1 (`defaultQoS`) and `retained=false` on publish; retained
 messages, custom QoS and wildcard subscriptions require the raw `mqtt.Client` bean
 [client.go:33-45].
 
@@ -281,14 +276,11 @@ All keys live under `spring.mqtt.<name>.` (per-instance prefix binding via `conf
 | `tls.enabled` | bool | false | Enables `tlsconf` client TLS; pair with an `ssl://` broker URL. | Plaintext broker + tls on → connect failure at boot. |
 | `tls.ca-file` / `cert-file` / `key-file` | string | — | CA / mutual-TLS client material, `tls.Build()` at client creation [driver.go:83-90]. | Partial config → Build error at boot. |
 | `tls.server-name` / `insecure-skip-verify` | string/bool | — | SNI override / skip verification. | — |
-| `observability.level` | string | brief | Access log of **guarded calls** AND the span helpers (`off`/`brief`/`detailed`); the helpers are seeded from the **first** configured client's entry (first-wins) [command.go:61-100]. | Multiple clients with different levels → the helpers get the first client's. |
-| `observability.maxArgBytes` | int | 512 | Bound of the captured argument in detailed mode. | Too small → truncated topics. |
-| `observability.skipOps` | list | — | Suppresses span+metric+log for listed op names of the guarded-call observer. | — |
 | `driver` | string | DefaultDriver | Selects a registered Driver; registry panics on duplicate registration [driver.go:46-51]. | Unknown name → boot error "mqtt driver not found" [starter.go:56]. |
-| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedPublish` and the binder's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
+| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedPublish` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
-Reconciled with `grep -rhoE 'value:"[^"]+"'` over the starter: 15 distinct value tags →
-8 flat keys + tls (6) + will (4) + observability (3) = **21 keys, 1 required**.
+Reconciled with `grep -rhoE 'value:"[^"]+"'` over the starter: 14 distinct value tags →
+8 flat keys + tls (6) + will (4) = **18 keys, 1 required**.
 
 ---
 
@@ -316,28 +308,28 @@ govern:
 ```
 
 Hammer `GuardedPublish` → rejections surface as resilience sentinel errors and as
-`_app_mqtt_access` records (gated by `observability.level`). The identical traffic through
-plain `client.Publish` on the client bean is unaffected — the binder now rides the same
+`_app_mqtt_access` records. The identical traffic through
+plain `client.Publish` on the client bean is unaffected — the driver now rides the same
 guard, so the opt-out is per instance (`governance=false`), not per call site
 opt-in [command.go:147-172, client.go:73-77]. Policies hot-reload without restart
 (governance center).
 
-### 4.3 Message round-trip incl. binder mapping survival
+### 4.3 Message round-trip incl. driver mapping survival
 
-Publish an envelope with Key/Headers/Timestamp set through the binder publisher, consume
-with the binder subscriber: **only Payload survives**; Key/Headers/Timestamp arrive zero
+Publish an envelope with Key/Headers/Timestamp set through the driver publisher, consume
+with the driver subscriber: **only Payload survives**; Key/Headers/Timestamp arrive zero
 — MQTT 3.1.1 has no metadata fields [client.go:47-52, client.go:94]. Round-trip the payload
 and assert byte equality; anything beyond payload requires the raw client (e.g. encode
 metadata into the payload yourself).
 
 ### 4.4 Observability reads
 
-- Access log: tag `_app_mqtt_access` (observe kit registers `app.<system>.access`)
-  [observer.go:195]. One record per guarded call / span-helper observation:
-  `system=mqtt op=publish|consume status=ok|error duration=...` (+ topic in detailed mode).
+- Access log: tag `_app_mqtt_access` (observe.go registers `app.mqtt.access`). One
+  record per span-helper observation: `operation=publish|consume duration_ms=...`
+  (+ topic), errors at Warn with an `error` field.
 - Metrics: `messaging.client.operation.duration` (s) and `messaging.client.active_requests`,
   attributes `messaging.system=mqtt`, `messaging.operation`, and
-  `messaging.destination.name` (topic) on spans [observer.go:184-193, observer.go:216-220].
+  `messaging.destination.name` (topic) on spans [observe.go].
 
 ```bash
 curl -s :9370/metrics | grep -E 'messaging_client_operation_duration|messaging_client_active_requests'
@@ -367,11 +359,10 @@ kill -9 <pid>   # ungraceful → will "offline" (retained per config) is publish
 | Boot hangs (no error) | `connect-timeout=0` with a black-holed address | Keep a finite timeout; 0 disables it [config.go:51]. |
 | Boot fails "mqtt driver not found" | `driver` names nothing registered | Register via `RegisterDriver` in an init (panics on duplicate) [driver.go:46-51]. |
 | Reconnect storm / client kicked | Duplicate `client-id` across replicas | Assign distinct ids (broker enforces uniqueness). |
-| No breaker/limiter effect | Publishing via plain `client.Publish`, or `governance=false` on the instance | `GuardedPublish` and the binder's `Publish` are guarded [command.go:156-172]; switch call sites / re-enable. |
-| No traces/metrics/access records | starter-otel not imported, or expecting them from the binder | Helpers ride the OTel globals; the binder emits nothing [client.go:47-52]. |
-| `observability.level=off` but logs still appear | Multi-client setup: the helpers are seeded from the FIRST configured client's level; you changed a later client | Put the level you want on the first client (or make them agree). |
+| No breaker/limiter effect | Publishing via plain `client.Publish`, or `governance=false` on the instance | `GuardedPublish` and the driver's `Publish` are guarded [command.go:156-172]; switch call sites / re-enable. |
+| No traces/metrics/access records | starter-otel not imported, or expecting them from the driver | Helpers ride the OTel globals; the driver emits nothing [client.go:47-52]. |
 | Subscriber silent after broker restart | Subscription lost on unclean session drop | Re-subscription depends on clean-session / broker session; verify with the lifecycle logs [driver.go:76-81]. |
-| Handler errors vanish | Binder logs them and moves on — no redelivery | Handle retries inside the handler [client.go:95-97]. |
+| Handler errors vanish | Driver logs them and moves on — no redelivery | Handle retries inside the handler [client.go:95-97]. |
 | TLS keys seem ignored | Broker URL still `tcp://` | Use `ssl://` with `tls.enabled` [config.go:53-55]. |
 
 ---
@@ -380,23 +371,18 @@ kill -9 <pid>   # ungraceful → will "offline" (retained per config) is publish
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 21 (8 flat + tls 6 + will 4 + observability 3) |
+| Config keys | 18 (8 flat + tls 6 + will 4) |
 | Required | 1 (`broker`) |
 | Quickstart external deps | 1 (MQTT broker — mosquitto via docker compose) |
 | "Watch out" entries | 6 |
 
 Design suspects (audit ledger; none fixed since last pass):
 
-- Binder handler errors are only logged; `Recover`'s comment claims "nack/redelivery"
+- Driver handler errors are only logged; `Recover`'s comment claims "nack/redelivery"
   that MQTT 3.1.1's fire-and-forget callback cannot deliver [client.go:90-97].
-- ~~The span-helper observers hardcode `DefaultBrief` and ignore
-  `spring.mqtt.<name>.observability.level`~~ Fixed: the first wired client seeds the
-  helper observers with its observability config (first-wins, [command.go] seedObserveConfig)
-  — the helpers honor the configured level; with multiple differently-configured clients
-  only the first client's level applies (package-level helpers, one observer).
 - Governance is per-call-site opt-in (`GuardedPublish`) and undocumented in the README.
-- README config table omits `observability.*` and `driver`.
+- README config table omits `driver`.
 - No health indicator bean (family asymmetry: redis/nats provide one); `IsConnected()` is
   the only liveness signal and nothing probes it automatically.
-- `schema.json` marks `will.qos` as type object and omits tls/will/observability sub-keys
+- `schema.json` marks `will.qos` as type object and omits tls/will sub-keys
   [schema.json:49-53] — schema is stale vs config.go.

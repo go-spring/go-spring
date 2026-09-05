@@ -26,10 +26,6 @@
       "type": "boolean",
       "default": true,
       "description": "Route publisher/consumer operations through the governance center (resilience/fault)"
-    },
-    "observability": {
-      "type": "object",
-      "description": "Access log config (off/brief/detailed), see observe.ObserveConfig"
     }
   }
 }

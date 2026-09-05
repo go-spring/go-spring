@@ -113,12 +113,8 @@ spring.tdengine.a.max-idle-conns=2
 
 spring.tdengine.b.dsn=root:taosdata@ws(127.0.0.1:6041)/power
 
-# --- observability -----------------------------------------------------------
-# Per-statement access log (tag _app_tdengine_access). "brief" is the default;
-# "detailed" adds the SQL statement, bounded by maxArgBytes.
-spring.tdengine.a.observability.level=detailed
-spring.tdengine.a.observability.maxArgBytes=1024
-# Spans + db.client.* metrics ride starter-otel's globals (on by default).
+# --- observability is always on: spans + db.client.* metrics ride ------------
+# starter-otel's globals, and the access log rides the log package's levels.
 
 # --- actuator + otel ---------------------------------------------------------
 spring.actuator.addr=:9370
@@ -166,10 +162,10 @@ gs.Run()
   │       guardedConnector → sql.OpenDB → pool settings applied
   │     → fail-fast PingContext bounded by 10s [starter.go:72-77]; on error the
   │       half-built client is Closed and the boot fails
-  ├─ gs field-injects Client.Observability (${observability:=}) [client.go:42]
-  ├─ Init [client.go:64]: resourceLabel ("tdengine:<dsn addr>") →
+  ├─ Init [client.go:58]: resourceLabel ("tdengine:<dsn addr>") →
   │     fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │     resilience.WrapExecutor → observer NewDB("tdengine", cfg) armed on the slot
+  │     resilience.WrapExecutor(exec, "tdengine") → newDBObserver("tdengine")
+  │     armed on the slot
   ├─ readiness: indicator runs db.PingContext per instance
   └─ SIGTERM → Destroy [client.go:81]: exec.Close → db.Close
 ```
@@ -205,8 +201,8 @@ One statement, e.g. `QueryContext("SELECT COUNT(*) ...")`:
 Contrast with starter-go-redis, where the access log sits outside the breaker (one record
 per command): here the executor is outermost, so the log answers "what did each attempt do"
 and the resilience metrics answer "what did the executor decide". driver-go ships no
-instrumentation of its own, so the observe kit owns all three signals here (spans +
-metrics + log — no `WithoutTraceAndMetric`).
+instrumentation of its own, so the module-local observer owns all three signals here
+(spans + metrics + log — see observe.go).
 
 What is NOT covered by the guard [driver.go:189-198]:
 
@@ -241,14 +237,9 @@ All keys live under `spring.tdengine.<name>.` — bound per instance via `conf.B
 | `max-open-conns` | int | 8 | `db.SetMaxOpenConns` on the embedded pool [driver.go:81]. | Too low → statements queue waiting for a free conn. |
 | `max-idle-conns` | int | 2 | `db.SetMaxIdleConns`. ⚠ Should be ≤ max-open-conns (database/sql silently caps it, but a value above is a config smell). | Larger than open conns → clamped, idle churn. |
 | `conn-max-lifetime` | duration | 0s | `db.SetConnMaxLifetime`; 0 = never retire. ⚠ Unlike redis (2m default), there is no discovery to follow here, so 0 is safe. | — |
-| `observability.level` | string | `brief` | Access log gate: `off` (log only silenced; trace+metric keep emitting) / `brief` (system, op, status, duration, error) / `detailed` (adds the SQL statement, bounded). | `off` + expecting logs → silence, no warning. |
-| `observability.maxArgBytes` | int | 512 | Byte cap on the captured SQL in `detailed` mode and on the `db.statement` span attribute. | Too small → truncated statements in log/span. |
-| `observability.skipOps` | list | — | Suppresses span+metric+log together for listed op names. ⚠ The op namespace for this starter is exactly `exec` / `query` — it is NOT per-SQL; `skipOps=exec` silences every write. | Wrong casing → no effect (exact match). |
 | `driver` | string | `DefaultDriver` | Selects a registered Driver from the registry [driver.go:52]. | Unknown name → boot error "tdengine driver not found: <name>". Duplicate `RegisterDriver` → panic. |
 
-Both `Config.Observability` and the `Client.Observability` field bind `${observability:=}`
-[config.go:47, client.go:42]; the field-injected one is what Init uses — same prefix, same
-value, so there is only one effective knob.
+No observability keys exist — instrumentation is always on (§4.2).
 
 ---
 
@@ -270,12 +261,12 @@ The probe draws a real websocket connection and exercises taosAdapter's action c
 
 | Signal | Name / shape | Attributes |
 |--------|--------------|------------|
-| Span | `exec` / `query`, kind = client, tracer `go-spring.org/cloud/observe` | `db.system=tdengine`, `db.operation=exec\|query`, `db.statement=<sql, bounded>` |
+| Span | `exec` / `query`, kind = client, tracer `go-spring.org/starter-tdengine` | `db.system=tdengine`, `db.operation=exec\|query`, `db.statement=<sql, bounded>` |
 | Metric | `db.client.operation.duration` (histogram, s) | `db.system`, `db.operation`, `status=ok\|error` |
 | Metric | `db.client.active_requests` (up-down counter) | `db.system`, `db.operation` |
 | Metric | `resilience.calls` (counter) | `resilience.system=tdengine`, `resilience.resource`, `resilience.outcome=success\|rate_limited\|circuit_open\|bulkhead_full\|timeout\|error` |
 | Metric | `resilience.breaker.state_change` (counter) | from/to attrs |
-| Log | tag `_app_tdengine_access` | system=tdengine op=… status duration (+ SQL in detailed mode) |
+| Log | tag `_app_tdengine_access` | system=tdengine op=… status duration; error → Warn, success with the SQL (truncated to 512 bytes) → Debug, plain success → Info |
 | Log | tag `_app_tdengine_resilience` | resilience rejections |
 
 Without starter-otel, spans/metrics are no-ops (global providers empty) — only the access
@@ -284,7 +275,7 @@ log emits, and it carries no trace_id.
 ```bash
 curl -s :9370/metrics | grep -E 'db.client_operation_duration|db.client_active' 
 grep _app_tdengine_access app.log | tail -1
-# detailed: system=tdengine op=exec status ok duration=... "INSERT INTO power.d001 ..."
+# system=tdengine op=exec status ok duration=... "INSERT INTO power.d001 ..."
 ```
 
 ### 4.3 Resilience drill
@@ -316,8 +307,8 @@ succeeds proves credentials, DSN and server version are all good.
 | Boot fails "tdengine driver not found: X" | `driver` key names nothing registered | Register via `StarterTdengine.RegisterDriver` in an init, or drop the key (DefaultDriver). |
 | Boot fails at BindEach on `dsn` | Empty or missing `spring.tdengine.<name>.dsn` | The expr tag enforces non-empty — set it. |
 | Health DOWN though SQL works | Probe draws a fresh conn while the pool is exhausted (max-open-conns too low) | Raise max-open-conns; inspect the component error body in /readiness. |
-| No spans/metrics | starter-otel not imported | Observe kit rides the OTel globals; import starter-otel. |
-| No access log lines | `observability.level=off`, or the log tag is filtered | Set `detailed`; check logger config for `_app_tdengine_access`. |
+| No spans/metrics | starter-otel not imported | The observer rides the OTel globals; import starter-otel. |
+| No access log lines | Logger level drops Debug/Info, or the log tag is filtered | Check the logger level and logger config for `_app_tdengine_access`. |
 | Statements through db.Prepare are unguarded/unobserved | `Prepare` bypasses the slot by design [driver.go:189-191] | Use ExecContext/QueryContext. |
 | Breaker state shared across "databases" | Resource label is per host:port, DSN params ignored | Intentional (per-instance scoping); split backends by host to get separate buckets. |
 | `Begin` errors | TDengine has no transactions | By design — the driver reports it. |
@@ -326,7 +317,7 @@ succeeds proves credentials, DSN and server version are all good.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 6 instance keys (+3 observability sub-keys) |
+| Config keys | 6 instance keys |
 | Required | 1 (`dsn`) |
 | Quickstart external deps | 1 (TDengine + its bundled taosAdapter) |
 | "Watch out" entries | 4 |
@@ -335,10 +326,6 @@ Design suspects (kept from the previous audit, plus new):
 - DSN is an opaque string — the resilience resource label is derived by parsing the address
   out of it, so two DSNs differing only in params or database share one bucket; no
   `tls.*`/`service-name` unlike sibling starters (family asymmetry).
-- `Observability` is bound twice (ctor Config and Client field) — same prefix, only the
-  field-injected copy is consumed by Init; one binding is dead weight.
-- `skipOps` matches the coarse op namespace (`exec`/`query`), so it cannot skip one chatty
-  SQL — the granularity is per-kind, not per-statement.
 - `Prepare` escapes the guard seam entirely — an ORM that prepares statements silently loses
   resilience + observation coverage.
 - Health indicator has no opt-out key (same family asymmetry as starter-go-redis; redigo

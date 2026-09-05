@@ -25,7 +25,7 @@
 //     starter-actuator on :9370 (/readyz reflects the pool).
 //   - DYNAMIC CONFIG: a gs.Dync[string] field is bound to a watched file; editing
 //     it hot-reloads the value with no restart.
-//   - OBSERVABILITY: redisotel + the observe kit ride the OTel globals.
+//   - OBSERVABILITY: redisotel + the starter's built-in access log ride the OTel globals.
 //
 // The app self-tests every capability and exits non-zero on failure.
 package main

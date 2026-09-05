@@ -23,6 +23,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 
 	"go-spring.org/cloud/contract"
@@ -177,25 +179,8 @@ func TestVerify_StringTargetURL(t *testing.T) {
 	// A recording TB proves Verify reported nothing rather than silently
 	// skipping the contracts.
 	rec := &recordingTB{}
-	contract.Verify(rec, srv.URL, contracts)
+	contract.VerifyURL(rec, srv.URL, contracts)
 	assert.That(t, rec.errors).Equal(0)
-}
-
-// TestStub_EmptyMethodMatchesAny covers the method wildcard: a contract with
-// no Method pinned must match a request of any method (equalFoldMethod).
-func TestStub_EmptyMethodMatchesAny(t *testing.T) {
-	wildcard := []contract.Contract{{
-		Name:     "any-method",
-		Request:  contract.Request{Path: "/greet"}, // Method left empty on purpose
-		Response: contract.Response{Body: json.RawMessage(`"ok"`)},
-	}}
-
-	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(method, "/greet", nil)
-		contract.StubHandler(wildcard).ServeHTTP(rec, req)
-		assert.That(t, rec.Code).Equal(http.StatusOK, method)
-	}
 }
 
 // TestVerify_RawByteBody covers bodyEqual's non-JSON fallback: when the body
@@ -204,7 +189,7 @@ func TestVerify_RawByteBody(t *testing.T) {
 	plain := []contract.Contract{{
 		Name:     "plain-text body",
 		Request:  contract.Request{Method: http.MethodGet, Path: "/plain"},
-		Response: contract.Response{Body: json.RawMessage("plain ok")},
+		Response: contract.Response{Status: 200, Body: json.RawMessage("plain ok")},
 	}}
 
 	// Matching body with surrounding whitespace: equal after trimming.
@@ -222,4 +207,111 @@ func TestVerify_RawByteBody(t *testing.T) {
 	rec = &recordingTB{}
 	contract.VerifyHandler(rec, drifted, plain)
 	assert.Number(t, rec.errors).GreaterThan(0, "raw-byte mismatch must be reported")
+}
+
+// TestVerify_FormBody covers the form-content branch of bodyEqual: an
+// application/x-www-form-urlencoded body is compared by parsed parameter set,
+// so pair order and percent-encoding differences between producers don't fail
+// the match, while a real value difference does.
+func TestVerify_FormBody(t *testing.T) {
+	formCT := contract.Values{"Content-Type": {"application/x-www-form-urlencoded"}}
+	forms := []contract.Contract{{
+		Name: "form body",
+		Request: contract.Request{Method: http.MethodGet, Path: "/form",
+			Headers: formCT, Body: json.RawMessage(`city=杭州&lang=go`)},
+		Response: contract.Response{Status: 200, Headers: formCT,
+			Body: json.RawMessage(`status=ok&count=2`)},
+	}}
+
+	// Same parameters, different pair order and encoding on the wire: match.
+	same := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+		_, _ = io.WriteString(w, "count=2&status=ok")
+	})
+	rec := &recordingTB{}
+	contract.VerifyHandler(rec, same, forms)
+	assert.That(t, rec.errors).Equal(0)
+
+	// A different parameter value must be reported.
+	drifted := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+		_, _ = io.WriteString(w, "count=3&status=ok")
+	})
+	rec = &recordingTB{}
+	contract.VerifyHandler(rec, drifted, forms)
+	assert.Number(t, rec.errors).GreaterThan(0, "form value mismatch must be reported")
+}
+
+// TestStub_FormRequestBody covers the request side: a stub matches an incoming
+// form body regardless of pair order or encoding on the wire.
+func TestStub_FormRequestBody(t *testing.T) {
+	stub := contract.StubHandler([]contract.Contract{{
+		Name: "form echo",
+		Request: contract.Request{Method: http.MethodPost, Path: "/submit",
+			Headers: contract.Values{"Content-Type": {"application/x-www-form-urlencoded"}},
+			Body:    json.RawMessage(`name=alice&city=北京`)},
+		Response: contract.Response{Status: 200, Body: json.RawMessage(`"accepted"`)},
+	}})
+
+	// Percent-encoded and reordered: still the same parameter set.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/submit",
+		strings.NewReader("city=%E5%8C%97%E4%BA%AC&name=alice"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	stub.ServeHTTP(rec, req)
+	assert.That(t, rec.Code).Equal(http.StatusOK)
+
+	// A different parameter set must not match (501 = no contract matched).
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/submit",
+		strings.NewReader("city=%E5%8C%97%E4%BA%AC&name=bob"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	stub.ServeHTTP(rec, req)
+	assert.That(t, rec.Code).Equal(http.StatusNotImplemented)
+}
+
+// TestContract_MultiValueQuery verifies the multi-value query contract: the
+// request must carry exactly the listed values for a name — same set, any
+// order — and a different count or an extra value breaks the match.
+func TestContract_MultiValueQuery(t *testing.T) {
+	cs := []contract.Contract{{
+		Name: "search",
+		Request: contract.Request{Method: http.MethodGet, Path: "/search",
+			Query: contract.Values{"tag": {"go", "spring"}}},
+		Response: contract.Response{Status: 200, Body: json.RawMessage(`"ok"`)},
+	}}
+	srv := contract.StubServer(t, cs)
+
+	do := func(rawQuery string) int {
+		resp, err := http.Get(srv.URL + "/search?" + rawQuery)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		return resp.StatusCode
+	}
+
+	// Any order matches; a different count or an extra value does not.
+	if code := do("tag=spring&tag=go"); code != http.StatusOK {
+		t.Fatalf("reordered set: status = %d, want 200", code)
+	}
+	if code := do("tag=go"); code != http.StatusNotImplemented {
+		t.Fatalf("missing value: status = %d, want 501", code)
+	}
+	if code := do("tag=go&tag=spring&tag=go"); code != http.StatusNotImplemented {
+		t.Fatalf("extra value: status = %d, want 501", code)
+	}
+	// Unlisted names are unconstrained.
+	if code := do("tag=go&tag=spring&page=3"); code != http.StatusOK {
+		t.Fatalf("extra unlisted name: status = %d, want 200", code)
+	}
+
+	// The verify side replays the multi-value query in the built request.
+	contract.VerifyHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !reflect.DeepEqual(r.URL.Query()["tag"], []string{"go", "spring"}) {
+			t.Errorf("replayed query tag = %v, want [go spring]", r.URL.Query()["tag"])
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`"ok"`))
+	}), cs)
 }

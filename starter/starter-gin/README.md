@@ -142,7 +142,7 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 
 * **Custom server configuration**: tune `spring.gin.server.*` (address, TLS, timeouts, ...) via the
   standard `SimpleHttpServerConfig` binding.
-* **Full gin ecosystem**: any gin middleware, route group, renderer, or binder can be composed on the
+* **Full gin ecosystem**: any gin middleware, route group, renderer, or driver can be composed on the
   `*gin.Engine` passed to the `RouterRegister`.
 ### Log tag
 

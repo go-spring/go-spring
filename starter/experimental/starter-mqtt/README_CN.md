@@ -76,13 +76,13 @@ _ = token.Error()
 实际影响:生产者与消费者的 span 无法跨 broker 串联。连接层事件(连接、连接丢失、
 重连中)仍会桥接进 go-spring 日志以供运维观测。
 
-## 消息 Binder
+## 消息 Driver
 
-除原生客户端外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
+除原生客户端外,本 starter 还可暴露一个 broker 中立的 `messaging.Driver`
 (来自 `go-spring.org/cloud/messaging`),让业务代码收发 `*messaging.Message`
 信封而不依赖 paho MQTT API —— 底层换 broker 时业务代码无需改动。
 
-从 `mqtt.Client` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):
+从 `mqtt.Client` 注册一个 driver bean(用 `gs.TagArg` 选取具名实例):
 
 ```go
 import (
@@ -90,17 +90,17 @@ import (
     StarterMQTT "go-spring.org/starter-mqtt"
 )
 
-gs.Provide(StarterMQTT.NewBinder, gs.TagArg("a"))
+gs.Provide(StarterMQTT.NewDriver, gs.TagArg("a"))
 ```
 
 然后通过信封收发:
 
 ```go
-pub, _ := binder.NewPublisher(ctx, "orders")
+pub, _ := driver.NewPublisher(ctx, "orders")
 defer pub.Close()
 _ = pub.Publish(ctx, &messaging.Message{Payload: []byte("hello")})
 
-sub, _ := binder.NewSubscriber(ctx, "orders", "")
+sub, _ := driver.NewSubscriber(ctx, "orders", "")
 defer sub.Close()
 _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
     // 处理 m.Payload
@@ -108,12 +108,12 @@ _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
 })
 ```
 
-`destination` 与 `source` 都是 topic,以 QoS 1 收发。该 binder 是 **payload-only**:
+`destination` 与 `source` 都是 topic,以 QoS 1 收发。该 driver 是 **payload-only**:
 MQTT 3.1.1 无每消息元数据,所以 `Key`、`Headers`、`Timestamp` 不会上线,而且 ——
-在所有 binder 中唯一地 —— **不发任何 trace context 或 span**(无处可骑)。`group`
+在所有 driver 中唯一地 —— **不发任何 trace context 或 span**(无处可骑)。`group`
 不使用,因为 3.1.1 没有 shared subscription。paho 回调是 fire-and-forget、无 ack/nack,
 因此 handler 出错只记日志。原生 `mqtt.Client` bean 仍可用于 retained 消息、自定义 QoS、
-通配符 topic 等 binder 未建模的 MQTT 能力。
+通配符 topic 等 driver 未建模的 MQTT 能力。
 
 ## 高级功能
 

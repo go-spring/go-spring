@@ -19,7 +19,6 @@ package StarterMQTT
 import (
 	"time"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -58,14 +57,8 @@ type Config struct {
 	// publishes on the client's behalf if it disconnects ungracefully.
 	Will WillConfig `value:"${will}"`
 
-	// Observability configures the per-operation access log emitted by the
-	// resilience executor (off/brief/detailed). Defaults to "brief". This
-	// complements the package-level trace helpers in command.go, which are
-	// driven by their own default level.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
-
 	// Governance enables the resilience/fault guard on this client, default is
-	// true. Both the raw client API (GuardedPublish) and the messaging binder's
+	// true. Both the raw client API (GuardedPublish) and the messaging driver's
 	// Publish route through the governance center executor; when the governance
 	// center itself is off the executor is a transparent no-op, so this switch
 	// only removes the guard entirely (bare calls) when set to false.

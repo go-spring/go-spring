@@ -12,8 +12,7 @@ third-party dependencies.
 | --- | --- |
 | `MessageSource` | The single interface: `Message(ctx, key, args...) (string, error)`. Implement your own for a database or config-center backend. |
 | `WithLocale(ctx, locale)` / `LocaleFrom(ctx)` | The locale travels on the context — set it once in middleware from `Accept-Language`, every downstream call picks it up. |
-| `NewMapSource(fallbackLocale)` | The bundled in-memory backend: locale → key → template. `Add`/`AddMap` register templates (chainable). |
-| `AddParsed(locale, m)` | Ingests a nested map the shape a yaml/json reader produces; both `map[string]any` and `map[any]any` nests are flattened to dot-joined keys. |
+| `NewMapSource(WithDefaultLocale)` | The bundled in-memory backend: locale → key → template. `AddMessage` registers one template, `AddBundle` registers a whole locale's bundle (chainable). |
 | `Localizer(src, ctx)` | Curries a `MessageSource` into `func(key, args...) string` — the shape `validation.ValidationErrors.Localize` expects. |
 | `ErrMessageNotFound` | Wrapped by the "key not found" error. Missing keys also yield the key itself as the string. |
 
@@ -22,7 +21,7 @@ third-party dependencies.
 ### 1. Resolve messages per request locale
 
 ```go
-src := i18n.NewMapSource(WithFallbackLocale("en")).
+src := i18n.NewMapSource(WithDefaultLocale("en")).
     Add("en", "hello", "Hello, {0}!").
     Add("zh", "hello", "你好, {0}!")
 
@@ -38,15 +37,13 @@ degradation, or `errors.Is` it to fail loud.
 ### 2. Feed bundles parsed elsewhere
 
 The package reads no files — the parser belongs to the wiring layer (spring/conf
-reader, remote config center). Hand the parsed map in:
+reader, remote config center). Hand the parsed map in; keys are whatever the
+map carries (dot-joined names are a convention, not a requirement):
 
 ```go
-src.AddParsed("en", map[string]any{
-    "validation": map[string]any{
-        "email": "{0} must be a valid email",
-    },
+src.AddBundle("en", map[string]string{
+    "validation.email": "{0} must be a valid email",
 })
-// registers key "validation.email"
 ```
 
 ### 3. Pair with validation errors

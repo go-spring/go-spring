@@ -151,24 +151,23 @@ func TestPicker_RotatesAndEvictsFailingInstance(t *testing.T) {
 	}
 }
 
-// fakeWatchDiscovery hands out successive watch channels: each subscription
-// stream is scripted by the test. It models the discovery contract — the
-// channel closes after a terminal WatchResult.Err, and a fresh Watch call
-// starts a new subscription whose first result carries the current set.
-type fakeWatchDiscovery struct {
+// fakePollDiscovery serves scripted snapshots: each Resolve call returns the
+// next entry (nil entries repeat the last). It models the Resolve-only
+// discovery contract — freshness is the backend's job, the resolver just
+// re-reads.
+type fakePollDiscovery struct {
 	discovery.Discovery
-	streams []chan discovery.WatchResult
-	calls   int
+	snaps [][]discovery.Endpoint
+	calls int
 }
 
-func (f *fakeWatchDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
-	return nil, nil
-}
-
-func (f *fakeWatchDiscovery) Watch(context.Context, string, ...discovery.Option) (<-chan discovery.WatchResult, error) {
-	ch := f.streams[f.calls]
+func (f *fakePollDiscovery) Resolve(_ context.Context, _ string, _ ...discovery.Option) ([]discovery.Endpoint, error) {
+	i := f.calls
+	if i >= len(f.snaps) {
+		i = len(f.snaps) - 1
+	}
 	f.calls++
-	return ch, nil
+	return f.snaps[i], nil
 }
 
 type fakeClientConn struct {
@@ -181,32 +180,24 @@ func (f *fakeClientConn) UpdateState(s resolver.State) error {
 	return nil
 }
 
-// TestWatchLoop_SurvivesTerminalErr proves the P0 fix: a terminal
-// WatchResult.Err no longer freezes the resolved address set. The loop keeps
-// the last snapshot, re-watches with backoff, and pushes the fresh snapshot
-// delivered by the re-established subscription. It also proves the loop still
-// exits on Close (ctx cancellation).
-func TestWatchLoop_SurvivesTerminalErr(t *testing.T) {
-	watchRetryBackoff = time.Millisecond
-	defer func() { watchRetryBackoff = time.Second }()
+// TestPollLoop_PushesChanges proves the poll loop keeps gRPC's address set
+// current: it re-reads the backend snapshot on each tick, pushes only real
+// changes, and exits on Close (ctx cancellation).
+func TestPollLoop_PushesChanges(t *testing.T) {
+	pollInterval = 5 * time.Millisecond
+	defer func() { pollInterval = 10 * time.Second }()
 
-	// Subscription 1: good snapshot, then a terminal error and close.
-	ch1 := make(chan discovery.WatchResult, 2)
-	ch1 <- discovery.WatchResult{Endpoints: []discovery.Endpoint{{Addr: "10.0.0.1:80"}}}
-	ch1 <- discovery.WatchResult{Err: errors.New("backend disconnected")}
-	close(ch1)
-	// Subscription 2 (the reconnect): a different, fresh snapshot.
-	ch2 := make(chan discovery.WatchResult, 1)
-	ch2 <- discovery.WatchResult{Endpoints: []discovery.Endpoint{{Addr: "10.0.0.2:80"}}}
-	// Subscription 3: never needed; a blocked channel keeps the loop idle.
-	ch3 := make(chan discovery.WatchResult)
-
-	d := &fakeWatchDiscovery{streams: []chan discovery.WatchResult{ch1, ch2, ch3}}
+	d := &fakePollDiscovery{snaps: [][]discovery.Endpoint{
+		{{Addr: "10.0.0.1:80"}},                        // seed
+		{{Addr: "10.0.0.1:80"}},                        // no-op: must NOT push again
+		{{Addr: "10.0.0.1:80"}, {Addr: "10.0.0.2:80"}}, // scale up: pushed
+	}}
 	cc := &fakeClientConn{states: make(chan resolver.State, 4)}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &discoveryResolver{cc: cc, d: d, backend: "fake", service: "svc", ctx: ctx, cancel: cancel}
-	go r.watchLoop(ch1)
+	r.push(d.snaps[0]) // Build seeds before the loop starts
+	go r.pollLoop(d.snaps[0])
 
 	got := func() []string {
 		st := <-cc.states
@@ -216,18 +207,14 @@ func TestWatchLoop_SurvivesTerminalErr(t *testing.T) {
 		}
 		return addrs
 	}
-	assert.That(t, got()).Equal([]string{"10.0.0.1:80"}) // pre-error snapshot
-	assert.That(t, got()).Equal([]string{"10.0.0.2:80"}) // post-reconnect snapshot
+	assert.That(t, got()).Equal([]string{"10.0.0.1:80"})                // seed
+	assert.That(t, got()).Equal([]string{"10.0.0.1:80", "10.0.0.2:80"}) // scale-up
 
-	// Close must stop the loop even while a re-watch would otherwise follow.
+	// Close must stop the loop.
 	r.Close()
-	done := make(chan struct{})
-	go func() { <-ctx.Done(); <-done }()
 	select {
 	case <-time.After(2 * time.Second):
-		t.Fatal("watchLoop did not observe context cancellation promptly")
+		t.Fatal("pollLoop did not observe context cancellation promptly")
 	case <-ctx.Done():
 	}
-	close(done)
-	assert.That(t, d.calls).Equal(2)
 }

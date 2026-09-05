@@ -26,7 +26,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // Conn wraps a NATS connection together with an optional JetStream context.
@@ -43,10 +42,11 @@ type Conn struct {
 	*nats.Conn
 	JetStream jetstream.JetStream
 
-	// pubObs/subObs drive the observe kit (trace+metric+log) for publishes and
-	// consumes. nil-safe: when nil the instrumented methods delegate unchanged.
-	pubObs *observe.Observer
-	subObs *observe.Observer
+	// pubObs/subObs drive the instrumentation (trace+metric+log) for publishes
+	// and consumes. nil-safe: when nil the instrumented methods delegate
+	// unchanged.
+	pubObs *observer
+	subObs *observer
 
 	// exec is nil unless governance is enabled; when set, the guarded
 	// methods route through it. resource is the stable per-instance key so the

@@ -61,13 +61,13 @@ fetches.EachRecord(func(r *kgo.Record) {
 })
 ```
 
-## 消息 Binder
+## 消息 Driver
 
-除原生客户端外,本 starter 还可暴露一个 broker 中立的 `messaging.Binder`
+除原生客户端外,本 starter 还可暴露一个 broker 中立的 `messaging.Driver`
 (来自 `go-spring.org/cloud/messaging`),让业务代码收发 `*messaging.Message`
 信封而不依赖 franz-go API —— 底层换 broker 时业务代码无需改动。
 
-从 `*kgo.Client` 注册一个 binder bean(用 `gs.TagArg` 选取具名实例):
+从 `*kgo.Client` 注册一个 driver bean(用 `gs.TagArg` 选取具名实例):
 
 ```go
 import (
@@ -75,17 +75,17 @@ import (
     StarterKafka "go-spring.org/starter-kafka"
 )
 
-gs.Provide(StarterKafka.NewBinder, gs.TagArg("a"))
+gs.Provide(StarterKafka.NewDriver, gs.TagArg("a"))
 ```
 
 然后通过信封收发:
 
 ```go
-pub, _ := binder.NewPublisher(ctx, "orders")
+pub, _ := driver.NewPublisher(ctx, "orders")
 defer pub.Close()
 _ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
 
-sub, _ := binder.NewSubscriber(ctx, "orders", "")
+sub, _ := driver.NewSubscriber(ctx, "orders", "")
 defer sub.Close()
 _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
     // 处理 m.Payload / m.Headers
@@ -97,7 +97,7 @@ franz-go 在构造 client 时就固定了它的消费 topics 与消费者组,且
 consumer,所以订阅方只轮询 client 已配置的 topics,`source` 按名称在其中选取,`group`
 取自 client 配置 —— **一个 client bean 对应一个逻辑 consumer**。trace context 经 kotel
 钩子骑在 record header 上,配合 starter-otel 即可串联 producer 与 consumer 链路。原生
-`*kgo.Client` bean 仍可用于事务、admin API 等 binder 未建模的 Kafka 能力。
+`*kgo.Client` bean 仍可用于事务、admin API 等 driver 未建模的 Kafka 能力。
 
 ## 高级特性
 

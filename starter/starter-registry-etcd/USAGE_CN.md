@@ -170,29 +170,22 @@ gs.Run()
   lease(registrar.go:172-179)。
 - `ttlSeconds()` 向上取整到整秒、最小 1s;`TTL<=0` 静默变 15s(config.go:85-98)。
 
-### 2.3 WATCH 链路(消费侧)
+### 2.3 DISCOVERY 链路(消费侧)
 
-`etcdDiscovery.Watch`(discovery_etcd.go:158-197):
+`etcdDiscovery.Resolve`(discovery_etcd.go):
 
-1. `clientv3.Watch(ctx, prefix, WithPrefix())` 打开 etcd watch 通道
-   (discovery_etcd.go:176);单个 goroutine 是输出通道的唯一写者与关闭者
-   (registry-nacos 惯例——无 send-after-close 竞态)。
-2. 该 goroutine 先做**全量快照**(`Get` + `WithPrefix`,5s 超时)并把当前集合作为首推
-   播下去,调用方无需先 Resolve(discovery_etcd.go:162-184)。
-3. watch 通道上每个 etcd 事件都触发一次**全新全量快照**(不是增量),按需做 scheme
-   过滤(discovery_etcd.go:186-187)。
-4. 变更检测:`endpointsKey` 把快照渲染成 `addr,scheme,weight;...` 可比较字符串
-   (discovery_etcd.go:264-275);字符串不变即 no-op——"no-op re-delivery must not churn
-   consumers"(discovery_etcd.go:188-191)。所以 `UpdateWeight`(weight 在 key 里)会
-   推送;快照相同的前缀事件不推。
-5. 每个 KV 从注册器写的 JSON 解码;`Healthy` 恒为 true——**key 的存在就是健康信号**
-   (lease 过期即删 key)(discovery_etcd.go:237-256 及文件头注释 29-32 行)。畸形
-   payload 单条 Warn 跳过,不破坏整个快照(discovery_etcd.go:241-245)。
-6. `Resolve` 是同一次 Get 的一次性版本;`Services` 从 key 布局枚举服务名
-   (discovery_etcd.go:140-148,201-211)。
+1. 某服务的第一次 Resolve 做一次**全量快照**(`Get`+`WithPrefix`,由调用方 ctx 约束)
+   并写入缓存,随后启动后台 watcher(`clientv3.Watch(bgCtx, prefix, WithPrefix())`)。
+2. watch 通道上每个 etcd 事件都触发一次**全新全量快照**(不是增量)写入缓存;刷新失败
+   保留旧快照——"陈旧地址好过没有地址"。
+3. 之后的 Resolve 都是对缓存(未过滤全集)的内存读,每次调用经 `FilterByScheme` 按
+   scheme 收窄。
+4. 每个 KV 从 registrar 的 JSON 解码;`Healthy` 恒为 true——**key 存在即健康信号**
+   (lease 过期删 key)(文件头注释 29-32 行)。畸形 payload 跳过并 Warn,不打断快照。
+5. `Services` 按 key 布局枚举服务名。
 
-下游 loadbalance `Pool` 消费这些快照,并在每次 Pick 应用 **weight-0 过滤**:
-`excludeDrained` 丢弃 `Weight == 0` 的端点;全部端点都被摘时回退到全集,避免未归一化
+下游,loadbalance `Pool` 消费这些快照并在每次 Pick 做 **weight-0 过滤**:
+`excludeDrained` 丢弃 `Weight == 0` 端点,全部摘流时回退全集,防未归一化
 快照把池打黑洞(cloud/loadbalance/pool.go:97-99,122-135)。
 
 ### 2.4 DRAIN 链路 —— UpdateWeight(0)
@@ -210,8 +203,8 @@ gs.Run()
 - 与 Register 不同,`UpdateWeight` 对 **0 原样放行**(只有 Register 钳位)——0 进入
   存储的 JSON,进而进入消费端 pool 的 `excludeDrained`。
 
-消费侧纯靠 WATCH 感知:etcd 事件 → 快照 → `endpointsKey` 变化(weight 在 key 里)→
-推送 → pool 在所有策略下过滤 0 权端点。`UpdateWeight(ctx, 100)` 恢复。同 lease 热更新
+消费侧纯靠后台刷新感知:etcd 事件 → 快照刷新(weight 在 payload 里)→
+下一次 Resolve 可见 → pool 在所有策略下过滤 0 权端点。`UpdateWeight(ctx, 100)` 恢复。同 lease 热更新
 在 `registrar_weight_test.go` 的 `TestUpdateWeightHotReloadLive` 对真实 etcd 端到端验证
 (watch 分布 9:1 → 1:9 翻转,全程无 Register)。
 
@@ -316,9 +309,9 @@ gs.Run()
    注册**(registrar.go:166-170——排干循环直接结束)。消费方经 watch 驱逐端点;
    provider 对自己已掉线毫无感知。恢复:重启进程。即 §6 嫌疑 #2。
 
-7. **WATCH 快照降级**:Watch 期间短暂断掉 etcd(如 iptables drop 2379):快照 Get 失败
+7. **刷新降级**:服务已缓存后短暂断掉 etcd(如 iptables drop 2379):刷新 Get 失败
    → Warn `registry-etcd: snapshot %q failed (waiting for watch)` 且返回 nil——"陈旧地址
-   好过没有地址";事件恢复后 watch 通道照常投递(discovery_etcd.go:166-171)。
+   好过没有地址";事件恢复后缓存照常刷新。
 
 8. **坏集群快速失败**:`endpoints=127.0.0.1:9999` 启动 → 直接失败
    `registry-etcd: startup probe failed for 127.0.0.1:9999`(registrar.go:95-100)——
@@ -362,7 +355,7 @@ discovery backend name=...`。经 `logger.<name>.tag=_app_registry_etcd` 单独�
 1. 注册器与 discovery 块之间的 `key-prefix` 耦合只有文档约束、从不校验——即使两块在
    同一份 app.properties 里。
 2. lease keep-alive 死亡 = TTL 后静默消失(不重注册、无日志)——最大的运维黑洞。
-3. watch 通道关闭是静默的(流终止无日志)。
+3. 后台刷新失败有日志,但 etcd 长期不可达时会一直服务陈旧快照。
 4. `ttl<=0` 静默变 15s,而不是绑定期报错。
 5. README 的 weight 行暗示配置 `weight:=0` 可摘流——实际永远存 1(被钳位);摘流只有
    `UpdateWeight` 一条路。

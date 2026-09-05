@@ -15,11 +15,11 @@
  */
 
 // command.go is the "command seam" concept of this starter: the observe layer
-// (observe.Observer-backed publish/consume spans) and the resilience guard
-// (executor-backed GuardedPublish) that wrap the raw mqtt.Client's operations.
-// paho.mqtt.golang ships no hook/plugin extension point, so instead of a
-// transparent client wrapper the seam is opt-in helpers the caller wraps around
-// Publish and inside the Subscribe callback.
+// (module-local publish/consume observers, see observe.go) and the resilience
+// guard (executor-backed GuardedPublish) that wrap the raw mqtt.Client's
+// operations. paho.mqtt.golang ships no hook/plugin extension point, so instead
+// of a transparent client wrapper the seam is opt-in helpers the caller wraps
+// around Publish and inside the Subscribe callback.
 package StarterMQTT
 
 import (
@@ -29,7 +29,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // MQTT observability is driven by these kit-backed helpers rather than a
@@ -45,69 +45,28 @@ import (
 //     not an instrumentation gap.
 //
 // The helpers emit the full three-signal trio (span + duration/in-flight metric
-// + access log) via the shared observe kit, riding the OTel globals starter-otel
-// installs. Call them around Publish and inside the Subscribe callback.
+// + access log) via the module-local observers in observe.go, riding the OTel
+// globals starter-otel installs. Call them around Publish and inside the
+// Subscribe callback.
 
-// The observers are built lazily (sync.Once) so a blank import of this starter
-// no longer pays the observe-kit construction at package init — only apps that
-// actually call the span helpers build them.
-//
-// Because the span helpers are package-level (they take no client, unlike the
-// nats Conn methods), the observers cannot be per-instance. Instead the first
-// configured client seeds their ObserveConfig from its
-// ${spring.mqtt.<name>.observability} entry (see seedObserveConfig in
-// starter.go wiring); the helpers honor that configured level. Apps using the
-// helpers without any starter-configured client get the observe-kit default
-// (brief).
+// The observers are package-level (the span helpers take no client, unlike the
+// nats Conn methods) and config-free. They are built at wiring time — the first
+// client the starter wires constructs them (see newClient) — falling back to a
+// lazy sync.Once for apps that call the helpers without any starter-configured
+// client.
 var (
 	defaultObsOnce sync.Once
-	obsCfgMu       sync.Mutex
-	obsCfgSeeded   bool
-	obsCfg         = observe.ObserveConfig{Level: observe.DefaultBrief}
-	pubObs         *observe.Observer
-	subObs         *observe.Observer
+	pubObs         *observer
+	subObs         *observer
 )
 
-// seedObserveConfig records the observability config the lazy observers will be
-// built with. Called once per process by the first client the starter wires, so
-// the span helpers honor ${spring.mqtt.<name>.observability.level} rather than
-// always defaulting to brief. Only the first client seeds: with multiple
-// clients configured differently there is no single right answer for a
-// package-level observer, so first-wins is the deterministic, documented rule.
-// Has no effect if the observers were already built (helpers used before any
-// client was wired).
-func seedObserveConfig(cfg observe.ObserveConfig) {
-	obsCfgMu.Lock()
-	defer obsCfgMu.Unlock()
-	if cfg.Level == "" {
-		return // nothing configured; keep the kit default
-	}
-	if !obsCfgSeeded {
-		obsCfg = cfg
-		obsCfgSeeded = true
-	}
-}
-
-func pubObserver() *observe.Observer {
+// buildObservers constructs the span helpers' observers from the current OTel
+// meter provider. Safe to call multiple times; only the first call wins.
+func buildObservers() {
 	defaultObsOnce.Do(func() {
-		obsCfgMu.Lock()
-		cfg := obsCfg
-		obsCfgMu.Unlock()
-		pubObs = observe.NewProducer("mqtt", cfg)
-		subObs = observe.NewConsumer("mqtt", cfg)
+		pubObs = newObserver(trace.SpanKindProducer)
+		subObs = newObserver(trace.SpanKindConsumer)
 	})
-	return pubObs
-}
-
-func subObserver() *observe.Observer {
-	defaultObsOnce.Do(func() {
-		obsCfgMu.Lock()
-		cfg := obsCfg
-		obsCfgMu.Unlock()
-		pubObs = observe.NewProducer("mqtt", cfg)
-		subObs = observe.NewConsumer("mqtt", cfg)
-	})
-	return subObs
 }
 
 // StartPublishSpan opens a producer observation for a publish to topic. Call
@@ -117,8 +76,9 @@ func subObserver() *observe.Observer {
 //	tok := client.Publish("sensors/temp", qos, false, payload)
 //	_ = tok.Wait()
 //	StarterMQTT.EndSpan(sp, tok.Error())
-func StartPublishSpan(ctx context.Context, topic string) (context.Context, *observe.Span) {
-	return pubObserver().Start(ctx, "publish", topic)
+func StartPublishSpan(ctx context.Context, topic string) (context.Context, *span) {
+	buildObservers()
+	return pubObs.Start(ctx, "publish", topic)
 }
 
 // StartConsumeSpan opens a consumer observation for an inbound message. Call at
@@ -129,12 +89,13 @@ func StartPublishSpan(ctx context.Context, topic string) (context.Context, *obse
 //	    err := handle(ctx, m)
 //	    StarterMQTT.EndSpan(sp, err)
 //	})
-func StartConsumeSpan(ctx context.Context, msg mqtt.Message) (context.Context, *observe.Span) {
-	return subObserver().Start(ctx, "consume", msg.Topic())
+func StartConsumeSpan(ctx context.Context, msg mqtt.Message) (context.Context, *span) {
+	buildObservers()
+	return subObs.Start(ctx, "consume", msg.Topic())
 }
 
 // EndSpan records err (if any) on the span and ends it.
-func EndSpan(span *observe.Span, err error) {
+func EndSpan(span *span, err error) {
 	span.End(err)
 }
 
@@ -163,12 +124,12 @@ var resilienceResources sync.Map // mqtt.Client -> string
 // transparent no-op executor; fault wraps it when enabled.
 func applyResilience(c Config, cl mqtt.Client, resource string) error {
 	// Per-instance opt-out: without an executor attached, guard (and therefore
-	// both GuardedPublish and the binder's Publish) degrades to bare calls.
+	// both GuardedPublish and the driver's Publish) degrades to bare calls.
 	if !c.Governance {
 		return nil
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "mqtt", c.Observability)
+	exec = resilience.WrapExecutor(exec, "mqtt")
 	resilienceExecs.Store(cl, exec)
 	resilienceResources.Store(cl, resource)
 	return nil

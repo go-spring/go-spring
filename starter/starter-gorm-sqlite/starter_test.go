@@ -47,7 +47,7 @@ func TestSqliteAssembly(t *testing.T) {
 		app.Property("spring.gorm.sqlite.mem.file", ":memory:")
 	}).RunTest(t, func(s *struct {
 		DBs  []*DB              `autowire:""`
-		Inds []health.Indicator `autowire:""`
+		Inds []*health.Indicator `autowire:""`
 	}) {
 		if len(s.DBs) != 1 {
 			t.Fatalf("want 1 DB bean, got %d", len(s.DBs))
@@ -73,10 +73,10 @@ func TestSqliteAssembly(t *testing.T) {
 		}
 
 		// One health indicator per instance, named after the instance.
-		if len(s.Inds) != 1 || s.Inds[0].HealthName() != "gorm:sqlite:mem" {
+		if len(s.Inds) != 1 || s.Inds[0].Name != "gorm:sqlite:mem" {
 			t.Fatalf("want gorm:sqlite:mem indicator, got %+v", s.Inds)
 		}
-		if err := s.Inds[0].CheckHealth(context.Background()); err != nil {
+		if err := s.Inds[0].Probe(context.Background()); err != nil {
 			t.Fatalf("indicator must report UP: %v", err)
 		}
 	})
@@ -87,7 +87,7 @@ func TestSqliteAssembly(t *testing.T) {
 func TestSqliteDefaultsNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {
 		DBs  []*DB              `autowire:""`
-		Inds []health.Indicator `autowire:""`
+		Inds []*health.Indicator `autowire:""`
 	}) {
 		if len(s.DBs) != 0 || len(s.Inds) != 0 {
 			t.Fatalf("starter must stay dormant without config, got %d DB / %d indicators", len(s.DBs), len(s.Inds))

@@ -19,7 +19,6 @@ package StarterCassandra
 import (
 	"time"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -59,10 +58,6 @@ type Config struct {
 
 	// TLS configures client-to-server TLS (tlsconf shared block).
 	TLS tlsconf.TLSConfig `value:"${tls}"`
-
-	// Observability configures the per-statement span, metric and access log
-	// emitted by the Exec helper (off/brief/detailed). Defaults to "brief".
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which Cassandra driver to use, defaults to
 	// DefaultDriver.

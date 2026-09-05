@@ -127,9 +127,6 @@ spring.gorm.mysql.primary.conn-max-lifetime=30m
 spring.gorm.mysql.primary.conn-max-idle-time=5m
 spring.gorm.mysql.primary.ping-timeout=5s
 spring.gorm.mysql.primary.slow-threshold=200ms
-# observe 插件的访问日志明细(span/metric 保持开启):
-spring.gorm.mysql.primary.observability.level=brief
-spring.gorm.mysql.primary.observability.max-arg-bytes=512
 
 # --- actuator(聚合每个 gorm 实例的 health indicator)--------------------
 spring.http.server.enabled=false
@@ -189,7 +186,7 @@ gs.Run()
   │    └─ Provide health.Indicator "gorm:mysql:<name>"(按名注入上面的 *DB,
   │       导出为 health.Indicator)  ← .Name 必须加:多实例 bean 共享类型
   │          (Indicator、*DB);没有独立名字容器会报 (Name,Type) 重复键
-  ├─ bean 装配:gs 向 *DB wrapper 字段注入 Observability
+  ├─ bean 装配:gs 按名组装各 *DB wrapper bean
   ├─ DB.Init:observe 插件(observe.enabled=false 除外)→ resilience
   │    executor 链 → ApplyCallbacks 替换六个 gorm processor
   ├─ Run / 就绪:actuator 聚合各 indicator → /readyz UP
@@ -245,8 +242,7 @@ gorm:query processor 链
 ## 3. 逐 key 行为参考
 
 所有 key 位于 `spring.gorm.<dialect>.<name>.*`(内嵌 `Common`,与方言自身字段同级绑定)。
-已与 `grep -rhoE 'value:"[^"]+"' starter/starter-gorm` 核对——共享 key 恰为这 10 个,
-外加 wrapper 级复合 key `observability`。
+已与 `grep -rhoE 'value:"[^"]+"' starter/starter-gorm` 核对——共享 key 恰为这 10 个。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
@@ -259,8 +255,7 @@ gorm:query processor 链
 | `service-name` | string | — | 切换为服务发现寻址:方言绑定 discovery 拨号器,每条新连接到达存活实例。设置后 `addr` 被忽略(示例故意用 dummy `0.0.0.0:0` 证明)。mesh 模式(`GS_MESH=on`)下 sidecar 接管发现,`addr` 原样使用。 | 不设且无 `addr` → 方言构建报错("one of addr or service-name must be set")。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme(如 `tls`)。⚠ 未设 `service-name` 时为死 key(仅在此时被读取)。 | 设了但无 service-name → 静默忽略。 |
 | `discovery` | string | default | 选择解析 `service-name` 的已注册 discovery 后端。⚠ 未设 `service-name` 时为死 key。 | 设了但无 service-name → 静默忽略。 |
-| `observe.enabled` | bool | true | gorm observe 插件的硬开关:false 时插件完全不安装——无 span、无 metric、无访问日志、无逐查询回调。区别于 `observability.level=off`(只静音日志,span+metric 保留)。 | false → 逐查询可观测静默消失(为高吞吐实例有意为之)。 |
-| `observability` | 复合 | — | 字段注入到 DB wrapper,绑定共享 observe `ObserveConfig`:`observability.level`(`off`/`brief`/`detailed`,默认 brief)、`observability.max-arg-bytes`(默认 512,detailed 模式截取 SQL 的上限)、`observability.skipOps`(对列出的操作名同时压制 span+metric+log)。 | level=detailed 且默认 512 → 长 SQL 被截断;skipOps 拼错 → 静默匹配不到任何操作。 |
+| `observe.enabled` | bool | true | gorm observe 插件的硬开关:false 时插件完全不安装——无 span、无 metric、无访问日志、无逐查询回调。 | false → 逐查询可观测静默消失(为高吞吐实例有意为之)。 |
 
 死 key 说明:对 **sqlite** 而言整个发现三件套(`service-name`/`scheme`/`discovery`)结构性
 不可用(无服务可发现)但仍会绑定——已记入嫌疑清单。
@@ -276,20 +271,19 @@ import starter-otel 后(配置见 §1):
 - **span**:每操作一个,以操作种类命名(`query`/`create`/`update`/`delete`),属性
   `db.system=mysql`,附带 SQL 语句;查 Jaeger(`http://127.0.0.1:16686`,
   service = 你的 `spring.observability.service-name`)。
-- **指标**:直方图 `db.client.operation.duration` 与 up-down 计数器
-  `db.client.active_requests`,属性 `db.system`、`db.operation`、status:
+- **指标**:直方图 `db.client.operation.duration`,属性 `db.system`、`db.operation`、
+  status:
 
 ```bash
-curl -s :9370/metrics | grep -E 'db_client_operation_duration|db_client_active_requests'
+curl -s :9370/metrics | grep -E 'db_client_operation_duration'
 ```
 
-- **访问日志**:tag `_app_mysql_access`(模式 `_app_<system>_access`),每操作一条
-  结构化记录——system、op、status、duration、error;SQL 语句仅在
-  `observability.level=detailed` 出现(受 max-arg-bytes 截断)。错误 → Warn 级,
-  成功 → Info。
+- **访问日志**:tag `_app_gorm_access`,每操作一条结构化记录——system、operation、
+  status、duration、error,以及 gorm 生成后的 SQL 语句(按 512 字节截断)。
+  错误 → Warn;无 SQL 的成功 → Info;带 SQL 的成功 → Debug。
 
 ```bash
-go run . 2>&1 | grep _app_mysql_access
+go run . 2>&1 | grep _app_gorm_access
 ```
 
 ### 4.2 慢日志演练
@@ -351,7 +345,7 @@ health.go:31-38),因此探针失败不会触发 resilience 熔断。
 | 容器报 duplicate beans | 又 Provide 了未 `.Name` 的 `*DB`/`health.Indicator` | 不要自行 Provide DB bean;实例 bean 名为 `<name>` / `gorm:<dialect>:<name>`(register.go:78-85)。 |
 | 注入报 "not a simple value"/类型不匹配 | 注入 `*gorm.DB` 而非 wrapper | autowire 方言的 `*starter.DB`(gormcore.DB 别名);它内嵌 `*gorm.DB`。 |
 | 无 span/指标/访问日志 | 未 import starter-otel,或 `observe.enabled=false` | import starter-otel;检查实例级硬开关——false 会整体移除插件。 |
-| 慢查询行是纯文本 | `slow-threshold` 把 GORM 的 warn 输出经 go-spring.org/log 转发,但消息体是 GORM 单行文本 | 按消息过滤;要结构化慢日志改用访问日志(`observability.level=detailed`)。 |
+| 慢查询行是纯文本 | `slow-threshold` 把 GORM 的 warn 输出经 go-spring.org/log 转发,但消息体是 GORM 单行文本 | 按消息过滤;要结构化慢日志改用访问日志。 |
 | 查询被 rate-limited/circuit-open 拒绝 | 治理 resilience 生效(或 fault 放火中) | 属预期保护;查 `govern.*` 配置与演练步骤(§4.4)。 |
 | 运行数小时后报 stale connection | LB/防火墙掐空闲 TCP;`conn-max-lifetime=0` | 把 `conn-max-lifetime` 设为低于基础设施空闲阈值。 |
 | "正常 not found 会触发熔断"——不会 | `gorm.ErrRecordNotFound` 视为成功 | 设计如此(callbacks.go:29-30);只有真实错误喂熔断。 |
@@ -360,13 +354,12 @@ health.go:31-38),因此探针失败不会触发 resilience 熔断。
 
 | 指标 | 数值 |
 |------|------|
-| 共享配置 key | 10(Common)+ wrapper 复合 `observability`(3 个子 key) |
+| 共享配置 key | 10(Common) |
 | 必填 | 此处 0(方言自有必填,如 mysql 的 `user`/`db`) |
 | quickstart 外部依赖 | 1(数据库;全量可观测 +1 collector) |
 | "注意/坑"条数 | 4 |
 
 设计嫌疑(交审计台账):slow-threshold logger 的消息体是 GORM 纯文本(2026-08 起已改经
 go-spring.org/log 转发,不再是 stdlib stdout);sqlite 方言已不再嵌入发现三件套——
-只嵌 `PoolSettings`;`observability` 子 key 来自共享 cloud/observe `ObserveConfig`,本模块 grep 只见
-复合 key(key 表核对需传递闭包);只有逐操作 span 没有事务级 span(事务内语句仅靠
+只嵌 `PoolSettings`;只有逐操作 span 没有事务级 span(事务内语句仅靠
 context 关联)。

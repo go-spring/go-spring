@@ -31,12 +31,13 @@
     "bucket-lookup": {
       "type": "string",
       "default": "auto",
-      "enum": ["auto", "virtual-host", "path", "dns"],
+      "enum": [
+        "auto",
+        "virtual-host",
+        "path",
+        "dns"
+      ],
       "description": "how bucket names are addressed in URLs; some S3-compatible clouds only support path"
-    },
-    "observability": {
-      "type": "object",
-      "description": "Per-request span/metric/access-log config (off/brief/detailed), see observe.ObserveConfig"
     },
     "driver": {
       "type": "string",

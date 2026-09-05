@@ -198,7 +198,7 @@ gs.Run()
 适配点**不是** `database/sql` 的 `RegisterDialContext`；go-mssqldb 提供了专门钩子：
 `mssql.NewConnectorConfig(msdsn.Parse(dsn))` 得到的 Connector 有一个 `Dialer` 字段，
 接受任意 `mssql.Dialer`。starter 设置 `resolverDialer{r: resolver, nd: &net.Dialer{}}`；
-其 `DialContext` **忽略 network 与 addr 参数**，改拨 `resolver.Pick()` 返回的
+其 `DialContext` **忽略 network 与 addr 参数**，改拨 round-robin pool 返回的
 `ep.Addr`（starter.go:124-130）—— 因此池中每个新连接都落在当前存活的实例上，地址
 变化无需重建客户端即生效。
 

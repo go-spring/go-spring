@@ -52,13 +52,14 @@ var pageTemplate = template.Must(template.New("swagger").Parse(`<!DOCTYPE html>
 </body>
 </html>`))
 
-// UI is a self-contained Swagger UI [endpoint.Endpoint]. It owns the whole
-// BasePath subtree and serves three things: the HTML shell at BasePath and
+// UI is a self-contained Swagger UI page. It owns the whole BasePath subtree
+// and serves three things: the HTML shell at BasePath and
 // BasePath+"/index.html", and the OpenAPI document at BasePath+"/openapi.json".
 //
-// It implements endpoint.Endpoint so the actuator auto-mounts it on the
-// management port with no wiring; it is also a plain http.Handler, so an app
-// without the actuator can mount it on its own HTTP server via *gs.HttpServeMux.
+// The starter contributes it to the actuator as an endpoint.Endpoint so the
+// actuator auto-mounts it on the management port with no wiring; it is also a
+// plain http.Handler, so an app without the actuator can mount it on its own
+// HTTP server via *gs.HttpServeMux.
 type UI struct {
 	basePath string
 	specURL  string

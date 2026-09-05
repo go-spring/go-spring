@@ -25,7 +25,7 @@
 //     starter-actuator on :9370 (/readyz reflects the cluster).
 //   - DYNAMIC CONFIG: a gs.Dync[string] field is bound to a watched file; editing
 //     it hot-reloads the value with no restart.
-//   - OBSERVABILITY: the Client wrapper + the observe kit ride the OTel
+//   - OBSERVABILITY: the Client wrapper's built-in observe layer rides the OTel
 //     globals.
 //
 // The app self-tests every capability and exits non-zero on failure.

@@ -26,8 +26,8 @@ import (
 // NewRelayHealth builds an indicator for one outbox relay instance. The probe
 // is a plain reachability round trip to the backing database — the same
 // *gorm.DB the relay drains, so an unreachable db is surfaced here too.
-func NewRelayHealth(name string, db *gorm.DB) health.Indicator {
-	return health.NewIndicator("outbox:"+name, func(ctx context.Context) error {
+func NewRelayHealth(name string, db *gorm.DB) *health.Indicator {
+	return &health.Indicator{Name: "outbox:"+name, Probe: func(ctx context.Context) error {
 		return db.WithContext(ctx).Exec("SELECT 1").Error
-	})
+	}}
 }

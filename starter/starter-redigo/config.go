@@ -109,4 +109,5 @@ type Config struct {
 // Resilience and Observability policy are no longer fields of Config: they
 // moved onto the Pool wrapper bean, field-injected by gs (Resilience via
 // gs.Dync, hot-reloadable) and consumed by Init (the gs InitMethod). Config
-// carries only their per-instance on/off switches (ObserveEnabled, HealthEnabled).
+// carries only the per-instance on/off switch HealthEnabled; instrumentation
+// itself is unconditional (a no-op without starter-otel).

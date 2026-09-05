@@ -20,21 +20,20 @@ below.
 
 ## 2. Key Abstractions & Seams
 
-- **`Client` wrapper bean** — embeds `*minio.Client` unchanged and
-  field-injects `Observability observe.ObserveConfig`. minio fixes the
+- **`Client` wrapper bean** — embeds `*minio.Client` unchanged. minio fixes the
   transport inside `minio.Options` at construction, so DefaultDriver installs
   a `dynamicTransport` (RWMutex-guarded RoundTripper indirection) and Init
-  swaps the observe+resilience transport into it after field injection —
+  swaps the observe+resilience transport into it —
   the same mechanism starter-elasticsearch uses for the same reason.
 - **`Driver` (driver.go)** — construction seam: registry + DefaultDriver
   assembling credentials (`NewStaticV4`), region, bucket-lookup style and the
   dynamic transport. The bucket-lookup config string maps onto minio's
   `BucketLookupType` (`virtual-host` is an alias of `BucketLookupDNS` in
   minio v7.0.74).
-- **obsTransport (command.go)** — per-request observe seam. Unlike
-  elasticsearch (whose SDK emits its own spans via elastictransport and
-  therefore gets `WithoutTrace`), minio-go ships no OTel instrumentation, so
-  the transport carries span + metric + log.
+- **obsTransport (command.go)** — per-request observe seam. minio-go ships no
+  OTel instrumentation, so the starter's own transport carries span + metric +
+  log (observe.go: client spans with `db.system`/`db.operation`/`db.statement`,
+  `db.client.*` metrics, `_app_s3_access` access log).
 - **Resilience** — `resilience.NewRoundTripper` wraps the observe transport
   with the executor resolved through the neutral seams
   (`resilience.ExecutorFor` + `fault.WrapExecutor(…, fault.InjectorFor())`,
@@ -65,8 +64,8 @@ below.
   stable, small API surface and native S3-compat awareness (bucket-lookup
   modes); aws-sdk-go-v2 is a large module graph with AWS-specific
   bootstrapping.
-- **Static transport wrap at construction vs. dynamicTransport**: the wrap
-  needs the field-injected `Observability`, which only exists after
+- **Static transport wrap at construction vs. dynamicTransport**: the real
+  transport (observe + resilience) is assembled only in Init, after
   construction; the indirection keeps the client usable (DefaultTransport
   passthrough) between construction and Init instead of failing or arming
   blind.

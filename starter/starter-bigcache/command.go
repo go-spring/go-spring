@@ -24,6 +24,7 @@ package StarterBigCache
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/allegro/bigcache/v3"
 )
@@ -51,31 +52,34 @@ func (c *Cache) guard(ctx context.Context, fn func(context.Context) error) error
 }
 
 func (c *Cache) Get(key string) ([]byte, error) {
-	_, sp := c.obs.Start(context.Background(), "get", key)
+	ctx, span := c.obs.start(context.Background(), "get", key)
+	start := time.Now()
 	var v []byte
-	err := c.guard(context.Background(), func(ctx context.Context) error {
+	err := c.guard(ctx, func(ctx context.Context) error {
 		var e error
 		v, e = c.BigCache.Get(key)
 		return e
 	})
-	sp.End(err)
+	c.obs.record(ctx, "get", key, start, span, err)
 	return v, err
 }
 
 func (c *Cache) Set(key string, entry []byte) error {
-	_, sp := c.obs.Start(context.Background(), "set", key)
-	err := c.guard(context.Background(), func(ctx context.Context) error {
+	ctx, span := c.obs.start(context.Background(), "set", key)
+	start := time.Now()
+	err := c.guard(ctx, func(ctx context.Context) error {
 		return c.BigCache.Set(key, entry)
 	})
-	sp.End(err)
+	c.obs.record(ctx, "set", key, start, span, err)
 	return err
 }
 
 func (c *Cache) Delete(key string) error {
-	_, sp := c.obs.Start(context.Background(), "delete", key)
-	err := c.guard(context.Background(), func(ctx context.Context) error {
+	ctx, span := c.obs.start(context.Background(), "delete", key)
+	start := time.Now()
+	err := c.guard(ctx, func(ctx context.Context) error {
 		return c.BigCache.Delete(key)
 	})
-	sp.End(err)
+	c.obs.record(ctx, "delete", key, start, span, err)
 	return err
 }

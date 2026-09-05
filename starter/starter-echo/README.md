@@ -143,7 +143,7 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 
 * **Custom server configuration**: tune `spring.echo.server.*` (address, TLS, timeouts, ...) via the
   standard `SimpleHttpServerConfig` binding.
-* **Full echo ecosystem**: any echo middleware, group, renderer, or binder can be composed on the
+* **Full echo ecosystem**: any echo middleware, group, renderer, or driver can be composed on the
   `*echo.Echo` passed to the `RouterRegister`.
 ### Log tag
 

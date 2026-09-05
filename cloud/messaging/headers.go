@@ -22,21 +22,21 @@ import (
 	"time"
 )
 
-// Reserved header keys every binder in this family honours. They are ordinary
-// headers — producers and binders read and write them with [Message.SetHeader]
+// Reserved header keys every driver in this family honours. They are ordinary
+// headers — producers and drivers read and write them with [Message.SetHeader]
 // — but their meaning is fixed here so idempotency and delivery visibility
 // survive a broker switch.
 const (
 	// HeaderMessageID is the message's unique id, set by the producer (see
 	// [NewMessageID]). At-least-once delivery makes consumer-side
 	// de-duplication a production must; a stable id is what it keys on.
-	// Binders map it to the broker's own message id where one exists (the
+	// Drivers map it to the broker's own message id where one exists (the
 	// broker's value wins on consume) and always preserve it through
 	// round-trips.
 	HeaderMessageID = "message-id"
 
 	// HeaderDeliveryAttempt is how many times the broker has delivered this
-	// message, 1-based, filled by the binder on consume from the broker's own
+	// message, 1-based, filled by the driver on consume from the broker's own
 	// redelivery count where one exists (RocketMQ reconsumeTimes, RabbitMQ
 	// x-death, ...). Absent or "1" means first delivery. A consumer can read
 	// it to decide "retry" vs "straight to the dead letter" without counting

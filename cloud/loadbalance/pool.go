@@ -20,13 +20,23 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-// EndpointSource supplies the current live endpoint snapshot. A
-// [discovery.Resolver] satisfies it directly (its Endpoints method tracks the
-// backend via Watch), so a Pool reuses that machinery instead of re-implementing
-// discovery.
+// EndpointSource supplies the current live endpoint snapshot, surfacing any
+// error from the underlying discovery read (a registry hiccup, an unknown
+// service) rather than hiding it. A [discovery.Resolver] — typically bound to one
+// service name via [discovery.NewResolver] — has exactly this shape; wrap one as
+// [SourceFunc] to feed a Pool. [Pool.Pick] propagates a source error instead of
+// treating it as "no endpoints".
 type EndpointSource interface {
-	Endpoints() []discovery.Endpoint
+	Endpoints() ([]discovery.Endpoint, error)
 }
+
+// SourceFunc adapts a plain reader (such as a [discovery.Resolver]) into an
+// [EndpointSource], so a consumer that already holds a bound by-name read can
+// hand it straight to [NewPool].
+type SourceFunc func() ([]discovery.Endpoint, error)
+
+// Endpoints implements [EndpointSource].
+func (f SourceFunc) Endpoints() ([]discovery.Endpoint, error) { return f() }
 
 // Pool is the runtime that ties client-side load balancing together. On every
 // [Pool.Pick] it takes the live endpoint snapshot from an [EndpointSource]
@@ -55,7 +65,7 @@ func WithTracker(t *Tracker) PoolOption {
 }
 
 // NewPool builds a [Pool] over src using balancer bal. src is typically a
-// *discovery.Resolver so the candidate set follows the naming service in real
+// discovery.Resolver so the candidate set follows the naming service in real
 // time; bal is any strategy from this package.
 func NewPool(src EndpointSource, bal Balancer, opts ...PoolOption) *Pool {
 	p := &Pool{src: src, bal: bal}
@@ -73,7 +83,10 @@ func NewPool(src EndpointSource, bal Balancer, opts ...PoolOption) *Pool {
 // It returns [ErrNoAvailable] when the source has no endpoints, or every
 // endpoint is disabled.
 func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
-	eps := p.src.Endpoints()
+	eps, err := p.src.Endpoints()
+	if err != nil {
+		return discovery.Endpoint{}, err
+	}
 	if len(eps) == 0 {
 		return discovery.Endpoint{}, ErrNoAvailable
 	}
@@ -81,7 +94,7 @@ func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
 	// Static admission: the shared Endpoint contract filter (never Disabled,
 	// prefer Healthy). It returns empty only when every endpoint is disabled —
 	// an explicit exclusion that must not be overridden by any fallback below.
-	candidates := discovery.Allows(eps)
+	candidates := admission(eps)
 	if len(candidates) == 0 {
 		return discovery.Endpoint{}, ErrNoAvailable
 	}
@@ -114,6 +127,28 @@ func (p *Pool) Complete(ep discovery.Endpoint, err error) {
 	if p.tracker != nil {
 		p.tracker.Record(ep.Addr, err == nil)
 	}
+}
+
+// admission returns the endpoints allowed to receive traffic under the
+// [discovery.Endpoint] contract: prefer !Disabled && Healthy, degrade to
+// !Disabled when none are healthy, never Disabled. It is a pure filter: empty
+// only when every endpoint is disabled — an explicit exclusion the caller must
+// not override with a fallback.
+func admission(eps []discovery.Endpoint) []discovery.Endpoint {
+	out := eps[:0:0]
+	for _, ep := range eps {
+		if !ep.Disabled && ep.Healthy {
+			out = append(out, ep)
+		}
+	}
+	if len(out) == 0 {
+		for _, ep := range eps {
+			if !ep.Disabled {
+				out = append(out, ep)
+			}
+		}
+	}
+	return out
 }
 
 // excludeDrained drops endpoints with an explicit zero weight (the drain

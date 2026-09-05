@@ -126,8 +126,6 @@ spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
 
 # Access-log verbosity of the observe-lock adapter (defaults shown).
-# spring.lock.jobs.observability.level=brief
-# spring.lock.jobs.observability.maxArgBytes=512
 ```
 
 **Verify** (with a local Consul agent, e.g. `example/docker-compose.yml`):
@@ -166,7 +164,7 @@ Each acquisition builds a **fresh `*api.Lock`** with its own Consul session
 
 ### 2.2 Three-layer timing resolution (all lock backends)
 
-TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/defaults.go), higher
+TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/resolve.go), higher
 layer wins:
 
 | Layer | Source | This backend |
@@ -214,9 +212,6 @@ All keys live under `spring.lock.<name>` (exact-match, no relaxed forms).
 | `key-prefix` | string | `lock/` | Prepended to every lock key. Keeps apps sharing one Consul cluster disjoint. | Two apps with the same prefix contend on each other's locks. |
 | `tls.enabled` | bool | `false` | Applies the shared `tlsconf` block (`server-name`, `ca-file`, `cert-file`, `key-file`, `insecure-skip-verify`) to the API client. | Enabled without material → client-creation error at boot (fail fast). |
 | `observe.enabled` | bool | `true` | Wrap the primary `<name>` Locker bean with the observe-lock adapter (trace span + metric + access log). `false` = bare locker. | Migration: the `<name>-observed` bean no longer exists — inject `<name>`. |
-| `observability.level` | string | `brief` | Access-log level of the observe-lock adapter: `off`/`brief`/`detailed` (detailed logs the lock key). | Invalid value → binding error at boot. |
-| `observability.maxArgBytes` | int | `512` | Cap on logged lock-key bytes. | Too low truncates keys in `detailed` logs. |
-| `observability.skipOps` | []string | — | Ops (`acquire`, `try_acquire`) excluded from the access log. | Typos silently no-op. |
 
 ⚠ There is **no** `renew-interval`/`retry-interval` key: Consul auto-renews the session and blocks
 internally (§2.2 layer 2). Instance weight (`Weight=0` drain) is a registry/loadbalance concept

@@ -27,8 +27,8 @@ import (
 // per configured instance and exported as health.Indicator, so an application
 // that also imports starter-actuator gets Neo4j readiness folded into
 // /readiness with no extra wiring.
-func NewDriverHealth(name string, client neo4j.DriverWithContext) health.Indicator {
-	return health.NewIndicator("neo4j:"+name, func(ctx context.Context) error {
+func NewDriverHealth(name string, client neo4j.DriverWithContext) *health.Indicator {
+	return &health.Indicator{Name: "neo4j:" + name, Probe: func(ctx context.Context) error {
 		return client.VerifyConnectivity(ctx)
-	})
+	}}
 }

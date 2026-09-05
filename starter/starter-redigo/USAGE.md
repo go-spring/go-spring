@@ -129,11 +129,8 @@ spring.redigo.discovery.service-name=redis-cluster
 spring.redigo.discovery.conn-max-lifetime=30s
 
 # --- instrumentation ---------------------------------------------------------
-# Hard per-instance kill switch for span+metric+log (default true).
-spring.redigo.main.observe.enabled=true
-# Access-log detail is the GLOBAL observability.* policy shared by all client
-# starters (not per-instance here, unlike starter-go-redis):
-observability.level=brief
+# Span + duration metric + access log are built in and unconditional; they are
+# no-ops unless starter-otel installs providers.
 
 # --- health -------------------------------------------------------------------
 # default true; set false to keep a non-critical cache out of aggregate health
@@ -170,14 +167,13 @@ import starter-redigo
   └─ gs.Module(OnProperty("spring.redigo")) fires when any spring.redigo.* key exists
         └─ conf.BindEach("${spring.redigo}") → one Config per <name>
               ├─ Provide(createPool).Name(<name>).Destroy(destroyPool)
-              │    ctor args: ContextProvider, Config (IndexArg 1), GLOBAL
-              │    observability.* policy (IndexArg 2, TagArg) [starter.go:60-64]
+              │    ctor args: ContextProvider, Config (IndexArg 1)
               └─ if health.enabled → Provide health.Indicator named "redigo:<name>"
 
 gs.Run()
   ├─ ctor createPool [starter.go:107]: RequireAny(addr|service-name) → driver lookup
   │   → d.CreateClient (= NewPool): TLS build → discovery resolver → raw pool
-  │     → observer (if observe.enabled) → resilience executor → setupDial
+  │     → observer → resilience executor → setupDial
   │     → startup-ping (ONLY if startup-ping=true) [starter.go:144-149]
   │   NOTE: there is NO separate InitMethod — the pool is fully armed on return [pool.go:36-37]
   ├─ your bean Inits may call UseCommandInterceptor (affects conns dialed from then on)
@@ -195,7 +191,7 @@ Every connection the pool dials is wrapped ONCE, at dial time, by `Pool.wrapConn
 
 ```
 user interceptors (first-registered outermost)
-  → observe layer (span + duration/in-flight metric + access log)
+  → observe layer (span + duration metric + access log)
     → resilience executor (breaker / limiter / retry / timeout)
       → the inner Do call → Redis
 ```
@@ -218,8 +214,8 @@ Init, before traffic.
 
 1. Your interceptor (if any) runs first; may rewrite or short-circuit.
 2. observe layer starts a span named `get` with a summarized argument `GET key`
-   (command + first arg only — values are never logged; bounded by MaxArgBytes
-   [conn.go:215-220]). ctx is the CALLER's context, so the span links to the request trace
+   (command + first arg only — values are never logged; bounded to 512 bytes
+   [observe.go]). ctx is the CALLER's context, so the span links to the request trace
    and an attempt-timeout can interrupt the call.
 3. resilience layer asks the executor (resource label `redigo:<addr-or-service-name>`,
    per pool [pool.go:190]) for a permit; on retry-able failures it re-drives the inner call.
@@ -237,7 +233,7 @@ interrupt them — prefer `DoContext` when either matters [conn.go:74-79]. `Send
 ```
 pool.Get() (your code)
   ├─ idle conn available? → reuse (MaxConnLifetime=conn-max-lifetime bounds reuse)
-  └─ else Dial: credentials/TLS/SELECT db → discovery resolver.Pick() picks the
+  └─ else Dial: credentials/TLS/SELECT db → the round-robin loadbalance pool picks a
      endpoint when service-name is set [pool.go:104-120] → wrapConn folds the onion
   ├→ you Do/DoContext commands (each flows user → observe → resilience → wire)
   └→ conn.Close(): returns to the idle pool (redigo semantics)
@@ -251,7 +247,7 @@ erroring — size `pool-size` accordingly.
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.redigo.<name>.` (except the global `observability.*` policy).
+All keys live under `spring.redigo.<name>.`.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -268,9 +264,7 @@ All keys live under `spring.redigo.<name>.` (except the global `observability.*`
 | `tls.*` | group | off | Client TLS; keys mirror starter-go-redis. | Partial → tls.Build boot error. |
 | `driver` | string | `DefaultDriver` | Selects a registered Driver. | Unknown → boot error "redigo driver not found". |
 | `startup-ping` | bool | false | Opt-in boot probe: dials ONE bare conn and PINGs [pool.go:266-279]. ⚠ Off by default — the pool is lazy, so a bad address surfaces only on first command. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
-| `observe.enabled` | bool | true | Hard per-instance kill switch for span+metric+log. When false the Conn is a near-zero-cost pass-through (still wraps, for DoContext transparency). | false + expecting traces → silence. |
 | `health.enabled` | bool | true | Registers `redigo:<name>` indicator; false keeps the pool out of aggregate health. | false → readiness silently excludes this pool. |
-| `observability.level` / `.maxArgBytes` / `.skipOps` (GLOBAL keys) | — | brief / 512 / — | Bound from `${observability:=}` at index 2 of the ctor — the shared policy for ALL client starters, not per-instance [starter.go:60-64]. | Per-instance `spring.redigo.<n>.observability.level` does NOT exist here — asymmetric with starter-go-redis. |
 
 **Extension points**:
 
@@ -339,7 +333,7 @@ Set it false: boot succeeds and the first command fails instead — the trade-of
 | Boot fails "one of addr/service-name required" | neither key set | Set exactly one. |
 | Interceptor never runs | registered after conns were dialed | Register from a bean Init before traffic [pool.go:151-157]. |
 | Spans not linked to request trace | using `Do`/`DoWithTimeout` (root spans) | Use `DoContext` [conn.go:74-79]. |
-| No span/metric/log at all | `observe.enabled=false` | Re-enable, or check starter-otel import. |
+| No span/metric/log at all | starter-otel not imported | Import starter-otel to install providers. |
 | Latency spikes, no errors | pool exhausted + `Wait:true` | Raise `pool-size`; watch Stats(). |
 | Custom driver's pool lacks instrumentation | driver built a raw pool | Return the wrapped Pool from NewPool/NewConn assembly; createPool re-attaches cfg only [starter.go:95-99]. |
 | Breaker trips on misses | It does not — ErrNil is success | Look for real failures. |
@@ -348,12 +342,11 @@ Set it false: boot succeeds and the first command fails instead — the trade-of
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 18 instance keys + tls group + 2 global observability keys |
+| Config keys | 17 instance keys + tls group |
 | Required | 1 (`addr` or `service-name`) |
 | Quickstart external deps | 1 (Redis) |
 | "Watch out" entries | 6 |
 
 Design suspects (audit ledger): `startup-ping` opt-in here but unconditional in starter-go-redis
-(family asymmetry, documented at config.go:85-91); access-log detail is global-only
-(`observability.*`) while go-redis binds it per instance; type assertion needed to reach
+(family asymmetry, documented at config.go:85-91); type assertion needed to reach
 `DoContext` on a borrowed conn (`pool.Get()` returns `redis.Conn`).

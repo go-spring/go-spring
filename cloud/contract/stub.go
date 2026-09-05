@@ -46,6 +46,13 @@ type TB interface {
 func StubHandler(contracts []Contract) http.Handler {
 	// Copy so later mutation of the caller's slice cannot change stub behavior.
 	cs := append([]Contract(nil), contracts...)
+	for i := range cs {
+		if err := cs[i].validate(); err != nil {
+			// Building a stub from invalid contracts is a programmer error;
+			// there is no error channel on an http.Handler, so fail loudly.
+			panic(err)
+		}
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		_ = r.Body.Close()
@@ -53,10 +60,12 @@ func StubHandler(contracts []Contract) http.Handler {
 			if !requestMatches(c, r, body) {
 				continue
 			}
-			for k, v := range c.Response.Headers {
-				w.Header().Set(k, v)
+			for k, vs := range c.Response.Headers {
+				for _, v := range vs {
+					w.Header().Add(k, v)
+				}
 			}
-			w.WriteHeader(c.Response.status())
+			w.WriteHeader(c.Response.Status)
 			_, _ = w.Write(c.Response.Body)
 			return
 		}

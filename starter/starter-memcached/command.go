@@ -36,7 +36,7 @@ import (
 // guard (see guard), so each method is span-instrumented here and
 // resilience-protected there — two single places rather than 17 copies of each.
 func (c *Client) instrument(op, key string) func(error) {
-	_, sp := c.obs.Start(context.Background(), op, key)
+	sp := c.obs.Start(context.Background(), op, key)
 	return func(err error) { sp.End(err) }
 }
 

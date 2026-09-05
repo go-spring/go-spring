@@ -34,9 +34,9 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 			).Name(name).Export(gs.As[gs.Server]()).Destroy((*Executor).Destroy).Caller(1)
 
-			r.Provide(func(e *Executor) health.Indicator {
+			r.Provide(func(e *Executor) *health.Indicator {
 				return e.Health()
-			}, gs.TagArg(name)).Name("xxljob:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			}, gs.TagArg(name)).Name("xxljob:" + name).Caller(1)
 			return nil
 		})
 	})

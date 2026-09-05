@@ -131,7 +131,7 @@ func newEtcdRegistrar(c EtcdConfig) (*etcdRegistrar, error) {
 	if len(c.Endpoints) == 0 {
 		return nil, errutil.Explain(nil, "registry-etcd: endpoints is required")
 	}
-	tlsCfg, err := c.TLS.Build()
+	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "registry-etcd: build TLS")
 	}

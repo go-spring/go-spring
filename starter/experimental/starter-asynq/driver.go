@@ -72,7 +72,7 @@ type DefaultDriver struct{}
 // otherwise matches the plain host:port dial.
 func (DefaultDriver) RedisConnOpt(ctx context.Context, c Config) (asynq.RedisConnOpt, error) {
 	if c.TLS.Enabled {
-		cfg, err := c.TLS.Build()
+		cfg, err := c.TLS.BuildClient()
 		if err != nil {
 			return nil, errutil.Explain(err, "asynq: build tls config")
 		}

@@ -172,8 +172,8 @@ gs.Run()
    结果不依赖 SDK 回调时序；随后循环：收到信号就把快照渲染成可比较 key
    （`addr,scheme,weight;disabled,healthy`，`endpointsKey`），**key 变了才转发** ——
    no-op 重复投递不许扰动 consumer（`discovery_nacos.go:226-242`）。
-4. 下游 `cloud/discovery.Resolver.loop` 每次推送原子替换快照；`loadbalance.Pool.Pick`
-   每次 pick 读取活快照。
+4. 下游 discovery `Loader` 只读该后端当前快照 —— 没有客户端侧循环,新鲜度全在
+   后端内部;`loadbalance.Pool.Pick` 每次 pick 读取活快照。
 
 失败形态：回调出错**保留上一份快照**（过期地址好过没有地址 —— Warn 日志，
 `discovery_nacos.go:197-205`）；首次查询失败打 Warn 并等第一次推送
@@ -271,9 +271,9 @@ curl -s -X PUT '127.0.0.1:8848/nacos/v1/ns/instance?serviceName=orders&ip=127.0.
 
 1. `kill -9 <provider-pid>`（非优雅 TERM）：Deregister 没跑；SDK 心跳停止，Nacos 在心跳
    超时（默认约 15s）后摘除该 ephemeral 实例。
-2. 消费侧：Nacos 推送触发，快照失去该 endpoint，`Resolver` 换快照，`Pool.Pick` 不再选它。
-   零代码改动 —— 这正是 Register 走 ephemeral、正确性不依赖 Deregister 的原因
-   （`registrar.go:44-47`）。
+2. 消费侧：Nacos 推送触发，后端快照失去该 endpoint，discovery `Loader` 重读快照，
+   `Pool.Pick` 不再选它。零代码改动 —— 这正是 Register 走 ephemeral、正确性不依赖
+   Deregister 的原因（`registrar.go:44-47`）。
 3. 与优雅 TERM（4.1）对比：那是立即摘除，不是 ~15s。
 
 ### 4.4 Watch 降级演练

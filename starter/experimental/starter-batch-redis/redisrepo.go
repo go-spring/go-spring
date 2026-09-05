@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/batch"
+	"go-spring.org/cloud/experimental/batch"
 	"go-spring.org/spring/gs"
 )
 

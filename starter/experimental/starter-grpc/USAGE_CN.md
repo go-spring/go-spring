@@ -135,9 +135,6 @@ spring.grpc.server.loadtest.enabled=true
 spring.grpc.server.observer.tracing.enabled=true
 spring.grpc.server.observer.metrics.enabled=true
 
-# observe 层访问日志详细度（level: brief|full|off）。
-spring.grpc.server.observability.level=brief
-spring.grpc.server.observability.maxArgBytes=512
 
 # --- 可观测（starter-otel；与 example-otel/conf 同构）-------------------------
 spring.observability.service-name=demo
@@ -294,9 +291,6 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 | `loadtest.enabled` | bool | true | 安装 LoadTest 拦截器，读 `x-loadtest` metadata（小写——grpc metadata key 一律小写）。 | false → load-test 标记不可见；fault `scope: loadtest` 永不触发。 |
 | `observer.tracing.enabled` | bool | true | 安装 tracing 拦截器，依附 OTel 全局；无 starter-otel 时为 no-op（无告警）。⚠ example-otel 的 conf 用的是 `interceptor.tracing.*`——死路径，全靠默认 true 兜住。 | 前缀写错 → 静默落默认值。 |
 | `observer.metrics.enabled` | bool | true | 安装 metrics 拦截器；同样 no-op 陷阱。 | 同上。 |
-| `observability.level` | string | brief | cloud/observe ObserveConfig：`brief`/`full`/`off`，控制 observe-resilience 访问日志侧的详细度。 | |
-| `observability.maxArgBytes` | int | 512 | observe 层参数捕获上限。 | |
-| `observability.skipOps` | []string | — | observe 访问日志要跳过的 op。 | |
 
 ---
 
@@ -380,13 +374,13 @@ handler panic → `codes.Internal` "panic in {FullMethod}: ..."，并经共享 g
 | stream RPC 绕过限流 | 准入设计上只覆盖 unary | 用用户拦截器防护 stream（`UseStreamInterceptor`）。 |
 | GOAWAY / 连接抖动 | 激进的 `keepalive.time` 对上低频 ping 的客户端 | grpc keepalive 语义；放宽服务端参数。 |
 | LB 客户端启动即 `ErrNoSubConnAvailable` | discovery 后端缺失/无健康实例；或 service config 里 balancer 名不对 | 注册后端（`discovery.RegisterDiscovery`）并用 `BalancerName`/`LoadBalancingConfig`。 |
-| discovery 出错后 LB 不再更新 | `watchLoop` 收到 `WatchResult.Err` 后永久退出 | 重启客户端；已记入设计嫌疑。 |
+| discovery 出错后 LB 不再更新 | `Resolve` 失败记日志并保留最后快照，下个轮询周期重试 | 无需处理——pollLoop 自动重试。 |
 
 ## 6. 设计体检表
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key（叶子，含 tls/observability） | 21 |
+| 配置 key（叶子，含 tls） | 20 |
 | 必填 | 1（`addr`） |
 | quickstart 前置外部依赖 | 0（完整可观测才需要 collector） |
 | "注意/坑" 条数 | 6 |
@@ -398,9 +392,7 @@ handler panic → `codes.Internal` "panic in {FullMethod}: ..."，并经共享 g
    遗留写法）。*（仍开放——README 文本）*
 2. example/conf 注释声称 ":9494 默认值"——不存在；`addr` 必填。
 3. resilience 准入只覆盖 unary；stream RPC 跳过（admission.go 未构建 stream 拦截器）。
-4. `observability.*` 绑定 cloud/observe 配置，但只有 observe-resilience 包装器消费它；
-   访问日志侧基本未用。
 5. 新增：example-otel conf 使用死前缀 `spring.grpc.server.interceptor.*`（只因默认 true
    才看起来生效）——配置面陷阱。
-6. 新增：balancer.go 的 `watchLoop` 在 watch 错误后永久退出（注释承认推送路径是
-   best-effort）；瞬时 discovery 错误会冻结地址集。
+6. 已解决（2026-09-04）：resolver 改为轮询 `Resolve`（`pollLoop`）——读失败保留最后快照、
+   下个周期重试，瞬时 discovery 错误不再冻结地址集。

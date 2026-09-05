@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/messaging"
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
@@ -32,7 +32,7 @@ import (
 var errGovernanceStub = errors.New("governance: rejected by test stub")
 
 // stubExecutor counts Execute calls and always rejects, so a test can assert
-// the binder path went through the executor without a live broker.
+// the driver path went through the executor without a live broker.
 type stubExecutor struct{ called atomic.Int32 }
 
 func (s *stubExecutor) Execute(context.Context, string, func(context.Context) error) error {
@@ -46,7 +46,7 @@ func (s *stubExecutor) Refresh(resilience.Policy) error { return nil }
 // is ever invoked because the executor rejects first.
 type fakePulsarClient struct{ pulsar.Client }
 
-// fakePulsarProducer satisfies the producer surface the binder touches before
+// fakePulsarProducer satisfies the producer surface the driver touches before
 // the guard (Topic) and would touch inside it (never, in these tests).
 type fakePulsarProducer struct {
 	pulsar.Producer
@@ -77,10 +77,10 @@ func TestApplyResilienceToggle(t *testing.T) {
 	closeResilience(cl)
 }
 
-// TestBinderPublishGuarded verifies the binder's Publish routes through the
+// TestDriverPublishGuarded verifies the driver's Publish routes through the
 // resilience executor the direct client API uses: with an executor attached,
 // the send is rejected by the executor and the producer's Send never runs.
-func TestBinderPublishGuarded(t *testing.T) {
+func TestDriverPublishGuarded(t *testing.T) {
 	cl := &fakePulsarClient{}
 	stub := &stubExecutor{}
 	resilienceExecs.Store(cl, stub)

@@ -26,8 +26,8 @@ import (
 // collections — one round trip that verifies reachability and auth.
 func NewClientHealth(name string, c interface {
 	Health(ctx context.Context) error
-}) health.Indicator {
-	return health.NewIndicator("milvus:"+name, func(ctx context.Context) error {
+}) *health.Indicator {
+	return &health.Indicator{Name: "milvus:" + name, Probe: func(ctx context.Context) error {
 		return c.Health(ctx)
-	})
+	}}
 }

@@ -32,9 +32,9 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
-			r.Provide(func(w *Client) health.Indicator {
+			r.Provide(func(w *Client) *health.Indicator {
 				return health2.NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("milvus:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			}, gs.TagArg(name)).Name("milvus:" + name).Caller(1)
 			return nil
 		})
 	})

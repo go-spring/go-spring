@@ -7,6 +7,13 @@ equivalent of Spring's `@Scheduled` / `TaskScheduler`. A `Job` is a plain
 function bound to a `Trigger`, driven by a `Scheduler` with graceful-shutdown
 drain. `starter-scheduler` wires the same API into the IoC container.
 
+The scheduler is single-process by design. On a multi-replica deployment
+`WithLock` de-duplicates fires (only the lock holder runs) — it adds no
+sharding, failover, or task orchestration. For those, use an external job
+platform instead (e.g. `starter-xxl-job`); reach for `scheduling` when the
+job is in-process work (cache refresh, heartbeats, cleanup) that does not
+justify operating a scheduler center.
+
 ## The API
 
 | API | What it does |

@@ -12,7 +12,7 @@ example/ 下）。所有行为声明均已对照 starter 源码（`starter.go`�
 
 **诚实的边界声明**：自逐 RPC 治理守卫落地（guard.go——装在 SDK dial options 上的
 gRPC 客户端拦截器）起，所有 Milvus RPC 都被透明保护（限流/熔断/隔舱/重试/超时 + 故障
-注入），调用点零改动、无 opt-in；实例的 `observability.*` 块驱动守卫执行的观测（span +
+注入），调用点零改动、无 opt-in；`resilience.WrapExecutor` 自身产出守卫执行的观测（span +
 outcome 指标 + 访问日志）。治理关闭时 executor 是透明 no-op——未受保护流量没有独立的
 逐 RPC trace 层。健康指示器仍是常开的存活信号（§2.2、§6）。
 
@@ -155,13 +155,13 @@ gs.Run()
   │   cl.Close() + 启动失败——地址/凭据错，进程到不了 "serving"
   ├─ Init [client.go]：resource = ResourceLabel("milvus", addr) →
   │   fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │   resilience.WrapExecutor(exec, "milvus", Observability) → slot.arm——此后每个
+  │   resilience.WrapExecutor(exec, "milvus") → slot.arm——此后每个
   │   RPC 都过守卫；治理关闭 → no-op executor
   ├─ readiness：指示器周期性重复同一个 ListCollections 探针
   └─ SIGTERM → Destroy [client.go]：exec.Close() 后 o.Client.Close() 关闭 gRPC 连接
 ```
 
-`Init` 只为武装守卫（executor 需要字段注入的 `observability` 块）；拨号 + 探针仍在
+`Init` 只为武装守卫；拨号 + 探针仍在
 构造函数里，探针失败则 bean 根本不会创建——依赖它的 bean 不会装配到一个死 client 上。
 
 ### 2.2 一次操作的逐层走读（只写真实存在的层）
@@ -197,7 +197,6 @@ starter-Pool 的绝对属性规则）。已用 `grep -rhoE 'value:"[^"]+"'` 双�
 | `database` | string | `default` | 作为 `DBName` 传给 `client.NewClient` [client.go:45]。 | 库不存在 → fail-fast 探针（ListCollections）启动期报错。 |
 | `username` | string | `""` | 鉴权凭据；集群开鉴权时两半必须成对设置。⚠ 只设 `username` 不设 `password`（或反之）会被静默发送一半。 | 配错 → 启动期探针失败，携带服务端鉴权错误。 |
 | `password` | string | `""` | 见 `username`。 | 见 `username`。 |
-| `observability` | group | 空 | 字段注入到 wrapper，由 `Init` 读取以观测守卫执行（`resilience.WrapExecutor`）：每个受守卫 RPC 的 span、outcome 指标（`resilience.*`）、访问日志。`off` 只静默日志信号。 | 期待治理关闭时（未受保护流量）的逐 RPC span → 什么都不发；executor 是 no-op。 |
 
 无 `driver` 注册表、无 `mode`（单机/集群是服务端拓扑）、无服务发现、无 otel key——
 治理（resilience + fault）经共享 `govern.*` 规则由逐 RPC 守卫消费，没有 milvus 专属
@@ -255,20 +254,19 @@ grep "round trip" app.log    # check.sh grep 的 marker（"Milvus round trip OK:
 | 重启后 `NewCollection` 失败 | 上次运行已建同名集合 | 先 drop，或容忍该错误（example 的 check.sh 用固定名）。 |
 | Search 结果为空 | 查询前漏了 `Flush` + `LoadCollection`（SDK 语义） | 先 flush 再 load，同 example/example.go:80-85。 |
 | 查询正常但健康 DOWN | 指示器的 `ListCollections` 需要与 client 相同的库/鉴权 | 看 /readiness 里组件的错误体。 |
-| Milvus 操作无 trace/指标/访问日志 | 治理关闭（executor 是 no-op），或 `observability.level=off` | 开启治理（starter-governance + `govern.*` 规则）；服务端 :9091 指标补充。 |
+| Milvus 操作无 trace/指标/访问日志 | 治理关闭（executor 是 no-op） | 开启治理（starter-governance + `govern.*` 规则）；服务端 :9091 指标补充。 |
 
 ## 6. 设计体检表
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 5 个 tag（全部生效） |
+| 配置 key 总数 | 4 个 tag（全部生效） |
 | 其中必填 | 1（`addr`） |
 | quickstart 前置外部依赖 | compose 内 3 个（etcd + minio + milvus standalone） |
 | "注意/坑" 条数 | 3（鉴权成对、TLS 在地址里、无埋点） |
 
 设计嫌疑清单（审计台账——保留并扩充）：
 
-- ~~`observability.*` 只绑定从不读取~~ 已接上（Init 读它驱动守卫执行的观测）。
 - starter 级 README/DESIGN/schema.json 放在 example/ 而非模块根（家族不对称：其他
   starter 放根目录）。
 - 健康指示器无关闭开关（缺 `health.enabled` 类 key；与 redigo 家族不对称）。

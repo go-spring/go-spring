@@ -19,7 +19,6 @@ package StarterWebhook
 import (
 	"time"
 
-	observe "go-spring.org/cloud/observe"
 )
 
 // Config defines one webhook notifier instance.
@@ -39,8 +38,4 @@ type Config struct {
 
 	// Timeout bounds one POST, e.g., "5s".
 	Timeout time.Duration `value:"${timeout:=5s}"`
-
-	// Observability configures the per-send access log emitted by the
-	// resilience executor (off/brief/detailed). Defaults to "brief".
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 }

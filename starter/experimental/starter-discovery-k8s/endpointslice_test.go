@@ -57,6 +57,7 @@ func newESD(t *testing.T, cfg Config, objs ...*discoveryv1.EndpointSlice) *endpo
 	return &endpointSliceDiscovery{
 		cfg:      cfg,
 		client:   client,
+		entries:  map[string]*esEntry{},
 		watchers: map[*watcherHandle]struct{}{},
 	}
 }
@@ -103,7 +104,7 @@ func TestEndpointSlice_ResolveSinglePortFallback(t *testing.T) {
 	assert.That(t, eps[0].Healthy).True()
 }
 
-func TestEndpointSlice_WatchDetectsScaleUp(t *testing.T) {
+func TestEndpointSlice_InformerRefreshesCache(t *testing.T) {
 	esd := newESD(t, Config{Mode: ModeEndpointSlice, Namespace: "ns", PortName: "grpc"},
 		slice("svc-1",
 			[]discoveryv1.Endpoint{{Addresses: []string{"10.0.0.1"}, Conditions: discoveryv1.EndpointConditions{Ready: boolptr(true)}}},
@@ -111,16 +112,13 @@ func TestEndpointSlice_WatchDetectsScaleUp(t *testing.T) {
 		),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch, err := esd.Watch(ctx, "svc")
+	// Seed: the first Resolve lists the current slices.
+	eps, err := esd.Resolve(context.Background(), "svc")
 	assert.Error(t, err).Nil()
+	assert.Slice(t, addrsOf(eps)).Equal([]string{"10.0.0.1:8080"})
 
-	// Initial sync pushes the starting snapshot.
-	r := recvWithTimeout(t, ch, 2*time.Second)
-	assert.Slice(t, addrsOf(r.Endpoints)).Equal([]string{"10.0.0.1:8080"})
-
-	// Scale up: update the slice to add a second endpoint.
+	// Scale up: update the slice; the informer refreshes the cache, so a
+	// later Resolve observes it (poll for the async refresh).
 	updated := slice("svc-1",
 		[]discoveryv1.Endpoint{
 			{Addresses: []string{"10.0.0.1"}, Conditions: discoveryv1.EndpointConditions{Ready: boolptr(true)}},
@@ -131,8 +129,19 @@ func TestEndpointSlice_WatchDetectsScaleUp(t *testing.T) {
 	_, err = esd.client.DiscoveryV1().EndpointSlices("ns").Update(context.Background(), updated, metav1.UpdateOptions{})
 	assert.Error(t, err).Nil()
 
-	r = recvWithTimeout(t, ch, 2*time.Second)
-	assert.Slice(t, addrsOf(r.Endpoints)).Equal([]string{"10.0.0.1:8080", "10.0.0.2:8080"})
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		eps, err := esd.Resolve(context.Background(), "svc")
+		assert.Error(t, err).Nil()
+		if len(eps) == 2 {
+			assert.Slice(t, addrsOf(eps)).Equal([]string{"10.0.0.1:8080", "10.0.0.2:8080"})
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("informer refresh not observed, endpoints = %v", addrsOf(eps))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func TestEndpointSlice_CloseStopsWatchers(t *testing.T) {
@@ -142,19 +151,23 @@ func TestEndpointSlice_CloseStopsWatchers(t *testing.T) {
 			[]discoveryv1.EndpointPort{{Name: strptr("grpc"), Port: i32ptr(8080)}},
 		),
 	)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch, err := esd.Watch(ctx, "svc")
-	assert.Error(t, err).Nil()
 
-	// Drain the initial snapshot queued on cache sync, then Close: the channel
-	// must close rather than block forever.
-	recvWithTimeout(t, ch, 2*time.Second)
-	assert.Error(t, esd.Close()).Nil()
-	select {
-	case _, ok := <-ch:
-		assert.That(t, ok).False() // closed
-	case <-time.After(2 * time.Second):
-		t.Fatal("watch channel did not close after Close")
+	// Seed a watcher, wait for it to register with the backend, then Close:
+	// the informer goroutine must exit rather than leak.
+	_, err := esd.Resolve(context.Background(), "svc")
+	assert.Error(t, err).Nil()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		esd.mu.Lock()
+		n := len(esd.watchers)
+		esd.mu.Unlock()
+		if n == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("informer watcher did not register in time")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+	assert.Error(t, esd.Close()).Nil()
 }

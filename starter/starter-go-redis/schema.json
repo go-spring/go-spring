@@ -144,10 +144,6 @@
           }
         }
       }
-    },
-    "observability": {
-      "type": "object",
-      "description": "Access log config (off/brief/detailed), see observe.ObserveConfig"
     }
   }
 }

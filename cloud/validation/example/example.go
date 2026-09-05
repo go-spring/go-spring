@@ -79,13 +79,13 @@ func run() error {
 	// 3. Localize the same list per request locale. Message keys follow the
 	// "validation.<rule>" convention; missing translations fall back to
 	// FieldError.Default().
-	src := i18n.NewMapSource(i18n.WithFallbackLocale("en")).
-		Add("en", "validation.email", "{0} is not a valid email address").
-		Add("en", "validation.min", "{0} must be at least {1}").
-		Add("en", "validation.required", "{0} is required").
-		Add("zh-CN", "validation.email", "{0} 不是合法邮箱").
-		Add("zh-CN", "validation.min", "{0} 至少为 {1}").
-		Add("zh-CN", "validation.required", "{0} 必填")
+	src := i18n.NewMapSource(i18n.WithDefaultLocale("en")).
+		AddMessage("en", "validation.email", "{0} is not a valid email address").
+		AddMessage("en", "validation.min", "{0} must be at least {1}").
+		AddMessage("en", "validation.required", "{0} is required").
+		AddMessage("zh-CN", "validation.email", "{0} 不是合法邮箱").
+		AddMessage("zh-CN", "validation.min", "{0} 至少为 {1}").
+		AddMessage("zh-CN", "validation.required", "{0} 必填")
 
 	for _, tc := range []struct {
 		locale string

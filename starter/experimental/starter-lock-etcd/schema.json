@@ -43,10 +43,6 @@
           "description": "Wrap the Locker with the observe-lock adapter; false = bare locker"
         }
       }
-    },
-    "observability": {
-      "type": "object",
-      "description": "Access log config (off/brief/detailed), see observe.ObserveConfig"
     }
   }
 }

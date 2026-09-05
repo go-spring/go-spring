@@ -1,29 +1,28 @@
 # messaging
 [English](README.md) | [中文](README_CN.md)
 
-`messaging` is a broker-neutral publish/subscribe abstraction — the Go-idiomatic
-equivalent of Spring Cloud Stream's binder model. Application code publishes
-and consumes `Message` envelopes through one `Publisher` / `Subscriber` pair,
-so switching broker (NATS, Kafka, Pulsar, RabbitMQ, MQTT, ...) is a wiring
-change, not a business-code rewrite.
+`messaging` is a broker-neutral publish/subscribe abstraction. Application code
+publishes and consumes `Message` envelopes through one `Publisher` /
+`Subscriber` pair, so switching broker (NATS, Kafka, Pulsar, RabbitMQ, MQTT,
+...) is a wiring change, not a business-code rewrite.
 
 ## The API
 
 | API | What it does |
 | --- | --- |
 | `Message{Key, Payload, Headers, Timestamp}` | The broker-neutral envelope. `Payload` is opaque `[]byte` — encoding lives one layer up. `Key` is the optional partition/ordering key. `Headers` carries metadata and doubles as the W3C trace-context carrier (nil-safe `Header`/`SetHeader`). |
-| `Binder` | Opens publishers/subscribers against one broker connection; the destination/source/group strings are interpreted **in the broker's own terms** (subject, topic, queue, consumer group). |
+| `Driver` | Opens publishers/subscribers against one broker connection; the destination/source/group strings are interpreted **in the broker's own terms** (subject, topic, queue, consumer group). |
 | `Publisher` / `Subscriber` | Each bound to one destination/source at creation. `Subscribe` returns after delivery is established, not on completion; `Close` releases that subscriber/publisher, not the shared client. |
 | `Handler` | `func(ctx, *Message) error` — a non-nil return signals delivery failure; how it surfaces (nack, redelivery, log) is broker-specific and documented by each starter. |
-| `RegisterBinder` / `GetBinder` | Driver-registry idiom (panics on empty name, nil, duplicate) for a process-wide binder chosen by configured name. Starters usually wire the binder as a bean over a live client instead. |
+| `RegisterDriver` / `GetDriver` | Driver-registry idiom (panics on empty name, nil, duplicate) for a process-wide driver chosen by configured name. Starters usually wire the driver as a bean over a live client instead. |
 | `Retry(h, RetryPolicy)` | Retries the handler in-process with exponential backoff (`MaxRetries`, `InitialInterval`, `Multiplier`, `MaxInterval`); success on any attempt acks, exhaustion returns the error so the broker takes over. Zero value = one attempt. |
 | `DeadLetter(h, dlq, RetryPolicy)` | After retries are exhausted, publishes to the `dlq` publisher (bound to e.g. `"orders.dlq"`) and acks the original. The copy keeps the original headers plus `x-dlq-error` / `x-dlq-retries` / `x-dlq-key`. If the DLQ publish itself fails, the original error is returned — losing a dead letter is worse than redelivering. |
 | `Recover(h)` | Converts a panicking handler into an error so one bad message cannot kill the delivery loop. |
-| `NewMessageID()` / `HeaderMessageID` | A fresh 32-hex id + the reserved header it goes in. At-least-once delivery makes consumer-side de-duplication a must; key it on this id. Binder publishers auto-stamp it via `EnsureMessageID` when absent — set it yourself (or dedup on a business key) and the stamp is a no-op. |
-| `HeaderDeliveryAttempt` | Reserved header the binder fills on consume from the broker's redelivery count (1-based; absent or "1" = first delivery). Read it to decide "retry" vs "straight to DLQ" without in-process state a restart would lose. |
-| `BatchPublish(ctx, p, msgs...)` | Batch send through one call. Uses the optional `BatchPublisher` capability when the publisher implements it, otherwise publishes one by one in order, stopping at the first error (not transactional). |
+| `NewMessageID()` / `HeaderMessageID` | A fresh 32-hex id + the reserved header it goes in. At-least-once delivery makes consumer-side de-duplication a must; key it on this id. Driver publishers auto-stamp it via `EnsureMessageID` when absent — set it yourself (or dedup on a business key) and the stamp is a no-op. |
+| `HeaderDeliveryAttempt` | Reserved header the driver fills on consume from the broker's redelivery count (1-based; absent or "1" = first delivery). Read it to decide "retry" vs "straight to DLQ" without in-process state a restart would lose. |
+| `PublishBatch(ctx, p, msgs...)` | Batch send through one call. Uses the optional `BatchPublisher` capability when the publisher implements it, otherwise publishes one by one in order, stopping at the first error (not transactional). |
 
-Broker starters implementing `Binder`: `starter-nats`, `starter-kafka`,
+Broker starters implementing `Driver`: `starter-nats`, `starter-kafka`,
 `starter-kafka-sarama`, `starter-pulsar`, `starter-rabbitmq`, `starter-mqtt`,
 `starter-rocketmq`. Each also exposes its raw client bean (`*nats.Conn`,
 `*kgo.Client`, ...) as the escape hatch for features this abstraction
@@ -34,13 +33,13 @@ deliberately does not model.
 ### 1. Publish and consume
 
 ```go
-pub, err := binder.NewPublisher(ctx, "orders")
+pub, err := driver.NewPublisher(ctx, "orders")
 if err != nil {
     return err
 }
 defer pub.Close()
 
-sub, err := binder.NewSubscriber(ctx, "orders", "order-workers")
+sub, err := driver.NewSubscriber(ctx, "orders", "order-workers")
 if err != nil {
     return err
 }
@@ -65,7 +64,7 @@ its exact interpretation.
 ### 2. Idempotent consumption
 
 ```go
-// Binder publishers already stamp message-id when absent; set it yourself
+// Driver publishers already stamp message-id when absent; set it yourself
 // only if you own the id:
 msg.SetHeader(messaging.HeaderMessageID, messaging.NewMessageID())
 // consumer side — at-least-once means the same id may arrive twice:
@@ -80,7 +79,7 @@ if m.Header(messaging.HeaderDeliveryAttempt) == "5" {
 ### 3. Retry, dead-letter, panic-guard
 
 ```go
-dlq, _ := binder.NewPublisher(ctx, "orders.dlq")
+dlq, _ := driver.NewPublisher(ctx, "orders.dlq")
 _ = sub.Subscribe(ctx, messaging.DeadLetter(
     messaging.Recover(handle),
     dlq,
@@ -101,9 +100,9 @@ metadata differs.
 - **No delay / scheduled messages.** Broker support is wildly uneven; compose
   `cloud/experimental/outbox` + `cloud/scheduling` for broker-independent
   delayed delivery instead.
-- **No batch consume.** `Publish` is one message at a time (`BatchPublish`
+- **No batch consume.** `Publish` is one message at a time (`PublishBatch`
   batches the send side); consumers wanting throughput get batching inside
-  the binder, behind the same per-message Handler.
+  the driver, behind the same per-message Handler.
 - **No schema registry, no typed payloads.** `Payload` is opaque; marshal
   where you publish.
 - **No Supplier/Function/Consumer sugar layer** — the raw-client escape hatch

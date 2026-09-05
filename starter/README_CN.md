@@ -17,6 +17,7 @@
 | --- | --- | --- |
 | `starter-gin` | [gin-gonic/gin](https://github.com/gin-gonic/gin) | 托管 `*gin.Engine` bean |
 | `starter-echo` | [labstack/echo](https://github.com/labstack/echo) | 托管 `*echo.Echo` bean |
+| `starter-http-server` | Go `net/http` | 框架内置 stdlib HTTP 服务器的安全中间件套件(`Authenticate` / `Authorize` / `CORS` / `CSRF`) |
 | `starter-hertz` | [CloudWeGo Hertz](https://github.com/cloudwego/hertz) | 托管 Hertz HTTP 服务 |
 | `starter-go-zero/rest` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | 通过 `HandlerRegister` bean 托管 go-zero `rest.Server` |
 | `starter-goframe/http` | [gogf/gf](https://github.com/gogf/gf) | 托管 goframe `*ghttp.Server`(另有 `/tcp` 裸 TCP 子包) |
@@ -101,7 +102,7 @@
 | `starter-kafka` | [twmb/franz-go](https://github.com/twmb/franz-go) | Kafka |
 | `starter-kafka-sarama` | [IBM/sarama](https://github.com/IBM/sarama) | Kafka（另一驱动实现，共用 `spring.kafka` 前缀） |
 | `starter-pulsar` | [apache/pulsar-client-go](https://github.com/apache/pulsar-client-go) | Apache Pulsar |
-| `starter-rocketmq` | [rocketmq-client-go/v2](https://github.com/apache/rocketmq-client-go) | Apache RocketMQ 4.x/5.x（NameServer 协议）；自带 `messaging.Binder` |
+| `starter-rocketmq` | [rocketmq-client-go/v2](https://github.com/apache/rocketmq-client-go) | Apache RocketMQ 4.x/5.x（NameServer 协议）；自带 `messaging.Driver` |
 | `starter-rabbitmq` | [amqp091-go](https://github.com/rabbitmq/amqp091-go) | RabbitMQ |
 | `starter-nats` | [nats.go](https://github.com/nats-io/nats.go) | NATS 核心消息 + JetStream（纯 Go） |
 | `starter-mqtt` | [paho.mqtt.golang](https://github.com/eclipse/paho.mqtt.golang) | MQTT |

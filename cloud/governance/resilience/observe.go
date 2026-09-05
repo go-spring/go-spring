@@ -19,43 +19,56 @@ package resilience
 import (
 	"context"
 	"errors"
+	"time"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// WrapExecutor returns a [Executor] that wraps inner, emitting the
-// observe kit's three signals for each Execute plus a call counter with the
-// outcome classified as one of: success, rate_limited, circuit_open,
-// bulkhead_full, timeout, error (attached as the outcome attribute).
-// Pass the system label (e.g. "redis", "gorm", "grpc") so metrics from several
-// protected clients are distinguishable. cfg controls the access log
-// (off/brief/detailed). A nil inner returns nil — no wrapper, so an unarmed
-// client stays untouched.
-func WrapExecutor(inner Executor, system string, cfg observe.ObserveConfig) Executor {
+// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
+// HTTP semconv recommended set.
+var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
+var (
+	// resilienceTag is the static log tag for the resilience access log;
+	// the protected client's system is a log field, not part of the tag.
+	resilienceTag = log.RegisterAppTag("resilience", "")
+
+	resilienceTracer = otel.Tracer("go-spring.org/cloud/governance/resilience")
+	resilienceMeter  = otel.Meter("go-spring.org/cloud/governance/resilience")
+
+	// duration records the wall time of each protected call; the buckets match
+	// the other client starters so durations stay comparable.
+	duration, _ = resilienceMeter.Float64Histogram("resilience.operation.duration",
+		metric.WithDescription("Duration of resilience-protected calls"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
+
+	// calls counts protected calls with the outcome classified as one of:
+	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
+	calls, _ = resilienceMeter.Int64Counter("resilience.calls",
+		metric.WithDescription("Number of resilience-protected calls by outcome"),
+		metric.WithUnit("{call}"))
+
+	// breakerChanges counts circuit-breaker state transitions (from/to attrs).
+	breakerChanges, _ = resilienceMeter.Int64Counter("resilience.breaker.state_change",
+		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
+		metric.WithUnit("{event}"))
+)
+
+// WrapExecutor returns an [Executor] that wraps inner with an internal span
+// (system/resource/outcome attributes), the resilience metrics above, and an
+// access log per call. Pass the system label (e.g. "redis", "gorm", "grpc")
+// so calls from several protected clients are distinguishable. A nil inner
+// returns nil — no wrapper, so an unarmed client stays untouched.
+func WrapExecutor(inner Executor, system string) Executor {
 	if inner == nil {
 		return nil
 	}
-	meter := otel.Meter("go-spring.org/cloud/governance/resilience")
-	calls, _ := meter.Int64Counter("calls",
-		metric.WithDescription("Number of resilience-protected calls by outcome"),
-		metric.WithUnit("{call}"))
-	breakerChanges, _ := meter.Int64Counter("breaker.state_change",
-		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
-		metric.WithUnit("{event}"))
-	w := &wrappedExecutor{
-		inner:          inner,
-		system:         system,
-		obs:            observe.New(system, observe.ResilienceSemConv, trace.SpanKindInternal, cfg),
-		calls:          calls,
-		breakerChanges: breakerChanges,
-		logTag:         log.RegisterAppTag(system, "resilience"),
-		cfg:            cfg,
-	}
+	w := &wrappedExecutor{inner: inner, system: system}
 	// If the inner executor emits breaker state transitions, subscribe so each
 	// trip / half-open / recovery emits a counter + log automatically. Drivers
 	// without that capability (no BreakerEventListenerSetter) are silently
@@ -67,58 +80,85 @@ func WrapExecutor(inner Executor, system string, cfg observe.ObserveConfig) Exec
 }
 
 type wrappedExecutor struct {
-	inner          Executor
-	system         string
-	obs            *observe.Observer
-	calls          metric.Int64Counter
-	breakerChanges metric.Int64Counter
-	logTag         *log.Tag
-	cfg            observe.ObserveConfig
+	inner  Executor
+	system string
 }
 
-// OnBreakerStateChange satisfies [BreakerEventListener]. It is
-// invoked synchronously from inside the breaker's transition (so it must not
-// call back into the executor); it emits a state-change counter and a log line.
+// OnBreakerStateChange satisfies [BreakerEventListener]. It is invoked
+// synchronously from inside the breaker's transition (so it must not call back
+// into the executor); it emits a state-change counter and a log line.
 func (w *wrappedExecutor) OnBreakerStateChange(resource string, from, to BreakerState) {
-	w.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
+	breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("resource", resource),
 		attribute.String("from", from.String()),
 		attribute.String("to", to.String()),
 	))
-	if w.cfg.Enabled() {
-		fields := []log.Field{
-			log.String("resource", resource),
-			log.String("from", from.String()),
-			log.String("to", to.String()),
-		}
-		// A trip (→open) is a service-level degradation worth flagging at Warn;
-		// recovery and half-open trial are Info.
-		if to == BreakerOpen {
-			log.Warn(context.Background(), w.logTag, fields...)
-		} else {
-			log.Info(context.Background(), w.logTag, fields...)
-		}
+	fields := []log.Field{
+		log.String("system", w.system),
+		log.String("resource", resource),
+		log.String("from", from.String()),
+		log.String("to", to.String()),
+	}
+	// A trip (→open) is a service-level degradation worth flagging at Warn;
+	// recovery and half-open trial are Info.
+	if to == BreakerOpen {
+		log.Warn(context.Background(), resilienceTag, fields...)
+	} else {
+		log.Info(context.Background(), resilienceTag, fields...)
 	}
 }
 
-// Execute runs the inner executor under the observe kit: Start opens an internal
-// span (system/resource attributes) and bumps the in-flight gauge,
-// and End records the duration histogram, balances the gauge, ends the span and
-// emits the access log. The only resilience-specific additions on this path are
-// the outcome-classified call counter and the outcome attribute
-// attached through Span.End.
+// Execute wraps the inner call in an internal span, records the duration
+// histogram and the outcome-classified call counter, and writes the access
+// log: a rejection or error at Warn, a success at Debug (protected calls are
+// frequent; the success record is there for troubleshooting, not everyday
+// reading).
 func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
-	ctx, sp := w.obs.Start(ctx, resource, "")
+	start := time.Now()
+	ctx, span := resilienceTracer.Start(ctx, resource,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("resilience.system", w.system),
+			attribute.String("resilience.resource", resource),
+		))
 	err := w.inner.Execute(ctx, resource, fn)
 	outcome := classifyOutcome(err)
-	w.calls.Add(ctx, 1, metric.WithAttributes(
+	span.SetAttributes(attribute.String("outcome", outcome))
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
+
+	duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("resource", resource),
 		attribute.String("outcome", outcome),
 	))
-	sp.End(err, attribute.String("outcome", outcome))
-	return err
+	calls.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("system", w.system),
+		attribute.String("resource", resource),
+		attribute.String("outcome", outcome),
+	))
+
+	if err != nil {
+		log.Warn(ctx, resilienceTag,
+			log.String("system", w.system),
+			log.String("resource", resource),
+			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
+			log.String("outcome", outcome),
+			log.Any("error", err))
+		return err
+	}
+	log.Debug(ctx, resilienceTag, func() []log.Field {
+		return []log.Field{
+			log.String("system", w.system),
+			log.String("resource", resource),
+			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
+			log.String("outcome", outcome),
+		}
+	})
+	return nil
 }
 
 func (w *wrappedExecutor) Close() error { return w.inner.Close() }

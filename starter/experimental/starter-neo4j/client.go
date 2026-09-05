@@ -23,17 +23,15 @@ import (
 	"context"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // Client is the wrapper bean Neo4j drivers are injected as. It
 // embeds the neo4j.DriverWithContext interface (so every driver method promotes
 // unchanged) and field-injects the resilience policy via gs.Dync so it
-// hot-reloads on config change. newClient returns one; gs field-injects
-// Resilience + Observability, then calls Init (InitMethod) to build
+// hot-reloads on config change. newClient returns one; gs calls Init
+// (InitMethod) to build
 // the executor for the call-site guard.
 //
 // The Neo4j seam: the driver's ExecuteQuery is a package-level function (not a
@@ -48,13 +46,9 @@ type Client struct {
 	// Both resilience and fault are resolved through neutral seams
 	// ([resilience.ExecutorFor] / [fault.InjectorFor]) backed by starter-govern's
 	// governance center — so this struct has zero coupling to cloud/governance.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// cfg is the connection config, retained for the resilience resource label.
 	cfg Config
-	// resolver is the discovery watch behind a service-name driver (nil when
-	// direct/mesh); Close stops it on shutdown.
-	resolver *discovery.Resolver
 	// exec is the resilience executor protecting queries, resolved via
 	// resilience.ExecutorFor; no-op when governance is off.
 	exec resilience.Executor
@@ -63,8 +57,7 @@ type Client struct {
 	resource string
 }
 
-// Init is the gs InitMethod: gs field-injects Observability after newClient
-// returns, then calls this. It resolves the executor through the neutral
+// Init is the gs InitMethod: it resolves the executor through the neutral
 // [resilience.ExecutorFor] seam (backed by starter-govern's governance center
 // when imported), wraps it with the process-wide fault injector
 // ([fault.InjectorFor], nil-safe), and stores it on the wrapper so [Query] /
@@ -73,7 +66,7 @@ type Client struct {
 func (o *Client) Init() error {
 	o.resource = resilience.ResourceLabel("neo4j", o.cfg.ServiceName, o.cfg.URI)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	o.exec = resilience.WrapExecutor(exec, "neo4j", o.Observability)
+	o.exec = resilience.WrapExecutor(exec, "neo4j")
 	return nil
 }
 
@@ -89,6 +82,5 @@ func (o *Client) Destroy() error {
 	if o.exec != nil {
 		_ = o.exec.Close()
 	}
-	stopLiveResolver(o.resolver)
 	return o.DriverWithContext.Close(context.Background())
 }

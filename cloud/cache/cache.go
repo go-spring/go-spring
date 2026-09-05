@@ -14,28 +14,17 @@
  * limitations under the License.
  */
 
-// Package cache defines a backend-pluggable abstraction for
-// key/value caching, so a caching concern can be declared once and served by
-// any backend.
+// Package cache defines a backend-pluggable abstraction for key/value caching.
 //
-// A backend implements the single [ByteCache] interface: the raw
-// [ByteCache.GetBytes]/[ByteCache.SetBytes]/[ByteCache.Delete] primitives a
-// remote client maps 1:1 to its native API. A [Cache] struct wraps a ByteCache
-// and layers a pluggable [Codec] (default [JSONCodec]) on top, exposing typed
-// [Cache.Get]/[Cache.Set] that cross the bytes/any boundary. The codec is a
-// construction attribute — set once via [WithCodec] on [New] — not a per-call
-// parameter; a cache that must hold values in different formats uses the raw
-// GetBytes/SetBytes with an explicit codec at the call site. A missing key is
-// reported as [ErrMiss], distinct from a backend error, so callers fall through
-// to the source of truth only on a real miss.
+// A backend implements [ByteCache], the raw byte primitives a remote client
+// maps 1:1 to its native API. [Cache] wraps a ByteCache and adds typed
+// Get/Set through a pluggable [Codec], defaulting to [JSONCodec]; the raw
+// methods stay promoted for callers that already hold bytes. A missing key is
+// reported as [ErrMiss], distinct from a backend error, so a read-through
+// falls back to the source of truth only on a real miss.
 //
-// This package is container-free: it imports no IoC concepts at all. The gs
-// wiring that turns ${spring.cache} entries into Cache beans — the driver
-// registry ("go-redis", "redigo", "bigcache", "memcached", ...) and the
-// ${spring.cache} module — lives in the starter-cache module, next to nothing
-// else; each backend starter registers its driver there.
-// `spring.cache.main.driver=go-redis:main` exposes a Cache bean backed by the
-// "main" redis client, exactly as before the split.
+// The package is container-free: the driver registry and the ${spring.cache}
+// module that turn config entries into Cache beans live in starter-cache.
 package cache
 
 import (
@@ -44,91 +33,98 @@ import (
 	"time"
 )
 
-// ByteCache is the bytes-native interface a caching backend implements: the
-// raw primitives a remote client (Redis, memcached, bigcache) maps 1:1 to its
-// native API. Implementations must be safe for concurrent use. A nil ByteCache
-// is never valid; callers that want "no cache" should skip the lookup entirely
-// rather than pass nil.
+// ErrMiss is returned by Get/GetBytes when the key is absent. It is distinct
+// from a backend error: a caller falls back to the source of truth only on a
+// miss, never on a real failure.
+var ErrMiss = errors.New("cache: miss")
+
+// ByteCache is the bytes-native interface a caching backend implements.
+// Implementations must be safe for concurrent use; a nil ByteCache is never
+// valid.
 type ByteCache interface {
-	// GetBytes returns the raw bytes stored under key. A missing key is
-	// reported as (nil, [ErrMiss]).
+	// GetBytes returns the raw bytes stored under key, or (nil, [ErrMiss])
+	// when the key is absent.
 	GetBytes(ctx context.Context, key string) ([]byte, error)
 
-	// SetBytes stores the raw bytes under key for ttl. A non-positive ttl
-	// means the entry does not expire.
+	// SetBytes stores the raw bytes under key. A non-positive ttl means the
+	// entry does not expire.
 	SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error
 
 	// Delete removes key. Deleting an absent key is not an error.
 	Delete(ctx context.Context, key string) error
 }
 
-// Cache is the typed façade over a [ByteCache]. It embeds a ByteCache and adds
-// [Cache.Get]/[Cache.Set], which cross the bytes/any boundary through the
-// [Codec] fixed at construction (default [JSONCodec]); the raw
-// [ByteCache.GetBytes]/[ByteCache.SetBytes]/[ByteCache.Delete] methods are
-// promoted unchanged for callers that already hold bytes — or need to mix
-// formats under one backend with an explicit codec. Since the embedded
-// ByteCache must be safe for concurrent use, a Cache wrapping it is too.
+// Cache is the typed façade over a [ByteCache]: it embeds the backend and adds
+// Get/Set, which marshal through the [Codec] fixed at construction. Since the
+// embedded ByteCache must be safe for concurrent use, a Cache wrapping it is
+// too.
 type Cache struct {
 	ByteCache
 
-	// codec is resolved once at construction; a nil codec means [JSONCodec].
+	// cfg is fixed once at [New]; a per-call option works on a copy.
+	cfg config
+}
+
+// config carries a [Cache]'s configured behaviour.
+type config struct {
 	codec Codec
 }
 
-// New wraps bc in a [Cache] with its codec fixed by opts (default
-// [JSONCodec] via [WithCodec]). It is the canonical constructor: a Cache
-// built by hand must at least set the embedded ByteCache before use.
-func New(bc ByteCache, opts ...Option) *Cache {
-	c := &Cache{ByteCache: bc}
-	for _, o := range opts {
-		o(c)
-	}
-	return c
-}
+// Option customizes a [Cache]. Passed to [New] it sets the cache's default;
+// passed to [Cache.Get] / [Cache.Set] it overrides that single call.
+type Option func(*config)
 
-// Option customizes a [Cache] at construction.
-type Option func(*Cache)
-
-// WithCodec sets the [Codec] the [Cache]'s typed Get/Set use to cross the
-// bytes/any boundary. A nil codec is ignored, so passing a conditionally
-// resolved codec needs no guard.
+// WithCodec sets the codec the typed Get/Set marshal through. A nil codec is
+// ignored, so passing a conditionally resolved codec needs no guard.
 func WithCodec(c Codec) Option {
-	return func(cc *Cache) {
+	return func(cfg *config) {
 		if c != nil {
-			cc.codec = c
+			cfg.codec = c
 		}
 	}
 }
 
-// codecOr returns the cache's codec, or the default [JSONCodec] when none was
-// set at construction.
-func (c Cache) codecOr() Codec { return resolveCodec(c.codec) }
+// New wraps bc in a [Cache]: the config starts at the defaults (JSON codec)
+// and opts replace them.
+func New(bc ByteCache, opts ...Option) *Cache {
+	cfg := config{codec: JSONCodec{}}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return &Cache{ByteCache: bc, cfg: cfg}
+}
 
-// Get decodes the value stored under key into val (which must be a pointer),
-// using the cache's [Codec] (default [JSONCodec]) to cross the bytes/any
-// boundary. A missing key is reported as [ErrMiss]; any other error is a
-// backend failure. On a miss the caller typically falls through to the source
-// of truth.
-func (c Cache) Get(ctx context.Context, key string, val any) error {
+// configFor copies the cache's config and applies the per-call opts on top.
+func (c Cache) configFor(opts []Option) config {
+	cfg := c.cfg
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return cfg
+}
+
+// Get decodes the value stored under key into val, which must be a pointer.
+// A missing key is reported as [ErrMiss]; any other error is a backend
+// failure.
+//
+// opts override the cache's config for this call:
+//
+//	c.Get(ctx, "icon:42", &icon, cache.WithCodec(gobCodec))
+func (c Cache) Get(ctx context.Context, key string, val any, opts ...Option) error {
 	b, err := c.GetBytes(ctx, key)
 	if err != nil {
 		return err
 	}
-	return c.codecOr().Unmarshal(b, val)
+	return c.configFor(opts).codec.Unmarshal(b, val)
 }
 
-// Set encodes val with the cache's [Codec] (default [JSONCodec]) and stores it
-// under key for ttl. A non-positive ttl means the entry does not expire.
-func (c Cache) Set(ctx context.Context, key string, val any, ttl time.Duration) error {
-	b, err := c.codecOr().Marshal(val)
+// Set encodes val and stores it under key. A non-positive ttl means the entry
+// does not expire. opts override the cache's config for this call, as on
+// [Cache.Get].
+func (c Cache) Set(ctx context.Context, key string, val any, ttl time.Duration, opts ...Option) error {
+	b, err := c.configFor(opts).codec.Marshal(val)
 	if err != nil {
 		return err
 	}
 	return c.SetBytes(ctx, key, b, ttl)
 }
-
-// ErrMiss is returned by Get/GetBytes when the key is absent (a cache miss).
-// It is distinct from a backend error (network, serialization, ...): callers
-// fall through to the source of truth only on a miss, not on a real failure.
-var ErrMiss = errors.New("cache: miss")

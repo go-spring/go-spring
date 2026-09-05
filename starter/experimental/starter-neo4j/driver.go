@@ -30,6 +30,7 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/tlsconf"
 	"go-spring.org/stdlib/errutil"
 )
@@ -121,34 +122,34 @@ func applyTLS(t tlsconf.TLSConfig, conf *neo4j.Config) error {
 }
 
 // resolveURI resolves c.ServiceName through the registered discovery backend,
-// picks one live endpoint, and rewrites the URI's host to that address. It
-// returns the Resolver alongside so the caller can keep the watch alive and stop
-// it on shutdown. It must only be called when service discovery is in effect (the
-// caller has already gated on service-name being set and mesh mode being off).
-func resolveURI(ctx context.Context, c Config) (string, *discovery.Resolver, error) {
-	r, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+// picks one live endpoint via the shared loadbalance machinery, and rewrites
+// the URI's host to that address. It returns the Resolver alongside so the
+// caller can keep the watch alive and stop it on shutdown. It must only be
+// called when service discovery is in effect (the caller has already gated on
+// service-name being set and mesh mode being off).
+func resolveURI(ctx context.Context, c Config) (string, error) {
+	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
-		return "", nil, errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
+		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
 	}
-	ep, err := r.Pick()
+	eps, err := resolver()
 	if err != nil {
-		_ = r.Stop()
-		return "", nil, errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
+		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
+	}
+	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: balancer for %s", c.ServiceName)
+	}
+	ep, err := loadbalance.NewPool(loadbalance.SourceFunc(func() ([]discovery.Endpoint, error) {
+		return eps, nil
+	}), bal).Pick(loadbalance.PickInfo{})
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}
 	u, err := url.Parse(c.URI)
 	if err != nil {
-		_ = r.Stop()
-		return "", nil, errutil.Explain(err, "neo4j: parse uri %s", c.URI)
+		return "", errutil.Explain(err, "neo4j: parse uri %s", c.URI)
 	}
 	u.Host = ep.Addr
-	return u.String(), r, nil
-}
-
-// stopLiveResolver stops the discovery watch behind a client. It is the
-// Close-half of the discovery lifecycle, symmetric with resolveURI; it is a no-op
-// for clients that never had a resolver.
-func stopLiveResolver(r *discovery.Resolver) {
-	if r != nil {
-		_ = r.Stop()
-	}
+	return u.String(), nil
 }

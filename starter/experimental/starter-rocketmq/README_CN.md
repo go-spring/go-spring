@@ -4,7 +4,7 @@
 
 `starter-rocketmq` 为 Go-Spring 提供 [RocketMQ](https://rocketmq.apache.org/)
 支持：多实例 `rocketmq.Client` bean、启动期 fail-fast 探针、可选 ACL 凭证、
-协议无关的 `messaging.Binder`、OTel 追踪助手，以及同步发送路径上的可选
+协议无关的 `messaging.Driver`、OTel 追踪助手，以及同步发送路径上的可选
 调用点韧性。基于官方
 [rocketmq-client-go](https://github.com/apache/rocketmq-client-go) v2 客户端，
 通过 NameServer 协议同时支持 RocketMQ 4.x 与 5.x 集群。
@@ -69,39 +69,37 @@ err = c.Start()
   关闭时统一停机。
 - **日志桥接** — 客户端库的内部日志汇入 go-spring 的日志。
 
-## 消息 Binder
+## 消息 Driver
 
-`NewBinder` 把 client 适配到协议无关的 `cloud/messaging`
+`NewDriver` 把 client 适配到协议无关的 `cloud/messaging`
 抽象，业务代码不依赖 RocketMQ API。destination/source 是主题，group 映射
 为 RocketMQ 消费组（集群模式）。
 
 ```go
-func ProvideBinder(cl *StarterRocketmq.Client) messaging.Binder {
-    return StarterRocketmq.NewBinder(cl)
+func ProvideDriver(cl *StarterRocketmq.Client) messaging.Driver {
+    return StarterRocketmq.NewDriver(cl)
 }
 ```
 
 ```go
-sub, _ := binder.NewSubscriber(ctx, "orders", "order-service")
+sub, _ := driver.NewSubscriber(ctx, "orders", "order-service")
 _ = sub.Subscribe(ctx, func(ctx context.Context, msg *messaging.Message) error {
     fmt.Println(string(msg.Payload), msg.Headers)
     return nil // 返回错误即请求 RocketMQ 重投
 })
-pub, _ := binder.NewPublisher(ctx, "orders")
+pub, _ := driver.NewPublisher(ctx, "orders")
 _ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("...")})
 ```
 
-binder 会在消息 user properties 里注入/提取 W3C trace 上下文与压测标记，
+driver 会在消息 user properties 里注入/提取 W3C trace 上下文与压测标记，
 因此链路能跨服务串联、合成流量在下游可识别。
 
 ## 可观测性
 
 - **追踪**：`StartProducerSpan` / `StartConsumerSpan` / `EndSpan` 把原生
-  发送与处理包成 OTel span；binder 路径自动埋点。全部依赖
+  发送与处理包成 OTel span；driver 路径自动埋点。全部依赖
   `starter-otel` 安装的全局 provider，未导入时是 no-op。见
   `example-otel/`。
-- **访问日志**：binder 路径经 observe kit 默认以 `brief` 级别输出逐条
-  观测。
 
 ## 韧性
 

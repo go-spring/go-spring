@@ -17,8 +17,6 @@
 package StarterGateway
 
 import (
-	"go-spring.org/cloud/actuator/endpoint"
-	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/spring/gs"
 )
 
@@ -29,7 +27,9 @@ func init() {
 	// The compiled, hot-reloadable route table. Its ${spring.gateway} config
 	// and optional FilterWrapper beans (jwt-auth, lua) are populated by field
 	// injection; route compilation is deferred to server startup (warmup).
-	gs.Provide(newRouteTable).Destroy((*RouteTable).Destroy)
+	// Discovery runs inside the backend (loaders have no resources), so there is
+	// no destroy half to register.
+	gs.Provide(newRouteTable)
 
 	// The listen-port server, wired into graceful drain as a gs.Server. Named
 	// so it coexists with the application's main HTTP server (which also
@@ -40,6 +40,6 @@ func init() {
 		Condition(gs.OnProperty("spring.gateway.server.addr"))
 
 	// Contribute /gateway/metrics to the actuator and report gateway health.
-	gs.Provide(newMetricsEndpoint).Export(gs.As[endpoint.Endpoint]())
-	gs.Provide(newGatewayHealth).Export(gs.As[health.Indicator]())
+	gs.Provide(newMetricsEndpoint)
+	gs.Provide(newGatewayHealth)
 }

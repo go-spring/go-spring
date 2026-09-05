@@ -24,16 +24,15 @@ import (
     "go-spring.org/cloud/loadbalance"
 )
 
-rsv, err := discovery.NewResolver(ctx, "default", "orders")
+resolver, err := discovery.NewResolver(ctx, "default", "orders")
 if err != nil { return err }
-defer rsv.Stop()
 
 bal, _ := loadbalance.New(loadbalance.RoundRobin)
 tracker := loadbalance.NewTracker(loadbalance.TrackerConfig{
     Threshold:  3,              // consecutive failures before suspension
     SuspendFor: 5 * time.Second, // half-open trial after a 5s cool-down
 })
-pool := loadbalance.NewPool(rsv, bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, loadbalance.WithTracker(tracker))
 
 for {
     ep, err := pool.Pick(loadbalance.PickInfo{})
@@ -49,13 +48,13 @@ for {
 an optional `Tracker`.
 
 ```go
-pool := loadbalance.NewPool(rsv, bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, loadbalance.WithTracker(tracker))
 ```
 
 - **The endpoint source** is anything implementing
-  `Endpoints() []discovery.Endpoint`; a `discovery.Resolver` satisfies it
-  directly — it tracks discovery Watch internally, so the snapshot is always
-  fresh.
+  `Endpoints() ([]discovery.Endpoint, error)`; a discovery `Resolver` plugs in via
+  `loadbalance.SourceFunc(resolver)` — freshness lives entirely inside the
+  discovery backend, so each `Pick` re-reads the latest snapshot.
 - Each `Pick` filters in order: **discovery eligibility** (disabled/unhealthy
   instances) → **suspension** (instances cooling down in the `Tracker`) →
   **zero-weight drain** (instances whose weight was set to 0). The survivors

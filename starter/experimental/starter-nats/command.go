@@ -33,7 +33,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -44,15 +43,15 @@ import (
 // Publish-side instrumentation is transparent: Conn.PublishMsg (below) wraps
 // every publish with a producer span + duration/in-flight metric + access log,
 // and injects the W3C trace context into msg.Header so subscribers continue the
-// trace. Both the messaging.Binder publisher and direct Conn.PublishMsg callers
+// trace. Both the messaging.Driver publisher and direct Conn.PublishMsg callers
 // flow through it.
 //
-// Subscribe-side instrumentation lives in the binder callback (binder.go): the
+// Subscribe-side instrumentation lives in the driver callback (driver.go): the
 // nats.MsgHandler signature (func(*nats.Msg), no context) means the consume span
 // must wrap the handler at the point that already bridges *nats.Msg to a
-// context-bearing handler — i.e. the binder. Direct Conn.Subscribe callers are
+// context-bearing handler — i.e. the driver. Direct Conn.Subscribe callers are
 // not instrumented (documented gap, same as the JetStream surface); use the
-// messaging.Binder for traced consume.
+// messaging.Driver for traced consume.
 
 // injectW3C inserts the current trace context into msg.Header so the receiver
 // can continue the trace across the broker.
@@ -73,15 +72,14 @@ func extractW3C(ctx context.Context, msg *nats.Msg) context.Context {
 }
 
 // PublishMsg overrides the embedded *nats.Conn.PublishMsg so every publish flows
-// through the observe kit. When pubObs is nil (observability level "off" leaves
-// the observer present but a no-op; nil only when the field was never set) it
-// delegates unchanged.
+// through the instrumentation (see observe.go). When pubObs is nil (the field
+// was never set) it delegates unchanged.
 //
 // KNOWN LIMITATION: nats.go's PublishMsg (v1.38) carries no context parameter,
 // so the producer span necessarily starts from context.Background() — it is a
 // NEW ROOT, not a child of the caller's active trace. Consume-side trace
 // continuation is unaffected: the span's context is injected into msg.Header
-// (injectW3C below), so the binder's consumer span continues this publish span
+// (injectW3C below), so the driver's consumer span continues this publish span
 // across the broker. Callers that need the publish linked into their own trace
 // must use the manual ctx-aware path: StartPublishSpan(ctx, msg) (which takes
 // the caller's ctx) followed by the embedded c.Conn.PublishMsg(msg) — note that
@@ -97,10 +95,10 @@ func (c *Conn) PublishMsg(msg *nats.Msg) error {
 	return err
 }
 
-// startConsume is the subscribe-side hook the binder callback calls: it extracts
+// startConsume is the subscribe-side hook the driver callback calls: it extracts
 // the upstream trace, opens a consumer span + metric + log, and returns a handle
 // whose End records the outcome.
-func (c *Conn) startConsume(ctx context.Context, subject string, msg *nats.Msg) (context.Context, *observe.Span) {
+func (c *Conn) startConsume(ctx context.Context, subject string, msg *nats.Msg) (context.Context, *span) {
 	if c.subObs == nil {
 		return ctx, nil
 	}
@@ -109,9 +107,9 @@ func (c *Conn) startConsume(ctx context.Context, subject string, msg *nats.Msg) 
 }
 
 // --- low-level manual helpers (kept for the example programs and for apps that
-// want explicit span control outside the messaging.Binder) -------------------
+// want explicit span control outside the messaging.Driver) -------------------
 //
-// The auto path above (Conn.PublishMsg + binder) is preferred. These helpers are
+// The auto path above (Conn.PublishMsg + driver) is preferred. These helpers are
 // a thin otel-direct escape hatch: they emit a span only (no metric/log) and do
 // not require an Observer, so they work with a bare *nats.Conn the app holds.
 
@@ -171,7 +169,7 @@ func applyResilience(c Config, conn *Conn, resource string) error {
 	// Wrap so breaker trips / rejects / retries emit span + counter + histogram
 	// + access log (the resilience core emits none). nil-safe, no-op without
 	// starter-otel.
-	exec = resilience.WrapExecutor(exec, "nats", c.Observability)
+	exec = resilience.WrapExecutor(exec, "nats")
 	conn.exec = exec
 	conn.resource = resource
 	return nil

@@ -22,12 +22,10 @@ import (
 
 	"go-spring.org/stdlib/testing/assert"
 	"time"
-
-	"go-spring.org/cloud/actuator/health"
 )
 
 // TestGormHealth pins the indicator contract: the name joins prefix+instance,
-// CheckHealth delegates to the pool ping, and a broken backend surfaces as an
+// Probe delegates to the pool ping, and a broken backend surfaces as an
 // error (DOWN) rather than a panic.
 func TestGormHealth(t *testing.T) {
 	ok, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{})
@@ -35,10 +33,10 @@ func TestGormHealth(t *testing.T) {
 	defer func() { _ = ok.Destroy() }()
 
 	ind := NewGormHealth("gorm:fake:", "main", ok.DB)
-	if ind.HealthName() != "gorm:fake:main" {
-		t.Fatalf("indicator name: want gorm:fake:main, got %s", ind.HealthName())
+	if ind.Name != "gorm:fake:main" {
+		t.Fatalf("indicator name: want gorm:fake:main, got %s", ind.Name)
 	}
-	if err := ind.CheckHealth(context.Background()); err != nil {
+	if err := ind.Probe(context.Background()); err != nil {
 		t.Fatalf("healthy backend must check UP: %v", err)
 	}
 
@@ -50,10 +48,8 @@ func TestGormHealth(t *testing.T) {
 		t.Fatalf("destroy: %v", err)
 	}
 	ind2 := NewGormHealth("gorm:fake:", "closed", closed.DB)
-	if err := ind2.CheckHealth(context.Background()); err == nil {
+	if err := ind2.Probe(context.Background()); err == nil {
 		t.Fatal("closed pool must check DOWN")
 	}
 
-	// Compile-time interface conformance for the indicator this package exports.
-	var _ health.Indicator = ind
 }

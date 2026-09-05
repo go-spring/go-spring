@@ -37,7 +37,7 @@ import (
 type etcdLocker struct {
 	client    *clientv3.Client
 	keyPrefix string
-	defaults  lock.Defaults
+	defaults  lock.DefaultOptions
 
 	closeOnce sync.Once
 }
@@ -53,7 +53,7 @@ func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 		return nil, errutil.Explain(nil, "lock-etcd: endpoints is required")
 	}
 
-	tlsCfg, err := c.TLS.Build()
+	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "lock-etcd: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "lock-etcd: build TLS")
@@ -89,7 +89,7 @@ func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 		// etcd manages lease keep-alive and blocking acquire internally, so only
 		// TTL is a meaningful starter-level default here; renew/retry stay at the
 		// lock package's per-call defaults.
-		defaults: lock.Defaults{TTL: c.TTL},
+		defaults: lock.DefaultOptions{TTL: c.TTL},
 	}, nil
 }
 
@@ -210,7 +210,7 @@ func (h *etcdLock) Key() string { return h.key }
 
 // Token returns the fencing token drawn from lock.Options; etcd concurrency
 // does not expose a native fencing token, so the caller's token (or the
-// random one supplied by lock.Apply) is reflected here.
+// random one supplied by lock.Resolve) is reflected here.
 func (h *etcdLock) Token() string { return h.token }
 
 // Lost is closed when either the underlying etcd session ends (lease

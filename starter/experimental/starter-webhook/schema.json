@@ -22,10 +22,6 @@
       "type": "string",
       "description": "Duration string, e.g. '5s'",
       "default": "5s"
-    },
-    "observability": {
-      "type": "object",
-      "description": "Per-send access log config (off/brief/detailed), see observe.ObserveConfig"
     }
   }
 }

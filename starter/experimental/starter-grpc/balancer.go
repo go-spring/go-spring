@@ -37,6 +37,7 @@ package StarterGrpc
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go-spring.org/cloud/discovery"
@@ -253,21 +254,15 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &discoveryResolver{cc: cc, d: d, backend: backend, service: service, ctx: ctx, cancel: cancel}
 
-	// Seed the client with an initial snapshot before starting the watch so the
-	// first RPC does not race an empty address list.
+	// Seed the client with an initial snapshot before starting the poll loop so
+	// the first RPC does not race an empty address list.
 	eps, err := d.Resolve(ctx, service)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("loadbalance: resolve %q via %q: %w", service, backend, err)
 	}
 	r.push(eps)
-
-	ch, err := d.Watch(ctx, service)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("loadbalance: watch %q via %q: %w", service, backend, err)
-	}
-	go r.watchLoop(ch)
+	go r.pollLoop(eps)
 	return r, nil
 }
 
@@ -292,51 +287,50 @@ func (r *discoveryResolver) push(eps []discovery.Endpoint) {
 	_ = r.cc.UpdateState(resolver.State{Addresses: addrs})
 }
 
-// watchLoop keeps the resolved address set current for the lifetime of the
-// resolver. A terminal WatchResult.Err (backend disconnect, auth expiry, ...)
-// or a closed channel does NOT end the loop: the last snapshot stays pushed —
-// stale addresses are safer than none — and the watch is re-established with
-// backoff, because the discovery contract puts reconnection on the caller.
-// The loop exits only when r.ctx is cancelled, i.e. on Close (or clientConn
-// shutdown), so a transient backend disruption can no longer freeze the
-// address set forever.
-// watchRetryBackoff is the initial re-watch delay after a terminal watch
-// error; it doubles per consecutive failure, capped at a minute. It is a var
-// so tests can shrink it.
-var watchRetryBackoff = time.Second
+// pollInterval is how often the resolver re-reads the backend snapshot.
+// Backends keep their caches fresh internally, so this bounds only the
+// propagation of a change into gRPC's address list. It is a var so tests can
+// shrink it.
+var pollInterval = 10 * time.Second
 
-func (r *discoveryResolver) watchLoop(ch <-chan discovery.WatchResult) {
-	backoff := watchRetryBackoff
+// pollLoop keeps the resolved address set current for the lifetime of the
+// resolver by re-reading the backend snapshot on pollInterval. A failed read
+// keeps the last snapshot — stale addresses are safer than none — and the next
+// tick retries; the loop exits only when r.ctx is cancelled, i.e. on Close (or
+// clientConn shutdown).
+func (r *discoveryResolver) pollLoop(seed []discovery.Endpoint) {
+	last := epsKey(seed)
+	t := time.NewTicker(pollInterval)
+	defer t.Stop()
 	for {
-		for res := range ch {
-			if res.Err != nil {
-				log.Errorf(r.ctx, log.TagAppDef, "grpc resolver watch %q via %q failed, will retry: %v",
-					r.service, r.backend, res.Err)
-				break // channel closes after a terminal Err; reconnect below
-			}
-			r.push(res.Endpoints)
-			backoff = time.Second
-		}
 		select {
 		case <-r.ctx.Done():
 			return
-		case <-time.After(backoff):
+		case <-t.C:
+			eps, err := r.d.Resolve(r.ctx, r.service)
+			if err != nil {
+				log.Errorf(r.ctx, log.TagAppDef, "grpc resolver resolve %q via %q failed, keeping last snapshot: %v",
+					r.service, r.backend, err)
+				continue
+			}
+			key := epsKey(eps)
+			if key == last {
+				continue // no-op re-delivery must not churn gRPC state
+			}
+			last = key
+			r.push(eps)
 		}
-		// Cap the backoff so a long outage recovers within a minute.
-		if backoff *= 2; backoff > time.Minute {
-			backoff = time.Minute
-		}
-		nch, err := r.d.Watch(r.ctx, r.service)
-		if err != nil {
-			log.Errorf(r.ctx, log.TagAppDef, "grpc resolver re-watch %q via %q failed, will retry: %v",
-				r.service, r.backend, err)
-			continue
-		}
-		// The new subscription's first WatchResult carries the current endpoint
-		// set, so the drain loop below both heals any drift from the outage and
-		// resumes normal streaming.
-		ch = nch
 	}
+}
+
+// epsKey renders a snapshot as a comparable string for change detection.
+func epsKey(eps []discovery.Endpoint) string {
+	var b strings.Builder
+	for _, e := range eps {
+		b.WriteString(e.Addr)
+		b.WriteByte(';')
+	}
+	return b.String()
 }
 
 // ResolveNow is a no-op: the background watch already keeps the address set

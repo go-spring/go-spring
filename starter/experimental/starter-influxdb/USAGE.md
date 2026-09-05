@@ -121,10 +121,6 @@ spring.influxdb.a.bucket=example
 spring.influxdb.b.server-url=http://127.0.0.1:8086
 spring.influxdb.b.auth-token=go-spring-example-token
 
-# --- observability: "detailed" adds the request path to the access log -----
-# (brief is the default; off silences only the log signal)
-spring.influxdb.a.observability.level=detailed
-
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
 spring.observability.service-name=demo
@@ -172,13 +168,11 @@ gs.Run()
   │    3. pick up the dynamic transport DefaultDriver installed [starter.go:77]
   │    4. fail-fast probe: client.Health() → /health must report "pass",
   │       otherwise the client is closed and the boot fails [starter.go:80]
-  ├─ gs field-injects Client.Observability (${observability:=}, top-level
-  │    fallback; instance-prefixed spring.influxdb.<name>.observability.*
-  │    overrides it per field — Client.resolveObservability [client.go])
-  ├─ Init [client.go:76]: build Observer (NewDB "influxdb") + obsTransport;
+  ├─ Init [client.go:69]: build dbObserver ("influxdb") + obsTransport;
   │    resolve executor = resilience.WrapExecutor(fault.WrapExecutor(
-  │    resilience.ExecutorFor("influxdb:<server-url>"))); dyn.Swap the
-  │    resilience round-tripper in — observe+governance are live from now on
+  │    resilience.ExecutorFor("influxdb:<server-url>")), "influxdb");
+  │    dyn.Swap the resilience round-tripper in — observe+governance are
+  │    live from now on
   ├─ readiness: indicators flip UP (each probe = one /health round trip)
   └─ SIGTERM → Destroy [client.go:93]: Client.Close() — flushes the async
        writer's pending batches — then exec.Close()
@@ -206,8 +200,7 @@ Rationale (source comments [client.go:76-88], [command.go:30-44]):
   observe layer then records.
 - **obsTransport carries all three signals**: influxdb-client-go ships no OTel
   instrumentation of its own, so — unlike starter-go-redis, which delegates trace/metric to
-  redisotel — the transport owns span + duration metric + access log with no
-  WithoutTraceAndMetric split.
+  redisotel — the transport owns span + duration metric + access log (see observe.go).
 - The operation name is `"<METHOD> <path>"`, e.g. `POST /api/v2/write` [command.go:39] —
   the only stable per-request vocabulary the HTTP surface offers.
 - HTTP 5xx responses are mapped to retryable failures inside the round-tripper, and request
@@ -242,7 +235,7 @@ pending batches.
 ### 2.4 Why a dynamicTransport at all
 
 The SDK fixes the `*http.Client` at construction (`Options.SetHTTPClient`), but the
-observability policy is field-injected only *after* the ctor returns. DefaultDriver therefore
+observe/governance chain is wired only in Init. DefaultDriver therefore
 installs a pass-through `dynamicTransport` [driver.go:66-72] and Init swaps the real chain in
 [client.go:83-86]. Requests racing between construction and Init simply ride
 http.DefaultTransport. A custom driver that does not install one gets a client with no
@@ -263,10 +256,6 @@ All keys live under `spring.influxdb.<name>.` — per-instance prefix binding vi
 | `auth-token` | string | — | API token passed to the SDK. | Empty → boot error; wrong token → writes/queries fail per request (the /health probe may still pass — it does not authenticate). |
 | `org` | string | `""` | Default org for `WritePoints`/`ManagedWriteAPI` and `Org()`. ⚠ Required **at call time**, not at wiring: a client without org/bucket still serves Query/Delete APIs. | Missing → `WritePoints` returns an error, `ManagedWriteAPI` **panics** (inconsistent failure modes — design suspect). |
 | `bucket` | string | `""` | Default destination bucket for the write helpers. ⚠ Same call-time rule as `org`. | Same as `org`. |
-| `observability` | group | see below | observe kit config for the per-request transport (spans + metrics + access log). Instance keys override the top-level `observability.*` keys per field; the top level is the backward-compat fallback. | — |
-| `observability.level` | string | `brief` | `off` / `brief` / `detailed` (detailed adds the request path as the argument). `off` silences only the log signal; trace/metric keep emitting. | Typo → treated as non-off/non-detailed, i.e. brief-like log with no warning. An instance value equal to the binding default (`brief`) does not count as "set" and cannot override a non-default top-level value. |
-| `observability.maxArgBytes` | int | 512 | Bound of the captured argument in detailed mode. | Too small → truncated log arguments. |
-| `observability.skipOps` | list | — | Suppresses span+metric+log together for listed op names — entries match `"POST /api/v2/write"`-style names exactly. | No match → no effect (easy to get the name wrong; no warning). |
 | `driver` | string | `DefaultDriver` | Selects a registered Driver. ⚠ `RegisterDriver` panics on a duplicate name [driver.go:48]. | Unknown name → boot error `influxdb driver not found: <name>` [starter.go:67]. |
 
 No `tls.*` group, no `service-name`/discovery, no timeout keys — everything not listed is
@@ -292,16 +281,14 @@ The probe maps only `status=pass` to healthy; `fail` carries the server's messag
 
 | Signal | Name / shape |
 |--------|--------------|
-| Span | name = operation, e.g. `POST /api/v2/write`; kind = client; attributes `db.system=influxdb`, `db.operation=<op>`, `db.<arg>=<path>` (detailed) |
+| Span | name = operation, e.g. `POST /api/v2/write`; kind = client; attributes `db.system=influxdb`, `db.operation=<op>`, `db.statement=<path>` |
 | Metric | `db.client.operation.duration` (histogram, s) and `db.client.active_requests` (UpDownCounter) — shared vocabulary with every DB-family starter |
-| Access log | tag `_app_influxdb_access`, one record per request: `system=influxdb op=<METHOD+path> status duration` (+ path in detailed) |
+| Access log | tag `_app_influxdb_access`, one record per request at the log package's native levels: error → Warn; success with the request path (truncated to 512 bytes) → Debug; plain success → Info |
 | Async-write failures | log tag `influxdb` (app tag), `influxdb: async write failed: <err>` [client.go:137] |
 
 ```bash
 curl -s :9370/metrics | grep db.client
 grep _app_influxdb_access app.log | tail -2
-# silence the health probe's own noise (probe goes through the transport too):
-#   spring.influxdb.a.observability.skipOps=GET /health
 ```
 
 ### 4.3 Server-down drill
@@ -342,8 +329,7 @@ process keeps running (async failures never become caller errors).
 | `panic: influxdb: write helpers need org and bucket` | `ManagedWriteAPI` with empty org/bucket | Set `spring.influxdb.<name>.org/.bucket` — or use the embedded `WriteAPI(org, bucket)` directly. |
 | `WritePoints` returns the org/bucket error | Same call-time gap, non-panicking shape | Same as above. |
 | Writes fail but boot and health are green | Wrong `auth-token` — /health does not authenticate | Verify the token with `influx query --token ...`. |
-| No spans/metrics despite requests flowing | starter-otel not imported | The observe kit rides the OTel globals; import starter-otel (access log still emits without it). |
-| skipOps seems ignored | Entry doesn't match `"METHOD /path"` exactly | Match e.g. `GET /health` literally. |
+| No spans/metrics despite requests flowing | starter-otel not imported | The observer rides the OTel globals; import starter-otel (access log still emits without it). |
 | Queries return nothing right after a write | Bucket write-path settling (eventual visibility) | Retry window — the example itself polls up to 15s [example/example.go:81-91]. |
 | Async writes vanish silently | Wrong mental model: `ManagedWriteAPI` failures are log lines, not errors | Grep `influxdb: async write failed`; use `WritePoints` when you need the error. |
 
@@ -351,7 +337,7 @@ process keeps running (async failures never become caller errors).
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 9 (6 instance + observability.level/.maxArgBytes/.skipOps) |
+| Config keys | 6 instance keys |
 | Required | 2 at wiring (`server-url`, `auth-token`) + 2 at call time (`org`, `bucket`) |
 | Quickstart external deps | 1 (InfluxDB 2.x) |
 | "Watch out" entries | 5 |
@@ -361,8 +347,7 @@ Design suspects (audit ledger — carried over plus new):
 - `org`/`bucket` validated only at call time; `WritePoints` errors but `ManagedWriteAPI`
   **panics** — inconsistent failure modes for the same gap.
 - Health indicator has no opt-out key (redigo has `health.enabled` — family asymmetry); the
-  health probe also rides the observe transport, adding a log record per readiness check
-  unless skipOps filters `GET /health`.
+  health probe also rides the observe transport, adding a log record per readiness check.
 - Embedded-client methods other than `WritePoints` get no per-call governance (transport
   layer only); `ManagedWriteAPI` gets none at all — two guardedness tiers that are invisible
   at the call site.

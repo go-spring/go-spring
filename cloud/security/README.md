@@ -5,7 +5,7 @@
 authorization abstraction — the Spring Security equivalent expressed in Go
 idioms rather than a port of its filter-chain machinery. It answers "who is
 the caller?" (`Authentication` on the request context) and "may this caller
-do this?" (`HasAnyAuthority`, `Require`, `Authorize`).
+do this?" (`HasAnyAuthority`, `Require`).
 
 ## Features
 
@@ -19,17 +19,25 @@ do this?" (`HasAnyAuthority`, `Require`, `Authorize`).
 - Method-level guard: `Require(authorities...)` returns a plain decorator —
   the `@PreAuthorize` equivalent, composed with anything else by ordinary
   function nesting.
-- HTTP middleware chain: `Chain`, `Authenticate`, `Authorize`, `CORS`,
-  `CSRF` (double-submit-cookie) — plain `func(http.Handler) http.Handler`
-  decorators, not a bespoke filter registry.
 - `WithAuthentication` / `FromContext` for context propagation.
+- Shared pure helpers so per-family middleware cannot drift:
+  `ParseBearerToken`, `NewCSRFToken` / `MatchCSRFToken` (constant-time),
+  `DefaultCSRFCookieName` / `DefaultCSRFHeaderName`.
+
+## HTTP middleware
+
+This package deliberately ships no HTTP middleware: each server family
+installs its own, in its own idiom, on top of the shared identity model —
+stdlib `http.Handler` decorators in `starter-http-server`, `gin.HandlerFunc`
+in `starter-gin`, `echo.MiddlewareFunc` in `starter-echo`. CORS is likewise
+each family's own concern (`starter-http-server` ships one; gin uses
+`gin-contrib/cors`, echo its built-in).
 
 ## Quick Start
 
 Import path: `go-spring.org/cloud/security`.
 
-A resource server wires the security filter chain in front of business
-handlers:
+A validator produces the identity; a server-family middleware attaches it:
 
 ```go
 package main
@@ -39,6 +47,7 @@ import (
     "net/http"
 
     "go-spring.org/cloud/security"
+    httpsvr "go-spring.org/starter-http-server"
 )
 
 type myValidator struct{ /* ... */ }
@@ -62,10 +71,9 @@ func main() {
         _, _ = w.Write([]byte("ok"))
     })
 
-    chain := security.Chain(
-        security.CORS(security.CORSConfig{AllowedOrigins: []string{"*"}}),
-        security.Authenticate(v, true),
-        security.Authorize("orders:read"),
+    chain := httpsvr.Chain(
+        httpsvr.Authenticate(v, true),
+        httpsvr.Authorize("orders:read"),
     )
     _ = http.ListenAndServe(":8080", chain(mux))
 }
@@ -79,6 +87,5 @@ err := security.Require("orders:write")(ctx, svc.placeOrder)
 ```
 
 A JWT resource-server starter (`starter-security-jwt`) contributes a
-concrete `TokenValidator` and `Wrap`s the server mux; an authorization
-server starter (`starter-oauth2-server`) issues the tokens `Authenticate`
-verifies.
+concrete `TokenValidator`; an authorization server starter
+(`starter-oauth2-server`) issues the tokens the middleware verifies.

@@ -6,7 +6,7 @@ against the starter source (`starter.go`, `config.go`, `driver.go`, `client.go`,
 (smoke-verified against MinIO via docker-compose). **Object-storage operation semantics
 (bucket/object APIs, retention, versioning) are [minio-go's documentation](https://github.com/minio/minio-go)**
 — everything below is go-spring's increment: configuration, wiring, fail-fast startup,
-per-request observability, resilience, health.
+per-request instrumentation, resilience, health.
 
 **Activation**: `gs.OnProperty("spring.s3")` gates a gs.Module; every `spring.s3.<name>`
 subtree creates one `*Client` bean named `<name>` plus one health indicator named
@@ -20,7 +20,7 @@ COS, ...) — see README compatibility notes.
 
 ## 1. Complete worked project
 
-A service storing objects in MinIO with health probes, per-request observability and
+A service storing objects in MinIO with health probes, per-request instrumentation and
 governance-guarded access. File tree (mirrors the smoke-verified [example/](example/)):
 
 ```
@@ -86,7 +86,7 @@ func init() {
     gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 }
 
-// Put demonstrates one upload; the observability/resilience transport sits
+// Put demonstrates one upload; the instrumentation/resilience transport sits
 // inside the client, so this call is already spanned, metered, logged and
 // governance-guarded (see §2.3).
 func (s *Service) Put(ctx context.Context, bucket, key string, b []byte) error {
@@ -113,13 +113,6 @@ spring.s3.a.bucket-lookup=path
 spring.s3.b.endpoint=127.0.0.1:9000
 spring.s3.b.access-key-id=minioadmin
 spring.s3.b.secret-access-key=minioadmin
-
-# per-request observability: configure it per instance under the instance
-# prefix (preferred); top-level observability.* still works as a fallback
-# (instance keys override it — see §3).
-spring.s3.a.observability.level=brief
-# spring.s3.a.observability.maxArgBytes=512
-# spring.s3.a.observability.skipOps=GET /bucket/x
 
 # --- actuator (folds the s3:<name> indicators into readiness) -----------------
 spring.actuator.addr=:9370
@@ -165,10 +158,10 @@ gs.Run()
   │    │      → dynamicTransports.LoadAndDelete hands the placeholder to the wrapper
   │    ├─ fail-fast probe: HealthCheck → ListBuckets — unreachable endpoint or rejected
   │    │      credentials abort startup (starter.go:76-78)
-  │    └─ gs field-injects Client.Observability, then Init():
-  │          obs := observe.NewDB("s3", ...) → obsTransport (span+metric+access log)
+  │    └─ Init() [client.go]:
+  │          obsTransport (span + db.client.* metrics + access log, observe.go)
   │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3:<endpoint>"))
-  │          exec := resilience.WrapExecutor(exec, "s3", ...)  // outcome spans/counter
+  │          exec := resilience.WrapExecutor(exec, "s3")  // outcome spans/counter
   │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, → resource))
   ├─ Run / serve: readyz folds in every s3:<name> indicator (needs starter-actuator)
   └─ SIGTERM: Destroy() closes the resilience executor; minio holds no session to close
@@ -177,7 +170,8 @@ gs.Run()
 ### 2.2 Why the dynamicTransport exists (rationale from source)
 
 minio-go fixes the `http.Transport` inside `minio.Options` at construction and exposes no
-setter, while the observability policy is only field-injected **after** the client exists.
+setter, while the real transport (instrumentation + resilience) can only be swapped in
+**after** the client exists.
 `DefaultDriver.CreateClient` therefore installs a thin `dynamicTransport` — an atomic
 RoundTripper indirection (RWMutex-guarded, not atomic.Value, because the active tripper is
 one of several concrete types; see client.go:104-114) — and records it in a package-level
@@ -202,8 +196,10 @@ runs, requests pass straight through to `http.DefaultTransport`.
    span with the error — the span + duration metric + access log all carry that operation
    name (minio-go ships no OTel hooks of its own, so the starter's transport carries all
    three signals).
-4. The response unwinds: span attributes/metrics recorded, log line emitted per the
-   observability level; minio-go returns the object info to the caller.
+4. The response unwinds: span attributes/metrics recorded, access-log line emitted via the
+   `_app_s3_access` tag at the log package's native levels — an error at Warn, a success
+   carrying the URL-path argument at Debug, a plain success at Info; minio-go returns the
+   object info to the caller.
 
 ### 2.4 Health
 
@@ -217,10 +213,7 @@ readiness folded into `/readiness` with no extra wiring. The same function is ex
 
 ## 3. Per-key behavior reference
 
-Prefix `spring.s3.<name>.*` for the ctor-bound `Config` keys (config.go). `observability`
-also exists as a top-level `observability.*` fallback field on the Client wrapper
-(instance keys override it; binding fills the defaults brief/512/no-skips even when unset,
-so only a non-default instance value counts as "set" — see §6).
+Prefix `spring.s3.<name>.*` for the ctor-bound `Config` keys (config.go).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -231,8 +224,7 @@ so only a non-default instance value counts as "set" — see §6).
 | `region` | string | us-east-1 | Bucket region passed to minio.Options. | Wrong region → signature/redirect errors on region-aware endpoints (may pass the probe against region-agnostic MinIO, then fail per-bucket). |
 | `use-ssl` | bool | false | HTTPS towards the endpoint. | false against an TLS-only endpoint (or true against plaintext) → boot probe fails. |
 | `bucket-lookup` | string | auto | `auto` \| `virtual-host`/`dns` (aliases, `BucketLookupDNS`) \| `path`. | Some S3-compatible clouds only serve path style → wrong style yields per-request addressing failures. Unknown value → startup error listing valid values. |
-| `observability` | struct | brief | Level of per-request span+metric+access log (`spring.s3.<name>.observability.level` / `.maxArgBytes` (default 512) / `.skipOps`); top-level `observability.*` is the fallback surface, overridden per field by instance keys. | Instance value set back to its default (e.g. `level=brief`) cannot override a non-default top-level value — configure one surface only. |
-| `driver` | string | DefaultDriver | Selects a driver from the registry (`RegisterDriver`). Unknown name → startup error "s3 driver not found". | Custom drivers skip the dynamicTransport handshake → resilience unavailable for that client (observe still binds via the wrapper field). |
+| `driver` | string | DefaultDriver | Selects a driver from the registry (`RegisterDriver`). Unknown name → startup error "s3 driver not found". | Custom drivers skip the dynamicTransport handshake → resilience unavailable for that client. |
 
 ---
 
@@ -260,14 +252,14 @@ Stop MinIO (`docker compose stop minio`) while the app runs: `curl :9370/readyz`
 `s3:a` component to DOWN (probe = ListBuckets). Restart and it recovers — the indicator is
 per-request, not latched.
 
-### 4.4 Observability drill
+### 4.4 Instrumentation drill
 
-With `spring.s3.a.observability.level=detailed` and starter-otel imported, generate one upload
-and read the three signals: a span named `PUT /go-spring-example/hello.txt`, the duration
-histogram, and the per-request access log line. Add
-`spring.s3.a.observability.skipOps=PUT /go-spring-example/hello.txt` and repeat: that
-operation disappears from the log while others remain — proving the instance-prefixed
-resolution path (top-level `observability.*` acts as the fallback surface).
+With starter-otel imported, generate one upload and read the three signals: a client span
+named `PUT /go-spring-example/hello.txt` (attributes `db.system=s3`, `db.operation`,
+`db.statement` carrying the URL path, truncated at 512 bytes), the
+`db.client.operation.duration` histogram (plus the `db.client.active_requests` gauge), and
+the access-log line under the `_app_s3_access` tag — an errored operation logs at Warn, a
+successful one carrying the URL-path argument logs at Debug, a plain success at Info.
 
 ### 4.5 Fault/resilience drill (needs starter-governance)
 
@@ -286,7 +278,6 @@ per round-trip, not per stream: uploads with large bodies may re-send the body.
 | Startup aborts "failed to reach s3 endpoint" | endpoint down, wrong port, `use-ssl` mismatch, or bad credentials | The probe error carries the underlying cause (signature mismatch ⇒ creds; connection refused ⇒ endpoint/ssl). |
 | Startup aborts "s3 driver not found: X" | `driver` names nothing registered | Register via `RegisterDriver` in an init() before use, or drop the key. |
 | Startup aborts "unknown bucket-lookup" | invalid style string | One of auto / virtual-host / dns / path. |
-| Top-level `observability.*` ignored | instance-prefixed `spring.s3.<name>.observability.*` set to a non-default value overrides it per field | Clear one of the two surfaces, or set the instance key to the desired value. |
 | Custom driver client has no resilience | dynamicTransport handshake only exists for DefaultDriver | Accept observe-only, or install your own indirection in the driver. |
 | Works against MinIO, 404/redirect on cloud X | virtual-host addressing not supported there | `bucket-lookup=path`. |
 | readyz DOWN though app works | credential rotation invalidated the pair after boot | The indicator probes live; refresh credentials / restart. |
@@ -296,7 +287,7 @@ per round-trip, not per stream: uploads with large bodies may re-send the body.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 9 (+3 top-level observability.* shared) |
+| Config keys | 9 |
 | Required | 3 (endpoint, access-key-id, secret-access-key) |
 | Quickstart external deps | 1 (MinIO / any S3 endpoint) |
 | "Watch out" entries | 5 |
@@ -307,12 +298,6 @@ Design suspects (for the audit ledger; first two carried over from the previous 
   (keyed off a sync.Map).
 - `bucket-lookup` accepts both "virtual-host" and "dns" aliases for one mode — mild config
   surface redundancy.
-- FIXED (was: instance-scoped `observability` key dead): `Init` now resolves the
-  observability policy via `resolveObservability` — instance-prefixed
-  `spring.s3.<name>.observability.*` (bound into `Config.Observability`) overrides the
-  top-level wrapper field per field. Residual caveat: binding fills defaults even when
-  unset, so an instance value equal to a default cannot override a non-default top-level
-  value.
 - NEW: resource label is `s3:<endpoint>` only — two instances on one endpoint (like the
   example's `a`/`b`) share one resilience scope; no per-instance disambiguation.
 - NEW: health probe and fail-fast probe are the same ListBuckets call but duplicated in code

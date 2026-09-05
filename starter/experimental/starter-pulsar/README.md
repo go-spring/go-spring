@@ -108,14 +108,14 @@ err := handle(ctx, msg)
 starter.EndSpan(span, err)
 ```
 
-## Messaging Binder
+## Messaging Driver
 
 Beyond the raw client, this starter can expose a broker-neutral
-`messaging.Binder` (from `go-spring.org/cloud/messaging`), so application code
+`messaging.Driver` (from `go-spring.org/cloud/messaging`), so application code
 publishes and consumes `*messaging.Message` envelopes without depending on the
 Pulsar client API — swapping the broker underneath does not touch business code.
 
-Register the binder as a bean from a `pulsar.Client` (select the named instance
+Register the driver as a bean from a `pulsar.Client` (select the named instance
 with `gs.TagArg`):
 
 ```go
@@ -124,17 +124,17 @@ import (
     StarterPulsar "go-spring.org/starter-pulsar"
 )
 
-gs.Provide(StarterPulsar.NewBinder, gs.TagArg("a"))
+gs.Provide(StarterPulsar.NewDriver, gs.TagArg("a"))
 ```
 
 Then publish and subscribe through the envelope:
 
 ```go
-pub, _ := binder.NewPublisher(ctx, "orders")
+pub, _ := driver.NewPublisher(ctx, "orders")
 defer pub.Close()
 _ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("hello")})
 
-sub, _ := binder.NewSubscriber(ctx, "orders", "workers")
+sub, _ := driver.NewSubscriber(ctx, "orders", "workers")
 defer sub.Close()
 _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
     // handle m.Payload / m.Headers
@@ -149,7 +149,7 @@ Consumer with a background receive loop — a handler error nacks the message fo
 redelivery while success acks it. Trace context rides the message properties, so
 with starter-otel a trace links producer to consumer. The raw `pulsar.Client`
 bean stays available for readers, the admin API, schemas and other Pulsar
-features the binder does not model.
+features the driver does not model.
 
 ## Advanced Features
 

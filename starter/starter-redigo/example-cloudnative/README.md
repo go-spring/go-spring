@@ -15,7 +15,7 @@ a connection pool — **discovery**, **resilience**, **health** and
   hot-reloadable.
 - **Health**: the per-instance redigo `health.Indicator` is aggregated by
   `starter-actuator` on `:9370` — `/readyz` reflects the pool.
-- **Observability**: the `obsConn` wrapper (observe kit) rides the OTel globals.
+- **Observability**: the starter-built-in observe layer rides the OTel globals.
 - **Dynamic config**: a `gs.Dync[string]` label is bound to a watched file; editing
   it hot-reloads the value with no restart.
 

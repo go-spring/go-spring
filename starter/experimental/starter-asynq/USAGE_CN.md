@@ -123,15 +123,6 @@ spring.asynq.a.server.enabled=true
 # spring.asynq.a.tls.cert-file=...      # 另有 key-file / ca-file / server-name /
 #                                       #   insecure-skip-verify
 
-# --- 生产者观测 ---------------------------------------------------------
-# 实例级 key（推荐）：按字段覆盖顶层回退值。
-# spring.asynq.a.observability.level=brief    # off | brief | detailed
-# 顶层回退（绑定在 Client bean 的导出字段上，绝对 key observability.*）：
-# 只对未配置实例级 key 的实例生效。
-# observability.level=brief
-# observability.maxArgBytes=512
-# observability.skipOps=enqueue:greet
-
 # --- actuator（§4 的健康端点）---------------------------------------------------
 spring.actuator.addr=:9370
 ```
@@ -176,8 +167,8 @@ gs.Run()
   ├─ bean 装配：应用 bean 按实例名 autowire *Client / *Server
   ├─ Rooter Init 阶段：应用 Service.Init 注册 handler（mux 惰性创建，
   │  client.go:129-147——之后注册也可以，但 worker 开始消费后 handler 集合固定）
-  ├─ Client.Init (client.go:50-57)：observe.NewProducer("asynq")、
-  │    resilience.ResourceLabel("asynq", addr)、fault+observe executor 就绪
+  ├─ Client.Init (client.go)：newObserver()（observe.go）、
+  │    resilience.ResourceLabel("asynq", addr)、fault executor 就绪
   ├─ Server.Init (client.go:111-127)：asynq.NewServer(connOpt, Config{...})
   ├─ Runner 阶段：Server.Run——srv.Start(mux)、sig.TriggerAndWait() → 就绪，
   │    随后阻塞于 <-ctx.Done()
@@ -202,8 +193,8 @@ gs.Run()
 
 1. 应用调用 **wrapper 的** `Client.Enqueue(ctx, task, opts...)`（client.go:71-94）。不要
    调用内嵌提升的 `*asynq.Client.Enqueue`——只有 wrapper 走守护链。
-2. 观测层开启生产者 span `enqueue <taskType>`（`o.obs.Start(ctx, "enqueue",
-   task.Type())`），观测开启时。
+2. 观测层开启生产者观测（`o.obs.start(ctx, "enqueue", task.Type())`，
+   observe.go）：span、指标与访问日志。
 3. executor 执行：`fault.WrapExecutor(resilience.ExecutorFor("asynq:<addr>"))`——带
    starter-governance 时，限流拒绝/熔断开启会在**接触 Redis 之前**中止；未引入则为直通。
 4. `Client.EnqueueContext` 把任务写入 Redis（asynq 语义：队列/优先级由 opts 决定）。
@@ -219,10 +210,7 @@ gs.Run()
 ## 3. 逐 key 行为参考
 
 实例前缀：`spring.asynq.<name>.*`（Config 经带前缀的 `conf.BindEach` 绑定——这些
-**是**实例前缀 key）。观测配置有两个面：实例前缀 `spring.asynq.<name>.observability.*`
-（绑进 Config）与顶层 `observability.*`（字段注入到生产者 bean 的导出 `Observability`
-字段——绝对 key，保留是为向后兼容）。实例级 key 按字段覆盖顶层值
-（`Client.resolveObservability`，client.go）。
+**是**实例前缀 key）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
@@ -234,10 +222,7 @@ gs.Run()
 | `..queues` | map[string]int | 空 → asynq "default":1 | 队列 → 优先级权重（越高越常被处理）。⚠ 投递侧 `asynq.Queue(...)` 选项必须指向已配置的队列（或回退 default），否则 worker 取不到。 | 投到未列出的队列 → 任务永久 pending。 |
 | `..shutdown-timeout` | duration | 8s | worker 排空上限（`srv.Shutdown()`）；传给 `StopContext` 的 ctx 不被使用——排空由该 timeout 兜底（client.go:176-183）。 | 过短 → 发布时在途任务被弃。 |
 | `..server.enabled` | bool | false | **worker 选配开关**。同时决定 `*Server` bean 是否存在——不开却 `autowire:"a:server"` 会在装配期失败。 | 注入 worker 但没开 → 容器报 bean 不存在。 |
-| `..observability.*` | 块 | — | 按实例的观测策略（见下）；每个有值的字段覆盖对应顶层 `observability.*` 值。 | 留在绑定默认值（brief/512/无 skip）→ 视为未设置，静默回退顶层。 |
 | `..driver` | string | `DefaultDriver` | 选择已注册的 Driver（名字须与 `RegisterDriver` 一致）。空 → `DefaultDriver`。 | 名字未知 → 启动报错 `asynq driver not found: <name>`（starter.go:66）。 |
-| `observability.level`（**顶层**） | string | brief | `off` \| `brief` \| `detailed`——每次投递的生产者访问日志/span 粒度（cloud/observe ObserveConfig）。是未配置实例级 key 的实例的回退值。 | 实例级 key 显式配成绑定默认值（如 `brief`）时无法再覆盖非默认顶层值——只配一个面。 |
-| `observability.maxArgBytes` / `.skipOps`（**顶层**） | int / []string | 512 / — | detailed 模式抓取参数的字节上限；跨三信号要抑制的操作名。 | — |
 
 ---
 
@@ -275,8 +260,6 @@ redis-cli -n 1 keys '*'                  # asynq 的重试状态存于 Redis
 grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 ```
 
-顶层 observability 设 `detailed` 时，每次观测记录以任务类型为操作参数。
-
 ### 4.4 退出排空
 
 启动慢 handler（sleep 3s）、投一个任务、运行期间 `kill -TERM`：worker 在
@@ -301,19 +284,18 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 | 守护/resilience 从不生效 | 调了提升的 `*asynq.Client.Enqueue/EnqueueContext` 而非 wrapper | 调 wrapper 的 `Enqueue`（client.go:71）。 |
 | 能投递但健康 DOWN | `default` 队列从未创建 / ACL 限制 Inspector | 健康检查固定探 `default` 队列；确认 Redis 可达与权限。 |
 | 发布丢任务 | `shutdown-timeout` 短于在途任务 | 调到高于最长任务时长。 |
-| 实例前缀下的 `observability.level` 不生效 | 实例值等于绑定默认值（如显式 `brief`），不算"已设置" | 改成非默认值，或只配顶层一个面。 |
 | 注册了自定义 Driver 却不生效 | `..driver` key 没指向注册名 | 配 `spring.asynq.<n>.driver=<name>` 为 `RegisterDriver` 的名字；名字未知会启动报错。 |
 
 ## 6. 设计体检表
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 实例前缀 11 个（含 6 个 tls 子 key）+ 顶层 observability 3 个 |
+| 配置 key 总数 | 实例前缀 11 个（含 6 个 tls 子 key） |
 | 其中必填 | 1（addr） |
 | quickstart 前置外部依赖数 | 1（Redis） |
 | 注意/坑条数 | 5 |
 
-设计嫌疑清单（原"死掉的 driver 选择"与"Config 级 observability 无人读"两项已修复）：
+设计嫌疑清单（原"死掉的 driver 选择"一项已修复）：
 
 - 生产者与 worker 共用一份 Config，真正共用的只有 addr/认证/tls/driver；
   concurrency/queues/shutdown-timeout 是 worker 专属 key 却放顶层。

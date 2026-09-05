@@ -28,20 +28,11 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// stubDiscovery serves a fixed endpoint set and a watcher that never updates.
+// stubDiscovery serves a fixed endpoint set.
 type stubDiscovery struct{ eps []discovery.Endpoint }
 
 func (s stubDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
 	return s.eps, nil
-}
-
-func (s stubDiscovery) Watch(ctx context.Context, _ string, _ ...discovery.Option) (<-chan discovery.WatchResult, error) {
-	ch := make(chan discovery.WatchResult)
-	go func() {
-		<-ctx.Done()
-		close(ch)
-	}()
-	return ch, nil
 }
 
 // recordRT records the host of every request it sees and returns a canned status.
@@ -219,3 +210,59 @@ func TestNewTransport_WrapTransportIsOutermost(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
+	rec := &recordRT{}
+	called := false
+	rt, closeFn, err := NewTransport(Config{
+		Base:     rec,
+		Executor: resilience.ExecutorFor("test-resource"),
+		WrapExec: func(e resilience.Executor) resilience.Executor {
+			called = true
+			return e
+		},
+	})
+	assert.That(t, err).Nil()
+	defer func() { _ = closeFn() }()
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	resp, err := rt.RoundTrip(req)
+	assert.That(t, err).Nil()
+	assert.That(t, resp.StatusCode).Equal(http.StatusOK)
+	assert.That(t, called).True()
+}
+
+func TestFloorMinRequests(t *testing.T) {
+	// error-rate policy with unset MinRequests → floored.
+	p := floorMinRequests(resilience.Policy{BreakerStrategy: resilience.BreakerErrorRate, ErrorRateThreshold: 0.5})
+	assert.That(t, p.MinRequests).Equal(minRequestsFloor)
+
+	// an explicit higher value wins; a lower explicit value is raised too.
+	assert.That(t, floorMinRequests(resilience.Policy{BreakerStrategy: resilience.BreakerErrorRate, ErrorRateThreshold: 0.5, MinRequests: 10}).MinRequests).Equal(10)
+	assert.That(t, floorMinRequests(resilience.Policy{BreakerStrategy: resilience.BreakerErrorRate, ErrorRateThreshold: 0.5, MinRequests: 2}).MinRequests).Equal(minRequestsFloor)
+
+	// consecutive and zero policies are untouched.
+	assert.That(t, floorMinRequests(resilience.Policy{ErrorThreshold: 5}).MinRequests).Equal(0)
+	assert.That(t, floorMinRequests(resilience.Policy{RateLimit: 10}).MinRequests).Equal(0)
+	// error-rate strategy with the breaker disabled (no threshold) is untouched.
+	assert.That(t, floorMinRequests(resilience.Policy{BreakerStrategy: resilience.BreakerErrorRate}).MinRequests).Equal(0)
+}
+
+// With governance not armed, governedExecutor still yields a working (no-op)
+// executor — the same contract resilience.ExecutorFor gives.
+func TestGovernedExecutorWithoutGovernance(t *testing.T) {
+	exec, err := governedExecutor("http:test-svc")
+	assert.That(t, err == nil).True()
+	assert.That(t, exec != nil).True()
+	err = exec.Execute(t.Context(), "host:1", func(ctx context.Context) error { return nil })
+	assert.That(t, err == nil).True()
+}
+
+// Resource derivation: explicit Resource wins; otherwise service-name before
+// the direct address, so the label stays stable across addressing-mode switches.
+func TestConfigResourceDerivation(t *testing.T) {
+	assert.That(t, Config{ServiceName: "user-svc"}.resource()).Equal("http:user-svc")
+	assert.That(t, Config{Addr: "10.0.0.1:8080", ServiceName: "user-svc"}.resource()).Equal("http:user-svc")
+	assert.That(t, Config{Addr: "10.0.0.1:8080"}.resource()).Equal("http:10.0.0.1:8080")
+	assert.That(t, Config{Resource: "custom", Addr: "10.0.0.1:8080"}.resource()).Equal("custom")
+}

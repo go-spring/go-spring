@@ -22,7 +22,6 @@ package StarterMemcached
 
 import (
 	"context"
-	"sync"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/discovery"
@@ -56,11 +55,10 @@ type DefaultDriver struct{}
 //
 // When c.ServiceName is set (and mesh mode is not enabled), the server list is
 // resolved through the registered discovery backend (c.Discovery) instead of
-// using c.Servers. A discovery.Resolver seeds the snapshot with an explicit
-// Resolve and keeps it fresh via a background Watch; gomemcache hashes keys
-// onto a fixed server set chosen at client creation, so only the initial
-// snapshot is applied to the client — the Resolver is retained solely to own
-// the watch lifecycle (Stop on shutdown).
+// using c.Servers. gomemcache hashes keys onto a fixed server set chosen at
+// client creation, so only one live endpoint snapshot is applied at build time;
+// a changing cluster membership requires a restart. Resolver freshness lives
+// inside the backend, so there is nothing to release.
 //
 // In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
 // discovery+LB, so the client connects straight to the configured static
@@ -72,9 +70,11 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*memcache.Clie
 		return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
 	}
 	if resolver != nil {
-		eps := resolver.Endpoints()
+		eps, err := resolver()
+		if err != nil {
+			return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
+		}
 		if len(eps) == 0 {
-			_ = resolver.Stop()
 			return nil, errutil.Explain(nil, "memcached: discovery returned no endpoints for %q", c.ServiceName)
 		}
 		servers = make([]string, 0, len(eps))
@@ -89,34 +89,14 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*memcache.Clie
 	if c.MaxIdleConns > 0 {
 		client.MaxIdleConns = c.MaxIdleConns
 	}
-	if resolver != nil {
-		resolvers.Store(client, resolver)
-	}
 	return client, nil
 }
 
-// resolvers tracks the discovery-backed Resolver behind each client built by
-// DefaultDriver, so Close can stop the background watch on shutdown. gomemcache
-// shards keys across a static server set chosen at client creation, so the live
-// endpoint updates from the watch are NOT re-applied to the client mid-flight —
-// the Resolver is kept only to own the watch lifecycle and to provide a Stop
-// hook. A changing cluster membership requires a restart.
-var resolvers sync.Map // *memcache.Client -> *discovery.Resolver
-
-// newLiveResolver resolves the registered discovery backend for c and returns a
-// Resolver that keeps the service's endpoint set fresh via a background watch. It
-// returns (nil, nil) when service-name is unset or mesh mode is enabled (a sidecar
-// owns discovery+LB), in which case the caller uses the configured Servers list.
-// The caller owns the lifecycle and must release the resolver via stopLiveResolver.
-func newLiveResolver(ctx context.Context, c Config) (*discovery.Resolver, error) {
+// newLiveResolver resolves the registered discovery backend for c into a by-name
+// Resolver that re-reads the service's live endpoint snapshot. It returns
+// (nil, nil) when service-name is unset or mesh mode is enabled (a sidecar owns
+// discovery+LB), in which case the caller uses the configured Servers list.
+// Resolver freshness lives inside the backend, so there is nothing to release.
+func newLiveResolver(ctx context.Context, c Config) (discovery.Resolver, error) {
 	return discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
-}
-
-// stopLiveResolver stops the discovery watch behind the given client value. It is
-// the Close-half of the discovery lifecycle, symmetric with newLiveResolver; it
-// is a no-op for clients that never had a resolver.
-func stopLiveResolver(client any) {
-	if v, ok := resolvers.LoadAndDelete(client); ok {
-		_ = v.(*discovery.Resolver).Stop()
-	}
 }

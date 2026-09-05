@@ -117,10 +117,6 @@ spring.influxdb.a.bucket=example
 spring.influxdb.b.server-url=http://127.0.0.1:8086
 spring.influxdb.b.auth-token=go-spring-example-token
 
-# --- 可观测：detailed 会在访问日志里附带请求 path ---------------------------
-#（默认 brief；off 只关日志信号）
-spring.influxdb.a.observability.level=detailed
-
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
 spring.observability.service-name=demo
@@ -168,13 +164,10 @@ gs.Run()
   │    3. 领取 DefaultDriver 安装的 dynamic transport [starter.go:77]
   │    4. fail-fast 探测：client.Health() → /health 必须报告 "pass"，
   │       否则关闭 client 并启动失败 [starter.go:80]
-  ├─ gs 字段注入 Client.Observability（${observability:=}，顶层回退；
-  │    实例前缀 spring.influxdb.<name>.observability.* 按字段覆盖——见
-  │    Client.resolveObservability [client.go]）
-  ├─ Init [client.go:76]：构建 Observer（NewDB "influxdb"）+ obsTransport；
+  ├─ Init [client.go:69]：构建 dbObserver（"influxdb"）+ obsTransport；
   │    解析 executor = resilience.WrapExecutor(fault.WrapExecutor(
-  │    resilience.ExecutorFor("influxdb:<server-url>")))；dyn.Swap 换入
-  │    resilience round-tripper——观测+治理自此生效
+  │    resilience.ExecutorFor("influxdb:<server-url>")), "influxdb")；dyn.Swap
+  │    换入 resilience round-tripper——观测+治理自此生效
   ├─ 就绪：指示器翻 UP（每次探测 = 一趟 /health 往返）
   └─ SIGTERM → Destroy [client.go:93]：Client.Close()——flush 异步 writer
        的残留批次——随后 exec.Close()
@@ -200,7 +193,7 @@ influxdb-client-go → resilience round-tripper（exec.Execute）→ obsTranspor
   检查；它的拒绝正是外层观测随后记录的东西。
 - **obsTransport 承载全部三个信号**：influxdb-client-go 自身不带 OTel 插桩，因此
   不同于把 trace/metric 交给 redisotel 的 starter-go-redis，这里由 transport 一并
-  负责 span + 时长指标 + 访问日志，没有 WithoutTraceAndMetric 拆分。
+  负责 span + 时长指标 + 访问日志（见 observe.go）。
 - 操作名是 `"<METHOD> <path>"`，如 `POST /api/v2/write` [command.go:39]——HTTP 面
   上唯一稳定的逐请求词汇。
 - HTTP 5xx 在 round-tripper 内被映射为可重试失败，重试时逐次回卷请求体
@@ -230,8 +223,8 @@ flush 残留批次。
 
 ### 2.4 为什么需要 dynamicTransport
 
-SDK 在构造期固定 `*http.Client`（`Options.SetHTTPClient`），而可观测策略要到构造
-返回**之后**才被字段注入。因此 DefaultDriver 安装一个直通的 `dynamicTransport`
+SDK 在构造期固定 `*http.Client`（`Options.SetHTTPClient`），而观测/治理链要到 Init
+才接线。因此 DefaultDriver 安装一个直通的 `dynamicTransport`
 [driver.go:66-72]，由 Init 换入真正的链 [client.go:83-86]。构造与 Init 之间竞争的
 请求直接走 http.DefaultTransport。不自装它的自定义 driver 得到的 client 没有观测/
 resilience transport——该 client 的 resilience 即不可用 [starter.go:74-79]；逐调用的
@@ -250,10 +243,6 @@ resilience transport——该 client 的 resilience 即不可用 [starter.go:74-
 | `auth-token` | string | — | 传给 SDK 的 API token。 | 空 → 启动报错；token 错 → 写/查逐请求失败（/health 探测不做鉴权，可能仍绿）。 |
 | `org` | string | `""` | `WritePoints`/`ManagedWriteAPI` 与 `Org()` 的默认 org。⚠ **调用期**才需要，装配期不校验：不配 org/bucket 的 client 照样能服务 Query/Delete API。 | 缺失 → `WritePoints` 返回 error，`ManagedWriteAPI` **panic**（失败方式不一致——设计嫌疑）。 |
 | `bucket` | string | `""` | 写助手的目标 bucket 默认值。⚠ 与 `org` 同一调用期规则。 | 同 `org`。 |
-| `observability` | group | 见下 | 逐请求 transport（span + 指标 + 访问日志）的 observe kit 配置。实例级 key 按字段覆盖顶层 `observability.*`；顶层是向后兼容的回退面。 | — |
-| `observability.level` | string | `brief` | `off` / `brief` / `detailed`（detailed 额外附请求 path 作为参数）。`off` 只关日志信号；trace/metric 照发。 | 拼错 → 视为非 off 非 detailed，即 brief 式日志，无任何告警。实例值等于绑定默认值（`brief`）时不算"已设置"，无法覆盖非默认顶层值。 |
-| `observability.maxArgBytes` | int | 512 | detailed 模式下参数捕获上限。 | 过小 → 日志参数被截断。 |
-| `observability.skipOps` | list | — | 对列出的操作名一并压制 span+指标+日志——条目须精确匹配 `"POST /api/v2/write"` 样式。 | 不匹配 → 无效果（名字很容易写错；无告警）。 |
 | `driver` | string | `DefaultDriver` | 选择已注册的 Driver。⚠ `RegisterDriver` 重名注册 panic [driver.go:48]。 | 名字未知 → 启动报错 `influxdb driver not found: <name>` [starter.go:67]。 |
 
 没有 `tls.*` 组、没有 `service-name`/服务发现、没有超时 key——未列出的一切都是
@@ -279,16 +268,14 @@ docker start influxdb-example
 
 | 信号 | 名称 / 形态 |
 |------|-------------|
-| Span | 名 = 操作名，如 `POST /api/v2/write`；kind = client；属性 `db.system=influxdb`、`db.operation=<op>`、`db.<arg>=<path>`（detailed） |
+| Span | 名 = 操作名，如 `POST /api/v2/write`；kind = client；属性 `db.system=influxdb`、`db.operation=<op>`、`db.statement=<path>` |
 | 指标 | `db.client.operation.duration`（直方图，s）与 `db.client.active_requests`（UpDownCounter）——与所有 DB 家族 starter 共用词汇 |
-| 访问日志 | tag `_app_influxdb_access`，每请求一条：`system=influxdb op=<METHOD+path> status duration`（detailed 附 path） |
+| 访问日志 | tag `_app_influxdb_access`，每请求一条，走 log 包原生分级：错误 → Warn；成功且带请求 path 参数（截断至 512 字节）→ Debug；普通成功 → Info |
 | 异步写失败 | 日志 tag `influxdb`（app tag），`influxdb: async write failed: <err>` [client.go:137] |
 
 ```bash
 curl -s :9370/metrics | grep db.client
 grep _app_influxdb_access app.log | tail -2
-# 压掉健康探测自身的噪音（探测同样走 transport）：
-#   spring.influxdb.a.observability.skipOps=GET /health
 ```
 
 ### 4.3 server 宕机演练
@@ -328,8 +315,7 @@ error）。
 | `panic: influxdb: write helpers need org and bucket` | org/bucket 为空时调 `ManagedWriteAPI` | 配 `spring.influxdb.<name>.org/.bucket`——或直接用内嵌 `WriteAPI(org, bucket)`。 |
 | `WritePoints` 返回 org/bucket 错误 | 同一调用期缺口的不 panic 形态 | 同上。 |
 | 写失败但启动与健康都是绿的 | `auth-token` 错——/health 不做鉴权 | 用 `influx query --token ...` 验 token。 |
-| 请求在跑却没有 span/指标 | 未 import starter-otel | observe kit 挂在 OTel globals 上；import starter-otel（访问日志无 otel 也照发）。 |
-| skipOps 似无效 | 条目与 `"METHOD /path"` 不精确匹配 | 按字面匹配如 `GET /health`。 |
+| 请求在跑却没有 span/指标 | 未 import starter-otel | observer 挂在 OTel globals 上；import starter-otel（访问日志无 otel 也照发）。 |
 | 写完立刻查询没有数据 | bucket 写路径落盘的短暂延迟 | 重试窗口——example 自身轮询至 15s [example/example.go:81-91]。 |
 | 异步写无声消失 | 心智模型错位：`ManagedWriteAPI` 的失败是日志行，不是 error | grep `influxdb: async write failed`；需要错误就改用 `WritePoints`。 |
 
@@ -337,7 +323,7 @@ error）。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 9（实例 6 + observability.level/.maxArgBytes/.skipOps） |
+| 配置 key 总数 | 实例 6 个 |
 | 其中必填 | 装配期 2（`server-url`、`auth-token`）+ 调用期 2（`org`、`bucket`） |
 | quickstart 前置外部依赖 | 1（InfluxDB 2.x） |
 | "注意/坑" 条数 | 5 |
@@ -347,8 +333,7 @@ error）。
 - `org`/`bucket` 只在调用期校验；`WritePoints` 报 error、`ManagedWriteAPI` **panic**——
   同一缺口两种失败方式。
 - 健康指示器无关闭 key（redigo 有 `health.enabled`——家族不对称）；健康探测本身也走
-  observe transport，除非 skipOps 过滤 `GET /health`，否则每次 readiness 检查多一条
-  日志。
+  observe transport，每次 readiness 检查多一条访问日志。
 - `WritePoints` 之外的内嵌方法只有传输层治理、没有逐调用治理；`ManagedWriteAPI` 则
   完全没有——两档保护强度在调用点不可见。
 - `WritePoints` 两次跨越 executor（逐调用 + 传输层）且共用一个资源键——熔断计数被

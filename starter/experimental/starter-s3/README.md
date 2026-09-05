@@ -4,7 +4,7 @@
 
 `starter-s3` provides S3-protocol object storage support for Go-Spring:
 multi-instance `*minio.Client` beans with fail-fast startup probes (bucket
-list), per-request observability (span + metric + access log), resilience
+list), per-request instrumentation (span + metric + access log), resilience
 (rate limit / circuit breaking / fault injection on the HTTP transport), and
 per-instance health indicators. It is built on
 [minio-go](https://github.com/minio/minio-go), so one config surface covers
@@ -74,10 +74,10 @@ The wrapper embeds `*minio.Client`, so every SDK method promotes unchanged.
 - **Health indicator per instance** — the same probe is registered as
   `s3:<name>` and folded into `/readiness` by `starter-actuator` when
   imported.
-- **Observability** — every request emits an OTel span, duration metric and
-  access-log line through the observe kit
-  (`spring.s3.<name>.observability.level=off` to disable; a top-level
-  `observability.*` fallback also works, overridden by instance keys). minio-go
+- **Instrumentation** — every request emits an OTel client span
+  (`db.system`/`db.operation`/`db.statement` attributes), the
+  `db.client.operation.duration` metric and an access-log line (tag
+  `_app_s3_access`) from the starter's own transport. minio-go
   ships no OTel instrumentation of its own, so the starter
   transport carries all three signals.
 - **Resilience** — rate limiting, circuit breaking and fault injection are

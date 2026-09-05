@@ -32,12 +32,12 @@ func TestLocaleContext(t *testing.T) {
 }
 
 func newSource() *MapSource {
-	return NewMapSource(WithFallbackLocale("en")).
-		AddMap("en", map[string]string{
+	return NewMapSource(WithDefaultLocale("en")).
+		AddBundle("en", map[string]string{
 			"validation.email": "{0} is not a valid email",
 			"greeting":         "hello, {0}",
 		}).
-		AddMap("zh", map[string]string{
+		AddBundle("zh", map[string]string{
 			"validation.email": "{0} 不是合法邮箱",
 		})
 }
@@ -52,7 +52,7 @@ func TestMessageLocaleHit(t *testing.T) {
 
 func TestMessageFallsBackToDefaultLocale(t *testing.T) {
 	src := newSource()
-	// "greeting" exists only in en; a zh request falls back to the fallback locale.
+	// "greeting" exists only in en; a zh request falls back to the default locale.
 	ctx := WithLocale(context.Background(), "zh")
 	got, err := src.Message(ctx, "greeting", "bob")
 	assert.Error(t, err).Nil()
@@ -76,29 +76,10 @@ func TestMessageNoLocaleUsesDefault(t *testing.T) {
 }
 
 func TestInterpolateLeavesUnmatchedPlaceholders(t *testing.T) {
-	src := NewMapSource(WithFallbackLocale("en")).Add("en", "k", "{0} and {5}")
+	src := NewMapSource(WithDefaultLocale("en")).AddMessage("en", "k", "{0} and {5}")
 	got, err := src.Message(WithLocale(context.Background(), "en"), "k", "first")
 	assert.Error(t, err).Nil()
 	assert.String(t, got).Equal("first and {5}")
-}
-
-func TestAddParsedFlattensNestedMaps(t *testing.T) {
-	src := NewMapSource(WithFallbackLocale("en"))
-	src.AddParsed("en", map[string]any{
-		"validation": map[string]any{
-			"email": "bad email",
-			"min":   "too small",
-		},
-		"count": 3,
-	})
-	ctx := WithLocale(context.Background(), "en")
-	got, err := src.Message(ctx, "validation.min")
-	assert.Error(t, err).Nil()
-	assert.String(t, got).Equal("too small")
-
-	got, err = src.Message(ctx, "count")
-	assert.Error(t, err).Nil()
-	assert.String(t, got).Equal("3")
 }
 
 func TestLocalizerSwallowsMissingKey(t *testing.T) {

@@ -21,7 +21,6 @@ import (
 
 	"go-spring.org/cloud/tlsconf"
 
-	observe "go-spring.org/cloud/observe"
 )
 
 // Config binds one Consul-backed distributed-lock instance under
@@ -67,8 +66,4 @@ type Config struct {
 	// providers are no-ops, so leaving this on costs almost nothing.
 	ObserveEnabled bool `value:"${observe.enabled:=true}"`
 
-	// Observability configures the access log emitted by the shared
-	// observe-lock adapter (level off/brief/detailed, per-op skips). Blank
-	// level means brief.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 }

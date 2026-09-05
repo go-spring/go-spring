@@ -19,7 +19,6 @@ package StarterKafka
 import (
 	"time"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -49,14 +48,9 @@ type Config struct {
 	// Producer tunes producer-side batching, compression and acks.
 	Producer ProducerConfig `value:"${producer}"`
 
-	// Observability configures the per-message access log emitted by the observe
-	// hook (kotel already provides trace spans + metrics, so the hook is log-only,
-	// off/brief/detailed). Defaults to "brief".
-	Observability observe.ObserveConfig `value:"${observability:=}"`
-
 	// Governance enables the resilience/fault guard on this client, default is
 	// true. Both the raw client API (GuardedProduceSync) and the messaging
-	// binder's Publish route through the governance center executor; when the
+	// driver's Publish route through the governance center executor; when the
 	// governance center itself is off the executor is a transparent no-op, so
 	// this switch only removes the guard entirely (bare calls) when set to
 	// false.

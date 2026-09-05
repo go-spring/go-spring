@@ -2,27 +2,19 @@
 [English](README.md) | [中文](README_CN.md)
 
 `session` is a framework-agnostic, zero-dependency abstraction for
-server-side HTTP sessions — the Spring Session equivalent expressed in Go
-idioms rather than a port of its `@EnableRedisHttpSession` machinery. A
-stateful web / SSO deployment can have replica A write the session and
-replica B read it, with no change to business handlers.
+server-side HTTP sessions. A stateful web / SSO deployment can have replica A
+write the session and replica B read it, with no change to business handlers.
+The bundled `Memory` store serves single-node and tests; a distributed
+backend comes from `starter-session-redis` behind the same interface.
 
 ## Features
 
-- Zero third-party dependencies.
-- Three-piece split (like `cache` / `lock` / `security`):
-  - `Session` — id + attribute bag + createdAt; obtained from context via
-    `FromContext`, never constructed by business code.
-  - `SessionStore` — `Load` / `Save(ttl)` / `Delete`. Remote backends
-    implement the narrower `ByteStore` and are lifted with `FromByteStore`
-    (JSON encoding). Registered stores via `Register` / `Get` / `MustGet`.
-    Bundled `Memory` store is registered as `"memory"`.
-  - `Manager` — the single HTTP seam. `Manager.Middleware` loads by cookie,
-    attaches to ctx, and writes back before the first response byte.
-- Lazy id assignment: an untouched visit creates no store entry and no
-  cookie.
+- Zero third-party dependencies; works with any `net/http`-compatible router.
+- Typed attribute access: `session.Set[T]` / `session.Get[T]` with automatic
+  JSON re-encoding for byte-backend round trips.
+- Lazy id assignment: an untouched visit creates no store entry and no cookie.
 - Sliding renewal: every request that carries a session refreshes the TTL
-  and cookie `Max-Age`.
+  and the cookie `Max-Age`.
 - `Session.RenewID` rotates the id on privilege change (login) to defeat
   session fixation.
 - `Session.Invalidate` destroys server state and expires the cookie (logout).
@@ -69,6 +61,109 @@ func main() {
 }
 ```
 
-For cross-replica sharing use `starter-session-redis`; it contributes a
-`session.SessionStore` bean built on `FromByteStore` over the Redis client.
-The `Manager` API is unchanged.
+A runnable, self-asserting version of this flow (lazy allocation, login
+rotation, typed attributes, logout, idle expiry) lives in
+[example/](example/).
+
+## Usage
+
+### Mount the middleware
+
+Construct a `Manager` over a store and wrap the handlers that use the
+session — this is the only place session transport lives. Multiple Managers
+(even across replicas) may share one store; that is exactly how session
+state is shared:
+
+```go
+mgr := session.NewManager(store, session.Options{IdleTimeout: 30 * time.Minute})
+mux.Handle("/profile", mgr.Middleware(profileHandler))
+```
+
+Inside a wrapped handler, obtain the session from the request context:
+
+```go
+s, _ := session.FromContext(r.Context())
+```
+
+### Read and write attributes
+
+Go methods cannot carry type parameters, so typed access is package-level:
+
+```go
+session.Set(s, "cart", []string{"sku-1", "sku-2"})
+items, ok, err := session.Get[[]string](s, "cart")
+```
+
+With the in-process `Memory` store the original type is returned as-is. A
+session loaded from a byte-oriented backend comes back as
+`map[string]any` / `float64`; `Get` re-encodes through JSON so the intended
+type is still yielded — which also means remotely stored attributes should
+stay JSON-friendly. A value that cannot decode into `T` is an error, not a
+silent zero. `s.Delete(key)` removes one attribute; `s.Keys()` lists them.
+
+### Log in, log out
+
+```go
+// login: rotate the id the client presented pre-authentication, then record
+// the authenticated user. The old id becomes invalid on write-back.
+s.RenewID()
+session.Set(s, "user", user)
+
+// logout: delete the store entry and expire the client cookie.
+s.Invalidate()
+```
+
+Both take effect at write-back, before the first response byte reaches the
+client.
+
+### Configure the cookie and idle timeout
+
+`Options` covers `CookieName` (default `"SESSION"`), `Path`, `Domain`,
+`Secure`, `SameSite` (default `Lax`), and `IdleTimeout` (default 30m).
+`IdleTimeout` is how long a session may sit idle: every request carrying it
+slides the deadline forward. Non-positive means the session never expires
+server-side and the cookie is a session cookie. The cookie is always
+`HttpOnly` and not configurable; the id is 32 bytes of `crypto/rand`,
+base64url-encoded.
+
+### Contribute a distributed backend
+
+Remote stores implement the narrow `ByteStore` (`Get` / `Set` / `Delete` of
+`[]byte`) over their client and lift it to a full `SessionStore` with
+`FromByteStore`, which owns the JSON serialization for every backend:
+
+```go
+store := session.FromByteStore(myRedisByteStore)
+mgr := session.NewManager(store, opt)
+```
+
+For process-static stores, `Register` / `GetStore` share them by name; the
+bundled `Memory` is registered as `"memory"`. A backend that needs a live
+client (Redis, ...) should be contributed as a bean instead — a live
+connection does not belong in a package-global map across tests and
+restarts. `starter-session-redis` does exactly this; the `Manager` API is
+unchanged when you switch to it.
+
+## Behavioral contract
+
+- **Mutate early.** `Set-Cookie` must precede the response body, so the
+  session is committed before the first `WriteHeader` / `Write` (and once
+  more at middleware exit for handlers that never wrote). Attribute changes
+  after the first write are silently not persisted — the same constraint any
+  header carries.
+- **Anonymous traffic allocates nothing.** A request that never touches the
+  session gets no id, no store entry, and no cookie.
+- **Every carried session is re-saved**, even without changes, to refresh
+  the store TTL and cookie `Max-Age` (sliding renewal).
+- **If the store fails mid-response** for a brand-new session, no cookie is
+  issued — the client never receives an id that has no store entry; the
+  response itself completes normally.
+
+## Design notes
+
+- `SessionStore` is the persistence seam; the same middleware serves an
+  in-process `Memory` or a shared Redis backend without change.
+- `ByteStore` serialization is JSON, not gob: cross-language readable and no
+  version surprises.
+- The package is not an identity provider — session attributes are an
+  arbitrary bag; "who the caller is" belongs to `cloud/security`.

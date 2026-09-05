@@ -34,7 +34,7 @@ traffic (`traffic.IsLoadTest(ctx)`). Each transport needs:
 ### Activation notes
 - HTTP servers (gin/echo/hertz) + grpc: on by default, toggle via
   `<server>.loadtest.enabled` (and `.header` for the HTTP trio).
-- MQ binders (kafka/kafka-sarama/rabbitmq/nats/pulsar): always on, inert unless
+- MQ drivers (kafka/kafka-sarama/rabbitmq/nats/pulsar): always on, inert unless
   the producer's ctx is tagged.
 - trpc/dubbo: register-on-by-default, but the filter must be added to the
   service's filter chain to run (config-driven named-filter model, same as the
@@ -56,7 +56,7 @@ match the existing observability boundary.
   starter's trace filter starts a root span for the same reason). `IsLoadTest`
   still works in-process.
 - **starter-mqtt** — MQTT 3.1.1 (paho v3 client) packets carry no per-message
-  metadata; the binder's own docs note trace cannot propagate either. Needs
+  metadata; the driver's own docs note trace cannot propagate either. Needs
   MQTT v5 user properties to support it.
 
 ## Consumer side (shadow routing) — intentionally not built

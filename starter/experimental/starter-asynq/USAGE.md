@@ -126,15 +126,6 @@ spring.asynq.a.server.enabled=true
 # spring.asynq.a.tls.cert-file=...      # + key-file / ca-file / server-name /
 #                                       #   insecure-skip-verify
 
-# --- producer observability ---------------------------------------------
-# Per-instance keys (recommended): override the top-level fallback per field.
-# spring.asynq.a.observability.level=brief    # off | brief | detailed
-# Top-level fallback (binds onto the Client bean's exported field, absolute
-# key observability.*): applies to instances that set no key of their own.
-# observability.level=brief
-# observability.maxArgBytes=512
-# observability.skipOps=enqueue:greet
-
 # --- actuator (health endpoint for §4) ----------------------------------------
 spring.actuator.addr=:9370
 ```
@@ -180,8 +171,8 @@ gs.Run()
   ├─ Rooter Init phase: app Service.Init registers handlers (mux created lazily,
   │  client.go:129-147 — registration may also happen later, but handlers are
   │  fixed once the worker starts consuming)
-  ├─ Client.Init (client.go:50-57): observe.NewProducer("asynq"),
-  │    resilience.ResourceLabel("asynq", addr), fault+observe executor armed
+  ├─ Client.Init (client.go): newObserver() (observe.go),
+  │    resilience.ResourceLabel("asynq", addr), fault executor armed
   ├─ Server.Init (client.go:111-127): builds asynq.NewServer(connOpt, Config{...})
   ├─ Runner phase: Server.Run — srv.Start(mux), sig.TriggerAndWait() → ready,
   │    then blocks on <-ctx.Done()
@@ -207,8 +198,8 @@ gs.Run()
 
 1. App calls the **wrapper's** `Client.Enqueue(ctx, task, opts...)` (client.go:71-94). Do not
    call the promoted `*asynq.Client.Enqueue` — only the wrapper routes through the guard.
-2. The observe layer opens a producer span `enqueue <taskType>` (`o.obs.Start(ctx, "enqueue",
-   task.Type())`), if observability is on.
+2. The observe layer opens a producer observation (`o.obs.start(ctx, "enqueue", task.Type())`,
+   observe.go): span, metrics, and access log.
 3. The executor runs: `fault.WrapExecutor(resilience.ExecutorFor("asynq:<addr>"))` — with
    starter-governance, a rate-limit rejection or open circuit aborts **before** Redis is
    touched; without it the executor is a pass-through.
@@ -225,11 +216,7 @@ gs.Run()
 ## 3. Per-key behavior reference
 
 Instance prefix: `spring.asynq.<name>.*` (Config is bound via `conf.BindEach` with the prefix —
-these ARE instance-prefixed). Observability has two surfaces: the instance-prefixed
-`spring.asynq.<name>.observability.*` (bound into Config) and the top-level `observability.*`
-(field-injected into the producer bean's exported `Observability` field — an absolute key,
-kept for backward compatibility). Instance-level keys override top-level ones per field
-(`Client.resolveObservability`, client.go).
+these ARE instance-prefixed).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -241,10 +228,7 @@ kept for backward compatibility). Instance-level keys override top-level ones pe
 | `..queues` | map[string]int | empty → asynq "default":1 | queue → priority weight (higher = processed more often). ⚠ your `asynq.Queue(...)` enqueue option must name a configured queue (or the fallback default), or the worker never picks it up. | Enqueue to an unlisted queue → task sits pending forever. |
 | `..shutdown-timeout` | duration | 8s | Bounds the worker's drain (`srv.Shutdown()`); ctx passed to `StopContext` is unused — the drain rides this timeout (client.go:176-183). | Too low → in-flight tasks abandoned mid-run on deploy. |
 | `..server.enabled` | bool | false | **Worker opt-in switch.** Also gates whether the `*Server` bean exists at all — an `autowire:"a:server"` without it fails wiring. | Injecting the worker without this key → container "bean not found". |
-| `..observability.*` | block | — | Per-instance observability policy (see below); each set field overrides the corresponding top-level `observability.*` value. | Silent no-op when left at binding defaults (brief/512/no skips). |
 | `..driver` | string | `DefaultDriver` | Selects a registered Driver (name must match a `RegisterDriver` call). Empty → `DefaultDriver`. | Unknown name → boot error `asynq driver not found: <name>` (starter.go:66). |
-| `observability.level` (**top-level**) | string | brief | `off` \| `brief` \| `detailed` — producer access log/span detail per enqueue (cloud/observe ObserveConfig). Fallback for instances that set no `..observability.*` key of their own. | Per-instance key set to its binding default (e.g. explicit `brief`) cannot re-override a non-default top-level value — configure one surface only. |
-| `observability.maxArgBytes` / `.skipOps` (**top-level**) | int / []string | 512 / — | Captured-arg byte cap in detailed mode; ops to suppress across all three signals. | — |
 
 ---
 
@@ -282,9 +266,6 @@ redis-cli -n 1 keys '*'                  # asynq keeps retry state in Redis
 grep -c "boom" <log>                     # handler error surfaces via asynq's logs
 ```
 
-With the observability top-level key at `detailed`, each re-enqueue/observation carries the
-task type as the operation argument.
-
 ### 4.4 Drain on shutdown
 
 Start a slow handler (sleep 3s), send a task, then `kill -TERM` the process during the run:
@@ -309,24 +290,21 @@ promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 | Guard/resilience never applies | Calling promoted `*asynq.Client.Enqueue/EnqueueContext` instead of the wrapper | Call the wrapper's `Enqueue` (client.go:71). |
 | Health DOWN though enqueue works | `default` queue never created / ACL limits Inspector | Health checks the `default` queue specifically; ensure Redis reachable and permissions. |
 | Tasks lost on deploy | `shutdown-timeout` shorter than in-flight run | Raise it above the longest expected task. |
-| `observability.level` seems ignored under the instance prefix | Instance value equals the binding default (e.g. explicit `brief`), which does not count as "set" | Change it to a non-default value, or configure only the top-level surface. |
 | Custom Driver registered but never used | `..driver` key not pointing at the registered name | Set `spring.asynq.<n>.driver=<name>` to the `RegisterDriver` name; an unknown name fails the boot. |
 
 ## 6. Design Health
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 11 instance-prefixed (incl. 6 tls sub-keys) + 3 top-level observability |
+| Config keys | 11 instance-prefixed (incl. 6 tls sub-keys) |
 | Required | 1 (`addr`) |
 | Quickstart external deps | 1 (Redis) |
 | "Watch out" entries | 5 |
 
 Design suspects (kept from the prior edition, plus new findings; the former
-"dead driver selection" and "dead Config-level observability" entries are fixed):
+"dead driver selection" entry is fixed):
 
 - Producer and worker share one Config although only addr/auth/tls/driver are truly common;
   `concurrency`/`queues`/`shutdown-timeout` are worker-only keys at top level.
 - The promoted `*asynq.Client` methods (`EnqueueContext`, etc.) bypass the guard/observation
   seam — easy to call by accident.
-- Instance observability keys only count as "set" when they differ from the binding defaults
-  (brief/512/no skips) — a consequence of merge-by-difference, shared with starter-s3.

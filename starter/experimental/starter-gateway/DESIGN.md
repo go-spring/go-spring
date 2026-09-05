@@ -30,10 +30,10 @@ Predicates are `func(*http.Request) bool`, Filters are
   `map[string]FilterWrapper` with `autowire:"?"`. Contributors like
   `starter-security-jwt` and `starter-lua-filter` register beans that
   satisfy this shape; the gateway never imports them.
-- **`lb://<service>`.** An upstream URL prefix that resolves through
-  `discovery.NewResolver` + `loadbalance.Pool.Pick` — the same
-  client-side stack every other client starter uses. Mesh mode degrades it
-  centrally, no per-gateway branching.
+- **`lb://<service>`.** An upstream URL prefix that resolves through a
+  discovery `Loader` (via `loadbalance.SourceFunc`) + `loadbalance.Pool.Pick` —
+  the same client-side stack every other client starter uses. Mesh mode degrades
+  it centrally, no per-gateway branching.
 
 ## 3. Constraints
 

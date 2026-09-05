@@ -227,7 +227,7 @@ gs.Run()
   ├─ bean wiring: your thrift.TProcessor bean autowired into NewSimpleThriftServer
   │   (missing/duplicate processor bean → container fails)
   ├─ gs.Server phase — SimpleThriftServer.Run(ctx, sig):
-  │   ├─ newTransport(): listen (TLS via tlsconf.Build() when tls.enabled)  ← socket opens HERE
+  │   ├─ newTransport(): listen (TLS via tlsconf.BuildClient() when tls.enabled)  ← socket opens HERE
   │   ├─ protocolFactory()/transportFactory(): validated — bad protocol/transport name fails boot
   │   ├─ WrapProcessor(proc) when tracing or metrics enabled — OUTERMOST processor layer
   │   ├─ <-sig.TriggerAndWait()  ← waits for readiness before serving
@@ -283,7 +283,7 @@ All keys under `spring.thrift.server.*`. Verified against
 | `transport` | string | none | Enum: `none` (raw socket, identity factory — historical default) / `buffered` / `framed` (framed sets `MaxFrameSize = bufferSize`). Mapped in `transportFactory()`. ⚠ the client transport must match; cross-language clients commonly require `framed`. | Unknown value → boot fails. Mismatch → hang/corruption. `framed` with too-small `bufferSize` → frames rejected. |
 | `bufferSize` | int | 4096 | Only meaningful for `buffered` (buffer size) and `framed` (max frame size). ⚠ dead key when `transport=none`. | Too small vs payload → framed transport errors at runtime. |
 | `tls.enabled` | bool | false | Switches `newTransport()` to the SSL server socket. | Plaintext server where TLS expected. |
-| `tls.cert-file` / `tls.key-file` | string | — | ⚠ Required together when `tls.enabled=true` (`tlsconf.Build()` errors otherwise → listen fails). | Boot-time listen error "thrift: build TLS". |
+| `tls.cert-file` / `tls.key-file` | string | — | ⚠ Required together when `tls.enabled=true` (`tlsconf.BuildClient()` errors otherwise → listen fails). | Boot-time listen error "thrift: build TLS". |
 | `tls.ca-file` / `tls.server-name` / `tls.insecure-skip-verify` | — | — | **Dead on the server side**: these are client-verification keys in tlsconf; server path calls `Build()` and never verifies client certs (no mTLS). | Expecting mTLS → silently absent. |
 | `observer.tracing.enabled` | bool | true | Wraps the processor with the OTel span layer. No-op without starter-otel's providers (silent). ⚠ **not** hot-reloadable — evaluated once in `Run`. | — |
 | `observer.metrics.enabled` | bool | true | Wraps the processor with the metrics layer (same caveats). ⚠ example-otel's conf historically used `…server.interceptor.*` keys — those are dead; it only worked because the defaults are `true`. Use `observer.*`. | Wrong prefix (`interceptor.*`) → silently ignored, observer still on. |
@@ -354,7 +354,7 @@ connection-draining thrift servers use mature frameworks.
 | Client connects then hangs / garbage errors | protocol or transport mismatch client↔server | Align factories: framed↔TFramedTransport, compact↔TCompactProtocol (example pins both sides). |
 | Framed transport frame errors at runtime | `bufferSize` < actual frame size | Raise `spring.thrift.server.bufferSize`. |
 | Boot fails: `thrift: build TLS` | `tls.enabled=true` without cert/key pair (or bad files) | Provide `tls.cert-file` + `tls.key-file`. |
-| Expected mTLS, clients not verified | server path uses `tlsconf.Build()`; `ca-file` etc. are dead keys | Not supported; raise as design issue if needed. |
+| Expected mTLS, clients not verified | server path uses `tlsconf.BuildClient()`; `ca-file` etc. are dead keys | Not supported; raise as design issue if needed. |
 | No traces/metrics but observer "on" | starter-otel not imported, or wrong key prefix (`interceptor.*`) | Import starter-otel; use `observer.tracing.enabled`/`observer.metrics.enabled`. |
 | Traces appear as disconnected roots | using binary/compact/json protocol, which has no propagation carrier | Expected; switch both peers to `protocol=header` for W3C propagation, or correlate by timing/service name. |
 

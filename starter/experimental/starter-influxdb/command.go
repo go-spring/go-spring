@@ -17,22 +17,19 @@
 // command.go is the "command seam" concept of this starter: the obsTransport
 // round-tripper that emits a span + duration metric + access log per request.
 // influxdb-client-go ships no OTel instrumentation of its own, so the
-// transport carries the trace signal too (no WithoutTrace). It mirrors
-// starter-s3's command.go.
+// transport carries the trace signal too. It mirrors starter-s3's command.go.
 package StarterInfluxdb
 
 import (
 	"net/http"
-
-	observe "go-spring.org/cloud/observe"
 )
 
 // obsTransport wraps the underlying HTTP round-tripper so each request emits
-// a span + duration metric + access log via the observe kit. The operation is
+// a span + duration metric + access log (see observe.go). The operation is
 // derived from the request method + URL path (e.g. "POST /api/v2/write").
 type obsTransport struct {
 	base http.RoundTripper
-	obs  *observe.Observer
+	obs  *dbObserver
 }
 
 func (t *obsTransport) RoundTrip(req *http.Request) (*http.Response, error) {

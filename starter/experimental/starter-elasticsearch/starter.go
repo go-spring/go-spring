@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -47,9 +46,9 @@ func init() {
 			// client just registered above by name. The wrapper is what is
 			// autowired; the embedded *elasticsearch.Client is handed to the
 			// indicator.
-			r.Provide(func(w *Client) health.Indicator {
+			r.Provide(func(w *Client) *health.Indicator {
 				return health2.NewClientHealth(name, w.Client)
-			}, gs.TagArg(name)).Name("elasticsearch:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			}, gs.TagArg(name)).Name("elasticsearch:" + name).Caller(1)
 			return nil
 		})
 	})
@@ -59,40 +58,32 @@ func init() {
 // configuration. The cluster is probed once at startup so that misconfiguration
 // or an unreachable cluster fails fast rather than on first use.
 //
-// When c.ServiceName is set and mesh mode is off, a Resolver is built against
-// the registered discovery backend (c.Discovery), its current endpoint snapshot
-// is turned into "scheme://host:port" node addresses, and those override
-// c.Addresses. Because the elasticsearch client exposes no dialer injection
-// point, this is a one-shot resolution at startup — the Resolver is kept alive
-// only to keep the lifecycle uniform with the other client starters and is
-// stopped on shutdown. In mesh mode the sidecar owns discovery+LB, so the static
-// Addresses (or CloudID) are used unchanged. See Config.ServiceName.
+// When c.ServiceName is set and mesh mode is off, a by-name loader is built
+// against the registered discovery backend (c.Discovery), its current live
+// endpoint snapshot is turned into "scheme://host:port" node addresses, and
+// those override c.Addresses. Because the elasticsearch client exposes no dialer
+// injection point, this is a one-shot resolution at startup; the loader has no
+// background watch and no resources to release. In mesh mode the sidecar owns
+// discovery+LB, so the static Addresses (or CloudID) are used unchanged. See
+// Config.ServiceName.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	var resolver *discovery.Resolver
 	if c.ServiceName != "" && !mesh.Enabled() {
-		addrs, r, err := resolveAddresses(ctx.Context, c)
+		addrs, err := resolveAddresses(ctx.Context, c)
 		if err != nil {
 			return nil, err
 		}
-		resolver = r
 		c.Addresses = addrs
 	}
 
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		if resolver != nil {
-			_ = resolver.Stop()
-		}
 		return nil, errutil.Explain(nil, "elasticsearch driver not found: %s", c.Driver)
 	}
 	client, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		if resolver != nil {
-			_ = resolver.Stop()
-		}
 		return nil, errutil.Explain(err, "failed to create elasticsearch client")
 	}
-	w := &Client{Client: client, cfg: c, resolver: resolver}
+	w := &Client{Client: client, cfg: c}
 	// The DefaultDriver attaches a dynamic transport (its executor swapped in by
 	// Init); pick it up so the wrapper can arm it. Custom drivers may
 	// not install one - resilience is then simply unavailable for that client.
@@ -101,9 +92,6 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	}
 	if err := HealthCheck(ctx.Context, w); err != nil {
 		_ = client.Close(context.Background())
-		if resolver != nil {
-			_ = resolver.Stop()
-		}
 		return nil, errutil.Explain(err, "failed to reach elasticsearch cluster")
 	}
 	return w, nil

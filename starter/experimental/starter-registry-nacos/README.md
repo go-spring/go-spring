@@ -112,7 +112,7 @@ gracefully without Docker.
 
 `Server.UpdateWeight(ctx, weight)` re-advertises this instance with a new
 weight without deregistering: consumers (loadbalance pools) pick the new value
-up on their next discovery snapshot — one Watch push cycle. A weight of 0
+up on their next discovery snapshot — one refresh cycle. A weight of 0
 drains the instance (no traffic, still registered), which is the standard
 zero-downtime rotation step before shutdown. Operators can also edit the
 registered weight directly at the registry; the effect is identical.

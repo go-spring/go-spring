@@ -14,7 +14,7 @@ increment.
 [starter-kafka](../starter-kafka) (`spring.kafka`) — the two are never imported together
 [config.go:26-28].
 
-**There is no messaging.Binder here** (unlike starter-kafka): publish/consume is native sarama
+**There is no messaging.Driver here** (unlike starter-kafka): publish/consume is native sarama
 on top of the shared client bean, and the starter's observability is opt-in call-site helpers.
 This is the #1 design suspect — see §6.
 ---
@@ -115,9 +115,6 @@ spring.kafka-sarama.main.version=3.7.0
 spring.kafka-sarama.main.producer.compression=snappy
 spring.kafka-sarama.main.producer.required-acks=all
 
-# --- access log of guarded sends (off/brief/detailed) ----------------------
-spring.kafka-sarama.main.observability.level=brief
-
 # --- optional: SASL + TLS (dev broker is plaintext) -------------------------
 #spring.kafka-sarama.main.sasl.enabled=true
 #spring.kafka-sarama.main.sasl.mechanism=scram-sha-512
@@ -215,9 +212,9 @@ Also not guarded: `sarama.AsyncProducer` (no wrapper exists), every consumer pat
 
 1. `StartProducerSpan(ctx, msg)` opens the observation `publish` on topic `hello`
    [command.go:95-104]: span + `messaging.client` duration/in-flight metric + access-log
-   record, system `kafka` (observe kit namespace: `messaging.system`,
+   record, system `kafka` (attribute namespace: `messaging.system`,
    `messaging.operation`, `messaging.destination.name`, metric
-   `messaging.client.operation.duration`).
+   `messaging.client.operation.duration`; see observe.go).
 2. The W3C propagator injects `traceparent`/`tracestate` into `msg.Headers`
    [command.go:97]. ⚠ Injection **drops any pre-existing header with the same key** so
    re-injection stays idempotent [command.go:140-149] — do not stash data under
@@ -250,7 +247,7 @@ ConsumerGroup handlers):
 
 ## 3. Per-key behavior reference
 
-All keys under `spring.kafka-sarama.<name>.` (18 total incl. the tls/sasl/observability
+All keys under `spring.kafka-sarama.<name>.` (15 total incl. the tls/sasl
 groups; binding is per-instance prefix binding via `conf.BindEach`, NOT absolute-property
 field injection).
 
@@ -274,21 +271,18 @@ field injection).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `tls.enabled` | bool | false | On: `c.TLS.Build()` → `cfg.Net.TLS` [driver.go:81-89]. | Off against a TLS listener → handshake fails at boot. |
+| `tls.enabled` | bool | false | On: `c.TLS.BuildClient()` → `cfg.Net.TLS` [driver.go:81-89]. | Off against a TLS listener → handshake fails at boot. |
 | `tls.cert-file` / `tls.key-file` | string | "" | Client cert pair (mTLS). ⚠ Both or neither. | Half a pair → `tls.Build` error at boot. |
 | `tls.ca-file` | string | "" | CA to verify the broker. | Missing against a private CA → verify error at boot. |
 | `tls.server-name` | string | "" | SNI/verification name. | Mismatch → verify error at boot. |
 | `tls.insecure-skip-verify` | bool | false | Skips broker cert verification. | true in prod → silent MITM exposure. |
 
-### 3.4 Producer & observability
+### 3.4 Producer
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `producer.compression` | string | "" (sarama: none) | `none`/`gzip`/`snappy`/`lz4`/`zstd`, case-insensitive [driver.go:143-158]. | Other value → boot error `unsupported kafka compression`. |
 | `producer.required-acks` | string | `all` | `all`→WaitForAll, `leader`→WaitForLocal, `none`→NoResponse [driver.go:129-138]. | Other value → boot error `unsupported kafka required-acks`. `none` loses messages silently on leader fail. |
-| `observability.level` | string | `brief` | Access log of the resilience-executor observations: `off`/`brief`/`detailed` (observe.ObserveConfig [config.go:55]). ⚠ Applies to the WRAPPED send path only — the span helpers use their own package-default `brief` and are NOT configured by this key [command.go:59-63]. | `off` silences only the log; span/metric keep emitting. |
-| `observability.maxArgBytes` | int | 512 | Bound of the captured argument in detailed mode. | Too small → truncated args. |
-| `observability.skipOps` | list | — | Suppresses span+metric+log for listed op names. | — |
 
 ⚠ Forced-without-keys: the starter always sets `Producer.Return.Successes=true` and
 `Consumer.Offsets.Initial=OffsetOldest` [driver.go:72-73] — there is no config key to change
@@ -335,7 +329,7 @@ Publish then consume on the same topic (partition consumer from oldest, as in
   then in the consumer `traffic.IsLoadTest(ctx)` is true after `StartConsumerSpan`
   [command.go:116-118].
 - ⚠ A pre-set `traceparent`/marker header on the producer message is REPLACED, not merged
-  [command.go:140-149]. There is no message-Key mapping anywhere (no binder) — `msg.Key`
+  [command.go:140-149]. There is no message-Key mapping anywhere (no driver) — `msg.Key`
   is whatever you set.
 ### 4.4 Observables read-out
 
@@ -378,15 +372,15 @@ grep 'resilience' app.log | grep 'kafka|127.0.0.1:9092'
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 18 (core 3 + sasl 4 + tls 6 + producer 2 + observability 3) |
+| Config keys | 15 (core 3 + sasl 4 + tls 6 + producer 2) |
 | Required | 1 (`brokers`) |
 | Quickstart external deps | 1 (Kafka; a collector for full observability) |
 | "Watch out" entries | 6 |
 
 Design suspects (audit ledger; none fixed since the last pass):
 
-- **No messaging.Binder** — the only MQ starter in the family without one; publish/consume
-  observability is manual call-site helpers, and the "binder Key mapping" concern is
+- **No messaging.Driver** — the only MQ starter in the family without one; publish/consume
+  observability is manual call-site helpers, and the "driver Key mapping" concern is
   structurally absent (there is no mapping layer to drop a Key).
 - `SendMessage` guard uses `context.Background()` [command.go:275,287] — per-call deadlines
   only via resilience `AttemptTimeout`/`MaxDuration`.

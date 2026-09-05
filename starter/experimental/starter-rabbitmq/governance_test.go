@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/messaging"
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
@@ -32,7 +32,7 @@ import (
 var errGovernanceStub = errors.New("governance: rejected by test stub")
 
 // stubExecutor counts Execute calls and always rejects, so a test can assert
-// the binder path went through the executor without a live broker.
+// the driver path went through the executor without a live broker.
 type stubExecutor struct{ called atomic.Int32 }
 
 func (s *stubExecutor) Execute(context.Context, string, func(context.Context) error) error {
@@ -64,10 +64,10 @@ func TestApplyResilienceToggle(t *testing.T) {
 	closeResilience(conn)
 }
 
-// TestBinderPublishGuarded verifies the binder's Publish routes through the
+// TestDriverPublishGuarded verifies the driver's Publish routes through the
 // resilience executor the direct client API uses: with an executor attached,
 // the publish is rejected by the executor and the channel is never touched.
-func TestBinderPublishGuarded(t *testing.T) {
+func TestDriverPublishGuarded(t *testing.T) {
 	conn := &amqp.Connection{}
 	stub := &stubExecutor{}
 	resilienceExecs.Store(conn, stub)

@@ -98,13 +98,14 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     driver-registry (`RegisterDriver`, `init()`). Connection-creation only.
   - `starter.go` — the `init()`-time `gs.Group` / `gs.Module` registration and
     the constructor (`newClient`) that assembles the bean.
-  - `discovery.go` — the client-side service-discovery seam: the
-    `sync.Map` tracking each client's `*discovery.Resolver`, a `newLiveResolver`
-    helper (mesh-gated `GetDiscovery` + `NewResolver` + `WithScheme`, returning
-    `nil` when `ServiceName` is empty or mesh is on), and a `stopLiveResolver`
-    Close-half. The driver's per-backend dialer (which calls `resolver.Pick`)
-    stays in `config.go` / `starter.go`; only the resolver build + lifecycle
-    lives here.
+  - `discovery.go` — the client-side service-discovery seam: the mesh-gated
+    builder (`GetDiscovery` + `discovery.NewLoader` + `WithScheme`, returning
+    `nil` when `ServiceName` is empty or mesh is on). A `Loader` is a pure
+    snapshot function — no resources, no `Stop`, freshness lives inside the
+    discovery backend — so nothing is cached per client and nothing is torn down
+    on `Destroy`. The driver's per-backend dialer (which wraps the loader via
+    `loadbalance.SourceFunc` in a round-robin `Pool` and `Pick`s per connection)
+    stays in `config.go` / `starter.go`; only the loader build lives here.
   - `resilience.go` — the wrapper bean's `ApplyResilience` InitMethod, the
     executor, and its `Close`/`CloseDriver` Destroy hook.
   - `observability.go` — the observe kit bridge (trace/metric/access-log hooks).
@@ -240,7 +241,7 @@ application can load configuration from it at startup and hot-reload at runtime.
     seam, and only when a concrete requirement lands.
 - **Client-side discovery is already unified; provider registration is not.**
   Client starters resolve a `ServiceName` to live endpoints through
-  `cloud/discovery` (`Resolver` injected via the driver's dialer hook); this
+  `cloud/discovery` (a `Loader` built via the driver's dialer hook); this
   is generic across infrastructure clients. RPC *provider* registration stays
   framework-native per the principle above. When `ServiceName` is empty the
   client dials the address directly, unchanged. For examples of framework-native
@@ -252,11 +253,11 @@ application can load configuration from it at startup and hot-reload at runtime.
   and confuses locality/outlier logic. A single process-global switch
   (`mesh.Enabled`, auto-detected from sidecar env vars by default; the `GS_MESH`
   env var — on/off/auto — overrides) is read at the discovery and load-balancing
-  factory points — each client starter's `newLiveResolver` (§2.2) and
+  factory points — each client starter's mesh-gated loader builder (§2.2) and
   `loadbalance.Pool` — and degrades both to a
   pass-through: names resolve to one stable Service address (ClusterIP) the
   sidecar intercepts, and the balancer stops selecting and ejecting. Because
-  `newLiveResolver` reads `mesh.Enabled()` internally and returns `nil` when
+  the loader builder reads `mesh.Enabled()` internally and returns `nil` when
   mesh is on, a client starter honors the switch without per-starter branching
   at the call site — the driver just skips installing its discovery-backed
   dialer and dials the configured

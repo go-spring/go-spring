@@ -21,10 +21,6 @@
       "default": "",
       "description": "default destination bucket for the wrapper's write helpers"
     },
-    "observability": {
-      "type": "object",
-      "description": "Per-request span/metric/access-log config (off/brief/detailed), see observe.ObserveConfig"
-    },
     "driver": {
       "type": "string",
       "default": "DefaultDriver"

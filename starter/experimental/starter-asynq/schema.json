@@ -45,10 +45,6 @@
         }
       }
     },
-    "observability": {
-      "type": "object",
-      "description": "per-task access log (off/brief/detailed)"
-    },
     "driver": {
       "type": "string",
       "default": "DefaultDriver"

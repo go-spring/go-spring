@@ -145,8 +145,9 @@ Lifecycle (all in `starter.go`):
    the state at watch time (`endpointslice.go:198-199`); afterwards every add/update/delete enqueues
    one recompute. The channel closes on ctx cancel or `Close()` (`endpointslice.go:205-219`).
 
-Downstream, a `discovery.Resolver` turns the channel into an `Endpoints()` snapshot that a
-loadbalance `Pool` reads per `Pick` — that is the "endpoint push" into client connection pools.
+Downstream, a discovery `Loader` reads the backend's snapshot (kept fresh by that channel) —
+turning it into the `Endpoints()` source that a loadbalance `Pool` reads per `Pick`. That is the
+"endpoint push" into client connection pools.
 
 ### 2.2 WATCH path — dns mode
 
@@ -211,8 +212,8 @@ Prereq: `kubectl` with a dev cluster; provider applied per §1.
 5. **Watch channel hygiene**: stop the consumer — `manager.Destroy` closes every informer even if a
    consumer leaked its watch context (`starter.go:79-86`, `endpointslice.go:230-243`).
 6. **Boot fail-fast (endpointslice)**: run out-of-cluster without `kubeconfig` → startup error naming
-   the fix. Unit-test coverage: `dns_test.go`, `endpointslice_test.go` (fake resolver + fake clientset
-   exercise resolve, port selection, ready/zone metadata, watch-on-scale — this is what `check.sh`
+   the fix. Unit-test coverage: `dns_test.go`, `endpointslice_test.go` (fake loader source + fake
+   clientset exercise resolve, port selection, ready/zone metadata, watch-on-scale — this is what `check.sh`
    actually asserts).
 
 Runtime logs all carry `log.TagAppDef`; there are no metrics/traces emitted by this starter (clients

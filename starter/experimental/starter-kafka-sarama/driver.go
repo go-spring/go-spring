@@ -79,7 +79,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (sarama.Client,
 	}
 
 	if c.TLS.Enabled {
-		tc, err := c.TLS.Build()
+		tc, err := c.TLS.BuildClient()
 		if err != nil {
 			log.Errorf(ctx, log.TagAppDef, "kafka sarama: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "kafka: build TLS")

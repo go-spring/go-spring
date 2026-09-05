@@ -16,16 +16,17 @@
 
 // command.go is the "command seam" concept of this starter: the call-site
 // Query / RunWithResilience / StartSpan / EndSpan helpers that route Neo4j
-// operations through the observe kit and the resilience guard, plus the
+// operations through this starter's own instrumentation (see observe.go) and
+// the resilience guard, plus the
 // queryResilience guard that resolves the executor for a driver.
 package StarterNeo4j
 
 import (
 	"context"
+	"sync"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // Why a kit-backed Query entry (not a transparent driver wrapper):
@@ -39,14 +40,17 @@ import (
 // directly — one symbol swap, full instrumentation. The low-level StartSpan/
 // EndSpan helpers remain for code that drives sessions manually.
 //
-// A package-level default Observer backs both (no per-instance ObserveConfig wiring,
-// because the kit cannot bind to a free-function call path; the default level is
-// "brief"). It rides the OTel globals starter-otel installs.
+// A package-level default observer (see observe.go) backs both — there is no
+// per-instance wiring because the instrumentation cannot bind to a free-function
+// call path. It rides the OTel globals starter-otel installs.
 
-var defaultObs = observe.NewDB("neo4j", observe.ObserveConfig{Level: observe.DefaultBrief})
+// defaultObs builds the shared observer lazily on first use, so its OTel
+// instruments bind to whatever meter provider is current then, not to the
+// noop global of package init.
+var defaultObs = sync.OnceValue(func() *dbObserver { return newDBObserver("neo4j") })
 
-// Query runs a Cypher query via neo4j.ExecuteQuery, wrapped with the observe kit
-// (trace span + duration/in-flight metric + access log) and, when resilience is
+// Query runs a Cypher query via neo4j.ExecuteQuery, wrapped with the starter's
+// instrumentation (trace span + duration/in-flight metric + access log) and, when resilience is
 // enabled for driver, the call-site resilience guard (rate limit / breaker /
 // retry / bulkhead / timeout). It is the instrumented drop-in for
 // neo4j.ExecuteQuery: same signature, plus automatic observability and
@@ -63,7 +67,7 @@ func Query[T any](
 	newResultTransformer func() neo4j.ResultTransformer[T],
 	settings ...neo4j.ExecuteQueryConfigurationOption,
 ) (T, error) {
-	ctx, sp := defaultObs.Start(ctx, "query", query)
+	ctx, sp := defaultObs().Start(ctx, "query", query)
 	var res T
 	var err error
 	if exec, resource := queryResilience(driver); exec != nil {
@@ -95,12 +99,12 @@ func RunWithResilience(ctx context.Context, driver neo4j.DriverWithContext, fn f
 // session.Run / transaction callback the app drives directly). End the returned
 // span once it completes. op names the operation; summary is the Cypher text
 // (recorded as db.statement, bounded).
-func StartSpan(ctx context.Context, op, summary string) (context.Context, *observe.Span) {
-	return defaultObs.Start(ctx, op, summary)
+func StartSpan(ctx context.Context, op, summary string) (context.Context, *dbSpan) {
+	return defaultObs().Start(ctx, op, summary)
 }
 
 // EndSpan records err (if any) on the span and ends it.
-func EndSpan(span *observe.Span, err error) {
+func EndSpan(span *dbSpan, err error) {
 	span.End(err)
 }
 

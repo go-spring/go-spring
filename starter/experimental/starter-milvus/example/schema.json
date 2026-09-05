@@ -3,10 +3,21 @@
   "title": "spring.milvus",
   "type": "object",
   "properties": {
-    "addr": { "type": "string", "description": "Milvus gRPC endpoint, host:19530" },
-    "database": { "type": "string", "default": "default" },
-    "username": { "type": "string", "default": "" },
-    "password": { "type": "string", "default": "" },
-    "observability": { "type": "object" }
+    "addr": {
+      "type": "string",
+      "description": "Milvus gRPC endpoint, host:19530"
+    },
+    "database": {
+      "type": "string",
+      "default": "default"
+    },
+    "username": {
+      "type": "string",
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "default": ""
+    }
   }
 }

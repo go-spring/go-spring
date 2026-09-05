@@ -46,7 +46,7 @@ sentinel driver from `starter/experimental/starter-resilience`.
     body (`Request.GetBody`); 5xx responses count as failures for the
     breaker.
   - `NewDialer` — coarser but universal at the connection layer; pairs
-    naturally with a dial closure over `discovery.Resolver.Pick`. Resource is fixed
+    naturally with a dial closure over a round-robin pick pool. Resource is fixed
     because a dialer is already scoped to one service.
 
   Inbound admission is NOT in this package: each protocol starter builds

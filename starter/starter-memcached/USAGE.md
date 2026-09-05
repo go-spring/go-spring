@@ -134,7 +134,6 @@ import starter-memcached
 gs.Run()
   ├─ config bind: ${spring.memcached.<name>} → Config (value tags)   config.go:24-61
   ├─ newClient: validate, CreateClient, STARTUP PING (fail-fast)    starter.go:79-101
-  ├─ gs field-injects Observability onto the wrapper                 client.go:50
   ├─ Client.Init: observer + resilience/fault executor               client.go:71-76
   ├─ readiness: health indicator folds Ping into /readiness          health/health.go:33-36
   └─ shutdown: Client.Destroy — release executor, stop discovery watch  client.go:83-90
@@ -148,13 +147,13 @@ lazy and not retryable. gomemcache's `Ping` probes every configured server, so o
 ### 2.2 Discovery addressing flow
 
 With `service-name` set (and mesh mode off), `DefaultDriver.CreateClient` builds a
-`discovery.Resolver` against the backend named by `discovery` (default `"default"`), filtered by
-`scheme` (`driver.go:70`, `driver.go:111-112`). The **initial snapshot only** becomes the client's
+discovery `Loader` against the backend named by `discovery` (default `"default"`), filtered by
+`scheme` (`driver.go:70`, `driver.go:100-102`). The **initial snapshot only** becomes the client's
 server list: empty snapshot fails boot with
-`memcached: discovery returned no endpoints for %q` (`driver.go:75-79`). The Resolver's background
-Watch is retained solely to own the watch lifecycle — **live membership updates are NOT re-applied**,
-because gomemcache shards keys onto a fixed server set chosen at creation (`driver.go:60-66`,
-`driver.go:90-96`). Cluster membership changes require a restart; there is no dynamic membership —
+`memcached: discovery returned no endpoints for %q` (`driver.go:73-79`). The loader is a one-shot
+snapshot read — no background watch, nothing to release — and **live membership updates are NOT
+re-applied**, because gomemcache shards keys onto a fixed server set chosen at creation
+(`driver.go:60-66`, `driver.go:90-96`). Cluster membership changes require a restart; there is no dynamic membership —
 for a topology that scales dynamically, point `servers` at a serverless/proxy-style endpoint (one
 stable address) and let the proxy own membership. In mesh mode discovery is skipped
 entirely and `servers` is used as-is (sidecar owns discovery+LB, `driver.go:69-70` comment).
@@ -163,14 +162,15 @@ entirely and `servers` is used as-is (sidecar owns discovery+LB, `driver.go:69-7
 
 `Client.Set(item)` (`command.go:70-75`):
 
-1. `instrument("set", item.Key)` starts an observe span. gomemcache's API carries no context, so the
-   span is a **root span** using `context.Background()` — not linked to the caller's request trace
-   (`command.go:38-40`, limitation documented at `client.go:37-41`).
+1. `instrument("set", item.Key)` starts a client span from the module-local observer
+   (`observe.go`). gomemcache's API carries no context, so the span is a **root span** using
+   `context.Background()` — not linked to the caller's request trace (`command.go:38-40`,
+   limitation documented at `client.go:37-41`).
 2. `guardErr` runs the op under the resilience executor via `resilience.Run`
    (`command.go:174-181`): limiter/breaker scoped to resource `memcached:<instance-name>`
    (`client.go:73`); `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
-   (`command.go:168`); the executor is fault-wrapped (`fault.WrapExecutor`, `client.go:74`) and
-   observe-wrapped (`resilience.WrapExecutor`, `client.go:75`). With governance off it is a
+   (`command.go:168`); the executor is fault-wrapped (`fault.WrapExecutor`, `client.go:73`) and
+   observe-wrapped (`resilience.WrapExecutor`, `client.go:74`). With governance off it is a
    transparent no-op.
 3. The embedded `*memcache.Client` performs the actual write; the end callback closes the span with
    the error.
@@ -205,7 +205,6 @@ belongs to the example app, not the starter).
 | `timeout` | duration | 0 | Socket read/write timeout per request; 0 = gomemcache default 100ms (config.go:54). | Too low → spurious timeouts under load |
 | `max-idle-conns` | int | 0 | Idle connections kept per server; 0 = driver default 2 (config.go:58). | Too low → reconnect churn |
 | `driver` | string | `DefaultDriver` | Selects a registered `Driver` (config.go:61). Custom drivers register via `RegisterDriver`; duplicate names panic (driver.go:45-49). | Unknown name → ctor error `memcached driver not found` (starter.go:87-88) |
-| `observability` (on the wrapper bean, top-level) | ObserveConfig | empty | Shared observe-kit config for span/metric/log, field-injected by gs (client.go:50). ⚠ It resolves as a **top-level shared key** — every memcached instance (and other starters reading the same expression) shares one config value, not per-instance. | Absent → default observe behavior |
 
 No `resilience` key: resilience/fault come from the governance center (`govern.*` config of
 starter-governance), keyed by resource `memcached:<instance-name>`.
@@ -235,9 +234,9 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
 7. **Multi-instance**: `cache` and `session` instances coexist (distinct bean names = the map
    keys, `starter.go:47-50`); two entries pointing at the same server are independent beans with
    independent executors (resource labels `memcached:cache` vs `memcached:session`).
-8. **Observability**: with starter-otel imported, spans named `memcached.get`/`memcached.set`/...
-   appear per operation (root spans, §2.3); duration/in-flight metrics and access log come from the
-   shared observe kit (`observe.NewDB("memcached", ...)`, `client.go:72`).
+8. **Observability**: with starter-otel imported, a client span named after the operation
+   (`get`/`set`/...) appears per call (root spans, §2.3); the `db.client.operation.duration`
+   histogram and the access log come from the module-local observer (`observe.go`).
 
 ---
 
@@ -262,7 +261,7 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
 
 | Metric | Value |
 |---|---|
-| Config keys | 9 (7 connection + 1 shared observability + 1 via cache-bridge naming) |
+| Config keys | 8 (7 connection + 1 via cache-bridge naming) |
 | Required | 1 (`servers` xor `service-name`) |
 | Quickstart external deps | 1 (memcached, docker) |
 | "Watch out" entries | 4 |
@@ -272,9 +271,6 @@ Suspect ledger (carried from the previous edition, updated):
 - ~~No health indicator~~ — **resolved**: each instance now registers `memcache:<name>` as an
   exported `health.Indicator` (`starter.go:53`, `health/health.go:33-36`); with starter-actuator it
   folds into `/readiness` with no extra wiring.
-- `observability` resolves as a top-level shared key — all instances share one config; per-instance
-  observability tuning is impossible (`client.go:50`). Cross-family suspect (kept from previous
-  edition).
 - Discovery watch is lifecycle-only: membership changes need a restart (structural gomemcache
   constraint, `driver.go:60-66`) — consider documenting a rebuild seam or a client-swap pattern
   (cf. the dubbo dynamic-timeout atomic-swap approach).

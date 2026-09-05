@@ -17,7 +17,7 @@
 // Package StarterRedigo registers the redigo (gomodule/redigo) Redis client as a
 // go-spring starter. Each entry under "${spring.redigo}" becomes one pooled
 // client bean; the pool is wrapped by Pool, which layers
-// observability (trace/metric/log via the shared observe kit) and resilience
+// observability (trace/metric/access log, see observe.go) and resilience
 // (rate-limit / circuit-breaker / retry / timeout via the resilience executor)
 // onto every command. A "redigo" cache driver is also registered so a pool can
 // be exposed as a cache.Cache.
@@ -26,7 +26,6 @@ package StarterRedigo
 import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -51,25 +50,18 @@ func init() {
 			// never touches gs types and is usable standalone. Users wanting
 			// custom assembly skip this bean entirely and call NewPool (or
 			// NewConn) themselves.
-			//
-			// IndexArg(2) binds the GLOBAL observability policy (the
-			// observability.* keys shared across all client starters) at provide
-			// time — the same TagArg-binds-a-struct pattern starter-gin uses for
-			// its Config. It is deliberately NOT part of per-instance Config
-			// (whose ObserveEnabled is only the kill switch).
 			r.Provide(
 				createPool,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("${observability:=}")),
 			).Name(name).Destroy(destroyPool)
 
 			// Contribute a health indicator for this instance unless the user
 			// disabled it (health.enabled=false), injecting the pool just
 			// registered above by name.
 			if c.HealthEnabled {
-				r.Provide(func(w *Pool) health.Indicator {
+				r.Provide(func(w *Pool) *health.Indicator {
 					return poolhealth.NewPoolHealth(name, w.Pool)
-				}, gs.TagArg(name)).Name("redigo:" + name).Export(gs.As[health.Indicator]())
+				}, gs.TagArg(name)).Name("redigo:" + name)
 			}
 			return nil
 		})
@@ -98,13 +90,7 @@ func init() {
 // drivers cannot set unexported fields). The Driver's returned Pool is fully
 // armed; see [NewPool] and the Driver interface doc for the assembly contract
 // and the two customization shapes.
-//
-// obs is the GLOBAL observability policy shared across all client starters
-// (the observability.* keys); it is deliberately not part of per-instance
-// Config, whose ObserveEnabled is only the per-instance kill switch. The gs
-// entry binds it and passes it in; a programmatic caller passes
-// observe.ObserveConfig{} (or whatever policy it wants).
-func createPool(ctx *gs.ContextProvider, c Config, obs observe.ObserveConfig) (*Pool, error) {
+func createPool(ctx *gs.ContextProvider, c Config) (*Pool, error) {
 
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
 
@@ -124,7 +110,7 @@ func createPool(ctx *gs.ContextProvider, c Config, obs observe.ObserveConfig) (*
 	// The driver returns the wrapped Pool (NOT the raw *redis.Pool): it may
 	// customize the wrapper itself, and downstream consumers uniformly deal in
 	// the project's type.
-	w, err := d.CreateClient(ctx.Context, c, obs)
+	w, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redigo: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")

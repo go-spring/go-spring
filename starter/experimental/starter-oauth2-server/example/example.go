@@ -33,6 +33,7 @@ import (
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	httpsvr "go-spring.org/starter-http-server"
 	StarterOAuth2Server "go-spring.org/starter-oauth2-server"
 )
 
@@ -59,7 +60,7 @@ func main() {
 		}
 
 		validator := hmacValidator{secret: []byte(secret)}
-		cors := security.CORS(security.CORSConfig{
+		cors := httpsvr.CORS(httpsvr.CORSConfig{
 			AllowedOrigins: []string{"https://app.example.com"},
 			AllowedHeaders: []string{"Authorization", "Content-Type"},
 			MaxAge:         600,
@@ -73,18 +74,18 @@ func main() {
 		// Resource server: /api/me requires a valid token; /api/admin additionally
 		// requires the "admin" authority — the ordered chain authenticates before
 		// it authorizes.
-		mux.Handle("/api/me", security.Chain(cors, security.Authenticate(validator, true))(
+		mux.Handle("/api/me", httpsvr.Chain(cors, httpsvr.Authenticate(validator, true))(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				a, _ := security.FromContext(r.Context())
 				_, _ = fmt.Fprintf(w, "hello %s", a.Principal.Subject)
 			})))
-		mux.Handle("/api/admin", security.Chain(cors, security.Authenticate(validator, true), security.Authorize("admin"))(
+		mux.Handle("/api/admin", httpsvr.Chain(cors, httpsvr.Authenticate(validator, true), httpsvr.Authorize("admin"))(
 			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("admin ok"))
 			})))
 
 		// A browser-style, cookie-based route guarded by CSRF double-submit.
-		mux.Handle("/session", security.CSRF(security.CSRFConfig{})(
+		mux.Handle("/session", httpsvr.CSRF(httpsvr.CSRFConfig{})(
 			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("session ok"))
 			})))

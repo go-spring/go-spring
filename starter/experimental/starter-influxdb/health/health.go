@@ -32,14 +32,14 @@ import (
 //
 // The probe calls /health: it verifies reachability, authentication setup and
 // server status in one round trip.
-func NewClientHealth(name string, client influxdb2.Client) health.Indicator {
-	return health.NewIndicator("influxdb:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, client influxdb2.Client) *health.Indicator {
+	return &health.Indicator{Name: "influxdb:" + name, Probe: func(ctx context.Context) error {
 		hc, err := client.Health(ctx)
 		if err != nil {
 			return err
 		}
 		return HealthError(hc)
-	})
+	}}
 }
 
 // HealthError maps a domain.HealthCheck onto an error: nil when the server

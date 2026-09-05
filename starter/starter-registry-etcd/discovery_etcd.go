@@ -15,9 +15,11 @@
  */
 
 // This file adds the CONSUMER half of etcd service discovery to the registry
-// starter: a cloud/discovery Discovery backend that resolves and watches the
+// starter: a cloud/discovery Discovery backend that serves snapshots of the
 // instances this starter's own registrar (registrar.go) publishes — closing the
-// loop so one starter serves both sides of the etcd naming idiom.
+// loop so one starter serves both sides of the etcd naming idiom. Freshness is
+// internal: each resolved service gets a background etcd watcher that keeps
+// the cached snapshot current, so Resolve is a cheap read after the first call.
 //
 // Backends are named adapters in the discovery registry, not injectable beans
 // (same idiom as starter-registry-nacos): configure one block per etcd cluster
@@ -38,6 +40,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go-spring.org/cloud/discovery"
@@ -99,7 +102,7 @@ func init() {
 // probes the cluster before returning (same fail-fast as the registrar), so an
 // unreachable or misauthenticated cluster fails startup.
 func newEtcdDiscovery(c DiscoveryConfig) (*etcdDiscovery, error) {
-	tlsCfg, err := c.TLS.Build()
+	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "registry-etcd: build TLS")
 	}
@@ -119,14 +122,35 @@ func newEtcdDiscovery(c DiscoveryConfig) (*etcdDiscovery, error) {
 		_ = cli.Close()
 		return nil, errutil.Explain(err, "registry-etcd: discovery startup probe failed for %s", c.Endpoints[0])
 	}
-	return &etcdDiscovery{client: cli, keyPrefix: c.KeyPrefix}, nil
+	return &etcdDiscovery{
+		client:    cli,
+		keyPrefix: c.KeyPrefix,
+		bgCtx:     context.Background(),
+		entries:   map[string]*serviceEntry{},
+	}, nil
 }
 
-// etcdDiscovery resolves and watches service instances stored under one etcd
-// prefix. It implements [discovery.Discovery] and [discovery.Catalog].
+// etcdDiscovery serves snapshots of service instances stored under one etcd
+// prefix. It implements [discovery.Discovery]. The
+// first Resolve of a service seeds a per-service cache and starts a background
+// etcd watcher that keeps it current; later calls are in-memory reads.
 type etcdDiscovery struct {
 	client    *clientv3.Client
 	keyPrefix string
+
+	// bgCtx anchors the background watchers for the backend's lifetime.
+	bgCtx context.Context
+
+	mu      sync.Mutex // guards entries
+	entries map[string]*serviceEntry
+}
+
+// serviceEntry is the cached snapshot for one service name. eps holds the FULL
+// (unfiltered) set; scheme narrowing happens per Resolve call.
+type serviceEntry struct {
+	mu     sync.Mutex // guards eps; held across the seed fetch so it runs once
+	eps    []discovery.Endpoint
+	seeded bool
 }
 
 // servicePrefix returns the etcd key prefix holding name's instances:
@@ -135,98 +159,64 @@ func (d *etcdDiscovery) servicePrefix(name string) string {
 	return d.keyPrefix + name + "/"
 }
 
-// Resolve returns the current instance set for name. A key's existence is the
-// health signal: leases delete expired keys, so everything found is live.
-func (d *etcdDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
-	resp, err := d.client.Get(ctx, d.servicePrefix(name), clientv3.WithPrefix())
-	if err != nil {
-		return nil, errutil.Explain(err, "registry-etcd: get %q failed", name)
+// entry returns (creating if needed) the cache entry for name.
+func (d *etcdDiscovery) entry(name string) *serviceEntry {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	e, ok := d.entries[name]
+	if !ok {
+		e = &serviceEntry{}
+		d.entries[name] = e
 	}
-	eps := kvsToEndpoints(resp.Kvs)
-	eps = discovery.FilterByScheme(eps, discovery.NewQuery("", opts...).Scheme)
+	return e
+}
+
+// fetch reads the current instance set for prefix from etcd.
+func (d *etcdDiscovery) fetch(ctx context.Context, prefix string) ([]discovery.Endpoint, error) {
+	resp, err := d.client.Get(ctx, prefix, clientv3.WithPrefix())
+	if err != nil {
+		return nil, err
+	}
+	return kvsToEndpoints(resp.Kvs), nil
+}
+
+// Resolve returns the current instance set for name. A key's existence is the
+// health signal: leases delete expired keys, so everything found is live. The
+// first call pays the seed fetch (bounded by ctx) and starts the background
+// watcher; later calls read the cache.
+func (d *etcdDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	e := d.entry(name)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.seeded {
+		eps, err := d.fetch(ctx, d.servicePrefix(name))
+		if err != nil {
+			return nil, errutil.Explain(err, "registry-etcd: get %q failed", name)
+		}
+		e.eps, e.seeded = eps, true
+		go d.watchLoop(d.servicePrefix(name), e)
+	}
+	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
 	return eps, nil
 }
 
-// Watch subscribes to name's instance set and pushes a fresh full snapshot on
-// the returned channel on every etcd change below the service prefix. The
-// first result carries the current set; the channel closes when ctx is
-// cancelled, which also ends the etcd watch.
-//
-// Channel discipline follows the registry-nacos idiom: the etcd watch channel
-// is consumed by a single goroutine that is the sole writer and closer of the
-// output channel, so there is no send-after-close race.
-func (d *etcdDiscovery) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
-	scheme := discovery.NewQuery("", opts...).Scheme
-	prefix := d.servicePrefix(name)
-
-	snapshot := func() []discovery.Endpoint {
-		cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		resp, err := d.client.Get(cctx, prefix, clientv3.WithPrefix())
+// watchLoop refreshes a service's cache on every etcd change below prefix
+// until the backend's lifetime context ends. A failed refresh keeps the stale
+// snapshot — stale addresses are safer than none.
+func (d *etcdDiscovery) watchLoop(prefix string, e *serviceEntry) {
+	wch := d.client.Watch(d.bgCtx, prefix, clientv3.WithPrefix())
+	for range wch {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		eps, err := d.fetch(ctx, prefix)
+		cancel()
 		if err != nil {
-			// Keep serving from etcd watch events; stale addresses are safer
-			// than none (the Discovery contract's degradation rule).
-			log.Warnf(context.Background(), starterTag, "registry-etcd: snapshot %q failed (waiting for watch): %v", name, err)
-			return nil
+			log.Warnf(context.Background(), starterTag, "registry-etcd: refresh %q failed (keeping stale snapshot): %v", prefix, err)
+			continue
 		}
-		return kvsToEndpoints(resp.Kvs)
+		e.mu.Lock()
+		e.eps = eps
+		e.mu.Unlock()
 	}
-
-	out := make(chan discovery.WatchResult, 1)
-	wch := d.client.Watch(ctx, prefix, clientv3.WithPrefix())
-	go func() {
-		defer close(out)
-
-		// Seed the channel with the current set so a long-lived caller need
-		// not Resolve first (the Watch contract).
-		eps := discovery.FilterByScheme(snapshot(), scheme)
-		lastKey := endpointsKey(eps)
-		out <- discovery.WatchResult{Endpoints: eps}
-
-		for range wch {
-			eps := discovery.FilterByScheme(snapshot(), scheme)
-			key := endpointsKey(eps)
-			if key == lastKey {
-				continue // no-op re-delivery must not churn consumers
-			}
-			lastKey = key
-			out <- discovery.WatchResult{Endpoints: eps}
-		}
-	}()
-	return out, nil
-}
-
-// Services enumerates every service name with at least one live key below the
-// key prefix — the discovery.Catalog capability, used by gateways and catalogs.
-func (d *etcdDiscovery) Services(ctx context.Context) ([]string, error) {
-	resp, err := d.client.Get(ctx, d.keyPrefix, clientv3.WithPrefix(), clientv3.WithKeysOnly())
-	if err != nil {
-		return nil, errutil.Explain(err, "registry-etcd: list services failed")
-	}
-	keys := make([]string, 0, len(resp.Kvs))
-	for _, kv := range resp.Kvs {
-		keys = append(keys, string(kv.Key))
-	}
-	return serviceNames(keys, d.keyPrefix), nil
-}
-
-// serviceNames extracts the distinct service names from instance keys below
-// prefix, whose layout is <prefix><service>/<instance>. Keys without the
-// service/instance split are skipped.
-func serviceNames(keys []string, prefix string) []string {
-	seen := map[string]struct{}{}
-	for _, k := range keys {
-		rel := strings.TrimPrefix(k, prefix)
-		if service, _, ok := strings.Cut(rel, "/"); ok && service != "" {
-			seen[service] = struct{}{}
-		}
-	}
-	names := make([]string, 0, len(seen))
-	for s := range seen {
-		names = append(names, s)
-	}
-	sort.Strings(names)
-	return names
 }
 
 // kvsToEndpoints maps one etcd Get/watch response's key-value pairs to

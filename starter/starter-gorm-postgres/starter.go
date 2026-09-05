@@ -28,6 +28,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	gormcore "go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
@@ -78,7 +79,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		closer    func()
 	)
 
-	ld, err := c.NewResolver(ctx)
+	lb, ld, err := c.NewPickPool(ctx)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm postgres: build discovery resolver failed: %v", err)
 		return gormcore.Spec{}, err
@@ -89,18 +90,12 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 	pgxCfg, err := pgx.ParseConfig(c.DSN())
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm postgres: parse pgx config failed: %v", err)
-		if ld != nil {
-			_ = ld.Stop()
-		}
 		return gormcore.Spec{}, err
 	}
 	if c.TLS.Enabled {
-		tlsCfg, terr := c.TLS.Build()
+		tlsCfg, terr := c.TLS.BuildClient()
 		if terr != nil {
 			log.Errorf(ctx, log.TagAppDef, "gorm postgres: build TLS failed: %v", terr)
-			if ld != nil {
-				_ = ld.Stop()
-			}
 			return gormcore.Spec{}, errutil.Explain(terr, "gorm postgres: build TLS")
 		}
 		pgxCfg.TLSConfig = tlsCfg
@@ -111,13 +106,13 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		// the Resolver and dials it over TCP.
 		nd := &net.Dialer{}
 		pgxCfg.DialFunc = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			ep, perr := ld.Pick()
+			ep, perr := lb.Pick(loadbalance.PickInfo{})
 			if perr != nil {
 				return nil, perr
 			}
 			return nd.DialContext(ctx, "tcp", ep.Addr)
 		}
-		closer = func() { _ = ld.Stop() }
+		closer = nil
 	}
 	dialector = postgres.New(postgres.Config{Conn: stdlib.OpenDB(*pgxCfg)})
 
@@ -138,5 +133,5 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 // Discovery dialer — a client can be dialed straight from a configured Host, or
 // (when ServiceName is set and mesh mode is off) through a discovery resolver
 // whose background watch keeps the endpoint set fresh. The resolver (built by
-// [gormcore.Common.NewResolver]) is adapted to pgx's DialFunc, and its watch is
+// [gormcore.Common.NewPickPool]) is adapted to pgx's DialFunc
 // stopped via the closer [build] attaches to the client.

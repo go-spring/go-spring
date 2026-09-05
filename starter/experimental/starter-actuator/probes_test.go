@@ -27,27 +27,9 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// stubIndicator is a test indicator whose health, criticality, and probe
-// groups are controlled by the test. A nil groups field means "no opinion",
-// which groupsOf routes to the default (readiness + startup).
-type stubIndicator struct {
-	name     string
-	err      error
-	critical bool
-	groups   []health.Group
-}
-
-func (s stubIndicator) HealthName() string { return s.name }
-
-func (s stubIndicator) CheckHealth(context.Context) error { return s.err }
-
-func (s stubIndicator) IsCritical() bool { return s.critical }
-
-func (s stubIndicator) HealthGroups() []health.Group { return s.groups }
-
 // readyServer builds a Server that has already crossed its readiness barrier and
 // is not draining, so handleReadiness reflects only the indicator aggregate.
-func readyServer(inds ...health.Indicator) *Server {
+func readyServer(inds ...*health.Indicator) *Server {
 	s := &Server{Indicators: inds}
 	s.ready.Store(true)
 	return s
@@ -61,7 +43,7 @@ func doReadiness(s *Server) *httptest.ResponseRecorder {
 }
 
 func TestReadiness_CriticalDownIsOutOfService(t *testing.T) {
-	down := stubIndicator{name: "mysql:orders", err: errors.New("dial timeout"), critical: true}
+	down := &health.Indicator{Name: "mysql:orders", Probe: func(context.Context) error { return errors.New("dial timeout") }, Optional: false}
 	rec := doReadiness(readyServer(down))
 
 	// A critical dependency being DOWN takes the pod out of rotation.
@@ -69,7 +51,7 @@ func TestReadiness_CriticalDownIsOutOfService(t *testing.T) {
 }
 
 func TestReadiness_RecoversToUp(t *testing.T) {
-	up := stubIndicator{name: "mysql:orders", err: nil, critical: true}
+	up := &health.Indicator{Name: "mysql:orders", Probe: func(context.Context) error { return nil }, Optional: false}
 	rec := doReadiness(readyServer(up))
 
 	assert.Number(t, rec.Code).Equal(http.StatusOK)
@@ -79,7 +61,7 @@ func TestReadiness_RecoversToUp(t *testing.T) {
 func TestReadiness_NonCriticalDownStaysUp(t *testing.T) {
 	// A non-critical dependency (an optional cache) being DOWN is reported but
 	// must not lower readiness — the pod keeps serving.
-	down := stubIndicator{name: "redis:cache", err: errors.New("connection refused"), critical: false}
+	down := &health.Indicator{Name: "redis:cache", Probe: func(context.Context) error { return errors.New("connection refused") }, Optional: true}
 	rec := doReadiness(readyServer(down))
 
 	assert.Number(t, rec.Code).Equal(http.StatusOK)
@@ -93,25 +75,25 @@ func TestReadiness_NonCriticalDownStaysUp(t *testing.T) {
 // in the collector (moved out of the health package), so it is tested here.
 
 func TestGroupsOf_AppliesDefaultWhenEmpty(t *testing.T) {
-	ind := stubIndicator{name: "x"}
+	ind := &health.Indicator{Name: "x"}
 	assert.Slice(t, groupsOf(ind)).
 		Equal([]health.Group{health.GroupReadiness, health.GroupStartup})
 }
 
 func TestGroupsOf_UsesExplicitGroupsWhenSet(t *testing.T) {
-	ind := stubIndicator{name: "x", groups: []health.Group{health.GroupLiveness}}
+	ind := &health.Indicator{Name: "x", Groups: []health.Group{health.GroupLiveness}}
 	assert.Slice(t, groupsOf(ind)).Equal([]health.Group{health.GroupLiveness})
 }
 
 func TestInGroup_DefaultCoversReadinessAndStartupNeverLiveness(t *testing.T) {
-	ind := stubIndicator{name: "x"}
+	ind := &health.Indicator{Name: "x"}
 	assert.That(t, inGroup(ind, health.GroupReadiness)).True()
 	assert.That(t, inGroup(ind, health.GroupStartup)).True()
 	assert.That(t, inGroup(ind, health.GroupLiveness)).False()
 }
 
 func TestInGroup_ExplicitGroupOnly(t *testing.T) {
-	ind := stubIndicator{name: "x", groups: []health.Group{health.GroupLiveness}}
+	ind := &health.Indicator{Name: "x", Groups: []health.Group{health.GroupLiveness}}
 	assert.That(t, inGroup(ind, health.GroupLiveness)).True()
 	assert.That(t, inGroup(ind, health.GroupReadiness)).False()
 }

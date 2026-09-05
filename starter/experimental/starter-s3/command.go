@@ -15,24 +15,22 @@
  */
 
 // command.go is the "command seam" concept of this starter: the obsTransport
-// round-tripper that emits a span + duration metric + access log per request.
-// It mirrors starter-elasticsearch's command.go, except minio-go ships no
-// OTel instrumentation of its own, so the transport carries the trace signal
-// too (no WithoutTrace).
+// round-tripper that emits a span + duration metric + access log per request
+// (see observe.go). It mirrors starter-elasticsearch's command.go, except
+// minio-go ships no OTel instrumentation of its own, so the transport carries
+// the trace signal too.
 package StarterS3
 
 import (
 	"net/http"
-
-	observe "go-spring.org/cloud/observe"
 )
 
 // obsTransport wraps the underlying HTTP round-tripper so each request emits
-// a span + duration metric + access log via the observe kit. The operation is
-// derived from the request method + URL path (e.g. "PUT /bucket/key").
+// a span + duration metric + access log. The operation is derived from the
+// request method + URL path (e.g. "PUT /bucket/key").
 type obsTransport struct {
 	base http.RoundTripper
-	obs  *observe.Observer
+	obs  *dbObserver
 }
 
 func (t *obsTransport) RoundTrip(req *http.Request) (*http.Response, error) {

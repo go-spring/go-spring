@@ -105,57 +105,22 @@ func startBackend(id string) (*backend, error) {
 type disco struct {
 	mu  sync.Mutex
 	eps []discovery.Endpoint
-	ws  map[*watcher]struct{}
 }
 
 func newDisco(eps []discovery.Endpoint) *disco {
-	return &disco{eps: eps, ws: map[*watcher]struct{}{}}
+	return &disco{eps: eps}
 }
 
 func (d *disco) set(eps []discovery.Endpoint) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.eps = eps
-	for w := range d.ws {
-		w.notify(eps)
-	}
 }
 
 func (d *disco) Resolve(_ context.Context, _ string, _ ...discovery.Option) ([]discovery.Endpoint, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return append([]discovery.Endpoint(nil), d.eps...), nil
-}
-
-func (d *disco) Watch(ctx context.Context, _ string, _ ...discovery.Option) (<-chan discovery.WatchResult, error) {
-	ch := make(chan discovery.WatchResult, 1)
-	w := &watcher{ch: ch}
-	d.mu.Lock()
-	d.ws[w] = struct{}{}
-	d.mu.Unlock()
-	go func() {
-		<-ctx.Done()
-		d.mu.Lock()
-		delete(d.ws, w)
-		d.mu.Unlock()
-		close(ch)
-	}()
-	return ch, nil
-}
-
-type watcher struct{ ch chan discovery.WatchResult }
-
-func (w *watcher) notify(eps []discovery.Endpoint) {
-	snap := append([]discovery.Endpoint(nil), eps...)
-	// Coalesce: keep only the latest snapshot in the 1-slot channel.
-	select {
-	case <-w.ch:
-	default:
-	}
-	select {
-	case w.ch <- discovery.WatchResult{Endpoints: snap}:
-	default:
-	}
 }
 
 // ---------------------------------------------------------------------------

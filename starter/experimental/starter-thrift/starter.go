@@ -94,7 +94,7 @@ func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor) *SimpleThriftServ
 // when enabled, TLS.
 func (s *SimpleThriftServer) newTransport() (thrift.TServerTransport, error) {
 	if s.cfg.TLS.Enabled {
-		tlsCfg, err := s.cfg.TLS.Build()
+		tlsCfg, err := s.cfg.TLS.BuildClient()
 		if err != nil {
 			return nil, errutil.Explain(err, "thrift: build TLS")
 		}

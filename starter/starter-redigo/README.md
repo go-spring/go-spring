@@ -76,6 +76,6 @@ The [example.go](example/example.go) file demonstrates the following core Redis 
 ## Observability
 
 Unlike `starter-go-redis` (which uses the official `redisotel` hooks), redigo ships no official OpenTelemetry
-instrumentation, and there is no clean community equivalent that hooks the connection without wrapping every command.
-Rather than bolt on a fragile wrapper, observability is intentionally **not** built into this starter. Applications that
-need tracing/metrics on cache access should prefer `starter-go-redis`, or instrument at the call site.
+instrumentation. The starter therefore emits its own: every pooled command goes through a module-local observe layer
+(client span with `db.system`/`db.operation`/`db.statement` attributes, the `db.client.operation.duration` histogram,
+and an access log tagged `_app_redigo_access`). All three are no-ops unless `starter-otel` installs providers.

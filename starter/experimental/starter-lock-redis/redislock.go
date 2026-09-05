@@ -88,11 +88,11 @@ func newRedisLocker(ctx *gs.ContextProvider, c Config, client *redis.Client) (*r
 func (l *redisLocker) key(k string) string { return l.cfg.KeyPrefix + k }
 
 // defaults translates the starter config into the lock package's three-tier
-// default layer (per-call Option > starter Defaults > package default). lock.Resolve
+// default layer (per-call Option > starter DefaultOptions > package default). lock.Resolve
 // injects these beneath caller-supplied opts, so this starter's ttl / renew-interval
 // / retry-interval act as overridable defaults rather than fixed values.
-func (l *redisLocker) defaults() lock.Defaults {
-	return lock.Defaults{
+func (l *redisLocker) defaults() lock.DefaultOptions {
+	return lock.DefaultOptions{
 		TTL:           l.cfg.TTL,
 		RenewInterval: l.cfg.RenewInterval,
 		RetryInterval: l.cfg.RetryInterval,

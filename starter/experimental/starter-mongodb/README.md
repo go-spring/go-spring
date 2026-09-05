@@ -63,14 +63,14 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
   becomes an independently configured `*StarterMongoDB.Client` bean; inject them by name to
   talk to different clusters or databases.
 
-* **Observability**: each client is bridged into go-spring's unified
-  observability through a command monitor that emits one client span per MongoDB
-  command via the OpenTelemetry global `TracerProvider` that `starter-otel`
-  installs. When `starter-otel` is absent that global is a no-op, so spans cost
-  nothing and no per-app wiring is needed. (The bridge is implemented directly
-  against the v2 driver's event API because the official `otelmongo`
-  instrumentation targets the v1 driver and is type-incompatible with the v2
-  driver used here.)
+* **Observability**: each client carries module-local instrumentation wired
+  through a command monitor that emits one client span per MongoDB command,
+  `db.client.*` metrics, and an `_app_mongodb_access` access log via the
+  OpenTelemetry globals that `starter-otel` installs. When `starter-otel` is
+  absent those globals are no-ops, so signals cost nothing and no per-app
+  wiring is needed. (The bridge is implemented directly against the v2
+  driver's event API because the official `otelmongo` instrumentation targets
+  the v1 driver and is type-incompatible with the v2 driver used here.)
 
 * **Service discovery**: set `service-name` on an instance to resolve its address
   through a registered discovery backend instead of the URI hosts. A

@@ -101,13 +101,6 @@ spring.cassandra.a.consistency=local-quorum
 spring.cassandra.b.hosts=127.0.0.1
 spring.cassandra.b.keyspace=demo
 
-# --- observability ---------------------------------------------------------
-# Exec 的 access-log 详细度（tag _app_cassandra_access）。注意：
-# observability.* 是**顶层** key，所有 client starter/实例共享（wrapper 字段绑定
-# ${observability:=} 绝对引用，client.go:44）——不在 spring.cassandra.<name> 之下。
-# 配 spring.cassandra.a.observability.level 写的是死副本（config.go:65）。
-observability.level=detailed
-
 # --- actuator + otel ------------------------------------------------------
 spring.actuator.addr=:9370
 spring.observability.service-name=demo
@@ -147,10 +140,9 @@ gs.Run()
   ├─ 构造 newClient [starter.go:59]：
   │     username/password 成对校验 → driver 查找 → driver.CreateClient
   │     → HealthCheck 探活（fail fast，见下）
-  ├─ gs 字段注入 Client.Observability（${observability:=} —— 顶层绝对 key）
-  ├─ Init [client.go:64]：observe.NewDB("cassandra", …) → resource label
+  ├─ Init [client.go:59]：newDBObserver("cassandra") → resource label
   │     → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │     → resilience.WrapExecutor —— exec 链就绪
+  │     → resilience.WrapExecutor(exec, "cassandra") —— exec 链就绪
   ├─ readiness：每个实例的 indicator 查询 system.local
   └─ SIGTERM → Destroy [client.go:75]：exec.Close（若已武装）→ Session.Close
 ```
@@ -177,8 +169,8 @@ wrapper [query.go]，其执行方法全部过执行器 + 观察者。`Client.Exe
 
 `Client.Exec(ctx, stmt, values...)` / `Client.Query(...).Exec()` [client.go, query.go]：
 
-1. `obs.Start(ctx, "exec", stmt)` 打开名为 `exec` 的 client 型 span（语句作为有界 `arg`
-   属性）、抬升 in-flight 计数、开启一条 access-log 记录。无 starter-otel 全局件时
+1. `obs.Start(ctx, "exec", stmt)` 打开名为 `exec` 的 client 型 span（语句作为有界
+   `db.statement` 属性）、抬升 in-flight 计数、开启一条 access-log 记录。无 starter-otel 全局件时
    span/metric 为 no-op；access log 恒输出。
 2. `exec.Execute(ctx, resource, call)` 向治理执行器申请许可 —— limiter/breaker 作用于
    resource label `cassandra:<hosts[0]>`（按实例，且**只取第一个 host**
@@ -217,8 +209,7 @@ hosts、PasswordAuthenticator、一致性级别、超时、CQL 版本、TLS [dri
 ## 3. 逐 key 行为参考
 
 所有 key 位于 `spring.cassandra.<name>.` 之下 —— 经 `conf.BindEach` 按实例绑定（构造
-参数的 `Config`），不是 starter-Pool 的绝对属性规则。唯一例外：生效的 `observability.*`
-是**顶层** key（见 §1 注）。
+参数的 `Config`），不是 starter-Pool 的绝对属性规则。
 
 ### 3.1 连接与 session
 
@@ -240,24 +231,19 @@ hosts、PasswordAuthenticator、一致性级别、超时、CQL 版本、TLS [dri
 
 ### 3.2 观测
 
-| Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
-|-----|------|--------|------------|----------|
-| `observability.level`（顶层） | string | `brief` | 仅作用于 `Exec` 的 access log：`off` / `brief` / `detailed`（detailed 附带截断后的语句）。所有 client starter/实例共享 [client.go:44]。 | 配在 `spring.cassandra.<name>.` 下 → 静默无效（config.go:65 绑的是无人读的死副本）。 |
-| `observability.maxArgBytes`（顶层） | int | 512 | detailed 模式及 span 属性中捕获语句的字节上限。 | 过小 → 语句被截断。 |
-| `observability.skipOps`（顶层） | list | — | 按操作名同时压制 span+metric+log —— 这里唯一的操作名是 `exec`。 | — |
-
-本 starter 没有 `otel.*` key（与 starter-go-redis 不同）：observer 直接搭 OTel 全局件；
-不 import starter-otel 则 span/metric 为 no-op。也没有服务发现类 key —— 没有
-`service-name`、`scheme`、`discovery`。
+本 starter 没有观测类配置 key —— 插桩恒开启。也没有 `otel.*` key（与 starter-go-redis
+不同）：observer 直接搭 OTel 全局件；不 import starter-otel 则 span/metric 为 no-op。
+也没有服务发现类 key —— 没有 `service-name`、`scheme`、`discovery`。
 
 ### 3.3 指标 / 日志字段参考（Exec 产出）
 
 - 指标：`db.client.operation.duration`（直方图，秒）、`db.client.active_requests`
-  （UpDownCounter）—— 属性 `system=cassandra`、`op=exec`、status ok/error
-  （cloud/observe observer.go:185-201）。
-- access log：tag `_app_cassandra_access`（`log.RegisterAppTag("cassandra","access")`，
-  observer.go:195），每次 Exec 一条，含 system/op/status/duration；detailed 附带语句。
-- span：名 `exec`，kind client，db 属性按 observe kit 的 DB SemConv。
+  （UpDownCounter）—— 属性 `db.system=cassandra`、`db.operation`（observe.go）。
+- access log：tag `_app_cassandra_access`（`log.RegisterAppTag("cassandra","access")`），
+  每次 Exec 一条，走 log 包原生分级：错误 → Warn；成功且带语句参数（截断至 512 字节）
+  → Debug；普通成功 → Info。
+- span：名 `exec`，kind client，属性 `db.system` / `db.operation` / `db.statement`
+  （语句截断至 512 字节）。
 
 ---
 
@@ -276,7 +262,7 @@ docker start cassandra-example
 
 ```bash
 grep _app_cassandra_access app.log | tail -1
-# brief: system=cassandra op=exec status=ok duration=...
+# system=cassandra op=exec status=ok duration=...
 curl -s :9370/metrics | grep db.client   # 时长直方图 + active_requests
 ```
 
@@ -309,7 +295,7 @@ docker stop cassandra-example && go run .
 | 启动报 "unknown consistency" | `consistency` 拼错；枚举精确匹配 | 用九个合法值之一 [driver.go:117]。 |
 | 启动报 "cassandra driver not found" | `driver` 未注册 | 在 init 里 `RegisterDriver`，或删掉该 key（DefaultDriver）。 |
 | Exec 无 span/metric | 未 import starter-otel | observer 搭 OTel 全局件；import starter-otel（access log 仍会输出）。 |
-| 完全没有 access log 行 | `observability.level=off`，或 key 配在了 `spring.cassandra.<name>.` 下（死副本） | 改配**顶层** `observability.level=detailed`；检查 logger 对 `_app_cassandra_access` tag 的过滤。 |
+| 完全没有 access log 行 | logger 级别过滤掉了 Debug/Info，或 `_app_cassandra_access` tag 被过滤 | 检查 logger 级别及其对 `_app_cassandra_access` tag 的过滤。 |
 | breaker/limiter 永不触发 | 用的是裸 `*gocql.Session`（如别处取得的 session）、或 batch、或链式配置方法丢掉了 wrapper | 语句从 `Client.Query`/`Client.Bind`/`Client.Exec` 出发（§2.3）。 |
 | 两个实例意外共用一个 breaker | resource label 是 `cassandra:<hosts[0]>` [client.go:66] | 设计行为（多 seed 折叠到首个 host）；需要隔离就拆接触点列表。 |
 | Exec 可用但健康 DOWN | indicator 带自身 ctx 查 system.local；查权限/超时 | 看 /readiness 中该 component 的错误详情。 |
@@ -318,7 +304,7 @@ docker stop cassandra-example && go run .
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 10 个实例 key + tls 组 6 个 + 顶层 observability 3 个 |
+| 配置 key 总数 | 10 个实例 key + tls 组 6 个 |
 | 其中必填 | 1（`hosts`） |
 | quickstart 前置外部依赖数 | 1（Cassandra） |
 | 文档中"注意/坑"条数 | 4 |
@@ -327,8 +313,5 @@ docker stop cassandra-example && go run .
 
 - ~~只有 `Exec` 有防护/观测~~ 已修：带防护的 `*Query` wrapper 覆盖常规语句路径
   （§2.3）；batch 与 `Iter` 深翻页仍在守卫之外。
-- `Config.Observability` 绑在实例前缀下但是死配置 —— 生效副本是 wrapper 的顶层字段
-  [config.go:65 vs client.go:44]；用户配 `spring.cassandra.<name>.observability.level`
-  只会得到沉默。候选动作：删除死字段。
 - resource label 只用 `hosts[0]`，多 seed 配置共享一个以首 host 为键的 resilience 桶。
 - 健康指示器没有关闭 key（与 redigo 的 `health.enabled` 家族不对称）。

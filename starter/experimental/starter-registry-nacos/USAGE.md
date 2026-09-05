@@ -175,8 +175,9 @@ One push, end to end (`discovery_nacos.go:177-245`):
    loops: on signal, render the snapshot to a comparable key (`addr,scheme,weight;disabled,healthy`,
    `endpointsKey`) and **only forward when the key changed** — no-op re-deliveries must not
    churn consumers (`discovery_nacos.go:226-242`).
-4. Downstream, `cloud/discovery.Resolver.loop` replaces its atomic snapshot per push;
-   `loadbalance.Pool.Pick` reads the live snapshot on every pick.
+4. Downstream, a discovery `Loader` just reads this backend's current snapshot —
+   there is no client-side loop; freshness lives entirely inside the backend — and
+   a `loadbalance.Pool.Pick` reads the live snapshot on every pick.
 
 Failure modes: a callback error **keeps the last snapshot** (stale addresses beat none — Warn
 log, `discovery_nacos.go:197-205`); a failed initial query logs a Warn and waits for the first
@@ -277,8 +278,9 @@ must be caught by monitoring (ErrNoAvailable only when the set is empty or all D
 
 1. `kill -9 <provider-pid>` (no graceful TERM): Deregister never runs; the SDK heartbeat stops
    and Nacos drops the ephemeral instance after its heartbeat timeout (~15s default).
-2. Consumer side: the Nacos push fires, the snapshot loses the endpoint, `Resolver` swaps it,
-   `Pool.Pick` stops choosing it. No code change — this is why Register being ephemeral makes
+2. Consumer side: the Nacos push fires, the backend's snapshot loses the endpoint, a
+   discovery `Loader` re-reads it, and `Pool.Pick` stops choosing it. No code change — this is
+   why Register being ephemeral makes
    correctness independent of Deregister (`registrar.go:44-47`).
 3. Contrast with graceful TERM (4.1): removal is immediate, not ~15s.
 

@@ -14,7 +14,7 @@ a cache client — **discovery**, **resilience**, **health** and **observability
   hot-reloadable.
 - **Health**: the per-instance memcached `health.Indicator` is aggregated by
   `starter-actuator` on `:9370` — `/readyz` reflects the cluster.
-- **Observability**: the `ObservedClient` wrapper + the observe kit ride the
+- **Observability**: the starter's built-in observe layer rides the
   OTel globals.
 
 ## Layout

@@ -18,7 +18,7 @@ backend (the app dials nothing).
 - **Dynamic config**: a `gs.Dync[string]` field is bound to `demo.label` from a
   watched file; editing it hot-reloads the value with no restart.
 - **Observability**: bigcache exposes no plugin hook, so the starter's
-  `*ObservedBigCache` wrapper delivers per-operation span+metric+log, plus
+  `*`*Cache` wrapper delivers per-operation span+metric+log, plus
   cache-stat gauges (hits/misses/collisions) riding the OTel globals.
 - **Discovery**: N/A — bigcache is in-process, so there is no external address to
   resolve.

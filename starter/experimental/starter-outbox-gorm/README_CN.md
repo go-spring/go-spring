@@ -1,17 +1,17 @@
 # starter-outbox-gorm
 
-Go-Spring 的 gorm 事务消息：业务写与消息发布在同一个数据库事务中原子提交，后台 relay 把 `outbox_message` 表搬运到任意已注册的 `messaging.Binder`（kafka、nats……）。中立内核在 `cloud/experimental/outbox`。
+Go-Spring 的 gorm 事务消息：业务写与消息发布在同一个数据库事务中原子提交，后台 relay 把 `outbox_message` 表搬运到任意已注册的 `messaging.Driver`（kafka、nats……）。中立内核在 `cloud/experimental/outbox`。
 
 ## 接线
 
 空白导入本 starter，在 `spring.outbox` 下每个 relay 一条配置：
 
 ```properties
-spring.outbox.main.binder=kafka
+spring.outbox.main.driver=kafka
 spring.outbox.main.auto-migrate=true
 ```
 
-每条配置自动注入一个 `*gorm.DB`（来自你已在用的 gorm 方言 starter；`db` 可指定具名 bean），启动时解析 binder，贡献健康指示器（`outbox:<name>`），并在 bean 的 Init/Destroy 上跑 relay 循环——优雅关停会排空在途记录。
+每条配置自动注入一个 `*gorm.DB`（来自你已在用的 gorm 方言 starter；`db` 可指定具名 bean），启动时解析 driver，贡献健康指示器（`outbox:<name>`），并在 bean 的 Init/Destroy 上跑 relay 循环——优雅关停会排空在途记录。
 
 ## 发布
 
@@ -54,7 +54,7 @@ mysql（8+）与 postgres 上 relay 用 `FOR UPDATE SKIP LOCKED` 取数，多实
 | key | 默认 | 含义 |
 |---|---|---|
 | `db` | （按类型注入） | 支撑 outbox 表的 `*gorm.DB` bean 名 |
-| `binder` | — 必填 | messaging binder 名（kafka、nats……） |
+| `driver` | — 必填 | messaging driver 名（kafka、nats……） |
 | `auto-migrate` | `false` | 启动时建表 |
 | `poll-interval` | `1s` | 空转轮询间隔（下限 100ms） |
 | `batch-size` | `100` | 每次轮询取的记录数 |
@@ -66,7 +66,7 @@ mysql（8+）与 postgres 上 relay 用 `FOR UPDATE SKIP LOCKED` 取数，多实
 
 ## 示例
 
-`example/` 在内存 sqlite 与进程内 binder 上跑通整个模式，自断言原子性（提交即投递、回滚不投递）、退避重试与死信。`example/check.sh` 是其冒烟测试。
+`example/` 在内存 sqlite 与进程内 driver 上跑通整个模式，自断言原子性（提交即投递、回滚不投递）、退避重试与死信。`example/check.sh` 是其冒烟测试。
 ### 日志 tag
 
 本模块的运行期日志使用 tag `_app_outbox`（事务 outbox）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：

@@ -36,9 +36,8 @@ type picker func(r *http.Request) (target *url.URL, done func(err error), err er
 
 // buildPicker returns a picker for an upstream. A direct http(s):// upstream
 // yields a fixed target; an lb://<service> upstream resolves through discovery
-// and a load-balancing pool that stays fresh via a background watch. The pool is
-// cached on the table so recompiles reuse the live dialer instead of leaking a
-// new watch goroutine each time.
+// and a load-balancing pool that re-reads the service's live endpoint snapshot
+// on each pick (freshness lives inside the discovery backend).
 func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 	if up.URL != nil {
 		u := up.URL
@@ -62,21 +61,32 @@ func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 	}, nil
 }
 
-// poolFor returns the load-balancing pool for an lb:// service, building (and
-// caching) the live dialer once per (discovery,service) pair. The balancer is
-// per-upstream so different routes to the same service may use different
-// strategies while sharing one discovery watch. Outlier suspension (upstream
+// poolFor returns the load-balancing pool for an lb:// service, built over a
+// by-name discovery resolver. The balancer is per-upstream so different routes to
+// the same service may use different strategies. Outlier suspension (upstream
 // suspend-threshold/suspend-for) is likewise per-upstream: an instance that
 // fails repeatedly is dropped from the pool's candidate set for the cool-down,
 // so a zombie upstream stops generating 502s until it proves itself again.
+// Resolver freshness lives inside the discovery backend and the resolver has no
+// background watch, so the pool has no resources to release.
 func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	disName := up.Discovery
 	if disName == "" {
 		disName = t.discovery
 	}
-	dialer, err := t.resolver(disName, up.Service)
+	if disName == "" {
+		return nil, &parseError{what: "lb:// upstream without a discovery backend (set upstream.discovery or spring.gateway.discovery)", token: up.Service}
+	}
+	resolver, err := discovery.NewResolver(t.ctx, disName, up.Service)
 	if err != nil {
 		return nil, err
+	}
+	if resolver == nil {
+		// NewResolver yields (nil, nil) when discovery is not in effect — empty
+		// name or mesh mode active. A gateway lb:// upstream needs a live
+		// resolver, so surface that as a route-table compile error rather than
+		// handing a nil source to the load-balancing pool.
+		return nil, &parseError{what: "lb:// upstream cannot resolve (empty service name or mesh mode active — in mesh mode route to the service's stable address instead)", token: up.Service}
 	}
 	balName := up.Balancer
 	if balName == "" {
@@ -94,63 +104,7 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 		})
 		opts = append(opts, loadbalance.WithTracker(tr))
 	}
-	return loadbalance.NewPool(dialer, bal, opts...), nil
-}
-
-// resolver returns a cached [discovery.Resolver] for name, creating one (and
-// its background watch) on first use. Resolvers are keyed by discovery backend
-// + name and reused across route-table recompiles.
-func (t *RouteTable) resolver(disName, name string) (*discovery.Resolver, error) {
-	if disName == "" {
-		return nil, &parseError{what: "lb:// upstream without a discovery backend (set upstream.discovery or spring.gateway.discovery)", token: name}
-	}
-	key := disName + "|" + name
-	t.dialerMu.Lock()
-	defer t.dialerMu.Unlock()
-	if d, ok := t.dialers[key]; ok {
-		return d, nil
-	}
-	d, err := discovery.NewResolver(t.ctx, disName, name)
-	if err != nil {
-		return nil, err
-	}
-	if d == nil {
-		// NewResolver yields (nil, nil) when discovery is not in effect — empty
-		// name or mesh mode active. A gateway lb:// upstream needs a live
-		// resolver, so surface that as a route-table compile error rather than
-		// handing a nil dialer to the load-balancing pool.
-		return nil, &parseError{what: "lb:// upstream cannot resolve (empty service name or mesh mode active — in mesh mode route to the service's stable address instead)", token: name}
-	}
-	t.dialers[key] = d
-	return d, nil
-}
-
-// stopOrphanedDialers stops and removes the cached discovery resolvers whose
-// (discovery,service) key is no longer referenced by any route. A service dropped
-// from the route config must not keep its background watch running after a hot
-// reload, so recompile calls this with the set of keys the new routes use.
-func (t *RouteTable) stopOrphanedDialers(keep map[string]bool) {
-	t.dialerMu.Lock()
-	defer t.dialerMu.Unlock()
-	for key, d := range t.dialers {
-		if !keep[key] {
-			_ = d.Stop()
-			delete(t.dialers, key)
-		}
-	}
-}
-
-// Close stops the background discovery watch behind every cached resolver. It is
-// the gs destroy method, invoked on graceful shutdown, so the discovery watches
-// do not leak past the gateway's lifetime.
-func (t *RouteTable) Destroy() error {
-	t.dialerMu.Lock()
-	defer t.dialerMu.Unlock()
-	for key, d := range t.dialers {
-		_ = d.Stop()
-		delete(t.dialers, key)
-	}
-	return nil
+	return loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, opts...), nil
 }
 
 // newProxyHandler assembles the terminal handler of a route's chain: a reverse

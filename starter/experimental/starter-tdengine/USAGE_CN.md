@@ -110,12 +110,8 @@ spring.tdengine.a.max-idle-conns=2
 
 spring.tdengine.b.dsn=root:taosdata@ws(127.0.0.1:6041)/power
 
-# --- 可观测 -------------------------------------------------------------------
-# 逐语句访问日志（tag _app_tdengine_access）。默认 "brief"；
-# "detailed" 追加 SQL 语句，受 maxArgBytes 截断。
-spring.tdengine.a.observability.level=detailed
-spring.tdengine.a.observability.maxArgBytes=1024
-# span 与 db.client.* 指标挂在 starter-otel 的全局 provider 上（默认开）。
+# --- 可观测恒开启：span 与 db.client.* 指标挂在 starter-otel 的全局 ------------
+# provider 上，访问日志走 log 包原生分级。
 
 # --- actuator + otel ----------------------------------------------------------
 spring.actuator.addr=:9370
@@ -162,10 +158,10 @@ gs.Run()
   │       guardedConnector → sql.OpenDB → 应用连接池参数
   │     → fail-fast PingContext，10s 上限 [starter.go:72-77]；失败则关闭半成品
   │       client，启动失败
-  ├─ gs 字段注入 Client.Observability（${observability:=}）[client.go:42]
-  ├─ Init [client.go:64]：resourceLabel（"tdengine:<dsn addr>"）→
+  ├─ Init [client.go:58]：resourceLabel（"tdengine:<dsn addr>"）→
   │     fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │     resilience.WrapExecutor → NewDB("tdengine", cfg) 观察器装到 slot 上
+  │     resilience.WrapExecutor(exec, "tdengine") → newDBObserver("tdengine")
+  │     装到 slot 上
   ├─ readiness：指示器对每实例跑 db.PingContext
   └─ SIGTERM → Destroy [client.go:81]：exec.Close → db.Close
 ```
@@ -199,8 +195,8 @@ taosWS connector 包进 `guardedConnector`，池内每条连接都是 `guardedCo
 
 与 starter-go-redis 对比：那边访问日志在熔断器外层（每命令一条）；这里 executor
 在最外层，日志回答"每次尝试做了什么"，resilience 指标回答"executor 裁决了什么"。
-driver-go 自身不带埋点，所以这里由 observe kit 独占三信号（span + 指标 + 日志，
-没有 `WithoutTraceAndMetric`）。
+driver-go 自身不带埋点，所以这里由模块本地观察者独占三信号（span + 指标 + 日志，
+见 observe.go）。
 
 **不在 guard 覆盖内**的路径 [driver.go:189-198]：
 
@@ -235,14 +231,9 @@ Init 装配 slot 之前，语句原样透传（exec、obs 均为 nil——零配
 | `max-open-conns` | int | 8 | 内嵌池的 `db.SetMaxOpenConns` [driver.go:81]。 | 过小 → 语句排队等连接。 |
 | `max-idle-conns` | int | 2 | `db.SetMaxIdleConns`。⚠ 应 ≤ max-open-conns（database/sql 会静默封顶，但超出即是配置坏味道）。 | 大于 open conns → 被钳制，idle 抖动。 |
 | `conn-max-lifetime` | duration | 0s | `db.SetConnMaxLifetime`；0 = 永不退役。⚠ 与 redis（默认 2m）不同，这里没有 discovery 需要跟随，0 是安全的。 | — |
-| `observability.level` | string | `brief` | 访问日志档位：`off`（只静默日志；trace+metric 继续发）/ `brief`（system、op、status、duration、error）/ `detailed`（追加 SQL 语句，有截断）。 | `off` 又想要日志 → 无声静默，无告警。 |
-| `observability.maxArgBytes` | int | 512 | `detailed` 模式下捕获 SQL 及 `db.statement` span 属性的字节上限。 | 过小 → 日志/span 中语句被截断。 |
-| `observability.skipOps` | list | — | 对列出的 op 名同时压制 span+metric+log。⚠ 本 starter 的 op 命名空间就是 `exec` / `query`——不是按 SQL 区分；`skipOps=exec` 会静默全部写入。 | 大小写不符 → 无效果（精确匹配）。 |
 | `driver` | string | `DefaultDriver` | 从注册表选择 Driver [driver.go:52]。 | 未知名 → 启动报 "tdengine driver not found: <name>"。`RegisterDriver` 重名 → panic。 |
 
-`Config.Observability` 与 `Client.Observability` 字段都绑定 `${observability:=}`
-[config.go:47, client.go:42]；Init 消费的是字段注入那份——同前缀同值，
-实际只有一个生效旋钮。
+没有观测类 key——插桩恒开启（§4.2）。
 
 ---
 
@@ -264,12 +255,12 @@ docker start <tdengine>
 
 | 信号 | 名称 / 形态 | 属性 |
 |--------|--------------|------------|
-| Span | `exec` / `query`，kind = client，tracer `go-spring.org/cloud/observe` | `db.system=tdengine`、`db.operation=exec\|query`、`db.statement=<sql，截断>` |
+| Span | `exec` / `query`，kind = client，tracer `go-spring.org/starter-tdengine` | `db.system=tdengine`、`db.operation=exec\|query`、`db.statement=<sql，截断>` |
 | 指标 | `db.client.operation.duration`（直方图，s） | `db.system`、`db.operation`、`status=ok\|error` |
 | 指标 | `db.client.active_requests`（up-down counter） | `db.system`、`db.operation` |
 | 指标 | `resilience.calls`（counter） | `resilience.system=tdengine`、`resilience.resource`、`resilience.outcome=success\|rate_limited\|circuit_open\|bulkhead_full\|timeout\|error` |
 | 指标 | `resilience.breaker.state_change`（counter） | from/to 属性 |
-| 日志 | tag `_app_tdengine_access` | system=tdengine op=… status duration（detailed 模式含 SQL） |
+| 日志 | tag `_app_tdengine_access` | system=tdengine op=… status duration；错误 → Warn，成功且带 SQL（截断至 512 字节）→ Debug，普通成功 → Info |
 | 日志 | tag `_app_tdengine_resilience` | resilience 拒绝事件 |
 
 未引入 starter-otel 时，span/指标是 no-op（全局 provider 为空）——只有访问日志产出，
@@ -278,7 +269,7 @@ docker start <tdengine>
 ```bash
 curl -s :9370/metrics | grep -E 'db.client_operation_duration|db.client_active'
 grep _app_tdengine_access app.log | tail -1
-# detailed：system=tdengine op=exec status ok duration=... "INSERT INTO power.d001 ..."
+# system=tdengine op=exec status ok duration=... "INSERT INTO power.d001 ..."
 ```
 
 ### 4.3 resilience 演练
@@ -309,8 +300,8 @@ server 版本全部正常。
 | 启动失败 "tdengine driver not found: X" | `driver` key 指向未注册的名字 | 在 init 里 `StarterTdengine.RegisterDriver`，或删掉该 key（DefaultDriver）。 |
 | BindEach 在 `dsn` 上启动失败 | `spring.tdengine.<name>.dsn` 缺失或为空 | expr tag 强制非空——补上。 |
 | SQL 正常但健康检查 DOWN | 池被占满（max-open-conns 过低），探针拉不到新连接 | 调大 max-open-conns；看 /readiness 里 component 的错误详情。 |
-| 无 span/指标 | 未引入 starter-otel | observe kit 挂在 OTel 全局 provider 上；import starter-otel。 |
-| 无访问日志 | `observability.level=off`，或日志 tag 被过滤 | 设 `detailed`；检查 logger 对 `_app_tdengine_access` 的配置。 |
+| 无 span/指标 | 未引入 starter-otel | 观察者挂在 OTel 全局 provider 上；import starter-otel。 |
+| 无访问日志 | logger 级别过滤掉 Debug/Info，或日志 tag 被过滤 | 检查 logger 级别及对 `_app_tdengine_access` 的配置。 |
 | 经 db.Prepare 的语句无治理无观测 | `Prepare` 设计上绕过 slot [driver.go:189-191] | 改用 ExecContext/QueryContext。 |
 | 熔断状态跨"库"共享 | resource label 按 host:port 划分，DSN 参数不参与 | 有意为之（按实例划分）；要分桶就分开 host。 |
 | `Begin` 报错 | TDengine 无事务 | 设计如此——driver 会报错。 |
@@ -319,7 +310,7 @@ server 版本全部正常。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 6 个实例 key（+3 个 observability 子 key） |
+| 配置 key 总数 | 6 个实例 key |
 | 其中必填 | 1（`dsn`） |
 | quickstart 前置外部依赖 | 1（TDengine 及其自带 taosAdapter） |
 | "注意/坑" 条数 | 4 |
@@ -327,10 +318,6 @@ server 版本全部正常。
 设计嫌疑（保留上一轮审计条目，另加新增）：
 - DSN 是不透明字符串——resilience resource label 靠从中解析地址，仅参数或库名不同的
   两个 DSN 共享同一个桶；无 `tls.*`/`service-name`，与兄弟 starter 不一致（家族不对称）。
-- `Observability` 被绑定两次（ctor Config 与 Client 字段）——同前缀，Init 只消费字段注入
-  那份；另一份是死重。
-- `skipOps` 匹配的是粗粒度 op 命名空间（`exec`/`query`），无法跳过某条高频
-  SQL——粒度是按种类，不是按语句。
 - `Prepare` 完全绕出 guard seam——走 prepared statement 的 ORM 会静默失去
   resilience + observability 覆盖。
 - 健康指示器无关闭 key（与 starter-go-redis 相同的家族不对称；redigo 有 `health.enabled`）。

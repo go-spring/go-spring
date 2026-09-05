@@ -4,7 +4,7 @@
 （`starter.go`、`config.go`、`redisrepo.go`）与可运行的冒烟示例
 [starter-batch/example](../starter-batch/example)（`example/check.sh`，docker 门控）核对。
 批量语义本身（JobExecution / StepExecution、chunk 模型、断点续跑）属于
-`go-spring.org/cloud/batch`——本文只讲 Redis 后端与 go-spring 接线。
+`go-spring.org/cloud/experimental/batch`——本文只讲 Redis 后端与 go-spring 接线。
 
 **激活方式**：任一 `spring.batch-repository.*` key。空导入本包后，每个条目注册一个
 `batch.JobRepository`（starter.go:51-70）；每个条目复用 starter-go-redis 发布的
@@ -64,7 +64,7 @@ import (
     "context"
 
     "github.com/redis/go-redis/v9"
-    "go-spring.org/cloud/batch"
+    "go-spring.org/cloud/experimental/batch"
     "go-spring.org/spring/gs"
     StarterBatch "go-spring.org/starter-batch"
 )

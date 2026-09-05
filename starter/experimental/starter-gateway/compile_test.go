@@ -20,8 +20,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	"go-spring.org/cloud/discovery"
 )
 
 // newTestTable builds a RouteTable without the container, enough for
@@ -31,7 +29,6 @@ func newTestTable(t *testing.T) *RouteTable {
 	tbl := &RouteTable{
 		ctx:     context.Background(),
 		metrics: newMetrics(),
-		dialers: map[string]*discovery.Resolver{},
 	}
 	return tbl
 }

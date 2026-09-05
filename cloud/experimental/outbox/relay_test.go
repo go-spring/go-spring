@@ -29,9 +29,9 @@ import (
 	"go-spring.org/cloud/messaging"
 )
 
-// memBinder is an in-memory [messaging.Binder]: publishers either capture
+// memDriver is an in-memory [messaging.Driver]: publishers either capture
 // messages or fail, by destination.
-type memBinder struct {
+type memDriver struct {
 	mu   sync.Mutex
 	sent map[string][]*messaging.Message // destination → delivered messages
 
@@ -41,30 +41,30 @@ type memBinder struct {
 	attempts  map[string]int
 }
 
-func newMemBinder(failDests map[string]int) *memBinder {
-	return &memBinder{
+func newMemDriver(failDests map[string]int) *memDriver {
+	return &memDriver{
 		sent:      make(map[string][]*messaging.Message),
 		failDests: failDests,
 		attempts:  make(map[string]int),
 	}
 }
 
-func (b *memBinder) NewPublisher(ctx context.Context, destination string) (messaging.Publisher, error) {
+func (b *memDriver) NewPublisher(ctx context.Context, destination string) (messaging.Publisher, error) {
 	return &memPublisher{b: b, dest: destination}, nil
 }
 
-func (b *memBinder) NewSubscriber(ctx context.Context, source, group string) (messaging.Subscriber, error) {
+func (b *memDriver) NewSubscriber(ctx context.Context, source, group string) (messaging.Subscriber, error) {
 	return nil, errors.New("outbox test: subscriber not supported")
 }
 
-func (b *memBinder) delivered(dest string) []*messaging.Message {
+func (b *memDriver) delivered(dest string) []*messaging.Message {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]*messaging.Message(nil), b.sent[dest]...)
 }
 
 type memPublisher struct {
-	b    *memBinder
+	b    *memDriver
 	dest string
 }
 
@@ -91,14 +91,14 @@ func runOnce(t *testing.T, r *Relay) {
 
 func TestRelay_DeliversPending(t *testing.T) {
 	store := &MemoryStore{}
-	binder := newMemBinder(nil)
+	driver := newMemDriver(nil)
 	store.Add(Record{Destination: "orders", Payload: []byte("m1")}, time.Time{})
 	store.Add(Record{Destination: "orders", Payload: []byte("m2")}, time.Time{})
 
-	r := NewRelay(store, binder, Config{PollInterval: time.Hour})
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour})
 	runOnce(t, r)
 
-	msgs := binder.delivered("orders")
+	msgs := driver.delivered("orders")
 	require.Len(t, msgs, 2)
 	assert.Equal(t, "m1", string(msgs[0].Payload))
 	assert.Equal(t, "m2", string(msgs[1].Payload)) // in-batch ID order
@@ -108,38 +108,38 @@ func TestRelay_DeliversPending(t *testing.T) {
 
 func TestRelay_FetchHonorsNextRetry(t *testing.T) {
 	store := &MemoryStore{}
-	binder := newMemBinder(nil)
+	driver := newMemDriver(nil)
 	future := time.Now().Add(time.Hour)
 	store.Add(Record{Destination: "orders", Payload: []byte("later")}, future)
 
-	r := NewRelay(store, binder, Config{PollInterval: time.Hour})
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour})
 	runOnce(t, r)
 
-	assert.Empty(t, binder.delivered("orders"))
+	assert.Empty(t, driver.delivered("orders"))
 	assert.Len(t, store.Snapshot(StatusPending), 1)
 }
 
 func TestRelay_FailureRetriesWithBackoff(t *testing.T) {
 	store := &MemoryStore{}
 	// "orders" fails the first 2 attempts, succeeds on the 3rd.
-	binder := newMemBinder(map[string]int{"orders": 2})
+	driver := newMemDriver(map[string]int{"orders": 2})
 	store.Add(Record{Destination: "orders", Payload: []byte("m1")}, time.Time{})
 
 	var retries []time.Time
 	obs := ObserverFunc{OnRetryFunc: func(rec *Record, err error, nextRetry time.Time) {
 		retries = append(retries, nextRetry)
 	}}
-	r := NewRelay(store, binder, Config{PollInterval: time.Hour, BackoffBase: time.Minute}, obs)
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour, BackoffBase: time.Minute}, obs)
 
 	runOnce(t, r) // attempt 1 fails
-	assert.Empty(t, binder.delivered("orders"))
+	assert.Empty(t, driver.delivered("orders"))
 	pending := store.Snapshot(StatusPending)
 	require.Len(t, pending, 1)
 	assert.Equal(t, 1, pending[0].Attempts)
 
 	// Not due yet → skipped even though pending.
 	runOnce(t, r)
-	assert.Empty(t, binder.delivered("orders"))
+	assert.Empty(t, driver.delivered("orders"))
 
 	// Fast-forward the retry time, attempt 2 fails again.
 	store.mu.Lock()
@@ -148,7 +148,7 @@ func TestRelay_FailureRetriesWithBackoff(t *testing.T) {
 	}
 	store.mu.Unlock()
 	runOnce(t, r)
-	assert.Empty(t, binder.delivered("orders"))
+	assert.Empty(t, driver.delivered("orders"))
 
 	// Attempt 3 succeeds.
 	store.mu.Lock()
@@ -157,19 +157,19 @@ func TestRelay_FailureRetriesWithBackoff(t *testing.T) {
 	}
 	store.mu.Unlock()
 	runOnce(t, r)
-	assert.Len(t, binder.delivered("orders"), 1)
+	assert.Len(t, driver.delivered("orders"), 1)
 	assert.Len(t, store.Snapshot(StatusSent), 1)
 	require.Len(t, retries, 2)
 }
 
 func TestRelay_DeadLettersAfterMaxAttempts(t *testing.T) {
 	store := &MemoryStore{}
-	binder := newMemBinder(map[string]int{"orders": 0}) // always fails
+	driver := newMemDriver(map[string]int{"orders": 0}) // always fails
 	store.Add(Record{Destination: "orders", Key: "k1", Payload: []byte("poison"),
 		Headers: map[string]string{"h": "v"}}, time.Time{})
 
 	var dead []*Record
-	r := NewRelay(store, binder, Config{
+	r := NewRelay(store, driver, Config{
 		PollInterval: time.Hour, MaxAttempts: 3, BackoffBase: time.Millisecond, DLQSuffix: ".dlq",
 	}, ObserverFunc{OnDeadFunc: func(rec *Record, err error) { dead = append(dead, rec) }})
 
@@ -182,8 +182,8 @@ func TestRelay_DeadLettersAfterMaxAttempts(t *testing.T) {
 		runOnce(t, r)
 	}
 
-	assert.Empty(t, binder.delivered("orders"))
-	dlq := binder.delivered("orders.dlq")
+	assert.Empty(t, driver.delivered("orders"))
+	dlq := driver.delivered("orders.dlq")
 	require.Len(t, dlq, 1)
 	assert.Equal(t, "poison", string(dlq[0].Payload))
 	assert.Equal(t, "v", dlq[0].Headers["h"])
@@ -196,52 +196,52 @@ func TestRelay_DeadLettersAfterMaxAttempts(t *testing.T) {
 
 func TestRelay_DeadWithoutDLQSuffix(t *testing.T) {
 	store := &MemoryStore{}
-	binder := newMemBinder(map[string]int{"orders": 0})
+	driver := newMemDriver(map[string]int{"orders": 0})
 	store.Add(Record{Destination: "orders", Payload: []byte("m1")}, time.Time{})
 
-	r := NewRelay(store, binder, Config{
+	r := NewRelay(store, driver, Config{
 		PollInterval: time.Hour, MaxAttempts: 1, DLQSuffix: "",
 	})
 	runOnce(t, r)
 
-	assert.Empty(t, binder.delivered("orders"))
-	assert.Empty(t, binder.delivered("orders.dlq"))
+	assert.Empty(t, driver.delivered("orders"))
+	assert.Empty(t, driver.delivered("orders.dlq"))
 	assert.Len(t, store.Snapshot(StatusDead), 1)
 }
 
 func TestRelay_DeadLetterPublishFailureKeepsPending(t *testing.T) {
 	store := &MemoryStore{}
 	// Destination fails AND its DLQ fails → record must stay pending.
-	binder := newMemBinder(map[string]int{"orders": 0, "orders.dlq": 0})
+	driver := newMemDriver(map[string]int{"orders": 0, "orders.dlq": 0})
 	store.Add(Record{Destination: "orders", Payload: []byte("m1")}, time.Time{})
 
-	r := NewRelay(store, binder, Config{
+	r := NewRelay(store, driver, Config{
 		PollInterval: time.Hour, MaxAttempts: 1, BackoffBase: time.Millisecond, DLQSuffix: ".dlq",
 	})
 	runOnce(t, r)
 
-	assert.Empty(t, binder.delivered("orders.dlq"))
+	assert.Empty(t, driver.delivered("orders.dlq"))
 	assert.Len(t, store.Snapshot(StatusPending), 1, "record must stay pending when the DLQ copy fails")
 	assert.Empty(t, store.Snapshot(StatusDead))
 }
 
 func TestRelay_PublishOrderingPerKeyPassedThrough(t *testing.T) {
 	store := &MemoryStore{}
-	binder := newMemBinder(nil)
+	driver := newMemDriver(nil)
 	store.Add(Record{Destination: "orders", Key: "user-1", Payload: []byte("m1")}, time.Time{})
 
-	r := NewRelay(store, binder, Config{PollInterval: time.Hour})
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour})
 	runOnce(t, r)
 
-	msgs := binder.delivered("orders")
+	msgs := driver.delivered("orders")
 	require.Len(t, msgs, 1)
 	assert.Equal(t, "user-1", msgs[0].Key)
 }
 
 func TestRelay_RunStopsOnCancel(t *testing.T) {
 	store := &MemoryStore{}
-	binder := newMemBinder(nil)
-	r := NewRelay(store, binder, Config{PollInterval: time.Millisecond})
+	driver := newMemDriver(nil)
+	r := NewRelay(store, driver, Config{PollInterval: time.Millisecond})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -259,14 +259,14 @@ func TestRelay_RunStopsOnCancel(t *testing.T) {
 func TestRelay_BatchSurvivesPoisonRecord(t *testing.T) {
 	store := &MemoryStore{}
 	// "poison" always fails; "healthy" succeeds — one bad row must not starve the other.
-	binder := newMemBinder(map[string]int{"poison": 0})
+	driver := newMemDriver(map[string]int{"poison": 0})
 	store.Add(Record{Destination: "poison", Payload: []byte("bad")}, time.Time{})
 	store.Add(Record{Destination: "healthy", Payload: []byte("good")}, time.Time{})
 
-	r := NewRelay(store, binder, Config{PollInterval: time.Hour, MaxAttempts: 1, BackoffBase: time.Millisecond, DLQSuffix: ".dlq"})
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour, MaxAttempts: 1, BackoffBase: time.Millisecond, DLQSuffix: ".dlq"})
 	runOnce(t, r)
 
-	assert.Len(t, binder.delivered("healthy"), 1)
+	assert.Len(t, driver.delivered("healthy"), 1)
 	assert.Len(t, store.Snapshot(StatusSent), 1)
 	assert.Len(t, store.Snapshot(StatusDead), 1)
 }

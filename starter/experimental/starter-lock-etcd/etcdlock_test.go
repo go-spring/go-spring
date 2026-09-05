@@ -46,7 +46,7 @@ func TestTTLSeconds(t *testing.T) {
 // opts: etcd manages lease keep-alive and blocking acquire internally, so a
 // starter-level renew/retry default would be meaningless.
 func TestDefaults_OnlyTTL(t *testing.T) {
-	l := &etcdLocker{defaults: lock.Defaults{TTL: 45 * time.Second}}
+	l := &etcdLocker{defaults: lock.DefaultOptions{TTL: 45 * time.Second}}
 
 	o := lock.Resolve(l.defaults)
 	assert.That(t, o.TTL).Equal(45 * time.Second)    // starter default applied

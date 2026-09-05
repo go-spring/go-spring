@@ -14,14 +14,14 @@
 `cloud/experimental/outbox`，与 `messaging` 平级——刻意不进
 `cloud/experimental/transaction`。transaction 家族（saga / tcc / at）共享
 "全局事务 + 补偿"的问题域，有 Coordinator/Store 概念；outbox 没有这些概念。
-它唯一的血缘是 messaging：复用 `Message`、`Binder` 与 DLQ header 契约。本包
+它唯一的血缘是 messaging：复用 `Message`、`Driver` 与 DLQ header 契约。本包
 只 import `cloud/messaging` 与标准库——无 gorm、无 spring、无 otel。
 
 ## 形状
 
 ```
              （业务事务）                        （后台）
-  Publish(tx, dest, msg) ──► outbox 表 ──► Relay ──Binder──► broker
+  Publish(tx, dest, msg) ──► outbox 表 ──► Relay ──Driver──► broker
   （在 starter-outbox-gorm）    （Store 实现）     │
                                                   ├─ 成功 ──► MarkSent
                                                   ├─ 失败 ──► MarkFailed（退避）

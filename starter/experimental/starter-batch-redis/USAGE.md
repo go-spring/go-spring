@@ -4,7 +4,7 @@ Detailed usage reference. Overview: [README.md](README.md). Every behavior claim
 the starter source (`starter.go`, `config.go`, `redisrepo.go`) and the runnable smoke example
 [starter-batch/example](../starter-batch/example) (`example/check.sh`, docker-gated). Batch
 semantics themselves (JobExecution / StepExecution, chunk model, restart-from-last-chunk) belong to
-`go-spring.org/cloud/batch` — this document covers the Redis backend and the
+`go-spring.org/cloud/experimental/batch` — this document covers the Redis backend and the
 go-spring wiring only.
 
 **Activation**: any `spring.batch-repository.*` key. Blank-importing the package registers one
@@ -66,7 +66,7 @@ import (
     "context"
 
     "github.com/redis/go-redis/v9"
-    "go-spring.org/cloud/batch"
+    "go-spring.org/cloud/experimental/batch"
     "go-spring.org/spring/gs"
     StarterBatch "go-spring.org/starter-batch"
 )

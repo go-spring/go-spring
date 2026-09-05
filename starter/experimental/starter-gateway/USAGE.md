@@ -201,7 +201,7 @@ On any stage error the compiled table is left untouched (keep-last-good, §4.2).
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `routes` | map `id→RouteRaw` | empty | **Hot-reloadable** (`gs.Dync`, compile.go:52). Each `<id>` is a route; ids are map keys so uniqueness is structural. | Empty → gateway serves 404 for everything (table compiles to zero routes, still UP). |
-| `resilience` | map name→(ignored) | empty | **Name registry only**: keys name the executors routes may reference; the value is an empty struct — policy values live under `${govern}` keyed `gateway:<name>` (route.go:114-128). | Sub-keys under `resilience.<name>.*` are silently ignored by the binder (legacy compat). |
+| `resilience` | map name→(ignored) | empty | **Name registry only**: keys name the executors routes may reference; the value is an empty struct — policy values live under `${govern}` keyed `gateway:<name>` (route.go:114-128). | Sub-keys under `resilience.<name>.*` are silently ignored by the driver (legacy compat). |
 | `discovery` | string | "" | Default discovery backend for `lb://` routes lacking `upstream.discovery`. ⚠ An `lb://` route with neither → compile error (proxy.go:98). | Routes fail to compile (startup error / reload keeps old table). |
 | `tracing.enabled` | bool | true | Wraps every matched request in gateway server+client spans. | Needs starter-otel for real export; without it a silent no-op. |
 
@@ -361,7 +361,7 @@ Stop the upstream → each request gets `502 Bad Gateway` (proxy.go:180) with a 
 | `route reload failed, keeping previous table` in logs | Hot edit broken; old table still serving | Fix the literal and refresh again; watch `gateway_route_reload_errors_total`. |
 | Always 404 | No route's predicates match (path typo, methods/host/headers predicate rejecting) | Remember first-match in priority-then-id order; a more specific route with a later id never wins over an overlapping earlier id — set `priority` to override. |
 | `unknown resilience policy` | `resilience.policy` names no key under `spring.gateway.resilience` | Add the name as a (value-less) key; policy VALUES come from `${govern}` under `gateway:<name>`. |
-| Legacy `resilience.<name>.max-retries` etc. have no effect | By design — value is an empty struct; binder ignores sub-keys (route.go:121-128) | Move policy to the governance center, resource label `gateway:<name>`. |
+| Legacy `resilience.<name>.max-retries` etc. have no effect | By design — value is an empty struct; driver ignores sub-keys (route.go:121-128) | Move policy to the governance center, resource label `gateway:<name>`. |
 | `no FilterWrapper bean named …` | `jwt-auth(x)`/`lua(x)` references a bean not exported as `gateway.FilterWrapper` | Export the bean with `.Export(gs.As[gateway.FilterWrapper]())` before startup (wrappers inject pre-warmup). |
 | `lb:// upstream cannot resolve … mesh mode active` | lb route with no discovery backend, or mesh mode on | Set `upstream.discovery`/`spring.gateway.discovery`; in mesh mode route to the service's stable address instead (proxy.go:115). |
 | 429s you didn't ask for / limiter not shared across replicas | `rateLimit` key defaults to route id; driver defaults to `default` (local) | Use `key=ip` for per-client, a `redis` driver for cross-replica budgets. |

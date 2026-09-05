@@ -64,8 +64,10 @@ Setup……）原样提升可用。
   日志，写入器永不阻塞）。拆分理由见 DESIGN。
 - **fail-fast 启动探针 + 健康指示器** — 启动期一次 `/health` 往返，
   `influxdb:<name>` 指示器供 `starter-actuator` 聚合。
-- **可观测** — 每个 HTTP 请求经 observe kit 产出 span、耗时指标与访问
-  日志（`observability.level=off` 关闭）。
+- **可观测** — 每个 HTTP 请求产出 client span（db.system/db.operation/
+  db.statement 属性）、`db.client.operation.duration` 直方图 +
+  `db.client.active_requests` 计量，以及 `_app_influxdb_access` tag 的访问
+  日志（走 log 包原生分级）。
 - **韧性** — 阻塞写路径走治理 seam；未导入 `starter-governance` 时仅做
   观测。
 

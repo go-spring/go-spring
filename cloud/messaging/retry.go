@@ -84,7 +84,7 @@ func (p RetryPolicy) backoff(n int) time.Duration {
 // Retry returns a Handler that retries h up to p.MaxRetries times with
 // exponential backoff when it returns an error. A success on any attempt acks
 // (returns nil); once retries are exhausted the last error is returned, so the
-// binder's own failure path (nack / broker redelivery) takes over.
+// driver's own failure path (nack / broker redelivery) takes over.
 //
 // It composes with [Recover]: wrap Retry OUTSIDE Recover
 // (Retry(Recover(h), p)) so a panic is converted to an error once and then
@@ -124,7 +124,7 @@ func Retry(h Handler, p RetryPolicy) Handler {
 //
 //	sub.Subscribe(ctx, messaging.DeadLetter(messaging.Recover(h), dlq, messaging.RetryPolicy{MaxRetries: 2, InitialInterval: 100 * time.Millisecond}))
 //
-// This is the binder-neutral DLQ contract: brokers with native dead-lettering
+// This is the driver-neutral DLQ contract: brokers with native dead-lettering
 // (RabbitMQ DLX, RocketMQ DLQ topics) can be configured instead, at which point
 // DeadLetter is unnecessary — p exhausted means the handler returns its error
 // and the broker's own DLX routing takes over. Both routes carry the original

@@ -27,15 +27,15 @@ import (
 // registered once per configured instance and exported as health.Indicator, so
 // an application that also imports starter-actuator gets Redis readiness folded
 // into /readiness with no extra wiring.
-func NewClientHealth(name string, client redis.UniversalClient) health.Indicator {
-	return health.NewIndicator("redis:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, client redis.UniversalClient) *health.Indicator {
+	return &health.Indicator{Name: "redis:" + name, Probe: func(ctx context.Context) error {
 		return client.Ping(ctx).Err()
-	})
+	}}
 }
 
 // newClusterHealth builds an indicator for a cluster client.
-func NewClusterHealth(name string, client redis.UniversalClient) health.Indicator {
-	return health.NewIndicator("redis:"+name, func(ctx context.Context) error {
+func NewClusterHealth(name string, client redis.UniversalClient) *health.Indicator {
+	return &health.Indicator{Name: "redis:" + name, Probe: func(ctx context.Context) error {
 		return client.Ping(ctx).Err()
-	})
+	}}
 }

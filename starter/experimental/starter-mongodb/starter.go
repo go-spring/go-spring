@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/actuator/health"
-	observe "go-spring.org/cloud/observe"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -52,9 +52,9 @@ func init() {
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The wrapper is what is
 			// autowired; the embedded *mongo.Client is handed to the indicator.
-			r.Provide(func(w *Client) health.Indicator {
+			r.Provide(func(w *Client) *health.Indicator {
 				return health2.NewClientHealth(name, w.Client)
-			}, gs.TagArg(name)).Name("mongo:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			}, gs.TagArg(name)).Name("mongo:" + name).Caller(1)
 			return nil
 		})
 	})
@@ -71,12 +71,13 @@ func init() {
 // on first use.
 //
 // When c.ServiceName is set and mesh mode is off, the address is resolved
-// through the registered discovery backend (c.Discovery): a Resolver-backed
+// through the registered discovery backend (c.Discovery): a loader-backed
 // dialer is injected as the client's ContextDialer, so each new connection
-// dials a currently-live instance picked by the Resolver and address changes
-// take effect without rebuilding the client. In mesh mode a sidecar owns
-// discovery+LB, so the URI hosts are dialed directly. When c.ServiceName is
-// empty this dials the URI hosts directly, unchanged from before.
+// dials a currently-live instance picked from the service's endpoint snapshot
+// and address changes take effect without rebuilding the client. In mesh mode a
+// sidecar owns discovery+LB, so the URI hosts are dialed directly. When
+// c.ServiceName is empty this dials the URI hosts directly, unchanged from
+// before.
 func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
@@ -102,7 +103,7 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 			AuthMechanism: c.AuthMechanism,
 		})
 	}
-	tlsCfg, err := c.TLS.Build()
+	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: build TLS failed: %v", err)
 		return nil, errutil.Explain(err, "mongodb: build TLS")
@@ -115,21 +116,20 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	// The command monitor observes operations; it reads the observer lazily so
 	// Init can build it from the injected Observability config once
 	// the wrapper is field-injected. No commands run before Init.
-	opts.SetMonitor(newCommandMonitor(func() *observe.Observer { return w.obs.Load() }))
+	opts.SetMonitor(newCommandMonitor(func() *dbObserver { return w.obs.Load() }))
 
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
-	w.resolver, err = newLiveResolver(ctx.Context, c)
+	pool, err := newPickPool(ctx.Context, c)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: build discovery resolver failed: %v", err)
 		return nil, err
 	}
-	if w.resolver != nil {
+	if pool != nil {
 		nd := &net.Dialer{Timeout: c.ConnectTimeout}
 		// The discovery dialer ignores the URI address and picks a live
-		// endpoint via the Resolver on each new connection.
-		pick := w.resolver.Pick
+		// endpoint from the loader-backed pool on each new connection.
 		baseDial = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			ep, err := pick()
+			ep, err := pool.Pick(loadbalance.PickInfo{})
 			if err != nil {
 				return nil, err
 			}
@@ -149,9 +149,6 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	client, err := mongo.Connect(opts)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: connect failed: %v", err)
-		if w.resolver != nil {
-			_ = w.resolver.Stop()
-		}
 		return nil, fmt.Errorf("mongodb: create client: %w", err)
 	}
 	w.Client = client
@@ -162,9 +159,6 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	if err := client.Ping(pingCtx, nil); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: ping failed uri=%s: %v", c.URI, err)
 		_ = client.Disconnect(context.Background())
-		if w.resolver != nil {
-			_ = w.resolver.Stop()
-		}
 		return nil, fmt.Errorf("mongodb: ping %s: %w", c.URI, err)
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "mongodb client initialized, uri=%s", c.URI)

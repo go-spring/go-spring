@@ -3,6 +3,9 @@ go 1.26.1
 use (
 	./cloud
 	./cloud/i18n/example
+	./cloud/loadtest/example
+	./cloud/lock/example
+	./cloud/session/example
 	./cloud/validation/example
 	./contrib/dubbo-go/dubbo
 	./contrib/dubbo-go/jsonrpc
@@ -85,10 +88,6 @@ use (
 	./starter/experimental/starter-hertz
 	./starter/experimental/starter-hertz/example
 	./starter/experimental/starter-hertz/example-otel
-	./starter/experimental/starter-http-client
-	./starter/experimental/starter-http-client/example
-	./starter/experimental/starter-http-client/example-load
-	./starter/experimental/starter-http-client/example-otel
 	./starter/experimental/starter-influxdb
 	./starter/experimental/starter-influxdb/example
 	./starter/experimental/starter-kafka
@@ -116,10 +115,10 @@ use (
 	./starter/experimental/starter-lua-filter
 	./starter/experimental/starter-lua-filter/example
 	./starter/experimental/starter-mail
-	./starter/experimental/starter-migration-goose
-	./starter/experimental/starter-migration-goose/example
 	./starter/experimental/starter-mail/example
 	./starter/experimental/starter-mail/example-otel
+	./starter/experimental/starter-migration-goose
+	./starter/experimental/starter-migration-goose/example
 	./starter/experimental/starter-milvus
 	./starter/experimental/starter-milvus/example
 	./starter/experimental/starter-mongodb
@@ -144,6 +143,8 @@ use (
 	./starter/experimental/starter-oauth2-resource-server/example
 	./starter/experimental/starter-oauth2-server
 	./starter/experimental/starter-oauth2-server/example
+	./starter/experimental/starter-outbox-gorm
+	./starter/experimental/starter-outbox-gorm/example
 	./starter/experimental/starter-pulsar
 	./starter/experimental/starter-pulsar/example
 	./starter/experimental/starter-pulsar/example-otel
@@ -176,8 +177,6 @@ use (
 	./starter/experimental/starter-swagger/example
 	./starter/experimental/starter-tdengine
 	./starter/experimental/starter-tdengine/example
-	./starter/experimental/starter-outbox-gorm
-	./starter/experimental/starter-outbox-gorm/example
 	./starter/experimental/starter-thrift
 	./starter/experimental/starter-thrift/example
 	./starter/experimental/starter-thrift/example-otel
@@ -248,6 +247,12 @@ use (
 	./starter/starter-gorm-sqlserver/example-otel
 	./starter/starter-governance
 	./starter/starter-governance/example
+	./starter/starter-http-client
+	./starter/starter-http-client/example
+	./starter/starter-http-client/example-load
+	./starter/starter-http-client/example-otel
+	./starter/starter-http-server
+	./starter/starter-http-server/example
 	./starter/starter-memcached
 	./starter/starter-memcached/example
 	./starter/starter-memcached/example-cloudnative

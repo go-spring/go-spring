@@ -38,7 +38,7 @@ import (
 // which breaks the atomicity the pattern exists to provide.
 //
 // The relay picks the record up after commit and delivers it at-least-once to
-// destination via the configured binder.
+// destination via the configured driver.
 func Publish(tx *gorm.DB, destination, key string, payload []byte, headers map[string]string) error {
 	var hdr string
 	if len(headers) > 0 {

@@ -64,12 +64,12 @@ func TestCtxStopCh_ClosesOnParentDone(t *testing.T) {
 // it is prepended in buildLock's LockOptions.
 func TestKeyPrefix_DefaultAndApplied(t *testing.T) {
 	// An explicit prefix is used verbatim.
-	l := &consulLocker{keyPrefix: "apps/myapp/", defaults: lock.Defaults{TTL: time.Minute}}
+	l := &consulLocker{keyPrefix: "apps/myapp/", defaults: lock.DefaultOptions{TTL: time.Minute}}
 	_ = l
 
 	// The default prefix is "lock/" (see newConsulLocker); resolved options keep
 	// the starter TTL layered beneath per-call opts.
-	l2 := &consulLocker{keyPrefix: "lock/", defaults: lock.Defaults{TTL: 20 * time.Second}}
+	l2 := &consulLocker{keyPrefix: "lock/", defaults: lock.DefaultOptions{TTL: 20 * time.Second}}
 	o := lock.Resolve(l2.defaults)
 	assert.That(t, o.TTL).Equal(20 * time.Second)
 	o = lock.Resolve(l2.defaults, lock.WithTTL(2*time.Minute))

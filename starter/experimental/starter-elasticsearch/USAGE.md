@@ -157,18 +157,17 @@ import starter-elasticsearch
 gs.Run()
   ├─ ctor newClient [starter.go:72]:
   │    ├─ service-name set && !mesh.Enabled() → resolveAddresses:
-  │    │      discovery.NewResolver → snapshot → "scheme://host:port" overrides c.Addresses
+  │    │      discovery.NewLoader → read snapshot → "scheme://host:port" overrides c.Addresses
   │    │      (fails fast: no backend registered, or no endpoints for the service)
   │    ├─ driverRegistry lookup ("elasticsearch driver not found: %s" otherwise)
   │    ├─ driver.CreateClient → DefaultDriver installs dynamicTransport + OTel instrumentation
   │    │      and records it in dynamicTransports; newClient picks it up for Init
   │    └─ HealthCheck (Info request) — unconditional fail-fast probe; failure closes the
-  │        client + resolver and aborts boot
-  ├─ gs field-injects Client.Observability (${observability:=})
-  ├─ Init [client.go:76]: observe.NewDB("elasticsearch", ..., WithoutTrace())
+  │        client and aborts boot
+  ├─ Init [client.go:78]: newDBObserver("elasticsearch") → module-local observer
   │    → obsTransport (metric + access log, no span)
   │    → fault.WrapExecutor(resilience.ExecutorFor(resource)) — governance seams
-  │    → resilience.WrapExecutor(...) — outcome counter + resilience span
+  │    → resilience.WrapExecutor(exec, "elasticsearch") — outcome counter + resilience span
   │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, →resource)) [client.go:86-92]
   ├─ readiness: indicator flips UP (runs client.Info)
   └─ SIGTERM → Destroy [client.go:98]: exec.Close → stop discovery watch → client.Close
@@ -190,19 +189,20 @@ elasticsearch API (Index/Get/...)
   → resilience roundTripper: executor = fault.InjectorFor → limiter/breaker/bulkhead/retry,
       itself wrapped by resilience (span + outcome counter + access log per Execute)
   → obsTransport: db.client.operation.duration histogram + db.client.active_requests gauge
-      + _app_elasticsearch_access log (built WithoutTrace — no duplicate span)
+      + _app_elasticsearch_access log (module-local observer emits no span — no duplicate)
   → http.DefaultTransport → network
 ```
 
 Rationale (source comments, [command.go:17-41] and [client.go:56-95]):
 
-- **Trace comes from elastictransport, not the kit.** The client exposes
-  `elasticsearch.Config.Instrumentation`, so the span covers retries too; the observe kit is
-  built `WithoutTrace()` and only fills the metric+log gap [client.go:77-78].
-- **Resilience OUTSIDE the kit's observe transport** — deliberate difference from go-redis
+- **Trace comes from elastictransport, not the module observer.** The client exposes
+  `elasticsearch.Config.Instrumentation`, so the span covers retries too; the module-local
+  observer in [observe.go] emits no span and only fills the metric+log gap.
+- **Resilience OUTSIDE the observe transport** — deliberate difference from go-redis
   (where the access log wraps the breaker). Here the resilience executor itself is wrapped by
-  `resilience.WrapExecutor`, so breaker trips / rate-limit rejections get their *own* span +
-  outcome counter, while obsTransport records the HTTP outcome inside the protected call.
+  `resilience.WrapExecutor(exec, "elasticsearch")`, so breaker trips / rate-limit rejections
+  get their *own* span + outcome counter, while obsTransport records the HTTP outcome inside
+  the protected call.
 - **dynamicTransport instead of a fixed transport**: the ES transport is fixed at construction
   and cannot be swapped on the client afterwards; the indirection keeps the resilience policy
   hot-reloadable (Dync) even though the transport instance is not [client.go:31-44]. The slot
@@ -211,7 +211,7 @@ Rationale (source comments, [command.go:17-41] and [client.go:56-95]):
   exactly what resilience_test.go pins as a regression test.
 - **Custom drivers may install none of this**: only clients built by DefaultDriver appear in
   `dynamicTransports`; a custom driver's own transport silently bypasses the Init-time swap —
-  resilience and the observe kit are then unavailable for that instance.
+  resilience and the observe transport are then unavailable for that instance.
 
 ### 2.3 One request through the chain: `Search` with a match query
 
@@ -237,8 +237,9 @@ one explicitly [starter.go:120-124, health/health.go:19-31]; user code should us
 ### 2.4 Discovery addressing — one-shot at startup
 
 When `service-name` is set and mesh mode is off, the endpoints are resolved **once** in the
-ctor and baked into `c.Addresses`; the Resolver is kept alive only for lifecycle uniformity
-and stopped on shutdown [starter.go:55-70, driver.go:99-125]. No re-resolution at runtime:
+ctor and baked into `c.Addresses`; the loader is a pure snapshot function with no resources and
+no background watch, so nothing is kept alive and nothing needs stopping on shutdown
+[starter.go:55-70, driver.go:96-125]. No re-resolution at runtime:
 ES cluster addresses are typically stable VIPs. In mesh mode the sidecar owns discovery+LB and
 the static Addresses (or CloudID) are used unchanged.
 
@@ -247,8 +248,8 @@ the static Addresses (or CloudID) are used unchanged.
 ## 3. Per-key behavior reference
 
 All keys live under `spring.elasticsearch.<name>.` — per-instance prefix binding via
-`conf.BindEach` (the ctor's Config arg), except `observability.*` which field-injects on the
-wrapper bean.
+`conf.BindEach` (the ctor's Config arg). There are no observability keys — observation is
+unconditional (see §3.4).
 
 ### 3.1 Addressing & discovery
 
@@ -257,7 +258,7 @@ wrapper bean.
 | `addresses` | list | — | Node URLs, e.g. `http://127.0.0.1:9200` (comma-separated). Validated non-empty (`len($) > 0`). ⚠ Required even when `service-name` overrides it — the example carries a non-resolvable dummy on purpose. ⚠ Ignored when `cloud-id` is set (client-side precedence). | Empty → BindEach error; unreachable first probe → boot error "failed to reach elasticsearch cluster". |
 | `service-name` | string | — | Resolve node addresses via a registered discovery backend, once at startup; overrides `addresses`. Ignored in mesh mode. ⚠ Pairs with `scheme`/`discovery`/`discovery-scheme`. | Service has no endpoints → boot error `discovery %q returned no endpoints`. |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme. Only consulted when `service-name` is set. | — |
-| `discovery` | string | `default` | Which registered discovery backend resolves `service-name`. | Unregistered backend → boot error at NewResolver. |
+| `discovery` | string | `default` | Which registered discovery backend resolves `service-name`. | Unregistered backend → boot error at NewLoader. |
 | `discovery-scheme` | string | `http` | URL scheme stamped onto discovered `host:port` endpoints (`http`/`https`). | Wrong scheme → first probe fails at boot. |
 | `cloud-id` | string | — | Elastic Cloud deployment ID; when set the client prefers it over `addresses`. | — |
 | `driver` | string | `DefaultDriver` | Selects a registered Driver. | Unknown name → boot error "elasticsearch driver not found". |
@@ -283,11 +284,10 @@ wrapper bean.
 
 ### 3.4 Instrumentation
 
-| Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
-|-----|------|---------|-------------------------|------------------------------|
-| `observability.level` | string | `brief` | Access log: `off` / `brief` / `detailed` (detailed adds the URL path argument). | `off` silences only the kit's log; trace/metric keep emitting. |
-| `observability.maxArgBytes` | int | 512 | Byte cap of the captured argument in detailed mode. | Too small → truncated args. |
-| `observability.skipOps` | list | — | Suppresses span + metric + log together for listed op names (e.g. `GET /`). | — |
+There are **no instrumentation config keys** (no level, no skip list, no argument cap):
+metrics and the access log are emitted unconditionally by module-local instrumentation
+([observe.go]); the trace span comes from the elastic transport's own OTel instrumentation.
+Both ride the OTel globals starter-otel installs (`spring.observability.*`).
 
 ---
 
@@ -314,7 +314,8 @@ docker start starter-elasticsearch
   (`resilience.resource` attribute). Verify: `curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
   and grep for `data":[{` (same check as example-otel's self-test).
 - **Access log**: one line per request under tag `_app_elasticsearch_access`
-  (`log.RegisterAppTag("elasticsearch", "access")`); brief mode logs system/op/status/duration.
+  (`log.RegisterAppTag("elasticsearch", "access")`) at native levels — error → Warn; success
+  with the captured URL path (truncated to 512 bytes) → Debug; plain success → Info.
 
 ```bash
 curl -s "127.0.0.1:9090/search" >/dev/null  # or drive via the app
@@ -368,7 +369,7 @@ requires a restart (§2.4).
 | Panic with nil context inside a request | OTel instrumentation derives the span from the request context | Pass `WithContext(ctx)` on every call; never use the no-context API variant. |
 | Boot fails on `addresses` validation though service-name is set | `addresses` is required unconditionally (`len($) > 0`) | Keep a dummy address (the example's pattern) — it is overridden. |
 | No spans/metrics though code is correct | starter-otel not imported | Instrumentation rides the OTel globals; import starter-otel and configure exporters. |
-| No access log lines | `observability.level=off` or unset + log tag filtered | Set `detailed`; check logger config for `_app_elasticsearch_access`. |
+| No access log lines | log tag filtered by logger config | Check logger config for `_app_elasticsearch_access`. |
 | Custom driver instance has no breaker/metrics | Only DefaultDriver installs dynamicTransport | Use DefaultDriver, or install the observe+resilience transport yourself in the custom driver. |
 | Retries seem multiplied | Client `max-retries` + governance `max-retries` both > 0 | Set one of them to 0 / disable-retry. |
 
@@ -376,7 +377,7 @@ requires a restart (§2.4).
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 17 instance keys + observability(3) |
+| Config keys | 17 instance keys |
 | Required | 1 (`addresses`, validated non-empty) |
 | Quickstart external deps | 1 (Elasticsearch) |
 | "Watch out" entries | 5 |
@@ -388,9 +389,7 @@ Design suspects (audit ledger; first three carried over from the previous doc):
   the expr when service-name/cloud-id present).
 - No `tls.*` block unlike sibling starters — TLS lives in three different keys plus the URL
   scheme (`https://` addresses, `cloud-id`, `certificate-fingerprint`).
-- Custom drivers silently lose the governance/resilience observe 桥 swap — no warning, no hook.
-- Discovery is one-shot at startup; the Resolver is kept alive only for lifecycle symmetry
-  (dead weight + misleading liveness).
+- Custom drivers silently lose the governance/resilience observe transport swap — no warning, no hook.
 - schema.json `enable-metrics` default (`false`) disagrees with the code (`true`) — schema is
   not generated, so it drifts.
 - Health indicator has no opt-out key (same family asymmetry as go-redis; redigo has

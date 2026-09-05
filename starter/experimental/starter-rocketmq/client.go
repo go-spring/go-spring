@@ -48,7 +48,7 @@ func credentials(c Config) primitive.Credentials {
 // Client is the RocketMQ resource entity managed by the container: it holds
 // the shared connection settings, the resilience executor attached by the
 // starter, and every producer/consumer created through it. Inject it and use
-// NewProducer / NewPushConsumer for raw SDK access, or NewBinder for the
+// NewProducer / NewPushConsumer for raw SDK access, or NewDriver for the
 // broker-neutral messaging abstraction.
 type Client struct {
 	nameServers []string
@@ -130,7 +130,7 @@ func (cl *Client) NewProducer(opts ...producer.Option) (rocketmq.Producer, error
 // NewPushConsumer creates a rocketmq.PushConsumer with the client's common
 // options applied. The consumer is returned unstarted: call Subscribe on it
 // and then Start, in that order (the SDK's documented usage). Most
-// applications should prefer NewBinder, which performs the whole
+// applications should prefer NewDriver, which performs the whole
 // subscribe-and-start dance for a messaging.Handler. The consumer is
 // registered on the client and shut down by Close.
 func (cl *Client) NewPushConsumer(opts ...consumer.Option) (rocketmq.PushConsumer, error) {

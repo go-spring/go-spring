@@ -14,19 +14,10 @@
  * limitations under the License.
  */
 
-// Package endpoint defines a framework-agnostic, zero-dependency seam for
-// contributing an operational HTTP handler to a management server.
-//
-// It lets a component surface an endpoint on the single management port owned
-// by the actuator (Prometheus /metrics, a build-info page, ...) without the
-// actuator having to import that component: the actuator autowires every bean
-// exported as [Endpoint] and mounts each on its mux, exactly as it collects
-// health indicators. The seam lives in the zero-dependency foundation layer so
-// both the contributor (e.g. starter-otel) and the collector (starter-actuator)
-// depend only on this package, never on each other.
-//
-// This mirrors health.Indicator: a small interface any starter can implement to
-// plug into the actuator with no cross-module dependency beyond this package.
+// Package endpoint defines the bean a component contributes to mount an HTTP
+// handler on the actuator's management port: any *Endpoint bean is collected
+// by the actuator and served on its address, next to the built-in probe
+// endpoints.
 package endpoint
 
 import (
@@ -34,33 +25,27 @@ import (
 	"sync/atomic"
 )
 
-// Endpoint is an operational HTTP handler contributed to the actuator's
-// management server by another module.
-//
-// Implementations must be safe for concurrent use: the management server serves
-// requests concurrently.
-type Endpoint interface {
-	// Path is the HTTP path the handler is mounted at (e.g. "/metrics"). It
-	// should be distinct from the actuator's built-in paths (/health,
-	// /readiness, /info) and from other contributed endpoints.
-	Path() string
+// Endpoint is an HTTP handler mounted on the actuator's management port.
+type Endpoint struct {
+	// Path is the mount path, e.g. "/metrics". It must not collide with the
+	// actuator's built-in paths (/healthz, /readyz, /info, ...) or with
+	// another contributed endpoint; a duplicate path panics at startup.
+	Path string
 
-	// http.Handler serves requests to Path.
-	http.Handler
+	// Handler serves requests to Path.
+	Handler http.Handler
 }
 
-// serving is flipped by the management server (starter-actuator) at init. A
-// contributor that relies on the actuator to serve its endpoint (e.g.
-// starter-otel's Prometheus /metrics with metrics.port=0) can then WARN at
-// startup when nothing will actually mount it - instead of running with a
-// silently homeless endpoint.
+// serving records whether a management server that collects [Endpoint] beans
+// is linked into the process, so contributors can warn about endpoints that
+// would otherwise be mounted nowhere.
 var serving atomic.Bool
 
 // MarkServing records that a management server collecting [Endpoint] beans is
-// linked into the process. The actuator calls it from an init; contributors
-// never do.
+// present. Called by the actuator, never by contributors.
 func MarkServing() { serving.Store(true) }
 
 // IsServing reports whether a management server is present. False means
-// contributed Endpoint beans have nothing to mount them.
+// contributed Endpoint beans have nowhere to mount; a contributor that is
+// only reachable through this seam should WARN.
 func IsServing() bool { return serving.Load() }

@@ -13,7 +13,7 @@
 [starter.go:39-43]。该前缀与 franz-go 版 [starter-kafka](../starter-kafka)（`spring.kafka`）
 刻意区分，二者从不同时引入 [config.go:26-28]。
 
-**本 starter 无 messaging.Binder**（与 starter-kafka 不同）：发布/消费是在共享 client
+**本 starter 无 messaging.Driver**（与 starter-kafka 不同）：发布/消费是在共享 client
 bean 之上的裸 sarama 用法，观测是调用点显式助手。这是头号设计嫌疑 —— 见 §6。
 
 ---
@@ -111,9 +111,6 @@ spring.kafka-sarama.main.version=3.7.0
 spring.kafka-sarama.main.producer.compression=snappy
 spring.kafka-sarama.main.producer.required-acks=all
 
-# --- 受保护发送的访问日志（off/brief/detailed） -----------------------------
-spring.kafka-sarama.main.observability.level=brief
-
 # --- 可选：SASL + TLS（dev broker 为明文） -----------------------------------
 #spring.kafka-sarama.main.sasl.enabled=true
 #spring.kafka-sarama.main.sasl.mechanism=scram-sha-512
@@ -210,9 +207,9 @@ ctx），包装器只能用 `context.Background()` —— 逐调用时限要用 
 
 1. `StartProducerSpan(ctx, msg)` 在 topic `hello` 上开启 `publish` 观测
    [command.go:95-104]：span + `messaging.client` duration/in-flight 指标 + 访问日志
-   记录，system 为 `kafka`（observe kit 命名空间：`messaging.system`、
+   记录，system 为 `kafka`（属性命名空间：`messaging.system`、
    `messaging.operation`、`messaging.destination.name`，指标
-   `messaging.client.operation.duration`）。
+   `messaging.client.operation.duration`；见 observe.go）。
 2. W3C propagator 把 `traceparent`/`tracestate` 注入 `msg.Headers` [command.go:97]。
    ⚠ 注入会**丢弃同 key 的既有 header** 以保证重复注入幂等 [command.go:140-149] ——
    别把业务数据放在 `traceparent` 下。
@@ -243,7 +240,7 @@ ctx），包装器只能用 `context.Background()` —— 逐调用时限要用 
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.kafka-sarama.<name>.` 下（含 tls/sasl/observability 组共 18 个；
+所有 key 位于 `spring.kafka-sarama.<name>.` 下（含 tls/sasl 组共 15 个；
 这里是 `conf.BindEach` 的按实例前缀绑定，不是绝对属性的字段注入）。
 
 ### 3.1 核心
@@ -266,21 +263,18 @@ ctx），包装器只能用 `context.Background()` —— 逐调用时限要用 
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `tls.enabled` | bool | false | 开启后 `c.TLS.Build()` → `cfg.Net.TLS` [driver.go:81-89]。 | 对 TLS listener 未开 → 启动期握手失败。 |
+| `tls.enabled` | bool | false | 开启后 `c.TLS.BuildClient()` → `cfg.Net.TLS` [driver.go:81-89]。 | 对 TLS listener 未开 → 启动期握手失败。 |
 | `tls.cert-file` / `tls.key-file` | string | "" | 客户端证书对（mTLS）。⚠ 要么都给要么都不给。 | 只给一半 → `tls.Build` 启动报错。 |
 | `tls.ca-file` | string | "" | 校验 broker 的 CA。 | 私有 CA 未配 → 启动期校验失败。 |
 | `tls.server-name` | string | "" | SNI/校验名。 | 不匹配 → 启动期校验失败。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过 broker 证书校验。 | 生产置 true → 静默 MITM 风险。 |
 
-### 3.4 producer 与 observability
+### 3.4 producer
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `producer.compression` | string | ""（sarama: none） | `none`/`gzip`/`snappy`/`lz4`/`zstd`，大小写不敏感 [driver.go:143-158]。 | 其他值 → 启动报错 `unsupported kafka compression`。 |
 | `producer.required-acks` | string | `all` | `all`→WaitForAll、`leader`→WaitForLocal、`none`→NoResponse [driver.go:129-138]。 | 其他值 → 启动报错 `unsupported kafka required-acks`。`none` 在 leader 故障时静默丢消息。 |
-| `observability.level` | string | `brief` | resilience executor 观测的访问日志：`off`/`brief`/`detailed`（observe.ObserveConfig [config.go:55]）。⚠ 只作用于**被包裹的发送路径** —— span 助手用的是自己的包级默认 `brief`，不受本 key 控制 [command.go:59-63]。 | `off` 只静音日志；span/metric 照发。 |
-| `observability.maxArgBytes` | int | 512 | detailed 模式下捕获参数的上限。 | 过小 → 参数被截断。 |
-| `observability.skipOps` | list | — | 对列出的 op 名同时压制 span+metric+log。 | — |
 
 ⚠ 无 key 的强制项：starter 恒设 `Producer.Return.Successes=true` 与
 `Consumer.Offsets.Initial=OffsetOldest` [driver.go:72-73] —— 二者均无配置 key 可改
@@ -325,7 +319,7 @@ producer.SendMessage(msg)  // 裸句柄依旧不受保护 —— wrapper 不改�
 - 压测标记：在带标记的 ctx 下发布（如上游 echo 的 loadtest 中间件），消费侧
   `StartConsumerSpan` 之后 `traffic.IsLoadTest(ctx)` 为真 [command.go:116-118]。
 - ⚠ producer 消息上预设的 `traceparent`/标记 header 会被**替换**而非合并
-  [command.go:140-149]。任何地方都没有消息 Key 映射（无 binder）—— `msg.Key`
+  [command.go:140-149]。任何地方都没有消息 Key 映射（无 driver）—— `msg.Key`
   是什么就是什么。
 
 ### 4.4 观测量读取
@@ -369,15 +363,15 @@ grep 'resilience' app.log | grep 'kafka|127.0.0.1:9092'
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 18（核心 3 + sasl 4 + tls 6 + producer 2 + observability 3） |
+| 配置 key 总数 | 15（核心 3 + sasl 4 + tls 6 + producer 2） |
 | 其中必填 | 1（`brokers`） |
 | quickstart 前置外部依赖 | 1（Kafka；完整可观测另需 collector） |
 | "注意/坑"条数 | 6 |
 
 设计嫌疑（审计台账；自上轮以来均未修复）：
 
-- **无 messaging.Binder** —— 家族内唯一无 binder 的 MQ starter；发布/消费观测全靠
-  手工调用点助手，"binder 的 Key 映射丢字段"这一类问题在本 starter 结构性不存在
+- **无 messaging.Driver** —— 家族内唯一无 driver 的 MQ starter；发布/消费观测全靠
+  手工调用点助手，"driver 的 Key 映射丢字段"这一类问题在本 starter 结构性不存在
   （根本没有映射层可丢 Key）。
 - `SendMessage` 保护用 `context.Background()` [command.go:275,287] —— 逐调用时限只能靠
   resilience `AttemptTimeout`/`MaxDuration`。

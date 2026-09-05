@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`config.go`, `starter.go`, `client.go`, `command.go`, `driver.go`,
-`binder.go`) and the runnable [example/](example/) / [example-otel/](example-otel/) — file:line
+`driver.go`) and the runnable [example/](example/) / [example-otel/](example-otel/) — file:line
 spot-checks in brackets below. **Pulsar semantics (subscriptions, keyed messages, properties,
 retention/redelivery) are [Pulsar's own documentation](https://pulsar.apache.org/docs/next/client-libraries-go/)**
 — everything below is go-spring's increment.
@@ -17,7 +17,7 @@ wrapper type, by design: pulsar exposes nothing worth wrapping beyond the client
 
 ## 1. Complete worked project
 
-A producer AND consumer service via the messaging.Binder, with native metrics, OTel tracing and
+A producer AND consumer service via the messaging.Driver, with native metrics, OTel tracing and
 governance. File tree:
 
 ```
@@ -59,7 +59,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**messaging.go** — binder-based publish + consume, plus the guarded raw path:
+**messaging.go** — driver-based publish + consume, plus the guarded raw path:
 
 ```go
 package messaging
@@ -74,12 +74,12 @@ import (
 )
 
 func init() {
-    // Adapt the injected raw client to the broker-neutral Binder. gs.TagArg("main")
-    // picks the spring.pulsar.main instance; the binder bean is unnamed here.
-    gs.Provide(StarterPulsar.NewBinder, gs.TagArg("main"))
+    // Adapt the injected raw client to the broker-neutral Driver. gs.TagArg("main")
+    // picks the spring.pulsar.main instance; the driver bean is unnamed here.
+    gs.Provide(StarterPulsar.NewDriver, gs.TagArg("main"))
 
-    gs.Provide(func(b messaging.Binder) (gs.Rooter, error) {
-        // Publisher: one producer for the topic, created lazily by the binder.
+    gs.Provide(func(b messaging.Driver) (gs.Rooter, error) {
+        // Publisher: one producer for the topic, created lazily by the driver.
         pub, err := b.NewPublisher(context.Background(), "persistent://public/demo/orders")
         if err != nil {
             return nil, err
@@ -90,7 +90,7 @@ func init() {
         if err != nil {
             return nil, err
         }
-        // Handler error → Nack → Pulsar redelivers [binder.go:147-151].
+        // Handler error → Nack → Pulsar redelivers [driver.go:147-151].
         err = sub.Subscribe(context.Background(), func(ctx context.Context, m *messaging.Message) error {
             return process(ctx, m) // Key/Payload/Headers/Timestamp all survived the round trip
         })
@@ -99,7 +99,7 @@ func init() {
         }
 
         return func(ctx context.Context) error {
-            // Binder publish: span + trace-context injection built in [binder.go:98-101].
+            // Driver publish: span + trace-context injection built in [driver.go:98-101].
             return pub.Publish(ctx, &messaging.Message{
                 Key:     "user-42",                    // becomes the Pulsar message key
                 Payload: []byte(`{"amt":100}`),
@@ -137,10 +137,6 @@ spring.pulsar.main.metrics.enabled=true
 spring.pulsar.main.metrics.port=9091
 spring.pulsar.main.metrics.path=/metrics
 
-# --- access log for guarded calls (off/brief/detailed) ----------------------
-spring.pulsar.main.observability.level=brief
-spring.pulsar.main.observability.maxArgBytes=512
-
 # --- actuator + otel ---------------------------------------------------------
 spring.actuator.addr=:9370
 spring.observability.service-name=demo
@@ -168,8 +164,8 @@ for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/admin/v2/brokers/health
 ```bash
 go run .                                   # fail-fast probe aborts boot if broker is dead
 curl -s :9091/metrics | grep pulsar_client_ # native client metrics
-curl -s :9370/metrics | grep messaging      # observe-kit per-message metrics
-grep -E '_app_pulsar|pulsar' app.log        # binder + client log lines (tag _app_def)
+curl -s :9370/metrics | grep messaging      # driver-path per-message metrics
+grep -E '_app_pulsar|pulsar' app.log        # driver + client log lines (tag _app_def)
 ```
 
 ---
@@ -224,53 +220,52 @@ OUTSIDE the executor — injected faults do not consume breaker budget) → wrap
 **NOT guarded** (each deliberate, per source comments):
 - `producer.SendAsync` — intentionally untouched; the async path has no synchronous outcome
   to reject [command.go:261-263].
-- ~~binder `Publish`~~ — **now guarded**: the binder routes through `GuardedSend` with the
-  client-scoped executor [binder.go], so binder publishes get span+trace injection *and*
+- ~~driver `Publish`~~ — **now guarded**: the driver routes through `GuardedSend` with the
+  client-scoped executor [driver.go], so driver publishes get span+trace injection *and*
   breaker/limiter/fault. Set the instance key `governance=false` to make every call path run
   bare.
 - Consumer `Receive`/handlers — no consumer-side protection exists.
 - `CreateProducer`/`Subscribe`/`TopicPartitions` — lifecycle calls, only the FailFast probe
   covers them at boot.
 
-### 2.3 One binder publish, layer by layer
+### 2.3 One driver publish, layer by layer
 
 `pub.Publish(ctx, msg)` with `Key: "k"`, `Headers: h`, load-test marker on ctx
-[binder.go:81-102]:
+[driver.go:81-102]:
 
 1. Header copy: if `traffic.IsLoadTest(ctx)`, headers are **copied** (caller's map never
-   mutated) and `x-load-test=1` is added [binder.go:85-90].
+   mutated) and `x-load-test=1` is added [driver.go:85-90].
 2. Envelope → `pulsar.ProducerMessage`: `Payload`, `Properties` (= headers), and **Key only
-   when non-empty** [binder.go:91-97]. Not mapped: `Timestamp` (messaging envelope has one;
+   when non-empty** [driver.go:91-97]. Not mapped: `Timestamp` (messaging envelope has one;
    Pulsar sets publish time server-side) and any Pulsar-specific field (OrderingKey,
    DeliverAt…).
-3. `startProduce` opens the kit observation (span `publish`, metric, access log at the fixed
-   **brief** level — the per-instance `observability` config does NOT reach this path, see
-   §6) and injects W3C trace context into `pm.Properties` [command.go:184-191].
+3. `startProduce` opens the module-local observation (span `publish`, duration/in-flight
+   metrics, access log) and injects W3C trace context into `pm.Properties`.
 4. `producer.Send(ctx, pm)` — synchronous, blocks until broker ack.
 5. `sp.End(err)` records the outcome on all three signals.
 
-### 2.4 One binder consume, layer by layer
+### 2.4 One driver consume, layer by layer
 
-`sub.Subscribe(handler)` starts one background loop [binder.go:119-155]:
+`sub.Subscribe(handler)` starts one background loop [driver.go:119-155]:
 
 1. Handler is wrapped in `messaging.Recover` — a panic becomes a normal error → Nack →
-   redelivery, never an SDK-goroutine crash [binder.go:121-123].
+   redelivery, never an SDK-goroutine crash [driver.go:121-123].
 2. Loop ctx derives from `context.WithoutCancel(ctx)` — Close cancels it explicitly, the
-   caller's ctx cancellation does not [binder.go:123].
+   caller's ctx cancellation does not [driver.go:123].
 3. `c.Receive` → `startConsume` extracts the upstream trace from `msg.Properties()` and opens
    a consumer-span child [command.go:195-198].
 4. Load-test marker: if the producer stamped `x-load-test` in Properties, the handler ctx is
-   re-marked via `traffic.WithLoadTest` [binder.go:141-143].
+   re-marked via `traffic.WithLoadTest` [driver.go:141-143].
 5. `fromPulsarMsg` maps back: Pulsar `Key()` → envelope Key, `Payload()`, `Properties()` →
    Headers (including the injected `traceparent` — consumer headers gain keys), `PublishTime()`
-   → Timestamp [binder.go:171-178]. Both directions preserve Key and Properties.
+   → Timestamp [driver.go:171-178]. Both directions preserve Key and Properties.
 6. Handler error → `Nack` (redelivery per Shared-subscription semantics) + error log;
-   success → `Ack(msg)`, a failed ack is logged as WARN (redelivery risk) [binder.go:145-151].
-7. A `Receive` error that is not ctx-cancellation is logged and the loop retries [binder.go:131-137].
+   success → `Ack(msg)`, a failed ack is logged as WARN (redelivery risk) [driver.go:145-151].
+7. A `Receive` error that is not ctx-cancellation is logged and the loop retries [driver.go:131-137].
 
 Close order: cancel loop ctx → wait for `done` (in-flight handler finishes) → `consumer.Close()`
-[binder.go:157-168]; publisher Close just calls `producer.Close()` and **discards its error**
-[binder.go:104-107].
+[driver.go:157-168]; publisher Close just calls `producer.Close()` and **discards its error**
+[driver.go:104-107].
 
 ---
 
@@ -297,13 +292,11 @@ absolute-property Pool rule). 18 value tags found by grep — table covers every
 | `metrics.enabled` | bool | true | Starts the per-instance `/metrics` server and wires the dedicated registry [driver.go:97-101]. | false → no `pulsar_client_*` anywhere. |
 | `metrics.port` | int | 9091 | Port of that server. ⚠ Fixed default: every metrics-enabled instance MUST get a distinct port; collision = second server's listen fails silently (error swallowed [command.go:69-71]). | Two instances, one port → one metrics endpoint silently dead. |
 | `metrics.path` | string | `/metrics` | HTTP path on that server [command.go:62]. | — |
-| `observability` | group | — | `observe.ObserveConfig` `value:"${observability:=}"` [config.go:85]. Affects the executor observer that now wraps both `GuardedSend` and the binder's guarded `Publish`; consume-side span helpers use their own fixed level. | — |
 | `driver` | string | `DefaultDriver` | Driver registry lookup; `RegisterDriver` panics on duplicates [driver.go:53-58]. | Unknown name → boot error "pulsar driver not found". |
-| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedSend` and the binder's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
+| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedSend` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
-`observability` sub-keys (`level` off/brief/detailed, `maxArgBytes`, `skipOps`) are the shared
-observe-kit config; see the go-redis USAGE §3.3 for semantics. `schema.json` states
-`metrics.enabled` default `false` while the code default is `true` — trust the code.
+`schema.json` states `metrics.enabled` default `false` while the code default is `true` —
+trust the code.
 
 ---
 
@@ -316,7 +309,7 @@ docker stop pulsar && go run .    # boot aborts: "pulsar broker probe failed on 
 docker start pulsar && go run .   # boots once the admin health endpoint answers (§1 gate)
 ```
 
-### 4.2 Message round-trip incl. binder mapping survival
+### 4.2 Message round-trip incl. driver mapping survival
 
 Publish `Key="user-42"`, `Headers={"h1":"v1"}` per §1; in the handler log
 `m.Key, m.Headers["h1"], string(m.Payload)` — all three survive, plus injected
@@ -337,25 +330,25 @@ govern:
 
 Resource label is `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]. Kill the broker, then:
 hammer `GuardedSend` → after the threshold the breaker opens, calls fail fast with a
-resilience sentinel, and observe-kit access-log records + resilience outcome counters appear;
-hammer binder `Publish` instead → every call blocks into the client's own retry/timeout, no
+resilience sentinel, and resilience outcome counters appear;
+hammer driver `Publish` instead → every call blocks into the client's own retry/timeout, no
 sentinel, no breaker. That contrast IS the §2.2 boundary.
 
 ### 4.4 Metrics / span / log reads
 
 - Native: `curl -s :9091/metrics | grep pulsar_client_` (producer/consumer/connection stats;
   separate per-instance registry so instances never collide [command.go:59-74]).
-- OTel: observe-kit spans `publish` / `consume` (traces link via W3C context in Properties);
+- OTel: driver-path spans `publish` / `consume` (traces link via W3C context in Properties);
   manual helpers emit `pulsar.produce` / `pulsar.consume <topic>` with
   `messaging.system=pulsar` [command.go:99-134]. Check Jaeger (`:16686`) after traffic.
-- Logs: binder handler/receive errors and all bridged client-internal lines land under the
+- Logs: driver handler/receive errors and all bridged client-internal lines land under the
   `_app_def` tag with `pulsar: ` prefix.
 
 ### 4.5 Shutdown drill
 
 SIGTERM → destroyClient closes the executor, the client (all producers/consumers), and the
 metrics server [client.go:44-58]. Subscriber Close drains its loop before consumer.Close
-[binder.go:157-168]. Watch the log for a clean exit; :9091 stops serving.
+[driver.go:157-168]. Watch the log for a clean exit; :9091 stops serving.
 
 ---
 
@@ -367,26 +360,25 @@ metrics server [client.go:44-58]. Subscriber Close drains its loop before consum
 | Boot fails "pulsar driver not found" | `driver` typo or nothing registered | Use DefaultDriver or RegisterDriver in an init. |
 | Second instance has no /metrics | `metrics.port` collision; listen failure WARN-logged [command.go:69-71] | Assign distinct ports. |
 | No traces | starter-otel not imported | Import it; all helpers are silent no-ops without it. |
-| Messages redelivered though handler succeeded | Ack failed (WARN logged) [binder.go:158] | Check broker ack permission; suspect listed in §6. |
-| Consumer never gets messages | Wrong subscription name / Shared vs topic semantics | `group` maps 1:1 to subscription; empty group derives `go-spring-<topic>` [binder.go:63-66]. |
+| Messages redelivered though handler succeeded | Ack failed (WARN logged) [driver.go:158] | Check broker ack permission; suspect listed in §6. |
+| Consumer never gets messages | Wrong subscription name / Shared vs topic semantics | `group` maps 1:1 to subscription; empty group derives `go-spring-<topic>` [driver.go:63-66]. |
 | Expecting token auth, broker refuses | mTLS cert+key set → token ignored (priority order) [driver.go:83-90] | Remove cert/key or disable mTLS requirement. |
-| Breaker never trips under load | Traffic goes through binder Publish or SendAsync — unguarded (§2.2) | Route through GuardedSend. |
+| Breaker never trips under load | Traffic goes through driver Publish or SendAsync — unguarded (§2.2) | Route through GuardedSend. |
 | Handler panic kills nothing but message reappears | Recover converts panic → Nack | Expected; fix the handler. |
 
 ## 6. Design Health
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 18 value tags (+ observability sub-keys) |
+| Config keys | 17 value tags |
 | Required | 1 (`url`) |
 | Quickstart external deps | 1 (Pulsar standalone) |
 | "Watch out" entries | 8 |
 
 Design suspects (audit ledger): `metrics.port` fixed default 9091 collides across instances
-and with other apps, and the listen failure is swallowed; binder Publish is now guarded
-through the same executor as the raw path (Subscribe/consume remains unguarded); the binder
-path still emits its spans via fixed "brief" observers rather than the per-instance
-`observability` config ([command.go:152-159]); a failed consumer `Ack` is WARN-logged; `producer.Close()` has no
+and with other apps, and the listen failure is swallowed; driver Publish is now guarded
+through the same executor as the raw path (Subscribe/consume remains unguarded); a failed
+consumer `Ack` is WARN-logged; `producer.Close()` has no
 error return so publisher Close cannot fail; no runtime health indicator
 (fail-fast is boot-only — a broker dying later is invisible to actuator); `schema.json`
 `metrics.enabled` default disagrees with code (true).

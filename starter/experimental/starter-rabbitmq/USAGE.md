@@ -16,8 +16,8 @@ each `spring.rabbitmq.<name>` block yields one named `*amqp.Connection` bean; th
 
 ## 1. Complete worked project
 
-A service with one publisher and one competing-consumer pair via the messaging binder, plus
-the raw connection for AMQP features the binder does not model. File tree:
+A service with one publisher and one competing-consumer pair via the messaging driver, plus
+the raw connection for AMQP features the driver does not model. File tree:
 
 ```
 demo/
@@ -59,7 +59,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**messaging_app.go** — publisher + consumer via the binder, plus one guarded raw publish:
+**messaging_app.go** — publisher + consumer via the driver, plus one guarded raw publish:
 
 ```go
 package messaging_app
@@ -84,15 +84,15 @@ func init() {
     // though nothing else injects it (gs wires only root-reachable beans).
     gs.Provide(&App{}).Export(gs.As[gs.Rooter]())
 
-    // The binder adapts the connection to the broker-neutral messaging.Binder.
+    // The driver adapts the connection to the broker-neutral messaging.Driver.
     // App code then depends only on messaging.Publisher / messaging.Subscriber.
-    gs.Provide(StarterRabbitMQ.NewBinder, gs.TagArg("demo"))
+    gs.Provide(StarterRabbitMQ.NewDriver, gs.TagArg("demo"))
 }
 
 // Init runs after injection (gs.Rooter): start the competing consumers.
 func (a *App) Init(ctx context.Context) error {
-    // Binder-provided publisher: trace context + observe kit ride automatically.
-    b := StarterRabbitMQ.NewBinder(a.Conn)
+    // Driver-provided publisher: trace context + instrumentation ride automatically.
+    b := StarterRabbitMQ.NewDriver(a.Conn)
     pub, err := b.NewPublisher(ctx, "orders.created")
     if err != nil { return err }
     if err := pub.Publish(ctx, &messaging.Message{
@@ -144,11 +144,6 @@ spring.rabbitmq.demo.driver=DefaultDriver
 #spring.rabbitmq.demo.tls.key-file=/etc/ssl/rabbit-client.key
 #spring.rabbitmq.demo.tls.server-name=rabbit.example.com
 #spring.rabbitmq.demo.tls.insecure-skip-verify=false
-
-# Access log for governance-guarded (GuardedPublish) calls:
-#spring.rabbitmq.demo.observability.level=brief
-#spring.rabbitmq.demo.observability.maxArgBytes=512
-#spring.rabbitmq.demo.observability.skipOps=
 
 # --- actuator + otel (same keys as example-otel/conf/app.properties) ---------
 spring.actuator.addr=:9370
@@ -214,7 +209,7 @@ The executor attached to each connection is built inside-out in `applyResilience
 ```
 fault.WrapExecutor( resilience.ExecutorFor(resource) )   ← outer
         │
-   resilience.WrapExecutor(exec, "rabbitmq", c.Observability)  ← wrapped around it
+   resilience.WrapExecutor(exec, "rabbitmq")                 ← wrapped around it
         │
    your call (ch.PublishWithContext)                       ← innermost
 ```
@@ -227,11 +222,11 @@ a transparent no-op, and `guard` doesn't even find an executor unless one was st
 
 **What is NOT guarded**: raw `ch.PublishWithContext` calls on a channel you opened yourself,
 the entire consume path, queue/exchange declares and acks all bypass resilience. Consume-side
-protection is your handler's concern. The binder's `Publish` **is** guarded — it routes through
+protection is your handler's concern. The driver's `Publish` **is** guarded — it routes through
 `GuardedPublish` with the connection-scoped executor [client.go]; set the instance key
 `governance=false` to make every call path run bare.
 
-### 2.3 One publish and one consume, layer by layer (binder path)
+### 2.3 One publish and one consume, layer by layer (driver path)
 
 Publish [client.go:89-107]:
 
@@ -239,9 +234,9 @@ Publish [client.go:89-107]:
    (toAMQPTable, nil when empty), `MessageId` ← `msg.Key` [client.go:90-94].
 2. If `traffic.IsLoadTest(ctx)`, the marker is stamped into AMQP header `x-loadtest`
    [client.go:97-102] so the consumer recognises synthetic load.
-3. `startPublish` opens the observe-kit producer observation (span
+3. `startPublish` opens the module-local producer observation (span
    `publish <queue>`, metric `messaging.client.operation.duration`) and injects the W3C
-   trace context into `pub.Headers` [command.go:194-201].
+   trace context into `pub.Headers`.
 4. `PublishWithContext` to the default exchange (`""`) with the queue name as routing
    key; `sp.End(err)` records duration, balances the in-flight gauge, emits the access
    log [client.go:103-106].
@@ -273,8 +268,8 @@ is a resilience sentinel. Manual tracing (`StartPublishSpan` / `StartConsumeSpan
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.rabbitmq.<name>.*`. Six own value tags
-(config.go:33-57) plus the shared tlsconf (6) and observe (3) blocks = 15; 1 required.
+All keys live under `spring.rabbitmq.<name>.*`. Five own value tags
+(config.go:33-60) plus the shared tlsconf (6) block = 11; 1 required.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|------------------------|------------------------------|
@@ -285,16 +280,12 @@ All keys live under `spring.rabbitmq.<name>.*`. Six own value tags
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | Custom CA / mTLS pair, loaded by the shared `tlsconf` block (uniform keys across starters, config.go:44-48). | Missing files → boot fails in TLS build [driver.go:64-68]. |
 | `tls.server-name` | string | "" | SNI/verification name override. | Mismatch → x509 hostname error at boot. |
 | `tls.insecure-skip-verify` | bool | false | Skips cert verification. | true in prod = silent MITM exposure. |
-| `observability.level` | enum | brief | `off`/`brief`/`detailed` access-log verbosity — **only for the GuardedPublish path** (resilience observer, command.go:236). ⚠ The binder path's observe kit is a package-level default fixed at `brief` and cannot read this key (comment, command.go:181-190). | Expecting to silence binder access logs via this key → no effect. |
-| `observability.maxArgBytes` | int | 512 | Bounds the captured operation argument in detailed mode. | Too low truncates the log arg. |
-| `observability.skipOps` | list | "" | Op names skipped by the resilience observer (span+metric+log). | — |
 | `driver` | string | DefaultDriver | Selects from the registry filled by `RegisterDriver` [driver.go:31-53]. | Unknown name → boot fails with "rabbitmq driver not found" [starter.go:58-62]; duplicate registration panics [driver.go:50]. |
-| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedPublish` and the binder's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
+| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedPublish` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
 Reconciled against `grep -rhoE 'value:"[^"]+"'` over the starter: own tags are exactly
-`${url}`, `${vhost:=}`, `${heartbeat:=10s}`, `${tls}`, `${observability:=}`,
-`${driver:=DefaultDriver}`; the tls.*/observability.* columns come from the shared
-cloud blocks bound through `${tls}` and `${observability:=}`.
+`${url}`, `${vhost:=}`, `${heartbeat:=10s}`, `${tls}`, `${driver:=DefaultDriver}`; the
+tls.* columns come from the shared cloud block bound through `${tls}`.
 
 ---
 
@@ -316,7 +307,7 @@ With starter-governance and a fault rule on the rabbitmq resource
 
 1. `GuardedPublish` call → resilience-sentinel error, publish never reaches the channel,
    `resilience.*` metrics + `_app_rabbitmq_access` log record emitted.
-2. Binder `Publish` under the same rule → the same resilience-sentinel error (it rides the
+2. Driver `Publish` under the same rule → the same resilience-sentinel error (it rides the
    connection-scoped executor, §2.2). Raw `PublishWithContext` on your own channel →
    unaffected (no executor hop). Per-instance opt-out: `governance=false`.
 
@@ -326,27 +317,27 @@ With starter-governance and a fault rule on the rabbitmq resource
 curl :9090/publish && curl :9090/consume        # body "value" survives
 ```
 
-Binder-to-binder round trip: `Payload`, string `Headers`, `Key` (via MessageId) and
+Driver-to-driver round trip: `Payload`, string `Headers`, `Key` (via MessageId) and
 consume-side `Timestamp` survive. **Drops**: producer-set `msg.Timestamp` is never written
 to `amqp.Publishing.Timestamp` [client.go:90-94]; non-string header values are dropped on
 consume [client.go:183-186]; `ContentType`/`DeliveryMode`/priority are not modeled —
-binder messages are transient on a non-durable queue, so a broker restart loses them
+driver messages are transient on a non-durable queue, so a broker restart loses them
 (see [durability](https://www.rabbitmq.com/docs/durability)).
 
 ### 4.4 Observables read-out
 
-- Metrics (binder path, via observe kit): `messaging.client.operation.duration` and
+- Metrics (driver path, module-local): `messaging.client.operation.duration` and
   `messaging.client.active_requests` histograms/counters with
   `messaging.system=rabbitmq`, `messaging.operation=publish|consume`,
   `messaging.destination.name=<queue>`; `status=ok|error` dimension
-  (cloud/observe/observer.go:66-71,187-213). Guarded path adds
+  (observe.go). Guarded path adds
   `resilience.operation.duration` / `resilience.active_requests`.
-- Spans: binder — `publish <queue>` (producer kind) / `consume <queue>` (consumer kind),
+- Spans: driver — `publish <queue>` (producer kind) / `consume <queue>` (consumer kind),
   linked across the broker by W3C headers; manual helpers — `rabbitmq.publish <dest>` /
   `rabbitmq.consume <dest>` with `messaging.rabbitmq.destination.routing_key` attributes
   [command.go:79-87,109-117].
 - Access log: tag `_app_rabbitmq_access` (`log.RegisterAppTag("rabbitmq","access")`,
-  cloud/observe/observer.go:213-214).
+  observe.go).
 - Verify with example-otel: `docker compose up -d` (rabbitmq + jaeger), `go run .` — it
   self-verifies traces via the Jaeger API :16686 (example-otel/main.go:214-223).
 
@@ -372,33 +363,31 @@ and no health indicator — the process keeps running on a dead connection.
 | `rabbitmq driver already registered` panic | duplicate `RegisterDriver` name | rename (driver.go:50). |
 | Boot fails: `failed to open probe channel` | TCP connects but AMQP layer broken (e.g. wrong vhost/permissions) | check vhost permissions for the user (starter.go:69-76). |
 | Works at boot, publishes later error; close/blocked Warn logs | broker died mid-run; no auto-reconnect | restart process or implement reconnect on the raw bean; watch the `connection closed` Warn. |
-| Consumers get nothing | handler error → Nack(requeue) loop; check `rabbitmq binder handler error on %q` Error log | fix the handler; every error requeues forever — no DLQ (client.go:141-146). |
-| Messages vanish after broker restart | binder queues are non-durable and messages transient | use the raw connection with durable declares (client.go:64,76; rabbitmq.com/docs/durability). |
+| Consumers get nothing | handler error → Nack(requeue) loop; check `rabbitmq driver handler error on %q` Error log | fix the handler; every error requeues forever — no DLQ (client.go:141-146). |
+| Messages vanish after broker restart | driver queues are non-durable and messages transient | use the raw connection with durable declares (client.go:64,76; rabbitmq.com/docs/durability). |
 | `Key`/headers "lost" between services | other producer wrote real AMQP routing headers / non-string values dropped on consume | headers are string-only in the envelope; Key rides MessageId (client.go:183-194). |
-| No traces/metrics from binder | starter-otel not imported | add it; OTel globals are silent no-ops otherwise (command.go:57-59). |
+| No traces/metrics from driver | starter-otel not imported | add it; OTel globals are silent no-ops otherwise (command.go:57-59). |
 | GuardedPublish returns resilience sentinel | rate-limit hit / circuit open / injected fault | read `resilience.*` metrics + access log; this is the governance contract (command.go:264-266). |
 
 ## 6. Design Health
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 15 (6 own + 6 tls + 3 observability) |
+| Config keys | 11 (5 own + 6 tls) |
 | Required | 1 (`url`) |
 | Quickstart external deps | 1 (RabbitMQ) |
 | "Watch out" entries | 6 |
 
 Design suspects (for the audit ledger; none fixed since the last audit):
 
-- Binder hardcodes queue declaration (non-durable, non-exclusive) with no config escape
+- Driver hardcodes queue declaration (non-durable, non-exclusive) with no config escape
   (client.go:64,76) — broker-restart data loss by default.
 - `Key` ↔ `MessageId` is a lossy convention; routing keys — AMQP's native keying — are
-  not modeled by the binder.
+  not modeled by the driver.
 - A failed `Ack/Nack` is WARN-logged (client.go:143,145) — check logs if the broker
   redelivers despite successful handlers.
 - Producer-set `msg.Timestamp` never reaches `amqp.Publishing.Timestamp` (client.go:90-94).
 - Non-string AMQP header values silently dropped on consume (client.go:183-186).
-- Binder publish is unguarded while the raw path can be guarded — the governance surface
+- Driver publish is unguarded while the raw path can be guarded — the governance surface
   is asymmetric between the two paths the starter itself ships (client.go:104 vs
   command.go:271).
-- Binder observe kit is a package-level default (`brief`), so per-instance
-  `observability.*` keys only affect GuardedPublish (command.go:181-190).

@@ -287,7 +287,7 @@ non-positive duration is **silently dropped**, never an error (e.g. config.go:56
 |-----|---------|------------------|
 | `name` | `dubbo` | dubbo/rest/grpc/filter/jsonrpc/tri/registry; empty falls back to the id (config.go:517-520). |
 | `port` | 0 | 0 lets dubbo-go pick. |
-| `ip` / `params` | — | `params` is `map[string]string` — a value-typed map, not `map[string]any` (binder limitation, config.go:123-129 comment). |
+| `ip` / `params` | — | `params` is `map[string]string` — a value-typed map, not `map[string]any` (driver limitation, config.go:123-129 comment). |
 
 ⚠ No protocols at all → server falls back to a single `tri` listener on `:20000` (server.go:276-282).
 
@@ -483,7 +483,7 @@ Design suspects (audit ledger):
    discovery).
 10. `check.sh` claims "no external service" but example/conf/app.properties requires etcd.
 11. ~~wiring_test.go "KNOWN BUG" comment is stale (fixed `map[string]string`), protocols block
-    still untested.~~ — the `map[string]any` binder failure is fixed (config.go:123-129
+    still untested.~~ — the `map[string]any` driver failure is fixed (config.go:123-129
     documents the constraint); protocols block remains untested in wiring_test.go.
 12. ~~DESIGN.md is stale relative to the code~~ — DESIGN.md refreshed (2026-08) to match
     config.go/dync.go; this USAGE and the source remain authoritative for details.

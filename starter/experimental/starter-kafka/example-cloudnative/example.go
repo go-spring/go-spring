@@ -70,31 +70,28 @@ type Config struct {
 	Label gs.Dync[string] `value:"${demo.label:=none}"`
 }
 
-// Service autowires the "a" kafka instance. It doubles as the app's health
-// indicator: the starter itself registers no health.Indicator, so exporting the
-// bean as one lets the actuator aggregate a Ping probe against the broker.
+// Service autowires the "a" kafka instance.
 type Service struct {
 	Client *kgo.Client `autowire:"a"`
 }
 
-// HealthName is a short, stable identifier for this indicator.
-func (s *Service) HealthName() string { return "kafka:a" }
-
-// CheckHealth probes the broker; a reachable cluster is a ready dependency.
-func (s *Service) CheckHealth(ctx context.Context) error {
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	return s.Client.Ping(pingCtx)
+// Health returns the app's kafka health indicator: the starter itself
+// registers no health.Indicator, so exporting one here lets the actuator
+// aggregate a Ping probe against the broker.
+func (s *Service) Health() *health.Indicator {
+	return &health.Indicator{
+		Name: "kafka:a",
+		// The broker belongs to readiness + startup (never liveness, so a
+		// broker outage cannot restart the pod); an unreachable broker is
+		// critical and fails the aggregate probe.
+		Groups: []health.Group{health.GroupReadiness, health.GroupStartup},
+		Probe: func(ctx context.Context) error {
+			pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			return s.Client.Ping(pingCtx)
+		},
+	}
 }
-
-// HealthGroups puts the broker in readiness + startup (never liveness, so a
-// broker outage cannot restart the pod).
-func (s *Service) HealthGroups() []health.Group {
-	return []health.Group{health.GroupReadiness, health.GroupStartup}
-}
-
-// IsCritical reports that an unreachable broker must fail the aggregate probe.
-func (s *Service) IsCritical() bool { return true }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
 
@@ -111,7 +108,8 @@ func main() {
 	}
 
 	cfg := gs.Provide(&Config{}).Export(gs.As[gs.Rooter]())
-	svc := gs.Provide(&Service{}).Export(gs.As[gs.Rooter](), gs.As[health.Indicator]())
+	svc := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
+	gs.Provide((*Service).Health)
 
 	if !*manual {
 		go func() {

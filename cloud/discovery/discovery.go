@@ -36,6 +36,8 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+
+	"go-spring.org/cloud/mesh"
 )
 
 // Endpoint is a single connectable instance returned by a [Discovery] backend.
@@ -86,7 +88,7 @@ type Endpoint struct {
 
 // Query is the materialized form of a discovery lookup: the required service
 // name plus whatever optional dimensions the caller narrowed on. Callers rarely
-// build one by hand — [Resolve], [Watch], and [NewResolver] take name and a
+// build one by hand — [Resolve] and [NewResolver] take name and a
 // variadic [Option] slice and build it internally; backends build one with
 // [NewQuery] to turn the Option slice they receive into values they can read.
 type Query struct {
@@ -149,7 +151,7 @@ func WithTag(t string) Option {
 
 // NewQuery materializes name plus opts into a [Query]. It is the canonical way a
 // [Discovery] backend turns the variadic Option slice it receives from
-// Resolve/Watch into values it can read: q := NewQuery(name, opts...), then use
+// Resolve into values it can read: q := NewQuery(name, opts...), then use
 // q.Name, q.Scheme, q.Tag. name is required but not validated here — a backend that
 // needs a non-empty name checks it itself.
 func NewQuery(name string, opts ...Option) Query {
@@ -170,70 +172,71 @@ func NewQuery(name string, opts ...Option) Query {
 // topology timescale. Keeping Discovery free of policy and feedback is what
 // lets one naming adapter serve every client.
 //
+// Execution model: Resolve is a snapshot read — ctx bounds the call (deadline,
+// cancellation, trace). The freshness machinery (registry watch, subscription,
+// poll) lives INSIDE each backend, not in this interface: a backend keeps its
+// cache current on its own, so Resolve is a cheap read from an up-to-date
+// cache. A client therefore just calls Resolve whenever it needs endpoints:
+//
+//	// Cold start may pay a first-fetch latency; later calls read the cache.
+//	rctx, rcancel := context.WithTimeout(ctx, 3*time.Second)
+//	eps, err := d.Resolve(rctx, "order-service")
+//	rcancel()
+//
 // Implementations must be safe for concurrent use.
 type Discovery interface {
 	// Resolve returns the current snapshot of endpoints for name, narrowed by
-	// opts (e.g. [WithScheme]). It is called once at cold start, before a client
-	// establishes its first connection. A backend that receives a non-empty
-	// Scheme option returns only matching endpoints — apply [FilterByScheme] to
-	// the raw result to honor that contract uniformly.
+	// opts (e.g. [WithScheme]). It may block on the first call for a service
+	// (seed fetch); a real backend performs network I/O there, so ctx is the
+	// call's deadline/cancellation. A backend that receives a non-empty Scheme
+	// option returns only matching endpoints — apply [FilterByScheme] to the
+	// raw result to honor that contract uniformly.
 	Resolve(ctx context.Context, name string, opts ...Option) ([]Endpoint, error)
-
-	// Watch opens a subscription to name, narrowed by opts (e.g. [WithScheme]),
-	// and returns a channel carrying a [WatchResult] each time the service's
-	// endpoint set changes. The first result carries the CURRENT set immediately,
-	// so a long-lived caller need not Resolve first; later results carry
-	// successive full snapshots as the topology changes. As with Resolve, a
-	// non-empty Scheme option means the subscription delivers only matching
-	// endpoints.
-	//
-	// The channel closes when the subscription ends — either because ctx is
-	// cancelled or because the backend emitted a terminal [WatchResult.Err]; a
-	// for-range loop then exits and the caller keeps serving from the last
-	// endpoint set it received, since stale addresses are safer than none.
-	// Cancelling ctx is the single way to stop the watch and release backend
-	// resources: there is no separate Stop method, no Watcher handle to close.
-	// Reconnect with backoff, when wanted, is the caller's responsibility, not
-	// Watch's.
-	Watch(ctx context.Context, name string, opts ...Option) (<-chan WatchResult, error)
 }
 
-// WatchResult is one element delivered on a [Discovery.Watch] channel: either a
-// fresh full endpoint set for the service, or a terminal error that ended the
-// subscription. It is NOT an incremental delta — every Endpoints value is the
-// complete current topology, so a caller always has the full picture and never
-// needs to merge per-instance changes.
-type WatchResult struct {
-	// Endpoints is the full current endpoint set for the watched service. It may
-	// be empty (a zero-length, non-nil slice) when the service currently has no
-	// live instances — that is a valid snapshot, not an error.
-	Endpoints []Endpoint
+// Resolver is a bound by-name read of one logical service's live endpoint
+// snapshot. It pairs a [Discovery] backend with a single service name (plus
+// narrowing options) so a consumer can ask "which endpoints for this service?"
+// without re-carrying the backend label and name on every call. Endpoint
+// selection — which one to use — is deliberately NOT here; it belongs in
+// loadbalance, which consumes a Resolver as its endpoint source.
+//
+// A Resolver always surfaces errors: it is a thin, honest re-read of
+// [Discovery.Resolve] (which is a cheap in-memory read of a cache-backed
+// backend, since freshness lives inside the backend). Callers that want a
+// selection layer feed it to loadbalance.NewPool; callers that want a bare
+// snapshot call it directly.
+type Resolver func() ([]Endpoint, error)
 
-	// Err, when non-nil, is the terminal error that ended the subscription
-	// (backend disconnect, auth expiry, ...). The channel closes after this
-	// result is delivered; no further results follow.
-	Err error
-}
-
-// Catalog is an OPTIONAL capability a Discovery backend may implement when it
-// can enumerate every service name it knows — the "discover" half of service
-// discovery, used by gateways building routes dynamically, governance
-// dashboards, and service catalogs.
+// NewResolver binds the Discovery registered as backend to name, narrowed by opts
+// (e.g. [WithScheme], [WithTag]), and returns a Resolver that re-reads the live
+// snapshot on every call. It is the single constructor every infrastructure
+// client starter (Redis, MySQL, MongoDB, ...) and discovery-aware transport
+// (httpx, the gateway) reuses: each reduces its config to (backend, name) plus
+// options and calls this.
 //
-// It is a separate interface rather than a third method on Discovery because
-// some backends cannot enumerate at all (DNS, a static adapter, a Kubernetes
-// headless Service reached by name). Forcing enumeration onto Discovery would
-// make those backends lie with empty lists or panics. Consumers type-assert:
+// It seeds with one explicit [Discovery.Resolve] — a synchronous read of the
+// current state that also fails fast when the service is unknown.
 //
-//	if c, ok := d.(Catalog); ok { names, _ := c.Services(ctx) }
-//
-// A backend that supports enumeration but currently knows no services returns
-// (nil, nil); a backend that cannot enumerate simply does not implement
-// Catalog.
-type Catalog interface {
-	// Services returns the names of every service the backend currently knows
-	// about. The order is unspecified; callers that need a stable order sort.
-	Services(ctx context.Context) ([]string, error)
+// It returns (nil, nil) — "discovery not in effect" — when name is empty or mesh
+// mode is on (a sidecar owns discovery+LB), in which case the caller dials its
+// configured address directly. The mesh check reads the GS_MESH switch (see
+// [go-spring.org/cloud/mesh.Enabled]); it is folded in here so no caller repeats
+// the same gate.
+func NewResolver(ctx context.Context, backend, name string, opts ...Option) (Resolver, error) {
+	if name == "" || mesh.Enabled() {
+		return nil, nil
+	}
+	d, err := GetDiscovery(backend)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := d.Resolve(ctx, name, opts...); err != nil {
+		return nil, fmt.Errorf("discovery: resolve %q: %w", name, err)
+	}
+	return func() ([]Endpoint, error) {
+		return d.Resolve(context.Background(), name, opts...)
+	}, nil
 }
 
 // discoveriesMu guards discoveries. It is independent of registrarsMu (in
@@ -251,7 +254,7 @@ var (
 // What name is NOT: it is neither a driver/protocol kind ("nacos", "etcd") nor
 // a service name ("order-service"). The adapter kind is just whichever
 // implementation was constructed; a service name is what callers later pass to
-// [Discovery.Watch]. name here is a user-chosen instance label, typically the
+// [Discovery.Resolve]. name here is a user-chosen instance label, typically the
 // key of a discovery config block (e.g. ${spring.discovery.k8s.<name>}), that a
 // client starter cites to pick which Discovery to resolve through.
 //
@@ -301,9 +304,9 @@ func GetDiscovery(name string) (Discovery, error) {
 // NewStaticDiscovery returns a [Discovery] that serves the given fixed endpoint
 // set for every service name. It is the zero-dependency reference backend: a
 // real adapter would talk to a naming service (Nacos, Consul, etcd, Kubernetes,
-// ...) and push fresh snapshots through [Discovery.Watch] as instances come and
-// go; this one never changes. Use it for examples, tests, and single-instance
-// local setups where a live registry is not wanted.
+// ...) and refresh its cache as instances come and go; this one never changes.
+// Use it for examples, tests, and single-instance local setups where a live
+// registry is not wanted.
 func NewStaticDiscovery(eps ...Endpoint) Discovery {
 	return &staticBackend{eps: eps}
 }
@@ -317,17 +320,6 @@ type staticBackend struct {
 
 func (b *staticBackend) Resolve(_ context.Context, _ string, opts ...Option) ([]Endpoint, error) {
 	return FilterByScheme(append([]Endpoint(nil), b.eps...), NewQuery("", opts...).Scheme), nil
-}
-
-func (b *staticBackend) Watch(ctx context.Context, _ string, opts ...Option) (<-chan WatchResult, error) {
-	eps := FilterByScheme(append([]Endpoint(nil), b.eps...), NewQuery("", opts...).Scheme)
-	ch := make(chan WatchResult, 1)
-	ch <- WatchResult{Endpoints: eps}
-	go func() {
-		<-ctx.Done()
-		close(ch)
-	}()
-	return ch, nil
 }
 
 // FilterByScheme returns eps restricted to those whose [Endpoint.Scheme] matches
@@ -354,8 +346,10 @@ func FilterByScheme(eps []Endpoint, scheme string) []Endpoint {
 }
 
 // normalizeScheme collapses the empty string and "tcp" to the same plain-TCP
-// bucket so they match each other; every other scheme is left as-is. Keeping
-// this unexported forces all scheme comparisons through [FilterByScheme].
+// bucket so they match each other; every other scheme is left as-is. Most
+// backends never set Scheme, so "" is the common spelling of a plain endpoint —
+// without this, WithScheme("tcp") would silently match nothing. Keeping this
+// unexported forces all scheme comparisons through [FilterByScheme].
 func normalizeScheme(s string) string {
 	if s == "" || s == "tcp" {
 		return ""

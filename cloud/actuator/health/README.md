@@ -1,32 +1,21 @@
 # health
+
 [English](README.md) | [中文](README_CN.md)
 
-`health` is a framework-agnostic, zero-dependency abstraction for component
-health checks. A component that can report its own health (database pool,
-cache client, message-queue connection, ...) implements the `Indicator`
-interface and is exported as a bean; a collector (e.g. `starter-actuator`)
-autowires all of them for readiness, startup, and liveness probes.
-
-## Features
-
-- `Indicator` interface: `HealthName`, `CheckHealth`, `HealthGroups`,
-  `IsCritical` - identity, the check, probe routing, and severity.
-- `Status` verdicts: `StatusUp` / `StatusDown`.
-- Kubernetes probe groups: `GroupLiveness`, `GroupReadiness`, `GroupStartup`.
-- `NewIndicator` factory with `WithGroups` (declare probe groups) and
-  `NonCritical` (report without failing the aggregate) options. Without
-  options the indicator is critical and declares no explicit groups; the
-  collector applies its default routing (readiness + startup, never liveness).
+Component health-check contract. A component that can report its own health
+(database pool, cache client, message-queue connection) builds an `Indicator`
+value and exports it as a bean; a collector (e.g. `starter-actuator`)
+autowires all of them and serves readiness / startup / liveness probes.
 
 ## Installation
 
 ```
-go get go-spring.org/spring
+go get go-spring.org/cloud
 ```
 
 ## Usage
 
-Expose a component's health with no dependency on the collector:
+Contribute a health check for a Redis client:
 
 ```go
 import (
@@ -37,27 +26,39 @@ import (
     "go-spring.org/cloud/actuator/health"
 )
 
-func newRedisHealth(name string, client *redis.Client) health.Indicator {
-    return health.NewIndicator("redis:"+name, func(ctx context.Context) error {
-        return client.Ping(ctx).Err()
-    })
+func newRedisHealth(name string, client redis.UniversalClient) *health.Indicator {
+    return &health.Indicator{
+        Name:  "redis:" + name,
+        Probe: func(ctx context.Context) error { return client.Ping(ctx).Err() },
+    }
 }
 
 func init() {
-    gs.Provide(newRedisHealth, gs.ValueArg("cache"), gs.TagArg("cache")).
-        Export(gs.As[health.Indicator]())
+    gs.Provide(newRedisHealth, gs.ValueArg("cache"), gs.TagArg("cache"))
 }
 ```
 
-Contribute to startup only (a bootstrap dependency):
+Participate in the startup probe only:
 
 ```go
-health.NewIndicator("redis:"+name, probe, health.WithGroups(health.GroupStartup))
+&health.Indicator{
+    Name:  "redis:" + name,
+    Probe: probe,
+    Groups: []health.Group{health.GroupStartup},
+}
 ```
 
-Mark an optional cache non-critical - reported but never takes the pod out of
-rotation:
+Mark an optional dependency non-critical: still reported, but a failure does
+not take the pod out of rotation:
 
 ```go
-health.NewIndicator("redis:"+name, probe, health.NonCritical())
+&health.Indicator{Name: "redis:" + name, Probe: probe, Optional: true}
 ```
+
+## Probe groups
+
+Groups map onto Kubernetes container probes: liveness / readiness / startup.
+An indicator that declares no groups is routed by the collector to
+readiness + startup, never liveness, so a transient downstream outage does
+not restart the pod. Liveness must be declared explicitly in `Groups`, and
+only for self-checks, never for downstream resources.

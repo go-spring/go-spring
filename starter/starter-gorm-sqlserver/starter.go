@@ -28,8 +28,8 @@ import (
 
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	gormcore "go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
@@ -72,22 +72,20 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		closer    func()
 	)
 
-	ld, err := c.NewResolver(ctx)
+	lb, _, err := c.NewPickPool(ctx)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: build discovery resolver failed: %v", err)
 		return gormcore.Spec{}, err
 	}
-	if ld != nil {
+	if lb != nil {
 		msCfg, err := msdsn.Parse(c.DSN())
 		if err != nil {
 			log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: parse DSN failed: %v", err)
-			_ = ld.Stop()
 			return gormcore.Spec{}, err
 		}
 		connector := mssql.NewConnectorConfig(msCfg)
-		connector.Dialer = resolverDialer{r: ld, nd: &net.Dialer{}}
+		connector.Dialer = resolverDialer{lb: lb, nd: &net.Dialer{}}
 		dialector = sqlserver.New(sqlserver.Config{Conn: sql.OpenDB(connector)})
-		closer = func() { _ = ld.Stop() }
 	} else {
 		dialector = sqlserver.Open(c.DSN())
 	}
@@ -113,22 +111,22 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 // resolverDialer, and its watch is stopped via the closer [build] attaches to
 // the client.
 
-// resolverDialer adapts a discovery.Resolver to mssql's Dialer interface
+// resolverDialer adapts the shared round-robin pick pool to mssql's Dialer
 // (DialContext(ctx, network, addr)). The network and addr arguments are ignored
 // — the dialer picks a live endpoint via the Resolver on every call.
 type resolverDialer struct {
-	r  *discovery.Resolver
+	lb *loadbalance.Pool
 	nd *net.Dialer
 }
 
 func (d resolverDialer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
-	ep, err := d.r.Pick()
+	ep, err := d.lb.Pick(loadbalance.PickInfo{})
 	if err != nil {
 		return nil, err
 	}
 	return d.nd.DialContext(ctx, "tcp", ep.Addr)
 }
 
-// The resolver (built by [gormcore.Common.NewResolver]) is adapted to mssql's
+// The pool (built by [gormcore.Common.NewPickPool]) is adapted to mssql's
 // Dialer interface via resolverDialer, and its watch is stopped via the closer
 // [build] attaches to the client.

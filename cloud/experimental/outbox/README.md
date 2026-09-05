@@ -21,7 +21,7 @@ This package is the broker- and storage-neutral core:
 The **write side** (inserting into the outbox table inside your transaction)
 and the **gorm Store implementation** live in the storage backend starter —
 `go-spring.org/starter-outbox-gorm` — because they need the transaction
-handle. Delivery goes through any registered `messaging.Binder` (kafka, nats,
+handle. Delivery goes through any registered `messaging.Driver` (kafka, nats,
 ...), so the broker is a wiring choice.
 
 ## Semantics

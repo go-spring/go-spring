@@ -102,7 +102,7 @@ func TestDNS_ResolveA(t *testing.T) {
 	assert.String(t, f.name).Equal("redis.ns.svc.cluster.local")
 }
 
-func TestDNS_WatchDetectsChange(t *testing.T) {
+func TestDNS_CacheRefreshesAfterTTL(t *testing.T) {
 	f := &fakeResolver{}
 	f.set(nil, []net.IPAddr{{IP: net.ParseIP("10.0.0.1")}})
 	d := newDNSDiscovery(Config{
@@ -110,53 +110,39 @@ func TestDNS_WatchDetectsChange(t *testing.T) {
 		ClusterDomain: "cluster.local", RefreshInterval: 10 * time.Millisecond,
 	}, f)
 
-	ch, err := d.Watch(context.Background(), "redis")
+	eps, err := d.Resolve(context.Background(), "redis")
 	assert.Error(t, err).Nil()
-	recvWithTimeout(t, ch, time.Second) // drain the seed snapshot (one endpoint)
+	assert.Slice(t, addrsOf(eps)).Equal([]string{"10.0.0.1:6379"})
 
-	// Simulate a scale-up: the next poll must surface the new endpoint.
+	// Simulate a scale-up: after the TTL elapses, the next read re-fetches.
 	f.set(nil, []net.IPAddr{
 		{IP: net.ParseIP("10.0.0.1")},
 		{IP: net.ParseIP("10.0.0.2")},
 	})
-
-	r := recvWithTimeout(t, ch, time.Second)
-	assert.Slice(t, addrsOf(r.Endpoints)).Equal([]string{"10.0.0.1:6379", "10.0.0.2:6379"})
+	time.Sleep(20 * time.Millisecond)
+	eps, err = d.Resolve(context.Background(), "redis")
+	assert.Error(t, err).Nil()
+	assert.Slice(t, addrsOf(eps)).Equal([]string{"10.0.0.1:6379", "10.0.0.2:6379"})
 }
 
-func TestDNS_WatchCancelClosesChannel(t *testing.T) {
+func TestDNS_CacheServesWithinTTL(t *testing.T) {
 	f := &fakeResolver{}
 	f.set(nil, []net.IPAddr{{IP: net.ParseIP("10.0.0.1")}})
 	d := newDNSDiscovery(Config{
 		Mode: ModeDNS, Namespace: "ns", Port: 6379,
 		ClusterDomain: "cluster.local", RefreshInterval: time.Hour,
 	}, f)
-	ctx, cancel := context.WithCancel(context.Background())
-	ch, err := d.Watch(ctx, "redis")
+
+	_, err := d.Resolve(context.Background(), "redis")
 	assert.Error(t, err).Nil()
-	recvWithTimeout(t, ch, time.Second) // drain the seed snapshot
 
-	cancel()
-	select {
-	case _, ok := <-ch:
-		assert.That(t, ok).False() // channel must be closed
-	case <-time.After(time.Second):
-		t.Fatal("watch channel did not close after ctx cancel")
-	}
-}
-
-// recvWithTimeout fails the test if the watch channel does not yield a snapshot
-// within d.
-func recvWithTimeout(t *testing.T, ch <-chan discovery.WatchResult, d time.Duration) discovery.WatchResult {
-	t.Helper()
-	select {
-	case r, ok := <-ch:
-		if !ok {
-			t.Fatal("watch channel closed before yielding a snapshot")
-		}
-		return r
-	case <-time.After(d):
-		t.Fatal("watch did not yield a snapshot in time")
-		return discovery.WatchResult{}
-	}
+	// A scale-up within the TTL window must NOT trigger a fetch — the cached
+	// snapshot is served as-is.
+	f.set(nil, []net.IPAddr{
+		{IP: net.ParseIP("10.0.0.1")},
+		{IP: net.ParseIP("10.0.0.2")},
+	})
+	eps, err := d.Resolve(context.Background(), "redis")
+	assert.Error(t, err).Nil()
+	assert.Slice(t, addrsOf(eps)).Equal([]string{"10.0.0.1:6379"})
 }

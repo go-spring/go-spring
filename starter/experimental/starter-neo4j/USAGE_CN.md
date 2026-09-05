@@ -125,10 +125,7 @@ spring.neo4j.analytics.password=password
 spring.neo4j.analytics.max-connection-pool-size=50
 spring.neo4j.analytics.connection-acquisition-timeout=30s
 
-# --- observability -----------------------------------------------------------
-# Query 的访问日志默认 level=brief（包级 observer）；
-# 实例级 spring.neo4j.<name>.observability.* 驱动的是 resilience
-# executor 的观测（resilience.* 指标），不是查询访问日志。
+# --- observability（starter-otel：OTLP 导出 + prometheus）--------------------
 spring.observability.service-name=demo
 spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
@@ -184,10 +181,9 @@ gs.Run()
   │   └─ fail-fast VerifyConnectivity，受 socket-connect-timeout 或 5s 约束；
   │      失败时关闭 client 与 resolver，启动中止
   │      [starter.go:109-119, 132-137]
-  ├─ gs 字段注入 Client.Observability（${observability:=}）
-  ├─ Init [client.go:74-79]：resource = resilience.ResourceLabel("neo4j",
+  ├─ Init [client.go:68-69]：resource = resilience.ResourceLabel("neo4j",
   │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilience.WrapExecutor(exec, "neo4j", Observability)——治理关闭时
+  │   → resilience.WrapExecutor(exec, "neo4j")——治理关闭时
   │   executor 为透明 no-op
   ├─ readiness：指示器每次探测跑 VerifyConnectivity
   └─ SIGTERM → Destroy [client.go:89-95]：exec.Close → stopLiveResolver →
@@ -214,21 +210,21 @@ neo4j.ExecuteQuery / Query）（client.go:81-88 注释）。
 | `StarterNeo4j.RunWithResilience` | 仅把任意 session/事务代码套进韧性保护（无 span/指标/日志） | 可选 |
 | `StarterNeo4j.StartSpan` / `EndSpan` | 为手工 `driver.NewSession` 操作补 span + 指标 + 访问日志 | 可选 |
 | 健康指示器 `neo4j:<name>` | 每次 actuator 探测跑 `VerifyConnectivity` | 自动，恒注册 |
-| Init 里的 `resilience.WrapExecutor` | 受保护执行的 outcome 指标（`resilience.*`），由实例级 `observability.*` 块控制 | 治理开启时自动 |
+| Init 里的 `resilience.WrapExecutor` | 受保护执行的 outcome 指标（`resilience.*`） | 治理开启时自动 |
 
-`Query` 的 span/指标/日志挂在**包级**默认 observer 上（`observe.NewDB("neo4j",
-Level: brief)`，command.go:46），随 starter-otel 安装的 OTel globals——实例级
-`observability.*` 块不能改它的档位（command.go:42-44 注释：kit 无法绑定到自由函数
-调用路径）。
+`Query` 的 span/指标/日志挂在**包级**默认 observer 上（首次使用时惰性构建，
+command.go:50），由本模块内建埋点（[observe.go]）产出、随 starter-otel 安装的 OTel
+globals——没有任何配置开关；Query 的访问日志恒经该包级 observer、按 log 包原生
+级别输出。
 
-`Query` 使用时的实际产出（observe kit，`cloud/observe/observer.go:58-63, 184-195`）：
+`Query` 使用时的实际产出：
 
 - span：kind=client，名称 = `op`（`Query` 为 `"query"`），属性 `db.system=neo4j`、
-  `db.operation=<op>`、detailed 模式下 `db.statement=<Cypher，截断约束>`
+  `db.operation=<op>`、`db.statement=<Cypher，截断至 512 字节>`
 - 指标：`db.client.operation.duration`（直方图，秒）与
   `db.client.active_requests`（在飞 gauge），均带 db.system/operation 标签
 - 访问日志：日志 tag `_app_neo4j_access` 下每次调用一条（`log.RegisterAppTag`），
-  默认 `brief`（system/op/status/duration/error）
+  按原生级别——失败 → Warn；带捕获 Cypher 参数的成功 → Debug；普通成功 → Info
 
 ### 2.3 一次查询的真实走读：`Query(... "MATCH ...")`
 
@@ -298,13 +294,11 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 
 ### 3.4 插桩
 
-| Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
-|-----|------|---------|-------------------------|------------------------------|
-| `observability.level` | string | `brief` | 控制 **resilience-executor** 的访问日志（Init 里的 `resilience.WrapExecutor`），不是 Query 的访问日志（那是包级 `brief`，§2.2）。`off` 只静默日志信号。 | 指望它调 Query 日志 → 无效果，反直觉。 |
-| `observability.maxArgBytes` | int | 512 | detailed 模式下参数捕获上限。 | — |
-| `observability.skipOps` | list | — | 对列出的 op 名同时抑制 span+指标+日志。 | — |
+本模块**没有插桩配置 key**（没有 level、没有跳过名单、没有参数上限）：辅助函数的
+观测无条件开启，由模块内建埋点（[observe.go]）产出；trace/指标搭乘 starter-otel
+安装的 OTel globals（`spring.observability.*`）。
 
-核对：starter 内 15 个 `value:"..."` tag（Config 14 字段 + wrapper 的 `observability`）
+核对：starter 内 14 个 `value:"..."` tag（Config 字段）
 与上表一一对应——`grep -rhoE 'value:"[^"]+"'` 双向无多余。
 
 ---
@@ -325,7 +319,8 @@ docker start starter-neo4j       # 下次探测翻回 UP——无需重启
 
 ```bash
 grep _app_neo4j_access app.log | tail -1
-# brief 记录：system=neo4j op=query status ok duration=...（仅 StarterNeo4j.Query）
+# system=neo4j op=query status ok duration=...（仅 StarterNeo4j.Query；
+# 带 Cypher 的成功为 Debug，普通成功为 Info，失败为 Warn）
 curl -s :9090/metrics | grep -E 'db.client.(operation.duration|active_requests)'
 # 每次 Query 的时长直方图 + 在飞 gauge，db.system=neo4j
 # Jaeger（example-otel compose）：span "query" 带 db.statement=<Cypher>
@@ -370,7 +365,6 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 | 启动报 "neo4j: resolve service X" | 设了 `service-name` 但 `discovery` 名下无后端 | 注册后端（example/discovery.go）或去掉 service-name。 |
 | 查询正常但无 span/指标/访问日志 | 代码直调 `neo4j.ExecuteQuery`，绕过接缝 | 换 `StarterNeo4j.Query` / 套 `StartSpan`（§2.2）；真实导出需 import starter-otel。 |
 | 治理已开却没有保护 | session 代码未走 `Query`/`RunWithResilience`，或传了裸 driver（断言落空） | 走辅助函数；恒传 `*Client` wrapper [command.go:111-116]。 |
-| `observability.level=off` 访问日志仍在发 | 它控制的是 resilience-executor 日志，不是 Query 的包级 `brief` observer | 已知不对称（§3.4）；用日志 tag 配置静默 `_app_neo4j_access`。 |
 | TLS 配置似乎不起作用 | URI scheme 是明文 `bolt://`/`neo4j://` | 把 scheme 换成 `neo4j+s://`/`bolt+s://`；tls.* 只定制加密 scheme 的信任 [driver.go:84-89]。 |
 | 发现端点已变，client 仍拨旧地址 | 一次性解析——driver 无 dialer 钩子 | 重建/重启 client（§2.4）；或前置 mesh/sidecar LB。 |
 
@@ -378,10 +372,10 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 14 实例 key + tls 组（4）+ observability（3） |
+| 配置 key 总数 | 14 实例 key + tls 组（4） |
 | 其中必填 | 1（`uri`） |
 | quickstart 前置外部依赖 | 1（Neo4j） |
-| "注意/坑" 条数 | 7 |
+| "注意/坑" 条数 | 6 |
 
 设计嫌疑清单（审计台账——保留上一轮条目，另加新条目）：
 
@@ -393,8 +387,6 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
   最深接缝；一旦使用，治理自动生效（无 resilience 开关）。测试见 resilience_test.go。
 - `Query` 通过把 driver 参数断言回 `*Client` 找 executor——类型不同的自定义 driver
   静默丢失保护（command.go:111-116）。
-- 访问日志用包级默认 observer 而非实例级 `observability` 块，同名配置 key 控制两件
-  不同的事（command.go:42-46 与 client.go:77）——配置语义陷阱。
 - `tls.enabled` 在这里是死占位 key（scheme 才管加密），候选收敛 tls 形状
   （driver.go:84-89）；一次性发现解析（vs 其它 client starter 的活性重解析）是被
   缺失的 dialer 钩子所迫（§2.4）。

@@ -131,17 +131,6 @@ func WithRetryInterval(d time.Duration) Option { return func(o *Options) { o.Ret
 // WithToken sets an explicit fencing token instead of a generated one.
 func WithToken(token string) Option { return func(o *Options) { o.Token = token } }
 
-// Apply builds a normalized Options from opts. Backends call it at the top of
-// Acquire/TryAcquire so defaults are consistent everywhere.
-func Apply(opts ...Option) Options {
-	var o Options
-	for _, fn := range opts {
-		fn(&o)
-	}
-	o.normalize()
-	return o
-}
-
 func (o *Options) normalize() {
 	if o.TTL <= 0 {
 		o.TTL = 30 * time.Second
@@ -162,4 +151,44 @@ func newToken() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// DefaultOptions is the starter/backend-level default options layered
+// beneath the per-acquisition opts. A zero field means "no opinion — use the
+// package default", so a backend only populates the fields its config
+// actually exposes.
+type DefaultOptions struct {
+	TTL           time.Duration
+	RenewInterval time.Duration
+	RetryInterval time.Duration
+}
+
+// Resolve normalizes opts with d layered beneath them:
+//
+//	per-acquisition Option  >  starter DefaultOptions  >  package default
+//
+// Backends call it at the top of Acquire/TryAcquire, so a starter-level value
+// is an overridable default and a per-call
+// [WithTTL]/[WithRenewInterval]/[WithRetryInterval] always wins. A backend
+// with no starter-level knobs passes a zero DefaultOptions.
+//
+// DefaultOptions fills only fields the caller left at zero, before
+// normalization — so an explicit zero or negative value (e.g. RenewInterval
+// < 0 to disable auto-renew) survives the layering.
+func Resolve(d DefaultOptions, opts ...Option) Options {
+	var o Options
+	for _, fn := range opts {
+		fn(&o)
+	}
+	if o.TTL == 0 && d.TTL > 0 {
+		o.TTL = d.TTL
+	}
+	if o.RenewInterval == 0 && d.RenewInterval != 0 {
+		o.RenewInterval = d.RenewInterval
+	}
+	if o.RetryInterval == 0 && d.RetryInterval > 0 {
+		o.RetryInterval = d.RetryInterval
+	}
+	o.normalize()
+	return o
 }

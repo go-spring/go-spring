@@ -114,10 +114,8 @@ spring.discovery.etcd.prod.key-prefix=/services/
 
 `key-prefix` must match the registrars' prefix or nothing resolves. Health is
 derived from key liveness: an instance key only exists while its lease is alive,
-so every key found is a live instance — no probing protocol is needed. The
-backend also implements `discovery.Catalog` (`Services()` enumerates every
-service with at least one live key), so gateways can build routes dynamically.
-An optional `scheme` metadata key on the registered instance carries transport
+so every key found is a live instance — no probing protocol is needed. An
+optional `scheme` metadata key on the registered instance carries transport
 selection, mirroring the nacos adapter.
 
 ## How It Works
@@ -147,7 +145,7 @@ Docker.
 
 `Server.UpdateWeight(ctx, weight)` re-advertises this instance with a new
 weight without deregistering: consumers (loadbalance pools) pick the new value
-up on their next discovery snapshot — one Watch push cycle. A weight of 0
+up on their next discovery snapshot — one refresh cycle. A weight of 0
 drains the instance (no traffic, still registered), which is the standard
 zero-downtime rotation step before shutdown. Operators can also edit the
 registered weight directly at the registry; the effect is identical.

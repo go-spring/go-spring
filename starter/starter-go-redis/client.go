@@ -28,19 +28,17 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // Client is the wrapper bean go-redis clients are injected as. It
 // embeds the concrete redis.UniversalClient (a *redis.Client or *redis.ClusterClient
-// depending on mode, so methods promote unchanged) and field-injects Observability.
-// newClient returns one; gs field-injects Observability, then calls Init (InitMethod).
+// depending on mode, so methods promote unchanged).
+// newClient returns one; gs then calls Init (InitMethod).
 // Both resilience and fault are resolved through neutral seams
 // ([resilience.ExecutorFor] / [fault.InjectorFor]) backed by starter-govern's
 // governance center — so this struct has zero coupling to cloud/governance.
 type Client struct {
 	redis.UniversalClient
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	cfg      Config              // for resourceLabel (address fields)
 	exec     resilience.Executor // resolved via resilience.ExecutorFor; no-op when governance is off
@@ -48,16 +46,16 @@ type Client struct {
 	stop     io.Closer // driver-supplied teardown (e.g. discovery resolver watch)
 }
 
-// Init is the gs InitMethod (runs after gs field-injects Observability).
-// It resolves the executor through the neutral [resilience.ExecutorFor] seam
-// (backed by starter-govern's governance center when imported), wraps it with the
-// process-wide fault injector ([fault.InjectorFor], nil-safe), then the observe kit,
-// and attaches the per-command hook so every command flows through it. When
-// governance is off the resolved executor is a transparent no-op.
+// Init is the gs InitMethod. It resolves the executor through the neutral
+// [resilience.ExecutorFor] seam (backed by starter-govern's governance center
+// when imported), wraps it with the process-wide fault injector
+// ([fault.InjectorFor], nil-safe), then the access log, and attaches the
+// per-command hook so every command flows through it. When governance is off
+// the resolved executor is a transparent no-op.
 func (o *Client) Init() error {
 	o.resource = resourceLabel(o.cfg)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "redis", o.Observability)
+	exec = resilience.WrapExecutor(exec, "redis")
 	o.exec = exec
 	// Layer order (go-redis hooks are FIFO — first added is outermost):
 	//
@@ -70,7 +68,7 @@ func (o *Client) Init() error {
 	// one log line covers the whole retry loop, and it rides redisotel's span
 	// context for trace_id correlation. observeHook is attached before
 	// resilienceHook precisely so it sits outside the breaker.
-	applyObservability(o.Observability, o.UniversalClient)
+	applyObservability(o.UniversalClient)
 	o.AddHook(&resilienceHook{exec: exec, resource: o.resource})
 	return nil
 }

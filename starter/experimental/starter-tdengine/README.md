@@ -57,7 +57,7 @@ whole `database/sql` ecosystem promote unchanged.
   a `tdengine:<name>` indicator for `starter-actuator`.
 - **Per-statement resilience + observability** — statements flow through a
   guarded driver.Conn: rate limiting, circuit breaking, fault injection, span
-  + metric + access log per statement, all armed after field injection.
+  + metric + access log per statement, all armed in Init.
 - **Websocket wire, zero CGO** — works against any TDengine ≥ 3.3.6 running
   taosAdapter; `wss://` DSNs for TLS.
 

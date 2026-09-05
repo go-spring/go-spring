@@ -110,8 +110,6 @@ spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
 
 # Access-log verbosity of the observe-lock adapter (defaults shown).
-# spring.lock.main.observability.level=brief
-# spring.lock.main.observability.maxArgBytes=512
 ```
 
 **Verify** (with a local etcd, e.g. `example/docker-compose.yml`):
@@ -154,7 +152,7 @@ outstanding hold.
 
 ### 2.2 Three-layer timing resolution (all lock backends)
 
-TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/defaults.go), higher
+TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/resolve.go), higher
 layer wins:
 
 | Layer | Source | This backend |
@@ -202,9 +200,6 @@ All keys live under `spring.lock.<name>` (exact-match, no relaxed forms).
 | `key-prefix` | string | `/lock/` | Prepended to every lock key; trailing slashes preserved. | Shared prefix across apps → mutual contention. |
 | `tls.enabled` | bool | `false` | Applies the shared `tlsconf` block (`server-name`, `ca-file`, `cert-file`, `key-file`, `insecure-skip-verify`) via `tlsconf.Build`. | Bad material → boot failure at client creation. |
 | `observe.enabled` | bool | `true` | Wrap the primary `<name>` Locker bean with the observe-lock adapter (trace span + metric + access log). `false` = bare locker. | Migration: the `<name>-observed` bean no longer exists — inject `<name>`. |
-| `observability.level` | string | `brief` | Access-log level `off`/`brief`/`detailed` (detailed logs the lock key). | Invalid value → binding error at boot. |
-| `observability.maxArgBytes` | int | `512` | Cap on logged lock-key bytes. | Too low truncates keys in logs. |
-| `observability.skipOps` | []string | — | Ops (`acquire`, `try_acquire`) excluded from the access log. | Typos silently no-op. |
 
 ⚠ There is **no** `renew-interval`/`retry-interval` key: etcd's concurrency package keeps each
 session's lease alive automatically (§2.2 layer 2). Instance weight (`Weight=0` drain) is a

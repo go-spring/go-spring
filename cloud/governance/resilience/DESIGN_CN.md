@@ -36,7 +36,7 @@ sentinel 驱动。
 - **两个客户端 adapter 覆盖实际场景:**
   - `NewRoundTripper` —— 覆盖面最广;任何 `*http.Client` 换 Transport 即接入
     保护。重试用 `Request.GetBody` clone 请求体;5xx 计入熔断失败。
-  - `NewDialer` —— 连接层通用;与 a dial closure over `discovery.Resolver.Pick` 天然
+  - `NewDialer` —— 连接层通用;与 a dial closure over a round-robin pick pool 天然
     组合。resource 固定,因为 dialer 本就绑定一个 service。
 
   入站 admission 不在本包:各协议 starter 用 `governance.ExecutorFor` seam

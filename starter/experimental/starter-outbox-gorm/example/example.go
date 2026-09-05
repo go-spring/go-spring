@@ -15,7 +15,7 @@
  */
 
 // example drives the transactional outbox end to end on an in-memory sqlite
-// database and an in-memory "mem" binder, self-asserting the pattern's three
+// database and an in-memory "mem" driver, self-asserting the pattern's three
 // core behaviors, then exits non-zero on any failure:
 //
 //  1. atomicity — a committed transaction delivers its message; a rolled-back
@@ -43,13 +43,13 @@ import (
 )
 
 // ----------------------------------------------------------------------------
-// In-memory binder: records published messages per destination; destinations
+// In-memory driver: records published messages per destination; destinations
 // listed in failUntil fail the first N publishes (0 = always fail), so the
 // example can drive retry and dead-letter paths without a broker.
 // ----------------------------------------------------------------------------
 
-// memBinder implements [messaging.Binder] over in-process maps.
-type memBinder struct {
+// memDriver implements [messaging.Driver] over in-process maps.
+type memDriver struct {
 	mu        sync.Mutex
 	sent      map[string][]*messaging.Message
 	attempts  map[string]int
@@ -57,7 +57,7 @@ type memBinder struct {
 }
 
 func init() {
-	messaging.RegisterBinder("mem", &memBinder{
+	messaging.RegisterDriver("mem", &memDriver{
 		sent:      make(map[string][]*messaging.Message),
 		attempts:  make(map[string]int),
 		failUntil: map[string]int{"orders.flaky": 2, "poison": 0},
@@ -65,25 +65,25 @@ func init() {
 }
 
 // delivered returns the messages published to dest so far.
-func (b *memBinder) delivered(dest string) []*messaging.Message {
+func (b *memDriver) delivered(dest string) []*messaging.Message {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]*messaging.Message(nil), b.sent[dest]...)
 }
 
-// NewPublisher implements [messaging.Binder].
-func (b *memBinder) NewPublisher(ctx context.Context, destination string) (messaging.Publisher, error) {
+// NewPublisher implements [messaging.Driver].
+func (b *memDriver) NewPublisher(ctx context.Context, destination string) (messaging.Publisher, error) {
 	return &memPublisher{b: b, dest: destination}, nil
 }
 
-// NewSubscriber implements [messaging.Binder].
-func (b *memBinder) NewSubscriber(ctx context.Context, source, group string) (messaging.Subscriber, error) {
+// NewSubscriber implements [messaging.Driver].
+func (b *memDriver) NewSubscriber(ctx context.Context, source, group string) (messaging.Subscriber, error) {
 	return nil, errors.New("example: subscriber not supported")
 }
 
-// memPublisher publishes to one destination of a [memBinder].
+// memPublisher publishes to one destination of a [memDriver].
 type memPublisher struct {
-	b    *memBinder
+	b    *memDriver
 	dest string
 }
 
@@ -144,12 +144,12 @@ func main() {
 // check.sh treats as success). Any deviation exits non-zero.
 func runTest() {
 	ctx := context.Background()
-	b, err := messaging.GetBinder("mem")
+	b, err := messaging.GetDriver("mem")
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "get binder: %v", err)
+		log.Errorf(ctx, log.TagAppDef, "get driver: %v", err)
 		os.Exit(1)
 	}
-	mem := b.(*memBinder)
+	mem := b.(*memDriver)
 	db := demoDB
 	fail := func(format string, args ...any) {
 		log.Errorf(ctx, log.TagAppDef, format, args...)

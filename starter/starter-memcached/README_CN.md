@@ -76,5 +76,6 @@ item, err := s.Memcached.Get("key")
 
 ## 可观测
 
-`bradfitz/gomemcache` 没有官方的 OpenTelemetry 埋点，社区也没有一个能在不包装每个操作的前提下干净接入客户端的等价方案。为避免引入
-脆弱的包装层，本 starter **有意不内置**可观测；需要对缓存访问做 tracing/metrics 时请在调用侧自行埋点。
+`bradfitz/gomemcache` 没有官方的 OpenTelemetry 埋点。本 starter 因此自带模块内观测层：每个操作经过 client span
+（`db.system`/`db.operation`/`db.statement` 属性）、`db.client.operation.duration` 直方图，以及 tag 为
+`_app_memcached_access` 的访问日志。未导入 starter-otel 时三者均为空操作。

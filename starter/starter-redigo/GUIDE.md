@@ -123,7 +123,7 @@ n, err := redis.Int(conn.Do("INCR", "counter")) // INCR
 | `driver` | `DefaultDriver` | 选哪个[ Driver](#七扩展自定义-driver)。 |
 | `startup-ping` | `false` | 启动期拨一条连接 `PING`，地址错/不可达时启动即失败（fail-fast），而非等到首次请求。redigo 池是惰性拨号的，建议生产打开。 |
 
-> **resilience / 访问日志级别是全局键**（`resilience.*` / `observability.*`，见[第五节](#五resilience限流--熔断--重试--超时)、[第六节](#六observabilitytrace--metric--访问日志)）。但每个实例可以单独**关掉** observe / health，见[第九节](#九关闭内置功能)（`observe.enabled`、`health.enabled`）。
+> **resilience 是全局键**（`resilience.*`，见[第五节](#五resilience限流--熔断--重试--超时)）。observe 层内置无条件（未装 starter-otel 时空操作）；health 可按实例关闭，见[第九节](#九关闭内置功能)（`health.enabled`）。
 
 ---
 
@@ -196,26 +196,15 @@ resilience.driver=default     # 后端驱动，default 或 sentinel
 
 ## 六、Observability（trace / metric / 访问日志）
 
-可观测分**两个独立配置域**，别搞混：
+观测层由 starter **内置且无条件生效**：未导入 starter-otel 时 trace/metric 自动是空操作，导入后自动搭上 starter-otel 装的全局
+TracerProvider/MeterProvider（`spring.observability.*` 管理 exporter、采样率、服务名）。
 
-| 配置域 | 键前缀 | 来自 | 管什么 |
-|---|---|---|---|
-| **OTel 管线** | `spring.observability.*` | starter-otel | 全局 TracerProvider/MeterProvider：是否启用、exporter（otlp/prometheus/...）、采样率、服务名。**没装 starter-otel 时 trace/metric 自动是空操作。** |
-| **访问日志 + 跳过项** | `observability.*`（全局顶层） | 每个 client starter 的包装 bean | 每条命令的访问日志级别、参数截断、跳过哪些命令。同样是一套全局键驱动所有 client starter。 |
+- 每条命令一个 client span（`db.system`/`db.operation`/`db.statement` 属性）+ `db.client.operation.duration` 直方图。
+- 访问日志走项目 `log` 包（tag `_app_redigo_access`）：错误 → Warn；带参数的成功 → Debug（惰性求值）；其余成功 → Info。
+- 日志只记命令名 + 第一个参数（通常是 key），**不记 value**（可能敏感或很大），且截断到 512 字节。
+- 健康探测的 `PING` 整体静默（span+metric+log 一起跳过），避免刷屏。
 
-### 访问日志配置
-
-```properties
-observability.level=brief        # off=不打访问日志 / brief=默认，一行一条 / detailed=带命令+key
-observability.maxArgBytes=512    # detailed 模式下参数最多记多少字节
-observability.skipOps=PING       # 这些命令整体静默（span+metric+log 一起跳过），用于降噪
-```
-
-- trace 和 metric **搭 OTel 全局的便车**（starter-otel 装的 TracerProvider/MeterProvider），starter-redigo 自己不配 exporter。
-- 访问日志走项目 `log` 包，受 `observability.level` 控制。
-- `detailed` 只记命令名 + 第一个参数（通常是 key），**不记 value**（可能敏感或很大）。
-
-可运行示例参考 `starter-bigcache/example-cloudnative`（同一套 observe kit）。
+可运行示例参考 `starter-bigcache/example-cloudnative`。
 
 ---
 
@@ -245,14 +234,16 @@ spring.redigo.cache.driver=MyDriver   # 选中它（默认是 DefaultDriver）
 
 `RegisterDriver` 重名会 panic（fail-fast，避免静默覆盖）。
 
-### `io.Closer` 返回值是什么
+### teardown（关闭语义）
 
-`CreateClient` 返回的 `io.Closer` 是「池之外、需要随池一起释放的资源」的 teardown：
+`DefaultDriver` 经 `NewPool` 返回的 `*Pool` 自带 `Close()`，是随池一起释放的 teardown：
 
-- `DefaultDriver` 在开服务发现时，返回的是 discovery resolver 的 `Stop`（关后台 watch）。
-- 你的 driver 没有额外资源要清理时，返回 `discovery.NopCloser()` 即可。
+- discovery 不再为 teardown 贡献任何东西：loader 无资源、无后台 watch、无 `Stop`，
+  新鲜度在后端内部（`pool.go:150-152`）。
+- 你的 driver 没有额外资源时，`Pool.Close` 只需关底层连接池即可，无需（也无法）再停什么
+  discovery 后台任务。
 
-`(*Pool).Destroy`（gs 销毁时自动调用）会先关执行器、再调这个 closer、最后关池。
+`(*Pool).Destroy`（gs 销毁时自动调用，`starter.go:155`）会先关执行器、再关底层 redis 池。
 
 ### 最小示例
 
@@ -328,20 +319,16 @@ func init() {
 
 | 内置功能 | 开关键 | 默认 | 关掉的效果 |
 |---|---|---|---|
-| **observability**（span/metric/log） | `observe.enabled` | `true` | 不建 observer，`Conn` 包装层变近零成本 pass-through（仍包装，保证 `DoContext`/`DoWithTimeout` 透明）。区别于全局 `observability.level=off`（只静默访问日志）。 |
 | **health 指标** | `health.enabled` | `true` | 不注册 `redigo:<name>` 健康指标，不进聚合健康。 |
 | **resilience** | `resilience.enabled`（全局） | `false` | 本就 opt-in；不开启则命令直连。见[第五节](#五resilience限流--熔断--重试--超时)。 |
 | **startup-ping** | `startup-ping` | `false` | 本就 opt-in；不开启则惰性拨号。 |
 
 ```properties
-# 某个非关键缓存池：关掉遥测 + 不进聚合健康
+# 某个非关键缓存池：不进聚合健康
 spring.redigo.softcache.addr=10.0.0.5:6379
-spring.redigo.softcache.observe.enabled=false
 spring.redigo.softcache.health.enabled=false
 ```
 
-> **`observe.enabled` vs 全局 `observability.level`**：前者是这个实例的硬开关（连 span/metric 一起关）；后者是所有 client starter 共享的访问日志级别（`observability.level=off` 只关日志，span/metric 在 starter-otel 在场时仍发）。要彻底静音某个 redigo 实例的遥测，用 `observe.enabled=false`。
->
 > **cache driver**（`redigo` 那个 `cache.RegisterDriver`）是包级注册，但被 `spring.cache.<n>.driver=redigo:...` 引用前是惰性的，不引用就不生效，无需开关。
 
 ---
@@ -359,9 +346,9 @@ spring.redigo.cache.conn-max-lifetime=30s  # 建议调短，平滑切址
 
 工作方式：
 
-- starter 调 `discovery.NewResolver` 拉取 `redis-cluster` 的存活端点，后台 watch 保持新鲜。
+- starter 调 `discovery.NewLoader` 拉取 `redis-cluster` 的存活端点；新鲜度在后端内部，loader 无后台 watch。
 - 连接池**每次新建连接**时 `Pick()` 一个存活实例拨过去；配合较短的 `conn-max-lifetime`，池内连接会逐步换到更新后的地址，**无需重建池**。
-- 关闭时 starter 自动停掉后台 watch。
+- loader 无资源、无 `Stop`——`Pool.Close` 只需关 resilience executor + 底层 redis 池，无需停任何 watch（`pool.go:150-152`）。
 - **mesh 模式**（`GS_MESH=on`）下，发现被整个跳过——sidecar 接管发现+LB，池直接拨配置的 `addr`（服务的稳定 mesh 地址）。
 
 注册一个 discovery 后端的示例见 [example/discovery.go](example/discovery.go)。
@@ -434,7 +421,7 @@ spring.redigo.cache.tls.insecure-skip-verify=true
 
 ## 十四、与 starter-go-redis 的关系
 
-两者配置字段布局刻意保持一致（`addr`/`pool-size`/`tls.*`/`service-name`/`discovery`/`scheme`/resilience/observability 全部对齐），切换通常**只改 import**：
+两者配置字段布局刻意保持一致（`addr`/`pool-size`/`tls.*`/`service-name`/`discovery`/`scheme`/resilience 全部对齐），切换通常**只改 import**：
 
 | | starter-redigo | starter-go-redis |
 |---|---|---|

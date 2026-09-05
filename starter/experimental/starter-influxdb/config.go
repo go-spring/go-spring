@@ -16,9 +16,7 @@
 
 package StarterInfluxdb
 
-import (
-	observe "go-spring.org/cloud/observe"
-)
+import ()
 
 // Config defines the InfluxDB 2.x client configuration.
 type Config struct {
@@ -35,12 +33,6 @@ type Config struct {
 	// Bucket is the default destination bucket for writes performed through
 	// the wrapper helpers.
 	Bucket string `value:"${bucket:=}"`
-
-	// Observability configures the per-request span, metric and access log
-	// emitted by the observe transport (off/brief/detailed). Defaults to
-	// "brief". Instance keys (spring.influxdb.<name>.observability.*) override
-	// the top-level observability.* keys — see Client.resolveObservability.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which InfluxDB driver to use, defaults to
 	// DefaultDriver.

@@ -83,24 +83,8 @@ func TestEndpointsKey(t *testing.T) {
 	assert.That(t, endpointsKey(a) != endpointsKey(b)).True()
 }
 
-func TestServiceNames(t *testing.T) {
-	keys := []string{
-		"/services/orders/orders-10.0.0.1:8080",
-		"/services/orders/orders-10.0.0.2:8080",
-		"/service/payments/payments-10.0.0.3:9090",
-		// No instance segment: skipped.
-		"/services/stray",
-	}
-	names := serviceNames(keys, "/services/")
-	// Distinct services only, sorted, and keys outside the prefix ignored.
-	assert.That(t, names).Equal([]string{"orders"})
-}
-
-// compile-time contract: the adapter satisfies both discovery interfaces.
-var (
-	_ discovery.Discovery = (*etcdDiscovery)(nil)
-	_ discovery.Catalog   = (*etcdDiscovery)(nil)
-)
+// compile-time contract: the adapter satisfies the discovery interface.
+var _ discovery.Discovery = (*etcdDiscovery)(nil)
 
 // TestEtcdDiscoveryNoClientPanics guards the zero-value degenerate case: the
 // adapter is only constructible via newEtcdDiscovery, which always sets the

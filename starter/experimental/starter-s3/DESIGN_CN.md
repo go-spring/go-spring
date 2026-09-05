@@ -17,20 +17,19 @@ starter）；差异点在下面单独说明。
 
 ## 2. 关键抽象与 Seam
 
-- **`Client` 包装 bean** — 原样内嵌 `*minio.Client` 并字段注入
-  `Observability observe.ObserveConfig`。minio 在构造期的
+- **`Client` 包装 bean** — 原样内嵌 `*minio.Client`。minio 在构造期的
   `minio.Options` 里固定传输层，因此 DefaultDriver 安装
-  `dynamicTransport`（RWMutex 保护的 RoundTripper 间接层），Init 在字段
-  注入完成后把 observe+韧性 传输换进去 —— 与 starter-elasticsearch 同因
+  `dynamicTransport`（RWMutex 保护的 RoundTripper 间接层），Init 把
+  observe+韧性 传输换进去 —— 与 starter-elasticsearch 同因
   同法。
 - **`Driver`（driver.go）** — 构造 seam：注册表 + DefaultDriver 装配凭证
   （`NewStaticV4`）、region、bucket 寻址风格与动态传输层。bucket-lookup
   配置串映射到 minio 的 `BucketLookupType`（minio v7.0.74 里
   `virtual-host` 是 `BucketLookupDNS` 的别名）。
-- **obsTransport（command.go）** — 逐请求 observe seam。与
-  elasticsearch 不同（其 SDK 经 elastictransport 自带 span，所以用
-  `WithoutTrace`），minio-go 不带 OTel 埋点，因此传输层承载
-  span + 指标 + 日志。
+- **obsTransport（command.go）** — 逐请求 observe seam。minio-go 不带
+  OTel 埋点，因此 starter 自带的传输层承载 span + 指标 + 日志
+  （observe.go：client span 带 `db.system`/`db.operation`/`db.statement`、
+  `db.client.*` 指标、`_app_s3_access` 访问日志）。
 - **韧性** — `resilience.NewRoundTripper` 把 observe 传输包上进中性 seam
   解出的执行器（`resilience.ExecutorFor` +
   `fault.WrapExecutor(…, fault.InjectorFor())`，再
@@ -55,6 +54,6 @@ starter）；差异点在下面单独说明。
 - **minio-go vs aws-sdk-go-v2**：minio-go 是单一依赖、API 面小而稳、原生
   理解 S3 兼容性（bucket 寻址模式）；aws-sdk-go-v2 模块图庞大且带 AWS
   特有的装配流程。
-- **构造期静态包传输 vs. dynamicTransport**：包装需要字段注入进来的
-  `Observability`，它只在构造之后才存在；间接层让客户端在构造到 Init
+- **构造期静态包传输 vs. dynamicTransport**：真正的传输层（observe +
+  韧性）要到 Init 才装配，晚于构造；间接层让客户端在构造到 Init
   之间也可用（DefaultTransport 直通），而不是失败或盲装。

@@ -16,7 +16,7 @@ pattern.
 
 ## 1. Complete worked project
 
-A producer + consumer service using the messaging binder, with health probes, metrics, tracing and runtime governance. Files: `go.mod`, `main.go`, `service.go`, `conf/app.properties`.
+A producer + consumer service using the messaging driver, with health probes, metrics, tracing and runtime governance. Files: `go.mod`, `main.go`, `service.go`, `conf/app.properties`.
 
 **go.mod** (deps that matter): `github.com/twmb/franz-go/pkg/kgo`, `go-spring.org/spring`,
 `go-spring.org/cloud`, `go-spring.org/starter-kafka`, plus optional `starter-actuator`
@@ -39,7 +39,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**service.go** — publish and consume `messaging.Message` envelopes through the binder, plus the
+**service.go** — publish and consume `messaging.Message` envelopes through the driver, plus the
 health-indicator escape hatch:
 
 ```go
@@ -72,10 +72,10 @@ func (s *Service) CheckHealth(ctx context.Context) error {
 }
 
 func init() {
-    gs.Provide(func(s *Service) (messaging.Binder, error) {
-        return StarterKafka.NewBinder(s.Client), nil
+    gs.Provide(func(s *Service) (messaging.Driver, error) {
+        return StarterKafka.NewDriver(s.Client), nil
     })
-    gs.Provide(func(b messaging.Binder) gs.Runner {
+    gs.Provide(func(b messaging.Driver) gs.Runner {
         return func(ctx context.Context) {
             pub, _ := b.NewPublisher(ctx, "hello")
             _ = pub.Publish(ctx, &messaging.Message{
@@ -101,9 +101,6 @@ spring.kafka.a.topic=hello
 spring.kafka.a.group=hello-group
 spring.kafka.a.producer.required-acks=all
 spring.kafka.a.producer.compression=snappy
-
-# Per-message access log (tag kafka.access): off / brief / detailed.
-spring.kafka.a.observability.level=detailed
 
 # SASL / TLS are off against a plaintext dev broker; on a secured cluster set
 # sasl.enabled/mechanism/username/password + tls.enabled/ca-file (see §3).
@@ -176,21 +173,20 @@ type [command.go:118-125].
 
 1. `kgo.SeedBrokers(strings.Split(c.Brokers, ",")...)` — brokers is a CSV of seeds; the client
    learns the full cluster itself.
-2. `kgo.WithHooks(append(kt.Hooks(), newObserveHook(...))...)` [driver.go:74] — **kotel
-   (tracer+meter) hooks first, then the observe access-log hook**. Rationale: kotel owns spans and
-   metrics, so the observe hook is built `WithoutTraceAndMetric()` and fills only the access-log
-   gap [command.go:43-48] — no duplicate signals.
+2. `kgo.WithHooks(append(kt.Hooks(), newObserveHook())...)` [driver.go:74] — **kotel
+   (tracer+meter) hooks first, then the log-only access hook**. Rationale: kotel owns spans and
+   metrics, so the access hook emits only the access log (observe.go) — no duplicate signals.
 3. `kgo.WithLogger(newLogger())` — franz-go internal logs (broker connects, request failures,
    reconnects) bridge into go-spring's log at tag `log.TagAppDef`, Info level threshold
    [driver.go:173-193].
 4. `kgo.ConsumerGroup` / `kgo.ConsumeTopics` from `group`/`topic` config — **fixed at
-   construction**; that is a franz-go constraint the binder inherits (§2.3).
-5. SASL mechanism, TLS (`c.TLS.Build()`), producer options (compression/acks/batch/linger).
+   construction**; that is a franz-go constraint the driver inherits (§2.3).
+5. SASL mechanism, TLS (`c.TLS.BuildClient()`), producer options (compression/acks/batch/linger).
 
 The startup ping and resilience wiring are deliberately **not** in the driver — they are the
 starter's lifecycle concerns [driver.go:62-66 comment].
 
-### 2.3 One publish and one consume through the binder, layer by layer
+### 2.3 One publish and one consume through the driver, layer by layer
 
 `Publish(ctx, msg)` on a publisher bound to topic `hello` [client.go:78-94]:
 
@@ -203,12 +199,12 @@ starter's lifecycle concerns [driver.go:62-66 comment].
 4. `GuardedProduceSync(ctx, p.cl, rec).FirstErr()` — synchronous produce routed through the
    same resilience executor the raw client API uses (a no-op pass-through when governance is
    off for this client) [client.go:93-99], broker ack / rejection surfaced to the caller. Set
-   the instance key `governance=false` to make the binder (and `GuardedProduceSync`) run bare
+   the instance key `governance=false` to make the driver (and `GuardedProduceSync`) run bare
    calls with no executor attached.
 5. Inside the client the hooks fire: kotel produce span + metric; observeHook
    `OnProduceRecordBuffered` opens an access-log record named `publish` and
    `OnProduceRecordUnbuffered` ends it with the outcome and buffered→unbuffered duration
-   [command.go:57-69]. Access log tag: `kafka.access` (observe kit `RegisterAppTag("kafka","access")`).
+   [command.go:57-69]. Access log tag: `kafka.access` (`RegisterAppTag("kafka","access")` in observe.go).
 
 `Subscribe(ctx, handler)` on a subscriber bound to source `hello` [client.go:109-144]:
 
@@ -221,11 +217,11 @@ starter's lifecycle concerns [driver.go:62-66 comment].
 5. Trace context extracted from record headers; load-test marker restored onto the message ctx
    [client.go:132-136].
 6. Handler invoked with `fromRecord(rec)`: Key/Payload/Headers/Timestamp all survive the mapping
-   [client.go:172-186]. ⚠ a handler error is **only logged** — no nack/redelivery in this binder
+   [client.go:172-186]. ⚠ a handler error is **only logged** — no nack/redelivery in this driver
    (franz-go group consumption commits regardless; design suspect, §6).
 7. `Close` cancels the loop and waits for `done`, idempotent via `sync.Once` [client.go:146-156].
 
-Two binder traps inherited from the franz-go construction constraint [client.go:43-51 comment]:
+Two driver traps inherited from the franz-go construction constraint [client.go:43-51 comment]:
 `NewSubscriber(ctx, source, group)` **silently drops the `group` argument** (use the client's
 `group` config, client.go:68), and one client is a single consumer — one client bean per logical consumer.
 
@@ -244,7 +240,7 @@ franz-go's async `Produce` returns immediately, so only the synchronous path can
   is encoded as a per-record error so `.FirstErr()` surfaces it like a produce failure
   [command.go:145-151]. example-cloudnative asserts bursts get `resilience.ErrRateLimited`.
 - What is **not** guarded: raw `ProduceSync`/`Produce` called directly on the client bean and
-  the entire consume/poll path (passive). The binder's publish **is** guarded (§2.3 step 4);
+  the entire consume/poll path (passive). The driver's publish **is** guarded (§2.3 step 4);
   `governance=false` per instance removes the guard from every call path.
 
 ---
@@ -259,10 +255,10 @@ per-instance prefix binding). `value:` tags reconciled against source: 21 keys t
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:30]); CSV of seed brokers; also becomes the resilience resource label `kafka:<brokers>`. | Empty → boot error; a wrong-but-reachable host fails the 10s startup Ping. |
-| `topic` | string | "" | Passed as `kgo.ConsumeTopics` — consumer topics fixed at construction; the binder subscriber filters by it. Empty = produce-only client. | Produce works, consume never delivers (no topic subscribed). |
-| `group` | string | "" | Passed as `kgo.ConsumerGroup`; group semantics are Kafka's own (offsets, rebalancing — see kafka.apache.org). ⚠ the binder's `NewSubscriber` group arg is dead — this key is the only group switch. | Empty + topic set = ungrouped (random-group / eager) consumption; offsets not committed. |
+| `topic` | string | "" | Passed as `kgo.ConsumeTopics` — consumer topics fixed at construction; the driver subscriber filters by it. Empty = produce-only client. | Produce works, consume never delivers (no topic subscribed). |
+| `group` | string | "" | Passed as `kgo.ConsumerGroup`; group semantics are Kafka's own (offsets, rebalancing — see kafka.apache.org). ⚠ the driver's `NewSubscriber` group arg is dead — this key is the only group switch. | Empty + topic set = ungrouped (random-group / eager) consumption; offsets not committed. |
 | `driver` | string | `DefaultDriver` | Selects a registered `Driver` [driver.go:46-57]; `RegisterDriver` panics on duplicate names. | Unknown name → boot error "kafka driver not found" [starter.go:68]. |
-| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedProduceSync` and the binder's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
+| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedProduceSync` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
 ### 3.2 SASL
 
@@ -278,7 +274,7 @@ Shared `tlsconf` block — property names uniform across starters [config.go:43-
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `tls.enabled` | bool | false | `c.TLS.Build()` → `kgo.DialTLSConfig` [driver.go:90-97]. | — |
+| `tls.enabled` | bool | false | `c.TLS.BuildClient()` → `kgo.DialTLSConfig` [driver.go:90-97]. | — |
 | `tls.cert-file` / `tls.key-file` | string | "" | mTLS client cert pair. | Half a pair → `tls.Build` boot error. |
 | `tls.ca-file` | string | "" | CA to verify the broker. | Missing against a private CA → Ping TLS failure. |
 | `tls.server-name` | string | "" | SNI/verification name. | Mismatch → verification failure. |
@@ -294,14 +290,6 @@ Zero values keep franz-go defaults [config.go:79-80].
 | `producer.required-acks` | string | `all` | `all`→AllISRAcks; `leader`/`none` also **disable idempotent writes** (protocol requirement) [driver.go:132-141]. | Other value → boot error; weakening acks silently drops idempotence. |
 | `producer.max-batch-bytes` | int32 | 0 | `kgo.ProducerBatchMaxBytes` when >0. | Below broker's message max → produce errors per record. |
 | `producer.linger` | duration | 0s | `kgo.ProducerLinger` when >0; throughput/latency tradeoff. | — |
-
-### 3.5 Observability (shared observe kit)
-
-| Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
-|-----|------|---------|-------------------------|------------------------------|
-| `observability.level` | string | `brief` | Access log off/brief/detailed; kotel spans/metrics are separate and always on (no per-starter otel switch — unlike go-redis). | `off` silences only the log signal. |
-| `observability.maxArgBytes` | int | 512 | Caps the captured argument in detailed mode. | Too small → truncated args. |
-| `observability.skipOps` | list | — | Suppresses span+metric+log for listed op names; here ops are `publish` / `consume`. | — |
 
 ---
 
@@ -320,7 +308,7 @@ curl -s :9370/readyz                 # 503 OUT_OF_SERVICE
 
 Placement in readiness/startup (never liveness — a broker outage must not restart the pod) is the app's call.
 
-### 4.2 Round-trip + which fields survive the binder mapping
+### 4.2 Round-trip + which fields survive the driver mapping
 
 ```bash
 go run .    # §1 service: publish Key=k1 Payload=value Header origin=demo, consume prints it
@@ -338,7 +326,7 @@ W3C trace keys or the load-test header is overwritten by the inject step [client
 go run .    # prints "resilience: N produce admitted, M rejected with ErrRateLimited"
 ```
 
-The same burst via the **binder** publisher is limited identically — it rides the same executor
+The same burst via the **driver** publisher is limited identically — it rides the same executor
 (§2.3 step 4); only a direct raw `ProduceSync` on the client bean bypasses it. Flip `govern.*` in the watched source to change policy without
 restart (governance center hot-reload).
 
@@ -379,25 +367,25 @@ franz-go reconnects automatically (its own semantics).
 | Boot fails "failed to ping kafka" | Unreachable brokers / wrong SASL / TLS mismatch | Fix connectivity or credentials; the 10s probe is unconditional. |
 | Boot fails "kafka driver not found" | `driver` names nothing registered | Register via `RegisterDriver` in an init, or drop the key. |
 | Boot fails "unsupported kafka sasl mechanism / required-acks / compression" | Typo in an enum key | Exact-match enums (case-insensitive); correct the value. |
-| Binder consumer never receives | `NewSubscriber` source ≠ configured `topic`, or `topic` empty | Source must equal the client's `topic`; silent filter otherwise. |
-| Binder consumer group "ignored" | `NewSubscriber` group arg is dead | Set `spring.kafka.<name>.group` (fixed at construction). |
-| No rate limit despite govern.* on | Calling raw `ProduceSync` on the client bean, or `governance=false` on the instance | Only `GuardedProduceSync` and the binder publisher are guarded. |
+| Driver consumer never receives | `NewSubscriber` source ≠ configured `topic`, or `topic` empty | Source must equal the client's `topic`; silent filter otherwise. |
+| Driver consumer group "ignored" | `NewSubscriber` group arg is dead | Set `spring.kafka.<name>.group` (fixed at construction). |
+| No rate limit despite govern.* on | Calling raw `ProduceSync` on the client bean, or `governance=false` on the instance | Only `GuardedProduceSync` and the driver publisher are guarded. |
 | No traces/metrics | starter-otel not imported | kotel rides the OTel globals; import starter-otel. |
-| No access log lines | `observability.level=off`, or log tag filtered | Set `detailed`; check the `kafka.access` tag filter. |
-| Handler errors vanish after a log line | By design: no nack/redelivery in this binder | Build retry/redelivery in the handler or use retry.go from messaging. |
+| No access log lines | log tag filtered | Check the `kafka.access` tag filter. |
+| Handler errors vanish after a log line | By design: no nack/redelivery in this driver | Build retry/redelivery in the handler or use retry.go from messaging. |
 
 ## 6. Design Health
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 21 (4 core + 4 sasl + 6 tls + 4 producer + 3 observability) |
+| Config keys | 18 (4 core + 4 sasl + 6 tls + 4 producer) |
 | Required | 1 (`brokers`) |
 | Quickstart external deps | 1 (Kafka broker) |
 | "Watch out" entries | 6 |
 
 Design suspects (audit ledger; carried over from the previous edition, none fixed since):
 
-- binder drops `NewSubscriber`'s `group` arg and silently filters on `source` mismatch [client.go:68,129-131] — violates fail-fast.
+- driver drops `NewSubscriber`'s `group` arg and silently filters on `source` mismatch [client.go:68,129-131] — violates fail-fast.
 - consume handler errors only logged, no nack/redelivery [client.go:137-139] — contradicts the Recover comment's framing [client.go:110-112].
 - ~~`destroyClient` discards the Flush error~~ fixed: Flush failure now logs an ERROR naming
   the data-loss consequence and propagates out of the destroy hook.

@@ -75,11 +75,12 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     `init()`)。只负责建连接。
   - `starter.go` —— `init()` 期的 `gs.Group` / `gs.Module` 注册,以及组装 bean 的
     构造函数(`newClient`)。
-  - `discovery.go` —— 客户端服务发现接缝:`sync.Map` 跟踪每个 client 的
-    `*discovery.Resolver`、`newLiveResolver` 辅助函数(mesh 门控的 `GetDiscovery` +
-    `NewResolver` + `WithScheme`,`ServiceName` 为空或 mesh 开启时返回 `nil`)以及
-    `stopLiveResolver` 的 Close 半部。driver 各自的 dialer(调 `resolver.Pick`)留在
-    `config.go` / `starter.go`;这里只放 resolver 的构建 + 生命周期。
+  - `discovery.go` —— 客户端服务发现接缝:mesh 门控的构建器(`GetDiscovery` +
+    `discovery.NewLoader` + `WithScheme`,`ServiceName` 为空或 mesh 开启时返回
+    `nil`)。`Loader` 是纯快照函数——无资源、无 `Stop`,新鲜度全在 discovery 后端
+    内部——所以不按 client 缓存、`Destroy` 时也无需回收。driver 各自的 dialer(经
+    `loadbalance.SourceFunc` 把 loader 包进 round-robin `Pool`,每次建连 `Pick`)留在
+    `config.go` / `starter.go`;这里只放 loader 的构建。
   - `resilience.go` —— wrapper bean 的 `ApplyResilience` InitMethod、executor,以及
     它的 `Close` / `CloseDriver` Destroy 钩子。
   - `observability.go` —— observe kit 桥接(trace/metric/access-log 钩子)。
@@ -174,7 +175,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     Apache Thrift(`starter-thrift`)、纯 HTTP web(gin/echo/hertz)。只有这些才值得
     做 Go-Spring 注册 seam,且要等具体需求落地。
 - **client 侧发现已统一,provider 注册不统一。** client 类 starter 可通过
-  `cloud/discovery`(由 driver 的 dialer 钩子注入 `Resolver`)把 `ServiceName`
+  `cloud/discovery`(由 driver 的 dialer 钩子构建 `Loader`)把 `ServiceName`
   解析成实时端点,这对各基础设施客户端是通用的。RPC 的 **provider** 注册按上述原则
   保持框架原生。`ServiceName` 为空时 client 按地址直连,行为不变。各框架原生注册进
   consul/etcd/nacos/zookeeper/polaris 的示例见 `contrib/registry/`。
@@ -183,9 +184,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   均衡,并让拓扑/离群逻辑错乱。用一个进程级全局开关(`mesh.Enabled`,默认按 sidecar
   环境变量自动探测;`GS_MESH` 环境变量 on/off/auto 可覆盖),在发现与负载均衡的
   Factory 装配处 —— 各 client starter 的
-  `newLiveResolver`(见 §2.2)与 `loadbalance.Pool` —— 读取并统一退化为直通:
+  mesh 门控 loader 构建器(见 §2.2)与 `loadbalance.Pool` —— 读取并统一退化为直通:
   服务名解析为唯一稳定的 Service 地址(ClusterIP)交给 sidecar 拦截,负载均衡器不再
-  选择、不再剔除。因为 `newLiveResolver` 内部读取 `mesh.Enabled()`、mesh 开启时返回
+  选择、不再剔除。因为 loader 构建器内部读取 `mesh.Enabled()`、mesh 开启时返回
   `nil`,client starter 无需在调用处逐分支即可感知开关 —— driver 直接跳过安装
   发现拨号器,按配置地址直连。代码不删除 —— 关掉开关即恢复完整的客户端行为。
 - **实例级注册按 starter 各自提供;RPC 框架 provider 注册仍不统一。** 别把两种

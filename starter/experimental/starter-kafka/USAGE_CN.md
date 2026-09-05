@@ -15,7 +15,7 @@ franz-go API 属于 [franz-go 官方文档](https://github.com/twmb/franz-go)与
 
 ## 1. 完整工程示例
 
-一个走 messaging binder 的生产 + 消费服务，组合健康探针、metrics、tracing 与运行时治理。
+一个走 messaging driver 的生产 + 消费服务，组合健康探针、metrics、tracing 与运行时治理。
 文件：`go.mod`、`main.go`、`service.go`、`conf/app.properties`。
 
 **go.mod**（关键依赖）：`github.com/twmb/franz-go/pkg/kgo`、`go-spring.org/spring`、
@@ -39,7 +39,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**service.go** —— 通过 binder 收发 `messaging.Message` 信封，外加 health-indicator 逃生口：
+**service.go** —— 通过 driver 收发 `messaging.Message` 信封，外加 health-indicator 逃生口：
 
 ```go
 package service
@@ -71,10 +71,10 @@ func (s *Service) HealthGroups() []health.Group { return []health.Group{health.G
 func (s *Service) IsCritical() bool { return true }
 
 func init() {
-    gs.Provide(func(s *Service) (messaging.Binder, error) {
-        return StarterKafka.NewBinder(s.Client), nil
+    gs.Provide(func(s *Service) (messaging.Driver, error) {
+        return StarterKafka.NewDriver(s.Client), nil
     })
-    gs.Provide(func(b messaging.Binder) gs.Runner {
+    gs.Provide(func(b messaging.Driver) gs.Runner {
         return func(ctx context.Context) {
             pub, _ := b.NewPublisher(ctx, "hello")
             _ = pub.Publish(ctx, &messaging.Message{
@@ -99,9 +99,6 @@ spring.kafka.a.topic=hello
 spring.kafka.a.group=hello-group
 spring.kafka.a.producer.required-acks=all
 spring.kafka.a.producer.compression=snappy
-
-# 每消息访问日志（tag kafka.access）：off / brief / detailed。
-spring.kafka.a.observability.level=detailed
 
 # 明文开发 broker 下 SASL / TLS 关闭；安全集群上启用
 # sasl.enabled/mechanism/username/password + tls.enabled/ca-file（见 §3）。
@@ -172,21 +169,20 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
 
 1. `kgo.SeedBrokers(strings.Split(c.Brokers, ",")...)` —— brokers 是 CSV；每项只是 seed，
    client 自行学习完整集群拓扑。
-2. `kgo.WithHooks(append(kt.Hooks(), newObserveHook(...))...)` [driver.go:74] ——
-   **kotel（tracer+meter）钩子在前，observe 访问日志钩子在后**。理由：span 与 metric 归
-   kotel，observe 钩子以 `WithoutTraceAndMetric()` 构造，只补访问日志缺口
-   [command.go:43-48]——信号不重复。
+2. `kgo.WithHooks(append(kt.Hooks(), newObserveHook())...)` [driver.go:74] ——
+   **kotel（tracer+meter）钩子在前，纯日志的 access 钩子在后**。理由：span 与 metric 归
+   kotel，access 钩子只发访问日志（observe.go）——信号不重复。
 3. `kgo.WithLogger(newLogger())` —— franz-go 内部日志（broker 连接、请求失败、重连）经
    go-spring log 桥接，tag `log.TagAppDef`，Info 级阈值 [driver.go:173-193]。
 4. `kgo.ConsumerGroup` / `kgo.ConsumeTopics` 来自 `group`/`topic` 配置——**构造期固定**；
-   这是 binder 继承的 franz-go 约束（§2.3）。
-5. SASL mechanism、TLS（`c.TLS.Build()`——裸 `Build`，客户端侧 key 见 §3）、producer 选项
+   这是 driver 继承的 franz-go 约束（§2.3）。
+5. SASL mechanism、TLS（`c.TLS.BuildClient()`——裸 `BuildClient`，客户端侧 key 见 §3）、producer 选项
    （compression/acks/batch/linger）。
 
 启动 ping 与 resilience 接线**有意不放**在 driver 里：它们是 starter 的生命周期职责
 [driver.go:62-66 注释]。
 
-### 2.3 binder 的一次发布与一次消费，逐层走读
+### 2.3 driver 的一次发布与一次消费，逐层走读
 
 绑定到 topic `hello` 的 publisher 上 `Publish(ctx, msg)` [client.go:78-94]：
 
@@ -199,12 +195,12 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
    [client.go:90-92]。
 4. `GuardedProduceSync(ctx, p.cl, rec).FirstErr()` —— 同步生产，走与裸 client API 同一个
    resilience executor（该实例关治理时为透明 no-op）[client.go:93-99]，broker ack / 拒绝
-   直接返回给调用方。实例 key `governance=false` 可让 binder（及 `GuardedProduceSync`）
+   直接返回给调用方。实例 key `governance=false` 可让 driver（及 `GuardedProduceSync`）
    彻底裸调用、不挂 executor。
 5. client 内部钩子触发：kotel produce span + metric；observeHook 的
    `OnProduceRecordBuffered` 开启名为 `publish` 的访问日志记录，
    `OnProduceRecordUnbuffered` 以结果与 buffered→unbuffered 时长收尾
-   [command.go:57-69]。访问日志 tag：`kafka.access`（observe kit
+   [command.go:57-69]。访问日志 tag：`kafka.access`（observe.go 的
    `RegisterAppTag("kafka","access")`）。
 
 绑定到 source `hello` 的 subscriber 上 `Subscribe(ctx, handler)` [client.go:109-144]：
@@ -217,11 +213,11 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
    匹配时静默过滤掉一切 [client.go:129-131]。
 5. 从 record headers 提取 trace context；压测标记恢复到消息 ctx [client.go:132-136]。
 6. handler 收到 `fromRecord(rec)`：Key/Payload/Headers/Timestamp 全部在映射中存活
-   [client.go:172-186]。⚠ handler 错误**只打日志**——本 binder 无 nack/重投
+   [client.go:172-186]。⚠ handler 错误**只打日志**——本 driver 无 nack/重投
    （franz-go 组消费照常提交；设计嫌疑，§6）。
 7. `Close` 取消循环并等 `done`；`sync.Once` 保证幂等 [client.go:146-156]。
 
-franz-go 构造约束带来的两个 binder 陷阱 [client.go:43-51 注释]：
+franz-go 构造约束带来的两个 driver 陷阱 [client.go:43-51 注释]：
 `NewSubscriber(ctx, source, group)` **静默丢弃 `group` 实参**（用 client 的 `group` 配置
 ——client.go:68）；且一个 client 只是一个 consumer——每个逻辑 consumer 用一个 client bean。
 
@@ -241,7 +237,7 @@ franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [comm
   `.FirstErr()` 像真实 produce 失败一样拿到它 [command.go:145-151]。example-cloudnative
   断言突发流量会得到 `resilience.ErrRateLimited`。
 - **不受保护**的路径：直接在 client bean 上调裸 `ProduceSync`/`Produce`，以及整条
-  consume/poll 路径（被动）。binder 的 publish **已受保护**（§2.3 第 4 步）；实例
+  consume/poll 路径（被动）。driver 的 publish **已受保护**（§2.3 第 4 步）；实例
   `governance=false` 会把所有调用路径的 guard 摘掉。
 
 ---
@@ -256,10 +252,10 @@ key 都在 `spring.kafka.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑�
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
 | `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:30]）；CSV seed brokers；同时构成 resilience 资源标签 `kafka:<brokers>`。 | 空 → 启动报错；错但可达的主机在 10s 启动 Ping 处失败。 |
-| `topic` | string | "" | 传给 `kgo.ConsumeTopics`——消费 topic 构造期固定；binder subscriber 按它过滤。空 = 纯生产 client。 | 能生产、消费永不投递（未订阅 topic）。 |
-| `group` | string | "" | 传给 `kgo.ConsumerGroup`；group 语义属 Kafka 自身（offset、rebalance——见 kafka.apache.org）。⚠ binder `NewSubscriber` 的 group 实参是死的——本 key 是唯一 group 开关。 | 空 + 有 topic = 无 group（随机 group/急切）消费；offset 不提交。 |
+| `topic` | string | "" | 传给 `kgo.ConsumeTopics`——消费 topic 构造期固定；driver subscriber 按它过滤。空 = 纯生产 client。 | 能生产、消费永不投递（未订阅 topic）。 |
+| `group` | string | "" | 传给 `kgo.ConsumerGroup`；group 语义属 Kafka 自身（offset、rebalance——见 kafka.apache.org）。⚠ driver `NewSubscriber` 的 group 实参是死的——本 key 是唯一 group 开关。 | 空 + 有 topic = 无 group（随机 group/急切）消费；offset 不提交。 |
 | `driver` | string | `DefaultDriver` | 选择已注册的 `Driver` [driver.go:46-57]；`RegisterDriver` 重名 panic。 | 未知名 → 启动报错 "kafka driver not found" [starter.go:68]。 |
-| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedProduceSync` 与 binder 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
+| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedProduceSync` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
 ### 3.2 SASL
 
@@ -275,7 +271,7 @@ key 都在 `spring.kafka.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑�
 
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `tls.enabled` | bool | false | `c.TLS.Build()` → `kgo.DialTLSConfig` [driver.go:90-97]。 | — |
+| `tls.enabled` | bool | false | `c.TLS.BuildClient()` → `kgo.DialTLSConfig` [driver.go:90-97]。 | — |
 | `tls.cert-file` / `tls.key-file` | string | "" | mTLS 客户端证书对。 | 只配一半 → `tls.Build` 启动报错。 |
 | `tls.ca-file` | string | "" | 校验 broker 的 CA。 | 私有 CA 下缺失 → Ping TLS 失败。 |
 | `tls.server-name` | string | "" | SNI/校验名。 | 失配 → 校验失败。 |
@@ -291,14 +287,6 @@ key 都在 `spring.kafka.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑�
 | `producer.required-acks` | string | `all` | `all`→AllISRAcks；`leader`/`none` 还会**关闭幂等写**（协议要求）[driver.go:132-141]。 | 其他值 → 启动报错；弱化 acks 会静默丢幂等。 |
 | `producer.max-batch-bytes` | int32 | 0 | >0 时 `kgo.ProducerBatchMaxBytes`。 | 低于 broker 消息上限 → 逐条 produce 报错。 |
 | `producer.linger` | duration | 0s | >0 时 `kgo.ProducerLinger`；吞吐/延迟权衡。 | — |
-
-### 3.5 Observability（共享 observe kit）
-
-| Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
-|-----|------|--------|-----------|----------|
-| `observability.level` | string | `brief` | 访问日志 off/brief/detailed；kotel span/metric 是另一路且恒开（无 per-starter otel 开关——与 go-redis 不同）。 | `off` 只静默日志信号。 |
-| `observability.maxArgBytes` | int | 512 | detailed 模式下捕获参数的字节上限。 | 过小 → 参数截断。 |
-| `observability.skipOps` | list | — | 对列出的 op 名同时抑制 span+metric+log；这里 op 名为 `publish` / `consume`。 | — |
 
 ---
 
@@ -318,7 +306,7 @@ curl -s :9370/readyz                 # 503 OUT_OF_SERVICE
 放进 readiness/startup（绝不放 liveness——broker 故障不应重启 pod）由应用经
 `HealthGroups()` 决定。
 
-### 4.2 消息往返 + binder 映射存活字段
+### 4.2 消息往返 + driver 映射存活字段
 
 ```bash
 go run .    # §1 服务：publish Key=k1 Payload=value Header origin=demo，消费打印
@@ -336,7 +324,7 @@ grep kafka.access app.log | tail -2   # publish 记录（带时长）+ consume �
 go run .    # 打印 "resilience: N produce admitted, M rejected with ErrRateLimited"
 ```
 
-同一突发走 **binder** publisher 会被同样限流——它走同一个 executor（§2.3 第 4 步）；
+同一突发走 **driver** publisher 会被同样限流——它走同一个 executor（§2.3 第 4 步）；
 只有直接在 client bean 上裸调 `ProduceSync` 才绕过。改被监听源里的 `govern.*` 可免重启
 换策略（治理中心热加载）。
 
@@ -376,25 +364,25 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 | 启动失败 "failed to ping kafka" | brokers 不可达 / SASL 错 / TLS 失配 | 修连通性或凭证；10s 探针无条件执行。 |
 | 启动失败 "kafka driver not found" | `driver` 名未注册 | 在 init 里 `RegisterDriver`，或删掉该 key。 |
 | 启动失败 "unsupported kafka sasl mechanism / required-acks / compression" | 枚举 key 拼写错误 | 枚举精确匹配（大小写不敏感）；改对值。 |
-| binder 消费者收不到 | `NewSubscriber` source ≠ 所配 `topic`，或 `topic` 为空 | source 必须等于 client 的 `topic`；否则静默过滤。 |
-| binder 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.<name>.group`（构造期固定）。 |
-| govern.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync`，或实例 `governance=false` | 只有 `GuardedProduceSync` 与 binder publisher 受保护。 |
+| driver 消费者收不到 | `NewSubscriber` source ≠ 所配 `topic`，或 `topic` 为空 | source 必须等于 client 的 `topic`；否则静默过滤。 |
+| driver 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.<name>.group`（构造期固定）。 |
+| govern.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync`，或实例 `governance=false` | 只有 `GuardedProduceSync` 与 driver publisher 受保护。 |
 | 无 traces/metrics | 未 import starter-otel | kotel 挂 OTel 全局；import starter-otel。 |
-| 无访问日志 | `observability.level=off`，或日志 tag 被过滤 | 置 `detailed`；检查 `kafka.access` tag 过滤。 |
-| handler 错误只留一行日志 | 设计如此：本 binder 无 nack/重投 | 在 handler 内自建重试，或用 messaging 的 retry.go。 |
+| 无访问日志 | 日志 tag 被过滤 | 检查 `kafka.access` tag 过滤。 |
+| handler 错误只留一行日志 | 设计如此：本 driver 无 nack/重投 | 在 handler 内自建重试，或用 messaging 的 retry.go。 |
 
 ## 6. 设计体检表
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key | 21（核心 4 + sasl 4 + tls 6 + producer 4 + observability 3） |
+| 配置 key | 18（核心 4 + sasl 4 + tls 6 + producer 4） |
 | 必填 | 1（`brokers`） |
 | quickstart 前置外部依赖 | 1（Kafka broker） |
 | "注意/坑"条数 | 6 |
 
 设计嫌疑（审计台账；自上一版承继，均未修复）：
 
-- binder 丢弃 `NewSubscriber` 的 `group` 实参，source 失配静默过滤 [client.go:68,129-131]——违背 fail-fast。
+- driver 丢弃 `NewSubscriber` 的 `group` 实参，source 失配静默过滤 [client.go:68,129-131]——违背 fail-fast。
 - 消费 handler 错误只打日志，无 nack/重投 [client.go:137-139]——与 Recover 注释的说法相悖 [client.go:110-112]。
 - ~~`destroyClient` 丢弃 Flush 错误~~已修：Flush 失败记 ERROR（点名丢数据后果）并从 destroy 钩子向上返回。
 - starter 不注册 health indicator（家族不对称：go-redis/redigo 都注册）。

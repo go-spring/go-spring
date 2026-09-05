@@ -106,8 +106,6 @@ spring.lock.default.namespace=default
 # spring.lock.default.key-prefix=demo-
 
 # Access-log verbosity of the observe-lock adapter (defaults shown).
-# spring.lock.default.observability.level=brief
-# spring.lock.default.observability.maxArgBytes=512
 ```
 
 **deploy/rbac.yaml** — the ServiceAccount needs get/create/update on
@@ -151,13 +149,13 @@ renewal goroutine** (`k8slock.go tryOnce`), so holds are independent of each oth
 
 ### 2.2 Three-layer timing resolution (all lock backends)
 
-TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/defaults.go), higher
+TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/resolve.go), higher
 layer wins:
 
 | Layer | Source | This backend |
 |-------|--------|--------------|
 | 1. per-call option | `lock.WithTTL` / `WithRenewInterval` / `WithRetryInterval` | the **only** layer this starter feeds — there are no timing keys at all |
-| 2. starter default | none | `lock.Apply(opts...)` is used directly (a zero Defaults would behave identically) |
+| 2. starter default | none | `lock.Resolve(lock.DefaultOptions{}, opts...)` — a zero defaults layer |
 | 3. package default | TTL `30s`, renew `TTL/3`, retry `100ms` | fill whatever layer 1 leaves unset |
 
 The resolved TTL becomes the Lease's `leaseDurationSeconds` — whole seconds, rounded up with a
@@ -167,7 +165,7 @@ The resolved TTL becomes the Lease's `leaseDurationSeconds` — whole seconds, r
 
 `TryAcquire(ctx, "demo-leader")`:
 
-1. `lock.Apply(opts...)` — TTL/renew/retry from per-call options or package defaults; fencing
+1. `lock.Resolve(lock.DefaultOptions{}, opts...)` — TTL/renew/retry from per-call options or package defaults; fencing
    token generated unless `WithToken`.
 2. A `resourcelock.LeaseLock` is built over the Lease `<namespace>/<keyPrefix+key>` with
    `Identity = token`, then one **acquire-or-renew** round (`tryAcquireOrRenew`, mirroring
@@ -199,9 +197,6 @@ All keys live under `spring.lock.<name>` (exact-match, no relaxed forms).
 | `kubeconfig` | string | — | Out-of-cluster kubeconfig path; empty uses the in-cluster ServiceAccount config. | Empty outside a cluster → boot fails `in-cluster config (set kubeconfig when running outside a cluster)`. |
 | `key-prefix` | string | — | Prepended to each lock key to form the Lease name. Result must be a valid DNS-1123 subdomain. | Invalid name (underscores, uppercase) → Lease create/update rejected at acquire time. |
 | `observe.enabled` | bool | `true` | Wrap the primary `<name>` Locker bean with the observe-lock adapter (trace span + metric + access log). `false` = bare locker. | Migration: the `<name>-observed` bean no longer exists — inject `<name>`. |
-| `observability.level` | string | `brief` | Access-log level `off`/`brief`/`detailed` (detailed logs the lock key). | Invalid value → binding error at boot. |
-| `observability.maxArgBytes` | int | `512` | Cap on logged lock-key bytes. | Too low truncates keys in logs. |
-| `observability.skipOps` | []string | — | Ops (`acquire`, `try_acquire`) excluded from the access log. | Typos silently no-op. |
 
 ⚠ There are **no timing keys at all**: TTL/renew/retry ride per-acquisition `lock.Option` values
 only (§2.2). Instance weight (`Weight=0` drain) is a registry/loadbalance concept and does not

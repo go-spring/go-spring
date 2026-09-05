@@ -1,45 +1,34 @@
 # endpoint
+
 [English](README.md) | [中文](README_CN.md)
 
-`endpoint` 是一个极小的零依赖 seam,让组件向运维管理端口(通常是 actuator 的
-端口)贡献 HTTP handler。组件导出 `Endpoint` bean,收集方(actuator)自动
-把每个此类 bean 挂到 mux 上 —— 两侧不必互相 import。
-
-## 特性
-
-- 单一接口 `Endpoint { Path() string; http.Handler }`。
-- 与 `health.Indicator`(姊妹包 `health`)同构:贡献方与收集方都只依赖
-  本包,不产生跨 starter 依赖。
+组件想在 actuator 的管理端口上多挂一个 HTTP 路径,就贡献一个 `Endpoint`
+bean。actuator 收集所有 `endpoint.Endpoint` 类型的 bean,逐个挂到自己的
+mux 上,和内置探针端点并列。
 
 ## 安装
 
 ```
-go get go-spring.org/spring
+go get go-spring.org/cloud
 ```
 
 ## 用法
 
-在不 import actuator 的前提下贡献 Prometheus `/metrics`:
+给 actuator 贡献 Prometheus `/metrics`:
 
 ```go
 import (
-    "net/http"
-
     "github.com/prometheus/client_golang/prometheus/promhttp"
     "go-spring.org/gs"
     "go-spring.org/cloud/actuator/endpoint"
 )
 
-type promEndpoint struct{ http.Handler }
-
-func (promEndpoint) Path() string { return "/metrics" }
-
 func init() {
-    gs.Provide(func() endpoint.Endpoint {
-        return promEndpoint{Handler: promhttp.Handler()}
-    }).Export(gs.As[endpoint.Endpoint]())
+    gs.Provide(&endpoint.Endpoint{Path: "/metrics", Handler: promhttp.Handler()})
 }
 ```
 
-actuator 会收集所有 `endpoint.Endpoint` bean 并逐一挂载。`Path` 要区别于
-`/health`、`/readiness`、`/info` 以及其他贡献的路径。
+Path 不能和 actuator 内置路径(`/healthz`、`/readyz`、`/info`...)或其他
+贡献的 endpoint 冲突,重复路径启动时 panic。每个 endpoint 还受 actuator 的
+`spring.actuator.endpoints.include` / `.exclude` 过滤,名字取去掉首斜杠的
+路径。

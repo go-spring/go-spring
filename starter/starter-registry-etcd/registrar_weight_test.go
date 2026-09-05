@@ -53,11 +53,11 @@ func etcdTestAddr() string {
 }
 
 // TestUpdateWeightHotReloadLive is the end-to-end proof of weight hot-reload on
-// a real etcd: register two instances with unequal weights, watch the service,
-// and show a loadbalance weighted balancer routes by those weights; then
-// UpdateWeight (same lease, no re-register) and show the next watched snapshot
-// flips the distribution. Requires a live etcd (example docker-compose); skips
-// gracefully otherwise.
+// a real etcd: register two instances with unequal weights, resolve the
+// service, and show a loadbalance weighted balancer routes by those weights;
+// then UpdateWeight (same lease, no re-register) and show the next refreshed
+// snapshot flips the distribution. Requires a live etcd (example
+// docker-compose); skips gracefully otherwise.
 func TestUpdateWeightHotReloadLive(t *testing.T) {
 	addr := etcdTestAddr()
 	if addr == "" {
@@ -71,7 +71,10 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 	defer func() { _ = cli.Close() }()
 
 	reg := &etcdRegistrar{client: cli, keyPrefix: "/services/weight-test/", ttlSecs: 15, holds: map[string]*hold{}}
-	disc := &etcdDiscovery{client: cli, keyPrefix: "/services/weight-test/"}
+	disc := &etcdDiscovery{
+		client: cli, keyPrefix: "/services/weight-test/",
+		bgCtx: context.Background(), entries: map[string]*serviceEntry{},
+	}
 
 	const service = "orders"
 	a := instance{ServiceName: service, ID: "a", Addr: "10.0.0.1:8080", Weight: 9}
@@ -84,9 +87,6 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 			_ = reg.Deregister(context.Background(), in)
 		}
 	})
-
-	wch, err := disc.Watch(ctx, service)
-	assert.Error(t, err).Nil()
 
 	// pickCounts runs a fresh weighted balancer over n picks of eps.
 	pickCounts := func(eps []discovery.Endpoint, n int) map[string]int {
@@ -102,9 +102,10 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 	}
 
 	// Snapshot 1: a has weight 9, b weight 1 -> a dominates.
-	snap1 := <-wch
-	assert.Number(t, len(snap1.Endpoints)).Equal(2)
-	m := pickCounts(snap1.Endpoints, 40)
+	snap1, err := disc.Resolve(ctx, service)
+	assert.Error(t, err).Nil()
+	assert.Number(t, len(snap1)).Equal(2)
+	m := pickCounts(snap1, 40)
 	if m["10.0.0.1:8080"] <= 20 {
 		t.Fatalf("weight 9 vs 1 expected a to dominate, got %v", m)
 	}
@@ -113,20 +114,19 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 	assert.Error(t, reg.UpdateWeight(ctx, a, 1)).Nil()
 	assert.Error(t, reg.UpdateWeight(ctx, b, 9)).Nil()
 
-	// Snapshot 2 arrives via the watch and flips the distribution.
+	// Snapshot 2: the background watcher refreshes the cache, so polling
+	// Resolve sees the flipped weights.
 	var snap2 []discovery.Endpoint
-	for snap2 == nil {
-		select {
-		case wr, ok := <-wch:
-			if !ok {
-				t.Fatal("watch channel closed before weight change was delivered")
-			}
-			if wr.Err == nil && weightsEqual(wr.Endpoints, map[string]int{"10.0.0.1:8080": 1, "10.0.0.2:8080": 9}) {
-				snap2 = wr.Endpoints
-			}
-		case <-ctx.Done():
-			t.Fatal("timed out waiting for the weight-change snapshot")
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		eps, err := disc.Resolve(ctx, service)
+		assert.Error(t, err).Nil()
+		if weightsEqual(eps, map[string]int{"10.0.0.1:8080": 1, "10.0.0.2:8080": 9}) {
+			snap2 = eps
+			break
 		}
+	}
+	if snap2 == nil {
+		t.Fatal("timed out waiting for the weight-change snapshot")
 	}
 	m2 := pickCounts(snap2, 40)
 	if m2["10.0.0.2:8080"] <= 20 {

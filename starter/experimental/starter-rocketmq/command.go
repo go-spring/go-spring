@@ -15,7 +15,7 @@
  */
 
 // command.go is the "command/operation seam" concept of this starter: the
-// observe layer (OTel tracing helpers + the binder's per-message observers)
+// observe layer (OTel tracing helpers + the driver's per-message observers)
 // and the resilience guard (GuardedSend on the client's executor).
 // rocketmq-client-go exposes no reject-capable middleware, so the guard is an
 // opt-in call-site wrapper on the synchronous Producer.SendSync path.
@@ -28,7 +28,6 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -133,33 +132,11 @@ func (c msgCarrier) Keys() []string {
 	return keys
 }
 
-// --- binder auto path (kit-backed) -------------------------------------------
+// --- driver auto path --------------------------------------------------------
 //
-// The messaging.Binder drives produce/consume through the observe kit (3 signals)
-// via these package-level observers. The bean is a *Client wrapper but the
-// binder serves any number of destinations, so the binder path uses a default
-// "brief" level; the manual helpers above remain for apps that want explicit
+// The messaging.Driver drives produce/consume through the observers in
+// observe.go; the manual span helpers above remain for apps that want explicit
 // control.
-
-var (
-	defaultPubObs = observe.NewProducer("rocketmq", observe.ObserveConfig{Level: observe.DefaultBrief})
-	defaultSubObs = observe.NewConsumer("rocketmq", observe.ObserveConfig{Level: observe.DefaultBrief})
-)
-
-// startProduce opens a producer observation and injects W3C trace context into
-// msg's user properties. topic is the publisher's destination.
-func startProduce(ctx context.Context, topic string, msg *primitive.Message) (context.Context, *observe.Span) {
-	ctx, sp := defaultPubObs.Start(ctx, "publish", topic)
-	otel.GetTextMapPropagator().Inject(ctx, msgCarrier{msg})
-	return ctx, sp
-}
-
-// startConsume extracts the upstream trace from the message user properties
-// and opens a consumer observation. For the binder's push handler.
-func startConsume(ctx context.Context, ext *primitive.MessageExt) (context.Context, *observe.Span) {
-	ctx = otel.GetTextMapPropagator().Extract(ctx, msgCarrier{&ext.Message})
-	return defaultSubObs.Start(ctx, "consume", ext.Topic)
-}
 
 // -----------------------------------------------------------------------------
 // Resilience guard
@@ -178,7 +155,7 @@ func startConsume(ctx context.Context, ext *primitive.MessageExt) (context.Conte
 // otherwise).
 func applyResilience(c Config, cl *Client, resource string) error {
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "rocketmq", c.Observability)
+	exec = resilience.WrapExecutor(exec, "rocketmq")
 	cl.exec = exec
 	cl.resource = resource
 	return nil

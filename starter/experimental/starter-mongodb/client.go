@@ -26,10 +26,8 @@ import (
 	"net"
 	"sync/atomic"
 
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -53,19 +51,15 @@ type Client struct {
 	// Both resilience and fault are resolved through neutral seams
 	// ([resilience.ExecutorFor] / [fault.InjectorFor]) backed by starter-govern's
 	// governance center — so this struct has zero coupling to cloud/governance.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// cfg is the connection config, retained for the resilience resource label.
 	cfg Config
 	// dialer is the shared dialer handed to the driver; Init swaps
 	// its dial field to the resilience-wrapped function.
 	dialer *dialerWrapper
-	// resolver is the discovery watch behind a service-name client (nil when
-	// direct/mesh); Close stops it on shutdown.
-	resolver *discovery.Resolver
-	// obs is the observe observer built by Init from the injected
-	// Observability; the command monitor reads it lazily.
-	obs atomic.Pointer[observe.Observer]
+	// obs is the instrumentation built by Init; the command monitor reads it
+	// lazily.
+	obs atomic.Pointer[dbObserver]
 	// exec is the resilience executor protecting dials, resolved via
 	// resilience.ExecutorFor; no-op when governance is off.
 	exec resilience.Executor
@@ -77,7 +71,7 @@ type Client struct {
 // dialerWrapper adapts a dial function (plain, discovery-backed, or
 // resilience-wrapped) to the mongo driver's options.Dialer interface. The
 // dialed address is taken as-is so the underlying function (which may itself
-// ignore it in favor of a Resolver pick) decides the target.
+// ignore it in favor of a discovery-picked endpoint) decides the target.
 type dialerWrapper struct {
 	dial func(ctx context.Context, network, address string) (net.Conn, error)
 }
@@ -86,18 +80,17 @@ func (d *dialerWrapper) DialContext(ctx context.Context, network, address string
 	return d.dial(ctx, network, address)
 }
 
-// Init is the gs InitMethod: gs field-injects Observability after newClient
-// returns, then calls this. It builds the observe.Observer (needs Observability)
+// Init is the gs InitMethod: it builds the instrumentation (see observe.go)
 // and resolves the executor through the neutral [resilience.ExecutorFor] seam
 // (backed by starter-govern's governance center when imported), wraps it with the
 // process-wide fault injector ([fault.InjectorFor], nil-safe), swaps the
 // resilience-wrapped dial function into the shared dialer. When governance is off
 // the resolved executor is a transparent no-op.
 func (o *Client) Init() error {
-	o.obs.Store(observe.NewDB("mongodb", o.Observability))
+	o.obs.Store(newDBObserver("mongodb"))
 	o.resource = resilience.ResourceLabel("mongodb", o.cfg.ServiceName, o.cfg.URI)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "mongodb", o.Observability)
+	exec = resilience.WrapExecutor(exec, "mongodb")
 	o.exec = exec
 	// Wrap the current (plain/discovery) dial with the policy and swap it into
 	// the shared dialer the driver already holds.
@@ -106,12 +99,12 @@ func (o *Client) Init() error {
 	return nil
 }
 
-// Destroy is the gs destroy method: it closes the resilience executor (if armed),
-// stops any discovery watch, and disconnects the underlying client.
+// Destroy is the gs destroy method: it closes the resilience executor (if armed)
+// and disconnects the underlying client. Discovery runs inside the backend (the
+// loader has no resources), so nothing discovery-related is released here.
 func (o *Client) Destroy() error {
 	if o.exec != nil {
 		_ = o.exec.Close()
 	}
-	stopLiveResolver(o.resolver)
 	return o.Client.Disconnect(context.Background())
 }

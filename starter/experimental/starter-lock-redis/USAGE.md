@@ -115,8 +115,6 @@ spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
 
 # Access-log verbosity of the observe-lock adapter (defaults shown).
-# spring.lock.jobs.observability.level=brief
-# spring.lock.jobs.observability.maxArgBytes=512
 ```
 
 **Verify** (with a local Redis, e.g. `example/docker-compose.yml`):
@@ -160,7 +158,7 @@ transparent default inside `newLocker`.
 
 ### 2.2 Three-layer timing resolution (all lock backends)
 
-TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/defaults.go), higher
+TTL / renew / retry resolve through `lock.Resolve` (cloud/lock/resolve.go), higher
 layer wins — this starter feeds **all three** knobs:
 
 | Layer | Source | Keys |
@@ -215,9 +213,6 @@ All keys live under `spring.lock.<name>` (exact-match, no relaxed forms).
 | `retry-interval` | duration | `100ms` | `Acquire`'s poll interval while contended. | Too low hammers Redis; too high adds latency to failover. |
 | `key-prefix` | string | — | Prepended to every key before it hits Redis; keeps key spaces of apps sharing one Redis disjoint. | Shared prefix across apps → mutual contention. |
 | `observe.enabled` | bool | `true` | Wrap the primary `<name>` Locker bean with the observe-lock adapter (trace span + metric + access log). `false` = bare locker. | Migration: the `<name>-observed` bean no longer exists — inject `<name>`. |
-| `observability.level` | string | `brief` | Access-log level `off`/`brief`/`detailed` (detailed logs the lock key). | Invalid value → binding error at boot. |
-| `observability.maxArgBytes` | int | `512` | Cap on logged lock-key bytes. | Too low truncates keys in logs. |
-| `observability.skipOps` | []string | — | Ops (`acquire`, `try_acquire`) excluded from the access log. | Typos silently no-op. |
 
 ⚠ This starter exposes all three timing knobs, unlike consul/etcd (TTL only) and k8s (none) —
 Redis has no server-side session management, so renew/retry live client-side here.

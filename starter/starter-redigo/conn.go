@@ -19,12 +19,10 @@ package StarterRedigo
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // CommandHandler runs one Redis command. It is the pipeline's core signature:
@@ -56,7 +54,7 @@ type CommandInterceptor func(next CommandHandler) CommandHandler
 // Conn wraps a redis.Conn so every command flows through an interceptor chain
 // assembled once at construction (see Pool.wrapConn): user interceptors (via
 // [Pool.UseCommandInterceptor], first-registered outermost), then the observe
-// layer (trace span + duration/in-flight metric + access log), then the
+// layer (trace span + duration metric + access log, see observe.go), then the
 // resilience layer (executor), then the inner call — all uniform
 // [CommandInterceptor] layers. Conn itself holds only the composed wrap.
 //
@@ -162,28 +160,6 @@ func (c *Conn) run(ctx context.Context, cmd string, args []interface{},
 	return h(ctx, cmd, args)
 }
 
-// observeInterceptor is the observe layer of the command chain: it starts a
-// client span for the command (trace + duration/in-flight metric + access log),
-// runs next under it, and ends the span with the result. ctx is the span parent
-// — the caller's context for DoContext (so the span links to the request trace
-// and an attempt-timeout can interrupt it), background for the context-less
-// paths. The span sits OUTSIDE the resilience layer, so one Execute (with any
-// retries the policy drives) is covered by a single span.
-func observeInterceptor(obs *observe.Observer) CommandInterceptor {
-	return func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (reply interface{}, err error) {
-			var sp *observe.Span
-			ctx, sp = obs.Start(ctx, cmd, summarizeCommand(cmd, args))
-			defer func() {
-				if sp != nil {
-					sp.End(err)
-				}
-			}()
-			return next(ctx, cmd, args)
-		}
-	}
-}
-
 // resilienceInterceptor is the resilience layer of the command chain: it runs
 // next under the executor (circuit breaker / rate limiter / bulkhead / retry).
 // The executor derives its per-attempt context from ctx; the inner call receives
@@ -205,16 +181,4 @@ func resilienceInterceptor(exec resilience.Executor, resource string) CommandInt
 			})
 		}
 	}
-}
-
-// summarizeCommand renders a short, loggable summary of the command — the
-// command name plus the first argument (typically the key) — bounded by the
-// Observer's ObserveConfig.MaxArgBytes. The full argument list is intentionally
-// not logged: keys are enough to locate an op, and values may be sensitive or
-// large.
-func summarizeCommand(cmd string, args []interface{}) string {
-	if len(args) == 0 {
-		return cmd
-	}
-	return fmt.Sprintf("%s %v", cmd, args[0])
 }

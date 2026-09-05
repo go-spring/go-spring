@@ -80,9 +80,9 @@ func Register[C any](d Dialect[C]) {
 			// Contribute a health indicator for this instance, injecting the
 			// wrapper just registered above by name (the embedded *gorm.DB is
 			// passed through to the indicator).
-			r.Provide(func(w *DB) health.Indicator {
+			r.Provide(func(w *DB) *health.Indicator {
 				return NewGormHealth(d.HealthPrefix, name, w.DB)
-			}, gs.TagArg(name)).Name(d.HealthPrefix + name).Export(gs.As[health.Indicator]()).Caller(1)
+			}, gs.TagArg(name)).Name(d.HealthPrefix + name).Caller(1)
 			return nil
 		})
 	})

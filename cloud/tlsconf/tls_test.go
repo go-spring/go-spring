@@ -34,13 +34,13 @@ import (
 )
 
 func TestTLSConfig_Build_Disabled(t *testing.T) {
-	cfg, err := TLSConfig{Enabled: false, CertFile: "nope"}.Build()
+	cfg, err := TLSConfig{Enabled: false, CertFile: "nope"}.BuildClient()
 	assert.NoError(t, err)
 	assert.Nil(t, cfg, "disabled TLS must return a nil *tls.Config")
 }
 
 func TestTLSConfig_Build_EnabledNoFiles(t *testing.T) {
-	cfg, err := TLSConfig{Enabled: true, ServerName: "peer", InsecureSkipVerify: true}.Build()
+	cfg, err := TLSConfig{Enabled: true, ServerName: "peer", InsecureSkipVerify: true}.BuildClient()
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, "peer", cfg.ServerName)
@@ -50,13 +50,13 @@ func TestTLSConfig_Build_EnabledNoFiles(t *testing.T) {
 }
 
 func TestTLSConfig_Build_MissingCert(t *testing.T) {
-	_, err := TLSConfig{Enabled: true, CertFile: "/does/not/exist.pem", KeyFile: "/nope.key"}.Build()
+	_, err := TLSConfig{Enabled: true, CertFile: "/does/not/exist.pem", KeyFile: "/nope.key"}.BuildClient()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tls: failed to load key pair")
 }
 
 func TestTLSConfig_Build_MissingCAFile(t *testing.T) {
-	_, err := TLSConfig{Enabled: true, CAFile: "/does/not/exist-ca.pem"}.Build()
+	_, err := TLSConfig{Enabled: true, CAFile: "/does/not/exist-ca.pem"}.BuildClient()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tls: failed to read CA file")
 }
@@ -66,7 +66,7 @@ func TestTLSConfig_Build_BadCAContent(t *testing.T) {
 	caPath := filepath.Join(dir, "ca.pem")
 	require.NoError(t, os.WriteFile(caPath, []byte("not a certificate"), 0o600))
 
-	_, err := TLSConfig{Enabled: true, CAFile: caPath}.Build()
+	_, err := TLSConfig{Enabled: true, CAFile: caPath}.BuildClient()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no certificates found in CA file")
 }
@@ -75,7 +75,7 @@ func TestTLSConfig_Build_ValidKeyPairAndCA(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeSelfSignedPair(t, dir)
 
-	cfg, err := TLSConfig{Enabled: true, CertFile: certPath, KeyFile: keyPath, CAFile: certPath}.Build()
+	cfg, err := TLSConfig{Enabled: true, CertFile: certPath, KeyFile: keyPath, CAFile: certPath}.BuildClient()
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Len(t, cfg.Certificates, 1)

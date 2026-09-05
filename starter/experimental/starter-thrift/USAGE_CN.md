@@ -222,7 +222,7 @@ gs.Run()
   ├─ bean 装配：你的 thrift.TProcessor bean 注入 NewSimpleThriftServer
   │   （缺失/重复 processor bean → 容器失败）
   ├─ gs.Server 阶段 —— SimpleThriftServer.Run(ctx, sig)：
-  │   ├─ newTransport()：监听（tls.enabled 时经 tlsconf.Build() 建 TLS）← socket 在此打开
+  │   ├─ newTransport()：监听（tls.enabled 时经 tlsconf.BuildClient() 建 TLS）← socket 在此打开
   │   ├─ protocolFactory()/transportFactory()：校验——protocol/transport 名字非法则启动失败
   │   ├─ tracing 或 metrics 开启时 WrapProcessor(proc) —— 最外层 processor
   │   ├─ <-sig.TriggerAndWait()  ← 就绪信号之后才开始 serve
@@ -276,7 +276,7 @@ TSimpleServer → WrapProcessor (observedProcessor) → 你的装饰器 → 生�
 | `transport` | string | none | 枚举：`none`（裸 socket，恒等 factory——历史默认）/ `buffered` / `framed`（framed 时 `MaxFrameSize = bufferSize`），`transportFactory()` 映射。⚠ 客户端 transport 必须匹配；跨语言客户端通常要求 `framed`。 | 未知值 → 启动失败。不匹配 → 挂起/乱码。`framed` 且 `bufferSize` 过小 → 帧被拒。 |
 | `bufferSize` | int | 4096 | 仅对 `buffered`（缓冲大小）与 `framed`（最大帧长）有意义。⚠ `transport=none` 时是死 key。 | 小于实际负载 → framed transport 运行时报错。 |
 | `tls.enabled` | bool | false | `newTransport()` 切到 SSL server socket。 | 期望 TLS 却得到明文 server。 |
-| `tls.cert-file` / `tls.key-file` | string | — | ⚠ `tls.enabled=true` 时必须成对提供（否则 `tlsconf.Build()` 报错 → listen 失败）。 | 启动期 listen 报错 "thrift: build TLS"。 |
+| `tls.cert-file` / `tls.key-file` | string | — | ⚠ `tls.enabled=true` 时必须成对提供（否则 `tlsconf.BuildClient()` 报错 → listen 失败）。 | 启动期 listen 报错 "thrift: build TLS"。 |
 | `tls.ca-file` / `tls.server-name` / `tls.insecure-skip-verify` | — | — | **服务端死 key**：它们是 tlsconf 的客户端校验项；服务端路径只调 `Build()`，从不校验客户端证书（无 mTLS）。 | 期望 mTLS → 静默缺失。 |
 | `observer.tracing.enabled` | bool | true | 给 processor 套 OTel span 层。无 starter-otel 的 provider 时是 no-op（静默）。⚠ **不可热切换**——`Run` 中一次性判定。 | — |
 | `observer.metrics.enabled` | bool | true | 给 processor 套 metrics 层（同样注意事项）。⚠ example-otel 的 conf 历史上写的是 `…server.interceptor.*` key——那是死 key；只是因为默认值是 `true` 才碰巧生效。请用 `observer.*`。 | 前缀写错（`interceptor.*`）→ 静默忽略，observer 仍然开启。 |
@@ -344,7 +344,7 @@ transport、打断 accept 循环。thrift 的 `TSimpleServer.Stop` 并不等待�
 | 客户端连上后挂起 / 乱码报错 | 客户端↔服务端 protocol 或 transport 不匹配 | 对齐 factory：framed↔TFramedTransport、compact↔TCompactProtocol（example 两侧都钉死）。 |
 | framed transport 运行期帧错误 | `bufferSize` < 实际帧大小 | 调大 `spring.thrift.server.bufferSize`。 |
 | 启动失败：`thrift: build TLS` | `tls.enabled=true` 但没有证书对（或文件坏） | 提供 `tls.cert-file` + `tls.key-file`。 |
-| 期望 mTLS 但客户端没被校验 | 服务端走 `tlsconf.Build()`；`ca-file` 等是死 key | 不支持；需要就作为设计问题提出。 |
+| 期望 mTLS 但客户端没被校验 | 服务端走 `tlsconf.BuildClient()`；`ca-file` 等是死 key | 不支持；需要就作为设计问题提出。 |
 | observer "开着"却无 trace/metrics | 未 import starter-otel，或 key 前缀写错（`interceptor.*`） | import starter-otel；用 `observer.tracing.enabled`/`observer.metrics.enabled`。 |
 | trace 表现为互不相连的根 | 用了 binary/compact/json protocol，本身无传播 carrier | 预期行为；两侧都换 `protocol=header` 即有 W3C 传播，否则靠时间/服务名关联。 |
 

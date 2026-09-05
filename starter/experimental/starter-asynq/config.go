@@ -19,7 +19,6 @@ package StarterAsynq
 import (
 	"time"
 
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -57,11 +56,6 @@ type Config struct {
 	// processes only enqueue. See starter/DESIGN.md — starters do not
 	// activate services the operator did not ask for.
 	Server ServerConfig `value:"${server}"`
-
-	// Observability configures the per-task access log (off/brief/detailed).
-	// Instance keys (spring.asynq.<name>.observability.*) override the
-	// top-level observability.* keys — see Client.resolveObservability.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which Asynq driver to use; it must match a name
 	// registered via RegisterDriver. Defaults to DefaultDriver.

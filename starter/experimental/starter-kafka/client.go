@@ -15,10 +15,10 @@
  */
 
 // client.go is the "resource entity" concept of this starter: the messaging
-// Binder adapter that wraps the raw *kgo.Client so application code can
+// Driver adapter that wraps the raw *kgo.Client so application code can
 // publish/consume messaging.Message envelopes, plus its publisher/subscriber
 // lifecycle (Subscribe/Close). The raw *kgo.Client bean itself stays available
-// for transactions, admin and other Kafka-specific features the binder does not
+// for transactions, admin and other Kafka-specific features the driver does not
 // model. The per-message observe + resilience layers live in command.go.
 package StarterKafka
 
@@ -27,18 +27,18 @@ import (
 	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
 
-// NewBinder adapts a franz-go Kafka client to the broker-neutral
-// messaging.Binder, so application code can publish/consume messaging.Message
+// NewDriver adapts a franz-go Kafka client to the broker-neutral
+// messaging.Driver, so application code can publish/consume messaging.Message
 // envelopes without depending on the kgo API. The raw *kgo.Client bean stays
 // available for transactions, admin and other Kafka-specific features this
-// binder does not model.
+// driver does not model.
 //
 // Two Kafka realities shape the mapping:
 //   - Publish is fully general: destination is the target topic and the message
@@ -55,17 +55,17 @@ import (
 // links producer to consumer across services (a no-op without an OTel
 // propagator). Per-request client spans are already emitted by the kotel hooks
 // installed on the client.
-func NewBinder(cl *kgo.Client) messaging.Binder {
-	return &binder{cl: cl}
+func NewDriver(cl *kgo.Client) messaging.Driver {
+	return &driver{cl: cl}
 }
 
-type binder struct{ cl *kgo.Client }
+type driver struct{ cl *kgo.Client }
 
-func (b *binder) NewPublisher(_ context.Context, destination string) (messaging.Publisher, error) {
+func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.Publisher, error) {
 	return &publisher{cl: b.cl, topic: destination}, nil
 }
 
-func (b *binder) NewSubscriber(_ context.Context, source, _ string) (messaging.Subscriber, error) {
+func (b *driver) NewSubscriber(_ context.Context, source, _ string) (messaging.Subscriber, error) {
 	return &subscriber{cl: b.cl, topic: source}, nil
 }
 
@@ -125,7 +125,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 			if errs := fetches.Errors(); len(errs) > 0 {
 				for _, e := range errs {
 					if e.Err != context.Canceled {
-						log.Errorf(loopCtx, log.TagAppDef, "kafka binder poll error on %q: %v", e.Topic, e.Err)
+						log.Errorf(loopCtx, log.TagAppDef, "kafka driver poll error on %q: %v", e.Topic, e.Err)
 					}
 				}
 			}
@@ -139,7 +139,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 					msgCtx = traffic.WithLoadTest(msgCtx, "kafka-header")
 				}
 				if err := handler(msgCtx, fromRecord(rec)); err != nil {
-					log.Errorf(msgCtx, log.TagAppDef, "kafka binder handler error on %q: %v", rec.Topic, err)
+					log.Errorf(msgCtx, log.TagAppDef, "kafka driver handler error on %q: %v", rec.Topic, err)
 				}
 			})
 		}

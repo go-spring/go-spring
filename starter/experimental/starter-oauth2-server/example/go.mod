@@ -18,7 +18,6 @@ require (
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
@@ -31,3 +30,12 @@ require (
 )
 
 replace go-spring.org/cloud => ../../../../cloud
+
+require (
+	go-spring.org/starter-http-server v0.0.0
+	go-spring.org/starter-oauth2-server v0.0.0-00010101000000-000000000000
+)
+
+replace go-spring.org/starter-http-server => ../../../starter-http-server
+
+replace go-spring.org/starter-oauth2-server => ../

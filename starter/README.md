@@ -18,6 +18,7 @@ Serve an application-provided web engine through the Go-Spring server lifecycle.
 | --- | --- | --- |
 | `starter-gin` | [gin-gonic/gin](https://github.com/gin-gonic/gin) | Serves a `*gin.Engine` bean |
 | `starter-echo` | [labstack/echo](https://github.com/labstack/echo) | Serves a `*echo.Echo` bean |
+| `starter-http-server` | Go `net/http` | Security middleware kit (`Authenticate` / `Authorize` / `CORS` / `CSRF`) for the framework-built-in stdlib HTTP server |
 | `starter-hertz` | [CloudWeGo Hertz](https://github.com/cloudwego/hertz) | Serves a Hertz HTTP server |
 | `starter-go-zero/rest` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | Serves a go-zero `rest.Server` via a `HandlerRegister` bean |
 | `starter-goframe/http` | [gogf/gf](https://github.com/gogf/gf) | Serves a goframe `*ghttp.Server` (also ships a `/tcp` raw-TCP sub-package) |
@@ -111,7 +112,7 @@ HTTP server the application already runs (no own port).
 | `starter-kafka` | [twmb/franz-go](https://github.com/twmb/franz-go) | Kafka |
 | `starter-kafka-sarama` | [IBM/sarama](https://github.com/IBM/sarama) | Kafka (alternative driver, shares the `spring.kafka` prefix) |
 | `starter-pulsar` | [apache/pulsar-client-go](https://github.com/apache/pulsar-client-go) | Apache Pulsar |
-| `starter-rocketmq` | [rocketmq-client-go/v2](https://github.com/apache/rocketmq-client-go) | Apache RocketMQ 4.x/5.x via the NameServer protocol; ships a `messaging.Binder` |
+| `starter-rocketmq` | [rocketmq-client-go/v2](https://github.com/apache/rocketmq-client-go) | Apache RocketMQ 4.x/5.x via the NameServer protocol; ships a `messaging.Driver` |
 | `starter-rabbitmq` | [amqp091-go](https://github.com/rabbitmq/amqp091-go) | RabbitMQ |
 | `starter-nats` | [nats.go](https://github.com/nats-io/nats.go) | NATS core messaging + JetStream (pure Go) |
 | `starter-mqtt` | [paho.mqtt.golang](https://github.com/eclipse/paho.mqtt.golang) | MQTT |

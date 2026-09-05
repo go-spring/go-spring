@@ -134,9 +134,6 @@ spring.gorm.mysql.primary.conn-max-lifetime=30m
 spring.gorm.mysql.primary.conn-max-idle-time=5m
 spring.gorm.mysql.primary.ping-timeout=5s
 spring.gorm.mysql.primary.slow-threshold=200ms
-# Access-log detail for the observe plugin (span/metric stay on):
-spring.gorm.mysql.primary.observability.level=brief
-spring.gorm.mysql.primary.observability.max-arg-bytes=512
 
 # --- actuator (aggregates the per-instance gorm health indicators) ----------
 spring.http.server.enabled=false
@@ -197,7 +194,7 @@ gs.Run()
   │       exports as health.Indicator)  ← .Name is required: multi-instance beans
   │          share type (Indicator, *DB); without distinct names the container
   │          reports duplicate (Name,Type) keys
-  ├─ bean wiring: gs field-injects Observability into the *DB wrapper
+  ├─ bean wiring: gs assembles the *DB wrapper beans by name
   ├─ DB.Init: observe plugin (unless observe.enabled=false) → resilience
   │    executor chain → ApplyCallbacks replaces the six gorm processors
   ├─ Run / readiness: actuator aggregates the indicators → /readyz UP
@@ -262,8 +259,7 @@ observed and guarded (the transaction as a whole is not a separate span).
 
 All keys live at `spring.gorm.<dialect>.<name>.*` (embedded `Common`, bound at
 the same level as the dialect's own fields). Reconciled against
-`grep -rhoE 'value:"[^"]+"' starter/starter-gorm` — exactly these 10 shared keys
-plus the wrapper-level `observability` compound key.
+`grep -rhoE 'value:"[^"]+"' starter/starter-gorm` — exactly these 10 shared keys.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -276,8 +272,7 @@ plus the wrapper-level `observability` compound key.
 | `service-name` | string | — | Switches addressing to service discovery: the dialect binds a discovery-backed dialer so each new connection reaches a live instance. When set, `addr` is ignored (the example uses a dummy `0.0.0.0:0` to prove it). In mesh mode (`GS_MESH=on`) a sidecar owns discovery and `addr` is used as-is. | Unset + no `addr` → dialect build error ("one of addr or service-name must be set"). |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme (e.g. `tls`). ⚠ Dead unless `service-name` is set (only consulted then). | Set without service-name → silently ignored. |
 | `discovery` | string | default | Which registered discovery backend resolves `service-name`. ⚠ Dead unless `service-name` is set. | Set without service-name → silently ignored. |
-| `observe.enabled` | bool | true | Hard kill switch for the gorm observe plugin: when false the plugin is not installed at all — no span, no metric, no access log, no per-query callbacks. Distinct from `observability.level=off`, which only silences the log and leaves span+metric on. | false → per-query observability silently absent (deliberate for hot instances). |
-| `observability` | compound | — | Field-injected into the DB wrapper, binds the shared observe `ObserveConfig`: `observability.level` (`off`/`brief`/`detailed`, default brief), `observability.max-arg-bytes` (default 512, caps the SQL captured in detailed mode), `observability.skipOps` (suppresses span+metric+log for listed op names). | level=detailed with default 512 → long SQL truncated; a skipOps typo silently matches nothing. |
+| `observe.enabled` | bool | true | Hard kill switch for the gorm observe plugin: when false the plugin is not installed at all — no span, no metric, no access log, no per-query callbacks. | false → per-query observability silently absent (deliberate for hot instances). |
 
 Dead-key notes: for **sqlite** the whole discovery trio (`service-name`/`scheme`/
 `discovery`) is structurally unusable (no server to discover) but still binds —
@@ -294,20 +289,20 @@ With starter-otel imported (see §1 config):
 - **Span**: one per operation, named by kind (`query`/`create`/`update`/`delete`),
   attribute `db.system=mysql`, SQL statement attached; check Jaeger
   (`http://127.0.0.1:16686`, service = your `spring.observability.service-name`).
-- **Metrics**: histogram `db.client.operation.duration` and up-down counter
-  `db.client.active_requests`, attributes `db.system`, `db.operation`, status:
+- **Metrics**: histogram `db.client.operation.duration`, attributes `db.system`,
+  `db.operation`, status:
 
 ```bash
-curl -s :9370/metrics | grep -E 'db_client_operation_duration|db_client_active_requests'
+curl -s :9370/metrics | grep -E 'db_client_operation_duration'
 ```
 
-- **Access log**: tag `_app_mysql_access` (pattern `_app_<system>_access`), one
-  structured record per operation — system, op, status, duration, error; the SQL
-  statement only at `observability.level=detailed` (bounded by max-arg-bytes).
-  Severity: error → Warn level line, success → Info.
+- **Access log**: tag `_app_gorm_access`, one structured record per operation —
+  system, operation, status, duration, error, and the SQL statement (truncated
+  at 512 bytes) once gorm has built it. Severity: error → Warn, plain success →
+  Info, success with SQL → Debug.
 
 ```bash
-go run . 2>&1 | grep _app_mysql_access
+go run . 2>&1 | grep _app_gorm_access
 ```
 
 ### 4.2 Slow-log drill
@@ -376,7 +371,7 @@ endpoint and watch `OpenConnections`/`InUse`/`WaitCount` under load
 | Container fails: duplicate beans | A second Provide of `*DB`/`health.Indicator` without `.Name` | Don't re-provide DB beans yourself; instance beans are named `<name>` / `gorm:<dialect>:<name>` (register.go:78-85). |
 | Injection error "not a simple value"/type mismatch | Injecting `*gorm.DB` instead of the wrapper | Autowire the dialect's `*starter.DB` (alias of `gormcore.DB`); it embeds `*gorm.DB`. |
 | No spans/metrics/access log | starter-otel not imported, or `observe.enabled=false` | Import starter-otel; check the per-instance kill switch — it removes the plugin entirely. |
-| Slow-query lines are plain text | `slow-threshold` routes GORM's warn output through go-spring.org/log, but the message body is GORM's one-line text | Filter by message; for structured slow logs use the access log (`observability.level=detailed`) instead. |
+| Slow-query lines are plain text | `slow-threshold` routes GORM's warn output through go-spring.org/log, but the message body is GORM's one-line text | Filter by message; for structured slow logs use the access log instead. |
 | Queries rejected with rate-limited/circuit-open errors | Governance resilience engaged (or fault fired) | Intended protection; check `govern.*` config and the fault drill steps (§4.4). |
 | Stale connection errors after hours | LB/firewall dropping idle TCP; `conn-max-lifetime=0` | Set `conn-max-lifetime` below the infrastructure's idle cut. |
 | `breakers trip on legitimate "not found"` — they don't | `gorm.ErrRecordNotFound` treated as success | By design (callbacks.go:29-30); only real errors feed the breaker. |
@@ -385,7 +380,7 @@ endpoint and watch `OpenConnections`/`InUse`/`WaitCount` under load
 
 | Metric | Value |
 |--------|-------|
-| Shared config keys | 10 (Common) + wrapper `observability` compound (3 sub-keys) |
+| Shared config keys | 10 (Common) |
 | Required | 0 here (dialects own their required keys, e.g. mysql `user`/`db`) |
 | Quickstart external deps | 1 (a database; +1 collector for full observability) |
 | "Watch out" entries | 4 |
@@ -393,8 +388,6 @@ endpoint and watch `OpenConnections`/`InUse`/`WaitCount` under load
 Design suspects (for the audit ledger): slow-threshold logger carries GORM's
 plain-text message body (routed via go-spring.org/log since 2026-08, no longer
 stdlib stdout); `Common` no longer carries the discovery trio for sqlite —
-the sqlite starter embeds only `PoolSettings`; `observability` sub-keys come from the shared cloud/observe
-`ObserveConfig`, so a grep of this module shows only the compound key (key-table
-reconciliation needs the transitive closure); per-operation span but no
+the sqlite starter embeds only `PoolSettings`; per-operation span but no
 transaction-level span (correlation of a transaction's statements is by context
 only).

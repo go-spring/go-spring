@@ -26,32 +26,27 @@ import (
 	"strconv"
 	"sync"
 
-	observe "go-spring.org/cloud/observe"
 	"go.mongodb.org/mongo-driver/v2/event"
 )
 
-// newCommandMonitor returns an event.CommandMonitor that drives the shared
-// observe kit for every MongoDB command: a trace span, a duration/in-flight
-// metric, and an access log (off/brief/detailed). A command's observation is
+// newCommandMonitor returns an event.CommandMonitor that drives this
+// starter's own instrumentation (see observe.go) for every MongoDB command: a
+// trace span, a duration/in-flight metric, and an access log. A command's observation is
 // opened in Started and closed in Succeeded/Failed; events are correlated by
 // (connection id, request id), which the driver guarantees is unique for an
 // in-flight command.
 //
 // getObs lazily supplies the observer: newClient installs the monitor before
-// the wrapper's Observability config is field-injected, so Init
-// builds the observer and makes it available through the getter. Because no
+// Init builds the observer, so Init makes it available through the getter. Because no
 // command runs before Init (the wrapper is not handed out until
 // startup completes), the monitor never sees a nil observer in practice; the
 // nil guard keeps the probe path (startup Ping) safe.
 //
 // Why hand-rolled against the v2 event API (not otelmongo): the official
 // otelmongo instrumentation targets the v1 mongo driver and its CommandMonitor
-// type is incompatible with the v2 driver this starter uses. The bridge here
-// delegates the three signals to the observe kit so MongoDB shares the same
-// vocabulary (db.client.operation.duration, db.system=mongodb, ...) as every
-// other client starter.
-func newCommandMonitor(getObs func() *observe.Observer) *event.CommandMonitor {
-	var inFlight sync.Map // spanKey -> *observe.Span
+// type is incompatible with the v2 driver this starter uses.
+func newCommandMonitor(getObs func() *dbObserver) *event.CommandMonitor {
+	var inFlight sync.Map // spanKey -> *dbSpan
 
 	return &event.CommandMonitor{
 		Started: func(ctx context.Context, e *event.CommandStartedEvent) {
@@ -62,12 +57,12 @@ func newCommandMonitor(getObs func() *observe.Observer) *event.CommandMonitor {
 		},
 		Succeeded: func(_ context.Context, e *event.CommandSucceededEvent) {
 			if v, ok := inFlight.LoadAndDelete(spanKey(e.ConnectionID, e.RequestID)); ok {
-				v.(*observe.Span).End(nil)
+				v.(*dbSpan).End(nil)
 			}
 		},
 		Failed: func(_ context.Context, e *event.CommandFailedEvent) {
 			if v, ok := inFlight.LoadAndDelete(spanKey(e.ConnectionID, e.RequestID)); ok {
-				v.(*observe.Span).End(e.Failure)
+				v.(*dbSpan).End(e.Failure)
 			}
 		},
 	}

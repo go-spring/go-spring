@@ -44,8 +44,9 @@ var (
 // Validator verifies JWT bearer tokens issued by an OAuth2 authorization
 // server. It implements security.TokenValidator and is contributed as a named
 // bean under spring.security.oauth2.resource.jwt.<name>; the application
-// composes it with security.Authenticate(v, required) (or any consumer of the
-// TokenValidator seam) to protect its endpoints.
+// composes it with a server-family middleware (e.g. StarterHTTPServer.
+// Authenticate, StarterGin.Authenticate) or any consumer of the TokenValidator
+// seam to protect its endpoints.
 type Validator struct {
 	cfg     Config
 	parser  *jwt.Parser

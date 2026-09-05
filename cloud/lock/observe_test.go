@@ -22,7 +22,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	observe "go-spring.org/cloud/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -116,7 +115,7 @@ func TestWrapLocker_AcquireSuccess(t *testing.T) {
 	spanExp, rdr, cleanup := installGlobals(t)
 	defer cleanup()
 
-	l := WrapLocker("redis", observe.ObserveConfig{Level: observe.DefaultBrief}, fakeLocker{})
+	l := WrapLocker("redis", fakeLocker{})
 	held, err := l.Acquire(context.Background(), "jobs:1")
 	require.NoError(t, err)
 	assert.Equal(t, "jobs:1", held.Key())
@@ -138,28 +137,35 @@ func TestWrapLocker_AcquireSuccess(t *testing.T) {
 	status, ok := attrValue(points[0].Attributes.ToSlice(), "status")
 	require.True(t, ok)
 	assert.Equal(t, "ok", status.AsString())
+
+	// The miss scenario runs under the same provider install: the OTel global
+	// meter caches by name and only ever delegates to the first provider set,
+	// so a second installGlobals in this file would see no records.
+	testTryAcquireMiss(t, spanExp, rdr)
 }
 
 // TestWrapLocker_TryAcquireMiss asserts the miss path: a span named
 // "try_acquire" whose duration datapoint carries acquired=false, so a
 // dashboard can separate misses from wins without parsing errors.
-func TestWrapLocker_TryAcquireMiss(t *testing.T) {
-	spanExp, rdr, cleanup := installGlobals(t)
-	defer cleanup()
+func testTryAcquireMiss(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
 
-	l := WrapLocker("etcd", observe.ObserveConfig{Level: observe.DefaultBrief}, fakeLocker{tryOK: false})
+	l := WrapLocker("etcd", fakeLocker{tryOK: false})
 	_, ok, err := l.TryAcquire(context.Background(), "leader")
 	require.NoError(t, err)
 	assert.False(t, ok)
 
+	// The exporter and reader already hold the acquire scenario above, so
+	// assert on the latest span and on the datapoint tagged status=missed.
 	spans := spanExp.GetSpans()
-	require.Len(t, spans, 1)
-	assert.Equal(t, "try_acquire", spans[0].Name)
-	assert.Equal(t, codes.Unset, spans[0].Status.Code)
+	last := spans[len(spans)-1]
+	assert.Equal(t, "try_acquire", last.Name)
+	assert.Equal(t, codes.Unset, last.Status.Code)
 
-	points := histPoints(t, rdr, "lock.operation.duration")
-	require.Len(t, points, 1)
-	acquired, ok := attrValue(points[0].Attributes.ToSlice(), "lock.acquired")
-	require.True(t, ok)
-	assert.False(t, acquired.AsBool())
+	var missed bool
+	for _, p := range histPoints(t, rdr, "lock.operation.duration") {
+		if status, ok := attrValue(p.Attributes.ToSlice(), "status"); ok && status.AsString() == "missed" {
+			missed = true
+		}
+	}
+	assert.True(t, missed)
 }

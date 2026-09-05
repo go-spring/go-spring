@@ -41,7 +41,7 @@ import (
 func buildAdmission(cfg Config) (gin.HandlerFunc, error) {
 	resource := resilience.ResourceLabel("gin", cfg.Address)
 	exec := resilience.ExecutorFor(resource)
-	exec = resilience.WrapExecutor(exec, "gin", cfg.Observability)
+	exec = resilience.WrapExecutor(exec, "gin")
 	return resilienceAdmission(exec, resource), nil
 }
 

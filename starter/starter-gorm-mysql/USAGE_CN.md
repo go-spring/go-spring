@@ -162,10 +162,10 @@ gs.Run()
   ├─ OnProperty("spring.gorm.mysql") 命中；conf.BindEach 为每个 <name> 条目绑定一份 Config
   ├─ 每实例：build(ctx, c)
   │    ├─ addr/service-name 存在性检查（必须设其一）
-  │    ├─ TLS：c.TLS.Build() -> *tls.Config；mysql.RegisterTLSConfig("gstls_<n>", cfg)
+  │    ├─ TLS：c.TLS.BuildClient() -> *tls.Config；mysql.RegisterTLSConfig("gstls_<n>", cfg)
   │    ├─ DSN(): user:pass@tcp(addr)/db?params
   │    └─ 服务发现（设了 service-name 且 mesh 关闭）：
-  │         mysql.RegisterDialContext("gsdisco_<svc>_<n>", 经 Resolver.Pick 拨号)
+  │         mysql.RegisterDialContext("gsdisco_<svc>_<n>", 经 round-robin pick pool 拨号)
   │         并把 DSN 改写为 net(gsdisco_...)(<service-name>)
   ├─ gormcore.Open：gorm.Open -> ApplyPool（含启动 ping、ping-timeout 上限）
   │    -> ApplyDBCustomizers -> *DB bean（Name=<name>，Init，Destroy）
@@ -241,7 +241,7 @@ ETCDCTL_API=3 etcdctl put /services/mysql-cluster/a '{"service_name":"mysql-clus
 ETCDCTL_API=3 etcdctl put /services/mysql-cluster/b '{"service_name":"mysql-cluster","addr":"127.0.0.1:3307"}'
 ```
 
-2. 启动应用；两个 key 都进入 resolver 端点集；每条**新**连接经 `Resolver.Pick()` 二选一拨号。
+2. 启动应用；两个 key 都进入 resolver 端点集；每条**新**连接经 round-robin pool 二选一拨号。
 3. 摘除一个端点：
 
 ```bash

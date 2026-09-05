@@ -28,7 +28,6 @@ import (
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // Client is the bean Milvus connections are injected as. It embeds the SDK's
@@ -36,11 +35,7 @@ import (
 // config plus the guard slot the interceptors consult.
 type Client struct {
 	client.Client
-	// Observability is field-injected by gs and configures the observation of
-	// guard decisions (rate-limit/breaker rejections emit a span + call
-	// counter + duration histogram + access log).
-	Observability observe.ObserveConfig `value:"${observability:=}"`
-	cfg           Config
+	cfg Config
 	// slot is armed by Init; the gRPC interceptors read it on every RPC.
 	slot *guardSlot
 	// exec is the resilience executor, resolved via resilience.ExecutorFor;
@@ -74,8 +69,7 @@ func newClient(ctx context.Context, c Config) (*Client, error) {
 	return &Client{Client: cl, cfg: c, slot: slot}, nil
 }
 
-// Init is the gs InitMethod: gs field-injects Observability after newClient
-// returns, then calls this. It resolves the executor through the neutral
+// Init is the gs InitMethod: it resolves the executor through the neutral
 // [resilience.ExecutorFor] seam (backed by starter-govern's governance center
 // when imported), wraps it with the process-wide fault injector and
 // observe-resilience, and arms the slot the interceptors read. When governance
@@ -83,7 +77,7 @@ func newClient(ctx context.Context, c Config) (*Client, error) {
 func (o *Client) Init() error {
 	o.resource = resilience.ResourceLabel("milvus", o.cfg.Addr)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "milvus", o.Observability)
+	exec = resilience.WrapExecutor(exec, "milvus")
 	o.exec = exec
 	o.slot.arm(exec, o.resource)
 	return nil

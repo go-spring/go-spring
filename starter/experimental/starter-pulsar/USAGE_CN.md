@@ -1,7 +1,7 @@
 # starter-pulsar 使用说明 — 参考手册
 
 详细使用参考。概览见 [README.md](README.md)。所有行为声明均与 starter 源码
-（`config.go`、`starter.go`、`client.go`、`command.go`、`driver.go`、`binder.go`）及可运行的
+（`config.go`、`starter.go`、`client.go`、`command.go`、`driver.go`、`driver.go`）及可运行的
 [example/](example/) / [example-otel/](example-otel/) 核对，括号内为 file:line 抽查点。
 **Pulsar 自身语义（订阅、消息 key、properties、保留/重投）见
 [Pulsar 官方文档](https://pulsar.apache.org/docs/next/client-libraries-go/)** —— 下文只写
@@ -16,7 +16,7 @@ go-spring 的增量。
 
 ## 1. 完整工程示例
 
-一个经 messaging.Binder 同时做生产与消费的服务，含原生指标、OTel tracing 与治理。
+一个经 messaging.Driver 同时做生产与消费的服务，含原生指标、OTel tracing 与治理。
 文件树：
 
 ```
@@ -58,7 +58,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**messaging.go** —— binder 发布 + 消费，以及受治理保护的裸路径：
+**messaging.go** —— driver 发布 + 消费，以及受治理保护的裸路径：
 
 ```go
 package messaging
@@ -73,12 +73,12 @@ import (
 )
 
 func init() {
-    // 把注入的裸 client 适配为 broker 无关的 Binder。gs.TagArg("main")
-    // 取 spring.pulsar.main 实例；binder bean 此处未命名。
-    gs.Provide(StarterPulsar.NewBinder, gs.TagArg("main"))
+    // 把注入的裸 client 适配为 broker 无关的 Driver。gs.TagArg("main")
+    // 取 spring.pulsar.main 实例；driver bean 此处未命名。
+    gs.Provide(StarterPulsar.NewDriver, gs.TagArg("main"))
 
-    gs.Provide(func(b messaging.Binder) (gs.Rooter, error) {
-        // Publisher：binder 为 topic 惰性创建一个 producer。
+    gs.Provide(func(b messaging.Driver) (gs.Rooter, error) {
+        // Publisher：driver 为 topic 惰性创建一个 producer。
         pub, err := b.NewPublisher(context.Background(), "persistent://public/demo/orders")
         if err != nil {
             return nil, err
@@ -89,7 +89,7 @@ func init() {
         if err != nil {
             return nil, err
         }
-        // handler 出错 → Nack → Pulsar 重投 [binder.go:147-151]。
+        // handler 出错 → Nack → Pulsar 重投 [driver.go:147-151]。
         err = sub.Subscribe(context.Background(), func(ctx context.Context, m *messaging.Message) error {
             return process(ctx, m) // Key/Payload/Headers/Timestamp 均在往返中保留
         })
@@ -98,7 +98,7 @@ func init() {
         }
 
         return func(ctx context.Context) error {
-            // binder 发布：span + trace context 注入内置 [binder.go:98-101]。
+            // driver 发布：span + trace context 注入内置 [driver.go:98-101]。
             return pub.Publish(ctx, &messaging.Message{
                 Key:     "user-42",                    // 成为 Pulsar 消息 key
                 Payload: []byte(`{"amt":100}`),
@@ -136,10 +136,6 @@ spring.pulsar.main.metrics.enabled=true
 spring.pulsar.main.metrics.port=9091
 spring.pulsar.main.metrics.path=/metrics
 
-# --- 受保护调用的访问日志（off/brief/detailed）--------------------------------
-spring.pulsar.main.observability.level=brief
-spring.pulsar.main.observability.maxArgBytes=512
-
 # --- actuator + otel ----------------------------------------------------------
 spring.actuator.addr=:9370
 spring.observability.service-name=demo
@@ -167,8 +163,8 @@ for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/admin/v2/brokers/health
 ```bash
 go run .                                   # broker 不可达时 fail-fast 探测中止启动
 curl -s :9091/metrics | grep pulsar_client_ # 原生 client 指标
-curl -s :9370/metrics | grep messaging      # observe-kit 逐消息指标
-grep -E '_app_pulsar|pulsar' app.log        # binder + client 日志行（tag _app_def）
+curl -s :9370/metrics | grep messaging      # driver 路径逐消息指标
+grep -E '_app_pulsar|pulsar' app.log        # driver + client 日志行（tag _app_def）
 ```
 
 ---
@@ -221,51 +217,50 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
 
 **未保护面**（均有源码注释说明是有意的）：
 - `producer.SendAsync` —— 刻意不碰；异步路径没有可拒绝的同步结果 [command.go:261-263]。
-- binder 的 `Publish` —— **现已受保护**：binder 走 `GuardedSend` 与 client 级 executor
-  [binder.go]，span+trace 注入与熔断/限流/fault 都有。实例 key `governance=false` 可让
+- driver 的 `Publish` —— **现已受保护**：driver 走 `GuardedSend` 与 client 级 executor
+  [driver.go]，span+trace 注入与熔断/限流/fault 都有。实例 key `governance=false` 可让
   所有调用路径裸跑。
 - 消费侧 `Receive`/handler —— 没有消费端保护。
 - `CreateProducer`/`Subscribe`/`TopicPartitions` —— 生命周期调用，仅启动期 FailFast
   探测覆盖。
 
-### 2.3 一次 binder 发布，逐层走读
+### 2.3 一次 driver 发布，逐层走读
 
 `pub.Publish(ctx, msg)`，其中 `Key: "k"`、`Headers: h`、ctx 带压测标记
-[binder.go:81-102]：
+[driver.go:81-102]：
 
 1. header 拷贝：若 `traffic.IsLoadTest(ctx)`，headers 被**复制**（绝不改调用方的 map）
-   并追加 `x-load-test=1` [binder.go:85-90]。
+   并追加 `x-load-test=1` [driver.go:85-90]。
 2. 信封 → `pulsar.ProducerMessage`：`Payload`、`Properties`（= headers）、**Key 仅在
-   非空时设置** [binder.go:91-97]。未映射：`Timestamp`（信封有，但 Pulsar 发布时间由
+   非空时设置** [driver.go:91-97]。未映射：`Timestamp`（信封有，但 Pulsar 发布时间由
    服务端定）及一切 Pulsar 专有字段（OrderingKey、DeliverAt……）。
-3. `startProduce` 打开 kit 观测（span `publish`、指标、固定 **brief** 级访问日志 ——
-   实例级 `observability` 配置到不了这条路径，见 §6），并把 W3C trace context 注入
-   `pm.Properties` [command.go:184-191]。
+3. `startProduce` 打开模块内观测（span `publish`、时长/在途指标、访问日志），
+   并把 W3C trace context 注入 `pm.Properties`。
 4. `producer.Send(ctx, pm)` —— 同步，阻塞到 broker ack。
 5. `sp.End(err)` 在三路信号上记录结果。
 
-### 2.4 一次 binder 消费，逐层走读
+### 2.4 一次 driver 消费，逐层走读
 
-`sub.Subscribe(handler)` 启动一个后台循环 [binder.go:119-155]：
+`sub.Subscribe(handler)` 启动一个后台循环 [driver.go:119-155]：
 
 1. handler 先包 `messaging.Recover` —— panic 转为普通错误 → Nack → 重投，绝不会
-   打穿 SDK goroutine [binder.go:121-123]。
+   打穿 SDK goroutine [driver.go:121-123]。
 2. 循环 ctx 派生自 `context.WithoutCancel(ctx)` —— 只有 Close 显式取消，调用方 ctx
-   取消不影响 [binder.go:123]。
+   取消不影响 [driver.go:123]。
 3. `c.Receive` → `startConsume` 从 `msg.Properties()` 提取上游 trace，开 consumer 子
    span [command.go:195-198]。
 4. 压测标记：若生产者往 Properties 里写了 `x-load-test`，handler ctx 会经
-   `traffic.WithLoadTest` 重新打标 [binder.go:141-143]。
+   `traffic.WithLoadTest` 重新打标 [driver.go:141-143]。
 5. `fromPulsarMsg` 反向映射：Pulsar `Key()` → 信封 Key、`Payload()`、`Properties()` →
    Headers（含注入的 `traceparent` —— 消费侧 headers 会多出 key）、`PublishTime()` →
-   Timestamp [binder.go:171-178]。两个方向都保留 Key 与 Properties。
+   Timestamp [driver.go:171-178]。两个方向都保留 Key 与 Properties。
 6. handler 出错 → `Nack`（按 Shared 订阅语义重投）+ 错误日志；成功 → `Ack(msg)`，
-   ack 失败记 WARN（有重投风险）[binder.go:145-151]。
-7. 非 ctx 取消的 `Receive` 错误记日志后循环重试 [binder.go:131-137]。
+   ack 失败记 WARN（有重投风险）[driver.go:145-151]。
+7. 非 ctx 取消的 `Receive` 错误记日志后循环重试 [driver.go:131-137]。
 
 Close 顺序：取消循环 ctx → 等 `done`（在途 handler 收尾）→ `consumer.Close()`
-[binder.go:157-168]；publisher Close 只调 `producer.Close()` 且**丢弃其错误**
-[binder.go:104-107]。
+[driver.go:157-168]；publisher Close 只调 `producer.Close()` 且**丢弃其错误**
+[driver.go:104-107]。
 
 ---
 
@@ -292,13 +287,10 @@ Close 顺序：取消循环 ctx → 等 `done`（在途 handler 收尾）→ `co
 | `metrics.enabled` | bool | true | 启动按实例的 `/metrics` server 并接入独立 registry [driver.go:97-101]。 | false → 任何地方都没有 `pulsar_client_*`。 |
 | `metrics.port` | int | 9091 | 该 server 的端口。⚠ 固定默认：每个开 metrics 的实例必须各配独立端口；冲突时后起的 server 静默监听失败（错误被吞 [command.go:69-71]）。 | 两实例同端口 → 一个 metrics 端点静默死亡。 |
 | `metrics.path` | string | `/metrics` | 该 server 的 HTTP 路径 [command.go:62]。 | — |
-| `observability` | group | — | `observe.ObserveConfig` `value:"${observability:=}"` [config.go:85]。只作用于 GuardedSend 的 executor observer —— 不影响 binder 路径（§6）。 | — |
 | `driver` | string | `DefaultDriver` | driver 注册表查找；`RegisterDriver` 重名 panic [driver.go:53-58]。 | 未知名 → 启动报错 "pulsar driver not found"。 |
-| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedSend` 与 binder 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
+| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedSend` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
-`observability` 子 key（`level` off/brief/detailed、`maxArgBytes`、`skipOps`）是共享的
-observe-kit 配置；语义见 go-redis 的 USAGE §3.3。`schema.json` 里 `metrics.enabled`
-默认写的是 `false`，代码默认是 `true` —— 以代码为准。
+`schema.json` 里 `metrics.enabled` 默认写的是 `false`，代码默认是 `true` —— 以代码为准。
 
 ---
 
@@ -311,7 +303,7 @@ docker stop pulsar && go run .    # 启动中止："pulsar broker probe failed o
 docker start pulsar && go run .   # admin health 端点应答后即可启动（§1 闸门）
 ```
 
-### 4.2 消息往返（含 binder 映射字段存活）
+### 4.2 消息往返（含 driver 映射字段存活）
 
 按 §1 发布 `Key="user-42"`、`Headers={"h1":"v1"}`；在 handler 里打印
 `m.Key, m.Headers["h1"], string(m.Payload)` —— 三者全部存活，Headers 里还多出注入的
@@ -332,24 +324,24 @@ govern:
 
 资源标签是 `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]。停掉 broker 后：压
 `GuardedSend` → 过阈值后熔断打开，调用快速失败返回 resilience 哨兵错误，出现
-observe-kit 访问日志记录 + resilience outcome 计数；改压 binder `Publish` → 每次调用
+resilience outcome 计数；改压 driver `Publish` → 每次调用
 阻塞进 client 自身的重试/超时，没有哨兵、没有熔断。这个对比就是 §2.2 的边界。
 
 ### 4.4 指标 / span / 日志读取
 
 - 原生：`curl -s :9091/metrics | grep pulsar_client_`（producer/consumer/连接统计；
   按实例独立 registry，实例间永不冲突 [command.go:59-74]）。
-- OTel：observe-kit span `publish` / `consume`（trace 经 Properties 里的 W3C context
+- OTel：driver 路径 span `publish` / `consume`（trace 经 Properties 里的 W3C context
   串联）；手动助手发 `pulsar.produce` / `pulsar.consume <topic>`，带
   `messaging.system=pulsar` [command.go:99-134]。发流量后查 Jaeger（`:16686`）。
-- 日志：binder handler/receive 错误与全部桥接的 client 内部日志落在 `_app_def` tag，
+- 日志：driver handler/receive 错误与全部桥接的 client 内部日志落在 `_app_def` tag，
   前缀 `pulsar: `。
 
 ### 4.5 停机演练
 
 SIGTERM → destroyClient 关闭 executor、client（全部 producer/consumer）与 metrics
 server [client.go:44-58]。subscriber Close 先排空循环再 consumer.Close
-[binder.go:157-168]。观察日志干净退出；:9091 停止服务。
+[driver.go:157-168]。观察日志干净退出；:9091 停止服务。
 
 ---
 
@@ -361,25 +353,24 @@ server [client.go:44-58]。subscriber Close 先排空循环再 consumer.Close
 | 启动失败 "pulsar driver not found" | `driver` 拼错或未注册 | 用 DefaultDriver，或 init 里 RegisterDriver。 |
 | 第二个实例没有 /metrics | `metrics.port` 冲突；监听失败仅记 WARN [command.go:69-71] | 各配独立端口。 |
 | 没有 trace | 未 import starter-otel | 加上；所有助手在无它时是静默 no-op。 |
-| handler 明明成功了消息却重投 | Ack 失败（已记 WARN）[binder.go:158] | 检查 broker ack 权限；嫌疑见 §6。 |
-| 消费者收不到消息 | 订阅名不对 / Shared 与 topic 语义 | `group` 与订阅 1:1；空 group 派生 `go-spring-<topic>` [binder.go:63-66]。 |
+| handler 明明成功了消息却重投 | Ack 失败（已记 WARN）[driver.go:158] | 检查 broker ack 权限；嫌疑见 §6。 |
+| 消费者收不到消息 | 订阅名不对 / Shared 与 topic 语义 | `group` 与订阅 1:1；空 group 派生 `go-spring-<topic>` [driver.go:63-66]。 |
 | 期望 token 认证，broker 拒绝 | mTLS cert+key 已设置 → token 被忽略（优先级）[driver.go:83-90] | 去掉 cert/key，或放宽 broker 的 mTLS。 |
-| 压测下熔断从不打开 | 流量走 binder Publish 或 SendAsync —— 未保护（§2.2） | 改走 GuardedSend。 |
+| 压测下熔断从不打开 | 流量走 driver Publish 或 SendAsync —— 未保护（§2.2） | 改走 GuardedSend。 |
 | handler panic 什么都不打死，但消息重现 | Recover 把 panic 转为 Nack | 预期行为；修 handler。 |
 
 ## 6. 设计体检表
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key | 18 个 value tag（+ observability 子 key） |
+| 配置 key | 17 个 value tag |
 | 其中必填 | 1（`url`） |
 | quickstart 前置外部依赖 | 1（Pulsar standalone） |
 | "注意/坑"条数 | 8 |
 
 设计嫌疑（审计台账）：`metrics.port` 固定默认 9091，多实例之间及与其他应用易冲突，且
-监听失败被吞；binder 的 Publish 现已与裸路径共用同一 executor 受保护（Subscribe/消费
-侧仍不受保护）；binder 路径的 span 仍走固定 "brief" observer 而非实例级
-`observability` 配置（[command.go:152-159]）；消费侧 ack 失败记 WARN；`producer.Close()` 无
+监听失败被吞；driver 的 Publish 现已与裸路径共用同一 executor 受保护（Subscribe/消费
+侧仍不受保护）；消费侧 ack 失败记 WARN；`producer.Close()` 无
 错误返回，publisher Close 不会失败；无运行期 health indicator（fail-fast
 仅启动期 —— broker 后续宕机对 actuator 不可见）；`schema.json` 的
 `metrics.enabled` 默认值与代码（true）不一致。

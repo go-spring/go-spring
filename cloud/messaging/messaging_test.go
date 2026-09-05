@@ -34,24 +34,24 @@ func TestMessage_Headers(t *testing.T) {
 	assert.String(t, nilMsg.Header("k")).Equal("")
 }
 
-// memBinder is an in-process fake binder used to exercise the abstraction and
+// memDriver is an in-process fake driver used to exercise the abstraction and
 // prove a round-trip without any real broker.
-type memBinder struct {
+type memDriver struct {
 	mu   sync.Mutex
 	subs map[string][]Handler
 }
 
-func newMemBinder() *memBinder { return &memBinder{subs: map[string][]Handler{}} }
+func newMemDriver() *memDriver { return &memDriver{subs: map[string][]Handler{}} }
 
-func (b *memBinder) NewPublisher(_ context.Context, dest string) (Publisher, error) {
+func (b *memDriver) NewPublisher(_ context.Context, dest string) (Publisher, error) {
 	return &memPublisher{b: b, dest: dest}, nil
 }
 
-func (b *memBinder) NewSubscriber(_ context.Context, source, _ string) (Subscriber, error) {
+func (b *memDriver) NewSubscriber(_ context.Context, source, _ string) (Subscriber, error) {
 	return &memSubscriber{b: b, source: source}, nil
 }
 
-func (b *memBinder) deliver(ctx context.Context, dest string, msg *Message) error {
+func (b *memDriver) deliver(ctx context.Context, dest string, msg *Message) error {
 	b.mu.Lock()
 	handlers := append([]Handler(nil), b.subs[dest]...)
 	b.mu.Unlock()
@@ -64,7 +64,7 @@ func (b *memBinder) deliver(ctx context.Context, dest string, msg *Message) erro
 }
 
 type memPublisher struct {
-	b    *memBinder
+	b    *memDriver
 	dest string
 }
 
@@ -74,7 +74,7 @@ func (p *memPublisher) Publish(ctx context.Context, msg *Message) error {
 func (p *memPublisher) Close() error { return nil }
 
 type memSubscriber struct {
-	b      *memBinder
+	b      *memDriver
 	source string
 }
 
@@ -86,8 +86,8 @@ func (s *memSubscriber) Subscribe(_ context.Context, handler Handler) error {
 }
 func (s *memSubscriber) Close() error { return nil }
 
-func TestBinder_RoundTrip(t *testing.T) {
-	b := newMemBinder()
+func TestDriver_RoundTrip(t *testing.T) {
+	b := newMemDriver()
 	ctx := context.Background()
 
 	sub, err := b.NewSubscriber(ctx, "orders", "workers")
@@ -116,16 +116,16 @@ func TestBinder_RoundTrip(t *testing.T) {
 }
 
 func TestRegistry(t *testing.T) {
-	RegisterBinder("mem", newMemBinder())
+	RegisterDriver("mem", newMemDriver())
 
-	b, err := GetBinder("mem")
+	b, err := GetDriver("mem")
 	assert.Error(t, err).Nil()
 	assert.That(t, b).NotNil()
 
-	_, err = GetBinder("missing")
-	assert.Error(t, err).Matches("no binder registered as \"missing\"")
+	_, err = GetDriver("missing")
+	assert.Error(t, err).Matches("no driver registered as \"missing\"")
 
-	assert.Panic(t, func() { RegisterBinder("mem", newMemBinder()) }, "already registered")
-	assert.Panic(t, func() { RegisterBinder("", newMemBinder()) }, "empty name")
-	assert.Panic(t, func() { RegisterBinder("nil-b", nil) }, "nil binder")
+	assert.Panic(t, func() { RegisterDriver("mem", newMemDriver()) }, "already registered")
+	assert.Panic(t, func() { RegisterDriver("", newMemDriver()) }, "empty name")
+	assert.Panic(t, func() { RegisterDriver("nil-b", nil) }, "nil driver")
 }

@@ -18,8 +18,6 @@ package StarterRedigo
 
 import (
 	"context"
-
-	observe "go-spring.org/cloud/observe"
 )
 
 // driverRegistry maps driver names to their implementations. The bundled
@@ -50,7 +48,7 @@ func init() {
 //     standard assembly would have done, including any teardown of resources
 //     you built.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, obs observe.ObserveConfig) (*Pool, error)
+	CreateClient(ctx context.Context, c Config) (*Pool, error)
 }
 
 // RegisterDriver registers a Redis driver with the given name.
@@ -69,7 +67,7 @@ type DefaultDriver struct{}
 //
 // When c.ServiceName is set (and mesh mode is not enabled), the address is
 // resolved through the registered discovery backend (c.Discovery) instead of
-// c.Addr: a discovery.Resolver keeps the endpoint set fresh via a background
+// c.Addr: a discovery loader keeps the endpoint set fresh via the backend's
 // watch and the pool dials a live instance (Pick) for each new connection.
 // Combined with c.ConnMaxLifetime, pooled connections recycle onto updated
 // addresses without rebuilding the pool. When c.ServiceName is empty this is a
@@ -78,6 +76,6 @@ type DefaultDriver struct{}
 // In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
 // discovery+LB, so the pool connects straight to the configured static Addr
 // (the service's stable DNS address).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, obs observe.ObserveConfig) (*Pool, error) {
-	return NewPool(ctx, c, obs)
+func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*Pool, error) {
+	return NewPool(ctx, c)
 }

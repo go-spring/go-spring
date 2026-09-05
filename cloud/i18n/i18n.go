@@ -26,7 +26,7 @@
 // The bundled [MapSource] holds messages in memory: locale -> key -> template.
 // It reads no files; the wiring layer parses properties/yaml/json (or fetches
 // them from a config center) and feeds the resulting maps in via
-// [MapSource.AddMap] / [MapSource.AddParsed].
+// [MapSource.AddMessage] / [MapSource.AddBundle].
 package i18n
 
 import (
@@ -39,7 +39,7 @@ import (
 )
 
 // ErrMessageNotFound is returned (wrapped) by a [MessageSource] when a key
-// resolves in neither the requested locale nor the fallback locale. Callers that
+// resolves in neither the requested locale nor the default locale. Callers that
 // want fail-loud behaviour test for it with errors.Is; callers that want a
 // graceful fallback ignore the error and use the returned string, which is the
 // key itself.
@@ -63,7 +63,7 @@ func LocaleFrom(ctx context.Context) string {
 
 // MessageSource resolves key into a localized string, interpolating args. The
 // locale is taken from ctx (see [LocaleFrom]); an implementation may fall back
-// to its own configured fallback locale when the lookup misses.
+// to its own configured default locale when the lookup misses.
 //
 // On a missing key the contract is: return the key unchanged together with an
 // error wrapping [ErrMessageNotFound], so a caller may either surface the error
@@ -78,24 +78,24 @@ type MessageSource interface {
 // guarded by the caller if it races with reads (the internal lock keeps the map
 // itself consistent).
 //
-// Lookup order for Message(ctx, key): the ctx locale, then the fallback locale
-// set by [WithFallbackLocale], then the key itself with [ErrMessageNotFound].
-// The fallback locale is the safety net for partially translated bundles.
+// Lookup order for Message(ctx, key): the ctx locale, then the default locale
+// set by [WithDefaultLocale], then the key itself with [ErrMessageNotFound].
+// The default locale is the safety net for partially translated bundles.
 type MapSource struct {
-	fallbackLocale string
-	mu             sync.RWMutex
-	messages       map[string]map[string]string // locale -> key -> template
+	defaultLocale string
+	mu            sync.RWMutex
+	messages      map[string]map[string]string // locale -> key -> template
 }
 
 // MapSourceOption customizes a [MapSource] at construction.
 type MapSourceOption func(*MapSource)
 
-// WithFallbackLocale sets the locale consulted when a key is absent in the
-// requested locale — pick the one your bundle is most complete in. Without it
-// there is no fallback layer: a missing key in the request locale resolves to
-// the key itself with [ErrMessageNotFound].
-func WithFallbackLocale(locale string) MapSourceOption {
-	return func(s *MapSource) { s.fallbackLocale = locale }
+// WithDefaultLocale sets the default locale consulted when a key is absent in
+// the requested locale — pick the one your bundle is most complete in. Without
+// it there is no fallback layer: a missing key in the request locale resolves
+// to the key itself with [ErrMessageNotFound].
+func WithDefaultLocale(locale string) MapSourceOption {
+	return func(s *MapSource) { s.defaultLocale = locale }
 }
 
 // NewMapSource creates an empty [MapSource].
@@ -107,9 +107,9 @@ func NewMapSource(opts ...MapSourceOption) *MapSource {
 	return s
 }
 
-// Add registers a single template for one key in one locale, overwriting any
+// AddMessage registers a single template for one key in one locale, overwriting any
 // previous value. It returns the receiver for call chaining.
-func (s *MapSource) Add(locale, key, template string) *MapSource {
+func (s *MapSource) AddMessage(locale, key, template string) *MapSource {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m := s.messages[locale]
@@ -121,42 +121,13 @@ func (s *MapSource) Add(locale, key, template string) *MapSource {
 	return s
 }
 
-// AddMap registers every key/template pair for one locale.
-func (s *MapSource) AddMap(locale string, m map[string]string) *MapSource {
-	for k, v := range m {
-		s.Add(locale, k, v)
+// AddBundle registers one locale's bundle: every key/template pair for that
+// locale, overwriting previous values.
+func (s *MapSource) AddBundle(locale string, bundle map[string]string) *MapSource {
+	for k, v := range bundle {
+		s.AddMessage(locale, k, v)
 	}
 	return s
-}
-
-// AddParsed registers messages for one locale from a nested map (the shape a
-// yaml/json parser yields, e.g. {"validation":{"email":"..."}}). Nested maps are
-// flattened with dot-joined keys so {"validation":{"email":"x"}} maps to key
-// "validation.email". Both map[string]any (json) and map[any]any (yaml.v2) nests
-// are handled; non-string leaves are rendered with fmt.Sprint.
-func (s *MapSource) AddParsed(locale string, m map[string]any) *MapSource {
-	flat := map[string]string{}
-	for k, v := range m {
-		flatten(k, v, flat)
-	}
-	return s.AddMap(locale, flat)
-}
-
-func flatten(prefix string, v any, out map[string]string) {
-	switch child := v.(type) {
-	case map[string]any:
-		for k, cv := range child {
-			flatten(prefix+"."+k, cv, out)
-		}
-	case map[any]any:
-		for k, cv := range child {
-			flatten(prefix+"."+fmt.Sprint(k), cv, out)
-		}
-	case string:
-		out[prefix] = child
-	default:
-		out[prefix] = fmt.Sprint(child)
-	}
 }
 
 // Message implements [MessageSource]. See [MapSource] for the lookup order.
@@ -167,8 +138,8 @@ func (s *MapSource) Message(ctx context.Context, key string, args ...any) (strin
 	if t, ok := s.lookup(locale, key); ok {
 		return interpolate(t, args...), nil
 	}
-	if s.fallbackLocale != "" && !strings.EqualFold(locale, s.fallbackLocale) {
-		if t, ok := s.lookup(s.fallbackLocale, key); ok {
+	if s.defaultLocale != "" && !strings.EqualFold(locale, s.defaultLocale) {
+		if t, ok := s.lookup(s.defaultLocale, key); ok {
 			return interpolate(t, args...), nil
 		}
 	}
@@ -185,20 +156,6 @@ func (s *MapSource) lookup(locale, key string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// Localizer curries Message to a fixed ctx, producing the func(key, args...)
-// string signature that validation.ValidationErrors.Localize expects. A missing
-// key yields "" (the [ErrMessageNotFound] error is swallowed) so the caller's
-// own default message is used instead of leaking a raw key.
-func Localizer(src MessageSource, ctx context.Context) func(key string, args ...any) string {
-	return func(key string, args ...any) string {
-		s, err := src.Message(ctx, key, args...)
-		if err != nil {
-			return ""
-		}
-		return s
-	}
 }
 
 // interpolate replaces positional placeholders {0}, {1}, ... in template with
@@ -234,5 +191,19 @@ func argString(a any) string {
 		return ""
 	default:
 		return fmt.Sprint(v)
+	}
+}
+
+// Localizer curries Message to a fixed ctx, producing the func(key, args...)
+// string signature that validation.ValidationErrors.Localize expects. A missing
+// key yields "" (the [ErrMessageNotFound] error is swallowed) so the caller's
+// own default message is used instead of leaking a raw key.
+func Localizer(src MessageSource, ctx context.Context) func(key string, args ...any) string {
+	return func(key string, args ...any) string {
+		s, err := src.Message(ctx, key, args...)
+		if err != nil {
+			return ""
+		}
+		return s
 	}
 }

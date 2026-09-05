@@ -188,7 +188,7 @@ gs.Run()
   │    ├─ useDiscovery = service-name != "" && !mesh.Enabled()
   │    ├─ useNative = useDiscovery || TLS.Enabled
   │    │    native: ch.Options{Addr, Auth, Dial/ReadTimeout}
-  │    │      + opts.TLS = tlsconf.Build()          （TLS 开启时）
+  │    │      + opts.TLS = tlsconf.BuildClient()          （TLS 开启时）
   │    │      + opts.DialContext = resolver 选点     （discovery 时）
   │    │      → clickhouse.New(Config{Conn: ch.OpenDB(opts)})
   │    └─ 直连路径：clickhouse.Open(DSN)              （无 TLS、无 discovery）
@@ -205,7 +205,7 @@ gs.Run()
 ### 2.2 Discovery 拨号路径 —— 与哑地址要求
 
 native 驱动的 `ch.Options.DialContext` 是两参 `func(ctx, addr string)` —— starter 的
-实现**忽略 addr 参数**，改拨 `resolver.Pick()` 返回的 `ep.Addr`
+实现**忽略 addr 参数**，改拨 round-robin pool 返回的 `ep.Addr`
 （starter.go:107-113），因此池中每个新连接都落在当前存活的实例上；地址变化无需
 重建客户端即生效。设置 `service-name` 后，`addr` 永远不会被拨号 —— 但 `build` 仍要求
 `addr` **或** `service-name` 非空，且 native 路径上会先填 `opts.Addr =
@@ -246,7 +246,7 @@ key 位于 `spring.gorm.clickhouse.<name>.*`。Common keys（10 个）与 wrappe
 
 与 sqlserver（DSN 参数）不同，ClickHouse 的 TLS 是真正的 `*tls.Config`：开启后
 **把 starter 切到 native 驱动路径**（`useNative`，starter.go:78），设置
-`opts.TLS = c.TLS.Build()` —— **从不发出 `secure_connection` / `https` DSN 参数**。
+`opts.TLS = c.TLS.BuildClient()` —— **从不发出 `secure_connection` / `https` DSN 参数**。
 此处六个 key 全部有效：
 
 | Key | 默认值 | 行为 |

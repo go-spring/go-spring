@@ -2,7 +2,7 @@
 
 详细使用文档。概览见 [README](README_CN.md)。所有行为声明均已对照 starter 源码（`starter.go`、
 `registrar.go`、`config.go`、`registrar_test.go`）、`cloud/discovery` 接缝（`cloud/discovery/discovery.go`、
-`cloud/discovery/resolver.go`、`cloud/loadbalance/pool.go`）与可运行的 [example/](example/)
+`cloud/discovery/loader.go`、`cloud/loadbalance/pool.go`）与可运行的 [example/](example/)
 （`example/check.sh` 跑单测 + docker-compose ZooKeeper 端到端启动）核实。**ZooKeeper 自身语义（会话、
 临时 znode、watcher、digest 认证）见 [ZooKeeper 文档](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html)**——
 本文只讲 go-spring 的增量。
@@ -90,7 +90,7 @@ ZooKeeper 版 `Discovery` 到某个名字下，之后任意 client starter 的 `
 ```go
 // consumer_side/discovery.go — 启动时调用一次。
 func registerZkDiscovery(name, servers, basePath string) error {
-    b, err := zkdisc.New(servers, basePath) // ChildrenW/GetW → snapshot → WatchResult
+    b, err := zkdisc.New(servers, basePath) // ChildrenW/GetW → snapshot → 内部缓存
     if err != nil { return err }
     discovery.RegisterDiscovery(name, b)    // cloud/discovery 接缝
     return nil
@@ -173,11 +173,11 @@ snapshot 的方式互为镜像：
    那是 ZooKeeper 自己的 watch 事件，不是我们的代码）。
 2. 后端列举 children 并 `Get` 各节点数据（一个 instance-id child 即一个实例，
    `registrar.go:101-104`）；`GetW` 覆盖原位数据改写（改权重）。
-3. 每个事件产出一份全新的完整 `[]discovery.Endpoint` snapshot，作为一条 `WatchResult` 推送到
-   `Discovery.Watch` 返回的 channel 上（`cloud/discovery/discovery.go:182-198`）。变更检测按
-   snapshot 进行——后端不做 diff，消费方把每条结果都当权威。
-4. `discovery.NewResolver` 消费该 channel 并换掉自己的 endpoint 集合
-   （`cloud/discovery/resolver.go:57-108`）；loadbalance `Pool` 从该集合挑选。
+3. 每个事件产出一份全新的完整 `[]discovery.Endpoint` snapshot，写入后端内部缓存
+   （`cloud/discovery/discovery.go`）。变更检测按 snapshot 进行——后端不做 diff，每份
+   存下的快照都是权威。
+4. discovery `Loader` 每次调用重读后端快照（`cloud/discovery/loader.go`）；
+   loadbalance `Pool`（经 `SourceFunc`）从该集合挑选。
 
 ### 2.4 DRAIN 路径 —— UpdateWeight(0)
 

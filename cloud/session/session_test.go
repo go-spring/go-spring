@@ -18,6 +18,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -233,6 +234,7 @@ func TestFromByteStoreRoundTrip(t *testing.T) {
 	set := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s, _ := session.FromContext(r.Context())
 		session.Set(s, "n", 42)
+		session.Set(s, "user", testUser{ID: 7, Name: "bob", Roles: []string{"admin"}})
 	}))
 	rec := httptest.NewRecorder()
 	set.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -245,6 +247,95 @@ func TestFromByteStoreRoundTrip(t *testing.T) {
 	assert.That(t, err).Nil()
 	assert.That(t, has).True()
 	assert.That(t, v).Equal(42)
+
+	// Attributes came back as map[string]any / float64; typed access decodes
+	// them through JSON into the intended struct.
+	u, has, err := session.Get[testUser](s, "user")
+	assert.That(t, err).Nil()
+	assert.That(t, has).True()
+	assert.That(t, u.ID).Equal(int64(7))
+	assert.That(t, u.Name).Equal("bob")
+}
+
+// testUser is a struct attribute used to exercise typed access.
+type testUser struct {
+	ID    int64    `json:"id"`
+	Name  string   `json:"name"`
+	Roles []string `json:"roles"`
+}
+
+// newTestSession returns a live session obtained through the middleware over a
+// Memory store, so typed-access tests run against real sessions rather than
+// constructed ones.
+func newTestSession(t *testing.T) *session.Session {
+	t.Helper()
+	store := session.NewMemory()
+	mgr := session.NewManager(store, session.Options{IdleTimeout: time.Minute})
+	set := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s, _ := session.FromContext(r.Context())
+		session.Set(s, "seed", true)
+	}))
+	rec := httptest.NewRecorder()
+	set.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	cookie := rec.Result().Cookies()[0]
+
+	s, ok, err := store.Load(context.Background(), cookie.Value)
+	assert.That(t, err).Nil()
+	assert.That(t, ok).True()
+	return s
+}
+
+func TestGetTyped(t *testing.T) {
+	s := newTestSession(t)
+
+	if _, ok, err := session.Get[string](s, "missing"); ok || err != nil {
+		t.Fatalf("missing key: ok=%v err=%v", ok, err)
+	}
+
+	// Direct assertion path (Memory store keeps the original type).
+	session.Set(s, "user", testUser{ID: 7, Name: "bob", Roles: []string{"admin"}})
+	u, ok, err := session.Get[testUser](s, "user")
+	assert.That(t, err).Nil()
+	assert.That(t, ok).True()
+	assert.That(t, u.Name).Equal("bob")
+	assert.That(t, u.ID).Equal(int64(7))
+
+	// Scalar values work too.
+	session.Set(s, "deadline", time.Second)
+	d, ok, err := session.Get[time.Duration](s, "deadline")
+	assert.That(t, err).Nil()
+	assert.That(t, ok).True()
+	assert.That(t, d).Equal(time.Second)
+}
+
+func TestGetJSONRoundTrip(t *testing.T) {
+	s := newTestSession(t)
+
+	// Simulate what a byte backend hands back: raw JSON-decoded values.
+	var raw any
+	data, _ := json.Marshal(testUser{ID: 7, Name: "bob", Roles: []string{"admin"}})
+	_ = json.Unmarshal(data, &raw)
+	session.Set[any](s, "raw", raw)
+	u, ok, err := session.Get[testUser](s, "raw")
+	assert.That(t, err).Nil()
+	assert.That(t, ok).True()
+	assert.That(t, u.Name).Equal("bob")
+	assert.That(t, len(u.Roles)).Equal(1)
+
+	// Numbers come back as float64 from JSON; Get recovers the typed value.
+	f, _ := json.Marshal(42)
+	_ = json.Unmarshal(f, &raw)
+	session.Set[any](s, "count", raw)
+	n, ok, err := session.Get[int](s, "count")
+	assert.That(t, err).Nil()
+	assert.That(t, ok).True()
+	assert.That(t, n).Equal(42)
+
+	// A value that cannot decode into T is an error, not a silent zero.
+	session.Set[any](s, "user", "not-a-struct")
+	_, ok, err = session.Get[testUser](s, "user")
+	assert.That(t, ok).True()
+	assert.That(t, err).NotNil()
 }
 
 // mapByteStore is an in-memory ByteStore used only to exercise FromByteStore's

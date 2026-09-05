@@ -39,7 +39,6 @@ func TestEnabled_Off(t *testing.T) {
 }
 
 func TestEnabled_AutoNoSidecar(t *testing.T) {
-	resetDetect() // drop the Detect cache: this test mutates env
 	t.Setenv("GS_MESH", "auto")
 	// auto + no sidecar → off, so client-side discovery stays active.
 	if Enabled() {
@@ -48,7 +47,6 @@ func TestEnabled_AutoNoSidecar(t *testing.T) {
 }
 
 func TestEnabled_AutoWithSidecar(t *testing.T) {
-	resetDetect() // drop the Detect cache: this test mutates env
 	t.Setenv("GS_MESH", "auto")
 	t.Setenv("ISTIO_META_WORKLOAD_NAME", "user-svc")
 	// auto + sidecar detected → on, zero code config.
@@ -58,7 +56,6 @@ func TestEnabled_AutoWithSidecar(t *testing.T) {
 }
 
 func TestEnabled_EmptyIsAuto(t *testing.T) {
-	resetDetect()           // drop the Detect cache: this test mutates env
 	t.Setenv("GS_MESH", "") // empty == unset for os.Getenv; both mean auto
 	t.Setenv("ISTIO_META_WORKLOAD_NAME", "user-svc")
 	if !Enabled() {
@@ -74,14 +71,12 @@ func TestEnabled_TrimLower(t *testing.T) {
 }
 
 func TestDetect_NoSignal(t *testing.T) {
-	resetDetect() // drop the Detect cache: this test mutates env
 	if Detect() {
 		t.Fatal("Detect should be false without sidecar env vars")
 	}
 }
 
 func TestDetect_IstioSignal(t *testing.T) {
-	resetDetect() // drop the Detect cache: this test mutates env
 	t.Setenv("ISTIO_META_WORKLOAD_NAME", "user-svc")
 	if !Detect() {
 		t.Fatal("Detect should be true with an ISTIO_META_* env var")
@@ -89,7 +84,6 @@ func TestDetect_IstioSignal(t *testing.T) {
 }
 
 func TestDetect_LinkerdSignal(t *testing.T) {
-	resetDetect() // drop the Detect cache: this test mutates env
 	t.Setenv("LINKERD2_PROXY_LOG", "info")
 	if !Detect() {
 		t.Fatal("Detect should be true with a LINKERD2_PROXY_* env var")

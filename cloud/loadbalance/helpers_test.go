@@ -58,4 +58,4 @@ func counts(t *testing.T, b Balancer, set []discovery.Endpoint, info PickInfo, n
 // staticSource is a fixed EndpointSource for pool tests.
 type staticSource []discovery.Endpoint
 
-func (s staticSource) Endpoints() []discovery.Endpoint { return s }
+func (s staticSource) Endpoints() ([]discovery.Endpoint, error) { return s, nil }

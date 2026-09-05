@@ -71,7 +71,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*kgo.Client, e
 	)
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(strings.Split(c.Brokers, ",")...),
-		kgo.WithHooks(append(kt.Hooks(), newObserveHook(c.Observability))...),
+		kgo.WithHooks(append(kt.Hooks(), newObserveHook())...),
 		kgo.WithLogger(newLogger()),
 	}
 	if c.Group != "" {
@@ -88,7 +88,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*kgo.Client, e
 		opts = append(opts, kgo.SASL(mech))
 	}
 	if c.TLS.Enabled {
-		tc, err := c.TLS.Build()
+		tc, err := c.TLS.BuildClient()
 		if err != nil {
 			log.Errorf(ctx, log.TagAppDef, "kafka: build TLS failed: %v", err)
 			return nil, errutil.Explain(err, "kafka: build TLS")

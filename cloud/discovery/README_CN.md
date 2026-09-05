@@ -26,13 +26,13 @@ import (
 d, err := discovery.GetDiscovery("default")     // starter 注册的后端
 if err != nil { return err }
 
-r, err := discovery.NewResolver(ctx, d, "orders-redis")
+load, err := discovery.NewResolver(ctx, "default", "orders-redis")
 if err != nil { return err }                    // fail-fast:构造时没有端点直接报错
-defer r.Stop()
+if load == nil { return err }                    // "不生效"(无名/mesh):直接拨配置地址
 
-ep, err := r.Pick()                             // 按 round-robin 选一个可选端点
+eps, err := load()                               // 实时快照,错误如实上抛
 if err != nil { return err }
-conn, err := net.Dial("tcp", ep.Addr)           // socket 和连接池归客户端
+conn, err := net.Dial("tcp", eps[0].Addr)        // socket 和连接池归客户端
 ```
 
 ## Discovery:后端契约
@@ -40,15 +40,12 @@ conn, err := net.Dial("tcp", ep.Addr)           // socket 和连接池归客户�
 ```go
 type Discovery interface {
     Resolve(ctx context.Context, name string, opts ...Option) ([]Endpoint, error)
-    Watch(ctx context.Context, name string, opts ...Option) (<-chan WatchResult, error)
 }
 ```
 
-- `Resolve` 返回当前快照——冷启动时调一次。
-- `Watch` 返回快照 channel;第一份立即送达、即当前状态，之后每份都是完整
-  替换(绝不是增量)。取消 ctx 即关 channel;后端的终结性错误以
-  `WatchResult.Err` 送达、随后 channel 关闭——拿着最后一份快照继续服务
-  (陈旧地址也比没有强)。
+- `Resolve` 返回当前快照。某个服务的第一次调用可能阻塞(播种查询,由 ctx
+  约束);之后的调用是廉价读——新鲜度在后端内部:它用注册中心自己的通知
+  机制(watch / 订阅 / 轮询)维持缓存最新。
 - 后端按标签注册(`RegisterDiscovery("default", b)`);`GetDiscovery` 按标签
   解析，错误信息会列出全部已注册名，拼错名或漏装 starter 在构造时一目了然。
   空名 / nil / 重复注册直接 panic——那是接线 bug。
@@ -97,40 +94,29 @@ eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"), discovery.WithT
 
 两者传空都是 no-op——配置值可以无条件透传。
 
-## Resolver:现成的消费方
+## Resolver:按名绑定的消费方
 
 ```go
-r, err := discovery.NewResolver(ctx, d, "orders-redis")
-defer r.Stop()
-ep, err := r.Pick()
+load, err := discovery.NewResolver(ctx, "default", "orders-redis")
+bal, _ := loadbalance.New(loadbalance.RoundRobin)
+pool := loadbalance.NewPool(loadbalance.SourceFunc(load), bal)
+ep, err := pool.Pick(loadbalance.PickInfo{})
 ```
 
-- 一次同步 `Resolve` 播种(fail-fast),后台 `Watch` 刷新——快照始终新鲜,
-  你这边不用轮询。
-- `Pick` 在候选集上做朴素 round-robin。权重、一致性哈希、失败摘除——都在
-  上一层 [`loadbalance`](../loadbalance/README_CN.md),它把 `Resolver` 包成
-  自己的端点源。
-- 并发安全;`Stop` 可与 `Pick` 并发调用,也可挂在 bean 析构里。
+- `NewResolver` 把后端标签 + 服务名(加上选项)一次性绑定，用一次同步 `Resolve`
+  播种(fail-fast);名字为空或 mesh 模式开启时返回 `(nil, nil)`——"发现不生效"，
+  调用方直接拨配置地址。
+- 每次调用 resolver 都重读后端快照并如实上抛错误——对带缓存的后端就是一次廉价
+  内存读,不掩盖注册中心抖动。
+- 端点选择——round-robin、权重、一致性哈希、失败摘除——全在上一层
+  [`loadbalance`](../loadbalance/README_CN.md),它把 resolver 经
+  `loadbalance.SourceFunc` 收作端点源。发现本身不携带选择策略,resolver 也不持有
+  任何资源——新鲜度全在后端内部,没有什么可 Stop。
 
-想自己管理端点集？直接 Watch:
-
-```go
-ch, _ := d.Watch(ctx, "orders", discovery.WithScheme("grpc"))
-for res := range ch {
-    if res.Err != nil { break }        // 保留最后一份快照,继续服务
-    replaceAllEndpoints(res.Endpoints)
-}
-```
-
-## Catalog:可选的枚举能力
-
-能列出全部服务名的后端(网关路由、控制台)实现 `Catalog`;枚举不了的(DNS、
-static、按名访问的 k8s headless Service)不实现即可:
+想自己管理端点集？需要快照时直接 `Resolve`:
 
 ```go
-if c, ok := d.(discovery.Catalog); ok {
-    names, _ := c.Services(ctx)
-}
+eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"))
 ```
 
 ## 写一个后端
@@ -140,13 +126,10 @@ type myBackend struct{ /* 命名服务客户端 */ }
 
 func (b *myBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
     q := discovery.NewQuery(name, opts...)
-    // 查注册中心;用 discovery.FilterByScheme(raw, q.Scheme) 过滤;
+    // 读缓存快照(首次调用查一次注册中心播种,之后用注册中心自己的
+    // watch/订阅/轮询机制保持新鲜);
+    // 用 discovery.FilterByScheme(raw, q.Scheme) 过滤;
     // 注册中心支持 tag 则在查询里带上 q.Tag
-}
-
-func (b *myBackend) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
-    // 每次拓扑变更推完整快照(第一份立即送达);
-    // ctx 取消时关闭;或送达 WatchResult.Err 后关闭
 }
 
 func init() { discovery.RegisterDiscovery("default", &myBackend{}) }

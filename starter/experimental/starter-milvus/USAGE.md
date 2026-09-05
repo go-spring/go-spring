@@ -13,7 +13,7 @@ prefix check [starter.go:29]). Each `spring.milvus.<name>` entry creates one
 **Honest scope note**: since the per-RPC governance guard landed (guard.go — gRPC client
 interceptors on the SDK dial options), every Milvus RPC is transparently protected
 (rate-limit/breaker/bulkhead/retry/timeout + fault injection) with no opt-in at the call
-site, and the instance's `observability.*` block drives the guard execution's observation
+site; `resilience.WrapExecutor` itself emits the guard execution's observation
 (spans + outcome metrics + access log). There is no separate per-RPC trace layer for
 unguarded traffic — when governance is off the executor is a transparent no-op. The health
 indicator remains the always-on liveness signal (§2.2, §6).
@@ -158,14 +158,13 @@ gs.Run()
   │   credential never reaches "serving"
   ├─ Init [client.go]: resource = ResourceLabel("milvus", addr) →
   │   fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │   resilience.WrapExecutor(exec, "milvus", Observability) → slot.arm — the
+  │   resilience.WrapExecutor(exec, "milvus") → slot.arm — the
   │   interceptors guard every RPC from here on; governance off → no-op executor
   ├─ readiness: indicator repeats the same ListCollections probe periodically
   └─ SIGTERM → Destroy [client.go]: exec.Close() then o.Client.Close() — closes the gRPC conn
 ```
 
-`Init` exists purely to arm the guard (the executor needs the field-injected
-`observability` block); dial + probe still happen in the constructor, so a failed probe
+`Init` exists purely to arm the guard; dial + probe still happen in the constructor, so a failed probe
 means the bean is never created and dependent beans never wire against a dead client.
 
 ### 2.2 One operation through the ACTUAL layers
@@ -186,8 +185,8 @@ interceptors read a per-client slot that `Init` arms with
 `resilience.WrapExecutor` (governance off → no-op, passthrough; the fail-fast probe in
 `newClient` runs pre-Init and relies on that passthrough). Every RPC — collections,
 indexes, search, insert — rides it with zero call-site changes, the same transparent
-per-request stance as the other NoSQL starters. What observability also exists: the
-health indicator. `milvus:<name>` is always registered, its probe is the wrapper's own
+per-request stance as the other NoSQL starters. The only other signal this starter
+emits: the health indicator. `milvus:<name>` is always registered, its probe is the wrapper's own
 `Health(ctx)` [client.go] — one `ListCollections` round trip verifying reachability AND
 auth [health/health.go].
 
@@ -205,7 +204,6 @@ All keys live under `spring.milvus.<name>.` — bound per-instance via `conf.Bin
 | `database` | string | `default` | Passed as `DBName` to `client.NewClient` [client.go:45]. | Nonexistent DB → fail-fast probe (ListCollections) errors at boot. |
 | `username` | string | `""` | Auth credential; both halves must be set together when the cluster has auth on. ⚠ `username` without `password` (or vice versa) is silently half-sent. | Wrong pair → fail-fast probe fails at boot with the server's auth error. |
 | `password` | string | `""` | See `username`. | See `username`. |
-| `observability` | group | empty | Field-injected onto the wrapper and read by `Init` to observe the guard execution (`resilience.WrapExecutor`): spans, outcome metrics (`resilience.*`), access log for every guarded RPC. `off` silences the log signal only. | Expecting per-RPC spans of *unguarded* traffic (governance off) → nothing is emitted; the executor is a no-op. |
 
 No `driver` registry, no `mode` (one topology: standalone/cluster is server-side), no
 discovery, no otel keys — governance (resilience + fault) arrives via the shared
@@ -270,14 +268,13 @@ grep "round trip" app.log    # the marker check.sh greps ("Milvus round trip OK:
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 5 tags (4 effective + 1 dead group) |
+| Config keys | 4 tags (all effective) |
 | Required | 1 (`addr`) |
 | Quickstart external deps | 3 in compose (etcd + minio + milvus standalone) |
 | "Watch out" entries | 3 (auth pair, TLS-in-address, no instrumentation) |
 
 Design suspects (audit ledger — kept and extended):
 
-- `observability.*` binds but is never read — remove the key or wire it.
 - Starter-level README/DESIGN/schema.json live under example/ rather than the module root
   (family asymmetry: other starters keep them at the root).
 - Health indicator has no disable switch (`health.enabled`-style key absent; family asymmetry
@@ -286,7 +283,7 @@ Design suspects (audit ledger — kept and extended):
   user would even do it without forking `newClient`.
 - Missing instrumentation is itself a suspect: the build-time-only gRPC dial options are cited
   [client.go:18-20] as the blocker, but no dial options are passed at all today — a
-  `DialOptions` escape hatch on Config would unlock interceptors (auth tokens, observability)
+  `DialOptions` escape hatch on Config would unlock interceptors (auth tokens, tracing)
   without a fork.
 - errutil import is kept alive by a dummy `var _ = errutil.Explain` [starter.go:43-45]
   "for future driver dispatch" — speculative API residue.

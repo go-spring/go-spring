@@ -200,7 +200,7 @@ The adapter is **not** `database/sql`'s `RegisterDialContext`; go-mssqldb expose
 dedicated hook: `mssql.NewConnectorConfig(msdsn.Parse(dsn))` gives a Connector whose
 `Dialer` field accepts any `mssql.Dialer`. The starter sets
 `resolverDialer{r: resolver, nd: &net.Dialer{}}`; its `DialContext` **ignores the network
-and addr arguments** and dials `ep.Addr` from `resolver.Pick()` (starter.go:124-130) — so
+and addr arguments** and dials `ep.Addr` from the round-robin pick pool (starter.go:124-130) — so
 each new pool connection lands on a currently-live instance and address changes take effect
 without rebuilding the client.
 

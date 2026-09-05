@@ -64,7 +64,7 @@ func (m *MemoryLocker) ensure() {
 
 // TryAcquire implements [Locker].
 func (m *MemoryLocker) TryAcquire(_ context.Context, key string, opts ...Option) (Lock, bool, error) {
-	o := Apply(opts...)
+	o := Resolve(DefaultOptions{}, opts...)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ensure()
@@ -92,7 +92,7 @@ func (m *MemoryLocker) TryAcquire(_ context.Context, key string, opts ...Option)
 
 // Acquire implements [Locker]: it polls TryAcquire until it succeeds or ctx ends.
 func (m *MemoryLocker) Acquire(ctx context.Context, key string, opts ...Option) (Lock, error) {
-	o := Apply(opts...)
+	o := Resolve(DefaultOptions{}, opts...)
 	for {
 		l, ok, err := m.TryAcquire(ctx, key, opts...)
 		if err != nil {

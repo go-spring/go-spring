@@ -120,11 +120,7 @@ spring.go-redis.cluster.route-by-latency=true
 spring.cache.main.driver=go-redis:main
 
 # --- observability ---------------------------------------------------------
-# Access-log detail (tag _app_redis_access). NOTE: observability.* is a TOP-LEVEL
-# key shared by all client starters/instances (the wrapper field binds
-# ${observability:=} as an absolute reference) — it is NOT under
-# spring.go-redis.<name>. Default "brief"; "detailed" adds the command+key arg.
-observability.level=detailed
+# Access log (tag _app_redis_access) emits by default; filter via logger config.
 # redisotel spans/pool-metrics are ON by default and ride starter-otel's globals.
 
 # --- actuator + otel ------------------------------------------------------
@@ -166,7 +162,6 @@ gs.Run()
   ├─ ctor newClient [starter.go:97]: validateConfig → driver lookup → driver.CreateClient
   │   → instrument() (redisotel tracing+metrics, gated by otel.* keys)
   │   → failFastPing (unconditional, bounded by dial-timeout or 5s) [starter.go:218]
-  ├─ gs field-injects Client.Observability (${observability:=})
   ├─ Init [client.go:58]: resourceLabel → fault.WrapExecutor(resilience.ExecutorFor(resource))
   │   → resilience.WrapExecutor → applyObservability (access-log hook)
   │   → AddHook(resilienceHook) — command chain complete
@@ -192,8 +187,8 @@ Rationale (source comments, [client.go:63-73] and [command.go:17-27]):
   span therefore covers everything the starter adds, and the access log rides redisotel's span
   context for trace_id correlation.
 - **observeHook outside the breaker**: one access-log line covers the whole retry loop — you
-  log the outcome, not each attempt. It is built `WithoutTraceAndMetric()` [command.go:112] so
-  trace/metric are NOT duplicated (redisotel already owns them) — the kit fills only the log gap.
+  log the outcome, not each attempt. It is log-only by construction [observe.go]: redisotel
+  already owns trace/metric, so the hook emits only the access log.
 - **resilienceHook innermost**: protection decisions sit closest to the wire; its rejections are
   what the outer layers then observe.
 - `DialHook` is left untouched in both hooks — connection establishment is discovery's concern,
@@ -219,7 +214,7 @@ per-command failure is already recorded by go-redis and is not overwritten [comm
 ### 2.4 Discovery addressing & connection recycling (single mode)
 
 When `service-name` is set, DefaultDriver replaces go-redis's dialer: every new connection
-calls `resolver.Pick()` for a live endpoint [driver.go:141-147]. The resolver keeps the endpoint
+calls `lb.Pick()` (a round-robin loadbalance.Pool) for a live endpoint [driver.go:141-154]. The resolver keeps the endpoint
 set fresh in the background. Combined with `conn-max-lifetime` (default 2m), connections recycle
 onto updated addresses **without rebuilding the client** — that is why the default is a short 2m
 rather than "unlimited" [config.go:95-97]. `addr` then never takes effect — when both are set the
@@ -271,9 +266,6 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 |-----|------|---------|-------------------------|------------------------------|
 | `otel.tracing.enabled` | bool | true | Attach redisotel spans. No-op without starter-otel. | Off + expecting traces → silence, no warning. |
 | `otel.metrics.enabled` | bool | true | Attach redisotel pool/hit metrics. Same no-op rule. | — |
-| `observability.level` | string | `brief` | Access log: `off` / `brief` / `detailed` (detailed adds command+key arg). | `off` silences only the log; trace/metric keep emitting. |
-| `observability.maxArgBytes` | int | 512 | Bound of the captured argument in detailed mode. | Too small → truncated args. |
-| `observability.skipOps` | list | — | Suppresses span+metric+log together for listed op names. | — |
 
 ### 3.4 Cache driver reference syntax
 
@@ -300,7 +292,7 @@ docker start <redis>
 ```bash
 redis-cli SET probe 1
 grep _app_redis_access app.log | tail -1
-# brief: system=redis op=set status ok duration=...; detailed adds "set probe"
+# op=set status=ok duration=...; keyed successes log at Debug, errors at Warn
 curl -s :9370/metrics | grep -E 'redis.*pool|hits'   # redisotel gauges/counters
 ```
 
@@ -312,7 +304,7 @@ spring.go-redis.main.conn-max-lifetime=30s
 ```
 
 Scale/move the backing instance; within conn-max-lifetime new connections dial the updated
-endpoint (resolver.Pick per dial). Watch `PoolStats()` (`TotalConns`/`Hits`) or redisotel pool
+endpoint (round-robin pool pick per dial). Watch `PoolStats()` (`TotalConns`/`Hits`) or redisotel pool
 metrics to confirm recycling without a restart.
 
 ### 4.4 Cache driver wiring (SET via façade, GET via raw client)
@@ -346,7 +338,7 @@ without restart.
 | Boot fails "redis driver not found" | `driver` names nothing registered | Register via `StarterGoRedis.RegisterDriver` in an init, or use DefaultDriver. |
 | Health DOWN though commands work | Indicator pings with ctx; check ACL/readonly replica | Inspect the component error body in /readiness. |
 | Injected bean has no spans/metrics | starter-otel not imported | redisotel rides the OTel globals; import starter-otel. |
-| No access log lines | `observability.level=off`, or level unset and log tag filtered | Set `detailed`; check logger config for `_app_redis_access`. |
+| No access log lines | logger config filters `_app_redis_access` or the Debug level (keyed successes log at Debug) | Check logger config for `_app_redis_access`. |
 | Breaker trips on every GET miss | It does not — redis.Nil is success [command.go:94] | Look for a real backend error; misses are excluded. |
 | Cache bean inject fails | façade bean is named after the redis instance, not the spring.cache key | Autowire by `<redis-instance-name>`; see starter-cache USAGE. |
 
@@ -354,7 +346,7 @@ without restart.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 25 instance keys + tls group + otel(2) + observability(3) |
+| Config keys | 25 instance keys + tls group + otel(2) |
 | Required | 1 per mode (addr/service-name, master-name+sentinel-addrs, or addrs) |
 | Quickstart external deps | 1 (Redis) |
 | "Watch out" entries | 6 |

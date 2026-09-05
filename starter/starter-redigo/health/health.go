@@ -29,11 +29,11 @@ import (
 // folded into /readiness with no extra wiring.
 //
 // The pool dials lazily, so the probe borrows one connection and runs PING.
-func NewPoolHealth(name string, pool *redis.Pool) health.Indicator {
-	return health.NewIndicator("redigo:"+name, func(ctx context.Context) error {
+func NewPoolHealth(name string, pool *redis.Pool) *health.Indicator {
+	return &health.Indicator{Name: "redigo:" + name, Probe: func(ctx context.Context) error {
 		conn := pool.Get()
 		defer func() { _ = conn.Close() }()
 		_, err := conn.Do("PING")
 		return err
-	})
+	}}
 }

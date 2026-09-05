@@ -16,9 +16,7 @@
 
 package StarterS3
 
-import (
-	observe "go-spring.org/cloud/observe"
-)
+import ()
 
 // Config defines the S3-protocol object storage client configuration.
 //
@@ -51,11 +49,6 @@ type Config struct {
 	// (endpoint/bucket) or "dns". Some S3-compatible clouds only support the
 	// path style.
 	BucketLookup string `value:"${bucket-lookup:=auto}"`
-
-	// Observability configures the per-request access log, metrics and spans
-	// emitted by the observe transport (off/brief/detailed). Defaults to
-	// "brief".
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// Driver specifies which S3 driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`

@@ -12,10 +12,10 @@ starter-pulsar / starter-kafka.
 - **Owns**: bean lifecycle for the `spring.rocketmq.<name>` group (multi-
   instance, container-managed teardown), common-option application to every
   producer/consumer it creates, the rlog bridge into go-spring's log, the
-  fail-fast name server probe, the `messaging.Binder` adapter, OTel span
+  fail-fast name server probe, the `messaging.Driver` adapter, OTel span
   helpers, and the `GuardedSend` resilience seam.
 - **Does not own**: message serialization (payload stays `[]byte`), ordering
-  semantics (the binder is concurrently-consumed; use the raw client for
+  semantics (the driver is concurrently-consumed; use the raw client for
   orderly/transactional messaging), topic administration, and broker health
   probing (see §3).
 
@@ -29,7 +29,7 @@ starter-pulsar / starter-kafka.
 - **`Driver` (driver.go)** — the construction seam: registry + DefaultDriver
   that assembles the wrapper. The rlog bridge is process-global, so it is
   installed exactly once inside DefaultDriver rather than per instance.
-- **`NewBinder` (binder.go)** — adapts to `messaging.Binder`: one started
+- **`NewDriver` (driver.go)** — adapts to `messaging.Driver`: one started
   producer per publisher, one started push consumer per subscriber
   (`Subscribe` before `Start`, per the SDK's contract). A handler error maps
   to `ConsumeRetryLater` (the broker redelivers), nil to `ConsumeSuccess`.
@@ -50,7 +50,7 @@ starter-pulsar / starter-kafka.
   explicit `instance-name` makes the underlying remoting clients share one
   connection pool instead.
 - `Subscribe` must precede `Start` on a push consumer; the wrapper's
-  `NewPushConsumer` therefore returns an unstarted consumer and the binder
+  `NewPushConsumer` therefore returns an unstarted consumer and the driver
   performs the dance internally.
 - The fail-fast probe is a TCP dial, not a broker round trip: RocketMQ's
   remoting layer connects lazily and a dial is the only probe that is cheap,
@@ -74,7 +74,3 @@ starter-pulsar / starter-kafka.
   root) and requires a 5.x proxy; the v2 client is the Apache-blessed stable
   path and works against both 4.x and 5.x clusters via the NameServer
   protocol.
-- **Binder auto-tracing at a package-default `brief` level vs. per-instance
-  config**: the wrapper carries per-instance `Observability`, but a binder
-  serves any number of destinations, so the binder path uses the package
-  default; explicit control stays available through the manual span helpers.

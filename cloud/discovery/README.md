@@ -27,13 +27,13 @@ import (
 d, err := discovery.GetDiscovery("default")     // a backend registered by a starter
 if err != nil { return err }
 
-r, err := discovery.NewResolver(ctx, d, "orders-redis")
+load, err := discovery.NewResolver(ctx, "default", "orders-redis")
 if err != nil { return err }                    // fail-fast: no endpoints at construction
-defer r.Stop()
+if load == nil { return err }                    // "not in effect" (no name / mesh): dial addr directly
 
-ep, err := r.Pick()                             // one eligible endpoint, round-robin
+eps, err := load()                               // the live snapshot, error surfaced
 if err != nil { return err }
-conn, err := net.Dial("tcp", ep.Addr)           // the socket + pool are the client's
+conn, err := net.Dial("tcp", eps[0].Addr)        // the socket + pool are the client's
 ```
 
 ## Discovery: the backend contract
@@ -41,16 +41,13 @@ conn, err := net.Dial("tcp", ep.Addr)           // the socket + pool are the cli
 ```go
 type Discovery interface {
     Resolve(ctx context.Context, name string, opts ...Option) ([]Endpoint, error)
-    Watch(ctx context.Context, name string, opts ...Option) (<-chan WatchResult, error)
 }
 ```
 
-- `Resolve` returns the current snapshot — called once at cold start.
-- `Watch` returns a channel of snapshots; the first one arrives immediately and
-  is the current state, later ones are full replacements (never deltas). Cancel
-  ctx to close the channel; a terminal backend error arrives as
-  `WatchResult.Err` and the channel then closes — keep serving from the last
-  snapshot (stale addresses beat none).
+- `Resolve` returns the current snapshot. It may block on the first call for a
+  service (seed fetch, bounded by ctx); later calls are cheap reads — freshness
+  lives INSIDE the backend, which keeps its cache current however the
+  underlying registry notifies it (watch, subscription, poll).
 - Backends register themselves by label (`RegisterDiscovery("default", b)`);
   `GetDiscovery` resolves the label and its error lists every registered name,
   so a typo or a missing starter is obvious at construction. Empty name, nil
@@ -102,43 +99,34 @@ eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"), discovery.WithT
 
 Both are no-ops when empty — pass config values through unconditionally.
 
-## Resolver: the ready-made consumer
+## Resolver: the bound by-name consumer
 
 ```go
-r, err := discovery.NewResolver(ctx, d, "orders-redis")
-defer r.Stop()
-ep, err := r.Pick()
+load, err := discovery.NewResolver(ctx, "default", "orders-redis")
+bal, _ := loadbalance.New(loadbalance.RoundRobin)
+pool := loadbalance.NewPool(loadbalance.SourceFunc(load), bal)
+ep, err := pool.Pick(loadbalance.PickInfo{})
 ```
 
-- Seeds from one synchronous `Resolve` (fail-fast), then refreshes via a
-  background `Watch` — the snapshot is always fresh, no polling on your side.
-- `Pick` is plain round-robin over the eligible set. Weights, consistent
-  hash, failure ejection — all of that belongs one layer up in
-  [`loadbalance`](../loadbalance/README.md), which wraps a `Resolver` as its
-  endpoint source.
-- Concurrency-safe; `Stop` may run concurrently with `Pick` and from a bean
-  destructor.
+- `NewResolver` binds a backend label + service name (plus options) once and
+  seeds with one synchronous `Resolve` (fail-fast); it returns `(nil, nil)` —
+  "discovery not in effect" — when name is empty or mesh mode is on, so the
+  caller dials its configured address directly.
+- Each call to the resolver re-reads the backend snapshot and surfaces the
+  error — a cheap in-memory read for a cache-backed backend, and honest (a
+  registry hiccup is not hidden).
+- Endpoint selection — round-robin, weights, consistent hash, failure
+  ejection — all of that lives one layer up in
+  [`loadbalance`](../loadbalance/README.md), which takes the resolver (via
+  `loadbalance.SourceFunc`) as its endpoint source. Discovery itself carries
+  no selection policy, and the resolver owns no resources — freshness lives
+  inside the backend, so there is nothing to stop.
 
-Prefer to own the endpoint set yourself? Watch directly:
-
-```go
-ch, _ := d.Watch(ctx, "orders", discovery.WithScheme("grpc"))
-for res := range ch {
-    if res.Err != nil { break }        // keep the last snapshot and keep serving
-    replaceAllEndpoints(res.Endpoints)
-}
-```
-
-## Catalog: optional enumeration
-
-Backends that can list every service name (gateway route building,
-dashboards) implement `Catalog`; those that can't (DNS, static, a k8s headless
-Service reached by name) simply don't:
+Prefer to own the endpoint set yourself? Call `Resolve` whenever you need a
+fresh snapshot:
 
 ```go
-if c, ok := d.(discovery.Catalog); ok {
-    names, _ := c.Services(ctx)
-}
+eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"))
 ```
 
 ## Writing a backend
@@ -148,13 +136,10 @@ type myBackend struct{ /* naming client */ }
 
 func (b *myBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
     q := discovery.NewQuery(name, opts...)
-    // query the registry; apply discovery.FilterByScheme(raw, q.Scheme);
+    // read the cached snapshot (seed it with a registry query on first call,
+    // keep it fresh with the registry's own watch/subscribe/poll mechanism);
+    // apply discovery.FilterByScheme(raw, q.Scheme);
     // honor q.Tag in the registry call if it supports tags
-}
-
-func (b *myBackend) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
-    // full snapshot on every topology change (first one immediately);
-    // close on ctx cancellation, or deliver WatchResult.Err then close
 }
 
 func init() { discovery.RegisterDiscovery("default", &myBackend{}) }

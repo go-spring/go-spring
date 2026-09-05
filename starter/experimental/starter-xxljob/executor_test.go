@@ -139,5 +139,5 @@ func TestHealthIndicatorNamedByInstance(t *testing.T) {
 	e, err := newExecutor(nil, "instance-a", Config{AppName: "some-app"})
 	assert.Error(t, err).Nil()
 	ind := e.Health()
-	assert.That(t, ind.HealthName()).Equal("xxljob:instance-a")
+	assert.String(t, ind.Name).Equal("xxljob:instance-a")
 }

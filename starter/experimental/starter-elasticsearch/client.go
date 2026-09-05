@@ -29,17 +29,15 @@ import (
 	"sync"
 
 	"github.com/elastic/go-elasticsearch/v8"
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // Client is the wrapper bean Elasticsearch clients are injected
 // as. It embeds the concrete *elasticsearch.Client (so every generated method
 // promotes unchanged) and field-injects the resilience policy via gs.Dync so it
-// hot-reloads on config change. newClient returns one; gs field-injects
-// Resilience + Observability, then calls Init (InitMethod) to build
+// hot-reloads on config change. newClient returns one; gs calls Init
+// (InitMethod) to build
 // the observe transport + executor and swap them into the client's dynamic
 // transport.
 //
@@ -56,16 +54,12 @@ type Client struct {
 	// Both resilience and fault are resolved through neutral seams
 	// ([resilience.ExecutorFor] / [fault.InjectorFor]) backed by starter-govern's
 	// governance center — so this struct has zero coupling to cloud/governance.
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// cfg is the connection config, retained for the resilience resource label.
 	cfg Config
 	// dyn is the dynamic transport DefaultDriver installed; Init
 	// swaps the observe+resilience transport into it. nil for custom drivers.
 	dyn *dynamicTransport
-	// resolver is the discovery watch behind a service-name client (nil when
-	// direct/mesh); Close stops it on shutdown.
-	resolver *discovery.Resolver
 	// exec is the resilience executor protecting requests, resolved via
 	// resilience.ExecutorFor; no-op when governance is off.
 	exec resilience.Executor
@@ -74,22 +68,21 @@ type Client struct {
 	resource string
 }
 
-// Init is the gs InitMethod: gs field-injects Observability after newClient
-// returns, then calls this. It builds the observe transport (needs Observability)
-// and resolves the executor through the neutral [resilience.ExecutorFor] seam
+// Init is the gs InitMethod: it builds the observe transport and resolves
+// the executor through the neutral [resilience.ExecutorFor] seam
 // (backed by starter-govern's governance center when imported), wraps it with the
 // process-wide fault injector ([fault.InjectorFor], nil-safe), and swaps the
 // result into the client's dynamic transport. When governance is off the resolved
 // executor is a transparent no-op (the round-tripper is effectively observe-only).
 func (o *Client) Init() error {
-	obs := observe.NewDB("elasticsearch", o.Observability, observe.WithoutTrace())
+	obs := newDBObserver("elasticsearch")
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resourceLabel(o.cfg)
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 	// Wrap the executor with observe-resilience so circuit-breaker trips,
 	// rate-limit rejects, bulkhead rejections and retries emit a span + call
 	// counter (by outcome) + duration histogram + access log.
-	exec = resilience.WrapExecutor(exec, "elasticsearch", o.Observability)
+	exec = resilience.WrapExecutor(exec, "elasticsearch")
 	o.exec = exec
 	if o.dyn != nil {
 		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,
@@ -98,13 +91,13 @@ func (o *Client) Init() error {
 	return nil
 }
 
-// Destroy is the gs destroy method: it closes the resilience executor (if armed),
-// stops any discovery watch, and closes the underlying client.
+// Destroy is the gs destroy method: it closes the resilience executor (if armed)
+// and closes the underlying client. Discovery runs inside the backend (the
+// loader has no resources), so nothing discovery-related is released here.
 func (o *Client) Destroy() error {
 	if o.exec != nil {
 		_ = o.exec.Close()
 	}
-	stopLiveResolver(o.resolver)
 	return o.Client.Close(context.Background())
 }
 

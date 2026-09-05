@@ -32,8 +32,8 @@ import (
 // The probe issues an Info request; a context is always passed because the
 // transport's OpenTelemetry instrumentation derives its span from it and panics
 // on a nil parent context.
-func NewClientHealth(name string, client *elasticsearch.Client) health.Indicator {
-	return health.NewIndicator("elasticsearch:"+name, func(ctx context.Context) error {
+func NewClientHealth(name string, client *elasticsearch.Client) *health.Indicator {
+	return &health.Indicator{Name: "elasticsearch:" + name, Probe: func(ctx context.Context) error {
 		res, err := client.Info(client.Info.WithContext(ctx))
 		if err != nil {
 			return err
@@ -43,5 +43,5 @@ func NewClientHealth(name string, client *elasticsearch.Client) health.Indicator
 			return fmt.Errorf("elasticsearch: info returned %s", res.Status())
 		}
 		return nil
-	})
+	}}
 }

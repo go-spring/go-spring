@@ -16,7 +16,7 @@
 - 两个客户端适配 seam:
   - `NewRoundTripper` —— HTTP client `http.RoundTripper`(覆盖面最广)。
   - `NewDialer` —— 连接级 `DialFunc`,匹配
-    a dial closure over `discovery.Resolver.Pick`。
+    a dial closure over a round-robin pick pool。
 - 入站 admission 不在本包:各协议 starter 用 `governance.ExecutorFor` seam
   自建中间件(拒绝时 429 / 503;见 starter-gin / starter-grpc 的 admission)。
 - `Fallback(ctx, exec, resource, fn, degrade)` —— 组合任意 executor 的降级

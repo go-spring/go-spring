@@ -29,49 +29,41 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 )
 
-// newObserveHook builds a kgo hook that emits a per-message access log through
-// the observe kit. kotel already provides producer/consumer spans and client
-// metrics, so this hook is log-only (WithoutTraceAndMetric): it fills the
-// access-log gap without duplicating spans or metrics. The produce path pairs
+// newObserveHook builds a kgo hook that emits a per-message access log (see
+// observe.go). kotel already provides producer/consumer spans and client
+// metrics, so this hook is log-only: it fills the access-log gap without
+// duplicating spans or metrics. The produce path pairs
 // OnProduceRecordBuffered (start) with OnProduceRecordUnbuffered (end) so the
 // log carries accurate duration; consume has no paired start hook, so it emits
 // a duration-less record (the metric covers consume latency).
-func newObserveHook(cfg observe.ObserveConfig) kgo.Hook {
-	return &observeHook{
-		pubObs: observe.NewProducer("kafka", cfg, observe.WithoutTraceAndMetric()),
-		subObs: observe.NewConsumer("kafka", cfg, observe.WithoutTraceAndMetric()),
-	}
+func newObserveHook() kgo.Hook {
+	return &observeHook{}
 }
 
 type observeHook struct {
-	pubObs *observe.Observer
-	subObs *observe.Observer
-	spans  sync.Map // *kgo.Record -> *observe.Span (in-flight produces)
+	spans sync.Map // *kgo.Record -> *accessRecord (in-flight produces)
 }
 
-// OnProduceRecordBuffered opens a producer observation when a record is queued.
+// OnProduceRecordBuffered opens an access record when a record is queued.
 func (h *observeHook) OnProduceRecordBuffered(r *kgo.Record) {
-	_, sp := h.pubObs.Start(context.Background(), "publish", r.Topic)
-	h.spans.Store(r, sp)
+	h.spans.Store(r, startAccess(context.Background(), "publish", r.Topic))
 }
 
-// OnProduceRecordUnbuffered closes the producer observation when the record is
+// OnProduceRecordUnbuffered closes the access record when the record is
 // acknowledged (or fails), recording the outcome and the buffered→unbuffered
 // duration.
 func (h *observeHook) OnProduceRecordUnbuffered(r *kgo.Record, err error) {
 	if v, ok := h.spans.LoadAndDelete(r); ok {
-		v.(*observe.Span).End(err)
+		v.(*accessRecord).End(err)
 	}
 }
 
 // OnFetchRecordRead emits a consume access record per message read.
 func (h *observeHook) OnFetchRecordRead(r *kgo.Record) {
-	_, sp := h.subObs.Start(context.Background(), "consume", r.Topic)
-	sp.End(nil)
+	startAccess(context.Background(), "consume", r.Topic).End(nil)
 }
 
 // resilienceExecs tracks the resilience executor attached to each client, so
@@ -98,12 +90,12 @@ var resilienceResources sync.Map // *kgo.Client -> string
 // wraps it when an injector is registered (nil-safe otherwise).
 func applyResilience(c Config, cl *kgo.Client, resource string) error {
 	// Per-instance opt-out: without an executor attached, guard (and therefore
-	// both GuardedProduceSync and the binder's Publish) degrades to bare calls.
+	// both GuardedProduceSync and the driver's Publish) degrades to bare calls.
 	if !c.Governance {
 		return nil
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "kafka", c.Observability)
+	exec = resilience.WrapExecutor(exec, "kafka")
 	resilienceExecs.Store(cl, exec)
 	resilienceResources.Store(cl, resource)
 	return nil

@@ -43,9 +43,9 @@ func init() {
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
-			r.Provide(func(w *Client) health.Indicator {
+			r.Provide(func(w *Client) *health.Indicator {
 				return health2.NewClientHealth(name, w.Client)
-			}, gs.TagArg(name)).Name("s3:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			}, gs.TagArg(name)).Name("s3:" + name).Caller(1)
 			return nil
 		})
 	})

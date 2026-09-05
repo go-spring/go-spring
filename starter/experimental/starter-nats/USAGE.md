@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`starter.go`, `config.go`, `client.go`, `command.go`, `driver.go`,
-`binder.go`) and the runnable [example/](example/) / [example-otel/](example-otel/).
+`driver.go`) and the runnable [example/](example/) / [example-otel/](example-otel/).
 **NATS semantics (core NATS, JetStream, queue groups, subject wildcards, drain) are
 [nats.go's own documentation](https://docs.nats.io/)** — everything below is go-spring's increment.
 
@@ -13,7 +13,7 @@ against the starter source (`starter.go`, `config.go`, `client.go`, `command.go`
 
 ## 1. Complete worked project
 
-Producer AND consumer via the messaging.Binder, with actuator + otel + governance composed.
+Producer AND consumer via the messaging.Driver, with actuator + otel + governance composed.
 File tree:
 
 ```
@@ -57,7 +57,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**messaging.go** — binder-based producer and consumer on one connection:
+**messaging.go** — driver-based producer and consumer on one connection:
 
 ```go
 package messaging
@@ -74,11 +74,11 @@ import (
 )
 
 func init() {
-    // One messaging.Binder bean per NATS connection you want to bind.
+    // One messaging.Driver bean per NATS connection you want to bind.
     // TagArg("main") resolves the *Conn bean named "main" (autowire name
     // from config: the tag is the bean name).
-    gs.Provide(func(conn *StarterNats.Conn) messaging.Binder {
-        return StarterNats.NewBinder(conn)
+    gs.Provide(func(conn *StarterNats.Conn) messaging.Driver {
+        return StarterNats.NewDriver(conn)
     }, gs.TagArg("main")).Export(gs.As[gs.Rooter]())
 
     gs.Provide(newConsumer).Export(gs.As[gs.Rooter]())
@@ -88,7 +88,7 @@ type Consumer struct {
     Sub messaging.Subscriber `autowire:"?"`
 }
 
-func newConsumer(b messaging.Binder) *Consumer {
+func newConsumer(b messaging.Driver) *Consumer {
     sub, err := b.NewSubscriber(context.Background(), "orders.created", "workers")
     if err != nil {
         panic(err)
@@ -108,7 +108,7 @@ func (c *Consumer) Init(ctx context.Context) error {
 Publish from anywhere (HTTP handler, cron, outbox drainer):
 
 ```go
-pub, _ := binder.NewPublisher(ctx, "orders.created")
+pub, _ := driver.NewPublisher(ctx, "orders.created")
 defer pub.Close()
 err := pub.Publish(ctx, &messaging.Message{
     Payload: []byte(`{"id":42}`),
@@ -164,7 +164,7 @@ govern:
 
 ```bash
 docker run -d --name nats -p 127.0.0.1:4222:4222 nats:2.10 -js
-go run .                                   # binder subscribe, then publish
+go run .                                   # driver subscribe, then publish
 curl -i :9370/healthz                      # actuator liveness
 curl -s :9370/metrics | grep -i nats
 ```
@@ -184,7 +184,7 @@ gs.Run()
   │             .Name(name).Destroy(destroyConn).Caller(1)  [starter.go:36-40]
   ├─ newConn: driver lookup → CreateClient (nats.Connect — FAIL-FAST probe; a broker
   │           that is down aborts boot) [driver.go:122,137]
-  ├─ attach observe kit: pubObs/subObs (always set; level "off" honored inside)
+  ├─ attach instrumentation: pubObs/subObs (module-local observe.go)
   │           [driver.go:155-156]
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
   │           [driver.go:158-164]
@@ -201,15 +201,15 @@ exits boot with `failed to connect nats: <url>` [driver.go:122-126]. After boot,
 are logged (`nats disconnected` Warn) and the client auto-reconnects [driver.go:57-59] —
 `Healthy()` reflects the live `IsConnected()` state [client.go:62-64].
 
-### 2.2 One publish, layer by layer (binder path)
+### 2.2 One publish, layer by layer (driver path)
 
-`pub.Publish(ctx, msg)` [binder.go:58-71]:
+`pub.Publish(ctx, msg)` [driver.go:58-71]:
 
 1. Envelope → `nats.Msg{Subject, Data, Header}`; `messaging.Message.Key` rides the
    reserved `x-msg-key` header (restored into `Key` on consume; never leaks into
-   `Headers`) [binder.go:59-73]. Empty header map → nil header.
+   `Headers`) [driver.go:59-73]. Empty header map → nil header.
 2. Load-test marker: if `traffic.IsLoadTest(ctx)`, `X-LoadTest: 1` (canonical header name)
-   is stamped so consumers recognise synthetic load [binder.go:62-67].
+   is stamped so consumers recognise synthetic load [driver.go:62-67].
 3. `Conn.PublishMsg` override [command.go:82-91]: `pubObs.Start(context.Background(),
    "publish", subject)` opens the producer span + duration/in-flight metric + access log.
    ⚠ span parent is `context.Background()` — the publish span is always a NEW ROOT, the
@@ -227,22 +227,22 @@ are logged (`nats disconnected` Warn) and the client auto-reconnects [driver.go:
 
 What this path does NOT get: resilience (guarded methods are separate, §2.4).
 
-### 2.3 One consume, layer by layer (binder path)
+### 2.3 One consume, layer by layer (driver path)
 
-`sub.Subscribe(handler)` [binder.go:79-116]: handler wrapped in `messaging.Recover`
-(panic → error path, not SDK-goroutine crash) [binder.go:86-88]; `Subscribe` vs
-`QueueSubscribe` on non-empty group (competing consumers) [binder.go:105-110]. Per message:
+`sub.Subscribe(handler)` [driver.go:79-116]: handler wrapped in `messaging.Recover`
+(panic → error path, not SDK-goroutine crash) [driver.go:86-88]; `Subscribe` vs
+`QueueSubscribe` on non-empty group (competing consumers) [driver.go:105-110]. Per message:
 
 1. `startConsume` extracts W3C `traceparent` from `nm.Header`, opens the consumer span
-   (child of the producer span) + metric + log [command.go:96-102; binder.go:91-93].
-2. `X-LoadTest` header re-materialised into ctx as the load-test marker [binder.go:94-96].
+   (child of the producer span) + metric + log [command.go:96-102; driver.go:91-93].
+2. `X-LoadTest` header re-materialised into ctx as the load-test marker [driver.go:94-96].
 3. `fromNatsMsg`: multi-valued NATS headers flattened to single values (`Get` = first
-   value wins) [binder.go:138-149].
-4. Handler runs; `sp.End(err)` [binder.go:97-99]. Close = `Subscription.Unsubscribe`
-   [binder.go:119-124].
+   value wins) [driver.go:138-149].
+4. Handler runs; `sp.End(err)` [driver.go:97-99]. Close = `Subscription.Unsubscribe`
+   [driver.go:119-124].
 
 Documented gap: **direct `Conn.Subscribe` / JetStream consumes are NOT instrumented** —
-only the binder callback opens consumer spans [command.go:28-32]. Manual escape hatch:
+only the driver callback opens consumer spans [command.go:28-32]. Manual escape hatch:
 `StartPublishSpan` / `StartConsumeSpan` / `EndSpan` emit span-only (no metric/log)
 [command.go:109-160], as used by example/.
 
@@ -253,14 +253,14 @@ resilience executor is reached only through opt-in **methods** [command.go:152-1
 
 | Entry point | Observe | Resilience guard |
 |---|---|---|
-| `Conn.PublishMsg` (incl. binder publish) | span+metric+log | **no** |
+| `Conn.PublishMsg` (incl. driver publish) | span+metric+log | **no** |
 | `Conn.Publish` / `Conn.Request` / `Subscribe` / `QueueSubscribe` / JetStream | **no** | **no** |
 | `Conn.PublishGuarded(ctx, subj, data)` | span+metric+log (routes through `PublishMsg`) | yes |
 | `Conn.RequestGuarded(ctx, subj, data, timeout)` | **no** | yes |
 
 Wrap order inside `applyResilience` [command.go:162-174]: `ExecutorFor(resource)` (governance
 center-backed; transparent no-op when governance off) → `fault.WrapExecutor` (fault injection) →
-`resilience.WrapExecutor(exec, "nats", Observability)` (spans/counters/histograms for breaker
+`resilience.WrapExecutor(exec, "nats")` (spans/counters/histograms for breaker
 trips, rejects, retries — the resilience core emits none). On rejection the guarded call returns
 a resilience sentinel (`ErrRateLimited` / `ErrCircuitOpen`) and the underlying publish/request
 is never invoked — proven by [resilience_test.go:63-84]. The `resource` is
@@ -275,8 +275,8 @@ caller's ctx but the timeout is per-attempt inside `Request`.
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.nats.<name>.*`. Group keys (`tls`, `observability`) bind nested
-shared structs — their sub-keys belong to tlsconf / observe kit, not this starter.
+All keys live under `spring.nats.<name>.*`. The `tls` group key binds a nested shared
+struct — its sub-keys belong to tlsconf, not this starter.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -286,19 +286,18 @@ shared structs — their sub-keys belong to tlsconf / observe kit, not this star
 | `token` | string | "" | → `nats.Token` [driver.go:63-65]. | Combined with username → last-applied nats option wins (NATS-defined). |
 | `creds-file` | string | "" | JWT+nkey seed file → `nats.UserCredentials` [driver.go:66-68]. | Bad path → connect fails at boot. |
 | `nkey-file` | string | "" | nkey seed → `nats.NkeyOptionFromSeed`; load failure is explained and fails boot [driver.go:69-76]. | Bad seed file → boot error. |
-| `tls` | group | off | `tls.enabled=true` → `tlsconf.Build()` → `nats.Secure`; Build()==nil → bare `nats.Secure()` [driver.go:77-88]. ⚠ `Build()` not `BuildServer()` — same client-TLS posture as other client starters. Sub-keys: `enabled`/`ca-file`/`cert-file`/`key-file`/`insecure-skip-verify`/`server-name` (tlsconf's tags). | TLS mismatch → connect error at boot. |
+| `tls` | group | off | `tls.enabled=true` → `tlsconf.BuildClient()` → `nats.Secure`; BuildClient()==nil → bare `nats.Secure()` [driver.go:77-88]. ⚠ `Build()` not `BuildServer()` — same client-TLS posture as other client starters. Sub-keys: `enabled`/`ca-file`/`cert-file`/`key-file`/`insecure-skip-verify`/`server-name` (tlsconf's tags). | TLS mismatch → connect error at boot. |
 | `max-reconnects` | int | 60 | → `nats.MaxReconnects`; -1 = unlimited [config.go:63; driver.go:49]. | -1 with dead broker → reconnect loop forever (by design). |
 | `reconnect-wait` | duration | 2s | Delay between reconnect attempts [driver.go:50]. | Too low → busy reconnect against a down cluster. |
 | `connect-timeout` | duration | 5s | Bounds the **initial dial only** [driver.go:51]. | Too low → spurious boot failures on slow networks. |
 | `jetstream` | group | — | Container for `enabled`. | — |
 | `jetstream.enabled` | bool | false | Derives `jetstream.New(nc)` on the SAME connection; failure closes nc and fails boot; otherwise `Conn.JetStream` stays nil [driver.go:157-164]. | Enabled against a broker without `-js` → boot error. |
-| `observability` | group | brief | Shared observe kit config for pub/sub spans, metrics (`messaging.*` conventions), access log. Sub-keys: `level` (off/brief/detailed), `maxArgBytes`, `skipOps` — observe kit's tags [driver.go:155-156]. | level=off → observers still attached but no-op. |
 | `driver` | string | DefaultDriver | Driver registry lookup; unknown name fails boot with `nats driver not found` [driver.go:140-143]. ⚠ duplicate `RegisterDriver` panics at init. | Typo → boot error. |
 
 Grep reconciliation: the 15 distinct `value:` tags in this starter's Go files are exactly
 `url`, `name`, `username`, `password`, `token`, `creds-file`, `nkey-file`, `tls`,
 `max-reconnects`, `reconnect-wait`, `connect-timeout`, `jetstream`, `jetstream.enabled`
-(as `${enabled:=false}`), `observability`, `driver` — all tabled above; no extras either way.
+(as `${enabled:=false}`), `driver` — all tabled above; no extras either way.
 
 ---
 
@@ -334,7 +333,7 @@ this connection. Verify: wrapped-executor rejections emit a span + counter named
 resilience-observe bridge (`system="nats"`) [command.go:170-172] — grep traces/metrics for
 `nats` after a drill.
 
-### 4.4 Message round-trip incl. binder mapping survival
+### 4.4 Message round-trip incl. driver mapping survival
 
 Publish an envelope with `Payload` + `Headers{"tenant":"acme"}`; in the consumer assert:
 
@@ -368,17 +367,17 @@ Publish an envelope with `Payload` + `Headers{"tenant":"acme"}`; in the consumer
 | Boot aborts `failed to create jetstream context` | `jetstream.enabled=true` but broker started without `-js` [driver.go:158-164] | Start server with `-js` or disable the key. |
 | Boot aborts `nats driver not found` | `driver` typo / custom driver not registered before init [driver.go:140-143] | Fix name or register in an earlier init. |
 | `Conn.JetStream` is nil | `jetstream.enabled` unset | Set it; JS is derived lazily-but-at-boot from the same conn. |
-| Consumer gets messages but no traces/metrics on consumes | using raw `Conn.Subscribe` instead of the binder (documented gap [command.go:28-32]) | Consume via messaging.Binder, or hand-roll StartConsumeSpan. |
+| Consumer gets messages but no traces/metrics on consumes | using raw `Conn.Subscribe` instead of the driver (documented gap [command.go:28-32]) | Consume via messaging.Driver, or hand-roll StartConsumeSpan. |
 | Guarded calls suddenly fail with sentinel errors | rate limit exhausted or breaker open — by design [command.go:177-186] | Check govern.yaml policy; breaker recovers after cool-down. |
 | Producer trace never links to the caller's span | PublishMsg span parent is `context.Background()` [command.go:79-91] — by design: nats.PublishMsg has no ctx parameter, so publish spans are new roots | Not fixable without an API change. Consume-side continuation still works (traceparent header). For caller-linked publishes use the ctx-aware manual path `StartPublishSpan(ctx, msg)` + embedded `PublishMsg`. |
-| Missing 2nd header value | binder flattens multi-value headers to the first value (single-valued envelope) | Carry the extra values in the payload or use the raw Conn API. |
+| Missing 2nd header value | driver flattens multi-value headers to the first value (single-valued envelope) | Carry the extra values in the payload or use the raw Conn API. |
 | Reconnect storm in logs | `reconnect-wait` too low with dead cluster | Raise it; reconnect is the client's reliability mechanism. |
 
 ## 6. Design Health
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 15 starter-local value tags (+ tls / observability group sub-keys in shared packages) |
+| Config keys | 14 starter-local value tags (+ tls group sub-keys in tlsconf) |
 | Required | 1 (`url`) |
 | Quickstart external deps | 1 (nats; collector optional for observability) |
 | "Watch out" entries | 6 |

@@ -32,15 +32,29 @@ package consuldisc
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/cloud/discovery"
 )
 
-// Backend resolves service names against a Consul agent.
+// Backend resolves service names against a Consul agent. The first Resolve of
+// a service seeds a per-service cache and starts a blocking-query loop that
+// keeps it fresh; later calls are in-memory reads.
 type Backend struct {
 	client *api.Client
+
+	ctx     context.Context
+	mu      sync.Mutex
+	entries map[string]*consulEntry
+}
+
+// consulEntry is the cached snapshot for one service name+tag.
+type consulEntry struct {
+	mu     sync.Mutex
+	eps    []discovery.Endpoint
+	seeded bool
 }
 
 // Register builds a Consul-backed Discovery for the agent at addr (e.g.
@@ -62,54 +76,61 @@ func New(addr string) (*Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("consuldisc: new client: %w", err)
 	}
-	return &Backend{client: client}, nil
+	return &Backend{client: client, ctx: context.Background(), entries: map[string]*consulEntry{}}, nil
 }
 
-// Resolve returns the current healthy endpoints for name. opts narrow the
-// result: [discovery.WithTag] is passed to Consul's service query server-side,
-// [discovery.WithScheme] filters the returned endpoints by transport scheme.
+// Resolve returns the current healthy endpoints for name. The first call seeds
+// a per-service cache and starts a blocking-query loop that keeps it fresh;
+// later calls are in-memory reads. opts narrow the result: [discovery.WithTag]
+// is passed to Consul's service query server-side, [discovery.WithScheme]
+// filters the returned endpoints by transport scheme.
 func (b *Backend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
 	q := discovery.NewQuery(name, opts...)
-	entries, _, err := b.client.Health().Service(name, q.Tag, true, (&api.QueryOptions{}).WithContext(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("consuldisc: resolve %q: %w", name, err)
+	e := b.entry(name, q.Tag)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.seeded {
+		entries, _, err := b.client.Health().Service(name, q.Tag, true, (&api.QueryOptions{}).WithContext(ctx))
+		if err != nil {
+			return nil, fmt.Errorf("consuldisc: resolve %q: %w", name, err)
+		}
+		e.eps = toEndpoints(entries)
+		e.seeded = true
+		go b.watchLoop(name, q.Tag, e)
 	}
-	return discovery.FilterByScheme(toEndpoints(entries), q.Scheme), nil
+	return discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), q.Scheme), nil
 }
 
-// Watch subscribes to name via Consul blocking queries, pushing a fresh full
-// snapshot on the returned channel each time the catalog's modify index
-// advances. The first result carries the current snapshot; the channel closes
-// when ctx is cancelled or a terminal error is delivered. opts narrow the
-// subscription: [discovery.WithTag] is passed to Consul's service query
-// server-side, [discovery.WithScheme] filters each snapshot by transport scheme.
-func (b *Backend) Watch(ctx context.Context, name string, opts ...discovery.Option) (<-chan discovery.WatchResult, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	q := discovery.NewQuery(name, opts...)
-	w := &watcher{backend: b, name: name, tag: q.Tag, scheme: q.Scheme, ctx: ctx}
-	ch := make(chan discovery.WatchResult, 1)
-	go func() {
-		defer cancel()
-		defer close(ch)
-		for {
-			eps, err := w.next()
-			if err != nil {
-				if ctx.Err() == nil {
-					select {
-					case ch <- discovery.WatchResult{Err: err}:
-					case <-ctx.Done():
-					}
-				}
+// watchLoop keeps one service's cache fresh via Consul blocking queries until
+// the backend's context ends. A failed query keeps the stale snapshot — stale
+// addresses are safer than none — and retries on the next index advance.
+func (b *Backend) watchLoop(name, tag string, e *consulEntry) {
+	w := &watcher{backend: b, name: name, tag: tag, ctx: b.ctx}
+	for w.ctx.Err() == nil {
+		eps, err := w.next()
+		if err != nil {
+			if w.ctx.Err() != nil {
 				return
 			}
-			select {
-			case ch <- discovery.WatchResult{Endpoints: eps}:
-			case <-ctx.Done():
-				return
-			}
+			continue
 		}
-	}()
-	return ch, nil
+		e.mu.Lock()
+		e.eps = eps
+		e.mu.Unlock()
+	}
+}
+
+// entry returns (creating if needed) the cache entry for name+tag.
+func (b *Backend) entry(name, tag string) *consulEntry {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	key := name + "\x00" + tag
+	e, ok := b.entries[key]
+	if !ok {
+		e = &consulEntry{}
+		b.entries[key] = e
+	}
+	return e
 }
 
 // toEndpoints maps Consul service entries to discovery endpoints. It prefers the
@@ -140,7 +161,6 @@ type watcher struct {
 	backend   *Backend
 	name      string
 	tag       string // narrowing from WithTag; "" = any
-	scheme    string // narrowing from WithScheme; "" = any
 	lastIndex uint64
 	ctx       context.Context
 }
@@ -167,6 +187,6 @@ func (w *watcher) next() ([]discovery.Endpoint, error) {
 			continue
 		}
 		w.lastIndex = meta.LastIndex
-		return discovery.FilterByScheme(toEndpoints(entries), w.scheme), nil
+		return toEndpoints(entries), nil
 	}
 }

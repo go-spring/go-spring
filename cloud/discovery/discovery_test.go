@@ -22,7 +22,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 // panics reports whether fn panicked with a value whose message contains want.
@@ -97,47 +96,6 @@ func TestRegisterDiscoveryPanics(t *testing.T) {
 	}) {
 		t.Error("registering a duplicate name should panic")
 	}
-}
-
-func TestCatalogIsOptional(t *testing.T) {
-	// A Discovery that implements Catalog exposes enumeration.
-	withCatalog := newStaticDiscovery("svc-a", "svc-b")
-	RegisterDiscovery("test-catalog", withCatalog)
-	b, err := GetDiscovery("test-catalog")
-	if err != nil {
-		t.Fatalf("GetDiscovery: %v", err)
-	}
-	c, ok := b.(Catalog)
-	if !ok {
-		t.Fatal("a Discovery with Services should satisfy Catalog")
-	}
-	names, err := c.Services(context.Background())
-	if err != nil {
-		t.Fatalf("Services: %v", err)
-	}
-	if len(names) != 2 || names[0] != "svc-a" || names[1] != "svc-b" {
-		t.Fatalf("Services = %v, want [svc-a svc-b]", names)
-	}
-
-	// A Discovery that does NOT implement Catalog must fail the assertion — the
-	// intended degradation, never an empty list or a panic.
-	RegisterDiscovery("test-no-catalog", discoveryOnly{})
-	b2, _ := GetDiscovery("test-no-catalog")
-	if _, ok := b2.(Catalog); ok {
-		t.Fatal("a Discovery without Services should not satisfy Catalog")
-	}
-}
-
-// discoveryOnly implements Discovery but deliberately not Catalog, so the
-// optional-Catalog assertion can be exercised in the negative.
-type discoveryOnly struct{}
-
-func (discoveryOnly) Resolve(context.Context, string, ...Option) ([]Endpoint, error) {
-	return nil, nil
-}
-
-func (discoveryOnly) Watch(context.Context, string, ...Option) (<-chan WatchResult, error) {
-	return nil, nil
 }
 
 func TestNewStaticDiscovery(t *testing.T) {
@@ -220,127 +178,37 @@ func TestQueryOptionsCompose(t *testing.T) {
 	}
 }
 
-func TestNewStaticDiscovery_WatchSeedsAndCloses(t *testing.T) {
-	d := NewStaticDiscovery(Endpoint{Addr: "10.0.0.1:80", Healthy: true})
-	ctx, cancel := context.WithCancel(context.Background())
-	ch, err := d.Watch(ctx, "x")
-	if err != nil {
-		t.Fatalf("Watch: %v", err)
-	}
-	select {
-	case r := <-ch:
-		if r.Err != nil || len(r.Endpoints) != 1 {
-			t.Fatalf("first result = %+v, want one endpoint", r)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("first result not delivered")
-	}
-
-	cancel()
-	select {
-	case _, ok := <-ch:
-		if ok {
-			t.Fatal("channel should be closed after ctx cancel")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("channel not closed after ctx cancel")
-	}
-}
-
-func TestWatchFirstResultIsCurrent(t *testing.T) {
-	d := newStaticDiscovery()
-	d.set("svc", Endpoint{Addr: "10.0.0.1:80", Healthy: true})
-	RegisterDiscovery("test-watch", d)
-	backend, _ := GetDiscovery("test-watch")
-
-	ch, err := backend.Watch(t.Context(), "svc")
-	if err != nil {
-		t.Fatalf("Watch: %v", err)
-	}
-	select {
-	case r := <-ch:
-		if r.Err != nil {
-			t.Fatalf("first result errored: %v", r.Err)
-		}
-		if len(r.Endpoints) != 1 || r.Endpoints[0].Addr != "10.0.0.1:80" {
-			t.Fatalf("first result = %+v, want the current snapshot", r)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("first result was not delivered promptly")
-	}
-}
-
-func TestWatchCancelClosesChannel(t *testing.T) {
-	d := newStaticDiscovery()
-	d.set("svc", Endpoint{Addr: "10.0.0.2:80"})
-	RegisterDiscovery("test-watch-cancel", d)
-	backend, _ := GetDiscovery("test-watch-cancel")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	ch, err := backend.Watch(ctx, "svc")
-	if err != nil {
-		t.Fatalf("Watch: %v", err)
-	}
-	<-ch // drain the seed result so the next receive observes the close.
-
-	cancel()
-	select {
-	case r, ok := <-ch:
-		if ok {
-			t.Fatalf("channel should be closed after ctx cancel, got result %+v", r)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("channel was not closed after ctx cancel")
-	}
-}
-
-func TestWatchUpdatePushesNewSnapshot(t *testing.T) {
+func TestResolveSeesTopologyChange(t *testing.T) {
 	d := newStaticDiscovery()
 	d.set("svc", Endpoint{Addr: "10.0.0.1:80"})
-	RegisterDiscovery("test-watch-update", d)
-	backend, _ := GetDiscovery("test-watch-update")
 
-	ch, err := backend.Watch(t.Context(), "svc")
-	if err != nil {
-		t.Fatalf("Watch: %v", err)
+	got, err := d.Resolve(context.Background(), "svc")
+	if err != nil || len(got) != 1 {
+		t.Fatalf("Resolve = %v, err %v — want one endpoint", got, err)
 	}
-	<-ch // drain the seed (initial single instance).
 
-	// Simulate a topology change: two instances now. The live watcher must
-	// receive the new full snapshot.
+	// Simulate a topology change: two instances now. The next snapshot read
+	// must observe it — freshness is the backend's job in the Resolve-only model.
 	d.Update("svc",
 		Endpoint{Addr: "10.0.0.1:80"},
 		Endpoint{Addr: "10.0.0.2:80"},
 	)
-	select {
-	case r := <-ch:
-		if r.Err != nil || len(r.Endpoints) != 2 {
-			t.Fatalf("update result = %+v, want two endpoints", r)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("topology change was not pushed to the live watcher")
+	got, err = d.Resolve(context.Background(), "svc")
+	if err != nil || len(got) != 2 {
+		t.Fatalf("Resolve after update = %v, err %v — want two endpoints", got, err)
 	}
 }
 
 // staticDiscovery is an in-memory backend used only by tests in this package.
-// It is the reference implementation of the package's watch contract: the
-// current snapshot is delivered as the FIRST result on a Watch channel, later
-// topology changes are pushed by Update, and the channel closes when the watch
-// context is cancelled. It also satisfies the optional Catalog via a fixed name
-// list.
+// Update replaces the snapshot for a name, so tests can simulate a topology
+// change and observe it through Resolve.
 type staticDiscovery struct {
-	mu       sync.Mutex
-	eps      map[string][]Endpoint
-	names    []string
-	watchers map[string][]chan WatchResult
+	mu  sync.Mutex
+	eps map[string][]Endpoint
 }
 
-func newStaticDiscovery(names ...string) *staticDiscovery {
-	return &staticDiscovery{
-		eps:      map[string][]Endpoint{},
-		names:    names,
-		watchers: map[string][]chan WatchResult{},
-	}
+func newStaticDiscovery() *staticDiscovery {
+	return &staticDiscovery{eps: map[string][]Endpoint{}}
 }
 
 // set replaces the endpoint snapshot stored for name.
@@ -356,62 +224,10 @@ func (s *staticDiscovery) Resolve(_ context.Context, name string, opts ...Option
 	return FilterByScheme(append([]Endpoint(nil), s.eps[name]...), NewQuery("", opts...).Scheme), nil
 }
 
-func (s *staticDiscovery) Watch(ctx context.Context, name string, opts ...Option) (<-chan WatchResult, error) {
-	scheme := NewQuery("", opts...).Scheme
-	s.mu.Lock()
-	eps := FilterByScheme(append([]Endpoint(nil), s.eps[name]...), scheme)
-	s.mu.Unlock()
-
-	ch := make(chan WatchResult, 8)
-	ch <- WatchResult{Endpoints: eps} // seed: the current snapshot, delivered first
-
-	// Register only after the seed is queued, so a racing Update cannot push a
-	// change ahead of the seed on this channel.
-	s.mu.Lock()
-	s.watchers[name] = append(s.watchers[name], ch)
-	s.mu.Unlock()
-
-	go func() {
-		<-ctx.Done()
-		// Remove before close, under the same lock Update sends under, so Update
-		// can never send to a channel that is about to be (or already is) closed.
-		s.mu.Lock()
-		s.watchers[name] = removeChan(s.watchers[name], ch)
-		s.mu.Unlock()
-		close(ch)
-	}()
-	return ch, nil
-}
-
-// Update replaces the snapshot for name and pushes the new full set to every
-// live watcher of name. It is how tests simulate a topology change.
+// Update replaces the snapshot for name. It is how tests simulate a topology
+// change.
 func (s *staticDiscovery) Update(name string, eps ...Endpoint) {
-	snap := append([]Endpoint(nil), eps...)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.eps[name] = snap
-	for _, ch := range s.watchers[name] {
-		select {
-		case ch <- WatchResult{Endpoints: append([]Endpoint(nil), snap...)}:
-		default:
-			// Buffer full: drop rather than block the producer. Tests keep the
-			// buffer small and consume promptly, so this is just a safety net.
-		}
-	}
-}
-
-func (s *staticDiscovery) Services(_ context.Context) ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]string(nil), s.names...), nil
-}
-
-// removeChan returns list without ch (channel identity compared by address).
-func removeChan(list []chan WatchResult, ch chan WatchResult) []chan WatchResult {
-	for i, c := range list {
-		if c == ch {
-			return append(list[:i], list[i+1:]...)
-		}
-	}
-	return list
+	s.eps[name] = append([]Endpoint(nil), eps...)
 }

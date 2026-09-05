@@ -14,7 +14,7 @@ Go-Spring 的事务消息（transactional outbox）：把消息写进 outbox 表
 - `Observer` — 观测接缝（publish / retry / dead 事件）
 - `MemoryStore` — 仅供测试/演示的内存实现
 
-**写侧**（在你的事务里插入 outbox 表）与 **gorm Store 实现**在存储后端 starter——`go-spring.org/starter-outbox-gorm`——因为它们需要事务句柄。投递走任意已注册的 `messaging.Binder`（kafka、nats……），换 broker 只是改接线。
+**写侧**（在你的事务里插入 outbox 表）与 **gorm Store 实现**在存储后端 starter——`go-spring.org/starter-outbox-gorm`——因为它们需要事务句柄。投递走任意已注册的 `messaging.Driver`（kafka、nats……），换 broker 只是改接线。
 
 ## 语义
 

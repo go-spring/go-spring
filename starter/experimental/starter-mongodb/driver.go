@@ -15,33 +15,34 @@
  */
 
 // driver.go is the "construction seam" concept of this starter: the discovery
-// resolver lifecycle that client construction (newClient in starter.go) owns.
-// Unlike go-redis/memcached there is no Driver abstraction here — the seam is
-// the discovery dial: newLiveResolver builds the endpoint watch and
-// stopLiveResolver releases it on shutdown.
+// dial seam that client construction (newClient in starter.go) owns. Unlike
+// go-redis/memcached there is no Driver abstraction here — the seam is the
+// discovery dial: newPickPool builds a resolver-backed endpoint picker and
+// starter.go feeds its picks into the per-connection dial.
 package StarterMongoDB
 
 import (
 	"context"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/loadbalance"
 )
 
-// newLiveResolver resolves the registered discovery backend for c and returns a
-// Resolver that keeps the service's endpoint set fresh via a background watch. It
-// returns (nil, nil) when service-name is unset or mesh mode is enabled (a sidecar
-// owns discovery+LB), in which case the caller dials the configured URI hosts
-// directly. The caller owns the lifecycle and must release the resolver via
-// stopLiveResolver.
-func newLiveResolver(ctx context.Context, c Config) (*discovery.Resolver, error) {
-	return discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
-}
-
-// stopLiveResolver stops the discovery watch behind a client. It is the
-// Close-half of the discovery lifecycle, symmetric with newLiveResolver; it is a
-// no-op for clients that never had a resolver.
-func stopLiveResolver(r *discovery.Resolver) {
-	if r != nil {
-		_ = r.Stop()
+// newPickPool resolves the registered discovery backend for c into a by-name
+// Resolver and wraps it in a round-robin loadbalance pool, so each new connection
+// can pick a live instance from the service's current endpoint snapshot. It
+// returns (nil, nil) when discovery is not in effect — service-name unset or
+// mesh mode enabled (a sidecar owns discovery+LB) — in which case the caller
+// dials the configured URI hosts directly. Resolver freshness lives inside the
+// backend, so the pool has no resources to release and there is no Stop-half.
+func newPickPool(ctx context.Context, c Config) (*loadbalance.Pool, error) {
+	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+	if err != nil || resolver == nil {
+		return nil, err
 	}
+	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	if err != nil {
+		return nil, err
+	}
+	return loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal), nil
 }

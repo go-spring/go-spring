@@ -103,8 +103,7 @@ spring.discovery.etcd.prod.key-prefix=/services/
 | `tls.*` | (关闭) | 可选客户端 TLS。 |
 
 健康由键的存活性推导:实例键只在租约存活期间存在,因此找到的每个键都是活实例 ——
-无需探测协议。后端同时实现 `discovery.Catalog`(`Services()` 枚举所有仍有活键的
-服务),网关可据此动态构建路由。注册实例元数据里可选的 `scheme` 键承担传输选择,
+无需探测协议。注册实例元数据里可选的 `scheme` 键承担传输选择,
 与 nacos 适配器对齐。
 
 ## 工作原理
@@ -127,7 +126,7 @@ spring.discovery.etcd.prod.key-prefix=/services/
 ### 运行时权重调整
 
 `Server.UpdateWeight(ctx, weight)` 不注销实例、仅以新权重重新宣告：消费端
-（loadbalance 池）在下一个发现快照（一个 Watch 推送周期）生效。权重 0 即摘流
+（loadbalance 池）在下一个发现快照（一个刷新周期）生效。权重 0 即摘流
 （不接流量但保持注册），是下线前零损失轮转的标准一步。运维也可以直接改注册中心
 里的权重值，效果等同。
 ### 日志 tag

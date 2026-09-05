@@ -28,8 +28,8 @@ import (
 	"sync/atomic"
 
 	"github.com/go-sql-driver/mysql"
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	gormcore "go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
@@ -80,7 +80,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 	// the host's system root set; ServerName/InsecureSkipVerify honored), or
 	// (nil, nil) when disabled. Register the config with the driver under a
 	// unique name and reference it in the DSN as tls=<name>.
-	tlsCfg, err := c.TLS.Build()
+	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm mysql: build TLS failed: %v", err)
 		return gormcore.Spec{}, errutil.Explain(err, "gorm-mysql: build TLS")
@@ -145,7 +145,6 @@ var netSeq atomic.Uint64
 // discoveryConn pairs a live Resolver with the unique mysql dial network name
 // it registered, so the closer can stop the watch and deregister the dialer.
 type discoveryConn struct {
-	ld      *discovery.Resolver
 	netName string
 }
 
@@ -156,25 +155,25 @@ type discoveryConn struct {
 // directly. The caller owns the lifecycle and must release the conn via
 // stopDiscoveryConn.
 func newDiscoveryConn(ctx context.Context, c Config) (*discoveryConn, error) {
-	ld, err := c.NewResolver(ctx)
+	lb, _, err := c.NewPickPool(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if ld == nil {
+	if lb == nil {
 		return nil, nil
 	}
 	netName := fmt.Sprintf("gsdisco_%s_%d", c.ServiceName, netSeq.Add(1))
 	nd := &net.Dialer{}
 	// mysql.DialContextFunc is 2-arg: func(ctx, addr string) (net.Conn, error).
-	// The addr is ignored; the dialer picks a live endpoint via the Resolver.
+	// The addr is ignored; the dialer picks a live endpoint via the pool.
 	mysql.RegisterDialContext(netName, func(ctx context.Context, _ string) (net.Conn, error) {
-		ep, perr := ld.Pick()
+		ep, perr := lb.Pick(loadbalance.PickInfo{})
 		if perr != nil {
 			return nil, perr
 		}
 		return nd.DialContext(ctx, "tcp", ep.Addr)
 	})
-	return &discoveryConn{ld: ld, netName: netName}, nil
+	return &discoveryConn{netName: netName}, nil
 }
 
 // stopDiscoveryConn stops the discovery watch and deregisters the mysql dialer
@@ -184,6 +183,5 @@ func stopDiscoveryConn(conn *discoveryConn) {
 	if conn == nil {
 		return
 	}
-	_ = conn.ld.Stop()
 	mysql.DeregisterDialContext(conn.netName)
 }

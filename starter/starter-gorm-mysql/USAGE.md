@@ -162,10 +162,10 @@ gs.Run()
   ├─ OnProperty("spring.gorm.mysql") fires; conf.BindEach binds one Config per <name> entry
   ├─ per instance: build(ctx, c)
   │    ├─ addr/service-name presence check (one must be set)
-  │    ├─ TLS: c.TLS.Build() -> *tls.Config; mysql.RegisterTLSConfig("gstls_<n>", cfg)
+  │    ├─ TLS: c.TLS.BuildClient() -> *tls.Config; mysql.RegisterTLSConfig("gstls_<n>", cfg)
   │    ├─ DSN(): user:pass@tcp(addr)/db?params
   │    └─ discovery (service-name set, mesh off): mysql.RegisterDialContext("gsdisco_<svc>_<n>",
-  │         dial via Resolver.Pick) and the DSN is rewritten to net(gsdisco_...)(<service-name>)
+  │         dial via the round-robin pick pool) and the DSN is rewritten to net(gsdisco_...)(<service-name>)
   ├─ gormcore.Open: gorm.Open -> ApplyPool (incl. startup ping, ping-timeout bound)
   │    -> ApplyDBCustomizers -> *DB bean (Name=<name>, Init, Destroy)
   ├─ health indicator "gorm:mysql:<name>" exported as health.Indicator
@@ -243,7 +243,7 @@ ETCDCTL_API=3 etcdctl put /services/mysql-cluster/b '{"service_name":"mysql-clus
 ```
 
 2. Start the app; both keys are in the resolver's endpoint set; every **new** connection dials one of
-   them via `Resolver.Pick()`.
+   them via the round-robin pick pool.
 3. Deregister one endpoint:
 
 ```bash

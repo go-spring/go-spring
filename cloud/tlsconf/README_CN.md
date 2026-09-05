@@ -1,11 +1,19 @@
 # tlsconf
+
 [English](README.md) | [中文](README_CN.md)
 
-`tlsconf` 是所有终结或发起 TLS 的 Go-Spring starter 共用的 TLS 配置助手。
-它把默认关闭的 `tls.*` 配置块绑定为 `*tls.Config`,并在提供时从磁盘加
-载密钥对与 CA bundle。只依赖 Go 标准库和
-`go-spring.org/stdlib/errutil`,仓库里任何模块都能采用而不引入额外依赖
-图。
+`tlsconf` 是所有终结或发起 TLS 的 Go-Spring starter(redis、各 gorm
+方言、kafka、nats、mqtt、grpc、gin、gateway、neo4j、cassandra、
+registry/lock 后端……)共用的 TLS 配置助手。它把默认关闭的 `tls.*`
+配置块绑定为 `*tls.Config`,并在提供时从磁盘加载密钥对与 CA bundle。
+只依赖 Go 标准库和 `go-spring.org/stdlib/errutil`,仓库里任何模块都
+能采用而不引入额外依赖图。
+
+## 安装
+
+```
+go get go-spring.org/cloud
+```
 
 ## 嵌入方式
 
@@ -27,17 +35,26 @@ type Config struct {
 | `tls.server-name` | 空 | 覆盖对端证书校验名(按 IP 拨号、discovery 标签场景)。 |
 | `tls.insecure-skip-verify` | `false` | 关闭校验。仅限本地测试。 |
 
-## Build(客户端)
+配置面被 20+ starter 共享,语义也随之共享:运维从 redis 换到 kafka、
+grpc,看到的是同样的 `tls.enabled` / `cert-file` / `ca-file` 旋钮、
+同样的行为。
+
+## BuildClient(客户端)
 
 ```go
-tlsCfg, err := c.TLS.Build()
+tlsCfg, err := c.TLS.BuildClient()
 if err != nil { return err }
 client := somelib.NewClient(somelib.WithTLS(tlsCfg))
 ```
 
-`enabled=false` 时 `Build` 返回 `(nil, nil)` —— 即"无 TLS",所有 client
-库都接受 nil `*tls.Config`。`CAFile` 设置 `RootCAs`;错误带通用 `tls:`
-前缀,需要组件前缀时用 `errutil.Explain(err, "redis: ...")` 再包一层。
+`enabled=false` 时 `BuildClient` 返回 `(nil, nil)` —— 即"无 TLS",所有 client
+库都接受 nil `*tls.Config`,starter 可以无分支直传。`CAFile` 设置
+`RootCAs`;在客户端它永远只是校验用的根证书集,不触发 mTLS。
+`MinVersion` 跟随 `crypto/tls` 默认;需要更严下限的 starter 可在返回
+的 config 上自设 `MinVersion`。
+
+错误带通用 `tls:` 前缀(`BuildClient` 不知道自己服务于哪个组件);需要组件
+前缀时用 `errutil.Explain(err, "redis: ...")` 再包一层。
 
 ## BuildServer(服务端)
 
@@ -53,10 +70,11 @@ tlsCfg, err := c.TLS.BuildServer()
 - `ServerName` 与 `InsecureSkipVerify` 是客户端旋钮;在服务端它们描述
   的是校验"我们拨的对端",故两者均忽略。
 
-与 `Build` 相同,`enabled=false` 时返回 `(nil, nil)`。
+与 `BuildClient` 相同,`enabled=false` 时返回 `(nil, nil)`。
 
-## 安装
+## 边界
 
-```
-go get go-spring.org/cloud
-```
+- 本包到产出 `*tls.Config` 为止:不装 provider、不包 listener。
+  starter 把结果交给自己的库或 `tls.NewListener`。
+- 不做证书热加载/轮换。`BuildClient` 在构造时调用一次;轮换是 starter 的
+  生命周期关注点。

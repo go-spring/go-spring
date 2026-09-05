@@ -141,5 +141,5 @@ type RouteRaw struct {
 // governance center under the "gateway:<name>" label). The value carries no
 // fields: legacy per-route policy knobs were removed when policy moved to
 // ${govern}; unknown sub-keys under spring.gateway.resilience.<name>.* are
-// ignored by the binder.
+// ignored by the driver.
 type policyRaw struct{}

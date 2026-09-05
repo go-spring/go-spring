@@ -15,8 +15,8 @@
 
 ## 1. 完整工程示例
 
-一个包含 publisher 与一对竞争消费者的服务（经 messaging binder），并保留裸连接
-作为 binder 未建模 AMQP 特性的逃生口。文件树：
+一个包含 publisher 与一对竞争消费者的服务（经 messaging driver），并保留裸连接
+作为 driver 未建模 AMQP 特性的逃生口。文件树：
 
 ```
 demo/
@@ -58,7 +58,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**messaging_app.go** —— 经 binder 的 publisher + consumer，加一次受治理的裸发布：
+**messaging_app.go** —— 经 driver 的 publisher + consumer，加一次受治理的裸发布：
 
 ```go
 package messaging_app
@@ -82,15 +82,15 @@ func init() {
     // 导出为 Rooter，使容器在 prod 也实例化它（gs 只装配根可达 bean）。
     gs.Provide(&App{}).Export(gs.As[gs.Rooter]())
 
-    // binder 把连接适配为 broker 中立的 messaging.Binder；
+    // driver 把连接适配为 broker 中立的 messaging.Driver；
     // 应用代码此后只依赖 messaging.Publisher / messaging.Subscriber。
-    gs.Provide(StarterRabbitMQ.NewBinder, gs.TagArg("demo"))
+    gs.Provide(StarterRabbitMQ.NewDriver, gs.TagArg("demo"))
 }
 
 // Init 在注入完成后运行（gs.Rooter）：启动竞争消费者。
 func (a *App) Init(ctx context.Context) error {
-    // binder 提供的 publisher：trace context 与 observe kit 自动生效。
-    b := StarterRabbitMQ.NewBinder(a.Conn)
+    // driver 提供的 publisher：trace context 与插桩自动生效。
+    b := StarterRabbitMQ.NewDriver(a.Conn)
     pub, err := b.NewPublisher(ctx, "orders.created")
     if err != nil { return err }
     if err := pub.Publish(ctx, &messaging.Message{
@@ -142,11 +142,6 @@ spring.rabbitmq.demo.driver=DefaultDriver
 #spring.rabbitmq.demo.tls.key-file=/etc/ssl/rabbit-client.key
 #spring.rabbitmq.demo.tls.server-name=rabbit.example.com
 #spring.rabbitmq.demo.tls.insecure-skip-verify=false
-
-# 受治理（GuardedPublish）调用的访问日志：
-#spring.rabbitmq.demo.observability.level=brief
-#spring.rabbitmq.demo.observability.maxArgBytes=512
-#spring.rabbitmq.demo.observability.skipOps=
 
 # --- actuator + otel（与 example-otel/conf/app.properties 同 key）------------
 spring.actuator.addr=:9370
@@ -213,7 +208,7 @@ gs.Run()
 ```
 fault.WrapExecutor( resilience.ExecutorFor(resource) )   ← 外层
         │
-   resilience.WrapExecutor(exec, "rabbitmq", c.Observability)  ← 包在它外面
+   resilience.WrapExecutor(exec, "rabbitmq")                 ← 包在它外面
         │
    你的调用（ch.PublishWithContext）                       ← 最内层
 ```
@@ -223,13 +218,13 @@ fault.WrapExecutor( resilience.ExecutorFor(resource) )   ← 外层
 `resilience.ExecutorFor` seam 获取 —— 治理关闭时它是透明 no-op，`guard` 甚至查不到
 executor 而直接透传（command.go:253-260）。
 
-**不在守卫内**：`GuardedPublish` 是唯一受守卫的入口 [command.go:271-275]。binder 的
+**不在守卫内**：`GuardedPublish` 是唯一受守卫的入口 [command.go:271-275]。driver 的
 裸 `ch.PublishWithContext`、整个消费路径、queue/exchange 声明与 ack 全部绕过
-resilience。消费侧保护是 handler 自己的事。binder 的 `Publish` **已受保护**——走
+resilience。消费侧保护是 handler 自己的事。driver 的 `Publish` **已受保护**——走
 `GuardedPublish` 与连接级 executor [client.go]；实例 key `governance=false` 可让所有
 调用路径裸跑。
 
-### 2.3 一次 publish 与一次 consume 逐层走读（binder 路径）
+### 2.3 一次 publish 与一次 consume 逐层走读（driver 路径）
 
 Publish [client.go:89-107]：
 
@@ -237,9 +232,9 @@ Publish [client.go:89-107]：
    （toAMQPTable，空则 nil）、`MessageId` ← `msg.Key` [client.go:90-94]。
 2. 若 `traffic.IsLoadTest(ctx)`，标记写入 AMQP header `x-loadtest`
    [client.go:97-102]，让消费侧识别压测流量。
-3. `startPublish` 开启 observe kit 的生产者观测（span `publish <queue>`、指标
+3. `startPublish` 开启模块内生产者观测（span `publish <queue>`、指标
    `messaging.client.operation.duration`）并向 `pub.Headers` 注入 W3C trace
-   context [command.go:194-201]。
+   context。
 4. `PublishWithContext` 发往默认 exchange（`""`），队列名即 routing key；
    `sp.End(err)` 记时长、平衡 in-flight 计数、出访问日志 [client.go:103-106]。
 
@@ -269,8 +264,8 @@ channel 侧的对应物。
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.rabbitmq.<name>.*`。自有 value tag 6 个（config.go:33-57）
-加共享 tlsconf（6 个）与 observe（3 个）块共 15 个；必填 1 个。
+所有 key 位于 `spring.rabbitmq.<name>.*`。自有 value tag 5 个（config.go:33-60）
+加共享 tlsconf（6 个）块共 11 个；必填 1 个。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
@@ -281,15 +276,12 @@ channel 侧的对应物。
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | 自定义 CA / mTLS 证书对，由共享 `tlsconf` 块加载（跨 starter 统一 key，config.go:44-48）。 | 文件缺失 → 启动期 TLS 构建失败 [driver.go:64-68]。 |
 | `tls.server-name` | string | "" | SNI/校验名覆盖。 | 不匹配 → 启动期 x509 hostname 错误。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过证书校验。 | 生产置 true = 静默 MITM 暴露。 |
-| `observability.level` | 枚举 | brief | `off`/`brief`/`detailed` 访问日志详细度 —— **仅作用于 GuardedPublish 路径**（resilience observer，command.go:236）。⚠ binder 路径的 observe kit 是包级默认、固定 `brief`，读不到这个 key（注释见 command.go:181-190）。 | 想借此关掉 binder 访问日志 → 无效。 |
-| `observability.maxArgBytes` | int | 512 | detailed 模式下截取的操作参数上限。 | 过低 → 日志参数被截断。 |
-| `observability.skipOps` | 列表 | "" | resilience observer 跳过的操作名（span+指标+日志全免）。 | — |
 | `driver` | string | DefaultDriver | 从 `RegisterDriver` 填充的注册表选择 [driver.go:31-53]。 | 未知名字 → 启动报 "rabbitmq driver not found" [starter.go:58-62]；重名注册 panic [driver.go:50]。 |
-| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedPublish` 与 binder 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
+| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedPublish` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
 已与 `grep -rhoE 'value:"[^"]+"'` 对账：自有 tag 恰为 `${url}`、`${vhost:=}`、
-`${heartbeat:=10s}`、`${tls}`、`${observability:=}`、`${driver:=DefaultDriver}`；
-tls.*/observability.* 各列来自经 `${tls}`、`${observability:=}` 绑定的共享 cloud 块。
+`${heartbeat:=10s}`、`${tls}`、`${driver:=DefaultDriver}`；tls.* 各列来自经
+`${tls}` 绑定的共享 cloud 块。
 
 ---
 
@@ -310,7 +302,7 @@ docker stop demo-rabbit && go run .   # example 下：broker 停掉跑 ./check.s
 
 1. `GuardedPublish` 调用 → resilience 哨兵错误，publish 根本不进 channel，
    产出 `resilience.*` 指标 + `_app_rabbitmq_access` 日志记录。
-2. 同一规则下的 binder `Publish` → 同样的 resilience 哨兵错误（走连接级 executor，
+2. 同一规则下的 driver `Publish` → 同样的 resilience 哨兵错误（走连接级 executor，
    §2.2）。自行开 channel 裸调 `PublishWithContext` → 不受影响（没有 executor 跳跃）。
    实例级退出口：`governance=false`。
 
@@ -320,26 +312,26 @@ docker stop demo-rabbit && go run .   # example 下：broker 停掉跑 ./check.s
 curl :9090/publish && curl :9090/consume        # body "value" 存活
 ```
 
-binder 到 binder 往返：`Payload`、字符串 `Headers`、`Key`（经 MessageId）、消费侧
+driver 到 driver 往返：`Payload`、字符串 `Headers`、`Key`（经 MessageId）、消费侧
 `Timestamp` 存活。**丢失项**：生产侧设置的 `msg.Timestamp` 不会写入
 `amqp.Publishing.Timestamp` [client.go:90-94]；非字符串 header 值消费侧被丢弃
-[client.go:183-186]；`ContentType`/`DeliveryMode`/优先级未建模 —— binder 消息在
+[client.go:183-186]；`ContentType`/`DeliveryMode`/优先级未建模 —— driver 消息在
 非持久化队列上是瞬态的，broker 重启即丢（见
 [durability](https://www.rabbitmq.com/docs/durability)）。
 
 ### 4.4 观测量读取
 
-- 指标（binder 路径，observe kit）：`messaging.client.operation.duration` 与
+- 指标（driver 路径，模块内观测）：`messaging.client.operation.duration` 与
   `messaging.client.active_requests`，属性 `messaging.system=rabbitmq`、
   `messaging.operation=publish|consume`、`messaging.destination.name=<queue>`，
-  另有 `status=ok|error` 维度（cloud/observe/observer.go:66-71,187-213）。受守卫
+  另有 `status=ok|error` 维度（observe.go）。受守卫
   路径另有 `resilience.operation.duration` / `resilience.active_requests`。
-- span：binder —— `publish <queue>`（producer kind）/ `consume <queue>`（consumer
+- span：driver —— `publish <queue>`（producer kind）/ `consume <queue>`（consumer
   kind），经 W3C headers 跨 broker 串联；手动助手 —— `rabbitmq.publish <dest>` /
   `rabbitmq.consume <dest>`，带 `messaging.rabbitmq.destination.routing_key` 属性
   [command.go:79-87,109-117]。
 - 访问日志：tag `_app_rabbitmq_access`（`log.RegisterAppTag("rabbitmq","access")`，
-  cloud/observe/observer.go:213-214）。
+  observe.go）。
 - 用 example-otel 验证：`docker compose up -d`（rabbitmq + jaeger），`go run .` ——
   程序会经 Jaeger API :16686 自验 trace（example-otel/main.go:214-223）。
 
@@ -365,31 +357,29 @@ health indicator —— 进程会在死连接上继续跑。
 | panic：`rabbitmq driver already registered` | `RegisterDriver` 重名 | 改名（driver.go:50）。 |
 | 启动失败：`failed to open probe channel` | TCP 通但 AMQP 层坏（如 vhost/权限错） | 检查该用户的 vhost 权限（starter.go:69-76）。 |
 | 启动正常、之后 publish 报错；伴随 close/blocked Warn 日志 | broker 中途挂了；无自动重连 | 重启进程或在裸 bean 上自建重连；盯 `connection closed` Warn。 |
-| 消费者收不到消息 | handler 出错 → Nack(requeue) 死循环；查 `rabbitmq binder handler error on %q` Error 日志 | 修 handler；任何 error 都会永久重投 —— 没有 DLQ（client.go:141-146）。 |
-| broker 重启后消息消失 | binder 队列非持久化且消息瞬态 | 用裸连接做 durable 声明（client.go:64,76；rabbitmq.com/docs/durability）。 |
+| 消费者收不到消息 | handler 出错 → Nack(requeue) 死循环；查 `rabbitmq driver handler error on %q` Error 日志 | 修 handler；任何 error 都会永久重投 —— 没有 DLQ（client.go:141-146）。 |
+| broker 重启后消息消失 | driver 队列非持久化且消息瞬态 | 用裸连接做 durable 声明（client.go:64,76；rabbitmq.com/docs/durability）。 |
 | 跨服务 `Key`/headers "丢失" | 对端生产者写了原生 AMQP 路由头 / 非字符串值消费侧被丢弃 | 信封 headers 仅字符串；Key 走 MessageId（client.go:183-194）。 |
-| binder 无 trace/指标 | 未 import starter-otel | 加上；否则 OTel 全局是静默 no-op（command.go:57-59）。 |
+| driver 无 trace/指标 | 未 import starter-otel | 加上；否则 OTel 全局是静默 no-op（command.go:57-59）。 |
 | GuardedPublish 返回 resilience 哨兵错误 | 触发限流 / 熔断开启 / 注入 fault | 读 `resilience.*` 指标 + 访问日志；这是治理契约（command.go:264-266）。 |
 
 ## 6. 设计体检表
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 15（自有 6 + tls 6 + observability 3） |
+| 配置 key 总数 | 11（自有 5 + tls 6） |
 | 其中必填 | 1（`url`） |
 | quickstart 前置外部依赖 | 1（RabbitMQ） |
 | "注意/坑"条数 | 6 |
 
 设计嫌疑（供裁决台账；自上轮审计以来无已修复项）：
 
-- binder 硬编码队列声明（非持久化、非排他）且无配置逃生口（client.go:64,76）——
+- driver 硬编码队列声明（非持久化、非排他）且无配置逃生口（client.go:64,76）——
   默认即 broker 重启丢数据。
-- `Key` ↔ `MessageId` 是有损约定；routing key —— AMQP 原生键 —— 未被 binder 建模。
+- `Key` ↔ `MessageId` 是有损约定；routing key —— AMQP 原生键 —— 未被 driver 建模。
 - `Ack/Nack` 失败记 WARN（client.go:143,145）—— 若 handler 成功仍被重投，先查日志
   （有重投风暴风险）。
 - 生产侧 `msg.Timestamp` 未写入 `amqp.Publishing.Timestamp`（client.go:90-94）。
 - 非字符串 AMQP header 值消费侧被静默丢弃（client.go:183-186）。
-- binder 发布不受守卫而裸路径可以 —— starter 自身携带的两条路径治理面不对称
+- driver 发布不受守卫而裸路径可以 —— starter 自身携带的两条路径治理面不对称
   （client.go:104 vs command.go:271）。
-- binder observe kit 是包级默认（`brief`），实例级 `observability.*` key 只影响
-  GuardedPublish（command.go:181-190）。

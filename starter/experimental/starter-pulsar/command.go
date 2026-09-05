@@ -15,7 +15,7 @@
  */
 
 // command.go is the "command/operation seam" concept of this starter: the
-// observe layer (native Prometheus metrics + OTel tracing helpers + the binder's
+// observe layer (native Prometheus metrics + OTel tracing helpers + the driver's
 // per-message observers) and the resilience guard (GuardedSend plus the
 // per-client executor index). pulsar-client-go exposes no reject-capable
 // middleware and producers are caller-created, so the guard is an opt-in
@@ -34,7 +34,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -143,45 +142,42 @@ func EndSpan(span trace.Span, err error) {
 	span.End()
 }
 
-// --- binder auto path (kit-backed) -------------------------------------------
+// --- driver auto path (observed) ----------------------------------------------
 //
-// The messaging.Binder drives produce/consume through the observe kit (3 signals)
-// via these package-level observers. Pulsar's own Prometheus metrics (see
+// The messaging.Driver drives produce/consume through the module-local observer
+// in observe.go (span+metric+access log). Pulsar's own Prometheus metrics (see
 // newMetricsServer above) are separate and stay — they are library-native
-// connection/producer stats, while the kit covers per-message span+metric+log.
-// The bean is a raw pulsar.Client (no wrapper to carry per-instance config), so
-// the binder path uses a default "brief" level; the manual helpers above remain
-// for apps that want explicit control.
+// connection/producer stats, while the observer covers per-message traffic. The
+// manual helpers above remain for apps that want explicit span control.
 
 // The observers are built lazily (sync.Once) so a blank import of this starter
-// no longer pays the observe-kit construction (log tag registration, OTel
-// instrument creation) at package init — only apps that actually publish or
-// consume through the binder path build them.
+// pays no OTel instrument creation at package init — only apps that actually
+// publish or consume through the driver path build them.
 var (
 	defaultObsOnce sync.Once
-	defaultPubObs  *observe.Observer
-	defaultSubObs  *observe.Observer
+	defaultPubObs  *observer
+	defaultSubObs  *observer
 )
 
-func pubObserver() *observe.Observer {
+func pubObserver() *observer {
 	defaultObsOnce.Do(func() {
-		defaultPubObs = observe.NewProducer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
-		defaultSubObs = observe.NewConsumer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
+		defaultPubObs = newObserver(trace.SpanKindProducer)
+		defaultSubObs = newObserver(trace.SpanKindConsumer)
 	})
 	return defaultPubObs
 }
 
-func subObserver() *observe.Observer {
+func subObserver() *observer {
 	defaultObsOnce.Do(func() {
-		defaultPubObs = observe.NewProducer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
-		defaultSubObs = observe.NewConsumer("pulsar", observe.ObserveConfig{Level: observe.DefaultBrief})
+		defaultPubObs = newObserver(trace.SpanKindProducer)
+		defaultSubObs = newObserver(trace.SpanKindConsumer)
 	})
 	return defaultSubObs
 }
 
 // startProduce opens a producer observation and injects W3C trace context into
-// msg.Properties. topic is the producer's destination (the binder passes it).
-func startProduce(ctx context.Context, topic string, msg *pulsar.ProducerMessage) (context.Context, *observe.Span) {
+// msg.Properties. topic is the producer's destination (the driver passes it).
+func startProduce(ctx context.Context, topic string, msg *pulsar.ProducerMessage) (context.Context, obsSpan) {
 	ctx, sp := pubObserver().Start(ctx, "publish", topic)
 	if msg.Properties == nil {
 		msg.Properties = make(map[string]string)
@@ -191,8 +187,8 @@ func startProduce(ctx context.Context, topic string, msg *pulsar.ProducerMessage
 }
 
 // startConsume extracts the upstream trace from the message properties and opens
-// a consumer observation. For the binder's consume loop.
-func startConsume(ctx context.Context, msg pulsar.Message) (context.Context, *observe.Span) {
+// a consumer observation. For the driver's consume loop.
+func startConsume(ctx context.Context, msg pulsar.Message) (context.Context, obsSpan) {
 	ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.MapCarrier(msg.Properties()))
 	return subObserver().Start(ctx, "consume", msg.Topic())
 }
@@ -223,12 +219,12 @@ var resilienceResources sync.Map // pulsar.Client -> string
 // wraps it when an injector is registered (nil-safe otherwise).
 func applyResilience(c Config, cl pulsar.Client, resource string) error {
 	// Per-instance opt-out: without an executor attached, guard (and therefore
-	// both GuardedSend and the binder's Publish) degrades to bare calls.
+	// both GuardedSend and the driver's Publish) degrades to bare calls.
 	if !c.Governance {
 		return nil
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "pulsar", c.Observability)
+	exec = resilience.WrapExecutor(exec, "pulsar")
 	resilienceExecs.Store(cl, exec)
 	resilienceResources.Store(cl, resource)
 	return nil

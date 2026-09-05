@@ -173,28 +173,21 @@ dead keys "self-healing without a reaper" (`starter.go:27-29`).
 - `ttlSeconds()` rounds sub-second values up and clamps to ≥1s; `TTL<=0` silently becomes 15s
   (`config.go:85-98`).
 
-### 2.3 WATCH path (consumer side)
+### 2.3 DISCOVERY path (consumer side)
 
-`etcdDiscovery.Watch` (`discovery_etcd.go:158-197`):
+`etcdDiscovery.Resolve` (`discovery_etcd.go`):
 
-1. `clientv3.Watch(ctx, prefix, WithPrefix())` opens the etcd watch channel
-   (`discovery_etcd.go:176`); one goroutine is the sole writer and closer of the output channel
-   (the registry-nacos idiom — no send-after-close race).
-2. That goroutine first takes a **full snapshot** (`Get` + `WithPrefix`, 5s timeout) and seeds the
-   output channel with the current set, so callers need no separate Resolve
-   (`discovery_etcd.go:162-184`).
-3. Every etcd event on the watch channel triggers a **fresh full snapshot** (not a delta), filtered
-   by scheme if requested (`discovery_etcd.go:186-187`).
-4. Change detection: `endpointsKey` renders the snapshot as `addr,scheme,weight;...`
-   (`discovery_etcd.go:264-275`); an unchanged string is a no-op — "no-op re-delivery must not
-   churn consumers" (`discovery_etcd.go:188-191`). So a `UpdateWeight` change (weight in the key)
-   pushes; an unrelated prefix event with identical snapshot does not.
-5. Each KV is decoded from the registrar's JSON; `Healthy` is always true — **key existence IS the
-   health signal** (lease expiry deletes the key) (`discovery_etcd.go:237-256`, header comment
-   lines 29-32). A malformed payload is skipped with a Warn, not a broken snapshot
-   (`discovery_etcd.go:241-245`).
-6. `Resolve` is the one-shot variant of the same Get; `Services` enumerates service names from the
-   key layout (`discovery_etcd.go:140-148,201-211`).
+1. The first Resolve of a service takes a **full snapshot** (`Get` + `WithPrefix`, bounded by the
+   caller's ctx) and caches it, then starts a background watcher
+   (`clientv3.Watch(bgCtx, prefix, WithPrefix())`).
+2. Every etcd event on the watch channel triggers a **fresh full snapshot** (not a delta) stored
+   into the cache; a failed refresh keeps the stale one — stale addresses are safer than none.
+3. Later Resolve calls are in-memory reads over the cached (unfiltered) set, narrowed by scheme
+   via `FilterByScheme` per call.
+4. Each KV is decoded from the registrar's JSON; `Healthy` is always true — **key existence IS the
+   health signal** (lease expiry deletes the key) (header comment lines 29-32). A malformed
+   payload is skipped with a Warn, not a broken snapshot.
+5. `Services` enumerates service names from the key layout.
 
 Downstream, a loadbalance `Pool` consumes these snapshots and applies **weight-0 filtering** on
 every Pick: `excludeDrained` drops `Weight == 0` endpoints, falling back to the full set when
@@ -325,10 +318,10 @@ All drills use `etcdctl` (or `curl` v3 API) against the §1 stack. Keys:
    the endpoint via watch; the provider is unaware it is unregistered. Recovery: restart the
    process. This is suspect #2 in §6.
 
-7. **WATCH snapshot-degradation**: block etcd briefly (e.g. iptables drop 2379) during Watch: the
-   snapshot Get fails → Warn `registry-etcd: snapshot %q failed (waiting for watch)` and a nil
-   snapshot — "stale addresses are safer than none"; the watch channel still delivers when events
-   resume (`discovery_etcd.go:166-171`).
+7. **Refresh degradation**: block etcd briefly (e.g. iptables drop 2379) after a service is cached:
+   the refresh Get fails → Warn `registry-etcd: refresh %q failed (keeping stale snapshot)` and the
+   stale snapshot keeps serving — "stale addresses are safer than none"; the cache refreshes when
+   events resume.
 
 8. **Bad cluster fail-fast**: set `endpoints=127.0.0.1:9999`, boot → startup fails with
    `registry-etcd: startup probe failed for 127.0.0.1:9999` (`registrar.go:95-100`) — not a
@@ -372,7 +365,7 @@ Suspect ledger (kept from previous audit; still open):
    even when both live in the same app.properties.
 2. Lease keep-alive death = silent disappearance after TTL (no re-registration, no log) — the
    biggest operational hole.
-3. Watch-channel close is silent (no log on stream termination).
+3. Background refresh errors are logged but a permanently dead etcd keeps serving the stale snapshot.
 4. `ttl<=0` silently becomes 15s instead of a bind-time error.
 5. README weight row implies config `weight:=0` drains — it never stores 0 (clamped to 1); drain
    is `UpdateWeight`-only.

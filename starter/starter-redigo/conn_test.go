@@ -168,9 +168,9 @@ func TestConn_NoInterceptorReachesRedis(t *testing.T) {
 	}
 }
 
-// With observe disabled (obs == nil) and no resilience, the Conn wrapper is a
+// With no resilience configured, the Conn wrapper is a
 // pass-through: the command still reaches the inner conn and no span-related
-// nil-deref occurs. Proves the "observe off keeps wrapping transparent" rule.
+// nil-deref occurs. Proves wrapping stays transparent.
 func TestConn_ObserveDisabledPassThrough(t *testing.T) {
 	inner := &stubConn{reply: "ok"}
 	c := NewConn(inner)

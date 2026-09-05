@@ -28,12 +28,12 @@ import (
 // an application that also imports starter-actuator gets the database folded
 // into /readiness with no extra wiring. prefix is the dialect label (e.g.
 // "gorm:mysql:", "gorm:postgres:").
-func NewGormHealth(prefix, name string, db *gorm.DB) health.Indicator {
-	return health.NewIndicator(prefix+name, func(ctx context.Context) error {
+func NewGormHealth(prefix, name string, db *gorm.DB) *health.Indicator {
+	return &health.Indicator{Name: prefix + name, Probe: func(ctx context.Context) error {
 		sqlDB, err := db.DB()
 		if err != nil {
 			return err
 		}
 		return sqlDB.PingContext(ctx)
-	})
+	}}
 }

@@ -79,7 +79,7 @@ func newK8sLockerWithClient(client kubernetes.Interface, namespace, keyPrefix st
 // RetryInterval; a transient API error aborts, matching the abstraction's
 // contract that only genuine contention should be retried silently.
 func (l *k8sLocker) Acquire(ctx context.Context, key string, opts ...lock.Option) (lock.Lock, error) {
-	o := lock.Apply(opts...)
+	o := lock.Resolve(lock.DefaultOptions{}, opts...)
 	for {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -99,7 +99,7 @@ func (l *k8sLocker) Acquire(ctx context.Context, key string, opts ...lock.Option
 
 // TryAcquire attempts to take the Lease once without blocking.
 func (l *k8sLocker) TryAcquire(ctx context.Context, key string, opts ...lock.Option) (lock.Lock, bool, error) {
-	o := lock.Apply(opts...)
+	o := lock.Resolve(lock.DefaultOptions{}, opts...)
 	return l.tryOnce(ctx, key, o)
 }
 
@@ -156,7 +156,7 @@ type k8sLock struct {
 func (h *k8sLock) Key() string { return h.key }
 
 // Token returns the holder identity written into the Lease's holderIdentity —
-// the fencing token from lock.Options (or the random one from lock.Apply).
+// the fencing token from lock.Options (or the random one from lock.Resolve).
 func (h *k8sLock) Token() string { return h.token }
 
 // Lost is closed when the lease can no longer be renewed or has been taken over,

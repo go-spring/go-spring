@@ -11,7 +11,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.45.0
 )
 
-// Local, not-yet-published observe kit. Removed once the module is tagged.
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect

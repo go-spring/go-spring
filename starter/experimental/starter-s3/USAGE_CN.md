@@ -110,12 +110,6 @@ spring.s3.b.endpoint=127.0.0.1:9000
 spring.s3.b.access-key-id=minioadmin
 spring.s3.b.secret-access-key=minioadmin
 
-# 逐请求可观测：优先配在实例前缀下；顶层 observability.* 仍作为回退面
-# 生效（实例 key 逐字段覆盖它——见 §3）。
-spring.s3.a.observability.level=brief
-# spring.s3.a.observability.maxArgBytes=512
-# spring.s3.a.observability.skipOps=GET /bucket/x
-
 # --- actuator（把 s3:<name> 指示器并入 readiness）----------------------------
 spring.actuator.addr=:9370
 
@@ -160,10 +154,10 @@ gs.Run()
   │    │      → dynamicTransports.LoadAndDelete 把占位交给 wrapper
   │    ├─ fail-fast 探测：HealthCheck → ListBuckets —— 端点不可达或凭据被拒
   │    │      都会中止启动（starter.go:76-78）
-  │    └─ gs 字段注入 Client.Observability 后调用 Init()：
-  │          obs := observe.NewDB("s3", ...) → obsTransport（span+metric+访问日志）
+  │    └─ Init()（client.go）：
+  │          obsTransport（span + db.client.* 指标 + 访问日志，observe.go）
   │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3:<endpoint>"))
-  │          exec := resilience.WrapExecutor(exec, "s3", ...)  // outcome span/计数
+  │          exec := resilience.WrapExecutor(exec, "s3")  // outcome span/计数
   │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, → resource))
   ├─ Run / 服务：readyz 并入每个 s3:<name> 指示器（需 starter-actuator）
   └─ SIGTERM：Destroy() 关闭 resilience executor；minio 侧无会话可关
@@ -172,7 +166,8 @@ gs.Run()
 ### 2.2 dynamicTransport 为何存在（源码理由）
 
 minio-go 在构造时把 `http.Transport` 固定进 `minio.Options` 且不提供 setter，而
-可观测策略要在 client 存在**之后**才被字段注入。因此 `DefaultDriver.CreateClient`
+真正的 transport（埋点 + resilience）只能在 client 存在**之后**换入。因此
+`DefaultDriver.CreateClient`
 装一个薄的 `dynamicTransport`——原子 RoundTripper 间接层（RWMutex 守护而非
 atomic.Value，因为活动的 tripper 是多种具体类型之一；见 client.go:104-114）——并按
 返回的 client 为键登记进包级 `dynamicTransports sync.Map`。`newClient` 取出它
@@ -194,8 +189,9 @@ atomic.Value，因为活动的 tripper 是多种具体类型之一；见 client.
    开 per-request observer span，跑底层 `http.DefaultTransport`，带错误结束 span ——
    span + 时长 metric + 访问日志都带该操作名（minio-go 自身无 OTel 钩子，starter 的
    transport 承载全部三个信号）。
-4. 响应回卷：记录 span 属性/metric、按 observability 级别出日志行；minio-go 把
-   object info 返回给调用方。
+4. 响应回卷：记录 span 属性/metric，经 `_app_s3_access` tag 按 log 包原生级别出
+   访问日志行——错误 Warn、带 URL path 参数的成功 Debug、无参数的纯成功 Info；
+   minio-go 把 object info 返回给调用方。
 
 ### 2.4 健康检查
 
@@ -208,9 +204,7 @@ starter-actuator 的应用无需额外接线即可把 S3 readiness 并入 `/read
 
 ## 3. 逐 key 行为参考
 
-ctor 绑定的 `Config` key（config.go）带前缀 `spring.s3.<name>.*`。`observability`
-另有顶层 `observability.*` 回退面（Client wrapper 字段）：实例 key 逐字段覆盖它；
-绑定在未配置时也会填默认值（brief/512/无 skip），因此只有非默认的实例取值才算"已配置"（见 §6）。
+ctor 绑定的 `Config` key（config.go）带前缀 `spring.s3.<name>.*`。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
@@ -221,8 +215,7 @@ ctor 绑定的 `Config` key（config.go）带前缀 `spring.s3.<name>.*`。`obse
 | `region` | string | us-east-1 | 传给 minio.Options 的 bucket region。 | region 错误 → region 敏感端点上出现签名/重定向错误（对不敏感的 MinIO 可能过了探测、之后按桶失败）。 |
 | `use-ssl` | bool | false | 对端点启用 HTTPS。 | 对只收 TLS 的端点配 false（或对明文端点配 true）→ 启动探测失败。 |
 | `bucket-lookup` | string | auto | `auto` \| `virtual-host`/`dns`（别名，`BucketLookupDNS`）\| `path`。 | 部分 S3 兼容云只支持 path 风格 → 风格错导致逐请求寻址失败；未知值 → 启动报错列出合法值。 |
-| `observability` | struct | brief | 逐请求 span+metric+访问日志级别（`spring.s3.<name>.observability.level` / `.maxArgBytes`（默认 512）/ `.skipOps`）；顶层 `observability.*` 为回退面，被实例 key 逐字段覆盖。 | 实例取值设回默认（如 `level=brief`）无法覆盖非默认的顶层值——两个面只配一个。 |
-| `driver` | string | DefaultDriver | 从注册表（`RegisterDriver`）选择 driver。未知名字 → 启动报 "s3 driver not found"。 | 自定义 driver 跳过 dynamicTransport 握手 → 该 client 无 resilience（observe 仍经 wrapper 字段生效）。 |
+| `driver` | string | DefaultDriver | 从注册表（`RegisterDriver`）选择 driver。未知名字 → 启动报 "s3 driver not found"。 | 自定义 driver 跳过 dynamicTransport 握手 → 该 client 无 resilience。 |
 
 ---
 
@@ -250,10 +243,11 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 
 ### 4.4 可观测演练
 
-`spring.s3.a.observability.level=detailed` 且引入 starter-otel 后，做一次上传并读三个信号：
-名为 `PUT /go-spring-example/hello.txt` 的 span、时长直方图、逐请求访问日志行。
-加上 `spring.s3.a.observability.skipOps=PUT /go-spring-example/hello.txt` 再试：该操作
-从日志消失而其他操作保留——证明实例前缀解析路径（顶层 `observability.*` 作为回退面）。
+引入 starter-otel 后做一次上传并读三个信号：名为 `PUT /go-spring-example/hello.txt`
+的 client span（属性 `db.system=s3`、`db.operation`、`db.statement` 带 URL path，截断
+至 512 字节）、`db.client.operation.duration` 时长直方图（另有
+`db.client.active_requests` 仪表）、以及 `_app_s3_access` tag 下的访问日志行——错误的
+操作 Warn、带 URL path 参数的成功 Debug、纯成功 Info。
 
 ### 4.5 fault/resilience 演练（需 starter-governance）
 
@@ -271,7 +265,6 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 | 启动中止 "failed to reach s3 endpoint" | 端点宕机、端口错、`use-ssl` 不匹配、凭据错误 | 探测错误带底层原因（签名不匹配 ⇒ 凭据；connection refused ⇒ 端点/ssl）。 |
 | 启动中止 "s3 driver not found: X" | `driver` 指向未注册名字 | 在 init() 里 `RegisterDriver` 后再用，或删掉该 key。 |
 | 启动中止 "unknown bucket-lookup" | 风格字符串非法 | auto / virtual-host / dns / path 之一。 |
-| 顶层 `observability.*` 不生效 | 实例前缀 `spring.s3.<name>.observability.*` 配了非默认值，逐字段覆盖了它 | 只保留两个面之一，或把实例 key 配成想要的值。 |
 | 自定义 driver 的 client 无 resilience | dynamicTransport 握手仅 DefaultDriver 有 | 接受 observe-only，或在 driver 里自装间接层。 |
 | 对 MinIO 正常、某云上 404/重定向 | 该云不支持 virtual-host 寻址 | `bucket-lookup=path`。 |
 | 应用正常但 readyz DOWN | 启动后凭据轮换失效 | 指示器是活探测；刷新凭据 / 重启。 |
@@ -281,7 +274,7 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 9（另共享 3 个顶层 observability.*） |
+| 配置 key 总数 | 9 |
 | 其中必填 | 3（endpoint、access-key-id、secret-access-key） |
 | quickstart 前置外部依赖 | 1（MinIO / 任意 S3 端点） |
 | "注意/坑" 条数 | 5 |
@@ -290,10 +283,6 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 - `driver` key 存在但仓内只随 DefaultDriver 一个实现——预判性扩展点；driver 与
   wrapper 之间的 dynamicTransport 握手是隐式的（挂在 sync.Map 上）。
 - `bucket-lookup` 对同一模式接受 "virtual-host" 与 "dns" 两个别名——配置面轻度冗余。
-- 已修（原"实例级 observability key 失效"）：`Init` 现经 `resolveObservability`
-  解析策略——实例前缀 `spring.s3.<name>.observability.*`（绑入
-  `Config.Observability`）逐字段覆盖顶层 wrapper 字段。残留限制：绑定在未配置时
-  也填默认值，与默认值相同的实例取值无法覆盖非默认顶层值。
 - 新增：资源标签只有 `s3:<endpoint>`——同端点两实例（如 example 的 `a`/`b`）共享
   一个 resilience 作用域，无按实例区分。
 - 新增：健康探测与 fail-fast 探测同为 ListBuckets 但代码重复

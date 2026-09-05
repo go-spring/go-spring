@@ -26,7 +26,7 @@ import (
 )
 
 // KNOWN BUG (recorded, not fixed here): DubboProtocol.Params is
-// map[string]any, which the conf binder rejects ("target should be a value
+// map[string]any, which the conf driver rejects ("target should be a value
 // type"), so ANY spring.dubbo.protocols.<id>.* property makes the whole
 // ${spring.dubbo} bind fail and the Instance bean silently drops out. The
 // protocols block is therefore NOT covered by these binding tests; only the

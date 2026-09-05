@@ -25,9 +25,10 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Pool is the wrapper bean redigo pools are injected as. It embeds
@@ -37,35 +38,48 @@ import (
 type Pool struct {
 	*redis.Pool
 
-	cfg      Config               // address fields feed the resilience resource label
-	obs      *observe.Observer    // nil when observe disabled (near-zero-cost wrapper)
-	exec     resilience.Executor  // resolved via resilience.ExecutorFor; no-op when governance is off
-	chain    []CommandInterceptor // user interceptor chain, first entry outermost; nil when none registered
-	resource string               // resilience resource label (stable per pool)
-	resolver *discovery.Resolver  // live when ServiceName drives discovery; Close stops its watch
+	cfg      Config                  // address fields feed the resilience resource label
+	duration metric.Float64Histogram // db.client.operation.duration; no-op instrument when starter-otel is absent
+	exec     resilience.Executor     // resolved via resilience.ExecutorFor; no-op when governance is off
+	chain    []CommandInterceptor    // user interceptor chain, first entry outermost; nil when none registered
+	resource string                  // resilience resource label (stable per pool)
 }
 
-func NewPool(ctx context.Context, c Config, obs observe.ObserveConfig) (*Pool, error) {
-	tlsConfig, err := c.TLS.Build()
+func NewPool(ctx context.Context, c Config) (*Pool, error) {
+	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
 	}
 
+	// Bind service discovery by name; nil resolver means discovery not in effect
+	// (no service name / mesh), so the pool dials the configured Addr directly.
+	// Freshness lives inside the backend, so the resolver has no resources to
+	// release.
 	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName,
 		discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, err
 	}
-
-	pool := newRawPool(c, tlsConfig, resolver)
-	w := &Pool{Pool: pool, cfg: c, resolver: resolver}
-
-	// Arm the standard instrumentation: the command observer (when enabled),
-	// the resilience executor, and the instrumented Dial wrap.
-	if c.ObserveEnabled {
-		w.obs = observe.NewDB("redis", obs)
+	// Endpoint selection rides the shared loadbalance machinery (round-robin
+	// here, per opened connection).
+	var lb *loadbalance.Pool
+	if resolver != nil {
+		bal, err := loadbalance.New(loadbalance.RoundRobin)
+		if err != nil {
+			return nil, err
+		}
+		lb = loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal)
 	}
-	if err := w.setupResilience(obs); err != nil {
+
+	pool := newRawPool(c, tlsConfig, lb)
+	w := &Pool{Pool: pool, cfg: c}
+
+	// Arm the standard instrumentation: the command observer, the resilience
+	// executor, and the instrumented Dial wrap. The observer is unconditional:
+	// without starter-otel the OTel globals are no-ops, so it costs one map
+	// lookup per command.
+	w.duration = newDuration()
+	if err := w.setupResilience(); err != nil {
 		_ = w.Close()
 		return nil, err
 	}
@@ -77,7 +91,7 @@ func NewPool(ctx context.Context, c Config, obs observe.ObserveConfig) (*Pool, e
 // newRawPool builds the underlying *redis.Pool for NewPool: pool sizing, TLS,
 // credentials, and the dial function (static Addr, or discovery-picked endpoints
 // when a resolver is in play).
-func newRawPool(c Config, tlsConfig *tls.Config, resolver *discovery.Resolver) *redis.Pool {
+func newRawPool(c Config, tlsConfig *tls.Config, lb *loadbalance.Pool) *redis.Pool {
 	return &redis.Pool{
 		MaxActive:       c.PoolSize,
 		MaxIdle:         c.MaxIdle,
@@ -103,11 +117,11 @@ func newRawPool(c Config, tlsConfig *tls.Config, resolver *discovery.Resolver) *
 			// addr is the static target; with service discovery the resolver
 			// overrides it by picking a live endpoint.
 			addr := c.Addr
-			if resolver != nil {
+			if lb != nil {
 				nd := &net.Dialer{Timeout: c.DialTimeout}
 				opts = append(opts, redis.DialContextFunc(
 					func(ctx context.Context, network, _ string) (net.Conn, error) {
-						ep, err := resolver.Pick()
+						ep, err := lb.Pick(loadbalance.PickInfo{})
 						if err != nil {
 							return nil, err
 						}
@@ -133,16 +147,12 @@ func newRawPool(c Config, tlsConfig *tls.Config, resolver *discovery.Resolver) *
 	}
 }
 
-// Close tears the pool down: closes the resilience executor (if armed), stops
-// the discovery-resolver watch (when discovery is in use), then closes the
-// underlying redis pool. It shadows the embedded (*redis.Pool).Close so a
-// plain Close cannot leak the resolver watch.
+// Close tears the pool down: closes the resilience executor (if armed), then
+// the underlying redis pool. Freshness lives inside the discovery backend, so
+// there is no per-pool watch to stop.
 func (p *Pool) Close() error {
 	if p.exec != nil {
 		_ = p.exec.Close()
-	}
-	if p.resolver != nil {
-		_ = p.resolver.Stop()
 	}
 	return p.Pool.Close()
 }
@@ -180,9 +190,8 @@ func (p *Pool) UseCommandInterceptor(i ...CommandInterceptor) {
 // at runtime via the center's single OnChanged without a restart.
 //
 // On a config change the bound policy is adopted without a restart via the
-// executor's Refresh seam. obs feeds the resilience observer wrap; it is the
-// same global policy the command observer uses.
-func (o *Pool) setupResilience(obs observe.ObserveConfig) error {
+// executor's Refresh seam.
+func (o *Pool) setupResilience() error {
 	// Scope limiter/breaker state per Redis instance (not per command): fall
 	// back across the address fields via the shared [resilience.ResourceLabel]
 	// helper.
@@ -197,7 +206,7 @@ func (o *Pool) setupResilience(obs observe.ObserveConfig) error {
 	// setup relative to starter-govern's wiring is irrelevant.
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
 
-	o.exec = resilience.WrapExecutor(exec, "redigo", obs)
+	o.exec = resilience.WrapExecutor(exec, "redigo")
 	return nil
 }
 
@@ -211,8 +220,8 @@ func (o *Pool) setupResilience(obs observe.ObserveConfig) error {
 func (p *Pool) wrapConn(raw redis.Conn) redis.Conn {
 	var layers []CommandInterceptor
 	layers = append(layers, p.chain...)
-	if p.obs != nil {
-		layers = append(layers, observeInterceptor(p.obs))
+	if p.duration != nil {
+		layers = append(layers, observeInterceptor(p.duration))
 	}
 	if p.exec != nil {
 		layers = append(layers, resilienceInterceptor(p.exec, p.resource))
@@ -222,16 +231,15 @@ func (p *Pool) wrapConn(raw redis.Conn) redis.Conn {
 
 // setupDial wraps the pool's Dial / DialContext so every connection handed out
 // goes through newConn — the Conn that instruments each command
-// through the shared observe kit (trace span + duration/in-flight metric +
+// through the module-local observe layer (trace span + duration metric +
 // access log) and, when resilience is armed, through the executor. It is
 // called by NewPool after the observer + executor are built; the wrap
 // resolves at dial time, so interceptors added afterwards still apply to
 // connections dialed later.
 //
-// The kit rides the OTel globals (starter-otel) and the project log, so this is
-// a near-zero-cost opt-in that needs no per-component adaptation: when
-// starter-otel is absent, trace+metric are no-ops; the access log is gated by
-// cfg.Level (default brief).
+// The observer rides the OTel globals (starter-otel) and the project log, so
+// it needs no per-component adaptation: when starter-otel is absent,
+// trace+metric are no-ops and only the access log remains.
 func (o *Pool) setupDial() {
 	if d := o.Pool.Dial; d != nil {
 		o.Pool.Dial = func() (redis.Conn, error) {

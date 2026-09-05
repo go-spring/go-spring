@@ -50,7 +50,7 @@ func init() {
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
-			r.Provide(func(c *Client) health.Indicator { return health2.NewClientHealth(name, c.Client) }, gs.TagArg(name)).Name("memcache:" + name).Export(gs.As[health.Indicator]()).Caller(1)
+			r.Provide(func(c *Client) *health.Indicator { return health2.NewClientHealth(name, c.Client) }, gs.TagArg(name)).Name("memcache:" + name).Caller(1)
 			return nil
 		})
 	})
@@ -75,7 +75,7 @@ func init() {
 }
 
 // newClient creates a new Memcached client based on the provided configuration,
-// wrapped so every operation flows through the observe kit (trace+metric+log).
+// wrapped so every operation flows through the module-local observe layer (trace+metric+log).
 func newClient(ctx *gs.ContextProvider, name string, c Config) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating memcached client, servers=%v service-name=%s", c.Servers, c.ServiceName)
 
@@ -100,9 +100,8 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (*Client, error) 
 		return nil, errutil.Explain(err, "memcached: startup ping failed")
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "memcached client initialized, servers=%v", c.Servers)
-	// Return the wrapper; gs field-injects Resilience (gs.Dync, hot-reloadable)
-	// + Observability after this returns, then calls Init (InitMethod)
-	// to build the observer + executor. Close (Destroy) stops any discovery
+	// Return the wrapper; gs calls Init (InitMethod) on it to build the
+	// observer + executor. Close (Destroy) stops any discovery
 	// Resolver watch and closes the executor.
 	return &Client{Client: client, name: name}, nil
 }

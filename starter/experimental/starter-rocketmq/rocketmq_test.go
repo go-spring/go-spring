@@ -98,7 +98,7 @@ func TestMsgCarrierRoundTrip(t *testing.T) {
 }
 
 // TestFromMessageExt covers the envelope mapping, including the load-test
-// marker header the binder propagates through user properties.
+// marker header the driver propagates through user properties.
 func TestFromMessageExt(t *testing.T) {
 	ext := &primitive.MessageExt{}
 	ext.Topic = "hello"

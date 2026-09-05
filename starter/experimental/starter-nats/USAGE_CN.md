@@ -1,7 +1,7 @@
 # starter-nats 使用说明 — 参考手册
 
 详细使用参考。概览见 [README.md](README.md)。所有行为声明均对照 starter 源码
-（`starter.go`、`config.go`、`client.go`、`command.go`、`driver.go`、`binder.go`）与可运行的
+（`starter.go`、`config.go`、`client.go`、`command.go`、`driver.go`、`driver.go`）与可运行的
 [example/](example/) / [example-otel/](example-otel/) 核对。**NATS 自身语义（core NATS、
 JetStream、queue group、subject 通配符、drain）见 [nats.go 官方文档](https://docs.nats.io/)**——
 本文只写 go-spring 的增量。
@@ -13,7 +13,7 @@ JetStream、queue group、subject 通配符、drain）见 [nats.go 官方文档]
 
 ## 1. 完整工程示例
 
-生产者与消费者都走 messaging.Binder，并组合 actuator + otel + governance。文件树：
+生产者与消费者都走 messaging.Driver，并组合 actuator + otel + governance。文件树：
 
 ```
 demo/
@@ -56,7 +56,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**messaging.go** —— 单连接上的 binder 生产者与消费者：
+**messaging.go** —— 单连接上的 driver 生产者与消费者：
 
 ```go
 package messaging
@@ -73,10 +73,10 @@ import (
 )
 
 func init() {
-    // 每个要绑定的 NATS 连接提供一个 messaging.Binder bean。
+    // 每个要绑定的 NATS 连接提供一个 messaging.Driver bean。
     // TagArg("main") 解析名为 "main" 的 *Conn bean（autowire 名即配置实例名）。
-    gs.Provide(func(conn *StarterNats.Conn) messaging.Binder {
-        return StarterNats.NewBinder(conn)
+    gs.Provide(func(conn *StarterNats.Conn) messaging.Driver {
+        return StarterNats.NewDriver(conn)
     }, gs.TagArg("main")).Export(gs.As[gs.Rooter]())
 
     gs.Provide(newConsumer).Export(gs.As[gs.Rooter]())
@@ -86,7 +86,7 @@ type Consumer struct {
     Sub messaging.Subscriber `autowire:"?"`
 }
 
-func newConsumer(b messaging.Binder) *Consumer {
+func newConsumer(b messaging.Driver) *Consumer {
     sub, err := b.NewSubscriber(context.Background(), "orders.created", "workers")
     if err != nil {
         panic(err)
@@ -106,7 +106,7 @@ func (c *Consumer) Init(ctx context.Context) error {
 任意位置发布（HTTP handler、cron、outbox drainer）：
 
 ```go
-pub, _ := binder.NewPublisher(ctx, "orders.created")
+pub, _ := driver.NewPublisher(ctx, "orders.created")
 defer pub.Close()
 err := pub.Publish(ctx, &messaging.Message{
     Payload: []byte(`{"id":42}`),
@@ -162,7 +162,7 @@ govern:
 
 ```bash
 docker run -d --name nats -p 127.0.0.1:4222:4222 nats:2.10 -js
-go run .                                   # binder 订阅后发布
+go run .                                   # driver 订阅后发布
 curl -i :9370/healthz                      # actuator 存活
 curl -s :9370/metrics | grep -i nats
 ```
@@ -182,7 +182,7 @@ gs.Run()
   │             .Name(name).Destroy(destroyConn).Caller(1)  [starter.go:36-40]
   ├─ newConn：driver 查找 → CreateClient（nats.Connect —— 快速失败探针；broker
   │           不可用则中断启动）[driver.go:122,137]
-  ├─ 挂接 observe kit：pubObs/subObs（总是设置；level "off" 在 kit 内部生效）
+  ├─ 挂接插桩：pubObs/subObs（模块内 observe.go）
   │           [driver.go:155-156]
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
   │           [driver.go:158-164]
@@ -199,15 +199,15 @@ gs.Run()
 （`nats disconnected`）并由客户端自动重连 [driver.go:57-59]——`Healthy()` 反映实时的
 `IsConnected()` 状态 [client.go:62-64]。
 
-### 2.2 一次发布，逐层走读（binder 路径）
+### 2.2 一次发布，逐层走读（driver 路径）
 
-`pub.Publish(ctx, msg)` [binder.go:58-71]：
+`pub.Publish(ctx, msg)` [driver.go:58-71]：
 
 1. 信封 → `nats.Msg{Subject, Data, Header}`；`messaging.Message.Key` 经保留 header
-   `x-msg-key` 透传（消费侧还原进 `Key`，不会泄漏进 `Headers`）[binder.go:59-73]。
+   `x-msg-key` 透传（消费侧还原进 `Key`，不会泄漏进 `Headers`）[driver.go:59-73]。
    空 header map → nil header。
 2. 压测标记：若 `traffic.IsLoadTest(ctx)`，写入 `X-LoadTest: 1`（canonical header 名），
-   供消费侧识别合成流量 [binder.go:62-67]。
+   供消费侧识别合成流量 [driver.go:62-67]。
 3. `Conn.PublishMsg` 覆写 [command.go:82-91]：`pubObs.Start(context.Background(),
    "publish", subject)` 打开 producer span + 时长/在途 metric + access log。
    ⚠ span 父是 `context.Background()`——发布 span 永远是新根，不延续调用方的活动
@@ -224,21 +224,21 @@ gs.Run()
 
 该路径拿不到的东西：resilience（保护走独立方法，见 §2.4）。
 
-### 2.3 一次消费，逐层走读（binder 路径）
+### 2.3 一次消费，逐层走读（driver 路径）
 
-`sub.Subscribe(handler)` [binder.go:79-116]：handler 包进 `messaging.Recover`
-（panic → error 路径，不冲垮 SDK goroutine）[binder.go:86-88]；group 非空时走
-`QueueSubscribe`（竞争消费），否则 `Subscribe` [binder.go:105-110]。每条消息：
+`sub.Subscribe(handler)` [driver.go:79-116]：handler 包进 `messaging.Recover`
+（panic → error 路径，不冲垮 SDK goroutine）[driver.go:86-88]；group 非空时走
+`QueueSubscribe`（竞争消费），否则 `Subscribe` [driver.go:105-110]。每条消息：
 
 1. `startConsume` 从 `nm.Header` 提取 W3C `traceparent`，打开 consumer span
-   （producer span 的子）+ metric + log [command.go:96-102; binder.go:91-93]。
-2. `X-LoadTest` header 重新物化进 ctx 作为压测标记 [binder.go:94-96]。
+   （producer span 的子）+ metric + log [command.go:96-102; driver.go:91-93]。
+2. `X-LoadTest` header 重新物化进 ctx 作为压测标记 [driver.go:94-96]。
 3. `fromNatsMsg`：多值 NATS header 压平为单值（`Get` = 首值优先）
-   [binder.go:138-149]。
-4. handler 执行；`sp.End(err)` [binder.go:97-99]。Close = `Subscription.Unsubscribe`
-   [binder.go:119-124]。
+   [driver.go:138-149]。
+4. handler 执行；`sp.End(err)` [driver.go:97-99]。Close = `Subscription.Unsubscribe`
+   [driver.go:119-124]。
 
-已记录缺口：**直接 `Conn.Subscribe` / JetStream 消费不被插桩**——只有 binder 回调打开
+已记录缺口：**直接 `Conn.Subscribe` / JetStream 消费不被插桩**——只有 driver 回调打开
 consumer span [command.go:28-32]。手动逃生口：`StartPublishSpan` /
 `StartConsumeSpan` / `EndSpan` 只发 span（无 metric/log）[command.go:109-160]，
 example/ 即如此使用。
@@ -250,14 +250,14 @@ executor 只经**方法**式选装入口触达 [command.go:152-160]：
 
 | 入口 | Observe | Resilience guard |
 |---|---|---|
-| `Conn.PublishMsg`（含 binder 发布） | span+metric+log | **否** |
+| `Conn.PublishMsg`（含 driver 发布） | span+metric+log | **否** |
 | `Conn.Publish` / `Conn.Request` / `Subscribe` / `QueueSubscribe` / JetStream | **否** | **否** |
 | `Conn.PublishGuarded(ctx, subj, data)` | span+metric+log（经 `PublishMsg`） | 是 |
 | `Conn.RequestGuarded(ctx, subj, data, timeout)` | **否** | 是 |
 
 `applyResilience` 内部包裹顺序 [command.go:162-174]：`ExecutorFor(resource)`（治理中心
 背书；治理关闭时透明 no-op）→ `fault.WrapExecutor`（故障注入）→
-`resilience.WrapExecutor(exec, "nats", Observability)`（为熔断跳闸/拒绝/重试发
+`resilience.WrapExecutor(exec, "nats")`（为熔断跳闸/拒绝/重试发
 span/counter/histogram——resilience 核心自身不发）。拒绝时 guarded 调用返回
 resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/请求不会被调用
 ——[resilience_test.go:63-84] 有证明。`resource` 是 `nats:<name>` (colon format; falls back to `nats:<url>` when name unset)（按连接而非
@@ -271,8 +271,8 @@ resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.nats.<name>.*`。分组 key（`tls`、`observability`）绑定嵌套共享
-struct——其子 key 属于 tlsconf / observe kit，不属于本 starter。
+所有 key 位于 `spring.nats.<name>.*`。分组 key `tls` 绑定嵌套共享
+struct——其子 key 属于 tlsconf，不属于本 starter。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
@@ -282,19 +282,18 @@ struct——其子 key 属于 tlsconf / observe kit，不属于本 starter。
 | `token` | string | "" | → `nats.Token` [driver.go:63-65]。 | 与 username 并用 → nats option 后者覆盖（NATS 定义）。 |
 | `creds-file` | string | "" | JWT+nkey seed 文件 → `nats.UserCredentials` [driver.go:66-68]。 | 路径错误 → 启动失败。 |
 | `nkey-file` | string | "" | nkey seed → `nats.NkeyOptionFromSeed`；加载失败带解释并中断启动 [driver.go:69-76]。 | 坏 seed → 启动报错。 |
-| `tls` | group | 关 | `tls.enabled=true` → `tlsconf.Build()` → `nats.Secure`；Build()==nil → 裸 `nats.Secure()` [driver.go:77-88]。⚠ 用 `Build()` 而非 `BuildServer()`——与其他 client starter 同样的 client-TLS 姿态。子 key：`enabled`/`ca-file`/`cert-file`/`key-file`/`insecure-skip-verify`/`server-name`（tlsconf 的 tag）。 | TLS 不匹配 → 启动期连接错误。 |
+| `tls` | group | 关 | `tls.enabled=true` → `tlsconf.BuildClient()` → `nats.Secure`；BuildClient()==nil → 裸 `nats.Secure()` [driver.go:77-88]。⚠ 用 `BuildClient()` 而非 `BuildServer()`——与其他 client starter 同样的 client-TLS 姿态。子 key：`enabled`/`ca-file`/`cert-file`/`key-file`/`insecure-skip-verify`/`server-name`（tlsconf 的 tag）。 | TLS 不匹配 → 启动期连接错误。 |
 | `max-reconnects` | int | 60 | → `nats.MaxReconnects`；-1 = 无限 [config.go:63; driver.go:49]。 | -1 且 broker 宕机 → 永久重连循环（设计如此）。 |
 | `reconnect-wait` | duration | 2s | 重连尝试间隔 [driver.go:50]。 | 过小 → 对宕机集群高频重连。 |
 | `connect-timeout` | duration | 5s | 仅约束**首次拨号** [driver.go:51]。 | 过小 → 慢网络误判启动失败。 |
 | `jetstream` | group | — | `enabled` 的容器。 | — |
 | `jetstream.enabled` | bool | false | 在**同一**连接上派生 `jetstream.New(nc)`；失败关闭 nc 并中断启动；否则 `Conn.JetStream` 保持 nil [driver.go:157-164]。 | 对未开 `-js` 的 broker 启用 → 启动错误。 |
-| `observability` | group | brief | 共享 observe kit 配置，覆盖发布/消费 span、metric（`messaging.*` 约定）、access log。子 key：`level`（off/brief/detailed）、`maxArgBytes`、`skipOps`——observe kit 的 tag [driver.go:155-156]。 | level=off → observer 仍挂接但为 no-op。 |
 | `driver` | string | DefaultDriver | driver 注册表查找；未知名字以 `nats driver not found` 中断启动 [driver.go:140-143]。⚠ 重复 `RegisterDriver` 在 init 期 panic。 | 拼写错误 → 启动报错。 |
 
 grep 核对：本 starter Go 文件中 15 个去重 `value:` tag 恰为 `url`、`name`、`username`、
 `password`、`token`、`creds-file`、`nkey-file`、`tls`、`max-reconnects`、
 `reconnect-wait`、`connect-timeout`、`jetstream`、`jetstream.enabled`
-（即 `${enabled:=false}`）、`observability`、`driver`——全部在表内；两边无多余项。
+（即 `${enabled:=false}`）、`driver`——全部在表内；两边无多余项。
 
 ---
 
@@ -328,7 +327,7 @@ executor 的 resource 是 `nats:<name>` (colon format; falls back to `nats:<url>
 的拒绝会发 span + counter（`system="nats"`，由 resilience-observe 桥命名）
 [command.go:170-172]——演练后去 trace/metric 里 grep `nats`。
 
-### 4.4 消息往返与 binder 映射存活
+### 4.4 消息往返与 driver 映射存活
 
 发布带 `Payload` + `Headers{"tenant":"acme"}` 的信封；消费侧断言：
 
@@ -362,17 +361,17 @@ executor 的 resource 是 `nats:<name>` (colon format; falls back to `nats:<url>
 | 启动中断 `failed to create jetstream context` | `jetstream.enabled=true` 但 broker 未开 `-js` [driver.go:158-164] | 服务端加 `-js` 或关掉该 key。 |
 | 启动中断 `nats driver not found` | `driver` 拼写错误 / 自定义 driver 未在 init 前注册 [driver.go:140-143] | 修名字或在更早的 init 注册。 |
 | `Conn.JetStream` 为 nil | 未设 `jetstream.enabled` | 设置它；JS 在启动期从同一连接派生。 |
-| 消费者能收消息但消费侧无 trace/metric | 用了裸 `Conn.Subscribe` 而非 binder（已记录缺口 [command.go:28-32]） | 走 messaging.Binder，或手写 StartConsumeSpan。 |
+| 消费者能收消息但消费侧无 trace/metric | 用了裸 `Conn.Subscribe` 而非 driver（已记录缺口 [command.go:28-32]） | 走 messaging.Driver，或手写 StartConsumeSpan。 |
 | guarded 调用突然报哨兵错误 | 限流耗尽或熔断打开——设计行为 [command.go:177-186] | 检查 govern.yaml 策略；熔断冷却后自愈。 |
 | producer trace 不链接调用方 span | PublishMsg span 父是 `context.Background()` [command.go:79-91]——这是既定行为：nats.PublishMsg 无 ctx 参数，发布 span 必为新根 | 不改 API 无法修复；消费侧延续仍经 traceparent header 生效。需要挂进调用方 trace 时用手动路径 `StartPublishSpan(ctx, msg)` + 内嵌 `PublishMsg`。 |
-| 第二个 header 值丢失 | binder 多值 header 压平取首值（单值信封） | 额外值放 payload，或用裸 Conn API。 |
+| 第二个 header 值丢失 | driver 多值 header 压平取首值（单值信封） | 额外值放 payload，或用裸 Conn API。 |
 | 日志出现重连风暴 | 集群宕机时 `reconnect-wait` 过小 | 调大；重连本就是客户端的可靠性机制。 |
 
 ## 6. 设计体检表
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key | 15 个 starter 本地 value tag（+ tls / observability 分组子 key 在共享包） |
+| 配置 key | 14 个 starter 本地 value tag（+ tls 分组子 key 在 tlsconf） |
 | 必填 | 1（`url`） |
 | quickstart 前置外部依赖 | 1（nats；collector 可选用于可观测） |
 | "注意/坑"条数 | 6 |

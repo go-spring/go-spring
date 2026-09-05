@@ -27,16 +27,16 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-func TestApplyDefaults(t *testing.T) {
-	o := lock.Apply()
+func TestResolvePackageDefaults(t *testing.T) {
+	o := lock.Resolve(lock.DefaultOptions{})
 	assert.That(t, o.TTL).Equal(30 * time.Second)
 	assert.That(t, o.RenewInterval).Equal(10 * time.Second) // TTL/3
 	assert.That(t, o.RetryInterval).Equal(100 * time.Millisecond)
 	assert.That(t, o.Token).NotEqual("")
 }
 
-func TestApplyOverrides(t *testing.T) {
-	o := lock.Apply(
+func TestResolvePerCallOverrides(t *testing.T) {
+	o := lock.Resolve(lock.DefaultOptions{},
 		lock.WithTTL(9*time.Second),
 		lock.WithRenewInterval(-1),
 		lock.WithRetryInterval(5*time.Millisecond),
@@ -46,6 +46,47 @@ func TestApplyOverrides(t *testing.T) {
 	assert.That(t, o.RenewInterval).Equal(time.Duration(-1)) // renew disabled
 	assert.That(t, o.RetryInterval).Equal(5 * time.Millisecond)
 	assert.That(t, o.Token).Equal("fixed")
+}
+
+// Resolve encodes the only timing-precedence rule the backends share: each
+// layer (per-call > starter DefaultOptions > package default) must win in
+// turn, and the special RenewInterval signs must survive.
+
+func TestResolveStarterDefaultFillsUnsetFields(t *testing.T) {
+	o := lock.Resolve(lock.DefaultOptions{
+		TTL: 7 * time.Second, RenewInterval: 2 * time.Second, RetryInterval: 250 * time.Millisecond,
+	})
+	assert.That(t, o.TTL).Equal(7 * time.Second)
+	assert.That(t, o.RenewInterval).Equal(2 * time.Second)
+	assert.That(t, o.RetryInterval).Equal(250 * time.Millisecond)
+}
+
+func TestResolvePerCallOptsOverrideStarterDefaults(t *testing.T) {
+	o := lock.Resolve(
+		lock.DefaultOptions{TTL: 7 * time.Second, RenewInterval: 2 * time.Second, RetryInterval: 250 * time.Millisecond},
+		lock.WithTTL(90*time.Second),
+	)
+	assert.That(t, o.TTL).Equal(90 * time.Second) // per-call wins
+	// Untouched fields keep the starter default, not the package default.
+	assert.That(t, o.RenewInterval).Equal(2 * time.Second)
+	assert.That(t, o.RetryInterval).Equal(250 * time.Millisecond)
+}
+
+func TestResolveStarterZeroFallsThroughToPackageDefault(t *testing.T) {
+	// A starter that exposes only TTL leaves renew/retry at zero, so the
+	// package defaults (TTL/3 and 100ms) must fill in.
+	o := lock.Resolve(lock.DefaultOptions{TTL: 12 * time.Second})
+	assert.That(t, o.TTL).Equal(12 * time.Second)
+	assert.That(t, o.RenewInterval).Equal(4 * time.Second) // 12s / 3
+	assert.That(t, o.RetryInterval).Equal(100 * time.Millisecond)
+}
+
+func TestResolvePreservesExplicitRenewDisable(t *testing.T) {
+	// A caller passing WithRenewInterval(negative) disables auto-renew. The
+	// starter default must NOT override that explicit intent — RenewInterval is
+	// the one field where 0 and <0 carry different meanings.
+	o := lock.Resolve(lock.DefaultOptions{RenewInterval: 2 * time.Second}, lock.WithRenewInterval(-1))
+	assert.That(t, o.RenewInterval).Equal(time.Duration(-1))
 }
 
 func TestMemoryTryAcquireContended(t *testing.T) {

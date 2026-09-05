@@ -50,14 +50,6 @@ Get/Set/Delete 会经过 observe（访问日志/指标/trace）与 resilience（
 | `spring.bigcache.<name>.stats-enabled` | bool | false | 否 | 开启 `Stats()` 计数（同时喂 OTel gauge） |
 | `spring.bigcache.<name>.driver` | string | DefaultDriver | 否 | 用哪个 `Driver` 实现构建客户端（自定义 driver 经 `RegisterDriver` 注册） |
 
-全局 key（所有 client starter 共享，顶层绑定——不按实例）：
-
-| Key | 类型 | 默认值 | 必填 | 说明 |
-|-----|------|--------|------|------|
-| `observability.level` | string | brief | 否 | 访问日志粒度：`off` / `brief` / `detailed` |
-| `observability.maxArgBytes` | int | 512 | 否 | `detailed` 模式下捕获的参数字节数 |
-| `observability.skipOps` | []string | — | 否 | 列出的操作名同时抑制 span+metric+log |
-
 ⚠ 当同一后端实例又通过 `spring.cache.<name>.driver=bigcache:<instance>` 暴露时，
 `Cache.Set` 传入的 TTL 会被忽略——BigCache 按单一全局 `life-window` 统一过期。
 

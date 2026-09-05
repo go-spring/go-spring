@@ -67,9 +67,10 @@ DeleteAPI, Setup, ...) promotes unchanged.
   log so the writer never blocks). See DESIGN for the split.
 - **Fail-fast startup probe + health indicator** — a `/health` round trip at
   boot and an `influxdb:<name>` indicator for `starter-actuator`.
-- **Observability** — every HTTP request emits a span + duration metric +
-  access-log line through the observe kit (`observability.level=off` to
-  disable).
+- **Observability** — every HTTP request emits a client span
+  (db.system/db.operation/db.statement), the `db.client.operation.duration`
+  histogram + `db.client.active_requests` gauge, and an access-log line via
+  the `_app_influxdb_access` tag at the log package's native levels.
 - **Resilience** — blocking writes route through the governance seams; with
   `starter-governance` absent the write path is observe-only.
 

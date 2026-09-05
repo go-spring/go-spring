@@ -29,19 +29,14 @@ import (
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	observe "go-spring.org/cloud/observe"
 )
 
 // Client is the wrapper bean Cassandra sessions are injected as. It embeds
 // the concrete *gocql.Session (so Query/Iter/Close and friends promote
-// unchanged) and field-injects the observability policy. newClient returns
-// one; gs field-injects Observability, then calls Init (InitMethod) to build
+// unchanged). newClient returns one; gs calls Init (InitMethod) to build
 // the observer + executor.
 type Client struct {
 	*gocql.Session
-	// Observability is field-injected by gs and configures the Exec helper's
-	// observation (spans + metrics + access log).
-	Observability observe.ObserveConfig `value:"${observability:=}"`
 
 	// cfg is the connection config, retained for the resource label.
 	cfg Config
@@ -51,21 +46,20 @@ type Client struct {
 	// resource is the resilience resource key ("cassandra:<hosts>") exec
 	// scopes limiter/breaker state by.
 	resource string
-	// obs is the observer behind Exec.
-	obs *observe.Observer
+	// obs is the observer behind the guarded statement path (see observe.go).
+	obs *dbObserver
 }
 
-// Init is the gs InitMethod: gs field-injects Observability after newClient
-// returns, then calls this. It builds the observer and resolves the executor
+// Init is the gs InitMethod: it builds the observer and resolves the executor
 // through the neutral [resilience.ExecutorFor] seam (backed by
 // starter-govern's governance center when imported), wraps it with the
 // process-wide fault injector and observe-resilience. When governance is off
 // the resolved executor is a transparent no-op.
 func (o *Client) Init() error {
-	o.obs = observe.NewDB("cassandra", o.Observability)
+	o.obs = newDBObserver("cassandra")
 	o.resource = resilience.ResourceLabel("cassandra", o.cfg.Hosts[0])
 	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "cassandra", o.Observability)
+	exec = resilience.WrapExecutor(exec, "cassandra")
 	o.exec = exec
 	return nil
 }

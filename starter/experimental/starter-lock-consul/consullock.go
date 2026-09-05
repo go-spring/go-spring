@@ -50,7 +50,7 @@ const (
 type consulLocker struct {
 	client    *api.Client
 	keyPrefix string
-	defaults  lock.Defaults
+	defaults  lock.DefaultOptions
 	closeOnce sync.Once
 }
 
@@ -107,7 +107,7 @@ func newConsulLocker(ctx *gs.ContextProvider, c Config) (*consulLocker, error) {
 		// loop, so only TTL is a meaningful starter-level default here. The
 		// consul [10s, 86400s] floor is applied per acquisition in buildLock, so
 		// both the starter default and a per-call WithTTL get clamped the same way.
-		defaults: lock.Defaults{TTL: c.TTL},
+		defaults: lock.DefaultOptions{TTL: c.TTL},
 	}, nil
 }
 
