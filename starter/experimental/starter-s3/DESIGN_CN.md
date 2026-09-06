@@ -22,10 +22,12 @@ starter）；差异点在下面单独说明。
   `dynamicTransport`（RWMutex 保护的 RoundTripper 间接层），Init 把
   observe+韧性 传输换进去 —— 与 starter-elasticsearch 同因
   同法。
-- **`Driver`（driver.go）** — 构造 seam：注册表 + DefaultDriver 装配凭证
-  （`NewStaticV4`）、region、bucket 寻址风格与动态传输层。bucket-lookup
-  配置串映射到 minio 的 `BucketLookupType`（minio v7.0.74 里
-  `virtual-host` 是 `BucketLookupDNS` 的别名）。
+- **`Driver`（driver.go）** — 构造 seam：可选容器 bean 形式的 `Driver`
+  接口 + 内置 `DefaultDriver` 装配凭证（`NewStaticV4`）、region、bucket
+  寻址风格与动态传输层。公司/伞包 starter 提供自己的 `Driver` bean；无该
+  bean 时 starter 回退到 `DefaultDriver`。bucket-lookup 配置串映射到 minio
+  的 `BucketLookupType`（minio v7.0.74 里 `virtual-host` 是
+  `BucketLookupDNS` 的别名）。
 - **obsTransport（command.go）** — 逐请求 observe seam。minio-go 不带
   OTel 埋点，因此 starter 自带的传输层承载 span + 指标 + 日志
   （observe.go：client span 带 `db.system`/`db.operation`/`db.statement`、

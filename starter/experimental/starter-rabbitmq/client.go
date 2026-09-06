@@ -28,6 +28,7 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 )
@@ -102,7 +103,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		if pub.Headers == nil {
 			pub.Headers = amqp.Table{}
 		}
-		pub.Headers[traffic.MetaKeyLoadTest] = "1"
+		pub.Headers[canonical.MetaKeyLoadTest] = "1"
 	}
 	ctx, sp := startPublish(ctx, p.queue, &pub)
 	// Route through the same resilience executor the raw client API uses
@@ -140,8 +141,8 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 		for d := range deliveries {
 			msgCtx, sp := startConsume(context.Background(), &d)
 			// Extract the load-test marker the producer put in the AMQP headers.
-			if v, ok := d.Headers[traffic.MetaKeyLoadTest].(string); ok && traffic.IsAffirmative(v) {
-				msgCtx = traffic.WithLoadTest(msgCtx, "amqp-header")
+			if v, ok := d.Headers[canonical.MetaKeyLoadTest].(string); ok && canonical.IsAffirmative(v) {
+				msgCtx = canonical.WithLoadTest(msgCtx, "amqp-header")
 			}
 			herr := handler(msgCtx, fromDelivery(&d))
 			sp.End(herr)

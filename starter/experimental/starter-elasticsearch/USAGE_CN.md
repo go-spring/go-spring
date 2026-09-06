@@ -157,18 +157,19 @@ grep _app_elasticsearch_access app.log | tail -3              # 每请求一条�
 import starter-elasticsearch
   └─ gs.Module(OnProperty("spring.elasticsearch")) 在出现任意 spring.elasticsearch.* key 时触发
         └─ conf.BindEach("${spring.elasticsearch}") → 每个 <name> 条目一份 Config
-              ├─ Provide(newClient, IndexArg(1, ValueArg(c))).Name(<name>)
+              ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
+              │            IndexArg(2, ?Driver)).Name(<name>)
               │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
               └─ Provide health.Indicator，名为 "elasticsearch:<name>"
-                     .Export(gs.As[health.Indicator]())   [starter.go:40-70]
+                     .Export(gs.As[health.Indicator]())   [starter.go:41-71]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:72]：
+  ├─ 构造 newClient [starter.go:73]：
   │    ├─ 设置了 service-name 且 !mesh.Enabled() → resolveAddresses：
   │    │      discovery.NewLoader → 读快照 → "scheme://host:port" 覆盖 c.Addresses
   │    │      （快速失败：后端未注册、或该服务无端点）
-  │    ├─ driverRegistry 查表（否则报 "elasticsearch driver not found: %s"）
-  │    ├─ driver.CreateClient → DefaultDriver 安装 dynamicTransport + OTel 插桩，
+  │    ├─ 可选 Driver bean（无则用内置 DefaultDriver）→ driver.CreateClient：
+  │    │      DefaultDriver 安装 dynamicTransport + OTel 插桩，
   ｜    │      记入 dynamicTransports；newClient 取出交给 Init
   │    └─ HealthCheck（Info 请求）——无条件 fail-fast 探测；失败则关闭
   │        client 并中止启动
@@ -181,7 +182,7 @@ gs.Run()
   └─ SIGTERM → Destroy [client.go:98]：exec.Close → 停 discovery watch → client.Close
 ```
 
-driver 名配错、集群不可达、service-name 无端点，都会让启动失败——进程不会带着坏的
+集群不可达、service-name 无端点，都会让启动失败——进程不会带着坏的
 ES 连接进入"服务中"状态。
 
 ### 2.2 transport 链——精确顺序与理由
@@ -262,7 +263,6 @@ mesh 模式下由 sidecar 负责发现+LB，静态 Addresses（或 CloudID）原
 | `discovery` | string | `default` | 用哪个已注册后端解析 `service-name`。 | 后端未注册 → NewLoader 处启动报错。 |
 | `discovery-scheme` | string | `http` | 拼到发现的 `host:port` 端点前的 URL scheme（`http`/`https`）。 | scheme 错 → 启动首探失败。 |
 | `cloud-id` | string | — | Elastic Cloud 部署 ID；设置后客户端优先于 `addresses`。 | — |
-| `driver` | string | `DefaultDriver` | 选择已注册 Driver。 | 未知名字 → 启动报 "elasticsearch driver not found"。 |
 
 ### 3.2 认证与 TLS
 
@@ -362,7 +362,6 @@ spring.elasticsearch.disc.service-name=es-cluster
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动报 "failed to reach elasticsearch cluster" | 地址不可达 / 凭据错误 / 指纹不匹配 / ES 未起完（最长 120 秒） | 修连通性；等 `curl http://127.0.0.1:9200` 通后重启。 |
-| 启动报 "elasticsearch driver not found" | `driver` 名未注册 | 在 init 里 `StarterElasticsearch.RegisterDriver`（重名注册 panic）。 |
 | 启动报 `discovery ... returned no endpoints` | service-name 在后端不存在，或后端未注册 | gs.Run 前注册后端（discovery.RegisterDiscovery）；核对服务名。 |
 | 请求内 nil context panic | OTel 插桩从请求 context 派生 span | 每次调用传 `WithContext(ctx)`；不用无 context 的 API 变体。 |
 | 已设 service-name 仍在 `addresses` 校验失败 | `addresses` 无条件必填（`len($) > 0`） | 保留哑地址（example 的做法）——反正会被覆盖。 |
@@ -375,7 +374,7 @@ spring.elasticsearch.disc.service-name=es-cluster
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 17 个实例 key |
+| 配置 key 总数 | 16 个实例 key |
 | 其中必填 | 1（`addresses`，校验非空） |
 | quickstart 前置外部依赖 | 1（Elasticsearch） |
 | "注意/坑" 条数 | 5 |

@@ -148,12 +148,13 @@ import starter-s3
 gs.Run()
   ├─ conf.BindEach over spring.s3.* → one Config per instance name
   ├─ per instance:
-  │    ├─ r.Provide(newClient, IndexArg(1, ValueArg(c))).Name(name)
+  │    ├─ r.Provide(newClient, IndexArg(1, ValueArg(c)),
+  │    │            IndexArg(2, ?Driver)).Name(name)
   │    │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
   │    ├─ r.Provide(health indicator).Name("s3:"+name).Export(health.Indicator)
   │    │      — .Name is what keeps multi-instance (Name,Type) keys unique
-  │    ├─ newClient: driverRegistry lookup (default DefaultDriver)
-  │    │      → DefaultDriver.CreateClient: static creds + region + bucket-lookup
+  │    ├─ newClient: optional Driver bean (none → bundled DefaultDriver)
+  │    │      → d.CreateClient: static creds + region + bucket-lookup
   │    │        + a dynamicTransport placeholder inside minio.Options
   │    │      → dynamicTransports.LoadAndDelete hands the placeholder to the wrapper
   │    ├─ fail-fast probe: HealthCheck → ListBuckets — unreachable endpoint or rejected
@@ -224,7 +225,6 @@ Prefix `spring.s3.<name>.*` for the ctor-bound `Config` keys (config.go).
 | `region` | string | us-east-1 | Bucket region passed to minio.Options. | Wrong region → signature/redirect errors on region-aware endpoints (may pass the probe against region-agnostic MinIO, then fail per-bucket). |
 | `use-ssl` | bool | false | HTTPS towards the endpoint. | false against an TLS-only endpoint (or true against plaintext) → boot probe fails. |
 | `bucket-lookup` | string | auto | `auto` \| `virtual-host`/`dns` (aliases, `BucketLookupDNS`) \| `path`. | Some S3-compatible clouds only serve path style → wrong style yields per-request addressing failures. Unknown value → startup error listing valid values. |
-| `driver` | string | DefaultDriver | Selects a driver from the registry (`RegisterDriver`). Unknown name → startup error "s3 driver not found". | Custom drivers skip the dynamicTransport handshake → resilience unavailable for that client. |
 
 ---
 
@@ -276,7 +276,6 @@ per round-trip, not per stream: uploads with large bodies may re-send the body.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Startup aborts "failed to reach s3 endpoint" | endpoint down, wrong port, `use-ssl` mismatch, or bad credentials | The probe error carries the underlying cause (signature mismatch ⇒ creds; connection refused ⇒ endpoint/ssl). |
-| Startup aborts "s3 driver not found: X" | `driver` names nothing registered | Register via `RegisterDriver` in an init() before use, or drop the key. |
 | Startup aborts "unknown bucket-lookup" | invalid style string | One of auto / virtual-host / dns / path. |
 | Custom driver client has no resilience | dynamicTransport handshake only exists for DefaultDriver | Accept observe-only, or install your own indirection in the driver. |
 | Works against MinIO, 404/redirect on cloud X | virtual-host addressing not supported there | `bucket-lookup=path`. |
@@ -287,15 +286,15 @@ per round-trip, not per stream: uploads with large bodies may re-send the body.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 9 |
+| Config keys | 8 |
 | Required | 3 (endpoint, access-key-id, secret-access-key) |
 | Quickstart external deps | 1 (MinIO / any S3 endpoint) |
 | "Watch out" entries | 5 |
 
 Design suspects (for the audit ledger; first two carried over from the previous edition):
-- `driver` key exists but only one driver (DefaultDriver) ships in-repo — speculative
-  extension point; the dynamicTransport handshake between driver and wrapper is implicit
-  (keyed off a sync.Map).
+- Client assembly is a `Driver` optional container bean (no per-config `driver` key); only the
+  bundled DefaultDriver ships in-repo, and the dynamicTransport handshake between driver and
+  wrapper is implicit (keyed off a sync.Map).
 - `bucket-lookup` accepts both "virtual-host" and "dns" aliases for one mode — mild config
   surface redundancy.
 - NEW: resource label is `s3:<endpoint>` only — two instances on one endpoint (like the

@@ -15,9 +15,8 @@
  */
 
 // driver.go is the "construction seam" concept of this starter: the Driver
-// interface + registry + DefaultDriver, which owns full session assembly
-// (ClusterConfig, authenticator, consistency, TLS, timeouts). It mirrors
-// starter-s3's driver.go.
+// interface + the bundled DefaultDriver, which owns full session assembly
+// (ClusterConfig, authenticator, consistency, TLS, timeouts).
 package StarterCassandra
 
 import (
@@ -28,28 +27,19 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var driverRegistry = map[string]Driver{}
-
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
-}
-
 // Driver interface defines how to create a Cassandra session (a *gocql.
-// Session). It is the single extension point for customizing session
-// assembly: an app (or the bundled DefaultDriver) implements it once and
-// registers via RegisterDriver; callers select one through Config.Driver,
-// which defaults to "DefaultDriver".
+// Session). It is an OPTIONAL CONTAINER BEAN: a company or umbrella starter
+// may provide its own Driver bean (its constructor returns
+// StarterCassandra.Driver); when none is present, starter-cassandra falls back
+// to the bundled [DefaultDriver] inside client assembly. A custom driver is a
+// bean, so it may inject the configuration/beans it needs — e.g. company
+// config bound from a properties file at wiring time.
+//
+// At most one Driver bean is expected per process; every client under
+// ${spring.cassandra} is built through it, and per-instance differences are
+// expressed through [Config].
 type Driver interface {
 	CreateClient(ctx context.Context, c Config) (*gocql.Session, error)
-}
-
-// RegisterDriver registers a Cassandra driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("cassandra driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
 }
 
 // DefaultDriver is the default implementation of the Driver interface.

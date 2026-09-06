@@ -246,7 +246,6 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 直传；dial-timeout 同时限定启动 ping [starter.go:229]。 | — |
 | `conn-max-lifetime` | duration | 2m | 连接复用窗口；较短值利于发现流量切换。 | 很大 + discovery → 老端点连接滞留。 |
 | `tls.*` | group | off | `tlsconf` 客户端 TLS（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）。 | 配一半 → `tls.Build` 启动报错。 |
-| `driver` | string | `DefaultDriver` | 选择已注册 Driver。 | 未知名 → 启动报 "redis driver not found"。 |
 | `health.enabled` | bool | true | 为实例注册 `redis:<name>` 健康指示器——与 starter-redigo 同名开关。 | false → 该实例无指示器 bean，不再上报就绪。 |
 
 ### 3.3 观测
@@ -320,7 +319,7 @@ executor 无需重启即刷新。
 | 启动报 "startup ping failed" | 地址不可达/密码错/TLS 不匹配 | failFastPing 无条件执行；修连通性或凭据。 |
 | 启动报 "invalid mode ... (want single/sentinel/cluster)" | `mode` 拼错 | 改正——mode 精确匹配。 |
 | 启动报 "service-name is not supported in sentinel/cluster mode" | 发现与自发现拓扑组合 | 删 service-name；sentinel/cluster 自行发现节点。 |
-| 启动报 "redis driver not found" | `driver` 指向未注册名 | 在 init 里 `StarterGoRedis.RegisterDriver`，或用 DefaultDriver。 |
+| 启动报 "... does not support cluster mode" | 提供的 Driver bean 不支 cluster 但存在 `mode=cluster` 实例 | 让 Driver 实现 `ClusterDriver`（内置 `DefaultDriver` 已实现）；进程内那一个 Driver 须覆盖所用到的全部拓扑。 |
 | 启动报 "db is not supported in cluster mode" | Cluster 无 database select | 删掉 `db`（cluster 只有 0 号库）。 |
 | 启动 WARN "addr ... is ignored" | single 模式同时配了 `addr` 和 `service-name` | 无害；删 `addr` 或留着当标签——寻址归服务发现。 |
 | 命令正常但健康 DOWN | 指示器带 ctx ping；查 ACL/只读副本 | 看 /readiness 里组件的错误详情。 |

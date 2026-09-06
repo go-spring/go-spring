@@ -29,7 +29,7 @@ import (
 	"github.com/hertz-contrib/gzip"
 	"github.com/hertz-contrib/requestid"
 	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -157,18 +157,18 @@ func accessLogSkipSet(cfg Config) map[string]struct{} {
 
 // LoadTest installs the inbound load-test traffic identification middleware.
 // When the incoming request carries the configured marker header (default
-// X-LoadTest) it tags the request context via traffic.WithLoadTest, so handlers
+// X-LoadTest) it tags the request context via canonical.WithLoadTest, so handlers
 // and outbound clients can recognise synthetic load through traffic.IsLoadTest.
 // It is the inbound companion to cloud/governance/traffic's outbound injection. An empty
 // header falls back to the traffic package default. Without the marker it is a
 // no-op. Hertz stores headers as []byte; Peek returns the raw value.
 func LoadTest(header string) app.HandlerFunc {
 	if header == "" {
-		header = traffic.HeaderLoadTest
+		header = canonical.HeaderLoadTest
 	}
 	return func(ctx context.Context, c *app.RequestContext) {
-		if traffic.IsAffirmative(string(c.Request.Header.Peek(header))) {
-			ctx = traffic.WithLoadTest(ctx, "http-header")
+		if canonical.IsAffirmative(string(c.Request.Header.Peek(header))) {
+			ctx = canonical.WithLoadTest(ctx, "http-header")
 		}
 		c.Next(ctx)
 	}

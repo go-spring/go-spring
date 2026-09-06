@@ -71,11 +71,16 @@ spring.tdengine.cold.dsn=root:taosdata@ws(10.0.0.2:6041)/archive
 ```
 
 **Custom driver** — replace client assembly (e.g. to pin a different wire
-protocol or connection tuning) by registering your own `Driver` and selecting
-it with `driver=<name>`:
+protocol or connection tuning) by providing your own `Driver` bean. The
+`Driver` is an optional container bean: every client under `${spring.tdengine}`
+is built through it, and the starter falls back to its bundled `DefaultDriver`
+when none is provided. Register it in a package init (its constructor returns
+`StarterTdengine.Driver`):
 
 ```go
 func init() {
-    StarterTdengine.RegisterDriver("rest", restDriver{})
+    gs.Provide(func() StarterTdengine.Driver {
+        return restDriver{}
+    })
 }
 ```

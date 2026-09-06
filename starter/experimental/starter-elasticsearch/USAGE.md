@@ -149,18 +149,19 @@ grep _app_elasticsearch_access app.log | tail -3              # one record per r
 import starter-elasticsearch
   └─ gs.Module(OnProperty("spring.elasticsearch")) fires when any spring.elasticsearch.* key exists
         └─ conf.BindEach("${spring.elasticsearch}") → one Config per <name> entry
-              ├─ Provide(newClient, IndexArg(1, ValueArg(c))).Name(<name>)
+              ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
+              │            IndexArg(2, ?Driver)).Name(<name>)
               │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
               └─ Provide health.Indicator named "elasticsearch:<name>"
-                     .Export(gs.As[health.Indicator]())   [starter.go:40-70]
+                     .Export(gs.As[health.Indicator]())   [starter.go:41-71]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:72]:
+  ├─ ctor newClient [starter.go:73]:
   │    ├─ service-name set && !mesh.Enabled() → resolveAddresses:
   │    │      discovery.NewLoader → read snapshot → "scheme://host:port" overrides c.Addresses
   │    │      (fails fast: no backend registered, or no endpoints for the service)
-  │    ├─ driverRegistry lookup ("elasticsearch driver not found: %s" otherwise)
-  │    ├─ driver.CreateClient → DefaultDriver installs dynamicTransport + OTel instrumentation
+  │    ├─ optional Driver bean (none → bundled DefaultDriver) → driver.CreateClient:
+  │    │      DefaultDriver installs dynamicTransport + OTel instrumentation
   │    │      and records it in dynamicTransports; newClient picks it up for Init
   │    └─ HealthCheck (Info request) — unconditional fail-fast probe; failure closes the
   │        client and aborts boot
@@ -173,8 +174,8 @@ gs.Run()
   └─ SIGTERM → Destroy [client.go:98]: exec.Close → stop discovery watch → client.Close
 ```
 
-A misconfigured driver name, a dead cluster, or a service-name with no endpoints fails the
-boot — the process never reaches "serving" with a broken ES connection.
+A dead cluster, or a service-name with no endpoints fails the boot — the process never reaches
+"serving" with a broken ES connection.
 
 ### 2.2 The transport chain — exact order and why
 
@@ -261,7 +262,6 @@ unconditional (see §3.4).
 | `discovery` | string | `default` | Which registered discovery backend resolves `service-name`. | Unregistered backend → boot error at NewLoader. |
 | `discovery-scheme` | string | `http` | URL scheme stamped onto discovered `host:port` endpoints (`http`/`https`). | Wrong scheme → first probe fails at boot. |
 | `cloud-id` | string | — | Elastic Cloud deployment ID; when set the client prefers it over `addresses`. | — |
-| `driver` | string | `DefaultDriver` | Selects a registered Driver. | Unknown name → boot error "elasticsearch driver not found". |
 
 ### 3.2 Auth & TLS
 
@@ -364,7 +364,6 @@ requires a restart (§2.4).
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails "failed to reach elasticsearch cluster" | Unreachable address / wrong credentials / fingerprint mismatch / ES still booting (up to 120 s) | Fix connectivity; wait for `curl http://127.0.0.1:9200` to answer, restart. |
-| Boot fails "elasticsearch driver not found" | `driver` names nothing registered | Register via `StarterElasticsearch.RegisterDriver` in an init (duplicate names panic). |
 | Boot fails `discovery ... returned no endpoints` | service-name unknown to the backend, or backend not registered | Register the backend (discovery.RegisterDiscovery) before gs.Run; check the service name. |
 | Panic with nil context inside a request | OTel instrumentation derives the span from the request context | Pass `WithContext(ctx)` on every call; never use the no-context API variant. |
 | Boot fails on `addresses` validation though service-name is set | `addresses` is required unconditionally (`len($) > 0`) | Keep a dummy address (the example's pattern) — it is overridden. |
@@ -377,7 +376,7 @@ requires a restart (§2.4).
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 17 instance keys |
+| Config keys | 16 instance keys |
 | Required | 1 (`addresses`, validated non-empty) |
 | Quickstart external deps | 1 (Elasticsearch) |
 | "Watch out" entries | 5 |

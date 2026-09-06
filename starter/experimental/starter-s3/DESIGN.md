@@ -25,11 +25,13 @@ below.
   a `dynamicTransport` (RWMutex-guarded RoundTripper indirection) and Init
   swaps the observe+resilience transport into it —
   the same mechanism starter-elasticsearch uses for the same reason.
-- **`Driver` (driver.go)** — construction seam: registry + DefaultDriver
-  assembling credentials (`NewStaticV4`), region, bucket-lookup style and the
-  dynamic transport. The bucket-lookup config string maps onto minio's
-  `BucketLookupType` (`virtual-host` is an alias of `BucketLookupDNS` in
-  minio v7.0.74).
+- **`Driver` (driver.go)** — construction seam: the optional container-bean
+  `Driver` interface + the bundled `DefaultDriver` that assembles credentials
+  (`NewStaticV4`), region, bucket-lookup style and the dynamic transport. A
+  company/umbrella starter provides its own `Driver` bean; when none is present
+  the starter falls back to `DefaultDriver`. The bucket-lookup config string
+  maps onto minio's `BucketLookupType` (`virtual-host` is an alias of
+  `BucketLookupDNS` in minio v7.0.74).
 - **obsTransport (command.go)** — per-request observe seam. minio-go ships no
   OTel instrumentation, so the starter's own transport carries span + metric +
   log (observe.go: client spans with `db.system`/`db.operation`/`db.statement`,

@@ -180,8 +180,8 @@ gs.Run()
   ├─ 配置绑定：每个 spring.nats.<name> → Config（value tag；url 经 expr 校验 ≠ ""）
   ├─ 每个 name：Provide(newConn, IndexArg(1,ValueArg(name)), IndexArg(2,ValueArg(c)))
   │             .Name(name).Destroy(destroyConn).Caller(1)  [starter.go:36-40]
-  ├─ newConn：driver 查找 → CreateClient（nats.Connect —— 快速失败探针；broker
-  │           不可用则中断启动）[driver.go:122,137]
+  ├─ newConn：Driver bean（无则回退到内置 DefaultDriver）→ CreateClient
+  │           （nats.Connect —— 快速失败探针；broker 不可用则中断启动）
   ├─ 挂接插桩：pubObs/subObs（模块内 observe.go）
   │           [driver.go:155-156]
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
@@ -288,12 +288,11 @@ struct——其子 key 属于 tlsconf，不属于本 starter。
 | `connect-timeout` | duration | 5s | 仅约束**首次拨号** [driver.go:51]。 | 过小 → 慢网络误判启动失败。 |
 | `jetstream` | group | — | `enabled` 的容器。 | — |
 | `jetstream.enabled` | bool | false | 在**同一**连接上派生 `jetstream.New(nc)`；失败关闭 nc 并中断启动；否则 `Conn.JetStream` 保持 nil [driver.go:157-164]。 | 对未开 `-js` 的 broker 启用 → 启动错误。 |
-| `driver` | string | DefaultDriver | driver 注册表查找；未知名字以 `nats driver not found` 中断启动 [driver.go:140-143]。⚠ 重复 `RegisterDriver` 在 init 期 panic。 | 拼写错误 → 启动报错。 |
 
-grep 核对：本 starter Go 文件中 15 个去重 `value:` tag 恰为 `url`、`name`、`username`、
+grep 核对：本 starter Go 文件中 13 个去重 `value:` tag 恰为 `url`、`name`、`username`、
 `password`、`token`、`creds-file`、`nkey-file`、`tls`、`max-reconnects`、
 `reconnect-wait`、`connect-timeout`、`jetstream`、`jetstream.enabled`
-（即 `${enabled:=false}`）、`driver`——全部在表内；两边无多余项。
+（即 `${enabled:=false}`）——全部在表内；两边无多余项。
 
 ---
 
@@ -359,7 +358,6 @@ executor 的 resource 是 `nats:<name>` (colon format; falls back to `nats:<url>
 |------|---------|------|
 | 启动中断 `failed to connect nats` | broker 宕机 / `url` 错 / 认证被拒（首次拨号快速失败）[driver.go:122-126] | 启动 broker（`docker run ... nats:2.10 -js`），修 `url`/认证。 |
 | 启动中断 `failed to create jetstream context` | `jetstream.enabled=true` 但 broker 未开 `-js` [driver.go:158-164] | 服务端加 `-js` 或关掉该 key。 |
-| 启动中断 `nats driver not found` | `driver` 拼写错误 / 自定义 driver 未在 init 前注册 [driver.go:140-143] | 修名字或在更早的 init 注册。 |
 | `Conn.JetStream` 为 nil | 未设 `jetstream.enabled` | 设置它；JS 在启动期从同一连接派生。 |
 | 消费者能收消息但消费侧无 trace/metric | 用了裸 `Conn.Subscribe` 而非 driver（已记录缺口 [command.go:28-32]） | 走 messaging.Driver，或手写 StartConsumeSpan。 |
 | guarded 调用突然报哨兵错误 | 限流耗尽或熔断打开——设计行为 [command.go:177-186] | 检查 govern.yaml 策略；熔断冷却后自愈。 |

@@ -34,15 +34,28 @@ import (
 )
 
 func init() {
-	StarterNeo4j.RegisterDriver("AnotherNeo4jDriver", &AnotherNeo4jDriver{})
+	// Override the bundled default assembly with our own Driver BEAN. It is one
+	// bean, so no gs.Module / conf.Bind is needed. Every client under
+	// ${spring.neo4j} is built through it; the starter falls back to its
+	// DefaultDriver only when no Driver bean is present.
+	gs.Provide(func() StarterNeo4j.Driver {
+		return AnotherNeo4jDriver{}
+	}).Caller(1)
 }
 
-// AnotherNeo4jDriver is a custom implementation of the Driver interface.
-type AnotherNeo4jDriver struct{}
+// AnotherNeo4jDriver is a custom implementation of the Driver interface. It
+// is provided as a Driver BEAN (see init). Because a Driver bean is
+// process-wide, this override delegates to the bundled default assembly
+// ([StarterNeo4j.DefaultDriver]) so per-instance behavior (static URI or
+// service discovery) is preserved — it exists to prove the override is
+// injected, not to change assembly.
+type AnotherNeo4jDriver struct {
+	StarterNeo4j.DefaultDriver
+}
 
-func (AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config) (neo4j.DriverWithContext, error) {
+func (d AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config) (neo4j.DriverWithContext, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherNeo4jDriver::CreateClient")
-	return neo4j.NewDriverWithContext(c.URI, neo4j.BasicAuth(c.Username, c.Password, c.Realm))
+	return d.DefaultDriver.CreateClient(ctx, c)
 }
 
 type Service struct {
@@ -59,8 +72,8 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
-	// You can change the `driver` property in the configuration file
-	// and check the used Neo4j driver via logs.
+	// Every client is built through the Driver bean registered in init
+	// (AnotherNeo4jDriver); check its CreateClient log at startup.
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.

@@ -121,7 +121,6 @@ spring.ants.cpu.expiry-duration=10s
 # spring.ants.cpu.max-blocking-tasks=0
 # spring.ants.cpu.pre-alloc=false
 # spring.ants.cpu.disable-purge=false
-# spring.ants.cpu.driver=DefaultDriver
 ```
 
 **Verify** (isomorphic to `example/check.sh`):
@@ -142,14 +141,14 @@ the third submit to a full nonblocking pool returns an error, and the panic hand
 
 ```
 import starter-ants
-  ├─ init(): RegisterDriver("DefaultDriver", DefaultDriver{})     (config.go)
   └─ init(): gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())
         │   self-registers via RegisterObserver inside newMetricsObserver
 gs.Run()
   ├─ gs.Module(gs.OnProperty("spring.ants")) fires (prefix check: any spring.ants.* key)
   ├─ conf.BindEach("${spring.ants}") → one Config per map key
   ├─ per name: gs.Provide(ctor).Name(name).Destroy(destroyPool)
-  ├─ bean init: createPool resolves Driver → DefaultDriver.CreatePool
+  │     ctor autowires the optional Driver bean ("?") — none → bundled DefaultDriver
+  ├─ bean init: createPool → (Driver bean | DefaultDriver).CreatePool
   │     (ants.NewPool with WithPanicHandler(poolPanicHandler))
   │     wraps in observedPool so every Submit flows the observer chain
   ├─ readiness: pools usable from Init/Run hooks
@@ -195,7 +194,7 @@ tracing context injection, duration logging, per-pool rate limiting.
   in one report stream. ants hands over only the panic value, so ReportPanic is called from
   the deferred recover in the worker — the panicking frames are still on the stack.
 - The hook is read at pool creation; `SetPanicHandler` after startup affects only pools
-  created later. Per-pool handlers require a custom `Driver`.
+  created later. Per-pool handlers require a custom `Driver` bean override.
 
 ### 2.5 Shutdown
 
@@ -218,9 +217,8 @@ absolute refs; the Config is bound via `conf.BindEach` with the instance prefix)
 | `max-blocking-tasks` | int | 0 | Cap on submitters blocked waiting for a free worker; 0 = unlimited. ⚠ ignored when `nonblocking=true`. | 0 + tiny pool + blocking mode → unbounded submitter pileup. |
 | `nonblocking` | bool | false | Submit returns `ErrPoolOverload` immediately instead of blocking when full. ⚠ overrides `max-blocking-tasks`. | True without checking Submit's error → silently dropped tasks. |
 | `disable-purge` | bool | false | Keeps workers forever; no purge goroutine. ⚠ makes `expiry-duration` dead. | Busy pools fine; bursty pools retain peak goroutine count. |
-| `driver` | string | DefaultDriver | Selects a `Driver` from the registry (`RegisterDriver`). ⚠ only `DefaultDriver` ships — any other value fails pool creation, i.e. bean init, i.e. boot. | Typo → fail-fast at boot with "ants driver not found". |
 
-Reconciled against `grep -rhoE 'value:"[^"]+"'` — exactly these 7 keys, no more.
+Reconciled against `grep -rhoE 'value:"[^"]+"'` — exactly these 6 keys, no more.
 
 ---
 
@@ -266,8 +264,7 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | No pool beans; autowire `Pool` fails | No `spring.ants.*` keys | Add at least `spring.ants.<name>.size` — the subtree is the activation switch. |
-| Boot fails "ants driver not found" | `driver` typo or unregistered custom driver | Fix the name or `RegisterDriver` before startup. |
-| Boot fails: driver already registered | Two `RegisterDriver` calls with the same name | Registration panics on duplicates — rename. |
+| Custom pool Driver bean never used | A second `Driver` bean, or the override registered after wiring | Provide at most one `Driver` bean; its ctor is autowired at wiring time. |
 | Tasks silently dropped | `nonblocking=true` + unchecked Submit error | Check Submit's error (it returns `ErrPoolOverload`). |
 | Submitters hang | Blocking pool at capacity, `max-blocking-tasks=0` | Raise `size`, set `max-blocking-tasks`, or go nonblocking. |
 | Panic handler never fires | `SetPanicHandler` called after pools were created | The hook is read at pool creation — register in `init()`. |
@@ -281,7 +278,7 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 7 |
+| Config keys | 6 |
 | Required | 0 |
 | Quickstart external deps | 0 |
 | "Watch out" entries | 6 |
@@ -290,8 +287,9 @@ Design suspects (kept from the previous edition; for the audit ledger):
 
 1. `Snapshot()` returning half-empty stats that the caller must `Enrich` with pools it has
    to collect by hand — the observer knows pool names but not Pool handles; asymmetric API.
-2. `driver` key ships only DefaultDriver — speculative extension point (same pattern as
-   starter-s3).
+2. Driver is a single optional bean (at most one per process) — every pool shares the one
+   assembly; per-pool driver selection by name is no longer possible (per-Config differences
+   must flow through the Config the driver receives).
 3. Panic handler is a package-level global mutated by `SetPanicHandler` — ordering-sensitive.
 4. (New) `wrapTask` snapshots `Observers()` under RLock on every Submit — a lock on the
    hot path purely to support late observer registration.

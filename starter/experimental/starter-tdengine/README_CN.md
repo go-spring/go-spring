@@ -68,11 +68,15 @@ spring.tdengine.hot.dsn=root:taosdata@ws(10.0.0.1:6041)/power
 spring.tdengine.cold.dsn=root:taosdata@ws(10.0.0.2:6041)/archive
 ```
 
-**自定义 driver** — 注册自己的 `Driver` 并用 `driver=<name>` 选中，替换
-客户端装配（例如锁定其它线路协议或连接调优）：
+**自定义 driver** — 提供自己的 `Driver` bean 来替换客户端装配（例如锁定其它
+线路协议或连接调优）。`Driver` 是可选容器 bean：`${spring.tdengine}` 下每个
+客户端都经它装配，未提供时 starter 回退到内置 `DefaultDriver`。在包 init 里
+注册（构造函数返回 `StarterTdengine.Driver`）：
 
 ```go
 func init() {
-    StarterTdengine.RegisterDriver("rest", restDriver{})
+    gs.Provide(func() StarterTdengine.Driver {
+        return restDriver{}
+    })
 }
 ```

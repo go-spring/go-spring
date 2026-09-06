@@ -175,12 +175,13 @@ import starter-neo4j
 gs.Run()
   ├─ 构造 newClient [starter.go:77]：记录实例创建日志
   │   ├─ 若设置 service-name 且 mesh 关闭：resolveURI → 选一个端点，
-  │   │  地址拼进 URI host [starter.go:81-89, driver.go:128-145]
-  │   ├─ driverRegistry 查找（未命中报 "neo4j driver not found"）[starter.go:91-98]
-  │   ├─ driver.CreateClient（auth + 连接池参数 + TLS）[driver.go:61-82]
+  │   │  地址拼进 URI host [starter.go:80-87, driver.go:128-145]
+  │   ├─ 可选 Driver bean——没有则回退内置 DefaultDriver（d == nil
+  │   │  回退 [starter.go:89-92]）
+  │   ├─ d.CreateClient（auth + 连接池参数 + TLS）[starter.go:93, driver.go:61-82]
   │   └─ fail-fast VerifyConnectivity，受 socket-connect-timeout 或 5s 约束；
-  │      失败时关闭 client 与 resolver，启动中止
-  │      [starter.go:109-119, 132-137]
+  │      失败时关闭 client，启动中止
+  │      [starter.go:103-106]
   ├─ Init [client.go:68-69]：resource = resilience.ResourceLabel("neo4j",
   │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor(resource))
   │   → resilience.WrapExecutor(exec, "neo4j")——治理关闭时
@@ -190,7 +191,13 @@ gs.Run()
       driver.Close(context.Background())
 ```
 
-`driver` 配错、服务器不可达、TLS 材料坏——启动即失败，进程不会带着一个死 Neo4j 进入
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:48-49`）负责。公司/伞包 starter 可把
+自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterNeo4j.Driver{...})`，
+因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.neo4j` 下每个实例都经它构建。
+没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:53`，`starter.go:89-92`）。
+没有 per-config 的 `driver` key。
+
+服务器不可达、TLS 材料坏——启动即失败，进程不会带着一个死 Neo4j 进入
 "服务中"状态。
 
 销毁方法刻意叫 `Destroy` 而不是 `Close`：内嵌的 `neo4j.DriverWithContext` 已暴露
@@ -268,7 +275,6 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 | `service-name` | string | — | 经发现后端解析地址，启动时一次（§2.4）。⚠ 需有经 `discovery.RegisterDiscovery` 注册的匹配后端。 | 后端未注册 → 启动报错 "neo4j: resolve service …"。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme 的端点；仅 `service-name` 生效时被读取。 | — |
 | `discovery` | string | `default` | 用哪个已注册后端解析 `service-name`。 | 名字错 → 发现层启动报错。 |
-| `driver` | string | `DefaultDriver` | 选择已注册的 `Driver`（注册表在 driver.go:37）。 | 未知名 → 启动报错 "neo4j driver not found"；`RegisterDriver` 重名 panic。 |
 
 ### 3.2 认证与连接池
 
@@ -361,7 +367,6 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 | 症状 | 可能原因 | 处置 |
 |---------|--------------|-----|
 | 启动报 "failed to verify neo4j connectivity" | 服务器不可达 / 凭证错误 / TLS 不匹配 | fail-fast 探测无条件执行 [starter.go:109-119]；修连通性或认证。 |
-| 启动报 "neo4j driver not found: X" | `driver` 名未注册 | 在 init 里 `StarterNeo4j.RegisterDriver`，或用 `DefaultDriver`。 |
 | 启动报 "neo4j: resolve service X" | 设了 `service-name` 但 `discovery` 名下无后端 | 注册后端（example/discovery.go）或去掉 service-name。 |
 | 查询正常但无 span/指标/访问日志 | 代码直调 `neo4j.ExecuteQuery`，绕过接缝 | 换 `StarterNeo4j.Query` / 套 `StartSpan`（§2.2）；真实导出需 import starter-otel。 |
 | 治理已开却没有保护 | session 代码未走 `Query`/`RunWithResilience`，或传了裸 driver（断言落空） | 走辅助函数；恒传 `*Client` wrapper [command.go:111-116]。 |
@@ -372,7 +377,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 14 实例 key + tls 组（4） |
+| 配置 key 总数 | 13 实例 key + tls 组（4） |
 | 其中必填 | 1（`uri`） |
 | quickstart 前置外部依赖 | 1（Neo4j） |
 | "注意/坑" 条数 | 6 |

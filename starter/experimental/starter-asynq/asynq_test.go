@@ -49,7 +49,7 @@ func TestConfigDefaults(t *testing.T) {
 	assert.That(t, c.Concurrency).Equal(0) // zero value; asynq default is 10 at runtime
 }
 
-// fakeDriver is a Driver stub recording that it was selected.
+// fakeDriver is a Driver stub recording that it was used.
 type fakeDriver struct{ called bool }
 
 func (f *fakeDriver) RedisConnOpt(ctx context.Context, c Config) (asynq.RedisConnOpt, error) {
@@ -57,35 +57,21 @@ func (f *fakeDriver) RedisConnOpt(ctx context.Context, c Config) (asynq.RedisCon
 	return asynq.RedisClientOpt{Addr: "fake:" + c.Addr}, nil
 }
 
-// TestNewClientDriverLookup pins the driver registry wiring: the configured
-// driver key selects the registered driver (default DefaultDriver when unset
-// or empty), and an unregistered name is a clear startup error instead of a
-// silent fallback.
-func TestNewClientDriverLookup(t *testing.T) {
-	fd := &fakeDriver{}
-	RegisterDriver("test-fake-driver", fd)
-	t.Cleanup(func() { delete(driverRegistry, "test-fake-driver") })
-
+// TestNewClientDriverFallback pins the optional-Driver-bean semantics: a nil
+// Driver (no bean provided) falls back to the bundled DefaultDriver, while a
+// provided Driver (a bean override) is used directly.
+func TestNewClientDriverFallback(t *testing.T) {
 	cp := &gs.ContextProvider{Context: context.Background()}
 
-	// Default: unset and empty both resolve to DefaultDriver.
-	c, err := newClient(cp, Config{Addr: "127.0.0.1:6379"})
+	// No Driver bean → the bundled DefaultDriver assembles the client.
+	c, err := newClient(cp, Config{Addr: "127.0.0.1:6379"}, nil)
 	assert.Error(t, err).Nil()
 	_ = c.Close()
-	assert.That(t, fd.called).False()
 
-	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379", Driver: ""})
-	assert.Error(t, err).Nil()
-	_ = c.Close()
-	assert.That(t, fd.called).False()
-
-	// Configured name -> the registered custom driver is actually used.
-	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379", Driver: "test-fake-driver"})
+	// A provided Driver bean override is used as-is.
+	fd := &fakeDriver{}
+	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379"}, fd)
 	assert.Error(t, err).Nil()
 	_ = c.Close()
 	assert.That(t, fd.called).True()
-
-	// Unknown name -> clear error, no fallback.
-	_, err = newClient(cp, Config{Addr: "127.0.0.1:6379", Driver: "no-such-driver"})
-	assert.That(t, err != nil).True()
 }

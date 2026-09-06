@@ -25,7 +25,7 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -175,7 +175,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config) error {
 
 // LoadTest installs the inbound load-test traffic identification middleware.
 // When the incoming request carries the configured marker header (default
-// X-LoadTest) it tags the request context via traffic.WithLoadTest, so the
+// X-LoadTest) it tags the request context via canonical.WithLoadTest, so the
 // handler chain and every outbound client the handlers drive can recognise
 // synthetic load through traffic.IsLoadTest(c.Request.Context()). It is the
 // inbound companion to cloud/governance/traffic's outbound injection: together they let a
@@ -186,11 +186,11 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config) error {
 // downstream layer; without the header the middleware is a no-op.
 func LoadTest(header string) gin.HandlerFunc {
 	if header == "" {
-		header = traffic.HeaderLoadTest
+		header = canonical.HeaderLoadTest
 	}
 	return func(c *gin.Context) {
-		if traffic.IsAffirmative(c.GetHeader(header)) {
-			ctx := traffic.WithLoadTest(c.Request.Context(), "http-header")
+		if canonical.IsAffirmative(c.GetHeader(header)) {
+			ctx := canonical.WithLoadTest(c.Request.Context(), "http-header")
 			c.Request = c.Request.WithContext(ctx)
 		}
 	}

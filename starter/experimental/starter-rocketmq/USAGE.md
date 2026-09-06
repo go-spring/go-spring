@@ -176,12 +176,12 @@ import starter-rocketmq
 gs.Run()
   ├─ ctor newClient [starter.go:57]:
   │    1. pair-check access-key/secret-key (one-sided → boot error)           [starter.go:60-62]
-  │    2. driver lookup in the registry (unknown → boot error)                [starter.go:64-68]
-  │    3. Driver.CreateClient: installs the rlog→go-spring log bridge
-  │       (process-global, exactly once via sync.Once)                        [driver.go:94-96]
-  │    4. FailFast probe: TCP dial, first reachable addr wins, 3s budget
+  │    2. Driver.CreateClient — the optional Driver bean, or the bundled
+  │       DefaultDriver when none is provided: installs the rlog→go-spring log
+  │       bridge (process-global, exactly once via sync.Once)                 [driver.go:94-96]
+  │    3. FailFast probe: TCP dial, first reachable addr wins, 3s budget
   │       per address; failure → boot error                                    [driver.go:146-160]
-  │    5. applyResilience: fault.WrapExecutor(resilience.ExecutorFor(resource))
+  │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor(resource))
   │       → resilience.WrapExecutor → attached to the Client                [command.go:180-186]
   ├─ app injects *Client wherever `autowire:"<name>"` appears
   ├─ app creates producers/consumers/driver at its own pace (each registered
@@ -274,7 +274,7 @@ context — exactly what [example/example.go] asserts and what TestFromMessageEx
 ## 3. Per-key behavior reference
 
 All keys live under `spring.rocketmq.<name>.` (per-instance prefix binding via `conf.BindEach`,
-not the absolute-property Pool rule). Nine value tags in the starter — reconciled with the
+not the absolute-property Pool rule). Seven value tags in the starter — reconciled with the
 grep, no extras on either side.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -286,7 +286,6 @@ grep, no extras on either side.
 | `send-timeout` | duration | `3s` | Stamped onto every producer (`WithSendMsgTimeout`) [client.go:73]. | Too low → sync sends time out under load. |
 | `retry` | int | `2` | Producer-internal retries before a sync send fails (`WithRetry`); 2 = up to 3 attempts [client.go:74, config.go:55]. ⚠ Keep governance-side retry in mind — both loops can fire. | Large value + slow broker → latency amplification. |
 | `fail-fast` | bool | `true` | TCP dial against the name server list at bean creation; first reachable address satisfies it, 3s per dial [driver.go:146-160]. | Disabling → wrong addresses surface only on first use. |
-| `driver` | string | `DefaultDriver` | Selects a registered Driver; unknown name → boot error; duplicate registration panics [starter.go:64-68; driver.go:53-58]. | Typo → boot error. |
 
 ---
 
@@ -358,7 +357,6 @@ curl -s :9090/metrics | grep resilience_calls
 |---------|--------------|-----|
 | Boot fails "name server probe failed" | Wrong/unreachable `name-servers` | Fix the list; the probe dials each address with a 3s budget [driver.go:149]. |
 | Boot fails "access-key and secret-key must be set together" | One-sided ACL key [starter.go:60] | Set both or neither. |
-| Boot fails "driver not found" | `driver` names nothing registered | Register via `RegisterDriver` in an init, or use DefaultDriver [driver.go:53]. |
 | Subscribe fails right after topic creation | Route not yet visible on the name server (heartbeat lag, up to 60s) | Gate on `mqadmin topicList -n namesrv:9876` before starting the app (see check.sh); example-otel retries Subscribe 20×500ms for the same reason. |
 | Consumer silently receives nothing | Topic missing at Subscribe time, or wrong consumer group | Create the topic up front; remember the group is the competing-consumers unit. |
 | No resilience effect on driver publishes | Publish bypasses the executor by design | Use `GuardedSend` for protected sends (§2.2). |
@@ -371,7 +369,7 @@ curl -s :9090/metrics | grep resilience_calls
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 9 (all in Config) |
+| Config keys | 7 (all in Config) |
 | Required | 1 (`name-servers`) |
 | Quickstart external deps | 2 (namesrv + broker, one compose) |
 | "Watch out" entries | 6 |

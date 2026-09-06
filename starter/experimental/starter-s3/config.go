@@ -49,7 +49,4 @@ type Config struct {
 	// (endpoint/bucket) or "dns". Some S3-compatible clouds only support the
 	// path style.
 	BucketLookup string `value:"${bucket-lookup:=auto}"`
-
-	// Driver specifies which S3 driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }

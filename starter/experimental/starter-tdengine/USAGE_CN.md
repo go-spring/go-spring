@@ -152,11 +152,11 @@ import starter-tdengine
                   health.Indicator（恒注册；无关闭 key）
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:60]：
-  │     driver 查找（未知名报 "tdengine driver not found"）[starter.go:63-67]
-  │     → DefaultDriver.CreateClient [driver.go:69]：ParseDSN → taosws.NewConnector →
+  ├─ 构造 newClient [starter.go:61]：可选 Driver bean——没有则回退内置
+  │     DefaultDriver（d == nil [starter.go:65-67]）
+  │     → d.CreateClient [starter.go:68]：ParseDSN → taosws.NewConnector →
   │       guardedConnector → sql.OpenDB → 应用连接池参数
-  │     → fail-fast PingContext，10s 上限 [starter.go:72-77]；失败则关闭半成品
+  │     → fail-fast PingContext，10s 上限 [starter.go:74-77]；失败则关闭半成品
   │       client，启动失败
   ├─ Init [client.go:58]：resourceLabel（"tdengine:<dsn addr>"）→
   │     fault.WrapExecutor(resilience.ExecutorFor(resource)) →
@@ -169,6 +169,12 @@ gs.Run()
 DSN 写错、凭据不对或 server 低于驱动下限都会导致启动失败——进程不会带着死的
 TDengine 进入 "serving"（版本下限：driver-go v3.8.2 在 WebSocket 路径要求
 server ≥ 3.3.6.0 [DESIGN.md §3]）。
+
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:45-46`）负责。公司/伞包 starter 可把
+自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterTdengine.Driver{...})`，
+因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.tdengine` 下每个实例都经它构建。
+没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:50`，`starter.go:65-67`）。
+没有 per-config 的 `driver` key。
 
 ### 2.2 语句 seam —— 精确顺序与理由
 
@@ -231,8 +237,8 @@ Init 装配 slot 之前，语句原样透传（exec、obs 均为 nil——零配
 | `max-open-conns` | int | 8 | 内嵌池的 `db.SetMaxOpenConns` [driver.go:81]。 | 过小 → 语句排队等连接。 |
 | `max-idle-conns` | int | 2 | `db.SetMaxIdleConns`。⚠ 应 ≤ max-open-conns（database/sql 会静默封顶，但超出即是配置坏味道）。 | 大于 open conns → 被钳制，idle 抖动。 |
 | `conn-max-lifetime` | duration | 0s | `db.SetConnMaxLifetime`；0 = 永不退役。⚠ 与 redis（默认 2m）不同，这里没有 discovery 需要跟随，0 是安全的。 | — |
-| `driver` | string | `DefaultDriver` | 从注册表选择 Driver [driver.go:52]。 | 未知名 → 启动报 "tdengine driver not found: <name>"。`RegisterDriver` 重名 → panic。 |
 
+没有 `driver` key：client 装配由可选 `Driver` bean（见 §2.1）或内置 `DefaultDriver` 负责。
 没有观测类 key——插桩恒开启（§4.2）。
 
 ---
@@ -297,7 +303,6 @@ server 版本全部正常。
 |------|----------|------|
 | 启动失败 "failed to reach tdengine at ..." | 地址不可达 / 凭据错 / taosAdapter 未就绪 | 修 DSN；等 6041 端口（镜像要起多个服务——check.sh 等 90s + 5s）。 |
 | 启动失败，driver 版本报错 | WebSocket 路径 server < 3.3.6.0（driver-go v3.8.2 下限） | 升级 server 镜像。 |
-| 启动失败 "tdengine driver not found: X" | `driver` key 指向未注册的名字 | 在 init 里 `StarterTdengine.RegisterDriver`，或删掉该 key（DefaultDriver）。 |
 | BindEach 在 `dsn` 上启动失败 | `spring.tdengine.<name>.dsn` 缺失或为空 | expr tag 强制非空——补上。 |
 | SQL 正常但健康检查 DOWN | 池被占满（max-open-conns 过低），探针拉不到新连接 | 调大 max-open-conns；看 /readiness 里 component 的错误详情。 |
 | 无 span/指标 | 未引入 starter-otel | 观察者挂在 OTel 全局 provider 上；import starter-otel。 |
@@ -310,7 +315,7 @@ server 版本全部正常。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 6 个实例 key |
+| 配置 key 总数 | 4 个实例 key |
 | 其中必填 | 1（`dsn`） |
 | quickstart 前置外部依赖 | 1（TDengine 及其自带 taosAdapter） |
 | "注意/坑" 条数 | 4 |

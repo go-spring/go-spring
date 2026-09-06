@@ -63,9 +63,6 @@ type Config struct {
 	// center itself is off the executor is a transparent no-op, so this switch
 	// only removes the guard entirely (bare calls) when set to false.
 	Governance bool `value:"${governance:=true}"`
-
-	// Driver specifies which MQTT driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
 // WillConfig configures the Last Will and Testament message. The will is

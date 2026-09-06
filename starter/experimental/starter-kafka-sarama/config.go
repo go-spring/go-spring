@@ -46,9 +46,6 @@ type Config struct {
 
 	// Producer tunes producer-side compression and acks.
 	Producer ProducerConfig `value:"${producer}"`
-
-	// Driver specifies which Kafka driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
 // SASLConfig configures SASL authentication. It is shared, by property name,

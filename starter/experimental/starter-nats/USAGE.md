@@ -182,8 +182,9 @@ gs.Run()
   ├─ config bind: each spring.nats.<name> → Config (value tags; url expr-validated ≠ "")
   ├─ per name: Provide(newConn, IndexArg(1,ValueArg(name)), IndexArg(2,ValueArg(c)))
   │             .Name(name).Destroy(destroyConn).Caller(1)  [starter.go:36-40]
-  ├─ newConn: driver lookup → CreateClient (nats.Connect — FAIL-FAST probe; a broker
-  │           that is down aborts boot) [driver.go:122,137]
+  ├─ newConn: Driver bean (falls back to bundled DefaultDriver when none is
+  │           present) → CreateClient (nats.Connect — FAIL-FAST probe; a broker
+  │           that is down aborts boot)
   ├─ attach instrumentation: pubObs/subObs (module-local observe.go)
   │           [driver.go:155-156]
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
@@ -292,12 +293,11 @@ struct — its sub-keys belong to tlsconf, not this starter.
 | `connect-timeout` | duration | 5s | Bounds the **initial dial only** [driver.go:51]. | Too low → spurious boot failures on slow networks. |
 | `jetstream` | group | — | Container for `enabled`. | — |
 | `jetstream.enabled` | bool | false | Derives `jetstream.New(nc)` on the SAME connection; failure closes nc and fails boot; otherwise `Conn.JetStream` stays nil [driver.go:157-164]. | Enabled against a broker without `-js` → boot error. |
-| `driver` | string | DefaultDriver | Driver registry lookup; unknown name fails boot with `nats driver not found` [driver.go:140-143]. ⚠ duplicate `RegisterDriver` panics at init. | Typo → boot error. |
 
-Grep reconciliation: the 15 distinct `value:` tags in this starter's Go files are exactly
+Grep reconciliation: the 13 distinct `value:` tags in this starter's Go files are exactly
 `url`, `name`, `username`, `password`, `token`, `creds-file`, `nkey-file`, `tls`,
 `max-reconnects`, `reconnect-wait`, `connect-timeout`, `jetstream`, `jetstream.enabled`
-(as `${enabled:=false}`), `driver` — all tabled above; no extras either way.
+(as `${enabled:=false}`) — all tabled above; no extras either way.
 
 ---
 
@@ -365,7 +365,6 @@ Publish an envelope with `Payload` + `Headers{"tenant":"acme"}`; in the consumer
 |---------|--------------|-----|
 | Boot aborts `failed to connect nats` | broker down / wrong `url` / auth rejected (fail-fast first dial) [driver.go:122-126] | Start broker (`docker run ... nats:2.10 -js`), fix `url`/auth. |
 | Boot aborts `failed to create jetstream context` | `jetstream.enabled=true` but broker started without `-js` [driver.go:158-164] | Start server with `-js` or disable the key. |
-| Boot aborts `nats driver not found` | `driver` typo / custom driver not registered before init [driver.go:140-143] | Fix name or register in an earlier init. |
 | `Conn.JetStream` is nil | `jetstream.enabled` unset | Set it; JS is derived lazily-but-at-boot from the same conn. |
 | Consumer gets messages but no traces/metrics on consumes | using raw `Conn.Subscribe` instead of the driver (documented gap [command.go:28-32]) | Consume via messaging.Driver, or hand-roll StartConsumeSpan. |
 | Guarded calls suddenly fail with sentinel errors | rate limit exhausted or breaker open — by design [command.go:177-186] | Check govern.yaml policy; breaker recovers after cool-down. |

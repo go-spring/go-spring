@@ -87,7 +87,4 @@ type Config struct {
 	// discovered "host:port" endpoint, since discovery yields addresses without a
 	// scheme. It is only used when ServiceName is set; default is "http".
 	DiscoveryScheme string `value:"${discovery-scheme:=http}"`
-
-	// Driver specifies which Elasticsearch driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }

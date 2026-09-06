@@ -53,12 +53,6 @@ type Config struct {
 	// least_conn, consistent_hash, weighted, or zone_aware.
 	Balancer string `value:"${balancer:=round_robin}"`
 
-	// Driver names the registered transport-assembly driver for this entry
-	// (see RegisterDriver): "default" — the standard cloud/httpx assembly — or
-	// a custom driver that adds to / replaces it (auth headers, custom dialer,
-	// metrics). The customization seam for config-assembled clients.
-	Driver string `value:"${driver:=default}"`
-
 	// SuspendThreshold is the consecutive-failure count that suspends a failing
 	// endpoint from the pool (outlier suspension). 0 disables suspension.
 	SuspendThreshold int `value:"${suspend-threshold:=0}"`

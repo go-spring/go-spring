@@ -34,35 +34,45 @@ func init() {
 	// long-running worker is an opt-in, per the starter conventions).
 	gs.Module(gs.OnProperty("spring.asynq"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.asynq}", func(name string, c Config) error {
+			// The optional Driver bean ("?") is autowired at index 2 (after ctx
+			// at 0 and Config at 1); when none is provided the ctor falls back
+			// to the bundled DefaultDriver. Client and Server share the one
+			// Driver bean, so both roles dial through the same assembly.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
+				gs.IndexArg(2, gs.TagArg("?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			if c.Server.Enabled {
 				r.Provide(newServer,
 					gs.IndexArg(1, gs.ValueArg(c)),
+					gs.IndexArg(2, gs.TagArg("?")),
 				).Name(name + ":server").Init((*Server).Init).Destroy((*Server).Destroy).
 					Export(gs.As[gs.Server]()).Caller(1)
 			}
 
 			// Health indicator probes Redis via a fresh inspector round trip.
-			connOpt, err := newRedisConnOpt(context.Background(), c)
-			if err != nil {
-				return err
-			}
-			r.Provide(func() *health.Indicator {
-				return health2.NewClientHealth(name, connOpt)
-			}).Name("asynq:" + name).Caller(1)
+			r.Provide(func(d Driver) (*health.Indicator, error) {
+				// No company Driver bean → fall back to the bundled default.
+				if d == nil {
+					d = DefaultDriver{}
+				}
+				connOpt, err := d.RedisConnOpt(context.Background(), c)
+				if err != nil {
+					return nil, err
+				}
+				return health2.NewClientHealth(name, connOpt), nil
+			}, gs.IndexArg(0, gs.TagArg("?"))).Name("asynq:" + name).Caller(1)
 			return nil
 		})
 	})
 }
 
-// newClient builds the producer Client bean.
-func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
-	d, err := lookupDriver(c.Driver)
-	if err != nil {
-		return nil, err
+// newClient builds the producer Client bean through the supplied Driver.
+func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	connOpt, err := d.RedisConnOpt(ctx.Context, c)
 	if err != nil {
@@ -72,9 +82,14 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	return &Client{Client: cl, cfg: c}, nil
 }
 
-// newServer builds the worker Server bean.
-func newServer(ctx *gs.ContextProvider, c Config) (*Server, error) {
-	return &Server{cfg: c}, nil
+// newServer builds the worker Server bean, holding the resolved Driver so
+// Server.Init can build the RedisConnOpt when it constructs the asynq server.
+func newServer(ctx *gs.ContextProvider, c Config, d Driver) (*Server, error) {
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
+	}
+	return &Server{cfg: c, driver: d}, nil
 }
 
 var _ = context.Background

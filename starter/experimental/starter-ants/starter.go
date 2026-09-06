@@ -26,7 +26,6 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
 
@@ -42,9 +41,9 @@ func init() {
 			// createPool returns Pool (interface), but gs.Provide registers
 			// the concrete type. Export(gs.As[Pool]()) makes it available
 			// for autowire by the Pool interface.
-			r.Provide(func(ctx *gs.ContextProvider) (Pool, error) {
-				return createPool(ctx.Context, name, c)
-			}).Name(name).Destroy(destroyPool)
+			r.Provide(func(ctx *gs.ContextProvider, d Driver) (Pool, error) {
+				return createPool(ctx.Context, name, c, d)
+			}, gs.IndexArg(1, gs.TagArg("?"))).Name(name).Destroy(destroyPool)
 			return nil
 		})
 	})
@@ -55,15 +54,15 @@ func init() {
 	gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())
 }
 
-// createPool resolves the configured Driver and wraps the resulting pool
-// with all registered observers for the given name.
-func createPool(ctx context.Context, name string, c Config) (Pool, error) {
-	log.Debugf(ctx, log.TagAppDef, "creating ants pool %q, size=%d driver=%s", name, c.Size, c.Driver)
+// createPool builds the pool through the supplied Driver, falling back to the
+// bundled DefaultDriver when no Driver bean is present, and wraps the
+// resulting pool with all registered observers for the given name.
+func createPool(ctx context.Context, name string, c Config, d Driver) (Pool, error) {
+	log.Debugf(ctx, log.TagAppDef, "creating ants pool %q, size=%d", name, c.Size)
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx, log.TagAppDef, "ants driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "ants driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	pool, err := d.CreatePool(c)
 	if err != nil {

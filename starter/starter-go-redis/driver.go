@@ -29,9 +29,17 @@ import (
 )
 
 // Driver interface defines how to create a single/sentinel Redis client, whose
-// bean type is *redis.Client. A company (or the bundled DefaultDriver)
-// implements it once and registers via RegisterDriver; callers select one
-// through Config.Driver, which defaults to "DefaultDriver".
+// bean type is *redis.Client. It is an OPTIONAL CONTAINER BEAN: a company or
+// umbrella starter may provide its own Driver bean (its constructor returns
+// StarterGoRedis.Driver); when none is present, starter-go-redis falls back to
+// the bundled [DefaultDriver] inside client assembly. A custom driver is a bean,
+// so it may inject the configuration/beans it needs — e.g. company config bound
+// from a properties file at wiring time.
+//
+// At most one Driver bean is expected per process. Because single-Driver-bean
+// selection is process-wide, every ${spring.go-redis} instance is built through
+// it regardless of Mode; a service that also uses cluster mode must provide a
+// Driver that implements [ClusterDriver] too.
 //
 // The returned io.Closer is the teardown for anything the driver built beyond
 // the client itself — for DefaultDriver that is the discovery resolver's
@@ -43,29 +51,10 @@ type Driver interface {
 
 // ClusterDriver is an optional interface a Driver may also implement to support
 // cluster mode, whose bean type is *redis.ClusterClient. It is kept separate
-// from Driver so existing custom drivers that only build *redis.Client continue
-// to compile unchanged. The starter type-asserts to ClusterDriver only when
-// Mode=cluster.
+// from Driver so a Driver bean that only builds *redis.Client stays valid: the
+// starter type-asserts to ClusterDriver only for instances with Mode=cluster.
 type ClusterDriver interface {
 	CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, io.Closer, error)
-}
-
-// driverRegistry maps driver names to their implementations. The bundled
-// DefaultDriver is registered at init; custom drivers add themselves via
-// RegisterDriver (e.g. from an init in the application).
-var driverRegistry = map[string]Driver{}
-
-// RegisterDriver registers a Redis driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("redis driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
-}
-
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
 }
 
 // DefaultDriver is the default implementation of the Driver interface. It also

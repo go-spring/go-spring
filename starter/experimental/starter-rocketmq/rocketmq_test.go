@@ -24,7 +24,7 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -106,12 +106,12 @@ func TestFromMessageExt(t *testing.T) {
 	ext.StoreTimestamp = 1700000000000
 	ext.WithKeys([]string{"k1"})
 	ext.WithProperty("from", "example")
-	ext.WithProperty(traffic.MetaKeyLoadTest, "1")
+	ext.WithProperty(canonical.MetaKeyLoadTest, "1")
 
 	msg := fromMessageExt(ext)
 	assert.That(t, msg.Key).Equal("k1")
 	assert.That(t, string(msg.Payload)).Equal("value")
 	assert.That(t, msg.Headers["from"]).Equal("example")
-	assert.That(t, msg.Headers[traffic.MetaKeyLoadTest]).Equal("1")
+	assert.That(t, msg.Headers[canonical.MetaKeyLoadTest]).Equal("1")
 	assert.That(t, msg.Timestamp.UnixMilli()).Equal(int64(1700000000000))
 }

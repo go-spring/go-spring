@@ -112,7 +112,7 @@ Trace，位于 `${spring.observability.trace}`：
 | `endpoint` | （空） | Collector 地址；为空时回落 SDK 默认（localhost:4317/:4318）。 |
 | `insecure` | `true` | 对 otlp exporter 关闭 TLS。 |
 | `sampler-ratio` | `1.0` | ParentBased 比例采样（`>=1` 全采，`<=0` 不采）。 |
-| `propagator` | `w3c` | `w3c`（TraceContext + Baggage）\| `none`。 |
+| `propagator` | `w3c` | 逗号分隔的已注册 propagator 名字列表按序复合。内建：`tracecontext`、`baggage`；`w3c`=两者（默认）。`none` 不动全局。公司用 `RegisterPropagator` 注册自己的（如具名 header propagator）再在此命名：`w3c,<name>`。 |
 
 Metrics，位于 `${spring.observability.metrics}`：
 

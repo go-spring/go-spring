@@ -130,9 +130,6 @@ type Config struct {
 	// instrumentation is supplied via a Driver.
 	Otel OtelConfig `value:"${otel}"`
 
-	// Driver specifies which Redis driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
-
 	// HealthEnabled controls whether the starter contributes a health.Indicator
 	// bean for each instance. It mirrors starter-redigo's switch so operators
 	// can turn the readiness probe off uniformly, e.g. for an instance whose

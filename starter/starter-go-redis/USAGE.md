@@ -257,7 +257,6 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Passed through; dial-timeout also bounds the startup ping [starter.go:229]. | — |
 | `conn-max-lifetime` | duration | 2m | Conn reuse window; short values smooth discovery traffic switching. | Very large + discovery → stale-endpoint conns linger. |
 | `tls.*` | group | off | `tlsconf` client TLS (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify). | Partial config → `tls.Build` error at boot. |
-| `driver` | string | `DefaultDriver` | Selects a registered Driver. | Unknown name → boot error "redis driver not found". |
 | `health.enabled` | bool | true | Contributes the `redis:<name>` health.Indicator for the instance — the same switch starter-redigo exposes. | false → no indicator bean for the instance; readiness of that Redis is no longer reported. |
 
 ### 3.3 Instrumentation
@@ -335,7 +334,7 @@ without restart.
 | Boot fails "service-name is not supported in sentinel/cluster mode" | Discovery + self-discovering topology | Remove service-name; sentinel/cluster discover nodes themselves. |
 | Boot fails "db is not supported in cluster mode" | Redis Cluster has no database select | Drop `db` (cluster only has db 0). |
 | Startup WARN "addr ... is ignored" | Both `addr` and `service-name` set in single mode | Harmless; remove `addr` or keep it as a label — discovery owns addressing. |
-| Boot fails "redis driver not found" | `driver` names nothing registered | Register via `StarterGoRedis.RegisterDriver` in an init, or use DefaultDriver. |
+| Boot fails "... does not support cluster mode" | A provided Driver bean isn't cluster-capable but a `mode=cluster` instance exists | Have the Driver implement `ClusterDriver` (the bundled `DefaultDriver` does); the one process-wide Driver must cover every topology in use. |
 | Health DOWN though commands work | Indicator pings with ctx; check ACL/readonly replica | Inspect the component error body in /readiness. |
 | Injected bean has no spans/metrics | starter-otel not imported | redisotel rides the OTel globals; import starter-otel. |
 | No access log lines | logger config filters `_app_redis_access` or the Debug level (keyed successes log at Debug) | Check logger config for `_app_redis_access`. |

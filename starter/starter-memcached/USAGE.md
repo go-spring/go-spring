@@ -125,19 +125,26 @@ and a discovery-client round-trip, exiting non-zero on any failure.
 
 ```
 import starter-memcached
-  ├─ init: RegisterDriver("DefaultDriver", ...)                     driver.go:35
   └─ init: gs.Module(OnProperty("spring.memcached"), BindEach)       starter.go:42-43
         per spring.memcached.<name> entry:
-          r.Provide(newClient, IndexArg(name,c))                     starter.go:46-50
+          r.Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver))  starter.go:47-51
               .Name(name).Init((*Client).Init).Destroy((*Client).Destroy)
-          r.Provide(health indicator "memcache:"+name)               starter.go:53
+          r.Provide(health indicator "memcache:"+name)               starter.go:54
 gs.Run()
-  ├─ config bind: ${spring.memcached.<name>} → Config (value tags)   config.go:24-61
-  ├─ newClient: validate, CreateClient, STARTUP PING (fail-fast)    starter.go:79-101
-  ├─ Client.Init: observer + resilience/fault executor               client.go:71-76
+  ├─ config bind: ${spring.memcached.<name>} → Config (value tags)   config.go:24-58
+  ├─ ctor newClient [starter.go:80]: validate → optional Driver bean
+  │     (none → bundled DefaultDriver) → d.CreateClient → STARTUP PING
+  ├─ Client.Init: observer + resilience/fault executor               client.go:66-72
   ├─ readiness: health indicator folds Ping into /readiness          health/health.go:33-36
-  └─ shutdown: Client.Destroy — release executor, stop discovery watch  client.go:83-90
+  └─ shutdown: Client.Destroy — release executor, stop discovery watch  client.go:78-83
 ```
+
+**Assembly extension point**: client assembly is owned by a `Driver` (interface,
+`driver.go:31-41`). A company/umbrella starter may provide its own `Driver` as an **optional
+container bean** (a `gs.Provide(func() StarterMemcached.Driver{...})`, so it can inject config
+bound from the properties file at wiring time); every instance under `spring.memcached` is then
+built through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
+(`driver.go:45-60`) inside assembly (`starter.go:86-88`). There is no per-config `driver` key.
 
 Startup ping timing: it runs **inside the constructor**, before the bean exists — a dead server
 aborts container assembly with `memcached: startup ping failed` (`starter.go:98-100`); it is not
@@ -193,8 +200,8 @@ so it is not silently "forever" (`bytecache/bytecache.go:42-50`). `GetBytes` map
 
 ## 3. Per-key behavior reference
 
-Nine value tags exist in the starter (verified with the grep audit; `demo.label` in the output
-belongs to the example app, not the starter).
+Six value tags exist in the per-instance Config (verified with the grep audit; `demo.label` in
+the output belongs to the example app, not the starter).
 
 | Key (under `spring.memcached.<name>`) | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |---|---|---|---|---|
@@ -204,9 +211,11 @@ belongs to the example app, not the starter).
 | `discovery` | string | `default` | Which registered `discovery.Discovery` resolves `service-name` (config.go:50). | Unknown backend name → boot error |
 | `timeout` | duration | 0 | Socket read/write timeout per request; 0 = gomemcache default 100ms (config.go:54). | Too low → spurious timeouts under load |
 | `max-idle-conns` | int | 0 | Idle connections kept per server; 0 = driver default 2 (config.go:58). | Too low → reconnect churn |
-| `driver` | string | `DefaultDriver` | Selects a registered `Driver` (config.go:61). Custom drivers register via `RegisterDriver`; duplicate names panic (driver.go:45-49). | Unknown name → ctor error `memcached driver not found` (starter.go:87-88) |
 
-No `resilience` key: resilience/fault come from the governance center (`govern.*` config of
+No `driver` key: client assembly is owned by an optional Driver bean (see §2.1) or the bundled
+`DefaultDriver`; no `resilience` key: resilience/fault come from the governance center
+(`govern.*` config of
+starter-governance), keyed by resource `memcached:<instance-name>`.: resilience/fault come from the governance center (`govern.*` config of
 starter-governance), keyed by resource `memcached:<instance-name>`.
 
 ---
@@ -246,13 +255,11 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
 |---|---|---|
 | Boot fails `one of servers or service-name must be set` | instance block has neither key | set one of them (`starter.go:83`) |
 | Boot fails `memcached: startup ping failed` | server down / wrong address at boot | start memcached, fix `servers`; ping is fail-fast (`starter.go:98-100`) |
-| Boot fails `memcached driver not found: X` | `driver` names an unregistered driver | register via `RegisterDriver(X, ...)` in an `init`, or drop the key (`starter.go:87-88`) |
 | Boot fails `discovery resolve "..." failed` | `service-name` set but no backend under the `discovery` name | register the backend (`discovery.RegisterDiscovery`) before boot |
 | Boot fails `discovery returned no endpoints` | backend healthy but the service has no instances (or `scheme` over-filters) | start instances / clear `scheme` (`driver.go:75-79`) |
 | Stale server list after cluster scale-out/scale-in | gomemcache fixes the server set at creation; watch is lifecycle-only | restart the process to re-resolve (`driver.go:60-66`) |
 | Traces show memcached spans disconnected from request traces | gomemcache API has no context; spans are root spans | known limitation (`client.go:37-41`); correlate by key/time |
 | Breaker never trips on cache misses | by design: ErrCacheMiss counts as success | trip drills must use real failures, not misses (`command.go:168`) |
-| `RegisterDriver` panic `already registered` | two inits register the same name (e.g. custom driver named `DefaultDriver`) | rename your driver (`driver.go:45-49`) |
 | Readiness stays UP while ops fail | indicator probes `Ping` only; a slow-but-alive server still passes | watch observe metrics for real latency/errors |
 
 ---
@@ -261,7 +268,7 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
 
 | Metric | Value |
 |---|---|
-| Config keys | 8 (7 connection + 1 via cache-bridge naming) |
+| Config keys | 7 (6 connection + 1 via cache-bridge naming) |
 | Required | 1 (`servers` xor `service-name`) |
 | Quickstart external deps | 1 (memcached, docker) |
 | "Watch out" entries | 4 |

@@ -18,6 +18,7 @@ package trace
 
 import (
 	"fmt"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
@@ -77,20 +78,51 @@ func NewSampler(ratio float64) sdktrace.Sampler {
 }
 
 // NewPropagator returns the text-map propagator for cross-service context
-// propagation. "w3c" is the W3C TraceContext + Baggage combination; "none"
-// leaves the process default untouched (returns nil).
-func NewPropagator(name string) (propagation.TextMapPropagator, error) {
-	switch name {
-	case "", "w3c":
-		return propagation.NewCompositeTextMapPropagator(
-			propagation.TraceContext{},
-			propagation.Baggage{},
-		), nil
-	case "none":
-		return nil, nil
-	default:
-		return nil, fmt.Errorf("observability: unknown propagator %q (want w3c|none)", name)
+// propagation named by spec, which is a comma-separated list of registered
+// propagator names composed in order. The built-in names are "tracecontext"
+// and "baggage" (pre-registered at init); "w3c" is an alias for that pair.
+// "none" returns nil, leaving the process global untouched. An empty spec
+// defaults to "w3c". A company composes its own propagators into the fleet by
+// RegisterPropagator(name, p) and naming them here, e.g.
+// "w3c,luohua" — so its named business headers ride every transport.
+func NewPropagator(spec string) (propagation.TextMapPropagator, error) {
+	if strings.TrimSpace(spec) == "" {
+		spec = "w3c"
 	}
+	if strings.TrimSpace(spec) == "none" {
+		return nil, nil
+	}
+
+	// Expand the spec into concrete registered names ("w3c" widens to the pair).
+	var names []string
+	for _, tok := range strings.Split(spec, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		if tok == "w3c" {
+			names = append(names, "tracecontext", "baggage")
+			continue
+		}
+		names = append(names, tok)
+	}
+
+	var parts []propagation.TextMapPropagator
+	for _, n := range names {
+		p, ok := lookupPropagator(n)
+		if !ok {
+			return nil, fmt.Errorf("observability: unknown propagator %q (registered: %s)",
+				n, strings.Join(propagatorNames(), ", "))
+		}
+		parts = append(parts, p)
+	}
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("observability: empty propagator spec %q", spec)
+	}
+	if len(parts) == 1 {
+		return parts[0], nil
+	}
+	return propagation.NewCompositeTextMapPropagator(parts...), nil
 }
 
 // TraceConfig configures the shared TracerProvider under
@@ -103,5 +135,5 @@ type TraceConfig struct {
 	Endpoint     string  `value:"${endpoint:=}"`
 	Insecure     bool    `value:"${insecure:=true}"`
 	SamplerRatio float64 `value:"${sampler-ratio:=1.0}"`
-	Propagator   string  `value:"${propagator:=w3c}"` // w3c|none
+	Propagator   string  `value:"${propagator:=w3c}"` // w3c[,<extra>...] | <name>[,<name>...] | none; see NewPropagator
 }

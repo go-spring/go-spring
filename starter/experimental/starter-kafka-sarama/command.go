@@ -31,6 +31,7 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -96,7 +97,7 @@ func StartProducerSpan(ctx context.Context, msg *sarama.ProducerMessage) (contex
 	// Carry the load-test marker in a record header so the consumer recognises
 	// synthetic load.
 	if traffic.IsLoadTest(ctx) {
-		producerCarrier{msg}.Set(traffic.MetaKeyLoadTest, "1")
+		producerCarrier{msg}.Set(canonical.MetaKeyLoadTest, "1")
 	}
 	return ctx, sp
 }
@@ -111,8 +112,8 @@ func StartProducerSpan(ctx context.Context, msg *sarama.ProducerMessage) (contex
 func StartConsumerSpan(ctx context.Context, msg *sarama.ConsumerMessage) (context.Context, *Span) {
 	ctx = otel.GetTextMapPropagator().Extract(ctx, consumerCarrier{msg})
 	// Extract the load-test marker the producer put in a record header.
-	if traffic.IsAffirmative(consumerCarrier{msg}.Get(traffic.MetaKeyLoadTest)) {
-		ctx = traffic.WithLoadTest(ctx, "kafka-sarama-header")
+	if canonical.IsAffirmative(consumerCarrier{msg}.Get(canonical.MetaKeyLoadTest)) {
+		ctx = canonical.WithLoadTest(ctx, "kafka-sarama-header")
 	}
 	return subObserver().Start(ctx, msg.Topic)
 }

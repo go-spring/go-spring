@@ -155,19 +155,21 @@ docker exec influxdb-example influx query \
 import starter-influxdb
   └─ gs.Module(OnProperty("spring.influxdb")) fires when any spring.influxdb.* key exists
         └─ conf.BindEach("${spring.influxdb}") → one Config per <name> entry
-              ├─ Provide(newClient, IndexArg(1, ValueArg(c)))
+              ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
+              │         IndexArg(2, ?Driver))    // optional Driver bean
               │     .Name(<name>).Init((*Client).Init).Destroy((*Client).Destroy)
               └─ Provide health.Indicator named "influxdb:<name>"
                     (injects the client by name via TagArg, exported as health.Indicator)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:61]:
-  │    1. driver lookup — unknown name fails the boot
+  ├─ ctor newClient [starter.go:62]:
+  │    1. optional Driver bean — when none is present the starter falls back
+  │       to the bundled DefaultDriver (d == nil [starter.go:66-68])
   │    2. driver.CreateClient → influxdb2 client whose HTTP requests ride a
   │       dynamicTransport (pass-through to http.DefaultTransport until Init)
-  │    3. pick up the dynamic transport DefaultDriver installed [starter.go:77]
+  │    3. pick up the dynamic transport DefaultDriver installed [starter.go:77-79]
   │    4. fail-fast probe: client.Health() → /health must report "pass",
-  │       otherwise the client is closed and the boot fails [starter.go:80]
+  │       otherwise the client is closed and the boot fails [starter.go:80-83]
   ├─ Init [client.go:69]: build dbObserver ("influxdb") + obsTransport;
   │    resolve executor = resilience.WrapExecutor(fault.WrapExecutor(
   │    resilience.ExecutorFor("influxdb:<server-url>")), "influxdb");
@@ -178,10 +180,16 @@ gs.Run()
        writer's pending batches — then exec.Close()
 ```
 
-A misconfigured `driver` or an unreachable/uninitialized server fails the boot — the process
-never reaches "serving" with a dead InfluxDB. Note the OSS server reports differently before
-its one-time setup finishes, so bootstrap-order races surface at boot, not as intermittent
-write failures (DESIGN.md §3).
+**Assembly extension point**: client assembly is owned by a `Driver` (interface,
+`driver.go:42-44`). A company/umbrella starter may provide its own `Driver` as an **optional
+container bean** (a `gs.Provide(func() StarterInfluxdb.Driver{...})`, so it can inject config
+bound from the properties file at wiring time); every instance under `spring.influxdb` is then
+built through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
+(`driver.go:47`) inside assembly (`starter.go:66-68`). There is no per-config `driver` key.
+
+An unreachable/uninitialized server fails the boot — the process never reaches "serving" with a
+dead InfluxDB. Note the OSS server reports differently before its one-time setup finishes, so
+bootstrap-order races surface at boot, not as intermittent write failures (DESIGN.md §3).
 
 ### 2.2 Request chain — exact order and why
 
@@ -256,10 +264,10 @@ All keys live under `spring.influxdb.<name>.` — per-instance prefix binding vi
 | `auth-token` | string | — | API token passed to the SDK. | Empty → boot error; wrong token → writes/queries fail per request (the /health probe may still pass — it does not authenticate). |
 | `org` | string | `""` | Default org for `WritePoints`/`ManagedWriteAPI` and `Org()`. ⚠ Required **at call time**, not at wiring: a client without org/bucket still serves Query/Delete APIs. | Missing → `WritePoints` returns an error, `ManagedWriteAPI` **panics** (inconsistent failure modes — design suspect). |
 | `bucket` | string | `""` | Default destination bucket for the write helpers. ⚠ Same call-time rule as `org`. | Same as `org`. |
-| `driver` | string | `DefaultDriver` | Selects a registered Driver. ⚠ `RegisterDriver` panics on a duplicate name [driver.go:48]. | Unknown name → boot error `influxdb driver not found: <name>` [starter.go:67]. |
 
-No `tls.*` group, no `service-name`/discovery, no timeout keys — everything not listed is
-the SDK's own defaults; customize via a custom Driver.
+No `driver` key: client assembly is owned by an optional `Driver` bean (see §2.1) or the
+bundled `DefaultDriver`. No `tls.*` group, no `service-name`/discovery, no timeout keys —
+everything not listed is the SDK's own defaults.
 
 ---
 
@@ -325,7 +333,6 @@ process keeps running (async failures never become caller errors).
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails `failed to reach influxdb server ...` | Server down, wrong server-url, or OSS server not yet set up (first-boot migration) | Wait for `curl :8086/health` to report `pass`; check the URL scheme/host. |
-| Boot fails `influxdb driver not found` | `driver` names nothing registered | Register via `StarterInfluxdb.RegisterDriver` in an init, or drop the key. |
 | `panic: influxdb: write helpers need org and bucket` | `ManagedWriteAPI` with empty org/bucket | Set `spring.influxdb.<name>.org/.bucket` — or use the embedded `WriteAPI(org, bucket)` directly. |
 | `WritePoints` returns the org/bucket error | Same call-time gap, non-panicking shape | Same as above. |
 | Writes fail but boot and health are green | Wrong `auth-token` — /health does not authenticate | Verify the token with `influx query --token ...`. |
@@ -337,7 +344,7 @@ process keeps running (async failures never become caller errors).
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 6 instance keys |
+| Config keys | 4 instance keys |
 | Required | 2 at wiring (`server-url`, `auth-token`) + 2 at call time (`org`, `bucket`) |
 | Quickstart external deps | 1 (InfluxDB 2.x) |
 | "Watch out" entries | 5 |
@@ -355,5 +362,3 @@ Design suspects (audit ledger — carried over plus new):
   key — breaker counts are amplified, mirroring the http-client bug family fixed 2026-08.
 - No `tls.*` / `service-name` unlike sibling starters — HTTPS-only-via-scheme is a smaller
   surface but an asymmetry to document.
-- `driver=DefaultDriver` magic string plus a panic-on-duplicate registry is heavier than the
-  single-implementation reality.

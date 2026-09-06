@@ -20,7 +20,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,27 +28,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterGoRedis "go-spring.org/starter-go-redis"
-	"go-spring.org/stdlib/goutil"
 )
-
-func init() {
-	StarterGoRedis.RegisterDriver("AnotherRedisDriver", &AnotherRedisDriver{})
-}
-
-// AnotherRedisDriver is a custom implementation of the Driver interface.
-type AnotherRedisDriver struct{}
-
-func (AnotherRedisDriver) CreateClient(ctx context.Context, c StarterGoRedis.Config) (*redis.Client, io.Closer, error) {
-	log.Infof(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient")
-	return redis.NewClient(&redis.Options{
-		Addr:     c.Addr,
-		Password: c.Password,
-	}), goutil.NopCloser(), nil
-}
 
 type Service struct {
 	Redis          *StarterGoRedis.Client `autowire:"cache"`
@@ -62,8 +44,10 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
-	// You can change the `driver` property in the configuration file
-	// and check the used Redis driver via logs.
+	// Every go-redis instance is assembled through the starter's DefaultDriver
+	// (no company Driver bean is provided here). To customize assembly, provide a
+	// Driver bean whose constructor returns StarterGoRedis.Driver; cluster
+	// instances additionally require it to implement StarterGoRedis.ClusterDriver.
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.

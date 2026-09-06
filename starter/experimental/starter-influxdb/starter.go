@@ -43,6 +43,7 @@ func init() {
 			// (InitMethod) and Destroy tears it down.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
+				gs.IndexArg(2, gs.TagArg("?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
@@ -58,13 +59,12 @@ func init() {
 // configuration. The server is probed once at startup so that
 // misconfiguration or an unreachable server fails fast rather than on first
 // use.
-func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
 	log.Debugf(ctx.Context, starterTag, "creating influxdb client, url=%s org=%s bucket=%s", c.ServerURL, c.Org, c.Bucket)
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, starterTag, "influxdb driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "influxdb driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

@@ -45,7 +45,13 @@ import (
 )
 
 func init() {
-	StarterRedigo.RegisterDriver("AnotherRedisDriver", &AnotherRedisDriver{})
+	// Provide our own Driver BEAN; redigo injects it into every pool, falling
+	// back to its bundled DefaultDriver only when no Driver bean is present.
+	// The ctor returns StarterRedigo.Driver, so the bean is already that
+	// interface type — no gs.As export needed.
+	gs.Provide(func() StarterRedigo.Driver {
+		return AnotherRedisDriver{}
+	})
 }
 
 // AnotherRedisDriver is a custom implementation of the Driver interface.

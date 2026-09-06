@@ -18,10 +18,6 @@
     "tls": {
       "type": "object"
     },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
-    },
     "governance": {
       "type": "boolean",
       "default": true,

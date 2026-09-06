@@ -15,7 +15,7 @@
  */
 
 // driver.go is the "construction seam" of this starter: the Driver interface
-// + registry + DefaultDriver, which builds the shared RedisConnOpt from
+// + the bundled DefaultDriver, which builds the shared RedisConnOpt from
 // Config. It mirrors the other client starters' driver.go.
 package StarterAsynq
 
@@ -28,40 +28,21 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var driverRegistry = map[string]Driver{}
-
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
-}
-
-// Driver builds the Redis connection options for one instance. It is the
-// single extension point for customizing the Redis dial (e.g. a sentinel
-// topology the default URI form cannot express).
+// Driver builds the Redis connection options for one instance. It is an
+// OPTIONAL CONTAINER BEAN: a company or umbrella starter may provide its own
+// Driver bean (its constructor returns StarterAsynq.Driver); when none is
+// present, starter-asynq falls back to the bundled [DefaultDriver] inside the
+// client/server assembly. A custom driver is a bean, so it may inject the
+// configuration/beans it needs — e.g. company config bound from a properties
+// file at wiring time.
+//
+// At most one Driver bean is expected per process; every instance (its producer
+// Client and, when enabled, worker Server) is built through it, and per-instance
+// differences are expressed through [Config]. It is the single extension point
+// for customizing the Redis dial (e.g. a sentinel topology the default URI form
+// cannot express).
 type Driver interface {
 	RedisConnOpt(ctx context.Context, c Config) (asynq.RedisConnOpt, error)
-}
-
-// RegisterDriver registers an asynq driver with the given name.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("asynq driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
-}
-
-// lookupDriver resolves the configured driver name against the registry,
-// defaulting to "DefaultDriver" when unset or empty. An unknown name is a
-// clear error rather than a silent fallback, so a registration typo fails
-// at startup instead of quietly ignoring the custom driver.
-func lookupDriver(name string) (Driver, error) {
-	if name == "" {
-		name = "DefaultDriver"
-	}
-	d, ok := driverRegistry[name]
-	if !ok {
-		return nil, errutil.Explain(nil, "asynq driver not found: %s", name)
-	}
-	return d, nil
 }
 
 // DefaultDriver builds the standard host:port RedisConnOpt.

@@ -119,7 +119,7 @@ Trace, under `${spring.observability.trace}`:
 | `endpoint` | (empty) | Collector address; empty falls back to the SDK default (localhost:4317/:4318). |
 | `insecure` | `true` | Disable TLS for the otlp exporters. |
 | `sampler-ratio` | `1.0` | ParentBased ratio sampler (`>=1` always, `<=0` never). |
-| `propagator` | `w3c` | `w3c` (TraceContext + Baggage) \| `none`. |
+| `propagator` | `w3c` | Comma list of registered propagators composed in order. Built-ins: `tracecontext`, `baggage`; `w3c` = both (the default). `none` leaves the global untouched. A company adds its own (e.g. a named-header propagator) via `RegisterPropagator` and names it here: `w3c,<name>`. |
 
 Metrics, under `${spring.observability.metrics}`:
 

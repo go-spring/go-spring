@@ -95,11 +95,13 @@ spring.s3.assets.secret-access-key=...
 ```
 
 **Custom driver** — replace client assembly (e.g. to plug an IAM-role
-credential provider or a custom `http.Transport`) by registering your own
-`Driver` and selecting it with `driver=<name>`:
+credential provider or a custom `http.Transport`) by providing your own
+`Driver` as an optional container bean. Every client under `spring.s3` is
+built through it; when none is present the starter falls back to its bundled
+`DefaultDriver`:
 
 ```go
 func init() {
-    StarterS3.RegisterDriver("iam", iamDriver{})
+    gs.Provide(func() StarterS3.Driver { return iamDriver{} })
 }
 ```

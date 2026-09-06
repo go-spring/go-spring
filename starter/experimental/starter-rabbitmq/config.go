@@ -53,7 +53,4 @@ type Config struct {
 	// this switch only removes the guard entirely (bare calls) when set to
 	// false.
 	Governance bool `value:"${governance:=true}"`
-
-	// Driver specifies which RabbitMQ driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }

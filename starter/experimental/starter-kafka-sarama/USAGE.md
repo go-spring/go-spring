@@ -160,19 +160,18 @@ curl -s :9090/metrics | grep messaging_client    # duration histogram + in-fligh
 ```
 import starter-kafka-sarama
   ├─ init: sarama.Logger = go-spring log bridge   [starter.go:33] (all sarama events → Info, tag _app)
-  ├─ init: RegisterDriver("DefaultDriver")        [driver.go:34-36]
   └─ gs.Module(OnProperty("spring.kafka-sarama")) fires on any spring.kafka-sarama.* key
         └─ conf.BindEach → one Config per <name> entry
-              └─ Provide(newClient, IndexArg name, IndexArg config).Name(<name>)
-                   .Destroy(destroyClient)        [starter.go:40-43]
+              └─ Provide(newClient, IndexArg name, IndexArg config, IndexArg 3,?Driver).Name(<name>)
+                   .Destroy(destroyClient)        [starter.go:40-44]
 
 gs.Run()
-  ├─ newClient [client.go:47]:
-  │    1. driver lookup — unknown name fails boot [client.go:50-54]
+  ├─ newClient [client.go:48]:
+  │    1. optional Driver bean — none → bundled DefaultDriver  [client.go:52-53]
   │    2. d.CreateClient: sarama.NewConfig + version/SASL/TLS/producer opts, then
   │       sarama.NewClient(brokers) — DIALS seed brokers and fetches metadata, so
   │       bad brokers/credentials/TLS fail HERE, not on first use
-  │       [client.go:42-46 comment, driver.go:63-96]
+  │       [client.go:43-47 comment, driver.go:55-88]
   │    3. defensive fail-fast: len(Brokers())==0 → close + boot error [client.go:60-64]
   │    4. applyResilience: fault.Wrap(ExecutorFor("kafka:<brokers>")) →
   │       resilience.WrapExecutor → sync.Map indexed by client
@@ -181,6 +180,13 @@ gs.Run()
   └─ SIGTERM → Destroy: closeResilience (exec.Close, forget maps) → cl.Close()
        [client.go:78-81, command.go:220-225]
 ```
+
+**Assembly extension point**: client assembly is owned by a `Driver` (interface, `driver.go:28-39`).
+A company/umbrella starter may provide its own `Driver` as an **optional container bean** (a
+`gs.Provide(func() StarterKafkaSarama.Driver{...})`, so it can inject config bound from the
+properties file at wiring time); every instance under `spring.kafka-sarama` is then built through
+it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
+(`driver.go:41-88`) inside assembly (`client.go:52-53`). There is no per-config `driver` key.
 
 Derived producers/consumers are not container beans — close them yourself before the app
 shuts down (`defer producer.Close()` in the publish path is the intended pattern, see
@@ -257,7 +263,9 @@ field injection).
 |-----|------|---------|-------------------------|------------------------------|
 | `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:32]); comma-separated seed list [driver.go:95]. Also becomes the governance resource label `kafka:<brokers>` verbatim [client.go:65] — different orderings/spellings of the same cluster are DIFFERENT labels. | Missing/empty → bind error at boot. Typo'd broker → sarama.NewClient fails at boot (fail-fast). |
 | `version` | string | "" (sarama default) | Parsed with `sarama.ParseKafkaVersion`; gates protocol features (headers, SASL mechanisms, consumer groups) [driver.go:65-71]. | Unparseable → boot error `invalid kafka version`. Too low → feature errors at first use. |
-| `driver` | string | `DefaultDriver` | Selects a registered `Driver` (the single assembly extension point) [driver.go:42-53]. | Unknown name → boot error `kafka driver not found` [client.go:50-54]. Duplicate registration panics. |
+
+No `driver` key: client assembly is owned by an optional Driver bean (see §2.1) or the bundled
+`DefaultDriver`.
 
 ### 3.2 SASL (`sasl.*`) — [config.go:64-77], [driver.go:101-118]
 
@@ -372,7 +380,7 @@ grep 'resilience' app.log | grep 'kafka|127.0.0.1:9092'
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 15 (core 3 + sasl 4 + tls 6 + producer 2) |
+| Config keys | 14 (core 2 + sasl 4 + tls 6 + producer 2) |
 | Required | 1 (`brokers`) |
 | Quickstart external deps | 1 (Kafka; a collector for full observability) |
 | "Watch out" entries | 6 |

@@ -228,7 +228,6 @@ these ARE instance-prefixed).
 | `..queues` | map[string]int | empty → asynq "default":1 | queue → priority weight (higher = processed more often). ⚠ your `asynq.Queue(...)` enqueue option must name a configured queue (or the fallback default), or the worker never picks it up. | Enqueue to an unlisted queue → task sits pending forever. |
 | `..shutdown-timeout` | duration | 8s | Bounds the worker's drain (`srv.Shutdown()`); ctx passed to `StopContext` is unused — the drain rides this timeout (client.go:176-183). | Too low → in-flight tasks abandoned mid-run on deploy. |
 | `..server.enabled` | bool | false | **Worker opt-in switch.** Also gates whether the `*Server` bean exists at all — an `autowire:"a:server"` without it fails wiring. | Injecting the worker without this key → container "bean not found". |
-| `..driver` | string | `DefaultDriver` | Selects a registered Driver (name must match a `RegisterDriver` call). Empty → `DefaultDriver`. | Unknown name → boot error `asynq driver not found: <name>` (starter.go:66). |
 
 ---
 
@@ -286,17 +285,16 @@ promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 |---------|--------------|-----|
 | Container fails: bean `a:server` not found | `server.enabled` not set (worker opt-in) | Set `spring.asynq.<n>.server.enabled=true` or drop the autowire. |
 | Tasks enqueued but never run | Worker not enabled; enqueue to a queue not in `queues`; producer and worker on different `db` | Align config; enqueue with `asynq.Queue("<listed>")`. |
-| "asynq driver not found: DefaultDriver" | Registry tampered / init ordering anomaly | Don't unregister; report (the default lookup, starter.go:63). |
 | Guard/resilience never applies | Calling promoted `*asynq.Client.Enqueue/EnqueueContext` instead of the wrapper | Call the wrapper's `Enqueue` (client.go:71). |
 | Health DOWN though enqueue works | `default` queue never created / ACL limits Inspector | Health checks the `default` queue specifically; ensure Redis reachable and permissions. |
 | Tasks lost on deploy | `shutdown-timeout` shorter than in-flight run | Raise it above the longest expected task. |
-| Custom Driver registered but never used | `..driver` key not pointing at the registered name | Set `spring.asynq.<n>.driver=<name>` to the `RegisterDriver` name; an unknown name fails the boot. |
+| Custom Driver bean never used | A second `Driver` bean, or the override registered after wiring | Provide at most one `Driver` bean; its ctor is autowired at wiring time and shared by the Client, Server and health. |
 
 ## 6. Design Health
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 11 instance-prefixed (incl. 6 tls sub-keys) |
+| Config keys | 10 instance-prefixed (incl. 6 tls sub-keys) |
 | Required | 1 (`addr`) |
 | Quickstart external deps | 1 (Redis) |
 | "Watch out" entries | 5 |
@@ -304,7 +302,7 @@ promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 Design suspects (kept from the prior edition, plus new findings; the former
 "dead driver selection" entry is fixed):
 
-- Producer and worker share one Config although only addr/auth/tls/driver are truly common;
+- Producer and worker share one Config although only addr/auth/tls are truly common;
   `concurrency`/`queues`/`shutdown-timeout` are worker-only keys at top level.
 - The promoted `*asynq.Client` methods (`EnqueueContext`, etc.) bypass the guard/observation
   seam — easy to call by accident.

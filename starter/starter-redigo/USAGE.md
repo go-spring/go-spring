@@ -262,7 +262,6 @@ All keys live under `spring.redigo.<name>.`.
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Dial options. | — |
 | `conn-max-lifetime` | duration | 2m | MaxConnLifetime; short values smooth discovery traffic switching. | Very large + discovery → stale endpoints linger. |
 | `tls.*` | group | off | Client TLS; keys mirror starter-go-redis. | Partial → tls.Build boot error. |
-| `driver` | string | `DefaultDriver` | Selects a registered Driver. | Unknown → boot error "redigo driver not found". |
 | `startup-ping` | bool | false | Opt-in boot probe: dials ONE bare conn and PINGs [pool.go:266-279]. ⚠ Off by default — the pool is lazy, so a bad address surfaces only on first command. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
 | `health.enabled` | bool | true | Registers `redigo:<name>` indicator; false keeps the pool out of aggregate health. | false → readiness silently excludes this pool. |
 
@@ -271,9 +270,13 @@ All keys live under `spring.redigo.<name>.`.
 - `Pool.UseCommandInterceptor(...CommandInterceptor)` — the per-command onion above; first
   registered outermost; nil interceptor panics.
 - `StarterRedigo.NewConn(raw, layers...)` — hand-assembly primitive for REPLACE-shaped drivers.
-- `Driver` / `RegisterDriver` — owns the full pool assembly; two shapes documented in
-  [driver.go:43-51]: ADD (call NewPool, customize via public API) or REPLACE (own it entirely).
-  The example's `AnotherRedisDriver` shows the delegate-then-customize shape.
+- A `Driver` **bean** — the optional pool-assembly override. redigo injects it into every pool
+  under `${spring.redigo}` and, when none is provided, falls back to the bundled `DefaultDriver`
+  inside assembly. Provide a Driver bean whose constructor returns `StarterRedigo.Driver` (the
+  example's `AnotherRedisDriver` shows the delegate-then-customize shape). Two customization
+  shapes in [driver.go](driver.go): ADD (call `NewPool`, then customize the Pool via its public
+  API) or REPLACE (own the whole assembly via `NewConn`). Because the driver is a bean, a
+  company driver can inject config bound from its own file keys at wiring time.
 
 ---
 

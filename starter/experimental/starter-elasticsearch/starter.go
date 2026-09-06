@@ -41,6 +41,7 @@ func init() {
 			// Init arms it (InitMethod) and Close tears it down (Destroy).
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
+				gs.IndexArg(2, gs.TagArg("?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The wrapper is what is
@@ -66,7 +67,7 @@ func init() {
 // background watch and no resources to release. In mesh mode the sidecar owns
 // discovery+LB, so the static Addresses (or CloudID) are used unchanged. See
 // Config.ServiceName.
-func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
 	if c.ServiceName != "" && !mesh.Enabled() {
 		addrs, err := resolveAddresses(ctx.Context, c)
 		if err != nil {
@@ -75,9 +76,9 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 		c.Addresses = addrs
 	}
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		return nil, errutil.Explain(nil, "elasticsearch driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	client, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

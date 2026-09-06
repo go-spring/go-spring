@@ -25,6 +25,7 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -155,7 +156,7 @@ func (h *headerRT) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestNewTransport_InjectsLoadTestMarker(t *testing.T) {
-	rec := &headerRT{headerKey: traffic.HeaderLoadTest}
+	rec := &headerRT{headerKey: canonical.HeaderLoadTest}
 	rt, closeFn, err := NewTransport(Config{Base: rec})
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
@@ -167,7 +168,7 @@ func TestNewTransport_InjectsLoadTestMarker(t *testing.T) {
 
 	// Load-test ctx: the traffic layer injects the marker header.
 	req2, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
-	req2 = req2.WithContext(traffic.WithLoadTest(context.Background(), "test"))
+	req2 = req2.WithContext(canonical.WithLoadTest(context.Background(), "test"))
 	_, _ = rt.RoundTrip(req2)
 	assert.That(t, rec.seen).True()
 }
@@ -179,14 +180,14 @@ func TestNewTransport_WrapTransportIsOutermost(t *testing.T) {
 	// receives the injected header. This proves the user seam wraps the whole
 	// built-in stack and can both observe (via ctx) and delegate.
 	var wrapperRan, wrapperSawHeaderBeforeTraffic, wrapperSawLoadTestCtx bool
-	base := &headerRT{headerKey: traffic.HeaderLoadTest}
+	base := &headerRT{headerKey: canonical.HeaderLoadTest}
 	rt, closeFn, err := NewTransport(Config{
 		Base: base,
 		WrapTransport: func(inner http.RoundTripper) http.RoundTripper {
 			return roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				wrapperRan = true
 				// Outermost: header not yet injected by the traffic layer below.
-				wrapperSawHeaderBeforeTraffic = req.Header.Get(traffic.HeaderLoadTest) != ""
+				wrapperSawHeaderBeforeTraffic = req.Header.Get(canonical.HeaderLoadTest) != ""
 				// ...but the ctx is already tagged, so a wrapper can always tell.
 				wrapperSawLoadTestCtx = traffic.IsLoadTest(req.Context())
 				return inner.RoundTrip(req)
@@ -197,7 +198,7 @@ func TestNewTransport_WrapTransportIsOutermost(t *testing.T) {
 	defer func() { _ = closeFn() }()
 
 	req, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
-	req = req.WithContext(traffic.WithLoadTest(context.Background(), "test"))
+	req = req.WithContext(canonical.WithLoadTest(context.Background(), "test"))
 	_, err = rt.RoundTrip(req)
 	assert.That(t, err).Nil()
 	assert.That(t, wrapperRan).True()

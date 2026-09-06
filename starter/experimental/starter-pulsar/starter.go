@@ -40,25 +40,26 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
+				gs.IndexArg(3, gs.TagArg("?")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})
 	})
 }
 
-// newClient creates a Pulsar client by dispatching to the configured Driver,
+// newClient creates a Pulsar client by dispatching to an optional Driver bean,
 // which owns full client assembly (ClientOptions, authentication, TLS, metrics
-// registry). After the client is built it is probed (when FailFast is enabled)
-// so a misconfigured broker list, bad credentials or TLS mismatch fail fast at
-// startup instead of surfacing on the first produce/consume, then the resilience
-// executor is attached.
-func newClient(ctx *gs.ContextProvider, name string, c Config) (pulsar.Client, error) {
+// registry); when no such bean exists the bundled DefaultDriver is used. After
+// the client is built it is probed (when FailFast is enabled) so a misconfigured
+// broker list, bad credentials or TLS mismatch fail fast at startup instead of
+// surfacing on the first produce/consume, then the resilience executor is
+// attached.
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (pulsar.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating pulsar client, url=%s fail-fast=%v", c.URL, c.FailFast)
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "pulsar driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "pulsar driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

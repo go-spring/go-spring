@@ -222,7 +222,6 @@ gs.Run()
 | `..queues` | map[string]int | 空 → asynq "default":1 | 队列 → 优先级权重（越高越常被处理）。⚠ 投递侧 `asynq.Queue(...)` 选项必须指向已配置的队列（或回退 default），否则 worker 取不到。 | 投到未列出的队列 → 任务永久 pending。 |
 | `..shutdown-timeout` | duration | 8s | worker 排空上限（`srv.Shutdown()`）；传给 `StopContext` 的 ctx 不被使用——排空由该 timeout 兜底（client.go:176-183）。 | 过短 → 发布时在途任务被弃。 |
 | `..server.enabled` | bool | false | **worker 选配开关**。同时决定 `*Server` bean 是否存在——不开却 `autowire:"a:server"` 会在装配期失败。 | 注入 worker 但没开 → 容器报 bean 不存在。 |
-| `..driver` | string | `DefaultDriver` | 选择已注册的 Driver（名字须与 `RegisterDriver` 一致）。空 → `DefaultDriver`。 | 名字未知 → 启动报错 `asynq driver not found: <name>`（starter.go:66）。 |
 
 ---
 
@@ -280,24 +279,23 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 |------|----------|------|
 | 容器报 bean `a:server` 不存在 | 未开 `server.enabled`（worker 选配） | 设 `spring.asynq.<n>.server.enabled=true` 或去掉注入。 |
 | 任务投了没人跑 | worker 未开启；投到 `queues` 之外的队列；生产者与 worker 不同 `db` | 对齐配置；用 `asynq.Queue("<已列出>")` 投递。 |
-| "asynq driver not found: DefaultDriver" | 注册表被改动 / init 顺序异常 | 不要反注册；上报（默认查找，starter.go:63）。 |
 | 守护/resilience 从不生效 | 调了提升的 `*asynq.Client.Enqueue/EnqueueContext` 而非 wrapper | 调 wrapper 的 `Enqueue`（client.go:71）。 |
 | 能投递但健康 DOWN | `default` 队列从未创建 / ACL 限制 Inspector | 健康检查固定探 `default` 队列；确认 Redis 可达与权限。 |
 | 发布丢任务 | `shutdown-timeout` 短于在途任务 | 调到高于最长任务时长。 |
-| 注册了自定义 Driver 却不生效 | `..driver` key 没指向注册名 | 配 `spring.asynq.<n>.driver=<name>` 为 `RegisterDriver` 的名字；名字未知会启动报错。 |
+| 自定义 Driver bean 不生效 | 提供了两个 `Driver` bean，或注册晚于装配 | 每进程最多一个 `Driver` bean；ctor 在装配期被 autowire，Client/Server/health 共享同一个。 |
 
 ## 6. 设计体检表
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 实例前缀 11 个（含 6 个 tls 子 key） |
+| 配置 key 总数 | 实例前缀 10 个（含 6 个 tls 子 key） |
 | 其中必填 | 1（addr） |
 | quickstart 前置外部依赖数 | 1（Redis） |
 | 注意/坑条数 | 5 |
 
 设计嫌疑清单（原"死掉的 driver 选择"一项已修复）：
 
-- 生产者与 worker 共用一份 Config，真正共用的只有 addr/认证/tls/driver；
+- 生产者与 worker 共用一份 Config，真正共用的只有 addr/认证/tls；
   concurrency/queues/shutdown-timeout 是 worker 专属 key 却放顶层。
 - 提升的 `*asynq.Client` 方法（`EnqueueContext` 等）绕过守护/观测 seam——容易误调。
 - 实例级观测 key 只有偏离绑定默认值（brief/512/无 skip）才算"已设置"——这是按差异

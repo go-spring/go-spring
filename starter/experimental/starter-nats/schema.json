@@ -55,10 +55,6 @@
           "default": false
         }
       }
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
     }
   }
 }

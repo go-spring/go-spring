@@ -123,19 +123,25 @@ curl http://127.0.0.1:9090/get     # 删除后："memcache: cache miss"
 
 ```
 import starter-memcached
-  ├─ init: RegisterDriver("DefaultDriver", ...)                     driver.go:35
   └─ init: gs.Module(OnProperty("spring.memcached"), BindEach)       starter.go:42-43
         对每个 spring.memcached.<name> 项：
-          r.Provide(newClient, IndexArg(name,c))                     starter.go:46-50
+          r.Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver))  starter.go:47-51
               .Name(name).Init((*Client).Init).Destroy((*Client).Destroy)
-          r.Provide(健康指示器 "memcache:"+name)                      starter.go:53
+          r.Provide(健康指示器 "memcache:"+name)                      starter.go:54
 gs.Run()
-  ├─ 配置绑定：${spring.memcached.<name>} → Config（value tag）       config.go:24-61
-  ├─ newClient：校验、CreateClient、启动 PING（fail-fast）           starter.go:79-101
-  ├─ Client.Init：observer + resilience/fault executor               client.go:71-76
+  ├─ 配置绑定：${spring.memcached.<name>} → Config（value tag）       config.go:24-58
+  ├─ 构造 newClient [starter.go:80]：校验 → 可选 Driver bean
+  │     （无则用内置 DefaultDriver）→ d.CreateClient → 启动 PING
+  ├─ Client.Init：observer + resilience/fault executor               client.go:66-72
   ├─ 就绪：健康指示器把 Ping 折入 /readiness                          health/health.go:33-36
-  └─ 停机：Client.Destroy —— 释放 executor、停 discovery watch        client.go:83-90
+  └─ 停机：Client.Destroy —— 释放 executor、停 discovery watch        client.go:78-83
 ```
+
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:31-41`）负责。公司/伞包 starter 可把
+自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterMemcached.Driver{...})`，
+因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.memcached` 下每个实例都经它构建。
+没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:45-60`，
+`starter.go:86-88`）。没有 per-config 的 `driver` key。
 
 启动 PING 时机：它在**构造函数内部**执行、bean 尚不存在 —— 服务器不可达会以
 `memcached: startup ping failed` 中止容器装配（`starter.go:98-100`）；不是懒加载、不重试。
@@ -182,7 +188,7 @@ int32 秒 —— **0/负值 = 永不过期**，亚秒向上取整为 1s，避免
 
 ## 3. 逐 key 行为参考
 
-starter 共 9 个 value tag（grep 审计核实；输出中的 `demo.label` 属于 example 应用而非
+每实例 Config 共 6 个 value tag（grep 审计核实；输出中的 `demo.label` 属于 example 应用而非
 starter）。
 
 | key（`spring.memcached.<name>` 下） | 类型 | 默认值 | 行为与联动 | 配错后果 |
@@ -193,9 +199,9 @@ starter）。
 | `discovery` | string | `default` | 用哪个已注册的 `discovery.Discovery` 解析 `service-name`（config.go:50） | 未知后端名 → 启动报错 |
 | `timeout` | duration | 0 | 每请求 socket 读/写超时；0 = gomemcache 默认 100ms（config.go:54） | 过低 → 高压下伪超时 |
 | `max-idle-conns` | int | 0 | 每 server 保留的空闲连接数；0 = driver 默认 2（config.go:58） | 过低 → 重连抖动 |
-| `driver` | string | `DefaultDriver` | 选择已注册 `Driver`（config.go:61）。自定义 driver 用 `RegisterDriver` 注册；重名 panic（driver.go:45-49） | 未知名 → 构造错误 `memcached driver not found`（starter.go:87-88） |
 
-无 `resilience` key：resilience/fault 来自治理中心（starter-governance 的 `govern.*` 配置），
+无 `driver` key：client 装配由可选 Driver bean（见 §2.1）或内置 `DefaultDriver` 负责；无
+`resilience` key：resilience/fault 来自治理中心（starter-governance 的 `govern.*` 配置），
 按资源 `memcached:<instance-name>` 隔离。
 
 ---
@@ -233,13 +239,11 @@ starter）。
 |---|---|---|
 | 启动报 `one of servers or service-name must be set` | 实例块两者皆未配 | 配其一（`starter.go:83`） |
 | 启动报 `memcached: startup ping failed` | 服务器宕机/启动期地址错误 | 启动 memcached、修 `servers`；ping 是 fail-fast（`starter.go:98-100`） |
-| 启动报 `memcached driver not found: X` | `driver` 指向未注册 driver | 在 `init` 里 `RegisterDriver(X, ...)`，或删掉该 key（`starter.go:87-88`） |
 | 启动报 `discovery resolve "..." failed` | 设了 `service-name` 但 `discovery` 名下无后端 | 启动前注册后端（`discovery.RegisterDiscovery`） |
 | 启动报 `discovery returned no endpoints` | 后端健康但服务无实例（或 `scheme` 过滤过度） | 拉起实例/清空 `scheme`（`driver.go:75-79`） |
 | 集群扩缩容后 server 列表不更新 | gomemcache 创建即固定 server 集；watch 仅管生命周期 | 重启进程重新解析（`driver.go:60-66`） |
 | trace 里 memcached span 与请求 trace 断联 | gomemcache API 无 context；span 为根 span | 已知局限（`client.go:37-41`）；按 key/时间关联 |
 | 熔断在 cache miss 下永不触发 | 设计如此：ErrCacheMiss 计为成功 | 熔断演练须用真实故障而非 miss（`command.go:168`） |
-| `RegisterDriver` panic `already registered` | 两个 init 注册同名（如自定义 driver 命名 `DefaultDriver`） | 改名（`driver.go:45-49`） |
 | readiness 持续 UP 但操作失败 | 指示器只探 `Ping`；慢而活着的服务器照样通过 | 看 observe 指标的真实时延/错误 |
 
 ---
@@ -248,7 +252,7 @@ starter）。
 
 | 指标 | 数值 |
 |--------|------|
-| 配置 key | 8（7 连接 + 1 经 cache 桥命名） |
+| 配置 key | 7（6 连接 + 1 经 cache 桥命名） |
 | 必填 | 1（`servers` 与 `service-name` 二选一） |
 | quickstart 前置外部依赖 | 1（memcached，docker） |
 | "注意/坑"条数 | 4 |

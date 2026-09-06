@@ -135,7 +135,6 @@ func handle(ctx context.Context, msg *messaging.Message) error {
 spring.rabbitmq.demo.url=amqp://guest:guest@127.0.0.1:5672/
 spring.rabbitmq.demo.vhost=
 spring.rabbitmq.demo.heartbeat=10s
-spring.rabbitmq.demo.driver=DefaultDriver
 
 # TLS (off by default; amqps:// URL also enables it implicitly):
 #spring.rabbitmq.demo.tls.enabled=true
@@ -188,7 +187,7 @@ gs.Run()
   ├─ bind: conf.BindEach over spring.rabbitmq.* → one Config per instance,
   │   Provide newClient with .Name(<instance>).Destroy(destroyClient)         [starter.go:35-39]
   ├─ newClient (per instance):
-  │   ├─ driver lookup in registry; miss → boot fails                         [starter.go:58-62]
+  │   ├─ optional Driver bean (none → bundled DefaultDriver)                   [starter.go:57-61]
   │   ├─ Driver.CreateClient: TLS build + amqp.Dial/DialConfig — the TCP +
   │   │   AMQP handshake is synchronous, so a bad URL / wrong credentials /
   │   │   TLS mismatch fail the boot, not the first publish                   [starter.go:46-49]
@@ -268,8 +267,8 @@ is a resilience sentinel. Manual tracing (`StartPublishSpan` / `StartConsumeSpan
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.rabbitmq.<name>.*`. Five own value tags
-(config.go:33-60) plus the shared tlsconf (6) block = 11; 1 required.
+All keys live under `spring.rabbitmq.<name>.*`. Four own value tags
+(config.go:28-55) plus the shared tlsconf (6) block = 10; 1 required.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|------------------------|------------------------------|
@@ -280,11 +279,13 @@ All keys live under `spring.rabbitmq.<name>.*`. Five own value tags
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | Custom CA / mTLS pair, loaded by the shared `tlsconf` block (uniform keys across starters, config.go:44-48). | Missing files → boot fails in TLS build [driver.go:64-68]. |
 | `tls.server-name` | string | "" | SNI/verification name override. | Mismatch → x509 hostname error at boot. |
 | `tls.insecure-skip-verify` | bool | false | Skips cert verification. | true in prod = silent MITM exposure. |
-| `driver` | string | DefaultDriver | Selects from the registry filled by `RegisterDriver` [driver.go:31-53]. | Unknown name → boot fails with "rabbitmq driver not found" [starter.go:58-62]; duplicate registration panics [driver.go:50]. |
 | `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedPublish` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
+No `driver` key: connection assembly is owned by an optional Driver bean (§2.1) or the
+bundled `DefaultDriver` (config.go / driver.go).
+
 Reconciled against `grep -rhoE 'value:"[^"]+"'` over the starter: own tags are exactly
-`${url}`, `${vhost:=}`, `${heartbeat:=10s}`, `${tls}`, `${driver:=DefaultDriver}`; the
+`${url}`, `${vhost:=}`, `${heartbeat:=10s}`, `${tls}`; the
 tls.* columns come from the shared cloud block bound through `${tls}`.
 
 ---
@@ -359,8 +360,6 @@ and no health indicator — the process keeps running on a dead connection.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails: `failed to dial rabbitmq` | broker down / wrong URL / credentials | synchronous dial is fail-fast — fix env or URL (driver.go:86). |
-| Boot fails: `rabbitmq driver not found` | `driver=` typo or custom driver not registered | Register via `RegisterDriver` before gs.Run (starter.go:61). |
-| `rabbitmq driver already registered` panic | duplicate `RegisterDriver` name | rename (driver.go:50). |
 | Boot fails: `failed to open probe channel` | TCP connects but AMQP layer broken (e.g. wrong vhost/permissions) | check vhost permissions for the user (starter.go:69-76). |
 | Works at boot, publishes later error; close/blocked Warn logs | broker died mid-run; no auto-reconnect | restart process or implement reconnect on the raw bean; watch the `connection closed` Warn. |
 | Consumers get nothing | handler error → Nack(requeue) loop; check `rabbitmq driver handler error on %q` Error log | fix the handler; every error requeues forever — no DLQ (client.go:141-146). |
@@ -373,7 +372,7 @@ and no health indicator — the process keeps running on a dead connection.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 11 (5 own + 6 tls) |
+| Config keys | 10 (4 own + 6 tls) |
 | Required | 1 (`url`) |
 | Quickstart external deps | 1 (RabbitMQ) |
 | "Watch out" entries | 6 |

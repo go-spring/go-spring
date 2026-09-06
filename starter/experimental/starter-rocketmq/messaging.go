@@ -26,6 +26,7 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 )
@@ -95,7 +96,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	if traffic.IsLoadTest(ctx) {
 		// Carry the load-test marker (if any) in the user properties so the
 		// consumer can recognise synthetic load.
-		m.WithProperty(traffic.MetaKeyLoadTest, "1")
+		m.WithProperty(canonical.MetaKeyLoadTest, "1")
 	}
 	ctx, sp := p.obs.startProduce(ctx, p.topic, m)
 	_, err := p.p.SendSync(ctx, m)
@@ -132,8 +133,8 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 			// Extract the load-test marker the producer put in the user
 			// properties so the handler sees synthetic load via
 			// traffic.IsLoadTest(msgCtx).
-			if traffic.IsAffirmative(ext.GetProperty(traffic.MetaKeyLoadTest)) {
-				msgCtx = traffic.WithLoadTest(msgCtx, "rocketmq-property")
+			if canonical.IsAffirmative(ext.GetProperty(canonical.MetaKeyLoadTest)) {
+				msgCtx = canonical.WithLoadTest(msgCtx, "rocketmq-property")
 			}
 			herr := handler(msgCtx, fromMessageExt(ext))
 			sp.End(herr)

@@ -176,18 +176,19 @@ grep -E '_app_pulsar|pulsar' app.log        # driver + client 日志行（tag _a
 ```
 import starter-pulsar
   └─ gs.Module(OnProperty("spring.pulsar")) 在任意 spring.pulsar.* key 存在时触发
-        └─ conf.BindEach("${spring.pulsar}") → 每个 <name> 条目一份 Config     [starter.go:38-45]
-              └─ Provide(newClient, IndexArg name+config).Name(<name>).Destroy(destroyClient)
+        └─ conf.BindEach("${spring.pulsar}") → 每个 <name> 条目一份 Config     [starter.go:38-46]
+              └─ Provide(newClient, IndexArg name+config, IndexArg 3,?Driver).Name(<name>)
+                   .Destroy(destroyClient)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:55-84]：
-  │    1. driverRegistry 查找 driver —— 未知名 → 启动报错                   [starter.go:58-62]
+  ├─ ctor newClient [starter.go:56-85]：
+  │    1. 可选 Driver bean —— 无则内置 DefaultDriver                      [starter.go:61-63]
   │    2. d.CreateClient：ClientOptions、认证（mTLS>token 文件>token）、TLS、
   │       原生 Prometheus registry + :port /metrics server、日志桥、
-  │       pulsar.NewClient                                                [driver.go:69-115]
+  │       pulsar.NewClient                                                [driver.go:59-105]
   │    3. FailFast 探测：cl.TopicPartitions(HealthCheckTopic) —— 一次
   │       覆盖地址+认证+TLS 的 lookup（不产生消息）；失败 →
-  │       cl.Close + metrics 下线 + 启动报错                              [starter.go:68-75]
+  │       cl.Close + metrics 下线 + 启动报错                              [starter.go:69-76]
   │    4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor("pulsar:<url>"))
   │       → resilience.WrapExecutor → 按 client 索引                     [command.go:224-230]
   ├─ 就绪：无 health indicator —— 探测只在启动期生效
@@ -195,8 +196,14 @@ gs.Run()
        → cl.Close()（释放全部 producer/consumer）→ shutdownMetrics（:port server）
 ```
 
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:27-38`）负责。公司/伞包 starter 可把
+自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterPulsar.Driver{...})`，
+因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.pulsar` 下每个实例都经它构建。
+没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:40-105`，
+`starter.go:61-63`）。没有 per-config 的 `driver` key。
+
 注意 `newLogger()` 把 pulsar 内部日志（连接/重连/lookup 失败）桥接进 go-spring 日志，
-tag 为 `_app_def`，前缀 `pulsar: ` [driver.go:218-233]。
+tag 为 `_app_def`，前缀 `pulsar: ` [driver.go:208-223]。
 
 ### 2. guard/wrap 机制 —— 精确包裹顺序与未保护面
 
@@ -287,8 +294,9 @@ Close 顺序：取消循环 ctx → 等 `done`（在途 handler 收尾）→ `co
 | `metrics.enabled` | bool | true | 启动按实例的 `/metrics` server 并接入独立 registry [driver.go:97-101]。 | false → 任何地方都没有 `pulsar_client_*`。 |
 | `metrics.port` | int | 9091 | 该 server 的端口。⚠ 固定默认：每个开 metrics 的实例必须各配独立端口；冲突时后起的 server 静默监听失败（错误被吞 [command.go:69-71]）。 | 两实例同端口 → 一个 metrics 端点静默死亡。 |
 | `metrics.path` | string | `/metrics` | 该 server 的 HTTP 路径 [command.go:62]。 | — |
-| `driver` | string | `DefaultDriver` | driver 注册表查找；`RegisterDriver` 重名 panic [driver.go:53-58]。 | 未知名 → 启动报错 "pulsar driver not found"。 |
 | `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedSend` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
+
+无 `driver` key：client 装配由可选 Driver bean（见 §2.1）或内置 `DefaultDriver` 负责。
 
 `schema.json` 里 `metrics.enabled` 默认写的是 `false`，代码默认是 `true` —— 以代码为准。
 
@@ -350,7 +358,6 @@ server [client.go:44-58]。subscriber Close 先排空循环再 consumer.Close
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动失败 "pulsar broker probe failed" | broker 宕 / url 错 / 认证 / TLS | 修连通性；6650 开 ≠ 就绪，用 `:8080/admin/v2/brokers/health` 闸门。 |
-| 启动失败 "pulsar driver not found" | `driver` 拼错或未注册 | 用 DefaultDriver，或 init 里 RegisterDriver。 |
 | 第二个实例没有 /metrics | `metrics.port` 冲突；监听失败仅记 WARN [command.go:69-71] | 各配独立端口。 |
 | 没有 trace | 未 import starter-otel | 加上；所有助手在无它时是静默 no-op。 |
 | handler 明明成功了消息却重投 | Ack 失败（已记 WARN）[driver.go:158] | 检查 broker ack 权限；嫌疑见 §6。 |

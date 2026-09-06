@@ -37,10 +37,6 @@
       "type": "boolean",
       "default": true,
       "description": "Probe the first name server address with a TCP dial at startup"
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
     }
   }
 }

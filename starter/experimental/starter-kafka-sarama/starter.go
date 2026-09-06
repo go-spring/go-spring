@@ -40,6 +40,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
+				gs.IndexArg(3, gs.TagArg("?")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})

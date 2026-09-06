@@ -58,7 +58,4 @@ type Config struct {
 	// RocketMQ's remoting layer connects lazily and would otherwise swallow
 	// the error until the first produce/consume.
 	FailFast bool `value:"${fail-fast:=true}"`
-
-	// Driver specifies which RocketMQ driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }

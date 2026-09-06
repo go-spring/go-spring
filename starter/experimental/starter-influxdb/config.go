@@ -33,8 +33,4 @@ type Config struct {
 	// Bucket is the default destination bucket for writes performed through
 	// the wrapper helpers.
 	Bucket string `value:"${bucket:=}"`
-
-	// Driver specifies which InfluxDB driver to use, defaults to
-	// DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }

@@ -23,20 +23,15 @@ import (
 	"go-spring.org/cloud/httpx"
 )
 
-// driverRegistry maps driver names to their implementations. The bundled
-// DefaultDriver is registered at init; custom drivers add themselves via
-// RegisterDriver (e.g. from an init in the application).
-var driverRegistry = map[string]Driver{}
-
-func init() {
-	RegisterDriver("default", DefaultDriver{})
-}
-
 // Driver defines how to create one client entry's transport — THE extension
 // point for customizing HTTP client assembly (the same shape starter-redigo
-// uses). A company (or the bundled DefaultDriver) implements it once and
-// registers via RegisterDriver; callers select one through Config.Driver, which
-// defaults to "default".
+// uses). It is an OPTIONAL CONTAINER BEAN: a company may provide its own Driver
+// bean (its constructor returns StarterHTTPClient.Driver); when none is
+// present, starter-http-client falls back to the bundled [DefaultDriver] inside
+// transport assembly. Because a custom driver is a bean, it may inject the
+// configuration it needs at wiring time. Every configured entry is assembled
+// through this one Driver; per-entry differences still reach it via the `name`
+// and `c Config` it is called with.
 //
 // The driver owns the FULL assembly and returns the assembled RoundTripper
 // together with the close function that releases its discovery watch and
@@ -54,15 +49,6 @@ func init() {
 //     including the returned teardown.
 type Driver interface {
 	CreateTransport(ctx context.Context, name string, c Config) (rt http.RoundTripper, close func() error, err error)
-}
-
-// RegisterDriver registers an HTTP client driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("http client driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
 }
 
 // DefaultDriver is the default implementation of the Driver interface: the

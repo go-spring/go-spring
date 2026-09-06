@@ -80,9 +80,6 @@ type Config struct {
 	// center itself is off the executor is a transparent no-op, so this switch
 	// only removes the guard entirely (bare calls) when set to false.
 	Governance bool `value:"${governance:=true}"`
-
-	// Driver specifies which Pulsar driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
 // MetricsConfig controls exposure of pulsar-client-go's built-in Prometheus

@@ -177,18 +177,19 @@ grep -E '_app_pulsar|pulsar' app.log        # driver + client log lines (tag _ap
 ```
 import starter-pulsar
   └─ gs.Module(OnProperty("spring.pulsar")) fires when any spring.pulsar.* key exists
-        └─ conf.BindEach("${spring.pulsar}") → one Config per <name> entry   [starter.go:38-45]
-              └─ Provide(newClient, IndexArg name+config).Name(<name>).Destroy(destroyClient)
+        └─ conf.BindEach("${spring.pulsar}") → one Config per <name> entry   [starter.go:38-46]
+              └─ Provide(newClient, IndexArg name+config, IndexArg 3,?Driver).Name(<name>)
+                   .Destroy(destroyClient)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:55-84]:
-  │    1. driver lookup in driverRegistry — unknown name → boot error       [starter.go:58-62]
+  ├─ ctor newClient [starter.go:56-85]:
+  │    1. optional Driver bean — none → bundled DefaultDriver              [starter.go:61-63]
   │    2. d.CreateClient: ClientOptions, auth (mTLS>token-file>token), TLS,
   │       native Prometheus registry + :port /metrics server, log bridge,
-  │       pulsar.NewClient                                              [driver.go:69-115]
+  │       pulsar.NewClient                                              [driver.go:59-105]
   │    3. FailFast probe: cl.TopicPartitions(HealthCheckTopic) — a lookup
   │       that exercises address+auth+TLS without producing; failure →
-  │       cl.Close + metrics shutdown + boot error                       [starter.go:68-75]
+  │       cl.Close + metrics shutdown + boot error                       [starter.go:69-76]
   │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor("pulsar:<url>"))
   │       → resilience.WrapExecutor → indexed by client                [command.go:224-230]
   ├─ readiness: no health indicator exists — the probe is boot-time only
@@ -196,8 +197,15 @@ gs.Run()
        → cl.Close() (releases all producers/consumers) → shutdownMetrics (:port server)
 ```
 
+**Assembly extension point**: client assembly is owned by a `Driver` (interface, `driver.go:27-38`).
+A company/umbrella starter may provide its own `Driver` as an **optional container bean** (a
+`gs.Provide(func() StarterPulsar.Driver{...})`, so it can inject config bound from the properties
+file at wiring time); every instance under `spring.pulsar` is then built through it. When no such
+bean exists the starter falls back to the bundled `DefaultDriver` (`driver.go:40-105`) inside
+assembly (`starter.go:61-63`). There is no per-config `driver` key.
+
 Note `newLogger()` bridges every pulsar-internal log line (connect/reconnect/lookup failures)
-into go-spring's log under tag `_app_def` with a `pulsar: ` prefix [driver.go:218-233].
+into go-spring's log under tag `_app_def` with a `pulsar: ` prefix [driver.go:208-223].
 
 ### 2.2 The guard/wrap mechanism — exact order and what is NOT guarded
 
@@ -292,8 +300,10 @@ absolute-property Pool rule). 18 value tags found by grep — table covers every
 | `metrics.enabled` | bool | true | Starts the per-instance `/metrics` server and wires the dedicated registry [driver.go:97-101]. | false → no `pulsar_client_*` anywhere. |
 | `metrics.port` | int | 9091 | Port of that server. ⚠ Fixed default: every metrics-enabled instance MUST get a distinct port; collision = second server's listen fails silently (error swallowed [command.go:69-71]). | Two instances, one port → one metrics endpoint silently dead. |
 | `metrics.path` | string | `/metrics` | HTTP path on that server [command.go:62]. | — |
-| `driver` | string | `DefaultDriver` | Driver registry lookup; `RegisterDriver` panics on duplicates [driver.go:53-58]. | Unknown name → boot error "pulsar driver not found". |
 | `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedSend` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
+
+No `driver` key: client assembly is owned by an optional Driver bean (see §2.1) or the bundled
+`DefaultDriver`.
 
 `schema.json` states `metrics.enabled` default `false` while the code default is `true` —
 trust the code.
@@ -357,7 +367,6 @@ metrics server [client.go:44-58]. Subscriber Close drains its loop before consum
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails "pulsar broker probe failed" | Broker down / wrong url / auth / TLS | Fix connectivity; 6650 open ≠ ready, gate on `:8080/admin/v2/brokers/health`. |
-| Boot fails "pulsar driver not found" | `driver` typo or nothing registered | Use DefaultDriver or RegisterDriver in an init. |
 | Second instance has no /metrics | `metrics.port` collision; listen failure WARN-logged [command.go:69-71] | Assign distinct ports. |
 | No traces | starter-otel not imported | Import it; all helpers are silent no-ops without it. |
 | Messages redelivered though handler succeeded | Ack failed (WARN logged) [driver.go:158] | Check broker ack permission; suspect listed in §6. |

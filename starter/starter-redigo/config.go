@@ -79,9 +79,6 @@ type Config struct {
 	// starter-go-redis so the two starters stay interchangeable.
 	TLS tlsconf.TLSConfig `value:"${tls}"`
 
-	// Driver specifies which Redis driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
-
 	// StartupPing, when true, dials one connection at boot and PINGs it so a
 	// misconfigured address or unreachable server surfaces during startup
 	// rather than on the first request. Defaults to false: the redigo pool

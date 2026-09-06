@@ -19,7 +19,7 @@ package StarterTrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/filter"
 )
@@ -37,8 +37,8 @@ import (
 func LoadTestServerFilter() filter.ServerFilter {
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
 		md := trpc.Message(ctx).ServerMetaData()
-		if v, ok := md[traffic.MetaKeyLoadTest]; ok && traffic.IsAffirmative(string(v)) {
-			ctx = traffic.WithLoadTest(ctx, "trpc-metadata")
+		if v, ok := md[canonical.MetaKeyLoadTest]; ok && canonical.IsAffirmative(string(v)) {
+			ctx = canonical.WithLoadTest(ctx, "trpc-metadata")
 		}
 		return next(ctx, req)
 	}

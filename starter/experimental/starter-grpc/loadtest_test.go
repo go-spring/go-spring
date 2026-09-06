@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -38,7 +39,7 @@ func TestLoadTestUnaryInterceptor_TagsFromMetadata(t *testing.T) {
 	intc := LoadTestUnaryInterceptor()
 
 	// With the marker metadata: handler ctx is tagged.
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(traffic.MetaKeyLoadTest, "1"))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(canonical.MetaKeyLoadTest, "1"))
 	_, _ = intc(ctx, nil, info, handler)
 	assert.That(t, hits).Equal(1)
 	assert.That(t, saw).True()
@@ -72,7 +73,7 @@ func TestLoadTestStreamInterceptor_TagsFromMetadata(t *testing.T) {
 	info := &grpc.StreamServerInfo{}
 
 	// Marker present in inbound metadata => stream ctx tagged.
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(traffic.MetaKeyLoadTest, "1"))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(canonical.MetaKeyLoadTest, "1"))
 	err := LoadTestStreamInterceptor()(nil, &fakeStream{ctx: ctx}, info, handler)
 	assert.Error(t, err).Nil()
 	assert.That(t, saw).True()

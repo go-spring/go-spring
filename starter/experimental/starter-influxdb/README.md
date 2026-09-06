@@ -86,12 +86,17 @@ spring.influxdb.events.auth-token=...
 ```
 
 **Custom driver** — replace client assembly (e.g. to plug a session-token
-credential flow) by registering your own `Driver` and selecting it with
-`driver=<name>`:
+credential flow) by providing your own `Driver` bean. The `Driver` is an
+optional container bean: every client under `${spring.influxdb}` is built
+through it, and the starter falls back to its bundled `DefaultDriver` when none
+is provided. Register it in a package init (its constructor returns
+`StarterInfluxdb.Driver`):
 
 ```go
 func init() {
-    StarterInfluxdb.RegisterDriver("v1-compat", v1CompatDriver{})
+    gs.Provide(func() StarterInfluxdb.Driver {
+        return v1CompatDriver{}
+    })
 }
 ```
 ### Log tag

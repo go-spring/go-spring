@@ -14,21 +14,46 @@
  * limitations under the License.
  */
 
-package traffic
+package canonical
 
 import (
 	"context"
 	"net/http"
 	"slices"
 	"strings"
+
+	"go-spring.org/cloud/governance/traffic"
 )
+
+// HeaderLoadTest is the canonical HTTP header carrying the load-test marker.
+// It is also read case-insensitively via [net/http.Header.Get], so
+// "x-loadtest" / "X-LoadTest" / "X-LOADTEST" all match.
+//
+// It is a package variable, not a constant, so a company that stamps synthetic
+// traffic with its own header name can re-bind it in an init() — to the marker
+// its own load generator or gateway already writes. Every traffic read/write
+// follows the current value: the HTTP [PropagateHTTP] helpers below, the
+// LoadTest middleware default in each server starter, and the outbound
+// [InjectHTTP]. Re-bind before serving; the go-spring canonical "X-LoadTest"
+// is the default, so a plain go-spring deployment needs no change.
+var HeaderLoadTest = "X-LoadTest"
+
+// MetaKeyLoadTest is the gRPC / non-HTTP metadata key carrying the load-test
+// marker. gRPC requires lowercase metadata keys, so the HTTP header name is not
+// reused verbatim. starter-grpc adapts a metadata.MD to the generic [Carrier]
+// and uses this key.
+//
+// Like [HeaderLoadTest] it is a package variable a company can re-bind to its
+// own convention in an init(). Note the lower-case constraint still applies —
+// gRPC lowercases metadata keys itself, so bind a lower-case key here.
+var MetaKeyLoadTest = "x-loadtest"
 
 // Carrier is the generic string-multi-map shape both [net/http.Header] and a
 // gRPC metadata.MD satisfy (a metadata.MD is literally a map[string][]string).
 // The propagator reads and writes the marker through a Carrier so the
-// protocol-specific glue stays out of this stdlib-only package: starter-grpc
-// casts its metadata.MD to Carrier and reuses the same helpers starter-gin uses
-// on an http.Header.
+// protocol-specific glue stays out of this package: starter-grpc casts its
+// metadata.MD to Carrier and reuses the same helpers starter-gin uses on an
+// http.Header.
 type Carrier map[string][]string
 
 // Has reports whether c carries the load-test marker under key. Key matching is
@@ -71,10 +96,9 @@ func isTruthy(s string) bool {
 	return false
 }
 
-// ExtractHTTP tags ctx as load-test traffic when req carries the default
+// ExtractHTTP tags ctx as load-test traffic when req carries the canonical
 // marker header ([HeaderLoadTest]); otherwise it returns ctx unchanged. The
-// marker's source is recorded as "http-header" so [Source] can report the
-// entry point in logs.
+// marker's source is recorded as "http-header".
 //
 // It is the inbound seam for HTTP servers: a gin/echo/hertz middleware calls
 // ExtractHTTP on the incoming request and threads the returned ctx through
@@ -92,14 +116,14 @@ func ExtractHTTP(ctx context.Context, req *http.Request) context.Context {
 	return WithLoadTest(ctx, "http-header")
 }
 
-// InjectHTTP writes the default marker header ([HeaderLoadTest]) onto req when
-// ctx is a load-test context; otherwise it is a no-op. It is the outbound seam
-// for HTTP clients: before sending a request, an http.RoundTripper (or the
-// starter's transport) calls InjectHTTP so the downstream hop can recognise
-// the traffic. The header is set via [net/http.Header.Set] so the key is
-// canonicalised correctly.
+// InjectHTTP writes the canonical marker header ([HeaderLoadTest]) onto req when
+// ctx is a load-test context (the parent [traffic.IsLoadTest]); otherwise it is
+// a no-op. It is the outbound seam for HTTP clients: before sending a request,
+// an http.RoundTripper (or the starter's transport) calls InjectHTTP so the
+// downstream hop can recognise the traffic. The header is set via
+// [net/http.Header.Set] so the key is canonicalised correctly.
 func InjectHTTP(ctx context.Context, req *http.Request) {
-	if req == nil || !IsLoadTest(ctx) {
+	if req == nil || !traffic.IsLoadTest(ctx) {
 		return
 	}
 	req.Header.Set(HeaderLoadTest, "1")
@@ -121,7 +145,7 @@ func ExtractCarrier(ctx context.Context, c Carrier, key, source string) context.
 // a [Carrier]. When ctx is a load-test context it writes the marker under
 // key; otherwise it is a no-op.
 func InjectCarrier(ctx context.Context, c Carrier, key string) {
-	if !IsLoadTest(ctx) {
+	if !traffic.IsLoadTest(ctx) {
 		return
 	}
 	c.Set(key)

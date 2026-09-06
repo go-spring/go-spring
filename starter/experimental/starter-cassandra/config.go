@@ -58,8 +58,4 @@ type Config struct {
 
 	// TLS configures client-to-server TLS (tlsconf shared block).
 	TLS tlsconf.TLSConfig `value:"${tls}"`
-
-	// Driver specifies which Cassandra driver to use, defaults to
-	// DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }

@@ -141,6 +141,24 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   `Read` 函数(按 `format` query 参数选择)解析远端字节,`flatten.Flatten` 后返回
   `map[string]string`。
 
+### 2.6 聚合 / profile 类 starter(公司基线)
+
+聚合 starter 把 go-spring 再基线到一家组织的约定上 —— **组合**既有 starter 并给默认,
+**绝不重新实现**。`starter-luohua` 是参考。它区别于其它原型:导入并接线多个既有 starter,
+而非一个第三方 —— single-concern 依然成立:它接的"第三方"是**公司基线**(身份、wire 词表、
+错误词表、标准 driver)。
+
+- **只走公开缝,绝无私有路径。** 它提供的每个默认 —— 一个 `security.TokenValidator` bean、
+  一个 `i18n.MessageSource` 词表、一个注册的 driver、一个 log ctx 钩子 —— 都经该能力既有的
+  公开缝 (ARCHITECTURE §5:内置实现走同样的缝)。若某聚合默认必须走私有路径才生效,错的是缝,不是默认。
+- **默认一律让步。** 公司默认用 `gs.Provide` + `gs.OnMissingBean` / 配置门控提供,app 自带身份 /
+  词表 / driver 时优先;聚合 starter 不裁决。
+- **独有前缀、按配置装配。** 绑在自己的 `${spring.<name>}` 前缀下(如 `spring.luohua`);
+  用 `gs.OnProperty` 前缀武装,能力开关在内。导入即 inert,配置才生效。
+- **主体是一组 `gs.Module` + `Register*`。** 每个能力一个 `gs.Module`(绑配置 → 给默认 / 覆盖)
+  或一个 `init()` 里的 driver-registry 注册。
+- **一关切一文件。** 身份 / 传播 / 可观测 / driver / i18n 各居一文件,按关切命名(同 §2.2 client 骨架)。
+
 ## 3. 横切约束
 
 - **配置前缀按实现划分,每个 starter 用自己的唯一 key。** 每个 starter 通过自己独有的

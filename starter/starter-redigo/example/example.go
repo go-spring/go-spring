@@ -35,14 +35,33 @@ import (
 )
 
 func init() {
-	StarterRedigo.RegisterDriver("AnotherRedisDriver", &AnotherRedisDriver{})
+	// Override the bundled default assembly with our own Driver BEAN. It is one
+	// bean, so no gs.Module / conf.Bind is needed: the constructor takes a
+	// config struct whose ${spring.example.*} values the container binds straight
+	// from the config file at wiring — proving a bean-supplied driver sees
+	// config-file input. redigo injects this Driver into every pool, falling
+	// back to its DefaultDriver only when no Driver bean is present.
+	gs.Provide(func(c AppConfig) StarterRedigo.Driver {
+		return AnotherRedisDriver{external: c.RedisExtra}
+	}, gs.TagArg("${spring.example}")).Caller(1)
 }
 
-// AnotherRedisDriver is a custom implementation of the Driver interface.
-type AnotherRedisDriver struct{}
+// AppConfig carries the example's own "company" external input, bound from the
+// config file (${spring.example.*}) onto the Driver bean's constructor param.
+type AppConfig struct {
+	RedisExtra string `value:"${redis-extra:=none}"`
+}
 
-func (AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config) (*StarterRedigo.Pool, error) {
-	log.Infof(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient")
+// AnotherRedisDriver is a custom implementation of the Driver interface. It is
+// provided as a Driver BEAN (see init), overriding the starter's bundled
+// DefaultDriver via gs.Export(gs.As[StarterRedigo.Driver]).
+type AnotherRedisDriver struct {
+	// external is company input injected from the config file.
+	external string
+}
+
+func (d AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config) (*StarterRedigo.Pool, error) {
+	log.Infof(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient external=%q", d.external)
 	// Delegate to the standard one-shot assembly, then the driver could
 	// customize the pool via its public API (e.g. UseCommandInterceptor).
 	return StarterRedigo.NewPool(ctx, c)
@@ -57,8 +76,8 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
-	// You can change the `driver` property in the configuration file
-	// and check the used Redis driver via logs.
+	// Every pool is built through the Driver bean registered in init
+	// (AnotherRedisDriver); check its external=%q log at startup.
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.

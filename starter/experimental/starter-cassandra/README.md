@@ -79,11 +79,13 @@ spring.cassandra.analytics.hosts=10.0.1.1
 ```
 
 **Custom driver** — replace session assembly (e.g. to pin a
-HostSelectionPolicy or shard-aware Scylla driver) by registering your own
-`Driver` and selecting it with `driver=<name>`:
+HostSelectionPolicy or shard-aware Scylla driver) by providing your own
+`Driver` as an optional container bean. Every client under `spring.cassandra`
+is built through it; when none is present the starter falls back to its bundled
+`DefaultDriver`:
 
 ```go
 func init() {
-    StarterCassandra.RegisterDriver("scylla-shard", scyllaDriver{})
+    gs.Provide(func() StarterCassandra.Driver { return scyllaDriver{} })
 }
 ```

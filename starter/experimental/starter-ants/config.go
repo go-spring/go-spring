@@ -39,8 +39,6 @@ func (p *antsPool) Cap() int                 { return p.pool.Cap() }
 func (p *antsPool) Waiting() int             { return p.pool.Waiting() }
 func (p *antsPool) Release()                 { p.pool.Release() }
 
-var driverRegistry = map[string]Driver{}
-
 // panicHandler is an optional handler invoked when a task submitted to a
 // DefaultDriver-built pool panics. It is a global hook shared by every such
 // pool; register it with SetPanicHandler before the container starts. When
@@ -71,10 +69,6 @@ func poolPanicHandler(p any) {
 	goutil.ReportPanic(context.Background(), p)
 }
 
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
-}
-
 // Config defines an ants goroutine-pool configuration. ants is a purely
 // in-process worker pool, so there is no address or connection to configure —
 // only sizing and scheduling knobs.
@@ -102,38 +96,33 @@ type Config struct {
 	// DisablePurge keeps workers alive forever, disabling the background purge
 	// goroutine. Useful for pools that stay busy and want to avoid churn.
 	DisablePurge bool `value:"${disable-purge:=false}"`
-
-	// Driver specifies which pool driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
 // ---------------------------------------------------------------------------
 // Driver
 // ---------------------------------------------------------------------------
 
-// Driver defines how to create a Pool from configuration.
-// Implementations can customize pool construction, attach observers,
-// or provide entirely different pool backends.
+// Driver defines how to create a Pool from configuration. It is an OPTIONAL
+// CONTAINER BEAN: a company or umbrella starter may provide its own Driver bean
+// (its constructor returns StarterAnts.Driver); when none is present,
+// starter-ants falls back to the bundled [DefaultDriver] inside pool assembly.
+// A custom driver is a bean, so it may inject the configuration/beans it needs
+// — e.g. company config bound from a properties file at wiring time.
+//
+// At most one Driver bean is expected per process; every pool under
+// ${spring.ants} is built through it, and per-instance differences are
+// expressed through [Config].
 type Driver interface {
 	CreatePool(c Config) (Pool, error)
-}
-
-// RegisterDriver registers a pool driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("ants driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
 }
 
 // ---------------------------------------------------------------------------
 // DefaultDriver
 // ---------------------------------------------------------------------------
 
-// DefaultDriver is the default implementation of the Driver interface.
-// It creates a standard *ants.Pool wrapped in an antsPool with all
-// registered observers attached.
+// DefaultDriver is the bundled default implementation of the Driver interface.
+// It creates a standard *ants.Pool wrapped in an antsPool with all registered
+// observers attached.
 type DefaultDriver struct{}
 
 // CreatePool creates a new ants pool based on the provided configuration.

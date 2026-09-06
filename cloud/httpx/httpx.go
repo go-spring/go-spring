@@ -54,7 +54,7 @@ import (
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/tlsconf"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -283,7 +283,7 @@ type trafficTransport struct {
 }
 
 func (t *trafficTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	traffic.InjectHTTP(req.Context(), req)
+	canonical.InjectHTTP(req.Context(), req)
 	return t.base.RoundTrip(req)
 }
 

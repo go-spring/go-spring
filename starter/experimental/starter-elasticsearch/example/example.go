@@ -36,19 +36,28 @@ import (
 )
 
 func init() {
-	StarterElasticsearch.RegisterDriver("AnotherESDriver", &AnotherESDriver{})
+	// Override the bundled default assembly with our own Driver BEAN. It is one
+	// bean, so no gs.Module / conf.Bind is needed. Every client under
+	// ${spring.elasticsearch} is built through it; the starter falls back to its
+	// DefaultDriver only when no Driver bean is present.
+	gs.Provide(func() StarterElasticsearch.Driver {
+		return AnotherESDriver{}
+	}).Caller(1)
 }
 
-// AnotherESDriver is a custom implementation of the Driver interface.
-type AnotherESDriver struct{}
+// AnotherESDriver is a custom implementation of the Driver interface. It is
+// provided as a Driver BEAN (see init). Because a Driver bean is process-wide,
+// this override delegates to the bundled default assembly
+// ([StarterElasticsearch.DefaultDriver]) so per-instance behavior (static
+// addresses or service discovery) is preserved — it exists to prove the
+// override is injected, not to change assembly.
+type AnotherESDriver struct {
+	StarterElasticsearch.DefaultDriver
+}
 
-func (AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config) (*elasticsearch.Client, error) {
+func (d AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config) (*elasticsearch.Client, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherESDriver::CreateClient")
-	return elasticsearch.NewClient(elasticsearch.Config{
-		Addresses: c.Addresses,
-		Username:  c.Username,
-		Password:  c.Password,
-	})
+	return d.DefaultDriver.CreateClient(ctx, c)
 }
 
 const indexName = "starter-es-example"
@@ -62,8 +71,8 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
-	// You can change the `driver` property in the configuration file
-	// and check the used Elasticsearch driver via logs.
+	// Every client is built through the Driver bean registered in init
+	// (AnotherESDriver); check its CreateClient log at startup.
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.

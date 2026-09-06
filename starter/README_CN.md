@@ -9,6 +9,13 @@
 所有 starter 共同遵循的设计约束(形态、端口、driver 模式、多实例、fail-fast……）
 见 [DESIGN_CN.md](DESIGN_CN.md)。
 
+## 公司基线(聚合 / profile 类)
+
+下面大多 starter 各接一个第三方能力。**聚合 / profile starter** 相反:它**组合**其它
+starter,并通过它们的公开缝提供一整家组织的默认 —— 身份、wire/传播词表、错误词表、
+标准 driver —— 让一个服务**空白导入一个模块 + 配一个前缀**即可再基线到公司约定。
+`starter-luohua` 是参考实现(见 DESIGN §2.6)。
+
 ## Web / HTTP 框架
 
 通过 Go-Spring 服务生命周期托管由应用提供的 Web 引擎。

@@ -174,12 +174,13 @@ import starter-neo4j
 gs.Run()
   ├─ ctor newClient [starter.go:77]: log instance creation
   │   ├─ if service-name set and mesh off: resolveURI → one endpoint picked,
-  │   │  its address spliced into the URI host [starter.go:81-89, driver.go:128-145]
-  │   ├─ driverRegistry lookup ("neo4j driver not found" on miss) [starter.go:91-98]
-  │   ├─ driver.CreateClient (auth + pool knobs + TLS) [driver.go:61-82]
+  │   │  its address spliced into the URI host [starter.go:80-87, driver.go:128-145]
+  │   ├─ optional Driver bean — none → bundled DefaultDriver (d == nil
+  │   │  fallback [starter.go:89-92])
+  │   ├─ d.CreateClient (auth + pool knobs + TLS) [starter.go:93, driver.go:61-82]
   │   └─ fail-fast VerifyConnectivity, bounded by socket-connect-timeout or
-  │      5s; on failure the client, resolver are closed and the boot aborts
-  │      [starter.go:109-119, 132-137]
+  │      5s; on failure the client is closed and the boot aborts
+  │      [starter.go:103-106]
   ├─ Init [client.go:68-69]: resource = resilience.ResourceLabel("neo4j",
   │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor(resource))
   │   → resilience.WrapExecutor(exec, "neo4j") — no-op executor when
@@ -189,8 +190,15 @@ gs.Run()
       driver.Close(context.Background())
 ```
 
-A misconfigured `driver`, an unreachable server, or bad TLS material fails the boot — the
-process never reaches "serving" with a dead Neo4j.
+**Assembly extension point**: client assembly is owned by a `Driver` (interface,
+`driver.go:48-49`). A company/umbrella starter may provide its own `Driver` as an **optional
+container bean** (a `gs.Provide(func() StarterNeo4j.Driver{...})`, so it can inject config bound
+from the properties file at wiring time); every instance under `spring.neo4j` is then built
+through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
+(`driver.go:53`) inside assembly (`starter.go:89-92`). There is no per-config `driver` key.
+
+An unreachable server, or bad TLS material fails the boot — the process never reaches "serving"
+with a dead Neo4j.
 
 Teardown is deliberately named `Destroy`, not `Close`: the embedded
 `neo4j.DriverWithContext` already exposes `Close(context.Context)`, and shadowing it with a
@@ -272,7 +280,6 @@ IndexArg(1)), not the absolute-property Pool rule.
 | `service-name` | string | — | Resolve the address through a discovery backend, once at startup (§2.4). ⚠ Requires a matching backend registered via `discovery.RegisterDiscovery`. | Unregistered backend → boot error "neo4j: resolve service …". |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name`. | — |
 | `discovery` | string | `default` | Which registered backend resolves `service-name`. | Wrong name → boot error from discovery. |
-| `driver` | string | `DefaultDriver` | Selects a registered `Driver` (registry in driver.go:37). | Unknown name → boot error "neo4j driver not found". Duplicate `RegisterDriver` panics. |
 
 ### 3.2 Auth & connection pool
 
@@ -365,8 +372,7 @@ app (or let a platform do it) to re-resolve.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "failed to verify neo4j connectivity" | Server unreachable / wrong credentials / TLS mismatch | Fail-fast probe is unconditional [starter.go:109-119]; fix connectivity or auth. |
-| Boot fails "neo4j driver not found: X" | `driver` names nothing registered | Register via `StarterNeo4j.RegisterDriver` in an init, or use `DefaultDriver`. |
+| Boot fails "failed to verify neo4j connectivity" | Server unreachable / wrong credentials / TLS mismatch | Fail-fast probe is unconditional [starter.go:103-106]; fix connectivity or auth. |
 | Boot fails "neo4j: resolve service X" | `service-name` set but no backend registered under `discovery` | Register the backend (example/discovery.go) or drop service-name. |
 | Queries work but no spans/metrics/access log | Code calls `neo4j.ExecuteQuery` directly, bypassing the seam | Swap to `StarterNeo4j.Query` / wrap with `StartSpan` (§2.2); import starter-otel for real export. |
 | No protection though governance is on | Session code not routed through `Query`/`RunWithResilience`, or a raw driver passed (type-assert misses) | Route through the helpers; always pass the `*Client` wrapper [command.go:111-116]. |
@@ -377,7 +383,7 @@ app (or let a platform do it) to re-resolve.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 14 instance keys + tls group (4) |
+| Config keys | 13 instance keys + tls group (4) |
 | Required | 1 (`uri`) |
 | Quickstart external deps | 1 (Neo4j) |
 | "Watch out" entries | 6 |

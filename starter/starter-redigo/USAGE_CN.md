@@ -255,7 +255,6 @@ pool.Get()（你的代码）
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 拨号参数。 | — |
 | `conn-max-lifetime` | duration | 2m | MaxConnLifetime；较短值利于发现流量切换。 | 很大 + discovery → 老端点滞留。 |
 | `tls.*` | group | off | 客户端 TLS；key 与 starter-go-redis 对齐。 | 配一半 → tls.Build 启动报错。 |
-| `driver` | string | `DefaultDriver` | 选择已注册 Driver。 | 未知 → 启动报 "redigo driver not found"。 |
 | `startup-ping` | bool | false | 可选启动探测：拨一条裸连接并 PING [pool.go:266-279]。⚠ 默认关——池是惰性的，坏地址要到首条命令才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
 | `health.enabled` | bool | true | 注册 `redigo:<name>` 指示器；false 让池不卷入聚合健康。 | false → readiness 静默漏掉该池。 |
 
@@ -264,9 +263,11 @@ pool.Get()（你的代码）
 - `Pool.UseCommandInterceptor(...CommandInterceptor)` —— 上述每命令洋葱；先注册在外；
   传 nil 拦截器直接 panic。
 - `StarterRedigo.NewConn(raw, layers...)` —— 手工装配原语，供 REPLACE 型 driver 使用。
-- `Driver` / `RegisterDriver` —— 拥有完整池装配；[driver.go:43-51] 记录两种形态：
-  ADD（调 NewPool 后经公开 API 定制）或 REPLACE（完全自管）。example 的
-  `AnotherRedisDriver` 演示"委托+定制"形态。
+- `Driver` **bean** —— 可选池装配覆盖。redigo 把它注入到 ${spring.redigo} 下每个池；当未提供
+  Driver bean 时，装配内部回退到内置 `DefaultDriver`。提供构造函数返回 `StarterRedigo.Driver`
+  的 Driver bean 即可（example 的 `AnotherRedisDriver` 演示"委托+定制"形态）。两种定制形态见
+  [driver.go](driver.go)：ADD（调 `NewPool` 后经其公开 API 定制 Pool）或 REPLACE（用 `NewConn`
+  完全自管装配）。因 driver 是 bean，公司 driver 可在装配期注入自己配置文件绑定的输入。
 
 ---
 

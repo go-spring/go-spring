@@ -127,8 +127,8 @@ spring.http-client.discovered.discovery=static
 spring.http-client.discovered.balancer=round_robin
 
 # (3) Resilience-guarded route: policy is process-wide under govern.*.
-# The bundled zero-dependency "default" driver trips the breaker after two
-# consecutive failures and keeps it open 30s.
+# The bundled DefaultDriver trips the breaker after two consecutive failures and
+# keeps it open 30s.
 spring.http-client.guarded.addr=127.0.0.1:9473
 govern.enabled=true
 govern.driver=default
@@ -244,34 +244,27 @@ Rationale (from the source comments, verified):
 8. In direct mode step 5 is `fixedHostTransport` pinning every request to `addr` — same spot in
    the chain, so resilience and call sites behave identically in both modes (httpx.go:264-277).
 
-### 2.4 Extensions: the driver seam (driver.go)
+### 2.4 Extensions: the driver bean (driver.go)
 
-The customization seam is a named driver registry (the same mature shape starter-redigo uses),
-selected per entry via config — no global mutable hooks:
+Transport assembly is owned by a `Driver` (interface, driver.go). Every configured entry is
+assembled through the one Driver (resolved inside `assembleTransport`). The Driver is an
+**optional container bean** whose constructor returns `StarterHTTPClient.Driver`; when none is
+provided the starter falls back to its bundled `DefaultDriver` (the standard cloud/httpx
+assembly). There is no per-config `driver` key and no driver name to select:
 
 ```go
-// The "ADD" shape: embed DefaultDriver, wrap the assembled transport.
-type AuthDriver struct{ StarterHTTPClient.DefaultDriver }
-
-func (AuthDriver) CreateTransport(ctx context.Context, name string, c StarterHTTPClient.Config,
-) (http.RoundTripper, func() error, error) {
-    rt, closeFn, err := AuthDriver{}.StarterHTTPClient.DefaultDriver.CreateTransport(ctx, name, c)
-    if err != nil { return nil, nil, err }
-    return withAuthHeader(rt), closeFn, nil // your extras
+func init() {
+    gs.Provide(func() StarterHTTPClient.Driver {
+        return authDriver{}   // embed DefaultDriver + wrap the RoundTripper to ADD, or own httpx.NewTransport to REPLACE
+    })
 }
-
-func init() { StarterHTTPClient.RegisterDriver("auth", AuthDriver{}) }
 ```
 
-```properties
-spring.http-client.orders.driver=auth
-```
-
-- **ADD to the default**: embed `DefaultDriver` (which delegates to `httpx.NewTransport`) and
-  wrap the returned `RoundTripper` — auth headers, custom metrics, request filters.
+- **ADD to the default**: the override embeds `DefaultDriver` (which delegates to
+  `httpx.NewTransport`) and wraps the returned `RoundTripper` — auth headers, custom metrics,
+  request filters.
 - **REPLACE**: build the transport entirely your own way — e.g. `httpx.NewTransport` with a
   custom `Base` (proxy, pool tuning). You own the returned teardown.
-- Unknown `driver` name → fail fast at wiring time ("unknown driver").
 
 ---
 
@@ -286,7 +279,6 @@ Keys under `spring.http-client.<name>.*` (cross-checked with
 | `service-name` | string | "" | Discovery mode: logical name resolved via the named backend; ALWAYS the governance resource label when set (discovery or direct mode). With `addr` set it is not a discovery target. | Neither set → fail fast; set without `addr` and without `discovery` → fail fast. |
 | `discovery` | string | "" | Names a backend registered via `discovery.RegisterDiscovery`. Required iff `service-name` set without `addr` (config.go validate). | Missing → fail fast. Unknown name → wiring-time error from `discovery.NewLoader` (httpx.go:196). |
 | `balancer` | string | round_robin | LB strategy: `round_robin`, `least_conn`, `consistent_hash`, `weighted`, `zone_aware`. Unknown name fails at wiring (`loadbalance.New`, httpx.go:156). | Typos surface at boot, not per request. |
-| `driver` | string | default | Transport-assembly driver (driver.go): `default` = standard httpx assembly; a registered custom driver ADDs (embed DefaultDriver, wrap the RoundTripper) or REPLACEs (own `httpx.NewTransport`, custom Base). | Unknown name → fail fast "unknown driver". |
 | `suspend-threshold` | int | 0 | Consecutive failures before an endpoint is suspended from the pool (outlier suspension). 0 disables. | Without it a dead instance keeps receiving round-robin share; pair with resilience so the breaker absorbs the failures. |
 | `suspend-for` | duration | 0 | How long an suspended endpoint stays out before a half-open trial. Ignored when `suspend-threshold=0`. | 0 with suspension on → immediate trial re-entry (thrash). |
 | `observability.level` | string | brief | Access-log gate for the executor wrap: off / brief / detailed (observe/config.go:50). | brief is ON by default — expect one log record per protected call. |
@@ -417,7 +409,7 @@ whole stack, not just the injector.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 10 (7 route + 3 observability) |
+| Config keys | 9 (6 route + 3 observability) |
 | Required | 0 by tag; 1 XOR pair + conditional discovery enforced at validate |
 | Quickstart external deps | 0 (a registry only for discovery mode) |
 | "Watch out" entries | 8 |

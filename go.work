@@ -253,6 +253,8 @@ use (
 	./starter/starter-http-client/example-otel
 	./starter/starter-http-server
 	./starter/starter-http-server/example
+	./starter/starter-luohua
+	./starter/starter-luohua/example
 	./starter/starter-memcached
 	./starter/starter-memcached/example
 	./starter/starter-memcached/example-cloudnative

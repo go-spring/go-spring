@@ -51,6 +51,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
+				gs.IndexArg(3, gs.TagArg("?")),
 			).Name(name).Init((*Cache).Init).Destroy((*Cache).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
@@ -79,13 +80,12 @@ func init() {
 // newClient creates a new BigCache instance based on the provided configuration,
 // wrapped so Get/Set/Delete flow through the module-local observe layer, and registers OTel
 // gauges for its statistics, labeled by the instance name.
-func newClient(ctx *gs.ContextProvider, name string, c Config) (*Cache, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Cache, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating bigcache instance, name=%s shards=%d max-size=%d", name, c.Shards, c.MaxEntrySize)
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "bigcache driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "bigcache driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	client, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

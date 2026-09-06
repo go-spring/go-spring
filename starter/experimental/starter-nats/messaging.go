@@ -21,6 +21,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/messaging"
 )
 
@@ -75,7 +76,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		if nm.Header == nil {
 			nm.Header = nats.Header{}
 		}
-		nm.Header.Set(traffic.HeaderLoadTest, "1")
+		nm.Header.Set(canonical.HeaderLoadTest, "1")
 	}
 	// Conn.PublishMsg emits the producer span + metric + access log and injects
 	// the W3C trace context into nm.Header for subscribers.
@@ -103,8 +104,8 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 		// metric + access log.
 		ctx, sp := s.conn.startConsume(context.Background(), s.subject, nm)
 		// Extract the load-test marker the producer put in the NATS header.
-		if traffic.IsAffirmative(nm.Header.Get(traffic.HeaderLoadTest)) {
-			ctx = traffic.WithLoadTest(ctx, "nats-header")
+		if canonical.IsAffirmative(nm.Header.Get(canonical.HeaderLoadTest)) {
+			ctx = canonical.WithLoadTest(ctx, "nats-header")
 		}
 		err := handler(ctx, fromNatsMsg(nm))
 		if sp != nil {

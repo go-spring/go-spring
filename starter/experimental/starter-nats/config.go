@@ -66,9 +66,6 @@ type Config struct {
 
 	// JetStream configures the JetStream context derived from this connection.
 	JetStream JetStreamConfig `value:"${jetstream}"`
-
-	// Driver specifies which NATS driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
 // JetStream context is created from the connection and exposed on Conn.JetStream;

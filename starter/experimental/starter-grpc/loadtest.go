@@ -19,7 +19,7 @@ package StarterGrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -32,7 +32,7 @@ import (
 // handler all see the marker via traffic.IsLoadTest(ctx).
 //
 // Without the marker the interceptor is a no-op. gRPC metadata keys are
-// lower-case, so the key is traffic.MetaKeyLoadTest ("x-loadtest") rather than
+// lower-case, so the key is canonical.MetaKeyLoadTest ("x-loadtest") rather than
 // the HTTP header spelling.
 func LoadTestUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
@@ -57,5 +57,5 @@ func extractLoadTest(ctx context.Context) context.Context {
 	if !ok {
 		return ctx
 	}
-	return traffic.ExtractCarrier(ctx, traffic.Carrier(md), traffic.MetaKeyLoadTest, "grpc-metadata")
+	return canonical.ExtractCarrier(ctx, canonical.Carrier(md), canonical.MetaKeyLoadTest, "grpc-metadata")
 }

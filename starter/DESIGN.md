@@ -190,6 +190,35 @@ application can load configuration from it at startup and hot-reload at runtime.
   `format` query param, then `flatten.Flatten` before returning
   `map[string]string`.
 
+### 2.6 Aggregator / profile starters (company baseline)
+
+An aggregator starter re-bases go-spring onto one organization's conventions by
+*composing* other starters and supplying defaults, not by re-implementing
+anything. `starter-luohua` is the reference. It is a distinct archetype because
+it imports and wires several existing starters rather than one third party —
+single-concern still holds: the "third party" it integrates is the company
+baseline (its identity, wire vocabulary, error catalog, standard drivers).
+
+- **It wires seams, never private paths.** Every default it provides — a
+  `security.TokenValidator` bean, an `i18n.MessageSource` catalog, a
+  registered driver, a log context hook — goes through the public seam that
+  capability already exposes (ARCHITECTURE §5: built-ins ride the same seams).
+  If an aggregator default needs a private path to work, the seam — not the
+  default — is wrong.
+- **Defaults step aside.** A company default is provided with `gs.Provide` +
+  `gs.OnMissingBean` / config gating so an application that brings its own
+  identity / catalog / driver wins; the aggregator never adjudicates.
+- **Own config prefix, armed by config.** Bind under its own
+  `${spring.<name>}` prefix (e.g. `spring.luohua`); arming is `gs.OnProperty`
+  on the prefix, per-capability toggles inside. Importing it is inert until
+  configured.
+- **Body is a set of `gs.Module` blocks + `Register*` calls.** Each capability
+  gets its own `gs.Module` (bound config → provide default / override) or a
+  driver-registry registration in `init()`.
+- **Layout mirrors one-concern-one-file.** Identity, propagation,
+  observability, driver, i18n each live in their own file, named after the
+  concern (§2.2's client skeleton convention).
+
 ## 3. Cross-Cutting Constraints
 
 - **Config prefix is per implementation, not per capability.** Every starter

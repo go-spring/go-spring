@@ -20,19 +20,18 @@ import (
 	"context"
 )
 
-// driverRegistry maps driver names to their implementations. The bundled
-// DefaultDriver is registered at init; custom drivers add themselves via
-// RegisterDriver (e.g. from an init in the application).
-var driverRegistry = map[string]Driver{}
-
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
-}
-
 // Driver interface defines how to create a Redis client (a connection pool) —
-// THE extension point for customizing pool assembly. A company (or the bundled
-// DefaultDriver) implements it once and registers via RegisterDriver; callers
-// select one through Config.Driver, which defaults to "DefaultDriver".
+// THE extension point for customizing pool assembly. It is an OPTIONAL CONTAINER
+// BEAN: a company or umbrella starter may provide its own Driver bean (exported
+// via [go-spring.org/spring/gs.As]); when none is present, starter-redigo falls
+// back to the bundled [DefaultDriver] inside pool assembly. Because a custom
+// driver is a bean, it may inject the configuration/beans it needs — e.g.
+// company config bound from a properties file at wiring time, which an
+// init-time seam could not see.
+//
+// At most one Driver bean is expected per process; every pool under
+// ${spring.redigo} is built through it, and per-instance differences are
+// expressed through [Config].
 //
 // The driver owns the FULL assembly and returns the starter's wrapped [Pool]
 // (embeds the concrete *redis.Pool), fully armed. The bundled DefaultDriver
@@ -49,15 +48,6 @@ func init() {
 //     you built.
 type Driver interface {
 	CreateClient(ctx context.Context, c Config) (*Pool, error)
-}
-
-// RegisterDriver registers a Redis driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("redis driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
 }
 
 // DefaultDriver is the default implementation of the Driver interface.

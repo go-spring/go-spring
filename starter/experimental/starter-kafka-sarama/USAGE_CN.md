@@ -156,15 +156,14 @@ curl -s :9090/metrics | grep messaging_client   # duration 直方图 + in-flight
 ```
 import starter-kafka-sarama
   ├─ init: sarama.Logger = go-spring log 桥接   [starter.go:33]（sarama 事件全转 Info，默认 app tag）
-  ├─ init: RegisterDriver("DefaultDriver")      [driver.go:34-36]
   └─ gs.Module(OnProperty("spring.kafka-sarama")) 任意 spring.kafka-sarama.* 触发
         └─ conf.BindEach → 每个 <name> 条目一个 Config
-              └─ Provide(newClient, IndexArg name, IndexArg config).Name(<name>)
-                   .Destroy(destroyClient)     [starter.go:40-43]
+              └─ Provide(newClient, IndexArg name, IndexArg config, IndexArg 3,?Driver).Name(<name>)
+                   .Destroy(destroyClient)     [starter.go:40-44]
 
 gs.Run()
-  ├─ newClient [client.go:47]:
-  │    1. driver 注册表查找 —— 未知名字启动失败 [client.go:50-54]
+  ├─ newClient [client.go:48]:
+  │    1. 可选 Driver bean —— 无则内置 DefaultDriver  [client.go:52-53]
   │    2. d.CreateClient：sarama.NewConfig + version/SASL/TLS/producer 选项，
   │       然后 sarama.NewClient(brokers) —— 这里就会拨号 seed broker 并拉取
   │       metadata，坏 broker/坏凭据/TLS 不匹配在启动期失败，而非首次使用时
@@ -177,6 +176,12 @@ gs.Run()
   └─ SIGTERM → Destroy：closeResilience（exec.Close、清 map）→ cl.Close()
        [client.go:78-81, command.go:220-225]
 ```
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:28-39`）负责。公司/伞包 starter 可把
+自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterKafkaSarama.Driver{...})`，
+因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.kafka-sarama` 下每个实例都经它
+构建。没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:41-88`，
+`client.go:52-53`）。没有 per-config 的 `driver` key。
+
 派生的 producer/consumer 不是容器 bean —— 需自行在应用退出前关闭（publish 路径里
 `defer producer.Close()` 即预期写法，见 [example/example.go:72-76]）。
 `sarama.Client.Close` 释放共享 broker 连接。
@@ -249,7 +254,8 @@ ctx），包装器只能用 `context.Background()` —— 逐调用时限要用 
 |-----|------|--------|-------------|----------|
 | `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:32]）；逗号分隔 seed 列表 [driver.go:95]。同时原样构成治理资源标签 `kafka:<brokers>` [client.go:65] —— 同一集群写法不同即**不同**标签。 | 缺失/为空 → 绑定报错。broker 写错 → sarama.NewClient 启动失败（fail-fast）。 |
 | `version` | string | ""（sarama 默认） | `sarama.ParseKafkaVersion` 解析；决定协议特性（headers、SASL 机制、消费组）[driver.go:65-71]。 | 解析失败 → 启动报错 `invalid kafka version`。过低 → 首次使用才报功能错误。 |
-| `driver` | string | `DefaultDriver` | 选择已注册的 `Driver`（唯一的装配扩展点）[driver.go:42-53]。 | 未知名字 → 启动报错 `kafka driver not found` [client.go:50-54]。重名注册 panic。 |
+
+无 `driver` key：client 装配由可选 Driver bean（见 §2.1）或内置 `DefaultDriver` 负责。
 
 ### 3.2 SASL（`sasl.*`）—— [config.go:64-77]、[driver.go:101-118]
 
@@ -363,7 +369,7 @@ grep 'resilience' app.log | grep 'kafka|127.0.0.1:9092'
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 15（核心 3 + sasl 4 + tls 6 + producer 2） |
+| 配置 key 总数 | 14（核心 2 + sasl 4 + tls 6 + producer 2） |
 | 其中必填 | 1（`brokers`） |
 | quickstart 前置外部依赖 | 1（Kafka；完整可观测另需 collector） |
 | "注意/坑"条数 | 6 |

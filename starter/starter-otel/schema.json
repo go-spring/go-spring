@@ -37,7 +37,7 @@
         "propagator": {
           "type": "string",
           "default": "w3c",
-          "description": "w3c|none; honored independently of trace export"
+          "description": "comma list of registered propagators (built-in: tracecontext, baggage; w3c = both) | none; e.g. w3c,<company> to add a named-header propagator; honored independently of trace export"
         }
       }
     },

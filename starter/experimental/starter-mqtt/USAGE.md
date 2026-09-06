@@ -158,23 +158,24 @@ The example's own smoke (`example/check.sh`) runs a QoS 1 pub/sub round-trip, ex
 import starter-mqtt
   └─ gs.Module(gs.OnProperty("spring.mqtt")) fires when any spring.mqtt.* key exists
         └─ conf.BindEach("${spring.mqtt}") → one Config per <name> entry
-              └─ Provide(newClient).Name(<name>).Destroy(destroyClient).Caller(1)   [starter.go:36-39]
+              └─ Provide(newClient).Name(<name>).Destroy(destroyClient).Caller(1)   [starter.go:36-40]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:50]:
-  │    1. driver lookup — unknown name fails the boot                  [starter.go:53-57]
-  │    2. driver.CreateClient: assembles paho options (broker, id,
+  ├─ ctor newClient [starter.go:52]:
+  │    1. Driver bean injection — a company Driver bean, when present;
+  │       nil (none) falls back to the bundled DefaultDriver           [starter.go:55-58]
+  │    2. CreateClient: assembles paho options (broker, id,
   │       credentials, clean-session, keep-alive, connect-timeout),
-  │       bridges connect/lost/reconnecting events into go-spring log  [driver.go:73-81],
-  │       builds TLS (tlsconf BuildClient) and registers the will            [driver.go:83-94]
+  │       bridges connect/lost/reconnecting events into go-spring log  [driver.go:64-72],
+  │       builds TLS (tlsconf BuildClient) and registers the will            [driver.go:74-85]
   │    3. client.Connect() + token.Wait() — fail-fast probe: a dead
-  │       broker, bad credentials or TLS mismatch abort the boot       [starter.go:64-69]
+  │       broker, bad credentials or TLS mismatch abort the boot       [starter.go:70-75]
   │    4. applyResilience — attaches the governance executor, indexed
-  │       by client; on failure the client is disconnected (250ms)     [starter.go:70-74]
+  │       by client; on failure the client is disconnected (250ms)     [starter.go:76-80]
   ├─ readiness: no indicator bean — paho's auto-reconnect (left on) is the
   │  recovery path; connection state is observable via IsConnected() and the
-  │  bridged lifecycle logs (warn on connection lost)                  [driver.go:76-78]
-  └─ SIGTERM → destroyClient [starter.go:82-86]:
+  │  bridged lifecycle logs (warn on connection lost)                  [driver.go:67-69]
+  └─ SIGTERM → destroyClient [starter.go:85-92]:
        closeResilience (Close the executor, error discarded)           [command.go:137-142]
        → client.Disconnect(250ms grace for in-flight work)
 ```
@@ -276,11 +277,10 @@ All keys live under `spring.mqtt.<name>.` (per-instance prefix binding via `conf
 | `tls.enabled` | bool | false | Enables `tlsconf` client TLS; pair with an `ssl://` broker URL. | Plaintext broker + tls on → connect failure at boot. |
 | `tls.ca-file` / `cert-file` / `key-file` | string | — | CA / mutual-TLS client material, `tls.Build()` at client creation [driver.go:83-90]. | Partial config → Build error at boot. |
 | `tls.server-name` / `insecure-skip-verify` | string/bool | — | SNI override / skip verification. | — |
-| `driver` | string | DefaultDriver | Selects a registered Driver; registry panics on duplicate registration [driver.go:46-51]. | Unknown name → boot error "mqtt driver not found" [starter.go:56]. |
 | `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedPublish` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
-Reconciled with `grep -rhoE 'value:"[^"]+"'` over the starter: 14 distinct value tags →
-8 flat keys + tls (6) + will (4) = **18 keys, 1 required**.
+Reconciled with `grep -rhoE 'value:"[^"]+"'` over the starter: 13 distinct value tags →
+7 flat keys + tls (6) + will (4) = **17 keys, 1 required**.
 
 ---
 
@@ -357,7 +357,6 @@ kill -9 <pid>   # ungraceful → will "offline" (retained per config) is publish
 |---------|--------------|-----|
 | Boot fails "mqtt: connect failed broker=..." | Broker unreachable / wrong credentials / TLS mismatch | Fail-fast connect is unconditional [starter.go:64-69]; fix connectivity or config. |
 | Boot hangs (no error) | `connect-timeout=0` with a black-holed address | Keep a finite timeout; 0 disables it [config.go:51]. |
-| Boot fails "mqtt driver not found" | `driver` names nothing registered | Register via `RegisterDriver` in an init (panics on duplicate) [driver.go:46-51]. |
 | Reconnect storm / client kicked | Duplicate `client-id` across replicas | Assign distinct ids (broker enforces uniqueness). |
 | No breaker/limiter effect | Publishing via plain `client.Publish`, or `governance=false` on the instance | `GuardedPublish` and the driver's `Publish` are guarded [command.go:156-172]; switch call sites / re-enable. |
 | No traces/metrics/access records | starter-otel not imported, or expecting them from the driver | Helpers ride the OTel globals; the driver emits nothing [client.go:47-52]. |
@@ -371,7 +370,7 @@ kill -9 <pid>   # ungraceful → will "offline" (retained per config) is publish
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 18 (8 flat + tls 6 + will 4) |
+| Config keys | 17 (7 flat + tls 6 + will 4) |
 | Required | 1 (`broker`) |
 | Quickstart external deps | 1 (MQTT broker — mosquitto via docker compose) |
 | "Watch out" entries | 6 |
@@ -381,7 +380,6 @@ Design suspects (audit ledger; none fixed since last pass):
 - Driver handler errors are only logged; `Recover`'s comment claims "nack/redelivery"
   that MQTT 3.1.1's fire-and-forget callback cannot deliver [client.go:90-97].
 - Governance is per-call-site opt-in (`GuardedPublish`) and undocumented in the README.
-- README config table omits `driver`.
 - No health indicator bean (family asymmetry: redis/nats provide one); `IsConnected()` is
   the only liveness signal and nothing probes it automatically.
 - `schema.json` marks `will.qos` as type object and omits tls/will sub-keys

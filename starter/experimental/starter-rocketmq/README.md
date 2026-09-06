@@ -136,12 +136,26 @@ type Service struct {
 ```
 
 **Custom driver** — replace client assembly (e.g. to inject a custom
-`primitive.NsResolver`) by registering your own `Driver` and selecting it with
-`driver=<name>`:
+`primitive.NsResolver`) by providing your own `Driver` bean (its constructor
+returns `StarterRocketmq.Driver`). It is an optional container bean: every
+client under `spring.rocketmq.*` is built through it, and the starter falls
+back to its bundled `DefaultDriver` only when no `Driver` bean is present.
+Embed `StarterRocketmq.DefaultDriver` and delegate `CreateClient` so the
+default assembly is preserved:
 
 ```go
 func init() {
-    StarterRocketmq.RegisterDriver("my-driver", myDriver{})
+    gs.Provide(func() StarterRocketmq.Driver {
+        return myDriver{}
+    })
+}
+
+type myDriver struct {
+    StarterRocketmq.DefaultDriver
+}
+
+func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config) (*StarterRocketmq.Client, error) {
+    return d.DefaultDriver.CreateClient(ctx, c)
 }
 ```
 

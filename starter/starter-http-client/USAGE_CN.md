@@ -123,7 +123,7 @@ spring.http-client.discovered.discovery=static
 spring.http-client.discovered.balancer=round_robin
 
 # (3) 韧性守卫路由:策略在进程级 govern.* 下。
-# 内置零依赖 "default" driver 连续失败 2 次后熔断,持续 30s。
+# 内置 DefaultDriver 连续失败 2 次后熔断,持续 30s。
 spring.http-client.guarded.addr=127.0.0.1:9473
 govern.enabled=true
 govern.driver=default
@@ -234,34 +234,25 @@ gs.Run()
 8. 直连模式下第 5 步换成 `fixedHostTransport` 把每个请求钉到 `addr`——链上同一位置,
    两种寻址模式下 resilience 与调用侧行为完全一致(httpx.go:264-277)。
 
-### 2.4 扩展点:driver 缝(driver.go)
+### 2.4 扩展点:driver bean(driver.go)
 
-自定义缝是命名 driver 注册表(与 starter-redigo 同款成熟形态),按条目经配置选择——
-没有全局可变钩子:
+传输装配由 `Driver`(接口,driver.go)负责。每条配置项都经这一个 Driver 装配(在
+`assembleTransport` 内解析)。Driver 是**可选容器 bean**,其构造函数返回
+`StarterHTTPClient.Driver`;未提供时 starter 回退到内置的 `DefaultDriver`(标准
+cloud/httpx 装配)。没有 per-config 的 `driver` key,也没有要选的 driver 名:
 
 ```go
-// "增强"形态:嵌 DefaultDriver,包裹装配产物。
-type AuthDriver struct{ StarterHTTPClient.DefaultDriver }
-
-func (AuthDriver) CreateTransport(ctx context.Context, name string, c StarterHTTPClient.Config,
-) (http.RoundTripper, func() error, error) {
-    rt, closeFn, err := AuthDriver{}.StarterHTTPClient.DefaultDriver.CreateTransport(ctx, name, c)
-    if err != nil { return nil, nil, err }
-    return withAuthHeader(rt), closeFn, nil // 你的扩展
+func init() {
+    gs.Provide(func() StarterHTTPClient.Driver {
+        return authDriver{}   // 嵌 DefaultDriver + 包 RoundTripper 以"增强",或自建 httpx.NewTransport 以"整体替换"
+    })
 }
-
-func init() { StarterHTTPClient.RegisterDriver("auth", AuthDriver{}) }
 ```
 
-```properties
-spring.http-client.orders.driver=auth
-```
-
-- **增强默认**:嵌 `DefaultDriver`(其内委托 `httpx.NewTransport`),包裹返回的
+- **增强默认**:override 嵌 `DefaultDriver`(其内委托 `httpx.NewTransport`),包裹返回的
   `RoundTripper`——加 auth header、自定义 metric、请求过滤。
 - **整体替换**:完全自建 transport——如带自定义 `Base` 的 `httpx.NewTransport`(代理、
   连接池调优)。返回的 teardown 归你管。
-- 未知名 → 装配期快速失败("unknown driver")。
 
 ---
 
@@ -276,7 +267,6 @@ spring.http-client.orders.driver=auth
 | `service-name` | string | "" | 发现模式:经指定后端解析的逻辑名;只要设置了就同时是治理 resource label(发现与直连模式皆是)。配了 `addr` 时它不是发现目标。 | 都不配 → 快速失败;只配 service-name 不配 `addr`/`discovery` → 快速失败。 |
 | `discovery` | string | "" | 经 `discovery.RegisterDiscovery` 注册的后端名。`service-name` 未配 `addr` 时必填(config.go validate)。 | 缺失 → 快速失败。名字未知 → `discovery.NewLoader` 装配期报错(httpx.go:196)。 |
 | `balancer` | string | round_robin | LB 策略:`round_robin`、`least_conn`、`consistent_hash`、`weighted`、`zone_aware`。未知名装配期失败(`loadbalance.New`,httpx.go:156)。 | 拼错在启动期暴露,不是逐请求。 |
-| `driver` | string | default | 传输装配 driver(driver.go):`default`=标准 httpx 装配;自定义 driver 可增强(嵌 DefaultDriver、包 RoundTripper)或整体替换(自建 `httpx.NewTransport`、自定义 Base)。 | 未知名 → 装配期 "unknown driver" 快速失败。 |
 | `suspend-threshold` | int | 0 | 连续失败多少次将实例逐出池(outlier suspension)。0 关闭。 | 不配则死实例一直吃轮询份额;配合 resilience 让熔断兜住失败。 |
 | `suspend-for` | duration | 0 | 被逐出实例多久后放回做 half-open 试探。`suspend-threshold=0` 时忽略。 | 开了逐出但配 0 → 立即试探回弹(抖动)。 |
 | `observability.level` | string | brief | executor 包裹层的访问日志开关:off / brief / detailed(observe/config.go:50)。 | brief 默认**开**——预期每次受保护调用一条日志。 |
@@ -400,7 +390,7 @@ govern.fault.error=timeout    # 或 generic / reset
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 16(路由 7 + observability 3 + tls 6) |
+| 配置 key 总数 | 15(路由 6 + observability 3 + tls 6) |
 | 其中必填 | tag 层 0;"至少其一" + 条件性 discovery 由 validate 强制 |
 | quickstart 前置外部依赖 | 0(发现模式才需要注册中心) |
 | "注意/坑"条数 | 8 |

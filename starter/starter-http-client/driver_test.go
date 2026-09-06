@@ -20,51 +20,45 @@ import (
 	"context"
 	"net/http"
 	"testing"
-
-	"go-spring.org/stdlib/testing/assert"
 )
 
-func TestDriverRegistry(t *testing.T) {
-	// The bundled default driver is registered at init.
-	_, ok := driverRegistry["default"]
-	assert.That(t, ok).True()
-
-	// Custom drivers register by name; duplicate names panic.
-	RegisterDriver("test-add", addDriver{})
-	assert.Panic(t, func() { RegisterDriver("test-add", addDriver{}) }, "already registered")
-}
-
-// addDriver is the "ADD to the default" shape: it delegates to DefaultDriver
-// and wraps the returned transport with an extra header.
-type addDriver struct {
-	DefaultDriver
-	extraSeen *bool
-}
-
-func (d addDriver) CreateTransport(ctx context.Context, name string, c Config) (http.RoundTripper, func() error, error) {
-	rt, closeFn, err := d.DefaultDriver.CreateTransport(ctx, name, c)
+// TestDefaultDriverFallback proves assembleTransport falls back to the bundled
+// DefaultDriver when no Driver bean is provided (nil). Building the transport
+// needs no live server — it only assembles the RoundTripper.
+func TestDefaultDriverFallback(t *testing.T) {
+	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil)
 	if err != nil {
-		return nil, nil, err
+		t.Fatalf("assembleTransport with nil driver failed: %v", err)
 	}
-	return wrapHeader(rt, "X-Custom", d.extraSeen), closeFn, nil
+	if rt == nil {
+		t.Fatal("expected a transport from the DefaultDriver fallback")
+	}
 }
 
-func wrapHeader(next http.RoundTripper, key string, seen *bool) http.RoundTripper {
-	return roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.Header.Get(key) != "" {
-			*seen = true
-		}
-		return next.RoundTrip(req)
-	})
+// recordingDriver is the "ADD to the default" shape; it delegates to
+// DefaultDriver and records that it was the active assembly driver.
+type recordingDriver struct {
+	DefaultDriver
+	called bool
 }
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
+func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Config) (http.RoundTripper, func() error, error) {
+	d.called = true
+	return d.DefaultDriver.CreateTransport(ctx, name, c)
+}
 
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
-
-func TestUnknownDriverFailsFast(t *testing.T) {
-	_, _, err := assembleTransport(nil, "x", Config{
-		Addr: "10.0.0.1:8080", Driver: "no-such",
-	})
-	assert.Error(t, err).Matches("unknown driver")
+// TestCustomDriverUsed proves a provided Driver bean is the one assembleTransport
+// dispatches through, replacing the internal DefaultDriver fallback.
+func TestCustomDriverUsed(t *testing.T) {
+	drv := &recordingDriver{}
+	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, drv)
+	if err != nil {
+		t.Fatalf("assembleTransport failed: %v", err)
+	}
+	if rt == nil {
+		t.Fatal("expected a transport")
+	}
+	if !drv.called {
+		t.Fatal("expected assembleTransport to dispatch through the provided Driver bean")
+	}
 }

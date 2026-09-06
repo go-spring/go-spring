@@ -15,7 +15,7 @@
  */
 
 // driver.go is the "construction seam" concept of this starter: the Driver
-// interface + registry + DefaultDriver, which owns full client assembly
+// interface + the bundled DefaultDriver, which owns full client assembly
 // (including service-discovery resolution). It mirrors starter-redigo's
 // driver.go.
 package StarterMemcached
@@ -28,24 +28,18 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var driverRegistry = map[string]Driver{}
-
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
-}
-
-// Driver interface defines how to create a Memcached client.
+// Driver interface defines how to create a Memcached client. It is an OPTIONAL
+// CONTAINER BEAN: a company or umbrella starter may provide its own Driver bean
+// (its constructor returns StarterMemcached.Driver); when none is present,
+// starter-memcached falls back to the bundled [DefaultDriver] inside client
+// assembly. A custom driver is a bean, so it may inject the configuration/beans
+// it needs — e.g. company config bound from a properties file at wiring time.
+//
+// At most one Driver bean is expected per process; every client under
+// ${spring.memcached} is built through it, and per-instance differences are
+// expressed through [Config].
 type Driver interface {
 	CreateClient(ctx context.Context, c Config) (*memcache.Client, error)
-}
-
-// RegisterDriver registers a Memcached driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("memcached driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
 }
 
 // DefaultDriver is the default implementation of the Driver interface.

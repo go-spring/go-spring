@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-// driver.go is the "construction seam" concept: the Driver interface + registry +
-// DefaultDriver, which owns the raw connection assembly (URL/options/auth/TLS +
-// nats.Connect). It mirrors starter-kafka's driver.go. Unlike the redis / kafka
-// drivers, DefaultDriver returns the raw *nats.Conn — the observe observers,
-// JetStream derivation and resilience executor are the starter's lifecycle
-// concerns (see newConn below), not the driver's.
+// driver.go is the "construction seam" concept: the Driver interface + the
+// bundled DefaultDriver, which owns the raw connection assembly (URL/options/auth/
+// TLS + nats.Connect). Unlike the redis / kafka drivers, DefaultDriver returns
+// the raw *nats.Conn — the observe observers, JetStream derivation and resilience
+// executor are the starter's lifecycle concerns (see newConn below), not the
+// driver's.
 package StarterNats
 
 import (
@@ -34,28 +34,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var driverRegistry = map[string]Driver{}
-
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
-}
-
 // Driver interface defines how to create a NATS connection (a *nats.Conn). It is
-// the single extension point for customizing connection assembly: a company (or
-// the bundled DefaultDriver) implements it once and registers via
-// RegisterDriver; callers select one through Config.Driver, which defaults to
-// "DefaultDriver".
+// an OPTIONAL CONTAINER BEAN: a company or umbrella starter may provide its own
+// Driver bean (its constructor returns StarterNats.Driver); when none is present,
+// starter-nats falls back to the bundled [DefaultDriver] inside connection
+// assembly. A custom driver is a bean, so it may inject the configuration/beans
+// it needs — e.g. company config bound from a properties file at wiring time.
+//
+// At most one Driver bean is expected per process; every connection under
+// ${spring.nats} is built through it, and per-instance differences are expressed
+// through [Config].
 type Driver interface {
 	CreateClient(ctx context.Context, c Config) (*nats.Conn, error)
-}
-
-// RegisterDriver registers a NATS driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("nats driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -127,20 +117,20 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, er
 	return nc, nil
 }
 
-// newConn creates a NATS connection by dispatching to the configured Driver,
-// which owns the raw connection assembly (options/auth/TLS + nats.Connect). After
-// the connection is built it is wrapped into a *Conn: the observe observers are
-// attached, the JetStream context is derived when enabled, and the resilience
-// executor is wired. Connection-layer events (async errors, disconnect, reconnect,
-// close) are bridged into go-spring's log by the driver's handlers so they show
-// up alongside app logs.
-func newConn(ctx *gs.ContextProvider, name string, c Config) (*Conn, error) {
+// newConn creates a NATS connection via the Driver bean — falling back to the
+// bundled [DefaultDriver] when no company Driver bean is present — which owns the
+// raw connection assembly (options/auth/TLS + nats.Connect). After the connection
+// is built it is wrapped into a *Conn: the observe observers are attached, the
+// JetStream context is derived when enabled, and the resilience executor is
+// wired. Connection-layer events (async errors, disconnect, reconnect, close) are
+// bridged into go-spring's log by the driver's handlers so they show up alongside
+// app logs.
+func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Conn, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating nats connection, url=%s name=%s", c.URL, c.Name)
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "nats driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "nats driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	nc, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

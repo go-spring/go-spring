@@ -156,11 +156,11 @@ import starter-tdengine
                   health.Indicator (always registered; no opt-out key)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:60]:
-  │     driver lookup ("tdengine driver not found" on unknown name) [starter.go:63-67]
-  │     → DefaultDriver.CreateClient [driver.go:69]: ParseDSN → taosws.NewConnector →
+  ├─ ctor newClient [starter.go:61]: optional Driver bean → when none present the
+  │     starter falls back to the bundled DefaultDriver (d == nil [starter.go:65-67])
+  │     → d.CreateClient [starter.go:68]: ParseDSN → taosws.NewConnector →
   │       guardedConnector → sql.OpenDB → pool settings applied
-  │     → fail-fast PingContext bounded by 10s [starter.go:72-77]; on error the
+  │     → fail-fast PingContext bounded by 10s [starter.go:74-77]; on error the
   │       half-built client is Closed and the boot fails
   ├─ Init [client.go:58]: resourceLabel ("tdengine:<dsn addr>") →
   │     fault.WrapExecutor(resilience.ExecutorFor(resource)) →
@@ -173,6 +173,13 @@ gs.Run()
 A wrong DSN, wrong credentials, or a server older than the driver's minimum fails the boot —
 the process never reaches "serving" with a dead TDengine (version floor: driver-go v3.8.2
 needs server ≥ 3.3.6.0 on the WebSocket path [DESIGN.md §3]).
+
+**Assembly extension point**: client assembly is owned by a `Driver` (interface,
+`driver.go:45-46`). A company/umbrella starter may provide its own `Driver` as an **optional
+container bean** (a `gs.Provide(func() StarterTdengine.Driver{...})`, so it can inject config
+bound from the properties file at wiring time); every instance under `spring.tdengine` is then
+built through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
+(`driver.go:50`) inside assembly (`starter.go:65-67`). There is no per-config `driver` key.
 
 ### 2.2 The statement seam — exact order and why
 
@@ -237,9 +244,9 @@ All keys live under `spring.tdengine.<name>.` — bound per instance via `conf.B
 | `max-open-conns` | int | 8 | `db.SetMaxOpenConns` on the embedded pool [driver.go:81]. | Too low → statements queue waiting for a free conn. |
 | `max-idle-conns` | int | 2 | `db.SetMaxIdleConns`. ⚠ Should be ≤ max-open-conns (database/sql silently caps it, but a value above is a config smell). | Larger than open conns → clamped, idle churn. |
 | `conn-max-lifetime` | duration | 0s | `db.SetConnMaxLifetime`; 0 = never retire. ⚠ Unlike redis (2m default), there is no discovery to follow here, so 0 is safe. | — |
-| `driver` | string | `DefaultDriver` | Selects a registered Driver from the registry [driver.go:52]. | Unknown name → boot error "tdengine driver not found: <name>". Duplicate `RegisterDriver` → panic. |
 
-No observability keys exist — instrumentation is always on (§4.2).
+No `driver` key: client assembly is owned by an optional `Driver` bean (see §2.1) or the bundled
+`DefaultDriver`. No observability keys exist — instrumentation is always on (§4.2).
 
 ---
 
@@ -304,7 +311,6 @@ succeeds proves credentials, DSN and server version are all good.
 |---------|--------------|-----|
 | Boot fails "failed to reach tdengine at ..." | Unreachable addr / wrong credentials / taosAdapter not up yet | Fix DSN; wait for port 6041 (the image boots several services — check.sh waits 90s + 5s). |
 | Boot fails, driver version error | Server < 3.3.6.0 on the WebSocket path (driver-go v3.8.2 floor) | Upgrade the server image. |
-| Boot fails "tdengine driver not found: X" | `driver` key names nothing registered | Register via `StarterTdengine.RegisterDriver` in an init, or drop the key (DefaultDriver). |
 | Boot fails at BindEach on `dsn` | Empty or missing `spring.tdengine.<name>.dsn` | The expr tag enforces non-empty — set it. |
 | Health DOWN though SQL works | Probe draws a fresh conn while the pool is exhausted (max-open-conns too low) | Raise max-open-conns; inspect the component error body in /readiness. |
 | No spans/metrics | starter-otel not imported | The observer rides the OTel globals; import starter-otel. |
@@ -317,7 +323,7 @@ succeeds proves credentials, DSN and server version are all good.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 6 instance keys |
+| Config keys | 4 instance keys |
 | Required | 1 (`dsn`) |
 | Quickstart external deps | 1 (TDengine + its bundled taosAdapter) |
 | "Watch out" entries | 4 |

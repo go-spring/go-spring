@@ -36,15 +36,28 @@ import (
 )
 
 func init() {
-	StarterMemcached.RegisterDriver("AnotherMemcachedDriver", &AnotherMemcachedDriver{})
+	// Override the bundled default assembly with our own Driver BEAN. It is one
+	// bean, so no gs.Module / conf.Bind is needed. Every client under
+	// ${spring.memcached} is built through it; the starter falls back to its
+	// DefaultDriver only when no Driver bean is present.
+	gs.Provide(func() StarterMemcached.Driver {
+		return AnotherMemcachedDriver{}
+	}).Caller(1)
 }
 
-// AnotherMemcachedDriver is a custom implementation of the Driver interface.
-type AnotherMemcachedDriver struct{}
+// AnotherMemcachedDriver is a custom implementation of the Driver interface. It
+// is provided as a Driver BEAN (see init). Because a Driver bean is
+// process-wide, this override delegates to the bundled default assembly
+// ([StarterMemcached.DefaultDriver]) so per-instance behavior (static Servers or
+// service discovery) is preserved — it exists to prove the override is
+// injected, not to change assembly.
+type AnotherMemcachedDriver struct {
+	StarterMemcached.DefaultDriver
+}
 
-func (AnotherMemcachedDriver) CreateClient(ctx context.Context, c StarterMemcached.Config) (*memcache.Client, error) {
+func (d AnotherMemcachedDriver) CreateClient(ctx context.Context, c StarterMemcached.Config) (*memcache.Client, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherMemcachedDriver::CreateClient")
-	return memcache.New(c.Servers...), nil
+	return d.DefaultDriver.CreateClient(ctx, c)
 }
 
 // Service injects the per-instance wrapped clients. gomemcache offers no hook/
@@ -61,8 +74,8 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
-	// You can change the `driver` property in the configuration file
-	// and check the used Memcached driver via logs.
+	// Every client is built through the Driver bean registered in init
+	// (AnotherMemcachedDriver); check its CreateClient log at startup.
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.

@@ -100,6 +100,7 @@ func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Op
 type Server struct {
 	cfg      Config
 	resource string
+	driver   Driver
 	mux      *asynq.ServeMux
 	srv      *asynq.Server
 }
@@ -108,7 +109,7 @@ type Server struct {
 // RegisterHandler).
 func (o *Server) Init() error {
 	o.resource = resilience.ResourceLabel("asynq", o.cfg.Addr)
-	connOpt, err := newRedisConnOpt(context.Background(), o.cfg)
+	connOpt, err := o.driver.RedisConnOpt(context.Background(), o.cfg)
 	if err != nil {
 		return err
 	}
@@ -182,14 +183,4 @@ func (o *Server) StopContext(ctx context.Context) error {
 // Destroy shuts the worker down, draining in-flight tasks (bean destroy path).
 func (o *Server) Destroy() error {
 	return o.Stop()
-}
-
-// newRedisConnOpt builds the RedisConnOpt from Config via the selected
-// driver, shared by the client and server roles.
-func newRedisConnOpt(ctx context.Context, c Config) (asynq.RedisConnOpt, error) {
-	d, err := lookupDriver(c.Driver)
-	if err != nil {
-		return nil, err
-	}
-	return d.RedisConnOpt(ctx, c)
 }

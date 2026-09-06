@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -187,7 +187,7 @@ func TestInjector_ScopeGatesLoadTestTraffic(t *testing.T) {
 		return WrapExecutorWith(newExec(t, resilience.Policy{}), in)
 	}
 	realCtx := context.Background()
-	loadCtx := traffic.WithLoadTest(context.Background(), "test")
+	loadCtx := canonical.WithLoadTest(context.Background(), "test")
 
 	// Scope "" (default): both real and load-test traffic get faulted.
 	all := mk("")
@@ -276,7 +276,7 @@ func TestApply_ServerSideFault(t *testing.T) {
 
 	// Scope "loadtest" + load-test ctx => injected.
 	ran = false
-	err = Apply(traffic.WithLoadTest(context.Background(), "test"), in2, "svc", func() error { ran = true; return nil })
+	err = Apply(canonical.WithLoadTest(context.Background(), "test"), in2, "svc", func() error { ran = true; return nil })
 	assert.That(t, IsInjected(err)).True()
 	assert.That(t, ran).False()
 }

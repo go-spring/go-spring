@@ -23,6 +23,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 )
@@ -92,7 +93,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	if traffic.IsLoadTest(ctx) {
 		props = make(map[string]string, len(msg.Headers)+1)
 		maps.Copy(props, msg.Headers)
-		props[traffic.MetaKeyLoadTest] = "1"
+		props[canonical.MetaKeyLoadTest] = "1"
 	}
 	pm := &pulsar.ProducerMessage{
 		Payload:    msg.Payload,
@@ -147,8 +148,8 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 			msgCtx, sp := startConsume(loopCtx, msg)
 			// Extract the load-test marker the producer put in Properties so the
 			// handler sees synthetic load via traffic.IsLoadTest(msgCtx).
-			if traffic.IsAffirmative(msg.Properties()[traffic.MetaKeyLoadTest]) {
-				msgCtx = traffic.WithLoadTest(msgCtx, "pulsar-property")
+			if canonical.IsAffirmative(msg.Properties()[canonical.MetaKeyLoadTest]) {
+				msgCtx = canonical.WithLoadTest(msgCtx, "pulsar-property")
 			}
 			herr := handler(msgCtx, fromPulsarMsg(msg))
 			sp.End(herr)

@@ -195,7 +195,9 @@ All keys live under `spring.bigcache.<name>.`.
 | `max-entry-size` | int | 500 | Pre-allocation hint for one entry (bytes). | Under-guessed → realloc churn. |
 | `hard-max-cache-size` | int | 0 | Hard memory cap in MB; 0 = unlimited. | Set without need → early eviction (oldest entries dropped). |
 | `stats-enabled` | bool | false | bigcache per-key hit/miss stats. ⚠ The starter's OTel gauges read `Stats()` — several show 0 unless this is on (they pull whatever Stats() returns [starter.go:124-132]). | Off → gauges read zero while Len/Capacity still work. |
-| `driver` | string | `DefaultDriver` | Selects a registered Driver. | Unknown → boot error "bigcache driver not found". |
+
+There is no per-config `driver` key: cache assembly is owned by an optional Driver bean (below);
+when none is provided the starter uses the bundled `DefaultDriver`.
 
 **Metrics** (meter `go-spring.org/starter-bigcache`, attribute `cache.name=<name>`): observable
 gauges `bigcache.hits`, `bigcache.misses`, `bigcache.delete_hits`, `bigcache.delete_misses`,
@@ -207,8 +209,12 @@ values are pulled on scrape via callbacks.
 registers a `*cache.Cache` bean **named after the bigcache instance** [starter.go:69-76];
 `ErrEntryNotFound` maps to `cache.ErrMiss` at this boundary (starter-bigcache/bytecache).
 
-**Extension point**: `RegisterDriver` — a custom Driver returns a `*bigcache.BigCache`
-assembled your way [driver.go:34-37].
+**Assembly extension point**: cache assembly is owned by a `Driver` interface [driver.go:32-35].
+A company/umbrella starter may provide its own `Driver` as an **optional container bean**
+(`gs.Provide(func() StarterBigCache.Driver{...})`), whose constructor returns the interface and
+so may inject config bound from the properties file at wiring time; every cache instance is then
+built through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
+inside assembly [driver.go:37-49].
 
 ---
 
@@ -274,7 +280,7 @@ A façade miss returns `cache.ErrMiss`; the wrapper returns `bigcache.ErrEntryNo
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 8 instance keys |
+| Config keys | 7 instance keys |
 | Required | 0 |
 | Quickstart external deps | 0 |
 | "Watch out" entries | 4 |

@@ -120,7 +120,6 @@ spring.ants.cpu.expiry-duration=10s
 # spring.ants.cpu.max-blocking-tasks=0
 # spring.ants.cpu.pre-alloc=false
 # spring.ants.cpu.disable-purge=false
-# spring.ants.cpu.driver=DefaultDriver
 ```
 
 **验证**（与 `example/check.sh` 同构）：
@@ -141,14 +140,14 @@ pool 的第三次 Submit 返回 error、panic handler 触发。
 
 ```
 import starter-ants
-  ├─ init(): RegisterDriver("DefaultDriver", DefaultDriver{})     (config.go)
   └─ init(): gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())
         │   在 newMetricsObserver 内部经 RegisterObserver 自注册
 gs.Run()
   ├─ gs.Module(gs.OnProperty("spring.ants")) 触发（前缀匹配：任意 spring.ants.* key）
   ├─ conf.BindEach("${spring.ants}") → 每个 map key 一份 Config
   ├─ 每个 name：gs.Provide(ctor).Name(name).Destroy(destroyPool)
-  ├─ bean init：createPool 解析 Driver → DefaultDriver.CreatePool
+  │     ctor 自动装配可选 Driver bean（"?"）——无则回退内置 DefaultDriver
+  ├─ bean init：createPool →（Driver bean | DefaultDriver).CreatePool
   │     （ants.NewPool 挂 WithPanicHandler(poolPanicHandler)）
   │     再包 observedPool，使每次 Submit 都流经 observer 链
   ├─ 就绪：Init/Run 钩子里即可使用 pool
@@ -192,7 +191,7 @@ name 传给 observer —— 这正是 `OnSubmit(name, task)` 能拿到 name 的�
   上报流。ants 只交出 panic value，所以 ReportPanic 在 worker 的 deferred recover
   里被调用 —— panic 中的栈帧还在。
 - hook 在建池时读取；启动后才 `SetPanicHandler` 只影响之后创建的池。按 pool 定制
-  handler 需要自定义 `Driver`。
+  handler 需要自定义 `Driver` bean。
 
 ### 2.5 停机
 
@@ -215,9 +214,8 @@ name 传给 observer —— 这正是 `OnSubmit(name, task)` 能拿到 name 的�
 | `max-blocking-tasks` | int | 0 | 等待空闲 worker 的被阻塞提交方上限；0 = 不限。 ⚠ `nonblocking=true` 时被忽略。 | 0 + 小池 + 阻塞模式 → 提交方无限堆积。 |
 | `nonblocking` | bool | false | 池满时 Submit 立即返回 `ErrPoolOverload` 而非阻塞。 ⚠ 覆盖 `max-blocking-tasks`。 | 开启且不检查 Submit 错误 → 任务被静默丢弃。 |
 | `disable-purge` | bool | false | worker 永不回收；无 purge goroutine。 ⚠ 使 `expiry-duration` 变死 key。 | 持续繁忙的池无碍；突发池会保持峰值 goroutine 数。 |
-| `driver` | string | DefaultDriver | 从注册表（`RegisterDriver`）选 `Driver`。 ⚠ 只随包提供 `DefaultDriver` —— 其他值导致建池失败，即 bean init 失败，即启动失败。 | 拼写错误 → 启动即失败，报 "ants driver not found"。 |
 
-已与 `grep -rhoE 'value:"[^"]+"'` 核对 —— 恰好这 7 个 key，无多余。
+已与 `grep -rhoE 'value:"[^"]+"'` 核对 —— 恰好这 6 个 key，无多余。
 
 ---
 
@@ -262,8 +260,7 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 没有 pool bean；autowire `Pool` 失败 | 未配置任何 `spring.ants.*` key | 至少加 `spring.ants.<name>.size` —— 子树即激活开关。 |
-| 启动失败 "ants driver not found" | `driver` 拼写错误或自定义 driver 未注册 | 修正名称或启动前 `RegisterDriver`。 |
-| 启动失败：driver already registered | 两次 `RegisterDriver` 同名 | 注册重名会 panic —— 改名。 |
+| 自定义 Driver bean 不生效 | 提供了两个 `Driver` bean，或注册晚于装配 | 每进程最多一个 `Driver` bean；ctor 在装配期被 autowire。 |
 | 任务被静默丢弃 | `nonblocking=true` 且未检查 Submit 错误 | 检查 Submit 错误（返回 `ErrPoolOverload`）。 |
 | 提交方卡住 | 阻塞池满载且 `max-blocking-tasks=0` | 调大 `size`、设置 `max-blocking-tasks` 或改非阻塞。 |
 | panic handler 不触发 | `SetPanicHandler` 在池创建之后才调用 | hook 建池时读取 —— 放到 `init()`。 |
@@ -277,7 +274,7 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 7 |
+| 配置 key 总数 | 6 |
 | 其中必填 | 0 |
 | quickstart 前置外部依赖 | 0 |
 | "注意/坑" 条数 | 6 |
@@ -286,7 +283,8 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 
 1. `Snapshot()` 返回半空统计、要调用方手工收集 pool 句柄再 `Enrich` —— observer
    知道 pool name 却不知道 Pool 句柄；API 不对称。
-2. `driver` key 只随包提供 DefaultDriver —— 推测性扩展点（与 starter-s3 同型）。
+2. Driver 是单个可选 bean（每进程至多一个）——所有 pool 共享同一装配；不能再按名字
+   逐 pool 选 Driver（per-Config 差异须经由 Driver 收到的 Config 表达）。
 3. panic handler 是被 `SetPanicHandler` 修改的包级全局 —— 对时序敏感。
 4. （新增）`wrapTask` 每次 Submit 在 RLock 下快照 `Observers()` —— 热路径上的一把锁，
    仅为支持晚注册 observer。

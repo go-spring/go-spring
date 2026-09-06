@@ -15,7 +15,7 @@
  */
 
 // config.go is the config concept: the per-instance Config bound under
-// ${spring.neo4j}.* and the Driver selection key.
+// ${spring.neo4j}.*.
 package StarterNeo4j
 
 import (
@@ -67,9 +67,6 @@ type Config struct {
 	// trust store, peer name and client certificate. They are ignored for the
 	// plaintext "bolt"/"neo4j" schemes.
 	TLS tlsconf.TLSConfig `value:"${tls}"`
-
-	// Driver specifies which Neo4j driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 
 	// ServiceName resolves the connection address through a registered discovery
 	// backend instead of relying solely on the URI host. When set, the endpoint

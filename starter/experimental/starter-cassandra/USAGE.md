@@ -132,14 +132,16 @@ docker exec -it cassandra-example cqlsh -e "SELECT * FROM demo.greetings"
 import starter-cassandra
   └─ gs.Module(OnProperty("spring.cassandra")) fires when any spring.cassandra.* key exists
         └─ conf.BindEach(p, "${spring.cassandra}") → one Config per <name> entry
-              ├─ Provide(newClient, IndexArg(1, ValueArg(c))).Name(<name>)
+              ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
+              │            IndexArg(2, ?Driver)).Name(<name>)
               │       .Init((*Client).Init).Destroy((*Client).Destroy)
               └─ Provide health.Indicator named "cassandra:<name>",
                       injecting the client by name (TagArg) [starter.go:47-49]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:59]:
-  │     username/password pairing check → driver lookup → driver.CreateClient
+  ├─ ctor newClient [starter.go:60]:
+  │     username/password pairing check → optional Driver bean
+  │     (none → bundled DefaultDriver) → driver.CreateClient
   │     → HealthCheck probe (fail fast, see below)
   ├─ Init [client.go:59]: newDBObserver("cassandra") → resource label
   │     → fault.WrapExecutor(resilience.ExecutorFor(resource))
@@ -148,8 +150,8 @@ gs.Run()
   └─ SIGTERM → Destroy [client.go:75]: exec.Close (if armed) → Session.Close
 ```
 
-A misconfigured driver name, an unknown consistency value, or an unreachable cluster fails the
-boot — the process never reaches "serving" with a dead Cassandra.
+An unknown consistency value or an unreachable cluster fails the boot — the process never reaches
+"serving" with a dead Cassandra.
 
 ### 2.2 Fail-fast probe semantics
 
@@ -206,10 +208,13 @@ faults and breaker rejections are both counted and logged.
 ### 2.4 Driver seam
 
 `Driver.CreateClient(ctx, Config) (*gocql.Session, error)` owns full session assembly — hosts,
-PasswordAuthenticator, consistency, timeouts, CQL version, TLS [driver.go:58-93] — while the
-startup probe, resource label, and resilience wiring stay in the starter's lifecycle. Register
-custom drivers via `RegisterDriver(name, Driver)` (duplicate names panic); select with the
-`driver` key. This mirrors starter-s3's construction seam.
+PasswordAuthenticator, consistency, timeouts, CQL version, TLS [driver.go:51-86] — while the
+startup probe, resource label, and resilience wiring stay in the starter's lifecycle. Session
+assembly is an **optional container bean**: a company or umbrella starter may provide its own
+`Driver` bean (a `gs.Provide(func() StarterCassandra.Driver{...})`, so it can inject config bound
+from the properties file at wiring time); every instance under `spring.cassandra` is then built
+through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
+(`driver.go:45-50`) inside assembly (`starter.go:66-68`). There is no per-config `driver` key.
 
 ---
 
@@ -234,7 +239,6 @@ ctor's `Config` arg), NOT the absolute-property starter-Pool rule.
 | `tls.cert-file` / `tls.key-file` | string | — | Client cert/key paths (mutual TLS). ⚠ Both together. | One-sided → handshake failure. |
 | `tls.server-name` | string | — | SNI/verification name when it differs from the host. | Verification fails on IP+differing cert CN. |
 | `tls.insecure-skip-verify` | bool | false | Skips host verification (`EnableHostVerification = !value`, driver.go:85). | true in prod = MITM-open TLS. |
-| `driver` | string | `DefaultDriver` | Selects a registered Driver (registry + panicking duplicate guard, driver.go:31-53). | Unknown name → boot error "cassandra driver not found". |
 
 ### 3.2 Instrumentation
 
@@ -302,7 +306,6 @@ docker stop cassandra-example && go run .
 | Boot fails "failed to reach cassandra cluster" | Unreachable hosts / wrong credentials / TLS mismatch | The startup probe is unconditional (§2.2); fix connectivity or auth; wait for full CQL readiness (Cassandra 5 boots slowly — check.sh allows 240s). |
 | Boot fails "username and password must be set together" | Only one of the pair configured | Set both or neither [starter.go:62-64]. |
 | Boot fails "unknown consistency" | Typo in `consistency`; enum is exact-match | Use one of the nine listed values [driver.go:117]. |
-| Boot fails "cassandra driver not found" | `driver` names nothing registered | Register via `RegisterDriver` in an init, or drop the key (DefaultDriver). |
 | No spans/metrics from Exec | starter-otel not imported | The observer rides the OTel globals; import starter-otel (access log still emits). |
 | No access-log lines at all | The logger's level filter drops Debug/Info, or the `_app_cassandra_access` tag is filtered | Check the logger's level and its tag filter for `_app_cassandra_access`. |
 | Breaker/limiter never triggers | Calls use the raw `*gocql.Session` (e.g. a session obtained elsewhere), or a batch, or chained configurators that dropped the wrapper | Start statements from `Client.Query`/`Client.Bind`/`Client.Exec` (§2.3). |
@@ -313,7 +316,7 @@ docker stop cassandra-example && go run .
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 10 instance keys + tls group (6) |
+| Config keys | 9 instance keys + tls group (6) |
 | Required | 1 (`hosts`) |
 | Quickstart external deps | 1 (Cassandra) |
 | "Watch out" entries | 4 |

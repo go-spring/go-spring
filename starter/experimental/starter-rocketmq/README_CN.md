@@ -128,12 +128,25 @@ type Service struct {
 }
 ```
 
-**自定义 driver** — 注册自己的 `Driver` 并用 `driver=<name>` 选中，替换
-客户端装配过程（例如注入自定义 `primitive.NsResolver`）：
+**自定义 driver** — 提供自己的 `Driver` bean（其构造函数返回
+`StarterRocketmq.Driver`）替换客户端装配过程（例如注入自定义
+`primitive.NsResolver`）。它是可选的容器 bean：`spring.rocketmq.*` 下每个
+客户端都经它构建，仅当没有 `Driver` bean 时才回退到内置 `DefaultDriver`。
+内嵌 `StarterRocketmq.DefaultDriver` 并委托 `CreateClient` 以保留默认装配：
 
 ```go
 func init() {
-    StarterRocketmq.RegisterDriver("my-driver", myDriver{})
+    gs.Provide(func() StarterRocketmq.Driver {
+        return myDriver{}
+    })
+}
+
+type myDriver struct {
+    StarterRocketmq.DefaultDriver
+}
+
+func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config) (*StarterRocketmq.Client, error) {
+    return d.DefaultDriver.CreateClient(ctx, c)
 }
 ```
 

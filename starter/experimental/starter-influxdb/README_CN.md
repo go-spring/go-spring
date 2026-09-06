@@ -82,12 +82,16 @@ spring.influxdb.events.server-url=http://influx-b:8086
 spring.influxdb.events.auth-token=...
 ```
 
-**自定义 driver** — 注册自己的 `Driver` 并用 `driver=<name>` 选中，替换
-客户端装配（例如接入会话令牌凭证流）：
+**自定义 driver** — 提供自己的 `Driver` bean 来替换客户端装配（例如接入
+会话令牌凭证流）。`Driver` 是可选容器 bean：`${spring.influxdb}` 下每个客户端都
+经它装配，未提供时 starter 回退到内置 `DefaultDriver`。在包 init 里注册
+（构造函数返回 `StarterInfluxdb.Driver`）：
 
 ```go
 func init() {
-    StarterInfluxdb.RegisterDriver("v1-compat", v1CompatDriver{})
+    gs.Provide(func() StarterInfluxdb.Driver {
+        return v1CompatDriver{}
+    })
 }
 ```
 ### 日志 tag

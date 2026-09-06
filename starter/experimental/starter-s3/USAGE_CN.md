@@ -144,12 +144,13 @@ import starter-s3
 gs.Run()
   ├─ 对 spring.s3.* 做 conf.BindEach → 每个实例名一份 Config
   ├─ 每实例：
-  │    ├─ r.Provide(newClient, IndexArg(1, ValueArg(c))).Name(name)
+  │    ├─ r.Provide(newClient, IndexArg(1, ValueArg(c)),
+  │    │            IndexArg(2, ?Driver)).Name(name)
   │    │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
   │    ├─ r.Provide(健康指示器).Name("s3:"+name).Export(health.Indicator)
   │    │      —— .Name 保证多实例 (Name,Type) 键唯一
-  │    ├─ newClient：查 driverRegistry（默认 DefaultDriver）
-  │    │      → DefaultDriver.CreateClient：静态凭据 + region + bucket-lookup
+  │    ├─ newClient：可选 Driver bean（无则用内置 DefaultDriver）
+  │    │      → d.CreateClient：静态凭据 + region + bucket-lookup
   │    │        + minio.Options 里的 dynamicTransport 占位
   │    │      → dynamicTransports.LoadAndDelete 把占位交给 wrapper
   │    ├─ fail-fast 探测：HealthCheck → ListBuckets —— 端点不可达或凭据被拒
@@ -215,7 +216,6 @@ ctor 绑定的 `Config` key（config.go）带前缀 `spring.s3.<name>.*`。
 | `region` | string | us-east-1 | 传给 minio.Options 的 bucket region。 | region 错误 → region 敏感端点上出现签名/重定向错误（对不敏感的 MinIO 可能过了探测、之后按桶失败）。 |
 | `use-ssl` | bool | false | 对端点启用 HTTPS。 | 对只收 TLS 的端点配 false（或对明文端点配 true）→ 启动探测失败。 |
 | `bucket-lookup` | string | auto | `auto` \| `virtual-host`/`dns`（别名，`BucketLookupDNS`）\| `path`。 | 部分 S3 兼容云只支持 path 风格 → 风格错导致逐请求寻址失败；未知值 → 启动报错列出合法值。 |
-| `driver` | string | DefaultDriver | 从注册表（`RegisterDriver`）选择 driver。未知名字 → 启动报 "s3 driver not found"。 | 自定义 driver 跳过 dynamicTransport 握手 → 该 client 无 resilience。 |
 
 ---
 
@@ -263,7 +263,6 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动中止 "failed to reach s3 endpoint" | 端点宕机、端口错、`use-ssl` 不匹配、凭据错误 | 探测错误带底层原因（签名不匹配 ⇒ 凭据；connection refused ⇒ 端点/ssl）。 |
-| 启动中止 "s3 driver not found: X" | `driver` 指向未注册名字 | 在 init() 里 `RegisterDriver` 后再用，或删掉该 key。 |
 | 启动中止 "unknown bucket-lookup" | 风格字符串非法 | auto / virtual-host / dns / path 之一。 |
 | 自定义 driver 的 client 无 resilience | dynamicTransport 握手仅 DefaultDriver 有 | 接受 observe-only，或在 driver 里自装间接层。 |
 | 对 MinIO 正常、某云上 404/重定向 | 该云不支持 virtual-host 寻址 | `bucket-lookup=path`。 |
@@ -274,14 +273,15 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 9 |
+| 配置 key 总数 | 8 |
 | 其中必填 | 3（endpoint、access-key-id、secret-access-key） |
 | quickstart 前置外部依赖 | 1（MinIO / 任意 S3 端点） |
 | "注意/坑" 条数 | 5 |
 
 设计嫌疑清单（前两条沿用上一版）：
-- `driver` key 存在但仓内只随 DefaultDriver 一个实现——预判性扩展点；driver 与
-  wrapper 之间的 dynamicTransport 握手是隐式的（挂在 sync.Map 上）。
+- client 装配是 `Driver` 可选容器 bean（无 per-config `driver` key）；仓内只随
+  DefaultDriver 一个实现，driver 与 wrapper 之间的 dynamicTransport 握手是隐式的
+  （挂在 sync.Map 上）。
 - `bucket-lookup` 对同一模式接受 "virtual-host" 与 "dns" 两个别名——配置面轻度冗余。
 - 新增：资源标签只有 `s3:<endpoint>`——同端点两实例（如 example 的 `a`/`b`）共享
   一个 resilience 作用域，无按实例区分。

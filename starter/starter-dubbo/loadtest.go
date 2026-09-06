@@ -23,7 +23,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/filter"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 )
 
 func init() {
@@ -47,8 +47,8 @@ func newLoadTestFilter() filter.Filter { return &loadTestFilter{} }
 // decodes as string or []byte depending on the protocol; both are handled.
 func (f *loadTestFilter) Invoke(ctx context.Context, invoker base.Invoker, inv base.Invocation) result.Result {
 	if att := inv.Attachments(); att != nil {
-		if traffic.IsAffirmative(attachmentString(att[traffic.MetaKeyLoadTest])) {
-			ctx = traffic.WithLoadTest(ctx, "dubbo-attachment")
+		if canonical.IsAffirmative(attachmentString(att[canonical.MetaKeyLoadTest])) {
+			ctx = canonical.WithLoadTest(ctx, "dubbo-attachment")
 		}
 	}
 	return invoker.Invoke(ctx, inv)

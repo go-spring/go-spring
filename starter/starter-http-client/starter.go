@@ -51,6 +51,7 @@ func init() {
 
 		r.Provide(newDispatchTransport,
 			gs.IndexArg(1, gs.TagArg("${spring.http-client}")),
+			gs.IndexArg(2, gs.TagArg("?")),
 		).Destroy((*dispatchTransport).Close).Caller(1)
 
 		r.Provide(newDoRequestHook,
@@ -63,40 +64,43 @@ func init() {
 // newDispatchTransport assembles the process-wide dispatch transport (one route
 // per configured entry). Each entry's transport carries the trace layer,
 // discovery + load balancing, resilience and the driver wrap.
-func newDispatchTransport(ctx *gs.ContextProvider, cfgs map[string]Config) (*dispatchTransport, error) {
-	d := &dispatchTransport{routes: make(map[string]http.RoundTripper)}
+func newDispatchTransport(ctx *gs.ContextProvider, cfgs map[string]Config, d Driver) (*dispatchTransport, error) {
+	dt := &dispatchTransport{routes: make(map[string]http.RoundTripper)}
 	for name, c := range cfgs {
-		rt, closeFn, err := assembleTransport(ctx, name, c)
+		rt, closeFn, err := assembleTransport(ctx, name, c, d)
 		if err != nil {
 			return nil, err
 		}
-		d.routes[routeKey(c)] = rt
+		dt.routes[routeKey(c)] = rt
 		if closeFn != nil {
-			d.closers = append(d.closers, closeFn)
+			dt.closers = append(dt.closers, closeFn)
 		}
 	}
-	return d, nil
+	return dt, nil
 }
 
-// assembleTransport assembles one entry's RoundTripper through the driver
-// named by Config.Driver (default: the standard cloud/httpx assembly). closeFn
-// (when non-nil) releases the discovery watch and resilience executor behind it.
-func assembleTransport(ctx *gs.ContextProvider, name string, c Config) (rt http.RoundTripper, closeFn func() error, err error) {
+// assembleTransport assembles one entry's RoundTripper through the process-wide
+// Driver bean (the bundled DefaultDriver when none is provided). closeFn (when
+// non-nil) releases the discovery watch and resilience executor behind it.
+func assembleTransport(ctx *gs.ContextProvider, name string, c Config, d Driver) (rt http.RoundTripper, closeFn func() error, err error) {
 	if err = c.validate(); err != nil {
 		return nil, nil, err
 	}
-	driverName := c.Driver
-	if driverName == "" {
-		driverName = "default"
+	// No company Driver bean → fall back to the bundled default assembly. Resolved
+	// here (per entry) so this is the single place a nil driver is handled.
+	if d == nil {
+		d = DefaultDriver{}
 	}
-	d, ok := driverRegistry[driverName]
-	if !ok {
-		return nil, nil, errutil.Explain(nil, "http-client: unknown driver %q for entry %q", driverName, name)
+	// assembleTransport is also exercised directly by tests with a nil provider;
+	// fall back to a bare context so the driver sees a non-nil one regardless.
+	gctx := context.Background()
+	if ctx != nil {
+		gctx = ctx.Context
 	}
-	log.Debugf(ctx.Context, log.TagAppDef, "assembling http transport, driver=%s addr=%s service-name=%s", driverName, c.Addr, c.ServiceName)
-	rt, closeFn, err = d.CreateTransport(ctx.Context, name, c)
+	log.Debugf(gctx, log.TagAppDef, "assembling http transport, addr=%s service-name=%s", c.Addr, c.ServiceName)
+	rt, closeFn, err = d.CreateTransport(gctx, name, c)
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "http-client: create transport failed: %v", err)
+		log.Errorf(gctx, log.TagAppDef, "http-client: create transport failed: %v", err)
 		return nil, nil, err
 	}
 	return rt, closeFn, nil

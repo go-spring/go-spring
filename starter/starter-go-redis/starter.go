@@ -47,7 +47,10 @@ func init() {
 		return conf.BindEach(p, "${spring.go-redis}", func(name string, c Config) error {
 			switch c.Mode {
 			case "", "single", "sentinel":
-				r.Provide(newClient, gs.IndexArg(1, gs.ValueArg(c))).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+				r.Provide(newClient,
+					gs.IndexArg(1, gs.ValueArg(c)),
+					gs.IndexArg(2, gs.TagArg("?")),
+				).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				// Contribute a health indicator for this instance unless the
 				// user disabled it (health.enabled=false), injecting the
 				// client just registered above by name.
@@ -61,7 +64,10 @@ func init() {
 					}, gs.TagArg(name)).Name("redis:" + name).Caller(1)
 				}
 			case "cluster":
-				r.Provide(newClusterClient, gs.IndexArg(1, gs.ValueArg(c))).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+				r.Provide(newClusterClient,
+					gs.IndexArg(1, gs.ValueArg(c)),
+					gs.IndexArg(2, gs.TagArg("?")),
+				).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				if c.HealthEnabled {
 					r.Provide(func(w *Client) *health.Indicator {
 						return health2.NewClusterHealth(name, w.UniversalClient)
@@ -99,7 +105,7 @@ func init() {
 // spans and connection-pool metrics through the OTel globals that starter-otel
 // installs; when starter-otel is absent those globals are no-ops, so this stays
 // a zero-config opt-in that needs no per-component adaptation.
-func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redis client, addr=%s mode=%s", c.Addr, c.Mode)
 
 	if err := validateConfig(c); err != nil {
@@ -110,10 +116,9 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 	if c.ServiceName != "" && c.Addr != "" {
 		log.Warnf(ctx.Context, log.TagAppDef, "redis: addr %q is ignored for instance with service-name %q: the address is resolved via service discovery", c.Addr, c.ServiceName)
 	}
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "redis driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	client, stop, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
@@ -139,21 +144,21 @@ func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
 // Client. The driver must implement ClusterDriver; the redisotel
 // hooks attach per-node via ClusterClient.OnNewNode, so tracing/metrics cover
 // every node discovered.
-func newClusterClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
+func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redis cluster client, addrs=%v", c.Addrs)
 
 	if err := validateConfig(c); err != nil {
 		return nil, err
 	}
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "redis driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly (which
+	// implements ClusterDriver).
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	cd, ok := d.(ClusterDriver)
 	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "redis driver %q does not support cluster mode", c.Driver)
-		return nil, errutil.Explain(nil, "redis driver %q does not support cluster mode", c.Driver)
+		log.Errorf(ctx.Context, log.TagAppDef, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
+		return nil, errutil.Explain(nil, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
 	}
 	client, stop, err := cd.CreateClusterClient(ctx.Context, c)
 	if err != nil {

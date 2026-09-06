@@ -31,9 +31,10 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-// newClient creates a shared low-level sarama.Client by dispatching to the
-// configured Driver, which owns full client assembly (version, SASL, TLS,
-// producer options). Callers derive a SyncProducer, Consumer or ConsumerGroup
+// newClient creates a shared low-level sarama.Client by dispatching to an
+// optional Driver bean, which owns full client assembly (version, SASL, TLS,
+// producer options); when no such bean exists the bundled DefaultDriver is used.
+// Callers derive a SyncProducer, Consumer or ConsumerGroup
 // from it via the sarama.*FromClient constructors, mirroring franz-go's
 // single-client model. Producer success notifications are enabled so the client
 // can back a SyncProducer, and the initial consumer offset defaults to the
@@ -44,13 +45,12 @@ import (
 // startup instead of surfacing on the first produce/consume. A defensive
 // non-empty Brokers() check guards against future sarama changes that might
 // otherwise swallow a fully empty cluster.
-func newClient(ctx *gs.ContextProvider, name string, c Config) (sarama.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (sarama.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka sarama client, brokers=%s", c.Brokers)
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "kafka driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "kafka driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

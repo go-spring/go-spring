@@ -85,11 +85,13 @@ spring.s3.assets.access-key-id=...
 spring.s3.assets.secret-access-key=...
 ```
 
-**自定义 driver** — 注册自己的 `Driver` 并用 `driver=<name>` 选中，替换
-客户端装配（例如接入 IAM 角色凭证或自定义 `http.Transport`）：
+**自定义 driver** — 把自己的 `Driver` 作为可选容器 bean 提供，替换
+客户端装配（例如接入 IAM 角色凭证或自定义 `http.Transport`）。
+`spring.s3` 下每个 client 都经它构建；无该 bean 时 starter 回退到内置
+`DefaultDriver`：
 
 ```go
 func init() {
-    StarterS3.RegisterDriver("iam", iamDriver{})
+    gs.Provide(func() StarterS3.Driver { return iamDriver{} })
 }
 ```

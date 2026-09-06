@@ -41,6 +41,7 @@ func init() {
 			// (InitMethod) and Destroy tears it down.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
+				gs.IndexArg(2, gs.TagArg("?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
@@ -56,17 +57,16 @@ func init() {
 // configuration. The cluster is probed once at startup so that
 // misconfiguration or an unreachable cluster fails fast rather than on first
 // use.
-func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating cassandra client, hosts=%v keyspace=%s", c.Hosts, c.Keyspace)
 
 	if (c.Username == "") != (c.Password == "") {
 		return nil, errutil.Explain(nil, "cassandra username and password must be set together")
 	}
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "cassandra driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "cassandra driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	session, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

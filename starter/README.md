@@ -10,6 +10,15 @@ overview to help you find the right one.
 For the shared design constraints every starter follows (archetypes, ports,
 driver mode, multi-instance, fail-fast, ...), see [DESIGN.md](DESIGN.md).
 
+## Company baseline (aggregator / profile)
+
+Most starters below integrate one third-party capability. An **aggregator /
+profile starter** does the opposite: it *composes* other starters and supplies a
+whole organization's defaults through their public seams — its identity,
+wire/propagation vocabulary, error catalog and standard drivers — so a service
+re-bases onto company conventions by blank-importing one module and setting one
+config prefix. `starter-luohua` is the reference (see DESIGN §2.6).
+
 ## Web / HTTP Frameworks
 
 Serve an application-provided web engine through the Go-Spring server lifecycle.

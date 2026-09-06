@@ -23,6 +23,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -37,7 +38,7 @@ func TestLoadTestMiddleware_TagsContextFromHeader(t *testing.T) {
 
 	// With the marker header: handler sees a load-test context.
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set(traffic.HeaderLoadTest, "1")
+	req.Header.Set(canonical.HeaderLoadTest, "1")
 	e.ServeHTTP(httptest.NewRecorder(), req)
 	assert.That(t, saw).True()
 
@@ -74,7 +75,7 @@ func TestLoadTestMiddleware_CustomHeaderAndTruthyValues(t *testing.T) {
 	// The default header does NOT match when a custom one is configured.
 	saw = false
 	req2 := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req2.Header.Set(traffic.HeaderLoadTest, "1")
+	req2.Header.Set(canonical.HeaderLoadTest, "1")
 	e.ServeHTTP(httptest.NewRecorder(), req2)
 	assert.That(t, saw).False()
 }

@@ -38,8 +38,4 @@ type Config struct {
 
 	// ConnMaxLifetime retires connections after this age (0 = never).
 	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=0s}"`
-
-	// Driver specifies which TDengine driver to use, defaults to
-	// DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }

@@ -49,10 +49,13 @@ func init() {
 			// *gs.ContextProvider into a plain context.Context, so NewPool itself
 			// never touches gs types and is usable standalone. Users wanting
 			// custom assembly skip this bean entirely and call NewPool (or
-			// NewConn) themselves.
+			// NewConn) themselves. The Driver param (index 2) is optional
+			// (TagArg("?") → nil when no company Driver bean is provided);
+			// createPool falls back to DefaultDriver in that case.
 			r.Provide(
 				createPool,
 				gs.IndexArg(1, gs.ValueArg(c)),
+				gs.IndexArg(2, gs.TagArg("?")),
 			).Name(name).Destroy(destroyPool)
 
 			// Contribute a health indicator for this instance unless the user
@@ -84,13 +87,14 @@ func init() {
 	})
 }
 
-// createPool is the gs entry: it dispatches to the configured Driver —
-// which owns the full pool assembly (the bundled DefaultDriver delegates to
-// [NewPool]) — and authoritatively re-attaches cfg (custom out-of-package
-// drivers cannot set unexported fields). The Driver's returned Pool is fully
-// armed; see [NewPool] and the Driver interface doc for the assembly contract
-// and the two customization shapes.
-func createPool(ctx *gs.ContextProvider, c Config) (*Pool, error) {
+// createPool is the gs entry: it dispatches to the injected Driver — the
+// optional pool-assembly Driver bean, or the bundled DefaultDriver when a
+// company provides none — which owns the full assembly (the bundled
+// DefaultDriver delegates to [NewPool]) — and authoritatively re-attaches cfg
+// (custom out-of-package drivers cannot set unexported fields). The Driver's
+// returned Pool is fully armed; see [NewPool] and the Driver interface doc for
+// the assembly contract and the two customization shapes.
+func createPool(ctx *gs.ContextProvider, c Config, d Driver) (*Pool, error) {
 
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
 
@@ -101,22 +105,21 @@ func createPool(ctx *gs.ContextProvider, c Config) (*Pool, error) {
 		return nil, err
 	}
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "redigo driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 
-	// The driver returns the wrapped Pool (NOT the raw *redis.Pool): it may
-	// customize the wrapper itself, and downstream consumers uniformly deal in
-	// the project's type.
+	// d owns pool assembly. It returns the wrapped Pool (NOT the raw
+	// *redis.Pool): it may customize the wrapper itself, and downstream
+	// consumers uniformly deal in the project's type.
 	w, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redigo: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
 	if w == nil || w.Pool == nil {
-		return nil, errutil.Explain(nil, "redis driver %s returned a nil pool", c.Driver)
+		return nil, errutil.Explain(nil, "redis driver returned a nil pool")
 	}
 	w.cfg = c
 

@@ -15,8 +15,12 @@
  */
 
 // driver.go is the "construction seam" concept of this starter: the Driver
-// interface + registry + DefaultDriver, which owns full client assembly. It
-// mirrors starter-memcached's driver.go.
+// interface + DefaultDriver owns full client assembly. The Driver is an OPTIONAL
+// container bean: a company or umbrella starter may provide its own Driver bean
+// (its constructor returns StarterBigCache.Driver); when none is present,
+// starter-bigcache falls back to the bundled [DefaultDriver] inside client
+// assembly. Because a custom driver is a bean, it may inject the configuration
+// it needs at wiring time.
 package StarterBigCache
 
 import (
@@ -25,24 +29,9 @@ import (
 	"github.com/allegro/bigcache/v3"
 )
 
-var driverRegistry = map[string]Driver{}
-
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
-}
-
 // Driver interface defines how to create a BigCache instance.
 type Driver interface {
 	CreateClient(ctx context.Context, c Config) (*bigcache.BigCache, error)
-}
-
-// RegisterDriver registers a BigCache driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("bigcache driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
 }
 
 // DefaultDriver is the default implementation of the Driver interface.

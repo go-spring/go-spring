@@ -151,19 +151,21 @@ docker exec influxdb-example influx query \
 import starter-influxdb
   └─ gs.Module(OnProperty("spring.influxdb"))：出现任意 spring.influxdb.* key 即触发
         └─ conf.BindEach("${spring.influxdb}") → 每个 <name> 条目一个 Config
-              ├─ Provide(newClient, IndexArg(1, ValueArg(c)))
+              ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
+              │         IndexArg(2, ?Driver))    // 可选 Driver bean
               │     .Name(<name>).Init((*Client).Init).Destroy((*Client).Destroy)
               └─ Provide health.Indicator，名为 "influxdb:<name>"
                     （经 TagArg 按名注入刚注册的 client，导出为 health.Indicator）
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:61]：
-  │    1. driver 查找——名字未知则启动失败
+  ├─ 构造 newClient [starter.go:62]：
+  │    1. 可选 Driver bean——没有则回退内置 DefaultDriver
+  │       （d == nil [starter.go:66-68]）
   │    2. driver.CreateClient → influxdb2 客户端，其 HTTP 请求经由
   │       dynamicTransport（Init 之前直通 http.DefaultTransport）
-  │    3. 领取 DefaultDriver 安装的 dynamic transport [starter.go:77]
+  │    3. 领取 DefaultDriver 安装的 dynamic transport [starter.go:77-79]
   │    4. fail-fast 探测：client.Health() → /health 必须报告 "pass"，
-  │       否则关闭 client 并启动失败 [starter.go:80]
+  │       否则关闭 client 并启动失败 [starter.go:80-83]
   ├─ Init [client.go:69]：构建 dbObserver（"influxdb"）+ obsTransport；
   │    解析 executor = resilience.WrapExecutor(fault.WrapExecutor(
   │    resilience.ExecutorFor("influxdb:<server-url>")), "influxdb")；dyn.Swap
@@ -173,7 +175,13 @@ gs.Run()
        的残留批次——随后 exec.Close()
 ```
 
-`driver` 配错、server 不可达或未初始化都会导致启动失败——进程不会带着一个死的
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:42-44`）负责。公司/伞包 starter 可把
+自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterInfluxdb.Driver{...})`，
+因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.influxdb` 下每个实例都经它构建。
+没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:47`，`starter.go:66-68`）。
+没有 per-config 的 `driver` key。
+
+server 不可达或未初始化会导致启动失败——进程不会带着一个死的
 InfluxDB 进入"服务中"。注意 OSS server 在一次性 setup 完成前报告状态不同，因此
 bootstrap 顺序竞争会在启动期暴露，而不是表现为间歇性写失败（DESIGN.md §3）。
 
@@ -243,10 +251,10 @@ resilience transport——该 client 的 resilience 即不可用 [starter.go:74-
 | `auth-token` | string | — | 传给 SDK 的 API token。 | 空 → 启动报错；token 错 → 写/查逐请求失败（/health 探测不做鉴权，可能仍绿）。 |
 | `org` | string | `""` | `WritePoints`/`ManagedWriteAPI` 与 `Org()` 的默认 org。⚠ **调用期**才需要，装配期不校验：不配 org/bucket 的 client 照样能服务 Query/Delete API。 | 缺失 → `WritePoints` 返回 error，`ManagedWriteAPI` **panic**（失败方式不一致——设计嫌疑）。 |
 | `bucket` | string | `""` | 写助手的目标 bucket 默认值。⚠ 与 `org` 同一调用期规则。 | 同 `org`。 |
-| `driver` | string | `DefaultDriver` | 选择已注册的 Driver。⚠ `RegisterDriver` 重名注册 panic [driver.go:48]。 | 名字未知 → 启动报错 `influxdb driver not found: <name>` [starter.go:67]。 |
 
+没有 `driver` key：client 装配由可选 `Driver` bean（见 §2.1）或内置 `DefaultDriver` 负责。
 没有 `tls.*` 组、没有 `service-name`/服务发现、没有超时 key——未列出的一切都是
-SDK 自身默认；需要定制就走自定义 Driver。
+SDK 自身默认。
 
 ---
 
@@ -311,7 +319,6 @@ error）。
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动失败 `failed to reach influxdb server ...` | server 未起、server-url 错、或 OSS 首次启动 setup 未完成 | 等 `curl :8086/health` 报 `pass`；核对 URL scheme/host。 |
-| 启动失败 `influxdb driver not found` | `driver` 指向未注册的名字 | 在 init 里 `StarterInfluxdb.RegisterDriver`，或删掉该 key。 |
 | `panic: influxdb: write helpers need org and bucket` | org/bucket 为空时调 `ManagedWriteAPI` | 配 `spring.influxdb.<name>.org/.bucket`——或直接用内嵌 `WriteAPI(org, bucket)`。 |
 | `WritePoints` 返回 org/bucket 错误 | 同一调用期缺口的不 panic 形态 | 同上。 |
 | 写失败但启动与健康都是绿的 | `auth-token` 错——/health 不做鉴权 | 用 `influx query --token ...` 验 token。 |
@@ -323,7 +330,7 @@ error）。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 实例 6 个 |
+| 配置 key 总数 | 实例 4 个 |
 | 其中必填 | 装配期 2（`server-url`、`auth-token`）+ 调用期 2（`org`、`bucket`） |
 | quickstart 前置外部依赖 | 1（InfluxDB 2.x） |
 | "注意/坑" 条数 | 5 |
@@ -340,4 +347,3 @@ error）。
   放大，与 2026-08 修复的 http-client 同类 bug 同族。
 - 无 `tls.*` / `service-name`，与兄弟 starter 不一致——HTTPS-only-via-scheme 面更小
   但属需文档化的不对称。
-- `driver=DefaultDriver` 魔法串 + 重名注册 panic 的注册表，相对单一实现现实偏重。

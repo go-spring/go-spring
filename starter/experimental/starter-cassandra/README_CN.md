@@ -76,11 +76,13 @@ spring.cassandra.main.keyspace=prod
 spring.cassandra.analytics.hosts=10.0.1.1
 ```
 
-**自定义 driver** — 注册自己的 `Driver` 并用 `driver=<name>` 选中，替换
-session 装配（例如锁定 HostSelectionPolicy 或 Scylla 分片感知驱动）：
+**自定义 driver** — 把自己的 `Driver` 作为可选容器 bean 提供，替换
+session 装配（例如锁定 HostSelectionPolicy 或 Scylla 分片感知驱动）。
+`spring.cassandra` 下每个 client 都经它构建；无该 bean 时 starter 回退到内置
+`DefaultDriver`：
 
 ```go
 func init() {
-    StarterCassandra.RegisterDriver("scylla-shard", scyllaDriver{})
+    gs.Provide(func() StarterCassandra.Driver { return scyllaDriver{} })
 }
 ```

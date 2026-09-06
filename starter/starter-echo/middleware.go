@@ -26,7 +26,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/log"
 )
 
@@ -41,19 +41,19 @@ type requestIDCtxKey struct{}
 
 // LoadTest installs the inbound load-test traffic identification middleware.
 // When the incoming request carries the configured marker header (default
-// X-LoadTest) it tags the request context via traffic.WithLoadTest, so the
+// X-LoadTest) it tags the request context via canonical.WithLoadTest, so the
 // handler chain and every outbound client the handlers drive can recognise
 // synthetic load through traffic.IsLoadTest(c.Request().Context()). It is the
 // inbound companion to cloud/governance/traffic's outbound injection. An empty header
 // falls back to the traffic package default. Without the marker it is a no-op.
 func LoadTest(header string) echo.MiddlewareFunc {
 	if header == "" {
-		header = traffic.HeaderLoadTest
+		header = canonical.HeaderLoadTest
 	}
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			if traffic.IsAffirmative(c.Request().Header.Get(header)) {
-				ctx := traffic.WithLoadTest(c.Request().Context(), "http-header")
+			if canonical.IsAffirmative(c.Request().Header.Get(header)) {
+				ctx := canonical.WithLoadTest(c.Request().Context(), "http-header")
 				c.SetRequest(c.Request().WithContext(ctx))
 			}
 			return next(c)

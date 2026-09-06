@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// starter.go is the DI glue: the gs registration, the newClient dispatch to the
-// configured Driver, the startup ping + resilience wiring, and the destroy hook.
+// starter.go is the DI glue: the gs registration, the newClient dispatch to an
+// optional Driver bean, the startup ping + resilience wiring, and the destroy hook.
 package StarterKafka
 
 import (
@@ -40,6 +40,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
+				gs.IndexArg(3, gs.TagArg("?")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})
@@ -49,23 +50,22 @@ func init() {
 // pingTimeout bounds the startup connectivity probe.
 const pingTimeout = 10 * time.Second
 
-// newClient creates a Kafka client by dispatching to the configured Driver,
-// which owns full client assembly (hooks, SASL, TLS, producer options). The
-// kotel hooks emit producer/consumer spans and client metrics through the OTel
-// globals that starter-otel installs; when starter-otel is absent those globals
-// are no-ops, so this stays a zero-config opt-in that needs no per-component
-// adaptation.
+// newClient creates a Kafka client by dispatching to an optional Driver bean,
+// which owns full client assembly (hooks, SASL, TLS, producer options); when no
+// such bean exists the bundled DefaultDriver is used. The kotel hooks emit
+// producer/consumer spans and client metrics through the OTel globals that
+// starter-otel installs; when starter-otel is absent those globals are no-ops,
+// so this stays a zero-config opt-in that needs no per-component adaptation.
 //
 // After the client is built it is pinged so a misconfigured broker list, bad
 // credentials or TLS mismatch fail fast at startup instead of surfacing on the
 // first produce/consume, then the resilience executor is attached.
-func newClient(ctx *gs.ContextProvider, name string, c Config) (*kgo.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*kgo.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "kafka driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "kafka driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

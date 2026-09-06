@@ -48,7 +48,8 @@ Get/Set/Delete 会经过 observe（访问日志/指标/trace）与 resilience（
 | `spring.bigcache.<name>.max-entry-size` | int | 500 | 否 | 预期单条目最大字节数；仅预分配提示 |
 | `spring.bigcache.<name>.hard-max-cache-size` | int | 0 | 否 | 内存硬顶（MB）；0 = 不限 |
 | `spring.bigcache.<name>.stats-enabled` | bool | false | 否 | 开启 `Stats()` 计数（同时喂 OTel gauge） |
-| `spring.bigcache.<name>.driver` | string | DefaultDriver | 否 | 用哪个 `Driver` 实现构建客户端（自定义 driver 经 `RegisterDriver` 注册） |
+
+无 per-config 的 `driver` key：装配由可选 Driver bean（见 §3）或内置 `DefaultDriver` 负责。
 
 ⚠ 当同一后端实例又通过 `spring.cache.<name>.driver=bigcache:<instance>` 暴露时，
 `Cache.Set` 传入的 TTL 会被忽略——BigCache 按单一全局 `life-window` 统一过期。
@@ -63,9 +64,11 @@ Get/Set/Delete 会经过 observe（访问日志/指标/trace）与 resilience（
   `capacity`。引入 starter-otel 时导出，否则为 no-op。
 - 缓存抽象 driver：向 starter-cache 注册了 `bigcache`，故
   `spring.cache.<name>.driver=bigcache:<instance>` 可将实例暴露为 `*cache.Cache` bean。
-- 自定义客户端装配：实现 `Driver` 接口（`CreateClient(ctx, Config)`）并
-  `RegisterDriver(name, d)`，用 `driver` key 选中。这也是设置 `bigcache.Config.OnRemove`
-  的唯一途径。
+- 自定义客户端装配：装配由 `Driver` 接口（`CreateClient(ctx, Config)`，driver.go）负责。公司/
+  伞包 starter 可把自己的 `Driver` 作为**可选容器 bean** 提供
+  （`gs.Provide(func() StarterBigCache.Driver{...})`，因为是 bean，可在装配期注入从配置绑定
+  的配置）；无该 bean 时 starter 在装配内回退到内置 `DefaultDriver`。这仍是设置
+  `bigcache.Config.OnRemove` 等字段的唯一途径。
 - resilience：实例级资源标签 `bigcache:<name>`；策略来自治理中心（starter-govern），
   未引入时为 no-op。
 
@@ -73,7 +76,7 @@ Get/Set/Delete 会经过 observe（访问日志/指标/trace）与 resilience（
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 每实例 8 个 + 全局 3 个 |
+| 配置 key 总数 | 每实例 7 个 + 全局 3 个 |
 | 其中必填 | 0 |
 | quickstart 前置外部依赖 | 0 |
 | "注意/坑" 条数 | 1（经缓存抽象时 TTL 被忽略） |

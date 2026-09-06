@@ -133,7 +133,6 @@ func handle(ctx context.Context, msg *messaging.Message) error {
 spring.rabbitmq.demo.url=amqp://guest:guest@127.0.0.1:5672/
 spring.rabbitmq.demo.vhost=
 spring.rabbitmq.demo.heartbeat=10s
-spring.rabbitmq.demo.driver=DefaultDriver
 
 # TLS（默认关；amqps:// URL 也会隐式启用）：
 #spring.rabbitmq.demo.tls.enabled=true
@@ -188,7 +187,7 @@ gs.Run()
   ├─ 绑定：conf.BindEach 遍历 spring.rabbitmq.* → 每实例一个 Config，
   │   Provide newClient 并 .Name(<instance>).Destroy(destroyClient)        [starter.go:35-39]
   ├─ newClient（每实例）：
-  │   ├─ driver 注册表查找；未命中 → 启动失败                             [starter.go:58-62]
+  │   ├─ 可选 Driver bean（无则回退内置 DefaultDriver）                     [starter.go:57-61]
   │   ├─ Driver.CreateClient：TLS 构建 + amqp.Dial/DialConfig —— TCP +
   │   │   AMQP 握手是同步的：错误 URL / 错误凭据 / TLS 不匹配都在启动期
   │   │   失败，而非首次 publish 时                                       [starter.go:46-49]
@@ -264,8 +263,8 @@ channel 侧的对应物。
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.rabbitmq.<name>.*`。自有 value tag 5 个（config.go:33-60）
-加共享 tlsconf（6 个）块共 11 个；必填 1 个。
+所有 key 位于 `spring.rabbitmq.<name>.*`。自有 value tag 4 个（config.go:28-55）
+加共享 tlsconf（6 个）块共 10 个；必填 1 个。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
@@ -276,11 +275,13 @@ channel 侧的对应物。
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | 自定义 CA / mTLS 证书对，由共享 `tlsconf` 块加载（跨 starter 统一 key，config.go:44-48）。 | 文件缺失 → 启动期 TLS 构建失败 [driver.go:64-68]。 |
 | `tls.server-name` | string | "" | SNI/校验名覆盖。 | 不匹配 → 启动期 x509 hostname 错误。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过证书校验。 | 生产置 true = 静默 MITM 暴露。 |
-| `driver` | string | DefaultDriver | 从 `RegisterDriver` 填充的注册表选择 [driver.go:31-53]。 | 未知名字 → 启动报 "rabbitmq driver not found" [starter.go:58-62]；重名注册 panic [driver.go:50]。 |
 | `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedPublish` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
+无 `driver` key：连接装配由可选 Driver bean（§2.1）或内置 `DefaultDriver` 持有
+（config.go / driver.go）。
+
 已与 `grep -rhoE 'value:"[^"]+"'` 对账：自有 tag 恰为 `${url}`、`${vhost:=}`、
-`${heartbeat:=10s}`、`${tls}`、`${driver:=DefaultDriver}`；tls.* 各列来自经
+`${heartbeat:=10s}`、`${tls}`；tls.* 各列来自经
 `${tls}` 绑定的共享 cloud 块。
 
 ---
@@ -353,8 +354,6 @@ health indicator —— 进程会在死连接上继续跑。
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动失败：`failed to dial rabbitmq` | broker 未起 / URL / 凭据错误 | 同步拨号 fail-fast —— 修环境或 URL（driver.go:86）。 |
-| 启动失败：`rabbitmq driver not found` | `driver=` 拼写错或自定义 driver 未注册 | 在 gs.Run 前 `RegisterDriver`（starter.go:61）。 |
-| panic：`rabbitmq driver already registered` | `RegisterDriver` 重名 | 改名（driver.go:50）。 |
 | 启动失败：`failed to open probe channel` | TCP 通但 AMQP 层坏（如 vhost/权限错） | 检查该用户的 vhost 权限（starter.go:69-76）。 |
 | 启动正常、之后 publish 报错；伴随 close/blocked Warn 日志 | broker 中途挂了；无自动重连 | 重启进程或在裸 bean 上自建重连；盯 `connection closed` Warn。 |
 | 消费者收不到消息 | handler 出错 → Nack(requeue) 死循环；查 `rabbitmq driver handler error on %q` Error 日志 | 修 handler；任何 error 都会永久重投 —— 没有 DLQ（client.go:141-146）。 |
@@ -367,7 +366,7 @@ health indicator —— 进程会在死连接上继续跑。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 11（自有 5 + tls 6） |
+| 配置 key 总数 | 10（自有 4 + tls 6） |
 | 其中必填 | 1（`url`） |
 | quickstart 前置外部依赖 | 1（RabbitMQ） |
 | "注意/坑"条数 | 6 |

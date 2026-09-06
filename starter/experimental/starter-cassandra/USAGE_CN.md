@@ -131,14 +131,16 @@ docker exec -it cassandra-example cqlsh -e "SELECT * FROM demo.greetings"
 import starter-cassandra
   └─ gs.Module(OnProperty("spring.cassandra"))：任一 spring.cassandra.* key 存在即触发
         └─ conf.BindEach(p, "${spring.cassandra}") → 每个 <name> 条目一份 Config
-              ├─ Provide(newClient, IndexArg(1, ValueArg(c))).Name(<name>)
+              ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
+              │            IndexArg(2, ?Driver)).Name(<name>)
               │       .Init((*Client).Init).Destroy((*Client).Destroy)
               └─ Provide 名为 "cassandra:<name>" 的 health.Indicator，
                   按名注入上面的 client（TagArg）[starter.go:47-49]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:59]：
-  │     username/password 成对校验 → driver 查找 → driver.CreateClient
+  ├─ 构造 newClient [starter.go:60]：
+  │     username/password 成对校验 → 可选 Driver bean
+  │     （无则用内置 DefaultDriver）→ driver.CreateClient
   │     → HealthCheck 探活（fail fast，见下）
   ├─ Init [client.go:59]：newDBObserver("cassandra") → resource label
   │     → fault.WrapExecutor(resilience.ExecutorFor(resource))
@@ -147,7 +149,7 @@ gs.Run()
   └─ SIGTERM → Destroy [client.go:75]：exec.Close（若已武装）→ Session.Close
 ```
 
-driver 名配错、consistency 值未知、集群不可达都会中止启动——进程绝不会带着一个死掉的
+consistency 值未知、集群不可达都会中止启动——进程绝不会带着一个死掉的
 Cassandra 进入 serving。
 
 ### 2.2 fail-fast 探活语义
@@ -199,10 +201,13 @@ access-log。
 ### 2.4 Driver 构造缝
 
 `Driver.CreateClient(ctx, Config) (*gocql.Session, error)` 拥有完整 session 装配 ——
-hosts、PasswordAuthenticator、一致性级别、超时、CQL 版本、TLS [driver.go:58-93] —— 而
-启动探活、resource label 与 resilience 接线留在 starter 生命周期里。自定义 driver 用
-`RegisterDriver(name, Driver)` 注册（重名 panic），以 `driver` key 选择。与 starter-s3
-的构造缝同构。
+hosts、PasswordAuthenticator、一致性级别、超时、CQL 版本、TLS [driver.go:51-86] —— 而
+启动探活、resource label 与 resilience 接线留在 starter 生命周期里。session 装配是
+**可选容器 bean**：公司/伞包 starter 可把自己的 `Driver` 作为 bean 提供
+（`gs.Provide(func() StarterCassandra.Driver{...})`，因为是 bean，可在装配期注入从配置
+文件绑定的配置）；`spring.cassandra` 下每个实例都经它构建。没有该 bean 时 starter 在
+装配内回退到内置 `DefaultDriver`（`driver.go:45-50`，`starter.go:66-68`）。没有
+per-config 的 `driver` key。
 
 ---
 
@@ -227,7 +232,6 @@ hosts、PasswordAuthenticator、一致性级别、超时、CQL 版本、TLS [dri
 | `tls.cert-file` / `tls.key-file` | string | — | 客户端证书/私钥路径（双向 TLS）。⚠ 必须成对。 | 只配一个 → 握手失败。 |
 | `tls.server-name` | string | — | 与 host 不同时的 SNI/校验名。 | 用 IP + 证书 CN 不一致 → 校验失败。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过主机校验（`EnableHostVerification = !值`，driver.go:85）。 | 生产开 = TLS 对 MITM 敞开。 |
-| `driver` | string | `DefaultDriver` | 选择已注册 Driver（注册表 + 重名 panic，driver.go:31-53）。 | 未知名 → 启动报 "cassandra driver not found"。 |
 
 ### 3.2 观测
 
@@ -293,7 +297,6 @@ docker stop cassandra-example && go run .
 | 启动报 "failed to reach cassandra cluster" | hosts 不可达 / 凭证错误 / TLS 不匹配 | 启动探活无条件执行（§2.2）；修连通性或认证；等 CQL 完全就绪（Cassandra 5 启动慢，check.sh 留 240s）。 |
 | 启动报 "username and password must be set together" | 只配了成对校验的一边 | 两个都配或都不配 [starter.go:62-64]。 |
 | 启动报 "unknown consistency" | `consistency` 拼错；枚举精确匹配 | 用九个合法值之一 [driver.go:117]。 |
-| 启动报 "cassandra driver not found" | `driver` 未注册 | 在 init 里 `RegisterDriver`，或删掉该 key（DefaultDriver）。 |
 | Exec 无 span/metric | 未 import starter-otel | observer 搭 OTel 全局件；import starter-otel（access log 仍会输出）。 |
 | 完全没有 access log 行 | logger 级别过滤掉了 Debug/Info，或 `_app_cassandra_access` tag 被过滤 | 检查 logger 级别及其对 `_app_cassandra_access` tag 的过滤。 |
 | breaker/limiter 永不触发 | 用的是裸 `*gocql.Session`（如别处取得的 session）、或 batch、或链式配置方法丢掉了 wrapper | 语句从 `Client.Query`/`Client.Bind`/`Client.Exec` 出发（§2.3）。 |
@@ -304,7 +307,7 @@ docker stop cassandra-example && go run .
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 10 个实例 key + tls 组 6 个 |
+| 配置 key 总数 | 9 个实例 key + tls 组 6 个 |
 | 其中必填 | 1（`hosts`） |
 | quickstart 前置外部依赖数 | 1（Cassandra） |
 | 文档中"注意/坑"条数 | 4 |

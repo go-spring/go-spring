@@ -36,14 +36,16 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
+				gs.IndexArg(3, gs.TagArg("?")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})
 	})
 }
 
-// newClient creates a RabbitMQ connection by dispatching to the configured
-// Driver, which owns connection assembly (TLS build + amqp.Dial/DialConfig).
+// newClient creates a RabbitMQ connection by dispatching to the injected Driver
+// bean (falling back to the bundled DefaultDriver when none is present), which
+// owns connection assembly (TLS build + amqp.Dial/DialConfig).
 // amqp.Dial/DialConfig perform the TCP + AMQP handshake synchronously, so a bad
 // URL, wrong credentials or TLS mismatch fail fast at startup rather than
 // surfacing on the first channel/publish.
@@ -52,13 +54,12 @@ func init() {
 // the AMQP layer is usable, then close/block notifiers are bridged into
 // go-spring's log so broker-driven events land alongside app logs, and finally
 // the resilience executor is attached.
-func newClient(ctx *gs.ContextProvider, name string, c Config) (*amqp.Connection, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*amqp.Connection, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating rabbitmq connection, url=%s vhost=%s", c.URL, c.Vhost)
 
-	d, ok := driverRegistry[c.Driver]
-	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq driver not found: %s", c.Driver)
-		return nil, errutil.Explain(nil, "rabbitmq driver not found: %s", c.Driver)
+	// No company Driver bean → fall back to the bundled default assembly.
+	if d == nil {
+		d = DefaultDriver{}
 	}
 	conn, err := d.CreateClient(ctx.Context, c)
 	if err != nil {

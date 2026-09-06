@@ -56,10 +56,6 @@ type Config struct {
 	// processes only enqueue. See starter/DESIGN.md — starters do not
 	// activate services the operator did not ask for.
 	Server ServerConfig `value:"${server}"`
-
-	// Driver specifies which Asynq driver to use; it must match a name
-	// registered via RegisterDriver. Defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
 // ServerConfig controls the worker role.

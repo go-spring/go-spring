@@ -15,9 +15,9 @@
  */
 
 // driver.go is the "construction seam" concept of this starter: the Driver
-// interface + registry + DefaultDriver, which owns full client assembly
+// interface + the bundled DefaultDriver, which owns full client assembly
 // (credentials, region, bucket-lookup style, the dynamic transport that Init
-// later arms). It mirrors starter-elasticsearch's driver.go.
+// later arms).
 package StarterS3
 
 import (
@@ -29,27 +29,18 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-var driverRegistry = map[string]Driver{}
-
-func init() {
-	RegisterDriver("DefaultDriver", DefaultDriver{})
-}
-
 // Driver interface defines how to create an S3 client (a *minio.Client). It is
-// the single extension point for customizing client assembly: an app (or the
-// bundled DefaultDriver) implements it once and registers via RegisterDriver;
-// callers select one through Config.Driver, which defaults to "DefaultDriver".
+// an OPTIONAL CONTAINER BEAN: a company or umbrella starter may provide its own
+// Driver bean (its constructor returns StarterS3.Driver); when none is present,
+// starter-s3 falls back to the bundled [DefaultDriver] inside client assembly.
+// A custom driver is a bean, so it may inject the configuration/beans it needs
+// — e.g. company config bound from a properties file at wiring time.
+//
+// At most one Driver bean is expected per process; every client under
+// ${spring.s3} is built through it, and per-instance differences are expressed
+// through [Config].
 type Driver interface {
 	CreateClient(ctx context.Context, c Config) (*minio.Client, error)
-}
-
-// RegisterDriver registers an S3 driver with the given name.
-// It panics if the driver name has already been registered.
-func RegisterDriver(name string, driver Driver) {
-	if _, ok := driverRegistry[name]; ok {
-		panic("s3 driver already registered: " + name)
-	}
-	driverRegistry[name] = driver
 }
 
 // DefaultDriver is the default implementation of the Driver interface.

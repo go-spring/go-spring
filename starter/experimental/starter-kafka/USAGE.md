@@ -145,14 +145,15 @@ round-trip / resilience / hot-reload lines and exits 0).
 import starter-kafka
   └─ gs.Module(OnProperty("spring.kafka")) fires when any spring.kafka.* key exists
         └─ conf.BindEach("${spring.kafka}") → one Config per <name> entry
-              └─ Provide(newClient).Name(<name>).Destroy(destroyClient)   [starter.go:38-47]
+              └─ Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver)).Name(<name>) [starter.go:39-45]
+              .Destroy(destroyClient)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:62]:
-  │   1. driver lookup in driverRegistry; unknown name → boot error       [starter.go:65-69]
-  │   2. d.CreateClient: full client assembly (see §2.2)                  [driver.go:67]
+  ├─ ctor newClient [starter.go:63]:
+  │   1. optional Driver bean — none → bundled DefaultDriver                [starter.go:67-68]
+  │   2. d.CreateClient: full client assembly (see §2.2)                    [driver.go:57]
   │   3. Ping with 10s timeout — bad brokers/credentials/TLS fail the
-  │      boot instead of the first produce                                [starter.go:50,76-82]
+  │      boot instead of the first produce                                [starter.go:51,76]
   │   4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor(
   │      "kafka:<brokers>")) → resilience.WrapExecutor, indexed by
   │      client pointer in package-level sync.Maps                        [command.go:99-105]
@@ -162,6 +163,13 @@ gs.Run()
   │   ⚠ a Flush failure is logged as ERROR (messages may be LOST) and returned — buffered
   │   records that never reached the broker are lost on shutdown.
 ```
+
+**Assembly extension point**: client assembly is owned by a `Driver` (interface, `driver.go:33-44`).
+A company/umbrella starter may provide its own `Driver` as an **optional container bean** (a
+`gs.Provide(func() StarterKafka.Driver{...})`, so it can inject config bound from the properties
+file at wiring time); every instance under `spring.kafka` is then built through it. When no such
+bean exists the starter falls back to the bundled `DefaultDriver` (`driver.go:47-95`) inside
+assembly (`starter.go:67-68`). There is no per-config `driver` key.
 
 The resilience registries keyed by `*kgo.Client` pointer are why `GuardedProduceSync` can be a
 free function taking the raw bean — the guard resolves the executor without wrapping the client
@@ -248,7 +256,7 @@ franz-go's async `Produce` returns immediately, so only the synchronous path can
 ## 3. Per-key behavior reference
 
 All keys live under `spring.kafka.<name>.*` — ctor-arg binding via `conf.BindEach` (real
-per-instance prefix binding). `value:` tags reconciled against source: 21 keys total.
+per-instance prefix binding). `value:` tags reconciled against source: 20 keys total.
 
 ### 3.1 Core
 
@@ -257,8 +265,11 @@ per-instance prefix binding). `value:` tags reconciled against source: 21 keys t
 | `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:30]); CSV of seed brokers; also becomes the resilience resource label `kafka:<brokers>`. | Empty → boot error; a wrong-but-reachable host fails the 10s startup Ping. |
 | `topic` | string | "" | Passed as `kgo.ConsumeTopics` — consumer topics fixed at construction; the driver subscriber filters by it. Empty = produce-only client. | Produce works, consume never delivers (no topic subscribed). |
 | `group` | string | "" | Passed as `kgo.ConsumerGroup`; group semantics are Kafka's own (offsets, rebalancing — see kafka.apache.org). ⚠ the driver's `NewSubscriber` group arg is dead — this key is the only group switch. | Empty + topic set = ungrouped (random-group / eager) consumption; offsets not committed. |
-| `driver` | string | `DefaultDriver` | Selects a registered `Driver` [driver.go:46-57]; `RegisterDriver` panics on duplicate names. | Unknown name → boot error "kafka driver not found" [starter.go:68]. |
 | `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedProduceSync` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
+
+No `driver` key: client assembly is owned by an optional Driver bean (see §2.1) or the bundled
+`DefaultDriver`. (`driver` in a conf below refers to the governance-resilience `govern.driver`
+selecting a rule source, not this starter.)
 
 ### 3.2 SASL
 
@@ -365,7 +376,6 @@ franz-go reconnects automatically (its own semantics).
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails "failed to ping kafka" | Unreachable brokers / wrong SASL / TLS mismatch | Fix connectivity or credentials; the 10s probe is unconditional. |
-| Boot fails "kafka driver not found" | `driver` names nothing registered | Register via `RegisterDriver` in an init, or drop the key. |
 | Boot fails "unsupported kafka sasl mechanism / required-acks / compression" | Typo in an enum key | Exact-match enums (case-insensitive); correct the value. |
 | Driver consumer never receives | `NewSubscriber` source ≠ configured `topic`, or `topic` empty | Source must equal the client's `topic`; silent filter otherwise. |
 | Driver consumer group "ignored" | `NewSubscriber` group arg is dead | Set `spring.kafka.<name>.group` (fixed at construction). |
@@ -378,7 +388,7 @@ franz-go reconnects automatically (its own semantics).
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 18 (4 core + 4 sasl + 6 tls + 4 producer) |
+| Config keys | 17 (3 core + 4 sasl + 6 tls + 4 producer) |
 | Required | 1 (`brokers`) |
 | Quickstart external deps | 1 (Kafka broker) |
 | "Watch out" entries | 6 |

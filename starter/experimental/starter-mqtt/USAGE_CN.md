@@ -163,23 +163,24 @@ example 自带的冒烟（`example/check.sh`）在 QoS 1 上做一次 pub/sub �
 import starter-mqtt
   └─ gs.Module(gs.OnProperty("spring.mqtt")) 在出现任意 spring.mqtt.* key 时触发
         └─ conf.BindEach("${spring.mqtt}") → 每个 <name> 条目一份 Config
-              └─ Provide(newClient).Name(<name>).Destroy(destroyClient).Caller(1)   [starter.go:36-39]
+              └─ Provide(newClient).Name(<name>).Destroy(destroyClient).Caller(1)   [starter.go:36-40]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:50]：
-  │    1. driver 查找 —— 未知名字直接启动失败                    [starter.go:53-57]
-  │    2. driver.CreateClient：组装 paho options（broker、id、凭证、
+  ├─ 构造 newClient [starter.go:52]：
+  │    1. Driver bean 注入 —— 有公司 Driver bean 则用它；
+  │       无（nil）则回退到内置 DefaultDriver                  [starter.go:55-58]
+  │    2. CreateClient：组装 paho options（broker、id、凭证、
   │       clean-session、keep-alive、connect-timeout），把
-  │       connect/lost/reconnecting 事件桥接进 go-spring 日志    [driver.go:73-81]，
-  │       构建 TLS（tlsconf BuildClient）并注册 will                  [driver.go:83-94]
+  │       connect/lost/reconnecting 事件桥接进 go-spring 日志    [driver.go:64-72]，
+  │       构建 TLS（tlsconf BuildClient）并注册 will                  [driver.go:74-85]
   │    3. client.Connect() + token.Wait() —— fail-fast 探测：broker 挂了、
-  │       凭证错误或 TLS 不匹配都会中止启动                      [starter.go:64-69]
+  │       凭证错误或 TLS 不匹配都会中止启动                      [starter.go:70-75]
   │    4. applyResilience —— 挂上治理 executor，按 client 索引；
-  │       失败则断开 client（250ms）                             [starter.go:70-74]
+  │       失败则断开 client（250ms）                             [starter.go:76-80]
   ├─ 就绪：没有 indicator bean —— paho 的自动重连（保持开启）是
   │  恢复路径；连接状态可经 IsConnected() 与桥接的生命周期日志观察
-  │  （掉线打 Warn）                                             [driver.go:76-78]
-  └─ SIGTERM → destroyClient [starter.go:82-86]：
+  │  （掉线打 Warn）                                             [driver.go:67-69]
+  └─ SIGTERM → destroyClient [starter.go:85-92]：
        closeResilience（Close executor，错误被丢弃）             [command.go:137-142]
        → client.Disconnect(250ms 宽限期收尾在途消息)
 ```
@@ -275,11 +276,10 @@ driver 固定 QoS 1（`defaultQoS`）、发布 `retained=false`；retained 消�
 | `tls.enabled` | bool | false | 启用 `tlsconf` 客户端 TLS；须搭配 `ssl://` 的 broker URL。 | 明文 broker + 开 TLS → 启动期连接失败。 |
 | `tls.ca-file` / `cert-file` / `key-file` | string | — | CA / mTLS 客户端材料，建 client 时 `tls.Build()` [driver.go:83-90]。 | 配一半 → 启动期 Build 报错。 |
 | `tls.server-name` / `insecure-skip-verify` | string/bool | — | SNI 覆写 / 跳过校验。 | — |
-| `driver` | string | DefaultDriver | 选择已注册的 Driver；注册重名会 panic [driver.go:46-51]。 | 未知名字 → 启动报错 "mqtt driver not found" [starter.go:56]。 |
 | `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedPublish` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
-已与 `grep -rhoE 'value:"[^"]+"'` 全仓扫描比对：14 个不同 value tag → 8 个平铺 key +
-tls（6）+ will（4）= **18 个 key，必填 1 个**。
+已与 `grep -rhoE 'value:"[^"]+"'` 全仓扫描比对：13 个不同 value tag → 7 个平铺 key +
+tls（6）+ will（4）= **17 个 key，必填 1 个**。
 
 ---
 
@@ -354,7 +354,6 @@ kill -9 <pid>   # 非正常退出 → broker 代发 will "offline"（按配置 r
 |------|---------|------|
 | 启动报 "mqtt: connect failed broker=..." | broker 不可达 / 凭证错误 / TLS 不匹配 | fail-fast 连接是无条件的 [starter.go:64-69]；修连通性或配置。 |
 | 启动卡死（无报错） | `connect-timeout=0` 且地址被黑洞 | 保持有限超时；0 表示关闭超时 [config.go:51]。 |
-| 启动报 "mqtt driver not found" | `driver` 指向未注册项 | 在 init 里 `RegisterDriver`（重名 panic）[driver.go:46-51]。 |
 | 反复重连 / 客户端被踢 | 多副本重复 `client-id` | 各配不同 id（broker 强制唯一）。 |
 | 熔断/限流不生效 | 直接裸调 `client.Publish`，或实例 `governance=false` | `GuardedPublish` 与 driver 的 `Publish` 都受保护 [command.go:156-172]；换调用点/重新开启。 |
 | 无 trace/metric/访问记录 | 未 import starter-otel，或期望 driver 产出 | 助手依赖 OTel 全局；driver 什么都不产 [client.go:47-52]。 |
@@ -368,7 +367,7 @@ kill -9 <pid>   # 非正常退出 → broker 代发 will "offline"（按配置 r
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 18（平铺 8 + tls 6 + will 4） |
+| 配置 key 总数 | 17（平铺 7 + tls 6 + will 4） |
 | 其中必填 | 1（`broker`） |
 | quickstart 前置外部依赖 | 1（MQTT broker —— docker compose 起 mosquitto） |
 | "注意/坑"条数 | 6 |

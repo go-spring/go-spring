@@ -22,9 +22,10 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
   没有 pulsar 那样的共享 `rocketmq.Client` 对象。因此 bean 是 starter 自己
   的包装类型：把名字服务地址、凭证、实例名只存一份，应用到它创建的一切，
   并登记每个生产者/消费者以便 Close 时统一停机。
-- **`Driver`（driver.go）** — 构造 seam：注册表 + DefaultDriver 装配包装
-  bean。rlog 桥是进程级全局的，所以在 DefaultDriver 内部只安装一次，而非
-  每实例一次。
+- **`Driver`（driver.go）** — 构造 seam：可选的容器 bean。公司/伞级
+  starter 可提供自己的 `Driver` bean；没有时装配回退到内置 `DefaultDriver`。
+  rlog 桥是进程级全局的，所以在 DefaultDriver 内部只安装一次，而非每实例
+  一次。
 - **`NewDriver`（driver.go）** — 适配 `messaging.Driver`：每个 publisher 一
   个已启动生产者，每个 subscriber 一个已启动推送消费者（按 SDK 契约先
   `Subscribe` 后 `Start`）。handler 错误映射为 `ConsumeRetryLater`（broker

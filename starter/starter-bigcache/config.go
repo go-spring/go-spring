@@ -47,7 +47,4 @@ type Config struct {
 
 	// StatsEnabled records per-key hit/miss statistics when true.
 	StatsEnabled bool `value:"${stats-enabled:=false}"`
-
-	// Driver specifies which BigCache driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }

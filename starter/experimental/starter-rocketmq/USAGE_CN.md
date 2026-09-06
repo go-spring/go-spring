@@ -175,12 +175,12 @@ import starter-rocketmq
 gs.Run()
   ├─ 构造 newClient [starter.go:57]：
   │    1. access-key/secret-key 成对校验（单边 → 启动失败）                  [starter.go:60-62]
-  │    2. driver 注册表查找（未知名 → 启动失败）                              [starter.go:64-68]
-  │    3. Driver.CreateClient：安装 rlog→go-spring 日志桥接
+  │    2. Driver.CreateClient —— 可选的 Driver bean，未提供时回退到内置
+  │       DefaultDriver：安装 rlog→go-spring 日志桥接
   │       （进程级全局，sync.Once 仅一次）                                    [driver.go:94-96]
-  │    4. FailFast 探测：TCP dial，首个可达地址即通过，每地址 3s 预算；
+  │    3. FailFast 探测：TCP dial，首个可达地址即通过，每地址 3s 预算；
   │       失败 → 启动失败                                                     [driver.go:146-160]
-  │    5. applyResilience：fault.WrapExecutor(resilience.ExecutorFor(resource))
+  │    4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor(resource))
   │       → resilience.WrapExecutor → 挂到 Client                          [command.go:180-186]
   ├─ 应用按 `autowire:"<name>"` 注入 *Client
   ├─ 应用自行随时创建 producer/consumer/driver（均在锁内注册到 Client）       [client.go:104-157]
@@ -268,7 +268,7 @@ SDK push-consumer 协程回调 starter 的 handler [driver.go:125-141]：
 ## 3. 逐 key 行为参考
 
 所有 key 位于 `spring.rocketmq.<name>..` 下（经 `conf.BindEach` 的实例前缀绑定，不是
-绝对属性的 Pool 规则）。starter 内 9 个 value tag——已与 grep 结果比对，两边均无多余项。
+绝对属性的 Pool 规则）。starter 内 7 个 value tag——已与 grep 结果比对，两边均无多余项。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
@@ -279,7 +279,6 @@ SDK push-consumer 协程回调 starter 的 handler [driver.go:125-141]：
 | `send-timeout` | duration | `3s` | 套到每个 producer（`WithSendMsgTimeout`）[client.go:73]。 | 过小 → 高压下同步发送超时。 |
 | `retry` | int | `2` | producer 内部重试次数（`WithRetry`）；2 = 最多 3 次尝试 [client.go:74, config.go:55]。⚠ 注意 governance 侧重试——两个循环都会生效。 | 大值 + 慢 broker → 延迟放大。 |
 | `fail-fast` | bool | `true` | bean 创建期对 name server 列表 TCP dial；首个可达地址即通过，每地址 3s [driver.go:146-160]。 | 关闭 → 地址错误延迟到首次使用才暴露。 |
-| `driver` | string | `DefaultDriver` | 选择已注册的 Driver；未知名 → 启动错误；重复注册 panic [starter.go:64-68; driver.go:53-58]。 | 拼错 → 启动错误。 |
 
 ---
 
@@ -352,7 +351,6 @@ curl -s :9090/metrics | grep resilience_calls
 |------|---------|------|
 | 启动失败 "name server probe failed" | `name-servers` 错误/不可达 | 修正列表；探测按每地址 3s 预算逐个 dial [driver.go:149]。 |
 | 启动失败 "access-key and secret-key must be set together" | ACL 单边配置 [starter.go:60] | 成对设置或都留空。 |
-| 启动失败 "driver not found" | `driver` 未注册名 | 在 init 里 `RegisterDriver`，或用 DefaultDriver [driver.go:53]。 |
 | 建完 topic 立刻 Subscribe 失败 | 路由尚未在 name server 可见（心跳滞后，最长 60s） | 应用启动前以 `mqadmin topicList -n namesrv:9876` 做门禁（见 check.sh）；example-otel 的 Subscribe 20×500ms 重试同理。 |
 | consumer 静默收不到消息 | Subscribe 时 topic 不存在，或消费组不对 | 提前建 topic；记住消费组是 competing-consumers 单元。 |
 | driver 发布毫无 resilience 效果 | Publish 按设计绕过 executor | 需要保护的发送用 `GuardedSend`（§2.2）。 |
@@ -365,7 +363,7 @@ curl -s :9090/metrics | grep resilience_calls
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 9（全部在 Config） |
+| 配置 key 总数 | 7（全部在 Config） |
 | 其中必填 | 1（`name-servers`） |
 | quickstart 前置外部依赖 | 2（namesrv + broker，同一 compose） |
 | "注意/坑"条数 | 6 |

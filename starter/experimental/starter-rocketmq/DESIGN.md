@@ -26,9 +26,11 @@ starter-pulsar / starter-kafka.
   pulsar's. The bean is therefore a starter-owned wrapper that holds the name
   server list, credentials and instance name once, applies them to everything
   it creates, and registers every producer/consumer for teardown on Close.
-- **`Driver` (driver.go)** — the construction seam: registry + DefaultDriver
-  that assembles the wrapper. The rlog bridge is process-global, so it is
-  installed exactly once inside DefaultDriver rather than per instance.
+- **`Driver` (driver.go)** — the construction seam: an OPTIONAL container bean.
+  A company/umbrella starter may provide its own `Driver` bean; when none is
+  present, assembly falls back to the bundled `DefaultDriver`. The rlog bridge
+  is process-global, so it is installed exactly once inside `DefaultDriver`
+  rather than per instance.
 - **`NewDriver` (driver.go)** — adapts to `messaging.Driver`: one started
   producer per publisher, one started push consumer per subscriber
   (`Subscribe` before `Start`, per the SDK's contract). A handler error maps

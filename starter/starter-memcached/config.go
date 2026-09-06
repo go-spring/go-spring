@@ -56,9 +56,6 @@ type Config struct {
 	// MaxIdleConns is the maximum number of idle connections kept per server,
 	// 0 uses the driver default (2).
 	MaxIdleConns int `value:"${max-idle-conns:=0}"`
-
-	// Driver specifies which Memcached driver to use, defaults to DefaultDriver.
-	Driver string `value:"${driver:=DefaultDriver}"`
 }
 
 // Resilience is not a field of Config: it comes from the governance center

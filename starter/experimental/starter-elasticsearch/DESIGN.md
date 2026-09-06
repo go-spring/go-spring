@@ -4,7 +4,7 @@
 
 `starter-elasticsearch` is a Client-archetype starter (`starter/DESIGN.md`
 §2.2) that provisions `elastic/go-elasticsearch/v8` clients. It has three
-non-obvious decisions worth pinning: a driver registry seam, a nil-op
+non-obvious decisions worth pinning: an optional Driver-bean seam, a nil-op
 `destroy`, and discovery integration at startup only.
 
 ## 1. Responsibilities & Boundaries
@@ -20,11 +20,14 @@ non-obvious decisions worth pinning: a driver registry seam, a nil-op
 
 ## 2. Key Abstractions & Seams
 
-- **Driver registry seam.** The starter does not construct the ES
-  client directly; it looks up a `driver` string in `driverRegistry` and
-  delegates client construction. This lets tests inject a stub driver
-  and lets APM/OTel-wrapped transports plug in without changing the
-  starter's public API.
+- **Optional Driver-bean seam.** The starter does not construct the ES
+  client directly; client assembly is owned by a `Driver` (interface),
+  and a company/umbrella starter may provide its own `Driver` as an
+  optional container bean. When no such bean is present the starter
+  falls back to its bundled `DefaultDriver`. A bean is process-wide, so
+  a custom driver delegates to `DefaultDriver` for per-instance
+  behavior; it lets APM/OTel-wrapped transports plug in without changing
+  the starter's public API.
 - **`destroy = nil` (v8 client has no `Close`).** The v8 client's
   transport uses `net/http` with idle-connection reuse — there is
   nothing to close. `destroyClient` returns `nil` only so `gs.Group`'s
@@ -60,5 +63,6 @@ non-obvious decisions worth pinning: a driver registry seam, a nil-op
   strategy.
 - **Wrapping transport with `otelelasticsearch` in the starter —
   rejected.** Transport wrapping is done by the driver's `CreateClient`
-  when an APM/OTel driver is registered; the base driver stays plain
-  net/http so an app that does not import otel does not pay for it.
+  (the bundled `DefaultDriver` installs a dynamic transport whose
+  observe+resilience behavior `Init` swaps in); the base transport stays
+  plain net/http so an app that does not import otel does not pay for it.

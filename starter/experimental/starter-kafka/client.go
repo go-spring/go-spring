@@ -28,6 +28,7 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -89,7 +90,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	// Carry the load-test marker in a record header so the consumer recognises
 	// synthetic load.
 	if traffic.IsLoadTest(ctx) {
-		recordCarrier{rec}.Set(traffic.MetaKeyLoadTest, "1")
+		recordCarrier{rec}.Set(canonical.MetaKeyLoadTest, "1")
 	}
 	// Route through the same resilience executor the raw client API uses
 	// (GuardedProduceSync): a no-op pass-through when governance is off for
@@ -135,8 +136,8 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				}
 				msgCtx := otel.GetTextMapPropagator().Extract(loopCtx, recordCarrier{rec})
 				// Extract the load-test marker the producer put in a record header.
-				if traffic.IsAffirmative(recordCarrier{rec}.Get(traffic.MetaKeyLoadTest)) {
-					msgCtx = traffic.WithLoadTest(msgCtx, "kafka-header")
+				if canonical.IsAffirmative(recordCarrier{rec}.Get(canonical.MetaKeyLoadTest)) {
+					msgCtx = canonical.WithLoadTest(msgCtx, "kafka-header")
 				}
 				if err := handler(msgCtx, fromRecord(rec)); err != nil {
 					log.Errorf(msgCtx, log.TagAppDef, "kafka driver handler error on %q: %v", rec.Topic, err)

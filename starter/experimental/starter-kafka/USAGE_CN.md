@@ -143,14 +143,15 @@ resilience / 热加载行并以 0 退出）。
 import starter-kafka
   └─ gs.Module(OnProperty("spring.kafka"))：任一 spring.kafka.* key 存在时触发
         └─ conf.BindEach("${spring.kafka}") → 每个 <name> 条目一个 Config
-              └─ Provide(newClient).Name(<name>).Destroy(destroyClient)   [starter.go:38-47]
+              └─ Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver)).Name(<name>) [starter.go:39-45]
+                    .Destroy(destroyClient)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:62]:
-  │   1. driverRegistry 查 driver；未知名 → 启动报错               [starter.go:65-69]
-  │   2. d.CreateClient：完整 client 装配（见 §2.2）                [driver.go:67]
+  ├─ ctor newClient [starter.go:63]:
+  │   1. 可选 Driver bean——无则用内置 DefaultDriver              [starter.go:67-68]
+  │   2. d.CreateClient：完整 client 装配（见 §2.2）                [driver.go:57]
   │   3. Ping 10s 超时——坏 brokers/凭证/TLS 让启动失败，
-  │      而不是等第一次 produce 才暴露                                [starter.go:50,76-82]
+  │      而不是等第一次 produce 才暴露                                [starter.go:51,76]
   │   4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor(
   │      "kafka:<brokers>")) → resilience.WrapExecutor，以
   │      client 指针索引进包级 sync.Map                              [command.go:99-105]
@@ -159,6 +160,12 @@ gs.Run()
   │   closeResilience（executor Close）→ Flush(10s ctx) → Close。
   │   ⚠ Flush 失败会记 ERROR 日志（可能丢消息）并向上返回——未送达 broker 的缓冲记录丢失。
 ```
+
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:33-44`）负责。公司/伞包 starter 可把
+自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterKafka.Driver{...})`，
+因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.kafka` 下每个实例都经它构建。
+没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:47-95`，
+`starter.go:67-68`）。没有 per-config 的 `driver` key。
 
 resilience 注册表以 `*kgo.Client` 指针为键，这正是 `GuardedProduceSync` 可以是接收原始
 bean 的自由函数的原因：guard 直接解析 executor，无需包装 client 类型 [command.go:118-125]。
@@ -245,7 +252,7 @@ franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [comm
 ## 3. 逐 key 行为参考
 
 key 都在 `spring.kafka.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑定（真正的按实例前缀
-绑定）。`value:` tag 已与源码核对：共 21 个 key。
+绑定）。`value:` tag 已与源码核对：共 20 个 key。
 
 ### 3.1 核心
 
@@ -254,8 +261,10 @@ key 都在 `spring.kafka.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑�
 | `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:30]）；CSV seed brokers；同时构成 resilience 资源标签 `kafka:<brokers>`。 | 空 → 启动报错；错但可达的主机在 10s 启动 Ping 处失败。 |
 | `topic` | string | "" | 传给 `kgo.ConsumeTopics`——消费 topic 构造期固定；driver subscriber 按它过滤。空 = 纯生产 client。 | 能生产、消费永不投递（未订阅 topic）。 |
 | `group` | string | "" | 传给 `kgo.ConsumerGroup`；group 语义属 Kafka 自身（offset、rebalance——见 kafka.apache.org）。⚠ driver `NewSubscriber` 的 group 实参是死的——本 key 是唯一 group 开关。 | 空 + 有 topic = 无 group（随机 group/急切）消费；offset 不提交。 |
-| `driver` | string | `DefaultDriver` | 选择已注册的 `Driver` [driver.go:46-57]；`RegisterDriver` 重名 panic。 | 未知名 → 启动报错 "kafka driver not found" [starter.go:68]。 |
 | `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedProduceSync` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
+
+无 `driver` key：client 装配由可选 Driver bean（见 §2.1）或内置 `DefaultDriver` 负责。（下方
+conf 里的 `driver` 指治理的 `govern.driver` 选择规则源，与本 starter 无关。）
 
 ### 3.2 SASL
 
@@ -362,7 +371,6 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动失败 "failed to ping kafka" | brokers 不可达 / SASL 错 / TLS 失配 | 修连通性或凭证；10s 探针无条件执行。 |
-| 启动失败 "kafka driver not found" | `driver` 名未注册 | 在 init 里 `RegisterDriver`，或删掉该 key。 |
 | 启动失败 "unsupported kafka sasl mechanism / required-acks / compression" | 枚举 key 拼写错误 | 枚举精确匹配（大小写不敏感）；改对值。 |
 | driver 消费者收不到 | `NewSubscriber` source ≠ 所配 `topic`，或 `topic` 为空 | source 必须等于 client 的 `topic`；否则静默过滤。 |
 | driver 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.<name>.group`（构造期固定）。 |
@@ -375,7 +383,7 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key | 18（核心 4 + sasl 4 + tls 6 + producer 4） |
+| 配置 key | 17（核心 3 + sasl 4 + tls 6 + producer 4） |
 | 必填 | 1（`brokers`） |
 | quickstart 前置外部依赖 | 1（Kafka broker） |
 | "注意/坑"条数 | 6 |

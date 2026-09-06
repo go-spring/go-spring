@@ -165,6 +165,11 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
   instead: leave a seam only when a real second case crosses the line (see the
   coding-style guide, "Extensibility and Extension Points"). The framework's line
   is crossed almost by definition; a business app's rarely is.
+- **Aggregator starters are the consumers that keep this honest.** A company
+  baseline starter (`starter-luohua`, DESIGN §2.6) re-bases a whole fleet onto one
+  organization's conventions by composing other starters *through these same
+  seams* — it is the first external consumer of every seam, so a seam that only
+  its own built-in can use is caught the moment an aggregator needs it.
 
 The concrete extension-point shapes (driver registry, seam interface,
 Provider/Contributor, functional hook) and the "abstraction in `spring`, backend
