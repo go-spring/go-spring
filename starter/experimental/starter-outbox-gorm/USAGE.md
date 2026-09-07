@@ -36,7 +36,7 @@ require (
     go-spring.org/spring              v1.3.x
     go-spring.org/starter-outbox-gorm latest
     go-spring.org/starter-gorm-mysql  latest   // any gorm driver starter; provides the *gorm.DB bean
-    go-spring.org/starter-kafka       latest   // any broker starter; registers the "kafka" driver
+    go-spring.org/starter-kafka       latest   // any broker starter; exports a messaging.Driver bean over its client
     go-spring.org/starter-actuator    latest   // optional: probes for the outbox:<name> indicator
 )
 ```
@@ -100,7 +100,8 @@ spring.gorm.db.dataSourceName=user:pass@tcp(127.0.0.1:3306)/demo
 
 # --- outbox: one relay instance per entry under spring.outbox ----------------
 # "main" is the instance name → bean name, health indicator "outbox:main".
-spring.outbox.main.driver=kafka        # required: driver registered by the broker starter
+# spring.outbox.main.driver=          # optional: name the messaging.Driver bean to deliver
+                                      # through; empty → autowire the single one
 spring.outbox.main.db=                 # empty → autowire the single *gorm.DB bean
 spring.outbox.main.auto-migrate=true   # create outbox_message via gorm at startup
 spring.outbox.main.poll-interval=1s    # clamped to >=100ms
@@ -114,7 +115,7 @@ spring.outbox.main.dlq-suffix=.dlq     # "orders.events" → "orders.events.dlq"
 spring.actuator.addr=:9370
 ```
 
-**Verify** (out-of-the-box example — zero external deps, in-memory sqlite + a `mem` driver):
+**Verify** (out-of-the-box example — zero external deps, in-memory sqlite + an in-process `messaging.Driver` bean):
 
 ```bash
 cd starter/experimental/starter-outbox-gorm/example && ./check.sh
@@ -139,29 +140,33 @@ import starter-outbox-gorm
         │   one pass per entry <name> under ${spring.outbox} (conf.BindEach)
         ├─ Provide(newRelay).Name(<name>).Init(Destroy wired)
         │     args: IndexArg(1, bound Config), IndexArg(2, TagArg(db) *gorm.DB),
-        │           IndexArg(3, ValueArg(name))
+        │           IndexArg(3, TagArg(driver) messaging.Driver),
+        │           IndexArg(4, ValueArg(name))
         │     exported as gs.Rooter                                 [starter.go:61-66]
         └─ Provide(health.Indicator "outbox:<name>")               [starter.go:69-71]
               .Name("outbox:" + name) — mandatory: multi-instance health beans
               need distinct (Name,Type) keys or the container reports duplicates.
 
 gs.Run()
-  ├─ config bind: ${spring.outbox.<name>} → Config (value tags; expr: driver != '')
-  ├─ bean wiring: *gorm.DB resolved from TagArg(c.DB) — empty db key autowires
-  │               the single *gorm.DB bean; named key picks that bean
+  ├─ config bind: ${spring.outbox.<name>} → Config (value tags)
+  ├─ bean wiring: *gorm.DB from TagArg(c.DB) and the messaging.Driver from
+  │               TagArg(c.Driver) — empty keys autowire the single bean of each
+  │               type; a named key picks that bean. A broker starter exports a
+  │               messaging.Driver bean per configured connection, so wiring a
+  │               broker + a single outbox entry needs no driver key.
   ├─ Relay.Init()  [starter.go:97]
-  │     1. messaging.GetDriver(driver) — resolved at run time, not construction,
-  │        so broker starters registering their driver later still work
-  │     2. optional Migrate(db) when auto-migrate=true
-  │     3. outbox.NewRelay(gormStore, driver, cfg, logObserver) and the loop
-  │        starts on a background goroutine (Init returns immediately)
+  │     1. optional Migrate(db) when auto-migrate=true
+  │     2. outbox.NewRelay(gormStore, drv, cfg, logObserver) — drv is the
+  │        autowired messaging.Driver bean; the loop starts on a background
+  │        goroutine (Init returns immediately)
   ├─ readiness: unaffected — the relay is a worker, not a gs.Server; blocking
   │        on it would defeat the readiness signal (starter.go:55-58 comment)
   └─ on SIGTERM: Relay.Destroy() — see §4.4 for the drain contract.
 ```
 
-Init failure modes are fatal: unknown driver name or failed auto-migrate log an ERROR with
-the instance name and abort startup (starter.go:98-107).
+Init failure modes are fatal: no `messaging.Driver` bean (no broker configured, or several
+with no `driver` key) fails at wiring; a failed auto-migrate logs an ERROR with the instance
+name and aborts startup (starter.go).
 
 ### 2.2 One message, end to end
 
@@ -219,7 +224,7 @@ config.go:29-63; normalization (clamps) from outbox.go:132-153.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `driver` | string | — | **Required** (`expr:"driver != ''"`, config.go:36). Driver name registered by a broker starter (`kafka`, `nats`, …) or your own `messaging.RegisterDriver`. Resolved in Init, so late-registered drivers work. | Missing/unknown → startup fails with "outbox %q: …" ERROR. |
+| `driver` | string | "" | Names the `messaging.Driver` bean to deliver through — e.g. the one a broker starter exports over its configured connection. Empty autowires the single `messaging.Driver` bean. | None exists, or several exist without a `driver` key → wiring failure at startup. |
 | `db` | string | "" | Names the `*gorm.DB` bean backing the outbox table. Empty autowires the single `*gorm.DB` bean (whatever driver starter provided it). | Name with no such bean → wiring failure at startup. |
 | `auto-migrate` | bool | false | `true` runs `db.AutoMigrate(&outboxRow{})` in Init — creates `outbox_message` plus the `(status, next_retry_at)` dispatch index (model.go:40-42,55-57). Off by default: manage the table from the README DDL when schema is migration-tooled. ⚠ auto-migrate does not upgrade a pre-existing table created from an older DDL. | false with no table → every fetch ERRORs (logged each poll, relay keeps running, nothing delivers). |
 | `poll-interval` | duration | 1s | Wait between polls when drained. `<=0` → 1s; `<100ms` clamped to 100ms (outbox.go:133-137). | Too low → busy polling against a dead store spams fetch ERRORs; too high → latency after idle. |
@@ -319,7 +324,8 @@ curl -s :9370/health | jq '.components["outbox:main"]'
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Startup fails: `outbox "main": driver "kafka" not found` | broker starter not imported, or wrong name | Import the broker starter or `messaging.RegisterDriver("kafka", …)` before Init runs. |
+| Startup fails at wiring: no `messaging.Driver` bean | no broker starter configured, so none exported a `messaging.Driver` bean | Import + configure a broker starter (it exports a `messaging.Driver` bean per connection), or provide your own as a bean. |
+| Startup fails at wiring: several `messaging.Driver` beans, empty `driver` | more than one delivery connection exists | Name the `messaging.Driver` bean in `spring.outbox.<name>.driver`. |
 | Startup fails after auto-migrate error | DB unreachable / insufficient DDL rights | Fix connectivity or pre-create the table from the README DDL and set `auto-migrate=false`. |
 | Continuous `fetch failed (keep polling)` ERRORs | table missing (auto-migrate off, DDL not applied) or db down | Apply the DDL; the relay survives but delivers nothing while fetch fails. |
 | Messages delivered twice | crash/redelivery between publish and MarkSent — at-least-once by design | Make consumers idempotent or dedupe by `Key`. |
@@ -335,8 +341,8 @@ curl -s :9370/health | jq '.components["outbox:main"]'
 | Metric | Value |
 |--------|-------|
 | Config keys | 9 |
-| Required | 1 (`driver`) |
-| Quickstart external deps | 2 (DB + broker; bundled example uses 0 via sqlite + mem driver) |
+| Required | 0 (all autowire/optional) |
+| Quickstart external deps | 2 (DB + broker; bundled example uses 0 via sqlite + an in-process driver bean) |
 | "Watch out" entries | 7 (atomicity requires same-tx; at-least-once; per-batch ordering only; MySQL 5.7 single relay; DLQ-off unwatched; 5s drain cap; sent-row growth) |
 
 Design suspects (for the audit ledger):

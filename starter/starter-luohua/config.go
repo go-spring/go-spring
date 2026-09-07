@@ -16,11 +16,14 @@
 
 package luohua
 
-// Config is the luohua company baseline, bound from ${spring.luohua.*}. It is
-// data-only so a capability can be switched on purely by config. Every luohua
-// default below rides the framework's public seams and steps aside via
-// OnMissingBean when an application provides its own — the container assembles,
-// it does not adjudicate, so no luohua bean can ever fight a company bean.
+// Config is the luohua baseline's process-wide knobs, bound from ${spring.luohua.*}.
+// It carries only what is process-wide — the master switch and the two value
+// re-basing capabilities (propagate/observability). The keyed bean capabilities
+// (identity/i18n/redis/lock) each bind their OWN config from their
+// ${spring.luohua.<cap>} prefix in their module and are armed independently; they
+// are deliberately NOT nested here, because binding a required field (identity's
+// secret) from the process-wide bind would force every capability to configure
+// identity even when unused.
 //
 // Arming: this module is gated on the "spring.luohua" property *prefix*, so any
 // spring.luohua.* key arms it; Enabled (default true) is the master switch to
@@ -36,22 +39,6 @@ type Config struct {
 
 	// Observability sets the per-log/span fields luohua expects on context.
 	Observability ObservabilityConfig `value:"${observability:=}"`
-
-	// Identity arms a luohua security.TokenValidator bean — the company's SSO
-	// verifier — behind ${spring.luohua.identity}. A team that brings its own
-	// identity provides its own TokenValidator instead.
-	Identity IdentityConfig `value:"${identity:=}"`
-
-	// I18n provides luohua's error catalog as an i18n.MessageSource default.
-	// It steps aside (OnMissingBean) when an application supplies its own.
-	I18n I18nConfig `value:"${i18n:=}"`
-
-	// Redis arms luohua's redigo pool-assembly driver under
-	// ${spring.luohua.redis}. It provides a Driver bean; starter-redigo injects
-	// it into each pool and falls back to its bundled DefaultDriver only when no
-	// Driver bean is present. A team that wants its own redis driver keeps this
-	// capability off and provides its own Driver bean instead.
-	Redis RedisConfig `value:"${redis:=}"`
 }
 
 // RedisConfig configures luohua's redigo pool-assembly driver under

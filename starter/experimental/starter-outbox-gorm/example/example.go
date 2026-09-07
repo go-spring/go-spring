@@ -56,12 +56,14 @@ type memDriver struct {
 	failUntil map[string]int
 }
 
-func init() {
-	messaging.RegisterDriver("mem", &memDriver{
-		sent:      make(map[string][]*messaging.Message),
-		attempts:  make(map[string]int),
-		failUntil: map[string]int{"orders.flaky": 2, "poison": 0},
-	})
+// demoDriver is the delivery-side messaging.Driver: an in-process fake the
+// outbox relay drains into. It is provided as a messaging.Driver bean — the only
+// one in this app — so the outbox starter autowires it as the delivery driver,
+// the same path a broker starter's exported messaging.Driver bean rides.
+var demoDriver = &memDriver{
+	sent:      make(map[string][]*messaging.Message),
+	attempts:  make(map[string]int),
+	failUntil: map[string]int{"orders.flaky": 2, "poison": 0},
 }
 
 // delivered returns the messages published to dest so far.
@@ -109,6 +111,9 @@ func (p *memPublisher) Close() error { return nil }
 
 func init() {
 	gs.Provide(newDB)
+	// Provide the in-memory driver as a messaging.Driver bean so the outbox
+	// starter autowires it as the delivery side (no broker needed).
+	gs.Provide(func() messaging.Driver { return demoDriver })
 }
 
 // newDB opens the shared in-memory sqlite database. MaxOpenConns=1 keeps the
@@ -144,12 +149,7 @@ func main() {
 // check.sh treats as success). Any deviation exits non-zero.
 func runTest() {
 	ctx := context.Background()
-	b, err := messaging.GetDriver("mem")
-	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "get driver: %v", err)
-		os.Exit(1)
-	}
-	mem := b.(*memDriver)
+	mem := demoDriver
 	db := demoDB
 	fail := func(format string, args ...any) {
 		log.Errorf(ctx, log.TagAppDef, format, args...)

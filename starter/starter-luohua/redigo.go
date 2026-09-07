@@ -37,7 +37,7 @@ func init() {
 	gs.Provide(func(c RedisConfig) StarterRedigo.Driver {
 		return RedisDriver{tag: c.Tag}
 	}, gs.TagArg("${spring.luohua.redis}")).
-		Condition(gs.OnProperty("spring.luohua.redis")).
+		Condition(gs.OnProperty("spring.luohua.redis"), gs.Not(gs.OnProperty("spring.luohua.enabled").HavingValue("false"))).
 		Caller(1)
 }
 

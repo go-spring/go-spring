@@ -137,12 +137,23 @@ func init() {
 	// half-configured identity fails startup loudly instead of silently issuing
 	// nothing.
 	gs.Module(gs.OnProperty("spring.luohua.identity"), func(r gs.BeanProvider, p flatten.Storage) error {
+		if off, err := disabled(p); err != nil {
+			return err
+		} else if off {
+			return nil // whole baseline off; do not assemble the keyed bean capability
+		}
 		var c IdentityConfig
 		if err := conf.Bind(p, &c, "${spring.luohua.identity:=}"); err != nil {
 			return err
 		}
 		sso := NewLuohuaSSO(c.Secret, c.Issuer)
+		// This is a default: when an application provides its own
+		// security.TokenValidator (e.g. a JWT/OIDC verifier), OnMissingBean steps
+		// luohua's LuohuaSSO aside rather than competing — the same step-aside the
+		// i18n default performs. Without it two TokenValidator beans make the
+		// container's single-value autowire ambiguous and startup fails.
 		r.Provide(func() *LuohuaSSO { return sso }).
+			Condition(gs.OnMissingBean[security.TokenValidator]()).
 			Export(gs.As[security.TokenValidator]()).Caller(1)
 		return nil
 	})

@@ -75,7 +75,7 @@ func TestEchoServer_MTLS(t *testing.T) {
 	}
 	svr, err := NewSimpleEchoServer(func(e *echo.Echo) {
 		e.GET("/ping", func(c echo.Context) error { return c.String(http.StatusOK, "pong") })
-	}, cfg)
+	}, nil, cfg)
 	assert.That(t, err).Nil()
 
 	ctx, cancel := context.WithCancel(context.Background())

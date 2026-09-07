@@ -20,6 +20,7 @@
 package StarterNats
 
 import (
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
@@ -36,6 +37,14 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("?")),
 			).Name(name).Destroy(destroyConn).Caller(1)
+
+			// Export the broker-neutral messaging.Driver over this connection as a
+			// bean, so consumers (starter-outbox-gorm, app pub/sub) autowire it like
+			// any client bean. It shares the connection's bean name; beans are keyed
+			// by (name, type), so it stays distinct from the raw *Conn bean.
+			r.Provide(func(conn *Conn) messaging.Driver {
+				return NewDriver(conn)
+			}, gs.TagArg(name)).Name(name).Caller(1)
 			return nil
 		})
 	})

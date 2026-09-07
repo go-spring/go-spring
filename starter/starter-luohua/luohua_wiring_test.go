@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/i18n"
+	"go-spring.org/cloud/lock"
 	"go-spring.org/cloud/security"
 	"go-spring.org/spring/gs"
 )
@@ -59,6 +60,70 @@ func TestAssemblesDefaultBeans(t *testing.T) {
 		auth, err := ts.Validator.Validate(context.Background(), tok)
 		if err != nil || auth == nil || !auth.Authenticated {
 			t.Fatalf("Validate via wired bean failed: %v %+v", err, auth)
+		}
+	})
+}
+
+// TestEnabledFalseSilencesKeyedCapabilities locks F-3: spring.luohua.enabled
+// (documented as "apply none of the luohua baseline") must silence the keyed
+// bean capabilities too — not just the apply() re-basing — even when their
+// sub-keys (spring.luohua.identity/.i18n) are present.
+func TestEnabledFalseSilencesKeyedCapabilities(t *testing.T) {
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.luohua.enabled", "false")
+		app.Property("spring.luohua.identity.secret", "s3cret")
+		app.Property("spring.luohua.identity.issuer", "luohua")
+		app.Property("spring.luohua.i18n.default-locale", "zh")
+	}).RunTest(t, func(ts *struct {
+		Validator security.TokenValidator `autowire:"?"`
+		Messages  i18n.MessageSource      `autowire:"?"`
+	}) {
+		if ts.Validator != nil {
+			t.Fatal("enabled=false must silence luohua.identity even with its sub-key present")
+		}
+		if ts.Messages != nil {
+			t.Fatal("enabled=false must silence luohua.i18n even with its sub-key present")
+		}
+	})
+}
+
+// TestLockBaselineStandalone verifies the lock capability is independently
+// armable: spring.luohua.lock=true alone (no identity.secret) wires an in-process
+// lock.Locker baseline. This is the F-9 regression — the master Config no longer
+// forces identity.secret when only a non-identity capability is armed.
+func TestLockBaselineStandalone(t *testing.T) {
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.luohua.lock", "true")
+	}).RunTest(t, func(ts *struct {
+		Locker lock.Locker `autowire:"?"`
+	}) {
+		if ts.Locker == nil {
+			t.Fatal("spring.luohua.lock=true should wire an in-process lock.Locker baseline on its own")
+		}
+	})
+}
+
+// TestAssemblesCombinedBaseline stress-tests that luohua capabilities COMPOSE:
+// arming identity + i18n + lock + propagate + observability together must wire
+// every bean (TokenValidator, MessageSource, lock.Locker) with no duplicate /
+// ambiguity error — the shape a real company baseline puts on a fleet. This is
+// the "真跑公司装配" composite check, run in the container via RunTest.
+func TestAssemblesCombinedBaseline(t *testing.T) {
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.luohua.identity.secret", "s3cret")
+		app.Property("spring.luohua.identity.issuer", "luohua")
+		app.Property("spring.luohua.i18n.default-locale", "zh")
+		app.Property("spring.luohua.lock", "true")
+		app.Property("spring.luohua.propagate.headers", "X-Tenant,X-User")
+		app.Property("spring.luohua.observability.fields", "tenant,user")
+	}).RunTest(t, func(ts *struct {
+		Validator security.TokenValidator `autowire:""`
+		Messages  i18n.MessageSource      `autowire:""`
+		Locker    lock.Locker             `autowire:""`
+	}) {
+		if ts.Validator == nil || ts.Messages == nil || ts.Locker == nil {
+			t.Fatalf("combined baseline should wire all beans: validator=%v messages=%v locker=%v",
+				ts.Validator != nil, ts.Messages != nil, ts.Locker != nil)
 		}
 	})
 }

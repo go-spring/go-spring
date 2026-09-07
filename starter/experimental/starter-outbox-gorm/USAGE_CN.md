@@ -33,7 +33,7 @@ require (
     go-spring.org/spring              v1.3.x
     go-spring.org/starter-outbox-gorm latest
     go-spring.org/starter-gorm-mysql  latest   // 任意 gorm driver starter；提供 *gorm.DB bean
-    go-spring.org/starter-kafka       latest   // 任意 broker starter；注册 "kafka" driver
+    go-spring.org/starter-kafka       latest   // 任意 broker starter；为其 client 导出一个 messaging.Driver bean
     go-spring.org/starter-actuator    latest   // 可选：outbox:<name> 健康指示器
 )
 ```
@@ -96,7 +96,8 @@ spring.gorm.db.dataSourceName=user:pass@tcp(127.0.0.1:3306)/demo
 
 # --- outbox：spring.outbox 下每个条目一个 relay 实例 ---------------------------
 # "main" 是实例名 → bean 名、健康指示器 "outbox:main"。
-spring.outbox.main.driver=kafka        # 必填：broker starter 注册的 driver 名
+# spring.outbox.main.driver=          # 可选：指定投递所用 messaging.Driver bean 名；
+                                      # 留空 → 自动注入唯一那个
 spring.outbox.main.db=                 # 空 → 自动注入唯一的 *gorm.DB bean
 spring.outbox.main.auto-migrate=true   # 启动时用 gorm 建 outbox_message 表
 spring.outbox.main.poll-interval=1s    # 下限钳制 100ms
@@ -110,7 +111,7 @@ spring.outbox.main.dlq-suffix=.dlq     # "orders.events" → "orders.events.dlq"
 spring.actuator.addr=:9370
 ```
 
-**验证**（开箱即用的 example —— 零外部依赖，内存 sqlite + `mem` driver）：
+**验证**（开箱即用的 example —— 零外部依赖，内存 sqlite + 进程内 `messaging.Driver` bean）：
 
 ```bash
 cd starter/experimental/starter-outbox-gorm/example && ./check.sh
@@ -141,22 +142,22 @@ import starter-outbox-gorm
               不同的 (Name,Type) 键，否则容器报 duplicate beans。
 
 gs.Run()
-  ├─ 配置绑定：${spring.outbox.<name>} → Config（value tag；expr: driver != ''）
-  ├─ bean 装配：*gorm.DB 由 TagArg(c.DB) 解析 —— db key 为空自动注入
-  │             唯一的 *gorm.DB bean；命名 key 则选指定 bean
+  ├─ 配置绑定：${spring.outbox.<name>} → Config（value tag）
+  ├─ bean 装配：*gorm.DB 由 TagArg(c.DB)、messaging.Driver 由 TagArg(c.Driver)
+  │             解析 —— key 为空自动注入该类型的唯一 bean；命名 key 选指定
+  │             bean。broker starter 会为其每条已配置连接导出一个
+  │             messaging.Driver bean，所以配一个 broker + 单条 outbox 无需 driver key
   ├─ Relay.Init()  [starter.go:97]
-  │     1. messaging.GetDriver(driver) —— 运行期而非构造期解析，
-  │        因此晚注册 driver 的 broker starter 也能工作
-  │     2. auto-migrate=true 时执行 Migrate(db)
-  │     3. outbox.NewRelay(gormStore, driver, cfg, logObserver) 并在
-  │        后台 goroutine 启动循环（Init 立即返回）
+  │     1. auto-migrate=true 时执行 Migrate(db)
+  │     2. outbox.NewRelay(gormStore, drv, cfg, logObserver) —— drv 是注入的
+  │        messaging.Driver bean；在后台 goroutine 启动循环（Init 立即返回）
   ├─ 就绪信号：不受影响 —— relay 是 worker 不是 gs.Server；阻塞它会
   │        破坏就绪信号（starter.go:55-58 注释）
   └─ SIGTERM：Relay.Destroy() —— drain 契约见 §4.4。
 ```
 
-Init 失败是致命的：未知 driver 名或 auto-migrate 失败都会带实例名打一条 ERROR 并
-中止启动（starter.go:98-107）。
+Init 失败是致命的：没有 `messaging.Driver` bean（未配 broker，或存在多个且无
+`driver` key）在装配期失败；auto-migrate 失败会带实例名打一条 ERROR 并中止启动（starter.go）。
 
 ### 2.2 一条消息的端到端走读
 
@@ -212,7 +213,7 @@ config.go:29-63；归一化（钳制）来自 outbox.go:132-153。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `driver` | string | — | **必填**（`expr:"driver != ''"`，config.go:36）。broker starter 注册的 driver 名（`kafka`、`nats`…）或你自己的 `messaging.RegisterDriver`。Init 时解析，晚注册的 driver 也可用。 | 缺失/未知 → 启动失败，报 `outbox %q: …` ERROR。 |
+| `driver` | string | "" | 指定投递所用 `messaging.Driver` bean 名 —— 例如 broker starter 为其已配置连接导出的那个。空则自动注入唯一的 `messaging.Driver` bean。 | 一个都没有，或多个但无 `driver` key → 装配期启动失败。 |
 | `db` | string | "" | 指定承载 outbox 表的 `*gorm.DB` bean 名。空则自动注入唯一的 `*gorm.DB` bean（无论哪个 driver starter 提供的）。 | 名字无对应 bean → 启动装配失败。 |
 | `auto-migrate` | bool | false | `true` 时 Init 里跑 `db.AutoMigrate(&outboxRow{})` —— 建 `outbox_message` 及 `(status, next_retry_at)` 派发索引（model.go:40-42,55-57）。默认关：schema 由迁移工具管理时按 README DDL 建表。⚠ auto-migrate 不会升级旧 DDL 建的既有表。 | false 且无表 → 每轮 fetch ERROR（每轮 poll 打日志、relay 继续跑但什么都不投递）。 |
 | `poll-interval` | duration | 1s | 表排空后两次 poll 的间隔。`<=0` → 1s；`<100ms` 钳到 100ms（outbox.go:133-137）。 | 过低 → 对死库忙轮询刷 fetch ERROR；过高 → 空闲后延迟大。 |
@@ -309,7 +310,8 @@ curl -s :9370/health | jq '.components["outbox:main"]'
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动失败：`outbox "main": driver "kafka" not found` | broker starter 未 import，或名字写错 | import broker starter，或在 Init 前自行 `messaging.RegisterDriver("kafka", …)`。 |
+| 装配期启动失败：没有 `messaging.Driver` bean | 未配置 broker starter，故没有导出 `messaging.Driver` bean | import 并配置一个 broker starter（它按连接导出 `messaging.Driver` bean），或自行提供一个 bean。 |
+| 装配期启动失败：多个 `messaging.Driver` bean 但 `driver` 为空 | 存在多条投递连接 | 在 `spring.outbox.<name>.driver` 指定 `messaging.Driver` bean 名。 |
 | 启动时 auto-migrate 报错后失败 | 库不可达 / 无 DDL 权限 | 修连通性，或按 README DDL 预建表并设 `auto-migrate=false`。 |
 | 持续 `fetch failed (keep polling)` ERROR | 表不存在（auto-migrate 关且 DDL 未执行）或库挂 | 执行 DDL；relay 撑得住但 fetch 失败期间不投递。 |
 | 消息投递了两次 | 发布与 MarkSent 之间崩溃/重投 —— at-least-once 设计使然 | 消费者幂等或按 `Key` 去重。 |
@@ -325,8 +327,8 @@ curl -s :9370/health | jq '.components["outbox:main"]'
 | 指标 | 数值 |
 |------|------|
 | 配置 key 总数 | 9 |
-| 其中必填 | 1（`driver`） |
-| quickstart 前置外部依赖 | 2（DB + broker；随附 example 用 sqlite + mem driver 为 0） |
+| 其中必填 | 0（全部可自动注入/可选） |
+| quickstart 前置外部依赖 | 2（DB + broker；随附 example 用 sqlite + 进程内 driver bean 为 0） |
 | "注意/坑"条数 | 7（同事务才有原子性；at-least-once；仅批内有序；MySQL 5.7 单 relay；DLQ 关闭无人盯；5s drain 上限；sent 行增长） |
 
 设计嫌疑清单（供设计裁决）：

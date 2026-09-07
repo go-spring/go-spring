@@ -169,7 +169,8 @@ import starter-echo
         │
 gs.Run()
   ├─ 配置绑定:${spring.echo.server} → Config(value tag + expr 校验)
-  ├─ bean 装配:RouterRegister + 可选 EngineMiddleware("?")注入
+  ├─ bean 装配:RouterRegister 注入——echo 唯一 app 缝(无 gin 那种 EngineMiddleware
+  │             外层槽),app 中间件跑在内置链内侧
   ├─ 引擎组装:applyMiddlewares() 先装内置链,
   │            再跑你的 RouterRegister(路由最内层)
   ├─ Server.Run():net.Listen 后开始服务
@@ -238,7 +239,6 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 
 | Key | 默认 | 说明 |
 |-----|------|------|
-| `middleware.enabled` | true | 总开关。false = 手动模式:什么都不装,自己调 `ApplyMiddlewares`/导出函数。⚠ 手动模式下 `EngineMiddleware` bean 被静默忽略。 |
 | `middleware.loadtest.enabled` / `.header` | 开 / `X-LoadTest` | 标记头名;空则回落 traffic 包默认。 |
 | `middleware.requestId.enabled` / `.header` | 开 / `X-Request-Id` | 缺失时生成、存在时透传。 |
 | `middleware.tracing.enabled` / `metrics.enabled` | 开 / 开 | 无 starter-otel 的 OTel 全局对象时空操作——没有任何告警。 |
@@ -314,7 +314,7 @@ curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
 | 一切正常但无 trace/指标 | 未引入 starter-otel | 加上;OTel 钩子无它即静默空操作。 |
 | 上传 413 | `maxBodySize` < 载荷 | 调大或去掉。 |
 | 探针刷爆访问日志 | 自定义健康路径 | starter 服务的路径自动跳过;自己的路径加进 `skipPaths`。 |
-| `EngineMiddleware` bean 被无视 | `middleware.enabled=false`(手动模式) | 用导出的中间件函数,或重新开启。 |
+| app 中间件要跑到内置链外层 | echo 无 EngineMiddleware 槽(gin 有) | `RouterRegister` 最内层跑;每个内置组用各自 `middleware.<group>.enabled` 开关,无总开关 `middleware.enabled`、无导出 `ApplyMiddlewares`。 |
 | 客户端在 TLS 握手被拒(证书错误) | 配了 `tls.ca-file`——即开启 **mTLS**(`RequireAndVerifyClientCert`) | 去掉 `ca-file` 走单向 TLS,或给客户端发证书。 |
 
 ## 6. 设计体检表
@@ -327,5 +327,5 @@ curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
 | "注意/坑"条数 | 7 |
 
 设计嫌疑(待设计裁决):无韧性准入(限流/熔断)——与 gin 不对称;TLS 已改用 `BuildServer()`,
-`ca-file` 即开 mTLS(已修复,原 `Build()` 会忽略);手动模式下 `EngineMiddleware` 被静默忽略;
+`ca-file` 即开 mTLS(已修复,原 `Build()` 会忽略);无外层 `EngineMiddleware` 槽(gin 有,echo 的 app 中间件跑在内置链内侧);
 与 gin 的请求体捕获配置无对齐文档。

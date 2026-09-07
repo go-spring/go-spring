@@ -32,7 +32,8 @@ import (
 func init() {
 	gs.Provide(
 		NewSimpleEchoServer,
-		gs.IndexArg(1, gs.TagArg("${spring.echo.server}")),
+		gs.IndexArg(1, gs.TagArg("?")), // nullable EngineMiddleware outer hook
+		gs.IndexArg(2, gs.TagArg("${spring.echo.server}")),
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.echo.server.addr"))
 }
@@ -48,6 +49,19 @@ func init() {
 // app-specific middleware here.
 type RouterRegister func(e *echo.Echo)
 
+// EngineMiddleware installs middleware onto the framework-owned *echo.Echo at the
+// outermost position — before every built-in (LoadTest/Recovery/RequestID/...),
+// the same outer hook gin offers. Supply it as a bean:
+//
+//	gs.Provide(func() StarterEcho.EngineMiddleware {
+//		return func(e *echo.Echo) { e.Use(myCompanyMiddleware) }
+//	})
+//
+// The hook runs before applyMiddlewares, so middleware you add here ends up
+// outermost on the chain. It is a single nullable "?" bean: absent when the app
+// provides none, with no config or enabled knob.
+type EngineMiddleware func(e *echo.Echo)
+
 // SimpleEchoServer adapts an Echo engine to the Go-Spring server lifecycle. It
 // owns a standard http.Server so it can serve either plaintext HTTP or, when
 // TLS is configured, HTTPS.
@@ -59,10 +73,19 @@ type SimpleEchoServer struct {
 
 // NewSimpleEchoServer builds an *echo.Echo with the configured built-in
 // middlewares, applies the registered RouterRegister, and wraps it in an HTTP
-// server configured from ${spring.echo.server}.
-func NewSimpleEchoServer(register RouterRegister, cfg Config) (*SimpleEchoServer, error) {
+// server configured from ${spring.echo.server}. outer is the application-supplied
+// EngineMiddleware hook (nil when none is provided); it runs before the built-in
+// chain so middleware it installs ends up outermost.
+func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Config) (*SimpleEchoServer, error) {
 	e := echo.New()
 	e.HideBanner = true
+
+	// Run the application-supplied outer hook first, so it wraps the built-in
+	// chain (it ends up outermost — before LoadTest). nil when the app provides
+	// no EngineMiddleware bean.
+	if outer != nil {
+		outer(e)
+	}
 
 	if err := applyMiddlewares(e, cfg); err != nil {
 		return nil, err

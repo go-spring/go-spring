@@ -2,22 +2,25 @@
 
 A gorm-backed transactional outbox for Go-Spring: business writes and message
 publishes commit atomically in one database transaction, then a background
-relay drains the `outbox_message` table to any registered `messaging.Driver`
-(kafka, nats, ...). The neutral core lives in `cloud/experimental/outbox`.
+relay drains the `outbox_message` table to a `messaging.Driver` (kafka, nats,
+...). The neutral core lives in `cloud/experimental/outbox`.
 
 ## Wiring
 
-Blank-import the starter and add one entry per relay under `spring.outbox`:
+Blank-import the starter, blank-import a broker starter (starter-kafka, ...),
+and add one entry per relay under `spring.outbox`:
 
 ```properties
-spring.outbox.main.driver=kafka
 spring.outbox.main.auto-migrate=true
 ```
 
-Each entry autowires a `*gorm.DB` (from whichever gorm driver starter you
-already use; `db` selects a named bean), resolves the driver at startup,
-contributes a health indicator (`outbox:<name>`) and runs the relay loop on
-the bean's Init/Destroy — graceful shutdown drains in-flight records.
+The delivery `messaging.Driver` is autowired as a bean: the broker starter
+exports one over each of its configured connections, so an entry with a single
+delivery connection needs no `driver` key. Each entry also autowires a
+`*gorm.DB` (from whichever gorm driver starter you already use; `db` selects a
+named bean), contributes a health indicator (`outbox:<name>`) and runs the
+relay loop on the bean's Init/Destroy — graceful shutdown drains in-flight
+records.
 
 ## Publishing
 
@@ -64,7 +67,7 @@ its own. MySQL 5.7 lacks `SKIP LOCKED` — run a single relay instance there.
 | key | default | meaning |
 |---|---|---|
 | `db` | (autowire) | `*gorm.DB` bean name backing the table |
-| `driver` | — required | messaging driver name (kafka, nats, ...) |
+| `driver` | (autowire) | `messaging.Driver` bean name to deliver through; empty autowires the single one, required only when several exist |
 | `auto-migrate` | `false` | create the table at startup |
 | `poll-interval` | `1s` | wait between drained polls (floor 100ms) |
 | `batch-size` | `100` | records fetched per poll |

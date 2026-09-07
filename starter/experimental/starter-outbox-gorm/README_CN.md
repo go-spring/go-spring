@@ -1,17 +1,16 @@
 # starter-outbox-gorm
 
-Go-Spring 的 gorm 事务消息：业务写与消息发布在同一个数据库事务中原子提交，后台 relay 把 `outbox_message` 表搬运到任意已注册的 `messaging.Driver`（kafka、nats……）。中立内核在 `cloud/experimental/outbox`。
+Go-Spring 的 gorm 事务消息：业务写与消息发布在同一个数据库事务中原子提交，后台 relay 把 `outbox_message` 表搬运到一个 `messaging.Driver`（kafka、nats……）。中立内核在 `cloud/experimental/outbox`。
 
 ## 接线
 
-空白导入本 starter，在 `spring.outbox` 下每个 relay 一条配置：
+空白导入本 starter，再空白导入一个 broker starter（starter-kafka……），在 `spring.outbox` 下每个 relay 一条配置：
 
 ```properties
-spring.outbox.main.driver=kafka
 spring.outbox.main.auto-migrate=true
 ```
 
-每条配置自动注入一个 `*gorm.DB`（来自你已在用的 gorm 方言 starter；`db` 可指定具名 bean），启动时解析 driver，贡献健康指示器（`outbox:<name>`），并在 bean 的 Init/Destroy 上跑 relay 循环——优雅关停会排空在途记录。
+投递的 `messaging.Driver` 以 bean 注入：broker starter 会为每条已配置的连接导出一个 `messaging.Driver` bean，所以单条投递连接无需 `driver` 键。每条配置同时自动注入一个 `*gorm.DB`（来自你已在用的 gorm 方言 starter；`db` 可指定具名 bean），贡献健康指示器（`outbox:<name>`），并在 bean 的 Init/Destroy 上跑 relay 循环——优雅关停会排空在途记录。
 
 ## 发布
 
@@ -54,7 +53,7 @@ mysql（8+）与 postgres 上 relay 用 `FOR UPDATE SKIP LOCKED` 取数，多实
 | key | 默认 | 含义 |
 |---|---|---|
 | `db` | （按类型注入） | 支撑 outbox 表的 `*gorm.DB` bean 名 |
-| `driver` | — 必填 | messaging driver 名（kafka、nats……） |
+| `driver` | （按类型注入） | 投递所用 `messaging.Driver` bean 名；留空自动注入唯一那个，仅当存在多个时才必填 |
 | `auto-migrate` | `false` | 启动时建表 |
 | `poll-interval` | `1s` | 空转轮询间隔（下限 100ms） |
 | `batch-size` | `100` | 每次轮询取的记录数 |

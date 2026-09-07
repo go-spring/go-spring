@@ -429,7 +429,7 @@ func TestMiddlewareChain_OtelNoopGlobalsStillServe(t *testing.T) {
 // off registers nothing. The engine is reached through the wrapper's http.Server
 // handler so the test exercises the real assembly path.
 func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
-	svr, err := NewSimpleEchoServer(func(e *echo.Echo) {}, bindConfig(t, map[string]any{
+	svr, err := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{
 		"health.enabled": true,
 		"health.path":    "/livez",
 	}))
@@ -444,7 +444,7 @@ func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
 	// Health disabled by default: the route is absent, and an unrouted request
 	// gets echo's own 404 — buildFault passes handler errors through and only
 	// rewrites INJECTED faults as 503 (mirroring gin's buildFault).
-	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, bindConfig(t, map[string]any{}))
+	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{}))
 	assert.That(t, err2).Nil()
 	e2 := svr2.svr.Handler.(*echo.Echo)
 	w2 := httptest.NewRecorder()

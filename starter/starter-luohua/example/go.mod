@@ -6,7 +6,9 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	go-spring.org/cloud v0.0.0
 	go-spring.org/spring v1.3.4
+	go-spring.org/starter-echo v0.0.0
 	go-spring.org/starter-gin v0.0.0
+	go-spring.org/starter-http-server v0.0.0
 	go-spring.org/starter-luohua v0.0.0
 )
 
@@ -76,7 +78,9 @@ replace (
 	go-spring.org/log => ../../../log
 	go-spring.org/spring => ../../../spring
 	go-spring.org/starter-cache => ../../starter-cache
+	go-spring.org/starter-echo => ../../starter-echo
 	go-spring.org/starter-gin => ../../starter-gin
+	go-spring.org/starter-http-server => ../../starter-http-server
 	go-spring.org/starter-luohua => ..
 	go-spring.org/starter-otel => ../../starter-otel
 	go-spring.org/stdlib => ../../../stdlib

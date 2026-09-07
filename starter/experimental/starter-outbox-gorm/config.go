@@ -31,9 +31,12 @@ type Config struct {
 	// the single *gorm.DB bean (whatever gorm driver starter provided it).
 	DB string `value:"${db:=}"`
 
-	// Driver names the messaging driver (as registered by the broker starter,
-	// e.g. "kafka", "nats") used as the delivery side. Required.
-	Driver string `value:"${driver}" expr:"driver != ''"`
+	// Driver names the messaging.Driver bean to autowire as the delivery side —
+	// the bean a broker starter exports over its configured client (kafka, nats,
+	// ...) or one the app provides for its own broker. Empty autowires the single
+	// messaging.Driver bean, mirroring DB. Only required when more than one
+	// messaging.Driver bean exists.
+	Driver string `value:"${driver:=}"`
 
 	// AutoMigrate creates the outbox_message table at startup. Default off:
 	// applications that manage schema with a migration tool create it from

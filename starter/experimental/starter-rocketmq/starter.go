@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -44,6 +45,14 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("?")),
 			).Name(name).Destroy((*Client).Close).Caller(1)
+
+			// Export the broker-neutral messaging.Driver over this client as a bean,
+			// so consumers (starter-outbox-gorm, app pub/sub) autowire it like any
+			// client bean. It shares the connection's bean name; beans are keyed by
+			// (name, type), so it stays distinct from the raw *Client bean.
+			r.Provide(func(cl *Client) messaging.Driver {
+				return NewDriver(cl)
+			}, gs.TagArg(name)).Name(name).Caller(1)
 			return nil
 		})
 	})

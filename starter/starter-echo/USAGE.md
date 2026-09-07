@@ -173,7 +173,9 @@ import starter-echo
         │
 gs.Run()
   ├─ config bind: ${spring.echo.server} → Config (value tags, expr validation)
-  ├─ bean wiring: RouterRegister + optional EngineMiddleware ("?") autowired
+  ├─ bean wiring: RouterRegister autowired — the single app seam. echo has no
+  │                 EngineMiddleware outer slot (unlike gin); app middleware runs
+  │                 inside the built-in chain.
   ├─ engine assembly: applyMiddlewares() installs the built-in chain
   │                    BEFORE your RouterRegister runs (routes innermost)
   ├─ Server.Run(): net.Listen, then serve
@@ -246,7 +248,6 @@ Every group has `.enabled`; semantics per layer are in §2.2/§2.3.
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `middleware.enabled` | true | Master switch. false = manual mode: nothing installed; you call `ApplyMiddlewares`/exported fns yourself. ⚠ an `EngineMiddleware` bean is silently ignored in manual mode. |
 | `middleware.loadtest.enabled` / `.header` | on / `X-LoadTest` | Marker header name; empty falls back to the traffic package default. |
 | `middleware.requestId.enabled` / `.header` | on / `X-Request-Id` | Generated when absent, propagated when present. |
 | `middleware.tracing.enabled` / `metrics.enabled` | on / on | No-op without starter-otel's OTel globals — nothing warns. |
@@ -326,7 +327,7 @@ so business code can degrade features under synthetic load.
 | Everything works, no traces/metrics | starter-otel not imported | Add it; the OTel hooks are silent no-ops without it. |
 | 413 on uploads | `maxBodySize` < payload | Raise or unset. |
 | Probes flood the access log | custom health path | It is auto-skipped only for the starter-served path; add yours to `skipPaths`. |
-| `EngineMiddleware` bean ignored | `middleware.enabled=false` (manual mode) | Use exported middleware fns, or re-enable. |
+| App middleware must run outside the built-in chain | echo has no EngineMiddleware slot (unlike gin) | `RouterRegister` runs innermost; every built-in group is toggled by its own `middleware.<group>.enabled`, there is no master `middleware.enabled` and no exported `ApplyMiddlewares`. |
 | Clients rejected at TLS handshake with cert errors | `tls.ca-file` set — that enables **mTLS** (`RequireAndVerifyClientCert`) | Remove it for one-way TLS, or issue client certs. |
 
 ## 6. Design Health
@@ -340,5 +341,5 @@ so business code can degrade features under synthetic load.
 
 Design suspects (for the audit ledger): no resilience admission (rate limit/breaker) — asymmetric
 with gin; TLS now uses `BuildServer()` so `ca-file` enables mTLS (fixed — was `Build()`, which
-ignored it); `EngineMiddleware` silently ignored under manual mode; no dedicated request-body-capture
-config parity documentation vs gin.
+ignored it); no outer `EngineMiddleware` slot (gin has one — echo's app middleware runs inside the
+built-in chain); no dedicated request-body-capture config parity documentation vs gin.

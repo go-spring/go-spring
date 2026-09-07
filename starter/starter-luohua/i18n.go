@@ -48,6 +48,11 @@ func init() {
 	// application registers its own i18n.MessageSource, OnMissingBean steps
 	// luohua's aside rather than competing.
 	gs.Module(gs.OnProperty("spring.luohua.i18n"), func(r gs.BeanProvider, p flatten.Storage) error {
+		if off, err := disabled(p); err != nil {
+			return err
+		} else if off {
+			return nil // whole baseline off; do not assemble the keyed bean capability
+		}
 		var c I18nConfig
 		if err := conf.Bind(p, &c, "${spring.luohua.i18n:=}"); err != nil {
 			return err

@@ -48,6 +48,23 @@ import (
 // vocabulary extension point.
 var tagAppLuohua = log.RegisterAppTag("luohua", "")
 
+// disabled reports whether the app explicitly switched off the whole luohua
+// baseline (spring.luohua.enabled=false); absent means enabled (Config.Enabled
+// defaults true). The keyed bean capabilities (identity/i18n/redis) each arm on
+// their own spring.luohua.<cap> prefix, so they consult this here — otherwise
+// spring.luohua.enabled=false would silence only the apply() re-basing while the
+// capability beans still assembled, contradicting the master switch's documented
+// "apply none of the luohua baseline" contract.
+func disabled(p flatten.Storage) (bool, error) {
+	var e struct {
+		Enabled bool `value:"${enabled:=true}"`
+	}
+	if err := conf.Bind(p, &e, "${spring.luohua:=}"); err != nil {
+		return false, err
+	}
+	return !e.Enabled, nil
+}
+
 func init() {
 	// Armed by any spring.luohua.* key (OnProperty is a prefix check); Enabled
 	// (default true) is the master switch inside.

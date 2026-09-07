@@ -22,7 +22,9 @@
 //
 //	import _ "go-spring.org/starter-outbox-gorm"
 //
-//	# spring.outbox.main.driver=kafka
+//	# the delivery messaging.Driver bean is autowired (a broker starter, e.g.
+//	# starter-kafka, exports it over its configured client); name it only when
+//	# several exist — spring.outbox.main.driver=kafka
 //	# spring.outbox.main.auto-migrate=true
 //
 // The write side is a plain function, not a bean — it runs inside the
@@ -61,7 +63,8 @@ func init() {
 			r.Provide(newRelay,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg(c.DB)),
-				gs.IndexArg(3, gs.ValueArg(name)),
+				gs.IndexArg(3, gs.TagArg(c.Driver)),
+				gs.IndexArg(4, gs.ValueArg(name)),
 			).Name(name).Init((*Relay).Init).Destroy((*Relay).Destroy).
 				Export(gs.As[gs.Rooter]()).Caller(1)
 
@@ -79,34 +82,31 @@ type Relay struct {
 	cfg    Config
 	name   string
 	db     *gorm.DB
+	drv    messaging.Driver
 	relay  *outbox.Relay
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-// newRelay builds the bean from the bound config, the autowired *gorm.DB and
-// the instance name.
-func newRelay(_ *gs.ContextProvider, c Config, db *gorm.DB, name string) (*Relay, error) {
-	return &Relay{cfg: c, name: name, db: db}, nil
+// newRelay builds the bean from the bound config, the autowired *gorm.DB, the
+// autowired messaging.Driver bean and the instance name. The driver is injected
+// like any client bean (empty config names the single messaging.Driver bean);
+// the container resolves it before Init runs.
+func newRelay(_ *gs.ContextProvider, c Config, db *gorm.DB, drv messaging.Driver, name string) (*Relay, error) {
+	return &Relay{cfg: c, name: name, db: db, drv: drv}, nil
 }
 
-// Init resolves the driver, optionally migrates the table, and starts the
-// relay loop in the background. Driver resolution happens here (run time), not
-// at construction, so broker starters that register their driver later in the
-// bootstrap still work.
+// Init optionally migrates the table, then starts the relay loop in the
+// background. The delivery driver was injected at construction; the relay
+// publishes through it once the loop polls a pending record.
 func (o *Relay) Init() error {
-	driver, err := messaging.GetDriver(o.cfg.Driver)
-	if err != nil {
-		log.Errorf(context.Background(), starterTag, "outbox %q: %v", o.name, err)
-		return err
-	}
 	if o.cfg.AutoMigrate {
 		if err := Migrate(o.db); err != nil {
 			log.Errorf(context.Background(), starterTag, "outbox %q: auto-migrate failed: %v", o.name, err)
 			return err
 		}
 	}
-	o.relay = outbox.NewRelay(newStore(o.db), driver, o.cfg.relayConfig(), logObserver{})
+	o.relay = outbox.NewRelay(newStore(o.db), o.drv, o.cfg.relayConfig(), logObserver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	o.cancel, o.done = cancel, make(chan struct{})
 	go func() {
@@ -114,7 +114,11 @@ func (o *Relay) Init() error {
 		_ = o.relay.Run(ctx)
 		_ = o.relay.Close()
 	}()
-	log.Infof(context.Background(), starterTag, "outbox relay %q started (driver=%s)", o.name, o.cfg.Driver)
+	driver := o.cfg.Driver
+	if driver == "" {
+		driver = "(autowired messaging.Driver bean)"
+	}
+	log.Infof(context.Background(), starterTag, "outbox relay %q started (driver=%s)", o.name, driver)
 	return nil
 }
 
