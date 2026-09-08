@@ -115,14 +115,17 @@ func applyTLS(t tlsconf.TLSConfig, conf *neo4j.Config) error {
 	return nil
 }
 
-// resolveURI resolves c.ServiceName through the registered discovery backend,
+// resolveURI resolves c.ServiceName through the injected discovery backend,
 // picks one live endpoint via the shared loadbalance machinery, and rewrites
-// the URI's host to that address. It returns the Resolver alongside so the
-// caller can keep the watch alive and stop it on shutdown. It must only be
-// called when service discovery is in effect (the caller has already gated on
-// service-name being set and mesh mode being off).
+// the URI's host to that address. It must only be called when service discovery
+// is in effect (the caller has already gated on service-name being set and mesh
+// mode being off); it fails loudly when no backend bean was injected for the
+// ${discovery} label.
 func resolveURI(ctx context.Context, c Config) (string, error) {
-	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+	if c.backend == nil {
+		return "", errutil.Explain(nil, "neo4j: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
+	}
+	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
 	}

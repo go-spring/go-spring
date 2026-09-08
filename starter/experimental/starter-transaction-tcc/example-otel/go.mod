@@ -68,7 +68,7 @@ replace go-spring.org/starter-transaction-tcc => ../
 
 replace go-spring.org/starter-otel => ../../../starter-otel
 
-replace go-spring.org/starter-actuator => ../../starter-actuator
+replace go-spring.org/starter-actuator => ../../../starter-actuator
 
 require go-spring.org/cloud v0.0.0
 

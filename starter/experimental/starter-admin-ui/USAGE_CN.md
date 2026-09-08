@@ -124,7 +124,7 @@ gs.Run()
   │                                  仍可访问,"与 actuator 一致"
   │    7. go pollLoop();Serve
   ├─ 稳态:一个 poller goroutine;handler 在 RWMutex 下读最后一份快照
-  └─ SIGTERM:StopContext → close(stop) → 等待 <-done → http.Server.Shutdown(ctx)
+  └─ SIGTERM:Stop → close(stop) → 等待 <-done → http.Server.Shutdown(ctx)
 ```
 
 设计理由(引源码注释):
@@ -158,7 +158,7 @@ registry/discovery 集成(见 §6 嫌疑 #2)。
 
 ### 2.3 停机走读
 
-`StopContext`(starter.go:166-183):幂等 `close(stop)` 解开 poller 的 select;
+`Stop`(starter.go:166-183):幂等 `close(stop)` 解开 poller 的 select;
 `<-done` 等 poller 退出;随后 `http.Server.Shutdown(ctx)` 搭框架停机 context 排空
 在途页面请求。
 

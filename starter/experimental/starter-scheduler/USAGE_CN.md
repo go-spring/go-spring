@@ -180,7 +180,7 @@ gs.Run()
   │   ├─ <-sig.TriggerAndWait() → build 成功后才翻就绪
   │   └─ sched.Start(ctx)——"Scheduling begins only after the application is
   │        ready, so jobs never race application startup"（starter.go:85-86）
-  └─ SIGTERM 时：StopContext 用 drain-timeout 包 ctx，经 sched.Stop(ctx) 排空
+  └─ SIGTERM 时：Stop 用 drain-timeout 包 ctx，经 sched.Stop(ctx) 排空
        在途运行；超时则记 "scheduler drain timed out"
 ```
 

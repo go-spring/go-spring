@@ -70,7 +70,7 @@ var (
 // topologies return *redis.Client.
 //
 // In single mode, when c.ServiceName is set the address is resolved through the
-// registered discovery backend (c.Discovery) instead of c.Addr: a Resolver
+// injected discovery backend (c.backend, wired from the ${discovery} label) instead of c.Addr: a Resolver
 // keeps the endpoint set fresh and the client dials a live instance on each new
 // connection. Combined with c.ConnMaxLifetime, connections recycle onto updated
 // addresses without rebuilding the client. When c.ServiceName is empty this is a
@@ -120,7 +120,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client,
 		TLSConfig:       tlsConfig,
 	}
 
-	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, nil, err
 	}

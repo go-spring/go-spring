@@ -26,17 +26,24 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/mesh"
+	"go-spring.org/stdlib/errutil"
 )
 
-// newPickPool resolves the registered discovery backend for c into a by-name
+// newPickPool resolves the injected discovery backend for c into a by-name
 // Resolver and wraps it in a round-robin loadbalance pool, so each new connection
 // can pick a live instance from the service's current endpoint snapshot. It
 // returns (nil, nil) when discovery is not in effect — service-name unset or
 // mesh mode enabled (a sidecar owns discovery+LB) — in which case the caller
-// dials the configured URI hosts directly. Resolver freshness lives inside the
-// backend, so the pool has no resources to release and there is no Stop-half.
+// dials the configured URI hosts directly. It fails loudly when service-name is
+// set (and mesh is off) but no backend bean was injected for the ${discovery}
+// label. Resolver freshness lives inside the backend, so the pool has no
+// resources to release and there is no Stop-half.
 func newPickPool(ctx context.Context, c Config) (*loadbalance.Pool, error) {
-	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+	if c.ServiceName != "" && c.backend == nil && !mesh.Enabled() {
+		return nil, errutil.Explain(nil, "mongodb: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
+	}
+	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil || resolver == nil {
 		return nil, err
 	}

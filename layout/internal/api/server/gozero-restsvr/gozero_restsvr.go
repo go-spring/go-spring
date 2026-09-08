@@ -97,20 +97,12 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 }
 
-// StopContext is the context-aware variant of Stop: it receives the shutdown
-// context from Go-Spring (values-only, no cancellation) and holds the real
-// shutdown logic. Stop delegates here with context.Background().
-func (s *Server) StopContext(ctx context.Context) error {
+// Stop receives the shutdown context from Go-Spring (values-only, no cancellation) and holds the real
+// shutdown logic.
+func (s *Server) Stop(ctx context.Context) error {
 	if s.httpSvr != nil {
 		_ = s.httpSvr.Shutdown(ctx)
 	}
 	close(s.done)
 	return nil
-}
-
-// Stop gracefully shuts the HTTP server down and signals Run to return so
-// Go-Spring can complete its shutdown sequence. The explicit Shutdown is what
-// actually unblocks ListenAndServe; closing done releases Run's select.
-func (s *Server) Stop() error {
-	return s.StopContext(context.Background())
 }

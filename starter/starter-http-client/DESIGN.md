@@ -35,7 +35,7 @@ resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp
   implemented in `cloud/httpx`; this starter only binds config and passes
   `Observability` through.
 - **discovery + LB.** When `service-name` is non-empty:
-  `discovery.GetDiscovery` + `Resolver` + `loadbalance.Pool` — the same
+  the injected backend + `Resolver` + `loadbalance.Pool` — the same
   client-side stack every infrastructure client uses. Otherwise a
   `fixedHostTransport` handles the `Addr` case. Both empty → the
   request's own host is used.

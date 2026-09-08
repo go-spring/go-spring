@@ -69,6 +69,20 @@ func TestLabels_MissingFile(t *testing.T) {
 	assert.Error(t, err).Matches("no such file|cannot find")
 }
 
+func TestLabels_MalformedLineFallsBackToRaw(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "labels")
+	content := "app=myapp\nnot-a-pair\n"
+	err := os.WriteFile(path, []byte(content), 0o644)
+	assert.Error(t, err).Nil()
+
+	p := &PodInfo{LabelsPath: path}
+	got, err := p.Labels()
+	assert.Error(t, err).Nil()
+	assert.That(t, got["app"]).Equal("myapp")
+	assert.That(t, len(got)).Equal(1)
+}
+
 func TestMetadata_OmitsEmptyFields(t *testing.T) {
 	p := &PodInfo{
 		Name:      "pod-abc",
@@ -89,13 +103,17 @@ func TestMetadata_AllFields(t *testing.T) {
 	p := &PodInfo{
 		Name:           "pod-abc",
 		Namespace:      "default",
+		UID:            "0e1f2a3b-4c5d-6e7f-8a9b-0c1d2e3f4a5b",
 		IP:             "10.0.0.5",
 		NodeName:       "node-1",
+		HostIP:         "192.168.1.10",
 		ServiceAccount: "svc-acct",
 		LabelsPath:     "/etc/podinfo/labels",
 	}
 	got := p.Metadata()
-	assert.That(t, len(got)).Equal(5)
+	assert.That(t, len(got)).Equal(7)
+	assert.That(t, got["pod.uid"]).Equal("0e1f2a3b-4c5d-6e7f-8a9b-0c1d2e3f4a5b")
 	assert.That(t, got["node.name"]).Equal("node-1")
+	assert.That(t, got["node.ip"]).Equal("192.168.1.10")
 	assert.That(t, got["pod.serviceAccount"]).Equal("svc-acct")
 }

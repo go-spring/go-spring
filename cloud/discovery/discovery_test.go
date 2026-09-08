@@ -19,31 +19,15 @@ package discovery
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 )
 
-// panics reports whether fn panicked with a value whose message contains want.
-func panics(want string, fn func()) (did bool) {
-	defer func() {
-		r := recover()
-		did = r != nil && strings.Contains(fmt.Sprint(r), want)
-	}()
-	fn()
-	return
-}
-
 func TestResolve(t *testing.T) {
 	d := newStaticDiscovery()
 	d.set("svc", Endpoint{Addr: "10.0.0.3:80", Healthy: true})
-	RegisterDiscovery("test-resolve", d)
 
-	backend, err := GetDiscovery("test-resolve")
-	if err != nil {
-		t.Fatalf("GetDiscovery: %v", err)
-	}
-	got, err := backend.Resolve(context.Background(), "svc")
+	got, err := d.Resolve(context.Background(), "svc")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -52,50 +36,46 @@ func TestResolve(t *testing.T) {
 	}
 }
 
-func TestRegisterDiscoveryAndGet(t *testing.T) {
+func TestNewResolverBindsBackendAndSeeds(t *testing.T) {
 	d := newStaticDiscovery()
-	d.set("svc", Endpoint{Addr: "10.0.0.1:80"})
-	RegisterDiscovery("test-get", d)
+	d.set("svc", Endpoint{Addr: "10.0.0.1:80", Healthy: true})
 
-	got, err := GetDiscovery("test-get")
+	r, err := NewResolver(context.Background(), d, "svc")
 	if err != nil {
-		t.Fatalf("GetDiscovery: %v", err)
+		t.Fatalf("NewResolver: %v", err)
 	}
-	if got != Discovery(d) {
-		t.Fatalf("GetDiscovery returned %v, want the exact Discovery registered", got)
-	}
-}
-
-func TestGetDiscoveryNotFoundListsRegistered(t *testing.T) {
-	// Register a sentinel so the diagnostic has a concrete name to list.
-	RegisterDiscovery("test-notfound-sentinel", newStaticDiscovery())
-
-	_, err := GetDiscovery("does-not-exist")
-	if err == nil {
-		t.Fatal("expected an error for a missing Discovery, got nil")
-	}
-	msg := err.Error()
-	if !strings.Contains(msg, "does-not-exist") {
-		t.Fatalf("error should name the requested Discovery: %v", err)
-	}
-	if !strings.Contains(msg, "test-notfound-sentinel") {
-		t.Fatalf("error should list registered Discoveries to make typos obvious: %v", err)
+	eps, err := r()
+	if err != nil || len(eps) != 1 || eps[0].Addr != "10.0.0.1:80" {
+		t.Fatalf("resolver = %v, err %v — want the bound backend's snapshot", eps, err)
 	}
 }
 
-func TestRegisterDiscoveryPanics(t *testing.T) {
-	if !panics("empty name", func() { RegisterDiscovery("", newStaticDiscovery()) }) {
-		t.Error("registering with an empty name should panic")
+func TestNewResolverUnknownServiceFailsSeed(t *testing.T) {
+	// The seed Resolve surfaces an unknown service at construction time.
+	failing := &failingDiscovery{}
+	if _, err := NewResolver(context.Background(), failing, "svc"); err == nil {
+		t.Fatal("expected the seed Resolve error to propagate, got nil")
 	}
-	if !panics("nil Discovery", func() { RegisterDiscovery("test-nil", nil) }) {
-		t.Error("registering a nil Discovery should panic")
+}
+
+func TestNewResolverNotInEffect(t *testing.T) {
+	// A nil backend (no discovery configured) means "not in effect".
+	r, err := NewResolver(context.Background(), nil, "svc")
+	if r != nil || err != nil {
+		t.Fatalf("nil backend => (%v, %v), want (nil, nil)", r, err)
 	}
-	RegisterDiscovery("test-dup", newStaticDiscovery())
-	if !panics("already registered", func() {
-		RegisterDiscovery("test-dup", newStaticDiscovery())
-	}) {
-		t.Error("registering a duplicate name should panic")
+	// An empty service name means the caller dials its configured address.
+	r, err = NewResolver(context.Background(), newStaticDiscovery(), "")
+	if r != nil || err != nil {
+		t.Fatalf("empty name => (%v, %v), want (nil, nil)", r, err)
 	}
+}
+
+// failingDiscovery always fails Resolve, to exercise seed error propagation.
+type failingDiscovery struct{}
+
+func (failingDiscovery) Resolve(context.Context, string, ...Option) ([]Endpoint, error) {
+	return nil, fmt.Errorf("boom")
 }
 
 func TestNewStaticDiscovery(t *testing.T) {

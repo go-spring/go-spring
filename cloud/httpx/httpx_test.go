@@ -17,6 +17,7 @@
 package httpx
 
 import (
+	"errors"
 	"context"
 	"net/http"
 	"sync"
@@ -82,15 +83,15 @@ func TestNewTransport_AddrPinsHost(t *testing.T) {
 }
 
 func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
-	discovery.RegisterDiscovery("stub-httpx", stubDiscovery{eps: []discovery.Endpoint{
+	backend := stubDiscovery{eps: []discovery.Endpoint{
 		{Addr: "10.0.0.1:9000", Healthy: true},
 		{Addr: "10.0.0.2:9000", Healthy: true},
-	}})
+	}}
 
 	rec := &recordRT{}
 	rt, closeFn, err := NewTransport(Config{
 		ServiceName: "user-svc",
-		Discovery:   "stub-httpx",
+		Discovery:   backend,
 		Base:        rec,
 	})
 	assert.That(t, err).Nil()
@@ -108,14 +109,20 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 }
 
 func TestNewTransport_FailFast(t *testing.T) {
-	// ServiceName set but discovery backend not registered -> fail fast.
-	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: "no-such-backend"})
-	assert.Error(t, err).Matches("no Discovery registered")
+	// A discovery backend whose seed Resolve fails -> fail fast.
+	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: errorDiscovery{}})
+	assert.Error(t, err).Matches("resolve")
 
 	// Unknown balancer strategy -> fail fast.
-	discovery.RegisterDiscovery("stub-httpx-2", stubDiscovery{eps: []discovery.Endpoint{{Addr: "1.2.3.4:80"}}})
-	_, _, err = NewTransport(Config{ServiceName: "x", Discovery: "stub-httpx-2", Balancer: "no-such-lb"})
+	_, _, err = NewTransport(Config{ServiceName: "x", Discovery: stubDiscovery{eps: []discovery.Endpoint{{Addr: "1.2.3.4:80"}}}, Balancer: "no-such-lb"})
 	assert.Error(t, err).Matches("no strategy registered")
+}
+
+// errorDiscovery always fails Resolve, to exercise the seed fail-fast.
+type errorDiscovery struct{}
+
+func (errorDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
+	return nil, errors.New("resolve boom")
 }
 
 func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {

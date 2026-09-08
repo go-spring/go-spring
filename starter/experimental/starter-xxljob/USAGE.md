@@ -139,7 +139,7 @@ gs.Run()
   │   │   /api/registry; stop fn POSTs /api/registry/remove
   │   ├─ sig.TriggerAndWait() → ready
   │   └─ ListenAndServe until ctx.Done → srv.Shutdown
-  └─ on SIGTERM: StopContext → http.Server.Shutdown(ctx) (drains callbacks);
+  └─ on SIGTERM: Stop → http.Server.Shutdown(ctx) (drains callbacks);
        deferred stopRegistry removes the registration on the way out
 ```
 
@@ -231,7 +231,7 @@ Make the handler return an error: the admin-side callback carries `handleMsg:<er
 
 ### 4.5 Shutdown drain
 
-`kill -TERM` during a running task: `StopContext` calls `http.Server.Shutdown(ctx)` — the
+`kill -TERM` during a running task: `Stop` calls `http.Server.Shutdown(ctx)` — the
 callback server drains in-flight HTTP; running task goroutines are not forcibly stopped by the
 starter (no stored cancel sweep on shutdown). Registration removal is POSTed on the way out.
 

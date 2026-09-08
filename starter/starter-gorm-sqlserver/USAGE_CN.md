@@ -103,8 +103,9 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default",
-        discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:1433", Healthy: true}))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(    discovery.Endpoint{Addr: "127.0.0.1:1433", Healthy: true}), nil
+    }).Name("default")
 }
 ```
 
@@ -319,7 +320,7 @@ logger（经 go-spring.org/log 转发，TagAppDef，消息体为纯文本）。
 | 启动期 TLS 信任错误 | `tls.enabled=true` 且无 `insecure-skip-verify`/`ca-file` | 补信任或关 encrypt（§4.1）。 |
 | 期望 mTLS 但客户端从不出示证书 | `tls.cert-file`/`key-file` 已移除 | 配置表达不了；需自定义 connector。 |
 | discovery 哑地址下证书主机名不匹配 | 无 `tls.server-name` key；DSN 里是哑值 `0.0.0.0` | 任选：证书用真实主机名、`insecure-skip-verify`（开发）、自定义拨号器。 |
-| discovery 实例连不上 | backend 名不匹配（`discovery` key）或服务未注册 | 核对 `RegisterDiscovery` 名与配置；resolver 错误启动期有日志。 |
+| discovery 实例连不上 | backend 标签不匹配（`discovery` key）或服务未注册 | 核对 bean 名与配置；resolver 错误启动期有日志。 |
 | 负载下登录超时 | `connectTimeout` 太小 | 调大，或保持 0 用驱动默认。 |
 | `key`/`value` 列 SQL 报错 | SQL Server 保留字 | 用 gorm tag 重映射（`column:kkey`），照 example 做。 |
 

@@ -28,8 +28,10 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sort"
 	"sync"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -52,6 +54,7 @@ func init() {
 		r.Provide(newDispatchTransport,
 			gs.IndexArg(1, gs.TagArg("${spring.http-client}")),
 			gs.IndexArg(2, gs.TagArg("?")),
+			gs.IndexArg(3, gs.TagArg("?")),
 		).Destroy((*dispatchTransport).Close).Caller(1)
 
 		r.Provide(newDoRequestHook,
@@ -63,10 +66,25 @@ func init() {
 
 // newDispatchTransport assembles the process-wide dispatch transport (one route
 // per configured entry). Each entry's transport carries the trace layer,
-// discovery + load balancing, resilience and the driver wrap.
-func newDispatchTransport(ctx *gs.ContextProvider, cfgs map[string]Config, d Driver) (*dispatchTransport, error) {
+// discovery + load balancing, resilience and the driver wrap. backends is every
+// named discovery backend bean in the container (bean name = label); each entry
+// resolves its ${discovery} label against it, so different entries may cite
+// different registries.
+func newDispatchTransport(ctx *gs.ContextProvider, cfgs map[string]Config, d Driver, backends map[string]discovery.Discovery) (*dispatchTransport, error) {
 	dt := &dispatchTransport{routes: make(map[string]http.RoundTripper)}
 	for name, c := range cfgs {
+		if c.Discovery != "" {
+			b, ok := backends[c.Discovery]
+			if !ok {
+				labels := make([]string, 0, len(backends))
+				for k := range backends {
+					labels = append(labels, k)
+				}
+				sort.Strings(labels)
+				return nil, errutil.Explain(nil, "http-client: entry %q cites discovery backend %q but no such bean exists (registered: %v)", name, c.Discovery, labels)
+			}
+			c.backend = b
+		}
 		rt, closeFn, err := assembleTransport(ctx, name, c, d)
 		if err != nil {
 			return nil, err

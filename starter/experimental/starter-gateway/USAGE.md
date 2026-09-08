@@ -134,7 +134,7 @@ gs.Run()
   │    3. net.Listen — port clash fails startup
   │    4. <-sig.TriggerAndWait() — serves only after app readiness
   ├─ readiness: health flips UP (route table compiled, metrics.go:150-157)
-  └─ on SIGTERM: StopContext → http.Server.Shutdown drains in-flight;
+  └─ on SIGTERM: Stop → http.Server.Shutdown drains in-flight;
                  RouteTable.Destroy stops every discovery watch (proxy.go:139)
 ```
 

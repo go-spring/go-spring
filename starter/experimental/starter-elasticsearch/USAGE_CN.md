@@ -69,8 +69,9 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default",
-        discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:9200", Healthy: true}))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(    discovery.Endpoint{Addr: "127.0.0.1:9200", Healthy: true}), nil
+    }).Name("default")
 }
 ```
 
@@ -166,7 +167,7 @@ import starter-elasticsearch
 gs.Run()
   ├─ 构造 newClient [starter.go:73]：
   │    ├─ 设置了 service-name 且 !mesh.Enabled() → resolveAddresses：
-  │    │      discovery.NewLoader → 读快照 → "scheme://host:port" 覆盖 c.Addresses
+  │    │      注入后端 → 读快照 → "scheme://host:port" 覆盖 c.Addresses
   │    │      （快速失败：后端未注册、或该服务无端点）
   │    ├─ 可选 Driver bean（无则用内置 DefaultDriver）→ driver.CreateClient：
   │    │      DefaultDriver 安装 dynamicTransport + OTel 插桩，
@@ -362,7 +363,7 @@ spring.elasticsearch.disc.service-name=es-cluster
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动报 "failed to reach elasticsearch cluster" | 地址不可达 / 凭据错误 / 指纹不匹配 / ES 未起完（最长 120 秒） | 修连通性；等 `curl http://127.0.0.1:9200` 通后重启。 |
-| 启动报 `discovery ... returned no endpoints` | service-name 在后端不存在，或后端未注册 | gs.Run 前注册后端（discovery.RegisterDiscovery）；核对服务名。 |
+| 启动报 `discovery ... returned no endpoints` | service-name 在后端不存在，或后端未注册 | gs.Run 前注册后端 bean（命名 discovery.Discovery bean）；核对服务名。 |
 | 请求内 nil context panic | OTel 插桩从请求 context 派生 span | 每次调用传 `WithContext(ctx)`；不用无 context 的 API 变体。 |
 | 已设 service-name 仍在 `addresses` 校验失败 | `addresses` 无条件必填（`len($) > 0`） | 保留哑地址（example 的做法）——反正会被覆盖。 |
 | 代码正确却无 span/指标 | 未导入 starter-otel | 插桩挂 OTel 全局；导入 starter-otel 并配置 exporter。 |

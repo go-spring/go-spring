@@ -66,10 +66,13 @@ type Config struct {
 func init() {
 	// A real deployment would point Consul/Nacos/k8s here; a static backend keeps
 	// the example self-contained while exercising the same resolve + dial path.
-	// The neo4j client resolves "neo4j-cluster" through this "default" backend.
-	discovery.RegisterDiscovery("default", discovery.NewStaticDiscovery(
-		discovery.Endpoint{Addr: "127.0.0.1:7687", Healthy: true},
-	))
+	// The neo4j client resolves "neo4j-cluster" through this "default" backend
+	// bean.
+	gs.Provide(func() (discovery.Discovery, error) {
+		return discovery.NewStaticDiscovery(
+			discovery.Endpoint{Addr: "127.0.0.1:7687", Healthy: true},
+		), nil
+	}).Name("default")
 }
 
 // Service autowires the "graph" neo4j instance. Its address is resolved via

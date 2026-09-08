@@ -18,6 +18,10 @@
 // ${spring.elasticsearch}.* and the Driver selection key.
 package StarterElasticsearch
 
+import (
+	"go-spring.org/cloud/discovery"
+)
+
 // Config defines Elasticsearch client connection configuration.
 type Config struct {
 	// Addresses is the list of Elasticsearch node addresses to connect to,
@@ -77,11 +81,16 @@ type Config struct {
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
 
-	// Discovery selects which registered discovery backend resolves ServiceName.
-	// It is only consulted when ServiceName is set. A company registers its
-	// naming service once via discovery.Register; the default backend name is
+	// Discovery names the discovery backend bean that resolves ServiceName.
+	// It is only consulted when ServiceName is set. The bean itself is injected
+	// by the starter's constructor from this label; the default label is
 	// "default".
 	Discovery string `value:"${discovery:=default}"`
+
+	// backend is the discovery backend instance the Discovery label above
+	// cites. It is populated by the starter wiring (newClient injects the named
+	// discovery.Discovery bean), never bound from configuration.
+	backend discovery.Discovery
 
 	// DiscoveryScheme is the URL scheme ("http" or "https") prepended to each
 	// discovered "host:port" endpoint, since discovery yields addresses without a

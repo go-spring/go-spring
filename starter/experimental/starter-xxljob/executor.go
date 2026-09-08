@@ -115,20 +115,14 @@ func (e *Executor) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return err
 }
 
-// Stop implements gs.Server.
-func (e *Executor) Stop() error {
-	return e.StopContext(context.Background())
-}
-
-// StopContext implements gs.Stopper: gracefully shut the callback server down,
-// propagating ctx into http.Server.Shutdown so the drain rides the shutdown
-// context.
-func (e *Executor) StopContext(ctx context.Context) error {
+// Stop gracefully shuts the callback server down, propagating ctx into
+// http.Server.Shutdown so the drain rides the shutdown context.
+func (e *Executor) Stop(ctx context.Context) error {
 	return e.srv.Shutdown(ctx)
 }
 
 // Destroy is the bean destroy path.
-func (e *Executor) Destroy() error { return e.Stop() }
+func (e *Executor) Destroy() error { return e.Stop(context.Background()) }
 
 // prepare resolves the outbound IP once (for registration) and ensures the
 // log dir exists.

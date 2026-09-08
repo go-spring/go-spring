@@ -226,7 +226,7 @@ these ARE instance-prefixed).
 | `..tls.*` | block | off | Shared tlsconf (`enabled`, `cert-file`, `key-file`, `ca-file`, `server-name`, `insecure-skip-verify`); when on, DefaultDriver builds a TLS RedisClientOpt (driver.go:58-77). | Half-configured TLS → driver build error at bean construction. |
 | `..concurrency` | int | 10 | Worker: max tasks processed concurrently. No effect on a producer-only instance. | Too low → queue backlog; silently irrelevant when `server.enabled=false`. |
 | `..queues` | map[string]int | empty → asynq "default":1 | queue → priority weight (higher = processed more often). ⚠ your `asynq.Queue(...)` enqueue option must name a configured queue (or the fallback default), or the worker never picks it up. | Enqueue to an unlisted queue → task sits pending forever. |
-| `..shutdown-timeout` | duration | 8s | Bounds the worker's drain (`srv.Shutdown()`); ctx passed to `StopContext` is unused — the drain rides this timeout (client.go:176-183). | Too low → in-flight tasks abandoned mid-run on deploy. |
+| `..shutdown-timeout` | duration | 8s | Bounds the worker's drain (`srv.Shutdown()`); ctx passed to `Stop` is unused — the drain rides this timeout (client.go:176-183). | Too low → in-flight tasks abandoned mid-run on deploy. |
 | `..server.enabled` | bool | false | **Worker opt-in switch.** Also gates whether the `*Server` bean exists at all — an `autowire:"a:server"` without it fails wiring. | Injecting the worker without this key → container "bean not found". |
 
 ---

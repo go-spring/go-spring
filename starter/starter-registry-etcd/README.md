@@ -12,7 +12,7 @@ backed by etcd leases.
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
 register instances for you. In **pure Kubernetes** you would not use this
 starter at all: the platform already registers every Pod behind a Service, so
-you discover peers with [starter-discovery-k8s](../experimental/starter-discovery-k8s) and
+you discover peers with [starter-discovery-k8s](../starter-discovery-k8s) and
 register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to
@@ -78,6 +78,7 @@ Connection, bound under `spring.registry.etcd`:
 | `ttl` | `15s` | Lease duration; the registrar keeps it alive while up. Rounded up to whole seconds. |
 | `key-prefix` | `/services/` | Prepended to every key so apps can share a cluster. |
 | `tls.*` | (off) | Optional client TLS (`enabled`, `cert-file`, `key-file`, `ca-file`). |
+| `discovery-name` | `etcd` | Derives a discovery backend bean for this same cluster under that label — one config block serves both halves (shared client). Empty disables the derived backend. |
 
 Instance, bound under `spring.registry` (describes the instance itself, independent of the registry backend):
 
@@ -95,9 +96,21 @@ can reconstruct an `Endpoint`.
 
 ### Discovering (other instances)
 
-The consumer half is a `cloud/discovery` backend registered per etcd cluster
-under `spring.discovery.etcd.<name>` — the same named-adapter idiom as
-starter-registry-nacos. A client starter cites the name and resolves through it:
+The consumer half is a `cloud/discovery` backend bean. Two ways to get one:
+
+**Derived from the center (dual-role apps).** Setting `spring.registry.etcd`
+alone derives a backend bean labeled `discovery-name` (default `etcd`) on the
+same shared client — one cluster config, both halves:
+
+```properties
+spring.registry.etcd.endpoints=127.0.0.1:2379
+spring.registry.service-name=orders
+spring.registry.addr=10.0.0.5:8080
+# clients then cite: <client>.discovery=etcd
+```
+
+**Standalone blocks (other clusters / pure consumers).** One block per etcd
+cluster under `spring.discovery.etcd.<name>`; a client starter cites the name:
 
 ```properties
 spring.discovery.etcd.prod.endpoints=127.0.0.1:2379
@@ -106,7 +119,7 @@ spring.discovery.etcd.prod.key-prefix=/services/
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `endpoints` | (required) | etcd cluster nodes; setting them activates the block. |
+| `endpoints` | (empty) | etcd cluster nodes; empty INHERITS the `spring.registry.etcd` center connection (shared client). |
 | `username` / `password` | (empty) | Auth credentials; empty for anonymous clusters. |
 | `dial-timeout` | `5s` | Bounds the initial connect and the startup probe. |
 | `key-prefix` | `/services/` | Must match the registering applications' prefix. |

@@ -346,7 +346,7 @@ spring.redigo.cache.conn-max-lifetime=30s  # 建议调短，平滑切址
 
 工作方式：
 
-- starter 调 `discovery.NewLoader` 拉取 `redis-cluster` 的存活端点；新鲜度在后端内部，loader 无后台 watch。
+- starter 用注入的后端 bean 解析 `redis-cluster` 的存活端点；新鲜度在后端内部，无后台 watch。
 - 连接池**每次新建连接**时 `Pick()` 一个存活实例拨过去；配合较短的 `conn-max-lifetime`，池内连接会逐步换到更新后的地址，**无需重建池**。
 - loader 无资源、无 `Stop`——`Pool.Close` 只需关 resilience executor + 底层 redis 池，无需停任何 watch（`pool.go:150-152`）。
 - **mesh 模式**（`GS_MESH=on`）下，发现被整个跳过——sidecar 接管发现+LB，池直接拨配置的 `addr`（服务的稳定 mesh 地址）。

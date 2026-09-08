@@ -173,7 +173,7 @@ func setupMetrics(r gs.BeanProvider, cfg metric.MetricsConfig, res *resource.Res
 			gs.RegisterStopper("otel-metrics-scrape-server", ps.Server.Shutdown)
 		}
 		if ps.Handler != nil {
-			r.Provide(&endpoint.Endpoint{Path: cfg.Path, Handler: ps.Handler})
+			r.Provide(&endpoint.Endpoint{Pattern: cfg.Path, Handler: ps.Handler})
 		}
 		// Homeless-endpoint detection: with metrics.port=0 the scrape handler
 		// is served ONLY through the actuator. If no management server is

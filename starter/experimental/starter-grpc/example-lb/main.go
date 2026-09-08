@@ -178,9 +178,12 @@ func main() {
 		eps = append(eps, discovery.Endpoint{Addr: b.addr, Healthy: true})
 	}
 
-	// Register the backends under a discovery name and a short-fused balancer.
+	// Publish the backends under the "default" label and a short-fused balancer.
+	// This main dials gsdiscovery targets outside the container, so it installs
+	// the label directory directly (a gs.Run app would export a named
+	// discovery.Discovery bean instead).
 	d := newDisco(eps)
-	discovery.RegisterDiscovery("default", d)
+	StarterGrpc.SetDiscoveryBackends(map[string]discovery.Discovery{"default": d})
 	StarterGrpc.RegisterBalancer(smokeBalancer, loadbalance.RoundRobin,
 		loadbalance.TrackerConfig{Threshold: 3, SuspendFor: 2 * time.Second})
 

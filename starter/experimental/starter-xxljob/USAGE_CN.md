@@ -134,7 +134,7 @@ gs.Run()
   │   │   stop 函数向 /api/registry/remove POST
   │   ├─ sig.TriggerAndWait() → 就绪
   │   └─ ListenAndServe 直到 ctx.Done → srv.Shutdown
-  └─ SIGTERM 时：StopContext → http.Server.Shutdown(ctx)（排空回调）；
+  └─ SIGTERM 时：Stop → http.Server.Shutdown(ctx)（排空回调）；
        defer 的 stopRegistry 顺路摘除注册
 ```
 
@@ -224,7 +224,7 @@ recover（goutil 链）并按失败上报——进程存活。
 
 ### 4.5 退出排空
 
-任务运行中 `kill -TERM`：`StopContext` 调 `http.Server.Shutdown(ctx)`——回调 server 排空
+任务运行中 `kill -TERM`：`Stop` 调 `http.Server.Shutdown(ctx)`——回调 server 排空
 在途 HTTP；starter 不强制停掉运行中的任务 goroutine（停机不做 cancel 清扫）。摘除注册
 的请求在退出路径上补发。
 

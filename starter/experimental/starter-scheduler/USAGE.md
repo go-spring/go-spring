@@ -188,7 +188,7 @@ gs.Run()
   │   ├─ <-sig.TriggerAndWait() → readiness flips AFTER build succeeds
   │   └─ sched.Start(ctx) — "Scheduling begins only after the application is
   │        ready, so jobs never race application startup" (starter.go:85-86)
-  └─ on SIGTERM: StopContext wraps ctx with drain-timeout and drains in-flight
+  └─ on SIGTERM: Stop wraps ctx with drain-timeout and drains in-flight
        runs via sched.Stop(ctx); a timeout logs "scheduler drain timed out"
 ```
 

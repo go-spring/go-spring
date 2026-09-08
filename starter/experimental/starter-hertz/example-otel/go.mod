@@ -88,4 +88,4 @@ replace go-spring.org/starter-hertz => ../
 
 replace go-spring.org/starter-otel => ../../../starter-otel
 
-replace go-spring.org/starter-actuator => ../../starter-actuator
+replace go-spring.org/starter-actuator => ../../../starter-actuator

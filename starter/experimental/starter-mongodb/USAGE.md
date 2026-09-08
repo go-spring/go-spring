@@ -69,9 +69,10 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default", discovery.NewStaticDiscovery(
-        discovery.Endpoint{Addr: "127.0.0.1:27017", Healthy: true},
-    ))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(
+            discovery.Endpoint{Addr: "127.0.0.1:27017", Healthy: true},), nil
+    }).Name("default")
 }
 ```
 
@@ -254,7 +255,7 @@ There are no observability keys — observation is unconditional (see §3.3).
 | `max-conn-idle-time` | duration | `0` | 0 = no limit; e.g. `5m` prunes idle conns. ⚠ With `service-name`, a finite value recycles connections onto updated endpoints without a restart. | `0` + discovery → conns linger on a removed endpoint until they break. |
 | `service-name` | string | — | Resolve addressing via the registered discovery backend; a loader-backed (Pool-`Pick`) dialer replaces the URI hosts per connection [starter.go:126-137]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the loader/pool is actually consulted. |
 | `scheme` | string | — | Narrows discovery endpoints to one transport scheme (e.g. `tls`). Only consulted when service-name is set. | — |
-| `discovery` | string | `default` | Which registered discovery backend resolves service-name. | Unregistered backend → boot error from discovery.NewLoader. |
+| `discovery` | string | `default` | Which registered discovery backend resolves service-name. | Missing backend bean → boot error at injection time. |
 | `tls.*` | group | off | Shared `tlsconf` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:105-112]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
 
 ### 3.2 Resilience / fault (govern.*, not under the instance prefix)
@@ -350,7 +351,7 @@ restart. Verify via `_app_mongodb_access` records or by stopping the old endpoin
 |---------|--------------|-----|
 | Boot fails `mongodb: ping <uri>: ...` | Unreachable server / wrong credentials / TLS mismatch — the fail-fast ping is unconditional | Fix connectivity/credentials; `connect-timeout` bounds the probe. |
 | Boot fails at binding on `uri` | `uri` empty — it is expr-validated non-empty | Set `spring.mongodb.<name>.uri`. |
-| Boot fails "build TLS" / "build discovery resolver" | Partial `tls.*` config; `discovery` names nothing registered | Complete the tlsconf block; register the backend via `discovery.RegisterDiscovery`. |
+| Boot fails "build TLS" / "build discovery resolver" | Partial `tls.*` config; `discovery` names nothing registered | Complete the tlsconf block; register the backend as a named discovery bean. |
 | Discovery client errors "no such host" / topology errors | `service-name` bypasses driver topology discovery | Add `directConnection=true` to the URI, or drop service-name for replica-set/mongos URIs. |
 | Ops fail with `ErrRateLimited` under burst | Governance rate-limit on the dial seam | Raise `govern.<driver>.rate-limit` or `max-pool-size`/`min-pool-size` (warm pool skips dials). |
 | Breaker never opens despite slow queries | By design — resilience is dial-layer only; slow-but-connected commands are invisible to it | Alert on `db.client.operation.duration` instead; see §2.2. |

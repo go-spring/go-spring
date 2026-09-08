@@ -193,7 +193,7 @@ gs.Run()
   │    ├─ net.Listen(addr)
   │    ├─ <-sig.TriggerAndWait()   ← readiness gates Serve
   │    └─ svr.Serve(listener)
-  └─ on SIGTERM: StopContext → svr.GracefulStop()  (drains in-flight RPCs; ctx tags the log only)
+  └─ on SIGTERM: Stop → svr.GracefulStop()  (drains in-flight RPCs; ctx tags the log only)
 ```
 
 User interceptors registered via `UseUnaryInterceptor`/`UseStreamInterceptor` must be called from
@@ -371,7 +371,7 @@ the shared goutil panic chain (`goutil.ReportPanic`) — visible in log and span
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` below payload | Raise the cap. |
 | Stream RPCs bypass rate limit | Admission is unary-only by design | Guard streams with a user interceptor (`UseStreamInterceptor`). |
 | GOAWAY / connection churn | Aggressive `keepalive.time` vs client ping rate | grpc keepalive semantics; relax server params. |
-| LB client: `ErrNoSubConnAvailable` at startup | Discovery backend missing / no healthy endpoints; or unknown balancer name in service config | Register the backend (`discovery.RegisterDiscovery`) and use `BalancerName`/`LoadBalancingConfig`. |
+| LB client: `ErrNoSubConnAvailable` at startup | Discovery backend missing / no healthy endpoints; or unknown balancer name in service config | Register the backend bean (a named discovery.Discovery bean) and use `BalancerName`/`LoadBalancingConfig`. |
 | LB stops updating after a discovery error | A failed `Resolve` logs and keeps the last snapshot; the next poll tick retries | Nothing — pollLoop retries automatically. |
 
 ## 6. Design Health

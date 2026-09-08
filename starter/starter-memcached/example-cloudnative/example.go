@@ -66,9 +66,9 @@ func init() {
 	// the example self-contained while exercising the same resolve + dial path.
 	// The memcached client resolves "memcached-cluster" through this "default"
 	// backend at boot.
-	discovery.RegisterDiscovery("default", discovery.NewStaticDiscovery(
-		discovery.Endpoint{Addr: "127.0.0.1:11211", Healthy: true},
-	))
+	gs.Provide(func() (discovery.Discovery, error) {
+		return discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:11211", Healthy: true}), nil
+	}).Name("default")
 }
 
 // Service autowires the "cache" memcached instance. Its address is resolved via

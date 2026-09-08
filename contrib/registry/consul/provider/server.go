@@ -89,16 +89,10 @@ func (s *KitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 }
 
-// Stop gracefully stops the Kitex server, deregistering it from Consul, and
-// signals Run to return.
-func (s *KitexServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext gracefully stops the Kitex server with the given context,
+// Stop gracefully stops the Kitex server with the given context,
 // deregistering it from Consul, and signals Run to return. Kitex's Stop is not
-// context-aware, so ctx is accepted for the Stopper seam but unused here.
-func (s *KitexServer) StopContext(ctx context.Context) error {
+// context-aware, so ctx is unused here.
+func (s *KitexServer) Stop(ctx context.Context) error {
 	err := s.svr.Stop()
 	close(s.done)
 	return err

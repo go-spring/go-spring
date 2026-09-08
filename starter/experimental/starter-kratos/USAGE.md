@@ -180,7 +180,7 @@ gs.Run()
   │     ├─ <-sig.TriggerAndWait()          ← parks until gs signals readiness
   │     ├─ "kratos grpc server starting on <addr>" log line
   │     └─ go app.Run()  (publishes into etcd, serves) / select on done|errCh
-  └─ on SIGTERM: Stop → StopContext closes done → Run calls app.Stop()
+  └─ on SIGTERM: Stop → Stop closes done → Run calls app.Stop()
         (kratos deregisters from etcd, drains the transport, gs completes shutdown)
 ```
 
@@ -189,7 +189,7 @@ Design notes (from source comments, verified):
 - `kratos.App.Run` blocks until `Stop`, so it runs in a goroutine while `Run` parks on the
   `done` channel; `Stop` closes `done` to hand control back to Go-Spring after tearing the
   App down.
-- `app.Stop()` takes no context — `StopContext`'s ctx only tags the shutdown log.
+- `app.Stop()` takes no context — `Stop`'s ctx only tags the shutdown log.
 - If `app.Run()` returns an error on its own, `Run` surfaces it via
   `errutil.Explain(err, "kratos grpc app exited with error")`.
 

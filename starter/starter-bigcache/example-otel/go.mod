@@ -72,4 +72,4 @@ replace go-spring.org/starter-bigcache => ..
 
 replace go-spring.org/starter-otel => ../../starter-otel
 
-replace go-spring.org/starter-actuator => ../../experimental/starter-actuator
+replace go-spring.org/starter-actuator => ../../starter-actuator

@@ -66,7 +66,11 @@ func main() {
 // VerifyRunner resolves this process's own registration back through the
 // etcd discovery backend (${spring.discovery.etcd.local}), proving the
 // register→discover loop end to end.
-type VerifyRunner struct{}
+type VerifyRunner struct {
+	// backend is the discovery bean named "local" — the same label
+	// ${spring.discovery.etcd.local} registered it under.
+	backend discovery.Discovery `autowire:"local"`
+}
 
 // NewVerifyRunner builds the verify runner.
 func NewVerifyRunner() *VerifyRunner { return &VerifyRunner{} }
@@ -84,12 +88,13 @@ func (v *VerifyRunner) Run(ctx context.Context) error {
 // registers on app readiness) has published this instance, prints what it
 // found, then stops the app so the example self-terminates.
 func (v *VerifyRunner) verify(ctx context.Context) {
-	d, err := discovery.GetDiscovery("local")
-	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "get discovery: %v", err)
+	d := v.backend
+	if d == nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", "local")
 		return
 	}
 	var eps []discovery.Endpoint
+	var err error
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		eps, err = d.Resolve(ctx, "orders")

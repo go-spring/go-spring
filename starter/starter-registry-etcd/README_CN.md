@@ -9,7 +9,7 @@
 
 适用于**虚机 / 裸机 / 混合**部署,即平台不替你注册实例的场景。**纯 Kubernetes**
 下则完全用不到本 starter:平台已把每个 Pod 注册在 Service 之后,你用
-[starter-discovery-k8s](../experimental/starter-discovery-k8s) 去**发现**对端即可,无需注册。
+[starter-discovery-k8s](../starter-discovery-k8s) 去**发现**对端即可,无需注册。
 
 本 starter 注册的是一个**朴素实例**(任意传输协议 —— HTTP、gRPC……)。RPC 框架的
 provider 注册仍保持框架原生,不在本 starter 范围内(见
@@ -85,9 +85,14 @@ spring.registry.metadata.version=v1
 
 ### 发现(消费侧)
 
-消费侧是按 etcd 集群注册的 `cloud/discovery` 后端,配置于
-`spring.discovery.etcd.<name>` —— 与 starter-registry-nacos 相同的具名适配器
-惯例。client starter 引用这个名字,经它解析:
+消费侧是一个 `cloud/discovery` 后端 bean。两种获得方式:
+
+**从中心派生(双角色应用)。** 只配 `spring.registry.etcd`,即在同一共享客户端上
+派生一个标签为 `discovery-name`(默认 `etcd`)的后端 bean —— 一份集群配置,两半齐备,
+client 引用 `discovery=etcd` 即可。
+
+**独立配置块(其它集群/纯消费方)。** 每个块对应一个 etcd 集群,置于
+`spring.discovery.etcd.<name>`;client starter 引用该名字,经它解析:
 
 ```properties
 spring.discovery.etcd.prod.endpoints=127.0.0.1:2379
@@ -96,7 +101,7 @@ spring.discovery.etcd.prod.key-prefix=/services/
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `endpoints` | (必填) | etcd 集群节点;设置它即启用该块。 |
+| `endpoints` | (空) | etcd 集群节点;留空则**继承** `spring.registry.etcd` 中心连接(共享客户端)。 |
 | `username` / `password` | (空) | 认证凭据,匿名集群留空。 |
 | `dial-timeout` | `5s` | 限定初次连接与启动探测耗时。 |
 | `key-prefix` | `/services/` | 必须与注册方的 prefix 一致,否则解析不到。 |

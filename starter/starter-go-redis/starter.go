@@ -24,6 +24,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -50,6 +51,7 @@ func init() {
 				r.Provide(newClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("?")),
+					gs.IndexArg(3, gs.TagArg("${spring.go-redis."+name+".discovery:=none}?")),
 				).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				// Contribute a health indicator for this instance unless the
 				// user disabled it (health.enabled=false), injecting the
@@ -105,12 +107,21 @@ func init() {
 // spans and connection-pool metrics through the OTel globals that starter-otel
 // installs; when starter-otel is absent those globals are no-ops, so this stays
 // a zero-config opt-in that needs no per-component adaptation.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
+//
+// disc is the discovery backend bean cited by the entry's ${discovery} label
+// (nil when the key is unset or the entry does not use service discovery).
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redis client, addr=%s mode=%s", c.Addr, c.Mode)
 
 	if err := validateConfig(c); err != nil {
 		return nil, err
 	}
+	// Fail loud when the entry routes through discovery but the cited label
+	// names no backend bean — the container is the discovery directory.
+	if c.ServiceName != "" && disc == nil {
+		return nil, errutil.Explain(nil, "redis: instance cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", c.Discovery)
+	}
+	c.backend = disc
 	// When service discovery owns the address, a configured addr can never take
 	// effect — say so instead of dropping it silently.
 	if c.ServiceName != "" && c.Addr != "" {

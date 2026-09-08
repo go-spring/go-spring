@@ -106,7 +106,7 @@ type metricsEndpoint struct {
 // newMetricsEndpoint contributes GET /gateway/metrics to the actuator
 // management server (endpoint.Endpoint seam).
 func newMetricsEndpoint(m *Metrics) *endpoint.Endpoint {
-	return &endpoint.Endpoint{Path: "/gateway/metrics", Handler: &metricsEndpoint{m: m}}
+	return &endpoint.Endpoint{Pattern: "/gateway/metrics", Handler: &metricsEndpoint{m: m}}
 }
 
 func (e *metricsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {

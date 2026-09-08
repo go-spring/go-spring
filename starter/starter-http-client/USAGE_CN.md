@@ -80,10 +80,11 @@ const (
 func init() {
     // 注册名 "static" 与配置里 discovery=static 对应;被发现模式客户端经
     // discovery.Loader 读取它。
-    discovery.RegisterDiscovery("static", discovery.NewStaticDiscovery(
-        discovery.Endpoint{Addr: addrBackendA, Healthy: true},
-        discovery.Endpoint{Addr: addrBackendB, Healthy: true},
-    ))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(
+            discovery.Endpoint{Addr: addrBackendA, Healthy: true},
+            discovery.Endpoint{Addr: addrBackendB, Healthy: true},), nil
+    }).Name("static")
     startBackend(addrBackendA, "backend-A")
     startBackend(addrBackendB, "backend-B")
 }
@@ -265,7 +266,7 @@ func init() {
 |-----|------|--------|-------------|----------|
 | `addr` | string | "" | 直连模式:`fixedHostTransport` 把每个请求钉到该 host:port。可与 `service-name` 同配,此时 service-name 只是纯治理 label(不触发发现)。 | 都不配 → 快速失败 "one of addr or service-name is required"。 |
 | `service-name` | string | "" | 发现模式:经指定后端解析的逻辑名;只要设置了就同时是治理 resource label(发现与直连模式皆是)。配了 `addr` 时它不是发现目标。 | 都不配 → 快速失败;只配 service-name 不配 `addr`/`discovery` → 快速失败。 |
-| `discovery` | string | "" | 经 `discovery.RegisterDiscovery` 注册的后端名。`service-name` 未配 `addr` 时必填(config.go validate)。 | 缺失 → 快速失败。名字未知 → `discovery.NewLoader` 装配期报错(httpx.go:196)。 |
+| `discovery` | string | "" | 发现后端 bean 名(bean 名=标签，由 registry starter 注册)。`service-name` 未配 `addr` 时必填(config.go validate)。 | 缺失 → 快速失败。名字未知 → 装配期报错并列出已注册 bean(starter.go newDispatchTransport)。 |
 | `balancer` | string | round_robin | LB 策略:`round_robin`、`least_conn`、`consistent_hash`、`weighted`、`zone_aware`。未知名装配期失败(`loadbalance.New`,httpx.go:156)。 | 拼错在启动期暴露,不是逐请求。 |
 | `suspend-threshold` | int | 0 | 连续失败多少次将实例逐出池(outlier suspension)。0 关闭。 | 不配则死实例一直吃轮询份额;配合 resilience 让熔断兜住失败。 |
 | `suspend-for` | duration | 0 | 被逐出实例多久后放回做 half-open 试探。`suspend-threshold=0` 时忽略。 | 开了逐出但配 0 → 立即试探回弹(抖动)。 |

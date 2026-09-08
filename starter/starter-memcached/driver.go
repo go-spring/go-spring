@@ -48,8 +48,8 @@ type DefaultDriver struct{}
 // CreateClient creates a new Memcached client based on the provided configuration.
 //
 // When c.ServiceName is set (and mesh mode is not enabled), the server list is
-// resolved through the registered discovery backend (c.Discovery) instead of
-// using c.Servers. gomemcache hashes keys onto a fixed server set chosen at
+// resolved through the injected discovery backend (c.backend, wired from the
+// ${discovery} label) instead of using c.Servers. gomemcache hashes keys onto a fixed server set chosen at
 // client creation, so only one live endpoint snapshot is applied at build time;
 // a changing cluster membership requires a restart. Resolver freshness lives
 // inside the backend, so there is nothing to release.
@@ -86,11 +86,11 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*memcache.Clie
 	return client, nil
 }
 
-// newLiveResolver resolves the registered discovery backend for c into a by-name
+// newLiveResolver resolves the injected discovery backend for c into a by-name
 // Resolver that re-reads the service's live endpoint snapshot. It returns
 // (nil, nil) when service-name is unset or mesh mode is enabled (a sidecar owns
 // discovery+LB), in which case the caller uses the configured Servers list.
 // Resolver freshness lives inside the backend, so there is nothing to release.
 func newLiveResolver(ctx context.Context, c Config) (discovery.Resolver, error) {
-	return discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+	return discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 }

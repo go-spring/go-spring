@@ -46,7 +46,7 @@ require (
 
 replace (
 	go-spring.org/cloud => ../../../cloud
-	go-spring.org/starter-actuator => ../../experimental/starter-actuator
+	go-spring.org/starter-actuator => ../../starter-actuator
 	go-spring.org/starter-config-file => ../../starter-config-file
 	go-spring.org/starter-go-redis => ..
 	go-spring.org/stdlib => ../../../stdlib

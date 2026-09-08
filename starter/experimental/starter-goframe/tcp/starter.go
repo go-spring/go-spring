@@ -206,18 +206,12 @@ func (s *TCPServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 }
 
 // Stop deregisters from etcd (when registered) and closes the gtcp.Server
-// listener. See StopContext for the drain ordering.
-func (s *TCPServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext deregisters from etcd (when registered) and closes the gtcp.Server
 // listener, threading the shutdown context into the deregister call. Order
 // matters: deregister first so no new consumers pick this instance up while its
 // listener is still shutting down. Setting `stopping` before Close() lets the
 // Run goroutine treat the resulting Accept error as expected shutdown rather
 // than a real serve failure.
-func (s *TCPServer) StopContext(ctx context.Context) error {
+func (s *TCPServer) Stop(ctx context.Context) error {
 	if s.registered != nil {
 		// Best-effort deregister; if etcd is already gone there is nothing
 		// useful the caller can do with the error.

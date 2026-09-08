@@ -58,19 +58,10 @@ import (
 // AppConfig represents the layered configuration of an application.
 type AppConfig struct {
 	Properties *flatten.Properties
-	// Layered is the most recently refreshed merged configuration storage,
-	// retained so callers can introspect the per-source layers (via Sources).
+	// Layered is the most recently refreshed merged configuration storage.
 	// Refresh is callable from any goroutine, so it is swapped atomically to
 	// avoid a torn snapshot for concurrent readers. Nil until Refresh is called.
 	Layered atomic.Pointer[flatten.LayeredStorage]
-}
-
-func (c *AppConfig) Sources() []flatten.Source {
-	l := c.Layered.Load()
-	if l == nil {
-		return nil
-	}
-	return l.Sources()
 }
 
 // NewAppConfig creates a new AppConfig instance.

@@ -162,20 +162,11 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 // Stop cancels in-flight startup launches and waits for them to finish,
 // bounded by the configured drain timeout. It is called during graceful
-// shutdown. On-demand launches triggered through the shared Launcher after Run
-// has returned are not tracked here — their lifetime is owned by their caller
-// (e.g. the scheduler, which drains its own goroutines).
-func (s *Server) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext cancels in-flight startup launches and waits for them to finish,
-// bounded by the configured drain timeout. It is called during graceful
 // shutdown with the framework's shutdown context. On-demand launches triggered
 // through the shared Launcher after Run has returned are not tracked here -
 // their lifetime is owned by their caller (e.g. the scheduler, which drains its
 // own goroutines).
-func (s *Server) StopContext(ctx context.Context) error {
+func (s *Server) Stop(ctx context.Context) error {
 	if s.cancel != nil {
 		s.cancel()
 	}

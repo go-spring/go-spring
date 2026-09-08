@@ -124,35 +124,12 @@ func (r *etcdRegistrar) stopHold(h *hold) {
 	h.stop()
 }
 
-// newEtcdRegistrar builds a *clientv3.Client from c and returns a registrar. It
-// fails fast when the cluster is unreachable within DialTimeout so a
-// misconfigured application never boots with a silently broken registry.
-func newEtcdRegistrar(c EtcdConfig) (*etcdRegistrar, error) {
-	if len(c.Endpoints) == 0 {
-		return nil, errutil.Explain(nil, "registry-etcd: endpoints is required")
-	}
-	tlsCfg, err := c.TLS.BuildClient()
-	if err != nil {
-		return nil, errutil.Explain(err, "registry-etcd: build TLS")
-	}
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   c.Endpoints,
-		Username:    c.Username,
-		Password:    c.Password,
-		DialTimeout: c.DialTimeout,
-		TLS:         tlsCfg,
-	})
-	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create etcd client for endpoints=%v failed: %v", c.Endpoints, err)
-		return nil, errutil.Explain(err, "registry-etcd: failed to create etcd client")
-	}
-	// Fail-fast readiness probe: a Status against the first endpoint proves the
-	// credentials and TLS material work, so a bad configuration surfaces at boot.
-	ctx, cancel := context.WithTimeout(context.Background(), c.DialTimeout)
-	defer cancel()
-	if _, err := cli.Status(ctx, c.Endpoints[0]); err != nil {
-		_ = cli.Close()
-		return nil, errutil.Explain(err, "registry-etcd: startup probe failed for %s", c.Endpoints[0])
+// newEtcdRegistrar returns a registrar writing through cli (the shared center
+// client; the cluster was already probed when cli was built) with c's prefix
+// and TTL. It does NOT close cli — the owner (etcdCenter) does.
+func newEtcdRegistrar(c EtcdConfig, cli *clientv3.Client) (*etcdRegistrar, error) {
+	if cli == nil {
+		return nil, errutil.Explain(nil, "registry-etcd: nil etcd client")
 	}
 	r := &etcdRegistrar{
 		client:      cli,

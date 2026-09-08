@@ -24,18 +24,17 @@
 // framework (dubbo-go, kitex, ...).
 //
 // A company adapts its own naming service by implementing the single
-// [Discovery] interface and registering one or more fully-built backends via
-// [RegisterDiscovery]; every client starter then resolves names through a named
-// Discovery without any per-component adaptation. Publishing this process to a
-// registry (the provider-side write) is handled by a registry starter such as
+// [Discovery] interface; each backend is a named bean in the IoC container
+// (named after its config label, e.g. ${spring.discovery.etcd.<name>}), and
+// every client starter injects the backend it cites by name — the container is
+// the discovery directory. Publishing this process to a registry (the
+// provider-side write) is handled by a registry starter such as
 // starter-registry-etcd, not by this package.
 package discovery
 
 import (
 	"context"
 	"fmt"
-	"sort"
-	"sync"
 
 	"go-spring.org/cloud/mesh"
 )
@@ -208,28 +207,25 @@ type Discovery interface {
 // snapshot call it directly.
 type Resolver func() ([]Endpoint, error)
 
-// NewResolver binds the Discovery registered as backend to name, narrowed by opts
-// (e.g. [WithScheme], [WithTag]), and returns a Resolver that re-reads the live
-// snapshot on every call. It is the single constructor every infrastructure
-// client starter (Redis, MySQL, MongoDB, ...) and discovery-aware transport
-// (httpx, the gateway) reuses: each reduces its config to (backend, name) plus
-// options and calls this.
+// NewResolver binds the Discovery backend d to the service name, narrowed by
+// opts (e.g. [WithScheme], [WithTag]), and returns a Resolver that re-reads the
+// live snapshot on every call. It is the single constructor every
+// infrastructure client starter (Redis, MySQL, MongoDB, ...) and
+// discovery-aware transport (httpx, the gateway) reuses: the starter injects
+// the backend bean its config cites and hands it here together with the
+// service name.
 //
 // It seeds with one explicit [Discovery.Resolve] — a synchronous read of the
 // current state that also fails fast when the service is unknown.
 //
-// It returns (nil, nil) — "discovery not in effect" — when name is empty or mesh
-// mode is on (a sidecar owns discovery+LB), in which case the caller dials its
-// configured address directly. The mesh check reads the GS_MESH switch (see
-// [go-spring.org/cloud/mesh.Enabled]); it is folded in here so no caller repeats
-// the same gate.
-func NewResolver(ctx context.Context, backend, name string, opts ...Option) (Resolver, error) {
-	if name == "" || mesh.Enabled() {
+// It returns (nil, nil) — "discovery not in effect" — when d is nil or name is
+// empty or mesh mode is on (a sidecar owns discovery+LB), in which case the
+// caller dials its configured address directly. The mesh check reads the
+// GS_MESH switch (see [go-spring.org/cloud/mesh.Enabled]); it is folded in here
+// so no caller repeats the same gate.
+func NewResolver(ctx context.Context, d Discovery, name string, opts ...Option) (Resolver, error) {
+	if d == nil || name == "" || mesh.Enabled() {
 		return nil, nil
-	}
-	d, err := GetDiscovery(backend)
-	if err != nil {
-		return nil, err
 	}
 	if _, err := d.Resolve(ctx, name, opts...); err != nil {
 		return nil, fmt.Errorf("discovery: resolve %q: %w", name, err)
@@ -237,68 +233,6 @@ func NewResolver(ctx context.Context, backend, name string, opts ...Option) (Res
 	return func() ([]Endpoint, error) {
 		return d.Resolve(context.Background(), name, opts...)
 	}, nil
-}
-
-// discoveriesMu guards discoveries. It is independent of registrarsMu (in
-// registrar.go): the two registries are written only during init and read only
-// at client construction, so neither needs to serialize against the other.
-var (
-	discoveriesMu sync.RWMutex
-	discoveries   = map[string]Discovery{}
-)
-
-// RegisterDiscovery publishes a fully-built [Discovery] — an adapter already
-// bound to a concrete registry (a specific Nacos server/namespace, an etcd
-// cluster, a Kubernetes API, ...) — under the label name.
-//
-// What name is NOT: it is neither a driver/protocol kind ("nacos", "etcd") nor
-// a service name ("order-service"). The adapter kind is just whichever
-// implementation was constructed; a service name is what callers later pass to
-// [Discovery.Resolve]. name here is a user-chosen instance label, typically the
-// key of a discovery config block (e.g. ${spring.discovery.k8s.<name>}), that a
-// client starter cites to pick which Discovery to resolve through.
-//
-// It is deliberately distinct from "Register" in the service-registration
-// sense: publishing a service instance to a registry (the provider-side write,
-// handled by a registry starter such as starter-registry-etcd) is a different
-// operation from plugging a Discovery adapter into this package.
-//
-// It panics on empty name, nil Discovery, or a duplicate name — mirroring the
-// driver-registry idiom used elsewhere (e.g. starter-go-redis RegisterDriver) —
-// so mis-wiring fails loudly at init rather than silently.
-func RegisterDiscovery(name string, d Discovery) {
-	if name == "" {
-		panic("discovery: register with empty name")
-	}
-	if d == nil {
-		panic("discovery: register nil Discovery for " + name)
-	}
-	discoveriesMu.Lock()
-	defer discoveriesMu.Unlock()
-	if _, ok := discoveries[name]; ok {
-		panic("discovery: Discovery already registered: " + name)
-	}
-	discoveries[name] = d
-}
-
-// GetDiscovery returns the [Discovery] registered under name. It is the single
-// lookup clients use at construction time. A wrong name — a typo, a starter not
-// compiled in, an OnProperty block that did not fire — must surface as a
-// readable misconfiguration rather than an empty client, so the error lists
-// every registered Discovery to make the mismatch obvious. Callers that only
-// need a presence check test err == nil.
-func GetDiscovery(name string) (Discovery, error) {
-	discoveriesMu.RLock()
-	defer discoveriesMu.RUnlock()
-	if d, ok := discoveries[name]; ok {
-		return d, nil
-	}
-	names := make([]string, 0, len(discoveries))
-	for k := range discoveries {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return nil, fmt.Errorf("discovery: no Discovery registered as %q (registered: %v)", name, names)
 }
 
 // NewStaticDiscovery returns a [Discovery] that serves the given fixed endpoint

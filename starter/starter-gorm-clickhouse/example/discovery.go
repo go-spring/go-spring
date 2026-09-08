@@ -17,6 +17,7 @@ package main
 
 import (
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/spring/gs"
 )
 
 // This file plays the part a company's adapter would: it registers a discovery
@@ -26,5 +27,7 @@ import (
 // `service-name` (see conf/app.properties) dials the address it hands out.
 
 func init() {
-	discovery.RegisterDiscovery("default", discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:9000", Healthy: true}))
+	gs.Provide(func() (discovery.Discovery, error) {
+		return discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:9000", Healthy: true}), nil
+	}).Name("default")
 }

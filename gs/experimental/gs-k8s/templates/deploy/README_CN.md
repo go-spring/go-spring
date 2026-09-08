@@ -83,7 +83,7 @@ starter **有意为之**的启动期 I/O fail-fast:DB/Redis 拨号、配置中�
 
 `terminationGracePeriodSeconds`(30s)与容器 `preStop` sleep(5s)框定排空窗口:
 收到 SIGTERM 后 readiness 翻转为 OUT_OF_SERVICE,`preStop` sleep 让端点控制器
-停止转发新流量,随后各 server 各自完成自己的停机(在 PreStop / StopContext 中)。
+停止转发新流量,随后各 server 各自完成自己的停机(在 PreStop / Stop 中)。
 滚动更新无损排空在途请求。
 
 ## 指标
@@ -113,7 +113,7 @@ adapter ConfigMap 把 `http_requests_total` 映射成每 Pod 的
 ## Pod 元数据
 
 Deployment 通过 Downward API 注入 Pod 字段(`GS_POD_NAME`、`GS_POD_NAMESPACE`、
-`GS_POD_IP`、`GS_NODE_NAME`、`GS_POD_SERVICE_ACCOUNT`),并把 labels/annotations
+`GS_POD_IP`、`GS_POD_UID`、`GS_NODE_NAME`、`GS_NODE_IP`、`GS_POD_SERVICE_ACCOUNT`),并把 labels/annotations
 挂载到 `/etc/podinfo`。在应用里用 `go-spring.org/cloud/actuator/podinfo` 读取:
 
 ```go

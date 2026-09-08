@@ -18,9 +18,11 @@ package StarterGateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sort"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
@@ -62,8 +64,9 @@ func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 }
 
 // poolFor returns the load-balancing pool for an lb:// service, built over a
-// by-name discovery resolver. The balancer is per-upstream so different routes to
-// the same service may use different strategies. Outlier suspension (upstream
+// discovery resolver bound to the backend bean the upstream's label cites. The
+// balancer is per-upstream so different routes to the same service may use
+// different strategies. Outlier suspension (upstream
 // suspend-threshold/suspend-for) is likewise per-upstream: an instance that
 // fails repeatedly is dropped from the pool's candidate set for the cool-down,
 // so a zombie upstream stops generating 502s until it proves itself again.
@@ -77,7 +80,16 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	if disName == "" {
 		return nil, &parseError{what: "lb:// upstream without a discovery backend (set upstream.discovery or spring.gateway.discovery)", token: up.Service}
 	}
-	resolver, err := discovery.NewResolver(t.ctx, disName, up.Service)
+	d, ok := t.backends[disName]
+	if !ok || d == nil {
+		labels := make([]string, 0, len(t.backends))
+		for k := range t.backends {
+			labels = append(labels, k)
+		}
+		sort.Strings(labels)
+		return nil, &parseError{what: fmt.Sprintf("lb:// upstream cites discovery backend %q but no such bean exists (registered: %v)", disName, labels), token: up.Service}
+	}
+	resolver, err := discovery.NewResolver(t.ctx, d, up.Service)
 	if err != nil {
 		return nil, err
 	}

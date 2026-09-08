@@ -6,9 +6,11 @@
 **etcd 自身语义(lease、watch、KV、auth)见 [etcd 官方文档](https://etcd.io/docs/)**——
 本文只写 go-spring 的增量。
 
-**激活**:`spring.registry.etcd.endpoints` 即注册侧开关(`starter.go:66-71`)。
-**消费侧**按具名块激活:每个 `${spring.discovery.etcd.<name>.endpoints}` 块注册一个
-discovery 后端(`discovery_etcd.go:81-96`)。与 starter-registry-consul 不同,本 starter
+**激活**:`spring.registry.etcd.endpoints` 即注册侧开关。同一配置块还构建**唯一**的共享
+etcd 客户端(`center.go`),并在 `discovery-name` 非空(默认 `etcd`)时为同一集群派生一个
+该标签的 discovery 后端 bean——双角色应用只配一次集群。独立的
+`${spring.discovery.etcd.<name>}` 块覆盖其它集群/纯消费方;块内 `endpoints` 留空则继承
+中心连接(`discovery_etcd.go`)。与 starter-registry-consul 不同,本 starter
 **两侧都自带**:同一套 key 布局上的注册与发现。它不开端口——导出 `gs.Server` 只为把
 注册接进应用生命周期。
 
@@ -136,7 +138,7 @@ import starter-registry-etcd
   ├─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
   │      Condition: OnProperty("spring.registry.etcd.endpoints")   [starter.go:66-71]
   ├─ gs.Module(OnProperty("spring.discovery.etcd"))                 [discovery_etcd.go:82]
-  │      conf.BindEach → 每个 <name> 一个后端 → discovery.RegisterDiscovery(name, ...)
+  │      conf.BindEach → 每个 <name> 一个命名 bean（r.Provide().Name(name)）
   │
 gs.Run()
   ├─ 绑定: ${spring.registry.etcd} → EtcdConfig;${spring.registry} → Server.Config 字段
@@ -150,7 +152,7 @@ gs.Run()
   ├─ 稳态: keep-alive goroutine 持续续约(clientv3 默认 ≈ TTL/3)
   └─ SIGTERM: PreStop 最先反注册(先于 pre-stop 延迟、先于任何 server 停止)
          → 在途请求继续排空时 discovery 已不再分发本实例
-         Stop/StopContext 是幂等兜底                                    [starter.go:130-146]
+         Stop 是幂等兜底                                    [starter.go:130-146]
 ```
 
 设计理由(源码注释):注册绑定应用就绪——"实例在应用就绪后才发布……这一顺序让滚动重启

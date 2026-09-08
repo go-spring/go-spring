@@ -42,21 +42,21 @@ func (impl *ServerMockImpl) MockRun() *gsmock.Mocker21[context.Context, ReadySig
 }
 
 //go:noinline
-func (impl *ServerMockImpl) funcStop() func() error {
+func (impl *ServerMockImpl) funcStop() func(ctx context.Context) error {
 	return impl.Stop
 }
 
 // Stop calls the registered mock for Stop via gsmock.Invoke.
 // If no matching mock is registered, it panics.
-func (impl *ServerMockImpl) Stop() error {
-	if ret, ok := gsmock.Invoke(impl.r, impl, impl.funcStop()); ok {
+func (impl *ServerMockImpl) Stop(ctx context.Context) error {
+	if ret, ok := gsmock.Invoke(impl.r, impl, impl.funcStop(), ctx); ok {
 		return gsmock.Unbox1[error](ret)
 	}
 	panic("no mock code matched for ServerMockImpl.Stop")
 }
 
-// MockStop returns a Mocker01
+// MockStop returns a Mocker11
 // for registering mock behavior of Stop with specific parameter and return types.
-func (impl *ServerMockImpl) MockStop() *gsmock.Mocker01[error] {
-	return gsmock.Method01(impl, impl.funcStop(), impl.r)
+func (impl *ServerMockImpl) MockStop() *gsmock.Mocker11[context.Context, error] {
+	return gsmock.Method11(impl, impl.funcStop(), impl.r)
 }

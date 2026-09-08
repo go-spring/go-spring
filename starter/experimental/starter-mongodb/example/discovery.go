@@ -17,14 +17,17 @@ package main
 
 import (
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/spring/gs"
 )
 
-// This file plays the part a company's adapter would: it registers a discovery
-// backend under the default name. Here it is a fixed-address static backend (a
-// real adapter would talk to Consul/Nacos/an internal registry and push fresh
-// snapshots when instances come and go); the client configured with
+// This file plays the part a company's adapter would: it contributes a discovery
+// backend bean under the "default" name. Here it is a fixed-address static
+// backend (a real adapter would talk to Consul/Nacos/an internal registry and
+// push fresh snapshots when instances come and go); the client configured with
 // `service-name` (see conf/app.properties) dials the address it hands out.
 
 func init() {
-	discovery.RegisterDiscovery("default", discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:27017", Healthy: true}))
+	gs.Provide(func() (discovery.Discovery, error) {
+		return discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:27017", Healthy: true}), nil
+	}).Name("default")
 }

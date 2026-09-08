@@ -61,8 +61,9 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default",
-        discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:9200", Healthy: true}))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(    discovery.Endpoint{Addr: "127.0.0.1:9200", Healthy: true}), nil
+    }).Name("default")
 }
 ```
 
@@ -158,7 +159,7 @@ import starter-elasticsearch
 gs.Run()
   ├─ ctor newClient [starter.go:73]:
   │    ├─ service-name set && !mesh.Enabled() → resolveAddresses:
-  │    │      discovery.NewLoader → read snapshot → "scheme://host:port" overrides c.Addresses
+  │    │      injected backend → read snapshot → "scheme://host:port" overrides c.Addresses
   │    │      (fails fast: no backend registered, or no endpoints for the service)
   │    ├─ optional Driver bean (none → bundled DefaultDriver) → driver.CreateClient:
   │    │      DefaultDriver installs dynamicTransport + OTel instrumentation
@@ -364,7 +365,7 @@ requires a restart (§2.4).
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails "failed to reach elasticsearch cluster" | Unreachable address / wrong credentials / fingerprint mismatch / ES still booting (up to 120 s) | Fix connectivity; wait for `curl http://127.0.0.1:9200` to answer, restart. |
-| Boot fails `discovery ... returned no endpoints` | service-name unknown to the backend, or backend not registered | Register the backend (discovery.RegisterDiscovery) before gs.Run; check the service name. |
+| Boot fails `discovery ... returned no endpoints` | service-name unknown to the backend, or backend not registered | Register the backend bean (a named discovery.Discovery bean) before gs.Run; check the service name. |
 | Panic with nil context inside a request | OTel instrumentation derives the span from the request context | Pass `WithContext(ctx)` on every call; never use the no-context API variant. |
 | Boot fails on `addresses` validation though service-name is set | `addresses` is required unconditionally (`len($) > 0`) | Keep a dummy address (the example's pattern) — it is overridden. |
 | No spans/metrics though code is correct | starter-otel not imported | Instrumentation rides the OTel globals; import starter-otel and configure exporters. |

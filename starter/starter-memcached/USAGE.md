@@ -87,8 +87,9 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default",
-        discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:11211", Healthy: true}))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(    discovery.Endpoint{Addr: "127.0.0.1:11211", Healthy: true}), nil
+    }).Name("default")
 }
 ```
 
@@ -255,7 +256,7 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
 |---|---|---|
 | Boot fails `one of servers or service-name must be set` | instance block has neither key | set one of them (`starter.go:83`) |
 | Boot fails `memcached: startup ping failed` | server down / wrong address at boot | start memcached, fix `servers`; ping is fail-fast (`starter.go:98-100`) |
-| Boot fails `discovery resolve "..." failed` | `service-name` set but no backend under the `discovery` name | register the backend (`discovery.RegisterDiscovery`) before boot |
+| Boot fails `discovery resolve "..." failed` | `service-name` set but no backend under the `discovery` name | register the backend bean (named discovery.Discovery) before boot |
 | Boot fails `discovery returned no endpoints` | backend healthy but the service has no instances (or `scheme` over-filters) | start instances / clear `scheme` (`driver.go:75-79`) |
 | Stale server list after cluster scale-out/scale-in | gomemcache fixes the server set at creation; watch is lifecycle-only | restart the process to re-resolve (`driver.go:60-66`) |
 | Traces show memcached spans disconnected from request traces | gomemcache API has no context; spans are root spans | known limitation (`client.go:37-41`); correlate by key/time |

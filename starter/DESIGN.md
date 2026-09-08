@@ -99,13 +99,15 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   - `starter.go` — the `init()`-time `gs.Group` / `gs.Module` registration and
     the constructor (`newClient`) that assembles the bean.
   - `discovery.go` — the client-side service-discovery seam: the mesh-gated
-    builder (`GetDiscovery` + `discovery.NewLoader` + `WithScheme`, returning
-    `nil` when `ServiceName` is empty or mesh is on). A `Loader` is a pure
+    builder (`discovery.NewResolver` over the backend bean injected from the
+    config's `discovery` label + `WithScheme`, returning `nil` when the backend
+    is absent, `ServiceName` is empty, or mesh is on). A `Resolver` is a pure
     snapshot function — no resources, no `Stop`, freshness lives inside the
-    discovery backend — so nothing is cached per client and nothing is torn down
-    on `Destroy`. The driver's per-backend dialer (which wraps the loader via
-    `loadbalance.SourceFunc` in a round-robin `Pool` and `Pick`s per connection)
-    stays in `config.go` / `starter.go`; only the loader build lives here.
+    discovery backend bean — so nothing is cached per client and nothing is torn
+    down on `Destroy`. The driver's per-backend dialer (which wraps the resolver
+    via `loadbalance.SourceFunc` in a round-robin `Pool` and `Pick`s per
+    connection) stays in `config.go` / `starter.go`; only the resolver build
+    lives here.
   - `resilience.go` — the wrapper bean's `ApplyResilience` InitMethod, the
     executor, and its `Close`/`CloseDriver` Destroy hook.
   - `observability.go` — the observe kit bridge (trace/metric/access-log hooks).

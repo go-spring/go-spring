@@ -191,7 +191,7 @@ gs.Run()
   ├─ SimpleDubboServer.Run：buildOptions(provider, protocols, registries) → d.NewServer()
   │     → regAll()：逐个调用 ServiceRegister bean → <-sig.TriggerAndWait() → svr.Serve()  [server.go:297-327]
   ├─ 就绪：Run 触发就绪信号后生效；Stop 时排水在途 RPC
-  └─ SIGTERM：StopContext 关闭 done channel → Run 返回 → gs 完成关停序列
+  └─ SIGTERM：Stop 关闭 done channel → Run 返回 → gs 完成关停序列
         （dubbo-go 自身的优雅停机时序来自 ${spring.dubbo.shutdown.*}）
 ```
 

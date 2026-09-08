@@ -106,15 +106,10 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return nil
 }
 
-// Stop gracefully shuts the server down, letting in-flight requests finish.
-func (s *GatewayServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext gracefully shuts the server down, letting in-flight requests
+// Stop gracefully shuts the server down, letting in-flight requests
 // finish; ctx is propagated into http.Server.Shutdown so the drain rides the
 // shutdown context.
-func (s *GatewayServer) StopContext(ctx context.Context) error {
+func (s *GatewayServer) Stop(ctx context.Context) error {
 	log.Infof(ctx, log.TagAppDef, "gateway: shutting down on %s", s.Cfg.Addr)
 	return s.svr.Shutdown(ctx)
 }

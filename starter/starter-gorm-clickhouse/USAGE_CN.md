@@ -115,8 +115,9 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default",
-        discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:9000", Healthy: true}))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(    discovery.Endpoint{Addr: "127.0.0.1:9000", Healthy: true}), nil
+    }).Name("default")
 }
 ```
 
@@ -329,7 +330,7 @@ span（含 SQL 语句）、:9090/metrics 的 prometheus 指标、按 `observabil
 | `AutoMigrate` 失败（缺 ENGINE） | ClickHouse 要求表引擎 | `Set("gorm:table_options", "ENGINE=MergeTree ORDER BY (id)")`。 |
 | 事务代码报错 / 无效果 | ClickHouse 无多语句事务 | 批量写入；见 §3.4。 |
 | 有 uniqueIndex tag 仍出现重复行 | ClickHouse 不强制唯一索引 | 在写入/模型层去重。 |
-| discovery 实例连不上 | backend 名不匹配 / 服务未注册 | 核对 `RegisterDiscovery` 名与 `discovery` key。 |
+| discovery 实例连不上 | backend 标签不匹配 / 服务未注册 | 核对 bean 名与 `discovery` key。 |
 | TLS 通但证书主机名不匹配 | 按 IP 拨号 | 设 `tls.server-name`（本方言有效）。 |
 
 ## 6. 设计体检表

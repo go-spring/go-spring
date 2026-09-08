@@ -189,7 +189,7 @@ gs.Run()
   │    → register(h)                   // 你的路由，最内层
   ├─ SimpleHertzServer.Run(ctx, sig)：<-sig.TriggerAndWait() 后 h.Run() 阻塞
   ├─ 就绪：TriggerAndWait 返回 → readyz 翻 UP → 引擎开始服务
-  └─ SIGTERM：Stop/StopContext → h.Shutdown(ctx) 排空在途请求
+  └─ SIGTERM：Stop/Stop → h.Shutdown(ctx) 排空在途请求
 ```
 
 缺 `RouterRegister` 容器直接失败（非空注入）；两个则因歧义失败。注意引擎在

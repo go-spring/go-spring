@@ -84,16 +84,19 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*elasticsearch
 	return client, nil
 }
 
-// resolveAddresses resolves c.ServiceName through the registered discovery
+// resolveAddresses resolves c.ServiceName through the injected discovery
 // backend and returns the current live endpoint snapshot as "scheme://host:port"
 // node addresses. Because the elasticsearch client exposes no dialer injection
 // point this is a one-shot read at startup (the resolver has no background watch
-// and no resources to release). It fails fast when no backend is registered or
-// the service has no endpoints. It must only be called when service discovery
-// is in effect (the caller has already gated on service-name being set and mesh
-// mode being off).
+// and no resources to release). It fails fast when no backend bean was injected
+// for the ${discovery} label or the service has no endpoints. It must only be
+// called when service discovery is in effect (the caller has already gated on
+// service-name being set and mesh mode being off).
 func resolveAddresses(ctx context.Context, c Config) ([]string, error) {
-	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+	if c.backend == nil {
+		return nil, errutil.Explain(nil, "elasticsearch: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
+	}
+	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 	}

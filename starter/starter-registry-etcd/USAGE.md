@@ -7,11 +7,13 @@ tests plus a docker-compose etcd end-to-end boot). **etcd's own semantics (lease
 auth) are [etcd documentation](https://etcd.io/docs/)** — everything below is go-spring's increment.
 
 **Activation**: the registrar server bean exists only when `spring.registry.etcd.endpoints` is set
-— that key is the on/off switch (`starter.go:66-71`). The **consumer side** activates per named
-block: every `${spring.discovery.etcd.<name>.endpoints}` block registers one discovery backend
-(`discovery_etcd.go:81-96`). Unlike starter-registry-consul, this starter ships **both sides**:
-registration and discovery over the same key layout. It opens no port — it exports a `gs.Server`
-purely to plug registration into the app lifecycle.
+— that key is the on/off switch. The same block also builds the ONE shared etcd client
+(`center.go`) and — unless `discovery-name` is empty — derives a discovery backend bean labeled
+`etcd` (default) for the same cluster, so a dual-role app configures the cluster once. Standalone
+`${spring.discovery.etcd.<name>}` blocks cover other clusters / pure consumers; a block with empty
+`endpoints` inherits the center connection (`discovery_etcd.go`). Unlike starter-registry-consul,
+this starter ships **both sides**: registration and discovery over the same key layout. It opens
+no port — it exports a `gs.Server` purely to plug registration into the app lifecycle.
 
 ---
 
@@ -138,7 +140,7 @@ import starter-registry-etcd
   ├─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
   │      Condition: OnProperty("spring.registry.etcd.endpoints")   [starter.go:66-71]
   ├─ gs.Module(OnProperty("spring.discovery.etcd"))                 [discovery_etcd.go:82]
-  │      conf.BindEach → one backend per <name> → discovery.RegisterDiscovery(name, ...)
+  │      conf.BindEach → one backend per <name> → a NAMED bean per <name> (r.Provide().Name(name))
   │
 gs.Run()
   ├─ bind: ${spring.registry.etcd} → EtcdConfig; ${spring.registry} → Server.Config field
@@ -152,7 +154,7 @@ gs.Run()
   ├─ steady state: keep-alive goroutine renews the lease (clientv3 default ≈ TTL/3)
   └─ SIGTERM: PreStop deregisters FIRST (before pre-stop delay, before servers stop)
          → discovery stops handing the instance out while in-flight drains
-         Stop/StopContext are idempotent fallbacks                    [starter.go:130-146]
+         Stop is an idempotent fallback                    [starter.go:130-146]
 ```
 
 Design rationale (source comments): registration is keyed to app readiness because "the instance

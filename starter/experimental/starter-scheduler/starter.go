@@ -113,16 +113,10 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return nil
 }
 
-// Stop halts scheduling and drains in-flight runs, bounded by the configured
-// drain timeout. It is called during graceful shutdown.
-func (s *Server) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext halts scheduling and drains in-flight runs, bounded by the
+// Stop halts scheduling and drains in-flight runs, bounded by the
 // configured drain timeout. It is called during graceful shutdown with the
 // framework's shutdown context, which is threaded into the scheduler drain.
-func (s *Server) StopContext(ctx context.Context) error {
+func (s *Server) Stop(ctx context.Context) error {
 	if s.sched == nil {
 		return nil
 	}

@@ -104,8 +104,9 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default",
-        discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:1433", Healthy: true}))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(    discovery.Endpoint{Addr: "127.0.0.1:1433", Healthy: true}), nil
+    }).Name("default")
 }
 ```
 
@@ -324,7 +325,7 @@ logger (routed through go-spring.org/log, TagAppDef, plain-text body).
 | TLS trust error at startup | `tls.enabled=true` without `insecure-skip-verify`/`ca-file` | add trust or disable encrypt (§4.1). |
 | Expecting mTLS, client never presents a cert | removed `tls.cert-file`/`key-file` | not expressible via config; needs a custom connector. |
 | Cert hostname mismatch with discovery dummies | no `tls.server-name` key; dummy `0.0.0.0` in DSN | one of: real hostnames in the cert, `insecure-skip-verify` (dev), or a custom dialer. |
-| Discovery instance never connects | backend name mismatch (`discovery` key) or service not registered | check `RegisterDiscovery` name vs config; resolver errors log at startup. |
+| Discovery instance never connects | backend label mismatch (`discovery` key) or service not registered | check the bean name vs config; resolver errors log at startup. |
 | Login timeouts under load | `connectTimeout` too low | raise, or leave 0 for the driver default. |
 | `key`/`value` column SQL errors | reserved words in SQL Server | remap via gorm tags (`column:kkey`), as the example does. |
 

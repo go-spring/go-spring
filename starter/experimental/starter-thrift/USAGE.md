@@ -232,7 +232,7 @@ gs.Run()
   │   ├─ WrapProcessor(proc) when tracing or metrics enabled — OUTERMOST processor layer
   │   ├─ <-sig.TriggerAndWait()  ← waits for readiness before serving
   │   └─ svr.Serve() blocks; "thrift server starting on :9292" logged (Info, TagAppDef)
-  └─ on SIGTERM: StopContext → "thrift server shutting down" → s.svr.Stop()
+  └─ on SIGTERM: Stop → "thrift server shutting down" → s.svr.Stop()
 ```
 
 ### 2.2 Processor chain — exact order and why
@@ -298,7 +298,7 @@ All keys under `spring.thrift.server.*`. Verified against
 cd example && ./check.sh    # asserts: echo body round-trips twice, decorator fired exactly 2x
 ```
 
-The example self-SIGTERMs on success, exercising the shutdown path (`StopContext`).
+The example self-SIGTERMs on success, exercising the shutdown path (`Stop`).
 
 ### 4.2 Observability reading
 
@@ -336,7 +336,7 @@ drills you can run are protocol/transport mismatches (§5) and kill -9.
 
 ### 4.4 Shutdown
 
-`SIGTERM` → `StopContext` logs and calls `thrift.TSimpleServer.Stop()`, which closes the
+`SIGTERM` → `Stop` logs and calls `thrift.TSimpleServer.Stop()`, which closes the
 server transport and interrupts the accept loop. thrift's `TSimpleServer.Stop` does not wait
 for per-connection goroutines — there is **no graceful drain**; treat shutdown as "stop
 accepting, drop stragglers". This is a declared boundary, not a bug to fix here: for

@@ -40,8 +40,8 @@ use (
 	./log/benchmarks/logs
 	./scripts/bomtool
 	./spring
-	./starter/experimental/starter-actuator
-	./starter/experimental/starter-actuator/example
+	./starter/starter-actuator
+	./starter/starter-actuator/example
 	./starter/experimental/starter-admin-ui
 	./starter/experimental/starter-admin-ui/example
 	./starter/experimental/starter-ants
@@ -67,8 +67,8 @@ use (
 	./starter/experimental/starter-config-nacos/example
 	./starter/experimental/starter-config-vault
 	./starter/experimental/starter-config-vault/example
-	./starter/experimental/starter-discovery-k8s
-	./starter/experimental/starter-discovery-k8s/example
+	./starter/starter-discovery-k8s
+	./starter/starter-discovery-k8s/example
 	./starter/experimental/starter-elasticsearch
 	./starter/experimental/starter-elasticsearch/example
 	./starter/experimental/starter-elasticsearch/example-cloudnative
@@ -153,12 +153,12 @@ use (
 	./starter/experimental/starter-rabbitmq/example-otel
 	./starter/experimental/starter-ratelimit-redis
 	./starter/experimental/starter-ratelimit-redis/example
-	./starter/experimental/starter-registry-consul
-	./starter/experimental/starter-registry-consul/example
-	./starter/experimental/starter-registry-nacos
-	./starter/experimental/starter-registry-nacos/example
-	./starter/experimental/starter-registry-zookeeper
-	./starter/experimental/starter-registry-zookeeper/example
+	./starter/starter-registry-consul
+	./starter/starter-registry-consul/example
+	./starter/starter-registry-nacos
+	./starter/starter-registry-nacos/example
+	./starter/starter-registry-zookeeper
+	./starter/starter-registry-zookeeper/example
 	./starter/experimental/starter-resilience
 	./starter/experimental/starter-resilience/example
 	./starter/experimental/starter-rocketmq

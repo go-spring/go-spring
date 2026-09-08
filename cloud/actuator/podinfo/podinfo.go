@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-// Package podinfo exposes Kubernetes Pod metadata — name, namespace, IP, node,
-// service account, and labels — to the application, with zero third-party
-// dependencies.
+// Package podinfo exposes Kubernetes Pod metadata — name, namespace, UID, IP,
+// node, host IP, service account, and labels — to the application, with zero
+// third-party dependencies.
 //
 // It does not talk to the Kubernetes API. Instead it relies on the Downward API:
 // the Deployment injects Pod fields as environment variables (name, namespace,
@@ -24,9 +24,9 @@
 // maps GS_-prefixed environment variables into the property tree (GS_POD_NAME ->
 // pod.name), so the struct fields below bind straight from configuration.
 //
-// The struct carries `value` tags but imports nothing from the IoC container, so
-// it stays in the zero-dependency stdlib layer. To use it, register it as a bean
-// in the application and autowire it:
+// The struct carries `value` tags but imports nothing from the IoC container,
+// so it cannot register itself; the application registers it as a bean and
+// autowires the pointer:
 //
 //	gs.Object(&podinfo.PodInfo{})
 //
@@ -51,18 +51,33 @@ import (
 // Downward API variables are absent) simply sees zero values rather than
 // failing to wire.
 type PodInfo struct {
+
 	// Name is the Pod name (metadata.name), injected as GS_POD_NAME.
 	Name string `value:"${pod.name:=}"`
+
 	// Namespace is the Pod namespace (metadata.namespace), injected as
 	// GS_POD_NAMESPACE.
 	Namespace string `value:"${pod.namespace:=}"`
+
+	// UID is the Pod UID (metadata.uid), injected as GS_POD_UID. Unlike the
+	// Pod name, a UID is never reused, so it is the right instance identity
+	// key for service-discovery dedup and metric labels.
+	UID string `value:"${pod.uid:=}"`
+
 	// IP is the Pod IP (status.podIP), injected as GS_POD_IP.
 	IP string `value:"${pod.ip:=}"`
+
 	// NodeName is the host node name (spec.nodeName), injected as GS_NODE_NAME.
 	NodeName string `value:"${node.name:=}"`
+
+	// HostIP is the IP of the node the Pod runs on (status.hostIP), injected
+	// as GS_NODE_IP.
+	HostIP string `value:"${node.ip:=}"`
+
 	// ServiceAccount is the Pod service account (spec.serviceAccountName),
 	// injected as GS_POD_SERVICE_ACCOUNT.
 	ServiceAccount string `value:"${pod.service.account:=}"`
+
 	// LabelsPath is the mount path of the Downward API labels file (e.g.
 	// /etc/podinfo/labels). Empty when no labels volume is mounted.
 	LabelsPath string `value:"${pod.labels.path:=}"`
@@ -72,12 +87,14 @@ type PodInfo struct {
 // service-discovery registration metadata. LabelsPath is excluded — it is an
 // implementation detail, not metadata worth publishing.
 func (p *PodInfo) Metadata() map[string]string {
-	m := make(map[string]string, 5)
+	m := make(map[string]string)
 	for k, v := range map[string]string{
 		"pod.name":           p.Name,
 		"pod.namespace":      p.Namespace,
+		"pod.uid":            p.UID,
 		"pod.ip":             p.IP,
 		"node.name":          p.NodeName,
+		"node.ip":            p.HostIP,
 		"pod.serviceAccount": p.ServiceAccount,
 	} {
 		if v != "" {

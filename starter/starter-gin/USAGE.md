@@ -172,7 +172,7 @@ gs.Run()
   │    → CORS misconfig returns error here → container fails fast (no first-request panic)
   ├─ Run(): net.Listen immediately, then <-sig.TriggerAndWait() → serve
   │    (TLS: tls.NewListener with tlsconf.BuildServer — tls.cert-file/key-file pair; tls.ca-file enables mTLS)
-  └─ on SIGTERM: StopContext → http.Server.Shutdown(ctx) drains in-flight requests
+  └─ on SIGTERM: Stop → http.Server.Shutdown(ctx) drains in-flight requests
 ```
 
 Missing `RouterRegister` fails the container (non-nullable); a second one fails with ambiguity.

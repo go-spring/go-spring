@@ -227,7 +227,7 @@ gs.Run()
   │   ├─ tracing 或 metrics 开启时 WrapProcessor(proc) —— 最外层 processor
   │   ├─ <-sig.TriggerAndWait()  ← 就绪信号之后才开始 serve
   │   └─ svr.Serve() 阻塞；打 Info "thrift server starting on :9292"（TagAppDef）
-  └─ SIGTERM：StopContext → 打 "thrift server shutting down" → s.svr.Stop()
+  └─ SIGTERM：Stop → 打 "thrift server shutting down" → s.svr.Stop()
 ```
 
 ### 2.2 Processor 链 —— 精确顺序与理由
@@ -291,7 +291,7 @@ TSimpleServer → WrapProcessor (observedProcessor) → 你的装饰器 → 生�
 cd example && ./check.sh    # 断言：echo 两次往返体一致、装饰器恰好触发 2 次
 ```
 
-example 成功后自 SIGTERM，顺带验证了关停路径（`StopContext`）。
+example 成功后自 SIGTERM，顺带验证了关停路径（`Stop`）。
 
 ### 4.2 可观测读数
 
@@ -327,7 +327,7 @@ thrift 治理请用成熟框架（如 contrib/kitex）。能做的演练只有 p
 
 ### 4.4 关停
 
-`SIGTERM` → `StopContext` 打日志并调 `thrift.TSimpleServer.Stop()`，后者关闭 server
+`SIGTERM` → `Stop` 打日志并调 `thrift.TSimpleServer.Stop()`，后者关闭 server
 transport、打断 accept 循环。thrift 的 `TSimpleServer.Stop` 并不等待每连接 goroutine
 ——**没有优雅排空**；把关停当作"停止 accept、丢弃滞留者"看待。这是声明的边界而非
 待修 bug：需要连接排空的 thrift 服务请用成熟框架。

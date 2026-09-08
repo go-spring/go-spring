@@ -210,7 +210,7 @@ gs.Run()
   │     ├─ 输出 "go-zero zrpc server starting on <listen-on>" 日志
   │     └─ go svr.Start()（绑定监听、向 Etcd.Key 注册、阻塞）
   │         / select on errCh | done
-  └─ 收到 SIGTERM：StopContext 关闭 done → Run 调 svr.Stop()
+  └─ 收到 SIGTERM：Stop 关闭 done → Run 调 svr.Stop()
         （zrpc 从 etcd 反注册、排空传输层、gs 完成关停序列）
 ```
 
@@ -219,7 +219,7 @@ gs.Run()
 - `Start` 内部阻塞（rest 注释："Start binds the listener and blocks until Stop is called"），
   因此放到 goroutine 里跑，`Run` 挂在 `done` channel 上；`Stop` 关闭 `done`，把控制权交还
   Go-Spring 前先拆掉 server。
-- `svr.Stop()` 不收 context —— `StopContext` 的 ctx 只用来打关停日志。
+- `svr.Stop()` 不收 context —— `Stop` 的 ctx 只用来打关停日志。
 - `Start` 自身正常返回时 errCh 收到 nil；Start 的真实失败（监听绑定失败等）在 go-zero
   内部以 panic/error 形式暴露 —— 见 §5。
 

@@ -87,9 +87,15 @@ type Common struct {
 	// exposes both plain and secure instances and this client should reach only
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
-	// Discovery selects which registered discovery backend resolves ServiceName.
-	// Only consulted when ServiceName is set; defaults to "default".
+	// Discovery names the discovery backend bean that resolves ServiceName
+	// (bean name = label). Only consulted when ServiceName is set; the bean
+	// itself is injected by the starter wiring from this label.
 	Discovery string `value:"${discovery:=default}"`
+
+	// backend is the discovery backend instance the label above cites. It is
+	// populated by the starter wiring ([Register] injects the named backend
+	// bean), never bound from configuration.
+	backend discovery.Discovery
 
 	// ObserveEnabled is the hard per-instance kill switch for the gorm observe
 	// plugin (trace span + metric + access log on every Create/Query/Update/
@@ -111,13 +117,13 @@ func (c PoolSettings) Pool() PoolConfig {
 	}
 }
 
-// NewResolver resolves the registered discovery backend for this config into a
+// NewResolver resolves the injected discovery backend for this config into a
 // by-name resolver that re-reads the service's live endpoint snapshot. It returns
 // (nil, nil) when ServiceName is unset or mesh mode is enabled (a sidecar owns
 // discovery+LB), in which case the caller dials the configured address
 // directly. Freshness lives inside the backend, so there is nothing to release.
 func (c Common) NewResolver(ctx context.Context) (discovery.Resolver, error) {
-	return discovery.NewResolver(ctx, c.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+	return discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 }
 
 // NewPickPool builds the shared per-connection endpoint selector over the

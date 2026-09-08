@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -44,9 +45,13 @@ func init() {
 		return conf.BindEach(p, "${spring.mongodb}", func(name string, c Config) error {
 
 			// The wrapper bean owns the resilience executor + discovery watch, so
-			// Init arms it (InitMethod) and Close tears it down (Destroy).
+			// Init arms it (InitMethod) and Close tears it down (Destroy). The
+			// instance's discovery.Discovery backend bean is injected by name from
+			// the entry's ${discovery} label (default "default"; optional, so an
+			// app with no backend beans at all gets nil here).
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
+				gs.IndexArg(2, gs.TagArg("${spring.mongodb."+name+".discovery:=default}?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the
@@ -71,14 +76,15 @@ func init() {
 // on first use.
 //
 // When c.ServiceName is set and mesh mode is off, the address is resolved
-// through the registered discovery backend (c.Discovery): a loader-backed
-// dialer is injected as the client's ContextDialer, so each new connection
-// dials a currently-live instance picked from the service's endpoint snapshot
-// and address changes take effect without rebuilding the client. In mesh mode a
-// sidecar owns discovery+LB, so the URI hosts are dialed directly. When
-// c.ServiceName is empty this dials the URI hosts directly, unchanged from
+// through the injected discovery backend bean (cited by c.Discovery): a
+// loader-backed dialer is injected as the client's ContextDialer, so each new
+// connection dials a currently-live instance picked from the service's endpoint
+// snapshot and address changes take effect without rebuilding the client. In
+// mesh mode a sidecar owns discovery+LB, so the URI hosts are dialed directly.
+// When c.ServiceName is empty this dials the URI hosts directly, unchanged from
 // before.
-func newClient(ctx *gs.ContextProvider, c Config) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery) (*Client, error) {
+	c.backend = backend
 	log.Debugf(ctx.Context, log.TagAppDef, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
 	opts := options.Client().ApplyURI(c.URI)

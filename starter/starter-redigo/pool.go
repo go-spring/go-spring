@@ -51,11 +51,11 @@ func NewPool(ctx context.Context, c Config) (*Pool, error) {
 		return nil, errutil.Explain(err, "redis: build TLS")
 	}
 
-	// Bind service discovery by name; nil resolver means discovery not in effect
-	// (no service name / mesh), so the pool dials the configured Addr directly.
-	// Freshness lives inside the backend, so the resolver has no resources to
-	// release.
-	resolver, err := discovery.NewResolver(ctx, c.Discovery, c.ServiceName,
+	// Bind service discovery; nil resolver means discovery not in effect (no
+	// service name / no backend injected / mesh), so the pool dials the
+	// configured Addr directly. Freshness lives inside the backend, so the
+	// resolver has no resources to release.
+	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName,
 		discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, err

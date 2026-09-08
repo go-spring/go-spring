@@ -300,19 +300,12 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 }
 
-// Stop gracefully stops the underlying Kitex server, deregistering it from
-// etcd, and signals Run to return so Go-Spring can complete shutdown. It also
-// shuts down the OTel provider set up in Run to flush pending spans.
-func (s *SimpleKitexServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext gracefully stops the underlying Kitex server, deregistering it
+// Stop gracefully stops the underlying Kitex server, deregistering it
 // from etcd, and signals Run to return so Go-Spring can complete shutdown. It
 // also shuts down the OTel provider set up in Run to flush pending spans,
 // threading the shutdown context into the provider's Shutdown. Kitex's Stop
 // takes no context, so ctx is otherwise only used for logging.
-func (s *SimpleKitexServer) StopContext(ctx context.Context) error {
+func (s *SimpleKitexServer) Stop(ctx context.Context) error {
 	log.Infof(ctx, log.TagAppDef, "kitex server shutting down on %s", s.cfg.Addr)
 	err := s.svr.Stop()
 	if s.otelProvider != nil {

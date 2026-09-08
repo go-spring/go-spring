@@ -28,7 +28,7 @@ resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp tr
   `http.DefaultTransport`)之上,让 span 传播覆盖完整下游路径(含改写后的
   host 与 LB 挑选)。可观测——trace、fault 注入、observe 执行器包装——实现
   在 `cloud/httpx`;本 starter 只做配置绑定并透传 `Observability`。
-- **discovery + LB。**`service-name` 非空时:`discovery.GetDiscovery` +
+- **discovery + LB。**`service-name` 非空时:注入的后端 bean +
   `Resolver` + `loadbalance.Pool`——与其它基础设施客户端同款。否则走
   `fixedHostTransport`(`Addr` 模式)。两者都为空 → 用请求原 host。
 - **resilience 位于最外。**让**重试可重挑端点**,且**熔断按逻辑服务名**

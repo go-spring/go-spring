@@ -24,12 +24,13 @@ import (
 )
 
 func init() {
-    gs.Provide(&endpoint.Endpoint{Path: "/metrics", Handler: promhttp.Handler()})
+    gs.Provide(&endpoint.Endpoint{Pattern: "/metrics", Handler: promhttp.Handler()})
 }
 ```
 
-Path must not collide with the actuator's built-in paths (`/healthz`,
-`/readyz`, `/info`, ...) or with another contributed endpoint; a duplicate
-path panics at startup. Each endpoint is also subject to the actuator's
-`spring.actuator.endpoints.include` / `.exclude` filter under its path name
-(the path without the leading slash).
+Pattern must not collide with the actuator's built-in patterns (`/healthz`,
+`/readyz`, `/info`, ...) or with another endpoint; a duplicate pattern panics
+at startup. A `Sensitive` endpoint registers only when explicitly listed in
+`spring.actuator.endpoints.include` — sensitivity is declared by the
+contributor, not adjudicated by the actuator. The filter matches the pattern's
+path (the pattern minus any method prefix), e.g. /env, /metrics.

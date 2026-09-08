@@ -64,9 +64,9 @@ func init() {
 	// A real deployment would point Consul/Nacos/k8s here; a static backend keeps
 	// the example self-contained while exercising the same resolve + dial path.
 	// The DB client resolves "mysql-cluster" through this "default" backend.
-	discovery.RegisterDiscovery("default", discovery.NewStaticDiscovery(
-		discovery.Endpoint{Addr: "127.0.0.1:3306", Healthy: true},
-	))
+	gs.Provide(func() (discovery.Discovery, error) {
+		return discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:3306", Healthy: true}), nil
+	}).Name("default")
 }
 
 // Service autowires the "primary" gorm instance. Its address is resolved via

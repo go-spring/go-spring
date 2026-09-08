@@ -27,13 +27,24 @@ import (
 
 // Endpoint is an HTTP handler mounted on the actuator's management port.
 type Endpoint struct {
-	// Path is the mount path, e.g. "/metrics". It must not collide with the
-	// actuator's built-in paths (/healthz, /readyz, /info, ...) or with
-	// another contributed endpoint; a duplicate path panics at startup.
-	Path string
+	// Pattern is the ServeMux mount pattern, e.g. "/metrics" or "GET /env"
+	// (method-restricted). It must not collide with the actuator's built-in
+	// patterns (/healthz, /readyz, /info, ...) or with another endpoint; a
+	// duplicate pattern panics at startup. The endpoint's filter name — what
+	// spring.actuator.endpoints.include matches — is the pattern's path
+	// without the leading slash (and without any method prefix).
+	Pattern string
 
-	// Handler serves requests to Path.
+	// Handler serves requests to Pattern.
 	Handler http.Handler
+
+	// Sensitive marks the endpoint as exposing configuration or internals. A
+	// sensitive endpoint registers only when explicitly listed in
+	// spring.actuator.endpoints.include; a non-sensitive one is default-on
+	// (still subject to the include whitelist when that list is non-empty).
+	// The contributor knows what its endpoint exposes, so sensitivity is
+	// declared here, not adjudicated by the actuator.
+	Sensitive bool
 }
 
 // serving records whether a management server that collects [Endpoint] beans

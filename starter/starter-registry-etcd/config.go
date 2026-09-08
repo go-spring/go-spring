@@ -52,6 +52,14 @@ type EtcdConfig struct {
 	// the shared spring/cloud/tlsconf block so every starter exposes the same
 	// tls.* keys.
 	TLS tlsconf.TLSConfig `value:"${tls}"`
+
+	// DiscoveryName derives a discovery backend bean for this same cluster
+	// under that label — the "one config block serves both halves" default: a
+	// dual-role application configures the cluster once and its clients cite
+	// discovery=<discovery-name>. Empty disables the derived backend (a
+	// write-only application, or one whose consumers use explicit
+	// ${spring.discovery.etcd.<name>} blocks).
+	DiscoveryName string `value:"${discovery-name:=etcd}"`
 }
 
 // RegistrationConfig binds the instance to advertise, under ${spring.registry}.

@@ -37,12 +37,15 @@ package StarterGrpc
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
@@ -50,9 +53,50 @@ import (
 )
 
 // Scheme is the target scheme handled by the discovery-backed resolver. Dial
-// "gsdiscovery:///<service>" to resolve <service> through the default discovery
-// backend, or "gsdiscovery://<backend>/<service>" to select a named backend.
+// "gsdiscovery:///<service>" to resolve <service> through the discovery backend
+// bean named "default", or "gsdiscovery://<backend>/<service>" to select another
+// named backend bean.
 const Scheme = "gsdiscovery"
+
+// discoveryBackends is the label -> backend directory the resolver builder
+// resolves "gsdiscovery://<backend>/<service>" targets against. It is the
+// container's named discovery.Discovery beans, captured once at wiring time by
+// newDiscoveryBackendsHook (see starter.go) — or by a non-container caller via
+// [SetDiscoveryBackends] — so target resolution never consults process-global
+// state at runtime. An atomic.Value keeps the read lock-free on the RPC dial
+// path.
+var discoveryBackends atomic.Value // map[string]discovery.Discovery
+
+// SetDiscoveryBackends installs backends (bean name = label) as the directory
+// the gsdiscovery resolver resolves target labels against. The starter's wiring
+// calls this once at assembly time; a program that dials gsdiscovery targets
+// outside the container (no gs.Run) calls it directly instead. Calling it again
+// replaces the directory wholesale.
+func SetDiscoveryBackends(backends map[string]discovery.Discovery) {
+	discoveryBackends.Store(backends)
+}
+
+// lookupDiscoveryBackend returns the backend registered under label.
+func lookupDiscoveryBackend(label string) (discovery.Discovery, bool) {
+	v, _ := discoveryBackends.Load().(map[string]discovery.Discovery)
+	if v == nil {
+		return nil, false
+	}
+	d, ok := v[label]
+	return d, ok
+}
+
+// backendLabels lists every registered backend label, sorted, for error
+// messages.
+func backendLabels() []string {
+	v, _ := discoveryBackends.Load().(map[string]discovery.Discovery)
+	labels := make([]string, 0, len(v))
+	for k := range v {
+		labels = append(labels, k)
+	}
+	sort.Strings(labels)
+	return labels
+}
 
 // defaultTracker is the suspension policy attached to the pre-registered
 // per-strategy balancers: five consecutive failures evict an instance for 30s
@@ -246,9 +290,9 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 	}
 	service := target.Endpoint()
 
-	d, err := discovery.GetDiscovery(backend)
-	if err != nil {
-		return nil, err
+	d, ok := lookupDiscoveryBackend(backend)
+	if !ok {
+		return nil, errutil.Explain(nil, "grpc: discovery backend %q not found (no discovery.Discovery bean with this name; registered: %v)", backend, backendLabels())
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

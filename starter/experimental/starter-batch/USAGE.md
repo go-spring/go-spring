@@ -144,7 +144,7 @@ gs.Run()
   │     AFTER the app is ready
   ├─ per run-on-startup job: goroutine + wg.Add → Launcher.Launch (same call
   │     a scheduler would make)
-  └─ on SIGTERM: Server.StopContext — cancel(runCtx), wait wg bounded by
+  └─ on SIGTERM: Server.Stop — cancel(runCtx), wait wg bounded by
         drain-timeout, then return
 ```
 
@@ -173,13 +173,13 @@ example always chain `.Name(...).Export(gs.As[JobDefinition]())`. Suspect #1 in 
 
 ### 2.3 Drain semantics on shutdown
 
-`Server.StopContext` (starter.go): cancels the launch context (in-flight chunk steps see
+`Server.Stop` (starter.go): cancels the launch context (in-flight chunk steps see
 ctx cancellation in their Reader/Processor/Writer — writers that respect ctx stop between
 commits, so the checkpoint stays consistent), then waits on the WaitGroup with
 `drain-timeout`. Timeout → a Warn log "drain timed out ... abandoning in-flight launches"
 and Stop returns anyway. ⚠ Only **startup** launches are tracked: on-demand `Launch` calls
 made by your own scheduler/handlers after `Run` returned are owned by their caller (source
-comment on `Stop`/`StopContext`).
+comment on `Stop`/`Stop`).
 
 ### 2.4 Why a gs.Server and not a Runner
 

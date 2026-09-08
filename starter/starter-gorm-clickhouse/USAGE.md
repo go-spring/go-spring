@@ -115,8 +115,9 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default",
-        discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:9000", Healthy: true}))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(    discovery.Endpoint{Addr: "127.0.0.1:9000", Healthy: true}), nil
+    }).Name("default")
 }
 ```
 
@@ -331,7 +332,7 @@ SQL statement, prometheus metrics on :9090/metrics, access log by `observability
 | `AutoMigrate` fails (missing ENGINE) | ClickHouse requires a table engine | `Set("gorm:table_options", "ENGINE=MergeTree ORDER BY (id)")`. |
 | Transaction code errors / no effect | ClickHouse has no multi-statement tx | batch writes; see dialect gotchas §3.4. |
 | Duplicate rows despite uniqueIndex tag | uniqueIndex not enforced by ClickHouse | dedupe at write/model level. |
-| Discovery instance never connects | backend name mismatch / service unregistered | check `RegisterDiscovery` name vs `discovery` key. |
+| Discovery instance never connects | backend label mismatch / service unregistered | check the bean name vs the `discovery` key. |
 | TLS works but cert hostname mismatch | dialing by IP | set `tls.server-name` (live on this dialect). |
 
 ## 6. Design Health

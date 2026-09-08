@@ -22,6 +22,7 @@ import (
 
 	"go-spring.org/cloud/httpx"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -45,9 +46,16 @@ type Config struct {
 	// not silently change the key govern.rules match on.
 	ServiceName string `value:"${service-name:=}"`
 
-	// Discovery names the registered discovery backend (from cloud/discovery)
-	// that resolves ServiceName. Required when ServiceName is set.
+	// Discovery names the discovery backend bean that resolves ServiceName.
+	// Required when ServiceName is set; the bean itself is injected by the
+	// starter's constructor from this label.
 	Discovery string `value:"${discovery:=}"`
+
+	// backend is the discovery backend instance the label above cites. It is
+	// populated by the starter wiring (newDispatchTransport resolves the label
+	// against every registered discovery backend bean), never bound from
+	// configuration.
+	backend discovery.Discovery
 
 	// Balancer names the load-balancing strategy: round_robin (default),
 	// least_conn, consistent_hash, weighted, or zone_aware.
@@ -105,7 +113,7 @@ func (c Config) toTransportConfig() httpx.Config {
 	return httpx.Config{
 		ServiceName:      serviceName,
 		Addr:             c.Addr,
-		Discovery:        c.Discovery,
+		Discovery:        c.backend,
 		Balancer:         c.Balancer,
 		SuspendThreshold: c.SuspendThreshold,
 		SuspendFor:       c.SuspendFor,

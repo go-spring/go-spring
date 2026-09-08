@@ -88,7 +88,7 @@ Rules of thumb:
 `terminationGracePeriodSeconds` (30s) and the container `preStop` sleep (5s)
 bound the drain: readiness flips to OUT_OF_SERVICE on SIGTERM, the preStop sleep
 lets the endpoint controller stop routing new traffic, and each server finishes
-its own shutdown (in PreStop / StopContext). Rolling updates drain in-flight
+its own shutdown (in PreStop / Stop). Rolling updates drain in-flight
 requests losslessly.
 
 ## Metrics
@@ -121,7 +121,7 @@ The adapter ConfigMap maps `http_requests_total` to a per-pod
 ## Pod metadata
 
 The Deployment injects Pod fields via the Downward API (`GS_POD_NAME`,
-`GS_POD_NAMESPACE`, `GS_POD_IP`, `GS_NODE_NAME`, `GS_POD_SERVICE_ACCOUNT`) and
+`GS_POD_NAMESPACE`, `GS_POD_UID`, `GS_POD_IP`, `GS_NODE_NAME`, `GS_NODE_IP`, `GS_POD_SERVICE_ACCOUNT`) and
 mounts labels/annotations at `/etc/podinfo`. Read them in the app with
 `go-spring.org/cloud/actuator/podinfo`:
 

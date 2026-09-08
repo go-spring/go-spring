@@ -167,20 +167,15 @@ func (o *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return nil
 }
 
-// Stop implements gs.Server: shut the worker down, draining in-flight tasks.
-func (o *Server) Stop() error {
-	return o.StopContext(context.Background())
-}
-
-// StopContext implements gs.Stopper: shut the worker down, draining in-flight
-// tasks. asynq's Shutdown takes no context, so ctx is unused here - the drain
-// is bounded by the configured ShutdownTimeout.
-func (o *Server) StopContext(ctx context.Context) error {
+// Stop shuts the worker down, draining in-flight tasks. asynq's Shutdown takes
+// no context, so ctx is unused here - the drain is bounded by the configured
+// ShutdownTimeout.
+func (o *Server) Stop(ctx context.Context) error {
 	o.srv.Shutdown()
 	return nil
 }
 
 // Destroy shuts the worker down, draining in-flight tasks (bean destroy path).
 func (o *Server) Destroy() error {
-	return o.Stop()
+	return o.Stop(context.Background())
 }

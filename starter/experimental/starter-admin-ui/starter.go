@@ -154,15 +154,10 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return errutil.Explain(err, "admin-ui: failed to serve on %s", s.Config.Addr)
 }
 
-// Stop shuts the server down gracefully and waits for the poller to exit.
-func (s *Server) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext shuts the server down gracefully, propagating ctx into
+// Stop shuts the server down gracefully, propagating ctx into
 // http.Server.Shutdown so the drain rides the shutdown context, and waits for
 // the poller to exit.
-func (s *Server) StopContext(ctx context.Context) error {
+func (s *Server) Stop(ctx context.Context) error {
 	if s.stop != nil {
 		// Idempotent close guard — Stop is called at most once by the framework,
 		// but a nil-safety close is cheap and defensive.

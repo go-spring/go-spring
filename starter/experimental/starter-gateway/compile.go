@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -84,7 +85,13 @@ type RouteTable struct {
 
 	mu        sync.Mutex // guards recompilation and lastPtr
 	lastPtr   uintptr    // identity of the last-compiled routes map
-	discovery string
+	discovery string     // default backend label (spring.gateway.discovery)
+
+	// backends is the container's named discovery backend beans (bean name =
+	// label), injected once by newRouteTable. lb:// upstreams resolve their
+	// ${discovery} label (or the gateway default above) against it at compile
+	// time; it never changes across hot reloads.
+	backends map[string]discovery.Discovery
 
 	// execs pools resilience executors by policy name so routes sharing a policy
 	// share breaker/limiter state. Rebuilt on each recompile.
@@ -94,11 +101,14 @@ type RouteTable struct {
 // newRouteTable builds the table. Config (Cfg) and bean-backed filters (Wrappers)
 // are populated by field injection after the constructor returns, so route
 // compilation is deferred to warmup() — called from GatewayServer.Run — where a
-// bad initial config fails startup.
-func newRouteTable(ctx *gs.ContextProvider, m *Metrics) *RouteTable {
+// bad initial config fails startup. backends is the container's named discovery
+// backend beans (optional: an app with none gets an empty directory, and any
+// lb:// upstream then fails to compile with the label it could not resolve).
+func newRouteTable(ctx *gs.ContextProvider, m *Metrics, backends map[string]discovery.Discovery) *RouteTable {
 	return &RouteTable{
-		ctx:     ctx.Context,
-		metrics: m,
+		ctx:      ctx.Context,
+		metrics:  m,
+		backends: backends,
 	}
 }
 

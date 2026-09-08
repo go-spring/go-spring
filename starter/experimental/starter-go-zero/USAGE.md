@@ -214,7 +214,7 @@ gs.Run()
   │     ├─ "go-zero zrpc server starting on <listen-on>" log line
   │     └─ go svr.Start() (binds listener, registers under Etcd.Key, blocks)
   │         / select on errCh | done
-  └─ on SIGTERM: StopContext closes done → Run calls svr.Stop()
+  └─ on SIGTERM: Stop closes done → Run calls svr.Stop()
         (zrpc deregisters from etcd, drains the transport, gs completes shutdown)
 ```
 
@@ -223,7 +223,7 @@ Design notes (from source comments, verified):
 - `Start` blocks internally (rest comment: "Start binds the listener and blocks until Stop is
   called"), so it runs in a goroutine while `Run` parks on the `done` channel; `Stop` closes
   `done` to hand control back to Go-Spring after tearing the server down.
-- `svr.Stop()` takes no context — `StopContext`'s ctx only tags the shutdown log.
+- `svr.Stop()` takes no context — `Stop`'s ctx only tags the shutdown log.
 - If `Start` returns on its own, `Run` surfaces nil (errCh receives nil); real Start failures
   surface as listener-bind panics/errors inside go-zero — see §5.
 

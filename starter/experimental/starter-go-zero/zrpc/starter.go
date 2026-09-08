@@ -178,15 +178,10 @@ func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 }
 
-// Stop signals Run to return so Go-Spring can complete its shutdown sequence.
-func (s *ZrpcServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext signals Run to return so Go-Spring can complete its shutdown
+// Stop signals Run to return so Go-Spring can complete its shutdown
 // sequence. The server teardown itself happens in Run via svr.Stop() (which
 // takes no context), so ctx only tags the shutdown log.
-func (s *ZrpcServer) StopContext(ctx context.Context) error {
+func (s *ZrpcServer) Stop(ctx context.Context) error {
 	log.Infof(ctx, log.TagAppDef, "go-zero zrpc server shutting down on %s", s.cfg.ListenOn)
 	close(s.done)
 	return nil

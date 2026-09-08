@@ -75,12 +75,13 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     `init()`)。只负责建连接。
   - `starter.go` —— `init()` 期的 `gs.Group` / `gs.Module` 注册,以及组装 bean 的
     构造函数(`newClient`)。
-  - `discovery.go` —— 客户端服务发现接缝:mesh 门控的构建器(`GetDiscovery` +
-    `discovery.NewLoader` + `WithScheme`,`ServiceName` 为空或 mesh 开启时返回
-    `nil`)。`Loader` 是纯快照函数——无资源、无 `Stop`,新鲜度全在 discovery 后端
-    内部——所以不按 client 缓存、`Destroy` 时也无需回收。driver 各自的 dialer(经
-    `loadbalance.SourceFunc` 把 loader 包进 round-robin `Pool`,每次建连 `Pick`)留在
-    `config.go` / `starter.go`;这里只放 loader 的构建。
+  - `discovery.go` —— 客户端服务发现接缝:mesh 门控的构建器(用按配置 `discovery`
+    标签注入的后端 bean 调 `discovery.NewResolver` + `WithScheme`,后端缺失、
+    `ServiceName` 为空或 mesh 开启时返回 `nil`)。`Resolver` 是纯快照函数——无资源、
+    无 `Stop`,新鲜度全在 discovery 后端 bean 内部——所以不按 client 缓存、
+    `Destroy` 时也无需回收。driver 各自的 dialer(经 `loadbalance.SourceFunc` 把
+    resolver 包进 round-robin `Pool`,每次建连 `Pick`)留在 `config.go` /
+    `starter.go`;这里只放 resolver 的构建。
   - `resilience.go` —— wrapper bean 的 `ApplyResilience` InitMethod、executor,以及
     它的 `Close` / `CloseDriver` Destroy 钩子。
   - `observability.go` —— observe kit 桥接(trace/metric/access-log 钩子)。

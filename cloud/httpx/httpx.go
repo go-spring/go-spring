@@ -81,9 +81,10 @@ type Config struct {
 	// and the generated client's Target field need not be set.
 	Addr string
 
-	// Discovery names the registered discovery backend to resolve ServiceName
-	// through. Required when ServiceName is set.
-	Discovery string
+	// Discovery is the discovery backend that resolves ServiceName. The caller
+	// (a starter) injects the backend bean its config cites; required when
+	// ServiceName is set.
+	Discovery discovery.Discovery
 
 	// Balancer names the registered load-balancing strategy (round_robin,
 	// least_conn, consistent_hash, weighted, zone_aware). Defaults to round_robin.

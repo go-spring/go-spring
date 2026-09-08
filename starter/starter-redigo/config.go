@@ -19,6 +19,7 @@ package StarterRedigo
 import (
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -68,11 +69,18 @@ type Config struct {
 	// starter-go-redis.
 	Scheme string `value:"${scheme:=}"`
 
-	// Discovery selects which registered discovery backend resolves ServiceName.
-	// It is only consulted when ServiceName is set. A company registers its
-	// naming service once via discovery.Register; the default backend name is
-	// "default". Field layout matches starter-go-redis.
+	// Discovery names the discovery backend bean that resolves ServiceName
+	// (bean name = label). It is only consulted when ServiceName is set; the
+	// bean itself is injected by the starter's constructor from this label.
+	// Field layout matches starter-go-redis.
 	Discovery string `value:"${discovery:=default}"`
+
+	// backend is the discovery backend instance the label above cites. It is
+	// populated by the starter wiring (createPool injects the named backend
+	// bean), never bound from configuration. Standalone NewPool callers that
+	// want discovery must set it through the starter wiring (or their own
+	// Driver), not through properties.
+	backend discovery.Discovery
 
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext. Field layout matches

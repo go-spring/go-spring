@@ -21,9 +21,10 @@
 // internal: each resolved service gets a background etcd watcher that keeps
 // the cached snapshot current, so Resolve is a cheap read after the first call.
 //
-// Backends are named adapters in the discovery registry, not injectable beans
-// (same idiom as starter-registry-nacos): configure one block per etcd cluster
-// under ${spring.discovery.etcd.<name>} and a client starter cites the name.
+// Each backend is a NAMED BEAN in the IoC container — the container is the
+// discovery directory: configure one block per etcd cluster under
+// ${spring.discovery.etcd.<name>} and a client starter injects the backend its
+// config cites by that name.
 //
 //	spring.discovery.etcd.prod.endpoints=127.0.0.1:2379
 //	spring.discovery.etcd.prod.key-prefix=/services/
@@ -59,9 +60,11 @@ import (
 // connection fields (same client idiom, same auth/TLS knobs) — the consumer
 // side needs no TTL because it never writes.
 type DiscoveryConfig struct {
-	// Endpoints lists the etcd cluster nodes to dial. Required; setting any
-	// endpoint is what activates the adapter block.
-	Endpoints []string `value:"${endpoints}" expr:"len($) > 0"`
+	// Endpoints lists the etcd cluster nodes to dial. Empty INHERITS the
+	// ${spring.registry.etcd} center connection (one cluster, one shared
+	// client with the registrar); set it to point this backend at a different
+	// cluster than the one this process registers into.
+	Endpoints []string `value:"${endpoints:=}"`
 
 	// Username / Password authenticate against etcd when auth is enabled.
 	// Leave empty for anonymous clusters.
@@ -82,20 +85,65 @@ type DiscoveryConfig struct {
 }
 
 func init() {
+	// One NAMED bean per block under ${spring.discovery.etcd.<name>}: the bean
+	// name is the label a client starter cites to pick this backend. The backend
+	// is constructed at injection time (only when something cites it — or
+	// collects all Discovery beans), and its etcd client is closed by the bean
+	// destructor on shutdown. A label colliding with another bean name fails
+	// loudly in the container.
 	gs.Module(gs.OnProperty("spring.discovery.etcd"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.discovery.etcd}", func(name string, c DiscoveryConfig) error {
-			if _, err := discovery.GetDiscovery(name); err == nil {
-				return errutil.Explain(nil, "registry-etcd: discovery backend %q already registered", name)
+			if len(c.Endpoints) == 0 {
+				// No connection of its own: inherit the center client. The
+				// bean keeps the block's key-prefix (still defaults to the
+				// registrar's), so an inheriting block is usually just a
+				// label.
+				r.Provide(newInheritedDiscoveryBackend,
+					gs.IndexArg(0, gs.ValueArg(c)),
+					gs.IndexArg(1, gs.TagArg("?")),
+				).Name(name).Caller(1)
+			} else {
+				r.Provide(newDiscoveryBackend,
+					gs.IndexArg(0, gs.ValueArg(c)),
+				).Name(name).Destroy(destroyDiscoveryBackend).Caller(1)
 			}
-			b, err := newEtcdDiscovery(c)
-			if err != nil {
-				return errutil.Explain(err, "registry-etcd: build discovery backend %q", name)
-			}
-			discovery.RegisterDiscovery(name, b)
-			log.Infof(context.Background(), starterTag, "registered etcd discovery backend name=%s endpoints=%v", name, c.Endpoints)
+			log.Debugf(context.Background(), starterTag, "declared etcd discovery backend bean name=%s endpoints=%v", name, c.Endpoints)
 			return nil
 		})
 	})
+}
+
+// newDiscoveryBackend builds one etcd-backed Discovery bean with its OWN
+// client (probing the cluster, same fail-fast as the registrar). It runs at
+// injection time; the bean destructor closes the client.
+func newDiscoveryBackend(c DiscoveryConfig) (discovery.Discovery, error) {
+	return newEtcdDiscovery(c)
+}
+
+// newInheritedDiscoveryBackend builds one etcd-backed Discovery bean reusing
+// the shared ${spring.registry.etcd} center client — the consumer half of the
+// "one center config, one connection" convergence. It carries no destructor:
+// the center bean owns the client's lifetime.
+func newInheritedDiscoveryBackend(c DiscoveryConfig, ec *etcdCenter) (discovery.Discovery, error) {
+	if ec == nil {
+		return nil, errutil.Explain(nil, "registry-etcd: discovery block cites no endpoints and no ${spring.registry.etcd} center is configured")
+	}
+	return &etcdDiscovery{
+		client:    ec.client,
+		keyPrefix: c.KeyPrefix,
+		bgCtx:     context.Background(),
+		entries:   map[string]*serviceEntry{},
+	}, nil
+}
+
+// destroyDiscoveryBackend closes the backend's own etcd client on shutdown. It
+// is the bean destructor; the background watchers stop with the client.
+func destroyDiscoveryBackend(d discovery.Discovery) error {
+	b, ok := d.(*etcdDiscovery)
+	if !ok || b == nil {
+		return nil
+	}
+	return errutil.Explain(b.client.Close(), "registry-etcd: close discovery backend")
 }
 
 // newEtcdDiscovery builds a Discovery backed by an etcd cluster for c. It

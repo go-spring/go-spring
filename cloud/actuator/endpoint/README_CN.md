@@ -24,11 +24,11 @@ import (
 )
 
 func init() {
-    gs.Provide(&endpoint.Endpoint{Path: "/metrics", Handler: promhttp.Handler()})
+    gs.Provide(&endpoint.Endpoint{Pattern: "/metrics", Handler: promhttp.Handler()})
 }
 ```
 
-Path 不能和 actuator 内置路径(`/healthz`、`/readyz`、`/info`...)或其他
-贡献的 endpoint 冲突,重复路径启动时 panic。每个 endpoint 还受 actuator 的
-`spring.actuator.endpoints.include` / `.exclude` 过滤,名字取去掉首斜杠的
-路径。
+Pattern 不能和 actuator 内置 pattern（`/healthz`、`/readyz`、`/info`...）或
+其他端点冲突，重复 pattern 启动时 panic。声明 `Sensitive` 的端点只有显式列入
+`spring.actuator.endpoints.include` 才注册——敏感性由贡献者声明，actuator 不代为
+裁决。过滤按 pattern 的路径匹配（去掉方法前缀），如 /env、/metrics。

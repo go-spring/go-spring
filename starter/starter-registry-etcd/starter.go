@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-// Package StarterRegistryEtcd registers the current instance into an etcd
-// cluster - the provider-side counterpart to client-side discovery.
+// Package StarterRegistryEtcd adapts etcd as the service registry, serving
+// BOTH sides of the naming idiom: the provider-side write (register /
+// deregister this instance, this file) and the client-side read (discovery
+// backends, discovery_etcd.go).
 //
 // It exists for VM / bare-metal / hybrid deployments where the platform does
 // not register instances for you. In pure Kubernetes the platform already
@@ -66,19 +68,27 @@ func init() {
 	gs.Provide(
 		NewServer,
 		gs.TagArg("${spring.registry.etcd}"),
+		gs.TagArg("?"),
 	).Name("registryServer").
 		Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.registry.etcd.endpoints"))
 }
 
 // NewServer builds the etcd registrar from c and returns the Server that
-// publishes this instance on ready and deregisters on shutdown. It probes the
-// etcd cluster (a Status call against the first endpoint) so a misconfigured or
-// unreachable cluster fails fast at startup rather than surfacing on the first
-// Register.
-func NewServer(c EtcdConfig) (*Server, error) {
+// publishes this instance on ready and deregisters on shutdown. ec is the
+// shared center client bean for ${spring.registry.etcd}; when it is nil (a
+// direct construction, e.g. tests), a standalone probed client is built. The
+// shared client is closed by the center bean's destructor, not by this Server.
+func NewServer(c EtcdConfig, ec *etcdCenter) (*Server, error) {
 	log.Debugf(context.Background(), starterTag, "creating etcd registrar endpoints=%v ttl=%s", c.Endpoints, c.TTL)
-	reg, err := newEtcdRegistrar(c)
+	if ec == nil {
+		var err error
+		ec, err = newEtcdCenter(c)
+		if err != nil {
+			return nil, err
+		}
+	}
+	reg, err := newEtcdRegistrar(c, ec.client)
 	if err != nil {
 		return nil, errutil.Explain(err, "registry-etcd: build registrar")
 	}
@@ -131,16 +141,10 @@ func (s *Server) PreStop(ctx context.Context) {
 	s.deregister(ctx)
 }
 
-// Stop deregisters as a fallback should PreStop not have run. Deregister is
-// idempotent, so a second call is a no-op.
-func (s *Server) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext deregisters as a fallback should PreStop not have run,
-// propagating the shutdown context to the etcd Deregister call. Deregister is
-// idempotent, so a second call is a no-op.
-func (s *Server) StopContext(ctx context.Context) error {
+// Stop deregisters as a fallback should PreStop not have run, propagating ctx
+// to the etcd Deregister call. Deregister is idempotent, so a second call is a
+// no-op.
+func (s *Server) Stop(ctx context.Context) error {
 	s.deregister(ctx)
 	return nil
 }

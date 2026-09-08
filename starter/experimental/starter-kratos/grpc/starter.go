@@ -182,16 +182,10 @@ func (s *GrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 }
 
-// Stop signals Run to tear down the kratos.App so Go-Spring can complete its
-// shutdown sequence.
-func (s *GrpcServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext signals Run to tear down the kratos.App so Go-Spring can complete
+// Stop signals Run to tear down the kratos.App so Go-Spring can complete
 // its shutdown sequence. The App teardown itself is driven by Run via
 // app.Stop() (which takes no context), so ctx only tags the shutdown log.
-func (s *GrpcServer) StopContext(ctx context.Context) error {
+func (s *GrpcServer) Stop(ctx context.Context) error {
 	log.Infof(ctx, log.TagAppDef, "kratos grpc server shutting down on %s", s.cfg.Addr)
 	close(s.done)
 	return nil

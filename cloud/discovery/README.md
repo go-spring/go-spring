@@ -24,12 +24,11 @@ import (
     "go-spring.org/cloud/discovery"
 )
 
-d, err := discovery.GetDiscovery("default")     // a backend registered by a starter
-if err != nil { return err }
-
-load, err := discovery.NewResolver(ctx, "default", "orders-redis")
+// d is the discovery backend bean a starter injected (named after its config
+// label, e.g. ${spring.discovery.etcd.<name>}); nil means "no discovery".
+load, err := discovery.NewResolver(ctx, d, "orders-redis")
 if err != nil { return err }                    // fail-fast: no endpoints at construction
-if load == nil { return err }                    // "not in effect" (no name / mesh): dial addr directly
+if load == nil { return err }                    // "not in effect" (no backend/name/mesh): dial addr directly
 
 eps, err := load()                               // the live snapshot, error surfaced
 if err != nil { return err }
@@ -48,10 +47,11 @@ type Discovery interface {
   service (seed fetch, bounded by ctx); later calls are cheap reads — freshness
   lives INSIDE the backend, which keeps its cache current however the
   underlying registry notifies it (watch, subscription, poll).
-- Backends register themselves by label (`RegisterDiscovery("default", b)`);
-  `GetDiscovery` resolves the label and its error lists every registered name,
-  so a typo or a missing starter is obvious at construction. Empty name, nil
-  backend, or a duplicate registration panics — it is a wiring bug.
+- Backends are NAMED BEANS in the IoC container (bean name = config label,
+  e.g. `spring.discovery.etcd.prod` registers a bean named "prod"); a client
+  cites the label in its config and the starter injects the bean by that name.
+  The container is the discovery directory — duplicate labels and typos fail
+  loudly at wiring time.
 
 No live registry? Use the built-in static backend:
 
@@ -142,7 +142,8 @@ func (b *myBackend) Resolve(ctx context.Context, name string, opts ...discovery.
     // honor q.Tag in the registry call if it supports tags
 }
 
-func init() { discovery.RegisterDiscovery("default", &myBackend{}) }
+// in a starter's module wiring:
+r.Provide(func() (discovery.Discovery, error) { return &myBackend{}, nil }).Name("default")
 ```
 
 Concurrency-safe, and SDK-backed adapters (Nacos / Consul / etcd / DNS /

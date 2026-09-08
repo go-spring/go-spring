@@ -119,12 +119,15 @@ func main() {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	// A static discovery backend that resolves serviceName to the two healthy
-	// instances. Registering it under "static" matches discovery=static in the
-	// config; the "discovered" client watches it through the Resolver.
-	discovery.RegisterDiscovery("static", discovery.NewStaticDiscovery(
-		discovery.Endpoint{Addr: addrBackendA, Healthy: true},
-		discovery.Endpoint{Addr: addrBackendB, Healthy: true},
-	))
+	// instances. Registering it as the bean named "static" matches
+	// discovery=static in the config; the starter injects that bean and the
+	// "discovered" client follows it through the Resolver.
+	gs.Provide(func() (discovery.Discovery, error) {
+		return discovery.NewStaticDiscovery(
+			discovery.Endpoint{Addr: addrBackendA, Healthy: true},
+			discovery.Endpoint{Addr: addrBackendB, Healthy: true},
+		), nil
+	}).Name("static")
 
 	go startBackend(addrBackendA, "backend-A")
 	go startBackend(addrBackendB, "backend-B")

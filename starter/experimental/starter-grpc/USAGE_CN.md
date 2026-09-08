@@ -200,7 +200,7 @@ gs.Run()
   │    ├─ net.Listen(addr)
   │    ├─ <-sig.TriggerAndWait()   ← 就绪信号门控 Serve
   │    └─ svr.Serve(listener)
-  └─ SIGTERM 时: StopContext → svr.GracefulStop()（排空在途 RPC；ctx 只标记关停日志）
+  └─ SIGTERM 时: Stop → svr.GracefulStop()（排空在途 RPC；ctx 只标记关停日志）
 ```
 
 `UseUnaryInterceptor`/`UseStreamInterceptor` 注册的用户拦截器必须在 `init()` 里（至少在容器
@@ -373,7 +373,7 @@ handler panic → `codes.Internal` "panic in {FullMethod}: ..."，并经共享 g
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` 低于报文 | 调大上限。 |
 | stream RPC 绕过限流 | 准入设计上只覆盖 unary | 用用户拦截器防护 stream（`UseStreamInterceptor`）。 |
 | GOAWAY / 连接抖动 | 激进的 `keepalive.time` 对上低频 ping 的客户端 | grpc keepalive 语义；放宽服务端参数。 |
-| LB 客户端启动即 `ErrNoSubConnAvailable` | discovery 后端缺失/无健康实例；或 service config 里 balancer 名不对 | 注册后端（`discovery.RegisterDiscovery`）并用 `BalancerName`/`LoadBalancingConfig`。 |
+| LB 客户端启动即 `ErrNoSubConnAvailable` | discovery 后端缺失/无健康实例；或 service config 里 balancer 名不对 | 注册后端 bean（命名 discovery.Discovery bean）并用 `BalancerName`/`LoadBalancingConfig`。 |
 | discovery 出错后 LB 不再更新 | `Resolve` 失败记日志并保留最后快照，下个轮询周期重试 | 无需处理——pollLoop 自动重试。 |
 
 ## 6. 设计体检表

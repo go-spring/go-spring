@@ -72,4 +72,4 @@ replace go-spring.org/starter-neo4j => ../
 
 replace go-spring.org/starter-otel => ../../../starter-otel
 
-replace go-spring.org/starter-actuator => ../../starter-actuator
+replace go-spring.org/starter-actuator => ../../../starter-actuator

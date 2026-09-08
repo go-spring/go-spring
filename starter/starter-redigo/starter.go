@@ -26,6 +26,7 @@ package StarterRedigo
 import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -56,6 +57,7 @@ func init() {
 				createPool,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("${spring.redigo."+name+".discovery:=none}?")),
 			).Name(name).Destroy(destroyPool)
 
 			// Contribute a health indicator for this instance unless the user
@@ -94,7 +96,10 @@ func init() {
 // (custom out-of-package drivers cannot set unexported fields). The Driver's
 // returned Pool is fully armed; see [NewPool] and the Driver interface doc for
 // the assembly contract and the two customization shapes.
-func createPool(ctx *gs.ContextProvider, c Config, d Driver) (*Pool, error) {
+//
+// disc is the discovery backend bean cited by the entry's ${discovery} label
+// (nil when the key is unset or the entry dials a static Addr).
+func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery) (*Pool, error) {
 
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
 
@@ -104,6 +109,13 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver) (*Pool, error) {
 	); err != nil {
 		return nil, err
 	}
+
+	// Fail loud when the entry routes through discovery but the cited label
+	// names no backend bean — the container is the discovery directory.
+	if c.ServiceName != "" && disc == nil {
+		return nil, errutil.Explain(nil, "redis: instance cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", c.Discovery)
+	}
+	c.backend = disc
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {

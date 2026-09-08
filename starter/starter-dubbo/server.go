@@ -327,14 +327,8 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 }
 
 // Stop signals Run to return so Go-Spring can complete its shutdown sequence.
-func (s *SimpleDubboServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext signals Run to return so Go-Spring can complete its shutdown
-// sequence. It implements the gs_app.Stopper seam; dubbo-go's shutdown API is
-// not context-aware, so ctx is only used for logging.
-func (s *SimpleDubboServer) StopContext(ctx context.Context) error {
+// dubbo-go's shutdown API is not context-aware, so ctx is only used for logging.
+func (s *SimpleDubboServer) Stop(ctx context.Context) error {
 	log.Infof(ctx, log.TagAppDef, "dubbo server shutting down")
 	close(s.done)
 	return nil

@@ -142,7 +142,7 @@ gs.Run()
   │     就绪之后才触发
   ├─ 每个 run-on-startup job：goroutine + wg.Add → Launcher.Launch
   │     （与 scheduler 走同一调用）
-  └─ SIGTERM 时：Server.StopContext —— cancel(runCtx)、按 drain-timeout
+  └─ SIGTERM 时：Server.Stop —— cancel(runCtx)、按 drain-timeout
         有界等待 wg，然后返回
 ```
 
@@ -169,12 +169,12 @@ gs.Run()
 
 ### 2.3 停机时的 drain 语义
 
-`Server.StopContext`（starter.go）：先 cancel launch context（运行中的 chunk step 在
+`Server.Stop`（starter.go）：先 cancel launch context（运行中的 chunk step 在
 Reader/Processor/Writer 里看到 ctx 取消 —— 尊重 ctx 的 writer 停在两次提交之间，
 checkpoint 保持一致），再按 `drain-timeout` 有界等待 WaitGroup。超时 → Warn 日志
 "drain timed out ... abandoning in-flight launches"，Stop 照常返回。⚠ 只跟踪**启动型**
 launch：`Run` 返回后由你自己的 scheduler/handler 发起的 `Launch` 归调用方所有
-（`Stop`/`StopContext` 源码注释）。
+（`Stop` 源码注释）。
 
 ### 2.4 为什么是 gs.Server 而不是 Runner
 

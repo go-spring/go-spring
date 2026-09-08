@@ -132,16 +132,10 @@ func (s *SimpleHttpServer) Run(ctx context.Context, sig ReadySignal) error {
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
 
-// StopContext gracefully stops the HTTP server, allowing in-flight requests
+// Stop gracefully stops the HTTP server, allowing in-flight requests
 // to complete. The context is the app's shutdown context (values-only) and
 // is passed through to http.Server.Shutdown.
-func (s *SimpleHttpServer) StopContext(ctx context.Context) error {
+func (s *SimpleHttpServer) Stop(ctx context.Context) error {
 	log.Debugf(ctx, httpServerTag, "stopping HTTP server on %s", s.svr.Addr)
 	return s.svr.Shutdown(ctx)
-}
-
-// Stop gracefully stops the HTTP server, allowing in-flight requests
-// to complete.
-func (s *SimpleHttpServer) Stop() error {
-	return s.StopContext(context.Background())
 }

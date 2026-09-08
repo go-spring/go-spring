@@ -168,17 +168,11 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	return nil
 }
 
-// Stop stops the underlying Thrift server: it closes the server transport and
-// interrupts the accept loop. thrift's TSimpleServer.Stop does NOT wait for
+// Stop stops the underlying Thrift server. Thrift's Stop does NOT wait for
 // in-flight connections — there is no graceful drain (declared boundary; use
-// mature frameworks for production-grade thrift shutdown).
-func (s *SimpleThriftServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext stops the underlying Thrift server; see Stop for the no-drain
-// semantics. Thrift's Stop takes no context, so ctx only tags the shutdown log.
-func (s *SimpleThriftServer) StopContext(ctx context.Context) error {
+// mature frameworks for production-grade thrift shutdown) — and takes no
+// context, so ctx only tags the shutdown log.
+func (s *SimpleThriftServer) Stop(ctx context.Context) error {
 	log.Infof(ctx, log.TagAppDef, "thrift server shutting down on %s", s.cfg.Addr)
 	return s.svr.Stop()
 }

@@ -44,7 +44,7 @@ already registers every Pod behind a Service. Discovery is therefore
 **client-side only** — resolve a Service name to its live Pod endpoints — which
 is a different shape from the register-then-discover examples above, and why it
 is a reusable **starter** rather than a demo here:
-[`starter/starter-discovery-k8s`](../../starter/experimental/starter-discovery-k8s). It
+[`starter/starter-discovery-k8s`](../../starter/starter-discovery-k8s). It
 implements `cloud/discovery` in two modes: headless-Service DNS (zero
 dependency, no RBAC) and an EndpointSlice informer (real-time, client-go +
 `get/list/watch endpointslices` RBAC). The starter carries its own K8s manifests

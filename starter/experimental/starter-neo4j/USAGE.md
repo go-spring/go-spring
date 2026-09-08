@@ -277,7 +277,7 @@ IndexArg(1)), not the absolute-property Pool rule.
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `uri` | string | — | **required** (`expr:"$ != ''"`). Scheme selects routing+encryption: `bolt`/`neo4j` plain, `neo4j+s`/`bolt+s` TLS, `+ssc` self-signed. ⚠ Host is replaced by discovery output when `service-name` is set (example uses dummy `bolt://0.0.0.0:0` on purpose). | Missing → BindEach error naming the instance; bad scheme → driver error at ctor. |
-| `service-name` | string | — | Resolve the address through a discovery backend, once at startup (§2.4). ⚠ Requires a matching backend registered via `discovery.RegisterDiscovery`. | Unregistered backend → boot error "neo4j: resolve service …". |
+| `service-name` | string | — | Resolve the address through a discovery backend, once at startup (§2.4). ⚠ Requires a matching named backend bean. | Unregistered backend → boot error "neo4j: resolve service …". |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name`. | — |
 | `discovery` | string | `default` | Which registered backend resolves `service-name`. | Wrong name → boot error from discovery. |
 
@@ -360,7 +360,7 @@ binary runs — the error breakdown moves without restart.
 
 ### 4.4 Discovery drill
 
-Register a backend (`discovery.RegisterDiscovery`, see example/discovery.go), set
+Register a backend bean (see example/discovery.go), set
 `spring.neo4j.graph.service-name=neo4j-cluster` with dummy `uri=bolt://0.0.0.0:0`. Boot logs
 `neo4j client initialized, uri=bolt://127.0.0.1:7687` — the spliced address, not the dummy.
 Kill that instance: queries keep failing — the address was resolved once (§2.4); restart the

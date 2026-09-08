@@ -164,16 +164,10 @@ func (s *WsServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 }
 
-// Stop signals Run to tear down the kratos.App so Go-Spring can complete its
-// shutdown sequence.
-func (s *WsServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext signals Run to tear down the kratos.App so Go-Spring can complete
+// Stop signals Run to tear down the kratos.App so Go-Spring can complete
 // its shutdown sequence. The App teardown itself is driven by Run via
 // app.Stop() (which takes no context), so ctx is unused here.
-func (s *WsServer) StopContext(ctx context.Context) error {
+func (s *WsServer) Stop(ctx context.Context) error {
 	close(s.done)
 	return nil
 }

@@ -220,7 +220,7 @@ gs.Run()
 | `..tls.*` | 块 | 关 | 共享 tlsconf（`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`）；开启时 DefaultDriver 构建 TLS RedisClientOpt（driver.go:58-77）。 | TLS 配一半 → bean 构建期报错。 |
 | `..concurrency` | int | 10 | worker：并发处理任务上限。对纯生产者实例无效。 | 过低 → 队列积压；`server.enabled=false` 时静默无效。 |
 | `..queues` | map[string]int | 空 → asynq "default":1 | 队列 → 优先级权重（越高越常被处理）。⚠ 投递侧 `asynq.Queue(...)` 选项必须指向已配置的队列（或回退 default），否则 worker 取不到。 | 投到未列出的队列 → 任务永久 pending。 |
-| `..shutdown-timeout` | duration | 8s | worker 排空上限（`srv.Shutdown()`）；传给 `StopContext` 的 ctx 不被使用——排空由该 timeout 兜底（client.go:176-183）。 | 过短 → 发布时在途任务被弃。 |
+| `..shutdown-timeout` | duration | 8s | worker 排空上限（`srv.Shutdown()`）；传给 `Stop` 的 ctx 不被使用——排空由该 timeout 兜底（client.go:176-183）。 | 过短 → 发布时在途任务被弃。 |
 | `..server.enabled` | bool | false | **worker 选配开关**。同时决定 `*Server` bean 是否存在——不开却 `autowire:"a:server"` 会在装配期失败。 | 注入 worker 但没开 → 容器报 bean 不存在。 |
 
 ---

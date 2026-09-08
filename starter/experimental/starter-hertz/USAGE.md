@@ -193,7 +193,7 @@ gs.Run()
   │    → register(h)                   // your routes, innermost
   ├─ SimpleHertzServer.Run(ctx, sig): <-sig.TriggerAndWait() → h.Run() blocks
   ├─ readiness: TriggerAndWait returns → readyz flips UP → engine starts serving
-  └─ SIGTERM: Stop/StopContext → h.Shutdown(ctx) drains in-flight requests
+  └─ SIGTERM: Stop/Stop → h.Shutdown(ctx) drains in-flight requests
 ```
 
 If `RouterRegister` is missing the container fails (non-nullable autowire); two

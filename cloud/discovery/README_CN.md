@@ -23,12 +23,11 @@ import (
     "go-spring.org/cloud/discovery"
 )
 
-d, err := discovery.GetDiscovery("default")     // starter 注册的后端
-if err != nil { return err }
-
-load, err := discovery.NewResolver(ctx, "default", "orders-redis")
+// d 是 starter 注入的发现后端 bean(bean 名=配置标签，如 ${spring.discovery.etcd.<name>});
+// nil 表示"未启用发现"。
+load, err := discovery.NewResolver(ctx, d, "orders-redis")
 if err != nil { return err }                    // fail-fast:构造时没有端点直接报错
-if load == nil { return err }                    // "不生效"(无名/mesh):直接拨配置地址
+if load == nil { return err }                    // "不生效"(无后端/无名/mesh):直接拨配置地址
 
 eps, err := load()                               // 实时快照,错误如实上抛
 if err != nil { return err }
@@ -46,9 +45,9 @@ type Discovery interface {
 - `Resolve` 返回当前快照。某个服务的第一次调用可能阻塞(播种查询,由 ctx
   约束);之后的调用是廉价读——新鲜度在后端内部:它用注册中心自己的通知
   机制(watch / 订阅 / 轮询)维持缓存最新。
-- 后端按标签注册(`RegisterDiscovery("default", b)`);`GetDiscovery` 按标签
-  解析，错误信息会列出全部已注册名，拼错名或漏装 starter 在构造时一目了然。
-  空名 / nil / 重复注册直接 panic——那是接线 bug。
+- 后端是 IoC 容器里的命名 bean(bean 名=配置标签，如 `spring.discovery.etcd.prod`
+  注册名为 "prod" 的 bean);client 在配置里写标签，starter 按名注入该 bean。
+  容器就是发现目录——标签重复、拼错在装配期即报错。
 
 没有注册中心？用内置的 static 后端:
 
@@ -132,7 +131,8 @@ func (b *myBackend) Resolve(ctx context.Context, name string, opts ...discovery.
     // 注册中心支持 tag 则在查询里带上 q.Tag
 }
 
-func init() { discovery.RegisterDiscovery("default", &myBackend{}) }
+// 在 starter 的模块接线里:
+r.Provide(func() (discovery.Discovery, error) { return &myBackend{}, nil }).Name("default")
 ```
 
 要求并发安全;带 SDK 的适配器(Nacos / Consul / etcd / DNS / Kubernetes)住在

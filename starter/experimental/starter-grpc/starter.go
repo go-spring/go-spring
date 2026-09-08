@@ -21,6 +21,7 @@ import (
 	"net"
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -38,6 +39,25 @@ func init() {
 		gs.IndexArg(0, gs.TagArg("${spring.grpc.server}")),
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.grpc.server.addr"))
+
+	// Capture the container's named discovery backend beans (bean name = label)
+	// into the directory the gsdiscovery resolver resolves "gsdiscovery://<label>
+	// /<service>" targets against. Collected at assembly time so target
+	// resolution never consults process-global state at runtime. Exported as a
+	// Rooter so the map is captured even when nothing autowires the hook.
+	gs.Provide(newDiscoveryBackendsHook,
+		gs.IndexArg(0, gs.TagArg("?")),
+	).Export(gs.As[gs.Rooter]()).Caller(1)
+}
+
+// newDiscoveryBackendsHook installs every named discovery.Discovery bean into
+// the gsdiscovery resolver's label directory (see balancer.go). The map is nil
+// when the app declares no backend beans — dials then fail loudly on the label.
+type discoveryBackendsHook struct{}
+
+func newDiscoveryBackendsHook(backends map[string]discovery.Discovery) (*discoveryBackendsHook, error) {
+	SetDiscoveryBackends(backends)
+	return &discoveryBackendsHook{}, nil
 }
 
 // ServiceRegister registers services on a grpc.Server.
@@ -240,14 +260,9 @@ func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return nil
 }
 
-// Stop gracefully stops the underlying gRPC server.
-func (s *SimpleGrpcServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext gracefully stops the underlying gRPC server. grpc's GracefulStop
+// Stop gracefully stops the underlying gRPC server. grpc's GracefulStop
 // takes no context, so ctx only tags the shutdown log.
-func (s *SimpleGrpcServer) StopContext(ctx context.Context) error {
+func (s *SimpleGrpcServer) Stop(ctx context.Context) error {
 	log.Infof(ctx, log.TagAppDef, "grpc server shutting down on %s", s.cfg.Addr)
 	s.svr.GracefulStop()
 	return nil

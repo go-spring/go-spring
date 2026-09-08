@@ -26,10 +26,14 @@ func init() {
 
 	// The compiled, hot-reloadable route table. Its ${spring.gateway} config
 	// and optional FilterWrapper beans (jwt-auth, lua) are populated by field
-	// injection; route compilation is deferred to server startup (warmup).
-	// Discovery runs inside the backend (loaders have no resources), so there is
-	// no destroy half to register.
-	gs.Provide(newRouteTable)
+	// injection; the container's named discovery backend beans are collected by
+	// the constructor (lb:// upstreams resolve their label against them); route
+	// compilation is deferred to server startup (warmup). Discovery runs inside
+	// the backend (loaders have no resources), so there is no destroy half to
+	// register.
+	gs.Provide(newRouteTable,
+		gs.IndexArg(2, gs.TagArg("?")),
+	).Caller(1)
 
 	// The listen-port server, wired into graceful drain as a gs.Server. Named
 	// so it coexists with the application's main HTTP server (which also

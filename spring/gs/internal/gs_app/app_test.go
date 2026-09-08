@@ -81,8 +81,7 @@ func (f *funcRunner) Run(ctx context.Context) error {
 
 type funcServer struct {
 	run     func(ctx context.Context, sig ReadySignal) error
-	stop    func() error
-	stopCtx func(ctx context.Context) error
+	stop    func(ctx context.Context) error
 	preStop func(ctx context.Context)
 }
 
@@ -90,18 +89,11 @@ func (f *funcServer) Run(ctx context.Context, sig ReadySignal) error {
 	return f.run(ctx, sig)
 }
 
-func (f *funcServer) Stop() error {
+func (f *funcServer) Stop(ctx context.Context) error {
 	if f.stop == nil {
 		return nil
 	}
-	return f.stop()
-}
-
-func (f *funcServer) StopContext(ctx context.Context) error {
-	if f.stopCtx == nil {
-		return f.Stop()
-	}
-	return f.stopCtx(ctx)
+	return f.stop(ctx)
 }
 
 func (f *funcServer) PreStop(ctx context.Context) {
@@ -338,7 +330,7 @@ func TestApp(t *testing.T) {
 
 		m := gsmock.NewManager()
 		r := NewServerMockImpl(m)
-		r.MockStop().Handle(func() error {
+		r.MockStop().Handle(func(ctx context.Context) error {
 			return errutil.Explain(nil, "server shutdown error")
 		})
 		r.MockRun().Handle(func(ctx context.Context, sig ReadySignal) error {
@@ -374,7 +366,7 @@ func TestApp(t *testing.T) {
 			<-sig.TriggerAndWait()
 			return nil
 		})
-		r.MockStop().Handle(func() error {
+		r.MockStop().Handle(func(ctx context.Context) error {
 			close(stopStarted)
 			<-stopRelease
 			return nil
@@ -423,7 +415,7 @@ func TestApp(t *testing.T) {
 			preStop: func(ctx context.Context) {
 				preStopAt = time.Now()
 			},
-			stop: func() error {
+			stop: func(ctx context.Context) error {
 				stopAt = time.Now()
 				return nil
 			},
@@ -451,30 +443,6 @@ func TestApp(t *testing.T) {
 		assert.Error(t, err).Matches("app not started yet, cannot refresh properties")
 	})
 
-	t.Run("config sources", func(t *testing.T) {
-		Reset()
-		t.Cleanup(Reset)
-
-		app := NewApp()
-		provider := &PropertiesRefresher{app: app}
-
-		// Before properties are loaded the sources are empty.
-		assert.That(t, len(provider.Sources())).Equal(0)
-
-		app.Property("app.name", "test-app")
-		err := app.Start()
-		assert.That(t, err).Nil()
-
-		// The property lands in the default source (name ""), unmerged with the
-		// higher-priority command-line/environment sources.
-		var appName string
-		for _, src := range provider.Sources() {
-			if src.Name == "" {
-				appName = src.Data["app.name"]
-			}
-		}
-		assert.String(t, appName).Equal("test-app")
-	})
 }
 
 // dyncConfig registers a gs.Dync field so a hot refresh has something to

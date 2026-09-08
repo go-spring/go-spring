@@ -19,6 +19,7 @@ package StarterMemcached
 import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -48,6 +49,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(4, gs.TagArg("${spring.memcached."+name+".discovery:=none}?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
@@ -77,12 +79,21 @@ func init() {
 
 // newClient creates a new Memcached client based on the provided configuration,
 // wrapped so every operation flows through the module-local observe layer (trace+metric+log).
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Client, error) {
+//
+// disc is the discovery backend bean cited by the entry's ${discovery} label
+// (nil when the key is unset or the entry uses a static server list).
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, disc discovery.Discovery) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating memcached client, servers=%v service-name=%s", c.Servers, c.ServiceName)
 
 	if len(c.Servers) == 0 && c.ServiceName == "" {
 		return nil, errutil.Explain(nil, "memcached: one of servers or service-name must be set")
 	}
+	// Fail loud when the entry routes through discovery but the cited label
+	// names no backend bean — the container is the discovery directory.
+	if c.ServiceName != "" && disc == nil {
+		return nil, errutil.Explain(nil, "memcached: instance %q cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", name, c.Discovery)
+	}
+	c.backend = disc
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}

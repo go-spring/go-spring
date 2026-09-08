@@ -132,7 +132,7 @@ gs.Run()
   │                                  stays reachable during startup "just like the actuator"
   │    7. go pollLoop(); Serve
   ├─ steady state: one poller goroutine; handlers read the last snapshot under RWMutex
-  └─ SIGTERM: StopContext → close(stop) → wait <-done → http.Server.Shutdown(ctx)
+  └─ SIGTERM: Stop → close(stop) → wait <-done → http.Server.Shutdown(ctx)
 ```
 
 Rationale cited from source comments:
@@ -168,7 +168,7 @@ bind time; there is no registry/discovery integration (suspect #2 in §6).
 
 ### 2.3 Shutdown walk
 
-`StopContext` (starter.go:166-183): idempotent `close(stop)` unblocks the poller's select;
+`Stop` (starter.go:166-183): idempotent `close(stop)` unblocks the poller's select;
 `<-done` waits for poller exit; then `http.Server.Shutdown(ctx)` drains in-flight page
 loads riding the framework's shutdown context.
 

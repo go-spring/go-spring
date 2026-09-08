@@ -156,16 +156,10 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
 
-// Stop gracefully shuts the HTTP server down, allowing in-flight requests to
-// complete.
-func (s *SimpleEchoServer) Stop() error {
-	return s.StopContext(context.Background())
-}
-
-// StopContext gracefully shuts the HTTP server down with the given context,
-// allowing in-flight requests to complete. It implements the gs_app.Stopper
-// seam so the shutdown context is propagated to http.Server.Shutdown.
-func (s *SimpleEchoServer) StopContext(ctx context.Context) error {
+// Stop gracefully shuts the HTTP server down with the given context, allowing
+// in-flight requests to complete. The shutdown context is propagated to
+// http.Server.Shutdown.
+func (s *SimpleEchoServer) Stop(ctx context.Context) error {
 	log.Infof(ctx, log.TagAppDef, "echo server shutting down on %s", s.svr.Addr)
 	return s.svr.Shutdown(ctx)
 }

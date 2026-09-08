@@ -132,7 +132,7 @@ gs.Run()
   │    3. net.Listen —— 端口冲突启动失败
   │    4. <-sig.TriggerAndWait() —— 应用就绪后才开始对外服务
   ├─ 就绪:health 翻 UP(路由表已编译,metrics.go:150-157)
-  └─ SIGTERM:StopContext → http.Server.Shutdown 排空在途请求;
+  └─ SIGTERM:Stop → http.Server.Shutdown 排空在途请求;
               RouteTable.Destroy 停掉所有 discovery watch(proxy.go:139)
 ```
 

@@ -194,7 +194,7 @@ gs.Run()
   ├─ SimpleDubboServer.Run: buildOptions(provider, protocols, registries) → d.NewServer()
   │     → regAll(): every ServiceRegister bean invoked → <-sig.TriggerAndWait() → svr.Serve()  [server.go:297-327]
   ├─ readiness: ready signal fires after Run's trigger; in-flight RPCs drain on Stop
-  └─ SIGTERM: StopContext closes the done channel → Run returns → gs completes shutdown
+  └─ SIGTERM: Stop closes the done channel → Run returns → gs completes shutdown
         (dubbo-go's own graceful-shutdown timings come from ${spring.dubbo.shutdown.*})
 ```
 

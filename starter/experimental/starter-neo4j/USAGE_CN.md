@@ -272,7 +272,7 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|---------|-------------------------|------------------------------|
 | `uri` | string | — | **必填**（`expr:"$ != ''"`）。scheme 决定路由+加密：`bolt`/`neo4j` 明文，`neo4j+s`/`bolt+s` TLS，`+ssc` 自签。⚠ 设置 `service-name` 时 host 被发现结果替换（example 故意用哑地址 `bolt://0.0.0.0:0`）。 | 缺失 → BindEach 报错并点名实例；scheme 非法 → 构造期 driver 报错。 |
-| `service-name` | string | — | 经发现后端解析地址，启动时一次（§2.4）。⚠ 需有经 `discovery.RegisterDiscovery` 注册的匹配后端。 | 后端未注册 → 启动报错 "neo4j: resolve service …"。 |
+| `service-name` | string | — | 经发现后端解析地址，启动时一次（§2.4）。⚠ 需有匹配的命名后端 bean。 | 后端未注册 → 启动报错 "neo4j: resolve service …"。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme 的端点；仅 `service-name` 生效时被读取。 | — |
 | `discovery` | string | `default` | 用哪个已注册后端解析 `service-name`。 | 名字错 → 发现层启动报错。 |
 
@@ -354,7 +354,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 
 ### 4.4 发现演练
 
-注册后端（`discovery.RegisterDiscovery`，见 example/discovery.go），设
+注册后端 bean（见 example/discovery.go），设
 `spring.neo4j.graph.service-name=neo4j-cluster` 与哑 `uri=bolt://0.0.0.0:0`。启动日志
 `neo4j client initialized, uri=bolt://127.0.0.1:7687`——拼接后的地址，不是哑值。
 杀掉该实例：查询持续失败——地址只在启动时解析过一次（§2.4）；重启应用（或交给平台）

@@ -85,8 +85,9 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default",
-        discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:11211", Healthy: true}))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(    discovery.Endpoint{Addr: "127.0.0.1:11211", Healthy: true}), nil
+    }).Name("default")
 }
 ```
 
@@ -239,7 +240,7 @@ starter）。
 |---|---|---|
 | 启动报 `one of servers or service-name must be set` | 实例块两者皆未配 | 配其一（`starter.go:83`） |
 | 启动报 `memcached: startup ping failed` | 服务器宕机/启动期地址错误 | 启动 memcached、修 `servers`；ping 是 fail-fast（`starter.go:98-100`） |
-| 启动报 `discovery resolve "..." failed` | 设了 `service-name` 但 `discovery` 名下无后端 | 启动前注册后端（`discovery.RegisterDiscovery`） |
+| 启动报 `discovery resolve "..." failed` | 设了 `service-name` 但 `discovery` 名下无后端 | 启动前注册命名后端 bean |
 | 启动报 `discovery returned no endpoints` | 后端健康但服务无实例（或 `scheme` 过滤过度） | 拉起实例/清空 `scheme`（`driver.go:75-79`） |
 | 集群扩缩容后 server 列表不更新 | gomemcache 创建即固定 server 集；watch 仅管生命周期 | 重启进程重新解析（`driver.go:60-66`） |
 | trace 里 memcached span 与请求 trace 断联 | gomemcache API 无 context；span 为根 span | 已知局限（`client.go:37-41`）；按 key/时间关联 |

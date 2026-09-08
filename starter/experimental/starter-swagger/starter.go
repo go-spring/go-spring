@@ -25,7 +25,7 @@ import (
 // management port, so enabling this starter surfaces interactive API docs with
 // zero wiring — no HTTP server or listening port of its own.
 func newEndpoint(ui *UI) *endpoint.Endpoint {
-	return &endpoint.Endpoint{Path: ui.Path(), Handler: ui}
+	return &endpoint.Endpoint{Pattern: ui.Path(), Handler: ui}
 }
 
 func init() {

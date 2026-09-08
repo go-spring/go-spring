@@ -174,7 +174,7 @@ gs.Run()
   │     ├─ <-sig.TriggerAndWait()          ← 等待 gs 就绪信号
   │     ├─ 日志行 "kratos grpc server starting on <addr>"
   │     └─ go app.Run()（发布进 etcd、开始服务）/ select done|errCh
-  └─ SIGTERM：Stop → StopContext 关闭 done → Run 调 app.Stop()
+  └─ SIGTERM：Stop → Stop 关闭 done → Run 调 app.Stop()
         （kratos 从 etcd 反注册、收尾 transport，gs 完成关停序列）
 ```
 
@@ -182,7 +182,7 @@ gs.Run()
 
 - `kratos.App.Run` 阻塞到 `Stop` 为止，因此它跑在 goroutine 里，`Run` 停在 `done`
   channel 上；`Stop` 关闭 `done` 把控制权交还 Go-Spring，由 Run 完成拆 App。
-- `app.Stop()` 不接收 context —— `StopContext` 的 ctx 只用于给关停日志打标。
+- `app.Stop()` 不接收 context —— `Stop` 的 ctx 只用于给关停日志打标。
 - 若 `app.Run()` 自身出错返回，`Run` 经
   `errutil.Explain(err, "kratos grpc app exited with error")` 上抛。
 

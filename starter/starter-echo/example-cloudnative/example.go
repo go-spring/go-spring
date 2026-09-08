@@ -90,9 +90,13 @@ var exec resilience.Executor
 func init() {
 	// Serve the app's own echo address through discovery (a real deployment
 	// would point Consul/Nacos/k8s here; a static backend keeps it self-contained).
-	discovery.RegisterDiscovery("static", discovery.NewStaticDiscovery(
-		discovery.Endpoint{Addr: "127.0.0.1:8082", Healthy: true},
-	))
+	// The backend is a named bean — the container is the discovery directory —
+	// cited by the clients' `discovery: static` config key.
+	gs.Provide(func() (discovery.Discovery, error) {
+		return discovery.NewStaticDiscovery(
+			discovery.Endpoint{Addr: "127.0.0.1:8082", Healthy: true},
+		), nil
+	}).Name("static")
 
 	gs.Provide(dep)
 	gs.Provide(&Config{}).Export(gs.As[gs.Rooter]())
@@ -178,7 +182,11 @@ func runTest() {
 	fmt.Println("health: readiness aggregate OK (UP -> DOWN when dependency down -> UP)")
 
 	// --- 2. Discovery ----------------------------------------------------
-	resolver, err := discovery.NewResolver(ctx, "static", "cloudnative-echo")
+	// The smoke test runs outside the container, so it re-builds the same
+	// static backend the init above registered as the "static" bean.
+	resolver, err := discovery.NewResolver(ctx, discovery.NewStaticDiscovery(
+		discovery.Endpoint{Addr: "127.0.0.1:8082", Healthy: true},
+	), "cloudnative-echo")
 	if err != nil {
 		fail("new resolver: %v", err)
 	}

@@ -82,7 +82,7 @@ func TestEchoServer_MTLS(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- svr.Run(ctx, firedSignal{}) }()
-	stop := func() { _ = svr.Stop() }
+	stop := func() { _ = svr.Stop(context.Background()) }
 	defer stop()
 
 	caPEM, err := os.ReadFile(certPath)

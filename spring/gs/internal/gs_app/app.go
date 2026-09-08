@@ -68,7 +68,11 @@ type ReadySignal interface {
 // Servers are started concurrently in separate goroutines when the application
 // runs. Each server is a long-running background process that provides services
 // externally. The server must:
-//   - Support graceful shutdown via the Stop() method
+//   - Support graceful shutdown via the Stop(ctx) method; ctx is the root
+//     context WITHOUT cancellation and WITHOUT a deadline - the app imposes
+//     no shutdown timeout, so bounding the shutdown is each server's own
+//     responsibility (e.g. context.WithTimeout inside Stop); the context
+//     only carries values
 //   - Respond to context cancellation for timely cleanup
 //   - Signal readiness via ReadySignal before accepting requests
 //   - Handle errors appropriately and trigger application shutdown if needed
@@ -80,7 +84,7 @@ type ReadySignal interface {
 //   - TCP/UDP service listeners
 type Server interface {
 	Run(ctx context.Context, sig ReadySignal) error
-	Stop() error
+	Stop(ctx context.Context) error
 }
 
 // PreStopper is an optional interface a Server may implement to participate in
@@ -95,21 +99,6 @@ type Server interface {
 // on — the servers are then actually stopped.
 type PreStopper interface {
 	PreStop(ctx context.Context)
-}
-
-// Stopper is an optional interface a Server may implement to receive the
-// shutdown context when being stopped. Servers implementing it are stopped
-// via StopContext(ctx) instead of Stop(), where ctx is the root context
-// WITHOUT cancellation (the root is already cancelled at that point) and
-// WITHOUT a deadline - the app imposes no shutdown timeout, so bounding the
-// shutdown is each server's own responsibility; the context only carries
-// values.
-//
-// It lets servers propagate the context to context-aware cleanup APIs
-// (http.Server.Shutdown, logging, tracing) without letting root-context
-// cancellation abort their graceful drain.
-type Stopper interface {
-	StopContext(ctx context.Context) error
 }
 
 // ContextProvider is a wrapper that provides explicit access to the
@@ -148,13 +137,6 @@ func (c *PropertiesRefresher) Started() bool {
 // propagates the changes to the IoC container.
 func (c *PropertiesRefresher) RefreshProperties() error {
 	return c.app.RefreshProperties()
-}
-
-// Sources returns the configuration sources in priority order (highest first),
-// without merging them, for operational introspection. Returns nil before
-// properties are loaded.
-func (c *PropertiesRefresher) Sources() []flatten.Source {
-	return c.app.Sources()
 }
 
 // App represents the core application, managing its lifecycle,
@@ -207,15 +189,6 @@ func (app *App) Context() context.Context {
 // PropertiesRefresher and runs during startup, before Started becomes true.
 func (app *App) Started() bool {
 	return app.started.Load()
-}
-
-// Sources returns the configuration sources in priority order (highest first),
-// without merging them, for operational introspection (e.g. an actuator /env
-// endpoint). Each source keeps its own flattened key-value pairs. Returns nil
-// before properties are loaded. It carries no secret-masking policy of its own:
-// callers that surface values to operators are responsible for masking.
-func (app *App) Sources() []flatten.Source {
-	return app.p.Sources()
 }
 
 // Property sets an app-level property in the application's configuration.
@@ -372,7 +345,7 @@ func (app *App) WaitForShutdown() {
 	// readiness (e.g. actuator /readiness -> OUT_OF_SERVICE) before we stop
 	// serving. The app imposes no delay and no timeout here: how long to wait
 	// for load balancers to de-route, and how long shutdown may take, are
-	// decided by each server itself (e.g. inside PreStop / StopContext).
+	// decided by each server itself (e.g. inside PreStop / Stop).
 	drainCtx := context.WithoutCancel(app.ctx)
 	for _, svr := range app.Servers {
 		if ps, ok := svr.(PreStopper); ok {
@@ -390,11 +363,7 @@ func (app *App) WaitForShutdown() {
 		goutil.Go(app.ctx, func(ctx context.Context) {
 			defer stopWg.Done()
 			var err error
-			if s, ok := svr.(Stopper); ok {
-				err = s.StopContext(stopCtx)
-			} else {
-				err = svr.Stop()
-			}
+			err = svr.Stop(stopCtx)
 			if err != nil {
 				log.Errorf(ctx, log.TagAppDef, "shutdown server failed: %v", err)
 			}
@@ -403,7 +372,7 @@ func (app *App) WaitForShutdown() {
 
 	// Wait indefinitely for all servers and their goroutines to stop. The app
 	// imposes no timeout: each server bounds its own shutdown (e.g. inside
-	// StopContext); a server that hangs hangs the process, by design.
+	// Stop); a server that hangs hangs the process, by design.
 	stopWg.Wait()
 	app.wg.Wait()
 

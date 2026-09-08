@@ -78,7 +78,7 @@ replace go-spring.org/starter-gorm-sqlserver => ../
 
 replace go-spring.org/starter-otel => ../../starter-otel
 
-replace go-spring.org/starter-actuator => ../../experimental/starter-actuator
+replace go-spring.org/starter-actuator => ../../starter-actuator
 
 require go-spring.org/cloud v0.0.0
 

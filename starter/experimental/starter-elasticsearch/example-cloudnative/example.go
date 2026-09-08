@@ -65,10 +65,12 @@ func init() {
 	// A real deployment would point Consul/Nacos/k8s here; a static backend keeps
 	// the example self-contained while exercising the same resolve + dial path.
 	// The elasticsearch client resolves "es-cluster" through this "default"
-	// backend into "http://127.0.0.1:9200" node addresses.
-	discovery.RegisterDiscovery("default", discovery.NewStaticDiscovery(
-		discovery.Endpoint{Addr: "127.0.0.1:9200", Healthy: true},
-	))
+	// backend bean into "http://127.0.0.1:9200" node addresses.
+	gs.Provide(func() (discovery.Discovery, error) {
+		return discovery.NewStaticDiscovery(
+			discovery.Endpoint{Addr: "127.0.0.1:9200", Healthy: true},
+		), nil
+	}).Name("default")
 }
 
 const indexName = "cn-docs"

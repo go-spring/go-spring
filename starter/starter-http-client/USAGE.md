@@ -80,12 +80,14 @@ const (
 )
 
 func init() {
-    // Registered under "static" to match discovery=static in the config. The
-    // discovered client reads it through a discovery.Loader.
-    discovery.RegisterDiscovery("static", discovery.NewStaticDiscovery(
-        discovery.Endpoint{Addr: addrBackendA, Healthy: true},
-        discovery.Endpoint{Addr: addrBackendB, Healthy: true},
-    ))
+    // Registered as the bean named "static" to match discovery=static in the
+    // config; the starter injects it by that name at wiring time.
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(
+            discovery.Endpoint{Addr: addrBackendA, Healthy: true},
+            discovery.Endpoint{Addr: addrBackendB, Healthy: true},
+        ), nil
+    }).Name("static")
     startBackend(addrBackendA, "backend-A")
     startBackend(addrBackendB, "backend-B")
 }
@@ -277,7 +279,7 @@ Keys under `spring.http-client.<name>.*` (cross-checked with
 |-----|------|---------|-------------------------|------------------------------|
 | `addr` | string | "" | Direct mode: `fixedHostTransport` pins every request to this host:port. May be combined with `service-name`, which then stays a pure governance label (no discovery). | Neither set → fail fast "one of addr or service-name is required". |
 | `service-name` | string | "" | Discovery mode: logical name resolved via the named backend; ALWAYS the governance resource label when set (discovery or direct mode). With `addr` set it is not a discovery target. | Neither set → fail fast; set without `addr` and without `discovery` → fail fast. |
-| `discovery` | string | "" | Names a backend registered via `discovery.RegisterDiscovery`. Required iff `service-name` set without `addr` (config.go validate). | Missing → fail fast. Unknown name → wiring-time error from `discovery.NewLoader` (httpx.go:196). |
+| `discovery` | string | "" | Names a discovery backend bean (bean name = label, registered by a registry starter). Required iff `service-name` set without `addr` (config.go validate). | Missing → fail fast. Unknown name → wiring-time error listing the registered beans (starter.go newDispatchTransport). |
 | `balancer` | string | round_robin | LB strategy: `round_robin`, `least_conn`, `consistent_hash`, `weighted`, `zone_aware`. Unknown name fails at wiring (`loadbalance.New`, httpx.go:156). | Typos surface at boot, not per request. |
 | `suspend-threshold` | int | 0 | Consecutive failures before an endpoint is suspended from the pool (outlier suspension). 0 disables. | Without it a dead instance keeps receiving round-robin share; pair with resilience so the breaker absorbs the failures. |
 | `suspend-for` | duration | 0 | How long an suspended endpoint stays out before a half-open trial. Ignored when `suspend-threshold=0`. | 0 with suspension on → immediate trial re-entry (thrash). |

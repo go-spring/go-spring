@@ -68,9 +68,10 @@ package main
 import "go-spring.org/cloud/discovery"
 
 func init() {
-    discovery.RegisterDiscovery("default", discovery.NewStaticDiscovery(
-        discovery.Endpoint{Addr: "127.0.0.1:27017", Healthy: true},
-    ))
+    gs.Provide(func() (discovery.Discovery, error) {
+        return discovery.NewStaticDiscovery(
+            discovery.Endpoint{Addr: "127.0.0.1:27017", Healthy: true},), nil
+    }).Name("default")
 }
 ```
 
@@ -245,7 +246,7 @@ key——观测无条件开启（见 §3.3）。
 | `max-conn-idle-time` | duration | `0` | 0 = 不限；如 `5m` 清理空闲连接。⚠ 配 `service-name` 时有限值可在不重启的情况下把连接逐步迁到新端点。 | `0` + 发现 → 连接在被踢掉的端点上滞留到断开。 |
 | `service-name` | string | — | 经已注册的发现后端解析地址；每次建连由 loader-backed（`Pool.Pick`）拨号替代 URI host [starter.go:126-137]。⚠ **绕过 MongoDB 自身拓扑发现**（副本集/mongos）——驱动拨命名服务给出的地址；需在 URI 配合 `directConnection=true`（[config.go:80-84]）。mesh 模式下忽略（sidecar 负责发现+LB）。 | 副本集 URI 不加 `directConnection=true` → "no such host"/拓扑报错；占位 URI 只有在 loader/pool 真被咨询时才能证明发现生效。 |
 | `scheme` | string | — | 把发现端点收窄到一种传输 scheme（如 `tls`）。仅 service-name 生效时被咨询。 | — |
-| `discovery` | string | `default` | 用哪个已注册发现后端解析 service-name。 | 未注册后端 → discovery.NewLoader 启动报错。 |
+| `discovery` | string | `default` | 用哪个已注册发现后端解析 service-name。 | 后端 bean 缺失 → 注入期启动报错。 |
 | `tls.*` | group | off | 共享 `tlsconf` 块（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）；`tls.Build` 报错直接失败启动 [starter.go:105-112]。enabled=false → 不启 TLS，除非 URI 自己要求（`mongodbs://` / `tls=true`）。 | 配一半 → 启动报 "mongodb: build TLS"。 |
 
 ### 3.2 resilience / fault（govern.*，不在实例前缀下）
@@ -336,7 +337,7 @@ govern.fault.error=generic    # 或：timeout / reset
 |------|----------|------|
 | 启动报 `mongodb: ping <uri>: ...` | server 不可达 / 凭据错 / TLS 不匹配——fail-fast ping 无条件执行 | 修连通性/凭据；`connect-timeout` 约束探测时长。 |
 | 绑定期对 `uri` 启动失败 | `uri` 为空——expr 校验非空 | 设置 `spring.mongodb.<name>.uri`。 |
-| 启动报 "build TLS" / "build discovery resolver" | `tls.*` 配了一半；`discovery` 指向未注册后端 | 补全 tlsconf 块；`discovery.RegisterDiscovery` 注册后端。 |
+| 启动报 "build TLS" / "build discovery resolver" | `tls.*` 配了一半；`discovery` 指向未注册后端 | 补全 tlsconf 块；init 里注册命名后端 bean。 |
 | 发现客户端报 "no such host" / 拓扑错误 | `service-name` 绕过驱动拓扑发现 | URI 加 `directConnection=true`；副本集/mongos URI 则放弃 service-name。 |
 | 爆发时操作报 `ErrRateLimited` | 治理 rate-limit 作用在建连 seam | 调高 `govern.<driver>.rate-limit` 或 `max-pool-size`/`min-pool-size`（焐热的池免拨号）。 |
 | 查询很慢 breaker 却从不跳闸 | 符合设计——resilience 仅建连层；慢而连通的命令它看不见 | 改为对 `db.client.operation.duration` 告警；见 §2.2。 |
