@@ -26,8 +26,9 @@
   无需真集群。`buildClient` 从 in-cluster 配置或 kubeconfig 文件构建真 client。
 - **Informer 缝隙。** `ensureWatch` 下每个 `(kind, namespace, name)` 三元组
   一个 shared informer；任何事件都会调用 refresh 钩子。
-- **Refresh 钩子。** 容器域桥接 bean，导出为 `gs.Rooter`，命名以避开
-  `__default__` 冲突。
+- **Refresh 钩子。** informer 事件直接调用进程级门面 `gs.RefreshProperties()`
+  （无 autowire 注入的 refresher）。controller 仍是 bean 只是因为需要
+  `.Destroy` 析构 informer；它已无 autowire 字段。
 
 ## 3. 约束
 

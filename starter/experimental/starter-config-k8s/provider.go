@@ -41,7 +41,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
@@ -53,19 +52,17 @@ const (
 	kindSecret    = "secret"
 )
 
-func init() {
-	// Register "k8s" as a configuration provider so that a spring.config.import
-	// entry such as
-	//
-	//	optional:k8s:configmap/app-config?namespace=default&key=application.yaml
-	//
-	// loads configuration straight from the named ConfigMap/Secret at startup
-	// and, whenever the object changes, triggers a full property refresh. This is
-	// the piece that makes an API-watched ConfigMap/Secret hot-reloadable: the
-	// informer (see informer.go) fires on every add/update/delete and turns that
-	// into a refresh, without waiting on kubelet volume projection.
-	conf.RegisterProvider("k8s", k8sController.Load)
-}
+// "k8s" is registered as a configuration provider in starter.go's init, on
+// the single controller instance shared with the root bean, so that a
+// spring.config.import entry such as
+//
+//	optional:k8s:configmap/app-config?namespace=default&key=application.yaml
+//
+// loads configuration straight from the named ConfigMap/Secret at startup
+// and, whenever the object changes, triggers a full property refresh. This is
+// the piece that makes an API-watched ConfigMap/Secret hot-reloadable: the
+// informer (see informer.go) fires on every add/update/delete and turns that
+// into a refresh, without waiting on kubelet volume projection.
 
 // configSource holds the parsed components of a "k8s" provider source.
 type configSource struct {

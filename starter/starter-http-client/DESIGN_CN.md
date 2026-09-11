@@ -18,7 +18,7 @@
 
 ## 2. Transport 组合——由外到内
 
-`cloud/httpx.NewTransport` 装配的链路:
+`starter-http-client/httpx.NewTransport` 装配的链路:
 
 ```
 resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp trace(httpx 叠加)  →  裸 base
@@ -27,7 +27,7 @@ resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp tr
 - **otelhttp trace。**由 `httpx` 叠在裸 base(TLS 定制 clone 或
   `http.DefaultTransport`)之上,让 span 传播覆盖完整下游路径(含改写后的
   host 与 LB 挑选)。可观测——trace、fault 注入、observe 执行器包装——实现
-  在 `cloud/httpx`;本 starter 只做配置绑定并透传 `Observability`。
+  在 `starter-http-client/httpx`;本 starter 只做配置绑定并透传 `Observability`。
 - **discovery + LB。**`service-name` 非空时:注入的后端 bean +
   `Resolver` + `loadbalance.Pool`——与其它基础设施客户端同款。否则走
   `fixedHostTransport`(`Addr` 模式)。两者都为空 → 用请求原 host。

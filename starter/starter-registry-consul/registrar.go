@@ -25,21 +25,16 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
 
-// instance is the instance this process advertises to the Consul registry. It is
-// the local write-side value built from RegistrationConfig in Server.Run; the
-// crash-safety contract every registry starter follows lives in starter/DESIGN
-// §3 (Register must self-renew so correctness never depends on Deregister).
-type instance struct {
-	ServiceName string
-	ID          string
-	Addr        string
-	Weight      int
-	Metadata    map[string]string
-}
+// instance is the process advertisement the registrar publishes; it is the
+// neutral [discovery.Instance] contract. The crash-safety contract every
+// registry starter follows lives in starter/DESIGN §3 (Register must
+// self-renew so correctness never depends on Deregister).
+type instance = discovery.Instance
 
 // consulRegistrar publishes instances to a Consul agent and keeps each one live
 // by passing its TTL health check on a background heartbeat until Deregister.

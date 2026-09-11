@@ -36,10 +36,12 @@ import (
 // This file adds a DIRECT etcd watcher for governance rules — the
 // Sentinel-datasource shape: governance holds a dedicated key (its own config
 // document, not a shared app-config import), and rule pushes refresh
-// governance only, never the whole application's properties. It reuses the
-// module's client plumbing (etcdCtrl.clientFor); document parsing goes through
-// governance.ParseRules, so the key's value is byte-compatible with a
-// starter-governance file source's rules file.
+// governance only, never the whole application's properties. The source owns
+// its client exclusively (built here, closed on Destroy) — fully isolated
+// from the config-import bootstrap client, and free to carry its own
+// instrumentation. Document parsing goes through governance.ParseRules, so
+// the key's value is byte-compatible with a starter-governance file source's
+// rules file.
 //
 // Configure with (govern.source.etcd.*):
 //
@@ -81,9 +83,14 @@ func init() {
 		cs.dialTimeout = 5 * time.Second
 
 		r.Provide(func() (*EtcdSource, error) {
-			cli, err := etcdController.clientFor(cs)
+			cli, err := clientv3.New(clientv3.Config{
+				Endpoints:   []string{cs.endpoint},
+				Username:    cs.username,
+				Password:    cs.password,
+				DialTimeout: cs.dialTimeout,
+			})
 			if err != nil {
-				return nil, err
+				return nil, errutil.Explain(err, "create etcd client for %s failed", cs.endpoint)
 			}
 			return NewEtcdSource(cli, cs.key, cs.format)
 		}).
@@ -167,8 +174,9 @@ func (s *EtcdSource) Init() error {
 	return nil
 }
 
-// Close stops the watch stream (the client itself is shared and owned by the
-// module's controller, so it is NOT closed here). Implements the
+// Close stops the watch stream and closes the source's own client — the
+// client is built by the bean ctor and dies with the bean, fully isolated
+// from the config-import bootstrap client. Implements the
 // optional-close contract the governance center probes for on Destroy.
 func (s *EtcdSource) Close() error {
 	s.mu.Lock()
@@ -176,7 +184,7 @@ func (s *EtcdSource) Close() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	return nil
+	return s.kv.Close()
 }
 
 // Snapshot returns the latest good snapshot.

@@ -80,7 +80,7 @@ gs.Provide(func(c *Controller) StarterGrpc.ServiceRegister {
 2. **服务端一元拦截器（中间件）**：`LoggingInterceptor` 是一个真实的
    `grpc.UnaryServerInterceptor`，会打印被调用的方法名并读取入向 metadata 中的
    `x-app`。此处演示按服务组合拦截器；starter 另提供
-   `StarterGrpc.UseUnaryInterceptor`/`UseStreamInterceptor`，可将应用拦截器装到内置链的最外层
+   应用拦截器也可以 bean 形式提供——注入 server 构造器集合，装到内置链最外层
    （内部经 `grpc.ChainUnaryInterceptor` 组装）。客户端使用
    `metadata.NewOutgoingContext` 发送 `x-app=go-spring`，调用仍然成功，证明拦截器
    已运行且未影响业务返回。

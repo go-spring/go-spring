@@ -47,32 +47,17 @@ import (
 )
 
 func init() {
-	// Register the vault controller as both a root bean (so the IoC container
-	// injects its PropertiesRefresher via autowire) and the "vault" config
-	// provider (so Load calls go through its method). Before wiring,
-	// TriggerRefresh is a harmless no-op — the startup load already captured
-	// the initial config.
-	gs.Provide(vaultController).Export(gs.As[gs.Rooter]())
-
 	// Register "vault" as a remote configuration provider. The provider is
-	// the global controller's Load method, so the same object that holds the
-	// PropertiesRefresher (injected via autowire) also serves config loads.
-	conf.RegisterProvider("vault", vaultController.Load)
+	// the global controller's Load method. Poll-triggered refreshes go
+	// through the gs.RefreshProperties package-level facade, so the
+	// controller needs no bean wiring at all.
+	conf.RegisterProvider("vault", (&vaultCtrl{}).Load)
 }
-
-// vaultController is the global singleton. It is ONLY referenced in init
-// functions. All other code operates on the
-// receiver without touching this global.
-var (
-	vaultController = &vaultCtrl{}
-)
 
 // vaultCtrl is the single object that owns the full lifecycle of vault
 // configuration: loading secrets, polling for changes, and triggering
 // property refresh.
 type vaultCtrl struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-
 	mu       sync.Mutex
 	clients  map[string]*api.Client
 	listened map[string]struct{}
@@ -80,12 +65,11 @@ type vaultCtrl struct {
 }
 
 // TriggerRefresh is called by the polling watchers when a secret's content
-// fingerprint changes. Before the IoC container wires the controller, this
-// is a no-op — the initial config load already captured the state.
+// fingerprint changes. Before the app has started, gs.RefreshProperties
+// returns an error and the change is dropped — the initial config load
+// already captured the state.
 func (c *vaultCtrl) TriggerRefresh() {
-	if c.Refresher != nil {
-		_ = c.Refresher.RefreshProperties()
-	}
+	_ = gs.RefreshProperties()
 }
 
 // configSource holds the parsed components of a vault provider source string.

@@ -15,10 +15,11 @@
  */
 
 // Command example wires starter-registry-etcd into a Go-Spring application:
-// blank-importing the starter plus a ${spring.registry.etcd.endpoints} entry
+// blank-importing the starter plus a ${spring.registry.etcd.main} block
+// creates the backend bean "etcd.main"; ${spring.registry.service-name} then
 // registers this instance into etcd once the app is ready and deregisters it
-// on shutdown, while a ${spring.discovery.etcd.local} block registers the
-// consumer-side discovery backend.
+// on shutdown (through the starter-registry core), while the same bean serves
+// as the consumer-side discovery backend cited by its name.
 //
 // To make the mechanism visible without an external client, a Runner resolves
 // the just-registered instance back through the discovery backend, prints what
@@ -41,8 +42,8 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	// Blank-import registers the etcd registrar, the register-on-ready server,
-	// and the ${spring.discovery.etcd.<name>} discovery backend module.
+	// Blank-import registers the center module: the shared client, the
+	// register-on-ready server, and the derived discovery backend.
 	_ "go-spring.org/starter-registry-etcd"
 )
 
@@ -64,12 +65,11 @@ func main() {
 }
 
 // VerifyRunner resolves this process's own registration back through the
-// etcd discovery backend (${spring.discovery.etcd.local}), proving the
-// register→discover loop end to end.
+// etcd discovery backend "etcd.main", proving the register→discover loop end to end.
 type VerifyRunner struct {
-	// backend is the discovery bean named "local" — the same label
-	// ${spring.discovery.etcd.local} registered it under.
-	backend discovery.Discovery `autowire:"local"`
+	// backend is the backend bean named "etcd.main" — the named block it was
+	// configured from.
+	backend discovery.Discovery `autowire:"etcd.main"`
 }
 
 // NewVerifyRunner builds the verify runner.
@@ -90,7 +90,7 @@ func (v *VerifyRunner) Run(ctx context.Context) error {
 func (v *VerifyRunner) verify(ctx context.Context) {
 	d := v.backend
 	if d == nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", "local")
+		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", "etcd.main")
 		return
 	}
 	var eps []discovery.Endpoint

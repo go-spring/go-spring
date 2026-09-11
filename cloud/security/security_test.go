@@ -60,33 +60,6 @@ func TestContext_RoundTrip(t *testing.T) {
 	assert.String(t, got.Principal.Subject).Equal("u1")
 }
 
-// stubValidator is a trivial TokenValidator used to exercise the registry.
-type stubValidator struct{ subject string }
-
-func (s stubValidator) Validate(_ context.Context, token string) (*Authentication, error) {
-	if token == "" {
-		return nil, ErrUnauthenticated
-	}
-	return &Authentication{Principal: Principal{Subject: s.subject}, Token: token, Authenticated: true}, nil
-}
-
-func TestRegistry(t *testing.T) {
-	RegisterValidator("stub-a", stubValidator{subject: "a"})
-
-	v, err := GetValidator("stub-a")
-	assert.Error(t, err).Nil()
-	got, err := v.Validate(context.Background(), "tok")
-	assert.Error(t, err).Nil()
-	assert.String(t, got.Principal.Subject).Equal("a")
-
-	_, err = GetValidator("missing")
-	assert.Error(t, err).Matches("no validator registered as \"missing\"")
-
-	assert.Panic(t, func() { RegisterValidator("stub-a", stubValidator{}) }, "already registered")
-	assert.Panic(t, func() { RegisterValidator("", stubValidator{}) }, "empty name")
-	assert.Panic(t, func() { RegisterValidator("nil-v", nil) }, "nil validator")
-}
-
 func TestRequire_Interceptor(t *testing.T) {
 	got := ""
 	target := func(context.Context) error { got = "ok"; return nil }

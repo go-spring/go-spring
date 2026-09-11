@@ -13,9 +13,10 @@ do this?" (`HasAnyAuthority`, `Require`).
 - Neutral identity model: `Principal{Subject, Claims}`,
   `Authentication{Principal, Token, Authenticated, Authorities}` with
   nil-safe `HasAuthority` / `HasAnyAuthority` / `HasAllAuthorities`.
-- Pluggable `TokenValidator` seam with a driver registry
-  (`RegisterValidator` / `GetValidator` / `MustGetValidator`) mirroring
-  `discovery.Register` / `resilience.RegisterDriver`.
+- Pluggable `TokenValidator` seam: a starter (e.g. `starter-security-jwt`)
+  contributes a concrete validator as a container bean, and a server-family
+  middleware validates through it — which validator wires in is a wiring
+  decision.
 - Method-level guard: `Require(authorities...)` returns a plain decorator —
   the `@PreAuthorize` equivalent, composed with anything else by ordinary
   function nesting.

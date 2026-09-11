@@ -142,9 +142,9 @@ step 2 of `App.Start` (`gs_app/app.go:285-294`), **before** the IoC container is
 
 ```
 blank-import starter-config-apollo
-  └─ init(): gs.Provide(apolloCtrl).Export(Rooter); conf.RegisterProvider("apollo", ...)   starter.go:77-80
+  └─ init(): conf.RegisterProvider("apollo", apolloCtrl.Load)   starter.go:77-80
 gs.Run() → App.Start()
-  ├─ 1. register ContextProvider + PropertiesRefresher beans                    app.go:287-288
+  ├─ 1. mount the gs.RefreshProperties / gs.AppStarted facade targets
   ├─ 2. app.p.Refresh() — load app.properties, expand spring.config.import      gs_conf/conf.go:216-240
   │       └─ conf.Load(source) → prefix-split [optional:]<provider>:<path>      provider.go:84-92
   │             └─ apolloCtrl.Load(optional, path)                               starter.go:191
@@ -154,7 +154,7 @@ gs.Run() → App.Start()
   │                   │   is never missed", starter.go:204)                     starter.go:226-241
   │                   └─ GetConfigContent → reader.Read(format) → flatten       starter.go:207-221
   ├─ 3. initLog
-  ├─ 4. wire IoC (apolloCtrl gets *gs.PropertiesRefresher autowired here)       app.go:287
+  ├─ 4. wire IoC container
   ├─ 5. Runners, 6. Servers → readiness
 ```
 
@@ -183,7 +183,7 @@ The starter bridges those events into gs's refresh chain:
 Apollo publish → agollo long-poll fires ChangeEvent / FullChangeEvent
   → apolloListener.OnChange / OnNewestChange                    starter.go:248-254
     → apolloCtrl.TriggerRefresh                                 starter.go:95-99
-      → Refresher.RefreshProperties()                           gs_app/app.go:149-151
+      → gs.RefreshProperties()                                  gs_app/app.go:149-151
         → App.RefreshProperties: guard "app not started yet", then
           reload ALL sources (files, env, cmd args, every import), merge by
           layer priority, propagate to the container             gs_app/app.go:247-256
@@ -192,10 +192,10 @@ Apollo publish → agollo long-poll fires ChangeEvent / FullChangeEvent
 
 Two properties of this path worth knowing:
 
-- **No-op before wiring.** Events arriving between step 2 and step 4 find
-  `Refresher == nil` and are dropped harmlessly (pinned by
-  `TestListenerChangeFiresRefresh`, `starter_test.go:133-139`) — the initial load
-  already captured the state (`starter.go:93-94`).
+- **No-op before start.** Events arriving before the app has started hit a
+  `gs.RefreshProperties()` that returns an error and are dropped harmlessly
+  (pinned by `TestListenerChangeFiresRefresh`, `starter_test.go:133-139`) — the
+  initial load already captured the state (`starter.go:93-94`).
 - **Whole-app refresh, not per-namespace.** One changed key triggers a reload of
   *every* source, so a Dync field backed by a local file also re-reads. Only
   `gs.Dync[T]` re-binds; plain `value:` fields are startup-only (no per-key callback

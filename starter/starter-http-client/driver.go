@@ -20,7 +20,7 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/cloud/httpx"
+	"go-spring.org/starter-http-client/httpx"
 )
 
 // Driver defines how to create one client entry's transport — THE extension
@@ -52,13 +52,13 @@ type Driver interface {
 }
 
 // DefaultDriver is the default implementation of the Driver interface: the
-// standard cloud/httpx assembly driven by the bound Config.
+// standard starter-http-client/httpx assembly driven by the bound Config.
 type DefaultDriver struct{}
 
-// CreateTransport maps the bound Config onto the cloud/httpx assembler input
+// CreateTransport maps the bound Config onto the starter-http-client/httpx assembler input
 // and assembles the transport. Everything — trace, TLS surface,
 // governance-resolved resilience executor, fault + observe wrap — is owned by
-// cloud/httpx; see [httpx.NewTransport].
+// starter-http-client/httpx; see [httpx.NewTransport].
 func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config) (http.RoundTripper, func() error, error) {
 	return httpx.NewTransport(c.toTransportConfig())
 }

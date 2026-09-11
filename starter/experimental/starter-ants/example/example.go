@@ -29,21 +29,25 @@ import (
 	"time"
 
 	"go-spring.org/log"
+	"go-spring.org/stdlib/goutil"
 	"go-spring.org/spring/gs"
 	StarterAnts "go-spring.org/starter-ants"
 )
 
-// panics counts task panics caught by the handler registered via
-// SetPanicHandler, proving the injection point is wired through the starter.
+// panics counts task panics reported through the shared goutil panic chain,
+// proving the starter bridges pool-task panics into it.
 var panics int64
 
 func init() {
-	// Register a global panic handler before the container starts. Without it,
-	// a panicking task would crash the worker goroutine.
-	StarterAnts.SetPanicHandler(func(p any) {
+	// Observe the shared panic chain: pool-task panics are bridged into
+	// goutil.ReportPanic by the bundled DefaultDriver, so every recover site
+	// (goroutines, handlers, pool tasks) lands in one stream.
+	prev := goutil.OnPanic
+	goutil.OnPanic = func(ctx context.Context, info goutil.PanicInfo) {
 		atomic.AddInt64(&panics, 1)
-		log.Warnf(context.Background(), log.TagAppDef, "recovered task panic: %v", p)
-	})
+		log.Warnf(ctx, log.TagAppDef, "recovered panic: %v", info.Panic)
+		prev(ctx, info)
+	}
 }
 
 type Service struct {
@@ -132,8 +136,8 @@ func runTest(s *Service) {
 	fmt.Println("CPU pool:", "running:", s.CPU.Running(),
 		"free:", s.CPU.Free(), "cap:", s.CPU.Cap(), "waiting:", s.CPU.Waiting())
 
-	// Feature 5: panic handler. A task that panics is caught by the handler
-	// registered via SetPanicHandler instead of crashing the worker.
+	// Feature 5: panic handling. A task that panics is caught by the pool and
+	// reported through the shared goutil chain instead of crashing the worker.
 	var pwg sync.WaitGroup
 	pwg.Add(1)
 	if err := s.CPU.Submit(func() {

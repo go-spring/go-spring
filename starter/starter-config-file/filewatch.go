@@ -44,17 +44,23 @@ func init() {
 	//	optional:file-watch:/etc/config/application.yaml
 	//
 	// loads a single file at startup and, whenever it changes, triggers a full
-	// property refresh. The provider is the shared controller's Load method, so
-	// the same object that holds the PropertiesRefresher (injected via autowire)
-	// also serves config loads — no separate hook wiring needed.
-	conf.RegisterProvider("file-watch", fileWatchController.Load)
+	// property refresh via the gs.RefreshProperties facade — no separate hook
+	// wiring needed.
+	conf.RegisterProvider("file-watch", (&fileWatchCtrl{}).Load)
+}
+
+// fileWatchCtrl is the "file-watch" provider: one configuration document per
+// import, parsed by extension. It embeds watchCore for the shared watch +
+// refresh bridge.
+type fileWatchCtrl struct {
+	watchCore
 }
 
 // Load implements conf/provider.Provider. It reads a single configuration file
 // (format detected by extension via the shared conf reader registry) and
 // installs a watcher on its parent directory that triggers an application
 // property refresh on change.
-func (c *configFileController) Load(optional bool, source string) (map[string]string, error) {
+func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, error) {
 	path := source
 	if path == "" {
 		return nil, errutil.Explain(nil, "file-watch: missing path")

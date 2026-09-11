@@ -29,7 +29,7 @@ go get go-spring.org/starter-http-client
 ```
 
 生成的 `Client` 只持有一个 `*http.Client`。本 starter 为每个配置项注册一个
-`*http.Client`,其 `http.RoundTripper` 由 [`cloud/httpx`](../../../cloud/httpx)
+`*http.Client`,其 `http.RoundTripper` 由 [`starter-http-client/httpx`](../../../starter-http-client/httpx)
 用三个可组合的 stdlib 抽象装配而成,全部收敛在同一个 `http.RoundTripper` 缝隙上:
 
 * [`discovery`](../../../cloud/discovery) —— 设置了 `service-name` 时,`Resolver`
@@ -116,11 +116,11 @@ starter-governance)。治理资源标签在发现模式下为 `http:<service-nam
 
 本 starter 在装配期即快速失败:`addr` 与 `service-name` 至少设置其一;仅按
 服务名路由(未配 `addr`)时 `discovery` 必填。解析到 `http:*` 资源的 error-rate
-熔断有 `min-requests=5` 下限(govern rule 显式更高值优先)——由 `cloud/httpx` 施加。
+熔断有 `min-requests=5` 下限(govern rule 显式更高值优先)——由 `starter-http-client/httpx` 施加。
 
 ## 可观测性
 
-可观测能力内置在 [`cloud/httpx`](../../../cloud/httpx):底层传输自动包
+可观测能力内置在 [`starter-http-client/httpx`](../../../starter-http-client/httpx):底层传输自动包
 [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp),
 启用韧性的执行器还会包 fault + observe(outcome 分维指标 + 按
 每次出站请求都会产生一个客户端 span,并通过

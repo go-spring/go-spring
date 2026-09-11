@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/casbin/casbin/v2/persist"
 	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
 	"go-spring.org/spring/gs"
 
@@ -92,11 +93,14 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
-	// Seed a writable policy file from the checked-in fixture and register the
-	// adapter + watcher the config points at, before the container starts.
+	// Seed a writable policy file from the checked-in fixture, then contribute
+	// the adapter + watcher the config names ("file"/"local") as ordinary beans.
+	// The starter's Module injects them by name, so there is no global registry.
 	seedPolicy()
-	StarterCasbin.RegisterAdapter("file", fileadapter.NewAdapter(policyPath))
-	StarterCasbin.RegisterWatcher("local", watcher)
+	gs.Provide(func() persist.Adapter { return fileadapter.NewAdapter(policyPath) }).
+		Name("file").Export(gs.As[persist.Adapter]())
+	gs.Provide(func() persist.Watcher { return watcher }).
+		Name("local").Export(gs.As[persist.Watcher]())
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.

@@ -27,7 +27,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/contract"
+	"go-spring.org/cloud/experimental/contract"
 	"go-spring.org/stdlib/testing/assert"
 )
 

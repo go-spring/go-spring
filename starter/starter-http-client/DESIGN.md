@@ -22,7 +22,7 @@ publishes is named under `${spring.http-client}` and injected by name.
 
 ## 2. Transport Composition — outer to inner
 
-The chain assembled by `cloud/httpx.NewTransport` is:
+The chain assembled by `starter-http-client/httpx.NewTransport` is:
 
 ```
 resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp (trace, added by httpx)  →  raw base
@@ -32,7 +32,7 @@ resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp
   TLS-configured clone or `http.DefaultTransport`) so span propagation
   includes the full downstream path (including rewritten host + LB pick).
   Observability — trace, fault injection, the observe executor wrap — is
-  implemented in `cloud/httpx`; this starter only binds config and passes
+  implemented in `starter-http-client/httpx`; this starter only binds config and passes
   `Observability` through.
 - **discovery + LB.** When `service-name` is non-empty:
   the injected backend + `Resolver` + `loadbalance.Pool` — the same

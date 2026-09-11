@@ -43,21 +43,29 @@ var provider atomic.Pointer[Provider]
 // invoked (and any per-label registration done inside it) at most once per
 // label — even though [ExecutorFor] may be called per operation. The first
 // [resolvedExecutor].Execute for a label pays the build; every later call,
-// from any client, is a sync.Map load.
+// from any client, is a sync.Map load. The cache is cleared whenever a new
+// provider is registered, so a provider swap (each RunTest rebuilding the
+// governance center) never serves executors bound to the old one.
 var cache sync.Map // label -> Executor
 
 // RegisterExecutorProvider installs p as the process-wide executor provider.
 // starter-govern calls this once after building the governance center; clients
-// never call it. Calling more than once replaces the provider (the common case
-// is a single registration, so replacement is only a safety valve, not a
-// supported multi-provider feature). It is safe to call concurrently with
-// [ExecutorFor]; executors already resolved and held by clients keep working,
-// since the provider closure they defer to reads the live governance state.
+// never call it. Calling more than once replaces the provider and drops every
+// memoized executor, so the next resolve rebuilds against the new provider
+// (the common case is a single registration, so replacement is only a safety
+// valve, not a supported multi-provider feature). It is safe to call
+// concurrently with [ExecutorFor]: executors already resolved and held by
+// clients keep working — [ExecutorFor] returns lazy wrappers that re-resolve
+// per Execute, so they pick up the rebuilt executor on their next call.
 func RegisterExecutorProvider(p Provider) {
 	if p == nil {
 		return
 	}
 	provider.Store(&p)
+	cache.Range(func(key, _ any) bool {
+		cache.Delete(key)
+		return true
+	})
 }
 
 // ExecutorFor returns the executor resource should run under. It is the single

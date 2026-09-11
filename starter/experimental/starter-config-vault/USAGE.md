@@ -144,8 +144,7 @@ reason the starter can offer nothing else: it runs before the IoC container exis
 
 ```
 blank-import starter-config-vault
-  └─ init(): gs.Provide(vaultController).Export(As[gs.Rooter]())   [starter.go:55]
-     └─ conf.RegisterProvider("vault", vaultController.Load)        [starter.go:60]
+  └─ init(): conf.RegisterProvider("vault", vaultController.Load)   [starter.go:60]
 
 gs.Run()
   ├─ config load: conf/app.properties read
@@ -159,13 +158,13 @@ gs.Run()
   │              │    └─ 404 → nil data → optional? warn+skip : error "secret not found"
   │              ├─ toProperties: flatten whole map, or key-mode parse one field     [starter.go:315]
   │              └─ return props → added as StorageAppFile layer
-  ├─ bean wiring: vaultCtrl is a Rooter; its *gs.PropertiesRefresher autowires in
+  ├─ bean wiring: controller stays outside the IoC container (no bean at all)
   ├─ field binding: ${demo.message} resolves from the Vault layer; gs.Dync fields register for refresh
   ├─ Run / readiness
   └─ steady state: each watchLoop ticks
        ├─ readSecret; on error → continue (silently)
        ├─ fingerprint(json.Marshal(data)) vs last loaded fingerprint
-       └─ changed → TriggerRefresh → Refresher.RefreshProperties()
+       └─ changed → TriggerRefresh → gs.RefreshProperties()
             └─ re-runs the whole property load: imports re-resolve, Load re-reads the
                secret, layers rebuild, and gs.Dync[T] fields swap their values
 ```
@@ -176,9 +175,9 @@ Key timings verified from source:
   starter.go:366-381), default every 5000 ms (example uses 1000 ms). Secret rotation is
   picked up without restart — *but only into `gs.Dync[T]` fields*; plain `value` tags are
   bound once and never re-read (gs refresh is Dync-only).
-- **Refresh is guarded by wiring state**: before the container finishes wiring,
-  `TriggerRefresh` is a harmless no-op — the startup load already captured the config
-  (starter.go:82-89; `PropertiesRefresher.Started()` in gs_app/app.go).
+- **Refresh is guarded by start state**: before the app has started,
+  `gs.RefreshProperties()` returns an error and `TriggerRefresh` is a harmless
+  no-op — the startup load already captured the config (starter.go:82-89).
 - **Fingerprint is content-based** (`json.Marshal` of the KV data map): a KV v2 write that
   produces identical data does NOT trigger a refresh; KV v2 version numbers are ignored.
 - **The watcher never re-reads the token**: an expired token keeps the client cached

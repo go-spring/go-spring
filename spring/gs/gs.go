@@ -403,11 +403,6 @@ type (
 	// ContextProvider provides injectable access to the application's
 	// root context.
 	ContextProvider = gs_app.ContextProvider
-
-	// PropertiesRefresher triggers a hot reload of application properties,
-	// updating every gs.Dync[T] value in place. It also exposes a Snapshot of
-	// the raw configuration sources for operational introspection.
-	PropertiesRefresher = gs_app.PropertiesRefresher
 )
 
 // Provide registers a global bean definition.
@@ -557,4 +552,21 @@ func Group[T any, R any](tag string, fn func(cp *ContextProvider, name string, c
 		}
 		return nil
 	}, file, line)
+}
+
+// RefreshProperties triggers a hot reload of the running application's
+// properties, updating every gs.Dync[T] value in place. It targets the app
+// that most recently completed Start — the process-level bridge for
+// infrastructure living outside the IoC container (config providers,
+// watch goroutines), which cannot use bean injection. It returns an error
+// when no app has started.
+func RefreshProperties() error {
+	return gs_app.RefreshProperties()
+}
+
+// AppStarted reports whether the running application has finished wiring its
+// IoC container. Check it before calling RefreshProperties to avoid the
+// "app not started yet" error.
+func AppStarted() bool {
+	return gs_app.AppStarted()
 }

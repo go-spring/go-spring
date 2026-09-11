@@ -7,12 +7,17 @@ starter source (`starter.go`, `registrar.go`, `config.go`, `registrar_test.go`) 
 [Consul documentation](https://developer.hashicorp.com/consul/docs)** — everything below is go-spring's
 increment.
 
-**Activation**: the registrar server bean exists only when `spring.registry.consul.address` is set —
-that key is the on/off switch (`starter.go`). The same center config derives a discovery backend bean
-labeled `discovery-name` (default `consul`, `center.go`) on one shared Consul client, so one starter
-serves both halves of the naming idiom; explicit `${spring.discovery.consul.<name>}` blocks add more
-backends (§1 consumer side). It opens no port — it exports a `gs.Server` purely to plug registration
-into the app lifecycle (`config.go:27-32`).
+**Model**: config is NAMED BLOCKS — each `spring.registry.consul.<name>.*` block describes ONE
+Consul agent and becomes ONE backend bean named `consul.<name>` (`center.go`). The bean implements
+BOTH sides of the naming idiom: `discovery.Registrar` (write — collected by the `registryServer`
+from the [starter-registry](../starter-registry) core, imported transitively, which registers into
+EVERY configured center across backends) and `discovery.Discovery` (read — consumers cite the bean
+name, e.g. `discovery=consul.main`; the bean is lazy). Read and write share the block's client, so
+they can never diverge. There is no default/unnamed block. Registration activates only when
+`spring.registry.service-name` is set — a pure consumer app configures only connection blocks and
+registers nothing. Multi-center (dual registration, cross-backend mixes) is just more blocks. It
+opens no port — the exported `gs.Server` (in the starter-registry core) exists purely to plug
+registration into the app lifecycle.
 
 ---
 
@@ -66,12 +71,14 @@ func main() { gs.Run() }
 ```properties
 spring.app.name=orders-provider
 
-# Consul agent. Setting address activates the starter.
-spring.registry.consul.address=127.0.0.1:8500
-spring.registry.consul.ttl=10s                        # heartbeat at half this
-spring.registry.consul.deregister-critical-after=30s  # crash auto-cleanup
+# One named block per Consul agent; each block becomes the backend bean
+# "consul.<name>" serving both registration (via the starter-registry core)
+# and discovery.
+spring.registry.consul.main.address=127.0.0.1:8500
+spring.registry.consul.main.ttl=10s                        # heartbeat at half this
+spring.registry.consul.main.deregister-critical-after=30s  # crash auto-cleanup
 
-# The advertised instance (backend-agnostic keys).
+# The advertised instance (backend-agnostic keys, shared by every center).
 spring.registry.service-name=orders
 spring.registry.addr=127.0.0.1:8080
 spring.registry.weight=100
@@ -80,16 +87,16 @@ spring.registry.metadata.version=v1
 ```
 
 **Consumer side.** The starter ships the Consul discovery backend. With the provider config above
-a backend bean labeled `consul` (the `discovery-name` default) is already derived from the same
-center config and shared client — nothing more to configure. A client starter cites that label:
+the block's bean (`consul.main`) already serves both halves — nothing more to configure. A client
+starter cites the block's bean name:
 
 ```properties
 spring.redis.demo.service-name=orders
-spring.redis.demo.discovery=consul   # the derived backend's label
+spring.redis.demo.discovery=consul.main   # the block's bean name
 ```
 
-Pure consumers (or a second agent) configure a standalone block under
-`spring.discovery.consul.<name>` instead — see §3.
+A pure consumer app configures ONLY connection blocks (no `service-name`/`addr`) — it registers
+nothing and just cites `discovery=consul.<name>`.
 
 **Verify** (mirrors `example/check.sh`):
 
@@ -107,37 +114,37 @@ flip the weight via the app's `UpdateWeight` (§2.3) and re-query — `Weights.P
 
 ## 2. Assembly & timing
 
-Timeline (all `starter.go`):
+Timeline (`center.go`, `registrar.go`, and the starter-registry core's `starter.go`):
 
-1. The center module (`center.go`) binds `${spring.registry.consul}`, builds the ONE shared
-   `*api.Client`, and probes the agent (`Catalog().Services`, 5s timeout) so a bad address fails
-   startup here. It also derives the `discovery-name`-labeled (default `consul`) discovery backend
-   bean on the same client. `gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())`
-   is conditioned on `spring.registry.consul.address` and nullable-injects the center
-   (`starter.go`).
-2. `Run` validates `service-name`/`addr` **before** signalling readiness (`starter.go:91-94`), waits
-   `<-sig.TriggerAndWait()` (the ready-gate: registration happens only after every other server is
-   up), then `Agent().ServiceRegister` with a TTL check and an immediate `UpdateTTL(passing)`
-   (`starter.go:103-110`, `registrar.go:90-108`). Log: `registered %q at %s` (`log.TagAppDef`).
-3. A background heartbeat re-passes the check every `ttl/2` until deregister
-   (`registrar.go:177-193`); crash safety never depends on Deregister: the process dies → check
-   misses → Consul marks critical after one TTL → auto-dropped after
-   `deregister-critical-after` (`config.go:39-47`).
-4. Shutdown: `PreStop` deregisters **first** — before the pre-stop delay and before any server stops,
-   so discovery stops handing the instance out while in-flight requests drain (`starter.go:116-121`).
-   `Stop`/`Stop` are idempotent fallbacks (`starter.go:123-135`, `registrar.go:195-211`).
+1. For each `${spring.registry.consul.<name>}` block the module (`OnProperty("spring.registry.consul")`,
+   bound via `BindEach`) builds ONE `*api.Client` and probes the agent (`Catalog().Services`, 5s
+   timeout) so a bad address fails startup here, once per block. The bean named `consul.<name>`
+   exports BOTH `discovery.Registrar` and `discovery.Discovery` (lazy read half) on that client.
+2. The starter-registry core provides `gs.Provide(NewServer).Name("registryServer")` conditioned
+   on `spring.registry.service-name`; its `Registrars []discovery.Registrar` field slice-collects
+   EVERY backend's registrar (consul, etcd, ... mixed). `Run` validates `service-name`/`addr` and
+   ≥1 registrar **before** signalling readiness, waits `<-sig.TriggerAndWait()` (the ready-gate:
+   registration happens only after every other server is up), then `Agent().ServiceRegister` into
+   every center with a TTL check and an immediate `UpdateTTL(passing)` (`registrar.go`). Log:
+   `registered %q at %s in N registry center(s)`.
+3. A background heartbeat re-passes the check every `ttl/2` until deregister (`registrar.go`);
+   crash safety never depends on Deregister: the process dies → check misses → Consul marks
+   critical after one TTL → auto-dropped after `deregister-critical-after` (`config.go`).
+4. Shutdown: `PreStop` deregisters from **every** center **first** — before the pre-stop delay and
+   before any server stops, so discovery stops handing the instance out while in-flight requests
+   drain (starter-registry `starter.go`). `Stop` is an idempotent fallback.
 
 ### 2.1 Registration write semantics
 
 - Service ID = configured `id`, else `"<service-name>-<addr>"` — restarts replace the same entry
-  (`registrar.go:78-85`).
+  (`registrar.go`).
 - Weight is normalized at write time: `<=0 → 1`, so "default" is never stored as 0 — 0 is reserved
-  for the runtime drain signal (`registrar.go:90-96`, asserted by
-  `registrar_test.go:49 TestRegister_NormalizesDefaultWeight`).
+  for the runtime drain signal (`registrar.go`, asserted by
+  `registrar_test.go TestRegister_NormalizesDefaultWeight`).
 - `addr` must be `host:port` with a numeric port; anything else fails Register
-  (`registrar.go:97-102`).
+  (`registrar.go`).
 - The entry carries `Weights{Passing: weight, Warning: 1}` and the TTL check
-  (`registrar.go:127-148`). Consul routes no traffic to a zero-Passing-weight service — that is the
+  (`registrar.go`). Consul routes no traffic to a zero-Passing-weight service — that is the
   drain mechanism.
 
 ### 2.2 WATCH path (consumer side)
@@ -154,11 +161,11 @@ are in-memory reads. Weight-0 filtering is the consumer pool's: `excludeDrained`
 
 ### 2.3 DRAIN path — UpdateWeight(0)
 
-`Server.UpdateWeight(ctx, 0)` (`starter.go:142-147`) → registrar looks up the last registered value
-(error if never registered, `registrar.go:156-163`), maps negative weights to 1 but passes 0 through
-(`registrar.go:164-166`) → re-issues `ServiceRegister` with the new weight. `ServiceRegister` is an
-**upsert on the service ID**, so the existing TTL check and its heartbeat goroutine survive
-unchanged — the entry never leaves discovery (`registrar.go:150-155`). Consumers' next snapshot sees
+`Server.UpdateWeight(ctx, 0)` (starter-registry `starter.go`) → each center's registrar looks up
+the last registered value (error if never registered, `registrar.go`), maps negative weights to 1
+but passes 0 through (`registrar.go`) → re-issues `ServiceRegister` with the new weight.
+`ServiceRegister` is an **upsert on the service ID**, so the existing TTL check and its heartbeat
+goroutine survive unchanged — the entry never leaves discovery (`registrar.go`). Consumers' next snapshot sees
 `Weights.Passing = 0` → weight 0 endpoint → `excludeDrained` filters it from every load-balance
 strategy. Restore with `UpdateWeight(ctx, 100)`.
 
@@ -166,37 +173,31 @@ strategy. Restore with `UpdateWeight(ctx, 100)`.
 
 ## 3. Configuration reference
 
-Two prefixes. `${spring.registry.consul.*}` binds the agent connection (`config.go:22-48`);
-`${spring.registry.*}` binds the advertised instance (`config.go:50-74`).
+Two prefixes. `${spring.registry.consul.<name>.*}` binds ONE agent block each (`config.go`); the
+block name is yours to choose and becomes the backend bean `consul.<name>`.
+`${spring.registry.*}` binds the advertised instance (starter-registry `config.go`), shared by
+every center.
 
 | key | type | default | behavior | misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
-| `spring.registry.consul.address` | string | — (required) | Consul HTTP API address; **its presence activates the starter** | unset: starter inert; wrong value: first `Register` fails, Run returns error |
-| `spring.registry.consul.scheme` | string | `http` | `http`/`https` for the agent API | mismatch with TLS deployment → connection errors |
-| `spring.registry.consul.datacenter` | string | `` | datacenter to register into; empty = agent's | cross-dc mismatch → register/query against wrong dc |
-| `spring.registry.consul.token` | string | `` | ACL token for requests | ACL-enabled cluster without token → 403s |
-| `spring.registry.consul.namespace` | string | `` | Consul Enterprise namespace | silently wrong partition on CE |
-| `spring.registry.consul.ttl` | duration | `15s` | TTL check interval; heartbeat at `ttl/2` | ⚠ too long delays crash detection to ~TTL + `deregister-critical-after` |
-| `spring.registry.consul.deregister-critical-after` | duration | `1m` | auto-drop after check critical this long; `0` disables | ⚠ must exceed `ttl` or Consul may drop live instances on a hiccup |
-| `spring.registry.consul.discovery-name` | string | `consul` | derives a discovery backend bean for this same agent under that label (shared client); empty disables | label colliding with another bean name fails loudly in the container |
-| `spring.registry.service-name` | string | `` (required) | logical service name clients resolve | empty: startup error from Run validation (`starter.go:92-94`) |
-| `spring.registry.addr` | string | `` (required) | advertised `host:port` | empty: startup error; malformed: Register error (`registrar.go:97-102`) |
+| `spring.registry.consul.<name>.address` | string | — (required) | Consul HTTP API address; **setting a block activates it** | unset: block fails bind (`address is required`); wrong value: startup probe fails |
+| `spring.registry.consul.<name>.scheme` | string | `http` | `http`/`https` for the agent API | mismatch with TLS deployment → connection errors |
+| `spring.registry.consul.<name>.datacenter` | string | `` | datacenter to register into; empty = agent's | cross-dc mismatch → register/query against wrong dc |
+| `spring.registry.consul.<name>.token` | string | `` | ACL token for requests | ACL-enabled cluster without token → 403s |
+| `spring.registry.consul.<name>.namespace` | string | `` | Consul Enterprise namespace | silently wrong partition on CE |
+| `spring.registry.consul.<name>.ttl` | duration | `15s` | TTL check interval; heartbeat at `ttl/2` | ⚠ too long delays crash detection to ~TTL + `deregister-critical-after` |
+| `spring.registry.consul.<name>.deregister-critical-after` | duration | `1m` | auto-drop after check critical this long; `0` disables | ⚠ must exceed `ttl` or Consul may drop live instances on a hiccup |
+| `spring.registry.service-name` | string | `` | logical service name clients resolve; **its presence is the registration intent signal** | empty: pure consumer; set with no block: Run error `... no registry center is configured` |
+| `spring.registry.addr` | string | `` (required when registering) | advertised `host:port` | empty with service-name set: startup error; malformed: Register error (`registrar.go`) |
 | `spring.registry.id` | string | `` | instance ID override; empty derives `<name>-<addr>` | ⚠ duplicate IDs across processes → one entry overwrites the other |
-| `spring.registry.weight` | int | `0` | advertised weight; `<=0` normalized to 1 at write time | 0 does **not** drain here (normalized); drain is `UpdateWeight(0)` only |
+| `spring.registry.weight` | int | `100` | advertised weight; `<=0` normalized to 1 at write time | 0 does **not** drain here (normalized); drain is `UpdateWeight(0)` only |
 | `spring.registry.metadata.*` | map[string]string | empty | instance attributes (zone, version, ...) passed through to discovery Metadata | — |
 
-Discovery blocks, one per backend under `${spring.discovery.consul.<name>.*}` (bean name = the
-label clients cite). `address` empty = inherit the center client (no destructor of its own);
-non-empty = own client plus startup probe:
-
-| key | type | default | behavior | misconfiguration consequence |
-|-----|------|---------|----------|------------------------------|
-| `address` | string | `` | empty INHERITS the `spring.registry.consul` center connection | empty with no center configured → bean construction error |
-| `scheme` | string | `http` | `http`/`https` for the agent API | mismatch with TLS deployment → connection errors |
-| `datacenter` | string | `` | datacenter to query; empty = agent's | cross-dc mismatch → queries against wrong dc |
-| `token` | string | `` | ACL token for queries | ACL-enabled cluster without token → 403s |
-| `namespace` | string | `` | Consul Enterprise namespace | silently wrong partition on CE |
-| `tag` | string | `` | Consul service tag narrowing every query; `discovery.WithTag` overrides per call | wrong tag → empty snapshot |
+Discovery needs **no configuration**: each block's bean IS a `cloud/discovery.Discovery` named
+`consul.<name>`; clients cite that bean name (`discovery=consul.main`). The bean is lazy — a
+pure provider never pays for the read half; a pure consumer configures only connection blocks and
+registers nothing. Multi-agent discovery is just multiple blocks — cite whichever agent you want
+to read from. Per-call, `discovery.WithTag` still narrows a query by Consul service tag.
 
 Mapping: `Service.Address:Port` → `Endpoint.Addr` (node address fallback when the service has
 none), `Weights.Passing` → weight, `Meta` → metadata, `Meta["scheme"]` → `Endpoint.Scheme`;
@@ -226,8 +227,7 @@ passing-only queries keep unhealthy instances out of the snapshot.
 6. **Bad address fail-fast**: set `address=127.0.0.1:9999`, boot → startup fails at the center
    probe with `registry-consul: startup probe failed for 127.0.0.1:9999` (`center.go`).
 7. **Unregistered UpdateWeight**: calling `UpdateWeight` before Run registers returns
-   `registry-consul: instance not registered yet` (`starter.go:143-145`, unit-tested at
-   `registrar_test.go:62`).
+   `registry: instance not registered yet` (starter-registry `starter.go`).
 
 All runtime logs carry `log.TagAppDef`: `creating consul registrar`, `registering service=...`,
 `registered %q at %s`, `deregister %q` (Warn). No metrics/traces are emitted by this starter.
@@ -238,7 +238,7 @@ All runtime logs carry `log.TagAppDef`: `creating consul registrar`, `registerin
 
 | symptom | cause | fix |
 |---------|-------|-----|
-| startup error `...service-name} and ${spring.registry.addr} are required` | either key unset | set both (`starter.go:92-94`) |
+| startup error `...service-name} and ${spring.registry.addr} are required` | `service-name` set but `addr` unset | set both (starter-registry `starter.go`) |
 | `register "orders" ... connection refused` | Consul agent unreachable / wrong address | start agent, fix `address` |
 | entry appears then vanishes ~TTL later while app runs | heartbeat goroutine died or agent unreachable mid-run | check agent health; heartbeat logs nothing — watch the check status |
 | consumer still sends traffic after `UpdateWeight(0)` | consumer snapshot stale (blocking-query interval) | re-query; check the consumer backend maps Weights to Endpoint.Weight |
@@ -254,8 +254,8 @@ All runtime logs carry `log.TagAppDef`: `creating consul registrar`, `registerin
 
 | metric | value |
 |--------|-------|
-| config keys | 20 (9 agent + 5 instance + 6 discovery block) |
-| required | 3 (`address`, `service-name`, `addr`) |
+| config keys | 7 per block (agent) + 5 instance (`spring.registry.*`) |
+| required | 1 per block (`address`) + 2 at Run (`service-name`, `addr`) — registration only |
 | quickstart external deps | 1 (Consul agent, docker) |
 | "notes/gotchas" | 4 |
 

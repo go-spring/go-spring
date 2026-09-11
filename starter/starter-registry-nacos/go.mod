@@ -6,6 +6,7 @@ require (
 	github.com/nacos-group/nacos-sdk-go/v2 v2.3.2
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
+	go-spring.org/starter-registry v0.0.0
 	go-spring.org/stdlib v0.1.7
 )
 
@@ -83,3 +84,5 @@ require (
 )
 
 replace go-spring.org/cloud => ../../cloud
+
+replace go-spring.org/starter-registry => ../starter-registry

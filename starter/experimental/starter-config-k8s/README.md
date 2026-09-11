@@ -79,10 +79,10 @@ starter's directory semantics; entries with an unknown extension and no forced
   into properties, and installs a namespaced, name-scoped informer.
 - Every add/update/delete on the object triggers a full application property
   refresh, re-running the provider and propagating new values to bound
-  `gs.Dync` fields. The refresh is wired via a `gs.Rooter` bridge bean that
-  injects the framework's `PropertiesRefresher` (a stable bean name avoids the
-  `__default__` Rooter collision).
-- The bridge bean's destructor stops every informer on shutdown.
+  `gs.Dync` fields. The refresh reaches the framework through the
+  process-level `gs.RefreshProperties()` facade — no autowired refresher.
+- The controller bean's destructor stops every informer on shutdown (it stays
+  a bean only for the `.Destroy` lifecycle; it has no autowire fields).
 
 ## RBAC
 

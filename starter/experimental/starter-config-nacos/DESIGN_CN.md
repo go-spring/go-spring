@@ -28,10 +28,9 @@
   client**，不能通过依赖注入拿。
 - **Client 缓存。** Nacos SDK client 按连接串元组缓存。否则每次刷新都会新建
   client 及其后台 gRPC 连接。
-- **Refresh 钩子。** provider 侧状态是一个 `atomic.Pointer[func() error]`，
-  由容器域桥接 bean `configRefreshBridge` 填充；后者注入
-  `*gs.PropertiesRefresher`，导出为 `gs.Rooter` 且命名 `nacosConfigRefreshBridge`，
-  确保总被实例化、且不与应用自身的默认 `__default__` Rooter 冲突。
+- **Refresh 钩子。** controller 不是 bean：变更时监听回调直接调用进程级门面
+  `gs.RefreshProperties()`（由最近一次 `Start` 的 app 挂载，供容器外的 listener
+  使用，无需依赖注入）。app 启动前门面返回错误，提前触发是安全 no-op。
 - **Listener 缝隙。** `ListenConfig` 按 `(client, group, dataId)` 三元组去重，
   避免重复 `Load` 注册并行 listener。
 
@@ -41,9 +40,10 @@
   listener 仅在 `GetConfig` 成功之后才注册，那么 `optional:` 且 dataId 尚不
   存在时会提前返回，永远不装 listener——之后再发布也永远不触发刷新。因此
   provider 在拉取之前**无条件**注册 listener。
-- **桥接 bean 必须命名。** `gs.Rooter` 是 `any` 别名，两个默认 `__default__`
-  的 Rooter export 会在 `(name, type)` 去重上撞车。稳定命名
-  `nacosConfigRefreshBridge` 是关键。
+- **controller 已无 bean 身份。** 早期版本曾携带容器域桥接 bean 并导出为
+  `gs.Rooter`（`any` 别名，两个默认 `__default__` 的 Rooter export 会在
+  `(name, type)` 去重上撞车，稳定命名 `nacosConfigRefreshBridge` 是关键）。
+  现在刷新经 `gs.RefreshProperties()` 门面——无 bean、无 autowire 字段。
 - **内容解析复用 `spring/conf/reader/*`。** reader 包并未暴露“按格式名读
   bytes”的 helper；provider 直接 import 具体 `Read` 函数，用 format 名做键。
 - **不能对 proxy 跑 `go mod tidy`。** `spring/*`、`stdlib/*` 靠 workspace

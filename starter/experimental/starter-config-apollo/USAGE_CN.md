@@ -137,9 +137,9 @@ cd example && ./check.sh && echo SMOKE-OK   # 断言输出含 "Apollo cold-load 
 
 ```
 blank-import starter-config-apollo
-  └─ init(): gs.Provide(apolloCtrl).Export(Rooter); conf.RegisterProvider("apollo", ...)  starter.go:77-80
+  └─ init(): conf.RegisterProvider("apollo", apolloCtrl.Load)   starter.go:77-80
 gs.Run() → App.Start()
-  ├─ 1. 注册 ContextProvider + PropertiesRefresher bean                       app.go:287-288
+  ├─ 1. 挂载 gs.RefreshProperties / gs.AppStarted 门面目标
   ├─ 2. app.p.Refresh() —— 加载 app.properties，展开 spring.config.import     gs_conf/conf.go:216-240
   │       └─ conf.Load(source) → 前缀拆分 [optional:]<provider>:<path>        provider.go:84-92
   │             └─ apolloCtrl.Load(optional, path)                             starter.go:191
@@ -149,7 +149,7 @@ gs.Run() → App.Start()
   │                   │   is never missed"，starter.go:204）                   starter.go:226-241
   │                   └─ GetConfigContent → reader.Read(format) → flatten     starter.go:207-221
   ├─ 3. initLog
-  ├─ 4. IoC 装配（apolloCtrl 在此注入 *gs.PropertiesRefresher）               app.go:287
+  ├─ 4. IoC 容器装配
   ├─ 5. Runners，6. Servers → 就绪
 ```
 
@@ -175,7 +175,7 @@ agollo 自带配置变更通知 long-poll（`/notifications/v2`，见
 Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
   → apolloListener.OnChange / OnNewestChange                    starter.go:248-254
     → apolloCtrl.TriggerRefresh                                 starter.go:95-99
-      → Refresher.RefreshProperties()                           gs_app/app.go:149-151
+      → gs.RefreshProperties()                                  gs_app/app.go:149-151
         → App.RefreshProperties：先 guard "app not started yet"，随后
           重载全部 source（文件、env、cmd args、所有 import）、按层优先级
           合并、传播进容器                                      gs_app/app.go:247-256
@@ -184,8 +184,8 @@ Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
 
 该路径两个值得记住的性质：
 
-- **装配前是 no-op。** 第 2 步与第 4 步之间到达的事件发现 `Refresher == nil`，
-  被无害丢弃（由 `TestListenerChangeFiresRefresh` 钉死，`starter_test.go:133-139`）
+- **启动前是 no-op。** app 启动前到达的事件碰到的 `gs.RefreshProperties()` 会返回
+  错误，被无害丢弃（由 `TestListenerChangeFiresRefresh` 钉死，`starter_test.go:133-139`）
   ——初始加载已捕获该状态（`starter.go:93-94`）。
 - **整应用刷新，而非按 namespace。** 一个 key 变更会重载*所有* source，因此绑定
   本地文件的 Dync 字段在同一窗口内的文件改动也会被重读。只有 `gs.Dync[T]` 会重新

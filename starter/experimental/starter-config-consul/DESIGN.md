@@ -32,12 +32,11 @@ holds no configuration state of its own.
   `(address, scheme, token, datacenter)` tuple. Without this, every refresh
   would leak a client and its idle connections since `loadConsulConfig` runs
   on both startup and each `RefreshProperties`.
-- **Refresh hook.** Provider-side state is an `atomic.Pointer[func() error]`
-  populated by a container-scope bridge bean (`configRefreshBridge`) that
-  injects `*gs.PropertiesRefresher`. The bridge is exported as `gs.Rooter` and
-  named `consulConfigRefreshBridge` so it is always instantiated and never
-  collides with the application's own default `__default__` Rooter (an alias
-  for `any`).
+- **Refresh hook.** The controller is not a bean: on a change the watch
+  goroutine calls the process-level `gs.RefreshProperties()` facade directly
+  (mounted by the app from its most recent `Start`, meant for out-of-container
+  watchers that cannot use dependency injection). Before the app has started
+  the facade returns an error, so an early fire is a safe no-op.
 - **Watch seam.** A single background goroutine per KV path runs a blocking
   query (`WaitIndex`, `WaitTime=5m`). Deduped via a `(client-key, kv-path)` set
   so repeat `Load` calls do not launch parallel watchers.
@@ -55,10 +54,12 @@ holds no configuration state of its own.
 - **Handle backwards index.** Consul may return a `LastIndex` that has moved
   backwards after a state reset; the loop resets to `0` in that case per
   Consul's blocking-query guidance.
-- **The bridge bean must be named.** `gs.Rooter` is an alias for `any`; two
-  Rooter-exported beans under `__default__` collide via the
-  `(name, type)` dedup on exports. The stable name `consulConfigRefreshBridge`
-  is load-bearing.
+- **The controller has no bean identity.** An earlier version carried a
+  container-scope bridge bean exported as `gs.Rooter` (an alias for `any`;
+  two Rooter-exported beans under `__default__` collide via the `(name, type)`
+  dedup on exports, so the stable name `consulConfigRefreshBridge` was
+  load-bearing). The refresh now goes through the `gs.RefreshProperties()`
+  facade — no bean, no autowired fields.
 - **No `go mod tidy` against the proxy.** `spring/*` and `stdlib/*` resolve
   through the workspace `go.work`; running tidy sends them to the module proxy
   and 404s.

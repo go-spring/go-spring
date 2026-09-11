@@ -126,10 +126,10 @@ store := session.FromByteStore(myRedisByteStore)
 mgr := session.NewManager(store, opt)
 ```
 
-进程静态 store 通过 `Register` / `GetStore` 按名共享;内置 `Memory` 已注册
-为 `"memory"`。需要活 client 的后端(Redis 等)应以 bean 形式贡献——活连接
-不该跨测试/重启塞进包级 map。`starter-session-redis` 正是这么做的;换成它
-之后 `Manager` API 完全不变。
+store 通过构造器注入(`NewManager`)到达 `Manager`——没有包级 store 注册表,
+store 状态不会意外跨测试/重启共享。内置 `Memory` 显式构造
+(`session.NewMemory()`);需要活 client 的后端(Redis 等)以 bean 形式贡献。
+`starter-session-redis` 正是这么做的;换成它之后 `Manager` API 完全不变。
 
 ## 行为契约
 

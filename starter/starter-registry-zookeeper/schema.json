@@ -1,65 +1,79 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.registry.zookeeper",
+  "description": "Named blocks: one property per ZooKeeper ensemble, e.g. spring.registry.zookeeper.main.servers=... The block name is mandatory and becomes part of the backend bean name (zookeeper.<name>), which consumers cite for discovery (discovery=zookeeper.main). There is no default/unnamed block. The instance identity under spring.registry (service-name, addr, id, weight, metadata) is owned by the starter-registry core and shared by every configured center; see the 'instance' definition.",
   "type": "object",
-  "properties": {
-    "servers": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "session-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "10s"
-    },
-    "base-path": {
-      "type": "string",
-      "default": "/services"
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "discovery-name": {
-      "type": "string",
-      "description": "Label for the discovery backend bean derived from this same ensemble; empty disables it",
-      "default": "zookeeper"
-    },
-    "spring.registry.service-name": {
-      "type": "string",
-      "description": "Logical service name to advertise",
-      "default": ""
-    },
-    "spring.registry.addr": {
-      "type": "string",
-      "description": "Advertised host:port of this instance",
-      "default": ""
-    },
-    "spring.registry.id": {
-      "type": "string",
-      "description": "Instance id override; empty derives from service-name+addr",
-      "default": ""
-    },
-    "spring.registry.weight": {
-      "type": "integer",
-      "default": 0
-    },
-    "spring.registry.metadata": {
-      "type": "object",
-      "description": "Arbitrary key/value attributes stored with the instance",
-      "additionalProperties": {
-        "type": "string"
-      }
-    }
+  "additionalProperties": {
+    "$ref": "#/definitions/block"
   },
-  "required": [
-    "spring.registry.service-name",
-    "spring.registry.addr"
-  ]
+  "definitions": {
+    "block": {
+      "type": "object",
+      "properties": {
+        "servers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Ensemble members; setting them activates this block"
+        },
+        "session-timeout": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'",
+          "default": "10s"
+        },
+        "base-path": {
+          "type": "string",
+          "default": "/services"
+        },
+        "username": {
+          "type": "string",
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "servers"
+      ]
+    },
+    "instance": {
+      "type": "object",
+      "description": "Bound under spring.registry by the starter-registry core; shared by every configured center. service-name is the registration intent signal: set means this process registers into all centers, unset means pure consumer.",
+      "properties": {
+        "spring.registry.service-name": {
+          "type": "string",
+          "description": "Logical service name to advertise; empty = pure consumer",
+          "default": ""
+        },
+        "spring.registry.addr": {
+          "type": "string",
+          "description": "Advertised host:port of this instance",
+          "default": ""
+        },
+        "spring.registry.id": {
+          "type": "string",
+          "description": "Instance id override; empty derives from service-name+addr",
+          "default": ""
+        },
+        "spring.registry.weight": {
+          "type": "integer",
+          "default": 100
+        },
+        "spring.registry.metadata": {
+          "type": "object",
+          "description": "Arbitrary key/value attributes stored with the instance",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "spring.registry.service-name",
+        "spring.registry.addr"
+      ]
+    }
+  }
 }

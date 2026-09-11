@@ -1,17 +1,19 @@
 # starter-casbin Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `config.go`, `registry.go`) and the runnable,
+against the starter source (`starter.go`, `config.go`) and the runnable,
 self-asserting [example/](example/) (`example/check.sh`, zero external dependencies).
 **Casbin's own semantics (model language, policy formats, Enforce/API, adapters, watchers) are
 [the official docs](https://casbin.org/docs/overview)** — everything below is go-spring's
 increment.
 
-**Activation**: `gs.Group("${spring.casbin}")` in `init()` — every `spring.casbin.<name>`
-config entry becomes one `*StarterCasbin.Enforcer` **container bean** named `<name>`.
-The *enforcers* are beans; the *adapters/watchers* are **not** — they live in a package-level
-side-registry (`registry.go`) and are looked up by name at construction time. There is no
-`enabled` key; zero `spring.casbin.*` keys means zero enforcers and a fully inert starter.
+**Activation**: a `gs.Module` on `spring.casbin` in `init()` — every `spring.casbin.<name>`
+config entry becomes one `*StarterCasbin.Enforcer` **container bean** named `<name>`. The
+*enforcers* are beans, and so are the *adapters/watchers* they use: the config keys
+`adapter` / `watcher` name a bean the application provides, and a per-instance Module
+injects it into the enforcer's constructor (nil when the key is empty). There is no
+package-level registry. No `enabled` key; zero `spring.casbin.*` keys means zero enforcers
+and a fully inert starter.
 
 ---
 
@@ -78,6 +80,7 @@ import (
     "net/http"
     "os"
 
+    "github.com/casbin/casbin/v2/persist"
     fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
     "go-spring.org/spring/gs"
 
@@ -99,9 +102,10 @@ func (s *Service) Allowed(sub, obj, act string) bool {
 }
 
 func main() {
-    // Register side-registry resources BEFORE gs.Run: the enforcer constructor
-    // resolves `adapter=` / `watcher=` names from these maps (registry.go).
-    StarterCasbin.RegisterAdapter("file", fileadapter.NewAdapter("./conf/policy.csv"))
+    // Contribute the adapter/watcher the config names as ordinary beans (before
+    // gs.Run). The starter's Module injects them into the enforcer by name.
+    gs.Provide(func() persist.Adapter { return fileadapter.NewAdapter("./conf/policy.csv") }).
+        Name("file").Export(gs.As[persist.Adapter]())
 
     // Export the service as a root object so the container instantiates it
     // (nothing else injects it; unexported-only beans are never built in prod).
@@ -130,12 +134,12 @@ func main() {
 # One enforcer per group key. "rbac" is the bean name you autowire.
 # Model file (required — no default).
 spring.casbin.rbac.model=./conf/model.conf
-# Adapter name from RegisterAdapter. When set, the enforcer loads/saves
-# through the adapter (starter.go newEnforcer). Mutually exclusive with
+# Bean name of the persist.Adapter this enforcer loads/saves through
+# (starter.go newEnforcer injects it by name). Mutually exclusive with
 # `policy` — setting both is a startup error.
 spring.casbin.rbac.adapter=file
-# Watcher name from RegisterWatcher. When set, peer change signals fire an
-# automatic LoadPolicy (hot reload / multi-instance sync).
+# Bean name of the persist.Watcher enabling hot reload. When set, peer change
+# signals fire an automatic LoadPolicy (multi-instance sync).
 spring.casbin.rbac.watcher=local
 # Dependency-free alternative to adapter=: plain file-backed policy.
 # spring.casbin.rbac.policy=./conf/policy.csv
@@ -161,33 +165,38 @@ curl 'http://127.0.0.1:9090/enforce?sub=carol&obj=/data&act=read'    # deny
 
 ```
 func init() (user code, before gs.Run)
-  └─ StarterCasbin.RegisterAdapter("file", a)   [side-registry map, registry.go:43]
-  └─ StarterCasbin.RegisterWatcher("local", w)  [side-registry map, registry.go:52]
+  └─ gs.Provide(func() persist.Adapter { return a }).Name("file").Export(gs.As[persist.Adapter]())
+  └─ gs.Provide(func() persist.Watcher { return w }).Name("local").Export(gs.As[persist.Watcher]())
 
 import starter-casbin
-  └─ init(): gs.Group("${spring.casbin}", newEnforcer, destroyEnforcer)  [starter.go:32]
+  └─ init(): gs.Module(OnProperty("spring.casbin"), registerEnforcer)  [starter.go]
 
 gs.Run()
   ├─ config bind: each spring.casbin.<name>.* → Config (value tags)
-  ├─ bean construction: newEnforcer(ctx, name, c) per group key
-  │    ├─ adapter set → lookupAdapter, casbin.NewEnforcer(model, adapter)
+  ├─ per key: registerEnforcer → Provide(Enforcer ctor) named <name>
+  │    ctor binds adapter by name c.Adapter, watcher by name c.Watcher
+  │    (adapterArg/watcherArg → nil via ValueArg when the key is empty)
+  ├─ bean construction: newEnforcer(ctx, c, adapter, watcher)
+  │    ├─ adapter set → casbin.NewEnforcer(model, adapter)
   │    ├─ else        → casbin.NewEnforcer(model, policy-file)
   │    ├─ e.EnableAutoSave(c.AutoSave)
-  │    └─ watcher set → lookupWatcher → e.SetWatcher(w) →
-  │       w.SetUpdateCallback(func(string){ _ = e.LoadPolicy() })   [starter.go:85]
+  │    └─ watcher set → e.SetWatcher(w) →
+  │       w.SetUpdateCallback(func(string){ _ = e.LoadPolicy() })
   ├─ Run/serve: your code calls Enforce on the injected bean
-  └─ shutdown: destroyEnforcer → watcher.Close() only  [starter.go:95-100]
+  └─ shutdown: destroyEnforcer → watcher.Close() only
 ```
 
 Design rationale, cited from source comments:
 
-- **Side-registry instead of adapter beans** (registry.go:25-30): the starter stays free of
-  any database/storage driver — a built-in GORM/Redis/etcd adapter would drag those deps
-  into every project that only needs the file policy. Applications register what they use.
-- **`*Enforcer` wrapper instead of raw `*casbin.Enforcer`** (starter.go:35-39): the starter
-  must own resources Casbin does not close itself — the watcher's background work, released
-  in `destroyEnforcer`. Embedding promotes the full upstream API so callers see no difference.
-- **Watcher callback** (starter.go:83-85): "a classic callback reloads the policy so this
+- **Adapter/watcher as named beans, not a side registry**: the starter stays free of any
+  database/storage driver — a built-in GORM/Redis/etcd adapter would drag those deps into
+  every project that only needs the file policy. Applications contribute the adapter they
+  use as an ordinary bean; a per-instance `gs.Module` (unlike the group factory, which
+  cannot inject extra beans) resolves it by name into the enforcer.
+- **`*Enforcer` wrapper instead of raw `*casbin.Enforcer`** (starter.go): the starter must
+  own resources Casbin does not close itself — the watcher's background work, released in
+  `destroyEnforcer`. Embedding promotes the full upstream API so callers see no difference.
+- **Watcher callback** (starter.go): "a classic callback reloads the policy so this
   instance picks up changes made by peers" — that is the entire hot-reload mechanism; there
   is no polling, no gs.Dync involvement.
 
@@ -212,14 +221,14 @@ All keys live under `spring.casbin.<name>.*` (one group per enforcer bean).
 |-----|------|---------|-------------------------|------------------------------|
 | `model` | string | — | **Required.** Path to the Casbin model file, passed as the first `NewEnforcer` arg. | Missing/invalid → container fails at construction (`failed to create casbin enforcer`). |
 | `policy` | string | `""` | File-backed policy, used only when `adapter` is empty (`newEnforcer`). **Mutually exclusive with `adapter`** — setting both fails startup. | Empty with no adapter → enforcer starts with an **empty policy** — everything denied, no startup error (value tag cannot express conditional-required). |
-| `adapter` | string | `""` | Name in the side-registry (`RegisterAdapter`). Selected via `lookupAdapter` at construction. | Unknown name → fail-fast startup error `casbin: adapter %q not registered`. Registered after `gs.Run` → same error (lookup happens at bean construction). |
-| `watcher` | string | `""` | Name in the side-registry (`RegisterWatcher`); wires `SetWatcher` + reload callback; closed at shutdown by `destroyEnforcer`. | Unknown name → fail-fast `casbin: watcher %q not registered`. |
+| `adapter` | string | `""` | **Bean name** of the `persist.Adapter` injected into the enforcer (via `adapterArg` → `gs.TagArg`). | Bean not provided → fail-fast startup injection error for that name. |
+| `watcher` | string | `""` | **Bean name** of the `persist.Watcher` (via `watcherArg`); wires `SetWatcher` + reload callback; closed at shutdown by `destroyEnforcer`. | Bean not provided → fail-fast startup injection error. |
 | `autoSave` | bool | `true` | Passed to `e.EnableAutoSave` — whether `AddPolicy`/`RemovePolicy` persist back to the adapter/policy file. | `false` + expecting persistence → mutations vanish on reload. |
 
 ⚠ Coupling: `adapter` and `policy` are mutually exclusive storage selections — configuring both
 is a fail-fast startup error (`casbin: `policy` and `adapter` are mutually exclusive`). ⚠
-`adapter`/`watcher` values are **registry names, not bean names**:
-they cannot be resolved via autowire and must exist before `gs.Run`.
+`adapter`/`watcher` values are **bean names**: provide each as a bean named to match (optionally
+`Export(gs.As[persist.Adapter]())` / `gs.As[persist.Watcher]()`), and it must exist by wiring time.
 
 ---
 
@@ -246,8 +255,8 @@ curl '...?sub=carol&obj=/data&act=read'    # deny (unknown subject)
 
 ### 4.3 Misconfiguration drills
 
-- Point `adapter` at an unregistered name → boot fails with
-  `casbin: adapter "db" not registered` (errutil-wrapped, `newEnforcer`).
+- Point `adapter` at a name with no matching bean → the injection fails at startup
+  (fail-fast), rather than booting with a missing storage source.
 - Set neither `policy` nor `adapter` → boots fine; every Enforce returns deny. This is the
   silent-failure mode flagged in §6.
 - Shutdown drill: with a watcher configured, SIGTERM runs `destroyEnforcer`, which closes
@@ -265,8 +274,7 @@ indicator, no metrics — see §6.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails: `adapter "x" not registered` | `RegisterAdapter` never called, or called after `gs.Run` | Register in `func init()` / early `main`, before `gs.Run`. |
-| Boot fails: `watcher "x" not registered` | Same, for `RegisterWatcher` | Register before `gs.Run`. |
+| Boot fails: adapter/watcher bean not found | `adapter`/`watcher` names a bean you didn't provide (or provided with a different `.Name()`) | `gs.Provide(...).Name("<key-value>")`, exported as the `persist.Adapter`/`persist.Watcher` interface. |
 | Boot fails: `failed to create casbin enforcer` | Bad `model` path or invalid model/policy syntax | Check path (relative to process cwd) and model file against official syntax docs. |
 | Everything denied, no error | Both `policy` and `adapter` empty → empty policy loaded | Set `policy` (or an adapter) — there is no fail-fast for this case. |
 | Changed `policy` file but decisions unchanged | Policy is loaded once at construction; no watcher configured | Call `LoadPolicy()` on the bean, or configure a watcher for hot reload. |
@@ -284,16 +292,18 @@ indicator, no metrics — see §6.
 | Quickstart external deps | 0 |
 | "Watch out" entries | 3 |
 
-Design suspects (kept from the previous audit, re-verified):
+Design suspects (re-verified):
 
-1. Adapter/watcher use a side registry parallel to the IoC container — two name spaces for
-   the same concept; beans cannot be injected into an adapter built by the group factory
-   (registry.go:25-38).
-2. `policy` is conditionally required (only without `adapter`), which the `value` tag cannot
+1. `policy` is conditionally required (only without `adapter`), which the `value` tag cannot
    express — an empty-policy enforcer starts silently rather than failing fast.
-3. No observe wiring (health/metric) despite being a stateful, hot-reloaded component.
+2. No observe wiring (health/metric) despite being a stateful, hot-reloaded component.
 
-Newly recorded while writing this reference:
+Resolved while writing this reference:
 
+3. ~~Adapter/watcher used a package-level side-registry parallel to the IoC container — two
+   name spaces, and the group factory couldn't inject beans into the adapter.~~ Fixed: the
+   starter now registers enforcers via a per-instance `gs.Module` that injects the
+   adapter/watcher by bean name (`gs.TagArg`), nil when the config key is empty. Adapters and
+   watchers are ordinary application beans; there is no second name space.
 4. ~~`adapter` silently overrides `policy` when both are set~~ — fixed: configuring both is now
    a fail-fast startup error (`newEnforcer`).

@@ -66,9 +66,10 @@ flow.
 - On startup, `spring.config.import` invokes the `etcd` provider, which builds a
   clientv3 from the source string, reads the key, and installs an
   `etcd Watch` on it.
-- A key change delivers a watch event, which calls the framework's
-  `PropertiesRefresher`. That reloads all configuration sources (re-running this
-  provider) and re-binds every `gs.Dync` field via a two-phase, atomic commit.
+- A key change delivers a watch event, whose callback calls the framework's
+  process-level `gs.RefreshProperties()` facade. That reloads all configuration
+  sources (re-running this provider) and re-binds every `gs.Dync` field via a
+  two-phase, atomic commit.
 ### Log tag
 
 Runtime logs from this module carry the tag `_app_config_etcd` (etcd config source). Tune them independently of the

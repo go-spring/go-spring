@@ -2,6 +2,10 @@
 
 [English](README.md) | [中文](README_CN.md)
 
+> **Status: experimental, no consumers yet.** Nothing in the repository imports
+> this package; the planned sibling engines (gRPC/Thrift contract testing) have
+> not landed. It moves out of `experimental/` when a real consumer arrives.
+
 `contract` is the Go-Spring equivalent of Spring Cloud Contract. A single
 declarative contract — a request shape paired with the response it must produce —
 drives **both** ends of a service-to-service call:

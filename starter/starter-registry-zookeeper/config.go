@@ -39,38 +39,5 @@ type ZookeeperConfig struct {
 	// both empty for an open ensemble.
 	Username string `value:"${username:=}"`
 	Password string `value:"${password:=}"`
-
-	// DiscoveryName derives a discovery backend bean for this same ensemble
-	// under that label — the "one config block serves both halves" default: a
-	// dual-role application configures the ensemble once and its clients cite
-	// discovery=<discovery-name>. Empty disables the derived backend (a
-	// write-only application, or one whose consumers use explicit
-	// ${spring.discovery.zookeeper.<name>} blocks).
-	DiscoveryName string `value:"${discovery-name:=zookeeper}"`
 }
 
-// RegistrationConfig binds the instance to advertise, under ${spring.registry}.
-// These fields describe the instance itself and are independent of which
-// registry backend this starter ships; swapping backends means swapping the
-// starter (and thus this struct's home), not a config migration.
-type RegistrationConfig struct {
-	// ServiceName is the logical name to publish — the same name discovery
-	// clients later resolve. Required.
-	ServiceName string `value:"${service-name:=}"`
-
-	// Addr is the connectable "host:port" advertised to clients. Required; the
-	// starter never guesses it, so a misconfiguration fails at startup.
-	Addr string `value:"${addr:=}"`
-
-	// ID overrides the instance id within the service; empty derives a stable one
-	// from ServiceName and Addr so restarts replace the same znode.
-	ID string `value:"${id:=}"`
-
-	// Weight is the load-balancing weight advertised to clients; 0 means the
-	// backend default.
-	Weight int `value:"${weight:=0}"`
-
-	// Metadata is arbitrary key/value attributes stored with the instance
-	// (zone, unit, version, ...), bound from ${spring.registry.metadata.*}.
-	Metadata map[string]string `value:"${metadata:=}"`
-}

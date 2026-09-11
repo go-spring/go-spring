@@ -22,22 +22,17 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// instance is the instance this process advertises to the etcd registry. It is
-// the local write-side value built from RegistrationConfig in Server.Run; the
-// crash-safety contract every registry starter follows lives in starter/DESIGN
-// §3 (Register must self-renew so correctness never depends on Deregister).
-type instance struct {
-	ServiceName string
-	ID          string
-	Addr        string
-	Weight      int
-	Metadata    map[string]string
-}
+// instance is the process advertisement the registrar publishes; it is the
+// neutral [discovery.Instance] contract. The crash-safety contract every
+// registry starter follows lives in starter/DESIGN §3 (Register must
+// self-renew so correctness never depends on Deregister).
+type instance = discovery.Instance
 
 // instanceValue is the JSON payload stored at an instance key. A discovery
 // backend reading the same prefix reconstructs an Endpoint from it.

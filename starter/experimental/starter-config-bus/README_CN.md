@@ -73,8 +73,8 @@ _ = svc.Bus.Publish("db")
   配置的 NATS 连接上订阅 `spring.config.bus.subject`。
 - `Publish(prefix)` 在主题上发送一条精简的 JSON `RefreshEvent{prefix}`。空前缀表示
   全量刷新;非空前缀允许带前缀过滤的订阅者跳过。
-- 收到消息后,每个订阅者调用框架的 `PropertiesRefresher`,重新加载所有配置源,并通过
-  两阶段原子提交重新绑定每个 `gs.Dync` 字段。
+- 收到消息后,每个订阅者直接调用框架的进程级门面 `gs.RefreshProperties()`,重新加载
+  所有配置源,并通过两阶段原子提交重新绑定每个 `gs.Dync` 字段。
 ### 日志 tag
 
 本模块的运行期日志使用 tag `_app_config_bus`（配置总线）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：

@@ -31,11 +31,11 @@ holds no configuration state of its own.
   client from the source string rather than take one through injection.
 - **Client cache.** Nacos SDK clients are cached per connection tuple. Without
   this, every refresh would leak a client and its background gRPC connections.
-- **Refresh hook.** Provider-side state is an `atomic.Pointer[func() error]`
-  populated by a container-scope bridge bean (`configRefreshBridge`) that
-  injects `*gs.PropertiesRefresher`. Exported as `gs.Rooter` and named
-  `nacosConfigRefreshBridge` so it is always instantiated and never collides
-  with the application's own default `__default__` Rooter.
+- **Refresh hook.** The controller is not a bean: on a change the listener
+  callback calls the process-level `gs.RefreshProperties()` facade directly
+  (mounted by the app from its most recent `Start`, meant for out-of-container
+  listeners that cannot use dependency injection). Before the app has started
+  the facade returns an error, so an early fire is a safe no-op.
 - **Listener seam.** `ListenConfig` deduped per `(client, group, dataId)`
   triple so repeat `Load` calls do not register duplicate listeners.
 
@@ -47,10 +47,12 @@ holds no configuration state of its own.
   exist returns early and never installs the listener — a later publish
   never triggers a refresh. The provider therefore installs the listener
   unconditionally before the fetch.
-- **The bridge bean must be named.** `gs.Rooter` is an alias for `any`; two
-  Rooter-exported beans under `__default__` collide via the `(name, type)`
-  dedup on exports. The stable name `nacosConfigRefreshBridge` is
-  load-bearing.
+- **The controller has no bean identity.** An earlier version carried a
+  container-scope bridge bean exported as `gs.Rooter` (an alias for `any`;
+  two Rooter-exported beans under `__default__` collide via the `(name, type)`
+  dedup on exports, so the stable name `nacosConfigRefreshBridge` was
+  load-bearing). The refresh now goes through the `gs.RefreshProperties()`
+  facade — no bean, no autowired fields.
 - **Content parsers reuse `spring/conf/reader/*`.** The reader packages do
   not expose a "read bytes as format" helper; the provider imports the
   concrete `Read` functions and keys them by format name.

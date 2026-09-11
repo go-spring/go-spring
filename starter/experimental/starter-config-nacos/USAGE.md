@@ -138,8 +138,7 @@ assert) and `example/check.sh` is the docker-gated smoke gate.
 
 ```
 blank-import starter-config-nacos
-  └─ init(): gs.Provide(nacosController).Export(gs.As[gs.Rooter]())   starter.go:53
-             conf.RegisterProvider("nacos", nacosController.Load)      starter.go:58
+  └─ init(): conf.RegisterProvider("nacos", nacosController.Load)      starter.go:58
 
 gs.Run()
   ├─ App.Start(): app.p.Refresh()                                     app.go "Start"
@@ -153,16 +152,16 @@ gs.Run()
   │                   ├─ registerListener (deduped)                   starter.go:249
   │                   ├─ GetConfig → reader.Read(format) → flatten    starter.go:219-244
   │                   └─ keys merged into the layered property storage
-  ├─ IoC wiring: nacosController gets PropertiesRefresher autowired   starter.go:73
+  ├─ IoC container wiring
   ├─ Runners → Servers → ready
 ```
 
 Imports resolve **before any bean is wired** because every bean's `value:"${...}"` tag binds
 against the *merged* property storage — remote keys must already be present for binding to see
 them. Consequence: the provider itself cannot be an injected bean; it is a package-level
-controller registered in `init()`, and the `PropertiesRefresher` it needs is only autowired
-*after* the load that already consumed its output. That is why `TriggerRefresh` tolerates a nil
-refresher (no-op before wiring; pinned by `TestTriggerRefreshNilRefresherIsNoop`).
+controller registered in `init()`, and on a change it reaches the refresh through the
+process-level `gs.RefreshProperties()` facade (no bean wiring at all). The facade returns an
+error before the app has started, so an early `TriggerRefresh` is a safe no-op.
 
 ### 2.2 Watch / hot-reload path (config surface)
 
@@ -170,7 +169,7 @@ refresher (no-op before wiring; pinned by `TestTriggerRefreshNilRefresherIsNoop`
 Nacos push on dataId
   └─ SDK OnChange (installed by registerListener, deduped per client+group+dataId)
        └─ nacosCtrl.TriggerRefresh                                     starter.go:83
-            └─ Refresher.RefreshProperties()  (nil-safe no-op before wiring)
+            └─ gs.RefreshProperties()  (returns error before the app starts)
                  └─ App.RefreshProperties()                            app.go:247
                       ├─ reloads ALL sources: files, env, cmd args, and re-runs every
                       │   spring.config.import entry (→ nacosCtrl.Load again — this is why

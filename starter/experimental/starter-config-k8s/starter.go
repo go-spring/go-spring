@@ -17,32 +17,30 @@
 package StarterConfigK8s
 
 import (
+	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 )
 
 func init() {
-	// Register the k8s controller as both a root bean (so the IoC container
-	// injects its PropertiesRefresher via autowire) and the "k8s" config
-	// provider (so Load calls go through its method). The controller owns the
-	// informer lifecycle via its destructor. Before wiring, TriggerRefresh is
-	// a harmless no-op — the startup load already captured the initial config.
-	gs.Provide(k8sController).
+	// One controller instance backs both halves of the starter: the "k8s"
+	// config provider registered with conf (see provider.go) and the root
+	// bean that lets the container run its destructor on shutdown (it owns
+	// the informer lifecycle). It lives in this closure only — no
+	// package-level variable — so its state is reachable solely through
+	// those two registrations. Refreshes go through the gs.RefreshProperties
+	// package-level facade, so the controller has no autowired dependencies.
+	c := &k8sCtrl{}
+	conf.RegisterProvider("k8s", c.Load)
+	gs.Provide(c).
 		Name("k8sController").
 		Export(gs.As[gs.Rooter]()).
 		Destroy((*k8sCtrl).Destroy)
 }
 
-// k8sController is the global singleton. It is ONLY referenced in init
-// functions (here and in provider.go). All other code operates on the
-// receiver without touching this global.
-var k8sController = &k8sCtrl{}
-
 // k8sCtrl is the single object that owns the full lifecycle of k8s
 // configuration: loading ConfigMaps/Secrets, watching via informers, and
 // triggering property refresh.
 type k8sCtrl struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-
 	// manager tracks informers so they can be stopped on shutdown.
 	manager *watchManager
 
@@ -50,16 +48,15 @@ type k8sCtrl struct {
 }
 
 // TriggerRefresh is called by the informer event handlers when a watched
-// ConfigMap or Secret changes. Before the IoC container wires the controller,
-// this is a no-op — the initial config load already captured the state.
+// ConfigMap or Secret changes. Before the app has started,
+// gs.RefreshProperties returns an error and the change is dropped — the
+// initial config load already captured the state.
 func (c *k8sCtrl) TriggerRefresh() {
 	if c.onTrigger != nil {
 		c.onTrigger()
 		return
 	}
-	if c.Refresher != nil {
-		_ = c.Refresher.RefreshProperties()
-	}
+	_ = gs.RefreshProperties()
 }
 
 // Destroy tears down every informer. It is the bean destructor, invoked once by

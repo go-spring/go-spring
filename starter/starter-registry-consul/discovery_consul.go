@@ -14,21 +14,14 @@
  * limitations under the License.
  */
 
-// This file adds the CONSUMER half of Consul service discovery to the registry
-// starter: a cloud/discovery Discovery backend that serves snapshots of the
-// instances this starter's own registrar (registrar.go) publishes — closing the
-// loop so one starter serves both sides of the Consul naming idiom. Freshness
-// is internal: each resolved service gets a background Consul blocking query
-// (index-based long poll) that keeps the cached snapshot current, so Resolve is
-// a cheap read after the first call.
-//
-// Each backend is a NAMED BEAN in the IoC container — the container is the
-// discovery directory: configure one block per Consul agent under
-// ${spring.discovery.consul.<name>} and a client starter injects the backend
-// its config cites by that name.
-//
-//	spring.discovery.consul.prod.address=127.0.0.1:8500
-//	spring.discovery.consul.prod.tag=v2
+// This file is the CONSUMER half of Consul service discovery: the
+// cloud/discovery Discovery backend serving snapshots of the instances the
+// registrar (registrar.go) publishes. It is derived from the
+// ${spring.registry.consul} center (center.go) under the fixed label "consul"
+// — there is no separate discovery config block. Freshness is internal: each
+// resolved service gets a background Consul blocking query (index-based long
+// poll) that keeps the cached snapshot current, so Resolve is a cheap read
+// after the first call.
 //
 // Health comes from the query itself: Resolve asks Consul for PASSING
 // instances only, so unhealthy instances never enter the snapshot.
@@ -45,95 +38,8 @@ import (
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
-
-// DiscoveryConfig binds one Consul discovery adapter under
-// ${spring.discovery.consul.<name>}. It mirrors the registry-side ConsulConfig
-// connection fields (same client idiom, same auth knobs) plus the
-// consumer-side service tag.
-type DiscoveryConfig struct {
-	// Address is the Consul HTTP API address, e.g. "127.0.0.1:8500". Empty
-	// INHERITS the ${spring.registry.consul} center connection (one agent, one
-	// shared client with the registrar); set it to point this backend at a
-	// different agent than the one this process registers into.
-	Address string `value:"${address:=}"`
-
-	// Scheme is the URI scheme for the Consul server, "http" or "https".
-	Scheme string `value:"${scheme:=http}"`
-
-	// Datacenter is the datacenter to query; empty uses the agent's.
-	Datacenter string `value:"${datacenter:=}"`
-
-	// Token is the ACL token used for requests, empty for none.
-	Token string `value:"${token:=}"`
-
-	// Namespace is the Consul Enterprise namespace, empty for none.
-	Namespace string `value:"${namespace:=}"`
-
-	// Tag narrows queries to instances carrying this Consul service tag (the
-	// tag argument of Health().Service). A per-call discovery.WithTag option
-	// overrides it for that one lookup.
-	Tag string `value:"${tag:=}"`
-}
-
-func init() {
-	// One NAMED bean per block under ${spring.discovery.consul.<name>}: the
-	// bean name is the label a client starter cites to pick this backend. The
-	// backend is constructed at injection time (only when something cites it —
-	// or collects all Discovery beans). A label colliding with another bean
-	// name fails loudly in the container. Neither branch carries a destructor:
-	// the Consul api client holds no resources that need releasing.
-	gs.Module(gs.OnProperty("spring.discovery.consul"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.discovery.consul}", func(name string, c DiscoveryConfig) error {
-			if c.Address == "" {
-				// No connection of its own: inherit the center client. The
-				// block keeps its own tag, so an inheriting block is usually
-				// just a label plus an optional tag.
-				r.Provide(newInheritedDiscoveryBackend,
-					gs.IndexArg(0, gs.ValueArg(c)),
-					gs.IndexArg(1, gs.TagArg("?")),
-				).Name(name).Caller(1)
-			} else {
-				r.Provide(newDiscoveryBackend,
-					gs.IndexArg(0, gs.ValueArg(c)),
-				).Name(name).Caller(1)
-			}
-			log.Debugf(context.Background(), log.TagAppDef, "declared consul discovery backend bean name=%s address=%s", name, c.Address)
-			return nil
-		})
-	})
-}
-
-// newDiscoveryBackend builds one Consul-backed Discovery bean with its OWN
-// client, probing the agent (same fail-fast as the center) so an unreachable
-// one fails startup. It runs at injection time.
-func newDiscoveryBackend(c DiscoveryConfig) (discovery.Discovery, error) {
-	client, err := newConsulClient(c.Address, c.Scheme, c.Datacenter, c.Token, c.Namespace)
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if _, _, err := client.Catalog().Services((&api.QueryOptions{}).WithContext(ctx)); err != nil {
-		return nil, errutil.Explain(err, "registry-consul: discovery startup probe failed for %s", c.Address)
-	}
-	return newConsulDiscovery(client, c.Tag), nil
-}
-
-// newInheritedDiscoveryBackend builds one Consul-backed Discovery bean reusing
-// the shared ${spring.registry.consul} center client — the consumer half of
-// the "one center config, one connection" convergence. It carries no
-// destructor: the center bean owns the client's lifetime.
-func newInheritedDiscoveryBackend(c DiscoveryConfig, cc *consulCenter) (discovery.Discovery, error) {
-	if cc == nil {
-		return nil, errutil.Explain(nil, "registry-consul: discovery block cites no address and no ${spring.registry.consul} center is configured")
-	}
-	return newConsulDiscovery(cc.client, c.Tag), nil
-}
 
 // newConsulDiscovery builds a Discovery backed by a Consul client. tag is the
 // service tag narrowing every query (empty spans all tags).

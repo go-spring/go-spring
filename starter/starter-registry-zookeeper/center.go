@@ -30,24 +30,80 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-// zkCenter owns the ONE shared *zk.Conn for the ensemble configured under
-// ${spring.registry.zookeeper}. Both halves of the naming idiom derive from it:
-// the registrar (the write side, starter.go) and the discovery backend
-// auto-derived for the same ensemble (below). Constructing the connection once
-// — instead of one session per side — is the "one center config, two beans"
-// shape: a dual-role application configures the ensemble a single time.
-//
-// The bean's Destroy closes the connection, so neither derived side closes it.
-type zkCenter struct {
-	conn   *zk.Conn
-	config ZookeeperConfig
+// zkBackend is ONE configured registry center: the
+// ${spring.registry.zookeeper.<name>} block made a bean. It owns the single
+// ZooKeeper session for that ensemble (probed at construction, closed by the
+// bean destructor) and serves both halves of the naming idiom through it: the
+// write side (a discovery.Registrar collected by the starter-registry core)
+// and the read side (a discovery.Discovery consumers cite by the bean's name
+// "zookeeper.<name>"; lazy, so an app that never cites it pays nothing for
+// the read half). Both sides share the block's base-path, so read and write
+// can never diverge.
+type zkBackend struct {
+	reg  *zkRegistrar
+	disc *zkDiscovery
+}
+
+// newZkBackend builds the session (probing the ensemble) and both halves. The
+// probe is the fail-fast: a misconfigured or unreachable ensemble fails
+// startup here, once per block.
+func newZkBackend(c ZookeeperConfig) (*zkBackend, error) {
+	conn, err := connectZookeeper(c)
+	if err != nil {
+		return nil, err
+	}
+	reg, err := newZookeeperRegistrar(c, conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return &zkBackend{
+		reg: reg,
+		disc: &zkDiscovery{
+			conn:     conn,
+			basePath: strings.TrimRight(c.BasePath, "/"),
+			done:     make(chan struct{}),
+			entries:  map[string]*serviceEntry{},
+		},
+	}, nil
+}
+
+// Close releases the block's session (stopping the registrar's session
+// monitor and the discovery watchers with it). It is the bean destructor.
+func (b *zkBackend) Close() error {
+	if b == nil || b.reg == nil {
+		return nil
+	}
+	b.reg.Close()
+	return nil
+}
+
+// Register publishes inst into this ensemble (the ephemeral-znode protocol,
+// registrar.go).
+func (b *zkBackend) Register(ctx context.Context, inst discovery.Instance) error {
+	return b.reg.Register(ctx, inst)
+}
+
+// Deregister removes inst from this ensemble. Idempotent.
+func (b *zkBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
+	return b.reg.Deregister(ctx, inst)
+}
+
+// UpdateWeight re-advertises inst with a new weight.
+func (b *zkBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
+	return b.reg.UpdateWeight(ctx, inst, weight)
+}
+
+// Resolve serves snapshots of the instances published under this ensemble's
+// base path.
+func (b *zkBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	return b.disc.Resolve(ctx, name, opts...)
 }
 
 // connectZookeeper dials the ensemble for c, applies digest auth when set, and
 // probes it (an Exists call blocks until the session connects) so an
 // unreachable ensemble fails startup rather than surfacing on the first
-// operation. It is the single construction path behind the center, the
-// registrar fallback, and standalone discovery blocks.
+// operation.
 func connectZookeeper(c ZookeeperConfig) (*zk.Conn, error) {
 	if len(c.Servers) == 0 {
 		return nil, errutil.Explain(nil, "registry-zookeeper: servers is required")
@@ -72,77 +128,28 @@ func connectZookeeper(c ZookeeperConfig) (*zk.Conn, error) {
 	return conn, nil
 }
 
-// newZkCenter builds the shared connection and probes the ensemble. The probe
-// is the fail-fast both sides relied on when they built their own connections:
-// a misconfigured or unreachable ensemble fails startup here, once.
-func newZkCenter(c ZookeeperConfig) (*zkCenter, error) {
-	conn, err := connectZookeeper(c)
-	if err != nil {
-		return nil, err
-	}
-	return &zkCenter{conn: conn, config: c}, nil
-}
-
-// Close releases the shared connection. It is the bean destructor.
-func (z *zkCenter) Close() error {
-	if z == nil || z.conn == nil {
-		return nil
-	}
-	z.conn.Close()
-	return nil
-}
-
-func init() {
-	// The center bean exists exactly when the ensemble is configured. It is
-	// nullable-injected (TagArg("?")) by the registrar Server and by discovery
-	// backends that inherit the center connection, so it is constructed only
-	// when at least one side consumes it; its destructor closes the connection
-	// once.
-	//
-	// When discovery-name is non-empty (the default "zookeeper"), the module
-	// also derives a discovery backend bean for the same ensemble under that
-	// label — the "one config block serves both halves" default. A dual-role
-	// app then cites discovery=zookeeper without any
-	// ${spring.discovery.zookeeper} block; a label colliding with another bean
-	// name fails loudly in the container.
-	gs.Module(gs.OnProperty("spring.registry.zookeeper.servers"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var c ZookeeperConfig
-		if err := conf.Bind(p, &c, "${spring.registry.zookeeper}"); err != nil {
-			return errutil.Explain(err, "registry-zookeeper: bind center config")
-		}
-		r.Provide(newZkCenter,
-			gs.IndexArg(0, gs.ValueArg(c)),
-		).Destroy((*zkCenter).Close).Caller(1)
-
-		if name := c.DiscoveryName; name != "" {
-			r.Provide(newCenterDiscoveryBackend,
-				gs.IndexArg(0, gs.TagArg("?")),
-				gs.IndexArg(1, gs.ValueArg(strings.TrimRight(c.BasePath, "/"))),
-			).Name(name).Caller(1)
-		}
-		return nil
-	})
-}
-
-// newCenterDiscoveryBackend serves snapshots for the center's ensemble through
-// the shared connection. It is the discovery bean auto-derived from
-// ${spring.registry.zookeeper}; base-path is the center's (the registrar writes
-// under it), so read and write can never diverge.
-func newCenterDiscoveryBackend(zc *zkCenter, basePath string) (discovery.Discovery, error) {
-	if zc == nil {
-		return nil, errutil.Explain(nil, "registry-zookeeper: center connection unavailable")
-	}
-	log.Debugf(context.Background(), log.TagAppDef, "derived zookeeper discovery backend from center config, servers=%v", zc.config.Servers)
-	return &zkDiscovery{
-		conn:     zc.conn,
-		basePath: basePath,
-		done:     make(chan struct{}),
-		entries:  map[string]*serviceEntry{},
-	}, nil
-}
-
 // errConnectionClosed reports whether err means the zk connection is closed
 // for good (no retry can succeed).
 func errConnectionClosed(err error) bool {
 	return errors.Is(err, zk.ErrConnectionClosed) || errors.Is(err, zk.ErrClosing)
+}
+
+func init() {
+	// One NAMED bean per block under ${spring.registry.zookeeper.<name>}: the
+	// bean name "zookeeper.<name>" is the label a client starter cites to pick
+	// this backend for discovery, and the starter-registry core collects the
+	// same bean (as a discovery.Registrar) into the single publication
+	// lifecycle. Blocks across backends never collide (the name carries the
+	// backend type); a duplicate name within one backend fails loudly in the
+	// container.
+	gs.Module(gs.OnProperty("spring.registry.zookeeper"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.registry.zookeeper}", func(name string, c ZookeeperConfig) error {
+			r.Provide(newZkBackend,
+				gs.IndexArg(0, gs.ValueArg(c)),
+			).Name("zookeeper."+name).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registrar]()).
+				Destroy((*zkBackend).Close).Caller(1)
+			return nil
+		})
+	})
 }

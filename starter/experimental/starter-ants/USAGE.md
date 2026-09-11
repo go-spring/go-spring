@@ -67,17 +67,19 @@ import (
     StarterAnts "go-spring.org/starter-ants"
 )
 
-// panics counts task panics caught by the global handler (see §2.4).
+// panics counts task panics reported through the shared goutil chain (§2.4).
 var panics int64
 
 func init() {
-    // Register BEFORE the container starts — the handler is read when each
-    // pool is created (SetPanicHandler doc comment). Without a custom
-    // handler, panics fall through to goutil.ReportPanic (shared chain).
-    StarterAnts.SetPanicHandler(func(p any) {
+    // Observe the shared chain: pool-task panics are bridged into
+    // goutil.ReportPanic by DefaultDriver, so every recover site (goroutines,
+    // handlers, pool tasks) lands in one stream.
+    prev := goutil.OnPanic
+    goutil.OnPanic = func(ctx context.Context, info goutil.PanicInfo) {
         atomic.AddInt64(&panics, 1)
-        log.Warnf(context.Background(), log.TagAppDef, "recovered task panic: %v", p)
-    })
+        log.Warnf(ctx, log.TagAppDef, "recovered panic: %v", info.Panic)
+        prev(ctx, info)
+    }
 }
 
 // Service injects pools BY NAME (the map keys under spring.ants).
@@ -141,60 +143,67 @@ the third submit to a full nonblocking pool returns an error, and the panic hand
 
 ```
 import starter-ants
-  └─ init(): gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())
-        │   self-registers via RegisterObserver inside newMetricsObserver
+  └─ init():
+       gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())   // built-in observer bean
+       add custom observer: gs.Provide(NewX).Export(gs.As[PoolObserver]())
 gs.Run()
   ├─ gs.Module(gs.OnProperty("spring.ants")) fires (prefix check: any spring.ants.* key)
   ├─ conf.BindEach("${spring.ants}") → one Config per map key
   ├─ per name: gs.Provide(ctor).Name(name).Destroy(destroyPool)
-  │     ctor autowires the optional Driver bean ("?") — none → bundled DefaultDriver
-  ├─ bean init: createPool → (Driver bean | DefaultDriver).CreatePool
-  │     (ants.NewPool with WithPanicHandler(poolPanicHandler))
-  │     wraps in observedPool so every Submit flows the observer chain
+  │     ctor wires ①optional Driver bean ("?") — none → bundled DefaultDriver
+  │               ②[]PoolObserver collection — container collects every bean exported
+  │                  as PoolObserver (built-in MetricsObserver is thus forced to exist)
+  ├─ bean init: createPool(observers) → (Driver bean | DefaultDriver).CreatePool
+  │     (ants.NewPool with WithPanicHandler(goutil.ReportPanic bridge))
+  │     foldObservers(name, observers) folds the chain into observedPool at build time,
+  │     so every Submit flows that fixed observer chain
   ├─ readiness: pools usable from Init/Run hooks
   └─ on shutdown: destroyPool → pool.Release() (stops the purge goroutine)
 ```
 
 Design note (source comment): the starter uses `gs.Module` instead of `gs.Group` so the
 pool's bean name is available to pass to observers — that is why `OnSubmit(name, task)`
-receives the name.
+receives the name. Observers exist only as container beans (no package-level registry):
+to add one, `gs.Provide` a bean and export it as `PoolObserver`; the container
+instantiates it and collects it into every pool's chain before any pool is built.
 
 ### 2.2 One Submit, layer by layer
 
 `s.CPU.Submit(task)`:
 
-1. `observedPool.Submit` (starter.go) wraps the task: `wrapTask(name, task)` folds every
-   registered `PoolObserver`'s `OnSubmit` around it, innermost = your task.
+1. `observedPool.Submit` (starter.go) wraps the task: it calls the `chain` snapshotted at
+   pool-build time, folding every collected `PoolObserver`'s `OnSubmit` around it,
+   innermost = your task.
 2. The built-in `MetricsObserver.OnSubmit` (starter.go) wraps it once more with a
    running-counter increment/decrement — `running` is tracked per pool name.
 3. `antsPool.Submit` hands the wrapped task to ants, which queues it for a worker.
-4. On the worker goroutine: panic → `poolPanicHandler` (see §2.4); normal return →
+4. On the worker goroutine: panic → the goutil report bridge (see §2.4); normal return →
    counters decrement via defer.
 
 ### 2.3 Observers — what exists and how to add one
 
 | Hook | Signature | Registered by |
 |------|-----------|---------------|
-| `PoolObserver.OnSubmit` | `OnSubmit(name string, task func()) func()` | export a bean as `PoolObserver`, or call `RegisterObserver(o)` before startup |
+| `PoolObserver.OnSubmit` | `OnSubmit(name string, task func()) func()` | `gs.Provide(NewX).Export(gs.As[PoolObserver]())` |
 
-The chain is applied at Submit time, not at pool-build time: `wrapTask` reads
-`Observers()` (a snapshot) on every Submit, so an observer registered after pools exist
-still takes effect on subsequent submissions. The built-in `*MetricsObserver` bean
-self-registers in `newMetricsObserver`. Typical uses per the source comment: metrics,
-tracing context injection, duration logging, per-pool rate limiting.
+Observers are container beans only (no package-level global registry; `RegisterObserver`
+is gone): `gs.Provide` your observer's object/constructor and export it as `PoolObserver`.
+The container collects every such bean (a `[]PoolObserver` collection injected into each
+pool's ctor) before building any pool, and folds the chain into `observedPool` at build
+time — the chain is then fixed for the pool's lifetime. The built-in `*MetricsObserver`
+bean is registered by the starter and reaches every chain through the same collection.
+Typical uses per the source comment: metrics, tracing context injection, duration
+logging, per-pool rate limiting.
 
 ### 2.4 Panic chain (unified panic policy)
 
-`DefaultDriver.CreatePool` installs `ants.WithPanicHandler(poolPanicHandler)`. The chain
-(config.go):
-
-- `SetPanicHandler(fn)` set → your `fn` runs (pass nil to clear, re-enabling shared reporting).
-- Otherwise → `goutil.ReportPanic(ctx, p)` — the same goutil chain goroutine/handler/job
-  panics use (the structured-log bridge `go-spring.org/log` installs), so pool panics land
-  in one report stream. ants hands over only the panic value, so ReportPanic is called from
-  the deferred recover in the worker — the panicking frames are still on the stack.
-- The hook is read at pool creation; `SetPanicHandler` after startup affects only pools
-  created later. Per-pool handlers require a custom `Driver` bean override.
+`DefaultDriver.CreatePool` installs `ants.WithPanicHandler(goutil.ReportPanic bridge)`, which
+bridges straight into `goutil.ReportPanic(ctx, p)` — the same goutil chain
+goroutine/handler/job panics use (the structured-log bridge `go-spring.org/log`
+installs), so pool panics land in one report stream. ants hands over only the panic
+value, so ReportPanic is called from the deferred recover in the worker — the
+panicking frames are still on the stack. A process needing custom panic handling
+contributes its own `Driver` bean with its own `ants.WithPanicHandler`.
 
 ### 2.5 Shutdown
 
@@ -243,10 +252,10 @@ blocks instead (respecting `max-blocking-tasks` if set).
 
 ### 4.3 Panic drill
 
-Submit `func(){ panic("boom") }` on any DefaultDriver pool with no custom handler: the
-process stays up; the panic surfaces through the goutil report chain (structured log).
-With `SetPanicHandler` registered (example's init), the counter increments and a Warn line
-is logged — proving the injection point.
+Submit `func(){ panic("boom") }` on any DefaultDriver pool: the process stays up; the
+panic surfaces through the goutil report chain (structured log). With the example's
+`goutil.OnPanic` observer installed, the counter increments and a Warn line is logged —
+proving the bridge.
 
 ### 4.4 Metrics drill
 
@@ -267,10 +276,10 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 | Custom pool Driver bean never used | A second `Driver` bean, or the override registered after wiring | Provide at most one `Driver` bean; its ctor is autowired at wiring time. |
 | Tasks silently dropped | `nonblocking=true` + unchecked Submit error | Check Submit's error (it returns `ErrPoolOverload`). |
 | Submitters hang | Blocking pool at capacity, `max-blocking-tasks=0` | Raise `size`, set `max-blocking-tasks`, or go nonblocking. |
-| Panic handler never fires | `SetPanicHandler` called after pools were created | The hook is read at pool creation — register in `init()`. |
-| Custom `PoolObserver` ignored | Bean not exported as `PoolObserver` (or registered after Submit, per-call snapshot is fine; not-registered-at-all is not) | `Export(gs.As[PoolObserver]())` or call `RegisterObserver` before startup. |
+| Pool panics unobserved by custom logic | Default chain only reports | Install a `goutil.OnPanic` override or contribute a custom `Driver` bean. |
+| Custom `PoolObserver` ignored | Bean not exported as `PoolObserver` (or the container didn't collect it during assembly) | `gs.Provide(NewX).Export(gs.As[PoolObserver]())`; observers go through container beans only. |
 | High goroutine count on idle | `disable-purge=true` or huge `expiry-duration` | Re-enable purge / lower `expiry-duration`. |
-| Panic reported twice | Custom handler set AND expecting shared-chain behavior too | The chain is either/or — custom handler replaces goutil reporting. |
+| Panic reported twice | A `goutil.OnPanic` override chains to the previous handler AND the log bridge also reports | Wrap-and-forward (`prev(ctx, info)`) only once, or don't chain. |
 
 ---
 
@@ -290,6 +299,12 @@ Design suspects (kept from the previous edition; for the audit ledger):
 2. Driver is a single optional bean (at most one per process) — every pool shares the one
    assembly; per-pool driver selection by name is no longer possible (per-Config differences
    must flow through the Config the driver receives).
-3. Panic handler is a package-level global mutated by `SetPanicHandler` — ordering-sensitive.
-4. (New) `wrapTask` snapshots `Observers()` under RLock on every Submit — a lock on the
-   hot path purely to support late observer registration.
+3. ~~(fixed)~~ panic handler used to be a package-level global mutated by `SetPanicHandler`
+   (ordering-sensitive, data race window) — removed; panics now bridge straight into the
+   goutil chain, custom handling goes through a `Driver` bean.
+4. ~~(fixed)~~ observers used to go through a package-level registry `RegisterObserver` plus a
+   Submit-time RLock snapshot of `Observers()` (a hot-path lock purely for late registration) —
+   now they are injected via a container `[]PoolObserver` collection and the chain is folded
+   into the pool at build time; the hot path is lock-free. `MetricsObserver` is also guaranteed
+   to be instantiated by being collected (fixing a latent bug where prod might never materialize
+   it, so its self-registration never ran).

@@ -134,8 +134,7 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
 
 ```
 blank-import starter-config-nacos
-  └─ init(): gs.Provide(nacosController).Export(gs.As[gs.Rooter]())   starter.go:53
-             conf.RegisterProvider("nacos", nacosController.Load)      starter.go:58
+  └─ init(): conf.RegisterProvider("nacos", nacosController.Load)      starter.go:58
 
 gs.Run()
   ├─ App.Start(): app.p.Refresh()                                     app.go "Start"
@@ -149,15 +148,15 @@ gs.Run()
   │                   ├─ registerListener（去重）                      starter.go:249
   │                   ├─ GetConfig → reader.Read(format) → flatten    starter.go:219-244
   │                   └─ key 合入分层属性存储
-  ├─ IoC 装配：nacosController 注入 PropertiesRefresher                starter.go:73
+  ├─ IoC 容器装配
   ├─ Runners → Servers → 就绪
 ```
 
 import 在**任何 bean 装配之前**解析：所有 bean 的 `value:"${...}"` 标签绑定的是**合并后**
 的属性存储——远程 key 必须先就位，绑定才能看到。推论：provider 本身不能是注入 bean，
-它是 `init()` 里注册的包级 controller；而它需要的 `PropertiesRefresher` 在消费其产出的
-那次加载**之后**才被装配。这正是 `TriggerRefresh` 容忍 nil refresher 的原因（装配前是
-no-op；`TestTriggerRefreshNilRefresherIsNoop` 钉死）。
+它是 `init()` 里注册的包级 controller；变更时经进程级门面 `gs.RefreshProperties()`
+触达刷新，完全不需要 bean 装配。app 启动前门面返回错误，提前 `TriggerRefresh`
+是安全 no-op。
 
 ### 2.2 监听 / 热更新链路（配置面）
 
@@ -165,7 +164,7 @@ no-op；`TestTriggerRefreshNilRefresherIsNoop` 钉死）。
 Nacos 推送 dataId 变更
   └─ SDK OnChange（registerListener 安装，按 client+group+dataId 去重）
        └─ nacosCtrl.TriggerRefresh                                     starter.go:83
-            └─ Refresher.RefreshProperties()（装配前 nil 安全 no-op）
+            └─ gs.RefreshProperties()（app 启动前返回错误）
                  └─ App.RefreshProperties()                            app.go:247
                       ├─ 重新加载全部来源：文件、env、命令行参数，并重放每个
                       │   spring.config.import 条目（→ 再次 nacosCtrl.Load——

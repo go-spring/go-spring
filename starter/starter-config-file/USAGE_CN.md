@@ -133,27 +133,25 @@ echo 'demo:\n  message: flipped' > example/mount/application.yaml
 ```
 import starter-config-file
   ├─ init: conf.RegisterProvider("file-watch", controller.Load)      (filewatch.go:50)
-  ├─ init: conf.RegisterProvider("configtree", controller.LoadConfigTree)  (configtree.go:43)
-  └─ init: gs.Provide(controller).Export(As[gs.Rooter]())            (starter.go:57)
+  └─ init: conf.RegisterProvider("configtree", controller.LoadConfigTree)  (configtree.go:43)
         │
 gs.Run() → App.Start()                                               (app.go:285)
-  1. Provide PropertiesRefresher 与 ContextProvider bean
+  1. 挂载 gs.RefreshProperties / gs.AppStarted 门面目标
   2. app.p.Refresh(): 加载 conf/app.* 文件，解析 spring.config.import
      → provider.Load 在这一步执行：读文件/目录树，ensureWatch() 在父目录
        /树的每个目录上安装 fsnotify watcher
-  3. initLog，随后 IoC 容器装配 —— controller 的 *gs.PropertiesRefresher
-     autowire 字段此刻才被注入 (starter.go:67)
+  3. initLog，随后 IoC 容器装配
   4. app.started = true → RefreshProperties 从此合法                (app.go:309)
   5. Runners、Servers、就绪信号
   └─ 任一被 watch 目录有事件: watchLoop → TriggerRefresh
-       → Refresher.RefreshProperties(): 重新加载全部来源、按优先级合并、
+       → gs.RefreshProperties(): 重新加载全部来源、按优先级合并、
          原子更新所有 gs.Dync 字段                                   (app.go:247)
 ```
 
-controller 之所以同时是个 bean，尽管配置加载发生在 bean 装配前：`PropertiesRefresher`
-在装配后才存在，因此 `TriggerRefresh` 在装配前被刻意设计为 no-op（starter.go:76-80）——
-早期的 watch 事件被无害丢弃，因为启动加载刚捕获过状态。正是这种"provider 先于 bean
-注册、refresh 桥装配后注入"的拆分，使两个 provider 挂在同一个 controller 单例上。
+controller 之所以不需要是 bean，尽管配置加载发生在 bean 装配前：watch 回调经进程级
+`gs.RefreshProperties()` 门面触达刷新，app 启动前门面返回错误，因此 `TriggerRefresh`
+在启动前被刻意设计为 no-op——早期的 watch 事件被无害丢弃，因为启动加载刚捕获过状态。
+这正是两个 provider 挂在同一个 controller 单例上的原因。
 
 其它时序事实：
 

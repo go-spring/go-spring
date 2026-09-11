@@ -12,9 +12,9 @@
 - 中立身份模型:`Principal{Subject, Claims}`,
   `Authentication{Principal, Token, Authenticated, Authorities}`,
   `HasAuthority` / `HasAnyAuthority` / `HasAllAuthorities` 均 nil-safe。
-- 可插拔 `TokenValidator` 缝隙 + driver 注册表(`RegisterValidator` /
-  `GetValidator` / `MustGetValidator`),与 `discovery.Register` /
-  `resilience.RegisterDriver` 同构。
+- 可插拔 `TokenValidator` 缝隙:starter(如 `starter-security-jwt`)把具体
+  validator 作为容器 bean 贡献出来,server 家族中间件经它校验——接哪个
+  validator 是装配决策。
 - 方法级安全:`Require(authorities...)` 返回普通装饰器——`@PreAuthorize` 的
   等价物,与其他横切按普通函数嵌套组合。
 - `WithAuthentication` / `FromContext` 用于 context 传递。

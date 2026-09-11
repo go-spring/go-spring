@@ -36,14 +36,13 @@ that share one watch + refresh bridge:
   once for `file-watch` (→ `Load`) and once for `configtree`
   (→ `LoadConfigTree`) — both bound to methods of the same controller singleton.
   The providers run during `AppConfig.Refresh`, before any bean exists.
-- **Refresh hook.** Container-scope controller bean `configFileController` (named
-  `configFileController`, exported as `gs.Rooter`) injects
-  `*gs.PropertiesRefresher` and stores it directly on the package-level
-  `fileWatchController` singleton. Before wiring, `TriggerRefresh` is a safe
-  no-op; after wiring, it calls `RefreshProperties`. This eliminates the
-  previous `atomic.Pointer[func() error]` indirection — the IoC container's
-  wiring order guarantees the controller is populated before any watcher events
-  need it.
+- **Refresh hook.** The controller is not a bean: on a change the fsnotify
+  callback calls the process-level `gs.RefreshProperties()` facade directly
+  (mounted by the app from its most recent `Start`, meant for out-of-container
+  watch goroutines that cannot use dependency injection). Before the app has
+  started the facade returns an error, so `TriggerRefresh` is a safe no-op.
+  This eliminates the earlier bridge-bean + autowired `*gs.PropertiesRefresher`
+  indirection.
 - **Watch seam.** One fsnotify watcher per directory, deduped via a
   `watched` set so repeat `Load` calls do not create duplicate watches.
 
@@ -70,9 +69,11 @@ that share one watch + refresh bridge:
 - **`optional:` only tolerates a missing file.** Once the file exists,
   parsing and reading errors are always fatal so a mistyped file surfaces
   immediately.
-- **The bridge bean must be named.** `gs.Rooter` is `any`; the stable name
-  `configFileController` avoids the `__default__` collision that would
-  otherwise ambiguate with the application's own root beans.
+- **The controller has no bean identity.** An earlier version registered a
+  bridge bean exported as `gs.Rooter` (an `any` alias, where the stable name
+  `configFileController` avoided a `__default__` collision with the
+  application's own root beans). It is now a plain singleton registered as a
+  provider in `init()` — no bean, no autowired fields.
 
 ## 4. Trade-offs / Alternatives Rejected
 

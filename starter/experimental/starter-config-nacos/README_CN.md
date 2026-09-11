@@ -63,8 +63,9 @@ type Demo struct {
 
 - 启动时，`spring.config.import` 会调用 `nacos` Provider：它从 source 串自建配置客户端、
   拉取 data id，并注册变更监听器。
-- 远端变更触发监听器，回调框架的 `PropertiesRefresher`：重新加载所有配置源（重跑本
-  Provider），并通过两阶段原子提交重新绑定所有 `gs.Dync` 字段。
+- 远端变更触发监听器，其回调直接调用框架的进程级门面 `gs.RefreshProperties()`：
+  重新加载所有配置源（重跑本 Provider），并通过两阶段原子提交重新绑定所有
+  `gs.Dync` 字段。
 ### 日志 tag
 
 本模块的运行期日志使用 tag `_app_config_nacos`（nacos 配置源）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：

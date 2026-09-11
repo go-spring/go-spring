@@ -23,7 +23,6 @@ import (
 
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casbin/casbin/v2/persist"
-	"go-spring.org/spring/gs"
 )
 
 // fakeAdapter is a minimal in-memory persist.Adapter so tests don't need a
@@ -40,27 +39,23 @@ func (fakeAdapter) RemoveFilteredPolicy(sec, ptype string, fieldIndex int, field
 
 var _ persist.Adapter = fakeAdapter{}
 
-func newTestCtx() *gs.ContextProvider {
-	return &gs.ContextProvider{Context: context.Background()}
-}
-
 const (
 	testModel  = "testdata/model.conf"
 	testPolicy = "testdata/policy.csv"
 )
 
+// fakeAdapter is used whenever a config names an adapter bean.
 func TestPolicyAdapterMutualExclusion(t *testing.T) {
-	RegisterAdapter("fake", fakeAdapter{})
-	defer func() { delete(adapters, "fake") }()
-
 	tests := []struct {
 		name    string
 		cfg     Config
-		wantErr string // empty means success
+		adapter persist.Adapter // nil when the config's adapter key is empty
+		wantErr string          // empty means success
 	}{
 		{
 			name:    "both set is a startup error",
 			cfg:     Config{Model: testModel, Policy: testPolicy, Adapter: "fake"},
+			adapter: fakeAdapter{},
 			wantErr: "mutually exclusive",
 		},
 		{
@@ -68,8 +63,15 @@ func TestPolicyAdapterMutualExclusion(t *testing.T) {
 			cfg:  Config{Model: testModel, Policy: testPolicy},
 		},
 		{
-			name: "only adapter is ok",
+			name:    "only adapter is ok",
+			cfg:     Config{Model: testModel, Adapter: "fake"},
+			adapter: fakeAdapter{},
+		},
+		{
+			name: "adapter key set but no adapter bean is a startup error",
 			cfg:  Config{Model: testModel, Adapter: "fake"},
+			// adapter stays nil -> newEnforcer rejects it
+			wantErr: "no adapter bean named",
 		},
 		{
 			name: "neither boots with an empty policy",
@@ -78,7 +80,7 @@ func TestPolicyAdapterMutualExclusion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e, err := newEnforcer(newTestCtx(), "test", tt.cfg)
+			e, err := newEnforcer(context.Background(), tt.cfg, tt.adapter, nil)
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("want error containing %q, got nil", tt.wantErr)
@@ -99,7 +101,7 @@ func TestPolicyAdapterMutualExclusion(t *testing.T) {
 }
 
 func TestOnlyPolicyLoadsRules(t *testing.T) {
-	e, err := newEnforcer(newTestCtx(), "test", Config{Model: testModel, Policy: testPolicy})
+	e, err := newEnforcer(context.Background(), Config{Model: testModel, Policy: testPolicy}, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -110,7 +112,7 @@ func TestOnlyPolicyLoadsRules(t *testing.T) {
 }
 
 func TestNeitherSourceDeniesAll(t *testing.T) {
-	e, err := newEnforcer(newTestCtx(), "test", Config{Model: testModel})
+	e, err := newEnforcer(context.Background(), Config{Model: testModel}, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

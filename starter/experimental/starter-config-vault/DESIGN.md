@@ -36,10 +36,12 @@ independent.
   This keeps the token out of any configuration file the app itself binds.
 - **Client cache.** Vault API clients are cached per
   `(address, namespace, token)` tuple so refreshes do not rebuild clients.
-- **Refresh hook.** Container-scope bridge bean `configRefreshBridge` (named
-  `vaultConfigRefreshBridge`, exported as `gs.Rooter`) injects
-  `*gs.PropertiesRefresher` and stores its `RefreshProperties` into an
-  `atomic.Pointer[func() error]`.
+- **Refresh hook.** The controller is not a bean: on a detected change the
+  polling loop calls the process-level `gs.RefreshProperties()` facade
+  directly (mounted by the app from its most recent `Start`, meant for
+  out-of-container pollers that cannot use dependency injection). Before the
+  app has started the facade returns an error, so an early fire is a safe
+  no-op.
 - **Watch seam — shared fingerprint.** Per `(client, mount, path)` there is a
   shared `loadedFP[watchKey]` string. Every successful `loadVaultConfig`
   writes it; the polling loop compares its own poll's fingerprint against it.
@@ -63,10 +65,11 @@ independent.
   resolved from env / token file / query string, not from
   `spring.config.vault.*`, so a decryption seam that itself reads properties
   cannot enter a chicken-and-egg loop.
-- **The bridge bean must be named.** Same rule as the other config-provider
-  starters: `gs.Rooter` is an alias for `any`, so a stable name
-  (`vaultConfigRefreshBridge`) is required to avoid `__default__`
-  collisions.
+- **The controller has no bean identity.** Same as the other config-provider
+  starters: an earlier version carried a bridge bean exported as `gs.Rooter`
+  (an `any` alias, where the stable name `vaultConfigRefreshBridge` avoided
+  `__default__` collisions). The refresh now goes through the
+  `gs.RefreshProperties()` facade — no bean, no autowired fields.
 
 ## 4. Trade-offs / Alternatives Rejected
 

@@ -71,14 +71,14 @@ func TestApplyResilienceToggle(t *testing.T) {
 	if err := applyResilience(Config{Governance: false}, cl, "mqtt:test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resilienceExecs.Load(cl); ok {
+	if _, ok := clientGuards.Load(cl); ok {
 		t.Fatal("governance=false must not attach an executor")
 	}
 
 	if err := applyResilience(Config{Governance: true}, cl, "mqtt:test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resilienceExecs.Load(cl); !ok {
+	if _, ok := clientGuards.Load(cl); !ok {
 		t.Fatal("governance=true (default) must attach an executor")
 	}
 	closeResilience(cl)
@@ -91,8 +91,7 @@ func TestApplyResilienceToggle(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	cl := &fakeMQTTClient{}
 	stub := &stubExecutor{}
-	resilienceExecs.Store(cl, stub)
-	resilienceResources.Store(cl, "mqtt:test")
+	clientGuards.Store(cl, &clientGuard{exec: stub, resource: "mqtt:test"})
 
 	b := NewDriver(cl)
 	pub, err := b.NewPublisher(context.Background(), "t")
@@ -110,8 +109,7 @@ func TestDriverPublishGuarded(t *testing.T) {
 	}
 
 	// Governance off (no executor attached): the publish goes straight through.
-	resilienceExecs.Delete(cl)
-	resilienceResources.Delete(cl)
+	clientGuards.Delete(cl)
 	if err = pub.Publish(context.Background(), &messaging.Message{Payload: []byte("x")}); err != nil {
 		t.Fatalf("bare publish must succeed on the fake client, got %v", err)
 	}

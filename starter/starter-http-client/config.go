@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	"go-spring.org/cloud/httpx"
+	"go-spring.org/starter-http-client/httpx"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
@@ -97,9 +97,9 @@ func (c Config) validate() error {
 	return nil
 }
 
-// toTransportConfig maps the bound Config onto the cloud/httpx assembler input.
+// toTransportConfig maps the bound Config onto the starter-http-client/httpx assembler input.
 // Everything — TLS surface, trace layer, governance-resolved resilience
-// executor, fault + observe wrap, base dialer — is implemented by cloud/httpx.
+// executor, fault + observe wrap, base dialer — is implemented by starter-http-client/httpx.
 func (c Config) toTransportConfig() httpx.Config {
 	serviceName := c.ServiceName
 	if c.Addr != "" {

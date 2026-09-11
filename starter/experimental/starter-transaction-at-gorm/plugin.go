@@ -69,11 +69,11 @@ func (p *atPlugin) Name() string { return "at:" + p.resource }
 // base handle used for second-phase commit/rollback.
 func (p *atPlugin) Initialize(db *gorm.DB) error {
 	p.db = db
-	// Record the handle so the startup recovery Runner can scan this database's
-	// undo logs for orphans a crash left behind. Install the plugin during wiring
-	// (bean construction); a Run()-time installation registers too late for the
-	// scan to see it.
-	registerBranchDB(p.resource, db)
+	// Enroll the branch with the coordinator so the startup recovery Runner can
+	// replay this database's undo logs for orphans a crash left behind. Install
+	// the plugin during wiring (bean construction); a Run()-time installation
+	// enrolls too late for the scan to see it.
+	p.coord.Enroll(&gormBranch{resource: p.resource, db: db})
 	cb := db.Callback()
 	if err := cb.Update().Before("gorm:update").Register("at:before_update", p.beforeMutate(at.SQLUpdate)); err != nil {
 		return err

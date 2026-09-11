@@ -31,13 +31,9 @@ import (
 // durationBuckets are the duration-histogram boundaries (seconds) — the OTel
 // HTTP semconv recommended set.
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-var (
-	// lockTag is the static log tag for the lock access log; the backend's
-	// system is a log field, not part of the tag.
-	lockTag = log.RegisterAppTag("lock", "")
-
-	lockTracer = otel.Tracer("go-spring.org/cloud/lock")
-)
+// lockTag is the static log tag for the lock access log; the backend's
+// system is a log field, not part of the tag.
+var lockTag = log.RegisterAppTag("lock", "")
 
 // newDuration builds the lock.operation.duration histogram from whatever
 // meter provider is current — created per Wrap, not at package init, so an
@@ -56,22 +52,32 @@ func newDuration() metric.Float64Histogram {
 // the global OTel providers are no-ops, so the wrapper adds negligible
 // overhead and changes no behaviour.
 //
+// Tracer and histogram are resolved from whatever OTel providers are current
+// — here, at wiring time, not at package init — so an SDK installed after
+// this package's init still receives the spans and records.
+//
 // A lock starter installs it with its backend's system value:
 //
 //	locker = lock.WrapLocker("redis", inner)
 func WrapLocker(system string, inner Locker) Locker {
-	return &observedLocker{system: system, inner: inner, duration: newDuration()}
+	return &observedLocker{
+		system:   system,
+		inner:    inner,
+		tracer:   otel.Tracer("go-spring.org/cloud/lock"),
+		duration: newDuration(),
+	}
 }
 
 type observedLocker struct {
 	system   string
 	inner    Locker
+	tracer   trace.Tracer
 	duration metric.Float64Histogram
 }
 
 // start opens the operation's client span.
 func (l *observedLocker) start(ctx context.Context, op, key string) (context.Context, trace.Span) {
-	return lockTracer.Start(ctx, op,
+	return l.tracer.Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("lock.system", l.system),

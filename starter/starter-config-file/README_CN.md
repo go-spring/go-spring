@@ -121,5 +121,5 @@ K8s Secret/ConfigMap 挂载是扁平的（一个 key 一个文件；key 名允�
 - Kubernetes 更新挂载的 ConfigMap/Secret 时，会先写入一个新的带时间戳的数据目录，再原子地把
   `..data` 软链重命名指向它。你 import 的 key 文件是经 `..data` 解析的软链，每次更新其 inode
   都会变——这正是监听必须落在**父目录**（稳定）而非**文件本身**（每次更新 inode 都被替换）上的原因。
-- 变更触发监听器，回调框架的 `PropertiesRefresher`：重新加载所有配置源（重跑本 Provider），
-  并通过两阶段原子提交重新绑定所有 `gs.Dync` 字段。
+- 变更触发监听器，其回调直接调用框架的进程级门面 `gs.RefreshProperties()`：重新加载所有
+  配置源（重跑本 Provider），并通过两阶段原子提交重新绑定所有 `gs.Dync` 字段。

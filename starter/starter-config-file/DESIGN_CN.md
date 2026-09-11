@@ -29,9 +29,10 @@ provider，共用同一套监听 + 刷新桥接：
 - **Provider 缝隙。** `init()` 里调用两次 `conf.RegisterProvider`——一次 `file-watch`
   （→ `Load`）、一次 `configtree`（→ `LoadConfigTree`），都绑定到同一个 controller 单例
   的方法。provider 运行在 `AppConfig.Refresh` 阶段，早于任何 bean 存在。
-- **Refresh 钩子。** 容器域桥接 bean `configFileController`（命名 `configFileController`，
-  导出 `gs.Rooter`）注入 `*gs.PropertiesRefresher`，直接存到包级 `fileWatchController`
-  单例上。接线前 `TriggerRefresh` 是安全空操作；接线后调用 `RefreshProperties`。
+- **Refresh 钩子。** controller 不再是 bean：文件变更时 fsnotify 回调直接调用进程级
+  门面 `gs.RefreshProperties()`（由最近一次 `Start` 的 app 挂载，供容器外的 watch
+  goroutine 使用，无需依赖注入）。app 启动前门面返回错误，`TriggerRefresh` 是安全
+  空操作。这取代了早期"桥接 bean + autowire 注入 `*gs.PropertiesRefresher`"的间接层。
 - **Watch 缝隙。** 每个目录一条 fsnotify watcher，用 `watched` 集合去重，避免
   重复 `Load` 造出重复 watch。
 
@@ -51,9 +52,10 @@ provider，共用同一套监听 + 刷新桥接：
   （不做格式解析）；不接受 `?format=`。
 - **`optional:` 只容忍文件不存在。** 文件一旦存在，解析或读取错误始终致命，
   让配错的文件立刻暴露。
-- **桥接 bean 必须命名。** `gs.Rooter` 是 `any`；稳定命名
-  `configFileController` 避免与应用自身的默认 Rooter 在 `__default__`
-  上撞车。
+- **controller 已无 bean 身份。** 早期版本曾注册桥接 bean 并导出为 `gs.Rooter`
+  （`any` 别名；稳定命名 `configFileController` 避免与应用自身的默认 Rooter 在
+  `__default__` 上撞车）。现在它只是 `init()` 里注册 provider 的普通单例，
+  无 bean、无 autowire 字段。
 
 ## 4. 权衡 / 已否决方案
 

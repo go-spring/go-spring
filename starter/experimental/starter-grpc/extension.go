@@ -14,67 +14,10 @@
  * limitations under the License.
  */
 
+// User-contributed server interceptors are injected, not registered: an
+// application gs.Provides each interceptor and exports it As
+// grpc.UnaryServerInterceptor / grpc.StreamServerInterceptor, and
+// NewSimpleGrpcServer receives them all as bean collections. There is no
+// package-level registration API — each container carries its own stack, so
+// two containers in one process never share interceptors.
 package StarterGrpc
-
-import (
-	"sync"
-
-	"google.golang.org/grpc"
-)
-
-// Extension state holds user-registered interceptors that compose onto the
-// built-in server chain (LoadTest -> Tracing -> Metrics -> Resilience). It is
-// written during process init / before the container builds the server and read
-// once when buildOptions assembles the chain. A mutex guards it so registration
-// is safe regardless of timing; registration is rare, so the lock is free.
-//
-// Before this seam existed, adding a custom server interceptor required
-// replacing the entire *grpc.Server (the starter owned the only
-// grpc.NewServer call). UseUnaryInterceptor / UseStreamInterceptor let an
-// application compose its own interceptors onto the built-in stack instead.
-var (
-	extMu      sync.RWMutex
-	userUnary  []grpc.UnaryServerInterceptor
-	userStream []grpc.StreamServerInterceptor
-)
-
-// UseUnaryInterceptor prepends a unary server interceptor to the built-in
-// chain. Registered interceptors run OUTERMOST (first-registered = outermost),
-// mirroring starter-gin's EngineMiddleware model: a user guard (auth, request
-// filtering) sees the request before the built-in tracing/metrics/resilience
-// layers, and can short-circuit before any work is observed. Call from an init
-// function (or otherwise before the container builds the server). Multiple
-// calls compose.
-func UseUnaryInterceptor(i grpc.UnaryServerInterceptor) {
-	if i == nil {
-		return
-	}
-	extMu.Lock()
-	defer extMu.Unlock()
-	userUnary = append(userUnary, i)
-}
-
-// UseStreamInterceptor is the streaming-RPC counterpart of UseUnaryInterceptor.
-func UseStreamInterceptor(i grpc.StreamServerInterceptor) {
-	if i == nil {
-		return
-	}
-	extMu.Lock()
-	defer extMu.Unlock()
-	userStream = append(userStream, i)
-}
-
-// currentUserUnary returns a snapshot of registered unary interceptors in
-// registration order (first-registered first).
-func currentUserUnary() []grpc.UnaryServerInterceptor {
-	extMu.RLock()
-	defer extMu.RUnlock()
-	return append([]grpc.UnaryServerInterceptor(nil), userUnary...)
-}
-
-// currentUserStream returns a snapshot of registered stream interceptors.
-func currentUserStream() []grpc.StreamServerInterceptor {
-	extMu.RLock()
-	defer extMu.RUnlock()
-	return append([]grpc.StreamServerInterceptor(nil), userStream...)
-}

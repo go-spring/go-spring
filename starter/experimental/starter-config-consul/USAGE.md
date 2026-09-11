@@ -120,8 +120,7 @@ self-asserts the hot-reload within 15 s, then exits 0 on SIGTERM).
 
 ```
 blank import starter-config-consul
-  └─ init(): gs.Provide(consulCtrl).Export(gs.As[gs.Rooter]())     starter.go:50
-             conf.RegisterProvider("consul", consulCtrl.Load)      starter.go:55
+  └─ init(): conf.RegisterProvider("consul", consulCtrl.Load)      starter.go:55
 
 gs.Run()
   ├─ config phase (BEAN-LESS, hence pre-bean):
@@ -132,17 +131,16 @@ gs.Run()
   │                        ├─ optional/provider split (first ':')
   │                        ├─ consulCtrl.Load → parseSource → KV Get (cold load)
   │                        └─ registerWatch → one goroutine per (client, kvPath)
-  ├─ IoC wiring: consulCtrl is a Rooter, autowired *gs.PropertiesRefresher fills
-  │    c.Refresher (nil before this point — TriggerRefresh is a no-op, starter.go:86-90)
+  ├─ IoC container wiring
   ├─ Runners/Servers, readiness
   └─ steady state: watchLoop's blocking query fires RefreshProperties on index bump
 ```
 
 **Why pre-bean**: imports resolve inside `AppConfig.Refresh()`, which runs before the IoC container
 is wired (`app.go:272-279` startup sequence). The provider must therefore be registered from an
-`init()` — package-level state, not a bean — and the refresh bridge tolerates being unwired
-(`TriggerRefresh` nil-check, `starter.go:86-90`; covered by
-`TestTriggerRefreshNilRefresherIsNoop`).
+`init()` — package-level state, not a bean — and the watch callback reaches the refresh through
+the process-level `gs.RefreshProperties()` facade, which returns an error before the app has
+started (early `TriggerRefresh` is a no-op).
 
 ### 2.2 Watch / refresh path, walked
 
@@ -153,7 +151,7 @@ is wired (`app.go:272-279` startup sequence). The provider must therefore be reg
    `WaitIndex: lastIndex`, `WaitTime: 5m`. It swallows the initial index (first poll only
    establishes the baseline), triggers `TriggerRefresh()` when `LastIndex` advances, resets to 0 on
    index regression (Consul restart / index reset), and retries after 2 s on transport errors.
-3. `TriggerRefresh` → `PropertiesRefresher.RefreshProperties()` (`app.go:149-151`) → full
+3. `TriggerRefresh` → `gs.RefreshProperties()` (`app.go:149-151`) → full
    `AppConfig.Refresh()` rebuilds the layered storage from scratch (files, env, cmd, imports — so
    the KV entry is *re-fetched*, `starter.go:196`) → the container propagates the new snapshot to
    every `gs.Dync[T]` field atomically (`app.go:234-256`). Non-`Dync` bindings never re-run.

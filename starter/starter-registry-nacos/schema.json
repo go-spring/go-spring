@@ -1,59 +1,83 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.registry.nacos",
+  "description": "Named blocks: one property per Nacos server, e.g. spring.registry.nacos.main.server=... The block name is mandatory and becomes part of the backend bean name (nacos.<name>), which consumers cite for discovery (discovery=nacos.main). There is no default/unnamed block. The instance identity under spring.registry (service-name, addr, weight, metadata) is owned by the starter-registry core and shared by every configured center; see the 'instance' definition.",
   "type": "object",
-  "properties": {
-    "server": {
-      "type": "string"
-    },
-    "namespace": {
-      "type": "string",
-      "default": ""
-    },
-    "group": {
-      "type": "string",
-      "default": "DEFAULT_GROUP"
-    },
-    "cluster": {
-      "type": "string",
-      "default": "DEFAULT"
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "timeout-ms": {
-      "type": "integer",
-      "default": 5000
-    },
-    "spring.registry.service-name": {
-      "type": "string",
-      "description": "Logical service name to advertise",
-      "default": ""
-    },
-    "spring.registry.addr": {
-      "type": "string",
-      "description": "Advertised host:port of this instance",
-      "default": ""
-    },
-    "spring.registry.weight": {
-      "type": "integer",
-      "default": 0
-    },
-    "spring.registry.metadata": {
-      "type": "object",
-      "description": "Arbitrary key/value attributes stored with the instance",
-      "additionalProperties": {
-        "type": "string"
-      }
-    }
+  "additionalProperties": {
+    "$ref": "#/definitions/block"
   },
-  "required": [
-    "spring.registry.service-name",
-    "spring.registry.addr"
-  ]
+  "definitions": {
+    "block": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "string",
+          "description": "Nacos server host:port; setting it activates this block"
+        },
+        "namespace": {
+          "type": "string",
+          "default": ""
+        },
+        "group": {
+          "type": "string",
+          "default": "DEFAULT_GROUP"
+        },
+        "cluster": {
+          "type": "string",
+          "default": "DEFAULT"
+        },
+        "username": {
+          "type": "string",
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "default": ""
+        },
+        "timeout-ms": {
+          "type": "integer",
+          "default": 5000
+        }
+      },
+      "required": [
+        "server"
+      ]
+    },
+    "instance": {
+      "type": "object",
+      "description": "Bound under spring.registry by the starter-registry core; shared by every configured center. service-name is the registration intent signal: set means this process registers into all centers, unset means pure consumer.",
+      "properties": {
+        "spring.registry.service-name": {
+          "type": "string",
+          "description": "Logical service name to advertise; empty = pure consumer",
+          "default": ""
+        },
+        "spring.registry.addr": {
+          "type": "string",
+          "description": "Advertised host:port of this instance",
+          "default": ""
+        },
+        "spring.registry.id": {
+          "type": "string",
+          "description": "Instance id override; ignored by the nacos backend (instances are identified by ip:port)",
+          "default": ""
+        },
+        "spring.registry.weight": {
+          "type": "integer",
+          "default": 100
+        },
+        "spring.registry.metadata": {
+          "type": "object",
+          "description": "Arbitrary key/value attributes stored with the instance",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "spring.registry.service-name",
+        "spring.registry.addr"
+      ]
+    }
+  }
 }

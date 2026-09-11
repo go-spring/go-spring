@@ -115,11 +115,10 @@ etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, a
 
 ```
 blank-import starter-config-etcd
-  └─ init(): gs.Provide(etcdCtrl).Export(gs.As[gs.Rooter]())
-             conf.RegisterProvider("etcd", etcdCtrl.Load)
+  └─ init(): conf.RegisterProvider("etcd", etcdController.Load)
 
 gs.Run() → App.Start()
-  1. 注册 ContextProvider + PropertiesRefresher bean
+  1. 挂载 gs.RefreshProperties / gs.AppStarted 门面目标
   2. 刷新属性：加载 ./conf 文件 → loadFileImports 读取 spring.config.import
      → conf.Resolve（解析 source 串中的 ${...} 占位符）
      → provider.Load 解析 [optional:]etcd:<path> → etcdCtrl.Load：
@@ -127,8 +126,7 @@ gs.Run() → App.Start()
         → registerWatcher（按 client+key 去重） ← watch 先于 get 装上
         → Get（5s ctx 超时）→ reader.Read(format) → flatten
   3. 初始化日志
-  4. IoC 容器装配（App 为根）——etcdCtrl 经 `autowire:""` 注入 PropertiesRefresher；
-     所有 bean 的 value tag 此时对合并后的属性求值
+  4. IoC 容器装配（App 为根）；所有 bean 的 value tag 此时对合并后的属性求值
   5. Runners → Servers → 就绪
 ```
 
@@ -150,13 +148,13 @@ key 可以喂给任意 bean 的配置。etcd Get 本身发生在第 2 步——�
 被 watch 的 key 上发生 etcd PUT
   → clientv3.Watch channel 投递带事件的 WatchResponse
   → watcher goroutine：len(wr.Events) > 0 → etcdCtrl.TriggerRefresh()
-  → Refresher.RefreshProperties() → App.RefreshProperties()：
+  → gs.RefreshProperties() → App.RefreshProperties()：
        重跑整个属性加载（所有文件 + 所有 import）→ 合并
        → 传播到容器 → gs.Dync[T] 字段原子更新
 ```
 
-- 容器装配好 etcdCtrl 之前（即启动期间），`TriggerRefresh` 是**无害 no-op**——初始加载已经
-  捕获了状态（starter.go 注释）。
+- app 启动之前，`gs.RefreshProperties()` 返回错误，`TriggerRefresh` 是**无害 no-op**——
+  初始加载已经捕获了状态（starter.go 注释）。
 - watch 是**单 key** watch（无 `WithPrefix`）：只盯 import 里点名的那个精确 key。
   删除同样算事件：必填 import 的 key 被删后会打 WARN（`etcd key ... deleted; stale snapshot
   retained until the key is restored`），刷新失败也各打一条 WARN；**旧的合并属性

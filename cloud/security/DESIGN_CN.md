@@ -21,12 +21,11 @@
 
 ## 2. 关键抽象与缝隙
 
-- `TokenValidator`——单方法接口,同时驱动各家族中间件与 driver 注册表。
-  实现必须并发安全,并对任何无法背书的凭证**返回非 nil error**,而不是
-  返回 `Authenticated=false` 的 `Authentication`。
-- `RegisterValidator` / `GetValidator` / `MustGetValidator`——driver-registry
-  范式(空名/nil/重名一律 panic),与 `discovery.Register` /
-  `resilience.RegisterDriver` 同构。
+- `TokenValidator`——单方法接口,由 starter(或调用方应用)实现并作为容器
+  bean 贡献;各家族中间件经注入给它的 validator 做校验。实现必须并发安全,
+  并对任何无法背书的凭证**返回非 nil error**,而不是返回
+  `Authenticated=false` 的 `Authentication`。资源服务器用哪个 validator 是
+  装配决策(接哪个 starter / bean),不是按名的全局查表。
 - `WithAuthentication` / `FromContext`——用未导出 key 类型的 ctx 传递,防碰
   撞。
 - `Require(authorities...)`——普通装饰器;读 `FromContext(ctx)`,
@@ -61,7 +60,8 @@
   显式,没有看不见的优先级。
 - **路由级 `Authorize` 随各家族壳走,方法级 `Require` 留在本包**——同一权限
   集,两道闸:路由闸用 server 惯用法,装饰器闸在本包,保持一致。
-- **注册表不在请求路径解析 validator**。中间件直接接 `TokenValidator`
-  值;注册表用于装配期**查找** validator,不是每个请求都查。
+- **无 validator 驱动注册表**。validator 由 starter 作为容器 bean 贡献;中间
+  件拿它装配时接到的 `TokenValidator` 值做每请求校验——装配期与请求期都
+  不做按名的全局查找。
 - **无注解扫描**。`@PreAuthorize` 由显式的 `security.Require(...)` 装饰器
   取代——AOP 等价链。

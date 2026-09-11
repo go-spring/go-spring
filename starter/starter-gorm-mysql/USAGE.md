@@ -108,12 +108,11 @@ spring.gorm.mysql.cluster.user=root
 spring.gorm.mysql.cluster.password=123456
 spring.gorm.mysql.cluster.db=test
 spring.gorm.mysql.cluster.service-name=mysql-cluster
-spring.gorm.mysql.cluster.discovery=local        # -> spring.discovery.etcd.local.*
+spring.gorm.mysql.cluster.discovery=etcd.main    # -> the backend bean from ${spring.registry.etcd.main}
 spring.gorm.mysql.cluster.conn-max-lifetime=30m  # bounds failover lag (see §4.3)
 
-# --- etcd discovery backend named "local" --------------------------------------
-spring.discovery.etcd.local.endpoints=127.0.0.1:2379
-spring.discovery.etcd.local.key-prefix=/services/
+# --- etcd registry center (shared by registration and discovery) --------------
+spring.registry.etcd.main.endpoints=127.0.0.1:2379
 
 # --- actuator (aggregates gorm:mysql:<name> indicators) ------------------------
 spring.actuator.addr=:9370
@@ -272,7 +271,7 @@ Remove `parseTime=true`, run a model with a `time.Time` field → every scan of 
 | Startup fails `gorm ping:` | Wrong addr/credentials, or DB down within `ping-timeout` | Fix config or raise `ping-timeout`; this is the fail-fast ping, not a runtime failure. |
 | `unsupported Scan ... []uint8 ... time.Time` | `parseTime` default false | Set `parseTime=true` (+ `loc` if needed). |
 | Discovery client dials the config `addr`, not the registry's endpoints | `service-name` unset — plain-addr path | Set `service-name` (+ `discovery` if not "default"). |
-| Discovery dial error `no endpoints` / empty set | Backend name mismatch or no live keys | Check `spring.discovery.etcd.<name>` matches the `discovery` key; check etcd keys under the prefix. |
+| Discovery dial error `no endpoints` / empty set | Backend name mismatch or no live keys | Check the `discovery` key cites the derived backend label (e.g. `etcd`) and `${spring.registry.etcd}` is configured; check etcd keys under the prefix. |
 | Time values shifted by hours | `loc` unset (UTC default) with `parseTime=true` | Set `loc=Asia/Shanghai` (or your zone). |
 | Connection dies mid-slow-query | `readTimeout` smaller than the query | Raise `readTimeout` or tune the query. |
 | No spans/metrics per query | `observe.enabled=false`, or starter-otel not imported | Re-enable / import starter-otel (observe is a silent no-op without OTel globals). |

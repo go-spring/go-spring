@@ -80,9 +80,9 @@ full broadcast to refresh flow.
 - `Publish(prefix)` sends a small JSON `RefreshEvent{prefix}` on the subject. An
   empty prefix means a full-fleet refresh; a non-empty prefix lets
   prefix-scoped subscribers opt out.
-- On receipt each subscriber calls the framework's `PropertiesRefresher`, which
-  reloads all configuration sources and re-binds every `gs.Dync` field via a
-  two-phase, atomic commit.
+- On receipt each subscriber calls the framework's process-level
+  `gs.RefreshProperties()` facade, which reloads all configuration sources and
+  re-binds every `gs.Dync` field via a two-phase, atomic commit.
 ### Log tag
 
 Runtime logs from this module carry the tag `_app_config_bus` (config bus). Tune them independently of the

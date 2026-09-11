@@ -25,7 +25,8 @@
 //
 // A company adapts its own naming service by implementing the single
 // [Discovery] interface; each backend is a named bean in the IoC container
-// (named after its config label, e.g. ${spring.discovery.etcd.<name>}), and
+// (the registry starters derive theirs from ${spring.registry.<backend>} under
+// the fixed backend label, e.g. "etcd"), and
 // every client starter injects the backend it cites by name — the container is
 // the discovery directory. Publishing this process to a registry (the
 // provider-side write) is handled by a registry starter such as

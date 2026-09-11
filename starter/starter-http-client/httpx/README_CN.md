@@ -28,7 +28,7 @@
 ## 用法
 
 ```go
-import "go-spring.org/cloud/httpx"
+import "go-spring.org/starter-http-client/httpx"
 
 rt, closeFn, err := httpx.NewTransport(httpx.Config{
     ServiceName: "user-svc",     // 直连模式留空

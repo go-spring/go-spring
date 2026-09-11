@@ -23,13 +23,15 @@ import (
 )
 
 func TestLoad_ParsesByExtension(t *testing.T) {
+	ctl := &fileWatchCtrl{}
+
 	root := t.TempDir()
 	path := filepath.Join(root, "app.properties")
 	if err := os.WriteFile(path, []byte("a=1\nb=2\n"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
-	m, err := fileWatchController.Load(false, path)
+	m, err := ctl.Load(false, path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -39,13 +41,14 @@ func TestLoad_ParsesByExtension(t *testing.T) {
 }
 
 func TestLoad_YamlNestedFlattened(t *testing.T) {
+	ctl := &fileWatchCtrl{}
 	root := t.TempDir()
 	path := filepath.Join(root, "app.yaml")
 	if err := os.WriteFile(path, []byte("server:\n  port: 8080\n"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
-	m, err := fileWatchController.Load(false, path)
+	m, err := ctl.Load(false, path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -55,24 +58,30 @@ func TestLoad_YamlNestedFlattened(t *testing.T) {
 }
 
 func TestLoad_UnsupportedExtensionErrors(t *testing.T) {
+	ctl := &fileWatchCtrl{}
+
 	root := t.TempDir()
 	path := filepath.Join(root, "readme.md") // no reader registered for .md
 	if err := os.WriteFile(path, []byte("# hi"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if _, err := fileWatchController.Load(false, path); err == nil {
+	if _, err := ctl.Load(false, path); err == nil {
 		t.Fatalf("Load on .md must error")
 	}
 }
 
 func TestLoad_EmptyPathErrors(t *testing.T) {
-	if _, err := fileWatchController.Load(false, ""); err == nil {
+	ctl := &fileWatchCtrl{}
+
+	if _, err := ctl.Load(false, ""); err == nil {
 		t.Fatalf("Load on empty path must error")
 	}
 }
 
 func TestLoad_OptionalMissingReturnsNil(t *testing.T) {
-	m, err := fileWatchController.Load(true, filepath.Join(t.TempDir(), "nope"))
+	ctl := &fileWatchCtrl{}
+
+	m, err := ctl.Load(true, filepath.Join(t.TempDir(), "nope"))
 	if err != nil || m != nil {
 		t.Fatalf("optional missing: m=%v err=%v", m, err)
 	}

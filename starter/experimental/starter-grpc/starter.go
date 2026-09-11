@@ -127,16 +127,29 @@ type MetricsConfig struct {
 type SimpleGrpcServer struct {
 	cfg Config
 	reg ServiceRegister
-	svr *grpc.Server
+	// User-contributed interceptors, injected as bean collections ([]grpc.UnaryServerInterceptor /
+	// []grpc.StreamServerInterceptor) — per-container, no package-level stack.
+	userUnary  []grpc.UnaryServerInterceptor
+	userStream []grpc.StreamServerInterceptor
+	svr        *grpc.Server
 }
 
 // NewSimpleGrpcServer creates a SimpleGrpcServer from ${spring.grpc.server}
 // configuration. Inbound admission protection (rate-limit / breaker) is
 // resolved inside buildResilienceInterceptors via the neutral
-// resilience.ExecutorFor seam, so this server has no coupling to cloud/governance.
-func NewSimpleGrpcServer(cfg Config, reg ServiceRegister) *SimpleGrpcServer {
+// governance/resilience seam. User-contributed interceptors arrive as bean
+// collections: an application gs.Provides each interceptor and exports it As
+// the interceptor type, and the container injects every one of them here —
+// per-container, so two containers in one process carry independent stacks.
+func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
+	userUnary []grpc.UnaryServerInterceptor, userStream []grpc.StreamServerInterceptor) *SimpleGrpcServer {
 	log.Debugf(context.Background(), log.TagAppDef, "grpc server created addr=%s", cfg.Addr)
-	return &SimpleGrpcServer{cfg: cfg, reg: reg}
+	return &SimpleGrpcServer{
+		cfg:        cfg,
+		reg:        reg,
+		userUnary:  userUnary,
+		userStream: userStream,
+	}
 }
 
 // buildOptions translates the bound Config into grpc.ServerOption values.
@@ -182,12 +195,13 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	// without starter-otel.
 	var unary []grpc.UnaryServerInterceptor
 	var stream []grpc.StreamServerInterceptor
-	// User-registered interceptors are outermost (first in the chain), mirroring
-	// starter-gin's EngineMiddleware: an app guard sees the request before the
-	// built-in stack and can short-circuit before any work is observed. Built-ins
-	// follow: LoadTest, Tracing, Metrics, Resilience, then the handler.
-	unary = append(unary, currentUserUnary()...)
-	stream = append(stream, currentUserStream()...)
+	// User-contributed interceptors (bean collections injected at construction)
+	// are outermost (first in the chain), mirroring starter-gin's
+	// EngineMiddleware: an app guard sees the request before the built-in stack
+	// and can short-circuit before any work is observed. Built-ins follow:
+	// LoadTest, Tracing, Metrics, Resilience, then the handler.
+	unary = append(unary, s.userUnary...)
+	stream = append(stream, s.userStream...)
 	// LoadTest identification is outermost of the built-ins so the marker is on
 	// the context before tracing, metrics, resilience or the handler run, letting
 	// every downstream layer branch on traffic.IsLoadTest(ctx). A no-op when the

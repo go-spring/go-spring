@@ -135,28 +135,26 @@ echo 'demo:\n  message: flipped' > example/mount/application.yaml
 ```
 import starter-config-file
   ├─ init: conf.RegisterProvider("file-watch", controller.Load)      (filewatch.go:50)
-  ├─ init: conf.RegisterProvider("configtree", controller.LoadConfigTree)  (configtree.go:43)
-  └─ init: gs.Provide(controller).Export(As[gs.Rooter]())            (starter.go:57)
+  └─ init: conf.RegisterProvider("configtree", controller.LoadConfigTree)  (configtree.go:43)
         │
 gs.Run() → App.Start()                                                (app.go:285)
-  1. Provide PropertiesRefresher + ContextProvider beans
+  1. mount the gs.RefreshProperties / gs.AppStarted facade targets
   2. app.p.Refresh(): load conf/app.* files, resolve spring.config.import
      → provider.Load runs HERE: reads the file/tree, ensureWatch() installs
        the fsnotify watcher on the parent directory / every tree directory
-  3. initLog, then IoC container wiring — controller's *gs.PropertiesRefresher
-     autowire field is injected NOW (starter.go:67)
+  3. initLog, then IoC container wiring
   4. app.started = true → RefreshProperties becomes legal               (app.go:309)
   5. Runners, Servers, readiness
   └─ on any watched-directory event: watchLoop → TriggerRefresh
-       → Refresher.RefreshProperties(): reload ALL sources, merge by
+       → gs.RefreshProperties(): reload ALL sources, merge by
          priority, update every gs.Dync field atomically               (app.go:247)
 ```
 
-Why the controller is also a bean although config loads pre-bean: the `PropertiesRefresher`
-only exists after wiring, so `TriggerRefresh` is deliberately a no-op before wiring
-(starter.go:76-80) — early watch events are dropped harmlessly because the startup load just
-captured the state. This split (providers registered pre-bean, refresh bridge injected
-post-wiring) is why both providers hang off ONE controller singleton.
+Why the controller needs no bean although config loads pre-bean: the watch callback
+reaches the refresh through the process-level `gs.RefreshProperties()` facade, which
+returns an error before the app has started, so `TriggerRefresh` is deliberately a
+no-op pre-start — early watch events are dropped harmlessly because the startup load
+just captured the state. This is why both providers hang off ONE controller singleton.
 
 Other timing facts:
 

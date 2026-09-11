@@ -42,45 +42,31 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// starterTag is the infra log tag shared by both providers. fileWatchController
-// is the global singleton: the only places it is referenced outside its own
-// methods are the init functions (bean wiring here; provider registration in
-// filewatch.go and configtree.go). All other code operates on the receiver.
-var (
-	fileWatchController = &configFileController{}
-)
+// starterTag is the infra log tag shared by both providers. Each provider
+// owns its own controller type (fileWatchCtrl in filewatch.go,
+// configTreeCtrl in configtree.go), created in its init closure — no
+// package-level controller variable exists.
+var starterTag = log.RegisterAppTag("config_file", "")
 
-func init() {
-	// Register the shared controller as a root bean so the IoC container injects
-	// its PropertiesRefresher via autowire. Each provider registers itself in its
-	// own init (file-watch in filewatch.go, configtree in configtree.go). Before
-	// wiring, TriggerRefresh is a harmless no-op — the startup load already
-	// captured the initial config.
-	gs.Provide(fileWatchController).Export(gs.As[gs.Rooter]())
-}
-
-// configFileController owns the lifecycle shared by both providers: it holds the
-// IoC-injected PropertiesRefresher and the deduplicated set of watched
-// directories. The per-provider Load methods (Load in filewatch.go,
-// LoadConfigTree in configtree.go) read config; ensureWatch/watchLoop deliver
-// change events; TriggerRefresh fans them out into a full application property
-// refresh.
-type configFileController struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-
+// watchCore is the machinery both providers embed: the deduplicated set of
+// watched directories plus the change-to-refresh bridge. The per-provider
+// controllers (fileWatchCtrl in filewatch.go, configTreeCtrl in configtree.go)
+// read config; ensureWatch/watchLoop deliver change events; TriggerRefresh
+// fans them out into a full application property refresh via the
+// gs.RefreshProperties package-level facade — no bean wiring needed.
+type watchCore struct {
 	mu      sync.Mutex
 	watched map[string]struct{} // directories already watched
 }
 
 // TriggerRefresh is called by the watcher goroutines when a watched directory
-// changes. Before the IoC container wires the controller, this is a no-op — the
-// initial config load already captured the state.
-func (c *configFileController) TriggerRefresh() {
-	if c.Refresher != nil {
-		if err := c.Refresher.RefreshProperties(); err != nil {
-			log.Warnf(context.Background(), log.TagAppDef,
-				"property refresh after file change failed, previous snapshot retained: %v", err)
-		}
+// changes. Before the app has started, gs.RefreshProperties returns an error
+// and the change is dropped — the initial config load already captured the
+// state.
+func (c *watchCore) TriggerRefresh() {
+	if err := gs.RefreshProperties(); err != nil {
+		log.Warnf(context.Background(), log.TagAppDef,
+			"property refresh after file change failed, previous snapshot retained: %v", err)
 	}
 }
 
@@ -88,7 +74,7 @@ func (c *configFileController) TriggerRefresh() {
 // repeated Load calls (startup + every refresh) do not stack watchers on the
 // same directory. Watching is best-effort: if a watcher cannot be created,
 // startup still succeeds with a static snapshot, only losing hot-reload.
-func (c *configFileController) ensureWatch(dir string) {
+func (c *watchCore) ensureWatch(dir string) {
 	c.mu.Lock()
 	if c.watched == nil {
 		c.watched = map[string]struct{}{}
@@ -123,7 +109,7 @@ func (c *configFileController) ensureWatch(dir string) {
 // filtering by file name: a Kubernetes ConfigMap/Secret update surfaces as a
 // CREATE/RENAME on the "..data" symlink (not on the individual key files), so
 // coalescing every event into one refresh is both correct and simplest.
-func (c *configFileController) watchLoop(w *fsnotify.Watcher) {
+func (c *watchCore) watchLoop(w *fsnotify.Watcher) {
 	for {
 		select {
 		case _, ok := <-w.Events:

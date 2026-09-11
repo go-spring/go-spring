@@ -13,7 +13,6 @@ Pulsar、RabbitMQ、MQTT、...)只改接线,不改业务代码。
 | `Driver` | 在一条 broker 连接上开 publisher/subscriber;destination/source/group 字符串**按 broker 自己的术语**解释(subject、topic、queue、consumer group)。 |
 | `Publisher` / `Subscriber` | 创建时各自绑定一个 destination/source。`Subscribe` 在投递建立后返回(不阻塞到投递结束);`Close` 释放该 subscriber/publisher,不动共享客户端。 |
 | `Handler` | `func(ctx, *Message) error`——非 nil 返回表示投递失败;如何呈现(nack、重投、日志)是 broker 特定的,由各 starter 文档说明。 |
-| `RegisterDriver` / `GetDriver` | 驱动注册表惯用法(空名/nil/重复即 panic),面向按配置名选进程级 driver 的调用方。starter 通常把 driver 作为 bean 接在活连接上。 |
 | `Retry(h, RetryPolicy)` | 进程内按指数退避重试(`MaxRetries`、`InitialInterval`、`Multiplier`、`MaxInterval`);任一次成功即 ack,耗尽后返回错误交给 broker。零值 = 只跑一次。 |
 | `DeadLetter(h, dlq, RetryPolicy)` | 重试耗尽后把消息发到 `dlq` publisher(绑到如 `"orders.dlq"`)并 ack 原消息。副本保留原 headers,另加 `x-dlq-error` / `x-dlq-retries` / `x-dlq-key`。DLQ 发送本身失败则返回原错误——丢死信比重投更糟。 |
 | `Recover(h)` | 把 panic 的 handler 转成错误,一条坏消息杀不死投递循环。 |

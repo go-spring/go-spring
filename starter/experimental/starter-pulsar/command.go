@@ -197,15 +197,18 @@ func startConsume(ctx context.Context, msg pulsar.Message) (context.Context, obs
 // Resilience guard
 // -----------------------------------------------------------------------------
 
-// resilienceExecs tracks the resilience executor attached to each client, so
-// GuardedSend can resolve it from the raw pulsar.Client bean and the destructor
-// can Close it (releasing any background resources of a production driver).
-// Only clients with resilience enabled appear here.
-var resilienceExecs sync.Map // pulsar.Client -> resilience.Executor
+// clientGuard is the per-client resilience attachment: the executor chain and
+// the stable resource label it executes under, colocated so a guard lookup
+// reads the pair atomically (no torn exec/resource combination).
+type clientGuard struct {
+	exec     resilience.Executor
+	resource string
+}
 
-// resilienceResources tracks the stable resource label per client so the guard
-// can pass it to exec.Execute without re-deriving from Config.
-var resilienceResources sync.Map // pulsar.Client -> string
+// clientGuards indexes the guard by the raw client bean, so GuardedSend can resolve
+// it from a bare pulsar.Client and the destructor can Close it. Only clients with
+// resilience enabled appear here.
+var clientGuards sync.Map // pulsar.Client -> *clientGuard
 
 // applyResilience builds an executor and indexes it by cl. This is the pulsar
 // seam of resilience: pulsar-client-go exposes no reject-capable middleware and
@@ -225,31 +228,29 @@ func applyResilience(c Config, cl pulsar.Client, resource string) error {
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilience.WrapExecutor(exec, "pulsar")
-	resilienceExecs.Store(cl, exec)
-	resilienceResources.Store(cl, resource)
+	clientGuards.Store(cl, &clientGuard{exec: exec, resource: resource})
 	return nil
 }
 
 // closeResilience closes and forgets the executor behind cl, if any.
 func closeResilience(cl pulsar.Client) {
-	if v, ok := resilienceExecs.LoadAndDelete(cl); ok {
-		if err := v.(resilience.Executor).Close(); err != nil {
+	if v, ok := clientGuards.LoadAndDelete(cl); ok {
+		if err := v.(*clientGuard).exec.Close(); err != nil {
 			log.Warnf(context.Background(), log.TagAppDef, "pulsar: resilience executor close failed: %v", err)
 		}
 	}
-	resilienceResources.Delete(cl)
 }
 
 // guard routes call through the executor attached to cl, and otherwise runs it
 // inline. When resilience is disabled for the client this is a no-op
 // pass-through, so enabling protection is a zero-code opt-in on the caller side.
 func guard(ctx context.Context, cl pulsar.Client, call func(context.Context) error) error {
-	v, ok := resilienceExecs.Load(cl)
+	v, ok := clientGuards.Load(cl)
 	if !ok {
 		return call(ctx)
 	}
-	r, _ := resilienceResources.Load(cl)
-	return v.(resilience.Executor).Execute(ctx, r.(string), call)
+	g := v.(*clientGuard)
+	return g.exec.Execute(ctx, g.resource, call)
 }
 
 // GuardedSend sends msg synchronously on producer, routed through the resilience

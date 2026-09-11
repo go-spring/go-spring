@@ -45,45 +45,36 @@ import (
 )
 
 func init() {
-	// Register the nacos controller as both a root bean (so the IoC container
-	// injects its PropertiesRefresher via autowire) and the "nacos" config
-	// provider (so Load calls go through its method). Before wiring,
-	// TriggerRefresh is a harmless no-op — the startup load already captured
-	// the initial config.
-	gs.Provide(nacosController).Export(gs.As[gs.Rooter]())
-
 	// Register "nacos" as a remote configuration provider. The provider is
-	// the global controller's Load method, so the same object that holds the
-	// PropertiesRefresher (injected via autowire) also serves config loads.
-	conf.RegisterProvider("nacos", nacosController.Load)
+	// the controller's Load method — the controller itself lives in this
+	// closure only (no package-level variable), so its state is reachable
+	// solely through the registered provider. Watch-triggered refreshes go
+	// through the gs.RefreshProperties package-level facade, so the
+	// controller needs no bean wiring at all.
+	conf.RegisterProvider("nacos", (&nacosCtrl{}).Load)
 }
 
-// nacosController is the global singleton. It is ONLY referenced in init
-// functions. All other code operates on the
-// receiver without touching this global.
-var (
-	starterTag      = log.RegisterAppTag("config_nacos", "")
-	nacosController = &nacosCtrl{}
-)
+var starterTag = log.RegisterAppTag("config_nacos", "")
 
 // nacosCtrl is the single object that owns the full lifecycle of nacos
 // configuration: loading configs, listening for changes, and triggering
-// property refresh.
+// property refresh. Its clients are bootstrap infrastructure: they exist
+// before the container does and therefore deliberately opt out of
+// observability and governance wiring — don't "fix" that here; consumers
+// that need instrumented clients (e.g. the governance source) build their
+// own.
 type nacosCtrl struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-
 	mu       sync.Mutex
 	clients  map[string]config_client.IConfigClient
 	listened map[string]struct{}
 }
 
 // TriggerRefresh is called by the config listener when a watched data id
-// changes. Before the IoC container wires the controller, this is a no-op —
-// the initial config load already captured the state.
+// changes. Before the app has started, gs.RefreshProperties returns an
+// error and the change is dropped — the initial config load already
+// captured the state.
 func (c *nacosCtrl) TriggerRefresh() {
-	if c.Refresher != nil {
-		_ = c.Refresher.RefreshProperties()
-	}
+	_ = gs.RefreshProperties()
 }
 
 // configSource holds the parsed components of a nacos provider source string.

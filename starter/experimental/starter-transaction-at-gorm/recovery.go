@@ -18,33 +18,11 @@ package StarterTransactionATGorm
 
 import (
 	"context"
-	"maps"
-	"slices"
-	"sync"
 	"time"
 
+	"go-spring.org/cloud/experimental/transaction/at"
 	"go-spring.org/log"
-	"gorm.io/gorm"
 )
-
-// The recovery Runner needs a *gorm.DB handle per AT-enrolled database, but the
-// plugin (not the starter) owns those handles: the application installs it with
-// db.Use during wiring. So each plugin registers its base handle here at
-// Initialize time, and the Runner — which executes after wiring — iterates the
-// registry. This is why applications MUST install the plugin during bean
-// construction (as the example does), not from inside a later Runner.
-var (
-	recoverMu  sync.Mutex
-	recoverDBs = map[string]*gorm.DB{} // resource id -> base handle
-)
-
-// registerBranchDB records the base handle of one AT-enrolled database for the
-// startup recovery scan.
-func registerBranchDB(resource string, db *gorm.DB) {
-	recoverMu.Lock()
-	defer recoverMu.Unlock()
-	recoverDBs[resource] = db
-}
 
 // recoveryRunner replays, at startup, the undo logs a crash left behind. AT is
 // two-phase: phase one commits the business data together with its undo log, and
@@ -56,40 +34,51 @@ func registerBranchDB(resource string, db *gorm.DB) {
 // way). The Runner therefore scans each enrolled database's at_undo_log table
 // and replays every orphan's undo.
 //
+// The enrolled branches come from the coordinator bean: each plugin enrolled
+// itself with [at.Coordinator.Enroll] at Initialize time (during wiring), and
+// this Runner executes after wiring, so the list is complete. This is why
+// applications MUST install the plugin during bean construction (as the example
+// does), not from inside a later Runner.
+//
 // Scanning at boot is unambiguous in this starter's single-process model: no
 // transaction of this process can be in flight before Runners execute, so any
 // undo-log row found is an orphan. Sharing the database between processes is
 // outside that contract — such deployments must set
 // spring.transaction.at.recover-on-start=false and reconcile manually.
-type recoveryRunner struct{}
+type recoveryRunner struct {
+	coord at.Coordinator
+}
 
 // newRecoveryRunner is the constructor registered with the container.
-func newRecoveryRunner() *recoveryRunner { return &recoveryRunner{} }
+func newRecoveryRunner(coord at.Coordinator) *recoveryRunner {
+	return &recoveryRunner{coord: coord}
+}
 
 // Run recovers every enrolled database. It never fails startup: a database that
 // cannot be scanned or an xid whose replay fails is logged (ERROR) and skipped,
 // leaving its undo logs in place for manual recovery, so one bad database does
 // not block the rest of the application.
 func (r *recoveryRunner) Run(ctx context.Context) error {
-	recoverMu.Lock()
-	resources := slices.Sorted(maps.Keys(recoverDBs))
-	dbs := make([]*gorm.DB, len(resources))
-	for i, res := range resources {
-		dbs[i] = recoverDBs[res]
-	}
-	recoverMu.Unlock()
-
-	for i, db := range dbs {
-		_ = recoverDatabase(ctx, resources[i], db)
+	for _, b := range r.coord.Enrolled() {
+		_ = recoverBranch(ctx, b)
 	}
 	return nil
 }
 
-// recoverDatabase scans one database for orphaned undo logs and replays them.
-// It logs a loud ERROR when orphans exist (count plus the oldest entry, the two
-// numbers an operator needs to gauge exposure) before attempting recovery, so a
-// failed replay has already been reported.
-func recoverDatabase(ctx context.Context, resource string, db *gorm.DB) error {
+// recoverBranch scans one enrolled database for orphaned undo logs and replays
+// them. It logs a loud ERROR when orphans exist (count plus the oldest entry,
+// the two numbers an operator needs to gauge exposure) before attempting
+// recovery, so a failed replay has already been reported. A branch this
+// gorm-specific starter does not recognize is logged and skipped.
+func recoverBranch(ctx context.Context, b at.Branch) error {
+	gb, ok := b.(*gormBranch)
+	if !ok {
+		log.Errorf(ctx, log.TagAppDef,
+			"at recovery: branch %q is not a gorm branch (type %T); skipping", b.ID(), b)
+		return nil
+	}
+	resource, db := gb.resource, gb.db
+
 	var xids []string
 	if err := db.Model(&undoRow{}).Distinct().Order("xid").
 		Pluck("xid", &xids).Error; err != nil {
@@ -115,9 +104,8 @@ func recoverDatabase(ctx context.Context, resource string, db *gorm.DB) error {
 		"at recovery: found %d orphaned undo-log entries on resource %q (oldest %s) from %d interrupted global transaction(s) of a previous run; rolling back",
 		count, resource, oldest.Format(time.RFC3339), len(xids))
 
-	b := &gormBranch{resource: resource, db: db}
 	for _, xid := range xids {
-		if err := b.Rollback(ctx, xid); err != nil {
+		if err := gb.Rollback(ctx, xid); err != nil {
 			log.Errorf(ctx, log.TagAppDef,
 				"at recovery: rolling back global transaction %q on resource %q failed: %v (undo logs kept for manual recovery)", xid, resource, err)
 			continue

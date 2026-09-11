@@ -104,7 +104,7 @@ func TestConfig_AddrRequiredWithoutDefault(t *testing.T) {
 // plain config: it must succeed. (grpc.ServerOption values are opaque, so the
 // interceptor wiring itself is behavior-tested in the per-interceptor tests.)
 func TestBuildOptions_NoErrorOnPlainConfig(t *testing.T) {
-	s := NewSimpleGrpcServer(bindConfig(t, map[string]any{}), func(*grpc.Server) {})
+	s := NewSimpleGrpcServer(bindConfig(t, map[string]any{}), func(*grpc.Server) {}, nil, nil)
 	opts, err := s.buildOptions()
 	assert.That(t, err).Nil()
 	assert.That(t, len(opts) > 0).True() // the interceptor chains are always installed
@@ -117,7 +117,7 @@ func TestBuildOptions_TLSBuildErrorPropagates(t *testing.T) {
 		"tls.enabled":   true,
 		"tls.cert-file": "/does/not/exist.pem",
 		"tls.key-file":  "/does/not/exist.key",
-	}), func(*grpc.Server) {})
+	}), func(*grpc.Server) {}, nil, nil)
 	_, err := s.buildOptions()
 	assert.That(t, err != nil).True()
 	assert.String(t, err.Error()).Contains("grpc: build TLS")

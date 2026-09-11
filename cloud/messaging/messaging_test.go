@@ -114,18 +114,3 @@ func TestDriver_RoundTrip(t *testing.T) {
 	assert.String(t, string(got.Payload)).Equal("hello")
 	assert.String(t, got.Header("traceparent")).Equal("00-abc-def-01")
 }
-
-func TestRegistry(t *testing.T) {
-	RegisterDriver("mem", newMemDriver())
-
-	b, err := GetDriver("mem")
-	assert.Error(t, err).Nil()
-	assert.That(t, b).NotNil()
-
-	_, err = GetDriver("missing")
-	assert.Error(t, err).Matches("no driver registered as \"missing\"")
-
-	assert.Panic(t, func() { RegisterDriver("mem", newMemDriver()) }, "already registered")
-	assert.Panic(t, func() { RegisterDriver("", newMemDriver()) }, "empty name")
-	assert.Panic(t, func() { RegisterDriver("nil-b", nil) }, "nil driver")
-}

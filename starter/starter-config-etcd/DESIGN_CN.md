@@ -29,11 +29,11 @@
 - **Client 缓存。** `clientv3.Client` 按 `(endpoint, username, password)`
   元组缓存。否则每次刷新都会新建 client 及其后台 goroutine——`Load`
   在启动和每次 `RefreshProperties` 都会跑。
-- **Refresh 钩子。** controller 单例本身就是桥接：它作为 root bean 注册并导出为
-  `gs.Rooter`，因此 IoC 容器通过 autowire 把 `*gs.PropertiesRefresher` 直接注入到
-  它的 `Refresher` 字段。接线前 `TriggerRefresh` 是安全空操作；接线后调用
-  `RefreshProperties`。这取代了早期经由单独桥接 bean 的 `atomic.Pointer[func() error]`
-  间接层——controller 现在同时持有 watch 循环和刷新触发。
+- **Refresh 钩子。** controller 不再是 bean：`TriggerRefresh` 直接调用进程级门面
+  `gs.RefreshProperties()`（由最近一次 `Start` 的 app 挂载，供容器外的 watch
+  goroutine 使用，无需依赖注入）。app 启动前门面返回错误，`TriggerRefresh` 是
+  安全空操作。这取代了早期"root bean + autowire 注入 `*gs.PropertiesRefresher`"
+  的桥接方式——controller 现在同时持有 watch 循环和刷新触发。
 - **Watch 缝隙。** 每个 key 一条 `cli.Watch` 通道，后台 goroutine 消费；每个
   非空事件批次触发 `TriggerRefresh`。用 `(client-key, etcd-key)` 集合去重，
   避免重复 `Load` 注册并行 watcher。
@@ -47,9 +47,10 @@
   key 的热更新，不阻塞启动，初次拉取已经产出了值。
 - **`optional:` 只吞 Get 错误，不吞解析错误。** 网络故障或缺失 key 在
   optional 下返回 `(nil, nil)`；解析错误始终致命，让格式配错立刻暴露。
-- **桥接 bean 必须命名。** `gs.Rooter` 是 `any` 别名，两个默认 `__default__`
-  的 Rooter export 会在 `(name, type)` 去重上撞车。controller 的稳定命名
-  （`etcdCtrl`）是关键。
+- **controller 已无 bean 身份。** 早期版本曾把 controller 注册为 root bean 并
+  导出为 `gs.Rooter`（`any` 别名，两个默认 `__default__` 的 Rooter export 会在
+  `(name, type)` 去重上撞车，稳定命名是关键）；现在 controller 只是
+  `init()` 里注册 provider 的普通单例，无 bean、无 autowire 字段。
 - **不能对 proxy 跑 `go mod tidy`。** `spring/*`、`stdlib/*` 靠 workspace
   `go.work` 解析。
 

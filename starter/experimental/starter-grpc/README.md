@@ -78,8 +78,8 @@ each asserted end-to-end by `runTest`:
    real `grpc.UnaryServerInterceptor` that logs the invoked method and reads
    the incoming `x-app` metadata key. It is wired into the service via an
    `interceptedEchoServer` wrapper (for per-service composition; the starter also exposes
-   `StarterGrpc.UseUnaryInterceptor`/`UseStreamInterceptor`, which install app interceptors
-   outermost of the built-in chain via `grpc.ChainUnaryInterceptor`). The client sends `x-app=go-spring` via
+   app interceptors can also be provided as beans — injected into the server constructor
+   as collections and installed outermost of the built-in chain via `grpc.ChainUnaryInterceptor`). The client sends `x-app=go-spring` via
    `metadata.NewOutgoingContext` and the call still succeeds, proving the
    interceptor ran without breaking the RPC.
 3. **Response header via `grpc.SetHeader`** — the handler attaches

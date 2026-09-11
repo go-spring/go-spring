@@ -39,36 +39,6 @@ func (p *antsPool) Cap() int                 { return p.pool.Cap() }
 func (p *antsPool) Waiting() int             { return p.pool.Waiting() }
 func (p *antsPool) Release()                 { p.pool.Release() }
 
-// panicHandler is an optional handler invoked when a task submitted to a
-// DefaultDriver-built pool panics. It is a global hook shared by every such
-// pool; register it with SetPanicHandler before the container starts. When
-// unset, poolPanicHandler bridges into the shared goutil panic chain (the
-// structured-log bridge go-spring.org/log installs), so pool panics land in
-// the same report stream as goroutine, handler and job panics. Per-pool
-// handlers require a custom Driver.
-var panicHandler func(any)
-
-// SetPanicHandler registers a handler invoked when a task panics on any
-// DefaultDriver-built pool. Pass nil to clear it (which re-enables the shared
-// goutil reporting). Call this before the application starts, since the
-// handler is read when each pool is created.
-func SetPanicHandler(fn func(any)) {
-	panicHandler = fn
-}
-
-// poolPanicHandler is what the pools actually receive: the user hook when
-// set, otherwise the shared-chain bridge. ants hands over only the panic
-// value, so the bridge captures the stack itself — ReportPanic is called
-// from the deferred recover in the worker, so the panicking frames are still
-// on the stack.
-func poolPanicHandler(p any) {
-	if panicHandler != nil {
-		panicHandler(p)
-		return
-	}
-	goutil.ReportPanic(context.Background(), p)
-}
-
 // Config defines an ants goroutine-pool configuration. ants is a purely
 // in-process worker pool, so there is no address or connection to configure —
 // only sizing and scheduling knobs.
@@ -121,13 +91,18 @@ type Driver interface {
 // ---------------------------------------------------------------------------
 
 // DefaultDriver is the bundled default implementation of the Driver interface.
-// It creates a standard *ants.Pool wrapped in an antsPool with all registered
-// observers attached.
+// It creates a standard *ants.Pool wrapped in an antsPool. Observer chaining is
+// applied on top by the pool assembly (createPool), not by the driver.
 type DefaultDriver struct{}
 
 // CreatePool creates a new ants pool based on the provided configuration.
-// The pool is wrapped with all currently registered PoolObservers so that
-// every task submission goes through the observer chain.
+// A panicking task is bridged straight into the shared goutil panic chain
+// (the structured-log bridge go-spring.org/log installs), so pool panics
+// land in the same report stream as goroutine, handler and job panics. ants
+// hands over only the panic value, so ReportPanic is called from the
+// deferred recover in the worker — the panicking frames are still on the
+// stack. A process needing custom panic handling contributes its own Driver
+// bean with its own ants.WithPanicHandler.
 func (DefaultDriver) CreatePool(c Config) (Pool, error) {
 	pool, err := ants.NewPool(c.Size,
 		ants.WithExpiryDuration(c.ExpiryDuration),
@@ -135,7 +110,9 @@ func (DefaultDriver) CreatePool(c Config) (Pool, error) {
 		ants.WithMaxBlockingTasks(c.MaxBlockingTasks),
 		ants.WithNonblocking(c.Nonblocking),
 		ants.WithDisablePurge(c.DisablePurge),
-		ants.WithPanicHandler(poolPanicHandler),
+		ants.WithPanicHandler(func(p any) {
+			goutil.ReportPanic(context.Background(), p)
+		}),
 	)
 	if err != nil {
 		return nil, err

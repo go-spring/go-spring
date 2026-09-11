@@ -2,6 +2,9 @@
 
 [English](README.md) | [中文](README_CN.md)
 
+> **状态：实验性，暂无消费方。** 仓库内尚无任何代码导入本包；规划中的兄弟
+> 引擎（gRPC/Thrift 契约测试）也未落地。待出现真实消费方后移出 `experimental/`。
+
 `contract` 是 Go-Spring 版的 Spring Cloud Contract。一份声明式契约——请求形态
 加上它必须产生的响应——同时驱动一次服务间调用的**两端**:
 

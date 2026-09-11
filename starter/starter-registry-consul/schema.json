@@ -3,43 +3,21 @@
   "title": "spring.registry.consul",
   "type": "object",
   "properties": {
-    "address": {
-      "type": "string"
-    },
-    "scheme": {
-      "type": "string",
-      "default": "http"
-    },
-    "datacenter": {
-      "type": "string",
-      "default": ""
-    },
-    "token": {
-      "type": "string",
-      "default": ""
-    },
-    "namespace": {
-      "type": "string",
-      "default": ""
-    },
-    "ttl": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "15s"
-    },
-    "deregister-critical-after": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "1m"
+    "spring.registry.consul": {
+      "type": "object",
+      "description": "One named block per Consul agent. Each block becomes ONE backend bean named 'consul.<name>' implementing both discovery.Registrar (write) and discovery.Discovery (read). No default/unnamed block.",
+      "additionalProperties": {
+        "$ref": "#/$defs/consulBlock"
+      }
     },
     "spring.registry.service-name": {
       "type": "string",
-      "description": "Logical service name to advertise",
+      "description": "Registration intent signal: logical service name to advertise into every configured center. Unset means pure consumer (registers nothing).",
       "default": ""
     },
     "spring.registry.addr": {
       "type": "string",
-      "description": "Advertised host:port of this instance",
+      "description": "Advertised host:port of this instance (required when service-name is set)",
       "default": ""
     },
     "spring.registry.id": {
@@ -49,7 +27,8 @@
     },
     "spring.registry.weight": {
       "type": "integer",
-      "default": 0
+      "description": "Initial load-balancing weight shared by every center",
+      "default": 100
     },
     "spring.registry.metadata": {
       "type": "object",
@@ -59,8 +38,44 @@
       }
     }
   },
-  "required": [
-    "spring.registry.service-name",
-    "spring.registry.addr"
-  ]
+  "$defs": {
+    "consulBlock": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Consul HTTP API address; required"
+        },
+        "scheme": {
+          "type": "string",
+          "default": "http"
+        },
+        "datacenter": {
+          "type": "string",
+          "default": ""
+        },
+        "token": {
+          "type": "string",
+          "default": ""
+        },
+        "namespace": {
+          "type": "string",
+          "default": ""
+        },
+        "ttl": {
+          "type": "string",
+          "description": "TTL health check interval; heartbeat at half this",
+          "default": "15s"
+        },
+        "deregister-critical-after": {
+          "type": "string",
+          "description": "Auto-drop after the check stays critical this long; 0 disables",
+          "default": "1m"
+        }
+      },
+      "required": [
+        "address"
+      ]
+    }
+  }
 }

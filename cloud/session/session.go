@@ -29,8 +29,8 @@
 //     a distributed backend (Redis, ...) behind the same interface, so switching
 //     from single-node to shared storage changes no business code. Byte-oriented
 //     backends implement the narrower [ByteStore] and are lifted with
-//     [FromByteStore]. Named stores are shared through a package-level registry
-//     ([Register]/[Get]/[Get]), with [Memory] registered as "memory".
+//     [FromByteStore]. A store reaches [Manager] by constructor injection
+//     ([NewManager]), never through a package-level registry.
 //   - [Manager] is the HTTP seam. Its [Manager.Middleware] parses the session id
 //     from the request cookie, loads the session into the request context, and
 //     writes it back on the way out — the single place session transport lives,

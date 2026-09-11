@@ -14,10 +14,10 @@ provider under `spring.config.import`, mirroring starter-config-nacos's shape.
 
 ## 2. Key Abstractions & Seams
 
-- **conf.RegisterProvider("apollo", ctrl.Load)** + **gs.Rooter** — same
-  dual-role controller as nacos: the Rooter gets the `PropertiesRefresher`
-  autowired, and Load serves config fetches. No bound Config — connection
-  params live in the source string.
+- **conf.RegisterProvider("apollo", ctrl.Load)** — the controller is not a
+  bean, same as nacos: on a change the listener callback calls the
+  process-level `gs.RefreshProperties()` facade, and Load serves config
+  fetches. No bound Config — connection params live in the source string.
 - **clientFor cache** — one agollo Client per `(server, appId, cluster,
   secret, namespace)`; namespace is in the key because agollo fixes
   `NamespaceName` at StartWithConfig time.

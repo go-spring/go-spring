@@ -54,7 +54,7 @@ func WithRetry(p RetryPolicy) Option { return func(c *coordinator) { c.retry = p
 // uses no global lock and no observer, which is a valid transparent setup for
 // tests and single-writer development.
 func NewCoordinator(opts ...Option) Coordinator {
-	c := &coordinator{active: make(map[string][]Branch)}
+	c := &coordinator{active: make(map[string][]Branch), enrolled: make(map[string]Branch)}
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -66,8 +66,9 @@ type coordinator struct {
 	observer Observer
 	retry    RetryPolicy
 
-	mu     sync.Mutex
-	active map[string][]Branch // xid -> registered branches, in registration order
+	mu       sync.Mutex
+	active   map[string][]Branch // xid -> registered branches, in registration order
+	enrolled map[string]Branch   // branch id -> startup-enrolled branch
 }
 
 func (c *coordinator) Begin(ctx context.Context) (context.Context, string) {
@@ -76,6 +77,27 @@ func (c *coordinator) Begin(ctx context.Context) (context.Context, string) {
 	c.active[xid] = nil
 	c.mu.Unlock()
 	return WithXID(ctx, xid), xid
+}
+
+func (c *coordinator) Enroll(b Branch) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.enrolled[b.ID()] = b
+}
+
+func (c *coordinator) Enrolled() []Branch {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ids := make([]string, 0, len(c.enrolled))
+	for id := range c.enrolled {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	branches := make([]Branch, len(ids))
+	for i, id := range ids {
+		branches[i] = c.enrolled[id]
+	}
+	return branches
 }
 
 func (c *coordinator) Register(_ context.Context, xid string, b Branch) error {

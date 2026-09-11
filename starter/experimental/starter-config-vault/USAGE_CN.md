@@ -135,8 +135,7 @@ example 还演示了属性级解密：文档值为 `ENC(aes:<base64>)` 时，con
 
 ```
 blank-import starter-config-vault
-  └─ init(): gs.Provide(vaultController).Export(As[gs.Rooter]())   [starter.go:55]
-     └─ conf.RegisterProvider("vault", vaultController.Load)        [starter.go:60]
+  └─ init(): conf.RegisterProvider("vault", vaultController.Load)   [starter.go:60]
 
 gs.Run()
   ├─ 配置加载：读 conf/app.properties
@@ -150,13 +149,13 @@ gs.Run()
   │              │    └─ 404 → nil data → optional? 警告+跳过 : 报错 "secret not found"
   │              ├─ toProperties：整表 flatten，或 key 模式解析单字段             [starter.go:315]
   │              └─ 返回 props → 加入 StorageAppFile 层
-  ├─ bean 装配：vaultCtrl 是 Rooter；其 *gs.PropertiesRefresher 经 autowire 注入
+  ├─ bean 装配：controller 不进 IoC 容器（完全无 bean）
   ├─ 字段绑定：${demo.message} 从 Vault 层解析；gs.Dync 字段注册进刷新
   ├─ Run / 就绪
   └─ 稳态：每个 watchLoop 周期执行
        ├─ readSecret；出错 → continue（静默）
        ├─ fingerprint(json.Marshal(data)) 对比上次加载指纹
-       └─ 有变化 → TriggerRefresh → Refresher.RefreshProperties()
+       └─ 有变化 → TriggerRefresh → gs.RefreshProperties()
             └─ 重跑整个属性加载：import 重新解析、Load 重读 secret、
                层重建，gs.Dync[T] 字段换值
 ```
@@ -167,8 +166,8 @@ gs.Run()
   starter.go:366-381），默认 5000 ms（example 用 1000 ms）。secret 轮换无需重启即可被
   感知——*但只刷新 `gs.Dync[T]` 字段*；普通 `value` tag 只在启动时绑定一次（gs 的
   refresh 仅 Dync 生效）。
-- **刷新受装配状态保护**：容器完成装配前 `TriggerRefresh` 是无害 no-op——启动加载已经
-  捕获了状态（starter.go:82-89；gs_app/app.go 的 `PropertiesRefresher.Started()`）。
+- **刷新受启动状态保护**：app 启动前 `gs.RefreshProperties()` 返回错误，`TriggerRefresh`
+  是无害 no-op——启动加载已经捕获了状态（starter.go:82-89）。
 - **指纹基于内容**（KV data map 的 `json.Marshal`）：内容完全相同的 KV v2 重写**不会**
   触发刷新；KV v2 version 号被忽略。
 - **watcher 从不重读 token**：过期 token 的 client 仍按

@@ -1,13 +1,14 @@
 # starter-casbin 使用说明 — 参考手册
 
 详细使用参考。概览见 [README.md](README.md)。所有行为声明均经 starter 源码核对
-(`starter.go`、`config.go`、`registry.go`)并锚定可自断言的 [example/](example/)
+(`starter.go`、`config.go`)并锚定可自断言的 [example/](example/)
 (`example/check.sh`,零外部依赖)。**Casbin 自身语义(model 语言、policy 格式、Enforce/API、
 adapter、watcher)见[官方文档](https://casbin.org/docs/overview)**——以下全部是 go-spring 增量。
 
-**激活条件**:`init()` 里的 `gs.Group("${spring.casbin}")`——每个 `spring.casbin.<name>`
+**激活条件**:`init()` 里的 `gs.Module` 监听 `spring.casbin`——每个 `spring.casbin.<name>`
 配置项生成一个名为 `<name>` 的 `*StarterCasbin.Enforcer` **容器 bean**。*enforcer 是
-bean;adapter/watcher 不是**——它们放在包级 side-registry(`registry.go`),构造期按名查找。
+bean,它们用的 adapter/watcher 也是**——config 的 `adapter` / `watcher` 键是** bean 名**,
+每个实例的 Module 把对应 bean 注入 enforcer 构造器(键为空则传 nil)。没有包级注册表。
 没有 `enabled` key;零个 `spring.casbin.*` 即零个 enforcer,starter 完全惰性。
 
 ---
@@ -75,6 +76,7 @@ import (
     "net/http"
     "os"
 
+    "github.com/casbin/casbin/v2/persist"
     fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
     "go-spring.org/spring/gs"
 
@@ -96,9 +98,10 @@ func (s *Service) Allowed(sub, obj, act string) bool {
 }
 
 func main() {
-    // 必须在 gs.Run 之前注册 side-registry 资源:enforcer 构造函数按
-    // `adapter=` / `watcher=` 里的名字到这些 map 查找(registry.go)。
-    StarterCasbin.RegisterAdapter("file", fileadapter.NewAdapter("./conf/policy.csv"))
+    // 把 config 按名引用的 adapter/watcher 作为普通 bean 贡献(gs.Run 之前)。
+    // starter 的 Module 会按名把它们注入 enforcer。
+    gs.Provide(func() persist.Adapter { return fileadapter.NewAdapter("./conf/policy.csv") }).
+        Name("file").Export(gs.As[persist.Adapter]())
 
     // 注册为 root 对象,容器才会实例化(没有别的注入方;
     // 仅被内层引用的 bean 在 prod 不构建)。
@@ -126,10 +129,10 @@ func main() {
 # 一个组 key 一个 enforcer。"rbac" 即 autowire 的 bean 名。
 # model 文件(必填,无默认)。
 spring.casbin.rbac.model=./conf/model.conf
-# RegisterAdapter 注册的 adapter 名。设置后 enforcer 经 adapter 加载/保存
-# 策略(starter.go newEnforcer)。与 `policy` 互斥——两者都设是启动错误。
+# 本 enforcer 用的 persist.Adapter 的 bean 名(starter.go newEnforcer 按名注入)。
+# 与 `policy` 互斥——两者都设是启动错误。
 spring.casbin.rbac.adapter=file
-# RegisterWatcher 注册的 watcher 名。设置后,对端的变更信号触发自动
+# 启用热更新的 persist.Watcher 的 bean 名。设置后,对端的变更信号触发自动
 # LoadPolicy(热更新/多实例同步)。
 spring.casbin.rbac.watcher=local
 # adapter= 的免依赖替代:纯文件策略。
@@ -156,33 +159,37 @@ curl 'http://127.0.0.1:9090/enforce?sub=carol&obj=/data&act=read'    # deny
 
 ```
 func init()(用户代码,gs.Run 之前)
-  └─ StarterCasbin.RegisterAdapter("file", a)   [side-registry map,registry.go:43]
-  └─ StarterCasbin.RegisterWatcher("local", w)  [side-registry map,registry.go:52]
+  └─ gs.Provide(func() persist.Adapter { return a }).Name("file").Export(gs.As[persist.Adapter]())
+  └─ gs.Provide(func() persist.Watcher { return w }).Name("local").Export(gs.As[persist.Watcher]())
 
 import starter-casbin
-  └─ init():gs.Group("${spring.casbin}", newEnforcer, destroyEnforcer)  [starter.go:32]
+  └─ init():gs.Module(OnProperty("spring.casbin"), registerEnforcer)  [starter.go]
 
 gs.Run()
   ├─ 配置绑定:每个 spring.casbin.<name>.* → Config(value tag)
-  ├─ bean 构造:每个组 key 一次 newEnforcer(ctx, name, c)
-  │    ├─ 有 adapter → lookupAdapter,casbin.NewEnforcer(model, adapter)
+  ├─ 每个 key:registerEnforcer → Provide(Enforcer ctor) 命名为 <name>
+  │    ctor 按 c.Adapter/c.Watcher 的 bean 名绑定 adapter、watcher
+  │    (adapterArg/watcherArg:键为空时用 ValueArg 传 nil)
+  ├─ bean 构造:newEnforcer(ctx, c, adapter, watcher)
+  │    ├─ 有 adapter → casbin.NewEnforcer(model, adapter)
   │    ├─ 否则      → casbin.NewEnforcer(model, policy 文件)
   │    ├─ e.EnableAutoSave(c.AutoSave)
-  │    └─ 有 watcher → lookupWatcher → e.SetWatcher(w) →
-  │       w.SetUpdateCallback(func(string){ _ = e.LoadPolicy() })   [starter.go:85]
+  │    └─ 有 watcher → e.SetWatcher(w) →
+  │       w.SetUpdateCallback(func(string){ _ = e.LoadPolicy() })
   ├─ Run/服务:你的代码对注入的 bean 调 Enforce
-  └─ 停机:destroyEnforcer → 只 close watcher  [starter.go:95-100]
+  └─ 停机:destroyEnforcer → 只 close watcher
 ```
 
 设计理由(引源码注释):
 
-- **side-registry 而非 adapter bean**(registry.go:25-30):starter 刻意不带任何
-  数据库/存储驱动——内置 GORM/Redis/etcd adapter 会把依赖拖进只需要文件策略的项目。
-  应用注册自己用的那一个。
-- **`*Enforcer` 包装而非裸 `*casbin.Enforcer`**(starter.go:35-39):starter 要持有
-  Casbin 自己不关闭的资源——watcher 的后台工作,在 `destroyEnforcer` 释放。内嵌让
-  上游 API 全量提升,调用方无感。
-- **watcher 回调**(starter.go:83-85):"经典回调重新加载策略,让本实例拿到对端变更"——
+- **adapter/watcher 用命名 bean,而非 side-registry**:starter 刻意不带任何数据库/存储
+  驱动——内置 GORM/Redis/etcd adapter 会把依赖拖进只需要文件策略的项目。应用把自己用的
+  adapter 作为普通 bean 贡献;每个实例的 `gs.Module`(group 工厂无法注入额外 bean)把它
+  按名解析进 enforcer。
+- **`*Enforcer` 包装而非裸 `*casbin.Enforcer`**(starter.go):starter 要持有 Casbin
+  自己不关闭的资源——watcher 的后台工作,在 `destroyEnforcer` 释放。内嵌让上游 API
+  全量提升,调用方无感。
+- **watcher 回调**(starter.go):"经典回调重新加载策略,让本实例拿到对端变更"——
   这就是热更新机制的全部;没有轮询,也不涉及 gs.Dync。
 
 ### 2.2 一次鉴权决策,逐步走读
@@ -206,14 +213,14 @@ gs.Run()
 |-----|------|------|----------|-----------|
 | `model` | string | — | **必填**。Casbin model 文件路径,作为 `NewEnforcer` 第一个参数。 | 缺失/非法 → 构造期容器失败(`failed to create casbin enforcer`)。 |
 | `policy` | string | `""` | 文件策略,仅在 `adapter` 为空时使用(`newEnforcer`)。**与 `adapter` 互斥**——两者都设启动即失败。 | 无 adapter 且为空 → enforcer 以**空策略**启动——全部 deny,无启动报错(value tag 表达不了"条件必填")。 |
-| `adapter` | string | `""` | side-registry 中的名字(`RegisterAdapter`),构造期经 `lookupAdapter` 解析。 | 未知名字 → 启动即失败 `casbin: adapter %q not registered`;`gs.Run` 之后才注册 → 同样报错(查找发生在 bean 构造期)。 |
-| `watcher` | string | `""` | side-registry 中的名字(`RegisterWatcher`);接 `SetWatcher` + 重载回调;停机时由 `destroyEnforcer` 关闭。 | 未知名字 → 启动即失败 `casbin: watcher %q not registered`。 |
+| `adapter` | string | `""` | 注入进 enforcer 的 `persist.Adapter` 的 **bean 名**(经 `adapterArg` → `gs.TagArg`)。 | 未提供同名 bean → 启动即注入失败(fail-fast)。 |
+| `watcher` | string | `""` | 经 `watcherArg` 按 **bean 名** 注入的 `persist.Watcher`;接 `SetWatcher` + 重载回调;停机时由 `destroyEnforcer` 关闭。 | 未提供同名 bean → 启动即注入失败。 |
 | `autoSave` | bool | `true` | 传给 `e.EnableAutoSave`——`AddPolicy`/`RemovePolicy` 是否回写 adapter/策略文件。 | `false` 却指望持久化 → 重载后变更丢失。 |
 
 ⚠ 耦合:`adapter` 与 `policy` 是互斥的存储选择——两者都设即 fail-fast 启动错误
 (`casbin: `policy` and `adapter` are mutually exclusive`)。
-⚠ `adapter`/`watcher` 的值是**registry 名字,不是 bean 名**:不能经 autowire 解析,
-必须在 `gs.Run` 之前存在。
+⚠ `adapter`/`watcher` 的值是 **bean 名**:按名提供同名 bean(可
+`Export(gs.As[persist.Adapter]())` / `gs.As[persist.Watcher]()`),且装配期必须存在。
 
 ---
 
@@ -240,8 +247,8 @@ curl '...?sub=carol&obj=/data&act=read'    # deny(未知主体)
 
 ### 4.3 配错演练
 
-- `adapter` 指向未注册名字 → 启动失败 `casbin: adapter "db" not registered`
-  (errutil 包装,`newEnforcer`)。
+- `adapter` 指向没有对应 bean 的名字 → 装配期注入失败(fail-fast),不会带着缺失的
+  存储源启动。
 - `policy` 与 `adapter` 都不设 → 正常启动;所有 Enforce 返回 deny。这就是 §6 标记的
   静默失败模式。
 - 停机演练:配了 watcher 时,SIGTERM 触发 `destroyEnforcer` 关闭 watcher——用一个
@@ -259,8 +266,7 @@ tag `app-def`,starter.go:57),失败时一条 Error。无运行期日志 tag、�
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动失败:`adapter "x" not registered` | 没调 `RegisterAdapter`,或在 `gs.Run` 之后才调 | 在 `func init()` / main 早期注册,先于 `gs.Run`。 |
-| 启动失败:`watcher "x" not registered` | 同上,watcher 版 | 先于 `gs.Run` 注册。 |
+| 启动失败:adapter/watcher 同名 bean 找不到 | `adapter`/`watcher` 指向你没提供(或 `.Name()` 不同)的 bean | `gs.Provide(...).Name("<key值>")`,并 Export 成 `persist.Adapter`/`persist.Watcher` 接口。 |
 | 启动失败:`failed to create casbin enforcer` | `model` 路径错误或 model/policy 语法非法 | 检查路径(相对进程 cwd)与 model 文件,对照官方语法文档。 |
 | 全部 deny 且无报错 | `policy`、`adapter` 均空 → 加载了空策略 | 设 `policy`(或 adapter)——此场景不会 fail-fast。 |
 | 改了 `policy` 文件但决策不变 | 策略只在构造期加载一次;没配 watcher | 对 bean 调 `LoadPolicy()`,或配 watcher 做热更新。 |
@@ -278,15 +284,17 @@ tag `app-def`,starter.go:57),失败时一条 Error。无运行期日志 tag、�
 | quickstart 前置外部依赖 | 0 |
 | "注意/坑"条数 | 3 |
 
-设计嫌疑(保留自上轮审计,已复核):
+设计嫌疑(已复核):
 
-1. adapter/watcher 用与 IoC 容器平行的 side-registry——同一概念两套名字空间;
-   group 工厂构建的 adapter 无法注入 bean(registry.go:25-38)。
-2. `policy` 条件必填(仅无 `adapter` 时),value tag 表达不了——空策略 enforcer
+1. `policy` 条件必填(仅无 `adapter` 时),value tag 表达不了——空策略 enforcer
    静默启动而非 fail-fast。
-3. 有状态、可热更新的组件,却没有任何 observe 接线(health/metric)。
+2. 有状态、可热更新的组件,却没有任何 observe 接线(health/metric)。
 
-本次撰写新增:
+本次撰写解决:
 
+3. ~~adapter/watcher 用与 IoC 容器平行的包级 side-registry——两套名字空间,且 group
+   工厂无法把 bean 注入 adapter。~~ 已修复:starter 现在用每实例 `gs.Module` 注册
+   enforcer,把 adapter/watcher 按 bean 名(`gs.TagArg`)注入;config 键为空时传 nil。
+   adapter/watcher 是普通应用 bean,不再有第二套名字空间。
 4. ~~`adapter` 与 `policy` 同时设置时静默覆盖 `policy`~~——已修复:两者都设现在是
    fail-fast 启动错误(`newEnforcer`)。

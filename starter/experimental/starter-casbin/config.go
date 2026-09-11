@@ -22,14 +22,15 @@ type Config struct {
 	Policy   string `value:"${policy:=}"`       // Path to the policy file (policy.csv); mutually exclusive with Adapter
 	AutoSave bool   `value:"${autoSave:=true}"` // Whether policy mutations are persisted back to the storage
 
-	// Adapter names a persist.Adapter previously registered with
-	// RegisterAdapter. When set, the enforcer loads/saves policies through that
-	// adapter (DB, file, ...) instead of the Policy file. Empty means use the
+	// Adapter names the persist.Adapter bean the application provides (under
+	// this bean name) that backs this enforcer. When set, the enforcer
+	// loads/saves policies through that adapter (DB, file, ...) instead of the
+	// Policy file, and the named bean is injected into it. Empty means use the
 	// file adapter backed by Policy.
 	Adapter string `value:"${adapter:=}"`
 
-	// Watcher names a persist.Watcher previously registered with
-	// RegisterWatcher. When set, the enforcer reloads its policy whenever the
+	// Watcher names the persist.Watcher bean the application provides (under
+	// this bean name). When set, the enforcer reloads its policy whenever the
 	// watcher signals a change from another instance, enabling hot reload and
 	// multi-instance synchronization. Empty means no watcher.
 	Watcher string `value:"${watcher:=}"`

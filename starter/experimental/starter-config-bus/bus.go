@@ -52,9 +52,8 @@ type RefreshEvent struct {
 // instance, default "config-bus"); define that instance under
 // spring.nats.* in the usual way.
 type ConfigBus struct {
-	Conn      *StarterNats.Conn       `autowire:"${spring.config.bus.nats-instance:=config-bus}"`
-	Refresher *gs.PropertiesRefresher `autowire:""`
-	Config    Config                  `value:"${spring.config.bus}"`
+	Conn   *StarterNats.Conn `autowire:"${spring.config.bus.nats-instance:=config-bus}"`
+	Config Config            `value:"${spring.config.bus}"`
 
 	prefixes []string
 	sub      *nats.Subscription
@@ -85,7 +84,7 @@ func (b *ConfigBus) subscribe() error {
 				ev.Prefix, ev.Origin, b.prefixes)
 			return
 		}
-		if err := b.Refresher.RefreshProperties(); err != nil {
+		if err := gs.RefreshProperties(); err != nil {
 			log.Errorf(context.Background(), starterTag,
 				"config bus: property refresh failed: %v", err)
 			return

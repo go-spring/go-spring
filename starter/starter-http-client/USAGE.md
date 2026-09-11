@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
 the starter source (`starter.go`, `config.go`, `driver.go`), the assembler
-`cloud/httpx/httpx.go`, the runtime seam `stdlib/httpclt/httpclt.go`, and the runnable
+`starter-http-client/httpx/httpx.go`, the runtime seam `stdlib/httpclt/httpclt.go`, and the runnable
 [example/](example/) (self-asserting smoke), [example-load/](example-load/),
 [example-otel/](example-otel/). **HTTP semantics are [net/http](https://pkg.go.dev/net/http)'s and
 trace semantics are [W3C Trace Context / OTel](https://opentelemetry.io/docs/specs/otel/trace/)** —
@@ -199,7 +199,7 @@ custom driver wrap (outermost: embed DefaultDriver and wrap the assembled transp
 Rationale (from the source comments, verified):
 
 - **otelhttp wraps the base (inside httpx)**: trace propagation is layered on by `httpx.NewTransport`
-  itself — observability (trace, fault injection, the observe wrap) is implemented in `cloud/httpx`,
+  itself — observability (trace, fault injection, the observe wrap) is implemented in `starter-http-client/httpx`,
   the starter only binds config. Every attempt — including retries — is traced and injects
   `traceparent`.
 - **discovery/LB sits below resilience**: "a retry re-picks a fresh endpoint and the breaker keys
@@ -251,7 +251,7 @@ Rationale (from the source comments, verified):
 Transport assembly is owned by a `Driver` (interface, driver.go). Every configured entry is
 assembled through the one Driver (resolved inside `assembleTransport`). The Driver is an
 **optional container bean** whose constructor returns `StarterHTTPClient.Driver`; when none is
-provided the starter falls back to its bundled `DefaultDriver` (the standard cloud/httpx
+provided the starter falls back to its bundled `DefaultDriver` (the standard starter-http-client/httpx
 assembly). There is no per-config `driver` key and no driver name to select:
 
 ```go

@@ -24,13 +24,13 @@ code sees only `security.*`.
 
 ## 2. Key Abstractions & Seams
 
-- `TokenValidator` — single-method interface driving both the family
-  middlewares and the driver registry. Implementations must be
+- `TokenValidator` — single-method interface a starter (or the calling app)
+  implements and contributes as a container bean; the family middlewares
+  validate through the validator they are wired with. Implementations must be
   concurrent-safe and must return **a non-nil error** for any credential they
   cannot vouch for, rather than an `Authentication` with `Authenticated=false`.
-- `RegisterValidator` / `GetValidator` / `MustGetValidator` — driver-registry
-  idiom (panic on empty/nil/duplicate), same as `discovery.Register` /
-  `resilience.RegisterDriver`.
+  Selecting which validator a resource server uses is a wiring decision
+  (which starter / bean), not a name-keyed registry lookup.
 - `WithAuthentication` / `FromContext` — ctx propagation with an unexported
   key type so nothing else collides.
 - `Require(authorities...)` — a plain decorator; reads
@@ -74,8 +74,9 @@ code sees only `security.*`.
 - **HTTP-layer `Authorize` / route gate lives with each family**, the
   method-layer `Require` lives here — the same authority set, two gates: a
   route gate in the server's idiom, a decorator gate in this package.
-- **Registry does not resolve validators at request time**. The middlewares
-  take a `TokenValidator` value; use the registry to _look up_ a validator
-  at wiring time, not on every request.
+- **No driver registry for validators**. Validators are contributed as
+  container beans by starters; a middleware takes the `TokenValidator` value
+  it is wired with and validates each request through it — no name-keyed
+  global lookup at request or wiring time.
 - **No annotation scanning**. `@PreAuthorize` is replaced by an explicit
   `security.Require(...)` wrapping the call — the AOP-equivalent decorator.

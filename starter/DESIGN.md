@@ -173,20 +173,16 @@ application can load configuration from it at startup and hot-reload at runtime.
   `optional`-and-missing early return. Otherwise an app that starts before the
   key exists never registers a watch, and a later publish never triggers a
   reload. Dedup listeners per `(client, key)`.
-- **Hot-reload reuses the framework refresh, via a `Rooter` bridge.** The
-  provider's controller singleton is exported both as a `conf.RegisterProvider`
-  target and as a `gs.Rooter` bean (`gs.Provide(ctrl).Export(gs.As[gs.Rooter]())`),
-  which makes the IoC container collect it into `app.Rooters` and autowire its
-  `*gs.PropertiesRefresher` field. On a remote change the watch/listener calls
-  the controller's `TriggerRefresh`, which calls `RefreshProperties` — this
-  reloads every source (re-running the provider) and re-binds all `gs.Dync[T]`
-  fields through the two-phase, atomic commit in `gs_dync`. Bind live keys to
-  `gs.Dync[T]`. The autowired refresher field is a plain pointer, not an
-  `atomic.Pointer`: the container autowires by field assignment (no setter), and
-  the cross-goroutine read from the watch callback is safe because
-  `TriggerRefresh` nil-checks the field and `RefreshProperties` is itself gated
-  by the app's `started` atomic flag (set only after wiring completes), so a
-  pre-wiring fire is a no-op.
+- **Hot-reload reuses the framework refresh, via the process-level
+  `gs.RefreshProperties()` facade.** The controller is no longer a bean: on a
+  remote change the watch/listener calls `gs.RefreshProperties()` directly — a
+  package-level facade mounted by the app from its most recent `Start`, meant
+  exactly for out-of-container infrastructure (config providers, watch
+  goroutines) that cannot use dependency injection. The call reloads every
+  source (re-running the provider) and re-binds all `gs.Dync[T]` fields through
+  the two-phase, atomic commit in `gs_dync`; before the app has started the
+  facade returns an error, so a pre-start fire is a safe no-op. Bind live keys
+  to `gs.Dync[T]`.
 - **Content parsing reuses core readers.** Decode remote bytes with the
   `spring/conf/reader/{prop,yaml,toml,json}` `Read` functions keyed by a
   `format` query param, then `flatten.Flatten` before returning
@@ -337,8 +333,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    app-supplied register bean, port-as-startup-gate (no `enabled` toggle — see §2.1).
 6. Config-provider? → `provider.go` with `conf.RegisterProvider` (no `config.go`,
    no bean), parse params from the source string, cache the client, register the
-   listener unconditionally before the fetch, bridge `PropertiesRefresher` into
-   `refreshHook` via a `Rooter` bean, ship `example-config/`.
+   listener unconditionally before the fetch, call the `gs.RefreshProperties()`
+   facade from the change callback, ship `example-config/`.
 7. Add health, TLS, and destroy where the underlying library supports them.
 8. Ship a bilingual README pair and an `example/` with `check.sh` only (no
    deployment scaffolding).

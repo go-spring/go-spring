@@ -33,7 +33,7 @@ The generated `Client` holds only a `Target`. The starter assembles one
 process-wide `http.RoundTripper` and installs it by replacing
 `httpclt.DoRequest` (the single send seam of `stdlib/httpclt`), so
 generated clients and imperative helpers pick it up with zero wiring. The chain is
-by [`cloud/httpx`](../../../cloud/httpx) from three composable stdlib
+by [`starter-http-client/httpx`](../../../starter-http-client/httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
 * [`discovery`](../../../cloud/discovery) — when a `service-name` is set, a
@@ -129,11 +129,11 @@ timeout comes from `govern.default.attempt-timeout`.
 The starter fails fast at wiring time: at least one of `addr` / `service-name`
 must be set, and `discovery` is mandatory when routing by service name alone
 (no `addr`). Error-rate breakers resolved for `http:*` resources get a starter
-floor of `min-requests=5` (a higher explicit value in the govern rule wins) — both applied by `cloud/httpx`.
+floor of `min-requests=5` (a higher explicit value in the govern rule wins) — both applied by `starter-http-client/httpx`.
 
 ## Observability
 
-Observability is built into [`cloud/httpx`](../../../cloud/httpx): the base
+Observability is built into [`starter-http-client/httpx`](../../../starter-http-client/httpx): the base
 transport is [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)-wrapped,
 and an active resilience executor is wrapped with fault + observe (outcome-classified
 metrics). Every outbound request

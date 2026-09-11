@@ -58,20 +58,24 @@ func TestParseSource(t *testing.T) {
 }
 
 func TestLoadConfigMapYAML(t *testing.T) {
+	c := &k8sCtrl{}
+
 	client := fake.NewSimpleClientset(configMap("cm-yaml", map[string]string{
 		"application.yaml": "server:\n  port: 8080\nname: demo\n",
 	}))
 	cs, err := parseSource("configmap/cm-yaml")
 	assert.Error(t, err).Nil()
 
-	m, err := k8sController.loadFromClient(client, cs, false)
+	m, err := c.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()
 	assert.String(t, m["server.port"]).Equal("8080")
 	assert.String(t, m["name"]).Equal("demo")
-	k8sController.manager.stopAll()
+	c.manager.stopAll()
 }
 
 func TestLoadSecretPropsWithKeyFilter(t *testing.T) {
+	c := &k8sCtrl{}
+
 	client := fake.NewSimpleClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "sec", Namespace: "default"},
 		Data: map[string][]byte{
@@ -82,45 +86,49 @@ func TestLoadSecretPropsWithKeyFilter(t *testing.T) {
 	cs, err := parseSource("secret/sec?key=db.properties")
 	assert.Error(t, err).Nil()
 
-	m, err := k8sController.loadFromClient(client, cs, false)
+	m, err := c.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()
 	assert.String(t, m["db.user"]).Equal("root")
 	assert.String(t, m["db.pass"]).Equal("secret")
 	_, ok := m["ignore.me"]
 	assert.That(t, ok).False()
-	k8sController.manager.stopAll()
+	c.manager.stopAll()
 }
 
 func TestLoadOptionalMissing(t *testing.T) {
+	c := &k8sCtrl{}
+
 	client := fake.NewSimpleClientset()
 	cs, err := parseSource("configmap/absent")
 	assert.Error(t, err).Nil()
 
-	m, err := k8sController.loadFromClient(client, cs, true)
+	m, err := c.loadFromClient(client, cs, true)
 	assert.Error(t, err).Nil()
 	assert.That(t, m == nil).True()
 
-	_, err = k8sController.loadFromClient(client, cs, false)
+	_, err = c.loadFromClient(client, cs, false)
 	assert.Error(t, err).Matches("get configmap")
 }
 
 func TestUnknownExtensionSkippedButKeyFilterErrors(t *testing.T) {
+	c := &k8sCtrl{}
+
 	client := fake.NewSimpleClientset(configMap("mixed", map[string]string{
 		"application.yaml": "a: 1\n",
 		"README":           "not config",
 	}))
 	cs, err := parseSource("configmap/mixed")
 	assert.Error(t, err).Nil()
-	m, err := k8sController.loadFromClient(client, cs, false)
+	m, err := c.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()
 	assert.String(t, m["a"]).Equal("1")
-	k8sController.manager.stopAll()
+	c.manager.stopAll()
 
 	cs, err = parseSource("configmap/mixed?key=README")
 	assert.Error(t, err).Nil()
-	_, err = k8sController.loadFromClient(client, cs, false)
+	_, err = c.loadFromClient(client, cs, false)
 	assert.Error(t, err).Matches("no known format")
-	k8sController.manager.stopAll()
+	c.manager.stopAll()
 }
 
 func TestHotReloadTriggersRefresh(t *testing.T) {
@@ -131,13 +139,11 @@ func TestHotReloadTriggersRefresh(t *testing.T) {
 	assert.Error(t, err).Nil()
 
 	fired := make(chan struct{}, 8)
-	oldCtrl := k8sController
-	k8sController = &k8sCtrl{onTrigger: func() { fired <- struct{}{} }}
-	defer func() { k8sController = oldCtrl }()
+	c := &k8sCtrl{onTrigger: func() { fired <- struct{}{} }}
 
-	_, err = k8sController.loadFromClient(client, cs, false)
+	_, err = c.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()
-	defer k8sController.manager.stopAll()
+	defer c.manager.stopAll()
 
 	drain(fired)
 	_, err = client.CoreV1().ConfigMaps("default").Update(context.Background(),

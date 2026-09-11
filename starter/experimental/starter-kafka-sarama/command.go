@@ -184,16 +184,18 @@ func (c consumerCarrier) Keys() []string {
 var _ propagation.TextMapCarrier = producerCarrier{}
 var _ propagation.TextMapCarrier = consumerCarrier{}
 
-// resilienceExecs tracks the resilience executor attached to each client, so
-// WrapSyncProducer can resolve it from the raw sarama.Client bean and the
-// destructor can Close it (releasing any background resources of a production
-// driver). Only clients with resilience enabled appear here.
-var resilienceExecs sync.Map // sarama.Client -> resilience.Executor
+// clientGuard is the per-client resilience attachment: the executor chain and
+// the stable resource label it executes under, colocated so a guard lookup
+// reads the pair atomically (no torn exec/resource combination).
+type clientGuard struct {
+	exec     resilience.Executor
+	resource string
+}
 
-// resilienceResources tracks the stable resource label per client so the
-// wrapped SyncProducer can pass it to exec.Execute without re-deriving from
-// Config (which the wrapper no longer holds at call time).
-var resilienceResources sync.Map // sarama.Client -> string
+// clientGuards indexes the guard by the raw client bean, so WrapSyncProducer can resolve
+// it from a bare sarama.Client and the destructor can Close it. Only clients with
+// resilience enabled appear here.
+var clientGuards sync.Map // sarama.Client -> *clientGuard
 
 // applyResilience builds an executor and indexes it by client. This is the
 // kafka-sarama seam of resilience: sarama exposes no reject-capable middleware,
@@ -210,29 +212,27 @@ func applyResilience(c Config, client sarama.Client, resource string) error {
 	// + access log (the resilience core emits none). nil-safe, no-op without
 	// starter-otel.
 	exec = resilience.WrapExecutor(exec, "kafka")
-	resilienceExecs.Store(client, exec)
-	resilienceResources.Store(client, resource)
+	clientGuards.Store(client, &clientGuard{exec: exec, resource: resource})
 	return nil
 }
 
 // closeResilience closes and forgets the executor behind client, if any.
 func closeResilience(client sarama.Client) {
-	if v, ok := resilienceExecs.LoadAndDelete(client); ok {
-		_ = v.(resilience.Executor).Close()
+	if v, ok := clientGuards.LoadAndDelete(client); ok {
+		_ = v.(*clientGuard).exec.Close()
 	}
-	resilienceResources.Delete(client)
 }
 
 // executorFor loads the executor and resource label attached to client. Returns
 // (nil, "") when resilience is disabled for that client, so the wrapper falls
 // back to a direct call.
 func executorFor(client sarama.Client) (resilience.Executor, string) {
-	v, ok := resilienceExecs.Load(client)
+	v, ok := clientGuards.Load(client)
 	if !ok {
 		return nil, ""
 	}
-	r, _ := resilienceResources.Load(client)
-	return v.(resilience.Executor), r.(string)
+	g := v.(*clientGuard)
+	return g.exec, g.resource
 }
 
 // WrapSyncProducer returns a sarama.SyncProducer that routes SendMessage and

@@ -1,7 +1,7 @@
 # starter-http-client 使用说明 — 参考手册
 
 详细使用文档,概览见 [README_CN.md](README_CN.md)。所有行为声明均已对照 starter 源码
-(`starter.go`、`config.go`、`driver.go`)、装配器 `cloud/httpx/httpx.go`、
+(`starter.go`、`config.go`、`driver.go`)、装配器 `starter-http-client/httpx/httpx.go`、
 发送 seam `stdlib/httpclt/httpclt.go` 及可运行的 [example/](example/)(自断言冒烟)、
 [example-load/](example-load/)、[example-otel/](example-otel/) 核实。**HTTP 语义归
 [net/http](https://pkg.go.dev/net/http),trace 语义归
@@ -191,7 +191,7 @@ gs.Run()
 设计理由(均引自源码注释,已核实):
 
 - **otelhttp 包在 base 之上(由 httpx 完成)**:trace 传播由 `httpx.NewTransport` 自己
-  叠加——可观测(trace、fault 注入、observe 包装)实现在 `cloud/httpx`,starter 只做
+  叠加——可观测(trace、fault 注入、observe 包装)实现在 `starter-http-client/httpx`,starter 只做
   配置绑定。每次尝试——含重试——都被 trace 并注入 `traceparent`。
 - **discovery/LB 在 resilience 之下**:"a retry re-picks a fresh endpoint and the breaker
   keys on the logical service name"(httpx.go:32-34)。熔断按逻辑调用计数,重试在实例级
@@ -240,7 +240,7 @@ gs.Run()
 传输装配由 `Driver`(接口,driver.go)负责。每条配置项都经这一个 Driver 装配(在
 `assembleTransport` 内解析)。Driver 是**可选容器 bean**,其构造函数返回
 `StarterHTTPClient.Driver`;未提供时 starter 回退到内置的 `DefaultDriver`(标准
-cloud/httpx 装配)。没有 per-config 的 `driver` key,也没有要选的 driver 名:
+starter-http-client/httpx 装配)。没有 per-config 的 `driver` key,也没有要选的 driver 名:
 
 ```go
 func init() {

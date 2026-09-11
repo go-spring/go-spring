@@ -42,46 +42,38 @@ import (
 )
 
 func init() {
-	// Register the etcd controller as both a root bean (so the IoC container
-	// injects its PropertiesRefresher via autowire) and the "etcd" config
-	// provider (so Load calls go through its method). Before wiring,
-	// TriggerRefresh is a harmless no-op — the startup load already captured
-	// the initial config.
-	gs.Provide(etcdController).Export(gs.As[gs.Rooter]())
-
 	// Register "etcd" as a remote configuration provider. The provider is
-	// the global controller's Load method, so the same object that holds the
-	// PropertiesRefresher (injected via autowire) also serves config loads.
-	conf.RegisterProvider("etcd", etcdController.Load)
+	// the controller's Load method — the controller itself lives in this
+	// closure only (no package-level variable), so its state is reachable
+	// solely through the registered provider. Watch-triggered refreshes go
+	// through the gs.RefreshProperties package-level facade, so the
+	// controller needs no bean wiring at all.
+	conf.RegisterProvider("etcd", (&etcdCtrl{}).Load)
 }
 
-// etcdController is the global singleton. It is referenced only from the init
-// function; all other code operates on the receiver without touching this global.
-var (
-	starterTag     = log.RegisterAppTag("config_etcd", "")
-	etcdController = &etcdCtrl{}
-)
+var starterTag = log.RegisterAppTag("config_etcd", "")
 
 // etcdCtrl is the single object that owns the full lifecycle of etcd
 // configuration: loading keys, watching for changes, and triggering
-// property refresh.
+// property refresh. Its clients are bootstrap infrastructure: they exist
+// before the container does and therefore deliberately opt out of
+// observability and governance wiring — don't "fix" that here; consumers
+// that need instrumented clients (e.g. the governance source) build their
+// own.
 type etcdCtrl struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-
 	mu       sync.Mutex
 	clients  map[string]*clientv3.Client
 	listened map[string]struct{}
 }
 
 // TriggerRefresh is called by the watch goroutines when a watched key
-// changes. Before the IoC container wires the controller, this is a no-op —
-// the initial config load already captured the state.
+// changes. Before the app has started, gs.RefreshProperties returns an
+// error and the change is dropped — the startup load already captured the
+// state.
 func (c *etcdCtrl) TriggerRefresh() {
-	if c.Refresher != nil {
-		if err := c.Refresher.RefreshProperties(); err != nil {
-			log.Warnf(context.Background(), starterTag,
-				"property refresh after etcd change failed, stale snapshot retained: %v", err)
-		}
+	if err := gs.RefreshProperties(); err != nil {
+		log.Warnf(context.Background(), starterTag,
+			"property refresh after etcd change failed, stale snapshot retained: %v", err)
 	}
 }
 

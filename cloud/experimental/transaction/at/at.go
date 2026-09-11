@@ -287,6 +287,18 @@ type Coordinator interface {
 	// the context to know they are inside a global transaction.
 	Begin(ctx context.Context) (context.Context, string)
 
+	// Enroll registers a branch's resource with the coordinator at startup — the
+	// resource-manager-to-coordinator handshake of Seata's model. A resource
+	// interceptor calls it once when it is installed on its database, so the
+	// coordinator knows every enrolled branch before any transaction runs. Later
+	// enrolls of the same [Branch.ID] replace the earlier one.
+	Enroll(b Branch)
+
+	// Enrolled returns the branches enrolled at startup, ordered by id. It is the
+	// seam a crash-recovery scan uses: it replays each enrolled branch's undo
+	// logs before the application starts serving traffic.
+	Enrolled() []Branch
+
 	// Register enrols a branch under xid. It is called by a resource interceptor
 	// the first time that resource writes within the transaction; later writes from
 	// the same resource are deduplicated by [Branch.ID]. Registering under an

@@ -23,19 +23,18 @@ import (
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
 // instance is the instance this process advertises to the Nacos registry. It is
 // the local write-side value built from RegistrationConfig in Server.Run; the
 // crash-safety contract every registry starter follows lives in starter/DESIGN
-// §3 (Register must self-renew so correctness never depends on Deregister).
-type instance struct {
-	ServiceName string
-	Addr        string
-	Weight      int
-	Metadata    map[string]string
-}
+// instance is the process advertisement the registrar publishes; it is the
+// neutral [discovery.Instance] contract. The crash-safety contract every
+// registry starter follows lives in starter/DESIGN §3 (Register must
+// self-renew so correctness never depends on Deregister).
+type instance = discovery.Instance
 
 // nacosRegistrar publishes instances to a Nacos naming service. Instances are
 // registered as ephemeral, so the Nacos SDK keeps them alive with its own

@@ -157,12 +157,11 @@ import starter-config-bus
               .Init(subscribe).Destroy(Destroy).Export(gs.As[gs.Rooter]())   [starter.go:44-54]
 
 gs.Run() → App.Start()                                                       [gs_app/app.go]
-  ├─ PropertiesRefresher + ContextProvider beans registered                  [app.go:287-288]
+  ├─ mount the gs.RefreshProperties / gs.AppStarted facade targets
   ├─ property load (all sources) + log init
   ├─ container refresh (bean wiring):
   │    ├─ ConfigBus fields autowired:
   │    │    Conn      ← NATS instance by name (${spring.config.bus.nats-instance:=config-bus})
-  │    │    Refresher ← *gs.PropertiesRefresher (the app-level refresh handle, bus.go:56)
   │    │    Config    ← ${spring.config.bus} value tags (config.go)
   │    └─ bean Init hook: subscribe() — NATS Subscribe on Config.Subject      [bus.go:66-99]
   │         logs "subscribed to bus subject=... prefixes=[...]"
@@ -212,8 +211,8 @@ Two timing facts matter for a *bus*:
    - `shouldRefresh(ev.Prefix)` filter (`bus.go:106-116`): honor when the event prefix is
      empty, the instance watches nothing, or the event prefix overlaps a watched prefix
      **in either direction** — a `db` watcher reacts to a `db.pool` event and vice versa;
-   - `Refresher.RefreshProperties()` — the injected `*gs.PropertiesRefresher`
-     (`spring/gs/gs.go:410` alias of `gs_app.PropertiesRefresher`, `app.go:127-151`).
+   - `gs.RefreshProperties()` — the process-level refresh facade mounted by the
+     app (no injected refresher field).
 4. `App.RefreshProperties()` (`app.go:247-255`): re-loads **all** configured sources
    (files, env, cmd args), re-merges by priority, and pushes the new storage into the
    container via `c.RefreshProperties(p)` — which re-resolves every `gs.Dync[T]` binding
@@ -326,7 +325,7 @@ is not retried — republish after fixing the source.
 | `property refresh failed: <source error>` | A config source failed to reload; previous values kept | Fix the source, publish again — no retry is performed |
 | Field didn't change after refresh | The binding is a plain `value:` field, not `gs.Dync[T]` — only Dync re-resolves | Convert the field to `gs.Dync[T]` |
 | Changed `spring.config.bus.subject`/`watch-prefixes` but behavior unchanged | These keys are boot-time only, parsed once in `subscribe()` | Restart the instance |
-| Changed the key a Dync reads, but value stale | The new value lives in a source the app doesn't load, or is outranked by priority (e.g. file beats env) | Check `PropertiesRefresher.Sources()` ordering; ensure the change is visible in a loaded source |
+| Changed the key a Dync reads, but value stale | The new value lives in a source the app doesn't load, or is outranked by priority (e.g. file beats env) | Check the refresh logs for which sources reload; ensure the change is visible in a loaded source |
 | No metrics / health for the bus | There are none — only `_app_config_bus` logs | Watch logs; a dropped subscription is otherwise silent (see §6) |
 
 ---

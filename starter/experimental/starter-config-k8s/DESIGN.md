@@ -28,8 +28,10 @@ a client-go informer rather than through a mounted volume. It complements
   resolves the real client from in-cluster config or a kubeconfig file.
 - **Informer seam.** One shared informer per `(kind, namespace, name)` triple
   under `ensureWatch`; on any event it calls the refresh hook.
-- **Refresh hook.** Container-scope bridge bean, exported as `gs.Rooter` and
-  named to avoid the `__default__` collision.
+- **Refresh hook.** Informer events call the process-level
+  `gs.RefreshProperties()` facade directly (no autowired refresher). The
+  controller remains a bean only because it needs `.Destroy` to tear the
+  informer down; it has no autowire fields.
 
 ## 3. Constraints
 

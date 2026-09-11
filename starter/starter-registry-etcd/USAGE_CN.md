@@ -6,13 +6,15 @@
 **etcd 自身语义(lease、watch、KV、auth)见 [etcd 官方文档](https://etcd.io/docs/)**——
 本文只写 go-spring 的增量。
 
-**激活**:`spring.registry.etcd.endpoints` 即注册侧开关。同一配置块还构建**唯一**的共享
-etcd 客户端(`center.go`),并在 `discovery-name` 非空(默认 `etcd`)时为同一集群派生一个
-该标签的 discovery 后端 bean——双角色应用只配一次集群。独立的
-`${spring.discovery.etcd.<name>}` 块覆盖其它集群/纯消费方;块内 `endpoints` 留空则继承
-中心连接(`discovery_etcd.go`)。与 starter-registry-consul 不同,本 starter
-**两侧都自带**:同一套 key 布局上的注册与发现。它不开端口——导出 `gs.Server` 只为把
-注册接进应用生命周期。
+**模型**:配置是**命名块**——每个 `spring.registry.etcd.<name>.*` 块描述一个 etcd 集群,
+成为名为 `etcd.<name>` 的后端 bean(`center.go`)。该 bean 同时实现命名体系的两半:
+`discovery.Registrar`(写侧——由传递依赖自动引入的 [starter-registry](../starter-registry)
+核心之 `registryServer` 收集,跨后端注册进**每一个**已配置中心)与 `discovery.Discovery`
+(读侧——消费方按 bean 名引用,如 `discovery=etcd.main`;bean 惰性,纯 provider 从不为读侧
+付费)。读写共享该块的客户端与键前缀,永不分裂。没有默认/无名块。注册仅在设置
+`spring.registry.service-name` 后激活——纯消费方应用只配连接块、不注册任何实例。
+多中心(双注册、跨后端混搭)就是多配几个块:两个块 + service-name,每个中心都拿到实例。
+它不开端口——导出的 `gs.Server`(在 starter-registry 核心)只为把注册接进应用生命周期。
 
 ---
 
@@ -71,20 +73,20 @@ import (
     "context"
 
     "go-spring.org/spring/gs"
-    StarterRegistryEtcd "go-spring.org/starter-registry-etcd"
+    StarterRegistry "go-spring.org/starter-registry"
 )
 
 func init() {
     // 注册器 bean 名为 "registryServer",导出为 gs.Server。
     // 需要运行期摘流/恢复时注入它;否则可省略本文件。
-    gs.Provide(func(s *StarterRegistryEtcd.Server) *Drainer {
+    gs.Provide(func(s *StarterRegistry.Server) *Drainer {
         return &Drainer{srv: s}
     })
 }
 
-type Drainer struct{ srv *StarterRegistryEtcd.Server }
+type Drainer struct{ srv *StarterRegistry.Server }
 
-// Drain 不停进程就把实例摘出负载均衡:在同一个 lease 上改写存储权重
+// Drain 不停进程就把实例摘出负载均衡:在每个中心的同一个 lease 上改写存储权重
 // (不重注册、key 不消失)。
 func (d *Drainer) Drain(ctx context.Context) error { return d.srv.UpdateWeight(ctx, 0) }
 func (d *Drainer) Restore(ctx context.Context) error { return d.srv.UpdateWeight(ctx, 100) }
@@ -95,26 +97,22 @@ func (d *Drainer) Restore(ctx context.Context) error { return d.srv.UpdateWeight
 ```properties
 spring.app.name=registry-etcd-example
 
-# 注册进的 etcd 集群。设置 endpoints 即激活 starter。
-spring.registry.etcd.endpoints=127.0.0.1:2379
-spring.registry.etcd.ttl=10s
-spring.registry.etcd.key-prefix=/services/
+# 每个命名块一个 etcd 集群;每块成为后端 bean "etcd.<name>",
+# 同时服务注册(经 starter-registry 核心)与发现。
+spring.registry.etcd.main.endpoints=127.0.0.1:2379
+spring.registry.etcd.main.ttl=10s
+spring.registry.etcd.main.key-prefix=/services/
 
-# 广告的实例(后端无关;换注册后端是换 blank-import,不是改配置)。
+# 广告的实例(后端无关,所有中心共享;换注册后端是换 blank-import,不是改配置)。
 spring.registry.service-name=orders
 spring.registry.addr=127.0.0.1:8080
 spring.registry.weight=100
 spring.registry.metadata.zone=cn-north
 spring.registry.metadata.version=v1
 
-# 消费侧:名为 "local" 的 etcd discovery 后端,解析同一 key 前缀。
-# 任何 client starter 的 `discovery:` 字段按名引用。
-spring.discovery.etcd.local.endpoints=127.0.0.1:2379
-spring.discovery.etcd.local.key-prefix=/services/
-
-# 消费侧接线示例(任一 discovery 感知 client starter):
+# 消费侧:零配置。client starter 按块的 bean 名引用:
 # spring.redis.demo.service-name=orders
-# spring.redis.demo.discovery=local
+# spring.redis.demo.discovery=etcd.main
 ```
 
 **验证**(与 `example/check.sh` 同构):
@@ -134,43 +132,49 @@ etcdctl get /services/orders/ --prefix
 ### 2.1 bean 生命周期时间线
 
 ```
-import starter-registry-etcd
-  ├─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
-  │      Condition: OnProperty("spring.registry.etcd.endpoints")   [starter.go:66-71]
-  ├─ gs.Module(OnProperty("spring.discovery.etcd"))                 [discovery_etcd.go:82]
-  │      conf.BindEach → 每个 <name> 一个命名 bean（r.Provide().Name(name)）
+import starter-registry-etcd（传递引入 starter-registry）
+  ├─ 每个 ${spring.registry.etcd.<name>} 块: gs.Provide(newEtcdBackend).Name("etcd.<name>")
+  │      Module 条件: OnProperty("spring.registry.etcd")            [center.go]
+  │      Export(As[discovery.Discovery], As[discovery.Registrar]) + Destroy(Close)
+  │
+  ├─ starter-registry 核心: gs.Provide(NewServer).Name("registryServer")
+  │      条件: OnProperty("spring.registry.service-name")   [starter-registry/starter.go]
+  │      Registrars []discovery.Registrar——容器以切片注入收集每个后端 bean 的
+  │      registrar(etcd、zookeeper……混搭)
   │
 gs.Run()
-  ├─ 绑定: ${spring.registry.etcd} → EtcdConfig;${spring.registry} → Server.Config 字段
-  ├─ NewServer: clientv3.New + 对 endpoints[0] 做 Status 探活——不可达/认证错
-  │      的集群在此直接启动失败,而非等到首次 Register               [registrar.go:95-100]
-  ├─ discovery 后端在绑定期做同样探活                                 [discovery_etcd.go:116-121]
+  ├─ 绑定: ${spring.registry.etcd} → 每块一份 EtcdConfig(BindEach);
+  │        ${spring.registry} → Server.Config 字段
+  ├─ newEtcdBackend(每块): clientv3.New + 对 endpoints[0] 做 Status 探活——
+  │      不可达/认证错的集群在此直接启动失败,而非等到首次 Register;每块一次
+  │                                                        [center.go]
+  ├─ 每个后端的 discovery 半边(惰性)首次使用时经该块客户端解析
   ├─ Runner 启动 → 就绪信号触发
-  ├─ Server.Run: 校验 service-name/addr                              [starter.go:103-105]
+  ├─ registryServer.Run: 校验 service-name/addr + 至少一个 registrar
   │      等待 <-sig.TriggerAndWait()(就绪门:所有 server 起来后才注册)
-  │      Register → 日志 `registered "orders" at ...`                 [starter.go:114-121]
-  ├─ 稳态: keep-alive goroutine 持续续约(clientv3 默认 ≈ TTL/3)
+  │      向每个中心 Register → 日志 `registered "orders" at ... in N registry center(s)`
+  ├─ 稳态: 每中心一条 keep-alive goroutine 持续续约(clientv3 默认 ≈ TTL/3)
   └─ SIGTERM: PreStop 最先反注册(先于 pre-stop 延迟、先于任何 server 停止)
          → 在途请求继续排空时 discovery 已不再分发本实例
-         Stop 是幂等兜底                                    [starter.go:130-146]
+         Stop 是幂等兜底                              [starter-registry/starter.go]
 ```
 
 设计理由(源码注释):注册绑定应用就绪——"实例在应用就绪后才发布……这一顺序让滚动重启
-零损"(starter.go:30-36);崩溃安全从不依赖 Deregister——lease TTL 自动清 key,
-"self-healing without a reaper"(starter.go:27-29)。
+零损"(starter-registry/starter.go);崩溃安全从不依赖 Deregister——lease TTL 自动清 key,
+"self-healing without a reaper"(starter.go)。
 
 ### 2.2 注册写入语义
 
 - key = `<key-prefix><service-name>/<instance-id>`,id 取配置 `id`,否则派生
-  `<service-name>-<addr>` —— 重启覆盖同一 key(registrar.go:111-122)。
+  `<service-name>-<addr>` —— 重启覆盖同一 key(registrar.go)。
 - value = JSON `instanceValue{service_name, addr, weight, metadata}`
-  (registrar.go:43-48,137-142)。
+  (registrar.go)。
 - Register 时权重 ≤0 归一为 1:"默认值"永不存成 0——**0 保留给运行期摘流信号**,
-  只能经 `UpdateWeight` 达成(registrar.go:131-136)。
+  只能经 `UpdateWeight` 达成(registrar.go)。
 - `Register` = Grant(整秒 TTL) → `Put(key, val, WithLease)` → `KeepAlive` goroutine
-  必须排干续约通道,否则 lease 死亡(registrar.go:147-170)。同实例重注册会先注销旧
-  lease(registrar.go:172-179)。
-- `ttlSeconds()` 向上取整到整秒、最小 1s;`TTL<=0` 静默变 15s(config.go:85-98)。
+  必须排干续约通道,否则 lease 死亡(registrar.go)。同实例重注册会先注销旧
+  lease(registrar.go)。
+- `ttlSeconds()` 向上取整到整秒、最小 1s;`TTL<=0` 静默变 15s(config.go)。
 
 ### 2.3 DISCOVERY 链路(消费侧)
 
@@ -192,16 +196,16 @@ gs.Run()
 
 ### 2.4 DRAIN 链路 —— UpdateWeight(0)
 
-`Server.UpdateWeight(ctx, 0)`(starter.go:152-157)→ 守卫:registrar 为 nil 或从未注册 →
-报错 `registry-etcd: instance not registered yet` → `etcdRegistrar.UpdateWeight`
-(registrar.go:187-213):
+`Server.UpdateWeight(ctx, 0)`(starter-registry `starter.go`)→ 守卫:从未注册 →
+报错 `registry: instance not registered yet` → 逐中心的 `etcdRegistrar.UpdateWeight`
+(registrar.go):
 
 - 查 key 对应的 `hold`(leaseID + 上次 payload);无 hold → 解释性报错
-  (registrar.go:189-194;单测 registrar_weight_test.go:34-39)。
+  (registrar.go;单测见 registrar_weight_test.go)。
 - 用新权重序列化**完整 instanceValue** 并 `Put` **到既有 lease 上**
   (`clientv3.WithLease(h.leaseID)`)——"不 grant、不 revoke、不重建 keep-alive,实例
   在更新中途从不离开 discovery,watcher 只是看到同一 key 的新值"
-  (registrar.go:183-186,206)。
+  (registrar.go)。
 - 与 Register 不同,`UpdateWeight` 对 **0 原样放行**(只有 Register 钳位)——0 进入
   存储的 JSON,进而进入消费端 pool 的 `excludeDrained`。
 
@@ -212,53 +216,57 @@ gs.Run()
 
 ### 2.5 TTL / keep-alive 机制 —— 及已知脆弱点
 
-- 每实例一个 lease,TTL 整秒(默认 15s;example 10s)。keep-alive goroutine
-  (registrar.go:166-170)唯一职责是排干 clientv3 的续约通道——"the returned channel
-  must be drained or the lease will not be renewed"(registrar.go:157-158)。
-  续约节奏是 clientv3 的(≈ TTL/3),本 starter 不提供配置。
-- **已知行为(下文嫌疑 #2)**:若 lease 在服务端死亡(etcd 重启/压缩、lease 被带外
-  revoke),key 在 TTL 后消失,keep-alive 通道直接结束——**不重注册、无日志;进程继续
-  运行而实例从 discovery 静默蒸发**。恢复手段是重启进程。请监控实例数,或对 key 做
-  `etcdctl watch`。
+- 每实例每中心一个 lease,TTL 整秒(默认 15s;example 10s)。keep-alive goroutine 唯一
+  职责是排干 clientv3 的续约通道——"the returned channel must be drained or the lease
+  will not be renewed"(registrar.go)。续约节奏是 clientv3 的(≈ TTL/3),本 starter
+  不提供配置。
+- **keep-alive 失联自愈**:若 lease 在服务端死亡(etcd 重启/压缩、lease 被带外 revoke),
+  keep-alive 通道关闭,watcher goroutine 以指数退避(基数 1s 翻倍、封顶 1min)重跑
+  publish 步骤(重新 grant lease + 重写上次 payload),直到实例重新注册——条目总能自行
+  回来,无需运维干预(`watchKeepAlive`,registrar.go)。
 - Deregister = 取消 keep-alive + revoke lease(key 立即删除,不等 TTL)
-  (registrar.go:217-233)。停机反注册失败仅 Warn,key 等 TTL 过期(starter.go:159-166)。
+  (registrar.go)。停机反注册失败仅 Warn,key 等 TTL 过期(starter-registry
+  `starter.go`)。
 
 ---
 
 ## 3. 逐 key 行为参考
 
-### 3.1 `${spring.registry.etcd.*}` —— 集群连接(config.go:26-55)
+### 3.1 `${spring.registry.etcd.<name>.*}` —— 每集群块(config.go)
+
+每块一个 etcd 集群;块名自选,成为后端 bean `etcd.<name>`。任一块存在即激活模块
+(`OnProperty("spring.registry.etcd")` 是前缀匹配);每块经 `BindEach` 绑定并在启动期探活。
 
 | key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `endpoints` | []string | — | **激活 key**(OnProperty);启动时对 `endpoints[0]` 做 `Status` 探活。 | 未设:starter 静默不装配;不可达:启动失败 `registry-etcd: startup probe failed`(registrar.go:95-100) |
+| `endpoints` | []string | — | 每块必填。启动时对 `endpoints[0]` 做 `Status` 探活。 | 未设:块绑定期报错(`endpoints is required`);不可达:启动失败 `registry-etcd: startup probe failed`(center.go) |
 | `username` / `password` | string | "" | etcd 认证凭据。 | 开 auth 的集群未配 → 启动探活失败 |
 | `dial-timeout` | duration | 5s | 约束 client dial 与启动探活超时。 | 过小 → 慢网络下启动偶发失败 |
 | `ttl` | duration | 15s | lease TTL;向上取整到整秒、最小 1s。⚠ `<=0` 静默变 15s,不是绑定期报错。 | 过长 → 崩溃驱逐延迟到 ~TTL;0 不会禁用任何东西 |
-| `key-prefix` | string | `/services/` | 所有 key 的前缀。⚠ 必须与每个消费块的 `key-prefix` 相同——耦合只有文档约束、从不校验。 | 不一致 → provider 正常注册、consumer 什么都发现不了,双方都"成功" |
+| `key-prefix` | string | `/services/` | 所有 key 的前缀(读写共享)。⚠ 必须与消费方引用的块一致——耦合只有文档约束、从不校验。 | 不一致 → provider 正常注册、consumer 什么都发现不了,双方都"成功" |
 | `tls.*` | tlsconf | 关 | 共享 `cloud/tlsconf` 块:`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`。 | CA 错 → 启动探活失败 |
 
-### 3.2 `${spring.registry.*}` —— 广告的实例(config.go:57-81)
+两个块 = 两个中心 = 双注册(registryServer 会注册进两者)。跨后端混搭(etcd 块 +
+zookeeper 块同进程)同理——registrar 收集与后端无关。
+
+### 3.2 `${spring.registry.*}` —— 广告的实例(starter-registry `config.go`)
 
 | key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `service-name` | string | "" | 逻辑名;构成 key 段,也是消费方解析/watch 的名字。必填。 | 空 → Run 报 `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required`(starter.go:103-105) |
-| `addr` | string | "" | 广告的 `host:port`。从不猜测。 | 空 → 同上;Register 也有 RequireField 守卫(registrar.go:128-130) |
+| `service-name` | string | "" | 逻辑名;构成 key 段,也是消费方解析/watch 的名字。**它的存在即注册意图信号**——设置即向每个中心注册,不设 = 纯消费方。 | 空 → 纯消费方;设了却没有任何块 → Run 报 `registry: ${spring.registry.service-name} is set but no registry center is configured` |
+| `addr` | string | "" | 广告的 `host:port`。从不猜测。 | 设了 service-name 却空 addr → 同样 Run 报错;Register 也有 RequireField 守卫(registrar.go) |
 | `id` | string | "" | 实例 id 覆盖;空则派生 `<service-name>-<addr>`,重启覆盖同一 key。⚠ 跨进程重复 id 会互相覆盖 lease 持有。 | 两进程同名+同地址 → 只剩一条 key,lease 互踩 |
-| `weight` | int | 0 | 存储权重;**Register 时** `<=0` 归一为 1(registrar.go:134-136)。⚠ 配置 0 不摘流——摘流只有 `UpdateWeight(0)`。 | 以为配置 0 能摘流 → 实例仍是权重 1 |
-| `metadata` | map[string]string | 空 | 任意属性(zone、version);`scheme` 是保留 key,驱动消费侧 scheme 过滤(discovery_etcd.go:248)。 | `scheme` 值错 → 实例被 scheme 限定查询过滤掉 |
+| `weight` | int | 100 | 存储权重;**Register 时** `<=0` 归一为 1(registrar.go)。⚠ 配置 0 不摘流——摘流只有 `UpdateWeight(0)`。 | 以为配置 0 能摘流 → 实例仍是权重 1 |
+| `metadata` | map[string]string | 空 | 任意属性(zone、version);`scheme` 是保留 key,驱动消费侧 scheme 过滤(discovery_etcd.go)。 | `scheme` 值错 → 实例被 scheme 限定查询过滤掉 |
 
-### 3.3 `${spring.discovery.etcd.<name>.*}` —— 消费侧后端(discovery_etcd.go:58-79)
+### 3.3 发现 —— 按块 bean 名引用(零配置)
 
-| key | 类型 | 默认值 | 行为与联动 | 配错后果 |
-|-----|------|--------|-----------|----------|
-| `endpoints` | []string | — | 必填且绑定期 `expr:"len($) > 0"`;每块注册一个具名后端进 `cloud/discovery`。 | `<name>` 重复 → 启动报 `discovery backend %q already registered` |
-| `username` / `password` | string | "" | 同注册侧。 | 探活期认证失败 |
-| `dial-timeout` | duration | 5s | 约束 dial 与探活。 | 同上 |
-| `key-prefix` | string | `/services/` | 必须与注册侧 prefix 一致(§3.1 ⚠)。 | 什么都发现不了,且无报错 |
-| `tls.*` | tlsconf | 关 | 同一共享块。 | 探活失败 |
-
-这里没有 TTL:消费侧从不写(discovery_etcd.go:56-57)。
+不再存在 discovery 配置路径。每个块的后端 bean 本身就是一个
+`cloud/discovery.Discovery`,名为 `etcd.<name>`,共享该块客户端(`center.go`)。
+client starter 按 bean 名引用(`spring.http-client.backends.<n>.discovery=etcd.main`)。
+该 bean 惰性——纯 provider 从不解析、从不为读侧付费。纯消费方只配连接块(不设
+`service-name`/`addr`),不注册任何实例。多集群发现就是多个块:引用哪个块的集群就
+从哪读——不必是你注册进去的块。
 
 ---
 
@@ -305,18 +313,18 @@ gs.Run()
    etcdctl watch /services/orders/ --prefix   # 过期时对该 key 触发一个 DELETE 事件
    ```
 
-6. **lease 死亡静默蒸发(已知问题)**:应用运行期间重启 etcd 容器(或先
+6. **lease 死亡自愈**:应用运行期间重启 etcd 容器(或先
    `etcdctl get <key> -w json | jq .kvs[0].lease` 拿到 lease id 再
-   `etcdctl lease revoke <id>`):key 在 TTL 后消失、进程继续运行、**无任何日志、不重
-   注册**(registrar.go:166-170——排干循环直接结束)。消费方经 watch 驱逐端点;
-   provider 对自己已掉线毫无感知。恢复:重启进程。即 §6 嫌疑 #2。
+   `etcdctl lease revoke <id>`):key 在 TTL 后消失,随后 registrar 的 keep-alive watcher
+   带退避重跑 publish 步骤,key 回来(`watchKeepAlive`,registrar.go)——无需运维干预、
+   无需重启进程。消费方经 watch 短暂驱逐,随后端点回归。
 
 7. **刷新降级**:服务已缓存后短暂断掉 etcd(如 iptables drop 2379):刷新 Get 失败
    → Warn `registry-etcd: snapshot %q failed (waiting for watch)` 且返回 nil——"陈旧地址
    好过没有地址";事件恢复后缓存照常刷新。
 
-8. **坏集群快速失败**:`endpoints=127.0.0.1:9999` 启动 → 直接失败
-   `registry-etcd: startup probe failed for 127.0.0.1:9999`(registrar.go:95-100)——
+8. **坏集群快速失败**:某块 `endpoints=127.0.0.1:9999` 启动 → 直接失败
+   `registry-etcd: startup probe failed for 127.0.0.1:9999`(center.go)——
    不会留下静默运行期缺口。
 
 运行期日志带 tag `_app_registry_etcd`:`creating etcd registrar`、`registering
@@ -330,14 +338,15 @@ discovery backend name=...`。经 `logger.<name>.tag=_app_registry_etcd` 单独�
 
 | 症状 | 原因 | 处置 |
 |------|------|------|
-| 启动报 `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required` | 任一 key 未设 | 两个都设上(starter.go:103-105) |
-| 启动报 `startup probe failed` | etcd 不可达 / TLS 错 / 缺认证 | 修 `endpoints`/`tls.*`/凭据;探活就是启动期证明 |
-| provider 正常,consumer 解析不到 | 注册块与 discovery 块 `key-prefix` 不一致 | 两边对齐(默认 `/services/`);该不一致从不校验 |
-| 进程健康但实例从 discovery 消失 | lease 死亡(etcd 重启、带外 revoke)——静默、不重注册 | 重启进程;监控实例数(演练 6) |
-| `discovery backend "x" already registered` | 出现两个 `${spring.discovery.etcd.x.*}` 块 | 改名其一 |
+| 启动报 `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required` | 设了 `service-name` 但没设 `addr` | 两个都设上(starter-registry `starter.go`) |
+| 启动报 `... is set but no registry center is configured` | 设了 `service-name` 但没有任何 `spring.registry.etcd.<name>` 块 | 至少配一个带 `endpoints` 的块 |
+| 启动报 `startup probe failed` | etcd 不可达 / TLS 错 / 缺认证 | 修该块的 `endpoints`/`tls.*`/凭据;探活就是启动期证明 |
+| provider 正常,consumer 解析不到 | provider 注册的块与 consumer 引用的块 `key-prefix` 不一致 | 两边对齐(默认 `/services/`);该不一致从不校验 |
+| consumer 引用 `etcd.main` 找不到 bean | 块名不同,或块缺失 | bean 名是 `etcd.<块名>`;核对块 key |
+| 实例短暂消失后回归 | lease 死亡(etcd 重启、带外 revoke)后自愈循环完成重注册 | 无需处置——自愈(演练 6);频繁出现则检查 etcd 健康 |
 | consumer 仍路由到已摘流实例 | pool 只看到全 0 权端点而回退全集(pool.go:97-99),或快照陈旧 | 检查是否所有端点都被摘;确认 watch 已推 0 权快照 |
 | 重启后残留重复 key | 此前手工 `etcdctl put` 写了无 lease 的永久 key | 删除手工 key;永远不要手写实例 key |
-| UpdateWeight 报 `registry-etcd: instance not registered yet` | 在 Run 注册前调用(或 Run 失败) | 在 `registered` 日志出现后再调用 |
+| UpdateWeight 报 `registry: instance not registered yet` | 在 Run 注册前调用(或 Run 失败) | 在 `registered` 日志出现后再调用 |
 | 两进程只剩一条 etcd key | 同名+同地址 → 同派生 id | 每实例设独立 `spring.registry.id` |
 | 消费日志出现 `skip malformed instance` Warn | 服务前缀下有非 JSON value | 清掉坏 key(手工写入、别的工具写入) |
 
@@ -347,16 +356,17 @@ discovery backend name=...`。经 `logger.<name>.tag=_app_registry_etcd` 单独�
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key | 18(连接 7 + 实例 5 + discovery 6)+ 每个 tls 块共享 6 个 `tls.*` |
-| 必填 | 绑定期 2(两侧 `endpoints`)+ Run 期 2(`service-name`、`addr`) |
+| 配置 key | 每块 7 个(连接,含共享 `tls.*`)+ 实例 5 个(`spring.registry.*`) |
+| 必填 | 每块绑定期 1(`endpoints`)+ Run 期 2(`service-name`、`addr`,仅注册需要) |
 | quickstart 前置外部依赖 | 1(etcd;example docker 门控) |
 | "注意/坑"条数 | 6 |
 
-设计嫌疑清单(承接上一轮审计;均未结):
+设计嫌疑清单(已按命名块模型更新):
 
-1. 注册器与 discovery 块之间的 `key-prefix` 耦合只有文档约束、从不校验——即使两块在
-   同一份 app.properties 里。
-2. lease keep-alive 死亡 = TTL 后静默消失(不重注册、无日志)——最大的运维黑洞。
+1. provider 注册的块与 consumer 引用的块之间 `key-prefix` 耦合只有文档约束、从不校验
+   (单块内两半共享一个 prefix;跨块不一致仍可能)。
+2. ~~lease keep-alive 死亡 = TTL 后静默消失~~ 已解决:keep-alive watcher 以指数退避
+   重注册(`watchKeepAlive`,registrar.go)。
 3. 后台刷新失败有日志,但 etcd 长期不可达时会一直服务陈旧快照。
 4. `ttl<=0` 静默变 15s,而不是绑定期报错。
 5. README 的 weight 行暗示配置 `weight:=0` 可摘流——实际永远存 1(被钳位);摘流只有

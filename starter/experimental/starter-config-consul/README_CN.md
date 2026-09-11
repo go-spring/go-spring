@@ -63,6 +63,6 @@ KV 值变更时，Provider 的阻塞查询 watcher 会触发一次应用属性�
 
 - 启动时，`spring.config.import` 会调用 `consul` Provider：它从 source 串自建
   Consul API 客户端、读取 KV 路径，并对该路径启动一个阻塞查询 watcher。
-- KV 变更会让阻塞查询的 `LastIndex` 递增，触发框架的 `PropertiesRefresher`：
-  重新加载所有配置源（重跑本 Provider），并通过两阶段原子提交重新绑定所有
-  `gs.Dync` 字段。
+- KV 变更会让阻塞查询的 `LastIndex` 递增，watch goroutine 的回调直接调用框架的
+  进程级门面 `gs.RefreshProperties()`：重新加载所有配置源（重跑本 Provider），
+  并通过两阶段原子提交重新绑定所有 `gs.Dync` 字段。

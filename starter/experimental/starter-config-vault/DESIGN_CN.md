@@ -30,9 +30,9 @@
   这样 token 不会进入任何应用绑定的配置文件。
 - **Client 缓存。** Vault API client 按 `(address, namespace, token)`
   元组缓存，刷新时不会重复新建 client。
-- **Refresh 钩子。** 容器域桥接 bean `configRefreshBridge`（命名
-  `vaultConfigRefreshBridge`，导出 `gs.Rooter`）注入 `*gs.PropertiesRefresher`，
-  把 `RefreshProperties` 存入 `atomic.Pointer[func() error]`。
+- **Refresh 钩子。** controller 不是 bean：检测到变更时轮询循环直接调用进程级
+  门面 `gs.RefreshProperties()`（由最近一次 `Start` 的 app 挂载，供容器外的
+  poller 使用，无需依赖注入）。app 启动前门面返回错误，提前触发是安全 no-op。
 - **Watch 缝隙——共享指纹。** 每个 `(client, mount, path)` 对应一个共享
   `loadedFP[watchKey]` 字符串。每次 `loadVaultConfig` 成功后都写入；轮询循环
   拿本次轮询的指纹与之比较。不一致时调 `triggerRefresh` 重跑 provider，
@@ -51,9 +51,10 @@
 - **Vault token 永远不进入绑定的属性。** token 有意从 env / token 文件 /
   查询串解析，不从 `spring.config.vault.*` 读；这样自身读属性的解密缝隙
   就不会陷入鸡生蛋循环。
-- **桥接 bean 必须命名。** 与其他 config-provider starter 一致：
-  `gs.Rooter` 是 `any` 别名，需要稳定命名（`vaultConfigRefreshBridge`）
-  以避免 `__default__` 冲突。
+- **controller 已无 bean 身份。** 与其他 config-provider starter 一致：早期
+  版本曾携带导出为 `gs.Rooter` 的桥接 bean（`any` 别名，需稳定命名
+  `vaultConfigRefreshBridge` 以避免 `__default__` 冲突）。现在刷新经
+  `gs.RefreshProperties()` 门面——无 bean、无 autowire 字段。
 
 ## 4. 权衡 / 已否决方案
 

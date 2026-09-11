@@ -228,15 +228,18 @@ func startConsume(ctx context.Context, d *amqp.Delivery) (context.Context, obsSp
 	return subObserver().Start(ctx, "consume", dest)
 }
 
-// resilienceExecs tracks the resilience executor attached to each connection,
-// so GuardedPublish can resolve it from the raw *amqp.Connection bean and the
-// destructor can Close it (releasing any background resources of a production
-// driver). Only connections with resilience enabled appear here.
-var resilienceExecs sync.Map // *amqp.Connection -> resilience.Executor
+// clientGuard is the per-client resilience attachment: the executor chain and
+// the stable resource label it executes under, colocated so a guard lookup
+// reads the pair atomically (no torn exec/resource combination).
+type clientGuard struct {
+	exec     resilience.Executor
+	resource string
+}
 
-// resilienceResources tracks the stable resource label per connection so the
-// guard can pass it to exec.Execute without re-deriving from Config.
-var resilienceResources sync.Map // *amqp.Connection -> string
+// clientGuards indexes the guard by the raw client bean, so GuardedPublish can resolve
+// it from a bare *amqp.Connection and the destructor can Close it. Only clients with
+// resilience enabled appear here.
+var clientGuards sync.Map // *amqp.Connection -> *clientGuard
 
 // applyResilience builds an executor and indexes it by conn. This is the
 // rabbitmq seam of resilience: amqp091 exposes no reject-capable middleware and
@@ -256,31 +259,29 @@ func applyResilience(c Config, conn *amqp.Connection, resource string) error {
 	}
 	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
 	exec = resilience.WrapExecutor(exec, "rabbitmq")
-	resilienceExecs.Store(conn, exec)
-	resilienceResources.Store(conn, resource)
+	clientGuards.Store(conn, &clientGuard{exec: exec, resource: resource})
 	return nil
 }
 
 // closeResilience closes and forgets the executor behind conn, if any.
 func closeResilience(conn *amqp.Connection) {
-	if v, ok := resilienceExecs.LoadAndDelete(conn); ok {
-		if err := v.(resilience.Executor).Close(); err != nil {
+	if v, ok := clientGuards.LoadAndDelete(conn); ok {
+		if err := v.(*clientGuard).exec.Close(); err != nil {
 			log.Warnf(context.Background(), log.TagAppDef, "rabbitmq: resilience executor close failed: %v", err)
 		}
 	}
-	resilienceResources.Delete(conn)
 }
 
 // guard routes call through the executor attached to conn, and otherwise runs it
 // inline. When resilience is disabled for the connection this is a no-op
 // pass-through, so enabling protection is a zero-code opt-in on the caller side.
 func guard(ctx context.Context, conn *amqp.Connection, call func(context.Context) error) error {
-	v, ok := resilienceExecs.Load(conn)
+	v, ok := clientGuards.Load(conn)
 	if !ok {
 		return call(ctx)
 	}
-	r, _ := resilienceResources.Load(conn)
-	return v.(resilience.Executor).Execute(ctx, r.(string), call)
+	g := v.(*clientGuard)
+	return g.exec.Execute(ctx, g.resource, call)
 }
 
 // GuardedPublish publishes pub to exchange/routingKey on ch, routed through the

@@ -96,7 +96,8 @@ func (c *Controller) Echo(ctx context.Context, req *proto.EchoRequest) (*proto.E
 **client.go** — 经 discovery 后端 + Go-Spring balancer 拨号（见 §2.4）：
 
 ```go
-StarterGrpc.UseUnaryInterceptor(authGuard) // 用户 guard，整条链最外层
+// 用户 guard，整条链最外层 —— 以 bean 提供，按容器注入
+gs.Provide(func() grpc.UnaryServerInterceptor { return authGuard })
 
 conn, err := grpc.NewClient(
     StarterGrpc.Scheme+":///echo-service", // gsdiscovery:///<service>，走 default 后端
@@ -203,7 +204,8 @@ gs.Run()
   └─ SIGTERM 时: Stop → svr.GracefulStop()（排空在途 RPC；ctx 只标记关停日志）
 ```
 
-`UseUnaryInterceptor`/`UseStreamInterceptor` 注册的用户拦截器必须在 `init()` 里（至少在容器
+用户拦截器是注入而非注册：逐个 `gs.Provide` 并 `Export(gs.As[grpc.UnaryServerInterceptor]())`
+（stream 侧同构），server 构造器以 bean 集合收齐——每个容器各持各的栈（无包级注册 API）。原文档此处曾写
 构建 server 之前）调用——extension.go 在 `buildOptions` 运行时做快照。
 
 ### 2.2 拦截器链 — 精确顺序与理由
@@ -371,7 +373,7 @@ handler panic → `codes.Internal` "panic in {FullMethod}: ..."，并经共享 g
 | 客户端 TLS 握手被拒、证书报错 | 配了 `tls.ca-file`——那会开启 **mTLS**（`RequireAndVerifyClientCert`） | 单向 TLS 就删掉它，否则给客户端发证。 |
 | 一切正常但 fault/准入无效果 | 未 import starter-governance 或未配 `govern.source`——seam 直通 | 加 import 并把 `govern.source.file.path` 指向文件。 |
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` 低于报文 | 调大上限。 |
-| stream RPC 绕过限流 | 准入设计上只覆盖 unary | 用用户拦截器防护 stream（`UseStreamInterceptor`）。 |
+| stream RPC 绕过限流 | 准入设计上只覆盖 unary | 用用户 stream 拦截器 bean 防护（注入为 grpc.StreamServerInterceptor）。 |
 | GOAWAY / 连接抖动 | 激进的 `keepalive.time` 对上低频 ping 的客户端 | grpc keepalive 语义；放宽服务端参数。 |
 | LB 客户端启动即 `ErrNoSubConnAvailable` | discovery 后端缺失/无健康实例；或 service config 里 balancer 名不对 | 注册后端 bean（命名 discovery.Discovery bean）并用 `BalancerName`/`LoadBalancingConfig`。 |
 | discovery 出错后 LB 不再更新 | `Resolve` 失败记日志并保留最后快照，下个轮询周期重试 | 无需处理——pollLoop 自动重试。 |

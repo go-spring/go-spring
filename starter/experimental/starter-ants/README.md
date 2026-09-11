@@ -59,11 +59,10 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 
 * **Supports multiple ants pools**: define multiple pools in the configuration file and reference them by name.
 * **Support ants extensions**: extend pool creation by implementing the `Driver` interface.
-* **Panic handler**: register `StarterAnts.SetPanicHandler(fn)` before startup to
-  recover panics thrown by submitted tasks; without it the panic is reported
-  through the shared goutil panic chain (structured log via go-spring.org/log)
-  worker goroutine. It is a global hook shared by every DefaultDriver-built pool;
-  per-pool handlers require a custom `Driver`.
+* **Panic handling**: a panicking task is caught by the pool and reported through
+  the shared goutil panic chain (structured log via go-spring.org/log), the same
+  stream goroutine/handler/job panics use. Custom panic handling goes through a
+  custom `Driver` bean.
 * **Runtime pool metrics**: read `pool.Running()`, `pool.Free()`, and
   `pool.Cap()` straight off the pool (no OTel) to monitor utilization.
 * **Graceful shutdown**: the destroy callback calls `Release()`, stopping the

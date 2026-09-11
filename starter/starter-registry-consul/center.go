@@ -29,24 +29,28 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-// consulCenter owns the ONE shared *api.Client for the agent configured under
-// ${spring.registry.consul}. Both halves of the naming idiom derive from it:
-// the registrar (the write side, starter.go) and the discovery backend
-// auto-derived for the same agent (below) — the same "one center config, one
-// connection" convergence as starter-registry-etcd's center.
+// consulBackend is ONE configured registry center: the
+// ${spring.registry.consul.<name>} block made a bean. It owns the single
+// Consul api client for that agent (probed at construction) and serves both
+// halves of the naming idiom through it: the write side (a
+// discovery.Registrar collected by the starter-registry core) and the read
+// side (a discovery.Discovery consumers cite by the bean's name
+// "consul.<name>"; lazy, so an app that never cites it pays nothing for the
+// read half). Both sides resolve the same agent, so read and write can never
+// diverge.
 //
 // The Consul api client holds no resources that need releasing (it is an HTTP
-// client wrapper with no Close), so the center carries no bean destructor;
-// neither derived side closes the client either.
-type consulCenter struct {
-	client *api.Client
-	config ConsulConfig
+// client wrapper with no Close), so the bean destructor only stops the
+// discovery half's background queries.
+type consulBackend struct {
+	reg  *consulRegistrar
+	disc *consulDiscovery
 }
 
-// newConsulCenter builds the shared client and probes the agent. The probe is
-// the fail-fast both sides relied on when they built their own clients: a
-// misconfigured or unreachable agent fails startup here, once.
-func newConsulCenter(c ConsulConfig) (*consulCenter, error) {
+// newConsulBackend builds the client and probes the agent. The probe is the
+// fail-fast: a misconfigured or unreachable agent fails startup here, once
+// per block.
+func newConsulBackend(c ConsulConfig) (*consulBackend, error) {
 	if c.Address == "" {
 		return nil, errutil.Explain(nil, "registry-consul: address is required")
 	}
@@ -59,12 +63,46 @@ func newConsulCenter(c ConsulConfig) (*consulCenter, error) {
 	if _, _, err := client.Catalog().Services((&api.QueryOptions{}).WithContext(ctx)); err != nil {
 		return nil, errutil.Explain(err, "registry-consul: startup probe failed for %s", c.Address)
 	}
-	return &consulCenter{client: client, config: c}, nil
+	reg, err := newConsulRegistrar(c, client)
+	if err != nil {
+		return nil, err
+	}
+	log.Debugf(context.Background(), log.TagAppDef, "consul backend for address=%s ready", c.Address)
+	return &consulBackend{reg: reg, disc: newConsulDiscovery(client, "")}, nil
+}
+
+// Close stops the discovery half's background blocking queries. It is the
+// bean destructor; the Consul api client needs no closing.
+func (b *consulBackend) Close() error {
+	if b == nil || b.disc == nil {
+		return nil
+	}
+	b.disc.Close()
+	return nil
+}
+
+// Register publishes inst into this agent (the TTL-check heartbeat protocol,
+// registrar.go).
+func (b *consulBackend) Register(ctx context.Context, inst discovery.Instance) error {
+	return b.reg.Register(ctx, inst)
+}
+
+// Deregister removes inst from this agent. Idempotent.
+func (b *consulBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
+	return b.reg.Deregister(ctx, inst)
+}
+
+// UpdateWeight re-advertises inst with a new weight.
+func (b *consulBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
+	return b.reg.UpdateWeight(ctx, inst, weight)
+}
+
+// Resolve serves snapshots of the healthy instances this agent reports.
+func (b *consulBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	return b.disc.Resolve(ctx, name, opts...)
 }
 
 // newConsulClient builds a Consul api client for the given connection fields.
-// It is the single construction path behind the center, the registrar fallback,
-// and standalone discovery blocks.
 func newConsulClient(address, scheme, datacenter, token, namespace string) (*api.Client, error) {
 	client, err := api.NewClient(&api.Config{
 		Address:    address,
@@ -81,41 +119,21 @@ func newConsulClient(address, scheme, datacenter, token, namespace string) (*api
 }
 
 func init() {
-	// The center bean exists exactly when the agent is configured. It is
-	// nullable-injected (TagArg("?")) by the registrar Server and by discovery
-	// backends that inherit the center connection.
-	//
-	// When discovery-name is non-empty (the default "consul"), the module also
-	// derives a discovery backend bean for the same agent under that label —
-	// the "one config block serves both halves" default. A dual-role app then
-	// cites discovery=consul without any ${spring.discovery.consul} block; a
-	// label colliding with another bean name fails loudly in the container.
-	gs.Module(gs.OnProperty("spring.registry.consul.address"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var c ConsulConfig
-		if err := conf.Bind(p, &c, "${spring.registry.consul}"); err != nil {
-			return errutil.Explain(err, "registry-consul: bind center config")
-		}
-		r.Provide(newConsulCenter,
-			gs.IndexArg(0, gs.ValueArg(c)),
-		).Caller(1)
-
-		if name := c.DiscoveryName; name != "" {
-			r.Provide(newCenterDiscoveryBackend,
-				gs.IndexArg(0, gs.TagArg("?")),
-			).Name(name).Caller(1)
-		}
-		return nil
+	// One NAMED bean per block under ${spring.registry.consul.<name>}: the
+	// bean name "consul.<name>" is the label a client starter cites to pick
+	// this backend for discovery, and the starter-registry core collects the
+	// same bean (as a discovery.Registrar) into the single publication
+	// lifecycle. Blocks across backends never collide (the name carries the
+	// backend type); a duplicate name within one backend fails loudly in the
+	// container.
+	gs.Module(gs.OnProperty("spring.registry.consul"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.registry.consul}", func(name string, c ConsulConfig) error {
+			r.Provide(newConsulBackend,
+				gs.IndexArg(0, gs.ValueArg(c)),
+			).Name("consul."+name).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registrar]()).
+				Destroy((*consulBackend).Close).Caller(1)
+			return nil
+		})
 	})
-}
-
-// newCenterDiscoveryBackend serves snapshots for the center's agent through
-// the shared client. It is the discovery bean auto-derived from
-// ${spring.registry.consul}; it resolves the same agent the registrar writes
-// into, so read and write can never diverge.
-func newCenterDiscoveryBackend(cc *consulCenter) (discovery.Discovery, error) {
-	if cc == nil {
-		return nil, errutil.Explain(nil, "registry-consul: center client unavailable")
-	}
-	log.Debugf(context.Background(), log.TagAppDef, "derived consul discovery backend from center config, address=%s", cc.config.Address)
-	return newConsulDiscovery(cc.client, ""), nil
 }

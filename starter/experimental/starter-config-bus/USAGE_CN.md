@@ -152,12 +152,11 @@ import starter-config-bus
               .Init(subscribe).Destroy(Destroy).Export(gs.As[gs.Rooter]())   [starter.go:44-54]
 
 gs.Run() → App.Start()                                                       [gs_app/app.go]
-  ├─ 注册 PropertiesRefresher + ContextProvider bean                         [app.go:287-288]
+  ├─ 挂载 gs.RefreshProperties / gs.AppStarted 门面目标
   ├─ 属性加载（全部 source）+ 日志初始化
   ├─ 容器 refresh（bean 装配）：
   │    ├─ ConfigBus 字段注入：
   │    │    Conn      ← 按名注入 NATS 实例（${spring.config.bus.nats-instance:=config-bus}）
-  │    │    Refresher ← *gs.PropertiesRefresher（应用级刷新句柄，bus.go:56）
   │    │    Config    ← ${spring.config.bus} value tag（config.go）
   │    └─ bean Init 钩子：subscribe() —— 对 Config.Subject 做 NATS Subscribe  [bus.go:66-99]
   │         打日志 "subscribed to bus subject=... prefixes=[...]"
@@ -203,8 +202,8 @@ gs.Run() → App.Start()                                                       [
    - `shouldRefresh(ev.Prefix)` 过滤（bus.go:106-116）：事件 prefix 为空、实例未配置
      watch、或事件 prefix 与某个 watched prefix **双向重叠**时放行——`db` watcher 对
      `db.pool` 事件有反应，反之亦然；
-   - `Refresher.RefreshProperties()`——即注入的 `*gs.PropertiesRefresher`
-     （`spring/gs/gs.go:410`，是 `gs_app.PropertiesRefresher` 的别名，app.go:127-151）。
+   - `gs.RefreshProperties()`——app 挂载的进程级刷新门面（无注入的
+     refresher 字段）。
 4. `App.RefreshProperties()`（app.go:247-255）：重新加载**全部**已配置 source
    （文件、env、命令行参数），按优先级重新合并，把新 storage 推进容器
    `c.RefreshProperties(p)`——后者原子地重解析所有 `gs.Dync[T]` 绑定
@@ -308,7 +307,7 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 | `property refresh failed: <source 错误>` | 某配置 source 重载失败；旧值保留 | 修复 source 后重新发布——不会自动重试 |
 | 刷新后字段没变 | 绑定是普通 `value:` 字段而非 `gs.Dync[T]`——只有 Dync 重解析 | 把字段改成 `gs.Dync[T]` |
 | 改了 `spring.config.bus.subject`/`watch-prefixes` 行为不变 | 这些 key 仅启动期生效，`subscribe()` 只解析一次 | 重启实例 |
-| 改了 Dync 读取的 key 但值过期 | 新值在应用不加载的 source 里，或被优先级压住（如文件压过 env） | 查 `PropertiesRefresher.Sources()` 顺序；确认变更出现在已加载 source 中 |
+| 改了 Dync 读取的 key 但值过期 | 新值在应用不加载的 source 里，或被优先级压住（如文件压过 env） | 从刷新日志确认哪些 source 被重载；确认变更出现在已加载 source 中 |
 | bus 没有任何 metrics / 健康检查 | 本就没有——只有 `_app_config_bus` 日志 | 盯日志；订阅悄悄掉线时无其他信号（见 §6） |
 
 ---

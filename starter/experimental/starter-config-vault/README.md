@@ -126,9 +126,9 @@ example ships an `ENC(...)` value end-to-end.
 - On startup, `spring.config.import` invokes the `vault` provider, which builds a
   client from the source string, resolves the token, reads the KV secret, and
   starts a polling watcher.
-- A change to the secret is detected on the next poll, which calls the
-  framework's `PropertiesRefresher`. That reloads all configuration sources
-  (re-running this provider) and re-binds every `gs.Dync` field via a two-phase,
-  atomic commit.
+- A change to the secret is detected on the next poll, whose callback calls the
+  framework's process-level `gs.RefreshProperties()` facade. That reloads all
+  configuration sources (re-running this provider) and re-binds every `gs.Dync`
+  field via a two-phase, atomic commit.
 - Any bound value wrapped in `ENC(...)` / `{cipher}` is decrypted by the
   `spring/conf/decrypt` seam during binding.

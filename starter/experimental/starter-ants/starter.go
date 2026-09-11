@@ -31,8 +31,9 @@ import (
 
 func init() {
 	// Register multiple pools under ${spring.ants}. Each map key becomes a
-	// named Pool bean. Observers registered via RegisterObserver are applied
-	// to every pool so task submissions flow through the observer chain.
+	// named Pool bean. Observers are collected from the container: every bean
+	// exported as PoolObserver is injected into each pool's constructor as a
+	// []PoolObserver, so task submissions flow through the observer chain.
 	//
 	// We use gs.Module instead of gs.Group so that the pool's bean name is
 	// available to pass to observers.
@@ -41,23 +42,29 @@ func init() {
 			// createPool returns Pool (interface), but gs.Provide registers
 			// the concrete type. Export(gs.As[Pool]()) makes it available
 			// for autowire by the Pool interface.
-			r.Provide(func(ctx *gs.ContextProvider, d Driver) (Pool, error) {
-				return createPool(ctx.Context, name, c, d)
-			}, gs.IndexArg(1, gs.TagArg("?"))).Name(name).Destroy(destroyPool)
+			//
+			// The observers parameter is a container-collected collection of
+			// every PoolObserver bean; declaring it here forces those beans to
+			// be instantiated before any pool, and lets createPool snapshot the
+			// chain at build time. "?" makes the collection nullable so a pool
+			// still builds when the list is empty.
+			r.Provide(func(ctx *gs.ContextProvider, d Driver, observers []PoolObserver) (Pool, error) {
+				return createPool(ctx.Context, name, c, d, observers)
+			}, gs.IndexArg(1, gs.TagArg("?")), gs.IndexArg(2, gs.TagArg("?"))).Name(name).Destroy(destroyPool)
 			return nil
 		})
 	})
 
-	// Register the built-in metrics observer. It implements PoolObserver and
-	// self-registers via RegisterObserver so createPool picks it up. Users can
-	// autowire *MetricsObserver to read aggregated stats.
+	// Register the built-in metrics observer as a PoolObserver bean. The
+	// container collects it into every pool's observer chain; users can also
+	// autowire *MetricsObserver directly to read aggregated stats.
 	gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())
 }
 
 // createPool builds the pool through the supplied Driver, falling back to the
 // bundled DefaultDriver when no Driver bean is present, and wraps the
-// resulting pool with all registered observers for the given name.
-func createPool(ctx context.Context, name string, c Config, d Driver) (Pool, error) {
+// resulting pool with the observer chain folded from observers.
+func createPool(ctx context.Context, name string, c Config, d Driver, observers []PoolObserver) (Pool, error) {
 	log.Debugf(ctx, log.TagAppDef, "creating ants pool %q, size=%d", name, c.Size)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -70,10 +77,12 @@ func createPool(ctx context.Context, name string, c Config, d Driver) (Pool, err
 		return nil, err
 	}
 	log.Infof(ctx, log.TagAppDef, "ants pool %q initialized, size=%d", name, c.Size)
-	// Wrap the pool's Submit to route through the observer chain.
+	// Wrap the pool's Submit to route through the observer chain, snapshotting
+	// the resolved observers once at build time.
 	return &observedPool{
-		Pool: pool,
-		name: name,
+		Pool:  pool,
+		name:  name,
+		chain: foldObservers(name, observers),
 	}, nil
 }
 
@@ -113,14 +122,16 @@ type Pool interface {
 	Release()
 }
 
-// observedPool wraps a Pool, passing every Submit through the observer chain.
+// observedPool wraps a Pool, passing every Submit through the observer chain
+// folded from the observer beans at build time.
 type observedPool struct {
 	Pool
-	name string
+	name  string
+	chain func(task func()) func()
 }
 
 func (p *observedPool) Submit(task func()) error {
-	return p.Pool.Submit(wrapTask(p.name, task))
+	return p.Pool.Submit(p.chain(task))
 }
 
 func (p *observedPool) String() string {
@@ -150,42 +161,19 @@ type PoolObserver interface {
 	OnSubmit(name string, task func()) func()
 }
 
-// ---------------------------------------------------------------------------
-// Observer registry — bridge between gs.Provide beans and pool creation
-// ---------------------------------------------------------------------------
-
-var (
-	observerMu    sync.RWMutex
-	observerBeans []PoolObserver
-)
-
-// RegisterObserver registers a PoolObserver. Called automatically by
-// gs.Provide when a PoolObserver bean is created; users can also call it
-// directly before the container starts to register non-bean observers.
-func RegisterObserver(o PoolObserver) {
-	observerMu.Lock()
-	defer observerMu.Unlock()
-	observerBeans = append(observerBeans, o)
-}
-
-// Observers returns a snapshot of all registered PoolObservers.
-func Observers() []PoolObserver {
-	observerMu.RLock()
-	defer observerMu.RUnlock()
-	out := make([]PoolObserver, len(observerBeans))
-	copy(out, observerBeans)
-	return out
-}
-
-// wrapTask passes a task through all registered observers and returns the
-// final wrapped task. When no observers are registered, returns the original.
-func wrapTask(name string, task func()) func() {
-	observers := Observers()
-	wrapped := task
-	for _, o := range observers {
-		wrapped = o.OnSubmit(name, wrapped)
+// foldObservers folds the resolved observer beans into a single wrap function
+// that applies every observer's OnSubmit in order, with the caller's original
+// task innermost. Observers come from the container as a collected []PoolObserver
+// and are snapshotted once at pool build time, so the chain is fixed for the
+// pool's lifetime. With no observers it returns a pass-through wrapper.
+func foldObservers(name string, observers []PoolObserver) func(task func()) func() {
+	return func(task func()) func() {
+		wrapped := task
+		for _, o := range observers {
+			wrapped = o.OnSubmit(name, wrapped)
+		}
+		return wrapped
 	}
-	return wrapped
 }
 
 // ---------------------------------------------------------------------------
@@ -231,12 +219,9 @@ type poolMetrics struct {
 }
 
 func newMetricsObserver() *MetricsObserver {
-	m := &MetricsObserver{
+	return &MetricsObserver{
 		pools: make(map[string]*poolMetrics),
 	}
-	// Self-register so createPool picks it up.
-	RegisterObserver(m)
-	return m
 }
 
 // OnSubmit wraps the task to track the running count. The observer only

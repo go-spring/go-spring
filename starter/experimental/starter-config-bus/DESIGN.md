@@ -11,7 +11,8 @@ every instance in the fleet.
 ## 1. Responsibilities & Boundaries
 
 - Subscribes to a shared NATS subject and, on every incoming signal, re-runs
-  the application-wide property refresh via `*gs.PropertiesRefresher`.
+  the application-wide property refresh via the process-level
+  `gs.RefreshProperties()` facade.
 - Publishes refresh signals through the same subject via `ConfigBus.Publish`,
   so an admin action, a webhook, or a management endpoint can force a
   coordinated refresh.

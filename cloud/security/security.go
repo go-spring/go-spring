@@ -22,9 +22,11 @@
 // ([Authentication] carried on the request context) and "may this caller do
 // this?" ([HasAnyAuthority] / the [Require] decorator). Token verification
 // itself is pluggable: a starter implements the single [TokenValidator]
-// interface (e.g. JWT verification) and registers it via [RegisterValidator];
-// method-level guards then resolve validators by name without depending on any
-// concrete crypto library.
+// interface (e.g. JWT verification) and contributes it as a container bean;
+// a resource-server middleware takes that validator, validates the incoming
+// credential, and attaches the resulting [Authentication] to the context for
+// downstream guards. This package is framework-free and models only the seam —
+// which validator wires in is a wiring decision, not a name-keyed lookup here.
 package security
 
 import (

@@ -42,33 +42,17 @@ import (
 )
 
 func init() {
-	// Register the consul controller as both a root bean (so the IoC container
-	// injects its PropertiesRefresher via autowire) and the "consul" config
-	// provider (so Load calls go through its method). Before wiring,
-	// TriggerRefresh is a harmless no-op — the startup load already captured
-	// the initial config.
-	gs.Provide(consulController).Export(gs.As[gs.Rooter]())
-
 	// Register "consul" as a remote configuration provider. The provider is
-	// the global controller's Load method, so the same object that holds the
-	// PropertiesRefresher (injected via autowire) also serves config loads.
-	conf.RegisterProvider("consul", consulController.Load)
+	// the global controller's Load method. Watch-triggered refreshes go
+	// through the gs.RefreshProperties package-level facade, so the
+	// controller needs no bean wiring at all.
+	conf.RegisterProvider("consul", (&consulCtrl{}).Load)
 }
-
-var (
-
-	// consulController is the global singleton. It is ONLY referenced in init
-	// functions. All other code operates on the
-	// receiver without touching this global.
-	consulController = &consulCtrl{}
-)
 
 // consulCtrl is the single object that owns the full lifecycle of consul
 // configuration: loading KV entries, watching for changes, and triggering
 // property refresh.
 type consulCtrl struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-
 	mu       sync.Mutex
 	clients  map[string]kvAPI
 	listened map[string]struct{}
@@ -81,14 +65,13 @@ type kvAPI interface {
 }
 
 // TriggerRefresh is called by the watcher goroutines when a watched KV entry
-// changes. Before the IoC container wires the controller, this is a no-op —
-// the initial config load already captured the state.
+// changes. Before the app has started, gs.RefreshProperties returns an
+// error and the change is dropped — the initial config load already captured
+// the state.
 func (c *consulCtrl) TriggerRefresh() {
-	if c.Refresher != nil {
-		if err := c.Refresher.RefreshProperties(); err != nil {
-			log.Warnf(context.Background(), log.TagAppDef,
-				"property refresh after consul change failed, stale snapshot retained: %v", err)
-		}
+	if err := gs.RefreshProperties(); err != nil {
+		log.Warnf(context.Background(), log.TagAppDef,
+			"property refresh after consul change failed, stale snapshot retained: %v", err)
 	}
 }
 

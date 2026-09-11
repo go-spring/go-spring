@@ -51,14 +51,14 @@ func TestApplyResilienceToggle(t *testing.T) {
 	if err := applyResilience(Config{Governance: false}, conn, "rabbitmq:test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resilienceExecs.Load(conn); ok {
+	if _, ok := clientGuards.Load(conn); ok {
 		t.Fatal("governance=false must not attach an executor")
 	}
 
 	if err := applyResilience(Config{Governance: true}, conn, "rabbitmq:test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resilienceExecs.Load(conn); !ok {
+	if _, ok := clientGuards.Load(conn); !ok {
 		t.Fatal("governance=true (default) must attach an executor")
 	}
 	closeResilience(conn)
@@ -70,13 +70,10 @@ func TestApplyResilienceToggle(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	conn := &amqp.Connection{}
 	stub := &stubExecutor{}
-	resilienceExecs.Store(conn, stub)
-	resilienceResources.Store(conn, "rabbitmq:test")
+	clientGuards.Store(conn, &clientGuard{exec: stub, resource: "rabbitmq:test"})
 	defer func() {
-		resilienceExecs.Delete(conn)
-		resilienceResources.Delete(conn)
+		clientGuards.Delete(conn)
 	}()
-
 	// A nil channel is safe here: the executor rejects before the guarded
 	// closure runs, which is exactly what this test asserts.
 	p := &publisher{conn: conn, queue: "q"}

@@ -23,7 +23,7 @@ import (
     "go-spring.org/cloud/discovery"
 )
 
-// d 是 starter 注入的发现后端 bean(bean 名=配置标签，如 ${spring.discovery.etcd.<name>});
+// d 是 starter 注入的发现后端 bean(bean 名=后端标签，如由 ${spring.registry.etcd.main} 派生的 "etcd.main");
 // nil 表示"未启用发现"。
 load, err := discovery.NewResolver(ctx, d, "orders-redis")
 if err != nil { return err }                    // fail-fast:构造时没有端点直接报错
@@ -45,8 +45,8 @@ type Discovery interface {
 - `Resolve` 返回当前快照。某个服务的第一次调用可能阻塞(播种查询,由 ctx
   约束);之后的调用是廉价读——新鲜度在后端内部:它用注册中心自己的通知
   机制(watch / 订阅 / 轮询)维持缓存最新。
-- 后端是 IoC 容器里的命名 bean(bean 名=配置标签，如 `spring.discovery.etcd.prod`
-  注册名为 "prod" 的 bean);client 在配置里写标签，starter 按名注入该 bean。
+- 后端是 IoC 容器里的命名 bean(各注册中心 starter 由自己的 `${spring.registry.<backend>.<name>}`
+  配置块派生，bean 名为 "<backend>.<name>"，如 "etcd.main");client 在配置里写标签，starter 按名注入该 bean。
   容器就是发现目录——标签重复、拼错在装配期即报错。
 
 没有注册中心？用内置的 static 后端:

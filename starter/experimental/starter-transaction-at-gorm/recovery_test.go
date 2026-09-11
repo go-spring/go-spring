@@ -83,7 +83,7 @@ func TestATRecovery_ReplaysOrphanedUndoLogs(t *testing.T) {
 	assert.That(t, undoCount(t, db, xid)).Equal(int64(3))
 
 	// Boot recovery rolls the whole branch back from its before-images.
-	assert.Error(t, recoverDatabase(context.Background(), "acct", db)).Nil()
+	assert.Error(t, recoverBranch(context.Background(), &gormBranch{resource: "acct", db: db})).Nil()
 
 	var acc account
 	assert.Error(t, db.First(&acc, 1).Error).Nil()
@@ -100,7 +100,7 @@ func TestATRecovery_NoOrphansIsNoOp(t *testing.T) {
 	db := newRecoveryTestDB(t)
 	assert.Error(t, db.Create(&account{ID: 1, Balance: 100}).Error).Nil()
 
-	assert.Error(t, recoverDatabase(context.Background(), "acct", db)).Nil()
+	assert.Error(t, recoverBranch(context.Background(), &gormBranch{resource: "acct", db: db})).Nil()
 	var acc account
 	assert.Error(t, db.First(&acc, 1).Error).Nil()
 	assert.That(t, acc.Balance).Equal(100)
@@ -126,7 +126,7 @@ func TestATRecovery_MultipleXidsRecoveredIndependently(t *testing.T) {
 		SQLType: int(at.SQLUpdate), Context: ctxJSON, CreatedAt: time.Now(),
 	}).Error).Nil()
 
-	assert.Error(t, recoverDatabase(context.Background(), "acct", db)).Nil()
+	assert.Error(t, recoverBranch(context.Background(), &gormBranch{resource: "acct", db: db})).Nil()
 
 	var acc account
 	assert.Error(t, db.First(&acc, 1).Error).Nil()
@@ -135,21 +135,14 @@ func TestATRecovery_MultipleXidsRecoveredIndependently(t *testing.T) {
 	assert.That(t, undoCount(t, db, "deadbeef")).Equal(int64(0))
 }
 
-func TestATRecovery_RunnerScansRegisteredDatabases(t *testing.T) {
+func TestATRecovery_RunnerScansEnrolledDatabases(t *testing.T) {
 	db := newRecoveryTestDB(t)
 	xid := crashMidTransaction(t, db)
 
-	recoverMu.Lock()
-	saved := recoverDBs
-	recoverDBs = map[string]*gorm.DB{"acct": db}
-	recoverMu.Unlock()
-	t.Cleanup(func() {
-		recoverMu.Lock()
-		recoverDBs = saved
-		recoverMu.Unlock()
-	})
+	coord := at.NewCoordinator()
+	coord.Enroll(&gormBranch{resource: "acct", db: db})
 
-	r := newRecoveryRunner()
+	r := newRecoveryRunner(coord)
 	assert.Error(t, r.Run(context.Background())).Nil()
 	assert.That(t, undoCount(t, db, xid)).Equal(int64(0))
 
@@ -158,12 +151,12 @@ func TestATRecovery_RunnerScansRegisteredDatabases(t *testing.T) {
 	assert.That(t, acc.Balance).Equal(100)
 }
 
-func TestATRecovery_PluginRegistersItsDatabase(t *testing.T) {
+func TestATRecovery_PluginEnrollsItsDatabase(t *testing.T) {
 	coord := at.NewCoordinator()
 	newTestDB(t, coord, &at.MemoryGlobalLock{})
 
-	recoverMu.Lock()
-	_, ok := recoverDBs["acct"]
-	recoverMu.Unlock()
-	assert.That(t, ok).True()
+	enrolled := coord.Enrolled()
+	if len(enrolled) != 1 || enrolled[0].ID() != "acct" {
+		t.Fatalf("expected one enrolled branch \"acct\", got %+v", enrolled)
+	}
 }

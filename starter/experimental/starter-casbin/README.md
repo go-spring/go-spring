@@ -56,8 +56,8 @@ ok, err := s.Enforcer.Enforce("alice", "/data", "write")
 | `model`    | Path to the Casbin model file                                               | —       |
 | `policy`   | Path to the file-backed policy; mutually exclusive with `adapter`          | —       |
 | `autoSave` | Persist policy mutations back to the storage                                | `true`  |
-| `adapter`  | Name of a `persist.Adapter` registered via `RegisterAdapter` (DB/file/...)  | —       |
-| `watcher`  | Name of a `persist.Watcher` registered via `RegisterWatcher` (hot reload)   | —       |
+| `adapter`  | Bean name of the `persist.Adapter` this enforcer uses (DB/file/...); empty → file policy | — |
+| `watcher`  | Bean name of the `persist.Watcher` enabling hot reload; empty → none                  | — |
 
 ## Core Features
 
@@ -73,23 +73,24 @@ The [example.go](example/example.go) program builds an RBAC enforcer and asserts
 * **Multiple enforcers**: define several instances under `spring.casbin.*` (one per
   domain) and inject each by its bean name.
 * **Pluggable persistence**: the default file adapter keeps this starter database-free.
-  To back policies with GORM, Redis, etc., register a [Casbin adapter](https://casbin.org/docs/adapters)
-  by name during bootstrap and point the instance at it:
+  To back policies with GORM, Redis, etc., provide a [Casbin adapter](https://casbin.org/docs/adapters)
+  as an ordinary bean whose name the instance points at:
 
   ```go
   func init() {
-      StarterCasbin.RegisterAdapter("gorm", gormAdapter)
+      gs.Provide(func() persist.Adapter { return gormAdapter }).
+          Name("gorm").Export(gs.As[persist.Adapter]())
   }
   ```
   ```properties
   spring.casbin.rbac.adapter=gorm
   ```
 
-  The starter stays free of any storage driver on purpose — registering the adapter in
-  your application avoids dragging GORM/Redis/etcd into projects that only need the file
-  policy. The gs.Group factory cannot inject other beans, so adapters/watchers are looked
-  up by name from a package-level registry.
-* **Hot reload / multi-instance sync**: register a [Casbin watcher](https://casbin.org/docs/watchers)
-  with `RegisterWatcher` and set `spring.casbin.<inst>.watcher=<name>`. When a peer signals
-  a policy change, the enforcer automatically calls `LoadPolicy`. The watcher's background
-  resources are released on shutdown via the starter's destroy callback.
+  The starter stays free of any storage driver on purpose — the adapter lives in your
+  application, so projects that only need the file policy drag in no GORM/Redis/etcd. A
+  per-instance `gs.Module` injects the named adapter/watcher bean into each enforcer, so
+  there is no package-level registry.
+* **Hot reload / multi-instance sync**: provide a [Casbin watcher](https://casbin.org/docs/watchers)
+  as a bean named by `spring.casbin.<inst>.watcher`. When a peer signals a policy change,
+  the enforcer automatically calls `LoadPolicy`. The watcher's background resources are
+  released on shutdown via the starter's destroy callback.

@@ -64,14 +64,14 @@ func TestApplyResilienceToggle(t *testing.T) {
 	if err := applyResilience(Config{Governance: false}, cl, "pulsar:test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resilienceExecs.Load(cl); ok {
+	if _, ok := clientGuards.Load(cl); ok {
 		t.Fatal("governance=false must not attach an executor")
 	}
 
 	if err := applyResilience(Config{Governance: true}, cl, "pulsar:test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resilienceExecs.Load(cl); !ok {
+	if _, ok := clientGuards.Load(cl); !ok {
 		t.Fatal("governance=true (default) must attach an executor")
 	}
 	closeResilience(cl)
@@ -83,13 +83,10 @@ func TestApplyResilienceToggle(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	cl := &fakePulsarClient{}
 	stub := &stubExecutor{}
-	resilienceExecs.Store(cl, stub)
-	resilienceResources.Store(cl, "pulsar:test")
+	clientGuards.Store(cl, &clientGuard{exec: stub, resource: "pulsar:test"})
 	defer func() {
-		resilienceExecs.Delete(cl)
-		resilienceResources.Delete(cl)
+		clientGuards.Delete(cl)
 	}()
-
 	p := &publisher{cl: cl, p: &fakePulsarProducer{topic: "t"}}
 	err := p.Publish(context.Background(), &messaging.Message{Payload: []byte("x")})
 	if !errors.Is(err, errGovernanceStub) {

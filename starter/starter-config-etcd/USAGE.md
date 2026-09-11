@@ -118,11 +118,10 @@ etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, a
 
 ```
 blank-import starter-config-etcd
-  └─ init(): gs.Provide(etcdCtrl).Export(gs.As[gs.Rooter]())
-             conf.RegisterProvider("etcd", etcdCtrl.Load)
+  └─ init(): conf.RegisterProvider("etcd", etcdController.Load)
 
 gs.Run() → App.Start()
-  1. register ContextProvider + PropertiesRefresher beans
+  1. mount the gs.RefreshProperties / gs.AppStarted facade targets
   2. refresh properties: load ./conf files → loadFileImports reads
      spring.config.import → conf.Resolve(${...} in the source string)
      → provider.Load parses [optional:]etcd:<path> → etcdCtrl.Load:
@@ -130,8 +129,8 @@ gs.Run() → App.Start()
         → registerWatcher (dedup per client+key)  ← watch armed BEFORE the get
         → Get (5s ctx timeout) → reader.Read(format) → flatten
   3. init logging
-  4. IoC container wiring (App as root) — etcdCtrl gets PropertiesRefresher
-     injected via `autowire:""`; bean value tags now bind against merged props
+  4. IoC container wiring (App as root); bean value tags now bind against
+     merged props
   5. Runners → Servers → ready
 ```
 
@@ -155,13 +154,13 @@ Notes verified in source:
 etcd PUT on a watched key
   → clientv3.Watch channel delivers a WatchResponse with events
   → watcher goroutine: len(wr.Events) > 0 → etcdCtrl.TriggerRefresh()
-  → Refresher.RefreshProperties() → App.RefreshProperties():
+  → gs.RefreshProperties() → App.RefreshProperties():
        re-run the WHOLE property load (all files + all imports) → merge
        → propagate to the container → gs.Dync[T] fields update atomically
 ```
 
-- Before the container wires `etcdCtrl` (i.e. during startup), `TriggerRefresh` is a **harmless
-  no-op** — the initial load already captured the state (starter.go comments).
+- Before the app has started, `gs.RefreshProperties()` returns an error, so `TriggerRefresh` is a
+  **harmless no-op** — the initial load already captured the state (starter.go comments).
 - The watch is a **single-key** watch (no `WithPrefix`): only the exact key named in the import.
   Deletes also count as events: a delete on a *required* imported key logs a WARN
   (`etcd key ... deleted; stale snapshot retained until the key is restored`) plus a WARN on the

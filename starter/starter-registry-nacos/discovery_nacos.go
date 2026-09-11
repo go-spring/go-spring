@@ -14,21 +14,14 @@
  * limitations under the License.
  */
 
-// This file adds the CONSUMER half of Nacos service discovery to the registry
-// starter: a cloud/discovery Discovery backend that serves snapshots of
-// instances from Nacos naming. Registration (the provider half, registrar.go)
-// and discovery now share one starter and one naming client idiom. Freshness is
-// internal: the first Resolve of a service subscribes to Nacos pushes that keep
-// the cached snapshot current, so later calls are in-memory reads.
-//
-// Like starter-discovery-k8s, each backend is a NAMED BEAN in the IoC
-// container — the container is the discovery directory: configure one block
-// per Nacos cluster under ${spring.discovery.nacos.<name>} and a client
-// starter injects the backend its config cites by that name.
-//
-//	spring.discovery.nacos.prod.server=127.0.0.1:8848
-//	spring.discovery.nacos.prod.namespace=8f3b...
-//	spring.discovery.nacos.prod.group=DEFAULT_GROUP
+// This file is the CONSUMER half of Nacos service discovery: the
+// cloud/discovery Discovery backend serving snapshots of instances from Nacos
+// naming. It is derived from the ${spring.registry.nacos} center (center.go)
+// under the fixed label "nacos" — there is no separate discovery config block;
+// read and write share the center's namespace/group/cluster, so they can never
+// diverge. Freshness is internal: the first Resolve of a service subscribes to
+// Nacos pushes that keep the cached snapshot current, so later calls are
+// in-memory reads.
 
 package StarterRegistryNacos
 
@@ -43,125 +36,8 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
-
-// DiscoveryConfig binds one Nacos discovery adapter under
-// ${spring.discovery.nacos.<name>}. It mirrors the registry-side NacosConfig
-// fields (same client idiom, same auth knobs) plus the consumer-side cluster
-// scoping.
-type DiscoveryConfig struct {
-	// Server is the Nacos server address, e.g. "127.0.0.1:8848". Empty
-	// INHERITS the ${spring.registry.nacos} center connection (one server,
-	// one shared naming client with the registrar); set it to point this
-	// backend at a different server than the one this process registers into.
-	Server string `value:"${server:=}"`
-
-	// Namespace is the Nacos namespace id; empty uses "public". It must match
-	// the namespace the provider registered into.
-	Namespace string `value:"${namespace:=}"`
-
-	// Group is the service group to resolve within.
-	Group string `value:"${group:=DEFAULT_GROUP}"`
-
-	// Cluster narrows resolution to one Nacos cluster. It defaults to
-	// "DEFAULT" — the same cluster the registrar publishes into by default —
-	// so a no-config consumer sees a no-config provider. Set it explicitly to
-	// another cluster to scope resolution there, or to an empty value to
-	// span all clusters.
-	Cluster string `value:"${cluster:=DEFAULT}"`
-
-	// Username / Password authenticate against Nacos when auth is enabled.
-	Username string `value:"${username:=}"`
-	Password string `value:"${password:=}"`
-
-	// TimeoutMs bounds each Nacos API call.
-	TimeoutMs uint64 `value:"${timeout-ms:=5000}"`
-}
-
-func init() {
-	// One NAMED bean per block under ${spring.discovery.nacos.<name>}: the bean
-	// name is the label a client starter cites to pick this backend. The
-	// backend is constructed at injection time (only when something cites it),
-	// probing the server so an unreachable or misauthenticated Nacos fails
-	// startup. A label colliding with another bean name fails loudly in the
-	// container.
-	gs.Module(gs.OnProperty("spring.discovery.nacos"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.discovery.nacos}", func(name string, c DiscoveryConfig) error {
-			if c.Server == "" {
-				// No connection of its own: inherit the center client. The
-				// block keeps its own namespace/group/cluster scoping, so an
-				// inheriting block is a label plus optional scoping keys.
-				r.Provide(newInheritedDiscoveryBean,
-					gs.IndexArg(0, gs.ValueArg(c)),
-					gs.IndexArg(1, gs.TagArg("?")),
-				).Name(name).Caller(1)
-			} else {
-				warnRegistryDivergence(p, name, c)
-				r.Provide(newNacosDiscoveryBean,
-					gs.IndexArg(0, gs.ValueArg(c)),
-				).Name(name).Caller(1)
-			}
-			log.Debugf(context.Background(), starterTag, "declared nacos discovery backend bean name=%s server=%s", name, c.Server)
-			return nil
-		})
-	})
-}
-
-// newNacosDiscoveryBean builds one Nacos-backed Discovery bean with its OWN
-// naming client (probing the server). It runs at injection time.
-func newNacosDiscoveryBean(c DiscoveryConfig) (discovery.Discovery, error) {
-	return newNacosDiscovery(c)
-}
-
-// newInheritedDiscoveryBean builds one Nacos-backed Discovery bean reusing the
-// shared ${spring.registry.nacos} center naming client — the consumer half of
-// the "one center config, one connection" convergence. It carries no
-// destructor: the center bean owns the client's lifetime.
-func newInheritedDiscoveryBean(c DiscoveryConfig, ec *nacosCenter) (discovery.Discovery, error) {
-	if ec == nil {
-		return nil, errutil.Explain(nil, "registry-nacos: discovery block cites no server and no ${spring.registry.nacos} center is configured")
-	}
-	return &nacosDiscovery{client: ec.client, group: c.Group, cluster: c.Cluster}, nil
-}
-
-// warnRegistryDivergence compares a discovery adapter's namespace/group with
-// the registrar's ${spring.registry.nacos} when that side is configured.
-// Registration and discovery live under different config prefixes, so a typo'd
-// namespace or group would otherwise fail silently as an empty instance set;
-// the WARN names the divergence at startup instead. It is only a warning —
-// legitimately pointing discovery at a different Nacos tenant than the one
-// this process registers into is a valid deployment.
-func warnRegistryDivergence(p flatten.Storage, name string, c DiscoveryConfig) {
-	var reg NacosConfig
-	if err := conf.Bind(p, &reg, "${spring.registry.nacos}"); err != nil || reg.Server == "" {
-		return // registrar not in play (or not bindable) — nothing to compare
-	}
-	if reg.Namespace != c.Namespace {
-		log.Warnf(context.Background(), starterTag,
-			"registry-nacos: discovery backend %q uses namespace %q but this instance registers into namespace %q — cross-namespace resolution returns nothing unless that is intended",
-			name, c.Namespace, reg.Namespace)
-	}
-	if reg.Group != c.Group {
-		log.Warnf(context.Background(), starterTag,
-			"registry-nacos: discovery backend %q uses group %q but this instance registers into group %q — cross-group resolution returns nothing unless that is intended",
-			name, c.Group, reg.Group)
-	}
-}
-
-// newNacosDiscovery builds a Discovery backed by a Nacos naming client for c.
-// It probes the server before returning (same fail-fast as the registrar), so
-// an unreachable or misauthenticated Nacos fails startup.
-func newNacosDiscovery(c DiscoveryConfig) (*nacosDiscovery, error) {
-	client, err := newNamingClient(c.Server, c.Namespace, c.Username, c.Password, c.TimeoutMs, c.Group)
-	if err != nil {
-		return nil, err
-	}
-	return &nacosDiscovery{client: client, group: c.Group, cluster: c.Cluster}, nil
-}
 
 // nacosDiscovery serves snapshots of service instances in one Nacos
 // namespace/group. It implements [discovery.Discovery]. The first Resolve of a

@@ -117,7 +117,7 @@ func TestAdmission_EndToEndOverBufconn(t *testing.T) {
 		})
 	})
 
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {})
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil)
 	opts, err := s.buildOptions()
 	assert.That(t, err).Nil()
 
@@ -159,7 +159,7 @@ func TestAdmission_EndToEndOverBufconn(t *testing.T) {
 // so every RPC runs the handler untouched.
 func TestAdmission_NoProviderForLabelIsTransparent(t *testing.T) {
 	addr := uniqueTestAddr("admission-unarmed")
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {})
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil)
 	ri, ok := s.buildResilienceInterceptors()
 	assert.That(t, ok).True()
 

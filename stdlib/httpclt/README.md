@@ -110,7 +110,7 @@ process-wide `dispatchTransport`, routes each request by `req.Host` (i.e. the
 Target) to its configured transport, and replaces `httpclt.DoRequest`
 wholesale — generated code is completely unaware. The combined implementation
 of discovery, load balancing, resilience, and trace propagation lives in
-`go-spring.org/cloud/httpx`.
+`go-spring.org/starter-http-client/httpx`.
 
 ## License
 

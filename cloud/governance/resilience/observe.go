@@ -32,43 +32,46 @@ import (
 // durationBuckets are the duration-histogram boundaries (seconds) — the OTel
 // HTTP semconv recommended set.
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-var (
-	// resilienceTag is the static log tag for the resilience access log;
-	// the protected client's system is a log field, not part of the tag.
-	resilienceTag = log.RegisterAppTag("resilience", "")
 
-	resilienceTracer = otel.Tracer("go-spring.org/cloud/governance/resilience")
-	resilienceMeter  = otel.Meter("go-spring.org/cloud/governance/resilience")
-
-	// duration records the wall time of each protected call; the buckets match
-	// the other client starters so durations stay comparable.
-	duration, _ = resilienceMeter.Float64Histogram("resilience.operation.duration",
-		metric.WithDescription("Duration of resilience-protected calls"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-
-	// calls counts protected calls with the outcome classified as one of:
-	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
-	calls, _ = resilienceMeter.Int64Counter("resilience.calls",
-		metric.WithDescription("Number of resilience-protected calls by outcome"),
-		metric.WithUnit("{call}"))
-
-	// breakerChanges counts circuit-breaker state transitions (from/to attrs).
-	breakerChanges, _ = resilienceMeter.Int64Counter("resilience.breaker.state_change",
-		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
-		metric.WithUnit("{event}"))
-)
+// resilienceTag is the static log tag for the resilience access log; the
+// protected client's system is a log field, not part of the tag.
+var resilienceTag = log.RegisterAppTag("resilience", "")
 
 // WrapExecutor returns an [Executor] that wraps inner with an internal span
-// (system/resource/outcome attributes), the resilience metrics above, and an
+// (system/resource/outcome attributes), the resilience metrics, and an
 // access log per call. Pass the system label (e.g. "redis", "gorm", "grpc")
 // so calls from several protected clients are distinguishable. A nil inner
 // returns nil — no wrapper, so an unarmed client stays untouched.
+//
+// Tracer and instruments are resolved from whatever OTel providers are
+// current — here, at wiring time, not at package init — so an SDK installed
+// after this package's init still receives the spans and records.
 func WrapExecutor(inner Executor, system string) Executor {
 	if inner == nil {
 		return nil
 	}
-	w := &wrappedExecutor{inner: inner, system: system}
+	meter := otel.Meter("go-spring.org/cloud/governance/resilience")
+	duration, _ := meter.Float64Histogram("resilience.operation.duration",
+		metric.WithDescription("Duration of resilience-protected calls"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
+	// calls counts protected calls with the outcome classified as one of:
+	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
+	calls, _ := meter.Int64Counter("resilience.calls",
+		metric.WithDescription("Number of resilience-protected calls by outcome"),
+		metric.WithUnit("{call}"))
+	// breakerChanges counts circuit-breaker state transitions (from/to attrs).
+	breakerChanges, _ := meter.Int64Counter("resilience.breaker.state_change",
+		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
+		metric.WithUnit("{event}"))
+	w := &wrappedExecutor{
+		inner:          inner,
+		system:         system,
+		tracer:         otel.Tracer("go-spring.org/cloud/governance/resilience"),
+		duration:       duration,
+		calls:          calls,
+		breakerChanges: breakerChanges,
+	}
 	// If the inner executor emits breaker state transitions, subscribe so each
 	// trip / half-open / recovery emits a counter + log automatically. Drivers
 	// without that capability (no BreakerEventListenerSetter) are silently
@@ -82,13 +85,18 @@ func WrapExecutor(inner Executor, system string) Executor {
 type wrappedExecutor struct {
 	inner  Executor
 	system string
+
+	tracer         trace.Tracer
+	duration       metric.Float64Histogram
+	calls          metric.Int64Counter
+	breakerChanges metric.Int64Counter
 }
 
 // OnBreakerStateChange satisfies [BreakerEventListener]. It is invoked
 // synchronously from inside the breaker's transition (so it must not call back
 // into the executor); it emits a state-change counter and a log line.
 func (w *wrappedExecutor) OnBreakerStateChange(resource string, from, to BreakerState) {
-	breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
+	w.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("resource", resource),
 		attribute.String("from", from.String()),
@@ -116,7 +124,7 @@ func (w *wrappedExecutor) OnBreakerStateChange(resource string, from, to Breaker
 // reading).
 func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
 	start := time.Now()
-	ctx, span := resilienceTracer.Start(ctx, resource,
+	ctx, span := w.tracer.Start(ctx, resource,
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
 			attribute.String("resilience.system", w.system),
@@ -130,12 +138,12 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 	}
 	span.End()
 
-	duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+	w.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("resource", resource),
 		attribute.String("outcome", outcome),
 	))
-	calls.Add(ctx, 1, metric.WithAttributes(
+	w.calls.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("resource", resource),
 		attribute.String("outcome", outcome),

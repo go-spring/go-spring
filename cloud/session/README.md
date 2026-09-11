@@ -137,12 +137,12 @@ store := session.FromByteStore(myRedisByteStore)
 mgr := session.NewManager(store, opt)
 ```
 
-For process-static stores, `Register` / `GetStore` share them by name; the
-bundled `Memory` is registered as `"memory"`. A backend that needs a live
-client (Redis, ...) should be contributed as a bean instead — a live
-connection does not belong in a package-global map across tests and
-restarts. `starter-session-redis` does exactly this; the `Manager` API is
-unchanged when you switch to it.
+A store reaches the `Manager` by constructor injection (`NewManager`) — there
+is no package-level store registry, so no store state is shared across tests
+or restarts by accident. The bundled `Memory` is constructed explicitly
+(`session.NewMemory()`); a backend that needs a live client (Redis, ...) is
+contributed as a bean. `starter-session-redis` does exactly this; the
+`Manager` API is unchanged when you switch to it.
 
 ## Behavioral contract
 

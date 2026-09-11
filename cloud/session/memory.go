@@ -95,9 +95,3 @@ func copyData(d sessionData) sessionData {
 	}
 	return sessionData{Attributes: attrs, CreatedAt: d.CreatedAt}
 }
-
-// init registers the bundled Memory store as "memory" so the framework has a
-// working session backend out of the box and in tests.
-func init() {
-	Register("memory", NewMemory())
-}

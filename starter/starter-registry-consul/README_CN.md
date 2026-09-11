@@ -15,12 +15,21 @@ Consul discovery 后端,一个 starter 同时覆盖命名两半。相当于 Spri
 provider 注册仍保持框架原生,不在本 starter 范围内(见
 [starter/DESIGN_CN.md §3](../../DESIGN_CN.md))。
 
-## 形态
+## 模型
 
-全局 / 基础设施类(见 [starter/DESIGN_CN.md §2.4](../../DESIGN_CN.md)):不开端口。
-它导出一个 `gs.Server`,让注册接入服务生命周期 —— **应用就绪后**注册实例,**停机
-开始时**(经 `PreStop`)注销,使发现体系在实例真正停止服务之前就把它摘除。正是这个
-顺序让滚动重启无损。
+配置是**命名块**:每个 `spring.registry.consul.<name>.*` 块描述一个 Consul
+agent/集群,并成为一个名为 `consul.<name>` 的后端 bean,同时实现写侧
+(`discovery.Registrar`)与读侧(`discovery.Discovery`),共享该块的客户端。没有默认/无名块。
+
+注册本身由 [starter-registry](../starter-registry) 核心拥有(传递依赖自动引入):它
+唯一的 `registryServer`(`gs.Server`)收集**所有**已配置中心的 registrar bean——跨后端
+——在应用就绪后把实例注册进每一个中心,停机时从全部中心注销,并向所有中心广播
+`UpdateWeight`。配两个块(consul + consul,或 consul + etcd……)再加
+`spring.registry.service-name`,即得双中心/多中心注册,零额外配置。
+
+本 starter 不开端口:导出的 `gs.Server` 纯粹为了让注册接入服务生命周期——**应用就绪
+后**发布实例,**停机开始时**(经 `PreStop`)注销,使发现体系在实例真正停止服务之前
+就把它摘除。正是这个顺序让滚动重启无损。
 
 ## 安装
 
@@ -39,12 +48,15 @@ import _ "go-spring.org/starter-registry-consul"
 ### 2. 配置 Consul agent 与实例
 
 ```properties
-# Consul agent(设置 address 即启用本 starter)。
-spring.registry.consul.address=127.0.0.1:8500
-spring.registry.consul.ttl=15s
-spring.registry.consul.deregister-critical-after=1m
+# 每个命名块一个 Consul agent;"main" 是块名(自选)。
+spring.registry.consul.main.address=127.0.0.1:8500
+spring.registry.consul.main.ttl=15s
+spring.registry.consul.main.deregister-critical-after=1m
 
-# 要注册的实例(与后端无关)。
+# 第二个块 = 第二个中心 = 双注册(零额外配置)。
+# spring.registry.consul.dr.address=10.9.0.1:8500
+
+# 要注册的实例(与后端无关,所有中心共享)。
 spring.registry.service-name=orders
 spring.registry.addr=10.0.0.5:8080
 spring.registry.weight=100
@@ -52,68 +64,65 @@ spring.registry.metadata.zone=cn-north
 spring.registry.metadata.version=v1
 ```
 
-到此即可:启动时注册实例并由 TTL 心跳保活,停机时注销。同一份
-`spring.registry.consul` 配置还会派生一个名为 `consul` 的 discovery 后端 bean
-(见下文),别处的客户端 —— 或本进程自身 —— 经共享连接按服务名解析到它。
+到此即可:启动时把实例注册进**每一个**已配置 agent 并由 TTL 心跳保活,停机时全部
+注销。每个块的 bean 同时是名为 `consul.<name>` 的 discovery 后端(见下文),别处的
+客户端 —— 或本进程自身 —— 经共享连接按服务名解析到它。
 
 ## 配置项
 
 ### 注册(本实例)
 
-连接配置,绑定于 `spring.registry.consul`:
+连接配置,按块绑定于 `spring.registry.consul.<name>`:
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `address` | (必填) | Consul HTTP API 地址;设置它即启用本 starter。 |
+| `address` | (必填) | Consul HTTP API 地址;设置一个块即激活它。 |
 | `scheme` | `http` | `http` 或 `https`。 |
 | `datacenter` | (空) | 注册到的 datacenter,空则用 agent 的。 |
 | `token` | (空) | ACL token。 |
 | `namespace` | (空) | Consul Enterprise namespace。 |
 | `ttl` | `15s` | TTL 健康检查;starter 以 TTL 一半的间隔心跳。 |
 | `deregister-critical-after` | `1m` | 检查持续 critical 超过此时长(如崩溃后),Consul 自动摘除实例。 |
-| `discovery-name` | `consul` | 为同一 agent 派生该标签下的 discovery 后端 bean —— 一份配置两半齐备(共享客户端)。留空禁用派生后端。 |
 
-实例配置,绑定于 `spring.registry`(描述实例本身,与注册中心后端无关):
+每个块成为**一个**后端 bean `consul.<name>`——一个客户端、一次启动探测、一个生命周期;
+命名体系的两半共享它们,读写永不分裂。**只有设置了 `service-name` 才会注册**;纯消费方
+应用省略该键,不注册任何实例。
+
+实例配置,绑定于 `spring.registry`(描述实例本身,所有已配置中心共享,与注册中心后端
+无关——换注册后端是换 blank-import,不是配置迁移):
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `service-name` | (必填) | 要发布的逻辑名,也是客户端解析用的名字。 |
 | `addr` | (必填) | 对外通告的可连 `host:port`。 |
 | `id` | (空) | 实例 id 覆盖;空则由 `service-name` + `addr` 推导出稳定 id。 |
-| `weight` | `0` | 负载均衡权重;`0` 用 Consul 默认。 |
+| `weight` | `100` | 随实例存储的负载均衡权重。 |
 | `metadata.*` | (无) | 随实例存储的任意键值属性。 |
 
 ### 发现(消费侧)
 
-消费侧是一个 `cloud/discovery` 后端 bean。两种获得方式:
-
-**从中心派生(双角色应用)。** 只配置 `spring.registry.consul`,即在同一共享客户端
-上派生一个标签为 `discovery-name`(默认 `consul`)的后端 bean —— 一份 agent 配置,
-两半齐备:
+发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/discovery` 后端,bean 名即
+`consul.<name>`。client starter 按该名字引用:
 
 ```properties
-spring.registry.consul.address=127.0.0.1:8500
+spring.registry.consul.main.address=127.0.0.1:8500
 spring.registry.service-name=orders
 spring.registry.addr=10.0.0.5:8080
-# client 侧引用: <client>.discovery=consul
+# 发现:引用块的 bean 名即可,无需任何配置
+spring.http-client.backends.users.discovery=consul.main
 ```
 
-**独立块(其他 agent / 纯消费端)。** 在 `spring.discovery.consul.<name>` 下每个
-agent 一块;client starter 引用该名字,经它解析:
+discovery bean 是惰性的——从不做解析的纯 provider 不会为它付出任何代价。**纯消费方**
+只配连接块,不注册任何实例——注册仅在设置 `spring.registry.service-name` 后激活:
 
 ```properties
-spring.discovery.consul.prod.address=127.0.0.1:8500
-spring.discovery.consul.prod.tag=v2
+# 纯消费应用:只配连接块,无 service-name/addr,不注册
+spring.registry.consul.main.address=127.0.0.1:8500
+spring.http-client.backends.users.discovery=consul.main
 ```
 
-| 键 | 默认值 | 说明 |
-| --- | --- | --- |
-| `address` | (空) | Consul HTTP API 地址;留空则**继承** `spring.registry.consul` 中心连接(共享客户端)。 |
-| `scheme` | `http` | `http` 或 `https`。 |
-| `datacenter` | (空) | 查询的 datacenter,空则用 agent 的。 |
-| `token` | (空) | ACL token。 |
-| `namespace` | (空) | Consul Enterprise namespace。 |
-| `tag` | (空) | 收窄每次查询的 Consul 服务标签(`Health().Service` 的 tag 参数)。 |
+多 agent 发现现在就是多个块:注册进 `consul.main` 与 `consul.dr` 的同时从 `consul.dr`
+发现——或只从某个从不注册进去的块发现。
 
 Resolve 只向 Consul 查询 **passing** 实例,不健康实例不会进入快照。保鲜靠每个已解析
 服务一条后台 Consul blocking query(基于 index 的长轮询):首次 Resolve 播种缓存,
@@ -122,13 +131,14 @@ blocking query 持续刷新,后续 Resolve 都是内存读。通告的 passing �
 
 ## 工作原理
 
-- 在 bean 构造阶段,starter 为 `spring.registry.consul` 构建共享 Consul 客户端
-  (探测 agent,不可达即启动失败),并由它派生 registrar 与 `discovery-name` 标签的
-  discovery 后端。registrar 注入导出的 `gs.Server`。
-- 导出的 `gs.Server` 等待就绪,然后带一个 Consul **TTL 健康检查**`Register` 实例。它
-  立即让检查通过,并以 TTL 一半的间隔在后台心跳保活。
-- 停机时 `PreStop` 在 pre-stop 延迟之前注销实例(停心跳并从 Consul 摘除),让发现体系
-  在在途请求仍被服务时就摘掉它。`Stop` 作为幂等兜底再次注销。
+- 每个块在 bean 构造阶段成为**一个**后端 bean(`consul.<name>`),持有该 agent 的
+  客户端与命名体系的两半。它会探测 agent(`Catalog().Services`),不可达即启动失败,
+  每块一次。
+- [starter-registry](../starter-registry) 核心(传递依赖自动引入)的 `registryServer`
+  收集每个后端的 registrar——跨所有后端——等待就绪,然后带一个 Consul **TTL 健康检查**
+  把实例 `Register` 进每个中心。它立即让检查通过,并以 TTL 一半的间隔在后台心跳保活。
+- 停机时 `PreStop` 在 pre-stop 延迟之前从每个中心注销实例(停心跳并从 Consul 摘除),
+  让发现体系在在途请求仍被服务时就摘掉它。`Stop` 作为幂等兜底再次注销。
 
 ## 冒烟测试
 

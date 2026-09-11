@@ -19,14 +19,27 @@ This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) 
 etcd. RPC-framework provider registration stays framework-native and is out of
 scope (see [starter/DESIGN §3](../DESIGN.md)).
 
-## Archetype
+## Model
 
-Global / infrastructure (see [starter/DESIGN §2.4](../DESIGN.md)): it opens no
-port. It exports a `gs.Server` so registration plugs into the server lifecycle —
-the instance is published **once the application is ready** and deregistered
-**as shutdown begins** (via `PreStop`), so discovery stops handing it out before
-it actually stops serving. That ordering is what makes a rolling restart
-lossless.
+Configuration is **named blocks**: each
+`spring.registry.etcd.<name>.*` block describes ONE etcd cluster and becomes
+ONE backend bean named `etcd.<name>` that implements BOTH the write side
+(`discovery.Registrar`) and the read side (`discovery.Discovery`), sharing the
+block's client and key prefix. There is no default/unnamed block.
+
+Registration itself is owned by the [starter-registry](../starter-registry)
+core (imported transitively): its single `registryServer` `gs.Server` collects
+the registrar beans of **every** configured center — across backends — and
+registers the instance into all of them once the app is ready, deregisters from
+all on shutdown, and broadcasts `UpdateWeight`. Configure two blocks (etcd +
+etcd, or etcd + zookeeper, ...) plus `spring.registry.service-name` and you get
+dual/multi registration with zero extra config — the Dubbo-style default.
+
+The starter opens no port: the exported `gs.Server` exists purely so
+registration plugs into the server lifecycle — the instance is published **once
+the application is ready** and deregistered **as shutdown begins** (via
+`PreStop`), so discovery stops handing it out before it actually stops serving.
+That ordering is what makes a rolling restart lossless.
 
 ## Installation
 
@@ -42,15 +55,18 @@ go get go-spring.org/starter-registry-etcd
 import _ "go-spring.org/starter-registry-etcd"
 ```
 
-### 2. Configure the etcd cluster and the instance
+### 2. Configure the etcd clusters and the instance
 
 ```properties
-# etcd cluster (setting the endpoints activates the starter).
-spring.registry.etcd.endpoints=127.0.0.1:2379
-spring.registry.etcd.ttl=15s
-spring.registry.etcd.key-prefix=/services/
+# One named block per etcd cluster; "main" is the block name (your choice).
+spring.registry.etcd.main.endpoints=127.0.0.1:2379
+spring.registry.etcd.main.ttl=15s
+spring.registry.etcd.main.key-prefix=/services/
 
-# The instance to advertise (backend-agnostic).
+# A second block = a second center = dual registration (zero extra config).
+# spring.registry.etcd.dr.endpoints=10.9.0.1:2379
+
+# The instance to advertise (backend-agnostic, shared by every center).
 spring.registry.service-name=orders
 spring.registry.addr=10.0.0.5:8080
 spring.registry.weight=100
@@ -58,36 +74,42 @@ spring.registry.metadata.zone=cn-north
 spring.registry.metadata.version=v1
 ```
 
-That is all: on startup the instance is written under a **lease** and kept alive
-by a background keep-alive; on shutdown the lease is revoked and the key removed.
-If the process dies the lease expires after roughly `ttl` and etcd deletes the
-key on its own. A client elsewhere resolves it by reading the same key prefix.
+That is all: on startup the instance is written into **every** configured
+cluster under a **lease** and kept alive by a background keep-alive; on shutdown
+the leases are revoked and the keys removed. If the process dies the leases
+expire after roughly `ttl` and etcd deletes the keys on its own. A client
+elsewhere resolves it by reading the same key prefix.
 
 ## Configuration
 
 ### Registering (this instance)
 
-Connection, bound under `spring.registry.etcd`:
+Connection, bound per block under `spring.registry.etcd.<name>`:
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `endpoints` | (required) | etcd cluster nodes; setting them activates the starter. |
+| `endpoints` | (required) | etcd cluster nodes; setting a block activates it. |
 | `username` | (empty) | Auth username; empty for anonymous clusters. |
 | `password` | (empty) | Auth password. |
 | `dial-timeout` | `5s` | Bounds the initial connect and the startup probe. |
 | `ttl` | `15s` | Lease duration; the registrar keeps it alive while up. Rounded up to whole seconds. |
 | `key-prefix` | `/services/` | Prepended to every key so apps can share a cluster. |
 | `tls.*` | (off) | Optional client TLS (`enabled`, `cert-file`, `key-file`, `ca-file`). |
-| `discovery-name` | `etcd` | Derives a discovery backend bean for this same cluster under that label — one config block serves both halves (shared client). Empty disables the derived backend. |
 
-Instance, bound under `spring.registry` (describes the instance itself, independent of the registry backend):
+Each block becomes ONE backend bean `etcd.<name>` — one client, one startup
+probe, one lifecycle; both halves of the naming idiom share them, so read and
+write can never diverge. **Registration activates only when `service-name` is
+set**; a consumer-only app omits that key and registers nothing.
+
+Instance, bound under `spring.registry` (describes the instance itself, shared
+by every configured center, independent of the registry backend):
 
 | Key | Default | Description |
 | --- | --- | --- |
 | `service-name` | (required) | Logical name to publish; the same name clients resolve. |
 | `addr` | (required) | Connectable `host:port` advertised to clients. |
 | `id` | (empty) | Instance id override; empty derives a stable one from `service-name` + `addr`. |
-| `weight` | `0` | Load-balancing weight stored with the instance. |
+| `weight` | `100` | Load-balancing weight stored with the instance. |
 | `metadata.*` | (none) | Arbitrary key/value attributes stored with the instance. |
 
 The instance is stored as JSON (`service_name`, `addr`, `weight`, `metadata`) at
@@ -96,36 +118,35 @@ can reconstruct an `Endpoint`.
 
 ### Discovering (other instances)
 
-The consumer half is a `cloud/discovery` backend bean. Two ways to get one:
-
-**Derived from the center (dual-role apps).** Setting `spring.registry.etcd`
-alone derives a backend bean labeled `discovery-name` (default `etcd`) on the
-same shared client — one cluster config, both halves:
+Discovery needs **no configuration of its own**: each block's bean IS a
+`cloud/discovery` backend under the bean name `etcd.<name>`. Client starters
+cite that name:
 
 ```properties
-spring.registry.etcd.endpoints=127.0.0.1:2379
+spring.registry.etcd.main.endpoints=127.0.0.1:2379
+spring.registry.etcd.dr.endpoints=10.9.0.1:2379
 spring.registry.service-name=orders
 spring.registry.addr=10.0.0.5:8080
-# clients then cite: <client>.discovery=etcd
+# discovery: cite the block's bean name, nothing to configure
+spring.http-client.backends.users.discovery=etcd.main
 ```
 
-**Standalone blocks (other clusters / pure consumers).** One block per etcd
-cluster under `spring.discovery.etcd.<name>`; a client starter cites the name:
+The discovery bean is lazy — a pure provider that never resolves anything
+never pays for it. A **pure consumer** configures ONLY connection blocks and
+registers nothing: registration activates only when
+`spring.registry.service-name` is set.
 
 ```properties
-spring.discovery.etcd.prod.endpoints=127.0.0.1:2379
-spring.discovery.etcd.prod.key-prefix=/services/
+# consumer-only app: connection blocks, no service-name/addr, registers nothing
+spring.registry.etcd.main.endpoints=127.0.0.1:2379
+spring.http-client.backends.users.discovery=etcd.main
 ```
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `endpoints` | (empty) | etcd cluster nodes; empty INHERITS the `spring.registry.etcd` center connection (shared client). |
-| `username` / `password` | (empty) | Auth credentials; empty for anonymous clusters. |
-| `dial-timeout` | `5s` | Bounds the initial connect and the startup probe. |
-| `key-prefix` | `/services/` | Must match the registering applications' prefix. |
-| `tls.*` | (off) | Optional client TLS. |
+Multi-cluster discovery is now just multiple blocks: discover from `etcd.dr`
+while registering into `etcd.main` and `etcd.dr` — or from a block you never
+register into at all.
 
-`key-prefix` must match the registrars' prefix or nothing resolves. Health is
+Health is
 derived from key liveness: an instance key only exists while its lease is alive,
 so every key found is a live instance — no probing protocol is needed. An
 optional `scheme` metadata key on the registered instance carries transport
@@ -133,17 +154,22 @@ selection, mirroring the nacos adapter.
 
 ## How It Works
 
-- During bean construction the starter builds the etcd
-  registrar and wires it into the exported `gs.Server`. It probes the cluster
-  (a `Status` call) so an unreachable etcd fails startup.
-- The exported `gs.Server` waits for readiness, then `Register`s the instance:
-  it grants a **lease**, writes the key under that lease, and keeps the lease
-  alive with a background keep-alive.
-- On shutdown `PreStop` deregisters the instance (stops the keep-alive and
-  revokes the lease, deleting the key) before the pre-stop delay, so discovery
-  removes it while in-flight requests keep being served. `Stop` deregisters again
-  as an idempotent fallback. If the process crashes, the lease expires and etcd
-  removes the key automatically.
+- For each block the starter builds ONE backend bean (`etcd.<name>`) holding
+  the cluster's client and both halves of the naming idiom. It probes the
+  cluster (a `Status` call) so an unreachable etcd fails startup, once per
+  block.
+- The `registryServer` from the [starter-registry](../starter-registry) core
+  (transitively imported) collects every backend's registrar — across all
+  backends — and waits for readiness, then `Register`s the instance into every
+  center: it grants a **lease** per center, writes the key under that lease,
+  and keeps the lease alive with a background keep-alive. If a lease dies
+  server-side, the registrar re-registers with backoff — the entry comes back
+  without operator action.
+- On shutdown `PreStop` deregisters the instance from every center (stops the
+  keep-alives and revokes the leases, deleting the keys) before the pre-stop
+  delay, so discovery removes it while in-flight requests keep being served.
+  `Stop` deregisters again as an idempotent fallback. If the process crashes,
+  the leases expire and etcd removes the keys automatically.
 
 ## Smoke Test
 

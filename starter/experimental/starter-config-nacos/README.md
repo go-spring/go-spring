@@ -68,9 +68,10 @@ publish to hot-reload flow.
 - On startup, `spring.config.import` invokes the `nacos` provider, which builds a
   config client from the source string, fetches the data id, and registers a
   change listener.
-- A remote change fires the listener, which calls the framework's
-  `PropertiesRefresher`. That reloads all configuration sources (re-running this
-  provider) and re-binds every `gs.Dync` field via a two-phase, atomic commit.
+- A remote change fires the listener, whose callback calls the framework's
+  process-level `gs.RefreshProperties()` facade. That reloads all configuration
+  sources (re-running this provider) and re-binds every `gs.Dync` field via a
+  two-phase, atomic commit.
 ### Log tag
 
 Runtime logs from this module carry the tag `_app_config_nacos` (nacos config source). Tune them independently of the

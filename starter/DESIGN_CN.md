@@ -133,11 +133,12 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **变更监听必须无条件先注册,在拉取之前。** provider 必须在"拉取的
   `optional`+不存在提前 return"**之前**装好 watch/监听器。否则应用在 key 尚不存在时
   启动就永远不注册 watch,后续 publish 也永不触发刷新。监听器按 `(client, key)` 去重。
-- **热更新复用框架刷新,经 `Rooter` 桥接。** 一个 `configRefreshBridge` bean 注入
-  `*gs.PropertiesRefresher`,把它的 `RefreshProperties` 存进 provider 的
-  `refreshHook`(一个 `atomic.Pointer`)。远端变更时监听器调用该 hook,重新加载所有
-  配置源(重跑 provider),并通过 `gs_dync` 的两阶段原子提交重新绑定所有 `gs.Dync[T]`
-  字段。把需要热更新的 key 绑到 `gs.Dync[T]`。
+- **热更新复用框架刷新,经进程级门面 `gs.RefreshProperties()`。** 控制器不再是
+  bean:远端变更时监听器直接调用 `gs.RefreshProperties()`(由最近一次 `Start` 的
+  app 挂载的包级门面,供容器外的 watch goroutine 使用,无需依赖注入)。该调用
+  重新加载所有配置源(重跑 provider),并通过 `gs_dync` 的两阶段原子提交重新绑定
+  所有 `gs.Dync[T]` 字段;app 启动前门面返回错误,提前触发是安全的 no-op。
+  把需要热更新的 key 绑到 `gs.Dync[T]`。
 - **内容解析复用核心 reader。** 用 `spring/conf/reader/{prop,yaml,toml,json}` 的
   `Read` 函数(按 `format` query 参数选择)解析远端字节,`flatten.Flatten` 后返回
   `map[string]string`。
@@ -238,8 +239,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 5. Server? → 自持端口、提前监听/就绪后 serve、优雅 `Stop`、应用提供注册 bean、
    默认开启开关。
 6. 配置 Provider? → `provider.go` 里 `conf.RegisterProvider`(无 `config.go`、
-   无 bean),从 source 串解析参数、缓存 client、在拉取前无条件注册监听、经 `Rooter`
-   bean 把 `PropertiesRefresher` 桥接进 `refreshHook`,配 `example-config/`。
+   无 bean),从 source 串解析参数、缓存 client、在拉取前无条件注册监听、变更回调
+   直接调 `gs.RefreshProperties()` 门面,配 `example-config/`。
 7. 在底层库支持的前提下补 health、TLS、destroy。
 8. 提供双语 README,以及只含 `check.sh` 的 `example/`(不放部署脚手架)。
 9. 内部依赖走 `go.work`,不写 `require`。

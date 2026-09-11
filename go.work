@@ -157,6 +157,7 @@ use (
 	./starter/starter-registry-consul/example
 	./starter/starter-registry-nacos
 	./starter/starter-registry-nacos/example
+	./starter/starter-registry
 	./starter/starter-registry-zookeeper
 	./starter/starter-registry-zookeeper/example
 	./starter/experimental/starter-resilience

@@ -16,7 +16,7 @@
 
 // Command example wires starter-registry-zookeeper into a Go-Spring
 // application: blank-importing the starter plus a
-// ${spring.registry.zookeeper.servers} entry registers this instance into
+// ${spring.registry.zookeeper.main} entry registers this instance into
 // ZooKeeper once the app is ready and deregisters it on shutdown.
 //
 // To make the mechanism visible without an external client, a goroutine waits

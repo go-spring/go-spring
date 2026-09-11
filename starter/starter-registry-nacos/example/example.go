@@ -15,7 +15,7 @@
  */
 
 // Command example wires starter-registry-nacos into a Go-Spring application:
-// blank-importing the starter plus a ${spring.registry.nacos.server} entry
+// blank-importing the starter plus a ${spring.registry.nacos.main} block
 // registers this instance into Nacos once the app is ready and deregisters it
 // on shutdown.
 //

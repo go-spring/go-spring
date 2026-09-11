@@ -34,13 +34,14 @@ holds no configuration state of its own.
   `(endpoint, username, password)` tuple. Without this, every refresh would
   leak a client and its background goroutines since `Load` runs on both startup
   and each `RefreshProperties`.
-- **Refresh hook.** The controller singleton itself is the bridge: it is
-  registered as a root bean and exported as `gs.Rooter`, so the IoC container
-  injects `*gs.PropertiesRefresher` directly onto its `Refresher` field via
-  autowire. Before wiring, `TriggerRefresh` is a safe no-op; after wiring, it
-  calls `RefreshProperties`. This replaces an earlier
-  `atomic.Pointer[func() error]` indirection through a separate bridge bean —
-  the controller now owns both the watch loop and the refresh trigger.
+- **Refresh hook.** The controller is no longer a bean: `TriggerRefresh` calls
+  the process-level facade `gs.RefreshProperties()` directly (mounted by the
+  app from its most recent `Start`, meant for out-of-container watch
+  goroutines that cannot use dependency injection). Before the app has started
+  the facade returns an error, so `TriggerRefresh` is a safe no-op. This
+  replaces the earlier "root bean + autowired `*gs.PropertiesRefresher`"
+  bridge — the controller now owns both the watch loop and the refresh
+  trigger.
 - **Watch seam.** One `cli.Watch` channel per key, consumed in a background
   goroutine that fires `TriggerRefresh` for every non-empty event batch.
   Deduped via a `(client-key, etcd-key)` set so repeat `Load` calls do not
@@ -58,9 +59,12 @@ holds no configuration state of its own.
 - **`optional:` swallows Get errors, not parse errors.** A network failure or
   missing key returns `(nil, nil)` when optional; a decode error is always
   fatal so a mistyped format surfaces immediately.
-- **The bridge bean must be named.** `gs.Rooter` is an alias for `any`; two
-  Rooter-exported beans under `__default__` collide via the `(name, type)`
-  dedup on exports. The controller's stable name (`etcdCtrl`) is load-bearing.
+- **The controller has no bean identity.** An earlier version registered it as
+  a root bean exported as `gs.Rooter` (an alias for `any`; two Rooter-exported
+  beans under `__default__` collide via the `(name, type)` dedup on exports,
+  so the stable name `etcdCtrl` was load-bearing). It is now a plain
+  singleton registered as a provider in `init()` — no bean, no autowired
+  fields.
 - **No `go mod tidy` against the proxy.** `spring/*` and `stdlib/*` resolve
   through the workspace `go.work`.
 

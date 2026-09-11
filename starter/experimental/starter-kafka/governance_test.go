@@ -55,14 +55,14 @@ func TestApplyResilienceToggle(t *testing.T) {
 	if err := applyResilience(Config{Governance: false}, cl, "kafka:test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resilienceExecs.Load(cl); ok {
+	if _, ok := clientGuards.Load(cl); ok {
 		t.Fatal("governance=false must not attach an executor")
 	}
 
 	if err := applyResilience(Config{Governance: true}, cl, "kafka:test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resilienceExecs.Load(cl); !ok {
+	if _, ok := clientGuards.Load(cl); !ok {
 		t.Fatal("governance=true (default) must attach an executor")
 	}
 	closeResilience(cl)
@@ -79,12 +79,8 @@ func TestDriverPublishGuarded(t *testing.T) {
 	defer cl.Close()
 
 	stub := &stubExecutor{}
-	resilienceExecs.Store(cl, stub)
-	resilienceResources.Store(cl, "kafka:test")
-	defer func() {
-		resilienceExecs.Delete(cl)
-		resilienceResources.Delete(cl)
-	}()
+	clientGuards.Store(cl, &clientGuard{exec: stub, resource: "kafka:test"})
+	defer clientGuards.Delete(cl)
 
 	b := NewDriver(cl)
 	pub, err := b.NewPublisher(context.Background(), "t")

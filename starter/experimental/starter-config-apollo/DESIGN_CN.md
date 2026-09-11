@@ -14,8 +14,8 @@
 
 ## 2. 关键抽象与 Seam
 
-- **conf.RegisterProvider("apollo", ctrl.Load)** + **gs.Rooter** — 与 nacos
-  相同的双角色 controller：Rooter 获得 autowire 的 `PropertiesRefresher`，
+- **conf.RegisterProvider("apollo", ctrl.Load)** — controller 不是 bean，
+  与 nacos 相同：变更时监听回调直接调用进程级门面 `gs.RefreshProperties()`，
   Load 服务配置拉取。无绑定 Config——连接参数全在 source 串里。
 - **clientFor 缓存** — 每个 `(server, appId, cluster, secret, namespace)`
   一个 agollo Client；namespace 进 key 是因为 agollo 在 StartWithConfig

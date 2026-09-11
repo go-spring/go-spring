@@ -67,17 +67,18 @@ import (
     StarterAnts "go-spring.org/starter-ants"
 )
 
-// panics 统计被全局 handler 捕获的任务 panic（见 §2.4）。
+// panics 统计经共享 goutil 链上报的任务 panic（§2.4）。
 var panics int64
 
 func init() {
-    // 必须在容器启动前注册 —— handler 在每个 pool 创建时读取
-    // （SetPanicHandler 文档注释）。不设置自定义 handler 时，
-    // panic 落到 goutil.ReportPanic（共享链）。
-    StarterAnts.SetPanicHandler(func(p any) {
+    // 观察共享链：池任务 panic 由 DefaultDriver 桥接进 goutil.ReportPanic，
+    // 所有 recover 点（goroutine/handler/池任务）汇入同一条流。
+    prev := goutil.OnPanic
+    goutil.OnPanic = func(ctx context.Context, info goutil.PanicInfo) {
         atomic.AddInt64(&panics, 1)
-        log.Warnf(context.Background(), log.TagAppDef, "recovered task panic: %v", p)
-    })
+        log.Warnf(ctx, log.TagAppDef, "recovered panic: %v", info.Panic)
+        prev(ctx, info)
+    }
 }
 
 // Service 按名注入 pool（即 spring.ants 下的 map key）。
@@ -140,58 +141,65 @@ pool 的第三次 Submit 返回 error、panic handler 触发。
 
 ```
 import starter-ants
-  └─ init(): gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())
-        │   在 newMetricsObserver 内部经 RegisterObserver 自注册
+  └─ init():
+       gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())   // 内置 observer bean
+       添加自定义 observer：gs.Provide(NewX).Export(gs.As[PoolObserver]())
 gs.Run()
   ├─ gs.Module(gs.OnProperty("spring.ants")) 触发（前缀匹配：任意 spring.ants.* key）
   ├─ conf.BindEach("${spring.ants}") → 每个 map key 一份 Config
   ├─ 每个 name：gs.Provide(ctor).Name(name).Destroy(destroyPool)
-  │     ctor 自动装配可选 Driver bean（"?"）——无则回退内置 DefaultDriver
-  ├─ bean init：createPool →（Driver bean | DefaultDriver).CreatePool
-  │     （ants.NewPool 挂 WithPanicHandler(poolPanicHandler)）
-  │     再包 observedPool，使每次 Submit 都流经 observer 链
+  │     ctor 装配 ①可选 Driver bean（"?"）——无则回退内置 DefaultDriver
+  │         ②[]PoolObserver collection ——容器收集所有 Export 成 PoolObserver 的
+  │             bean（内置 MetricsObserver 因被收集而必然实例化）
+  ├─ bean init：createPool(observers) →（Driver bean | DefaultDriver).CreatePool
+  │     （ants.NewPool 挂 WithPanicHandler(goutil.ReportPanic bridge)）
+  │     foldObservers(name, observers) 把链在建池时折叠快照进 observedPool，
+  │     使每次 Submit 都流经这套固定的 observer 链
   ├─ 就绪：Init/Run 钩子里即可使用 pool
   └─ 停机：destroyPool → pool.Release()（停掉 purge goroutine）
 ```
 
 设计说明（源码注释）：starter 用 `gs.Module` 而非 `gs.Group`，是为了把 pool 的 bean
-name 传给 observer —— 这正是 `OnSubmit(name, task)` 能拿到 name 的原因。
+name 传给 observer —— 这正是 `OnSubmit(name, task)` 能拿到 name 的原因。observer
+只作为容器 bean 存在（不再有包级全局注册表）；想加 observer 就 Provide 一个
+Export 成 `PoolObserver` 的 bean，容器在建任何 pool 前先把它实例化并收集进每条
+链。
 
 ### 2.2 一次 Submit 的逐层走读
 
 `s.CPU.Submit(task)`：
 
-1. `observedPool.Submit`（starter.go）先包任务：`wrapTask(name, task)` 把所有已注册
-   `PoolObserver` 的 `OnSubmit` 依次折叠包裹，最内层是你的原任务。
+1. `observedPool.Submit`（starter.go）先包任务：调用建池时快照好的 `chain`，
+   把所有收集到的 `PoolObserver` 的 `OnSubmit` 依次折叠包裹，最内层是你的原任务。
 2. 内置 `MetricsObserver.OnSubmit`（starter.go）再包一层 running 计数的
    加一/减一 —— `running` 按 pool name 维度统计。
 3. `antsPool.Submit` 把包好的任务交给 ants 排队等 worker。
-4. worker goroutine 上：panic → `poolPanicHandler`（见 §2.4）；正常返回 →
+4. worker goroutine 上：panic → goutil 上报桥（见 §2.4）；正常返回 →
    defer 中递减计数。
 
 ### 2.3 observer —— 有哪些、怎么加
 
 | 钩子 | 签名 | 注册方式 |
 |------|------|----------|
-| `PoolObserver.OnSubmit` | `OnSubmit(name string, task func()) func()` | 把 bean Export 成 `PoolObserver`，或启动前调用 `RegisterObserver(o)` |
+| `PoolObserver.OnSubmit` | `OnSubmit(name string, task func()) func()` | `gs.Provide(NewX).Export(gs.As[PoolObserver]())` |
 
-链在 Submit 时刻应用而非建池时刻：`wrapTask` 每次 Submit 读取 `Observers()` 快照，
-因此池已存在后再注册的 observer 对后续提交仍然生效。内置 `*MetricsObserver` bean
-在 `newMetricsObserver` 里自注册。源码注释列出的典型用途：metrics、tracing 上下文
-注入、耗时日志、按 pool 限流。
+observer **只能是容器 bean**（没有包级全局注册表，`RegisterObserver` 已移除）：把
+自定义 observer 的对象或构造函数 `gs.Provide` 出来并 `Export` 成 `PoolObserver`，
+容器在建任何 pool 之前先收集所有此类 bean（`[]PoolObserver` collection 注入到每个
+pool 的 ctor），并在建池时把链折叠快照进 `observedPool` —— 之后链对该池固定。
+内置 `*MetricsObserver` bean 由 starter 注册，同样经这条 collection 进入每条链。
+源码注释列出的典型用途：metrics、tracing 上下文注入、耗时日志、按 pool 限流。
 
 ### 2.4 panic 链（统一 panic 策略）
 
-`DefaultDriver.CreatePool` 挂上 `ants.WithPanicHandler(poolPanicHandler)`。链路
+`DefaultDriver.CreatePool` 挂上 `ants.WithPanicHandler(goutil.ReportPanic bridge)`。链路
 （config.go）：
 
-- 设置了 `SetPanicHandler(fn)` → 执行你的 `fn`（传 nil 清除，恢复共享上报）。
-- 否则 → `goutil.ReportPanic(ctx, p)` —— 与 goroutine/handler/job panic 同一条
+- 直连 `goutil.ReportPanic(ctx, p)` —— 与 goroutine/handler/job panic 同一条
   goutil 链（`go-spring.org/log` 安装的 structured-log 桥），pool panic 汇入同一
   上报流。ants 只交出 panic value，所以 ReportPanic 在 worker 的 deferred recover
-  里被调用 —— panic 中的栈帧还在。
-- hook 在建池时读取；启动后才 `SetPanicHandler` 只影响之后创建的池。按 pool 定制
-  handler 需要自定义 `Driver` bean。
+  里被调用 —— panic 中的栈帧还在。需要自定义 panic 处理的进程，贡献自带
+  `ants.WithPanicHandler` 的 `Driver` bean。
 
 ### 2.5 停机
 
@@ -240,9 +248,9 @@ cd starter/experimental/starter-ants/example && ./check.sh
 
 ### 4.3 panic 演练
 
-在任意 DefaultDriver pool 上提交 `func(){ panic("boom") }` 且未设自定义 handler：
-进程存活，panic 经 goutil 上报链出现（structured log）。注册了 `SetPanicHandler`
-（example 的 init）时计数器加一并打 Warn 行 —— 证明注入点生效。
+在任意 DefaultDriver pool 上提交 `func(){ panic("boom") }`：进程存活，panic 经
+goutil 上报链出现（structured log）。装了 example 的 `goutil.OnPanic` 观察者时
+计数器加一并打 Warn 行 —— 证明桥接生效。
 
 ### 4.4 指标演练
 
@@ -263,8 +271,8 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 | 自定义 Driver bean 不生效 | 提供了两个 `Driver` bean，或注册晚于装配 | 每进程最多一个 `Driver` bean；ctor 在装配期被 autowire。 |
 | 任务被静默丢弃 | `nonblocking=true` 且未检查 Submit 错误 | 检查 Submit 错误（返回 `ErrPoolOverload`）。 |
 | 提交方卡住 | 阻塞池满载且 `max-blocking-tasks=0` | 调大 `size`、设置 `max-blocking-tasks` 或改非阻塞。 |
-| panic handler 不触发 | `SetPanicHandler` 在池创建之后才调用 | hook 建池时读取 —— 放到 `init()`。 |
-| 自定义 `PoolObserver` 不生效 | bean 未 Export 成 `PoolObserver`（或完全没注册；每次 Submit 读快照，晚注册本身没问题） | `Export(gs.As[PoolObserver]())` 或启动前 `RegisterObserver`。 |
+| 池 panic 未被自定义逻辑观察 | 只有默认链在上报 | 装 `goutil.OnPanic` 覆盖，或贡献自定义 `Driver` bean。 |
+| 自定义 `PoolObserver` 不生效 | bean 未 Export 成 `PoolObserver`（或容器没在装配期收集到它） | `gs.Provide(NewX).Export(gs.As[PoolObserver]())`；observer 只走容器 bean。 |
 | 空闲时 goroutine 数偏高 | `disable-purge=true` 或 `expiry-duration` 过大 | 重新启用 purge / 调低 `expiry-duration`。 |
 | panic 被上报两次 | 设了自定义 handler 又期望共享链行为 | 链路二选一 —— 自定义 handler 会替代 goutil 上报。 |
 
@@ -285,6 +293,9 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
    知道 pool name 却不知道 Pool 句柄；API 不对称。
 2. Driver 是单个可选 bean（每进程至多一个）——所有 pool 共享同一装配；不能再按名字
    逐 pool 选 Driver（per-Config 差异须经由 Driver 收到的 Config 表达）。
-3. panic handler 是被 `SetPanicHandler` 修改的包级全局 —— 对时序敏感。
-4. （新增）`wrapTask` 每次 Submit 在 RLock 下快照 `Observers()` —— 热路径上的一把锁，
-   仅为支持晚注册 observer。
+3. ~~（已修）~~ panic handler 曾是被 `SetPanicHandler` 修改的包级全局（时序敏感、
+   数据竞争窗口）——已删除；panic 直连 goutil 链，自定义走 `Driver` bean。
+4. ~~（已修）~~ observer 曾走包级全局注册表 `RegisterObserver` + Submit 时刻 RLock
+   快照 `Observers()`（热路径锁，仅为支持晚注册）—— 已改为容器 `[]PoolObserver`
+   collection 注入、链在建池时折叠快照，热路径无锁；`MetricsObserver` 也因被收集
+   而必然实例化（修掉 prod 可能不物化、自注册不跑的 latent bug）。

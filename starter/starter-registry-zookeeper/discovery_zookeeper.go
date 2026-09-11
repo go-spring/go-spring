@@ -14,21 +14,13 @@
  * limitations under the License.
  */
 
-// This file adds the CONSUMER half of ZooKeeper service discovery to the
-// registry starter: a cloud/discovery Discovery backend that serves snapshots
-// of the instances this starter's own registrar (registrar.go) publishes —
-// closing the loop so one starter serves both sides of the naming idiom.
-// Freshness is internal: each resolved service gets a background watcher that
-// keeps the cached snapshot current, so Resolve is a cheap read after the
-// first call.
-//
-// Each backend is a NAMED BEAN in the IoC container — the container is the
-// discovery directory: configure one block per ensemble under
-// ${spring.discovery.zookeeper.<name>} and a client starter injects the
-// backend its config cites by that name.
-//
-//	spring.discovery.zookeeper.prod.servers=127.0.0.1:2181
-//	spring.discovery.zookeeper.prod.base-path=/services
+// This file is the CONSUMER half of ZooKeeper service discovery: the
+// cloud/discovery Discovery backend serving snapshots of the instances the
+// registrar (registrar.go) publishes. It is derived from the
+// ${spring.registry.zookeeper} center (center.go) under the fixed label
+// "zookeeper" — there is no separate discovery config block. Freshness is
+// internal: each resolved service gets a background watcher that keeps the
+// cached snapshot current, so Resolve is a cheap read after the first call.
 //
 // Health is derived from znode liveness: an instance is an ephemeral znode
 // owned by the registrar's session (process death lets ZooKeeper remove it),
@@ -48,114 +40,8 @@ import (
 	"github.com/go-zookeeper/zk"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
-
-// DiscoveryConfig binds one ZooKeeper discovery adapter under
-// ${spring.discovery.zookeeper.<name>}. It mirrors the registry-side
-// ZookeeperConfig connection fields (same client idiom, same auth knobs) — the
-// consumer side needs no session-timeout tuning because it never writes.
-type DiscoveryConfig struct {
-	// Servers lists the ZooKeeper ensemble members to dial. Empty INHERITS the
-	// ${spring.registry.zookeeper} center connection (one ensemble, one shared
-	// session with the registrar); set it to point this backend at a different
-	// ensemble than the one this process registers into.
-	Servers []string `value:"${servers:=}"`
-
-	// SessionTimeout is the ZooKeeper session timeout; it bounds the startup
-	// probe of a standalone block.
-	SessionTimeout time.Duration `value:"${session-timeout:=10s}"`
-
-	// BasePath is the same persistent parent znode the registrar writes
-	// under; the adapter only lists below it. It must match
-	// ${spring.registry.zookeeper.base-path} of the registering applications
-	// or nothing resolves.
-	BasePath string `value:"${base-path:=/services}"`
-
-	// Username / Password enable ZooKeeper digest authentication when set.
-	// Leave both empty for an open ensemble.
-	Username string `value:"${username:=}"`
-	Password string `value:"${password:=}"`
-}
-
-func init() {
-	// One NAMED bean per block under ${spring.discovery.zookeeper.<name>}: the
-	// bean name is the label a client starter cites to pick this backend. The
-	// backend is constructed at injection time (only when something cites it —
-	// or collects all Discovery beans), and a standalone block's connection is
-	// closed by the bean destructor on shutdown. A label colliding with
-	// another bean name fails loudly in the container.
-	gs.Module(gs.OnProperty("spring.discovery.zookeeper"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.discovery.zookeeper}", func(name string, c DiscoveryConfig) error {
-			if len(c.Servers) == 0 {
-				// No connection of its own: inherit the center connection. The
-				// bean keeps the block's base-path (still defaults to the
-				// registrar's), so an inheriting block is usually just a label.
-				r.Provide(newInheritedDiscoveryBackend,
-					gs.IndexArg(0, gs.ValueArg(c)),
-					gs.IndexArg(1, gs.TagArg("?")),
-				).Name(name).Caller(1)
-			} else {
-				r.Provide(newDiscoveryBackend,
-					gs.IndexArg(0, gs.ValueArg(c)),
-				).Name(name).Destroy(destroyDiscoveryBackend).Caller(1)
-			}
-			log.Debugf(context.Background(), log.TagAppDef, "declared zookeeper discovery backend bean name=%s servers=%v", name, c.Servers)
-			return nil
-		})
-	})
-}
-
-// newDiscoveryBackend builds one ZooKeeper-backed Discovery bean with its OWN
-// connection (probing the ensemble, same fail-fast as the registrar). It runs
-// at injection time; the bean destructor closes the connection.
-func newDiscoveryBackend(c DiscoveryConfig) (discovery.Discovery, error) {
-	conn, err := connectZookeeper(ZookeeperConfig{
-		Servers:        c.Servers,
-		SessionTimeout: c.SessionTimeout,
-		Username:       c.Username,
-		Password:       c.Password,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &zkDiscovery{
-		conn:     conn,
-		basePath: normalizeBasePath(c.BasePath),
-		done:     make(chan struct{}),
-		entries:  map[string]*serviceEntry{},
-	}, nil
-}
-
-// newInheritedDiscoveryBackend builds one ZooKeeper-backed Discovery bean
-// reusing the shared ${spring.registry.zookeeper} center connection — the
-// consumer half of the "one center config, one connection" convergence. It
-// carries no destructor: the center bean owns the connection's lifetime.
-func newInheritedDiscoveryBackend(c DiscoveryConfig, zc *zkCenter) (discovery.Discovery, error) {
-	if zc == nil {
-		return nil, errutil.Explain(nil, "registry-zookeeper: discovery block cites no servers and no ${spring.registry.zookeeper} center is configured")
-	}
-	return &zkDiscovery{
-		conn:     zc.conn,
-		basePath: normalizeBasePath(c.BasePath),
-		done:     make(chan struct{}),
-		entries:  map[string]*serviceEntry{},
-	}, nil
-}
-
-// destroyDiscoveryBackend closes the backend's own ZooKeeper connection on
-// shutdown. It is the bean destructor; the background watchers stop with the
-// connection.
-func destroyDiscoveryBackend(d discovery.Discovery) error {
-	b, ok := d.(*zkDiscovery)
-	if !ok || b == nil {
-		return nil
-	}
-	return b.Close()
-}
 
 // normalizeBasePath trims trailing slashes so the service path has exactly one
 // separator per level — the same normalization zkRegistrar applies at

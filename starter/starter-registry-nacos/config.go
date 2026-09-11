@@ -41,32 +41,5 @@ type NacosConfig struct {
 	// TimeoutMs bounds each Nacos API call, including the startup connectivity
 	// probe used to fail fast on an unreachable server.
 	TimeoutMs uint64 `value:"${timeout-ms:=5000}"`
-
-	// DiscoveryName derives a discovery backend bean for this same server
-	// under that label — the "one config block serves both halves" default:
-	// a dual-role application configures the server once and its clients
-	// cite discovery=<discovery-name>. Empty disables the derived backend.
-	DiscoveryName string `value:"${discovery-name:=nacos}"`
 }
 
-// RegistrationConfig binds the instance to advertise, under ${spring.registry}.
-// These fields describe the instance itself and are independent of which
-// registry backend this starter ships; swapping backends means swapping the
-// starter (and thus this struct's home), not a config migration.
-type RegistrationConfig struct {
-	// ServiceName is the logical name to publish — the same name discovery
-	// clients later resolve. Required.
-	ServiceName string `value:"${service-name:=}"`
-
-	// Addr is the connectable "host:port" advertised to clients. Required; the
-	// starter never guesses it, so a misconfiguration fails at startup.
-	Addr string `value:"${addr:=}"`
-
-	// Weight is the load-balancing weight advertised to clients; 0 falls back to
-	// Nacos's default weight of 1 (0 in Nacos means "receive no traffic").
-	Weight int `value:"${weight:=0}"`
-
-	// Metadata is arbitrary key/value attributes stored with the instance
-	// (zone, unit, version, ...), bound from ${spring.registry.metadata.*}.
-	Metadata map[string]string `value:"${metadata:=}"`
-}

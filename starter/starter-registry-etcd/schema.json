@@ -3,45 +3,21 @@
   "title": "spring.registry.etcd",
   "type": "object",
   "properties": {
-    "endpoints": {
-      "type": "array",
-      "items": {
-        "type": "string"
+    "spring.registry.etcd": {
+      "type": "object",
+      "description": "One named block per etcd cluster. Each block becomes ONE backend bean named 'etcd.<name>' implementing both discovery.Registrar (write) and discovery.Discovery (read). No default/unnamed block.",
+      "additionalProperties": {
+        "$ref": "#/$defs/etcdBlock"
       }
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "dial-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "5s"
-    },
-    "ttl": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "15s"
-    },
-    "key-prefix": {
-      "type": "string",
-      "default": "/services/"
-    },
-    "tls": {
-      "type": "object"
     },
     "spring.registry.service-name": {
       "type": "string",
-      "description": "Logical service name to advertise",
+      "description": "Registration intent signal: logical service name to advertise into every configured center. Unset means pure consumer (registers nothing).",
       "default": ""
     },
     "spring.registry.addr": {
       "type": "string",
-      "description": "Advertised host:port of this instance",
+      "description": "Advertised host:port of this instance (required when service-name is set)",
       "default": ""
     },
     "spring.registry.id": {
@@ -51,7 +27,8 @@
     },
     "spring.registry.weight": {
       "type": "integer",
-      "default": 0
+      "description": "Initial load-balancing weight shared by every center",
+      "default": 100
     },
     "spring.registry.metadata": {
       "type": "object",
@@ -61,8 +38,46 @@
       }
     }
   },
-  "required": [
-    "spring.registry.service-name",
-    "spring.registry.addr"
-  ]
+  "$defs": {
+    "etcdBlock": {
+      "type": "object",
+      "properties": {
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "etcd cluster nodes; required"
+        },
+        "username": {
+          "type": "string",
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "default": ""
+        },
+        "dial-timeout": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'",
+          "default": "5s"
+        },
+        "ttl": {
+          "type": "string",
+          "description": "Lease duration; rounded up to whole seconds",
+          "default": "15s"
+        },
+        "key-prefix": {
+          "type": "string",
+          "default": "/services/"
+        },
+        "tls": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "endpoints"
+      ]
+    }
+  }
 }

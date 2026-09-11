@@ -25,7 +25,7 @@ import (
 )
 
 // d is the discovery backend bean a starter injected (named after its config
-// label, e.g. ${spring.discovery.etcd.<name>}); nil means "no discovery".
+// label, e.g. the "etcd.main" backend derived from ${spring.registry.etcd.main}); nil means "no discovery".
 load, err := discovery.NewResolver(ctx, d, "orders-redis")
 if err != nil { return err }                    // fail-fast: no endpoints at construction
 if load == nil { return err }                    // "not in effect" (no backend/name/mesh): dial addr directly
@@ -47,8 +47,9 @@ type Discovery interface {
   service (seed fetch, bounded by ctx); later calls are cheap reads — freshness
   lives INSIDE the backend, which keeps its cache current however the
   underlying registry notifies it (watch, subscription, poll).
-- Backends are NAMED BEANS in the IoC container (bean name = config label,
-  e.g. `spring.discovery.etcd.prod` registers a bean named "prod"); a client
+- Backends are NAMED BEANS in the IoC container (each registry starter derives
+  one from its `${spring.registry.<backend>.<name>}` block named
+  "<backend>.<name>", e.g. "etcd.main"); a client
   cites the label in its config and the starter injects the bean by that name.
   The container is the discovery directory — duplicate labels and typos fail
   loudly at wiring time.

@@ -28,10 +28,9 @@
 - **Client 缓存。** Consul 客户端按 `(address, scheme, token, datacenter)`
   元组缓存。否则每次刷新都会新建 client 及其空闲连接——`loadConsulConfig`
   在启动和每次 `RefreshProperties` 都会跑。
-- **Refresh 钩子。** provider 侧状态是一个 `atomic.Pointer[func() error]`，
-  由容器域桥接 bean `configRefreshBridge` 填充；后者注入
-  `*gs.PropertiesRefresher`，导出为 `gs.Rooter` 且命名 `consulConfigRefreshBridge`，
-  确保总被实例化、且不与应用自身的默认 `__default__` Rooter（`any` 别名）冲突。
+- **Refresh 钩子。** controller 不是 bean：变更时 watch goroutine 直接调用进程级
+  门面 `gs.RefreshProperties()`（由最近一次 `Start` 的 app 挂载，供容器外的
+  watcher 使用，无需依赖注入）。app 启动前门面返回错误，提前触发是安全 no-op。
 - **Watch 缝隙。** 每个 KV 路径一条后台 goroutine 跑阻塞查询
   （`WaitIndex`、`WaitTime=5m`）。用 `(client-key, kv-path)` 集合去重，避免重复
   `Load` 拉起并行 watcher。
@@ -46,9 +45,10 @@
   伪刷新。
 - **处理索引倒退。** Consul 状态重置后可能返回倒退的 `LastIndex`；按官方阻塞
   查询指引，此时循环重置为 `0`。
-- **桥接 bean 必须命名。** `gs.Rooter` 是 `any` 别名，两个默认 `__default__`
-  的 Rooter export 会在 `(name, type)` 去重上撞车。稳定命名
-  `consulConfigRefreshBridge` 是关键。
+- **controller 已无 bean 身份。** 早期版本曾携带容器域桥接 bean 并导出为
+  `gs.Rooter`（`any` 别名，两个默认 `__default__` 的 Rooter export 会在
+  `(name, type)` 去重上撞车，稳定命名 `consulConfigRefreshBridge` 是关键）。
+  现在刷新经 `gs.RefreshProperties()` 门面——无 bean、无 autowire 字段。
 - **不能对 proxy 跑 `go mod tidy`。** `spring/*`、`stdlib/*` 靠 workspace
   `go.work` 解析；tidy 会把它们送去 module proxy 而 404。
 

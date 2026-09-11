@@ -33,22 +33,24 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-// nacosCenter owns the ONE shared Nacos naming client for the server
-// configured under ${spring.registry.nacos}. Both halves derive from it: the
-// registrar (the write side, starter.go) and the discovery backend
-// auto-derived for the same server (below) — the same "one center config, one
-// connection" convergence as starter-registry-etcd's center.
-//
-// The bean's Close releases the client, so neither derived side closes it.
-type nacosCenter struct {
-	client *naming_client.NamingClient
-	config NacosConfig
+// nacosBackend is ONE configured registry center: the
+// ${spring.registry.nacos.<name>} block made a bean. It owns the single Nacos
+// naming client for that server (probed at construction, closed by the bean
+// destructor) and serves both halves of the naming idiom through it: the
+// write side (a discovery.Registrar collected by the starter-registry core)
+// and the read side (a discovery.Discovery consumers cite by the bean's name
+// "nacos.<name>"; lazy, so an app that never cites it pays nothing for the
+// read half). Both sides resolve within the block's namespace/group/cluster,
+// so read and write can never diverge.
+type nacosBackend struct {
+	reg  *nacosRegistrar
+	disc *nacosDiscovery
 }
 
-// newNacosCenter builds the shared naming client and probes the server. The
-// probe is the fail-fast both sides relied on when they built their own
-// clients: a misconfigured or unreachable Nacos fails startup here, once.
-func newNacosCenter(c NacosConfig) (*nacosCenter, error) {
+// newNacosBackend builds the naming client (probing the server) and both
+// halves. The probe is the fail-fast: a misconfigured or unreachable Nacos
+// fails startup here, once per block.
+func newNacosBackend(c NacosConfig) (*nacosBackend, error) {
 	if c.Server == "" {
 		return nil, errutil.Explain(nil, "registry-nacos: server is required")
 	}
@@ -56,60 +58,50 @@ func newNacosCenter(c NacosConfig) (*nacosCenter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &nacosCenter{client: client, config: c}, nil
+	reg, err := newNacosRegistrar(c, client)
+	if err != nil {
+		client.CloseClient()
+		return nil, err
+	}
+	log.Debugf(context.Background(), starterTag, "nacos backend for server=%s group=%s ready", c.Server, c.Group)
+	return &nacosBackend{
+		reg:  reg,
+		disc: &nacosDiscovery{client: client, group: c.Group, cluster: c.Cluster},
+	}, nil
 }
 
-// Close releases the shared client. It is the bean destructor.
-func (e *nacosCenter) Close() error {
-	if e == nil || e.client == nil {
+// Close releases the block's client. It is the bean destructor.
+func (b *nacosBackend) Close() error {
+	if b == nil || b.disc == nil || b.disc.client == nil {
 		return nil
 	}
-	e.client.CloseClient()
+	b.disc.client.CloseClient()
 	return nil
 }
 
-func init() {
-	// The center bean exists exactly when the server is configured. It is
-	// nullable-injected (TagArg("?")) by the registrar Server and by discovery
-	// backends that inherit the center connection.
-	//
-	// When discovery-name is non-empty (the default "nacos"), the module also
-	// derives a discovery backend bean for the same server under that label —
-	// resolving within the center's namespace/group/cluster, so read and write
-	// can never diverge (the divergence a dual-block setup could only WARN
-	// about disappears instead). A label colliding with another bean name
-	// fails loudly in the container.
-	gs.Module(gs.OnProperty("spring.registry.nacos.server"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var c NacosConfig
-		if err := conf.Bind(p, &c, "${spring.registry.nacos}"); err != nil {
-			return errutil.Explain(err, "registry-nacos: bind center config")
-		}
-		r.Provide(newNacosCenter,
-			gs.IndexArg(0, gs.ValueArg(c)),
-		).Destroy((*nacosCenter).Close).Caller(1)
-
-		if name := c.DiscoveryName; name != "" {
-			r.Provide(newCenterDiscoveryBackend,
-				gs.IndexArg(0, gs.TagArg("?")),
-			).Name(name).Caller(1)
-		}
-		return nil
-	})
+// Register publishes inst into this server's namespace/group.
+func (b *nacosBackend) Register(ctx context.Context, inst discovery.Instance) error {
+	return b.reg.Register(ctx, inst)
 }
 
-// newCenterDiscoveryBackend serves snapshots for the center's server through
-// the shared naming client, scoped to the center's namespace/group/cluster.
-func newCenterDiscoveryBackend(ec *nacosCenter) (discovery.Discovery, error) {
-	if ec == nil {
-		return nil, errutil.Explain(nil, "registry-nacos: center client unavailable")
-	}
-	log.Debugf(context.Background(), starterTag, "derived nacos discovery backend from center config, server=%s group=%s", ec.config.Server, ec.config.Group)
-	return &nacosDiscovery{client: ec.client, group: ec.config.Group, cluster: ec.config.Cluster}, nil
+// Deregister removes inst from this server. Idempotent.
+func (b *nacosBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
+	return b.reg.Deregister(ctx, inst)
+}
+
+// UpdateWeight re-advertises inst with a new weight.
+func (b *nacosBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
+	return b.reg.UpdateWeight(ctx, inst, weight)
+}
+
+// Resolve serves snapshots of the instances in this server's
+// namespace/group/cluster.
+func (b *nacosBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	return b.disc.Resolve(ctx, name, opts...)
 }
 
 // newNamingClient builds a Nacos naming client for server and probes it with a
-// one-service listing. It is the single construction path behind the center,
-// the registrar fallback, and standalone discovery blocks.
+// one-service listing. It is the single construction path behind the backend.
 func newNamingClient(server, namespace, username, password string, timeoutMs uint64, group string) (*naming_client.NamingClient, error) {
 	host, portStr, err := net.SplitHostPort(server)
 	if err != nil {
@@ -144,4 +136,24 @@ func newNamingClient(server, namespace, username, password string, timeoutMs uin
 		return nil, errutil.Explain(nil, "registry-nacos: naming client is not the concrete *NamingClient")
 	}
 	return client, nil
+}
+
+func init() {
+	// One NAMED bean per block under ${spring.registry.nacos.<name>}: the bean
+	// name "nacos.<name>" is the label a client starter cites to pick this
+	// backend for discovery, and the starter-registry core collects the same
+	// bean (as a discovery.Registrar) into the single publication lifecycle.
+	// Blocks across backends never collide (the name carries the backend
+	// type); a duplicate name within one backend fails loudly in the
+	// container.
+	gs.Module(gs.OnProperty("spring.registry.nacos"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.registry.nacos}", func(name string, c NacosConfig) error {
+			r.Provide(newNacosBackend,
+				gs.IndexArg(0, gs.ValueArg(c)),
+			).Name("nacos."+name).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registrar]()).
+				Destroy((*nacosBackend).Close).Caller(1)
+			return nil
+		})
+	})
 }

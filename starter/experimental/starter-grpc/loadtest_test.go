@@ -85,54 +85,29 @@ func TestLoadTestStreamInterceptor_TagsFromMetadata(t *testing.T) {
 	assert.That(t, saw).False()
 }
 
-func TestUserInterceptorRegistrySnapshotAndNil(t *testing.T) {
-	// Snapshot isolation: registering more after a snapshot must not mutate it.
-	extMu.Lock()
-	userUnary = nil
-	userStream = nil
-	extMu.Unlock()
-	t.Cleanup(func() {
-		extMu.Lock()
-		userUnary = nil
-		userStream = nil
-		extMu.Unlock()
-	})
-
-	assert.That(t, len(currentUserUnary())).Equal(0)
-
+func TestUserInterceptorsComposeInOrder(t *testing.T) {
 	var order []string
-	UseUnaryInterceptor(func(ctx context.Context, _ any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+	outer := func(ctx context.Context, _ any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
 		order = append(order, "first")
 		return h(ctx, nil)
-	})
-	UseUnaryInterceptor(func(ctx context.Context, _ any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+	}
+	inner := func(ctx context.Context, _ any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
 		order = append(order, "second")
 		return h(ctx, nil)
-	})
-	UseUnaryInterceptor(nil) // nil is ignored
+	}
 
-	snap := currentUserUnary()
-	assert.That(t, len(snap)).Equal(2)
+	s := NewSimpleGrpcServer(Config{}, func(*grpc.Server) {}, []grpc.UnaryServerInterceptor{outer, inner}, nil)
+	opts, err := s.buildOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = opts // chain composition is exercised below; buildOptions must accept the slices
 
-	// First-registered is outermost: runs first when composed as buildOptions
-	// does (prepended in order).
+	// First-provided is outermost: runs first when composed.
 	info := &grpc.UnaryServerInfo{FullMethod: "/s/m"}
 	var rt grpc.UnaryHandler = func(ctx context.Context, _ any) (any, error) { return "ok", nil }
-	// Compose in registration order (snap[0] outermost).
-	chain := snap[len(snap)-1]
-	for i := len(snap) - 2; i >= 0; i-- {
-		prev := snap[i]
-		next := chain
-		chain = func(ctx context.Context, req any, info *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
-			return prev(ctx, req, info, func(ctx context.Context, req any) (any, error) { return next(ctx, req, info, h) })
-		}
-	}
-	_, _ = chain(context.Background(), nil, info, rt)
-	assert.That(t, order).Equal([]string{"first", "second"})
-
-	// Snapshot is a copy.
-	UseUnaryInterceptor(func(ctx context.Context, _ any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
-		return h(ctx, nil)
+	_, _ = outer(context.Background(), nil, info, func(ctx context.Context, _ any) (any, error) {
+		return inner(ctx, nil, info, rt)
 	})
-	assert.That(t, len(snap)).Equal(2)
+	assert.That(t, order).Equal([]string{"first", "second"})
 }

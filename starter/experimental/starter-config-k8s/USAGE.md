@@ -157,8 +157,8 @@ gs.Run()
   │            landing right after the initial read is not missed (provider.go:158-161)
   │         e. parseEntries → flatten → merged into the property storage
   │    └─ merged snapshot becomes the storage every value tag binds against
-  ├─ container wiring: k8sController gets *gs.PropertiesRefresher autowired
-  │  (starter.go:44); app.started flips true (app.go:179-183)
+  ├─ container wiring: k8sController is instantiated as a bean purely for its
+  │  .Destroy lifecycle (no autowire fields); app.started flips true (app.go:179-183)
   ├─ Runners/Servers start; ready
   └─ SIGTERM → bean destructor Destroy → manager.stopAll() stops every informer
 ```
@@ -166,9 +166,9 @@ gs.Run()
 Why pre-bean: the provider's output must be part of the property storage *before* `value:`
 tags resolve, so ConfigMap-sourced keys can inject into ordinary bean fields at first wiring —
 the same reason `.env` and all config providers run in step 2 of the lifecycle, ahead of
-starters. Until the container wires the controller, `TriggerRefresh` is a harmless no-op
-(starter.go:52-63): the startup load already captured the initial state, and
-`RefreshProperties` itself refuses to run before `started` (app.go:247-250).
+starters. Before the app has started, `TriggerRefresh` is a harmless no-op
+(starter.go:52-63): the startup load already captured the initial state, and the
+`gs.RefreshProperties()` facade returns an error until `started` (app.go:247-250).
 
 ### 2.2 The watch/refresh path, walked once
 
@@ -180,7 +180,7 @@ starters. Until the container wires the controller, `TriggerRefresh` is a harmle
 4. Watch setup is best-effort: if handler registration or cache sync fails, the id is
    forgotten so a later Load may retry, and only hot-reload for that object is lost — the
    static snapshot still loads (`informer.go:110-125`, comment at `provider.go:158-161`).
-5. After wiring, each event calls `Refresher.RefreshProperties()` → full `AppConfig.Refresh` →
+5. After startup, each event calls `gs.RefreshProperties()` → full `AppConfig.Refresh` →
    **every** provider re-runs its import (the ConfigMap is re-fetched, not diffed) → merged
    storage swapped atomically → all `gs.Dync[T]` fields update. Only `gs.Dync[T]` hot-reloads;
    plain fields and `OnProperty` conditions are startup-only.

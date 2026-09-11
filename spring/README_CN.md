@@ -171,12 +171,10 @@ func init() {
 }
 
 type Service struct {
-	// 按类型自动注入配置刷新器
-	AppConfig   *gs.PropertiesRefresher `autowire:""`
 	// 通过 value 标签将配置值绑定到字段
-	StartTime   time.Time               `value:"${start-time}"`
+	StartTime time.Time          `value:"${start-time}"`
 	// 使用 gs.Dync[T] 泛型支持热更新，配置变更后自动同步
-	RefreshTime gs.Dync[time.Time]      `value:"${refresh-time}"`
+	RefreshTime gs.Dync[time.Time] `value:"${refresh-time}"`
 }
 
 func (s *Service) Echo(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +215,7 @@ curl http://127.0.0.1:9090/refresh  # 触发热刷新，刷新时间会更新
 - ✅ **配置自动绑定**：`value` 标签直接将配置绑定到结构体字段，无需手动解析  
 - ✅ **分层配置体系**：遵循优先级规则，环境变量 > 内存配置 > 默认值，天然支持多环境  
 - ✅ **动态配置热更新**：通过 `gs.Dync[T]` 泛型原生支持，配置变更实时生效，无需重启应用  
-- ✅ **配置刷新机制**：提供 `PropertiesRefresher` 支持手动触发配置重新加载，可配合配置中心使用  
+- ✅ **配置刷新机制**：提供 `gs.RefreshProperties()` 手动触发配置重新加载，可配合配置中心使用  
 
 ## 4. 🧩 Bean 管理
 
@@ -707,15 +705,16 @@ version := config.Version.Value() // 总是获取最新值
 
 #### 2. 调用 `RefreshProperties()` 触发刷新
 
-当外部配置发生变化后，需要注入 `*gs.PropertiesRefresher` 并调用其方法触发刷新：
+当外部配置发生变化后，直接调用包级函数 `gs.RefreshProperties()` 触发刷新
+（它作用于最近一次启动的 app，供容器外的组件——如配置中心的 watch 回调——使用）：
 
 ```go
-func RefreshHandler(w http.ResponseWriter, r *http.Request, refresher *gs.PropertiesRefresher) {
+func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	// 模拟配置变更（实际场景中通常由配置中心推送变更）
 	// 带 GS_ 前缀的环境变量映射进属性命名空间：GS_APP_VERSION -> app.version
 	os.Setenv("GS_APP_VERSION", "v2.0.1")
 	// 触发刷新，所有 gs.Dync[T] 字段会自动更新
-	_ = refresher.RefreshProperties()
+	_ = gs.RefreshProperties()
 	fmt.Fprintln(w, "Version updated!")
 }
 ```

@@ -29,9 +29,9 @@ import (
 )
 
 func init() {
-	// Register "configtree" as a second configuration provider on the SAME
-	// controller singleton that backs "file-watch", so it shares the watch +
-	// refresh bridge (ensureWatch / watchLoop / TriggerRefresh). A source such as
+	// Register "configtree" as a configuration provider backed by its own
+	// configTreeCtrl (which embeds the same watch + refresh machinery as
+	// "file-watch" via watchCore). A source such as
 	//
 	//	optional:configtree:/etc/config
 	//
@@ -40,7 +40,14 @@ func init() {
 	// key and its unparsed, trimmed content is the value. This is the shape of a
 	// Kubernetes Secret / env-style ConfigMap mount (many scalar key files), and
 	// the model Spring Boot calls "configtree".
-	conf.RegisterProvider("configtree", fileWatchController.LoadConfigTree)
+	conf.RegisterProvider("configtree", (&configTreeCtrl{}).LoadConfigTree)
+}
+
+// configTreeCtrl is the "configtree" provider: a directory of scalar key
+// files where each leaf becomes one property keyed by its dotted relative
+// path. It embeds watchCore for the shared watch + refresh bridge.
+type configTreeCtrl struct {
+	watchCore
 }
 
 // LoadConfigTree implements conf/provider.Provider for the "configtree" source.
@@ -48,7 +55,7 @@ func init() {
 // keyed by its dotted relative path and valued by its trimmed raw content, and
 // installs a watcher on every directory in the tree so any change triggers an
 // application property refresh.
-func (c *configFileController) LoadConfigTree(optional bool, source string) (map[string]string, error) {
+func (c *configTreeCtrl) LoadConfigTree(optional bool, source string) (map[string]string, error) {
 	path := source
 	if path == "" {
 		return nil, errutil.Explain(nil, "configtree: missing path")

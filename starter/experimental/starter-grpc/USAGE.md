@@ -89,7 +89,8 @@ func (c *Controller) Echo(ctx context.Context, req *proto.EchoRequest) (*proto.E
 **client.go** — dial through a discovery backend with a Go-Spring balancer (see §2.4):
 
 ```go
-StarterGrpc.UseUnaryInterceptor(authGuard) // user guard, outermost of the whole chain
+// user guards, outermost of the whole chain — provided as beans, injected per-container
+gs.Provide(func() grpc.UnaryServerInterceptor { return authGuard })
 
 conn, err := grpc.NewClient(
     StarterGrpc.Scheme+":///echo-service", // gsdiscovery:///<service> via default backend
@@ -196,8 +197,10 @@ gs.Run()
   └─ on SIGTERM: Stop → svr.GracefulStop()  (drains in-flight RPCs; ctx tags the log only)
 ```
 
-User interceptors registered via `UseUnaryInterceptor`/`UseStreamInterceptor` must be called from
-`init()` — extension.go snapshots them when `buildOptions` runs.
+User interceptors are injected, not registered: `gs.Provide` each one and export it As
+`grpc.UnaryServerInterceptor` / `grpc.StreamServerInterceptor`; the server constructor receives
+them all as bean collections, so each container carries its own stack (no package-level
+registration API).
 
 ### 2.2 Interceptor chain — exact order and why
 
@@ -369,7 +372,7 @@ the shared goutil panic chain (`goutil.ReportPanic`) — visible in log and span
 | Clients rejected at TLS handshake with cert errors | `tls.ca-file` set — that enables **mTLS** (`RequireAndVerifyClientCert`) | Remove it for one-way TLS, or issue client certs. |
 | Everything works, no fault/admission effect | starter-governance not imported or `govern.source` not configured — seams yield pass-through | Import it and point `govern.source.file.path` at your file. |
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` below payload | Raise the cap. |
-| Stream RPCs bypass rate limit | Admission is unary-only by design | Guard streams with a user interceptor (`UseStreamInterceptor`). |
+| Stream RPCs bypass rate limit | Admission is unary-only by design | Guard streams with a user stream-interceptor bean (injected as grpc.StreamServerInterceptor). |
 | GOAWAY / connection churn | Aggressive `keepalive.time` vs client ping rate | grpc keepalive semantics; relax server params. |
 | LB client: `ErrNoSubConnAvailable` at startup | Discovery backend missing / no healthy endpoints; or unknown balancer name in service config | Register the backend bean (a named discovery.Discovery bean) and use `BalancerName`/`LoadBalancingConfig`. |
 | LB stops updating after a discovery error | A failed `Resolve` logs and keeps the last snapshot; the next poll tick retries | Nothing — pollLoop retries automatically. |

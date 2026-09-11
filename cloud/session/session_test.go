@@ -37,21 +37,6 @@ func TestMemoryStore(t *testing.T) {
 	assert.That(t, ok).False()
 }
 
-func TestRegistryMemoryDefault(t *testing.T) {
-	s, err := session.GetStore("memory")
-	assert.Error(t, err).Nil()
-	assert.That(t, s).NotNil()
-
-	_, err = session.GetStore("nope")
-	assert.Error(t, err)
-}
-
-func TestRegisterGuards(t *testing.T) {
-	assert.Panic(t, func() { session.Register("", session.NewMemory()) }, "empty name")
-	assert.Panic(t, func() { session.Register("x", nil) }, "nil store")
-	assert.Panic(t, func() { session.Register("memory", session.NewMemory()) }, "already registered")
-}
-
 // newSessionValue drives a session through the middleware to obtain a *Session
 // under a store, returning the recorder so the caller can inspect the cookie.
 func TestMiddlewareCreatesAndReuses(t *testing.T) {

@@ -113,30 +113,30 @@ type ContextProvider struct {
 	Context context.Context
 }
 
-// PropertiesRefresher encapsulates the ability to refresh application
-// properties at runtime. Components can inject this bean to trigger
-// hot configuration updates without restarting the application.
-//
-// When RefreshProperties() is called:
-//  1. Configuration is reloaded from all sources (files, env, cmd args)
-//  2. Changes are propagated to the IoC container
-//  3. All dynamic fields (gs.Dync[T]) are updated automatically
-type PropertiesRefresher struct {
-	app *App
+// currentApp holds the application that the package-level RefreshProperties
+// facade delegates to. App.Start stores itself here, so infrastructure that
+// lives outside the IoC container (config providers registered before the
+// container exists, watch goroutines) can trigger property refresh without
+// bean injection. The latest started app wins; gs.RunTest swap is implicit
+// because each test's app stores itself on Start.
+var currentApp atomic.Pointer[App]
+
+// RefreshProperties refreshes the properties of the running application and
+// propagates the changes to the IoC container. It returns an error when no
+// app has started yet (or ever, e.g. in unit tests that never call Run).
+func RefreshProperties() error {
+	if app := currentApp.Load(); app != nil {
+		return app.RefreshProperties()
+	}
+	return errutil.Explain(nil, "no running app, cannot refresh properties")
 }
 
-// Started reports whether the application has finished wiring its IoC
-// container. Check it before calling RefreshProperties (which returns an error
-// if called before the app is started) — useful in a Runner that injects this
-// bean and runs during startup.
-func (c *PropertiesRefresher) Started() bool {
-	return c.app.Started()
-}
-
-// RefreshProperties refreshes application properties and
-// propagates the changes to the IoC container.
-func (c *PropertiesRefresher) RefreshProperties() error {
-	return c.app.RefreshProperties()
+// AppStarted reports whether the running application has finished wiring its
+// IoC container. Check it before calling RefreshProperties to avoid the
+// "app not started yet" error, e.g. from a watch goroutine that may fire
+// during startup.
+func AppStarted() bool {
+	return currentApp.Load() != nil && currentApp.Load().Started()
 }
 
 // App represents the core application, managing its lifecycle,
@@ -185,8 +185,8 @@ func (app *App) Context() context.Context {
 
 // Started reports whether the application has finished wiring its IoC container
 // (app.c.Refresh returned). Callers of RefreshProperties can check this first to
-// avoid the "app not started yet" error, e.g. when a Runner injects a
-// PropertiesRefresher and runs during startup, before Started becomes true.
+// avoid the "app not started yet" error, e.g. when a Runner runs during startup,
+// before Started becomes true.
 func (app *App) Started() bool {
 	return app.started.Load()
 }
@@ -244,7 +244,8 @@ func (app *App) initLog(p flatten.Storage) error {
 
 // Start initializes and launches the application.
 // The startup sequence is:
-//  1. Register the ContextProvider and PropertiesRefresher beans
+//  1. Register the ContextProvider bean and install this app as the target of
+//     the package-level RefreshProperties facade
 //  2. Refresh application properties from all sources
 //  3. Initialize logging system
 //  4. Refresh the IoC container with App as the graph root, wiring Rooter,
@@ -257,7 +258,7 @@ func (app *App) initLog(p flatten.Storage) error {
 //  8. Wait until all servers signal readiness or intercept occurs
 func (app *App) Start() error {
 
-	app.c.Provide(&PropertiesRefresher{app})
+	currentApp.Store(app)
 	app.c.Provide(&ContextProvider{app.ctx})
 
 	// Load and refresh application properties
@@ -377,6 +378,11 @@ func (app *App) WaitForShutdown() {
 	app.wg.Wait()
 
 	app.c.Close()
+	// Detach from the package-level RefreshProperties facade so a shut-down
+	// app never receives refreshes (e.g. between two gs.RunTest runs in the
+	// same test binary). CompareAndSwap: a newer app may already have taken
+	// over the facade.
+	currentApp.CompareAndSwap(app, nil)
 	log.Infof(app.ctx, log.TagAppDef, "shutdown complete")
 }
 

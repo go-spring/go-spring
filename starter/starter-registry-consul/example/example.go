@@ -15,10 +15,11 @@
  */
 
 // Command example wires starter-registry-consul into a Go-Spring application:
-// blank-importing the starter plus a ${spring.registry.consul.address} entry
+// blank-importing the starter plus a ${spring.registry.consul.main} block
+// creates the backend bean "consul.main"; ${spring.registry.service-name} then
 // registers this instance into Consul once the app is ready and deregisters it
-// on shutdown. The same center config also derives a discovery backend bean
-// named "consul" (${spring.registry.consul.discovery-name} default), which the
+// on shutdown (through the starter-registry core), while the same bean serves
+// as the consumer-side discovery backend, which the
 // verify runner uses to resolve this process's own registration back — proving
 // the register→discover loop end to end on one config block.
 //
@@ -63,12 +64,11 @@ func main() {
 }
 
 // VerifyRunner resolves this process's own registration back through the
-// discovery backend derived from ${spring.registry.consul} (bean name
-// "consul", the discovery-name default).
+// discovery backend derived from the ${spring.registry.consul.main} block.
 type VerifyRunner struct {
-	// backend is the derived discovery bean — the label
-	// ${spring.registry.consul.discovery-name} gave the center's consumer half.
-	backend discovery.Discovery `autowire:"consul"`
+	// backend is the backend bean named "consul.main" — the named block it was
+	// configured from.
+	backend discovery.Discovery `autowire:"consul.main"`
 }
 
 // NewVerifyRunner builds the verify runner.
@@ -89,7 +89,7 @@ func (v *VerifyRunner) Run(ctx context.Context) error {
 func (v *VerifyRunner) verify(ctx context.Context) {
 	d := v.backend
 	if d == nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", "consul")
+		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", "consul.main")
 		return
 	}
 	var eps []discovery.Endpoint

@@ -67,6 +67,7 @@ publish to hot-reload flow.
 - On startup, `spring.config.import` invokes the `consul` provider, which builds a
   Consul API client from the source string, reads the KV path, and starts a
   blocking-query watcher against it.
-- A KV change bumps the query's `LastIndex`, which fires the framework's
-  `PropertiesRefresher`. That reloads all configuration sources (re-running this
-  provider) and re-binds every `gs.Dync` field via a two-phase, atomic commit.
+- A KV change bumps the query's `LastIndex`; the watch goroutine's callback calls
+  the framework's process-level `gs.RefreshProperties()` facade. That reloads all
+  configuration sources (re-running this provider) and re-binds every `gs.Dync`
+  field via a two-phase, atomic commit.

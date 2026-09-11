@@ -19,9 +19,6 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"sort"
-	"sync"
 	"time"
 )
 
@@ -98,54 +95,4 @@ func (b *byteSessionStore) Save(ctx context.Context, s *Session, ttl time.Durati
 
 func (b *byteSessionStore) Delete(ctx context.Context, id string) error {
 	return b.store.Delete(ctx, id)
-}
-
-var (
-	mu       sync.RWMutex
-	registry = map[string]SessionStore{}
-)
-
-// Register makes a SessionStore available under name. It panics if name is
-// empty, s is nil, or name is already registered, mirroring the driver-registry
-// idiom used elsewhere (cache.Register, discovery.Register) so duplicate wiring
-// fails loudly at init.
-//
-// The registry is meant for process-static stores that can be shared by name —
-// the bundled [Memory] is registered as "memory". A distributed backend that
-// needs a live client (Redis, ...) is instead contributed as a bean behind the
-// SessionStore interface, the same way starter-lock-redis contributes a Locker;
-// registering a per-application live connection into a package-global map would
-// be wrong across tests and restarts.
-func Register(name string, s SessionStore) {
-	if name == "" {
-		panic("session: register with empty name")
-	}
-	if s == nil {
-		panic("session: register nil store for " + name)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if _, ok := registry[name]; ok {
-		panic("session: store already registered: " + name)
-	}
-	registry[name] = s
-}
-
-// GetStore returns the SessionStore registered under name, or an error that
-// lists the available stores when none matches. It is GetStore rather than Get
-// because the package-level generic [Get] owns the short name for typed
-// attribute access.
-func GetStore(name string) (SessionStore, error) {
-	mu.RLock()
-	defer mu.RUnlock()
-	s, ok := registry[name]
-	if !ok {
-		names := make([]string, 0, len(registry))
-		for k := range registry {
-			names = append(names, k)
-		}
-		sort.Strings(names)
-		return nil, fmt.Errorf("session: no store registered as %q (registered: %v)", name, names)
-	}
-	return s, nil
 }

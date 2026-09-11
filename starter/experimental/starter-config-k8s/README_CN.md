@@ -73,9 +73,10 @@ file starter 的目录语义一致;无可识别扩展名且未强制 `format` �
 - provider 启动时读取一次对象,将其 `data` 展平为属性,并安装一个限定命名空间与名称的
   informer。
 - 对象的每次 add/update/delete 触发一次全局属性 refresh,重跑 provider 并把新值传播到绑定的
-  `gs.Dync` 字段。refresh 通过一个注入框架 `PropertiesRefresher` 的 `gs.Rooter` 桥接 bean
-  接线(稳定 bean 名以避开 `__default__` Rooter 冲突)。
-- 桥接 bean 的析构函数在关停时停止所有 informer。
+  `gs.Dync` 字段。refresh 经进程级门面 `gs.RefreshProperties()` 触达框架——不再有
+  autowire 注入的 refresher。
+- controller bean 的析构函数在关停时停止所有 informer(它保持 bean 身份只是为了
+  `.Destroy` 生命周期;已无 autowire 字段)。
 
 ## RBAC
 

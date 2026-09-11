@@ -32,9 +32,6 @@ package messaging
 
 import (
 	"context"
-	"fmt"
-	"sort"
-	"sync"
 	"time"
 )
 
@@ -142,49 +139,4 @@ type Driver interface {
 	// Delivery itself does not start until Subscribe is called on the
 	// returned Subscriber. ctx bounds the setup work only.
 	NewSubscriber(ctx context.Context, source, group string) (Subscriber, error)
-}
-
-var (
-	mu       sync.RWMutex
-	registry = map[string]Driver{}
-)
-
-// RegisterDriver makes a [Driver] available under name. It panics if name is
-// empty, b is nil, or name is already registered, mirroring the driver-registry
-// idiom used elsewhere (discovery.Register, resilience.RegisterDriver) so
-// duplicate wiring fails loudly at init.
-//
-// Drivers are usually connection-bound and wired as beans via a starter's
-// NewDriver constructor; this registry is the parity seam for applications that
-// select a single process-wide driver by configured name.
-func RegisterDriver(name string, b Driver) {
-	if name == "" {
-		panic("messaging: register with empty name")
-	}
-	if b == nil {
-		panic("messaging: register nil driver for " + name)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if _, ok := registry[name]; ok {
-		panic("messaging: driver already registered: " + name)
-	}
-	registry[name] = b
-}
-
-// GetDriver returns the [Driver] registered under name, or an error that lists
-// the available drivers when none matches.
-func GetDriver(name string) (Driver, error) {
-	mu.RLock()
-	defer mu.RUnlock()
-	b, ok := registry[name]
-	if !ok {
-		names := make([]string, 0, len(registry))
-		for k := range registry {
-			names = append(names, k)
-		}
-		sort.Strings(names)
-		return nil, fmt.Errorf("messaging: no driver registered as %q (registered: %v)", name, names)
-	}
-	return b, nil
 }

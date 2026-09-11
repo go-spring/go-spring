@@ -149,17 +149,17 @@ gs.Run()
   │            变更不会被漏掉 (provider.go:158-161)
   │         e. parseEntries → flatten → 合入属性存储
   │    └─ 合并后的快照成为所有 value tag 绑定的属性存储
-  ├─ 容器装配：k8sController 被注入 *gs.PropertiesRefresher（starter.go:44）；
-  │  app.started 置 true (app.go:179-183)
+  ├─ 容器装配：k8sController 作为 bean 实例化纯粹是为了 .Destroy 生命周期
+  │  （无 autowire 字段）；app.started 置 true (app.go:179-183)
   ├─ Runner/Server 启动；就绪
   └─ SIGTERM → bean 析构 Destroy → manager.stopAll() 停掉全部 informer
 ```
 
 为什么先于 bean：provider 的输出必须在 `value:` tag 解析之前就进入属性存储，这样来自
 ConfigMap 的 key 才能在首次装配时注入普通 bean 字段——这也是 `.env` 与所有 config
-provider 都跑在生命周期第 2 步、先于 starter 的原因。容器装配好控制器之前，
+provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动之前，
 `TriggerRefresh` 是无害 no-op（starter.go:52-63）：启动加载已捕获初始状态，且
-`RefreshProperties` 在 `started` 之前本就拒绝执行（app.go:247-250）。
+`gs.RefreshProperties()` 门面在 `started` 之前本就返回错误（app.go:247-250）。
 
 ### 2.2 watch/refresh 路径逐层走读
 
@@ -173,7 +173,7 @@ provider 都跑在生命周期第 2 步、先于 starter 的原因。容器装�
 4. watch 建立是 best-effort：handler 注册或 cache 同步失败时遗忘该 id（后续 Load 可
    重试），只损失该对象的热刷新——静态快照仍会加载（`informer.go:110-125`，
    `provider.go:158-161` 注释）。
-5. 装配完成后，每个事件调用 `Refresher.RefreshProperties()` → 全量
+5. 启动完成后，每个事件调用 `gs.RefreshProperties()` → 全量
    `AppConfig.Refresh` → **每个** provider 重跑自己的 import（ConfigMap 被重新拉取而非
    diff）→ 原子换掉合并存储 → 所有 `gs.Dync[T]` 字段更新。只有 `gs.Dync[T]` 会热刷新；
    普通字段与 `OnProperty` 条件只在启动时生效。

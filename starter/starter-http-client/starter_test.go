@@ -60,7 +60,7 @@ func TestDirectModeBlanksServiceNameForTransport(t *testing.T) {
 }
 
 // The bound tls.* block is handed to httpx verbatim; the TLS surface itself is
-// built by cloud/httpx (covered by its own tests).
+// built by starter-http-client/httpx (covered by its own tests).
 func TestTLSConfigPassthrough(t *testing.T) {
 	c := Config{Addr: "10.0.0.1:8080", TLS: tlsconf.TLSConfig{Enabled: true, ServerName: "svc.internal"}}
 	cfg := c.toTransportConfig()

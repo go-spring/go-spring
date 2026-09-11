@@ -216,12 +216,10 @@ func init() {
 }
 
 type Service struct {
-	// Auto-inject configuration refresher by type
-	AppConfig   *gs.PropertiesRefresher `autowire:""`
 	// Bind configuration value to field through value tag
-	StartTime   time.Time               `value:"${start-time}"`
+	StartTime time.Time            `value:"${start-time}"`
 	// Use gs.Dync[T] generic to support hot reloading, automatically syncs after configuration changes
-	RefreshTime gs.Dync[time.Time]      `value:"${refresh-time}"`
+	RefreshTime gs.Dync[time.Time] `value:"${refresh-time}"`
 }
 
 func (s *Service) Echo(w http.ResponseWriter, r *http.Request) {
@@ -271,7 +269,7 @@ This example covers many core features of Go-Spring:
   naturally supports multiple environments
 - ✅ **Dynamic configuration hot reloading**: Natively supported via `gs.Dync[T]` generic,
   configuration changes take effect in real-time without application restart
-- ✅ **Configuration refresh mechanism**: Provides `PropertiesRefresher`
+- ✅ **Configuration refresh mechanism**: Provides `gs.RefreshProperties()`
   to support manual triggering of configuration reload, can be used with configuration centers
 
 ## 4. 🧩 Bean Management
@@ -843,16 +841,17 @@ no manual handling required from you.
 
 #### 2. Call `RefreshProperties()` to trigger refresh
 
-After external configuration changes, you need to inject `*gs.PropertiesRefresher`
-and call its method to trigger the refresh:
+After external configuration changes, call the package-level `gs.RefreshProperties()`
+to trigger the refresh (it targets the most recently started app — the bridge for
+components outside the IoC container, such as config-center watch callbacks):
 
 ```go
-func RefreshHandler(w http.ResponseWriter, r *http.Request, refresher *gs.PropertiesRefresher) {
+func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	// Simulate configuration change (in real scenarios it's usually pushed by configuration center)
 	// GS_-prefixed env vars map into the property namespace: GS_APP_VERSION -> app.version
 	os.Setenv("GS_APP_VERSION", "v2.0.1")
 	// Trigger refresh, all gs.Dync[T] fields will update automatically
-	_ = refresher.RefreshProperties()
+	_ = gs.RefreshProperties()
 	fmt.Fprintln(w, "Version updated!")
 }
 ```

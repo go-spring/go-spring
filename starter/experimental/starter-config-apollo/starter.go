@@ -70,32 +70,24 @@ func (a agolloClientAdapter) GetConfigContent(namespace string) string {
 	return ""
 }
 
-var (
-	apolloControl = &apolloCtrl{}
-)
-
 func init() {
-	gs.Provide(apolloControl).Export(gs.As[gs.Rooter]())
-	conf.RegisterProvider("apollo", apolloControl.Load)
+	conf.RegisterProvider("apollo", (&apolloCtrl{}).Load)
 }
 
 // apolloCtrl owns the full lifecycle of apollo configuration: loading
 // namespaces, listening for changes, and triggering property refresh.
 type apolloCtrl struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-
 	mu       sync.Mutex
 	clients  map[string]apolloClient
 	listened map[string]struct{}
 }
 
 // TriggerRefresh is called by the config listener when a watched namespace
-// changes. Before the container wires the controller, this is a no-op — the
-// initial load already captured the state.
+// changes. Before the app has started, gs.RefreshProperties returns an
+// error and the change is dropped — the initial load already captured the
+// state.
 func (c *apolloCtrl) TriggerRefresh() {
-	if c.Refresher != nil {
-		_ = c.Refresher.RefreshProperties()
-	}
+	_ = gs.RefreshProperties()
 }
 
 // apolloSource holds the parsed components of an apollo provider source.

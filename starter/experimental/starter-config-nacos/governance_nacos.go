@@ -22,7 +22,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
+	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
@@ -36,10 +38,12 @@ import (
 // This file adds a DIRECT nacos listener for governance rules — the
 // Sentinel-datasource shape: governance holds a dedicated dataId (its own
 // config document, not a shared app-config import), and rule pushes refresh
-// governance only, never the whole application's properties. It reuses the
-// module's config-client plumbing (nacosCtrl.clientFor); document parsing goes
-// through governance.ParseRules, so the dataId's content is byte-compatible
-// with a starter-governance file source's rules file.
+// governance only, never the whole application's properties. The source owns
+// its client exclusively (built here, closed on Destroy) — fully isolated
+// from the config-import bootstrap client, and free to carry its own
+// instrumentation. Document parsing goes through governance.ParseRules, so
+// the dataId's content is byte-compatible with a starter-governance file
+// source's rules file.
 //
 // Configure with (govern.source.nacos.*):
 //
@@ -86,9 +90,22 @@ func init() {
 		}
 
 		r.Provide(func() (*NacosSource, error) {
-			cli, err := nacosController.clientFor(cs)
+			host, port, err := splitHostPort(cs.server)
 			if err != nil {
 				return nil, err
+			}
+			cli, err := clients.NewConfigClient(vo.NacosClientParam{
+				ClientConfig: constant.NewClientConfig(
+					constant.WithNamespaceId(cs.namespace),
+					constant.WithTimeoutMs(cs.timeoutMs),
+					constant.WithUsername(cs.username),
+					constant.WithPassword(cs.password),
+					constant.WithNotLoadCacheAtStart(true),
+				),
+				ServerConfigs: []constant.ServerConfig{*constant.NewServerConfig(host, port)},
+			})
+			if err != nil {
+				return nil, errutil.Explain(err, "create nacos config client for %s failed", cs.server)
 			}
 			return NewNacosSource(cli, cs)
 		}).
@@ -147,10 +164,14 @@ func (s *NacosSource) Init() error {
 	})
 }
 
-// Close removes the listener. Implements the optional-close contract the
-// governance center probes for on Destroy.
+// Close removes the listener and closes the source's own client — the
+// client is built by the bean ctor and dies with the bean, fully isolated
+// from the config-import bootstrap client. Implements the optional-close
+// contract the governance center probes for on Destroy.
 func (s *NacosSource) Close() error {
-	return s.cli.CancelListenConfig(vo.ConfigParam{DataId: s.cs.dataID, Group: s.cs.group})
+	err := s.cli.CancelListenConfig(vo.ConfigParam{DataId: s.cs.dataID, Group: s.cs.group})
+	s.cli.CloseClient()
+	return err
 }
 
 // Snapshot returns the latest good snapshot.

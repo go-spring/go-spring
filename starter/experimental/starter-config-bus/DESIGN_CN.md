@@ -9,8 +9,8 @@
 
 ## 1. 职责与边界
 
-- 订阅一个共享 NATS subject，收到任一信号后通过
-  `*gs.PropertiesRefresher` 重跑应用级属性刷新。
+- 订阅一个共享 NATS subject，收到任一信号后通过进程级门面
+  `gs.RefreshProperties()` 重跑应用级属性刷新。
 - 通过 `ConfigBus.Publish` 在同一 subject 上发送刷新信号；管理动作、
   webhook、运维端点都可以借此强制协同刷新。
 - **只搬信号，不搬内容**。远程配置中心 starter（nacos/etcd/consul/vault/k8s/file）
