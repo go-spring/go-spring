@@ -110,7 +110,7 @@ func connectZookeeper(c ZookeeperConfig) (*zk.Conn, error) {
 	}
 	conn, _, err := zk.Connect(c.Servers, c.SessionTimeout)
 	if err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "connect zookeeper servers=%v failed: %v", c.Servers, err)
+		log.Errorf(context.Background(), starterTag, "connect zookeeper servers=%v failed: %v", c.Servers, err)
 		return nil, errutil.Explain(err, "registry-zookeeper: connect to %v", c.Servers)
 	}
 	if c.Username != "" || c.Password != "" {

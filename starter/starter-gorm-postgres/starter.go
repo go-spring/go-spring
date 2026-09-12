@@ -31,7 +31,7 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -72,12 +72,14 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 
 	log.Debugf(ctx, log.TagAppDef, "creating gorm postgres client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
 
+	resource := resilience.ResourceLabel("gorm:postgresql", c.ServiceName, c.Host)
+
 	var (
 		dialector gorm.Dialector
 		closer    func()
 	)
 
-	lb, ld, err := c.NewPickPool(ctx, backend)
+	lb, ld, stopSelection, err := c.NewPickPool(ctx, backend, resource)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm postgres: build discovery resolver failed: %v", err)
 		return gormcore.Spec{}, err
@@ -108,9 +110,14 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 			if perr != nil {
 				return nil, perr
 			}
-			return nd.DialContext(ctx, "tcp", ep.Addr)
+			conn, derr := nd.DialContext(ctx, "tcp", ep.Addr)
+			// The dial outcome is the only signal this picker has; feeding it
+			// makes outlier suspension evict an instance that keeps refusing
+			// connections.
+			lb.Complete(ep, derr)
+			return conn, derr
 		}
-		closer = nil
+		closer = stopSelection
 	}
 	dialector = postgres.New(postgres.Config{Conn: stdlib.OpenDB(*pgxCfg)})
 
@@ -122,7 +129,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 	return gormcore.Spec{
 		Dialector:      dialector,
 		Pool:           c.Pool(),
-		Resource:       resilience.ResourceLabel("gorm:postgresql", c.ServiceName, c.Host),
+		Resource:       resource,
 		ObserveEnabled: c.ObserveEnabled,
 		Closers:        closers,
 	}, nil

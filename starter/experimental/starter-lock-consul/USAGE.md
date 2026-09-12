@@ -1,7 +1,7 @@
 # starter-lock-consul Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
-against the starter source (`starter.go`, `config.go`, `consullock.go`, `observe.go`), the shared
+against the starter source (`starter.go`, `config.go`, `lock.go`, `observe.go`), the shared
 abstraction [cloud/lock](../../../cloud/lock), and the self-asserting
 [example/](example) (`example/check.sh`). Consul's own semantics (sessions, KV, blocking queries)
 are [Consul docs](https://developer.hashicorp.com/consul/docs/dynamic-app-config/sessions) —
@@ -160,7 +160,7 @@ import starter-lock-consul
 ```
 
 Each acquisition builds a **fresh `*api.Lock`** with its own Consul session
-(`consullock.go buildLock`), so cancelling one handle never affects another.
+(`lock.go buildLock`), so cancelling one handle never affects another.
 
 ### 2.2 Three-layer timing resolution (all lock backends)
 
@@ -174,7 +174,7 @@ layer wins:
 | 3. package default | TTL `30s`, renew `TTL/3`, retry `100ms` | fill whatever is still unset |
 
 The resolved TTL is then clamped into Consul's `[10s, 86400s]` session window per acquisition
-(`consullock.go buildLock`) — so even a per-call `WithTTL(5*time.Second)` is silently raised to
+(`lock.go buildLock`) — so even a per-call `WithTTL(5*time.Second)` is silently raised to
 10s rather than rejected.
 
 ### 2.3 One lock, layer by layer (acquire → hold → release)

@@ -47,7 +47,7 @@ blank-import + `gs.Run()`。注册器用 TTL 心跳保活;`PreStop` 反注册。
 |-----|------|--------|------|
 | `service-name` / `addr` | string | "" | 注册时启动期必填;`service-name` 即注册意图信号 |
 | `id` | string | 派生 `ServiceName-Addr` | ⚠ 同 addr 不同服务会撞 ID |
-| `weight` | int | 100;`<=0` 存为 1 | 只有 `UpdateWeight` 能存 0(摘流) |
+| `weight` | int | 100;负数存为 1 | 0 = 摘流,Register 与 `UpdateWeight` 同语义 |
 | `metadata` | map | 空 | |
 
 ### 发现 —— 按块 bean 名引用(零配置)
@@ -69,7 +69,9 @@ query(index 长轮询)保鲜,后续 Resolve 读缓存;`Meta["scheme"]` → `Endp
 - `registryServer` 来自 [starter-registry](../starter-registry) 核心(传递依赖),
   `Registrars []discovery.Registrar` 切片收集所有后端的 registrar。
 - `UpdateWeight(ctx, w)` 以 `Weights.Passing = w` 逐中心 upsert(0 = 摘流透传;未注册时报错)。
-- 没有专属日志 tag——全部走 `log.TagAppDef`(与 registry-nacos/etcd 不一致)。
+- 运行期日志带专属 tag `_app_registry_consul`（`log.RegisterAppTag("registry_consul", "")`），
+  经 `logger.<name>.tag=_app_registry_consul` 单独调级（与 registry-etcd/nacos 一致）。
+- 可观测性：注册与发现经 OTel 全局产出指标——未引入 `starter-otel` 时全部 no-op。`register`、`deregister`、`update_weight` 各有一个 client span 与一条 `registry.operation.duration`（标签 `system`/`operation`/`service`/`status`）；`registry.registration.attempts_total` 按 `reason` 与 `status` 计数；`registry.instance.registered` gauge 在发布中为 1、否则为 0——自愈失败会落在这里，而不只是出现在日志里。发现半边把每次后台缓存同步上报到 `discovery.sync_total`，并维持 `discovery.cache.age_seconds`（距上次确认新鲜的秒数），watch 死掉时表现为持续爬升，而不是静默返回陈旧地址。 `reason` 取 `initial`（初次发布）与 `self_heal`（后台重注册）。
 - 启动探测:每块构建时 `Catalog().Services`(5s 超时),`address` 配错启动即失败。
 - 心跳 `UpdateTTL` 失败会升级:连续失败记日志并重注册(upsert)自愈。
 

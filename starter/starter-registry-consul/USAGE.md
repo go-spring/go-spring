@@ -138,9 +138,9 @@ Timeline (`center.go`, `registrar.go`, and the starter-registry core's `starter.
 
 - Service ID = configured `id`, else `"<service-name>-<addr>"` — restarts replace the same entry
   (`registrar.go`).
-- Weight is normalized at write time: `<=0 → 1`, so "default" is never stored as 0 — 0 is reserved
-  for the runtime drain signal (`registrar.go`, asserted by
-  `registrar_test.go TestRegister_NormalizesDefaultWeight`).
+- A negative (misconfigured) weight is normalized at write time: `<0 → 1`. 0 passes through as the
+  drain signal on both write paths, so `weight=0` in config registers a drained instance
+  (`registrar.go`, asserted by `registrar_test.go TestNormalizeWeight`).
 - `addr` must be `host:port` with a numeric port; anything else fails Register
   (`registrar.go`).
 - The entry carries `Weights{Passing: weight, Warning: 1}` and the TTL check
@@ -190,7 +190,7 @@ every center.
 | `spring.registry.service-name` | string | `` | logical service name clients resolve; **its presence is the registration intent signal** | empty: pure consumer; set with no block: Run error `... no registry center is configured` |
 | `spring.registry.addr` | string | `` (required when registering) | advertised `host:port` | empty with service-name set: startup error; malformed: Register error (`registrar.go`) |
 | `spring.registry.id` | string | `` | instance ID override; empty derives `<name>-<addr>` | ⚠ duplicate IDs across processes → one entry overwrites the other |
-| `spring.registry.weight` | int | `100` | advertised weight; `<=0` normalized to 1 at write time | 0 does **not** drain here (normalized); drain is `UpdateWeight(0)` only |
+| `spring.registry.weight` | int | `100` | advertised weight; negative normalized to 1 at write time | 0 = drained; drains from startup as well as via `UpdateWeight(0)` |
 | `spring.registry.metadata.*` | map[string]string | empty | instance attributes (zone, version, ...) passed through to discovery Metadata | — |
 
 Discovery needs **no configuration**: each block's bean IS a `cloud/discovery.Discovery` named
@@ -229,8 +229,11 @@ passing-only queries keep unhealthy instances out of the snapshot.
 7. **Unregistered UpdateWeight**: calling `UpdateWeight` before Run registers returns
    `registry: instance not registered yet` (starter-registry `starter.go`).
 
-All runtime logs carry `log.TagAppDef`: `creating consul registrar`, `registering service=...`,
-`registered %q at %s`, `deregister %q` (Warn). No metrics/traces are emitted by this starter.
+All runtime logs carry the tag `_app_registry_consul` (`log.RegisterAppTag("registry_consul", "")`):
+`creating consul registrar`, `registering service=...`, `registered %q at %s`, `deregister %q`
+(Warn). Tune verbosity via `logger.<name>.tag=_app_registry_consul`.
+
+Observability: registration and discovery emit OTel metrics through the global providers — a no-op unless `starter-otel` is imported. `register`, `deregister` and `update_weight` each produce a client span plus a `registry.operation.duration` record labelled `system`/`operation`/`service`/`status`; `registry.registration.attempts_total` counts attempts by `reason` and `status`; the `registry.instance.registered` gauge reads 1 while this instance is published and 0 while it is not, so a failed self-heal lands there instead of only in a log line. The discovery half reports every background cache sync to `discovery.sync_total` and keeps `discovery.cache.age_seconds` (seconds since the snapshot was last confirmed fresh), so a dead watch shows a climbing age rather than a silently stale address list. `reason` is `initial` for the first publish and `self_heal` for the background re-registration.
 
 ---
 

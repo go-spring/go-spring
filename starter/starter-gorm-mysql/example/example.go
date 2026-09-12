@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"go-spring.org/spring/gs"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	_ "go-spring.org/starter-gorm-mysql"
 	"gorm.io/gorm"
 )

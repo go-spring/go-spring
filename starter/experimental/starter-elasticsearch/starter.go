@@ -73,11 +73,11 @@ func init() {
 // against backend (the discovery backend the entry's ${discovery} label
 // resolved to), its current live endpoint snapshot is turned into
 // "scheme://host:port" node addresses, and
-// those override c.Addresses. Because the elasticsearch client exposes no dialer
-// injection point, this is a one-shot resolution at startup; the loader has no
-// background watch and no resources to release. In mesh mode the sidecar owns
-// discovery+LB, so the static Addresses (or CloudID) are used unchanged. See
-// Config.ServiceName.
+// those override c.Addresses. This read is the fail-fast probe and the seed; the
+// live feed is the connection pool DefaultDriver installs over the same resolver,
+// so cluster membership keeps following the naming service (see pool.go). In mesh
+// mode the sidecar owns discovery+LB, so the static Addresses (or CloudID) are
+// used unchanged. See Config.ServiceName.
 func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver) (*Client, error) {
 	if c.ServiceName != "" && !mesh.Enabled() {
 		addrs, err := resolveAddresses(ctx.Context, c, backend)

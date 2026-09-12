@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.registry.k8s",
+  "type": "object",
+  "properties": {
+    "spring.registry.k8s": {
+      "type": "object",
+      "description": "One named block per Kubernetes Service-discovery backend. Each block becomes ONE backend bean named 'k8s.<name>' implementing discovery.Discovery (read) only — this backend contributes no registrar, because in a cluster the platform already registers every Pod behind a Service. The family-wide registration keys (spring.registry.service-name / .addr) belong to the registry core and are not consumed here. No default/unnamed block.",
+      "additionalProperties": {
+        "$ref": "#/$defs/k8sBlock"
+      }
+    }
+  },
+  "$defs": {
+    "k8sBlock": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "description": "'dns' (headless Service SRV/A, no RBAC) or 'endpointslice' (client-go informer, real-time)",
+          "default": "dns"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace of the target Service",
+          "default": "default"
+        },
+        "port-name": {
+          "type": "string",
+          "description": "Named port to select; dns mode with a value issues an SRV query, endpointslice matches the slice port by name",
+          "default": ""
+        },
+        "port": {
+          "type": "integer",
+          "description": "Numeric port used when port-name is empty; required for dns A-record mode",
+          "default": 0
+        },
+        "cluster-domain": {
+          "type": "string",
+          "description": "Cluster DNS suffix for the Service FQDN; dns mode only",
+          "default": "cluster.local"
+        },
+        "refresh-interval": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'; dns-mode re-resolve period",
+          "default": "10s"
+        },
+        "kubeconfig": {
+          "type": "string",
+          "description": "Kubeconfig path for endpointslice mode; empty uses in-cluster ServiceAccount auth",
+          "default": ""
+        },
+        "resync-period": {
+          "type": "string",
+          "description": "Duration string, e.g. '5s', '1m', '1h'; endpointslice informer resync period, 0 is event-driven only",
+          "default": "0"
+        }
+      }
+    }
+  }
+}

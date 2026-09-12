@@ -32,7 +32,7 @@ import (
 
 	"go-spring.org/cloud/loadtest"
 	"go-spring.org/spring/gs"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	_ "go-spring.org/starter-gorm-clickhouse"
 	_ "go-spring.org/starter-governance"
 )

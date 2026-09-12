@@ -26,7 +26,7 @@ import (
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/spring/gs"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 )
 
 // No ClickHouse server is reachable from unit tests, so these tests pin the

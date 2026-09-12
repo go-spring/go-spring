@@ -240,14 +240,22 @@ request context and panics on a nil parent — `HealthCheck` and the health indi
 one explicitly [starter.go:120-124, health/health.go:19-31]; user code should use
 `es.Search.WithContext(ctx)` etc.
 
-### 2.4 Discovery addressing — one-shot at startup
+### 2.4 Discovery addressing — seed plus a live node set
 
-When `service-name` is set and mesh mode is off, the endpoints are resolved **once** in the
-ctor and baked into `c.Addresses`; the loader is a pure snapshot function with no resources and
-no background watch, so nothing is kept alive and nothing needs stopping on shutdown
-[starter.go:82-88, driver.go:101-121]. No re-resolution at runtime:
-ES cluster addresses are typically stable VIPs. In mesh mode the sidecar owns discovery+LB and
-the static Addresses (or CloudID) are used unchanged.
+When `service-name` is set and mesh mode is off, the endpoints are resolved once in the ctor and
+baked into `c.Addresses`; the loader is a pure snapshot function with no resources and no
+background watch, so nothing is kept alive and nothing needs stopping on shutdown
+[starter.go:82-88, driver.go:101-121]. That read is the **fail-fast gate and the seed** — the
+live feed is a custom `ConnectionPoolFunc` the driver installs over the same resolver
+[pool.go]: the transport's node set is re-read from the naming service, so a node joining or
+leaving the cluster becomes usable without a restart. The propagation budget is one second
+(`refreshInterval`, checked on the request path), and a registry hiccup or an empty snapshot
+keeps the last good node set rather than black-holing traffic that a moment ago worked.
+
+Node selection is untouched: the live pool keeps a library-built inner pool with the transport's
+own selector and live/dead bookkeeping, and rebuilds it only when the node set actually changes
+(address-sorted, so a reordered snapshot does not look like a change). In mesh mode the sidecar
+owns discovery+LB and the static Addresses (or CloudID) are used unchanged.
 
 ---
 
@@ -262,7 +270,7 @@ unconditional (see §3.4).
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `addresses` | list | — | Node URLs, e.g. `http://127.0.0.1:9200` (comma-separated). Validated non-empty (`len($) > 0`). ⚠ Required even when `service-name` overrides it — the example carries a non-resolvable dummy on purpose. ⚠ Ignored when `cloud-id` is set (client-side precedence). | Empty → BindEach error; unreachable first probe → boot error "failed to reach elasticsearch cluster". |
-| `service-name` | string | — | Resolve node addresses via a registered discovery backend, once at startup; overrides `addresses`. Ignored in mesh mode. ⚠ Pairs with `scheme`/`discovery`/`discovery-scheme`. | Service has no endpoints → boot error `discovery %q returned no endpoints`. |
+| `service-name` | string | — | Resolve node addresses via a registered discovery backend, and keep the transport's node set following it (pool.go); overrides `addresses`. Ignored in mesh mode. ⚠ Pairs with `scheme`/`discovery`/`discovery-scheme`. | Service has no endpoints at boot → boot error `discovery %q returned no endpoints`; empty at runtime → last good set kept. |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme. Only consulted when `service-name` is set. | — |
 | `discovery` | string | — | Which registered discovery backend resolves `service-name`. | Unset or an unregistered name while service-name is set → boot error. |
 | `discovery-scheme` | string | `http` | URL scheme stamped onto discovered `host:port` endpoints (`http`/`https`). | Wrong scheme → first probe fails at boot. |

@@ -56,20 +56,29 @@ func newNacosRegistrar(c NacosConfig, client naming_client.INamingClient) (*naco
 	return &nacosRegistrar{client: client, group: c.Group, cluster: c.Cluster}, nil
 }
 
+// normalizeWeight clamps a misconfigured negative weight to 1 at write time.
+// 0 passes through as the drain signal; an unset weight is expressed by the
+// ${spring.registry.weight} default, not by this clamp. Register and
+// UpdateWeight share it so both write paths agree on the contract.
+func normalizeWeight(w int) int {
+	if w < 0 {
+		return 1
+	}
+	return w
+}
+
 // Register publishes reg as an ephemeral Nacos instance. The SDK then keeps it
 // alive with its own heartbeat until Deregister. Registering the same ip:port
 // again refreshes the entry.
-func (r *nacosRegistrar) Register(_ context.Context, reg instance) error {
+func (r *nacosRegistrar) Register(ctx context.Context, reg instance) error {
 	host, port, err := splitAddr(reg.Addr)
 	if err != nil {
 		return err
 	}
-	// Nacos treats weight 0 as "receive no traffic"; default to 1 so an
-	// unweighted instance is actually reachable.
-	weight := float64(reg.Weight)
-	if weight <= 0 {
-		weight = 1
-	}
+	// Nacos treats weight 0 as "receive no traffic", so an explicit 0 is the
+	// drain signal and passes through untouched.
+	weight := float64(normalizeWeight(reg.Weight))
+	attempt := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial)
 	ok, err := r.client.RegisterInstance(vo.RegisterInstanceParam{
 		Ip:          host,
 		Port:        port,
@@ -82,30 +91,35 @@ func (r *nacosRegistrar) Register(_ context.Context, reg instance) error {
 		Ephemeral:   true,
 		Metadata:    reg.Metadata,
 	})
-	if err != nil {
-		return errutil.Explain(err, "registry-nacos: register %q", reg.ServiceName)
+	// A server-side rejection is a failed registration just as much as a
+	// transport error, so both fold into the reported outcome.
+	if err == nil && !ok {
+		err = errutil.Explain(nil, "registry-nacos: register %q was rejected by the server", reg.ServiceName)
+	} else if err != nil {
+		err = errutil.Explain(err, "registry-nacos: register %q", reg.ServiceName)
 	}
-	if !ok {
-		return errutil.Explain(nil, "registry-nacos: register %q was rejected by the server", reg.ServiceName)
-	}
-	return nil
+	attempt(err)
+	return err
 }
 
 // Deregister removes the instance. It is idempotent: deregistering an instance
 // that is not registered is a no-op on the Nacos side.
-func (r *nacosRegistrar) Deregister(_ context.Context, reg instance) error {
+func (r *nacosRegistrar) Deregister(ctx context.Context, reg instance) error {
 	host, port, err := splitAddr(reg.Addr)
 	if err != nil {
 		return err
 	}
-	if _, err := r.client.DeregisterInstance(vo.DeregisterInstanceParam{
+	report := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName)
+	_, err = r.client.DeregisterInstance(vo.DeregisterInstanceParam{
 		Ip:          host,
 		Port:        port,
 		ServiceName: reg.ServiceName,
 		GroupName:   r.group,
 		Cluster:     r.cluster,
 		Ephemeral:   true,
-	}); err != nil {
+	})
+	report(err)
+	if err != nil {
 		return errutil.Explain(err, "registry-nacos: deregister %q", reg.ServiceName)
 	}
 	return nil
@@ -116,18 +130,15 @@ func (r *nacosRegistrar) Deregister(_ context.Context, reg instance) error {
 // running and discovery subscribers (the Nacos push channel) receive the new
 // weight without any re-registration. Mirrors the etcd registrar's
 // UpdateWeight so both starters offer the same optional hot-reload API.
-func (r *nacosRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) error {
+func (r *nacosRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int) error {
 	host, port, err := splitAddr(reg.Addr)
 	if err != nil {
 		return err
 	}
 	// Weight 0 is the drain signal and passes through — Nacos natively treats
-	// 0 as "receive no traffic". Only a negative (misconfigured) weight is
-	// normalized to 1; unlike Register, an unset default never reaches here.
-	w := float64(weight)
-	if w < 0 {
-		w = 1
-	}
+	// 0 as "receive no traffic".
+	w := float64(normalizeWeight(weight))
+	report := discovery.WeightChange(ctx, obsSystem, reg.ServiceName)
 	ok, err := r.client.UpdateInstance(vo.UpdateInstanceParam{
 		Ip:          host,
 		Port:        port,
@@ -139,13 +150,13 @@ func (r *nacosRegistrar) UpdateWeight(_ context.Context, reg instance, weight in
 		Ephemeral:   true,
 		Metadata:    reg.Metadata,
 	})
-	if err != nil {
-		return errutil.Explain(err, "registry-nacos: update weight %q", reg.ServiceName)
+	if err == nil && !ok {
+		err = errutil.Explain(nil, "registry-nacos: update weight %q was rejected by the server", reg.ServiceName)
+	} else if err != nil {
+		err = errutil.Explain(err, "registry-nacos: update weight %q", reg.ServiceName)
 	}
-	if !ok {
-		return errutil.Explain(nil, "registry-nacos: update weight %q was rejected by the server", reg.ServiceName)
-	}
-	return nil
+	report(err)
+	return err
 }
 
 // splitAddr splits a "host:port" advertised address into a host and numeric

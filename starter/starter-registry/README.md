@@ -1,15 +1,18 @@
 # starter-registry
 
-The registration core: the ONE server that owns this process's publication
-lifecycle across every configured registry center.
+The registration family core: the ONE server that owns this process's
+publication lifecycle across every configured registry center.
+
+**Applications never import this module.** Every backend starter
+(`starter-registry-etcd`, `-consul`, `-nacos`, `-zookeeper`) depends on it, so
+it comes along transitively and the single `registryServer` bean exists exactly
+once per process no matter how many backends you mix.
 
 ## What it does
 
-Each registry backend starter (`starter-registry-etcd`, `starter-registry-consul`,
-`starter-registry-nacos`, `starter-registry-zookeeper`) derives one
-`discovery.Registrar` per configured `${spring.registry.<backend>.<name>}`
-block. This starter collects them ALL — across backends — and drives them in
-lockstep:
+Each backend starter derives one `discovery.Registrar` per configured
+`${spring.registry.<backend>.<name>}` block. This core collects them ALL —
+across backends — and drives them in lockstep:
 
 - registered everywhere once the application is ready;
 - deregistered everywhere as shutdown begins (PreStop, before any server
@@ -18,10 +21,6 @@ lockstep:
 
 Any registration failure fails startup: a center missing this instance would
 split consumers' views.
-
-You never import this package directly — every backend starter imports it
-transitively, so the single `registryServer` bean exists exactly once per
-process no matter how many backends you mix.
 
 ## Configuration
 
@@ -63,7 +62,9 @@ snapshot.
 ## Notes
 
 - The server opens no port; it plugs into the Go-Spring server lifecycle.
-- `spring.registry.service-name` set with no registry center configured fails
-  startup (fail-fast, not silent).
+- This core ships no registry backend of its own. With
+  `spring.registry.service-name` set and no center configured, startup fails
+  fast ("no registry center is configured") rather than registering nowhere —
+  add a `starter-registry-<backend>`.
 - Discovery needs no configuration of its own — see each backend starter's
   README.

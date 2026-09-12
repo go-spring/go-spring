@@ -21,7 +21,7 @@ starter：贡献 Kubernetes `coordination.k8s.io/Lease` 对象后端的 `lock.Lo
   后端的存在证明该缝隙不局限于存储系统。
 - **`buildClient` 缝隙。** 测试通过 `newK8sLockerWithClient` 注入 client-go
   的 fake clientset，无需真集群即可对 RBAC / API-server 行为做单测
-  （`k8slock_test.go`）。
+  （`lock_test.go`）。
 - **每个持有一条续期 goroutine。** 每个已持有锁自持续期 ticker 与 `Lost()`
   通道；shared clientset 在各持有间复用。`renewLoop` 模仿 client-go
   leaderelection：缺失则创建 Lease、过期/自持则续、临时 API 错误容忍到

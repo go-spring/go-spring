@@ -136,20 +136,30 @@ func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (d
 }
 
 // NewPickPool builds the shared per-connection endpoint selector over the
-// resolver from [Common.NewResolver]: a round-robin loadbalance.Pool the dialect
-// starter's DialContext calls on every new connection. It returns
-// (nil, nil) when discovery is not in effect; otherwise the pool (and its
+// resolver from [Common.NewResolver]: a round-robin [loadbalance.Pool] the
+// dialect starter's DialContext calls on every new connection. It returns
+// (nil, nil, ...) when discovery is not in effect; otherwise the pool (and its
 // source resolver, which has no resources to release).
-func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery) (*loadbalance.Pool, discovery.Resolver, error) {
+//
+// resource is the entry's governance label ([resilience.ResourceLabel], e.g.
+// "gorm:mysql:orders-db"). The pool is built with a suspension tracker and its
+// endpoint selection is bound to that label, so one govern.rules[N] rule that
+// matches the entry's protection executor also governs its balancing strategy
+// and outlier suspension. The returned stop func detaches that binding and must
+// run on client teardown; it is a no-op when governance is not in the process
+// and when discovery is not in effect.
+func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, resource string) (*loadbalance.Pool, discovery.Resolver, func(), error) {
 	resolver, err := c.NewResolver(ctx, backend)
 	if err != nil || resolver == nil {
-		return nil, resolver, err
+		return nil, resolver, func() {}, err
 	}
 	bal, err := loadbalance.New(loadbalance.RoundRobin)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, func() {}, err
 	}
-	return loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal), resolver, nil
+	pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
+	return pool, resolver, pool.BindSelection(resource), nil
 }
 
 // logWriter adapts GORM's logger onto the repo log core: every message GORM

@@ -11,7 +11,8 @@ Spring Cloud's `ServiceRegistry` + `DiscoveryClient`, backed by ephemeral znodes
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not register
 instances for you. In **pure Kubernetes** you would not use this starter at all: the
 platform already registers every Pod behind a Service, so you discover peers with
-[starter-discovery-k8s](../starter-discovery-k8s) and register nothing.
+[starter-registry-k8s](../starter-registry-k8s) — the family's
+discovery-only backend — and register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to ZooKeeper.
 RPC-framework provider registration stays framework-native and is out of scope (see

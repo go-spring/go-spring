@@ -125,13 +125,14 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery) (
 	opts.SetMonitor(newCommandMonitor(func() *dbObserver { return w.obs.Load() }))
 
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
-	pool, err := newPickPool(ctx.Context, c, backend)
+	pool, stop, err := newPickPool(ctx.Context, c, backend)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: build discovery resolver failed: %v", err)
 		return nil, err
 	}
 	if pool != nil {
 		nd := &net.Dialer{Timeout: c.ConnectTimeout}
+		w.stop = stop
 		// The discovery dialer ignores the URI address and picks a live
 		// endpoint from the loader-backed pool on each new connection.
 		baseDial = func(ctx context.Context, network, _ string) (net.Conn, error) {
@@ -139,7 +140,12 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery) (
 			if err != nil {
 				return nil, err
 			}
-			return nd.DialContext(ctx, network, ep.Addr)
+			conn, derr := nd.DialContext(ctx, network, ep.Addr)
+			// The dial outcome is the only signal this picker has; feeding it
+			// makes outlier suspension evict an instance that keeps refusing
+			// connections.
+			pool.Complete(ep, derr)
+			return conn, derr
 		}
 	}
 	if baseDial == nil {

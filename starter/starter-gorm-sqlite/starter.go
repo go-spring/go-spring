@@ -28,7 +28,7 @@ import (
 	gormsqlite "github.com/glebarez/sqlite"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 )
 
 func init() {

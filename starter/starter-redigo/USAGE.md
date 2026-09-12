@@ -301,6 +301,14 @@ With the `discovery` instance (`service-name` + `conn-max-lifetime=30s`), move/s
 backing Redis; `Stats()` (`ActiveCount`/`IdleCount`) shows conns recycling onto the new
 endpoint within 30s — no restart, no client rebuild.
 
+The pool's strategy is governed, not hardcoded: it is built with a suspension tracker and bound
+to `redigo:<service-name|addr>` via `loadbalance.Pool.BindSelection`, so
+`govern.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
+**in place** — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
+outcome, so `outlier-threshold` evicts instances that keep refusing *connections*; per-command
+failures belong to the resilience executor. Direct (`addr`-only) pools have no candidate set, so
+these keys are inert for them. See `cloud/governance/CONFIG_CN.md` §3.1.
+
 ### 4.4 Cache abstraction wiring
 
 ```go

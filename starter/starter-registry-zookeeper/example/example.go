@@ -16,13 +16,16 @@
 
 // Command example wires starter-registry-zookeeper into a Go-Spring
 // application: blank-importing the starter plus a
-// ${spring.registry.zookeeper.main} entry registers this instance into
-// ZooKeeper once the app is ready and deregisters it on shutdown.
+// ${spring.registry.zookeeper.main} block creates the backend bean
+// "zookeeper.main"; ${spring.registry.service-name} then registers this
+// instance into the ensemble once the app is ready and deregisters it on
+// shutdown (through the starter-registry core), while the same bean serves as
+// the consumer-side discovery backend cited by its name.
 //
-// To make the mechanism visible without an external client, a goroutine waits
-// for readiness, lists the registered znodes back, prints what it finds, then
-// SIGTERMs the app so the example self-terminates (exercising the
-// deregister-on-shutdown path). It needs a reachable ZooKeeper at the
+// To make the mechanism visible without an external client, a Runner resolves
+// the just-registered instance back through the discovery backend, prints what
+// it found, then SIGTERMs the app so the example self-terminates (exercising
+// the deregister-on-shutdown path). It needs a reachable ZooKeeper at the
 // configured address; check.sh starts one in Docker.
 package main
 
@@ -36,29 +39,28 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-zookeeper/zk"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	// Blank-import registers the ZooKeeper registrar and the register-on-ready server.
+	// Blank-import registers the center module: the shared connection, the
+	// register-on-ready server, and the derived discovery backend.
 	_ "go-spring.org/starter-registry-zookeeper"
 )
 
-// servicePath matches ${spring.registry.zookeeper.base-path} + service name.
-const servicePath = "/services/orders"
+// serviceName matches ${spring.registry.service-name} in conf/app.properties.
+const serviceName = "orders"
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
 
 func main() {
 	flag.Parse()
 	if !*manual {
-		// Wait past readiness so registration has happened, then verify.
-		time.Sleep(time.Second)
-		verifyOnce()
-		// One-shot: stop the app so the example terminates (and deregisters) on its own.
-		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+		// The verify runner (registered here) resolves the instance once
+		// registration has happened, then SIGTERMs the app so the example
+		// terminates (and deregisters) on its own.
+		gs.Provide(NewVerifyRunner).Export(gs.As[gs.Runner]())
 	} else {
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")
@@ -66,34 +68,56 @@ func main() {
 	gs.Run()
 }
 
-// verifyOnce lists the registered znodes and logs the instances found. It never
-// exits non-zero on failure: the point is to show the call; check.sh asserts the
-// end-to-end path separately.
-func verifyOnce() {
-	ctx := context.Background()
-	conn, _, err := zk.Connect([]string{"127.0.0.1:2181"}, 10*time.Second)
-	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "zookeeper connect: %v", err)
-		return
-	}
-	defer conn.Close()
+// VerifyRunner resolves this process's own registration back through the
+// zookeeper discovery backend "zookeeper.main", proving the register→discover
+// loop end to end.
+type VerifyRunner struct {
+	// backend is the backend bean named "zookeeper.main" — the named block it
+	// was configured from.
+	backend discovery.Discovery `autowire:"zookeeper.main"`
+}
 
-	children, _, err := conn.Children(servicePath)
-	if err != nil {
-		log.Warnf(ctx, log.TagAppDef, "list %q failed (is ZooKeeper reachable?): %v", servicePath, err)
+// NewVerifyRunner builds the verify runner.
+func NewVerifyRunner() *VerifyRunner { return &VerifyRunner{} }
+
+// Run spawns the verify loop in the background and returns immediately: a
+// blocking Runner would delay the readiness signal the registry server waits
+// for, deadlocking registration (servers register only once the app is ready,
+// which requires all Runners to have returned).
+func (v *VerifyRunner) Run(ctx context.Context) error {
+	go v.verify(ctx)
+	return nil
+}
+
+// verify polls the discovery backend until the registry server (which registers
+// on app readiness) has published this instance, prints what it found, then
+// stops the app so the example self-terminates.
+func (v *VerifyRunner) verify(ctx context.Context) {
+	d := v.backend
+	if d == nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", "zookeeper.main")
 		return
 	}
-	if len(children) == 0 {
-		log.Warnf(ctx, log.TagAppDef, "path %q has no instances yet", servicePath)
-		return
-	}
-	for _, child := range children {
-		data, _, err := conn.Get(servicePath + "/" + child)
-		if err != nil {
-			continue
+	var eps []discovery.Endpoint
+	var err error
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		eps, err = d.Resolve(ctx, serviceName)
+		if err == nil && len(eps) > 0 {
+			break
 		}
-		fmt.Printf("registered node=%s value=%s\n", child, data)
+		time.Sleep(500 * time.Millisecond)
 	}
+	if err != nil {
+		log.Warnf(ctx, log.TagAppDef, "resolve %s failed: %v", serviceName, err)
+	} else if len(eps) == 0 {
+		log.Warnf(ctx, log.TagAppDef, "service %s has no instances yet", serviceName)
+	}
+	for _, e := range eps {
+		fmt.Printf("discovered endpoint=%s weight=%d metadata=%v\n", e.Addr, e.Weight, e.Metadata)
+	}
+	// One-shot: stop the app so the example terminates (and deregisters).
+	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
 // init sets the working directory of the application to the directory

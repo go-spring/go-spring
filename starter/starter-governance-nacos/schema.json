@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "govern.source.nacos",
+  "description": "Nacos-backed governance rule source. The bean is registered only when govern.source.nacos is present.",
+  "type": "object",
+  "properties": {
+    "govern.source.nacos": {
+      "type": "object",
+      "description": "Governance rules source bound at govern.source.nacos.*",
+      "properties": {
+        "server": {
+          "type": "string",
+          "description": "Nacos server address, required"
+        },
+        "data-id": {
+          "type": "string",
+          "description": "Governance rules dataId, required"
+        },
+        "group": {
+          "type": "string",
+          "default": "DEFAULT_GROUP"
+        },
+        "namespace": {
+          "type": "string",
+          "default": ""
+        },
+        "username": {
+          "type": "string",
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "default": ""
+        },
+        "format": {
+          "type": "string",
+          "description": "Override document format; inferred from dataId extension by default",
+          "default": ""
+        }
+      },
+      "required": [
+        "server",
+        "data-id"
+      ]
+    }
+  }
+}

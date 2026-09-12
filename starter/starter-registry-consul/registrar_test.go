@@ -46,17 +46,16 @@ func TestRegister_BadAddr(t *testing.T) {
 	assert.Error(t, err).Matches("non-numeric port")
 }
 
-func TestRegister_NormalizesDefaultWeight(t *testing.T) {
-	// Register normalizes an unset weight to 1 before storing, so "default" is
-	// never stored as 0 — 0 is reserved for the drain signal. The stored
-	// registration advertises exactly that normalized weight.
-	r := &consulRegistrar{heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
-	reg := instance{ServiceName: "orders", Addr: "1.2.3.4:80"}
-	if reg.Weight <= 0 {
-		reg.Weight = 1
-	}
-	asr := r.buildRegistration(reg)
-	assert.That(t, asr.Weights.Passing).Equal(1)
+func TestNormalizeWeight(t *testing.T) {
+	// A misconfigured negative weight clamps to 1.
+	assert.That(t, normalizeWeight(-5)).Equal(1)
+	// 0 is the drain signal and passes through untouched — both Register and
+	// UpdateWeight feed their weight through this helper, so a configured 0
+	// reaches buildRegistration and is advertised as a zero Passing weight
+	// (see TestBuildRegistration_AdvertisesDrainWeight).
+	assert.That(t, normalizeWeight(0)).Equal(0)
+	// An explicit positive weight passes through unchanged.
+	assert.That(t, normalizeWeight(100)).Equal(100)
 }
 
 func TestUpdateWeight_Unregistered(t *testing.T) {

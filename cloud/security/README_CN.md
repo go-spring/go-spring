@@ -119,7 +119,7 @@ err := security.Require("orders:write")(ctx, func(ctx context.Context) error {
 - 只两个问题：**调用者是谁**，以及**能不能做**。
 - 不是密码学库。`TokenValidator` 是缝隙；JWT / opaque-token /
   session-cookie 的具体实现在 starter 或调用方应用中。
-- 不是 session 库（见 `cloud/session`），不是 OAuth2 授权服务器（见
+- 不是 session 库（见 `cloud/experimental/session`），不是 OAuth2 授权服务器（见
   `starter-oauth2-server`）。
 - HTTP 中间件、路由级 `Authorize` 与 CORS 随各 server 家族走；只有这些壳共用
   的安全敏感逻辑以纯函数形式暴露在本包，保证各家族行为不漂移。方法级

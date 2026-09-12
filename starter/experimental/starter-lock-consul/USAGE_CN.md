@@ -3,7 +3,7 @@
 [English](USAGE.md) | [中文](USAGE_CN.md)
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
-（`starter.go`、`config.go`、`consullock.go`、`observe.go`）、共享抽象
+（`starter.go`、`config.go`、`lock.go`、`observe.go`）、共享抽象
 [cloud/lock](../../../cloud/lock) 与自校验的 [example/](example)
 （`example/check.sh`）核实。Consul 自身语义（session、KV、blocking query）见
 [Consul 官方文档](https://developer.hashicorp.com/consul/docs/dynamic-app-config/sessions)——
@@ -159,7 +159,7 @@ import starter-lock-consul
                （api.Client 无 Close；已发出的句柄各持自己的 session）
 ```
 
-每次获取锁都会构造**全新的 `*api.Lock`** 及其专属 Consul session（`consullock.go`
+每次获取锁都会构造**全新的 `*api.Lock`** 及其专属 Consul session（`lock.go`
 buildLock），取消一个句柄不影响其他句柄。
 
 ### 2.2 三层时序解析（所有锁后端共享）
@@ -173,7 +173,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 | 3. 包默认 | TTL `30s`、renew `TTL/3`、retry `100ms` | 兜底仍未设置的项 |
 
 解析后的 TTL 会在每次获取时被钳进 Consul 的 `[10s, 86400s]` session 窗口
-（`consullock.go` buildLock）——即使调用方 `WithTTL(5*time.Second)` 也被无声抬到 10s，
+（`lock.go` buildLock）——即使调用方 `WithTTL(5*time.Second)` 也被无声抬到 10s，
 而不是被拒绝。
 
 ### 2.3 一次锁的逐层走读（acquire → 持有 → release）

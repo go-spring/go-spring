@@ -111,7 +111,7 @@ spring.redis.demo.discovery=zookeeper.main   # the backend bean's name
 
 ```bash
 go run .                                   # logs: registered "orders" at 127.0.0.1:8080
-# the example self-verifies and prints: registered node=orders-127.0.0.1:8080 value={...}
+# the example self-verifies and prints: discovered endpoint=127.0.0.1:8080 weight=100 metadata=map[version:v1 zone:cn-north]
 ```
 
 Interactive verification with the ZooKeeper shell:
@@ -203,8 +203,8 @@ readers reconstruct as 0. Consumers' next snapshot carries `Endpoint.Weight == 0
 `excludeDrained` drops it from every load-balance strategy, falling back to the full set only
 when every endpoint is drained. Restore with `UpdateWeight(ctx, 100)`.
 
-At initial Register the weight is normalized `<=0 → 1`, so "default" is never stored as 0 — 0
-is reserved for the runtime drain signal, only reachable through `UpdateWeight`.
+At initial Register a negative weight is normalized to 1; **0 passes through as the drain signal**,
+so `weight=0` in config registers an already-drained instance.
 
 ---
 
@@ -224,7 +224,7 @@ discovery config: the backend bean IS the block's bean, named `zookeeper.<name>`
 | `spring.registry.service-name` | string | `` | logical name; becomes the znode directory and what discovery clients resolve. **Registration intent signal**: unset with blocks configured → a valid pure consumer | set with `addr` empty: Run returns `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required` — after the app is otherwise up |
 | `spring.registry.addr` | string | `` (required when registering) | advertised `host:port`; never guessed | empty: same Run error; malformed is NOT validated (no numeric-port check unlike consul) — stored verbatim, consumers fail to dial |
 | `spring.registry.id` | string | `` | instance-id override; empty derives `<service-name>-<addr>` so restarts replace the same znode (`registrar.go`) | ⚠ duplicate ids across processes → one process's Register deletes and replaces the other's node |
-| `spring.registry.weight` | int | `100` | advertised LB weight; `<=0` normalized to 1 at write time | 0 does **not** drain here (normalized); drain is `UpdateWeight(0)` only |
+| `spring.registry.weight` | int | `100` | advertised LB weight; negative normalized to 1 at write time | 0 = drained, honored from startup as well as via `UpdateWeight(0)` |
 | `spring.registry.metadata.*` | map[string]string | empty | arbitrary attributes (zone, version, ...) stored in the znode payload and passed through to discovery Metadata | — |
 
 Two blocks with the same `<name>` fail loudly in the container (duplicate bean name); block names
@@ -238,7 +238,7 @@ across backends never collide (the bean name carries the backend type, e.g. `zoo
 All zk-side checks work with `zkCli.sh` inside the container (see §1) or any zk client.
 
 1. **Register → resolve**: boot the example — it self-verifies by listing `/services/orders` and
-   printing `registered node=... value=...`; `check.sh` greps exactly that marker. In zkCli:
+   printing `discovered endpoint=... weight=... metadata=...`; `check.sh` greps exactly that marker. In zkCli:
    `ls /services/orders` shows one child named `orders-127.0.0.1:8080`; `get` shows the JSON
    payload with `"weight":100` and an `ephemeralOwner != 0` (the ephemeral marker).
 2. **Drain via UpdateWeight(0) + restore**: inject the `gs.Server` named `registryServer`, call
@@ -266,9 +266,10 @@ All zk-side checks work with `zkCli.sh` inside the container (see §1) or any zk
    (`spring.registry.zookeeper.dr.servers=...`) — the same instance appears under both
    ensembles (one publication fanned out), and the startup log says `in 2 registry center(s)`.
 
-Runtime logs from this module carry the default app tag (`logger.appdef`) plus the core's
-`_app_registry` tag for registration lifecycle lines. No metrics/traces/health indicator of its
-own — a silently expired session logs **nothing**.
+Runtime logs carry the tag `_app_registry_zookeeper`
+(`log.RegisterAppTag("registry_zookeeper", "")`), tuned via
+`logger.<name>.tag=_app_registry_zookeeper`; the core's `_app_registry` tag carries the
+shared registration lifecycle lines. Observability: registration and discovery emit OTel metrics through the global providers — a no-op unless `starter-otel` is imported. `register`, `deregister` and `update_weight` each produce a client span plus a `registry.operation.duration` record labelled `system`/`operation`/`service`/`status`; `registry.registration.attempts_total` counts attempts by `reason` and `status`; the `registry.instance.registered` gauge reads 1 while this instance is published and 0 while it is not, so a failed self-heal lands there instead of only in a log line. The discovery half reports every background cache sync to `discovery.sync_total` and keeps `discovery.cache.age_seconds` (seconds since the snapshot was last confirmed fresh), so a dead watch shows a climbing age rather than a silently stale address list. `reason` is `initial` for the first publish and `self_heal` for the background re-registration. A session loss is still logged by the monitor, and now also lands in the metrics above.
 
 ---
 

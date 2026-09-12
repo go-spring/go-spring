@@ -67,7 +67,7 @@ func newConsulBackend(c ConsulConfig) (*consulBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf(context.Background(), log.TagAppDef, "consul backend for address=%s ready", c.Address)
+	log.Debugf(context.Background(), starterTag, "consul backend for address=%s ready", c.Address)
 	return &consulBackend{reg: reg, disc: newConsulDiscovery(client, "")}, nil
 }
 
@@ -112,7 +112,7 @@ func newConsulClient(address, scheme, datacenter, token, namespace string) (*api
 		Namespace:  namespace,
 	})
 	if err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "create consul client for address=%s failed: %v", address, err)
+		log.Errorf(context.Background(), starterTag, "create consul client for address=%s failed: %v", address, err)
 		return nil, errutil.Explain(err, "registry-consul: create client for %s", address)
 	}
 	return client, nil

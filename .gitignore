@@ -48,6 +48,13 @@ scripts/git-history-audit/reports/
 /example
 /example-otel
 
+# Logs
+*.log
+
+# Scratch docs under temp/ (loose markdown at the root of temp/, and gap analyses)
+/temp/*.md
+/temp/gap-analysis/
+
 # Compiled main-package binaries (a main.go at a module root builds a same-name
 # binary next to it via `go build ./...` in the workspace). Listed explicitly
 # since gitignore has no "same name as parent dir" pattern.

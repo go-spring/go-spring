@@ -154,11 +154,20 @@ gomemcache 的 `Ping` 探测全部已配置服务器，`servers` 里一个死节
 
 设置 `service-name`（且非 mesh 模式）时，starter 把 `discovery` 指名的后端（默认 `"default"`）
 解析成 bean 并以 `backend` 参数传给 `DefaultDriver.CreateClient`，后者据此、按 `scheme` 过滤构建 discovery resolver（`driver.go:70`、
-`driver.go:100-102`）。**仅初始快照**成为 client 的 server 列表：空快照使启动失败并报
-`memcached: discovery returned no endpoints for %q`（`driver.go:73-79`）。loader 是一次性
-快照读——无后台 watch、无资源可释放 —— **成员变更不会热应用**，因为 gomemcache 在创建时把 key
-哈希到固定 server 集（`driver.go:60-66`、`driver.go:90-96`）。集群成员变化需要重启——没有动态成员机制；若拓扑动态扩缩，请把 `servers` 指向 serverless/代理类端点（单一稳定地址），由代理层管理成员。mesh
-模式下完全跳过 discovery，`servers` 原样使用（sidecar 负责发现+LB，`driver.go:69-70` 注释）。
+`driver.go:100-102`）。初始快照在构建期读一次作为 fail-fast 闸门——空快照使启动失败并报
+`memcached: discovery returned no endpoints for %q`（`driver.go:73-79`）——随后 client 建在一个
+**活的 `ServerSelector`**（`selector.go`）之上，每次 key 查找都重读快照。于是实例的加入/离开在
+下一次操作就可见：不用重启，也不用挂代理。Resolver 的新鲜度在 backend 内部，没有资源需要释放。
+
+两个性质是刻意的，因为对 memcached 而言**选择器就是缓存语义**：
+
+- **保持 key 亲和。** 用与 gomemcache 自带 `ServerList` 完全相同的 CRC32-of-key 方案哈希，且快照
+  先按地址**排序**——所以集群不变时，无论命名服务以什么顺序上报，key→server 的映射都不变，
+  key 始终落在持有它的实例上。
+- **集群不可用要报出来，不能糊过去。** 空快照或读失败按该次操作报 `memcache.ErrNoServers` / 原始
+  错误，而不是端出一个 key 可能早已不在的陈旧集合。（想加权就按库的表达方式——同一地址写多遍。）
+
+mesh 模式下完全跳过 discovery，`servers` 原样使用（sidecar 负责发现+LB，`driver.go:69-70` 注释）。
 
 ### 2.3 一次 Set 调用逐层走读
 
@@ -198,7 +207,7 @@ starter）。
 | key（`spring.memcached.instances.<name>` 下） | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |---|---|---|---|---|
 | `servers` | []string | 空 | 静态 server 列表；请求按其分片（config.go:28）。与 `service-name` 二选一 | 两者皆空 → 构造错误 `one of servers or service-name must be set`（starter.go:83）；地址死 → 启动 ping fail-fast |
-| `service-name` | string | 空 | 服务发现寻址：经 `discovery` 指名后端解析 server 列表（config.go:39）。设置后（非 mesh）忽略 `servers` | 后端缺失 → 启动报 `discovery resolve %q failed`；空快照 → 启动报错（driver.go:76-79） |
+| `service-name` | string | 空 | 服务发现寻址：server 集合跟随 `discovery` 指名的后端（config.go:39），每次 key 查找重读（selector.go）。设置后（非 mesh）忽略 `servers` | 后端缺失 → 启动报 `discovery resolve %q failed`；启动期空快照 → 启动报错（driver.go:76-79）；运行期空快照 → 该次操作报 `memcache.ErrNoServers` |
 | `scheme` | string | 空 | 把 discovery 收窄到单一传输 scheme 的端点；仅在设 `service-name` 时生效（config.go:45） | 过滤过度 → "no endpoints" 启动错误 |
 | `discovery` | string | — | 用哪个已注册的 `discovery.Discovery` 解析 `service-name`（config.go:50）。wiring 把该 label 解析成 bean，并以 `backend` 参数传给 driver 的 `CreateClient` | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
 | `timeout` | duration | 0 | 每请求 socket 读/写超时；0 = gomemcache 默认 100ms（config.go:54） | 过低 → 高压下伪超时 |

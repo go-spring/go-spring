@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 )
 
 // Config holds the configuration parameters for a SQL Server connection. The

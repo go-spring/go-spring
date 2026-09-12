@@ -117,7 +117,11 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     无 `Stop`,新鲜度全在 discovery 后端 bean 内部——所以不按 client 缓存、
     `Destroy` 时也无需回收。driver 各自的 dialer(经 `loadbalance.SourceFunc` 把
     resolver 包进 round-robin `Pool`,每次建连 `Pick`)留在 `config.go` /
-    `starter.go`;这里只放 resolver 的构建。
+    `starter.go`;这里只放 resolver 的构建。所有发现模式的池都按同一套建:挂
+    suspension `Tracker`、在建连处把 `Pick` 与 `Complete` 配对、再
+    `Pool.BindSelection(entry label)`——于是该 entry 的治理规则原地驱动
+    `balancer` / `outlier-threshold` / `outlier-suspend-for`,走的是 `loadbalance`
+    的中立 seam,不需要 import `cloud/governance`。
   - `resilience.go` —— wrapper bean 的 `ApplyResilience` InitMethod、executor,以及
     它的 `Close` / `CloseDriver` Destroy 钩子。
   - `observability.go` —— observe kit 桥接(trace/metric/access-log 钩子)。
@@ -255,13 +259,23 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   (TTL、心跳或临时节点),correctness 绝不依赖 `Deregister` 被调用 -- 进程若崩溃
   (SIGKILL、OOM)未及注销,注册中心也须在保活静默后自行摘除;`Deregister` 只是干净
   停机时的快捷路径。(2)注册某 RPC 框架的**服务**仍按上一条保持框架原生。纯 Kubernetes
-  下两者都不需要 -- 平台已把每个 Pod 注册在 Service 之后(用 `starter-discovery-k8s`
+  下两者都不需要 -- 平台已把每个 Pod 注册在 Service 之后(用 `starter-registry-k8s`
   去发现);实例级注册是给虚机 / 裸机 / 混合部署用的。每个 registry starter 属全局 /
   基础设施形态(§2.4):导出一个 `gs.Server`,应用就绪后注册、`PreStop` 时注销,使滚动
   重启无损。
 - **可观测遵循"中心定义、边缘桥接"。** starter 通过 OTel 全局输出,或用 `SetLogger`
   钩子把库的内部日志桥接进 go-spring `log`;桥接时必须同时补一个 go-spring
   `FileLogger` sink,否则会丢掉 console 输出。
+- **Registry 后端在自己的缝上上报。** registry starter 用后端名调用 `cloud/discovery`
+  的上报函数（`RegisterAttempt`、`DeregisterAttempt`、`WeightChange`、`Synced`）,后台
+  重注册传 `discovery.ReasonSelfHeal`。要报在「首次发布」与「自愈路径」**共同经过**的
+  漏斗上（etcd `publish`、zookeeper `createNode`、consul `upsert`）,而不是包在
+  `discovery.Registrar` 接口外面:自愈路径根本不经过那个接口,而它恰恰是「实例还在
+  服务、却已不再可被发现」的那条路径。指标与 span 的定义只在
+  `cloud/discovery/observe.go` 里有一份 —— 后端自己从不命名 instrument。本家族的
+  **只做发现**后端（`starter-registry-k8s`,集群内平台已替你把 Pod 注册好）没有这样的
+  漏斗可报:它定义 `obsSystem`、在成功与失败两侧上报 `discovery.Synced`,三个注册操作
+  一个都不产出;该例外登记在 `scripts/check-registry-observability.sh`。
 
 ## 4. 新增 starter —— 检查清单
 
@@ -276,11 +290,23 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    `gs.OnProperty("spring.<family>.instances")`,家族级值在各实例的 tag 里读
    `${spring.<family>.default.*}`。**绝不可直接绑定在家族前缀上** ——
    `scripts/check-config-namespace.sh` 会检查。
+   **走发现拨号?** → 建池一律这三件套:挂 `loadbalance.Tracker`、在建连处把 `Pool.Pick`
+   与 `Pool.Complete` 配对(把拨号结果喂回去,不喂 tracker 就是瞎的)、再用**与 executor
+   同一个** `resilience.ResourceLabel` 调 `Pool.BindSelection(<entry label>)`。这才是
+   `balancer` / `outlier-threshold` / `outlier-suspend-for` 可经治理规则配置而不是写死的
+   原因——自己不加 `balancer` 配置键,也不 import `cloud/governance`。不能重挑的 client
+   (一次性解析、或库自持选择器)刻意不接,要在它的 USAGE 里写明。
 5. Server? → 自持端口、提前监听/就绪后 serve、优雅 `Stop`、应用提供注册 bean、
    默认开启开关。
 6. 配置 Provider? → `provider.go` 里 `conf.RegisterProvider`(无 `config.go`、
    无 bean),从 source 串解析参数、缓存 client、在拉取前无条件注册监听、变更回调
    直接调 `gs.RefreshProperties()` 门面,配 `example-config/`。
-7. 在底层库支持的前提下补 health、TLS、destroy。
-8. 提供双语 README,以及只含 `check.sh` 的 `example/`(不放部署脚手架)。
-9. 内部依赖走 `go.work`,不写 `require`。
+7. Registry starter？→ 定义 `obsSystem`,并在「首次发布」与「自愈路径」共享的缝上上报
+   （`discovery.RegisterAttempt` 带 `ReasonInitial`/`ReasonSelfHeal`、`DeregisterAttempt`、
+   `WeightChange`,以及成功与失败两侧的 `discovery.Synced`);绝不要改成包 `Registrar`
+   接口 —— 自愈路径不经过它。本家族的只做发现后端（`starter-registry-k8s`）没有
+   registrar:只定义 `obsSystem` 并上报 `discovery.Synced`,登记为本检查的例外。
+   `scripts/check-registry-observability.sh` 强制以上各项。
+8. 在底层库支持的前提下补 health、TLS、destroy。
+9. 提供双语 README,以及只含 `check.sh` 的 `example/`(不放部署脚手架)。
+10. 内部依赖走 `go.work`,不写 `require`。

@@ -42,4 +42,3 @@ type NacosConfig struct {
 	// probe used to fail fast on an unreachable server.
 	TimeoutMs uint64 `value:"${timeout-ms:=5000}"`
 }
-

@@ -104,10 +104,16 @@ func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 	r.Close()
 	mu.Lock()
 	defer mu.Unlock()
-	assert.Number(t, len(created)).Equal(2)
+	// Assert by name: the heal pass walks r.regs, a map, so the order the two
+	// instances are re-created in is not defined.
+	byName := map[string]instance{}
+	for _, in := range created {
+		byName[in.ServiceName] = in
+	}
+	assert.Number(t, len(byName)).Equal(2)
 	// The last advertised value is re-created, not the startup default.
-	assert.That(t, created[0].ServiceName).Equal("orders")
-	assert.That(t, created[1].Weight).Equal(3)
+	assert.That(t, byName["orders"].Weight).Equal(1)
+	assert.That(t, byName["billing"].Weight).Equal(3)
 }
 
 // Deregister must remove the instance from the heal set: a node recreated

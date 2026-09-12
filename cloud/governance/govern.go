@@ -52,6 +52,7 @@ import (
 
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 )
 
 // Config is the single source of truth for governance. A [Source] delivers it
@@ -233,6 +234,7 @@ func (c *center) goLive() {
 	c.injector = fault.NewInjector(cfg.Fault)
 	resilience.RegisterExecutorProvider(c.executorFor)
 	fault.RegisterInjector(c.injector)
+	loadbalance.RegisterSelectionProvider(c.selectionFor)
 	markLive()
 }
 
@@ -322,6 +324,30 @@ func (c *center) executorFor(label string) resilience.Executor {
 	// keeps for the process lifetime, so there is nothing to cancel here.
 	_ = c.register(label, func(p resilience.Policy) { _ = exec.Refresh(p) })
 	return exec
+}
+
+// selectionFor is the governance-backed provider registered with
+// loadbalance.RegisterSelectionProvider. It resolves label's policy — the SAME
+// label (and so the same rule) that drives the resource's protection executor,
+// which is why endpoint selection and protection are configured in one place —
+// and applies its selection half to the caller's pool now and on every change.
+//
+// Unlike [center.executorFor] there is no per-label memoization to hang the
+// subscription on: the sink is the caller's pool, and one label may legitimately
+// back several pools (two entries sharing a service name, a rebuilt client). Each
+// bind therefore gets its own subscription, and the returned stop func is its
+// Cancel, so a pool that goes away detaches instead of leaving a callback
+// pointing at it. A zero policy (governance disabled, or a label with no rule)
+// applies as "keep the strategy, disable suspension" — a no-op.
+func (c *center) selectionFor(label string, apply func(loadbalance.Selection)) func() {
+	sub := c.register(label, func(p resilience.Policy) {
+		apply(loadbalance.Selection{
+			Balancer:          p.Balancer,
+			OutlierThreshold:  p.OutlierThreshold,
+			OutlierSuspendFor: p.OutlierSuspendFor,
+		})
+	})
+	return sub.Cancel
 }
 
 // Destroy closes the active source when it happens to be closeable (the

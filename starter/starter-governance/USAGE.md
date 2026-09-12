@@ -148,7 +148,7 @@ go run . -manual
 The change lands within ~1s of saving (fsnotify), with no restart and no app-wide re-bind.
 
 **Variant — another source**: swap `govern.source.file.path` for `govern.source.http.*` (a
-console), or a nacos/etcd source key from their own starters. Exactly one source is active per
+console), or a nacos/etcd source key from their own modules. Exactly one source is active per
 process, and there is no longer an app.properties path: rules always come through a Source.
 
 **Variant — combining with a server starter**: any client starter wired to the neutral seams
@@ -184,8 +184,8 @@ Deliberate omissions (from the interface's doc comment):
 
 The wiring picks its source from the bean injected into `wiring.Src` (`wiring.go:38-43`). The
 adapter family: `FileSource` (fsnotify), `HTTPSource` (interval poll) in this starter;
-nacos (ListenConfig push) in `experimental/starter-config-nacos`, etcd (Watch push) in
-`starter-config-etcd`; `governance.PushSource` for hand-rolled push integrations.
+nacos (ListenConfig push) in `starter-governance-nacos`, etcd (Watch push) in
+`starter-governance-etcd`; `governance.PushSource` for hand-rolled push integrations.
 
 ### 2.2 Bean lifecycle timeline
 
@@ -277,8 +277,8 @@ namespace, two roles: `govern.*` is the rules; `govern.source.*` is where the ru
 
 Exactly ONE source is active per process: configuring both file and http arms two beans but the
 center holds one — the bean injection race is unspecified; configure exactly one. Remote adapters
-in their own starters: `govern.source.nacos.*` (starter-config-nacos, ListenConfig push) and
-`govern.source.etcd.*` (starter-config-etcd: `endpoint`, `key`, …, Watch push) — the documents are
+in their own modules: `govern.source.nacos.*` (starter-governance-nacos, ListenConfig push) and
+`govern.source.etcd.*` (starter-governance-etcd: `endpoint`, `key`, …, Watch push) — the documents are
 byte-portable across all of these backends.
 
 There is no default path: without a `govern.source.*` key (or an injected/`SetSource` source) the
@@ -414,7 +414,7 @@ the center never merges — whole-replace; removing a custom source is not suppo
 
 | Metric | Value |
 |--------|-------|
-| Config keys (source) | 5 (this starter) + nacos/etcd in their starters |
+| Config keys (source) | 5 (this starter) + nacos/etcd in their own modules |
 | Required | 1 (the chosen source's `path`/`url`) |
 | Rules-document keys | 4 top + 16 policy knobs ×2 (default/rules[n]) + 7 fault + 4 fault-rule |
 | Quickstart external deps | 0 (file source); a console for http |

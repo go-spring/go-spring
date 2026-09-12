@@ -35,7 +35,7 @@ import (
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator" // aggregates the gorm health.Indicator
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	_ "go-spring.org/starter-gorm-mysql"
 )
 

@@ -43,7 +43,7 @@ starter 面向的是 OAuth2 资源服务器工作流：
   `conf.BindEach` 注册，配置键本身就是启用条件。刻意不用包级
   `security.RegisterValidator` 注册表：把一个活的、来自配置的 validator
   塞进进程级全局 map，在测试与重启之间都是错的（与
-  `cloud/session` 注册表的注释同一推理）。
+  `cloud/experimental/session` 注册表的注释同一推理）。
 - **不自带中间件**：传输层策略（401 还是放行、权限检查）已经住在
   `security.Authenticate`/`Authorize` 里，在此复制会分叉策略。
 

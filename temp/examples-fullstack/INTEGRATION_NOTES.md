@@ -21,7 +21,7 @@ must allocate explicitly. Documented in each `conf/app.properties`.
 
 `starter-registry-consul` is register-side only (it advertises an instance). The
 gateway's `lb://order` and order→inventory need a *client-side*
-`discovery.Discovery`, and only `starter-discovery-k8s` ships one.
+`discovery.Discovery`, and only `starter-registry-k8s` ships one.
 
 **Bridged in the sample** via `internal/consuldisc`, a Consul-catalog-backed
 `discovery.Discovery` registered with `discovery.Register("consul", …)`. It

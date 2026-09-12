@@ -46,6 +46,15 @@ func TestTTLSeconds(t *testing.T) {
 	assert.That(t, EtcdConfig{TTL: 500 * time.Millisecond}.ttlSeconds()).Equal(int64(1))
 }
 
+func TestNormalizeWeight(t *testing.T) {
+	// A misconfigured negative weight clamps to 1.
+	assert.That(t, normalizeWeight(-5)).Equal(1)
+	// 0 is the drain signal and passes through untouched, on both write paths.
+	assert.That(t, normalizeWeight(0)).Equal(0)
+	// An explicit positive weight passes through unchanged.
+	assert.That(t, normalizeWeight(100)).Equal(100)
+}
+
 func TestDeregisterIdempotent(t *testing.T) {
 	// Deregistering an instance that was never registered is a no-op: it must
 	// not touch the (nil) client, so shutdown can call it unconditionally as an

@@ -66,7 +66,7 @@ func newNacosBackend(c NacosConfig) (*nacosBackend, error) {
 	log.Debugf(context.Background(), starterTag, "nacos backend for server=%s group=%s ready", c.Server, c.Group)
 	return &nacosBackend{
 		reg:  reg,
-		disc: &nacosDiscovery{client: client, group: c.Group, cluster: c.Cluster},
+		disc: newNacosDiscovery(client, c.Group, c.Cluster),
 	}, nil
 }
 

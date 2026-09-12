@@ -116,6 +116,31 @@ ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 一笔成功即清零失败计数,偶发失败不触发摘除;所有实例都被摘除时回退全量。
 `Threshold <= 0`(或不挂 `WithTracker`)时完全透明,零开销。
 
+## 受管选择(治理)
+
+池的策略与摘除阈值可以从进程外驱动:按**资源标签**而不是构造期参数传进来。
+
+```go
+stop := pool.BindSelection("http:user-svc") // 治理缺席时是空操作
+defer stop()
+```
+
+- `BindSelection(label)` **立刻**应用该标签当前的 `Selection`,之后每次变更再应用一次,
+  全部原地生效——不重建、不重连,下一次 `Pick` 就走新策略。它返回解绑函数:生命周期
+  短于进程的池**必须**调用,否则治理中心会留着一个指向已死池的回调。
+- 没有注册 provider 时(没 import 治理 starter,或治理关闭)该调用是空操作,池保持构造
+  时的策略——与 `resilience.ExecutorFor` 同样的透明旁路。
+- 策略名留空 = 保持当前策略;策略名写错 = **被忽略**,沿用上一个可用策略。摘除阈值
+  总是应用。
+- 摘除那一半只在挂了 `Tracker`(`WithTracker`)且 `Pick` 配对了 `Complete` 的池上才有效果
+  ——两者缺一,阈值就是设在了空气上。
+
+`RegisterSelectionProvider` 由策略归属方调用一次——治理 starter 在 go live 时调用它,
+客户端永远不调。传 `nil` 重新解除,这也是它能被进程内测试的原因。
+
+`Pool.ApplySelection` 是同一个落点的直接入口,`Pool.Selection()` 可读回最近一次被接受的
+策略——自己管配置、不经 provider 时用得上。
+
 ## Pick/Complete 契约
 
 两段必须**恰好配对一次**。漏调 `Complete` 的后果: `least_conn` 在途计数

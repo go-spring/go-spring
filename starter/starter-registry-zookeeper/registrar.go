@@ -127,22 +127,31 @@ func (r *zkRegistrar) pathFor(reg instance) string {
 	return r.basePath + "/" + reg.ServiceName + "/" + instanceID(reg)
 }
 
+// normalizeWeight clamps a misconfigured negative weight to 1 at write time.
+// 0 passes through as the drain signal; an unset weight is expressed by the
+// ${spring.registry.weight} default, not by this clamp. Register and
+// UpdateWeight share it so both write paths agree on the contract.
+func normalizeWeight(w int) int {
+	if w < 0 {
+		return 1
+	}
+	return w
+}
+
 // Register writes reg as an ephemeral znode, creating the persistent parent
 // directories on demand. Re-registering the same instance replaces the node so
 // the entry is refreshed rather than duplicated. The advertised value is also
 // remembered so the session monitor can re-create the node (with its latest
 // weight) after a session loss.
-func (r *zkRegistrar) Register(_ context.Context, reg instance) error {
+func (r *zkRegistrar) Register(ctx context.Context, reg instance) error {
 	if reg.Addr == "" {
 		return errutil.Explain(nil, "registry-zookeeper: addr is required")
 	}
-	// An unset (or misconfigured negative) weight is normalized at write time
-	// so "default" is never stored as 0 — 0 is reserved for the runtime drain
-	// signal, only reachable through UpdateWeight.
-	if reg.Weight <= 0 {
-		reg.Weight = 1
-	}
-	if err := r.createNode(reg); err != nil {
+	reg.Weight = normalizeWeight(reg.Weight)
+	attempt := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial)
+	err := r.createNode(reg)
+	attempt(err)
+	if err != nil {
 		return err
 	}
 	r.mu.Lock()
@@ -190,10 +199,8 @@ func (r *zkRegistrar) createNode(reg instance) error {
 // are undisturbed and a discovery backend simply sees the new value. A weight
 // of 0 is the drain signal: it serializes as an omitted weight field, which
 // readers reconstruct as 0 and exclude from picking.
-func (r *zkRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) error {
-	if weight < 0 {
-		weight = 1
-	}
+func (r *zkRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int) error {
+	weight = normalizeWeight(weight)
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,
@@ -209,7 +216,10 @@ func (r *zkRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) 
 	} else if stat == nil {
 		return errutil.Explain(nil, "registry-zookeeper: update weight for unregistered instance %q", path)
 	}
-	if _, err := r.conn.Set(path, val, -1); err != nil {
+	report := discovery.WeightChange(ctx, obsSystem, reg.ServiceName)
+	_, err = r.conn.Set(path, val, -1)
+	report(err)
+	if err != nil {
 		return errutil.Explain(err, "registry-zookeeper: update weight set %q", path)
 	}
 	// Remember the new weight so a post-recovery re-create advertises it.
@@ -224,15 +234,20 @@ func (r *zkRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) 
 
 // Deregister removes the instance znode. It is idempotent: deregistering an
 // instance that is not registered (ErrNoNode) is a no-op.
-func (r *zkRegistrar) Deregister(_ context.Context, reg instance) error {
+func (r *zkRegistrar) Deregister(ctx context.Context, reg instance) error {
 	path := r.pathFor(reg)
 	r.mu.Lock()
 	delete(r.regs, path)
 	r.mu.Unlock()
-	if err := r.conn.Delete(path, -1); err != nil && !errors.Is(err, zk.ErrNoNode) {
-		return errutil.Explain(err, "registry-zookeeper: deregister %q", reg.ServiceName)
+	report := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName)
+	err := r.conn.Delete(path, -1)
+	if errors.Is(err, zk.ErrNoNode) {
+		err = nil // already gone: the desired end state holds, so this is a success
+	} else if err != nil {
+		err = errutil.Explain(err, "registry-zookeeper: deregister %q", reg.ServiceName)
 	}
-	return nil
+	report(err)
+	return err
 }
 
 // monitorSession polls the connection state once a second. Leaving
@@ -255,7 +270,7 @@ func (r *zkRegistrar) monitorSession() {
 			var heal bool
 			degraded, heal = reconcileSession(degraded, r.state())
 			if degraded && !wasDegraded {
-				log.Errorf(context.Background(), log.TagAppDef,
+				log.Errorf(context.Background(), starterTag,
 					"zookeeper session lost (state=%s); registered nodes are gone or going, they will be re-created once the session is re-established", r.state())
 			}
 			if heal {
@@ -288,10 +303,10 @@ func (r *zkRegistrar) healAll() {
 		default:
 		}
 		if err := r.reRegisterAll(); err == nil {
-			log.Infof(context.Background(), log.TagAppDef, "re-created registered zookeeper node(s) after session recovery")
+			log.Infof(context.Background(), starterTag, "re-created registered zookeeper node(s) after session recovery")
 			return
 		} else {
-			log.Errorf(context.Background(), log.TagAppDef,
+			log.Errorf(context.Background(), starterTag,
 				"re-create zookeeper node(s) failed: %v; retrying in %s", err, backoff)
 		}
 		select {
@@ -317,7 +332,13 @@ func (r *zkRegistrar) reRegisterAll() error {
 	}
 	r.mu.Unlock()
 	for _, reg := range regs {
-		if err := r.reRegister(reg); err != nil {
+		// Each re-creation is a registration attempt of its own: it reports as
+		// self_heal so a dashboard can tell "the ensemble lost my node" from the
+		// initial publish, and healAll retrying the whole pass reports again.
+		attempt := discovery.RegisterAttempt(context.Background(), obsSystem, reg.ServiceName, discovery.ReasonSelfHeal)
+		err := r.reRegister(reg)
+		attempt(err)
+		if err != nil {
 			return err
 		}
 	}

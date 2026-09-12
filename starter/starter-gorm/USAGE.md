@@ -156,7 +156,18 @@ govern.default.error-threshold=20
 govern.default.open-duration=5s
 govern.default.max-retries=1
 govern.default.timeout=500ms
+# Endpoint selection rides the same label: govern.rules[N].balancer /
+# outlier-threshold / outlier-suspend-for for "gorm:mysql:orders-db" drive the
+# entry's pool in place (see cloud/governance/CONFIG_CN.md §3.1).
 ```
+
+Every dialect that dials through discovery builds its pool with a suspension tracker and binds it
+to the entry's resource label via `loadbalance.Pool.BindSelection` — the same label that already
+carries its protection policy — so `balancer` / `outlier-threshold` / `outlier-suspend-for` apply
+in place, without restarting or rebuilding the client. The dialer's only outcome signal is the
+dial itself, so `outlier-threshold` evicts instances that keep refusing *connections*; query
+failures belong to the resilience executor. Direct (`addr`/`host`-only) entries have no candidate
+set, so these keys are inert for them.
 
 External dependencies (docker):
 

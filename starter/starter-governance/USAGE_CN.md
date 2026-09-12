@@ -145,7 +145,7 @@ go run . -manual
 保存后 ~1 秒内生效（fsnotify），无需重启、无全应用 re-bind。
 
 **变体 —— 换一个 source**：把 `govern.source.file.path` 换成 `govern.source.http.*`（控制台），
-或用各自 starter 的 nacos/etcd source key。每个进程只有一个活跃 source；已经不存在
+或用各自模块的 nacos/etcd source key。每个进程只有一个活跃 source；已经不存在
 app.properties 内嵌规则的路径——规则一律经 Source 进入。
 
 **变体 —— 与 server starter 组合**：任何接到中立 seam（`resilience.ExecutorFor(system, label)`、
@@ -178,8 +178,8 @@ type Source interface {
 
 wiring 从注入到 `wiring.Src` 的 bean 选取 source（`wiring.go:38-43`）。
 适配器家族：本 starter 的 `FileSource`（fsnotify）、`HTTPSource`（定间隔轮询）；
-nacos（ListenConfig 推送）在 `experimental/starter-config-nacos`，etcd（Watch 推送）在
-`starter-config-etcd`；`governance.PushSource` 用于手写推送集成。
+nacos（ListenConfig 推送）在 `starter-governance-nacos`，etcd（Watch 推送）在
+`starter-governance-etcd`；`governance.PushSource` 用于手写推送集成。
 
 ### 2.2 bean 生命周期时间线
 
@@ -264,8 +264,8 @@ poller）可能在 wiring Rooter arm 治理之前初始化。`governance.OnReady
 | `govern.source.http.headers` | map[string]string | 空 | 否 | 每次请求都带，如控制台的 `headers.authorization=Bearer xxx`。 | 缺鉴权 → 每次抓取 401 → 卡在上一份好配置。 |
 
 每进程恰有一个活跃 source：同时配 file 和 http 会注册两个 bean 但中心只持一个——bean 注入
-竞争结果未定义；只配一个。各 starter 里的远端适配器：`govern.source.nacos.*`
-（starter-config-nacos，ListenConfig 推送）与 `govern.source.etcd.*`（starter-config-etcd：
+竞争结果未定义；只配一个。各模块里的远端适配器：`govern.source.nacos.*`
+（starter-governance-nacos，ListenConfig 推送）与 `govern.source.etcd.*`（starter-governance-etcd：
 `endpoint`、`key`……，Watch 推送）——文档在所有这些后端间逐字节可移植。
 
 没有默认路径：没有 `govern.source.*` key（也没有注入/`SetSource` 的 source）时中心保持 disabled。
@@ -398,7 +398,7 @@ src.Push(cfg)
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key（source） | 5（本 starter）+ 各自 starter 里的 nacos/etcd |
+| 配置 key（source） | 5（本 starter）+ 各自模块里的 nacos/etcd |
 | 必填 | 1（所选 source 的 `path`/`url`） |
 | 规则文档 key | 顶层 4 + 16 个 policy 旋钮 ×2（default/rules[n]）+ fault 7 + fault 规则 4 |
 | quickstart 前置外部依赖 | 0（file source）；http 需一个控制台 |

@@ -176,7 +176,8 @@ import starter-neo4j
 gs.Run()
   ├─ 构造 newClient [starter.go:88]：记录实例创建日志
   │   ├─ 若设置 service-name 且 mesh 关闭：resolveURI → 选一个端点，
-  │   │  地址拼进 URI host [starter.go:91-98, driver.go:129-157]
+  │   │  地址拼进 URI host [starter.go:91-98, driver.go:129-157]；同一个 resolver
+  │   │  还喂给 driver 的 AddressResolver，种子主机挂掉后 neo4j:// client 可重新找回集群
   │   ├─ 可选 Driver bean——没有则回退内置 DefaultDriver（d == nil
   │   │  回退 [starter.go:100-103]）；多个并存时实例可按名指定：
   │   │  `spring.neo4j.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
@@ -254,14 +255,22 @@ globals——没有任何配置开关；Query 的访问日志恒经该包级 obs
 `NewSession`/`session.Run` 的代码，绕过第 1-2 步的一切——无观测也无保护。这是缺失
 接缝的既定代价（§6）。
 
-### 2.4 服务发现寻址 —— 一次性
+### 2.4 服务发现寻址 —— 种子 + 路由模式下的自愈
 
 设置 `service-name` 且 mesh 关闭时，`resolveURI` 在 `discovery` 后端上建 Resolver、
 选一个端点、把地址拼进 URI host [driver.go:129-157]。neo4j driver 无 dialer 注入点，
-因此是**启动时一次性解析**——启动后的地址变化不会感知，除非重建 client
-（config.go:79-83 注释）。Resolver 存活仅为与其它 client starter 的生命周期统一，
-停机时 Stop。mesh 模式（`GS_MESH=on`）下 sidecar 负责发现+LB，URI 原样使用
-[starter.go:80-87]。
+所以这个地址是**启动种子**——运行期不会按查询重挑。真正继续跟随命名服务的是 driver 自己的
+`AddressResolver` 钩子，由同一个 resolver 驱动 [driver.go:67-84]：路由驱动（`neo4j://` scheme）
+在无法从拨号地址建立路由表时会咨询它——也就是种子主机消失的那一刻。所以路由模式的 client 能
+**不重启**恢复到当前集群；而 **`bolt://` 直连没有路由表，会一直停在启动地址上**。注册中心抖动时
+该钩子回吐 driver 手中已有的地址，绝不把一次读失败变成空路由表。mesh 模式（`GS_MESH=on`）下
+sidecar 负责发现+LB，URI 原样使用 [starter.go:80-87]。
+
+⚠ **刻意不接受管的端点选择。** 没有"每次查询挑选"可管：启动那次挑选被固化进 URI 字符串，池在同一
+个函数里建了就用、用完就丢。因此 `govern.rules[N].balancer` / `outlier-threshold` 对 neo4j 无效；
+它的治理止于保护策略（label 为 `neo4j:<service-name|uri>` 的 timeout / retries / breaker）。写在这里
+是为了让这个缺口读起来是**决策**而不是遗漏。（上面的 `AddressResolver` 管的是**哪个集群**，
+不是**哪个节点**——节点仍然由 driver 自己选。）
 
 ---
 
@@ -275,7 +284,7 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|---------|-------------------------|------------------------------|
 | `uri` | string | — | **必填**（`expr:"$ != ''"`）。scheme 决定路由+加密：`bolt`/`neo4j` 明文，`neo4j+s`/`bolt+s` TLS，`+ssc` 自签。⚠ 设置 `service-name` 时 host 被发现结果替换（example 故意用哑地址 `bolt://0.0.0.0:0`）。 | 缺失 → BindEach 报错并点名实例；scheme 非法 → 构造期 driver 报错。 |
-| `service-name` | string | — | 经发现后端解析地址，启动时一次（§2.4）。⚠ 需有匹配的命名后端 bean。 | 后端未注册 → 启动报错 "neo4j: resolve service …"。 |
+| `service-name` | string | — | 经发现后端解析**启动地址**，并为 `neo4j://` client 保留一份活的路由集用于自愈（§2.4）。⚠ 需有匹配的命名后端 bean。 | 后端未注册 → 启动报错 "neo4j: resolve service …"。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme 的端点；仅 `service-name` 生效时被读取。 | — |
 | `discovery` | string | — | 用哪个已注册后端解析 `service-name`。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
 

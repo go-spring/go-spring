@@ -1,7 +1,7 @@
 # starter-lock-etcd Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
-against the starter source (`starter.go`, `config.go`, `etcdlock.go`, `observe.go`), the shared
+against the starter source (`starter.go`, `config.go`, `lock.go`, `observe.go`), the shared
 abstraction [cloud/lock](../../../cloud/lock), and the self-asserting
 [example/](example) (`example/check.sh`). etcd's own semantics (leases, concurrency package) are
 [etcd docs](https://etcd.io/docs/latest/dev-guide/api_concurrency_reference/) — everything below
@@ -147,7 +147,7 @@ import starter-lock-etcd
 ```
 
 Each acquisition opens a **fresh `concurrency.Session`** (its own lease with automatic keepalive,
-`etcdlock.go newMutex`), so one hold's lease and `Lost()` channel are isolated from any other
+`lock.go newMutex`), so one hold's lease and `Lost()` channel are isolated from any other
 outstanding hold.
 
 ### 2.2 Three-layer timing resolution (all lock backends)
@@ -162,7 +162,7 @@ layer wins:
 | 3. package default | TTL `30s`, renew `TTL/3`, retry `100ms` | fill whatever is still unset |
 
 The resolved TTL is converted to whole seconds, rounding sub-second values **up** with a 1s floor
-(`etcdlock.go ttlSeconds`), because etcd leases use integer TTLs.
+(`lock.go ttlSeconds`), because etcd leases use integer TTLs.
 
 ### 2.3 One lock, layer by layer (acquire → hold → release)
 

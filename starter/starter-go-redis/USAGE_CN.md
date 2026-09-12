@@ -205,6 +205,13 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 `0.0.0.0:0` 来证明这点）。sentinel/cluster 模式下设置 `service-name` 会在启动期被拒绝：
 这两种拓扑自己发现节点 [starter.go:170-194]。
 
+**池的策略归治理管，不是写死的。** 它挂着 suspension tracker，并经
+`loadbalance.Pool.BindSelection` 绑到 `redis:<service-name|master-name|addr>`，所以该 label 命中的
+`govern.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号
+就用新策略。dialer 把拨号结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例。
+sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不了它们。详见
+`cloud/governance/CONFIG_CN.md` §3.1。
+
 ---
 
 ## 3. 逐 key 行为参考

@@ -46,4 +46,3 @@ type ConsulConfig struct {
 	// skipped Deregister). Zero disables auto-deregistration.
 	DeregisterCriticalAfter time.Duration `value:"${deregister-critical-after:=1m}"`
 }
-

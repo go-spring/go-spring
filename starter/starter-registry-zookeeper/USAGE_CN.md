@@ -104,7 +104,7 @@ spring.redis.demo.discovery=zookeeper.main   # 后端 bean 名
 
 ```bash
 go run .                                   # 日志：registered "orders" at 127.0.0.1:8080
-# example 自校验并打印：registered node=orders-127.0.0.1:8080 value={...}
+# example 自校验并打印：discovered endpoint=127.0.0.1:8080 weight=100 metadata=map[version:v1 zone:cn-north]
 ```
 
 用 ZooKeeper shell 交互验证：
@@ -185,8 +185,8 @@ unregistered instance`），负权重映射为 1 但 0 原样放行，然后用 
 `Endpoint.Weight == 0` → `excludeDrained` 把它从所有负载均衡策略中剔除；仅当全部 endpoint
 都被摘流时才回退用全集。`UpdateWeight(ctx, 100)` 恢复。
 
-初始 Register 时权重归一 `<=0 → 1`，"默认"绝不存成 0——0 保留给运行期摘流信号，只有
-`UpdateWeight` 能到达。
+初始 Register 时负权重归一为 1；**0 原样透传即摘流信号**，配置 `weight=0` 即注册一个
+已摘流实例。
 
 ---
 
@@ -206,7 +206,7 @@ unregistered instance`），负权重映射为 1 但 0 原样放行，然后用 
 | `spring.registry.service-name` | string | `` | 逻辑服务名；成为 znode 目录名，也是发现侧解析的名字。**注册意图信号**：配了块而不设 → 合法的纯消费方 | 设了而 `addr` 为空：Run 返回 `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required`——此时应用其他部分已起来 |
 | `spring.registry.addr` | string | ``（注册时必填） | 广播的 `host:port`；绝不猜测 | 空：同上 Run 报错；格式错误不做校验（不同于 consul 的数字端口检查）——原样存储，消费方拨号才失败 |
 | `spring.registry.id` | string | `` | 实例 id 覆写；空则派生 `<service-name>-<addr>`，重启替换同一 znode（`registrar.go`） | ⚠ 跨进程 id 重复 → 后注册者删除并顶掉先注册者的节点 |
-| `spring.registry.weight` | int | `100` | 广播的 LB 权重；`<=0` 写入时归一为 1 | 0 在这里**不**摘流（被归一）；摘流只有 `UpdateWeight(0)` |
+| `spring.registry.weight` | int | `100` | 广播的 LB 权重；负权重写入时归一为 1 | 0 = 摘流，启动期即生效，与 `UpdateWeight(0)` 同语义 |
 | `spring.registry.metadata.*` | map[string]string | 空 | 任意属性（zone、version……）存进 znode 载荷并透传到 discovery Metadata | — |
 
 同一 `<name>` 的两个块会在容器里因 bean 重名而响亮报错；不同后端之间的块名永不冲突（bean 名
@@ -219,7 +219,7 @@ unregistered instance`），负权重映射为 1 但 0 原样放行，然后用 
 zk 侧检查均可用容器内 `zkCli.sh`（见 §1）或任意 zk 客户端完成。
 
 1. **注册 → 解析**：启动 example——它自己列举 `/services/orders` 并打印
-   `registered node=... value=...`；`check.sh` 正是 grep 这个标记。zkCli 里
+   `discovered endpoint=... weight=... metadata=...`；`check.sh` 正是 grep 这个标记。zkCli 里
    `ls /services/orders` 见一个 child `orders-127.0.0.1:8080`；`get` 见 JSON 载荷含
    `"weight":100`，且 `ephemeralOwner != 0`（临时节点标记）。
 2. **UpdateWeight(0) 摘流 + 恢复**：注入名为 `registryServer` 的 `gs.Server`，调用
@@ -242,8 +242,8 @@ zk 侧检查均可用容器内 `zkCli.sh`（见 §1）或任意 zk 客户端完�
 7. **双写（两个块）**：加第二个块（`spring.registry.zookeeper.dr.servers=...`）——同一实例
    出现在两个集群下（一次发布扇出），启动日志为 `in 2 registry center(s)`。
 
-本模块运行期日志带默认应用 tag（`logger.appdef`），注册生命周期日志带核心的 `_app_registry`
-tag。自身不产出 metrics/trace/健康 indicator——会话无声过期时**什么日志都没有**。
+本模块运行期日志带专属 tag `_app_registry_zookeeper`（`log.RegisterAppTag("registry_zookeeper", "")`），
+经 `logger.<name>.tag=_app_registry_zookeeper` 单独调级；共享的注册生命周期日志带核心的 `_app_registry` tag。可观测性：注册与发现经 OTel 全局产出指标——未引入 `starter-otel` 时全部 no-op。`register`、`deregister`、`update_weight` 各有一个 client span 与一条 `registry.operation.duration`（标签 `system`/`operation`/`service`/`status`）；`registry.registration.attempts_total` 按 `reason` 与 `status` 计数；`registry.instance.registered` gauge 在发布中为 1、否则为 0——自愈失败会落在这里，而不只是出现在日志里。发现半边把每次后台缓存同步上报到 `discovery.sync_total`，并维持 `discovery.cache.age_seconds`（距上次确认新鲜的秒数），watch 死掉时表现为持续爬升，而不是静默返回陈旧地址。 `reason` 取 `initial`（初次发布）与 `self_heal`（后台重注册）。 会话丢失本身仍有日志（monitor 的 `zookeeper session lost ...`），且现在也会体现在上面的指标里。
 
 ---
 
@@ -272,7 +272,7 @@ tag。自身不产出 metrics/trace/健康 indicator——会话无声过期时*
 | 配置 key 总数 | 10（每块连接 5 + 实例 5） |
 | 其中必填 | 每块 1 个（`servers`）+ 注册时 2 个（`service-name`、`addr`） |
 | quickstart 前置外部依赖 | 1（ZooKeeper，docker） |
-| "注意/坑" 条数 | 4（会话过期无声；weight 归一化；重启替换；id 冲突） |
+| "注意/坑" 条数 | 4（会话过期无声；weight 负值静默归一；重启替换；id 冲突） |
 
 嫌疑清单（保留旧版条目，另记新发现）：
 

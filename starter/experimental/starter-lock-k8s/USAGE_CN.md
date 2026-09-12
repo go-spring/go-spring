@@ -3,7 +3,7 @@
 [English](USAGE.md) | [中文](USAGE_CN.md)
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
-（`starter.go`、`config.go`、`k8slock.go`、`observe.go`）、共享抽象
+（`starter.go`、`config.go`、`lock.go`、`observe.go`）、共享抽象
 [cloud/lock](../../../cloud/lock) 与 [example/](example)（含集群内
 运行的 `deploy/`）核实。Lease 语义对齐 client-go 的 leader election——见
 [Kubernetes Lease API](https://kubernetes.io/docs/concepts/architecture/leases/)；本文只写
@@ -147,7 +147,7 @@ import starter-lock-k8s
 ```
 
 每次获取锁对应**一个 Lease 对象**（名 = `keyPrefix + key`）并运行**自己的续约
-goroutine**（`k8slock.go` tryOnce），各持有互不影响。
+goroutine**（`lock.go` tryOnce），各持有互不影响。
 
 ### 2.2 三层时序解析（所有锁后端共享）
 
@@ -160,7 +160,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 | 3. 包默认 | TTL `30s`、renew `TTL/3`、retry `100ms` | 兜底层 1 未设置的项 |
 
 解析后的 TTL 写入 Lease 的 `leaseDurationSeconds`——整秒、向上取整、下限 1 秒
-（`k8slock.go` leaseSeconds）。
+（`lock.go` leaseSeconds）。
 
 ### 2.3 一次锁的逐层走读（acquire → 持有 → release）
 

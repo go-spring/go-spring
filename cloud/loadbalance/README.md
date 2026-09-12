@@ -130,6 +130,38 @@ A single success resets the failure count, so sporadic failures never
 trigger suspension; when every instance is suspended the filter falls back to
 the full set. `Threshold <= 0` (or no `WithTracker`) is fully transparent.
 
+## Managed selection (governance)
+
+A pool's strategy and suspension thresholds can be driven from outside the
+process, by resource label rather than by construction-time argument:
+
+```go
+stop := pool.BindSelection("http:user-svc") // no-op when governance is absent
+defer stop()
+```
+
+- `BindSelection(label)` applies the label's current `Selection` **immediately**
+  and again on every change, in place — no rebuild, no re-dial, the very next
+  `Pick` sees it. It returns the detach func; a pool that is not process-lifetime
+  MUST call it, or the authority keeps a callback pointing at a dead pool.
+- With no provider registered (the governance starter is not imported, or
+  governance is off) the call is a no-op and the pool keeps the strategy it was
+  built with — the same transparent pass-through as `resilience.ExecutorFor`.
+- An empty strategy name leaves the current strategy alone; an **unknown** name
+  is ignored and the last good strategy stays in force. The suspension thresholds
+  are always applied.
+- The suspension half only has an effect on a pool with a `Tracker` attached
+  (`WithTracker`) whose `Pick` is paired with `Complete` — without both, the
+  thresholds are set on nothing.
+
+`RegisterSelectionProvider` is called once, by whoever owns the policy — the
+governance starter calls it when it goes live; clients never call it. Passing
+`nil` disarms the seam again, which is what makes it testable in-process.
+
+`Pool.ApplySelection` is the same sink reached directly, and `Pool.Selection()`
+reads back the policy most recently accepted — useful when you drive selection
+from your own config instead of a provider.
+
 ## The Pick/Complete contract
 
 The two calls must be paired **exactly once**. Skipping `Complete`:

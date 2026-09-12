@@ -5,7 +5,7 @@
 family (`go-spring.org/cloud/governance/resilience`). It defines the neutral
 contract every adapter and driver satisfies, and ships an in-tree driver so
 the framework works out of the box; production installs typically swap in the
-sentinel driver from `starter/experimental/starter-resilience`.
+sentinel driver from `starter/starter-resilience`.
 
 ## 1. Responsibilities & Boundaries
 

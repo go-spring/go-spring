@@ -19,7 +19,7 @@
 
 `starter-registry-consul` 只做注册侧(它宣告一个实例)。网关的 `lb://order` 和
 order→inventory 需要一个*客户端侧*的 `discovery.Discovery`,而只有
-`starter-discovery-k8s` 提供这种能力。
+`starter-registry-k8s` 提供这种能力。
 
 **在示例中桥接**,通过 `internal/consuldisc`——一个由 Consul catalog 支撑的
 `discovery.Discovery`,用 `discovery.Register("consul", …)` 注册。它证明了

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "govern.source.etcd",
+  "description": "Etcd-backed governance rule source. The bean is registered only when govern.source.etcd is present.",
+  "type": "object",
+  "properties": {
+    "govern.source.etcd": {
+      "type": "object",
+      "description": "Governance rules source bound at govern.source.etcd.*",
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "description": "Etcd endpoint, required"
+        },
+        "key": {
+          "type": "string",
+          "description": "KV key holding the rules document, required"
+        },
+        "username": {
+          "type": "string",
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "default": ""
+        },
+        "format": {
+          "type": "string",
+          "description": "Override document format; inferred from key extension by default",
+          "default": ""
+        }
+      },
+      "required": [
+        "endpoint",
+        "key"
+      ]
+    }
+  }
+}

@@ -148,7 +148,16 @@ govern.default.error-threshold=20
 govern.default.open-duration=5s
 govern.default.max-retries=1
 govern.default.timeout=500ms
+# 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 govern.rules[N].balancer /
+# outlier-threshold / outlier-suspend-for 原地驱动该 entry 的池
+# （见 cloud/governance/CONFIG_CN.md §3.1）。
 ```
+
+每个走发现拨号的方言都给池挂上 suspension tracker，并经 `loadbalance.Pool.BindSelection` 绑到
+该 entry 的资源标签——也就是它保护策略用的同一个标签——于是 `balancer` / `outlier-threshold` /
+`outlier-suspend-for` 原地生效，不用重启、不用重建客户端。dialer 能拿到的成败信号只有拨号本身，
+所以 `outlier-threshold` 摘的是**反复连不上**的实例；查询失败归 resilience executor 管。直连
+（只配 `addr`/`host`）的 entry 没有候选集，这些 key 对它无效。
 
 前置外部依赖(docker):
 

@@ -24,7 +24,7 @@ backed by Kubernetes `coordination.k8s.io/Lease` objects.
   seam scales beyond storage systems.
 - **`buildClient` seam.** Tests inject a client-go fake clientset via
   `newK8sLockerWithClient`, so the RBAC / API-server behaviors can be
-  unit-tested without a live cluster (`k8slock_test.go`).
+  unit-tested without a live cluster (`lock_test.go`).
 - **Per-hold renewal goroutine.** Each held lock owns its own renewal
   ticker and `Lost()` channel; the shared clientset is reused across
   holds. `renewLoop` mirrors client-go's leaderelection: create the Lease

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package StarterRegistry is the registration core: the ONE server that owns
+// Package registrycore is the registration family core: the ONE server that owns
 // this process's publication lifecycle across every configured registry
 // center. The backend starters (starter-registry-etcd, starter-registry-consul,
 // starter-registry-nacos, starter-registry-zookeeper) each contribute one
@@ -35,7 +35,7 @@
 // shutdown begins (via PreStop), so discovery stops handing it out before it
 // actually stops serving. That ordering is what makes a rolling restart
 // lossless.
-package StarterRegistry
+package registrycore
 
 import (
 	"context"

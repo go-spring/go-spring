@@ -18,7 +18,7 @@
 // real system the resource server would verify against an identity provider's
 // public key or a JWKS endpoint; here every process (the token minter and the
 // order resource server) reads the same constant so the sample is self-contained
-// with no external IdP. It matches spring.security.jwt.api.secret in
+// with no external IdP. It matches spring.security.jwt.instances.api.secret in
 // cmd/order/conf/app.properties.
 package authsecret
 

@@ -23,7 +23,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/session"
+	"go-spring.org/cloud/experimental/session"
 )
 
 // newTestStore starts an in-process Redis and returns a ByteStore over its

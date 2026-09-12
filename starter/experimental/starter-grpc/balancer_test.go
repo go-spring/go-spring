@@ -92,7 +92,7 @@ func newTestPickerBuilder(t *testing.T) *gsPickerBuilder {
 	t.Helper()
 	bal, err := loadbalance.New(loadbalance.RoundRobin)
 	assert.That(t, err).Nil()
-	return &gsPickerBuilder{bal: bal, tracker: loadbalance.NewTracker(loadbalance.TrackerConfig{
+	return &gsPickerBuilder{defaultBal: bal, tracker: loadbalance.NewTracker(loadbalance.TrackerConfig{
 		Threshold:  5,
 		SuspendFor: 30 * time.Second,
 	})}
@@ -221,4 +221,89 @@ func TestPollLoop_PushesChanges(t *testing.T) {
 		t.Fatal("pollLoop did not observe context cancellation promptly")
 	case <-ctx.Done():
 	}
+}
+
+// governedPicker builds a picker over two READY SubConns whose weights are 9:1,
+// so a round-robin strategy splits them evenly while a weighted one strongly
+// favors the first. governed mirrors what init passes for the built-in names.
+func governedPicker(t *testing.T, governed bool) (balancer.Picker, *fakeSubConn, *fakeSubConn) {
+	t.Helper()
+	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	assert.That(t, err).Nil()
+	pb := &gsPickerBuilder{
+		defaultBal: bal,
+		tracker:    loadbalance.NewTracker(loadbalance.TrackerConfig{}),
+		governed:   governed,
+	}
+	a, b := &fakeSubConn{addr: "10.0.0.1:80"}, &fakeSubConn{addr: "10.0.0.2:80"}
+	picker := pb.Build(base.PickerBuildInfo{ReadySCs: map[balancer.SubConn]base.SubConnInfo{
+		a: {Address: addrFromEndpoint(discovery.Endpoint{Addr: a.addr, Healthy: true, Weight: 9})},
+		b: {Address: addrFromEndpoint(discovery.Endpoint{Addr: b.addr, Healthy: true, Weight: 1})},
+	}})
+	return picker, a, b
+}
+
+// countPicks drives n picks through picker and returns how many landed on each
+// address. Every pick is completed successfully so no suspension interferes.
+func countPicks(t *testing.T, picker balancer.Picker, n int) map[string]int {
+	t.Helper()
+	counts := map[string]int{}
+	// The fake SubConns are map keys only; recover the address from the result by
+	// matching on the picker's own address book.
+	p := picker.(*gsPicker)
+	for range n {
+		r, err := picker.Pick(balancer.PickInfo{Ctx: context.Background()})
+		assert.Error(t, err).Nil()
+		for addr, sc := range p.byAddr {
+			if sc == r.SubConn {
+				counts[addr]++
+				break
+			}
+		}
+		r.Done(balancer.DoneInfo{})
+	}
+	return counts
+}
+
+// TestPicker_GovernedStrategyOverride covers the strategy half of gRPC
+// governance: a built-in gs_* balancer keeps the strategy its service config
+// selected until a rule names one, then follows the pushed strategy — on the very
+// next pick, with no re-dial and no picker rebuild — and falls back to its own
+// strategy when the rule stops naming one.
+func TestPicker_GovernedStrategyOverride(t *testing.T) {
+	defer governedBal.Store(nil)
+	governedBal.Store(nil)
+
+	picker, a, _ := governedPicker(t, true)
+
+	// No override in force: the registered round_robin strategy splits evenly.
+	counts := countPicks(t, picker, 40)
+	assert.Number(t, counts[a.addr]).Equal(20)
+
+	// A pushed rule swaps the strategy in place: weighted follows the 9:1 weights.
+	weighted, err := loadbalance.New(loadbalance.Weighted)
+	assert.That(t, err).Nil()
+	governedBal.Store(&weighted)
+	counts = countPicks(t, picker, 100)
+	assert.That(t, counts[a.addr] > 80).True()
+
+	// Clearing the override returns the balancer to its service-config strategy.
+	governedBal.Store(nil)
+	counts = countPicks(t, picker, 40)
+	assert.Number(t, counts[a.addr]).Equal(20)
+}
+
+// TestPicker_CustomNameIgnoresGovernanceOverride pins the boundary of the
+// override: it applies to the built-in gs_* names only. A name registered through
+// RegisterBalancer exists precisely to keep its own strategy, so it must ignore a
+// process-wide rule.
+func TestPicker_CustomNameIgnoresGovernanceOverride(t *testing.T) {
+	defer governedBal.Store(nil)
+	weighted, err := loadbalance.New(loadbalance.Weighted)
+	assert.That(t, err).Nil()
+	governedBal.Store(&weighted)
+
+	picker, a, _ := governedPicker(t, false)
+	counts := countPicks(t, picker, 40)
+	assert.Number(t, counts[a.addr]).Equal(20)
 }

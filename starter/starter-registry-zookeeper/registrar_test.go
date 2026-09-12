@@ -38,6 +38,15 @@ func TestPathFor(t *testing.T) {
 	assert.That(t, got).Equal("/services/orders/orders-1.2.3.4:80")
 }
 
+func TestNormalizeWeight(t *testing.T) {
+	// A misconfigured negative weight clamps to 1.
+	assert.That(t, normalizeWeight(-5)).Equal(1)
+	// 0 is the drain signal and passes through untouched, on both write paths.
+	assert.That(t, normalizeWeight(0)).Equal(0)
+	// An explicit positive weight passes through unchanged.
+	assert.That(t, normalizeWeight(100)).Equal(100)
+}
+
 func TestInstanceValueDrainEncoding(t *testing.T) {
 	// The drain signal (weight 0) serializes as an omitted weight field —
 	// a reader reconstructs 0 and excludes the instance from picking.

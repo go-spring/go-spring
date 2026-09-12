@@ -262,6 +262,12 @@ Rationale (from the source comments, verified):
   start with suspension DISABLED; configure it once for all of them with a govern rule —
   `govern.default.outlier-threshold` / `.outlier-suspend-for` (they resolve under the
   process-wide default; `govern.rules[N].resources=grpc:client` targets them explicitly).
+  A rule's `balancer` **overrides** that service-config choice for every built-in `gs_*` name — the
+  pickers re-read it per pick, so a pushed strategy lands on the next RPC with no re-dial. Empty
+  `balancer` leaves service config in charge; an unknown name is ignored. Because the label is
+  process-wide, `grpc:client` (and `govern.default.balancer`) flips **all** built-in clients at
+  once — that is the blunt edge of this seam. Names registered via `RegisterBalancer` are exempt:
+  they keep their own strategy by design.
 - Per-call hints: `WithHashKey` (consistent-hash affinity), `WithZone` (zone-aware preference).
 - Weight=0 endpoints are filtered by the strategies themselves (pool-wide drain semantics);
   `RegisterBalancer(name, strategy, trackerConfig)` registers a custom name for isolated suspension

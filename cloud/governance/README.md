@@ -50,8 +50,8 @@ func (s *nacosRuleSource) Subscribe(cb func(governance.Config)) { ... }
 |---|---|---|
 | 独立规则文件（fsnotify） | starter-governance | `govern.source.file.path=...` |
 | 治理控制台 / 规则 API（轮询拉取） | starter-governance | `govern.source.http.url=...` |
-| Nacos 直连（专用 dataId，ListenConfig 推送） | starter-config-nacos | `govern.source.nacos.server=...` + `data-id=...` |
-| etcd 直连（专用 key，Watch 推送） | starter-config-etcd | `govern.source.etcd.endpoint=...` + `key=...` |
+| Nacos 直连（专用 dataId，ListenConfig 推送） | starter-governance-nacos | `govern.source.nacos.server=...` + `data-id=...` |
+| etcd 直连（专用 key，Watch 推送） | starter-governance-etcd | `govern.source.etcd.endpoint=...` + `key=...` |
 
 ## 为什么是平级伞包，而非挂到 resilience 下
 

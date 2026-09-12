@@ -2,11 +2,11 @@ go 1.26.1
 
 use (
 	./cloud
+	./cloud/experimental/session/example
 	./cloud/i18n/example
 	./cloud/loadtest/example
 	./cloud/lock/example
 	./cloud/security/example
-	./cloud/session/example
 	./cloud/validation/example
 	./contrib/dubbo-go/dubbo
 	./contrib/dubbo-go/jsonrpc
@@ -56,20 +56,20 @@ use (
 	./starter/experimental/starter-casbin/example
 	./starter/experimental/starter-cassandra
 	./starter/experimental/starter-cassandra/example
-	./starter/experimental/starter-config-apollo
-	./starter/experimental/starter-config-apollo/example
-	./starter/experimental/starter-config-bus
-	./starter/experimental/starter-config-bus/example
-	./starter/experimental/starter-config-consul
-	./starter/experimental/starter-config-consul/example
-	./starter/experimental/starter-config-k8s
-	./starter/experimental/starter-config-k8s/example
-	./starter/experimental/starter-config-nacos
-	./starter/experimental/starter-config-nacos/example
-	./starter/experimental/starter-config-vault
-	./starter/experimental/starter-config-vault/example
-	./starter/starter-discovery-k8s
-	./starter/starter-discovery-k8s/example
+	./starter/starter-config-apollo
+	./starter/starter-config-apollo/example
+	./starter/starter-config-bus
+	./starter/starter-config-bus/example
+	./starter/starter-config-consul
+	./starter/starter-config-consul/example
+	./starter/starter-config-k8s
+	./starter/starter-config-k8s/example
+	./starter/starter-config-nacos
+	./starter/starter-config-nacos/example
+	./starter/starter-config-vault
+	./starter/starter-config-vault/example
+	./starter/starter-registry-k8s
+	./starter/starter-registry-k8s/example
 	./starter/experimental/starter-elasticsearch
 	./starter/experimental/starter-elasticsearch/example
 	./starter/experimental/starter-elasticsearch/example-cloudnative
@@ -161,8 +161,8 @@ use (
 	./starter/starter-registry
 	./starter/starter-registry-zookeeper
 	./starter/starter-registry-zookeeper/example
-	./starter/experimental/starter-resilience
-	./starter/experimental/starter-resilience/example
+	./starter/starter-resilience
+	./starter/starter-resilience/example
 	./starter/experimental/starter-rocketmq
 	./starter/experimental/starter-rocketmq/example
 	./starter/experimental/starter-rocketmq/example-otel
@@ -248,6 +248,10 @@ use (
 	./starter/starter-gorm-sqlserver/example-otel
 	./starter/starter-governance
 	./starter/starter-governance/example
+	./starter/starter-governance-etcd
+	./starter/starter-governance-etcd/example
+	./starter/starter-governance-nacos
+	./starter/starter-governance-nacos/example
 	./starter/starter-http-client
 	./starter/starter-http-client/example
 	./starter/starter-http-client/example-load

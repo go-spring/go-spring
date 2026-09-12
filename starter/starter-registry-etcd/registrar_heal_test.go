@@ -18,6 +18,7 @@ package StarterRegistryEtcd
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,10 +26,45 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+// scriptedFailures is the queue the fake publish consumes: each entry makes one
+// publish call fail (as if etcd is still down); an empty queue lets it succeed.
+// It is mutex-guarded because the healing loop consumes from its own goroutine
+// while the test reads the remaining count — an unguarded slice would race.
+type scriptedFailures struct {
+	mu    sync.Mutex
+	items []error
+}
+
+// set replaces the scripted failures.
+func (s *scriptedFailures) set(errs ...error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = errs
+}
+
+// pull takes the next scripted failure, if any.
+func (s *scriptedFailures) pull() (error, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.items) == 0 {
+		return nil, false
+	}
+	err := s.items[0]
+	s.items = s.items[1:]
+	return err, true
+}
+
+// remaining reports how many scripted failures are left unconsumed.
+func (s *scriptedFailures) remaining() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.items)
+}
+
 // newHealRegistrar returns a registrar whose publish step is faked: each call
 // either fails (as if etcd is still down) or returns a caller-controlled
 // keep-alive channel. No etcd server is needed to drive the self-healing loop.
-func newHealRegistrar() (*etcdRegistrar, *[]error, chan chan *clientv3.LeaseKeepAliveResponse) {
+func newHealRegistrar() (*etcdRegistrar, *scriptedFailures, chan chan *clientv3.LeaseKeepAliveResponse) {
 	r := &etcdRegistrar{
 		keyPrefix:   "/services/",
 		ttlSecs:     15,
@@ -36,19 +72,17 @@ func newHealRegistrar() (*etcdRegistrar, *[]error, chan chan *clientv3.LeaseKeep
 		backoffCap:  20 * time.Millisecond,
 		holds:       map[string]*hold{},
 	}
-	fails := []error{}
+	fails := &scriptedFailures{}
 	lastKA := make(chan chan *clientv3.LeaseKeepAliveResponse, 4)
 	r.publish = func(*hold) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
-		if len(fails) > 0 {
-			err := fails[0]
-			fails = fails[1:]
+		if err, ok := fails.pull(); ok {
 			return nil, err
 		}
 		ch := make(chan *clientv3.LeaseKeepAliveResponse)
 		lastKA <- ch
 		return ch, nil
 	}
-	return r, &fails, lastKA
+	return r, fails, lastKA
 }
 
 // A keep-alive channel closing (etcd restart / lease lost) must trigger a
@@ -56,7 +90,7 @@ func newHealRegistrar() (*etcdRegistrar, *[]error, chan chan *clientv3.LeaseKeep
 // new channel is drained for the next cycle.
 func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
 	r, fails, lastKA := newHealRegistrar()
-	*fails = []error{errors.New("etcd down"), errors.New("etcd down")}
+	fails.set(errors.New("etcd down"), errors.New("etcd down"))
 
 	h := newHold(instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
@@ -71,7 +105,7 @@ func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
 	}
 	// Two failures were consumed (with backoff sleeps) and the third publish
 	// succeeded, so the watcher is alive and draining a fresh channel.
-	assert.Number(t, len(*fails)).Equal(0)
+	assert.Number(t, fails.remaining()).Equal(0)
 	h.stop()
 	// With a real etcd client, cancelling the keep-alive context closes the
 	// channel; emulate that for the fake so the drain loop observes it.
@@ -101,7 +135,7 @@ func TestWatchKeepAliveExitsOnStopWithoutRePublish(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("watcher did not exit after stop")
 	}
-	assert.Number(t, len(*fails)).Equal(0)
+	assert.Number(t, fails.remaining()).Equal(0)
 }
 
 // stopHold must be safe against a concurrent publish storing the cancel func,

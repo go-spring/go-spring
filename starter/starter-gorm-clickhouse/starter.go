@@ -31,7 +31,7 @@ import (
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/log"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/clickhouse"
 )
@@ -64,6 +64,8 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 
 	log.Debugf(ctx, log.TagAppDef, "creating gorm clickhouse client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
 
+	resource := resilience.ResourceLabel("gorm:clickhouse", c.ServiceName, c.Addr)
+
 	var (
 		dialector = clickhouse.Open(c.DSN())
 		closer    func()
@@ -95,7 +97,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 			opts.TLS = tlsCfg
 		}
 		if useDiscovery {
-			lb, _, derr := c.NewPickPool(ctx, backend)
+			lb, _, stopSelection, derr := c.NewPickPool(ctx, backend, resource)
 			if derr != nil {
 				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build discovery resolver failed: %v", derr)
 				return gormcore.Spec{}, derr
@@ -108,9 +110,14 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 				if perr != nil {
 					return nil, perr
 				}
-				return nd.DialContext(ctx, "tcp", ep.Addr)
+				conn, derr := nd.DialContext(ctx, "tcp", ep.Addr)
+				// The dial outcome is the only signal this picker has; feeding it
+				// makes outlier suspension evict an instance that keeps refusing
+				// connections.
+				lb.Complete(ep, derr)
+				return conn, derr
 			}
-			closer = nil
+			closer = stopSelection
 		}
 		dialector = clickhouse.New(clickhouse.Config{Conn: ch.OpenDB(opts)})
 	}
@@ -123,7 +130,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 	return gormcore.Spec{
 		Dialector:      dialector,
 		Pool:           c.Pool(),
-		Resource:       resilience.ResourceLabel("gorm:clickhouse", c.ServiceName, c.Addr),
+		Resource:       resource,
 		ObserveEnabled: c.ObserveEnabled,
 		Closers:        closers,
 	}, nil

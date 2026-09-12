@@ -29,8 +29,9 @@
 //
 // It exists for VM / bare-metal / hybrid deployments where the platform does
 // not register instances for you. In pure Kubernetes the platform already
-// registers every Pod behind a Service, so you would use starter-discovery-k8s
-// to *discover* peers and not register at all. RPC-framework provider
+// registers every Pod behind a Service, so you would use
+// starter-registry-k8s (the family's discovery-only backend) to *discover*
+// peers and not register at all. RPC-framework provider
 // registration is out of scope and stays framework-native (starter/DESIGN §3);
 // this starter publishes a plain instance (any transport) to ZooKeeper.
 //
@@ -45,8 +46,19 @@
 package StarterRegistryZookeeper
 
 import (
+	"go-spring.org/log"
+
 	// The registration core: provides the single registryServer that collects
 	// this backend's registrar beans. Go runs its package init exactly once no
 	// matter how many backend starters import it.
 	_ "go-spring.org/starter-registry"
+)
+
+// obsSystem is this backend's value for the discovery instrumentation's
+// "system" attribute, so one dashboard can compare registry centers.
+const obsSystem = "zookeeper"
+
+var (
+	// starterTag identifies logs emitted by the zookeeper registry starter.
+	starterTag = log.RegisterAppTag("registry_zookeeper", "")
 )

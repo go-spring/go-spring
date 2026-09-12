@@ -120,7 +120,9 @@ spring.gateway.discovery=nacos.main                 # 后端 bean 名
 
 spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
-spring.gateway.routes.orders.upstream.balancer=weighted
+# 路由的负载均衡策略不是 gateway 的 key，而是该路由标签上的治理规则：
+# govern.rules[N].resources=gateway:orders + govern.rules[N].balancer=weighted
+# （见 cloud/governance/CONFIG_CN.md §3.1）
 ```
 
 **验证**（nacos 来自 `example/docker-compose.yml` —— `docker compose up -d`，然后等
@@ -162,7 +164,7 @@ gs.Run()
   │    （跨所有后端 —— nacos、zookeeper……）
   ├─ Run：就绪前校验 service-name/addr 非空且 registrar ≥ 1 个
   ├─ <-sig.TriggerAndWait()   ← 就绪门：整个应用起来后才注册
-  ├─ 逐个 registrar：RegisterInstance(ephemeral=true, weight 归一 <=0→1)
+  ├─ 逐个 registrar：RegisterInstance(ephemeral=true, 仅负权重归一为 1)
   │    SDK 后台心跳保活；进程无 Deregister 死亡后 Nacos 约 15s 自动摘除 ——
   │    正确性从不依赖 Deregister；任一中心失败即终止启动（各中心消费侧视图不得分裂）
   ├─ <-ctx.Done()            ← 阻塞到停机
@@ -229,7 +231,7 @@ gs.Run()
 | `service-name` | string | "" | 客户端解析的逻辑名。**注册意图信号**：设置即本进程向每个已配置中心发布自己；不设即纯消费方。 | 配了连接块但不设 → 什么都不注册（合法的纯消费方应用）。 |
 | `addr` | string | "" | 对外通告的 `host:port`。注册时必填；从不猜测。 | 设了 service-name 而为空 → 启动报错并列出两个必填 key。 |
 | `id` | string | "" | 由核心绑定；nacos 后端忽略它（Nacos 按 ip:port 识别实例）。 | — |
-| `weight` | int | 100 | 写侧归一：`<=0` 存为 **1**。只有运行时 API `UpdateWeight(0)` 能存 0（摘流）。⚠ 同一字段，调用路径不同语义相反。 | 配置 `weight=0` 不会摘流 —— 实例以权重 1 接流量。 |
+| `weight` | int | 100 | 写侧归一：只有**负权重**存为 1。0 即摘流信号，两条写路径均原样透传。 | 负权重静默变 1，不报错。 |
 | `metadata` | map | 空 | 随实例存储；`scheme` key 是传输约定（`tls`/`https`/...），其余自由（zone、version）。 | 消费方启用 scheme 过滤而无 `scheme` key 时，实例按裸 TCP 对待。 |
 
 ### 3.3 发现（零 key —— 引用 bean 名）
@@ -315,7 +317,7 @@ go run ./provider   # 启动中止："registry-nacos: startup probe failed for 1
 | consumer 看得到服务、看不到实例 | 块的 `cluster`（默认 DEFAULT）钉在 provider 不在的集群 | 把该块的 `cluster` 对齐到 provider 的集群。 |
 | consumer 长期持有过期地址 | nacos 挂了 / 推送报错 —— 后端有意保留上一份快照 | 恢复 nacos；查 Warn `push ... failed` 日志。 |
 | `UpdateWeight` 报 "instance not registered yet" | Run 注册之前就调了 | 只在就绪后调用（看 `registered ...` 日志行）。 |
-| 配置 `weight=0` 但实例仍接流量 | 写侧归一把 0 存成了 1 | 用运行时 API `UpdateWeight(ctx, 0)` —— 只有该路径能存 0。 |
+| 负 `weight` 静默按 1 注册 | 写侧归一仅钳 `<0` | 属配错防护；应设 `0`（或正值）。 |
 | 进程崩溃 ~15s 后实例没被摘 | 实例被注册成 persistent —— 本 starter 不可能 | 本 starter 全部 `Ephemeral: true`；检查是否有外部写入者写同一 ip:port。 |
 
 运行日志携带 tag `_app_registry_nacos`（`log.RegisterAppTag("registry_nacos", "")`）；
@@ -334,6 +336,4 @@ go run ./provider   # 启动中止："registry-nacos: startup probe failed for 1
 `${spring.registry}` 下为其他后端绑定 `id`，nacos 侧忽略）。2026-09 多注册中心命名块改造
 已解决：单块形态替换为 `spring.registry.nacos.<name>.*` —— 每块一个名为 `nacos.<name>`
 的后端 bean 同时承载 registrar 与发现后端，注册收进共享的 starter-registry 核心（一次发布
-扇出到每个中心），发现改为引用 bean 名而非固定标签。遗留项：配置 `weight=0` 变 1 而 API
-`UpdateWeight(0)` 摘流 —— 同一 key 按调用路径语义相反；注册/watch 健康无指标（仅日志
-可观测）。
+扇出到每个中心），发现改为引用 bean 名而非固定标签。可观测性：注册与发现经 OTel 全局产出指标——未引入 `starter-otel` 时全部 no-op。`register`、`deregister`、`update_weight` 各有一个 client span 与一条 `registry.operation.duration`（标签 `system`/`operation`/`service`/`status`）；`registry.registration.attempts_total` 按 `reason` 与 `status` 计数；`registry.instance.registered` gauge 在发布中为 1、否则为 0——自愈失败会落在这里，而不只是出现在日志里。发现半边把每次后台缓存同步上报到 `discovery.sync_total`，并维持 `discovery.cache.age_seconds`（距上次确认新鲜的秒数），watch 死掉时表现为持续爬升，而不是静默返回陈旧地址。 nacos 无自愈重注册（存活由 SDK 的 ephemeral 心跳维持），`reason` 恒为 `initial`。

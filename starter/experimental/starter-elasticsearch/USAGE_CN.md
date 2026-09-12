@@ -243,12 +243,18 @@ elasticsearch API（Index/Get/...）
 ——`HealthCheck` 与健康指示器都显式传 context [starter.go:120-124, health/health.go:19-31]；
 用户代码应使用 `es.Search.WithContext(ctx)` 等。
 
-### 2.4 discovery 寻址——启动期一次性解析
+### 2.4 discovery 寻址——种子 + 活的节点集
 
-设置 `service-name` 且 mesh 模式关闭时，端点在构造函数里**一次性**解析并固化进
-`c.Addresses`；loader 是纯快照函数，无资源、无后台 watch，所以不保活也无需在停机时
-Stop [starter.go:82-88, driver.go:101-121]。运行期不再重解析：ES 集群地址通常是稳定 VIP。
-mesh 模式下由 sidecar 负责发现+LB，静态 Addresses（或 CloudID）原样使用。
+设置 `service-name` 且 mesh 模式关闭时，端点在构造函数里解析一次并固化进 `c.Addresses`；loader 是
+纯快照函数，无资源、无后台 watch，所以不保活也无需在停机时 Stop [starter.go:82-88,
+driver.go:101-121]。这次读是**fail-fast 闸门兼种子**——真正持续供数的是 driver 用同一个 resolver
+装上的自定义 `ConnectionPoolFunc` [pool.go]：transport 的节点集会从命名服务重读，所以节点加入/离开
+**不用重启**即可用。传播预算是 1 秒（`refreshInterval`，在请求路径上检查），注册中心抖动或空快照
+则保留上一份可用节点集，而不是把片刻前还正常的流量打黑。
+
+节点选择未被动过：活池内部保留由库构建的池（transport 自己的选择器与 live/dead 记账），只在节点集
+**真的**变化时重建（已按地址排序，所以快照换序不算变化）。mesh 模式下由 sidecar 负责发现+LB，静态
+Addresses（或 CloudID）原样使用。
 
 ---
 
@@ -262,7 +268,7 @@ mesh 模式下由 sidecar 负责发现+LB，静态 Addresses（或 CloudID）原
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `addresses` | list | — | 节点 URL，如 `http://127.0.0.1:9200`（逗号分隔）。校验非空（`len($) > 0`）。⚠ 即使被 `service-name` 覆盖也必填——example 故意带一个不可解析的哑地址。⚠ 设置 `cloud-id` 时被忽略（客户端侧优先级）。 | 空 → BindEach 报错；首探不可达 → 启动报 "failed to reach elasticsearch cluster"。 |
-| `service-name` | string | — | 经已注册 discovery 后端解析节点地址，启动期一次；覆盖 `addresses`。mesh 模式忽略。⚠ 与 `scheme`/`discovery`/`discovery-scheme` 成组。 | 服务无端点 → 启动报 `discovery %q returned no endpoints`。 |
+| `service-name` | string | — | 经已注册 discovery 后端解析节点地址，并让 transport 的节点集持续跟随它（pool.go）；覆盖 `addresses`。mesh 模式忽略。⚠ 与 `scheme`/`discovery`/`discovery-scheme` 成组。 | 启动期服务无端点 → 启动报 `discovery %q returned no endpoints`；运行期空快照 → 保留上一份可用集合。 |
 | `scheme` | string | — | 将 discovery 收敛到单一传输 scheme 的端点。仅在设置 `service-name` 时生效。 | — |
 | `discovery` | string | — | 用哪个已注册后端解析 `service-name`。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
 | `discovery-scheme` | string | `http` | 拼到发现的 `host:port` 端点前的 URL scheme（`http`/`https`）。 | scheme 错 → 启动首探失败。 |

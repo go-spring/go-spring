@@ -43,6 +43,7 @@ type Pool struct {
 	exec     resilience.Executor     // resolved via resilience.ExecutorFor; no-op when governance is off
 	chain    []CommandInterceptor    // user interceptor chain, first entry outermost; nil when none registered
 	resource string                  // resilience resource label (stable per pool)
+	stop     func()                  // detaches the endpoint-selection binding
 }
 
 // backend is the discovery backend the entry's ${discovery} label resolved to,
@@ -65,19 +66,29 @@ func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool,
 	if err != nil {
 		return nil, err
 	}
+	// The resource label scopes limiter/breaker state AND endpoint selection to
+	// this Redis instance (not per command): fall back across the address fields
+	// via the shared [resilience.ResourceLabel] helper. Computed here because the
+	// pool's selection binding needs it before the executor is built.
+	resource := resilience.ResourceLabel("redigo", c.ServiceName, c.Addr)
+
 	// Endpoint selection rides the shared loadbalance machinery (round-robin
-	// here, per opened connection).
+	// here, per opened connection). The tracker makes outlier suspension possible
+	// and the binding makes the label's governance rule drive both halves.
 	var lb *loadbalance.Pool
+	stop := func() {}
 	if resolver != nil {
 		bal, err := loadbalance.New(loadbalance.RoundRobin)
 		if err != nil {
 			return nil, err
 		}
-		lb = loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal)
+		lb = loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
+		stop = lb.BindSelection(resource)
 	}
 
 	pool := newRawPool(c, tlsConfig, lb)
-	w := &Pool{Pool: pool, cfg: c}
+	w := &Pool{Pool: pool, cfg: c, resource: resource, stop: stop}
 
 	// Arm the standard instrumentation: the command observer, the resilience
 	// executor, and the instrumented Dial wrap. The observer is unconditional:
@@ -130,7 +141,12 @@ func newRawPool(c Config, tlsConfig *tls.Config, lb *loadbalance.Pool) *redis.Po
 						if err != nil {
 							return nil, err
 						}
-						return nd.DialContext(ctx, network, ep.Addr)
+						conn, derr := nd.DialContext(ctx, network, ep.Addr)
+						// The dial outcome is the only signal this picker has;
+						// feeding it makes outlier suspension evict an instance
+						// that keeps refusing connections.
+						lb.Complete(ep, derr)
+						return conn, derr
 					}))
 				// Addr becomes a label for the pool; the dialer picks a live
 				// endpoint.
@@ -152,10 +168,11 @@ func newRawPool(c Config, tlsConfig *tls.Config, lb *loadbalance.Pool) *redis.Po
 	}
 }
 
-// Close tears the pool down: closes the resilience executor (if armed), then
-// the underlying redis pool. Freshness lives inside the discovery backend, so
-// there is no per-pool watch to stop.
+// Close tears the pool down: detaches the endpoint-selection binding, closes the
+// resilience executor (if armed), then the underlying redis pool. Freshness
+// lives inside the discovery backend, so there is no per-pool watch to stop.
 func (p *Pool) Close() error {
+	p.stop()
 	if p.exec != nil {
 		_ = p.exec.Close()
 	}
@@ -197,11 +214,6 @@ func (p *Pool) UseCommandInterceptor(i ...CommandInterceptor) {
 // On a config change the bound policy is adopted without a restart via the
 // executor's Refresh seam.
 func (o *Pool) setupResilience() error {
-	// Scope limiter/breaker state per Redis instance (not per command): fall
-	// back across the address fields via the shared [resilience.ResourceLabel]
-	// helper.
-	o.resource = resilience.ResourceLabel("redigo", o.cfg.ServiceName, o.cfg.Addr)
-
 	// The resilience executor is resolved through the NEUTRAL provider seam
 	// [resilience.ExecutorFor]: starter-govern registers a provider backed by
 	// the governance center, so this pool gets its timeout/retry/breaker policy

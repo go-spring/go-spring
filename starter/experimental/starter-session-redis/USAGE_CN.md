@@ -4,7 +4,7 @@
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
 （`starter.go`、`config.go`、`store.go`）、共享抽象
-[cloud/session](../../../cloud/session) 与自校验的
+[cloud/experimental/session](../../../cloud/experimental/session) 与自校验的
 [example/](example)（`example/check.sh`）核实。session 语义（cookie 处理、空闲超时、
 `RenewID`）在 session 包；Redis 语义见
 [Redis 官方文档](https://redis.io/docs/latest/commands/set/)——本文只写 go-spring 的增量。
@@ -63,7 +63,7 @@ import (
     "net/http"
     "time"
 
-    "go-spring.org/cloud/session"
+    "go-spring.org/cloud/experimental/session"
     "go-spring.org/spring/gs"
 )
 

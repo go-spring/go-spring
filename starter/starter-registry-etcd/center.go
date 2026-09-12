@@ -19,13 +19,13 @@ package StarterRegistryEtcd
 import (
 	"context"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // etcdBackend is ONE configured registry center: the ${spring.registry.etcd.<name>}
@@ -90,7 +90,13 @@ func (b *etcdBackend) Close() error {
 	if b == nil || b.reg == nil {
 		return nil
 	}
-	return errutil.Explain(b.reg.client.Close(), "registry-etcd: close backend client")
+	// Explain(nil, ...) BUILDS an error rather than passing one through, so it
+	// must only be reached with a real cause: wrapping unconditionally here
+	// reported a failure on every clean shutdown.
+	if err := b.reg.client.Close(); err != nil {
+		return errutil.Explain(err, "registry-etcd: close backend client")
+	}
+	return nil
 }
 
 // Register publishes inst into this cluster (the lease + keep-alive protocol,

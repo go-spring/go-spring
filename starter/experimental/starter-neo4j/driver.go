@@ -24,6 +24,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/mesh"
 	"go-spring.org/cloud/tlsconf"
 	"go-spring.org/stdlib/errutil"
 )
@@ -71,6 +73,18 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		conf.SocketConnectTimeout = c.SocketConnectTimeout
 		conf.MaxTransactionRetryTime = c.MaxTransactionRetryTime
 		tlsErr = applyTLS(c.TLS, conf)
+		// Discovery in effect: hand the routing driver a live router set to retry
+		// with, so a client whose boot-time host disappears can find the cluster
+		// again instead of staying broken until the process restarts. The driver
+		// only consults this hook in routing mode (neo4j:// schemes) — a direct
+		// bolt:// client has no routing table to rebuild and is unchanged.
+		if c.ServiceName != "" && backend != nil && !mesh.Enabled() {
+			if resolve, rerr := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme)); rerr != nil {
+				tlsErr = errutil.Explain(rerr, "neo4j: resolve service %s", c.ServiceName)
+			} else if resolve != nil {
+				conf.AddressResolver = liveRouterAddresses(resolve)
+			}
+		}
 	})
 	if err != nil {
 		return nil, err
@@ -79,6 +93,35 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		return nil, tlsErr
 	}
 	return client, nil
+}
+
+// liveRouterAddresses adapts a discovery [discovery.Resolver] into the driver's
+// [neo4j.ServerAddressResolver] hook: the router set the routing driver retries
+// with after it failed to build a routing table from the address it was dialed
+// with. That is exactly the recovery a discovery-backed client wants — the
+// instance baked into the URI is gone, ask the naming service where the cluster
+// is now — and it is the driver's ONLY resolver seam, so it is what a bolt://
+// direct client (no routing table) cannot use.
+//
+// On a read error or an empty snapshot it returns the address the driver already
+// had, so a registry hiccup leaves the driver exactly as it was rather than
+// handing it an empty router list to fail on.
+func liveRouterAddresses(resolve discovery.Resolver) neo4j.ServerAddressResolver {
+	return func(current neo4j.ServerAddress) []neo4j.ServerAddress {
+		eps, err := resolve()
+		if err != nil || len(eps) == 0 {
+			return []neo4j.ServerAddress{current}
+		}
+		routers := make([]neo4j.ServerAddress, 0, len(eps))
+		for _, ep := range eps {
+			host, port, err := net.SplitHostPort(ep.Addr)
+			if err != nil {
+				return []neo4j.ServerAddress{current}
+			}
+			routers = append(routers, neo4j.NewServerAddress(host, port))
+		}
+		return routers
+	}
 }
 
 // applyTLS configures the encryption-related fields of conf from the shared TLS

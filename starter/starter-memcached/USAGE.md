@@ -159,15 +159,26 @@ lazy and not retryable. gomemcache's `Ping` probes every configured server, so o
 With `service-name` set (and mesh mode off), the starter resolves the `discovery` label (default
 `"default"`) to a backend bean and passes it to `DefaultDriver.CreateClient` as the `backend`
 argument; the driver builds a discovery resolver against it, filtered by
-`scheme` (`driver.go:70`, `driver.go:100-102`). The **initial snapshot only** becomes the client's
-server list: empty snapshot fails boot with
-`memcached: discovery returned no endpoints for %q` (`driver.go:73-79`). The loader is a one-shot
-snapshot read — no background watch, nothing to release — and **live membership updates are NOT
-re-applied**, because gomemcache shards keys onto a fixed server set chosen at creation
-(`driver.go:60-66`, `driver.go:90-96`). Cluster membership changes require a restart; there is no dynamic membership —
-for a topology that scales dynamically, point `servers` at a serverless/proxy-style endpoint (one
-stable address) and let the proxy own membership. In mesh mode discovery is skipped
-entirely and `servers` is used as-is (sidecar owns discovery+LB, `driver.go:69-70` comment).
+`scheme` (`driver.go:70`, `driver.go:100-102`). The initial snapshot is read at build time as a
+fail-fast gate — an empty one fails boot with
+`memcached: discovery returned no endpoints for %q` (`driver.go:73-79`) — and the client is then
+built over a **live `ServerSelector`** (`selector.go`) that re-reads the snapshot on every key
+lookup. So an instance joining or leaving is visible on the next operation; no restart, no
+proxy needed. Resolver freshness lives inside the backend, so there is nothing to release.
+
+Two properties are deliberate, because for memcached the selector *is* the cache semantics:
+
+- **Key affinity is preserved.** The selector hashes with the same CRC32-of-key scheme
+  gomemcache's own `ServerList` uses, over an **address-sorted** snapshot, so an unchanged
+  cluster keeps an unchanged key→server mapping no matter what order the naming service reports.
+  A key therefore keeps landing on the instance that holds it.
+- **An unusable cluster is reported, not papered over.** An empty snapshot or a failed read
+  surfaces as `memcache.ErrNoServers` / the read error on that operation, rather than serving a
+  stale set the key may no longer live on. (Weighted distribution is available the way the
+  library expresses it — list an address more than once.)
+
+In mesh mode discovery is skipped entirely and `servers` is used as-is (sidecar owns
+discovery+LB, `driver.go:69-70` comment).
 
 ### 2.3 One Set call, layer by layer
 
@@ -212,7 +223,7 @@ the output belongs to the example app, not the starter).
 | Key (under `spring.memcached.instances.<name>`) | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |---|---|---|---|---|
 | `servers` | []string | empty | Static server list; requests sharded across it (config.go:28). XOR with `service-name`. | Both empty → ctor error `one of servers or service-name must be set` (starter.go:83); dead address → startup ping fail-fast |
-| `service-name` | string | empty | Discovery addressing: resolves the server list through the backend named by `discovery` (config.go:39). When set (non-mesh), `servers` is ignored. | Backend missing → boot error `discovery resolve %q failed`; empty snapshot → boot error (driver.go:76-79) |
+| `service-name` | string | empty | Discovery addressing: the server set follows the backend named by `discovery` (config.go:39), re-read per key lookup (selector.go). When set (non-mesh), `servers` is ignored. | Backend missing → boot error `discovery resolve %q failed`; empty snapshot at boot → boot error (driver.go:76-79); empty at runtime → `memcache.ErrNoServers` on that operation |
 | `scheme` | string | empty | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name` (config.go:45). | Over-filtering → "no endpoints" boot error |
 | `discovery` | string | — | Which registered `discovery.Discovery` resolves `service-name` (config.go:50). The wiring resolves this label to a bean and passes it to the driver as the `backend` argument of `CreateClient`. | Unset or an unregistered name while service-name is set → boot error. |
 | `timeout` | duration | 0 | Socket read/write timeout per request; 0 = gomemcache default 100ms (config.go:54). | Too low → spurious timeouts under load |

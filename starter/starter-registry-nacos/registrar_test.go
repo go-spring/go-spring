@@ -22,6 +22,15 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
+func TestNormalizeWeight(t *testing.T) {
+	// A misconfigured negative weight clamps to 1.
+	assert.That(t, normalizeWeight(-5)).Equal(1)
+	// 0 is the drain signal and passes through untouched, on both write paths.
+	assert.That(t, normalizeWeight(0)).Equal(0)
+	// An explicit positive weight passes through unchanged.
+	assert.That(t, normalizeWeight(100)).Equal(100)
+}
+
 func TestSplitAddr(t *testing.T) {
 	// A well-formed address splits into host and numeric port.
 	host, port, err := splitAddr("10.0.0.5:8080")

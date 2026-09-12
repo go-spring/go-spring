@@ -39,7 +39,7 @@ package StarterSessionRedis
 import (
 	"context"
 
-	"go-spring.org/cloud/session"
+	"go-spring.org/cloud/experimental/session"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

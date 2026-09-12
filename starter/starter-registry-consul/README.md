@@ -12,7 +12,8 @@ backed by Consul TTL health checks.
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
 register instances for you. In **pure Kubernetes** you would not use this
 starter at all: the platform already registers every Pod behind a Service, so
-you discover peers with [starter-discovery-k8s](../starter-discovery-k8s) and
+you discover peers with [starter-registry-k8s](../starter-registry-k8s) — the family's
+discovery-only backend — and
 register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to

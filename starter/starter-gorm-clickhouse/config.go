@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/tlsconf"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 )
 
 // Config holds the configuration parameters for a ClickHouse connection. The

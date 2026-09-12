@@ -1,27 +1,26 @@
 # starter-config-etcd Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
-the starter source (`starter.go`, `governance_etcd.go`, `governance_etcd_test.go`), the config core
+the starter source (`starter.go`), the config core
 (`spring/conf/provider/provider.go`, `spring/gs/internal/gs_conf/conf.go`, `spring/gs/internal/gs_app/app.go`)
 and the smoke-tested [example/](example/). **etcd's own semantics (KV model, watches, auth, leases,
 the etcdctl tool) are [etcd's documentation](https://etcd.io/docs/v3.5/)** — everything below is
 go-spring's increment.
 
-**Activation — two independent paths, no `enabled` key anywhere:**
+**Activation — a single path, no `enabled` key anywhere:** any `etcd:` entry in
+`spring.config.import` (e.g. `spring.config.import=etcd:127.0.0.1:2379/key`). The blank import
+alone does nothing. The imported keys feed application properties and hot-reload `gs.Dync[T]`
+fields.
 
-1. **App-config path**: any `etcd:` entry in `spring.config.import` (e.g. `spring.config.import=etcd:127.0.0.1:2379/key`). The blank import alone does nothing.
-2. **Governance path**: any `govern.source.etcd.*` key (OnProperty prefix match on `govern.source.etcd`).
-
-The two paths never touch each other's data: app-config keys feed application properties (and
-hot-reload `gs.Dync[T]` fields); the governance key feeds the governance center only.
+Governance rule sourcing from etcd now lives in its own module,
+`go-spring.org/starter-governance-etcd` (`govern.source.etcd.*`).
 
 ---
 
 ## 1. Complete worked project
 
-A service that keeps its `demo.message` in etcd, hot-reloads it without restart, and sources
-governance (resilience/fault) rules from a second dedicated etcd key. File tree (isomorphic to the
-smoke-tested `example/`):
+A service that keeps its `demo.message` in etcd and hot-reloads it without restart. File tree
+(isomorphic to the smoke-tested `example/`):
 
 ```
 demo/
@@ -38,7 +37,6 @@ demo/
 require (
     go-spring.org/spring              v1.3.x
     go-spring.org/starter-config-etcd latest
-    go-spring.org/starter-governance  latest   // optional: consumes the governance Source
     go.etcd.io/etcd/client/v3         v3.6.x   // only if you publish from the app itself
 )
 ```
@@ -51,7 +49,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-config-etcd"
-    _ "go-spring.org/starter-governance"
 )
 
 // Demo binds a dynamic field sourced from the imported etcd key. ONLY gs.Dync[T]
@@ -76,26 +73,13 @@ func main() {
 # picked up on first refresh after it is published. format= is redundant here
 # only because the key has no extension (default inference would be properties).
 spring.config.import=optional:etcd:127.0.0.1:2379/gs-config-demo?format=properties
-
-# --- governance rules from a DEDICATED etcd key (independent of the import) --
-# The key holds a whole govern.* document; pushes refresh governance only,
-# never application properties. Required keys: endpoint, key.
-govern.source.etcd.endpoint=127.0.0.1:2379
-govern.source.etcd.key=/app/govern.yaml
 ```
 
-Seed the two keys before start (or rely on `optional:` for the app-config one):
+Seed the key before start (or rely on `optional:`):
 
 ```bash
 docker compose up -d
 ETCDCTL_API=3 etcdctl put gs-config-demo "demo.message=hello"
-ETCDCTL_API=3 etcdctl put /app/govern.yaml '
-govern:
-  enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
-'
 go run .
 ```
 
@@ -106,8 +90,6 @@ go run .
 #   loaded etcd config from key=gs-config-demo keys=1
 # hot reload, no restart:
 etcdctl put gs-config-demo "demo.message=hello-2"     # bound gs.Dync field flips
-# governance push, no restart — resilience timing changes take effect live:
-etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
 ```
 
 ---
@@ -171,28 +153,8 @@ etcd PUT on a watched key
 
 ### 2.3 Governance rules-push path
 
-```
-conf key govern.source.etcd.* present
-  → gs.OnProperty("govern.source.etcd") fires (prefix match)
-  → bind governEtcdConfig (endpoint/key required via expr validation)
-  → ctor: etcdCtrl.clientFor (client SHARED with the app-config path)
-          → NewEtcdSource: Get key → missing/bad document FAILS startup (fail-fast,
-            so a misconfigured path never arms a silently-disabled center)
-          → bean Init(): open Watch stream
-  → exported as governance.Source (Snapshot + Subscribe); the center is the only consumer
-
-etcd PUT on the governance key
-  → watch goroutine filters EventTypePut (deletes/other types are ignored)
-  → apply(): byte-equal re-put → no-op; parse error → keep last good snapshot + error log
-    (tag _app_config_etcd); parsed-but-equal (DeepEqual) → snapshot swapped, no push
-  → changed → cb(cfg) → governance center applies new resilience/fault rules live
-```
-
-The document parses through `rules.Parse` (starter-governance/rules) — byte-compatible with a
-governance file source, and a document with **no `govern.*` keys at all is an error**, not "no
-governance" (a truncated document must not silently disarm the center; the off switch is
-`govern.enabled=false`). On shutdown the center type-asserts `Close() error` and stops the watch
-stream; the underlying etcd client is shared module state and is not closed by the source.
+Governance rule sourcing from etcd now lives in its own module,
+`go-spring.org/starter-governance-etcd` (`govern.source.etcd.*`).
 
 ---
 
@@ -217,21 +179,14 @@ Multiple import entries compose: `spring.config.import` accepts a list; later en
 earlier ones for overlapping keys. Each entry gets its own client (per endpoint/creds) and its own
 watcher (deduplicated per client+key).
 
-### 3.2 Governance property surface — `govern.source.etcd.*`
+### 3.2 Governance property surface — moved out
 
-Bound via `conf.Bind` under `${govern.source.etcd:=}` — these are ordinary top-level property keys
-(not instance-prefixed; the module has exactly one instance).
-
-| Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
-|-----|------|---------|-------------------------|------------------------------|
-| `govern.source.etcd.endpoint` | string | — (**required**, `expr:"$ != ''"`) | host:port, single endpoint; shares the client cache with import sources of the same endpoint/creds. | Empty/missing → bean construction error at wiring (OnProperty fired but validation failed). |
-| `govern.source.etcd.key` | string | — (**required**, `expr:"$ != ''"`) | The dedicated rules-document key. Distinct from any app-config import key by design. | Empty → same as above. Key missing in etcd → `key ... is empty` error, **startup fails** (no optional mode here — deliberate fail-fast). |
-| `govern.source.etcd.username` / `.password` | string | empty | Auth for the shared client. | Same failure modes as the import-string credentials. |
-| `govern.source.etcd.format` | string | key extension, else `properties` | Overrides document-format detection. Same registry as §3.1. | Wrong format → document parse fails → startup fails (seed) or push rejected (runtime, last good kept). |
+Governance rule sourcing from etcd now lives in its own module,
+`go-spring.org/starter-governance-etcd` (`govern.source.etcd.*`).
 
 ### 3.3 Keys this starter does NOT have
 
-No `enabled` switch (activation is the presence of an import entry / govern keys), no TLS keys, no
+No `enabled` switch (activation is the presence of an import entry), no TLS keys, no
 endpoints list, no watch-prefix, no refresh interval (refresh is event-driven). See §6.
 
 ---
@@ -268,11 +223,6 @@ edited in a local conf file since startup also flips on the next etcd-triggered 
 - **App-config key**: `etcdctl put gs-config-demo "demo.message={{{"` (with `format=yaml`) → parse
   error at next refresh; refresh aborts, old properties stay, Error log. At startup (non-optional)
   the same content fails startup.
-- **Governance key**: `etcdctl put /app/govern.yaml 'govern: { broken'` → Error log
-  `got an invalid value (keeping last good config)`; the center keeps the previous rules.
-  `etcdctl put /app/govern.yaml 'foo: bar'` (parses, no govern.* keys) → also rejected
-  (`contains no govern.* keys`), last good kept. At seed time both fail startup instead.
-- **Byte-equal re-put** on the governance key → complete no-op (no parse, no push).
 
 ### 4.4 Optional vs required import entries
 
@@ -292,14 +242,6 @@ semantics); a PUT made while down is **not** replayed as a refresh trigger unles
 again after reconnection — verify with a fresh `etcdctl put` and observe the refresh. This drill
 demonstrates the observability gap recorded in §6.
 
-### 4.6 Governance seed fail-fast
-
-```bash
-etcdctl put /app/govern.yaml 'govern: {' && go run .   # startup fails: parse ... failed
-```
-
-Contrast with §4.3: bad values at runtime degrade to last-good; bad values at seed fail fast.
-
 ---
 
 ## 5. Troubleshooting
@@ -312,9 +254,7 @@ Contrast with §4.3: bad values at runtime degrade to last-good; bad values at s
 | App runs but imported values never appear | Import key present but the app started before the first PUT **and** the entry is optional → defaults in effect | PUT the key; the watcher triggers a refresh and values arrive without restart. |
 | Bound field does not hot-reload | Field is a plain value, not `gs.Dync[T]` | Only `gs.Dync[T]` refreshes; plain fields are startup-only (gs refresh contract). |
 | Refresh seems dead after a delete on an imported key | Delete fired a refresh; the re-load of a required key failed; the bridge swallows the error and keeps old properties | Re-PUT the key; consider whether deletes are part of your config workflow. |
-| Governance rules don't change despite etcdctl put | (a) document byte-identical or DeepEqual to current; (b) value unparseable / no govern.* keys (Error log, last good kept); (c) starter-governance not imported (no center consumes the Source) | Check the `_app_config_etcd` error lines; import starter-governance. |
 | `unsupported config format` | format query/property names an unregistered format | Use a registered one (properties/yaml/toml/json) or register a reader. |
-| Governance bean fails at wiring `endpoint`/`key` empty | `govern.source.etcd.*` partially configured (OnProperty fired on any sub-key) | Provide both required keys, or remove the whole prefix. |
 
 ---
 
@@ -322,8 +262,8 @@ Contrast with §4.3: bad values at runtime degrade to last-good; bad values at s
 
 | Metric | Value |
 |--------|-------|
-| Config surfaces | 5 import-string params + 4 governance property keys |
-| Required | 2 import parts (host, key) + 2 governance keys |
+| Config surfaces | 5 import-string params |
+| Required | 2 import parts (host, key) |
 | Quickstart external deps | 1 (etcd; compose file provided) |
 | "Watch out" entries | 5 (single endpoint, plaintext creds, silent watch gaps, delete semantics, Dync-only refresh) |
 

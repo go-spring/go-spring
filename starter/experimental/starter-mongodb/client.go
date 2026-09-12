@@ -64,8 +64,20 @@ type Client struct {
 	// resilience.ExecutorFor; no-op when governance is off.
 	exec resilience.Executor
 	// resource is the resilience resource key ("mongodb:<...>") exec scopes
-	// limiter/breaker state by.
+	// limiter/breaker state by. The same label addresses the resource's endpoint
+	// selection in the governance rules document.
 	resource string
+	// stop detaches the discovery pool's endpoint-selection binding; nil when
+	// discovery is not in effect.
+	stop func()
+}
+
+// resourceLabel derives a stable, human-readable resource key for a client, so
+// limiter and breaker state is scoped per MongoDB instance rather than per
+// connection. The same label is what a govern.rules[N] rule matches to drive
+// this client's endpoint selection (balancer / outlier suspension).
+func resourceLabel(c Config) string {
+	return resilience.ResourceLabel("mongodb", c.ServiceName, c.URI)
 }
 
 // dialerWrapper adapts a dial function (plain, discovery-backed, or
@@ -88,7 +100,7 @@ func (d *dialerWrapper) DialContext(ctx context.Context, network, address string
 // the resolved executor is a transparent no-op.
 func (o *Client) Init() error {
 	o.obs.Store(newDBObserver("mongodb"))
-	o.resource = resilience.ResourceLabel("mongodb", o.cfg.ServiceName, o.cfg.URI)
+	o.resource = resourceLabel(o.cfg)
 	exec := fault.WrapExecutor(resilience.ExecutorFor("mongodb", o.resource))
 	o.exec = exec
 	// Wrap the current (plain/discovery) dial with the policy and swap it into
@@ -102,6 +114,9 @@ func (o *Client) Init() error {
 // and disconnects the underlying client. Discovery runs inside the backend (the
 // loader has no resources), so nothing discovery-related is released here.
 func (o *Client) Destroy() error {
+	if o.stop != nil {
+		o.stop()
+	}
 	if o.exec != nil {
 		_ = o.exec.Close()
 	}

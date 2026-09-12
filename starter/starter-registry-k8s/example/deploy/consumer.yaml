@@ -1,0 +1,32 @@
+# The example itself, running as a Pod inside the cluster so in-cluster DNS and
+# (for EndpointSlice mode) the ServiceAccount are available. Build and push an
+# image from this module first, then set `image:` below.
+#
+#   # from starter-registry-k8s/
+#   docker build -t <your-registry>/registry-k8s-example:latest -f example/Dockerfile .
+#   docker push <your-registry>/registry-k8s-example:latest
+#   kubectl apply -f consumer.yaml
+#   kubectl logs deploy/registry-k8s-example   # prints resolved endpoints
+#
+# The ServiceAccount is only needed for EndpointSlice mode; DNS mode works with
+# the default ServiceAccount too.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-k8s-example
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry-k8s-example
+  template:
+    metadata:
+      labels:
+        app: registry-k8s-example
+    spec:
+      serviceAccountName: registry-k8s
+      containers:
+        - name: example
+          image: REPLACE_ME/registry-k8s-example:latest
+          imagePullPolicy: IfNotPresent

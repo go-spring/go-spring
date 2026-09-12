@@ -123,7 +123,9 @@ spring.gateway.discovery=nacos.main                 # the backend bean's name
 
 spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
-spring.gateway.routes.orders.upstream.balancer=weighted
+# The route's balancing strategy is NOT a gateway key: it is a governance rule
+# for the route's label — govern.rules[N].resources=gateway:orders with
+# govern.rules[N].balancer=weighted (see cloud/governance/CONFIG_CN.md §3.1).
 ```
 
 **Verify** (nacos from `example/docker-compose.yml` — `docker compose up -d`, then wait for
@@ -165,7 +167,7 @@ gs.Run()
   │    slice injection (across ALL backends — nacos, zookeeper, ...)
   ├─ Run: validate service-name/addr non-empty AND ≥1 registrar BEFORE readiness
   ├─ <-sig.TriggerAndWait()   ← readiness gate: register only when the whole app is up
-  ├─ for each registrar: RegisterInstance(ephemeral=true, weight normalized <=0→1)
+  ├─ for each registrar: RegisterInstance(ephemeral=true, negative weight normalized to 1)
   │    SDK background heartbeat keeps the entry alive; Nacos drops it ~15s after the
   │    process dies without Deregister — correctness never depends on Deregister;
   │    ANY center's failure aborts startup (consumers' views must not split)
@@ -243,7 +245,7 @@ vs `zookeeper.main`).
 | `service-name` | string | "" | Logical name clients resolve. **Registration intent signal**: set means this process publishes itself into every configured center; unset means pure consumer. | Unset with blocks configured → registers nothing (a valid pure-consumer app). |
 | `addr` | string | "" | Advertised `host:port`. Required when registering; never guessed. | Empty with service-name set → startup error listing both required keys. |
 | `id` | string | "" | Bound by the core; the nacos backend ignores it (Nacos identifies instances by ip:port). | — |
-| `weight` | int | 100 | Write-side normalization: `<=0` is stored as **1**. Only the runtime API `UpdateWeight(0)` can store 0 (drain). ⚠ same field, opposite semantics by call path. | Config `weight=0` does NOT drain — instance is reachable at weight 1. |
+| `weight` | int | 100 | Write-side normalization: only a **negative** weight is stored as 1. 0 is the drain signal and passes through on both write paths. | Negative weight silently becomes 1 rather than erroring. |
 | `metadata` | map | empty | Stored with the instance; `scheme` key is the transport convention (`tls`/`https`/...), others are free-form (zone, version). | Consumers using scheme-filtering and no `scheme` key treat the instance as plain TCP. |
 
 ### 3.3 Discovery (no keys — cite the bean name)
@@ -333,7 +335,7 @@ go run ./provider   # startup aborts: "registry-nacos: startup probe failed for 
 | Consumer sees the service but not the instance | block `cluster` (default DEFAULT) pinned to a cluster the provider is not in | Align the block's `cluster` with the provider's cluster. |
 | Consumer keeps stale addresses forever | nacos down / push errors — the backend intentionally keeps the last snapshot | Restore nacos; check Warn `push ... failed` lines. |
 | `UpdateWeight` errors "instance not registered yet" | called before Run registered | Call only after readiness (log line `registered ...`). |
-| Config `weight=0` but instance still gets traffic | write-side normalization stores 1 | Use the runtime API `UpdateWeight(ctx, 0)` — only that path stores 0. |
+| Negative `weight` silently registers at 1 | write-side normalization clamps only `<0` | Intended guard against misconfiguration; set `0` (or a positive value) instead. |
 | Instance not removed ~15s after crash | instance registered as persistent — not possible via this starter | All registrations are `Ephemeral: true`; check for a foreign writer to the same ip:port. |
 
 Runtime logs carry the tag `_app_registry_nacos` (`log.RegisterAppTag("registry_nacos", "")`);
@@ -354,6 +356,4 @@ nacos side ignores it). Resolved 2026-09 (multi-registry named blocks): the sing
 was replaced by `spring.registry.nacos.<name>.*` — one backend bean per block named
 `nacos.<name>` carrying BOTH the registrar and the discovery backend, registration moved into
 the shared starter-registry core (one publication fanned out to every center), and discovery
-now cites the bean name instead of a fixed label. Remaining ledger items: config `weight=0`
-becomes 1 while API `UpdateWeight(0)` drains — same key, opposite semantics by call path; no
-metrics on registration/watch health (log-only observability).
+now cites the bean name instead of a fixed label. Observability: registration and discovery emit OTel metrics through the global providers — a no-op unless `starter-otel` is imported. `register`, `deregister` and `update_weight` each produce a client span plus a `registry.operation.duration` record labelled `system`/`operation`/`service`/`status`; `registry.registration.attempts_total` counts attempts by `reason` and `status`; the `registry.instance.registered` gauge reads 1 while this instance is published and 0 while it is not, so a failed self-heal lands there instead of only in a log line. The discovery half reports every background cache sync to `discovery.sync_total` and keeps `discovery.cache.age_seconds` (seconds since the snapshot was last confirmed fresh), so a dead watch shows a climbing age rather than a silently stale address list. Nacos has no self-healing re-register — the SDK's ephemeral heartbeat keeps the instance alive — so `reason` is always `initial`.

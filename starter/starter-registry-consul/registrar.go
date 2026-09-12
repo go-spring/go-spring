@@ -18,7 +18,9 @@ package StarterRegistryConsul
 
 import (
 	"context"
+	"errors"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,16 +76,22 @@ func serviceID(reg instance) string {
 	return reg.ServiceName + "-" + reg.Addr
 }
 
+// normalizeWeight clamps a misconfigured negative weight to 1 at write time.
+// 0 passes through as the drain signal; an unset weight is expressed by the
+// ${spring.registry.weight} default, not by this clamp. Register and
+// UpdateWeight share it so both write paths agree on the contract.
+func normalizeWeight(w int) int {
+	if w < 0 {
+		return 1
+	}
+	return w
+}
+
 // Register publishes reg with a TTL health check, passes the check immediately
 // so the instance is healthy without waiting a full TTL, then keeps it passing
 // on a background heartbeat until Deregister.
-func (r *consulRegistrar) Register(_ context.Context, reg instance) error {
-	// An unset (or misconfigured negative) weight is normalized at write time
-	// so "default" is never stored as 0 — 0 is reserved for the runtime drain
-	// signal, only reachable through UpdateWeight.
-	if reg.Weight <= 0 {
-		reg.Weight = 1
-	}
+func (r *consulRegistrar) Register(ctx context.Context, reg instance) error {
+	reg.Weight = normalizeWeight(reg.Weight)
 	if _, _, err := net.SplitHostPort(reg.Addr); err != nil {
 		return errutil.Explain(err, "registry-consul: addr %q must be host:port", reg.Addr)
 	}
@@ -92,13 +100,16 @@ func (r *consulRegistrar) Register(_ context.Context, reg instance) error {
 	}
 	id := serviceID(reg)
 	checkID := "service:" + id
-	if err := r.client.Agent().ServiceRegister(r.buildRegistration(reg)); err != nil {
+	attempt := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial)
+	err := r.upsert(reg)
+	attempt(err)
+	if err != nil {
 		return errutil.Explain(err, "registry-consul: register %q", reg.ServiceName)
 	}
 	// The first TTL pass is best-effort: the heartbeat below retries it every
 	// half TTL, so a failure here only delays "passing", it never fails Register.
 	if err := r.client.Agent().UpdateTTL(checkID, "", api.HealthPassing); err != nil {
-		log.Warnf(context.Background(), log.TagAppDef, "consul initial TTL pass for check=%s failed: %v", checkID, err)
+		log.Warnf(ctx, starterTag, "consul initial TTL pass for check=%s failed: %v", checkID, err)
 	}
 
 	stop := make(chan struct{})
@@ -128,6 +139,17 @@ func (r *consulRegistrar) reRegister(id string) error {
 	if !ok {
 		return nil
 	}
+	report := discovery.RegisterAttempt(context.Background(), obsSystem, reg.ServiceName, discovery.ReasonSelfHeal)
+	err := r.upsert(reg)
+	report(err)
+	return err
+}
+
+// upsert writes reg's full service-and-check registration, weight included. It
+// is the single write step shared by Register, the heartbeat's self-healing
+// re-register, and UpdateWeight, so all three advertise the identical entry
+// apart from the weight.
+func (r *consulRegistrar) upsert(reg instance) error {
 	return r.client.Agent().ServiceRegister(r.buildRegistration(reg))
 }
 
@@ -163,7 +185,7 @@ func (r *consulRegistrar) buildRegistration(reg instance) *api.AgentServiceRegis
 // without any re-registration. A weight of 0 drains the instance — Consul
 // routes no traffic to a zero-weight service. It fails if reg was never
 // registered through Register.
-func (r *consulRegistrar) UpdateWeight(_ context.Context, reg instance, weight int) error {
+func (r *consulRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int) error {
 	id := serviceID(reg)
 	r.mu.Lock()
 	last, ok := r.regs[id]
@@ -171,11 +193,11 @@ func (r *consulRegistrar) UpdateWeight(_ context.Context, reg instance, weight i
 	if !ok {
 		return errutil.Explain(nil, "registry-consul: update weight for unregistered instance %q", id)
 	}
-	if weight < 0 {
-		weight = 1
-	}
-	last.Weight = weight
-	if err := r.client.Agent().ServiceRegister(r.buildRegistration(last)); err != nil {
+	last.Weight = normalizeWeight(weight)
+	report := discovery.WeightChange(ctx, obsSystem, last.ServiceName)
+	err := r.upsert(last)
+	report(err)
+	if err != nil {
 		return errutil.Explain(err, "registry-consul: update weight %q", last.ServiceName)
 	}
 	r.mu.Lock()
@@ -212,17 +234,17 @@ func (r *consulRegistrar) heartbeat(id string, stop <-chan struct{}) {
 			}
 			failures++
 			if failures >= persistAfter {
-				log.Errorf(context.Background(), log.TagAppDef,
+				log.Errorf(context.Background(), starterTag,
 					"consul TTL heartbeat for check=%s failed %d times in a row; re-registering the service to recover: %v",
 					checkID, failures, err)
 				// Re-register (upsert) instead of only logging: recreates the
 				// service and check if Consul already dropped them.
 				if rerr := r.reRegister(id); rerr != nil {
-					log.Errorf(context.Background(), log.TagAppDef,
+					log.Errorf(context.Background(), starterTag,
 						"consul re-register for service=%s failed: %v", id, rerr)
 				}
 			} else {
-				log.Warnf(context.Background(), log.TagAppDef,
+				log.Warnf(context.Background(), starterTag,
 					"consul TTL heartbeat for check=%s failed (%d/%d): %v", checkID, failures, persistAfter, err)
 			}
 		}
@@ -231,8 +253,10 @@ func (r *consulRegistrar) heartbeat(id string, stop <-chan struct{}) {
 
 // Deregister stops the heartbeat and removes the instance. It is idempotent:
 // deregistering an instance that is not registered is a no-op that still asks
-// Consul to drop the id (harmless if already gone).
-func (r *consulRegistrar) Deregister(_ context.Context, reg instance) error {
+// Consul to drop the id, and Consul answering 404 for an id it does not hold is
+// that no-op — the registry core calls Deregister from both PreStop and the
+// Stop fallback, so a repeat call is the normal shutdown path, not a failure.
+func (r *consulRegistrar) Deregister(ctx context.Context, reg instance) error {
 	id := serviceID(reg)
 	r.mu.Lock()
 	if stop, ok := r.heartbeats[id]; ok {
@@ -241,7 +265,14 @@ func (r *consulRegistrar) Deregister(_ context.Context, reg instance) error {
 	}
 	delete(r.regs, id)
 	r.mu.Unlock()
-	if err := r.client.Agent().ServiceDeregister(id); err != nil {
+	report := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName)
+	err := r.client.Agent().ServiceDeregister(id)
+	var statusErr api.StatusError
+	if errors.As(err, &statusErr) && statusErr.Code == http.StatusNotFound {
+		err = nil // already gone: the desired end state holds
+	}
+	report(err)
+	if err != nil {
 		return errutil.Explain(err, "registry-consul: deregister %q", reg.ServiceName)
 	}
 	return nil

@@ -32,7 +32,7 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	gormmysql "gorm.io/driver/mysql"
 )
@@ -94,7 +94,8 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 
 	dsn := c.DSN()
 
-	conn, err := newDiscoveryConn(ctx, c, backend)
+	resource := resilience.ResourceLabel("gorm:mysql", c.ServiceName, c.Addr)
+	conn, err := newDiscoveryConn(ctx, c, backend, resource)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm mysql: build discovery dialer failed: %v", err)
 		if tlsCloser != nil {
@@ -123,7 +124,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 	return gormcore.Spec{
 		Dialector:      gormmysql.Open(dsn),
 		Pool:           c.Pool(),
-		Resource:       resilience.ResourceLabel("gorm:mysql", c.ServiceName, c.Addr),
+		Resource:       resource,
 		ObserveEnabled: c.ObserveEnabled,
 		Closers:        closers,
 	}, nil
@@ -144,6 +145,7 @@ var netSeq atomic.Uint64
 // it registered, so the closer can stop the watch and deregister the dialer.
 type discoveryConn struct {
 	netName string
+	stop    func() // detaches the pool's endpoint-selection binding
 }
 
 // newDiscoveryConn resolves the registered discovery backend for c and registers
@@ -151,9 +153,10 @@ type discoveryConn struct {
 // returns (nil, nil) when service-name is unset or mesh mode is enabled (a
 // sidecar owns discovery+LB), in which case the caller dials the configured Addr
 // directly. The caller owns the lifecycle and must release the conn via
-// stopDiscoveryConn.
-func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery) (*discoveryConn, error) {
-	lb, _, err := c.NewPickPool(ctx, backend)
+// stopDiscoveryConn. resource is the entry's governance label, to which the
+// pool's endpoint selection is bound.
+func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery, resource string) (*discoveryConn, error) {
+	lb, _, stop, err := c.NewPickPool(ctx, backend, resource)
 	if err != nil {
 		return nil, err
 	}
@@ -169,9 +172,13 @@ func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery
 		if perr != nil {
 			return nil, perr
 		}
-		return nd.DialContext(ctx, "tcp", ep.Addr)
+		conn, derr := nd.DialContext(ctx, "tcp", ep.Addr)
+		// The dial outcome is the only signal this picker has; feeding it makes
+		// outlier suspension evict an instance that keeps refusing connections.
+		lb.Complete(ep, derr)
+		return conn, derr
 	})
-	return &discoveryConn{netName: netName}, nil
+	return &discoveryConn{netName: netName, stop: stop}, nil
 }
 
 // stopDiscoveryConn stops the discovery watch and deregisters the mysql dialer
@@ -182,4 +189,5 @@ func stopDiscoveryConn(conn *discoveryConn) {
 		return
 	}
 	mysql.DeregisterDialContext(conn.netName)
+	conn.stop()
 }

@@ -40,4 +40,3 @@ type ZookeeperConfig struct {
 	Username string `value:"${username:=}"`
 	Password string `value:"${password:=}"`
 }
-

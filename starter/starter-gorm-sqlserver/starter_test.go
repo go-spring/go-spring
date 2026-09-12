@@ -27,7 +27,7 @@ import (
 	"github.com/microsoft/go-mssqldb/msdsn"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/spring/gs"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/testing/assert"
 )
 

@@ -23,8 +23,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/elastic/elastic-transport-go/v8/elastictransport"
 	"github.com/elastic/go-elasticsearch/v8"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/mesh"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -66,7 +68,7 @@ type DefaultDriver struct{}
 // (keyed by the returned client) so newClient can hand it to the wrapper.
 func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*elasticsearch.Client, error) {
 	dyn := newDynamicTransport()
-	client, err := elasticsearch.NewClient(elasticsearch.Config{
+	cfg := elasticsearch.Config{
 		Addresses:              c.Addresses,
 		Username:               c.Username,
 		Password:               c.Password,
@@ -81,7 +83,24 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		EnableDebugLogger:      c.EnableDebugLogger,
 		Instrumentation:        newOtelInstrumentation(),
 		Transport:              dyn,
-	})
+	}
+	// Service discovery in effect: replace the transport's static node set with a
+	// live one, so cluster membership follows the naming service instead of the
+	// boot-time snapshot. Transport node selection is untouched — the live pool
+	// keeps a library-built inner pool and only rebuilds it when the node set
+	// changes. Without discovery the static Addresses stand as configured.
+	if c.ServiceName != "" && backend != nil && !mesh.Enabled() {
+		resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+		if err != nil {
+			return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
+		}
+		if resolver != nil {
+			cfg.ConnectionPoolFunc = func(conns []*elastictransport.Connection, sel elastictransport.Selector) elastictransport.ConnectionPool {
+				return newLivePool(resolver, c.DiscoveryScheme, sel, conns)
+			}
+		}
+	}
+	client, err := elasticsearch.NewClient(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -91,9 +110,10 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 
 // resolveAddresses resolves c.ServiceName through the discovery backend the
 // starter wiring resolved from c.Discovery and returns the current live endpoint
-// snapshot as "scheme://host:port" node addresses. Because the elasticsearch
-// client exposes no dialer injection point this is a one-shot read at startup
-// (the resolver has no background watch and no resources to release). It fails
+// snapshot as "scheme://host:port" node addresses. It is a single read: the
+// fail-fast gate and the seed for the live connection pool (see the
+// ConnectionPoolFunc in [DefaultDriver.CreateClient]), which is what keeps the
+// node set following the naming service afterwards. It fails
 // fast when backend is nil (no backend bean cited by the ${discovery} label) or
 // the service has no endpoints. It must only be called when service discovery is
 // in effect (the caller has already gated on service-name being set and mesh

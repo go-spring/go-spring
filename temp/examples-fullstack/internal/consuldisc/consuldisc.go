@@ -24,7 +24,7 @@
 // per-caller Consul code.
 //
 // This lives in the sample (not in a starter) on purpose: a real deployment
-// would either use starter-discovery-k8s or contribute a company Consul resolver.
+// would either use starter-registry-k8s or contribute a company Consul resolver.
 // Keeping it here proves the abstraction is enough to bridge a register-only
 // backend to full client-side discovery.
 package consuldisc

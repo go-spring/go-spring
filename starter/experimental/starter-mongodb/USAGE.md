@@ -269,6 +269,16 @@ for the full set): `govern.enabled`, `govern.driver`, `govern.<driver>.rate-limi
 injection block (enable/rate/error). ⚠ Remember the seam is the **dial layer**: a breaker
 policy manifests as rejected *connections*; a fault injection fires per dial, not per command.
 
+**Endpoint selection is governed by the same rule, same label.** In discovery mode the pool is
+built with a suspension tracker and bound to `mongodb:<service-name|uri>` via
+`loadbalance.Pool.BindSelection`, so `govern.rules[N].balancer` (round_robin / least_conn /
+consistent_hash / weighted / zone_aware / random / p2c) and `outlier-threshold` /
+`outlier-suspend-for` apply **in place** — the next dial uses the new strategy, no restart and no
+re-dial of existing connections. Direct (URI-only) instances have no candidate set, so these keys
+are inert for them. ⚠ The dialer's only outcome signal is the dial itself, so `outlier-threshold`
+evicts instances that keep refusing *connections*; per-command failures belong to the resilience
+executor above. See `cloud/governance/CONFIG_CN.md` §3.1.
+
 ### 3.3 Observability
 
 There are **no per-module observability config keys** (no level, no skip list, no argument

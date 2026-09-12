@@ -26,10 +26,8 @@ require (
 	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	go-spring.org/cloud v0.0.0
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/starter-governance v0.0.0
-	go.etcd.io/etcd/api/v3 v3.6.2
+	go.etcd.io/etcd/api/v3 v3.6.2 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
@@ -44,7 +42,3 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
-
-replace go-spring.org/cloud => ../../cloud
-
-replace go-spring.org/starter-governance => ../starter-governance

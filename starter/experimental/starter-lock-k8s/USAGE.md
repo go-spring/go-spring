@@ -1,7 +1,7 @@
 # starter-lock-k8s Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
-against the starter source (`starter.go`, `config.go`, `k8slock.go`, `observe.go`), the shared
+against the starter source (`starter.go`, `config.go`, `lock.go`, `observe.go`), the shared
 abstraction [cloud/lock](../../../cloud/lock), and the
 [example/](example) (including `deploy/` for in-cluster runs). Lease semantics mirror client-go
 leader election — see the [Kubernetes Lease API](https://kubernetes.io/docs/concepts/architecture/leases/);
@@ -145,7 +145,7 @@ import starter-lock-k8s
 ```
 
 Each acquisition maps to **one Lease object** (name = `keyPrefix + key`) and runs **its own
-renewal goroutine** (`k8slock.go tryOnce`), so holds are independent of each other.
+renewal goroutine** (`lock.go tryOnce`), so holds are independent of each other.
 
 ### 2.2 Three-layer timing resolution (all lock backends)
 
@@ -159,7 +159,7 @@ layer wins:
 | 3. package default | TTL `30s`, renew `TTL/3`, retry `100ms` | fill whatever layer 1 leaves unset |
 
 The resolved TTL becomes the Lease's `leaseDurationSeconds` — whole seconds, rounded up with a
-1s floor (`k8slock.go leaseSeconds`).
+1s floor (`lock.go leaseSeconds`).
 
 ### 2.3 One lock, layer by layer (acquire → hold → release)
 

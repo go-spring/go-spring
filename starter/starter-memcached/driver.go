@@ -47,12 +47,16 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new Memcached client based on the provided configuration.
 //
-// When c.ServiceName is set (and mesh mode is not enabled), the server list is
-// resolved through the discovery backend (backend, wired from the
-// ${discovery} label) instead of using c.Servers. gomemcache hashes keys onto a fixed server set chosen at
-// client creation, so only one live endpoint snapshot is applied at build time;
-// a changing cluster membership requires a restart. Resolver freshness lives
-// inside the backend, so there is nothing to release.
+// When c.ServiceName is set (and mesh mode is not enabled), the server set
+// follows the discovery backend (backend, wired from the ${discovery} label)
+// instead of c.Servers: the client is built over a live
+// [memcache.ServerSelector] that re-reads the endpoint snapshot on every key
+// lookup, so an instance joining or leaving is visible on the next operation.
+// The initial snapshot is still read here, so a service that resolves to nothing
+// fails at boot rather than on first use. Key affinity is preserved — the same
+// CRC32-of-key hashing the built-in ServerList uses, over an address-sorted
+// snapshot so an unchanged cluster keeps an unchanged key→server mapping.
+// Resolver freshness lives inside the backend, so there is nothing to release.
 //
 // backend is the discovery backend the entry's ${discovery} label resolved to,
 // already looked up by the starter wiring; it is nil when the entry cites no
@@ -69,7 +73,11 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 	if err != nil {
 		return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
 	}
+	var client *memcache.Client
 	if resolver != nil {
+		// Fail fast on an unusable cluster: the live selector tolerates a later
+		// empty snapshot per operation, but booting against one is a
+		// misconfiguration the operator should see now.
 		eps, err := resolver()
 		if err != nil {
 			return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
@@ -77,12 +85,10 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		if len(eps) == 0 {
 			return nil, errutil.Explain(nil, "memcached: discovery returned no endpoints for %q", c.ServiceName)
 		}
-		servers = make([]string, 0, len(eps))
-		for _, ep := range eps {
-			servers = append(servers, ep.Addr)
-		}
+		client = memcache.NewFromSelector(newLiveServers(resolver))
+	} else {
+		client = memcache.New(servers...)
 	}
-	client := memcache.New(servers...)
 	if c.Timeout > 0 {
 		client.Timeout = c.Timeout
 	}

@@ -24,7 +24,7 @@ import (
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/spring/gs"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 )
 
 // The glebarez driver is pure Go, so these tests run the real assembly chain —

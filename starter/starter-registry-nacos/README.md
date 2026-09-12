@@ -13,7 +13,8 @@ config role (the two are separate starters with separate config prefixes).
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not
 register instances for you. In **pure Kubernetes** you would not use this
 starter at all: the platform already registers every Pod behind a Service, so
-you discover peers with [starter-discovery-k8s](../starter-discovery-k8s) and
+you discover peers with [starter-registry-k8s](../starter-registry-k8s) — the family's
+discovery-only backend — and
 register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to
@@ -120,7 +121,7 @@ backends is a blank-import swap, not a config migration):
 | --- | --- | --- |
 | `service-name` | (empty) | Logical name to publish; setting it is the registration intent. |
 | `addr` | (required when registering) | Connectable `host:port` advertised to clients. Nacos identifies instances by ip:port, so no id key applies. |
-| `weight` | `100` | Load-balancing weight; `<=0` is normalized to `1` at write time. |
+| `weight` | `100` | Load-balancing weight; a negative value is normalized to `1` at write time, `0` drains. |
 | `metadata.*` | (none) | Arbitrary key/value attributes stored with the instance. |
 
 ## How It Works

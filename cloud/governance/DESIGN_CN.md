@@ -57,6 +57,8 @@ govern 把这 11 份 Dync 收敛成 **全进程唯一一份治理配置**——�
 
 > **client 怎么拿到 executor（2026-08-14 重构后）**：client starter **不注入治理中心**，而是调中立函数 `resilience.ExecutorFor(系统名, 资源label)` 拿到自己的 executor——零 govern 耦合。starter-governance 在启动时（wiring bean 的 Init → `GoLive`）把治理中心注册成 `ExecutorFor` 背后的 provider；上面的 `Register(label, cb)` 扇出由 provider 内部按 label 自动完成，client 不感知。`ExecutorFor` 返回的 executor 每次 Execute 时 lazy resolve（全局 memoize），与 provider 注册先后无关；无 provider 时返回透传 noop。resolve 时会顺带把 observe 层应用到**尚未发布**的 executor 上，所以 client 拿到的已是组装好的 executor，不再自己调 `resilience.WrapExecutor`。唯一例外是 **dubbo**（URL-param 模型，直接走门面 `PolicyFor` 读策略）。seam 代码见 [cloud/governance/resilience/provider.go](resilience/provider.go)。
 
+> **client 怎么拿到选点策略（2026-09-12）**：端点选择走的是**同一个形状的第三条中立 seam**。`loadbalance.RegisterSelectionProvider` 由治理中心在 `GoLive` 时注册（与 `ExecutorFor` / `InjectorFor` 并列），client 只调 `pool.BindSelection(label)`——同样不 import `cloud/governance`。差别在落点：executor 的 sink 是一个**对象**（按 label memoize 后由 client 持有），选点的 sink 是 **caller 的 `*Pool`**，而同一个 label 可能合法地对应多个池（两个 entry 共用一个 service-name、client 被重建），所以这里**不 memoize**：每次 bind 一条独立订阅，返回的 stop 就是它的 Cancel。`loadbalance` 侧只认值（`Selection{Balancer, OutlierThreshold, OutlierSuspendFor}`），不认 policy 模型；未知策略名照旧忽略、保留上一个可用值。seam 代码见 [cloud/loadbalance/selection.go](../loadbalance/selection.go)。
+
 ## 3. 为什么是 per-label Register，而不是一个全局回调
 
 因为不同资源可以有**不同的 policy**（通过 `Rules` 列表按 label 匹配）。redis 可能配了专属 Rule，gorm 走 default。如果用一个全局回调，任何一次配置改动都会把所有资源的 executor 都重建一遍。
@@ -143,6 +145,25 @@ label 是 `PolicyFor` / `Register` 的 key，决定一条策略归属哪个资�
 | starter-dubbo | `dubbo:<app>` / `dubbo:<interface>:<version>:<group>` | 见 §7 |
 
 **给一个资源配置策略**，把上表中的 label 作为 `govern.rules[N].resources` 的值。具体写法见 [CONFIG_CN.md §3](./CONFIG_CN.md#3-多-starter-项目给不同资源配不同策略)。
+
+**同一个 label 也管端点选择**：凡是走发现模式建了 `loadbalance.Pool` 的 client（`http` / `gateway` /
+gorm 四方言 / `redigo` / `redis` / `mongodb`），都用上表里它自己那一行的 label 去 `BindSelection`，
+所以一条 Rule 同时决定这条资源的保护策略**和**选点策略（`balancer` / `outlier-threshold` /
+`outlier-suspend-for`）。`gateway` 的保护与选点用两个不同 label（policy 名 vs route id），是表里已
+注明的既有例外。
+
+三类刻意的缺口，判据都是"**这条 client 每次请求/每次建连会重新挑端点吗**"：
+
+- 直连（固定 addr/host）：没有候选集可选。
+- **只挑一次**（`neo4j`）：端点被固化进启动 URI，没有"每次挑选"可管，治理只到保护策略。
+- **成熟库自持选择**（`elasticsearch` / `memcached` / MQ 族 / `s3`）：选择权在库内部（ES 的节点
+  选择器、memcached 的按 key 一致性哈希）。这不违反主线——**库已有成熟选择器时不自己造一个**，
+  只把实时地址喂给它：ES 与 memcached 都装了自己的活池/活选择器，地址集持续跟随命名服务
+  （另外两条轴，见 [CONFIG_CN.md §3.1](./CONFIG_CN.md#31-端点选择负载均衡策略--剔除) 的表）。
+
+`grpc` 是个半口子：选点标签是进程级的 `grpc:client`（service config 仍是它的 per-client 选择，治理是
+叠在上面的进程级默认）；要按服务隔离策略，用 `RegisterBalancer` 注册一个自定义名字——它按设计豁免
+进程级覆盖。逐条口径见 [CONFIG_CN.md §3.1](./CONFIG_CN.md#31-端点选择负载均衡策略--剔除)。
 
 ## 7. dubbo 的特殊适配
 

@@ -3,7 +3,7 @@
 
 `resilience` 是治理家族(`go-spring.org/cloud/governance/resilience`)的客户端
 容错抽象。定义所有 adapter 与 driver 都遵守的中立契约,内置一个可用的驱动让
-框架开箱可跑;生产环境通常从 `starter/experimental/starter-resilience` 换成
+框架开箱可跑;生产环境通常从 `starter/starter-resilience` 换成
 sentinel 驱动。
 
 ## 1. 职责与边界

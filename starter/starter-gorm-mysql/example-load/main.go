@@ -33,7 +33,7 @@ import (
 	"go-spring.org/cloud/loadtest"
 	"go-spring.org/spring/gs"
 
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	_ "go-spring.org/starter-gorm-mysql"
 	_ "go-spring.org/starter-governance" // registers the centralized governance center
 )

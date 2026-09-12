@@ -263,6 +263,11 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
   `gs_consistent_hash`、`gs_weighted`、`gs_zone_aware`。它们在 init 预注册，**初始不启用驱逐**；
   用一条治理规则统一配置：`govern.default.outlier-threshold` / `.outlier-suspend-for`
   （它们解析的是进程级默认；要显式定向就写 `govern.rules[N].resources=grpc:client`）。
+  规则里的 `balancer` 会**覆盖**所有内置 `gs_*` 名字的 service config 选择——picker 每次挑选都重读，
+  所以 push 完下一笔 RPC 就走新策略，不用重连。`balancer` 留空 = 仍由 service config 决定；写错
+  名字 = 被忽略。由于标签是进程级的，配 `grpc:client`（或 `govern.default.balancer`）会**同时**改掉
+  所有内置客户端——这是这条 seam 的钝角所在。经 `RegisterBalancer` 注册的自定义名字不受影响：
+  它们按设计保留自己的策略。
 - 按调用提示：`WithHashKey`（consistent-hash 亲和）、`WithZone`（zone 亲和）。
 - Weight=0 的实例由策略本身过滤（Pool 全策略统一的摘流语义）。
 - `RegisterBalancer(name, strategy, trackerConfig)` 注册自定义名字以隔离驱逐状态；对未知

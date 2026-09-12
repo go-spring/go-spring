@@ -1,22 +1,21 @@
 # starter-registry
 
-注册核心：唯一拥有本进程发布生命周期的 server，统摄所有已配置的注册中心。
+注册族的核心：唯一拥有本进程发布生命周期的 server，统摄所有已配置的注册中心。
+
+**应用永远不直接 import 本模块。** 每个后端 starter
+（starter-registry-etcd、-consul、-nacos、-zookeeper）都依赖它，因此它随传递
+引入而来，无论混用几个后端，registryServer bean 每进程恰好一个。
 
 ## 它做什么
 
-各注册中心后端 starter（starter-registry-etcd、starter-registry-consul、
-starter-registry-nacos、starter-registry-zookeeper）为每个已配置的
-`${spring.registry.<backend>.<name>}` 块派生一个 discovery.Registrar。本
-starter 把它们全部收集起来——跨后端——并统一驱动：
+每个后端 starter 为每个已配置的 `${spring.registry.<backend>.<name>}` 块派生
+一个 discovery.Registrar。本核心把它们全部收集起来——跨后端——并统一驱动：
 
 - 应用就绪后，注册到所有中心；
 - 停机开始时（PreStop，先于任何 server 停止），从所有中心反注册——无损下线时序；
 - 权重变更广播到所有中心（UpdateWeight）。
 
 任一中心注册失败即启动失败：消费方在某个中心看不到本实例等于视图分裂。
-
-你不需要直接 import 本包——每个后端 starter 都传递引入它，因此无论混用几个
-后端，registryServer bean 每进程恰好一个。
 
 ## 配置
 
@@ -56,5 +55,7 @@ registryServer bean 上的 `UpdateWeight(ctx, weight)` 向所有中心以新权�
 ## 说明
 
 - 本 server 不开端口；接入 Go-Spring 的 server 生命周期。
-- 配了 service-name 但没有任何注册中心块时启动失败（fail-fast，不静默）。
+- 本核心自身不带任何注册中心后端。配了 service-name 但没有任何注册中心块时启动
+  失败（fail-fast，不静默，报 "no registry center is configured"）——需加一个
+  starter-registry-<backend>。
 - 发现侧自身零配置——见各后端 starter 的 README。

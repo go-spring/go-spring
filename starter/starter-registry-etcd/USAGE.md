@@ -1,7 +1,7 @@
 # starter-registry-etcd Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
-the starter source (`starter.go`, `config.go`, `registrar.go`, `discovery_etcd.go`,
+the starter source (`starter.go`, `config.go`, `registrar.go`, `discovery.go`,
 `registrar_weight_test.go`) and the runnable [example/](example/) (`example/check.sh` runs unit
 tests plus a docker-compose etcd end-to-end boot). **etcd's own semantics (leases, watches, KV,
 auth) are [etcd documentation](https://etcd.io/docs/)** — everything below is go-spring's increment.
@@ -175,8 +175,8 @@ TTL removes dead keys "self-healing without a reaper" (`starter.go`).
 - Key = `<key-prefix><service-name>/<instance-id>`, id = configured `id` else
   `<service-name>-<addr>` — restarts replace the same key (`registrar.go`).
 - Value = JSON `instanceValue{service_name, addr, weight, metadata}` (`registrar.go`).
-- Weight ≤ 0 at Register is normalized to 1: "default" is never stored as 0 — **0 is reserved for
-  the runtime drain signal**, reachable only via `UpdateWeight` (`registrar.go`).
+- A negative weight at Register is normalized to 1; **0 passes through as the drain signal** on
+  both write paths, so `weight=0` in config registers a drained instance (`registrar.go`).
 - `Register` = Grant(TTL seconds) → `Put(key, val, WithLease)` → `KeepAlive` goroutine that must
   drain the renewal channel or the lease dies (`registrar.go`). Re-registering the same
   instance retires the old lease first (`registrar.go`).
@@ -185,7 +185,7 @@ TTL removes dead keys "self-healing without a reaper" (`starter.go`).
 
 ### 2.3 DISCOVERY path (consumer side)
 
-`etcdDiscovery.Resolve` (`discovery_etcd.go`):
+`etcdDiscovery.Resolve` (`discovery.go`):
 
 1. The first Resolve of a service takes a **full snapshot** (`Get` + `WithPrefix`, bounded by the
    caller's ctx) and caches it, then starts a background watcher
@@ -270,8 +270,8 @@ collection is backend-agnostic.
 | `service-name` | string | "" | Logical name; becomes the key segment and the name consumers resolve/watch. **Its presence is the registration intent signal** — set registers into every center, unset = pure consumer. | empty → pure consumer; set without any block → Run error `registry: ${spring.registry.service-name} is set but no registry center is configured` |
 | `addr` | string | "" | Advertised `host:port`. Never guessed. | empty with service-name set → same Run error; Register also `RequireField`s it (`registrar.go`) |
 | `id` | string | "" | Instance id override; empty derives `<service-name>-<addr>` so restarts replace the same key. ⚠ duplicate ids across processes overwrite each other's lease holds. | same name+addr in two processes → one entry, lease ping-pong |
-| `weight` | int | 100 | Stored weight; `<=0` normalized to 1 **at Register** (`registrar.go`). ⚠ config 0 does NOT drain — drain is `UpdateWeight(0)` only. | expecting config-0 to drain → instance stays at weight 1 |
-| `metadata` | map[string]string | empty | Arbitrary attributes (zone, version); `scheme` is the reserved key driving consumer-side scheme filtering (`discovery_etcd.go`). | wrong `scheme` value → instance filtered out of scheme-scoped queries |
+| `weight` | int | 100 | Stored weight; negative normalized to 1 at write time (`registrar.go`). 0 = drained, honored from startup. | negative weight silently becomes 1 rather than erroring |
+| `metadata` | map[string]string | empty | Arbitrary attributes (zone, version); `scheme` is the reserved key driving consumer-side scheme filtering (`discovery.go`). | wrong `scheme` value → instance filtered out of scheme-scoped queries |
 
 ### 3.3 Discovery — cite the block's bean name (no config)
 
@@ -346,7 +346,9 @@ All drills use `etcdctl` (or `curl` v3 API) against the §1 stack. Keys:
 
 Runtime logs carry tag `_app_registry_etcd`: `creating etcd registrar`, `registering service=...`,
 `registered %q at %s`, `deregister %q` (Warn on failure), `registered etcd discovery backend
-name=...`. Tune via `logger.<name>.tag=_app_registry_etcd`. No metrics/traces are emitted.
+name=...`. Tune via `logger.<name>.tag=_app_registry_etcd`.
+
+Observability: registration and discovery emit OTel metrics through the global providers — a no-op unless `starter-otel` is imported. `register`, `deregister` and `update_weight` each produce a client span plus a `registry.operation.duration` record labelled `system`/`operation`/`service`/`status`; `registry.registration.attempts_total` counts attempts by `reason` and `status`; the `registry.instance.registered` gauge reads 1 while this instance is published and 0 while it is not, so a failed self-heal lands there instead of only in a log line. The discovery half reports every background cache sync to `discovery.sync_total` and keeps `discovery.cache.age_seconds` (seconds since the snapshot was last confirmed fresh), so a dead watch shows a climbing age rather than a silently stale address list. `reason` is `initial` for the first publish and `self_heal` for the background re-registration.
 
 ---
 

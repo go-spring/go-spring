@@ -100,14 +100,29 @@ func backendLabels() []string {
 	return labels
 }
 
-// clientSuspensionLabel is the governance resource label the pre-registered
-// balancers resolve their suspension policy from. It deliberately names no
-// service: these balancers are process-wide and shared by every client that
+// clientGovernLabel is the governance resource label the pre-registered
+// balancers resolve their endpoint-selection policy from — both halves: the
+// outlier-suspension thresholds and the strategy override. It deliberately names
+// no service: these balancers are process-wide and shared by every client that
 // selects them through service config, so their only sensible policy is the
 // process-wide default — govern.default.* — which is exactly what a label
 // matching no rule resolves to. Write govern.rules[N].resources=grpc:client to
 // target them explicitly.
-const clientSuspensionLabel = "grpc:client"
+//
+// The label being process-wide is what makes `balancer` here a blunt instrument:
+// naming a strategy flips EVERY built-in gs_* client at once, exactly as the
+// suspension thresholds already did. Per-service gRPC strategy stays the dial-time
+// service config ([LoadBalancingConfig]); governance is the process-wide default
+// layered on top.
+const clientGovernLabel = "grpc:client"
+
+// governedBal is the strategy override the governance center applies to the
+// built-in gs_* balancers, re-read on every pick so a pushed rule takes effect
+// without rebuilding a picker or re-dialing. nil means "use each balancer's own
+// registered default", i.e. the strategy the app chose through gRPC service
+// config. Balancers registered through [RegisterBalancer] never consult it: a
+// custom name exists precisely to keep its own strategy.
+var governedBal atomic.Pointer[loadbalance.Balancer]
 
 // builtinStrategies are the balancer strategies pre-registered under their
 // gRPC names at init, so a client can select one purely through service
@@ -131,15 +146,28 @@ func init() {
 	trackers := make([]*loadbalance.Tracker, 0, len(builtinStrategies))
 	for _, s := range builtinStrategies {
 		t := loadbalance.NewTracker(loadbalance.TrackerConfig{})
-		registerBalancer(BalancerName(s), s, t)
+		registerBalancer(BalancerName(s), s, t, true)
 		trackers = append(trackers, t)
 	}
-	governance.Register(clientSuspensionLabel, func(p resilience.Policy) {
+	governance.Register(clientGovernLabel, func(p resilience.Policy) {
+		// Suspension half: retune every built-in tracker in place, keeping the
+		// per-endpoint failure state.
 		for _, t := range trackers {
 			t.SetConfig(loadbalance.TrackerConfig{
 				Threshold:  p.OutlierThreshold,
 				SuspendFor: p.OutlierSuspendFor,
 			})
+		}
+		// Strategy half: an empty name leaves each balancer on the strategy the
+		// app chose through service config; an unknown name is IGNORED and the
+		// last good override stands, since the governance Source contract has no
+		// error channel ("everything you push, you vouch for").
+		if p.Balancer == "" {
+			governedBal.Store(nil)
+			return
+		}
+		if bal, err := loadbalance.New(p.Balancer); err == nil {
+			governedBal.Store(&bal)
 		}
 	})
 }
@@ -157,22 +185,26 @@ func LoadBalancingConfig(strategy string) string {
 // RegisterBalancer registers a gRPC balancer under name that selects instances
 // using the loadbalance strategy and evicts failing ones per tc. The built-in
 // strategies are pre-registered in init, driven by governance (see
-// clientSuspensionLabel); call this to register a custom name (e.g. per
-// service, for isolated suspension state) or a suspension policy of your own
-// that governance does not drive. It panics on an unknown strategy or a
-// duplicate name, matching gRPC's own balancer.Register contract.
+// clientGovernLabel); call this to register a custom name (e.g. per service, for
+// isolated suspension state) or a suspension policy of your own that governance
+// does not drive. A custom name keeps its own strategy: the process-wide
+// governance `balancer` override applies only to the built-in names. It panics
+// on an unknown strategy or a duplicate name, matching gRPC's own
+// balancer.Register contract.
 func RegisterBalancer(name, strategy string, tc loadbalance.TrackerConfig) {
-	registerBalancer(name, strategy, loadbalance.NewTracker(tc))
+	registerBalancer(name, strategy, loadbalance.NewTracker(tc), false)
 }
 
 // registerBalancer registers name over a caller-built tracker, so the built-in
 // strategies can keep a handle on theirs and retune it when governance changes.
-func registerBalancer(name, strategy string, tracker *loadbalance.Tracker) {
+// governed marks the built-ins, whose strategy the governance center may override
+// in place.
+func registerBalancer(name, strategy string, tracker *loadbalance.Tracker, governed bool) {
 	bal, err := loadbalance.New(strategy)
 	if err != nil {
 		panic("starter-grpc: " + err.Error())
 	}
-	pb := &gsPickerBuilder{bal: bal, tracker: tracker}
+	pb := &gsPickerBuilder{defaultBal: bal, tracker: tracker, governed: governed}
 	balancer.Register(base.NewBalancerBuilder(name, pb, base.Config{HealthCheck: true}))
 }
 
@@ -259,8 +291,22 @@ func endpointFromAddr(a resolver.Address) discovery.Endpoint {
 // state; sharing a name across services is safe because all state is keyed by
 // endpoint address.
 type gsPickerBuilder struct {
-	bal     loadbalance.Balancer
-	tracker *loadbalance.Tracker
+	defaultBal loadbalance.Balancer
+	tracker    *loadbalance.Tracker
+	governed   bool // true for the built-ins, whose strategy governance may override
+}
+
+// current returns the strategy this balancer's pickers must use: the governance
+// override when one is in force and this name is governed, else the strategy the
+// name was registered with. It is read per pick, so a pushed rule takes effect on
+// the next call without rebuilding a picker or re-dialing.
+func (pb *gsPickerBuilder) current() loadbalance.Balancer {
+	if pb.governed {
+		if b := governedBal.Load(); b != nil {
+			return *b
+		}
+	}
+	return pb.defaultBal
 }
 
 func (pb *gsPickerBuilder) Build(info base.PickerBuildInfo) balancer.Picker {
@@ -274,23 +320,26 @@ func (pb *gsPickerBuilder) Build(info base.PickerBuildInfo) balancer.Picker {
 		eps = append(eps, ep)
 		byAddr[ep.Addr] = sc
 	}
-	return &gsPicker{bal: pb.bal, tracker: pb.tracker, eps: eps, byAddr: byAddr}
+	return &gsPicker{pb: pb, eps: eps, byAddr: byAddr}
 }
 
 type gsPicker struct {
-	bal     loadbalance.Balancer
-	tracker *loadbalance.Tracker
-	eps     []discovery.Endpoint
-	byAddr  map[string]balancer.SubConn
+	pb     *gsPickerBuilder
+	eps    []discovery.Endpoint
+	byAddr map[string]balancer.SubConn
 }
 
 func (p *gsPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// gRPC has already narrowed p.eps to READY SubConns (dead instances are
 	// dropped here — the "kill an instance" path). The tracker layers breaker-
 	// style eviction on top for instances that are connectable but failing.
-	candidates := p.tracker.Allows(p.eps)
+	candidates := p.pb.tracker.Allows(p.eps)
 
-	ep, err := p.bal.Pick(candidates, pickInfoFrom(info))
+	// Resolve the strategy once per pick so the Done callback settles against the
+	// same balancer instance that made the choice, even if governance swaps it
+	// mid-flight.
+	bal := p.pb.current()
+	ep, err := bal.Pick(candidates, pickInfoFrom(info))
 	if err != nil {
 		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
 	}
@@ -302,8 +351,8 @@ func (p *gsPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	return balancer.PickResult{
 		SubConn: sc,
 		Done: func(di balancer.DoneInfo) {
-			p.bal.Complete(ep, di.Err)
-			p.tracker.Record(ep.Addr, di.Err == nil)
+			bal.Complete(ep, di.Err)
+			p.pb.tracker.Record(ep.Addr, di.Err == nil)
 		},
 	}, nil
 }

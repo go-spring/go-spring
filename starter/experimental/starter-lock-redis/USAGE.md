@@ -1,7 +1,7 @@
 # starter-lock-redis Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
-against the starter source (`starter.go`, `config.go`, `redislock.go`, `observe.go`), the shared
+against the starter source (`starter.go`, `config.go`, `lock.go`, `observe.go`), the shared
 abstraction [cloud/lock](../../../cloud/lock), and the self-asserting
 [example/](example) (`example/check.sh`). Redis semantics (SET NX PX, scripting, expiry) are
 [Redis docs](https://redis.io/docs/latest/commands/set/) — everything below is go-spring's
@@ -182,7 +182,7 @@ Special semantics that survive the layering:
 1. `lock.Resolve(defaults, opts...)` — TTL 10s (per-call wins over config), renew = TTL/3 unless
    configured, retry = `retry-interval`; fencing token generated (random 16-byte hex) unless
    `WithToken`.
-2. `TryAcquire`: one `SET key token NX PX <ttl>` (`redislock.go TryAcquire`).
+2. `TryAcquire`: one `SET key token NX PX <ttl>` (`lock.go TryAcquire`).
    - Not set (`ok=false`) ⇒ contention.
    - Set ⇒ handle created; if renew interval > 0 a **renewLoop goroutine** starts.
    - In `Acquire`, contention sleeps `RetryInterval` and retries until ctx ends / locker closes.

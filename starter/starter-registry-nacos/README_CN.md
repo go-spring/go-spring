@@ -10,7 +10,7 @@
 
 适用于**虚机 / 裸机 / 混合**部署，即平台不替你注册实例的场景。**纯 Kubernetes**
 下则完全用不到本 starter：平台已把每个 Pod 注册在 Service 之后，你用
-[starter-discovery-k8s](../starter-discovery-k8s) 去**发现**对端即可，无需注册。
+[starter-registry-k8s](../starter-registry-k8s)（家族中只做发现的后端）去**发现**对端即可，无需注册。
 
 本 starter 注册的是一个**朴素实例**（任意传输协议 —— HTTP、gRPC……）。RPC 框架的
 provider 注册仍保持框架原生，不在本 starter 范围内（见
@@ -106,7 +106,7 @@ spring.http-client.backends.users.discovery=nacos.main
 | --- | --- | --- |
 | `service-name` | （空） | 要发布的逻辑名；设置它即表达注册意图。 |
 | `addr` | （注册时必填） | 对外通告的可连 `host:port`。Nacos 按 ip:port 识别实例，因此没有 id key。 |
-| `weight` | `100` | 负载均衡权重；写入时 `<=0` 归一为 `1`。 |
+| `weight` | `100` | 负载均衡权重；写入时负值归一为 `1`，`0` 即摘流。 |
 | `metadata.*` | （无） | 随实例存储的任意键值属性。 |
 
 ## 工作原理

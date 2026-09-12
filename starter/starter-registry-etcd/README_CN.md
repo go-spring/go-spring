@@ -9,7 +9,7 @@
 
 适用于**虚机 / 裸机 / 混合**部署,即平台不替你注册实例的场景。**纯 Kubernetes**
 下则完全用不到本 starter:平台已把每个 Pod 注册在 Service 之后,你用
-[starter-discovery-k8s](../starter-discovery-k8s) 去**发现**对端即可,无需注册。
+[starter-registry-k8s](../starter-registry-k8s)（家族中只做发现的后端）去**发现**对端即可,无需注册。
 
 本 starter 注册的是一个**朴素实例**(任意传输协议 —— HTTP、gRPC……)。RPC 框架的
 provider 注册仍保持框架原生,不在本 starter 范围内(见

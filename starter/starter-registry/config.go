@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package StarterRegistry
+package registrycore
 
 // RegistrationConfig binds the instance identity under ${spring.registry}.
 // These fields describe the instance itself and are shared by every registry

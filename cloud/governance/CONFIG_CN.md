@@ -36,7 +36,7 @@ import (
 **其它规则来源**：
 
 - `govern.source.http.*`（轮询远程控制台/规则 API，见 [starter-governance README](../../starter/starter-governance/README.md)）；
-- config 中心的 source 适配器（nacos/etcd）在各 config starter 里，内容同样是这份 `govern.*` 文档；
+- config 中心的 source 适配器（nacos/etcd）各自独立成模块（`starter-governance-nacos`、`starter-governance-etcd`），内容同样是这份 `govern.*` 文档；
 - 代码里 `governance.SetSource(...)` 静态注入或推流。
 
 优先级：显式 `governance.SetSource` > 由 bean 注入的 source（如上面 file/http 的）。
@@ -145,11 +145,52 @@ govern.rules[3].outlier-threshold=5
 govern.rules[3].outlier-suspend-for=10s
 ```
 
-- **`balancer`**：`round_robin`(默认) / `least_conn` / `consistent_hash` / `weighted` / `zone_aware`。留空 = 保持该 client 的默认（round_robin）。写错策略名会被**忽略并沿用当前策略**，不影响调用——治理文档没有错误通道（"你推什么，你担保什么"）。
+- **`balancer`**：`round_robin`(默认) / `least_conn` / `consistent_hash` / `weighted` / `zone_aware`（包内还注册了 `random` / `p2c`，公司策略名如 `luohua` 同理）。留空 = 保持该 client 的默认（round_robin）。写错策略名会被**忽略并沿用当前策略**，不影响调用——治理文档没有错误通道（"你推什么，你担保什么"）。
 - **`outlier-threshold`**：与 `error-threshold` 是同一套语义（连续失败 + 半开试探），区别在作用对象——`error-threshold` 熔断的是**整个资源**，`outlier-threshold` 摘的是**单个实例**。0 表示不摘除。
 - 两个旋钮都**原地生效**：改完 push，下一次请求就走新策略/新阈值，不用重启，也不会重建 transport。（策略自身的状态不跨切换保留——`least_conn` 的在途计数、`consistent_hash` 的哈希环、p2c 的延迟模型都会重来。）
 
-> 只在**发现模式**下有意义：直连（固定 addr）的 client 没有候选集可选，这条路整体旁路。
+**覆盖到的客户端**：所有走发现模式的 `loadbalance.Pool` 消费者——`http`（starter-http-client）、
+`gateway`（每条路由）、`gorm` 全部方言、`redigo`、`redis`（go-redis）、`mongodb`。它们用
+**与保护策略相同的资源标签**绑定（`resilience.ResourceLabel`，见 §6 表），所以一条 Rule 同时管住
+一条资源的超时/重试/熔断和它的选点策略。
+
+**覆盖不到的客户端，三条理由，都是有意为之**：
+
+- **直连（固定 addr / host）**：没有候选集可选，这条路整体旁路。`neo4j` `memcached`
+  `elasticsearch` 等只要不配 `service-name` 就属于这一类。
+- **只挑一次的客户端——`neo4j`**：启动时挑一个端点并把主机名固化进 URI，之后没有"每次挑选"，
+  订阅了也影响不了任何一次决策。它的治理只到保护策略为止。
+- **成熟客户端自持选择的——`elasticsearch`、`memcached`**：选择权在库内部——ES 有自己的节点选择器，
+  memcached 的选择就是按 key 做一致性哈希（按 key 亲和正是它的语义，把一个可重排的池套上去会直接
+  破坏它）。**这不等于没得配**：这类客户端的选点规则在它自己的配置里（如 ES 的节点选择器、
+  `servers` 顺序），govern 不插手——与 MQ/broker 族（kafka/pulsar/rocketmq/nats/mqtt/rabbitmq）
+  以及 `s3` 一样，它们的"发给谁"是协议层/集群层的事。判据见 DESIGN_CN 的中立层边界：**库里已经有
+  成熟选择器时不自己造一个**。
+
+> **别把"选择权归属"和"地址新鲜度"混成一件事**——它们是两条轴：
+>
+> | | 谁挑节点 | 地址集跟随命名服务 |
+> |---|---|---|
+> | `http`/`gateway`/gorm/`redigo`/`redis`/`mongodb` | `loadbalance.Pool`（可配 `balancer`） | ✅ 每次建连/每请求重读 |
+> | `elasticsearch` | ES transport 的选择器 | ✅（1s 传播预算，见 starter-elasticsearch USAGE） |
+> | `memcached` | 库的按 key 一致性哈希 | ✅ 每次 key 查找重读 |
+> | `neo4j` | driver | ⚠️ `bolt://` 不重读；`neo4j://` 靠 `AddressResolver` 在种子主机消失后重找集群 |
+>
+> 所以"新实例不生效"对 ES/memcached 已经不是问题；`balancer` 对它们仍然无效，因为挑节点的不是我们。
+
+> 一句话自查：**这条 client 每次请求/每次建连会重新挑端点吗？** 会 → 它的资源标签就能配 `balancer`；
+> 不会（只挑一次、或交给库内部挑） → 别指望 `govern.rules[N].balancer` 对它生效。
+
+**两个语义边界**（写规则前值得知道）：
+
+- **`grpc` 客户端**的策略选择天然是 gRPC service config（`grpc.WithDefaultServiceConfig(LoadBalancingConfig(s))`）。
+  治理的 `balancer` 是**叠在它上面的进程级默认**，标签固定为 `grpc:client`——所以给 `grpc:client` 配
+  `balancer=` 会同时改掉**所有**内置 `gs_*` balancer 的策略（与它原本就管的摘除阈值行为一致）。不做
+  进程级覆盖时，service config 的选择原样生效；`RegisterBalancer` 注册的自定义名字不受影响（它们存在
+  的意义就是保留自己的策略）。
+- **DB/缓存客户端的剔除粒度是"连接"而非"查询"**：gorm / redigo / go-redis / mongodb 的挑选发生在
+  建连时，能喂给 `Tracker` 的成败信号只有 dial 结果本身。所以这些 client 上 `outlier-threshold` 摘的是
+  **反复连不上**的实例；单条查询/命令的失败由它们各自的 resilience executor 管，不参与点数。
 
 ### 3.2 让某一条资源不上治理
 

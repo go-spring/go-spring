@@ -3,7 +3,7 @@
 [English](USAGE.md) | [中文](USAGE_CN.md)
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
-（`starter.go`、`config.go`、`redislock.go`、`observe.go`）、共享抽象
+（`starter.go`、`config.go`、`lock.go`、`observe.go`）、共享抽象
 [cloud/lock](../../../cloud/lock) 与自校验的 [example/](example)
 （`example/check.sh`）核实。Redis 自身语义（SET NX PX、脚本、过期）见
 [Redis 官方文档](https://redis.io/docs/latest/commands/set/)——本文只写 go-spring 的增量。
@@ -181,7 +181,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 1. `lock.Resolve(defaults, opts...)` —— TTL 10s（每次调用压过配置），renew 未配置则为
    TTL/3，retry 取 `retry-interval`；无 `WithToken` 时生成 fencing token（随机 16 字节
    hex）。
-2. `TryAcquire`：一次 `SET key token NX PX <ttl>`（`redislock.go` TryAcquire）。
+2. `TryAcquire`：一次 `SET key token NX PX <ttl>`（`lock.go` TryAcquire）。
    - 未设置（`ok=false`）⇒ 竞争。
    - 设置成功 ⇒ 创建句柄；renew interval > 0 时启动 **renewLoop goroutine**。
    - 在 `Acquire` 中，竞争睡眠 `RetryInterval` 后重试，直到 ctx 结束 / locker 关闭。

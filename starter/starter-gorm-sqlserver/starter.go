@@ -32,7 +32,7 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
@@ -65,12 +65,14 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 
 	log.Debugf(ctx, log.TagAppDef, "creating gorm sqlserver client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
 
+	resource := resilience.ResourceLabel("gorm:sqlserver", c.ServiceName, c.Host)
+
 	var (
 		dialector gorm.Dialector
 		closer    func()
 	)
 
-	lb, _, err := c.NewPickPool(ctx, backend)
+	lb, _, stopSelection, err := c.NewPickPool(ctx, backend, resource)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: build discovery resolver failed: %v", err)
 		return gormcore.Spec{}, err
@@ -84,6 +86,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 		connector := mssql.NewConnectorConfig(msCfg)
 		connector.Dialer = resolverDialer{lb: lb, nd: &net.Dialer{}}
 		dialector = sqlserver.New(sqlserver.Config{Conn: sql.OpenDB(connector)})
+		closer = stopSelection
 	} else {
 		dialector = sqlserver.Open(c.DSN())
 	}
@@ -96,7 +99,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 	return gormcore.Spec{
 		Dialector:      dialector,
 		Pool:           c.Pool(),
-		Resource:       resilience.ResourceLabel("gorm:sqlserver", c.ServiceName, c.Host),
+		Resource:       resource,
 		ObserveEnabled: c.ObserveEnabled,
 		Closers:        closers,
 	}, nil
@@ -122,7 +125,11 @@ func (d resolverDialer) DialContext(ctx context.Context, _, _ string) (net.Conn,
 	if err != nil {
 		return nil, err
 	}
-	return d.nd.DialContext(ctx, "tcp", ep.Addr)
+	conn, derr := d.nd.DialContext(ctx, "tcp", ep.Addr)
+	// The dial outcome is the only signal this picker has; feeding it makes
+	// outlier suspension evict an instance that keeps refusing connections.
+	d.lb.Complete(ep, derr)
+	return conn, derr
 }
 
 // The pool (built by [gormcore.Common.NewPickPool]) is adapted to mssql's

@@ -28,8 +28,9 @@
 //
 // It exists for VM / bare-metal / hybrid deployments where the platform does
 // not register instances for you. In pure Kubernetes the platform already
-// registers every Pod behind a Service, so you would use starter-discovery-k8s
-// to *discover* peers and not register at all. RPC-framework provider
+// registers every Pod behind a Service, so you would use
+// starter-registry-k8s (the family's discovery-only backend) to *discover*
+// peers and not register at all. RPC-framework provider
 // registration is out of scope and stays framework-native (starter/DESIGN §3);
 // this starter publishes a plain instance (any transport) to etcd.
 //
@@ -55,3 +56,7 @@ var (
 	// starterTag identifies logs emitted by the etcd registry starter.
 	starterTag = log.RegisterAppTag("registry_etcd", "")
 )
+
+// obsSystem is this backend's value for the discovery instrumentation's
+// "system" attribute and log field.
+const obsSystem = "etcd"

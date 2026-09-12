@@ -128,7 +128,7 @@ family's own concern (`starter-http-server` ships one; gin uses
 - Two questions only: **who is the caller**, and **may they do this**.
 - Not the crypto library. `TokenValidator` is the seam; JWT / opaque-token /
   session-cookie implementations live in starters or the calling app.
-- Not a session library (see `cloud/session`), not an OAuth2 authorization
+- Not a session library (see `cloud/experimental/session`), not an OAuth2 authorization
   server (see `starter-oauth2-server`).
 - HTTP middleware, route-level `Authorize`, and CORS stay with each server
   family; only the security-sensitive logic those shells share is exposed here

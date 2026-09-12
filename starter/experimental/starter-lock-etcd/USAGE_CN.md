@@ -3,7 +3,7 @@
 [English](USAGE.md) | [中文](USAGE_CN.md)
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
-（`starter.go`、`config.go`、`etcdlock.go`、`observe.go`）、共享抽象
+（`starter.go`、`config.go`、`lock.go`、`observe.go`）、共享抽象
 [cloud/lock](../../../cloud/lock) 与自校验的 [example/](example)
 （`example/check.sh`）核实。etcd 自身语义（lease、concurrency 包）见
 [etcd 官方文档](https://etcd.io/docs/latest/dev-guide/api_concurrency_reference/)——本文只写
@@ -148,7 +148,7 @@ import starter-lock-etcd
 ```
 
 每次获取锁都会开**全新 `concurrency.Session`**（自带 lease 与自动 keepalive，
-`etcdlock.go` newMutex），因此每次持有的 lease 与 `Lost()` 通道与其他持有完全隔离。
+`lock.go` newMutex），因此每次持有的 lease 与 `Lost()` 通道与其他持有完全隔离。
 
 ### 2.2 三层时序解析（所有锁后端共享）
 
@@ -160,7 +160,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 | 2. starter 默认 | `spring.lock.instances.<name>.ttl` 等 | **仅 TTL** —— etcd concurrency 包自行维持每个 session 的 lease，因此没有 renew/retry key |
 | 3. 包默认 | TTL `30s`、renew `TTL/3`、retry `100ms` | 兜底仍未设置的项 |
 
-解析后的 TTL 换算为整秒，不足 1 秒**向上取整**且下限 1 秒（`etcdlock.go` ttlSeconds），
+解析后的 TTL 换算为整秒，不足 1 秒**向上取整**且下限 1 秒（`lock.go` ttlSeconds），
 因为 etcd lease 使用整数 TTL。
 
 ### 2.3 一次锁的逐层走读（acquire → 持有 → release）

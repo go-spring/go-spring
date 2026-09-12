@@ -291,6 +291,13 @@ curl -s :9370/metrics | grep -E 'redigo|db.client'   # 时延直方图 + 在途 
 用 `discovery` 实例（`service-name` + `conn-max-lifetime=30s`），迁移/扩缩后端 Redis；
 `Stats()`（ActiveCount/IdleCount）显示 30s 内连接回收到新端点——无需重启、无需重建客户端。
 
+池的策略归治理管，不是写死的：它挂着 suspension tracker，并经 `loadbalance.Pool.BindSelection`
+绑到 `redigo:<service-name|addr>`，所以该 label 命中的 `govern.rules[N].balancer` /
+`outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号就用新策略。dialer 把拨号
+结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例；单条命令的失败归
+resilience executor 管。直连（只配 `addr`）的池没有候选集，这些 key 对它无效。详见
+`cloud/governance/CONFIG_CN.md` §3.1。
+
 ### 4.4 验证缓存抽象接线
 
 ```go

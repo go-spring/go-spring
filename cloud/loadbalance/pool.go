@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -56,6 +57,12 @@ type Pool struct {
 	src     EndpointSource
 	bal     atomic.Pointer[Balancer]
 	tracker *Tracker
+	sel     atomic.Pointer[Selection]
+
+	// selMu serializes the read-modify-write of sel in [Pool.ApplySelection], so
+	// two concurrent policy applications cannot drop each other's strategy name.
+	// It guards nothing on the hot path: Pick and Complete never touch it.
+	selMu sync.Mutex
 }
 
 // PoolOption configures a [Pool].
@@ -112,12 +119,23 @@ func (p *Pool) SetTrackerConfig(cfg TrackerConfig) {
 // error channel ("everything you push, you vouch for"), so a bad rule degrades
 // to the last good strategy instead of taking the client down. The suspension
 // half is always applied, so a rule that only retunes thresholds still works.
+//
+// This is the sink [Pool.BindSelection] points at a managed policy; the values
+// it accepted are readable back through [Pool.Selection].
 func (p *Pool) ApplySelection(balancer string, threshold int, suspendFor time.Duration) {
+	p.selMu.Lock()
+	sel := p.Selection()
 	if balancer != "" {
 		if bal, err := New(balancer); err == nil {
 			p.SetBalancer(bal)
+			sel.Balancer = balancer
 		}
 	}
+	sel.OutlierThreshold = threshold
+	sel.OutlierSuspendFor = suspendFor
+	p.sel.Store(&sel)
+	p.selMu.Unlock()
+
 	p.SetTrackerConfig(TrackerConfig{Threshold: threshold, SuspendFor: suspendFor})
 }
 

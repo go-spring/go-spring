@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 )
 
 // TestBuildPlainDSN is the regression test for the plain-DSN (non-discovery)

@@ -98,7 +98,7 @@ func init() {
 	gs.Provide(&Flags{})
 
 	// The order mux is the JWT resource server. Arg 1 (the authenticator) is
-	// selected by name "api" — the sub-key of spring.security.jwt.api in
+	// selected by name "api" — the sub-key of spring.security.jwt.instances.api in
 	// app.properties. The handler chain is: trace span (outermost) -> JWT auth ->
 	// business mux, so authentication happens inside the request's span.
 	gs.Provide(newOrderMux, gs.IndexArg(1, gs.TagArg("api")))

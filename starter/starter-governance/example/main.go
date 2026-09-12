@@ -44,25 +44,31 @@ import (
 type printer struct{}
 
 func (p *printer) Run(ctx context.Context) error {
-	tk := time.NewTicker(time.Second)
-	defer tk.Stop()
-	for i := 0; ; i++ {
-		p := governance.PolicyFor("demo:resource")
-		fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v", !p.IsZero(), p.Timeout, p.MaxRetries, p.RateLimit)
-		if in := fault.InjectorFor(); in != nil {
-			c := in.Config()
-			fmt.Printf(" | fault: enabled=%v rate=%v", c.Enabled, c.Rate)
+	// Print from a background goroutine: a Runner that blocks would hold up app
+	// startup, so gs would not yet be listening for SIGTERM when the example
+	// signals itself.
+	go func() {
+		tk := time.NewTicker(time.Second)
+		defer tk.Stop()
+		for i := 0; ; i++ {
+			p := governance.PolicyFor("demo:resource")
+			fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v", !p.IsZero(), p.Timeout, p.MaxRetries, p.RateLimit)
+			if in := fault.InjectorFor(); in != nil {
+				c := in.Config()
+				fmt.Printf(" | fault: enabled=%v rate=%v", c.Enabled, c.Rate)
+			}
+			fmt.Println()
+			if i == 3 {
+				fmt.Println(">>> edit conf/govern.yaml now: policy AND fault toggle live (e.g. set fault.enabled=true)")
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-tk.C:
+			}
 		}
-		fmt.Println()
-		if i == 3 {
-			fmt.Println(">>> edit conf/govern.yaml now: policy AND fault toggle live (e.g. set fault.enabled=true)")
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-tk.C:
-		}
-	}
+	}()
+	return nil
 }
 
 func init() {

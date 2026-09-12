@@ -79,12 +79,13 @@ func init() {
 //
 // When c.ServiceName is set and mesh mode is off, a Resolver is built against
 // backend (the discovery backend the entry's ${discovery} label resolved to),
-// one endpoint is picked, and its address is spliced into the URI host. Because
-// the neo4j driver exposes no dialer injection point, this is a one-shot
-// resolution at startup — the Resolver is kept alive only to keep the lifecycle
-// uniform with the other client starters and is stopped on shutdown. In mesh
-// mode the sidecar owns discovery+LB, so the URI is used unchanged. See
-// Config.ServiceName.
+// one endpoint is picked, and its address is spliced into the URI host. That pick
+// is a seed: the driver exposes no dialer injection point, so a running client
+// does not re-pick per query. What does keep following the naming service is the
+// driver's AddressResolver hook, installed by CreateClient over the same resolver
+// — it is how a neo4j:// (routing) client re-finds the cluster after the seeded
+// host disappears. In mesh mode the sidecar owns discovery+LB, so the URI is used
+// unchanged. See Config.ServiceName.
 func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating neo4j client, uri=%s service-name=%s", c.URI, c.ServiceName)
 

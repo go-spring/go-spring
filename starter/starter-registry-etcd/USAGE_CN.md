@@ -1,7 +1,7 @@
 # starter-registry-etcd 使用说明 — 参考手册
 
 详细使用文档,概览见 [README.md](README.md)。所有行为声明均对照 starter 源码(`starter.go`、
-`config.go`、`registrar.go`、`discovery_etcd.go`、`registrar_weight_test.go`)与可运行的
+`config.go`、`registrar.go`、`discovery.go`、`registrar_weight_test.go`)与可运行的
 [example/](example/)(`example/check.sh` = 单测 + docker 门控 etcd 端到端)核对。
 **etcd 自身语义(lease、watch、KV、auth)见 [etcd 官方文档](https://etcd.io/docs/)**——
 本文只写 go-spring 的增量。
@@ -169,8 +169,8 @@ gs.Run()
   `<service-name>-<addr>` —— 重启覆盖同一 key(registrar.go)。
 - value = JSON `instanceValue{service_name, addr, weight, metadata}`
   (registrar.go)。
-- Register 时权重 ≤0 归一为 1:"默认值"永不存成 0——**0 保留给运行期摘流信号**,
-  只能经 `UpdateWeight` 达成(registrar.go)。
+- Register 时负权重归一为 1;**0 原样透传即摘流信号**,两条写路径同语义,配置
+  `weight=0` 即注册一个已摘流实例(registrar.go)。
 - `Register` = Grant(整秒 TTL) → `Put(key, val, WithLease)` → `KeepAlive` goroutine
   必须排干续约通道,否则 lease 死亡(registrar.go)。同实例重注册会先注销旧
   lease(registrar.go)。
@@ -178,7 +178,7 @@ gs.Run()
 
 ### 2.3 DISCOVERY 链路(消费侧)
 
-`etcdDiscovery.Resolve`(discovery_etcd.go):
+`etcdDiscovery.Resolve`(discovery.go):
 
 1. 某服务的第一次 Resolve 做一次**全量快照**(`Get`+`WithPrefix`,由调用方 ctx 约束)
    并写入缓存,随后启动后台 watcher(`clientv3.Watch(bgCtx, prefix, WithPrefix())`)。
@@ -256,8 +256,8 @@ zookeeper 块同进程)同理——registrar 收集与后端无关。
 | `service-name` | string | "" | 逻辑名;构成 key 段,也是消费方解析/watch 的名字。**它的存在即注册意图信号**——设置即向每个中心注册,不设 = 纯消费方。 | 空 → 纯消费方;设了却没有任何块 → Run 报 `registry: ${spring.registry.service-name} is set but no registry center is configured` |
 | `addr` | string | "" | 广告的 `host:port`。从不猜测。 | 设了 service-name 却空 addr → 同样 Run 报错;Register 也有 RequireField 守卫(registrar.go) |
 | `id` | string | "" | 实例 id 覆盖;空则派生 `<service-name>-<addr>`,重启覆盖同一 key。⚠ 跨进程重复 id 会互相覆盖 lease 持有。 | 两进程同名+同地址 → 只剩一条 key,lease 互踩 |
-| `weight` | int | 100 | 存储权重;**Register 时** `<=0` 归一为 1(registrar.go)。⚠ 配置 0 不摘流——摘流只有 `UpdateWeight(0)`。 | 以为配置 0 能摘流 → 实例仍是权重 1 |
-| `metadata` | map[string]string | 空 | 任意属性(zone、version);`scheme` 是保留 key,驱动消费侧 scheme 过滤(discovery_etcd.go)。 | `scheme` 值错 → 实例被 scheme 限定查询过滤掉 |
+| `weight` | int | 100 | 存储权重;负权重写入时归一为 1(registrar.go)。0 = 摘流,启动期即生效。 | 负权重静默变 1,不报错 |
+| `metadata` | map[string]string | 空 | 任意属性(zone、version);`scheme` 是保留 key,驱动消费侧 scheme 过滤(discovery.go)。 | `scheme` 值错 → 实例被 scheme 限定查询过滤掉 |
 
 ### 3.3 发现 —— 按块 bean 名引用(零配置)
 
@@ -330,7 +330,8 @@ client starter 按 bean 名引用(`spring.http-client.backends.<n>.discovery=etc
 运行期日志带 tag `_app_registry_etcd`:`creating etcd registrar`、`registering
 service=...`、`registered %q at %s`、`deregister %q`(失败 Warn)、`registered etcd
 discovery backend name=...`。经 `logger.<name>.tag=_app_registry_etcd` 单独调级。
-本 starter 不产出 metrics/trace。
+
+可观测性：注册与发现经 OTel 全局产出指标——未引入 `starter-otel` 时全部 no-op。`register`、`deregister`、`update_weight` 各有一个 client span 与一条 `registry.operation.duration`（标签 `system`/`operation`/`service`/`status`）；`registry.registration.attempts_total` 按 `reason` 与 `status` 计数；`registry.instance.registered` gauge 在发布中为 1、否则为 0——自愈失败会落在这里，而不只是出现在日志里。发现半边把每次后台缓存同步上报到 `discovery.sync_total`，并维持 `discovery.cache.age_seconds`（距上次确认新鲜的秒数），watch 死掉时表现为持续爬升，而不是静默返回陈旧地址。 `reason` 取 `initial`（初次发布）与 `self_heal`（后台重注册）。
 
 ---
 

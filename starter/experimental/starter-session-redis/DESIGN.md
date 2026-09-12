@@ -4,9 +4,9 @@
 
 `starter-session-redis` is a **Contributor**-archetype starter (see
 [starter/DESIGN.md](../../DESIGN.md) §2.3) that provides a Redis-backed
-`session.SessionStore` for `cloud/session`, the Spring Session equivalent
+`session.SessionStore` for `cloud/experimental/session`, the Spring Session equivalent
 in Go-Spring. It opens no port; it contributes a `SessionStore` bean that
-`cloud/session.Manager` uses to load and save sessions across replicas.
+`cloud/experimental/session.Manager` uses to load and save sessions across replicas.
 
 ## 1. Responsibilities & Boundaries
 
@@ -14,12 +14,12 @@ in Go-Spring. It opens no port; it contributes a `SessionStore` bean that
   `session.SessionStore` bean backed by the application's existing
   `*redis.Client`.
 - **Out of scope:** the HTTP `Manager` middleware and cookie handling
-  (that is `cloud/session`); the redis client itself (that is
+  (that is `cloud/experimental/session`); the redis client itself (that is
   `starter-go-redis`).
 
 ## 2. Key Abstractions & Seams
 
-`cloud/session` splits the capability three ways so the starter can plug
+`cloud/experimental/session` splits the capability three ways so the starter can plug
 in without touching HTTP:
 
 - **`Session`** — id, attributes, `isNew` / `modified` / `invalid` /
@@ -37,14 +37,16 @@ This starter contributes an implementation of `ByteStore` and lets
 
 ## 3. Key Decisions
 
-- **Bean, not driver registry.** Sessions rely on a *live* Redis client
-  the application already wires; registering a live client into a
+- **Bean, not registry.** Sessions rely on a *live* Redis client the
+  application already wires; registering a live client into a
   package-level registry is wrong for multi-run and multi-test setups.
-  The driver registry in `cloud/session` only serves static defaults
-  (`"memory"`); Redis rides through `gs.Group` + `TagArg(client)`.
-- **Multi-instance via `gs.Group("${spring.session.redis}", ...)`.**
-  Each entry picks a redis bean by name. Empty `client` = fail-fast at
-  construction; no silent fallback to `localhost` (family rule §2.2).
+  `cloud/experimental/session` keeps no store registry at all — a store
+  reaches the `Manager` by constructor injection, and here it is a bean
+  that rides through `gs.Module` + `TagArg(client)`.
+- **Multi-instance via `gs.Module(OnProperty("spring.session.redis.instances"))`.**
+  Each `spring.session.redis.instances.<name>` entry picks a redis bean by
+  name. Empty `client` = fail-fast at construction; no silent fallback to
+  `localhost` (family rule §2.2).
 - **`Store` embeds `session.SessionStore`.** `gs.Provide` cannot return
   an unexported implementation; embedding the interface exposes the
   concrete type while inheriting all methods from `FromByteStore`.
@@ -53,7 +55,7 @@ This starter contributes an implementation of `ByteStore` and lets
 - **No destroy hook.** The starter does not `Close()` the redis client
   (it does not own it); the redis starter's destroy takes care of that.
 
-## 4. Manager decisions (context — lives in `cloud/session`, mirrored here)
+## 4. Manager decisions (context — lives in `cloud/experimental/session`, mirrored here)
 
 - **Cookie is always HttpOnly.** No configurable toggle: a JS-readable
   session cookie is almost always a bug, and a `bool` zero value cannot
@@ -74,6 +76,8 @@ This starter contributes an implementation of `ByteStore` and lets
 - **Global driver registry with a live client — rejected.** Test / run
   isolation breaks when a live connection lives in a package-level map.
 - **Per-implementation config prefix — rejected.** Following the family
-  shared-prefix rule (`spring.session`), swapping between the in-memory
-  default and this Redis backend is a blank-import change; nothing else
-  moves.
+  shared-prefix rule (`spring.session`), swapping this Redis backend for
+  another backend that contributes the same `SessionStore` interface is a
+  blank-import change; nothing else moves. The bundled in-process `Memory`
+  store is contributed the same way — `cloud/experimental/session/example`
+  wires it from a local starter under `spring.session.memory.instances`.

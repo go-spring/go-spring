@@ -3,7 +3,7 @@
 这个 starter 有两重身份：
 
 1. **接线**（常驻 wiring bean，[wiring.go](wiring.go)）：把注入的 `governance.Source` bean 交给治理中心、注册 executor/fault seam、触发 OnReady——`cloud/governance` 本体容器无关（不 import spring/gs），**blank import 本 starter 即让治理全链生效**。
-2. **动态源适配器**：治理规则经 `governance.Source` 契约流入的自建刷新链路（file / http，及 config starter 里的 nacos/etcd）。
+2. **动态源适配器**：治理规则经 `governance.Source` 契约流入的自建刷新链路。file / http 两个源在本模块；etcd / nacos 各自独立成模块（`starter-governance-etcd`、`starter-governance-nacos`），与本模块平级、按需空导入。
 
 治理配置**不写进 `app.properties`**——它是自己的一份文档，改一条规则只刷新治理，不触发全应用属性重绑。
 
@@ -12,7 +12,7 @@
 ```
 独立规则文件 → FileSource ────────┐
 治理控制台/规则 API → HTTPSource ──┼──→ governance.Source → Center → label diff → executor/fault 热更
-Nacos dataId / etcd key（见对应 config starter）┘
+Nacos dataId / etcd key（见 starter-governance-nacos / starter-governance-etcd）┘
 ```
 
 规则文档统一走 `rules.Parse`：同一份文档（`govern.*` 键，properties/yaml/json/toml）在 file/http/nacos/etcd 各后端间**逐字节可移植**。
@@ -57,7 +57,7 @@ govern:
 
 ## 后续
 
-其它后端（apollo/consul/vault 直连等）按 FileSource 的模式加入：实现 `Snapshot/Subscribe(/Close)`，`OnProperty("govern.source.<name>")` 条件注册 + Export 为 `governance.Source`。已有直连适配器：**nacos** 在 starter-config-nacos（`govern.source.nacos.*`，ListenConfig 推送）、**etcd** 在 starter-config-etcd（`govern.source.etcd.*`，Watch 推送）——与对应配置中心的客户端设施同模块复用。
+其它后端（apollo/consul/vault 直连等）按 FileSource 的模式加入：实现 `Snapshot/Subscribe(/Close)`，`OnProperty("govern.source.<name>")` 条件注册 + Export 为 `governance.Source`。已有直连适配器各自独立成模块，与任何配置中心模块无关：**etcd** 在 `starter-governance-etcd`（`govern.source.etcd.*`，Watch 推送）、**nacos** 在 `starter-governance-nacos`（`govern.source.nacos.*`，ListenConfig 推送）。
 
 ## http 源：治理控制台轮询
 

@@ -135,20 +135,31 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		// Addr becomes a label for the pool; the dialer picks a live endpoint
 		// through the shared loadbalance machinery (round-robin, per connection).
 		// Freshness lives inside the discovery backend, so the resolver has no
-		// resources to release.
+		// resources to release. The tracker makes outlier suspension possible and
+		// the binding puts the resource's endpoint selection under the same
+		// governance rule that already drives its protection executor.
 		bal, err := loadbalance.New(loadbalance.RoundRobin)
 		if err != nil {
 			return nil, nil, err
 		}
-		lb := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal)
+		lb := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
+		stop := lb.BindSelection(resourceLabel(c))
 		opts.Addr = c.ServiceName
 		opts.Dialer = func(ctx context.Context, network, _ string) (net.Conn, error) {
 			ep, err := lb.Pick(loadbalance.PickInfo{})
 			if err != nil {
 				return nil, err
 			}
-			return nd.DialContext(ctx, network, ep.Addr)
+			conn, derr := nd.DialContext(ctx, network, ep.Addr)
+			// The dial outcome is the only signal this picker has; feeding it
+			// makes outlier suspension evict an instance that keeps refusing
+			// connections.
+			lb.Complete(ep, derr)
+			return conn, derr
 		}
+		client := redis.NewClient(opts)
+		return client, goutil.CloserFunc(func() error { stop(); return nil }), nil
 	}
 
 	client := redis.NewClient(opts)

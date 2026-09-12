@@ -153,6 +153,17 @@ func (r *etcdRegistrar) keyFor(reg instance) string {
 	return r.keyPrefix + reg.ServiceName + "/" + instanceID(reg)
 }
 
+// normalizeWeight clamps a misconfigured negative weight to 1 at write time.
+// 0 passes through as the drain signal; an unset weight is expressed by the
+// ${spring.registry.weight} default, not by this clamp. Register and
+// UpdateWeight share it so both write paths agree on the contract.
+func normalizeWeight(w int) int {
+	if w < 0 {
+		return 1
+	}
+	return w
+}
+
 // Register grants a lease, writes the instance under it, and starts a keep-alive
 // so the entry stays live until Deregister or process death. A watcher goroutine
 // drains keep-alive renewals and, if the keep-alive channel closes (etcd
@@ -163,15 +174,12 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg instance) error {
 	if err := errutil.RequireField("registry-etcd", "addr", reg.Addr); err != nil {
 		return err
 	}
-	// An unset (or misconfigured negative) weight is normalized at write time
-	// so "default" is never stored as 0 — 0 is reserved for the runtime drain
-	// signal, only reachable through UpdateWeight.
-	if reg.Weight <= 0 {
-		reg.Weight = 1
-	}
+	reg.Weight = normalizeWeight(reg.Weight)
 
 	h := newHold(reg)
+	attempt := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial)
 	ka, err := r.publish(h)
+	attempt(err)
 	if err != nil {
 		return err
 	}
@@ -270,7 +278,9 @@ func (r *etcdRegistrar) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.
 			if h.stopped() {
 				return
 			}
+			attempt := discovery.RegisterAttempt(context.Background(), obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal)
 			nka, err := r.publish(h)
+			attempt(err)
 			if err == nil {
 				log.Infof(context.Background(), starterTag, "re-registered key=%s under a new lease", key)
 				ka = nka
@@ -304,7 +314,7 @@ func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg instance, weight i
 		return errutil.Explain(nil, "registry-etcd: update weight for unregistered instance %q", key)
 	}
 	updated := h.reg
-	updated.Weight = weight
+	updated.Weight = normalizeWeight(weight)
 	val, err := json.Marshal(instanceValue{
 		ServiceName: updated.ServiceName,
 		Addr:        updated.Addr,
@@ -314,7 +324,12 @@ func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg instance, weight i
 	if err != nil {
 		return errutil.Explain(err, "registry-etcd: marshal instance %q", updated.ServiceName)
 	}
-	if _, err := r.client.Put(ctx, key, string(val), clientv3.WithLease(h.leaseID)); err != nil {
+	// Reported around the write itself: a marshal failure above never reached
+	// the center, so it is not a registry-center operation outcome.
+	report := discovery.WeightChange(ctx, obsSystem, reg.ServiceName)
+	_, err = r.client.Put(ctx, key, string(val), clientv3.WithLease(h.leaseID))
+	report(err)
+	if err != nil {
 		return errutil.Explain(err, "registry-etcd: update weight put %q", key)
 	}
 	r.mu.Lock()
@@ -337,7 +352,10 @@ func (r *etcdRegistrar) Deregister(ctx context.Context, reg instance) error {
 		return nil
 	}
 	r.stopHold(h)
-	if _, err := r.client.Revoke(ctx, h.leaseID); err != nil {
+	report := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName)
+	_, err := r.client.Revoke(ctx, h.leaseID)
+	report(err)
+	if err != nil {
 		return errutil.Explain(err, "registry-etcd: revoke lease for %q", reg.ServiceName)
 	}
 	return nil

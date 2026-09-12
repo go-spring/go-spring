@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	gormcore "go-spring.org/starter-gorm"
+	"go-spring.org/starter-gorm"
 )
 
 // Config holds the configuration parameters for a SQLite connection. The

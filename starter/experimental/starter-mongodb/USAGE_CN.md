@@ -259,6 +259,14 @@ key——观测无条件开启（见 §3.3）。
 `max-retries` / `timeout`，以及 `govern.fault.*` 注入块（enable/rate/error）。⚠ 记住
 seam 在**建连层**：breaker 策略表现为拒绝*连接*；故障注入按拨号触发，不按命令。
 
+**端点选择由同一条规则、同一个标签管**。发现模式下池会挂上 suspension tracker 并经
+`loadbalance.Pool.BindSelection` 绑到 `mongodb:<service-name|uri>`，于是
+`govern.rules[N].balancer`（round_robin / least_conn / consistent_hash / weighted / zone_aware /
+random / p2c）与 `outlier-threshold` / `outlier-suspend-for` **原地生效**——下一次拨号走新策略，
+不用重启，也不会重建已有连接。直连（只配 URI）的实例没有候选集，这些 key 对它无效。
+⚠ dialer 能拿到的成败信号只有拨号本身，所以 `outlier-threshold` 摘的是**反复连不上**的实例；
+单条命令的失败归上层 resilience executor 管。详见 `cloud/governance/CONFIG_CN.md` §3.1。
+
 ### 3.3 可观测性
 
 本模块**没有 observability 配置 key**（没有 level、没有跳过名单、没有参数上限）：

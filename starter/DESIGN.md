@@ -156,7 +156,11 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     down on `Destroy`. The driver's per-backend dialer (which wraps the resolver
     via `loadbalance.SourceFunc` in a round-robin `Pool` and `Pick`s per
     connection) stays in `config.go` / `starter.go`; only the resolver build
-    lives here.
+    lives here. Every discovery-mode pool is built the same way: with a
+    suspension `Tracker`, `Pick` paired with `Complete` at the dial site, and
+    `Pool.BindSelection(entry label)` — so the entry's governance rule drives
+    `balancer` / `outlier-threshold` / `outlier-suspend-for` in place, through
+    the neutral `loadbalance` seam rather than by importing `cloud/governance`.
   - `resilience.go` — the wrapper bean's `ApplyResilience` InitMethod, the
     executor, and its `Close`/`CloseDriver` Destroy hook.
   - `observability.go` — the observe kit bridge (trace/metric/access-log hooks).
@@ -356,7 +360,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   clean shutdown. (2) Registering an RPC framework's *services* stays
   framework-native per the bullet above. Neither is needed in pure Kubernetes,
   where the platform registers every Pod behind a Service (discover with
-  `starter-discovery-k8s`); instance-level registration exists for VM /
+  `starter-registry-k8s`); instance-level registration exists for VM /
   bare-metal / hybrid deployments. Each registry starter is a
   global/infrastructure archetype (§2.4): it exports a `gs.Server` that
   registers once the app is ready and deregisters on `PreStop`, so a rolling
@@ -365,6 +369,21 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   the OTel globals or bridges the library's internal logs into go-spring `log`
   via a `SetLogger` hook; it must also add a go-spring `FileLogger` sink or the
   console output is lost.
+- **Registry backends report at their own seams.** A registry starter calls
+  `cloud/discovery`'s reporting functions (`RegisterAttempt`,
+  `DeregisterAttempt`, `WeightChange`, `Synced`) with its backend name, passing
+  `discovery.ReasonSelfHeal` for a background re-registration. Report where BOTH
+  the initial publish and the self-healing path funnel through (etcd
+  `publish`, zookeeper `createNode`, consul `upsert`), not around the
+  `discovery.Registrar` interface: the self-heal path never crosses that
+  interface, and it is the one that leaves an instance serving while no longer
+  discoverable. The metric and span definitions live once in
+  `cloud/discovery/observe.go` — backends never name an instrument themselves.
+  A **discovery-only** backend of this family (`starter-registry-k8s`, where the
+  platform registers Pods for you) has no such seam to report at: it defines
+  `obsSystem` and reports `discovery.Synced` on both sync outcomes, and emits
+  none of the three registrar operations. Registered as an exception in
+  `scripts/check-registry-observability.sh`.
 
 ## 4. Adding a New Starter — Checklist
 
@@ -382,13 +401,32 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    module on `gs.OnProperty("spring.<family>.instances")`, and read family-wide
    values from `${spring.<family>.default.*}` inside each entry's tags. Never bind
    directly on the family prefix — `scripts/check-config-namespace.sh` enforces it.
+   **Dials through discovery?** → build the pool as the same three-piece set every
+   time: a `loadbalance.Tracker` attached, `Pool.Pick` paired with `Pool.Complete`
+   at the dial site (feeding the dial outcome — without it the tracker is blind),
+   and `Pool.BindSelection(<entry label>)` with the *same* `resilience.ResourceLabel`
+   the entry's executor uses. That is what makes `balancer` /
+   `outlier-threshold` / `outlier-suspend-for` configurable through the governance
+   rule instead of hardcoded — no `balancer` key of your own, and no import of
+   `cloud/governance`. A client that cannot re-pick (one-shot resolution, or a
+   library that owns its own selector) stays out of this on purpose; say so in its
+   USAGE.
 5. Server? → own port, listen-early/serve-on-ready, graceful `Stop`,
    app-supplied register bean, port-as-startup-gate (no `enabled` toggle — see §2.1).
 6. Config-provider? → `provider.go` with `conf.RegisterProvider` (no `config.go`,
    no bean), parse params from the source string, cache the client, register the
    listener unconditionally before the fetch, call the `gs.RefreshProperties()`
    facade from the change callback, ship `example-config/`.
-7. Add health, TLS, and destroy where the underlying library supports them.
-8. Ship a bilingual README pair and an `example/` with `check.sh` only (no
+7. Registry starter? → define `obsSystem` and report at the seams the initial
+   publish and the self-healing path share (`discovery.RegisterAttempt` with
+   `ReasonInitial`/`ReasonSelfHeal`, `DeregisterAttempt`, `WeightChange`, and
+   `discovery.Synced` on both sync outcomes); never wrap the `Registrar`
+   interface instead — the self-heal path does not cross it. A discovery-only
+   backend of the family (`starter-registry-k8s`) has no registrar: it defines
+   `obsSystem` and reports `discovery.Synced` only, and is registered as an
+   exception in `scripts/check-registry-observability.sh`.
+   `scripts/check-registry-observability.sh` enforces this.
+8. Add health, TLS, and destroy where the underlying library supports them.
+9. Ship a bilingual README pair and an `example/` with `check.sh` only (no
    deployment scaffolding).
-9. Resolve internal deps through `go.work`, never `require`.
+10. Resolve internal deps through `go.work`, never `require`.

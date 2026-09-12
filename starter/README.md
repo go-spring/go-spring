@@ -54,6 +54,22 @@ assembled `*http.Client` with discovery, load balancing and resilience wired in.
 | `starter-config-k8s` | [client-go](https://github.com/kubernetes/client-go) | K8s ConfigMap/Secret |
 | `starter-config-bus` | [nats.go](https://github.com/nats-io/nats.go) | Config bus (multi-instance broadcast) |
 
+## Service Discovery / Registry
+
+Register this instance into a registry center and/or resolve a service name into
+live endpoints. Each backend is configured as a named block under
+`${spring.registry.<backend>.<name>}`, and clients cite the resulting bean by name
+(`discovery: consul.main`).
+
+| Starter | Underlying library | Domain |
+| --- | --- | --- |
+| `starter-registry` | stdlib only | Registration core: the one `gs.Server` that publishes this instance into every configured center |
+| `starter-registry-consul` | [consul/api](https://github.com/hashicorp/consul) | Consul agent: register (TTL check) + discover |
+| `starter-registry-etcd` | [etcd/client/v3](https://go.etcd.io/etcd) | etcd KV: register (lease) + discover (watch) |
+| `starter-registry-nacos` | [nacos-sdk-go/v2](https://github.com/nacos-group/nacos-sdk-go) | Nacos naming: register + discover (push) |
+| `starter-registry-zookeeper` | [go-zookeeper/zk](https://github.com/go-zookeeper/zk) | ZooKeeper: register (ephemeral node) + discover |
+| `starter-registry-k8s` | [client-go](https://github.com/kubernetes/client-go) | K8s Services: **discovery only** — the platform already registers every Pod |
+
 ## RPC Frameworks
 
 Register a service and let the starter handle listener/server setup, lifecycle,

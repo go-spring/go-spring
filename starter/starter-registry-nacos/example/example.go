@@ -16,13 +16,15 @@
 
 // Command example wires starter-registry-nacos into a Go-Spring application:
 // blank-importing the starter plus a ${spring.registry.nacos.main} block
+// creates the backend bean "nacos.main"; ${spring.registry.service-name} then
 // registers this instance into Nacos once the app is ready and deregisters it
-// on shutdown.
+// on shutdown (through the starter-registry core), while the same bean serves
+// as the consumer-side discovery backend cited by its name.
 //
-// To make the mechanism visible without an external client, a goroutine waits
-// for readiness, queries Nacos for the just-registered service, prints what it
-// finds, then SIGTERMs the app so the example self-terminates (exercising the
-// deregister-on-shutdown path). It needs a reachable Nacos server at the
+// To make the mechanism visible without an external client, a Runner resolves
+// the just-registered instance back through the discovery backend, prints what
+// it found, then SIGTERMs the app so the example self-terminates (exercising
+// the deregister-on-shutdown path). It needs a reachable Nacos server at the
 // configured address; check.sh starts one in Docker.
 package main
 
@@ -36,13 +38,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nacos-group/nacos-sdk-go/v2/clients"
-	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
-	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	// Blank-import registers the Nacos registrar and the register-on-ready server.
+	// Blank-import registers the center module: the shared client, the
+	// register-on-ready server, and the derived discovery backend.
 	_ "go-spring.org/starter-registry-nacos"
 )
 
@@ -54,13 +55,11 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 func main() {
 	flag.Parse()
 	if !*manual {
-		// Wait past readiness so registration has happened, then verify.
-		time.Sleep(2 * time.Second)
-		verifyOnce()
-		// One-shot: stop the app so the example terminates (and deregisters) on its own.
-		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+		// The verify runner (registered here) resolves the instance once
+		// registration has happened, then SIGTERMs the app so the example
+		// terminates (and deregisters) on its own.
+		gs.Provide(NewVerifyRunner).Export(gs.As[gs.Runner]())
 	} else {
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")
@@ -68,34 +67,55 @@ func main() {
 	gs.Run()
 }
 
-// verifyOnce reads Nacos for the registered service and logs the instances
-// found. It never exits non-zero on failure: the point is to show the call;
-// check.sh asserts the end-to-end path separately.
-func verifyOnce() {
-	ctx := context.Background()
-	sc := []constant.ServerConfig{*constant.NewServerConfig("127.0.0.1", 8848)}
-	cc := constant.NewClientConfig(constant.WithNotLoadCacheAtStart(true))
-	client, err := clients.NewNamingClient(vo.NacosClientParam{ClientConfig: cc, ServerConfigs: sc})
+// VerifyRunner resolves this process's own registration back through the nacos
+// discovery backend "nacos.main", proving the register→discover loop end to end.
+type VerifyRunner struct {
+	// backend is the backend bean named "nacos.main" — the named block it was
+	// configured from.
+	backend discovery.Discovery `autowire:"nacos.main"`
+}
+
+// NewVerifyRunner builds the verify runner.
+func NewVerifyRunner() *VerifyRunner { return &VerifyRunner{} }
+
+// Run spawns the verify loop in the background and returns immediately: a
+// blocking Runner would delay the readiness signal the registry server waits
+// for, deadlocking registration (servers register only once the app is ready,
+// which requires all Runners to have returned).
+func (v *VerifyRunner) Run(ctx context.Context) error {
+	go v.verify(ctx)
+	return nil
+}
+
+// verify polls the discovery backend until the registry server (which registers
+// on app readiness) has published this instance, prints what it found, then
+// stops the app so the example self-terminates.
+func (v *VerifyRunner) verify(ctx context.Context) {
+	d := v.backend
+	if d == nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", "nacos.main")
+		return
+	}
+	var eps []discovery.Endpoint
+	var err error
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		eps, err = d.Resolve(ctx, serviceName)
+		if err == nil && len(eps) > 0 {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "nacos client: %v", err)
-		return
+		log.Warnf(ctx, log.TagAppDef, "resolve %s failed: %v", serviceName, err)
+	} else if len(eps) == 0 {
+		log.Warnf(ctx, log.TagAppDef, "service %s has no instances yet", serviceName)
 	}
-	instances, err := client.SelectInstances(vo.SelectInstancesParam{
-		ServiceName: serviceName,
-		GroupName:   "DEFAULT_GROUP",
-		HealthyOnly: true,
-	})
-	if err != nil {
-		log.Warnf(ctx, log.TagAppDef, "query %q failed (is Nacos reachable?): %v", serviceName, err)
-		return
+	for _, e := range eps {
+		fmt.Printf("registered addr=%s weight=%d meta=%v\n", e.Addr, e.Weight, e.Metadata)
 	}
-	if len(instances) == 0 {
-		log.Warnf(ctx, log.TagAppDef, "service %q has no healthy instances yet", serviceName)
-		return
-	}
-	for _, ins := range instances {
-		fmt.Printf("registered addr=%s:%d meta=%v\n", ins.Ip, ins.Port, ins.Metadata)
-	}
+	// One-shot: stop the app so the example terminates (and deregisters).
+	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
 // init sets the working directory of the application to the directory
