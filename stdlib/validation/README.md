@@ -34,7 +34,7 @@ error.
 ```go
 import (
     "github.com/go-playground/validator/v10"
-    "go-spring.org/cloud/validation"
+    "go-spring.org/stdlib/validation"
 )
 
 v := validator.New(validator.WithRequiredStructEnabled())
@@ -55,7 +55,7 @@ for i, fe := range verrs {
 }
 ```
 
-### 2. Render in the caller's language with cloud/i18n
+### 2. Render in the caller's language with stdlib/i18n
 
 Prepare messages keyed by rule:
 
@@ -108,3 +108,7 @@ return out // "validation: field \"SignUp.Email\" failed rule \"email\""
 - `Localize` never yields a blank string.
 - This package imports nothing third-party — mapping from your validator's
   error type is always a few caller-side lines.
+
+## License
+
+`validation` is distributed under the Apache License 2.0. See [LICENSE](../../LICENSE) for details.

@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/i18n"
 	"go-spring.org/cloud/security"
+	"go-spring.org/stdlib/i18n"
 )
 
 // TestLuohuaSSOIssueValidate verifies the identity seam: a token luohua issues

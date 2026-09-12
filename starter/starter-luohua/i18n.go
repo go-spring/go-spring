@@ -17,10 +17,10 @@
 package luohua
 
 import (
-	"go-spring.org/cloud/i18n"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/i18n"
 )
 
 // luohuaCatalog builds luohua's error catalog — one MessageSource carrying the

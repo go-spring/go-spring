@@ -53,8 +53,6 @@ src.AddBundle("en", map[string]string{
 msgs := errs.Localize(i18n.Localizer(src, ctx))
 ```
 
-可运行的端到端演示见 [example/](example/)。
-
 ## 模型保证的规则
 
 - 位置插值 `{0}`、`{1}`、...;没有对应参数的占位符原样保留——模板漂移
@@ -62,3 +60,7 @@ msgs := errs.Localize(i18n.Localizer(src, ctx))
 - 不是 ICU MessageFormat:没有复数/性别的 DSL。位置插值足够覆盖校验消
   息与常见业务文案。
 - 零依赖;locale 的 context key 未导出,不会与其他包的 key 冲突。
+
+## 许可证
+
+`i18n` 基于 Apache License 2.0 发布，详见 [LICENSE](../../LICENSE)。

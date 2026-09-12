@@ -57,6 +57,13 @@ making everyday Go development more convenient and enjoyable.
 | [fileutil](./fileutil/) | File system utilities |
 | [funcutil](./funcutil/) | Function utilities: lazy evaluation, partial application and more |
 
+### Messages & Validation
+
+| Module | Description |
+|--------|-------------|
+| [i18n](./i18n/) | Locale-aware message resolution: a `MessageSource` seam plus an in-memory `MapSource`, with the locale carried on the context |
+| [validation](./validation/) | Neutral error model for struct validation: `ValidationErrors`/`FieldError` and localization of the failures |
+
 ### Text, Hash & Math
 
 | Module | Description |

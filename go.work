@@ -3,11 +3,9 @@ go 1.26.1
 use (
 	./cloud
 	./cloud/experimental/session/example
-	./cloud/i18n/example
 	./cloud/loadtest/example
 	./cloud/lock/example
 	./cloud/security/example
-	./cloud/validation/example
 	./contrib/dubbo-go/dubbo
 	./contrib/dubbo-go/jsonrpc
 	./contrib/dubbo-go/rest

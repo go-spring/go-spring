@@ -55,6 +55,13 @@
 | [fileutil](./fileutil/) | 文件系统工具 |
 | [funcutil](./funcutil/) | 函数工具：延迟求值、偏函数应用等 |
 
+### 消息与校验
+
+| 模块 | 说明 |
+|--------|-------------|
+| [i18n](./i18n/) | 按 locale 解析消息：`MessageSource` 缝隙加内存态 `MapSource`，locale 随 context 传递 |
+| [validation](./validation/) | 结构体校验的中性错误模型：`ValidationErrors`/`FieldError` 及失败信息的本地化渲染 |
+
 ### 文本、哈希与数值
 
 | 模块 | 说明 |

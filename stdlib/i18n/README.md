@@ -56,8 +56,6 @@ src.AddBundle("en", map[string]string{
 msgs := errs.Localize(i18n.Localizer(src, ctx))
 ```
 
-A runnable end-to-end demo lives in [example/](example/).
-
 ## Rules the model guarantees
 
 - Positional interpolation `{0}`, `{1}`, ...; a placeholder with no matching
@@ -67,3 +65,7 @@ A runnable end-to-end demo lives in [example/](example/).
   validation messages and typical business text.
 - Zero dependencies — the locale context key is unexported, so it cannot
   collide with keys from other packages.
+
+## License
+
+`i18n` is distributed under the Apache License 2.0. See [LICENSE](../../LICENSE) for details.

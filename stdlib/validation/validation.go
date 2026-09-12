@@ -22,7 +22,7 @@
 //
 // The i18n pairing is the point: [FieldError.MessageKey] derives the message
 // key ("validation." + rule), and [ValidationErrors.Localize] takes a plain
-// lookup function so [go-spring.org/cloud/i18n] (or anything else) plugs in
+// lookup function so [go-spring.org/stdlib/i18n] (or anything else) plugs in
 // without a hard dependency.
 package validation
 

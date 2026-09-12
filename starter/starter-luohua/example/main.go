@@ -24,9 +24,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/i18n"
 	"go-spring.org/cloud/security"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/i18n"
 
 	StarterGin "go-spring.org/starter-gin"
 	luohua "go-spring.org/starter-luohua"

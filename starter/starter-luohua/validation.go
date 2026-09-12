@@ -19,8 +19,8 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/i18n"
-	"go-spring.org/cloud/validation"
+	"go-spring.org/stdlib/i18n"
+	"go-spring.org/stdlib/validation"
 )
 
 // LocalizeValidation renders go-spring [validation.ValidationErrors] in a

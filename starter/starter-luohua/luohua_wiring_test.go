@@ -21,10 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/i18n"
 	"go-spring.org/cloud/lock"
 	"go-spring.org/cloud/security"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/i18n"
 )
 
 // TestAssemblesDefaultBeans proves the aggregator thesis end to end: with

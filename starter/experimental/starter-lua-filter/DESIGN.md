@@ -27,7 +27,7 @@ supplies a default mux only under `OnMissingBean[*HttpServeMux]`, so the
 application registers a wrapped mux that inserts filters. The mux is
 framework-neutral — gin/echo/hertz all collapse to `http.Handler` at some
 point — so no per-framework adapter is needed. The i18n/validation
-packages live at `cloud/i18n` and `cloud/validation` today; a filter seam,
+packages live at `stdlib/i18n` and `stdlib/validation` today; a filter seam,
 if it ever lands, gets its own `cloud/` package.
 
 ## 3. Implementation choices

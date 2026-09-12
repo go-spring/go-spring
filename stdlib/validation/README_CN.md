@@ -31,7 +31,7 @@ go-playground/validator);失败时把它的错误映射到这个形状,渲染和
 ```go
 import (
     "github.com/go-playground/validator/v10"
-    "go-spring.org/cloud/validation"
+    "go-spring.org/stdlib/validation"
 )
 
 v := validator.New(validator.WithRequiredStructEnabled())
@@ -52,7 +52,7 @@ for i, fe := range verrs {
 }
 ```
 
-### 2. 配合 cloud/i18n 按调用方语言渲染
+### 2. 配合 stdlib/i18n 按调用方语言渲染
 
 按规则准备消息:
 
@@ -102,3 +102,7 @@ return out // "validation: field \"SignUp.Email\" failed rule \"email\""
 - `Field` 是 struct 字段路径,不是 JSON tag;渲染层可自行改写。
 - `Localize` 永不返回空串。
 - 本包零第三方依赖——从校验器错误类型的映射永远在调用侧,几行而已。
+
+## 许可证
+
+`validation` 基于 Apache License 2.0 发布，详见 [LICENSE](../../LICENSE)。
