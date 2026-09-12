@@ -10,7 +10,7 @@ GORM semantics are [gorm's](https://gorm.io/docs/). Shared wrapper lifecycle, po
 health wiring and `UseDBCustomizer` live in [gormcore](../starter-gorm/USAGE.md) and are
 not repeated here.
 
-**Activation**: one `*starter.DB` bean (plus a paired `health.Indicator`) per entry under
+**Activation**: one `*gormcore.DB` bean named `sqlserver.<entry>` (plus a paired `health.Indicator`) per entry under
 `spring.gorm.sqlserver`; zero entries → the starter registers nothing
 (`starter_test.go:TestSqlserverNotTriggered`).
 
@@ -55,7 +55,8 @@ import (
     "time"
 
     "go-spring.org/spring/gs"
-    starter "go-spring.org/starter-gorm-sqlserver"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-sqlserver"
     "gorm.io/gorm"
 )
 
@@ -67,8 +68,8 @@ type KV struct {
 }
 
 type Service struct {
-    DB          *starter.DB `autowire:"primary"`
-    DiscoveryDB *starter.DB `autowire:"discovery"`
+    DB          *gormcore.DB `autowire:"sqlserver.primary"`
+    DiscoveryDB *gormcore.DB `autowire:"sqlserver.discovery"`
 }
 
 var manual = flag.Bool("manual", false, "keep the server up")
@@ -113,33 +114,33 @@ func init() {
 **conf/app.properties** (copied from `example/conf/app.properties`):
 
 ```properties
-spring.gorm.sqlserver.primary.user=sa
-spring.gorm.sqlserver.primary.password=Str0ng!Passw0rd
-spring.gorm.sqlserver.primary.host=127.0.0.1
-spring.gorm.sqlserver.primary.port=1433
-spring.gorm.sqlserver.primary.db=master
+spring.gorm.sqlserver.instances.primary.user=sa
+spring.gorm.sqlserver.instances.primary.password=Str0ng!Passw0rd
+spring.gorm.sqlserver.instances.primary.host=127.0.0.1
+spring.gorm.sqlserver.instances.primary.port=1433
+spring.gorm.sqlserver.instances.primary.db=master
 # pool / ping / slow log
-spring.gorm.sqlserver.primary.dialTimeout=5s
-spring.gorm.sqlserver.primary.connectTimeout=10s
-spring.gorm.sqlserver.primary.max-open-conns=10
-spring.gorm.sqlserver.primary.max-idle-conns=5
-spring.gorm.sqlserver.primary.conn-max-lifetime=30m
-spring.gorm.sqlserver.primary.conn-max-idle-time=5m
-spring.gorm.sqlserver.primary.ping-timeout=5s
-spring.gorm.sqlserver.primary.slow-threshold=200ms
+spring.gorm.sqlserver.instances.primary.dialTimeout=5s
+spring.gorm.sqlserver.instances.primary.connectTimeout=10s
+spring.gorm.sqlserver.instances.primary.max-open-conns=10
+spring.gorm.sqlserver.instances.primary.max-idle-conns=5
+spring.gorm.sqlserver.instances.primary.conn-max-lifetime=30m
+spring.gorm.sqlserver.instances.primary.conn-max-idle-time=5m
+spring.gorm.sqlserver.instances.primary.ping-timeout=5s
+spring.gorm.sqlserver.instances.primary.slow-threshold=200ms
 # TLS (off here). To enable encryption:
-# spring.gorm.sqlserver.primary.tls.enabled=true
-# spring.gorm.sqlserver.primary.tls.insecure-skip-verify=true
-# spring.gorm.sqlserver.primary.tls.ca-file=/path/server-cert.pem
+# spring.gorm.sqlserver.instances.primary.tls.enabled=true
+# spring.gorm.sqlserver.instances.primary.tls.insecure-skip-verify=true
+# spring.gorm.sqlserver.instances.primary.tls.ca-file=/path/server-cert.pem
 
 # Discovery instance: host/port are dummies on purpose — ignored because
 # service-name is set; the address comes from the discovery backend.
-spring.gorm.sqlserver.discovery.user=sa
-spring.gorm.sqlserver.discovery.password=Str0ng!Passw0rd
-spring.gorm.sqlserver.discovery.host=0.0.0.0
-spring.gorm.sqlserver.discovery.port=0
-spring.gorm.sqlserver.discovery.db=master
-spring.gorm.sqlserver.discovery.service-name=sqlserver-cluster
+spring.gorm.sqlserver.instances.discovery.user=sa
+spring.gorm.sqlserver.instances.discovery.password=Str0ng!Passw0rd
+spring.gorm.sqlserver.instances.discovery.host=0.0.0.0
+spring.gorm.sqlserver.instances.discovery.port=0
+spring.gorm.sqlserver.instances.discovery.db=master
+spring.gorm.sqlserver.instances.discovery.service-name=sqlserver-cluster
 ```
 
 **docker-compose.yml** — SQL Server 2022 with a healthcheck (startup is slow; the port
@@ -177,7 +178,7 @@ curl http://127.0.0.1:9090/sqlserver_version
 
 ```
 import starter-gorm-sqlserver
-  └─ init(): gormcore.Register(Dialect{Prefix: "spring.gorm.sqlserver",
+  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.sqlserver",
         Engine: "microsoft.sql_server", HealthPrefix: "gorm:sqlserver:"})
 gs.Run()
   ├─ conf.BindEach → Config per entry
@@ -216,7 +217,7 @@ owns discovery+LB.
 
 `db.WithContext(ctx).Raw("SELECT @@VERSION").Scan(&v)`:
 
-1. the `gorm:raw` processor — replaced by gormcore's executor wrapper (`${govern}`
+1. the `gorm:raw` processor — replaced by gormcore's executor wrapper (governance center:
    timeout/retry/breaker, fault injector when armed; `gorm.ErrRecordNotFound` = success).
 2. observe plugin `before_raw`-anchored span (db.system=microsoft.sql_server) + metric.
 3. the original processor: pool checkout → resolverDialer.DialContext (discovery
@@ -227,7 +228,7 @@ owns discovery+LB.
 
 ## 3. Per-key behavior reference
 
-Keys under `spring.gorm.sqlserver.<name>.*`. Common keys (10) and wrapper `observability`:
+Keys under `spring.gorm.sqlserver.instances.<name>.*`. Common keys (10) and wrapper `observability`:
 [gormcore](../starter-gorm/USAGE.md#2-configuration-reference).
 
 ### 3.1 Connection keys (config.go:32-45)
@@ -243,16 +244,17 @@ Keys under `spring.gorm.sqlserver.<name>.*`. Common keys (10) and wrapper `obser
 
 ### 3.2 TLS block (`tls.*`, a SQL Server-local subset — config.go)
 
-The mapping is onto **DSN parameters**, not a `*tls.Config`. Only the three keys the DSN
-can express are bound; the wider shared tlsconf block's `cert-file`/`key-file`/`server-name`
-were **removed** (2026-08) — they had no DSN slot and were silently ignored:
+The mapping is onto **DSN parameters**, not a `*tls.Config`. Only the keys the DSN can
+express are bound; the wider shared tlsconf block's `cert-file`/`key-file` have no DSN slot
+here, so binding them would advertise dead configuration and they were **removed** (2026-08):
 
 | Key | Default | Maps to | Note |
 |-----|---------|---------|------|
 | `tls.enabled` | false | `encrypt=true` | Off → no `encrypt` param emitted; the go-mssqldb default applies (see [its docs](https://github.com/microsoft/go-mssqldb#connection-parameters)). |
-| `tls.insecure-skip-verify` | false | `TrustServerCertificate=true` | Only emitted when `encrypt=true` (nested under Enabled, config.go:81-83). |
+| `tls.insecure-skip-verify` | false | `TrustServerCertificate=true` | Only emitted when `encrypt=true` (nested under Enabled, config.go:103-105). |
 | `tls.ca-file` | "" | `certificate=<url-escaped path>` | A PEM server certificate path; verified by `starter_test.go` (`certificate=%2Fca.pem`). |
-Removed keys: `tls.cert-file`, `tls.key-file`, `tls.server-name` — the sqlserver Config now binds its own three-field TLS block (enabled / insecure-skip-verify / ca-file). Setting them now fails with an unknown-key error. mTLS remains inexpressible through the DSN — use a custom connector if needed.
+| `tls.server-name` | "" | `hostNameInCertificate=<url-escaped name>` | The name checked against the server certificate (`tls.Config.ServerName`). Set it when dialing by IP or through a discovery label, where the resolved address is not the name in the certificate. |
+Removed keys: `tls.cert-file`, `tls.key-file` — the sqlserver Config binds its own four-field TLS block (enabled / insecure-skip-verify / ca-file / server-name). Setting them now fails with an unknown-key error. mTLS remains inexpressible through the DSN — use a custom connector if needed.
 
 ### 3.3 Discovery keys (from Common)
 
@@ -271,7 +273,7 @@ validates.
 2. Enable encryption without trusting it:
 
 ```properties
-spring.gorm.sqlserver.primary.tls.enabled=true
+spring.gorm.sqlserver.instances.primary.tls.enabled=true
 ```
 
 3. `go run .` → startup ping fails within `ping-timeout` with a TLS trust error
@@ -279,7 +281,7 @@ spring.gorm.sqlserver.primary.tls.enabled=true
 4. Add trust (either fixes it):
 
 ```properties
-spring.gorm.sqlserver.primary.tls.insecure-skip-verify=true   # dev only
+spring.gorm.sqlserver.instances.primary.tls.insecure-skip-verify=true   # dev only
 # or: tls.ca-file=/path/to/server-cert.pem
 ```
 
@@ -298,7 +300,7 @@ instance (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # baseline SELECT 1 throughput
-# set fire — edit conf/app.properties (hot-reload via starter-governance):
+# set fire — edit conf/govern.properties (hot-reload via starter-governance's file source):
 #   govern.fault.enabled=true  govern.fault.rate=0.5  govern.fault.error=generic
 go run . -duration=10s                       # error breakdown shows ~50% injected
 ```
@@ -323,8 +325,8 @@ logger (routed through go-spring.org/log, TagAppDef, plain-text body).
 | Startup fails: "one of host or service-name must be set" | both empty | set one (build guard, starter.go:64-66). |
 | Startup ping timeout against a healthy host | server still initializing (mssql image is slow) | rely on the compose healthcheck, not the open port. |
 | TLS trust error at startup | `tls.enabled=true` without `insecure-skip-verify`/`ca-file` | add trust or disable encrypt (§4.1). |
-| Expecting mTLS, client never presents a cert | removed `tls.cert-file`/`key-file` | not expressible via config; needs a custom connector. |
-| Cert hostname mismatch with discovery dummies | no `tls.server-name` key; dummy `0.0.0.0` in DSN | one of: real hostnames in the cert, `insecure-skip-verify` (dev), or a custom dialer. |
+| Expecting mTLS, client never presents a cert | `tls.cert-file`/`key-file` are not bound | not expressible via the DSN; needs a custom connector. |
+| Cert hostname mismatch with discovery dummies | the discovery-resolved address is not the name in the certificate | set `tls.server-name` to the certificate's name (→ `hostNameInCertificate`). |
 | Discovery instance never connects | backend label mismatch (`discovery` key) or service not registered | check the bean name vs config; resolver errors log at startup. |
 | Login timeouts under load | `connectTimeout` too low | raise, or leave 0 for the driver default. |
 | `key`/`value` column SQL errors | reserved words in SQL Server | remap via gorm tags (`column:kkey`), as the example does. |
@@ -333,10 +335,10 @@ logger (routed through go-spring.org/log, TagAppDef, plain-text body).
 
 | Metric | Value |
 |--------|-------|
-| Dialect-specific keys | 7 conn + 6 tls = 13 (+10 Common, +1 wrapper) |
+| Dialect-specific keys | 7 conn + 4 tls = 11 (+10 Common, +1 wrapper) |
 | Required | 3 (`user`, `password`, `db`) + host-or-service-name |
 | Quickstart external deps | 1 (SQL Server, docker) |
-| Dead bound keys | 0 (unused tlsconf keys removed 2026-08) |
+| Dead bound keys | 0 (unbound tlsconf keys removed 2026-08; server-name re-bound 2026-09) |
 | "Watch out" entries | 5 |
 
 Design suspects: dummy host/port still required for DSN parsing when

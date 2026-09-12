@@ -7,7 +7,7 @@
 ——本文只写 go-spring 的增量。字段布局刻意与 starter-go-redis single 模式对齐，两者切换只需
 改 import + 前缀。
 
-**激活条件**：任一 `spring.redigo.*` key。每个 `spring.redigo.<name>` 条目创建一个名为
+**激活条件**：任一 `spring.redigo.instances.*` key。每个 `spring.redigo.instances.<name>` 条目创建一个名为
 `<name>` 的 `*StarterRedigo.Pool` bean，并附带名为 `redigo:<name>` 的健康指示器
 （`health.enabled` 默认 true）。
 
@@ -33,7 +33,6 @@ require (
     github.com/gomodule/redigo     latest
     go-spring.org/spring           v1.3.x
     go-spring.org/starter-redigo   latest
-    go-spring.org/starter-cache    latest   // cache 门面
     go-spring.org/starter-actuator latest   // 可选
     go-spring.org/starter-otel     latest   // 可选
     go-spring.org/starter-governance latest // 可选
@@ -48,7 +47,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-cache"
     _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-redigo"
@@ -79,8 +77,8 @@ type Service struct {
     Main      *StarterRedigo.Pool `autowire:"main"`
     Discovery *StarterRedigo.Pool `autowire:"discovery"`
 
-    // spring.cache.demo.driver=redigo:main —— "main" 池上的带类型门面。
-    Cache *cache.Cache `autowire:"main"`
+    // "main" 池上的带类型门面——名为 "redigo:main" 的 *cache.Cache bean。
+    Cache *cache.Cache `autowire:"redigo:main"`
 }
 
 func init() {
@@ -117,24 +115,21 @@ func init() {
 
 ```properties
 # --- main 池：静态地址 + fail-fast 拨号检查 -----------------------------------
-spring.redigo.main.addr=127.0.0.1:6379
-spring.redigo.main.startup-ping=true
-spring.redigo.main.pool-size=20
-spring.redigo.main.conn-max-lifetime=2m
+spring.redigo.instances.main.addr=127.0.0.1:6379
+spring.redigo.instances.main.startup-ping=true
+spring.redigo.instances.main.pool-size=20
+spring.redigo.instances.main.conn-max-lifetime=2m
 
 # --- 发现池：addr 被忽略，每次拨号动态选端点 ----------------------------------
-spring.redigo.discovery.service-name=redis-cluster
-spring.redigo.discovery.conn-max-lifetime=30s
+spring.redigo.instances.discovery.service-name=redis-cluster
+spring.redigo.instances.discovery.conn-max-lifetime=30s
 
 # --- 观测 -----------------------------------------------------------------
 # span + 时延指标 + 访问日志为内置且无条件；未导入 starter-otel 时均为 no-op。
 
 # --- 健康 -------------------------------------------------------------------
 # 默认 true；设 false 可让非关键缓存不卷入聚合健康
-spring.redigo.main.health.enabled=true
-
-# --- cache 门面 ------------------------------------------------------------
-spring.cache.demo.driver=redigo:main
+spring.redigo.instances.main.health.enabled=true
 
 # --- actuator + otel ----------------------------------------------------------
 spring.actuator.addr=:9370
@@ -161,7 +156,7 @@ grep _app_redigo_access app.log   # 每次 Do 一条访问记录
 
 ```
 import starter-redigo
-  └─ 任一 spring.redigo.* key 存在时 gs.Module(OnProperty("spring.redigo")) 触发
+  └─ 任一 spring.redigo.instances.* key 存在时 gs.Module(OnProperty("spring.redigo")) 触发
         └─ conf.BindEach("${spring.redigo}") → 每个 <name> 一份 Config
               ├─ Provide(createPool).Name(<name>).Destroy(destroyPool)
               │    ctor 参数：ContextProvider、Config（IndexArg 1）
@@ -169,7 +164,7 @@ import starter-redigo
 
 gs.Run()
   ├─ 构造 createPool [starter.go:107]：RequireAny(addr|service-name) → 查 driver
-  │   → d.CreateClient（= NewPool）：TLS 构建 → discovery resolver → 原始池
+  │   → d.CreateClient(c, backend)（= NewPool）：TLS 构建 → discovery resolver → 原始池
   │     → observer → resilience executor → setupDial
   │     → startup-ping（仅 startup-ping=true 时）[starter.go:144-149]
   │   注意：没有独立 InitMethod——池在返回时即完整就绪 [pool.go:36-37]
@@ -240,14 +235,14 @@ pool.Get()（你的代码）
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.redigo.<name>.` 下。
+所有 key 位于 `spring.redigo.instances.<name>.` 下。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
 | `addr` | string | — | 静态目标。⚠ `addr` / `service-name` 至少其一（RequireAny [starter.go:111]）。 | 都缺 → 启动报错；都配 → service-name 生效，addr 被忽略。 |
 | `service-name` | string | — | 经发现解析地址；`addr` 只作标签。每次拨号选端点 + conn-max-lifetime 回收。 | 后端未注册 → 启动报错。 |
 | `scheme` | string | — | 把发现端点收窄到单一 scheme。仅 service-name 时生效。 | — |
-| `discovery` | string | `default` | 用哪个发现后端。 | — |
+| `discovery` | string | — | 用哪个发现后端。wiring 把该 label 解析成 bean，并以 `backend` 参数传给 driver（`CreateClient` / `NewPool`）。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
 | `password` / `username` | string | — | 拨号认证；username 非空才附加 [pool.go:94-96]。 | 配错 → 首次拨号（或 startup-ping）失败。 |
 | `db` | int | 0 | 每条新连接执行 `SELECT`（仅非 0 时）[pool.go:125-131]。 | 越界 → 拨号失败。 |
 | `pool-size` | int | 10 | MaxActive。`Wait:true` → 耗尽时阻塞。 | 过小 → 时延而非报错。 |
@@ -267,7 +262,9 @@ pool.Get()（你的代码）
   Driver bean 时，装配内部回退到内置 `DefaultDriver`。提供构造函数返回 `StarterRedigo.Driver`
   的 Driver bean 即可（example 的 `AnotherRedisDriver` 演示"委托+定制"形态）。两种定制形态见
   [driver.go](driver.go)：ADD（调 `NewPool` 后经其公开 API 定制 Pool）或 REPLACE（用 `NewConn`
-  完全自管装配）。因 driver 是 bean，公司 driver 可在装配期注入自己配置文件绑定的输入。
+  完全自管装配）。因 driver 是 bean，公司 driver 可在装配期注入自己配置文件绑定的输入。当容器中存在
+  多个 Driver bean 时，实例可按名指定：`spring.redigo.instances.<name>.driver = <bean 名>`（留空 = 按类型注入
+  唯一 Driver bean；指定的 bean 不存在则启动失败）。
 
 ---
 
@@ -294,7 +291,7 @@ curl -s :9370/metrics | grep -E 'redigo|db.client'   # 时延直方图 + 在途 
 用 `discovery` 实例（`service-name` + `conn-max-lifetime=30s`），迁移/扩缩后端 Redis；
 `Stats()`（ActiveCount/IdleCount）显示 30s 内连接回收到新端点——无需重启、无需重建客户端。
 
-### 4.4 验证 cache driver 接线
+### 4.4 验证缓存抽象接线
 
 ```go
 _ = s.Cache.Set(ctx, "k", "v", time.Minute)

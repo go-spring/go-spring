@@ -9,7 +9,7 @@ paths and the async error drain.
 
 ## 1. Responsibilities & Boundaries
 
-- **Owns**: bean lifecycle for the `spring.influxdb.<name>` group, the
+- **Owns**: bean lifecycle for the `spring.influxdb.instances.<name>` group, the
   fail-fast `/health` probe and per-instance indicator, the observe transport,
   the resilience-guarded blocking write, the managed async writer (creation +
   error drain + shutdown flush).

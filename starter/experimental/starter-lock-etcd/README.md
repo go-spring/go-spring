@@ -24,13 +24,13 @@ import _ "go-spring.org/starter-lock-etcd"
 
 ### 2. Configure a lock instance
 
-Add an entry under `spring.lock.<name>` in your
+Add an entry under `spring.lock.instances.<name>` in your
 [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.lock.main.endpoints=127.0.0.1:2379
-spring.lock.main.ttl=30s
-spring.lock.main.key-prefix=/lock/
+spring.lock.instances.main.endpoints=127.0.0.1:2379
+spring.lock.instances.main.ttl=30s
+spring.lock.instances.main.key-prefix=/lock/
 ```
 
 Only `endpoints` is required; every other field has a sensible default and an
@@ -67,7 +67,7 @@ case <-workDone:
 
 ## Configuration Keys
 
-All keys live under `spring.lock.<name>`:
+All keys live under `spring.lock.instances.<name>`:
 
 | Key             | Default   | Description                                      |
 |-----------------|-----------|--------------------------------------------------|

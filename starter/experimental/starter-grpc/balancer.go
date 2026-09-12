@@ -43,6 +43,8 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -98,24 +100,48 @@ func backendLabels() []string {
 	return labels
 }
 
-// defaultTracker is the suspension policy attached to the pre-registered
-// per-strategy balancers: five consecutive failures evict an instance for 30s
-// before a half-open trial. Tune by registering a balancer with RegisterBalancer.
-var defaultTracker = loadbalance.TrackerConfig{Threshold: 5, SuspendFor: 30_000_000_000} // 30s
+// clientSuspensionLabel is the governance resource label the pre-registered
+// balancers resolve their suspension policy from. It deliberately names no
+// service: these balancers are process-wide and shared by every client that
+// selects them through service config, so their only sensible policy is the
+// process-wide default — govern.default.* — which is exactly what a label
+// matching no rule resolves to. Write govern.rules[N].resources=grpc:client to
+// target them explicitly.
+const clientSuspensionLabel = "grpc:client"
+
+// builtinStrategies are the balancer strategies pre-registered under their
+// gRPC names at init, so a client can select one purely through service
+// config, e.g. [LoadBalancingConfig](loadbalance.RoundRobin).
+var builtinStrategies = []string{
+	loadbalance.RoundRobin,
+	loadbalance.LeastConn,
+	loadbalance.ConsistentHash,
+	loadbalance.Weighted,
+	loadbalance.ZoneAware,
+}
 
 func init() {
 	resolver.Register(discoveryResolverBuilder{})
-	// Pre-register one gRPC balancer per built-in strategy so clients can select
-	// it purely through service config, e.g. LoadBalancingConfig(loadbalance.RoundRobin).
-	for _, s := range []string{
-		loadbalance.RoundRobin,
-		loadbalance.LeastConn,
-		loadbalance.ConsistentHash,
-		loadbalance.Weighted,
-		loadbalance.ZoneAware,
-	} {
-		RegisterBalancer(BalancerName(s), s, defaultTracker)
+
+	// One tracker per built-in strategy, all starting DISABLED: suspension is a
+	// governance decision now, resolved from the process-wide default and applied
+	// in place, so a rule push retunes them all without re-registering a
+	// balancer. This is the same "unset means inert" rule every other governed
+	// knob follows — a client that wants eviction configures it.
+	trackers := make([]*loadbalance.Tracker, 0, len(builtinStrategies))
+	for _, s := range builtinStrategies {
+		t := loadbalance.NewTracker(loadbalance.TrackerConfig{})
+		registerBalancer(BalancerName(s), s, t)
+		trackers = append(trackers, t)
 	}
+	governance.Register(clientSuspensionLabel, func(p resilience.Policy) {
+		for _, t := range trackers {
+			t.SetConfig(loadbalance.TrackerConfig{
+				Threshold:  p.OutlierThreshold,
+				SuspendFor: p.OutlierSuspendFor,
+			})
+		}
+	})
 }
 
 // BalancerName is the gRPC balancer name for a loadbalance strategy, e.g.
@@ -130,16 +156,23 @@ func LoadBalancingConfig(strategy string) string {
 
 // RegisterBalancer registers a gRPC balancer under name that selects instances
 // using the loadbalance strategy and evicts failing ones per tc. The built-in
-// strategies are pre-registered in init; call this to register a custom name
-// (e.g. per service, for isolated suspension state) or a non-default suspension
-// policy. It panics on an unknown strategy or a duplicate name, matching gRPC's
-// own balancer.Register contract.
+// strategies are pre-registered in init, driven by governance (see
+// clientSuspensionLabel); call this to register a custom name (e.g. per
+// service, for isolated suspension state) or a suspension policy of your own
+// that governance does not drive. It panics on an unknown strategy or a
+// duplicate name, matching gRPC's own balancer.Register contract.
 func RegisterBalancer(name, strategy string, tc loadbalance.TrackerConfig) {
+	registerBalancer(name, strategy, loadbalance.NewTracker(tc))
+}
+
+// registerBalancer registers name over a caller-built tracker, so the built-in
+// strategies can keep a handle on theirs and retune it when governance changes.
+func registerBalancer(name, strategy string, tracker *loadbalance.Tracker) {
 	bal, err := loadbalance.New(strategy)
 	if err != nil {
 		panic("starter-grpc: " + err.Error())
 	}
-	pb := &gsPickerBuilder{bal: bal, tracker: loadbalance.NewTracker(tc)}
+	pb := &gsPickerBuilder{bal: bal, tracker: tracker}
 	balancer.Register(base.NewBalancerBuilder(name, pb, base.Config{HealthCheck: true}))
 }
 

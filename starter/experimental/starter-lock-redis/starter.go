@@ -16,9 +16,9 @@
 
 // Package StarterLockRedis contributes Redis-backed [lock.Locker] beans to a
 // Go-Spring application. Blank-importing this package registers one Locker per
-// entry under spring.lock.<name>; each Locker reuses the *redis.Client bean
+// entry under spring.lock.instances.<name>; each Locker reuses the *redis.Client bean
 // named by its `client` field (provided by starter-go-redis under
-// spring.go-redis.<client>).
+// spring.go-redis.instances.<client>).
 //
 // This is a Contributor-archetype starter (see starter/DESIGN.md §2.3): it
 // exports no port and holds no connection of its own, it merely contributes
@@ -29,7 +29,7 @@
 // The Locker bean is registered under its config name and exported as
 // lock.Locker, so callers inject it by interface. The bean is wrapped with the
 // observe-lock adapter by default (trace span + metric + access log); set
-// spring.lock.<name>.observe.enabled=false for the bare locker:
+// spring.lock.instances.<name>.observe.enabled=false for the bare locker:
 //
 //	type Service struct {
 //	    Lock lock.Locker `autowire:"jobs"`
@@ -48,14 +48,14 @@ import (
 )
 
 func init() {
-	gs.Module(gs.OnProperty("spring.lock"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.lock}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.lock.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.lock.instances}", func(name string, c Config) error {
 			// Fail fast: silently defaulting to some arbitrary *redis.Client
 			// would hide a misconfiguration that only surfaces on first
 			// Acquire, potentially in production. Refusing to boot is safer.
 			if c.Client == "" {
 				return errutil.Explain(nil, "lock-redis: instance %q missing required property %q",
-					name, "spring.lock."+name+".client")
+					name, "spring.lock.instances."+name+".client")
 			}
 			// TagArg injects the *redis.Client bean by name — this is the
 			// seam that ties the Locker to a specific redis instance. The bean

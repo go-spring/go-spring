@@ -16,7 +16,7 @@
 
 // Command example demonstrates wiring starter-discovery-k8s into a Go-Spring
 // application. Blank-importing the starter and declaring one
-// "${spring.discovery.k8s.<name>}" entry registers a discovery backend under
+// "${spring.discovery.k8s.instances.<name>}" entry registers a discovery backend under
 // that name; any client (Redis/GORM/...) then resolves a Kubernetes Service by
 // setting its `discovery:` field to the same name.
 //
@@ -41,12 +41,12 @@ import (
 	"go-spring.org/spring/gs"
 
 	// Blank-import registers the Kubernetes discovery backend(s) declared under
-	// spring.discovery.k8s.
+	// spring.discovery.k8s.instances.
 	_ "go-spring.org/starter-discovery-k8s"
 )
 
 // backendName matches the map key in conf/app.properties
-// (spring.discovery.k8s.<backendName>); targetService is the Kubernetes
+// (spring.discovery.k8s.instances.<backendName>); targetService is the Kubernetes
 // Service name to resolve through it.
 const (
 	backendName   = "k8s"
@@ -75,7 +75,7 @@ func main() {
 // error: outside a cluster the lookup is expected to fail, and the example's
 // job is to show the call, not to assert on a cluster that may be absent.
 type resolveRunner struct {
-	// backend is the discovery bean named after the spring.discovery.k8s.<name>
+	// backend is the discovery bean named after the spring.discovery.k8s.instances.<name>
 	// map key in conf/app.properties.
 	backend discovery.Discovery `autowire:"k8s"`
 }

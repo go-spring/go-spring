@@ -124,7 +124,7 @@ func (o *OrderSaga) Run(ctx context.Context) error {
 
 ```properties
 # --- datasource (starter-gorm-mysql; provides the autowired *gorm.DB) --------
-spring.gorm.mysql.dsn=app:pass@tcp(127.0.0.1:3306)/demo?parseTime=true
+spring.gorm.mysql.instances.dsn=app:pass@tcp(127.0.0.1:3306)/demo?parseTime=true
 
 # --- Saga durable store (THIS starter's activation key) ----------------------
 # Must be exactly "gorm" for this Store to register
@@ -287,7 +287,7 @@ whatever context the Runner passes — check your collector after the §4.2 rest
 
 ### 4.4 AutoMigrate fail-fast drill
 
-Point `spring.gorm.mysql.dsn` at a database the user cannot DDL: the store bean fails at
+Point `spring.gorm.mysql.instances.dsn` at a database the user cannot DDL: the store bean fails at
 construction (`auto-migrate saga_snapshots failed`, tag `AppDef`) and startup aborts —
 misconfiguration surfaces at boot, not on the first saga.
 

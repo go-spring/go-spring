@@ -7,8 +7,8 @@ MIME, attachments, auth mechanisms) are [go-mail's documentation](https://github
 and [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)** — everything below is go-spring's
 increment: configuration, wiring, fail-fast startup, tracing helpers.
 
-**Activation**: every `spring.mail.<name>` subtree creates exactly one `*Mailer` bean named
-`<name>`. No `spring.mail.*` keys → no beans, no startup dial, starter is inert. There is no
+**Activation**: every `spring.mail.instances.<name>` subtree creates exactly one `*Mailer` bean named
+`<name>`. No `spring.mail.instances.*` keys → no beans, no startup dial, starter is inert. There is no
 `enabled` key and no default singleton.
 
 ---
@@ -95,16 +95,16 @@ func (s *Service) SendReport(ctx context.Context) error {
 **conf/app.properties** — the complete, commented surface:
 
 ```properties
-# --- mailer "notify" (one instance per spring.mail.<name> subtree) ------------
-spring.mail.notify.host=smtp.example.com
-spring.mail.notify.port=587
-spring.mail.notify.username=apikey
-spring.mail.notify.password=${SMTP_PASSWORD}
-spring.mail.notify.auth-type=auto
-spring.mail.notify.from=noreply@example.com
-spring.mail.notify.timeout=10s
-spring.mail.notify.tls.mode=starttls
-# spring.mail.notify.tls.insecure-skip-verify=false   # test only
+# --- mailer "notify" (one instance per spring.mail.instances.<name> subtree) ------------
+spring.mail.instances.notify.host=smtp.example.com
+spring.mail.instances.notify.port=587
+spring.mail.instances.notify.username=apikey
+spring.mail.instances.notify.password=${SMTP_PASSWORD}
+spring.mail.instances.notify.auth-type=auto
+spring.mail.instances.notify.from=noreply@example.com
+spring.mail.instances.notify.timeout=10s
+spring.mail.instances.notify.tls.mode=starttls
+# spring.mail.instances.notify.tls.insecure-skip-verify=false   # test only
 
 # --- observability (starter-otel), verified in example-otel/ ------------------
 spring.observability.enable=true
@@ -137,10 +137,10 @@ curl -s 'http://127.0.0.1:16686/api/traces?service=demo' | jq '.data[0].spans[].
 
 ```
 import starter-mail
-  └─ init(): gs.Group("${spring.mail}", newMailer, nil)     [one instance per spring.mail.<name>]
+  └─ init(): gs.Group("${spring.mail}", newMailer, nil)     [one instance per spring.mail.instances.<name>]
 
 gs.Run()
-  ├─ config bind: spring.mail.<name>.* → Config (value tags; host required via errutil.RequireField)
+  ├─ config bind: spring.mail.instances.<name>.* → Config (value tags; host required via errutil.RequireField)
   ├─ newMailer: parse auth (only if username set) → TLS mode → mail.NewClient
   ├─ fail-fast probe: client.DialWithContext (bounded by timeout) then Close
   │     └─ bad host/port/auth/TLS ⇒ startup ERROR, app refuses to boot (source comment:
@@ -179,7 +179,7 @@ caller brackets the call (recorded as a design suspect in §6).
 
 ## 3. Per-key behavior reference
 
-Prefix `spring.mail.<name>.*` — bound into the ctor `Config` (config.go), so keys ARE
+Prefix `spring.mail.instances.<name>.*` — bound into the ctor `Config` (config.go), so keys ARE
 instance-prefixed. (The starter has no wrapper-field value tags; nothing here is top-level.)
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -195,7 +195,7 @@ instance-prefixed. (The starter has no wrapper-field value tags; nothing here is
 | `tls.insecure-skip-verify` | bool | false | When true installs a TLS config with `InsecureSkipVerify` (ServerName=host). | Test-only; in production it accepts forged server certificates — silent MITM exposure. |
 
 The `value:"${tls}"` sub-struct binding means `tls.*` keys live under the same instance
-prefix (`spring.mail.<name>.tls.mode`), not at top level.
+prefix (`spring.mail.instances.<name>.tls.mode`), not at top level.
 
 ---
 
@@ -214,7 +214,7 @@ The example asserts `total >= 1` after sending one message with To×2 + Cc×1 an
 
 ### 4.2 Fail-fast drill
 
-Set `spring.mail.notify.port=9999` (nothing listening) and boot: startup aborts with
+Set `spring.mail.instances.notify.port=9999` (nothing listening) and boot: startup aborts with
 `mail: startup dial to ...:9999 failed`. This is the intended posture — the probe
 (newMailer, starter.go:137-144) exists precisely so bad config never reaches first-send.
 
@@ -237,7 +237,7 @@ Span fields to read: operation `mail.send`, kind CLIENT, attributes `messaging.s
 ### 4.5 From-fallback drill
 
 Remove `from` from config, keep the app sending `Message` without `From` → every Send returns
-`mail: no From address (set message.From or spring.mail...from)`. Add either side back to heal.
+`mail: no From address (set message.From or spring.mail.instances...from)`. Add either side back to heal.
 
 ---
 
@@ -247,7 +247,7 @@ Remove `from` from config, keep the app sending `Message` without `From` → eve
 |---------|--------------|-----|
 | Startup aborts: "startup dial ... failed" | host/port wrong, server down, or TLS mode vs port mismatch | Fix the triple (port ↔ tls.mode ↔ server offering); the probe message names host:port. |
 | Startup aborts: "unknown tls mode / auth-type" | typo in enum value | Use starttls\|tls\|none and auto\|plain\|login\|cram-md5 (case-insensitive). |
-| Startup aborts: required field host | `spring.mail.<name>.host` missing | Set it; there is no localhost default. |
+| Startup aborts: required field host | `spring.mail.instances.<name>.host` missing | Set it; there is no localhost default. |
 | Send fails "no From address" | neither config `from` nor `Message.From` | Set one (or both — message wins). |
 | Send fails "message has no recipients" | `To` empty | To is mandatory; Cc/Bcc alone are not enough. |
 | Send works at boot, fails later "send failed" | relay restarted / credentials expired / timeout too small | Raise `timeout`; the probe only proves boot-time health — see suspect §6. |

@@ -28,6 +28,7 @@ import (
 
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
@@ -37,13 +38,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// DB is the bean type this starter exposes. It aliases the shared gormcore.DB
-// so the wrapper body, lifecycle and observe/resilience wiring stay in one place.
-type DB = gormcore.DB
-
 func init() {
-	gormcore.Register(gormcore.Dialect[Config]{
+	gormcore.Module(gormcore.Dialect[Config]{
 		Prefix:       "spring.gorm.sqlserver",
+		BeanPrefix:   "sqlserver",
 		Engine:       "microsoft.sql_server",
 		HealthPrefix: "gorm:sqlserver:",
 		Build:        build,
@@ -51,7 +49,7 @@ func init() {
 }
 
 // build constructs the driver-specific dialector for a Config, handling service
-// discovery, and returns the Spec gormcore.Register needs to open and wrap the
+// discovery, and returns the Spec gormcore.Module needs to open and wrap the
 // client.
 //
 // When c.ServiceName is set (and mesh mode is off), the connection is routed
@@ -60,7 +58,7 @@ func init() {
 // resolverDialer adapter, which implements mssql.Dialer. In mesh mode a sidecar
 // owns discovery+LB, so the configured Host is used as-is. When c.ServiceName
 // is empty this stays a plain DSN dial, unchanged from before.
-func build(ctx context.Context, c Config) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore.Spec, error) {
 	if c.Host == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
 	}
@@ -72,7 +70,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 		closer    func()
 	)
 
-	lb, _, err := c.NewPickPool(ctx)
+	lb, _, err := c.NewPickPool(ctx, backend)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: build discovery resolver failed: %v", err)
 		return gormcore.Spec{}, err

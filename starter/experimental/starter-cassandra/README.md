@@ -25,15 +25,15 @@ import _ "go-spring.org/starter-cassandra"
 ### 2. Configure
 
 ```properties
-spring.cassandra.a.hosts=127.0.0.1
-spring.cassandra.a.keyspace=demo
-spring.cassandra.a.consistency=local-quorum
+spring.cassandra.instances.a.hosts=127.0.0.1
+spring.cassandra.instances.a.keyspace=demo
+spring.cassandra.instances.a.consistency=local-quorum
 
 # Auth + TLS (optional)
-# spring.cassandra.a.username=cassandra
-# spring.cassandra.a.password=cassandra
-# spring.cassandra.a.tls.enabled=true
-# spring.cassandra.a.tls.ca-file=/etc/certs/ca.pem
+# spring.cassandra.instances.a.username=cassandra
+# spring.cassandra.instances.a.password=cassandra
+# spring.cassandra.instances.a.tls.enabled=true
+# spring.cassandra.instances.a.tls.ca-file=/etc/certs/ca.pem
 ```
 
 ### 3. Inject
@@ -58,7 +58,7 @@ err = s.Client.Query("SELECT message FROM demo.greetings WHERE id = ?", 1).
 
 ## Core Features
 
-- **Multi-instance clients** — every `spring.cassandra.<name>` entry is its
+- **Multi-instance clients** — every `spring.cassandra.instances.<name>` entry is its
   own bean with independent settings.
 - **Fail-fast startup probe + health indicator** — a `system.local` scan at
   boot and a `cassandra:<name>` indicator for `starter-actuator`.
@@ -73,9 +73,9 @@ err = s.Client.Query("SELECT message FROM demo.greetings WHERE id = ?", 1).
 **Multiple clients** — configure additional entries and inject by name:
 
 ```properties
-spring.cassandra.main.hosts=10.0.0.1,10.0.0.2
-spring.cassandra.main.keyspace=prod
-spring.cassandra.analytics.hosts=10.0.1.1
+spring.cassandra.instances.main.hosts=10.0.0.1,10.0.0.2
+spring.cassandra.instances.main.keyspace=prod
+spring.cassandra.instances.analytics.hosts=10.0.1.1
 ```
 
 **Custom driver** — replace session assembly (e.g. to pin a

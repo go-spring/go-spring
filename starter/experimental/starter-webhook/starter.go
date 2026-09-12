@@ -62,7 +62,7 @@ func init() {
 	//
 	// No destroy callback: each Send is a stateless HTTP request, so there is
 	// nothing to release at shutdown.
-	gs.Group("${spring.webhook}", newNotifier, nil)
+	gs.Group("${spring.webhook.instances}", newNotifier, nil)
 }
 
 // newNotifier builds a Notifier from config. There is deliberately no startup
@@ -74,8 +74,7 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, err
 	}
 	log.Debugf(ctx.Context, log.TagAppDef, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
 
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resilience.ResourceLabel("webhook", name, c.Channel)))
-	exec = resilience.WrapExecutor(exec, "webhook")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("webhook", resilience.ResourceLabel("webhook", name, c.Channel)))
 	return &Notifier{
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},

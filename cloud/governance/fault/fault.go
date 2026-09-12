@@ -27,8 +27,8 @@
 // than bypassing it. See [WrapExecutor].
 //
 // fault stays stdlib-only and depends only on [resilience]; the gs runtime
-// binding (hot-reload via gs.Dync) lives in each client starter, mirroring the
-// layering of the resilience package.
+// binding (hot-reload via the governance source) lives in starter-governance,
+// mirroring the layering of the resilience package.
 package fault
 
 import (

@@ -29,12 +29,12 @@ import _ "go-spring.org/starter-oauth2-client"
 Add configuration in your project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.oauth2.client.downstream.client-id=demo-client
-spring.oauth2.client.downstream.client-secret=demo-secret
-spring.oauth2.client.downstream.token-url=https://auth.example.com/oauth/token
-spring.oauth2.client.downstream.scopes=read,write
-spring.oauth2.client.downstream.auth-style=header
-spring.oauth2.client.downstream.timeout=5s
+spring.oauth2.client.instances.downstream.client-id=demo-client
+spring.oauth2.client.instances.downstream.client-secret=demo-secret
+spring.oauth2.client.instances.downstream.token-url=https://auth.example.com/oauth/token
+spring.oauth2.client.instances.downstream.scopes=read,write
+spring.oauth2.client.instances.downstream.auth-style=header
+spring.oauth2.client.instances.downstream.timeout=5s
 ```
 
 ### 3. Inject the HTTP Client
@@ -76,7 +76,7 @@ endpoint and a protected resource server, then demonstrates and asserts:
   (request body).
 * **`*TokenSource` bean**: alongside the `*http.Client`, the starter also
   registers a `*StarterOAuth2Client.TokenSource` for every
-  `spring.oauth2.client.<name>` entry under the SAME name. It satisfies
+  `spring.oauth2.client.instances.<name>` entry under the SAME name. It satisfies
   `oauth2.TokenSource`, so it drops into anything expecting one. Inject it when you
   need the raw bearer token (for example, to attach it to gRPC metadata):
 
@@ -107,7 +107,7 @@ endpoint and a protected resource server, then demonstrates and asserts:
   becomes the parameter name:
 
   ```properties
-  spring.oauth2.client.downstream.endpoint-params.audience=https://api.example.com
+  spring.oauth2.client.instances.downstream.endpoint-params.audience=https://api.example.com
   ```
 
 ## Observability
@@ -129,16 +129,16 @@ one span (no double counting).
 ### Authorization Code Grant
 
 For interactive user-login / redirect flows, use the separate configuration
-prefix `spring.oauth2.authcode.<name>`. The starter registers one
+prefix `spring.oauth2.authcode.instances.<name>`. The starter registers one
 `*oauth2.Config` per entry, injectable by name.
 
 ```properties
-spring.oauth2.authcode.login.client-id=web-client
-spring.oauth2.authcode.login.client-secret=web-secret
-spring.oauth2.authcode.login.auth-url=https://auth.example.com/oauth/authorize
-spring.oauth2.authcode.login.token-url=https://auth.example.com/oauth/token
-spring.oauth2.authcode.login.redirect-url=https://app.example.com/callback
-spring.oauth2.authcode.login.scopes=openid,profile
+spring.oauth2.authcode.instances.login.client-id=web-client
+spring.oauth2.authcode.instances.login.client-secret=web-secret
+spring.oauth2.authcode.instances.login.auth-url=https://auth.example.com/oauth/authorize
+spring.oauth2.authcode.instances.login.token-url=https://auth.example.com/oauth/token
+spring.oauth2.authcode.instances.login.redirect-url=https://app.example.com/callback
+spring.oauth2.authcode.instances.login.scopes=openid,profile
 ```
 
 Inject and use:

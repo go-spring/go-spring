@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/spring/gs"
 )
 
@@ -30,9 +31,9 @@ type recordingDriver struct {
 	called bool
 }
 
-func (d *recordingDriver) CreateClient(ctx context.Context, c Config) (*Pool, error) {
+func (d *recordingDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error) {
 	d.called = true
-	return NewPool(ctx, c)
+	return NewPool(ctx, c, backend)
 }
 
 // TestDriverBeanDefault proves that when no company Driver bean is provided the
@@ -41,7 +42,7 @@ func (d *recordingDriver) CreateClient(ctx context.Context, c Config) (*Pool, er
 // creating the pool bean (NewPool) needs no live redis.
 func TestDriverBeanDefault(t *testing.T) {
 	gs.Web(false).Configure(func(app gs.App) {
-		app.Property("spring.redigo.cache.addr", "127.0.0.1:6379")
+		app.Property("spring.redigo.instances.cache.addr", "127.0.0.1:6379")
 	}).RunTest(t, func(ts *struct {
 		Pool   *Pool  `autowire:"cache"`
 		Driver Driver `autowire:"?"`
@@ -61,7 +62,7 @@ func TestDriverBeanDefault(t *testing.T) {
 func TestDriverBeanOverrideReachesPool(t *testing.T) {
 	driver := &recordingDriver{}
 	gs.Web(false).Configure(func(app gs.App) {
-		app.Property("spring.redigo.cache.addr", "127.0.0.1:6379")
+		app.Property("spring.redigo.instances.cache.addr", "127.0.0.1:6379")
 		app.Provide(func() Driver { return driver })
 	}).RunTest(t, func(ts *struct {
 		Pool *Pool `autowire:"cache"`
@@ -71,6 +72,28 @@ func TestDriverBeanOverrideReachesPool(t *testing.T) {
 		}
 		if !driver.called {
 			t.Fatal("expected createPool to dispatch through the overriding Driver bean")
+		}
+	})
+}
+
+// TestDriverBeanNamedSelection proves the per-instance ${driver} key selects a
+// Driver bean by NAME: with two Driver beans in the container, the entry cites
+// one and the pool is assembled through exactly that one.
+func TestDriverBeanNamedSelection(t *testing.T) {
+	var first, second recordingDriver
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.redigo.instances.cache.addr", "127.0.0.1:6379")
+		app.Property("spring.redigo.instances.cache.driver", "corp")
+		app.Provide(func() Driver { return &first }).Name("plain")
+		app.Provide(func() Driver { return &second }).Name("corp")
+	}).RunTest(t, func(ts *struct {
+		Pool *Pool `autowire:"cache"`
+	}) {
+		if ts.Pool == nil {
+			t.Fatal("expected a wired pool")
+		}
+		if first.called || !second.called {
+			t.Fatalf("expected the pool to go through the named driver only: plain=%v corp=%v", first.called, second.called)
 		}
 	})
 }

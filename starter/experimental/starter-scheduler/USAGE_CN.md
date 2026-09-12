@@ -260,7 +260,7 @@ starter-lock-redis：
 
 ```bash
 docker run -d -p 6379:6379 redis:7
-# 配 spring.lock.redis... 的 "redis" bean + jobs.cleanup.lock=redis，然后：
+# 配 spring.lock.instances.redis... 的 "redis" bean + jobs.cleanup.lock=redis，然后：
 go run . & go run . & wait
 # 只有一个进程记录 "job \"cleanup\" ran"；另一个对它无任何日志
 ```

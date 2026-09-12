@@ -92,7 +92,7 @@ identically:
 per-acquisition Option  >  starter DefaultOptions  >  package default
 ```
 
-A starter's `spring.lock.<name>.ttl` is an *overridable default*: it fills in
+A starter's `spring.lock.instances.<name>.ttl` is an *overridable default*: it fills in
 what the caller left unset, and a per-call `WithTTL` always wins. A negative
 `WithRenewInterval` (auto-renew disabled) survives the layering. Backends call
 `Resolve` at the top of `Acquire`/`TryAcquire` to get this precedence; a

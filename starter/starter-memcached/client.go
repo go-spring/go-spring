@@ -44,7 +44,7 @@ type Client struct {
 	// obs emits the per-operation span/metric/access-log triple; built by Init.
 	obs *observer
 
-	// name is the instance name (the spring.memcached.<name> map key), used for
+	// name is the instance name (the spring.memcached.instances.<name> map key), used for
 	// the resilience resource label. Set by newClient; Init reads it.
 	name string
 
@@ -66,8 +66,7 @@ type Client struct {
 func (c *Client) Init() error {
 	c.obs = newObserver()
 	c.resource = resilience.ResourceLabel("memcached", c.name)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(c.resource))
-	c.exec = resilience.WrapExecutor(exec, "memcached")
+	c.exec = fault.WrapExecutor(resilience.ExecutorFor("memcached", c.resource))
 	return nil
 }
 

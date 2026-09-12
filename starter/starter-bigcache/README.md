@@ -27,7 +27,7 @@ import _ "go-spring.org/starter-bigcache"
 Add BigCache configuration in your project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.bigcache.main.life-window=10m
+spring.bigcache.instances.main.life-window=10m
 ```
 
 ### 3. Inject the BigCache Instance
@@ -68,16 +68,19 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 * **Supports multiple BigCache instances**: You can define multiple BigCache instances in the configuration file and
   reference them by name in your project.
 * **Support BigCache extensions**: You can extend BigCache creation by implementing the `Driver` interface.
+  When several Driver beans coexist, an instance selects one by name: `spring.bigcache.instances.<name>.driver = <bean-name>`
+  (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type; naming a missing bean fails startup).
 * **Hit/miss statistics**: set `stats-enabled=true` and read `cache.Stats()` for hit/miss/collision counters — the
   read mechanism for cache-effectiveness monitoring.
 * **Eviction/expiry callback**: register `bigcache.Config.OnRemove` by providing a
   custom `Driver` (implement `CreateClient` and set the callback on the
   `bigcache.Config` you build).
 * **Graceful shutdown**: the destroy callback calls `Close()`, stopping the background cleaner goroutine.
-* **Cache abstraction backend**: importing this starter also registers the
-  `bigcache` cache driver, so `spring.cache.<name>.driver=bigcache:<instance>`
-  exposes the instance as a `cloud/cache.Cache` bean (see
-  [starter-cache](../starter-cache)). Note BigCache expires by a single global
+* **Cache abstraction backend**: alongside the wrapper, each instance is also provided as a
+  `cloud/cache.Cache` bean named `bigcache:<instance>` — inject `*cache.Cache` with the
+  autowire tag `bigcache:<instance>` to use it through the cache abstraction. The bean is
+  lazy: un-injected, it never instantiates, so there is no config switch. Note BigCache
+  expires by a single global
   `life-window`, so the per-call TTL is ignored; when used purely as a local
   level, `cache.Memory` (which keeps concrete types without serialization) is
   often the better fit.

@@ -6,10 +6,10 @@
 任务类型、重试、调度、队列、Inspector——见 [asynq 官方文档](https://github.com/hibiken/asynq)**；
 本文只写 go-spring 的增量（装配、治理、观测、健康检查）。
 
-**激活条件**：任一 `spring.asynq.<name>` 子树（`gs.OnProperty("spring.asynq")` 为前缀匹配，
+**激活条件**：任一 `spring.asynq.instances.<name>` 子树（`gs.OnProperty("spring.asynq")` 为前缀匹配，
 starter.go:36）。一个实例恒产出生产者 `*Client`；worker `*Server` 仅当
 `<name>.server.enabled=true` 时存在（默认关——常驻 worker 是选配）。多实例：每个
-`spring.asynq.<name>` 条目是独立的 Redis 任务队列。
+`spring.asynq.instances.<name>` 条目是独立的 Redis 任务队列。
 
 ---
 
@@ -110,17 +110,17 @@ func main() {
 
 ```properties
 # --- asynq 实例 "a"（生产者与 worker 共用这些 Redis 配置）---------------------
-spring.asynq.a.addr=127.0.0.1:6379
-spring.asynq.a.db=0
-spring.asynq.a.concurrency=4            # worker：并发处理任务上限
-# spring.asynq.a.queues=critical:5,default:1   # 队列名 -> 优先级权重
+spring.asynq.instances.a.addr=127.0.0.1:6379
+spring.asynq.instances.a.db=0
+spring.asynq.instances.a.concurrency=4            # worker：并发处理任务上限
+# spring.asynq.instances.a.queues=critical:5,default:1   # 队列名 -> 优先级权重
 # 开启该实例的 worker 角色（默认关）。
-spring.asynq.a.server.enabled=true
-# spring.asynq.a.shutdown-timeout=8s    # worker 退出排空上限
+spring.asynq.instances.a.server.enabled=true
+# spring.asynq.instances.a.shutdown-timeout=8s    # worker 退出排空上限
 
 # --- 到 Redis 的 TLS（共享 tlsconf 块；此处关闭）------------------------------
-# spring.asynq.a.tls.enabled=true
-# spring.asynq.a.tls.cert-file=...      # 另有 key-file / ca-file / server-name /
+# spring.asynq.instances.a.tls.enabled=true
+# spring.asynq.instances.a.tls.cert-file=...      # 另有 key-file / ca-file / server-name /
 #                                       #   insecure-skip-verify
 
 # --- actuator（§4 的健康端点）---------------------------------------------------
@@ -195,7 +195,7 @@ gs.Run()
    调用内嵌提升的 `*asynq.Client.Enqueue`——只有 wrapper 走守护链。
 2. 观测层开启生产者观测（`o.obs.start(ctx, "enqueue", task.Type())`，
    observe.go）：span、指标与访问日志。
-3. executor 执行：`fault.WrapExecutor(resilience.ExecutorFor("asynq:<addr>"))`——带
+3. executor 执行：`fault.WrapExecutor(resilience.ExecutorFor("asynq", "asynq:<addr>"))`——带
    starter-governance 时，限流拒绝/熔断开启会在**接触 Redis 之前**中止；未引入则为直通。
 4. `Client.EnqueueContext` 把任务写入 Redis（asynq 语义：队列/优先级由 opts 决定）。
 5. worker 的 `ServeMux` 按任务类型匹配注册的 pattern（`:` 作中间件分组分隔符），在
@@ -209,12 +209,12 @@ gs.Run()
 
 ## 3. 逐 key 行为参考
 
-实例前缀：`spring.asynq.<name>.*`（Config 经带前缀的 `conf.BindEach` 绑定——这些
+实例前缀：`spring.asynq.instances.<name>.*`（Config 经带前缀的 `conf.BindEach` 绑定——这些
 **是**实例前缀 key）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `spring.asynq.<n>.addr` | string | — | Redis `host:port`；同时构成治理资源标签 `asynq:<addr>`。必填（`expr:"$ != ''"`）。 | 缺失 → 绑定期启动报错。 |
+| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`；同时构成治理资源标签 `asynq:<addr>`。必填（`expr:"$ != ''"`）。 | 缺失 → 绑定期启动报错。 |
 | `..username` / `..password` | string | 空 | Redis ACL 认证。 | 配错 → 运行期投递/消费失败而非启动期（健康检查能探出）。 |
 | `..db` | int | 0 | Redis 数据库编号。 | 生产者与 worker 的 db 不一致 → 任务投了却没人消费。 |
 | `..tls.*` | 块 | 关 | 共享 tlsconf（`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`）；开启时 DefaultDriver 构建 TLS RedisClientOpt（driver.go:58-77）。 | TLS 配一半 → bean 构建期报错。 |
@@ -222,6 +222,7 @@ gs.Run()
 | `..queues` | map[string]int | 空 → asynq "default":1 | 队列 → 优先级权重（越高越常被处理）。⚠ 投递侧 `asynq.Queue(...)` 选项必须指向已配置的队列（或回退 default），否则 worker 取不到。 | 投到未列出的队列 → 任务永久 pending。 |
 | `..shutdown-timeout` | duration | 8s | worker 排空上限（`srv.Shutdown()`）；传给 `Stop` 的 ctx 不被使用——排空由该 timeout 兜底（client.go:176-183）。 | 过短 → 发布时在途任务被弃。 |
 | `..server.enabled` | bool | false | **worker 选配开关**。同时决定 `*Server` bean 是否存在——不开却 `autowire:"a:server"` 会在装配期失败。 | 注入 worker 但没开 → 容器报 bean 不存在。 |
+| `..driver` | string | 空 | 按名指定装配该实例的 Driver bean。留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（没有则回退内置 DefaultDriver）；指定的 bean 不存在则启动失败。 | 容器中存在多个 Driver bean → 每实例按名选定一个。 |
 
 ---
 
@@ -277,12 +278,12 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 容器报 bean `a:server` 不存在 | 未开 `server.enabled`（worker 选配） | 设 `spring.asynq.<n>.server.enabled=true` 或去掉注入。 |
+| 容器报 bean `a:server` 不存在 | 未开 `server.enabled`（worker 选配） | 设 `spring.asynq.instances.<n>.server.enabled=true` 或去掉注入。 |
 | 任务投了没人跑 | worker 未开启；投到 `queues` 之外的队列；生产者与 worker 不同 `db` | 对齐配置；用 `asynq.Queue("<已列出>")` 投递。 |
 | 守护/resilience 从不生效 | 调了提升的 `*asynq.Client.Enqueue/EnqueueContext` 而非 wrapper | 调 wrapper 的 `Enqueue`（client.go:71）。 |
 | 能投递但健康 DOWN | `default` 队列从未创建 / ACL 限制 Inspector | 健康检查固定探 `default` 队列；确认 Redis 可达与权限。 |
 | 发布丢任务 | `shutdown-timeout` 短于在途任务 | 调到高于最长任务时长。 |
-| 自定义 Driver bean 不生效 | 提供了两个 `Driver` bean，或注册晚于装配 | 每进程最多一个 `Driver` bean；ctor 在装配期被 autowire，Client/Server/health 共享同一个。 |
+| 自定义 Driver bean 不生效 | 实例没有按名选中它，按类型注入选到了另一个 | 容器中存在多个 `Driver` bean 时，每实例按名指定：`spring.asynq.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）。 |
 
 ## 6. 设计体检表
 

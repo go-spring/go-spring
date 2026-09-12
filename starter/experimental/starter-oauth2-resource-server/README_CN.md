@@ -4,7 +4,7 @@
 Token，并把结果挂到框架中立的 `security.TokenValidator`
 抽象（`go-spring.org/cloud/security`）上。
 
-每个 `spring.security.oauth2.resource.jwt.<name>` 条目注册一个
+每个 `spring.security.oauth2.resource.jwt.instances.<name>` 条目注册一个
 `Validator` bean——配置即开关，只导入包而不配置不会装配任何东西。
 
 ## 功能特性
@@ -28,8 +28,8 @@ Token，并把结果挂到框架中立的 `security.TokenValidator`
 ## 快速开始
 
 ```properties
-spring.security.oauth2.resource.jwt.api.issuer-uri=https://auth.example.com
-spring.security.oauth2.resource.jwt.api.audiences=orders-api
+spring.security.oauth2.resource.jwt.instances.api.issuer-uri=https://auth.example.com
+spring.security.oauth2.resource.jwt.instances.api.audiences=orders-api
 ```
 
 ```go
@@ -56,7 +56,7 @@ func init() {
 
 ## 配置项
 
-配置键：`spring.security.oauth2.resource.jwt.<name>.*`
+配置键：`spring.security.oauth2.resource.jwt.instances.<name>.*`
 
 | 属性 | 默认值 | 说明 |
 | --- | --- | --- |

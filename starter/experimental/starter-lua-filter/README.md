@@ -32,7 +32,7 @@ Add filter configuration in your project's [configuration file](example/conf/app
 Each entry points at a Lua script file (resolved relative to the working directory):
 
 ```properties
-spring.lua.filter.guard.script=./scripts/guard.lua
+spring.lua.filter.instances.guard.script=./scripts/guard.lua
 ```
 
 ### 3. Wire the Filter into the HTTP Server
@@ -94,7 +94,7 @@ core filter behaviors:
 
 ## Advanced Features
 
-* **Multiple filters**: define several entries under `spring.lua.filter.*` and
+* **Multiple filters**: define several entries under `spring.lua.filter.instances.*` and
   select each by name with `gs.TagArg("...")`.
 * **Framework-agnostic**: because the filter wraps a plain `http.Handler`, the
   same script works whether gin, echo, hertz, or net/http serves the routes.

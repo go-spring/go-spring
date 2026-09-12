@@ -7,13 +7,13 @@ currently lives under example/). All behavior claims are verified against the st
 [Milvus's own documentation](https://milvus.io/docs/install-go.md)
 ([SDK](https://github.com/milvus-io/milvus-sdk-go))** — everything below is go-spring's increment.
 
-**Activation**: any `spring.milvus.*` key (the module is `OnProperty("spring.milvus")`, a
-prefix check [starter.go:29]). Each `spring.milvus.<name>` entry creates one
+**Activation**: any `spring.milvus.instances.*` key (the module is `OnProperty("spring.milvus")`, a
+prefix check [starter.go:29]). Each `spring.milvus.instances.<name>` entry creates one
 `*StarterMilvus.Client` bean named `<name>`, plus a health indicator named `milvus:<name>`.
 **Honest scope note**: since the per-RPC governance guard landed (guard.go — gRPC client
 interceptors on the SDK dial options), every Milvus RPC is transparently protected
 (rate-limit/breaker/bulkhead/retry/timeout + fault injection) with no opt-in at the call
-site; `resilience.WrapExecutor` itself emits the guard execution's observation
+site; the executor resolved through `resilience.ExecutorFor` emits the guard execution's observation
 (spans + outcome metrics + access log). There is no separate per-RPC trace layer for
 unguarded traffic — when governance is off the executor is a transparent no-op. The health
 indicator remains the always-on liveness signal (§2.2, §6).
@@ -114,11 +114,11 @@ func init() {
 
 ```properties
 # --- milvus instance "a" ----------------------------------------------------
-spring.milvus.a.addr=127.0.0.1:19530
-spring.milvus.a.database=default
+spring.milvus.instances.a.addr=127.0.0.1:19530
+spring.milvus.instances.a.database=default
 # Auth keys, only when the cluster has auth on:
-#spring.milvus.a.username=root
-#spring.milvus.a.password=Milvus
+#spring.milvus.instances.a.username=root
+#spring.milvus.instances.a.password=Milvus
 
 # --- actuator (readiness folds in milvus:a) ---------------------------------
 spring.actuator.addr=:9370
@@ -142,7 +142,7 @@ grep -E 'round trip|Milvus' app.log      # the search above returned
 
 ```
 import starter-milvus
-  └─ gs.Module(OnProperty("spring.milvus")) fires when any spring.milvus.* key exists
+  └─ gs.Module(OnProperty("spring.milvus")) fires when any spring.milvus.instances.* key exists
         └─ conf.BindEach(p, "${spring.milvus}") → one Config per <name> entry
               ├─ addr validated non-empty by the expr tag at bind time [config.go:26]
               ├─ Provide(newClient).Name(<name>).Init((*Client).Init)
@@ -157,8 +157,8 @@ gs.Run()
   │   ListCollections once, error → cl.Close() + boot fails — a wrong address or bad
   │   credential never reaches "serving"
   ├─ Init [client.go]: resource = ResourceLabel("milvus", addr) →
-  │   fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │   resilience.WrapExecutor(exec, "milvus") → slot.arm — the
+  │   fault.WrapExecutor(resilience.ExecutorFor("milvus", resource)) →
+  │   slot.arm — the
   │   interceptors guard every RPC from here on; governance off → no-op executor
   ├─ readiness: indicator repeats the same ListCollections probe periodically
   └─ SIGTERM → Destroy [client.go]: exec.Close() then o.Client.Close() — closes the gRPC conn
@@ -174,15 +174,15 @@ means the bean is never created and dependent beans never wire against a dead cl
 1. The wrapper struct — `Client` embeds `client.Client` [client.go] and adds no
    interception at the method level; the guard rides below it, at the gRPC layer.
 2. milvus-sdk-go → gRPC client → **guard interceptors** (executor: limiter/breaker/
-   bulkhead/retry/timeout + fault, wrapped by the resilience observer) → server.
+   bulkhead/retry/timeout wrapped by the resilience observer, with fault injection outermost) → server.
 
 That is the whole story, plus the guard. **The guard is a gRPC interceptor chain**
 [guard.go]: `newClient` passes custom dial options, so the SDK's own `DefaultGrpcOpts`
 (keepalive, connect backoff, 2GB recv limit) are re-added first and the guard
 interceptors (unary + stream-open) appended — additive, not a replacement. The
 interceptors read a per-client slot that `Init` arms with
-`fault.WrapExecutor(resilience.ExecutorFor("milvus:<addr>"))` wrapped in
-`resilience.WrapExecutor` (governance off → no-op, passthrough; the fail-fast probe in
+`fault.WrapExecutor(resilience.ExecutorFor("milvus", "milvus:<addr>"))`
+(governance off → no-op, passthrough; the fail-fast probe in
 `newClient` runs pre-Init and relies on that passthrough). Every RPC — collections,
 indexes, search, insert — rides it with zero call-site changes, the same transparent
 per-request stance as the other NoSQL starters. The only other signal this starter
@@ -194,7 +194,7 @@ auth [health/health.go].
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.milvus.<name>.` — bound per-instance via `conf.BindEach`
+All keys live under `spring.milvus.instances.<name>.` — bound per-instance via `conf.BindEach`
 (NOT the absolute-property starter-Pool rule). Verified against
 `grep -rhoE 'value:"[^"]+"'` — the table covers every tag, both directions.
 

@@ -6,8 +6,8 @@
 influxdb-client-go API 属于[客户端官方文档](https://docs.influxdata.com/influxdb/v2/api-guide/client-libraries/go/)**——
 以下全部是 go-spring 的增量。
 
-**激活条件**：出现任意 `spring.influxdb.*` key 即激活（模块是
-`OnProperty("spring.influxdb")` 前缀检查 [starter.go:40]）。每个 `spring.influxdb.<name>`
+**激活条件**：出现任意 `spring.influxdb.instances.*` key 即激活（模块是
+`OnProperty("spring.influxdb")` 前缀检查 [starter.go:40]）。每个 `spring.influxdb.instances.<name>`
 条目创建一个名为 `<name>` 的 `*StarterInfluxdb.Client` bean，外加名为
 `influxdb:<name>` 的健康指示器——两者均无关闭开关。
 
@@ -108,14 +108,14 @@ func init() {
 
 ```properties
 # --- 实例 "a"：写+查客户端 --------------------------------------------------
-spring.influxdb.a.server-url=http://127.0.0.1:8086
-spring.influxdb.a.auth-token=go-spring-example-token
-spring.influxdb.a.org=go-spring
-spring.influxdb.a.bucket=example
+spring.influxdb.instances.a.server-url=http://127.0.0.1:8086
+spring.influxdb.instances.a.auth-token=go-spring-example-token
+spring.influxdb.instances.a.org=go-spring
+spring.influxdb.instances.a.bucket=example
 
 # --- 实例 "b"：同 server 第二个客户端（本文作纯查询用）----------------------
-spring.influxdb.b.server-url=http://127.0.0.1:8086
-spring.influxdb.b.auth-token=go-spring-example-token
+spring.influxdb.instances.b.server-url=http://127.0.0.1:8086
+spring.influxdb.instances.b.auth-token=go-spring-example-token
 
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
@@ -149,10 +149,11 @@ docker exec influxdb-example influx query \
 
 ```
 import starter-influxdb
-  └─ gs.Module(OnProperty("spring.influxdb"))：出现任意 spring.influxdb.* key 即触发
+  └─ gs.Module(OnProperty("spring.influxdb"))：出现任意 spring.influxdb.instances.* key 即触发
         └─ conf.BindEach("${spring.influxdb}") → 每个 <name> 条目一个 Config
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
-              │         IndexArg(2, ?Driver))    // 可选 Driver bean
+              │         IndexArg(2, ?Driver))    // 可选 Driver bean；多个并存时
+              │                                    // 由 ${..driver} 按名指定
               │     .Name(<name>).Init((*Client).Init).Destroy((*Client).Destroy)
               └─ Provide health.Indicator，名为 "influxdb:<name>"
                     （经 TagArg 按名注入刚注册的 client，导出为 health.Indicator）
@@ -160,15 +161,17 @@ import starter-influxdb
 gs.Run()
   ├─ 构造 newClient [starter.go:62]：
   │    1. 可选 Driver bean——没有则回退内置 DefaultDriver
-  │       （d == nil [starter.go:66-68]）
+  │       （d == nil [starter.go:66-68]）；容器中存在多个 Driver bean 时，
+  │       实例可按名指定：`spring.influxdb.instances.<name>.driver = <bean 名>`
+  │       （留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）
   │    2. driver.CreateClient → influxdb2 客户端，其 HTTP 请求经由
   │       dynamicTransport（Init 之前直通 http.DefaultTransport）
   │    3. 领取 DefaultDriver 安装的 dynamic transport [starter.go:77-79]
   │    4. fail-fast 探测：client.Health() → /health 必须报告 "pass"，
   │       否则关闭 client 并启动失败 [starter.go:80-83]
   ├─ Init [client.go:69]：构建 dbObserver（"influxdb"）+ obsTransport；
-  │    解析 executor = resilience.WrapExecutor(fault.WrapExecutor(
-  │    resilience.ExecutorFor("influxdb:<server-url>")), "influxdb")；dyn.Swap
+  │    解析 executor = fault.WrapExecutor(resilience.ExecutorFor(
+  │    "influxdb", "influxdb:<server-url>"))；dyn.Swap
   │    换入 resilience round-tripper——观测+治理自此生效
   ├─ 就绪：指示器翻 UP（每次探测 = 一趟 /health 往返）
   └─ SIGTERM → Destroy [client.go:93]：Client.Close()——flush 异步 writer
@@ -242,7 +245,7 @@ resilience transport——该 client 的 resilience 即不可用 [starter.go:74-
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.influxdb.<name>.`——经 `conf.BindEach` 的按实例前缀绑定。
+所有 key 位于 `spring.influxdb.instances.<name>.`——经 `conf.BindEach` 的按实例前缀绑定。
 完整清单（已用 `grep -rhoE 'value:"[^"]+"' --include='*.go'` 双向核对）：
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -319,7 +322,7 @@ error）。
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动失败 `failed to reach influxdb server ...` | server 未起、server-url 错、或 OSS 首次启动 setup 未完成 | 等 `curl :8086/health` 报 `pass`；核对 URL scheme/host。 |
-| `panic: influxdb: write helpers need org and bucket` | org/bucket 为空时调 `ManagedWriteAPI` | 配 `spring.influxdb.<name>.org/.bucket`——或直接用内嵌 `WriteAPI(org, bucket)`。 |
+| `panic: influxdb: write helpers need org and bucket` | org/bucket 为空时调 `ManagedWriteAPI` | 配 `spring.influxdb.instances.<name>.org/.bucket`——或直接用内嵌 `WriteAPI(org, bucket)`。 |
 | `WritePoints` 返回 org/bucket 错误 | 同一调用期缺口的不 panic 形态 | 同上。 |
 | 写失败但启动与健康都是绿的 | `auth-token` 错——/health 不做鉴权 | 用 `influx query --token ...` 验 token。 |
 | 请求在跑却没有 span/指标 | 未 import starter-otel | observer 挂在 OTel globals 上；import starter-otel（访问日志无 otel 也照发）。 |

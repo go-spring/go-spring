@@ -5,11 +5,11 @@
 (`example/check.sh`,零外部依赖)。**Casbin 自身语义(model 语言、policy 格式、Enforce/API、
 adapter、watcher)见[官方文档](https://casbin.org/docs/overview)**——以下全部是 go-spring 增量。
 
-**激活条件**:`init()` 里的 `gs.Module` 监听 `spring.casbin`——每个 `spring.casbin.<name>`
+**激活条件**:`init()` 里的 `gs.Module` 监听 `spring.casbin`——每个 `spring.casbin.instances.<name>`
 配置项生成一个名为 `<name>` 的 `*StarterCasbin.Enforcer` **容器 bean**。*enforcer 是
 bean,它们用的 adapter/watcher 也是**——config 的 `adapter` / `watcher` 键是** bean 名**,
 每个实例的 Module 把对应 bean 注入 enforcer 构造器(键为空则传 nil)。没有包级注册表。
-没有 `enabled` key;零个 `spring.casbin.*` 即零个 enforcer,starter 完全惰性。
+没有 `enabled` key;零个 `spring.casbin.instances.*` 即零个 enforcer,starter 完全惰性。
 
 ---
 
@@ -85,7 +85,7 @@ import (
 )
 
 // Service 纯注入消费 enforcer。bean 名来自配置组 key
-// (${spring.casbin.rbac.*} -> "rbac"),因此用 `autowire:"rbac"`。
+// (${spring.casbin.instances.rbac.*} -> "rbac"),因此用 `autowire:"rbac"`。
 // *StarterCasbin.Enforcer 内嵌 *casbin.Enforcer,Enforce/AddPolicy/...
 // 用法与上游完全一致。
 type Service struct {
@@ -128,17 +128,17 @@ func main() {
 ```properties
 # 一个组 key 一个 enforcer。"rbac" 即 autowire 的 bean 名。
 # model 文件(必填,无默认)。
-spring.casbin.rbac.model=./conf/model.conf
+spring.casbin.instances.rbac.model=./conf/model.conf
 # 本 enforcer 用的 persist.Adapter 的 bean 名(starter.go newEnforcer 按名注入)。
 # 与 `policy` 互斥——两者都设是启动错误。
-spring.casbin.rbac.adapter=file
+spring.casbin.instances.rbac.adapter=file
 # 启用热更新的 persist.Watcher 的 bean 名。设置后,对端的变更信号触发自动
 # LoadPolicy(热更新/多实例同步)。
-spring.casbin.rbac.watcher=local
+spring.casbin.instances.rbac.watcher=local
 # adapter= 的免依赖替代:纯文件策略。
-# spring.casbin.rbac.policy=./conf/policy.csv
+# spring.casbin.instances.rbac.policy=./conf/policy.csv
 # AddPolicy/RemovePolicy 是否回写存储(默认 true)。
-spring.casbin.rbac.autoSave=true
+spring.casbin.instances.rbac.autoSave=true
 ```
 
 **验证**(example 的 `runTest` 自断言以下全部):
@@ -166,7 +166,7 @@ import starter-casbin
   └─ init():gs.Module(OnProperty("spring.casbin"), registerEnforcer)  [starter.go]
 
 gs.Run()
-  ├─ 配置绑定:每个 spring.casbin.<name>.* → Config(value tag)
+  ├─ 配置绑定:每个 spring.casbin.instances.<name>.* → Config(value tag)
   ├─ 每个 key:registerEnforcer → Provide(Enforcer ctor) 命名为 <name>
   │    ctor 按 c.Adapter/c.Watcher 的 bean 名绑定 adapter、watcher
   │    (adapterArg/watcherArg:键为空时用 ValueArg 传 nil)
@@ -207,7 +207,7 @@ gs.Run()
 
 ## 3. 逐 key 行为参考
 
-所有 key 都在 `spring.casbin.<name>.*` 下(一组一个 enforcer bean)。
+所有 key 都在 `spring.casbin.instances.<name>.*` 下(一组一个 enforcer bean)。
 
 | Key | 类型 | 默认 | 行为/联动 | 配错的后果 |
 |-----|------|------|----------|-----------|
@@ -272,7 +272,7 @@ tag `app-def`,starter.go:57),失败时一条 Error。无运行期日志 tag、�
 | 改了 `policy` 文件但决策不变 | 策略只在构造期加载一次;没配 watcher | 对 bean 调 `LoadPolicy()`,或配 watcher 做热更新。 |
 | 启动失败:`policy` and `adapter` are mutually exclusive | `policy` 与 `adapter` 同时设置 | 只保留一个存储源,删掉另一个 key。 |
 | 多实例:一台的策略变更不传播 | watcher 回调只在变更方显式 `Update()` 时重载 | 确保变更实例在 `SavePolicy`/`AddPolicy` 后调 `watcher.Update()`(上游 watcher 语义)。 |
-| `AddPolicy` 返回 ok 但重启后丢失 | `autoSave=false` | 设 `spring.casbin.<name>.autoSave=true` 或显式 `SavePolicy()`。 |
+| `AddPolicy` 返回 ok 但重启后丢失 | `autoSave=false` | 设 `spring.casbin.instances.<name>.autoSave=true` 或显式 `SavePolicy()`。 |
 | prod 里 bean 没构建,单测正常 | Service 非 root 可达(无 Export/注入方) | `gs.Provide(&S{}).Export(gs.As[gs.Rooter]())`——见 root-reachable bean 约定。 |
 
 ## 6. 设计体检表

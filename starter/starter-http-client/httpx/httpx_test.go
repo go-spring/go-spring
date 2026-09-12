@@ -17,16 +17,18 @@
 package httpx
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -112,10 +114,65 @@ func TestNewTransport_FailFast(t *testing.T) {
 	// A discovery backend whose seed Resolve fails -> fail fast.
 	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: errorDiscovery{}})
 	assert.Error(t, err).Matches("resolve")
+}
 
-	// Unknown balancer strategy -> fail fast.
-	_, _, err = NewTransport(Config{ServiceName: "x", Discovery: stubDiscovery{eps: []discovery.Endpoint{{Addr: "1.2.3.4:80"}}}, Balancer: "no-such-lb"})
-	assert.Error(t, err).Matches("no strategy registered")
+// A govern rule's balancer replaces the pool's strategy in place, and the
+// outlier half of the same policy lands on the attached tracker — one
+// subscription, no transport rebuild.
+func TestGovernSelection_RewritesLivePool(t *testing.T) {
+	pool := newTestPool(t, "10.0.0.1:9000", "10.0.0.2:9000")
+
+	// Round-robin (the construction default) alternates between the two.
+	first, _ := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
+	second, _ := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
+	assert.That(t, first.Addr).NotEqual(second.Addr)
+
+	governSelection(pool, resilience.Policy{
+		Balancer:          loadbalance.ConsistentHash,
+		OutlierThreshold:  3,
+		OutlierSuspendFor: time.Second,
+	})
+
+	// consistent_hash pins one key to one address...
+	a, _ := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
+	b, _ := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
+	assert.That(t, a.Addr).Equal(b.Addr)
+	// ...and the suspension half was applied to the same pool.
+	assert.That(t, pool.Tracker().Config().Threshold).Equal(3)
+	assert.That(t, pool.Tracker().Config().SuspendFor).Equal(time.Second)
+}
+
+// An unknown strategy name in a rule must not take the client down: the
+// governance Source contract has no error channel, so the pool keeps its
+// current strategy while the rest of the policy still applies.
+func TestGovernSelection_UnknownBalancerKeepsCurrent(t *testing.T) {
+	pool := newTestPool(t, "10.0.0.1:9000", "10.0.0.2:9000")
+
+	governSelection(pool, resilience.Policy{Balancer: "no-such-lb", OutlierThreshold: 2})
+
+	// Still alternating = still round-robin.
+	first, err1 := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
+	second, err2 := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
+	assert.That(t, err1 == nil && err2 == nil).True()
+	assert.That(t, first.Addr).NotEqual(second.Addr)
+	assert.That(t, pool.Tracker().Config().Threshold).Equal(2)
+}
+
+// newTestPool builds a pool over a fixed endpoint set, with the same disabled
+// tracker httpx attaches at construction.
+func newTestPool(t *testing.T, addrs ...string) *loadbalance.Pool {
+	t.Helper()
+	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	assert.That(t, err == nil).True()
+	eps := make([]discovery.Endpoint, 0, len(addrs))
+	for _, a := range addrs {
+		eps = append(eps, discovery.Endpoint{Addr: a, Healthy: true})
+	}
+	return loadbalance.NewPool(
+		loadbalance.SourceFunc(func() ([]discovery.Endpoint, error) { return eps, nil }),
+		bal,
+		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})),
+	)
 }
 
 // errorDiscovery always fails Resolve, to exercise the seed fail-fast.
@@ -224,7 +281,7 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	called := false
 	rt, closeFn, err := NewTransport(Config{
 		Base:     rec,
-		Executor: resilience.ExecutorFor("test-resource"),
+		Executor: resilience.ExecutorFor("test", "test-resource"),
 		WrapExec: func(e resilience.Executor) resilience.Executor {
 			called = true
 			return e
@@ -259,7 +316,7 @@ func TestFloorMinRequests(t *testing.T) {
 // With governance not armed, governedExecutor still yields a working (no-op)
 // executor — the same contract resilience.ExecutorFor gives.
 func TestGovernedExecutorWithoutGovernance(t *testing.T) {
-	exec, err := governedExecutor("http:test-svc")
+	exec, err := governedExecutor("http:test-svc", nil)
 	assert.That(t, err == nil).True()
 	assert.That(t, exec != nil).True()
 	err = exec.Execute(t.Context(), "host:1", func(ctx context.Context) error { return nil })

@@ -53,7 +53,6 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go-spring.org/log v0.1.4 // indirect
-	go-spring.org/starter-cache v0.0.0 // indirect
 	go-spring.org/starter-otel v0.0.0 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.6.0 // indirect
@@ -77,7 +76,6 @@ replace (
 	go-spring.org/gs-mock => ../../../gs/gs-mock
 	go-spring.org/log => ../../../log
 	go-spring.org/spring => ../../../spring
-	go-spring.org/starter-cache => ../../starter-cache
 	go-spring.org/starter-echo => ../../starter-echo
 	go-spring.org/starter-gin => ../../starter-gin
 	go-spring.org/starter-http-server => ../../starter-http-server

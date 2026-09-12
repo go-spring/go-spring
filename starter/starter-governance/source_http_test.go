@@ -28,7 +28,7 @@ import (
 )
 
 // TestParseGovernanceDoc pins the shared parse core every backend adapter
-// funnels through: same keys as ${govern} in app.properties, format inference
+// funnels through: the same govern.* keys every source document uses, format inference
 // by name, and the no-govern-keys guard.
 func TestParseGovernanceDoc(t *testing.T) {
 	// properties (default format), same keys an app.properties entry would use.

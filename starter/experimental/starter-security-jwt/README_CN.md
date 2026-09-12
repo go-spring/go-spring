@@ -25,19 +25,19 @@ import _ "go-spring.org/starter-security-jwt"
 
 ### 2. 配置 Authenticator
 
-在项目的[配置文件](example/conf/app.properties)中添加配置。`spring.security.jwt.*`
+在项目的[配置文件](example/conf/app.properties)中添加配置。`spring.security.jwt.instances.*`
 下每个条目生成一个具名的 `*Authenticator`。必须且只能配置一种校验密钥来源 —— HMAC
 密钥、PEM 公钥,或远程 JWKS 端点:
 
 ```properties
 # HMAC(对称)
-spring.security.jwt.api.secret=example-shared-secret
+spring.security.jwt.instances.api.secret=example-shared-secret
 
 # 或非对称 PEM 公钥
-# spring.security.jwt.api.public-key-file=./conf/public.pem
+# spring.security.jwt.instances.api.public-key-file=./conf/public.pem
 
 # 或远程 JWKS 端点(自动拉取并刷新密钥)
-# spring.security.jwt.api.jwks-url=https://issuer.example.com/.well-known/jwks.json
+# spring.security.jwt.instances.api.jwks-url=https://issuer.example.com/.well-known/jwks.json
 ```
 
 ### 3. 把 Authenticator 接入 HTTP 服务
@@ -71,7 +71,7 @@ if !a.HasAuthority("admin") {
 
 ## 配置项
 
-所有键位于 `spring.security.jwt.<name>` 下:
+所有键位于 `spring.security.jwt.instances.<name>` 下:
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -109,4 +109,4 @@ if !a.HasAuthority("admin") {
 * **可选认证**:设 `required=false` 让未认证请求放行且不挂身份,把决策交给方法级守卫。
 * **编程式校验**:`*Authenticator` 实现 `security.TokenValidator`,可在 HTTP 路径外
   (如 gRPC/WebSocket 传输)校验原始 token 字符串。
-* **多实例**:在 `spring.security.jwt.*` 下定义多个条目,用 `gs.TagArg("...")` 按名选取。
+* **多实例**:在 `spring.security.jwt.instances.*` 下定义多个条目,用 `gs.TagArg("...")` 按名选取。

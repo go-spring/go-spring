@@ -6,8 +6,8 @@
 **Redis 语义与 go-redis API 见 [go-redis 官方文档](https://redis.io/docs/latest/develop/clients/go/)**
 ——本文只写 go-spring 的增量。
 
-**激活条件**：任一 `spring.go-redis.*` key（模块为 `OnProperty("spring.go-redis")` 前缀匹配）。
-每个 `spring.go-redis.<name>` 条目创建一个名为 `<name>` 的 `*StarterGoRedis.Client` bean，
+**激活条件**：任一 `spring.go-redis.instances.*` key（模块为 `OnProperty("spring.go-redis")` 前缀匹配）。
+每个 `spring.go-redis.instances.<name>` 条目创建一个名为 `<name>` 的 `*StarterGoRedis.Client` bean，
 并附带名为 `redis:<name>` 的健康指示器。
 
 ---
@@ -32,7 +32,6 @@ require (
     github.com/redis/go-redis/v9   latest
     go-spring.org/spring           v1.3.x
     go-spring.org/starter-go-redis latest
-    go-spring.org/starter-cache    latest   // cache 门面（spring.cache.*）
     go-spring.org/starter-actuator latest   // 可选：readiness + /metrics
     go-spring.org/starter-otel     latest   // 可选：真实 trace/metric 导出
     go-spring.org/starter-governance latest // 可选：resilience/fault 策略
@@ -47,7 +46,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-cache"
     _ "go-spring.org/starter-go-redis"
     _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-otel"
@@ -57,7 +55,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**service.go** —— 注入包装类型，使用完整 go-redis 命令面，并演示 cache driver：
+**service.go** —— 注入包装类型，使用完整 go-redis 命令面与 cache 门面：
 
 ```go
 package service
@@ -77,10 +75,9 @@ type Service struct {
     Sentinel *StarterGoRedis.Client `autowire:"sentinel"` // sentinel（仍是 *redis.Client）
     Cluster  *StarterGoRedis.Client `autowire:"cluster"`  // cluster（*redis.ClusterClient）
 
-    // spring.cache.main.driver=go-redis:main 暴露的 cache 门面。
-    // 注意：bean 名取自 REDIS 实例名（"main"），不是 spring.cache 的 map key
-    // ——见 starter-cache 的 USAGE §3。
-    Cache *cache.Cache `autowire:"main"`
+    // "main" 实例上的带类型 cache 门面——名为 "go-redis:main" 的
+    // *cache.Cache bean（见 §3.4）。
+    Cache *cache.Cache `autowire:"go-redis:main"`
 }
 
 func init() {
@@ -99,22 +96,19 @@ func init() {
 
 ```properties
 # --- single ---------------------------------------------------------------
-spring.go-redis.main.addr=127.0.0.1:6379
-spring.go-redis.main.pool-size=20
-spring.go-redis.main.conn-max-lifetime=2m
+spring.go-redis.instances.main.addr=127.0.0.1:6379
+spring.go-redis.instances.main.pool-size=20
+spring.go-redis.instances.main.conn-max-lifetime=2m
 
 # --- sentinel：经 sentinel 节点解析 master 组 ------------------------------
-spring.go-redis.sentinel.mode=sentinel
-spring.go-redis.sentinel.master-name=mymaster
-spring.go-redis.sentinel.sentinel-addrs=127.0.0.1:26379,127.0.0.1:26380
+spring.go-redis.instances.sentinel.mode=sentinel
+spring.go-redis.instances.sentinel.master-name=mymaster
+spring.go-redis.instances.sentinel.sentinel-addrs=127.0.0.1:26379,127.0.0.1:26380
 
 # --- cluster：种子节点；客户端自行学习全量拓扑 ------------------------------
-spring.go-redis.cluster.mode=cluster
-spring.go-redis.cluster.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002
-spring.go-redis.cluster.route-by-latency=true
-
-# --- cache 门面：把 "main" 暴露为带类型的 cache.Cache bean ------------------
-spring.cache.main.driver=go-redis:main
+spring.go-redis.instances.cluster.mode=cluster
+spring.go-redis.instances.cluster.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002
+spring.go-redis.instances.cluster.route-by-latency=true
 
 # --- 可观测 -----------------------------------------------------------------
 # 访问日志（tag _app_redis_access）默认输出，经 logger 配置过滤；带 key 的成功记录走 Debug。
@@ -148,7 +142,7 @@ redis-cli GET user:1              # 经 cache 门面写入的 JSON
 
 ```
 import starter-go-redis
-  └─ 任一 spring.go-redis.* key 存在时 gs.Module(OnProperty("spring.go-redis")) 触发
+  └─ 任一 spring.go-redis.instances.* key 存在时 gs.Module(OnProperty("spring.go-redis")) 触发
         └─ conf.BindEach("${spring.go-redis}") → 每个 <name> 条目一份 Config
               ├─ mode single/sentinel → Provide(newClient).Name(<name>)
               │                          .Init((*Client).Init).Destroy((*Client).Destroy)
@@ -159,11 +153,11 @@ gs.Run()
   ├─ 构造 newClient [starter.go:97]：validateConfig → 查 driver → driver.CreateClient
   │   → instrument()（redisotel tracing+metrics，由 otel.* 开关门控）
   │   → failFastPing（无条件执行，上限 dial-timeout 或 5s）[starter.go:218]
-  ├─ Init [client.go:58]：resourceLabel → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilience.WrapExecutor → applyObservability（访问日志 hook）
+  ├─ Init [client.go:55]：resourceLabel → fault.WrapExecutor(resilience.ExecutorFor("redis", resource))
+  │   → applyObservability（访问日志 hook）
   │   → AddHook(resilienceHook)——命令链装配完成
   ├─ 就绪：探针翻转 UP（指示器执行 client.Ping）
-  └─ SIGTERM → Destroy [client.go:82]：exec.Close → 停 discovery watch → client.Close
+  └─ SIGTERM → Destroy [client.go:78]：exec.Close → 停 discovery watch → client.Close
 ```
 
 mode 配错或启动 ping 失败都会导致启动失败——进程不会带着一个死 Redis 进入"服务中"状态。
@@ -177,7 +171,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 → go-redis 核心 → 网络
 ```
 
-理由（源码注释 [client.go:63-73]、[command.go:17-27]）：
+理由（源码注释 [client.go:59-69]、[command.go:17-27]）：
 
 - **redisotel 最外层**：在构造期由 `instrument()` 添加，早于 Init 加的其余层。span 因此
   覆盖 starter 加的全部层，访问日志也借用 redisotel 的 span 上下文做 trace_id 关联。
@@ -191,7 +185,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 1. redisotel 开 client span（无 starter-otel 时为 no-op）。
 2. observeHook 开一条名为 `get` 的访问日志记录（cmd.FullName()）。
 3. resilienceHook 向 executor 申请许可（限流/熔断作用域是 resource 标签，如
-   `redis:127.0.0.1:6379`——按实例而非按命令 [client.go:94-100]）。
+   `redis:127.0.0.1:6379`——按实例而非按命令 [client.go:90-96]）。
 4. go-redis 执行；key 不存在，返回 `redis.Nil`。
 5. `run()` 通过 nil-as-success 谓词把 `redis.Nil` 判为成功 [command.go:94]——
    **cache miss 永不触发熔断**，也不会为此重试。
@@ -215,7 +209,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.go-redis.<name>.` 下——这里是 `conf.BindEach` 的实例前缀绑定
+所有 key 位于 `spring.go-redis.instances.<name>.` 下——这里是 `conf.BindEach` 的实例前缀绑定
 （不是 starter Pool 的绝对属性引用规则）。
 
 ### 3.1 拓扑与寻址
@@ -232,7 +226,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 | `route-by-latency` / `route-randomly` | bool | false | cluster 只读路由。 | — |
 | `service-name` | string | — | 仅 single：经服务发现解析地址。⚠ 与 sentinel/cluster 组合被拒。 | 组合错 → 启动报错；见 §2.4。 |
 | `scheme` | string | — | 把发现端点收窄到单一传输 scheme。仅在 service-name 设置时生效。 | — |
-| `discovery` | string | `default` | 用哪个已注册的 discovery 后端。 | 后端未注册 → discovery 启动报错。 |
+| `discovery` | string | — | 用哪个已注册的 discovery 后端。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
 
 ### 3.2 连接与认证
 
@@ -255,11 +249,12 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 | `otel.tracing.enabled` | bool | true | 挂 redisotel span。无 starter-otel 时为 no-op。 | 关掉又期待 trace → 静默无告警。 |
 | `otel.metrics.enabled` | bool | true | 挂 redisotel 连接池/命中指标。同上。 | — |
 
-### 3.4 cache driver 引用语法
+### 3.4 缓存抽象 bean
 
-`spring.cache.<name>.driver = go-redis:<redis-实例名>` 注册一个 `*cache.Cache` bean
-（包 `bytecache.NewByteCache(c.UniversalClient)`），**bean 名取自 redis 实例名**
-[starter.go:80-89]。`redis.Nil` 在该边界被映射为 `cache.ErrMiss`
+除包装类型外，每实例另提供一个 `*cache.Cache` bean（包
+`bytecache.NewByteCache(c.UniversalClient)`），名为 `go-redis:<redis 实例名>`
+[starter.go:87-94]——用 autowire tag `go-redis:<实例名>` 按名注入。无人注入则不实例化，
+因此无配置开关。`redis.Nil` 在该边界被映射为 `cache.ErrMiss`
 [bytecache/bytecache.go:42-51]。
 
 ---
@@ -287,14 +282,14 @@ curl -s :9370/metrics | grep -E 'redis.*pool|hits'   # redisotel 指标
 ### 4.3 验证发现地址回收
 
 ```properties
-spring.go-redis.main.service-name=redis-cluster
-spring.go-redis.main.conn-max-lifetime=30s
+spring.go-redis.instances.main.service-name=redis-cluster
+spring.go-redis.instances.main.conn-max-lifetime=30s
 ```
 
 扩缩/迁移后端实例；在 conn-max-lifetime 内新连接即拨到更新端点（每次拨号经 round-robin pool 选点）。
 观察 `PoolStats()`（TotalConns/Hits）或 redisotel 连接池指标确认无需重启的回收。
 
-### 4.4 验证 cache driver 接线（门面 SET，裸客户端 GET）
+### 4.4 验证缓存抽象接线（门面 SET，裸客户端 GET）
 
 ```go
 _ = s.Cache.Set(ctx, "k", "v", time.Minute)   // 带类型，JSON codec
@@ -326,7 +321,7 @@ executor 无需重启即刷新。
 | 注入的 bean 无 span/指标 | 未引入 starter-otel | redisotel 挂 OTel 全局；补 import。 |
 | 没有访问日志 | logger 配置过滤了 `_app_redis_access` 或 Debug 级别（带 key 成功走 Debug） | 检查 `_app_redis_access` 的 logger 配置。 |
 | 怀疑 GET miss 触发熔断 | 不会——redis.Nil 判为成功 [command.go:94] | 找真实后端错误；miss 已排除。 |
-| cache bean 注入失败 | 门面 bean 名取自 redis 实例名而非 spring.cache key | 按 `<redis-实例名>` 注入；见 starter-cache USAGE。 |
+| cache bean 注入失败 | `*cache.Cache` 的 bean 名是 `go-redis:<redis 实例名>`，不是 `<实例名>` | 按 `go-redis:<实例名>` 注入；见 §3.4。 |
 
 ## 6. 设计体检表
 
@@ -337,6 +332,6 @@ executor 无需重启即刷新。
 | quickstart 前置外部依赖 | 1（Redis） |
 | "注意/坑" 条数 | 6 |
 
-设计嫌疑清单：~~健康指示器无关闭 key~~（已修：`health.enabled` 与 redigo 对齐）；cache 门面
-bean 名取后端实例名而非 `spring.cache` map key（注入名反直觉；同一实例被两个 spring.cache
-条目引用会撞名）；`max-retries`（go-redis）与 resilience 重试的双重重试隐患仅写在配置注释里。
+设计嫌疑清单：~~健康指示器无关闭 key~~（已修：`health.enabled` 与 redigo 对齐）；~~cache 门面
+bean 名取后端实例名而非 `spring.cache` map key~~（已解决：`go-redis:<实例名>` 的 bean 名就是
+契约，直接按名注入）；`max-retries`（go-redis）与 resilience 重试的双重重试隐患仅写在配置注释里。

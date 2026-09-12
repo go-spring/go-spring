@@ -258,8 +258,8 @@ func colonSeparatedKey(intf, version, group string) string {
 
 // dubboAppLabel / dubboRefLabel are the governance resource labels for dubbo's
 // two override levels: the application (consumer defaults) and each reference.
-// They are the keys passed to Center.PolicyFor and Center.Register so a single
-// ${govern} config can tune dubbo's timeout/retry alongside every other client.
+// They are the keys passed to Center.PolicyFor and Center.Register so one governance
+// rules document can tune dubbo's timeout/retry alongside every other client.
 func dubboAppLabel(appName string) string  { return "dubbo:" + appName }
 func dubboRefLabel(colonKey string) string { return "dubbo:" + colonKey }
 

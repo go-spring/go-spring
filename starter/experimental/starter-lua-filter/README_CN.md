@@ -30,7 +30,7 @@ import _ "go-spring.org/starter-lua-filter"
 Lua 脚本文件（相对工作目录解析）：
 
 ```properties
-spring.lua.filter.guard.script=./scripts/guard.lua
+spring.lua.filter.instances.guard.script=./scripts/guard.lua
 ```
 
 ### 3. 将过滤器接入 HTTP 服务
@@ -86,7 +86,7 @@ end
 
 ## 高级特性
 
-* **多过滤器**：在 `spring.lua.filter.*` 下定义多项，用 `gs.TagArg("...")` 按名选择。
+* **多过滤器**：在 `spring.lua.filter.instances.*` 下定义多项，用 `gs.TagArg("...")` 按名选择。
 * **框架无关**：过滤器包裹的是普通 `http.Handler`，无论 gin/echo/hertz/net-http
   服务路由，同一份脚本都适用。
 * **沙箱 VM**：每请求从池中借用 `*lua.LState`，仅开启 `base`/`table`/`string`/`math`

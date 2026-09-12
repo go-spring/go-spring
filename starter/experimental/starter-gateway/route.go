@@ -36,7 +36,8 @@ package StarterGateway
 import (
 	"net/http"
 	"net/url"
-	"time"
+
+	"go-spring.org/cloud/loadbalance"
 )
 
 // Predicate reports whether a request matches a route. It is the Go-idiomatic
@@ -57,15 +58,15 @@ type Filter func(next http.Handler) http.Handler
 type Upstream struct {
 	URL       *url.URL // direct target: http(s)://host[:port]
 	Service   string   // lb://<service-name>, resolved via discovery
-	Balancer  string   // loadbalance strategy name; empty defaults to round_robin
 	Discovery string   // discovery backend name; empty uses the gateway default
 
-	// SuspendThreshold is the consecutive-failure count that suspends an
-	// upstream instance (outlier suspension). 0 (the default) disables it.
-	SuspendThreshold int
-	// SuspendFor is how long a suspended instance stays out before a half-open
-	// trial. Defaults to 30s when SuspendThreshold is set and this is 0.
-	SuspendFor time.Duration
+	// pool is the load-balancing pool for an lb:// upstream, nil for a direct
+	// one. It is kept on the compiled upstream so the route table can drive it
+	// from governance: the balancer strategy and outlier suspension for a route
+	// come from the govern rule matching "gateway:<route-id>", applied in place
+	// by [RouteTable.reconcileSelection] on every recompile and on every
+	// governance push.
+	pool *loadbalance.Pool
 }
 
 // Route is a fully compiled routing rule: a set of predicates (AND-combined), a
@@ -115,12 +116,11 @@ type RouteRaw struct {
 
 	Upstream struct {
 		Target    string `value:"${target:=}"` // lb://name or http(s)://host:port
-		Balancer  string `value:"${balancer:=round_robin}"`
 		Discovery string `value:"${discovery:=}"`
-		// SuspendThreshold: consecutive failures before an lb:// upstream
-		// instance is suspended (outlier suspension). 0 disables it.
-		SuspendThreshold int    `value:"${suspend-threshold:=0}"`
-		SuspendFor       string `value:"${suspend-for:=}"` // Go duration, e.g. "30s"; default 30s
+		// The load-balancing strategy and outlier suspension for this route's
+		// lb:// upstream are NOT keys here: they are governance rules matched by
+		// "gateway:<route-id>" (govern.rules[N].balancer / .outlier-threshold /
+		// .outlier-suspend-for), applied to the live pool on every change.
 	} `value:"${upstream}"`
 
 	Resilience struct {
@@ -133,13 +133,13 @@ type RouteRaw struct {
 // gateway builds executors for (each resolved via resilience.ExecutorFor, policy
 // driven by the governance center). The fields below are retained so existing
 // spring.gateway.resilience.<name>.* config keeps binding without error, but they
-// are no longer read: a route's timeout/retry/breaker now comes from ${govern},
+// are no longer read: a route's timeout/retry/breaker now comes from the governance rules document (govern.*),
 // keyed by the "gateway:<name>" label, not from this struct.
 // policyRaw is the value type of the spring.gateway.resilience.<name> map.
 // Only the map KEYS matter — they name the routes a gateway builds executors
 // for (each resolved via resilience.ExecutorFor, policy driven by the
 // governance center under the "gateway:<name>" label). The value carries no
 // fields: legacy per-route policy knobs were removed when policy moved to
-// ${govern}; unknown sub-keys under spring.gateway.resilience.<name>.* are
+// the governance rules document; unknown sub-keys under spring.gateway.resilience.<name>.* are
 // ignored by the driver.
 type policyRaw struct{}

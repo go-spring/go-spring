@@ -119,6 +119,27 @@ type Policy struct {
 	// per-attempt budget is the smaller of Timeout and the remaining MaxDuration.
 	// 0 means no total cap (beyond the caller's own context deadline).
 	MaxDuration time.Duration
+
+	// --- load balancing ---
+	//
+	// Endpoint selection, not executor protection: these fields are read by the
+	// load-balancing Pool ([go-spring.org/cloud/loadbalance]) rather than by
+	// [Executor.Execute]. They live here because a resource's selection policy
+	// is resolved from the same rule document as its protection policy — pass
+	// the same label to [governance.PolicyFor] and get both.
+
+	// Balancer names the load-balancing strategy to select endpoints with.
+	// Empty means "keep the client's own default".
+	Balancer string
+
+	// OutlierThreshold is the consecutive-failure count that suspends an
+	// endpoint from the candidate set. It is the endpoint-keyed counterpart of
+	// [Policy.ErrorThreshold] and 0 disables it.
+	OutlierThreshold int
+
+	// OutlierSuspendFor is the cool-down before a suspended endpoint gets a
+	// half-open trial request. Ignored when [Policy.OutlierThreshold] is 0.
+	OutlierSuspendFor time.Duration
 }
 
 // IsZero reports whether p configures no protection — every stage disabled, so
@@ -129,6 +150,11 @@ type Policy struct {
 //
 // RetryPredicate is intentionally not consulted: with MaxRetries == 0 no retry
 // runs, so a bare predicate set on an otherwise-zero Policy protects nothing.
+//
+// The load-balancing fields (Balancer, OutlierThreshold, OutlierSuspendFor) are
+// deliberately NOT consulted either: they are read by the Pool, not by
+// [Executor.Execute], so a Policy carrying only those still makes Execute a
+// transparent pass-through — which is exactly what this predicate claims.
 func (p Policy) IsZero() bool {
 	return p.RateLimit == 0 && p.Burst == 0 &&
 		p.ErrorThreshold == 0 && p.OpenDuration == 0 &&

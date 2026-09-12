@@ -2,7 +2,7 @@
 
 所有 gorm 方言 starter(mysql、postgres、sqlite、sqlserver、clickhouse)背后的共享脚手架的
 详细使用参考。应用不直接 import 本模块——import `starter-gorm-<dialect>` 即可获得本文档的
-全部能力。所有行为声明均经本模块源码核对(`gorm.go`、`open.go`、`register.go`、
+全部能力。所有行为声明均经本模块源码核对(`gorm.go`、`open.go`、`module.go`、
 `extension.go`、`health.go`、`observe/plugin.go`、`resilience/callbacks.go`)并锚定
 `starter-gorm-mysql/example*` 下可运行的示例。**GORM 语义(模型、关联、事务、migrator)见
 [gorm 官方文档](https://gorm.io/docs/)**——以下全部是 go-spring 增量:装配、配置绑定、
@@ -51,7 +51,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-governance"
-    _ "go-spring.org/starter-gorm-mysql" // 注册 spring.gorm.mysql.* 下的实例
+    _ "go-spring.org/starter-gorm-mysql" // 注册 spring.gorm.mysql.instances.* 下的实例
     _ "go-spring.org/starter-otel"
 )
 
@@ -66,8 +66,8 @@ package dao
 import (
     "context"
 
-    StarterGormMySql "go-spring.org/starter-gorm-mysql"
-    StarterGorm "go-spring.org/starter-gorm" // gormcore: Ping/Stats/UseDBCustomizer
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-mysql"
     "gorm.io/gorm"
 )
 
@@ -78,11 +78,11 @@ type User struct {
     Name  string `gorm:"size:64"`
 }
 
-// Repository 按名注入 "primary" 实例。bean 类型是方言的 *starter.DB,
-// 它是 gormcore.DB 的别名(内嵌 *gorm.DB,所有 gorm 方法原样提升)。
-// 第二个实例("replica")用 autowire:"replica";每个实例各自贡献 health indicator。
+// Repository 按名注入 "primary" 实例。bean 类型是共享的 gormcore.DB
+// （内嵌 *gorm.DB，所有 gorm 方法原样提升），所有方言 starter 共用同一类型。
+// 第二个实例("replica")用 autowire:"mysql.replica"；每个实例各自贡献 health indicator。
 type Repository struct {
-    DB *StarterGormMySql.DB `autowire:"primary"`
+    DB *gormcore.DB `autowire:"mysql.primary"`
 }
 
 func NewRepository(r *Repository) { /* 注册为 Rooter 或提供 HTTP handler */ }
@@ -90,7 +90,7 @@ func NewRepository(r *Repository) { /* 注册为 Rooter 或提供 HTTP handler *
 var _ = func() any {
     // 扩展点(方言无关,所有 gorm starter 共享):在 bean 返回前调整每个
     // 刚打开的 *gorm.DB。必须在 init 函数里调用,先于容器装配。
-    StarterGorm.UseDBCustomizer(func(db *gorm.DB) error {
+    gormcore.UseDBCustomizer(func(db *gorm.DB) error {
         // 例如:prepared-statement 缓存、额外 Plugin、配置未暴露的连接池旋钮。
         // 第一个 error 会让该实例创建失败。
         return nil
@@ -100,7 +100,7 @@ var _ = func() any {
 
 // PoolStats 不依赖 OTel 暴露运行期连接池水位。
 func (r *Repository) PoolStats() (open, inUse, idle int) {
-    st, err := StarterGorm.Stats(r.DB)
+    st, err := gormcore.Stats(r.DB)
     if err != nil {
         return 0, 0, 0
     }
@@ -115,18 +115,18 @@ key 见各方言 USAGE):
 
 ```properties
 # --- gorm mysql 实例 "primary"(方言 key 略)-------------------------------
-spring.gorm.mysql.primary.user=root
-spring.gorm.mysql.primary.password=123456
-spring.gorm.mysql.primary.addr=127.0.0.1:3306
-spring.gorm.mysql.primary.db=test
+spring.gorm.mysql.instances.primary.user=root
+spring.gorm.mysql.instances.primary.password=123456
+spring.gorm.mysql.instances.primary.addr=127.0.0.1:3306
+spring.gorm.mysql.instances.primary.db=test
 
 # 本参考文档覆盖的共享 key(Common 块):
-spring.gorm.mysql.primary.max-open-conns=10
-spring.gorm.mysql.primary.max-idle-conns=5
-spring.gorm.mysql.primary.conn-max-lifetime=30m
-spring.gorm.mysql.primary.conn-max-idle-time=5m
-spring.gorm.mysql.primary.ping-timeout=5s
-spring.gorm.mysql.primary.slow-threshold=200ms
+spring.gorm.mysql.instances.primary.max-open-conns=10
+spring.gorm.mysql.instances.primary.max-idle-conns=5
+spring.gorm.mysql.instances.primary.conn-max-lifetime=30m
+spring.gorm.mysql.instances.primary.conn-max-idle-time=5m
+spring.gorm.mysql.instances.primary.ping-timeout=5s
+spring.gorm.mysql.instances.primary.slow-threshold=200ms
 
 # --- actuator(聚合每个 gorm 实例的 health indicator)--------------------
 spring.http.server.enabled=false
@@ -140,6 +140,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 仅经 actuator
 
 # --- 服务治理(运行期故障注入 / 熔断 / 重试)-------------------------------
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -173,7 +174,7 @@ curl -s :9370/metrics | grep db_client_operation_duration
 
 ```
 import starter-gorm-mysql
-  └─ init: gormcore.Register(Dialect[Config]{Prefix:"spring.gorm.mysql", ...})
+  └─ init: gormcore.Module(Dialect[Config]{Prefix:"spring.gorm.mysql", ...})
         └─ gs.Module(gs.OnProperty("spring.gorm.mysql"))   [前缀判定:任一条目即触发]
 gs.Run()
   ├─ 配置绑定:conf.BindEach 遍历 ${spring.gorm.mysql} → 每个 <name> 一份 Config
@@ -182,7 +183,7 @@ gs.Run()
   │    │                          (仅 mysql 等)、resource label
   │    ├─ gormcore.Open:  gorm.Open → ApplyPool(连接池旋钮 + fail-fast ping)
   │    │                  → ApplyDBCustomizers(用户 seam,按注册顺序)
-  │    ├─ Provide *DB .Name(<name>).Init((*DB).Init).Destroy((*DB).Destroy)
+  │    ├─ Provide *DB .Name(<dialect>.<entry>).Init((*DB).Init).Destroy((*DB).Destroy)
   │    └─ Provide health.Indicator "gorm:mysql:<name>"(按名注入上面的 *DB,
   │       导出为 health.Indicator)  ← .Name 必须加:多实例 bean 共享类型
   │          (Indicator、*DB);没有独立名字容器会报 (Name,Type) 重复键
@@ -254,7 +255,7 @@ gorm:query processor 链
 | `slow-threshold` | duration | 0 | `>0` 安装 warn 级 gorm 慢查询 logger,输出经 **go-spring.org/log**(`log.Warnf`,TagAppDef)转发——进配置的 appender,而非裸 stdout。0 保持 gorm 默认 logger。⚠ 消息体是 GORM 的单行文本,不是结构化字段。 | 0 → 完全没有慢日志;要结构化字段 → 消息体是纯文本(改用访问日志)。 |
 | `service-name` | string | — | 切换为服务发现寻址:方言绑定 discovery 拨号器,每条新连接到达存活实例。设置后 `addr` 被忽略(示例故意用 dummy `0.0.0.0:0` 证明)。mesh 模式(`GS_MESH=on`)下 sidecar 接管发现,`addr` 原样使用。 | 不设且无 `addr` → 方言构建报错("one of addr or service-name must be set")。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme(如 `tls`)。⚠ 未设 `service-name` 时为死 key(仅在此时被读取)。 | 设了但无 service-name → 静默忽略。 |
-| `discovery` | string | default | 选择解析 `service-name` 的已注册 discovery 后端。⚠ 未设 `service-name` 时为死 key。 | 设了但无 service-name → 静默忽略。 |
+| `discovery` | string | — | 选择解析 `service-name` 的已注册 discovery 后端。⚠ 未设 `service-name` 时为死 key。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错；设了但无 service-name → 静默忽略。 |
 | `observe.enabled` | bool | true | gorm observe 插件的硬开关:false 时插件完全不安装——无 span、无 metric、无访问日志、无逐查询回调。 | false → 逐查询可观测静默消失(为高吞吐实例有意为之)。 |
 
 死 key 说明:对 **sqlite** 而言整个发现三件套(`service-name`/`scheme`/`discovery`)结构性
@@ -342,8 +343,8 @@ health.go:31-38),因此探针失败不会触发 resilience 熔断。
 |------|----------|------|
 | 启动失败 "gorm ping: ..." | `ping-timeout` 内 DB 不可达/凭据错误 | 修 addr/凭据;冷启动调大 `ping-timeout`。这是有意的 fail-fast,不是 bug。 |
 | 一个 bean 都没注册 | 无任何 `spring.gorm.<dialect>.*` 条目——`OnProperty(prefix)` 未触发 | 至少加一个实例块;默认不装配。 |
-| 容器报 duplicate beans | 又 Provide 了未 `.Name` 的 `*DB`/`health.Indicator` | 不要自行 Provide DB bean;实例 bean 名为 `<name>` / `gorm:<dialect>:<name>`(register.go:78-85)。 |
-| 注入报 "not a simple value"/类型不匹配 | 注入 `*gorm.DB` 而非 wrapper | autowire 方言的 `*starter.DB`(gormcore.DB 别名);它内嵌 `*gorm.DB`。 |
+| 容器报 duplicate beans | 又 Provide 了未 `.Name` 的 `*DB`/`health.Indicator` | 不要自行 Provide DB bean；DB bean 名为 `<dialect>.<entry>`（如 `mysql.primary`），health indicator 名为 `gorm:<dialect>:<entry>`（module.go:85-97）。 |
+| 注入报 "not a simple value"/类型不匹配 | 注入 `*gorm.DB` 而非 wrapper | autowire 共享的 `*gormcore.DB` bean；它内嵌 `*gorm.DB`。 |
 | 无 span/指标/访问日志 | 未 import starter-otel,或 `observe.enabled=false` | import starter-otel;检查实例级硬开关——false 会整体移除插件。 |
 | 慢查询行是纯文本 | `slow-threshold` 把 GORM 的 warn 输出经 go-spring.org/log 转发,但消息体是 GORM 单行文本 | 按消息过滤;要结构化慢日志改用访问日志。 |
 | 查询被 rate-limited/circuit-open 拒绝 | 治理 resilience 生效(或 fault 放火中) | 属预期保护;查 `govern.*` 配置与演练步骤(§4.4)。 |

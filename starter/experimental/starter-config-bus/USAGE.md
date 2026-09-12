@@ -16,7 +16,7 @@ you can ship the import in a shared module without every app configuring NATS. O
 `spring.config.bus.*` key is present (setting `spring.config.bus.subject` alone is enough),
 the bean assembles and the autowire tag
 `${spring.config.bus.nats-instance:=config-bus}` (`bus.go:55`) requires a NATS instance named
-`config-bus` (or your override) to exist under `spring.nats.*`; if it does not, container
+`config-bus` (or your override) to exist under `spring.nats.instances.*`; if it does not, container
 wiring fails and startup aborts. There is no separate `enabled` switch.
 
 > **Migration note (behavior change):** before the condition gate, blank-importing this
@@ -112,7 +112,7 @@ structure above is the same flow. See [example/example.go](example/example.go).)
 ```properties
 # --- NATS transport (starter-nats instance named "config-bus") ---------------
 # The name MUST match spring.config.bus.nats-instance (default "config-bus").
-spring.nats.config-bus.url=nats://127.0.0.1:4222
+spring.nats.instances.config-bus.url=nats://127.0.0.1:4222
 
 # --- config bus ---------------------------------------------------------------
 # Subject: all instances sharing it form one bus. Defaults shown.
@@ -188,10 +188,10 @@ Two timing facts matter for a *bus*:
 - **OnProperty gate.** The bean registers under `Condition(gs.OnProperty("spring.config.bus"))`,
   matching the family convention (config-key-conditional registration). No `spring.config.bus.*`
   key → no bean → inert import. With the key present, the remaining implicit condition is the
-  Conn autowire: no `spring.nats.config-bus.*` definition → missing-bean wiring failure at
+  Conn autowire: no `spring.nats.instances.config-bus.*` definition → missing-bean wiring failure at
   startup.
 - **Keys the bus refreshes cannot gate the bus itself.** The bus's own keys
-  (`spring.config.bus.*`, `spring.nats.<name>.*`) are read once at wiring time. If a refresh
+  (`spring.config.bus.*`, `spring.nats.instances.<name>.*`) are read once at wiring time. If a refresh
   event changes `spring.config.bus.subject`, the subscription does **not** move — the bean
   re-reads only via a restart. The same applies to `watch-prefixes`: `subscribe()` parses
   them once (`bus.go:67-71`). So treat all `spring.config.bus.*` keys as boot-time constants;
@@ -239,9 +239,9 @@ required — but see consequences.
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.config.bus.subject` | string | `spring.config.refresh` | NATS subject for publish+subscribe; all instances sharing it form one bus. Read once at wiring — changing it via a refresh event does not resubscribe (§2.2). | Two fleets silently split if one instance typos the subject: refreshes propagate only within each half; no error anywhere. |
 | `spring.config.bus.watch-prefixes` | string | `` (empty) | Comma-separated prefix filter, parsed once in `subscribe()`. Empty = react to every event. Non-empty = react only to empty-prefix events or bidirectional prefix overlaps (`db` ↔ `db.pool`). ⚠ dead key for hot-reload: reparsed only on restart. | Over-scoped list refreshes more than intended (harmless but noisy); a prefix that never matches published prefixes makes the instance silently skip scoped refreshes while still honoring `Publish("")`. |
-| `spring.config.bus.nats-instance` | string | `config-bus` | Name of the `spring.nats.<name>.*` connection injected as transport (autowire by instance name, `bus.go:55`). ⚠ the named instance must exist — this is the de-facto activation gate. | No matching `spring.nats.<name>.*` block → container wiring failure at startup (the bean cannot be assembled). Sharing the name with a business NATS connection couples bus failures to that connection. |
+| `spring.config.bus.nats-instance` | string | `config-bus` | Name of the `spring.nats.instances.<name>.*` connection injected as transport (autowire by instance name, `bus.go:55`). ⚠ the named instance must exist — this is the de-facto activation gate. | No matching `spring.nats.instances.<name>.*` block → container wiring failure at startup (the bean cannot be assembled). Sharing the name with a business NATS connection couples bus failures to that connection. |
 
-Beyond these, the referenced NATS instance carries its own `spring.nats.<name>.*` keys
+Beyond these, the referenced NATS instance carries its own `spring.nats.instances.<name>.*` keys
 (url, auth, ...) — see starter-nats documentation. A NATS connection is a hard prerequisite;
 there is no embedded/in-memory fallback.
 
@@ -298,7 +298,7 @@ with unknown fields is tolerated (standard unmarshal).
 
 ### 4.5 Drill: startup trap reproduction
 
-- **Missing NATS instance**: comment out `spring.nats.config-bus.url` and run — startup
+- **Missing NATS instance**: comment out `spring.nats.instances.config-bus.url` and run — startup
   fails during container wiring on the unresolvable `configBus` bean. There is no
   `enabled=false` escape hatch; remove the import instead.
 - **Self-hosted key**: add `spring.config.bus.subject=other.subject` to a source that only
@@ -318,7 +318,7 @@ is not retried — republish after fixing the source.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Startup fails wiring `configBus` | No NATS instance named per `nats-instance` (default `config-bus`) under `spring.nats.*` | Define `spring.nats.config-bus.url=...`, or set `nats-instance` to an existing instance name |
+| Startup fails wiring `configBus` | No NATS instance named per `nats-instance` (default `config-bus`) under `spring.nats.instances.*` | Define `spring.nats.instances.config-bus.url=...`, or set `nats-instance` to an existing instance name |
 | Publish succeeds, no instance refreshes | Subject mismatch (fleet split) or every subscriber's `watch-prefixes` excludes the published prefix | Align `subject` across instances; check overlap direction (`db` matches `db.pool`, not `demo`) |
 | Refresh logged on others, not this instance | This instance joined late — NATS core has no replay; signals sent before `subscribe()` are gone | Republish after all instances are up; the bus is not a durable log |
 | `property refresh failed: app not started yet` | Event arrived during the wiring window before `app.started` (§2.1) | Benign at boot; republish once started if the change mattered |

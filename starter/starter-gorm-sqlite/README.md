@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-gorm-sqlite` is the SQLite dialect of the gorm starter family: one
-gorm client per entry under `spring.gorm.sqlite.<name>`, with the shared
+gorm client per entry under `spring.gorm.sqlite.instances.<name>`, with the shared
 pool/observe/resilience/health scaffolding from `go-spring.org/starter-gorm`.
 It uses [glebarez/sqlite](https://github.com/glebarez/sqlite) (pure Go, no
 CGO) over [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite).
@@ -25,17 +25,19 @@ import _ "go-spring.org/starter-gorm-sqlite"
 ### 2. Configure
 
 ```properties
-spring.gorm.sqlite.primary.file=:memory:
-spring.gorm.sqlite.primary.journal-mode=wal
-spring.gorm.sqlite.primary.busy-timeout=5000
-spring.gorm.sqlite.primary.max-open-conns=1
+spring.gorm.sqlite.instances.primary.file=:memory:
+spring.gorm.sqlite.instances.primary.journal-mode=wal
+spring.gorm.sqlite.instances.primary.busy-timeout=5000
+spring.gorm.sqlite.instances.primary.max-open-conns=1
 ```
 
 ### 3. Inject
 
 ```go
+import "go-spring.org/starter-gorm"
+
 type Service struct {
-    DB *StarterGormSqlite.DB `autowire:"primary"`
+    DB *gormcore.DB `autowire:"sqlite.primary"`
 }
 ```
 
@@ -46,7 +48,7 @@ err := s.DB.AutoMigrate(&Model{})
 err = s.DB.Create(&Model{Name: "x"}).Error
 ```
 
-`DB` aliases the shared `gormcore.DB`, so the full gorm API promotes
+The injected bean is the shared `gormcore.DB`, so the full gorm API promotes
 unchanged, with the per-instance health indicator (`gorm:sqlite:<name>`)
 folded into actuator readiness.
 

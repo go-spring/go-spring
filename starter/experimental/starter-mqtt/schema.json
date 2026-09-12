@@ -2,64 +2,80 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.mqtt",
   "type": "object",
+  "description": "Two buckets: spring.mqtt.default holds family-wide values (each overridable per instance), spring.mqtt.instances.<name> holds one entry per named instance. No other key belongs directly under spring.mqtt.",
   "properties": {
-    "broker": {
-      "type": "string"
-    },
-    "client-id": {
-      "type": "string",
-      "default": ""
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "clean-session": {
-      "type": "boolean",
-      "default": true
-    },
-    "keep-alive": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "30s"
-    },
-    "connect-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "10s"
-    },
-    "tls": {
-      "type": "object"
-    },
-    "will": {
+    "default": {
       "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
       "properties": {
-        "topic": {
+        "driver": {
           "type": "string",
-          "default": ""
-        },
-        "payload": {
-          "type": "string",
-          "default": ""
-        },
-        "qos": {
-          "type": "integer",
-          "default": 0
-        },
-        "retained": {
-          "type": "boolean",
-          "default": false
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
         }
       }
     },
-    "governance": {
-      "type": "boolean",
-      "default": true,
-      "description": "Route publisher/subscriber operations through the governance center (resilience/fault)"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "broker": {
+            "type": "string"
+          },
+          "client-id": {
+            "type": "string",
+            "default": ""
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "clean-session": {
+            "type": "boolean",
+            "default": true
+          },
+          "keep-alive": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "30s"
+          },
+          "connect-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "10s"
+          },
+          "tls": {
+            "type": "object"
+          },
+          "will": {
+            "type": "object",
+            "properties": {
+              "topic": {
+                "type": "string",
+                "default": ""
+              },
+              "payload": {
+                "type": "string",
+                "default": ""
+              },
+              "qos": {
+                "type": "integer",
+                "default": 0
+              },
+              "retained": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

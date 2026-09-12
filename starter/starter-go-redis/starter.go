@@ -28,7 +28,6 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	StarterCache "go-spring.org/starter-cache"
 	"go-spring.org/starter-go-redis/bytecache"
 	health2 "go-spring.org/starter-go-redis/health"
 	"go-spring.org/stdlib/errutil"
@@ -44,14 +43,21 @@ func init() {
 	// single Group cannot mix return types, so we bind the map ourselves and
 	// dispatch. Switching a client to cluster is then an in-config change plus
 	// swapping the injected type from *redis.Client to *redis.ClusterClient.
-	gs.Module(gs.OnProperty("spring.go-redis"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.go-redis}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.go-redis.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.go-redis.instances}", func(name string, c Config) error {
+			// Both ctors below leave index 0 (*gs.ContextProvider) to be
+			// autowired and bind c explicitly. The Driver param (index 2) is
+			// selected by the entry's ${driver} key: unset → "?" (nullable
+			// by-type — injects the single Driver bean when a company provides
+			// one, nil otherwise, and the ctor falls back to DefaultDriver);
+			// set → that bean name, and naming a bean that does not exist
+			// fails loud.
 			switch c.Mode {
 			case "", "single", "sentinel":
 				r.Provide(newClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
-					gs.IndexArg(2, gs.TagArg("?")),
-					gs.IndexArg(3, gs.TagArg("${spring.go-redis."+name+".discovery:=none}?")),
+					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
+					gs.IndexArg(3, gs.TagArg("${spring.go-redis.instances."+name+".discovery:=none}?")),
 				).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				// Contribute a health indicator for this instance unless the
 				// user disabled it (health.enabled=false), injecting the
@@ -68,7 +74,7 @@ func init() {
 			case "cluster":
 				r.Provide(newClusterClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
-					gs.IndexArg(2, gs.TagArg("?")),
+					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
 				).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				if c.HealthEnabled {
 					r.Provide(func(w *Client) *health.Indicator {
@@ -78,26 +84,16 @@ func init() {
 			default:
 				return errutil.Explain(nil, "redis: invalid mode %q for instance %q (want single/sentinel/cluster)", c.Mode, name)
 			}
-			return nil
-		})
-	})
-}
-
-// init registers the "go-redis" cache driver so a *redis.Client registered under
-// ${spring.go-redis} can be exposed as a cache.Cache via:
-//
-//	spring.cache.<name>.driver = go-redis:<redis-instance-name>
-//
-// The beanID selects which client bean to wrap; the implementation lives in
-// starter-go-redis/bytecache.
-func init() {
-	StarterCache.RegisterDriver("go-redis", func(beanID string) gs.ModuleFunc {
-		return func(r gs.BeanProvider, p flatten.Storage) error {
+			// Expose this instance as a cache.Cache (the adapter lives in
+			// starter-go-redis/bytecache; both modes register a *Client, so one
+			// Provide covers them). Named "go-redis:<name>" — cache.Cache is a
+			// shared type across backend starters, so the prefix keeps the
+			// (name, type) key unique. Un-injected, the bean never instantiates.
 			r.Provide(func(c *Client) *cache.Cache {
 				return cache.New(bytecache.NewByteCache(c.UniversalClient))
-			}, gs.TagArg(beanID)).Name(beanID)
+			}, gs.TagArg(name)).Name("go-redis:" + name).Caller(1)
 			return nil
-		}
+		})
 	})
 }
 
@@ -119,9 +115,11 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disco
 	// Fail loud when the entry routes through discovery but the cited label
 	// names no backend bean — the container is the discovery directory.
 	if c.ServiceName != "" && disc == nil {
+		if c.Discovery == "" {
+			return nil, errutil.Explain(nil, "redis: instance routes by service-name but sets no discovery backend (set ${spring.go-redis.instances.<name>.discovery} to the name of a discovery backend bean)")
+		}
 		return nil, errutil.Explain(nil, "redis: instance cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", c.Discovery)
 	}
-	c.backend = disc
 	// When service discovery owns the address, a configured addr can never take
 	// effect — say so instead of dropping it silently.
 	if c.ServiceName != "" && c.Addr != "" {
@@ -131,7 +129,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disco
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, stop, err := d.CreateClient(ctx.Context, c)
+	client, stop, err := d.CreateClient(ctx.Context, c, disc)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: create client failed: %v", err)
 		return nil, err

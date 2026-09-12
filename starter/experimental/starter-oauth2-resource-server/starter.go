@@ -34,8 +34,8 @@ func init() {
 	// a server family's Authenticate middleware or security.Require) without depending on this package's
 	// concrete types. An empty map registers nothing — configuration is the
 	// enable switch.
-	gs.Module(gs.OnProperty("spring.security.oauth2.resource.jwt"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.security.oauth2.resource.jwt}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.security.oauth2.resource.jwt.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.security.oauth2.resource.jwt.instances}", func(name string, c Config) error {
 			if _, err := c.source(); err != nil {
 				return errutil.Explain(err, "oauth2-resource-server: instance %q", name)
 			}

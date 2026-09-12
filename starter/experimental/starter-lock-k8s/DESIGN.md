@@ -8,7 +8,7 @@ backed by Kubernetes `coordination.k8s.io/Lease` objects.
 
 ## 1. Responsibilities & Boundaries
 
-- Binds `spring.lock.<name>` entries to Lease-backed `lock.Locker` beans,
+- Binds `spring.lock.instances.<name>` entries to Lease-backed `lock.Locker` beans,
   one per entry, registered under the config name and exported as
   `lock.Locker`.
 - Uses the client-go `resourcelock.LeaseLock` primitive under the hood,

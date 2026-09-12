@@ -2,27 +2,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.tdengine",
   "type": "object",
+  "description": "Two buckets: spring.tdengine.default holds family-wide values (each overridable per instance), spring.tdengine.instances.<name> holds one entry per named instance. No other key belongs directly under spring.tdengine.",
   "properties": {
-    "dsn": {
-      "type": "string",
-      "description": "[user[:password]@]ws(host:port)/[dbname][?params], e.g. 'root:taosdata@ws(127.0.0.1:6041)/power'"
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "max-open-conns": {
-      "type": "integer",
-      "default": 8
-    },
-    "max-idle-conns": {
-      "type": "integer",
-      "default": 2
-    },
-    "conn-max-lifetime": {
-      "type": "string",
-      "description": "Duration string, e.g. '30m'",
-      "default": "0s"
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "dsn": {
+            "type": "string",
+            "description": "[user[:password]@]ws(host:port)/[dbname][?params], e.g. 'root:taosdata@ws(127.0.0.1:6041)/power'"
+          },
+          "max-open-conns": {
+            "type": "integer",
+            "default": 8
+          },
+          "max-idle-conns": {
+            "type": "integer",
+            "default": 2
+          },
+          "conn-max-lifetime": {
+            "type": "string",
+            "description": "Duration string, e.g. '30m'",
+            "default": "0s"
+          }
+        }
+      }
     }
   }
 }

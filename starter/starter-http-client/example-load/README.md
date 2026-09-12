@@ -16,9 +16,9 @@ go run . -concurrency=8 -duration=5s         # or run directly
 Edit `conf/app.properties`:
 
 ```properties
-spring.http-client.load.fault.enabled=true
-spring.http-client.load.fault.rate=0.5
-spring.http-client.load.fault.error=generic       # or: timeout / reset
+spring.http-client.instances.load.fault.enabled=true
+spring.http-client.instances.load.fault.rate=0.5
+spring.http-client.instances.load.fault.error=generic       # or: timeout / reset
 ```
 
 then re-run — the error breakdown's `injected` count climbs as a fraction of
@@ -27,7 +27,7 @@ GETs are made to fail.
 ## Notes
 
 - For http-client, `resilience.*` / `fault.*` live **under the instance prefix**
-  (`spring.http-client.load.*`) because they are fields of the ctor-bound Config,
+  (`spring.http-client.instances.load.*`) because they are fields of the ctor-bound Config,
   unlike redigo's field-injected `gs.Dync` (which is a top-level absolute ref).
 - This example demonstrates fault in **fault-only mode** (resilience off): fault
   wraps a zero-policy executor and injects into the RoundTripper directly. The

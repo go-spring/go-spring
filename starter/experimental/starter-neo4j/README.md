@@ -24,9 +24,9 @@ import _ "go-spring.org/starter-neo4j"
 Add Neo4j configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.neo4j.graph.uri=bolt://127.0.0.1:7687
-spring.neo4j.graph.username=neo4j
-spring.neo4j.graph.password=password
+spring.neo4j.instances.graph.uri=bolt://127.0.0.1:7687
+spring.neo4j.instances.graph.username=neo4j
+spring.neo4j.instances.graph.password=password
 ```
 
 ### 3. Inject the Neo4j Instance
@@ -64,14 +64,14 @@ The [example.go](example/example.go) file demonstrates the following core Neo4j 
 * **Service discovery**: set `service-name` on an instance to resolve its address
   through a registered discovery backend instead of the URI host. The endpoint is
   resolved once at startup and spliced into the URI host. Select the backend with
-  `discovery` (default `default`); a company registers its naming service once via
+  `discovery` (required — there is no default backend); a company registers its naming service once via
   `discovery.Register`.
 
   ```properties
-  spring.neo4j.disc.uri=bolt://0.0.0.0:0
-  spring.neo4j.disc.username=neo4j
-  spring.neo4j.disc.password=password
-  spring.neo4j.disc.service-name=neo4j-cluster
+  spring.neo4j.instances.disc.uri=bolt://0.0.0.0:0
+  spring.neo4j.instances.disc.username=neo4j
+  spring.neo4j.instances.disc.password=password
+  spring.neo4j.instances.disc.service-name=neo4j-cluster
   ```
 
   Limitation: unlike clients that accept a custom dialer, the neo4j driver builds

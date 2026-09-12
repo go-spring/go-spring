@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-mqtt"
 
 ### 2. 配置 MQTT 客户端
 
-在项目的[配置文件](example/conf/app.properties)中，在 `spring.mqtt.<name>`
+在项目的[配置文件](example/conf/app.properties)中，在 `spring.mqtt.instances.<name>`
 下定义一个或多个具名客户端，比如：
 
 ```properties
-spring.mqtt.a.broker=tcp://127.0.0.1:1883
-spring.mqtt.b.broker=tcp://127.0.0.1:1883
+spring.mqtt.instances.a.broker=tcp://127.0.0.1:1883
+spring.mqtt.instances.b.broker=tcp://127.0.0.1:1883
 ```
 
 ### 3. 注入 MQTT 客户端
@@ -119,15 +119,15 @@ MQTT 3.1.1 无每消息元数据,所以 `Key`、`Headers`、`Timestamp` 不会�
 
 * **多 MQTT 客户端**：`spring.mqtt` 下的每一项都会成为一个独立配置的
   `mqtt.Client` bean，按名称注入即可访问不同的 broker。
-* **TLS（MQTTS）**：设置 `spring.mqtt.<name>.tls.enabled=true` 并使用
+* **TLS（MQTTS）**：设置 `spring.mqtt.instances.<name>.tls.enabled=true` 并使用
   `ssl://`/`tls://` broker URL 即可协商 TLS，可选地指定 CA 证书（`tls.ca-file`）
   并提供客户端证书（`tls.cert-file`/`tls.key-file`）以实现双向 TLS。
-* **遗嘱消息（LWT）**：设置 `spring.mqtt.<name>.will.topic`，当客户端非正常
+* **遗嘱消息（LWT）**：设置 `spring.mqtt.instances.<name>.will.topic`，当客户端非正常
   断开时由 broker 代为发布遗嘱消息。
 
 ## 配置项
 
-`spring.mqtt.<name>` 下每个客户端读取以下配置：
+`spring.mqtt.instances.<name>` 下每个客户端读取以下配置：
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |

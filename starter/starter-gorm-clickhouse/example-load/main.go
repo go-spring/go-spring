@@ -32,13 +32,14 @@ import (
 
 	"go-spring.org/cloud/loadtest"
 	"go-spring.org/spring/gs"
-	StarterGormClickhouse "go-spring.org/starter-gorm-clickhouse"
+	gormcore "go-spring.org/starter-gorm"
+	_ "go-spring.org/starter-gorm-clickhouse"
 	_ "go-spring.org/starter-governance"
 )
 
 // Service is the root bean holding the autowired client instance "load".
 type Service struct {
-	DB *StarterGormClickhouse.DB `autowire:"load"`
+	DB *gormcore.DB `autowire:"clickhouse.load"`
 }
 
 var (

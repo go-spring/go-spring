@@ -6,7 +6,7 @@
 批量语义本身（JobExecution / StepExecution、chunk 模型、断点续跑）属于
 `go-spring.org/cloud/experimental/batch`——本文只讲 Redis 后端与 go-spring 接线。
 
-**激活方式**：任一 `spring.batch-repository.*` key。空导入本包后，每个条目注册一个
+**激活方式**：任一 `spring.batch-repository.instances.*` key。空导入本包后，每个条目注册一个
 `batch.JobRepository`（starter.go:51-70）；每个条目复用 starter-go-redis 发布的
 `*redis.Client` bean。本 starter 不持有自己的连接——Contributor 形态（starter.go:23-28）：
 把 Redis 换成 SQL 后端只需换一个空导入。
@@ -108,12 +108,12 @@ func init() {
 
 ```properties
 # --- redis client（starter-go-redis 命名空间）----------------------------------
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
-# --- 本 starter：每个 spring.batch-repository.<name> 条目一个 repository ------
-spring.batch-repository.main.client=cache
-spring.batch-repository.main.key-prefix=demo:batch:
-spring.batch-repository.main.ttl=24h
+# --- 本 starter：每个 spring.batch-repository.instances.<name> 条目一个 repository ------
+spring.batch-repository.instances.main.client=cache
+spring.batch-repository.instances.main.key-prefix=demo:batch:
+spring.batch-repository.instances.main.ttl=24h
 
 # --- batch runner（starter-batch 命名空间）——按名引用 repository --------------
 spring.batch.repository=main
@@ -149,7 +149,7 @@ import starter-go-redis + starter-batch + starter-batch-redis
   └─ batch: Launcher + Server bean，OnBean[JobDefinition]() 门控
 
 gs.Run()
-  ├─ 配置绑定：${spring.batch-repository.<name>} → Config（client / key-prefix / ttl）
+  ├─ 配置绑定：${spring.batch-repository.instances.<name>} → Config（client / key-prefix / ttl）
   ├─ fail-fast #1：client=="" → 启动报错 "instance %q missing required property"
   │                （starter.go:57-60——绝不静默回退默认 client）
   ├─ 装配：TagArg(c.Client) 按名注入 *redis.Client（repository 与 redis 实例的
@@ -202,11 +202,11 @@ gs.Run()
 
 ## 3. 逐 key 行为参考
 
-### 3.1 本 starter —— `spring.batch-repository.<name>.*`（3 个 key）
+### 3.1 本 starter —— `spring.batch-repository.instances.<name>.*`（3 个 key）
 
 | Key | 类型 | 默认 | 行为 / 联动 | 配错后果 |
 |-----|------|------|------------|----------|
-| `<name>.client` | string | — | **必填**。`spring.go-redis.<client>` 下 `*redis.Client` bean 的名字；由 `gs.TagArg` 注入（starter.go:64）。⚠ 联动：go-redis 侧必须存在同名实例。 | 空 → 启动失败 "missing required property"（fail-fast，starter.go:57-60）；错名 → 容器 bean 查找报错。 |
+| `<name>.client` | string | — | **必填**。`spring.go-redis.instances.<client>` 下 `*redis.Client` bean 的名字；由 `gs.TagArg` 注入（starter.go:64）。⚠ 联动：go-redis 侧必须存在同名实例。 | 空 → 启动失败 "missing required property"（fail-fast，starter.go:57-60）；错名 → 容器 bean 查找报错。 |
 | `<name>.key-prefix` | string | "" | 前置到 `job:`/`steps:`/`seq`。多个应用共用一个 Redis 时用不同前缀隔离。⚠ 改前缀会孤儿化旧历史——续跑变成全新开始。 | 前缀冲突 → 跨应用互相续跑、数据损坏。 |
 | `<name>.ttl` | duration | 0 | `>0` → 每次写入追加并**刷新** EXPIRE，长 step 靠刷新保活（`redisrepo.go:113-121`）。0 永久保留（重启窗口不设限）。 | 过小 → 记录中途过期：过期后重启从头重放。 |
 
@@ -219,9 +219,9 @@ gs.Run()
 | `spring.batch.jobs.<job>.run-on-startup` | false | 就绪后启动一次 `<job>`。 | 配置了 job 但无 JobDefinition bean → 启动失败（launcher.go:97-103）。 |
 | `spring.batch.jobs.<job>.params.*` | — | 实例身份：改参数是**新建实例**，不是重启旧的（starter-batch/config.go:58-61）。 | 换日期重试 → 旧未完成实例永远未完成（ttl=0 时还泄漏 key）。 |
 
-⚠ 命名空间拆分是设计使然：repository 绑定在 `spring.batch-repository.<name>` 下，因为
+⚠ 命名空间拆分是设计使然：repository 绑定在 `spring.batch-repository.instances.<name>` 下，因为
 runner 拥有 `spring.batch.*` 用于 job/step/chunk 配置（`config.go:27-31`）。
-`spring.batch.repository`（单数，runner 侧）引用 `spring.batch-repository.<name>`（复数，
+`spring.batch.repository`（单数，runner 侧）引用 `spring.batch-repository.instances.<name>`（复数，
 本 starter）。
 
 ---
@@ -277,7 +277,7 @@ PHASE=2 go run .   # 新进程，同一 (name, params) → 续跑；打印
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动失败 "instance %q missing required property %q" | `spring.batch-repository.<name>.client` 为空 | 补上；刻意没有默认 client（starter.go:53-60）。 |
+| 启动失败 "instance %q missing required property %q" | `spring.batch-repository.instances.<name>.client` 为空 | 补上；刻意没有默认 client（starter.go:53-60）。 |
 | 启动失败 "no batch.JobRepository bean of that name" | `spring.batch.repository` 拼错，或 batch-repository 条目未注册 | 检查 OnProperty 激活 key 拼写（`spring.batch-repository`，带连字符）。 |
 | 启动失败 "N batch.JobRepository beans present but spring.batch.repository is empty" | 导入多个 repository starter 且未命名 | 用 `spring.batch.repository` 指名（launcher.go:183-185）。 |
 | 重启后全部重放 | key-prefix 改过、ttl 过期、或参数变了（新实例） | 保持 prefix/参数稳定；重启窗口不设限用 ttl=0。 |

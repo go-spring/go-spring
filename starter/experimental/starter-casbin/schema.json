@@ -2,28 +2,38 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.casbin",
   "type": "object",
+  "description": "Two buckets: spring.casbin.default holds family-wide values (each overridable per instance), spring.casbin.instances.<name> holds one entry per named instance. No other key belongs directly under spring.casbin.",
   "properties": {
-    "model": {
-      "type": "string",
-      "description": "Path to the model file (model.conf)"
-    },
-    "policy": {
-      "type": "string",
-      "default": "",
-      "description": "Path to the policy file (policy.csv); mutually exclusive with Adapter"
-    },
-    "autoSave": {
-      "type": "boolean",
-      "default": true,
-      "description": "Whether policy mutations are persisted back to the storage"
-    },
-    "adapter": {
-      "type": "string",
-      "default": ""
-    },
-    "watcher": {
-      "type": "string",
-      "default": ""
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Path to the model file (model.conf)"
+          },
+          "policy": {
+            "type": "string",
+            "default": "",
+            "description": "Path to the policy file (policy.csv); mutually exclusive with Adapter"
+          },
+          "autoSave": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether policy mutations are persisted back to the storage"
+          },
+          "adapter": {
+            "type": "string",
+            "default": ""
+          },
+          "watcher": {
+            "type": "string",
+            "default": ""
+          }
+        }
+      }
     }
   }
 }

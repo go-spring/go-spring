@@ -21,14 +21,14 @@ import _ "go-spring.org/starter-kafka"
 
 ### 2. Configure the Kafka Clients
 
-Define one or more named clients under `spring.kafka.<name>` in your
+Define one or more named clients under `spring.kafka.instances.<name>` in your
 project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.kafka.a.brokers=127.0.0.1:9092
-spring.kafka.a.topic=hello
-spring.kafka.a.group=hello-group
-spring.kafka.b.brokers=127.0.0.1:9092
+spring.kafka.instances.a.brokers=127.0.0.1:9092
+spring.kafka.instances.a.topic=hello
+spring.kafka.instances.a.group=hello-group
+spring.kafka.instances.b.brokers=127.0.0.1:9092
 ```
 
 ### 3. Inject the Kafka Client

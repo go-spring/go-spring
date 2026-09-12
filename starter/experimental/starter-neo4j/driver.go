@@ -45,15 +45,20 @@ import (
 // At most one Driver bean is expected per process; every client under
 // ${spring.neo4j} is built through it, and per-instance differences are
 // expressed through [Config].
+//
+// backend is the discovery backend the entry's ${discovery} label resolved to,
+// already looked up by the starter wiring; it is nil when no backend bean
+// exists. It is passed as an argument rather than carried on Config so a custom
+// driver can actually reach it — Config stays a pure bound value.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (neo4j.DriverWithContext, error)
+	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (neo4j.DriverWithContext, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
 type DefaultDriver struct{}
 
 // CreateClient creates a new Neo4j client based on the provided configuration.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (neo4j.DriverWithContext, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (neo4j.DriverWithContext, error) {
 	auth := neo4j.NoAuth()
 	if c.Username != "" {
 		auth = neo4j.BasicAuth(c.Username, c.Password, c.Realm)
@@ -115,17 +120,20 @@ func applyTLS(t tlsconf.TLSConfig, conf *neo4j.Config) error {
 	return nil
 }
 
-// resolveURI resolves c.ServiceName through the injected discovery backend,
-// picks one live endpoint via the shared loadbalance machinery, and rewrites
-// the URI's host to that address. It must only be called when service discovery
-// is in effect (the caller has already gated on service-name being set and mesh
-// mode being off); it fails loudly when no backend bean was injected for the
-// ${discovery} label.
-func resolveURI(ctx context.Context, c Config) (string, error) {
-	if c.backend == nil {
+// resolveURI resolves c.ServiceName through the discovery backend the starter
+// wiring resolved from c.Discovery, picks one live endpoint via the shared
+// loadbalance machinery, and rewrites the URI's host to that address. It must
+// only be called when service discovery is in effect (the caller has already
+// gated on service-name being set and mesh mode being off); it fails loudly
+// when backend is nil (no backend bean cited by the ${discovery} label).
+func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (string, error) {
+	if backend == nil {
+		if c.Discovery == "" {
+			return "", errutil.Explain(nil, "neo4j: instance routes by service-name but sets no discovery backend (set spring.neo4j.instances.<name>.discovery to the name of a discovery backend bean)")
+		}
 		return "", errutil.Explain(nil, "neo4j: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
 	}
-	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
 	}

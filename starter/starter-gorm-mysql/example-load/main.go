@@ -33,13 +33,14 @@ import (
 	"go-spring.org/cloud/loadtest"
 	"go-spring.org/spring/gs"
 
-	StarterGormMySql "go-spring.org/starter-gorm-mysql"
+	gormcore "go-spring.org/starter-gorm"
+	_ "go-spring.org/starter-gorm-mysql"
 	_ "go-spring.org/starter-governance" // registers the centralized governance center
 )
 
 // Service is the root bean holding the autowired client instance "load".
 type Service struct {
-	DB *StarterGormMySql.DB `autowire:"load"`
+	DB *gormcore.DB `autowire:"mysql.load"`
 }
 
 var (

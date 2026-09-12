@@ -35,8 +35,8 @@ func init() {
 	// resources (client-go informers) are released by the bean destructor on
 	// shutdown. A label colliding with another bean name fails loudly in the
 	// container.
-	gs.Module(gs.OnProperty("spring.discovery.k8s"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.discovery.k8s}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.discovery.k8s.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.discovery.k8s.instances}", func(name string, c Config) error {
 			r.Provide(newBackendBean,
 				gs.IndexArg(1, gs.ValueArg(c)),
 			).Name(name).Destroy(destroyBackendBean).Caller(1)

@@ -42,28 +42,22 @@ func (s *stubExecutor) Execute(context.Context, string, func(context.Context) er
 func (s *stubExecutor) Close() error                    { return nil }
 func (s *stubExecutor) Refresh(resilience.Policy) error { return nil }
 
-// TestApplyResilienceToggle verifies the per-instance governance opt-out: with
-// Governance=false no executor is attached (all call paths degrade to bare
-// calls); with the default true an executor is registered.
-func TestApplyResilienceToggle(t *testing.T) {
+// applyResilience always attaches an executor. Whether it protects anything is
+// decided by the governance rule for the resource label, not by a per-instance
+// switch: with governance off the executor is a transparent pass-through, so
+// attaching one costs a call frame and changes nothing else.
+func TestApplyResilienceAttachesGuard(t *testing.T) {
 	cl, err := kgo.NewClient(kgo.SeedBrokers("127.0.0.1:1"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cl.Close()
 
-	if err := applyResilience(Config{Governance: false}, cl, "kafka:test"); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := clientGuards.Load(cl); ok {
-		t.Fatal("governance=false must not attach an executor")
-	}
-
-	if err := applyResilience(Config{Governance: true}, cl, "kafka:test"); err != nil {
+	if err := applyResilience(cl, "kafka:test"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := clientGuards.Load(cl); !ok {
-		t.Fatal("governance=true (default) must attach an executor")
+		t.Fatal("applyResilience must attach an executor")
 	}
 	closeResilience(cl)
 }

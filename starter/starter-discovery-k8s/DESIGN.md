@@ -8,7 +8,7 @@ backends that resolve a Kubernetes Service name to live Pod endpoints.
 
 ## 1. Responsibilities & Boundaries
 
-- Binds `spring.discovery.k8s.<name>` entries to `discovery.Discovery`
+- Binds `spring.discovery.k8s.instances.<name>` entries to `discovery.Discovery`
   backends, one per entry, registered in the process-global
   `cloud/discovery` registry under `<name>`.
 - Discovery backends are **not injectable beans**. Client starters

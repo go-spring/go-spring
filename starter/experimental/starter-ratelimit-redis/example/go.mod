@@ -30,7 +30,6 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/starter-cache v0.0.0 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.45.0 // indirect
@@ -48,6 +47,5 @@ replace go-spring.org/cloud => ../../../../cloud
 
 replace go-spring.org/starter-go-redis => ../../../starter-go-redis
 
-replace go-spring.org/starter-cache => ../../../starter-cache
 
 replace go-spring.org/starter-ratelimit-redis => ../

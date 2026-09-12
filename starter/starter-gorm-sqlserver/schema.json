@@ -67,7 +67,7 @@
     },
     "tls": {
       "type": "object",
-      "description": "TLS block (sqlserver subset): enabled, insecure-skip-verify, ca-file only.",
+      "description": "TLS block (sqlserver subset): enabled, insecure-skip-verify, ca-file, server-name only.",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -78,6 +78,10 @@
           "default": false
         },
         "ca-file": {
+          "type": "string",
+          "default": ""
+        },
+        "server-name": {
           "type": "string",
           "default": ""
         }
@@ -94,7 +98,7 @@
     },
     "discovery": {
       "type": "string",
-      "default": "default"
+      "default": ""
     }
   }
 }

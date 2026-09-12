@@ -46,9 +46,7 @@ type Client struct {
 func (o *Client) Init() error {
 	o.obs = newObserver()
 	o.resource = resilience.ResourceLabel("asynq", o.cfg.Addr)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "asynq")
-	o.exec = exec
+	o.exec = fault.WrapExecutor(resilience.ExecutorFor("asynq", o.resource))
 	return nil
 }
 

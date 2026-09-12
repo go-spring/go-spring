@@ -31,7 +31,7 @@ import (
 	"go-spring.org/spring/gs"
 
 	// Blank-import the etcd backend. Switching to Redis/Consul is a one-line
-	// change here plus a properties swap under spring.lock.
+	// change here plus a properties swap under spring.lock.instances.
 	_ "go-spring.org/starter-lock-etcd"
 )
 

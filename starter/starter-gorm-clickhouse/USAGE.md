@@ -9,7 +9,7 @@ examples: [example/](example/), [example-load/](example-load/), [example-otel/](
 [gorm's](https://gorm.io/docs/). Shared wrapper lifecycle, pool/observe/health wiring and
 `UseDBCustomizer` live in [gormcore](../starter-gorm/USAGE.md) and are not repeated here.
 
-**Activation**: one `*starter.DB` bean (plus a paired `health.Indicator`) per entry under
+**Activation**: one `*gormcore.DB` bean named `clickhouse.<entry>` (plus a paired `health.Indicator`) per entry under
 `spring.gorm.clickhouse`; zero entries → the starter registers nothing
 (`starter_test.go:TestClickhouseNotTriggered`).
 
@@ -53,7 +53,8 @@ import (
     "time"
 
     "go-spring.org/spring/gs"
-    starter "go-spring.org/starter-gorm-clickhouse"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-clickhouse"
 )
 
 // ClickHouse does NOT enforce unique indexes like an OLTP engine — no
@@ -66,8 +67,8 @@ type KV struct {
 func (KV) TableName() string { return "kv" }
 
 type Service struct {
-    DB          *starter.DB `autowire:"primary"`
-    DiscoveryDB *starter.DB `autowire:"discovery"`
+    DB          *gormcore.DB `autowire:"clickhouse.primary"`
+    DiscoveryDB *gormcore.DB `autowire:"clickhouse.discovery"`
 }
 
 var manual = flag.Bool("manual", false, "keep the server up")
@@ -124,30 +125,30 @@ func init() {
 **conf/app.properties** (copied from `example/conf/app.properties`):
 
 ```properties
-spring.gorm.clickhouse.primary.user=default
-spring.gorm.clickhouse.primary.password=
-spring.gorm.clickhouse.primary.addr=127.0.0.1:9000        # native protocol port
-spring.gorm.clickhouse.primary.db=default
-spring.gorm.clickhouse.primary.max-open-conns=10
-spring.gorm.clickhouse.primary.max-idle-conns=5
-spring.gorm.clickhouse.primary.conn-max-lifetime=30m
-spring.gorm.clickhouse.primary.conn-max-idle-time=5m
-spring.gorm.clickhouse.primary.ping-timeout=5s
-spring.gorm.clickhouse.primary.slow-threshold=200ms
+spring.gorm.clickhouse.instances.primary.user=default
+spring.gorm.clickhouse.instances.primary.password=
+spring.gorm.clickhouse.instances.primary.addr=127.0.0.1:9000        # native protocol port
+spring.gorm.clickhouse.instances.primary.db=default
+spring.gorm.clickhouse.instances.primary.max-open-conns=10
+spring.gorm.clickhouse.instances.primary.max-idle-conns=5
+spring.gorm.clickhouse.instances.primary.conn-max-lifetime=30m
+spring.gorm.clickhouse.instances.primary.conn-max-idle-time=5m
+spring.gorm.clickhouse.instances.primary.ping-timeout=5s
+spring.gorm.clickhouse.instances.primary.slow-threshold=200ms
 # TLS (off here; smoke server is plaintext). To enable a secure native connection:
-# spring.gorm.clickhouse.primary.tls.enabled=true
-# spring.gorm.clickhouse.primary.tls.insecure-skip-verify=false
-# spring.gorm.clickhouse.primary.tls.ca-file=/path/ca.pem
-# spring.gorm.clickhouse.primary.tls.cert-file=/path/client-cert.pem   # mTLS supported
-# spring.gorm.clickhouse.primary.tls.key-file=/path/client-key.pem
+# spring.gorm.clickhouse.instances.primary.tls.enabled=true
+# spring.gorm.clickhouse.instances.primary.tls.insecure-skip-verify=false
+# spring.gorm.clickhouse.instances.primary.tls.ca-file=/path/ca.pem
+# spring.gorm.clickhouse.instances.primary.tls.cert-file=/path/client-cert.pem   # mTLS supported
+# spring.gorm.clickhouse.instances.primary.tls.key-file=/path/client-key.pem
 
 # Discovery instance: addr is a dummy on purpose — ignored because service-name
 # is set; the address comes from the discovery backend.
-spring.gorm.clickhouse.discovery.user=default
-spring.gorm.clickhouse.discovery.password=
-spring.gorm.clickhouse.discovery.addr=0.0.0.0:0
-spring.gorm.clickhouse.discovery.db=default
-spring.gorm.clickhouse.discovery.service-name=clickhouse-cluster
+spring.gorm.clickhouse.instances.discovery.user=default
+spring.gorm.clickhouse.instances.discovery.password=
+spring.gorm.clickhouse.instances.discovery.addr=0.0.0.0:0
+spring.gorm.clickhouse.instances.discovery.db=default
+spring.gorm.clickhouse.instances.discovery.service-name=clickhouse-cluster
 ```
 
 **docker-compose.yml** — ClickHouse 24 with both ports and a healthcheck:
@@ -180,7 +181,7 @@ go run . -manual & curl http://127.0.0.1:9090/clickhouse_version
 
 ```
 import starter-gorm-clickhouse
-  └─ init(): gormcore.Register(Dialect{Prefix: "spring.gorm.clickhouse",
+  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.clickhouse",
         Engine: "clickhouse", HealthPrefix: "gorm:clickhouse:"})
 gs.Run()
   ├─ conf.BindEach → Config per entry
@@ -219,7 +220,7 @@ as-is (sidecar owns discovery+LB), though TLS may still force the native path.
 
 `db.WithContext(ctx).Raw("SELECT version()").Scan(&v)`:
 
-1. the `gorm:raw` processor — replaced by gormcore's executor wrapper (`${govern}`
+1. the `gorm:raw` processor — replaced by gormcore's executor wrapper (governance center:
    timeout/retry/breaker, fault injector when armed; `gorm.ErrRecordNotFound` = success).
 2. observe plugin span (db.system=clickhouse) + in-flight metric.
 3. the original processor: pool checkout → native DialContext (discovery re-pick) →
@@ -230,7 +231,7 @@ as-is (sidecar owns discovery+LB), though TLS may still force the native path.
 
 ## 3. Per-key behavior reference
 
-Keys under `spring.gorm.clickhouse.<name>.*`. Common keys (10) and wrapper `observability`:
+Keys under `spring.gorm.clickhouse.instances.<name>.*`. Common keys (10) and wrapper `observability`:
 [gormcore](../starter-gorm/USAGE.md#2-configuration-reference).
 
 ### 3.1 Connection keys (config.go:31-45)
@@ -283,7 +284,7 @@ parseable for `opts.Addr`.
 2. Enable TLS without a TLS-enabled server:
 
 ```properties
-spring.gorm.clickhouse.primary.tls.enabled=true
+spring.gorm.clickhouse.instances.primary.tls.enabled=true
 ```
 
 3. `go run .` → the native-path handshake hangs/fails and the **startup ping fails within

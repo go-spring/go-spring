@@ -26,9 +26,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -96,6 +96,14 @@ type RouteTable struct {
 	// execs pools resilience executors by policy name so routes sharing a policy
 	// share breaker/limiter state. Rebuilt on each recompile.
 	execs map[string]resilience.Executor
+
+	// selection holds one governance subscription per route id, driving that
+	// route's load-balancing pool (strategy + outlier suspension). It is
+	// reconciled on every recompile: a rebuilt route gets a fresh subscription
+	// (its pool is new), and a route that disappeared has its subscription
+	// cancelled — otherwise the center would accumulate subscribers, each
+	// pinning a discarded pool, on every route-table edit.
+	selection map[string]governance.Subscription
 }
 
 // newRouteTable builds the table. Config (Cfg) and bean-backed filters (Wrappers)
@@ -210,12 +218,52 @@ func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 		routes = append(routes, rt)
 	}
 
+	t.reconcileSelection(routes)
 	t.compiled.Store(&routes)
 	t.execs = execs
 	atomic.StoreUintptr(&t.lastPtr, reflect.ValueOf(raw).Pointer())
 
 	t.mu.Unlock()
 	return nil
+}
+
+// reconcileSelection brings the per-route governance subscriptions in line with
+// the freshly compiled routes. Caller holds t.mu.
+//
+// A rebuilt route always gets a NEW pool (recompile is what creates pools), so
+// its previous subscription is cancelled and replaced; a route that disappeared
+// from the config has its subscription cancelled outright. Without the cancels
+// the center would keep one subscriber — and one reference to a discarded pool —
+// per route-table edit, for the life of the process.
+//
+// The label is "gateway:<route-id>", which is also the label the resilience
+// executors use (see buildExecutors) — one rule matches a route's whole
+// governance: protection, strategy and suspension.
+func (t *RouteTable) reconcileSelection(routes []*Route) {
+	if t.selection == nil {
+		t.selection = make(map[string]governance.Subscription, len(routes))
+	}
+	live := make(map[string]struct{}, len(routes))
+	for _, r := range routes {
+		live[r.ID] = struct{}{}
+		if old, ok := t.selection[r.ID]; ok {
+			old.Cancel()
+			delete(t.selection, r.ID)
+		}
+		if r.Upstream == nil || r.Upstream.pool == nil {
+			continue // direct upstream: no candidate set to select from
+		}
+		pool := r.Upstream.pool
+		t.selection[r.ID] = governance.Register("gateway:"+r.ID, func(p resilience.Policy) {
+			pool.ApplySelection(p.Balancer, p.OutlierThreshold, p.OutlierSuspendFor)
+		})
+	}
+	for id, sub := range t.selection {
+		if _, ok := live[id]; !ok {
+			sub.Cancel()
+			delete(t.selection, id)
+		}
+	}
 }
 
 // buildExecutors turns each named resilience policy into an Executor. Routes
@@ -235,11 +283,10 @@ func (t *RouteTable) buildExecutors() (map[string]resilience.Executor, error) {
 	out := make(map[string]resilience.Executor, len(t.Cfg.Resilience))
 	for name := range t.Cfg.Resilience {
 		// Always non-nil: a transparent no-op when governance is off; the real
-		// policy-carrying executor (hot-reloaded by the provider) when on.
-		exec := resilience.ExecutorFor("gateway:" + name)
-		// Wrap so breaker trips / rejects / retries emit span + counter +
-		// histogram + access log (the resilience core emits none).
-		out[name] = resilience.WrapExecutor(exec, "gateway:"+name)
+		// policy-carrying executor (hot-reloaded by the provider) when on, and
+		// observed under the same label so trips/rejects/retries emit span +
+		// counter + histogram + access log.
+		out[name] = resilience.ExecutorFor("gateway:"+name, "gateway:"+name)
 	}
 	return out, nil
 }
@@ -252,7 +299,7 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 		return nil, err
 	}
 
-	up, err := parseUpstream(raw.Upstream.Target, raw.Upstream.Balancer, raw.Upstream.Discovery, raw.Upstream.SuspendThreshold, raw.Upstream.SuspendFor)
+	up, err := parseUpstream(raw.Upstream.Target, raw.Upstream.Discovery)
 	if err != nil {
 		return nil, err
 	}
@@ -408,10 +455,10 @@ func parseFilterToken(s string) (filterToken, error) {
 }
 
 // parseUpstream parses a route's upstream target into an Upstream. A target of
-// lb://<service> is discovery-backed; http(s)://host[:port] is direct.
-// suspendFor is the raw "suspend-for" duration string ("" keeps the 0 default;
-// the pool applies the 30s fallback when only the threshold is configured).
-func parseUpstream(target, balancer, disc string, suspendThreshold int, suspendFor string) (*Upstream, error) {
+// lb://<service> is discovery-backed; http(s)://host[:port] is direct. The
+// load-balancing strategy and suspension policy are not parsed here — they are
+// governance rules applied to the live pool at compile time and on every push.
+func parseUpstream(target, disc string) (*Upstream, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return nil, &parseError{what: "missing upstream target", token: ""}
@@ -420,30 +467,11 @@ func parseUpstream(target, balancer, disc string, suspendThreshold int, suspendF
 		if svc == "" {
 			return nil, &parseError{what: "lb:// upstream without a service name", token: target}
 		}
-		d, err := parseSuspendFor(suspendFor)
-		if err != nil {
-			return nil, err
-		}
-		return &Upstream{Service: svc, Balancer: balancer, Discovery: disc, SuspendThreshold: suspendThreshold, SuspendFor: d}, nil
+		return &Upstream{Service: svc, Discovery: disc}, nil
 	}
 	u, err := url.Parse(target)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, &parseError{what: "upstream target (want lb://name or http(s)://host)", token: target}
 	}
 	return &Upstream{URL: u}, nil
-}
-
-// parseSuspendFor parses the "suspend-for" duration string (Go syntax, e.g.
-// "30s"). Empty is 0 — "use the default". A non-empty string that fails
-// time.ParseDuration is a compile error so typos surface at reload, not as a
-// silently ignored value.
-func parseSuspendFor(s string) (time.Duration, error) {
-	if s == "" {
-		return 0, nil
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0, &parseError{what: "upstream.suspend-for (want a Go duration like \"30s\" or \"1m\")", token: s}
-	}
-	return d, nil
 }

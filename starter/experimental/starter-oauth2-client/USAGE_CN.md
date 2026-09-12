@@ -7,9 +7,9 @@
 [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749) 的 grant 定义**——以下全部是
 go-spring 增量:绑定、bean、tracing、resilience 接线。
 
-**激活条件**:两个互相独立的前缀组。任一 `spring.oauth2.client.<name>.*` key 激活
+**激活条件**:两个互相独立的前缀组。任一 `spring.oauth2.client.instances.<name>.*` key 激活
 client-credentials 组(多实例:一个 `<name>` = 一个 `*http.Client` + 一个 `*TokenSource`);
-任一 `spring.oauth2.authcode.<name>.*` key 注册一个 `*oauth2.Config`。两者都没有 `enabled` key。
+任一 `spring.oauth2.authcode.instances.<name>.*` key 注册一个 `*oauth2.Config`。两者都没有 `enabled` key。
 
 ---
 
@@ -79,24 +79,25 @@ func main() {
 
 ```properties
 # --- client-credentials 实例 "downstream"(激活该组)--------------------------
-spring.oauth2.client.downstream.client-id=demo-client
-spring.oauth2.client.downstream.client-secret=demo-secret
-spring.oauth2.client.downstream.token-url=https://auth.example.com/oauth/token
-spring.oauth2.client.downstream.scopes=read,write
-spring.oauth2.client.downstream.auth-style=header
-spring.oauth2.client.downstream.timeout=5s
-spring.oauth2.client.downstream.endpoint-params.audience=https://api.example.com
+spring.oauth2.client.instances.downstream.client-id=demo-client
+spring.oauth2.client.instances.downstream.client-secret=demo-secret
+spring.oauth2.client.instances.downstream.token-url=https://auth.example.com/oauth/token
+spring.oauth2.client.instances.downstream.scopes=read,write
+spring.oauth2.client.instances.downstream.auth-style=header
+spring.oauth2.client.instances.downstream.timeout=5s
+spring.oauth2.client.instances.downstream.endpoint-params.audience=https://api.example.com
 
 # --- authorization_code 实例 "login"(激活 authcode 组)----------------------
-spring.oauth2.authcode.login.client-id=web-client
-spring.oauth2.authcode.login.client-secret=web-secret
-spring.oauth2.authcode.login.auth-url=https://auth.example.com/oauth/authorize
-spring.oauth2.authcode.login.token-url=https://auth.example.com/oauth/token
-spring.oauth2.authcode.login.redirect-url=https://app.example.com/callback
-spring.oauth2.authcode.login.scopes=openid,profile
+spring.oauth2.authcode.instances.login.client-id=web-client
+spring.oauth2.authcode.instances.login.client-secret=web-secret
+spring.oauth2.authcode.instances.login.auth-url=https://auth.example.com/oauth/authorize
+spring.oauth2.authcode.instances.login.token-url=https://auth.example.com/oauth/token
+spring.oauth2.authcode.instances.login.redirect-url=https://app.example.com/callback
+spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance(*http.Client transport 的韧性)-------------------------------
 # 与 client 同一资源标签:oauth2:<client-id>。
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -155,13 +156,13 @@ gs.Run()
         (裸 client 过不了 io.Closer 断言,什么都不释放)
 ```
 
-`OnProperty("spring.oauth2.client")` 是前缀检查:任一 `spring.oauth2.client.<name>.<k>`
+`OnProperty("spring.oauth2.client")` 是前缀检查:任一 `spring.oauth2.client.instances.<name>.<k>`
 key 触发该 module,前缀下每个子 map 条目成为一个实例(`conf.BindEach`)。这就是为什么
 没有 `enabled` key。
 
 ### 2.2 哪里接了什么——两个 bean,精确对照
 
-一个 `spring.oauth2.client.<name>` 条目会构建**两个同名 bean**(bean 身份 = type + name):
+一个 `spring.oauth2.client.instances.<name>` 条目会构建**两个同名 bean**(bean 身份 = type + name):
 
 | Bean | token 机制 | Tracing | Resilience | Destroy |
 |------|-----------|---------|------------|---------|
@@ -190,8 +191,8 @@ governance 开启时的 `s.Client.Get("https://api.example.com/resource")`:
 4. access token 入缓存;出站请求在 base transport 运行*之前*带上
    `Authorization: Bearer <token>` 头。
 5. `resilience.NewRoundTripper` 经资源标签 `oauth2:<client-id>` 解析出的 executor 执行
-   请求——retry/熔断/限流策略来自治理中心;governance 关闭时是透明空操作。executor 又被
-   `resilience.WrapExecutor` 包了一层,trip/reject/retry 会发 span + 计数 + 直方图 +
+   请求——retry/熔断/限流策略来自治理中心;governance 关闭时是透明空操作。解析出的
+   executor 已自带 observe 层,trip/reject/retry 会发 span + 计数 + 直方图 +
    访问日志。
 6. `otelhttp` 发 client span(method/url);无 starter-otel 时为空操作。
 7. 响应解栈;401 时 oauth2 层不重试(client_credentials 无 refresh token)——下一次调用
@@ -201,7 +202,7 @@ governance 开启时的 `s.Client.Get("https://api.example.com/resource")`:
 
 ## 3. 逐 key 行为参考
 
-### 3.1 `spring.oauth2.client.<name>.*`——7 个 key
+### 3.1 `spring.oauth2.client.instances.<name>.*`——7 个 key
 
 | Key | 类型 | 默认 | 行为/联动 | 配错的后果 |
 |-----|------|------|----------|-----------|
@@ -213,7 +214,7 @@ governance 开启时的 `s.Client.Get("https://api.example.com/resource")`:
 | `auth-style` | string | `auto` | `auto` \| `header` \| `params`——凭据的发送方式;`auto` 由 x/oauth2 探测一次并缓存。 | IdP 要求 Basic 而配了 `params` → 每次取 token 401。 |
 | `timeout` | duration | 0 | 应用两处:otel base client(约束取 token)*和*返回的 `*http.Client`(约束每个下游请求)。0 = 无超时。⚠ 值大 + governance `attempt-timeout`:先到的是 per-attempt 上限。 | 0 → token 端点或下游挂死则永久挂起。 |
 
-### 3.2 `spring.oauth2.authcode.<name>.*`——6 个 key
+### 3.2 `spring.oauth2.authcode.instances.<name>.*`——6 个 key
 
 | Key | 类型 | 默认 | 行为/联动 | 配错的后果 |
 |-----|------|------|----------|-----------|
@@ -273,7 +274,7 @@ req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 ```
 
 同样可观测:starter-otel + governance 下,被包 client 的熔断动作发出 `oauth2` 标签的
-span/指标(`WrapExecutor(exec, "oauth2", ...)`);`TokenSource` 没有对等物。
+span/指标(`resilience.ExecutorFor("oauth2", resource)`);`TokenSource` 没有对等物。
 
 ### 4.5 governance 热切换
 
@@ -287,7 +288,7 @@ span/指标(`WrapExecutor(exec, "oauth2", ...)`);`TokenSource` 没有对等物�
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动失败 "expr … != ''" | client 条目的 `client-id`/`client-secret`/`token-url` 为空 | 补齐或删掉该条目。 |
-| starter 完全不生效 | 没有任何 `spring.oauth2.client.*` key(前缀激活) | 至少加一个实例块。 |
+| starter 完全不生效 | 没有任何 `spring.oauth2.client.instances.*` key(前缀激活) | 至少加一个实例块。 |
 | 注入的 client 为 nil / "no bean" | autowire 名不匹配(bean 名 = 实例 `<name>`) | 让 `autowire:"<name>"` 与配置 key 一致。 |
 | 下游 401 但 token 正常 | 下游要别的 scheme 或 audience | 检查 `endpoint-params`(audience)与 `scopes`。 |
 | 取 token 401 | `auth-style` 与 IdP 不符 | 试 `header`(Basic)——最常见要求。 |

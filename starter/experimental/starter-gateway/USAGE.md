@@ -79,7 +79,7 @@ spring.gateway.routes.users.predicates.headers=X-Client-Id:demo
 spring.gateway.routes.users.filters=rateLimit(rate=50,key=ip)
 spring.gateway.routes.users.upstream.target=http://127.0.0.1:19000
 
-# --- resilience: name registry only; policy values come from ${govern} -------
+# --- resilience: name registry only; policy values come from the rules doc ---
 spring.gateway.resilience.orders=
 
 # --- observability ------------------------------------------------------------
@@ -155,7 +155,7 @@ id-sorted order):
    `Upstream`; anything else must parse as `http(s)://host` or it errors.
 3. **Executor resolve** (compile.go:232) — a non-empty `resilience.policy` must name a key of
    `spring.gateway.resilience`; unknown name errors. Executors come from
-   `resilience.ExecutorFor("gateway:<name>")` (compile.go:211) — the governance center owns all
+   `resilience.ExecutorFor("gateway:<name>", "gateway:<name>")` (compile.go:211) — the governance center owns all
    policy values and hot-reloads them; governance off yields a transparent no-op.
 4. **Proxy handler** (`newProxyHandler`, proxy.go:159) — see §2.3.
 5. **Filter DSL parse** (`buildFilters` → `splitFilters`, compile.go:268-373) — tokens split on
@@ -201,7 +201,7 @@ On any stage error the compiled table is left untouched (keep-last-good, §4.2).
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `routes` | map `id→RouteRaw` | empty | **Hot-reloadable** (`gs.Dync`, compile.go:52). Each `<id>` is a route; ids are map keys so uniqueness is structural. | Empty → gateway serves 404 for everything (table compiles to zero routes, still UP). |
-| `resilience` | map name→(ignored) | empty | **Name registry only**: keys name the executors routes may reference; the value is an empty struct — policy values live under `${govern}` keyed `gateway:<name>` (route.go:114-128). | Sub-keys under `resilience.<name>.*` are silently ignored by the driver (legacy compat). |
+| `resilience` | map name→(ignored) | empty | **Name registry only**: keys name the executors routes may reference; the value is an empty struct — policy values live in the governance rules document (`govern.*`) keyed `gateway:<name>` (route.go:114-128). | Sub-keys under `resilience.<name>.*` are silently ignored by the driver (legacy compat). |
 | `discovery` | string | "" | Default discovery backend for `lb://` routes lacking `upstream.discovery`. ⚠ An `lb://` route with neither → compile error (proxy.go:98). | Routes fail to compile (startup error / reload keeps old table). |
 | `tracing.enabled` | bool | true | Wraps every matched request in gateway server+client spans. | Needs starter-otel for real export; without it a silent no-op. |
 
@@ -218,10 +218,9 @@ On any stage error the compiled table is left untouched (keep-last-good, §4.2).
 | `priority` | int | 0 | Matching order: larger priority is checked first; ties (incl. all-unset) fall back to ascending id — the historical default. Hot-reloadable with the rest of the route. | Overlapping paths resolve to the higher priority (then lower id); renaming an id no longer changes precedence among prioritized routes. |
 | `filters` | string | "" | Filter DSL, §3.3; applied outermost-first in declaration order. | Parse errors at compile time, not bind time. |
 | `upstream.target` | string | — | **Required in practice**: `lb://<service>` or `http(s)://host[:port]`. Missing/malformed → `parseError` (compile.go:379-392). | Route fails to compile. |
-| `upstream.balancer` | string | `round_robin` | One of `round_robin`, `least_conn`, `consistent_hash`, `weighted` (cloud/loadbalance). Unknown name → compile error. | Per-upstream; two routes to one service may differ while sharing the discovery watch. |
+| *(removed)* | — | — | `upstream.balancer` moved to governance: `govern.rules[N].balancer` on the rule matching `gateway:<route-id>`. An unknown strategy there is ignored (keeps the current one) rather than failing the reload. | The pool is retuned in place on push — no route-table reload needed. |
 | `upstream.discovery` | string | "" | Per-route backend override of top-level `discovery`. | |
-| `upstream.suspend-threshold` | int | 0 (off) | Consecutive failures before an lb:// upstream instance is suspended (outlier suspension, cloud/loadbalance `Tracker`); 0 disables. | A zombie instance (up but failing) stops receiving traffic for the cool-down instead of yielding periodic 502s. |
-| `upstream.suspend-for` | string | `""` | Go duration (e.g. `30s`); how long a suspended instance stays out before a half-open trial. Empty/0 keeps the tracker's 5s default. | Malformed value → compile error at reload, previous table kept. |
+| *(removed)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` moved to governance: `govern.rules[N].outlier-threshold` / `.outlier-suspend-for`, with `outlier-suspend-for` empty falling back to the tracker's 5s default. | A zombie instance (up but failing) stops receiving traffic for the cool-down instead of yielding periodic 502s. |
 | `resilience.policy` | string | "" | Must name an existing `spring.gateway.resilience.<name>` key. ⚠ Coupling: unknown name → `unknown resilience policy` compile error (compile.go:236). | Startup failure / reload keeps old table. |
 
 ⚠ **Precedence coupling**: when no route sets `priority`, matching order is sorted by route id
@@ -360,7 +359,7 @@ Stop the upstream → each request gets `502 Bad Gateway` (proxy.go:180) with a 
 | App fails at startup with `route %q: gateway: invalid …` | Initial route table has a parse error (predicate/upstream/filter) | Fix the literal; first compile is fatal by design (server.go:82). |
 | `route reload failed, keeping previous table` in logs | Hot edit broken; old table still serving | Fix the literal and refresh again; watch `gateway_route_reload_errors_total`. |
 | Always 404 | No route's predicates match (path typo, methods/host/headers predicate rejecting) | Remember first-match in priority-then-id order; a more specific route with a later id never wins over an overlapping earlier id — set `priority` to override. |
-| `unknown resilience policy` | `resilience.policy` names no key under `spring.gateway.resilience` | Add the name as a (value-less) key; policy VALUES come from `${govern}` under `gateway:<name>`. |
+| `unknown resilience policy` | `resilience.policy` names no key under `spring.gateway.resilience` | Add the name as a (value-less) key; policy VALUES come from the governance rules document (`govern.*`) under `gateway:<name>`. |
 | Legacy `resilience.<name>.max-retries` etc. have no effect | By design — value is an empty struct; driver ignores sub-keys (route.go:121-128) | Move policy to the governance center, resource label `gateway:<name>`. |
 | `no FilterWrapper bean named …` | `jwt-auth(x)`/`lua(x)` references a bean not exported as `gateway.FilterWrapper` | Export the bean with `.Export(gs.As[gateway.FilterWrapper]())` before startup (wrappers inject pre-warmup). |
 | `lb:// upstream cannot resolve … mesh mode active` | lb route with no discovery backend, or mesh mode on | Set `upstream.discovery`/`spring.gateway.discovery`; in mesh mode route to the service's stable address instead (proxy.go:115). |
@@ -381,7 +380,7 @@ Design suspects (for the audit ledger):
 
 1. ~~17 dead legacy policy keys bind but are never read~~ — evolved: `policyRaw` is now an empty
    struct (route.go:128), so legacy sub-keys do not even bind (silently ignored). Residual risk:
-   users porting old config get zero feedback that policy moved to `${govern}`.
+   users porting old config get zero feedback that policy moved to the governance rules document.
 2. ~~Filter DSL is a string grammar — no escaping for `,`/`()`~~ — resolved 2026-08-28 by
    design: no escape syntax is added; values containing `,`/`(`/`)` are rejected at route
    compile time with an error pointing at `${...}` placeholder / `RegisterFilter` alternatives.

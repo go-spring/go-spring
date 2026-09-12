@@ -19,20 +19,20 @@ package StarterBatchRedis
 import "time"
 
 // Config configures one Redis-backed [go-spring.org/spring/batch.JobRepository]
-// instance bound under spring.batch-repository.<name>. It intentionally does
+// instance bound under spring.batch-repository.instances.<name>. It intentionally does
 // not carry Redis connection details: the repository reuses an existing
 // *redis.Client bean registered by starter-go-redis, so switching between
 // shared / dedicated Redis topologies is a config-only change on the redis
 // side.
 //
-// The prefix is deliberately spring.batch-repository.<name>, not
+// The prefix is deliberately spring.batch-repository.instances.<name>, not
 // spring.batch.<name>: the batch runner owns the spring.batch namespace for
 // job / step / chunk configuration, and repository backends are a distinct
 // capability that the runner references by name via spring.batch.repository.
 type Config struct {
 	// Client is the name of the *redis.Client bean that backs this repository.
 	// The bean must be provided by starter-go-redis under
-	// spring.go-redis.<Client>. Empty is a fail-fast configuration error —
+	// spring.go-redis.instances.<Client>. Empty is a fail-fast configuration error —
 	// the starter refuses to boot rather than silently falling back to some
 	// default instance.
 	Client string `value:"${client}"`

@@ -10,7 +10,7 @@ in Go-Spring. It opens no port; it contributes a `SessionStore` bean that
 
 ## 1. Responsibilities & Boundaries
 
-- **In scope:** turn a `spring.session.redis.<name>` entry into a named
+- **In scope:** turn a `spring.session.redis.instances.<name>` entry into a named
   `session.SessionStore` bean backed by the application's existing
   `*redis.Client`.
 - **Out of scope:** the HTTP `Manager` middleware and cookie handling

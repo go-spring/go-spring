@@ -12,7 +12,7 @@
 （starter.go:49-58）。**未配置任何** `spring.config.bus.*` key 时 starter 什么都不装配，
 导入是闲置的——共享模块里带上导入也不会强迫每个应用配置 NATS。一旦出现任意
 `spring.config.bus.*` key（仅设 `spring.config.bus.subject` 也算），bean 装配，autowire tag
-`${spring.config.bus.nats-instance:=config-bus}`（bus.go:55）要求 `spring.nats.*` 下存在
+`${spring.config.bus.nats-instance:=config-bus}`（bus.go:55）要求 `spring.nats.instances.*` 下存在
 名为 `config-bus`（或你指定的名字）的实例；不存在则容器装配失败、启动中止。没有单独的
 `enabled` 开关。
 
@@ -107,7 +107,7 @@ func main() {
 ```properties
 # --- NATS 传输层（starter-nats 中名为 "config-bus" 的实例）-------------------
 # 名字必须与 spring.config.bus.nats-instance（默认 "config-bus"）一致。
-spring.nats.config-bus.url=nats://127.0.0.1:4222
+spring.nats.instances.config-bus.url=nats://127.0.0.1:4222
 
 # --- config bus ---------------------------------------------------------------
 # Subject：共享同一 subject 的所有实例构成一个 bus。以下为默认值。
@@ -182,9 +182,9 @@ gs.Run() → App.Start()                                                       [
 - **有 OnProperty 门。** bean 在 `Condition(gs.OnProperty("spring.config.bus"))` 下注册，
   与仓内家族约定（配置 key 条件注册）一致。没有 `spring.config.bus.*` key → 没有 bean →
   导入闲置。key 存在时，剩余的隐式条件是 Conn 注入：没有
-  `spring.nats.config-bus.*` 定义 → 启动期容器装配失败。
+  `spring.nats.instances.config-bus.*` 定义 → 启动期容器装配失败。
 - **bus 刷新出来的 key 门不了 bus 自己。** bus 自身的 key
-  （`spring.config.bus.*`、`spring.nats.<name>.*`）只在装配期读一次。刷新事件即使改变了
+  （`spring.config.bus.*`、`spring.nats.instances.<name>.*`）只在装配期读一次。刷新事件即使改变了
   `spring.config.bus.subject`，订阅**不会**迁移——bean 只在重启后重读。`watch-prefixes`
   同理：`subscribe()` 只解析一次（bus.go:67-71）。因此把所有 `spring.config.bus.*` key
   当作启动期常量；不要放进你期望热加载的命名空间。
@@ -227,9 +227,9 @@ gs.Run() → App.Start()                                                       [
 |-----|------|--------|-------------|----------|
 | `spring.config.bus.subject` | string | `spring.config.refresh` | NATS subject，发布+订阅共用；共享它的所有实例构成一个 bus。装配期读一次——刷新事件改它不会触发重新订阅（§2.2）。 | 某实例写错 subject → 舰队静默裂成两半：刷新只在各自一半内传播，任何地方都不报错。 |
 | `spring.config.bus.watch-prefixes` | string | ``（空） | 逗号分隔 prefix 过滤，`subscribe()` 解析一次。空 = 对每个事件都反应。非空 = 只对空 prefix 事件或双向 prefix 重叠放行（`db` ↔ `db.pool`）。⚠ 热加载死 key：仅重启后重解析。 | 列表过宽会刷得比预期多（无害但噪音）；某 prefix 与发布侧永不匹配时，该实例静默跳过 scoped 刷新，但 `Publish("")` 仍放行。 |
-| `spring.config.bus.nats-instance` | string | `config-bus` | 作为传输层注入的 `spring.nats.<name>.*` 连接名（按实例名 autowire，bus.go:55）。⚠ 指名的实例必须存在——这是事实上的激活门。 | 无对应 `spring.nats.<name>.*` 块 → 启动期容器装配失败（bean 无法组装）。与业务 NATS 连接共用名字会把 bus 故障耦合到该连接。 |
+| `spring.config.bus.nats-instance` | string | `config-bus` | 作为传输层注入的 `spring.nats.instances.<name>.*` 连接名（按实例名 autowire，bus.go:55）。⚠ 指名的实例必须存在——这是事实上的激活门。 | 无对应 `spring.nats.instances.<name>.*` 块 → 启动期容器装配失败（bean 无法组装）。与业务 NATS 连接共用名字会把 bus 故障耦合到该连接。 |
 
-除此之外，被引用的 NATS 实例还有自己的 `spring.nats.<name>.*` key（url、认证等）——见
+除此之外，被引用的 NATS 实例还有自己的 `spring.nats.instances.<name>.*` key（url、认证等）——见
 starter-nats 文档。NATS 连接是硬前置；没有嵌入式/内存兜底。
 
 ---
@@ -281,7 +281,7 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 
 ### 4.5 演练：启动陷阱复现
 
-- **缺 NATS 实例**：保留任意 `spring.config.bus.*` key、注释掉 `spring.nats.config-bus.url`
+- **缺 NATS 实例**：保留任意 `spring.config.bus.*` key、注释掉 `spring.nats.instances.config-bus.url`
   再运行——启动在容器装配阶段失败于无法解析的 `configBus` bean。没有 `enabled=false`
   逃生门；要么补 NATS 实例，要么连 `spring.config.bus.*` key 一起移除（bus 随之闲置）。
 - **自 hosted key**：把 `spring.config.bus.subject=other.subject` 放进一个只随刷新到达的
@@ -300,7 +300,7 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动时装配 `configBus` 失败 | `spring.nats.*` 下没有 `nats-instance` 指名（默认 `config-bus`）的实例 | 定义 `spring.nats.config-bus.url=...`，或把 `nats-instance` 指到已有实例名 |
+| 启动时装配 `configBus` 失败 | `spring.nats.instances.*` 下没有 `nats-instance` 指名（默认 `config-bus`）的实例 | 定义 `spring.nats.instances.config-bus.url=...`，或把 `nats-instance` 指到已有实例名 |
 | 发布成功但没人刷新 | subject 不一致（舰队裂分），或所有订阅方的 `watch-prefixes` 都不含发布的 prefix | 各实例对齐 `subject`；检查重叠方向（`db` 匹配 `db.pool`，不匹配 `demo`） |
 | 别的实例刷了、这台没刷 | 本实例启动晚——NATS core 无回放，`subscribe()` 之前的信号已丢 | 全部实例就绪后再发布；bus 不是持久日志 |
 | `property refresh failed: app not started yet` | 事件落在 `app.started` 置位前的装配窗口（§2.1） | 启动期属良性；变更重要则就绪后重发 |

@@ -8,9 +8,9 @@
 [客户端官方文档](https://www.elastic.co/guide/en/elasticsearch/client/go-api/current/index.html)
 ——本文只写 go-spring 增量。
 
-**激活条件**：出现任意 `spring.elasticsearch.*` key（模块为
+**激活条件**：出现任意 `spring.elasticsearch.instances.*` key（模块为
 `gs.Module(gs.OnProperty("spring.elasticsearch"))` 前缀匹配）。每个
-`spring.elasticsearch.<name>` 条目注册一个名为 `<name>` 的 `*StarterElasticsearch.Client`
+`spring.elasticsearch.instances.<name>` 条目注册一个名为 `<name>` 的 `*StarterElasticsearch.Client`
 bean，外加名为 `elasticsearch:<name>` 的健康指示器。
 
 ---
@@ -117,14 +117,14 @@ example/conf/app.properties + example-otel/conf/app.properties）：
 
 ```properties
 # --- 直连实例 ---------------------------------------------------------------
-spring.elasticsearch.main.addresses=http://127.0.0.1:9200
+spring.elasticsearch.instances.main.addresses=http://127.0.0.1:9200
 
 # --- discovery 实例 ---------------------------------------------------------
 # 即使 service-name 会覆盖 addresses，校验仍要求其非空——下面的哑地址故意不可解析，
 # 用以证明 discovery 生效。
-spring.elasticsearch.disc.addresses=http://nonexistent.invalid:9200
-spring.elasticsearch.disc.service-name=es-cluster
-spring.elasticsearch.disc.discovery-scheme=http
+spring.elasticsearch.instances.disc.addresses=http://nonexistent.invalid:9200
+spring.elasticsearch.instances.disc.service-name=es-cluster
+spring.elasticsearch.instances.disc.discovery-scheme=http
 
 # --- actuator + otel（example-otel 风格）-----------------------------------
 spring.actuator.addr=:9370
@@ -156,7 +156,7 @@ grep _app_elasticsearch_access app.log | tail -3              # 每请求一条�
 
 ```
 import starter-elasticsearch
-  └─ gs.Module(OnProperty("spring.elasticsearch")) 在出现任意 spring.elasticsearch.* key 时触发
+  └─ gs.Module(OnProperty("spring.elasticsearch")) 在出现任意 spring.elasticsearch.instances.* key 时触发
         └─ conf.BindEach("${spring.elasticsearch}") → 每个 <name> 条目一份 Config
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver)).Name(<name>)
@@ -165,19 +165,21 @@ import starter-elasticsearch
                      .Export(gs.As[health.Indicator]())   [starter.go:41-71]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:73]：
-  │    ├─ 设置了 service-name 且 !mesh.Enabled() → resolveAddresses：
-  │    │      注入后端 → 读快照 → "scheme://host:port" 覆盖 c.Addresses
-  │    │      （快速失败：后端未注册、或该服务无端点）
-  │    ├─ 可选 Driver bean（无则用内置 DefaultDriver）→ driver.CreateClient：
+  ├─ 构造 newClient [starter.go:81]：
+  │    ├─ 设置了 service-name 且 !mesh.Enabled() → resolveAddresses(c, backend)：
+  │    │      读快照 → "scheme://host:port" 覆盖 c.Addresses
+  │    │      （快速失败：无 `${discovery}` 后端 bean、或该服务无端点）
+  │    ├─ 可选 Driver bean（无则用内置 DefaultDriver；多个并存时实例可按名指定：
+  │    │      `spring.elasticsearch.instances.<name>.driver = <bean 名>`，留空 = 按类型注入
+  │    │      唯一 Driver bean，指定的 bean 不存在则启动失败）→ driver.CreateClient(ctx, c, backend)：
   │    │      DefaultDriver 安装 dynamicTransport + OTel 插桩，
   ｜    │      记入 dynamicTransports；newClient 取出交给 Init
   │    └─ HealthCheck（Info 请求）——无条件 fail-fast 探测；失败则关闭
   │        client 并中止启动
   ├─ Init [client.go:78]：newDBObserver("elasticsearch") → 模块内建 observer
   │    → obsTransport（指标 + 访问日志，无 span）
-  │    → fault.WrapExecutor(resilience.ExecutorFor(resource))——治理 seam
-  │    → resilience.WrapExecutor(exec, "elasticsearch")——outcome 计数 + resilience span
+  │    → fault.WrapExecutor(resilience.ExecutorFor("elasticsearch", resource))——治理
+  │      seam + outcome 计数 + resilience span
   │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, →resource)) [client.go:86-92]
   ├─ 就绪：指示器转 UP（执行 client.Info）
   └─ SIGTERM → Destroy [client.go:98]：exec.Close → 停 discovery watch → client.Close
@@ -196,8 +198,9 @@ elasticsearch API（Index/Get/...）
       安装的 OTel 全局 TracerProvider；未导入则为 no-op）
   → elastictransport 重试循环（MaxRetries / DisableRetry）
   → dynamicTransport（RWMutex 间接层；Init 换入前直通 http.DefaultTransport）
-  → resilience roundTripper：executor = fault.InjectorFor → 限流/熔断/bulkhead/重试，
-      其外再包 resilience（每次 Execute 的 span + outcome 计数 + 访问日志）
+  → resilience roundTripper：executor = fault(observe(限流/熔断/bulkhead/重试))：
+      fault.InjectorFor 在最外，observe 层（每次 Execute 的 span + outcome 计数 +
+      访问日志）在其内，治理核心在最内
   → obsTransport：db.client.operation.duration 直方图 + db.client.active_requests gauge
       + _app_elasticsearch_access 日志（模块内建 observer 不出 span——不重复）
   → http.DefaultTransport → 网络
@@ -209,9 +212,9 @@ elasticsearch API（Index/Get/...）
   `elasticsearch.Config.Instrumentation`，因此 span 覆盖重试；[observe.go] 的模块内建
   observer 不出 span，只补 metric+log 缺口。
 - **resilience 位于 observe transport 之外**——与 go-redis 相反（那边访问日志包
-  在熔断器外）。这里用 `resilience.WrapExecutor(exec, "elasticsearch")` 包 executor 本身，使熔断跳闸/限流
-  拒绝获得**自己的** span + outcome 计数，而 obsTransport 在被保护调用内部记录 HTTP
-  结果。
+  在熔断器外）。这里的 executor 经 `resilience.ExecutorFor` 解析后已自带 observe 层，
+  使熔断跳闸/限流拒绝获得**自己的** span + outcome 计数，而 obsTransport 在被保护调用
+  内部记录 HTTP 结果。
 - **用 dynamicTransport 而非固定 transport**：ES 的 transport 在构造期固定、事后无法
   在 client 上替换；这层间接让 resilience 策略（Dync）保持可热更，尽管 transport 实例
   本身不可换 [client.go:31-44]。槽位用 RWMutex 而非 atomic.Value，因为活跃
@@ -244,14 +247,14 @@ elasticsearch API（Index/Get/...）
 
 设置 `service-name` 且 mesh 模式关闭时，端点在构造函数里**一次性**解析并固化进
 `c.Addresses`；loader 是纯快照函数，无资源、无后台 watch，所以不保活也无需在停机时
-Stop [starter.go:55-70, driver.go:96-125]。运行期不再重解析：ES 集群地址通常是稳定 VIP。
+Stop [starter.go:82-88, driver.go:101-121]。运行期不再重解析：ES 集群地址通常是稳定 VIP。
 mesh 模式下由 sidecar 负责发现+LB，静态 Addresses（或 CloudID）原样使用。
 
 ---
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.elasticsearch.<name>.` 下——构造参数 Config 走 `conf.BindEach`
+所有 key 位于 `spring.elasticsearch.instances.<name>.` 下——构造参数 Config 走 `conf.BindEach`
 的实例前缀绑定。没有 observability key——观测无条件开启（见 §3.4 插桩）。
 
 ### 3.1 寻址与发现
@@ -261,7 +264,7 @@ mesh 模式下由 sidecar 负责发现+LB，静态 Addresses（或 CloudID）原
 | `addresses` | list | — | 节点 URL，如 `http://127.0.0.1:9200`（逗号分隔）。校验非空（`len($) > 0`）。⚠ 即使被 `service-name` 覆盖也必填——example 故意带一个不可解析的哑地址。⚠ 设置 `cloud-id` 时被忽略（客户端侧优先级）。 | 空 → BindEach 报错；首探不可达 → 启动报 "failed to reach elasticsearch cluster"。 |
 | `service-name` | string | — | 经已注册 discovery 后端解析节点地址，启动期一次；覆盖 `addresses`。mesh 模式忽略。⚠ 与 `scheme`/`discovery`/`discovery-scheme` 成组。 | 服务无端点 → 启动报 `discovery %q returned no endpoints`。 |
 | `scheme` | string | — | 将 discovery 收敛到单一传输 scheme 的端点。仅在设置 `service-name` 时生效。 | — |
-| `discovery` | string | `default` | 用哪个已注册后端解析 `service-name`。 | 后端未注册 → NewLoader 处启动报错。 |
+| `discovery` | string | — | 用哪个已注册后端解析 `service-name`。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
 | `discovery-scheme` | string | `http` | 拼到发现的 `host:port` 端点前的 URL scheme（`http`/`https`）。 | scheme 错 → 启动首探失败。 |
 | `cloud-id` | string | — | Elastic Cloud 部署 ID；设置后客户端优先于 `addresses`。 | — |
 
@@ -327,6 +330,7 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 resilience / fault 演练（example-load 风格）
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -343,8 +347,8 @@ govern.fault.enabled=false           # 置 true + rate=0.5 + error=timeout 即"�
 ### 4.4 discovery 接线
 
 ```properties
-spring.elasticsearch.disc.addresses=http://nonexistent.invalid:9200  # 哑地址，被覆盖
-spring.elasticsearch.disc.service-name=es-cluster
+spring.elasticsearch.instances.disc.addresses=http://nonexistent.invalid:9200  # 哑地址，被覆盖
+spring.elasticsearch.instances.disc.service-name=es-cluster
 ```
 
 启动成功且 `HealthCheck` 通过即证明地址来自 discovery 后端而非配置（example/ 特性 5）。

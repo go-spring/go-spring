@@ -28,10 +28,10 @@ import _ "go-spring.org/starter-gorm-mysql"
 在项目的[配置文件](example/conf/app.properties)中添加 gorm 配置，比如：
 
 ```properties
-spring.gorm.mysql.primary.user=root
-spring.gorm.mysql.primary.password=123456
-spring.gorm.mysql.primary.addr=127.0.0.1:3306
-spring.gorm.mysql.primary.db=test
+spring.gorm.mysql.instances.primary.user=root
+spring.gorm.mysql.instances.primary.password=123456
+spring.gorm.mysql.instances.primary.addr=127.0.0.1:3306
+spring.gorm.mysql.instances.primary.db=test
 ```
 
 ### 3. 注入 gorm 实例
@@ -39,10 +39,10 @@ spring.gorm.mysql.primary.db=test
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import "gorm.io/gorm"
+import "go-spring.org/starter-gorm"
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // 内嵌 *gorm.DB 的包装
+    DB *gormcore.DB `autowire:"mysql.primary"` // 内嵌 *gorm.DB 的包装
 }
 ```
 

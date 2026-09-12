@@ -23,14 +23,14 @@ import _ "go-spring.org/starter-kafka"
 
 ### 2. 配置 Kafka 客户端
 
-在项目的[配置文件](example/conf/app.properties)中,在 `spring.kafka.<name>`
+在项目的[配置文件](example/conf/app.properties)中,在 `spring.kafka.instances.<name>`
 下定义一个或多个具名客户端,例如:
 
 ```properties
-spring.kafka.a.brokers=127.0.0.1:9092
-spring.kafka.a.topic=hello
-spring.kafka.a.group=hello-group
-spring.kafka.b.brokers=127.0.0.1:9092
+spring.kafka.instances.a.brokers=127.0.0.1:9092
+spring.kafka.instances.a.topic=hello
+spring.kafka.instances.a.group=hello-group
+spring.kafka.instances.b.brokers=127.0.0.1:9092
 ```
 
 ### 3. 注入 Kafka 客户端

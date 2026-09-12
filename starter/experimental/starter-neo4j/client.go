@@ -29,10 +29,10 @@ import (
 
 // Client is the wrapper bean Neo4j drivers are injected as. It
 // embeds the neo4j.DriverWithContext interface (so every driver method promotes
-// unchanged) and field-injects the resilience policy via gs.Dync so it
-// hot-reloads on config change. newClient returns one; gs calls Init
-// (InitMethod) to build
-// the executor for the call-site guard.
+// unchanged) and resolves its resilience executor through the neutral
+// [resilience.ExecutorFor] seam, so the policy comes from the governance
+// document and hot-reloads inside the executor. newClient returns one; gs calls
+// Init (InitMethod) to build the executor for the call-site guard.
 //
 // The Neo4j seam: the driver's ExecuteQuery is a package-level function (not a
 // method on the driver), so there is no transport / dialer / hook to intercept —
@@ -65,8 +65,7 @@ type Client struct {
 // executor is a transparent no-op.
 func (o *Client) Init() error {
 	o.resource = resilience.ResourceLabel("neo4j", o.cfg.ServiceName, o.cfg.URI)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	o.exec = resilience.WrapExecutor(exec, "neo4j")
+	o.exec = fault.WrapExecutor(resilience.ExecutorFor("neo4j", o.resource))
 	return nil
 }
 

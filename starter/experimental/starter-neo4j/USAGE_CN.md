@@ -7,8 +7,8 @@
 为 file:line 抽查点。**Cypher 语义与 neo4j-go-driver API 属于
 [驱动官方文档](https://neo4j.com/docs/go-manual/current/)**——以下只写 go-spring 的增量。
 
-**激活条件**：出现任意 `spring.neo4j.*` key 即注册（模块为 `OnProperty("spring.neo4j")`
-前缀检查）。每个 `spring.neo4j.<name>` 条目创建一个名为 `<name>` 的
+**激活条件**：出现任意 `spring.neo4j.instances.*` key 即注册（模块为 `OnProperty("spring.neo4j")`
+前缀检查）。每个 `spring.neo4j.instances.<name>` 条目创建一个名为 `<name>` 的
 `*StarterNeo4j.Client` bean，并附带名为 `neo4j:<name>` 的健康指示器。
 
 ---
@@ -114,16 +114,16 @@ func init() {
 
 ```properties
 # --- 实例 "graph"：直连地址，其余走默认 --------------------------------------
-spring.neo4j.graph.uri=bolt://127.0.0.1:7687
-spring.neo4j.graph.username=neo4j
-spring.neo4j.graph.password=password
+spring.neo4j.instances.graph.uri=bolt://127.0.0.1:7687
+spring.neo4j.instances.graph.username=neo4j
+spring.neo4j.instances.graph.password=password
 
 # --- 实例 "analytics"：调优连接池，独立健康指示器 ----------------------------
-spring.neo4j.analytics.uri=bolt://127.0.0.1:7687
-spring.neo4j.analytics.username=neo4j
-spring.neo4j.analytics.password=password
-spring.neo4j.analytics.max-connection-pool-size=50
-spring.neo4j.analytics.connection-acquisition-timeout=30s
+spring.neo4j.instances.analytics.uri=bolt://127.0.0.1:7687
+spring.neo4j.instances.analytics.username=neo4j
+spring.neo4j.instances.analytics.password=password
+spring.neo4j.instances.analytics.max-connection-pool-size=50
+spring.neo4j.instances.analytics.connection-acquisition-timeout=30s
 
 # --- observability（starter-otel：OTLP 导出 + prometheus）--------------------
 spring.observability.service-name=demo
@@ -136,6 +136,7 @@ spring.observability.metrics.exporter=prometheus
 spring.actuator.addr=:9370
 
 # --- governance：Query / RunWithResilience 的保护 ----------------------------
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -164,7 +165,7 @@ cypher-shell -a bolt://127.0.0.1:7687 -u neo4j -p password \
 
 ```
 import starter-neo4j
-  └─ gs.Module(OnProperty("spring.neo4j"))：出现任意 spring.neo4j.* key 即触发
+  └─ gs.Module(OnProperty("spring.neo4j"))：出现任意 spring.neo4j.instances.* key 即触发
         └─ conf.BindEach("${spring.neo4j}") → 每个 <name> 条目一份 Config
               ├─ Provide(newClient).Name(<name>)
               │    .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
@@ -173,29 +174,31 @@ import starter-neo4j
                  [starter.go:44-53]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:77]：记录实例创建日志
+  ├─ 构造 newClient [starter.go:88]：记录实例创建日志
   │   ├─ 若设置 service-name 且 mesh 关闭：resolveURI → 选一个端点，
-  │   │  地址拼进 URI host [starter.go:80-87, driver.go:128-145]
+  │   │  地址拼进 URI host [starter.go:91-98, driver.go:129-157]
   │   ├─ 可选 Driver bean——没有则回退内置 DefaultDriver（d == nil
-  │   │  回退 [starter.go:89-92]）
-  │   ├─ d.CreateClient（auth + 连接池参数 + TLS）[starter.go:93, driver.go:61-82]
+  │   │  回退 [starter.go:100-103]）；多个并存时实例可按名指定：
+  │   │  `spring.neo4j.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
+  │   │  Driver bean；指定的 bean 不存在则启动失败）
+  │   ├─ d.CreateClient(ctx, c, backend)（auth + 连接池参数 + TLS）[starter.go:104, driver.go:61-82]
   │   └─ fail-fast VerifyConnectivity，受 socket-connect-timeout 或 5s 约束；
   │      失败时关闭 client，启动中止
-  │      [starter.go:103-106]
+  │      [starter.go:112-118]
   ├─ Init [client.go:68-69]：resource = resilience.ResourceLabel("neo4j",
-  │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilience.WrapExecutor(exec, "neo4j")——治理关闭时
-  │   executor 为透明 no-op
+  │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor("neo4j", resource))
+  │   ——治理关闭时 executor 为透明 no-op
   ├─ readiness：指示器每次探测跑 VerifyConnectivity
   └─ SIGTERM → Destroy [client.go:89-95]：exec.Close → stopLiveResolver →
       driver.Close(context.Background())
 ```
 
-**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:48-49`）负责。公司/伞包 starter 可把
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:53-55`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterNeo4j.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.neo4j` 下每个实例都经它构建。
-没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:53`，`starter.go:89-92`）。
-没有 per-config 的 `driver` key。
+`CreateClient(ctx, c, backend)` 还会收到该实例 `${discovery}` label 解析出的发现后端
+（无后端 bean 时为 nil）。没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`
+（`driver.go:58`，`starter.go:100-103`）。没有 per-config 的 `driver` key。
 
 服务器不可达、TLS 材料坏——启动即失败，进程不会带着一个死 Neo4j 进入
 "服务中"状态。
@@ -208,7 +211,7 @@ neo4j.ExecuteQuery / Query）（client.go:81-88 注释）。
 
 对家族不对称要诚实：**没有透明的按请求插桩**。neo4j-go-driver 走二进制 Bolt 协议、
 无官方 OpenTelemetry 插桩，且 `ExecuteQuery` 是包级泛型函数——不是 driver 的方法——
-因此没有 transport/dialer/hook 可拦截（starter.go:63-68 与 command.go:31-44 注释明确
+因此没有 transport/dialer/hook 可拦截（starter.go:73-78 与 command.go:31-44 注释明确
 称这是 documented gap，非疏漏）。实际存在的：
 
 | 辅助函数 | 增量 | 级别 |
@@ -217,7 +220,7 @@ neo4j.ExecuteQuery / Query）（client.go:81-88 注释）。
 | `StarterNeo4j.RunWithResilience` | 仅把任意 session/事务代码套进韧性保护（无 span/指标/日志） | 可选 |
 | `StarterNeo4j.StartSpan` / `EndSpan` | 为手工 `driver.NewSession` 操作补 span + 指标 + 访问日志 | 可选 |
 | 健康指示器 `neo4j:<name>` | 每次 actuator 探测跑 `VerifyConnectivity` | 自动，恒注册 |
-| Init 里的 `resilience.WrapExecutor` | 受保护执行的 outcome 指标（`resilience.*`） | 治理开启时自动 |
+| 由 `resilience.ExecutorFor` 内部应用的 observe 层 | 受保护执行的 outcome 指标（`resilience.*`） | 治理开启时自动 |
 
 `Query` 的 span/指标/日志挂在**包级**默认 observer 上（首次使用时惰性构建，
 command.go:50），由本模块内建埋点（[observe.go]）产出、随 starter-otel 安装的 OTel
@@ -254,17 +257,17 @@ globals——没有任何配置开关；Query 的访问日志恒经该包级 obs
 ### 2.4 服务发现寻址 —— 一次性
 
 设置 `service-name` 且 mesh 关闭时，`resolveURI` 在 `discovery` 后端上建 Resolver、
-选一个端点、把地址拼进 URI host [driver.go:128-145]。neo4j driver 无 dialer 注入点，
+选一个端点、把地址拼进 URI host [driver.go:129-157]。neo4j driver 无 dialer 注入点，
 因此是**启动时一次性解析**——启动后的地址变化不会感知，除非重建 client
 （config.go:79-83 注释）。Resolver 存活仅为与其它 client starter 的生命周期统一，
 停机时 Stop。mesh 模式（`GS_MESH=on`）下 sidecar 负责发现+LB，URI 原样使用
-[starter.go:70-76]。
+[starter.go:80-87]。
 
 ---
 
 ## 3. 逐 key 行为参考
 
-全部 key 位于 `spring.neo4j.<name>.`——经 `conf.BindEach` 按实例绑定（ctor
+全部 key 位于 `spring.neo4j.instances.<name>.`——经 `conf.BindEach` 按实例绑定（ctor
 IndexArg(1)），不是 starter Pool 的绝对属性规则。
 
 ### 3.1 寻址与发现
@@ -274,7 +277,7 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 | `uri` | string | — | **必填**（`expr:"$ != ''"`）。scheme 决定路由+加密：`bolt`/`neo4j` 明文，`neo4j+s`/`bolt+s` TLS，`+ssc` 自签。⚠ 设置 `service-name` 时 host 被发现结果替换（example 故意用哑地址 `bolt://0.0.0.0:0`）。 | 缺失 → BindEach 报错并点名实例；scheme 非法 → 构造期 driver 报错。 |
 | `service-name` | string | — | 经发现后端解析地址，启动时一次（§2.4）。⚠ 需有匹配的命名后端 bean。 | 后端未注册 → 启动报错 "neo4j: resolve service …"。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme 的端点；仅 `service-name` 生效时被读取。 | — |
-| `discovery` | string | `default` | 用哪个已注册后端解析 `service-name`。 | 名字错 → 发现层启动报错。 |
+| `discovery` | string | — | 用哪个已注册后端解析 `service-name`。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
 
 ### 3.2 认证与连接池
 
@@ -338,6 +341,7 @@ curl -s :9090/metrics | grep -E 'db.client.(operation.duration|active_requests)'
 ### 4.3 韧性演练（example-cloudnative / example-load 形态）
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.default.enabled=true
 govern.default.rate-limit=5
@@ -355,7 +359,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 ### 4.4 发现演练
 
 注册后端 bean（见 example/discovery.go），设
-`spring.neo4j.graph.service-name=neo4j-cluster` 与哑 `uri=bolt://0.0.0.0:0`。启动日志
+`spring.neo4j.instances.graph.service-name=neo4j-cluster` 与哑 `uri=bolt://0.0.0.0:0`。启动日志
 `neo4j client initialized, uri=bolt://127.0.0.1:7687`——拼接后的地址，不是哑值。
 杀掉该实例：查询持续失败——地址只在启动时解析过一次（§2.4）；重启应用（或交给平台）
 才会重新解析。
@@ -366,7 +370,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 
 | 症状 | 可能原因 | 处置 |
 |---------|--------------|-----|
-| 启动报 "failed to verify neo4j connectivity" | 服务器不可达 / 凭证错误 / TLS 不匹配 | fail-fast 探测无条件执行 [starter.go:109-119]；修连通性或认证。 |
+| 启动报 "failed to verify neo4j connectivity" | 服务器不可达 / 凭证错误 / TLS 不匹配 | fail-fast 探测无条件执行 [starter.go:112-118]；修连通性或认证。 |
 | 启动报 "neo4j: resolve service X" | 设了 `service-name` 但 `discovery` 名下无后端 | 注册后端（example/discovery.go）或去掉 service-name。 |
 | 查询正常但无 span/指标/访问日志 | 代码直调 `neo4j.ExecuteQuery`，绕过接缝 | 换 `StarterNeo4j.Query` / 套 `StartSpan`（§2.2）；真实导出需 import starter-otel。 |
 | 治理已开却没有保护 | session 代码未走 `Query`/`RunWithResilience`，或传了裸 driver（断言落空） | 走辅助函数；恒传 `*Client` wrapper [command.go:111-116]。 |

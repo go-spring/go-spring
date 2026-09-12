@@ -5,12 +5,12 @@
 ## 能力
 
 - **Round-trip**:客户端操作是同步 produce 穿过 broker,再从同一 topic 消费回来——MQ 原型,端到端证明 broker 可达。
-- **韧性**:开启 `spring.kafka.a.resilience.enabled` 后,每条同步 produce 都经由 `GuardedProduceSync` → 内置 `"default"` executor;超过 `rate-limit` 的突发被以 `ErrRateLimited` 拒绝。消费不受保护(franz-go 的 poll 路径是被动的)。
+- **韧性**:开启 `spring.kafka.instances.a.resilience.enabled` 后,每条同步 produce 都经由 `GuardedProduceSync` → 内置 `"default"` executor;超过 `rate-limit` 的突发被以 `ErrRateLimited` 拒绝。消费不受保护(franz-go 的 poll 路径是被动的)。
 - **健康检查**:starter 本身未注册 `health.Indicator`,故应用自行导出一个(对 broker 的 `Ping` 探针),并由 `starter-actuator` 在 `:9370` 聚合——`/readyz` 反映 broker 可达性。
 - **动态配置**:`gs.Dync[string]` 字段绑定到被监听的文件;`file-watch` provider 无需重启即可热更新。
 - **可观测性**:kotel 的 span/指标 + observe 访问日志 hook 依托 `starter-otel` 安装的 OTel 全局。
 
-发现(discovery)有意省略:Kafka 用 bootstrap broker(`spring.kafka.a.brokers`)给客户端做种子,不存在需要解析的 service-name。
+发现(discovery)有意省略:Kafka 用 bootstrap broker(`spring.kafka.instances.a.brokers`)给客户端做种子,不存在需要解析的 service-name。
 
 ## 布局
 

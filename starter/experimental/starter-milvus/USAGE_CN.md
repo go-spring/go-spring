@@ -6,13 +6,13 @@ example/ 下）。所有行为声明均已对照 starter 源码（`starter.go`�
 [Milvus 官方文档](https://milvus.io/docs/install-go.md)
 （[SDK](https://github.com/milvus-io/milvus-sdk-go)）**——本文只写 go-spring 增量。
 
-**激活条件**：出现任意 `spring.milvus.*` key（模块为 `OnProperty("spring.milvus")`，前缀匹配
-[starter.go:29]）。每个 `spring.milvus.<name>` 条目创建一个名为 `<name>` 的
+**激活条件**：出现任意 `spring.milvus.instances.*` key（模块为 `OnProperty("spring.milvus")`，前缀匹配
+[starter.go:29]）。每个 `spring.milvus.instances.<name>` 条目创建一个名为 `<name>` 的
 `*StarterMilvus.Client` bean，外加名为 `milvus:<name>` 的健康指示器。
 
 **诚实的边界声明**：自逐 RPC 治理守卫落地（guard.go——装在 SDK dial options 上的
 gRPC 客户端拦截器）起，所有 Milvus RPC 都被透明保护（限流/熔断/隔舱/重试/超时 + 故障
-注入），调用点零改动、无 opt-in；`resilience.WrapExecutor` 自身产出守卫执行的观测（span +
+注入），调用点零改动、无 opt-in；经 `resilience.ExecutorFor` 解析出的 executor 产出守卫执行的观测（span +
 outcome 指标 + 访问日志）。治理关闭时 executor 是透明 no-op——未受保护流量没有独立的
 逐 RPC trace 层。健康指示器仍是常开的存活信号（§2.2、§6）。
 
@@ -111,11 +111,11 @@ func init() {
 
 ```properties
 # --- milvus 实例 "a" ---------------------------------------------------------
-spring.milvus.a.addr=127.0.0.1:19530
-spring.milvus.a.database=default
+spring.milvus.instances.a.addr=127.0.0.1:19530
+spring.milvus.instances.a.database=default
 # 集群开启鉴权时才需要：
-#spring.milvus.a.username=root
-#spring.milvus.a.password=Milvus
+#spring.milvus.instances.a.username=root
+#spring.milvus.instances.a.password=Milvus
 
 # --- actuator（readiness 折叠 milvus:a）--------------------------------------
 spring.actuator.addr=:9370
@@ -139,7 +139,7 @@ grep -E 'round trip|Milvus' app.log      # 上面的 search 已返回
 
 ```
 import starter-milvus
-  └─ gs.Module(OnProperty("spring.milvus"))：出现任意 spring.milvus.* key 即触发
+  └─ gs.Module(OnProperty("spring.milvus"))：出现任意 spring.milvus.instances.* key 即触发
         └─ conf.BindEach(p, "${spring.milvus}") → 每个 <name> 条目一份 Config
               ├─ addr 由 expr tag 在绑定期校验非空 [config.go:26]
               ├─ Provide(newClient).Name(<name>).Init((*Client).Init)
@@ -154,8 +154,8 @@ gs.Run()
   │   Init 之前为透传）；随后 fail-fast 探针：ListCollections 一次，出错 →
   │   cl.Close() + 启动失败——地址/凭据错，进程到不了 "serving"
   ├─ Init [client.go]：resource = ResourceLabel("milvus", addr) →
-  │   fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │   resilience.WrapExecutor(exec, "milvus") → slot.arm——此后每个
+  │   fault.WrapExecutor(resilience.ExecutorFor("milvus", resource)) →
+  │   slot.arm——此后每个
   │   RPC 都过守卫；治理关闭 → no-op executor
   ├─ readiness：指示器周期性重复同一个 ListCollections 探针
   └─ SIGTERM → Destroy [client.go]：exec.Close() 后 o.Client.Close() 关闭 gRPC 连接
@@ -170,14 +170,14 @@ gs.Run()
 
 1. wrapper 结构体——`Client` 内嵌 `client.Client` [client.go]，方法层无拦截；守卫在
    其下方的 gRPC 层生效。
-2. milvus-sdk-go → gRPC client → **守卫拦截器**（executor：限流/熔断/隔舱/重试/超时 +
-   故障注入，外面包着 resilience observer）→ 服务端。
+2. milvus-sdk-go → gRPC client → **守卫拦截器**（executor：限流/熔断/隔舱/重试/超时
+   外包 resilience observer，最外层 fault 注入）→ 服务端。
 
 这就是全部，外加守卫。**守卫是 gRPC 拦截器链** [guard.go]：`newClient` 传入自定义
 dial options，SDK 自己的 `DefaultGrpcOpts`（keepalive、连接退避、2GB 收包上限）被先补
 回、再追加守卫拦截器（unary + stream 建流）——是叠加不是替换。拦截器读每 client 一个
-slot，`Init` 用 `fault.WrapExecutor(resilience.ExecutorFor("milvus:<addr>"))` 外包
-`resilience.WrapExecutor` 武装它（治理关闭 → no-op 透传；构造期的 fail-fast 探针在
+slot，`Init` 用 `fault.WrapExecutor(resilience.ExecutorFor("milvus", "milvus:<addr>"))`
+武装它（治理关闭 → no-op 透传；构造期的 fail-fast 探针在
 Init 之前跑，正依赖该透传）。collection/index/search/insert 等全部 RPC 零改动过守卫，
 与其他 NoSQL starter 的透明逐请求口径一致。实际存在的可观测性另有健康指示器：
 `milvus:<name>` 恒注册，探针即 wrapper 自带的 `Health(ctx)`，一次 `ListCollections`
@@ -187,7 +187,7 @@ Init 之前跑，正依赖该透传）。collection/index/search/insert 等全�
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.milvus.<name>.` 下——经 `conf.BindEach` 按实例前缀绑定（不是
+所有 key 位于 `spring.milvus.instances.<name>.` 下——经 `conf.BindEach` 按实例前缀绑定（不是
 starter-Pool 的绝对属性规则）。已用 `grep -rhoE 'value:"[^"]+"'` 双向核对，表格覆盖
 每个 tag。
 

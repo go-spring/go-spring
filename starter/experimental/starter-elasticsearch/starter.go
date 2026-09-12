@@ -36,17 +36,22 @@ func init() {
 	// each instance's *elasticsearch.Client bean can be paired with a
 	// health.Indicator registered under the same name — and to attach the
 	// file:line of this registration to the bean for diagnostics.
-	gs.Module(gs.OnProperty("spring.elasticsearch"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.elasticsearch}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.elasticsearch.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.elasticsearch.instances}", func(name string, c Config) error {
 			// The wrapper bean owns the resilience executor + discovery watch, so
 			// Init arms it (InitMethod) and Close tears it down (Destroy). The
 			// instance's discovery.Discovery backend bean is injected by name from
 			// the entry's ${discovery} label (default "default"; optional, so an
-			// app with no backend beans at all gets nil here).
+			// app with no backend beans at all gets nil here). The Driver bean
+			// is selected by the entry's ${driver} key: unset → "?" (nullable
+			// by-type — injects the single Driver bean when one is provided,
+			// nil otherwise, and the ctor falls back to the bundled
+			// DefaultDriver); set → that bean name, and naming a bean that
+			// does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("${spring.elasticsearch."+name+".discovery:=default}?")),
-				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(2, gs.TagArg("${spring.elasticsearch.instances."+name+".discovery:=none}?")),
+				gs.IndexArg(3, gs.TagArg("${spring.elasticsearch.instances."+name+".driver:=${spring.elasticsearch.default.driver:=?}}")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The wrapper is what is
@@ -65,17 +70,17 @@ func init() {
 // or an unreachable cluster fails fast rather than on first use.
 //
 // When c.ServiceName is set and mesh mode is off, a by-name loader is built
-// against the injected discovery backend bean (cited by c.Discovery), its current live
-// endpoint snapshot is turned into "scheme://host:port" node addresses, and
+// against backend (the discovery backend the entry's ${discovery} label
+// resolved to), its current live endpoint snapshot is turned into
+// "scheme://host:port" node addresses, and
 // those override c.Addresses. Because the elasticsearch client exposes no dialer
 // injection point, this is a one-shot resolution at startup; the loader has no
 // background watch and no resources to release. In mesh mode the sidecar owns
 // discovery+LB, so the static Addresses (or CloudID) are used unchanged. See
 // Config.ServiceName.
 func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver) (*Client, error) {
-	c.backend = backend
 	if c.ServiceName != "" && !mesh.Enabled() {
-		addrs, err := resolveAddresses(ctx.Context, c)
+		addrs, err := resolveAddresses(ctx.Context, c, backend)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +91,7 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c)
+	client, err := d.CreateClient(ctx.Context, c, backend)
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create elasticsearch client")
 	}

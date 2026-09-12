@@ -7,7 +7,7 @@
 ## 运行方式
 
 ```bash
-docker compose up -d     # 或把 spring.go-redis.cache.addr 指向任意 redis
+docker compose up -d     # 或把 spring.go-redis.instances.cache.addr 指向任意 redis
 go run .
 ```
 

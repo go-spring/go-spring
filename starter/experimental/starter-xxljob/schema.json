@@ -2,12 +2,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.xxljob",
   "type": "object",
+  "description": "Two buckets: spring.xxljob.default holds family-wide values (each overridable per instance), spring.xxljob.instances.<name> holds one entry per named instance. No other key belongs directly under spring.xxljob.",
   "properties": {
-    "app-name": { "type": "string", "description": "executor app name, as registered with the admin" },
-    "admin-addresses": { "type": "array", "items": { "type": "string" }, "description": "xxl-job admin base URLs" },
-    "port": { "type": "integer", "description": "executor callback server port (required)" },
-    "access-token": { "type": "string", "default": "" },
-    "registry-interval": { "type": "string", "default": "10s" },
-    "log-dir": { "type": "string", "default": "./logs", "description": "directory served via /log; task log files are written by the application's TaskFunc, not the starter" }
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "app-name": {
+            "type": "string",
+            "description": "executor app name, as registered with the admin"
+          },
+          "admin-addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "xxl-job admin base URLs"
+          },
+          "port": {
+            "type": "integer",
+            "description": "executor callback server port (required)"
+          },
+          "access-token": {
+            "type": "string",
+            "default": ""
+          },
+          "registry-interval": {
+            "type": "string",
+            "default": "10s"
+          },
+          "log-dir": {
+            "type": "string",
+            "default": "./logs",
+            "description": "directory served via /log; task log files are written by the application's TaskFunc, not the starter"
+          }
+        }
+      }
+    }
   }
 }

@@ -19,18 +19,19 @@ package luohua
 import (
 	"testing"
 
-	StarterCache "go-spring.org/starter-cache"
+	"go-spring.org/cloud/cache"
+	"go-spring.org/spring/gs"
 )
 
-// TestLuohuaDriverRegistered verifies the M1 uniform-driver seam: luohua's
-// driver is registered in the starter-cache registry under the one company-wide
-// name, so any service can select it by `spring.cache.<name>.driver=luohua:<id>`.
-func TestLuohuaDriverRegistered(t *testing.T) {
-	d, err := StarterCache.GetDriver("luohua")
-	if err != nil {
-		t.Fatalf("GetDriver(luohua): %v", err)
-	}
-	if d == nil {
-		t.Fatal("GetDriver(luohua) returned nil")
-	}
+// TestLuohuaCacheBean verifies the cache seam: importing starter-luohua provides
+// a *cache.Cache bean under the one company-wide name "luohua", autowirable by
+// that name and backed by the standard luohua in-process cache.
+func TestLuohuaCacheBean(t *testing.T) {
+	gs.Web(false).RunTest(t, func(ts *struct {
+		Cache *cache.Cache `autowire:"luohua"`
+	}) {
+		if ts.Cache == nil {
+			t.Fatal("expected the luohua cache bean to be autowirable by name")
+		}
+	})
 }

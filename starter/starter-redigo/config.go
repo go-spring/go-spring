@@ -19,7 +19,6 @@ package StarterRedigo
 import (
 	"time"
 
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -71,16 +70,13 @@ type Config struct {
 
 	// Discovery names the discovery backend bean that resolves ServiceName
 	// (bean name = label). It is only consulted when ServiceName is set; the
-	// bean itself is injected by the starter's constructor from this label.
-	// Field layout matches starter-go-redis.
-	Discovery string `value:"${discovery:=default}"`
-
-	// backend is the discovery backend instance the label above cites. It is
-	// populated by the starter wiring (createPool injects the named backend
-	// bean), never bound from configuration. Standalone NewPool callers that
-	// want discovery must set it through the starter wiring (or their own
-	// Driver), not through properties.
-	backend discovery.Discovery
+	// starter wiring resolves this label to the backend bean and passes it to
+	// the driver as the backend argument of CreateClient / the backend
+	// argument of NewPool — it is never written back into Config. Field layout
+	// matches starter-go-redis.
+	// Empty means unset: no discovery backend is wired and the entry must not
+	// route by service-name alone.
+	Discovery string `value:"${discovery:=}"`
 
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext. Field layout matches
@@ -111,8 +107,9 @@ type Config struct {
 	HealthEnabled bool `value:"${health.enabled:=true}"`
 }
 
-// Resilience and Observability policy are no longer fields of Config: they
-// moved onto the Pool wrapper bean, field-injected by gs (Resilience via
-// gs.Dync, hot-reloadable) and consumed by Init (the gs InitMethod). Config
+// Resilience and Observability policy are not fields of Config: the Pool
+// wrapper resolves its executor at Init through the neutral
+// [resilience.ExecutorFor] seam (see pool.go setupResilience), so policy comes
+// from the governance document rather than from a bound property here. Config
 // carries only the per-instance on/off switch HealthEnabled; instrumentation
 // itself is unconditional (a no-op without starter-otel).

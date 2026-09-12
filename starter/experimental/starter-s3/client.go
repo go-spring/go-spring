@@ -73,11 +73,7 @@ func (o *Client) Init() error {
 	obs := newDBObserver("s3")
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resilience.ResourceLabel("s3", o.cfg.Endpoint)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	// Wrap the executor with observe-resilience so circuit-breaker trips,
-	// rate-limit rejects, bulkhead rejections and retries emit a span + call
-	// counter (by outcome) + duration histogram + access log.
-	exec = resilience.WrapExecutor(exec, "s3")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("s3", o.resource))
 	o.exec = exec
 	if o.dyn != nil {
 		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,

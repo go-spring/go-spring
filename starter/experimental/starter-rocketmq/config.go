@@ -49,7 +49,10 @@ type Config struct {
 	SendTimeout time.Duration `value:"${send-timeout:=3s}"`
 
 	// Retry is the number of retries performed internally by the producer
-	// before a synchronous send fails. 2 means up to 3 attempts in total.
+	// before a synchronous send fails. 2 means up to 3 attempts in total. Like
+	// the Elasticsearch client's, this retry sits inside the client and so
+	// multiplies with govern's `max-retries` for the same resource when both are
+	// non-zero — pick one place to retry.
 	Retry int `value:"${retry:=2}"`
 
 	// FailFast enables a startup connectivity probe. When true, a TCP dial is

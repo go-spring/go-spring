@@ -62,24 +62,18 @@ func (f *fakeMQTTClient) Publish(topic string, qos byte, retained bool, payload 
 	return &fakeToken{}
 }
 
-// TestApplyResilienceToggle verifies the per-instance governance opt-out: with
-// Governance=false no executor is attached (all call paths degrade to bare
-// calls); with the default true an executor is registered.
-func TestApplyResilienceToggle(t *testing.T) {
+// applyResilience always attaches an executor. Whether it protects anything is
+// decided by the governance rule for the resource label, not by a per-instance
+// switch: with governance off the executor is a transparent pass-through, so
+// attaching one costs a call frame and changes nothing else.
+func TestApplyResilienceAttachesGuard(t *testing.T) {
 	cl := &fakeMQTTClient{}
 
-	if err := applyResilience(Config{Governance: false}, cl, "mqtt:test"); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := clientGuards.Load(cl); ok {
-		t.Fatal("governance=false must not attach an executor")
-	}
-
-	if err := applyResilience(Config{Governance: true}, cl, "mqtt:test"); err != nil {
+	if err := applyResilience(cl, "mqtt:test"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := clientGuards.Load(cl); !ok {
-		t.Fatal("governance=true (default) must attach an executor")
+		t.Fatal("applyResilience must attach an executor")
 	}
 	closeResilience(cl)
 }

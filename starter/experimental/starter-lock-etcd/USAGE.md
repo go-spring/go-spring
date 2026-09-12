@@ -7,7 +7,7 @@ abstraction [cloud/lock](../../../cloud/lock), and the self-asserting
 [etcd docs](https://etcd.io/docs/latest/dev-guide/api_concurrency_reference/) — everything below
 is go-spring's increment.
 
-**Activation**: any `spring.lock.<name>.*` property registers one etcd-backed `lock.Locker`
+**Activation**: any `spring.lock.instances.<name>.*` property registers one etcd-backed `lock.Locker`
 instance per `<name>` (blank-import one lock backend per binary — the `spring.lock` prefix is
 shared by all four backends).
 
@@ -97,12 +97,12 @@ func (b *Batch) Run(ctx context.Context) {
 
 ```properties
 # --- etcd lock ----------------------------------------------------------------
-spring.lock.main.endpoints=127.0.0.1:2379
-spring.lock.main.ttl=10s
-spring.lock.main.key-prefix=/starter-lock-etcd/
+spring.lock.instances.main.endpoints=127.0.0.1:2379
+spring.lock.instances.main.ttl=10s
+spring.lock.instances.main.key-prefix=/starter-lock-etcd/
 # dial-timeout bounds both the initial connection and the startup readiness
 # probe — an unreachable cluster fails boot instead of the first Acquire.
-# spring.lock.main.dial-timeout=5s
+# spring.lock.instances.main.dial-timeout=5s
 
 # --- observability (starter-otel) --------------------------------------------
 spring.observability.service-name=demo
@@ -158,7 +158,7 @@ layer wins:
 | Layer | Source | This backend |
 |-------|--------|--------------|
 | 1. per-call option | `lock.WithTTL` / `WithRenewInterval` / `WithRetryInterval` | all effective |
-| 2. starter default | `spring.lock.<name>.ttl` etc. | **TTL only** — etcd's concurrency package keeps each session's lease alive itself, so no renew/retry keys exist |
+| 2. starter default | `spring.lock.instances.<name>.ttl` etc. | **TTL only** — etcd's concurrency package keeps each session's lease alive itself, so no renew/retry keys exist |
 | 3. package default | TTL `30s`, renew `TTL/3`, retry `100ms` | fill whatever is still unset |
 
 The resolved TTL is converted to whole seconds, rounding sub-second values **up** with a 1s floor
@@ -189,7 +189,7 @@ The resolved TTL is converted to whole seconds, rounding sub-second values **up*
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.lock.<name>` (exact-match, no relaxed forms).
+All keys live under `spring.lock.instances.<name>` (exact-match, no relaxed forms).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -222,7 +222,7 @@ The mutex key appears while held (etcd concurrency MVCC key) and disappears on U
 
 ### 4.2 TTL expiry mid-hold (crash drill)
 
-1. Acquire with a short TTL: `lock.WithTTL(5 * time.Second)` (or set `spring.lock.main.ttl=5s`).
+1. Acquire with a short TTL: `lock.WithTTL(5 * time.Second)` (or set `spring.lock.instances.main.ttl=5s`).
 2. `kill -9` the holder — no Unlock, no keepalive.
 3. The lease expires after ~TTL; `session.Done()` closes in the dead process (moot) and the key
    vanishes — a waiting `Acquire` in replica B wins within the watch latency.

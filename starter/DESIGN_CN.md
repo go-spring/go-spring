@@ -55,6 +55,42 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   bean。它把前缀下的配置绑成 `map[string]Config`,每个条目注册一个具名 bean。原因:
   默认单例 + 多实例双注册易误用,且条件单例语义隐晦。应用按名选实例
   (`autowire:"a"`),新增一个实例是纯配置改动。
+- **配置命名:每个家族两个桶。** 家族前缀下只有两个子键,别无其它:
+
+  ```
+  spring.<family>.default.*             家族级值,每一项都可被实例覆盖
+  spring.<family>.instances.<name>.*    一个实例;<name> 即 bean 名
+  ```
+
+  - **bean 名就是裸的实例名 —— 只有一个例外。** gorm 家族是五个独立的方言模块
+    （`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、`-clickhouse`），
+    它们注册的是**同一个类型**的 bean：`gormcore.DB`。bean 以（名字，类型）为键，
+    所以两个方言各自带一个同名实例时，会注册出同一个键，容器直接拒绝启动。因此 gorm
+    把 bean 名限定成 `<dialect>.<name>`（`gormcore.Module` 从配置前缀的最后一段取限定
+    词，可用 `Dialect.BeanPrefix` 覆盖）。其它 client 家族每个家族只有一种 bean 类型，
+    裸名不可能撞，规则照旧。配置 key 两种情况下都是 `instances.<name>` —— 只有 bean
+    名带限定词。
+
+  分两个桶的理由:一个家族的配置恰好只有这两级,而把它们在结构上分开,才使得实例名
+  永远不可能撞上家族级 key。平铺命名(`spring.<family>.<name>.*`,家族级 key 做兄弟)
+  只能改用保留词表:一个叫 `driver` 的实例会把 `spring.<family>.driver` 从标量变成子树,
+  启动报错还指向那个标量。分桶从构造上消除了整类失败——**没有保留词,任何实例名都合法**。
+  (参考 Spring Cloud Stream,同一个问题同一种解法:`spring.cloud.stream.default.*` +
+  `spring.cloud.stream.bindings.<name>.*`。)
+  - `default` 只放**可被覆盖的默认值**。不可覆盖的策略不放这里;进程级策略有自己的
+    顶层前缀(`govern.*`)。
+  - `instances` 桶是唯一的激活信号,所以注册必须 gate 在它上面
+    (`gs.OnProperty("spring.X.instances")`),并用
+    `conf.BindEach(p, "${spring.X.instances}", ...)` 绑定。只配了 `${spring.X.default}`
+    的进程没有配置任何 client,不得激活该 starter。
+  - **适用边界。** 两个桶针对的是"直接子键就是**用户自选**实例名"的家族。自己拥有
+    子命名空间的家族保持自己的形状:`spring.registry.*` 下是本进程的注册身份
+    (`service-name`、`addr`、`weight`……)与各中心块 `spring.registry.<backend>.<name>`,
+    那里不存在用户可控的名字可以撞(`<backend>` 段归框架,用户自选的 `<name>` 在更深
+    一层)。另外**不可被实例覆盖的强制项也不进 `default`**:同家族的进程级策略(如
+    registry 的身份)直接挂在家族前缀,进程级策略挂自己的顶层前缀(`govern.*`)。
+  - 两条路的不变量一致:**永远不要让用户自选的名字和框架 key 同层。** 单实例家族
+    (`spring.http.server`)的 key 直接挂在家族前缀下,因为它根本没有实例名。
 - **地址必填 —— fail-fast。** client 绝不能静默回退到 `localhost`。字段默认空
   (`${addr:=}`)。单字段必填校验通过 `expr` tag 在配置绑定阶段完成（字符串用
   `expr:"$ != ''"`,切片用 `expr:"len($) > 0"`）。跨字段规则（"addr 或 service-name
@@ -168,7 +204,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   加 `TagArg`。实现**同一**能力的两个 starter 使用不同前缀（`spring.kafka` 对应
   franz-go,`spring.kafka-sarama` 对应 sarama；`spring.redis` 对应 go-redis,
   `spring.redigo` 对应 redigo）。配置 key 本身就是技术选型的显式声明：用户通过写
-  `spring.kafka.xxx` 还是 `spring.kafka-sarama.xxx` 来决定用哪个实现。这同时避免了
+  `spring.kafka.instances.xxx` 还是 `spring.kafka-sarama.instances.xxx` 来决定用哪个实现。这同时避免了
   两个实现被意外同时导入时的 bean 冲突,也让配置文件成为自解释文档。
 - **fail-fast 优先于静默默认。** 必填输入(地址、凭证、模式相关字段)在配置绑定阶段通过
   `expr` tag 校验（单字段用 `expr:"$ != ''"`,切片用 `expr:"len($) > 0"`）,跨字段
@@ -236,6 +272,10 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 4. Client? → `gs.Group` 多实例、driver 注册表、地址必填 + fail-fast、启动期探测、
    每实例 `Destroy`,以及"一个关注点一个文件"的骨架(§2.2):`config.go` /
    `starter.go` / `discovery.go` / `resilience.go` / `observability.go`(+ `health/`)。
+   配置走两个桶:`conf.BindEach(p, "${spring.<family>.instances}", ...)`,模块 gate 用
+   `gs.OnProperty("spring.<family>.instances")`,家族级值在各实例的 tag 里读
+   `${spring.<family>.default.*}`。**绝不可直接绑定在家族前缀上** ——
+   `scripts/check-config-namespace.sh` 会检查。
 5. Server? → 自持端口、提前监听/就绪后 serve、优雅 `Stop`、应用提供注册 bean、
    默认开启开关。
 6. 配置 Provider? → `provider.go` 里 `conf.RegisterProvider`(无 `config.go`、

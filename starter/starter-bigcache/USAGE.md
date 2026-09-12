@@ -7,7 +7,7 @@ spot-checks in brackets. **BigCache semantics (sharding, life-window eviction, h
 byte-only values) are [the official README](https://github.com/allegro/bigcache)** — everything
 below is go-spring's increment.
 
-**Activation**: any `spring.bigcache.*` key. Each `spring.bigcache.<name>` entry creates one
+**Activation**: any `spring.bigcache.instances.*` key. Each `spring.bigcache.instances.<name>` entry creates one
 `*StarterBigCache.Cache` bean named `<name>`, plus a health indicator named `bigcache:<name>`.
 Pure in-process cache — no external dependency, no address, no pool.
 
@@ -33,7 +33,6 @@ require (
     github.com/allegro/bigcache/v3 latest
     go-spring.org/spring           v1.3.x
     go-spring.org/starter-bigcache latest
-    go-spring.org/starter-cache    latest   // cache façade
     go-spring.org/starter-actuator latest   // optional
     go-spring.org/starter-otel     latest   // optional: metric/span export
     go-spring.org/starter-governance latest // optional
@@ -49,7 +48,6 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-bigcache"
-    _ "go-spring.org/starter-cache"
     _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -80,8 +78,8 @@ type Service struct {
     Hot  *StarterBigCache.Cache `autowire:"hot"`
     Cold *StarterBigCache.Cache `autowire:"cold"`
 
-    // spring.cache.demo.driver=bigcache:hot — typed façade over "hot".
-    Cache *cache.Cache `autowire:"hot"`
+    // Typed façade over "hot" — the *cache.Cache bean named "bigcache:hot".
+    Cache *cache.Cache `autowire:"bigcache:hot"`
 }
 
 func init() {
@@ -100,16 +98,13 @@ func init() {
 
 ```properties
 # --- hot: short retention, stats on -----------------------------------------
-spring.bigcache.hot.life-window=1m
-spring.bigcache.hot.shards=256
-spring.bigcache.hot.stats-enabled=true
+spring.bigcache.instances.hot.life-window=1m
+spring.bigcache.instances.hot.shards=256
+spring.bigcache.instances.hot.stats-enabled=true
 
 # --- cold: long retention -----------------------------------------------------
-spring.bigcache.cold.life-window=30m
-spring.bigcache.cold.shards=1024
-
-# --- cache façade -------------------------------------------------------------
-spring.cache.demo.driver=bigcache:hot
+spring.bigcache.instances.cold.life-window=30m
+spring.bigcache.instances.cold.shards=1024
 
 # --- actuator + otel ----------------------------------------------------------
 spring.actuator.addr=:9370
@@ -134,7 +129,7 @@ grep _app_bigcache_access app.log | tail # one record per Get/Set/Delete
 
 ```
 import starter-bigcache
-  └─ gs.Module(OnProperty("spring.bigcache")) fires when any spring.bigcache.* key exists
+  └─ gs.Module(OnProperty("spring.bigcache")) fires when any spring.bigcache.instances.* key exists
         └─ conf.BindEach("${spring.bigcache}") → one Config per <name>
               ├─ Provide(newClient, name@1, c@2).Name(<name>)
               │    .Init((*Cache).Init).Destroy((*Cache).Destroy)
@@ -146,8 +141,7 @@ gs.Run()
   │   → registerMetrics(name, client) — OTel observable gauges [starter.go:144-156]
   │   NOTE: no connectivity probe — there is nothing to probe (in-process heap)
   ├─ Init [client.go]: newDBObserver() → resource label
-  │   "bigcache:<name>" → fault.WrapExecutor(resilience.ExecutorFor(...))
-  │   → resilience.WrapExecutor
+  │   "bigcache:<name>" → fault.WrapExecutor(resilience.ExecutorFor("bigcache", resource))
   ├─ your Runner uses Get/Set/Delete (each = span + executor + access log)
   └─ SIGTERM → Destroy [client.go:85-90]: exec.Close → BigCache.Close
       (stops the background eviction goroutine — hence the mandatory destroy)
@@ -184,7 +178,7 @@ observe span (start) → resilience executor (guard) → bigcache core → span 
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.bigcache.<name>.`.
+All keys live under `spring.bigcache.instances.<name>.`.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -196,8 +190,9 @@ All keys live under `spring.bigcache.<name>.`.
 | `hard-max-cache-size` | int | 0 | Hard memory cap in MB; 0 = unlimited. | Set without need → early eviction (oldest entries dropped). |
 | `stats-enabled` | bool | false | bigcache per-key hit/miss stats. ⚠ The starter's OTel gauges read `Stats()` — several show 0 unless this is on (they pull whatever Stats() returns [starter.go:124-132]). | Off → gauges read zero while Len/Capacity still work. |
 
-There is no per-config `driver` key: cache assembly is owned by an optional Driver bean (below);
-when none is provided the starter uses the bundled `DefaultDriver`.
+The per-instance `driver` key names the Driver bean: empty = inject the single Driver bean by
+type (or fall back to the bundled `DefaultDriver` when none is provided); set to a bean name to
+select one explicitly — naming a missing bean fails startup.
 
 **Metrics** (meter `go-spring.org/starter-bigcache`, attribute `cache.name=<name>`): observable
 gauges `bigcache.hits`, `bigcache.misses`, `bigcache.delete_hits`, `bigcache.delete_misses`,
@@ -205,16 +200,20 @@ gauges `bigcache.hits`, `bigcache.misses`, `bigcache.delete_hits`, `bigcache.del
 gauges (not counters) because `ResetStats()` can break monotonicity. No per-operation cost —
 values are pulled on scrape via callbacks.
 
-**Cache driver syntax**: `spring.cache.<name>.driver = bigcache:<bigcache-instance-name>`
-registers a `*cache.Cache` bean **named after the bigcache instance** [starter.go:69-76];
-`ErrEntryNotFound` maps to `cache.ErrMiss` at this boundary (starter-bigcache/bytecache).
+**Cache abstraction bean**: alongside the wrapper, each instance is provided as a
+`*cache.Cache` bean named `bigcache:<bigcache-instance-name>` [starter.go:63-69] — inject
+`*cache.Cache` with the autowire tag `bigcache:<instance-name>`. Un-injected, the bean never
+instantiates, so there is no config switch to set. `ErrEntryNotFound` maps to `cache.ErrMiss`
+at this boundary (starter-bigcache/bytecache).
 
 **Assembly extension point**: cache assembly is owned by a `Driver` interface [driver.go:32-35].
 A company/umbrella starter may provide its own `Driver` as an **optional container bean**
 (`gs.Provide(func() StarterBigCache.Driver{...})`), whose constructor returns the interface and
 so may inject config bound from the properties file at wiring time; every cache instance is then
 built through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
-inside assembly [driver.go:37-49].
+inside assembly [driver.go:37-49]. When several Driver beans coexist, an entry selects one by name:
+`spring.bigcache.instances.<name>.driver = <bean-name>` (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type;
+naming a missing bean fails startup).
 
 ---
 
@@ -242,16 +241,16 @@ grep _app_bigcache_access app.log | tail -3   # op=get/set/delete + key (debug l
 ### 4.3 Eviction drill (example's "evict" instance)
 
 ```properties
-spring.bigcache.evict.shards=2
-spring.bigcache.evict.life-window=1m
-spring.bigcache.evict.hard-max-cache-size=1
-spring.bigcache.evict.max-entry-size=1024
+spring.bigcache.instances.evict.shards=2
+spring.bigcache.instances.evict.life-window=1m
+spring.bigcache.instances.evict.hard-max-cache-size=1
+spring.bigcache.instances.evict.max-entry-size=1024
 ```
 
 Write past the 1MB cap: oldest entries are evicted; `bigcache.entries` plateaus at capacity and
 `bigcache.misses` climbs for evicted keys — the example asserts exactly this shape.
 
-### 4.4 Cache driver wiring (SET via façade, GET via raw client)
+### 4.4 Cache abstraction wiring (SET via façade, GET via raw client)
 
 ```go
 _ = s.Cache.Set(ctx, "k", "v", time.Minute)  // JSON-encoded bytes

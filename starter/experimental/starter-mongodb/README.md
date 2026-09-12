@@ -21,12 +21,12 @@ import _ "go-spring.org/starter-mongodb"
 
 ### 2. Configure the MongoDB Instances
 
-Define one or more named instances under `spring.mongodb.<name>` in your
+Define one or more named instances under `spring.mongodb.instances.<name>` in your
 project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.mongodb.a.uri=mongodb://127.0.0.1:27017
-spring.mongodb.b.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.a.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
 ```
 
 ### 3. Inject the MongoDB Instance
@@ -76,15 +76,15 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
   through a registered discovery backend instead of the URI hosts. A
   Resolver-backed dialer is injected as the client's dialer, so each new
   connection reaches a currently-live instance and address changes take effect
-  without rebuilding the client. Select the backend with `discovery` (default
-  `default`); a company registers its naming service once via
+  without rebuilding the client. Select the backend with `discovery` (required —
+  there is no default backend); a company registers its naming service once via
   `discovery.Register`. In mesh mode (`mesh.Enabled()`) the sidecar owns
   discovery+LB, so `service-name` is skipped and the URI hosts are dialed
   directly.
 
   ```properties
-  spring.mongodb.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
-  spring.mongodb.disc.service-name=mongo-cluster
+  spring.mongodb.instances.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
+  spring.mongodb.instances.disc.service-name=mongo-cluster
   ```
 
   Note: this bypasses MongoDB's own replica-set / mongos topology discovery — the

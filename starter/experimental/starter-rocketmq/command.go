@@ -154,8 +154,7 @@ func (c msgCarrier) Keys() []string {
 // no-op executor; fault wraps it when an injector is registered (nil-safe
 // otherwise).
 func applyResilience(c Config, cl *Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "rocketmq")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("rocketmq", resource))
 	cl.exec = exec
 	cl.resource = resource
 	return nil

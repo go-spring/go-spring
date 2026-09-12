@@ -2,81 +2,98 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.elasticsearch",
   "type": "object",
+  "description": "Two buckets: spring.elasticsearch.default holds family-wide values (each overridable per instance), spring.elasticsearch.instances.<name> holds one entry per named instance. No other key belongs directly under spring.elasticsearch.",
   "properties": {
-    "addresses": {
-      "type": "array",
-      "items": {
-        "type": "string"
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
       }
     },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "api-key": {
-      "type": "string",
-      "default": ""
-    },
-    "service-token": {
-      "type": "string",
-      "default": ""
-    },
-    "cloud-id": {
-      "type": "string",
-      "default": ""
-    },
-    "certificate-fingerprint": {
-      "type": "string",
-      "default": ""
-    },
-    "max-retries": {
-      "type": "integer",
-      "default": 3
-    },
-    "disable-retry": {
-      "type": "boolean",
-      "default": false
-    },
-    "compress-request-body": {
-      "type": "boolean",
-      "default": false
-    },
-    "enable-metrics": {
-      "type": "boolean",
-      "default": false
-    },
-    "enable-debug-logger": {
-      "type": "boolean",
-      "default": false
-    },
-    "service-name": {
-      "type": "string",
-      "default": ""
-    },
-    "scheme": {
-      "type": "string",
-      "default": "",
-      "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
-    },
-    "discovery": {
-      "type": "string",
-      "default": "default"
-    },
-    "discovery-scheme": {
-      "type": "string",
-      "default": "http"
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
-    },
-    "resilience": {
+    "instances": {
       "type": "object",
-      "default": ""
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "api-key": {
+            "type": "string",
+            "default": ""
+          },
+          "service-token": {
+            "type": "string",
+            "default": ""
+          },
+          "cloud-id": {
+            "type": "string",
+            "default": ""
+          },
+          "certificate-fingerprint": {
+            "type": "string",
+            "default": ""
+          },
+          "max-retries": {
+            "type": "integer",
+            "default": 3
+          },
+          "disable-retry": {
+            "type": "boolean",
+            "default": false
+          },
+          "compress-request-body": {
+            "type": "boolean",
+            "default": false
+          },
+          "enable-metrics": {
+            "type": "boolean",
+            "default": false
+          },
+          "enable-debug-logger": {
+            "type": "boolean",
+            "default": false
+          },
+          "service-name": {
+            "type": "string",
+            "default": ""
+          },
+          "scheme": {
+            "type": "string",
+            "default": "",
+            "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
+          },
+          "discovery": {
+            "type": "string",
+            "default": ""
+          },
+          "discovery-scheme": {
+            "type": "string",
+            "default": "http"
+          },
+          "resilience": {
+            "type": "object",
+            "default": ""
+          }
+        }
+      }
     }
   }
 }

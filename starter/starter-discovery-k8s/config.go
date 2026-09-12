@@ -50,7 +50,7 @@ const (
 )
 
 // Config binds one Kubernetes discovery backend under
-// "${spring.discovery.k8s.<name>}". The map key <name> is the backend name a
+// "${spring.discovery.k8s.instances.<name>}". The map key <name> is the backend name a
 // client starter references via its `discovery:` field (e.g. redis
 // `discovery: k8s`). The service name passed to Resolve/Watch is the
 // Kubernetes Service name; this Config supplies the surrounding context

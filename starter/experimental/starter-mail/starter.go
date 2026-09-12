@@ -78,7 +78,7 @@ func init() {
 	//
 	// No destroy callback: the underlying client opens a fresh connection per
 	// Send and closes it when done, so there is nothing to release at shutdown.
-	gs.Group("${spring.mail}", newMailer, nil)
+	gs.Group("${spring.mail.instances}", newMailer, nil)
 }
 
 // newMailer builds a Mailer from config. It fails fast on a missing host or an
@@ -192,7 +192,7 @@ func (m *Mailer) build(msg *Message) (*mail.Msg, error) {
 		from = m.from
 	}
 	if from == "" {
-		return nil, errutil.Explain(nil, "mail: no From address (set message.From or spring.mail...from)")
+		return nil, errutil.Explain(nil, "mail: no From address (set message.From or spring.mail.instances...from)")
 	}
 	if len(msg.To) == 0 {
 		return nil, errutil.Explain(nil, "mail: message has no recipients (To)")

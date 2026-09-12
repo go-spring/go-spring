@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-lock-etcd"
 ### 2. 配置锁实例
 
 在项目的[配置文件](example/conf/app.properties) 中添加
-`spring.lock.<name>` 配置，例如：
+`spring.lock.instances.<name>` 配置，例如：
 
 ```properties
-spring.lock.main.endpoints=127.0.0.1:2379
-spring.lock.main.ttl=30s
-spring.lock.main.key-prefix=/lock/
+spring.lock.instances.main.endpoints=127.0.0.1:2379
+spring.lock.instances.main.ttl=30s
+spring.lock.instances.main.key-prefix=/lock/
 ```
 
 只有 `endpoints` 是必填项，其余字段都有默认值；`endpoints` 为空会在启动时快速失败。
@@ -64,7 +64,7 @@ case <-workDone:
 
 ## 配置项
 
-所有配置项挂在 `spring.lock.<name>` 之下：
+所有配置项挂在 `spring.lock.instances.<name>` 之下：
 
 | Key             | 默认值    | 说明                                    |
 |-----------------|-----------|-----------------------------------------|

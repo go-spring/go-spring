@@ -6,7 +6,7 @@ behind the framework-neutral `security.TokenValidator` seam from
 `go-spring.org/cloud/security`.
 
 One `Validator` bean is registered per entry under
-`spring.security.oauth2.resource.jwt.<name>` — configuration is the enable
+`spring.security.oauth2.resource.jwt.instances.<name>` — configuration is the enable
 switch, so importing the starter without configuration is inert.
 
 ## Features
@@ -31,8 +31,8 @@ switch, so importing the starter without configuration is inert.
 ## Quick Start
 
 ```properties
-spring.security.oauth2.resource.jwt.api.issuer-uri=https://auth.example.com
-spring.security.oauth2.resource.jwt.api.audiences=orders-api
+spring.security.oauth2.resource.jwt.instances.api.issuer-uri=https://auth.example.com
+spring.security.oauth2.resource.jwt.instances.api.audiences=orders-api
 ```
 
 ```go
@@ -59,7 +59,7 @@ func init() {
 
 ## Configuration
 
-Key: `spring.security.oauth2.resource.jwt.<name>.*`
+Key: `spring.security.oauth2.resource.jwt.instances.<name>.*`
 
 | Property | Default | Description |
 | --- | --- | --- |

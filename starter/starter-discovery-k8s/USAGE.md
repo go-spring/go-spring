@@ -70,15 +70,15 @@ spring.app.name=demo-consumer
 
 # The discovery backend. Key after the prefix ("k8s") is the backend name a
 # client's `discovery:` field references.
-spring.discovery.k8s.k8s.mode=dns                 # or: endpointslice
-spring.discovery.k8s.k8s.namespace=default
+spring.discovery.k8s.instances.k8s.mode=dns                 # or: endpointslice
+spring.discovery.k8s.instances.k8s.namespace=default
 # dns SRV mode: port-name "grpc" queries _grpc._tcp.demo.default.svc.cluster.local
-spring.discovery.k8s.k8s.port-name=grpc
-spring.discovery.k8s.k8s.cluster-domain=cluster.local
-spring.discovery.k8s.k8s.refresh-interval=5s      # dns re-resolve period
+spring.discovery.k8s.instances.k8s.port-name=grpc
+spring.discovery.k8s.instances.k8s.cluster-domain=cluster.local
+spring.discovery.k8s.instances.k8s.refresh-interval=5s      # dns re-resolve period
 # endpointslice mode extras:
-#   spring.discovery.k8s.k8s.kubeconfig=          # empty = in-cluster ServiceAccount
-#   spring.discovery.k8s.k8s.resync-period=0      # 0 = event-driven only
+#   spring.discovery.k8s.instances.k8s.kubeconfig=          # empty = in-cluster ServiceAccount
+#   spring.discovery.k8s.instances.k8s.resync-period=0      # 0 = event-driven only
 
 # Consumer: a redigo client whose addresses come from the backend above.
 spring.redis.demo.service-name=demo
@@ -174,7 +174,7 @@ Kubernetes has no `UpdateWeight`; draining a Pod is the platform's job and flows
 
 ## 3. Configuration reference
 
-All keys live under `${spring.discovery.k8s.<backend-name>}`. Verified against `config.go:58-94`.
+All keys live under `${spring.discovery.k8s.instances.<backend-name>}`. Verified against `config.go:58-94`.
 
 | key | type | default | behavior | misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
@@ -250,7 +250,7 @@ Suspect ledger:
 
 - dns vs endpointslice differ in drain fidelity (not-ready → Healthy=false vs record gone) — inherent
   to DNS; documented, not fixable.
-- Backend name default mismatch: clients default `discovery=default`, this starter has no default name —
-  every config must restate the pair; candidate for a shared convention.
+- Backend name convention: client starters have NO default `discovery` label, so a
+  service-name-routed entry must cite this backend by the name it is declared under here.
 - `port`-only endpointslice config silently depends on slices having exactly one port
   (`endpointslice.go:290-293`) — a multi-port Service misconfigures quietly.

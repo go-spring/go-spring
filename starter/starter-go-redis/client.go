@@ -48,14 +48,13 @@ type Client struct {
 
 // Init is the gs InitMethod. It resolves the executor through the neutral
 // [resilience.ExecutorFor] seam (backed by starter-govern's governance center
-// when imported), wraps it with the process-wide fault injector
-// ([fault.InjectorFor], nil-safe), then the access log, and attaches the
-// per-command hook so every command flows through it. When governance is off
-// the resolved executor is a transparent no-op.
+// when imported, already observed), wraps it with the process-wide fault
+// injector ([fault.InjectorFor], nil-safe), and attaches the per-command hook
+// so every command flows through it. When governance is off the resolved
+// executor is a transparent no-op.
 func (o *Client) Init() error {
 	o.resource = resourceLabel(o.cfg)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "redis")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("redis", o.resource))
 	o.exec = exec
 	// Layer order (go-redis hooks are FIFO — first added is outermost):
 	//

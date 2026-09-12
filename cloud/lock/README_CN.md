@@ -89,7 +89,7 @@ locker.Acquire(ctx, key,
 单次获取的 Option  >  starter DefaultOptions  >  包默认值
 ```
 
-starter 的 `spring.lock.<name>.ttl` 是*可覆盖的默认值*：只填调用方未设置的部分，
+starter 的 `spring.lock.instances.<name>.ttl` 是*可覆盖的默认值*：只填调用方未设置的部分，
 单次调用的 `WithTTL` 永远优先。负的 `WithRenewInterval`（关闭续租）在分层中
 被保留。后端在 `Acquire`/`TryAcquire` 开头调用 `Resolve` 以获得
 该优先级；无 starter 级配置的后端传零值 `DefaultOptions` 即可。

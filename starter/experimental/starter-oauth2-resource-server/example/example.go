@@ -32,12 +32,12 @@ import (
 	httpsvr "go-spring.org/starter-http-server"
 
 	// Blank-importing the starter registers the validators configured under
-	// spring.security.oauth2.resource.jwt.
+	// spring.security.oauth2.resource.jwt.instances.
 	_ "go-spring.org/starter-oauth2-resource-server"
 )
 
 // secret is the shared HMAC key. It matches
-// spring.security.oauth2.resource.jwt.api.secret in conf/app.properties, so
+// spring.security.oauth2.resource.jwt.instances.api.secret in conf/app.properties, so
 // tokens this example mints verify against the validator the starter builds —
 // no external identity provider needed. Real deployments configure issuer-uri
 // instead and let the starter discover the issuer's JWKS endpoint.

@@ -17,13 +17,13 @@
 package StarterRatelimitRedis
 
 // Config configures one Redis-backed limiter driver instance bound under
-// spring.ratelimit.redis.<name>. Like the other redis-consuming starters it
+// spring.ratelimit.redis.instances.<name>. Like the other redis-consuming starters it
 // carries no Redis connection details: the driver reuses a *redis.Client bean
 // registered by starter-go-redis, so topology changes (shared cluster vs
 // dedicated cluster) stay config-only on the redis side.
 type Config struct {
 	// Client is the name of the *redis.Client bean backing this limiter driver.
-	// The bean must be provided by starter-go-redis under spring.go-redis.<Client>.
+	// The bean must be provided by starter-go-redis under spring.go-redis.instances.<Client>.
 	// Empty is a fail-fast configuration error — silently defaulting would hide
 	// a misconfiguration until the first (unlimited!) Allow call in production.
 	Client string `value:"${client}"`

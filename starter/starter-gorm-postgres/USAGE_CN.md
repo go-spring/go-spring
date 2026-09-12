@@ -6,7 +6,7 @@
 PostgreSQL 连接串语义属于 [pgx](https://github.com/jackc/pgx/blob/master/connstring.go)
 （libpq 兼容，含 `sslmode`）**——本文只写绑定面与 go-spring 的增量（装配、服务发现、TLS、可观测、健康检查）。
 
-**激活条件**：每个 `spring.gorm.postgres.<name>` 条目对应一个 client bean（对
+**激活条件**：每个 `spring.gorm.postgres.instances.<name>` 条目对应一个 client bean（名为 `postgres.<name>`；对
 `spring.gorm.postgres` 做 OnProperty 前缀检查）。没有 `enabled` 开关。共享部分（wrapper 生命周期、
 连接池、observe 插件链、健康检查、`UseDBCustomizer`、10 个 `Common` key）见
 [starter-gorm 的 USAGE](../starter-gorm/USAGE_CN.md)，此处不再重复。
@@ -68,11 +68,12 @@ func main() {
 package dao
 
 import (
-    StarterPostgres "go-spring.org/starter-gorm-postgres"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-postgres"
 )
 
 type Service struct {
-    DB *StarterPostgres.DB `autowire:"primary"`
+    DB *gormcore.DB `autowire:"postgres.primary"`
 }
 
 func NewService() *Service { return &Service{} }
@@ -89,21 +90,21 @@ func (s *Service) Init() error { // gs InitMethod：建表 + 冒烟查询
 
 ```properties
 # --- primary：固定 host ---------------------------------------------------------
-spring.gorm.postgres.primary.host=127.0.0.1
-spring.gorm.postgres.primary.port=5432
-spring.gorm.postgres.primary.user=postgres
-spring.gorm.postgres.primary.password=123456
-spring.gorm.postgres.primary.db=test
-spring.gorm.postgres.primary.sslmode=disable      # 冒烟库为明文
-spring.gorm.postgres.primary.max-open-conns=10
-spring.gorm.postgres.primary.max-idle-conns=5
-spring.gorm.postgres.primary.conn-max-lifetime=30m
-spring.gorm.postgres.primary.slow-threshold=200ms
+spring.gorm.postgres.instances.primary.host=127.0.0.1
+spring.gorm.postgres.instances.primary.port=5432
+spring.gorm.postgres.instances.primary.user=postgres
+spring.gorm.postgres.instances.primary.password=123456
+spring.gorm.postgres.instances.primary.db=test
+spring.gorm.postgres.instances.primary.sslmode=disable      # 冒烟库为明文
+spring.gorm.postgres.instances.primary.max-open-conns=10
+spring.gorm.postgres.instances.primary.max-idle-conns=5
+spring.gorm.postgres.instances.primary.conn-max-lifetime=30m
+spring.gorm.postgres.instances.primary.slow-threshold=200ms
 # TLS 走 sslmode + 证书文件（注释态；见 §3）：
-# spring.gorm.postgres.primary.sslmode=verify-full
-# spring.gorm.postgres.primary.sslrootcert=/path/ca.pem
-# spring.gorm.postgres.primary.sslcert=/path/client-cert.pem
-# spring.gorm.postgres.primary.sslkey=/path/client-key.pem
+# spring.gorm.postgres.instances.primary.sslmode=verify-full
+# spring.gorm.postgres.instances.primary.sslrootcert=/path/ca.pem
+# spring.gorm.postgres.instances.primary.sslcert=/path/client-cert.pem
+# spring.gorm.postgres.instances.primary.sslkey=/path/client-key.pem
 
 # --- actuator（聚合 gorm:postgres:<name> 指示器）--------------------------------
 spring.actuator.addr=:9370
@@ -137,7 +138,7 @@ curl -s '127.0.0.1:16686/api/traces?service=demo&limit=1' | grep '"data":\['
 
 ```
 import starter-gorm-postgres
-  └─ init: gormcore.Register(Dialect{Prefix: "spring.gorm.postgres", Engine: "postgresql", ...})
+  └─ init: gormcore.Module(Dialect{Prefix: "spring.gorm.postgres", Engine: "postgresql", ...})
 gs.Run()
   ├─ OnProperty("spring.gorm.postgres") 命中；conf.BindEach 为每个 <name> 条目绑定一份 Config
   ├─ 每实例：build(ctx, c)
@@ -170,7 +171,7 @@ before/after 回调开启 span（`db.system=postgresql`）、记录 `db.client.o
 
 ## 3. 逐 key 行为参考
 
-`spring.gorm.postgres.<name>.*` 下的 PostgreSQL 专有 key（10 个共享 `Common` key 见
+`spring.gorm.postgres.instances.<name>.*` 下的 PostgreSQL 专有 key（10 个共享 `Common` key 见
 [starter-gorm 的 USAGE](../starter-gorm/USAGE_CN.md)）：
 
 | Key | 类型 | 默认 | 行为 / 联动 | 配错后果 |

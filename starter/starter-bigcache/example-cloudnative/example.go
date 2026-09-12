@@ -21,7 +21,7 @@
 //     starter and aggregated by starter-actuator on :9370 (/readyz + /health).
 //   - RESILIENCE: with govern.enabled, every Get/Set/Delete runs through the
 //     builtin "default" executor; a burst is rejected with ErrRateLimited. The
-//     policy flows from the centralized governance center (${govern}), not a
+//     policy flows from the centralized governance center (govern.* rules document), not a
 //     per-starter resilience.* binding.
 //   - DYNAMIC CONFIG: a gs.Dync[string] field is bound to a watched file; editing
 //     it hot-reloads the value with no restart.

@@ -31,8 +31,8 @@ Casbin 需要一个[模型文件](example/conf/model.conf)（匹配规则）和�
 声明一个 enforcer 实例：
 
 ```properties
-spring.casbin.rbac.model=./conf/model.conf
-spring.casbin.rbac.policy=./conf/policy.csv
+spring.casbin.instances.rbac.model=./conf/model.conf
+spring.casbin.instances.rbac.policy=./conf/policy.csv
 ```
 
 最后一段 key（`rbac`）即为 bean 名称。
@@ -78,7 +78,7 @@ ok, err := s.Enforcer.Enforce("alice", "/data", "write")
 
 ## 进阶功能
 
-* **多 enforcer**：在 `spring.casbin.*` 下定义多个实例（例如按业务域划分），按 bean 名分别注入。
+* **多 enforcer**：在 `spring.casbin.instances.*` 下定义多个实例（例如按业务域划分），按 bean 名分别注入。
 * **可插拔持久化**：默认文件适配器让本 starter 无需数据库。若要用 GORM、Redis 等持久化策略，
   把 [Casbin 适配器](https://casbin.org/docs/adapters) 作为普通 bean 贡献出来，让实例按名指向它：
 
@@ -89,12 +89,12 @@ ok, err := s.Enforcer.Enforce("alice", "/data", "write")
   }
   ```
   ```properties
-  spring.casbin.rbac.adapter=gorm
+  spring.casbin.instances.rbac.adapter=gorm
   ```
 
   本 starter 刻意不引入任何存储驱动——适配器放在应用内，只需文件策略的项目就不会拖进
   GORM/Redis/etcd。每个实例的 `gs.Module` 把按名的 adapter/watcher bean 注入到对应
   enforcer，因此没有包级注册表。
 * **热更新 / 多实例同步**：把 [Casbin watcher](https://casbin.org/docs/watchers) 作为 bean 贡献，
-  并设置 `spring.casbin.<inst>.watcher=<bean名>`。当 peer 通知策略变更时，enforcer 会自动调用
+  并设置 `spring.casbin.instances.<inst>.watcher=<bean名>`。当 peer 通知策略变更时，enforcer 会自动调用
   `LoadPolicy`。watcher 的后台资源会在关闭时由 starter 的 destroy 回调释放。

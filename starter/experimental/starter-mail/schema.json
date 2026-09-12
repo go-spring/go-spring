@@ -2,47 +2,57 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.mail",
   "type": "object",
+  "description": "Two buckets: spring.mail.default holds family-wide values (each overridable per instance), spring.mail.instances.<name> holds one entry per named instance. No other key belongs directly under spring.mail.",
   "properties": {
-    "host": {
-      "type": "string",
-      "default": ""
-    },
-    "port": {
-      "type": "integer",
-      "default": 587
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "auth-type": {
-      "type": "string",
-      "default": "auto"
-    },
-    "from": {
-      "type": "string",
-      "default": ""
-    },
-    "timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "10s"
-    },
-    "tls": {
+    "instances": {
       "type": "object",
-      "properties": {
-        "mode": {
-          "type": "string",
-          "description": "starttls | tls | none",
-          "default": "starttls"
-        },
-        "insecure-skip-verify": {
-          "type": "boolean",
-          "default": false
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "default": ""
+          },
+          "port": {
+            "type": "integer",
+            "default": 587
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "auth-type": {
+            "type": "string",
+            "default": "auto"
+          },
+          "from": {
+            "type": "string",
+            "default": ""
+          },
+          "timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "10s"
+          },
+          "tls": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "description": "starttls | tls | none",
+                "default": "starttls"
+              },
+              "insecure-skip-verify": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
         }
       }
     }

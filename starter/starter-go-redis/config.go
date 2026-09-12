@@ -19,7 +19,6 @@ package StarterGoRedis
 import (
 	"time"
 
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -83,7 +82,10 @@ type Config struct {
 	// MaxIdle is the maximum number of idle connections in the pool, default is 5.
 	MaxIdle int `value:"${max-idle:=5}"`
 
-	// MaxRetries is the maximum number of retries for failed commands, default is 0.
+	// MaxRetries is how many times go-redis re-issues a command whose reply was
+	// a MOVED/ASK redirection or a cluster failover, default is 0. This is
+	// protocol-level recovery, NOT an idempotent retry: leave it to the client.
+	// govern's `max-retries` is the other, separate one (see the doc note below).
 	MaxRetries int `value:"${max-retries:=0}"`
 
 	// DialTimeout is the timeout for dialing the Redis server, e.g., "5s".
@@ -114,13 +116,12 @@ type Config struct {
 
 	// Discovery names the discovery backend bean that resolves ServiceName
 	// (bean name = label). It is only consulted when ServiceName is set; the
-	// bean itself is injected by the starter's constructor from this label.
-	Discovery string `value:"${discovery:=default}"`
-
-	// backend is the discovery backend instance the label above cites. It is
-	// populated by the starter wiring (newClient injects the named backend
-	// bean), never bound from configuration.
-	backend discovery.Discovery
+	// starter wiring resolves this label against every registered discovery
+	// backend bean and passes the result to the driver as the backend argument
+	// of CreateClient.
+	// Empty means unset: no discovery backend is wired and the entry must not
+	// route by service-name alone.
+	Discovery string `value:"${discovery:=}"`
 
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext.

@@ -9,7 +9,7 @@ guarded by **resilience**, with **health** and **dynamic config**.
 - **Round-trip**: the client op is a synchronous produce through the broker
   followed by a consume back off the same topic — the MQ archetype that proves
   broker reachability end to end.
-- **Resilience**: with `spring.kafka.a.resilience.enabled`, every synchronous
+- **Resilience**: with `spring.kafka.instances.a.resilience.enabled`, every synchronous
   produce runs through `GuardedProduceSync` → the builtin `"default"` executor; a
   burst over `rate-limit` is rejected with `ErrRateLimited`. Consume is not
   guarded (franz-go's poll path is passive).
@@ -22,7 +22,7 @@ guarded by **resilience**, with **health** and **dynamic config**.
   OTel globals installed by `starter-otel` when present.
 
 Discovery is intentionally omitted: Kafka seeds its clients with bootstrap
-brokers (`spring.kafka.a.brokers`), so there is no service-name to resolve.
+brokers (`spring.kafka.instances.a.brokers`), so there is no service-name to resolve.
 
 ## Layout
 

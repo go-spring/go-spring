@@ -96,5 +96,5 @@ func (e *faultExecutor) Close() error { return e.inner.Close() }
 
 // Refresh forwards the new policy to the inner executor. The fault injector
 // itself has no policy to refresh — its own config is swapped via
-// [Injector.SetConfig] from the starter's gs.Dync binding.
+// [Injector.SetConfig] whenever the governance source pushes a new config.
 func (e *faultExecutor) Refresh(p resilience.Policy) error { return e.inner.Refresh(p) }

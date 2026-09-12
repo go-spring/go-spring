@@ -32,12 +32,17 @@ func init() {
 	// Register multiple RabbitMQ connections as a group.
 	// Each instance is created according to the configuration in "${spring.rabbitmq}".
 	// This allows defining multiple RabbitMQ connections dynamically.
-	gs.Module(gs.OnProperty("spring.rabbitmq"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.rabbitmq}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.rabbitmq.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.rabbitmq.instances}", func(name string, c Config) error {
+			// The Driver param (index 3) is selected by the entry's ${driver}
+			// key: unset → "?" (nullable by-type — injects the single Driver
+			// bean when a company provides one, nil otherwise, and newClient
+			// falls back to DefaultDriver); set → that bean name, and naming
+			// a bean that does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("${spring.rabbitmq.instances."+name+".driver:=${spring.rabbitmq.default.driver:=?}}")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a
@@ -115,7 +120,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*amqp.
 	}()
 
 	log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection initialized, url=%s", c.URL)
-	if err := applyResilience(c, conn, resilience.ResourceLabel("rabbitmq", c.Vhost, c.URL)); err != nil {
+	if err := applyResilience(conn, resilience.ResourceLabel("rabbitmq", c.Vhost, c.URL)); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: resilience setup failed: %v", err)
 		_ = conn.Close()
 		return nil, err

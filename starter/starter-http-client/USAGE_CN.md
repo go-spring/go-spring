@@ -8,10 +8,10 @@
 [W3C Trace Context / OTel](https://opentelemetry.io/docs/specs/otel/trace/)**——本文只写
 go-spring 增量:分派、服务发现/负载均衡、韧性/治理、可观测。
 
-**激活条件**:只有存在至少一个 `spring.http-client.<name>.*` 配置项时才安装进程级 transport
-(`gs.OnProperty("spring.http-client")`,starter.go:60)。每个配置项贡献一条按 target
-(addr 或 service-name)索引的路由;**没有** per-name bean。韧性/故障策略不在这里配置——
-进程级 `govern.*`(见 starter-governance)。
+**激活条件**:只有存在至少一个 `spring.http-client.instances.<name>.*` 配置项时才安装进程级 transport
+(`gs.OnProperty("spring.http-client.instances")`,starter.go:60)。每个配置项成为一个 route bean——
+以条目名命名,持有自己的 target(addr 或 service-name)与装配好的 transport——由路由表
+收集。韧性/故障策略不在这里配置——进程级 `govern.*`(见 starter-governance)。
 
 ---
 
@@ -116,16 +116,18 @@ lb     := &proto.Client{Target: "greet-svc"}          // 发现模式
 # proto.Client 只持有 Target,切换寻址方式纯靠改配置。
 
 # (1) 直连:钉死到单个后端实例,不走发现。
-spring.http-client.direct.addr=127.0.0.1:9471
+spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) 服务发现 + 负载均衡:按逻辑服务名路由。
-spring.http-client.discovered.service-name=greet-svc
-spring.http-client.discovered.discovery=static
-spring.http-client.discovered.balancer=round_robin
+# LB 策略与端点剔除是该 entry 的治理规则(govern.rules[N].balancer / .outlier-threshold),
+# 不是这里的 key —— 见下文。
+spring.http-client.instances.discovered.service-name=greet-svc
+spring.http-client.instances.discovered.discovery=static
 
 # (3) 韧性守卫路由:策略在进程级 govern.* 下。
 # 内置 DefaultDriver 连续失败 2 次后熔断,持续 30s。
-spring.http-client.guarded.addr=127.0.0.1:9473
+spring.http-client.instances.guarded.addr=127.0.0.1:9473
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -157,27 +159,27 @@ kill %1
 
 ```
 import starter-http-client
-  └─ gs.Module(gs.OnProperty("spring.http-client"))       [starter.go:60]
+  └─ gs.Module(gs.OnProperty("spring.http-client.instances"))       [starter.go:60]
         │
 gs.Run()
-  ├─ 配置绑定:conf.BindEach(${spring.http-client}) → 每个 <name> 一个 Config
+  ├─ 配置绑定:conf.BindEach(${spring.http-client.instances}) → 每个 <name> 一个 Config
   │    validate() 快速失败:addr|service-name 二选一;service-name 必须配
   │    discovery(config.go:79)
-  ├─ installDispatch:逐条 assembleTransport() → routes[target] = rt;
-  │    构造唯一 http.Client{Transport: dispatchTransport};替换 httpclt.DoRequest
-  │    (starter.go:83-109)。日志:"http client initialized, routes=N"
+  ├─ installDispatch:conf.BindEach 逐条 provide 一个 route bean
+  │    (assembleTransport() → route{target, rt});路由表将其收集起来,并替换
+  │    httpclt.DoRequest 为一个按调用方 Metadata.Target 取 route 的 hook。
+  │    日志:"http client initialized, routes=N"
   │    (Rooter bean → 即使无人注入也会实例化)
   ├─ 运行期:请求经已安装的 transport 分派
-  └─ 停机:destroyDispatch → Close() 释放每条路由的 discovery watch 与 executor
-       (starter.go:162)
+  └─ 停机:每条路由的 Close() 释放各自的 discovery watch 与 executor
 ```
 
-无论配置多少条目,进程内只有**一个** transport:配置多维、transport 单一,每个条目是
-一条按 `addr` 或 `service-name` 索引的路由(routeKey,starter.go:147)。
+无论配置多少条目,进程内只有**一个** DoRequest 替换:配置多维、路由表单一,每个条目是
+一条按 `addr` 或 `service-name` 索引的路由(routeKey,starter.go)。
 
 ### 2.2 transport 链 ——精确嵌套顺序与理由
 
-每条路由从外到内(assembleTransport,starter.go:114;httpx.NewTransport,httpx.go:132):
+每条路由从外到内(assembleTransport,starter.go:129;httpx.NewTransport,httpx.go:132):
 
 ```
 自定义 driver 包裹(最外层:嵌 DefaultDriver 后包裹装配产物)
@@ -219,9 +221,10 @@ gs.Run()
    `httpclt.ObjectResponse` → `doRequest` 设 `req.Host = req.URL.Host = Target`、
    `req.URL.Scheme = Schema`(httpclt.go:132-139)→ `httpclt.DoRequest`——唯一发送
    扩展点,默认实现是 `http.DefaultClient`(httpclt.go:94)。
-2. starter 的替换实现把请求送进自己的 `http.Client` →
-   `dispatchTransport.RoundTrip` 在 RLock 下查 `routes[req.Host]`;**该 host 无路由 →
-   请求时报错 `http-client: no transport for target <host>`**(starter.go:176-184)。
+2. starter 的替换实现按 `meta.Target` 查路由表,再用该条目的 transport 驱动请求;**该 target
+   无路由 → 请求时报错 `http-client: no transport for target <target>`**。查表放在这一层而不是
+   RoundTripper 里,是因为 net/http 只把 `*http.Request` 交给 transport——在这一层路由才能让
+   声明的 Target 直接当键,同时也让重定向的每一跳都留在调用起始的那条路由上。
 3. trafficTransport 当且仅当 `traffic.IsLoadTest(ctx)` 时注入压测标记 header。
 4. executor 把整个 round-trip 作为一次受保护调用执行:限流 → 熔断闸门 → 每次尝试
    超时(`attempt-timeout`)→ 带退避的重试循环,整体受 `MaxDuration` 约束;熔断对
@@ -237,10 +240,13 @@ gs.Run()
 
 ### 2.4 扩展点:driver bean(driver.go)
 
-传输装配由 `Driver`(接口,driver.go)负责。每条配置项都经这一个 Driver 装配(在
+传输装配由 `Driver`(接口,driver.go)负责。每条配置项都经其自身选择的 Driver 装配(在
 `assembleTransport` 内解析)。Driver 是**可选容器 bean**,其构造函数返回
 `StarterHTTPClient.Driver`;未提供时 starter 回退到内置的 `DefaultDriver`(标准
-starter-http-client/httpx 装配)。没有 per-config 的 `driver` key,也没有要选的 driver 名:
+starter-http-client/httpx 装配)。选择与其它 client starter 一样分两级解析:
+`spring.http-client.instances.<name>.driver = <bean 名>` 指定该实例的 Driver bean,缺省回退到
+家族级 `spring.http-client.default.driver = <bean 名>`,再缺省则按类型注入唯一 Driver bean。
+指定的 bean 不存在则启动失败;因此不同实例可以走不同 driver:
 
 ```go
 func init() {
@@ -259,17 +265,14 @@ func init() {
 
 ## 3. 逐 key 行为参考
 
-`spring.http-client.<name>.*` 下的 key(已用 `grep -rhoE 'value:"[^"]+"'` 双向核对,
+`spring.http-client.instances.<name>.*` 下的 key(已用 `grep -rhoE 'value:"[^"]+"'` 双向核对,
 两边均无多余项):
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `addr` | string | "" | 直连模式:`fixedHostTransport` 把每个请求钉到该 host:port。可与 `service-name` 同配,此时 service-name 只是纯治理 label(不触发发现)。 | 都不配 → 快速失败 "one of addr or service-name is required"。 |
 | `service-name` | string | "" | 发现模式:经指定后端解析的逻辑名;只要设置了就同时是治理 resource label(发现与直连模式皆是)。配了 `addr` 时它不是发现目标。 | 都不配 → 快速失败;只配 service-name 不配 `addr`/`discovery` → 快速失败。 |
-| `discovery` | string | "" | 发现后端 bean 名(bean 名=标签，由 registry starter 注册)。`service-name` 未配 `addr` 时必填(config.go validate)。 | 缺失 → 快速失败。名字未知 → 装配期报错并列出已注册 bean(starter.go newDispatchTransport)。 |
-| `balancer` | string | round_robin | LB 策略:`round_robin`、`least_conn`、`consistent_hash`、`weighted`、`zone_aware`。未知名装配期失败(`loadbalance.New`,httpx.go:156)。 | 拼错在启动期暴露,不是逐请求。 |
-| `suspend-threshold` | int | 0 | 连续失败多少次将实例逐出池(outlier suspension)。0 关闭。 | 不配则死实例一直吃轮询份额;配合 resilience 让熔断兜住失败。 |
-| `suspend-for` | duration | 0 | 被逐出实例多久后放回做 half-open 试探。`suspend-threshold=0` 时忽略。 | 开了逐出但配 0 → 立即试探回弹(抖动)。 |
+| `discovery` | string | "" | 发现后端 bean 名(bean 名=标签，由 registry starter 注册)。`service-name` 未配 `addr` 时必填(config.go validate)。 | 缺失 → 快速失败。名字未知 → 装配期报错并列出已注册 bean(starter.go newRoute)。 |
 | `observability.level` | string | brief | executor 包裹层的访问日志开关:off / brief / detailed(observe/config.go:50)。 | brief 默认**开**——预期每次受保护调用一条日志。 |
 | `observability.maxArgBytes` | int | 512 | 日志中参数截断长度。 | 大 body 被静默截断。 |
 | `observability.skipOps` | []string | "" | 不记访问日志的操作名。 | |
@@ -325,7 +328,8 @@ curl -s '127.0.0.1:9471/greet?name=x'; curl -s '127.0.0.1:9472/greet?name=x'  # 
 kill %1
 ```
 
-把 `balancer=round_robin` 换成 `least_conn` 或加第三个 endpoint 看打散变化;用真实注册
+把 conf/govern.properties 里规则的 `balancer` 从 `round_robin` 换成 `least_conn`,或加第三个
+endpoint,看打散变化——池是原地换策略的,不用重启;用真实注册
 中心注销实例后,后端快照会丢掉它,绑 loader 的 `Pool` 不再选它(httpx.go:200-221)。
 
 ### 4.3 熔断演练 ——打开、快速失败、恢复
@@ -347,6 +351,7 @@ fault 挂在同一治理 source 上;`govern.fault.*` 热加载(见 example-load 
 在配置文件里翻转:
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.fault.enabled=true
 govern.fault.rate=0.5
 govern.fault.error=timeout    # 或 generic / reset
@@ -375,7 +380,7 @@ govern.fault.error=timeout    # 或 generic / reset
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 请求报 `http-client: no transport for target "x"` | 没有 addr/service-name 等于客户端 `Target` 的配置项(错配在请求期而非装配期暴露——starter.go:180-182) | 补一条配置或修正 Target;必须精确匹配。 |
+| 请求报 `http-client: no transport for target "x"` | 没有 addr/service-name 等于客户端 `Target` 的配置项(错配在请求期而非装配期暴露——starter.go:188-195) | 补一条配置或修正 Target;必须精确匹配。 |
 | 容器启动失败:"one of addr or service-name is required" / "discovery is required" | validate() 规则(config.go) | 至少配一种寻址;只配 service-name 时必须配 `discovery`。 |
 | 一切正常但没有熔断/限流 | 未设 `govern.enabled`——治理 executor 在其未启用时是透明 no-op | 启用 starter-governance 并配策略。 |
 | 单次失败即熔断 | `breaker-strategy=error-rate` 且 `min-requests` 低于 starter 下限 | starter 已把 `min-requests` 下限提到 5;可在 govern rule 调高 `error-rate-threshold`/`min-requests`。 |

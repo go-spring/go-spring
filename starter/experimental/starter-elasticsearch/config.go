@@ -18,10 +18,6 @@
 // ${spring.elasticsearch}.* and the Driver selection key.
 package StarterElasticsearch
 
-import (
-	"go-spring.org/cloud/discovery"
-)
-
 // Config defines Elasticsearch client connection configuration.
 type Config struct {
 	// Addresses is the list of Elasticsearch node addresses to connect to,
@@ -49,10 +45,15 @@ type Config struct {
 	// used to verify self-signed HTTPS endpoints. Default is empty.
 	CertificateFingerprint string `value:"${certificate-fingerprint:=}"`
 
-	// MaxRetries is the maximum number of retries for a request, default is 3.
+	// MaxRetries is how many times the Elasticsearch client re-issues a request
+	// that failed with a retryable error, default is 3. This retry is INSIDE the
+	// client, so it multiplies with govern's `max-retries` for the same resource
+	// when both are non-zero: set `disable-retry=true` (or 0 here) if you route
+	// retries through govern instead, or leave govern's at 0 and use this one.
 	MaxRetries int `value:"${max-retries:=3}"`
 
-	// DisableRetry disables the retry mechanism entirely, default is false.
+	// DisableRetry disables the client's retry mechanism entirely, default is
+	// false. See MaxRetries for how it interacts with govern's.
 	DisableRetry bool `value:"${disable-retry:=false}"`
 
 	// CompressRequestBody enables gzip compression of request bodies, default is false.
@@ -82,15 +83,12 @@ type Config struct {
 	Scheme string `value:"${scheme:=}"`
 
 	// Discovery names the discovery backend bean that resolves ServiceName.
-	// It is only consulted when ServiceName is set. The bean itself is injected
-	// by the starter's constructor from this label; the default label is
-	// "default".
-	Discovery string `value:"${discovery:=default}"`
-
-	// backend is the discovery backend instance the Discovery label above
-	// cites. It is populated by the starter wiring (newClient injects the named
-	// discovery.Discovery bean), never bound from configuration.
-	backend discovery.Discovery
+	// It is only consulted when ServiceName is set. The starter wiring resolves
+	// this label to the backend bean and hands the result to the client assembly
+	// (and on to the Driver) as the backend argument. Empty means unset: no
+	// discovery backend is wired and the entry must not route by service-name
+	// alone.
+	Discovery string `value:"${discovery:=}"`
 
 	// DiscoveryScheme is the URL scheme ("http" or "https") prepended to each
 	// discovered "host:port" endpoint, since discovery yields addresses without a

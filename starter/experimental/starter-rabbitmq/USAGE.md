@@ -8,8 +8,8 @@ and the runnable [example/](example/) / [example-otel/](example-otel/). **AMQP 0
 go-spring's increment.
 
 **Activation**: the module registers under `gs.OnProperty("spring.rabbitmq")` [starter.go:34]
-— a prefix check, so any `spring.rabbitmq.*` property activates it. Multi-instance only:
-each `spring.rabbitmq.<name>` block yields one named `*amqp.Connection` bean; there is no
+— a prefix check, so any `spring.rabbitmq.instances.*` property activates it. Multi-instance only:
+each `spring.rabbitmq.instances.<name>` block yields one named `*amqp.Connection` bean; there is no
 `__default__` singleton.
 
 ---
@@ -131,18 +131,18 @@ func handle(ctx context.Context, msg *messaging.Message) error {
 **conf/app.properties** — the complete, commented surface:
 
 ```properties
-# --- rabbitmq (two named instances would be spring.rabbitmq.<b>.* etc.) -------
-spring.rabbitmq.demo.url=amqp://guest:guest@127.0.0.1:5672/
-spring.rabbitmq.demo.vhost=
-spring.rabbitmq.demo.heartbeat=10s
+# --- rabbitmq (two named instances would be spring.rabbitmq.instances.<b>.* etc.) -------
+spring.rabbitmq.instances.demo.url=amqp://guest:guest@127.0.0.1:5672/
+spring.rabbitmq.instances.demo.vhost=
+spring.rabbitmq.instances.demo.heartbeat=10s
 
 # TLS (off by default; amqps:// URL also enables it implicitly):
-#spring.rabbitmq.demo.tls.enabled=true
-#spring.rabbitmq.demo.tls.ca-file=/etc/ssl/rabbit-ca.pem
-#spring.rabbitmq.demo.tls.cert-file=/etc/ssl/rabbit-client.pem
-#spring.rabbitmq.demo.tls.key-file=/etc/ssl/rabbit-client.key
-#spring.rabbitmq.demo.tls.server-name=rabbit.example.com
-#spring.rabbitmq.demo.tls.insecure-skip-verify=false
+#spring.rabbitmq.instances.demo.tls.enabled=true
+#spring.rabbitmq.instances.demo.tls.ca-file=/etc/ssl/rabbit-ca.pem
+#spring.rabbitmq.instances.demo.tls.cert-file=/etc/ssl/rabbit-client.pem
+#spring.rabbitmq.instances.demo.tls.key-file=/etc/ssl/rabbit-client.key
+#spring.rabbitmq.instances.demo.tls.server-name=rabbit.example.com
+#spring.rabbitmq.instances.demo.tls.insecure-skip-verify=false
 
 # --- actuator + otel (same keys as example-otel/conf/app.properties) ---------
 spring.actuator.addr=:9370
@@ -184,7 +184,7 @@ import starter-rabbitmq
   └─ gs.Module(gs.OnProperty("spring.rabbitmq")) registers a group            [starter.go:34]
         │
 gs.Run()
-  ├─ bind: conf.BindEach over spring.rabbitmq.* → one Config per instance,
+  ├─ bind: conf.BindEach over spring.rabbitmq.instances.* → one Config per instance,
   │   Provide newClient with .Name(<instance>).Destroy(destroyClient)         [starter.go:35-39]
   ├─ newClient (per instance):
   │   ├─ optional Driver bean (none → bundled DefaultDriver)                   [starter.go:57-61]
@@ -206,15 +206,18 @@ The executor attached to each connection is built inside-out in `applyResilience
 [command.go:234-240]:
 
 ```
-fault.WrapExecutor( resilience.ExecutorFor(resource) )   ← outer
+fault.WrapExecutor( resilience.ExecutorFor("rabbitmq", resource) )   ← outermost
         │
-   resilience.WrapExecutor(exec, "rabbitmq")                 ← wrapped around it
+   observe layer (applied inside resolve)                  ← wrapped around the governed executor
+        │
+   governed executor (limiter / breaker / retry)           ← around your call
         │
    your call (ch.PublishWithContext)                       ← innermost
 ```
 
-So a guarded publish first passes fault injection / rate-limit / circuit decisions, and
-only calls that survive are observed (span + `resilience.*` metrics + access log). The
+So a guarded publish is fault-wrapped from the outside: an injected failure flows
+through the observe layer (span + `resilience.*` metrics + access log) and the governed
+executor's retry / limiter / breaker, exactly as a real failure would. The
 executor comes from the neutral `resilience.ExecutorFor` seam — with governance off it is
 a transparent no-op, and `guard` doesn't even find an executor unless one was stored
 (command.go:253-260 pass-through).
@@ -222,8 +225,8 @@ a transparent no-op, and `guard` doesn't even find an executor unless one was st
 **What is NOT guarded**: raw `ch.PublishWithContext` calls on a channel you opened yourself,
 the entire consume path, queue/exchange declares and acks all bypass resilience. Consume-side
 protection is your handler's concern. The driver's `Publish` **is** guarded — it routes through
-`GuardedPublish` with the connection-scoped executor [client.go]; set the instance key
-`governance=false` to make every call path run bare.
+`GuardedPublish` with the connection-scoped executor [client.go]; give the resource label
+(`rabbitmq:<vhost|url>`) an all-zero rule to make every call path effectively bare.
 
 ### 2.3 One publish and one consume, layer by layer (driver path)
 
@@ -267,7 +270,7 @@ is a resilience sentinel. Manual tracing (`StartPublishSpan` / `StartConsumeSpan
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.rabbitmq.<name>.*`. Four own value tags
+All keys live under `spring.rabbitmq.instances.<name>.*`. Four own value tags
 (config.go:28-55) plus the shared tlsconf (6) block = 10; 1 required.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -279,10 +282,12 @@ All keys live under `spring.rabbitmq.<name>.*`. Four own value tags
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | Custom CA / mTLS pair, loaded by the shared `tlsconf` block (uniform keys across starters, config.go:44-48). | Missing files → boot fails in TLS build [driver.go:64-68]. |
 | `tls.server-name` | string | "" | SNI/verification name override. | Mismatch → x509 hostname error at boot. |
 | `tls.insecure-skip-verify` | bool | false | Skips cert verification. | true in prod = silent MITM exposure. |
-| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedPublish` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
-No `driver` key: connection assembly is owned by an optional Driver bean (§2.1) or the
-bundled `DefaultDriver` (config.go / driver.go).
+The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
+optional Driver bean injected by type (§2.1) or the bundled `DefaultDriver` (config.go /
+driver.go); set → that bean by name, and naming a missing bean fails startup. When several
+Driver beans coexist, an entry selects one by name: `spring.rabbitmq.instances.<name>.driver =
+<bean-name>` (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type).
 
 Reconciled against `grep -rhoE 'value:"[^"]+"'` over the starter: own tags are exactly
 `${url}`, `${vhost:=}`, `${heartbeat:=10s}`, `${tls}`; the
@@ -310,7 +315,8 @@ With starter-governance and a fault rule on the rabbitmq resource
    `resilience.*` metrics + `_app_rabbitmq_access` log record emitted.
 2. Driver `Publish` under the same rule → the same resilience-sentinel error (it rides the
    connection-scoped executor, §2.2). Raw `PublishWithContext` on your own channel →
-   unaffected (no executor hop). Per-instance opt-out: `governance=false`.
+   unaffected (no executor hop). Opting out is resource-level: an all-zero rule for
+   `rabbitmq:<vhost|url>`.
 
 ### 4.3 Round-trip / message mapping survival
 

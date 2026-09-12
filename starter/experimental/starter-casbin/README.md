@@ -27,8 +27,8 @@ Casbin needs a [model file](example/conf/model.conf) (the matching rules) and a
 [configuration file](example/conf/app.properties):
 
 ```properties
-spring.casbin.rbac.model=./conf/model.conf
-spring.casbin.rbac.policy=./conf/policy.csv
+spring.casbin.instances.rbac.model=./conf/model.conf
+spring.casbin.instances.rbac.policy=./conf/policy.csv
 ```
 
 The last key segment (`rbac`) is the bean name.
@@ -70,7 +70,7 @@ The [example.go](example/example.go) program builds an RBAC enforcer and asserts
 
 ## Advanced Features
 
-* **Multiple enforcers**: define several instances under `spring.casbin.*` (one per
+* **Multiple enforcers**: define several instances under `spring.casbin.instances.*` (one per
   domain) and inject each by its bean name.
 * **Pluggable persistence**: the default file adapter keeps this starter database-free.
   To back policies with GORM, Redis, etc., provide a [Casbin adapter](https://casbin.org/docs/adapters)
@@ -83,7 +83,7 @@ The [example.go](example/example.go) program builds an RBAC enforcer and asserts
   }
   ```
   ```properties
-  spring.casbin.rbac.adapter=gorm
+  spring.casbin.instances.rbac.adapter=gorm
   ```
 
   The starter stays free of any storage driver on purpose — the adapter lives in your
@@ -91,6 +91,6 @@ The [example.go](example/example.go) program builds an RBAC enforcer and asserts
   per-instance `gs.Module` injects the named adapter/watcher bean into each enforcer, so
   there is no package-level registry.
 * **Hot reload / multi-instance sync**: provide a [Casbin watcher](https://casbin.org/docs/watchers)
-  as a bean named by `spring.casbin.<inst>.watcher`. When a peer signals a policy change,
+  as a bean named by `spring.casbin.instances.<inst>.watcher`. When a peer signals a policy change,
   the enforcer automatically calls `LoadPolicy`. The watcher's background resources are
   released on shutdown via the starter's destroy callback.

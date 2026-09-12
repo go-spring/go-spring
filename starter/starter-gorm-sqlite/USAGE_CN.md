@@ -8,7 +8,7 @@
 共享的 wrapper 生命周期、连接池/observe/health 接线与 `UseDBCustomizer` 见
 [gormcore](../starter-gorm/USAGE_CN.md)，此处不再重复。
 
-**激活条件**：`spring.gorm.sqlite` 下每个条目注册一个 `*starter.DB` bean（外加配对的
+**激活条件**：`spring.gorm.sqlite` 下每个条目注册一个名为 `sqlite.<条目名>` 的 `*gormcore.DB` bean（外加配对的
 `health.Indicator`）；没有任何条目时 starter 不注册任何东西，应用正常启动
 （`starter_test.go:TestSqliteDefaultsNotTriggered`）。SQLite 是进程内数据库：**本方言
 没有 TLS 配置块，也没有服务发现通道**（共享 Common 的 discovery keys 已刻意不再绑定 —— 见 §3.2）。
@@ -53,7 +53,8 @@ import (
     "time"
 
     "go-spring.org/spring/gs"
-    starter "go-spring.org/starter-gorm-sqlite"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-sqlite"
 )
 
 type greeting struct {
@@ -62,7 +63,7 @@ type greeting struct {
 }
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // conf 里的 "primary" 实例
+    DB *gormcore.DB `autowire:"sqlite.primary"` // conf 里的 "primary" 实例
 }
 
 var manual = flag.Bool("manual", false, "保持进程运行")
@@ -98,15 +99,15 @@ func runTest(s *Service) {
 ```properties
 # 内存数据库；每个连接都会打开自己的 :memory: 存储，因此必须把连接池钉在
 # 单连接上，内存往返才稳定（见 §4.1）。
-spring.gorm.sqlite.primary.file=:memory:
-spring.gorm.sqlite.primary.journal-mode=wal
-spring.gorm.sqlite.primary.busy-timeout=5000
-spring.gorm.sqlite.primary.foreign-keys=true
-spring.gorm.sqlite.primary.max-open-conns=1
+spring.gorm.sqlite.instances.primary.file=:memory:
+spring.gorm.sqlite.instances.primary.journal-mode=wal
+spring.gorm.sqlite.instances.primary.busy-timeout=5000
+spring.gorm.sqlite.instances.primary.foreign-keys=true
+spring.gorm.sqlite.instances.primary.max-open-conns=1
 
 # 文件型数据库展示更典型的多连接配置。
-# spring.gorm.sqlite.file.file=/tmp/go-spring-example.db
-# spring.gorm.sqlite.file.max-open-conns=8
+# spring.gorm.sqlite.instances.file.file=/tmp/go-spring-example.db
+# spring.gorm.sqlite.instances.file.max-open-conns=8
 ```
 
 **验证**（与 `example/check.sh` 同构）：
@@ -128,7 +129,7 @@ grep "SQLite round trip OK:" smoke.out    # 必须打印；仅看退出码不算
 
 ```
 import starter-gorm-sqlite
-  └─ init(): gormcore.Register(Dialect{Prefix: "spring.gorm.sqlite", ...})
+  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.sqlite", ...})
         │
 gs.Run()
   ├─ OnProperty("spring.gorm.sqlite") 仅在存在 ≥1 条目时触发
@@ -151,7 +152,7 @@ gs.Run()
 `db.WithContext(ctx).First(&g, 1)`：
 
 1. gorm 的 `gorm:query` processor 执行 —— 但 gormcore 的 `ApplyCallbacks` 已把它
-   *替换*为在实例 resilience executor（`${govern}` 的 timeout/retry/breaker，放火时
+   *替换*为在实例 resilience executor（治理规则 `govern.*` 的 timeout/retry/breaker，放火时
    还有 fault 注入器）之下运行的包装。`gorm.ErrRecordNotFound` 视为成功，"无行"
    不会触发熔断（`starter-gorm/resilience/callbacks.go:runGuard`）。
 2. observe 插件的 `before_query` 开 span + in-flight 指标
@@ -166,7 +167,7 @@ gs.Run()
 
 ## 3. 逐 key 行为参考
 
-key 位于 `spring.gorm.sqlite.<name>.*`。连接池 keys（6 个，`gormcore.PoolSettings`）、
+key 位于 `spring.gorm.sqlite.instances.<name>.*`。连接池 keys（6 个，`gormcore.PoolSettings`）、
 `observe.enabled` 与 wrapper 级 `observability` 为共享项 —— 见
 [gormcore](../starter-gorm/USAGE_CN.md#2-配置参考)。
 
@@ -206,8 +207,8 @@ key 位于 `spring.gorm.sqlite.<name>.*`。连接池 keys（6 个，`gormcore.Po
 `max-open-conns=1`）：
 
 ```properties
-# spring.gorm.sqlite.primary.max-open-conns=   ← 注释掉即可复现
-spring.gorm.sqlite.primary.file=:memory:
+# spring.gorm.sqlite.instances.primary.max-open-conns=   ← 注释掉即可复现
+spring.gorm.sqlite.instances.primary.file=:memory:
 ```
 
 ```bash

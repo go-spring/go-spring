@@ -28,9 +28,9 @@ import _ "go-spring.org/starter-neo4j"
 在项目的[配置文件](example/conf/app.properties)中添加 Neo4j 配置，比如：
 
 ```properties
-spring.neo4j.graph.uri=bolt://127.0.0.1:7687
-spring.neo4j.graph.username=neo4j
-spring.neo4j.graph.password=password
+spring.neo4j.instances.graph.uri=bolt://127.0.0.1:7687
+spring.neo4j.instances.graph.username=neo4j
+spring.neo4j.instances.graph.password=password
 ```
 
 ### 3. 注入 Neo4j 实例
@@ -70,13 +70,13 @@ res, err := neo4j.ExecuteQuery(ctx, s.Neo4j,
 * **支持 Neo4j 扩展**：可以通过实现 `Driver` 接口来扩展 Neo4j 功能，参见示例中的 `AnotherNeo4jDriver` 实现。
 * **服务发现**：在实例上设置 `service-name` 后，地址将通过已注册的 discovery 后端解析，
   而非直接使用 URI 中的 host。端点在启动时解析一次，并拼接进 URI 的 host。
-  用 `discovery` 选择后端（默认 `default`）；公司通过 `discovery.Register` 注册一次自己的命名服务即可。
+  用 `discovery` 选择后端（必填，无默认后端）；公司通过 `discovery.Register` 注册一次自己的命名服务即可。
 
   ```properties
-  spring.neo4j.disc.uri=bolt://0.0.0.0:0
-  spring.neo4j.disc.username=neo4j
-  spring.neo4j.disc.password=password
-  spring.neo4j.disc.service-name=neo4j-cluster
+  spring.neo4j.instances.disc.uri=bolt://0.0.0.0:0
+  spring.neo4j.instances.disc.username=neo4j
+  spring.neo4j.instances.disc.password=password
+  spring.neo4j.instances.disc.service-name=neo4j-cluster
   ```
 
   局限：与支持自定义 dialer 的客户端不同，neo4j 驱动基于 URI 构建连接池，且未暴露 dialer 注入点，

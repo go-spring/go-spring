@@ -32,12 +32,17 @@ func init() {
 	// Register multiple MQTT clients as a group.
 	// Each instance is created according to the configuration in "${spring.mqtt}".
 	// This allows defining multiple MQTT clients dynamically.
-	gs.Module(gs.OnProperty("spring.mqtt"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.mqtt}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.mqtt.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.mqtt.instances}", func(name string, c Config) error {
+			// The Driver param (index 3) is selected by the entry's ${driver}
+			// key: unset → "?" (nullable by-type — injects the single Driver
+			// bean when a company provides one, nil otherwise, and newClient
+			// falls back to DefaultDriver); set → that bean name, and naming
+			// a bean that does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("${spring.mqtt.instances."+name+".driver:=${spring.mqtt.default.driver:=?}}")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
@@ -82,7 +87,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (mqtt.C
 		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: connect failed broker=%s: %v", c.Broker, err)
 		return nil, err
 	}
-	if err := applyResilience(c, client, resilience.ResourceLabel("mqtt", c.Broker)); err != nil {
+	if err := applyResilience(client, resilience.ResourceLabel("mqtt", c.Broker)); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: resilience setup failed: %v", err)
 		client.Disconnect(250)
 		return nil, err

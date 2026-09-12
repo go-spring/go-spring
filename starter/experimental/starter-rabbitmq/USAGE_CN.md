@@ -7,8 +7,8 @@
 [RabbitMQ 官方文档](https://www.rabbitmq.com/docs)** —— 本文只写 go-spring 的增量。
 
 **激活条件**：模块经 `gs.OnProperty("spring.rabbitmq")` 注册 [starter.go:34] ——
-前缀匹配，出现任意 `spring.rabbitmq.*` 配置即激活。仅多实例：每个
-`spring.rabbitmq.<name>` 块产出一个命名的 `*amqp.Connection` bean；无
+前缀匹配，出现任意 `spring.rabbitmq.instances.*` 配置即激活。仅多实例：每个
+`spring.rabbitmq.instances.<name>` 块产出一个命名的 `*amqp.Connection` bean；无
 `__default__` 单例。
 
 ---
@@ -129,18 +129,18 @@ func handle(ctx context.Context, msg *messaging.Message) error {
 **conf/app.properties** —— 完整注释配置面：
 
 ```properties
-# --- rabbitmq（第二个实例即 spring.rabbitmq.<b>.* 等）------------------------
-spring.rabbitmq.demo.url=amqp://guest:guest@127.0.0.1:5672/
-spring.rabbitmq.demo.vhost=
-spring.rabbitmq.demo.heartbeat=10s
+# --- rabbitmq（第二个实例即 spring.rabbitmq.instances.<b>.* 等）------------------------
+spring.rabbitmq.instances.demo.url=amqp://guest:guest@127.0.0.1:5672/
+spring.rabbitmq.instances.demo.vhost=
+spring.rabbitmq.instances.demo.heartbeat=10s
 
 # TLS（默认关；amqps:// URL 也会隐式启用）：
-#spring.rabbitmq.demo.tls.enabled=true
-#spring.rabbitmq.demo.tls.ca-file=/etc/ssl/rabbit-ca.pem
-#spring.rabbitmq.demo.tls.cert-file=/etc/ssl/rabbit-client.pem
-#spring.rabbitmq.demo.tls.key-file=/etc/ssl/rabbit-client.key
-#spring.rabbitmq.demo.tls.server-name=rabbit.example.com
-#spring.rabbitmq.demo.tls.insecure-skip-verify=false
+#spring.rabbitmq.instances.demo.tls.enabled=true
+#spring.rabbitmq.instances.demo.tls.ca-file=/etc/ssl/rabbit-ca.pem
+#spring.rabbitmq.instances.demo.tls.cert-file=/etc/ssl/rabbit-client.pem
+#spring.rabbitmq.instances.demo.tls.key-file=/etc/ssl/rabbit-client.key
+#spring.rabbitmq.instances.demo.tls.server-name=rabbit.example.com
+#spring.rabbitmq.instances.demo.tls.insecure-skip-verify=false
 
 # --- actuator + otel（与 example-otel/conf/app.properties 同 key）------------
 spring.actuator.addr=:9370
@@ -184,7 +184,7 @@ import starter-rabbitmq
   └─ gs.Module(gs.OnProperty("spring.rabbitmq")) 注册 group               [starter.go:34]
         │
 gs.Run()
-  ├─ 绑定：conf.BindEach 遍历 spring.rabbitmq.* → 每实例一个 Config，
+  ├─ 绑定：conf.BindEach 遍历 spring.rabbitmq.instances.* → 每实例一个 Config，
   │   Provide newClient 并 .Name(<instance>).Destroy(destroyClient)        [starter.go:35-39]
   ├─ newClient（每实例）：
   │   ├─ 可选 Driver bean（无则回退内置 DefaultDriver）                     [starter.go:57-61]
@@ -205,23 +205,26 @@ gs.Run()
 每连接的 executor 在 `applyResilience` 内由内向外构建 [command.go:234-240]：
 
 ```
-fault.WrapExecutor( resilience.ExecutorFor(resource) )   ← 外层
+fault.WrapExecutor( resilience.ExecutorFor("rabbitmq", resource) )   ← 最外层
         │
-   resilience.WrapExecutor(exec, "rabbitmq")                 ← 包在它外面
+   observe 层（在 resolve 内应用）                          ← 包住治理 executor
+        │
+   治理 executor（限流 / 熔断 / 重试）                      ← 包住你的调用
         │
    你的调用（ch.PublishWithContext）                       ← 最内层
 ```
 
-即：受治理的 publish 先经过 fault 注入 / 限流 / 熔断裁决，只有存活下来的调用才被
-观测（span + `resilience.*` 指标 + 访问日志）。executor 经中立的
+即：受治理的 publish 在外层被 fault 包裹——注入的故障会穿过 observe 层（span +
+`resilience.*` 指标 + 访问日志）与治理 executor 的重试 / 限流 / 熔断，与真实失败
+走完全相同的路径。executor 经中立的
 `resilience.ExecutorFor` seam 获取 —— 治理关闭时它是透明 no-op，`guard` 甚至查不到
 executor 而直接透传（command.go:253-260）。
 
 **不在守卫内**：`GuardedPublish` 是唯一受守卫的入口 [command.go:271-275]。driver 的
 裸 `ch.PublishWithContext`、整个消费路径、queue/exchange 声明与 ack 全部绕过
 resilience。消费侧保护是 handler 自己的事。driver 的 `Publish` **已受保护**——走
-`GuardedPublish` 与连接级 executor [client.go]；实例 key `governance=false` 可让所有
-调用路径裸跑。
+`GuardedPublish` 与连接级 executor [client.go]；想让所有调用路径事实上裸跑，给
+resource label（`rabbitmq:<vhost|url>`）配一条全零 rule。
 
 ### 2.3 一次 publish 与一次 consume 逐层走读（driver 路径）
 
@@ -263,7 +266,7 @@ channel 侧的对应物。
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.rabbitmq.<name>.*`。自有 value tag 4 个（config.go:28-55）
+所有 key 位于 `spring.rabbitmq.instances.<name>.*`。自有 value tag 4 个（config.go:28-55）
 加共享 tlsconf（6 个）块共 10 个；必填 1 个。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -275,9 +278,11 @@ channel 侧的对应物。
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | 自定义 CA / mTLS 证书对，由共享 `tlsconf` 块加载（跨 starter 统一 key，config.go:44-48）。 | 文件缺失 → 启动期 TLS 构建失败 [driver.go:64-68]。 |
 | `tls.server-name` | string | "" | SNI/校验名覆盖。 | 不匹配 → 启动期 x509 hostname 错误。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过证书校验。 | 生产置 true = 静默 MITM 暴露。 |
-| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedPublish` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
-无 `driver` key：连接装配由可选 Driver bean（§2.1）或内置 `DefaultDriver` 持有
+`driver` key 为实例按名指定 Driver bean：不配置 → 装配由按类型注入的可选 Driver bean
+（§2.1）或内置 `DefaultDriver` 持有；配置 → 按名注入该 bean，指定的 bean 不存在则启动
+失败。当容器中存在多个 Driver bean 时，实例可按名指定：
+`spring.rabbitmq.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean）。
 （config.go / driver.go）。
 
 已与 `grep -rhoE 'value:"[^"]+"'` 对账：自有 tag 恰为 `${url}`、`${vhost:=}`、
@@ -305,7 +310,7 @@ docker stop demo-rabbit && go run .   # example 下：broker 停掉跑 ./check.s
    产出 `resilience.*` 指标 + `_app_rabbitmq_access` 日志记录。
 2. 同一规则下的 driver `Publish` → 同样的 resilience 哨兵错误（走连接级 executor，
    §2.2）。自行开 channel 裸调 `PublishWithContext` → 不受影响（没有 executor 跳跃）。
-   实例级退出口：`governance=false`。
+   退出口在资源级：给 `rabbitmq:<vhost|url>` 配一条全零 rule。
 
 ### 4.3 消息往返 / 映射字段存活
 

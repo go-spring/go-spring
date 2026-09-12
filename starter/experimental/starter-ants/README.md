@@ -24,7 +24,7 @@ import _ "go-spring.org/starter-ants"
 Add ants configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.ants.main.size=256
+spring.ants.instances.main.size=256
 ```
 
 ### 3. Inject the ants Pool

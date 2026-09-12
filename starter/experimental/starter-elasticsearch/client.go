@@ -35,11 +35,11 @@ import (
 
 // Client is the wrapper bean Elasticsearch clients are injected
 // as. It embeds the concrete *elasticsearch.Client (so every generated method
-// promotes unchanged) and field-injects the resilience policy via gs.Dync so it
-// hot-reloads on config change. newClient returns one; gs calls Init
-// (InitMethod) to build
-// the observe transport + executor and swap them into the client's dynamic
-// transport.
+// promotes unchanged) and resolves its resilience executor through the neutral
+// [resilience.ExecutorFor] seam, so the policy comes from the governance
+// document and hot-reloads inside the executor. newClient returns one; gs calls
+// Init (InitMethod) to build the observe transport + executor and swap them into
+// the client's dynamic transport.
 //
 // The elasticsearch seam: the transport is fixed inside elasticsearch.Config at
 // construction and cannot be swapped on the client afterwards. To preserve a
@@ -78,11 +78,7 @@ func (o *Client) Init() error {
 	obs := newDBObserver("elasticsearch")
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resourceLabel(o.cfg)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	// Wrap the executor with observe-resilience so circuit-breaker trips,
-	// rate-limit rejects, bulkhead rejections and retries emit a span + call
-	// counter (by outcome) + duration histogram + access log.
-	exec = resilience.WrapExecutor(exec, "elasticsearch")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("elasticsearch", o.resource))
 	o.exec = exec
 	if o.dyn != nil {
 		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,

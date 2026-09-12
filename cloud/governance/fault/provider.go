@@ -22,8 +22,8 @@ import "sync/atomic"
 // [resilience.ExecutorFor] gives clients a neutral way to obtain a governance-backed
 // executor WITHOUT naming cloud/governance, [InjectorFor] gives them the same neutral
 // access to the process-wide fault injector — so fault config, like resilience config,
-// flows from the single ${govern} Dync in starter-govern rather than from a per-starter
-// gs.Dync[fault.Config].
+// flows from the single [governance.Config] (and so the same source) rather than from a
+// per-starter fault config.
 //
 // Unlike the resilience seam (which memoizes one executor per resource label), fault
 // resolves to ONE process-global injector: per-resource differences are expressed inside
@@ -50,8 +50,8 @@ func RegisterInjector(in *Injector) {
 }
 
 // InjectorFor returns the process-wide fault injector, or nil when none is registered
-// (starter-govern not imported, or governance disabled). It is the single call site
-// clients use instead of building their own injector from a gs.Dync[fault.Config]: pass
+// (starter-governance not imported, or governance disabled). It is the single call site
+// clients use instead of building their own injector from their own config: pass
 // the result straight to [WrapExecutor] (client side) or [Apply] (server side); both are
 // nil-safe. Hot-reload is handled by the center, which swaps the injector's config in
 // place via [Injector.SetConfig], so callers always observe the latest config on the next

@@ -2,26 +2,42 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.webhook",
   "type": "object",
+  "description": "Two buckets: spring.webhook.default holds family-wide values (each overridable per instance), spring.webhook.instances.<name> holds one entry per named instance. No other key belongs directly under spring.webhook.",
   "properties": {
-    "url": {
-      "type": "string",
-      "description": "webhook endpoint the notification is POSTed to"
-    },
-    "channel": {
-      "type": "string",
-      "default": "generic",
-      "enum": ["generic", "dingtalk", "feishu", "wecom", "slack"],
-      "description": "payload format / signing scheme of the receiver"
-    },
-    "secret": {
-      "type": "string",
-      "default": "",
-      "description": "DingTalk 加签 secret (SEC...) or Feishu signing secret; ignored by other channels"
-    },
-    "timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s'",
-      "default": "5s"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "webhook endpoint the notification is POSTed to"
+          },
+          "channel": {
+            "type": "string",
+            "default": "generic",
+            "enum": [
+              "generic",
+              "dingtalk",
+              "feishu",
+              "wecom",
+              "slack"
+            ],
+            "description": "payload format / signing scheme of the receiver"
+          },
+          "secret": {
+            "type": "string",
+            "default": "",
+            "description": "DingTalk 加签 secret (SEC...) or Feishu signing secret; ignored by other channels"
+          },
+          "timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s'",
+            "default": "5s"
+          }
+        }
+      }
     }
   }
 }

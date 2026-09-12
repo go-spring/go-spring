@@ -34,7 +34,7 @@ require (
     github.com/gin-gonic/gin    v1.12.0
     go-spring.org/spring        v1.3.x
     go-spring.org/starter-gin   latest
-    go-spring.org/starter-governance latest // optional: admission + fault via ${govern}
+    go-spring.org/starter-governance latest // optional: admission + fault via the governance center
     go-spring.org/starter-otel       latest // optional: real trace/metric export
 )
 ```
@@ -133,6 +133,7 @@ spring.observability.metrics.path=/metrics
 
 # --- governance (inbound admission + fault drills) ----------------------------
 # Same keys example-resilience uses: 5 QPS limit → burst shed with 429.
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -260,7 +261,7 @@ All keys live under `spring.gin.server.*`. Reconciled against
 | `secureHeaders.enabled` | bool | false | When on: `X-Content-Type-Options:nosniff` always; `frameOptions` (DENY), `referrerPolicy` (no-referrer); "" omits. | — |
 | `secureHeaders.frameOptions` / `.referrerPolicy` | string | DENY / no-referrer | See above. | — |
 | `secureHeaders.hsts.enabled` / `.maxAge` / `.includeSubDomains` / `.preload` | — | off / 0s / false / false | Emitted only when the request is TLS and maxAge>0 (per-request `c.Request.TLS` check). | Set without TLS → header silently absent. |
-| `admission` / `fault` | — | — | **No starter keys.** Driven entirely by `${govern}` (governance center), resource label `gin::{addr}`, hot-reloaded. | — |
+| `admission` / `fault` | — | — | **No starter keys.** Driven entirely by the governance center (the `govern.*` rules document), resource label `gin::{addr}`, hot-reloaded. | — |
 
 ---
 
@@ -376,5 +377,5 @@ Design suspects (audit ledger; carried over from the previous edition):
    `newHTTPMetrics`/`newSSEMetrics`).
 6. **Still open** — example-resilience's doc comment and README still cite the nonexistent
    `spring.gin.server.resilience.enabled` key (admission is governance-driven since the
-   `${govern}` center landed; the conf is correct, the prose is stale).
+   governance center landed; the conf is correct, the prose is stale).
 

@@ -148,6 +148,56 @@ func TestRegister_ArmsImmediately(t *testing.T) {
 	}
 }
 
+// Cancel must detach a subscriber for good: no further notification, and no
+// residue left in the center — a client that rebuilds itself repeatedly must
+// not grow the subscriber map.
+func TestRegister_CancelDetaches(t *testing.T) {
+	c := newCenter(enabledTimeout(100))
+
+	var n int
+	sub := c.register("redis:cache", func(p resilience.Policy) { n++ })
+	if n != 1 {
+		t.Fatalf("Register should arm immediately: got %d, want 1", n)
+	}
+
+	sub.Cancel()
+	// Idempotent: a second cancel must not panic or re-detach something else.
+	sub.Cancel()
+
+	c.refresh(enabledTimeout(300))
+	if n != 1 {
+		t.Fatalf("cancelled subscriber must not be notified: got %d, want 1", n)
+	}
+	if _, ok := c.subs["redis:cache"]; ok {
+		t.Fatal("cancelling the last subscriber must drop the label's map entry")
+	}
+
+	// Re-registering after cancel works: it arms with the CURRENT policy (300,
+	// not the 100 the first subscriber saw) and receives later refreshes.
+	sub2 := c.register("redis:cache", func(p resilience.Policy) { n++ })
+	if n != 2 {
+		t.Fatalf("re-register should arm immediately: got %d, want 2", n)
+	}
+	if sub2.Policy.Timeout != dur(300) {
+		t.Fatalf("re-registered subscriber should see the current policy: got %v", sub2.Policy.Timeout)
+	}
+	c.refresh(enabledTimeout(400))
+	if n != 3 {
+		t.Fatalf("re-registered subscriber must receive refreshes: got %d, want 3", n)
+	}
+	sub2.Cancel()
+}
+
+// A Subscription is safe to hold and cancel even when the center was never
+// armed: the zero value is inert.
+func TestSubscription_ZeroIsInert(t *testing.T) {
+	var s Subscription
+	s.Cancel()
+	if !s.Policy.IsZero() {
+		t.Fatal("zero Subscription must carry a zero policy")
+	}
+}
+
 func TestRefresh_NotifiesOnlyChangedLabels(t *testing.T) {
 	c := newCenter(Config{
 		Enabled: true,
@@ -217,7 +267,7 @@ func TestDriver(t *testing.T) {
 // TestSource_PushSourceDrivesCenter covers the custom-source end-to-end path:
 // a PushSource installed via the SetSource facade arms the center from its
 // snapshot and later pushes fan out to registered subscribers — the same
-// fan-out the default source drives on the plain-${govern} path.
+// fan-out any source drives.
 func TestSource_PushSourceDrivesCenter(t *testing.T) {
 	defer Reset()
 

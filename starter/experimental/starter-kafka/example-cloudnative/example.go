@@ -20,7 +20,7 @@
 //   - ROUND-TRIP: the client op is a produce -> consume through the broker;
 //     publishing via GuardedProduceSync routes the sync produce path through
 //     the selected resilience driver.
-//   - RESILIENCE: with spring.kafka.a.resilience.enabled, synchronous produces
+//   - RESILIENCE: with spring.kafka.instances.a.resilience.enabled, synchronous produces
 //     run through the builtin "default" executor; a burst is rejected with
 //     ErrRateLimited. (Consume is not guarded: franz-go's poll path is passive.)
 //   - HEALTH: the app exports its own kafka health.Indicator (Ping probe), which
@@ -31,7 +31,7 @@
 //     OTel globals installed by starter-otel when present.
 //
 // Discovery is intentionally omitted: Kafka seeds its clients with bootstrap
-// brokers (spring.kafka.a.brokers), so there is no service-name to resolve.
+// brokers (spring.kafka.instances.a.brokers), so there is no service-name to resolve.
 //
 // The app self-tests every capability and exits non-zero on failure.
 package main

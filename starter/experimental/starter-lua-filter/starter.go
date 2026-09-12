@@ -31,12 +31,12 @@ var (
 func init() {
 	// Register multiple Lua filters as a group, one per entry under
 	// "${spring.lua.filter}". Each bean is named after its config sub-key
-	// (e.g. spring.lua.filter.guard -> bean "guard"), so callers select a
+	// (e.g. spring.lua.filter.instances.guard -> bean "guard"), so callers select a
 	// filter with gs.TagArg("guard") when wiring their *gs.HttpServeMux.
 	//
 	// The destroy callback closes the pooled Lua VMs at shutdown so their
 	// runtime resources are released.
-	gs.Group("${spring.lua.filter}", newFilter, destroyFilter)
+	gs.Group("${spring.lua.filter.instances}", newFilter, destroyFilter)
 	log.Debugf(context.Background(), starterTag, "lua filter group registered")
 }
 

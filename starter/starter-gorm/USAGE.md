@@ -4,7 +4,7 @@ Detailed usage reference for the shared scaffolding behind every go-spring gorm
 dialect starter (mysql, postgres, sqlite, sqlserver, clickhouse). It is not
 imported by applications directly — import a `starter-gorm-<dialect>` and
 everything documented here comes along. All behavior claims are verified against
-this module's source (`gorm.go`, `open.go`, `register.go`, `extension.go`,
+this module's source (`gorm.go`, `open.go`, `module.go`, `extension.go`,
 `health.go`, `observe/plugin.go`, `resilience/callbacks.go`) and the runnable
 examples under `starter-gorm-mysql/example*`. **GORM semantics (models,
 associations, transactions, migrator) are [gorm's documentation](https://gorm.io/docs/)**
@@ -56,7 +56,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-governance"
-    _ "go-spring.org/starter-gorm-mysql" // registers instances under spring.gorm.mysql.*
+    _ "go-spring.org/starter-gorm-mysql" // registers instances under spring.gorm.mysql.instances.*
     _ "go-spring.org/starter-otel"
 )
 
@@ -71,8 +71,8 @@ package dao
 import (
     "context"
 
-    StarterGormMySql "go-spring.org/starter-gorm-mysql"
-    StarterGorm "go-spring.org/starter-gorm" // gormcore: Ping/Stats/UseDBCustomizer
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-mysql"
     "gorm.io/gorm"
 )
 
@@ -84,11 +84,12 @@ type User struct {
 }
 
 // Repository injects the "primary" instance by name. The bean type is the
-// dialect's *starter.DB, which aliases gormcore.DB (embeds *gorm.DB, so all
-// gorm methods promote unchanged). A second instance ("replica") would be
-// autowire:"replica"; each instance also contributes its own health indicator.
+// shared gormcore.DB (embeds *gorm.DB, so all gorm methods promote unchanged),
+// the same type for every gorm dialect starter. A second instance ("replica")
+// would be autowire:"mysql.replica"; each instance also contributes its own health
+// indicator.
 type Repository struct {
-    DB *StarterGormMySql.DB `autowire:"primary"`
+    DB *gormcore.DB `autowire:"mysql.primary"`
 }
 
 func NewRepository(r *Repository) { /* register as Rooter or provide HTTP handlers */ }
@@ -97,7 +98,7 @@ var _ = func() any {
     // Extension point (dialect-agnostic, shared by all gorm starters):
     // tweak every freshly-opened *gorm.DB before the bean is returned.
     // Must run in an init function, before the container wires.
-    StarterGorm.UseDBCustomizer(func(db *gorm.DB) error {
+    gormcore.UseDBCustomizer(func(db *gorm.DB) error {
         // e.g. prepared-statement caching, an extra Plugin, pool knobs the
         // config does not expose. First error fails the instance.
         return nil
@@ -107,7 +108,7 @@ var _ = func() any {
 
 // PoolStats exposes runtime connection-pool numbers without OTel.
 func (r *Repository) PoolStats() (open, inUse, idle int) {
-    st, err := StarterGorm.Stats(r.DB)
+    st, err := gormcore.Stats(r.DB)
     if err != nil {
         return 0, 0, 0
     }
@@ -122,18 +123,18 @@ var _ = context.Background
 
 ```properties
 # --- gorm mysql instance "primary" (dialect keys abbreviated) ---------------
-spring.gorm.mysql.primary.user=root
-spring.gorm.mysql.primary.password=123456
-spring.gorm.mysql.primary.addr=127.0.0.1:3306
-spring.gorm.mysql.primary.db=test
+spring.gorm.mysql.instances.primary.user=root
+spring.gorm.mysql.instances.primary.password=123456
+spring.gorm.mysql.instances.primary.addr=127.0.0.1:3306
+spring.gorm.mysql.instances.primary.db=test
 
 # Shared keys documented in THIS reference (Common block):
-spring.gorm.mysql.primary.max-open-conns=10
-spring.gorm.mysql.primary.max-idle-conns=5
-spring.gorm.mysql.primary.conn-max-lifetime=30m
-spring.gorm.mysql.primary.conn-max-idle-time=5m
-spring.gorm.mysql.primary.ping-timeout=5s
-spring.gorm.mysql.primary.slow-threshold=200ms
+spring.gorm.mysql.instances.primary.max-open-conns=10
+spring.gorm.mysql.instances.primary.max-idle-conns=5
+spring.gorm.mysql.instances.primary.conn-max-lifetime=30m
+spring.gorm.mysql.instances.primary.conn-max-idle-time=5m
+spring.gorm.mysql.instances.primary.ping-timeout=5s
+spring.gorm.mysql.instances.primary.slow-threshold=200ms
 
 # --- actuator (aggregates the per-instance gorm health indicators) ----------
 spring.http.server.enabled=false
@@ -147,6 +148,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime fault injection / breaker / retry) ------------------
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -180,7 +182,7 @@ curl -s :9370/metrics | grep db_client_operation_duration
 
 ```
 import starter-gorm-mysql
-  └─ init: gormcore.Register(Dialect[Config]{Prefix:"spring.gorm.mysql", ...})
+  └─ init: gormcore.Module(Dialect[Config]{Prefix:"spring.gorm.mysql", ...})
         └─ gs.Module(gs.OnProperty("spring.gorm.mysql"))     [prefix check: any entry fires it]
 gs.Run()
   ├─ config bind: conf.BindEach over ${spring.gorm.mysql} → one Config per <name>
@@ -189,7 +191,7 @@ gs.Run()
   │    │                             service discovery (mysql only), resource label
   │    ├─ gormcore.Open:  gorm.Open → ApplyPool (pool knobs + fail-fast ping)
   │    │                  → ApplyDBCustomizers (user seam, registration order)
-  │    ├─ Provide *DB .Name(<name>).Init((*DB).Init).Destroy((*DB).Destroy)
+  │    ├─ Provide *DB .Name(<dialect>.<entry>).Init((*DB).Init).Destroy((*DB).Destroy)
   │    └─ Provide health.Indicator "gorm:mysql:<name>" (injects the *DB by name,
   │       exports as health.Indicator)  ← .Name is required: multi-instance beans
   │          share type (Indicator, *DB); without distinct names the container
@@ -271,7 +273,7 @@ the same level as the dialect's own fields). Reconciled against
 | `slow-threshold` | duration | 0 | `>0` installs a warn-level gorm slow-query logger whose output is routed through **go-spring.org/log** (`log.Warnf`, TagAppDef) — it lands in the configured appenders, not raw stdout. 0 keeps gorm's default logger. ⚠ The message body is GORM's one-line text, not structured fields. | 0 → no slow log at all; expecting structured fields → the payload is plain text (use the access log for that). |
 | `service-name` | string | — | Switches addressing to service discovery: the dialect binds a discovery-backed dialer so each new connection reaches a live instance. When set, `addr` is ignored (the example uses a dummy `0.0.0.0:0` to prove it). In mesh mode (`GS_MESH=on`) a sidecar owns discovery and `addr` is used as-is. | Unset + no `addr` → dialect build error ("one of addr or service-name must be set"). |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme (e.g. `tls`). ⚠ Dead unless `service-name` is set (only consulted then). | Set without service-name → silently ignored. |
-| `discovery` | string | default | Which registered discovery backend resolves `service-name`. ⚠ Dead unless `service-name` is set. | Set without service-name → silently ignored. |
+| `discovery` | string | — | Which registered discovery backend resolves `service-name`. ⚠ Dead unless `service-name` is set. | Unset or an unregistered name while service-name is set → boot error; set without service-name → silently ignored. |
 | `observe.enabled` | bool | true | Hard kill switch for the gorm observe plugin: when false the plugin is not installed at all — no span, no metric, no access log, no per-query callbacks. | false → per-query observability silently absent (deliberate for hot instances). |
 
 Dead-key notes: for **sqlite** the whole discovery trio (`service-name`/`scheme`/
@@ -368,8 +370,8 @@ endpoint and watch `OpenConnections`/`InUse`/`WaitCount` under load
 |---------|--------------|-----|
 | Boot fails "gorm ping: ..." | DB unreachable/credentials wrong within `ping-timeout` | Fix addr/credentials; raise `ping-timeout` for cold starts. Deliberate fail-fast, not a bug. |
 | No beans register at all | No `spring.gorm.<dialect>.*` entries — `OnProperty(prefix)` never fires | Add at least one instance block; nothing activates by default. |
-| Container fails: duplicate beans | A second Provide of `*DB`/`health.Indicator` without `.Name` | Don't re-provide DB beans yourself; instance beans are named `<name>` / `gorm:<dialect>:<name>` (register.go:78-85). |
-| Injection error "not a simple value"/type mismatch | Injecting `*gorm.DB` instead of the wrapper | Autowire the dialect's `*starter.DB` (alias of `gormcore.DB`); it embeds `*gorm.DB`. |
+| Container fails: duplicate beans | A second Provide of `*DB`/`health.Indicator` without `.Name` | Don't re-provide DB beans yourself; the DB beans are named `<dialect>.<entry>` (e.g. `mysql.primary`) and the health indicators `gorm:<dialect>:<entry>` (module.go:85-97). |
+| Injection error "not a simple value"/type mismatch | Injecting `*gorm.DB` instead of the wrapper | Autowire the shared `*gormcore.DB` bean; it embeds `*gorm.DB`. |
 | No spans/metrics/access log | starter-otel not imported, or `observe.enabled=false` | Import starter-otel; check the per-instance kill switch — it removes the plugin entirely. |
 | Slow-query lines are plain text | `slow-threshold` routes GORM's warn output through go-spring.org/log, but the message body is GORM's one-line text | Filter by message; for structured slow logs use the access log instead. |
 | Queries rejected with rate-limited/circuit-open errors | Governance resilience engaged (or fault fired) | Intended protection; check `govern.*` config and the fault drill steps (§4.4). |

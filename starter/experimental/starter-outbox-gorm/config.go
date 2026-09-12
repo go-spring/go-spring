@@ -22,7 +22,7 @@ import (
 	"go-spring.org/cloud/experimental/outbox"
 )
 
-// Config binds ${spring.outbox.<name>} — one relay instance per entry. Each
+// Config binds ${spring.outbox.instances.<name>} — one relay instance per entry. Each
 // relay drains one gorm database's outbox_message table to one messaging
 // driver. Fields mirror [outbox.Config]; the zero-value relay defaults apply
 // (1s poll / batch 100 / 8 attempts / backoff 1s doubling capped 1m / ".dlq").

@@ -29,19 +29,19 @@ import _ "go-spring.org/starter-security-jwt"
 ### 2. Configure an Authenticator
 
 Add configuration in your project's [configuration file](example/conf/app.properties).
-Each entry under `spring.security.jwt.*` yields one named `*Authenticator`.
+Each entry under `spring.security.jwt.instances.*` yields one named `*Authenticator`.
 Exactly one verification key source must be set — an HMAC secret, a PEM public
 key, or a remote JWKS endpoint:
 
 ```properties
 # HMAC (symmetric)
-spring.security.jwt.api.secret=example-shared-secret
+spring.security.jwt.instances.api.secret=example-shared-secret
 
 # or an asymmetric PEM public key
-# spring.security.jwt.api.public-key-file=./conf/public.pem
+# spring.security.jwt.instances.api.public-key-file=./conf/public.pem
 
 # or a remote JWKS endpoint (keys fetched and refreshed automatically)
-# spring.security.jwt.api.jwks-url=https://issuer.example.com/.well-known/jwks.json
+# spring.security.jwt.instances.api.jwks-url=https://issuer.example.com/.well-known/jwks.json
 ```
 
 ### 3. Wire the Authenticator into the HTTP Server
@@ -77,7 +77,7 @@ if !a.HasAuthority("admin") {
 
 ## Configuration
 
-All keys live under `spring.security.jwt.<name>`:
+All keys live under `spring.security.jwt.instances.<name>`:
 
 | Key | Default | Description |
 | --- | --- | --- |
@@ -124,4 +124,4 @@ The [example.go](example/example.go) program demonstrates and asserts:
   `security.TokenValidator`, so it can verify a raw token string outside the
   HTTP path (e.g. on gRPC/WebSocket transports).
 * **Multiple authenticators**: define several entries under
-  `spring.security.jwt.*` and select each by name with `gs.TagArg("...")`.
+  `spring.security.jwt.instances.*` and select each by name with `gs.TagArg("...")`.

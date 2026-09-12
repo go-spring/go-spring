@@ -19,6 +19,7 @@ package luohua
 import (
 	"context"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterRedigo "go-spring.org/starter-redigo"
@@ -50,9 +51,11 @@ type RedisDriver struct {
 	tag string
 }
 
-// CreateClient builds one redis pool per the luohua assembly contract.
-func (d RedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config) (*StarterRedigo.Pool, error) {
-	p, err := StarterRedigo.NewPool(ctx, c)
+// CreateClient builds one redis pool per the luohua assembly contract. backend
+// is the discovery backend the entry's ${discovery} label resolved to, handed
+// down by starter-redigo; it is forwarded verbatim to the standard assembly.
+func (d RedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, backend discovery.Discovery) (*StarterRedigo.Pool, error) {
+	p, err := StarterRedigo.NewPool(ctx, c, backend)
 	if err != nil {
 		return nil, err
 	}

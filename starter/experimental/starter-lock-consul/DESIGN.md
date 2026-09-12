@@ -8,7 +8,7 @@ backed by Consul sessions and `api.Lock`.
 
 ## 1. Responsibilities & Boundaries
 
-- Binds `spring.lock.<name>` entries to Consul-backed `lock.Locker` beans,
+- Binds `spring.lock.instances.<name>` entries to Consul-backed `lock.Locker` beans,
   one per entry, registered under the config name and exported as
   `lock.Locker`.
 - Owns its own `api.Client` per instance (Consul does not expose a shared

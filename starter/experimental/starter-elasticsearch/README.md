@@ -27,7 +27,7 @@ import _ "go-spring.org/starter-elasticsearch"
 Add Elasticsearch configuration in your project's [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.elasticsearch.docs.addresses=http://127.0.0.1:9200
+spring.elasticsearch.instances.docs.addresses=http://127.0.0.1:9200
 ```
 
 ### 3. Inject the Elasticsearch Instance
@@ -77,12 +77,12 @@ The [example.go](example/example.go) file demonstrates the following core Elasti
   addresses through a registered discovery backend instead of the static
   `addresses` list. Each discovered `host:port` endpoint is turned into a node
   address using `discovery-scheme` (default `http`). Select the backend with
-  `discovery` (default `default`); a company registers its naming service once
+  `discovery` (required — there is no default backend); a company registers its naming service once
   via `discovery.Register`.
 
   ```properties
-  spring.elasticsearch.disc.service-name=es-cluster
-  spring.elasticsearch.disc.discovery-scheme=http
+  spring.elasticsearch.instances.disc.service-name=es-cluster
+  spring.elasticsearch.instances.disc.discovery-scheme=http
   ```
 
   Limitation: this is a **one-shot resolution at startup** — the node list is

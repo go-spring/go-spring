@@ -26,14 +26,13 @@
             "type": "object",
             "properties": {
               "target": { "type": "string", "default": "", "description": "lb://<service> or http(s)://host[:port] (required in practice)" },
-              "balancer": { "type": "string", "default": "round_robin", "description": "round_robin | least_conn | consistent_hash | weighted" },
               "discovery": { "type": "string", "default": "", "description": "Per-route discovery backend override" }
             }
           },
           "resilience": {
             "type": "object",
             "properties": {
-              "policy": { "type": "string", "default": "", "description": "Must name a spring.gateway.resilience.<name> key; policy values live under ${govern} keyed gateway:<name>" }
+              "policy": { "type": "string", "default": "", "description": "Must name a spring.gateway.resilience.<name> key; policy values live in the governance rules document (govern.*) keyed gateway:<name>" }
             }
           }
         }
@@ -41,7 +40,7 @@
     },
     "resilience": {
       "type": "object",
-      "description": "Name registry only: keys name executors routes reference via resilience.policy; values ignored (policy lives under ${govern} keyed gateway:<name>)"
+      "description": "Name registry only: keys name executors routes reference via resilience.policy; values ignored (policy lives in the governance rules document (govern.*) keyed gateway:<name>)"
     },
     "discovery": { "type": "string", "default": "", "description": "Default discovery backend name for lb:// routes lacking upstream.discovery" },
     "tracing": {

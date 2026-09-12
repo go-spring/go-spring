@@ -18,7 +18,6 @@ package resilience
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -124,11 +123,14 @@ type circuitBreaker struct {
 	prevFails int
 
 	// event emission
-	resource string                                // label passed to the listener
-	listener *atomic.Pointer[BreakerEventListener] // shared with the executor; nil ptr or nil value = no listener
+	resource string               // label passed to the listener
+	listener BreakerEventListener // nil = no listener; fixed at construction
 }
 
-func newCircuitBreaker(p Policy, open time.Duration, resource string, listener *atomic.Pointer[BreakerEventListener]) *circuitBreaker {
+// newCircuitBreaker builds a breaker for one resource. listener is the executor's
+// listener captured at construction; it never changes for the life of the
+// breaker, so no synchronization is needed to read it.
+func newCircuitBreaker(p Policy, open time.Duration, resource string, listener BreakerEventListener) *circuitBreaker {
 	c := &circuitBreaker{
 		strategy:      p.ResolvedBreakerStrategy(),
 		openFor:       open,
@@ -267,7 +269,5 @@ func (c *circuitBreaker) notifyLocked(from, to BreakerState) {
 	if from == to || c.listener == nil {
 		return
 	}
-	if l := c.listener.Load(); l != nil {
-		(*l).OnBreakerStateChange(c.resource, from, to)
-	}
+	c.listener.OnBreakerStateChange(c.resource, from, to)
 }

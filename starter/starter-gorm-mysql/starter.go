@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 
 	"github.com/go-sql-driver/mysql"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
@@ -36,16 +37,13 @@ import (
 	gormmysql "gorm.io/driver/mysql"
 )
 
-// DB is the bean type this starter exposes. It aliases the shared gormcore.DB
-// so the wrapper body, lifecycle and observe/resilience wiring stay in one place.
-type DB = gormcore.DB
-
 // tlsSeq makes each registered custom TLS config name unique.
 var tlsSeq atomic.Uint64
 
 func init() {
-	gormcore.Register(gormcore.Dialect[Config]{
+	gormcore.Module(gormcore.Dialect[Config]{
 		Prefix:       "spring.gorm.mysql",
+		BeanPrefix:   "mysql",
 		Engine:       "mysql",
 		HealthPrefix: "gorm:mysql:",
 		Build:        build,
@@ -53,7 +51,7 @@ func init() {
 }
 
 // build constructs the driver-specific dialector for a Config, handling TLS and
-// service-discovery routing, and returns the Spec gormcore.Register needs to
+// service-discovery routing, and returns the Spec gormcore.Module needs to
 // open and wrap the client.
 //
 // When c.ServiceName is set (and mesh mode is off), the address is resolved
@@ -63,7 +61,7 @@ func init() {
 // the client. In mesh mode a sidecar owns discovery+LB, so the configured Addr
 // is used as-is. When c.ServiceName is empty this is a plain Addr dial,
 // unchanged from before.
-func build(ctx context.Context, c Config) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
 	}
@@ -96,7 +94,7 @@ func build(ctx context.Context, c Config) (gormcore.Spec, error) {
 
 	dsn := c.DSN()
 
-	conn, err := newDiscoveryConn(ctx, c)
+	conn, err := newDiscoveryConn(ctx, c, backend)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm mysql: build discovery dialer failed: %v", err)
 		if tlsCloser != nil {
@@ -154,8 +152,8 @@ type discoveryConn struct {
 // sidecar owns discovery+LB), in which case the caller dials the configured Addr
 // directly. The caller owns the lifecycle and must release the conn via
 // stopDiscoveryConn.
-func newDiscoveryConn(ctx context.Context, c Config) (*discoveryConn, error) {
-	lb, _, err := c.NewPickPool(ctx)
+func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery) (*discoveryConn, error) {
+	lb, _, err := c.NewPickPool(ctx, backend)
 	if err != nil {
 		return nil, err
 	}

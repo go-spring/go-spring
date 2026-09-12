@@ -228,8 +228,8 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
   handler 之前进入 context，所有下游层都能基于 `traffic.IsLoadTest(ctx)` 分支；无标记时
   为 no-op。
 - **Tracing 在 Metrics 之前**：span 同时包住 metrics 观测，时长与状态落在同一 trace 上下文。
-- **Resilience 在 Fault/Recover 之前**：准入控制在做事之前裁决；executor 被
-  `resilience.WrapExecutor` 包裹，熔断/拒绝自身会打 span + counter + histogram。
+- **Resilience 在 Fault/Recover 之前**：准入控制在做事之前裁决；`resilience.ExecutorFor`
+  返回的 executor 已自带 observe 层，熔断/拒绝自身会打 span + counter + histogram。
 - **Fault 位于策略最内层**（fault.go）："安装在最内层，让注入的错误回穿 tracing/metrics/
   resilience 被观测到"——你放的火自己看得见。
 - **Recover 最内层**（recover.go）："grpc-go 自身对 handler panic 不做任何 recover"；转换出的
@@ -260,8 +260,9 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
   （命名后端）。resolver 在 watch 之前先推送初始快照，首个 RPC 不会与空地址列表竞速。
 - 仅靠 service config 选策略：`grpc.WithDefaultServiceConfig(
   StarterGrpc.LoadBalancingConfig(strategy))`。balancer 名为 `gs_round_robin`、`gs_least_conn`、
-  `gs_consistent_hash`、`gs_weighted`、`gs_zone_aware`（init 预注册，驱逐默认值：连续失败
-  5 次 → 驱逐 30s，之后半开试探）。
+  `gs_consistent_hash`、`gs_weighted`、`gs_zone_aware`。它们在 init 预注册，**初始不启用驱逐**；
+  用一条治理规则统一配置：`govern.default.outlier-threshold` / `.outlier-suspend-for`
+  （它们解析的是进程级默认；要显式定向就写 `govern.rules[N].resources=grpc:client`）。
 - 按调用提示：`WithHashKey`（consistent-hash 亲和）、`WithZone`（zone 亲和）。
 - Weight=0 的实例由策略本身过滤（Pool 全策略统一的摘流语义）。
 - `RegisterBalancer(name, strategy, trackerConfig)` 注册自定义名字以隔离驱逐状态；对未知

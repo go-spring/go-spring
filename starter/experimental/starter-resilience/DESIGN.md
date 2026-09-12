@@ -19,7 +19,7 @@ import is enough for any adapter to select `driver=sentinel`.
   adapter's job. `cloud/governance/resilience` ships the client seams
   (`NewRoundTripper` for HTTP clients, `NewDialer` for connection dial);
   inbound admission middlewares are built by the protocol starters on the
-  `governance.ExecutorFor` seam. This starter never chooses between them.
+  `resilience.ExecutorFor` seam. This starter never chooses between them.
 
 ## 2. Key Decisions
 

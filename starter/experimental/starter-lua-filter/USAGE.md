@@ -6,8 +6,8 @@ the starter source (`starter.go`, `filter.go`, `config.go`) and the runnable sel
 the gopher-lua runtime are [gopher-lua's documentation](https://github.com/yuin/gopher-lua) — this
 document covers the go-spring wiring, the host API, and the sandbox.
 
-**Activation**: any `spring.lua.filter.*` key — `gs.Group("${spring.lua.filter}")` creates one
-`*Filter` bean per `spring.lua.filter.<name>` entry, named `<name>` (starter.go:39). No
+**Activation**: any `spring.lua.filter.instances.*` key — `gs.Group("${spring.lua.filter}")` creates one
+`*Filter` bean per `spring.lua.filter.instances.<name>` entry, named `<name>` (starter.go:39). No
 `enabled` switch; no key, no bean.
 
 ---
@@ -91,8 +91,8 @@ end
 **conf/app.properties** — the complete surface:
 
 ```properties
-# One filter per spring.lua.filter.<name> entry; bean name = <name>.
-spring.lua.filter.guard.script=./scripts/guard.lua
+# One filter per spring.lua.filter.instances.<name> entry; bean name = <name>.
+spring.lua.filter.instances.guard.script=./scripts/guard.lua
 ```
 
 The listener is the built-in gs HTTP server (`spring.http.server.addr`, default `:9090`,
@@ -120,7 +120,7 @@ import starter-lua-filter
   └─ gs.Group("${spring.lua.filter}", newFilter, destroyFilter)      starter.go:39
 
 gs.Run()
-  ├─ config bind: ${spring.lua.filter.<name>} → Config (script path)
+  ├─ config bind: ${spring.lua.filter.instances.<name>} → Config (script path)
   ├─ newFilter: compileFile reads + parses + compiles the script into ONE reusable
   │   *lua.FunctionProto stored atomically (filter.go:49-66). Compile failure or a
   │   missing file fails startup — a typo never reaches production.
@@ -189,7 +189,7 @@ Resolution happens at route-compile time from the gateway's injected wrapper map
 
 ## 3. Per-key behavior reference
 
-### 3.1 This starter — `spring.lua.filter.<name>.*` (1 key)
+### 3.1 This starter — `spring.lua.filter.instances.<name>.*` (1 key)
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -263,7 +263,7 @@ handler is skipped. grep the access log of the fronting server for 500s under th
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Startup fails "lua filter: read script …" / "compile script …" | script path wrong (cwd-relative) or Lua syntax error | Fix the path/key or the script; errors cite file+line (filter.go:168-182). |
-| Filter silently not running | no `spring.lua.filter.*` key (no bean), or you mounted the mux without `guard.Wrap` | Add the key; wrap the handler (`TagArg("<name>")`). |
+| Filter silently not running | no `spring.lua.filter.instances.*` key (no bean), or you mounted the mux without `guard.Wrap` | Add the key; wrap the handler (`TagArg("<name>")`). |
 | 500 `lua filter error: …` on every request | runtime error in the script (nil index, bad arg) | Read the error text; it names the Lua line. |
 | Response shows headers but deny didn't fire | script called `resp.set_header` then fell through | `deny()` must be followed by `return`; deny writes but only the flag short-circuits. |
 | Double deny / "http: superfluous WriteHeader" | script calls `deny()` twice or writes after deny | Return immediately after `deny()`. |

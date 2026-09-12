@@ -24,7 +24,7 @@ import (
 )
 
 // Config binds one Consul-backed distributed-lock instance under
-// "spring.lock.<name>". Every instance owns its own consul API client; two
+// "spring.lock.instances.<name>". Every instance owns its own consul API client; two
 // instances that need to share a client should not exist — declare one entry
 // and inject it by name.
 type Config struct {

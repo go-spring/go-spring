@@ -35,13 +35,14 @@ import (
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator" // aggregates the gorm health.Indicator
-	starter "go-spring.org/starter-gorm-postgres"
+	gormcore "go-spring.org/starter-gorm"
+	_ "go-spring.org/starter-gorm-postgres"
 )
 
 // Service autowires the "primary" gorm instance; instantiating it registers the
 // per-instance health.Indicator the actuator collects.
 type Service struct {
-	DB *starter.DB `autowire:"primary"`
+	DB *gormcore.DB `autowire:"postgres.primary"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

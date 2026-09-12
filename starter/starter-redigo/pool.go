@@ -45,17 +45,22 @@ type Pool struct {
 	resource string                  // resilience resource label (stable per pool)
 }
 
-func NewPool(ctx context.Context, c Config) (*Pool, error) {
+// backend is the discovery backend the entry's ${discovery} label resolved to,
+// already looked up by the starter wiring; a stand-alone NewPool caller passes
+// the backend it wants explicitly (nil for a plain Addr dial). It is passed as
+// an argument rather than carried on Config so NewPool stays a pure function of
+// its inputs — Config is a pure bound value.
+func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
 	}
 
 	// Bind service discovery; nil resolver means discovery not in effect (no
-	// service name / no backend injected / mesh), so the pool dials the
+	// service name / no backend / mesh), so the pool dials the
 	// configured Addr directly. Freshness lives inside the backend, so the
 	// resolver has no resources to release.
-	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName,
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName,
 		discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, err
@@ -204,9 +209,7 @@ func (o *Pool) setupResilience() error {
 	// configured the seam yields a transparent no-op executor, so this call is
 	// always safe. Resolution is deferred to call time, hence the order of this
 	// setup relative to starter-govern's wiring is irrelevant.
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-
-	o.exec = resilience.WrapExecutor(exec, "redigo")
+	o.exec = fault.WrapExecutor(resilience.ExecutorFor("redigo", o.resource))
 	return nil
 }
 

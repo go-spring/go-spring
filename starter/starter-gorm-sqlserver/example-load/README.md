@@ -34,7 +34,7 @@ rises as retries stack against the injected faults.
 - The `SA_PASSWORD=RootRoot1` meets the SQL Server 2022 complexity policy
   (upper + lower + digit). The `db=master` uses the built-in system database so
   no extra CREATE DATABASE step is needed.
-- Connection keys (`spring.gorm.sqlserver.load.*`) live under the instance
+- Connection keys (`spring.gorm.sqlserver.instances.load.*`) live under the instance
   prefix; `resilience.*` and `fault.*` are top-level absolute property refs
   shared across all starters.
 - SQL Server is slow to bootstrap in docker (the watchdog in `check.sh` allows

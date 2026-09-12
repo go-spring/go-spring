@@ -7,9 +7,9 @@ file:line spot-checks in brackets below. **Kafka protocol and sarama API semanti
 [sarama's own documentation](https://github.com/IBM/sarama) and
 [kafka.apache.org](https://kafka.apache.org/documentation/)** — everything below is go-spring's
 increment.
-**Activation**: any `spring.kafka-sarama.*` property (the module registers under
+**Activation**: any `spring.kafka-sarama.instances.*` property (the module registers under
 `gs.OnProperty("spring.kafka-sarama")`, a prefix check [starter.go:38]). Each
-`spring.kafka-sarama.<name>` entry creates exactly one `sarama.Client` bean named `<name>`
+`spring.kafka-sarama.instances.<name>` entry creates exactly one `sarama.Client` bean named `<name>`
 [starter.go:39-43]. The prefix is deliberately distinct from the franz-go
 [starter-kafka](../starter-kafka) (`spring.kafka`) — the two are never imported together
 [config.go:26-28].
@@ -106,24 +106,24 @@ func (s *Service) publish(ctx context.Context, topic, value string) error {
 
 ```properties
 # --- kafka client -----------------------------------------------------------
-spring.kafka-sarama.main.brokers=127.0.0.1:9092
+spring.kafka-sarama.instances.main.brokers=127.0.0.1:9092
 # Must match the target cluster for consumer groups etc. to behave (sarama
 # negotiates protocol features from this); empty = sarama's own default.
-spring.kafka-sarama.main.version=3.7.0
+spring.kafka-sarama.instances.main.version=3.7.0
 
 # --- producer tuning --------------------------------------------------------
-spring.kafka-sarama.main.producer.compression=snappy
-spring.kafka-sarama.main.producer.required-acks=all
+spring.kafka-sarama.instances.main.producer.compression=snappy
+spring.kafka-sarama.instances.main.producer.required-acks=all
 
 # --- optional: SASL + TLS (dev broker is plaintext) -------------------------
-#spring.kafka-sarama.main.sasl.enabled=true
-#spring.kafka-sarama.main.sasl.mechanism=scram-sha-512
-#spring.kafka-sarama.main.sasl.username=user
-#spring.kafka-sarama.main.sasl.password=pass
-#spring.kafka-sarama.main.tls.enabled=true
-#spring.kafka-sarama.main.tls.ca-file=/path/ca.pem
-#spring.kafka-sarama.main.tls.cert-file=/path/client.pem
-#spring.kafka-sarama.main.tls.key-file=/path/client.key
+#spring.kafka-sarama.instances.main.sasl.enabled=true
+#spring.kafka-sarama.instances.main.sasl.mechanism=scram-sha-512
+#spring.kafka-sarama.instances.main.sasl.username=user
+#spring.kafka-sarama.instances.main.sasl.password=pass
+#spring.kafka-sarama.instances.main.tls.enabled=true
+#spring.kafka-sarama.instances.main.tls.ca-file=/path/ca.pem
+#spring.kafka-sarama.instances.main.tls.cert-file=/path/client.pem
+#spring.kafka-sarama.instances.main.tls.key-file=/path/client.key
 
 # --- observability (starter-otel) -------------------------------------------
 spring.observability.service-name=demo
@@ -160,7 +160,7 @@ curl -s :9090/metrics | grep messaging_client    # duration histogram + in-fligh
 ```
 import starter-kafka-sarama
   ├─ init: sarama.Logger = go-spring log bridge   [starter.go:33] (all sarama events → Info, tag _app)
-  └─ gs.Module(OnProperty("spring.kafka-sarama")) fires on any spring.kafka-sarama.* key
+  └─ gs.Module(OnProperty("spring.kafka-sarama")) fires on any spring.kafka-sarama.instances.* key
         └─ conf.BindEach → one Config per <name> entry
               └─ Provide(newClient, IndexArg name, IndexArg config, IndexArg 3,?Driver).Name(<name>)
                    .Destroy(destroyClient)        [starter.go:40-44]
@@ -173,9 +173,9 @@ gs.Run()
   │       bad brokers/credentials/TLS fail HERE, not on first use
   │       [client.go:43-47 comment, driver.go:55-88]
   │    3. defensive fail-fast: len(Brokers())==0 → close + boot error [client.go:60-64]
-  │    4. applyResilience: fault.Wrap(ExecutorFor("kafka:<brokers>")) →
-  │       resilience.WrapExecutor → sync.Map indexed by client
-  │       [client.go:65-69, command.go:208-217]
+  │    4. applyResilience: fault.WrapExecutor(ExecutorFor("kafka", "kafka:<brokers>")) →
+  │       sync.Map indexed by client
+  │       [client.go:65-69, command.go:209-213]
   ├─ derived beans are YOURS: sarama.New*FromClient wherever you inject the client
   └─ SIGTERM → Destroy: closeResilience (exec.Close, forget maps) → cl.Close()
        [client.go:78-81, command.go:220-225]
@@ -186,7 +186,9 @@ A company/umbrella starter may provide its own `Driver` as an **optional contain
 `gs.Provide(func() StarterKafkaSarama.Driver{...})`, so it can inject config bound from the
 properties file at wiring time); every instance under `spring.kafka-sarama` is then built through
 it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
-(`driver.go:41-88`) inside assembly (`client.go:52-53`). There is no per-config `driver` key.
+(`driver.go:41-88`) inside assembly (`client.go:52-53`). When several Driver beans coexist, an
+entry selects one by name: `spring.kafka-sarama.instances.<name>.driver = <bean-name>` (empty = inject the
+single Driver bean by type; naming a missing bean fails startup).
 
 Derived producers/consumers are not container beans — close them yourself before the app
 shuts down (`defer producer.Close()` in the publish path is the intended pattern, see
@@ -199,8 +201,8 @@ returned unchanged — wrapping is a zero-risk unconditional idiom. Guarded surf
 
 ```
 SendMessage / SendMessages
-  → resilience executor wrapper (span + outcome counters + duration + access log)
-    → fault.WrapExecutor (injected faults when govern.fault enabled)
+  → fault.WrapExecutor (injected faults when govern.fault enabled)
+    → resilience executor wrapper (span + outcome counters + duration + access log)
       → resilience executor (breaker / rate limit / retry, policy from governance center)
         → inner p.SendMessage (real sarama)
 ```
@@ -253,7 +255,7 @@ ConsumerGroup handlers):
 
 ## 3. Per-key behavior reference
 
-All keys under `spring.kafka-sarama.<name>.` (15 total incl. the tls/sasl
+All keys under `spring.kafka-sarama.instances.<name>.` (15 total incl. the tls/sasl
 groups; binding is per-instance prefix binding via `conf.BindEach`, NOT absolute-property
 field injection).
 
@@ -264,8 +266,9 @@ field injection).
 | `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:32]); comma-separated seed list [driver.go:95]. Also becomes the governance resource label `kafka:<brokers>` verbatim [client.go:65] — different orderings/spellings of the same cluster are DIFFERENT labels. | Missing/empty → bind error at boot. Typo'd broker → sarama.NewClient fails at boot (fail-fast). |
 | `version` | string | "" (sarama default) | Parsed with `sarama.ParseKafkaVersion`; gates protocol features (headers, SASL mechanisms, consumer groups) [driver.go:65-71]. | Unparseable → boot error `invalid kafka version`. Too low → feature errors at first use. |
 
-No `driver` key: client assembly is owned by an optional Driver bean (see §2.1) or the bundled
-`DefaultDriver`.
+The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
+optional Driver bean injected by type (see §2.1) or the bundled `DefaultDriver`; set → that
+bean by name, and naming a missing bean fails startup.
 
 ### 3.2 SASL (`sasl.*`) — [config.go:64-77], [driver.go:101-118]
 

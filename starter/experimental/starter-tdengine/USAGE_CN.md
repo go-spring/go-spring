@@ -7,8 +7,8 @@ DSN 格式与 driver-go WebSocket 连接器属于 [TDengine 官方文档](https:
 （WebSocket 端点由 [taosAdapter](https://docs.taosdata.com/reference/taosadapter/) 提供）——
 本文只写 go-spring 的增量。
 
-**激活条件**：出现任意 `spring.tdengine.*` key（模块为 `OnProperty("spring.tdengine")` 前缀匹配）。
-每个 `spring.tdengine.<name>` 条目创建一个名为 `<name>` 的 `*StarterTdengine.Client` bean，
+**激活条件**：出现任意 `spring.tdengine.instances.*` key（模块为 `OnProperty("spring.tdengine")` 前缀匹配）。
+每个 `spring.tdengine.instances.<name>` 条目创建一个名为 `<name>` 的 `*StarterTdengine.Client` bean，
 并注册名为 `tdengine:<name>` 的健康指示器。
 
 ---
@@ -104,11 +104,11 @@ func init() {
 ```properties
 # --- 两个 client，同一实例 -----------------------------------------------------
 # DSN 为驱动统一格式；ws() = 经 taosAdapter:6041 的 WebSocket。
-spring.tdengine.a.dsn=root:taosdata@ws(127.0.0.1:6041)/
-spring.tdengine.a.max-open-conns=4
-spring.tdengine.a.max-idle-conns=2
+spring.tdengine.instances.a.dsn=root:taosdata@ws(127.0.0.1:6041)/
+spring.tdengine.instances.a.max-open-conns=4
+spring.tdengine.instances.a.max-idle-conns=2
 
-spring.tdengine.b.dsn=root:taosdata@ws(127.0.0.1:6041)/power
+spring.tdengine.instances.b.dsn=root:taosdata@ws(127.0.0.1:6041)/power
 
 # --- 可观测恒开启：span 与 db.client.* 指标挂在 starter-otel 的全局 ------------
 # provider 上，访问日志走 log 包原生分级。
@@ -144,7 +144,7 @@ docker exec -it <container> taos -s "SELECT COUNT(*) FROM power.meters"   # 1
 
 ```
 import starter-tdengine
-  └─ gs.Module(OnProperty("spring.tdengine"))：出现任意 spring.tdengine.* key 触发
+  └─ gs.Module(OnProperty("spring.tdengine"))：出现任意 spring.tdengine.instances.* key 触发
         └─ conf.BindEach("${spring.tdengine}") → 每个 <name> 条目一份 Config
               ├─ Provide(newClient).Name(<name>)
               │       .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
@@ -153,15 +153,16 @@ import starter-tdengine
 
 gs.Run()
   ├─ 构造 newClient [starter.go:61]：可选 Driver bean——没有则回退内置
-  │     DefaultDriver（d == nil [starter.go:65-67]）
+  │     DefaultDriver（d == nil [starter.go:65-67]）；容器中存在多个 Driver bean
+  │     时，实例可按名指定：`spring.tdengine.instances.<name>.driver = <bean 名>`
+  │     （留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）
   │     → d.CreateClient [starter.go:68]：ParseDSN → taosws.NewConnector →
   │       guardedConnector → sql.OpenDB → 应用连接池参数
   │     → fail-fast PingContext，10s 上限 [starter.go:74-77]；失败则关闭半成品
   │       client，启动失败
   ├─ Init [client.go:58]：resourceLabel（"tdengine:<dsn addr>"）→
-  │     fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │     resilience.WrapExecutor(exec, "tdengine") → newDBObserver("tdengine")
-  │     装到 slot 上
+  │     fault.WrapExecutor(resilience.ExecutorFor("tdengine", resource)) →
+  │     newDBObserver("tdengine") 装到 slot 上
   ├─ readiness：指示器对每实例跑 db.PingContext
   └─ SIGTERM → Destroy [client.go:81]：exec.Close → db.Close
 ```
@@ -227,7 +228,7 @@ Init 装配 slot 之前，语句原样透传（exec、obs 均为 nil——零配
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.tdengine.<name>.` 下——经 `conf.BindEach` 按实例绑定
+所有 key 位于 `spring.tdengine.instances.<name>.` 下——经 `conf.BindEach` 按实例绑定
 （不是 starter-Pool 的绝对属性规则）。完整清单，已与
 `grep -rhoE 'value:"[^"]+"'` 双向核对：
 
@@ -303,7 +304,7 @@ server 版本全部正常。
 |------|----------|------|
 | 启动失败 "failed to reach tdengine at ..." | 地址不可达 / 凭据错 / taosAdapter 未就绪 | 修 DSN；等 6041 端口（镜像要起多个服务——check.sh 等 90s + 5s）。 |
 | 启动失败，driver 版本报错 | WebSocket 路径 server < 3.3.6.0（driver-go v3.8.2 下限） | 升级 server 镜像。 |
-| BindEach 在 `dsn` 上启动失败 | `spring.tdengine.<name>.dsn` 缺失或为空 | expr tag 强制非空——补上。 |
+| BindEach 在 `dsn` 上启动失败 | `spring.tdengine.instances.<name>.dsn` 缺失或为空 | expr tag 强制非空——补上。 |
 | SQL 正常但健康检查 DOWN | 池被占满（max-open-conns 过低），探针拉不到新连接 | 调大 max-open-conns；看 /readiness 里 component 的错误详情。 |
 | 无 span/指标 | 未引入 starter-otel | 观察者挂在 OTel 全局 provider 上；import starter-otel。 |
 | 无访问日志 | logger 级别过滤掉 Debug/Info，或日志 tag 被过滤 | 检查 logger 级别及对 `_app_tdengine_access` 的配置。 |

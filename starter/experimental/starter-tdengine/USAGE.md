@@ -9,8 +9,8 @@ WebSocket connector are [TDengine's own documentation](https://docs.taosdata.com
 [taosAdapter](https://docs.taosdata.com/reference/taosadapter/))** — everything below is
 go-spring's increment.
 
-**Activation**: any `spring.tdengine.*` key (the module is `OnProperty("spring.tdengine")`, a
-prefix check). Each `spring.tdengine.<name>` entry creates one `*StarterTdengine.Client` bean
+**Activation**: any `spring.tdengine.instances.*` key (the module is `OnProperty("spring.tdengine")`, a
+prefix check). Each `spring.tdengine.instances.<name>` entry creates one `*StarterTdengine.Client` bean
 named `<name>`, plus a health indicator named `tdengine:<name>`.
 
 ---
@@ -107,11 +107,11 @@ func init() {
 ```properties
 # --- two clients, one instance ------------------------------------------------
 # DSN format is the driver's unified form; ws() = WebSocket via taosAdapter:6041.
-spring.tdengine.a.dsn=root:taosdata@ws(127.0.0.1:6041)/
-spring.tdengine.a.max-open-conns=4
-spring.tdengine.a.max-idle-conns=2
+spring.tdengine.instances.a.dsn=root:taosdata@ws(127.0.0.1:6041)/
+spring.tdengine.instances.a.max-open-conns=4
+spring.tdengine.instances.a.max-idle-conns=2
 
-spring.tdengine.b.dsn=root:taosdata@ws(127.0.0.1:6041)/power
+spring.tdengine.instances.b.dsn=root:taosdata@ws(127.0.0.1:6041)/power
 
 # --- observability is always on: spans + db.client.* metrics ride ------------
 # starter-otel's globals, and the access log rides the log package's levels.
@@ -148,7 +148,7 @@ combo from the client family.
 
 ```
 import starter-tdengine
-  └─ gs.Module(OnProperty("spring.tdengine")) fires when any spring.tdengine.* key exists
+  └─ gs.Module(OnProperty("spring.tdengine")) fires when any spring.tdengine.instances.* key exists
         └─ conf.BindEach("${spring.tdengine}") → one Config per <name> entry
               ├─ Provide(newClient).Name(<name>)
               │       .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
@@ -157,15 +157,17 @@ import starter-tdengine
 
 gs.Run()
   ├─ ctor newClient [starter.go:61]: optional Driver bean → when none present the
-  │     starter falls back to the bundled DefaultDriver (d == nil [starter.go:65-67])
+  │     starter falls back to the bundled DefaultDriver (d == nil [starter.go:65-67]);
+  │     when several Driver beans coexist, the entry selects one by name:
+  │     spring.tdengine.instances.<name>.driver = <bean-name> (empty = the single Driver
+  │     bean by type; naming a missing bean fails startup)
   │     → d.CreateClient [starter.go:68]: ParseDSN → taosws.NewConnector →
   │       guardedConnector → sql.OpenDB → pool settings applied
   │     → fail-fast PingContext bounded by 10s [starter.go:74-77]; on error the
   │       half-built client is Closed and the boot fails
   ├─ Init [client.go:58]: resourceLabel ("tdengine:<dsn addr>") →
-  │     fault.WrapExecutor(resilience.ExecutorFor(resource)) →
-  │     resilience.WrapExecutor(exec, "tdengine") → newDBObserver("tdengine")
-  │     armed on the slot
+  │     fault.WrapExecutor(resilience.ExecutorFor("tdengine", resource)) →
+  │     newDBObserver("tdengine") armed on the slot
   ├─ readiness: indicator runs db.PingContext per instance
   └─ SIGTERM → Destroy [client.go:81]: exec.Close → db.Close
 ```
@@ -234,7 +236,7 @@ TDengine instance, not per statement or per database: two clients to the same ho
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.tdengine.<name>.` — bound per instance via `conf.BindEach`
+All keys live under `spring.tdengine.instances.<name>.` — bound per instance via `conf.BindEach`
 (not the absolute-property starter-Pool rule). Complete list, verified against
 `grep -rhoE 'value:"[^"]+"'`:
 
@@ -311,7 +313,7 @@ succeeds proves credentials, DSN and server version are all good.
 |---------|--------------|-----|
 | Boot fails "failed to reach tdengine at ..." | Unreachable addr / wrong credentials / taosAdapter not up yet | Fix DSN; wait for port 6041 (the image boots several services — check.sh waits 90s + 5s). |
 | Boot fails, driver version error | Server < 3.3.6.0 on the WebSocket path (driver-go v3.8.2 floor) | Upgrade the server image. |
-| Boot fails at BindEach on `dsn` | Empty or missing `spring.tdengine.<name>.dsn` | The expr tag enforces non-empty — set it. |
+| Boot fails at BindEach on `dsn` | Empty or missing `spring.tdengine.instances.<name>.dsn` | The expr tag enforces non-empty — set it. |
 | Health DOWN though SQL works | Probe draws a fresh conn while the pool is exhausted (max-open-conns too low) | Raise max-open-conns; inspect the component error body in /readiness. |
 | No spans/metrics | starter-otel not imported | The observer rides the OTel globals; import starter-otel. |
 | No access log lines | Logger level drops Debug/Info, or the log tag is filtered | Check the logger level and logger config for `_app_tdengine_access`. |

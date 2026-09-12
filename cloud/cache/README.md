@@ -11,7 +11,7 @@ With starter-go-redis:
 
 ```properties
 # a redis client bean named "main"
-spring.go-redis.main.addr=127.0.0.1:6379
+spring.go-redis.instances.main.addr=127.0.0.1:6379
 # expose it as a cache.Cache bean named "main"
 spring.cache.primary.driver=go-redis:main
 ```

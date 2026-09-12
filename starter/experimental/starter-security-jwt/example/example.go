@@ -33,7 +33,7 @@ import (
 	StarterSecurityJWT "go-spring.org/starter-security-jwt"
 )
 
-// secret is the shared HMAC key. It matches spring.security.jwt.api.secret in
+// secret is the shared HMAC key. It matches spring.security.jwt.instances.api.secret in
 // conf/app.properties, so tokens this example mints verify against the
 // authenticator the starter builds — no external identity provider needed.
 const secret = "example-shared-secret"

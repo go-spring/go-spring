@@ -33,11 +33,12 @@ import (
 	"go-spring.org/spring/gs"
 	"gorm.io/gorm"
 
-	starter "go-spring.org/starter-gorm-sqlite"
+	gormcore "go-spring.org/starter-gorm"
+	_ "go-spring.org/starter-gorm-sqlite"
 )
 
 type Service struct {
-	DB *starter.DB `autowire:"primary"`
+	DB *gormcore.DB `autowire:"sqlite.primary"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

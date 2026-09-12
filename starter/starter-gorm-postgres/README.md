@@ -24,21 +24,21 @@ import _ "go-spring.org/starter-gorm-postgres"
 Add gorm configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.gorm.postgres.primary.host=127.0.0.1
-spring.gorm.postgres.primary.port=5432
-spring.gorm.postgres.primary.user=postgres
-spring.gorm.postgres.primary.password=123456
-spring.gorm.postgres.primary.db=test
-spring.gorm.postgres.primary.sslmode=disable
+spring.gorm.postgres.instances.primary.host=127.0.0.1
+spring.gorm.postgres.instances.primary.port=5432
+spring.gorm.postgres.instances.primary.user=postgres
+spring.gorm.postgres.instances.primary.password=123456
+spring.gorm.postgres.instances.primary.db=test
+spring.gorm.postgres.instances.primary.sslmode=disable
 ```
 
 ### 3. Inject the gorm Instance
 
 ```go
-import "gorm.io/gorm"
+import "go-spring.org/starter-gorm"
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // wrapper embedding *gorm.DB
+    DB *gormcore.DB `autowire:"postgres.primary"` // wrapper embedding *gorm.DB
 }
 ```
 

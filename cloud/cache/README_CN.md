@@ -11,7 +11,7 @@ memcached)。
 
 ```properties
 # 名为 "main" 的 redis client bean
-spring.go-redis.main.addr=127.0.0.1:6379
+spring.go-redis.instances.main.addr=127.0.0.1:6379
 # 把它暴露成名为 "main" 的 cache.Cache bean
 spring.cache.primary.driver=go-redis:main
 ```

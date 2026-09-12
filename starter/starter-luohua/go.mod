@@ -6,7 +6,6 @@ require (
 	go-spring.org/cloud v0.0.0
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
-	go-spring.org/starter-cache v0.0.0
 	go-spring.org/starter-otel v0.0.0
 	go-spring.org/starter-redigo v0.0.0
 	go-spring.org/stdlib v0.1.7
@@ -45,7 +44,6 @@ replace (
 	go-spring.org/gs-mock => ../../gs/gs-mock
 	go-spring.org/log => ../../log
 	go-spring.org/spring => ../../spring
-	go-spring.org/starter-cache => ../starter-cache
 	go-spring.org/starter-otel => ../starter-otel
 	go-spring.org/starter-redigo => ../starter-redigo
 	go-spring.org/stdlib => ../../stdlib

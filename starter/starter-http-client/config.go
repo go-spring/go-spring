@@ -18,22 +18,21 @@ package StarterHTTPClient
 
 import (
 	"fmt"
-	"time"
 
-	"go-spring.org/starter-http-client/httpx"
-	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/starter-http-client/httpx"
 )
 
 // Config binds one declarative-HTTP-client entry under
-// "${spring.http-client}". Each entry contributes a route whose transport is
+// "${spring.http-client.instances.<name>}". Each entry contributes a route whose transport is
 // assembled by stdlib/httpx: service discovery + load balancing when
 // ServiceName is set, or a fixed address otherwise, optionally protected by
-// resilience and always traced through the OTel globals. All entries share one
-// process-wide client (installed by replacing httpclt.DoRequest); a generated
-// client routes by its Target (addr or service-name), so switching a call
-// between a direct address and a discovered service is a pure-config change.
+// resilience and always traced through the OTel globals. All entries are served
+// by one process-wide httpclt.DoRequest replacement; a generated client routes
+// by its Target (addr or service-name), so switching a call between a direct
+// address and a discovered service is a pure-config change.
 type Config struct {
 	// Addr is the direct "host:port" to call. Used when ServiceName is empty;
 	// mutually exclusive with it.
@@ -47,27 +46,10 @@ type Config struct {
 	ServiceName string `value:"${service-name:=}"`
 
 	// Discovery names the discovery backend bean that resolves ServiceName.
-	// Required when ServiceName is set; the bean itself is injected by the
-	// starter's constructor from this label.
+	// Required when ServiceName is set; the starter wiring resolves this label
+	// against every registered discovery backend bean and hands the result to
+	// the driver as the Discovery argument of CreateTransport.
 	Discovery string `value:"${discovery:=}"`
-
-	// backend is the discovery backend instance the label above cites. It is
-	// populated by the starter wiring (newDispatchTransport resolves the label
-	// against every registered discovery backend bean), never bound from
-	// configuration.
-	backend discovery.Discovery
-
-	// Balancer names the load-balancing strategy: round_robin (default),
-	// least_conn, consistent_hash, weighted, or zone_aware.
-	Balancer string `value:"${balancer:=round_robin}"`
-
-	// SuspendThreshold is the consecutive-failure count that suspends a failing
-	// endpoint from the pool (outlier suspension). 0 disables suspension.
-	SuspendThreshold int `value:"${suspend-threshold:=0}"`
-
-	// SuspendFor is how long an suspended endpoint stays out before a trial request.
-	// Ignored when SuspendThreshold is 0.
-	SuspendFor time.Duration `value:"${suspend-for:=0}"`
 
 	// TLS configures the certificate surface for https targets: a client key
 	// pair (tls.cert-file/key-file), a CA bundle (tls.ca-file), the expected
@@ -77,10 +59,14 @@ type Config struct {
 	TLS tlsconf.TLSConfig `value:"${tls:=}"`
 }
 
-// Resilience and fault policy are NOT bound here: they live process-wide under
-// govern.* (starter-governance). Keep govern retry counts at 0 unless requests
-// are idempotent: the client may issue POSTs and other non-idempotent verbs,
-// and a retry re-sends them.
+// Resilience, fault and endpoint-selection policy are NOT bound here: they live
+// in the governance rules document (starter-governance), matched by this
+// entry's resource label. That includes the load-balancing strategy
+// (`balancer`) and outlier suspension (`outlier-threshold` /
+// `outlier-suspend-for`) — write them under govern.rules[N], not here.
+//
+// Keep govern retry counts at 0 unless requests are idempotent: the client may
+// issue POSTs and other non-idempotent verbs, and a retry re-sends them.
 
 // validate enforces the addr-or-service-name fail-fast rule shared by client
 // starters: at least one of them must be set, Addr selects direct addressing
@@ -98,9 +84,11 @@ func (c Config) validate() error {
 }
 
 // toTransportConfig maps the bound Config onto the starter-http-client/httpx assembler input.
-// Everything — TLS surface, trace layer, governance-resolved resilience
-// executor, fault + observe wrap, base dialer — is implemented by starter-http-client/httpx.
-func (c Config) toTransportConfig() httpx.Config {
+// backend is the discovery backend the starter wiring resolved from the
+// Discovery label (nil when the entry does not cite one). Everything — TLS
+// surface, trace layer, governance-resolved resilience executor, fault +
+// observe wrap, base dialer — is implemented by starter-http-client/httpx.
+func (c Config) toTransportConfig(backend discovery.Discovery) httpx.Config {
 	serviceName := c.ServiceName
 	if c.Addr != "" {
 		// Direct addressing: service-name (when set) is a pure governance label,
@@ -111,13 +99,10 @@ func (c Config) toTransportConfig() httpx.Config {
 	}
 	resource := resilience.ResourceLabel("http", c.ServiceName, c.Addr)
 	return httpx.Config{
-		ServiceName:      serviceName,
-		Addr:             c.Addr,
-		Discovery:        c.backend,
-		Balancer:         c.Balancer,
-		SuspendThreshold: c.SuspendThreshold,
-		SuspendFor:       c.SuspendFor,
-		TLS:              c.TLS,
-		Resource:         resource,
+		ServiceName: serviceName,
+		Addr:        c.Addr,
+		Discovery:   backend,
+		TLS:         c.TLS,
+		Resource:    resource,
 	}
 }

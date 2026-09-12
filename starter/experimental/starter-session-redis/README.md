@@ -36,11 +36,11 @@ import (
 
 ```properties
 # A Redis client managed by starter-go-redis.
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # A session store bound to that client. `client` is the redis instance name.
-spring.session.redis.web.client=cache
-spring.session.redis.web.key-prefix=myapp:session:
+spring.session.redis.instances.web.client=cache
+spring.session.redis.instances.web.key-prefix=myapp:session:
 ```
 
 The `client` property is **required**. Booting without it fails fast — the
@@ -89,11 +89,11 @@ transparently.
 
 ## Configuration
 
-All keys sit under `spring.session.redis.<name>`:
+All keys sit under `spring.session.redis.instances.<name>`:
 
 | Key          | Default     | Description                                                                        |
 |--------------|-------------|------------------------------------------------------------------------------------|
-| `client`     | —           | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.<client>`.   |
+| `client`     | —           | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.instances.<client>`.   |
 | `key-prefix` | `session:`  | Prepended to every session id so multiple apps can share a Redis instance safely.  |
 
 Cookie name, path, `Secure`, `SameSite`, and the idle timeout are set on

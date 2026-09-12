@@ -130,6 +130,15 @@ func applyMiddlewares(e *echo.Echo, cfg Config) error {
 	if cfg.MaxBodySize > 0 {
 		e.Use(middleware.BodyLimit(strconv.FormatInt(cfg.MaxBodySize, 10)))
 	}
+
+	// Resilience admission (always installed): runs the request through the
+	// configured rate-limit / bulkhead / breaker before the handler chain. Sits
+	// inside AccessLog so 429/503 rejects are still logged, and outside fault so
+	// a rate-limited request is not also faulted. With governance off the
+	// executor is a transparent pass-through, so installing it costs a call
+	// frame and changes nothing else.
+	e.Use(buildAdmission(cfg))
+
 	// Fault injection (always installed, innermost so the resulting 503 is still
 	// logged by the access log). The injector is resolved from the neutral
 	// [fault.InjectorFor] seam (nil-safe: a transparent pass-through when fault is

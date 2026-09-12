@@ -8,7 +8,7 @@ are [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) and
 go-spring's increment: binding, beans, the `Wrap(http.Handler)` seam and the fail-fast
 key-source discipline.
 
-**Activation**: one `*Authenticator` bean per entry under `spring.security.jwt.<name>`;
+**Activation**: one `*Authenticator` bean per entry under `spring.security.jwt.instances.<name>`;
 an empty (or absent) map registers nothing — configuration is the enable switch
 (starter.go:35). **Exactly one verification key source per entry** (`secret` /
 `public-key(-file)` / `jwks-url`); zero or more than one fails the boot
@@ -77,7 +77,7 @@ import (
 
 func init() {
     // gs.TagArg("api") selects the authenticator configured under
-    // spring.security.jwt.api.*. gs registers its default HttpServeMux only when
+    // spring.security.jwt.instances.api.*. gs registers its default HttpServeMux only when
     // none is provided, so this custom one wins.
     gs.Provide(func(auth *StarterSecurityJWT.Authenticator) *gs.HttpServeMux {
         mux := http.NewServeMux()
@@ -117,7 +117,7 @@ import (
     "github.com/golang-jwt/jwt/v5"
 )
 
-const secret = "example-shared-secret" // must match spring.security.jwt.api.secret
+const secret = "example-shared-secret" // must match spring.security.jwt.instances.api.secret
 
 func mint(subject string, roles ...string) string {
     claims := jwt.MapClaims{
@@ -142,19 +142,19 @@ func mint(subject string, roles ...string) string {
 #   secret                (shared HMAC; dev/demo)
 #   public-key / public-key-file  (static RSA/ECDSA PEM)
 #   jwks-url              (remote JWKS; keys fetched at startup, rotated on kid)
-spring.security.jwt.api.secret=example-shared-secret
+spring.security.jwt.instances.api.secret=example-shared-secret
 
 # Claim carrying roles; flattened into Authentication.Authorities.
-spring.security.jwt.api.roles-claim=roles
+spring.security.jwt.instances.api.roles-claim=roles
 
 # true (default): missing token -> 401. false: pass through with no identity,
 # letting method-level guards decide.
-spring.security.jwt.api.required=true
+spring.security.jwt.instances.api.required=true
 
 # For a remote issuer, replace `secret` with e.g.:
-#   spring.security.jwt.api.jwks-url=https://auth.example.com/.well-known/jwks.json
-#   spring.security.jwt.api.issuer=https://auth.example.com
-#   spring.security.jwt.api.audience=demo-api
+#   spring.security.jwt.instances.api.jwks-url=https://auth.example.com/.well-known/jwks.json
+#   spring.security.jwt.instances.api.issuer=https://auth.example.com
+#   spring.security.jwt.instances.api.audience=demo-api
 
 # --- http server (gs core) ---------------------------------------------------
 # The authenticator owns no port; gs's built-in server serves the provided mux on :9090.
@@ -237,7 +237,7 @@ gs.Run()
 
 ## 3. Per-key behavior reference
 
-Keys under `spring.security.jwt.<name>.*` — 13 keys (matches
+Keys under `spring.security.jwt.instances.<name>.*` — 13 keys (matches
 `grep -rhoE 'value:"[^"]+"' | sort -u`).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -274,7 +274,7 @@ All drills run against the §1 project (`go run . -manual`); mint via token.go.
    → `401 invalid token` (check.sh Feature 5). Also mint with a wrong secret
    (`[]byte("wrong")`) → same 401.
 4. **Expired token** — mint with `"exp": time.Now().Add(-time.Minute).Unix()`:
-   → `401`. Re-mint with `+30s` expiry and set `spring.security.jwt.api.leeway=1m`:
+   → `401`. Re-mint with `+30s` expiry and set `spring.security.jwt.instances.api.leeway=1m`:
    now accepted — leeway in action.
 5. **Alg-confusion attempt rejected** — configure a `public-key` source, then mint an
    HS256 token signed with the **public PEM itself as the HMAC key**:
@@ -290,7 +290,7 @@ All drills run against the §1 project (`go run . -manual`); mint via token.go.
    aborts (`fetch JWKS ...`). Then serve a JWKS with kid `k1`, verify a `k1` token;
    publish `k2` only and mint a `k2` token — the first request triggers an on-demand
    reload (jwks.go:66-88) and succeeds without restart.
-8. **required=false posture** — set `spring.security.jwt.api.required=false`, restart:
+8. **required=false posture** — set `spring.security.jwt.instances.api.required=false`, restart:
    `curl -s :9090/me` no longer 401s (handler sees no identity — guard it, e.g. with
    `a, ok := security.FromContext(...); !ok` → 401). A garbage token still 401s.
 

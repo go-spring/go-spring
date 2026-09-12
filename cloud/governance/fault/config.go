@@ -22,9 +22,9 @@ import (
 )
 
 // Config binds the fault-injection knobs from go-spring ${...} value tags. It is
-// embedded in [governance.Config] under the `${govern}` Dync (field tag
-// `${fault:=}`, so its keys bind as govern.fault.*) and shares that single
-// binding with resilience — there is no per-starter fault key anymore. A zero
+// embedded in [governance.Config] (field tag `${fault:=}`, so its keys bind as
+// govern.fault.*) and shares that single binding with resilience — there is no
+// per-starter fault key anymore. A zero
 // Config (Enabled false) injects nothing; the process-wide injector built from
 // it is a transparent no-op.
 //

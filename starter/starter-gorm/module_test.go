@@ -22,10 +22,11 @@ import (
 	"time"
 
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/spring/gs"
 )
 
-// fakeCfg is the config of a make-believe dialect used to drive Register's
+// fakeCfg is the config of a make-believe dialect used to drive Module's
 // multi-instance assembly through a real gs container without needing a real
 // database server.
 type fakeCfg struct {
@@ -33,15 +34,32 @@ type fakeCfg struct {
 }
 
 func init() {
-	Register(Dialect[fakeCfg]{
+	Module(Dialect[fakeCfg]{
 		Prefix:       "spring.gorm.fake",
 		Engine:       "fake",
 		HealthPrefix: "gorm:fake:",
-		Build: func(ctx context.Context, c fakeCfg) (Spec, error) {
+		Build: func(ctx context.Context, c fakeCfg, _ discovery.Discovery) (Spec, error) {
 			return Spec{
 				Dialector:      fakeDialector{},
 				Pool:           PoolConfig{PingTimeout: time.Second},
 				Resource:       "gorm:fake:" + c.File,
+				ObserveEnabled: false,
+			}, nil
+		},
+	})
+
+	// fake2Cfg drives a second dialect that reuses the instance names of
+	// [fakeCfg], proving the dialect qualifier keeps their beans apart.
+	Module(Dialect[fakeCfg]{
+		Prefix:       "spring.gorm.fake2",
+		BeanPrefix:   "fake2",
+		Engine:       "fake2",
+		HealthPrefix: "gorm:fake2:",
+		Build: func(ctx context.Context, c fakeCfg, _ discovery.Discovery) (Spec, error) {
+			return Spec{
+				Dialector:      fakeDialector{},
+				Pool:           PoolConfig{PingTimeout: time.Second},
+				Resource:       "gorm:fake2:" + c.File,
 				ObserveEnabled: false,
 			}, nil
 		},
@@ -53,8 +71,8 @@ func init() {
 // chain and torn down on shutdown.
 func TestRegisterMultiInstance(t *testing.T) {
 	gs.Web(false).Configure(func(app gs.App) {
-		app.Property("spring.gorm.fake.orders.file", "orders.db")
-		app.Property("spring.gorm.fake.audit.file", "audit.db")
+		app.Property("spring.gorm.fake.instances.orders.file", "orders.db")
+		app.Property("spring.gorm.fake.instances.audit.file", "audit.db")
 	}).RunTest(t, func(s *struct {
 		DBs  []*DB               `autowire:""`
 		Inds []*health.Indicator `autowire:""`
@@ -81,8 +99,29 @@ func TestRegisterMultiInstance(t *testing.T) {
 	})
 }
 
+// TestDialectQualifiedBeanNames pins the bean-naming contract: every DB bean is
+// named "<dialect>.<instance>", taken from BeanPrefix (here explicit for the
+// second dialect, derived from Prefix for the first). Two dialects sharing an
+// instance name therefore register distinct beans instead of colliding.
+func TestDialectQualifiedBeanNames(t *testing.T) {
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.gorm.fake.instances.orders.file", "orders.db")
+		app.Property("spring.gorm.fake2.instances.orders.file", "orders2.db")
+	}).RunTest(t, func(s *struct {
+		Fake  *DB `autowire:"fake.orders"`
+		Fake2 *DB `autowire:"fake2.orders"`
+	}) {
+		if s.Fake == nil || s.Fake2 == nil {
+			t.Fatalf("both dialects' \"orders\" beans must resolve by qualified name, got %v, %v", s.Fake, s.Fake2)
+		}
+		if s.Fake == s.Fake2 {
+			t.Fatal("qualified names must yield two distinct DB beans")
+		}
+	})
+}
+
 // TestRegisterNotTriggered proves the OnProperty guard: with no
-// spring.gorm.fake.* entries configured, no DB or indicator beans register (the
+// spring.gorm.fake.instances.* entries configured, no DB or indicator beans register (the
 // container starts fine and the injections resolve empty).
 func TestRegisterNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {

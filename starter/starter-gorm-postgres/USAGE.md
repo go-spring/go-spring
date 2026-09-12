@@ -7,7 +7,7 @@ PostgreSQL connection-string semantics are [pgx's](https://github.com/jackc/pgx/
 (libpq-compatible, incl. `sslmode`)** — this doc covers the binding surface and the go-spring increment
 (wiring, discovery, TLS, observe, health).
 
-**Activation**: one client bean per `spring.gorm.postgres.<name>` entry (`OnProperty` prefix check on
+**Activation**: one client bean (named `postgres.<name>`) per `spring.gorm.postgres.instances.<name>` entry (`OnProperty` prefix check on
 `spring.gorm.postgres`). No `enabled` key. Shared lifecycle (wrapper, pool, observe plugin, health,
 `UseDBCustomizer`, the 10 `Common` keys) is documented in
 [starter-gorm's USAGE](../starter-gorm/USAGE.md) and not repeated here.
@@ -69,11 +69,12 @@ func main() {
 package dao
 
 import (
-    StarterPostgres "go-spring.org/starter-gorm-postgres"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-postgres"
 )
 
 type Service struct {
-    DB *StarterPostgres.DB `autowire:"primary"`
+    DB *gormcore.DB `autowire:"postgres.primary"`
 }
 
 func NewService() *Service { return &Service{} }
@@ -90,21 +91,21 @@ func (s *Service) Init() error { // gs InitMethod: table + smoke query
 
 ```properties
 # --- primary: fixed host ------------------------------------------------------
-spring.gorm.postgres.primary.host=127.0.0.1
-spring.gorm.postgres.primary.port=5432
-spring.gorm.postgres.primary.user=postgres
-spring.gorm.postgres.primary.password=123456
-spring.gorm.postgres.primary.db=test
-spring.gorm.postgres.primary.sslmode=disable      # smoke DB is plaintext
-spring.gorm.postgres.primary.max-open-conns=10
-spring.gorm.postgres.primary.max-idle-conns=5
-spring.gorm.postgres.primary.conn-max-lifetime=30m
-spring.gorm.postgres.primary.slow-threshold=200ms
+spring.gorm.postgres.instances.primary.host=127.0.0.1
+spring.gorm.postgres.instances.primary.port=5432
+spring.gorm.postgres.instances.primary.user=postgres
+spring.gorm.postgres.instances.primary.password=123456
+spring.gorm.postgres.instances.primary.db=test
+spring.gorm.postgres.instances.primary.sslmode=disable      # smoke DB is plaintext
+spring.gorm.postgres.instances.primary.max-open-conns=10
+spring.gorm.postgres.instances.primary.max-idle-conns=5
+spring.gorm.postgres.instances.primary.conn-max-lifetime=30m
+spring.gorm.postgres.instances.primary.slow-threshold=200ms
 # TLS via sslmode + cert material (commented; see §3):
-# spring.gorm.postgres.primary.sslmode=verify-full
-# spring.gorm.postgres.primary.sslrootcert=/path/ca.pem
-# spring.gorm.postgres.primary.sslcert=/path/client-cert.pem
-# spring.gorm.postgres.primary.sslkey=/path/client-key.pem
+# spring.gorm.postgres.instances.primary.sslmode=verify-full
+# spring.gorm.postgres.instances.primary.sslrootcert=/path/ca.pem
+# spring.gorm.postgres.instances.primary.sslcert=/path/client-cert.pem
+# spring.gorm.postgres.instances.primary.sslkey=/path/client-key.pem
 
 # --- actuator (aggregates gorm:postgres:<name> indicators) ---------------------
 spring.actuator.addr=:9370
@@ -138,7 +139,7 @@ curl -s '127.0.0.1:16686/api/traces?service=demo&limit=1' | grep '"data":\['
 
 ```
 import starter-gorm-postgres
-  └─ init: gormcore.Register(Dialect{Prefix: "spring.gorm.postgres", Engine: "postgresql", ...})
+  └─ init: gormcore.Module(Dialect{Prefix: "spring.gorm.postgres", Engine: "postgresql", ...})
 gs.Run()
   ├─ OnProperty("spring.gorm.postgres") fires; conf.BindEach binds one Config per <name> entry
   ├─ per instance: build(ctx, c)
@@ -174,7 +175,7 @@ example uses `host=0.0.0.0 port=5432` as plausible dummies.)
 
 ## 3. Per-key behavior reference
 
-PostgreSQL-specific keys under `spring.gorm.postgres.<name>.*` (the 10 shared `Common` keys are in
+PostgreSQL-specific keys under `spring.gorm.postgres.instances.<name>.*` (the 10 shared `Common` keys are in
 [starter-gorm's USAGE](../starter-gorm/USAGE.md)):
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |

@@ -58,7 +58,7 @@ func TestRelay_AutowiresMessagingDriverBean(t *testing.T) {
 
 	gs.Configure(func(app gs.App) {
 		// Keep the poller idle so the empty table never triggers a driver call.
-		app.Property("spring.outbox.main.poll-interval", "1h")
+		app.Property("spring.outbox.instances.main.poll-interval", "1h")
 	}).RunTest(t, func(s *struct{}) {
 		// startup success is the assertion: the relay root bean's Init ran with
 		// the injected messaging.Driver bean.

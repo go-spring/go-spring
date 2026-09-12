@@ -9,9 +9,9 @@
 `RenewID`）在 session 包；Redis 语义见
 [Redis 官方文档](https://redis.io/docs/latest/commands/set/)——本文只写 go-spring 的增量。
 
-**激活方式**：任一 `spring.session.redis.<name>.*` 配置即为每个 `<name>` 注册一个
+**激活方式**：任一 `spring.session.redis.instances.<name>.*` 配置即为每个 `<name>` 注册一个
 `session.SessionStore` 实例；每个实例复用其 `client` 字段指名的 `*redis.Client` bean
-（由 starter-go-redis 在 `spring.go-redis.<client>` 下提供）。本 starter 不持有任何连接。
+（由 starter-go-redis 在 `spring.go-redis.instances.<client>` 下提供）。本 starter 不持有任何连接。
 
 ---
 
@@ -102,11 +102,11 @@ func init() {
 
 ```properties
 # --- redis client（starter-go-redis 持有；store 按名复用） ---------------------
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # --- session store --------------------------------------------------------------
-spring.session.redis.web.client=cache                 # 必填；为空 fail-fast
-spring.session.redis.web.key-prefix=starter-session-redis:example:
+spring.session.redis.instances.web.client=cache                 # 必填；为空 fail-fast
+spring.session.redis.instances.web.key-prefix=starter-session-redis:example:
 ```
 
 **验证**（本地 Redis，可用 `example/docker-compose.yml`）：
@@ -135,7 +135,7 @@ import starter-go-redis + starter-session-redis
                   gs.ValueArg(c), gs.TagArg(c.Client)  无 destroy 钩子）
 
 gs.Run()
-  ├─ 配置绑定：${spring.session.redis.<name>} → Config（value tag）
+  ├─ 配置绑定：${spring.session.redis.instances.<name>} → Config（value tag）
   ├─ newStore：不拨号——注入现成的 *redis.Client bean。
   │    Store 内嵌 session.FromByteStore(&redisByteStore{client, prefix})：
   │    session（反）序列化全部留在 stdlib 抽象里；具体类型只是
@@ -170,11 +170,11 @@ HTTP 相关（cookie 名/路径/Secure/SameSite、空闲超时）都在 Manager 
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.session.redis.<name>` 之下（精确匹配，无宽松形态）。
+所有 key 位于 `spring.session.redis.instances.<name>` 之下（精确匹配，无宽松形态）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `client` | string | — | **必填**。`spring.go-redis.<client>` 下的 `*redis.Client` bean 名，注册前检查。`TagArg(c.Client)` 即 store 与 redis 实例的接线 seam。 | 空 → 启动失败并点名实例；拼错 → 启动期装配失败。 |
+| `client` | string | — | **必填**。`spring.go-redis.instances.<client>` 下的 `*redis.Client` bean 名，注册前检查。`TagArg(c.Client)` 即 store 与 redis 实例的接线 seam。 | 空 → 启动失败并点名实例；拼错 → 启动期装配失败。 |
 | `key-prefix` | string | `session:` | 拼在每个 session id 前再进 Redis，让共享一个 Redis 的多应用键空间不冲突。 | 跨应用共享前缀 → session 跨应用泄漏（同 cookie 值可互相解析）。 |
 
 ⚠ 这就是全部配置面：两个 key。其余（cookie、过期、序列化）要么是 `session.Options`
@@ -232,8 +232,8 @@ cd example && ./check.sh    # docker 门控：compose 起 redis，跑自校验 e
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动报 `session-redis: instance "<n>" missing required property ...client` | 实例缺 `client` | 设为既有 `spring.go-redis.<name>`。 |
-| 启动期装配 `*redis.Client` 失败 | `client` 拼错 | 改名对齐 `spring.go-redis.<client>` 条目。 |
+| 启动报 `session-redis: instance "<n>" missing required property ...client` | 实例缺 `client` | 设为既有 `spring.go-redis.instances.<name>`。 |
+| 启动期装配 `*redis.Client` 失败 | `client` 拼错 | 改名对齐 `spring.go-redis.instances.<client>` 条目。 |
 | 无关应用之间 session 串了 | 同一 Redis 上 `key-prefix` 相同（或都用默认 `session:`） | 每个应用独立 `key-prefix`。 |
 | session 永不过期 | `Options` 的 `IdleTimeout` 为 0/负 → Redis "永不过期" | 设正的 `IdleTimeout`。 |
 | 持续访问却中途过期 | 流量绕过了 Manager 的 Middleware，TTL 没人滑动 | 经过 `mgr.Middleware` 且已有 session 的请求才续窗口；确认中间件真的包住了路由。 |

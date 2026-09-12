@@ -69,8 +69,7 @@ func (o *Client) Init() error {
 	obs := newDBObserver("influxdb")
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.resource = resilience.ResourceLabel("influxdb", o.cfg.ServerURL)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "influxdb")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("influxdb", o.resource))
 	o.exec = exec
 	if o.dyn != nil {
 		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,
@@ -148,7 +147,7 @@ func errMissingOrgBucket() error {
 type missingOrgBucket struct{}
 
 func (missingOrgBucket) Error() string {
-	return "influxdb: write helpers need org and bucket (set spring.influxdb.<name>.org/.bucket)"
+	return "influxdb: write helpers need org and bucket (set spring.influxdb.instances.<name>.org/.bucket)"
 }
 
 // dynamicTransport is a thin http.RoundTripper indirection whose behavior can

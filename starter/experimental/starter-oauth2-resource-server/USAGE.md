@@ -9,7 +9,7 @@ against the starter source (`config.go`, `jwks.go`, `starter.go`, `validator.go`
 below is go-spring's increment: binding, beans, the fail-fast assembly, key-source
 discipline.
 
-**Activation**: one `*Validator` bean per entry under `spring.security.oauth2.resource.jwt.<name>`;
+**Activation**: one `*Validator` bean per entry under `spring.security.oauth2.resource.jwt.instances.<name>`;
 an empty (or absent) map registers nothing — configuration is the enable switch
 (starter.go:37-49). **Exactly one key source per entry** (`issuer-uri` / `public-key(-file)` /
 `secret`); zero or more than one fails the boot (config.go:94-113).
@@ -75,7 +75,7 @@ import (
 
 func init() {
     // gs.TagArg("api") selects the validator configured under
-    // spring.security.oauth2.resource.jwt.api.*.
+    // spring.security.oauth2.resource.jwt.instances.api.*.
     gs.Provide(func(v security.TokenValidator) *gs.HttpServeMux {
         mux := http.NewServeMux()
 
@@ -141,13 +141,13 @@ func mint(subject string, scopes ...string) string {
 #   issuer-uri  (recommended in production: OIDC discovery -> JWKS, auto-rotation)
 #   public-key / public-key-file  (static RSA/ECDSA PEM)
 #   secret  (shared HMAC; dev/demo only)
-spring.security.oauth2.resource.jwt.api.secret=example-shared-secret
+spring.security.oauth2.resource.jwt.instances.api.secret=example-shared-secret
 
 # Accepted "aud" values (any-of). Empty disables audience checking.
-spring.security.oauth2.resource.jwt.api.audiences=example-api
+spring.security.oauth2.resource.jwt.instances.api.audiences=example-api
 
 # For production with a real issuer, replace the two lines above with:
-#   spring.security.oauth2.resource.jwt.api.issuer-uri=https://auth.example.com
+#   spring.security.oauth2.resource.jwt.instances.api.issuer-uri=https://auth.example.com
 # (expected "iss" then defaults to the issuer URI; JWKS auto-discovered)
 
 # --- http server (gs core) ---------------------------------------------------
@@ -179,7 +179,7 @@ curl -i :9370/healthz                              # actuator liveness
 ```
 import starter-oauth2-resource-server
   └─ gs.Module(gs.OnProperty("spring.security.oauth2.resource.jwt"))   [starter.go:37]
-        │   (prefix check: any spring.security.oauth2.resource.jwt.* entry fires it)
+        │   (prefix check: any spring.security.oauth2.resource.jwt.instances.* entry fires it)
 gs.Run()
   ├─ bind: each sub-key -> Config (value tags), then Config.source() validated INLINE
   │        (starter.go:39-41) — "no key source"/"multiple key sources" fail before
@@ -231,7 +231,7 @@ gs.Run()
 
 ## 3. Per-key behavior reference
 
-Keys under `spring.security.oauth2.resource.jwt.<name>.*` — 12 keys (matches
+Keys under `spring.security.oauth2.resource.jwt.instances.<name>.*` — 12 keys (matches
 `grep -rhoE 'value:"[^"]+"' | sort -u`).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -297,7 +297,7 @@ All drills run against the §1 project (`go run . -manual`). Mint helper as in t
 | 403 on scope-gated routes after token change | authority claim renamed or scope-claim mismatch | check token's claim names vs `scope-claim`/`roles-claim` |
 | Tokens from a freshly rotated key 401 briefly | cache not yet stale | unknown `kid` already forces reload; verify the new key is actually published |
 | `algorithm ... not compatible` at boot | pin contradicts key source family | align `algorithm` with the source (RS/ES/PS for PEM/issuer, HS for secret) |
-| Nothing registers at all (no validator bean) | prefix typo / empty map | keys must sit under `spring.security.oauth2.resource.jwt.<name>.*` |
+| Nothing registers at all (no validator bean) | prefix typo / empty map | keys must sit under `spring.security.oauth2.resource.jwt.instances.<name>.*` |
 
 ---
 

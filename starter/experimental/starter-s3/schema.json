@@ -2,46 +2,63 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.s3",
   "type": "object",
+  "description": "Two buckets: spring.s3.default holds family-wide values (each overridable per instance), spring.s3.instances.<name> holds one entry per named instance. No other key belongs directly under spring.s3.instances.",
   "properties": {
-    "endpoint": {
-      "type": "string",
-      "description": "host:port without scheme, e.g. '127.0.0.1:9000' or 's3.amazonaws.com'"
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "access-key-id": {
-      "type": "string",
-      "description": "access key of the static credential pair"
-    },
-    "secret-access-key": {
-      "type": "string",
-      "description": "secret key of the static credential pair"
-    },
-    "session-token": {
-      "type": "string",
-      "default": "",
-      "description": "optional session token (temporary credentials)"
-    },
-    "region": {
-      "type": "string",
-      "default": "us-east-1"
-    },
-    "use-ssl": {
-      "type": "boolean",
-      "default": false
-    },
-    "bucket-lookup": {
-      "type": "string",
-      "default": "auto",
-      "enum": [
-        "auto",
-        "virtual-host",
-        "path",
-        "dns"
-      ],
-      "description": "how bucket names are addressed in URLs; some S3-compatible clouds only support path"
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "description": "host:port without scheme, e.g. '127.0.0.1:9000' or 's3.amazonaws.com'"
+          },
+          "access-key-id": {
+            "type": "string",
+            "description": "access key of the static credential pair"
+          },
+          "secret-access-key": {
+            "type": "string",
+            "description": "secret key of the static credential pair"
+          },
+          "session-token": {
+            "type": "string",
+            "default": "",
+            "description": "optional session token (temporary credentials)"
+          },
+          "region": {
+            "type": "string",
+            "default": "us-east-1"
+          },
+          "use-ssl": {
+            "type": "boolean",
+            "default": false
+          },
+          "bucket-lookup": {
+            "type": "string",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "virtual-host",
+              "path",
+              "dns"
+            ],
+            "description": "how bucket names are addressed in URLs; some S3-compatible clouds only support path"
+          }
+        }
+      }
     }
   }
 }

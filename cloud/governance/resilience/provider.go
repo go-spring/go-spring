@@ -68,36 +68,43 @@ func RegisterExecutorProvider(p Provider) {
 	})
 }
 
-// ExecutorFor returns the executor resource should run under. It is the single
-// call site clients use instead of injecting a governance center: pass your
-// resource label, wrap the result with fault/observe as desired, and install it
-// in your command/query path.
+// ExecutorFor returns the executor system's resource should run under. It is
+// the single call site clients use instead of injecting a governance center:
+// pass the owning system (e.g. "redis", "gorm") and the resource label, wrap
+// the result with fault as desired, and install it in your command/query path.
 //
-// The returned executor resolves its backing executor LAZILY on each Execute:
-// it looks up the provider-built executor for the label (memoized after first
-// use) and delegates. Because resolution happens at call time — when a real
-// request runs, well after the container has wired — it does not matter whether
-// the client was set up before or after starter-govern registered the provider.
+// The returned executor is fully composed: resolution guards it with the
+// registered provider's policy (when there is one) and wraps it with the
+// observe layer under system, so clients do not call [WrapExecutor] themselves.
+// It resolves its backing executor LAZILY on each Execute: it looks up the
+// provider-built executor for the label (memoized after first use) and
+// delegates. Because resolution happens at call time — when a real request
+// runs, well after the container has wired — it does not matter whether the
+// client was set up before or after starter-govern registered the provider.
 // When no provider is registered (starter-govern not imported, or governance
-// disabled), the executor is a transparent no-op: fn runs once, untouched, with
-// no rate-limit/breaker overhead.
+// disabled), the policy layer is a transparent no-op: fn runs once, untouched,
+// with no rate-limit/breaker overhead, and only the observe layer remains.
 //
 // Hot-reload is handled by the provider, not the caller: the provider registers
 // a governance subscription on the executor it builds, so a policy change
 // refreshes that backing executor in place; this lazy wrapper just delegates to
 // it on the next call.
-func ExecutorFor(resource string) Executor {
-	return &resolvedExecutor{label: resource}
+func ExecutorFor(system, resource string) Executor {
+	return &resolvedExecutor{system: system, label: resource}
 }
 
 // resolvedExecutor is the stable, lazily-delegating executor [ExecutorFor]
-// returns. It holds only the resource label; the real executor is resolved on
-// each Execute via [resolve] (memoized globally per label). Refresh is a no-op
-// here because hot-reload is driven on the backing executor by the provider.
-type resolvedExecutor struct{ label string }
+// returns. It holds the system label and the resource label; the real executor
+// is resolved on each Execute via [resolve] (memoized globally per label).
+// Refresh is a no-op here because hot-reload is driven on the backing executor
+// by the provider.
+type resolvedExecutor struct {
+	system string
+	label  string
+}
 
 func (r *resolvedExecutor) Execute(ctx context.Context, _ string, fn func(context.Context) error) error {
-	return resolve(r.label).Execute(ctx, r.label, fn)
+	return resolve(r.label, r.system).Execute(ctx, r.label, fn)
 }
 
 func (r *resolvedExecutor) Refresh(Policy) error { return nil }
@@ -105,20 +112,28 @@ func (r *resolvedExecutor) Refresh(Policy) error { return nil }
 func (r *resolvedExecutor) Close() error { return nil }
 
 // resolve returns the memoized backing executor for label, building it via the
-// registered provider on first use. With no provider it returns a shared
+// registered provider on first use. With no provider it uses a shared
 // [noopExecutor], so an unmanaged process pays only an atomic load + a sync.Map
 // miss per call (and a hit once any executor for that label is cached).
-func resolve(label string) Executor {
+//
+// The observe layer is applied HERE, on the still-private executor, before the
+// cache publishes it. That ordering is what lets [WrapExecutor] attach its
+// breaker listener through the construction-time handshake
+// ([BreakerEventListenerSetter]) while the per-resource breakers do not exist
+// yet — and are built afterwards against the captured listener — instead of a
+// client trying to reach an executor that is already behind a wrapper chain.
+func resolve(label, system string) Executor {
 	if v, ok := cache.Load(label); ok {
 		return v.(Executor)
 	}
+	var built Executor = noopExecutorInst
 	if p := provider.Load(); p != nil && *p != nil {
 		if e := (*p)(label); e != nil {
-			actual, _ := cache.LoadOrStore(label, e)
-			return actual.(Executor)
+			built = e
 		}
 	}
-	return noopExecutorInst
+	actual, _ := cache.LoadOrStore(label, WrapExecutor(built, system))
+	return actual.(Executor)
 }
 
 // noopExecutor runs fn once with no protection — the executor a process with no

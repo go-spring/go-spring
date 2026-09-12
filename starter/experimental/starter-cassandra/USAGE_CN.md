@@ -7,8 +7,8 @@
 （ScyllaDB 说同一套原生协议，一个 starter 通吃 [config.go:26-28]）——下文只写 go-spring
 的增量。
 
-**激活**：任一 `spring.cassandra.*` key（模块为 `OnProperty("spring.cassandra")` 前缀
-匹配 [starter.go:38]）。每个 `spring.cassandra.<name>` 条目创建一个名为 `<name>` 的
+**激活**：任一 `spring.cassandra.instances.*` key（模块为 `OnProperty("spring.cassandra")` 前缀
+匹配 [starter.go:38]）。每个 `spring.cassandra.instances.<name>` 条目创建一个名为 `<name>` 的
 `*StarterCassandra.Client` bean（内嵌 `*gocql.Session`），并注册名为
 `cassandra:<name>` 的健康指示器 [starter.go:47-49]。
 
@@ -94,12 +94,12 @@ func (s *Service) Run(ctx context.Context) error {
 
 ```properties
 # --- 实例 "a"：默认一致性级别、无认证（与本地容器一致）
-spring.cassandra.a.hosts=127.0.0.1
-spring.cassandra.a.consistency=local-quorum
+spring.cassandra.instances.a.hosts=127.0.0.1
+spring.cassandra.instances.a.consistency=local-quorum
 
 # --- 实例 "b"：同一集群，预选 keyspace
-spring.cassandra.b.hosts=127.0.0.1
-spring.cassandra.b.keyspace=demo
+spring.cassandra.instances.b.hosts=127.0.0.1
+spring.cassandra.instances.b.keyspace=demo
 
 # --- actuator + otel ------------------------------------------------------
 spring.actuator.addr=:9370
@@ -129,7 +129,7 @@ docker exec -it cassandra-example cqlsh -e "SELECT * FROM demo.greetings"
 
 ```
 import starter-cassandra
-  └─ gs.Module(OnProperty("spring.cassandra"))：任一 spring.cassandra.* key 存在即触发
+  └─ gs.Module(OnProperty("spring.cassandra"))：任一 spring.cassandra.instances.* key 存在即触发
         └─ conf.BindEach(p, "${spring.cassandra}") → 每个 <name> 条目一份 Config
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver)).Name(<name>)
@@ -140,11 +140,12 @@ import starter-cassandra
 gs.Run()
   ├─ 构造 newClient [starter.go:60]：
   │     username/password 成对校验 → 可选 Driver bean
-  │     （无则用内置 DefaultDriver）→ driver.CreateClient
+  │     （无则用内置 DefaultDriver；多个并存时实例可按名指定：
+  │     `spring.cassandra.instances.<name>.driver = <bean 名>`，留空 = 按类型注入
+  │     唯一 Driver bean，指定的 bean 不存在则启动失败）→ driver.CreateClient
   │     → HealthCheck 探活（fail fast，见下）
   ├─ Init [client.go:59]：newDBObserver("cassandra") → resource label
-  │     → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │     → resilience.WrapExecutor(exec, "cassandra") —— exec 链就绪
+  │     → fault.WrapExecutor(resilience.ExecutorFor("cassandra", resource)) —— exec 链就绪
   ├─ readiness：每个实例的 indicator 查询 system.local
   └─ SIGTERM → Destroy [client.go:75]：exec.Close（若已武装）→ Session.Close
 ```
@@ -193,10 +194,10 @@ wrapper）——请用 wrapper 自带的 `WithContext`/`Bind` 保持防护。后
 `Client.Query`/`Client.Bind`/`Client.Exec` 出发，读写都有 breaker/limiter/metrics/
 access-log。
 
-`Exec` 的分层顺序（由外向内）：observer start → fault 注入器（fault.WrapExecutor，
-进程级）→ resilience 执行器（治理中心）→ gocql。resilience observer
-（`resilience.WrapExecutor`）在执行器外再加 outcome 计数，因此注入故障与 breaker
-拒绝都会被计数和记录。
+`Exec` 的分层顺序（由外向内）：observer start → fault 注入器（`fault.WrapExecutor`，
+进程级）→ resilience observer（`resilience.WrapExecutor`，outcome 计数）→
+resilience 执行器（治理中心）→ gocql。resilience observer 紧贴执行器、fault 注入器在其
+外层，因此注入故障与 breaker 拒绝都会被计数和记录。
 
 ### 2.4 Driver 构造缝
 
@@ -213,7 +214,7 @@ per-config 的 `driver` key。
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.cassandra.<name>.` 之下 —— 经 `conf.BindEach` 按实例绑定（构造
+所有 key 位于 `spring.cassandra.instances.<name>.` 之下 —— 经 `conf.BindEach` 按实例绑定（构造
 参数的 `Config`），不是 starter-Pool 的绝对属性规则。
 
 ### 3.1 连接与 session

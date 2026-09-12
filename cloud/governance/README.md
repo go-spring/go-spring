@@ -14,14 +14,14 @@
 治理中心自成体系：它消费自己的 `Source` 接口（[source.go](source.go)）——一个配置快照加一个变更订阅，两个方法。整条生效链（label diff → executor 原地 Refresh → client 无感）只依赖这个契约，不感知配置从哪来。
 
 ```
-${govern} gs.Dync ──dyncSource 适配──┐
-governance.Source bean ──────────────┼──→ center（单一活跃源）→ adopt → Refresh + fault.SetConfig
-governance.SetSource(任意实现) ───────┘
+治理文件 / 远程控制台 ──┐
+governance.Source bean ──┼──→ center（单一活跃源）→ adopt → Refresh + fault.SetConfig
+governance.SetSource ────┘
 ```
 
-文档格式由 `rules.Parse(name, data, format)`（starter-governance 的 `rules` 子包，spring/conf 与容器无关治理核心之间的共享解析胶水）统一：任何后端送来的规则文档（文件字节 / HTTP body / 配置中心 value）都用同一套解析与键语义（与 app.properties 的 `${govern}` 键完全相同），规则文件跨后端逐字节可移植。解析成功但没有任何 `govern.*` 键的文档一律报错（防截断静默关治理）。
+文档格式由 `rules.Parse(name, data, format)`（starter-governance 的 `rules` 子包，spring/conf 与容器无关治理核心之间的共享解析胶水）统一：任何后端送来的规则文档（文件字节 / HTTP body / 配置中心 value）都用同一套解析与键语义（`govern.*` 键），规则文件跨后端逐字节可移植。解析成功但没有任何 `govern.*` 键的文档一律报错（防截断静默关治理）。
 
-优先级：`SetSource` > bean 注入 > `${govern}` Dync 默认源。**不配置任何自定义 Source 时，行为与历史版本完全一致**——`${govern}` 经 dync 绑定驱动，所有 conf provider（file/nacos/k8s/consul/vault/bus）的 watch 照常生效。
+优先级：`SetSource` > bean 注入。**没有内置默认源**——不配置任何来源时治理保持 disabled（`ExecutorFor` 返回透传 noop）。治理配置不挂 gs 的通用属性刷新管道。
 
 自定义 Source 的三种接入方式：
 
@@ -33,7 +33,7 @@ governance.SetSource(src)
 src.Push(newCfg) // resilience 策略与 fault 演练配置一起热更
 
 // ② bean 注入（Source 需要自己的依赖与生命周期时）——Export 不可省略，
-//    否则接口注入找不到它，治理静默回落 ${govern} 默认源
+//    否则接口注入找不到它，治理静默 disabled
 gs.Provide(newConsoleSource).Export(gs.As[governance.Source]())
 
 // ③ 直接实现 Source 接口（如监听配置中心专用 key）
@@ -71,16 +71,17 @@ traffic      ← 纯叶子
 - `cloud/loadbalance`、`cloud/discovery` — 端点选择与服务注册，与 discovery 成对。
 - `cloud/actuator`、`cloud/mesh`、`cloud/tlsconf` — 运维/网格/TLS，独立关注点。
 - `cloud/loadtest` — 测试工具；`cloud/experimental/transaction` — 分布式事务（仍在孵化）。
-- resilience 的插桩在本包自身（`resilience/observe.go` 的 `WrapExecutor`）。
+- resilience 的插桩在本包自身（`resilience/observe.go` 的 `WrapExecutor`，由
+  `ExecutorFor` 在 resolve 时应用到尚未发布的 executor 上，client 不直接调用）。
 
 ## 配置
 
-治理中心绑定在 `${govern}` 配置前缀下（如 `govern.enabled`、`govern.rules`）。该前缀是配置命名空间，与 Go 包名 `governance` 独立。
+治理规则使用 `govern.*` 键命名空间（如 `govern.enabled`、`govern.default.*`、`govern.rules`），与 Go 包名 `governance` 独立。规则是**独立文档**，经 Source 契约进入中心，不写进 `app.properties`——本地文件用 `govern.source.file.path` 引导（见 [starter-governance](../starter-governance/README.md)）。
 
-本包**容器无关**（不 import spring/gs）：gs 接线（`${govern}` Dync 绑定为默认源、seam 注册、OnReady）在 **starter-governance** 的常驻 wiring bean 里。应用侧：
+本包**容器无关**（不 import spring/gs）：gs 接线（绑定注入的 Source、seam 注册、`GoLive`）在 **starter-governance** 的常驻 wiring bean 里。应用侧：
 
 ```go
-import _ "go-spring.org/starter-governance" // 默认 ${govern} 接线 + 可选动态源
+import _ "go-spring.org/starter-governance" // 接线治理中心 + 装载规则来源
 ```
 
 非 gs 运行时直接用门面：`governance.Arm(cfg)` 或 `governance.SetSource(src)` + `governance.GoLive()`。

@@ -32,10 +32,9 @@
 // Config awareness is contract-first: the center consumes its own [Source]
 // interface (source.go) — a snapshot plus a change subscription — and nothing
 // else. This package is container-free: it imports no IoC concepts at all, so
-// the whole governance family is usable from any runtime. The gs wiring that
-// turns ${govern} properties into the default source (a gs.Dync adapted to
-// [Source], the bean registration, the seam arming) lives in the
-// starter-governance module — importing that starter is what makes
+// the whole governance family is usable from any runtime. The gs wiring (the
+// bean registration, binding the injected [Source], the seam arming) lives in
+// the starter-governance module — importing that starter is what makes
 // cloud/governance live in a gs app, exactly like any other starter/core pair.
 //
 // Governance scope: govern covers every client that goes through the
@@ -55,9 +54,10 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 )
 
-// Config is the single source of truth for governance. starter-govern binds it
-// once under ${govern} via gs.Dync; every client reads a resolved policy from
-// the [center] instead of carrying its own resilience config. Driver/Enabled
+// Config is the single source of truth for governance. A [Source] delivers it
+// (starter-governance binds the bean-injected source); every client reads a
+// resolved policy from the [center] instead of carrying its own resilience
+// config. Driver/Enabled
 // live at the top level so all resources share one backend selection and one
 // on/off switch; per-resource policies live under Rules, matched by the same
 // label passed to [center.policyFor] (e.g. "redis:cache", "gorm:mysql:primary",
@@ -65,7 +65,7 @@ import (
 type Config struct {
 	// Enabled gates the whole center. When false, PolicyFor always returns a
 	// zero Policy (transparent pass-through) regardless of Default/Rules,
-	// so importing starter-govern without configuring ${govern} is a no-op.
+	// so importing starter-governance with no configured source is a no-op.
 	Enabled bool `value:"${enabled:=false}"`
 
 	// Driver names the resilience backend all resources use ("default" or
@@ -77,7 +77,7 @@ type Config struct {
 	// Most deployments set only this and let every resource share it; per-resource
 	// exceptions go under Rules. It embeds resilience.PolicyConfig — NOT
 	// resilience.Config — so only policy knobs are bindable here; the on/off
-	// switch and backend selection are process-wide at the top of ${govern}
+	// switch and backend selection are process-wide at the top of the document
 	// ([Config.Enabled], [Config.Driver]) and deliberately NOT re-bindable per
 	// resource. Bind via govern.default.* (e.g. govern.default.attempt-timeout=500ms).
 	Default resilience.PolicyConfig `value:"${default:=}"`
@@ -101,11 +101,12 @@ type Config struct {
 	Rules []Rule `value:"${rules:=}"`
 
 	// Fault is the process-wide fault-injection config (chaos engineering), a
-	// sibling concern to resilience governance that rides the SAME ${govern}
-	// Dync rather than its own. starter-govern builds one global *fault.Injector
-	// from it (in [center.goLive]) and registers it behind the neutral
-	// [fault.InjectorFor] seam, so every client/server starter resolves fault
-	// injection through that seam instead of each binding its own gs.Dync. Per-
+	// sibling concern to resilience governance that rides the SAME [Config]
+	// (and so the same source) rather than its own. starter-governance builds
+	// one global *fault.Injector from it (in [center.goLive]) and registers it
+	// behind the neutral [fault.InjectorFor] seam, so every client/server
+	// starter resolves fault injection through that seam instead of each
+	// binding its own fault config. Per-
 	// resource fault differences live under fault.Config.Rules (matched by the
 	// same resource label passed to the executor/Apply seam). A zero Fault
 	// (Enabled false) injects nothing. Bind via govern.fault.* (e.g.
@@ -136,7 +137,7 @@ type Rule struct {
 // Safe for concurrent use.
 //
 // The center is container-free: it knows sources only through the [Source]
-// contract. The gs wiring (binding ${govern} into the default source, arming
+// contract. The gs wiring (binding the injected source, arming
 // the seams, marking the authority live) lives in starter-governance's wiring
 // bean, which drives this package's facade ([BindDefault], [GoLive]).
 // [newCenter] is the direct construction path used by tests and [Arm].
@@ -168,6 +169,39 @@ type center struct {
 type subscriber struct {
 	last resilience.Policy
 	cb   func(resilience.Policy)
+
+	// cancelled marks a subscriber whose [Subscription.Cancel] has run. The
+	// center drops it from subs on cancel, but a Refresh already in flight may
+	// hold a reference to it from before the removal — so Refresh checks this
+	// flag under mu and skips it, making cancel take effect immediately rather
+	// than after the next refresh.
+	cancelled bool
+}
+
+// Subscription is a live registration created by [Register]. It carries the
+// policy the callback was armed with and the ability to detach it again, which
+// matters for callers whose protected objects are not process-lifetime: a
+// gateway rebuilding its route table, or any client re-created on a config
+// change. Without Cancel, every rebuild would leave a subscriber (and a
+// reference to the discarded object) behind in the center forever.
+//
+// The zero value is inert: Policy is a zero pass-through policy and Cancel is a
+// no-op, so a Subscription is always safe to hold and always safe to cancel —
+// including more than once.
+type Subscription struct {
+	// Policy is the policy the callback was armed with at registration time.
+	Policy resilience.Policy
+
+	cancel func()
+}
+
+// Cancel detaches the subscription. It is idempotent and safe to call
+// concurrently with a config push: once it returns, the callback is no longer
+// invoked. Cancelling the zero Subscription is a no-op.
+func (s Subscription) Cancel() {
+	if s.cancel != nil {
+		s.cancel()
+	}
 }
 
 // sourceHandle tokens the active [Source] so callbacks from a REPLACED source
@@ -215,9 +249,8 @@ func (c *center) adopt(cfg Config) {
 
 // bindSource makes s the active source: install its handle, subscribe with a
 // stale guard (callbacks from a previously bound source no-op), then adopt s's
-// snapshot. The explicit snapshot adopt mirrors gs.Dync's contract that
-// OnChanged does not fire on the init bind — Subscribe delivers changes only,
-// Snapshot seeds the present.
+// snapshot. The explicit snapshot adopt matches the [Source] contract that
+// Subscribe delivers changes only — Snapshot seeds the present.
 func (c *center) bindSource(s Source) {
 	h := &sourceHandle{src: s}
 	c.srcMu.Lock()
@@ -255,8 +288,8 @@ func (c *center) setSource(s Source) {
 
 // bindDefault installs s as the active source only when none is bound yet, so
 // an explicit [SetSource] (callable at any time) always outranks the wiring
-// default. The wiring starter calls it once at startup with its chosen default
-// (a bean-injected Source, else the ${govern} adapter). The check-then-bind is
+// default. The wiring starter calls it once at startup with the bean-injected
+// source. The check-then-bind is
 // not atomic with concurrent SetSource, but wiring runs single-threaded before
 // the app serves; the guard machinery makes a lost race harmless anyway (the
 // loser's callbacks go stale).
@@ -275,7 +308,7 @@ func (c *center) bindDefault(s Source) {
 // executorFor is the governance-backed provider registered with
 // resilience.RegisterExecutorProvider. For a resource label it builds the
 // executor the center resolves (the center's driver + the label's policy) and
-// subscribes it to policy changes — so a hot-reload of ${govern} refreshes the
+// subscribes it to policy changes — so a hot-reload of the governance config refreshes the
 // executor in place. It is a pure function: the ONLY memoization is the
 // LoadOrStore cache in resilience.resolve (provider.go), which also guarantees
 // this provider is invoked at most once per label, so the Register
@@ -285,7 +318,9 @@ func (c *center) executorFor(label string) resilience.Executor {
 	if err != nil || exec == nil {
 		return nil // resilience.resolve falls back to a no-op executor
 	}
-	c.register(label, func(p resilience.Policy) { _ = exec.Refresh(p) })
+	// The subscription lives as long as the executor, which the resolve cache
+	// keeps for the process lifetime, so there is nothing to cancel here.
+	_ = c.register(label, func(p resilience.Policy) { _ = exec.Refresh(p) })
 	return exec
 }
 
@@ -348,21 +383,46 @@ func (c *center) policyFor(label string) resilience.Policy {
 // with the current resolved policy. cb is then invoked whenever [refresh]
 // produces a different policy for label. This is how a client replaces its
 // per-bean OnChanged handler: one Register per resource, all driven by the
-// center's single Dync.
+// center's single source.
 //
 // cb is always called outside the center's lock, so a callback that itself
 // calls into the Center cannot self-deadlock; it MUST be safe for concurrent
 // invocation, since a Refresh may fire concurrently with this immediate call.
 // resilience.Executor.Refresh satisfies that.
 //
-// The returned policy is the value cb was armed with.
-func (c *center) register(label string, cb func(resilience.Policy)) resilience.Policy {
+// The returned [Subscription] carries the policy cb was armed with and detaches
+// the registration on [Subscription.Cancel].
+func (c *center) register(label string, cb func(resilience.Policy)) Subscription {
 	cur := c.policyFor(label)
+	s := &subscriber{last: cur, cb: cb}
 	c.mu.Lock()
-	c.subs[label] = append(c.subs[label], &subscriber{last: cur, cb: cb})
+	c.subs[label] = append(c.subs[label], s)
 	c.mu.Unlock()
 	cb(cur)
-	return cur
+	return Subscription{Policy: cur, cancel: func() { c.unregister(label, s) }}
+}
+
+// unregister detaches s from label. It marks s cancelled before removing it, so
+// a Refresh that already collected s into its pending list (under mu, before
+// this call) still skips it at delivery time. Removing the last subscriber for
+// a label drops the map entry, so a repeatedly-rebuilt client leaves no residue
+// — not even an empty slice.
+func (c *center) unregister(label string, s *subscriber) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s.cancelled = true
+	list := c.subs[label]
+	for i, e := range list {
+		if e == s {
+			list = append(list[:i: i], list[i+1:]...)
+			break
+		}
+	}
+	if len(list) == 0 {
+		delete(c.subs, label)
+		return
+	}
+	c.subs[label] = list
 }
 
 // Refresh adopts cfg as the new governance config and notifies every registered
@@ -384,6 +444,11 @@ func (c *center) refresh(cfg Config) {
 	for label, list := range c.subs {
 		next := c.policyFor(label)
 		for _, s := range list {
+			// A subscriber cancelled since this refresh began must not be
+			// notified: its owner is already tearing down what cb drives.
+			if s.cancelled {
+				continue
+			}
 			if !policyEqual(s.last, next) {
 				s.last = next
 				todo = append(todo, pending{cb: s.cb, p: next})

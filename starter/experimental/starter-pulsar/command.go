@@ -220,14 +220,8 @@ var clientGuards sync.Map // pulsar.Client -> *clientGuard
 // the governance center — so this function has zero coupling to cloud/governance.
 // When governance is off, ExecutorFor yields a transparent no-op executor; fault
 // wraps it when an injector is registered (nil-safe otherwise).
-func applyResilience(c Config, cl pulsar.Client, resource string) error {
-	// Per-instance opt-out: without an executor attached, guard (and therefore
-	// both GuardedSend and the driver's Publish) degrades to bare calls.
-	if !c.Governance {
-		return nil
-	}
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "pulsar")
+func applyResilience(cl pulsar.Client, resource string) error {
+	exec := fault.WrapExecutor(resilience.ExecutorFor("pulsar", resource))
 	clientGuards.Store(cl, &clientGuard{exec: exec, resource: resource})
 	return nil
 }

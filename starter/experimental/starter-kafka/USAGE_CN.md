@@ -7,8 +7,8 @@
 franz-go API 属于 [franz-go 官方文档](https://github.com/twmb/franz-go)与
 [kafka.apache.org](https://kafka.apache.org/documentation/)**——下文只写 go-spring 的增量。
 
-**激活方式**：任一 `spring.kafka.*` key 即激活（模块为 `gs.Module(gs.OnProperty("spring.kafka"))`
-前缀匹配 [starter.go:38]）。每个 `spring.kafka.<name>` 条目创建一个名为 `<name>` 的
+**激活方式**：任一 `spring.kafka.instances.*` key 即激活（模块为 `gs.Module(gs.OnProperty("spring.kafka"))`
+前缀匹配 [starter.go:38]）。每个 `spring.kafka.instances.<name>` 条目创建一个名为 `<name>` 的
 `*kgo.Client` bean。**starter 自身不注册 health indicator**——应用侧模式见 §4.1。
 
 ---
@@ -94,11 +94,11 @@ func init() {
 
 ```properties
 # --- kafka 实例 "a"（一个 client 同时做生产+消费）---------------------------
-spring.kafka.a.brokers=127.0.0.1:9092
-spring.kafka.a.topic=hello
-spring.kafka.a.group=hello-group
-spring.kafka.a.producer.required-acks=all
-spring.kafka.a.producer.compression=snappy
+spring.kafka.instances.a.brokers=127.0.0.1:9092
+spring.kafka.instances.a.topic=hello
+spring.kafka.instances.a.group=hello-group
+spring.kafka.instances.a.producer.required-acks=all
+spring.kafka.instances.a.producer.compression=snappy
 
 # 明文开发 broker 下 SASL / TLS 关闭；安全集群上启用
 # sasl.enabled/mechanism/username/password + tls.enabled/ca-file（见 §3）。
@@ -112,6 +112,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance（同步生产路径上的限流）--------------------------------------
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -141,7 +142,7 @@ resilience / 热加载行并以 0 退出）。
 
 ```
 import starter-kafka
-  └─ gs.Module(OnProperty("spring.kafka"))：任一 spring.kafka.* key 存在时触发
+  └─ gs.Module(OnProperty("spring.kafka"))：任一 spring.kafka.instances.* key 存在时触发
         └─ conf.BindEach("${spring.kafka}") → 每个 <name> 条目一个 Config
               └─ Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver)).Name(<name>) [starter.go:39-45]
                     .Destroy(destroyClient)
@@ -153,8 +154,8 @@ gs.Run()
   │   3. Ping 10s 超时——坏 brokers/凭证/TLS 让启动失败，
   │      而不是等第一次 produce 才暴露                                [starter.go:51,76]
   │   4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor(
-  │      "kafka:<brokers>")) → resilience.WrapExecutor，以
-  │      client 指针索引进包级 sync.Map                              [command.go:99-105]
+  │      "kafka", "kafka:<brokers>"))，以
+  │      client 指针索进包级 sync.Map                              [command.go:99-105]
   ├─ 无 Init 钩子；*kgo.Client bean 在 ctor 后即就绪
   ├─ Destroy(destroyClient) [starter.go:95-102]:
   │   closeResilience（executor Close）→ Flush(10s ctx) → Close。
@@ -165,7 +166,9 @@ gs.Run()
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterKafka.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.kafka` 下每个实例都经它构建。
 没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:47-95`，
-`starter.go:67-68`）。没有 per-config 的 `driver` key。
+`starter.go:67-68`）。当容器中存在多个 Driver bean 时，实例可按名指定：
+`spring.kafka.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的
+bean 不存在则启动失败）。
 
 resilience 注册表以 `*kgo.Client` 指针为键，这正是 `GuardedProduceSync` 可以是接收原始
 bean 的自由函数的原因：guard 直接解析 executor，无需包装 client 类型 [command.go:118-125]。
@@ -201,9 +204,8 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
 3. 若 `traffic.IsLoadTest(ctx)`，压测标记随 record header 携带，消费侧可识别合成流量
    [client.go:90-92]。
 4. `GuardedProduceSync(ctx, p.cl, rec).FirstErr()` —— 同步生产，走与裸 client API 同一个
-   resilience executor（该实例关治理时为透明 no-op）[client.go:93-99]，broker ack / 拒绝
-   直接返回给调用方。实例 key `governance=false` 可让 driver（及 `GuardedProduceSync`）
-   彻底裸调用、不挂 executor。
+   resilience executor（没有规则命中该 client 的 resource label 时为透明 no-op）
+   [client.go:93-99]，broker ack / 拒绝直接返回给调用方。
 5. client 内部钩子触发：kotel produce span + metric；observeHook 的
    `OnProduceRecordBuffered` 开启名为 `publish` 的访问日志记录，
    `OnProduceRecordUnbuffered` 以结果与 buffered→unbuffered 时长收尾
@@ -235,23 +237,24 @@ franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [comm
 
 - guard 解析 `cl` 上挂的 executor；没有（governance 关）则原样内联执行——与
   `cl.ProduceSync` 行为一致。
-- governance 开启时，调用先过 `fault.WrapExecutor(resilience.ExecutorFor(...))` 再过
-  `resilience.WrapExecutor` [command.go:100-101]：运行时故障注入与 resilience 结果
-  metric 包住 produce，资源标签 `kafka:<brokers>`
+- governance 开启时，调用经过已组装好的 executor
+  `fault.WrapExecutor(resilience.ExecutorFor("kafka", resource))` [command.go:100]：运行时
+  故障注入与 resilience 结果 metric 包住 produce，资源标签 `kafka:<brokers>`
   （`resilience.ResourceLabel("kafka", c.Brokers)` [starter.go:83]，格式 `prefix:name`
   [resilience/config.go:151-158]）。
 - 被拒（限流 / 熔断打开）时 produce **绝不执行**；拒绝错误编码为逐 record 错误，调用方的
   `.FirstErr()` 像真实 produce 失败一样拿到它 [command.go:145-151]。example-cloudnative
   断言突发流量会得到 `resilience.ErrRateLimited`。
 - **不受保护**的路径：直接在 client bean 上调裸 `ProduceSync`/`Produce`，以及整条
-  consume/poll 路径（被动）。driver 的 publish **已受保护**（§2.3 第 4 步）；实例
-  `governance=false` 会把所有调用路径的 guard 摘掉。
+  consume/poll 路径（被动）。driver 的 publish **已受保护**（§2.3 第 4 步）。
+  想让某个 client 事实上不受治理：给它的 resource label（`kafka:<brokers>`）配一条
+  所有旋钮都为 0 的 rule —— Rule 是整体替换 default，全零 rule 即透传。
 
 ---
 
 ## 3. 逐 key 行为参考
 
-key 都在 `spring.kafka.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑定（真正的按实例前缀
+key 都在 `spring.kafka.instances.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑定（真正的按实例前缀
 绑定）。`value:` tag 已与源码核对：共 20 个 key。
 
 ### 3.1 核心
@@ -261,9 +264,9 @@ key 都在 `spring.kafka.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑�
 | `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:30]）；CSV seed brokers；同时构成 resilience 资源标签 `kafka:<brokers>`。 | 空 → 启动报错；错但可达的主机在 10s 启动 Ping 处失败。 |
 | `topic` | string | "" | 传给 `kgo.ConsumeTopics`——消费 topic 构造期固定；driver subscriber 按它过滤。空 = 纯生产 client。 | 能生产、消费永不投递（未订阅 topic）。 |
 | `group` | string | "" | 传给 `kgo.ConsumerGroup`；group 语义属 Kafka 自身（offset、rebalance——见 kafka.apache.org）。⚠ driver `NewSubscriber` 的 group 实参是死的——本 key 是唯一 group 开关。 | 空 + 有 topic = 无 group（随机 group/急切）消费；offset 不提交。 |
-| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedProduceSync` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
-无 `driver` key：client 装配由可选 Driver bean（见 §2.1）或内置 `DefaultDriver` 负责。（下方
+`driver` key 为实例按名指定 Driver bean：不配置 → 装配由按类型注入的可选 Driver bean（见
+§2.1）或内置 `DefaultDriver` 负责；配置 → 按名注入该 bean，指定的 bean 不存在则启动失败。（下方
 conf 里的 `driver` 指治理的 `govern.driver` 选择规则源，与本 starter 无关。）
 
 ### 3.2 SASL
@@ -373,8 +376,8 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 | 启动失败 "failed to ping kafka" | brokers 不可达 / SASL 错 / TLS 失配 | 修连通性或凭证；10s 探针无条件执行。 |
 | 启动失败 "unsupported kafka sasl mechanism / required-acks / compression" | 枚举 key 拼写错误 | 枚举精确匹配（大小写不敏感）；改对值。 |
 | driver 消费者收不到 | `NewSubscriber` source ≠ 所配 `topic`，或 `topic` 为空 | source 必须等于 client 的 `topic`；否则静默过滤。 |
-| driver 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.<name>.group`（构造期固定）。 |
-| govern.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync`，或实例 `governance=false` | 只有 `GuardedProduceSync` 与 driver publisher 受保护。 |
+| driver 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.instances.<name>.group`（构造期固定）。 |
+| govern.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync` | 只有 `GuardedProduceSync` 与 driver publisher 受保护。 |
 | 无 traces/metrics | 未 import starter-otel | kotel 挂 OTel 全局；import starter-otel。 |
 | 无访问日志 | 日志 tag 被过滤 | 检查 `kafka.access` tag 过滤。 |
 | handler 错误只留一行日志 | 设计如此：本 driver 无 nack/重投 | 在 handler 内自建重试，或用 messaging 的 retry.go。 |

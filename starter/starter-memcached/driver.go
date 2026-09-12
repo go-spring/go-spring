@@ -39,7 +39,7 @@ import (
 // ${spring.memcached} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (*memcache.Client, error)
+	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*memcache.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -48,18 +48,24 @@ type DefaultDriver struct{}
 // CreateClient creates a new Memcached client based on the provided configuration.
 //
 // When c.ServiceName is set (and mesh mode is not enabled), the server list is
-// resolved through the injected discovery backend (c.backend, wired from the
+// resolved through the discovery backend (backend, wired from the
 // ${discovery} label) instead of using c.Servers. gomemcache hashes keys onto a fixed server set chosen at
 // client creation, so only one live endpoint snapshot is applied at build time;
 // a changing cluster membership requires a restart. Resolver freshness lives
 // inside the backend, so there is nothing to release.
 //
+// backend is the discovery backend the entry's ${discovery} label resolved to,
+// already looked up by the starter wiring; it is nil when the entry cites no
+// label (an unknown label fails at wiring, before the driver is called). It is
+// passed as an argument rather than carried on Config so a custom driver can
+// actually reach it — Config stays a pure bound value.
+//
 // In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
 // discovery+LB, so the client connects straight to the configured static
 // Servers list (the service's stable DNS address).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*memcache.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*memcache.Client, error) {
 	servers := c.Servers
-	resolver, err := newLiveResolver(ctx, c)
+	resolver, err := newLiveResolver(ctx, c, backend)
 	if err != nil {
 		return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
 	}
@@ -86,11 +92,11 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*memcache.Clie
 	return client, nil
 }
 
-// newLiveResolver resolves the injected discovery backend for c into a by-name
+// newLiveResolver resolves the discovery backend for c into a by-name
 // Resolver that re-reads the service's live endpoint snapshot. It returns
 // (nil, nil) when service-name is unset or mesh mode is enabled (a sidecar owns
 // discovery+LB), in which case the caller uses the configured Servers list.
 // Resolver freshness lives inside the backend, so there is nothing to release.
-func newLiveResolver(ctx context.Context, c Config) (discovery.Resolver, error) {
-	return discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+func newLiveResolver(ctx context.Context, c Config, backend discovery.Discovery) (discovery.Resolver, error) {
+	return discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 }

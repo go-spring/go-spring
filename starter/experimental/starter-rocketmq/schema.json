@@ -2,41 +2,64 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.rocketmq",
   "type": "object",
+  "description": "Two buckets: spring.rocketmq.default holds family-wide values (each overridable per instance), spring.rocketmq.instances.<name> holds one entry per named instance. No other key belongs directly under spring.rocketmq.",
   "properties": {
-    "name-servers": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "RocketMQ NameServer addresses, e.g. ['127.0.0.1:9876']"
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "instance-name": {
-      "type": "string",
-      "default": "",
-      "description": "Distinguishes client instances on one host; empty = SDK-derived unique name"
-    },
-    "access-key": {
-      "type": "string",
-      "default": "",
-      "description": "ACL access key; must be set together with secret-key"
-    },
-    "secret-key": {
-      "type": "string",
-      "default": "",
-      "description": "ACL secret key that pairs with access-key"
-    },
-    "send-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '3s'",
-      "default": "3s"
-    },
-    "retry": {
-      "type": "integer",
-      "default": 2,
-      "description": "Producer internal retries before a synchronous send fails"
-    },
-    "fail-fast": {
-      "type": "boolean",
-      "default": true,
-      "description": "Probe the first name server address with a TCP dial at startup"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name-servers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "RocketMQ NameServer addresses, e.g. ['127.0.0.1:9876']"
+          },
+          "instance-name": {
+            "type": "string",
+            "default": "",
+            "description": "Distinguishes client instances on one host; empty = SDK-derived unique name"
+          },
+          "access-key": {
+            "type": "string",
+            "default": "",
+            "description": "ACL access key; must be set together with secret-key"
+          },
+          "secret-key": {
+            "type": "string",
+            "default": "",
+            "description": "ACL secret key that pairs with access-key"
+          },
+          "send-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '3s'",
+            "default": "3s"
+          },
+          "retry": {
+            "type": "integer",
+            "default": 2,
+            "description": "Producer internal retries before a synchronous send fails"
+          },
+          "fail-fast": {
+            "type": "boolean",
+            "default": true,
+            "description": "Probe the first name server address with a TCP dial at startup"
+          }
+        }
+      }
     }
   }
 }

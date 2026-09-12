@@ -23,9 +23,9 @@ import _ "go-spring.org/starter-xxljob"
 ### 2. 配置
 
 ```properties
-spring.xxljob.a.app-name=go-spring-demo
-spring.xxljob.a.admin-addresses=http://127.0.0.1:8080/xxl-job-admin
-spring.xxljob.a.port=9999
+spring.xxljob.instances.a.app-name=go-spring-demo
+spring.xxljob.instances.a.admin-addresses=http://127.0.0.1:8080/xxl-job-admin
+spring.xxljob.instances.a.port=9999
 ```
 
 ### 3. 注入并注册 handler
@@ -53,5 +53,5 @@ func (s *Service) Init() error {
 
 ## 高级特性
 
-**多执行器** — 更多 `spring.xxljob.<name>` 条目，各自独立的回调端口与
+**多执行器** — 更多 `spring.xxljob.instances.<name>` 条目，各自独立的回调端口与
 handler 注册表。

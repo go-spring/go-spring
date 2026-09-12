@@ -7,7 +7,7 @@
 协议为本仓手写（无第三方 Go SDK），覆盖 admin 回调 `/run`、`/beat`、`/idleBeat`、
 `/kill`、`/log`；本文写 go-spring 增量与我们实现的确切协议面。
 
-**激活条件**：任一 `spring.xxljob.<name>` 子树。多实例：每个条目一个 executor。三个 key
+**激活条件**：任一 `spring.xxljob.instances.<name>` 子树。多实例：每个条目一个 executor。三个 key
 绑定期必填（`app-name`、`admin-addresses`、`port`——config.go:30-41 的 `expr` 校验），
 配一半的实例会在启动期失败，而不是首次触发时。
 
@@ -78,17 +78,17 @@ func main() {
 
 ```properties
 # --- xxl-job executor 实例 "a" -------------------------------------------------
-spring.xxljob.a.app-name=go-spring-demo          # 注册到 admin 的名字
+spring.xxljob.instances.a.app-name=go-spring-demo          # 注册到 admin 的名字
 # 生产：http://<admin-host>:8080/xxl-job-admin（列表 = 负载均衡）。
-spring.xxljob.a.admin-addresses=http://127.0.0.1:18081
+spring.xxljob.instances.a.admin-addresses=http://127.0.0.1:18081
 # 回调 server 端口——admin 必须能回拨；显式运维决策（无默认端口）。
-spring.xxljob.a.port=9999
+spring.xxljob.instances.a.port=9999
 # 重注册/心跳周期（默认 10s；example 为冒烟调小）。
-spring.xxljob.a.registry-interval=5s
+spring.xxljob.instances.a.registry-interval=5s
 # 任务日志目录，经 /log 回传；目录由 starter 建/读，文件由你的 TaskFunc 写。
-spring.xxljob.a.log-dir=./logs
+spring.xxljob.instances.a.log-dir=./logs
 # 仅当 admin 设置了 token 时配置（发送 XXL-JOB-ACCESS-TOKEN 头）。
-# spring.xxljob.a.access-token=...
+# spring.xxljob.instances.a.access-token=...
 ```
 
 **验证**（与 `example/check.sh` 同构）：
@@ -175,7 +175,7 @@ gs.Run()
 
 ## 3. 逐 key 行为参考
 
-前缀：`spring.xxljob.<name>.*`（多实例）。
+前缀：`spring.xxljob.instances.<name>.*`（多实例）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|

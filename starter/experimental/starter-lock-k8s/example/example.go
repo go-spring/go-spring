@@ -18,7 +18,7 @@
 // application to run leader election over a coordination.k8s.io/Lease, with no
 // external middleware.
 //
-// The starter exports a lock.Locker under "${spring.lock.<name>}"; business code
+// The starter exports a lock.Locker under "${spring.lock.instances.<name>}"; business code
 // injects that interface and builds a lock.Election on top, exactly as it would
 // with the etcd/consul/redis backends — switching backend is a blank-import swap.
 //
@@ -46,11 +46,11 @@ import (
 	"go-spring.org/spring/gs"
 
 	// Blank-import registers the Lease-backed Locker beans declared under
-	// spring.lock.
+	// spring.lock.instances.
 	_ "go-spring.org/starter-lock-k8s"
 )
 
-// lockName matches the map key set under spring.lock.<lockName> below; leaderKey
+// lockName matches the map key set under spring.lock.instances.<lockName> below; leaderKey
 // is the Lease name candidates contend for.
 const (
 	lockName  = "default"
@@ -109,9 +109,9 @@ func main() {
 	gs.Configure(func(app gs.App) {
 		// Declare one Lease-backed Locker named "default". Namespace defaults to
 		// "default"; kubeconfig is only set when running out-of-cluster.
-		app.Property("spring.lock."+lockName+".namespace", "default")
+		app.Property("spring.lock.instances."+lockName+".namespace", "default")
 		if kubeconfig != "" {
-			app.Property("spring.lock."+lockName+".kubeconfig", kubeconfig)
+			app.Property("spring.lock.instances."+lockName+".kubeconfig", kubeconfig)
 		}
 		// The main server is unused; keep the smoke test focused on the lock.
 		app.Property("spring.http.server.enabled", "false")

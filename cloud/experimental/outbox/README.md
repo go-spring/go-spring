@@ -48,7 +48,7 @@ err := db.Transaction(func(tx *gorm.DB) error {
     if err := tx.Create(&order).Error; err != nil { return err }
     return StarterOutboxGorm.Publish(tx, "orders", order.ID, payload, nil)
 })
-// the relay (wired by the starter from spring.outbox.* config) drains it
+// the relay (wired by the starter from spring.outbox.instances.* config) drains it
 ```
 
 See `starter/experimental/starter-outbox-gorm` for configuration, the table

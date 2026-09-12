@@ -38,9 +38,7 @@ require (
 
 require (
 	go-spring.org/cloud v0.0.0
-	go-spring.org/starter-cache v0.0.0
 )
 
 replace go-spring.org/cloud => ../../cloud
 
-replace go-spring.org/starter-cache => ../starter-cache

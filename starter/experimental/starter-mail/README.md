@@ -28,17 +28,17 @@ import _ "go-spring.org/starter-mail"
 
 ### 2. Configure the Mailers
 
-Define one or more named mailers under `spring.mail.<name>` in your project's
+Define one or more named mailers under `spring.mail.instances.<name>` in your project's
 [configuration file](example/conf/app.properties). The host is required and there
 is no localhost fallback — a missing or unreachable server fails at startup.
 
 ```properties
-spring.mail.notify.host=smtp.example.com
-spring.mail.notify.port=587
-spring.mail.notify.username=apikey
-spring.mail.notify.password=${SMTP_PASSWORD}
-spring.mail.notify.from=noreply@example.com
-spring.mail.notify.tls.mode=starttls
+spring.mail.instances.notify.host=smtp.example.com
+spring.mail.instances.notify.port=587
+spring.mail.instances.notify.username=apikey
+spring.mail.instances.notify.password=${SMTP_PASSWORD}
+spring.mail.instances.notify.from=noreply@example.com
+spring.mail.instances.notify.tls.mode=starttls
 ```
 
 ### 3. Inject the Mailer
@@ -111,7 +111,7 @@ anonymously.
 
 ## Configuration
 
-Each mailer under `spring.mail.<name>` reads the following properties:
+Each mailer under `spring.mail.instances.<name>` reads the following properties:
 
 | Property | Default | Description |
 | --- | --- | --- |

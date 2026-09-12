@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-rabbitmq"
 
 ### 2. 配置 RabbitMQ 实例
 
-在项目的[配置文件](example/conf/app.properties)中，在 `spring.rabbitmq.<name>`
+在项目的[配置文件](example/conf/app.properties)中，在 `spring.rabbitmq.instances.<name>`
 下定义一个或多个具名实例，比如：
 
 ```properties
-spring.rabbitmq.a.url=amqp://guest:guest@127.0.0.1:5672/
-spring.rabbitmq.b.url=amqp://guest:guest@127.0.0.1:5672/
+spring.rabbitmq.instances.a.url=amqp://guest:guest@127.0.0.1:5672/
+spring.rabbitmq.instances.b.url=amqp://guest:guest@127.0.0.1:5672/
 ```
 
 ### 3. 注入 RabbitMQ 连接

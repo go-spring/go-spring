@@ -10,7 +10,7 @@
 [WeCom](https://developer.work.weixin.qq.com/document/path/91770)、
 [Slack](https://api.slack.com/messaging/webhooks)）。
 
-**激活条件**：每个 `spring.webhook.<name>` 子树按名字各创建一个 `*Notifier` bean。
+**激活条件**：每个 `spring.webhook.instances.<name>` 子树按名字各创建一个 `*Notifier` bean。
 不配置则不装配。刻意**没有启动探测**——唯一通用探测是真发一次 POST，而
 "sending a junk notification at boot is worse than failing on first use"
 （源码注释，starter.go newNotifier）。
@@ -91,14 +91,14 @@ func (s *Service) Fire(ctx context.Context, title, text string) error {
 
 ```properties
 # --- notifier "alert"：带 加签 secret 的 DingTalk 群机器人 ---------------------
-spring.webhook.alert.url=https://oapi.dingtalk.com/robot/send?access_token=xxx
-spring.webhook.alert.channel=dingtalk
-spring.webhook.alert.secret=SEC...
-spring.webhook.alert.timeout=5s
+spring.webhook.instances.alert.url=https://oapi.dingtalk.com/robot/send?access_token=xxx
+spring.webhook.instances.alert.channel=dingtalk
+spring.webhook.instances.alert.secret=SEC...
+spring.webhook.instances.alert.timeout=5s
 
 # --- notifier "report"：向自建 receiver 的纯 JSON POST -------------------------
-spring.webhook.report.url=http://127.0.0.1:18080/hook
-spring.webhook.report.channel=generic
+spring.webhook.instances.report.url=http://127.0.0.1:18080/hook
+spring.webhook.instances.report.channel=generic
 
 # --- 可观测（starter-otel）----------------------------------------------------
 spring.observability.service-name=demo
@@ -135,12 +135,11 @@ import starter-webhook
         按调用无状态，无 destroy hook]
 
 gs.Run()
-  ├─ 配置绑定：spring.webhook.<name>.* → Config（value tag；url 经 expr 必填）
+  ├─ 配置绑定：spring.webhook.instances.<name>.* → Config（value tag；url 经 expr 必填）
   ├─ newNotifier：
   │    ├─ 用空 Notification 干跑一次 buildPayload——校验 channel 取值、
   │    │   （dingtalk/feishu）签名可用性，全程无网络请求
-  │    ├─ exec := fault.WrapExecutor(resilience.ExecutorFor("webhook:<name>:<channel>"))
-  │    ├─ exec := resilience.WrapExecutor(exec, "webhook", c.Observability)
+  │    ├─ exec := fault.WrapExecutor(resilience.ExecutorFor("webhook", "webhook:<name>:<channel>"))
   │    └─ &http.Client{Timeout: c.Timeout} —— 每 notifier 一个 client，不池化
   ├─ bean 就绪：*Notifier 注入所有 `autowire:"<name>"` 处
   ├─ Run / 服务：无后台 goroutine、无探测（理由见顶部激活说明）
@@ -169,7 +168,7 @@ resilience 资源标签为 `webhook:<name>:<channel>`——按实例**且**按�
    scheme://host，签名 URL 不进遥测）。
 3. **Executor** —— POST 闭包经资源标签下的治理 executor：引入 starter-governance 后
    限流 / 熔断 / retry（若经治理配置）/ fault 注入生效，否则透明直通。
-   `resilience.WrapExecutor` 按级别发 outcome span + 调用计数 + 时长直方图 +
+   executor 内部解析出的 observe 层按级别发 outcome span + 调用计数 + 时长直方图 +
    访问日志。手工构造的零值 Notifier（测试场景）没有 executor，直接 POST——
    Send 两种情况都可用。
 4. **POST** —— `n.post`：`Content-Type: application/json`，client 受 `timeout` 约束；
@@ -191,7 +190,7 @@ secret（签名会被计算，但接收方不校验）。这些都在首次 Send
 
 ## 3. 逐 key 行为参考
 
-前缀 `spring.webhook.<name>.*` —— 所有 key 均为 ctor 绑定的 `Config`（config.go），
+前缀 `spring.webhook.instances.<name>.*` —— 所有 key 均为 ctor 绑定的 `Config`（config.go），
 即**带实例前缀**（与 starter-s3 不同，这里没有
 wrapper-field tag）。
 
@@ -255,7 +254,7 @@ example 的 generic receiver 也能当 slack/wecom/feishu 的 payload 检查器�
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动中止 "unknown channel" | `channel` 拼写错误 | generic/dingtalk/feishu/wecom/slack 之一。 |
-| 启动中止：url 绑定报错 | 缺 `spring.webhook.<name>.url` | 补上——expr tag 必填。 |
+| 启动中止：url 绑定报错 | 缺 `spring.webhook.instances.<name>.url` | 补上——expr tag 必填。 |
 | 首次 Send 报 "invalid url" | URL 格式错（空格、scheme 错等） | 设计上无启动网络探测；修 URL。 |
 | DingTalk 拒收：sign 不匹配 | secret 错误/轮换，或时钟偏移 >1 小时（签名内时间戳） | 重新复制加签 secret；校准主机时钟。 |
 | DingTalk 返回 200 但群里没消息 | 厂商以 HTTP 200 返回错误 body（errcode）——`post` 不检查 | 查平台机器人日志；见 §6 嫌疑（仅按状态码判成功）。 |

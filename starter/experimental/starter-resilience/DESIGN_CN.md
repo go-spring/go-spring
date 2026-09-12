@@ -16,7 +16,7 @@
   `resilience.Policy` 按 resource 翻译成 sentinel 规则。
 - **不在范围内:**决定韧性*施加在哪里*——那是适配器的活。`cloud/governance/resilience`
   提供客户端 seam:HTTP 客户端 `NewRoundTripper`、连接拨号 `NewDialer`;
-  入站 admission 中间件由各协议 starter 基于 `governance.ExecutorFor` seam
+  入站 admission 中间件由各协议 starter 基于 `resilience.ExecutorFor` seam
   自建。本 starter 从不在其中选择。
 
 ## 2. 关键决策

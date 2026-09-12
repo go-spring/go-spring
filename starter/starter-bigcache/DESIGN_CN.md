@@ -9,24 +9,24 @@ goroutine，必须在关停时释放。
 
 ## 1. 职责与边界
 
-- 用 `gs.Group` 把 `spring.bigcache.<name>` 每条绑到
+- 用 `gs.Module` 把 `spring.bigcache.instances.<name>` 每条绑到
   `*bigcache.BigCache` bean。不做默认单实例
   （见 `project_client_starter_multiinstance`）。
-- 向 `cloud/cache` 注册名为 `bigcache` 的 driver，让使用
-  `cache.Cache` 抽象的调用方（包括 `cloud/cache` 的 MultiLevel）能按名
-  选此后端，无需直接 import bigcache。
+- 每实例额外提供一个名为 `bigcache:<name>` 的 `cache.Cache` bean，让使用
+  该抽象的调用方（包括 `cloud/cache` 的 MultiLevel）能按名注入此后端，
+  无需直接 import bigcache。
 - 无跨进程一致性：缓存在本进程堆内。两副本各存一份；这是零跳读的代价。
 
 ## 2. 关键抽象与缝隙
 
-- **每实例 `gs.Group`。** 不同配置（LRU/过期、小容量快路径+大容量慢路径）
+- **每实例一个 bean。** 不同配置（LRU/过期、小容量快路径+大容量慢路径）
   可各自作为独立 bigcache 实例互不影响调参。
 - **`destroy = Close`。** `LifeWindow > 0` 或 `CleanWindow > 0` 时 bigcache
   会起后台驱逐 goroutine；不 `Close` 就每实例泄一个 goroutine。starter
   接 `destroy` 就为这个（`project_starter_bigcache`）。
-- **`AsCache` 适配器接进 driver 注册表。** starter 对 `cloud/cache` 的
-  贡献走 driver 注册表（见 `project_stdlib_cache`），配置里写
-  `cache: bigcache` 即可，不用 import bigcache。
+- **`AsCache` 适配器直接导出 bean。** starter 对 `cloud/cache` 的贡献是
+  每实例一个名为 `bigcache:<name>` 的 `cache.Cache` bean（适配器见
+  `bytecache/`），按名注入即可；没人注入则不实例化，无配置开关。
 - **`check.sh` 不需要 docker。** 进程内缓存无服务容器——冒烟就是
   普通 `go test`。
 

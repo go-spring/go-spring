@@ -23,9 +23,9 @@ go run . -manual                             # keep up for ad-hoc probing
 Edit `conf/app.properties`:
 
 ```properties
-spring.redigo.load.fault.enabled=true
-spring.redigo.load.fault.rate=0.5
-spring.redigo.load.fault.error=generic       # or: timeout / reset
+spring.redigo.instances.load.fault.enabled=true
+spring.redigo.instances.load.fault.rate=0.5
+spring.redigo.instances.load.fault.error=generic       # or: timeout / reset
 ```
 
 then re-run. Expect the error breakdown's `injected`/`circuit` counts to climb

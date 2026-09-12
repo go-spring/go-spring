@@ -2,22 +2,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.milvus",
   "type": "object",
+  "description": "Two buckets: spring.milvus.default holds family-wide values (each overridable per instance), spring.milvus.instances.<name> holds one entry per named instance. No other key belongs directly under spring.milvus.",
   "properties": {
-    "addr": {
-      "type": "string",
-      "description": "Milvus gRPC endpoint, host:19530"
-    },
-    "database": {
-      "type": "string",
-      "default": "default"
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "addr": {
+            "type": "string",
+            "description": "Milvus gRPC endpoint, host:19530"
+          },
+          "database": {
+            "type": "string",
+            "default": "default"
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          }
+        }
+      }
     }
   }
 }

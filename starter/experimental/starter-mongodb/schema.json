@@ -2,68 +2,78 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.mongodb",
   "type": "object",
+  "description": "Two buckets: spring.mongodb.default holds family-wide values (each overridable per instance), spring.mongodb.instances.<name> holds one entry per named instance. No other key belongs directly under spring.mongodb.",
   "properties": {
-    "uri": {
-      "type": "string"
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "auth-source": {
-      "type": "string",
-      "default": ""
-    },
-    "auth-mechanism": {
-      "type": "string",
-      "default": ""
-    },
-    "connect-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "10s"
-    },
-    "server-selection-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "0"
-    },
-    "max-pool-size": {
+    "instances": {
       "type": "object",
-      "default": "100"
-    },
-    "min-pool-size": {
-      "type": "object",
-      "default": "0"
-    },
-    "max-conn-idle-time": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "0"
-    },
-    "tls": {
-      "type": "object"
-    },
-    "service-name": {
-      "type": "string",
-      "default": ""
-    },
-    "scheme": {
-      "type": "string",
-      "default": "",
-      "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
-    },
-    "discovery": {
-      "type": "string",
-      "default": "default"
-    },
-    "resilience": {
-      "type": "object",
-      "default": ""
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "auth-source": {
+            "type": "string",
+            "default": ""
+          },
+          "auth-mechanism": {
+            "type": "string",
+            "default": ""
+          },
+          "connect-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "10s"
+          },
+          "server-selection-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          },
+          "max-pool-size": {
+            "type": "object",
+            "default": "100"
+          },
+          "min-pool-size": {
+            "type": "object",
+            "default": "0"
+          },
+          "max-conn-idle-time": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          },
+          "tls": {
+            "type": "object"
+          },
+          "service-name": {
+            "type": "string",
+            "default": ""
+          },
+          "scheme": {
+            "type": "string",
+            "default": "",
+            "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
+          },
+          "discovery": {
+            "type": "string",
+            "default": ""
+          },
+          "resilience": {
+            "type": "object",
+            "default": ""
+          }
+        }
+      }
     }
   }
 }

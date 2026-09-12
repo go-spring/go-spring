@@ -35,13 +35,18 @@ func init() {
 	// instance's *Client bean can be paired with a health.Indicator registered
 	// under the same name — and to attach the file:line of this registration
 	// to the bean for diagnostics.
-	gs.Module(gs.OnProperty("spring.cassandra"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.cassandra}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.cassandra.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.cassandra.instances}", func(name string, c Config) error {
 			// The wrapper bean owns the resilience executor, so Init arms it
-			// (InitMethod) and Destroy tears it down.
+			// (InitMethod) and Destroy tears it down. The Driver bean is
+			// selected by the entry's ${driver} key: unset → "?" (nullable
+			// by-type — injects the single Driver bean when one is provided,
+			// nil otherwise, and the ctor falls back to the bundled
+			// DefaultDriver); set → that bean name, and naming a bean that
+			// does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("?")),
+				gs.IndexArg(2, gs.TagArg("${spring.cassandra.instances."+name+".driver:=${spring.cassandra.default.driver:=?}}")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.

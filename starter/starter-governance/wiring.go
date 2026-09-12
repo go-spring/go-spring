@@ -21,31 +21,22 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// This file is the DEFAULT WIRING between gs and the container-free governance
-// core (cloud/governance). Blank-importing starter-governance registers one
-// root bean that binds ${govern} properties into the governance center and arms
-// it — the whole plain-${govern} experience, with every conf provider's watch
-// (file fsnotify, nacos ListenConfig, k8s informer, consul, vault, bus) working
-// through gs's two-phase refresh, unchanged. The conditional source adapters in
-// this module (file/http) and in the config starters (nacos/etcd) replace the
-// default through the same governance.Source contract.
+// This file is the WIRING between gs and the container-free governance core
+// (cloud/governance). Blank-importing starter-governance registers one root
+// bean that hands the governance center its governance.Source and completes the
+// authority's startup. Governance's configuration is its OWN system — a rules
+// file watched by this module's file source, a remote console via the http
+// source, or any other Source — and deliberately NOT bound through gs
+// properties: a governance rule change refreshes governance only, never
+// re-binds the whole app.
 
 // wiring is the always-registered bean that connects gs to the governance
-// singleton. It holds the ${govern} gs.Dync (the default source's data feed)
-// and the optional bean-injected custom source.
+// singleton. It holds the optional bean-injected source.
 type wiring struct {
-	// Gov is the DEFAULT governance source: the ${govern} binding, field-
-	// injected and hot-reloaded, adapted to governance.Source by dyncSource.
-	// It is a gs.Dync field unconditionally — an app with no Dync field
-	// anywhere would drop its whole properties-refresh path (gs keeps config
-	// alive only while some Dync field holds it), even when a custom source
-	// drives governance.
-	Gov gs.Dync[governance.Config] `value:"${govern:=}"`
-
-	// Src is the bean-friendly custom source: gs field-injects here any bean
-	// exported as a governance.Source (autowire:"?" is nullable — no such bean
-	// leaves it nil and the default ${govern} path runs). Source priority is
-	// an explicit governance.SetSource (any time) > Src > the ${govern} Dync.
+	// Src is the source gs field-injects here: any bean exported as a
+	// governance.Source (autowire:"?" is nullable — no such bean leaves it nil
+	// and governance stays disabled unless something calls SetSource). Source
+	// priority is an explicit governance.SetSource (any time) > Src.
 	Src governance.Source `autowire:"?"`
 }
 
@@ -60,16 +51,16 @@ func init() {
 
 func newWiring() *wiring { return &wiring{} }
 
-// Init binds the default source (a bean-injected Source when present, else the
-// ${govern} Dync adapter) and completes the authority's startup. An explicit
-// governance.SetSource called before wiring wins — BindDefault is a no-op when
-// a source is already bound.
+// Init binds the bean-injected source and completes the authority's startup. An
+// explicit governance.SetSource called before wiring wins — BindDefault is a
+// no-op when a source is already bound, and a no-op on a nil source, so a
+// process with no source beans simply leaves the center disabled (every client
+// resolves a transparent pass-through).
+//
+// GoLive runs unconditionally: it registers the executor/fault seams and fires
+// OnReady whether or not a source was bound.
 func (w *wiring) Init() error {
-	if w.Src != nil {
-		governance.BindDefault(w.Src)
-	} else {
-		governance.BindDefault(dyncSource{gov: &w.Gov})
-	}
+	governance.BindDefault(w.Src)
 	governance.GoLive()
 	return nil
 }
@@ -77,15 +68,3 @@ func (w *wiring) Init() error {
 // Destroy closes the active source when it happens to be closeable (the
 // Source contract keeps Close optional), via the governance facade.
 func (w *wiring) Destroy() error { return governance.CloseActiveSource() }
-
-// dyncSource adapts the field-injected ${govern} gs.Dync to the
-// governance.Source contract. When no custom source is registered, this is
-// what drives the center, so the plain-${govern} path behaves exactly as it
-// always has.
-type dyncSource struct{ gov *gs.Dync[governance.Config] }
-
-func (s dyncSource) Snapshot() governance.Config { return s.gov.Value() }
-
-func (s dyncSource) Subscribe(cb func(governance.Config)) {
-	s.gov.OnChanged(func(new, _ governance.Config) { cb(new) })
-}

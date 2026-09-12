@@ -35,12 +35,12 @@ import (
 
 ```properties
 # 由 starter-go-redis 管理的 Redis 客户端。
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # 绑定到该客户端的 JobRepository，`client` 是 Redis 实例名。
-spring.batch-repository.jobs.client=cache
-spring.batch-repository.jobs.key-prefix=myapp:batch:
-spring.batch-repository.jobs.ttl=168h
+spring.batch-repository.instances.jobs.client=cache
+spring.batch-repository.instances.jobs.key-prefix=myapp:batch:
+spring.batch-repository.instances.jobs.ttl=168h
 
 # 批处理 runner 通过名字挑选一个 JobRepository。
 spring.batch.repository=jobs
@@ -65,12 +65,12 @@ type Service struct {
 
 ## 配置项
 
-所有键都位于 `spring.batch-repository.<name>` 下。这里刻意避开
+所有键都位于 `spring.batch-repository.instances.<name>` 下。这里刻意避开
 `spring.batch.*`——那是批处理 runner 用于 job / step / chunk 的命名空间。
 
 | 键           | 默认值   | 说明                                                                                     |
 |--------------|----------|------------------------------------------------------------------------------------------|
-| `client`     | —        | **必填。** 位于 `spring.go-redis.<client>` 下的 `*redis.Client` Bean 名。                |
+| `client`     | —        | **必填。** 位于 `spring.go-redis.instances.<client>` 下的 `*redis.Client` Bean 名。                |
 | `key-prefix` | *空*     | 键名前缀，多应用共享同一 Redis 时用于隔离命名空间。                                       |
 | `ttl`        | `0`      | 每次写入时对相关键执行 `EXPIRE`。`0` 表示永不过期。                                       |
 

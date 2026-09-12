@@ -18,7 +18,7 @@
 // for the [lock.Locker] abstraction in stdlib/lock.
 //
 // Blank-importing this starter registers one [lock.Locker] bean per entry
-// under "spring.lock.<name>", each backed by its own *api.Client. Because the
+// under "spring.lock.instances.<name>", each backed by its own *api.Client. Because the
 // bean type is the neutral [lock.Locker] interface, switching between Redis,
 // etcd and Consul backends is a blank-import swap with no application-code
 // change — this is the Contributor archetype from starter/DESIGN.md §2.3.
@@ -38,10 +38,10 @@ func init() {
 	// map ourselves rather than use gs.Group so a missing Address (§3 fail-fast
 	// rule in DESIGN.md) surfaces during bean provisioning with a message that
 	// names the offending instance.
-	gs.Module(gs.OnProperty("spring.lock"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.lock}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.lock.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.lock.instances}", func(name string, c Config) error {
 			if c.Address == "" {
-				return errutil.Explain(nil, "lock-consul: spring.lock.%s.address is required", name)
+				return errutil.Explain(nil, "lock-consul: spring.lock.instances.%s.address is required", name)
 			}
 			// The bean is wrapped with the observe-lock adapter by default
 			// (see newLocker); observe.enabled=false opts out. There is no

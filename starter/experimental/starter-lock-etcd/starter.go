@@ -40,8 +40,8 @@ func init() {
 	// can Export the lock.Locker interface — consumers inject that interface
 	// and never see the concrete *etcdLocker type, which is what makes the
 	// blank-import swap possible.
-	gs.Module(gs.OnProperty("spring.lock"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.lock}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.lock.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.lock.instances}", func(name string, c Config) error {
 			if len(c.Endpoints) == 0 {
 				return errutil.Explain(nil, "lock-etcd: endpoints is required for instance %q", name)
 			}

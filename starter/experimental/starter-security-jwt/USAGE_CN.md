@@ -7,7 +7,7 @@
 [jwt/v5](https://pkg.go.dev/github.com/golang-jwt/jwt/v5)** —— 本文只写 go-spring
 的增量：绑定、bean、`Wrap(http.Handler)` seam 与 fail-fast 的 key source 纪律。
 
-**激活方式**：`spring.security.jwt.<name>` 下每个条目生成一个 `*Authenticator`
+**激活方式**：`spring.security.jwt.instances.<name>` 下每个条目生成一个 `*Authenticator`
 bean；空 map 什么都不注册 —— 配置即开关（starter.go:35）。**每个条目必须且只能
 配一个校验 key source**（`secret` / `public-key(-file)` / `jwks-url`）；配零个或
 多个都会让启动失败（config.go:97-116）。本 starter 只**验证** token，不负责签发 ——
@@ -73,7 +73,7 @@ import (
 )
 
 func init() {
-    // gs.TagArg("api") 选中配置在 spring.security.jwt.api.* 下的 authenticator。
+    // gs.TagArg("api") 选中配置在 spring.security.jwt.instances.api.* 下的 authenticator。
     // gs 只在没有自定义 HttpServeMux 时才注册默认的，所以这里提供的会胜出。
     gs.Provide(func(auth *StarterSecurityJWT.Authenticator) *gs.HttpServeMux {
         mux := http.NewServeMux()
@@ -113,7 +113,7 @@ import (
     "github.com/golang-jwt/jwt/v5"
 )
 
-const secret = "example-shared-secret" // 必须与 spring.security.jwt.api.secret 一致
+const secret = "example-shared-secret" // 必须与 spring.security.jwt.instances.api.secret 一致
 
 func mint(subject string, roles ...string) string {
     claims := jwt.MapClaims{
@@ -138,19 +138,19 @@ func mint(subject string, roles ...string) string {
 #   secret                （共享 HMAC；开发/演示）
 #   public-key / public-key-file  （静态 RSA/ECDSA PEM）
 #   jwks-url              （远程 JWKS；启动即拉取，按 kid 轮换感知）
-spring.security.jwt.api.secret=example-shared-secret
+spring.security.jwt.instances.api.secret=example-shared-secret
 
 # 承载 roles 的 claim；展开进 Authentication.Authorities。
-spring.security.jwt.api.roles-claim=roles
+spring.security.jwt.instances.api.roles-claim=roles
 
 # true（默认）：缺 token -> 401。false：放行且不带身份，
 # 由方法级 guard 决定。
-spring.security.jwt.api.required=true
+spring.security.jwt.instances.api.required=true
 
 # 接远程签发方时，把 `secret` 换成例如：
-#   spring.security.jwt.api.jwks-url=https://auth.example.com/.well-known/jwks.json
-#   spring.security.jwt.api.issuer=https://auth.example.com
-#   spring.security.jwt.api.audience=demo-api
+#   spring.security.jwt.instances.api.jwks-url=https://auth.example.com/.well-known/jwks.json
+#   spring.security.jwt.instances.api.issuer=https://auth.example.com
+#   spring.security.jwt.instances.api.audience=demo-api
 
 # --- http server（gs 核心）---------------------------------------------------
 # authenticator 不持有端口；gs 内置 server 在 :9090 上服务注入的 mux。
@@ -231,7 +231,7 @@ gs.Run()
 
 ## 3. 逐 key 行为参考
 
-key 位于 `spring.security.jwt.<name>.*`，共 13 个（与
+key 位于 `spring.security.jwt.instances.<name>.*`，共 13 个（与
 `grep -rhoE 'value:"[^"]+"' | sort -u` 完全一致）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -270,7 +270,7 @@ key 位于 `spring.security.jwt.<name>.*`，共 13 个（与
    token`（check.sh Feature 5）。用错误 secret（`[]byte("wrong")`）铸的 token
    同样 401。
 4. **过期 token** —— 铸 `"exp": time.Now().Add(-time.Minute).Unix()` 的 token：
-   → `401`。再铸 `+30s` 过期、同时配 `spring.security.jwt.api.leeway=1m`：
+   → `401`。再铸 `+30s` 过期、同时配 `spring.security.jwt.instances.api.leeway=1m`：
    变为接受 —— leeway 生效。
 5. **算法混淆攻击被拒** —— 配 `public-key` source 后，用**公钥 PEM 本身当 HMAC
    key** 签一个 HS256 token：`curl -s -H "Authorization: Bearer $CONFUSED" :9090/me`
@@ -285,7 +285,7 @@ key 位于 `spring.security.jwt.<name>.*`，共 13 个（与
    （`fetch JWKS ...`）。随后发布含 kid `k1` 的 JWKS 并验证 `k1` token；改为只
    发布 `k2` 再铸 `k2` token —— 首个请求触发按需 reload（jwks.go:66-88），
    不重启即通过。
-8. **required=false 姿态** —— 配 `spring.security.jwt.api.required=false` 重启：
+8. **required=false 姿态** —— 配 `spring.security.jwt.instances.api.required=false` 重启：
    `curl -s :9090/me` 不再 401（handler 看不到身份 —— 需自行守卫，例如
    `a, ok := security.FromContext(...); !ok` → 401）。垃圾 token 依旧 401。
 

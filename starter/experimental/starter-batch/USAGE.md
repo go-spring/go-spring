@@ -98,12 +98,12 @@ func main() {
 ```properties
 # A Redis client managed by starter-go-redis. Both the batch repository
 # backend and the example's result set reuse this client by name.
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # A Redis-backed batch.JobRepository named "main", reusing the redis client
 # above. This is what makes the step checkpoint durable across a crash.
-spring.batch-repository.main.client=cache
-spring.batch-repository.main.key-prefix=starter-batch:example:
+spring.batch-repository.instances.main.client=cache
+spring.batch-repository.instances.main.key-prefix=starter-batch:example:
 
 # Tell the batch runner to use the "main" repository as its progress store.
 spring.batch.repository=main
@@ -203,8 +203,8 @@ Under `spring.batch`:
 | `spring.batch.jobs.<name>.params.<k>` | string | — | Startup launch params. (name, params) identify the job INSTANCE in the repository — changing a param creates a new instance rather than resuming the old one. | Expecting resume after editing params → actually a fresh run. |
 
 Reconciled against `grep -rhoE 'value:"[^"]+"'` — the five keys above plus the internal
-`${spring.batch}` struct bind; nothing else. (The example's `spring.go-redis.*` /
-`spring.batch-repository.*` keys belong to their own starters.)
+`${spring.batch}` struct bind; nothing else. (The example's `spring.go-redis.instances.*` /
+`spring.batch-repository.instances.*` keys belong to their own starters.)
 
 ---
 

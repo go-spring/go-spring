@@ -27,7 +27,7 @@ import (
 // new resilience standard — it reuses the bundled "default" Driver (the
 // policy/breaker engine) via the public [resilience.GetDriver] seam, then wraps
 // the resulting executor with a luohua verification flavor. A fleet sets
-// ${govern}.driver=luohua once and every governed call then carries an
+// govern.driver=luohua once in the rules document and every governed call then carries an
 // observable luohua marker, so a mis-wired backend is discoverable instead of
 // silently passing through — the same "default + observable company flavor"
 // shape the redigo [RedisDriver] layers on its pools.
@@ -69,6 +69,17 @@ func (e *luohuaExecutor) Execute(ctx context.Context, resource string, fn func(c
 	// policy/abort/audit logic here.
 	log.Debugf(ctx, log.TagAppDef, "luohua/governance resource=%s", resource)
 	return e.inner.Execute(ctx, resource, fn)
+}
+
+// SetBreakerEventListener forwards to the inner executor so the breakers of the
+// driver beneath luohua still emit state transitions. A wrapper that swallowed
+// this capability would silently disable breaker observability for
+// govern.driver=luohua, since [resilience.ExecutorFor] attaches the observe
+// listener through this handshake.
+func (e *luohuaExecutor) SetBreakerEventListener(l resilience.BreakerEventListener) {
+	if s, ok := e.inner.(resilience.BreakerEventListenerSetter); ok {
+		s.SetBreakerEventListener(l)
+	}
 }
 
 func (e *luohuaExecutor) Refresh(p resilience.Policy) error { return e.inner.Refresh(p) }

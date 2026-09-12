@@ -32,12 +32,12 @@ import (
 
 ```properties
 # 由 starter-go-redis 管理的 Redis 客户端。
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # 绑定到该客户端的 Locker，`client` 是 Redis 实例名。
-spring.lock.jobs.client=cache
-spring.lock.jobs.ttl=30s
-spring.lock.jobs.key-prefix=myapp:
+spring.lock.instances.jobs.client=cache
+spring.lock.instances.jobs.ttl=30s
+spring.lock.instances.jobs.key-prefix=myapp:
 ```
 
 `client` 属性是**必填**的。启动时若缺失，Starter 会 fail-fast 直接拒绝启动，
@@ -65,11 +65,11 @@ func (s *Service) RunOnce(ctx context.Context) error {
 
 ## 配置项
 
-所有键都位于 `spring.lock.<name>` 下：
+所有键都位于 `spring.lock.instances.<name>` 下：
 
 | 键               | 默认值   | 说明                                                                                     |
 |------------------|----------|------------------------------------------------------------------------------------------|
-| `client`         | —        | **必填。** 位于 `spring.go-redis.<client>` 下的 `*redis.Client` Bean 名。                |
+| `client`         | —        | **必填。** 位于 `spring.go-redis.instances.<client>` 下的 `*redis.Client` Bean 名。                |
 | `ttl`            | `30s`    | 默认租约 TTL。调用方可通过 `lock.WithTTL` 逐次覆盖。                                     |
 | `renew-interval` | `0`      | 续租间隔。`0` 表示按 lock 包默认取 `ttl/3`；负值关闭自动续租。                            |
 | `retry-interval` | `100ms`  | `Acquire` 在争抢中的轮询间隔。                                                           |

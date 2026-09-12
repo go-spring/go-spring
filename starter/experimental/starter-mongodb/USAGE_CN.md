@@ -8,8 +8,8 @@
 [驱动官方文档](https://www.mongodb.com/docs/languages/go/go-driver/current/)**——本文只写
 go-spring 的增量。
 
-**激活条件**：出现任意 `spring.mongodb.*` key（模块为 `OnProperty("spring.mongodb")` 前缀
-检查）。每个 `spring.mongodb.<name>` 条目创建一个名为 `<name>` 的 `*StarterMongoDB.Client`
+**激活条件**：出现任意 `spring.mongodb.instances.*` key（模块为 `OnProperty("spring.mongodb")` 前缀
+检查）。每个 `spring.mongodb.instances.<name>` 条目创建一个名为 `<name>` 的 `*StarterMongoDB.Client`
 bean（内嵌 `*mongo.Client`），并附带名为 `mongo:<name>` 的健康指示器。
 
 ---
@@ -112,22 +112,23 @@ func init() {
 
 ```properties
 # --- 直连实例 ---------------------------------------------------------------
-spring.mongodb.a.uri=mongodb://127.0.0.1:27017
-spring.mongodb.a.max-pool-size=100
-spring.mongodb.a.min-pool-size=1
-spring.mongodb.a.max-conn-idle-time=5m
-spring.mongodb.a.server-selection-timeout=10s
+spring.mongodb.instances.a.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.a.max-pool-size=100
+spring.mongodb.instances.a.min-pool-size=1
+spring.mongodb.instances.a.max-conn-idle-time=5m
+spring.mongodb.instances.a.server-selection-timeout=10s
 
 # --- 服务发现实例 -----------------------------------------------------------
 # uri host 故意写成不可解析的占位：service-name 接管寻址，
 # 连接成功即证明 discovery 已生效。directConnection=true 让驱动停在拨到的
 # seed 上，不做自己的副本集拓扑发现（见 §3.1 ⚠ 说明）。
-spring.mongodb.disc.uri=mongodb://nonexistent.invalid:27017/?directConnection=true
-spring.mongodb.disc.service-name=mongo-cluster
-spring.mongodb.disc.server-selection-timeout=10s
+spring.mongodb.instances.disc.uri=mongodb://nonexistent.invalid:27017/?directConnection=true
+spring.mongodb.instances.disc.service-name=mongo-cluster
+spring.mongodb.instances.disc.server-selection-timeout=10s
 
 # --- 治理：作用于建连 seam 的策略（rate-limit 让建连保护可观测；
 #     breaker/retry/timeout 同样生效）----------------------------------------
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -165,20 +166,20 @@ grep _app_mongodb_access app.log | tail -3   # 每条命令一条访问记录
 
 ```
 import starter-mongodb
-  └─ gs.Module(OnProperty("spring.mongodb")) 在任意 spring.mongodb.* key 存在时触发
+  └─ gs.Module(OnProperty("spring.mongodb")) 在任意 spring.mongodb.instances.* key 存在时触发
         └─ conf.BindEach("${spring.mongodb}") → 每个 <name> 条目一份 Config
               ├─ Provide(newClient).Name(<name>).Init((*Client).Init).Destroy((*Client).Destroy)
               └─ Provide health.Indicator 名为 "mongo:<name>"，Export As[health.Indicator]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:80]：ApplyURI → 超时/连接池/认证 → tls.Build
-  │   → SetMonitor(command monitor，惰性 observer)[starter.go:118]
-  │   → newPickPool（设置 service-name 且非 mesh 时构建 loader-backed 端点池）[starter.go:121]
-  │   → SetDialer(共享 dialerWrapper)[starter.go:147]
+  ├─ 构造 newClient [starter.go:87]：ApplyURI → 超时/连接池/认证 → tls.Build
+  │   → SetMonitor(command monitor，惰性 observer)[starter.go:125]
+  │   → newPickPool(ctx, c, backend)（设置 service-name 且非 mesh 时构建 loader-backed 端点池）[starter.go:128]
+  │   → SetDialer(共享 dialerWrapper)[starter.go:153]
   │   → mongo.Connect → fail-fast Ping，由 connect-timeout 约束（兜底 10s）
-  │     [starter.go:160-169] —— server 挂掉失败的是启动，不是第一条查询
+  │     [starter.go:163-171] —— server 挂掉失败的是启动，不是第一条查询
   ├─ Init [client.go:90]：newDBObserver("mongodb") → 模块内建 observer（span + 指标 + 访问日志）
-  │   → fault.WrapExecutor(resilience.ExecutorFor(resource)) → resilience.WrapExecutor(exec, "mongodb")
+  │   → fault.WrapExecutor(resilience.ExecutorFor("mongodb", resource))
   │   → 换入 dialerWrapper.dial = resilience.NewDialer(base, exec, resource)
   ├─ 就绪：mongo:<name> 指示器对真实 server 跑 client.Ping
   └─ SIGTERM → Destroy [client.go:112]：exec.Close → client.Disconnect
@@ -203,7 +204,7 @@ seam：
   触不到它。
 
 拨号替换无需重建客户端：构造期交给驱动的是共享 `dialerWrapper`，`Init` 事后改写其
-`dial` 字段（[starter.go:143-147]、[client.go:104-106]）。
+`dial` 字段（[starter.go:149-153]、[client.go:104-106]）。
 
 为何手写而非 otelmongo：官方埋点只支持 v1 驱动，其 CommandMonitor 类型与 v2 不兼容；
 这里的桥接是模块内建的（[observe.go]），使 MongoDB 与其他 client starter 同一套词汇。
@@ -215,7 +216,7 @@ seam：
 2. 池中无空闲连接时，驱动调 `dialerWrapper.DialContext` → resilience executor 申请配额
    （资源标签 `mongodb:<service-name 或 uri>`，按实例，[client.go:99]）；超限的拨号被拒，
    操作浮出 `resilience.ErrRateLimited`。设置 service-name 时，底层拨号先经
-   loader-backed `Pool` 选活端点、忽略 URI 地址（[starter.go:130-137]）。
+   loader-backed `Pool` 选活端点、忽略 URI 地址（[starter.go:137-144]）。
 3. 驱动发出 `find` 命令；monitor 的 `Started` 触发：`obs.Start(ctx, "find", "test")` ——
    span 名 = 命令名，参数 = 库名。
 4. 应答触发 `Succeeded`（或 `Failed`）：span 收尾、记录 `db.client.operation.duration`、
@@ -227,7 +228,7 @@ seam：
 
 ## 3. 逐 key 行为参考
 
-实例 key 位于 `spring.mongodb.<name>.`（经 `conf.BindEach` 绑定）。没有 observability
+实例 key 位于 `spring.mongodb.instances.<name>.`（经 `conf.BindEach` 绑定）。没有 observability
 key——观测无条件开启（见 §3.3）。
 
 ### 3.1 连接与寻址
@@ -235,7 +236,7 @@ key——观测无条件开启（见 §3.3）。
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `uri` | string | — | **必填**（expr `$ != ''`）。经 `ApplyURI` 解析；URI 内驱动选项优先，除非下方字段覆盖。 | 缺失/为空 → 绑定期启动报错。 |
-| `username` | string | — | 非空时由 username/password/auth-source/auth-mechanism 组成 `options.Credential` [starter.go:97-104]。为空 → 凭据完全取自 URI。 | 设了 username 漏了 password/auth-source → 启动 ping 认证失败。 |
+| `username` | string | — | 非空时由 username/password/auth-source/auth-mechanism 组成 `options.Credential` [starter.go:104-111]。为空 → 凭据完全取自 URI。 | 设了 username 漏了 password/auth-source → 启动 ping 认证失败。 |
 | `password` | string | — | 上述凭据一部分。⚠ 仅与 `username` 一起生效。 | — |
 | `auth-source` | string | — | 凭据校验库，如 `admin`。⚠ 仅随 `username`。 | 库错 → 启动 ping 报 "Authentication failed"。 |
 | `auth-mechanism` | string | — | 如 `SCRAM-SHA-256`；空 = 驱动自动协商。⚠ 仅随 `username`。 | 不支持的机制 → 启动 ping 报错。 |
@@ -244,15 +245,15 @@ key——观测无条件开启（见 §3.3）。
 | `max-pool-size` | uint64 | `100` | 每 server 最大连接数。0 本意为用默认——但 starter 未设时显式传 100。 | 过小 → 操作排队等池位。 |
 | `min-pool-size` | uint64 | `0` | 最小池内连接（恒应用，含 0）。 | — |
 | `max-conn-idle-time` | duration | `0` | 0 = 不限；如 `5m` 清理空闲连接。⚠ 配 `service-name` 时有限值可在不重启的情况下把连接逐步迁到新端点。 | `0` + 发现 → 连接在被踢掉的端点上滞留到断开。 |
-| `service-name` | string | — | 经已注册的发现后端解析地址；每次建连由 loader-backed（`Pool.Pick`）拨号替代 URI host [starter.go:126-137]。⚠ **绕过 MongoDB 自身拓扑发现**（副本集/mongos）——驱动拨命名服务给出的地址；需在 URI 配合 `directConnection=true`（[config.go:80-84]）。mesh 模式下忽略（sidecar 负责发现+LB）。 | 副本集 URI 不加 `directConnection=true` → "no such host"/拓扑报错；占位 URI 只有在 loader/pool 真被咨询时才能证明发现生效。 |
+| `service-name` | string | — | 经已注册的发现后端解析地址；每次建连由 loader-backed（`Pool.Pick`）拨号替代 URI host [starter.go:133-144]。⚠ **绕过 MongoDB 自身拓扑发现**（副本集/mongos）——驱动拨命名服务给出的地址；需在 URI 配合 `directConnection=true`（[config.go:80-84]）。mesh 模式下忽略（sidecar 负责发现+LB）。 | 副本集 URI 不加 `directConnection=true` → "no such host"/拓扑报错；占位 URI 只有在 loader/pool 真被咨询时才能证明发现生效。 |
 | `scheme` | string | — | 把发现端点收窄到一种传输 scheme（如 `tls`）。仅 service-name 生效时被咨询。 | — |
-| `discovery` | string | `default` | 用哪个已注册发现后端解析 service-name。 | 后端 bean 缺失 → 注入期启动报错。 |
-| `tls.*` | group | off | 共享 `tlsconf` 块（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）；`tls.Build` 报错直接失败启动 [starter.go:105-112]。enabled=false → 不启 TLS，除非 URI 自己要求（`mongodbs://` / `tls=true`）。 | 配一半 → 启动报 "mongodb: build TLS"。 |
+| `discovery` | string | — | 用哪个已注册发现后端解析 service-name。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
+| `tls.*` | group | off | 共享 `tlsconf` 块（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）；`tls.Build` 报错直接失败启动 [starter.go:112-119]。enabled=false → 不启 TLS，除非 URI 自己要求（`mongodbs://` / `tls=true`）。 | 配一半 → 启动报 "mongodb: build TLS"。 |
 
 ### 3.2 resilience / fault（govern.*，不在实例前缀下）
 
 策略 key 位于顶层 `govern.*`（starter-governance 治理中心）；本 starter 在 `Init` 里解析
-`resilience.ExecutorFor("mongodb:<service-name|uri>")` 与 `fault.InjectorFor`
+`resilience.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` 与 `fault.InjectorFor`
 [client.go:97-102]。相关 key（全集见 starter-governance USAGE）：`govern.enabled`、
 `govern.driver`、`govern.<driver>.rate-limit` / `error-threshold` / `open-duration` /
 `max-retries` / `timeout`，以及 `govern.fault.*` 注入块（enable/rate/error）。⚠ 记住
@@ -300,11 +301,12 @@ grep _app_mongodb_access app.log | tail -1
 ### 4.3 建连层 resilience 演练（取自 example-cloudnative）
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
 govern.default.rate-limit=5
-spring.mongodb.a.max-pool-size=100   # 给爆发留出强制新建连接的空间
+spring.mongodb.instances.a.max-pool-size=100   # 给爆发留出强制新建连接的空间
 ```
 
 冷池上并发打 40 个 `InsertOne`：超限的拨号以 `resilience.ErrRateLimited` 失败、浮出为
@@ -315,6 +317,7 @@ executor 热更新，无需重启（治理中心）。
 ### 4.4 故障注入 + 压测演练（example-load）
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.fault.enabled=true
 govern.fault.rate=0.5
 govern.fault.error=generic    # 或：timeout / reset
@@ -336,7 +339,7 @@ govern.fault.error=generic    # 或：timeout / reset
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动报 `mongodb: ping <uri>: ...` | server 不可达 / 凭据错 / TLS 不匹配——fail-fast ping 无条件执行 | 修连通性/凭据；`connect-timeout` 约束探测时长。 |
-| 绑定期对 `uri` 启动失败 | `uri` 为空——expr 校验非空 | 设置 `spring.mongodb.<name>.uri`。 |
+| 绑定期对 `uri` 启动失败 | `uri` 为空——expr 校验非空 | 设置 `spring.mongodb.instances.<name>.uri`。 |
 | 启动报 "build TLS" / "build discovery resolver" | `tls.*` 配了一半；`discovery` 指向未注册后端 | 补全 tlsconf 块；init 里注册命名后端 bean。 |
 | 发现客户端报 "no such host" / 拓扑错误 | `service-name` 绕过驱动拓扑发现 | URI 加 `directConnection=true`；副本集/mongos URI 则放弃 service-name。 |
 | 爆发时操作报 `ErrRateLimited` | 治理 rate-limit 作用在建连 seam | 调高 `govern.<driver>.rate-limit` 或 `max-pool-size`/`min-pool-size`（焐热的池免拨号）。 |

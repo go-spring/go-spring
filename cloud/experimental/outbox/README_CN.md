@@ -31,7 +31,7 @@ err := db.Transaction(func(tx *gorm.DB) error {
     if err := tx.Create(&order).Error; err != nil { return err }
     return StarterOutboxGorm.Publish(tx, "orders", order.ID, payload, nil)
 })
-// relay（由 starter 按 spring.outbox.* 配置接线）负责投递
+// relay（由 starter 按 spring.outbox.instances.* 配置接线）负责投递
 ```
 
 配置、表 DDL 与自断言示例见 `starter/experimental/starter-outbox-gorm`。

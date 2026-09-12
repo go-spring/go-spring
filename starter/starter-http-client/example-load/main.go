@@ -35,6 +35,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/httpclt"
 
+	_ "go-spring.org/starter-governance" // registers the centralized governance center
 	_ "go-spring.org/starter-http-client"
 )
 
@@ -75,8 +76,9 @@ func runLoad() {
 		if err != nil {
 			return err
 		}
-		req.Host = backendAddr // dispatch routes by req.Host
-		_, err = httpclt.DoRequest(req, httpclt.Metadata{}, func(r io.Reader) error {
+		// Target is the routing key: the call is dispatched by it, so a hand-built
+		// request must declare the entry it addresses.
+		_, err = httpclt.DoRequest(req, httpclt.Metadata{Target: backendAddr}, func(r io.Reader) error {
 			_, _ = io.Copy(io.Discard, r)
 			return nil
 		})

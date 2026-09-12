@@ -28,11 +28,11 @@ import _ "go-spring.org/starter-gorm-sqlserver"
 在项目的[配置文件](example/conf/app.properties)中添加 gorm 配置，比如：
 
 ```properties
-spring.gorm.sqlserver.primary.user=sa
-spring.gorm.sqlserver.primary.password=Str0ng!Passw0rd
-spring.gorm.sqlserver.primary.host=127.0.0.1
-spring.gorm.sqlserver.primary.port=1433
-spring.gorm.sqlserver.primary.db=master
+spring.gorm.sqlserver.instances.primary.user=sa
+spring.gorm.sqlserver.instances.primary.password=Str0ng!Passw0rd
+spring.gorm.sqlserver.instances.primary.host=127.0.0.1
+spring.gorm.sqlserver.instances.primary.port=1433
+spring.gorm.sqlserver.instances.primary.db=master
 ```
 
 ### 3. 注入 gorm 实例
@@ -40,10 +40,10 @@ spring.gorm.sqlserver.primary.db=master
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import starter "go-spring.org/starter-gorm-sqlserver"
+import "go-spring.org/starter-gorm"
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // 内嵌 *gorm.DB 的包装
+    DB *gormcore.DB `autowire:"sqlserver.primary"` // 内嵌 *gorm.DB 的包装
 }
 ```
 

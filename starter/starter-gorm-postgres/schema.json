@@ -96,7 +96,7 @@
     },
     "discovery": {
       "type": "string",
-      "default": "default"
+      "default": ""
     },
     "tls": {
       "type": "object",

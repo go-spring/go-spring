@@ -77,7 +77,7 @@ spring.gateway.routes.users.predicates.headers=X-Client-Id:demo
 spring.gateway.routes.users.filters=rateLimit(rate=50,key=ip)
 spring.gateway.routes.users.upstream.target=http://127.0.0.1:19000
 
-# --- resilience:仅作名字注册表;策略值来自 ${govern} --------------------------
+# --- resilience:仅作名字注册表;策略值来自治理规则文档 -------------------------
 spring.gateway.resilience.orders=
 
 # --- 可观测 ---------------------------------------------------------------------
@@ -152,7 +152,7 @@ gs.Run()
    `Upstream`;其余必须能解析为 `http(s)://host`,否则报错。
 3. **Executor 解析**(compile.go:232)——非空 `resilience.policy` 必须指向
    `spring.gateway.resilience` 下的某个 key;未知名字报错。Executor 来自
-   `resilience.ExecutorFor("gateway:<name>")`(compile.go:211)——策略值全部归治理中心
+   `resilience.ExecutorFor("gateway:<name>", "gateway:<name>")`(compile.go:211)——策略值全部归治理中心
    所有并可热更;治理未开时得到透明的 no-op executor。
 4. **代理 handler**(`newProxyHandler`,proxy.go:159)——见 §2.3。
 5. **Filter DSL 解析**(`buildFilters` → `splitFilters`,compile.go:268-373)——只在括号
@@ -197,7 +197,7 @@ gs.Run()
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `routes` | map `id→RouteRaw` | 空 | **可热更新**(`gs.Dync`,compile.go:52)。每个 `<id>` 是一条路由;id 是 map key,唯一性由结构保证。 | 空 → 网关对一切请求 404(表编译为 0 条路由,仍算 UP)。 |
-| `resilience` | map 名→(忽略) | 空 | **仅名字注册表**:key 是路由可引用的 executor 名;value 是空结构体——策略值在 `${govern}` 下、按 `gateway:<name>` 键控(route.go:114-128)。 | `resilience.<name>.*` 下的子 key 被绑定器静默忽略(遗留兼容)。 |
+| `resilience` | map 名→(忽略) | 空 | **仅名字注册表**:key 是路由可引用的 executor 名;value 是空结构体——策略值在治理规则文档(`govern.*`)下、按 `gateway:<name>` 键控(route.go:114-128)。 | `resilience.<name>.*` 下的子 key 被绑定器静默忽略(遗留兼容)。 |
 | `discovery` | string | "" | `lb://` 路由未配 `upstream.discovery` 时的默认后端。⚠ 两者都缺 → 编译错误(proxy.go:98)。 | 路由编译失败(启动报错 / reload 保留旧表)。 |
 | `tracing.enabled` | bool | true | 每个匹配请求包一层 gateway server+client span。 | 需 starter-otel 才真实导出;否则静默空操作。 |
 
@@ -214,10 +214,9 @@ gs.Run()
 | `priority` | int | 0 | 匹配顺序:priority 大的先被检查;并列(含全不配)回落到 id 升序——历史默认。随路由一起热更新。 | 重叠路径解析到 priority 更大(其次 id 更小)的路由;配了 priority 后改名 id 不再改变优先级。 |
 | `filters` | string | "" | filter DSL,见 §3.3;按声明顺序由外向内生效。 | 编译期(而非绑定期)报错。 |
 | `upstream.target` | string | — | **事实必填**:`lb://<service>` 或 `http(s)://host[:port]`。缺失/畸形 → `parseError`(compile.go:379-392)。 | 路由编译失败。 |
-| `upstream.balancer` | string | `round_robin` | 取值 `round_robin`、`least_conn`、`consistent_hash`、`weighted`(cloud/loadbalance)。未知名字 → 编译错误。 | 每 upstream 独立;同一服务的两条路由可用不同策略并共享同一条 discovery watch。 |
+| *(已移除)* | — | — | `upstream.balancer` 迁到治理:命中 `gateway:<route-id>` 的规则的 `govern.rules[N].balancer`。策略名未知会被忽略(沿用当前策略),不会让 reload 失败。 | 池是 push 时原地换策略,不需要重载路由表。 |
 | `upstream.discovery` | string | "" | 覆盖顶层 `discovery` 的每路由后端。 | |
-| `upstream.suspend-threshold` | int | 0(关) | lb:// upstream 实例连续失败多少次被停牌(outlier suspension,cloud/loadbalance `Tracker`);0 不启用。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
-| `upstream.suspend-for` | string | `""` | Go duration(如 `30s`);停牌多久后半开试探放回。空/0 用 tracker 的 5s 默认。 | 值非法 → reload 时编译错误,保留旧路由表。 |
+| *(已移除)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` 迁到治理:`govern.rules[N].outlier-threshold` / `.outlier-suspend-for`,`outlier-suspend-for` 留空回落 tracker 的 5s 默认。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
 | `resilience.policy` | string | "" | 必须指向已存在的 `spring.gateway.resilience.<name>` key。⚠ 耦合:未知名字 → `unknown resilience policy` 编译错误(compile.go:236)。 | 启动失败 / reload 保留旧表。 |
 
 ⚠ **优先级耦合**:没有任何路由配 `priority` 时,匹配顺序按路由 id 排序(compile.go)。
@@ -349,7 +348,7 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
 | 启动失败 `route %q: gateway: invalid …` | 初始路由表有 parse error(predicate/upstream/filter) | 修字面量;首次编译按设计即致命(server.go:82)。 |
 | 日志出现 `route reload failed, keeping previous table` | 热编辑坏了;旧表仍在服务 | 修字面量再刷新;观察 `gateway_route_reload_errors_total`。 |
 | 永远 404 | 没有路由断言能匹配(path 拼写错、methods/host/headers 断言拒绝) | 记住按 priority→id 顺序取首个匹配;id 靠后的更具体路由赢不了靠前的重叠路由——配 `priority` 可覆盖。 |
-| `unknown resilience policy` | `resilience.policy` 指向的名字不在 `spring.gateway.resilience` 下 | 把名字加为(无值的)key;策略值来自 `${govern}`、资源标签 `gateway:<name>`。 |
+| `unknown resilience policy` | `resilience.policy` 指向的名字不在 `spring.gateway.resilience` 下 | 把名字加为(无值的)key;策略值来自治理规则文档(`govern.*`)、资源标签 `gateway:<name>`。 |
 | 遗留 `resilience.<name>.max-retries` 等不生效 | 设计如此——value 是空结构体;绑定器忽略子 key(route.go:121-128) | 把策略迁到治理中心,资源标签 `gateway:<name>`。 |
 | `no FilterWrapper bean named …` | `jwt-auth(x)`/`lua(x)` 引用的 bean 未以 `gateway.FilterWrapper` 导出 | 用 `.Export(gs.As[gateway.FilterWrapper]())` 导出(bean 注入发生在 warmup 之前)。 |
 | `lb:// upstream cannot resolve … mesh mode active` | lb 路由缺 discovery 后端,或 mesh 模式开启 | 配 `upstream.discovery`/`spring.gateway.discovery`;mesh 模式下改路由到服务的稳定地址(proxy.go:115)。 |
@@ -370,7 +369,7 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
 
 1. ~~17 个遗留策略 key 能绑定但从不读取~~ —— 已演进:`policyRaw` 现为空结构体
    (route.go:128),遗留子 key 连绑定都不再发生(被静默忽略)。残留风险:迁移旧配置的
-   用户得不到任何"策略已迁往 ${govern}"的反馈。
+   用户得不到任何"策略已迁往治理规则文档"的反馈。
 2. ~~filter DSL 是字符串语法——`,`/`()` 无法转义~~——已按设计裁决(2026-08-28):不加
    转义语法;含 `,`/`(`/`)` 的值在路由编译期被拒,错误信息指向 `${...}` 占位符 /
    `RegisterFilter` 自定义 filter 替代方案。

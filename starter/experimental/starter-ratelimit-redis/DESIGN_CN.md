@@ -32,7 +32,7 @@ Contributor starter：配置进，`resilience.LimiterDriver` bean + 注册表
 
 ## 4. 接线
 
-每个 `spring.ratelimit.redis.<name>`（gs.OnProperty + conf.BindEach）：
+每个 `spring.ratelimit.redis.instances.<name>`（gs.OnProperty + conf.BindEach）：
 
 - `client`（必填，fail-fast）：starter-go-redis 的 bean 名，通过
   `gs.TagArg(client)` 按名注入——与 starter-session-redis 相同的按名

@@ -2,59 +2,72 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.http-client",
   "type": "object",
+  "description": "Two buckets: spring.http-client.default holds family-wide values (each overridable per instance), spring.http-client.instances.<name> holds one client per named entry. No other key belongs directly under spring.http-client.",
   "properties": {
-    "addr": {
-      "type": "string",
-      "default": ""
-    },
-    "service-name": {
-      "type": "string",
-      "default": ""
-    },
-    "discovery": {
-      "type": "string",
-      "default": ""
-    },
-    "balancer": {
-      "type": "string",
-      "default": "round_robin"
-    },
-    "suspend-threshold": {
-      "type": "integer",
-      "default": 0
-    },
-    "suspend-for": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "0"
-    },
-    "tls": {
+    "default": {
       "type": "object",
-      "description": "Per-entry TLS config; wired into the transport's TLS config when enabled",
+      "description": "Family-wide values, each overridable by an instance.",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false
-        },
-        "cert-file": {
+        "driver": {
           "type": "string",
-          "default": ""
-        },
-        "key-file": {
-          "type": "string",
-          "default": ""
-        },
-        "ca-file": {
-          "type": "string",
-          "default": ""
-        },
-        "server-name": {
-          "type": "string",
-          "default": ""
-        },
-        "insecure-skip-verify": {
-          "type": "boolean",
-          "default": false
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type (nil-safe fallback to DefaultDriver); set to a bean name to select one explicitly — naming a missing bean fails startup."
+        }
+      }
+    },
+    "instances": {
+      "type": "object",
+      "description": "One client per entry; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "addr": {
+            "type": "string",
+            "default": ""
+          },
+          "service-name": {
+            "type": "string",
+            "default": ""
+          },
+          "discovery": {
+            "type": "string",
+            "default": ""
+          },
+          "driver": {
+            "type": "string",
+            "default": "",
+            "description": "Names the Driver bean that assembles this instance's transport, overriding spring.http-client.default.driver. Empty falls back to the family-wide default, then to the single Driver bean by type."
+          },
+          "tls": {
+            "type": "object",
+            "description": "Per-entry TLS config; wired into the transport's TLS config when enabled",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": false
+              },
+              "cert-file": {
+                "type": "string",
+                "default": ""
+              },
+              "key-file": {
+                "type": "string",
+                "default": ""
+              },
+              "ca-file": {
+                "type": "string",
+                "default": ""
+              },
+              "server-name": {
+                "type": "string",
+                "default": ""
+              },
+              "insecure-skip-verify": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
         }
       }
     }

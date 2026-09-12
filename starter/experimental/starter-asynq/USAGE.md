@@ -7,10 +7,10 @@ against the starter source (`starter.go`, `client.go`, `driver.go`, `config.go`,
 [asynq's documentation](https://github.com/hibiken/asynq)**; everything below is go-spring's
 increment (assembly, governance, observability, health).
 
-**Activation**: any `spring.asynq.<name>` subtree (`gs.OnProperty("spring.asynq")` is a prefix
+**Activation**: any `spring.asynq.instances.<name>` subtree (`gs.OnProperty("spring.asynq")` is a prefix
 check, starter.go:36). One instance always yields a producer `*Client`; a worker `*Server`
 exists only when `<name>.server.enabled=true` (default off — a long-running worker is an
-opt-in). Multi-instance: each `spring.asynq.<name>` entry is an independent Redis-backed queue.
+opt-in). Multi-instance: each `spring.asynq.instances.<name>` entry is an independent Redis-backed queue.
 
 ---
 
@@ -113,17 +113,17 @@ func main() {
 
 ```properties
 # --- asynq instance "a" (producer + worker share these Redis settings) -------
-spring.asynq.a.addr=127.0.0.1:6379
-spring.asynq.a.db=0
-spring.asynq.a.concurrency=4            # worker: max concurrent tasks
-# spring.asynq.a.queues=critical:5,default:1   # queue name -> priority weight
+spring.asynq.instances.a.addr=127.0.0.1:6379
+spring.asynq.instances.a.db=0
+spring.asynq.instances.a.concurrency=4            # worker: max concurrent tasks
+# spring.asynq.instances.a.queues=critical:5,default:1   # queue name -> priority weight
 # Turn on the worker role for this instance (OFF by default).
-spring.asynq.a.server.enabled=true
-# spring.asynq.a.shutdown-timeout=8s    # worker drain bound on shutdown
+spring.asynq.instances.a.server.enabled=true
+# spring.asynq.instances.a.shutdown-timeout=8s    # worker drain bound on shutdown
 
 # --- TLS to Redis (shared tlsconf block; off here) ---------------------------
-# spring.asynq.a.tls.enabled=true
-# spring.asynq.a.tls.cert-file=...      # + key-file / ca-file / server-name /
+# spring.asynq.instances.a.tls.enabled=true
+# spring.asynq.instances.a.tls.cert-file=...      # + key-file / ca-file / server-name /
 #                                       #   insecure-skip-verify
 
 # --- actuator (health endpoint for §4) ----------------------------------------
@@ -200,7 +200,7 @@ gs.Run()
    call the promoted `*asynq.Client.Enqueue` — only the wrapper routes through the guard.
 2. The observe layer opens a producer observation (`o.obs.start(ctx, "enqueue", task.Type())`,
    observe.go): span, metrics, and access log.
-3. The executor runs: `fault.WrapExecutor(resilience.ExecutorFor("asynq:<addr>"))` — with
+3. The executor runs: `fault.WrapExecutor(resilience.ExecutorFor("asynq", "asynq:<addr>"))` — with
    starter-governance, a rate-limit rejection or open circuit aborts **before** Redis is
    touched; without it the executor is a pass-through.
 4. `Client.EnqueueContext` writes the task to Redis (asynq semantics: queue/priority from opts).
@@ -215,12 +215,12 @@ gs.Run()
 
 ## 3. Per-key behavior reference
 
-Instance prefix: `spring.asynq.<name>.*` (Config is bound via `conf.BindEach` with the prefix —
+Instance prefix: `spring.asynq.instances.<name>.*` (Config is bound via `conf.BindEach` with the prefix —
 these ARE instance-prefixed).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `spring.asynq.<n>.addr` | string | — | Redis `host:port`; also feeds the governance resource label `asynq:<addr>`. Required (`expr:"$ != ''"`). | Missing → bind-time startup error. |
+| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`; also feeds the governance resource label `asynq:<addr>`. Required (`expr:"$ != ''"`). | Missing → bind-time startup error. |
 | `..username` / `..password` | string | empty | Redis ACL auth. | Wrong → enqueue/handler failures at runtime, not at boot (health probe catches it). |
 | `..db` | int | 0 | Redis database index. | Mismatched db between producer/worker instances → tasks enqueued but never consumed. |
 | `..tls.*` | block | off | Shared tlsconf (`enabled`, `cert-file`, `key-file`, `ca-file`, `server-name`, `insecure-skip-verify`); when on, DefaultDriver builds a TLS RedisClientOpt (driver.go:58-77). | Half-configured TLS → driver build error at bean construction. |
@@ -228,6 +228,7 @@ these ARE instance-prefixed).
 | `..queues` | map[string]int | empty → asynq "default":1 | queue → priority weight (higher = processed more often). ⚠ your `asynq.Queue(...)` enqueue option must name a configured queue (or the fallback default), or the worker never picks it up. | Enqueue to an unlisted queue → task sits pending forever. |
 | `..shutdown-timeout` | duration | 8s | Bounds the worker's drain (`srv.Shutdown()`); ctx passed to `Stop` is unused — the drain rides this timeout (client.go:176-183). | Too low → in-flight tasks abandoned mid-run on deploy. |
 | `..server.enabled` | bool | false | **Worker opt-in switch.** Also gates whether the `*Server` bean exists at all — an `autowire:"a:server"` without it fails wiring. | Injecting the worker without this key → container "bean not found". |
+| `..driver` | string | empty | Names the Driver bean to assemble this instance through. Empty = inject the single Driver bean by type (none → bundled DefaultDriver); naming a missing bean fails startup. | Several Driver beans coexist → select one per instance by name. |
 
 ---
 
@@ -283,12 +284,12 @@ promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Container fails: bean `a:server` not found | `server.enabled` not set (worker opt-in) | Set `spring.asynq.<n>.server.enabled=true` or drop the autowire. |
+| Container fails: bean `a:server` not found | `server.enabled` not set (worker opt-in) | Set `spring.asynq.instances.<n>.server.enabled=true` or drop the autowire. |
 | Tasks enqueued but never run | Worker not enabled; enqueue to a queue not in `queues`; producer and worker on different `db` | Align config; enqueue with `asynq.Queue("<listed>")`. |
 | Guard/resilience never applies | Calling promoted `*asynq.Client.Enqueue/EnqueueContext` instead of the wrapper | Call the wrapper's `Enqueue` (client.go:71). |
 | Health DOWN though enqueue works | `default` queue never created / ACL limits Inspector | Health checks the `default` queue specifically; ensure Redis reachable and permissions. |
 | Tasks lost on deploy | `shutdown-timeout` shorter than in-flight run | Raise it above the longest expected task. |
-| Custom Driver bean never used | A second `Driver` bean, or the override registered after wiring | Provide at most one `Driver` bean; its ctor is autowired at wiring time and shared by the Client, Server and health. |
+| Custom Driver bean never used | The entry did not select it and by-type injection picked another | When several `Driver` beans coexist, select one per instance: `spring.asynq.instances.<name>.driver = <bean-name>` (empty = the single Driver bean by type; naming a missing bean fails startup). |
 
 ## 6. Design Health
 

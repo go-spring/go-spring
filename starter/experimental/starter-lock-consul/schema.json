@@ -2,37 +2,47 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.lock",
   "type": "object",
+  "description": "Two buckets: spring.lock.default holds family-wide values (each overridable per instance), spring.lock.instances.<name> holds one entry per named instance. No other key belongs directly under spring.lock.",
   "properties": {
-    "address": {
-      "type": "string"
-    },
-    "scheme": {
-      "type": "string",
-      "default": "http"
-    },
-    "token": {
-      "type": "string",
-      "default": ""
-    },
-    "ttl": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "30s"
-    },
-    "key-prefix": {
-      "type": "string",
-      "default": "lock/"
-    },
-    "tls": {
-      "type": "object"
-    },
-    "observe": {
+    "instances": {
       "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Wrap the Locker with the observe-lock adapter; false = bare locker"
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "scheme": {
+            "type": "string",
+            "default": "http"
+          },
+          "token": {
+            "type": "string",
+            "default": ""
+          },
+          "ttl": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "30s"
+          },
+          "key-prefix": {
+            "type": "string",
+            "default": "lock/"
+          },
+          "tls": {
+            "type": "object"
+          },
+          "observe": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Wrap the Locker with the observe-lock adapter; false = bare locker"
+              }
+            }
+          }
         }
       }
     }

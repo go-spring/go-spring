@@ -251,14 +251,8 @@ var clientGuards sync.Map // *amqp.Connection -> *clientGuard
 // which starter-govern backs with the governance center — so this function has
 // zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
 // transparent no-op executor; fault wraps it when enabled.
-func applyResilience(c Config, conn *amqp.Connection, resource string) error {
-	// Per-instance opt-out: without an executor attached, guard (and therefore
-	// both GuardedPublish and the driver's Publish) degrades to bare calls.
-	if !c.Governance {
-		return nil
-	}
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "rabbitmq")
+func applyResilience(conn *amqp.Connection, resource string) error {
+	exec := fault.WrapExecutor(resilience.ExecutorFor("rabbitmq", resource))
 	clientGuards.Store(conn, &clientGuard{exec: exec, resource: resource})
 	return nil
 }

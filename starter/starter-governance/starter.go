@@ -16,15 +16,12 @@
 
 // Package StarterGovernance provides dynamic-refresh source adapters for the
 // governance center (cloud/governance) — the self-built refresh chain, where
-// governance rules flow in through the governance.Source contract instead of
-// the ${govern} gs.Dync binding.
+// governance rules flow in through the governance.Source contract.
 //
-// Importing this starter is inert until it is configured; the default
-// ${govern} Dync path stays exactly as it is. When a source IS configured,
-// its bean is injected onto the governance center (priority: an explicit
-// governance.SetSource wins, then this bean, then the Dync default), and rule
-// updates refresh governance only — they never trigger an app-wide property
-// re-bind.
+// Importing this starter is inert until it is configured. When a source IS
+// configured, its bean is injected onto the governance center (priority: an
+// explicit governance.SetSource wins, then this bean), and rule updates refresh
+// governance only — they never trigger an app-wide property re-bind.
 //
 // Available sources:
 //
@@ -98,7 +95,7 @@ func init() {
 
 		// Exported as governance.Source so the center's Src field (autowire:"?")
 		// finds it. Without the Export the bean is invisible to interface
-		// injection and governance silently runs on ${govern} again — the
+		// injection and governance silently stays disabled — the
 		// most likely misconfiguration, called out in the README.
 		r.Provide(func() (*FileSource, error) { return NewFileSource(c.Path) }).
 			Init((*FileSource).Init).Destroy((*FileSource).Close).

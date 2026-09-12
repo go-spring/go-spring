@@ -23,8 +23,8 @@ import _ "go-spring.org/starter-milvus"
 ### 2. 配置
 
 ```properties
-spring.milvus.a.addr=127.0.0.1:19530
-spring.milvus.a.database=default
+spring.milvus.instances.a.addr=127.0.0.1:19530
+spring.milvus.instances.a.database=default
 ```
 
 ### 3. 注入
@@ -47,7 +47,7 @@ _, err = s.Client.Insert(ctx, "docs", "", idCol, vecCol)
 
 ## 核心特性
 
-- **多实例客户端** — 每个 `spring.milvus.<name>` 条目一个 bean。
+- **多实例客户端** — 每个 `spring.milvus.instances.<name>` 条目一个 bean。
 - **fail-fast 探针 + 健康指示器** — `ListCollections` 在启动期验证连通与
   鉴权，同时作为就绪探针。
 - **无逐操作韧性** — SDK 没有可拒绝的拦截器 seam（gRPC dial option 仅

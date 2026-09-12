@@ -38,12 +38,12 @@ import _ "go-spring.org/starter-s3"
 ### 2. Configure
 
 ```properties
-spring.s3.a.endpoint=127.0.0.1:9000
-spring.s3.a.access-key-id=minioadmin
-spring.s3.a.secret-access-key=minioadmin
-spring.s3.a.region=us-east-1
-spring.s3.a.use-ssl=false
-spring.s3.a.bucket-lookup=auto
+spring.s3.instances.a.endpoint=127.0.0.1:9000
+spring.s3.instances.a.access-key-id=minioadmin
+spring.s3.instances.a.secret-access-key=minioadmin
+spring.s3.instances.a.region=us-east-1
+spring.s3.instances.a.use-ssl=false
+spring.s3.instances.a.bucket-lookup=auto
 ```
 
 ### 3. Inject
@@ -66,7 +66,7 @@ The wrapper embeds `*minio.Client`, so every SDK method promotes unchanged.
 
 ## Core Features
 
-- **Multi-instance clients** — every `spring.s3.<name>` entry is its own bean
+- **Multi-instance clients** — every `spring.s3.instances.<name>` entry is its own bean
   with independent settings.
 - **Fail-fast startup probe** — a `ListBuckets` round trip at boot catches
   wrong endpoints and rejected credentials before the first object
@@ -89,9 +89,9 @@ The wrapper embeds `*minio.Client`, so every SDK method promotes unchanged.
 **Multiple clients** — configure additional entries and inject by name:
 
 ```properties
-spring.s3.assets.endpoint=127.0.0.1:9000
-spring.s3.assets.access-key-id=...
-spring.s3.assets.secret-access-key=...
+spring.s3.instances.assets.endpoint=127.0.0.1:9000
+spring.s3.instances.assets.access-key-id=...
+spring.s3.instances.assets.secret-access-key=...
 ```
 
 **Custom driver** — replace client assembly (e.g. to plug an IAM-role

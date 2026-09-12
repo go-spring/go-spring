@@ -28,7 +28,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -51,7 +50,7 @@ type Executor interface {
 	// Refreshing resets per-resource protection state (breaker counters, token
 	// buckets, bulkhead slots): a new policy starts clean, which is the
 	// intended semantic of "the threshold changed". Every driver implements
-	// this so adapters driven by a gs.Dync config binding can call it directly
+	// this so adapters driven by a config binding can call it directly
 	// when the bound policy changes.
 	Refresh(p Policy) error
 }
@@ -86,14 +85,19 @@ type defaultExecutor struct {
 	policy   Policy
 	mu       sync.Mutex
 	states   map[string]*resourceState
-	listener atomic.Pointer[BreakerEventListener]
+	listener BreakerEventListener
 }
 
 // SetBreakerEventListener attaches l so every per-resource breaker built by this
 // executor (including ones created later for new resources) emits state
 // transitions. It satisfies [BreakerEventListenerSetter].
+//
+// It must be called before the executor is shared — that is, before its first
+// [defaultExecutor.Execute], which is when the per-resource breakers are built.
+// [WrapExecutor] attaches the listener while the executor is still being
+// constructed inside [resolve], so the executor never escapes unobserved.
 func (e *defaultExecutor) SetBreakerEventListener(l BreakerEventListener) {
-	e.listener.Store(&l)
+	e.listener = l
 }
 
 // Refresh adopts p as the new policy and resets all per-resource state, so the
@@ -143,7 +147,7 @@ func (e *defaultExecutor) state(resource string) *resourceState {
 		if open <= 0 {
 			open = 5 * time.Second
 		}
-		s.breaker = newCircuitBreaker(e.policy, open, resource, &e.listener)
+		s.breaker = newCircuitBreaker(e.policy, open, resource, e.listener)
 	}
 	if e.policy.MaxConcurrent > 0 {
 		// A buffered channel is a non-blocking counting semaphore: a full buffer

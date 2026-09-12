@@ -401,7 +401,7 @@ func TestDyncPoller_SidePresent(t *testing.T) {
 // TestDyncPoller_GovernOverride is the Level A test: when a governance center is
 // armed, its PolicyFor for each dubbo resource label overrides timeout/retries in
 // the published override rules, regardless of the dubbo-native values. This is
-// how ${govern} takes over dubbo's dynamic timeout/retry.
+// how the governance rules document takes over dubbo's dynamic timeout/retry.
 func TestDyncPoller_GovernOverride(t *testing.T) {
 	dc := mapconfig.Singleton()
 	reset := governance.Arm(governance.Config{

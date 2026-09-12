@@ -26,17 +26,17 @@ import _ "go-spring.org/starter-mail"
 
 ### 2. 配置 Mailer
 
-在项目的[配置文件](example/conf/app.properties)中,于 `spring.mail.<name>` 下定义
+在项目的[配置文件](example/conf/app.properties)中,于 `spring.mail.instances.<name>` 下定义
 一个或多个具名 mailer。`host` 为必填项,不做 localhost 兜底——服务器缺失或不可达会
 在启动时快速失败。
 
 ```properties
-spring.mail.notify.host=smtp.example.com
-spring.mail.notify.port=587
-spring.mail.notify.username=apikey
-spring.mail.notify.password=${SMTP_PASSWORD}
-spring.mail.notify.from=noreply@example.com
-spring.mail.notify.tls.mode=starttls
+spring.mail.instances.notify.host=smtp.example.com
+spring.mail.instances.notify.port=587
+spring.mail.instances.notify.username=apikey
+spring.mail.instances.notify.password=${SMTP_PASSWORD}
+spring.mail.instances.notify.from=noreply@example.com
+spring.mail.instances.notify.tls.mode=starttls
 ```
 
 ### 3. 注入 Mailer
@@ -101,7 +101,7 @@ destroy 钩子)。
 
 ## 配置项
 
-`spring.mail.<name>` 下的每个 mailer 读取以下属性:
+`spring.mail.instances.<name>` 下的每个 mailer 读取以下属性:
 
 | 属性 | 默认值 | 说明 |
 | --- | --- | --- |

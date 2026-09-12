@@ -24,20 +24,20 @@ import _ "go-spring.org/starter-gorm-sqlserver"
 Add gorm configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.gorm.sqlserver.primary.user=sa
-spring.gorm.sqlserver.primary.password=Str0ng!Passw0rd
-spring.gorm.sqlserver.primary.host=127.0.0.1
-spring.gorm.sqlserver.primary.port=1433
-spring.gorm.sqlserver.primary.db=master
+spring.gorm.sqlserver.instances.primary.user=sa
+spring.gorm.sqlserver.instances.primary.password=Str0ng!Passw0rd
+spring.gorm.sqlserver.instances.primary.host=127.0.0.1
+spring.gorm.sqlserver.instances.primary.port=1433
+spring.gorm.sqlserver.instances.primary.db=master
 ```
 
 ### 3. Inject the gorm Instance
 
 ```go
-import starter "go-spring.org/starter-gorm-sqlserver"
+import "go-spring.org/starter-gorm"
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // wrapper embedding *gorm.DB
+    DB *gormcore.DB `autowire:"sqlserver.primary"` // wrapper embedding *gorm.DB
 }
 ```
 

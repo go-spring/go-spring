@@ -7,7 +7,7 @@ Go-Spring 的 gorm 事务消息：业务写与消息发布在同一个数据库�
 空白导入本 starter，再空白导入一个 broker starter（starter-kafka……），在 `spring.outbox` 下每个 relay 一条配置：
 
 ```properties
-spring.outbox.main.auto-migrate=true
+spring.outbox.instances.main.auto-migrate=true
 ```
 
 投递的 `messaging.Driver` 以 bean 注入：broker starter 会为每条已配置的连接导出一个 `messaging.Driver` bean，所以单条投递连接无需 `driver` 键。每条配置同时自动注入一个 `*gorm.DB`（来自你已在用的 gorm 方言 starter；`db` 可指定具名 bean），贡献健康指示器（`outbox:<name>`），并在 bean 的 Init/Destroy 上跑 relay 循环——优雅关停会排空在途记录。

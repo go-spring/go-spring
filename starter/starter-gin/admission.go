@@ -40,8 +40,7 @@ import (
 // breaker trips / rejects emit span + counter + histogram + access log.
 func buildAdmission(cfg Config) (gin.HandlerFunc, error) {
 	resource := resilience.ResourceLabel("gin", cfg.Address)
-	exec := resilience.ExecutorFor(resource)
-	exec = resilience.WrapExecutor(exec, "gin")
+	exec := resilience.ExecutorFor("gin", resource)
 	return resilienceAdmission(exec, resource), nil
 }
 

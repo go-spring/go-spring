@@ -24,9 +24,9 @@ import _ "go-spring.org/starter-xxljob"
 ### 2. Configure
 
 ```properties
-spring.xxljob.a.app-name=go-spring-demo
-spring.xxljob.a.admin-addresses=http://127.0.0.1:8080/xxl-job-admin
-spring.xxljob.a.port=9999
+spring.xxljob.instances.a.app-name=go-spring-demo
+spring.xxljob.instances.a.admin-addresses=http://127.0.0.1:8080/xxl-job-admin
+spring.xxljob.instances.a.port=9999
 ```
 
 ### 3. Inject & register a handler
@@ -54,5 +54,5 @@ func (s *Service) Init() error {
 
 ## Advanced Features
 
-**Multiple executors** — additional `spring.xxljob.<name>` entries, each with
+**Multiple executors** — additional `spring.xxljob.instances.<name>` entries, each with
 its own callback port and handler registry.

@@ -7,7 +7,7 @@
 [minio-go 官方文档](https://github.com/minio/minio-go)** —— 本文只写 go-spring 的增量：
 配置、装配、启动 fail-fast、逐请求可观测、resilience、健康检查。
 
-**激活条件**：`gs.OnProperty("spring.s3")` 门控一个 gs.Module；每个 `spring.s3.<name>`
+**激活条件**：`gs.OnProperty("spring.s3")` 门控一个 gs.Module；每个 `spring.s3.instances.<name>`
 子树创建一个名为 `<name>` 的 `*Client` bean，外加一个名为 `s3:<name>` 的健康指示器。
 不配置则不装配。
 
@@ -96,19 +96,19 @@ func (s *Service) Put(ctx context.Context, bucket, key string, b []byte) error {
 **conf/app.properties** —— 完整注释配置（在 example 配置上扩展）：
 
 ```properties
-# --- s3 client "a"（每个 spring.s3.<name> 子树一个实例）-----------------------
-spring.s3.a.endpoint=127.0.0.1:9000        # host:port，不带 scheme
-spring.s3.a.access-key-id=minioadmin
-spring.s3.a.secret-access-key=minioadmin
-spring.s3.a.region=us-east-1
-spring.s3.a.use-ssl=false
+# --- s3 client "a"（每个 spring.s3.instances.<name> 子树一个实例）-----------------------
+spring.s3.instances.a.endpoint=127.0.0.1:9000        # host:port，不带 scheme
+spring.s3.instances.a.access-key-id=minioadmin
+spring.s3.instances.a.secret-access-key=minioadmin
+spring.s3.instances.a.region=us-east-1
+spring.s3.instances.a.use-ssl=false
 # path 风格对拒绝 virtual-host 寻址的 S3 兼容云更友好。
-spring.s3.a.bucket-lookup=path
+spring.s3.instances.a.bucket-lookup=path
 
 # 同集群的第二个 client，展示多实例装配
-spring.s3.b.endpoint=127.0.0.1:9000
-spring.s3.b.access-key-id=minioadmin
-spring.s3.b.secret-access-key=minioadmin
+spring.s3.instances.b.endpoint=127.0.0.1:9000
+spring.s3.instances.b.access-key-id=minioadmin
+spring.s3.instances.b.secret-access-key=minioadmin
 
 # --- actuator（把 s3:<name> 指示器并入 readiness）----------------------------
 spring.actuator.addr=:9370
@@ -142,14 +142,16 @@ import starter-s3
         （源码注释，starter.go:32-36）
 
 gs.Run()
-  ├─ 对 spring.s3.* 做 conf.BindEach → 每个实例名一份 Config
+  ├─ 对 spring.s3.instances.* 做 conf.BindEach → 每个实例名一份 Config
   ├─ 每实例：
   │    ├─ r.Provide(newClient, IndexArg(1, ValueArg(c)),
   │    │            IndexArg(2, ?Driver)).Name(name)
   │    │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
   │    ├─ r.Provide(健康指示器).Name("s3:"+name).Export(health.Indicator)
   │    │      —— .Name 保证多实例 (Name,Type) 键唯一
-  │    ├─ newClient：可选 Driver bean（无则用内置 DefaultDriver）
+  │    ├─ newClient：可选 Driver bean（无则用内置 DefaultDriver；多个并存时
+  │    │      实例可按名指定：`spring.s3.instances.<name>.driver = <bean 名>`，留空 =
+  │    │      按类型注入唯一 Driver bean，指定的 bean 不存在则启动失败）
   │    │      → d.CreateClient：静态凭据 + region + bucket-lookup
   │    │        + minio.Options 里的 dynamicTransport 占位
   │    │      → dynamicTransports.LoadAndDelete 把占位交给 wrapper
@@ -157,8 +159,7 @@ gs.Run()
   │    │      都会中止启动（starter.go:76-78）
   │    └─ Init()（client.go）：
   │          obsTransport（span + db.client.* 指标 + 访问日志，observe.go）
-  │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3:<endpoint>"))
-  │          exec := resilience.WrapExecutor(exec, "s3")  // outcome span/计数
+  │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3", "s3:<endpoint>"))  // outcome span/计数
   │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, → resource))
   ├─ Run / 服务：readyz 并入每个 s3:<name> 指示器（需 starter-actuator）
   └─ SIGTERM：Destroy() 关闭 resilience executor；minio 侧无会话可关
@@ -184,8 +185,8 @@ atomic.Value，因为活动的 tripper 是多种具体类型之一；见 client.
 2. Resilience round-tripper：请求进入按资源 `s3:<endpoint>` 解析的 executor——引入
    starter-governance 后 retry / rate-limit / circuit-breaker / bulkhead 生效（经治理
    中心可热切换），否则透明直通；进程级 fault 注入器（`fault.InjectorFor`，nil 安全）
-   可为演练注入失败。`resilience.WrapExecutor` 为熔断跳闸、限流拒绝、隔舱拒绝发出
-   outcome span + 调用计数 + 时长直方图 + 访问日志。
+   可为演练注入失败。executor 内部解析出的 observe 层为熔断跳闸、限流拒绝、隔舱拒绝
+   发出 outcome span + 调用计数 + 时长直方图 + 访问日志。
 3. obsTransport（command.go:38）：以操作名 `"PUT /bucket/key"`（方法 + URL path）
    开 per-request observer span，跑底层 `http.DefaultTransport`，带错误结束 span ——
    span + 时长 metric + 访问日志都带该操作名（minio-go 自身无 OTel 钩子，starter 的
@@ -205,7 +206,7 @@ starter-actuator 的应用无需额外接线即可把 S3 readiness 并入 `/read
 
 ## 3. 逐 key 行为参考
 
-ctor 绑定的 `Config` key（config.go）带前缀 `spring.s3.<name>.*`。
+ctor 绑定的 `Config` key（config.go）带前缀 `spring.s3.instances.<name>.*`。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
@@ -232,7 +233,7 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 
 ### 4.2 fail-fast 演练
 
-把 `spring.s3.a.secret-access-key=wrong`：启动中止，报
+把 `spring.s3.instances.a.secret-access-key=wrong`：启动中止，报
 `failed to reach s3 endpoint ...`（底层是签名不匹配）。探测（ListBuckets）的存在
 就是让凭据/端点错误到不了首次使用。
 
@@ -252,7 +253,7 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 ### 4.5 fault/resilience 演练（需 starter-governance）
 
 按端点资源标签 `s3:127.0.0.1:9000` 配置治理规则：对该资源的 `fault.rate` 让一部分
-上传经 executor 失败——可通过 `resilience.WrapExecutor` 的 outcome span/计数观测。
+上传经 executor 失败——可通过 executor 的 observe 层 outcome span/计数观测。
 改回规则文件即撤火（经治理 source 热切换）。⚠ 注意 retry 按 round-trip 重试而非按流：
 大 body 上传可能重发 body。
 

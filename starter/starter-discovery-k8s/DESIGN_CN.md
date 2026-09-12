@@ -8,7 +8,7 @@
 
 ## 1. 职责与边界
 
-- 把 `spring.discovery.k8s.<name>` 条目绑定到 `discovery.Discovery` 后端，
+- 把 `spring.discovery.k8s.instances.<name>` 条目绑定到 `discovery.Discovery` 后端，
   每条一个，注册到进程级 `cloud/discovery` 注册表下 `<name>` 名字。
 - Discovery 后端**不是可注入 bean**。客户端 starter（redis / gorm / grpc）
   用 `discovery: <name>` 字段引用，starter 按名注入后端 bean。

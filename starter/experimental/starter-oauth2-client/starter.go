@@ -39,8 +39,8 @@ func init() {
 	// A gs.Module (rather than gs.Group) is used so each instance's bean can be
 	// paired with a Name + Destroy hook carrying the call-site file:line for
 	// diagnostics.
-	gs.Module(gs.OnProperty("spring.oauth2.client"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.oauth2.client}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.oauth2.client.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.oauth2.client.instances}", func(name string, c Config) error {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
@@ -85,11 +85,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (*http.Client, er
 	// so this call is always safe. Always non-nil; resolution is deferred to call
 	// time, so the order of this setup relative to starter-govern is irrelevant.
 	resource := resilience.ResourceLabel("oauth2", c.ClientID)
-	exec := resilience.ExecutorFor(resource)
-	// Wrap so breaker trips / rejects / retries emit span + counter +
-	// histogram + access log (the resilience core emits none). nil-safe,
-	// no-op without starter-otel.
-	exec = resilience.WrapExecutor(exec, "oauth2")
+	exec := resilience.ExecutorFor("oauth2", resource)
 	// Scope the roundtripper's per-call Execute to the same label so limiter/
 	// breaker state all agree.
 	client.Transport = resilience.NewRoundTripper(client.Transport, exec, func(*http.Request) string { return resource })

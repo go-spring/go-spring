@@ -83,7 +83,7 @@ Observe 之内。)手动模式导出 `ApplyMiddlewares`、`LoadTest`、`RequestI
   `duration_ms`、`request_id`、`trace_id`/`span_id`、`req.body`/`resp.body`、`panic`+stack。
 - tracing/metrics 走 OTel 全局对象——**无 starter-otel 时静默空操作**:server span
   `{method} {route}`、SSE 子 span、`http.server.request.duration` 等。
-- 治理:入口准入经 `resilience.ExecutorFor("gin::{addr}")`——限流/舱满 429、熔断开 503;
+- 治理:入口准入经 `resilience.ExecutorFor("gin", "gin::{addr}")`——限流/舱满 429、熔断开 503;
   故障注入经 `fault.InjectorFor()`。均由治理中心热更新;恒安装,未配置时透传。
 
 ## 5. 设计体检表

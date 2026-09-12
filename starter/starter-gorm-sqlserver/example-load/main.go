@@ -32,13 +32,14 @@ import (
 
 	"go-spring.org/cloud/loadtest"
 	"go-spring.org/spring/gs"
-	StarterGormSqlserver "go-spring.org/starter-gorm-sqlserver"
+	gormcore "go-spring.org/starter-gorm"
+	_ "go-spring.org/starter-gorm-sqlserver"
 	_ "go-spring.org/starter-governance"
 )
 
 // Service is the root bean holding the autowired client instance "load".
 type Service struct {
-	DB *StarterGormSqlserver.DB `autowire:"load"`
+	DB *gormcore.DB `autowire:"sqlserver.load"`
 }
 
 var (

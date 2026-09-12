@@ -53,7 +53,7 @@ type Cache struct {
 	// ([resilience.ExecutorFor] / [fault.InjectorFor]) backed by starter-govern's
 	// governance center — so this struct has zero coupling to cloud/governance.
 
-	// name is the instance name (the spring.bigcache.<name> map key), used for
+	// name is the instance name (the spring.bigcache.instances.<name> map key), used for
 	// the resilience resource label. Set by newClient; Init reads it.
 	name string
 
@@ -74,8 +74,7 @@ type Cache struct {
 func (c *Cache) Init() error {
 	c.obs = newDBObserver()
 	c.resource = resilience.ResourceLabel("bigcache", c.name)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(c.resource))
-	c.exec = resilience.WrapExecutor(exec, "bigcache")
+	c.exec = fault.WrapExecutor(resilience.ExecutorFor("bigcache", c.resource))
 	return nil
 }
 

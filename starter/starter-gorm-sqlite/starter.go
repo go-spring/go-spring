@@ -26,17 +26,15 @@ import (
 	"context"
 
 	gormsqlite "github.com/glebarez/sqlite"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	gormcore "go-spring.org/starter-gorm"
 )
 
-// DB is the bean type this starter exposes. It aliases the shared gormcore.DB
-// so the wrapper body, lifecycle and observe/resilience wiring stay in one place.
-type DB = gormcore.DB
-
 func init() {
-	gormcore.Register(gormcore.Dialect[Config]{
+	gormcore.Module(gormcore.Dialect[Config]{
 		Prefix:       "spring.gorm.sqlite",
+		BeanPrefix:   "sqlite",
 		Engine:       "sqlite",
 		HealthPrefix: "gorm:sqlite:",
 		Build:        build,
@@ -45,8 +43,9 @@ func init() {
 
 // build constructs the driver-specific dialector for a Config. SQLite needs no
 // TLS registration (no transport) and no discovery dialer (the "server" is a
-// file path), so the Spec carries only the dialector and pool settings.
-func build(ctx context.Context, c Config) (gormcore.Spec, error) {
+// file path), so the Spec carries only the dialector and pool settings and the
+// backend argument — required by the shared Dialect.Build shape — is ignored.
+func build(ctx context.Context, c Config, _ discovery.Discovery) (gormcore.Spec, error) {
 	return gormcore.Spec{
 		Dialector:      gormsqlite.Open(c.DSN()),
 		Pool:           c.Pool(),

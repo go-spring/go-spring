@@ -2,63 +2,80 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.cassandra",
   "type": "object",
+  "description": "Two buckets: spring.cassandra.default holds family-wide values (each overridable per instance), spring.cassandra.instances.<name> holds one entry per named instance. No other key belongs directly under spring.cassandra.",
   "properties": {
-    "hosts": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "initial contact points; entries may carry a port ('host:9042')"
-    },
-    "keyspace": {
-      "type": "string",
-      "default": ""
-    },
-    "username": {
-      "type": "string",
-      "default": "",
-      "description": "PasswordAuthenticator user; must be set together with password"
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "consistency": {
-      "type": "string",
-      "default": "local-quorum",
-      "enum": [
-        "any",
-        "one",
-        "two",
-        "three",
-        "quorum",
-        "all",
-        "local-quorum",
-        "each-quorum",
-        "local-one"
-      ]
-    },
-    "timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '11s'",
-      "default": "11s"
-    },
-    "connect-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '11s'",
-      "default": "11s"
-    },
-    "cql-version": {
-      "type": "string",
-      "default": "3.0.0"
-    },
-    "tls": {
+    "default": {
       "type": "object",
-      "description": "tlsconf shared block: enabled/cert-file/key-file/ca-file/server-name/insecure-skip-verify"
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "initial contact points; entries may carry a port ('host:9042')"
+          },
+          "keyspace": {
+            "type": "string",
+            "default": ""
+          },
+          "username": {
+            "type": "string",
+            "default": "",
+            "description": "PasswordAuthenticator user; must be set together with password"
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "consistency": {
+            "type": "string",
+            "default": "local-quorum",
+            "enum": [
+              "any",
+              "one",
+              "two",
+              "three",
+              "quorum",
+              "all",
+              "local-quorum",
+              "each-quorum",
+              "local-one"
+            ]
+          },
+          "timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '11s'",
+            "default": "11s"
+          },
+          "connect-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '11s'",
+            "default": "11s"
+          },
+          "cql-version": {
+            "type": "string",
+            "default": "3.0.0"
+          },
+          "tls": {
+            "type": "object",
+            "description": "tlsconf shared block: enabled/cert-file/key-file/ca-file/server-name/insecure-skip-verify"
+          }
+        }
+      }
     }
   }
 }

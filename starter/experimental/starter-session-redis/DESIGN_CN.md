@@ -10,7 +10,7 @@
 
 ## 1. 职责与边界
 
-- **在范围内:**把 `spring.session.redis.<name>` 一项转成一个具名
+- **在范围内:**把 `spring.session.redis.instances.<name>` 一项转成一个具名
   `session.SessionStore` bean,底层复用应用已有的 `*redis.Client`。
 - **不在范围内:**HTTP `Manager` 中间件与 cookie 处理(那是
   `cloud/session` 的事);redis 客户端本身(那是 `starter-go-redis`)。

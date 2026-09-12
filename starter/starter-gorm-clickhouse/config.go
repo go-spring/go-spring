@@ -41,7 +41,7 @@ type Config struct {
 	// TLS configuration. When TLS.Enabled is set, the native ClickHouse driver
 	// negotiates a secure connection using the *tls.Config produced by the
 	// shared tlsconf.TLSConfig builder. Keys are nested
-	// (spring.gorm.clickhouse.<name>.tls.enabled, ...tls.cert-file, ...).
+	// (spring.gorm.clickhouse.instances.<name>.tls.enabled, ...tls.cert-file, ...).
 	TLS tlsconf.TLSConfig `value:"${tls}"`
 }
 

@@ -7,9 +7,9 @@ against the starter source (`starter.go`, `config.go`, `store.go`), the shared a
 `RenewID`) live in the session package; Redis semantics are [Redis docs](https://redis.io/docs/latest/commands/set/) —
 everything below is go-spring's increment.
 
-**Activation**: any `spring.session.redis.<name>.*` property registers one `session.SessionStore`
+**Activation**: any `spring.session.redis.instances.<name>.*` property registers one `session.SessionStore`
 instance per `<name>`; each reuses the `*redis.Client` bean named by its `client` field (provided
-by starter-go-redis under `spring.go-redis.<client>`). The starter holds no connection of its own.
+by starter-go-redis under `spring.go-redis.instances.<client>`). The starter holds no connection of its own.
 
 ---
 
@@ -100,11 +100,11 @@ func init() {
 
 ```properties
 # --- redis client (owned by starter-go-redis; the store reuses it by name) --
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # --- session store -------------------------------------------------------------
-spring.session.redis.web.client=cache                 # required; fail-fast when empty
-spring.session.redis.web.key-prefix=starter-session-redis:example:
+spring.session.redis.instances.web.client=cache                 # required; fail-fast when empty
+spring.session.redis.instances.web.key-prefix=starter-session-redis:example:
 ```
 
 **Verify** (with a local Redis, e.g. `example/docker-compose.yml`):
@@ -133,7 +133,7 @@ import starter-go-redis + starter-session-redis
                   gs.ValueArg(c), gs.TagArg(c.Client)   NO destroy hook)
 
 gs.Run()
-  ├─ config bind: ${spring.session.redis.<name>} → Config (value tags)
+  ├─ config bind: ${spring.session.redis.instances.<name>} → Config (value tags)
   ├─ newStore: no dialing — the *redis.Client bean is injected ready-made.
   │    Store embeds session.FromByteStore(&redisByteStore{client, prefix}):
   │    all session (de)serialization stays in the stdlib abstraction; the
@@ -171,11 +171,11 @@ Manager construction — deliberately not starter config; one store can back man
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.session.redis.<name>` (exact-match, no relaxed forms).
+All keys live under `spring.session.redis.instances.<name>` (exact-match, no relaxed forms).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.<client>`; checked before bean registration. `TagArg(c.Client)` is the seam tying store to redis instance. | Empty → boot fails naming the instance; typo → bean-wiring failure at boot. |
+| `client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.instances.<client>`; checked before bean registration. `TagArg(c.Client)` is the seam tying store to redis instance. | Empty → boot fails naming the instance; typo → bean-wiring failure at boot. |
 | `key-prefix` | string | `session:` | Prepended to every session id before it hits Redis; keeps key spaces of apps sharing one Redis disjoint. | Shared prefix across apps → sessions leak across applications (same cookie value resolves). |
 
 ⚠ That is the entire surface: two keys. Everything else (cookies, expiry, serialization) is either
@@ -233,8 +233,8 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails `session-redis: instance "<n>" missing required property ...client` | instance without `client` | Set it to an existing `spring.go-redis.<name>`. |
-| Boot fails wiring `*redis.Client` | `client` typo | Fix the name to match a `spring.go-redis.<client>` entry. |
+| Boot fails `session-redis: instance "<n>" missing required property ...client` | instance without `client` | Set it to an existing `spring.go-redis.instances.<name>`. |
+| Boot fails wiring `*redis.Client` | `client` typo | Fix the name to match a `spring.go-redis.instances.<client>` entry. |
 | Sessions shared across unrelated apps | same `key-prefix` (or default `session:`) on one Redis | Distinct `key-prefix` per app. |
 | Sessions never expire | `IdleTimeout` 0/negative on `Options` maps to Redis "no expiry" | Set a positive `IdleTimeout`. |
 | Sessions expire mid-activity despite requests | traffic bypasses the Manager's Middleware, so nothing slides the TTL | Every request through `mgr.Middleware` with an existing session re-saves and re-arms the window; make sure the middleware actually wraps the route. |

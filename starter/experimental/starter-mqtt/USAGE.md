@@ -8,8 +8,8 @@ the client API is [paho.mqtt.golang's](https://github.com/eclipse/paho.mqtt.gola
 everything below is go-spring's increment. Honest note: there is no `example-otel` in this
 starter; the observability claims below are source-verified, not smoke-verified end-to-end.
 
-**Activation**: any `spring.mqtt.*` property — the module is `gs.Module(gs.OnProperty("spring.mqtt"))`,
-a prefix check [starter.go:34]. Each `spring.mqtt.<name>` entry creates one `mqtt.Client` bean
+**Activation**: any `spring.mqtt.instances.*` property — the module is `gs.Module(gs.OnProperty("spring.mqtt"))`,
+a prefix check [starter.go:34]. Each `spring.mqtt.instances.<name>` entry creates one `mqtt.Client` bean
 named `<name>` via `conf.BindEach` [starter.go:35-39]. There is no health indicator bean
 (unlike redis/nats — see §6).
 
@@ -109,20 +109,20 @@ func init() {
 ```properties
 # --- mqtt client "a" --------------------------------------------------------
 # Broker URL scheme picks the transport: tcp:// (MQTT) or ssl:// (MQTTS).
-spring.mqtt.a.broker=tcp://127.0.0.1:1883
-spring.mqtt.a.client-id=demo-publisher
+spring.mqtt.instances.a.broker=tcp://127.0.0.1:1883
+spring.mqtt.instances.a.client-id=demo-publisher
 # username / password / clean-session / keep-alive / connect-timeout: see §3.
 
 # Last Will: broker publishes this when the client disconnects ungracefully.
-spring.mqtt.a.will.topic=demo/status
-spring.mqtt.a.will.payload=offline
-spring.mqtt.a.will.qos=1
+spring.mqtt.instances.a.will.topic=demo/status
+spring.mqtt.instances.a.will.payload=offline
+spring.mqtt.instances.a.will.qos=1
 
 # MQTTS: switch broker to ssl://host:8883 and enable the tls group:
-# spring.mqtt.a.tls.enabled=true
-# spring.mqtt.a.tls.ca-file=/etc/mqtt/ca.pem
-# spring.mqtt.a.tls.cert-file=/etc/mqtt/client-cert.pem
-# spring.mqtt.a.tls.key-file=/etc/mqtt/client-key.pem
+# spring.mqtt.instances.a.tls.enabled=true
+# spring.mqtt.instances.a.tls.ca-file=/etc/mqtt/ca.pem
+# spring.mqtt.instances.a.tls.cert-file=/etc/mqtt/client-cert.pem
+# spring.mqtt.instances.a.tls.key-file=/etc/mqtt/client-key.pem
 
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
@@ -156,7 +156,7 @@ The example's own smoke (`example/check.sh`) runs a QoS 1 pub/sub round-trip, ex
 
 ```
 import starter-mqtt
-  └─ gs.Module(gs.OnProperty("spring.mqtt")) fires when any spring.mqtt.* key exists
+  └─ gs.Module(gs.OnProperty("spring.mqtt")) fires when any spring.mqtt.instances.* key exists
         └─ conf.BindEach("${spring.mqtt}") → one Config per <name> entry
               └─ Provide(newClient).Name(<name>).Destroy(destroyClient).Caller(1)   [starter.go:36-40]
 
@@ -164,6 +164,8 @@ gs.Run()
   ├─ ctor newClient [starter.go:52]:
   │    1. Driver bean injection — a company Driver bean, when present;
   │       nil (none) falls back to the bundled DefaultDriver           [starter.go:55-58]
+  │       (selected per entry by ${spring.mqtt.instances.<name>.driver}: empty = `spring.mqtt.default.driver` then by type,
+  │       set = by bean name — naming a missing bean fails startup)
   │    2. CreateClient: assembles paho options (broker, id,
   │       credentials, clean-session, keep-alive, connect-timeout),
   │       bridges connect/lost/reconnecting events into go-spring log  [driver.go:64-72],
@@ -191,8 +193,7 @@ guards** [command.go:17-27]:
 
 ```
 applyResilience [command.go:128-134]:
-  exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt:<broker>"))   // governance center
-  exec = resilience.WrapExecutor(exec, "mqtt")                       // observe bridge
+  exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt", "mqtt:<broker>"))  // governance center + observe bridge
   stored in sync.Map keyed by the mqtt.Client value
 
 GuardedPublish [command.go:166-172]:
@@ -200,8 +201,8 @@ GuardedPublish [command.go:166-172]:
   call = cl.Publish(...) + token.Wait() + token.Error()
 ```
 
-Wrap order (outer→inner): **fault injection → resilience policy (limiter/breaker/retry) →
-observe (span+metric+access log of the guarded call) → paho Publish → token wait**. Rationale
+Wrap order (outer→inner): **fault injection → observe (span+metric+access log of the guarded
+call) → resilience policy (limiter/breaker/retry) → paho Publish → token wait**. Rationale
 (source comments): paho manages its own queueing and reconnect, so the executor is
 intentionally minimal — rate-limit the publish rate and short-circuit when the broker is
 unhealthy [command.go:117-122]. The resource label is `mqtt:<broker-url>` — per broker, not
@@ -229,10 +230,10 @@ span helper wrapped around it:
    `messaging.destination.name = topic` [command.go, observe.go].
 2. `guard` resolves the executor for this client from the sync.Map [command.go:148-153].
 3. fault injection check (govern.fault.* policy, if enabled).
-4. resilience policy: rate limiter / circuit breaker on resource `mqtt:<broker>`;
+4. observe bridge records the guarded call's outcome (span/metric/access log).
+5. resilience policy: rate limiter / circuit breaker on resource `mqtt:<broker>`;
    on rejection the sentinel error returns and **paho Publish is never invoked**
    [command.go:160-163].
-5. observe bridge records the guarded call's outcome (span/metric/access log).
 6. `cl.Publish(topic, qos, retained, payload)` hands off to paho's outbound queue;
    `token.Wait()` blocks until the packet is written (QoS 0) or the PUBACK/PUBCOMP
    arrives (QoS 1/2) [command.go:164-171].
@@ -260,7 +261,7 @@ messages, custom QoS and wildcard subscriptions require the raw `mqtt.Client` be
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.mqtt.<name>.` (per-instance prefix binding via `conf.BindEach`).
+All keys live under `spring.mqtt.instances.<name>.` (per-instance prefix binding via `conf.BindEach`).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -277,7 +278,6 @@ All keys live under `spring.mqtt.<name>.` (per-instance prefix binding via `conf
 | `tls.enabled` | bool | false | Enables `tlsconf` client TLS; pair with an `ssl://` broker URL. | Plaintext broker + tls on → connect failure at boot. |
 | `tls.ca-file` / `cert-file` / `key-file` | string | — | CA / mutual-TLS client material, `tls.Build()` at client creation [driver.go:83-90]. | Partial config → Build error at boot. |
 | `tls.server-name` / `insecure-skip-verify` | string/bool | — | SNI override / skip verification. | — |
-| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedPublish` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
 Reconciled with `grep -rhoE 'value:"[^"]+"'` over the starter: 13 distinct value tags →
 7 flat keys + tls (6) + will (4) = **17 keys, 1 required**.
@@ -310,8 +310,9 @@ govern:
 Hammer `GuardedPublish` → rejections surface as resilience sentinel errors and as
 `_app_mqtt_access` records. The identical traffic through
 plain `client.Publish` on the client bean is unaffected — the driver now rides the same
-guard, so the opt-out is per instance (`governance=false`), not per call site
-opt-in [command.go:147-172, client.go:73-77]. Policies hot-reload without restart
+guard, so opting out is a resource-level decision (an all-zero rule for
+`mqtt:<broker>`, or governance off), not a per call site one
+[command.go:147-172, client.go:73-77]. Policies hot-reload without restart
 (governance center).
 
 ### 4.3 Message round-trip incl. driver mapping survival
@@ -358,7 +359,7 @@ kill -9 <pid>   # ungraceful → will "offline" (retained per config) is publish
 | Boot fails "mqtt: connect failed broker=..." | Broker unreachable / wrong credentials / TLS mismatch | Fail-fast connect is unconditional [starter.go:64-69]; fix connectivity or config. |
 | Boot hangs (no error) | `connect-timeout=0` with a black-holed address | Keep a finite timeout; 0 disables it [config.go:51]. |
 | Reconnect storm / client kicked | Duplicate `client-id` across replicas | Assign distinct ids (broker enforces uniqueness). |
-| No breaker/limiter effect | Publishing via plain `client.Publish`, or `governance=false` on the instance | `GuardedPublish` and the driver's `Publish` are guarded [command.go:156-172]; switch call sites / re-enable. |
+| No breaker/limiter effect | Publishing via plain `client.Publish` | `GuardedPublish` and the driver's `Publish` are guarded [command.go:156-172]; switch call sites. |
 | No traces/metrics/access records | starter-otel not imported, or expecting them from the driver | Helpers ride the OTel globals; the driver emits nothing [client.go:47-52]. |
 | Subscriber silent after broker restart | Subscription lost on unclean session drop | Re-subscription depends on clean-session / broker session; verify with the lifecycle logs [driver.go:76-81]. |
 | Handler errors vanish | Driver logs them and moves on — no redelivery | Handle retries inside the handler [client.go:95-97]. |

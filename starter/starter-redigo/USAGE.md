@@ -8,7 +8,7 @@ in brackets. **Redigo semantics (the Do / connection-borrow model, reply helpers
 go-spring's increment. Field layout deliberately mirrors starter-go-redis single mode, so
 switching between the two is an import + prefix change.
 
-**Activation**: any `spring.redigo.*` key. Each `spring.redigo.<name>` entry creates one
+**Activation**: any `spring.redigo.instances.*` key. Each `spring.redigo.instances.<name>` entry creates one
 `*StarterRedigo.Pool` bean named `<name>`, plus a health indicator named `redigo:<name>`
 (when `health.enabled`, default true).
 
@@ -35,7 +35,6 @@ require (
     github.com/gomodule/redigo     latest
     go-spring.org/spring           v1.3.x
     go-spring.org/starter-redigo   latest
-    go-spring.org/starter-cache    latest   // cache façade
     go-spring.org/starter-actuator latest   // optional
     go-spring.org/starter-otel     latest   // optional
     go-spring.org/starter-governance latest // optional
@@ -50,7 +49,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-cache"
     _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-redigo"
@@ -81,8 +79,8 @@ type Service struct {
     Main      *StarterRedigo.Pool `autowire:"main"`
     Discovery *StarterRedigo.Pool `autowire:"discovery"`
 
-    // spring.cache.demo.driver=redigo:main — the typed façade over the "main" pool.
-    Cache *cache.Cache `autowire:"main"`
+    // Typed façade over the "main" pool — the *cache.Cache bean named "redigo:main".
+    Cache *cache.Cache `autowire:"redigo:main"`
 }
 
 func init() {
@@ -119,14 +117,14 @@ func init() {
 
 ```properties
 # --- main pool: static address, fail-fast dial check ------------------------
-spring.redigo.main.addr=127.0.0.1:6379
-spring.redigo.main.startup-ping=true
-spring.redigo.main.pool-size=20
-spring.redigo.main.conn-max-lifetime=2m
+spring.redigo.instances.main.addr=127.0.0.1:6379
+spring.redigo.instances.main.startup-ping=true
+spring.redigo.instances.main.pool-size=20
+spring.redigo.instances.main.conn-max-lifetime=2m
 
 # --- discovery pool: addr ignored, address picked per dial -------------------
-spring.redigo.discovery.service-name=redis-cluster
-spring.redigo.discovery.conn-max-lifetime=30s
+spring.redigo.instances.discovery.service-name=redis-cluster
+spring.redigo.instances.discovery.conn-max-lifetime=30s
 
 # --- instrumentation ---------------------------------------------------------
 # Span + duration metric + access log are built in and unconditional; they are
@@ -134,10 +132,7 @@ spring.redigo.discovery.conn-max-lifetime=30s
 
 # --- health -------------------------------------------------------------------
 # default true; set false to keep a non-critical cache out of aggregate health
-spring.redigo.main.health.enabled=true
-
-# --- cache façade ------------------------------------------------------------
-spring.cache.demo.driver=redigo:main
+spring.redigo.instances.main.health.enabled=true
 
 # --- actuator + otel ----------------------------------------------------------
 spring.actuator.addr=:9370
@@ -164,7 +159,7 @@ grep _app_redigo_access app.log   # one access record per Do
 
 ```
 import starter-redigo
-  └─ gs.Module(OnProperty("spring.redigo")) fires when any spring.redigo.* key exists
+  └─ gs.Module(OnProperty("spring.redigo")) fires when any spring.redigo.instances.* key exists
         └─ conf.BindEach("${spring.redigo}") → one Config per <name>
               ├─ Provide(createPool).Name(<name>).Destroy(destroyPool)
               │    ctor args: ContextProvider, Config (IndexArg 1)
@@ -172,7 +167,7 @@ import starter-redigo
 
 gs.Run()
   ├─ ctor createPool [starter.go:107]: RequireAny(addr|service-name) → driver lookup
-  │   → d.CreateClient (= NewPool): TLS build → discovery resolver → raw pool
+  │   → d.CreateClient(c, backend) (= NewPool): TLS build → discovery resolver → raw pool
   │     → observer → resilience executor → setupDial
   │     → startup-ping (ONLY if startup-ping=true) [starter.go:144-149]
   │   NOTE: there is NO separate InitMethod — the pool is fully armed on return [pool.go:36-37]
@@ -247,14 +242,14 @@ erroring — size `pool-size` accordingly.
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.redigo.<name>.`.
+All keys live under `spring.redigo.instances.<name>.`.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `addr` | string | — | Static target. ⚠ Exactly one of `addr` / `service-name` required (RequireAny [starter.go:111]). | Neither → boot error; both → service-name wins, addr ignored. |
 | `service-name` | string | — | Discovery-resolved address; `addr` becomes a label only. Per-dial endpoint pick + conn-max-lifetime recycling. | Unregistered backend → boot error. |
 | `scheme` | string | — | Narrows discovery endpoints to one scheme. Only with service-name. | — |
-| `discovery` | string | `default` | Which discovery backend resolves service-name. | — |
+| `discovery` | string | — | Which discovery backend resolves service-name. The wiring resolves this label to a bean and passes it to the driver (`CreateClient` / `NewPool`) as the `backend` argument. | Unset or an unregistered name while service-name is set → boot error. |
 | `password` / `username` | string | — | Dial auth; username only appended when non-empty [pool.go:94-96]. | Wrong → first dial (or startup-ping) fails. |
 | `db` | int | 0 | `SELECT` executed on each fresh conn (non-zero only) [pool.go:125-131]. | Out-of-range → dial fails. |
 | `pool-size` | int | 10 | MaxActive. `Wait:true` → borrowers block when exhausted. | Too low → latency, not errors. |
@@ -276,7 +271,9 @@ All keys live under `spring.redigo.<name>.`.
   example's `AnotherRedisDriver` shows the delegate-then-customize shape). Two customization
   shapes in [driver.go](driver.go): ADD (call `NewPool`, then customize the Pool via its public
   API) or REPLACE (own the whole assembly via `NewConn`). Because the driver is a bean, a
-  company driver can inject config bound from its own file keys at wiring time.
+  company driver can inject config bound from its own file keys at wiring time. When several
+  Driver beans coexist, an entry selects one by name: `spring.redigo.instances.<name>.driver = <bean-name>`
+  (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type; naming a missing bean fails startup).
 
 ---
 
@@ -304,7 +301,7 @@ With the `discovery` instance (`service-name` + `conn-max-lifetime=30s`), move/s
 backing Redis; `Stats()` (`ActiveCount`/`IdleCount`) shows conns recycling onto the new
 endpoint within 30s — no restart, no client rebuild.
 
-### 4.4 Cache driver wiring
+### 4.4 Cache abstraction wiring
 
 ```go
 _ = s.Cache.Set(ctx, "k", "v", time.Minute)

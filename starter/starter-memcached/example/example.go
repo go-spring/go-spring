@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterMemcached "go-spring.org/starter-memcached"
@@ -55,9 +56,9 @@ type AnotherMemcachedDriver struct {
 	StarterMemcached.DefaultDriver
 }
 
-func (d AnotherMemcachedDriver) CreateClient(ctx context.Context, c StarterMemcached.Config) (*memcache.Client, error) {
+func (d AnotherMemcachedDriver) CreateClient(ctx context.Context, c StarterMemcached.Config, backend discovery.Discovery) (*memcache.Client, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherMemcachedDriver::CreateClient")
-	return d.DefaultDriver.CreateClient(ctx, c)
+	return d.DefaultDriver.CreateClient(ctx, c, backend)
 }
 
 // Service injects the per-instance wrapped clients. gomemcache offers no hook/

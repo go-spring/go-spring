@@ -36,12 +36,12 @@ import (
 
 ```properties
 # A Redis client managed by starter-go-redis.
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # A JobRepository bound to that client. `client` is the redis instance name.
-spring.batch-repository.jobs.client=cache
-spring.batch-repository.jobs.key-prefix=myapp:batch:
-spring.batch-repository.jobs.ttl=168h
+spring.batch-repository.instances.jobs.client=cache
+spring.batch-repository.instances.jobs.key-prefix=myapp:batch:
+spring.batch-repository.instances.jobs.ttl=168h
 
 # The batch runner picks up the repository by name.
 spring.batch.repository=jobs
@@ -66,13 +66,13 @@ that call `ListStepExecutions`.
 
 ## Configuration
 
-All keys sit under `spring.batch-repository.<name>`. The prefix is deliberately
+All keys sit under `spring.batch-repository.instances.<name>`. The prefix is deliberately
 distinct from `spring.batch.*`, which the batch runner owns for job / step /
 chunk configuration.
 
 | Key          | Default | Description                                                                                     |
 |--------------|---------|-------------------------------------------------------------------------------------------------|
-| `client`     | —       | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.<client>`.                |
+| `client`     | —       | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.instances.<client>`.                |
 | `key-prefix` | *empty* | Prepended to every key so multiple apps can share a Redis instance without colliding.           |
 | `ttl`        | `0`     | Optional `EXPIRE` applied to job / step keys on every write. `0` keeps records forever.         |
 

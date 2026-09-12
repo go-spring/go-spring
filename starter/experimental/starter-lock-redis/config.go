@@ -22,13 +22,13 @@ import (
 )
 
 // Config configures one Redis-backed [go-spring.org/spring/lock.Locker] instance
-// bound under spring.lock.<name>. It intentionally does not carry Redis
+// bound under spring.lock.instances.<name>. It intentionally does not carry Redis
 // connection details: locking reuses an existing *redis.Client bean registered
 // by starter-go-redis, so switching between share-a-cluster / dedicated-cluster
 // topologies is a config-only change on the redis side.
 type Config struct {
 	// Client is the name of the *redis.Client bean that backs this locker.
-	// The bean must be provided by starter-go-redis under spring.go-redis.<Client>.
+	// The bean must be provided by starter-go-redis under spring.go-redis.instances.<Client>.
 	// Empty is a fail-fast configuration error — the starter refuses to boot
 	// rather than silently falling back to a default instance.
 	Client string `value:"${client}"`

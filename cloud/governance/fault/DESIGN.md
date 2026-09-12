@@ -16,9 +16,9 @@ drives it end to end.
   [InjectedError] values that are [resilience.Retryable] and surface as familiar
   Go errors (`context.DeadlineExceeded`, `syscall.ECONNRESET`).
 - **Refuses:**
-  - No gs / spring dependency. fault is stdlib + resilience only; the gs.Dync
-    hot-reload wiring lives in the governance center's centerHolder (it shares
-    the single ${govern} Dync with resilience), not in each client starter.
+  - No gs / spring dependency. fault is stdlib + resilience only; the hot-reload
+    wiring lives in the governance center (it shares the single Config — and so
+    the same source — with resilience), not in each client starter.
   - No metrics, tracing or logging of its own. Injected failures flow through
     the host's observe layer (the executor sits inside it), so they are recorded
     exactly like real failures — that is the whole point.
@@ -46,9 +46,12 @@ bounded by the per-attempt timeout and surfaced to Fallback — exactly the path
 real downstream failure takes. Short-circuiting at the `Execute` boundary
 instead would bypass all of that and defeat the purpose.
 
-**Stack order in a host starter** (e.g. redigo): `observe( fault( rawExec ) )`.
-fault is the innermost wrap, observe the outermost, so injected faults are both
-*handled* by resilience and *recorded* by observe.
+**Stack order in a host starter** (e.g. redigo): `fault( observe( rawExec ) )`.
+`resilience.ExecutorFor` applies the observe layer itself, on the still-private
+governed executor (that is what lets observe attach its breaker listener at
+construction); fault then wraps that from the outside. The injected fault still
+reaches the real executor's retry loop, so it is both *handled* by resilience
+and *recorded* by observe.
 
 **Retryability.** [InjectedError] implements `Retryable() bool` returning true,
 which [resilience.Policy.ShouldRetry] consults first — so injected faults
@@ -68,9 +71,11 @@ present, `rate`/`error`/`latency`/`enabled` all hot-toggle freely.
 - **stdlib + resilience only.** No third-party deps; the package must stay at
   the same zero-dependency layer as resilience so a starter that imports fault
   pulls in nothing new.
-- **nil transparency.** `WrapExecutor(nil, _)` returns nil and
-  `WrapExecutor(exec, nil)` returns exec — the same zero-config invariant
-  resilience's `NewDialer`/`NewRoundTripper` uphold.
+- **nil transparency.** `WrapExecutor(nil)` returns nil, and a nil *injector*
+  is transparent: `WrapExecutor(exec)` (lazy `InjectorFor()`) and
+  `WrapExecutorWith(exec, nil)` run `fn` untouched while no fault is configured
+  — the same zero-config invariant resilience's `NewDialer`/`NewRoundTripper`
+  uphold.
 - **Forwarded lifecycle.** `faultExecutor.Close` and `Refresh` delegate to the
   inner executor; fault has no resources or policy of its own to manage.
 

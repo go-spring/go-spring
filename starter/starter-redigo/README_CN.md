@@ -28,7 +28,7 @@ import _ "go-spring.org/starter-redigo"
 在项目的[配置文件](example/conf/app.properties)中添加 Redis 配置，比如：
 
 ```properties
-spring.redigo.main.addr=127.0.0.1:6379
+spring.redigo.instances.main.addr=127.0.0.1:6379
 ```
 
 ### 3. 注入 Redis 实例
@@ -67,7 +67,7 @@ _, err = c.Do("SET", "key", "value")
 * **支持多 Redis 实例**：可以在配置文件中定义多个 Redis 实例，并在项目中使用 name 进行引用。
 * **支持 Redis 扩展**：可以通过实现 `Driver` 接口来扩展 Redis 功能，参见示例中的 `AnotherRedisDriver` 实现。
 * **启动期连接校验（fail-fast）**：创建连接池后会借出一个连接执行 `PING`，地址配置错误或服务不可达时启动即失败，而非等到首次请求。
-* **服务发现**：配置 `service-name`（可选 `discovery` 指定已注册的后端，默认 `default`）替代 `addr`；`Resolver` 通过注册的
+* **服务发现**：配置 `service-name`（并用 `discovery` 指定已注册的后端，无默认后端）替代 `addr`；`Resolver` 通过注册的
   `discovery.Discovery` 后端解析服务，并在连接池每次新建连接时拨向一个存活实例。配合 `conn-max-lifetime`，池内连接会平滑
   切换到更新后的地址而无需重建连接池。关闭时 starter 会停止后台 watch。该范式与 `starter-go-redis` 对齐，后端示例参见
   [discovery.go](example/discovery.go)。

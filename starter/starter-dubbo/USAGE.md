@@ -402,7 +402,8 @@ land, the reference's `version`/`group` must match what the provider exported.
 
 ### 4.4 Governance merge path (dynamic timeout from the center)
 
-Optional; active only when starter-govern is imported and `govern.enabled=true`. The poller
+Optional; active only when starter-governance is imported and its rules document sets
+`govern.enabled=true`. The poller
 subscribes to governance policies under two resource labels (dync.go:263-264):
 
 - `dubbo:<application.name>` — consumer-level defaults

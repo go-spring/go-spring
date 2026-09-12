@@ -9,8 +9,8 @@ and the mongo-driver v2 API are [the driver's own
 documentation](https://www.mongodb.com/docs/languages/go/go-driver/current/)** — everything
 below is go-spring's increment.
 
-**Activation**: any `spring.mongodb.*` key (the module is `OnProperty("spring.mongodb")`, a
-prefix check). Each `spring.mongodb.<name>` entry creates one `*StarterMongoDB.Client` bean
+**Activation**: any `spring.mongodb.instances.*` key (the module is `OnProperty("spring.mongodb")`, a
+prefix check). Each `spring.mongodb.instances.<name>` entry creates one `*StarterMongoDB.Client` bean
 named `<name>` (it embeds `*mongo.Client`), plus a health indicator named `mongo:<name>`.
 
 ---
@@ -114,23 +114,24 @@ func init() {
 
 ```properties
 # --- direct instance --------------------------------------------------------
-spring.mongodb.a.uri=mongodb://127.0.0.1:27017
-spring.mongodb.a.max-pool-size=100
-spring.mongodb.a.min-pool-size=1
-spring.mongodb.a.max-conn-idle-time=5m
-spring.mongodb.a.server-selection-timeout=10s
+spring.mongodb.instances.a.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.a.max-pool-size=100
+spring.mongodb.instances.a.min-pool-size=1
+spring.mongodb.instances.a.max-conn-idle-time=5m
+spring.mongodb.instances.a.server-selection-timeout=10s
 
 # --- discovery instance -----------------------------------------------------
 # The uri host is a non-resolvable dummy ON PURPOSE: service-name takes over
 # addressing, so a successful connection proves discovery is wired.
 # directConnection=true keeps the driver on the dialed seed instead of doing
 # its own replica-set topology discovery (see §3.1 ⚠ note).
-spring.mongodb.disc.uri=mongodb://nonexistent.invalid:27017/?directConnection=true
-spring.mongodb.disc.service-name=mongo-cluster
-spring.mongodb.disc.server-selection-timeout=10s
+spring.mongodb.instances.disc.uri=mongodb://nonexistent.invalid:27017/?directConnection=true
+spring.mongodb.instances.disc.service-name=mongo-cluster
+spring.mongodb.instances.disc.server-selection-timeout=10s
 
 # --- governance: policy for the dial seam (rate-limit makes the dial
 #     protection observable; breaker/retry/timeout also apply) ---------------
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -169,20 +170,20 @@ on failure — run its `check.sh` as the executable version of this section.
 
 ```
 import starter-mongodb
-  └─ gs.Module(OnProperty("spring.mongodb")) fires when any spring.mongodb.* key exists
+  └─ gs.Module(OnProperty("spring.mongodb")) fires when any spring.mongodb.instances.* key exists
         └─ conf.BindEach("${spring.mongodb}") → one Config per <name> entry
               ├─ Provide(newClient).Name(<name>).Init((*Client).Init).Destroy((*Client).Destroy)
               └─ Provide health.Indicator named "mongo:<name>", exported As[health.Indicator]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:80]: ApplyURI → timeouts/pool/auth → tls.Build
-  │   → SetMonitor(command monitor, lazy observer) [starter.go:118]
-  │   → newPickPool (loader-backed endpoint picker when service-name set, mesh off) [starter.go:121]
-  │   → SetDialer(shared dialerWrapper) [starter.go:147]
+  ├─ ctor newClient [starter.go:87]: ApplyURI → timeouts/pool/auth → tls.Build
+  │   → SetMonitor(command monitor, lazy observer) [starter.go:125]
+  │   → newPickPool(ctx, c, backend) (loader-backed endpoint picker when service-name set, mesh off) [starter.go:128]
+  │   → SetDialer(shared dialerWrapper) [starter.go:153]
   │   → mongo.Connect → fail-fast Ping bounded by connect-timeout (10s fallback)
-  │     [starter.go:160-169] — a dead server fails the BOOT, not the first query
+  │     [starter.go:163-171] — a dead server fails the BOOT, not the first query
   ├─ Init [client.go:90]: newDBObserver("mongodb") → module-local observer (span + metric + access log)
-  │   → fault.WrapExecutor(resilience.ExecutorFor(resource)) → resilience.WrapExecutor(exec, "mongodb")
+  │   → fault.WrapExecutor(resilience.ExecutorFor("mongodb", resource))
   │   → swap dialerWrapper.dial = resilience.NewDialer(base, exec, resource)
   ├─ readiness: mongo:<name> indicator runs client.Ping against the live server
   └─ SIGTERM → Destroy [client.go:112]: exec.Close → client.Disconnect
@@ -223,7 +224,7 @@ its CommandMonitor type is incompatible with v2; the bridge here is module-local
    resilience executor asks for a permit (resource label `mongodb:<service-name or uri>` —
    per instance, [client.go:99]); over the rate limit the dial is rejected and the operation
    surfaces `resilience.ErrRateLimited`. With service-name set, the base dial first asks the
-   loader-backed `Pool` to pick a live endpoint and ignores the URI address ([starter.go:130-137]).
+   loader-backed `Pool` to pick a live endpoint and ignores the URI address ([starter.go:137-144]).
 3. The driver sends the `find` command; the command monitor's `Started` fires:
    `obs.Start(ctx, "find", "test")` — span name = command name, argument = database name.
 4. The reply fires `Succeeded` (or `Failed`): the span ends, `db.client.operation.duration`
@@ -236,7 +237,7 @@ its CommandMonitor type is incompatible with v2; the bridge here is module-local
 
 ## 3. Per-key behavior reference
 
-Instance keys live under `spring.mongodb.<name>.` (bound via `conf.BindEach`).
+Instance keys live under `spring.mongodb.instances.<name>.` (bound via `conf.BindEach`).
 There are no observability keys — observation is unconditional (see §3.3).
 
 ### 3.1 Connection & addressing
@@ -244,7 +245,7 @@ There are no observability keys — observation is unconditional (see §3.3).
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `uri` | string | — | **Required** (expr `$ != ''`). Parsed by `ApplyURI`; driver options in the URI win unless overridden below. | Missing/empty → boot error at binding. |
-| `username` | string | — | When non-empty, sets a `options.Credential` from username/password/auth-source/auth-mechanism [starter.go:97-104]. Empty → credentials come solely from the URI. | Setting username but forgetting password/auth-source → auth failure at the startup ping. |
+| `username` | string | — | When non-empty, sets a `options.Credential` from username/password/auth-source/auth-mechanism [starter.go:104-111]. Empty → credentials come solely from the URI. | Setting username but forgetting password/auth-source → auth failure at the startup ping. |
 | `password` | string | — | Part of the credential above. ⚠ Only effective together with `username`. | — |
 | `auth-source` | string | — | Credential verification database, e.g. `admin`. ⚠ Only with `username`. | Wrong db → "Authentication failed" at boot ping. |
 | `auth-mechanism` | string | — | e.g. `SCRAM-SHA-256`; empty = driver negotiates. ⚠ Only with `username`. | Unsupported mechanism → boot ping error. |
@@ -253,15 +254,15 @@ There are no observability keys — observation is unconditional (see §3.3).
 | `max-pool-size` | uint64 | `100` | Max connections per server. 0 would mean "use default" — but the starter passes 100 explicitly when unset. | Too small → ops queue waiting for a pool slot. |
 | `min-pool-size` | uint64 | `0` | Min pooled connections (always applied, even 0). | — |
 | `max-conn-idle-time` | duration | `0` | 0 = no limit; e.g. `5m` prunes idle conns. ⚠ With `service-name`, a finite value recycles connections onto updated endpoints without a restart. | `0` + discovery → conns linger on a removed endpoint until they break. |
-| `service-name` | string | — | Resolve addressing via the registered discovery backend; a loader-backed (Pool-`Pick`) dialer replaces the URI hosts per connection [starter.go:126-137]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the loader/pool is actually consulted. |
+| `service-name` | string | — | Resolve addressing via the registered discovery backend; a loader-backed (Pool-`Pick`) dialer replaces the URI hosts per connection [starter.go:133-144]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the loader/pool is actually consulted. |
 | `scheme` | string | — | Narrows discovery endpoints to one transport scheme (e.g. `tls`). Only consulted when service-name is set. | — |
-| `discovery` | string | `default` | Which registered discovery backend resolves service-name. | Missing backend bean → boot error at injection time. |
-| `tls.*` | group | off | Shared `tlsconf` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:105-112]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
+| `discovery` | string | — | Which registered discovery backend resolves service-name. | Unset or an unregistered name while service-name is set → boot error. |
+| `tls.*` | group | off | Shared `tlsconf` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:112-119]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
 
 ### 3.2 Resilience / fault (govern.*, not under the instance prefix)
 
-Policy keys live at the top level under `govern.*` (starter-governance's governance center);
-this starter resolves `resilience.ExecutorFor("mongodb:<service-name|uri>")` and
+Policy keys live in the governance rules document under `govern.*` (starter-governance's governance center);
+this starter resolves `resilience.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` and
 `fault.InjectorFor` in `Init` [client.go:97-102]. Relevant keys (see starter-governance USAGE
 for the full set): `govern.enabled`, `govern.driver`, `govern.<driver>.rate-limit` /
 `error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `govern.fault.*`
@@ -311,11 +312,12 @@ grep _app_mongodb_access app.log | tail -1
 ### 4.3 Dial-layer resilience drill (from example-cloudnative)
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
 govern.default.rate-limit=5
-spring.mongodb.a.max-pool-size=100   # room for the burst to force fresh dials
+spring.mongodb.instances.a.max-pool-size=100   # room for the burst to force fresh dials
 ```
 
 Fire 40 concurrent `InsertOne` on a cold pool: dials beyond the limit fail with
@@ -327,6 +329,7 @@ the executor hot-reloads without restart (governance center).
 ### 4.4 Fault injection + load drill (example-load)
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.fault.enabled=true
 govern.fault.rate=0.5
 govern.fault.error=generic    # or: timeout / reset
@@ -350,7 +353,7 @@ restart. Verify via `_app_mongodb_access` records or by stopping the old endpoin
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails `mongodb: ping <uri>: ...` | Unreachable server / wrong credentials / TLS mismatch — the fail-fast ping is unconditional | Fix connectivity/credentials; `connect-timeout` bounds the probe. |
-| Boot fails at binding on `uri` | `uri` empty — it is expr-validated non-empty | Set `spring.mongodb.<name>.uri`. |
+| Boot fails at binding on `uri` | `uri` empty — it is expr-validated non-empty | Set `spring.mongodb.instances.<name>.uri`. |
 | Boot fails "build TLS" / "build discovery resolver" | Partial `tls.*` config; `discovery` names nothing registered | Complete the tlsconf block; register the backend as a named discovery bean. |
 | Discovery client errors "no such host" / topology errors | `service-name` bypasses driver topology discovery | Add `directConnection=true` to the URI, or drop service-name for replica-set/mongos URIs. |
 | Ops fail with `ErrRateLimited` under burst | Governance rate-limit on the dial seam | Raise `govern.<driver>.rate-limit` or `max-pool-size`/`min-pool-size` (warm pool skips dials). |

@@ -26,7 +26,7 @@ import _ "go-spring.org/starter-ants"
 在项目的[配置文件](example/conf/app.properties)中添加 ants 配置，例如：
 
 ```properties
-spring.ants.main.size=256
+spring.ants.instances.main.size=256
 ```
 
 ### 3. 注入 ants 协程池

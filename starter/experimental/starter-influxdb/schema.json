@@ -2,28 +2,45 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.influxdb",
   "type": "object",
+  "description": "Two buckets: spring.influxdb.default holds family-wide values (each overridable per instance), spring.influxdb.instances.<name> holds one entry per named instance. No other key belongs directly under spring.influxdb.",
   "properties": {
-    "server-url": {
-      "type": "string",
-      "description": "InfluxDB base URL, e.g. 'http://127.0.0.1:8086'"
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "auth-token": {
-      "type": "string",
-      "description": "API token used for authentication"
-    },
-    "org": {
-      "type": "string",
-      "default": "",
-      "description": "default organization for the wrapper's write/query helpers"
-    },
-    "bucket": {
-      "type": "string",
-      "default": "",
-      "description": "default destination bucket for the wrapper's write helpers"
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "server-url": {
+            "type": "string",
+            "description": "InfluxDB base URL, e.g. 'http://127.0.0.1:8086'"
+          },
+          "auth-token": {
+            "type": "string",
+            "description": "API token used for authentication"
+          },
+          "org": {
+            "type": "string",
+            "default": "",
+            "description": "default organization for the wrapper's write/query helpers"
+          },
+          "bucket": {
+            "type": "string",
+            "default": "",
+            "description": "default destination bucket for the wrapper's write helpers"
+          }
+        }
+      }
     }
   }
 }

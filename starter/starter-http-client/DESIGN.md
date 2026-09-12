@@ -40,13 +40,12 @@ resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp
   `fixedHostTransport` handles the `Addr` case. Both empty → the
   request's own host is used.
 - **resilience.** Outermost so **retry can re-pick endpoints** on each
-  attempt and **circuit-breaker keys by logical service name**
-  (`req.URL.Host` = the generated client's Target) rather than by
-  per-endpoint dial address.
+  attempt and **circuit-breaker keys by logical service name** (the
+  entry's declared Target) rather than by per-endpoint dial address.
 
 ## 3. Key Decisions
 
-- **Driver seam for customization.** `spring.http-client.<name>.driver` selects a
+- **Driver seam for customization.** `spring.http-client.instances.<name>.driver` selects a
   registered `Driver` (default: `DefaultDriver`, a plain delegate to
   `httpx.NewTransport`). Customization shapes mirror starter-redigo: embed the
   default and wrap the assembled transport (ADD), or own the assembly entirely

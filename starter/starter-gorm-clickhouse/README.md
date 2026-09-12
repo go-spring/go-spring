@@ -24,19 +24,19 @@ import _ "go-spring.org/starter-gorm-clickhouse"
 Add gorm configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.gorm.clickhouse.primary.user=default
-spring.gorm.clickhouse.primary.password=
-spring.gorm.clickhouse.primary.addr=127.0.0.1:9000
-spring.gorm.clickhouse.primary.db=default
+spring.gorm.clickhouse.instances.primary.user=default
+spring.gorm.clickhouse.instances.primary.password=
+spring.gorm.clickhouse.instances.primary.addr=127.0.0.1:9000
+spring.gorm.clickhouse.instances.primary.db=default
 ```
 
 ### 3. Inject the gorm Instance
 
 ```go
-import starter "go-spring.org/starter-gorm-clickhouse"
+import "go-spring.org/starter-gorm"
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // wrapper embedding *gorm.DB
+    DB *gormcore.DB `autowire:"clickhouse.primary"` // wrapper embedding *gorm.DB
 }
 ```
 

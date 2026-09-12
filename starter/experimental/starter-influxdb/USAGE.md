@@ -7,8 +7,8 @@ below. **InfluxDB semantics and the influxdb-client-go API are [the client's own
 documentation](https://docs.influxdata.com/influxdb/v2/api-guide/client-libraries/go/)** —
 everything below is go-spring's increment.
 
-**Activation**: any `spring.influxdb.*` key (the module is `OnProperty("spring.influxdb")`, a
-prefix check [starter.go:40]). Each `spring.influxdb.<name>` entry creates one
+**Activation**: any `spring.influxdb.instances.*` key (the module is `OnProperty("spring.influxdb")`, a
+prefix check [starter.go:40]). Each `spring.influxdb.instances.<name>` entry creates one
 `*StarterInfluxdb.Client` bean named `<name>`, plus a health indicator named
 `influxdb:<name>` — there is no opt-out key for either.
 
@@ -112,14 +112,14 @@ func init() {
 
 ```properties
 # --- instance "a": write+query client --------------------------------------
-spring.influxdb.a.server-url=http://127.0.0.1:8086
-spring.influxdb.a.auth-token=go-spring-example-token
-spring.influxdb.a.org=go-spring
-spring.influxdb.a.bucket=example
+spring.influxdb.instances.a.server-url=http://127.0.0.1:8086
+spring.influxdb.instances.a.auth-token=go-spring-example-token
+spring.influxdb.instances.a.org=go-spring
+spring.influxdb.instances.a.bucket=example
 
 # --- instance "b": second client, same server (query-only for us) ----------
-spring.influxdb.b.server-url=http://127.0.0.1:8086
-spring.influxdb.b.auth-token=go-spring-example-token
+spring.influxdb.instances.b.server-url=http://127.0.0.1:8086
+spring.influxdb.instances.b.auth-token=go-spring-example-token
 
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
@@ -153,10 +153,11 @@ docker exec influxdb-example influx query \
 
 ```
 import starter-influxdb
-  └─ gs.Module(OnProperty("spring.influxdb")) fires when any spring.influxdb.* key exists
+  └─ gs.Module(OnProperty("spring.influxdb")) fires when any spring.influxdb.instances.* key exists
         └─ conf.BindEach("${spring.influxdb}") → one Config per <name> entry
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
-              │         IndexArg(2, ?Driver))    // optional Driver bean
+              │         IndexArg(2, ?Driver))    // optional Driver bean; several
+              │                                    // coexist → ${..driver} names one
               │     .Name(<name>).Init((*Client).Init).Destroy((*Client).Destroy)
               └─ Provide health.Indicator named "influxdb:<name>"
                     (injects the client by name via TagArg, exported as health.Indicator)
@@ -164,15 +165,18 @@ import starter-influxdb
 gs.Run()
   ├─ ctor newClient [starter.go:62]:
   │    1. optional Driver bean — when none is present the starter falls back
-  │       to the bundled DefaultDriver (d == nil [starter.go:66-68])
+  │       to the bundled DefaultDriver (d == nil [starter.go:66-68]); when
+  │       several Driver beans coexist, the entry selects one by name:
+  │       spring.influxdb.instances.<name>.driver = <bean-name> (empty = the single
+  │       Driver bean by type; naming a missing bean fails startup)
   │    2. driver.CreateClient → influxdb2 client whose HTTP requests ride a
   │       dynamicTransport (pass-through to http.DefaultTransport until Init)
   │    3. pick up the dynamic transport DefaultDriver installed [starter.go:77-79]
   │    4. fail-fast probe: client.Health() → /health must report "pass",
   │       otherwise the client is closed and the boot fails [starter.go:80-83]
   ├─ Init [client.go:69]: build dbObserver ("influxdb") + obsTransport;
-  │    resolve executor = resilience.WrapExecutor(fault.WrapExecutor(
-  │    resilience.ExecutorFor("influxdb:<server-url>")), "influxdb");
+  │    resolve executor = fault.WrapExecutor(resilience.ExecutorFor(
+  │    "influxdb", "influxdb:<server-url>"));
   │    dyn.Swap the resilience round-tripper in — observe+governance are
   │    live from now on
   ├─ readiness: indicators flip UP (each probe = one /health round trip)
@@ -254,7 +258,7 @@ governance/resilience observe 桥 — resilience is then unavailable for that cl
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.influxdb.<name>.` — per-instance prefix binding via
+All keys live under `spring.influxdb.instances.<name>.` — per-instance prefix binding via
 `conf.BindEach`. Complete list (reconciled with
 `grep -rhoE 'value:"[^"]+"' --include='*.go'`, both directions):
 
@@ -333,7 +337,7 @@ process keeps running (async failures never become caller errors).
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails `failed to reach influxdb server ...` | Server down, wrong server-url, or OSS server not yet set up (first-boot migration) | Wait for `curl :8086/health` to report `pass`; check the URL scheme/host. |
-| `panic: influxdb: write helpers need org and bucket` | `ManagedWriteAPI` with empty org/bucket | Set `spring.influxdb.<name>.org/.bucket` — or use the embedded `WriteAPI(org, bucket)` directly. |
+| `panic: influxdb: write helpers need org and bucket` | `ManagedWriteAPI` with empty org/bucket | Set `spring.influxdb.instances.<name>.org/.bucket` — or use the embedded `WriteAPI(org, bucket)` directly. |
 | `WritePoints` returns the org/bucket error | Same call-time gap, non-panicking shape | Same as above. |
 | Writes fail but boot and health are green | Wrong `auth-token` — /health does not authenticate | Verify the token with `influx query --token ...`. |
 | No spans/metrics despite requests flowing | starter-otel not imported | The observer rides the OTel globals; import starter-otel (access log still emits without it). |

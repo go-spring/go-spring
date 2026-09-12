@@ -33,10 +33,10 @@ import (
 
 // Client is the wrapper bean MongoDB clients are injected as. It
 // embeds the concrete *mongo.Client (so every driver method promotes
-// unchanged) and field-injects the resilience policy via gs.Dync so it
-// hot-reloads on config change. newClient returns one; gs field-injects
-// Resilience + Observability, then calls Init (InitMethod) to build
-// the observer and, when resilience is enabled, the executor + wrapped dialer.
+// unchanged) and resolves its resilience executor through the neutral
+// [resilience.ExecutorFor] seam, so the policy comes from the governance
+// document and hot-reloads inside the executor. newClient returns one; gs calls
+// Init (InitMethod) to build the observer and swap the executor into the dialer.
 //
 // The resilience seam is the dial layer: the mongo driver v2 exposes no single
 // per-operation hook comparable to go-redis's ProcessHook, so the cleanest
@@ -89,8 +89,7 @@ func (d *dialerWrapper) DialContext(ctx context.Context, network, address string
 func (o *Client) Init() error {
 	o.obs.Store(newDBObserver("mongodb"))
 	o.resource = resilience.ResourceLabel("mongodb", o.cfg.ServiceName, o.cfg.URI)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "mongodb")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("mongodb", o.resource))
 	o.exec = exec
 	// Wrap the current (plain/discovery) dial with the policy and swap it into
 	// the shared dialer the driver already holds.

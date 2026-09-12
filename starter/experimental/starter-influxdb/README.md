@@ -27,10 +27,10 @@ import _ "go-spring.org/starter-influxdb"
 ### 2. Configure
 
 ```properties
-spring.influxdb.a.server-url=http://127.0.0.1:8086
-spring.influxdb.a.auth-token=my-token
-spring.influxdb.a.org=my-org
-spring.influxdb.a.bucket=my-bucket
+spring.influxdb.instances.a.server-url=http://127.0.0.1:8086
+spring.influxdb.instances.a.auth-token=my-token
+spring.influxdb.instances.a.org=my-org
+spring.influxdb.instances.a.bucket=my-bucket
 ```
 
 ### 3. Inject
@@ -59,7 +59,7 @@ DeleteAPI, Setup, ...) promotes unchanged.
 
 ## Core Features
 
-- **Multi-instance clients** — every `spring.influxdb.<name>` entry is its
+- **Multi-instance clients** — every `spring.influxdb.instances.<name>` entry is its
   own bean with independent settings.
 - **Two write paths** — `WritePoints` (blocking, resilience-guarded,
   fails per call) and `ManagedWriteAPI` (buffered batches on a background
@@ -79,10 +79,10 @@ DeleteAPI, Setup, ...) promotes unchanged.
 **Multiple clients** — configure additional entries and inject by name:
 
 ```properties
-spring.influxdb.metrics.server-url=http://influx-a:8086
-spring.influxdb.metrics.auth-token=...
-spring.influxdb.events.server-url=http://influx-b:8086
-spring.influxdb.events.auth-token=...
+spring.influxdb.instances.metrics.server-url=http://influx-a:8086
+spring.influxdb.instances.metrics.auth-token=...
+spring.influxdb.instances.events.server-url=http://influx-b:8086
+spring.influxdb.instances.events.auth-token=...
 ```
 
 **Custom driver** — replace client assembly (e.g. to plug a session-token

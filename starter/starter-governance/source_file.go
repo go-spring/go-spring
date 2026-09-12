@@ -33,7 +33,7 @@ import (
 // FileSource is a governance.Source backed by ONE standalone rules file — the
 // self-built refresh chain. It watches the file with fsnotify and pushes each
 // good re-parse to its subscriber; the governance center then fans the new
-// policy out exactly as it would for a ${govern} hot-reload. It deliberately
+// policy out to every registered resource. It deliberately
 // bypasses gs's properties-refresh pipeline: a governance rule change refreshes
 // governance only, never re-binds the whole app.
 //

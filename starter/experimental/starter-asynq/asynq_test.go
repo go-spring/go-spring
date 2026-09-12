@@ -75,3 +75,25 @@ func TestNewClientDriverFallback(t *testing.T) {
 	_ = c.Close()
 	assert.That(t, fd.called).True()
 }
+
+// TestDriverBeanNamedSelection proves the per-instance ${driver} key selects a
+// Driver bean by NAME: with two Driver beans in the container, the entry cites
+// one and the client bean is assembled through exactly that one.
+func TestDriverBeanNamedSelection(t *testing.T) {
+	var first, second fakeDriver
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.asynq.instances.cache.addr", "127.0.0.1:6379")
+		app.Property("spring.asynq.instances.cache.driver", "corp")
+		app.Provide(func() Driver { return &first }).Name("plain")
+		app.Provide(func() Driver { return &second }).Name("corp")
+	}).RunTest(t, func(ts *struct {
+		Client *Client `autowire:"cache"`
+	}) {
+		if ts.Client == nil {
+			t.Fatal("expected a wired client")
+		}
+		if first.called || !second.called {
+			t.Fatalf("expected the client to go through the named driver only: plain=%v corp=%v", first.called, second.called)
+		}
+	})
+}

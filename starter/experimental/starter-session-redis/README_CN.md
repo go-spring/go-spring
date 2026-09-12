@@ -33,11 +33,11 @@ import (
 
 ```properties
 # 由 starter-go-redis 管理的 Redis 客户端。
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # 绑定到该客户端的会话存储。`client` 即上面的 redis 实例名。
-spring.session.redis.web.client=cache
-spring.session.redis.web.key-prefix=myapp:session:
+spring.session.redis.instances.web.client=cache
+spring.session.redis.instances.web.key-prefix=myapp:session:
 ```
 
 `client` 属性是**必填**的。缺失即启动失败(fail-fast)——starter 拒绝静默回退到某个
@@ -84,11 +84,11 @@ Redis,就能透明地共享会话状态。
 
 ## 配置
 
-所有配置项位于 `spring.session.redis.<name>` 之下:
+所有配置项位于 `spring.session.redis.instances.<name>` 之下:
 
 | 配置项       | 默认值      | 说明                                                                    |
 |--------------|-------------|-------------------------------------------------------------------------|
-| `client`     | —           | **必填。** `spring.go-redis.<client>` 下 `*redis.Client` bean 的名字。   |
+| `client`     | —           | **必填。** `spring.go-redis.instances.<client>` 下 `*redis.Client` bean 的名字。   |
 | `key-prefix` | `session:`  | 拼在每个 session id 前,使多个应用可安全共享同一个 Redis 实例。          |
 
 Cookie 名称、路径、`Secure`、`SameSite` 以及空闲超时都在构建 `Manager` 时通过

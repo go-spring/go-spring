@@ -48,7 +48,6 @@ package httpx
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
@@ -85,18 +84,6 @@ type Config struct {
 	// (a starter) injects the backend bean its config cites; required when
 	// ServiceName is set.
 	Discovery discovery.Discovery
-
-	// Balancer names the registered load-balancing strategy (round_robin,
-	// least_conn, consistent_hash, weighted, zone_aware). Defaults to round_robin.
-	Balancer string
-
-	// SuspendThreshold is the consecutive-failure count that suspends an endpoint
-	// from the pool (outlier suspension). 0 disables suspension.
-	SuspendThreshold int
-
-	// SuspendFor is how long a suspended endpoint stays out before a half-open
-	// trial. Ignored when SuspendThreshold is 0.
-	SuspendFor time.Duration
 
 	// TLS configures the certificate surface for https targets (client key pair,
 	// CA bundle, expected peer name, insecure escape hatch). Off by default; when
@@ -182,6 +169,11 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 	var resolver discovery.Resolver
 	closeFns := []func() error{}
 
+	// pool is the load-balancing pool when discovery is in effect, else nil. It
+	// is kept outside the branch below because the governance subscription
+	// further down drives it (balancer + outlier suspension).
+	var pool *loadbalance.Pool
+
 	// Discovery + load balancing. NewResolver returns (nil, nil) — "discovery
 	// not in effect" — when no service name is configured or mesh mode is on
 	// (a sidecar then owns discovery+LB); in that case requests flow to whatever
@@ -192,27 +184,24 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 		return nil, nil, err
 	}
 	if resolver != nil {
-		balName := cfg.Balancer
-		if balName == "" {
-			balName = loadbalance.RoundRobin
-		}
-		bal, err := loadbalance.New(balName)
+		// Round-robin is only the starting strategy: the governance subscription
+		// below replaces it when a rule for this resource names one.
+		bal, err := loadbalance.New(loadbalance.RoundRobin)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		var opts []loadbalance.PoolOption
-		if cfg.SuspendThreshold > 0 {
-			t := loadbalance.NewTracker(loadbalance.TrackerConfig{
-				Threshold:  cfg.SuspendThreshold,
-				SuspendFor: cfg.SuspendFor,
-			})
-			opts = append(opts, loadbalance.WithTracker(t))
-		}
+		// The tracker is attached unconditionally and starts disabled
+		// (Threshold 0): outlier suspension is a governance decision now, so
+		// the policy resolved below turns it on — and can turn it off again —
+		// without rebuilding the transport. Attaching a disabled tracker has no
+		// effect on routing, so this costs nothing when governance is off.
+		//
 		// The resolver (bound by-name re-read of the backend snapshot) feeds the
 		// Pool as its endpoint source, so it follows the naming service in real
 		// time.
-		pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, opts...)
+		pool = loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
 		base = &balancedTransport{base: base, pool: pool}
 	} else if cfg.Addr != "" {
 		// Direct mode: pin every request to the configured address so callers
@@ -238,20 +227,22 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 			return nil, nil, err
 		}
 	default:
-		if exec, err = governedExecutor(cfg.resource()); err != nil {
+		if exec, err = governedExecutor(cfg.resource(), pool); err != nil {
 			closeAll(closeFns)
 			return nil, nil, err
 		}
 	}
 
-	// Default wrap: observe( fault( rawExec ) ) — fault injects innermost so a
-	// fault looks like a real downstream failure, observe records the final
-	// outcome (span, outcome-classified metrics, access log). WrapExec, when
-	// set, replaces this stack entirely.
+	// Default wrap: fault( observe( rawExec ) ) — observe is applied first, on
+	// the still-private raw executor, so it attaches its breaker listener at
+	// construction; fault then injects outside it, but the injected error still
+	// flows through the real executor's retry loop and breaker. observe records
+	// the final outcome (span, outcome-classified metrics, access log). WrapExec,
+	// when set, replaces this stack entirely.
 	wrap := cfg.WrapExec
 	if wrap == nil {
 		wrap = func(e resilience.Executor) resilience.Executor {
-			return resilience.WrapExecutor(fault.WrapExecutor(e), "http")
+			return fault.WrapExecutor(resilience.WrapExecutor(e, "http"))
 		}
 	}
 	exec = wrap(exec)
@@ -356,20 +347,44 @@ const minRequestsFloor = 5
 // policy is zero and the executor is a transparent pass-through, exactly as
 // with ExecutorFor; hot-reload works the same way (governance re-invokes the
 // subscriber, the executor Refreshes).
-func governedExecutor(resource string) (resilience.Executor, error) {
+//
+// pool, when non-nil, is driven by the same subscription: the resolved policy
+// also carries the resource's endpoint-selection decisions (balancer strategy,
+// outlier suspension), so one subscription keeps the transport's protection
+// and its selection in step with the same rule — and neither needs a rebuild.
+// A nil pool (direct addressing, no discovery) simply opts out of the
+// selection half.
+func governedExecutor(resource string, pool *loadbalance.Pool) (resilience.Executor, error) {
 	var exec resilience.Executor
 	refresh := func(p resilience.Policy) {
+		p = floorMinRequests(p)
 		if e := exec; e != nil {
-			_ = e.Refresh(floorMinRequests(p))
+			_ = e.Refresh(p)
+		}
+		if pool != nil {
+			governSelection(pool, p)
 		}
 	}
-	p := floorMinRequests(governance.Register(resource, refresh))
+	// Register invokes refresh immediately with the armed policy, so the pool
+	// is in step before the executor exists; the executor itself is built from
+	// that same floored policy below.
+	// The subscription is not cancelled: the transport (and so this
+	// subscription) lives for the life of the client, which httpx builds once.
+	p := floorMinRequests(governance.Register(resource, refresh).Policy)
 	e, err := resilience.NewExecutor(governance.Driver(), p)
 	if err != nil {
 		return nil, err
 	}
 	exec = e
 	return exec, nil
+}
+
+// governSelection applies a resolved policy's endpoint-selection half to a live
+// pool. Both halves land in place, so a pushed rule takes effect on the next
+// request without rebuilding the transport; the "unknown strategy is ignored"
+// rule lives in [loadbalance.Pool.ApplySelection].
+func governSelection(pool *loadbalance.Pool, p resilience.Policy) {
+	pool.ApplySelection(p.Balancer, p.OutlierThreshold, p.OutlierSuspendFor)
 }
 
 // floorMinRequests raises an error-rate policy's MinRequests to

@@ -19,8 +19,8 @@
 // client bean; the pool is wrapped by Pool, which layers
 // observability (trace/metric/access log, see observe.go) and resilience
 // (rate-limit / circuit-breaker / retry / timeout via the resilience executor)
-// onto every command. A "redigo" cache driver is also registered so a pool can
-// be exposed as a cache.Cache.
+// onto every command. Each pool is also exposed as a cache.Cache bean named
+// "redigo:<name>".
 package StarterRedigo
 
 import (
@@ -30,7 +30,6 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	StarterCache "go-spring.org/starter-cache"
 	"go-spring.org/starter-redigo/bytecache"
 	poolhealth "go-spring.org/starter-redigo/health"
 	"go-spring.org/stdlib/errutil"
@@ -43,21 +42,23 @@ func init() {
 	// instance's pool bean can be paired with a health.Indicator registered under
 	// the same name — and to attach the file:line of this registration to the
 	// bean for diagnostics.
-	gs.Module(gs.OnProperty("spring.redigo"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.redigo}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.redigo.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.redigo.instances}", func(name string, c Config) error {
 
 			// The adapter is the gs↔NewPool bridge: it converts the
 			// *gs.ContextProvider into a plain context.Context, so NewPool itself
 			// never touches gs types and is usable standalone. Users wanting
 			// custom assembly skip this bean entirely and call NewPool (or
-			// NewConn) themselves. The Driver param (index 2) is optional
-			// (TagArg("?") → nil when no company Driver bean is provided);
-			// createPool falls back to DefaultDriver in that case.
+			// NewConn) themselves. The Driver param (index 2) is selected by the
+			// entry's ${driver} key: unset → "?" (nullable by-type — injects the
+			// single Driver bean when a company provides one, nil otherwise, and
+			// createPool falls back to DefaultDriver); set → that bean name, and
+			// naming a bean that does not exist fails loud.
 			r.Provide(
 				createPool,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("?")),
-				gs.IndexArg(3, gs.TagArg("${spring.redigo."+name+".discovery:=none}?")),
+				gs.IndexArg(2, gs.TagArg("${spring.redigo.instances."+name+".driver:=${spring.redigo.default.driver:=?}}")),
+				gs.IndexArg(3, gs.TagArg("${spring.redigo.instances."+name+".discovery:=none}?")),
 			).Name(name).Destroy(destroyPool)
 
 			// Contribute a health indicator for this instance unless the user
@@ -68,24 +69,15 @@ func init() {
 					return poolhealth.NewPoolHealth(name, w.Pool)
 				}, gs.TagArg(name)).Name("redigo:" + name)
 			}
-			return nil
-		})
-	})
-
-	// init registers the "redigo" cache driver so a *redis.Pool registered under
-	// ${spring.redigo} can be exposed as a cache.Cache via:
-	//
-	//	spring.cache.<name>.driver = redigo:<redigo-instance-name>
-	//
-	// The beanID selects which pool bean to wrap; the implementation lives in
-	// starter-redigo/bytecache.
-	StarterCache.RegisterDriver("redigo", func(beanID string) gs.ModuleFunc {
-		return func(r gs.BeanProvider, p flatten.Storage) error {
+			// Expose this instance as a cache.Cache (the adapter lives in
+			// starter-redigo/bytecache). Named "redigo:<name>" — cache.Cache is
+			// a shared type across backend starters, so the prefix keeps the
+			// (name, type) key unique. Un-injected, the bean never instantiates.
 			r.Provide(func(w *Pool) *cache.Cache {
 				return cache.New(bytecache.NewByteCache(w.Pool))
-			}, gs.TagArg(beanID)).Name(beanID)
+			}, gs.TagArg(name)).Name("redigo:" + name)
 			return nil
-		}
+		})
 	})
 }
 
@@ -113,10 +105,11 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disc
 	// Fail loud when the entry routes through discovery but the cited label
 	// names no backend bean — the container is the discovery directory.
 	if c.ServiceName != "" && disc == nil {
+		if c.Discovery == "" {
+			return nil, errutil.Explain(nil, "redis: instance routes by service-name but sets no discovery backend (set ${spring.redigo.instances.<name>.discovery} to the name of a discovery backend bean)")
+		}
 		return nil, errutil.Explain(nil, "redis: instance cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", c.Discovery)
 	}
-	c.backend = disc
-
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
@@ -125,7 +118,7 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disc
 	// d owns pool assembly. It returns the wrapped Pool (NOT the raw
 	// *redis.Pool): it may customize the wrapper itself, and downstream
 	// consumers uniformly deal in the project's type.
-	w, err := d.CreateClient(ctx.Context, c)
+	w, err := d.CreateClient(ctx.Context, c, disc)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redigo: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")

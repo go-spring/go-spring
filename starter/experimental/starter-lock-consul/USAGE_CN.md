@@ -9,7 +9,7 @@
 [Consul 官方文档](https://developer.hashicorp.com/consul/docs/dynamic-app-config/sessions)——
 本文只写 go-spring 的增量。
 
-**激活方式**：任一 `spring.lock.<name>.*` 配置即为每个 `<name>` 注册一个 Consul 后端的
+**激活方式**：任一 `spring.lock.instances.<name>.*` 配置即为每个 `<name>` 注册一个 Consul 后端的
 `lock.Locker` 实例（`spring.lock` 前缀为四个锁后端共享——一个二进制只 blank-import 一个
 锁后端）。
 
@@ -111,14 +111,14 @@ func (w *Worker) RunOnce(ctx context.Context) {
 
 ```properties
 # --- 锁：定时任务 -------------------------------------------------------------
-spring.lock.jobs.address=127.0.0.1:8500
-spring.lock.jobs.ttl=15s
+spring.lock.instances.jobs.address=127.0.0.1:8500
+spring.lock.instances.jobs.ttl=15s
 # session TTL 必须落在 Consul 的 [10s, 86400s] 窗口内；越界值按次钳制而非报错。
-spring.lock.jobs.key-prefix=demo/jobs/
+spring.lock.instances.jobs.key-prefix=demo/jobs/
 
 # --- 锁：单例 worker -----------------------------------------------------------
-spring.lock.singleton.address=127.0.0.1:8500
-spring.lock.singleton.key-prefix=demo/singleton/
+spring.lock.instances.singleton.address=127.0.0.1:8500
+spring.lock.instances.singleton.key-prefix=demo/singleton/
 
 # --- 可观测（starter-otel） ----------------------------------------------------
 spring.observability.service-name=demo
@@ -152,7 +152,7 @@ import starter-lock-consul
              ├─ Provide newLocker  → bean "<name>"        （Export lock.Locker，
              │                                                        Destroy → Close）
              └─ 除非 observe.enabled=false，newLocker 默认用 observe-lock 包装
-  ├─ 配置绑定：${spring.lock.<name>} → Config（value tag）
+  ├─ 配置绑定：${spring.lock.instances.<name>} → Config（value tag）
   ├─ newConsulLocker：api.NewClient（tls.enabled 时加载 TLS）；记录 TTL 默认值
   ├─ bean 装配：消费方 autowire:"<name>" 解析（bean 已默认带 observe 包装）
   └─ SIGTERM：逐 bean Destroy —— consulLocker.Close 只是契约空操作
@@ -169,7 +169,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 | 层 | 来源 | 本后端 |
 |----|------|--------|
 | 1. 每次调用 option | `lock.WithTTL` / `WithRenewInterval` / `WithRetryInterval` | 全部生效 |
-| 2. starter 默认 | `spring.lock.<name>.ttl` 等 | **仅 TTL** —— consul 在 `api.Lock` 内部自动续约并在自己的 acquire 循环里阻塞，因此没有 renew/retry key |
+| 2. starter 默认 | `spring.lock.instances.<name>.ttl` 等 | **仅 TTL** —— consul 在 `api.Lock` 内部自动续约并在自己的 acquire 循环里阻塞，因此没有 renew/retry key |
 | 3. 包默认 | TTL `30s`、renew `TTL/3`、retry `100ms` | 兜底仍未设置的项 |
 
 解析后的 TTL 会在每次获取时被钳进 Consul 的 `[10s, 86400s]` session 窗口
@@ -198,11 +198,11 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.lock.<name>` 之下（精确匹配，无宽松形态）。
+所有 key 位于 `spring.lock.instances.<name>` 之下（精确匹配，无宽松形态）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `address` | string | — | **必填**。Consul agent 端点，如 `127.0.0.1:8500`，注册前检查。 | 空 → 启动失败并点名实例（`lock-consul: spring.lock.<n>.address is required`）。 |
+| `address` | string | — | **必填**。Consul agent 端点，如 `127.0.0.1:8500`，注册前检查。 | 空 → 启动失败并点名实例（`lock-consul: spring.lock.instances.<n>.address is required`）。 |
 | `scheme` | string | `http` | 仅 URL scheme。`tls.enabled=true` 会强制 `https`（scheme 显式非 http 时除外）。 | 开 TLS 且 scheme 留 `http` 反而正常（自动 https）；期望明文 + tls 块 → 莫名变成 https。 |
 | `token` | string | — | API client 的 Consul ACL token。与每次获取的 fencing token 是两回事。 | token 错误在首次 Acquire 才 403，启动不报（建 client 不鉴权）。 |
 | `ttl` | duration | `30s` | session TTL，进 §2.2 第 2 层。每次获取时钳入 `[10s, 86400s]`。 | `5s` 无声变 `10s`；`100000h` 变 `24h`——无任何告警。 |
@@ -236,7 +236,7 @@ curl -s 'localhost:8500/v1/kv/demo/jobs/nightly-sync?raw'   # 即 fencing token
 
 ### 4.2 持锁期间 TTL 到期（宕机演练）
 
-1. 配短 TTL：`spring.lock.jobs.ttl=10s`（钳制下限）。
+1. 配短 TTL：`spring.lock.instances.jobs.ttl=10s`（钳制下限）。
 2. 拿锁后 `kill -9` 持有进程（不 Unlock）。
 3. Consul 在 ~TTL 后判定 session 无效；几秒内 KV 释放，副本中等待的 `Acquire` 获胜。
 4. 在被杀进程的孪生副本里（死前）`Lost()` 经 leaderCh 关闭而触发——存活的临界区 select
@@ -268,9 +268,9 @@ cd example && ./check.sh    # docker 门控：compose 起 consul，跑自校验 
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动报 `spring.lock.<n>.address is required` | 实例缺 address | 补 key 或删实例。 |
+| 启动报 `spring.lock.instances.<n>.address is required` | 实例缺 address | 补 key 或删实例。 |
 | 启动期建 client / TLS 失败 | `tls.*` 材料错误或 scheme 不通 | 修证书；创建是 fail-fast 的。 |
-| `Acquire` 返回 403 类 ACL 错误 | `token` 错/缺 | ACL 在首次使用才校验——设置 `spring.lock.<n>.token`。 |
+| `Acquire` 返回 403 类 ACL 错误 | `token` 错/缺 | ACL 在首次使用才校验——设置 `spring.lock.instances.<n>.token`。 |
 | 锁过期时间与配置不符 | TTL 被钳入 `[10s, 86400s]` | 选窗口内 TTL；本后端做不到 10s 以下。 |
 | 被抢后 `Unlock` 也不返回 `ErrNotHeld` | Consul 无法归因释放；`api.ErrLockNotHeld` 被吞为良性 | 需要"被接管证明"语义 → 换 redis 后端（Lua compare-and-DEL）。 |
 | `<name>-observed` bean 不存在了 | 2026-08 移除 | 注入 `<name>`——默认已带观测；`observe.enabled=false` 得裸 locker。 |

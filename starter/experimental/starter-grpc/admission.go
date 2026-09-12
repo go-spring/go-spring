@@ -50,8 +50,7 @@ type resilienceInterceptors struct {
 // replayed) — leave MaxRetries at 0: inbound serving is not idempotent.
 func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors, bool) {
 	resource := resilience.ResourceLabel("grpc", s.cfg.Addr)
-	exec := resilience.ExecutorFor(resource)
-	exec = resilience.WrapExecutor(exec, "grpc")
+	exec := resilience.ExecutorFor("grpc", resource)
 	return resilienceInterceptors{
 		unary: resilienceUnaryInterceptor(exec, resource),
 	}, true

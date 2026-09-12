@@ -99,7 +99,7 @@
     },
     "discovery": {
       "type": "string",
-      "default": "default"
+      "default": ""
     },
     "resilience": {
       "type": "object",

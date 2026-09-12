@@ -118,7 +118,7 @@ Saga 语义见链接文献。）
 
 ```properties
 # --- 数据源（starter-gorm-mysql；提供被注入的 *gorm.DB）----------------------
-spring.gorm.mysql.dsn=app:pass@tcp(127.0.0.1:3306)/demo?parseTime=true
+spring.gorm.mysql.instances.dsn=app:pass@tcp(127.0.0.1:3306)/demo?parseTime=true
 
 # --- Saga durable store（本 starter 的激活 key）-------------------------------
 # 必须恰为 "gorm" 这个 Store 才会注册
@@ -272,7 +272,7 @@ SELECT id, method, status, in_progress, completed, step_results FROM saga_snapsh
 
 ### 4.4 AutoMigrate fail-fast 演练
 
-把 `spring.gorm.mysql.dsn` 指向无 DDL 权限的库：store bean 构造失败
+把 `spring.gorm.mysql.instances.dsn` 指向无 DDL 权限的库：store bean 构造失败
 （`auto-migrate saga_snapshots failed`，tag `AppDef`），启动中止——配错在开机时暴露，
 而不是第一条 saga 上。
 

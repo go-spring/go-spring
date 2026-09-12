@@ -56,13 +56,6 @@ type Config struct {
 	// Will configures the Last Will and Testament (LWT) message the broker
 	// publishes on the client's behalf if it disconnects ungracefully.
 	Will WillConfig `value:"${will}"`
-
-	// Governance enables the resilience/fault guard on this client, default is
-	// true. Both the raw client API (GuardedPublish) and the messaging driver's
-	// Publish route through the governance center executor; when the governance
-	// center itself is off the executor is a transparent no-op, so this switch
-	// only removes the guard entirely (bare calls) when set to false.
-	Governance bool `value:"${governance:=true}"`
 }
 
 // WillConfig configures the Last Will and Testament message. The will is

@@ -11,7 +11,7 @@ Blank-import the starter, blank-import a broker starter (starter-kafka, ...),
 and add one entry per relay under `spring.outbox`:
 
 ```properties
-spring.outbox.main.auto-migrate=true
+spring.outbox.instances.main.auto-migrate=true
 ```
 
 The delivery `messaging.Driver` is autowired as a bean: the broker starter

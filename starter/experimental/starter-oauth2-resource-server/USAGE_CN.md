@@ -8,7 +8,7 @@
 [OIDC Discovery](https://openid.net/specs/openid-connect-discovery-1_0.html)** ——
 本文只写 go-spring 的增量：绑定、bean、fail-fast 装配与 key source 纪律。
 
-**激活方式**：`spring.security.oauth2.resource.jwt.<name>` 下每个条目生成一个
+**激活方式**：`spring.security.oauth2.resource.jwt.instances.<name>` 下每个条目生成一个
 `*Validator` bean；空 map 什么都不注册 —— 配置即开关（starter.go:37-49）。
 **每个条目必须且只能配一个 key source**（`issuer-uri` / `public-key(-file)` / `secret`）；
 配零个或多个都会让启动失败（config.go:94-113）。
@@ -72,7 +72,7 @@ import (
 )
 
 func init() {
-    // gs.TagArg("api") 选中配置在 spring.security.oauth2.resource.jwt.api.*
+    // gs.TagArg("api") 选中配置在 spring.security.oauth2.resource.jwt.instances.api.*
     // 下的那个 validator。
     gs.Provide(func(v security.TokenValidator) *gs.HttpServeMux {
         mux := http.NewServeMux()
@@ -139,13 +139,13 @@ func mint(subject string, scopes ...string) string {
 #   issuer-uri  （生产推荐：OIDC discovery -> JWKS，自动轮换感知）
 #   public-key / public-key-file  （静态 RSA/ECDSA PEM）
 #   secret  （共享 HMAC；仅开发/演示）
-spring.security.oauth2.resource.jwt.api.secret=example-shared-secret
+spring.security.oauth2.resource.jwt.instances.api.secret=example-shared-secret
 
 # 可接受的 "aud" 值（any-of）。留空关闭 audience 检查。
-spring.security.oauth2.resource.jwt.api.audiences=example-api
+spring.security.oauth2.resource.jwt.instances.api.audiences=example-api
 
 # 生产环境接真实 issuer 时，把上面两行换成：
-#   spring.security.oauth2.resource.jwt.api.issuer-uri=https://auth.example.com
+#   spring.security.oauth2.resource.jwt.instances.api.issuer-uri=https://auth.example.com
 # （预期 "iss" 默认取 issuer URI；JWKS 自动发现）
 
 # --- http server（gs 核心）---------------------------------------------------
@@ -177,7 +177,7 @@ curl -i :9370/healthz                              # actuator liveness
 ```
 import starter-oauth2-resource-server
   └─ gs.Module(gs.OnProperty("spring.security.oauth2.resource.jwt"))   [starter.go:37]
-        │  （前缀检查：任意 spring.security.oauth2.resource.jwt.* 条目都触发）
+        │  （前缀检查：任意 spring.security.oauth2.resource.jwt.instances.* 条目都触发）
 gs.Run()
   ├─ 绑定：每个子 key -> Config（value tag），随即内联校验 Config.source()
   │        （starter.go:39-41）—— "no/multiple key source" 在任何 bean 产生前
@@ -226,7 +226,7 @@ gs.Run()
 
 ## 3. 逐 key 行为参考
 
-key 位于 `spring.security.oauth2.resource.jwt.<name>.*`，共 12 个（与
+key 位于 `spring.security.oauth2.resource.jwt.instances.<name>.*`，共 12 个（与
 `grep -rhoE 'value:"[^"]+"' | sort -u` 完全一致）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -292,7 +292,7 @@ key 位于 `spring.security.oauth2.resource.jwt.<name>.*`，共 12 个（与
 | token 换版后 scope 门槛全 403 | authority claim 改名或 scope-claim 不匹配 | 比对 token 的 claim 名与 `scope-claim`/`roles-claim` |
 | 新轮换 key 的 token 短暂 401 | 缓存尚未过期 | 未知 `kid` 已会强制 reload；确认新 key 确实已发布 |
 | 启动报 `algorithm ... not compatible` | pin 与 key source 家族矛盾 | `algorithm` 对齐 source（PEM/issuer 用 RS/ES/PS，secret 用 HS） |
-| 完全没注册 validator bean | 前缀拼错 / map 为空 | key 必须位于 `spring.security.oauth2.resource.jwt.<name>.*` |
+| 完全没注册 validator bean | 前缀拼错 / map 为空 | key 必须位于 `spring.security.oauth2.resource.jwt.instances.<name>.*` |
 
 ---
 

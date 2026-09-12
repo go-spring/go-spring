@@ -9,7 +9,7 @@
 [gorm 文档](https://gorm.io/docs/)。共享的 wrapper 生命周期、连接池/observe/health
 接线与 `UseDBCustomizer` 见 [gormcore](../starter-gorm/USAGE_CN.md)，此处不再重复。
 
-**激活条件**：`spring.gorm.clickhouse` 下每个条目注册一个 `*starter.DB` bean（外加配对
+**激活条件**：`spring.gorm.clickhouse` 下每个条目注册一个名为 `clickhouse.<条目名>` 的 `*gormcore.DB` bean（外加配对
 的 `health.Indicator`）；没有任何条目时 starter 不注册任何东西
 （`starter_test.go:TestClickhouseNotTriggered`）。
 
@@ -53,7 +53,8 @@ import (
     "time"
 
     "go-spring.org/spring/gs"
-    starter "go-spring.org/starter-gorm-clickhouse"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-clickhouse"
 )
 
 // ClickHouse 不像 OLTP 引擎那样强制唯一索引 —— 不用 `uniqueIndex`。
@@ -66,8 +67,8 @@ type KV struct {
 func (KV) TableName() string { return "kv" }
 
 type Service struct {
-    DB          *starter.DB `autowire:"primary"`
-    DiscoveryDB *starter.DB `autowire:"discovery"`
+    DB          *gormcore.DB `autowire:"clickhouse.primary"`
+    DiscoveryDB *gormcore.DB `autowire:"clickhouse.discovery"`
 }
 
 var manual = flag.Bool("manual", false, "保持服务运行")
@@ -124,30 +125,30 @@ func init() {
 **conf/app.properties**（复制自 `example/conf/app.properties`）：
 
 ```properties
-spring.gorm.clickhouse.primary.user=default
-spring.gorm.clickhouse.primary.password=
-spring.gorm.clickhouse.primary.addr=127.0.0.1:9000        # native 协议端口
-spring.gorm.clickhouse.primary.db=default
-spring.gorm.clickhouse.primary.max-open-conns=10
-spring.gorm.clickhouse.primary.max-idle-conns=5
-spring.gorm.clickhouse.primary.conn-max-lifetime=30m
-spring.gorm.clickhouse.primary.conn-max-idle-time=5m
-spring.gorm.clickhouse.primary.ping-timeout=5s
-spring.gorm.clickhouse.primary.slow-threshold=200ms
+spring.gorm.clickhouse.instances.primary.user=default
+spring.gorm.clickhouse.instances.primary.password=
+spring.gorm.clickhouse.instances.primary.addr=127.0.0.1:9000        # native 协议端口
+spring.gorm.clickhouse.instances.primary.db=default
+spring.gorm.clickhouse.instances.primary.max-open-conns=10
+spring.gorm.clickhouse.instances.primary.max-idle-conns=5
+spring.gorm.clickhouse.instances.primary.conn-max-lifetime=30m
+spring.gorm.clickhouse.instances.primary.conn-max-idle-time=5m
+spring.gorm.clickhouse.instances.primary.ping-timeout=5s
+spring.gorm.clickhouse.instances.primary.slow-threshold=200ms
 # TLS（此处关闭；冒烟服务器为明文）。开启安全 native 连接：
-# spring.gorm.clickhouse.primary.tls.enabled=true
-# spring.gorm.clickhouse.primary.tls.insecure-skip-verify=false
-# spring.gorm.clickhouse.primary.tls.ca-file=/path/ca.pem
-# spring.gorm.clickhouse.primary.tls.cert-file=/path/client-cert.pem   # 支持 mTLS
-# spring.gorm.clickhouse.primary.tls.key-file=/path/client-key.pem
+# spring.gorm.clickhouse.instances.primary.tls.enabled=true
+# spring.gorm.clickhouse.instances.primary.tls.insecure-skip-verify=false
+# spring.gorm.clickhouse.instances.primary.tls.ca-file=/path/ca.pem
+# spring.gorm.clickhouse.instances.primary.tls.cert-file=/path/client-cert.pem   # 支持 mTLS
+# spring.gorm.clickhouse.instances.primary.tls.key-file=/path/client-key.pem
 
 # discovery 实例：addr 故意设哑值 —— 因 service-name 生效而被忽略，
 # 地址来自 discovery backend。
-spring.gorm.clickhouse.discovery.user=default
-spring.gorm.clickhouse.discovery.password=
-spring.gorm.clickhouse.discovery.addr=0.0.0.0:0
-spring.gorm.clickhouse.discovery.db=default
-spring.gorm.clickhouse.discovery.service-name=clickhouse-cluster
+spring.gorm.clickhouse.instances.discovery.user=default
+spring.gorm.clickhouse.instances.discovery.password=
+spring.gorm.clickhouse.instances.discovery.addr=0.0.0.0:0
+spring.gorm.clickhouse.instances.discovery.db=default
+spring.gorm.clickhouse.instances.discovery.service-name=clickhouse-cluster
 ```
 
 **docker-compose.yml** —— 双端口 + 健康检查的 ClickHouse 24：
@@ -180,7 +181,7 @@ go run . -manual & curl http://127.0.0.1:9090/clickhouse_version
 
 ```
 import starter-gorm-clickhouse
-  └─ init(): gormcore.Register(Dialect{Prefix: "spring.gorm.clickhouse",
+  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.clickhouse",
         Engine: "clickhouse", HealthPrefix: "gorm:clickhouse:"})
 gs.Run()
   ├─ conf.BindEach → 每条目一个 Config
@@ -218,7 +219,7 @@ native 驱动的 `ch.Options.DialContext` 是两参 `func(ctx, addr string)` —
 
 `db.WithContext(ctx).Raw("SELECT version()").Scan(&v)`：
 
-1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（`${govern}` 的
+1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `govern.*` 的
    timeout/retry/breaker，放火时含 fault 注入器；`gorm.ErrRecordNotFound` 视为成功）。
 2. observe 插件 span（db.system=clickhouse）+ in-flight 指标。
 3. 原 processor：池取连接 → native DialContext（discovery 重新选点）→ native 协议
@@ -229,7 +230,7 @@ native 驱动的 `ch.Options.DialContext` 是两参 `func(ctx, addr string)` —
 
 ## 3. 逐 key 行为参考
 
-key 位于 `spring.gorm.clickhouse.<name>.*`。Common keys（10 个）与 wrapper 级
+key 位于 `spring.gorm.clickhouse.instances.<name>.*`。Common keys（10 个）与 wrapper 级
 `observability` 见 [gormcore](../starter-gorm/USAGE_CN.md#2-配置参考)。
 
 ### 3.1 连接 key（config.go:31-45）
@@ -281,7 +282,7 @@ key 位于 `spring.gorm.clickhouse.<name>.*`。Common keys（10 个）与 wrappe
 2. 未开 TLS 的服务器上开 TLS：
 
 ```properties
-spring.gorm.clickhouse.primary.tls.enabled=true
+spring.gorm.clickhouse.instances.primary.tls.enabled=true
 ```
 
 3. `go run .` → native 路径握手挂起/失败，**启动 ping 在 `ping-timeout` 内失败** ——

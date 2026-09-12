@@ -37,8 +37,8 @@ func init() {
 	//
 	// We use gs.Module instead of gs.Group so that the pool's bean name is
 	// available to pass to observers.
-	gs.Module(gs.OnProperty("spring.ants"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.ants}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.ants.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.ants.instances}", func(name string, c Config) error {
 			// createPool returns Pool (interface), but gs.Provide registers
 			// the concrete type. Export(gs.As[Pool]()) makes it available
 			// for autowire by the Pool interface.
@@ -47,10 +47,15 @@ func init() {
 			// every PoolObserver bean; declaring it here forces those beans to
 			// be instantiated before any pool, and lets createPool snapshot the
 			// chain at build time. "?" makes the collection nullable so a pool
-			// still builds when the list is empty.
+			// still builds when the list is empty. The Driver bean (index 1) is
+			// selected by the entry's ${driver} key: unset → "?" (nullable
+			// by-type — injects the single Driver bean when one is provided,
+			// nil otherwise, and createPool falls back to the bundled
+			// DefaultDriver); set → that bean name, and naming a bean that
+			// does not exist fails loud.
 			r.Provide(func(ctx *gs.ContextProvider, d Driver, observers []PoolObserver) (Pool, error) {
 				return createPool(ctx.Context, name, c, d, observers)
-			}, gs.IndexArg(1, gs.TagArg("?")), gs.IndexArg(2, gs.TagArg("?"))).Name(name).Destroy(destroyPool)
+			}, gs.IndexArg(1, gs.TagArg("${spring.ants.instances."+name+".driver:=${spring.ants.default.driver:=?}}")), gs.IndexArg(2, gs.TagArg("?"))).Name(name).Destroy(destroyPool)
 			return nil
 		})
 	})

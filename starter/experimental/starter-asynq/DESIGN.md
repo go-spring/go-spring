@@ -8,7 +8,7 @@ opt-in, a worker Server (dequeue + run).
 
 ## 1. Responsibilities & Boundaries
 
-- **Owns**: per-instance `spring.asynq.<name>` wiring, the Redis connection
+- **Owns**: per-instance `spring.asynq.instances.<name>` wiring, the Redis connection
   (shared by both roles), the guarded/observed enqueue path, the worker
   lifecycle (gs.Server), the handler mux, and the health indicator.
 - **Does not own**: task serialization (payload is the app's `[]byte`),
@@ -39,7 +39,7 @@ opt-in, a worker Server (dequeue + run).
 
 ## 3. Constraints
 
-- `Queues` needs a `:=` default (an absent `spring.asynq.<n>.queues` key must
+- `Queues` needs a `:=` default (an absent `spring.asynq.instances.<n>.queues` key must
   bind to nil, not fail the module).
 - asynq recovers handler panics itself (its processor guard); this starter
   deliberately does not double-wrap — the boundary is documented rather than

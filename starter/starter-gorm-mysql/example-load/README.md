@@ -31,6 +31,6 @@ rises as retries stack against the injected faults.
   The load-test targets client-side overhead (resilience / fault / observability
   callbacks in the gorm processor chain), not raw DB throughput, so a trivial
   query isolates the client path cleanly.
-- Connection keys (`spring.gorm.mysql.load.*`) live under the instance prefix;
+- Connection keys (`spring.gorm.mysql.instances.load.*`) live under the instance prefix;
   `resilience.*` and `fault.*` are top-level absolute property refs shared
   across all starters.

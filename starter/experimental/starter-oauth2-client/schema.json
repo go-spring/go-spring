@@ -2,44 +2,54 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.oauth2.client",
   "type": "object",
+  "description": "Two buckets: spring.oauth2.client.default holds family-wide values (each overridable per instance), spring.oauth2.client.instances.<name> holds one entry per named instance. No other key belongs directly under spring.oauth2.client.instances.",
   "properties": {
-    "client-id": {
-      "type": "string"
-    },
-    "client-secret": {
-      "type": "string"
-    },
-    "token-url": {
-      "type": "string"
-    },
-    "scopes": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "default": []
-    },
-    "endpoint-params": {
+    "instances": {
       "type": "object",
-      "default": {}
-    },
-    "auth-style": {
-      "type": "string",
-      "default": "auto"
-    },
-    "timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "0"
-    },
-    "spring.oauth2.authcode.auth-url": {
-      "type": "string",
-      "description": "Authorization endpoint per spring.oauth2.authcode.<name> instance"
-    },
-    "spring.oauth2.authcode.redirect-url": {
-      "type": "string",
-      "description": "Callback URL per spring.oauth2.authcode.<name> instance",
-      "default": ""
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "client-id": {
+            "type": "string"
+          },
+          "client-secret": {
+            "type": "string"
+          },
+          "token-url": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "endpoint-params": {
+            "type": "object",
+            "default": {}
+          },
+          "auth-style": {
+            "type": "string",
+            "default": "auto"
+          },
+          "timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          },
+          "spring.oauth2.authcode.instances.auth-url": {
+            "type": "string",
+            "description": "Authorization endpoint per spring.oauth2.authcode.instances.<name> instance"
+          },
+          "spring.oauth2.authcode.instances.redirect-url": {
+            "type": "string",
+            "description": "Callback URL per spring.oauth2.authcode.instances.<name> instance",
+            "default": ""
+          }
+        }
+      }
     }
   }
 }

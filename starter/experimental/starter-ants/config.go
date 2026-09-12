@@ -79,9 +79,11 @@ type Config struct {
 // A custom driver is a bean, so it may inject the configuration/beans it needs
 // — e.g. company config bound from a properties file at wiring time.
 //
-// At most one Driver bean is expected per process; every pool under
-// ${spring.ants} is built through it, and per-instance differences are
-// expressed through [Config].
+// When several Driver beans coexist in the container, a pool entry selects
+// one by name via its ${driver} key (spring.ants.instances.<name>.driver = <bean-name>;
+// empty = the single Driver bean by type; naming a missing bean fails
+// startup), and per-instance differences are otherwise expressed through
+// [Config].
 type Driver interface {
 	CreatePool(c Config) (Pool, error)
 }

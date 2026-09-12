@@ -2,54 +2,71 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.kafka-sarama",
   "type": "object",
+  "description": "Two buckets: spring.kafka-sarama.default holds family-wide values (each overridable per instance), spring.kafka-sarama.instances.<name> holds one entry per named instance. No other key belongs directly under spring.kafka-sarama.",
   "properties": {
-    "brokers": {
-      "type": "string"
-    },
-    "version": {
-      "type": "string",
-      "default": ""
-    },
-    "sasl": {
+    "default": {
       "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false
-        },
-        "mechanism": {
+        "driver": {
           "type": "string",
-          "default": "plain"
-        },
-        "username": {
-          "type": "string",
-          "default": ""
-        },
-        "password": {
-          "type": "string",
-          "default": ""
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
         }
       }
     },
-    "tls": {
-      "type": "object"
-    },
-    "producer": {
+    "instances": {
       "type": "object",
-      "properties": {
-        "compression": {
-          "type": "string",
-          "default": ""
-        },
-        "required-acks": {
-          "type": "string",
-          "default": "all"
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "brokers": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "default": ""
+          },
+          "sasl": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": false
+              },
+              "mechanism": {
+                "type": "string",
+                "default": "plain"
+              },
+              "username": {
+                "type": "string",
+                "default": ""
+              },
+              "password": {
+                "type": "string",
+                "default": ""
+              }
+            }
+          },
+          "tls": {
+            "type": "object"
+          },
+          "producer": {
+            "type": "object",
+            "properties": {
+              "compression": {
+                "type": "string",
+                "default": ""
+              },
+              "required-acks": {
+                "type": "string",
+                "default": "all"
+              }
+            }
+          }
         }
       }
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
     }
   }
 }

@@ -34,12 +34,12 @@ import _ "go-spring.org/starter-s3"
 ### 2. 配置
 
 ```properties
-spring.s3.a.endpoint=127.0.0.1:9000
-spring.s3.a.access-key-id=minioadmin
-spring.s3.a.secret-access-key=minioadmin
-spring.s3.a.region=us-east-1
-spring.s3.a.use-ssl=false
-spring.s3.a.bucket-lookup=auto
+spring.s3.instances.a.endpoint=127.0.0.1:9000
+spring.s3.instances.a.access-key-id=minioadmin
+spring.s3.instances.a.secret-access-key=minioadmin
+spring.s3.instances.a.region=us-east-1
+spring.s3.instances.a.use-ssl=false
+spring.s3.instances.a.bucket-lookup=auto
 ```
 
 ### 3. 注入
@@ -62,7 +62,7 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
 
 ## 核心特性
 
-- **多实例客户端** — 每个 `spring.s3.<name>` 条目都是独立 bean，拥有
+- **多实例客户端** — 每个 `spring.s3.instances.<name>` 条目都是独立 bean，拥有
   各自的配置。
 - **fail-fast 启动探针** — 启动期做一次 `ListBuckets` 往返，第一个对象
   操作之前就暴露配错的端点与被拒的凭证。
@@ -80,9 +80,9 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
 **多客户端** — 配置更多条目并按名注入：
 
 ```properties
-spring.s3.assets.endpoint=127.0.0.1:9000
-spring.s3.assets.access-key-id=...
-spring.s3.assets.secret-access-key=...
+spring.s3.instances.assets.endpoint=127.0.0.1:9000
+spring.s3.instances.assets.access-key-id=...
+spring.s3.instances.assets.secret-access-key=...
 ```
 
 **自定义 driver** — 把自己的 `Driver` 作为可选容器 bean 提供，替换

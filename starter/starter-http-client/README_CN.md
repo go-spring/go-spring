@@ -28,8 +28,10 @@ go get go-spring.org/starter-http-client
  └───────────────────────────┘       └──────────────────────────────────────┘
 ```
 
-生成的 `Client` 只持有一个 `*http.Client`。本 starter 为每个配置项注册一个
-`*http.Client`,其 `http.RoundTripper` 由 [`starter-http-client/httpx`](../../../starter-http-client/httpx)
+生成的 `Client` 只持有一个 `Target`。本 starter 为每个配置项装配一个
+`http.RoundTripper`,并通过替换 `httpclt.DoRequest`(`stdlib/httpclt` 唯一的发送缝)
+安装一个按调用方 `Target` 分派的 hook,生成客户端与手写调用方都零接线接入。每条
+`http.RoundTripper` 由 [`starter-http-client/httpx`](../../../starter-http-client/httpx)
 用三个可组合的 stdlib 抽象装配而成,全部收敛在同一个 `http.RoundTripper` 缝隙上:
 
 * [`discovery`](../../../cloud/discovery) —— 设置了 `service-name` 时,`Resolver`
@@ -54,25 +56,25 @@ go get go-spring.org/starter-http-client
 import _ "go-spring.org/starter-http-client"
 ```
 
-`spring.http-client.<name>` 下的每个配置项为进程级 transport 贡献一条路由。在
+`spring.http-client.instances.<name>` 下的每个配置项为进程级 transport 贡献一条路由。在
 直连地址与经由发现的服务之间切换,只需改配置——调用代码始终不变。见
 [example/conf/app.properties](example/conf/app.properties):
 
 ```properties
 # 直连地址 —— 固定到某台主机,不走发现。
-spring.http-client.direct.addr=127.0.0.1:9471
+spring.http-client.instances.direct.addr=127.0.0.1:9471
 
-# 服务发现 + 负载均衡 —— 按逻辑名路由。
-spring.http-client.discovered.service-name=greet-svc
-spring.http-client.discovered.discovery=static
-spring.http-client.discovered.balancer=round_robin
+# 服务发现 + 负载均衡 —— 按逻辑名路由。LB 策略与端点剔除同样是治理规则(见下文),不是这里的 key。
+spring.http-client.instances.discovered.service-name=greet-svc
+spring.http-client.instances.discovered.discovery=static
 
-# 韧性不在这里配置:策略是进程级 govern.*(starter-governance)。连续 2 次失败熔断:
+# 韧性与端点选择不在这里配置:策略写在治理规则文档的 govern.* 下(starter-governance;
+# conf/govern.properties,由 govern.source.file.path 指向)。连续 2 次失败熔断:
 #   govern.enabled=true
 #   govern.default.enabled=true
 #   govern.default.error-threshold=2
 #   govern.default.open-duration=30s
-spring.http-client.guarded.addr=127.0.0.1:9473
+spring.http-client.instances.guarded.addr=127.0.0.1:9473
 ```
 
 ### 3. 调用
@@ -101,18 +103,17 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 
 | 配置键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `spring.http-client.<name>.addr` | — | 直连 `host:port`;可与 `service-name` 同配,此时 service-name 只作纯治理 label。 |
-| `spring.http-client.<name>.service-name` | — | 经由发现解析的逻辑名;只要设置即同时是治理 resource label。 |
-| `spring.http-client.<name>.discovery` | — | 已注册的发现后端名,设置 `service-name` 时必填。 |
-| `spring.http-client.<name>.balancer` | `round_robin` | 策略:`round_robin`、`least_conn`、`consistent_hash`、`weighted`、`zone_aware`。 |
-| `spring.http-client.<name>.driver` | `default` | 传输装配 driver([RegisterDriver](driver.go)):嵌 `DefaultDriver` 在装配产物外加 auth/metric,或整体替换为自己的 `httpx.NewTransport` 调用。 |
-| `spring.http-client.<name>.suspend-threshold` | `0` | 剔除端点的连续失败次数(0 表示不剔除)。 |
-| `spring.http-client.<name>.suspend-for` | `0` | 被剔除端点的隔离时长。 |
-| `spring.http-client.<name>.tls.enabled` | `false` | 打开该 entry 的 TLS 配置面(完整 `tls.*`:cert-file/key-file/ca-file/server-name/insecure-skip-verify)。 |
+| `spring.http-client.instances.<name>.addr` | — | 直连 `host:port`;可与 `service-name` 同配,此时 service-name 只作纯治理 label。 |
+| `spring.http-client.instances.<name>.service-name` | — | 经由发现解析的逻辑名;只要设置即同时是治理 resource label。 |
+| `spring.http-client.instances.<name>.discovery` | — | 已注册的发现后端名,设置 `service-name` 时必填。 |
+| `spring.http-client.default.driver` | — | 家族级 Driver bean，供所有未自行指定的实例使用。 |
+| `spring.http-client.instances.<name>.driver` | — | 覆盖本实例的家族级默认。嵌 `DefaultDriver` 在装配产物外加 auth/metric，或整体替换为自己的 `httpx.NewTransport` 调用。留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败。 |
+| `spring.http-client.instances.<name>.tls.enabled` | `false` | 打开该 entry 的 TLS 配置面(完整 `tls.*`:cert-file/key-file/ca-file/server-name/insecure-skip-verify)。 |
 
-韧性与故障注入在这里**没有配置 key**:策略是进程级 `govern.*`(见
+韧性、故障注入与端点选择在这里**没有配置 key**:它们是按资源的策略,写在治理规则文档里(见
 starter-governance)。治理资源标签在发现模式下为 `http:<service-name>`,直连模式下为
-`http:<addr>`。单次请求超时来自 `govern.default.attempt-timeout`。
+`http:<addr>`。单次请求超时来自 `govern.default.attempt-timeout`;负载均衡策略与端点剔除来自
+命中该标签的规则上的 `balancer` / `outlier-threshold` / `outlier-suspend-for`。
 
 本 starter 在装配期即快速失败:`addr` 与 `service-name` 至少设置其一;仅按
 服务名路由(未配 `addr`)时 `discovery` 必填。解析到 `http:*` 资源的 error-rate

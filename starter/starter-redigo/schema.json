@@ -2,83 +2,100 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.redigo",
   "type": "object",
+  "description": "Two buckets: spring.redigo.default holds family-wide values (each overridable per instance), spring.redigo.instances.<name> holds one entry per named instance. No other key belongs directly under spring.redigo.",
   "properties": {
-    "addr": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "db": {
-      "type": "integer",
-      "default": 0
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "pool-size": {
-      "type": "integer",
-      "default": 10
-    },
-    "max-idle": {
-      "type": "integer",
-      "default": 5
-    },
-    "dial-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "5s"
-    },
-    "read-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "3s"
-    },
-    "write-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "3s"
-    },
-    "conn-max-lifetime": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "2m"
-    },
-    "service-name": {
-      "type": "string",
-      "default": ""
-    },
-    "scheme": {
-      "type": "string",
-      "default": "",
-      "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
-    },
-    "discovery": {
-      "type": "string",
-      "default": "default"
-    },
-    "tls": {
-      "type": "object"
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
-    },
-    "startup-ping": {
-      "type": "boolean",
-      "default": false,
-      "description": "Ping once at pool Init to fail fast on an unreachable Redis"
-    },
-    "health": {
+    "default": {
       "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Contributes a health.Indicator bean per instance; set false to disable."
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
+    },
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "addr": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "db": {
+            "type": "integer",
+            "default": 0
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          },
+          "pool-size": {
+            "type": "integer",
+            "default": 10
+          },
+          "max-idle": {
+            "type": "integer",
+            "default": 5
+          },
+          "dial-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "5s"
+          },
+          "read-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "3s"
+          },
+          "write-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "3s"
+          },
+          "conn-max-lifetime": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "2m"
+          },
+          "service-name": {
+            "type": "string",
+            "default": ""
+          },
+          "scheme": {
+            "type": "string",
+            "default": "",
+            "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
+          },
+          "discovery": {
+            "type": "string",
+            "default": ""
+          },
+          "tls": {
+            "type": "object"
+          },
+          "startup-ping": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ping once at pool Init to fail fast on an unreachable Redis"
+          },
+          "health": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Contributes a health.Indicator bean per instance; set false to disable."
+              }
+            }
+          }
         }
       }
     }

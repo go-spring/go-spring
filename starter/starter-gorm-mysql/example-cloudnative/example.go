@@ -49,7 +49,8 @@ import (
 
 	_ "go-spring.org/starter-actuator"    // aggregates the gorm health.Indicator
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
-	starter "go-spring.org/starter-gorm-mysql"
+	gormcore "go-spring.org/starter-gorm"
+	_ "go-spring.org/starter-gorm-mysql"
 	_ "go-spring.org/starter-governance" // registers the centralized governance center
 )
 
@@ -73,7 +74,7 @@ func init() {
 // discovery (service-name), its queries are protected by resilience, and its
 // pool health is exported as a health.Indicator the actuator collects.
 type Service struct {
-	DB *starter.DB `autowire:"primary"`
+	DB *gormcore.DB `autowire:"mysql.primary"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

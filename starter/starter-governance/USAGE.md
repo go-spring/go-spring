@@ -11,13 +11,14 @@ self-terminates after 6s unless `-manual`).
 **What this starter is**: the wiring between gs and the container-free governance core
 (`cloud/governance`). Blank-importing it is inert until configured. Two roles:
 
-1. **Default wiring** (always registered, `wiring.go`): binds `${govern}` properties into the
-   governance center via a gs.Dync adapter and arms it — the whole plain-`${govern}` experience,
-   with every conf provider's watch (file fsnotify, nacos ListenConfig, k8s informer, consul,
-   vault, bus) working through gs's two-phase refresh, unchanged.
+1. **Wiring** (always registered, `wiring.go`): hands the injected `governance.Source` bean to
+   the governance center, registers the executor/fault seams and marks the authority live.
 2. **Source adapters** (conditional, `source_file.go` / `source_http.go`): when a
-   `govern.source.*` key is present, a `governance.Source` bean replaces the default and rules
-   refresh governance only — never an app-wide property re-bind.
+   `govern.source.*` key is present, a `governance.Source` bean is injected into the wiring;
+   rules refresh governance only — never an app-wide property re-bind.
+
+Governance configuration is its own document (a rules file, a console, a config center) — it is
+NOT written into `app.properties`; only the one `govern.source.*` bootstrap key is.
 
 Governance semantics themselves (policy resolution, breaker/retry/ratelimit behavior, fault
 injection model) are documented in `cloud/governance` — everything below is the starter's wiring
@@ -113,8 +114,7 @@ func main() {
 ```properties
 # The governance rules live in their OWN file, watched by starter-governance's
 # file source — nothing under govern.* here. This key arms the starter's
-# conditional module, whose Source bean is injected onto the governance center
-# and replaces the default ${govern} dync binding.
+# conditional module, whose Source bean is injected onto the governance center.
 govern.source.file.path=conf/govern.yaml
 ```
 
@@ -147,14 +147,12 @@ go run . -manual
 
 The change lands within ~1s of saving (fsnotify), with no restart and no app-wide re-bind.
 
-**Variant — rules embedded in app.properties (the default path)**: omit every
-`govern.source.*` key and write the same `govern.*` keys directly in app.properties. The
-starter's default wiring binds them through a gs.Dync, so any conf provider's watch (nacos
-ListenConfig, k8s informer, …) hot-reloads governance with the rest of the properties. The two
-paths are mutually exclusive per key-set: exactly one source is active per process.
+**Variant — another source**: swap `govern.source.file.path` for `govern.source.http.*` (a
+console), or a nacos/etcd source key from their own starters. Exactly one source is active per
+process, and there is no longer an app.properties path: rules always come through a Source.
 
 **Variant — combining with a server starter**: any client starter wired to the neutral seams
-(`resilience.ExecutorFor(label)`, `fault.InjectorFor()`) picks the policy up automatically — no
+(`resilience.ExecutorFor(system, label)`, `fault.InjectorFor()`) picks the policy up automatically — no
 application code changes. See starter-echo's USAGE §4.4 for a worked fault drill through an HTTP
 server with `scope: loadtest`.
 
@@ -184,8 +182,7 @@ Deliberate omissions (from the interface's doc comment):
 - **A single callback** — the center is the only consumer; a second Subscribe may replace the
   first.
 
-The **default source** is the `${govern}` gs.Dync adapted to this contract by `dyncSource`
-(`wiring.go:85-91`): `Snapshot()` returns `Dync.Value()`, `Subscribe` hooks `Dync.OnChanged`. The
+The wiring picks its source from the bean injected into `wiring.Src` (`wiring.go:38-43`). The
 adapter family: `FileSource` (fsnotify), `HTTPSource` (interval poll) in this starter;
 nacos (ListenConfig push) in `experimental/starter-config-nacos`, etcd (Watch push) in
 `starter-config-etcd`; `governance.PushSource` for hand-rolled push integrations.
@@ -207,7 +204,7 @@ gs.Run()
   ├─ bean wiring: the source bean's Export makes it visible; it is field-injected into
   │      wiring.Src (`autowire:"?"` — nullable: no bean ⇒ nil ⇒ default path)
   ├─ wiring.Init():
-  │      BindDefault(Src if non-nil, else dyncSource{gov: &w.Gov})
+  │      BindDefault(Src)   (nil-safe: no source bean ⇒ stays disabled)
   │        ├─ explicit SetSource already called?  → BindDefault is a NO-OP (SetSource wins)
   │        ├─ bindSource: subscribe (stale-guarded by handle pointer) + adopt Snapshot()
   │      GoLive(): build process-wide *fault.Injector from the snapshot,
@@ -226,7 +223,7 @@ Two design points worth knowing (both from source comments, verified):
   does not instantiate beans that are neither exported nor injected — without
   `Export(gs.As[gs.Rooter]())` none of the registrations would fire in production (`wiring.go:53-58`).
   Similarly, a custom Source bean of yours is invisible to interface injection unless you
-  `Export(gs.As[governance.Source]())` it — a missing Export silently falls back to `${govern}`.
+  `Export(gs.As[governance.Source]())` it — a missing Export silently leaves governance disabled.
 - **The Center never enters the container.** `cloud/governance` exposes only package-level
   functions; the singleton (`global.go:42`) is armed in place by the wiring bean. Nothing outside
   the package obtains a `*center`.
@@ -249,14 +246,14 @@ exactly once whichever side wins the race.
 2. `FileSource.reload()` re-reads and parses through `rules.Parse` — format inferred from the
    extension (`.yaml`), parsed by the shared conf reader registry, flattened, required to carry
    at least one `govern.*` key, then bound into `governance.Config` through the same value-tag
-   machinery as the `${govern}` Dync (`rules/rules.go:57-75`). A parse failure or a
+   machinery (`rules/rules.go:57-75`). A parse failure or a
    govern-key-less document logs `reload ... failed (keeping last good config)` and stops.
 3. Unchanged config (DeepEqual) pushes nothing — a touch does not churn executors.
 4. The center's subscribed callback adopts the config: `refresh(cfg)` stores the atomic snapshot,
    re-resolves the policy for every registered label, and notifies only subscribers whose policy
    actually changed (`govern.go:376-397`); `injector.SetConfig(cfg.Fault)` hot-swaps fault in place.
 5. Seam effect: client starters never import governance — they call
-   `resilience.ExecutorFor(label)` and `fault.InjectorFor()`, both resolved lazily at call time.
+   `resilience.ExecutorFor(system, label)` and `fault.InjectorFor()`, both resolved lazily at call time.
    The executor's Refresh swaps the live policy; the fault injector's config is swapped in place,
    so `fault.enabled: true` takes effect on the very next call with no restart.
 
@@ -284,9 +281,9 @@ in their own starters: `govern.source.nacos.*` (starter-config-nacos, ListenConf
 `govern.source.etcd.*` (starter-config-etcd: `endpoint`, `key`, …, Watch push) — the documents are
 byte-portable across all of these backends.
 
-The default path needs no source key at all: `govern.*` written directly in app.properties binds
-through the gs.Dync. ⚠ The Dync field tag `value:"${govern:=}"` is an absolute top-level key —
-never instance-prefixed.
+There is no default path: without a `govern.source.*` key (or an injected/`SetSource` source) the
+center stays disabled. ⚠ `govern.source.*` is bootstrap ONLY — the rules themselves never live in
+app.properties.
 
 ### 3.2 Rules document — top level
 
@@ -429,9 +426,8 @@ Design suspects (audit ledger; carried over from the previous edition, none newl
    one namespace, two roles.
 2. Replace-vs-merge asymmetry between resilience rules (full replace, empty-resources matches
    nothing) and fault rules (catch-all + global fallback) — must be memorized.
-3. The `wiring.Gov` Dync field exists purely to keep gs's properties-refresh alive — an internal
-   coupling a doc must explain away (`wiring.go:38-43`).
-4. A custom Source bean without `Export(gs.As[...])` silently falls back to the default source.
+3. A custom Source bean without `Export(gs.As[...])` silently leaves governance disabled (startup
+   leaves the center disabled).
 5. The example's self-kill smoke script is still not checked in as a CI-runnable `check.sh`.
 6. Concepts the doc must define (Center / Source / Snapshot vs Subscribe / seams / adopt) — the
    mental model is real work for a first-time user.

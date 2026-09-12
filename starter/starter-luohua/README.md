@@ -62,22 +62,24 @@ own `security.TokenValidator` — luohua never special-cases its own.
 Luohua's one catalog is provided as an `i18n.MessageSource` default and steps
 aside (`OnMissingBean`) if the application supplies its own.
 
-### Standard driver — `luohua`
+### Standard cache — `luohua`
 
-Luohua registers an in-process, TTL-aware cache under the uniform company driver
-name `luohua`. Select it the same way as any cache backend:
+Luohua provides an in-process, TTL-aware cache as a `cache.Cache` bean under the
+uniform company name `luohua`:
 
-```properties
-spring.cache.<name>.driver = luohua:<beanID>
+```go
+Cache *cache.Cache `autowire:"luohua"`
 ```
+
+The bean carries no config gate: if nothing injects it, it never instantiates.
 
 ## Governance
 
 Luohua deliberately brings **no governance engine of its own** — outbound calls
 already funnel through go-spring's neutral `resilience.ExecutorFor` /
-`fault.InjectorFor` seams under the single `${govern}` authority, and a company
+`fault.InjectorFor` seams under the single governance authority, and a company
 that has no bespoke backend should ride the official one and pin its policy per
-fleet. Do that with ordinary `${govern}` configuration:
+fleet. Do that in a governance rules document (see starter-governance):
 
 ```properties
 govern.driver=default

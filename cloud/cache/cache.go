@@ -23,8 +23,8 @@
 // reported as [ErrMiss], distinct from a backend error, so a read-through
 // falls back to the source of truth only on a real miss.
 //
-// The package is container-free: the driver registry and the ${spring.cache}
-// module that turn config entries into Cache beans live in starter-cache.
+// The package is container-free: each backend starter (redigo, go-redis,
+// bigcache, memcached) exposes its instances as Cache beans directly.
 package cache
 
 import (

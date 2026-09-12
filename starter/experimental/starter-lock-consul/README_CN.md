@@ -5,7 +5,7 @@
 `starter-lock-consul` 将 [Consul](https://www.consul.io/) 接入
 [`go-spring.org/cloud/lock`](../../../cloud/lock) 定义的 `lock.Locker`
 抽象，作为**分布式锁后端**。空导入该 starter 会为
-`spring.lock.<name>` 下的每一项注册一个 `lock.Locker` Bean，每个 Bean 各自持有
+`spring.lock.instances.<name>` 下的每一项注册一个 `lock.Locker` Bean，每个 Bean 各自持有
 一个自动续约的 Consul 会话。
 
 由于注入的类型是中立的 `lock.Locker` 接口，在 Redis、etcd 与 Consul 三种后端
@@ -30,9 +30,9 @@ import _ "go-spring.org/starter-lock-consul"
 在[配置文件](example/conf/app.properties)中按名字添加实例：
 
 ```properties
-spring.lock.jobs.address=127.0.0.1:8500
-spring.lock.jobs.ttl=30s
-spring.lock.jobs.key-prefix=demo/lock/
+spring.lock.instances.jobs.address=127.0.0.1:8500
+spring.lock.instances.jobs.ttl=30s
+spring.lock.instances.jobs.key-prefix=demo/lock/
 ```
 
 ### 3. 注入并使用 `lock.Locker`
@@ -65,7 +65,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 ## 配置项
 
-所有配置都在 `spring.lock.<name>` 前缀下：
+所有配置都在 `spring.lock.instances.<name>` 前缀下：
 
 | 键                  | 默认值    | 说明                                                             |
 |---------------------|-----------|------------------------------------------------------------------|

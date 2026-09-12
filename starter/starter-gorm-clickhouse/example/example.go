@@ -28,7 +28,8 @@ import (
 
 	"go-spring.org/spring/gs"
 
-	starter "go-spring.org/starter-gorm-clickhouse"
+	gormcore "go-spring.org/starter-gorm"
+	_ "go-spring.org/starter-gorm-clickhouse"
 )
 
 // KV is a small demo model. `key` and `value` can be reserved-ish words, so we
@@ -45,8 +46,8 @@ type KV struct {
 func (KV) TableName() string { return "kv" }
 
 type Service struct {
-	DB          *starter.DB `autowire:"primary"`
-	DiscoveryDB *starter.DB `autowire:"discovery"`
+	DB          *gormcore.DB `autowire:"clickhouse.primary"`
+	DiscoveryDB *gormcore.DB `autowire:"clickhouse.discovery"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

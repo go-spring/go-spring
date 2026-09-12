@@ -31,12 +31,12 @@ Add the Kafka configuration to your project's
 [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.kafka-sarama.a.brokers=127.0.0.1:9092
-spring.kafka-sarama.a.version=3.7.0
-spring.kafka-sarama.b.brokers=127.0.0.1:9092
+spring.kafka-sarama.instances.a.brokers=127.0.0.1:9092
+spring.kafka-sarama.instances.a.version=3.7.0
+spring.kafka-sarama.instances.b.brokers=127.0.0.1:9092
 ```
 
-> Each entry under `spring.kafka-sarama.<name>` becomes an independently
+> Each entry under `spring.kafka-sarama.instances.<name>` becomes an independently
 > configured `sarama.Client` bean registered under that name.
 > `version` must match the target cluster for features such as
 > consumer groups to behave correctly. When omitted, sarama's own default is

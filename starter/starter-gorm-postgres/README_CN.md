@@ -28,12 +28,12 @@ import _ "go-spring.org/starter-gorm-postgres"
 在项目的[配置文件](example/conf/app.properties)中添加 gorm 配置，比如：
 
 ```properties
-spring.gorm.postgres.primary.host=127.0.0.1
-spring.gorm.postgres.primary.port=5432
-spring.gorm.postgres.primary.user=postgres
-spring.gorm.postgres.primary.password=123456
-spring.gorm.postgres.primary.db=test
-spring.gorm.postgres.primary.sslmode=disable
+spring.gorm.postgres.instances.primary.host=127.0.0.1
+spring.gorm.postgres.instances.primary.port=5432
+spring.gorm.postgres.instances.primary.user=postgres
+spring.gorm.postgres.instances.primary.password=123456
+spring.gorm.postgres.instances.primary.db=test
+spring.gorm.postgres.instances.primary.sslmode=disable
 ```
 
 ### 3. 注入 gorm 实例
@@ -41,10 +41,10 @@ spring.gorm.postgres.primary.sslmode=disable
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import "gorm.io/gorm"
+import "go-spring.org/starter-gorm"
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // 内嵌 *gorm.DB 的包装
+    DB *gormcore.DB `autowire:"postgres.primary"` // 内嵌 *gorm.DB 的包装
 }
 ```
 

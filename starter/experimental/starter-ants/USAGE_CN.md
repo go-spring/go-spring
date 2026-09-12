@@ -6,7 +6,7 @@
 [ants 文档](https://github.com/panjf2000/ants)** —— 下文只写 go-spring 的增量：装配、
 observer、panic 策略、指标。
 
-**激活方式**：任意 `spring.ants.<name>` 子树。starter 通过 `gs.Module(gs.OnProperty("spring.ants"))`
+**激活方式**：任意 `spring.ants.instances.<name>` 子树。starter 通过 `gs.Module(gs.OnProperty("spring.ants"))`
 + `conf.BindEach` 注册，每个 map key 生成一个具名 `Pool` bean。不配置就没有 bean；
 没有 `enabled` 开关。
 
@@ -110,17 +110,17 @@ func init() {
 
 ```properties
 # --- io pool：小容量，满载时快速失败而非排队 ------------------------------
-spring.ants.io.size=2
-spring.ants.io.nonblocking=true
+spring.ants.instances.io.size=2
+spring.ants.instances.io.nonblocking=true
 
 # --- cpu pool：有界阻塞 pool，空闲 worker 回收 ----------------------------
-spring.ants.cpu.size=8
-spring.ants.cpu.expiry-duration=10s
+spring.ants.instances.cpu.size=8
+spring.ants.instances.cpu.expiry-duration=10s
 
 # --- 可选 knob（默认值见 §3）----------------------------------------------
-# spring.ants.cpu.max-blocking-tasks=0
-# spring.ants.cpu.pre-alloc=false
-# spring.ants.cpu.disable-purge=false
+# spring.ants.instances.cpu.max-blocking-tasks=0
+# spring.ants.instances.cpu.pre-alloc=false
+# spring.ants.instances.cpu.disable-purge=false
 ```
 
 **验证**（与 `example/check.sh` 同构）：
@@ -145,10 +145,12 @@ import starter-ants
        gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())   // 内置 observer bean
        添加自定义 observer：gs.Provide(NewX).Export(gs.As[PoolObserver]())
 gs.Run()
-  ├─ gs.Module(gs.OnProperty("spring.ants")) 触发（前缀匹配：任意 spring.ants.* key）
+  ├─ gs.Module(gs.OnProperty("spring.ants")) 触发（前缀匹配：任意 spring.ants.instances.* key）
   ├─ conf.BindEach("${spring.ants}") → 每个 map key 一份 Config
   ├─ 每个 name：gs.Provide(ctor).Name(name).Destroy(destroyPool)
-  │     ctor 装配 ①可选 Driver bean（"?"）——无则回退内置 DefaultDriver
+  │     ctor 装配 ①可选 Driver bean——无则回退内置 DefaultDriver；多个并存时
+  │         可按名指定：`spring.ants.instances.<name>.driver = <bean 名>`（留空 = 按类型
+  │         注入唯一 Driver bean；指定的 bean 不存在则启动失败）
   │         ②[]PoolObserver collection ——容器收集所有 Export 成 PoolObserver 的
   │             bean（内置 MetricsObserver 因被收集而必然实例化）
   ├─ bean init：createPool(observers) →（Driver bean | DefaultDriver).CreatePool
@@ -211,7 +213,7 @@ pool 的 ctor），并在建池时把链折叠快照进 `observedPool` —— �
 
 ## 3. 逐 key 行为参考
 
-前缀 `spring.ants.<name>.*` —— 多实例，key 按实例前缀绑定（`conf.BindEach` 带
+前缀 `spring.ants.instances.<name>.*` —— 多实例，key 按实例前缀绑定（`conf.BindEach` 带
 实例前缀；不是顶层绝对引用）。
 
 | key | 类型 | 默认值 | 行为/联动 | 配错后果 |
@@ -267,8 +269,8 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 没有 pool bean；autowire `Pool` 失败 | 未配置任何 `spring.ants.*` key | 至少加 `spring.ants.<name>.size` —— 子树即激活开关。 |
-| 自定义 Driver bean 不生效 | 提供了两个 `Driver` bean，或注册晚于装配 | 每进程最多一个 `Driver` bean；ctor 在装配期被 autowire。 |
+| 没有 pool bean；autowire `Pool` 失败 | 未配置任何 `spring.ants.instances.*` key | 至少加 `spring.ants.instances.<name>.size` —— 子树即激活开关。 |
+| 自定义 Driver bean 不生效 | 实例没有按名选中它，按类型注入选到了另一个 | 容器中存在多个 `Driver` bean 时，每池按名指定：`spring.ants.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）。 |
 | 任务被静默丢弃 | `nonblocking=true` 且未检查 Submit 错误 | 检查 Submit 错误（返回 `ErrPoolOverload`）。 |
 | 提交方卡住 | 阻塞池满载且 `max-blocking-tasks=0` | 调大 `size`、设置 `max-blocking-tasks` 或改非阻塞。 |
 | 池 panic 未被自定义逻辑观察 | 只有默认链在上报 | 装 `goutil.OnPanic` 覆盖，或贡献自定义 `Driver` bean。 |

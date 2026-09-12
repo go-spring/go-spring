@@ -27,8 +27,8 @@ import (
 )
 
 func init() {
-	gs.Module(gs.OnProperty("spring.xxljob"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.xxljob}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.xxljob.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.xxljob.instances}", func(name string, c Config) error {
 			r.Provide(newExecutor,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),

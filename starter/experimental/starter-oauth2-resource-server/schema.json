@@ -2,67 +2,77 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.security.oauth2.resource.jwt",
   "type": "object",
+  "description": "Two buckets: spring.security.oauth2.resource.jwt.default holds family-wide values (each overridable per instance), spring.security.oauth2.resource.jwt.instances.<name> holds one entry per named instance. No other key belongs directly under spring.security.oauth2.resource.jwt.instances.",
   "properties": {
-    "issuer-uri": {
-      "type": "string",
-      "description": "OAuth2/OIDC issuer identifier; discovered to a JWKS endpoint via .well-known/openid-configuration",
-      "default": ""
-    },
-    "issuer": {
-      "type": "string",
-      "description": "Overrides the expected iss claim (defaults to issuer-uri)",
-      "default": ""
-    },
-    "public-key": {
-      "type": "string",
-      "description": "Inline PEM-encoded RSA or ECDSA public key",
-      "default": ""
-    },
-    "public-key-file": {
-      "type": "string",
-      "description": "Path to a PEM-encoded public key file",
-      "default": ""
-    },
-    "secret": {
-      "type": "string",
-      "description": "Shared HMAC secret for HS256/HS384/HS512",
-      "default": ""
-    },
-    "audiences": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Acceptable aud values (any-of)",
-      "default": []
-    },
-    "algorithm": {
-      "type": "string",
-      "description": "Pin one signing algorithm, e.g. RS256, HS256, ES256",
-      "default": ""
-    },
-    "jwks-refresh": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "15m"
-    },
-    "jwks-timeout": {
-      "type": "string",
-      "description": "Duration string bounding each discovery/JWKS fetch",
-      "default": "10s"
-    },
-    "scope-claim": {
-      "type": "string",
-      "default": "scope"
-    },
-    "roles-claim": {
-      "type": "string",
-      "default": "roles"
-    },
-    "leeway": {
-      "type": "string",
-      "description": "Clock-skew tolerance for exp/nbf/iat, e.g. '30s'",
-      "default": "0s"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "issuer-uri": {
+            "type": "string",
+            "description": "OAuth2/OIDC issuer identifier; discovered to a JWKS endpoint via .well-known/openid-configuration",
+            "default": ""
+          },
+          "issuer": {
+            "type": "string",
+            "description": "Overrides the expected iss claim (defaults to issuer-uri)",
+            "default": ""
+          },
+          "public-key": {
+            "type": "string",
+            "description": "Inline PEM-encoded RSA or ECDSA public key",
+            "default": ""
+          },
+          "public-key-file": {
+            "type": "string",
+            "description": "Path to a PEM-encoded public key file",
+            "default": ""
+          },
+          "secret": {
+            "type": "string",
+            "description": "Shared HMAC secret for HS256/HS384/HS512",
+            "default": ""
+          },
+          "audiences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Acceptable aud values (any-of)",
+            "default": []
+          },
+          "algorithm": {
+            "type": "string",
+            "description": "Pin one signing algorithm, e.g. RS256, HS256, ES256",
+            "default": ""
+          },
+          "jwks-refresh": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "15m"
+          },
+          "jwks-timeout": {
+            "type": "string",
+            "description": "Duration string bounding each discovery/JWKS fetch",
+            "default": "10s"
+          },
+          "scope-claim": {
+            "type": "string",
+            "default": "scope"
+          },
+          "roles-claim": {
+            "type": "string",
+            "default": "roles"
+          },
+          "leeway": {
+            "type": "string",
+            "description": "Clock-skew tolerance for exp/nbf/iat, e.g. '30s'",
+            "default": "0s"
+          }
+        }
+      }
     }
   }
 }

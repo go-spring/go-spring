@@ -17,9 +17,9 @@
 // Package StarterBatchRedis contributes Redis-backed
 // [batch.JobRepository] beans to a Go-Spring application. Blank-importing
 // this package registers one JobRepository per entry under
-// spring.batch-repository.<name>; each repository reuses the *redis.Client
+// spring.batch-repository.instances.<name>; each repository reuses the *redis.Client
 // bean named by its `client` field (provided by starter-go-redis under
-// spring.go-redis.<client>).
+// spring.go-redis.instances.<client>).
 //
 // This is a Contributor-archetype starter (see starter/DESIGN.md §2.3): it
 // exports no port and holds no connection of its own, it merely contributes
@@ -31,8 +31,8 @@
 // batch.JobRepository, so the batch runner (starter-batch) picks it up by
 // interface via spring.batch.repository=<name>:
 //
-//	spring.go-redis.cache.addr=127.0.0.1:6379
-//	spring.batch-repository.jobs.client=cache
+//	spring.go-redis.instances.cache.addr=127.0.0.1:6379
+//	spring.batch-repository.instances.jobs.client=cache
 //	spring.batch.repository=jobs
 package StarterBatchRedis
 
@@ -48,15 +48,15 @@ import (
 )
 
 func init() {
-	gs.Module(gs.OnProperty("spring.batch-repository"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.batch-repository}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.batch-repository.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.batch-repository.instances}", func(name string, c Config) error {
 			// Fail fast: silently defaulting to some arbitrary *redis.Client
 			// would hide a misconfiguration that only surfaces the first time
 			// the batch runner tries to persist progress, potentially in
 			// production. Refusing to boot is safer.
 			if c.Client == "" {
 				return errutil.Explain(nil, "batch-redis: instance %q missing required property %q",
-					name, "spring.batch-repository."+name+".client")
+					name, "spring.batch-repository.instances."+name+".client")
 			}
 			log.Debugf(context.Background(), log.TagAppDef, "creating batch redis repository name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
 			// TagArg injects the *redis.Client bean by name — this is the

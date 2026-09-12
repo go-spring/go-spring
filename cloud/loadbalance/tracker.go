@@ -18,6 +18,7 @@ package loadbalance
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud/discovery"
@@ -60,10 +61,17 @@ type TrackerConfig struct {
 // A Tracker with Threshold <= 0 is disabled: [Tracker.Allows] returns every
 // endpoint and [Tracker.Record] is a no-op. It is safe to attach a disabled
 // Tracker — it has no effect until Threshold is set.
+//
+// The config is swappable in place via [Tracker.SetConfig] so a hot-reloaded
+// governance policy can retune suspension without rebuilding the tracker —
+// which matters because the per-endpoint state (failure counts, cool-down
+// windows) is exactly what must survive the retune.
 type Tracker struct {
-	// cfg is the normalized copy of the [TrackerConfig] passed to NewTracker
-	// (SuspendFor's default applied).
-	cfg TrackerConfig
+	// cfg is the normalized [TrackerConfig] currently in force, swapped
+	// atomically so [Tracker.Admissible] can read it without taking the state
+	// mutex on the hot path. SuspendFor's default is applied on the way in, by
+	// NewTracker and SetConfig alike.
+	cfg atomic.Pointer[TrackerConfig]
 
 	// now is the clock, injectable so tests can drive suspension windows
 	// deterministically. Defaults to time.Now.
@@ -76,14 +84,32 @@ type Tracker struct {
 // NewTracker builds a [Tracker] from cfg. A zero SuspendFor is normalized to
 // the 5s default here.
 func NewTracker(cfg TrackerConfig) *Tracker {
-	if cfg.SuspendFor <= 0 {
-		cfg.SuspendFor = 5 * time.Second
-	}
-	return &Tracker{
-		cfg:    cfg,
+	t := &Tracker{
 		now:    time.Now,
 		states: map[string]*suspendState{},
 	}
+	t.SetConfig(cfg)
+	return t
+}
+
+// SetConfig replaces the suspension config in place. Per-endpoint state is
+// kept: endpoints already suspended stay suspended (their remaining cool-down
+// is re-evaluated against the new SuspendFor), and failure counts carry over.
+// Safe for concurrent use with [Tracker.Admissible] and [Tracker.Record].
+func (t *Tracker) SetConfig(cfg TrackerConfig) {
+	if cfg.SuspendFor <= 0 {
+		cfg.SuspendFor = 5 * time.Second
+	}
+	t.cfg.Store(&cfg)
+}
+
+// Config returns the suspension config currently in force (with the SuspendFor
+// default applied). It is primarily an inspection and test helper.
+func (t *Tracker) Config() TrackerConfig {
+	if t == nil {
+		return TrackerConfig{}
+	}
+	return *t.cfg.Load()
 }
 
 // Allows returns the subset of eps that may currently receive traffic:
@@ -105,7 +131,11 @@ func (t *Tracker) Allows(eps []discovery.Endpoint) []discovery.Endpoint {
 // Admissible is [Allows] without the fallback: when every endpoint is
 // suspended it returns an empty slice, leaving that decision to the caller.
 func (t *Tracker) Admissible(eps []discovery.Endpoint) []discovery.Endpoint {
-	if t == nil || t.cfg.Threshold <= 0 || len(eps) == 0 {
+	if t == nil {
+		return eps
+	}
+	cfg := *t.cfg.Load()
+	if cfg.Threshold <= 0 || len(eps) == 0 {
 		return eps
 	}
 	t.mu.Lock()
@@ -113,7 +143,7 @@ func (t *Tracker) Admissible(eps []discovery.Endpoint) []discovery.Endpoint {
 
 	out := eps[:0:0]
 	for _, ep := range eps {
-		if t.admitLocked(ep.Addr) {
+		if t.admitLocked(ep.Addr, cfg.SuspendFor) {
 			out = append(out, ep)
 		}
 	}
@@ -123,12 +153,12 @@ func (t *Tracker) Admissible(eps []discovery.Endpoint) []discovery.Endpoint {
 // admitLocked reports whether addr may receive a request, advancing a suspended
 // endpoint into the half-open trial state once its cool-down has elapsed. Caller
 // holds t.mu.
-func (t *Tracker) admitLocked(addr string) bool {
+func (t *Tracker) admitLocked(addr string, suspendFor time.Duration) bool {
 	s := t.states[addr]
 	if s == nil || s.suspendedAt.IsZero() {
 		return true // never failed, or recovered
 	}
-	if t.now().Sub(s.suspendedAt) < t.cfg.SuspendFor {
+	if t.now().Sub(s.suspendedAt) < suspendFor {
 		return false // suspended, cooling down
 	}
 	s.halfOpen = true // cool-down elapsed: admit a trial request
@@ -140,7 +170,11 @@ func (t *Tracker) admitLocked(addr string) bool {
 // toward suspension (or re-suspends a failed half-open trial). It is a no-op when
 // the tracker is disabled.
 func (t *Tracker) Record(addr string, success bool) {
-	if t == nil || t.cfg.Threshold <= 0 {
+	if t == nil {
+		return
+	}
+	cfg := *t.cfg.Load()
+	if cfg.Threshold <= 0 {
 		return
 	}
 	t.mu.Lock()
@@ -164,7 +198,7 @@ func (t *Tracker) Record(addr string, success bool) {
 		return
 	}
 	s.failures++
-	if s.failures >= t.cfg.Threshold {
+	if s.failures >= cfg.Threshold {
 		s.suspendedAt = t.now()
 	}
 }
@@ -172,7 +206,11 @@ func (t *Tracker) Record(addr string, success bool) {
 // Suspended reports whether addr is currently suspended and still cooling down. It
 // is primarily a test/inspection helper; routing decisions go through Allows.
 func (t *Tracker) Suspended(addr string) bool {
-	if t == nil || t.cfg.Threshold <= 0 {
+	if t == nil {
+		return false
+	}
+	cfg := *t.cfg.Load()
+	if cfg.Threshold <= 0 {
 		return false
 	}
 	t.mu.Lock()
@@ -181,5 +219,5 @@ func (t *Tracker) Suspended(addr string) bool {
 	if s == nil || s.suspendedAt.IsZero() {
 		return false
 	}
-	return t.now().Sub(s.suspendedAt) < t.cfg.SuspendFor
+	return t.now().Sub(s.suspendedAt) < cfg.SuspendFor
 }

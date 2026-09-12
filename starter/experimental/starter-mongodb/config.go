@@ -21,7 +21,6 @@ package StarterMongoDB
 import (
 	"time"
 
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -92,13 +91,9 @@ type Config struct {
 	Scheme string `value:"${scheme:=}"`
 
 	// Discovery names the discovery backend bean that resolves ServiceName.
-	// It is only consulted when ServiceName is set. The bean itself is injected
-	// by the starter's constructor from this label; the default label is
-	// "default".
-	Discovery string `value:"${discovery:=default}"`
-
-	// backend is the discovery backend instance the Discovery label above
-	// cites. It is populated by the starter wiring (newClient injects the named
-	// discovery.Discovery bean), never bound from configuration.
-	backend discovery.Discovery
+	// It is only consulted when ServiceName is set. The starter wiring resolves
+	// this label to the backend bean and hands the result to the client assembly
+	// (newPickPool) as the backend argument. Empty means unset: no discovery
+	// backend is wired and the entry must not route by service-name alone.
+	Discovery string `value:"${discovery:=}"`
 }

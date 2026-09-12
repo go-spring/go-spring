@@ -30,12 +30,17 @@ func init() {
 	// Register multiple NATS connections as a group.
 	// Each instance is created according to the configuration in
 	// "${spring.nats}", allowing multiple connections dynamically.
-	gs.Module(gs.OnProperty("spring.nats"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.nats}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.nats.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.nats.instances}", func(name string, c Config) error {
+			// The Driver param (index 3) is selected by the entry's ${driver}
+			// key: unset → "?" (nullable by-type — injects the single Driver
+			// bean when a company provides one, nil otherwise, and newConn
+			// falls back to DefaultDriver); set → that bean name, and naming
+			// a bean that does not exist fails loud.
 			r.Provide(newConn,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("${spring.nats.instances."+name+".driver:=${spring.nats.default.driver:=?}}")),
 			).Name(name).Destroy(destroyConn).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a

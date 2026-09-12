@@ -9,8 +9,8 @@ and [RocketMQ's own docs](https://rocketmq.apache.org/docs/)** — everything be
 increment. The client library is `github.com/apache/rocketmq-client-go/v2` (the remoting client,
 not the 5.x gRPC `rocketmq-clients`); see DESIGN.md §4 for that choice.
 
-**Activation**: any `spring.rocketmq.*` key (the module registers `OnProperty("spring.rocketmq")`,
-a prefix check [starter.go:40]). Each `spring.rocketmq.<name>` entry creates one
+**Activation**: any `spring.rocketmq.instances.*` key (the module registers `OnProperty("spring.rocketmq")`,
+a prefix check [starter.go:40]). Each `spring.rocketmq.instances.<name>` entry creates one
 `*StarterRocketmq.Client` bean named `<name>`.
 
 ---
@@ -74,7 +74,7 @@ import (
 )
 
 type Service struct {
-    // The wrapper bean, named after the config entry (spring.rocketmq.a).
+    // The wrapper bean, named after the config entry (spring.rocketmq.instances.a).
     Client *StarterRocketmq.Client `autowire:"a"`
 }
 
@@ -120,11 +120,11 @@ func init() {
 
 ```properties
 # --- rocketmq --------------------------------------------------------------
-spring.rocketmq.a.name-servers=127.0.0.1:9876
-spring.rocketmq.a.send-timeout=5s
-spring.rocketmq.a.fail-fast=true          # TCP probe of the name server at boot
-# spring.rocketmq.a.access-key=...         # ACL: must pair with secret-key
-# spring.rocketmq.a.secret-key=...
+spring.rocketmq.instances.a.name-servers=127.0.0.1:9876
+spring.rocketmq.instances.a.send-timeout=5s
+spring.rocketmq.instances.a.fail-fast=true          # TCP probe of the name server at boot
+# spring.rocketmq.instances.a.access-key=...         # ACL: must pair with secret-key
+# spring.rocketmq.instances.a.secret-key=...
 
 # --- actuator + otel -------------------------------------------------------
 spring.actuator.addr=:9370
@@ -169,20 +169,22 @@ curl -s :9370/healthz
 
 ```
 import starter-rocketmq
-  └─ gs.Module(OnProperty("spring.rocketmq")) fires when any spring.rocketmq.* key exists
+  └─ gs.Module(OnProperty("spring.rocketmq")) fires when any spring.rocketmq.instances.* key exists
         └─ conf.BindEach("${spring.rocketmq}") → one Config per <name> entry   [starter.go:40-48]
               └─ Provide(newClient).Name(<name>).Destroy((*Client).Close)      [starter.go:42-45]
 
 gs.Run()
   ├─ ctor newClient [starter.go:57]:
   │    1. pair-check access-key/secret-key (one-sided → boot error)           [starter.go:60-62]
-  │    2. Driver.CreateClient — the optional Driver bean, or the bundled
+  │    2. Driver.CreateClient — the optional Driver bean (selected per entry by
+  │       ${spring.rocketmq.instances.<name>.driver}: empty = `spring.rocketmq.default.driver` then by type; set = by bean name —
+  │       naming a missing bean fails startup), or the bundled
   │       DefaultDriver when none is provided: installs the rlog→go-spring log
   │       bridge (process-global, exactly once via sync.Once)                 [driver.go:94-96]
   │    3. FailFast probe: TCP dial, first reachable addr wins, 3s budget
   │       per address; failure → boot error                                    [driver.go:146-160]
-  │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │       → resilience.WrapExecutor → attached to the Client                [command.go:180-186]
+  │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor("rocketmq", resource))
+  │       → attached to the Client                                          [command.go:156-161]
   ├─ app injects *Client wherever `autowire:"<name>"` appears
   ├─ app creates producers/consumers/driver at its own pace (each registered
   │  on the Client under a mutex)                                             [client.go:104-157]
@@ -208,9 +210,9 @@ Notes verified in source:
 GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
   └─ cl.execute                                           [client.go:188]
        └─ exec.Execute(ctx, "rocketmq:<name-servers>", call)     — resilience.Executor
-            layers inside-out as built in applyResilience [command.go:181-182]:
-            fault.Injector (outer) → resilience core (rate limit / breaker / ...)
-            → resilience observer (innermost, 6 outcomes) → producer.SendSync
+            layers outside-in as composed in applyResilience [command.go:157]:
+            fault.Injector (outer) → resilience observer (6 outcomes)
+            → resilience core (rate limit / breaker / ...) → producer.SendSync
 ```
 
 - The executor wraps **only** `GuardedSend`'s synchronous `SendSync`. **NOT guarded**: the driver's
@@ -273,7 +275,7 @@ context — exactly what [example/example.go] asserts and what TestFromMessageEx
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.rocketmq.<name>.` (per-instance prefix binding via `conf.BindEach`,
+All keys live under `spring.rocketmq.instances.<name>.` (per-instance prefix binding via `conf.BindEach`,
 not the absolute-property Pool rule). Seven value tags in the starter — reconciled with the
 grep, no extras on either side.
 
@@ -306,7 +308,7 @@ To assert Key survival yourself, log `msg.Key` in the handler — expect the sam
 ### 4.2 Broker-down fail-fast
 
 ```properties
-spring.rocketmq.a.name-servers=127.0.0.1:19876   # nothing listening
+spring.rocketmq.instances.a.name-servers=127.0.0.1:19876   # nothing listening
 ```
 
 Boot fails with "rocketmq name server probe failed on ..." [starter.go:74-79]. With

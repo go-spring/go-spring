@@ -25,10 +25,10 @@ import _ "go-spring.org/starter-influxdb"
 ### 2. 配置
 
 ```properties
-spring.influxdb.a.server-url=http://127.0.0.1:8086
-spring.influxdb.a.auth-token=my-token
-spring.influxdb.a.org=my-org
-spring.influxdb.a.bucket=my-bucket
+spring.influxdb.instances.a.server-url=http://127.0.0.1:8086
+spring.influxdb.instances.a.auth-token=my-token
+spring.influxdb.instances.a.org=my-org
+spring.influxdb.instances.a.bucket=my-bucket
 ```
 
 ### 3. 注入
@@ -57,7 +57,7 @@ Setup……）原样提升可用。
 
 ## 核心特性
 
-- **多实例客户端** — 每个 `spring.influxdb.<name>` 条目都是独立 bean，
+- **多实例客户端** — 每个 `spring.influxdb.instances.<name>` 条目都是独立 bean，
   拥有各自的配置。
 - **双写入口** — `WritePoints`（阻塞、韧性保护、逐次报错）与
   `ManagedWriteAPI`（后台缓冲批量、停机时 flush；失败批次排入 go-spring
@@ -76,10 +76,10 @@ Setup……）原样提升可用。
 **多客户端** — 配置更多条目并按名注入：
 
 ```properties
-spring.influxdb.metrics.server-url=http://influx-a:8086
-spring.influxdb.metrics.auth-token=...
-spring.influxdb.events.server-url=http://influx-b:8086
-spring.influxdb.events.auth-token=...
+spring.influxdb.instances.metrics.server-url=http://influx-a:8086
+spring.influxdb.instances.metrics.auth-token=...
+spring.influxdb.instances.events.server-url=http://influx-b:8086
+spring.influxdb.instances.events.auth-token=...
 ```
 
 **自定义 driver** — 提供自己的 `Driver` bean 来替换客户端装配（例如接入

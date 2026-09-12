@@ -35,7 +35,7 @@ import (
 )
 
 // Service consumes the Casbin enforcer purely by injection. The bean is named
-// after its config group key (${spring.casbin.rbac.*} -> "rbac"), so we bind it
+// after its config group key (${spring.casbin.instances.rbac.*} -> "rbac"), so we bind it
 // with `autowire:"rbac"`. The bean type is the starter's *Enforcer wrapper,
 // which embeds *casbin.Enforcer, so Enforce and friends are used directly.
 type Service struct {

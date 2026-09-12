@@ -7,8 +7,8 @@ spot-checks in brackets below. **Pulsar semantics (subscriptions, keyed messages
 retention/redelivery) are [Pulsar's own documentation](https://pulsar.apache.org/docs/next/client-libraries-go/)**
 — everything below is go-spring's increment.
 
-**Activation**: any `spring.pulsar.*` key — the module registers under
-`gs.OnProperty("spring.pulsar")`, a prefix check [starter.go:38]. Each `spring.pulsar.<name>`
+**Activation**: any `spring.pulsar.instances.*` key — the module registers under
+`gs.OnProperty("spring.pulsar")`, a prefix check [starter.go:38]. Each `spring.pulsar.instances.<name>`
 entry creates one **raw `pulsar.Client` bean named `<name>`** [starter.go:39-44] — there is no
 wrapper type, by design: pulsar exposes nothing worth wrapping beyond the client itself
 [client.go:17-23].
@@ -75,7 +75,7 @@ import (
 
 func init() {
     // Adapt the injected raw client to the broker-neutral Driver. gs.TagArg("main")
-    // picks the spring.pulsar.main instance; the driver bean is unnamed here.
+    // picks the spring.pulsar.instances.main instance; the driver bean is unnamed here.
     gs.Provide(StarterPulsar.NewDriver, gs.TagArg("main"))
 
     gs.Provide(func(b messaging.Driver) (gs.Rooter, error) {
@@ -124,18 +124,18 @@ func guarded(ctx context.Context, cl pulsar.Client, p pulsar.Producer) error {
 
 ```properties
 # --- pulsar client (instance "main") ----------------------------------------
-spring.pulsar.main.url=pulsar://127.0.0.1:6650
-spring.pulsar.main.fail-fast=true
+spring.pulsar.instances.main.url=pulsar://127.0.0.1:6650
+spring.pulsar.instances.main.fail-fast=true
 # Lookup against a non-partitioned topic succeeds even if absent, so any
 # ordinary topic is a safe probe target on a fresh standalone cluster.
-spring.pulsar.main.health-check-topic=persistent://public/demo/orders
-spring.pulsar.main.operation-timeout=30s
-spring.pulsar.main.connection-timeout=5s
+spring.pulsar.instances.main.health-check-topic=persistent://public/demo/orders
+spring.pulsar.instances.main.operation-timeout=30s
+spring.pulsar.instances.main.connection-timeout=5s
 
 # --- native Prometheus metrics (pulsar_client_*, per-instance registry) ----
-spring.pulsar.main.metrics.enabled=true
-spring.pulsar.main.metrics.port=9091
-spring.pulsar.main.metrics.path=/metrics
+spring.pulsar.instances.main.metrics.enabled=true
+spring.pulsar.instances.main.metrics.port=9091
+spring.pulsar.instances.main.metrics.path=/metrics
 
 # --- actuator + otel ---------------------------------------------------------
 spring.actuator.addr=:9370
@@ -176,7 +176,7 @@ grep -E '_app_pulsar|pulsar' app.log        # driver + client log lines (tag _ap
 
 ```
 import starter-pulsar
-  └─ gs.Module(OnProperty("spring.pulsar")) fires when any spring.pulsar.* key exists
+  └─ gs.Module(OnProperty("spring.pulsar")) fires when any spring.pulsar.instances.* key exists
         └─ conf.BindEach("${spring.pulsar}") → one Config per <name> entry   [starter.go:38-46]
               └─ Provide(newClient, IndexArg name+config, IndexArg 3,?Driver).Name(<name>)
                    .Destroy(destroyClient)
@@ -190,8 +190,8 @@ gs.Run()
   │    3. FailFast probe: cl.TopicPartitions(HealthCheckTopic) — a lookup
   │       that exercises address+auth+TLS without producing; failure →
   │       cl.Close + metrics shutdown + boot error                       [starter.go:69-76]
-  │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor("pulsar:<url>"))
-  │       → resilience.WrapExecutor → indexed by client                [command.go:224-230]
+  │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor("pulsar", "pulsar:<url>"))
+  │       → indexed by client                                           [command.go:229-230]
   ├─ readiness: no health indicator exists — the probe is boot-time only
   └─ SIGTERM → destroyClient [client.go:44-49]: closeResilience (executor Close)
        → cl.Close() (releases all producers/consumers) → shutdownMetrics (:port server)
@@ -202,7 +202,9 @@ A company/umbrella starter may provide its own `Driver` as an **optional contain
 `gs.Provide(func() StarterPulsar.Driver{...})`, so it can inject config bound from the properties
 file at wiring time); every instance under `spring.pulsar` is then built through it. When no such
 bean exists the starter falls back to the bundled `DefaultDriver` (`driver.go:40-105`) inside
-assembly (`starter.go:61-63`). There is no per-config `driver` key.
+assembly (`starter.go:61-63`). When several Driver beans coexist, an entry selects one by
+name: `spring.pulsar.instances.<name>.driver = <bean-name>` (empty = inject the single Driver bean by
+type; naming a missing bean fails startup).
 
 Note `newLogger()` bridges every pulsar-internal log line (connect/reconnect/lookup failures)
 into go-spring's log under tag `_app_def` with a `pulsar: ` prefix [driver.go:208-223].
@@ -216,22 +218,22 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
   └─ guard: resilienceExecs.Load(cl)                      [command.go:243-250]
        ├─ not found (governance off) → producer.Send runs inline, identical to raw
        └─ found → exec.Execute(ctx, "pulsar:<url>", send)  — fault-injector outermost
-                  (fault.WrapExecutor), resilience observer innermost; rejection returns
+                  (fault.WrapExecutor), resilience observer inside it; rejection returns
                   a resilience sentinel and the send never reaches the wire
 ```
 
-Wrap order inside `applyResilience` [command.go:225-226]: `resilience.ExecutorFor(resource)`
-(core breaker/limiter/retry) → wrapped by `fault.WrapExecutor` (runtime fault injection sits
-OUTSIDE the executor — injected faults do not consume breaker budget) → wrapped by
-`resilience.WrapExecutor` (outcome counters + access log outermost).
+Wrap order inside `applyResilience` [command.go:229]: `resilience.ExecutorFor("pulsar", resource)`
+returns the fully assembled executor (core breaker/limiter/retry wrapped by the resilience
+observer — outcome counters + access log) → wrapped outermost by `fault.WrapExecutor` (runtime
+fault injection; the injected error flows through the inner retry loop, so the breaker counts it).
 
 **NOT guarded** (each deliberate, per source comments):
 - `producer.SendAsync` — intentionally untouched; the async path has no synchronous outcome
   to reject [command.go:261-263].
 - ~~driver `Publish`~~ — **now guarded**: the driver routes through `GuardedSend` with the
   client-scoped executor [driver.go], so driver publishes get span+trace injection *and*
-  breaker/limiter/fault. Set the instance key `governance=false` to make every call path run
-  bare.
+  breaker/limiter/fault. Give the resource label (`pulsar:<url>`) an all-zero rule to make
+  every call path effectively bare.
 - Consumer `Receive`/handlers — no consumer-side protection exists.
 - `CreateProducer`/`Subscribe`/`TopicPartitions` — lifecycle calls, only the FailFast probe
   covers them at boot.
@@ -279,7 +281,7 @@ Close order: cancel loop ctx → wait for `done` (in-flight handler finishes) �
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.pulsar.<name>.` (BindEach per-instance binding, NOT the
+All keys live under `spring.pulsar.instances.<name>.` (BindEach per-instance binding, NOT the
 absolute-property Pool rule). 18 value tags found by grep — table covers every one.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -300,10 +302,10 @@ absolute-property Pool rule). 18 value tags found by grep — table covers every
 | `metrics.enabled` | bool | true | Starts the per-instance `/metrics` server and wires the dedicated registry [driver.go:97-101]. | false → no `pulsar_client_*` anywhere. |
 | `metrics.port` | int | 9091 | Port of that server. ⚠ Fixed default: every metrics-enabled instance MUST get a distinct port; collision = second server's listen fails silently (error swallowed [command.go:69-71]). | Two instances, one port → one metrics endpoint silently dead. |
 | `metrics.path` | string | `/metrics` | HTTP path on that server [command.go:62]. | — |
-| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedSend` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
-No `driver` key: client assembly is owned by an optional Driver bean (see §2.1) or the bundled
-`DefaultDriver`.
+The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
+optional Driver bean injected by type (see §2.1) or the bundled `DefaultDriver`; set → that
+bean by name, and naming a missing bean fails startup.
 
 `schema.json` states `metrics.enabled` default `false` while the code default is `true` —
 trust the code.

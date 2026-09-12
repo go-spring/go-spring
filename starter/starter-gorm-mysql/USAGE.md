@@ -6,7 +6,7 @@ Detailed usage reference. Overview: [README.md](README.md). Anchored to [example
 MySQL DSN parameter semantics are [go-sql-driver/mysql's](https://github.com/go-sql-driver/mysql#dsn-data-source-name)**
 — this doc covers the binding surface and the go-spring increment (wiring, discovery, TLS, observe, health).
 
-**Activation**: one client bean per `spring.gorm.mysql.<name>` entry (`OnProperty` prefix check on
+**Activation**: one client bean (named `mysql.<name>`) per `spring.gorm.mysql.instances.<name>` entry (`OnProperty` prefix check on
 `spring.gorm.mysql`). No `enabled` key — presence of any entry activates the starter; no entries,
 nothing registers. Shared lifecycle (wrapper, pool, observe plugin, health, `UseDBCustomizer`, the 10
 `Common` keys) is documented in [starter-gorm's USAGE](../starter-gorm/USAGE.md) and not repeated here.
@@ -71,12 +71,13 @@ func main() {
 package dao
 
 import (
-    StarterMySql "go-spring.org/starter-gorm-mysql"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-mysql"
 )
 
 type Service struct {
-    Primary *StarterMySql.DB `autowire:"primary"` // fixed addr, pool-tuned
-    Cluster *StarterMySql.DB `autowire:"cluster"` // discovery-resolved (etcd)
+    Primary *gormcore.DB `autowire:"mysql.primary"` // fixed addr, pool-tuned
+    Cluster *gormcore.DB `autowire:"mysql.cluster"` // discovery-resolved (etcd)
 }
 
 func NewService() *Service { return &Service{} }
@@ -93,23 +94,23 @@ func (s *Service) Init() error { // gs InitMethod: table + smoke query on both p
 
 ```properties
 # --- primary: fixed addr ------------------------------------------------------
-spring.gorm.mysql.primary.user=root
-spring.gorm.mysql.primary.password=123456
-spring.gorm.mysql.primary.addr=127.0.0.1:3306
-spring.gorm.mysql.primary.db=test
-spring.gorm.mysql.primary.parseTime=true          # scan DATETIME into time.Time
-spring.gorm.mysql.primary.max-open-conns=10
-spring.gorm.mysql.primary.max-idle-conns=5
-spring.gorm.mysql.primary.conn-max-lifetime=30m
-spring.gorm.mysql.primary.slow-threshold=200ms
+spring.gorm.mysql.instances.primary.user=root
+spring.gorm.mysql.instances.primary.password=123456
+spring.gorm.mysql.instances.primary.addr=127.0.0.1:3306
+spring.gorm.mysql.instances.primary.db=test
+spring.gorm.mysql.instances.primary.parseTime=true          # scan DATETIME into time.Time
+spring.gorm.mysql.instances.primary.max-open-conns=10
+spring.gorm.mysql.instances.primary.max-idle-conns=5
+spring.gorm.mysql.instances.primary.conn-max-lifetime=30m
+spring.gorm.mysql.instances.primary.slow-threshold=200ms
 
 # --- cluster: discovery-resolved (etcd) ----------------------------------------
-spring.gorm.mysql.cluster.user=root
-spring.gorm.mysql.cluster.password=123456
-spring.gorm.mysql.cluster.db=test
-spring.gorm.mysql.cluster.service-name=mysql-cluster
-spring.gorm.mysql.cluster.discovery=etcd.main    # -> the backend bean from ${spring.registry.etcd.main}
-spring.gorm.mysql.cluster.conn-max-lifetime=30m  # bounds failover lag (see §4.3)
+spring.gorm.mysql.instances.cluster.user=root
+spring.gorm.mysql.instances.cluster.password=123456
+spring.gorm.mysql.instances.cluster.db=test
+spring.gorm.mysql.instances.cluster.service-name=mysql-cluster
+spring.gorm.mysql.instances.cluster.discovery=etcd.main    # -> the backend bean from ${spring.registry.etcd.main}
+spring.gorm.mysql.instances.cluster.conn-max-lifetime=30m  # bounds failover lag (see §4.3)
 
 # --- etcd registry center (shared by registration and discovery) --------------
 spring.registry.etcd.main.endpoints=127.0.0.1:2379
@@ -156,7 +157,7 @@ curl -s '127.0.0.1:16686/api/traces?service=demo&limit=1' | grep '"data":\['
 
 ```
 import starter-gorm-mysql
-  └─ init: gormcore.Register(Dialect{Prefix: "spring.gorm.mysql", Engine: "mysql", ...})
+  └─ init: gormcore.Module(Dialect{Prefix: "spring.gorm.mysql", Engine: "mysql", ...})
 gs.Run()
   ├─ OnProperty("spring.gorm.mysql") fires; conf.BindEach binds one Config per <name> entry
   ├─ per instance: build(ctx, c)
@@ -191,7 +192,7 @@ the driver falls back to a normal TCP dial of whatever host you wrote.
 
 ## 3. Per-key behavior reference
 
-MySQL-specific keys under `spring.gorm.mysql.<name>.*` (the 10 shared `Common` keys — pool, ping,
+MySQL-specific keys under `spring.gorm.mysql.instances.<name>.*` (the 10 shared `Common` keys — pool, ping,
 slow-threshold, service-name/scheme/discovery, observe.enabled — are in
 [starter-gorm's USAGE](../starter-gorm/USAGE.md)):
 

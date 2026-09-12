@@ -7,9 +7,9 @@ against the starter source (`starter.go`, `config.go`, `tokensource.go`, `authco
 [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749) grant definitions** — everything
 below is go-spring's increment: binding, beans, tracing, resilience wiring.
 
-**Activation**: two independent prefix groups. Any `spring.oauth2.client.<name>.*` key
+**Activation**: two independent prefix groups. Any `spring.oauth2.client.instances.<name>.*` key
 activates the client-credentials group (multi-instance: one `<name>` = one `*http.Client` +
-one `*TokenSource`); any `spring.oauth2.authcode.<name>.*` key registers one `*oauth2.Config`
+one `*TokenSource`); any `spring.oauth2.authcode.instances.<name>.*` key registers one `*oauth2.Config`
 per entry. No `enabled` key for either.
 
 ---
@@ -82,24 +82,25 @@ func main() {
 
 ```properties
 # --- client-credentials instance "downstream" (activates the group) -----------
-spring.oauth2.client.downstream.client-id=demo-client
-spring.oauth2.client.downstream.client-secret=demo-secret
-spring.oauth2.client.downstream.token-url=https://auth.example.com/oauth/token
-spring.oauth2.client.downstream.scopes=read,write
-spring.oauth2.client.downstream.auth-style=header
-spring.oauth2.client.downstream.timeout=5s
-spring.oauth2.client.downstream.endpoint-params.audience=https://api.example.com
+spring.oauth2.client.instances.downstream.client-id=demo-client
+spring.oauth2.client.instances.downstream.client-secret=demo-secret
+spring.oauth2.client.instances.downstream.token-url=https://auth.example.com/oauth/token
+spring.oauth2.client.instances.downstream.scopes=read,write
+spring.oauth2.client.instances.downstream.auth-style=header
+spring.oauth2.client.instances.downstream.timeout=5s
+spring.oauth2.client.instances.downstream.endpoint-params.audience=https://api.example.com
 
 # --- authorization_code instance "login" (activates the authcode group) -------
-spring.oauth2.authcode.login.client-id=web-client
-spring.oauth2.authcode.login.client-secret=web-secret
-spring.oauth2.authcode.login.auth-url=https://auth.example.com/oauth/authorize
-spring.oauth2.authcode.login.token-url=https://auth.example.com/oauth/token
-spring.oauth2.authcode.login.redirect-url=https://app.example.com/callback
-spring.oauth2.authcode.login.scopes=openid,profile
+spring.oauth2.authcode.instances.login.client-id=web-client
+spring.oauth2.authcode.instances.login.client-secret=web-secret
+spring.oauth2.authcode.instances.login.auth-url=https://auth.example.com/oauth/authorize
+spring.oauth2.authcode.instances.login.token-url=https://auth.example.com/oauth/token
+spring.oauth2.authcode.instances.login.redirect-url=https://app.example.com/callback
+spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance (resilience for the *http.Client transport) ------------------
 # Same resource label as the client: oauth2:<client-id>.
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -159,13 +160,13 @@ gs.Run()
         (plain clients fail the io.Closer assertion and release nothing)
 ```
 
-`OnProperty("spring.oauth2.client")` is a prefix check: any `spring.oauth2.client.<name>.<k>`
+`OnProperty("spring.oauth2.client")` is a prefix check: any `spring.oauth2.client.instances.<name>.<k>`
 key fires the module, and each sub-map entry under the prefix becomes one instance
 (`conf.BindEach`). That is why there is no `enabled` key.
 
 ### 2.2 What is wired where — the two beans, precisely
 
-For one `spring.oauth2.client.<name>` entry the starter builds **two beans sharing the
+For one `spring.oauth2.client.instances.<name>` entry the starter builds **two beans sharing the
 name** (bean identity is type + name):
 
 | Bean | Token machinery | Tracing | Resilience | Destroy |
@@ -199,9 +200,9 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
    outbound request *before* the base transport runs.
 5. `resilience.NewRoundTripper` executes the request through the executor resolved for
    resource label `oauth2:<client-id>` — retry / circuit breaker / rate limit policy from
-   the governance center; transparent no-op when governance is off. The executor is
-   additionally wrapped by `resilience.WrapExecutor` so trips/rejects/retries emit
-   span + counter + histogram + access log.
+   the governance center; transparent no-op when governance is off. The resolved executor
+   already carries the observe layer, so trips/rejects/retries emit span + counter +
+   histogram + access log.
 6. `otelhttp` emits the client span (method/url); without starter-otel these are no-ops.
 7. Response unwinds; on 401 the oauth2 layer does not retry (client_credentials has no
    refresh token) — the next call re-fetches.
@@ -210,7 +211,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
 
 ## 3. Per-key behavior reference
 
-### 3.1 `spring.oauth2.client.<name>.*` — 7 keys
+### 3.1 `spring.oauth2.client.instances.<name>.*` — 7 keys
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -222,7 +223,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
 | `auth-style` | string | `auto` | `auto` \| `header` \| `params` — how credentials are sent . `auto` lets x/oauth2 probe once and cache. | IdP requiring Basic with `params` set → 401 on every token fetch. |
 | `timeout` | duration | 0 | Applied twice: to the otel base client (bounds the token fetch) *and* to the returned `*http.Client` (bounds each downstream request). 0 = no timeout. ⚠ large value + governance `attempt-timeout`: the per-attempt bound bites first. | 0 → a hung token endpoint or downstream hangs forever. |
 
-### 3.2 `spring.oauth2.authcode.<name>.*` — 6 keys
+### 3.2 `spring.oauth2.authcode.instances.<name>.*` — 6 keys
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -283,7 +284,7 @@ req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 ```
 
 Also observable: with starter-otel + governance, breaker trips on the wrapped client emit
-`oauth2`-labeled spans/metrics (`WrapExecutor(exec, "oauth2", ...)`); nothing equivalent
+`oauth2`-labeled spans/metrics (`resilience.ExecutorFor("oauth2", resource)`); nothing equivalent
 exists for `TokenSource`.
 
 ### 4.5 Governance hot-toggle
@@ -299,7 +300,7 @@ time. No restart.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails "expr … != ''" | empty `client-id`/`client-secret`/`token-url` on a client entry | Fill them or remove the entry. |
-| Starter totally inert | no `spring.oauth2.client.*` key at all (prefix activation) | Add at least one instance block. |
+| Starter totally inert | no `spring.oauth2.client.instances.*` key at all (prefix activation) | Add at least one instance block. |
 | Injected client nil / "no bean" | autowire name mismatch (bean name = instance `<name>`) | Match `autowire:"<name>"` to the config key. |
 | 401 from downstream, token fine | downstream expects different scheme or audience | Check `endpoint-params` (audience) and `scopes`. |
 | Token fetch 401 | `auth-style` disagrees with the IdP | Try `header` (Basic) — most common requirement. |

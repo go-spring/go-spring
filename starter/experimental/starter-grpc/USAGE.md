@@ -223,9 +223,9 @@ Rationale (from the source comments, verified):
   `traffic.IsLoadTest(ctx)`. No-op without the marker key.
 - **Tracing before Metrics**: the span wraps the metrics observation too, so duration and status
   land on the same trace context.
-- **Resilience before Fault/Recover**: admission control decides before work is attempted; its
-  executor is wrapped with `resilience.WrapExecutor` so trips/rejects emit span + counter +
-  histogram themselves.
+- **Resilience before Fault/Recover**: admission control decides before work is attempted;
+  `resilience.ExecutorFor` returns its executor with the observe layer already applied, so
+  trips/rejects emit span + counter + histogram themselves.
 - **Fault innermost-of-policy** (fault.go): "installed innermost so an injected error flows back
   through tracing/metrics/resilience and is observed" — you can observe the fire you set.
 - **Recover innermost** (recover.go): "grpc-go recovers handler panics nowhere by itself"; the
@@ -258,8 +258,10 @@ Rationale (from the source comments, verified):
   not race an empty address list.
 - Select a strategy purely via service config: `grpc.WithDefaultServiceConfig(
   StarterGrpc.LoadBalancingConfig(strategy))`. Balancer names are `gs_round_robin`, `gs_least_conn`,
-  `gs_consistent_hash`, `gs_weighted`, `gs_zone_aware` (pre-registered in init with suspension
-  defaults: 5 consecutive failures → evicted 30s, then half-open trial).
+  `gs_consistent_hash`, `gs_weighted`, `gs_zone_aware`. They are pre-registered in init and
+  start with suspension DISABLED; configure it once for all of them with a govern rule —
+  `govern.default.outlier-threshold` / `.outlier-suspend-for` (they resolve under the
+  process-wide default; `govern.rules[N].resources=grpc:client` targets them explicitly).
 - Per-call hints: `WithHashKey` (consistent-hash affinity), `WithZone` (zone-aware preference).
 - Weight=0 endpoints are filtered by the strategies themselves (pool-wide drain semantics);
   `RegisterBalancer(name, strategy, trackerConfig)` registers a custom name for isolated suspension

@@ -7,9 +7,9 @@ global budget instead of limiting independently per process.
 
 ## What it does
 
-- One limiter driver per config entry `spring.ratelimit.redis.<name>`, each
+- One limiter driver per config entry `spring.ratelimit.redis.instances.<name>`, each
   reusing a `*redis.Client` bean published by
-  [starter-go-redis](../../starter-go-redis) under `spring.go-redis.<client>`.
+  [starter-go-redis](../../starter-go-redis) under `spring.go-redis.instances.<client>`.
 - The token-bucket algorithm (atomic refill + consume in one Lua `EVAL`, bucket
   state in a hash, continuous refill, key TTL against cold-key pileup) is the
   implementation in `starter-go-redis/experimental`; this starter only wires it
@@ -22,12 +22,12 @@ global budget instead of limiting independently per process.
 
 ```properties
 # The redis client (starter-go-redis)
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # One limiter driver per entry; `client` is required (fail-fast when empty).
-spring.ratelimit.redis.gateway.client=cache
+spring.ratelimit.redis.instances.gateway.client=cache
 # Name consumers select this driver by; defaults to the instance name.
-spring.ratelimit.redis.gateway.driver=redis
+spring.ratelimit.redis.instances.gateway.driver=redis
 ```
 
 ## Consuming the driver

@@ -24,8 +24,8 @@
 // cloud module must not depend on the spring module at all. Being a subpackage
 // also means importing it does NOT run the starter's root-package wiring init
 // (Go only initializes packages actually imported), so the nacos/etcd source
-// adapters in other starters can share it without pulling in the default
-// ${govern} wiring as a side effect.
+// adapters in other starters can share it without pulling in the wiring bean
+// as a side effect.
 package rules
 
 import (
@@ -44,9 +44,9 @@ import (
 // that works with a local file source works unchanged as a nacos dataId, an
 // etcd key value, or a console payload.
 //
-// Binding goes through the same conf value-tag machinery the ${govern} Dync
-// binding uses (prefix "govern"), so documents use the same keys an
-// app.properties entry would. format names the document format ("yaml",
+// Binding goes through the same conf value-tag machinery (prefix "govern"), so
+// documents use the same keys an app.properties entry would. format names the
+// document format ("yaml",
 // "json", "properties", "toml"); when empty it is inferred from name's
 // extension, defaulting to properties.
 //

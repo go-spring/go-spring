@@ -33,8 +33,8 @@ import (
 	"go-spring.org/spring/gs"
 
 	// Blank-import both starters: starter-go-redis publishes the *redis.Client
-	// under spring.go-redis.<name>, and starter-ratelimit-redis contributes a
-	// limiter driver per spring.ratelimit.redis.<name> that reuses that client.
+	// under spring.go-redis.instances.<name>, and starter-ratelimit-redis contributes a
+	// limiter driver per spring.ratelimit.redis.instances.<name> that reuses that client.
 	_ "go-spring.org/starter-go-redis"
 	_ "go-spring.org/starter-ratelimit-redis"
 )

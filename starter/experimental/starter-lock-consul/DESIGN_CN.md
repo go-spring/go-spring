@@ -7,7 +7,7 @@ starter：贡献 Consul session + `api.Lock` 后端的 `lock.Locker` 命名 bean
 
 ## 1. 职责与边界
 
-- 把 `spring.lock.<name>` 条目绑定到 Consul 版 `lock.Locker` bean，每条一个，
+- 把 `spring.lock.instances.<name>` 条目绑定到 Consul 版 `lock.Locker` bean，每条一个，
   按 config 名注册并导出为 `lock.Locker`。
 - 每个实例自持 `api.Client`（Consul 未提供 `starter-go-redis` 那种可共享
   client），启动时按 Address/Scheme/Token/TLS 构建。

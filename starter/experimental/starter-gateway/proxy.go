@@ -52,6 +52,9 @@ func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Expose the pool on the compiled upstream so the route table can keep it in
+	// step with governance (see RouteTable.reconcileSelection).
+	up.pool = pool
 	return func(r *http.Request) (*url.URL, func(error), error) {
 		ep, err := pool.Pick(loadbalance.PickInfo{HashKey: clientIP(r)})
 		if err != nil {
@@ -64,14 +67,16 @@ func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 }
 
 // poolFor returns the load-balancing pool for an lb:// service, built over a
-// discovery resolver bound to the backend bean the upstream's label cites. The
-// balancer is per-upstream so different routes to the same service may use
-// different strategies. Outlier suspension (upstream
-// suspend-threshold/suspend-for) is likewise per-upstream: an instance that
-// fails repeatedly is dropped from the pool's candidate set for the cool-down,
-// so a zombie upstream stops generating 502s until it proves itself again.
+// discovery resolver bound to the backend bean the upstream's label cites. Each
+// pool starts on round-robin with a disabled suspension tracker: both the
+// strategy and the suspension thresholds are governance decisions (the rule
+// matching "gateway:<route-id>") applied in place by
+// [RouteTable.reconcileSelection]. A route to a service that fails repeatedly
+// therefore drops the instance from its candidate set for the cool-down, so a
+// zombie upstream stops generating 502s until it proves itself again.
 // Resolver freshness lives inside the discovery backend and the resolver has no
-// background watch, so the pool has no resources to release.
+// background watch, so the pool has no resources to release beyond its
+// governance subscription, which the route table owns and cancels.
 func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	disName := up.Discovery
 	if disName == "" {
@@ -100,23 +105,16 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 		// handing a nil source to the load-balancing pool.
 		return nil, &parseError{what: "lb:// upstream cannot resolve (empty service name or mesh mode active — in mesh mode route to the service's stable address instead)", token: up.Service}
 	}
-	balName := up.Balancer
-	if balName == "" {
-		balName = loadbalance.RoundRobin
-	}
-	bal, err := loadbalance.New(balName)
+	// Round-robin is only the starting strategy, and the tracker starts
+	// disabled: both are governance decisions now (the rule matching
+	// "gateway:<route-id>"), applied in place by RouteTable.reconcileSelection.
+	// Attaching a disabled tracker costs nothing when nothing governs the route.
+	bal, err := loadbalance.New(loadbalance.RoundRobin)
 	if err != nil {
 		return nil, err
 	}
-	var opts []loadbalance.PoolOption
-	if up.SuspendThreshold > 0 {
-		tr := loadbalance.NewTracker(loadbalance.TrackerConfig{
-			Threshold:  up.SuspendThreshold,
-			SuspendFor: up.SuspendFor, // 0 keeps the tracker's 5s default
-		})
-		opts = append(opts, loadbalance.WithTracker(tr))
-	}
-	return loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, opts...), nil
+	return loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{}))), nil
 }
 
 // newProxyHandler assembles the terminal handler of a route's chain: a reverse

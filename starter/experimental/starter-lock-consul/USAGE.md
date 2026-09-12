@@ -7,7 +7,7 @@ abstraction [cloud/lock](../../../cloud/lock), and the self-asserting
 are [Consul docs](https://developer.hashicorp.com/consul/docs/dynamic-app-config/sessions) —
 everything below is go-spring's increment.
 
-**Activation**: any `spring.lock.<name>.*` property registers one Consul-backed `lock.Locker`
+**Activation**: any `spring.lock.instances.<name>.*` property registers one Consul-backed `lock.Locker`
 instance per `<name>` (blank-import one lock backend per binary — the `spring.lock` prefix is
 shared by all four backends).
 
@@ -110,15 +110,15 @@ func (w *Worker) RunOnce(ctx context.Context) {
 
 ```properties
 # --- lock: scheduled jobs ----------------------------------------------------
-spring.lock.jobs.address=127.0.0.1:8500
-spring.lock.jobs.ttl=15s
+spring.lock.instances.jobs.address=127.0.0.1:8500
+spring.lock.instances.jobs.ttl=15s
 # Session TTL must sit in Consul's [10s, 86400s] window; out-of-range values
 # are clamped per acquisition, not rejected.
-spring.lock.jobs.key-prefix=demo/jobs/
+spring.lock.instances.jobs.key-prefix=demo/jobs/
 
 # --- lock: singleton worker --------------------------------------------------
-spring.lock.singleton.address=127.0.0.1:8500
-spring.lock.singleton.key-prefix=demo/singleton/
+spring.lock.instances.singleton.address=127.0.0.1:8500
+spring.lock.instances.singleton.key-prefix=demo/singleton/
 
 # --- observability (starter-otel) -------------------------------------------
 spring.observability.service-name=demo
@@ -152,7 +152,7 @@ import starter-lock-consul
              ├─ Provide newLocker  → bean "<name>"          (Export lock.Locker,
              │                                                           Destroy → Close)
              └─ newLocker wraps it with observe-lock unless observe.enabled=false
-  ├─ config bind: ${spring.lock.<name>} → Config (value tags)
+  ├─ config bind: ${spring.lock.instances.<name>} → Config (value tags)
   ├─ newConsulLocker: api.NewClient (+TLS when tls.enabled); TTL default recorded
   ├─ bean wiring: consumers' autowire:"<name>" resolved (bean already observe-wrapped)
   └─ on SIGTERM: Destroy per bean — consulLocker.Close is a contract no-op
@@ -170,7 +170,7 @@ layer wins:
 | Layer | Source | This backend |
 |-------|--------|--------------|
 | 1. per-call option | `lock.WithTTL` / `WithRenewInterval` / `WithRetryInterval` | all effective |
-| 2. starter default | `spring.lock.<name>.ttl` etc. | **TTL only** — consul auto-renews the session and blocks internally in its own acquire loop, so no renew/retry keys exist |
+| 2. starter default | `spring.lock.instances.<name>.ttl` etc. | **TTL only** — consul auto-renews the session and blocks internally in its own acquire loop, so no renew/retry keys exist |
 | 3. package default | TTL `30s`, renew `TTL/3`, retry `100ms` | fill whatever is still unset |
 
 The resolved TTL is then clamped into Consul's `[10s, 86400s]` session window per acquisition
@@ -201,11 +201,11 @@ The resolved TTL is then clamped into Consul's `[10s, 86400s]` session window pe
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.lock.<name>` (exact-match, no relaxed forms).
+All keys live under `spring.lock.instances.<name>` (exact-match, no relaxed forms).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `address` | string | — | **Required.** Consul agent endpoint, e.g. `127.0.0.1:8500`. Checked before bean registration. | Empty → boot fails naming the instance (`lock-consul: spring.lock.<n>.address is required`). |
+| `address` | string | — | **Required.** Consul agent endpoint, e.g. `127.0.0.1:8500`. Checked before bean registration. | Empty → boot fails naming the instance (`lock-consul: spring.lock.instances.<n>.address is required`). |
 | `scheme` | string | `http` | URL scheme only. `tls.enabled=true` forces `https` unless scheme is explicitly non-http. | TLS enabled + scheme left `http` still works (auto-https); expecting plaintext with tls block → surprised by https. |
 | `token` | string | — | Consul ACL token for the API client. Distinct from the per-acquisition fencing token. | Wrong token surfaces as 403 on first Acquire, not at boot (client creation does not authenticate). |
 | `ttl` | duration | `30s` | Session TTL; feeds layer 2 of §2.2. Clamped into `[10s, 86400s]` per acquisition. | `5s` silently becomes `10s`; `100000h` becomes `24h` — no warning. |
@@ -239,7 +239,7 @@ curl -s 'localhost:8500/v1/kv/demo/jobs/nightly-sync?raw'   # the fencing token
 
 ### 4.2 TTL expiry mid-hold (crash drill)
 
-1. Configure a short TTL: `spring.lock.jobs.ttl=10s` (the clamp floor).
+1. Configure a short TTL: `spring.lock.instances.jobs.ttl=10s` (the clamp floor).
 2. Acquire, then `kill -9` the holder (no Unlock).
 3. Consul invalidates the session after ~TTL; within a few seconds the KV entry is released and a
    waiting `Acquire` in the replica wins.
@@ -274,9 +274,9 @@ cd example && ./check.sh    # docker-gated: compose up consul, run self-assertin
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails `spring.lock.<n>.address is required` | instance without address | Set the key or drop the instance. |
+| Boot fails `spring.lock.instances.<n>.address is required` | instance without address | Set the key or drop the instance. |
 | Boot fails at client creation / TLS | bad `tls.*` material or unreachable scheme | Fix certs; creation is fail-fast. |
-| `Acquire` returns 403-ish ACL error | wrong/missing `token` | ACL is checked on first use, not at boot — set `spring.lock.<n>.token`. |
+| `Acquire` returns 403-ish ACL error | wrong/missing `token` | ACL is checked on first use, not at boot — set `spring.lock.instances.<n>.token`. |
 | Locks expire sooner/later than configured | TTL clamped into `[10s, 86400s]` | Pick a TTL inside the window; sub-10s is impossible on this backend. |
 | `Unlock` never returns `ErrNotHeld` even after takeover | Consul cannot attribute the release; `api.ErrLockNotHeld` is swallowed as benign | Need proof-of-takeover semantics → use the redis backend (Lua compare-and-DEL). |
 | No `<name>-observed` bean anymore | removed 2026-08 | Inject `<name>` — it is observed by default; `observe.enabled=false` gives the bare locker. |

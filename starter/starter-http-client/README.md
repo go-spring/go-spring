@@ -30,9 +30,10 @@ go get go-spring.org/starter-http-client
 ```
 
 The generated `Client` holds only a `Target`. The starter assembles one
-process-wide `http.RoundTripper` and installs it by replacing
-`httpclt.DoRequest` (the single send seam of `stdlib/httpclt`), so
-generated clients and imperative helpers pick it up with zero wiring. The chain is
+`http.RoundTripper` per configured target and installs them by replacing
+`httpclt.DoRequest` (the single send seam of `stdlib/httpclt`) with a hook that
+dispatches on the call's `Target`, so generated clients and imperative helpers
+pick it up with zero wiring. The chain is
 by [`starter-http-client/httpx`](../../../starter-http-client/httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
@@ -61,22 +62,24 @@ an `HTTPClient` field.
 import _ "go-spring.org/starter-http-client"
 ```
 
-Each entry under `spring.http-client.<name>` contributes a route to that
+Each entry under `spring.http-client.instances.<name>` contributes a route to that
 process-wide transport. Switching a call between a direct address and a
 discovered service is a config-only change — the call site never changes. See
 [example/conf/app.properties](example/conf/app.properties):
 
 ```properties
 # Direct address — pinned to one host, no discovery.
-spring.http-client.direct.addr=127.0.0.1:9471
+spring.http-client.instances.direct.addr=127.0.0.1:9471
 
-# Service discovery + load balancing — routed by logical name.
-spring.http-client.discovered.service-name=greet-svc
-spring.http-client.discovered.discovery=static
-spring.http-client.discovered.balancer=round_robin
+# Service discovery + load balancing — routed by logical name. The LB strategy
+# and endpoint suspension are governance rules too (see below), not keys here.
+spring.http-client.instances.discovered.service-name=greet-svc
+spring.http-client.instances.discovered.discovery=static
 
-# Resilience is NOT configured here: policy lives process-wide under
-# govern.* (starter-governance). Breaker trips after 2 consecutive failures:
+# Resilience and endpoint selection are NOT configured here: policy lives under
+# govern.* in the governance rules document (starter-governance;
+# conf/govern.properties referenced by govern.source.file.path). Breaker trips
+# after 2 consecutive failures:
 #   govern.enabled=true
 #   govern.default.enabled=true
 #   govern.default.error-threshold=2
@@ -112,19 +115,21 @@ and asserts all four outcomes end to end:
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `spring.http-client.<name>.addr` | — | Direct `host:port`. May be combined with `service-name`, which then stays a pure governance label. |
-| `spring.http-client.<name>.service-name` | — | Logical name resolved through discovery; whenever set it is also the governance resource label. |
-| `spring.http-client.<name>.discovery` | — | Registered discovery backend name. Required when `service-name` is set. |
-| `spring.http-client.<name>.balancer` | `round_robin` | Strategy: `round_robin`, `least_conn`, `consistent_hash`, `weighted`, `zone_aware`. |
-| `spring.http-client.<name>.driver` | `default` | Transport-assembly driver ([RegisterDriver](driver.go)): embed `DefaultDriver` to add auth/metrics around the assembled transport, or replace it entirely with your own `httpx.NewTransport` call. |
-| `spring.http-client.<name>.suspend-threshold` | `0` | Consecutive failures that suspend an endpoint (0 disables). |
-| `spring.http-client.<name>.suspend-for` | `0` | How long an suspended endpoint stays out. |
-| `spring.http-client.<name>.tls.enabled` | `false` | Turns the entry's TLS surface on (see the `tls.*` block: cert-file/key-file/ca-file/server-name/insecure-skip-verify). |
+| `spring.http-client.instances.<name>.addr` | — | Direct `host:port`. May be combined with `service-name`, which then stays a pure governance label. |
+| `spring.http-client.instances.<name>.service-name` | — | Logical name resolved through discovery; whenever set it is also the governance resource label. |
+| `spring.http-client.instances.<name>.discovery` | — | Registered discovery backend name. Required when `service-name` is set. |
+| `spring.http-client.default.driver` | — | Family-wide Driver bean for every instance that names none of its own. |
+| `spring.http-client.instances.<name>.driver` | — | Overrides the family default for this instance. Embed `DefaultDriver` to add auth/metrics around the assembled transport, or replace it entirely with your own `httpx.NewTransport` call. Empty = inject the single Driver bean by type; naming a missing bean fails startup. |
+| `spring.http-client.instances.<name>.tls.enabled` | `false` | Turns the entry's TLS surface on (see the `tls.*` block: cert-file/key-file/ca-file/server-name/insecure-skip-verify). |
 
-Resilience and fault injection have **no keys here**: policy is process-wide
-under `govern.*` (see starter-governance). The governance resource label is
-`http:<service-name>` whenever `service-name` is set (either addressing mode), `http:<addr>` only when no service-name exists. Per-request
-timeout comes from `govern.default.attempt-timeout`.
+Resilience, fault injection and endpoint selection have **no keys here**: they
+are per-resource policy and live in the governance rules document (see
+starter-governance). The governance resource label is `http:<service-name>`
+whenever `service-name` is set (either addressing mode), `http:<addr>` only when
+no service-name exists. Per-request timeout comes from
+`govern.default.attempt-timeout`; the load-balancing strategy and outlier
+suspension come from `balancer` / `outlier-threshold` / `outlier-suspend-for` on
+the rule matching that label.
 
 The starter fails fast at wiring time: at least one of `addr` / `service-name`
 must be set, and `discovery` is mandatory when routing by service name alone

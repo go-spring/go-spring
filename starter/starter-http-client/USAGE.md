@@ -10,9 +10,10 @@ everything below is go-spring's increment: dispatch, discovery/LB, resilience/go
 observability.
 
 **Activation**: one process-wide transport is installed only when at least one
-`spring.http-client.<name>.*` entry exists (`gs.OnProperty("spring.http-client")`,
-starter.go:60). Each entry contributes one route keyed by its target (addr or service-name);
-there are no per-name beans. Resilience/fault policy is NOT configured here — it is process-wide
+`spring.http-client.instances.<name>.*` entry exists (`gs.OnProperty("spring.http-client.instances")`,
+starter.go:60). Each entry becomes one route bean — named after the entry, holding its target
+(addr or service-name) and its assembled transport — and the route table collects them.
+Resilience/fault policy is NOT configured here — it is process-wide
 under `govern.*` (starter-governance).
 
 ---
@@ -121,17 +122,19 @@ lb     := &proto.Client{Target: "greet-svc"}          // discovery mode
 # switching addressing mode is config-only.
 
 # (1) Direct address: pinned to one backend instance, no discovery.
-spring.http-client.direct.addr=127.0.0.1:9471
+spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) Service discovery + load balancing: routes by logical service name.
-spring.http-client.discovered.service-name=greet-svc
-spring.http-client.discovered.discovery=static
-spring.http-client.discovered.balancer=round_robin
+# The LB strategy and endpoint suspension for this entry are governance rules
+# (govern.rules[N].balancer / .outlier-threshold), not keys here — see below.
+spring.http-client.instances.discovered.service-name=greet-svc
+spring.http-client.instances.discovered.discovery=static
 
 # (3) Resilience-guarded route: policy is process-wide under govern.*.
 # The bundled DefaultDriver trips the breaker after two consecutive failures and
 # keeps it open 30s.
-spring.http-client.guarded.addr=127.0.0.1:9473
+spring.http-client.instances.guarded.addr=127.0.0.1:9473
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -163,28 +166,28 @@ The repo's self-asserting smoke is `cd starter/experimental/starter-http-client/
 
 ```
 import starter-http-client
-  └─ gs.Module(gs.OnProperty("spring.http-client"))       [starter.go:60]
+  └─ gs.Module(gs.OnProperty("spring.http-client.instances"))       [starter.go:60]
         │
 gs.Run()
-  ├─ config bind: conf.BindEach(${spring.http-client}) → one Config per <name>
+  ├─ config bind: conf.BindEach(${spring.http-client.instances}) → one Config per <name>
   │    validate() fail-fast: at least one of addr|service-name; discovery
   │    required with service-name alone (config.go)
-  ├─ installDispatch: per entry assembleTransport() → routes[target] = rt;
-  │    ONE http.Client{Transport: dispatchTransport}; replaces httpclt.DoRequest
-  │    (starter.go:83-109). Log: "http client initialized, routes=N"
+  ├─ installDispatch: conf.BindEach provides one route bean per entry
+  │    (assembleTransport() → route{target, rt}); the route table collects them,
+  │    and replaces httpclt.DoRequest with a hook that looks the route up by the
+  │    call's Metadata.Target. Log: "http client initialized, routes=N"
   │    (Rooter bean → instantiated even with nothing autowiring it)
   ├─ Run phase: requests dispatch through the installed transport
-  └─ on shutdown: destroyDispatch → Close() releases each route's discovery
-       watch + executor (starter.go:162)
+  └─ on shutdown: each route's Close() releases its discovery watch + executor
 ```
 
-There is exactly **one** transport per process regardless of entry count: the config is
-multi-entry, the transport is single, and every entry is a route keyed by
-`addr` or `service-name` (routeKey, starter.go:147).
+There is exactly **one** DoRequest replacement per process regardless of entry count: the
+config is multi-entry, the route table is single, and every entry is a route keyed by
+`addr` or `service-name` (routeKey, starter.go).
 
 ### 2.2 Transport chain — exact nesting and why
 
-Per entry, outermost → innermost (assembled in `assembleTransport`, starter.go:114, and
+Per entry, outermost → innermost (assembled in `assembleTransport`, starter.go:129, and
 `httpx.NewTransport`, httpx.go:132):
 
 ```
@@ -230,9 +233,12 @@ Rationale (from the source comments, verified):
    `httpclt.ObjectResponse` → `doRequest` sets `req.Host = req.URL.Host = Target` and
    `req.URL.Scheme = Schema` (httpclt.go:132-139) → `httpclt.DoRequest` — the single dispatch
    extension point, whose default is `http.DefaultClient` (httpclt.go:94).
-2. The starter's replacement runs the request through its `http.Client` →
-   `dispatchTransport.RoundTrip` looks up `routes[req.Host]` under RLock; **no route for the host →
-   error `http-client: no transport for target <host>` at request time** (starter.go:176-184).
+2. The starter's replacement looks `meta.Target` up in the route table and drives the request
+   through that entry's transport; **no route for the target → error `http-client: no transport for
+   target <target>` at request time**. The lookup happens here rather than inside a RoundTripper
+   because `net/http` hands a transport nothing but the `*http.Request` — routing at this layer is
+   what keeps the declared Target as the key, and it also keeps every hop of a redirect on the
+   route the call started on.
 3. trafficTransport injects the load-test marker header iff `traffic.IsLoadTest(ctx)`.
 4. The executor runs the round-trip as one protected call: rate limit → breaker gate →
    per-attempt timeout (`attempt-timeout`) → retry loop with backoff, all under `MaxDuration`;
@@ -248,11 +254,15 @@ Rationale (from the source comments, verified):
 
 ### 2.4 Extensions: the driver bean (driver.go)
 
-Transport assembly is owned by a `Driver` (interface, driver.go). Every configured entry is
-assembled through the one Driver (resolved inside `assembleTransport`). The Driver is an
-**optional container bean** whose constructor returns `StarterHTTPClient.Driver`; when none is
+Transport assembly is owned by a `Driver` (interface, driver.go). Each configured entry is
+assembled through the Driver its own key selects (resolved inside `assembleTransport`). The Driver
+is an **optional container bean** whose constructor returns `StarterHTTPClient.Driver`; when none is
 provided the starter falls back to its bundled `DefaultDriver` (the standard starter-http-client/httpx
-assembly). There is no per-config `driver` key and no driver name to select:
+assembly). Selection resolves in two steps, like every other client starter:
+`spring.http-client.instances.<name>.driver = <bean-name>` names that instance's Driver bean, falling
+back to the family-wide `spring.http-client.default.driver = <bean-name>`, then to the single Driver
+bean by type. Naming a bean that does not exist fails startup, so different instances may assemble
+through different drivers:
 
 ```go
 func init() {
@@ -272,17 +282,14 @@ func init() {
 
 ## 3. Per-key behavior reference
 
-Keys under `spring.http-client.<name>.*` (cross-checked with
+Keys under `spring.http-client.instances.<name>.*` (cross-checked with
 `grep -rhoE 'value:"[^"]+"'` — no extras on either side):
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `addr` | string | "" | Direct mode: `fixedHostTransport` pins every request to this host:port. May be combined with `service-name`, which then stays a pure governance label (no discovery). | Neither set → fail fast "one of addr or service-name is required". |
 | `service-name` | string | "" | Discovery mode: logical name resolved via the named backend; ALWAYS the governance resource label when set (discovery or direct mode). With `addr` set it is not a discovery target. | Neither set → fail fast; set without `addr` and without `discovery` → fail fast. |
-| `discovery` | string | "" | Names a discovery backend bean (bean name = label, registered by a registry starter). Required iff `service-name` set without `addr` (config.go validate). | Missing → fail fast. Unknown name → wiring-time error listing the registered beans (starter.go newDispatchTransport). |
-| `balancer` | string | round_robin | LB strategy: `round_robin`, `least_conn`, `consistent_hash`, `weighted`, `zone_aware`. Unknown name fails at wiring (`loadbalance.New`, httpx.go:156). | Typos surface at boot, not per request. |
-| `suspend-threshold` | int | 0 | Consecutive failures before an endpoint is suspended from the pool (outlier suspension). 0 disables. | Without it a dead instance keeps receiving round-robin share; pair with resilience so the breaker absorbs the failures. |
-| `suspend-for` | duration | 0 | How long an suspended endpoint stays out before a half-open trial. Ignored when `suspend-threshold=0`. | 0 with suspension on → immediate trial re-entry (thrash). |
+| `discovery` | string | "" | Names a discovery backend bean (bean name = label, registered by a registry starter). Required iff `service-name` set without `addr` (config.go validate). | Missing → fail fast. Unknown name → wiring-time error listing the registered beans (starter.go newRoute). |
 | `observability.level` | string | brief | Access-log gate for the executor wrap: off / brief / detailed (observe/config.go:50). | brief is ON by default — expect one log record per protected call. |
 | `observability.maxArgBytes` | int | 512 | Argument truncation in those logs. | Large bodies silently truncated. |
 | `observability.skipOps` | []string | "" | Ops excluded from access logging. | |
@@ -341,7 +348,8 @@ curl -s '127.0.0.1:9471/greet?name=x'; curl -s '127.0.0.1:9472/greet?name=x'  # 
 kill %1
 ```
 
-Replace `balancer=round_robin` with `least_conn` or add a third endpoint to see the spread change;
+Switch the rule's `balancer` from `round_robin` to `least_conn` in conf/govern.properties, or add a
+third endpoint, to see the spread change — the pool is retuned in place, no restart;
 deregistering an instance (with a real registry) drops it from rotation: the backend's snapshot
 loses it and the loader-bound `Pool` stops picking it (httpx.go:200-221).
 
@@ -366,6 +374,7 @@ Fault rides the same governance source; `govern.fault.*` hot-reloads (see exampl
 conf comments). Flip in the config file:
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.fault.enabled=true
 govern.fault.rate=0.5
 govern.fault.error=timeout    # or generic / reset
@@ -395,7 +404,7 @@ whole stack, not just the injector.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Request fails `http-client: no transport for target "x"` | No `spring.http-client` entry whose addr/service-name equals the client's `Target` (mismatch surfaces at request time, not wiring — starter.go:180-182) | Add an entry or fix the Target; they must match exactly. |
+| Request fails `http-client: no transport for target "x"` | No `spring.http-client` entry whose addr/service-name equals the client's `Target` (mismatch surfaces at request time, not wiring — starter.go:188-195) | Add an entry or fix the Target; they must match exactly. |
 | Container fails: "one of addr or service-name is required" / "discovery is required" | validate() rules (config.go) | Set at least one addressing mode; add `discovery` when `service-name` is set without `addr`. |
 | Everything works but no breaker/rate limit | `govern.enabled` not set — the governance-backed executor is a transparent no-op without it | Enable starter-governance and a policy. |
 | Breaker trips on a single failure | `breaker-strategy=error-rate` with `min-requests` below the starter floor | The starter already floors `min-requests` to 5; raising `error-rate-threshold` or `min-requests` in the govern rule. |

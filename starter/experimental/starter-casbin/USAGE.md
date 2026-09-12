@@ -7,12 +7,12 @@ self-asserting [example/](example/) (`example/check.sh`, zero external dependenc
 [the official docs](https://casbin.org/docs/overview)** — everything below is go-spring's
 increment.
 
-**Activation**: a `gs.Module` on `spring.casbin` in `init()` — every `spring.casbin.<name>`
+**Activation**: a `gs.Module` on `spring.casbin` in `init()` — every `spring.casbin.instances.<name>`
 config entry becomes one `*StarterCasbin.Enforcer` **container bean** named `<name>`. The
 *enforcers* are beans, and so are the *adapters/watchers* they use: the config keys
 `adapter` / `watcher` name a bean the application provides, and a per-instance Module
 injects it into the enforcer's constructor (nil when the key is empty). There is no
-package-level registry. No `enabled` key; zero `spring.casbin.*` keys means zero enforcers
+package-level registry. No `enabled` key; zero `spring.casbin.instances.*` keys means zero enforcers
 and a fully inert starter.
 
 ---
@@ -89,7 +89,7 @@ import (
 )
 
 // Service consumes the enforcer purely by injection. The bean is named after its
-// config group key (${spring.casbin.rbac.*} -> "rbac"), hence `autowire:"rbac"`.
+// config group key (${spring.casbin.instances.rbac.*} -> "rbac"), hence `autowire:"rbac"`.
 // *StarterCasbin.Enforcer embeds *casbin.Enforcer, so Enforce/AddPolicy/... are
 // used exactly like upstream.
 type Service struct {
@@ -133,18 +133,18 @@ func main() {
 ```properties
 # One enforcer per group key. "rbac" is the bean name you autowire.
 # Model file (required — no default).
-spring.casbin.rbac.model=./conf/model.conf
+spring.casbin.instances.rbac.model=./conf/model.conf
 # Bean name of the persist.Adapter this enforcer loads/saves through
 # (starter.go newEnforcer injects it by name). Mutually exclusive with
 # `policy` — setting both is a startup error.
-spring.casbin.rbac.adapter=file
+spring.casbin.instances.rbac.adapter=file
 # Bean name of the persist.Watcher enabling hot reload. When set, peer change
 # signals fire an automatic LoadPolicy (multi-instance sync).
-spring.casbin.rbac.watcher=local
+spring.casbin.instances.rbac.watcher=local
 # Dependency-free alternative to adapter=: plain file-backed policy.
-# spring.casbin.rbac.policy=./conf/policy.csv
+# spring.casbin.instances.rbac.policy=./conf/policy.csv
 # Persist AddPolicy/RemovePolicy back to storage (default true).
-spring.casbin.rbac.autoSave=true
+spring.casbin.instances.rbac.autoSave=true
 ```
 
 **Verify** (from `example/`, which self-asserts all of this in `runTest`):
@@ -172,7 +172,7 @@ import starter-casbin
   └─ init(): gs.Module(OnProperty("spring.casbin"), registerEnforcer)  [starter.go]
 
 gs.Run()
-  ├─ config bind: each spring.casbin.<name>.* → Config (value tags)
+  ├─ config bind: each spring.casbin.instances.<name>.* → Config (value tags)
   ├─ per key: registerEnforcer → Provide(Enforcer ctor) named <name>
   │    ctor binds adapter by name c.Adapter, watcher by name c.Watcher
   │    (adapterArg/watcherArg → nil via ValueArg when the key is empty)
@@ -215,7 +215,7 @@ Design rationale, cited from source comments:
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.casbin.<name>.*` (one group per enforcer bean).
+All keys live under `spring.casbin.instances.<name>.*` (one group per enforcer bean).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -280,7 +280,7 @@ indicator, no metrics — see §6.
 | Changed `policy` file but decisions unchanged | Policy is loaded once at construction; no watcher configured | Call `LoadPolicy()` on the bean, or configure a watcher for hot reload. |
 | Boot fails: `policy` and `adapter` are mutually exclusive | Both `policy` and `adapter` configured | Pick one storage source; drop the other key. |
 | Multi-instance: one instance's policy changes don't propagate | Watcher callback reloads, but only on an explicit `Update()` signal from the mutating peer | Ensure the mutating instance calls `watcher.Update()` after `SavePolicy`/`AddPolicy` (upstream watcher semantics). |
-| `AddPolicy` returns ok but data lost after restart | `autoSave=false` | Set `spring.casbin.<name>.autoSave=true` or call `SavePolicy()` explicitly. |
+| `AddPolicy` returns ok but data lost after restart | `autoSave=false` | Set `spring.casbin.instances.<name>.autoSave=true` or call `SavePolicy()` explicitly. |
 | Bean not built in prod, works in tests | Service not root-reachable (no Export/injector) | `gs.Provide(&S{}).Export(gs.As[gs.Rooter]())` — see memory note on root-reachable beans. |
 
 ## 6. Design Health

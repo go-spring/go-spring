@@ -28,10 +28,10 @@ import _ "go-spring.org/starter-gorm-clickhouse"
 在项目的[配置文件](example/conf/app.properties)中添加 gorm 配置，比如：
 
 ```properties
-spring.gorm.clickhouse.primary.user=default
-spring.gorm.clickhouse.primary.password=
-spring.gorm.clickhouse.primary.addr=127.0.0.1:9000
-spring.gorm.clickhouse.primary.db=default
+spring.gorm.clickhouse.instances.primary.user=default
+spring.gorm.clickhouse.instances.primary.password=
+spring.gorm.clickhouse.instances.primary.addr=127.0.0.1:9000
+spring.gorm.clickhouse.instances.primary.db=default
 ```
 
 ### 3. 注入 gorm 实例
@@ -39,10 +39,10 @@ spring.gorm.clickhouse.primary.db=default
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import starter "go-spring.org/starter-gorm-clickhouse"
+import "go-spring.org/starter-gorm"
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // 内嵌 *gorm.DB 的包装
+    DB *gormcore.DB `autowire:"clickhouse.primary"` // 内嵌 *gorm.DB 的包装
 }
 ```
 

@@ -50,7 +50,7 @@ sentinel driver from `starter/experimental/starter-resilience`.
     because a dialer is already scoped to one service.
 
   Inbound admission is NOT in this package: each protocol starter builds
-  its own middleware on the `governance.ExecutorFor` seam (see
+  its own middleware on the `resilience.ExecutorFor` seam (see
   starter-gin / starter-grpc admission), mapping neutral rejections to
   429/503 and serving each request exactly once.
 - **`Fallback` is a helper, not an interface method.** Adding a `degrade`

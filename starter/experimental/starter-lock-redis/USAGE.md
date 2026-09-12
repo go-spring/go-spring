@@ -7,9 +7,9 @@ abstraction [cloud/lock](../../../cloud/lock), and the self-asserting
 [Redis docs](https://redis.io/docs/latest/commands/set/) — everything below is go-spring's
 increment.
 
-**Activation**: any `spring.lock.<name>.*` property registers one Redis-backed `lock.Locker`
+**Activation**: any `spring.lock.instances.<name>.*` property registers one Redis-backed `lock.Locker`
 instance per `<name>`; each reuses the `*redis.Client` bean named by its `client` field
-(provided by starter-go-redis under `spring.go-redis.<client>`). Blank-import one lock backend
+(provided by starter-go-redis under `spring.go-redis.instances.<client>`). Blank-import one lock backend
 per binary — the `spring.lock` prefix is shared by all four backends.
 
 ---
@@ -100,14 +100,14 @@ func (j *Jobs) Run(ctx context.Context) {
 
 ```properties
 # --- redis client (owned by starter-go-redis; the lock reuses it by name) ----
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # --- locker -------------------------------------------------------------------
-spring.lock.jobs.client=cache          # required; fail-fast when empty
-spring.lock.jobs.ttl=10s               # default lease TTL (per-call WithTTL wins)
-spring.lock.jobs.renew-interval=0      # 0 -> ttl/3; negative disables auto-renew
-spring.lock.jobs.retry-interval=100ms  # Acquire poll interval under contention
-spring.lock.jobs.key-prefix=starter-lock-redis:example:
+spring.lock.instances.jobs.client=cache          # required; fail-fast when empty
+spring.lock.instances.jobs.ttl=10s               # default lease TTL (per-call WithTTL wins)
+spring.lock.instances.jobs.renew-interval=0      # 0 -> ttl/3; negative disables auto-renew
+spring.lock.instances.jobs.retry-interval=100ms  # Acquire poll interval under contention
+spring.lock.instances.jobs.key-prefix=starter-lock-redis:example:
 
 # --- observability (starter-otel) --------------------------------------------
 spring.observability.service-name=demo
@@ -143,7 +143,7 @@ import starter-go-redis + starter-lock-redis
              │              gs.ValueArg(c), gs.TagArg(c.Client)    Destroy → Close)
              └─ newLocker wraps it with observe-lock unless observe.enabled=false
 gs.Run()
-  ├─ config bind: ${spring.lock.<name>} → Config (value tags)
+  ├─ config bind: ${spring.lock.instances.<name>} → Config (value tags)
   ├─ newRedisLocker: no dialing — the *redis.Client bean is injected ready-made;
   │  this starter owns no connection
   ├─ bean wiring: consumers' autowire:"<name>" resolved (bean already observe-wrapped)
@@ -164,7 +164,7 @@ layer wins — this starter feeds **all three** knobs:
 | Layer | Source | Keys |
 |-------|--------|------|
 | 1. per-call option | `lock.WithTTL` / `WithRenewInterval` / `WithRetryInterval` | — |
-| 2. starter default | `spring.lock.<name>.ttl` / `.renew-interval` / `.retry-interval` | all three exist here |
+| 2. starter default | `spring.lock.instances.<name>.ttl` / `.renew-interval` / `.retry-interval` | all three exist here |
 | 3. package default | TTL `30s`, renew `TTL/3`, retry `100ms` | fill whatever is still unset |
 
 Special semantics that survive the layering:
@@ -203,11 +203,11 @@ Special semantics that survive the layering:
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.lock.<name>` (exact-match, no relaxed forms).
+All keys live under `spring.lock.instances.<name>` (exact-match, no relaxed forms).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.<client>`; checked before bean registration. `TagArg(c.Client)` is the seam tying locker to redis instance. | Empty → boot fails naming the instance; typo → bean-wiring failure at boot. |
+| `client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.instances.<client>`; checked before bean registration. `TagArg(c.Client)` is the seam tying locker to redis instance. | Empty → boot fails naming the instance; typo → bean-wiring failure at boot. |
 | `ttl` | duration | `30s` | Default lease TTL for acquisitions that pass no `WithTTL`; layer 2 of §2.2. | Too low + GC pause/network blip ⇒ lock lost mid-work; too high ⇒ slow failover after a crash. |
 | `renew-interval` | duration | `0` | Lease refresh interval. `0` → `ttl/3`; **negative disables auto-renew** (expires strictly after TTL). | Disabling renew with a short TTL drops locks mid-work by design. |
 | `retry-interval` | duration | `100ms` | `Acquire`'s poll interval while contended. | Too low hammers Redis; too high adds latency to failover. |
@@ -235,7 +235,7 @@ Unlock (poll every `retry-interval`).
 
 ### 4.2 TTL expiry mid-hold (renew-disabled drill)
 
-1. Configure `spring.lock.jobs.ttl=3s` and `spring.lock.jobs.renew-interval=-1` (auto-renew off).
+1. Configure `spring.lock.instances.jobs.ttl=3s` and `spring.lock.instances.jobs.renew-interval=-1` (auto-renew off).
 2. Acquire and hold; watch the key expire without any client action:
 
 ```bash
@@ -283,8 +283,8 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails `lock-redis: instance "<n>" missing required property ...client` | instance without `client` | Set `spring.lock.<n>.client` to an existing `spring.go-redis.<name>`. |
-| Boot fails wiring `*redis.Client` | `client` typo — no such redis bean | Fix the name to match a `spring.go-redis.<client>` entry. |
+| Boot fails `lock-redis: instance "<n>" missing required property ...client` | instance without `client` | Set `spring.lock.instances.<n>.client` to an existing `spring.go-redis.instances.<name>`. |
+| Boot fails wiring `*redis.Client` | `client` typo — no such redis bean | Fix the name to match a `spring.go-redis.instances.<client>` entry. |
 | Locks lost mid-work | renew disabled (`renew-interval < 0`) or TTL shorter than worst-case pause | Enable renew; raise TTL — renew only fires every interval, so TTL must survive one missed tick. |
 | Failover slow after a crash | TTL (or renew interval × slack) too large | Lower TTL; crash failover waits out the remaining TTL. |
 | `Unlock` returns `ErrNotHeld` | the key expired or was taken over before Unlock | Expected proof of takeover — check whether the critical section overran its lease. |

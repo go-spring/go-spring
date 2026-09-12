@@ -47,10 +47,11 @@ type Config struct {
 
 	// TLS binds the tls.* keys the SQL Server DSN can actually express:
 	// tls.enabled → "encrypt=true", tls.insecure-skip-verify →
-	// "TrustServerCertificate=true", tls.ca-file → "certificate". The wider
-	// tlsconf.TLSConfig block is deliberately not used: its client-cert
-	// (cert-file/key-file) and server-name keys have no DSN slot here, so
-	// binding them would advertise dead configuration.
+	// "TrustServerCertificate=true", tls.ca-file → "certificate",
+	// tls.server-name → "hostNameInCertificate". The wider tlsconf.TLSConfig
+	// block is deliberately not used: its client-cert (cert-file/key-file) keys
+	// have no DSN slot here, so binding them would advertise dead
+	// configuration. mTLS therefore needs a custom connector.
 	TLS TLSConfig `value:"${tls}"`
 }
 
@@ -68,6 +69,12 @@ type TLSConfig struct {
 	// CAFile is a PEM server certificate / CA path mapped to the DSN
 	// "certificate" parameter.
 	CAFile string `value:"${ca-file:=}"`
+
+	// ServerName overrides the name checked against the server certificate,
+	// mapped to the DSN "hostNameInCertificate" parameter. Set it when dialing
+	// by IP or through a discovery label, where the address no longer matches
+	// the name in the certificate.
+	ServerName string `value:"${server-name:=}"`
 }
 
 // DSN constructs the SQL Server Data Source Name based on the configuration.
@@ -101,6 +108,10 @@ func (c Config) DSN() string {
 		if c.TLS.CAFile != "" {
 			sb.WriteString("&certificate=")
 			sb.WriteString(url.QueryEscape(c.TLS.CAFile))
+		}
+		if c.TLS.ServerName != "" {
+			sb.WriteString("&hostNameInCertificate=")
+			sb.WriteString(url.QueryEscape(c.TLS.ServerName))
 		}
 	}
 	return sb.String()

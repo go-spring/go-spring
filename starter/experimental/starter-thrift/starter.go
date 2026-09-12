@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/tlsconf"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -154,7 +155,12 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	if err != nil {
 		return err
 	}
-	proc := s.proc
+	// Inbound admission (always installed): each call passes the resource's
+	// rate-limit / bulkhead / breaker policy before reaching the service. It sits
+	// INSIDE the observing wrapper so a rejection is still traced and counted;
+	// with governance off the executor is a transparent pass-through, so
+	// installing it costs a call frame and changes nothing else.
+	proc := WrapAdmission(s.proc, resilience.ResourceLabel("thrift", s.cfg.Addr), "thrift")
 	if s.cfg.Observer.Tracing.Enabled || s.cfg.Observer.Metrics.Enabled {
 		proc = WrapProcessor(proc)
 	}

@@ -7,7 +7,7 @@ starter：贡献 etcd concurrency session 后端的 `lock.Locker` 命名 bean。
 
 ## 1. 职责与边界
 
-- 把 `spring.lock.<name>` 条目绑定到 etcd 版 `lock.Locker` bean，每条一个，
+- 把 `spring.lock.instances.<name>` 条目绑定到 etcd 版 `lock.Locker` bean，每条一个，
   按 config 名注册并导出为 `lock.Locker`。
 - locker 使用 `concurrency.NewSession(WithTTL)` + `concurrency.NewMutex`；
   keepalive 由 session 自身完成，因此不需要手工续期 goroutine。

@@ -7,7 +7,7 @@
 ——正是 `kube-controller-manager --leader-elect` 与 spring-cloud-kubernetes 所用的机制
 ——因此集群内应用只依赖控制面本身即可完成选主或守护独占逻辑。
 
-空导入本 starter 并声明一条 `spring.lock.<name>` 配置,即注册一个名为 `<name>` 的
+空导入本 starter 并声明一条 `spring.lock.instances.<name>` 配置,即注册一个名为 `<name>` 的
 `lock.Locker` bean(来自 `cloud/lock`)。业务代码只注入 `lock.Locker` / 构建
 `lock.Election`,从不感知本包;因此在共用 `spring.lock` 前缀下切换到 etcd/consul/redis
 后端只需改一行空导入。
@@ -63,7 +63,7 @@ if err == nil {
 
 ## 配置
 
-绑定在 `spring.lock.<name>` 下:
+绑定在 `spring.lock.instances.<name>` 下:
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ if err == nil {
 
 ## 工作原理
 
-- 每条 `spring.lock.<name>` 构建一个持有共享 clientset 的 Locker,提前创建,以便
+- 每条 `spring.lock.instances.<name>` 构建一个持有共享 clientset 的 Locker,提前创建,以便
   ServiceAccount 缺失或 kubeconfig 错误时在启动阶段即失败。
 - `Acquire`/`TryAcquire` 将锁 key 映射到单个 Lease(`<key-prefix><key>`)。其
   "获取或续约" 逻辑对齐 client-go 选主:不存在则创建,已过期或本就属于自己则接管,

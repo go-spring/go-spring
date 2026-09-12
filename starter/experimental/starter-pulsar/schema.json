@@ -2,82 +2,94 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.pulsar",
   "type": "object",
+  "description": "Two buckets: spring.pulsar.default holds family-wide values (each overridable per instance), spring.pulsar.instances.<name> holds one entry per named instance. No other key belongs directly under spring.pulsar.",
   "properties": {
-    "url": {
-      "type": "string"
-    },
-    "operation-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "30s"
-    },
-    "connection-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "5s"
-    },
-    "token": {
-      "type": "string",
-      "default": ""
-    },
-    "token-from-file": {
-      "type": "boolean",
-      "default": false
-    },
-    "tls-trust-certs-file": {
-      "type": "string",
-      "default": ""
-    },
-    "tls-cert-file": {
-      "type": "string",
-      "default": ""
-    },
-    "tls-key-file": {
-      "type": "string",
-      "default": ""
-    },
-    "tls-allow-insecure": {
-      "type": "boolean",
-      "default": false
-    },
-    "tls-validate-hostname": {
-      "type": "boolean",
-      "default": false
-    },
-    "fail-fast": {
-      "type": "boolean",
-      "default": true
-    },
-    "health-check-topic": {
-      "type": "string",
-      "default": "persistent://public/default/__health_check",
-      "description": "public/default/__health_check}\"`"
-    },
-    "metrics": {
+    "default": {
       "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true
-        },
-        "port": {
-          "type": "integer",
-          "default": 9091
-        },
-        "path": {
+        "driver": {
           "type": "string",
-          "default": "/metrics"
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
         }
       }
     },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
-    },
-    "governance": {
-      "type": "boolean",
-      "default": true,
-      "description": "Route producer/consumer operations through the governance center (resilience/fault)"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "operation-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "30s"
+          },
+          "connection-timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "5s"
+          },
+          "token": {
+            "type": "string",
+            "default": ""
+          },
+          "token-from-file": {
+            "type": "boolean",
+            "default": false
+          },
+          "tls-trust-certs-file": {
+            "type": "string",
+            "default": ""
+          },
+          "tls-cert-file": {
+            "type": "string",
+            "default": ""
+          },
+          "tls-key-file": {
+            "type": "string",
+            "default": ""
+          },
+          "tls-allow-insecure": {
+            "type": "boolean",
+            "default": false
+          },
+          "tls-validate-hostname": {
+            "type": "boolean",
+            "default": false
+          },
+          "fail-fast": {
+            "type": "boolean",
+            "default": true
+          },
+          "health-check-topic": {
+            "type": "string",
+            "default": "persistent://public/default/__health_check",
+            "description": "public/default/__health_check}\"`"
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "port": {
+                "type": "integer",
+                "default": 9091
+              },
+              "path": {
+                "type": "string",
+                "default": "/metrics"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

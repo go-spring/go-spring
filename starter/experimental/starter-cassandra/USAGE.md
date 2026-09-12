@@ -8,8 +8,8 @@ are [gocql's own documentation](https://pkg.go.dev/github.com/gocql/gocql)** (Sc
 same native protocol, so one starter covers both [config.go:26-28]) — everything below is
 go-spring's increment.
 
-**Activation**: any `spring.cassandra.*` key (the module is `OnProperty("spring.cassandra")`, a
-prefix check [starter.go:38]). Each `spring.cassandra.<name>` entry creates one
+**Activation**: any `spring.cassandra.instances.*` key (the module is `OnProperty("spring.cassandra")`, a
+prefix check [starter.go:38]). Each `spring.cassandra.instances.<name>` entry creates one
 `*StarterCassandra.Client` bean named `<name>` (embedding `*gocql.Session`), plus a health
 indicator named `cassandra:<name>` [starter.go:47-49].
 
@@ -95,12 +95,12 @@ func (s *Service) Run(ctx context.Context) error {
 
 ```properties
 # --- instance "a": default consistency, auth off (matches the local container)
-spring.cassandra.a.hosts=127.0.0.1
-spring.cassandra.a.consistency=local-quorum
+spring.cassandra.instances.a.hosts=127.0.0.1
+spring.cassandra.instances.a.consistency=local-quorum
 
 # --- instance "b": same cluster, keyspace preselected
-spring.cassandra.b.hosts=127.0.0.1
-spring.cassandra.b.keyspace=demo
+spring.cassandra.instances.b.hosts=127.0.0.1
+spring.cassandra.instances.b.keyspace=demo
 
 # --- actuator + otel ------------------------------------------------------
 spring.actuator.addr=:9370
@@ -130,7 +130,7 @@ docker exec -it cassandra-example cqlsh -e "SELECT * FROM demo.greetings"
 
 ```
 import starter-cassandra
-  └─ gs.Module(OnProperty("spring.cassandra")) fires when any spring.cassandra.* key exists
+  └─ gs.Module(OnProperty("spring.cassandra")) fires when any spring.cassandra.instances.* key exists
         └─ conf.BindEach(p, "${spring.cassandra}") → one Config per <name> entry
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver)).Name(<name>)
@@ -141,11 +141,13 @@ import starter-cassandra
 gs.Run()
   ├─ ctor newClient [starter.go:60]:
   │     username/password pairing check → optional Driver bean
-  │     (none → bundled DefaultDriver) → driver.CreateClient
+  │     (none → bundled DefaultDriver; several coexist → the entry selects
+  │     one by name: spring.cassandra.instances.<name>.driver = <bean-name>, empty =
+  │     `spring.cassandra.default.driver`, then the single Driver bean by type, naming a missing bean fails startup)
+  │     → driver.CreateClient
   │     → HealthCheck probe (fail fast, see below)
   ├─ Init [client.go:59]: newDBObserver("cassandra") → resource label
-  │     → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │     → resilience.WrapExecutor(exec, "cassandra") — exec chain complete
+  │     → fault.WrapExecutor(resilience.ExecutorFor("cassandra", resource)) — exec chain complete
   ├─ readiness: indicator queries system.local per instance
   └─ SIGTERM → Destroy [client.go:75]: exec.Close (if armed) → Session.Close
 ```
@@ -200,10 +202,11 @@ wrapper's own `WithContext`/`Bind` to stay guarded. Consequence: reads and write
 breaker/limiter/metrics/access-log as long as they start from `Client.Query`/`Client.Bind`/
 `Client.Exec`.
 
-Layer order on `Exec` (outside-in): observer start → fault injector (fault.WrapExecutor,
-process-wide) → resilience executor (governance center) → gocql. The resilience observer
-(`resilience.WrapExecutor`) adds outcome counters around the executor itself, so injected
-faults and breaker rejections are both counted and logged.
+Layer order on `Exec` (outside-in): observer start → fault injector (`fault.WrapExecutor`,
+process-wide) → resilience observer (`resilience.WrapExecutor`, outcome counters) →
+resilience executor (governance center) → gocql. The observer layer wraps the still-private
+executor itself and the fault injector sits outside it, so injected faults and breaker
+rejections are both counted and logged.
 
 ### 2.4 Driver seam
 
@@ -220,7 +223,7 @@ through it. When no such bean exists the starter falls back to the bundled `Defa
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.cassandra.<name>.` — bound per instance via `conf.BindEach` (the
+All keys live under `spring.cassandra.instances.<name>.` — bound per instance via `conf.BindEach` (the
 ctor's `Config` arg), NOT the absolute-property starter-Pool rule.
 
 ### 3.1 Connection & session

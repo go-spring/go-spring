@@ -25,8 +25,8 @@ import _ "go-spring.org/starter-tdengine"
 ### 2. 配置
 
 ```properties
-spring.tdengine.a.dsn=root:taosdata@ws(127.0.0.1:6041)/power
-spring.tdengine.a.max-open-conns=8
+spring.tdengine.instances.a.dsn=root:taosdata@ws(127.0.0.1:6041)/power
+spring.tdengine.instances.a.max-open-conns=8
 ```
 
 ### 3. 注入
@@ -50,7 +50,7 @@ rows, err := s.Client.QueryContext(ctx, "SELECT COUNT(*) FROM power.meters")
 
 ## 核心特性
 
-- **多实例客户端** — 每个 `spring.tdengine.<name>` 条目都是独立 bean，
+- **多实例客户端** — 每个 `spring.tdengine.instances.<name>` 条目都是独立 bean，
   拥有各自的配置。
 - **fail-fast 启动探活 + 健康指示器** — 启动期一次 `PingContext`，
   `tdengine:<name>` 指示器供 `starter-actuator` 聚合。
@@ -64,8 +64,8 @@ rows, err := s.Client.QueryContext(ctx, "SELECT COUNT(*) FROM power.meters")
 **多客户端** — 配置更多条目并按名注入：
 
 ```properties
-spring.tdengine.hot.dsn=root:taosdata@ws(10.0.0.1:6041)/power
-spring.tdengine.cold.dsn=root:taosdata@ws(10.0.0.2:6041)/archive
+spring.tdengine.instances.hot.dsn=root:taosdata@ws(10.0.0.1:6041)/power
+spring.tdengine.instances.cold.dsn=root:taosdata@ws(10.0.0.2:6041)/archive
 ```
 
 **自定义 driver** — 提供自己的 `Driver` bean 来替换客户端装配（例如锁定其它

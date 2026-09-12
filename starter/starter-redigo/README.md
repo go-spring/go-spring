@@ -24,7 +24,7 @@ import _ "go-spring.org/starter-redigo"
 Add Redis configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.redigo.main.addr=127.0.0.1:6379
+spring.redigo.instances.main.addr=127.0.0.1:6379
 ```
 
 ### 3. Inject the Redis Instance
@@ -62,7 +62,7 @@ The [example.go](example/example.go) file demonstrates the following core Redis 
 * **Startup connection validation (opt-in)**: set `startup-ping=true` to borrow a connection and
   `PING` at boot; with the default `false`, a misconfigured address surfaces on the first command
   (redigo pools are lazy).
-* **Service discovery**: set `service-name` (and optionally `discovery` to pick a registered backend, default `default`)
+* **Service discovery**: set `service-name` (and `discovery` to name the registered backend; there is no default backend)
   instead of `addr`; a `Resolver` resolves the service through the registered `discovery.Discovery` backend and dials a
   live endpoint for every new pool connection. Combined with `conn-max-lifetime`, pooled connections recycle onto updated
   addresses without rebuilding the pool. On shutdown the starter stops the background watch. This mirrors

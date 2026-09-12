@@ -47,7 +47,7 @@ import (
 )
 
 // Service injects the "hot" BigCache instance. The bean is created by
-// starter-bigcache under ${spring.bigcache.hot}; starter-bigcache
+// starter-bigcache under ${spring.bigcache.instances.hot}; starter-bigcache
 // registers its OTel gauges (labeled cache.name="hot") as a side effect of
 // constructing the client. The bean is the *Cache wrapper (bigcache
 // has no hook extension point), so per-op span/metric/log are emitted by the

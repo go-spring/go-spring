@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterNeo4j "go-spring.org/starter-neo4j"
@@ -53,9 +54,9 @@ type AnotherNeo4jDriver struct {
 	StarterNeo4j.DefaultDriver
 }
 
-func (d AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config) (neo4j.DriverWithContext, error) {
+func (d AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config, backend discovery.Discovery) (neo4j.DriverWithContext, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherNeo4jDriver::CreateClient")
-	return d.DefaultDriver.CreateClient(ctx, c)
+	return d.DefaultDriver.CreateClient(ctx, c, backend)
 }
 
 type Service struct {

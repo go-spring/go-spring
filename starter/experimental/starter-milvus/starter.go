@@ -26,8 +26,8 @@ import (
 )
 
 func init() {
-	gs.Module(gs.OnProperty("spring.milvus"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.milvus}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.milvus.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.milvus.instances}", func(name string, c Config) error {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)

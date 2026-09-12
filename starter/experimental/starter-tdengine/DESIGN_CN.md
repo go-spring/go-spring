@@ -8,7 +8,7 @@
 
 ## 1. 职责与边界
 
-- **负责**：`spring.tdengine.<name>` 组的 bean 生命周期、DSN 解析为
+- **负责**：`spring.tdengine.instances.<name>` 组的 bean 生命周期、DSN 解析为
   taosWS 连接器、守卫过的 `*sql.DB` 池、启动探活与每实例指示器、逐语句
   守卫。
 - **不负责**：时序惯用法的 SQL 构建（超级表、无模式写入仍是经

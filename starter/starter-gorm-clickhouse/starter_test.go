@@ -50,7 +50,7 @@ func TestDSN(t *testing.T) {
 
 func TestBuild(t *testing.T) {
 	// Neither addr nor service-name: rejected up front.
-	if _, err := build(context.Background(), Config{}); err == nil {
+	if _, err := build(context.Background(), Config{}, nil); err == nil {
 		t.Fatal("build must require addr or service-name")
 	}
 
@@ -58,7 +58,7 @@ func TestBuild(t *testing.T) {
 	c.PingTimeout = 500 * time.Millisecond
 
 	// Plain path: DSN dialector, pool settings flow through.
-	spec, err := build(context.Background(), c)
+	spec, err := build(context.Background(), c, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil || spec.Dialector.Name() != "clickhouse" {
 		t.Fatalf("plain build must return a clickhouse dialector: %v", spec.Dialector)
@@ -70,13 +70,13 @@ func TestBuild(t *testing.T) {
 	// TLS path: a broken CA must fail the build before any dial.
 	c.TLS.Enabled = true
 	c.TLS.CAFile = "/nonexistent/ca.pem"
-	if _, err := build(context.Background(), c); err == nil {
+	if _, err := build(context.Background(), c, nil); err == nil {
 		t.Fatal("build must fail on an unreadable CA file")
 	}
 	c.TLS.CAFile = ""
 
 	// Closed port: the open must fail fast, returning a nil client.
-	spec, err = build(context.Background(), c)
+	spec, err = build(context.Background(), c, nil)
 	assert.Error(t, err).Nil("build")
 	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "clickhouse"})
 	if err == nil {
@@ -89,11 +89,11 @@ func TestBuild(t *testing.T) {
 }
 
 // TestClickhouseNotTriggered proves the conditional wiring: with no
-// spring.gorm.clickhouse.* entries the starter registers nothing and the app starts.
+// spring.gorm.clickhouse.instances.* entries the starter registers nothing and the app starts.
 func TestClickhouseNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {
-		DBs  []*DB              `autowire:""`
-		Inds []health.Indicator `autowire:""`
+		DBs  []*gormcore.DB      `autowire:""`
+		Inds []*health.Indicator `autowire:""`
 	}) {
 		if len(s.DBs) != 0 || len(s.Inds) != 0 {
 			t.Fatalf("starter must stay dormant without config, got %d DB / %d indicators", len(s.DBs), len(s.Inds))

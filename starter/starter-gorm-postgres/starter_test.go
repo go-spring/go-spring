@@ -42,7 +42,7 @@ func TestBuildPlainDSN(t *testing.T) {
 	}
 	c.PingTimeout = 500 * time.Millisecond
 
-	spec, err := build(context.Background(), c)
+	spec, err := build(context.Background(), c, nil)
 	if err != nil {
 		t.Fatalf("build failed: %v", err)
 	}

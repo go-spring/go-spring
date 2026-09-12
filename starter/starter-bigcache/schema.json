@@ -2,40 +2,57 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.bigcache",
   "type": "object",
+  "description": "Two buckets: spring.bigcache.default holds family-wide values (each overridable per instance), spring.bigcache.instances.<name> holds one entry per named instance. No other key belongs directly under spring.bigcache.",
   "properties": {
-    "shards": {
-      "type": "integer",
-      "default": 1024
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "life-window": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "10m"
-    },
-    "clean-window": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "1m"
-    },
-    "max-entries-in-window": {
-      "type": "integer",
-      "default": 600000
-    },
-    "max-entry-size": {
-      "type": "integer",
-      "default": 500
-    },
-    "hard-max-cache-size": {
-      "type": "integer",
-      "default": 0
-    },
-    "stats-enabled": {
-      "type": "boolean",
-      "default": false
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "shards": {
+            "type": "integer",
+            "default": 1024
+          },
+          "life-window": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "10m"
+          },
+          "clean-window": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "1m"
+          },
+          "max-entries-in-window": {
+            "type": "integer",
+            "default": 600000
+          },
+          "max-entry-size": {
+            "type": "integer",
+            "default": 500
+          },
+          "hard-max-cache-size": {
+            "type": "integer",
+            "default": 0
+          },
+          "stats-enabled": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
     }
   }
 }

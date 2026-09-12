@@ -8,7 +8,7 @@ starter：贡献 Kubernetes `coordination.k8s.io/Lease` 对象后端的 `lock.Lo
 
 ## 1. 职责与边界
 
-- 把 `spring.lock.<name>` 条目绑定到 Lease 后端的 `lock.Locker` bean，每条
+- 把 `spring.lock.instances.<name>` 条目绑定到 Lease 后端的 `lock.Locker` bean，每条
   一个，按 config 名注册并导出为 `lock.Locker`。
 - 底层使用 client-go 的 `resourcelock.LeaseLock` 原语，`kube-controller-manager`
   与 spring-cloud-kubernetes 也是同一套构件。

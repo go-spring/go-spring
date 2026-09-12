@@ -8,7 +8,7 @@ against the starter source (`starter.go`, `config.go`, `driver.go`, `client.go`,
 — everything below is go-spring's increment: configuration, wiring, fail-fast startup,
 per-request instrumentation, resilience, health.
 
-**Activation**: `gs.OnProperty("spring.s3")` gates a gs.Module; every `spring.s3.<name>`
+**Activation**: `gs.OnProperty("spring.s3")` gates a gs.Module; every `spring.s3.instances.<name>`
 subtree creates one `*Client` bean named `<name>` plus one health indicator named
 `s3:<name>`. No keys → no beans.
 
@@ -99,20 +99,20 @@ func (s *Service) Put(ctx context.Context, bucket, key string, b []byte) error {
 **conf/app.properties** — the complete, commented surface (example config extended):
 
 ```properties
-# --- s3 client "a" (one instance per spring.s3.<name> subtree) ----------------
-spring.s3.a.endpoint=127.0.0.1:9000        # host:port, no scheme
-spring.s3.a.access-key-id=minioadmin
-spring.s3.a.secret-access-key=minioadmin
-spring.s3.a.region=us-east-1
-spring.s3.a.use-ssl=false
+# --- s3 client "a" (one instance per spring.s3.instances.<name> subtree) ----------------
+spring.s3.instances.a.endpoint=127.0.0.1:9000        # host:port, no scheme
+spring.s3.instances.a.access-key-id=minioadmin
+spring.s3.instances.a.secret-access-key=minioadmin
+spring.s3.instances.a.region=us-east-1
+spring.s3.instances.a.use-ssl=false
 # path style keeps the demo friendly to S3-compatible clouds that reject
 # virtual-host addressing.
-spring.s3.a.bucket-lookup=path
+spring.s3.instances.a.bucket-lookup=path
 
 # a second client against the same cluster shows multi-instance wiring
-spring.s3.b.endpoint=127.0.0.1:9000
-spring.s3.b.access-key-id=minioadmin
-spring.s3.b.secret-access-key=minioadmin
+spring.s3.instances.b.endpoint=127.0.0.1:9000
+spring.s3.instances.b.access-key-id=minioadmin
+spring.s3.instances.b.secret-access-key=minioadmin
 
 # --- actuator (folds the s3:<name> indicators into readiness) -----------------
 spring.actuator.addr=:9370
@@ -146,14 +146,17 @@ import starter-s3
         (source comment, starter.go:32-36)
 
 gs.Run()
-  ├─ conf.BindEach over spring.s3.* → one Config per instance name
+  ├─ conf.BindEach over spring.s3.instances.* → one Config per instance name
   ├─ per instance:
   │    ├─ r.Provide(newClient, IndexArg(1, ValueArg(c)),
   │    │            IndexArg(2, ?Driver)).Name(name)
   │    │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
   │    ├─ r.Provide(health indicator).Name("s3:"+name).Export(health.Indicator)
   │    │      — .Name is what keeps multi-instance (Name,Type) keys unique
-  │    ├─ newClient: optional Driver bean (none → bundled DefaultDriver)
+  │    ├─ newClient: optional Driver bean (none → bundled DefaultDriver;
+  │    │      several coexist → the entry selects one by name:
+  │    │      spring.s3.instances.<name>.driver = <bean-name>, empty = `spring.s3.default.driver`, then the single
+  │    │      Driver bean by type, naming a missing bean fails startup)
   │    │      → d.CreateClient: static creds + region + bucket-lookup
   │    │        + a dynamicTransport placeholder inside minio.Options
   │    │      → dynamicTransports.LoadAndDelete hands the placeholder to the wrapper
@@ -161,8 +164,7 @@ gs.Run()
   │    │      credentials abort startup (starter.go:76-78)
   │    └─ Init() [client.go]:
   │          obsTransport (span + db.client.* metrics + access log, observe.go)
-  │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3:<endpoint>"))
-  │          exec := resilience.WrapExecutor(exec, "s3")  // outcome spans/counter
+  │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3", "s3:<endpoint>"))  // outcome spans/counter
   │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, → resource))
   ├─ Run / serve: readyz folds in every s3:<name> indicator (needs starter-actuator)
   └─ SIGTERM: Destroy() closes the resilience executor; minio holds no session to close
@@ -190,8 +192,9 @@ runs, requests pass straight through to `http.DefaultTransport`.
    `s3:<endpoint>` — retry / rate-limit / circuit-breaker / bulkhead when starter-governance
    arms them (hot-reloadable through the governance center), transparent pass-through
    otherwise; the process-wide fault injector (`fault.InjectorFor`, nil-safe) may inject
-   failures for drills. `resilience.WrapExecutor` emits an outcome span + call counter +
-   duration histogram + access log for breaker trips, limit rejects, bulkhead rejections.
+   failures for drills. The observe layer resolved inside the executor emits an outcome
+   span + call counter + duration histogram + access log for breaker trips, limit rejects,
+   bulkhead rejections.
 3. obsTransport (command.go:38): starts the per-request observer span with operation
    `"PUT /bucket/key"` (method + URL path), runs the base `http.DefaultTransport`, ends the
    span with the error — the span + duration metric + access log all carry that operation
@@ -214,7 +217,7 @@ readiness folded into `/readiness` with no extra wiring. The same function is ex
 
 ## 3. Per-key behavior reference
 
-Prefix `spring.s3.<name>.*` for the ctor-bound `Config` keys (config.go).
+Prefix `spring.s3.instances.<name>.*` for the ctor-bound `Config` keys (config.go).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -242,7 +245,7 @@ corruption fails the run.
 
 ### 4.2 Fail-fast drill
 
-Set `spring.s3.a.secret-access-key=wrong`: boot aborts with `failed to reach s3 endpoint ...
+Set `spring.s3.instances.a.secret-access-key=wrong`: boot aborts with `failed to reach s3 endpoint ...
 (the request signature we calculated does not match ...)`. The probe (ListBuckets) exists so
 credential/endpoint mistakes never reach first use.
 
@@ -265,7 +268,7 @@ successful one carrying the URL-path argument logs at Debug, a plain success at 
 
 Arms per endpoint resource label `s3:127.0.0.1:9000`: a governance rule with
 `fault.rate` against that resource makes a fraction of uploads fail through the executor —
-observable as outcome-tagged spans/counters from `resilience.WrapExecutor`. Flip the rule
+observable as outcome-tagged spans/counters from the executor's observe layer. Flip the rule
 file to withdraw (hot-reload through the governance source). ⚠ note the retry policy retries
 per round-trip, not per stream: uploads with large bodies may re-send the body.
 

@@ -41,8 +41,8 @@ func init() {
 	// instance's *mongo.Client bean can be paired with a health.Indicator
 	// registered under the same name — and to attach the file:line of this
 	// registration to the bean for diagnostics.
-	gs.Module(gs.OnProperty("spring.mongodb"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.mongodb}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.mongodb.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.mongodb.instances}", func(name string, c Config) error {
 
 			// The wrapper bean owns the resilience executor + discovery watch, so
 			// Init arms it (InitMethod) and Close tears it down (Destroy). The
@@ -51,7 +51,7 @@ func init() {
 			// app with no backend beans at all gets nil here).
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("${spring.mongodb."+name+".discovery:=default}?")),
+				gs.IndexArg(2, gs.TagArg("${spring.mongodb.instances."+name+".discovery:=none}?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the
@@ -76,7 +76,8 @@ func init() {
 // on first use.
 //
 // When c.ServiceName is set and mesh mode is off, the address is resolved
-// through the injected discovery backend bean (cited by c.Discovery): a
+// through backend (the discovery backend the entry's ${discovery} label
+// resolved to): a
 // loader-backed dialer is injected as the client's ContextDialer, so each new
 // connection dials a currently-live instance picked from the service's endpoint
 // snapshot and address changes take effect without rebuilding the client. In
@@ -84,7 +85,6 @@ func init() {
 // When c.ServiceName is empty this dials the URI hosts directly, unchanged from
 // before.
 func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery) (*Client, error) {
-	c.backend = backend
 	log.Debugf(ctx.Context, log.TagAppDef, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
 	opts := options.Client().ApplyURI(c.URI)
@@ -125,7 +125,7 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery) (
 	opts.SetMonitor(newCommandMonitor(func() *dbObserver { return w.obs.Load() }))
 
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
-	pool, err := newPickPool(ctx.Context, c)
+	pool, err := newPickPool(ctx.Context, c, backend)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: build discovery resolver failed: %v", err)
 		return nil, err

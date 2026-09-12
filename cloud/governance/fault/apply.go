@@ -72,7 +72,7 @@ func (in *Injector) Gate(ctx context.Context, resource string, fn func(context.C
 // seam — a gin middleware or gRPC interceptor wraps its handler call with
 // Apply to inject faults into inbound traffic, mirroring how [WrapExecutor]
 // gates outbound/client calls. Both directions share the same [Injector] (so
-// one Dync-driven config drives either), the same [Injector.Gate] sequence and
+// one governance config drives either), the same [Injector.Gate] sequence and
 // the same MaxDuration/MaxAffected guardrails.
 //
 // nil in => fn runs untouched (zero-config transparency). Apply does NOT

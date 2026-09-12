@@ -16,9 +16,9 @@
 
 // Package StarterRatelimitRedis contributes Redis-backed limiter drivers to a
 // Go-Spring application: one resilience.LimiterDriver per entry under
-// spring.ratelimit.redis.<name>, each reusing the *redis.Client bean named by
+// spring.ratelimit.redis.instances.<name>, each reusing the *redis.Client bean named by
 // its `client` field (provided by starter-go-redis under
-// spring.go-redis.<client>).
+// spring.go-redis.instances.<client>).
 //
 // This is a Contributor-archetype starter: it exports no port of its own, it
 // adapts the existing Lua token-bucket implementation
@@ -30,8 +30,8 @@
 //	# before: each replica limits on its own counters
 //	spring.gateway.route... = rateLimit(rate=100)
 //	# after: one global budget shared by every replica
-//	spring.ratelimit.redis.web.client = cache
-//	spring.ratelimit.redis.web.driver = redis
+//	spring.ratelimit.redis.instances.web.client = cache
+//	spring.ratelimit.redis.instances.web.driver = redis
 //	spring.gateway.route... = rateLimit(rate=100,driver=redis)
 //
 // The resilience executor driver is untouched: breaker/retry/timeout keep the
@@ -53,13 +53,13 @@ import (
 )
 
 func init() {
-	gs.Module(gs.OnProperty("spring.ratelimit.redis"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.ratelimit.redis}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.ratelimit.redis.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.ratelimit.redis.instances}", func(name string, c Config) error {
 			// Fail fast: an empty client would otherwise surface only at the
 			// first Allow call — as an unlimited pass-through.
 			if c.Client == "" {
 				return errutil.Explain(nil, "ratelimit-redis: instance %q missing required property %q",
-					name, "spring.ratelimit.redis."+name+".client")
+					name, "spring.ratelimit.redis.instances."+name+".client")
 			}
 			driver := c.Driver
 			if driver == "" {

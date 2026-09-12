@@ -119,7 +119,7 @@ HTTP server the application already runs (no own port).
 | Starter | Underlying library | Domain |
 | --- | --- | --- |
 | `starter-kafka` | [twmb/franz-go](https://github.com/twmb/franz-go) | Kafka |
-| `starter-kafka-sarama` | [IBM/sarama](https://github.com/IBM/sarama) | Kafka (alternative driver, shares the `spring.kafka` prefix) |
+| `starter-kafka-sarama` | [IBM/sarama](https://github.com/IBM/sarama) | Kafka (alternative implementation under its own `spring.kafka-sarama` prefix) |
 | `starter-pulsar` | [apache/pulsar-client-go](https://github.com/apache/pulsar-client-go) | Apache Pulsar |
 | `starter-rocketmq` | [rocketmq-client-go/v2](https://github.com/apache/rocketmq-client-go) | Apache RocketMQ 4.x/5.x via the NameServer protocol; ships a `messaging.Driver` |
 | `starter-rabbitmq` | [amqp091-go](https://github.com/rabbitmq/amqp091-go) | RabbitMQ |

@@ -7,8 +7,8 @@
 [Pulsar 官方文档](https://pulsar.apache.org/docs/next/client-libraries-go/)** —— 下文只写
 go-spring 的增量。
 
-**激活条件**：出现任意 `spring.pulsar.*` 配置 —— 模块注册于
-`gs.OnProperty("spring.pulsar")`（前缀匹配）[starter.go:38]。每个 `spring.pulsar.<name>`
+**激活条件**：出现任意 `spring.pulsar.instances.*` 配置 —— 模块注册于
+`gs.OnProperty("spring.pulsar")`（前缀匹配）[starter.go:38]。每个 `spring.pulsar.instances.<name>`
 条目创建一个**裸 `pulsar.Client` bean，名为 `<name>`** [starter.go:39-44] —— 设计上没有
 包装类型：pulsar 除了 client 本身没有值得包裹的实体 [client.go:17-23]。
 
@@ -74,7 +74,7 @@ import (
 
 func init() {
     // 把注入的裸 client 适配为 broker 无关的 Driver。gs.TagArg("main")
-    // 取 spring.pulsar.main 实例；driver bean 此处未命名。
+    // 取 spring.pulsar.instances.main 实例；driver bean 此处未命名。
     gs.Provide(StarterPulsar.NewDriver, gs.TagArg("main"))
 
     gs.Provide(func(b messaging.Driver) (gs.Rooter, error) {
@@ -123,18 +123,18 @@ func guarded(ctx context.Context, cl pulsar.Client, p pulsar.Producer) error {
 
 ```properties
 # --- pulsar client（实例 "main"）---------------------------------------------
-spring.pulsar.main.url=pulsar://127.0.0.1:6650
-spring.pulsar.main.fail-fast=true
+spring.pulsar.instances.main.url=pulsar://127.0.0.1:6650
+spring.pulsar.instances.main.fail-fast=true
 # 对未分区 topic 的 lookup 即使 topic 不存在也会成功，
 # 因此普通 topic 在全新 standalone 集群上是安全的探测目标。
-spring.pulsar.main.health-check-topic=persistent://public/demo/orders
-spring.pulsar.main.operation-timeout=30s
-spring.pulsar.main.connection-timeout=5s
+spring.pulsar.instances.main.health-check-topic=persistent://public/demo/orders
+spring.pulsar.instances.main.operation-timeout=30s
+spring.pulsar.instances.main.connection-timeout=5s
 
 # --- 原生 Prometheus 指标（pulsar_client_*，按实例独立 registry）-------------
-spring.pulsar.main.metrics.enabled=true
-spring.pulsar.main.metrics.port=9091
-spring.pulsar.main.metrics.path=/metrics
+spring.pulsar.instances.main.metrics.enabled=true
+spring.pulsar.instances.main.metrics.port=9091
+spring.pulsar.instances.main.metrics.path=/metrics
 
 # --- actuator + otel ----------------------------------------------------------
 spring.actuator.addr=:9370
@@ -175,7 +175,7 @@ grep -E '_app_pulsar|pulsar' app.log        # driver + client 日志行（tag _a
 
 ```
 import starter-pulsar
-  └─ gs.Module(OnProperty("spring.pulsar")) 在任意 spring.pulsar.* key 存在时触发
+  └─ gs.Module(OnProperty("spring.pulsar")) 在任意 spring.pulsar.instances.* key 存在时触发
         └─ conf.BindEach("${spring.pulsar}") → 每个 <name> 条目一份 Config     [starter.go:38-46]
               └─ Provide(newClient, IndexArg name+config, IndexArg 3,?Driver).Name(<name>)
                    .Destroy(destroyClient)
@@ -189,8 +189,8 @@ gs.Run()
   │    3. FailFast 探测：cl.TopicPartitions(HealthCheckTopic) —— 一次
   │       覆盖地址+认证+TLS 的 lookup（不产生消息）；失败 →
   │       cl.Close + metrics 下线 + 启动报错                              [starter.go:69-76]
-  │    4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor("pulsar:<url>"))
-  │       → resilience.WrapExecutor → 按 client 索引                     [command.go:224-230]
+  │    4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor("pulsar", "pulsar:<url>"))
+  │       → 按 client 索引                                               [command.go:229-230]
   ├─ 就绪：无 health indicator —— 探测只在启动期生效
   └─ SIGTERM → destroyClient [client.go:44-49]：closeResilience（executor Close）
        → cl.Close()（释放全部 producer/consumer）→ shutdownMetrics（:port server）
@@ -200,7 +200,9 @@ gs.Run()
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterPulsar.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.pulsar` 下每个实例都经它构建。
 没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:40-105`，
-`starter.go:61-63`）。没有 per-config 的 `driver` key。
+`starter.go:61-63`）。当容器中存在多个 Driver bean 时，实例可按名指定：
+`spring.pulsar.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的
+bean 不存在则启动失败）。
 
 注意 `newLogger()` 把 pulsar 内部日志（连接/重连/lookup 失败）桥接进 go-spring 日志，
 tag 为 `_app_def`，前缀 `pulsar: ` [driver.go:208-223]。
@@ -214,19 +216,20 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
   └─ guard: resilienceExecs.Load(cl)                      [command.go:243-250]
        ├─ 未找到（治理关闭）→ producer.Send 原样内联执行，与裸调用一致
        └─ 找到 → exec.Execute(ctx, "pulsar:<url>", send) —— fault 注入器最外层
-                  （fault.WrapExecutor），resilience observer 最内层；拒绝时返回
+                  （fault.WrapExecutor），resilience observer 在其内层；拒绝时返回
                   resilience 哨兵错误，发送根本不会上线
 ```
 
-`applyResilience` 内部包裹顺序 [command.go:225-226]：`resilience.ExecutorFor(resource)`
-（核心熔断/限流/重试）→ `fault.WrapExecutor`（运行期故障注入在 executor **外**——注入的
-故障不消耗熔断预算）→ `resilience.WrapExecutor`（outcome 计数 + 访问日志最外层）。
+`applyResilience` 内部包裹顺序 [command.go:229]：`resilience.ExecutorFor("pulsar", resource)`
+返回已完整组装的 executor（核心熔断/限流/重试外包 resilience observer——outcome 计数 +
+访问日志）→ `fault.WrapExecutor` 最外层（运行期故障注入；注入的错误穿过内层重试循环，
+熔断器照常计数）。
 
 **未保护面**（均有源码注释说明是有意的）：
 - `producer.SendAsync` —— 刻意不碰；异步路径没有可拒绝的同步结果 [command.go:261-263]。
 - driver 的 `Publish` —— **现已受保护**：driver 走 `GuardedSend` 与 client 级 executor
-  [driver.go]，span+trace 注入与熔断/限流/fault 都有。实例 key `governance=false` 可让
-  所有调用路径裸跑。
+  [driver.go]，span+trace 注入与熔断/限流/fault 都有。想让所有调用路径事实上裸跑：
+  给 resource label（`pulsar:<url>`）配一条全零 rule。
 - 消费侧 `Receive`/handler —— 没有消费端保护。
 - `CreateProducer`/`Subscribe`/`TopicPartitions` —— 生命周期调用，仅启动期 FailFast
   探测覆盖。
@@ -273,7 +276,7 @@ Close 顺序：取消循环 ctx → 等 `done`（在途 handler 收尾）→ `co
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.pulsar.<name>.`（BindEach 按实例前缀绑定，不是绝对属性的 Pool
+所有 key 位于 `spring.pulsar.instances.<name>.`（BindEach 按实例前缀绑定，不是绝对属性的 Pool
 规则）。grep 得到 18 个 value tag —— 下表全覆盖。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -294,9 +297,9 @@ Close 顺序：取消循环 ctx → 等 `done`（在途 handler 收尾）→ `co
 | `metrics.enabled` | bool | true | 启动按实例的 `/metrics` server 并接入独立 registry [driver.go:97-101]。 | false → 任何地方都没有 `pulsar_client_*`。 |
 | `metrics.port` | int | 9091 | 该 server 的端口。⚠ 固定默认：每个开 metrics 的实例必须各配独立端口；冲突时后起的 server 静默监听失败（错误被吞 [command.go:69-71]）。 | 两实例同端口 → 一个 metrics 端点静默死亡。 |
 | `metrics.path` | string | `/metrics` | 该 server 的 HTTP 路径 [command.go:62]。 | — |
-| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedSend` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
-无 `driver` key：client 装配由可选 Driver bean（见 §2.1）或内置 `DefaultDriver` 负责。
+`driver` key 为实例按名指定 Driver bean：不配置 → 装配由按类型注入的可选 Driver bean（见
+§2.1）或内置 `DefaultDriver` 负责；配置 → 按名注入该 bean，指定的 bean 不存在则启动失败。
 
 `schema.json` 里 `metrics.enabled` 默认写的是 `false`，代码默认是 `true` —— 以代码为准。
 

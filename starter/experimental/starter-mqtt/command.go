@@ -125,14 +125,8 @@ var clientGuards sync.Map // mqtt.Client -> *clientGuard
 // which starter-govern backs with the governance center — so this function has
 // zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
 // transparent no-op executor; fault wraps it when enabled.
-func applyResilience(c Config, cl mqtt.Client, resource string) error {
-	// Per-instance opt-out: without an executor attached, guard (and therefore
-	// both GuardedPublish and the driver's Publish) degrades to bare calls.
-	if !c.Governance {
-		return nil
-	}
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	exec = resilience.WrapExecutor(exec, "mqtt")
+func applyResilience(cl mqtt.Client, resource string) error {
+	exec := fault.WrapExecutor(resilience.ExecutorFor("mqtt", resource))
 	clientGuards.Store(cl, &clientGuard{exec: exec, resource: resource})
 	return nil
 }

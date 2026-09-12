@@ -22,9 +22,9 @@ the resilience seam, which every client starter in this repo carries.
 - **`Notifier` (starter.go)** — one endpoint + one channel + one signing
   secret; `Send` builds the payload, wraps the POST in a `webhook.send`
   producer span, and routes it through `fault.WrapExecutor(
-  resilience.ExecutorFor("webhook:<name>:<channel>"), fault.InjectorFor())`
-  wrapped by `resilience.WrapExecutor` — the same neutral-seam stack every
-  client starter uses, zero coupling to starter-governance.
+  resilience.ExecutorFor("webhook", "webhook:<name>:<channel>"))` — the same
+  fully assembled neutral-seam stack every client starter uses, zero coupling
+  to starter-governance.
 - **`buildPayload` (payload.go)** — pure function channel → (body, extra
   query). DingTalk's 加签 appends `timestamp`/`sign` to the URL; Feishu's
   signature rides the body; both are HMAC-SHA256 over `<millis>\n<secret>`.

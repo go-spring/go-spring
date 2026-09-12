@@ -88,10 +88,16 @@ func Driver() string { return global.driver() }
 // of holding a [*center]: pass your resource label, get the policy.
 func PolicyFor(label string) resilience.Policy { return global.policyFor(label) }
 
-// Register subscribes cb to policy changes for label, arms it immediately with
-// the current resolved policy, and returns that policy. This is how a caller
-// subscribes to governance hot-reload without ever touching a [*center].
-func Register(label string, cb func(resilience.Policy)) resilience.Policy {
+// Register subscribes cb to policy changes for label and arms it immediately
+// with the current resolved policy, which is returned on the [Subscription]
+// along with the means to detach again. This is how a caller subscribes to
+// governance hot-reload without ever touching a [*center].
+//
+// Callers that rebuild their protected object — a gateway recompiling its route
+// table, a client re-created on a config change — MUST Cancel the previous
+// subscription, or the center keeps a subscriber (and a reference to the
+// discarded object) for the life of the process.
+func Register(label string, cb func(resilience.Policy)) Subscription {
 	return global.register(label, cb)
 }
 
@@ -121,8 +127,8 @@ func SetSource(s Source) { global.setSource(s) }
 
 // BindDefault installs src as the active source only when none is bound yet —
 // an explicit SetSource (callable at any time) always outranks it. This is the
-// one-shot hook the wiring starter calls at startup with its chosen default
-// (a bean-injected Source, else the ${govern} Dync adapter).
+// one-shot hook the wiring starter calls at startup with the bean-injected
+// source.
 func BindDefault(src Source) { global.bindDefault(src) }
 
 // GoLive completes the authority's startup: it builds the process-wide fault

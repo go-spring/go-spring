@@ -6,7 +6,7 @@
 JetStream、queue group、subject 通配符、drain）见 [nats.go 官方文档](https://docs.nats.io/)**——
 本文只写 go-spring 的增量。
 
-**激活方式**：每个 `spring.nats.<name>` 条目注册一个名为 `<name>` 的 `*Conn` bean
+**激活方式**：每个 `spring.nats.instances.<name>` 条目注册一个名为 `<name>` 的 `*Conn` bean
 [starter.go:33-40]。没有条目 = starter 不生效。仅多实例；无默认单例。
 
 ---
@@ -117,19 +117,19 @@ err := pub.Publish(ctx, &messaging.Message{
 **conf/app.properties** —— 完整注释配置面：
 
 ```properties
-# --- nats（多实例：每个 spring.nats.<name> = 一个 *Conn bean）------------------
-spring.nats.main.url=nats://127.0.0.1:4222
-spring.nats.main.name=orders-service        # 参与治理标签 + 服务端连接名
-spring.nats.main.jetstream.enabled=true     # 暴露 Conn.JetStream（同一连接）
-# spring.nats.main.max-reconnects=-1        # -1 = 无限（默认 60）
-# spring.nats.main.reconnect-wait=2s
-# spring.nats.main.connect-timeout=5s
+# --- nats（多实例：每个 spring.nats.instances.<name> = 一个 *Conn bean）------------------
+spring.nats.instances.main.url=nats://127.0.0.1:4222
+spring.nats.instances.main.name=orders-service        # 参与治理标签 + 服务端连接名
+spring.nats.instances.main.jetstream.enabled=true     # 暴露 Conn.JetStream（同一连接）
+# spring.nats.instances.main.max-reconnects=-1        # -1 = 无限（默认 60）
+# spring.nats.instances.main.reconnect-wait=2s
+# spring.nats.instances.main.connect-timeout=5s
 # 认证（各风格互不冲突，选一种）：
-# spring.nats.main.username=... / password=...
-# spring.nats.main.token=...
-# spring.nats.main.creds-file=/etc/nats/app.creds
-# spring.nats.main.nkey-file=/etc/nats/app.nk
-# TLS：spring.nats.main.tls.enabled=true + ca-file/cert-file/key-file/...
+# spring.nats.instances.main.username=... / password=...
+# spring.nats.instances.main.token=...
+# spring.nats.instances.main.creds-file=/etc/nats/app.creds
+# spring.nats.instances.main.nkey-file=/etc/nats/app.nk
+# TLS：spring.nats.instances.main.tls.enabled=true + ca-file/cert-file/key-file/...
 
 # --- actuator（探针 + metrics 挂载）--------------------------------------------
 spring.actuator.addr=:9370
@@ -177,18 +177,20 @@ curl -s :9370/metrics | grep -i nats
 import starter-nats
   └─ gs.Module(gs.OnProperty("spring.nats"))              [starter.go:33]
 gs.Run()
-  ├─ 配置绑定：每个 spring.nats.<name> → Config（value tag；url 经 expr 校验 ≠ ""）
+  ├─ 配置绑定：每个 spring.nats.instances.<name> → Config（value tag；url 经 expr 校验 ≠ ""）
   ├─ 每个 name：Provide(newConn, IndexArg(1,ValueArg(name)), IndexArg(2,ValueArg(c)))
   │             .Name(name).Destroy(destroyConn).Caller(1)  [starter.go:36-40]
-  ├─ newConn：Driver bean（无则回退到内置 DefaultDriver）→ CreateClient
+  ├─ newConn：Driver bean（由 ${spring.nats.instances.<name>.driver} 按实例选择：留空 = 按类型注入，
+  │     配置 = 按 bean 名注入，指定的 bean 不存在则启动失败；无则回退到内置
+  │     DefaultDriver）→ CreateClient
   │           （nats.Connect —— 快速失败探针；broker 不可用则中断启动）
   ├─ 挂接插桩：pubObs/subObs（模块内 observe.go）
   │           [driver.go:155-156]
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
   │           [driver.go:158-164]
-  ├─ applyResilience：fault.WrapExecutor(resilience.ExecutorFor(resource)) 再包
-  │           resilience.WrapExecutor —— 治理关闭时是透明 no-op executor
-  │           [driver.go:166; command.go:162-174]
+  ├─ applyResilience：fault.WrapExecutor(resilience.ExecutorFor("nats", resource))
+  │           —— 治理关闭时是透明 no-op executor
+  │           [driver.go:166; command.go:167-172]
   ├─ Run / 就绪
   └─ SIGTERM：destroyConn → exec.Close()（错误在 Drain 后向上返回）再 Conn.Drain()
               —— 在途订阅收尾后关闭 socket [client.go:70-74]
@@ -255,10 +257,10 @@ executor 只经**方法**式选装入口触达 [command.go:152-160]：
 | `Conn.PublishGuarded(ctx, subj, data)` | span+metric+log（经 `PublishMsg`） | 是 |
 | `Conn.RequestGuarded(ctx, subj, data, timeout)` | **否** | 是 |
 
-`applyResilience` 内部包裹顺序 [command.go:162-174]：`ExecutorFor(resource)`（治理中心
-背书；治理关闭时透明 no-op）→ `fault.WrapExecutor`（故障注入）→
-`resilience.WrapExecutor(exec, "nats")`（为熔断跳闸/拒绝/重试发
-span/counter/histogram——resilience 核心自身不发）。拒绝时 guarded 调用返回
+`applyResilience` 内部包裹顺序 [command.go:167-172]：`ExecutorFor("nats", resource)`（治理中心
+背书；治理关闭时透明 no-op；已自带 observe 层——为熔断跳闸/拒绝/重试发
+span/counter/histogram——resilience 核心自身不发）→ `fault.WrapExecutor`（故障注入，最外层）。
+拒绝时 guarded 调用返回
 resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/请求不会被调用
 ——[resilience_test.go:63-84] 有证明。`resource` 是 `nats:<name>` (colon format; falls back to `nats:<url>` when name unset)（按连接而非
 按 subject）[driver.go:166]，限流/熔断状态在同一连接的全部 subject 间共享。
@@ -271,7 +273,7 @@ resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.nats.<name>.*`。分组 key `tls` 绑定嵌套共享
+所有 key 位于 `spring.nats.instances.<name>.*`。分组 key `tls` 绑定嵌套共享
 struct——其子 key 属于 tlsconf，不属于本 starter。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |

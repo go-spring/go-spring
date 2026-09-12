@@ -190,7 +190,7 @@ If `RouterRegister` is missing the container fails (non-nullable autowire); two
 
 ```
 LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → AccessLog
-→ SecureHeaders → CORS → Gzip → [BodyLimit] → fault → health route → app routes
+→ SecureHeaders → CORS → Gzip → [BodyLimit] → admission → fault → health route → app routes
 ```
 
 Rationale (from the source comments, verified):
@@ -205,6 +205,17 @@ Rationale (from the source comments, verified):
 - **Tracing wraps Metrics and AccessLog**: the span captures timing and attributes from both.
 - **AccessLog wraps the policy middlewares**: short-circuit responses (413 from BodyLimit, 403
   from CORS, 204) are still logged.
+- **admission outside fault**: a request admitted (or rejected) by the inbound rate-limit /
+  bulkhead / breaker never also gets faulted, and its 429/503 still passes AccessLog/Tracing/
+  Metrics. Installed unconditionally — with governance off the executor is a transparent
+  pass-through, so it costs a call frame and changes nothing else. The resource label is
+  `echo:<address>` (e.g. `echo::8080`), the same one a govern rule uses:
+  `govern.rules[N].resources=echo::8080` with the usual `rate-limit` / `max-concurrent` /
+  `error-threshold` knobs. Rejections map to **429** (rate limit, bulkhead full) and **503**
+  (circuit open); a handler error or a committed 5xx is fed back to the executor as the call's
+  failure, so the breaker sees server-side errors. Inbound admission never retries — a handler
+  that already produced side effects cannot be replayed — so leave `max-retries` at 0; a reentry
+  guard makes a retrying policy harmless anyway (the handler still runs exactly once).
 - **fault innermost**: an injected 503 still passes AccessLog/Tracing/Metrics on the way out —
   you can observe the fire you set. Injected errors (and only those — `*fault.InjectedError`)
   render as 503 "service unavailable"; handler errors pass through to echo's HTTPErrorHandler
@@ -339,7 +350,8 @@ so business code can degrade features under synthetic load.
 | Quickstart external deps | 0 (collector for full observability) |
 | "Watch out" entries | 7 |
 
-Design suspects (for the audit ledger): no resilience admission (rate limit/breaker) — asymmetric
-with gin; TLS now uses `BuildServer()` so `ca-file` enables mTLS (fixed — was `Build()`, which
+Design suspects (for the audit ledger): ~~no resilience admission (rate limit/breaker)~~ — now
+installed, mirroring gin (see §2 for the label and status mapping); TLS now uses `BuildServer()` so
+`ca-file` enables mTLS (fixed — was `Build()`, which
 ignored it); no outer `EngineMiddleware` slot (gin has one — echo's app middleware runs inside the
 built-in chain); no dedicated request-body-capture config parity documentation vs gin.

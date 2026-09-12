@@ -2,13 +2,29 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.ratelimit.redis",
   "type": "object",
+  "description": "Two buckets: spring.ratelimit.redis.default holds family-wide values (each overridable per instance), spring.ratelimit.redis.instances.<name> holds one entry per named instance. No other key belongs directly under spring.ratelimit.redis.",
   "properties": {
-    "client": {
-      "type": "string"
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "driver": {
-      "type": "string"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string"
+          }
+        }
+      }
     }
-  },
-  "required": ["client"]
+  }
 }

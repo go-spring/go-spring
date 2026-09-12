@@ -9,7 +9,7 @@ starter-pulsar / starter-kafka.
 
 ## 1. Responsibilities & Boundaries
 
-- **Owns**: bean lifecycle for the `spring.rocketmq.<name>` group (multi-
+- **Owns**: bean lifecycle for the `spring.rocketmq.instances.<name>` group (multi-
   instance, container-managed teardown), common-option application to every
   producer/consumer it creates, the rlog bridge into go-spring's log, the
   fail-fast name server probe, the `messaging.Driver` adapter, OTel span

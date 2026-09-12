@@ -8,9 +8,9 @@
 （`example/check.sh`）核实。Redis 自身语义（SET NX PX、脚本、过期）见
 [Redis 官方文档](https://redis.io/docs/latest/commands/set/)——本文只写 go-spring 的增量。
 
-**激活方式**：任一 `spring.lock.<name>.*` 配置即为每个 `<name>` 注册一个 Redis 后端的
+**激活方式**：任一 `spring.lock.instances.<name>.*` 配置即为每个 `<name>` 注册一个 Redis 后端的
 `lock.Locker` 实例；每个实例复用其 `client` 字段指名的 `*redis.Client` bean（由
-starter-go-redis 在 `spring.go-redis.<client>` 下提供）。`spring.lock` 前缀为四个锁后端
+starter-go-redis 在 `spring.go-redis.instances.<client>` 下提供）。`spring.lock` 前缀为四个锁后端
 共享——一个二进制只 blank-import 一个锁后端。
 
 ---
@@ -101,14 +101,14 @@ func (j *Jobs) Run(ctx context.Context) {
 
 ```properties
 # --- redis client（starter-go-redis 持有；锁按名复用） -------------------------
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # --- locker --------------------------------------------------------------------
-spring.lock.jobs.client=cache          # 必填；为空 fail-fast
-spring.lock.jobs.ttl=10s               # 默认 lease TTL（每次调用 WithTTL 优先）
-spring.lock.jobs.renew-interval=0      # 0 -> ttl/3；负数关闭自动续约
-spring.lock.jobs.retry-interval=100ms  # 竞争时 Acquire 的轮询间隔
-spring.lock.jobs.key-prefix=starter-lock-redis:example:
+spring.lock.instances.jobs.client=cache          # 必填；为空 fail-fast
+spring.lock.instances.jobs.ttl=10s               # 默认 lease TTL（每次调用 WithTTL 优先）
+spring.lock.instances.jobs.renew-interval=0      # 0 -> ttl/3；负数关闭自动续约
+spring.lock.instances.jobs.retry-interval=100ms  # 竞争时 Acquire 的轮询间隔
+spring.lock.instances.jobs.key-prefix=starter-lock-redis:example:
 
 # --- 可观测（starter-otel） ----------------------------------------------------
 spring.observability.service-name=demo
@@ -144,7 +144,7 @@ import starter-go-redis + starter-lock-redis
              │             gs.ValueArg(c), gs.TagArg(c.Client)     Destroy → Close）
              └─ 除非 observe.enabled=false，newLocker 默认用 observe-lock 包装
 gs.Run()
-  ├─ 配置绑定：${spring.lock.<name>} → Config（value tag）
+  ├─ 配置绑定：${spring.lock.instances.<name>} → Config（value tag）
   ├─ newRedisLocker：不拨号——注入现成的 *redis.Client bean；
   │  本 starter 不持有任何连接
   ├─ bean 装配：消费方 autowire:"<name>" 解析（bean 已默认带 observe 包装）
@@ -164,7 +164,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 | 层 | 来源 | key |
 |----|------|-----|
 | 1. 每次调用 option | `lock.WithTTL` / `WithRenewInterval` / `WithRetryInterval` | — |
-| 2. starter 默认 | `spring.lock.<name>.ttl` / `.renew-interval` / `.retry-interval` | 三个都有 |
+| 2. starter 默认 | `spring.lock.instances.<name>.ttl` / `.renew-interval` / `.retry-interval` | 三个都有 |
 | 3. 包默认 | TTL `30s`、renew `TTL/3`、retry `100ms` | 兜底仍未设置的项 |
 
 在分层中保保留下来的特殊语义：
@@ -199,11 +199,11 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.lock.<name>` 之下（精确匹配，无宽松形态）。
+所有 key 位于 `spring.lock.instances.<name>` 之下（精确匹配，无宽松形态）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `client` | string | — | **必填**。`spring.go-redis.<client>` 下的 `*redis.Client` bean 名，注册前检查。`TagArg(c.Client)` 即锁与 redis 实例的接线 seam。 | 空 → 启动失败并点名实例；拼错 → 启动期装配失败。 |
+| `client` | string | — | **必填**。`spring.go-redis.instances.<client>` 下的 `*redis.Client` bean 名，注册前检查。`TagArg(c.Client)` 即锁与 redis 实例的接线 seam。 | 空 → 启动失败并点名实例；拼错 → 启动期装配失败。 |
 | `ttl` | duration | `30s` | 未传 `WithTTL` 的获取的默认 lease TTL；§2.2 第 2 层。 | 过低 + GC 停顿/网络抖动 ⇒ 工作中途丢锁；过高 ⇒ 崩溃后故障转移慢。 |
 | `renew-interval` | duration | `0` | lease 刷新间隔。`0` → `ttl/3`；**负数关闭自动续约**（TTL 后严格过期）。 | 短 TTL 下关续约会按设计中途掉锁。 |
 | `retry-interval` | duration | `100ms` | 竞争时 `Acquire` 的轮询间隔。 | 过低打爆 Redis；过高拉高故障转移时延。 |
@@ -231,7 +231,7 @@ redis-cli get 'starter-lock-redis:example:demo'   # fencing token（随机 hex�
 
 ### 4.2 持锁期间 TTL 到期（关续约演练）
 
-1. 配置 `spring.lock.jobs.ttl=3s`、`spring.lock.jobs.renew-interval=-1`（关自动续约）。
+1. 配置 `spring.lock.instances.jobs.ttl=3s`、`spring.lock.instances.jobs.renew-interval=-1`（关自动续约）。
 2. 获取并持有；观察 key 无任何客户端动作即过期：
 
 ```bash
@@ -274,8 +274,8 @@ cd example && ./check.sh    # docker 门控：compose 起 redis，跑自校验 e
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动报 `lock-redis: instance "<n>" missing required property ...client` | 实例缺 `client` | 把 `spring.lock.<n>.client` 设为既有 `spring.go-redis.<name>`。 |
-| 启动期装配 `*redis.Client` 失败 | `client` 拼错——无此 redis bean | 改名对齐 `spring.go-redis.<client>` 条目。 |
+| 启动报 `lock-redis: instance "<n>" missing required property ...client` | 实例缺 `client` | 把 `spring.lock.instances.<n>.client` 设为既有 `spring.go-redis.instances.<name>`。 |
+| 启动期装配 `*redis.Client` 失败 | `client` 拼错——无此 redis bean | 改名对齐 `spring.go-redis.instances.<client>` 条目。 |
 | 工作中途丢锁 | 续约被关（`renew-interval < 0`）或 TTL 短于最坏停顿 | 开续约；调大 TTL——续约按间隔触发，TTL 必须扛过一次漏跳。 |
 | 崩溃后故障转移慢 | TTL（或 renew 间隔 × 余量）过大 | 调低 TTL；崩溃切换要等剩余 TTL 走完。 |
 | `Unlock` 返回 `ErrNotHeld` | key 在 Unlock 前已过期或被接管 | 这是预期中的被接管证明——检查临界区是否超出了 lease。 |

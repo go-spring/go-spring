@@ -6,7 +6,7 @@
 集群内,平台已经把每个 Pod 注册在 Service 之后,因此应用应当直接借助这套平台能力发
 现对端,而不必再额外架一套外部注册中心(Nacos/Consul)造成能力重复。
 
-匿名导入本 starter 并声明一个 `spring.discovery.k8s.<name>` 配置项,即可在 `<name>`
+匿名导入本 starter 并声明一个 `spring.discovery.k8s.instances.<name>` 配置项,即可在 `<name>`
 名下注册一个 `discovery.Discovery` 后端(来自 `cloud/discovery`)。任何支持服务发现
 的 client starter——Redis、GORM 等——只需把自己的 `discovery: <name>` 字段指向它,就
 能把 Kubernetes **Service 名**解析成一组存活的 Pod 端点。本 starter **只做客户端发
@@ -38,19 +38,19 @@ import _ "go-spring.org/starter-discovery-k8s"
 DNS 模式,面向 headless Service,用命名端口做 SRV 查询:
 
 ```properties
-spring.discovery.k8s.k8s.mode=dns
-spring.discovery.k8s.k8s.namespace=default
-spring.discovery.k8s.k8s.port-name=grpc
-spring.discovery.k8s.k8s.cluster-domain=cluster.local
-spring.discovery.k8s.k8s.refresh-interval=5s
+spring.discovery.k8s.instances.k8s.mode=dns
+spring.discovery.k8s.instances.k8s.namespace=default
+spring.discovery.k8s.instances.k8s.port-name=grpc
+spring.discovery.k8s.instances.k8s.cluster-domain=cluster.local
+spring.discovery.k8s.instances.k8s.refresh-interval=5s
 ```
 
 EndpointSlice 模式(实时;需要 RBAC——见 [example/deploy/rbac.yaml](example/deploy/rbac.yaml)):
 
 ```properties
-spring.discovery.k8s.k8s.mode=endpointslice
-spring.discovery.k8s.k8s.namespace=default
-spring.discovery.k8s.k8s.port-name=grpc
+spring.discovery.k8s.instances.k8s.mode=endpointslice
+spring.discovery.k8s.instances.k8s.namespace=default
+spring.discovery.k8s.instances.k8s.port-name=grpc
 # kubeconfig 留空则用集群内 ServiceAccount 鉴权;集群外运行时填写路径。
 ```
 
@@ -59,8 +59,8 @@ spring.discovery.k8s.k8s.port-name=grpc
 后端名(上面的 `k8s`)就是 client 引用的名字。例如 Redis 客户端通过它解析地址:
 
 ```properties
-spring.go-redis.cache.service-name=my-redis   # Kubernetes Service 名
-spring.go-redis.cache.discovery=k8s            # 本后端
+spring.go-redis.instances.cache.service-name=my-redis   # Kubernetes Service 名
+spring.go-redis.instances.cache.discovery=k8s            # 本后端
 ```
 
 此时 Redis 客户端会拨向 `my-redis` Service 的存活 Pod,并随 Pod 上下线刷新。直接通过
@@ -68,7 +68,7 @@ spring.go-redis.cache.discovery=k8s            # 本后端
 
 ## 配置项
 
-绑定在 `spring.discovery.k8s.<name>` 下:
+绑定在 `spring.discovery.k8s.instances.<name>` 下:
 
 | 键 | 默认值 | 适用模式 | 说明 |
 | --- | --- | --- | --- |

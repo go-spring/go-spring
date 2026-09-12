@@ -55,19 +55,21 @@ spring.luohua.propagate.headers=X-Tenant
 
 luohua 一套词表以 `i18n.MessageSource` 默认提供,`OnMissingBean` 让步——app 自带即覆盖。
 
-### 标准 driver — `luohua`
+### 标准缓存 — `luohua`
 
-luohua 把进程内、带 TTL 的缓存注册成统一公司 driver 名 `luohua`。与任何缓存后端一样选择:
+luohua 以统一公司名 `luohua` 提供一个进程内、带 TTL 的 `cache.Cache` bean：
 
-```properties
-spring.cache.<name>.driver = luohua:<beanID>
+```go
+Cache *cache.Cache `autowire:"luohua"`
 ```
+
+该 bean 无配置门控：无人注入即不实例化。
 
 ## 治理
 
 luohua 刻意**不造自己的治理引擎** —— 出站调用已走 go-spring 中性的 `resilience.ExecutorFor` /
-`fault.InjectorFor` 缝、挂在单一 `${govern}` 权威下;没有自研后端的公司应骑官方引擎、按舰队钉默认策略。
-用普通 `${govern}` 配置即可:
+`fault.InjectorFor` 缝、挂在单一治理权威下;没有自研后端的公司应骑官方引擎、按舰队钉默认策略。
+写在治理规则文档里即可(见 starter-governance):
 
 ```properties
 govern.driver=default

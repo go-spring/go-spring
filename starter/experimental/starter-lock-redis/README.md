@@ -35,12 +35,12 @@ import (
 
 ```properties
 # A Redis client managed by starter-go-redis.
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # A Locker bound to that client. `client` is the redis instance name.
-spring.lock.jobs.client=cache
-spring.lock.jobs.ttl=30s
-spring.lock.jobs.key-prefix=myapp:
+spring.lock.instances.jobs.client=cache
+spring.lock.instances.jobs.ttl=30s
+spring.lock.instances.jobs.key-prefix=myapp:
 ```
 
 The `client` property is **required**. Booting without it fails fast — the
@@ -68,11 +68,11 @@ func (s *Service) RunOnce(ctx context.Context) error {
 
 ## Configuration
 
-All keys sit under `spring.lock.<name>`:
+All keys sit under `spring.lock.instances.<name>`:
 
 | Key              | Default | Description                                                                                     |
 |------------------|---------|-------------------------------------------------------------------------------------------------|
-| `client`         | —       | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.<client>`.                |
+| `client`         | —       | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.instances.<client>`.                |
 | `ttl`            | `30s`   | Default lease TTL. Callers can override per acquisition with `lock.WithTTL`.                    |
 | `renew-interval` | `0`     | Lease refresh interval. `0` → `ttl/3`; a negative value disables auto-renew.                    |
 | `retry-interval` | `100ms` | Poll interval used by `Acquire` while the lock is contended.                                    |

@@ -7,8 +7,8 @@ and the runnable [example/](example/), [example-cloudnative/](example-cloudnativ
 semantics and the franz-go API belong to [franz-go's documentation](https://github.com/twmb/franz-go)
 and [kafka.apache.org](https://kafka.apache.org/documentation/)** — below is go-spring's increment.
 
-**Activation**: any `spring.kafka.*` key (the module is `gs.Module(gs.OnProperty("spring.kafka"))`,
-a prefix check [starter.go:38]). Each `spring.kafka.<name>` entry creates one `*kgo.Client` bean
+**Activation**: any `spring.kafka.instances.*` key (the module is `gs.Module(gs.OnProperty("spring.kafka"))`,
+a prefix check [starter.go:38]). Each `spring.kafka.instances.<name>` entry creates one `*kgo.Client` bean
 named `<name>`. **No health indicator is registered by the starter** — see §4.1 for the app-side
 pattern.
 
@@ -96,11 +96,11 @@ func init() {
 
 ```properties
 # --- kafka instance "a" (producer + consumer in one client) ------------------
-spring.kafka.a.brokers=127.0.0.1:9092
-spring.kafka.a.topic=hello
-spring.kafka.a.group=hello-group
-spring.kafka.a.producer.required-acks=all
-spring.kafka.a.producer.compression=snappy
+spring.kafka.instances.a.brokers=127.0.0.1:9092
+spring.kafka.instances.a.topic=hello
+spring.kafka.instances.a.group=hello-group
+spring.kafka.instances.a.producer.required-acks=all
+spring.kafka.instances.a.producer.compression=snappy
 
 # SASL / TLS are off against a plaintext dev broker; on a secured cluster set
 # sasl.enabled/mechanism/username/password + tls.enabled/ca-file (see §3).
@@ -114,6 +114,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance (rate limit on the sync produce path) -----------------------
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -143,7 +144,7 @@ round-trip / resilience / hot-reload lines and exits 0).
 
 ```
 import starter-kafka
-  └─ gs.Module(OnProperty("spring.kafka")) fires when any spring.kafka.* key exists
+  └─ gs.Module(OnProperty("spring.kafka")) fires when any spring.kafka.instances.* key exists
         └─ conf.BindEach("${spring.kafka}") → one Config per <name> entry
               └─ Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver)).Name(<name>) [starter.go:39-45]
               .Destroy(destroyClient)
@@ -155,7 +156,7 @@ gs.Run()
   │   3. Ping with 10s timeout — bad brokers/credentials/TLS fail the
   │      boot instead of the first produce                                [starter.go:51,76]
   │   4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor(
-  │      "kafka:<brokers>")) → resilience.WrapExecutor, indexed by
+  │      "kafka", "kafka:<brokers>")), indexed by
   │      client pointer in package-level sync.Maps                        [command.go:99-105]
   ├─ no Init hook; the *kgo.Client bean is ready after the ctor
   ├─ Destroy(destroyClient) [starter.go:95-102]:
@@ -169,7 +170,9 @@ A company/umbrella starter may provide its own `Driver` as an **optional contain
 `gs.Provide(func() StarterKafka.Driver{...})`, so it can inject config bound from the properties
 file at wiring time); every instance under `spring.kafka` is then built through it. When no such
 bean exists the starter falls back to the bundled `DefaultDriver` (`driver.go:47-95`) inside
-assembly (`starter.go:67-68`). There is no per-config `driver` key.
+assembly (`starter.go:67-68`). When several Driver beans coexist, an entry selects one
+by name: `spring.kafka.instances.<name>.driver = <bean-name>` (empty = inject the single Driver
+bean by type; naming a missing bean fails startup).
 
 The resilience registries keyed by `*kgo.Client` pointer are why `GuardedProduceSync` can be a
 free function taking the raw bean — the guard resolves the executor without wrapping the client
@@ -205,10 +208,9 @@ starter's lifecycle concerns [driver.go:62-66 comment].
    [client.go:87] (no-op without starter-otel); if `traffic.IsLoadTest(ctx)`, the load-test
    marker rides a record header so the consumer recognises synthetic load [client.go:90-92].
 4. `GuardedProduceSync(ctx, p.cl, rec).FirstErr()` — synchronous produce routed through the
-   same resilience executor the raw client API uses (a no-op pass-through when governance is
-   off for this client) [client.go:93-99], broker ack / rejection surfaced to the caller. Set
-   the instance key `governance=false` to make the driver (and `GuardedProduceSync`) run bare
-   calls with no executor attached.
+   same resilience executor the raw client API uses (a no-op pass-through when no govern rule
+   matches this client's resource label) [client.go:93-99], broker ack / rejection surfaced to
+   the caller.
 5. Inside the client the hooks fire: kotel produce span + metric; observeHook
    `OnProduceRecordBuffered` opens an access-log record named `publish` and
    `OnProduceRecordUnbuffered` ends it with the outcome and buffered→unbuffered duration
@@ -238,24 +240,27 @@ Two driver traps inherited from the franz-go construction constraint [client.go:
 franz-go's async `Produce` returns immediately, so only the synchronous path can be wrapped
 [command.go:21-22,126-137 comments]. `GuardedProduceSync(ctx, cl, recs...)` [command.go:138-154]:
 
-- guard resolves the executor attached to `cl`; without one (governance off) it runs inline —
-  identical to `cl.ProduceSync`.
-- With governance on, the call passes through `fault.WrapExecutor(resilience.ExecutorFor(...))`
-  then `resilience.WrapExecutor` [command.go:100-101] — runtime fault injection and resilience
-  outcome metrics around the produce; resource label `kafka:<brokers>` (format `prefix:name`,
-  [resilience/config.go:151-158]).
+- guard resolves the executor attached to `cl`; without one it runs inline — identical to
+  `cl.ProduceSync`. (An executor is always attached now; with governance off or no rule
+  matching the label it is a transparent no-op, so the two paths are equivalent.)
+- With a rule matching, the call passes through the assembled executor
+  `fault.WrapExecutor(resilience.ExecutorFor("kafka", resource))` [command.go:100] — runtime
+  fault injection and resilience outcome metrics around the produce; resource label
+  `kafka:<brokers>` (format `prefix:name`, [resilience/config.go:151-158]).
 - On rejection (rate-limit / open breaker) the produce is **never invoked**; the rejection error
   is encoded as a per-record error so `.FirstErr()` surfaces it like a produce failure
   [command.go:145-151]. example-cloudnative asserts bursts get `resilience.ErrRateLimited`.
 - What is **not** guarded: raw `ProduceSync`/`Produce` called directly on the client bean and
-  the entire consume/poll path (passive). The driver's publish **is** guarded (§2.3 step 4);
-  `governance=false` per instance removes the guard from every call path.
+  the entire consume/poll path (passive). The driver's publish **is** guarded (§2.3 step 4).
+  To make a client effectively ungoverned, give its resource label (`kafka:<brokers>`) a
+  govern rule with every knob at zero — a Rule replaces the default wholesale, so an all-zero
+  rule is a pass-through.
 
 ---
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.kafka.<name>.*` — ctor-arg binding via `conf.BindEach` (real
+All keys live under `spring.kafka.instances.<name>.*` — ctor-arg binding via `conf.BindEach` (real
 per-instance prefix binding). `value:` tags reconciled against source: 20 keys total.
 
 ### 3.1 Core
@@ -265,11 +270,11 @@ per-instance prefix binding). `value:` tags reconciled against source: 20 keys t
 | `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:30]); CSV of seed brokers; also becomes the resilience resource label `kafka:<brokers>`. | Empty → boot error; a wrong-but-reachable host fails the 10s startup Ping. |
 | `topic` | string | "" | Passed as `kgo.ConsumeTopics` — consumer topics fixed at construction; the driver subscriber filters by it. Empty = produce-only client. | Produce works, consume never delivers (no topic subscribed). |
 | `group` | string | "" | Passed as `kgo.ConsumerGroup`; group semantics are Kafka's own (offsets, rebalancing — see kafka.apache.org). ⚠ the driver's `NewSubscriber` group arg is dead — this key is the only group switch. | Empty + topic set = ungrouped (random-group / eager) consumption; offsets not committed. |
-| `governance` | bool | true | Attaches the resilience/fault executor for the instance; guards both `GuardedProduceSync` and the driver's `Publish` (same resource label). Transparent no-op when the governance center is off. | `false` → all call paths run bare, govern.* rules never apply. |
 
-No `driver` key: client assembly is owned by an optional Driver bean (see §2.1) or the bundled
-`DefaultDriver`. (`driver` in a conf below refers to the governance-resilience `govern.driver`
-selecting a rule source, not this starter.)
+The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
+optional Driver bean injected by type (see §2.1) or the bundled `DefaultDriver`; set → that
+bean by name, and naming a missing bean fails startup. (`driver` in a conf below refers to the
+governance-resilience `govern.driver` selecting a rule source, not this starter.)
 
 ### 3.2 SASL
 
@@ -378,8 +383,8 @@ franz-go reconnects automatically (its own semantics).
 | Boot fails "failed to ping kafka" | Unreachable brokers / wrong SASL / TLS mismatch | Fix connectivity or credentials; the 10s probe is unconditional. |
 | Boot fails "unsupported kafka sasl mechanism / required-acks / compression" | Typo in an enum key | Exact-match enums (case-insensitive); correct the value. |
 | Driver consumer never receives | `NewSubscriber` source ≠ configured `topic`, or `topic` empty | Source must equal the client's `topic`; silent filter otherwise. |
-| Driver consumer group "ignored" | `NewSubscriber` group arg is dead | Set `spring.kafka.<name>.group` (fixed at construction). |
-| No rate limit despite govern.* on | Calling raw `ProduceSync` on the client bean, or `governance=false` on the instance | Only `GuardedProduceSync` and the driver publisher are guarded. |
+| Driver consumer group "ignored" | `NewSubscriber` group arg is dead | Set `spring.kafka.instances.<name>.group` (fixed at construction). |
+| No rate limit despite govern.* on | Calling raw `ProduceSync` on the client bean | Only `GuardedProduceSync` and the driver publisher are guarded. |
 | No traces/metrics | starter-otel not imported | kotel rides the OTel globals; import starter-otel. |
 | No access log lines | log tag filtered | Check the `kafka.access` tag filter. |
 | Handler errors vanish after a log line | By design: no nack/redelivery in this driver | Build retry/redelivery in the handler or use retry.go from messaging. |

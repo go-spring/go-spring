@@ -28,7 +28,7 @@ import _ "go-spring.org/starter-elasticsearch"
 在项目的[配置文件](example/conf/app.properties)中添加 Elasticsearch 配置，比如：
 
 ```properties
-spring.elasticsearch.docs.addresses=http://127.0.0.1:9200
+spring.elasticsearch.instances.docs.addresses=http://127.0.0.1:9200
 ```
 
 ### 3. 注入 Elasticsearch 实例
@@ -71,12 +71,12 @@ res, err := s.ES.Search(s.ES.Search.WithIndex("index"), s.ES.Search.WithBody(que
   输出 client span。未引入 `starter-otel` 时该全局为 no-op，保持零配置可选。
 * **服务发现**：在实例上设置 `service-name` 后，节点地址将通过已注册的 discovery 后端解析，
   而非使用静态的 `addresses` 列表。每个解析出的 `host:port` 端点会用 `discovery-scheme`
-  （默认 `http`）拼成节点地址。用 `discovery` 选择后端（默认 `default`）；
+  （默认 `http`）拼成节点地址。用 `discovery` 选择后端（必填，无默认后端）；
   公司通过 `discovery.Register` 注册一次自己的命名服务即可。
 
   ```properties
-  spring.elasticsearch.disc.service-name=es-cluster
-  spring.elasticsearch.disc.discovery-scheme=http
+  spring.elasticsearch.instances.disc.service-name=es-cluster
+  spring.elasticsearch.instances.disc.discovery-scheme=http
   ```
 
   局限：这是**启动时的一次性解析**——节点列表在客户端生命周期内固定。ES 集群地址通常是稳定的 VIP，

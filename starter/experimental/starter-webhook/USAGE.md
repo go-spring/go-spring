@@ -11,7 +11,7 @@ receiver-side setup is each platform's bot docs
 [WeCom](https://developer.work.weixin.qq.com/document/path/91770),
 [Slack](https://api.slack.com/messaging/webhooks)).
 
-**Activation**: every `spring.webhook.<name>` subtree creates one `*Notifier` bean named
+**Activation**: every `spring.webhook.instances.<name>` subtree creates one `*Notifier` bean named
 `<name>`. No keys → no beans. There is deliberately **no startup probe** — the only universal
 probe would be a real POST, and "sending a junk notification at boot is worse than failing on
 first use" (source comment, starter.go newNotifier).
@@ -94,14 +94,14 @@ func (s *Service) Fire(ctx context.Context, title, text string) error {
 
 ```properties
 # --- notifier "alert": DingTalk group robot with 加签 secret -----------------
-spring.webhook.alert.url=https://oapi.dingtalk.com/robot/send?access_token=xxx
-spring.webhook.alert.channel=dingtalk
-spring.webhook.alert.secret=SEC...
-spring.webhook.alert.timeout=5s
+spring.webhook.instances.alert.url=https://oapi.dingtalk.com/robot/send?access_token=xxx
+spring.webhook.instances.alert.channel=dingtalk
+spring.webhook.instances.alert.secret=SEC...
+spring.webhook.instances.alert.timeout=5s
 
 # --- notifier "report": plain JSON POST to a self-built receiver -------------
-spring.webhook.report.url=http://127.0.0.1:18080/hook
-spring.webhook.report.channel=generic
+spring.webhook.instances.report.url=http://127.0.0.1:18080/hook
+spring.webhook.instances.report.channel=generic
 
 # --- observability (starter-otel) ---------------------------------------------
 spring.observability.service-name=demo
@@ -138,12 +138,11 @@ import starter-webhook
         stateless per call, no destroy hook]
 
 gs.Run()
-  ├─ config bind: spring.webhook.<name>.* → Config (value tags; url required via expr)
+  ├─ config bind: spring.webhook.instances.<name>.* → Config (value tags; url required via expr)
   ├─ newNotifier:
   │    ├─ dry-run buildPayload with an empty Notification — validates channel value and
   │    │   (for dingtalk/feishu) that signing works, WITHOUT any network call
-  │    ├─ exec := fault.WrapExecutor(resilience.ExecutorFor("webhook:<name>:<channel>"))
-  │    ├─ exec := resilience.WrapExecutor(exec, "webhook", c.Observability)
+  │    ├─ exec := fault.WrapExecutor(resilience.ExecutorFor("webhook", "webhook:<name>:<channel>"))
   │    └─ &http.Client{Timeout: c.Timeout} — per-notifier client, no pooling
   ├─ bean ready: *Notifier injected wherever `autowire:"<name>"` appears
   ├─ Run / serve: no background goroutines, no probe (rationale in §Activation)
@@ -174,9 +173,9 @@ so two notifiers on the same URL but different names get independent breaker/lim
 3. **Executor** — the POST closure runs through the governance executor under the resource
    label: rate limit / circuit breaking / retry (if configured via governance) / fault
    injection when starter-governance is armed; transparent pass-through otherwise.
-   `resilience.WrapExecutor` emits the outcome span + call counter + duration histogram +
-   access log per level. A hand-built zero-value Notifier (tests) has no executor and posts
-   directly — Send stays usable either way.
+   The observe layer resolved inside the executor emits the outcome span + call counter +
+   duration histogram + access log per level. A hand-built zero-value Notifier (tests) has
+   no executor and posts directly — Send stays usable either way.
 4. **POST** — `n.post`: `Content-Type: application/json`, client bounded by `timeout`;
    any non-2xx status is an error carrying the first 512 bytes of the body.
 5. `EndSpan(span, err)` records the failure and closes the span.
@@ -198,7 +197,7 @@ receiver). Those surface on first Send.
 
 ## 3. Per-key behavior reference
 
-Prefix `spring.webhook.<name>.*` — all keys are ctor-bound into `Config` (config.go), i.e.
+Prefix `spring.webhook.instances.<name>.*` — all keys are ctor-bound into `Config` (config.go), i.e.
 instance-prefixed (unlike starter-s3, there is no
 wrapper-field tag here).
 
@@ -264,7 +263,7 @@ at startup — that is the dry-run working.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Startup aborts "unknown channel" | typo in `channel` | One of generic/dingtalk/feishu/wecom/slack. |
-| Startup aborts bind error on url | `spring.webhook.<name>.url` missing | Set it — required via expr tag. |
+| Startup aborts bind error on url | `spring.webhook.instances.<name>.url` missing | Set it — required via expr tag. |
 | First Send fails "invalid url" | malformed URL (e.g. spaces, bad scheme) | No startup network probe exists by design; fix the URL. |
 | DingTalk rejects: sign mismatch | wrong/rotated secret, or clock skew >1h (timestamp in the signature) | Re-copy the 加签 secret; verify host clock. |
 | DingTalk 200 but no message delivered | vendor error body (errcode) returned with HTTP 200 — not inspected by `post` | Check the platform bot logs; see suspect §6 (status-only success check). |

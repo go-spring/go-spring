@@ -6,7 +6,7 @@
 MySQL DSN 参数语义属于 [go-sql-driver/mysql](https://github.com/go-sql-driver/mysql#dsn-data-source-name)**
 ——本文只写绑定面与 go-spring 的增量（装配、服务发现、TLS、可观测、健康检查）。
 
-**激活条件**：每个 `spring.gorm.mysql.<name>` 条目对应一个 client bean（对 `spring.gorm.mysql`
+**激活条件**：每个 `spring.gorm.mysql.instances.<name>` 条目对应一个 client bean（名为 `mysql.<name>`；对 `spring.gorm.mysql`
 做 OnProperty 前缀检查）。没有 `enabled` 开关——存在条目即激活；无条目则完全不注册。共享部分
 （wrapper 生命周期、连接池、observe 插件链、健康检查、`UseDBCustomizer`、10 个 `Common` key）
 见 [starter-gorm 的 USAGE](../starter-gorm/USAGE_CN.md)，此处不再重复。
@@ -71,12 +71,13 @@ func main() {
 package dao
 
 import (
-    StarterMySql "go-spring.org/starter-gorm-mysql"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-mysql"
 )
 
 type Service struct {
-    Primary *StarterMySql.DB `autowire:"primary"` // 固定 addr，带连接池调优
-    Cluster *StarterMySql.DB `autowire:"cluster"` // 走服务发现（etcd）
+    Primary *gormcore.DB `autowire:"mysql.primary"` // 固定 addr，带连接池调优
+    Cluster *gormcore.DB `autowire:"mysql.cluster"` // 走服务发现（etcd）
 }
 
 func NewService() *Service { return &Service{} }
@@ -93,23 +94,23 @@ func (s *Service) Init() error { // gs InitMethod：建表 + 两条链路冒烟
 
 ```properties
 # --- primary：固定 addr ---------------------------------------------------------
-spring.gorm.mysql.primary.user=root
-spring.gorm.mysql.primary.password=123456
-spring.gorm.mysql.primary.addr=127.0.0.1:3306
-spring.gorm.mysql.primary.db=test
-spring.gorm.mysql.primary.parseTime=true          # DATETIME 扫描为 time.Time
-spring.gorm.mysql.primary.max-open-conns=10
-spring.gorm.mysql.primary.max-idle-conns=5
-spring.gorm.mysql.primary.conn-max-lifetime=30m
-spring.gorm.mysql.primary.slow-threshold=200ms
+spring.gorm.mysql.instances.primary.user=root
+spring.gorm.mysql.instances.primary.password=123456
+spring.gorm.mysql.instances.primary.addr=127.0.0.1:3306
+spring.gorm.mysql.instances.primary.db=test
+spring.gorm.mysql.instances.primary.parseTime=true          # DATETIME 扫描为 time.Time
+spring.gorm.mysql.instances.primary.max-open-conns=10
+spring.gorm.mysql.instances.primary.max-idle-conns=5
+spring.gorm.mysql.instances.primary.conn-max-lifetime=30m
+spring.gorm.mysql.instances.primary.slow-threshold=200ms
 
 # --- cluster：服务发现解析（etcd）----------------------------------------------
-spring.gorm.mysql.cluster.user=root
-spring.gorm.mysql.cluster.password=123456
-spring.gorm.mysql.cluster.db=test
-spring.gorm.mysql.cluster.service-name=mysql-cluster
-spring.gorm.mysql.cluster.discovery=etcd.main    # -> ${spring.registry.etcd.main} 块的后端 bean
-spring.gorm.mysql.cluster.conn-max-lifetime=30m  # 约束故障切换滞后（见 §4.3）
+spring.gorm.mysql.instances.cluster.user=root
+spring.gorm.mysql.instances.cluster.password=123456
+spring.gorm.mysql.instances.cluster.db=test
+spring.gorm.mysql.instances.cluster.service-name=mysql-cluster
+spring.gorm.mysql.instances.cluster.discovery=etcd.main    # -> ${spring.registry.etcd.main} 块的后端 bean
+spring.gorm.mysql.instances.cluster.conn-max-lifetime=30m  # 约束故障切换滞后（见 §4.3）
 
 # --- etcd 注册中心（注册与发现共用）---------------------------------------------
 spring.registry.etcd.main.endpoints=127.0.0.1:2379
@@ -156,7 +157,7 @@ curl -s '127.0.0.1:16686/api/traces?service=demo&limit=1' | grep '"data":\['
 
 ```
 import starter-gorm-mysql
-  └─ init: gormcore.Register(Dialect{Prefix: "spring.gorm.mysql", Engine: "mysql", ...})
+  └─ init: gormcore.Module(Dialect{Prefix: "spring.gorm.mysql", Engine: "mysql", ...})
 gs.Run()
   ├─ OnProperty("spring.gorm.mysql") 命中；conf.BindEach 为每个 <name> 条目绑定一份 Config
   ├─ 每实例：build(ctx, c)
@@ -190,7 +191,7 @@ gs.Run()
 
 ## 3. 逐 key 行为参考
 
-`spring.gorm.mysql.<name>.*` 下的 MySQL 专有 key（10 个共享 `Common` key——连接池、ping、
+`spring.gorm.mysql.instances.<name>.*` 下的 MySQL 专有 key（10 个共享 `Common` key——连接池、ping、
 slow-threshold、service-name/scheme/discovery、observe.enabled——见
 [starter-gorm 的 USAGE](../starter-gorm/USAGE_CN.md)）：
 

@@ -8,7 +8,7 @@ InfluxDB 特有的决策是写路径与异步错误排出。
 
 ## 1. 职责与边界
 
-- **负责**：`spring.influxdb.<name>` 组的 bean 生命周期、fail-fast
+- **负责**：`spring.influxdb.instances.<name>` 组的 bean 生命周期、fail-fast
   `/health` 探针与每实例指示器、observe 传输层、韧性保护的阻塞写、托管
   异步写入器（创建 + 错误排出 + 停机 flush）。
 - **不负责**：Flux 查询构建（原样透传）、bucket/org 管理、降采样任务、

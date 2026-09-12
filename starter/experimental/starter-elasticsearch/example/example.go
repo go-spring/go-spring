@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterElasticsearch "go-spring.org/starter-elasticsearch"
@@ -55,9 +56,9 @@ type AnotherESDriver struct {
 	StarterElasticsearch.DefaultDriver
 }
 
-func (d AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config) (*elasticsearch.Client, error) {
+func (d AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config, backend discovery.Discovery) (*elasticsearch.Client, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherESDriver::CreateClient")
-	return d.DefaultDriver.CreateClient(ctx, c)
+	return d.DefaultDriver.CreateClient(ctx, c, backend)
 }
 
 const indexName = "starter-es-example"

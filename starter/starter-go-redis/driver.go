@@ -45,8 +45,14 @@ import (
 // the client itself — for DefaultDriver that is the discovery resolver's
 // background watch; a driver with nothing to clean up returns goutil.NopCloser().
 // (*Client).Close calls it on shutdown.
+//
+// backend is the discovery backend the entry's ${discovery} label resolved to,
+// already looked up by the starter wiring; it is nil when the entry does not use
+// service discovery (an unknown label fails at wiring, before the driver is
+// called). It is passed as an argument rather than carried on Config so a custom
+// driver can actually reach it — Config stays a pure bound value.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (*redis.Client, io.Closer, error)
+	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*redis.Client, io.Closer, error)
 }
 
 // ClusterDriver is an optional interface a Driver may also implement to support
@@ -70,15 +76,15 @@ var (
 // topologies return *redis.Client.
 //
 // In single mode, when c.ServiceName is set the address is resolved through the
-// injected discovery backend (c.backend, wired from the ${discovery} label) instead of c.Addr: a Resolver
-// keeps the endpoint set fresh and the client dials a live instance on each new
-// connection. Combined with c.ConnMaxLifetime, connections recycle onto updated
-// addresses without rebuilding the client. When c.ServiceName is empty this is a
-// plain Addr dial.
+// discovery backend (backend, wired from the ${discovery} label) instead of
+// c.Addr: a Resolver keeps the endpoint set fresh and the client dials a live
+// instance on each new connection. Combined with c.ConnMaxLifetime, connections
+// recycle onto updated addresses without rebuilding the client. When
+// c.ServiceName is empty this is a plain Addr dial.
 //
 // In sentinel mode the client connects to the master resolved by c.MasterName
 // through c.SentinelAddrs; service discovery is not used.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client, io.Closer, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*redis.Client, io.Closer, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, nil, errutil.Explain(err, "redis: build TLS")
@@ -120,7 +126,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*redis.Client,
 		TLSConfig:       tlsConfig,
 	}
 
-	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, nil, err
 	}

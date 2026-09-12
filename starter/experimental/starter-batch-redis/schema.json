@@ -2,18 +2,28 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.batch-repository",
   "type": "object",
+  "description": "Two buckets: spring.batch-repository.default holds family-wide values (each overridable per instance), spring.batch-repository.instances.<name> holds one entry per named instance. No other key belongs directly under spring.batch-repository.",
   "properties": {
-    "client": {
-      "type": "string"
-    },
-    "key-prefix": {
-      "type": "string",
-      "default": ""
-    },
-    "ttl": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "0"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string"
+          },
+          "key-prefix": {
+            "type": "string",
+            "default": ""
+          },
+          "ttl": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          }
+        }
+      }
     }
   }
 }

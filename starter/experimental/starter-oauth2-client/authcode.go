@@ -30,7 +30,7 @@ func init() {
 	// Register multiple OAuth2 authorization_code configurations as a group.
 	// Each instance is created from the configuration under "${spring.oauth2.authcode}".
 	// The resulting *oauth2.Config holds no closable resource, so no destroy callback is needed.
-	gs.Group("${spring.oauth2.authcode}", newAuthCodeConfig, nil)
+	gs.Group("${spring.oauth2.authcode.instances}", newAuthCodeConfig, nil)
 }
 
 // AuthCodeConfig defines an OAuth2 authorization_code configuration. Each

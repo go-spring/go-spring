@@ -195,7 +195,7 @@ func init() {
 	scriptPath = f.Name()
 
 	// GS_SPRING_LUA_FILTER_GUARD_SCRIPT overrides
-	// spring.lua.filter.guard.script from app.properties.
+	// spring.lua.filter.instances.guard.script from app.properties.
 	if err := os.Setenv("GS_SPRING_LUA_FILTER_GUARD_SCRIPT", scriptPath); err != nil {
 		panic(err)
 	}

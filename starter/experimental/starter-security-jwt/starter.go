@@ -23,7 +23,7 @@ import (
 func init() {
 	// Register multiple JWT authenticators as a group, one per entry under
 	// "${spring.security.jwt}". Each bean is named after its config sub-key
-	// (e.g. spring.security.jwt.api -> bean "api"), so an application selects an
+	// (e.g. spring.security.jwt.instances.api -> bean "api"), so an application selects an
 	// authenticator with gs.TagArg("api") when wiring its *gs.HttpServeMux via
 	// Wrap, or injects it as a security.TokenValidator for non-HTTP transports.
 	//
@@ -32,5 +32,5 @@ func init() {
 	//
 	// An authenticator holds no closable resource (the JWKS cache refreshes
 	// on-demand with no background goroutine), so the destroy hook is nil.
-	gs.Group("${spring.security.jwt}", newAuthenticator, nil)
+	gs.Group("${spring.security.jwt.instances}", newAuthenticator, nil)
 }

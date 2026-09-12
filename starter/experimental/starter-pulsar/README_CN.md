@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-pulsar"
 
 ### 2. 配置 Pulsar 客户端
 
-在项目的[配置文件](example/conf/app.properties)中,在 `spring.pulsar.<name>`
+在项目的[配置文件](example/conf/app.properties)中,在 `spring.pulsar.instances.<name>`
 下定义一个或多个具名客户端,例如:
 
 ```properties
-spring.pulsar.a.url=pulsar://127.0.0.1:6650
-spring.pulsar.b.url=pulsar://127.0.0.1:6650
+spring.pulsar.instances.a.url=pulsar://127.0.0.1:6650
+spring.pulsar.instances.b.url=pulsar://127.0.0.1:6650
 ```
 
 ### 3. 注入 Pulsar 客户端
@@ -76,9 +76,9 @@ pulsar 的原生指标——与 [contrib/go-zero](../../../contrib/go-zero) 示�
 在配置文件中为实例开启 `/metrics` 端点:
 
 ```properties
-spring.pulsar.a.metrics.enabled=true
-spring.pulsar.a.metrics.port=9091
-spring.pulsar.a.metrics.path=/metrics
+spring.pulsar.instances.a.metrics.enabled=true
+spring.pulsar.instances.a.metrics.port=9091
+spring.pulsar.instances.a.metrics.path=/metrics
 ```
 
 每个实例拥有独立的 `prometheus.Registry` 和独立的 HTTP 服务,因此多个客户端不会在相同的

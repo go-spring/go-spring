@@ -7,9 +7,9 @@ implementation in `starter-go-redis/experimental/ratelimit.go`, the
 [example/](example) (`example/check.sh`). Rate-limiting semantics (token bucket) are standard —
 everything below is go-spring's increment.
 
-**Activation**: any `spring.ratelimit.redis.<name>.*` property registers one
+**Activation**: any `spring.ratelimit.redis.instances.<name>.*` property registers one
 `resilience.LimiterDriver` instance per `<name>`; each reuses the `*redis.Client` bean named by
-its `client` field (provided by starter-go-redis under `spring.go-redis.<client>`). Consumers
+its `client` field (provided by starter-go-redis under `spring.go-redis.instances.<client>`). Consumers
 select the driver by name — starter-gateway's `rateLimit(driver=...)` filter,
 `resilience.GetLimiter(name)`, or direct injection.
 
@@ -108,11 +108,11 @@ func init() {
 
 ```properties
 # --- redis client (owned by starter-go-redis; the driver reuses it by name) --
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # --- limiter driver --------------------------------------------------------------
-spring.ratelimit.redis.gateway.client=cache
-spring.ratelimit.redis.gateway.driver=redis    # name registered in the limiter registry
+spring.ratelimit.redis.instances.gateway.client=cache
+spring.ratelimit.redis.instances.gateway.driver=redis    # name registered in the limiter registry
                                                # (defaults to the instance name when unset)
 ```
 
@@ -153,7 +153,7 @@ import starter-go-redis + starter-ratelimit-redis
                    keeps the bean root-reachable so the registry side effect ALWAYS runs)
 
 gs.Run()
-  ├─ config bind: ${spring.ratelimit.redis.<name>} → Config (value tags)
+  ├─ config bind: ${spring.ratelimit.redis.instances.<name>} → Config (value tags)
   ├─ ctor: driverFor(driver, client)
   │    - process-global sync.Map "drivers" holds ONE Driver per driver name
   │    - first use: resilience.RegisterLimiter(name, d) — the registry PANICS on
@@ -198,12 +198,12 @@ starter-go-redis — that is where the Lua token bucket actually lives.
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.ratelimit.redis.<name>` (exact-match, no relaxed forms).
+All keys live under `spring.ratelimit.redis.instances.<name>` (exact-match, no relaxed forms).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.<client>`; checked before bean registration. `TagArg(c.Client)` is the seam tying driver to redis instance. | Empty → boot fails naming the instance; typo → bean-wiring failure at boot. |
-| `driver` | string | instance name | Name registered in the resilience limiter registry — the string passed to `resilience.GetLimiter` and gateway's `rateLimit(driver=...)`. ⚠ Defaults to the instance name when unset: `spring.ratelimit.redis.web.*` silently registers a driver named `web`, which may collide with an unrelated name. Duplicate names fail fast at boot: two instances of this starter claiming one name get a startup error naming both; a name already registered by another module (e.g. the built-in `default`) is a clear ctor error instead of the registry panic. | Same-name instances → boot error naming both; unintended default name → consumers resolve a limiter you did not plan for. |
+| `client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.instances.<client>`; checked before bean registration. `TagArg(c.Client)` is the seam tying driver to redis instance. | Empty → boot fails naming the instance; typo → bean-wiring failure at boot. |
+| `driver` | string | instance name | Name registered in the resilience limiter registry — the string passed to `resilience.GetLimiter` and gateway's `rateLimit(driver=...)`. ⚠ Defaults to the instance name when unset: `spring.ratelimit.redis.instances.web.*` silently registers a driver named `web`, which may collide with an unrelated name. Duplicate names fail fast at boot: two instances of this starter claiming one name get a startup error naming both; a name already registered by another module (e.g. the built-in `default`) is a clear ctor error instead of the registry panic. | Same-name instances → boot error naming both; unintended default name → consumers resolve a limiter you did not plan for. |
 
 ⚠ Limit parameters (`rate`, `burst`, key) come per call site via `resilience.LimitPolicy`, not
 from this config.
@@ -260,7 +260,7 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails `ratelimit-redis: instance "<n>" missing required property ...client` | instance without `client` | Set it to an existing `spring.go-redis.<name>`. |
+| Boot fails `ratelimit-redis: instance "<n>" missing required property ...client` | instance without `client` | Set it to an existing `spring.go-redis.instances.<name>`. |
 | Boot fails: driver name `x` claimed by both instance `a` and `b` | two instances resolved to the same driver name (remember the instance-name default) | Give each instance an explicit, distinct `driver` (the error names both). |
 | `NewRateLimiter` errors `no redis client bound` | driver bean constructed without the client injection path | Only construct via the starter (or bind before first use in tests). |
 | No limiting at all, everything 200 | `LimitPolicy.Rate` zero → unlimited pass-through | Set an explicit positive Rate. |

@@ -76,8 +76,7 @@ func newClient(ctx context.Context, c Config) (*Client, error) {
 // is off the resolved executor is a transparent no-op.
 func (o *Client) Init() error {
 	o.resource = resilience.ResourceLabel("milvus", o.cfg.Addr)
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, "milvus")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("milvus", o.resource))
 	o.exec = exec
 	o.slot.arm(exec, o.resource)
 	return nil

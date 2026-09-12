@@ -96,12 +96,12 @@ func main() {
 ```properties
 # starter-go-redis 管理的 Redis client。批处理 repository 后端与
 # example 自己的结果集都按名复用该 client。
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # 名为 "main" 的 Redis 版 batch.JobRepository，复用上面的 redis client。
 # 它使 step checkpoint 在进程崩溃后仍持久。
-spring.batch-repository.main.client=cache
-spring.batch-repository.main.key-prefix=starter-batch:example:
+spring.batch-repository.instances.main.client=cache
+spring.batch-repository.instances.main.key-prefix=starter-batch:example:
 
 # 告诉 batch runner 用 "main" repository 作为进度存储。
 spring.batch.repository=main
@@ -197,7 +197,7 @@ server 生命周期的参与：启动型 launch 在就绪信号之后才开始�
 | `spring.batch.jobs.<name>.params.<k>` | string | — | 启动 launch 参数。(name, params) 在 repository 中标识 job 实例 —— 改参数会新建实例而非恢复旧实例。 | 期望改参数后续跑 → 实际全新跑一遍。 |
 
 已与 `grep -rhoE 'value:"[^"]+"'` 核对 —— 上述 5 个 key 加内部的 `${spring.batch}`
-结构绑定，别无其他。（example 中的 `spring.go-redis.*` / `spring.batch-repository.*`
+结构绑定，别无其他。（example 中的 `spring.go-redis.instances.*` / `spring.batch-repository.instances.*`
 属于各自 starter。）
 
 ---

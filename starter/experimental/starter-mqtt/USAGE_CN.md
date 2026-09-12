@@ -8,9 +8,9 @@ retained 消息、will、会话状态）以 [MQTT 官方文档](https://docs.oas
 为准** —— 本文只写 go-spring 的增量。如实说明：本 starter 没有 `example-otel`，
 下文可观测性声明经源码核实，但未做端到端冒烟验证。
 
-**激活条件**：出现任意 `spring.mqtt.*` 配置 —— 模块注册为
+**激活条件**：出现任意 `spring.mqtt.instances.*` 配置 —— 模块注册为
 `gs.Module(gs.OnProperty("spring.mqtt"))`，即前缀匹配 [starter.go:34]。每个
-`spring.mqtt.<name>` 条目经 `conf.BindEach` 创建一个名为 `<name>` 的 `mqtt.Client`
+`spring.mqtt.instances.<name>` 条目经 `conf.BindEach` 创建一个名为 `<name>` 的 `mqtt.Client`
 bean [starter.go:35-39]。没有 health indicator bean（与 redis/nant 不同 —— 见 §6）。
 
 ---
@@ -110,22 +110,22 @@ func init() {
 ```properties
 # --- mqtt client "a" --------------------------------------------------------
 # broker URL 的 scheme 决定传输：tcp://（MQTT）或 ssl://（MQTTS）。
-spring.mqtt.a.broker=tcp://127.0.0.1:1883
-spring.mqtt.a.client-id=demo-publisher
-# spring.mqtt.a.username= / password=          # broker 开了认证才需要
-# spring.mqtt.a.clean-session=true             # 默认
-# spring.mqtt.a.keep-alive=30s / connect-timeout=10s
+spring.mqtt.instances.a.broker=tcp://127.0.0.1:1883
+spring.mqtt.instances.a.client-id=demo-publisher
+# spring.mqtt.instances.a.username= / password=          # broker 开了认证才需要
+# spring.mqtt.instances.a.clean-session=true             # 默认
+# spring.mqtt.instances.a.keep-alive=30s / connect-timeout=10s
 
 # Last Will：客户端非正常掉线时 broker 代发的消息。
-spring.mqtt.a.will.topic=demo/status
-spring.mqtt.a.will.payload=offline
-spring.mqtt.a.will.qos=1
+spring.mqtt.instances.a.will.topic=demo/status
+spring.mqtt.instances.a.will.payload=offline
+spring.mqtt.instances.a.will.qos=1
 
 # MQTTS：broker 换 ssl://host:8883 并启用 tls 组：
-# spring.mqtt.a.tls.enabled=true
-# spring.mqtt.a.tls.ca-file=/etc/mqtt/ca.pem
-# spring.mqtt.a.tls.cert-file=/etc/mqtt/client-cert.pem
-# spring.mqtt.a.tls.key-file=/etc/mqtt/client-key.pem
+# spring.mqtt.instances.a.tls.enabled=true
+# spring.mqtt.instances.a.tls.ca-file=/etc/mqtt/ca.pem
+# spring.mqtt.instances.a.tls.cert-file=/etc/mqtt/client-cert.pem
+# spring.mqtt.instances.a.tls.key-file=/etc/mqtt/client-key.pem
 
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
@@ -161,7 +161,7 @@ example 自带的冒烟（`example/check.sh`）在 QoS 1 上做一次 pub/sub �
 
 ```
 import starter-mqtt
-  └─ gs.Module(gs.OnProperty("spring.mqtt")) 在出现任意 spring.mqtt.* key 时触发
+  └─ gs.Module(gs.OnProperty("spring.mqtt")) 在出现任意 spring.mqtt.instances.* key 时触发
         └─ conf.BindEach("${spring.mqtt}") → 每个 <name> 条目一份 Config
               └─ Provide(newClient).Name(<name>).Destroy(destroyClient).Caller(1)   [starter.go:36-40]
 
@@ -169,6 +169,8 @@ gs.Run()
   ├─ 构造 newClient [starter.go:52]：
   │    1. Driver bean 注入 —— 有公司 Driver bean 则用它；
   │       无（nil）则回退到内置 DefaultDriver                  [starter.go:55-58]
+  │       （由 ${spring.mqtt.instances.<name>.driver} 按实例选择：留空 = 按类型注入，配置 = 按
+  │       bean 名注入——指定的 bean 不存在则启动失败）
   │    2. CreateClient：组装 paho options（broker、id、凭证、
   │       clean-session、keep-alive、connect-timeout），把
   │       connect/lost/reconnecting 事件桥接进 go-spring 日志    [driver.go:64-72]，
@@ -195,8 +197,7 @@ paho.mqtt.golang 没有钩子/插件扩展点，所以不存在透明 client 包
 
 ```
 applyResilience [command.go:128-134]：
-  exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt:<broker>"))   // 治理中心
-  exec = resilience.WrapExecutor(exec, "mqtt")                       // observe 桥
+  exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt", "mqtt:<broker>"))  // 治理中心 + observe 桥
   以 mqtt.Client 值为键存入 sync.Map
 
 GuardedPublish [command.go:166-172]：
@@ -204,8 +205,8 @@ GuardedPublish [command.go:166-172]：
   call = cl.Publish(...) + token.Wait() + token.Error()
 ```
 
-包裹顺序（外→内）：**fault 注入 → resilience 策略（限流/熔断/重试）→ observe
-（受保护调用的 span+metric+访问日志）→ paho Publish → token 等待**。设计理由（源码
+包裹顺序（外→内）：**fault 注入 → observe（受保护调用的 span+metric+访问日志）→
+resilience 策略（限流/熔断/重试）→ paho Publish → token 等待**。设计理由（源码
 注释）：paho 自管队列与重连，因此 executor 有意保持极小 —— 只限发布速率、在 broker
 不健康时短路 [command.go:117-122]。资源标签是 `mqtt:<broker-url>` —— 按 broker 而非
 按 topic [starter.go:70, resilience/config.go:151-155]。
@@ -231,9 +232,9 @@ span 助手：
    `messaging.destination.name = topic` [command.go, observe.go]。
 2. `guard` 从 sync.Map 解析该 client 的 executor [command.go:148-153]。
 3. fault 注入检查（govern.fault.* 策略，启用时）。
-4. resilience 策略：资源 `mqtt:<broker>` 上的限流器 / 熔断器；被拒时返回 sentinel
+4. observe 桥记录受保护调用的结果（span/metric/访问日志）。
+5. resilience 策略：资源 `mqtt:<broker>` 上的限流器 / 熔断器；被拒时返回 sentinel
    错误且 **paho Publish 根本不会执行** [command.go:160-163]。
-5. observe 桥记录受保护调用的结果（span/metric/访问日志）。
 6. `cl.Publish(topic, qos, retained, payload)` 交给 paho 出站队列；`token.Wait()`
    阻塞到包写出（QoS 0）或 PUBACK/PUBCOMP 到达（QoS 1/2）[command.go:164-171]。
 7. `EndSpan(sp, err)` 记录结果并结束观测 [command.go:100-103]。
@@ -259,7 +260,7 @@ driver 固定 QoS 1（`defaultQoS`）、发布 `retained=false`；retained 消�
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.mqtt.<name>.` 下（经 `conf.BindEach` 按实例前缀绑定）。
+所有 key 位于 `spring.mqtt.instances.<name>.` 下（经 `conf.BindEach` 按实例前缀绑定）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
@@ -276,7 +277,6 @@ driver 固定 QoS 1（`defaultQoS`）、发布 `retained=false`；retained 消�
 | `tls.enabled` | bool | false | 启用 `tlsconf` 客户端 TLS；须搭配 `ssl://` 的 broker URL。 | 明文 broker + 开 TLS → 启动期连接失败。 |
 | `tls.ca-file` / `cert-file` / `key-file` | string | — | CA / mTLS 客户端材料，建 client 时 `tls.Build()` [driver.go:83-90]。 | 配一半 → 启动期 Build 报错。 |
 | `tls.server-name` / `insecure-skip-verify` | string/bool | — | SNI 覆写 / 跳过校验。 | — |
-| `governance` | bool | true | 为实例挂 resilience/fault executor；同时保护 `GuardedPublish` 与 driver 的 `Publish`（同一 resource label）。治理中心未开时为透明 no-op。 | `false` → 所有调用路径裸跑，govern.* 规则永不生效。 |
 
 已与 `grep -rhoE 'value:"[^"]+"'` 全仓扫描比对：13 个不同 value tag → 7 个平铺 key +
 tls（6）+ will（4）= **17 个 key，必填 1 个**。
@@ -307,8 +307,9 @@ govern:
 
 压测 `GuardedPublish` → 拒绝以 resilience sentinel 错误与 `_app_mqtt_access` 访问记录
 浮出。同等流量直接在 client bean 上裸调
-`client.Publish` 则完全不受影响 —— driver 已走同一 guard，退出口是实例级
-`governance=false`，不再是调用点 [command.go:147-172, client.go]。
+`client.Publish` 则完全不受影响 —— driver 已走同一 guard，退出口是资源级
+（给 `mqtt:<broker>` 配一条全零 rule，或整体关治理），不再是调用点
+[command.go:147-172, client.go]。
 策略免重启热切换（治理中心）。
 
 ### 4.3 消息往返（含 driver 映射字段存活）
@@ -355,7 +356,7 @@ kill -9 <pid>   # 非正常退出 → broker 代发 will "offline"（按配置 r
 | 启动报 "mqtt: connect failed broker=..." | broker 不可达 / 凭证错误 / TLS 不匹配 | fail-fast 连接是无条件的 [starter.go:64-69]；修连通性或配置。 |
 | 启动卡死（无报错） | `connect-timeout=0` 且地址被黑洞 | 保持有限超时；0 表示关闭超时 [config.go:51]。 |
 | 反复重连 / 客户端被踢 | 多副本重复 `client-id` | 各配不同 id（broker 强制唯一）。 |
-| 熔断/限流不生效 | 直接裸调 `client.Publish`，或实例 `governance=false` | `GuardedPublish` 与 driver 的 `Publish` 都受保护 [command.go:156-172]；换调用点/重新开启。 |
+| 熔断/限流不生效 | 直接裸调 `client.Publish` | `GuardedPublish` 与 driver 的 `Publish` 都受保护 [command.go:156-172]；换调用点。 |
 | 无 trace/metric/访问记录 | 未 import starter-otel，或期望 driver 产出 | 助手依赖 OTel 全局；driver 什么都不产 [client.go:47-52]。 |
 | broker 重启后订阅者沉默 | 非干净会话丢失订阅 | paho 自动重连在，但重订阅行为取决于 clean-session / broker 会话；用生命周期日志核实 [driver.go:76-81]。 |
 | handler 错误石沉大海 | driver 只记日志不重投 | 在 handler 内部自行重试 [client.go:95-97]。 |

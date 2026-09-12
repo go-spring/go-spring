@@ -2,40 +2,50 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.discovery.k8s",
   "type": "object",
+  "description": "Two buckets: spring.discovery.k8s.default holds family-wide values (each overridable per instance), spring.discovery.k8s.instances.<name> holds one entry per named instance. No other key belongs directly under spring.discovery.k8s.instances.",
   "properties": {
-    "mode": {
-      "type": "string",
-      "default": "dns"
-    },
-    "namespace": {
-      "type": "string",
-      "default": "default"
-    },
-    "port-name": {
-      "type": "string",
-      "default": ""
-    },
-    "port": {
-      "type": "integer",
-      "default": 0
-    },
-    "cluster-domain": {
-      "type": "string",
-      "default": "cluster.local"
-    },
-    "refresh-interval": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "10s"
-    },
-    "kubeconfig": {
-      "type": "string",
-      "default": ""
-    },
-    "resync-period": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "0"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "default": "dns"
+          },
+          "namespace": {
+            "type": "string",
+            "default": "default"
+          },
+          "port-name": {
+            "type": "string",
+            "default": ""
+          },
+          "port": {
+            "type": "integer",
+            "default": 0
+          },
+          "cluster-domain": {
+            "type": "string",
+            "default": "cluster.local"
+          },
+          "refresh-interval": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "10s"
+          },
+          "kubeconfig": {
+            "type": "string",
+            "default": ""
+          },
+          "resync-period": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          }
+        }
+      }
     }
   }
 }

@@ -9,7 +9,7 @@ below.
 
 ## 1. Responsibilities & Boundaries
 
-- **Owns**: bean lifecycle for the `spring.s3.<name>` group (multi-instance,
+- **Owns**: bean lifecycle for the `spring.s3.instances.<name>` group (multi-instance,
   container-managed teardown), the fail-fast `ListBuckets` probe, the
   per-instance health indicator, the observe transport (3 signals), and the
   resilience round-tripper on the client's HTTP transport.
@@ -37,9 +37,9 @@ below.
   log (observe.go: client spans with `db.system`/`db.operation`/`db.statement`,
   `db.client.*` metrics, `_app_s3_access` access log).
 - **Resilience** — `resilience.NewRoundTripper` wraps the observe transport
-  with the executor resolved through the neutral seams
-  (`resilience.ExecutorFor` + `fault.WrapExecutor(…, fault.InjectorFor())`,
-  then `resilience.WrapExecutor`), scoped by
+  with the executor assembled by
+  `fault.WrapExecutor(resilience.ExecutorFor("s3", resource))` through the
+  neutral seams, scoped by
   `resilience.ResourceLabel("s3", endpoint)`.
 
 ## 3. Constraints

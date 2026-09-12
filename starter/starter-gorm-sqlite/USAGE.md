@@ -8,7 +8,7 @@ docs** — driver: [glebarez/sqlite](https://github.com/glebarez/sqlite) (pure-G
 Shared wrapper lifecycle, pool/observe/health wiring and `UseDBCustomizer` live in
 [gormcore](../starter-gorm/USAGE.md) and are not repeated here.
 
-**Activation**: one `*starter.DB` bean (plus a paired `health.Indicator`) per entry under
+**Activation**: one `*gormcore.DB` bean named `sqlite.<entry>` (plus a paired `health.Indicator`) per entry under
 `spring.gorm.sqlite`; zero entries → the starter registers nothing and the app starts
 (`starter_test.go:TestSqliteDefaultsNotTriggered`). SQLite is in-process: **no TLS block and
 no service-discovery path exist for this dialect** (the discovery keys of the shared Common
@@ -54,7 +54,8 @@ import (
     "time"
 
     "go-spring.org/spring/gs"
-    starter "go-spring.org/starter-gorm-sqlite"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-sqlite"
 )
 
 type greeting struct {
@@ -63,7 +64,7 @@ type greeting struct {
 }
 
 type Service struct {
-    DB *starter.DB `autowire:"primary"` // instance "primary" from conf
+    DB *gormcore.DB `autowire:"sqlite.primary"` // instance "primary" from conf
 }
 
 var manual = flag.Bool("manual", false, "keep the process up")
@@ -100,15 +101,15 @@ func runTest(s *Service) {
 ```properties
 # In-memory database; each connection opens its own :memory: store, so pin the
 # pool to a single connection for a stable in-memory round trip (see §4.1).
-spring.gorm.sqlite.primary.file=:memory:
-spring.gorm.sqlite.primary.journal-mode=wal
-spring.gorm.sqlite.primary.busy-timeout=5000
-spring.gorm.sqlite.primary.foreign-keys=true
-spring.gorm.sqlite.primary.max-open-conns=1
+spring.gorm.sqlite.instances.primary.file=:memory:
+spring.gorm.sqlite.instances.primary.journal-mode=wal
+spring.gorm.sqlite.instances.primary.busy-timeout=5000
+spring.gorm.sqlite.instances.primary.foreign-keys=true
+spring.gorm.sqlite.instances.primary.max-open-conns=1
 
 # A file-backed database shows the more typical multi-connection setup.
-# spring.gorm.sqlite.file.file=/tmp/go-spring-example.db
-# spring.gorm.sqlite.file.max-open-conns=8
+# spring.gorm.sqlite.instances.file.file=/tmp/go-spring-example.db
+# spring.gorm.sqlite.instances.file.max-open-conns=8
 ```
 
 **Verify** (identical in shape to `example/check.sh`):
@@ -131,7 +132,7 @@ without docker.
 
 ```
 import starter-gorm-sqlite
-  └─ init(): gormcore.Register(Dialect{Prefix: "spring.gorm.sqlite", ...})
+  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.sqlite", ...})
         │
 gs.Run()
   ├─ OnProperty("spring.gorm.sqlite") fires only if ≥1 entry exists
@@ -155,7 +156,7 @@ No TLS registration (no transport) and no discovery dialer (the "server" is a fi
 
 1. gorm's `gorm:query` processor runs — but gormcore's `ApplyCallbacks` has *replaced* it
    with a wrapper that runs the op under the instance's resilience executor (timeout /
-   retry / breaker via `${govern}`, fault injector when armed). `gorm.ErrRecordNotFound`
+   retry / breaker via the governance center, fault injector when armed). `gorm.ErrRecordNotFound`
    is treated as success so "no rows" never trips the breaker
    (`starter-gorm/resilience/callbacks.go:runGuard`).
 2. the observe plugin's `before_query` opens a span + in-flight metric
@@ -171,7 +172,7 @@ No TLS registration (no transport) and no discovery dialer (the "server" is a fi
 
 ## 3. Per-key behavior reference
 
-Keys under `spring.gorm.sqlite.<name>.*`. Pool keys (6, `gormcore.PoolSettings`),
+Keys under `spring.gorm.sqlite.instances.<name>.*`. Pool keys (6, `gormcore.PoolSettings`),
 `observe.enabled` and the
 wrapper `observability` key are shared — see
 [gormcore](../starter-gorm/USAGE.md#2-configuration-reference).
@@ -214,8 +215,8 @@ Demonstrate (same shape as the example, which pins `max-open-conns=1` in
 `example/conf/app.properties:3-8`):
 
 ```properties
-# spring.gorm.sqlite.primary.max-open-conns=   ← comment this out to reproduce
-spring.gorm.sqlite.primary.file=:memory:
+# spring.gorm.sqlite.instances.primary.max-open-conns=   ← comment this out to reproduce
+spring.gorm.sqlite.instances.primary.file=:memory:
 ```
 
 ```bash

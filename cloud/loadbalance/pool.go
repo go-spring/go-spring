@@ -17,6 +17,9 @@
 package loadbalance
 
 import (
+	"sync/atomic"
+	"time"
+
 	"go-spring.org/cloud/discovery"
 )
 
@@ -51,7 +54,7 @@ func (f SourceFunc) Endpoints() ([]discovery.Endpoint, error) { return f() }
 // when it is the only one left.
 type Pool struct {
 	src     EndpointSource
-	bal     Balancer
+	bal     atomic.Pointer[Balancer]
 	tracker *Tracker
 }
 
@@ -68,12 +71,59 @@ func WithTracker(t *Tracker) PoolOption {
 // discovery.Resolver so the candidate set follows the naming service in real
 // time; bal is any strategy from this package.
 func NewPool(src EndpointSource, bal Balancer, opts ...PoolOption) *Pool {
-	p := &Pool{src: src, bal: bal}
+	p := &Pool{src: src}
+	p.bal.Store(&bal)
 	for _, opt := range opts {
 		opt(p)
 	}
 	return p
 }
+
+// SetBalancer replaces the load-balancing strategy in place. It is the hot-path
+// counterpart of the balancer chosen at construction: a governance policy that
+// names a strategy can switch it on a live pool.
+//
+// Be aware that a strategy carries its own state — least_conn its in-flight
+// counts, consistent_hash its ring, p2c its latency model. Changing strategy
+// starts that state over; it is not carried across. Safe for concurrent use
+// with [Pool.Pick] and [Pool.Complete].
+func (p *Pool) SetBalancer(bal Balancer) {
+	p.bal.Store(&bal)
+}
+
+// SetTrackerConfig retunes outlier suspension in place. The per-endpoint
+// failure state is kept (see [Tracker.SetConfig]), so tightening or relaxing
+// the threshold mid-flight does not forget what the pool already observed.
+// It is a no-op when the pool has no tracker attached — attach one with
+// [WithTracker] to make suspension governable at all.
+func (p *Pool) SetTrackerConfig(cfg TrackerConfig) {
+	if p.tracker != nil {
+		p.tracker.SetConfig(cfg)
+	}
+}
+
+// ApplySelection applies a resolved endpoint-selection policy in place: the
+// balancer strategy named by balancer and the suspension thresholds. It is the
+// whole-selection entry point a governance subscriber calls, and it takes plain
+// values so this package needs no dependency on the policy model.
+//
+// An empty balancer leaves the current strategy alone, and an unknown strategy
+// name is IGNORED rather than fatal: the governance [Source] contract has no
+// error channel ("everything you push, you vouch for"), so a bad rule degrades
+// to the last good strategy instead of taking the client down. The suspension
+// half is always applied, so a rule that only retunes thresholds still works.
+func (p *Pool) ApplySelection(balancer string, threshold int, suspendFor time.Duration) {
+	if balancer != "" {
+		if bal, err := New(balancer); err == nil {
+			p.SetBalancer(bal)
+		}
+	}
+	p.SetTrackerConfig(TrackerConfig{Threshold: threshold, SuspendFor: suspendFor})
+}
+
+// Tracker returns the suspension tracker attached to the pool, or nil when
+// none was attached. It is an inspection and test helper.
+func (p *Pool) Tracker() *Tracker { return p.tracker }
 
 // Pick selects one live, healthy, non-suspended endpoint via the configured
 // balancer. The caller must invoke [Pool.Complete] with the picked endpoint
@@ -115,7 +165,7 @@ func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
 		candidates = live
 	}
 
-	return p.bal.Pick(candidates, info)
+	return (*p.bal.Load()).Pick(candidates, info)
 }
 
 // Complete settles the request that Pick issued to ep: it advances the
@@ -123,7 +173,7 @@ func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
 // (when attached), so every strategy — not just least-conn — feeds suspension.
 // Invoke it exactly once per picked endpoint, after the request ends.
 func (p *Pool) Complete(ep discovery.Endpoint, err error) {
-	p.bal.Complete(ep, err)
+	(*p.bal.Load()).Complete(ep, err)
 	if p.tracker != nil {
 		p.tracker.Record(ep.Addr, err == nil)
 	}

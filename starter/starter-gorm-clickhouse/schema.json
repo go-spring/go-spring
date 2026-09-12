@@ -77,7 +77,7 @@
     },
     "discovery": {
       "type": "string",
-      "default": "default"
+      "default": ""
     }
   }
 }

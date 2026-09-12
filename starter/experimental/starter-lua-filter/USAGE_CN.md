@@ -6,8 +6,8 @@
 [gopher-lua 文档](https://github.com/yuin/gopher-lua)——本文只讲 go-spring 接线、host API
 与沙箱。
 
-**激活方式**：任一 `spring.lua.filter.*` key —— `gs.Group("${spring.lua.filter}")` 为每个
-`spring.lua.filter.<name>` 条目创建一个名为 `<name>` 的 `*Filter` bean（starter.go:39）。
+**激活方式**：任一 `spring.lua.filter.instances.*` key —— `gs.Group("${spring.lua.filter}")` 为每个
+`spring.lua.filter.instances.<name>` 条目创建一个名为 `<name>` 的 `*Filter` bean（starter.go:39）。
 没有 `enabled` 开关；不配 key 就没有 bean。
 
 ---
@@ -88,8 +88,8 @@ end
 **conf/app.properties** —— 全量配置面：
 
 ```properties
-# 每个 spring.lua.filter.<name> 条目一个 filter；bean 名 = <name>。
-spring.lua.filter.guard.script=./scripts/guard.lua
+# 每个 spring.lua.filter.instances.<name> 条目一个 filter；bean 名 = <name>。
+spring.lua.filter.instances.guard.script=./scripts/guard.lua
 ```
 
 监听器是 gs 内建 HTTP server（`spring.http.server.addr`，默认 `:9090`，
@@ -117,7 +117,7 @@ import starter-lua-filter
   └─ gs.Group("${spring.lua.filter}", newFilter, destroyFilter)      starter.go:39
 
 gs.Run()
-  ├─ 配置绑定：${spring.lua.filter.<name>} → Config（script 路径）
+  ├─ 配置绑定：${spring.lua.filter.instances.<name>} → Config（script 路径）
   ├─ newFilter：compileFile 读取 + 解析 + 编译脚本为唯一可复用的
   │   *lua.FunctionProto，原子存储（filter.go:49-66）。编译失败或文件缺失都会
   │   使启动失败——拼写错误到不了生产。
@@ -186,7 +186,7 @@ spring.gateway.routes.demo.filters=lua(guard)
 
 ## 3. 逐 key 行为参考
 
-### 3.1 本 starter —— `spring.lua.filter.<name>.*`（1 个 key）
+### 3.1 本 starter —— `spring.lua.filter.instances.<name>.*`（1 个 key）
 
 | Key | 类型 | 默认 | 行为 / 联动 | 配错后果 |
 |-----|------|------|------------|----------|
@@ -259,7 +259,7 @@ if err := guard.Reload(); err != nil { /* 坏编辑：旧脚本仍在运行 */ }
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动失败 "lua filter: read script …" / "compile script …" | 脚本路径错误（相对 cwd）或 Lua 语法错误 | 修路径/key 或脚本；报错带文件+行号（filter.go:168-182）。 |
-| filter 静默不生效 | 没配 `spring.lua.filter.*` key（无 bean），或 mux 没经 `guard.Wrap` 挂载 | 补 key；包装 handler（`TagArg("<name>")`）。 |
+| filter 静默不生效 | 没配 `spring.lua.filter.instances.*` key（无 bean），或 mux 没经 `guard.Wrap` 挂载 | 补 key；包装 handler（`TagArg("<name>")`）。 |
 | 每个请求都 500 `lua filter error: …` | 脚本运行时错误（nil 索引、参数错） | 读错误文本，标注 Lua 行号。 |
 | 响应有头但 deny 没触发 | 脚本 `resp.set_header` 后落穿了 | `deny()` 之后必须 `return`；deny 只置短路标志。 |
 | 双重 deny / "http: superfluous WriteHeader" | 脚本调了两次 `deny()` 或 deny 后再写 | `deny()` 后立即 return。 |

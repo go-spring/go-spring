@@ -107,7 +107,7 @@ func claimDriverName(driver, instance string) error {
 	driverOwnerMu.Lock()
 	defer driverOwnerMu.Unlock()
 	if owner, ok := driverOwners[driver]; ok && owner != instance {
-		return fmt.Errorf("ratelimit-redis: limiter driver name %q claimed by both instance %q and instance %q — set distinct spring.ratelimit.redis.<name>.driver values",
+		return fmt.Errorf("ratelimit-redis: limiter driver name %q claimed by both instance %q and instance %q — set distinct spring.ratelimit.redis.instances.<name>.driver values",
 			driver, owner, instance)
 	}
 	driverOwners[driver] = instance

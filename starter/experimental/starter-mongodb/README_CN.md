@@ -23,12 +23,12 @@ import _ "go-spring.org/starter-mongodb"
 
 ### 2. 配置 MongoDB 实例
 
-在项目的[配置文件](example/conf/app.properties)中，在 `spring.mongodb.<name>`
+在项目的[配置文件](example/conf/app.properties)中，在 `spring.mongodb.instances.<name>`
 下定义一个或多个具名实例，比如：
 
 ```properties
-spring.mongodb.a.uri=mongodb://127.0.0.1:27017
-spring.mongodb.b.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.a.uri=mongodb://127.0.0.1:27017
+spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
 ```
 
 ### 3. 注入 MongoDB 实例
@@ -77,13 +77,13 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
   而非直接使用 URI 中的 host。框架会注入一个基于 discovery `Loader`（经 `loadbalance.Pool`
   每次 `Pick`）的 dialer，于是每条新建连接都会连到当前存活的实例，地址变更无需重建客户端
   即可生效。
-  用 `discovery` 选择后端（默认 `default`）；公司通过 `discovery.Register` 注册一次
+  用 `discovery` 选择后端（必填，无默认后端）；公司通过 `discovery.Register` 注册一次
   自己的命名服务即可。在 mesh 模式（`mesh.Enabled()`）下由 sidecar 接管服务发现与负载均衡，
   此时会跳过 `service-name`，直接拨号到 URI 中的 host。
 
   ```properties
-  spring.mongodb.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
-  spring.mongodb.disc.service-name=mongo-cluster
+  spring.mongodb.instances.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
+  spring.mongodb.instances.disc.service-name=mongo-cluster
   ```
 
   注意：这会绕过 MongoDB 自身的副本集 / mongos 拓扑发现——驱动直接连命名服务给出的地址。

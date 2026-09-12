@@ -7,9 +7,9 @@
 [sarama 官方文档](https://github.com/IBM/sarama) 与
 [kafka.apache.org](https://kafka.apache.org/documentation/)** —— 下文只写 go-spring 的增量。
 
-**激活条件**：出现任意 `spring.kafka-sarama.*` 配置即激活（模块注册于
+**激活条件**：出现任意 `spring.kafka-sarama.instances.*` 配置即激活（模块注册于
 `gs.OnProperty("spring.kafka-sarama")`，前缀匹配 [starter.go:38]）。每个
-`spring.kafka-sarama.<name>` 条目创建一个名为 `<name>` 的 `sarama.Client` bean
+`spring.kafka-sarama.instances.<name>` 条目创建一个名为 `<name>` 的 `sarama.Client` bean
 [starter.go:39-43]。该前缀与 franz-go 版 [starter-kafka](../starter-kafka)（`spring.kafka`）
 刻意区分，二者从不同时引入 [config.go:26-28]。
 
@@ -103,23 +103,23 @@ func (s *Service) publish(ctx context.Context, topic, value string) error {
 
 ```properties
 # --- kafka client -----------------------------------------------------------
-spring.kafka-sarama.main.brokers=127.0.0.1:9092
+spring.kafka-sarama.instances.main.brokers=127.0.0.1:9092
 # 须与目标集群匹配，消费组等功能才正常（sarama 由此协商协议特性）；留空用 sarama 默认。
-spring.kafka-sarama.main.version=3.7.0
+spring.kafka-sarama.instances.main.version=3.7.0
 
 # --- producer 调优 ----------------------------------------------------------
-spring.kafka-sarama.main.producer.compression=snappy
-spring.kafka-sarama.main.producer.required-acks=all
+spring.kafka-sarama.instances.main.producer.compression=snappy
+spring.kafka-sarama.instances.main.producer.required-acks=all
 
 # --- 可选：SASL + TLS（dev broker 为明文） -----------------------------------
-#spring.kafka-sarama.main.sasl.enabled=true
-#spring.kafka-sarama.main.sasl.mechanism=scram-sha-512
-#spring.kafka-sarama.main.sasl.username=user
-#spring.kafka-sarama.main.sasl.password=pass
-#spring.kafka-sarama.main.tls.enabled=true
-#spring.kafka-sarama.main.tls.ca-file=/path/ca.pem
-#spring.kafka-sarama.main.tls.cert-file=/path/client.pem
-#spring.kafka-sarama.main.tls.key-file=/path/client.key
+#spring.kafka-sarama.instances.main.sasl.enabled=true
+#spring.kafka-sarama.instances.main.sasl.mechanism=scram-sha-512
+#spring.kafka-sarama.instances.main.sasl.username=user
+#spring.kafka-sarama.instances.main.sasl.password=pass
+#spring.kafka-sarama.instances.main.tls.enabled=true
+#spring.kafka-sarama.instances.main.tls.ca-file=/path/ca.pem
+#spring.kafka-sarama.instances.main.tls.cert-file=/path/client.pem
+#spring.kafka-sarama.instances.main.tls.key-file=/path/client.key
 
 # --- 可观测（starter-otel） --------------------------------------------------
 spring.observability.service-name=demo
@@ -156,7 +156,7 @@ curl -s :9090/metrics | grep messaging_client   # duration 直方图 + in-flight
 ```
 import starter-kafka-sarama
   ├─ init: sarama.Logger = go-spring log 桥接   [starter.go:33]（sarama 事件全转 Info，默认 app tag）
-  └─ gs.Module(OnProperty("spring.kafka-sarama")) 任意 spring.kafka-sarama.* 触发
+  └─ gs.Module(OnProperty("spring.kafka-sarama")) 任意 spring.kafka-sarama.instances.* 触发
         └─ conf.BindEach → 每个 <name> 条目一个 Config
               └─ Provide(newClient, IndexArg name, IndexArg config, IndexArg 3,?Driver).Name(<name>)
                    .Destroy(destroyClient)     [starter.go:40-44]
@@ -169,9 +169,8 @@ gs.Run()
   │       metadata，坏 broker/坏凭据/TLS 不匹配在启动期失败，而非首次使用时
   │       爆雷 [client.go:42-46 注释, driver.go:63-96]
   │    3. 防御性 fail-fast：len(Brokers())==0 → close + 启动报错 [client.go:60-64]
-  │    4. applyResilience：fault.Wrap(ExecutorFor("kafka:<brokers>")) →
-  │       resilience.WrapExecutor（span/计数/直方图/访问日志）→ 以 client
-  │       为键存入 sync.Map [client.go:65-69, command.go:208-217]
+  │    4. applyResilience：fault.WrapExecutor(ExecutorFor("kafka", "kafka:<brokers>")) →
+  │       以 client 为键存入 sync.Map [client.go:65-69, command.go:209-213]
   ├─ 派生 bean 归你所有：注入 client 处用 sarama.New*FromClient 自建
   └─ SIGTERM → Destroy：closeResilience（exec.Close、清 map）→ cl.Close()
        [client.go:78-81, command.go:220-225]
@@ -180,7 +179,9 @@ gs.Run()
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterKafkaSarama.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.kafka-sarama` 下每个实例都经它
 构建。没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:41-88`，
-`client.go:52-53`）。没有 per-config 的 `driver` key。
+`client.go:52-53`）。当容器中存在多个 Driver bean 时，实例可按名指定：
+`spring.kafka-sarama.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的
+bean 不存在则启动失败）。
 
 派生的 producer/consumer 不是容器 bean —— 需自行在应用退出前关闭（publish 路径里
 `defer producer.Close()` 即预期写法，见 [example/example.go:72-76]）。
@@ -193,8 +194,8 @@ gs.Run()
 
 ```
 SendMessage / SendMessages
-  → resilience executor 包装（span + outcome 计数 + duration + 访问日志）
-    → fault.WrapExecutor（govern.fault 启用时注入故障）
+  → fault.WrapExecutor（govern.fault 启用时注入故障）
+    → resilience executor 包装（span + outcome 计数 + duration + 访问日志）
       → resilience executor（breaker / rate limit / retry，策略来自治理中心）
         → 内层 p.SendMessage（真实 sarama）
 ```
@@ -245,7 +246,7 @@ ctx），包装器只能用 `context.Background()` —— 逐调用时限要用 
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.kafka-sarama.<name>.` 下（含 tls/sasl 组共 15 个；
+所有 key 位于 `spring.kafka-sarama.instances.<name>.` 下（含 tls/sasl 组共 15 个；
 这里是 `conf.BindEach` 的按实例前缀绑定，不是绝对属性的字段注入）。
 
 ### 3.1 核心
@@ -255,7 +256,8 @@ ctx），包装器只能用 `context.Background()` —— 逐调用时限要用 
 | `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:32]）；逗号分隔 seed 列表 [driver.go:95]。同时原样构成治理资源标签 `kafka:<brokers>` [client.go:65] —— 同一集群写法不同即**不同**标签。 | 缺失/为空 → 绑定报错。broker 写错 → sarama.NewClient 启动失败（fail-fast）。 |
 | `version` | string | ""（sarama 默认） | `sarama.ParseKafkaVersion` 解析；决定协议特性（headers、SASL 机制、消费组）[driver.go:65-71]。 | 解析失败 → 启动报错 `invalid kafka version`。过低 → 首次使用才报功能错误。 |
 
-无 `driver` key：client 装配由可选 Driver bean（见 §2.1）或内置 `DefaultDriver` 负责。
+`driver` key 为实例按名指定 Driver bean：不配置 → 装配由按类型注入的可选 Driver bean（见
+§2.1）或内置 `DefaultDriver` 负责；配置 → 按名注入该 bean，指定的 bean 不存在则启动失败。
 
 ### 3.2 SASL（`sasl.*`）—— [config.go:64-77]、[driver.go:101-118]
 

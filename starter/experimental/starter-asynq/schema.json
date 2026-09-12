@@ -2,52 +2,69 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.asynq",
   "type": "object",
+  "description": "Two buckets: spring.asynq.default holds family-wide values (each overridable per instance), spring.asynq.instances.<name> holds one entry per named instance. No other key belongs directly under spring.asynq.",
   "properties": {
-    "addr": {
-      "type": "string",
-      "description": "Redis server address, host:port"
-    },
-    "username": {
-      "type": "string",
-      "default": ""
-    },
-    "password": {
-      "type": "string",
-      "default": ""
-    },
-    "db": {
-      "type": "integer",
-      "default": 0
-    },
-    "tls": {
+    "default": {
       "type": "object",
-      "description": "tlsconf shared block"
-    },
-    "concurrency": {
-      "type": "integer",
-      "default": 10
-    },
-    "queues": {
-      "type": "object",
-      "description": "queue name -> priority weight"
-    },
-    "shutdown-timeout": {
-      "type": "string",
-      "default": "8s"
-    },
-    "server": {
-      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "turn on the worker role"
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
         }
       }
     },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "addr": {
+            "type": "string",
+            "description": "Redis server address, host:port"
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "db": {
+            "type": "integer",
+            "default": 0
+          },
+          "tls": {
+            "type": "object",
+            "description": "tlsconf shared block"
+          },
+          "concurrency": {
+            "type": "integer",
+            "default": 10
+          },
+          "queues": {
+            "type": "object",
+            "description": "queue name -> priority weight"
+          },
+          "shutdown-timeout": {
+            "type": "string",
+            "default": "8s"
+          },
+          "server": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": false,
+                "description": "turn on the worker role"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

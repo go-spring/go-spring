@@ -7,8 +7,8 @@
 文献；本文只讲 go-spring 的装配、接线与运维增量。
 
 **激活条件**：仅当存在 `spring.outbox` 配置项时模块才注册 bean（`gs.OnProperty("spring.outbox")`，
-starter.go:59；该判断是前缀匹配，任意 `spring.outbox.*` key 都会触发）。没有 `enabled`
-key。实例多命名：`spring.outbox.<name>.*` 下每个条目对应一个 relay 实例。
+starter.go:59；该判断是前缀匹配，任意 `spring.outbox.instances.*` key 都会触发）。没有 `enabled`
+key。实例多命名：`spring.outbox.instances.<name>.*` 下每个条目对应一个 relay 实例。
 
 ---
 
@@ -96,16 +96,16 @@ spring.gorm.db.dataSourceName=user:pass@tcp(127.0.0.1:3306)/demo
 
 # --- outbox：spring.outbox 下每个条目一个 relay 实例 ---------------------------
 # "main" 是实例名 → bean 名、健康指示器 "outbox:main"。
-# spring.outbox.main.driver=          # 可选：指定投递所用 messaging.Driver bean 名；
+# spring.outbox.instances.main.driver=          # 可选：指定投递所用 messaging.Driver bean 名；
                                       # 留空 → 自动注入唯一那个
-spring.outbox.main.db=                 # 空 → 自动注入唯一的 *gorm.DB bean
-spring.outbox.main.auto-migrate=true   # 启动时用 gorm 建 outbox_message 表
-spring.outbox.main.poll-interval=1s    # 下限钳制 100ms
-spring.outbox.main.batch-size=100      # 每次拉取行数
-spring.outbox.main.max-attempts=8      # 死信前的总尝试次数
-spring.outbox.main.backoff-base=1s     # 每次失败翻倍
-spring.outbox.main.backoff-max=1m      # 单次重试等待上限
-spring.outbox.main.dlq-suffix=.dlq     # "orders.events" → "orders.events.dlq"；"" 关闭 DLQ 拷贝
+spring.outbox.instances.main.db=                 # 空 → 自动注入唯一的 *gorm.DB bean
+spring.outbox.instances.main.auto-migrate=true   # 启动时用 gorm 建 outbox_message 表
+spring.outbox.instances.main.poll-interval=1s    # 下限钳制 100ms
+spring.outbox.instances.main.batch-size=100      # 每次拉取行数
+spring.outbox.instances.main.max-attempts=8      # 死信前的总尝试次数
+spring.outbox.instances.main.backoff-base=1s     # 每次失败翻倍
+spring.outbox.instances.main.backoff-max=1m      # 单次重试等待上限
+spring.outbox.instances.main.dlq-suffix=.dlq     # "orders.events" → "orders.events.dlq"；"" 关闭 DLQ 拷贝
 
 # --- actuator（健康指示器）----------------------------------------------------
 spring.actuator.addr=:9370
@@ -142,7 +142,7 @@ import starter-outbox-gorm
               不同的 (Name,Type) 键，否则容器报 duplicate beans。
 
 gs.Run()
-  ├─ 配置绑定：${spring.outbox.<name>} → Config（value tag）
+  ├─ 配置绑定：${spring.outbox.instances.<name>} → Config（value tag）
   ├─ bean 装配：*gorm.DB 由 TagArg(c.DB)、messaging.Driver 由 TagArg(c.Driver)
   │             解析 —— key 为空自动注入该类型的唯一 bean；命名 key 选指定
   │             bean。broker starter 会为其每条已配置连接导出一个
@@ -208,7 +208,7 @@ Relay 循环（`cloud/experimental/outbox/relay.go`，由 starter.go:109-116 驱
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.outbox.<name>.` 下 —— 每条目一个实例。默认值来自
+所有 key 位于 `spring.outbox.instances.<name>.` 下 —— 每条目一个实例。默认值来自
 config.go:29-63；归一化（钳制）来自 outbox.go:132-153。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -229,7 +229,7 @@ config.go:29-63；归一化（钳制）来自 outbox.go:132-153。
   同库才存在。
 - 跨批次/跨重启不保证顺序；若 broker 支持按 key 分区（kafka partition），在
   `Publish` 传 `key` 让同 key 消息有序（relay.go:34-37）。
-- 这些 key 都是实例作用域（`spring.outbox.<name>.*`）；本 starter 没有顶层的
+- 这些 key 都是实例作用域（`spring.outbox.instances.<name>.*`）；本 starter 没有顶层的
   `${observability:=}` 式绝对 key。
 
 ---
@@ -311,7 +311,7 @@ curl -s :9370/health | jq '.components["outbox:main"]'
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 装配期启动失败：没有 `messaging.Driver` bean | 未配置 broker starter，故没有导出 `messaging.Driver` bean | import 并配置一个 broker starter（它按连接导出 `messaging.Driver` bean），或自行提供一个 bean。 |
-| 装配期启动失败：多个 `messaging.Driver` bean 但 `driver` 为空 | 存在多条投递连接 | 在 `spring.outbox.<name>.driver` 指定 `messaging.Driver` bean 名。 |
+| 装配期启动失败：多个 `messaging.Driver` bean 但 `driver` 为空 | 存在多条投递连接 | 在 `spring.outbox.instances.<name>.driver` 指定 `messaging.Driver` bean 名。 |
 | 启动时 auto-migrate 报错后失败 | 库不可达 / 无 DDL 权限 | 修连通性，或按 README DDL 预建表并设 `auto-migrate=false`。 |
 | 持续 `fetch failed (keep polling)` ERROR | 表不存在（auto-migrate 关且 DDL 未执行）或库挂 | 执行 DDL；relay 撑得住但 fetch 失败期间不投递。 |
 | 消息投递了两次 | 发布与 MarkSent 之间崩溃/重投 —— at-least-once 设计使然 | 消费者幂等或按 `Key` 去重。 |

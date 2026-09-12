@@ -8,7 +8,7 @@ starter。一个实例产出生产者 Client（入队）与可选启用的 worke
 
 ## 1. 职责与边界
 
-- **负责**：`spring.asynq.<name>` 每实例装配、Redis 连接（双角色共享）、
+- **负责**：`spring.asynq.instances.<name>` 每实例装配、Redis 连接（双角色共享）、
   带守卫的入队路径、worker 生命周期（gs.Server）、handler mux、健康指示器。
 - **不负责**：任务序列化（payload 是应用自己的 `[]byte`）、重试/队列策略
   （asynq Options 透传）、定时任务（asynq 自身的 cron，不在本 starter 范围）。
@@ -31,7 +31,7 @@ starter。一个实例产出生产者 Client（入队）与可选启用的 worke
 
 ## 3. 约束
 
-- `Queues` 需带 `:=` 默认（缺 `spring.asynq.<n>.queues` 键时必须绑定为 nil，
+- `Queues` 需带 `:=` 默认（缺 `spring.asynq.instances.<n>.queues` 键时必须绑定为 nil，
   不能使模块装配失败）。
 - asynq 自身恢复 handler panic（其 processor guard）；本 starter 刻意不做
   二次包裹——边界写入文档而非双重执行。

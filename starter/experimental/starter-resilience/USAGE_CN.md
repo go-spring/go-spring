@@ -94,7 +94,7 @@ cd starter/experimental/starter-resilience/example && ./check.sh
 `spring.http.client.<name>.resilience.driver=sentinel`（starter-http-client /
 oauth2-client）。不设 `driver` key 时这些 starter 停留在零依赖的 `default` 驱动。
 走 governance 中心时客户端根本不选驱动 —— 它们调用
-`resilience.ExecutorFor(label)`（见 §2.2）。
+`resilience.ExecutorFor(system, label)`（见 §2.2）。
 
 ---
 
@@ -117,11 +117,12 @@ import starter-resilience
 
 ### 2.2 ExecutorFor seam（governance 中心集成）
 
-`resilience.ExecutorFor(resource)`（抽象层 provider.go，不在本 starter）是客户端
+`resilience.ExecutorFor(system, resource)`（抽象层 provider.go，不在本 starter）是客户端
 替代"注入 governance 中心"的唯一调用：
 
-- 返回只持有 label 的稳定 `resolvedExecutor`；真正的 executor 在**每次 Execute 时
-  惰性解析**并按 label 记忆化（sync.Map 缓存）。
+- 返回持有系统名与 label 的稳定 `resolvedExecutor`；真正的 executor 在**每次 Execute 时
+  惰性解析**并按 label 记忆化（sync.Map 缓存）。observe 层就在这次解析中、在 executor
+  尚未发布时应用，所以客户端拿到的已是组装好的 executor，不再自己包一层。
 - provider 由 starter-govern 在建好 governance 中心后一次性安装；因为解析推迟到
   调用时，客户端与 govern 的装配先后无关紧要。
 - 未注册 provider（没有 starter-govern 或 governance 关闭）时，executor 是透明的

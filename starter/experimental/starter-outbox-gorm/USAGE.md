@@ -9,8 +9,8 @@ operational increment.
 
 **Activation**: the module registers beans only when a `spring.outbox` property exists
 (`gs.OnProperty("spring.outbox")`, starter.go:59; the check is a prefix check, so any
-`spring.outbox.*` key activates it). There is no `enabled` key. Instances are multi-named:
-one relay per entry under `spring.outbox.<name>.*`.
+`spring.outbox.instances.*` key activates it). There is no `enabled` key. Instances are multi-named:
+one relay per entry under `spring.outbox.instances.<name>.*`.
 
 ---
 
@@ -100,16 +100,16 @@ spring.gorm.db.dataSourceName=user:pass@tcp(127.0.0.1:3306)/demo
 
 # --- outbox: one relay instance per entry under spring.outbox ----------------
 # "main" is the instance name → bean name, health indicator "outbox:main".
-# spring.outbox.main.driver=          # optional: name the messaging.Driver bean to deliver
+# spring.outbox.instances.main.driver=          # optional: name the messaging.Driver bean to deliver
                                       # through; empty → autowire the single one
-spring.outbox.main.db=                 # empty → autowire the single *gorm.DB bean
-spring.outbox.main.auto-migrate=true   # create outbox_message via gorm at startup
-spring.outbox.main.poll-interval=1s    # clamped to >=100ms
-spring.outbox.main.batch-size=100      # rows per poll
-spring.outbox.main.max-attempts=8      # total attempts before dead-letter
-spring.outbox.main.backoff-base=1s     # doubles per failure
-spring.outbox.main.backoff-max=1m      # cap on one retry wait
-spring.outbox.main.dlq-suffix=.dlq     # "orders.events" → "orders.events.dlq"; "" disables DLQ copy
+spring.outbox.instances.main.db=                 # empty → autowire the single *gorm.DB bean
+spring.outbox.instances.main.auto-migrate=true   # create outbox_message via gorm at startup
+spring.outbox.instances.main.poll-interval=1s    # clamped to >=100ms
+spring.outbox.instances.main.batch-size=100      # rows per poll
+spring.outbox.instances.main.max-attempts=8      # total attempts before dead-letter
+spring.outbox.instances.main.backoff-base=1s     # doubles per failure
+spring.outbox.instances.main.backoff-max=1m      # cap on one retry wait
+spring.outbox.instances.main.dlq-suffix=.dlq     # "orders.events" → "orders.events.dlq"; "" disables DLQ copy
 
 # --- actuator (health indicator) ---------------------------------------------
 spring.actuator.addr=:9370
@@ -148,7 +148,7 @@ import starter-outbox-gorm
               need distinct (Name,Type) keys or the container reports duplicates.
 
 gs.Run()
-  ├─ config bind: ${spring.outbox.<name>} → Config (value tags)
+  ├─ config bind: ${spring.outbox.instances.<name>} → Config (value tags)
   ├─ bean wiring: *gorm.DB from TagArg(c.DB) and the messaging.Driver from
   │               TagArg(c.Driver) — empty keys autowire the single bean of each
   │               type; a named key picks that bean. A broker starter exports a
@@ -219,7 +219,7 @@ table growth (and archival) is an operator concern.
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.outbox.<name>.` — one instance per entry. Defaults from
+All keys live under `spring.outbox.instances.<name>.` — one instance per entry. Defaults from
 config.go:29-63; normalization (clamps) from outbox.go:132-153.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -240,7 +240,7 @@ Coupling notes:
   guarantee is "same transaction", which only exists within one database.
 - Ordering across batches/restarts is not guaranteed; if the broker is keyed (kafka
   partitions), set `Publish`'s `key` so same-key messages stay ordered (relay.go:34-37).
-- These keys are instance-scoped (`spring.outbox.<name>.*`); the starter has no
+- These keys are instance-scoped (`spring.outbox.instances.<name>.*`); the starter has no
   top-level wrapper keys (no `${observability:=}`-style absolute keys exist here).
 
 ---
@@ -325,7 +325,7 @@ curl -s :9370/health | jq '.components["outbox:main"]'
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Startup fails at wiring: no `messaging.Driver` bean | no broker starter configured, so none exported a `messaging.Driver` bean | Import + configure a broker starter (it exports a `messaging.Driver` bean per connection), or provide your own as a bean. |
-| Startup fails at wiring: several `messaging.Driver` beans, empty `driver` | more than one delivery connection exists | Name the `messaging.Driver` bean in `spring.outbox.<name>.driver`. |
+| Startup fails at wiring: several `messaging.Driver` beans, empty `driver` | more than one delivery connection exists | Name the `messaging.Driver` bean in `spring.outbox.instances.<name>.driver`. |
 | Startup fails after auto-migrate error | DB unreachable / insufficient DDL rights | Fix connectivity or pre-create the table from the README DDL and set `auto-migrate=false`. |
 | Continuous `fetch failed (keep polling)` ERRORs | table missing (auto-migrate off, DDL not applied) or db down | Apply the DDL; the relay survives but delivers nothing while fetch fails. |
 | Messages delivered twice | crash/redelivery between publish and MarkSent — at-least-once by design | Make consumers idempotent or dedupe by `Key`. |

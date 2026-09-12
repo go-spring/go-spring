@@ -10,12 +10,12 @@ be released on shutdown.
 
 ## 1. Responsibilities & Boundaries
 
-- Binds each `spring.bigcache.<name>` entry to a
-  `*bigcache.BigCache` bean via `gs.Group`. No single-instance default
+- Binds each `spring.bigcache.instances.<name>` entry to a
+  `*bigcache.BigCache` bean via `gs.Module`. No single-instance default
   (see `project_client_starter_multiinstance`).
-- Registers a `cloud/cache` driver named `bigcache` so callers using
-  the `cache.Cache` abstraction — including `cloud/cache`'s
-  MultiLevel — can pick this backend by name without importing bigcache
+- Additionally provides a `cache.Cache` bean named `bigcache:<name>` per
+  instance, so callers using that abstraction — including `cloud/cache`'s
+  MultiLevel — can inject this backend by name without importing bigcache
   directly.
 - No cross-process coherence: the cache lives in the process's own
   heap. Two replicas hold independent copies; that is the trade-off for
@@ -23,17 +23,17 @@ be released on shutdown.
 
 ## 2. Key Abstractions & Seams
 
-- **`gs.Group` per instance.** Distinct configs (LRU/expiring, small
+- **Per-instance beans.** Distinct configs (LRU/expiring, small
   fast-path for hot data plus larger slow-path) coexist as separate
   bigcache instances tuned independently.
 - **`destroy = Close`.** bigcache launches a background eviction
   goroutine when `LifeWindow > 0` or `CleanWindow > 0`; failing to call
   `Close` leaks that goroutine per instance. The starter wires
   `destroy` for exactly this reason (`project_starter_bigcache`).
-- **`AsCache` adapter registers with the driver registry.** The
-  starter's contribution to `cloud/cache` is via the driver registry
-  (see `project_stdlib_cache`) so callers write `cache: bigcache` in a
-  cache config without importing bigcache directly.
+- **`AsCache` adapter exports a bean directly.** The starter's
+  contribution to `cloud/cache` is one `cache.Cache` bean named
+  `bigcache:<name>` per instance (adapter in `bytecache/`), injected by
+  name; un-injected beans never instantiate, so no config gate.
 - **`check.sh` needs no docker.** In-process cache has no service
   container — smoke is a plain `go test`.
 

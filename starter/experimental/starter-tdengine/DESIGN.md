@@ -8,7 +8,7 @@ the wire protocol and the seam at which resilience/observability attach.
 
 ## 1. Responsibilities & Boundaries
 
-- **Owns**: bean lifecycle for the `spring.tdengine.<name>` group, DSN
+- **Owns**: bean lifecycle for the `spring.tdengine.instances.<name>` group, DSN
   parsing into a taosWS connector, the guarded `*sql.DB` pool, the startup
   ping probe and per-instance indicator, the per-statement guard.
 - **Does not own**: SQL building for time-series idioms (super tables,

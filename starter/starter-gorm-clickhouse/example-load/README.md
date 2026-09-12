@@ -35,9 +35,9 @@ rises as retries stack against the injected faults.
   callbacks in the gorm processor chain), not raw DB throughput.
 - The driver dials the **native TCP port 9000** (not the HTTP port 8123); this
   mirrors the starter's existing `example/conf/app.properties`.
-- Connection keys (`spring.gorm.clickhouse.load.*`) live under the instance
+- Connection keys (`spring.gorm.clickhouse.instances.load.*`) live under the instance
   prefix; `resilience.*` and `fault.*` are top-level absolute property refs
   shared across all starters.
 - Assumption: the `clickhouse/clickhouse-server` default image ships a passwordless
   `default` user and `default` database (verified against the starter's existing
-  example). If your image requires auth, set `spring.gorm.clickhouse.load.password`.
+  example). If your image requires auth, set `spring.gorm.clickhouse.instances.load.password`.

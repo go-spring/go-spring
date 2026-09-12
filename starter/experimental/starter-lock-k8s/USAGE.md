@@ -7,7 +7,7 @@ abstraction [cloud/lock](../../../cloud/lock), and the
 leader election — see the [Kubernetes Lease API](https://kubernetes.io/docs/concepts/architecture/leases/);
 everything below is go-spring's increment.
 
-**Activation**: any `spring.lock.<name>.*` property registers one Lease-backed `lock.Locker`
+**Activation**: any `spring.lock.instances.<name>.*` property registers one Lease-backed `lock.Locker`
 instance per `<name>`. This is the K8s-native backend: locking/election rides the control plane's
 own `coordination.k8s.io/Lease` API (the mechanism behind `--leader-elect`), so an in-cluster app
 needs **no extra middleware**. Blank-import one lock backend per binary — the `spring.lock`
@@ -189,7 +189,7 @@ The resolved TTL becomes the Lease's `leaseDurationSeconds` — whole seconds, r
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.lock.<name>` (exact-match, no relaxed forms).
+All keys live under `spring.lock.instances.<name>` (exact-match, no relaxed forms).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -253,7 +253,7 @@ boots in wiring-only mode and exits cleanly (no `spring.lock` entry declared).
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails `in-cluster config` | running outside a cluster without `kubeconfig` | Set `spring.lock.<n>.kubeconfig`. |
+| Boot fails `in-cluster config` | running outside a cluster without `kubeconfig` | Set `spring.lock.instances.<n>.kubeconfig`. |
 | Boot fails loading kubeconfig | bad path/format | Error names the file; fix path. |
 | Acquire errors `forbidden` | ServiceAccount lacks lease get/create/update RBAC | Apply a Role like `example/deploy/rbac.yaml`; note boot itself succeeds. |
 | Lease create/update rejected on name | `key-prefix`/key not a DNS-1123 subdomain | Lowercase alphanumerics, `-` and `.` only. |

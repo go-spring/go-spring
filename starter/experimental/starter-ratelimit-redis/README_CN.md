@@ -7,8 +7,8 @@ Go-Spring 的 Redis 分布式限流：向 resilience 注册表贡献
 
 ## 功能
 
-- 每个配置项 `spring.ratelimit.redis.<name>` 注册一个 limiter driver，
-  复用 starter-go-redis 在 `spring.go-redis.<client>` 下发布的
+- 每个配置项 `spring.ratelimit.redis.instances.<name>` 注册一个 limiter driver，
+  复用 starter-go-redis 在 `spring.go-redis.instances.<client>` 下发布的
   `*redis.Client` bean。
 - 令牌桶算法（单条 Lua `EVAL` 原子完成补充+扣减、桶状态存 hash、按时间
   连续补充、key 带 TTL 防冷键堆积）就是 `starter-go-redis/experimental`
@@ -21,12 +21,12 @@ Go-Spring 的 Redis 分布式限流：向 resilience 注册表贡献
 
 ```properties
 # redis 客户端（starter-go-redis）
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # 每个配置项一个 driver；`client` 必填（缺省直接启动失败）。
-spring.ratelimit.redis.gateway.client=cache
+spring.ratelimit.redis.instances.gateway.client=cache
 # 消费方按这个名字选用 driver；缺省等于实例名。
-spring.ratelimit.redis.gateway.driver=redis
+spring.ratelimit.redis.instances.gateway.driver=redis
 ```
 
 ## 使用方式

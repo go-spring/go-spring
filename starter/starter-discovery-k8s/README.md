@@ -7,7 +7,7 @@ discovery** for Go-Spring. The platform registers every Pod behind a Service
 in-cluster, so an application discovers peers through that capability instead of
 standing up a second registry (Nacos/Consul).
 
-Blank-importing this starter and declaring a `spring.discovery.k8s.<name>` entry
+Blank-importing this starter and declaring a `spring.discovery.k8s.instances.<name>` entry
 registers a `discovery.Discovery` backend (from `cloud/discovery`) under
 `<name>`. Any client starter that supports discovery — Redis, GORM, ... —
 resolves a Kubernetes **Service name** to live Pod endpoints via its
@@ -40,19 +40,19 @@ import _ "go-spring.org/starter-discovery-k8s"
 DNS mode against a headless Service, using an SRV query on the named port:
 
 ```properties
-spring.discovery.k8s.k8s.mode=dns
-spring.discovery.k8s.k8s.namespace=default
-spring.discovery.k8s.k8s.port-name=grpc
-spring.discovery.k8s.k8s.cluster-domain=cluster.local
-spring.discovery.k8s.k8s.refresh-interval=5s
+spring.discovery.k8s.instances.k8s.mode=dns
+spring.discovery.k8s.instances.k8s.namespace=default
+spring.discovery.k8s.instances.k8s.port-name=grpc
+spring.discovery.k8s.instances.k8s.cluster-domain=cluster.local
+spring.discovery.k8s.instances.k8s.refresh-interval=5s
 ```
 
 EndpointSlice mode (real-time; requires RBAC — see [example/deploy/rbac.yaml](example/deploy/rbac.yaml)):
 
 ```properties
-spring.discovery.k8s.k8s.mode=endpointslice
-spring.discovery.k8s.k8s.namespace=default
-spring.discovery.k8s.k8s.port-name=grpc
+spring.discovery.k8s.instances.k8s.mode=endpointslice
+spring.discovery.k8s.instances.k8s.namespace=default
+spring.discovery.k8s.instances.k8s.port-name=grpc
 # kubeconfig is empty for in-cluster auth; set a path to run out-of-cluster.
 ```
 
@@ -62,8 +62,8 @@ The backend name (`k8s` above) is what a client references. For example a Redis
 client resolves its address through it:
 
 ```properties
-spring.go-redis.cache.service-name=my-redis   # the Kubernetes Service name
-spring.go-redis.cache.discovery=k8s            # this backend
+spring.go-redis.instances.cache.service-name=my-redis   # the Kubernetes Service name
+spring.go-redis.instances.cache.discovery=k8s            # this backend
 ```
 
 The Redis client now dials a live Pod of the `my-redis` Service, refreshed as
@@ -72,7 +72,7 @@ directly through the injected backend bean.
 
 ## Configuration
 
-Bound under `spring.discovery.k8s.<name>`:
+Bound under `spring.discovery.k8s.instances.<name>`:
 
 | Key | Default | Applies to | Description |
 | --- | --- | --- | --- |

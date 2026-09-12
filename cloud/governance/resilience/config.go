@@ -24,8 +24,8 @@ import (
 // tags and yields a [Policy]. It is the policy-only half of [Config]: no
 // Enabled/Driver, because those are deployment-level switches. The governance
 // center embeds it per Default/Rule (govern.default.*, govern.rules[n].*), so
-// the on/off switch and backend selection stay process-wide at the top of
-// ${govern} (govern.enabled, govern.driver) instead of being re-bindable per
+// the on/off switch and backend selection stay process-wide at the top of the
+// document (govern.enabled, govern.driver) instead of being re-bindable per
 // resource.
 //
 // Every field uses the same kebab-case key style and the same defaults as the
@@ -97,6 +97,34 @@ type PolicyConfig struct {
 	// MaxDuration caps the wall time of the whole call across all retries
 	// (0 = no total cap).
 	MaxDuration time.Duration `value:"${max-duration:=0}"`
+
+	// --- load balancing ---
+	//
+	// These three knobs are consumed by the load-balancing Pool, not by the
+	// Executor: they decide which endpoint a call goes to, and how a failing
+	// endpoint is dropped from the candidate set. They ride the same [Policy]
+	// because they are per-resource decisions resolved from the same rule
+	// document — a client that already knows its governance label gets its
+	// selection policy from the same place it gets its protection policy,
+	// instead of binding a second config block of its own.
+
+	// Balancer names the load-balancing strategy to select endpoints with
+	// ("round_robin", "least_conn", "consistent_hash", "weighted",
+	// "zone_aware"). Empty leaves the client's own default in place.
+	Balancer string `value:"${balancer:=}"`
+
+	// OutlierThreshold is the consecutive-failure count that suspends an
+	// endpoint from the candidate set (outlier suspension). It is the
+	// endpoint-keyed counterpart of [PolicyConfig.ErrorThreshold]: same
+	// consecutive-failure + half-open semantics, but it drops one instance
+	// instead of opening the breaker for the whole resource. 0 disables
+	// suspension.
+	OutlierThreshold int `value:"${outlier-threshold:=0}"`
+
+	// OutlierSuspendFor is how long a suspended endpoint stays out of the
+	// candidate set before a half-open trial request. Ignored when
+	// [PolicyConfig.OutlierThreshold] is 0.
+	OutlierSuspendFor time.Duration `value:"${outlier-suspend-for:=0}"`
 }
 
 // Config is what a client starter embeds: the policy knobs ([PolicyConfig])
@@ -137,6 +165,9 @@ func (c PolicyConfig) Policy() Policy {
 		RandomizationFactor: c.RandomizationFactor,
 		Timeout:             c.AttemptTimeout,
 		MaxDuration:         c.MaxDuration,
+		Balancer:            c.Balancer,
+		OutlierThreshold:    c.OutlierThreshold,
+		OutlierSuspendFor:   c.OutlierSuspendFor,
 	}
 }
 

@@ -36,7 +36,7 @@ moves, this starter follows it.
 
 ## 4. Wiring
 
-Per `spring.ratelimit.redis.<name>` (gs.OnProperty + conf.BindEach):
+Per `spring.ratelimit.redis.instances.<name>` (gs.OnProperty + conf.BindEach):
 
 - `client` (required, fail-fast): the starter-go-redis bean name; injected via
   `gs.TagArg(client)` — the same by-name seam starter-session-redis uses.

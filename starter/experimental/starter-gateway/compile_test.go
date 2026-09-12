@@ -18,8 +18,12 @@ package StarterGateway
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
+
+	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/loadbalance"
 )
 
 // newTestTable builds a RouteTable without the container, enough for
@@ -37,32 +41,20 @@ func TestRecompilePriorityOrder(t *testing.T) {
 	tbl := newTestTable(t)
 	raw := map[string]RouteRaw{
 		"a-first": {Upstream: struct { // id sorts first, no priority
-			Target           string `value:"${target:=}"`
-			Balancer         string `value:"${balancer:=round_robin}"`
-			Discovery        string `value:"${discovery:=}"`
-			SuspendThreshold int    `value:"${suspend-threshold:=0}"`
-			SuspendFor       string `value:"${suspend-for:=}"`
+			Target    string `value:"${target:=}"`
+			Discovery string `value:"${discovery:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"b-catchall": {Priority: 10, Upstream: struct {
-			Target           string `value:"${target:=}"`
-			Balancer         string `value:"${balancer:=round_robin}"`
-			Discovery        string `value:"${discovery:=}"`
-			SuspendThreshold int    `value:"${suspend-threshold:=0}"`
-			SuspendFor       string `value:"${suspend-for:=}"`
+			Target    string `value:"${target:=}"`
+			Discovery string `value:"${discovery:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"c-second": {Priority: 5, Upstream: struct {
-			Target           string `value:"${target:=}"`
-			Balancer         string `value:"${balancer:=round_robin}"`
-			Discovery        string `value:"${discovery:=}"`
-			SuspendThreshold int    `value:"${suspend-threshold:=0}"`
-			SuspendFor       string `value:"${suspend-for:=}"`
+			Target    string `value:"${target:=}"`
+			Discovery string `value:"${discovery:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"d-tie": {Priority: 10, Upstream: struct { // ties with b-catchall -> id order
-			Target           string `value:"${target:=}"`
-			Balancer         string `value:"${balancer:=round_robin}"`
-			Discovery        string `value:"${discovery:=}"`
-			SuspendThreshold int    `value:"${suspend-threshold:=0}"`
-			SuspendFor       string `value:"${suspend-for:=}"`
+			Target    string `value:"${target:=}"`
+			Discovery string `value:"${discovery:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 	}
 	if err := tbl.recompile(raw); err != nil {
@@ -126,5 +118,67 @@ func TestParseFilterTokenAcceptsPlainValues(t *testing.T) {
 	}
 	if len(toks) != 3 || toks[0].name != "stripPrefix" || toks[1].args[1] != "gw" || len(toks[2].args) != 1 {
 		t.Fatalf("unexpected tokens: %+v", toks)
+	}
+}
+
+// selectionPool builds a minimal lb://-style pool, enough to bind a governance
+// subscription to.
+func selectionPool(t *testing.T) *loadbalance.Pool {
+	t.Helper()
+	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	if err != nil {
+		t.Fatalf("loadbalance.New: %v", err)
+	}
+	eps := []discovery.Endpoint{{Addr: "10.0.0.1:9000", Healthy: true}}
+	return loadbalance.NewPool(
+		loadbalance.SourceFunc(func() ([]discovery.Endpoint, error) { return eps, nil }),
+		bal,
+		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})),
+	)
+}
+
+// Every recompile creates fresh pools, so every recompile must replace — not
+// accumulate — the per-route governance subscriptions. Without the cancels a
+// route-table hot edit would leak one subscriber (and one discarded pool) per
+// edit.
+func TestReconcileSelectionReplacesNotAccumulates(t *testing.T) {
+	tbl := newTestTable(t)
+
+	tbl.reconcileSelection([]*Route{{ID: "api", Upstream: &Upstream{pool: selectionPool(t)}}})
+	if len(tbl.selection) != 1 {
+		t.Fatalf("after first compile: %d subscriptions, want 1", len(tbl.selection))
+	}
+
+	// Same route, new pool (what a recompile produces).
+	tbl.reconcileSelection([]*Route{{ID: "api", Upstream: &Upstream{pool: selectionPool(t)}}})
+	if len(tbl.selection) != 1 {
+		t.Fatalf("after recompile: %d subscriptions, want 1 (must replace, not accumulate)", len(tbl.selection))
+	}
+
+	// A second route joins.
+	tbl.reconcileSelection([]*Route{
+		{ID: "api", Upstream: &Upstream{pool: selectionPool(t)}},
+		{ID: "admin", Upstream: &Upstream{pool: selectionPool(t)}},
+	})
+	if len(tbl.selection) != 2 {
+		t.Fatalf("after adding a route: %d subscriptions, want 2", len(tbl.selection))
+	}
+
+	// A direct upstream has no candidate set, so it gets no subscription.
+	tbl.reconcileSelection([]*Route{
+		{ID: "api", Upstream: &Upstream{pool: selectionPool(t)}},
+		{ID: "direct", Upstream: &Upstream{URL: &url.URL{Scheme: "http", Host: "127.0.0.1:8080"}}},
+	})
+	if len(tbl.selection) != 1 {
+		t.Fatalf("direct upstream must not subscribe: %d subscriptions, want 1", len(tbl.selection))
+	}
+	if _, ok := tbl.selection["admin"]; ok {
+		t.Fatal("a route removed from the config must have its subscription dropped")
+	}
+
+	// Everything gone.
+	tbl.reconcileSelection(nil)
+	if len(tbl.selection) != 0 {
+		t.Fatalf("after removing all routes: %d subscriptions, want 0", len(tbl.selection))
 	}
 }

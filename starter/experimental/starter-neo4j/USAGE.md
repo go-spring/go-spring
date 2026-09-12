@@ -8,8 +8,8 @@ spot-checks in brackets below. **Cypher semantics and the neo4j-go-driver API ar
 [the driver's own documentation](https://neo4j.com/docs/go-manual/current/)** — everything below
 is go-spring's increment.
 
-**Activation**: any `spring.neo4j.*` key (the module is `OnProperty("spring.neo4j")`, a prefix
-check). Each `spring.neo4j.<name>` entry creates one `*StarterNeo4j.Client` bean named `<name>`,
+**Activation**: any `spring.neo4j.instances.*` key (the module is `OnProperty("spring.neo4j")`, a prefix
+check). Each `spring.neo4j.instances.<name>` entry creates one `*StarterNeo4j.Client` bean named `<name>`,
 plus a health indicator named `neo4j:<name>`.
 
 ---
@@ -114,16 +114,16 @@ func init() {
 
 ```properties
 # --- instance "graph": direct address, defaults elsewhere -------------------
-spring.neo4j.graph.uri=bolt://127.0.0.1:7687
-spring.neo4j.graph.username=neo4j
-spring.neo4j.graph.password=password
+spring.neo4j.instances.graph.uri=bolt://127.0.0.1:7687
+spring.neo4j.instances.graph.username=neo4j
+spring.neo4j.instances.graph.password=password
 
 # --- instance "analytics": tuned pool, own health indicator -----------------
-spring.neo4j.analytics.uri=bolt://127.0.0.1:7687
-spring.neo4j.analytics.username=neo4j
-spring.neo4j.analytics.password=password
-spring.neo4j.analytics.max-connection-pool-size=50
-spring.neo4j.analytics.connection-acquisition-timeout=30s
+spring.neo4j.instances.analytics.uri=bolt://127.0.0.1:7687
+spring.neo4j.instances.analytics.username=neo4j
+spring.neo4j.instances.analytics.password=password
+spring.neo4j.instances.analytics.max-connection-pool-size=50
+spring.neo4j.instances.analytics.connection-acquisition-timeout=30s
 
 # --- observability (starter-otel: OTLP exporter + prometheus) ---------------
 spring.observability.service-name=demo
@@ -135,6 +135,7 @@ spring.observability.metrics.exporter=prometheus
 # --- actuator: readiness folds in neo4j:graph and neo4j:analytics -----------
 spring.actuator.addr=:9370
 # --- governance: guard for Query / RunWithResilience ------------------------
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
 govern.default.enabled=true
@@ -163,7 +164,7 @@ cypher-shell -a bolt://127.0.0.1:7687 -u neo4j -p password \
 
 ```
 import starter-neo4j
-  └─ gs.Module(OnProperty("spring.neo4j")) fires when any spring.neo4j.* key exists
+  └─ gs.Module(OnProperty("spring.neo4j")) fires when any spring.neo4j.instances.* key exists
         └─ conf.BindEach("${spring.neo4j}") → one Config per <name> entry
               ├─ Provide(newClient).Name(<name>)
               │    .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
@@ -172,30 +173,33 @@ import starter-neo4j
                  the indicator) [starter.go:44-53]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:77]: log instance creation
+  ├─ ctor newClient [starter.go:88]: log instance creation
   │   ├─ if service-name set and mesh off: resolveURI → one endpoint picked,
-  │   │  its address spliced into the URI host [starter.go:80-87, driver.go:128-145]
+  │   │  its address spliced into the URI host [starter.go:91-98, driver.go:129-157]
   │   ├─ optional Driver bean — none → bundled DefaultDriver (d == nil
-  │   │  fallback [starter.go:89-92])
-  │   ├─ d.CreateClient (auth + pool knobs + TLS) [starter.go:93, driver.go:61-82]
+  │   │  fallback [starter.go:100-103]); several coexist → the entry selects
+  │   │  one by name: spring.neo4j.instances.<name>.driver = <bean-name> (empty = `spring.neo4j.default.driver`,
+  │   │  then the single Driver bean by type; naming a missing bean fails startup)
+  │   ├─ d.CreateClient(ctx, c, backend) (auth + pool knobs + TLS) [starter.go:104, driver.go:61-82]
   │   └─ fail-fast VerifyConnectivity, bounded by socket-connect-timeout or
   │      5s; on failure the client is closed and the boot aborts
-  │      [starter.go:103-106]
+  │      [starter.go:112-118]
   ├─ Init [client.go:68-69]: resource = resilience.ResourceLabel("neo4j",
-  │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilience.WrapExecutor(exec, "neo4j") — no-op executor when
-  │   governance is off
+  │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor("neo4j", resource))
+  │   — no-op executor when governance is off
   ├─ readiness: indicator runs VerifyConnectivity per probe
   └─ SIGTERM → Destroy [client.go:89-95]: exec.Close → stopLiveResolver →
       driver.Close(context.Background())
 ```
 
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
-`driver.go:48-49`). A company/umbrella starter may provide its own `Driver` as an **optional
+`driver.go:53-55`). A company/umbrella starter may provide its own `Driver` as an **optional
 container bean** (a `gs.Provide(func() StarterNeo4j.Driver{...})`, so it can inject config bound
 from the properties file at wiring time); every instance under `spring.neo4j` is then built
-through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
-(`driver.go:53`) inside assembly (`starter.go:89-92`). There is no per-config `driver` key.
+through it. `CreateClient(ctx, c, backend)` also receives the discovery backend the entry's
+`${discovery}` label resolved to (nil when no backend bean exists). When no such bean exists the
+starter falls back to the bundled `DefaultDriver`
+(`driver.go:58`) inside assembly (`starter.go:100-103`). There is no per-config `driver` key.
 
 An unreachable server, or bad TLS material fails the boot — the process never reaches "serving"
 with a dead Neo4j.
@@ -209,7 +213,7 @@ different signature would stop the wrapper satisfying the interface (client.go:8
 Be honest about the family asymmetry: **there is no transparent per-request instrumentation**.
 neo4j-go-driver speaks the binary Bolt protocol, ships no official OpenTelemetry
 instrumentation, and its `ExecuteQuery` is a package-level generic function — not a method on
-the driver — so there is no transport/dialer/hook to intercept (starter.go:63-68 and
+the driver — so there is no transport/dialer/hook to intercept (starter.go:73-78 and
 command.go:31-44 comments call this a documented gap, not an oversight). What exists:
 
 | Helper | What it adds | Level |
@@ -218,7 +222,7 @@ command.go:31-44 comments call this a documented gap, not an oversight). What ex
 | `StarterNeo4j.RunWithResilience` | wraps arbitrary session/transaction code in the resilience guard only (no span/metric/log) | opt-in |
 | `StarterNeo4j.StartSpan` / `EndSpan` | manual span + metric + access log for ops you drive via `driver.NewSession` | opt-in |
 | health indicator `neo4j:<name>` | `VerifyConnectivity` per actuator probe | automatic, always |
-| `resilience.WrapExecutor` in Init | outcome metrics (`resilience.*`) for guarded executions | automatic when governance on |
+| observe layer applied inside `resilience.ExecutorFor` | outcome metrics (`resilience.*`) for guarded executions | automatic when governance on |
 
 `Query`'s span/metric/log ride a **package-level** default observer (built lazily on first
 use, command.go:50) that emits through this module's own instrumentation ([observe.go]) on the
@@ -259,17 +263,17 @@ This is the documented cost of the missing seam (§6).
 
 When `service-name` is set and mesh mode is off, `resolveURI` builds a Resolver on the
 `discovery` backend, picks one endpoint, and splices its address into the URI host
-[driver.go:128-145]. The neo4j driver exposes no dialer injection point, so this is a **one-shot
+[driver.go:129-157]. The neo4j driver exposes no dialer injection point, so this is a **one-shot
 resolution at startup** — address changes after startup are not picked up until the client is
 rebuilt (config.go:79-83 comment). The Resolver is kept alive only for lifecycle uniformity and
 stopped on shutdown. In mesh mode (`GS_MESH=on`) the sidecar owns discovery+LB and the URI is
-used unchanged [starter.go:70-76].
+used unchanged [starter.go:80-87].
 
 ---
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.neo4j.<name>.` — bound per instance via `conf.BindEach` (ctor
+All keys live under `spring.neo4j.instances.<name>.` — bound per instance via `conf.BindEach` (ctor
 IndexArg(1)), not the absolute-property Pool rule.
 
 ### 3.1 Addressing & discovery
@@ -279,7 +283,7 @@ IndexArg(1)), not the absolute-property Pool rule.
 | `uri` | string | — | **required** (`expr:"$ != ''"`). Scheme selects routing+encryption: `bolt`/`neo4j` plain, `neo4j+s`/`bolt+s` TLS, `+ssc` self-signed. ⚠ Host is replaced by discovery output when `service-name` is set (example uses dummy `bolt://0.0.0.0:0` on purpose). | Missing → BindEach error naming the instance; bad scheme → driver error at ctor. |
 | `service-name` | string | — | Resolve the address through a discovery backend, once at startup (§2.4). ⚠ Requires a matching named backend bean. | Unregistered backend → boot error "neo4j: resolve service …". |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name`. | — |
-| `discovery` | string | `default` | Which registered backend resolves `service-name`. | Wrong name → boot error from discovery. |
+| `discovery` | string | — | Which registered backend resolves `service-name`. | Unset or an unregistered name while service-name is set → boot error. |
 
 ### 3.2 Auth & connection pool
 
@@ -344,6 +348,7 @@ silence is the un-intercepted path, not a broken pipeline (§2.2).
 ### 4.3 Resilience drill (example-cloudnative / example-load shape)
 
 ```properties
+# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.default.enabled=true
 govern.default.rate-limit=5
@@ -361,7 +366,7 @@ binary runs — the error breakdown moves without restart.
 ### 4.4 Discovery drill
 
 Register a backend bean (see example/discovery.go), set
-`spring.neo4j.graph.service-name=neo4j-cluster` with dummy `uri=bolt://0.0.0.0:0`. Boot logs
+`spring.neo4j.instances.graph.service-name=neo4j-cluster` with dummy `uri=bolt://0.0.0.0:0`. Boot logs
 `neo4j client initialized, uri=bolt://127.0.0.1:7687` — the spliced address, not the dummy.
 Kill that instance: queries keep failing — the address was resolved once (§2.4); restart the
 app (or let a platform do it) to re-resolve.
@@ -372,7 +377,7 @@ app (or let a platform do it) to re-resolve.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "failed to verify neo4j connectivity" | Server unreachable / wrong credentials / TLS mismatch | Fail-fast probe is unconditional [starter.go:103-106]; fix connectivity or auth. |
+| Boot fails "failed to verify neo4j connectivity" | Server unreachable / wrong credentials / TLS mismatch | Fail-fast probe is unconditional [starter.go:112-118]; fix connectivity or auth. |
 | Boot fails "neo4j: resolve service X" | `service-name` set but no backend registered under `discovery` | Register the backend (example/discovery.go) or drop service-name. |
 | Queries work but no spans/metrics/access log | Code calls `neo4j.ExecuteQuery` directly, bypassing the seam | Swap to `StarterNeo4j.Query` / wrap with `StartSpan` (§2.2); import starter-otel for real export. |
 | No protection though governance is on | Session code not routed through `Query`/`RunWithResilience`, or a raw driver passed (type-assert misses) | Route through the helpers; always pass the `*Client` wrapper [command.go:111-116]. |

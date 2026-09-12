@@ -6,8 +6,8 @@
 并自证 SET/GET/INCR 往返）。**gomemcache 自身语义（分片、文本协议、Item 字段）见
 [gomemcache 文档](https://github.com/bradfitz/gomemcache)** —— 下文只写 go-spring 的增量。
 
-**激活条件**：只有存在任意 `spring.memcached.*` key 时才有 bean —— `gs.OnProperty("spring.memcached")`
-是前缀匹配（`starter.go:42`）。仅多实例：每个 `spring.memcached.<name>` map 项生成一个命名
+**激活条件**：只有存在任意 `spring.memcached.instances.*` key 时才有 bean —— `gs.OnProperty("spring.memcached")`
+是前缀匹配（`starter.go:42`）。仅多实例：每个 `spring.memcached.instances.<name>` map 项生成一个命名
 client bean 加一个健康指示器；没有 `__default__` 单例。
 
 ---
@@ -66,7 +66,7 @@ import (
 )
 
 type Service struct {
-    // autowire tag = spring.memcached.<name> 的 map key
+    // autowire tag = spring.memcached.instances.<name> 的 map key
     Memcached    *StarterMemcached.Client `autowire:"cache"`
     SessionCache *StarterMemcached.Client `autowire:"session"`
 }
@@ -94,14 +94,14 @@ func init() {
 **conf/app.properties**（与 `example/conf/app.properties` 同面）：
 
 ```properties
-spring.memcached.cache.servers=127.0.0.1:11211
+spring.memcached.instances.cache.servers=127.0.0.1:11211
 
-spring.memcached.session.servers=127.0.0.1:11211
-spring.memcached.session.timeout=100ms
-spring.memcached.session.max-idle-conns=4
+spring.memcached.instances.session.servers=127.0.0.1:11211
+spring.memcached.instances.session.timeout=100ms
+spring.memcached.instances.session.max-idle-conns=4
 
 # 服务发现寻址：不配 `servers`；列表来自已注册后端。
-spring.memcached.discovery.service-name=memcached-cluster
+spring.memcached.instances.discovery.service-name=memcached-cluster
 ```
 
 **验证**（example 在 :9090 暴露同样 handler；`go run . -manual` 运行）：
@@ -125,24 +125,26 @@ curl http://127.0.0.1:9090/get     # 删除后："memcache: cache miss"
 ```
 import starter-memcached
   └─ init: gs.Module(OnProperty("spring.memcached"), BindEach)       starter.go:42-43
-        对每个 spring.memcached.<name> 项：
+        对每个 spring.memcached.instances.<name> 项：
           r.Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver))  starter.go:47-51
               .Name(name).Init((*Client).Init).Destroy((*Client).Destroy)
           r.Provide(健康指示器 "memcache:"+name)                      starter.go:54
 gs.Run()
-  ├─ 配置绑定：${spring.memcached.<name>} → Config（value tag）       config.go:24-58
+  ├─ 配置绑定：${spring.memcached.instances.<name>} → Config（value tag）       config.go:24-58
   ├─ 构造 newClient [starter.go:80]：校验 → 可选 Driver bean
-  │     （无则用内置 DefaultDriver）→ d.CreateClient → 启动 PING
-  ├─ Client.Init：observer + resilience/fault executor               client.go:66-72
+  │     （无则用内置 DefaultDriver）→ d.CreateClient(c, backend) → 启动 PING
+  ├─ Client.Init：observer + resilience/fault executor               client.go:66-71
   ├─ 就绪：健康指示器把 Ping 折入 /readiness                          health/health.go:33-36
-  └─ 停机：Client.Destroy —— 释放 executor、停 discovery watch        client.go:78-83
+  └─ 停机：Client.Destroy —— 释放 executor、停 discovery watch        client.go:77-82
 ```
 
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:31-41`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterMemcached.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.memcached` 下每个实例都经它构建。
 没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:45-60`，
-`starter.go:86-88`）。没有 per-config 的 `driver` key。
+`starter.go:86-88`）。当容器中存在多个 Driver bean 时，实例可按名指定：
+`spring.memcached.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的
+bean 不存在则启动失败）。
 
 启动 PING 时机：它在**构造函数内部**执行、bean 尚不存在 —— 服务器不可达会以
 `memcached: startup ping failed` 中止容器装配（`starter.go:98-100`）；不是懒加载、不重试。
@@ -150,8 +152,8 @@ gomemcache 的 `Ping` 探测全部已配置服务器，`servers` 里一个死节
 
 ### 2.2 服务发现寻址流程
 
-设置 `service-name`（且非 mesh 模式）时，`DefaultDriver.CreateClient` 用 `discovery` 指名的
-后端（默认 `"default"`）、按 `scheme` 过滤构建 discovery `Loader`（`driver.go:70`、
+设置 `service-name`（且非 mesh 模式）时，starter 把 `discovery` 指名的后端（默认 `"default"`）
+解析成 bean 并以 `backend` 参数传给 `DefaultDriver.CreateClient`，后者据此、按 `scheme` 过滤构建 discovery resolver（`driver.go:70`、
 `driver.go:100-102`）。**仅初始快照**成为 client 的 server 列表：空快照使启动失败并报
 `memcached: discovery returned no endpoints for %q`（`driver.go:73-79`）。loader 是一次性
 快照读——无后台 watch、无资源可释放 —— **成员变更不会热应用**，因为 gomemcache 在创建时把 key
@@ -166,22 +168,23 @@ gomemcache 的 `Ping` 探测全部已配置服务器，`servers` 里一个死节
    gomemcache API 无 context，span 是用 `context.Background()` 的**根 span** —— 不与调用方
    请求 trace 关联（`command.go:38-40`，局限 documented 于 `client.go:37-41`）。
 2. `guardErr` 经 `resilience.Run` 在 resilience executor 下执行操作（`command.go:174-181`）：
-   limiter/breaker 以资源 `memcached:<instance-name>` 隔离（`client.go:73`）；
-   `memcache.ErrCacheMiss` 计为成功，miss 不会触发熔断（`command.go:168`）；executor 先包
-   fault（`fault.WrapExecutor`，`client.go:73`）再包 observe（`resilience.WrapExecutor`，
-   `client.go:74`）。governance 关闭时为透明 no-op。
+   limiter/breaker 以资源 `memcached:<instance-name>` 隔离（`client.go:69`）；
+   `memcache.ErrCacheMiss` 计为成功，miss 不会触发熔断（`command.go:168`）；executor 一行构建——
+   `fault.WrapExecutor(resilience.ExecutorFor("memcached", resource))`（`client.go:69`），
+   observe 层在 resolve 内应用。governance 关闭时为透明 no-op。
 3. 内嵌的 `*memcache.Client` 执行实际写入；end 回调以错误收尾 span。
 
 全部 17 个操作（get/get_and_touch/get_multi/touch/set/add/replace/append/prepend/cas/delete/
 delete_all/increment/decrement/ping/flush_all）同构（`command.go:45-162`）。未覆写的方法
 （生命周期里只有 `Close`）从内嵌 client 原样提升。
 
-### 2.4 starter-cache 桥
+### 2.4 缓存抽象 bean
 
-第二个 `init` 向 starter-cache 注册 `"memcached"` driver（`starter.go:66-73`）：
-`spring.cache.<name>.driver = memcached:<memcached实例名>` 经 `bytecache.NewByteCache` 暴露
-类型化 `cache.Cache`（`bytecache/bytecache.go:33-36`）。TTL 转换：`toExp` 把 ttl 映射为
-int32 秒 —— **0/负值 = 永不过期**，亚秒向上取整为 1s，避免被静默当成 forever
+除包装类型外，每实例另提供一个类型化 `cache.Cache` bean，名为
+`memcached:<memcached 实例名>`（`starter.go:61-67`，经 `bytecache.NewByteCache`，
+`bytecache/bytecache.go:33-36`）——用 autowire tag `memcached:<实例名>` 按名注入。
+无人注入则不实例化，因此无配置开关。TTL 转换：`toExp` 把 ttl 映射为
+int32 秒——**0/负值 = 永不过期**，亚秒向上取整为 1s，避免被静默当成 forever
 （`bytecache/bytecache.go:42-50`）。`GetBytes` 把 `ErrCacheMiss` 映射为 `cache.ErrMiss`；
 删除不存在的 key 不算错（`bytecache/bytecache.go:55-79`）。
 
@@ -192,18 +195,18 @@ int32 秒 —— **0/负值 = 永不过期**，亚秒向上取整为 1s，避免
 每实例 Config 共 6 个 value tag（grep 审计核实；输出中的 `demo.label` 属于 example 应用而非
 starter）。
 
-| key（`spring.memcached.<name>` 下） | 类型 | 默认值 | 行为与联动 | 配错后果 |
+| key（`spring.memcached.instances.<name>` 下） | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |---|---|---|---|---|
 | `servers` | []string | 空 | 静态 server 列表；请求按其分片（config.go:28）。与 `service-name` 二选一 | 两者皆空 → 构造错误 `one of servers or service-name must be set`（starter.go:83）；地址死 → 启动 ping fail-fast |
 | `service-name` | string | 空 | 服务发现寻址：经 `discovery` 指名后端解析 server 列表（config.go:39）。设置后（非 mesh）忽略 `servers` | 后端缺失 → 启动报 `discovery resolve %q failed`；空快照 → 启动报错（driver.go:76-79） |
 | `scheme` | string | 空 | 把 discovery 收窄到单一传输 scheme 的端点；仅在设 `service-name` 时生效（config.go:45） | 过滤过度 → "no endpoints" 启动错误 |
-| `discovery` | string | `default` | 用哪个已注册的 `discovery.Discovery` 解析 `service-name`（config.go:50） | 未知后端名 → 启动报错 |
+| `discovery` | string | — | 用哪个已注册的 `discovery.Discovery` 解析 `service-name`（config.go:50）。wiring 把该 label 解析成 bean，并以 `backend` 参数传给 driver 的 `CreateClient` | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
 | `timeout` | duration | 0 | 每请求 socket 读/写超时；0 = gomemcache 默认 100ms（config.go:54） | 过低 → 高压下伪超时 |
 | `max-idle-conns` | int | 0 | 每 server 保留的空闲连接数；0 = driver 默认 2（config.go:58） | 过低 → 重连抖动 |
 
-无 `driver` key：client 装配由可选 Driver bean（见 §2.1）或内置 `DefaultDriver` 负责；无
-`resilience` key：resilience/fault 来自治理中心（starter-governance 的 `govern.*` 配置），
-按资源 `memcached:<instance-name>` 隔离。
+`driver` key 按名指定 Driver bean：留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（见 §2.1），配置
+bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自治理中心
+（starter-governance 的 `govern.*` 配置），按资源 `memcached:<instance-name>` 隔离。
 
 ---
 

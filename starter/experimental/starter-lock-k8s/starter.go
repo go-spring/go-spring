@@ -41,8 +41,8 @@ func init() {
 	// Export the lock.Locker interface — consumers inject that interface and
 	// never see the concrete *k8sLocker type, which is what makes the
 	// blank-import backend swap possible.
-	gs.Module(gs.OnProperty("spring.lock"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.lock}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.lock.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.lock.instances}", func(name string, c Config) error {
 			// The bean is wrapped with the observe-lock adapter by default
 			// (see newLocker); observe.enabled=false opts out. There is no
 			// separate "<name>-observed" bean — the primary name is already

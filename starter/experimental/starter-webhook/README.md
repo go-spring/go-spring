@@ -27,22 +27,22 @@ import _ "go-spring.org/starter-webhook"
 
 ```properties
 # Generic receiver (self-built endpoints)
-spring.webhook.ops.url=https://alerts.example.com/hook
-spring.webhook.ops.channel=generic
+spring.webhook.instances.ops.url=https://alerts.example.com/hook
+spring.webhook.instances.ops.channel=generic
 
 # DingTalk group robot (加签 secret optional)
-# spring.webhook.ding.url=https://oapi.dingtalk.com/robot/send?access_token=xxx
-# spring.webhook.ding.channel=dingtalk
-# spring.webhook.ding.secret=SEC...
+# spring.webhook.instances.ding.url=https://oapi.dingtalk.com/robot/send?access_token=xxx
+# spring.webhook.instances.ding.channel=dingtalk
+# spring.webhook.instances.ding.secret=SEC...
 
 # Feishu / WeCom / Slack bots
-# spring.webhook.feishu.url=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
-# spring.webhook.feishu.channel=feishu
-# spring.webhook.feishu.secret=...
-# spring.webhook.wecom.url=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
-# spring.webhook.wecom.channel=wecom
-# spring.webhook.slack.url=https://hooks.slack.com/services/XXX/YYY/ZZZ
-# spring.webhook.slack.channel=slack
+# spring.webhook.instances.feishu.url=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+# spring.webhook.instances.feishu.channel=feishu
+# spring.webhook.instances.feishu.secret=...
+# spring.webhook.instances.wecom.url=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+# spring.webhook.instances.wecom.channel=wecom
+# spring.webhook.instances.slack.url=https://hooks.slack.com/services/XXX/YYY/ZZZ
+# spring.webhook.instances.slack.channel=slack
 ```
 
 ### 3. Inject

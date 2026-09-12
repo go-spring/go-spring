@@ -8,7 +8,7 @@ no docker). **Job semantics — scheduling, routing/block strategies, the admin 
 (no third-party Go SDK) and covers the admin callbacks `/run`, `/beat`, `/idleBeat`, `/kill`,
 `/log`; everything below is go-spring's increment plus the exact protocol surface we implement.
 
-**Activation**: any `spring.xxljob.<name>` subtree. Multi-instance: one executor per entry.
+**Activation**: any `spring.xxljob.instances.<name>` subtree. Multi-instance: one executor per entry.
 Three keys are required at bind time (`app-name`, `admin-addresses`, `port` — `expr` validation
 in config.go:30-41), so a half-configured instance fails at startup, not at first trigger.
 
@@ -82,18 +82,18 @@ func main() {
 
 ```properties
 # --- xxl-job executor instance "a" -------------------------------------------
-spring.xxljob.a.app-name=go-spring-demo          # registered with the admin
+spring.xxljob.instances.a.app-name=go-spring-demo          # registered with the admin
 # Production: http://<admin-host>:8080/xxl-job-admin (list = load-balanced).
-spring.xxljob.a.admin-addresses=http://127.0.0.1:18081
+spring.xxljob.instances.a.admin-addresses=http://127.0.0.1:18081
 # Callback server port — the admin must be able to dial back; an explicit
 # operator decision (no default port).
-spring.xxljob.a.port=9999
+spring.xxljob.instances.a.port=9999
 # Re-register/heartbeat period (10s default; example tightens it for the smoke).
-spring.xxljob.a.registry-interval=5s
+spring.xxljob.instances.a.registry-interval=5s
 # Per-task log dir served back via /log (files are yours to write).
-spring.xxljob.a.log-dir=./logs
+spring.xxljob.instances.a.log-dir=./logs
 # Access token, only when the admin has one set (sends XXL-JOB-ACCESS-TOKEN).
-# spring.xxljob.a.access-token=...
+# spring.xxljob.instances.a.access-token=...
 ```
 
 **Verify** (mirror of `example/check.sh`):
@@ -181,7 +181,7 @@ gs.Run()
 
 ## 3. Per-key behavior reference
 
-Prefix: `spring.xxljob.<name>.*` (multi-instance).
+Prefix: `spring.xxljob.instances.<name>.*` (multi-instance).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|

@@ -71,6 +71,55 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   error-prone and the conditional singleton semantics were opaque. The
   application selects an instance by name (`autowire:"a"`), and adding a second
   instance is a pure-config change.
+- **Config namespace: two buckets per family.** A client family prefix holds
+  exactly two children and nothing else:
+
+  ```
+  spring.<family>.default.*             family-wide values, each overridable per instance
+  spring.<family>.instances.<name>.*    one instance; <name> is the bean name
+  ```
+
+  - **The bean name is the bare instance name — with one exception.** The gorm
+    family is five separate dialect modules (`starter-gorm-mysql`,
+    `-postgres`, `-sqlite`, `-sqlserver`, `-clickhouse`) that all register beans
+    of the *same* type, `gormcore.DB`. Beans are keyed by (name, type), so two
+    dialects carrying an instance of the same name would register the same pair
+    and the container would refuse to start. gorm therefore qualifies the bean
+    name as `<dialect>.<name>` (`gormcore.Module` takes the qualifier from the
+    config prefix's tail, overridable via `Dialect.BeanPrefix`). Every other
+    client family owns one bean type per family, so bare names cannot collide
+    and the rule stands. The config key stays `instances.<name>` either way —
+    only the bean name carries the qualifier.
+
+  Two buckets because a family's settings have exactly two levels, and splitting
+  them structurally is what makes an instance name unable to ever collide with a
+  family-wide key. Flat namespaces (`spring.<family>.<name>.*` with family-wide
+  keys as siblings) need a reserved-word list instead: an instance named `driver`
+  turns `spring.<family>.driver` from a scalar into a subtree and startup fails
+  with a message that blames the scalar. The bucket removes the whole failure
+  class by construction — **no reserved words, any instance name is legal**.
+  (Modeled on Spring Cloud Stream, which solves the same problem the same way:
+  `spring.cloud.stream.default.*` + `spring.cloud.stream.bindings.<name>.*`.)
+  - `default` holds only **overridable defaults**. Non-overridable policy does
+    not belong there; process-wide policy has its own top-level prefix
+    (`govern.*`).
+  - The `instances` bucket is the sole activation signal, so gate registration on
+    it (`gs.OnProperty("spring.X.instances")`) and bind with
+    `conf.BindEach(p, "${spring.X.instances}", ...)`. A process that sets only
+    `${spring.X.default}` configures no client and must not activate the starter.
+  - **Where it applies.** The buckets are for families whose direct children are
+    *user-chosen* instance names. A family that owns its child namespace keeps its
+    own shape: `spring.registry.*` holds this process's registration identity
+    (`service-name`, `addr`, `weight`, ...) beside its center blocks
+    `spring.registry.<backend>.<name>`, and no user-controlled name can collide
+    there (the `<backend>` segment is the framework's, and the user's `<name>` is
+    one level deeper). Forces that are not per-instance-overridable do **not**
+    belong in `default` either — same-family process policy like registry's
+    identity sits at the family prefix, process-wide policy at its own top-level
+    prefix (`govern.*`).
+  - The invariant either way: **never let a user-chosen name share a level with a
+    framework key.** A single-instance family (`spring.http.server`) keeps its keys
+    directly under the family prefix because it has no instance names at all.
 - **Address is required — fail fast.** A client must never silently fall back to
   `localhost`. Fields default to empty (`${addr:=}`). Single-field validation
   uses the `expr` tag (e.g. `expr:"$ != ''"` on a string, `expr:"len($) > 0"`
@@ -226,7 +275,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   franz-go, `spring.kafka-sarama` for sarama; `spring.redis` for go-redis,
   `spring.redigo` for redigo). The configuration key itself is an explicit
   declaration of the technology choice: the user decides by writing
-  `spring.kafka.xxx` vs `spring.kafka-sarama.xxx`. This avoids bean conflicts
+  `spring.kafka.instances.xxx` vs `spring.kafka-sarama.instances.xxx`. This avoids bean conflicts
   when both implementations happen to be imported, and makes the config file
   self-documenting.
 - **Fail-fast over silent defaults.** Required inputs (addresses, credentials,
@@ -328,7 +377,11 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
 4. Client? → `gs.Group` multi-instance, driver registry, required address with
    fail-fast, startup probe, per-instance `Destroy`, and the one-concern-one-file
    skeleton (§2.2): `config.go` / `starter.go` / `discovery.go` /
-   `resilience.go` / `observability.go` (+ `health/`).
+   `resilience.go` / `observability.go` (+ `health/`). Config goes in the two
+   buckets: `conf.BindEach(p, "${spring.<family>.instances}", ...)`, gate the
+   module on `gs.OnProperty("spring.<family>.instances")`, and read family-wide
+   values from `${spring.<family>.default.*}` inside each entry's tags. Never bind
+   directly on the family prefix — `scripts/check-config-namespace.sh` enforces it.
 5. Server? → own port, listen-early/serve-on-ready, graceful `Stop`,
    app-supplied register bean, port-as-startup-gate (no `enabled` toggle — see §2.1).
 6. Config-provider? → `provider.go` with `conf.RegisterProvider` (no `config.go`,

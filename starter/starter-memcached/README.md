@@ -24,7 +24,7 @@ import _ "go-spring.org/starter-memcached"
 Add Memcached configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.memcached.main.servers=127.0.0.1:11211
+spring.memcached.instances.main.servers=127.0.0.1:11211
 ```
 
 ### 3. Inject the Memcached Instance
@@ -56,10 +56,12 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 
 * **Supports multiple Memcached instances**: you can define multiple instances in the configuration file and reference them by name.
 * **Support Memcached extensions**: implement the `Driver` interface to extend Memcached functionality — see
-  the example implementation `AnotherMemcachedDriver`.
+  the example implementation `AnotherMemcachedDriver`. When several Driver beans coexist, an entry selects
+  one by name: `spring.memcached.instances.<name>.driver = <bean-name>` (empty = inject the single Driver bean by
+  type; naming a missing bean fails startup).
 * **Startup connection validation (fail-fast)**: after building the client the starter issues a `Ping` against every
   configured server; an unreachable server fails the boot instead of the first request.
-* **Service discovery**: set `service-name` (and optionally `discovery` to pick a registered backend, default `default`)
+* **Service discovery**: set `service-name` (and `discovery` to name the registered backend; there is no default backend)
   instead of `servers`; the starter resolves the server list once through the registered `discovery.Discovery` backend
   at startup and shards keys across it. Because gomemcache hashes keys onto a fixed server set chosen at client creation,
   the resolve is **one-shot at boot** (fail-fast on empty/failed resolve) rather than a live watch — a changing cluster

@@ -27,7 +27,6 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-bigcache/bytecache"
 	health2 "go-spring.org/starter-bigcache/health"
-	StarterCache "go-spring.org/starter-cache"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"go.opentelemetry.io/otel"
@@ -43,37 +42,33 @@ func init() {
 	//
 	// BigCache spawns a background eviction goroutine, so Close must be called
 	// on shutdown to release it - the destroy callback handles that.
-	gs.Module(gs.OnProperty("spring.bigcache"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.bigcache}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.bigcache.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.bigcache.instances}", func(name string, c Config) error {
 			// IndexArg places name (index 1) and c (index 2) explicitly, leaving
 			// index 0 (*gs.ContextProvider) to be autowired - the documented
-			// pattern for a ctor whose first param is ContextProvider.
+			// pattern for a ctor whose first param is ContextProvider. The
+			// Driver param (index 3) is selected by the entry's ${driver} key:
+			// unset → "?" (nullable by-type — injects the single Driver bean
+			// when a company provides one, nil otherwise, and newClient falls
+			// back to DefaultDriver); set → that bean name, and naming a bean
+			// that does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("${spring.bigcache.instances."+name+".driver:=${spring.bigcache.default.driver:=?}}")),
 			).Name(name).Init((*Cache).Init).Destroy((*Cache).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
 			r.Provide(func(c *Cache) *health.Indicator { return health2.NewBigCacheHealth(name, c.BigCache) }, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
-			return nil
-		})
-	})
-
-	// init registers the "bigcache" cache driver so a *bigcache.BigCache registered
-	// under ${spring.bigcache} can be exposed as a cache.Cache via:
-	//
-	//	spring.cache.<name>.driver = bigcache:<bigcache-instance-name>
-	//
-	// The beanID selects which BigCache bean to wrap; the implementation lives in
-	// starter-bigcache/bytecache.
-	StarterCache.RegisterDriver("bigcache", func(beanID string) gs.ModuleFunc {
-		return func(r gs.BeanProvider, p flatten.Storage) error {
+			// Expose this instance as a cache.Cache (the adapter lives in
+			// starter-bigcache/bytecache). Named "bigcache:<name>" — cache.Cache
+			// is a shared type across backend starters, so the prefix keeps the
+			// (name, type) key unique. Un-injected, the bean never instantiates.
 			r.Provide(func(c *Cache) *cache.Cache {
 				return cache.New(bytecache.NewByteCache(c.BigCache))
-			}, gs.TagArg(beanID)).Name(beanID)
+			}, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
 			return nil
-		}
+		})
 	})
 }
 

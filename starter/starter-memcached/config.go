@@ -20,8 +20,6 @@ package StarterMemcached
 
 import (
 	"time"
-
-	"go-spring.org/cloud/discovery"
 )
 
 // Config defines Memcached client connection configuration.
@@ -50,13 +48,12 @@ type Config struct {
 
 	// Discovery names the discovery backend bean that resolves ServiceName
 	// (bean name = label). It is only consulted when ServiceName is set; the
-	// bean itself is injected by the starter's constructor from this label.
-	Discovery string `value:"${discovery:=default}"`
-
-	// backend is the discovery backend instance the label above cites. It is
-	// populated by the starter wiring (newClient injects the named backend
-	// bean), never bound from configuration.
-	backend discovery.Discovery
+	// starter wiring resolves this label to the backend bean and passes it to
+	// the driver as the backend argument of CreateClient — it is never written
+	// back into Config.
+	// Empty means unset: no discovery backend is wired and the entry must not
+	// route by service-name alone.
+	Discovery string `value:"${discovery:=}"`
 
 	// Timeout is the socket read/write timeout for each request,
 	// 0 uses the driver default (100ms), e.g., "100ms".

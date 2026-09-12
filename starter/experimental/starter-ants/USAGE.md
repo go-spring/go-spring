@@ -6,7 +6,7 @@ against the starter source (`starter.go`, `config.go`) and the runnable [example
 (worker pool, purge, overload) are [ants docs](https://github.com/panjf2000/ants)** —
 everything below is go-spring's increment: wiring, observers, panic policy, metrics.
 
-**Activation**: any `spring.ants.<name>` subtree. The starter registers via
+**Activation**: any `spring.ants.instances.<name>` subtree. The starter registers via
 `gs.Module(gs.OnProperty("spring.ants"))` + `conf.BindEach`, creating one named `Pool` bean
 per map key. No keys, no pools; there is no `enabled` switch.
 
@@ -112,17 +112,17 @@ func init() {
 
 ```properties
 # --- io pool: small, fails fast instead of queueing ------------------------
-spring.ants.io.size=2
-spring.ants.io.nonblocking=true
+spring.ants.instances.io.size=2
+spring.ants.instances.io.nonblocking=true
 
 # --- cpu pool: bounded blocking pool with idle-worker reclaim --------------
-spring.ants.cpu.size=8
-spring.ants.cpu.expiry-duration=10s
+spring.ants.instances.cpu.size=8
+spring.ants.instances.cpu.expiry-duration=10s
 
 # --- optional knobs (defaults shown; see §3) -------------------------------
-# spring.ants.cpu.max-blocking-tasks=0
-# spring.ants.cpu.pre-alloc=false
-# spring.ants.cpu.disable-purge=false
+# spring.ants.instances.cpu.max-blocking-tasks=0
+# spring.ants.instances.cpu.pre-alloc=false
+# spring.ants.instances.cpu.disable-purge=false
 ```
 
 **Verify** (isomorphic to `example/check.sh`):
@@ -147,10 +147,13 @@ import starter-ants
        gs.Provide(newMetricsObserver).Export(gs.As[PoolObserver]())   // built-in observer bean
        add custom observer: gs.Provide(NewX).Export(gs.As[PoolObserver]())
 gs.Run()
-  ├─ gs.Module(gs.OnProperty("spring.ants")) fires (prefix check: any spring.ants.* key)
+  ├─ gs.Module(gs.OnProperty("spring.ants")) fires (prefix check: any spring.ants.instances.* key)
   ├─ conf.BindEach("${spring.ants}") → one Config per map key
   ├─ per name: gs.Provide(ctor).Name(name).Destroy(destroyPool)
-  │     ctor wires ①optional Driver bean ("?") — none → bundled DefaultDriver
+  │     ctor wires ①optional Driver bean — none → bundled DefaultDriver; several
+  │               coexist → the entry selects one by name:
+  │               spring.ants.instances.<name>.driver = <bean-name> (empty = the single
+  │               Driver bean by type; naming a missing bean fails startup)
   │               ②[]PoolObserver collection — container collects every bean exported
   │                  as PoolObserver (built-in MetricsObserver is thus forced to exist)
   ├─ bean init: createPool(observers) → (Driver bean | DefaultDriver).CreatePool
@@ -215,7 +218,7 @@ ants — drain business work in your own Stop hooks before returning.
 
 ## 3. Per-key behavior reference
 
-Prefix `spring.ants.<name>.*` — multi-instance, keys bind per map entry (NOT top-level
+Prefix `spring.ants.instances.<name>.*` — multi-instance, keys bind per map entry (NOT top-level
 absolute refs; the Config is bound via `conf.BindEach` with the instance prefix).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -272,8 +275,8 @@ s.Metrics.Enrich(&stats, map[string]StarterAnts.Pool{"io": s.IO, "cpu": s.CPU})
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| No pool beans; autowire `Pool` fails | No `spring.ants.*` keys | Add at least `spring.ants.<name>.size` — the subtree is the activation switch. |
-| Custom pool Driver bean never used | A second `Driver` bean, or the override registered after wiring | Provide at most one `Driver` bean; its ctor is autowired at wiring time. |
+| No pool beans; autowire `Pool` fails | No `spring.ants.instances.*` keys | Add at least `spring.ants.instances.<name>.size` — the subtree is the activation switch. |
+| Custom pool Driver bean never used | The entry did not select it and by-type injection picked another | When several `Driver` beans coexist, select one per pool: `spring.ants.instances.<name>.driver = <bean-name>` (empty = the single Driver bean by type; naming a missing bean fails startup). |
 | Tasks silently dropped | `nonblocking=true` + unchecked Submit error | Check Submit's error (it returns `ErrPoolOverload`). |
 | Submitters hang | Blocking pool at capacity, `max-blocking-tasks=0` | Raise `size`, set `max-blocking-tasks`, or go nonblocking. |
 | Pool panics unobserved by custom logic | Default chain only reports | Install a `goutil.OnPanic` override or contribute a custom `Driver` bean. |

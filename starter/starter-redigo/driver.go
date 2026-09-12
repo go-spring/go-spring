@@ -18,6 +18,8 @@ package StarterRedigo
 
 import (
 	"context"
+
+	"go-spring.org/cloud/discovery"
 )
 
 // Driver interface defines how to create a Redis client (a connection pool) —
@@ -29,9 +31,12 @@ import (
 // company config bound from a properties file at wiring time, which an
 // init-time seam could not see.
 //
-// At most one Driver bean is expected per process; every pool under
+// At most one Driver bean is expected per process by default: every pool under
 // ${spring.redigo} is built through it, and per-instance differences are
-// expressed through [Config].
+// expressed through [Config]. When several Driver beans coexist, each entry
+// selects one by name via its ${driver} key (spring.redigo.instances.<name>.driver =
+// <bean-name>); the key is empty for the by-type default and naming a missing
+// bean fails startup.
 //
 // The driver owns the FULL assembly and returns the starter's wrapped [Pool]
 // (embeds the concrete *redis.Pool), fully armed. The bundled DefaultDriver
@@ -47,7 +52,7 @@ import (
 //     standard assembly would have done, including any teardown of resources
 //     you built.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (*Pool, error)
+	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -56,16 +61,22 @@ type DefaultDriver struct{}
 // CreateClient creates a new Redis pool based on the provided configuration.
 //
 // When c.ServiceName is set (and mesh mode is not enabled), the address is
-// resolved through the registered discovery backend (c.Discovery) instead of
+// resolved through the discovery backend (backend) instead of
 // c.Addr: a discovery loader keeps the endpoint set fresh via the backend's
 // watch and the pool dials a live instance (Pick) for each new connection.
 // Combined with c.ConnMaxLifetime, pooled connections recycle onto updated
 // addresses without rebuilding the pool. When c.ServiceName is empty this is a
 // plain Addr dial, unchanged from before.
 //
+// backend is the discovery backend the entry's ${discovery} label resolved to,
+// already looked up by the starter wiring; it is nil when the entry cites no
+// label (an unknown label fails at wiring, before the driver is called). It is
+// passed as an argument rather than carried on Config so a custom driver can
+// actually reach it — Config stays a pure bound value.
+//
 // In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
 // discovery+LB, so the pool connects straight to the configured static Addr
 // (the service's stable DNS address).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*Pool, error) {
-	return NewPool(ctx, c)
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error) {
+	return NewPool(ctx, c, backend)
 }

@@ -9,8 +9,8 @@
 客户端库为 `github.com/apache/rocketmq-client-go/v2`（remoting 客户端，非 5.x gRPC 的
 `rocketmq-clients`）；选型理由见 DESIGN.md §4。
 
-**激活条件**：出现任意 `spring.rocketmq.*` 配置（模块注册 `OnProperty("spring.rocketmq")`
-前缀匹配 [starter.go:40]）。每个 `spring.rocketmq.<name>` 条目创建一个名为 `<name>` 的
+**激活条件**：出现任意 `spring.rocketmq.instances.*` 配置（模块注册 `OnProperty("spring.rocketmq")`
+前缀匹配 [starter.go:40]）。每个 `spring.rocketmq.instances.<name>` 条目创建一个名为 `<name>` 的
 `*StarterRocketmq.Client` bean。
 
 ---
@@ -73,7 +73,7 @@ import (
 )
 
 type Service struct {
-    // 包装 bean，名字来自配置条目（spring.rocketmq.a）。
+    // 包装 bean，名字来自配置条目（spring.rocketmq.instances.a）。
     Client *StarterRocketmq.Client `autowire:"a"`
 }
 
@@ -119,11 +119,11 @@ func init() {
 
 ```properties
 # --- rocketmq --------------------------------------------------------------
-spring.rocketmq.a.name-servers=127.0.0.1:9876
-spring.rocketmq.a.send-timeout=5s
-spring.rocketmq.a.fail-fast=true          # 启动期对 name server 做 TCP 探测
-# spring.rocketmq.a.access-key=...         # ACL：必须与 secret-key 成对
-# spring.rocketmq.a.secret-key=...
+spring.rocketmq.instances.a.name-servers=127.0.0.1:9876
+spring.rocketmq.instances.a.send-timeout=5s
+spring.rocketmq.instances.a.fail-fast=true          # 启动期对 name server 做 TCP 探测
+# spring.rocketmq.instances.a.access-key=...         # ACL：必须与 secret-key 成对
+# spring.rocketmq.instances.a.secret-key=...
 
 # --- actuator + otel -------------------------------------------------------
 spring.actuator.addr=:9370
@@ -168,20 +168,22 @@ curl -s :9370/healthz
 
 ```
 import starter-rocketmq
-  └─ gs.Module(OnProperty("spring.rocketmq"))：出现任意 spring.rocketmq.* 即触发
+  └─ gs.Module(OnProperty("spring.rocketmq"))：出现任意 spring.rocketmq.instances.* 即触发
         └─ conf.BindEach("${spring.rocketmq}") → 每个 <name> 条目一份 Config  [starter.go:40-48]
               └─ Provide(newClient).Name(<name>).Destroy((*Client).Close)     [starter.go:42-45]
 
 gs.Run()
   ├─ 构造 newClient [starter.go:57]：
   │    1. access-key/secret-key 成对校验（单边 → 启动失败）                  [starter.go:60-62]
-  │    2. Driver.CreateClient —— 可选的 Driver bean，未提供时回退到内置
+  │    2. Driver.CreateClient —— 可选的 Driver bean（由
+  │       ${spring.rocketmq.instances.<name>.driver} 按实例选择：留空 = 按类型注入，配置 = 按
+  │       bean 名注入，指定的 bean 不存在则启动失败），未提供时回退到内置
   │       DefaultDriver：安装 rlog→go-spring 日志桥接
   │       （进程级全局，sync.Once 仅一次）                                    [driver.go:94-96]
   │    3. FailFast 探测：TCP dial，首个可达地址即通过，每地址 3s 预算；
   │       失败 → 启动失败                                                     [driver.go:146-160]
-  │    4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │       → resilience.WrapExecutor → 挂到 Client                          [command.go:180-186]
+  │    4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor("rocketmq", resource))
+  │       → 挂到 Client                                                    [command.go:156-161]
   ├─ 应用按 `autowire:"<name>"` 注入 *Client
   ├─ 应用自行随时创建 producer/consumer/driver（均在锁内注册到 Client）       [client.go:104-157]
   └─ SIGTERM → Client.Close：先 closeResilience，再逐个 Shutdown 已注册的
@@ -205,9 +207,9 @@ gs.Run()
 GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
   └─ cl.execute                                           [client.go:188]
        └─ exec.Execute(ctx, "rocketmq:<name-servers>", call)     — resilience.Executor
-            applyResilience 中的内层构建顺序 [command.go:181-182]：
-            fault.Injector（外）→ resilience 核心（限流/熔断/...）
-            → resilience 观察器（最内，6 种 outcome）→ producer.SendSync
+            applyResilience 中的由外向内组合顺序 [command.go:157]：
+            fault.Injector（外）→ resilience 观察器（6 种 outcome）
+            → resilience 核心（限流/熔断/...）→ producer.SendSync
 ```
 
 - executor 只包裹 `GuardedSend` 的同步 `SendSync`。**未守护**：driver 的 `Publish`
@@ -267,7 +269,7 @@ SDK push-consumer 协程回调 starter 的 handler [driver.go:125-141]：
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.rocketmq.<name>..` 下（经 `conf.BindEach` 的实例前缀绑定，不是
+所有 key 位于 `spring.rocketmq.instances.<name>..` 下（经 `conf.BindEach` 的实例前缀绑定，不是
 绝对属性的 Pool 规则）。starter 内 7 个 value tag——已与 grep 结果比对，两边均无多余项。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -299,7 +301,7 @@ Key 存活，可在 handler 里打印 `msg.Key`——应得到同一个字符串
 ### 4.2 broker 宕机 fail-fast
 
 ```properties
-spring.rocketmq.a.name-servers=127.0.0.1:19876   # 无监听
+spring.rocketmq.instances.a.name-servers=127.0.0.1:19876   # 无监听
 ```
 
 启动失败并报 "rocketmq name server probe failed on ..." [starter.go:74-79]。设

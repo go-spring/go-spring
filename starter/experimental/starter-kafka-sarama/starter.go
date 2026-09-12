@@ -35,12 +35,17 @@ func init() {
 	// Register multiple Kafka clients as a group.
 	// Each instance is created according to the configuration in "${spring.kafka-sarama}".
 	// This allows defining multiple Kafka (sarama) clients dynamically.
-	gs.Module(gs.OnProperty("spring.kafka-sarama"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.kafka-sarama}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.kafka-sarama.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.kafka-sarama.instances}", func(name string, c Config) error {
+			// The Driver param (index 3) is selected by the entry's ${driver}
+			// key: unset → "?" (nullable by-type — injects the single Driver
+			// bean when a company provides one, nil otherwise, and newClient
+			// falls back to DefaultDriver); set → that bean name, and naming
+			// a bean that does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("${spring.kafka-sarama.instances."+name+".driver:=${spring.kafka-sarama.default.driver:=?}}")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})

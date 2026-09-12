@@ -4,7 +4,7 @@
 
 `starter-asynq` 为 Go-Spring 提供 [Asynq](https://github.com/hibiken/asynq)
 支持：基于 Redis 的任务队列，含生产者 `Client`（入队）与可选启用的 worker
-`Server`（出队 + 执行），每个 `spring.asynq.<name>` 实例各一套。
+`Server`（出队 + 执行），每个 `spring.asynq.instances.<name>` 实例各一套。
 
 ## 安装
 
@@ -23,9 +23,9 @@ import _ "go-spring.org/starter-asynq"
 ### 2. 配置
 
 ```properties
-spring.asynq.a.addr=127.0.0.1:6379
-spring.asynq.a.concurrency=4
-spring.asynq.a.server.enabled=true
+spring.asynq.instances.a.addr=127.0.0.1:6379
+spring.asynq.instances.a.concurrency=4
+spring.asynq.instances.a.server.enabled=true
 ```
 
 ### 3. 注入
@@ -64,8 +64,8 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
 **多队列** — 按队列声明优先级权重：
 
 ```properties
-spring.asynq.a.queues.critical=6
-spring.asynq.a.queues.default=3
+spring.asynq.instances.a.queues.critical=6
+spring.asynq.instances.a.queues.default=3
 ```
 
-**多实例** — 更多 `spring.asynq.<name>` 条目，各自独立的生产者/worker。
+**多实例** — 更多 `spring.asynq.instances.<name>` 条目，各自独立的生产者/worker。

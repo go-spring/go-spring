@@ -184,7 +184,7 @@ gs.Run()
 
 ```
 LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → AccessLog
-→ SecureHeaders → CORS → Gzip → [BodyLimit] → fault → 健康路由 → 应用路由
+→ SecureHeaders → CORS → Gzip → [BodyLimit] → admission → fault → 健康路由 → 应用路由
 ```
 
 理由(源自源码注释,已核对):
@@ -197,6 +197,14 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
   (`RequestIDFromContext`)供业务日志关联。
 - **Tracing 包住 Metrics 和 AccessLog**:span 能同时捕获两者的时序与属性。
 - **AccessLog 包住策略中间件**:短路响应(BodyLimit 的 413、CORS 的 403、204)也会被记录。
+- **admission 在 fault 外层**:被入站限流/隔离/熔断拦下(或放行)的请求不会再被放火;它产生的
+  429/503 照样过 AccessLog/Tracing/Metrics。**无条件安装**——治理关着时 executor 是透明透传,
+  只多一帧调用,别的不变。资源 label 是 `echo:<address>`(如 `echo::8080`),与治理规则一致:
+  `govern.rules[N].resources=echo::8080`,配 `rate-limit` / `max-concurrent` / `error-threshold`
+  等旋钮。拒绝映射为 **429**(限流、隔离满)与 **503**(熔断打开);handler 返回错误或已提交的
+  5xx 会作为本次调用的失败回喂给 executor,熔断因此能看到服务端错误。入站准入**从不重试**
+  ——handler 已产生副作用就不能重放——所以 `max-retries` 请留 0;真有重试策略也有重入守卫兜住
+  (handler 仍只跑一次)。
 - **fault 最内层**:注入的 503 出来时照样过 AccessLog/Tracing/Metrics——你放的火可观测。
   只有注入错误(`*fault.InjectedError`)渲染为 503 "service unavailable";handler 自己的错误
   原样交给 echo 的 HTTPErrorHandler。
@@ -326,6 +334,7 @@ curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
 | quickstart 前置外部依赖 | 0(完整可观测需 collector) |
 | "注意/坑"条数 | 7 |
 
-设计嫌疑(待设计裁决):无韧性准入(限流/熔断)——与 gin 不对称;TLS 已改用 `BuildServer()`,
+设计嫌疑(待设计裁决):~~无韧性准入(限流/熔断)~~ —— 已补齐,与 gin 对齐(label 与状态码映射见 §2);
+TLS 已改用 `BuildServer()`,
 `ca-file` 即开 mTLS(已修复,原 `Build()` 会忽略);无外层 `EngineMiddleware` 槽(gin 有,echo 的 app 中间件跑在内置链内侧);
 与 gin 的请求体捕获配置无对齐文档。

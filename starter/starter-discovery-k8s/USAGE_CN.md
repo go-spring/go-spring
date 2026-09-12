@@ -68,15 +68,15 @@ func main() { gs.Run() }
 spring.app.name=demo-consumer
 
 # discovery backend。前缀后的 key（"k8s"）即客户端 `discovery:` 字段引用的名字。
-spring.discovery.k8s.k8s.mode=dns                 # 或：endpointslice
-spring.discovery.k8s.k8s.namespace=default
+spring.discovery.k8s.instances.k8s.mode=dns                 # 或：endpointslice
+spring.discovery.k8s.instances.k8s.namespace=default
 # dns SRV 模式：port-name "grpc" 查询 _grpc._tcp.demo.default.svc.cluster.local
-spring.discovery.k8s.k8s.port-name=grpc
-spring.discovery.k8s.k8s.cluster-domain=cluster.local
-spring.discovery.k8s.k8s.refresh-interval=5s      # dns 重新解析周期
+spring.discovery.k8s.instances.k8s.port-name=grpc
+spring.discovery.k8s.instances.k8s.cluster-domain=cluster.local
+spring.discovery.k8s.instances.k8s.refresh-interval=5s      # dns 重新解析周期
 # endpointslice 模式附加项：
-#   spring.discovery.k8s.k8s.kubeconfig=          # 留空 = in-cluster ServiceAccount
-#   spring.discovery.k8s.k8s.resync-period=0      # 0 = 仅事件驱动
+#   spring.discovery.k8s.instances.k8s.kubeconfig=          # 留空 = in-cluster ServiceAccount
+#   spring.discovery.k8s.instances.k8s.resync-period=0      # 0 = 仅事件驱动
 
 # 消费端：地址来自上述 backend 的 redigo 客户端。
 spring.redis.demo.service-name=demo
@@ -166,7 +166,7 @@ Kubernetes 没有 `UpdateWeight`；摘除 Pod 是平台的职责，走同一条 
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `${spring.discovery.k8s.<backend-name>}`。对照 `config.go:58-94` 核实。
+所有 key 位于 `${spring.discovery.k8s.instances.<backend-name>}`。对照 `config.go:58-94` 核实。
 
 | key | 类型 | 默认值 | 行为 | 配错后果 |
 |-----|------|--------|------|----------|
@@ -240,7 +240,7 @@ get/list/watch）。backend 名（map key）必须等于客户端 `discovery:` �
 
 - dns 与 endpointslice 的摘流语义不一致（not-ready → Healthy=false vs 记录消失）——DNS 的
   固有限制，已文档化，不可修。
-- backend 名默认值不对齐：客户端默认 `discovery=default`，本 starter 无默认名——每份配置都要
-  重述这一对；可考虑统一约定。
+- backend 名约定：客户端 starter 的 `discovery` 没有默认值，走 service-name 的条目必须按本
+  starter 里声明的块名引用该后端。
 - 仅 `port` 的 endpointslice 配置静默依赖 slice 恰好只有一个端口（`endpointslice.go:290-293`）
   ——多端口 Service 会安静地配错。

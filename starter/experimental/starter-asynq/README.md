@@ -4,7 +4,7 @@
 
 `starter-asynq` provides [Asynq](https://github.com/hibiken/asynq) support for
 Go-Spring: Redis-backed task queues with a producer `Client` (enqueue) and an
-opt-in worker `Server` (dequeue + run), both per `spring.asynq.<name>` instance.
+opt-in worker `Server` (dequeue + run), both per `spring.asynq.instances.<name>` instance.
 
 ## Installation
 
@@ -23,9 +23,9 @@ import _ "go-spring.org/starter-asynq"
 ### 2. Configure
 
 ```properties
-spring.asynq.a.addr=127.0.0.1:6379
-spring.asynq.a.concurrency=4
-spring.asynq.a.server.enabled=true
+spring.asynq.instances.a.addr=127.0.0.1:6379
+spring.asynq.instances.a.concurrency=4
+spring.asynq.instances.a.server.enabled=true
 ```
 
 ### 3. Inject
@@ -67,9 +67,9 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
 **Multiple queues** — declare priority weights per queue:
 
 ```properties
-spring.asynq.a.queues.critical=6
-spring.asynq.a.queues.default=3
+spring.asynq.instances.a.queues.critical=6
+spring.asynq.instances.a.queues.default=3
 ```
 
-**Multiple instances** — additional `spring.asynq.<name>` entries, each an
+**Multiple instances** — additional `spring.asynq.instances.<name>` entries, each an
 independent producer/worker pair.

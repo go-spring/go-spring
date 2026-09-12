@@ -32,21 +32,24 @@ func init() {
 	// producer Client bean is always wired; the worker Server bean is
 	// additionally wired when server.enabled is true (default off — a
 	// long-running worker is an opt-in, per the starter conventions).
-	gs.Module(gs.OnProperty("spring.asynq"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.asynq}", func(name string, c Config) error {
-			// The optional Driver bean ("?") is autowired at index 2 (after ctx
-			// at 0 and Config at 1); when none is provided the ctor falls back
-			// to the bundled DefaultDriver. Client and Server share the one
-			// Driver bean, so both roles dial through the same assembly.
+	gs.Module(gs.OnProperty("spring.asynq.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.asynq.instances}", func(name string, c Config) error {
+			// The Driver bean is selected by the entry's ${driver} key: unset →
+			// "?" (nullable by-type — injects the single Driver bean when one
+			// is provided, nil otherwise, and the ctor falls back to the
+			// bundled DefaultDriver); set → that bean name, and naming a bean
+			// that does not exist fails loud. Client, Server and the health
+			// indicator share the one Driver bean, so every role dials through
+			// the same assembly.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("?")),
+				gs.IndexArg(2, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			if c.Server.Enabled {
 				r.Provide(newServer,
 					gs.IndexArg(1, gs.ValueArg(c)),
-					gs.IndexArg(2, gs.TagArg("?")),
+					gs.IndexArg(2, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}")),
 				).Name(name + ":server").Init((*Server).Init).Destroy((*Server).Destroy).
 					Export(gs.As[gs.Server]()).Caller(1)
 			}
@@ -62,7 +65,7 @@ func init() {
 					return nil, err
 				}
 				return health2.NewClientHealth(name, connOpt), nil
-			}, gs.IndexArg(0, gs.TagArg("?"))).Name("asynq:" + name).Caller(1)
+			}, gs.IndexArg(0, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}"))).Name("asynq:" + name).Caller(1)
 			return nil
 		})
 	})

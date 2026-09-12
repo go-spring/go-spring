@@ -10,7 +10,7 @@ GORM 语义见 [gorm 文档](https://gorm.io/docs/)。共享的 wrapper 生命�
 observe/health 接线与 `UseDBCustomizer` 见 [gormcore](../starter-gorm/USAGE_CN.md)，
 此处不再重复。
 
-**激活条件**：`spring.gorm.sqlserver` 下每个条目注册一个 `*starter.DB` bean（外加配对
+**激活条件**：`spring.gorm.sqlserver` 下每个条目注册一个名为 `sqlserver.<条目名>` 的 `*gormcore.DB` bean（外加配对
 的 `health.Indicator`）；没有任何条目时 starter 不注册任何东西
 （`starter_test.go:TestSqlserverNotTriggered`）。
 
@@ -54,7 +54,8 @@ import (
     "time"
 
     "go-spring.org/spring/gs"
-    starter "go-spring.org/starter-gorm-sqlserver"
+    gormcore "go-spring.org/starter-gorm"
+    _ "go-spring.org/starter-gorm-sqlserver"
     "gorm.io/gorm"
 )
 
@@ -66,8 +67,8 @@ type KV struct {
 }
 
 type Service struct {
-    DB          *starter.DB `autowire:"primary"`
-    DiscoveryDB *starter.DB `autowire:"discovery"`
+    DB          *gormcore.DB `autowire:"sqlserver.primary"`
+    DiscoveryDB *gormcore.DB `autowire:"sqlserver.discovery"`
 }
 
 var manual = flag.Bool("manual", false, "保持服务运行")
@@ -112,33 +113,33 @@ func init() {
 **conf/app.properties**（复制自 `example/conf/app.properties`）：
 
 ```properties
-spring.gorm.sqlserver.primary.user=sa
-spring.gorm.sqlserver.primary.password=Str0ng!Passw0rd
-spring.gorm.sqlserver.primary.host=127.0.0.1
-spring.gorm.sqlserver.primary.port=1433
-spring.gorm.sqlserver.primary.db=master
+spring.gorm.sqlserver.instances.primary.user=sa
+spring.gorm.sqlserver.instances.primary.password=Str0ng!Passw0rd
+spring.gorm.sqlserver.instances.primary.host=127.0.0.1
+spring.gorm.sqlserver.instances.primary.port=1433
+spring.gorm.sqlserver.instances.primary.db=master
 # 连接池 / ping / 慢日志
-spring.gorm.sqlserver.primary.dialTimeout=5s
-spring.gorm.sqlserver.primary.connectTimeout=10s
-spring.gorm.sqlserver.primary.max-open-conns=10
-spring.gorm.sqlserver.primary.max-idle-conns=5
-spring.gorm.sqlserver.primary.conn-max-lifetime=30m
-spring.gorm.sqlserver.primary.conn-max-idle-time=5m
-spring.gorm.sqlserver.primary.ping-timeout=5s
-spring.gorm.sqlserver.primary.slow-threshold=200ms
+spring.gorm.sqlserver.instances.primary.dialTimeout=5s
+spring.gorm.sqlserver.instances.primary.connectTimeout=10s
+spring.gorm.sqlserver.instances.primary.max-open-conns=10
+spring.gorm.sqlserver.instances.primary.max-idle-conns=5
+spring.gorm.sqlserver.instances.primary.conn-max-lifetime=30m
+spring.gorm.sqlserver.instances.primary.conn-max-idle-time=5m
+spring.gorm.sqlserver.instances.primary.ping-timeout=5s
+spring.gorm.sqlserver.instances.primary.slow-threshold=200ms
 # TLS（此处关闭）。开启加密：
-# spring.gorm.sqlserver.primary.tls.enabled=true
-# spring.gorm.sqlserver.primary.tls.insecure-skip-verify=true
-# spring.gorm.sqlserver.primary.tls.ca-file=/path/server-cert.pem
+# spring.gorm.sqlserver.instances.primary.tls.enabled=true
+# spring.gorm.sqlserver.instances.primary.tls.insecure-skip-verify=true
+# spring.gorm.sqlserver.instances.primary.tls.ca-file=/path/server-cert.pem
 
 # discovery 实例：host/port 故意设为哑值 —— 因 service-name 生效而被忽略，
 # 地址来自 discovery backend。
-spring.gorm.sqlserver.discovery.user=sa
-spring.gorm.sqlserver.discovery.password=Str0ng!Passw0rd
-spring.gorm.sqlserver.discovery.host=0.0.0.0
-spring.gorm.sqlserver.discovery.port=0
-spring.gorm.sqlserver.discovery.db=master
-spring.gorm.sqlserver.discovery.service-name=sqlserver-cluster
+spring.gorm.sqlserver.instances.discovery.user=sa
+spring.gorm.sqlserver.instances.discovery.password=Str0ng!Passw0rd
+spring.gorm.sqlserver.instances.discovery.host=0.0.0.0
+spring.gorm.sqlserver.instances.discovery.port=0
+spring.gorm.sqlserver.instances.discovery.db=master
+spring.gorm.sqlserver.instances.discovery.service-name=sqlserver-cluster
 ```
 
 **docker-compose.yml** —— 带健康检查的 SQL Server 2022（启动慢；端口先于服务可用
@@ -176,7 +177,7 @@ curl http://127.0.0.1:9090/sqlserver_version
 
 ```
 import starter-gorm-sqlserver
-  └─ init(): gormcore.Register(Dialect{Prefix: "spring.gorm.sqlserver",
+  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.sqlserver",
         Engine: "microsoft.sql_server", HealthPrefix: "gorm:sqlserver:"})
 gs.Run()
   ├─ conf.BindEach → 每条目一个 Config
@@ -213,7 +214,7 @@ nil）直接使用配置的 Host —— sidecar 负责 discovery+LB。
 
 `db.WithContext(ctx).Raw("SELECT @@VERSION").Scan(&v)`：
 
-1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（`${govern}` 的
+1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `govern.*` 的
    timeout/retry/breaker，放火时含 fault 注入器；`gorm.ErrRecordNotFound` 视为成功）。
 2. observe 插件锚在 `before_raw` 的 span（db.system=microsoft.sql_server）+ 指标。
 3. 原 processor：池取连接 → resolverDialer.DialContext（discovery 实例）或驱动直拨
@@ -224,7 +225,7 @@ nil）直接使用配置的 Host —— sidecar 负责 discovery+LB。
 
 ## 3. 逐 key 行为参考
 
-key 位于 `spring.gorm.sqlserver.<name>.*`。Common keys（10 个）与 wrapper 级
+key 位于 `spring.gorm.sqlserver.instances.<name>.*`。Common keys（10 个）与 wrapper 级
 `observability` 见 [gormcore](../starter-gorm/USAGE_CN.md#2-配置参考)。
 
 ### 3.1 连接 key（config.go:32-45）
@@ -240,18 +241,18 @@ key 位于 `spring.gorm.sqlserver.<name>.*`。Common keys（10 个）与 wrapper
 
 ### 3.2 TLS 块（`tls.*`，sqlserver 本地子集，见 config.go）
 
-映射目标是 **DSN 参数**，不是 `*tls.Config`。只绑定 DSN 能表达的三个 key；共享 tlsconf
-块的 `cert-file`/`key-file`/`server-name` 已于 2026-08 **移除** —— 它们在 DSN 里没有位置，
-此前被静默忽略：
+映射目标是 **DSN 参数**，不是 `*tls.Config`。只绑定 DSN 能表达的 key；共享 tlsconf
+块的 `cert-file`/`key-file` 在 DSN 里没有位置，绑上去就是死配置，已于 2026-08 **移除**：
 
 | Key | 默认值 | 映射到 | 说明 |
 |-----|--------|--------|------|
 | `tls.enabled` | false | `encrypt=true` | 关闭时不发 `encrypt` 参数；应用 go-mssqldb 默认（见[其文档](https://github.com/microsoft/go-mssqldb#connection-parameters)）。 |
-| `tls.insecure-skip-verify` | false | `TrustServerCertificate=true` | 仅在 `encrypt=true` 时发出（嵌套于 Enabled，config.go:81-83）。 |
+| `tls.insecure-skip-verify` | false | `TrustServerCertificate=true` | 仅在 `encrypt=true` 时发出（嵌套于 Enabled，config.go:103-105）。 |
 | `tls.ca-file` | "" | `certificate=<URL 转义路径>` | PEM 服务器证书路径；`starter_test.go` 验证（`certificate=%2Fca.pem`）。 |
-已移除的 key：`tls.cert-file`、`tls.key-file`、`tls.server-name` —— sqlserver Config 现在
-绑定自有的三字段 TLS 块（enabled / insecure-skip-verify / ca-file）。再设置会以未知
-key 报错。mTLS 仍无法经 DSN 表达 —— 需要时用自定义 connector。
+| `tls.server-name` | "" | `hostNameInCertificate=<URL 转义名>` | 校验证书时使用的名字（即 `tls.Config.ServerName`）。按 IP 或经 discovery 标签拨号、解析出的地址与证书名不一致时设它。 |
+已移除的 key：`tls.cert-file`、`tls.key-file` —— sqlserver Config 绑定自有的四字段 TLS
+块（enabled / insecure-skip-verify / ca-file / server-name）。再设置会以未知 key 报错。
+mTLS 仍无法经 DSN 表达 —— 需要时用自定义 connector。
 
 ### 3.3 Discovery keys（来自 Common）
 
@@ -269,7 +270,7 @@ key 报错。mTLS 仍无法经 DSN 表达 —— 需要时用自定义 connector
 2. 开启加密但不加信任：
 
 ```properties
-spring.gorm.sqlserver.primary.tls.enabled=true
+spring.gorm.sqlserver.instances.primary.tls.enabled=true
 ```
 
 3. `go run .` → 启动 ping 在 `ping-timeout` 内报 TLS 信任错误
@@ -277,7 +278,7 @@ spring.gorm.sqlserver.primary.tls.enabled=true
 4. 补上信任（任一即可修复）：
 
 ```properties
-spring.gorm.sqlserver.primary.tls.insecure-skip-verify=true   # 仅开发环境
+spring.gorm.sqlserver.instances.primary.tls.insecure-skip-verify=true   # 仅开发环境
 # 或：tls.ca-file=/path/to/server-cert.pem
 ```
 
@@ -318,8 +319,8 @@ logger（经 go-spring.org/log 转发，TagAppDef，消息体为纯文本）。
 | 启动失败："one of host or service-name must be set" | 两者皆空 | 设置其一（build 守卫，starter.go:64-66）。 |
 | 主机健康但启动 ping 超时 | 服务器仍在初始化（mssql 镜像慢） | 以 compose 健康检查为准，别看端口开没开。 |
 | 启动期 TLS 信任错误 | `tls.enabled=true` 且无 `insecure-skip-verify`/`ca-file` | 补信任或关 encrypt（§4.1）。 |
-| 期望 mTLS 但客户端从不出示证书 | `tls.cert-file`/`key-file` 已移除 | 配置表达不了；需自定义 connector。 |
-| discovery 哑地址下证书主机名不匹配 | 无 `tls.server-name` key；DSN 里是哑值 `0.0.0.0` | 任选：证书用真实主机名、`insecure-skip-verify`（开发）、自定义拨号器。 |
+| 期望 mTLS 但客户端从不出示证书 | `tls.cert-file`/`key-file` 未绑定 | DSN 表达不了；需自定义 connector。 |
+| discovery 哑地址下证书主机名不匹配 | discovery 解析出的地址不在证书里 | 把 `tls.server-name` 设为证书里的名字（→ `hostNameInCertificate`）。 |
 | discovery 实例连不上 | backend 标签不匹配（`discovery` key）或服务未注册 | 核对 bean 名与配置；resolver 错误启动期有日志。 |
 | 负载下登录超时 | `connectTimeout` 太小 | 调大，或保持 0 用驱动默认。 |
 | `key`/`value` 列 SQL 报错 | SQL Server 保留字 | 用 gorm tag 重映射（`column:kkey`），照 example 做。 |
@@ -328,10 +329,10 @@ logger（经 go-spring.org/log 转发，TagAppDef，消息体为纯文本）。
 
 | 指标 | 数值 |
 |------|------|
-| 方言特有 key | 连接 7 + tls 6 = 13（+10 Common，+1 wrapper） |
+| 方言特有 key | 连接 7 + tls 4 = 11（+10 Common，+1 wrapper） |
 | 必填 | 3（`user`、`password`、`db`）+ host 或 service-name |
 | quickstart 外部依赖 | 1（SQL Server，docker） |
-| 死绑定 key | 0（多余的 tlsconf key 已于 2026-08 移除） |
+| 死绑定 key | 0（无法绑定的 tlsconf key 已于 2026-08 移除；server-name 于 2026-09 重新绑定） |
 | "注意/坑" 条数 | 5 |
 
 设计嫌疑：discovery 接管寻址时仍要求可解析的哑 host/port 供 DSN 解析；没有通往基于

@@ -39,7 +39,7 @@ sentinel 驱动。
   - `NewDialer` —— 连接层通用;与 a dial closure over a round-robin pick pool 天然
     组合。resource 固定,因为 dialer 本就绑定一个 service。
 
-  入站 admission 不在本包:各协议 starter 用 `governance.ExecutorFor` seam
+  入站 admission 不在本包:各协议 starter 用 `resilience.ExecutorFor` seam
   自建中间件(见 starter-gin / starter-grpc 的 admission),把中立拒绝映射为
   429 / 503,并保证每个请求恰好服务一次。
 - **`Fallback` 是助手,不进接口。** 给 `Executor.Execute` 加 `degrade` 参数会

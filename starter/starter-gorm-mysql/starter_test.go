@@ -71,7 +71,7 @@ func TestDSN(t *testing.T) {
 
 func TestBuildValidation(t *testing.T) {
 	// Neither addr nor service-name: must be rejected before anything registers.
-	if _, err := build(context.Background(), Config{User: "u", Password: "p", DB: "test"}); err == nil {
+	if _, err := build(context.Background(), Config{User: "u", Password: "p", DB: "test"}, nil); err == nil {
 		t.Fatal("build must require addr or service-name")
 	}
 
@@ -79,7 +79,7 @@ func TestBuildValidation(t *testing.T) {
 	c := Config{User: "u", Password: "p", Addr: "127.0.0.1:3306", DB: "test"}
 	c.TLS.Enabled = true
 	c.TLS.CAFile = "/nonexistent/ca.pem"
-	if _, err := build(context.Background(), c); err == nil {
+	if _, err := build(context.Background(), c, nil); err == nil {
 		t.Fatal("build must fail on an unreadable CA file")
 	}
 }
@@ -88,7 +88,7 @@ func TestBuildPlainSpec(t *testing.T) {
 	c := Config{User: "u", Password: "p", Addr: "127.0.0.1:3306", DB: "test"}
 	c.PingTimeout = 500 * time.Millisecond
 
-	spec, err := build(context.Background(), c)
+	spec, err := build(context.Background(), c, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("plain-addr build must return a dialector")
@@ -110,11 +110,11 @@ func TestBuildPlainSpec(t *testing.T) {
 }
 
 // TestMysqlNotTriggered proves the conditional wiring: with no
-// spring.gorm.mysql.* entries the starter registers nothing and the app starts.
+// spring.gorm.mysql.instances.* entries the starter registers nothing and the app starts.
 func TestMysqlNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {
-		DBs  []*DB              `autowire:""`
-		Inds []health.Indicator `autowire:""`
+		DBs  []*gormcore.DB      `autowire:""`
+		Inds []*health.Indicator `autowire:""`
 	}) {
 		if len(s.DBs) != 0 || len(s.Inds) != 0 {
 			t.Fatalf("starter must stay dormant without config, got %d DB / %d indicators", len(s.DBs), len(s.Inds))

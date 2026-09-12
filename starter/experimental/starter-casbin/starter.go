@@ -39,8 +39,8 @@ func init() {
 	// enforcer injects it by that name (nil when the key is empty — the
 	// file-backed policy path). No package-level registry: adapters/watchers are
 	// ordinary beans the app owns.
-	gs.Module(gs.OnProperty("spring.casbin"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.casbin}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.casbin.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.casbin.instances}", func(name string, c Config) error {
 			return registerEnforcer(r, name, c)
 		})
 	})

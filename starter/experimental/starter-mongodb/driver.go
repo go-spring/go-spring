@@ -30,20 +30,24 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-// newPickPool resolves the injected discovery backend for c into a by-name
-// Resolver and wraps it in a round-robin loadbalance pool, so each new connection
-// can pick a live instance from the service's current endpoint snapshot. It
-// returns (nil, nil) when discovery is not in effect — service-name unset or
-// mesh mode enabled (a sidecar owns discovery+LB) — in which case the caller
-// dials the configured URI hosts directly. It fails loudly when service-name is
-// set (and mesh is off) but no backend bean was injected for the ${discovery}
-// label. Resolver freshness lives inside the backend, so the pool has no
-// resources to release and there is no Stop-half.
-func newPickPool(ctx context.Context, c Config) (*loadbalance.Pool, error) {
-	if c.ServiceName != "" && c.backend == nil && !mesh.Enabled() {
+// newPickPool resolves the discovery backend the starter wiring resolved from
+// c.Discovery into a by-name Resolver and wraps it in a round-robin loadbalance
+// pool, so each new connection can pick a live instance from the service's
+// current endpoint snapshot. It returns (nil, nil) when discovery is not in
+// effect — service-name unset or mesh mode enabled (a sidecar owns discovery+LB)
+// — in which case the caller dials the configured URI hosts directly. It fails
+// loudly when service-name is set (and mesh is off) but backend is nil (no
+// backend bean cited by the ${discovery} label). Resolver freshness lives inside
+// the backend, so the pool has no resources to release and there is no
+// Stop-half.
+func newPickPool(ctx context.Context, c Config, backend discovery.Discovery) (*loadbalance.Pool, error) {
+	if c.ServiceName != "" && backend == nil && !mesh.Enabled() {
+		if c.Discovery == "" {
+			return nil, errutil.Explain(nil, "mongodb: instance routes by service-name but sets no discovery backend (set spring.mongodb.instances.<name>.discovery to the name of a discovery backend bean)")
+		}
 		return nil, errutil.Explain(nil, "mongodb: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
 	}
-	resolver, err := discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil || resolver == nil {
 		return nil, err
 	}

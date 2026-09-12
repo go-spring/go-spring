@@ -5,6 +5,7 @@ use (
 	./cloud/i18n/example
 	./cloud/loadtest/example
 	./cloud/lock/example
+	./cloud/security/example
 	./cloud/session/example
 	./cloud/validation/example
 	./contrib/dubbo-go/dubbo
@@ -201,7 +202,6 @@ use (
 	./starter/starter-bigcache/example-cloudnative
 	./starter/starter-bigcache/example-load
 	./starter/starter-bigcache/example-otel
-	./starter/starter-cache
 	./starter/starter-config-etcd
 	./starter/starter-config-etcd/example
 	./starter/starter-config-file

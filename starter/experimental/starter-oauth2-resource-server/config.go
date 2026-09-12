@@ -21,7 +21,7 @@ import (
 )
 
 // Config configures one OAuth2 resource-server JWT verification instance bound
-// under spring.security.oauth2.resource.jwt.<name>. Exactly one verification
+// under spring.security.oauth2.resource.jwt.instances.<name>. Exactly one verification
 // key source must be configured — an issuer URI (resolved through OIDC
 // discovery to a JWKS endpoint), an asymmetric public key (PEM inline or file),
 // or a shared HMAC secret. The constructor fails fast when zero or more than

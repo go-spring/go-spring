@@ -2,39 +2,56 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.memcached",
   "type": "object",
+  "description": "Two buckets: spring.memcached.default holds family-wide values (each overridable per instance), spring.memcached.instances.<name> holds one entry per named instance. No other key belongs directly under spring.memcached.",
   "properties": {
-    "servers": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "default": ""
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "service-name": {
-      "type": "string",
-      "default": ""
-    },
-    "scheme": {
-      "type": "string",
-      "default": "",
-      "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
-    },
-    "discovery": {
-      "type": "string",
-      "default": "default"
-    },
-    "timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "0"
-    },
-    "max-idle-conns": {
-      "type": "integer",
-      "default": 0
-    },
-    "driver": {
-      "type": "string",
-      "default": "DefaultDriver"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": ""
+          },
+          "service-name": {
+            "type": "string",
+            "default": ""
+          },
+          "scheme": {
+            "type": "string",
+            "default": "",
+            "description": "Narrows discovery to endpoints of one transport scheme (e.g. tls, https). Empty returns every scheme. Only used with service-name."
+          },
+          "discovery": {
+            "type": "string",
+            "default": ""
+          },
+          "timeout": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "0"
+          },
+          "max-idle-conns": {
+            "type": "integer",
+            "default": 0
+          }
+        }
+      }
     }
   }
 }

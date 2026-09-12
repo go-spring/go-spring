@@ -7,7 +7,7 @@ semantics themselves (JobExecution / StepExecution, chunk model, restart-from-la
 `go-spring.org/cloud/experimental/batch` — this document covers the Redis backend and the
 go-spring wiring only.
 
-**Activation**: any `spring.batch-repository.*` key. Blank-importing the package registers one
+**Activation**: any `spring.batch-repository.instances.*` key. Blank-importing the package registers one
 `batch.JobRepository` per entry (`starter.go:51-70`); each entry reuses a `*redis.Client` bean
 published by starter-go-redis. The starter holds no connection of its own — it is a Contributor
 archetype (starter.go:23-28): swapping Redis for a SQL backend is a blank-import change.
@@ -111,12 +111,12 @@ checkpoint-carrying reader: `../starter-batch/example/example.go:117-145`.)
 
 ```properties
 # --- redis client (starter-go-redis namespace) --------------------------------
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
-# --- this starter: one repository per spring.batch-repository.<name> entry ----
-spring.batch-repository.main.client=cache
-spring.batch-repository.main.key-prefix=demo:batch:
-spring.batch-repository.main.ttl=24h
+# --- this starter: one repository per spring.batch-repository.instances.<name> entry ----
+spring.batch-repository.instances.main.client=cache
+spring.batch-repository.instances.main.key-prefix=demo:batch:
+spring.batch-repository.instances.main.ttl=24h
 
 # --- batch runner (starter-batch namespace) — picks the repo up by name -------
 spring.batch.repository=main
@@ -152,7 +152,7 @@ import starter-go-redis + starter-batch + starter-batch-redis
   └─ batch: Launcher + Server beans, gated OnBean[JobDefinition]()
 
 gs.Run()
-  ├─ config bind: ${spring.batch-repository.<name>} → Config (client / key-prefix / ttl)
+  ├─ config bind: ${spring.batch-repository.instances.<name>} → Config (client / key-prefix / ttl)
   ├─ fail-fast #1: client=="" → boot error "instance %q missing required property"
   │                (starter.go:57-60 — no silent default client)
   ├─ wiring: TagArg(c.Client) injects the named *redis.Client (the seam that ties the
@@ -208,11 +208,11 @@ single hash deliberately: Save/Find/List are one round-trip each (`redisrepo.go:
 
 ## 3. Per-key behavior reference
 
-### 3.1 This starter — `spring.batch-repository.<name>.*` (3 keys)
+### 3.1 This starter — `spring.batch-repository.instances.<name>.*` (3 keys)
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `<name>.client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.<client>`; injected by `gs.TagArg` (starter.go:64). ⚠ coupled: the go-redis instance must exist under exactly this name. | Empty → boot fails "missing required property" (fail-fast, starter.go:57-60); wrong name → container error on bean lookup. |
+| `<name>.client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.instances.<client>`; injected by `gs.TagArg` (starter.go:64). ⚠ coupled: the go-redis instance must exist under exactly this name. | Empty → boot fails "missing required property" (fail-fast, starter.go:57-60); wrong name → container error on bean lookup. |
 | `<name>.key-prefix` | string | "" | Prepended to `job:`/`steps:`/`seq` keys. Use to keep multiple apps sharing one Redis disjoint. ⚠ changing it orphans prior history — restart-resume then starts fresh. | Colliding prefixes between apps → cross-app resume corruption. |
 | `<name>.ttl` | duration | 0 | `>0` → EXPIRE applied and **refreshed** on every write, so long-running steps stay alive (`redisrepo.go:113-121`). 0 keeps records forever (open-ended restart windows). | Too small → records expire mid-run: a restart after expiry reprocesses from scratch. |
 
@@ -225,9 +225,9 @@ single hash deliberately: Save/Find/List are one round-trip each (`redisrepo.go:
 | `spring.batch.jobs.<job>.run-on-startup` | false | Launch `<job>` once at readiness. | Job configured but no JobDefinition bean → boot fails (`launcher.go:97-103`). |
 | `spring.batch.jobs.<job>.params.*` | — | Instance identity: changing a param **creates a new instance**, not a restart of the old one (`config.go(starter-batch):58-61`). | Retrying with a new date → old incomplete instance stays incomplete forever (with ttl=0, also leaks keys). |
 
-⚠ Namespace split, by design: repositories bind under `spring.batch-repository.<name>` because the
+⚠ Namespace split, by design: repositories bind under `spring.batch-repository.instances.<name>` because the
 runner owns `spring.batch.*` for job/step/chunk config (`config.go:27-31`). `spring.batch.repository`
-(singular, runner-side) references `spring.batch-repository.<name>` (plural, this starter).
+(singular, runner-side) references `spring.batch-repository.instances.<name>` (plural, this starter).
 
 ---
 
@@ -283,7 +283,7 @@ starter-go-redis respectively — this starter contributes neither an indicator 
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "instance %q missing required property %q" | `spring.batch-repository.<name>.client` empty | Set it; there is deliberately no default client (starter.go:53-60). |
+| Boot fails "instance %q missing required property %q" | `spring.batch-repository.instances.<name>.client` empty | Set it; there is deliberately no default client (starter.go:53-60). |
 | Boot fails "no batch.JobRepository bean of that name" | `spring.batch.repository` typo'd or the batch-repository entry didn't register | Check the OnProperty activation key spelling (`spring.batch-repository`, hyphenated). |
 | Boot fails "N batch.JobRepository beans present but spring.batch.repository is empty" | several repository starters imported, none named | Name one via `spring.batch.repository` (launcher.go:183-185). |
 | Restart reprocesses everything | key-prefix changed, ttl expired the records, or params changed (new instance) | Keep prefix/params stable; ttl=0 for open-ended restart windows. |

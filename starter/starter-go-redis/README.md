@@ -24,7 +24,7 @@ import _ "go-spring.org/starter-go-redis"
 Add Redis configuration in your project's [configuration file](example/conf/app.properties):
 
 ```properties
-spring.go-redis.main.addr=127.0.0.1:6379
+spring.go-redis.instances.main.addr=127.0.0.1:6379
 ```
 
 ### 3. Inject the Redis Instance
@@ -55,9 +55,9 @@ Dials one node via `addr` (or a service name via discovery). The bean type is
 `*redis.Client`.
 
 ```properties
-spring.go-redis.cache.addr=127.0.0.1:6379
+spring.go-redis.instances.cache.addr=127.0.0.1:6379
 # or resolve the address via service discovery:
-# spring.go-redis.cache.service-name=redis-main
+# spring.go-redis.instances.cache.service-name=redis-main
 ```
 
 ### sentinel
@@ -67,10 +67,10 @@ still `*redis.Client`, so injection and the command surface are identical to
 single mode.
 
 ```properties
-spring.go-redis.cache.mode=sentinel
-spring.go-redis.cache.master-name=mymaster
-spring.go-redis.cache.sentinel-addrs=127.0.0.1:26379,127.0.0.1:26380
-# spring.go-redis.cache.sentinel-password=...   # auth to the sentinels themselves
+spring.go-redis.instances.cache.mode=sentinel
+spring.go-redis.instances.cache.master-name=mymaster
+spring.go-redis.instances.cache.sentinel-addrs=127.0.0.1:26379,127.0.0.1:26380
+# spring.go-redis.instances.cache.sentinel-password=...   # auth to the sentinels themselves
 ```
 
 ### cluster
@@ -85,12 +85,12 @@ type Service struct {
 ```
 
 ```properties
-spring.go-redis.cache.mode=cluster
-spring.go-redis.cache.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002
+spring.go-redis.instances.cache.mode=cluster
+spring.go-redis.instances.cache.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002
 # optional cluster tunables:
-# spring.go-redis.cache.max-redirects=3
-# spring.go-redis.cache.route-by-latency=true
-# spring.go-redis.cache.route-randomly=true
+# spring.go-redis.instances.cache.max-redirects=3
+# spring.go-redis.instances.cache.route-by-latency=true
+# spring.go-redis.instances.cache.route-randomly=true
 ```
 
 TLS, connection-pool sizing, timeouts, OTel instrumentation, and the fail-fast
@@ -125,7 +125,9 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   above. Cluster instances are exposed as `*redis.ClusterClient`; single/sentinel as `*redis.Client`.
 * **Support Redis extensions**: implement the `Driver` interface to extend Redis functionality — see the
   example implementation `AnotherRedisDriver`. Cluster support is an optional `ClusterDriver` interface, so existing
-  custom drivers keep compiling unchanged.
+  custom drivers keep compiling unchanged. When several Driver beans coexist, an entry selects one by name:
+  `spring.go-redis.instances.<name>.driver = <bean-name>` (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type; naming a missing
+  bean fails startup).
 * **Startup connection validation (fail-fast)**: after building the client the starter issues a `Ping`; a misconfigured
   address or unreachable server fails the boot instead of the first request.
 * **Health check / readiness**: the go-redis client exposes `Ping(ctx)` for readiness probes — call it straight off the

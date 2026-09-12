@@ -8,7 +8,7 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
 
 ## 1. 职责与边界
 
-- **负责**：`spring.rocketmq.<name>` 组的 bean 生命周期（多实例、容器托管
+- **负责**：`spring.rocketmq.instances.<name>` 组的 bean 生命周期（多实例、容器托管
   停机）、公共选项应用到其创建的每个生产者/消费者、rlog 到 go-spring 日志
   的桥接、fail-fast 名字服务探针、`messaging.Driver` 适配、OTel span 助手、
   `GuardedSend` 韧性 seam。

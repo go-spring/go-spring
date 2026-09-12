@@ -24,7 +24,7 @@ import (
 )
 
 // Config binds one etcd-backed distributed-lock instance under
-// spring.lock.<name>. Endpoints is required; every other field has a sensible
+// spring.lock.instances.<name>. Endpoints is required; every other field has a sensible
 // default so a minimal configuration only needs the cluster address.
 type Config struct {
 	// Endpoints lists the etcd cluster nodes to dial. Required; an empty list

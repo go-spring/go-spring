@@ -27,12 +27,12 @@ import _ "go-spring.org/starter-rocketmq"
 ### 2. Configure
 
 ```properties
-spring.rocketmq.a.name-servers=127.0.0.1:9876
-spring.rocketmq.a.send-timeout=5s
+spring.rocketmq.instances.a.name-servers=127.0.0.1:9876
+spring.rocketmq.instances.a.send-timeout=5s
 
 # ACL (optional, access-key and secret-key must be set together)
-# spring.rocketmq.a.access-key=rocketmq
-# spring.rocketmq.a.secret-key=12345678
+# spring.rocketmq.instances.a.access-key=rocketmq
+# spring.rocketmq.instances.a.secret-key=12345678
 ```
 
 ### 3. Inject
@@ -63,7 +63,7 @@ automatically when the application closes.
 
 ## Core Features
 
-- **Multi-instance clients** — every `spring.rocketmq.<name>` entry is its own
+- **Multi-instance clients** — every `spring.rocketmq.instances.<name>` entry is its own
   bean with independent settings.
 - **Fail-fast startup probe** — a TCP dial against the name server list at
   boot catches wrong addresses before the first message (disable with
@@ -124,8 +124,8 @@ When `starter-governance` is not imported this behaves exactly like
 **Multiple clients** — configure additional entries and inject by name:
 
 ```properties
-spring.rocketmq.orders.name-servers=10.0.0.1:9876
-spring.rocketmq.events.name-servers=10.0.0.2:9876
+spring.rocketmq.instances.orders.name-servers=10.0.0.1:9876
+spring.rocketmq.instances.events.name-servers=10.0.0.2:9876
 ```
 
 ```go
@@ -138,7 +138,7 @@ type Service struct {
 **Custom driver** — replace client assembly (e.g. to inject a custom
 `primitive.NsResolver`) by providing your own `Driver` bean (its constructor
 returns `StarterRocketmq.Driver`). It is an optional container bean: every
-client under `spring.rocketmq.*` is built through it, and the starter falls
+client under `spring.rocketmq.instances.*` is built through it, and the starter falls
 back to its bundled `DefaultDriver` only when no `Driver` bean is present.
 Embed `StarterRocketmq.DefaultDriver` and delegate `CreateClient` so the
 default assembly is preserved:

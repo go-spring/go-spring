@@ -8,7 +8,7 @@ starter）；差异点在下面单独说明。
 
 ## 1. 职责与边界
 
-- **负责**：`spring.s3.<name>` 组的 bean 生命周期（多实例、容器托管
+- **负责**：`spring.s3.instances.<name>` 组的 bean 生命周期（多实例、容器托管
   停机）、fail-fast `ListBuckets` 探针、每实例健康指示器、observe 传输层
   （三信号）、客户端 HTTP 传输上的韧性 round-tripper。
 - **不负责**：桶/对象管理策略、凭证轮换（只支持静态密钥 —— 轮换走配置）、
@@ -32,11 +32,9 @@ starter）；差异点在下面单独说明。
   OTel 埋点，因此 starter 自带的传输层承载 span + 指标 + 日志
   （observe.go：client span 带 `db.system`/`db.operation`/`db.statement`、
   `db.client.*` 指标、`_app_s3_access` 访问日志）。
-- **韧性** — `resilience.NewRoundTripper` 把 observe 传输包上进中性 seam
-  解出的执行器（`resilience.ExecutorFor` +
-  `fault.WrapExecutor(…, fault.InjectorFor())`，再
-  `resilience.WrapExecutor`），以
-  `resilience.ResourceLabel("s3", endpoint)` 圈定作用域。
+- **韧性** — `resilience.NewRoundTripper` 把 observe 传输包上由中性 seam 组装
+  出的执行器（`fault.WrapExecutor(resilience.ExecutorFor("s3", resource))`），
+  以 `resilience.ResourceLabel("s3", endpoint)` 圈定作用域。
 
 ## 3. 约束
 

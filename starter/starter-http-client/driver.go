@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/starter-http-client/httpx"
 )
 
@@ -47,8 +48,14 @@ import (
 //     [httpx.NewTransport] with a custom Base (proxy, pool tuning) or wrap the
 //     whole chain; you simply own what the standard assembly would have done,
 //     including the returned teardown.
+//
+// backend is the discovery backend the entry's ${discovery} label resolved to,
+// already looked up by the starter wiring; it is nil when the entry cites no
+// label (an unknown label fails at wiring, before the driver is called). It is
+// passed as an argument rather than carried on Config so a custom driver can
+// actually reach it — Config stays a pure bound value.
 type Driver interface {
-	CreateTransport(ctx context.Context, name string, c Config) (rt http.RoundTripper, close func() error, err error)
+	CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery) (rt http.RoundTripper, close func() error, err error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface: the
@@ -59,6 +66,6 @@ type DefaultDriver struct{}
 // and assembles the transport. Everything — trace, TLS surface,
 // governance-resolved resilience executor, fault + observe wrap — is owned by
 // starter-http-client/httpx; see [httpx.NewTransport].
-func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config) (http.RoundTripper, func() error, error) {
-	return httpx.NewTransport(c.toTransportConfig())
+func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery) (http.RoundTripper, func() error, error) {
+	return httpx.NewTransport(c.toTransportConfig(backend))
 }

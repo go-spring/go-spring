@@ -58,7 +58,7 @@ Go-Spring owns **no protocol and no transport**. It is the **assembly and runtim
 | **Category** | RPC / microservice framework (owns transport, service model, codegen) | Application assembly & runtime platform (IoC + config + lifecycle + governance) |
 | **Relationship** | *Integrated by Go-Spring* — `starter-dubbo` wraps dubbo-go; `starter-kitex`, `starter-kratos`, `starter-go-zero`… wrap the rest | Integrates them all symmetrically; picks no winner |
 | **Configuration** | Each ships its own config model | One layered engine (CLI → env → files → Nacos/etcd/Consul/Vault/K8s) driving every component, with `gs.Dync[T]` hot reload |
-| **Governance** | Scoped to its own RPC calls (dubbo-go: URL-param overrides) | **One centralized governance center** — timeout/retry/breaker/rate-limit + fault injection applied uniformly across Redis, GORM, HTTP, gRPC, gin, dubbo… from a single `${govern}` config, with pluggable rule sources (file/HTTP console/nacos/etcd direct listeners) |
+| **Governance** | Scoped to its own RPC calls (dubbo-go: URL-param overrides) | **One centralized governance center** — timeout/retry/breaker/rate-limit + fault injection applied uniformly across Redis, GORM, HTTP, gRPC, gin, dubbo… from one governance rules document, with pluggable rule sources (file/HTTP console/nacos/etcd direct listeners) |
 | **Programming model** | Framework-defined interfaces and structure required | Zero intrusion: standard `net/http`, plain structs, your layout |
 | **Use alone** | Yes | Yes — the core (`spring`) and ecosystem library (`cloud`) are usable without any RPC framework at all |
 
@@ -94,7 +94,7 @@ No manual signal handling, no goroutine lifecycle management—the framework has
 | Domain | Capability | Coverage |
 |---|---|---|
 | **Configuration** | Multi-source layered merging (CLI → env vars → config files → remote config centers), type-safe binding, dynamic refresh | Nacos, Consul, Etcd, K8s ConfigMap, Vault |
-| **Service Governance** | Centralized governance center: timeout/retry/breaker/rate-limit/bulkhead + fault injection, one `${govern}` config for every client, hot-reloaded | default & sentinel backends; rule sources: `${govern}` properties, file, HTTP console, nacos, etcd |
+| **Service Governance** | Centralized governance center: timeout/retry/breaker/rate-limit/bulkhead + fault injection, one rules document for every client, hot-reloaded | default & sentinel backends; rule sources: file, HTTP console, nacos, etcd |
 | **Logging** | Structured logging model, concise config DSL, pluggable Appenders | Console, File, custom |
 | **Service Discovery** | Unified `Discovery` abstraction, multiple registry backends | Consul, Etcd, Nacos, Zookeeper, Polaris, K8s |
 | **Distributed Coordination** | Distributed locks, messaging, transactions, events, scheduling, batch processing | Lock (4 backends), Kafka, Pulsar, RabbitMQ, NATS, MQTT, Saga, TCC, AT |

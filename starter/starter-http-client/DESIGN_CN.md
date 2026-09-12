@@ -32,11 +32,11 @@ resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp tr
   `Resolver` + `loadbalance.Pool`——与其它基础设施客户端同款。否则走
   `fixedHostTransport`(`Addr` 模式)。两者都为空 → 用请求原 host。
 - **resilience 位于最外。**让**重试可重挑端点**,且**熔断按逻辑服务名**
-  (`req.URL.Host` = 生成客户端的 Target)聚合,而非按端点地址。
+  (条目声明的 Target)聚合,而非按端点地址。
 
 ## 3. 关键决策
 
-- **自定义走 driver 缝。**`spring.http-client.<name>.driver` 选择已注册的
+- **自定义走 driver 缝。**`spring.http-client.instances.<name>.driver` 选择已注册的
   `Driver`(默认 `DefaultDriver`,纯委托 `httpx.NewTransport`)。自定义形态与
   starter-redigo 同构:嵌默认 driver 包裹装配产物(增强),或完全自建(替换)。
   没有全局可变 middleware 钩子。

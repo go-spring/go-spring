@@ -26,12 +26,12 @@ import _ "go-spring.org/starter-rocketmq"
 ### 2. 配置
 
 ```properties
-spring.rocketmq.a.name-servers=127.0.0.1:9876
-spring.rocketmq.a.send-timeout=5s
+spring.rocketmq.instances.a.name-servers=127.0.0.1:9876
+spring.rocketmq.instances.a.send-timeout=5s
 
 # ACL（可选，access-key 与 secret-key 必须成对设置）
-# spring.rocketmq.a.access-key=rocketmq
-# spring.rocketmq.a.secret-key=12345678
+# spring.rocketmq.instances.a.access-key=rocketmq
+# spring.rocketmq.instances.a.secret-key=12345678
 ```
 
 ### 3. 注入
@@ -61,7 +61,7 @@ err = c.Start()
 
 ## 核心特性
 
-- **多实例客户端** — 每个 `spring.rocketmq.<name>` 条目都是独立 bean，
+- **多实例客户端** — 每个 `spring.rocketmq.instances.<name>` 条目都是独立 bean，
   拥有各自的配置。
 - **fail-fast 启动探针** — 启动期对名字服务列表做 TCP 拨号，第一条消息
   之前就暴露配错的地址（`fail-fast=false` 关闭）。
@@ -117,8 +117,8 @@ res, err := StarterRocketmq.GuardedSend(ctx, s.Client, p, msg)
 **多客户端** — 配置更多条目并按名注入：
 
 ```properties
-spring.rocketmq.orders.name-servers=10.0.0.1:9876
-spring.rocketmq.events.name-servers=10.0.0.2:9876
+spring.rocketmq.instances.orders.name-servers=10.0.0.1:9876
+spring.rocketmq.instances.events.name-servers=10.0.0.2:9876
 ```
 
 ```go
@@ -130,7 +130,7 @@ type Service struct {
 
 **自定义 driver** — 提供自己的 `Driver` bean（其构造函数返回
 `StarterRocketmq.Driver`）替换客户端装配过程（例如注入自定义
-`primitive.NsResolver`）。它是可选的容器 bean：`spring.rocketmq.*` 下每个
+`primitive.NsResolver`）。它是可选的容器 bean：`spring.rocketmq.instances.*` 下每个
 客户端都经它构建，仅当没有 `Driver` bean 时才回退到内置 `DefaultDriver`。
 内嵌 `StarterRocketmq.DefaultDriver` 并委托 `CreateClient` 以保留默认装配：
 

@@ -7,7 +7,7 @@ no in-process state; both draw from the same Redis token bucket
 ## Run
 
 ```bash
-docker compose up -d     # or point spring.go-redis.cache.addr at any redis
+docker compose up -d     # or point spring.go-redis.instances.cache.addr at any redis
 go run .
 ```
 

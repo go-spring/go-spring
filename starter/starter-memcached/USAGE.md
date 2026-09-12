@@ -8,8 +8,8 @@ the starter source (`starter.go`, `client.go`, `command.go`, `driver.go`, `confi
 [gomemcache documentation](https://github.com/bradfitz/gomemcache)** — everything below is
 go-spring's increment.
 
-**Activation**: beans exist only when any `spring.memcached.*` key is present — `gs.OnProperty("spring.memcached")`
-is a prefix check (`starter.go:42`). Multi-instance only: each `spring.memcached.<name>` map entry
+**Activation**: beans exist only when any `spring.memcached.instances.*` key is present — `gs.OnProperty("spring.memcached")`
+is a prefix check (`starter.go:42`). Multi-instance only: each `spring.memcached.instances.<name>` map entry
 becomes one named client bean plus one health indicator; there is no `__default__` singleton.
 
 ---
@@ -68,7 +68,7 @@ import (
 )
 
 type Service struct {
-    // autowire tag = the spring.memcached.<name> map key
+    // autowire tag = the spring.memcached.instances.<name> map key
     Memcached    *StarterMemcached.Client `autowire:"cache"`
     SessionCache *StarterMemcached.Client `autowire:"session"`
 }
@@ -96,14 +96,14 @@ func init() {
 **conf/app.properties** (verbatim surface from `example/conf/app.properties`):
 
 ```properties
-spring.memcached.cache.servers=127.0.0.1:11211
+spring.memcached.instances.cache.servers=127.0.0.1:11211
 
-spring.memcached.session.servers=127.0.0.1:11211
-spring.memcached.session.timeout=100ms
-spring.memcached.session.max-idle-conns=4
+spring.memcached.instances.session.servers=127.0.0.1:11211
+spring.memcached.instances.session.timeout=100ms
+spring.memcached.instances.session.max-idle-conns=4
 
 # Discovery addressing: no `servers`; the list comes from the registered backend.
-spring.memcached.discovery.service-name=memcached-cluster
+spring.memcached.instances.discovery.service-name=memcached-cluster
 ```
 
 **Verify** (the example exposes the same handlers on :9090; run `go run . -manual`):
@@ -127,17 +127,17 @@ and a discovery-client round-trip, exiting non-zero on any failure.
 ```
 import starter-memcached
   └─ init: gs.Module(OnProperty("spring.memcached"), BindEach)       starter.go:42-43
-        per spring.memcached.<name> entry:
+        per spring.memcached.instances.<name> entry:
           r.Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver))  starter.go:47-51
               .Name(name).Init((*Client).Init).Destroy((*Client).Destroy)
           r.Provide(health indicator "memcache:"+name)               starter.go:54
 gs.Run()
-  ├─ config bind: ${spring.memcached.<name>} → Config (value tags)   config.go:24-58
+  ├─ config bind: ${spring.memcached.instances.<name>} → Config (value tags)   config.go:24-58
   ├─ ctor newClient [starter.go:80]: validate → optional Driver bean
-  │     (none → bundled DefaultDriver) → d.CreateClient → STARTUP PING
-  ├─ Client.Init: observer + resilience/fault executor               client.go:66-72
+  │     (none → bundled DefaultDriver) → d.CreateClient(c, backend) → STARTUP PING
+  ├─ Client.Init: observer + resilience/fault executor               client.go:66-71
   ├─ readiness: health indicator folds Ping into /readiness          health/health.go:33-36
-  └─ shutdown: Client.Destroy — release executor, stop discovery watch  client.go:78-83
+  └─ shutdown: Client.Destroy — release executor, stop discovery watch  client.go:77-82
 ```
 
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
@@ -145,7 +145,9 @@ gs.Run()
 container bean** (a `gs.Provide(func() StarterMemcached.Driver{...})`, so it can inject config
 bound from the properties file at wiring time); every instance under `spring.memcached` is then
 built through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
-(`driver.go:45-60`) inside assembly (`starter.go:86-88`). There is no per-config `driver` key.
+(`driver.go:45-60`) inside assembly (`starter.go:86-88`). When several Driver beans coexist, an
+entry selects one by name: `spring.memcached.instances.<name>.driver = <bean-name>` (empty = inject the
+single Driver bean by type; naming a missing bean fails startup).
 
 Startup ping timing: it runs **inside the constructor**, before the bean exists — a dead server
 aborts container assembly with `memcached: startup ping failed` (`starter.go:98-100`); it is not
@@ -154,8 +156,9 @@ lazy and not retryable. gomemcache's `Ping` probes every configured server, so o
 
 ### 2.2 Discovery addressing flow
 
-With `service-name` set (and mesh mode off), `DefaultDriver.CreateClient` builds a
-discovery `Loader` against the backend named by `discovery` (default `"default"`), filtered by
+With `service-name` set (and mesh mode off), the starter resolves the `discovery` label (default
+`"default"`) to a backend bean and passes it to `DefaultDriver.CreateClient` as the `backend`
+argument; the driver builds a discovery resolver against it, filtered by
 `scheme` (`driver.go:70`, `driver.go:100-102`). The **initial snapshot only** becomes the client's
 server list: empty snapshot fails boot with
 `memcached: discovery returned no endpoints for %q` (`driver.go:73-79`). The loader is a one-shot
@@ -176,10 +179,10 @@ entirely and `servers` is used as-is (sidecar owns discovery+LB, `driver.go:69-7
    limitation documented at `client.go:37-41`).
 2. `guardErr` runs the op under the resilience executor via `resilience.Run`
    (`command.go:174-181`): limiter/breaker scoped to resource `memcached:<instance-name>`
-   (`client.go:73`); `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
-   (`command.go:168`); the executor is fault-wrapped (`fault.WrapExecutor`, `client.go:73`) and
-   observe-wrapped (`resilience.WrapExecutor`, `client.go:74`). With governance off it is a
-   transparent no-op.
+   (`client.go:69`); `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
+   (`command.go:168`); the executor is built in one line —
+   `fault.WrapExecutor(resilience.ExecutorFor("memcached", resource))` (`client.go:69`), with the
+   observe layer applied inside resolve. With governance off it is a transparent no-op.
 3. The embedded `*memcache.Client` performs the actual write; the end callback closes the span with
    the error.
 
@@ -187,11 +190,13 @@ All 17 operations (get/get_and_touch/get_multi/touch/set/add/replace/append/prep
 delete_all/increment/decrement/ping/flush_all) follow this same shape (`command.go:45-162`). Methods
 not overridden (only `Close` among lifecycle ones) are promoted unchanged from the embedded client.
 
-### 2.4 The starter-cache bridge
+### 2.4 The cache abstraction bean
 
-A second `init` registers the `"memcached"` driver with starter-cache (`starter.go:66-73`):
-`spring.cache.<name>.driver = memcached:<memcached-instance-name>` exposes a typed
-`cache.Cache` over `bytecache.NewByteCache` (`bytecache/bytecache.go:33-36`). TTL conversion:
+Alongside the wrapper, each instance is provided as a typed `cache.Cache` bean named
+`memcached:<memcached-instance-name>` (`starter.go:61-67`) over `bytecache.NewByteCache`
+(`bytecache/bytecache.go:33-36`) — inject `*cache.Cache` with the autowire tag
+`memcached:<instance-name>`. Un-injected, the bean never instantiates, so there is no config
+switch to set. TTL conversion:
 `toExp` maps ttl to int32 seconds — **0/negative means never expire**, sub-second rounds up to 1s
 so it is not silently "forever" (`bytecache/bytecache.go:42-50`). `GetBytes` maps
 `ErrCacheMiss` to `cache.ErrMiss`; `Delete` of an absent key is not an error
@@ -204,17 +209,17 @@ so it is not silently "forever" (`bytecache/bytecache.go:42-50`). `GetBytes` map
 Six value tags exist in the per-instance Config (verified with the grep audit; `demo.label` in
 the output belongs to the example app, not the starter).
 
-| Key (under `spring.memcached.<name>`) | Type | Default | Behavior / interactions | Misconfiguration consequence |
+| Key (under `spring.memcached.instances.<name>`) | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |---|---|---|---|---|
 | `servers` | []string | empty | Static server list; requests sharded across it (config.go:28). XOR with `service-name`. | Both empty → ctor error `one of servers or service-name must be set` (starter.go:83); dead address → startup ping fail-fast |
 | `service-name` | string | empty | Discovery addressing: resolves the server list through the backend named by `discovery` (config.go:39). When set (non-mesh), `servers` is ignored. | Backend missing → boot error `discovery resolve %q failed`; empty snapshot → boot error (driver.go:76-79) |
 | `scheme` | string | empty | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name` (config.go:45). | Over-filtering → "no endpoints" boot error |
-| `discovery` | string | `default` | Which registered `discovery.Discovery` resolves `service-name` (config.go:50). | Unknown backend name → boot error |
+| `discovery` | string | — | Which registered `discovery.Discovery` resolves `service-name` (config.go:50). The wiring resolves this label to a bean and passes it to the driver as the `backend` argument of `CreateClient`. | Unset or an unregistered name while service-name is set → boot error. |
 | `timeout` | duration | 0 | Socket read/write timeout per request; 0 = gomemcache default 100ms (config.go:54). | Too low → spurious timeouts under load |
 | `max-idle-conns` | int | 0 | Idle connections kept per server; 0 = driver default 2 (config.go:58). | Too low → reconnect churn |
 
-No `driver` key: client assembly is owned by an optional Driver bean (see §2.1) or the bundled
-`DefaultDriver`; no `resilience` key: resilience/fault come from the governance center
+The `driver` key names the Driver bean: empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type (see
+§2.1), set to a bean name to select one explicitly; no `resilience` key: resilience/fault come from the governance center
 (`govern.*` config of
 starter-governance), keyed by resource `memcached:<instance-name>`.: resilience/fault come from the governance center (`govern.*` config of
 starter-governance), keyed by resource `memcached:<instance-name>`.

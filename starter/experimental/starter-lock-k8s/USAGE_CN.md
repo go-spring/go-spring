@@ -9,7 +9,7 @@
 [Kubernetes Lease API](https://kubernetes.io/docs/concepts/architecture/leases/)；本文只写
 go-spring 的增量。
 
-**激活方式**：任一 `spring.lock.<name>.*` 配置即为每个 `<name>` 注册一个 Lease 后端的
+**激活方式**：任一 `spring.lock.instances.<name>.*` 配置即为每个 `<name>` 注册一个 Lease 后端的
 `lock.Locker` 实例。这是 K8s 原生后端：加锁/选主直接复用控制面的
 `coordination.k8s.io/Lease` API（即 `--leader-elect` 背后的机制），集群内应用**无需额外
 中间件**。`spring.lock` 前缀为四个锁后端共享——一个二进制只 blank-import 一个锁后端。
@@ -189,7 +189,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.lock.<name>` 之下（精确匹配，无宽松形态）。
+所有 key 位于 `spring.lock.instances.<name>` 之下（精确匹配，无宽松形态）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
@@ -251,7 +251,7 @@ starter-otel 时包装器近乎无感的 no-op。
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动报 `in-cluster config` | 集群外运行且未设 `kubeconfig` | 设置 `spring.lock.<n>.kubeconfig`。 |
+| 启动报 `in-cluster config` | 集群外运行且未设 `kubeconfig` | 设置 `spring.lock.instances.<n>.kubeconfig`。 |
 | 启动报加载 kubeconfig 失败 | 路径/格式错误 | 报错会点名文件；修路径。 |
 | acquire 报 `forbidden` | ServiceAccount 缺 lease get/create/update RBAC | 应用类似 `example/deploy/rbac.yaml` 的 Role；注意启动本身是成功的。 |
 | Lease 创建/更新因名字被拒 | `key-prefix`/key 非 DNS-1123 subdomain | 只用小写字母数字、`-`、`.`。 |

@@ -44,9 +44,9 @@ type kv struct {
 // Init installed the observe plugin + resilience callbacks.
 func TestSqliteAssembly(t *testing.T) {
 	gs.Web(false).Configure(func(app gs.App) {
-		app.Property("spring.gorm.sqlite.mem.file", ":memory:")
+		app.Property("spring.gorm.sqlite.instances.mem.file", ":memory:")
 	}).RunTest(t, func(s *struct {
-		DBs  []*DB              `autowire:""`
+		DBs  []*gormcore.DB      `autowire:""`
 		Inds []*health.Indicator `autowire:""`
 	}) {
 		if len(s.DBs) != 1 {
@@ -83,10 +83,10 @@ func TestSqliteAssembly(t *testing.T) {
 }
 
 // TestSqliteDefaultsNotTriggered proves the conditional wiring: with no
-// spring.gorm.sqlite.* entries the starter registers nothing and the app starts.
+// spring.gorm.sqlite.instances.* entries the starter registers nothing and the app starts.
 func TestSqliteDefaultsNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {
-		DBs  []*DB              `autowire:""`
+		DBs  []*gormcore.DB      `autowire:""`
 		Inds []*health.Indicator `autowire:""`
 	}) {
 		if len(s.DBs) != 0 || len(s.Inds) != 0 {
@@ -100,7 +100,7 @@ func TestSqliteDefaultsNotTriggered(t *testing.T) {
 func TestBuildSpec(t *testing.T) {
 	c := Config{File: ":memory:"}
 	c.ObserveEnabled = false
-	spec, err := build(context.Background(), c)
+	spec, err := build(context.Background(), c, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("build must return a dialector")

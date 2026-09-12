@@ -36,12 +36,17 @@ func init() {
 	// Register multiple Kafka clients as a group.
 	// Each instance is created according to the configuration in "${spring.kafka}".
 	// This allows defining multiple Kafka clients dynamically.
-	gs.Module(gs.OnProperty("spring.kafka"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.kafka}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.kafka.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.kafka.instances}", func(name string, c Config) error {
+			// The Driver param (index 3) is selected by the entry's ${driver}
+			// key: unset → "?" (nullable by-type — injects the single Driver
+			// bean when a company provides one, nil otherwise, and newClient
+			// falls back to DefaultDriver); set → that bean name, and naming
+			// a bean that does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("${spring.kafka.instances."+name+".driver:=${spring.kafka.default.driver:=?}}")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
@@ -89,7 +94,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*kgo.C
 		cl.Close()
 		return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
 	}
-	if err := applyResilience(c, cl, resilience.ResourceLabel("kafka", c.Brokers)); err != nil {
+	if err := applyResilience(cl, resilience.ResourceLabel("kafka", c.Brokers)); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "kafka: resilience setup failed: %v", err)
 		cl.Close()
 		return nil, err

@@ -1,6 +1,6 @@
 # starter-redigo 使用指南
 
-`starter-redigo` 把 [redigo](https://github.com/gomodule/redigo)（`gomodule/redigo`）的连接池接入 Go-Spring：配置文件里每个 `${spring.redigo.<name>}` 条目就是一个连接池 bean，注入即用。它在原生 `*redis.Pool` 之上叠了两层横切能力——**可观测**（trace/metric/log）和**弹性**（限流/熔断/重试/超时），并对每条命令自动生效。
+`starter-redigo` 把 [redigo](https://github.com/gomodule/redigo)（`gomodule/redigo`）的连接池接入 Go-Spring：配置文件里每个 `${spring.redigo.instances.<name>}` 条目就是一个连接池 bean，注入即用。它在原生 `*redis.Pool` 之上叠了两层横切能力——**可观测**（trace/metric/log）和**弹性**（限流/熔断/重试/超时），并对每条命令自动生效。
 
 > 本文面向实际使用：配置怎么写、类型怎么注入、扩展点在哪。内部实现细节见源码注释。
 
@@ -18,7 +18,7 @@
 - [八、扩展：per-command 钩子（CommandInterceptor）](#八扩展per-command-钩子commandinterceptor)
 - [九、关闭内置功能](#九关闭内置功能)
 - [十、服务发现](#十服务发现)
-- [十一、作为缓存使用（cache driver）](#十一作为缓存使用cache-driver)
+- [十一、作为缓存使用（cache.Cache bean）](#十一作为缓存使用cachecache-bean)
 - [十二、健康检查与连接池监控](#十二健康检查与连接池监控)
 - [十三、TLS](#十三tls)
 - [十四、与 starter-go-redis 的关系](#十四与-starter-go-redis-的关系)
@@ -31,9 +31,9 @@
 
 | 类型 | 是什么 | 你需要知道什么 |
 |---|---|---|
-| **`Pool`** | `*redis.Pool` 的包装 bean | 你注入的就是它。它**嵌入**了 `*redis.Pool`，所以 `Get()`/`Stats()`/`Close()` 等 redigo 原生方法原样可用；额外承载 resilience / observability 的配置字段。每个 `${spring.redigo.<name>}` 条目产出一个 `*Pool` bean，名字是 `<name>`。 |
+| **`Pool`** | `*redis.Pool` 的包装 bean | 你注入的就是它。它**嵌入**了 `*redis.Pool`，所以 `Get()`/`Stats()`/`Close()` 等 redigo 原生方法原样可用；额外承载 resilience / observability 的配置字段。每个 `${spring.redigo.instances.<name>}` 条目产出一个 `*Pool` bean，名字是 `<name>`。 |
 | **`Conn`** | `redis.Conn` 的插桩包装 | `pool.Get()` 拿到的连接其实是 `*Conn`。它对每条命令（`Do` / `DoContext` / `DoWithTimeout`）自动套上 trace span、metric、访问日志，并在开启 resilience 时套上执行器。**对调用方完全透明**——你照常用 redigo 的 `conn.Do(...)`，插桩在背后发生。 |
-| **`Driver`** | 创建连接池的扩展接口 | 默认实现 `DefaultDriver` 满足绝大多数场景。需要自定义拨号逻辑（公司内部寻址、特殊鉴权、代理…）时实现它并 `RegisterDriver` 注册，详见[第七节](#七扩展自定义-driver)。 |
+| **`Driver`** | 创建连接池的扩展接口 | 默认实现 `DefaultDriver` 满足绝大多数场景。需要自定义拨号逻辑（公司内部寻址、特殊鉴权、代理…）时实现它并作为可选容器 bean 提供，详见[第七节](#七扩展自定义-driver)。 |
 
 ---
 
@@ -45,17 +45,17 @@
 import _ "go-spring.org/starter-redigo"
 ```
 
-`init()` 会在导入时完成所有注册。如果你要[自定义 Driver](#七扩展自定义-driver)，则改成非空导入以便调用 `RegisterDriver`。
+`init()` 会在导入时完成所有注册。[自定义 Driver](#七扩展自定义-driver) 走可选容器 bean，不需要非空导入。
 
 ### 2. 配置一个实例
 
 `example/conf/app.properties`：
 
 ```properties
-spring.redigo.cache.addr=127.0.0.1:6379
+spring.redigo.instances.cache.addr=127.0.0.1:6379
 ```
 
-`cache` 是你给这个实例起的名字（任意），下面所有 `spring.redigo.cache.*` 都属于它。
+`cache` 是你给这个实例起的名字（任意），下面所有 `spring.redigo.instances.cache.*` 都属于它。
 
 ### 3. 注入并使用
 
@@ -90,7 +90,7 @@ n, err := redis.Int(conn.Do("INCR", "counter")) // INCR
 
 ## 三、配置项参考
 
-所有键挂在 `spring.redigo.<name>.*` 下（`<name>` 是实例名）。
+所有键挂在 `spring.redigo.instances.<name>.*` 下（`<name>` 是实例名）。
 
 ### 连接
 
@@ -119,7 +119,7 @@ n, err := redis.Int(conn.Do("INCR", "counter")) // INCR
 |---|---|---|
 | `service-name` | _空_ | 填了就走[服务发现](#十服务发现)，`addr` 被忽略。 |
 | `scheme` | _空_ | 发现时按传输 scheme 过滤（如 `tls`）。仅 `service-name` 非空时有效。 |
-| `discovery` | `default` | 选哪个已注册的 discovery 后端。仅 `service-name` 非空时有效。 |
+| `discovery` | — | 选哪个已注册的 discovery 后端。仅 `service-name` 非空时有效；未配置即无后端。 |
 | `driver` | `DefaultDriver` | 选哪个[ Driver](#七扩展自定义-driver)。 |
 | `startup-ping` | `false` | 启动期拨一条连接 `PING`，地址错/不可达时启动即失败（fail-fast），而非等到首次请求。redigo 池是惰性拨号的，建议生产打开。 |
 
@@ -132,9 +132,9 @@ n, err := redis.Int(conn.Do("INCR", "counter")) // INCR
 `spring.redigo` 是个 map，每个条目一个独立池，按名字注入：
 
 ```properties
-spring.redigo.cache.addr=127.0.0.1:6379
-spring.redigo.session.addr=10.0.0.2:6379
-spring.redigo.session.db=1
+spring.redigo.instances.cache.addr=127.0.0.1:6379
+spring.redigo.instances.session.addr=10.0.0.2:6379
+spring.redigo.instances.session.db=1
 ```
 
 ```go
@@ -214,25 +214,24 @@ TracerProvider/MeterProvider（`spring.observability.*` 管理 exporter、采样
 
 ```go
 type Driver interface {
-    CreateClient(ctx context.Context, c Config) (*redis.Pool, io.Closer, error)
+    CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*redis.Pool, io.Closer, error)
 }
 ```
 
-### 注册与选用
+### 提供与选用
 
 ```go
 import StarterRedigo "go-spring.org/starter-redigo"
 
 func init() {
-    StarterRedigo.RegisterDriver("MyDriver", MyDriver{})
+    // 可选容器 bean：构造函数返回 Driver 接口即可
+    gs.Provide(func() StarterRedigo.Driver { return MyDriver{} })
 }
 ```
 
-```properties
-spring.redigo.cache.driver=MyDriver   # 选中它（默认是 DefaultDriver）
-```
-
-`RegisterDriver` 重名会 panic（fail-fast，避免静默覆盖）。
+容器里没有 Driver bean 时，装配内部回退到内置 `DefaultDriver`；存在多个 Driver bean 时，
+实例可按名指定：`spring.redigo.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
+Driver bean；指定的 bean 不存在则启动失败）。
 
 ### teardown（关闭语义）
 
@@ -250,7 +249,7 @@ spring.redigo.cache.driver=MyDriver   # 选中它（默认是 DefaultDriver）
 ```go
 type MyDriver struct{}
 
-func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config) (*redis.Pool, io.Closer, error) {
+func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, backend discovery.Discovery) (*redis.Pool, io.Closer, error) {
     pool := &redis.Pool{
         MaxActive: c.PoolSize,
         MaxIdle:   c.MaxIdle,
@@ -271,42 +270,39 @@ func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config) (*redi
 
 ## 八、扩展：per-command 钩子（CommandInterceptor）
 
-想对**单条命令**做自定义处理——本地缓存命中就短路、命令 deny-list、改写参数、按命令埋点——注册一个 `CommandInterceptor`：
+想对**单条命令**做自定义处理——本地缓存命中就短路、命令 deny-list、改写参数、按命令埋点——给池注册一个 `CommandInterceptor`：
 
 ```go
-type CommandInterceptor func(
-    ctx context.Context,
-    cmd string,
-    args []interface{},
-    next func(ctx context.Context) (reply interface{}, err error),
-) (reply interface{}, err error)
+type CommandHandler func(ctx context.Context, cmd string, args []interface{}) (reply interface{}, err error)
+type CommandInterceptor func(next CommandHandler) CommandHandler
 ```
 
-它是 **middleware 型**：`next` 是完整的内置路径（observe span + resilience executor + 真正的 Redis 调用）。调一次 `next` 命令才到 Redis；**不调就短路**。
+它是 **洋葱型**（与 grpc Interceptor 同形）：`next` 是内层路径（其余用户拦截器 → observe span → resilience executor → 真正的 Redis 调用）。调一次 `next` 命令才到 Redis；**不调就短路**。
 
-### 注册（全局单实例，在 init 里）
+### 注册（按池，在 bean Init 里）
 
 ```go
-import StarterRedigo "go-spring.org/starter-redigo"
-
-func init() {
-    StarterRedigo.RegisterInterceptor(func(ctx context.Context, cmd string, args []interface{},
-        next func(context.Context) (interface{}, error)) (interface{}, error) {
-        // 例 1：本地缓存短路 GET，不打扰 Redis、不消耗熔断配额、不发 span
-        if cmd == "GET" {
-            if v, ok := localCache.Get(args[0]); ok {
-                return v, nil // 不调 next
+gs.Provide(func(s *Service) gs.Init {
+    return func(ctx context.Context) {
+        s.Main.UseCommandInterceptor(func(next StarterRedigo.CommandHandler) StarterRedigo.CommandHandler {
+            return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+                // 例 1：本地缓存短路 GET，不打扰 Redis、不消耗熔断配额、不发 span
+                if cmd == "GET" {
+                    if v, ok := localCache.Get(args[0]); ok {
+                        return v, nil // 不调 next
+                    }
+                }
+                // 例 2：其余命令照走，顺带记一笔
+                return next(ctx, cmd, args)
             }
-        }
-        // 例 2：其余命令照走，顺带记一笔
-        return next(ctx)
-    })
-}
+        })
+    }
+})
 ```
 
 ### 要记住的语义
 
-- **作用域是全局单槽**：一个进程注册**一个** `CommandInterceptor`，作用于**所有** redigo 实例（和 starter-gin 的单个 `EngineMiddleware` 同模型）。需要按实例分支时，在钩子内 `switch cmd` 或用你按池设置的 context 值自行区分。重复注册 panic。
+- **作用域是单池**：`UseCommandInterceptor` 注册到**这一个**池，可注册多条（先注册的在外层），不同池各自独立。请在流量到来前的 bean Init 里注册——折叠发生在每次拨号时，之后注册的只影响之后拨出的连接。
 - **钩子在最外层**：在 observe span 和 resilience executor **之前**。所以短路时**不发 span、不消耗限流/熔断配额**——本地命中不该被记成一次 Redis 调用。想让命令计入熔断的观察型钩子，必须调 `next`。
 - **`next` 返回的错误**：`redis.ErrNil`（未命中）、`ErrRateLimited`/`ErrCircuitOpen`/`ErrBulkheadFull` 都会原样回到钩子，你可以翻译或吞掉。
 - **不注册零开销**：没注册时 `Conn` 直接走内置路径，无额外间接调用。
@@ -315,7 +311,7 @@ func init() {
 
 ## 九、关闭内置功能
 
-内置功能各自带开关，按实例（配置）控制。下表 `spring.redigo.<name>.*` 下的键：
+内置功能各自带开关，按实例（配置）控制。下表 `spring.redigo.instances.<name>.*` 下的键：
 
 | 内置功能 | 开关键 | 默认 | 关掉的效果 |
 |---|---|---|---|
@@ -325,11 +321,11 @@ func init() {
 
 ```properties
 # 某个非关键缓存池：不进聚合健康
-spring.redigo.softcache.addr=10.0.0.5:6379
-spring.redigo.softcache.health.enabled=false
+spring.redigo.instances.softcache.addr=10.0.0.5:6379
+spring.redigo.instances.softcache.health.enabled=false
 ```
 
-> **cache driver**（`redigo` 那个 `cache.RegisterDriver`）是包级注册，但被 `spring.cache.<n>.driver=redigo:...` 引用前是惰性的，不引用就不生效，无需开关。
+> 缓存抽象 bean（名为 `redigo:<实例名>` 的 `*cache.Cache`）是惰性的：无人注入就不实例化，无配置开关。
 
 ---
 
@@ -338,10 +334,10 @@ spring.redigo.softcache.health.enabled=false
 填 `service-name` 即走服务发现，`addr` 被忽略：
 
 ```properties
-spring.redigo.cache.service-name=redis-cluster
-spring.redigo.cache.discovery=default   # 可选，选已注册的 discovery 后端，默认 default
-spring.redigo.cache.scheme=tls          # 可选，按 scheme 过滤端点
-spring.redigo.cache.conn-max-lifetime=30s  # 建议调短，平滑切址
+spring.redigo.instances.cache.service-name=redis-cluster
+spring.redigo.instances.cache.discovery=nacos.default   # 可选，选已注册的 discovery 后端；未配置即无后端
+spring.redigo.instances.cache.scheme=tls          # 可选，按 scheme 过滤端点
+spring.redigo.instances.cache.conn-max-lifetime=30s  # 建议调短，平滑切址
 ```
 
 工作方式：
@@ -355,25 +351,20 @@ spring.redigo.cache.conn-max-lifetime=30s  # 建议调短，平滑切址
 
 ---
 
-## 十一、作为缓存使用（cache driver）
+## 十一、作为缓存使用（cache.Cache bean）
 
-starter 注册了一个名为 `redigo` 的 cache driver，可以把某个连接池暴露成 `cache.Cache`（基于 `bytecache` 子包，GET/SET/DEL 走 `redis.DoContext`）：
-
-```properties
-# spring.cache.<cache-bean>.driver = redigo:<redigo 实例名>
-# 下面把名为 cache 的 redigo 实例包成一个 cache.Cache，bean 名叫 kv
-spring.cache.kv.driver=redigo:cache
-```
+每个 redigo 实例（连接池）都会另提供一个 `cache.Cache` bean（基于 `bytecache` 子包，GET/SET/DEL 走 `redis.DoContext`），bean 名为 `redigo:<实例名>`：
 
 ```go
 import "go-spring.org/cloud/cache"
 
 type Service struct {
-    KV *cache.Cache `autowire:"kv"`
+    // 名为 cache 的 redigo 实例上的带类型缓存门面
+    KV *cache.Cache `autowire:"redigo:cache"`
 }
 ```
 
-格式是 `redigo:<redigo 实例名>`。
+无人注入该 bean 则不实例化，因此没有配置开关。
 
 ---
 
@@ -405,14 +396,14 @@ fmt.Println("active:", stats.ActiveCount, "idle:", stats.IdleCount)
 字段布局与 `starter-go-redis` 完全一致：
 
 ```properties
-spring.redigo.cache.tls.enabled=true
-spring.redigo.cache.tls.ca-file=/path/to/ca.pem
+spring.redigo.instances.cache.tls.enabled=true
+spring.redigo.instances.cache.tls.ca-file=/path/to/ca.pem
 # 双向 TLS 再加：
-spring.redigo.cache.tls.cert-file=/path/to/client.pem
-spring.redigo.cache.tls.key-file=/path/to/client.key
-spring.redigo.cache.tls.server-name=redis.example.com
+spring.redigo.instances.cache.tls.cert-file=/path/to/client.pem
+spring.redigo.instances.cache.tls.key-file=/path/to/client.key
+spring.redigo.instances.cache.tls.server-name=redis.example.com
 # 仅自签测试用：
-spring.redigo.cache.tls.insecure-skip-verify=true
+spring.redigo.instances.cache.tls.insecure-skip-verify=true
 ```
 
 `tls.enabled=false`（默认）时走明文。

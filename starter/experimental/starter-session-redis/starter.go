@@ -16,9 +16,9 @@
 
 // Package StarterSessionRedis contributes Redis-backed
 // [session.SessionStore] beans to a Go-Spring application. Blank-importing this
-// package registers one Store per entry under spring.session.redis.<name>; each
+// package registers one Store per entry under spring.session.redis.instances.<name>; each
 // Store reuses the *redis.Client bean named by its `client` field (provided by
-// starter-go-redis under spring.go-redis.<client>).
+// starter-go-redis under spring.go-redis.instances.<client>).
 //
 // This is a Contributor-archetype starter (see starter/DESIGN.md §2.3): it
 // exports no port and holds no connection of its own, it merely contributes a
@@ -48,14 +48,14 @@ import (
 )
 
 func init() {
-	gs.Module(gs.OnProperty("spring.session.redis"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.session.redis}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.session.redis.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.session.redis.instances}", func(name string, c Config) error {
 			// Fail fast: silently defaulting to some arbitrary *redis.Client
 			// would hide a misconfiguration that only surfaces on the first
 			// session read/write, potentially in production.
 			if c.Client == "" {
 				return errutil.Explain(nil, "session-redis: instance %q missing required property %q",
-					name, "spring.session.redis."+name+".client")
+					name, "spring.session.redis.instances."+name+".client")
 			}
 			log.Debugf(context.Background(), log.TagAppDef, "creating session store name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
 			// TagArg injects the *redis.Client bean by name — this is the seam

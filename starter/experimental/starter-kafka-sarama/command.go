@@ -207,11 +207,7 @@ var clientGuards sync.Map // sarama.Client -> *clientGuard
 // zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
 // transparent no-op executor; fault wraps it when enabled.
 func applyResilience(c Config, client sarama.Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor(resource))
-	// Wrap so breaker trips / rejects / retries emit span + counter + histogram
-	// + access log (the resilience core emits none). nil-safe, no-op without
-	// starter-otel.
-	exec = resilience.WrapExecutor(exec, "kafka")
+	exec := fault.WrapExecutor(resilience.ExecutorFor("kafka", resource))
 	clientGuards.Store(client, &clientGuard{exec: exec, resource: resource})
 	return nil
 }

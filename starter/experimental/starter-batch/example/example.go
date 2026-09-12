@@ -51,8 +51,8 @@ import (
 	StarterBatch "go-spring.org/starter-batch"
 
 	// Blank-import the redis client starter (publishes *redis.Client under
-	// spring.go-redis.<name>) and the redis-backed batch repository (contributes
-	// a batch.JobRepository under spring.batch-repository.<name>). Sibling
+	// spring.go-redis.instances.<name>) and the redis-backed batch repository (contributes
+	// a batch.JobRepository under spring.batch-repository.instances.<name>). Sibling
 	// modules resolve through the go.work workspace with no require directives.
 	_ "go-spring.org/starter-batch-redis"
 	_ "go-spring.org/starter-go-redis"

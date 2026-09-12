@@ -22,8 +22,8 @@ import (
 	"time"
 )
 
-// Injector holds the live [Config] behind an atomic pointer so a starter can
-// hot-swap it from a gs.Dync.OnChanged callback without taking a lock on the
+// Injector holds the live [Config] behind an atomic pointer so the center can
+// hot-swap it from a source push without taking a lock on the
 // execute path. A zero-valued config (or Enabled false) injects nothing, so an
 // Injector with the zero Config is a transparent no-op.
 type Injector struct {

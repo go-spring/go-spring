@@ -6,7 +6,7 @@ against the starter source (`starter.go`, `config.go`, `client.go`, `command.go`
 **NATS semantics (core NATS, JetStream, queue groups, subject wildcards, drain) are
 [nats.go's own documentation](https://docs.nats.io/)** — everything below is go-spring's increment.
 
-**Activation**: every `spring.nats.<name>` entry registers one `*Conn` bean named `<name>`
+**Activation**: every `spring.nats.instances.<name>` entry registers one `*Conn` bean named `<name>`
 [starter.go:33-40]. No entries → starter inactive. Multi-instance only; no default singleton.
 
 ---
@@ -119,19 +119,19 @@ err := pub.Publish(ctx, &messaging.Message{
 **conf/app.properties** — the complete commented surface:
 
 ```properties
-# --- nats (multi-instance: each spring.nats.<name> = one *Conn bean) ----------
-spring.nats.main.url=nats://127.0.0.1:4222
-spring.nats.main.name=orders-service        # feeds governance label + server-side conn name
-spring.nats.main.jetstream.enabled=true     # exposes Conn.JetStream (same connection)
-# spring.nats.main.max-reconnects=-1        # -1 = unlimited (default 60)
-# spring.nats.main.reconnect-wait=2s
-# spring.nats.main.connect-timeout=5s
+# --- nats (multi-instance: each spring.nats.instances.<name> = one *Conn bean) ----------
+spring.nats.instances.main.url=nats://127.0.0.1:4222
+spring.nats.instances.main.name=orders-service        # feeds governance label + server-side conn name
+spring.nats.instances.main.jetstream.enabled=true     # exposes Conn.JetStream (same connection)
+# spring.nats.instances.main.max-reconnects=-1        # -1 = unlimited (default 60)
+# spring.nats.instances.main.reconnect-wait=2s
+# spring.nats.instances.main.connect-timeout=5s
 # auth (mutually orthogonal styles, pick one):
-# spring.nats.main.username=... / password=...
-# spring.nats.main.token=...
-# spring.nats.main.creds-file=/etc/nats/app.creds
-# spring.nats.main.nkey-file=/etc/nats/app.nk
-# TLS: spring.nats.main.tls.enabled=true + ca-file/cert-file/key-file/...
+# spring.nats.instances.main.username=... / password=...
+# spring.nats.instances.main.token=...
+# spring.nats.instances.main.creds-file=/etc/nats/app.creds
+# spring.nats.instances.main.nkey-file=/etc/nats/app.nk
+# TLS: spring.nats.instances.main.tls.enabled=true + ca-file/cert-file/key-file/...
 
 # --- actuator (probes + metrics mount) ----------------------------------------
 spring.actuator.addr=:9370
@@ -179,19 +179,21 @@ curl -s :9370/metrics | grep -i nats
 import starter-nats
   └─ gs.Module(gs.OnProperty("spring.nats"))              [starter.go:33]
 gs.Run()
-  ├─ config bind: each spring.nats.<name> → Config (value tags; url expr-validated ≠ "")
+  ├─ config bind: each spring.nats.instances.<name> → Config (value tags; url expr-validated ≠ "")
   ├─ per name: Provide(newConn, IndexArg(1,ValueArg(name)), IndexArg(2,ValueArg(c)))
   │             .Name(name).Destroy(destroyConn).Caller(1)  [starter.go:36-40]
-  ├─ newConn: Driver bean (falls back to bundled DefaultDriver when none is
+  ├─ newConn: Driver bean, selected per entry by ${spring.nats.instances.<name>.driver}
+  │     (empty = `spring.nats.default.driver` then by type; set = by bean name — naming a missing bean fails startup);
+  │     falls back to bundled DefaultDriver when none is
   │           present) → CreateClient (nats.Connect — FAIL-FAST probe; a broker
   │           that is down aborts boot)
   ├─ attach instrumentation: pubObs/subObs (module-local observe.go)
   │           [driver.go:155-156]
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
   │           [driver.go:158-164]
-  ├─ applyResilience: fault.WrapExecutor(resilience.ExecutorFor(resource)) wrapped in
-  │           resilience.WrapExecutor — no-op executor when governance is off
-  │           [driver.go:166; command.go:162-174]
+  ├─ applyResilience: fault.WrapExecutor(resilience.ExecutorFor("nats", resource))
+  │           — no-op executor when governance is off
+  │           [driver.go:166; command.go:167-172]
   ├─ Run / readiness
   └─ SIGTERM: destroyConn → exec.Close() (error returned after Drain) then Conn.Drain()
               — in-flight subscriptions finish, then the socket closes [client.go:70-74]
@@ -259,10 +261,10 @@ resilience executor is reached only through opt-in **methods** [command.go:152-1
 | `Conn.PublishGuarded(ctx, subj, data)` | span+metric+log (routes through `PublishMsg`) | yes |
 | `Conn.RequestGuarded(ctx, subj, data, timeout)` | **no** | yes |
 
-Wrap order inside `applyResilience` [command.go:162-174]: `ExecutorFor(resource)` (governance
-center-backed; transparent no-op when governance off) → `fault.WrapExecutor` (fault injection) →
-`resilience.WrapExecutor(exec, "nats")` (spans/counters/histograms for breaker
-trips, rejects, retries — the resilience core emits none). On rejection the guarded call returns
+Wrap order inside `applyResilience` [command.go:167-172]: `ExecutorFor("nats", resource)` (governance
+center-backed; transparent no-op when governance off; already carries the observe layer —
+spans/counters/histograms for breaker trips, rejects, retries — the resilience core emits none) →
+`fault.WrapExecutor` (fault injection, outermost). On rejection the guarded call returns
 a resilience sentinel (`ErrRateLimited` / `ErrCircuitOpen`) and the underlying publish/request
 is never invoked — proven by [resilience_test.go:63-84]. The `resource` is
 `nats:<name>` (colon format; falls back to `nats:<url>` when name unset) (per connection, not per subject) [driver.go:166], so limiter/breaker
@@ -276,7 +278,7 @@ caller's ctx but the timeout is per-attempt inside `Request`.
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.nats.<name>.*`. The `tls` group key binds a nested shared
+All keys live under `spring.nats.instances.<name>.*`. The `tls` group key binds a nested shared
 struct — its sub-keys belong to tlsconf, not this starter.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |

@@ -85,13 +85,17 @@ type fakeSubConn struct {
 	addr string
 }
 
-// newTestPickerBuilder builds a picker over a round-robin strategy with the
-// default suspension policy (5 consecutive failures evict for a long window).
+// newTestPickerBuilder builds a picker over a round-robin strategy with a
+// suspension policy of its own (the built-in balancers start disabled and are
+// retuned by governance, which a unit test does not arm).
 func newTestPickerBuilder(t *testing.T) *gsPickerBuilder {
 	t.Helper()
 	bal, err := loadbalance.New(loadbalance.RoundRobin)
 	assert.That(t, err).Nil()
-	return &gsPickerBuilder{bal: bal, tracker: loadbalance.NewTracker(defaultTracker)}
+	return &gsPickerBuilder{bal: bal, tracker: loadbalance.NewTracker(loadbalance.TrackerConfig{
+		Threshold:  5,
+		SuspendFor: 30 * time.Second,
+	})}
 }
 
 // TestPickerBuild_NoReadySubConns pins the empty-topology behavior: with no

@@ -18,23 +18,12 @@ package luohua
 
 import (
 	"go-spring.org/cloud/cache"
-	StarterCache "go-spring.org/starter-cache"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
-	// Register the luohua cache driver under one company-wide name. Any service
-	// that wants the standard luohua in-process cache selects it by config —
-	//
-	//	spring.cache.<name>.driver = luohua:<beanID>
-	//
-	// — keeping the whole company on one driver spelling while the backend stays
-	// swappable behind the same cloud/cache.ByteCache contract (M1 seam).
-	StarterCache.RegisterDriver("luohua", func(beanID string) gs.ModuleFunc {
-		return func(r gs.BeanProvider, _ flatten.Storage) error {
-			r.Provide(func() *cache.Cache { return NewLuohuaCache() }).Name(beanID)
-			return nil
-		}
-	})
+	// Expose the standard luohua in-process cache as a *cache.Cache bean under
+	// one company-wide name — autowire it as `cache.Cache` with tag "luohua".
+	// Un-injected, the bean never instantiates, so no config gate is needed.
+	gs.Provide(func() *cache.Cache { return NewLuohuaCache() }).Name("luohua")
 }

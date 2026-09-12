@@ -99,7 +99,7 @@ The more common production path is declarative: any driver-aware consumer select
 by name, e.g. `spring.http.client.<name>.resilience.driver=sentinel` (starter-http-client /
 oauth2-client). With no `driver` key those starters stay on the zero-dependency `default`
 driver. Under the governance center, clients do not pick a driver at all — they call
-`resilience.ExecutorFor(label)` (see §2.2).
+`resilience.ExecutorFor(system, label)` (see §2.2).
 
 ---
 
@@ -123,11 +123,13 @@ import starter-resilience
 
 ### 2.2 The ExecutorFor seam (governance center integration)
 
-`resilience.ExecutorFor(resource)` (provider.go in the abstraction, NOT this starter) is
-the single call clients use instead of injecting a governance center:
+`resilience.ExecutorFor(system, resource)` (provider.go in the abstraction, NOT this starter)
+is the single call clients use instead of injecting a governance center:
 
-- It returns a stable `resolvedExecutor` holding only the label; the backing executor is
-  resolved **lazily on each Execute** and memoized per label (sync.Map cache).
+- It returns a stable `resolvedExecutor` holding the system and resource labels; the backing
+  executor is resolved **lazily on each Execute** and memoized per label (sync.Map cache).
+  The observe layer is applied during that resolve, on the still-private executor, so the
+  client gets a fully composed executor and never wraps one itself.
 - The provider is installed once by starter-govern after building the governance center;
   because resolution is deferred to call time, client-vs-govern wiring order is irrelevant.
 - With no provider registered (starter-govern absent or governance disabled), the executor

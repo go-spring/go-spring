@@ -125,6 +125,21 @@ func TestCommonPool(t *testing.T) {
 	}
 }
 
+// TestNewResolverRequiresBackend pins the fail-loud rule the wiring relies on: a
+// discovery-routed entry (service-name set) whose ${discovery} label named no
+// bean must error instead of silently dialing the configured address. The
+// backend is an argument now, so the rule is exercised by passing nil.
+func TestNewResolverRequiresBackend(t *testing.T) {
+	c := Common{ServiceName: "user-db", Discovery: "nope"}
+	if _, err := c.NewResolver(context.Background(), nil); err == nil {
+		t.Fatal("expected an error when service-name is set but the label named no backend")
+	}
+	// No service-name → discovery not in effect, no backend needed.
+	if r, err := (Common{}).NewResolver(context.Background(), nil); err != nil || r != nil {
+		t.Fatalf("expected (nil, nil) without service-name, got %v, %v", r, err)
+	}
+}
+
 func TestGormConfig(t *testing.T) {
 	// No slow threshold → gorm's default logger stays in place.
 	if cfg := GormConfig(PoolConfig{}); cfg.Logger != nil {

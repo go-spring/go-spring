@@ -7,8 +7,8 @@ spot-checks in brackets below. **Redis semantics and the go-redis API are [go-re
 documentation](https://redis.io/docs/latest/develop/clients/go/)** — everything below is
 go-spring's increment.
 
-**Activation**: any `spring.go-redis.*` key (the module is `OnProperty("spring.go-redis")`, a
-prefix check). Each `spring.go-redis.<name>` entry creates one `*StarterGoRedis.Client` bean
+**Activation**: any `spring.go-redis.instances.*` key (the module is `OnProperty("spring.go-redis")`, a
+prefix check). Each `spring.go-redis.instances.<name>` entry creates one `*StarterGoRedis.Client` bean
 named `<name>`, plus a health indicator named `redis:<name>`.
 
 ---
@@ -33,7 +33,6 @@ require (
     github.com/redis/go-redis/v9   latest
     go-spring.org/spring           v1.3.x
     go-spring.org/starter-go-redis latest
-    go-spring.org/starter-cache    latest   // cache façade (spring.cache.*)
     go-spring.org/starter-actuator latest   // optional: readiness + /metrics
     go-spring.org/starter-otel     latest   // optional: real trace/metric export
     go-spring.org/starter-governance latest // optional: resilience/fault policy
@@ -48,7 +47,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-cache"
     _ "go-spring.org/starter-go-redis"
     _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-otel"
@@ -58,8 +56,8 @@ import (
 func main() { gs.Run() }
 ```
 
-**service.go** — inject the wrapper, use the full go-redis command surface, and demonstrate
-the cache driver:
+**service.go** — inject the wrapper, use the full go-redis command surface, and the
+cache façade:
 
 ```go
 package service
@@ -80,10 +78,9 @@ type Service struct {
     Sentinel *StarterGoRedis.Client `autowire:"sentinel"` // sentinel (still *redis.Client)
     Cluster  *StarterGoRedis.Client `autowire:"cluster"`  // cluster (*redis.ClusterClient)
 
-    // The cache façade exposed by spring.cache.main.driver=go-redis:main.
-    // NOTE the bean is named after the REDIS instance ("main"), not the
-    // spring.cache map key — see §3 of starter-cache's USAGE.
-    Cache *cache.Cache `autowire:"main"`
+    // The typed cache façade over the "main" instance — the *cache.Cache
+    // bean named "go-redis:main" (see §3.4).
+    Cache *cache.Cache `autowire:"go-redis:main"`
 }
 
 func init() {
@@ -102,22 +99,19 @@ func init() {
 
 ```properties
 # --- single ---------------------------------------------------------------
-spring.go-redis.main.addr=127.0.0.1:6379
-spring.go-redis.main.pool-size=20
-spring.go-redis.main.conn-max-lifetime=2m
+spring.go-redis.instances.main.addr=127.0.0.1:6379
+spring.go-redis.instances.main.pool-size=20
+spring.go-redis.instances.main.conn-max-lifetime=2m
 
 # --- sentinel: master group resolved through the sentinel nodes -----------
-spring.go-redis.sentinel.mode=sentinel
-spring.go-redis.sentinel.master-name=mymaster
-spring.go-redis.sentinel.sentinel-addrs=127.0.0.1:26379,127.0.0.1:26380
+spring.go-redis.instances.sentinel.mode=sentinel
+spring.go-redis.instances.sentinel.master-name=mymaster
+spring.go-redis.instances.sentinel.sentinel-addrs=127.0.0.1:26379,127.0.0.1:26380
 
 # --- cluster: seed nodes; client learns the full topology itself ----------
-spring.go-redis.cluster.mode=cluster
-spring.go-redis.cluster.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002
-spring.go-redis.cluster.route-by-latency=true
-
-# --- cache façade: expose "main" as a typed cache.Cache bean --------------
-spring.cache.main.driver=go-redis:main
+spring.go-redis.instances.cluster.mode=cluster
+spring.go-redis.instances.cluster.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002
+spring.go-redis.instances.cluster.route-by-latency=true
 
 # --- observability ---------------------------------------------------------
 # Access log (tag _app_redis_access) emits by default; filter via logger config.
@@ -151,7 +145,7 @@ redis-cli GET user:1              # JSON written via the cache façade
 
 ```
 import starter-go-redis
-  └─ gs.Module(OnProperty("spring.go-redis")) fires when any spring.go-redis.* key exists
+  └─ gs.Module(OnProperty("spring.go-redis")) fires when any spring.go-redis.instances.* key exists
         └─ conf.BindEach("${spring.go-redis}") → one Config per <name> entry
               ├─ mode single/sentinel → Provide(newClient).Name(<name>)
               │                          .Init((*Client).Init).Destroy((*Client).Destroy)
@@ -162,11 +156,11 @@ gs.Run()
   ├─ ctor newClient [starter.go:97]: validateConfig → driver lookup → driver.CreateClient
   │   → instrument() (redisotel tracing+metrics, gated by otel.* keys)
   │   → failFastPing (unconditional, bounded by dial-timeout or 5s) [starter.go:218]
-  ├─ Init [client.go:58]: resourceLabel → fault.WrapExecutor(resilience.ExecutorFor(resource))
-  │   → resilience.WrapExecutor → applyObservability (access-log hook)
+  ├─ Init [client.go:55]: resourceLabel → fault.WrapExecutor(resilience.ExecutorFor("redis", resource))
+  │   → applyObservability (access-log hook)
   │   → AddHook(resilienceHook) — command chain complete
   ├─ readiness: probes flip UP (indicator runs client.Ping)
-  └─ SIGTERM → Destroy [client.go:82]: exec.Close → stop discovery watch → client.Close
+  └─ SIGTERM → Destroy [client.go:78]: exec.Close → stop discovery watch → client.Close
 ```
 
 A misconfigured mode (`mode=foo`) or a failed startup ping fails the boot — the process never
@@ -181,7 +175,7 @@ redisotel (span + pool metrics) → observeHook (access log) → resilienceHook 
 → go-redis core → network
 ```
 
-Rationale (source comments, [client.go:63-73] and [command.go:17-27]):
+Rationale (source comments, [client.go:59-69] and [command.go:17-27]):
 
 - **redisotel outermost**: added in the ctor (`instrument()`), before Init adds the rest. The
   span therefore covers everything the starter adds, and the access log rides redisotel's span
@@ -199,7 +193,7 @@ Rationale (source comments, [client.go:63-73] and [command.go:17-27]):
 1. redisotel starts the client span (no-op without starter-otel's globals).
 2. observeHook starts an access-log record named `get` (cmd.FullName()).
 3. resilienceHook asks the executor for a permit (rate limiter / breaker scoped to the resource
-   label, e.g. `redis:127.0.0.1:6379` — per instance, not per command [client.go:94-100]).
+   label, e.g. `redis:127.0.0.1:6379` — per instance, not per command [client.go:90-96]).
 4. go-redis executes; the key is absent so it returns `redis.Nil`.
 5. `run()` classifies `redis.Nil` as success via the nil-as-success predicate [command.go:94] —
    **a cache miss never trips the breaker**; retries are not driven for it either.
@@ -226,7 +220,7 @@ rejected at startup: those topologies discover their own nodes [starter.go:170-1
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.go-redis.<name>.` — field-injection here is per-instance prefix
+All keys live under `spring.go-redis.instances.<name>.` — field-injection here is per-instance prefix
 binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 
 ### 3.1 Topology & addressing
@@ -243,7 +237,7 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 | `route-by-latency` / `route-randomly` | bool | false | Cluster read routing. Both set → go-redis semantics. | — |
 | `service-name` | string | — | Single mode only: resolve addr via discovery. ⚠ Rejected with sentinel/cluster modes. | Wrong combo → boot error; see §2.4. |
 | `scheme` | string | — | Narrows discovery endpoints to one transport scheme. Only consulted when service-name set. | — |
-| `discovery` | string | `default` | Which registered discovery backend resolves service-name. | Unregistered backend → boot error from discovery. |
+| `discovery` | string | — | Which registered discovery backend resolves service-name. | Unset or an unregistered name while service-name is set → boot error. |
 
 ### 3.2 Connection & auth
 
@@ -266,11 +260,13 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 | `otel.tracing.enabled` | bool | true | Attach redisotel spans. No-op without starter-otel. | Off + expecting traces → silence, no warning. |
 | `otel.metrics.enabled` | bool | true | Attach redisotel pool/hit metrics. Same no-op rule. | — |
 
-### 3.4 Cache driver reference syntax
+### 3.4 Cache abstraction bean
 
-`spring.cache.<name>.driver = go-redis:<redis-instance-name>` registers a `*cache.Cache` bean
-(wrapping `bytecache.NewByteCache(c.UniversalClient)`) **named after the redis instance**
-[starter.go:80-89]. `redis.Nil` is mapped to `cache.ErrMiss` at this boundary
+Alongside the wrapper, each instance is provided as a `*cache.Cache` bean (wrapping
+`bytecache.NewByteCache(c.UniversalClient)`) named `go-redis:<redis-instance-name>`
+[starter.go:87-94] — inject `*cache.Cache` with the autowire tag `go-redis:<instance-name>`.
+Un-injected, the bean never instantiates, so there is no config switch to set.
+`redis.Nil` is mapped to `cache.ErrMiss` at this boundary
 [bytecache/bytecache.go:42-51].
 
 ---
@@ -298,15 +294,15 @@ curl -s :9370/metrics | grep -E 'redis.*pool|hits'   # redisotel gauges/counters
 ### 4.3 Discovery address recycling
 
 ```properties
-spring.go-redis.main.service-name=redis-cluster
-spring.go-redis.main.conn-max-lifetime=30s
+spring.go-redis.instances.main.service-name=redis-cluster
+spring.go-redis.instances.main.conn-max-lifetime=30s
 ```
 
 Scale/move the backing instance; within conn-max-lifetime new connections dial the updated
 endpoint (round-robin pool pick per dial). Watch `PoolStats()` (`TotalConns`/`Hits`) or redisotel pool
 metrics to confirm recycling without a restart.
 
-### 4.4 Cache driver wiring (SET via façade, GET via raw client)
+### 4.4 Cache abstraction wiring (SET via façade, GET via raw client)
 
 ```go
 _ = s.Cache.Set(ctx, "k", "v", time.Minute)   // typed, JSON codec
@@ -339,7 +335,7 @@ without restart.
 | Injected bean has no spans/metrics | starter-otel not imported | redisotel rides the OTel globals; import starter-otel. |
 | No access log lines | logger config filters `_app_redis_access` or the Debug level (keyed successes log at Debug) | Check logger config for `_app_redis_access`. |
 | Breaker trips on every GET miss | It does not — redis.Nil is success [command.go:94] | Look for a real backend error; misses are excluded. |
-| Cache bean inject fails | façade bean is named after the redis instance, not the spring.cache key | Autowire by `<redis-instance-name>`; see starter-cache USAGE. |
+| Cache bean inject fails | the `*cache.Cache` bean is named `go-redis:<redis-instance-name>`, not `<instance-name>` | Autowire by `go-redis:<redis-instance-name>`; see §3.4. |
 
 ## 6. Design Health
 
@@ -351,7 +347,7 @@ without restart.
 | "Watch out" entries | 6 |
 
 Design suspects (audit ledger): ~~health indicator has no opt-out key~~ (fixed: `health.enabled`
-now mirrors redigo); cache façade bean named after the backend instance rather
-than the `spring.cache` map key (surprising inject name; two spring.cache entries on one
-instance would collide); `max-retries` (go-redis) vs resilience retry is a foot-gun documented
-only in a config comment.
+now mirrors redigo); ~~cache façade bean named after the backend instance rather
+than the `spring.cache` map key~~ (resolved: the `go-redis:<name>` bean name is now the
+contract, injected directly by name); `max-retries` (go-redis) vs resilience retry is a
+foot-gun documented only in a config comment.

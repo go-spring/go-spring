@@ -6,7 +6,7 @@
 **distributed-lock backend** for the framework-agnostic `lock.Locker`
 abstraction in
 [`go-spring.org/cloud/lock`](../../../cloud/lock). Blank-importing this starter
-registers one `lock.Locker` bean per entry under `spring.lock.<name>`, each
+registers one `lock.Locker` bean per entry under `spring.lock.instances.<name>`, each
 backed by a Consul session with automatic renewal.
 
 Because the injected type is the neutral `lock.Locker` interface, switching
@@ -33,9 +33,9 @@ Add one entry per named instance in your
 [configuration file](example/conf/app.properties):
 
 ```properties
-spring.lock.jobs.address=127.0.0.1:8500
-spring.lock.jobs.ttl=30s
-spring.lock.jobs.key-prefix=demo/lock/
+spring.lock.instances.jobs.address=127.0.0.1:8500
+spring.lock.instances.jobs.ttl=30s
+spring.lock.instances.jobs.key-prefix=demo/lock/
 ```
 
 ### 3. Inject and use `lock.Locker`
@@ -68,7 +68,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 ## Configuration
 
-All keys live under `spring.lock.<name>`:
+All keys live under `spring.lock.instances.<name>`:
 
 | Key                | Default  | Description                                                                            |
 |--------------------|----------|----------------------------------------------------------------------------------------|

@@ -33,8 +33,8 @@ import (
 	"go-spring.org/spring/gs"
 
 	// Blank-import both starters: starter-go-redis publishes the *redis.Client
-	// under spring.go-redis.<name>, and starter-session-redis contributes a
-	// session.SessionStore per spring.session.redis.<name> that reuses that
+	// under spring.go-redis.instances.<name>, and starter-session-redis contributes a
+	// session.SessionStore per spring.session.redis.instances.<name> that reuses that
 	// client by name.
 	_ "go-spring.org/starter-go-redis"
 	_ "go-spring.org/starter-session-redis"

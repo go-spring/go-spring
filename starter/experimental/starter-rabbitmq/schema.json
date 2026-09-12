@@ -2,26 +2,42 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.rabbitmq",
   "type": "object",
+  "description": "Two buckets: spring.rabbitmq.default holds family-wide values (each overridable per instance), spring.rabbitmq.instances.<name> holds one entry per named instance. No other key belongs directly under spring.rabbitmq.",
   "properties": {
-    "url": {
-      "type": "string"
+    "default": {
+      "type": "object",
+      "description": "Family-wide values, each overridable by an instance.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "default": "",
+          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
+        }
+      }
     },
-    "vhost": {
-      "type": "string",
-      "default": ""
-    },
-    "heartbeat": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "10s"
-    },
-    "tls": {
-      "type": "object"
-    },
-    "governance": {
-      "type": "boolean",
-      "default": true,
-      "description": "Route publisher/consumer operations through the governance center (resilience/fault)"
+    "instances": {
+      "type": "object",
+      "description": "One entry per instance; the key is the bean name, and any name is legal.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "vhost": {
+            "type": "string",
+            "default": ""
+          },
+          "heartbeat": {
+            "type": "string",
+            "description": "Duration string, e.g. '5s', '1m', '1h'",
+            "default": "10s"
+          },
+          "tls": {
+            "type": "object"
+          }
+        }
+      }
     }
   }
 }

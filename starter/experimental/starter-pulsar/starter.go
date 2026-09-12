@@ -36,12 +36,17 @@ func init() {
 	// Register multiple Pulsar clients as a group.
 	// Each instance is created according to the configuration in "${spring.pulsar}".
 	// This allows defining multiple Pulsar clients dynamically.
-	gs.Module(gs.OnProperty("spring.pulsar"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.pulsar}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.pulsar.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.pulsar.instances}", func(name string, c Config) error {
+			// The Driver param (index 3) is selected by the entry's ${driver}
+			// key: unset → "?" (nullable by-type — injects the single Driver
+			// bean when a company provides one, nil otherwise, and newClient
+			// falls back to DefaultDriver); set → that bean name, and naming
+			// a bean that does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("${spring.pulsar.instances."+name+".driver:=${spring.pulsar.default.driver:=?}}")),
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
@@ -83,7 +88,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (pulsar
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
 	}
-	if err := applyResilience(c, cl, resilience.ResourceLabel("pulsar", c.URL)); err != nil {
+	if err := applyResilience(cl, resilience.ResourceLabel("pulsar", c.URL)); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "pulsar: resilience setup failed: %v", err)
 		cl.Close()
 		shutdownMetrics(cl)

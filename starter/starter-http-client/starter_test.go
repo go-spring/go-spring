@@ -28,12 +28,12 @@ import (
 // it addresses directly (addr pinned, service-name a pure label) or through
 // discovery — govern.rules scoped to the label keep matching either way.
 func TestResourceLabelStableAcrossAddressingModes(t *testing.T) {
-	assert.That(t, Config{ServiceName: "user-svc", Discovery: "nacos"}.toTransportConfig().Resource).
+	assert.That(t, Config{ServiceName: "user-svc", Discovery: "nacos"}.toTransportConfig(nil).Resource).
 		Equal("http:user-svc")
-	assert.That(t, Config{Addr: "10.0.0.1:8080", ServiceName: "user-svc"}.toTransportConfig().Resource).
+	assert.That(t, Config{Addr: "10.0.0.1:8080", ServiceName: "user-svc"}.toTransportConfig(nil).Resource).
 		Equal("http:user-svc")
 	// Only an entry with no service-name at all falls back to its address.
-	assert.That(t, Config{Addr: "10.0.0.1:8080"}.toTransportConfig().Resource).
+	assert.That(t, Config{Addr: "10.0.0.1:8080"}.toTransportConfig(nil).Resource).
 		Equal("http:10.0.0.1:8080")
 }
 
@@ -49,13 +49,13 @@ func TestValidateAddressingModes(t *testing.T) {
 // target: it is a pure governance label there, carried via Resource.
 func TestDirectModeBlanksServiceNameForTransport(t *testing.T) {
 	c := Config{Addr: "10.0.0.1:8080", ServiceName: "svc"}
-	cfg := c.toTransportConfig()
+	cfg := c.toTransportConfig(nil)
 	assert.That(t, cfg.Addr).Equal("10.0.0.1:8080")
 	assert.That(t, cfg.ServiceName).Equal("")
 	assert.That(t, cfg.Resource).Equal("http:svc")
 
 	c2 := Config{ServiceName: "svc", Discovery: "nacos"}
-	cfg2 := c2.toTransportConfig()
+	cfg2 := c2.toTransportConfig(nil)
 	assert.That(t, cfg2.ServiceName).Equal("svc")
 }
 
@@ -63,6 +63,6 @@ func TestDirectModeBlanksServiceNameForTransport(t *testing.T) {
 // built by starter-http-client/httpx (covered by its own tests).
 func TestTLSConfigPassthrough(t *testing.T) {
 	c := Config{Addr: "10.0.0.1:8080", TLS: tlsconf.TLSConfig{Enabled: true, ServerName: "svc.internal"}}
-	cfg := c.toTransportConfig()
+	cfg := c.toTransportConfig(nil)
 	assert.That(t, cfg.TLS.ServerName).Equal("svc.internal")
 }

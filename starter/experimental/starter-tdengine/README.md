@@ -26,8 +26,8 @@ import _ "go-spring.org/starter-tdengine"
 ### 2. Configure
 
 ```properties
-spring.tdengine.a.dsn=root:taosdata@ws(127.0.0.1:6041)/power
-spring.tdengine.a.max-open-conns=8
+spring.tdengine.instances.a.dsn=root:taosdata@ws(127.0.0.1:6041)/power
+spring.tdengine.instances.a.max-open-conns=8
 ```
 
 ### 3. Inject
@@ -51,7 +51,7 @@ whole `database/sql` ecosystem promote unchanged.
 
 ## Core Features
 
-- **Multi-instance clients** — every `spring.tdengine.<name>` entry is its
+- **Multi-instance clients** — every `spring.tdengine.instances.<name>` entry is its
   own bean with independent settings.
 - **Fail-fast startup ping + health indicator** — a `PingContext` at boot and
   a `tdengine:<name>` indicator for `starter-actuator`.
@@ -66,8 +66,8 @@ whole `database/sql` ecosystem promote unchanged.
 **Multiple clients** — configure additional entries and inject by name:
 
 ```properties
-spring.tdengine.hot.dsn=root:taosdata@ws(10.0.0.1:6041)/power
-spring.tdengine.cold.dsn=root:taosdata@ws(10.0.0.2:6041)/archive
+spring.tdengine.instances.hot.dsn=root:taosdata@ws(10.0.0.1:6041)/power
+spring.tdengine.instances.cold.dsn=root:taosdata@ws(10.0.0.2:6041)/archive
 ```
 
 **Custom driver** — replace client assembly (e.g. to pin a different wire

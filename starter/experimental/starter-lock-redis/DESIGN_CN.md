@@ -8,7 +8,7 @@ starter：贡献 Redis 后端的 `lock.Locker` 命名 bean；不开监听、不�
 
 ## 1. 职责与边界
 
-- 把 `spring.lock.<name>` 条目绑定到 Redis 版 `lock.Locker` bean，每条一个，
+- 把 `spring.lock.instances.<name>` 条目绑定到 Redis 版 `lock.Locker` bean，每条一个，
   按 config 名注册并导出为 `lock.Locker`。
 - `Locker` 使用 Redis `SET NX PX` + Lua 释放 / 续期实现，因此**不需要**引入
   额外库（如 `redsync`）。
@@ -22,16 +22,16 @@ starter：贡献 Redis 后端的 `lock.Locker` 命名 bean；不开监听、不�
   锁需要**活的**后端句柄（`*redis.Client`），而不是声明式策略；换 Redis 为
   etcd/consul/k8s 是空导入换包，改变的是哪个 starter 注册 `lock.Locker` bean。
 - **实例与客户端的绑定走 `TagArg`。** `Config.Client` 字段是
-  `spring.go-redis.<Client>` 下的 `*redis.Client` bean 名。starter 通过
+  `spring.go-redis.instances.<Client>` 下的 `*redis.Client` bean 名。starter 通过
   `gs.TagArg(c.Client)` 调用 provide 构造器——这就是把某个 `Locker` 绑到
   特定 Redis 实例的缝隙。
-- **锁后端共用配置前缀。** 所有 lock starter 都落在 `spring.lock.<name>`
+- **锁后端共用配置前缀。** 所有 lock starter 都落在 `spring.lock.instances.<name>`
   （`starter/DESIGN.md` §3），业务代码按名注入 `lock.Locker`，切换后端时
   无需改动。
 
 ## 3. 约束
 
-- **`Client` 必填。** `spring.lock.<name>.client` 为空时 `errutil.Explain`
+- **`Client` 必填。** `spring.lock.instances.<name>.client` 为空时 `errutil.Explain`
   在启动直接拒绝。静默默认到某个 Redis 实例只会把配置错误藏到第一次
   `Acquire`，风险太大。
 - **destroy 停续期不停 client。** `destroyLocker` 调 `Locker.Close()`，停每个
@@ -47,6 +47,6 @@ starter：贡献 Redis 后端的 `lock.Locker` 命名 bean；不开监听、不�
   依赖面与 `starter-go-redis` 一致。
 - **自动探测 `*redis.Client` bean——否决。** 显式 `client=` 让绑定关系一目
   了然；一旦应用跑多个 Redis 实例自动探测立刻失效。
-- **在 `spring.lock.<name>` 内塞 Redis 配置——否决。** 复用现有
+- **在 `spring.lock.instances.<name>` 内塞 Redis 配置——否决。** 复用现有
   `*redis.Client` bean 意味着共享集群 / 独立集群切换在 Redis 侧的配置变更
   即可完成。

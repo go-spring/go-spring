@@ -276,7 +276,7 @@ so for a real drill swap in starter-lock-redis:
 
 ```bash
 docker run -d -p 6379:6379 redis:7
-# configure spring.lock.redis... bean "redis" + jobs.cleanup.lock=redis, then:
+# configure spring.lock.instances.redis... bean "redis" + jobs.cleanup.lock=redis, then:
 go run . & go run . & wait
 # exactly one process logs "job \"cleanup\" ran"; the other logs nothing for it
 ```

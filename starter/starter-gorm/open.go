@@ -36,10 +36,8 @@ type Options struct {
 	Closers        []func() // teardown hooks run by Destroy before the pool closes
 }
 
-// DB is the wrapper bean gorm clients are injected as. It embeds *gorm.DB so all
-// gorm methods promote unchanged. A dialect starter re-exports it (`type DB =
-// gormcore.DB`) so its own package still exposes a DB type while the wrapper
-// body, lifecycle and observe/resilience wiring are shared here.
+// DB is the wrapper bean gorm clients are injected as, shared verbatim by every
+// dialect starter. It embeds *gorm.DB so all gorm methods promote unchanged.
 type DB struct {
 	*gorm.DB
 
@@ -88,10 +86,8 @@ func (o *DB) Init() error {
 			return err
 		}
 	}
-	exec := fault.WrapExecutor(resilience.ExecutorFor(o.resource))
-	exec = resilience.WrapExecutor(exec, o.engine)
-	o.exec = exec
-	if err := gormresilience.ApplyCallbacks(o.DB, exec, o.resource); err != nil {
+	o.exec = fault.WrapExecutor(resilience.ExecutorFor(o.engine, o.resource))
+	if err := gormresilience.ApplyCallbacks(o.DB, o.exec, o.resource); err != nil {
 		return err
 	}
 	return nil

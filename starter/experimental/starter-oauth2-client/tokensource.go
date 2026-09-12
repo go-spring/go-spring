@@ -34,7 +34,7 @@ func init() {
 	// themselves (e.g., gRPC metadata) rather than send it via an *http.Client,
 	// and additionally surfaces the cached token's status for observability.
 	// Token sources hold no closable resource, so no destroy callback is needed.
-	gs.Group("${spring.oauth2.client}", newTokenSource, nil)
+	gs.Group("${spring.oauth2.client.instances}", newTokenSource, nil)
 }
 
 // TokenSource wraps an oauth2.TokenSource (client-credentials grant) and records

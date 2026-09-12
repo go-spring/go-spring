@@ -47,14 +47,6 @@ type Config struct {
 
 	// Producer tunes producer-side batching, compression and acks.
 	Producer ProducerConfig `value:"${producer}"`
-
-	// Governance enables the resilience/fault guard on this client, default is
-	// true. Both the raw client API (GuardedProduceSync) and the messaging
-	// driver's Publish route through the governance center executor; when the
-	// governance center itself is off the executor is a transparent no-op, so
-	// this switch only removes the guard entirely (bare calls) when set to
-	// false.
-	Governance bool `value:"${governance:=true}"`
 }
 
 // SASLConfig configures SASL authentication. It is shared, by property name,

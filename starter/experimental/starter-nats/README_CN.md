@@ -24,13 +24,13 @@ import _ "go-spring.org/starter-nats"
 
 ### 2. 配置 NATS 连接
 
-在项目的[配置文件](example/conf/app.properties)中，在 `spring.nats.<name>`
+在项目的[配置文件](example/conf/app.properties)中，在 `spring.nats.instances.<name>`
 下定义一个或多个具名连接，比如：
 
 ```properties
-spring.nats.main.url=nats://127.0.0.1:4222
-spring.nats.main.jetstream.enabled=true
-spring.nats.work.url=nats://127.0.0.1:4222
+spring.nats.instances.main.url=nats://127.0.0.1:4222
+spring.nats.instances.main.jetstream.enabled=true
+spring.nats.instances.work.url=nats://127.0.0.1:4222
 ```
 
 ### 3. 注入 NATS 连接
@@ -103,7 +103,7 @@ bean 仍可用于 JetStream、请求-应答等 driver 未建模的 NATS 能力�
 
 ## 高级功能
 
-* **JetStream**：在某个实例上设置 `spring.nats.<name>.jetstream.enabled=true`，
+* **JetStream**：在某个实例上设置 `spring.nats.instances.<name>.jetstream.enabled=true`，
   即可在该实例的 `Conn.JetStream` 上暴露 JetStream 上下文，它派生自同一条连接。
 * **多连接**：`spring.nats` 下的每一项都会成为一个独立配置的 `*Conn` bean，
   按名称注入即可访问不同的集群或 JetStream 域。
@@ -111,7 +111,7 @@ bean 仍可用于 JetStream、请求-应答等 driver 未建模的 NATS 能力�
   无需只依赖连接事件日志。
 * **鉴权**：除用户名/密码与 token 外，还支持 NATS 2.x 去中心化鉴权——凭据文件
   （`creds-file`）或 nkey seed 文件（`nkey-file`）。
-* **TLS**：设置 `spring.nats.<name>.tls.enabled=true` 即可协商 TLS，可选地指定
+* **TLS**：设置 `spring.nats.instances.<name>.tls.enabled=true` 即可协商 TLS，可选地指定
   CA 证书（`tls.ca-file`）并提供客户端证书（`tls.cert-file`/`tls.key-file`）以实现双向 TLS。
 
 ## 可观测性
@@ -146,7 +146,7 @@ starter.EndSpan(span, err)
 
 ## 配置项
 
-`spring.nats.<name>` 下每条连接读取以下配置：
+`spring.nats.instances.<name>` 下每条连接读取以下配置：
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |

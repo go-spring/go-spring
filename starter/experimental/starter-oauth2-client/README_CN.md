@@ -28,12 +28,12 @@ import _ "go-spring.org/starter-oauth2-client"
 在项目的[配置文件](example/conf/app.properties)中添加配置,例如:
 
 ```properties
-spring.oauth2.client.downstream.client-id=demo-client
-spring.oauth2.client.downstream.client-secret=demo-secret
-spring.oauth2.client.downstream.token-url=https://auth.example.com/oauth/token
-spring.oauth2.client.downstream.scopes=read,write
-spring.oauth2.client.downstream.auth-style=header
-spring.oauth2.client.downstream.timeout=5s
+spring.oauth2.client.instances.downstream.client-id=demo-client
+spring.oauth2.client.instances.downstream.client-secret=demo-secret
+spring.oauth2.client.instances.downstream.token-url=https://auth.example.com/oauth/token
+spring.oauth2.client.instances.downstream.scopes=read,write
+spring.oauth2.client.instances.downstream.auth-style=header
+spring.oauth2.client.instances.downstream.timeout=5s
 ```
 
 ### 3. 注入 HTTP 客户端
@@ -70,7 +70,7 @@ resp, err := s.Client.Get("https://api.example.com/resource")
 * **可配置认证方式**:`auth-style` 决定凭证如何发送到 token 端点 —— `auto`(默认)、
   `header`(HTTP Basic)、`params`(请求体参数)。
 * **`*TokenSource` bean**:除 `*http.Client` 之外,starter 还会为每个
-  `spring.oauth2.client.<name>` 配置项以**相同名称**注册一个
+  `spring.oauth2.client.instances.<name>` 配置项以**相同名称**注册一个
   `*StarterOAuth2Client.TokenSource`。它实现了 `oauth2.TokenSource`,可直接用于任何
   需要该接口的场景。当你需要直接拿到 bearer token 时(例如注入到 gRPC metadata),
   按名称注入即可:
@@ -100,7 +100,7 @@ resp, err := s.Client.Get("https://api.example.com/resource")
   即为参数名:
 
   ```properties
-  spring.oauth2.client.downstream.endpoint-params.audience=https://api.example.com
+  spring.oauth2.client.instances.downstream.endpoint-params.audience=https://api.example.com
   ```
 
 ## 可观测性
@@ -118,16 +118,16 @@ token 端点交换与下游业务请求均已接入分布式链路追踪。start
 ### 授权码模式(Authorization Code)
 
 对于需要用户登录/重定向的交互式流程,使用单独的配置前缀
-`spring.oauth2.authcode.<name>`。starter 会为每个配置项注册一个
+`spring.oauth2.authcode.instances.<name>`。starter 会为每个配置项注册一个
 `*oauth2.Config`,按名称注入即可。
 
 ```properties
-spring.oauth2.authcode.login.client-id=web-client
-spring.oauth2.authcode.login.client-secret=web-secret
-spring.oauth2.authcode.login.auth-url=https://auth.example.com/oauth/authorize
-spring.oauth2.authcode.login.token-url=https://auth.example.com/oauth/token
-spring.oauth2.authcode.login.redirect-url=https://app.example.com/callback
-spring.oauth2.authcode.login.scopes=openid,profile
+spring.oauth2.authcode.instances.login.client-id=web-client
+spring.oauth2.authcode.instances.login.client-secret=web-secret
+spring.oauth2.authcode.instances.login.auth-url=https://auth.example.com/oauth/authorize
+spring.oauth2.authcode.instances.login.token-url=https://auth.example.com/oauth/token
+spring.oauth2.authcode.instances.login.redirect-url=https://app.example.com/callback
+spring.oauth2.authcode.instances.login.scopes=openid,profile
 ```
 
 注入并使用:

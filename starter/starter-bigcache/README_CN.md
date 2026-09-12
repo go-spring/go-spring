@@ -26,7 +26,7 @@ import _ "go-spring.org/starter-bigcache"
 在项目的[配置文件](example/conf/app.properties)中添加 BigCache 配置，例如：
 
 ```properties
-spring.bigcache.main.life-window=10m
+spring.bigcache.instances.main.life-window=10m
 ```
 
 ### 3. 注入 BigCache 实例
@@ -64,13 +64,15 @@ value, err := s.Cache.Get("key")
 ## 高级特性
 
 * **支持多个 BigCache 实例**：你可以在配置文件中定义多个 BigCache 实例，并在项目中按名称引用它们。
-* **支持 BigCache 扩展**：你可以通过实现 `Driver` 接口来扩展 BigCache 的创建逻辑。
+* **支持 BigCache 扩展**：你可以通过实现 `Driver` 接口来扩展 BigCache 的创建逻辑。当容器中存在多个
+  Driver bean 时，实例可按名指定：`spring.bigcache.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
+  Driver bean；指定的 bean 不存在则启动失败）。
 * **命中率统计**：设置 `stats-enabled=true` 后读取 `cache.Stats()` 获取命中/未命中/冲突计数，用于监控缓存效果。
 * **淘汰/过期回调**：通过自定义 `Driver`（实现 `CreateClient`，在构建的
   `bigcache.Config` 上设置 `OnRemove`）注册条目淘汰/过期回调。
 * **优雅关闭**：destroy 回调会调用 `Close()`，停止后台清理 goroutine。
-* **缓存抽象后端**：引入本 starter 即注册 `bigcache` cache driver，
-  `spring.cache.<name>.driver=bigcache:<instance>` 可将实例暴露为
-  `cloud/cache.Cache` bean（见 [starter-cache](../starter-cache)）。
-  注意 BigCache 按单一全局 `life-window` 过期,因此每次调用的 TTL 会被忽略;若纯粹作为本地层,通常更适合用
-  `cache.Memory`(不序列化、保留具体类型)。
+* **缓存抽象后端**：除包装类型外，每个实例另提供一个 `cloud/cache.Cache` bean，名为
+  `bigcache:<instance>`——用 autowire tag `bigcache:<instance>` 按名注入即可经缓存抽象使用。
+  该 bean 是惰性的：无人注入则不实例化，因此无配置开关。
+  注意 BigCache 按单一全局 `life-window` 过期，因此每次调用的 TTL 会被忽略；若纯粹作为本地层，通常更适合用
+  `cache.Memory`（不序列化、保留具体类型）。

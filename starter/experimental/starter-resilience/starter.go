@@ -22,12 +22,13 @@
 //
 //	import _ "go-spring.org/starter-resilience"
 //
-// After that, any adapter (starter-oauth2-client, ...) that reads
-// ${...resilience.driver} can select "sentinel" with no code change — this is
-// the whole point of the abstraction/driver split. The bundled zero-dependency
-// "default" driver stays available for tests and lightweight use; this module
-// exists so production traffic can lean on sentinel-golang's adaptive flow
-// control and circuit breaking instead.
+// After that, selecting "sentinel" is a one-line change to the governance
+// document — govern.driver=sentinel — with no code change and no per-starter
+// key: the center resolves the driver centrally and every client picks it up
+// through the same seam. This is the whole point of the abstraction/driver
+// split. The bundled zero-dependency "default" driver stays available for tests
+// and lightweight use; this module exists so production traffic can lean on
+// sentinel-golang's adaptive flow control and circuit breaking instead.
 package StarterResilience
 
 import (

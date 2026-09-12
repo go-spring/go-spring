@@ -7,8 +7,8 @@
 [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)** —— 本文只写 go-spring 的增量：
 配置、装配、启动 fail-fast、trace 辅助。
 
-**激活条件**：每个 `spring.mail.<name>` 子树按名字各创建一个 `*Mailer` bean。
-不配置 `spring.mail.*` 则不装配、不做启动拨号，starter 完全惰性。没有 `enabled` key，
+**激活条件**：每个 `spring.mail.instances.<name>` 子树按名字各创建一个 `*Mailer` bean。
+不配置 `spring.mail.instances.*` 则不装配、不做启动拨号，starter 完全惰性。没有 `enabled` key，
 也没有默认单例。
 
 ---
@@ -95,16 +95,16 @@ func (s *Service) SendReport(ctx context.Context) error {
 **conf/app.properties** —— 完整注释配置：
 
 ```properties
-# --- mailer "notify"（每个 spring.mail.<name> 子树一个实例）-------------------
-spring.mail.notify.host=smtp.example.com
-spring.mail.notify.port=587
-spring.mail.notify.username=apikey
-spring.mail.notify.password=${SMTP_PASSWORD}
-spring.mail.notify.auth-type=auto
-spring.mail.notify.from=noreply@example.com
-spring.mail.notify.timeout=10s
-spring.mail.notify.tls.mode=starttls
-# spring.mail.notify.tls.insecure-skip-verify=false   # 仅测试
+# --- mailer "notify"（每个 spring.mail.instances.<name> 子树一个实例）-------------------
+spring.mail.instances.notify.host=smtp.example.com
+spring.mail.instances.notify.port=587
+spring.mail.instances.notify.username=apikey
+spring.mail.instances.notify.password=${SMTP_PASSWORD}
+spring.mail.instances.notify.auth-type=auto
+spring.mail.instances.notify.from=noreply@example.com
+spring.mail.instances.notify.timeout=10s
+spring.mail.instances.notify.tls.mode=starttls
+# spring.mail.instances.notify.tls.insecure-skip-verify=false   # 仅测试
 
 # --- 可观测（starter-otel），已在 example-otel 验证 ---------------------------
 spring.observability.enable=true
@@ -136,10 +136,10 @@ curl -s 'http://127.0.0.1:16686/api/traces?service=demo' | jq '.data[0].spans[].
 
 ```
 import starter-mail
-  └─ init(): gs.Group("${spring.mail}", newMailer, nil)     [每个 spring.mail.<name> 一个实例]
+  └─ init(): gs.Group("${spring.mail}", newMailer, nil)     [每个 spring.mail.instances.<name> 一个实例]
 
 gs.Run()
-  ├─ 配置绑定：spring.mail.<name>.* → Config（value tag；host 由 errutil.RequireField 强制）
+  ├─ 配置绑定：spring.mail.instances.<name>.* → Config（value tag；host 由 errutil.RequireField 强制）
   ├─ newMailer：解析 auth（仅 username 非空时）→ TLS mode → mail.NewClient
   ├─ fail-fast 探测：client.DialWithContext（受 timeout 约束）后 Close
   │     └─ host/port/auth/TLS 配错 ⇒ 启动报错，拒绝拉起（源码注释：
@@ -176,7 +176,7 @@ release at shutdown"（starter.go init / Mailer 文档）。
 
 ## 3. 逐 key 行为参考
 
-前缀 `spring.mail.<name>.*` —— 绑定进 ctor 的 `Config`（config.go），因此这些 key
+前缀 `spring.mail.instances.<name>.*` —— 绑定进 ctor 的 `Config`（config.go），因此这些 key
 **带实例前缀**。（本 starter 无 wrapper 字段 value tag，不存在顶层 key。）
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -192,7 +192,7 @@ release at shutdown"（starter.go init / Mailer 文档）。
 | `tls.insecure-skip-verify` | bool | false | 为 true 时安装 `InsecureSkipVerify` 的 TLS 配置（ServerName=host）。 | 仅测试可用；生产等于接受伪造证书——静默 MITM 暴露。 |
 
 `value:"${tls}"` 子结构绑定意味着 `tls.*` key 也在同一实例前缀下
-（`spring.mail.<name>.tls.mode`），不在顶层。
+（`spring.mail.instances.<name>.tls.mode`），不在顶层。
 
 ---
 
@@ -211,7 +211,7 @@ example 在发送 To×2 + Cc×1、带一个附件的一封邮件后断言 `total
 
 ### 4.2 fail-fast 演练
 
-把 `spring.mail.notify.port=9999`（无监听）后启动：启动中止并报
+把 `spring.mail.instances.notify.port=9999`（无监听）后启动：启动中止并报
 `mail: startup dial to ...:9999 failed`。这是刻意姿态——探测（newMailer，
 starter.go:137-144）的存在就是让坏配置到不了首次发送。
 
@@ -234,7 +234,7 @@ curl -s 'http://127.0.0.1:16686/api/traces?service=mail-otel-example&limit=1' | 
 ### 4.5 From 回退演练
 
 配置里去掉 `from`，应用发送的 `Message` 也不带 `From` → 每次 Send 返回
-`mail: no From address (set message.From or spring.mail...from)`。任一侧补回即恢复。
+`mail: no From address (set message.From or spring.mail.instances...from)`。任一侧补回即恢复。
 
 ---
 
@@ -244,7 +244,7 @@ curl -s 'http://127.0.0.1:16686/api/traces?service=mail-otel-example&limit=1' | 
 |------|----------|------|
 | 启动中止："startup dial ... failed" | host/port 错误、服务未起、或 TLS mode 与端口不匹配 | 修好三元组（port ↔ tls.mode ↔ 服务器能力）；报错里带 host:port。 |
 | 启动中止："unknown tls mode / auth-type" | 枚举值拼写错误 | 用 starttls\|tls\|none 与 auto\|plain\|login\|cram-md5（大小写不敏感）。 |
-| 启动中止：required field host | 缺 `spring.mail.<name>.host` | 补上；没有 localhost 默认值。 |
+| 启动中止：required field host | 缺 `spring.mail.instances.<name>.host` | 补上；没有 localhost 默认值。 |
 | Send 报 "no From address" | 配置 `from` 与 `Message.From` 皆空 | 任设其一（消息侧优先）。 |
 | Send 报 "message has no recipients" | `To` 为空 | To 必填；只有 Cc/Bcc 不够。 |
 | 启动正常、之后 "send failed" | 中继重启 / 凭据过期 / timeout 过小 | 调大 `timeout`；探测只证明启动期健康——见 §6 嫌疑。 |

@@ -33,6 +33,7 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -88,14 +89,12 @@ type Common struct {
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
 	// Discovery names the discovery backend bean that resolves ServiceName
-	// (bean name = label). Only consulted when ServiceName is set; the bean
-	// itself is injected by the starter wiring from this label.
-	Discovery string `value:"${discovery:=default}"`
-
-	// backend is the discovery backend instance the label above cites. It is
-	// populated by the starter wiring ([Register] injects the named backend
-	// bean), never bound from configuration.
-	backend discovery.Discovery
+	// (bean name = label). Only consulted when ServiceName is set; the starter
+	// wiring resolves this label against every registered discovery backend
+	// bean and hands the result to the dialect's Build as its backend argument.
+	// Empty means unset: no discovery backend is wired and the entry must not
+	// route by service-name alone.
+	Discovery string `value:"${discovery:=}"`
 
 	// ObserveEnabled is the hard per-instance kill switch for the gorm observe
 	// plugin (trace span + metric + access log on every Create/Query/Update/
@@ -117,13 +116,23 @@ func (c PoolSettings) Pool() PoolConfig {
 	}
 }
 
-// NewResolver resolves the injected discovery backend for this config into a
-// by-name resolver that re-reads the service's live endpoint snapshot. It returns
-// (nil, nil) when ServiceName is unset or mesh mode is enabled (a sidecar owns
-// discovery+LB), in which case the caller dials the configured address
-// directly. Freshness lives inside the backend, so there is nothing to release.
-func (c Common) NewResolver(ctx context.Context) (discovery.Resolver, error) {
-	return discovery.NewResolver(ctx, c.backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+// NewResolver resolves the discovery backend the entry's ${discovery} label
+// cites into a by-name resolver that re-reads the service's live endpoint
+// snapshot. backend is that already-resolved bean, passed down by the dialect's
+// Build (nil when the label named no bean). It returns (nil, nil) when
+// ServiceName is unset or mesh mode is enabled (a sidecar owns discovery+LB), in
+// which case the caller dials the configured address directly; a discovery-
+// routed entry whose label named no backend fails loud instead of silently
+// dialing the configured address. Freshness lives inside the backend, so there
+// is nothing to release.
+func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (discovery.Resolver, error) {
+	if c.ServiceName != "" && backend == nil {
+		if c.Discovery == "" {
+			return nil, errutil.Explain(nil, "gorm: instance routes by service-name but sets no discovery backend (set <prefix>.instances.<name>.discovery to the name of a discovery backend bean)")
+		}
+		return nil, errutil.Explain(nil, "gorm: instance cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", c.Discovery)
+	}
+	return discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 }
 
 // NewPickPool builds the shared per-connection endpoint selector over the
@@ -131,8 +140,8 @@ func (c Common) NewResolver(ctx context.Context) (discovery.Resolver, error) {
 // starter's DialContext calls on every new connection. It returns
 // (nil, nil) when discovery is not in effect; otherwise the pool (and its
 // source resolver, which has no resources to release).
-func (c Common) NewPickPool(ctx context.Context) (*loadbalance.Pool, discovery.Resolver, error) {
-	resolver, err := c.NewResolver(ctx)
+func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery) (*loadbalance.Pool, discovery.Resolver, error) {
+	resolver, err := c.NewResolver(ctx, backend)
 	if err != nil || resolver == nil {
 		return nil, resolver, err
 	}

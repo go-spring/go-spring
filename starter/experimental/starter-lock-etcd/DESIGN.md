@@ -8,7 +8,7 @@ backed by etcd concurrency sessions.
 
 ## 1. Responsibilities & Boundaries
 
-- Binds `spring.lock.<name>` entries to etcd-backed `lock.Locker` beans,
+- Binds `spring.lock.instances.<name>` entries to etcd-backed `lock.Locker` beans,
   one per entry, registered under the config name and exported as
   `lock.Locker`.
 - The locker uses `concurrency.NewSession(WithTTL)` + `concurrency.NewMutex`;

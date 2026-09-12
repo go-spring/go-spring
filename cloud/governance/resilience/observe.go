@@ -43,9 +43,19 @@ var resilienceTag = log.RegisterAppTag("resilience", "")
 // so calls from several protected clients are distinguishable. A nil inner
 // returns nil — no wrapper, so an unarmed client stays untouched.
 //
-// Tracer and instruments are resolved from whatever OTel providers are
-// current — here, at wiring time, not at package init — so an SDK installed
-// after this package's init still receives the spans and records.
+// This is an internal composition step, not a client API: [ExecutorFor] applies
+// it while the provider-built executor is still private (see [resolve]), so
+// clients get an already-observed executor and never wrap one themselves. The
+// only other caller is a client that composes its own stack around a raw
+// executor it built directly (e.g. httpx's custom Executor / ResilienceDriver
+// paths).
+//
+// Attaching the breaker listener happens here, while inner is still private:
+// the type assertion below is a construction-time handshake, so the executor
+// never escapes without its listener and no late binding is needed. Tracer and
+// instruments are resolved from whatever OTel providers are current — at
+// first-resolve time, not at package init — so an SDK installed after this
+// package's init still receives the spans and records.
 func WrapExecutor(inner Executor, system string) Executor {
 	if inner == nil {
 		return nil

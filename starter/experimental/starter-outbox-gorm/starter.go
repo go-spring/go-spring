@@ -24,8 +24,8 @@
 //
 //	# the delivery messaging.Driver bean is autowired (a broker starter, e.g.
 //	# starter-kafka, exports it over its configured client); name it only when
-//	# several exist — spring.outbox.main.driver=kafka
-//	# spring.outbox.main.auto-migrate=true
+//	# several exist — spring.outbox.instances.main.driver=kafka
+//	# spring.outbox.instances.main.auto-migrate=true
 //
 // The write side is a plain function, not a bean — it runs inside the
 // application's own gorm transaction:
@@ -58,8 +58,8 @@ func init() {
 	// runs as a background loop on the bean's Init/Destroy, not as a gs.Server:
 	// it is not an endpoint but a worker, and blocking on it would defeat the
 	// readiness signal.
-	gs.Module(gs.OnProperty("spring.outbox"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.outbox}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.outbox.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.outbox.instances}", func(name string, c Config) error {
 			r.Provide(newRelay,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg(c.DB)),

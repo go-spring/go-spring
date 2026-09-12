@@ -23,7 +23,6 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	StarterCache "go-spring.org/starter-cache"
 	"go-spring.org/starter-memcached/bytecache"
 	health2 "go-spring.org/starter-memcached/health"
 	"go-spring.org/stdlib/errutil"
@@ -40,40 +39,34 @@ func init() {
 	// The memcache client keeps a lazy connection pool and exposes no Close
 	// method, so the destroy callback only stops any discovery Resolver watch
 	// behind the client (added when ServiceName is set).
-	gs.Module(gs.OnProperty("spring.memcached"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.memcached}", func(name string, c Config) error {
+	gs.Module(gs.OnProperty("spring.memcached.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.memcached.instances}", func(name string, c Config) error {
 			// IndexArg(1, ...) binds c to index 1, leaving index 0 (*gs.ContextProvider)
 			// to be autowired — the documented pattern for a ctor whose first param
 			// is ContextProvider (a bare ValueArg would bind to index 0 instead).
+			// The Driver param (index 3) is selected by the entry's ${driver} key:
+			// unset → "?" (nullable by-type — injects the single Driver bean when
+			// a company provides one, nil otherwise, and newClient falls back to
+			// DefaultDriver); set → that bean name, and naming a bean that does
+			// not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				gs.IndexArg(3, gs.TagArg("?")),
-				gs.IndexArg(4, gs.TagArg("${spring.memcached."+name+".discovery:=none}?")),
+				gs.IndexArg(3, gs.TagArg("${spring.memcached.instances."+name+".driver:=${spring.memcached.default.driver:=?}}")),
+				gs.IndexArg(4, gs.TagArg("${spring.memcached.instances."+name+".discovery:=none}?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
 			r.Provide(func(c *Client) *health.Indicator { return health2.NewClientHealth(name, c.Client) }, gs.TagArg(name)).Name("memcache:" + name).Caller(1)
-			return nil
-		})
-	})
-}
-
-// init registers the "memcached" cache driver so a *memcache.Client registered
-// under ${spring.memcached} can be exposed as a cache.Cache via:
-//
-//	spring.cache.<name>.driver = memcached:<memcached-instance-name>
-//
-// The beanID selects which memcache client bean to wrap; the implementation
-// lives in starter-memcached/bytecache.
-func init() {
-	StarterCache.RegisterDriver("memcached", func(beanID string) gs.ModuleFunc {
-		return func(r gs.BeanProvider, p flatten.Storage) error {
+			// Expose this instance as a cache.Cache (the adapter lives in
+			// starter-memcached/bytecache). Named "memcached:<name>" — cache.Cache
+			// is a shared type across backend starters, so the prefix keeps the
+			// (name, type) key unique. Un-injected, the bean never instantiates.
 			r.Provide(func(c *Client) *cache.Cache {
 				return cache.New(bytecache.NewByteCache(c.Client))
-			}, gs.TagArg(beanID)).Name(beanID)
+			}, gs.TagArg(name)).Name("memcached:" + name).Caller(1)
 			return nil
-		}
+		})
 	})
 }
 
@@ -88,17 +81,20 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, disc di
 	if len(c.Servers) == 0 && c.ServiceName == "" {
 		return nil, errutil.Explain(nil, "memcached: one of servers or service-name must be set")
 	}
-	// Fail loud when the entry routes through discovery but the cited label
-	// names no backend bean — the container is the discovery directory.
+	// Fail loud when the entry routes through discovery but no backend resolved:
+	// either the ${discovery} label is unset, or it names no registered bean
+	// (the container is the discovery directory).
 	if c.ServiceName != "" && disc == nil {
+		if c.Discovery == "" {
+			return nil, errutil.Explain(nil, "memcached: instance %q routes by service-name but sets no discovery backend (set ${spring.memcached.instances.%s.discovery} to the name of a discovery backend bean)", name, name)
+		}
 		return nil, errutil.Explain(nil, "memcached: instance %q cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", name, c.Discovery)
 	}
-	c.backend = disc
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c)
+	client, err := d.CreateClient(ctx.Context, c, disc)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "memcached: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create memcached client")

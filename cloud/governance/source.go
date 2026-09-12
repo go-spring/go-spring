@@ -37,8 +37,7 @@ import (
 //     [Center.Destroy] closes sources that happen to implement
 //     interface{ Close() error } via a type assertion, so implementers with no
 //     resources don't have to write an empty method.
-//   - A single callback. The center is the only consumer (mirroring
-//     gs.Dync.OnChanged's single-listener semantics), which keeps the
+//   - A single callback. The center is the only consumer, which keeps the
 //     implementation surface at minimum.
 type Source interface {
 	// Snapshot returns the current config. It must be safe for concurrent use
