@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `validation` is the neutral error model for struct validation: a flat
-`ValidationErrors` list of `FieldError{Field, Rule, Param, Value}` values.
+`ValidationErrors` list of `FieldError{Field, Rule, Param, Kind, Value}` values.
 Run whichever validator you like (typically go-playground/validator); when it
 fails, map its errors onto this shape so they render uniformly and localize.
 
@@ -16,16 +16,6 @@ fails, map its errors onto this shape so they render uniformly and localize.
 
 You don't need it if you only check `err != nil` and log the validator's own
 error.
-
-## The API
-
-| API | What it does |
-| --- | --- |
-| `FieldError{Field, Rule, Param, Kind, Value}` | One failed rule. `Field` is the struct-field path (e.g. `User.Email`) — the stable identifier, not the JSON tag. `Kind` is the field's kind when the mapper knows it (`"string"`, `"int"`). |
-| `FieldError.MessageKey()` | The i18n key convention: `"validation." + Rule` → `validation.email`. |
-| `FieldError.Default()` | Plain English fallback message, used when no translation exists. |
-| `ValidationErrors` | `[]FieldError` implementing `error` (joins the default messages). |
-| `ValidationErrors.Localize(msg, opts...)` | Resolves each field through up to three steps, first non-empty wins: `WithCustom(cb)` → `msg(key, args...)` (`{0}` = field, `{1}` = param) → `FieldError.Default()`. Never returns a blank string. |
 
 ## Usage
 
@@ -60,9 +50,9 @@ for i, fe := range verrs {
 Prepare messages keyed by rule:
 
 ```go
-src := i18n.NewMapSource(WithFallbackLocale("en")).
-    Add("zh-CN", "validation.email", "{0} 不是合法邮箱").
-    Add("zh-CN", "validation.min", "{0} 至少为 {1}")
+src := i18n.NewMapSource(i18n.WithDefaultLocale("en")).
+    AddMessage("zh-CN", "validation.email", "{0} 不是合法邮箱").
+    AddMessage("zh-CN", "validation.min", "{0} 至少为 {1}")
 ```
 
 Then localize per request (locale travels on the context):
@@ -99,13 +89,16 @@ msgs := out.Localize(i18n.Localizer(src, ctx), validation.WithCustom(func(fe val
 `ValidationErrors` implements `error`, joining the default messages:
 
 ```go
-return out // "validation: field \"SignUp.Email\" failed rule \"email\""
+return out // "validation: field \"SignUp.Email\" failed on the \"email\" rule"
 ```
 
-## Rules the model guarantees
+## Design
 
+- Message keys follow `FieldError.MessageKey()`: `"validation." + Rule`, so rule
+  `email` looks up `validation.email`.
 - `Field` is the struct-field path, not the JSON tag; rendering can rewrite it.
-- `Localize` never yields a blank string.
+- `Localize` returns one string per failure, in list order, and never yields a
+  blank one.
 - This package imports nothing third-party — mapping from your validator's
   error type is always a few caller-side lines.
 

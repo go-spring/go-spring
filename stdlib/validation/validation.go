@@ -20,10 +20,10 @@
 // go-playground/validator); when it fails, map its errors onto this shape so
 // they render uniformly and localize.
 //
-// The i18n pairing is the point: [FieldError.MessageKey] derives the message
-// key ("validation." + rule), and [ValidationErrors.Localize] takes a plain
-// lookup function so [go-spring.org/stdlib/i18n] (or anything else) plugs in
-// without a hard dependency.
+// [FieldError.MessageKey] derives a message key from the rule name
+// ("validation." + rule), and [ValidationErrors.Localize] takes a plain lookup
+// function, so any message source — [go-spring.org/stdlib/i18n] or your own —
+// plugs in without this package depending on it.
 package validation
 
 import (
@@ -42,43 +42,48 @@ type FieldError struct {
 	Rule string
 
 	// Param is the rule's parameter when it has one (e.g. "3" for min=3) and is
-	// empty otherwise. It is exposed to messages as an argument.
+	// empty otherwise. Messages receive it as the second argument, after the
+	// field name.
 	Param string
 
 	// Kind is the field's kind ("string", "int", ...) when the mapper knows it,
-	// empty otherwise. Rules whose meaning depends on the kind — min is a length
-	// on strings but a value on numbers — can be disambiguated in the localize
-	// callback with it.
+	// empty otherwise. The package never reads it; it is there so a [WithCustom]
+	// callback can tell apart rules whose meaning depends on the type (min is a
+	// length on strings but a value on numbers).
 	Kind string
 
-	// Value is the actual value that failed, best-effort, for logging and
-	// message interpolation. It may be left empty.
+	// Value is the value that failed, when the mapper supplies it, and may be
+	// left empty. The package never reads it — [ValidationErrors.Localize] does
+	// not interpolate it into templates; it reaches the caller's own logging and
+	// the [WithCustom] callback.
 	Value any
 }
 
-// MessageKey returns the i18n key for the failed rule: the rule name prefixed
-// with "validation.". Rule "email" yields "validation.email", which an i18n
-// message source resolves to a localized template.
+// MessageKey returns the message key for the failed rule: the rule name
+// prefixed with "validation.", so rule "email" yields "validation.email". An
+// empty Rule yields the bare prefix "validation.".
 func (e FieldError) MessageKey() string {
 	return "validation." + e.Rule
 }
 
-// Default renders a plain, English, dependency-free message for the failure. It
-// is the fallback used when no i18n message source is wired, so a bare
-// validation error is still readable.
+// Default renders a plain English message for the failure. It is the last step
+// of [ValidationErrors.Localize] and the text [ValidationErrors.Error] joins, so
+// a failure stays readable with no message source wired.
 func (e FieldError) Default() string {
 	if e.Param != "" {
-		return fmt.Sprintf("field %q failed rule %q (%s)", e.Field, e.Rule, e.Param)
+		return fmt.Sprintf("field %q failed on the %q rule (param %s)", e.Field, e.Rule, e.Param)
 	}
-	return fmt.Sprintf("field %q failed rule %q", e.Field, e.Rule)
+	return fmt.Sprintf("field %q failed on the %q rule", e.Field, e.Rule)
 }
 
 // ValidationErrors aggregates every field failure from one validation run. A
-// valid value yields no list at all — report success with a nil error, not an
-// empty ValidationErrors, so callers can test with a plain err != nil.
+// valid value yields no list at all: report success with a nil error rather
+// than an empty list, so callers can test with a plain err != nil.
 type ValidationErrors []FieldError
 
-// Error implements the error interface by joining each field's default message.
+// Error implements the error interface, joining each field's
+// [FieldError.Default] with "; " under a "validation: " prefix. The empty list
+// renders as "validation: no errors".
 func (es ValidationErrors) Error() string {
 	if len(es) == 0 {
 		return "validation: no errors"
@@ -102,7 +107,7 @@ type localizeOptions struct {
 // string. Use it to give one field dedicated phrasing, or to branch on
 // [FieldError.Kind] for rules that mean different things on different types
 // (min is a length on strings but a value on numbers). Returning "" hands the
-// error to the template path.
+// field to the template path.
 func WithCustom(custom func(FieldError) string) LocalizeOption {
 	return func(o *localizeOptions) { o.custom = custom }
 }
@@ -110,13 +115,15 @@ func WithCustom(custom func(FieldError) string) LocalizeOption {
 // Localize renders every field error to a human string. Each error resolves
 // through up to three steps, stopping at the first non-empty result:
 //
-//  1. the [WithCustom] callback, when given.
-//  2. msg: a message lookup bound to a locale (typically [i18n.Localizer]),
-//     receiving the field's [FieldError.MessageKey] and the arguments (field
-//     name, then param) so a template like "{0} must be at least {1}" can be
-//     filled. It is a plain function so this package never imports an i18n
-//     implementation.
-//  3. [FieldError.Default], so output is never blank.
+//  1. the [WithCustom] callback, when one was given;
+//  2. msg, a message lookup bound to a locale — typically the function
+//     [go-spring.org/stdlib/i18n.Localizer] returns. It receives the field's
+//     [FieldError.MessageKey] and the arguments (field name, then param), so a
+//     template like "{0} must be at least {1}" can be filled. A nil msg skips
+//     this step;
+//  3. [FieldError.Default], so the result is never blank.
+//
+// The returned slice is parallel to es: one string per [FieldError].
 func (es ValidationErrors) Localize(msg func(key string, args ...any) string, opts ...LocalizeOption) []string {
 	var o localizeOptions
 	for _, opt := range opts {
