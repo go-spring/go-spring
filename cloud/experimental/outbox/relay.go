@@ -25,6 +25,7 @@ import (
 
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Relay drains a [Store] to a broker through a [messaging.Driver]. Run it on
@@ -65,7 +66,7 @@ func (r *Relay) publisher(ctx context.Context, destination string) (messaging.Pu
 	}
 	p, err := r.driver.NewPublisher(ctx, destination)
 	if err != nil {
-		return nil, fmt.Errorf("outbox: open publisher for %q: %w", destination, err)
+		return nil, errutil.Explain(err, "outbox: open publisher for %q", destination)
 	}
 	if r.pubs == nil {
 		r.pubs = make(map[string]messaging.Publisher)
@@ -154,7 +155,7 @@ func (r *Relay) publish(ctx context.Context, rec *Record) error {
 		Headers: rec.Headers,
 	}
 	if err := p.Publish(ctx, msg); err != nil {
-		return fmt.Errorf("outbox: publish record %d to %q: %w", rec.ID, rec.Destination, err)
+		return errutil.Explain(err, "outbox: publish record %d to %q", rec.ID, rec.Destination)
 	}
 	return nil
 }
@@ -206,7 +207,7 @@ func (r *Relay) publishDLQ(ctx context.Context, rec *Record, attempts int, err e
 	msg.Headers[messaging.HeaderDLQRetries] = fmt.Sprintf("%d", attempts)
 	msg.Headers[messaging.HeaderDLQKey] = rec.Key
 	if perr = p.Publish(ctx, msg); perr != nil {
-		return fmt.Errorf("outbox: dead-letter record %d to %q: %w", rec.ID, rec.Destination+r.cfg.DLQSuffix, perr)
+		return errutil.Explain(perr, "outbox: dead-letter record %d to %q", rec.ID, rec.Destination+r.cfg.DLQSuffix)
 	}
 	return nil
 }

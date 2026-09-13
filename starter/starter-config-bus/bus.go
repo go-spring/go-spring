@@ -19,7 +19,9 @@ package StarterConfigBus
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"go-spring.org/log"
@@ -39,7 +41,8 @@ type RefreshEvent struct {
 	// regardless of its WatchPrefixes.
 	Prefix string `json:"prefix,omitempty"`
 
-	// Origin optionally identifies the publisher, purely for observability.
+	// Origin identifies the publisher, purely for observability. It is filled
+	// from Config.Origin, which defaults to the host name.
 	Origin string `json:"origin,omitempty"`
 }
 
@@ -47,6 +50,12 @@ type RefreshEvent struct {
 // NATS connection. On a received signal it triggers the application-wide
 // property refresh, so a change published once reaches every subscribing
 // instance — the Go equivalent of Spring Cloud Bus's refresh broadcast.
+//
+// Both directions are instrumented by starter-nats: PublishMsgContext emits a
+// producer span and injects the trace context into the message header, and
+// Consume extracts it, so one broadcast appears as a single trace spanning the
+// publisher and every subscriber. On top of that the bus reports its own
+// business outcome per event (see observe.go).
 //
 // The NATS connection is injected by instance name (spring.config.bus.nats-
 // instance, default "config-bus"); define that instance under
@@ -57,11 +66,34 @@ type ConfigBus struct {
 
 	prefixes []string
 	sub      *nats.Subscription
+	origin   string
+
+	// ins holds the metrics; refresh is the property-refresh entry point, held
+	// as a field so tests can drive onMessage without a running application.
+	ins     instruments
+	refresh func() error
 }
 
-// subscribe registers the refresh listener on the configured subject. It runs
-// as the bean's init hook, after the NATS connection and refresher have been
-// injected.
+// Init prepares the bus and starts its listener: it resolves the publisher
+// identity, builds the metrics, and subscribes. It runs as the bean's init hook,
+// after the NATS connection has been injected.
+//
+// The instruments are built here rather than at package init because the OTel
+// global meter binds to the first provider installed, and starter-otel installs
+// its own after this package's init.
+func (b *ConfigBus) Init() error {
+	b.ins = newInstruments()
+	b.refresh = gs.RefreshProperties
+	b.origin = b.Config.Origin
+	if b.origin == "" {
+		if host, err := os.Hostname(); err == nil {
+			b.origin = host
+		}
+	}
+	return b.subscribe()
+}
+
+// subscribe registers the refresh listener on the configured subject.
 func (b *ConfigBus) subscribe() error {
 	for p := range strings.SplitSeq(b.Config.WatchPrefixes, ",") {
 		if p = strings.TrimSpace(p); p != "" {
@@ -69,34 +101,45 @@ func (b *ConfigBus) subscribe() error {
 		}
 	}
 
-	sub, err := b.Conn.Subscribe(b.Config.Subject, func(m *nats.Msg) {
-		var ev RefreshEvent
-		if len(m.Data) > 0 {
-			if err := json.Unmarshal(m.Data, &ev); err != nil {
-				log.Warnf(context.Background(), starterTag,
-					"ignoring malformed refresh event: %v", err)
-				return
-			}
-		}
-		if !b.shouldRefresh(ev.Prefix) {
-			log.Debugf(context.Background(), starterTag,
-				"config bus: ignoring refresh event outside watched prefixes (prefix=%q origin=%q watched=%v)",
-				ev.Prefix, ev.Origin, b.prefixes)
-			return
-		}
-		if err := gs.RefreshProperties(); err != nil {
-			log.Errorf(context.Background(), starterTag,
-				"config bus: property refresh failed: %v", err)
-			return
-		}
-		log.Infof(context.Background(), starterTag,
-			"config bus: refreshed properties on event (prefix=%q origin=%q)", ev.Prefix, ev.Origin)
-	})
+	// An empty queue group makes this a plain subscription: every instance
+	// sharing the subject receives every broadcast. Conn.Consume owns the
+	// consumer span, so onMessage's ctx carries the publisher's trace.
+	sub, err := b.Conn.Consume(context.Background(), b.Config.Subject, "",
+		func(ctx context.Context, m *nats.Msg) error {
+			return b.onMessage(ctx, m)
+		})
 	if err != nil {
 		return errutil.Explain(err, "config bus: subscribe to %q failed", b.Config.Subject)
 	}
 	b.sub = sub
-	log.Infof(context.Background(), starterTag, "subscribed to bus subject=%s prefixes=%v", b.Config.Subject, b.prefixes)
+	log.Infof(context.Background(), starterTag,
+		"config bus: subscribed subject=%s prefixes=%v origin=%s",
+		b.Config.Subject, b.prefixes, b.origin)
+	return nil
+}
+
+// onMessage handles one broadcast. It runs inside the consumer span opened by
+// Conn.Consume, so ctx carries the publisher's trace and every log line joins
+// it. Returns a non-nil error only when a refresh was attempted and failed, so
+// the consumer span is marked failed for exactly that case.
+func (b *ConfigBus) onMessage(ctx context.Context, m *nats.Msg) error {
+	var ev RefreshEvent
+	if len(m.Data) > 0 {
+		if err := json.Unmarshal(m.Data, &ev); err != nil {
+			b.record(ctx, outcomeMalformed, ev, 0, err)
+			return nil
+		}
+	}
+	if !b.shouldRefresh(ev.Prefix) {
+		b.record(ctx, outcomeIgnored, ev, 0, nil)
+		return nil
+	}
+	start := time.Now()
+	if err := b.refresh(); err != nil {
+		b.record(ctx, outcomeRefreshError, ev, time.Since(start), err)
+		return err
+	}
+	b.record(ctx, outcomeRefreshed, ev, time.Since(start), nil)
 	return nil
 }
 
@@ -122,15 +165,33 @@ func (b *ConfigBus) shouldRefresh(prefix string) bool {
 // subscribers opt out. Call it from application code or a management endpoint to
 // force a coordinated refresh (e.g. after a change that the config center's own
 // watch does not observe).
-func (b *ConfigBus) Publish(prefix string) error {
-	data, err := json.Marshal(RefreshEvent{Prefix: prefix})
+//
+// ctx links the producer span to the caller's trace, so a refresh triggered from
+// an HTTP endpoint shows up as part of that request rather than as an orphan.
+func (b *ConfigBus) Publish(ctx context.Context, prefix string) error {
+	data, err := json.Marshal(RefreshEvent{Prefix: prefix, Origin: b.origin})
 	if err != nil {
+		b.recordPublish(ctx, outcomePublishError, 0, err)
 		return errutil.Explain(err, "config bus: marshal refresh event failed")
 	}
-	if err := b.Conn.Publish(b.Config.Subject, data); err != nil {
+	start := time.Now()
+	err = b.Conn.PublishMsgContext(ctx, &nats.Msg{Subject: b.Config.Subject, Data: data})
+	if err != nil {
+		b.recordPublish(ctx, outcomePublishError, time.Since(start), err)
 		return errutil.Explain(err, "config bus: publish to %q failed", b.Config.Subject)
 	}
+	b.recordPublish(ctx, outcomePublishOK, time.Since(start), nil)
 	return nil
+}
+
+// Healthy reports whether the bus can still receive refresh events. It probes
+// the subscription rather than the connection: a subscription survives a
+// reconnect, so this is false only when the listener is genuinely dead — the
+// case a connectivity check cannot see, and the one that leaves an instance on
+// stale configuration in silence. Connection-level health belongs to
+// starter-nats, which registers its own indicator per instance.
+func (b *ConfigBus) Healthy() bool {
+	return b.sub != nil && b.sub.IsValid()
 }
 
 // Destroy unsubscribes from the bus. It runs as the bean's destroy hook. The

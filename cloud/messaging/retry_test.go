@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -42,7 +43,7 @@ func (h *countingHandler) handle(_ context.Context, _ *Message) error {
 }
 
 func TestRetrySucceedsAfterTransientFailures(t *testing.T) {
-	h := &countingHandler{failN: 2, err: errors.New("transient")}
+	h := &countingHandler{failN: 2, err: errutil.Explain(nil, "transient")}
 	// MaxRetries 2 = three attempts total; the handler recovers on the third.
 	err := Retry(h.handle, RetryPolicy{MaxRetries: 2})(context.Background(), &Message{})
 	assert.That(t, err).Nil()
@@ -50,7 +51,7 @@ func TestRetrySucceedsAfterTransientFailures(t *testing.T) {
 }
 
 func TestRetryExhaustsAndReturnsLastError(t *testing.T) {
-	boom := errors.New("boom")
+	boom := errutil.Explain(nil, "boom")
 	h := &countingHandler{failN: 100, err: boom}
 	err := Retry(h.handle, RetryPolicy{MaxRetries: 2})(context.Background(), &Message{})
 	assert.That(t, err).NotNil()
@@ -62,14 +63,14 @@ func TestRetryExhaustsAndReturnsLastError(t *testing.T) {
 
 func TestRetryZeroPolicyIsSingleAttempt(t *testing.T) {
 	// The zero RetryPolicy retries nothing: one call, then fail.
-	h := &countingHandler{failN: 1, err: errors.New("x")}
+	h := &countingHandler{failN: 1, err: errutil.Explain(nil, "x")}
 	err := Retry(h.handle, RetryPolicy{})(context.Background(), &Message{})
 	assert.That(t, err).NotNil()
 	assert.That(t, h.calls).Equal(1)
 }
 
 func TestRetryHonoursContextCancellation(t *testing.T) {
-	h := &countingHandler{failN: 100, err: errors.New("x")}
+	h := &countingHandler{failN: 100, err: errutil.Explain(nil, "x")}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		time.Sleep(20 * time.Millisecond)
@@ -115,7 +116,7 @@ func (p *fakePublisher) Publish(_ context.Context, msg *Message) error {
 func (p *fakePublisher) Close() error { return nil }
 
 func TestDeadLetterRoutesExhaustedMessage(t *testing.T) {
-	boom := errors.New("boom")
+	boom := errutil.Explain(nil, "boom")
 	h := &countingHandler{failN: 100, err: boom}
 	dlq := &fakePublisher{}
 
@@ -138,7 +139,7 @@ func TestDeadLetterRoutesExhaustedMessage(t *testing.T) {
 }
 
 func TestDeadLetterAcksWhenHandlerSucceeds(t *testing.T) {
-	h := &countingHandler{failN: 1, err: errors.New("transient")}
+	h := &countingHandler{failN: 1, err: errutil.Explain(nil, "transient")}
 	dlq := &fakePublisher{}
 	// Recovers on the retry: nothing dead-letters.
 	err := DeadLetter(h.handle, dlq, RetryPolicy{MaxRetries: 1})(context.Background(), &Message{})
@@ -147,8 +148,8 @@ func TestDeadLetterAcksWhenHandlerSucceeds(t *testing.T) {
 }
 
 func TestDeadLetterPublishFailureNacksOriginal(t *testing.T) {
-	h := &countingHandler{failN: 100, err: errors.New("boom")}
-	dlqErr := errors.New("dlq down")
+	h := &countingHandler{failN: 100, err: errutil.Explain(nil, "boom")}
+	dlqErr := errutil.Explain(nil, "dlq down")
 	dlq := &fakePublisher{err: dlqErr}
 	// Losing a dead letter is worse than redelivering: the original error is
 	// returned so the broker nack path takes over.

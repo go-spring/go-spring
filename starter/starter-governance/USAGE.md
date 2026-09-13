@@ -290,7 +290,7 @@ app.properties.
 | Key | Type | Default | Behavior | Misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
 | `govern.enabled` | bool | false | Master switch. false → PolicyFor always returns a zero Policy (pass-through) regardless of Default/Rules. | Everything configured but still off — the #1 "why doesn't it work" cause. |
-| `govern.driver` | string | "default" | Resilience backend for ALL resources: "default" or "sentinel". | Unknown driver → executor build fails → no-op executor fallback. |
+| `govern.driver` | string | "default" | Resilience backend for ALL resources, resolved against the container's driver directory: a contributed driver bean's name (e.g. "sentinel"), or "default" for the bundled one. | Unknown driver → startup panic listing the available names (a typo must not silently disable protection). |
 | `govern.default.*` | PolicyConfig | all off | Baseline policy for every resource no Rule matches. | — |
 | `govern.rules[n].*` | []Rule | empty | First Rule whose Resources contains the label wins. ⚠ A matched Rule **fully replaces** Default — no field-wise merge: a zero policy field means "disabled", so a partial merge could not distinguish "explicitly 0" from "unset" (`govern.go:87-90`). List specific rules first. | Rule setting only `attempt-timeout` silently turns OFF the default's retries for that resource. |
 | `govern.fault.*` | fault.Config | all off | Process-wide fault injection, see §3.4. | — |

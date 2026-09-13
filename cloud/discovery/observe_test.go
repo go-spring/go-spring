@@ -18,12 +18,12 @@ package discovery
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -184,7 +184,7 @@ func TestObserveReporting(t *testing.T) {
 // passes through the Registrar interface.
 func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
 	ctx := context.Background()
-	fail := errors.New("center unreachable")
+	fail := errutil.Explain(nil, "center unreachable")
 	const sys, svc = "etcd", "orders"
 
 	// --- initial registration succeeds: span, duration, counter, gauge=1 ---
@@ -249,7 +249,7 @@ func testRegistryFailureSemantics(t *testing.T, rdr sdkmetric.Reader) {
 	RegisterAttempt(ctx, sys, svc, ReasonInitial)(nil)
 	require.Equal(t, int64(1), mustGauge(t, rdr, want))
 
-	DeregisterAttempt(ctx, sys, svc)(errors.New("revoke failed"))
+	DeregisterAttempt(ctx, sys, svc)(errutil.Explain(nil, "revoke failed"))
 	assert.Equal(t, int64(1), mustGauge(t, rdr, want),
 		"a failed deregister must not claim the instance is gone")
 
@@ -304,13 +304,13 @@ func testSyncAgeClimbs(t *testing.T, rdr sdkmetric.Reader) {
 
 	// The watch dies: 90 seconds pass with a failed sync in between.
 	now = base.Add(90 * time.Second)
-	Synced(sys, svc, errors.New("watch closed"))
+	Synced(sys, svc, errutil.Explain(nil, "watch closed"))
 	assert.InDelta(t, 90, mustAge(t, rdr, key), 0.001,
 		"a failed sync must not reset the freshness clock")
 
 	// Another failure later: the age keeps climbing rather than stalling.
 	now = base.Add(150 * time.Second)
-	Synced(sys, svc, errors.New("watch closed"))
+	Synced(sys, svc, errutil.Explain(nil, "watch closed"))
 	assert.InDelta(t, 150, mustAge(t, rdr, key), 0.001, "age must keep growing while stale")
 
 	// The watch comes back: freshness is restored.

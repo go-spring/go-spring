@@ -28,9 +28,9 @@ type Config struct {
 	// a misconfiguration until the first (unlimited!) Allow call in production.
 	Client string `value:"${client}"`
 
-	// Driver is the name this limiter registers under in the resilience limiter
-	// registry, i.e. the string consumers pass to [resilience.GetLimiter] (and
-	// gateway's rateLimit `driver=` argument). Defaults to the instance name, so
+	// Driver is the name this limiter's bean is contributed under — the string
+	// consumers pass as gateway's rateLimit `driver=` argument, resolved against
+	// the container's limiter directory. Defaults to the instance name, so
 	// multi-instance setups get one driver name each without extra config.
 	Driver string `value:"${driver:=}"`
 }

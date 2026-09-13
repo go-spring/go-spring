@@ -117,3 +117,15 @@ This starter implements the single-node Redlock recipe. Multi-node Redlock is
 intentionally not built in: sentinel failover / cluster HA cover the common
 case, and stronger consistency needs are better served by the etcd or consul
 lock backends (blank-import swap, same code).
+
+## Log tag
+
+Runtime logs from `cloud/lock` carry the tag `_app_lock_access` (the lock access log — every
+acquire, try_acquire and unlock, plus a lease lost while the lock was still in use). Tune them
+independently of the main log by binding a logger to the tag:
+
+```properties
+logger.lock_access.type=Logger
+logger.lock_access.level=WARN
+logger.lock_access.tag=_app_lock_access
+```

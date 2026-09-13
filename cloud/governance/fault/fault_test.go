@@ -32,8 +32,7 @@ import (
 // newExec builds a default-driver executor with the given policy.
 func newExec(t *testing.T, p resilience.Policy) resilience.Executor {
 	t.Helper()
-	d, err := resilience.GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := resilience.NewDefaultDriver()
 	exec, err := d.NewExecutor(p)
 	assert.Error(t, err).Nil()
 	t.Cleanup(func() { _ = exec.Close() })

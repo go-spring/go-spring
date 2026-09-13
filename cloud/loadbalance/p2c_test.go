@@ -17,11 +17,11 @@
 package loadbalance
 
 import (
-	"errors"
 	"testing"
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -55,7 +55,7 @@ func TestP2CAvoidsFailingEndpoint(t *testing.T) {
 		ep, err := b.Pick(set, PickInfo{})
 		assert.Error(t, err).Nil()
 		if ep.Addr == "b" {
-			b.Complete(ep, errors.New("boom"))
+			b.Complete(ep, errutil.Explain(nil, "boom"))
 		} else {
 			b.Complete(ep, nil)
 		}
@@ -115,7 +115,7 @@ func TestP2CStalenessAgingReadmits(t *testing.T) {
 		ep, err := b.Pick(set, PickInfo{})
 		assert.Error(t, err).Nil()
 		if ep.Addr == "a" {
-			b.Complete(ep, errors.New("boom"))
+			b.Complete(ep, errutil.Explain(nil, "boom"))
 			break
 		}
 		b.Complete(ep, nil)

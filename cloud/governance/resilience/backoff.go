@@ -66,7 +66,7 @@ func (p Policy) Backoff(attempt int) time.Duration {
 		mult = 1
 	}
 	d := float64(p.InitialInterval)
-	for j := 0; j < attempt; j++ {
+	for range attempt {
 		d *= mult
 		if p.MaxInterval > 0 && d > float64(p.MaxInterval) {
 			d = float64(p.MaxInterval)

@@ -21,11 +21,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"slices"
 	"sync"
 
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/stdlib/errutil"
 )
 
 // ErrUnknownTransaction is returned when a branch registers under, or a caller
@@ -105,7 +105,7 @@ func (c *coordinator) Register(_ context.Context, xid string, b Branch) error {
 	defer c.mu.Unlock()
 	branches, ok := c.active[xid]
 	if !ok {
-		return fmt.Errorf("%w: %q", ErrUnknownTransaction, xid)
+		return errutil.Explain(ErrUnknownTransaction, "xid %q", xid)
 	}
 	// Deduplicate by resource id: a database that writes several times in one
 	// global transaction is committed/rolled back exactly once.
@@ -126,7 +126,7 @@ func (c *coordinator) Commit(ctx context.Context, xid string) error {
 	var errs []error
 	for _, b := range branches {
 		if e := c.runPhase(ctx, xid, b, PhaseCommit, b.Commit); e != nil {
-			errs = append(errs, fmt.Errorf("branch %q commit: %w", b.ID(), e))
+			errs = append(errs, errutil.Explain(e, "branch %q commit", b.ID()))
 		}
 	}
 	return errors.Join(errs...)
@@ -144,7 +144,7 @@ func (c *coordinator) Rollback(ctx context.Context, xid string) error {
 	var errs []error
 	for _, b := range slices.Backward(branches) {
 		if e := c.runPhase(ctx, xid, b, PhaseRollback, b.Rollback); e != nil {
-			errs = append(errs, fmt.Errorf("branch %q rollback: %w", b.ID(), e))
+			errs = append(errs, errutil.Explain(e, "branch %q rollback", b.ID()))
 		}
 	}
 	return errors.Join(errs...)
@@ -158,7 +158,7 @@ func (c *coordinator) take(xid string) ([]Branch, error) {
 	defer c.mu.Unlock()
 	branches, ok := c.active[xid]
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownTransaction, xid)
+		return nil, errutil.Explain(ErrUnknownTransaction, "xid %q", xid)
 	}
 	delete(c.active, xid)
 	return branches, nil
@@ -206,7 +206,7 @@ func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewExecutor("default", p)
+	exec, err := resilience.NewDefaultDriver().NewExecutor(p)
 	if err != nil {
 		return err
 	}

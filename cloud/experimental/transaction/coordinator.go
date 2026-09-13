@@ -19,11 +19,11 @@ package transaction
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"time"
 
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Option configures the in-process [Coordinator] built by [NewCoordinator].
@@ -105,7 +105,7 @@ func (c *coordinator) Execute(ctx context.Context, s Saga) (Result, error) {
 // completed steps in reverse. s supplies the step definitions the log cannot.
 func (c *coordinator) Recover(ctx context.Context, s Saga) (Result, error) {
 	if c.store == nil {
-		return Result{}, errors.New("transaction: Recover requires a Store")
+		return Result{}, errutil.Explain(nil, "transaction: Recover requires a Store")
 	}
 
 	snap, err := c.store.Load(ctx, s.ID)
@@ -181,7 +181,7 @@ func (c *coordinator) compensateOrdered(ctx context.Context, sagaID string, orde
 			res.Errors = append(res.Errors, StepError{
 				Step:  cs.step.Name,
 				Phase: PhaseCompensate,
-				Err:   fmt.Errorf("transaction: step %q is irreversible (no Compensate)", cs.step.Name),
+				Err:   errutil.Explain(nil, "transaction: step %q is irreversible (no Compensate)", cs.step.Name),
 			})
 			continue
 		}
@@ -269,7 +269,7 @@ func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewExecutor("default", p)
+	exec, err := resilience.NewDefaultDriver().NewExecutor(p)
 	if err != nil {
 		return err
 	}

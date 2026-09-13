@@ -35,9 +35,9 @@ package discovery
 
 import (
 	"context"
-	"fmt"
 
 	"go-spring.org/cloud/mesh"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Endpoint is a single connectable instance returned by a [Discovery] backend.
@@ -229,7 +229,7 @@ func NewResolver(ctx context.Context, d Discovery, name string, opts ...Option) 
 		return nil, nil
 	}
 	if _, err := d.Resolve(ctx, name, opts...); err != nil {
-		return nil, fmt.Errorf("discovery: resolve %q: %w", name, err)
+		return nil, errutil.Explain(err, "discovery: resolve %q", name)
 	}
 	return func() ([]Endpoint, error) {
 		return d.Resolve(context.Background(), name, opts...)

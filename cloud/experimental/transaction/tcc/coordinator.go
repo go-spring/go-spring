@@ -19,11 +19,11 @@ package tcc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"time"
 
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Option configures the in-process [Coordinator] built by [NewCoordinator].
@@ -118,7 +118,7 @@ func (c *coordinator) Execute(ctx context.Context, t Transaction) (Result, error
 // backward. t supplies the participant definitions the log cannot.
 func (c *coordinator) Recover(ctx context.Context, t Transaction) (Result, error) {
 	if c.store == nil {
-		return Result{}, errors.New("tcc: Recover requires a Store")
+		return Result{}, errutil.Explain(nil, "tcc: Recover requires a Store")
 	}
 	if err := validate(t); err != nil {
 		return Result{}, err
@@ -279,14 +279,14 @@ func validate(t Transaction) error {
 	seen := make(map[string]struct{}, len(t.Participants))
 	for i, p := range t.Participants {
 		if p.Name == "" {
-			return fmt.Errorf("tcc: participant %d has no Name", i)
+			return errutil.Explain(nil, "tcc: participant %d has no Name", i)
 		}
 		if _, dup := seen[p.Name]; dup {
-			return fmt.Errorf("tcc: duplicate participant name %q", p.Name)
+			return errutil.Explain(nil, "tcc: duplicate participant name %q", p.Name)
 		}
 		seen[p.Name] = struct{}{}
 		if p.Try == nil || p.Confirm == nil || p.Cancel == nil {
-			return fmt.Errorf("tcc: participant %q must define Try, Confirm and Cancel", p.Name)
+			return errutil.Explain(nil, "tcc: participant %q must define Try, Confirm and Cancel", p.Name)
 		}
 	}
 	return nil
@@ -314,7 +314,7 @@ func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewExecutor("default", p)
+	exec, err := resilience.NewDefaultDriver().NewExecutor(p)
 	if err != nil {
 		return err
 	}

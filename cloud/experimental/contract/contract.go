@@ -43,9 +43,10 @@ package contract
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	"os"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // Contract is a single agreement between a consumer and a provider: when a
@@ -87,7 +88,7 @@ func (v *Values) UnmarshalJSON(b []byte) error {
 		}
 		var many []string
 		if err := json.Unmarshal(rv, &many); err != nil {
-			return fmt.Errorf("value of %q must be a string or an array of strings", k)
+			return errutil.Explain(nil, "value of %q must be a string or an array of strings", k)
 		}
 		out[k] = many
 	}
@@ -153,7 +154,7 @@ func Load(paths ...string) ([]Contract, error) {
 		}
 		cs, err := decode(data)
 		if err != nil {
-			return nil, fmt.Errorf("contract: parse %s: %w", p, err)
+			return nil, errutil.Explain(err, "contract: parse %s", p)
 		}
 		out = append(out, cs...)
 	}
@@ -175,7 +176,7 @@ func LoadFS(fsys fs.FS, pattern string) ([]Contract, error) {
 		}
 		cs, err := decode(data)
 		if err != nil {
-			return nil, fmt.Errorf("contract: parse %s: %w", m, err)
+			return nil, errutil.Explain(err, "contract: parse %s", m)
 		}
 		out = append(out, cs...)
 	}
@@ -215,13 +216,13 @@ func decode(data []byte) ([]Contract, error) {
 // indirect "no contract matched" at stub or verify time.
 func (c *Contract) validate() error {
 	if c.Request.Method == "" {
-		return fmt.Errorf("contract %q: request.method is required", c.Name)
+		return errutil.Explain(nil, "contract %q: request.method is required", c.Name)
 	}
 	if c.Request.Path == "" {
-		return fmt.Errorf("contract %q: request.path is required", c.Name)
+		return errutil.Explain(nil, "contract %q: request.path is required", c.Name)
 	}
 	if c.Response.Status < 100 || c.Response.Status > 599 {
-		return fmt.Errorf("contract %q: response.status %d is missing or not a valid HTTP status code", c.Name, c.Response.Status)
+		return errutil.Explain(nil, "contract %q: response.status %d is missing or not a valid HTTP status code", c.Name, c.Response.Status)
 	}
 	return nil
 }

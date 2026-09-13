@@ -18,12 +18,12 @@ package batch_test
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 
 	"go-spring.org/cloud/experimental/batch"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -125,7 +125,7 @@ func TestChunkStep_RetryReplaysBufferWithoutRereading(t *testing.T) {
 		Writer: batch.WriterFunc[int](func(_ context.Context, _ []int) error {
 			attempts++
 			if attempts < 3 {
-				return errors.New("transient")
+				return errutil.Explain(nil, "transient")
 			}
 			return nil
 		}),
@@ -179,7 +179,7 @@ func TestChunkStep_ReaderWithoutCheckpointerRestartsFromBeginning(t *testing.T) 
 			Writer: batch.WriterFunc[int](func(_ context.Context, items []int) error {
 				writes += len(items)
 				if failing {
-					return errors.New("boom")
+					return errutil.Explain(nil, "boom")
 				}
 				return nil
 			}),
@@ -238,7 +238,7 @@ func TestJob_StepErrorMarksFailed(t *testing.T) {
 	ctx := context.Background()
 	repo := batch.NewMemoryRepository()
 	job := &batch.Job{Name: "failing", Steps: []batch.Step{
-		batch.Func("boom", func(context.Context) error { return errors.New("kaput") }),
+		batch.Func("boom", func(context.Context) error { return errutil.Explain(nil, "kaput") }),
 	}}
 	je, err := job.Run(ctx, repo, nil)
 	assert.Error(t, err).Matches("kaput")

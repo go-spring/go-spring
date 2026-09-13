@@ -155,16 +155,41 @@ backends.
 
 ## Observability
 
-`WrapLocker` wraps any `Locker` with the observe kit's three signals (trace
-span + duration/in-flight metrics + access log, `lock.*` conventions). Starters
-install it centrally so backends don't each carry a copy:
+`WrapLocker` decorates a `Locker` at the interface, so no backend carries
+instrumentation of its own. Each lock starter installs it with its backend's
+system value:
 
 ```go
-locker = lock.WrapLocker("redis", cfg, inner)
+locker = lock.WrapLocker("redis", inner)
 ```
 
+Every operation (`acquire`, `try_acquire`, `unlock`) gets a client span, a
+`lock.operation.duration` datapoint, and an access log on `_app_lock_access`.
+They share the backend as `system` and an outcome as `status` — `ok`, `missed`,
+`error` or `not_held` — so one dashboard covers all four backends and a metric
+can never disagree with the log line beside it.
+
+The handle `Acquire` returns is observed too. `lock.lost.total` counts the
+leases lost while the caller was still working — the failure a distributed lock
+exists to prevent, and the one that otherwise surfaces as duplicate work. An
+ordinary `Unlock` closes the same channel but is not counted, so the number
+means what it says.
+
+Backend-native telemetry (Redis commands, etcd revisions, apiserver round-trips)
+is deliberately not mirrored here: the wrapper builds the parent span and passes
+its context down, so the client library's own instrumentation nests underneath
+it in the same trace. The lock key stays on spans and logs only — never on a
+metric, where its cardinality would be unbounded.
+
+One gap is structural rather than a choice: leases are renewed inside each
+backend, and renewal never crosses the `Locker` interface, so a failing renewal
+is visible only through its outcome — `lock.lost.total`. Reporting the attempts
+themselves would take a hook in all four starters, which is not worth paying
+until the loss counter proves insufficient.
+
 Without starter-otel the global providers are no-ops, so the wrapper adds
-negligible overhead and changes no behavior.
+negligible overhead and changes no behavior. A starter's `observe.enabled=false`
+returns the bare locker, unwrapped.
 
 ## Writing a backend
 

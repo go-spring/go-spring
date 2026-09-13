@@ -18,13 +18,13 @@ package batch_test
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"sync"
 	"testing"
 
 	"go-spring.org/cloud/experimental/batch"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -87,7 +87,7 @@ func TestChunkStep_RestartNoDoubleProcessing(t *testing.T) {
 				// between committed chunks. 20 items (two chunks of 10) have
 				// already committed at this point.
 				if failing && len(recorded) >= 20 {
-					return errors.New("boom")
+					return errutil.Explain(nil, "boom")
 				}
 				for _, v := range items {
 					recorded[v]++
@@ -145,7 +145,7 @@ func TestChunkStep_RetryRecoversChunk(t *testing.T) {
 		Writer: batch.WriterFunc[int](func(_ context.Context, _ []int) error {
 			attempts++
 			if attempts < 3 { // fail the first two attempts of the first chunk
-				return errors.New("transient")
+				return errutil.Explain(nil, "transient")
 			}
 			return nil
 		}),

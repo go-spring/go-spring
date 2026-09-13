@@ -1,7 +1,7 @@
 # starter-bigcache / example-load
 
 Load-test binary for starter-bigcache. Drives SET/GET through a BigCache
-instance (resilience + fault hot-reloadable) using the shared `cloud/loadtest`
+instance (resilience + fault hot-reloadable) using the shared `cloud/experimental/loadtest`
 harness, printing throughput / latency percentiles / error breakdown.
 
 BigCache is an embedded in-process cache, so there is no external service to

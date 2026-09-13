@@ -27,12 +27,12 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 func newBuiltin(t *testing.T, p Policy) Executor {
-	d, err := GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := NewDefaultDriver()
 	e, err := d.NewExecutor(p)
 	assert.Error(t, err).Nil()
 	return e
@@ -63,7 +63,7 @@ func TestRateLimit(t *testing.T) {
 
 func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 	e := newBuiltin(t, Policy{ErrorThreshold: 2, OpenDuration: 50 * time.Millisecond})
-	boom := errors.New("boom")
+	boom := errutil.Explain(nil, "boom")
 	fail := func() error {
 		return e.Execute(context.Background(), "svc", func(context.Context) error { return boom })
 	}
@@ -87,7 +87,7 @@ func TestRetrySucceedsAfterTransientFailure(t *testing.T) {
 	err := e.Execute(context.Background(), "svc", func(context.Context) error {
 		attempts++
 		if attempts < 3 {
-			return errors.New("transient")
+			return errutil.Explain(nil, "transient")
 		}
 		return nil
 	})
@@ -106,10 +106,6 @@ func TestExecutePerAttemptTimeout(t *testing.T) {
 		}
 	})
 	assert.Error(t, err).Is(context.DeadlineExceeded)
-}
-
-func TestRegisterDriverDuplicatePanics(t *testing.T) {
-	assert.Panic(t, func() { RegisterDriver("default", defaultDriver{}) }, "already registered")
 }
 
 func TestRoundTripperNilExecIsPassThrough(t *testing.T) {
@@ -161,15 +157,13 @@ func TestBulkheadRejectsWhenFull(t *testing.T) {
 	release := make(chan struct{})
 	entered := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		_ = e.Execute(context.Background(), "svc", func(context.Context) error {
 			close(entered)
 			<-release
 			return nil
 		})
-	}()
+	})
 
 	<-entered // first call now holds the only slot
 	err := e.Execute(context.Background(), "svc", func(context.Context) error { return nil })
@@ -186,14 +180,14 @@ func TestFallbackDegradesOnRejection(t *testing.T) {
 	// A tripped breaker rejects the call; degrade turns the rejection into a
 	// graceful result and sees the triggering error.
 	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: time.Minute})
-	boom := errors.New("boom")
+	boom := errutil.Explain(nil, "boom")
 
 	// Trip the breaker.
 	assert.Error(t, e.Execute(context.Background(), "svc", func(context.Context) error { return boom })).Is(boom)
 
 	var seen error
 	err := Fallback(context.Background(), e, "svc",
-		func(context.Context) error { return errors.New("should not run") },
+		func(context.Context) error { return errutil.Explain(nil, "should not run") },
 		func(_ context.Context, cause error) error { seen = cause; return nil })
 	assert.Error(t, err).Nil()
 	assert.Error(t, seen).Is(ErrCircuitOpen)
@@ -201,7 +195,7 @@ func TestFallbackDegradesOnRejection(t *testing.T) {
 
 func TestFallbackNilExecStillDegrades(t *testing.T) {
 	// With no executor the call runs directly, and a failure still reaches degrade.
-	boom := errors.New("boom")
+	boom := errutil.Explain(nil, "boom")
 	err := Fallback(context.Background(), nil, "svc",
 		func(context.Context) error { return boom },
 		func(_ context.Context, cause error) error {
@@ -223,7 +217,7 @@ func TestDialerNilExecIsPassThrough(t *testing.T) {
 }
 
 func TestDialerBreakerOpensOnDialFailures(t *testing.T) {
-	dialErr := errors.New("connection refused")
+	dialErr := errutil.Explain(nil, "connection refused")
 	base := DialFunc(func(context.Context, string, string) (net.Conn, error) { return nil, dialErr })
 
 	e := newBuiltin(t, Policy{ErrorThreshold: 2, OpenDuration: time.Minute})
@@ -260,7 +254,7 @@ func TestRetryBackoffSleeps(t *testing.T) {
 			secondSaw = time.Since(start)
 		}
 		if attempts < 2 {
-			return errors.New("transient")
+			return errutil.Explain(nil, "transient")
 		}
 		return nil
 	})
@@ -281,7 +275,7 @@ func TestRetryRespectsMaxDuration(t *testing.T) {
 	var attempts int
 	_ = e.Execute(context.Background(), "svc", func(context.Context) error {
 		attempts++
-		return errors.New("always fails")
+		return errutil.Explain(nil, "always fails")
 	})
 	// Not all 21 attempts ran — the budget cut the loop short.
 	assert.That(t, attempts < 21).True()
@@ -298,7 +292,7 @@ func TestRetryPredicateSuppressesNonRetryable(t *testing.T) {
 	var attempts int
 	err := e.Execute(context.Background(), "svc", func(context.Context) error {
 		attempts++
-		return errors.New("nope")
+		return errutil.Explain(nil, "nope")
 	})
 	assert.Error(t, err).NotNil()
 	assert.That(t, attempts).Equal(1)
@@ -331,7 +325,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 
 	// Trip the breaker.
 	_ = e.Execute(context.Background(), "svc", func(context.Context) error {
-		return errors.New("boom")
+		return errutil.Explain(nil, "boom")
 	})
 	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
 
@@ -340,9 +334,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	var ran, rejected int32
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			err := e.Execute(context.Background(), "svc", func(context.Context) error {
 				atomic.AddInt32(&ran, 1)
 				// Hold long enough that the sibling surely evaluates allow() too.
@@ -352,7 +344,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 			if errors.Is(err, ErrCircuitOpen) {
 				atomic.AddInt32(&rejected, 1)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	// Exactly one trial ran; the other was rejected (not both admitted).
@@ -375,7 +367,7 @@ func TestErrorRateBreakerTripsOnRatio(t *testing.T) {
 	for i := range 8 {
 		err := e.Execute(context.Background(), "svc", func(context.Context) error {
 			if i%2 == 0 {
-				return errors.New("fail")
+				return errutil.Explain(nil, "fail")
 			}
 			return nil
 		})
@@ -402,7 +394,7 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 	})
 	fail := func() error {
 		return e.Execute(context.Background(), "svc", func(context.Context) error {
-			return errors.New("boom")
+			return errutil.Explain(nil, "boom")
 		})
 	}
 

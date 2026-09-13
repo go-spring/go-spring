@@ -57,8 +57,7 @@ func TestParseConsistency(t *testing.T) {
 // the tests drive Client.guard directly with a stubbed call, so no live
 // Cassandra cluster is needed.
 func newGuardedClient(t *testing.T, p resilience.Policy) *Client {
-	d, err := resilience.GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := resilience.NewDefaultDriver()
 	exec, err := d.NewExecutor(p)
 	assert.Error(t, err).Nil()
 	return &Client{exec: exec, resource: "cassandra:test"}

@@ -41,8 +41,8 @@ var exporters = registry.New[SpanExporterFactory]("trace")
 
 // RegisterSpanExporter makes a span exporter factory available under name. It
 // panics on empty name, nil factory, or a duplicate - mirroring the
-// driver-registry idiom used elsewhere (discovery.Register, starter-go-redis
-// RegisterDriver, resilience.RegisterDriver) so a mis-wired or duplicate
+// driver-registry idiom used elsewhere (starter-otel's own registries, cloud/cache
+// RegisterDriver) so a mis-wired or duplicate
 // registration fails loudly at init.
 func RegisterSpanExporter(name string, f SpanExporterFactory) {
 	if f == nil {

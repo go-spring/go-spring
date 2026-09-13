@@ -24,7 +24,8 @@
   `gs.Rooter`，即使应用不显式注入也总会被实例化。`Init` 调 `subscribe`；
   `Destroy` 调 `Unsubscribe`。
 - **`RefreshEvent` 负载。** `{prefix, origin}`。只有 `Prefix` 影响分发；
-  `Origin` 是可选观测元数据，永远不影响行为。
+  `Origin` 标识发布方（取自 `spring.config.bus.origin`，默认主机名），纯粹用于观测，
+  永远不影响行为。
 - **前缀作用域订阅。** `Config.WatchPrefixes` 是逗号分隔前缀表。事件对某个
   实例生效的条件：事件 `Prefix` 空（全 fleet 刷新），或订阅者 `WatchPrefixes`
   空（订阅一切），或事件前缀与某个已订阅前缀双向 `HasPrefix`——所以
@@ -37,12 +38,20 @@
 
 - **只搬信号不搬负载。** 报文格式错误只记 warn 并丢弃；空 prefix 表示“全员
   刷新”。应用永远不能把消息体当配置。
-- **刷新失败记录不上抛。** `RefreshProperties` 错误只记 error 日志，bus 仍继续
-  接收后续信号；不能因为一次刷新失败就让实例静默脱离 fleet。
+- **刷新失败绝不让实例退订。** `RefreshProperties` 错误会计入 `refresh_error`、记日志，
+  并回传给传输层，使 consumer span 被标记为失败——但 bus 仍继续接收后续信号。一次刷新
+  失败不能让实例静默脱离 fleet。
 - **命名 bean 是关键。** 与 config-provider starter 同理：`gs.Rooter` 是 `any`，
   `configBus` 不能落在 `__default__`。
-- **依赖 `starter-nats`。** 引用 `go-spring.org/starter-nats`；当底层连接带
-  JetStream 时 `Conn` 也可访问 JetStream，但本 starter 只用核心 pub/sub。
+- **依赖 `starter-nats`。** 直接引用 `go-spring.org/starter-nats`（需要原始 `Conn`，
+  而非 broker 中立 driver）；当底层连接带 JetStream 时 `Conn` 也可访问 JetStream，
+  但本 starter 只用核心 pub/sub。
+- **一个 outcome 同时驱动 metric 与日志。** 每条收到的事件恰好落入一个 outcome
+  （`refreshed` / `ignored_prefix` / `malformed` / `refresh_error`），同时记为 metric
+  与日志行，两者不可能打架；outcome 互斥，因此求和即为收到的事件数。
+- **健康检查报告的是订阅，而非连接。** `health.Indicator` 探测订阅有效性，因为订阅能
+  挺过重连：它只在监听真的死掉时才为假。连接层健康归 starter-nats 自己的指标，带有它
+  自己的按实例开关。
 
 ## 4. 权衡 / 已否决方案
 

@@ -1,7 +1,7 @@
 # starter-go-redis / example-load
 
 Load-test binary for starter-go-redis. Drives SET/GET through a go-redis client
-(resilience + fault hot-reloadable) using the shared `cloud/loadtest` harness,
+(resilience + fault hot-reloadable) using the shared `cloud/experimental/loadtest` harness,
 printing throughput / latency percentiles / error breakdown.
 
 ## Run

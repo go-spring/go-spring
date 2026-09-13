@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.scheduler",
+  "type": "object",
+  "properties": {
+    "drain-timeout": {
+      "type": "string",
+      "description": "Duration string, e.g. '5s', '1m', '1h'",
+      "default": "30s"
+    }
+  }
+}

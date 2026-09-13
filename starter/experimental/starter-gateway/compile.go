@@ -93,6 +93,12 @@ type RouteTable struct {
 	// time; it never changes across hot reloads.
 	backends map[string]discovery.Discovery
 
+	// limiters is the container's named rate-limiter backend beans (bean name =
+	// driver name), injected once by newRouteTable. The rateLimit filter resolves
+	// its driver= argument against it; the bundled in-process limiter answers to
+	// the empty/"default" name without a bean.
+	limiters map[string]resilience.LimiterDriver
+
 	// execs pools resilience executors by policy name so routes sharing a policy
 	// share breaker/limiter state. Rebuilt on each recompile.
 	execs map[string]resilience.Executor
@@ -112,12 +118,22 @@ type RouteTable struct {
 // bad initial config fails startup. backends is the container's named discovery
 // backend beans (optional: an app with none gets an empty directory, and any
 // lb:// upstream then fails to compile with the label it could not resolve).
-func newRouteTable(ctx *gs.ContextProvider, m *Metrics, backends map[string]discovery.Discovery) *RouteTable {
+func newRouteTable(ctx *gs.ContextProvider, m *Metrics, backends map[string]discovery.Discovery,
+	limiters map[string]resilience.LimiterDriver) *RouteTable {
 	return &RouteTable{
 		ctx:      ctx.Context,
 		metrics:  m,
 		backends: backends,
+		limiters: limiters,
 	}
+}
+
+// limiterFor resolves a rateLimit filter's driver name against the injected
+// limiter directory, falling back to the bundled in-process limiter for the
+// empty name and "default".
+func (t *RouteTable) limiterFor(name string) (resilience.LimiterDriver, error) {
+	return resilience.Resolve(t.limiters, name, resilience.DefaultLimiterName,
+		"limiter driver", resilience.NewDefaultLimiterDriver())
 }
 
 // Init runs after field injection. It warns when routes are configured but the
@@ -339,7 +355,8 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 
 // buildFilters parses a route's filter list into an ordered slice of Filters.
 // Self-contained filters come from the registry; bean-backed ones (jwt-auth,
-// lua) are resolved by name from the injected wrapper map.
+// lua) are resolved by name from the injected wrapper map, and rateLimit
+// resolves its driver against the injected limiter directory.
 func (t *RouteTable) buildFilters(spec string) ([]Filter, error) {
 	tokens, err := splitFilters(spec)
 	if err != nil {
@@ -349,6 +366,12 @@ func (t *RouteTable) buildFilters(spec string) ([]Filter, error) {
 	for _, tok := range tokens {
 		name, args := tok.name, tok.args
 		switch name {
+		case "rateLimit":
+			f, err := rateLimitFilter(args, t.limiterFor)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, f)
 		case "jwt-auth", "lua":
 			if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
 				return nil, &parseError{what: name + " requires a wrapper bean name", token: strings.Join(args, ",")}

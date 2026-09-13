@@ -18,10 +18,10 @@ package fault
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/stdlib/errutil"
 )
 
 // noopExec is a minimal inner executor for testing WrapExecutor composition: it
@@ -72,7 +72,7 @@ func TestWrapExecutor_LazyGlobalInjector(t *testing.T) {
 
 	// Before an injector is registered, Execute is a transparent pass-through.
 	ctx := context.Background()
-	want := errors.New("boom")
+	want := errutil.Explain(nil, "boom")
 	if err := exec.Execute(ctx, "redis", func(context.Context) error { return want }); err != want {
 		t.Fatalf("Execute with no injector: want %v passthrough, got %v", want, err)
 	}

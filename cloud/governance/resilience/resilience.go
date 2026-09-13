@@ -30,13 +30,14 @@
 //   - [Policy] is a backend-neutral, declarative description of the desired
 //     protection.
 //   - [Driver] turns a Policy into a live [Executor]. A company (or the bundled
-//     default) implements Driver once and registers it via [RegisterDriver];
-//     callers select it by name through [GetDriver] with no per-component
-//     adaptation.
+//     default) implements Driver once and contributes it to the container as a
+//     named bean; the governance center looks the configured name up in the
+//     directory of driver beans, so callers select a backend by name with no
+//     per-component adaptation.
 //   - The bundled "default" driver (see driver.go) has zero third-party
 //     dependencies so the framework runs standalone; the recommended
-//     production driver (sentinel-golang) lives in its own module and registers
-//     itself on blank import.
+//     production driver (sentinel-golang) lives in its own module and
+//     contributes itself as a bean on blank import.
 //
 // The package's files map one-to-one to its concepts: policy.go (the declarative
 // spec), breaker.go / ratelimit.go (the primitives), executor.go / driver.go

@@ -80,7 +80,9 @@ func markLive() {
 func Enabled() bool { return global.enabled() }
 
 // Driver returns the configured resilience driver name, defaulting to "default"
-// when unset (including before the authority is live).
+// when unset (including before the authority is live). Callers rarely need it:
+// the center resolves the name against its driver directory itself, so prefer
+// [NewExecutor] or resilience.ExecutorFor over reading the raw name.
 func Driver() string { return global.driver() }
 
 // PolicyFor returns the resolved policy for label. Before the authority is live
@@ -130,6 +132,29 @@ func SetSource(s Source) { global.setSource(s) }
 // one-shot hook the wiring starter calls at startup with the bean-injected
 // source.
 func BindDefault(src Source) { global.bindDefault(src) }
+
+// BindDrivers installs the directory of resilience driver backends the wiring
+// starter collected from the container, keyed by bean name — the driver
+// counterpart of [BindDefault]. A backend contributes itself with
+// gs.Provide(...).Name("<backend>").Export(gs.As[resilience.Driver]()); the
+// wiring bean field-injects them as a map[string]resilience.Driver and hands
+// the map here. It must run before [GoLive] so the center can fail startup on a
+// configured name that matches no driver. A nil map leaves the center on its
+// bundled driver.
+func BindDrivers(m map[string]resilience.Driver) { global.bindDrivers(m) }
+
+// NewExecutor builds an executor for p under the center's currently configured
+// driver. It is the escape hatch for callers that must build from an explicit
+// [resilience.Policy] rather than resolving one by resource label through
+// resilience.ExecutorFor. It returns the resolution error when the configured
+// name matches no driver.
+func NewExecutor(p resilience.Policy) (resilience.Executor, error) {
+	d, err := global.driverFor(global.driver())
+	if err != nil {
+		return nil, err
+	}
+	return d.NewExecutor(p)
+}
 
 // GoLive completes the authority's startup: it builds the process-wide fault
 // injector from the current snapshot, registers the executor/fault seams, and

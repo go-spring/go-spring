@@ -49,7 +49,7 @@ func WrapExecutor(inner resilience.Executor) resilience.Executor {
 
 // WrapExecutorWith is [WrapExecutor] with an explicitly supplied injector: in
 // is used directly on every Execute instead of resolving [InjectorFor]. This is
-// the path tests and [cloud/loadtest] take to inject an explicit, locally-built
+// the path tests and [cloud/experimental/loadtest] take to inject an explicit, locally-built
 // injector.
 //
 // nil inner => returns nil.

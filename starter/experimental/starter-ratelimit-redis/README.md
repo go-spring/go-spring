@@ -32,10 +32,13 @@ spring.ratelimit.redis.instances.gateway.driver=redis
 
 ## Consuming the driver
 
-By registry lookup (what starter-gateway's `rateLimit` filter does internally):
+By directory lookup (what starter-gateway's `rateLimit` filter does internally, with the
+directory injected):
 
 ```go
-d, _ := resilience.GetLimiter("redis")
+// limiters map[string]resilience.LimiterDriver `autowire:"?"`
+d, err := resilience.Resolve(limiters, "redis", resilience.DefaultLimiterName,
+    "limiter driver", resilience.NewDefaultLimiterDriver())
 lim, _ := d.NewRateLimiter(resilience.LimitPolicy{Rate: 100, Burst: 50})
 ok, err := lim.Allow(ctx, "tenant-a")
 ```

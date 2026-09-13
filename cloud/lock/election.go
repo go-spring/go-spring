@@ -21,6 +21,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // ElectionConfig configures an [Election]. Locker and Key are required.
@@ -65,10 +67,10 @@ type Election struct {
 // misconfigured election can never elect anyone.
 func NewElection(cfg ElectionConfig) *Election {
 	if cfg.Locker == nil {
-		panic("lock: election requires a Locker")
+		panic(errutil.Explain(nil, "lock: election requires a Locker"))
 	}
 	if cfg.Key == "" {
-		panic("lock: election requires a Key")
+		panic(errutil.Explain(nil, "lock: election requires a Key"))
 	}
 	return &Election{cfg: cfg}
 }

@@ -102,7 +102,11 @@ func PolicyFor(label string) resilience.Policy   // 读路径，无锁；遍历 
 func Register(label string, cb func(resilience.Policy)) Subscription
                                                  // Subscription.Policy = 置入时用的策略
                                                  // Subscription.Cancel() = 摘除（重建型消费方必须调）
-func SetSource(s Source) / BindDefault(src Source) / GoLive() / CloseActiveSource() error
+func NewExecutor(p resilience.Policy) (resilience.Executor, error)
+                                                 // 按当前配置的 driver 建 executor（httpx 中心路径用）
+func SetSource(s Source) / BindDefault(src Source)
+func BindDrivers(m map[string]resilience.Driver)  // 接线期装驱动目录，须先于 GoLive
+func GoLive() / CloseActiveSource() error
 func OnReady(cb func()) / Arm(cfg Config) / Reset()
 ```
 

@@ -17,36 +17,26 @@
 package scheduling
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // cronSpec is a parsed 5-field cron expression. Each field is a bitmask of the
-// values that match; a set bit at index i means "i matches". dom/dow also record
-// whether the field was restricted (anything other than "*"), which drives the
-// classic day-of-month / day-of-week OR rule.
+// values that match; a set bit at index i means "i matches". The day-of-month
+// and day-of-week fields also record whether they were restricted (anything
+// other than "*"), which drives the classic day-of-month / day-of-week OR rule.
 type cronSpec struct {
-	minute uint64 // bits 0..59
-	hour   uint64 // bits 0..23
-	dom    uint64 // bits 1..31
-	month  uint64 // bits 1..12
-	dow    uint64 // bits 0..6 (Sunday=0)
+	minute     uint64 // bits 0..59
+	hour       uint64 // bits 0..23
+	dayOfMonth uint64 // bits 1..31
+	month      uint64 // bits 1..12
+	dayOfWeek  uint64 // bits 0..6 (Sunday=0)
 
-	domRestricted bool
-	dowRestricted bool
-}
-
-// Cron returns a [Trigger] for a standard 5-field cron expression
-// ("minute hour day-of-month month day-of-week"). It panics on a malformed
-// expression; use [ParseCron] to handle the error instead.
-func Cron(expr string) Trigger {
-	t, err := ParseCron(expr)
-	if err != nil {
-		panic(err)
-	}
-	return t
+	dayOfMonthRestricted bool
+	dayOfWeekRestricted  bool
 }
 
 // ParseCron parses a standard 5-field cron expression and returns a [Trigger].
@@ -73,13 +63,13 @@ func ParseCron(expr string) (Trigger, error) {
 		if m, ok := cronMacros[expr]; ok {
 			expr = m
 		} else {
-			return nil, fmt.Errorf("scheduling: unknown cron macro %q", expr)
+			return nil, errutil.Explain(nil, "scheduling: unknown cron macro %q", expr)
 		}
 	}
 
 	fields := strings.Fields(expr)
 	if len(fields) != 5 {
-		return nil, fmt.Errorf("scheduling: cron expression %q must have 5 fields, got %d", expr, len(fields))
+		return nil, errutil.Explain(nil, "scheduling: cron expression %q must have 5 fields, got %d", expr, len(fields))
 	}
 
 	var s cronSpec
@@ -90,23 +80,26 @@ func ParseCron(expr string) (Trigger, error) {
 	if s.hour, _, err = parseCronField(fields[1], 0, 23, "hour"); err != nil {
 		return nil, err
 	}
-	if s.dom, s.domRestricted, err = parseCronField(fields[2], 1, 31, "day-of-month"); err != nil {
+	if s.dayOfMonth, s.dayOfMonthRestricted, err = parseCronField(fields[2], 1, 31, "day-of-month"); err != nil {
 		return nil, err
 	}
 	if s.month, _, err = parseCronField(fields[3], 1, 12, "month"); err != nil {
 		return nil, err
 	}
-	if s.dow, s.dowRestricted, err = parseCronField(fields[4], 0, 7, "day-of-week"); err != nil {
+	if s.dayOfWeek, s.dayOfWeekRestricted, err = parseCronField(fields[4], 0, 7, "day-of-week"); err != nil {
 		return nil, err
 	}
 	// Normalize Sunday: 7 -> 0 so day matching only consults bits 0..6.
-	if s.dow&(1<<7) != 0 {
-		s.dow = (s.dow &^ (1 << 7)) | 1
+	if s.dayOfWeek&(1<<7) != 0 {
+		s.dayOfWeek = (s.dayOfWeek &^ (1 << 7)) | 1
 	}
 
 	return &s, nil
 }
 
+// cronMacros maps the standard @-macros to the 5-field expression they stand for.
+// @reboot is deliberately absent: it fires at daemon start, an instant this
+// wall-clock Trigger model cannot express.
 var cronMacros = map[string]string{
 	"@yearly":   "0 0 1 1 *",
 	"@annually": "0 0 1 1 *",
@@ -124,7 +117,7 @@ func parseCronField(field string, min, max int, name string) (mask uint64, restr
 	for part := range strings.SplitSeq(field, ",") {
 		lo, hi, step, perr := parseCronPart(part, min, max)
 		if perr != nil {
-			return 0, false, fmt.Errorf("scheduling: cron %s field %q: %w", name, field, perr)
+			return 0, false, errutil.Explain(perr, "scheduling: cron %s field %q", name, field)
 		}
 		for v := lo; v <= hi; v += step {
 			mask |= 1 << uint(v)
@@ -142,7 +135,7 @@ func parseCronPart(part string, min, max int) (lo, hi, step int, err error) {
 		rangePart = before
 		step, err = strconv.Atoi(after)
 		if err != nil || step <= 0 {
-			return 0, 0, 0, fmt.Errorf("invalid step %q", part)
+			return 0, 0, 0, errutil.Explain(nil, "invalid step %q", part)
 		}
 	}
 
@@ -153,22 +146,22 @@ func parseCronPart(part string, min, max int) (lo, hi, step int, err error) {
 		before, after, _ := strings.Cut(rangePart, "-")
 		lo, err = strconv.Atoi(before)
 		if err != nil {
-			return 0, 0, 0, fmt.Errorf("invalid range %q", part)
+			return 0, 0, 0, errutil.Explain(nil, "invalid range %q", part)
 		}
 		hi, err = strconv.Atoi(after)
 		if err != nil {
-			return 0, 0, 0, fmt.Errorf("invalid range %q", part)
+			return 0, 0, 0, errutil.Explain(nil, "invalid range %q", part)
 		}
 	default:
 		lo, err = strconv.Atoi(rangePart)
 		if err != nil {
-			return 0, 0, 0, fmt.Errorf("invalid value %q", part)
+			return 0, 0, 0, errutil.Explain(nil, "invalid value %q", part)
 		}
 		hi = lo
 	}
 
 	if lo < min || hi > max || lo > hi {
-		return 0, 0, 0, fmt.Errorf("value out of range [%d,%d] in %q", min, max, part)
+		return 0, 0, 0, errutil.Explain(nil, "value out of range [%d,%d] in %q", min, max, part)
 	}
 	return lo, hi, step, nil
 }
@@ -212,10 +205,10 @@ func (s *cronSpec) Next(tc TriggerContext) time.Time {
 // are restricted a day matches when *either* matches; otherwise the restricted
 // one (or both being "*") decides.
 func (s *cronSpec) dayMatches(t time.Time) bool {
-	domOK := s.dom&(1<<uint(t.Day())) != 0
-	dowOK := s.dow&(1<<uint(t.Weekday())) != 0
-	if s.domRestricted && s.dowRestricted {
-		return domOK || dowOK
+	dayOfMonthMatch := s.dayOfMonth&(1<<uint(t.Day())) != 0
+	dayOfWeekMatch := s.dayOfWeek&(1<<uint(t.Weekday())) != 0
+	if s.dayOfMonthRestricted && s.dayOfWeekRestricted {
+		return dayOfMonthMatch || dayOfWeekMatch
 	}
-	return domOK && dowOK
+	return dayOfMonthMatch && dayOfWeekMatch
 }

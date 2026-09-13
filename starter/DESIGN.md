@@ -127,11 +127,13 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   service-name") use `errutil.RequireAny` in the constructor, since `expr` cannot
   express cross-field constraints.
 - **Driver pattern for pluggable backends.** A client exposes a `Driver`
-  interface plus a package-level registry (`RegisterDriver`, panic on
-  dup/empty/nil). `DefaultDriver` ships built in; a company can register its own
-  driver and select it with `${driver:=...}` without forking the starter. This
-  is also the seam through which service discovery is injected (the driver builds
-  the dialer). Optional capabilities go on *separate* interfaces (e.g. go-redis's
+  interface; `DefaultDriver` ships built in and the container is the driver
+  directory — a company contributes its own with
+  `gs.Provide(...).Name("corp").Export(gs.As[Driver]())` and selects it with
+  `${driver:=...}` without forking the starter. There is no package-level
+  registry: naming a bean that does not exist fails startup. This is also the
+  seam through which service discovery is injected (the driver builds the
+  dialer). Optional capabilities go on *separate* interfaces (e.g. go-redis's
   `ClusterDriver`) so existing custom drivers keep compiling.
 - **Startup connection check.** Where the client library allows it, the
   constructor performs a bounded probe (e.g. Redis `PING` with `DialTimeout`) so
@@ -143,8 +145,8 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   starter splits its cross-cutting concerns across dedicated files rather than
   piling them into `config.go` / `starter.go`, so the wiring for each capability
   lives where a maintainer expects it:
-  - `config.go` — the `Config` struct, the `Driver` interface, and the
-    driver-registry (`RegisterDriver`, `init()`). Connection-creation only.
+  - `config.go` — the `Config` struct and the `Driver` interface.
+    Connection-creation only.
   - `starter.go` — the `init()`-time `gs.Group` / `gs.Module` registration and
     the constructor (`newClient`) that assembles the bean.
   - `discovery.go` — the client-side service-discovery seam: the mesh-gated
@@ -195,6 +197,11 @@ facilities.
   otel is absent the hooks are no-ops (zero-config opt-in).
 - **`starter-pprof`** runs a *dedicated* HTTP server on its own port for runtime
   profiles, kept off the application's main port on purpose.
+- **`starter-governance-sentinel`** contributes one process-wide bean — the
+  `sentinel`-named `resilience.Driver` — into the governance center's driver
+  directory. Imported alongside `starter-governance`, the governance document's
+  `govern.driver=sentinel` switches every client at once. No port, no keys of its
+  own.
 
 ### 2.5 Config-provider starters (remote configuration center)
 

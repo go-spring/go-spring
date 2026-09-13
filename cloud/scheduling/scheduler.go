@@ -18,24 +18,42 @@ package scheduling
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/goutil"
 )
 
 // Event describes one scheduled fire, delivered to an [Observer] for metrics or
-// logging. A run that was skipped (concurrency policy or a lock held by another
-// replica) has Skipped set and Reason populated; Start/Duration/Err are zero.
+// logging. A fire either runs or is skipped. A skipped fire has Skipped set and
+// Reason naming why, with Start and Duration left zero.
 type Event struct {
-	Name      string        // task name
-	Scheduled time.Time     // the fire time this event corresponds to
-	Start     time.Time     // when the run started (zero if skipped)
-	Duration  time.Duration // how long the run took (zero if skipped)
-	Err       error         // the job's error, if any
-	Skipped   bool          // true if the fire did not run
-	Reason    string        // "policy" or "lock" when Skipped
+	// Name is the task name.
+	Name string
+
+	// Scheduled is the fire time this event corresponds to. A fire that waited
+	// under [Queue] still reports its own time, not the one it waited behind.
+	Scheduled time.Time
+
+	// Start is when the run started; zero for a skipped fire.
+	Start time.Time
+
+	// Duration is how long the run took; zero for a skipped fire.
+	Duration time.Duration
+
+	// Err is the job's error on a run — one that panicked reports an error
+	// wrapping [ErrJobPanicked] — or the locker's error on a fire skipped because
+	// acquiring the lock failed; nil otherwise.
+	Err error
+
+	// Skipped is true when the fire did not run.
+	Skipped bool
+
+	// Reason names why a skipped fire did not run: "policy" (a concurrency policy
+	// dropped it) or "lock" (another replica held the lock, or acquiring it
+	// failed).
+	Reason string
 }
 
 // Observer receives an [Event] after each fire. It must not block.
@@ -66,16 +84,20 @@ func NewScheduler(opts ...SchedulerOption) Scheduler {
 	return s
 }
 
+// scheduler is the in-process [Scheduler]. mu guards every field below it,
+// including the task registry and the lifecycle flags; a task's own runtime
+// state is guarded separately by [task].mu, so managing tasks never contends
+// with running them.
 type scheduler struct {
 	mu       sync.Mutex
-	tasks    map[string]*task
-	observer Observer
+	tasks    map[string]*task // by task name
+	observer Observer         // copied onto each task created after it is set
 
-	started bool
-	stopped bool
+	started bool // Start has run; task loops are live
+	stopped bool // Stop has run; Schedule is refused and no restart is possible
 	ctx     context.Context
 	cancel  context.CancelFunc
-	loopWg  sync.WaitGroup // task loop goroutines
+	loopWg  sync.WaitGroup // task loop goroutines, awaited by Stop
 }
 
 // Schedule implements [Scheduler].
@@ -95,10 +117,10 @@ func (s *scheduler) Schedule(name string, trigger Trigger, job Job, opts ...Opti
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
-		return nil, fmt.Errorf("scheduling: scheduler already stopped")
+		return nil, ErrStopped
 	}
 	if _, ok := s.tasks[name]; ok {
-		return nil, fmt.Errorf("%w: %q", ErrDuplicateName, name)
+		return nil, errutil.Explain(ErrDuplicateName, "task %q", name)
 	}
 
 	t := &task{
@@ -200,23 +222,27 @@ func (s *scheduler) Stop(ctx context.Context) error {
 	}
 }
 
-// task is one scheduled job and its runtime state.
+// task is one scheduled job and its runtime state. name, trigger, job, opts,
+// observer and isSerial are set once at creation and read without locking;
+// everything below mu is shared between the task's loop goroutine and its run
+// goroutines, so reads and writes there must hold mu.
 type task struct {
 	name     string
 	trigger  Trigger
 	job      Job
 	opts     Options
 	observer Observer
-	isSerial bool
+	isSerial bool // a serialTrigger (fixed-delay): runs inline, never overlaps
 
-	loopCancel context.CancelFunc
-	runWg      sync.WaitGroup // in-flight runs, awaited on Stop
+	loopCancel context.CancelFunc // set by launch, cancelled by remove; guarded by scheduler.mu
+	runWg      sync.WaitGroup     // in-flight runs, awaited on Stop
 
 	mu             sync.Mutex
-	lastScheduled  time.Time
-	lastCompletion time.Time
-	running        bool
-	queued         bool
+	lastScheduled  time.Time          // start of the last fire, fed back to the trigger
+	lastCompletion time.Time          // end of the last run; fixed-delay anchors on it
+	running        bool               // a run is in flight (Skip/Queue bookkeeping)
+	queued         bool               // one fire is parked behind the in-flight run (Queue)
+	queuedAt       time.Time          // the parked fire's own time, so it reports it (Queue)
 	replaceCancel  context.CancelFunc // cancels the in-flight run under Replace
 }
 
@@ -272,14 +298,13 @@ func (t *task) dispatch(ctx context.Context, scheduled time.Time) {
 				t.emitSkip(scheduled, "policy")
 				return
 			}
-			t.queued = true
+			t.queued, t.queuedAt = true, scheduled
 			t.mu.Unlock()
 			return // the active worker will pick this up when it finishes
 		}
 		t.running = true
 		t.mu.Unlock()
-		t.runWg.Add(1)
-		go t.queueWorker(ctx, scheduled)
+		t.runWg.Go(func() { t.queueWorker(ctx, scheduled) })
 	case Replace:
 		t.mu.Lock()
 		if t.replaceCancel != nil {
@@ -312,13 +337,14 @@ func (t *task) dispatch(ctx context.Context, scheduled time.Time) {
 }
 
 // queueWorker drains the current run and at most one queued fire, sequentially.
+// Each run is attributed to the fire that scheduled it, so a queued fire reports
+// its own time rather than the one it waited behind.
 func (t *task) queueWorker(ctx context.Context, scheduled time.Time) {
-	defer t.runWg.Done()
 	for {
 		t.runOnce(ctx, scheduled)
 		t.mu.Lock()
 		if t.queued {
-			t.queued = false
+			scheduled, t.queued = t.queuedAt, false
 			t.mu.Unlock()
 			continue
 		}
@@ -369,10 +395,12 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 	})
 }
 
+// emitSkip reports a fire that did not run, with reason "policy" or "lock".
 func (t *task) emitSkip(scheduled time.Time, reason string) {
 	t.emit(Event{Name: t.name, Scheduled: scheduled, Skipped: true, Reason: reason})
 }
 
+// emit delivers ev to the task's observer, if one is installed.
 func (t *task) emit(ev Event) {
 	if t.observer != nil {
 		t.observer(ev)
@@ -380,13 +408,15 @@ func (t *task) emit(ev Event) {
 }
 
 // safeRun invokes job, converting a panic into an error so one bad run cannot
-// kill the scheduler goroutine. The panic is also reported through the shared
-// panic chain (goutil), so the framework's log/metrics bridge sees it.
+// kill the scheduler goroutine. The error wraps [ErrJobPanicked], so a caller can
+// tell a panicking run from one that merely returned an error. The panic is also
+// reported through the shared panic chain (goutil), so the framework's
+// log/metrics bridge sees it.
 func safeRun(ctx context.Context, job Job) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			goutil.ReportPanic(ctx, r)
-			err = fmt.Errorf("scheduling: job panicked: %v", r)
+			err = errutil.Explain(ErrJobPanicked, "job run: %v", r)
 		}
 	}()
 	return job(ctx)

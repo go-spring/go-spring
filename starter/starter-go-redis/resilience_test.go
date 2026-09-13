@@ -27,8 +27,7 @@ import (
 )
 
 func newHook(t *testing.T, p resilience.Policy) *resilienceHook {
-	d, err := resilience.GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := resilience.NewDefaultDriver()
 	exec, err := d.NewExecutor(p)
 	assert.Error(t, err).Nil()
 	return &resilienceHook{exec: exec, resource: "redis:test"}

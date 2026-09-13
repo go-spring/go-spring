@@ -21,6 +21,7 @@ import (
 	"errors"
 	"testing"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -48,9 +49,9 @@ func TestClassifyOutcome(t *testing.T) {
 		{ErrCircuitOpen, "circuit_open"},
 		{ErrBulkheadFull, "bulkhead_full"},
 		{context.DeadlineExceeded, "timeout"},
-		{errors.New("boom"), "error"},
+		{errutil.Explain(nil, "boom"), "error"},
 		// wrapped sentinels must still classify by errors.Is.
-		{errors.Join(ErrCircuitOpen, errors.New("detail")), "circuit_open"},
+		{errors.Join(ErrCircuitOpen, errutil.Explain(nil, "detail")), "circuit_open"},
 	}
 	for _, c := range cases {
 		assert.That(t, classifyOutcome(c.err)).Equal(c.want)
@@ -68,7 +69,7 @@ func TestWrapExecutor_PassesErrorThrough(t *testing.T) {
 		ErrCircuitOpen,
 		ErrBulkheadFull,
 		context.DeadlineExceeded,
-		errors.New("downstream"),
+		errutil.Explain(nil, "downstream"),
 	} {
 		exec := WrapExecutor(fakeExecutor{err: err}, "redis")
 		got := exec.Execute(context.Background(), "svc", func(ctx context.Context) error { return nil })

@@ -2,7 +2,7 @@
 
 Load-test binary for starter-elasticsearch. Drives an Index + Get round-trip on
 an Elasticsearch index (resilience + fault hot-reloadable) using the shared
-`cloud/loadtest` harness, printing throughput / latency percentiles / error
+`cloud/experimental/loadtest` harness, printing throughput / latency percentiles / error
 breakdown.
 
 ## Run

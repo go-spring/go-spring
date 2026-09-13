@@ -103,3 +103,15 @@ elec := lock.NewElection(lock.ElectionConfig{
 })
 go elec.Run(ctx)
 ```
+
+## 日志 tag
+
+`cloud/lock` 的运行期日志使用 tag `_app_lock_access`（lock 访问日志——每次 acquire、
+try_acquire、unlock，以及持锁期间发生的丢锁）。如需与主日志分开单独调整，可为该 tag 绑定
+独立的 logger：
+
+```properties
+logger.lock_access.type=Logger
+logger.lock_access.level=WARN
+logger.lock_access.tag=_app_lock_access
+```

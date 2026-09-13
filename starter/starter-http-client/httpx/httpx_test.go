@@ -185,7 +185,7 @@ func (errorDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]d
 func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{
-		ResilienceDriver: "default",
+		ResilienceDriver: resilience.NewDefaultDriver(),
 		ResiliencePolicy: resilience.Policy{ErrorThreshold: 2},
 		Base:             rec,
 	})

@@ -40,11 +40,7 @@ func newTestDriver(t *testing.T, name string) *Driver {
 	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
 	wrapped := &goredis.Client{UniversalClient: client}
-	d, err := driverFor(name, wrapped)
-	if err != nil {
-		t.Fatalf("driverFor(%q): %v", name, err)
-	}
-	return d
+	return driverFor(name, wrapped)
 }
 
 // newLimiter builds a limiter through the full driver path
@@ -58,18 +54,13 @@ func newLimiter(t *testing.T, d *Driver, rate float64, burst int) resilience.Rat
 	return l
 }
 
-func TestDriverRegisteredInLimiterRegistry(t *testing.T) {
+func TestDriverSingletonPerName(t *testing.T) {
 	d := newTestDriver(t, "testreg")
-	got, err := resilience.GetLimiter("testreg")
-	if err != nil {
-		t.Fatalf("GetLimiter: %v", err)
+	// Re-wiring (a second container pass in the same process) must reuse and
+	// rebind the same driver rather than hand out a second one for the name.
+	if again := newTestDriver(t, "testreg"); again != d {
+		t.Fatal("driverFor returned a different driver instance for the same name")
 	}
-	if got != resilience.LimiterDriver(d) {
-		t.Fatal("registry returned a different driver instance")
-	}
-	// Re-wiring (a second container pass in the same process) must rebind the
-	// client, not panic on duplicate registration.
-	newTestDriver(t, "testreg")
 }
 
 func TestSharedBudgetAcrossInstances(t *testing.T) {
@@ -218,10 +209,7 @@ func TestKeyTTLPreventsColdKeyPileup(t *testing.T) {
 	srv := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	d, err := driverFor("ttl", &goredis.Client{UniversalClient: client})
-	if err != nil {
-		t.Fatalf("driverFor: %v", err)
-	}
+	d := driverFor("ttl", &goredis.Client{UniversalClient: client})
 	l := newLimiter(t, d, 2, 4)
 	if _, err := l.Allow(context.Background(), "api"); err != nil {
 		t.Fatal(err)
@@ -257,21 +245,11 @@ func TestClaimDriverNameDuplicateFailsStartup(t *testing.T) {
 	}
 }
 
-// TestDriverForCrossModuleDuplicateFails proves a driver name already
-// registered by another module (here: the built-in "default") surfaces as a
-// startup error from the bean ctor instead of the registry's duplicate panic.
-func TestDriverForCrossModuleDuplicateFailsStartup(t *testing.T) {
-	srv := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
-	_, err := driverFor("default", &goredis.Client{UniversalClient: client})
-	if err == nil {
-		t.Fatal("claiming the built-in \"default\" driver name must fail")
-	}
-	if !strings.Contains(err.Error(), "already registered by another module") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
+// A driver name taken by another module (e.g. the built-in "default", or
+// sentinel) is no longer a registry concern: driverFor only mints the value,
+// and the starter contributes it as a bean named after the driver, so the clash
+// surfaces as a duplicate-bean error at wiring. That half is pinned by
+// starter-governance's driver-directory test, which owns the container.
 
 // TestSlidingWindowPolicyRejected proves an unsupported Algorithm is a loud
 // error at limiter construction, not a silent token-bucket downgrade.

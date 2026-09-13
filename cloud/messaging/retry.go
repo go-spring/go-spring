@@ -19,8 +19,11 @@ package messaging
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // Header names stamped by [DeadLetter] on the copy routed to the dead-letter
@@ -97,13 +100,13 @@ func Retry(h Handler, p RetryPolicy) Handler {
 				return nil
 			}
 			if attempt >= p.MaxRetries {
-				return fmt.Errorf("messaging: delivery failed after %d attempt(s): %w", attempt+1, err)
+				return errutil.Explain(err, "messaging: delivery failed after %d attempt(s)", attempt+1)
 			}
 			if d := p.backoff(attempt); d > 0 {
 				select {
 				case <-time.After(d):
 				case <-ctx.Done():
-					return fmt.Errorf("messaging: retry cancelled: %w", err)
+					return errutil.Explain(err, "messaging: retry cancelled")
 				}
 			}
 		}
@@ -140,14 +143,12 @@ func DeadLetter(h Handler, dlq Publisher, p RetryPolicy) Handler {
 			Headers:   make(map[string]string, len(msg.Headers)+3),
 			Timestamp: time.Now(),
 		}
-		for k, v := range msg.Headers {
-			dlqMsg.Headers[k] = v
-		}
+		maps.Copy(dlqMsg.Headers, msg.Headers)
 		dlqMsg.Headers[HeaderDLQError] = err.Error()
 		dlqMsg.Headers[HeaderDLQRetries] = fmt.Sprintf("%d", p.MaxRetries+1)
 		dlqMsg.Headers[HeaderDLQKey] = msg.Key
 		if perr := dlq.Publish(ctx, dlqMsg); perr != nil {
-			return fmt.Errorf("messaging: dead-letter publish failed (original error: %v): %w", err, perr)
+			return errutil.Explain(perr, "messaging: dead-letter publish failed (original error: %v)", err)
 		}
 		return nil
 	}

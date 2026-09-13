@@ -144,14 +144,33 @@ client 并导出一个 `Locker` bean；业务代码注入 `lock.Locker`，永不
 
 ## 可观测性
 
-`WrapLocker` 用 observe kit 的三信号（trace span + 时长/在途指标 + 访问日志，
-`lock.*` 约定）包装任意 `Locker`。starter 统一安装，后端不必各自携带拷贝：
+`WrapLocker` 在接口上装饰 `Locker`，任何后端都不携带自己的插桩。各 lock
+starter 以自己后端的 system 值安装它：
 
 ```go
-locker = lock.WrapLocker("redis", cfg, inner)
+locker = lock.WrapLocker("redis", inner)
 ```
 
+每个操作（`acquire`、`try_acquire`、`unlock`）都产生一条客户端 span、一个
+`lock.operation.duration` 数据点，以及一条 `_app_lock_access` 标签的访问日志。
+三者共用同一个 `system`（后端）与 `status`（`ok`、`missed`、`error`、
+`not_held`），因此一个看板覆盖四个后端，指标也不会与旁边的日志打架。
+
+`Acquire` 返回的句柄同样被观测。`lock.lost.total` 统计**在业务还在跑时**丢掉的
+租约——这正是分布式锁存在的意义，也是丢了之后只会表现为重复执行的那种失败。
+正常 `Unlock` 关闭的是同一个 channel，但不计数，所以这个数字说什么就是什么。
+
+后端原生的遥测（Redis 命令、etcd revision、apiserver 往返）刻意不在此镜像：
+包装件建父 span 并把 context 传下去，客户端库自带的插桩自然嵌在同一条 trace
+里。锁 key 只进 span 和日志，不进指标——进指标就是把基数交给业务命名。
+
+有一处缺口是结构性的，不是取舍：续租发生在各后端内部，永远不穿过 `Locker`
+接口，所以续租失败只能通过它的结果——`lock.lost.total`——被看到。要报「尝试」
+本身，得在四个 starter 里各加一个钩子；在丢锁计数被证明不够用之前，不值得付
+这笔钱。
+
 未引入 starter-otel 时全局 provider 均为 no-op，包装几乎零开销且不改变行为。
+starter 的 `observe.enabled=false` 返回未包装的裸 locker。
 
 ## 编写后端
 

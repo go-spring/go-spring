@@ -96,12 +96,7 @@ func (a *Authentication) HasAnyAuthority(authorities ...string) bool {
 	if len(authorities) == 0 {
 		return true
 	}
-	for _, want := range authorities {
-		if a.HasAuthority(want) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(authorities, a.HasAuthority)
 }
 
 // HasAllAuthorities reports whether a carries every one of the given

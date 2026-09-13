@@ -18,11 +18,11 @@ package tcc
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"sync"
 	"testing"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -67,7 +67,7 @@ func TestExecute_CancelsTriedWhenATryFails(t *testing.T) {
 	tr := &tracer{}
 	failing := Participant{
 		Name:    "b",
-		Try:     func(context.Context) (any, error) { tr.mark("try:b"); return nil, errors.New("boom") },
+		Try:     func(context.Context) (any, error) { tr.mark("try:b"); return nil, errutil.Explain(nil, "boom") },
 		Confirm: func(context.Context, any) error { return nil },
 		Cancel:  func(_ context.Context, v any) error { tr.mark("cancel:b:" + toStr(v)); return nil },
 	}
@@ -106,7 +106,7 @@ func TestExecute_ConfirmFailureIsSurfaced(t *testing.T) {
 		Participants: []Participant{{
 			Name:    "a",
 			Try:     func(context.Context) (any, error) { return "t", nil },
-			Confirm: func(context.Context, any) error { return errors.New("confirm-broke") },
+			Confirm: func(context.Context, any) error { return errutil.Explain(nil, "confirm-broke") },
 			Cancel:  func(context.Context, any) error { return nil },
 		}},
 	})
@@ -228,7 +228,7 @@ func TestExecute_ConfirmRetriedUnderPolicy(t *testing.T) {
 			Confirm: func(context.Context, any) error {
 				attempts++
 				if attempts == 1 {
-					return errors.New("transient")
+					return errutil.Explain(nil, "transient")
 				}
 				return nil
 			},
@@ -255,13 +255,13 @@ func TestExecute_CancelRetriedUnderPolicy(t *testing.T) {
 			Cancel: func(context.Context, any) error {
 				cancels++
 				if cancels == 1 {
-					return errors.New("transient")
+					return errutil.Explain(nil, "transient")
 				}
 				return nil
 			},
 		}, {
 			Name:    "b",
-			Try:     func(context.Context) (any, error) { return nil, errors.New("boom") },
+			Try:     func(context.Context) (any, error) { return nil, errutil.Explain(nil, "boom") },
 			Confirm: func(context.Context, any) error { return nil },
 			Cancel:  func(context.Context, any) error { return nil },
 		}},
@@ -324,7 +324,7 @@ func TestRecover_ConfirmFailedIsTerminal(t *testing.T) {
 	tx := Transaction{ID: "tx-cf", Participants: []Participant{{
 		Name:    "a",
 		Try:     func(context.Context) (any, error) { return "tok", nil },
-		Confirm: func(context.Context, any) error { confirms++; return errors.New("still down") },
+		Confirm: func(context.Context, any) error { confirms++; return errutil.Explain(nil, "still down") },
 		Cancel:  func(context.Context, any) error { return nil },
 	}}}
 

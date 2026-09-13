@@ -151,7 +151,7 @@ zero-config opt-in the other client starters use.
 
 `resilience.driver=default` uses the bundled, zero-dependency implementation.
 Switching to Sentinel is `driver=sentinel` plus a blank import of
-[`starter-resilience`](../starter-resilience), with no code change.
+[`starter-governance-sentinel`](../starter-governance-sentinel), with no code change.
 
 ## Imperative Calls
 

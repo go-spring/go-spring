@@ -43,7 +43,7 @@ exec := fault.WrapExecutor(resilience.ExecutorFor("redis", resource))
 err := fault.Apply(ctx, fault.InjectorFor(), "gin", func() error { return next(ctx) })
 ```
 
-自包含 injector(测试、cloud/loadtest)可自行构造,传给 `WrapExecutorWith(exec, inj)` 或
+自包含 injector(测试、cloud/experimental/loadtest)可自行构造,传给 `WrapExecutorWith(exec, inj)` 或
 `Apply(ctx, inj, ...)`。
 
 配置(集中在治理规则文档里,key 为 `govern.fault.*` —— 见 [../CONFIG_CN.md §6](../CONFIG_CN.md)):

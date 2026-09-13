@@ -31,7 +31,7 @@ func noopFn(context.Context) error { return nil }
 // BenchmarkExecutor_Baseline measures the raw default executor's per-op cost
 // (no fault layer) — the reference for the framework-tax delta below.
 func BenchmarkExecutor_Baseline(b *testing.B) {
-	d, _ := resilience.GetDriver("default")
+	d := resilience.NewDefaultDriver()
 	exec, _ := d.NewExecutor(resilience.Policy{})
 	defer func() { _ = exec.Close() }()
 	ctx := context.Background()
@@ -44,7 +44,7 @@ func BenchmarkExecutor_Baseline(b *testing.B) {
 // BenchmarkFaultExecutor_Disabled measures fault-wrapped overhead when injection
 // is off (Enabled false) — the steady-state cost a production config pays.
 func BenchmarkFaultExecutor_Disabled(b *testing.B) {
-	d, _ := resilience.GetDriver("default")
+	d := resilience.NewDefaultDriver()
 	raw, _ := d.NewExecutor(resilience.Policy{})
 	defer func() { _ = raw.Close() }()
 	exec := WrapExecutorWith(raw, NewInjector(Config{})) // Enabled false
@@ -58,7 +58,7 @@ func BenchmarkFaultExecutor_Disabled(b *testing.B) {
 // BenchmarkFaultExecutor_Injecting measures cost when every call is injected
 // (Rate 1) — exercises the maybe() decision + error path per attempt.
 func BenchmarkFaultExecutor_Injecting(b *testing.B) {
-	d, _ := resilience.GetDriver("default")
+	d := resilience.NewDefaultDriver()
 	raw, _ := d.NewExecutor(resilience.Policy{})
 	defer func() { _ = raw.Close() }()
 	exec := WrapExecutorWith(raw, NewInjector(Config{Enabled: true, Rate: 1, Error: "generic"}))

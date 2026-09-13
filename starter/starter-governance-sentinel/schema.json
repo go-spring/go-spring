@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "govern.driver.sentinel",
+  "description": "Blank-import only; contributes the 'sentinel' resilience.Driver bean, selected with govern.driver=sentinel",
+  "type": "object",
+  "properties": {}
+}

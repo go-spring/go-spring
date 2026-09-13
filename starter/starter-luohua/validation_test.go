@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/validation"
+	"go-spring.org/stdlib/validation"
 )
 
 // TestValidationLocalizesThroughLuohuaCatalog locks the validation owned seam's

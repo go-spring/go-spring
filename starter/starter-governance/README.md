@@ -5,6 +5,8 @@
 1. **接线**（常驻 wiring bean，[wiring.go](wiring.go)）：把注入的 `governance.Source` bean 交给治理中心、注册 executor/fault seam、触发 OnReady——`cloud/governance` 本体容器无关（不 import spring/gs），**blank import 本 starter 即让治理全链生效**。
 2. **动态源适配器**：治理规则经 `governance.Source` 契约流入的自建刷新链路。file / http 两个源在本模块；etcd / nacos 各自独立成模块（`starter-governance-etcd`、`starter-governance-nacos`），与本模块平级、按需空导入。
 
+家族的第三类是**驱动后端**：`starter-governance-sentinel` 把 sentinel-golang 贡献为名为 `sentinel` 的 `resilience.Driver` bean，经上面的 wiring bean 收进 driver 目录，由治理文档的 `govern.driver=sentinel` 选中。它与本模块平级，但方向相反——源后端决定规则**从哪来**，驱动后端决定规则**由谁执行**。
+
 治理配置**不写进 `app.properties`**——它是自己的一份文档，改一条规则只刷新治理，不触发全应用属性重绑。
 
 ## 定位

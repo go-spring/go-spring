@@ -18,7 +18,6 @@ package outbox
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -27,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/stdlib/errutil"
 )
 
 // memDriver is an in-memory [messaging.Driver]: publishers either capture
@@ -54,7 +54,7 @@ func (b *memDriver) NewPublisher(ctx context.Context, destination string) (messa
 }
 
 func (b *memDriver) NewSubscriber(ctx context.Context, source, group string) (messaging.Subscriber, error) {
-	return nil, errors.New("outbox test: subscriber not supported")
+	return nil, errutil.Explain(nil, "outbox test: subscriber not supported")
 }
 
 func (b *memDriver) delivered(dest string) []*messaging.Message {
@@ -74,7 +74,7 @@ func (p *memPublisher) Publish(ctx context.Context, msg *messaging.Message) erro
 	p.b.attempts[p.dest]++
 	if n, ok := p.b.failDests[p.dest]; ok {
 		if n == 0 || p.b.attempts[p.dest] <= n {
-			return errors.New("boom: " + p.dest)
+			return errutil.Explain(nil, "boom: %s", p.dest)
 		}
 	}
 	p.b.sent[p.dest] = append(p.b.sent[p.dest], msg)
@@ -173,7 +173,7 @@ func TestRelay_DeadLettersAfterMaxAttempts(t *testing.T) {
 		PollInterval: time.Hour, MaxAttempts: 3, BackoffBase: time.Millisecond, DLQSuffix: ".dlq",
 	}, ObserverFunc{OnDeadFunc: func(rec *Record, err error) { dead = append(dead, rec) }})
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		store.mu.Lock()
 		for _, row := range store.rows {
 			row.nextRetry = time.Now()

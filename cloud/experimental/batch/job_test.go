@@ -18,10 +18,10 @@ package batch_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"go-spring.org/cloud/experimental/batch"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -62,7 +62,7 @@ func TestJob_RestartSkipsCompletedSteps(t *testing.T) {
 			batch.Func("second", func(context.Context) error {
 				secondRuns++
 				if failSecond {
-					return errors.New("boom")
+					return errutil.Explain(nil, "boom")
 				}
 				return nil
 			}),

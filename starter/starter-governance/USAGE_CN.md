@@ -276,7 +276,7 @@ poller）可能在 wiring Rooter arm 治理之前初始化。`governance.OnReady
 | Key | 类型 | 默认 | 行为 | 配错后果 |
 |-----|------|------|------|----------|
 | `govern.enabled` | bool | false | 总开关。false → 无论 Default/Rules 为何，PolicyFor 恒返回零 Policy（透传）。 | 全配了却没生效——"为什么不工作"的头号原因。 |
-| `govern.driver` | string | "default" | 所有资源共用的 resilience 后端："default" 或 "sentinel"。 | 未知 driver → executor 构建失败 → 回落 no-op executor。 |
+| `govern.driver` | string | "default" | 所有资源共用的 resilience 后端，在容器的驱动目录里解析：已贡献的 driver bean 名（如 "sentinel"），或内置的 "default"。 | 未知 driver → 启动 panic 并列出可用名字（拼错不能静默关掉保护）。 |
 | `govern.default.*` | PolicyConfig | 全 off | 没有规则匹配的资源的基础 policy。 | — |
 | `govern.rules[n].*` | []Rule | 空 | Resources 含该 label 的第一条 Rule 胜出。⚠ 命中的 Rule **整体替换** Default——不做字段级合并：零值 policy 字段意为"禁用"，部分合并无法区分"显式 0"与"未设"（`govern.go:87-90`）。具体规则放前面。 | 只设 `attempt-timeout` 的规则会静默关掉该资源的默认 retries。 |
 | `govern.fault.*` | fault.Config | 全 off | 全进程故障注入，见 §3.4。 | — |

@@ -3,11 +3,9 @@ go 1.26.1
 use (
 	./cloud
 	./cloud/experimental/session/example
-	./cloud/i18n/example
-	./cloud/loadtest/example
+	./cloud/experimental/loadtest/example
 	./cloud/lock/example
 	./cloud/security/example
-	./cloud/validation/example
 	./contrib/dubbo-go/dubbo
 	./contrib/dubbo-go/jsonrpc
 	./contrib/dubbo-go/rest
@@ -60,6 +58,7 @@ use (
 	./starter/starter-config-apollo/example
 	./starter/starter-config-bus
 	./starter/starter-config-bus/example
+	./starter/starter-config-bus/example-otel
 	./starter/starter-config-consul
 	./starter/starter-config-consul/example
 	./starter/starter-config-k8s
@@ -129,9 +128,6 @@ use (
 	./starter/experimental/starter-mongodb/example-otel
 	./starter/experimental/starter-mqtt
 	./starter/experimental/starter-mqtt/example
-	./starter/experimental/starter-nats
-	./starter/experimental/starter-nats/example
-	./starter/experimental/starter-nats/example-otel
 	./starter/experimental/starter-neo4j
 	./starter/experimental/starter-neo4j/example
 	./starter/experimental/starter-neo4j/example-cloudnative
@@ -161,16 +157,11 @@ use (
 	./starter/starter-registry
 	./starter/starter-registry-zookeeper
 	./starter/starter-registry-zookeeper/example
-	./starter/starter-resilience
-	./starter/starter-resilience/example
 	./starter/experimental/starter-rocketmq
 	./starter/experimental/starter-rocketmq/example
 	./starter/experimental/starter-rocketmq/example-otel
 	./starter/experimental/starter-s3
 	./starter/experimental/starter-s3/example
-	./starter/experimental/starter-scheduler
-	./starter/experimental/starter-scheduler/example
-	./starter/experimental/starter-scheduler/example-otel
 	./starter/experimental/starter-security-jwt
 	./starter/experimental/starter-security-jwt/example
 	./starter/experimental/starter-session-redis
@@ -252,6 +243,8 @@ use (
 	./starter/starter-governance-etcd/example
 	./starter/starter-governance-nacos
 	./starter/starter-governance-nacos/example
+	./starter/starter-governance-sentinel
+	./starter/starter-governance-sentinel/example
 	./starter/starter-http-client
 	./starter/starter-http-client/example
 	./starter/starter-http-client/example-load
@@ -265,6 +258,9 @@ use (
 	./starter/starter-memcached/example-cloudnative
 	./starter/starter-memcached/example-load
 	./starter/starter-memcached/example-otel
+	./starter/starter-nats
+	./starter/starter-nats/example
+	./starter/starter-nats/example-otel
 	./starter/starter-otel
 	./starter/starter-otel/example
 	./starter/starter-pprof
@@ -276,6 +272,9 @@ use (
 	./starter/starter-redigo/example-otel
 	./starter/starter-registry-etcd
 	./starter/starter-registry-etcd/example
+	./starter/starter-scheduler
+	./starter/starter-scheduler/example
+	./starter/starter-scheduler/example-otel
 	./starter/starter-websocket
 	./starter/starter-websocket-coder
 	./starter/starter-websocket-coder/example

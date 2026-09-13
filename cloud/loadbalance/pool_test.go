@@ -17,10 +17,10 @@
 package loadbalance
 
 import (
-	"errors"
 	"testing"
 	"time"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -53,7 +53,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
 		if ep.Addr == "a" {
-			p.Complete(ep, errors.New("boom"))
+			p.Complete(ep, errutil.Explain(nil, "boom"))
 		} else {
 			p.Complete(ep, nil)
 		}
@@ -83,7 +83,7 @@ func TestPoolWithoutTracker(t *testing.T) {
 	for range 10 {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		p.Complete(ep, errors.New("boom")) // failures, but no tracker attached
+		p.Complete(ep, errutil.Explain(nil, "boom")) // failures, but no tracker attached
 	}
 	// Both endpoints keep receiving traffic.
 	m := map[string]int{}

@@ -33,6 +33,7 @@ func init() {
 	// register.
 	gs.Provide(newRouteTable,
 		gs.IndexArg(2, gs.TagArg("?")),
+		gs.IndexArg(3, gs.TagArg("?")),
 	).Caller(1)
 
 	// The listen-port server, wired into graceful drain as a gs.Server. Named

@@ -30,10 +30,7 @@ import (
 // extension with no verifiable behavior would silently pass through and a
 // mis-wire would go unnoticed.
 func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
-	d, err := resilience.GetDriver("luohua")
-	if err != nil {
-		t.Fatalf("luohua resilience driver not registered: %v", err)
-	}
+	d := luohuaResilienceDriver{}
 
 	ex, err := d.NewExecutor(resilience.Policy{})
 	if err != nil {

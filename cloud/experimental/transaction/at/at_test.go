@@ -23,6 +23,7 @@ import (
 	"sync"
 	"testing"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -90,7 +91,7 @@ func TestCoordinator_RollbackFailureIsSurfaced(t *testing.T) {
 	c := NewCoordinator()
 	ctx, xid := c.Begin(context.Background())
 
-	b := &fakeBranch{id: "db1", rollbackErr: errors.New("restore failed")}
+	b := &fakeBranch{id: "db1", rollbackErr: errutil.Explain(nil, "restore failed")}
 	assert.Error(t, c.Register(ctx, xid, b)).Nil()
 
 	assert.Error(t, c.Rollback(ctx, xid)).Matches("restore failed")
@@ -172,7 +173,7 @@ func TestGlobalAT_CommitsOnSuccessRollsBackOnError(t *testing.T) {
 		xid, _ := XIDFromContext(ctx)
 		rolledBack = &fakeBranch{id: "db1"}
 		_ = c.Register(ctx, xid, rolledBack)
-		return errors.New("insufficient balance")
+		return errutil.Explain(nil, "insufficient balance")
 	})
 	assert.Error(t, err).Matches("insufficient balance")
 	assert.That(t, rolledBack.rollbacks).Equal(1)

@@ -18,8 +18,8 @@ package messaging
 
 import (
 	"context"
-	"fmt"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/goutil"
 )
 
@@ -40,7 +40,7 @@ func Recover(h Handler) Handler {
 		defer func() {
 			if r := recover(); r != nil {
 				goutil.ReportPanic(ctx, r)
-				err = fmt.Errorf("messaging: handler panicked: %v", r)
+				err = errutil.Explain(nil, "messaging: handler panicked: %v", r)
 			}
 		}()
 		return h(ctx, msg)

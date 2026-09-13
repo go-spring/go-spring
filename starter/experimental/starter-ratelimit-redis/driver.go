@@ -27,19 +27,20 @@ import (
 	experimental "go-spring.org/starter-go-redis/experimental"
 )
 
-// Driver is the bean this starter exports per instance. It adapts a named
-// *redis.Client into a [resilience.LimiterDriver] registered under the
-// configured driver name, so consumers that resolve limiters by name —
-// starter-gateway's rateLimit filter (`driver=`), [resilience.GetLimiter], any
-// app code — get cross-replica limiting with zero code change.
+// Driver is the bean this starter contributes per instance. It adapts a named
+// *redis.Client into a [resilience.LimiterDriver] named after the configured
+// driver name, so consumers that resolve limiters by name — starter-gateway's
+// rateLimit filter (`driver=`), any app code injecting the directory — get
+// cross-replica limiting with zero code change.
 //
 // The token-bucket algorithm itself (atomic refill/consume Lua script, key
 // namespacing, burst defaulting) lives in starter-go-redis/experimental; this
 // module only contributes the config-driven wiring, mirroring how
-// starter-resilience wires sentinel into the resilience Driver registry.
+// starter-governance-sentinel contributes sentinel as a resilience backend bean.
 type Driver struct {
-	// Name is the limiter driver name this instance is registered under in the
-	// resilience limiter registry ([resilience.GetLimiter]).
+	// Name is the driver name this instance answers to — the bean name it is
+	// contributed under, and the value consumers pass as the rateLimit filter's
+	// driver= argument.
 	Name string
 
 	mu     sync.RWMutex
@@ -84,10 +85,9 @@ func (d *Driver) Client() redis.UniversalClient {
 	return d.client
 }
 
-// drivers holds one Driver singleton per driver name. Registration with the
-// resilience limiter registry is once-per-process (the registry panics on
-// duplicates), but the client binding is refreshed on every wiring pass —
-// a second gs.RunTest in the same test binary rebinds instead of panicking.
+// drivers holds one Driver singleton per driver name, so a second wiring pass
+// — a second gs.RunTest in the same test binary — rebinds the existing driver
+// to the new client instead of handing out a fresh one.
 var drivers sync.Map // name (string) -> *Driver
 
 // driverOwners records which instance claimed which driver name, so two
@@ -114,27 +114,15 @@ func claimDriverName(driver, instance string) error {
 	return nil
 }
 
-// driverFor returns the Driver registered under name, creating and registering
-// it with [resilience.RegisterLimiter] on first use, then binding client.
-// A driver name already registered by someone else (e.g. the built-in
-// "default" driver, or another module's limiter) is a clear startup error
-// instead of the registry's duplicate panic.
-func driverFor(name string, client *goredis.Client) (*Driver, error) {
-	v, ok := drivers.Load(name)
-	if ok {
-		d := v.(*Driver)
-		d.bind(client.UniversalClient)
-		return d, nil
-	}
-	if _, err := resilience.GetLimiter(name); err == nil {
-		return nil, fmt.Errorf("ratelimit-redis: limiter driver name %q is already registered by another module", name)
-	}
+// driverFor returns the per-name Driver singleton, binding client to it. The
+// caller contributes the result as a bean named after the driver, which is what
+// makes it reachable from the container's limiter directory; a name already
+// taken — by this module's other instance, by the built-in "default", or by
+// another module — is a duplicate-bean error at wiring.
+func driverFor(name string, client *goredis.Client) *Driver {
 	d := &Driver{Name: name}
-	actual, loaded := drivers.LoadOrStore(name, d)
+	actual, _ := drivers.LoadOrStore(name, d)
 	d = actual.(*Driver)
 	d.bind(client.UniversalClient)
-	if !loaded {
-		resilience.RegisterLimiter(name, d)
-	}
-	return d, nil
+	return d
 }

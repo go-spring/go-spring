@@ -26,9 +26,7 @@ import (
 )
 
 func newLimiter(t *testing.T, p resilience.LimitPolicy) resilience.RateLimiter {
-	d, err := resilience.GetLimiter("default")
-	assert.That(t, err).Nil()
-	rl, err := d.NewRateLimiter(p)
+	rl, err := resilience.NewDefaultLimiterDriver().NewRateLimiter(p)
 	assert.That(t, err).Nil()
 	return rl
 }
@@ -93,16 +91,30 @@ func TestRateLimiterSlidingWindow(t *testing.T) {
 	assert.That(t, allowed).Equal(10)
 }
 
-func TestRegisterLimiterGuards(t *testing.T) {
-	assert.Panic(t, func() { resilience.RegisterLimiter("", defaultNop{}) }, "empty name")
-	assert.Panic(t, func() { resilience.RegisterLimiter("x", nil) }, "nil limiter driver")
-	assert.Panic(t, func() { resilience.RegisterLimiter("default", defaultNop{}) }, "already registered")
-	_, err := resilience.GetLimiter("nope")
-	assert.That(t, err).NotNil()
+// TestResolveLimiterDirectory pins the name resolution callers use to pick a
+// limiter backend out of the container-provided directory: the empty and
+// "default" names fall back to the bundled driver, a matching entry wins, and
+// an unknown name is a loud error listing what is available.
+func TestResolveLimiterDirectory(t *testing.T) {
+	fallback := resilience.NewDefaultLimiterDriver()
+	dir := map[string]resilience.LimiterDriver{"redis": stubLimiterDriver{}}
+
+	for _, name := range []string{"", resilience.DefaultLimiterName} {
+		got, err := resilience.Resolve(dir, name, resilience.DefaultLimiterName, "limiter driver", fallback)
+		assert.That(t, err).Nil()
+		assert.That(t, got).Equal(fallback)
+	}
+
+	got, err := resilience.Resolve(dir, "redis", resilience.DefaultLimiterName, "limiter driver", fallback)
+	assert.That(t, err).Nil()
+	assert.That(t, got).Equal(dir["redis"])
+
+	_, err = resilience.Resolve(dir, "nope", resilience.DefaultLimiterName, "limiter driver", fallback)
+	assert.Error(t, err).Matches(`no limiter driver named "nope" \(available: \[default redis\]\)`)
 }
 
-type defaultNop struct{}
+type stubLimiterDriver struct{}
 
-func (defaultNop) NewRateLimiter(resilience.LimitPolicy) (resilience.RateLimiter, error) {
+func (stubLimiterDriver) NewRateLimiter(resilience.LimitPolicy) (resilience.RateLimiter, error) {
 	return nil, nil
 }

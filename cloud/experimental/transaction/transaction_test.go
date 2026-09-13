@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/experimental/transaction"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -57,7 +58,7 @@ func TestExecute_AllStepsCommit(t *testing.T) {
 
 func TestExecute_CompensatesInReverseOnFailure(t *testing.T) {
 	var order []string
-	failB := errors.New("b failed")
+	failB := errutil.Explain(nil, "b failed")
 	coord := transaction.NewCoordinator()
 
 	saga := transaction.Saga{
@@ -84,7 +85,7 @@ func TestExecute_CompensatesInReverseOnFailure(t *testing.T) {
 }
 
 func TestExecute_CompensationFailureIsReported(t *testing.T) {
-	failComp := errors.New("restore failed")
+	failComp := errutil.Explain(nil, "restore failed")
 	coord := transaction.NewCoordinator()
 
 	saga := transaction.Saga{
@@ -92,7 +93,7 @@ func TestExecute_CompensationFailureIsReported(t *testing.T) {
 		Steps: []transaction.Step{
 			{Name: "a", Action: act("ra"),
 				Compensate: func(context.Context, any) error { return failComp }},
-			{Name: "b", Action: func(context.Context) (any, error) { return nil, errors.New("boom") }},
+			{Name: "b", Action: func(context.Context) (any, error) { return nil, errutil.Explain(nil, "boom") }},
 		},
 	}
 
@@ -113,7 +114,7 @@ func TestExecute_IrreversibleStepDuringRollback(t *testing.T) {
 		ID: "s4",
 		Steps: []transaction.Step{
 			{Name: "a", Action: act("ra")}, // no Compensate -> irreversible
-			{Name: "b", Action: func(context.Context) (any, error) { return nil, errors.New("boom") }},
+			{Name: "b", Action: func(context.Context) (any, error) { return nil, errutil.Explain(nil, "boom") }},
 		},
 	}
 
@@ -138,7 +139,7 @@ func TestExecute_RetriesActionUnderPolicy(t *testing.T) {
 				Action: func(context.Context) (any, error) {
 					attempts++
 					if attempts < 3 {
-						return nil, errors.New("transient")
+						return nil, errutil.Explain(nil, "transient")
 					}
 					return "ok", nil
 				},
@@ -167,7 +168,7 @@ func TestExecute_StorePersistenceLifecycle(t *testing.T) {
 	// Compensated saga: log is kept with the terminal status.
 	bad := transaction.Saga{ID: "bad", Steps: []transaction.Step{
 		{Name: "a", Action: act(1), Compensate: func(context.Context, any) error { return nil }},
-		{Name: "b", Action: func(context.Context) (any, error) { return nil, errors.New("boom") }},
+		{Name: "b", Action: func(context.Context) (any, error) { return nil, errutil.Explain(nil, "boom") }},
 	}}
 	_, err = coord.Execute(context.Background(), bad)
 	assert.Error(t, err).NotNil()
@@ -193,7 +194,7 @@ func TestExecute_ObserverSeesEveryPhase(t *testing.T) {
 
 	saga := transaction.Saga{ID: "s6", Steps: []transaction.Step{
 		{Name: "a", Action: act(1), Compensate: func(context.Context, any) error { return nil }},
-		{Name: "b", Action: func(context.Context) (any, error) { return nil, errors.New("boom") }},
+		{Name: "b", Action: func(context.Context) (any, error) { return nil, errutil.Explain(nil, "boom") }},
 	}}
 	_, err := coord.Execute(context.Background(), saga)
 	assert.Error(t, err).NotNil()
@@ -208,7 +209,7 @@ func TestGlobalTransactional_RunsRegisteredSaga(t *testing.T) {
 	reg.Register("OrderService.Place",
 		transaction.Step{Name: "a", Action: act("ra"),
 			Compensate: func(context.Context, any) error { compensated = true; return nil }},
-		transaction.Step{Name: "b", Action: func(context.Context) (any, error) { return nil, errors.New("boom") }},
+		transaction.Step{Name: "b", Action: func(context.Context) (any, error) { return nil, errutil.Explain(nil, "boom") }},
 	)
 	coord := transaction.NewCoordinator()
 	decorator := transaction.GlobalTransactional(coord, reg)
@@ -393,7 +394,7 @@ func TestExecute_ConcurrentSagasOnSharedStore(t *testing.T) {
 						Compensate: func(context.Context, any) error { return nil }},
 					{Name: "b", Action: func(context.Context) (any, error) {
 						if i%2 == 0 {
-							return nil, errors.New("boom")
+							return nil, errutil.Explain(nil, "boom")
 						}
 						return nil, nil
 					}},
@@ -459,7 +460,7 @@ func TestRecover_CompensationFailureIsTerminalAndIdempotent(t *testing.T) {
 	coord := transaction.NewCoordinator(transaction.WithStore(store))
 	saga := transaction.Saga{ID: "f1", Steps: []transaction.Step{
 		{Name: "a", Action: act("ra"),
-			Compensate: func(context.Context, any) error { calls++; return errors.New("restore broke") }},
+			Compensate: func(context.Context, any) error { calls++; return errutil.Explain(nil, "restore broke") }},
 	}}
 
 	res, err := coord.Recover(ctx, saga)
@@ -477,7 +478,7 @@ func TestRecover_CompensationFailureIsTerminalAndIdempotent(t *testing.T) {
 // TestStepErrorErrorAndUnwrap covers the error plumbing callers rely on with
 // errors.Is / errors.As.
 func TestStepErrorErrorAndUnwrap(t *testing.T) {
-	inner := errors.New("boom")
+	inner := errutil.Explain(nil, "boom")
 	se := &transaction.StepError{Step: "a", Phase: transaction.PhaseCompensate, Err: inner}
 	assert.That(t, se.Error()).Equal("transaction: step a Compensate: boom")
 	assert.That(t, errors.Is(se, inner)).True()

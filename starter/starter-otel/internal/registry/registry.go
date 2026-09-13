@@ -17,8 +17,7 @@
 // Package registry is a generic, named-driver registry shared by the trace and
 // metric exporter registries so the two pillars stay structurally identical and
 // cannot drift. It mirrors the panic-on-duplicate idiom used elsewhere in the
-// framework (discovery.Register, starter-go-redis RegisterDriver,
-// resilience.RegisterDriver): a mis-wired or duplicate registration fails
+// framework (starter-gateway's RegisterFilter, cloud/cache RegisterDriver): a mis-wired or duplicate registration fails
 // loudly at init.
 package registry
 

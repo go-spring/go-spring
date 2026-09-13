@@ -35,4 +35,10 @@ type Config struct {
 	// of these prefixes, letting a heterogeneous fleet refresh selectively.
 	// Comma-separated, e.g. "db,cache".
 	WatchPrefixes string `value:"${watch-prefixes:=}"`
+
+	// Origin labels this instance as the publisher in a broadcast's RefreshEvent
+	// and in the producer span. It exists purely for observability — telling
+	// "this instance refreshed" from "some instance refreshed" when reading
+	// traces and logs. Defaults to the host name when empty.
+	Origin string `value:"${origin:=}"`
 }

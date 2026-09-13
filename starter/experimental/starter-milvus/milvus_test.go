@@ -40,8 +40,7 @@ func TestConfigDefaults(t *testing.T) {
 // resilience driver, for driving the interceptors directly (no live Milvus
 // server is needed).
 func newGuardedSlot(t *testing.T, p resilience.Policy) *guardSlot {
-	d, err := resilience.GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := resilience.NewDefaultDriver()
 	exec, err := d.NewExecutor(p)
 	assert.Error(t, err).Nil()
 	s := &guardSlot{}

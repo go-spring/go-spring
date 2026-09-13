@@ -46,8 +46,9 @@ var (
 
 // RegisterFilter makes a self-contained filter available under name. It panics
 // on empty name, nil factory, or duplicate registration, matching the
-// driver-registry idiom used across stdlib (discovery.Register,
-// resilience.RegisterDriver) so duplicate wiring fails loudly at init.
+// static-factory-registry idiom used across the framework (cloud/cache
+// RegisterDriver, starter-otel's exporter registries) so duplicate wiring fails
+// loudly at init.
 func RegisterFilter(name string, f FilterFactory) {
 	if name == "" {
 		panic("gateway: register filter with empty name")
@@ -82,7 +83,10 @@ func init() {
 	RegisterFilter("rewriteHost", rewriteHostFilter)
 	RegisterFilter("preserveHostHeader", preserveHostFilter)
 	RegisterFilter("requestId", requestIDFilter)
-	RegisterFilter("rateLimit", rateLimitFilter)
+	// rateLimit is deliberately NOT registered here: it needs a limiter backend,
+	// which lives in the container, so the route table handles it directly (see
+	// RouteTable.buildFilters) rather than through this self-contained factory
+	// registry.
 }
 
 // stripPrefixFilter removes the first n path segments, the way an upstream that
@@ -228,7 +232,12 @@ func requestIDFilter(args []string) (Filter, error) {
 // (default "default"; a redis driver gives cross-replica limiting), algorithm
 // ("token-bucket"/"sliding-window"), key ("route"/"ip"). The route id is the
 // default bucket key so independent routes get independent budgets.
-func rateLimitFilter(args []string) (Filter, error) {
+//
+// driver is resolved through resolve, not from a package registry: the
+// container holds the limiter backends, so the route table injects the
+// directory and the filter asks it by name. The empty name and "default" fall
+// back to the bundled in-process limiter.
+func rateLimitFilter(args []string, resolve func(string) (resilience.LimiterDriver, error)) (Filter, error) {
 	kv, err := parseKV(args)
 	if err != nil {
 		return nil, err
@@ -247,11 +256,7 @@ func rateLimitFilter(args []string) (Filter, error) {
 			return nil, &parseError{what: "rateLimit burst", token: s}
 		}
 	}
-	driver := kv["driver"]
-	if driver == "" {
-		driver = "default"
-	}
-	d, err := resilience.GetLimiter(driver)
+	d, err := resolve(kv["driver"])
 	if err != nil {
 		return nil, err
 	}

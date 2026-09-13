@@ -18,9 +18,10 @@ package outbox
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // MemoryStore is an in-memory [Store] for tests and demos. It is NOT durable:
@@ -122,12 +123,12 @@ func (s *MemoryStore) transition(id int64, want string, fn func(*memRow)) error 
 			continue
 		}
 		if r.status != want {
-			return errors.New("outbox: MemStore transition on non-pending record")
+			return errutil.Explain(nil, "outbox: MemStore transition on non-pending record")
 		}
 		fn(r)
 		return nil
 	}
-	return errors.New("outbox: MemStore record not found")
+	return errutil.Explain(nil, "outbox: MemStore record not found")
 }
 
 // Snapshot returns a copy of all rows by status, for assertions.

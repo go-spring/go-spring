@@ -2,7 +2,7 @@
 
 Load-test binary for starter-mongodb. Drives an upsert + findOne round-trip on a
 MongoDB collection (resilience + fault hot-reloadable) using the shared
-`cloud/loadtest` harness, printing throughput / latency percentiles / error
+`cloud/experimental/loadtest` harness, printing throughput / latency percentiles / error
 breakdown.
 
 ## Run

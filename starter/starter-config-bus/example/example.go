@@ -81,7 +81,7 @@ func runTest(d *Demo) {
 	// yet, then broadcast a single refresh so every subscriber re-reads it.
 	want := "v-" + time.Now().Format("150405")
 	_ = os.Setenv("GS_DEMO_MESSAGE", want)
-	if err := d.Bus.Publish(""); err != nil {
+	if err := d.Bus.Publish(ctx, ""); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "publish refresh failed: %v", err)
 		os.Exit(1)
 	}

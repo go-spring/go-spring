@@ -116,11 +116,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	driver, err := resilience.GetDriver("default")
-	if err != nil {
-		fail("resilience driver: %v", err)
-	}
-	exec, err = driver.NewExecutor(resilience.Policy{RateLimit: 3})
+	var err error
+	exec, err = resilience.NewDefaultDriver().NewExecutor(resilience.Policy{RateLimit: 3})
 	if err != nil {
 		fail("resilience executor: %v", err)
 	}

@@ -110,3 +110,15 @@ go el.Run(ctx)
 本 Starter 实现的是单节点 Redlock。多节点 Redlock 未内置：Sentinel 故障切换
 或 Cluster HA 已能覆盖常见场景，如需更强一致性，请换到 etcd 或 consul 版本
 （同样是 blank import 切换，代码不动）。
+
+## 日志 tag
+
+`cloud/lock` 的运行期日志使用 tag `_app_lock_access`（lock 访问日志——每次 acquire、
+try_acquire、unlock，以及持锁期间发生的丢锁）。如需与主日志分开单独调整，可为该 tag 绑定
+独立的 logger：
+
+```properties
+logger.lock_access.type=Logger
+logger.lock_access.level=WARN
+logger.lock_access.tag=_app_lock_access
+```

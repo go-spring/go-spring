@@ -31,10 +31,12 @@ spring.ratelimit.redis.instances.gateway.driver=redis
 
 ## 使用方式
 
-注册表查找（starter-gateway 的 `rateLimit` filter 内部就是这么做的）：
+目录查找（starter-gateway 的 `rateLimit` filter 内部就是这么做的，目录由容器注入）：
 
 ```go
-d, _ := resilience.GetLimiter("redis")
+// limiters map[string]resilience.LimiterDriver `autowire:"?"`
+d, err := resilience.Resolve(limiters, "redis", resilience.DefaultLimiterName,
+    "limiter driver", resilience.NewDefaultLimiterDriver())
 lim, _ := d.NewRateLimiter(resilience.LimitPolicy{Rate: 100, Burst: 50})
 ok, err := lim.Allow(ctx, "tenant-a")
 ```

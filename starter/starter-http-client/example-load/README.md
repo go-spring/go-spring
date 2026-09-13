@@ -2,7 +2,7 @@
 
 Load-test binary for starter-http-client. It runs an in-process HTTP backend
 (no docker), wires a declarative http-client against it, and drives GETs through
-the shared `cloud/loadtest` harness.
+the shared `cloud/experimental/loadtest` harness.
 
 ## Run
 

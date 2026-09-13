@@ -95,11 +95,12 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   (`${addr:=}`)。单字段必填校验通过 `expr` tag 在配置绑定阶段完成（字符串用
   `expr:"$ != ''"`,切片用 `expr:"len($) > 0"`）。跨字段规则（"addr 或 service-name
   至少一个"）在构造函数中用 `errutil.RequireAny` 校验,因为 `expr` 不支持跨字段约束。
-- **driver 模式支持可插拔后端。** client 暴露一个 `Driver` 接口加一个包级注册表
-  (`RegisterDriver`,重复/空/nil 时 panic)。`DefaultDriver` 内置随包发布;公司可
-  注册自己的 driver 并用 `${driver:=...}` 选中,无需 fork starter。这也是注入服务
-  发现的接缝(由 driver 构建 dialer)。可选能力放到**独立**接口上(如 go-redis 的
-  `ClusterDriver`),让已有的自定义 driver 保持可编译。
+- **driver 模式支持可插拔后端。** client 暴露一个 `Driver` 接口;`DefaultDriver`
+  内置随包发布,容器即 driver 目录 —— 公司用
+  `gs.Provide(...).Name("corp").Export(gs.As[Driver]())` 贡献自己的 driver,再用
+  `${driver:=...}` 选中,无需 fork starter。没有包级注册表:点名一个不存在的 bean
+  在启动期失败。这也是注入服务发现的接缝(由 driver 构建 dialer)。可选能力放到
+  **独立**接口上(如 go-redis 的 `ClusterDriver`),让已有的自定义 driver 保持可编译。
 - **启动期连接校验。** 客户端库允许时,构造函数做一次有超时上界的探测(如 Redis
   `PING` 用 `DialTimeout`),让配置错误在启动期暴露而非首个请求时。
 - **每个实例都有 `Destroy`。** 每个 bean 注册析构函数,`Close()` 连接并停掉其背后的
@@ -107,8 +108,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
 - **一个关注点一个文件 —— 标准的 client starter 骨架。** client starter 把横切关注点
   拆到独立文件,而不是全堆进 `config.go` / `starter.go`,让每个能力的接线落在维护者
   预期的地方:
-  - `config.go` —— `Config` 结构、`Driver` 接口、driver 注册表(`RegisterDriver`,
-    `init()`)。只负责建连接。
+  - `config.go` —— `Config` 结构、`Driver` 接口。只负责建连接。
   - `starter.go` —— `init()` 期的 `gs.Group` / `gs.Module` 注册,以及组装 bean 的
     构造函数(`newClient`)。
   - `discovery.go` —— 客户端服务发现接缝:mesh 门控的构建器(用按配置 `discovery`
@@ -149,6 +149,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   starter 针对这些全局埋点,otel 缺席时这些 hook 是 no-op(零配置、可选启用)。
 - **`starter-pprof`** 在**独立**端口跑一个专用 HTTP server 暴露运行时 profile,刻意
   与应用主端口隔开。
+- **`starter-governance-sentinel`** 只贡献一个进程级 bean —— 名为 `sentinel` 的
+  `resilience.Driver` —— 给治理中心的 driver 目录。与 `starter-governance` 一起导入后,
+  治理文档的 `govern.driver=sentinel` 一次切换全部客户端。无端口、无自有 key。
 
 ### 2.5 配置 Provider 类(远程配置中心)
 

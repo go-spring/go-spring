@@ -3,7 +3,7 @@
 
 `resilience` 是治理家族(`go-spring.org/cloud/governance/resilience`)的客户端
 容错抽象。定义所有 adapter 与 driver 都遵守的中立契约,内置一个可用的驱动让
-框架开箱可跑;生产环境通常从 `starter/starter-resilience` 换成
+框架开箱可跑;生产环境通常从 `starter/starter-governance-sentinel` 换成
 sentinel 驱动。
 
 ## 1. 职责与边界
@@ -27,9 +27,10 @@ sentinel 驱动。
   式配置;`Driver.NewExecutor(Policy)` 构造具体运行时。内置驱动直接读
   policy,sentinel 驱动把 policy 翻成 sentinel-golang 的 flow / circuit-breaker
   规则。adapter 只依赖 `Executor`。
-- **驱动注册表**(`RegisterDriver` / `MustGetDriver`),空 / nil / 重复注册在
-  init 期 panic —— 与 discovery / cache / loadbalance 同构。应用按名(在配置里)
-  选择驱动。
+- **容器即驱动目录。** 本包不带任何注册表:后端以自身名字贡献为 bean、导出为
+  `Driver`,governance 的 wiring bean 把所有这类 bean 收成按名字索引的 map。
+  `govern.driver` 选中其中一个,经 `resilience.Resolve` 解析 —— 与 `discovery`
+  和 client starter 的 `Driver` 同一形态。内置驱动无需 bean 即应答 `"default"`。
 - **中立拒绝错误**(`ErrRateLimited` / `ErrCircuitOpen` / `ErrBulkheadFull`)
   让 adapter 做协议特定映射(协议 starter 的 admission 中间件里 429 vs 503),
   不用 import 驱动包。

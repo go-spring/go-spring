@@ -31,7 +31,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/loadtest"
+	"go-spring.org/cloud/experimental/loadtest"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-governance" // registers the centralized governance center

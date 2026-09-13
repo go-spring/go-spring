@@ -100,12 +100,14 @@ type Config struct {
 	// Set it explicitly to decouple the label from addressing entirely.
 	Resource string
 
-	// ResilienceDriver names the registered resilience backend to protect calls
-	// with. When neither Executor nor ResilienceDriver is set, the executor is
-	// resolved from the centralized governance authority (governance.Register
-	// under Resource); with governance off the armed policy is zero and the
-	// executor is a transparent pass-through.
-	ResilienceDriver string
+	// ResilienceDriver is the resilience backend to protect calls with. The
+	// caller resolves it by name from the container's driver directory (the
+	// starter's ${...driver} entry key) and passes the driver itself, since this
+	// package is container-free. When neither Executor nor ResilienceDriver is
+	// set, the executor is resolved from the centralized governance authority
+	// (governance.Register under Resource); with governance off the armed policy
+	// is zero and the executor is a transparent pass-through.
+	ResilienceDriver resilience.Driver
 
 	// ResiliencePolicy is the backend-neutral protection applied when
 	// ResilienceDriver is set.
@@ -221,8 +223,8 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 	switch {
 	case cfg.Executor != nil:
 		exec = cfg.Executor
-	case cfg.ResilienceDriver != "":
-		if exec, err = resilience.NewExecutor(cfg.ResilienceDriver, cfg.ResiliencePolicy); err != nil {
+	case cfg.ResilienceDriver != nil:
+		if exec, err = cfg.ResilienceDriver.NewExecutor(cfg.ResiliencePolicy); err != nil {
 			closeAll(closeFns)
 			return nil, nil, err
 		}
@@ -371,7 +373,7 @@ func governedExecutor(resource string, pool *loadbalance.Pool) (resilience.Execu
 	// The subscription is not cancelled: the transport (and so this
 	// subscription) lives for the life of the client, which httpx builds once.
 	p := floorMinRequests(governance.Register(resource, refresh).Policy)
-	e, err := resilience.NewExecutor(governance.Driver(), p)
+	e, err := governance.NewExecutor(p)
 	if err != nil {
 		return nil, err
 	}

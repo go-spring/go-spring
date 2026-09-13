@@ -18,9 +18,10 @@ package discovery
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 func TestResolve(t *testing.T) {
@@ -75,7 +76,7 @@ func TestNewResolverNotInEffect(t *testing.T) {
 type failingDiscovery struct{}
 
 func (failingDiscovery) Resolve(context.Context, string, ...Option) ([]Endpoint, error) {
-	return nil, fmt.Errorf("boom")
+	return nil, errutil.Explain(nil, "boom")
 }
 
 func TestNewStaticDiscovery(t *testing.T) {

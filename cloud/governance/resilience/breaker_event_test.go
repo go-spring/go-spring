@@ -18,10 +18,10 @@ package resilience
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -44,8 +44,7 @@ func (l *recordingListener) OnBreakerStateChange(resource string, from, to Break
 // open→half-open (probe) and half-open→closed (recovery) transitions to a
 // listener attached via SetBreakerEventListener.
 func TestBreakerEvents(t *testing.T) {
-	d, err := GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := NewDefaultDriver()
 	exec, err := d.NewExecutor(Policy{ErrorThreshold: 2, OpenDuration: 5 * time.Millisecond})
 	assert.Error(t, err).Nil()
 	defer func() { _ = exec.Close() }()
@@ -53,7 +52,7 @@ func TestBreakerEvents(t *testing.T) {
 	rec := &recordingListener{}
 	exec.(BreakerEventListenerSetter).SetBreakerEventListener(rec)
 
-	boom := errors.New("boom")
+	boom := errutil.Explain(nil, "boom")
 	ctx := context.Background()
 	// Two consecutive failures trip the breaker (closed → open).
 	_ = exec.Execute(ctx, "svc", func(context.Context) error { return boom })
@@ -80,13 +79,12 @@ func TestBreakerEvents(t *testing.T) {
 // TestBreakerEventsNoListener confirms the breaker still works (no panic) when
 // no listener is attached.
 func TestBreakerEventsNoListener(t *testing.T) {
-	d, err := GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := NewDefaultDriver()
 	exec, err := d.NewExecutor(Policy{ErrorThreshold: 1, OpenDuration: time.Second})
 	assert.Error(t, err).Nil()
 	defer func() { _ = exec.Close() }()
 
-	err = exec.Execute(context.Background(), "svc", func(context.Context) error { return errors.New("boom") })
+	err = exec.Execute(context.Background(), "svc", func(context.Context) error { return errutil.Explain(nil, "boom") })
 	assert.Error(t, err).NotNil() // tripped, no panic
 }
 
@@ -94,14 +92,13 @@ func TestBreakerEventsNoListener(t *testing.T) {
 // per-resource state: a breaker tripped under the old (tight) policy is gone
 // after Refresh raises the threshold, so calls run again.
 func TestExecutorRefresh(t *testing.T) {
-	d, err := GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := NewDefaultDriver()
 	exec, err := d.NewExecutor(Policy{ErrorThreshold: 1, OpenDuration: time.Hour})
 	assert.Error(t, err).Nil()
 	defer func() { _ = exec.Close() }()
 
 	ctx := context.Background()
-	boom := errors.New("boom")
+	boom := errutil.Explain(nil, "boom")
 	_ = exec.Execute(ctx, "svc", func(context.Context) error { return boom }) // trips (threshold 1)
 	err = exec.Execute(ctx, "svc", func(context.Context) error { return nil })
 	assert.Error(t, err).Is(ErrCircuitOpen) // rejected, breaker open

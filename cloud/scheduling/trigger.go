@@ -16,7 +16,11 @@
 
 package scheduling
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/stdlib/errutil"
+)
 
 // FixedRate returns a [Trigger] that fires every d, measured from each scheduled
 // fire time rather than from when a run finishes. The gap between fires stays d
@@ -27,13 +31,15 @@ import "time"
 // a sensible schedule.
 func FixedRate(d time.Duration) Trigger {
 	if d <= 0 {
-		panic("scheduling: FixedRate requires a positive duration")
+		panic(errutil.Explain(nil, "scheduling: FixedRate requires a positive duration"))
 	}
 	return fixedRate{d: d}
 }
 
+// fixedRate is the [FixedRate] trigger; d is the fixed period between fires.
 type fixedRate struct{ d time.Duration }
 
+// Next implements [Trigger].
 func (f fixedRate) Next(tc TriggerContext) time.Time {
 	if tc.LastScheduled.IsZero() {
 		return tc.Now.Add(f.d)
@@ -56,13 +62,16 @@ func (f fixedRate) Next(tc TriggerContext) time.Time {
 // It panics if d is not positive.
 func FixedDelay(d time.Duration) Trigger {
 	if d <= 0 {
-		panic("scheduling: FixedDelay requires a positive duration")
+		panic(errutil.Explain(nil, "scheduling: FixedDelay requires a positive duration"))
 	}
 	return fixedDelay{d: d}
 }
 
+// fixedDelay is the [FixedDelay] trigger; d is the gap measured from the end of
+// each run.
 type fixedDelay struct{ d time.Duration }
 
+// Next implements [Trigger].
 func (f fixedDelay) Next(tc TriggerContext) time.Time {
 	if tc.LastCompletion.IsZero() {
 		return tc.Now.Add(f.d)

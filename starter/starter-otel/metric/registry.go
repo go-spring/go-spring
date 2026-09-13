@@ -36,8 +36,8 @@ var exporters = registry.New[MeterExporterFactory]("metric")
 
 // RegisterMeterExporter makes a metric exporter factory available under name.
 // It panics on empty name, nil factory, or a duplicate - mirroring the
-// driver-registry idiom used elsewhere (discovery.Register, starter-go-redis
-// RegisterDriver, resilience.RegisterDriver) so a mis-wired or duplicate
+// driver-registry idiom used elsewhere (starter-otel's own registries, cloud/cache
+// RegisterDriver) so a mis-wired or duplicate
 // registration fails loudly at init.
 func RegisterMeterExporter(name string, f MeterExporterFactory) {
 	if f == nil {

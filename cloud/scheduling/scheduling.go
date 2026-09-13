@@ -32,16 +32,16 @@
 //     the task's [ConcurrencyPolicy].
 //   - [FixedDelay]: fire a fixed interval after the previous run *finishes*. Runs
 //     never overlap.
-//   - [Cron]: fire on a standard 5-field cron expression (see [ParseCron]).
+//   - [ParseCron]: fire on a standard 5-field cron expression.
 //
 // The abstraction is deliberately split from any backend. A [Scheduler] runs
 // entirely in-process; when the same job must run on only one replica of a
 // multi-replica deployment, attach a distributed lock with [WithLock] (see
 // [go-spring.org/cloud/lock]) so only the lock holder executes each fire.
 //
-// Cron parsing lives in this package on purpose: keeping it here preserves the
-// zero-dependency contract of stdlib and avoids pulling a third-party cron
-// library into the foundation layer.
+// Cron parsing is implemented here rather than delegated to a third-party cron
+// library: the 5-field grammar is small enough to own, and owning it keeps the
+// package free of external dependencies.
 package scheduling
 
 import (
@@ -125,13 +125,11 @@ func (p ConcurrencyPolicy) String() string {
 	}
 }
 
-// Locker acquires a named lock for multi-replica de-duplication. It is a minimal
-// consumer interface — just "try to take this key once" — defined here, at the
-// consumer, rather than by importing [go-spring.org/cloud/lock]:
-// scheduling needs only a single-shot try-acquire, and a
-// [go-spring.org/cloud/lock.Locker] does not satisfy it directly
-// (its TryAcquire returns lock.Lock and takes lock.Option), so the integration
-// layer adapts one, baking in TTL/renew choices.
+// Locker acquires a named lock so a job scheduled on every replica of a
+// deployment runs on only one at a time. It is a minimal single-shot
+// try-acquire — no blocking, no renewal — because the scheduler only needs to
+// know whether this replica may run this fire; any richer lock client is adapted
+// to it by the integration layer, which decides TTL and renewal there.
 type Locker interface {
 	// TryAcquire attempts to take key once without blocking. ok reports whether
 	// it was acquired; when ok is false the lock is held elsewhere. A non-nil err
@@ -139,8 +137,9 @@ type Locker interface {
 	TryAcquire(ctx context.Context, key string) (l Lock, ok bool, err error)
 }
 
-// Lock is the subset of a held lock the scheduler uses: it only needs to release
-// it. It matches the shape of lock.Lock's Unlock method.
+// Lock is a successfully acquired lock. The scheduler releases it exactly once,
+// after the run it guarded finishes or fails, using a context detached from the
+// run's so a cancelled run still unlocks.
 type Lock interface {
 	Unlock(ctx context.Context) error
 }
@@ -198,15 +197,27 @@ var (
 	// ErrDuplicateName is returned when Schedule is called with a name already in
 	// use on the same scheduler.
 	ErrDuplicateName = errors.New("scheduling: duplicate task name")
+
+	// ErrStopped is returned when Schedule is called on a scheduler that has
+	// already been stopped. A stopped scheduler cannot be restarted, so it accepts
+	// no new tasks.
+	ErrStopped = errors.New("scheduling: scheduler already stopped")
+
+	// ErrJobPanicked is wrapped around the panic value when a job panics. A panic
+	// is reported like any other failed run, so this is what tells the two apart:
+	// errors.Is(err, ErrJobPanicked) is true only when the run panicked, letting an
+	// observer count panics separately from returned errors.
+	ErrJobPanicked = errors.New("scheduling: job panicked")
 )
 
 // Scheduler runs jobs against their triggers. Implementations must be safe for
 // concurrent use.
 type Scheduler interface {
 	// Schedule registers a job under a unique name with a trigger. It fails fast
-	// on a nil trigger or job (a misconfigured task that could never fire), and
-	// on a duplicate name. The returned cancel function removes the task and, if
-	// the scheduler is running, stops its loop; it is idempotent.
+	// on a nil trigger or job (a misconfigured task that could never fire), on a
+	// duplicate name, and once the scheduler has been stopped ([ErrStopped]). The
+	// returned cancel function removes the task and, if the scheduler is running,
+	// stops its loop; it is idempotent.
 	//
 	// Scheduling before Start records the task; scheduling after Start also
 	// launches its loop immediately.

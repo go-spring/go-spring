@@ -7,19 +7,20 @@ so N replicas allow N× the configured budget. What production usually wants
 for shared quotas is one budget enforced globally — which requires state
 outside any single process, i.e. Redis.
 
-## 2. Why a limiter-driver registration, not a resilience-driver switch
+## 2. Why a limiter driver, not a resilience-driver switch
 
-resilience has two independent registries:
+resilience has two independent seams:
 
-- `RegisterDriver`/`GetDriver` — builds an **Executor** (limit + breaker +
-  retry + timeout as one bundle). Switching it to swap in Redis limiting would
-  also drag breaker/retry off `default`/`sentinel`, which is not what anyone
-  wants: distributed limiting is orthogonal to in-process circuit breaking.
-- `RegisterLimiter`/`GetLimiter` — the **LimiterDriver** registry, added
-  precisely as the "distributed limiting" seam (see ratelimit.go comments) and
-  already consumed by-name (gateway's `rateLimit(rate=…,driver=…)`).
+- `Driver` — builds an **Executor** (limit + breaker + retry + timeout as one
+  bundle). Switching it to swap in Redis limiting would also drag breaker/retry
+  off `default`/`sentinel`, which is not what anyone wants: distributed limiting
+  is orthogonal to in-process circuit breaking.
+- `LimiterDriver` — the **distributed limiting** seam. Its consumers address it
+  by name (gateway's `rateLimit(rate=…,driver=…)`), so it is resolved the same
+  way every other pluggable backend is: the container is the directory, keyed by
+  bean name.
 
-So this starter registers a `LimiterDriver` under a configurable name
+So this starter contributes a `LimiterDriver` bean under a configurable name
 (default: the instance name, so multi-instance setups stay collision-free) and
 leaves the executor driver alone. Result: "sentinel executor + redis limiter"
 composes freely.
@@ -43,11 +44,11 @@ Per `spring.ratelimit.redis.instances.<name>` (gs.OnProperty + conf.BindEach):
 - `driver` (optional): registry name, defaults to the instance name.
 
 The bean ctor calls `driverFor(name, client)`, which keeps one `*Driver`
-singleton per name in a package-level `sync.Map`. Registration with
-`resilience.RegisterLimiter` happens once per name per process (the registry
-panics on duplicates); re-wiring the container — a second `gs.RunTest` in the
-same test binary — merely rebinds the client. The bean is
-`Export(gs.As[resilience.LimiterDriver]())` so it is root-reachable and its
+singleton per name in a package-level `sync.Map`, so re-wiring the container — a
+second `gs.RunTest` in the same test binary — merely rebinds the client. The bean
+is named after the driver and
+`Export(gs.As[resilience.LimiterDriver]())`, so name-keyed interface injection
+sees it; a duplicate name is a duplicate-bean error at wiring. Its
 ctor (the registration side effect) always runs in prod.
 
 ## 5. Semantics inherited from the Lua bucket

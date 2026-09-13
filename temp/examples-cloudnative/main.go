@@ -108,14 +108,21 @@ var exec resilience.Executor
 // Bean wiring
 // ----------------------------------------------------------------------------
 
+// staticDiscovery is the discovery backend this example publishes: a fixed
+// endpoint set served for every service name.
+var staticDiscovery = discovery.NewStaticDiscovery(
+	discovery.Endpoint{Addr: "127.0.0.1:8081", Healthy: true},
+)
+
 func init() {
 	// Serve the app's own gin address through discovery: a real deployment would
 	// point a Consul/Nacos/k8s backend here; a static backend keeps the example
 	// self-contained while demonstrating the exact same client-side resolve +
-	// dial path.
-	discovery.RegisterDiscovery("static", discovery.NewStaticDiscovery(
-		discovery.Endpoint{Addr: "127.0.0.1:8081", Healthy: true},
-	))
+	// dial path. The container is the directory — a discovery backend is a bean
+	// named after the label consumers cite, exported as discovery.Discovery.
+	gs.Provide(func() discovery.Discovery { return staticDiscovery }).
+		Name("static").
+		Export(gs.As[discovery.Discovery]())
 
 	// Contribute the health indicator to the actuator. Because the actuator
 	// collects every bean exported as health.Indicator, this is the whole
@@ -149,13 +156,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build the resilience executor from the builtin "default" driver (registered
-	// by cloud/governance/resilience on import — no external dependency).
-	driver, err := resilience.GetDriver("default")
-	if err != nil {
-		fail("resilience driver: %v", err)
-	}
-	exec, err = driver.NewExecutor(resilience.Policy{RateLimit: 3})
+	// Build the resilience executor from the bundled "default" driver — the same
+	// backend the governance center falls back to when govern.driver is unset, and
+	// the only one cloud/governance/resilience ships with (no external dependency).
+	var err error
+	exec, err = resilience.NewDefaultDriver().NewExecutor(resilience.Policy{RateLimit: 3})
 	if err != nil {
 		fail("resilience executor: %v", err)
 	}
@@ -225,15 +230,18 @@ func runTest() {
 	fmt.Println("health: readiness aggregate OK (UP -> DOWN when dependency down -> UP)")
 
 	// --- 2. Discovery ----------------------------------------------------
-	r, err := discovery.NewResolver(ctx, "static", "cloudnative-app")
+	r, err := discovery.NewResolver(ctx, staticDiscovery, "cloudnative-app")
 	if err != nil {
 		fail("new resolver: %v", err)
 	}
-	ep, err := r.Pick()
+	eps, err := r()
 	if err != nil {
 		fail("resolve: %v", err)
 	}
-	_ = r.Stop()
+	if len(eps) == 0 {
+		fail("resolve returned no endpoints")
+	}
+	ep := eps[0]
 	if ep.Addr != "127.0.0.1:8081" {
 		fail("unexpected resolved addr: %s", ep.Addr)
 	}

@@ -59,7 +59,7 @@ type Config struct {
 	TLS tlsconf.TLSConfig `value:"${tls}"`
 
 	// ObserveEnabled toggles the observe-lock instrumentation layer (trace
-	// span + duration/in-flight metric + access log) around the Locker. On by
+	// span + duration metric + access log) around the Locker. On by
 	// default: the primary Locker bean under the instance name is already
 	// observed, and callers inject it by that name. Set observe.enabled=false
 	// to get the bare locker. When starter-otel is not imported the OTel

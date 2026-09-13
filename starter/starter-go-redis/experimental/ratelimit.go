@@ -69,11 +69,10 @@ type redisRateLimiter struct {
 var _ resilience.RateLimiter = (*redisRateLimiter)(nil)
 
 // redisLimiterDriver adapts a bound Redis client into a [resilience.LimiterDriver]
-// so it can be registered under a name and looked up by gateway or any other
-// caller via [resilience.GetLimiter]. The [resilience.LimiterDriver] interface
-// takes only a [resilience.LimitPolicy] (no client), so the client must be bound
-// at registration time — hence RegisterLimiterDriver(name, client) below rather
-// than a package-level init.
+// so the container can hold it under a name and gateway (or any other caller)
+// can resolve it by that name. The [resilience.LimiterDriver] interface takes
+// only a [resilience.LimitPolicy] (no client), so the client is bound at
+// construction.
 type redisLimiterDriver struct{ client redis.UniversalClient }
 
 // NewRateLimiter builds a [resilience.RateLimiter] for the bound client.
@@ -81,22 +80,22 @@ func (d redisLimiterDriver) NewRateLimiter(p resilience.LimitPolicy) (resilience
 	return NewRateLimiter(d.client, p), nil
 }
 
-// RegisterLimiterDriver registers a Redis-backed [resilience.LimiterDriver] under
-// name, bound to client, so callers can resolve it with
-// [resilience.GetLimiter](name). This closes the gap where the Redis limiter
-// existed as a constructor (NewRateLimiter) but was not reachable through the
-// driver registry that gateway and other starters use. Panics on empty name or
-// nil client, matching the registry's posture.
+// NewLimiterDriver returns a Redis-backed [resilience.LimiterDriver] over
+// client. Contribute it to the container under the name consumers will cite —
+// the gateway's rateLimit filter driver= argument, for instance:
 //
-// Typical wiring (starter-go-redis or app code, after the client bean exists):
+//	gs.Provide(func() resilience.LimiterDriver {
+//	    return experimental.NewLimiterDriver(client)
+//	}).Name("redis")
 //
-//	experimental.RegisterLimiterDriver("redis", client)
-//	... then in gateway config: spring.gateway.filter.ratelimit.driver = redis
-func RegisterLimiterDriver(name string, client redis.UniversalClient) {
+// It returns the interface, so the bean is indexed under
+// [resilience.LimiterDriver] and needs no Export. A nil client panics here
+// rather than surfacing as a limiter error on the first request.
+func NewLimiterDriver(client redis.UniversalClient) resilience.LimiterDriver {
 	if client == nil {
-		panic("starter-go-redis: register nil redis limiter client for " + name)
+		panic("starter-go-redis: nil redis limiter client")
 	}
-	resilience.RegisterLimiter(name, redisLimiterDriver{client: client})
+	return redisLimiterDriver{client: client}
 }
 
 // NewRateLimiter builds a global [resilience.RateLimiter] over client from a

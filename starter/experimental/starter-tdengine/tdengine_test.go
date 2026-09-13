@@ -60,8 +60,7 @@ func TestGuardedConnPassThrough(t *testing.T) {
 // TestGuardedConnRateLimit confirms the flow-control path: once the burst is
 // spent, the statement is rejected without reaching the connection.
 func TestGuardedConnRateLimit(t *testing.T) {
-	d, err := resilience.GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := resilience.NewDefaultDriver()
 	exec, err := d.NewExecutor(resilience.Policy{RateLimit: 1, Burst: 1})
 	assert.Error(t, err).Nil()
 

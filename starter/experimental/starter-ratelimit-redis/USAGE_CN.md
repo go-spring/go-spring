@@ -9,10 +9,10 @@
 go-spring 的增量。
 
 **激活方式**：任一 `spring.ratelimit.redis.instances.<name>.*` 配置即为每个 `<name>` 注册一个
-`resilience.LimiterDriver` 实例；每个实例复用其 `client` 字段指名的 `*redis.Client`
-bean（由 starter-go-redis 在 `spring.go-redis.instances.<client>` 下提供）。消费方按名选择
-driver——starter-gateway 的 `rateLimit(driver=...)` 过滤器、`resilience.GetLimiter(name)`、
-或直接注入。
+`resilience.LimiterDriver` bean，bean 名即 driver 名；每个实例复用其 `client` 字段指名的
+`*redis.Client` bean（由 starter-go-redis 在 `spring.go-redis.instances.<client>` 下提供）。
+消费方按名在容器的 limiter 目录里查——starter-gateway 的 `rateLimit(driver=...)` 过滤器，
+或注入 `map[string]resilience.LimiterDriver`。
 
 ---
 
@@ -148,20 +148,19 @@ import starter-go-redis + starter-ratelimit-redis
         └─ conf.BindEach("${spring.ratelimit.redis}") 逐条目 <name>：
              ├─ client == "" 时 fail fast（启动报错并点名实例）
              ├─ driver 名 = c.Driver，未设时用实例 <name>
-             └─ Provide func(client) *Driver → bean "<name>"
+             └─ Provide func(client) *Driver → bean 名为 <driver>
                   （gs.TagArg(c.Client)；Export resilience.LimiterDriver——Export
-                   让 bean 根可达，注册副作用必然执行）
+                   让具体的 *Driver 能被按名接口注入看见）
 
 gs.Run()
   ├─ 配置绑定：${spring.ratelimit.redis.instances.<name>} → Config（value tag）
   ├─ ctor：driverFor(driver, client)
-  │    - 进程级 sync.Map "drivers"：每个 driver 名一个 Driver
-  │    - 首次使用：resilience.RegisterLimiter(name, d)——注册表对重名
-  │      PANIC；后续装配（如同一测试二进制里的 gs.RunTest）改为重绑
-  │      client 而不再 panic
-  ├─ bean 装配：消费方 autowire:"<name>" 解析
-  └─ SIGTERM：无需释放——注册表条目是进程级的，redis client 的
-                 Close 属于 starter-go-redis。
+  │    - 进程级 sync.Map "drivers"：每个 driver 名一个 Driver，后续装配
+  │      （如同一测试二进制里的 gs.RunTest）重绑 client 而非再建一个
+  ├─ bean 装配：bean 名即 driver 名，重名（本模块另一实例、或别的模块的后端）
+  │      在启动期以 duplicate bean 报错
+  └─ SIGTERM：无需释放——driver 是进程级的，redis client 的 Close
+                 属于 starter-go-redis。
 ```
 
 Driver bean 本身是薄适配器：`NewRateLimiter(p)` 在调用时捕获已绑定的 client（RWMutex
@@ -198,7 +197,7 @@ Driver bean 本身是薄适配器：`NewRateLimiter(p)` 在调用时捕获已绑
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `client` | string | — | **必填**。`spring.go-redis.instances.<client>` 下的 `*redis.Client` bean 名，注册前检查。`TagArg(c.Client)` 即 driver 与 redis 实例的接线 seam。 | 空 → 启动失败并点名实例；拼错 → 启动期装配失败。 |
-| `driver` | string | 实例名 | 注册进 resilience limiter 注册表的名字——`resilience.GetLimiter` 与 gateway `rateLimit(driver=...)` 用的字符串。⚠ 不设时默认用实例名：`spring.ratelimit.redis.instances.web.*` 会静默注册名为 `web` 的 driver，可能与无关名字冲突。重名现在启动期快速失败：本 starter 两个实例撞名 → 启动错误点名双方；名字已被其他模块注册（如内置 `default`）→ ctor 明确报错而非注册表 panic。 | 同名实例 → 启动报错点名双方；意外的默认名 → 消费方解析到计划外的 limiter。 |
+| `driver` | string | 实例名 | 本 limiter 的 bean 贡献名——gateway `rateLimit(driver=...)` 在容器 limiter 目录里查的字符串。⚠ 不设时默认用实例名：`spring.ratelimit.redis.instances.web.*` 会静默贡献名为 `web` 的 driver，可能与无关名字冲突。重名启动期快速失败：本 starter 两个实例撞名 → 启动错误点名双方；名字已被别的模块 bean 占用 → 装配期 duplicate bean 报错。 | 同名实例 → 启动报错点名双方；意外的默认名 → 消费方解析到计划外的 limiter。 |
 
 ⚠ 限流参数（`rate`、`burst`、key）由每个调用点的 `resilience.LimitPolicy` 给出，不在此
 配置里。
@@ -233,12 +232,14 @@ redis-cli ttl ratelimit:api              # ceil(burst/rate)+1
 停掉 Redis（`docker compose stop redis`）：每次 `Allow` 返回错误。你的 handler 决定——
 example 答 500（fail-closed）。按端点敏感度显式选择。
 
-### 4.4 注册表查询演练
+### 4.4 目录查询演练
 
-应用代码（即 gateway 过滤器内部做的事）：
+应用代码（gateway 路由表拿到 limiter 目录的方式一样）：
 
 ```go
-d, ok := resilience.GetLimiter("redis")   // 配置的 driver 名
+// limiters map[string]resilience.LimiterDriver `autowire:"?"`
+d, err := resilience.Resolve(limiters, "redis", resilience.DefaultLimiterName,
+    "limiter driver", resilience.NewDefaultLimiterDriver())
 lim, _ := d.NewRateLimiter(resilience.LimitPolicy{Rate: 100, Burst: 50})
 ok, err := lim.Allow(ctx, "tenant-a")
 ```

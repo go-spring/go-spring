@@ -45,6 +45,7 @@
 package governance
 
 import (
+	"maps"
 	"reflect"
 	"slices"
 	"sync"
@@ -53,6 +54,7 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config is the single source of truth for governance. A [Source] delivers it
@@ -145,6 +147,14 @@ type Rule struct {
 type center struct {
 	cfg atomic.Pointer[Config]
 
+	// drivers is the directory of resilience backends, keyed by bean name, that
+	// the governance wiring starter injected from the container.
+	// [center.bindDrivers] replaces it wholesale during wiring, before the
+	// authority goes live; it is read lock-free afterwards on the cold
+	// executor-build path, mirroring cfg. When unset, lookups fall back to the
+	// bundled driver.
+	drivers atomic.Pointer[map[string]resilience.Driver]
+
 	mu   sync.Mutex
 	subs map[string][]*subscriber // label -> subscribers
 
@@ -231,6 +241,15 @@ func (c *center) goLive() {
 		return
 	}
 	cfg := *c.cfg.Load()
+	// An enabled center whose configured driver resolves to nothing is a wiring
+	// error, not a runtime one: the name is latched per resource at first
+	// resolve, so failing loudly here beats silently serving a pass-through
+	// center. (A disabled center builds no executor, so it is not checked.)
+	if cfg.Enabled {
+		if _, err := c.driverFor(c.driver()); err != nil {
+			panic(err)
+		}
+	}
 	c.injector = fault.NewInjector(cfg.Fault)
 	resilience.RegisterExecutorProvider(c.executorFor)
 	fault.RegisterInjector(c.injector)
@@ -283,7 +302,7 @@ func (c *center) isActive(h *sourceHandle) bool {
 // value.
 func (c *center) setSource(s Source) {
 	if s == nil {
-		panic("governance: SetSource(nil)")
+		panic(errutil.Explain(nil, "governance: SetSource(nil)"))
 	}
 	c.bindSource(s)
 }
@@ -316,7 +335,11 @@ func (c *center) bindDefault(s Source) {
 // this provider is invoked at most once per label, so the Register
 // subscription is armed exactly once even under concurrent first use.
 func (c *center) executorFor(label string) resilience.Executor {
-	exec, err := resilience.NewExecutor(c.driver(), c.policyFor(label))
+	drv, err := c.driverFor(c.driver())
+	if err != nil || drv == nil {
+		return nil // resilience.resolve falls back to a no-op executor
+	}
+	exec, err := drv.NewExecutor(c.policyFor(label))
 	if err != nil || exec == nil {
 		return nil // resilience.resolve falls back to a no-op executor
 	}
@@ -381,10 +404,33 @@ func (c *center) driver() string {
 	if cfg := c.cfg.Load(); cfg != nil && cfg.Driver != "" {
 		return cfg.Driver
 	}
-	return resilienceDefaultDriver
+	return resilience.DefaultDriverName
 }
 
-const resilienceDefaultDriver = "default"
+// driverFor resolves name against the injected driver directory, falling back
+// to the bundled driver for the empty name and [resilience.DefaultDriverName]
+// so an unwired or default-configured center always has a backend.
+func (c *center) driverFor(name string) (resilience.Driver, error) {
+	var dir map[string]resilience.Driver
+	if ds := c.drivers.Load(); ds != nil {
+		dir = *ds
+	}
+	return resilience.Resolve(dir, name, resilience.DefaultDriverName, "driver", resilience.NewDefaultDriver())
+}
+
+// bindDrivers installs the directory of resilience backends the governance
+// wiring starter collected from the container, keyed by bean name. A nil map
+// leaves the center on its bundled fallback. It is the driver counterpart of
+// [center.bindDefault] and is called once during wiring, before
+// [center.goLive].
+func (c *center) bindDrivers(m map[string]resilience.Driver) {
+	if m == nil {
+		return
+	}
+	cp := make(map[string]resilience.Driver, len(m))
+	maps.Copy(cp, m)
+	c.drivers.Store(&cp)
+}
 
 // PolicyFor returns the resolved policy for label: the first Rule whose
 // Resources contains label, otherwise Default. When the center is disabled it
@@ -440,7 +486,7 @@ func (c *center) unregister(label string, s *subscriber) {
 	list := c.subs[label]
 	for i, e := range list {
 		if e == s {
-			list = append(list[:i: i], list[i+1:]...)
+			list = append(list[:i:i], list[i+1:]...)
 			break
 		}
 	}

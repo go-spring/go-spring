@@ -36,8 +36,7 @@ type fakeDriver struct {
 // newGuardedNeo4jClient builds a Client whose executor comes from the default
 // resilience driver. The embedded driver is nil.
 func newGuardedNeo4jClient(t *testing.T, p resilience.Policy) *Client {
-	d, err := resilience.GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := resilience.NewDefaultDriver()
 	exec, err := d.NewExecutor(p)
 	assert.Error(t, err).Nil()
 	return &Client{DriverWithContext: fakeDriver{}, exec: exec, resource: "neo4j:test"}

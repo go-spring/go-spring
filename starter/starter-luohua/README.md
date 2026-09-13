@@ -88,9 +88,9 @@ govern.rules[0].timeout=500ms
 govern.rules[0].max-retries=2
 ```
 
-Registering a company resilience backend (instead of `default`) is a plain
-`resilience.RegisterDriver(name, …)` in a fork of this starter — the seam exists,
-luohua just chooses not to ship a pretend engine.
+Registering a company resilience backend (instead of `default`) is a plain bean —
+`gs.Provide(...).Name(name).Export(gs.As[resilience.Driver]())` — and the seam
+exists; luohua just chooses not to ship a pretend engine.
 
 ## Arming
 

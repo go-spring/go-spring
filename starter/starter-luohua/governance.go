@@ -21,12 +21,17 @@ import (
 
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
 )
+
+// LuohuaResilienceDriverName is the name this backend answers to in the
+// governance document.
+const LuohuaResilienceDriverName = "luohua"
 
 // luohuaResilienceDriver is the luohua governance backend: it does NOT invent a
 // new resilience standard — it reuses the bundled "default" Driver (the
-// policy/breaker engine) via the public [resilience.GetDriver] seam, then wraps
-// the resulting executor with a luohua verification flavor. A fleet sets
+// policy/breaker engine) via [resilience.NewDefaultDriver], then wraps the
+// resulting executor with a luohua verification flavor. A fleet sets
 // govern.driver=luohua once in the rules document and every governed call then carries an
 // observable luohua marker, so a mis-wired backend is discoverable instead of
 // silently passing through — the same "default + observable company flavor"
@@ -36,11 +41,7 @@ type luohuaResilienceDriver struct{}
 // NewExecutor builds a luohua-flavored [resilience.Executor] on top of the
 // bundled engine.
 func (luohuaResilienceDriver) NewExecutor(p resilience.Policy) (resilience.Executor, error) {
-	d, err := resilience.GetDriver("default")
-	if err != nil {
-		return nil, err
-	}
-	inner, err := d.NewExecutor(p)
+	inner, err := resilience.NewDefaultDriver().NewExecutor(p)
 	if err != nil {
 		return nil, err
 	}
@@ -48,12 +49,16 @@ func (luohuaResilienceDriver) NewExecutor(p resilience.Policy) (resilience.Execu
 }
 
 func init() {
-	// Registering the backend under the fleet-standard "luohua" name makes it
-	// selectable by govern.driver=luohua. Like the bundled "default" (and
-	// sentinel's blank-import registration) this is an init-time availability
-	// registration, not a config-gated activation — the driver only governs when
-	// the process actually selects it.
-	resilience.RegisterDriver("luohua", luohuaResilienceDriver{})
+	// Contributing the backend as a bean named "luohua" makes it selectable by
+	// govern.driver=luohua: starter-governance's wiring bean collects every bean
+	// exported as resilience.Driver into a name-keyed directory. Like the bundled
+	// "default" (and sentinel's blank-import contribution) this is an init-time
+	// availability registration, not a config-gated activation — the driver only
+	// governs when the process actually selects it.
+	gs.Provide(func() *luohuaResilienceDriver { return &luohuaResilienceDriver{} }).
+		Name(LuohuaResilienceDriverName).
+		Export(gs.As[resilience.Driver]()).
+		Caller(1)
 }
 
 // luohuaExecutor wraps the inner (default) executor and stamps each governed

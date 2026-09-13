@@ -55,7 +55,7 @@ exec := fault.WrapExecutor(resilience.ExecutorFor("redis", resource))
 err := fault.Apply(ctx, fault.InjectorFor(), "gin", func() error { return next(ctx) })
 ```
 
-For a self-contained injector (tests, cloud/loadtest), build one explicitly and
+For a self-contained injector (tests, cloud/experimental/loadtest), build one explicitly and
 pass it to `WrapExecutorWith(exec, inj)` or `Apply(ctx, inj, ...)`.
 
 Config (centralized in the governance rules document, keys `govern.fault.*` — see

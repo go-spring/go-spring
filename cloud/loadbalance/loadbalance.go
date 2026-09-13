@@ -38,12 +38,12 @@ package loadbalance
 
 import (
 	"errors"
-	"fmt"
 	"maps"
 	"slices"
 	"sync"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Names of the built-in strategies, registered by their respective files.
@@ -124,15 +124,15 @@ var (
 // is empty, f is nil, or name is already registered.
 func Register(name string, f Factory) {
 	if name == "" {
-		panic("loadbalance: register with empty name")
+		panic(errutil.Explain(nil, "loadbalance: register with empty name"))
 	}
 	if f == nil {
-		panic("loadbalance: register nil factory for " + name)
+		panic(errutil.Explain(nil, "loadbalance: register nil factory for %s", name))
 	}
 	mu.Lock()
 	defer mu.Unlock()
 	if _, ok := registry[name]; ok {
-		panic("loadbalance: strategy already registered: " + name)
+		panic(errutil.Explain(nil, "loadbalance: strategy already registered: %s", name))
 	}
 	registry[name] = f
 }
@@ -145,7 +145,7 @@ func New(name string) (Balancer, error) {
 	if !ok {
 		names := slices.Sorted(maps.Keys(registry))
 		mu.RUnlock()
-		return nil, fmt.Errorf("loadbalance: no strategy registered as %q (registered: %v)", name, names)
+		return nil, errutil.Explain(nil, "loadbalance: no strategy registered as %q (registered: %v)", name, names)
 	}
 	mu.RUnlock()
 	return f(), nil

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/cache"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -44,7 +45,7 @@ func TestJSONCodecRoundTrip(t *testing.T) {
 func TestErrMiss(t *testing.T) {
 	// ErrMiss is a sentinel a caller distinguishes from a real backend error.
 	assert.That(t, errors.Is(cache.ErrMiss, cache.ErrMiss)).True()
-	assert.That(t, errors.Is(errors.New("boom"), cache.ErrMiss)).False()
+	assert.That(t, errors.Is(errutil.Explain(nil, "boom"), cache.ErrMiss)).False()
 }
 
 // fakeByteCache is an in-memory ByteCache for exercising the Cache façade

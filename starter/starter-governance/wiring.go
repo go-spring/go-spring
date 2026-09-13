@@ -18,6 +18,7 @@ package StarterGovernance
 
 import (
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/spring/gs"
 )
 
@@ -38,6 +39,15 @@ type wiring struct {
 	// and governance stays disabled unless something calls SetSource). Source
 	// priority is an explicit governance.SetSource (any time) > Src.
 	Src governance.Source `autowire:"?"`
+
+	// Drivers is every resilience backend bean in the container, keyed by bean
+	// name ("default" is not among them — the center falls back to its bundled
+	// driver for that name). A backend contributes one with
+	// gs.Provide(...).Name("<backend>").Export(gs.As[resilience.Driver]());
+	// the Export is required, since gs indexes beans by their exact type and an
+	// unexported concrete driver would be invisible here. Naming a driver that
+	// is not in this map fails startup (governance.BindDrivers → GoLive).
+	Drivers map[string]resilience.Driver `autowire:"?"`
 }
 
 func init() {
@@ -60,6 +70,10 @@ func newWiring() *wiring { return &wiring{} }
 // GoLive runs unconditionally: it registers the executor/fault seams and fires
 // OnReady whether or not a source was bound.
 func (w *wiring) Init() error {
+	// Drivers first: GoLive validates the configured driver name against the
+	// directory, so the directory must be in place before the authority can go
+	// live. A nil map is a no-op (the center keeps its bundled driver).
+	governance.BindDrivers(w.Drivers)
 	governance.BindDefault(w.Src)
 	governance.GoLive()
 	return nil

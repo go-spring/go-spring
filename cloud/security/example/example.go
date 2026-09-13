@@ -36,6 +36,7 @@ import (
 	"os"
 
 	"go-spring.org/cloud/security"
+	"go-spring.org/stdlib/errutil"
 )
 
 // tokenStore is the TokenValidator seam: the single thing a starter or the
@@ -50,7 +51,7 @@ type tokenStore map[string]*security.Authentication
 func (s tokenStore) Validate(_ context.Context, token string) (*security.Authentication, error) {
 	auth, ok := s[token]
 	if !ok {
-		return nil, errors.New("unknown token")
+		return nil, errutil.Explain(nil, "unknown token")
 	}
 	out := *auth
 	out.Token = token // the raw credential as presented
@@ -120,7 +121,7 @@ func run() error {
 	if code, body, err := get(srv.URL+"/public", ""); err != nil {
 		return err
 	} else if code != http.StatusOK || body != "public" {
-		return fmt.Errorf("anonymous /public: code=%d body=%q", code, body)
+		return errutil.Explain(nil, "anonymous /public: code=%d body=%q", code, body)
 	}
 	fmt.Println("anonymous request passed the auth-optional route: OK")
 
@@ -129,7 +130,7 @@ func run() error {
 	if code, _, err := get(srv.URL+"/public", "garbage"); err != nil {
 		return err
 	} else if code != http.StatusUnauthorized {
-		return fmt.Errorf("garbage token /public: code=%d, want 401", code)
+		return errutil.Explain(nil, "garbage token /public: code=%d, want 401", code)
 	}
 	fmt.Println("invalid token rejected on the auth-optional route: OK")
 
@@ -137,7 +138,7 @@ func run() error {
 	if code, _, err := get(srv.URL+"/orders", ""); err != nil {
 		return err
 	} else if code != http.StatusUnauthorized {
-		return fmt.Errorf("anonymous /orders: code=%d, want 401", code)
+		return errutil.Explain(nil, "anonymous /orders: code=%d, want 401", code)
 	}
 	fmt.Println("protected route rejected the anonymous caller: OK")
 
@@ -146,7 +147,7 @@ func run() error {
 	if code, body, err := get(srv.URL+"/orders", "alice-token"); err != nil {
 		return err
 	} else if code != http.StatusOK || body != "orders of alice" {
-		return fmt.Errorf("alice /orders: code=%d body=%q", code, body)
+		return errutil.Explain(nil, "alice /orders: code=%d body=%q", code, body)
 	}
 	fmt.Println("valid token authenticated and cleared the route gate: OK")
 
@@ -155,7 +156,7 @@ func run() error {
 	if code, _, err := get(srv.URL+"/orders/place", "alice-token"); err != nil {
 		return err
 	} else if code != http.StatusForbidden {
-		return fmt.Errorf("alice /orders/place: code=%d, want 403", code)
+		return errutil.Explain(nil, "alice /orders/place: code=%d, want 403", code)
 	}
 	fmt.Println("method-level Require denied the missing authority: OK")
 
@@ -163,7 +164,7 @@ func run() error {
 	if code, body, err := get(srv.URL+"/orders/place", "admin-token"); err != nil {
 		return err
 	} else if code != http.StatusOK || body != "placed" {
-		return fmt.Errorf("admin /orders/place: code=%d body=%q", code, body)
+		return errutil.Explain(nil, "admin /orders/place: code=%d body=%q", code, body)
 	}
 	fmt.Println("method-level Require admitted the held authority: OK")
 
@@ -172,12 +173,12 @@ func run() error {
 	if code, _, err := get(srv.URL+"/admin", "alice-token"); err != nil {
 		return err
 	} else if code != http.StatusForbidden {
-		return fmt.Errorf("alice /admin: code=%d, want 403", code)
+		return errutil.Explain(nil, "alice /admin: code=%d, want 403", code)
 	}
 	if code, body, err := get(srv.URL+"/admin", "admin-token"); err != nil {
 		return err
 	} else if code != http.StatusOK || body != "admin ok" {
-		return fmt.Errorf("admin /admin: code=%d body=%q", code, body)
+		return errutil.Explain(nil, "admin /admin: code=%d body=%q", code, body)
 	}
 	fmt.Println("route gate enforced ROLE_ADMIN: OK")
 
@@ -186,11 +187,11 @@ func run() error {
 	// guard.
 	var anon *security.Authentication
 	if anon.HasAuthority("orders:read") || anon.HasAnyAuthority() || anon.HasAllAuthorities("orders:read") {
-		return errors.New("nil Authentication must hold no authorities")
+		return errutil.Explain(nil, "nil Authentication must hold no authorities")
 	}
 	admin := &security.Authentication{Authenticated: true, Authorities: []string{"orders:read", "orders:write"}}
 	if !admin.HasAnyAuthority("orders:write", "orders:delete") || !admin.HasAllAuthorities("orders:read", "orders:write") {
-		return errors.New("authority predicates disagreed with the authority set")
+		return errutil.Explain(nil, "authority predicates disagreed with the authority set")
 	}
 	fmt.Println("authority predicates are nil-safe and set-correct: OK")
 
@@ -204,12 +205,12 @@ func run() error {
 		"":           "",
 	} {
 		if got := security.ParseBearerToken(header); got != want {
-			return fmt.Errorf("ParseBearerToken(%q)=%q, want %q", header, got, want)
+			return errutil.Explain(nil, "ParseBearerToken(%q)=%q, want %q", header, got, want)
 		}
 	}
 	token := security.NewCSRFToken()
 	if !security.MatchCSRFToken(token, token) || security.MatchCSRFToken(token, token+"x") || security.MatchCSRFToken("", "") {
-		return errors.New("CSRF double-submit comparison is not constant-time correct")
+		return errutil.Explain(nil, "CSRF double-submit comparison is not constant-time correct")
 	}
 	fmt.Println("shared parsing and CSRF helpers behave: OK")
 

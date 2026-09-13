@@ -2,7 +2,7 @@
 
 Load-test binary for starter-neo4j. Drives a MERGE + count Cypher round-trip
 through a Neo4j driver (resilience + fault hot-reloadable) using the shared
-`cloud/loadtest` harness, printing throughput / latency percentiles / error
+`cloud/experimental/loadtest` harness, printing throughput / latency percentiles / error
 breakdown.
 
 ## Run

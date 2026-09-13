@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/lock"
+	"go-spring.org/stdlib/errutil"
 )
 
 func main() {
@@ -52,24 +53,24 @@ func run() error {
 	fmt.Printf("acquired key=%s token=%s\n", first.Key(), first.Token())
 
 	if _, ok, err := locker.TryAcquire(ctx, "jobs/rollup"); ok || err != nil {
-		return fmt.Errorf("contended TryAcquire: ok=%v err=%v", ok, err)
+		return errutil.Explain(nil, "contended TryAcquire: ok=%v err=%v", ok, err)
 	}
 	fmt.Println("contended TryAcquire correctly skipped")
 
 	// 2. Unlock is idempotent; a fresh acquisition can carry an explicit
 	// fencing token.
 	if err := first.Unlock(ctx); err != nil {
-		return fmt.Errorf("unlock first: %w", err)
+		return errutil.Explain(err, "unlock first")
 	}
 	if err := first.Unlock(ctx); err != nil {
-		return fmt.Errorf("second unlock must be idempotent, got %v", err)
+		return errutil.Explain(nil, "second unlock must be idempotent, got %v", err)
 	}
 	second, err := locker.Acquire(ctx, "jobs/rollup", lock.WithToken("worker-42"))
 	if err != nil {
 		return err
 	}
 	if second.Token() != "worker-42" {
-		return fmt.Errorf("want explicit token worker-42, got %s", second.Token())
+		return errutil.Explain(nil, "want explicit token worker-42, got %s", second.Token())
 	}
 	fmt.Println("explicit token honored, unlock idempotent")
 
@@ -84,19 +85,23 @@ func run() error {
 	time.Sleep(150 * time.Millisecond)
 	taker, ok, err := locker.TryAcquire(ctx, "jobs/expire")
 	if err != nil || !ok {
-		return fmt.Errorf("expired lease not reclaimed: ok=%v err=%v", ok, err)
+		return errutil.Explain(nil, "expired lease not reclaimed: ok=%v err=%v", ok, err)
 	}
 	select {
 	case <-expiring.Lost():
 		fmt.Println("Lost() fired on lease takeover")
 	default:
-		return fmt.Errorf("Lost() did not fire after takeover")
+		return errutil.Explain(nil, "Lost() did not fire after takeover")
 	}
 	_ = taker.Unlock(ctx)
 
 	// 4. Election: run until this instance is leader, then stop it and watch
 	// a second candidate take over the freed key — one handover cycle.
 	electCtx, stopElect := context.WithCancel(ctx)
+	// Deferred as well as called explicitly below: the explicit call is what
+	// ends the leadership term at the right moment, the defer guarantees the
+	// cancel still runs when an earlier step returns an error.
+	defer stopElect()
 	elect := newCandidate(locker)
 	go func() { _ = elect.Run(electCtx) }()
 
@@ -107,7 +112,7 @@ func run() error {
 
 	// Also drop the remaining critical-section lock from step 2-3 area.
 	if err := second.Unlock(ctx); err != nil {
-		return fmt.Errorf("unlock second: %w", err)
+		return errutil.Explain(err, "unlock second")
 	}
 
 	// Stop the leader; its Run unlocks and returns, freeing the key.
@@ -143,7 +148,7 @@ func waitLeader(e *lock.Election, want bool) error {
 	deadline := time.Now().Add(3 * time.Second)
 	for e.IsLeader() != want {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("want isLeader=%v, got %v", want, e.IsLeader())
+			return errutil.Explain(nil, "want isLeader=%v, got %v", want, e.IsLeader())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

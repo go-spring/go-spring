@@ -18,15 +18,15 @@ package messaging
 
 import (
 	"context"
-	"errors"
 	"testing"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestNewMessageIDUniqueAndShaped(t *testing.T) {
 	seen := make(map[string]struct{}, 1000)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		id := NewMessageID()
 		assert.String(t, id).Length(32)
 		_, dup := seen[id]
@@ -44,7 +44,7 @@ type fakePub struct {
 func (f *fakePub) Publish(_ context.Context, m *Message) error {
 	f.msgs = append(f.msgs, m)
 	if len(f.msgs) == f.fail {
-		return errors.New("boom")
+		return errutil.Explain(nil, "boom")
 	}
 	return nil
 }

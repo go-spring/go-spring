@@ -19,6 +19,7 @@ package contract
 import (
 	"bytes"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -113,9 +114,7 @@ func buildRequest(req Request) *http.Request {
 	r.RequestURI = ""
 	if len(req.Query) > 0 {
 		q := r.URL.Query()
-		for k, vs := range req.Query {
-			q[k] = vs
-		}
+		maps.Copy(q, req.Query)
 		r.URL.RawQuery = q.Encode()
 	}
 	for k, vs := range req.Headers {

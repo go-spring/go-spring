@@ -40,6 +40,7 @@ package session
 
 import (
 	"encoding/json"
+	"maps"
 	"sync"
 	"time"
 )
@@ -145,9 +146,7 @@ func (s *Session) snapshot() sessionData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	attrs := make(map[string]any, len(s.attrs))
-	for k, v := range s.attrs {
-		attrs[k] = v
-	}
+	maps.Copy(attrs, s.attrs)
 	return sessionData{Attributes: attrs, CreatedAt: s.createdAt}
 }
 

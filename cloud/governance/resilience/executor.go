@@ -26,9 +26,10 @@ package resilience
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // Executor runs operations under a [Policy]. It is the single seam every client
@@ -108,7 +109,7 @@ func (e *defaultExecutor) SetBreakerEventListener(l BreakerEventListener) {
 // were counted under the old policy).
 func (e *defaultExecutor) Refresh(p Policy) error {
 	if p.RateLimit < 0 {
-		return fmt.Errorf("resilience: negative rate limit %v", p.RateLimit)
+		return errutil.Explain(nil, "resilience: negative rate limit %v", p.RateLimit)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()

@@ -18,13 +18,13 @@ package scheduling_test
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"go-spring.org/cloud/scheduling"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -42,6 +42,19 @@ func TestScheduleValidation(t *testing.T) {
 	assert.Error(t, err).Nil()
 	_, err = s.Schedule("dup", scheduling.FixedRate(time.Second), job)
 	assert.Error(t, err).Is(scheduling.ErrDuplicateName)
+}
+
+func TestScheduleAfterStopIsRejected(t *testing.T) {
+	s := scheduling.NewScheduler()
+	assert.Error(t, s.Start(context.Background())).Nil()
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	assert.Error(t, s.Stop(stopCtx)).Nil()
+
+	_, err := s.Schedule("late", scheduling.FixedRate(time.Second),
+		func(context.Context) error { return nil })
+	assert.Error(t, err).Is(scheduling.ErrStopped)
 }
 
 func TestFixedRateFires(t *testing.T) {
@@ -287,7 +300,7 @@ func TestObserverReceivesEvents(t *testing.T) {
 		mu.Unlock()
 	}))
 
-	wantErr := errors.New("boom")
+	wantErr := errutil.Explain(nil, "boom")
 	_, err := s.Schedule("obs", scheduling.FixedRate(15*time.Millisecond),
 		func(context.Context) error { return wantErr })
 	assert.Error(t, err).Nil()

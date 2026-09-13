@@ -33,7 +33,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/loadtest"
+	"go-spring.org/cloud/experimental/loadtest"
 	"go-spring.org/spring/gs"
 
 	StarterElasticsearch "go-spring.org/starter-elasticsearch"

@@ -78,8 +78,8 @@ govern.rules[0].timeout=500ms
 govern.rules[0].max-retries=2
 ```
 
-要注册公司自己的 resilience 后端(替换 `default`)是 fork 本 starter 后的一行 `resilience.RegisterDriver(name, …)` ——
-缝在,luohua 只是不假装造一个引擎。
+要注册公司自己的 resilience 后端(替换 `default`)就是贡献一个 bean ——
+`gs.Provide(...).Name(name).Export(gs.As[resilience.Driver]())` —— 缝在,luohua 只是不假装造一个引擎。
 
 ## 如何启用
 

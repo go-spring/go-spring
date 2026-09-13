@@ -70,7 +70,7 @@ traffic      ← 纯叶子
 
 - `cloud/loadbalance`、`cloud/discovery` — 端点选择与服务注册，与 discovery 成对。
 - `cloud/actuator`、`cloud/mesh`、`cloud/tlsconf` — 运维/网格/TLS，独立关注点。
-- `cloud/loadtest` — 测试工具；`cloud/experimental/transaction` — 分布式事务（仍在孵化）。
+- `cloud/experimental/loadtest` — 测试工具；`cloud/experimental/transaction` — 分布式事务（仍在孵化）。
 - resilience 的插桩在本包自身（`resilience/observe.go` 的 `WrapExecutor`，由
   `ExecutorFor` 在 resolve 时应用到尚未发布的 executor 上，client 不直接调用）。
 

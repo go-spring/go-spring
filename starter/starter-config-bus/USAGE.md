@@ -199,18 +199,21 @@ Two timing facts matter for a *bus*:
 
 1. Something changes a config source (config-center push missed by the local watch, a file
    edited on a mount, an env source raised). The bus does not know or care — it is told.
-2. Application code (or a management endpoint) calls `bus.Publish(prefix)` — signature
-   `func (b *ConfigBus) Publish(prefix string) error` (`bus.go:123`). It marshals
-   `RefreshEvent{Prefix: prefix}` to JSON and NATS-publishes to `Config.Subject`.
-3. Every instance subscribed to that subject receives the message; each runs the callback
-   from `subscribe()` (`bus.go:73-92`):
+2. Application code (or a management endpoint) calls `bus.Publish(ctx, prefix)`. It marshals
+   `RefreshEvent{Prefix: prefix, Origin: b.origin}` to JSON and publishes via
+   `Conn.PublishMsgContext(ctx, ...)` — the ctx-aware entry, so the producer span is a child
+   of the caller's trace and the W3C context rides the message header.
+3. Every instance subscribed to that subject receives the message inside a consumer span
+   that continues the publisher's trace; each runs `onMessage` (`bus.go`):
    - empty payload → treated as a zero-value `RefreshEvent` (full-fleet refresh);
-   - malformed JSON → warn `ignoring malformed refresh event` and drop (`bus.go:76-80`);
-   - `shouldRefresh(ev.Prefix)` filter (`bus.go:106-116`): honor when the event prefix is
+   - malformed JSON → counted `malformed`, warn-logged, and dropped;
+   - `shouldRefresh(ev.Prefix)` filter: honor when the event prefix is
      empty, the instance watches nothing, or the event prefix overlaps a watched prefix
-     **in either direction** — a `db` watcher reacts to a `db.pool` event and vice versa;
+     **in either direction** — a `db` watcher reacts to a `db.pool` event and vice versa
+     (matching is raw string-prefix, so `db` also matches `dbs`);
    - `gs.RefreshProperties()` — the process-level refresh facade mounted by the
-     app (no injected refresher field).
+     app (no injected refresher field). Failure is counted `refresh_error` and returned, so
+     the consumer span is marked failed.
 4. `App.RefreshProperties()` (`app.go:247-255`): re-loads **all** configured sources
    (files, env, cmd args), re-merges by priority, and pushes the new storage into the
    container via `c.RefreshProperties(p)` — which re-resolves every `gs.Dync[T]` binding
@@ -310,6 +313,23 @@ error and the subscriber logs `config bus: property refresh failed: ...`; previo
 values remain in effect (the refresh is all-or-nothing per `app.go` doc comment). The signal
 is not retried — republish after fixing the source.
 
+### 4.7 Reading the observability signals
+
+With starter-otel exporting metrics, each broadcast lands in exactly one series of
+`config.bus.events` under its `outcome`. The two queries worth having on a dashboard:
+
+```promql
+# How often a broadcast arrived and was honored, but the reload then failed.
+sum(rate(config_bus_events_total{outcome="refresh_error"}[5m]))
+# Whether the fleet is actually being refreshed at all.
+sum(rate(config_bus_events_total{outcome="refreshed"}[5m]))
+```
+
+Traces: a broadcast is one trace with a `publish` span (a child of the caller's span when
+`Publish` was called from one) and one `consume` span per subscriber. Health: `/readiness`
+carries `config-bus:configBus`, which is down exactly when the subscription is no longer
+active. [example-otel/](example-otel/) asserts all three end to end.
+
 ---
 
 ## 5. Troubleshooting
@@ -324,7 +344,7 @@ is not retried — republish after fixing the source.
 | Field didn't change after refresh | The binding is a plain `value:` field, not `gs.Dync[T]` — only Dync re-resolves | Convert the field to `gs.Dync[T]` |
 | Changed `spring.config.bus.subject`/`watch-prefixes` but behavior unchanged | These keys are boot-time only, parsed once in `subscribe()` | Restart the instance |
 | Changed the key a Dync reads, but value stale | The new value lives in a source the app doesn't load, or is outranked by priority (e.g. file beats env) | Check the refresh logs for which sources reload; ensure the change is visible in a loaded source |
-| No metrics / health for the bus | There are none — only `_app_config_bus` logs | Watch logs; a dropped subscription is otherwise silent (see §6) |
+| No metrics / health for the bus | (fixed) `config.bus.*` metrics and a `config-bus:configBus` indicator now exist | Scrape metrics (see §6); `/readiness` reports a dead subscription |
 
 ---
 
@@ -332,25 +352,29 @@ is not retried — republish after fixing the source.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 3 |
+| Config keys | 4 |
 | Required | 0 explicit, 1 implicit (the referenced NATS instance definition) |
 | Quickstart external deps | 1 (NATS broker) |
-| "Watch out" entries | 5 |
+| "Watch out" entries | 3 |
 
 Design suspects (audit ledger):
 
 - **No activation condition** (carried over from previous audit): fixed — the bean now
   registers under an `OnProperty("spring.config.bus")` gate (like the governance sources), so
   the import is inert until configured.
-- **No delivery confirmation**: NATS core fire-and-forget means the publisher cannot learn
-  whether any instance refreshed — consider a reply/ack pattern or an observable counter
-  before trusting the bus for coordinated rollouts.
-- **Boot-time-only self keys**: `subject`/`watch-prefixes`/`nats-instance` silently ignore
-  hot reload; a warn on detecting a self-key change during refresh would surface misuse.
-- **No observability beyond logs**: no health indicator, no metrics (events received /
-  refreshes done / failures) — a dead subscription is silent.
-- **Silent scoped opt-out**: fixed — a filtered event now logs a debug-level line
-  (bus.go:82-87), making "why didn't this instance refresh" diagnosable without a restart.
+- **No observability beyond logs**: fixed — the bus reports one exclusive outcome per event
+  (`refreshed` / `ignored_prefix` / `malformed` / `refresh_error`) as both a metric and a log
+  line, spans come from the transport (producer parented on the caller's ctx, consumer
+  continuing it), and a `health.Indicator` reports whether the subscription is still active.
+- **No delivery confirmation** (narrowed): the publisher still cannot learn whether a
+  specific instance refreshed — core NATS has no ack. The subscriber-side counter now makes
+  "did anyone refresh, and did it fail" answerable after the fact, but a coordinated rollout
+  still has no synchronous confirmation.
+- **Boot-time-only self keys**: `subject`/`watch-prefixes`/`nats-instance`/`origin` silently
+  ignore hot reload; a warn on detecting a self-key change during refresh would surface
+  misuse.
+- **Silent scoped opt-out**: fixed — a filtered event now logs a debug-level line, making
+  "why didn't this instance refresh" diagnosable without a restart.
 - **Refresh granularity**: `Prefix` filters instances, not keys — every honoring instance
   refreshes its whole property set. If that proves expensive, a key-scoped refresh path may
   be needed.

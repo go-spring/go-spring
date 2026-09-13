@@ -28,8 +28,7 @@ import (
 
 func newExec(t *testing.T, p resilience.Policy) resilience.Executor {
 	t.Helper()
-	d, err := resilience.GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := resilience.NewDefaultDriver()
 	exec, err := d.NewExecutor(p)
 	assert.Error(t, err).Nil()
 	return exec

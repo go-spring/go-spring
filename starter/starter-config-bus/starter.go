@@ -32,8 +32,10 @@
 package StarterConfigBus
 
 import (
+	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	bushealth "go-spring.org/starter-config-bus/health"
 )
 
 var (
@@ -53,7 +55,19 @@ func init() {
 	gs.Provide(&ConfigBus{}).
 		Condition(gs.OnProperty("spring.config.bus")).
 		Name("configBus").
-		Init((*ConfigBus).subscribe).
+		Init((*ConfigBus).Init).
 		Destroy((*ConfigBus).Destroy).
 		Export(gs.As[gs.Rooter]())
+
+	// Contribute the subscriber-health indicator under the same gate. It reports
+	// the subscription, not the NATS connection: a dropped connection is
+	// starter-nats's own indicator to report (and to let an app opt out of via
+	// that instance's health.enabled), while a lost subscription is invisible to
+	// every other probe and is exactly what leaves an instance silently stuck on
+	// stale configuration.
+	gs.Provide(func(bus *ConfigBus) *health.Indicator {
+		return bushealth.NewBusHealth("configBus", bus.Healthy)
+	}, gs.TagArg("configBus")).
+		Condition(gs.OnProperty("spring.config.bus")).
+		Name("config-bus:configBus")
 }

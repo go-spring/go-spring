@@ -70,11 +70,11 @@ require (
 )
 
 replace (
-	go-spring.org/cloud => ../../../../cloud
-	go-spring.org/log => ../../../../log
-	go-spring.org/spring => ../../../../spring
+	go-spring.org/cloud => ../../cloud
+	go-spring.org/log => ../../log
+	go-spring.org/spring => ../../spring
 	go-spring.org/starter-actuator => ../../starter/starter-actuator
-	go-spring.org/starter-config-file => ../../../../starter/starter-config-file
-	go-spring.org/starter-gin => ../../../../starter/starter-gin
-	go-spring.org/stdlib => ../../../../stdlib
+	go-spring.org/starter-config-file => ../../starter/starter-config-file
+	go-spring.org/starter-gin => ../../starter/starter-gin
+	go-spring.org/stdlib => ../../stdlib
 )

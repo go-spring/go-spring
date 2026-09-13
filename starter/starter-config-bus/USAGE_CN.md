@@ -79,7 +79,7 @@ func main() {
         time.Sleep(500 * time.Millisecond)
         want := "v-" + time.Now().Format("150405")
         _ = os.Setenv("GS_DEMO_MESSAGE", want) // env source → demo.message
-        if err := getDemo().Bus.Publish(""); err != nil { // "" = 全舰队刷新
+        if err := getDemo().Bus.Publish(ctx, ""); err != nil { // "" = 全舰队刷新
             log.Errorf(context.Background(), log.TagAppDef, "publish failed: %v", err)
             os.Exit(1)
         }
@@ -191,12 +191,14 @@ gs.Run() → App.Start()                                                       [
 
 1. 某个配置 source 发生变化（本地 watch 漏掉的配置中心推送、挂载文件被编辑、env source
    抬值）。bus 不关心内容——它只被"告知"。
-2. 应用代码（或管理端点）调用 `bus.Publish(prefix)`——签名
-   `func (b *ConfigBus) Publish(prefix string) error`（bus.go:123）。它把
-   `RefreshEvent{Prefix: prefix}` 序列化为 JSON 并 NATS 发布到 `Config.Subject`。
-3. 订阅该 subject 的每个实例收到消息，执行 `subscribe()` 注册的回调（bus.go:73-92）：
+2. 应用代码（或管理端点）调用 `bus.Publish(ctx, prefix)`。它把
+   `RefreshEvent{Prefix: prefix, Origin: b.origin}` 序列化为 JSON，并经
+   `Conn.PublishMsgContext(ctx, ...)` 发布——带 ctx 的入口，因此 producer span 是调用方
+   trace 的子节点，且 W3C 上下文骑在消息 header 上。
+3. 订阅该 subject 的每个实例在延续发布方 trace 的 consumer span 内收到消息，执行
+   `onMessage`（bus.go）：
    - 空 payload → 视为零值 `RefreshEvent`（全舰队刷新）；
-   - JSON 畸形 → warn `ignoring malformed refresh event` 并丢弃（bus.go:76-80）；
+   - JSON 畸形 → 计入 `malformed`，打 warn 日志并丢弃；
    - `shouldRefresh(ev.Prefix)` 过滤（bus.go:106-116）：事件 prefix 为空、实例未配置
      watch、或事件 prefix 与某个 watched prefix **双向重叠**时放行——`db` watcher 对
      `db.pool` 事件有反应，反之亦然；
@@ -212,7 +214,7 @@ gs.Run() → App.Start()                                                       [
    发布方也看不到订阅方的结果（NATS core 即发即忘）。
 
 注意刷新是全应用粒度，不做 key 裁剪：`Prefix` 过滤的是*哪些实例反应*，不是*哪些 key
-重解析*。`Publish("db")` 在放行它的实例上依然刷新该实例的全部 `gs.Dync` 字段。
+重解析*。`Publish(ctx, "db")` 在放行它的实例上依然刷新该实例的全部 `gs.Dync` 字段。
 
 ---
 
@@ -224,7 +226,7 @@ gs.Run() → App.Start()                                                       [
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `spring.config.bus.subject` | string | `spring.config.refresh` | NATS subject，发布+订阅共用；共享它的所有实例构成一个 bus。装配期读一次——刷新事件改它不会触发重新订阅（§2.2）。 | 某实例写错 subject → 舰队静默裂成两半：刷新只在各自一半内传播，任何地方都不报错。 |
-| `spring.config.bus.watch-prefixes` | string | ``（空） | 逗号分隔 prefix 过滤，`subscribe()` 解析一次。空 = 对每个事件都反应。非空 = 只对空 prefix 事件或双向 prefix 重叠放行（`db` ↔ `db.pool`）。⚠ 热加载死 key：仅重启后重解析。 | 列表过宽会刷得比预期多（无害但噪音）；某 prefix 与发布侧永不匹配时，该实例静默跳过 scoped 刷新，但 `Publish("")` 仍放行。 |
+| `spring.config.bus.watch-prefixes` | string | ``（空） | 逗号分隔 prefix 过滤，`subscribe()` 解析一次。空 = 对每个事件都反应。非空 = 只对空 prefix 事件或双向 prefix 重叠放行（`db` ↔ `db.pool`）。⚠ 热加载死 key：仅重启后重解析。 | 列表过宽会刷得比预期多（无害但噪音）；某 prefix 与发布侧永不匹配时，该实例静默跳过 scoped 刷新，但 `Publish(ctx, "")` 仍放行。 |
 | `spring.config.bus.nats-instance` | string | `config-bus` | 作为传输层注入的 `spring.nats.instances.<name>.*` 连接名（按实例名 autowire，bus.go:55）。⚠ 指名的实例必须存在——这是事实上的激活门。 | 无对应 `spring.nats.instances.<name>.*` 块 → 启动期容器装配失败（bean 无法组装）。与业务 NATS 连接共用名字会把 bus 故障耦合到该连接。 |
 
 除此之外，被引用的 NATS 实例还有自己的 `spring.nats.instances.<name>.*` key（url、认证等）——见
@@ -242,7 +244,7 @@ starter-nats 文档。NATS 连接是硬前置；没有嵌入式/内存兜底。
 docker compose up -d
 GS_DEMO_MESSAGE=manual-1 go run . -manual &   # example 的手动模式
 # 在另一个终端触发 scoped 发布（在应用里加一个小 /refresh 处理器调
-# d.Bus.Publish("demo")——或直接用自测模式）：
+# d.Bus.Publish(ctx, "demo")——或直接用自测模式）：
 go run .                                       # 打印 "config-bus refresh observed: v-..."
 ```
 
@@ -262,8 +264,9 @@ starter.go:41；用 `logger.config_bus.*` 调级别）。预期顺序：
 
 1. 以 `spring.config.bus.watch-prefixes=db,cache` 启动。
 2. 发布 `db` → 刷新发生（`db` 在 watch 列表）。
-3. 发布 `demo` → **不刷新，也没有任何日志**——`shouldRefresh` 返回 false 后消息被静默
-   丢弃（bus.go:82-84）。这是预期的安静退出；别去 grep 错误。
+3. 发布 `demo` → **不刷新**，但会打一条 debug 级日志（prefix/事件 prefix/watch 列表），
+   并计入 `config.bus.events{outcome="ignored_prefix"}`。这是预期的安静退出；别去 grep
+   错误。
 4. 发布 `""` → 永远刷新，与 watch 列表无关。
 
 ### 4.4 演练：畸形 payload
@@ -292,6 +295,22 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 `config bus: property refresh failed: ...`；先前的属性值继续生效（按 app.go 文档注释，
 刷新是全有或全无）。信号不会重试——修好 source 后重新发布。
 
+### 4.7 读取可观测信号
+
+配合 starter-otel 导出 metrics 后，每次广播恰好落入 `config.bus.events` 的一个 `outcome`
+序列。值得上仪表盘的两条查询：
+
+```promql
+# 信号到了、也被放行，但随后重载失败的频率。
+sum(rate(config_bus_events_total{outcome="refresh_error"}[5m]))
+# 舰队到底有没有在被刷新。
+sum(rate(config_bus_events_total{outcome="refreshed"}[5m]))
+```
+
+trace：一次广播是一条链路，含一个 `publish` span（若 `Publish` 在 span 内调用，它是其子）
+和每个订阅者一个 `consume` span。健康：`/readiness` 携带 `config-bus:configBus`，它在订阅
+不再有效时正好为 down。[example-otel/](example-otel/) 端到端断言了这三者。
+
 ---
 
 ## 5. 排障表
@@ -299,14 +318,14 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动时装配 `configBus` 失败 | `spring.nats.instances.*` 下没有 `nats-instance` 指名（默认 `config-bus`）的实例 | 定义 `spring.nats.instances.config-bus.url=...`，或把 `nats-instance` 指到已有实例名 |
-| 发布成功但没人刷新 | subject 不一致（舰队裂分），或所有订阅方的 `watch-prefixes` 都不含发布的 prefix | 各实例对齐 `subject`；检查重叠方向（`db` 匹配 `db.pool`，不匹配 `demo`） |
+| 发布成功但没人刷新 | subject 不一致（舰队裂分），或所有订阅方的 `watch-prefixes` 都不含发布的 prefix | 各实例对齐 `subject`；检查 `config.bus.events{outcome="refreshed"}` 与 debug 级 ignored_prefix 日志注明的原因（`db` 匹配 `db.pool`，不匹配 `demo`） |
 | 别的实例刷了、这台没刷 | 本实例启动晚——NATS core 无回放，`subscribe()` 之前的信号已丢 | 全部实例就绪后再发布；bus 不是持久日志 |
 | `property refresh failed: app not started yet` | 事件落在 `app.started` 置位前的装配窗口（§2.1） | 启动期属良性；变更重要则就绪后重发 |
 | `property refresh failed: <source 错误>` | 某配置 source 重载失败；旧值保留 | 修复 source 后重新发布——不会自动重试 |
 | 刷新后字段没变 | 绑定是普通 `value:` 字段而非 `gs.Dync[T]`——只有 Dync 重解析 | 把字段改成 `gs.Dync[T]` |
-| 改了 `spring.config.bus.subject`/`watch-prefixes` 行为不变 | 这些 key 仅启动期生效，`subscribe()` 只解析一次 | 重启实例 |
+| 改了 `spring.config.bus.subject`/`watch-prefixes`/`origin` 行为不变 | 这些 key 仅启动期生效，`subscribe()` 只解析一次 | 重启实例 |
 | 改了 Dync 读取的 key 但值过期 | 新值在应用不加载的 source 里，或被优先级压住（如文件压过 env） | 从刷新日志确认哪些 source 被重载；确认变更出现在已加载 source 中 |
-| bus 没有任何 metrics / 健康检查 | 本就没有——只有 `_app_config_bus` 日志 | 盯日志；订阅悄悄掉线时无其他信号（见 §6） |
+| bus 没有任何 metrics / 健康检查 | （已修复）现在有 `config.bus.*` metrics 与 `config-bus:configBus` 指标 | 抓取 metrics（见 §6）；`/readiness` 会报出掉线的订阅 |
 
 ---
 
@@ -314,21 +333,23 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 3 |
+| 配置 key 总数 | 4 |
 | 其中必填 | 显式 0，隐式 1（被引用的 NATS 实例定义） |
 | quickstart 前置外部依赖 | 1（NATS broker） |
-| "注意/坑"条数 | 5 |
+| "注意/坑"条数 | 3 |
 
 设计嫌疑清单（审计台账）：
 
 - **无激活条件**（沿用上轮审计）：已修复——bean 现在带 `OnProperty("spring.config.bus")`
   门（同 governance sources），未配置时导入闲置。
-- **无投递确认**：NATS core 即发即忘，发布方无法得知是否有实例刷新——协调式 rollout
-  前考虑 reply/ack 模式或可观测计数器。
-- **自身 key 仅启动期生效**：`subject`/`watch-prefixes`/`nats-instance` 静默忽略热加载；
-  刷新时检测到自身 key 变化应打 warn 暴露误用。
-- **可观测性只有日志**：无健康指示器、无 metrics（收到事件数 / 刷新成功数 / 失败数）——
-  订阅死掉是静默的。
+- **可观测性只有日志**：已修复——总线为每条事件报告一个互斥 outcome
+  （`refreshed` / `ignored_prefix` / `malformed` / `refresh_error`），同时作为 metric 与
+  日志行；span 来自传输层（producer 挂在调用方 ctx 下、consumer 延续它）；并有
+  `health.Indicator` 报告订阅是否仍有效。
+- **无投递确认**（已收窄）：发布方仍无法得知某个具体实例是否刷新——core NATS 无 ack。
+  订阅侧计数器让"是否有人刷新了、是否失败了"事后可答，但协调式 rollout 仍无同步确认。
+- **自身 key 仅启动期生效**：`subject`/`watch-prefixes`/`nats-instance`/`origin` 静默忽略
+  热加载；刷新时检测到自身 key 变化应打 warn 暴露误用。
 - **scoped 退出是静默的**（已修复）：被过滤的事件现在打一条 debug 级日志
   （bus.go:82-87），"这台为什么没刷"免重启即可诊断。
 - **刷新粒度**：`Prefix` 过滤实例而非 key——每个放行实例都刷新全量属性。若证明开销大，

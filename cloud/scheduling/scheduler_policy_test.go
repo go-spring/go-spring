@@ -18,6 +18,7 @@ package scheduling_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -68,11 +69,16 @@ func TestConcurrencyPolicyQueue(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
+	seen := make(map[time.Time]bool, len(events))
 	for _, ev := range events {
 		if ev.Skipped {
 			skips.Add(1)
 			assert.String(t, ev.Reason).Equal("policy")
 		}
+		// Every fire reports its own scheduled time — including one that waited
+		// behind a run under Queue — so no two events share a Scheduled value.
+		assert.That(t, seen[ev.Scheduled]).False("duplicate Scheduled time in events")
+		seen[ev.Scheduled] = true
 	}
 	// With 40ms runs on a 10ms rate, most fires find a run in flight and one
 	// already queued, so skips must happen; but some fires did queue and run
@@ -200,7 +206,6 @@ func TestMultipleJobsRunConcurrently(t *testing.T) {
 	const jobs = 5
 	counts := make([]atomic.Int64, jobs)
 	for i := range jobs {
-		i := i
 		_, err := s.Schedule(fmt.Sprintf("job-%d", i), scheduling.FixedRate(10*time.Millisecond),
 			func(context.Context) error { counts[i].Add(1); return nil })
 		assert.Error(t, err).Nil()
@@ -236,7 +241,8 @@ func TestScheduleAfterStartLaunchesLoop(t *testing.T) {
 }
 
 // TestJobPanicDoesNotKillLoop verifies a panicking job is converted into an
-// event error and the schedule keeps firing afterwards.
+// event error that errors.Is identifies as a panic, and the schedule keeps
+// firing afterwards.
 func TestJobPanicDoesNotKillLoop(t *testing.T) {
 	var mu sync.Mutex
 	var events []scheduling.Event
@@ -270,6 +276,8 @@ func TestJobPanicDoesNotKillLoop(t *testing.T) {
 		if ev.Err != nil && !ev.Skipped {
 			sawPanicErr = true
 			assert.Error(t, ev.Err).Matches("job panicked")
+			assert.That(t, errors.Is(ev.Err, scheduling.ErrJobPanicked)).
+				True("a panic must be identifiable, not just some error")
 		}
 	}
 	assert.That(t, sawPanicErr).True("panic should surface as an event error")

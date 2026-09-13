@@ -31,8 +31,9 @@ every instance in the fleet.
   not inject it explicitly. `Init` calls `subscribe`; `Destroy` calls
   `Unsubscribe`.
 - **`RefreshEvent` payload.** `{prefix, origin}`. `Prefix` is the only field
-  that influences dispatch; `Origin` is opt-in metadata for observability
-  and never controls behavior.
+  that influences dispatch; `Origin` identifies the publisher (from
+  `spring.config.bus.origin`, defaulting to the host name) purely for
+  observability and never controls behavior.
 - **Prefix-scoped subscription.** `Config.WatchPrefixes` is a comma-separated
   list. A broadcast applies to an instance when its `Prefix` is empty (full
   fleet), or the subscriber's `WatchPrefixes` is empty (subscribe to
@@ -49,14 +50,23 @@ every instance in the fleet.
 - **Signals, not payloads.** A malformed message logs a warning and is
   dropped; a missing prefix means "refresh everyone". The application must
   never rely on message bodies as configuration.
-- **Refresh failures are logged, not raised.** `RefreshProperties` errors are
-  logged and the bus continues to accept future signals; a broken refresh
-  must not silently unsubscribe the instance from the fleet.
+- **Refresh failures never unsubscribe the instance.** `RefreshProperties` errors are
+  counted (`refresh_error`), logged, and returned to the transport so the consumer span is
+  marked failed — but the bus keeps accepting future signals. A broken refresh must not
+  silently drop the instance out of the fleet.
 - **Named bean is load-bearing.** Same rule as the config-provider starters:
   `gs.Rooter` is `any`, so `configBus` must not go under `__default__`.
-- **Transitive dep on `starter-nats`.** The bus references
-  `go-spring.org/starter-nats` and, via `Conn`, obtains JetStream when the
-  underlying connection has it — but the bus itself only uses core pub/sub.
+- **Dep on `starter-nats`.** The bus references `go-spring.org/starter-nats` directly (it
+  needs the raw `Conn`, not the broker-neutral driver) and, via `Conn`, obtains JetStream
+  when the underlying connection has it — but the bus itself only uses core pub/sub.
+- **One outcome drives metric and log.** Every received event ends in exactly one outcome
+  (`refreshed` / `ignored_prefix` / `malformed` / `refresh_error`) recorded as both a metric
+  and a log line, so the two cannot disagree; the outcomes are exclusive, so their sum is the
+  number of events received.
+- **Health reports the subscription, not the connection.** The `health.Indicator` probes
+  subscription validity, because a subscription survives a reconnect: this is false only when
+  the listener is genuinely dead. Connection health belongs to starter-nats's own indicator,
+  which carries its own per-instance opt-out.
 
 ## 4. Trade-offs / Alternatives Rejected
 

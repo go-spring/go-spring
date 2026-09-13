@@ -18,15 +18,16 @@ package messaging
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // TestSafeHandlerPassThrough proves a clean handler is invoked unchanged:
 // same message, same error.
 func TestSafeHandlerPassThrough(t *testing.T) {
-	boom := errors.New("handler error")
+	boom := errutil.Explain(nil, "handler error")
 	var got *Message
 	err := Recover(func(_ context.Context, msg *Message) error {
 		got = msg

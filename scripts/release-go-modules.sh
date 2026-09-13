@@ -72,6 +72,7 @@ STARTER_DIRS=(
     "starter/starter-consul"
     "starter/starter-nacos"
     "starter/starter-mongodb"
+    "starter/starter-nats"
     "starter/starter-rabbitmq"
 )
 # Filter out non-existent starter directories so the script stays valid

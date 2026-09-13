@@ -57,7 +57,7 @@ type Config struct {
 	// load-test marker carried in the call's context ([traffic.IsLoadTest]):
 	//   ""        — inject into all traffic (the default; the historic behavior)
 	//   "real"    — inject only into real traffic, skipping load-test requests
-	//               (so synthetic load from cloud/loadtest does not get faulted)
+	//               (so synthetic load from cloud/experimental/loadtest does not get faulted)
 	//   "loadtest"— inject only into load-test traffic (so faults exercise the
 	//               resilience stack under synthetic load without disturbing
 	//               production traffic)

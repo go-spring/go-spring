@@ -157,7 +157,7 @@ type OtelConfig struct {
 // Resilience binds the backend-neutral resilience knobs shared by every client
 // starter (see [resilience.Config]). Driver selects which registered backend
 // enforces them: "default" (bundled, zero-dependency) or "sentinel"
-// (recommended, enabled by blank-importing starter-resilience). Switching
+// (recommended, enabled by blank-importing starter-governance-sentinel). Switching
 // backends is a one-line config change — no code touches the hook seam.
 //
 // Keep resilience MaxRetries at 0 for Redis: go-redis already retries via its

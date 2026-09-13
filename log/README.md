@@ -92,8 +92,9 @@ it is a tuning handle. Register a custom tag only when you can answer the questi
 
 Naming: `subType` is a short technology or product name (no `starter_` or family prefixes — the
 `_app_` prefix already conveys that, and the 4-segment budget is scarce); the optional `action`
-distinguishes multiple log populations within the same module (e.g. `gin` `access` vs. lifecycle),
-and is left empty otherwise.
+names a log population narrower than the module itself. An access log keeps `access` even when it
+is the module's only population, because the kind is what an operator tunes; the module's own
+lifecycle and assembly logs take the empty action (e.g. `gin` `access` vs. lifecycle).
 
 ### Logger
 

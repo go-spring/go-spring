@@ -35,8 +35,7 @@ import (
 // executor from the default resilience driver. The tests never dial a name
 // server — they drive execute directly with a stubbed call.
 func newClientWithPolicy(t *testing.T, p resilience.Policy) *Client {
-	d, err := resilience.GetDriver("default")
-	assert.Error(t, err).Nil()
+	d := resilience.NewDefaultDriver()
 	exec, err := d.NewExecutor(p)
 	assert.Error(t, err).Nil()
 	return &Client{exec: exec, resource: "rocketmq:test"}

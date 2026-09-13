@@ -132,6 +132,6 @@ starter-governance)。治理资源标签在发现模式下为 `http:<service-nam
 ## 切换韧性后端
 
 `resilience.driver=default` 使用内置的零依赖实现。切换到 Sentinel 只需
-`driver=sentinel` 外加空导入 [`starter-resilience`](../starter-resilience),
+`driver=sentinel` 外加空导入 [`starter-governance-sentinel`](../starter-governance-sentinel),
 无需改动任何代码。
 

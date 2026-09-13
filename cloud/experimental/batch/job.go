@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // StepContext carries the state a [Step] needs to run and to record progress. A
@@ -176,10 +178,10 @@ func (s *funcStep) Run(ctx context.Context, rc *StepContext) error {
 // unusable.
 func Func(name string, fn func(ctx context.Context) error) Step {
 	if name == "" {
-		panic("batch: func step name must not be empty")
+		panic(errutil.Explain(nil, "batch: func step name must not be empty"))
 	}
 	if fn == nil {
-		panic("batch: func step function must not be nil")
+		panic(errutil.Explain(nil, "batch: func step function must not be nil"))
 	}
 	return &funcStep{name: name, fn: fn}
 }

@@ -77,7 +77,7 @@ func (s *ChunkStep[I, O]) executor() (resilience.Executor, error) {
 	if s.Retry.IsZero() {
 		return nil, nil
 	}
-	return resilience.NewExecutor("default", s.Retry)
+	return resilience.NewDefaultDriver().NewExecutor(s.Retry)
 }
 
 // Run implements [Step]. It resumes from rc.StepExecution, drives the chunk

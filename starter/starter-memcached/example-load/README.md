@@ -1,7 +1,7 @@
 # starter-memcached / example-load
 
 Load-test binary for starter-memcached. Drives SET/GET through a Memcached
-client (resilience + fault hot-reloadable) using the shared `cloud/loadtest`
+client (resilience + fault hot-reloadable) using the shared `cloud/experimental/loadtest`
 harness, printing throughput / latency percentiles / error breakdown.
 
 ## Run

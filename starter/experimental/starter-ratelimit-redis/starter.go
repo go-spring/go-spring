@@ -22,10 +22,11 @@
 //
 // This is a Contributor-archetype starter: it exports no port of its own, it
 // adapts the existing Lua token-bucket implementation
-// (starter-go-redis/experimental) into the [resilience.LimiterDriver] registry
-// so consumers that select limiters by driver name — starter-gateway's
-// rateLimit filter, [resilience.GetLimiter], app code — switch from per-replica
-// to cross-replica limiting purely by changing that name:
+// (starter-go-redis/experimental) into a bean named after the driver, exported
+// as [resilience.LimiterDriver] — the container is the limiter directory — so
+// consumers that select limiters by driver name (starter-gateway's rateLimit
+// filter, app code) switch from per-replica to cross-replica limiting purely by
+// changing that name:
 //
 //	# before: each replica limits on its own counters
 //	spring.gateway.route... = rateLimit(rate=100)
@@ -66,22 +67,23 @@ func init() {
 				driver = name
 			}
 			// Fail fast on a driver name claimed by another instance of THIS
-			// starter: two instances sharing one name would silently share a
-			// single limiter (the registry only panics on cross-module
-			// duplicates), hiding the misconfiguration until rate limits bleed
-			// across instances in production.
+			// starter: two instances sharing one name would otherwise surface as
+			// a duplicate-bean error, which names the bean but not the two
+			// instance keys that collided.
 			if err := claimDriverName(driver, name); err != nil {
 				return err
 			}
 			log.Debugf(context.Background(), log.TagAppDef, "creating redis limiter driver instance=%s driver=%s client=%s", name, driver, c.Client)
 			// TagArg injects the *redis.Client bean by name — the seam that ties
-			// this driver to a specific redis instance. The ctor registers the
-			// driver in the resilience limiter registry under `driver`; Export
-			// makes the bean root-reachable so the registration always runs.
-			r.Provide(func(client *goredis.Client) (*Driver, error) {
+			// this driver to a specific redis instance. The bean is NAMED after
+			// the driver, not the instance, because the container's limiter
+			// directory is keyed by the driver name the rateLimit filter's
+			// driver= argument addresses; Export makes it visible to name-keyed
+			// LimiterDriver injection.
+			r.Provide(func(client *goredis.Client) *Driver {
 				return driverFor(driver, client)
 			}, gs.TagArg(c.Client)).
-				Name(name).
+				Name(driver).
 				Export(gs.As[resilience.LimiterDriver]()).
 				Caller(1)
 			return nil

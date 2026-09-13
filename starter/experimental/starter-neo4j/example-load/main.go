@@ -31,7 +31,7 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/loadtest"
+	"go-spring.org/cloud/experimental/loadtest"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-governance"

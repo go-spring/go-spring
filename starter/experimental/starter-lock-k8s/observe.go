@@ -23,7 +23,7 @@ import (
 
 // newLocker is the bean constructor behind the instance name: it builds the
 // k8s Lease locker and — by default — wraps it with the shared observe-lock
-// adapter (trace span + duration/in-flight metric + access log;
+// adapter (trace span + duration metric + access log;
 // lock.system="k8s"), so the primary bean is transparently observed.
 // Instances that opt out via observe.enabled=false get the bare locker. When
 // starter-otel is not imported the global OTel providers are no-ops, so the

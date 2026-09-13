@@ -6,18 +6,18 @@ resilience 自带的 "default" limiter driver 把计数器放在进程内，N �
 就会放行 N 倍预算。共享配额要的是全局唯一预算，状态必须放到任何单个
 进程之外——也就是 Redis。
 
-## 2. 为什么走 limiter driver 注册，而不是切换 resilience driver
+## 2. 为什么走 limiter driver，而不是切换 resilience driver
 
-resilience 有两个彼此独立的注册表：
+resilience 有两条彼此独立的接缝：
 
-- `RegisterDriver`/`GetDriver`——构建 **Executor**（限流+熔断+重试+超时
-  打包在一起）。整体切换会把熔断/重试一并从 `default`/`sentinel` 拖走，
-  而没人想要这个：分布式限流与进程内熔断是正交的两件事。
-- `RegisterLimiter`/`GetLimiter`——**LimiterDriver** 注册表，本来就是为
-  "分布式限流"预留的接缝（见 ratelimit.go 注释），且已有按名消费方
-  （gateway 的 `rateLimit(rate=…,driver=…)`）。
+- `Driver`——构建 **Executor**（限流+熔断+重试+超时打包在一起）。整体切换会把
+  熔断/重试一并从 `default`/`sentinel` 拖走，而没人想要这个：分布式限流与进程内
+  熔断是正交的两件事。
+- `LimiterDriver`——**分布式限流**接缝。它的消费方按名寻址（gateway 的
+  `rateLimit(rate=…,driver=…)`），所以和其他可插拔后端一样解析：容器即目录，
+  以 bean 名为键。
 
-所以本 starter 按可配置的名字注册 `LimiterDriver`（缺省取实例名，多实例
+所以本 starter 按可配置的名字贡献 `LimiterDriver` bean（缺省取实例名，多实例
 天然不冲突），executor driver 原封不动。结果是 "sentinel executor +
 redis limiter" 可以自由组合。
 
@@ -39,11 +39,11 @@ Contributor starter：配置进，`resilience.LimiterDriver` bean + 注册表
   接缝。
 - `driver`（可选）：注册名，缺省等于实例名。
 
-bean 构造函数调用 `driverFor(name, client)`：包级 `sync.Map` 里每个名字
-一个 `*Driver` 单例。向 `resilience.RegisterLimiter` 的注册每进程每名字
-只发生一次（注册表对重复注册会 panic）；容器重新接线——同一测试二进制
-里第二次 `gs.RunTest`——只是换绑 client。bean 通过
-`Export(gs.As[resilience.LimiterDriver]())` 挂到根上，构造（注册副作用）
+bean 构造函数调用 `driverFor(name, client)`：包级 `sync.Map` 里每个名字一个
+`*Driver` 单例，所以容器重新接线——同一测试二进制里第二次 `gs.RunTest`——只是
+换绑 client。bean 名即 driver 名，并通过
+`Export(gs.As[resilience.LimiterDriver]())` 让按名接口注入看得见；重名在装配期
+以 duplicate bean 报错。构造（贡献 bean）
 在 prod 必然执行。
 
 ## 5. 继承自 Lua 桶的语义

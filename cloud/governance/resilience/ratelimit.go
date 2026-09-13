@@ -18,10 +18,10 @@ package resilience
 
 import (
 	"context"
-	"fmt"
-	"sort"
 	"sync"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // RateLimiter is a first-class, standalone throttle: it answers "may this unit
@@ -86,51 +86,27 @@ type LimitPolicy struct {
 }
 
 // LimiterDriver builds a [RateLimiter] from a [LimitPolicy]. Backends implement
-// it and register under a name via [RegisterLimiter].
+// it and are contributed to the container as a bean named after the backend,
+// exported as a [LimiterDriver] so name-keyed directory injection finds them —
+// the same shape [Driver] backends use.
 type LimiterDriver interface {
 	NewRateLimiter(LimitPolicy) (RateLimiter, error)
 }
 
-var (
-	limiterMu       sync.RWMutex
-	limiterRegistry = map[string]LimiterDriver{}
-)
+// DefaultLimiterName is the name the bundled [NewDefaultLimiterDriver] answers
+// to, and the name a caller falls back to when no limiter backend is named.
+const DefaultLimiterName = "default"
 
-// RegisterLimiter makes a [LimiterDriver] available under name. It panics if
-// name is empty, d is nil, or name is already registered, mirroring the
-// driver-registry idiom used elsewhere ([RegisterDriver], discovery.Register) so
-// duplicate wiring fails loudly at init.
-func RegisterLimiter(name string, d LimiterDriver) {
-	registerInto("limiter driver", limiterRegistry, &limiterMu, name, d)
-}
-
-// GetLimiter returns the [LimiterDriver] registered under name, or an error
-// listing the available drivers when none matches.
-func GetLimiter(name string) (LimiterDriver, error) {
-	limiterMu.RLock()
-	defer limiterMu.RUnlock()
-	d, ok := limiterRegistry[name]
-	if !ok {
-		names := make([]string, 0, len(limiterRegistry))
-		for k := range limiterRegistry {
-			names = append(names, k)
-		}
-		sort.Strings(names)
-		return nil, fmt.Errorf("resilience: no limiter driver registered as %q (registered: %v)", name, names)
-	}
-	return d, nil
-}
-
-// The bundled "default" limiter driver: in-process counters, no third-party
-// dependencies. It limits each replica independently — select a Redis-backed
-// driver for a single budget shared across replicas.
-func init() { RegisterLimiter("default", defaultLimiterDriver{}) }
+// NewDefaultLimiterDriver returns the bundled limiter driver: in-process
+// counters, no third-party dependencies. It limits each replica independently —
+// select a Redis-backed driver for a single budget shared across replicas.
+func NewDefaultLimiterDriver() LimiterDriver { return defaultLimiterDriver{} }
 
 type defaultLimiterDriver struct{}
 
 func (defaultLimiterDriver) NewRateLimiter(p LimitPolicy) (RateLimiter, error) {
 	if p.Rate < 0 {
-		return nil, fmt.Errorf("resilience: negative rate %v", p.Rate)
+		return nil, errutil.Explain(nil, "resilience: negative rate %v", p.Rate)
 	}
 	return &defaultRateLimiter{policy: p, states: map[string]any{}}, nil
 }

@@ -5,7 +5,7 @@
 family (`go-spring.org/cloud/governance/resilience`). It defines the neutral
 contract every adapter and driver satisfies, and ships an in-tree driver so
 the framework works out of the box; production installs typically swap in the
-sentinel driver from `starter/starter-resilience`.
+sentinel driver from `starter/starter-governance-sentinel`.
 
 ## 1. Responsibilities & Boundaries
 
@@ -32,10 +32,13 @@ sentinel driver from `starter/starter-resilience`.
   builds a concrete backend runtime. The bundled builtin driver reads the
   policy directly; a sentinel driver translates it into sentinel-golang's
   flow/circuit-breaker rules. Adapters depend only on `Executor`.
-- **Driver registry** (`RegisterDriver` / `MustGetDriver`) panics on
-  empty/nil/duplicate registration — the same idiom used across the stdlib
-  (see discovery, cache, loadbalance). Applications select the driver by
-  name in configuration.
+- **The container is the driver directory.** This package holds no registry:
+  a backend is contributed as a bean named after itself, exported as
+  `Driver`, and the governance wiring bean collects every such bean into a
+  name-keyed map. `govern.driver` selects one, resolved through
+  `resilience.Resolve` — the same "container as directory" shape `discovery`
+  and the client starter `Driver`s use. The bundled builtin answers to
+  `"default"` without a bean, so nothing has to contribute it.
 - **Neutral rejection errors** (`ErrRateLimited`, `ErrCircuitOpen`,
   `ErrBulkheadFull`) let adapters make protocol-specific decisions (429
   vs 503 in a protocol starter's admission middleware) without importing

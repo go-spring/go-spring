@@ -2,7 +2,7 @@
 
 Load-test binary for starter-gorm-postgres. Drives `SELECT 1` round trips
 through a gorm PostgreSQL client (resilience + fault hot-reloadable) using the
-shared `cloud/loadtest` harness, printing throughput / latency percentiles /
+shared `cloud/experimental/loadtest` harness, printing throughput / latency percentiles /
 error breakdown.
 
 ## Run
