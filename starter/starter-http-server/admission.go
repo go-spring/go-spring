@@ -32,7 +32,7 @@ import (
 // this package provides filters rather than owning a server.
 //
 // label is the governance resource label this server is addressed as, e.g.
-// "http-server::9090" (see cloud/governance/DESIGN_CN.md §6). Build it with
+// "http-server::9090" (see cloud/governance/README.md 设计说明 §6). Build it with
 // resilience.ResourceLabel(system, addr) if you want the conventional shape;
 // govern rules match it with govern.rules[N].resources=<label>.
 //

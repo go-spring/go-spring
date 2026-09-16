@@ -57,7 +57,7 @@ func init() {
 				r.Provide(newClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
-					gs.IndexArg(3, gs.TagArg("${spring.go-redis.instances."+name+".discovery:=none}?")),
+					gs.IndexArg(3, gs.TagArg("${spring.go-redis.instances."+name+".discovery:=${spring.go-redis.default.discovery:=none}}?")),
 				).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				// Contribute a health indicator for this instance unless the
 				// user disabled it (health.enabled=false), injecting the

@@ -213,6 +213,11 @@ For this starter the `<path>` part is parsed by `parseSource` (`provider.go:85-1
 | `format` | query | by extension | Forces the parser for every read entry (provider.go:215, 111-115). Value must be known to `reader.Has` — validated at parse time. | Unknown value → boot error "unsupported k8s config format" even before any cluster call. |
 | `kubeconfig` | query | in-cluster | Path to a kubeconfig file for out-of-cluster runs (informer.go:43-47). Empty → `rest.InClusterConfig()` (informer.go:49-52). | Outside a cluster with no param → boot error "in-cluster config (set kubeconfig when running outside a cluster)" — or Warn+skip under `optional:`. |
 
+For ConfigMaps, `data` and `binaryData` are merged into a single
+`name -> bytes` map before parsing (`provider.go:194-200`) — an entry counts the
+same regardless of which field carries it, and `key=`/`format=` apply uniformly
+to both.
+
 ### 3.2 Property keys
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -308,11 +313,11 @@ cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
 | Boot error `in-cluster config (set kubeconfig when running outside a cluster)` | running locally, no `kubeconfig=` param | add `?kubeconfig=$HOME/.kube/config`, or `optional:` to skip |
 | Boot error `get configmap … not found` | wrong `name`/`namespace`, or object not applied | fix the source string or apply the ConfigMap; `optional:` to tolerate |
 | Boot error `forbidden: User … cannot get/list/watch configmaps` | RBAC missing/too narrow | apply example/deploy/rbac.yaml; needs get+list+watch (informer), in the target namespace |
-| Config loads but never hot-reloads | informer failed best-effort (cache sync) or watch verbs missing while get works | check RBAC `watch`; restart to retry watch setup; look for Warn/Error under tag `_app_def` |
+| Config loads but never hot-reloads | informer failed best-effort (cache sync) or watch verbs missing while get works | check RBAC `watch`; restart to retry watch setup; look for Warn/Error under tag `_app_config_k8s` |
 | `demo.message` stays at default in-cluster | import not actually listed in `spring.config.import`, or `key=` selects an entry that doesn't exist | empty `key=` match yields an empty (not failed) import — verify the data-entry name |
 | Boot error `entry "README" has no known format; set format=` | `key=` selected an extension-less entry | add `&format=properties` (etc.), or import without `key=` so it's skipped |
 | Boot error `unsupported k8s config kind "deployment"` | only `configmap`/`secret` supported | pick one of the two kinds |
-| Logs show nothing from the starter | Debug-level lines hidden (provider.go:129 logs the parsed source at Debug) | raise logger level for tag `_app_def` |
+| Logs show nothing from the starter | Debug-level lines hidden (provider.go:129 logs the parsed source at Debug) | raise logger level for tag `_app_config_k8s` |
 
 ---
 

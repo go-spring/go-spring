@@ -1,7 +1,7 @@
 # starter-config-bus 使用说明（参考手册级）
 
 详细使用文档，概览见 [README_CN.md](README_CN.md)。所有行为声明均对照 starter 源码
-（`starter.go`、`bus.go`、`config.go`）与经 docker 冒烟验证的 [example/](example/)
+（`starter.go`、`config.go`）与经 docker 冒烟验证的 [example/](example/)
 （`example/check.sh`）核对。本 starter 是配置**事件总线**：只经 NATS 传播刷新*信号*，
 从不携带配置内容——事实源始终是配置中心或本地文件。NATS 自身语义见
 [nats.go 文档](https://docs.nats.io/)；以下全部是 go-spring 的增量。
@@ -10,7 +10,7 @@
 （starter.go:49-58）。**未配置任何** `spring.config.bus.*` key 时 starter 什么都不装配，
 导入是闲置的——共享模块里带上导入也不会强迫每个应用配置 NATS。一旦出现任意
 `spring.config.bus.*` key（仅设 `spring.config.bus.subject` 也算），bean 装配，autowire tag
-`${spring.config.bus.nats-instance:=config-bus}`（bus.go:55）要求 `spring.nats.instances.*` 下存在
+`${spring.config.bus.nats-instance:=config-bus}`（starter.go:116）要求 `spring.nats.instances.*` 下存在
 名为 `config-bus`（或你指定的名字）的实例；不存在则容器装配失败、启动中止。没有单独的
 `enabled` 开关。
 
@@ -156,7 +156,7 @@ gs.Run() → App.Start()                                                       [
   │    ├─ ConfigBus 字段注入：
   │    │    Conn      ← 按名注入 NATS 实例（${spring.config.bus.nats-instance:=config-bus}）
   │    │    Config    ← ${spring.config.bus} value tag（config.go）
-  │    └─ bean Init 钩子：subscribe() —— 对 Config.Subject 做 NATS Subscribe  [bus.go:66-99]
+  │    └─ bean Init 钩子：subscribe() —— 对 Config.Subject 做 NATS Subscribe  [starter.go:136-171]
   │         打日志 "subscribed to bus subject=... prefixes=[...]"
   ├─ app.started = true            ← 从此刻起 RefreshProperties 才被允许
   ├─ Runners → Servers → 就绪
@@ -184,7 +184,7 @@ gs.Run() → App.Start()                                                       [
 - **bus 刷新出来的 key 门不了 bus 自己。** bus 自身的 key
   （`spring.config.bus.*`、`spring.nats.instances.<name>.*`）只在装配期读一次。刷新事件即使改变了
   `spring.config.bus.subject`，订阅**不会**迁移——bean 只在重启后重读。`watch-prefixes`
-  同理：`subscribe()` 只解析一次（bus.go:67-71）。因此把所有 `spring.config.bus.*` key
+  同理：`subscribe()` 只解析一次（starter.go:150-154）。因此把所有 `spring.config.bus.*` key
   当作启动期常量；不要放进你期望热加载的命名空间。
 
 ### 2.3 Publish → 订阅 → gs.Dync 刷新，逐步走读
@@ -196,10 +196,10 @@ gs.Run() → App.Start()                                                       [
    `Conn.PublishMsgContext(ctx, ...)` 发布——带 ctx 的入口，因此 producer span 是调用方
    trace 的子节点，且 W3C 上下文骑在消息 header 上。
 3. 订阅该 subject 的每个实例在延续发布方 trace 的 consumer span 内收到消息，执行
-   `onMessage`（bus.go）：
+   `onMessage`（starter.go）：
    - 空 payload → 视为零值 `RefreshEvent`（全舰队刷新）；
    - JSON 畸形 → 计入 `malformed`，打 warn 日志并丢弃；
-   - `shouldRefresh(ev.Prefix)` 过滤（bus.go:106-116）：事件 prefix 为空、实例未配置
+   - `shouldRefresh(ev.Prefix)` 过滤（starter.go:203-213）：事件 prefix 为空、实例未配置
      watch、或事件 prefix 与某个 watched prefix **双向重叠**时放行——`db` watcher 对
      `db.pool` 事件有反应，反之亦然；
    - `gs.RefreshProperties()`——app 挂载的进程级刷新门面（无注入的
@@ -221,13 +221,13 @@ gs.Run() → App.Start()                                                       [
 ## 3. 逐 key 行为参考
 
 全部 key 位于顶层绝对前缀 `spring.config.bus`（经 config.go 的 value tag 绑定；
-`nats-instance` tag 位于 bus.go 的 bean 结构体上）。无一必填——但看配错后果列。
+`nats-instance` tag 位于 starter.go 的 bean 结构体上）。无一必填——但看配错后果列。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `spring.config.bus.subject` | string | `spring.config.refresh` | NATS subject，发布+订阅共用；共享它的所有实例构成一个 bus。装配期读一次——刷新事件改它不会触发重新订阅（§2.2）。 | 某实例写错 subject → 舰队静默裂成两半：刷新只在各自一半内传播，任何地方都不报错。 |
 | `spring.config.bus.watch-prefixes` | string | ``（空） | 逗号分隔 prefix 过滤，`subscribe()` 解析一次。空 = 对每个事件都反应。非空 = 只对空 prefix 事件或双向 prefix 重叠放行（`db` ↔ `db.pool`）。⚠ 热加载死 key：仅重启后重解析。 | 列表过宽会刷得比预期多（无害但噪音）；某 prefix 与发布侧永不匹配时，该实例静默跳过 scoped 刷新，但 `Publish(ctx, "")` 仍放行。 |
-| `spring.config.bus.nats-instance` | string | `config-bus` | 作为传输层注入的 `spring.nats.instances.<name>.*` 连接名（按实例名 autowire，bus.go:55）。⚠ 指名的实例必须存在——这是事实上的激活门。 | 无对应 `spring.nats.instances.<name>.*` 块 → 启动期容器装配失败（bean 无法组装）。与业务 NATS 连接共用名字会把 bus 故障耦合到该连接。 |
+| `spring.config.bus.nats-instance` | string | `config-bus` | 作为传输层注入的 `spring.nats.instances.<name>.*` 连接名（按实例名 autowire，starter.go:116）。⚠ 指名的实例必须存在——这是事实上的激活门。 | 无对应 `spring.nats.instances.<name>.*` 块 → 启动期容器装配失败（bean 无法组装）。与业务 NATS 连接共用名字会把 bus 故障耦合到该连接。 |
 
 除此之外，被引用的 NATS 实例还有自己的 `spring.nats.instances.<name>.*` key（url、认证等）——见
 starter-nats 文档。NATS 连接是硬前置；没有嵌入式/内存兜底。
@@ -278,7 +278,7 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 ```
 
 订阅方打 `ignoring malformed refresh event: ...`（Warn）并保持健康。**空** payload 不算
-畸形——它是合法的全舰队刷新（bus.go:74-81）。带未知字段的 JSON 会被容忍（标准 unmarshal）。
+畸形——它是合法的全舰队刷新（starter.go:178-184）。带未知字段的 JSON 会被容忍（标准 unmarshal）。
 
 ### 4.5 演练：启动陷阱复现
 
@@ -351,6 +351,6 @@ trace：一次广播是一条链路，含一个 `publish` span（若 `Publish` �
 - **自身 key 仅启动期生效**：`subject`/`watch-prefixes`/`nats-instance`/`origin` 静默忽略
   热加载；刷新时检测到自身 key 变化应打 warn 暴露误用。
 - **scoped 退出是静默的**（已修复）：被过滤的事件现在打一条 debug 级日志
-  （bus.go:82-87），"这台为什么没刷"免重启即可诊断。
+  （starter.go:186-191），"这台为什么没刷"免重启即可诊断。
 - **刷新粒度**：`Prefix` 过滤实例而非 key——每个放行实例都刷新全量属性。若证明开销大，
   可能需要 key 级刷新路径。

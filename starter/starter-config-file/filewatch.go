@@ -46,7 +46,7 @@ func init() {
 	// loads a single file at startup and, whenever it changes, triggers a full
 	// property refresh via the gs.RefreshProperties facade — no separate hook
 	// wiring needed.
-	conf.RegisterProvider("file-watch", (&fileWatchCtrl{}).Load)
+	conf.RegisterProvider("file-watch", newFileWatchCtrl().Load)
 }
 
 // fileWatchCtrl is the "file-watch" provider: one configuration document per
@@ -54,6 +54,12 @@ func init() {
 // refresh bridge.
 type fileWatchCtrl struct {
 	watchCore
+}
+
+// newFileWatchCtrl creates the "file-watch" provider controller with its
+// watch machinery ready.
+func newFileWatchCtrl() *fileWatchCtrl {
+	return &fileWatchCtrl{watchCore: newWatchCore()}
 }
 
 // Load implements conf/provider.Provider. It reads a single configuration file
@@ -66,20 +72,20 @@ func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, e
 		return nil, errutil.Explain(nil, "file-watch: missing path")
 	}
 
-	log.Debugf(context.Background(), log.TagAppDef, "loading file-watch config from %s", path)
+	log.Debugf(context.Background(), starterTag, "loading file-watch config from %s", path)
 
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && optional {
-			log.Warnf(context.Background(), log.TagAppDef, "optional config path %s not found (skipped)", path)
+			log.Warnf(context.Background(), starterTag, "optional config path %s not found (skipped)", path)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), log.TagAppDef, "stat %s failed: %v", path, err)
+		log.Errorf(context.Background(), starterTag, "stat %s failed: %v", path, err)
 		return nil, errutil.Explain(err, "file-watch: stat %s failed", path)
 	}
 
 	if info.IsDir() {
-		log.Errorf(context.Background(), log.TagAppDef, "file-watch expects a single file, got directory %s", path)
+		log.Errorf(context.Background(), starterTag, "file-watch expects a single file, got directory %s", path)
 		return nil, errutil.Explain(nil, "file-watch expects a single file, got directory %s (a directory of scalar key files belongs to the configtree provider)", path)
 	}
 
@@ -99,6 +105,6 @@ func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, e
 	}
 	m := flatten.Flatten(parsed)
 
-	log.Infof(context.Background(), log.TagAppDef, "loaded file-watch config from file=%s keys=%d", path, len(m))
+	log.Infof(context.Background(), starterTag, "loaded file-watch config from file=%s keys=%d", path, len(m))
 	return m, nil
 }

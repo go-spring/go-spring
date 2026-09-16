@@ -282,3 +282,49 @@ func TestJobPanicDoesNotKillLoop(t *testing.T) {
 	}
 	assert.That(t, sawPanicErr).True("panic should surface as an event error")
 }
+
+// TestQueueDropsParkedFireOnStop pins the shutdown contract: a fire parked in
+// the Queue slot while the scheduler stops is dropped silently — it must not be
+// fed an already-cancelled context (which a Locker would report as a bogus
+// lock failure polluting the skip metrics).
+func TestQueueDropsParkedFireOnStop(t *testing.T) {
+	var mu sync.Mutex
+	var events []scheduling.Event
+	s := scheduling.NewScheduler(scheduling.WithObserver(func(ev scheduling.Event) {
+		mu.Lock()
+		events = append(events, ev)
+		mu.Unlock()
+	}))
+
+	firstRun := make(chan struct{})
+	_, err := s.Schedule("q-stop", scheduling.FixedRate(10*time.Millisecond),
+		func(ctx context.Context) error {
+			select {
+			case <-firstRun:
+			default:
+				close(firstRun)
+			}
+			<-ctx.Done() // the first run occupies the worker until shutdown
+			return ctx.Err()
+		}, scheduling.WithConcurrencyPolicy(scheduling.Queue))
+	assert.Error(t, err).Nil()
+
+	assert.Error(t, s.Start(context.Background())).Nil()
+	<-firstRun
+	time.Sleep(30 * time.Millisecond) // ≥2 more fires: one parks in the queue slot, the rest skip
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	assert.Error(t, s.Stop(stopCtx)).Nil()
+
+	mu.Lock()
+	defer mu.Unlock()
+	ran := 0
+	for _, ev := range events {
+		if !ev.Skipped {
+			ran++
+		}
+	}
+	// Exactly one run (the first); the parked fire never executed.
+	assert.That(t, ran).Equal(1, fmt.Sprintf("the parked fire must be dropped on stop, events=%v", events))
+}

@@ -1,7 +1,7 @@
 # starter-registry-nacos Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `config.go`, `center.go`, `registrar.go`,
+against the starter source (`starter.go`, `config.go`, `starter.go`, `registrar.go`,
 `discovery_nacos.go`), the registration core (`../starter-registry/starter.go`,
 `../starter-registry/config.go`) and the runnable [example/](example/) (docker-compose +
 `check.sh`). **Nacos's own semantics (services, groups, namespaces, clusters, ephemeral
@@ -15,11 +15,11 @@ per configured center —
   process into every configured Nacos center once the app is ready. For VM / bare-metal /
   hybrid deployments; in pure Kubernetes the platform registers Pods for you.
 - **Consumer half** (no config of its own): the same bean is a `cloud/discovery` backend which
-  client starters (gateway `lb://` routes, `spring.http-client.backends.<n>.discovery`, etc.)
+  client starters (gateway `lb://` routes, `spring.http-client.instances.<n>.discovery`, etc.)
   resolve through by citing the bean name `nacos.<name>`.
 
 **Activation**: each `spring.registry.nacos.<name>` block is one registry center — one shared
-naming client, one startup probe, one lifecycle (`center.go`). The bean named `nacos.<name>`
+naming client, one startup probe, one lifecycle (`starter.go`). The bean named `nacos.<name>`
 exports BOTH `discovery.Registrar` (collected by the starter-registry core when
 `spring.registry.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half).
@@ -125,7 +125,7 @@ spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
 # The route's balancing strategy is NOT a gateway key: it is a governance rule
 # for the route's label — govern.rules[N].resources=gateway:orders with
-# govern.rules[N].balancer=weighted (see cloud/governance/CONFIG_CN.md §3.1).
+# govern.rules[N].balancer=weighted (see cloud/governance/README.md §3.1).
 ```
 
 **Verify** (nacos from `example/docker-compose.yml` — `docker compose up -d`, then wait for
@@ -155,14 +155,14 @@ transitively by this starter; the nacos starter only contributes one registrar b
 import starter-registry-nacos
   ├─ per block ${spring.registry.nacos.<name>}: Provide(newNacosBackend)
   │    Name("nacos."+name).Export(As[discovery.Discovery], As[discovery.Registrar])
-  │    condition: gs.OnProperty("spring.registry.nacos")              [center.go]
+  │    condition: gs.OnProperty("spring.registry.nacos")              [starter.go]
   └─ import starter-registry (core, exactly once per process)
        └─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
             condition: gs.OnProperty("spring.registry.service-name")
 gs.Run()
   ├─ conf.BindEach over spring.registry.nacos.* → one NacosConfig per block
   ├─ newNacosBackend per block: build nacos naming client + FAIL-FAST PROBE
-  │    (GetAllServicesInfo page-1 — unreachable/auth-bad server aborts startup)  [center.go]
+  │    (GetAllServicesInfo page-1 — unreachable/auth-bad server aborts startup)  [starter.go]
   ├─ registryServer collects every backend's Registrar via []discovery.Registrar
   │    slice injection (across ALL backends — nacos, zookeeper, ...)
   ├─ Run: validate service-name/addr non-empty AND ≥1 registrar BEFORE readiness
@@ -233,6 +233,7 @@ push afterwards.
 | `cluster` | string | DEFAULT | Nacos cluster name shared by both halves. | Provider in cluster X + this block pinned elsewhere → you miss it. |
 | `username` / `password` | string | "" | Nacos auth; validated by the startup probe. | Bad credentials → startup fails at the probe, not at first Register. |
 | `timeout-ms` | uint64 | 5000 | Bounds each nacos API call incl. the probe. | Too low → flaky probe/register on slow links. |
+| `health.enabled` | bool | true | Contributes a `health.Indicator` bean named `registry-nacos:<name>` probing the server with a one-service listing in the block's namespace/group (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the server's health is invisible to readiness probes |
 
 Two blocks with the same `<name>` fail loudly in the container (duplicate bean name); block
 names across backends never collide (the bean name carries the backend type, e.g. `nacos.main`
@@ -251,10 +252,10 @@ vs `zookeeper.main`).
 ### 3.3 Discovery (no keys — cite the bean name)
 
 There is no per-backend discovery config path. Each block's bean IS the discovery backend,
-named `nacos.<name>` (`center.go`), sharing the block's naming client, namespace, group and
+named `nacos.<name>` (`starter.go`), sharing the block's naming client, namespace, group and
 cluster — read and write cannot diverge because they are the same values. Clients cite the
 bean name: gateway `spring.gateway.discovery=nacos.main` / per-route
-`upstream.discovery=nacos.main`, `spring.http-client.backends.<n>.discovery=nacos.main`,
+`upstream.discovery=nacos.main`, `spring.http-client.instances.<n>.discovery=nacos.main`,
 etc. The read half costs nothing until first cited: a pure provider never pays for it. To
 resolve from several centers, cite each center's bean where you need it.
 

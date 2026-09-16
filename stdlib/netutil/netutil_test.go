@@ -39,3 +39,24 @@ func TestLocalIPv4_ReturnsUsableAddress(t *testing.T) {
 func TestLocalIPv4_Cached(t *testing.T) {
 	assert.String(t, LocalIPv4()).Equal(LocalIPv4())
 }
+
+func TestSplitHostPort(t *testing.T) {
+	// Plain host:port.
+	host, port, err := SplitHostPort("127.0.0.1:8848")
+	assert.That(t, err).Nil()
+	assert.That(t, host).Equal("127.0.0.1")
+	assert.That(t, port).Equal(uint64(8848))
+
+	// Bracketed IPv6 literals parse with the brackets stripped.
+	host, port, err = SplitHostPort("[::1]:8848")
+	assert.That(t, err).Nil()
+	assert.That(t, host).Equal("::1")
+	assert.That(t, port).Equal(uint64(8848))
+
+	// Missing host, missing port, no colon, or a non-numeric port each
+	// fail loudly.
+	for _, bad := range []string{":8848", "127.0.0.1:", "127.0.0.1", "127.0.0.1:http"} {
+		_, _, err = SplitHostPort(bad)
+		assert.That(t, err).NotNil()
+	}
+}

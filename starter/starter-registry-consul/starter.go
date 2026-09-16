@@ -40,7 +40,17 @@
 package StarterRegistryConsul
 
 import (
+	"context"
+	"time"
+
+	"github.com/hashicorp/consul/api"
+	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
+	"go-spring.org/spring/conf"
+	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 
 	// The registration core: provides the single registryServer that collects
 	// this backend's registrar beans. Go runs its package init exactly once no
@@ -52,7 +62,146 @@ import (
 // "system" attribute, so one dashboard can compare registry centers.
 const obsSystem = "consul"
 
-var (
-	// starterTag identifies logs emitted by the consul registry starter.
-	starterTag = log.RegisterAppTag("registry_consul", "")
-)
+// starterTag identifies logs emitted by the consul registry starter.
+var starterTag = log.RegisterAppTag("registry_consul", "")
+
+func init() {
+	// One NAMED bean per block under ${spring.registry.consul.<name>}: the
+	// bean name "consul.<name>" is the label a client starter cites to pick
+	// this backend for discovery, and the starter-registry core collects the
+	// same bean (as a discovery.Registrar) into the single publication
+	// lifecycle. Blocks across backends never collide (the name carries the
+	// backend type); a duplicate name within one backend fails loudly in the
+	// container.
+	gs.Module(gs.OnProperty("spring.registry.consul"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.registry.consul}", func(name string, c ConsulConfig) error {
+			r.Provide(newConsulBackend,
+				gs.IndexArg(0, gs.ValueArg(c)),
+			).Name("consul."+name).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registrar]()).
+				Destroy((*consulBackend).Close).Caller(1)
+
+			// Contribute a health indicator for this agent unless the user
+			// disabled it (health.enabled=false), injecting the backend
+			// registered above by name.
+			if c.HealthEnabled {
+				r.Provide(func(b *consulBackend) *health.Indicator {
+					return &health.Indicator{Name: "registry-consul:" + name, Probe: b.probe}
+				}, gs.TagArg("consul."+name)).Name("registry-consul:" + name)
+			}
+			return nil
+		})
+	})
+}
+
+// consulBackend is ONE configured registry center: the
+// ${spring.registry.consul.<name>} block made a bean. It owns the single
+// Consul api client for that agent (probed at construction) and serves both
+// halves of the naming idiom through it: the write side (a
+// discovery.Registrar collected by the starter-registry core) and the read
+// side (a discovery.Discovery consumers cite by the bean's name
+// "consul.<name>"; lazy, so an app that never cites it pays nothing for the
+// read half). Both sides resolve the same agent, so read and write can never
+// diverge.
+//
+// The Consul api client holds no resources that need releasing (it is an HTTP
+// client wrapper with no Close), so the bean destructor only stops the
+// discovery half's background queries.
+type consulBackend struct {
+	reg  *consulRegistrar
+	disc *consulDiscovery
+}
+
+// newConsulBackend builds the client and probes the agent. The probe is the
+// fail-fast: a misconfigured or unreachable agent fails startup here, once
+// per block.
+func newConsulBackend(c ConsulConfig) (*consulBackend, error) {
+	if c.Address == "" {
+		return nil, errutil.Explain(nil, "registry-consul: address is required")
+	}
+	client, err := newConsulClient(c)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, _, err := client.Catalog().Services((&api.QueryOptions{}).WithContext(ctx)); err != nil {
+		return nil, errutil.Explain(err, "registry-consul: startup probe failed for %s", c.Address)
+	}
+	reg, err := newConsulRegistrar(c, client)
+	if err != nil {
+		return nil, err
+	}
+	disc := newConsulDiscovery(client, "")
+	log.Debugf(context.Background(), starterTag, "consul backend for address=%s ready", c.Address)
+	return &consulBackend{reg: reg, disc: disc}, nil
+}
+
+// Close stops the discovery half's background blocking queries. It is the
+// bean destructor; the Consul api client needs no closing.
+func (b *consulBackend) Close() error {
+	if b == nil || b.disc == nil {
+		return nil
+	}
+	b.disc.Close()
+	return nil
+}
+
+// Register publishes inst into this agent (the TTL-check heartbeat protocol,
+// registrar.go).
+func (b *consulBackend) Register(ctx context.Context, inst discovery.Instance) error {
+	return b.reg.Register(ctx, inst)
+}
+
+// Deregister removes inst from this agent. Idempotent.
+func (b *consulBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
+	return b.reg.Deregister(ctx, inst)
+}
+
+// UpdateWeight re-advertises inst with a new weight.
+func (b *consulBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
+	return b.reg.UpdateWeight(ctx, inst, weight)
+}
+
+// Resolve serves snapshots of the healthy instances this agent reports.
+func (b *consulBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+	return b.disc.Resolve(ctx, name, opts...)
+}
+
+// probe reports this agent's health for the block's health.Indicator: one
+// catalog listing, the same check the startup probe runs, repeated on demand.
+func (b *consulBackend) probe(ctx context.Context) error {
+	if _, _, err := b.reg.client.Catalog().Services((&api.QueryOptions{}).WithContext(ctx)); err != nil {
+		return errutil.Explain(err, "registry-consul: probe agent")
+	}
+	return nil
+}
+
+// newConsulClient builds a Consul api client for the block's connection and
+// TLS fields. The shared tls.* block maps onto the Consul SDK's own TLS
+// fields only when enabled, so an untouched config behaves exactly as before;
+// a misconfigured pair (e.g. cert without key) fails in the SDK's transport
+// setup and surfaces through the startup probe.
+func newConsulClient(c ConsulConfig) (*api.Client, error) {
+	cfg := &api.Config{
+		Address:    c.Address,
+		Scheme:     c.Scheme,
+		Datacenter: c.Datacenter,
+		Token:      c.Token,
+		Namespace:  c.Namespace,
+	}
+	if c.TLS.Enabled {
+		cfg.TLSConfig = api.TLSConfig{
+			CAFile:             c.TLS.CAFile,
+			CertFile:           c.TLS.CertFile,
+			KeyFile:            c.TLS.KeyFile,
+			InsecureSkipVerify: c.TLS.InsecureSkipVerify,
+		}
+	}
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		log.Errorf(context.Background(), starterTag, "create consul client for address=%s failed: %v", c.Address, err)
+		return nil, errutil.Explain(err, "registry-consul: create client for %s", c.Address)
+	}
+	return client, nil
+}

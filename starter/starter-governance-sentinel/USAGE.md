@@ -207,7 +207,7 @@ yields nothing. The `Policy` knobs (`rate-limit`, `error-threshold`, `open-durat
 `govern.default.*` for the whole process, `govern.rules[N].*` for a specific resource — and
 reach this driver through `ExecutorFor` + `Refresh`. Field meanings:
 [cloud/governance/resilience](../../../cloud/governance/resilience); key layout:
-[`cloud/governance/CONFIG_CN.md`](../../../cloud/governance/CONFIG_CN.md).
+[`cloud/governance/README.md`](../../../cloud/governance/README.md).
 
 ---
 

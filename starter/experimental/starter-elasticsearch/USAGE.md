@@ -272,7 +272,7 @@ unconditional (see §3.4).
 | `addresses` | list | — | Node URLs, e.g. `http://127.0.0.1:9200` (comma-separated). Validated non-empty (`len($) > 0`). ⚠ Required even when `service-name` overrides it — the example carries a non-resolvable dummy on purpose. ⚠ Ignored when `cloud-id` is set (client-side precedence). | Empty → BindEach error; unreachable first probe → boot error "failed to reach elasticsearch cluster". |
 | `service-name` | string | — | Resolve node addresses via a registered discovery backend, and keep the transport's node set following it (pool.go); overrides `addresses`. Ignored in mesh mode. ⚠ Pairs with `scheme`/`discovery`/`discovery-scheme`. | Service has no endpoints at boot → boot error `discovery %q returned no endpoints`; empty at runtime → last good set kept. |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme. Only consulted when `service-name` is set. | — |
-| `discovery` | string | — | Which registered discovery backend resolves `service-name`. | Unset or an unregistered name while service-name is set → boot error. |
+| `discovery` | string | — | Which registered discovery backend resolves `service-name`. Falls back to `${spring.elasticsearch.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 | `discovery-scheme` | string | `http` | URL scheme stamped onto discovered `host:port` endpoints (`http`/`https`). | Wrong scheme → first probe fails at boot. |
 | `cloud-id` | string | — | Elastic Cloud deployment ID; when set the client prefers it over `addresses`. | — |
 

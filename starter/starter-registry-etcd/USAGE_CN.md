@@ -7,7 +7,7 @@
 本文只写 go-spring 的增量。
 
 **模型**:配置是**命名块**——每个 `spring.registry.etcd.<name>.*` 块描述一个 etcd 集群,
-成为名为 `etcd.<name>` 的后端 bean(`center.go`)。该 bean 同时实现命名体系的两半:
+成为名为 `etcd.<name>` 的后端 bean(`starter.go`)。该 bean 同时实现命名体系的两半:
 `discovery.Registrar`(写侧——由传递依赖自动引入的 [starter-registry](../starter-registry)
 核心之 `registryServer` 收集,跨后端注册进**每一个**已配置中心)与 `discovery.Discovery`
 (读侧——消费方按 bean 名引用,如 `discovery=etcd.main`;bean 惰性,纯 provider 从不为读侧
@@ -134,7 +134,7 @@ etcdctl get /services/orders/ --prefix
 ```
 import starter-registry-etcd（传递引入 starter-registry）
   ├─ 每个 ${spring.registry.etcd.<name>} 块: gs.Provide(newEtcdBackend).Name("etcd.<name>")
-  │      Module 条件: OnProperty("spring.registry.etcd")            [center.go]
+  │      Module 条件: OnProperty("spring.registry.etcd")            [starter.go]
   │      Export(As[discovery.Discovery], As[discovery.Registrar]) + Destroy(Close)
   │
   ├─ starter-registry 核心: gs.Provide(NewServer).Name("registryServer")
@@ -147,7 +147,7 @@ gs.Run()
   │        ${spring.registry} → Server.Config 字段
   ├─ newEtcdBackend(每块): clientv3.New + 对 endpoints[0] 做 Status 探活——
   │      不可达/认证错的集群在此直接启动失败,而非等到首次 Register;每块一次
-  │                                                        [center.go]
+  │                                                        [starter.go]
   ├─ 每个后端的 discovery 半边(惰性)首次使用时经该块客户端解析
   ├─ Runner 启动 → 就绪信号触发
   ├─ registryServer.Run: 校验 service-name/addr + 至少一个 registrar
@@ -239,12 +239,13 @@ gs.Run()
 
 | key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `endpoints` | []string | — | 每块必填。启动时对 `endpoints[0]` 做 `Status` 探活。 | 未设:块绑定期报错(`endpoints is required`);不可达:启动失败 `registry-etcd: startup probe failed`(center.go) |
+| `endpoints` | []string | — | 每块必填。启动时对 `endpoints[0]` 做 `Status` 探活。 | 未设:块绑定期报错(`endpoints is required`);不可达:启动失败 `registry-etcd: startup probe failed`(starter.go) |
 | `username` / `password` | string | "" | etcd 认证凭据。 | 开 auth 的集群未配 → 启动探活失败 |
 | `dial-timeout` | duration | 5s | 约束 client dial 与启动探活超时。 | 过小 → 慢网络下启动偶发失败 |
 | `ttl` | duration | 15s | lease TTL;向上取整到整秒、最小 1s。⚠ `<=0` 静默变 15s,不是绑定期报错。 | 过长 → 崩溃驱逐延迟到 ~TTL;0 不会禁用任何东西 |
 | `key-prefix` | string | `/services/` | 所有 key 的前缀(读写共享)。⚠ 必须与消费方引用的块一致——耦合只有文档约束、从不校验。 | 不一致 → provider 正常注册、consumer 什么都发现不了,双方都"成功" |
 | `tls.*` | tlsconf | 关 | 共享 `cloud/tlsconf` 块:`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`。 | CA 错 → 启动探活失败 |
+| `health.enabled` | bool | true | 贡献名为 `registry-etcd:<name>` 的 `health.Indicator` bean,探针打 `endpoints[0]`(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 集群健康对 readiness 探针不可见 |
 
 两个块 = 两个中心 = 双注册(registryServer 会注册进两者)。跨后端混搭(etcd 块 +
 zookeeper 块同进程)同理——registrar 收集与后端无关。
@@ -262,8 +263,8 @@ zookeeper 块同进程)同理——registrar 收集与后端无关。
 ### 3.3 发现 —— 按块 bean 名引用(零配置)
 
 不再存在 discovery 配置路径。每个块的后端 bean 本身就是一个
-`cloud/discovery.Discovery`,名为 `etcd.<name>`,共享该块客户端(`center.go`)。
-client starter 按 bean 名引用(`spring.http-client.backends.<n>.discovery=etcd.main`)。
+`cloud/discovery.Discovery`,名为 `etcd.<name>`,共享该块客户端(`starter.go`)。
+client starter 按 bean 名引用(`spring.http-client.instances.<n>.discovery=etcd.main`)。
 该 bean 惰性——纯 provider 从不解析、从不为读侧付费。纯消费方只配连接块(不设
 `service-name`/`addr`),不注册任何实例。多集群发现就是多个块:引用哪个块的集群就
 从哪读——不必是你注册进去的块。
@@ -324,7 +325,7 @@ client starter 按 bean 名引用(`spring.http-client.backends.<n>.discovery=etc
    好过没有地址";事件恢复后缓存照常刷新。
 
 8. **坏集群快速失败**:某块 `endpoints=127.0.0.1:9999` 启动 → 直接失败
-   `registry-etcd: startup probe failed for 127.0.0.1:9999`(center.go)——
+   `registry-etcd: startup probe failed for 127.0.0.1:9999`(starter.go)——
    不会留下静默运行期缺口。
 
 运行期日志带 tag `_app_registry_etcd`:`creating etcd registrar`、`registering

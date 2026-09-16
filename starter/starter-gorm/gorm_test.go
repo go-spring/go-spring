@@ -17,6 +17,7 @@
 package gormcore
 
 import (
+	"go-spring.org/cloud/discovery"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -130,7 +131,7 @@ func TestCommonPool(t *testing.T) {
 // bean must error instead of silently dialing the configured address. The
 // backend is an argument now, so the rule is exercised by passing nil.
 func TestNewResolverRequiresBackend(t *testing.T) {
-	c := Common{ServiceName: "user-db", Discovery: "nope"}
+	c := Common{Addressing: discovery.Addressing{ServiceName: "user-db", Discovery: "nope"}}
 	if _, err := c.NewResolver(context.Background(), nil); err == nil {
 		t.Fatal("expected an error when service-name is set but the label named no backend")
 	}

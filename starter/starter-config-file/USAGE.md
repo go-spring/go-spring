@@ -1,7 +1,7 @@
 # starter-config-file Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `filewatch.go`, `configtree.go`), the gs core
+against the starter source (`watch.go`, `filewatch.go`, `configtree.go`), the gs core
 (`spring/conf/provider/provider.go`, `spring/gs/internal/gs_conf/conf.go`,
 `spring/gs/internal/gs_app/app.go`) and the smoke-tested examples
 [example/](example/) and [example-configtree/](example-configtree/) (both `check.sh` green).
@@ -135,7 +135,7 @@ echo 'demo:\n  message: flipped' > example/mount/application.yaml
 ```
 import starter-config-file
   ├─ init: conf.RegisterProvider("file-watch", controller.Load)      (filewatch.go:50)
-  └─ init: conf.RegisterProvider("configtree", controller.LoadConfigTree)  (configtree.go:43)
+  └─ init: conf.RegisterProvider("configtree", controller.load)  (configtree.go:43)
         │
 gs.Run() → App.Start()                                                (app.go:285)
   1. mount the gs.RefreshProperties / gs.AppStarted facade targets
@@ -164,17 +164,18 @@ Other timing facts:
   imported file is silently ignored (gs_conf/conf.go:210-215).
 - The import list is deduplicated and comma-separated (`Imports []string value:"${spring.config.import:=}"`,
   gs_conf/conf.go:218).
-- Watchers are deduplicated per directory (`watched` map, starter.go:86-106): the startup load
-  and every refresh re-call `Load`/`LoadConfigTree`, which would otherwise stack one fsnotify
+- Watchers are deduplicated per directory (`watched` map, watch.go:86-106): the startup load
+  and every refresh re-call `Load`/`load`, which would otherwise stack one fsnotify
   watcher per refresh.
 
 ### 2.2 One file change, layer by layer
 
 1. Editor or kubelet writes a new timestamped dir and renames `..data` onto it (atomic).
 2. fsnotify delivers a CREATE/RENAME event **on the directory** (the file's inode changed, which
-   is exactly why the watch is on the parent dir, never the file — filewatch.go:80-86).
+   is exactly why the watch is on the parent dir, never the file — filewatch.go:80-86). Common
+   editors save by atomic rename too, so an ordinary edit hits the same path.
 3. `watchLoop` reacts to every event without name filtering (correct: a K8s update surfaces as
-   an event on `..data`, not on the key files — starter.go:112-116) → `TriggerRefresh`.
+   an event on `..data`, not on the key files — watch.go:112-116) → `TriggerRefresh`.
 4. `RefreshProperties` refuses to run if the app hasn't finished wiring (app.go:248); otherwise
    it re-runs the whole config load — both providers, env, cmd args — merges by priority and
    swaps `gs.Dync` values atomically. One swap typically produces two events (temp-symlink
@@ -206,7 +207,7 @@ references, not starter keys. The whole surface is the import-string grammar
 ### 3.2 What does NOT exist
 
 No refresh-interval, debounce, include/exclude or format query params; no `enabled` key; no
-log tag of its own (uses the shared `_app_def` infra tag); no health indicator; no metrics.
+log tag `_app_config_file` (see README); no health indicator; no metrics.
 
 ---
 
@@ -265,7 +266,7 @@ spring.config.import=optional:file-watch:/etc/config/application.yaml
 
 ### 4.5 Observables
 
-Log tag `_app_def` (infra default): per load — `loading ... from <path>` (Debug),
+Log tag `_app_config_file`: per load — `loading ... from <path>` (Debug),
 `loaded ... keys=<n>` (Info), `optional ... not found (skipped)` (Warn). No metrics/spans;
 the refresh count is inferable from repeated `loaded` lines.
 
@@ -278,7 +279,7 @@ the refresh count is inferable from repeated `loaded` lines.
 | Startup fails: `file-watch: stat ... failed` | required path missing | Add the file, or prefix `optional:`. |
 | Startup fails: `expects a single file, got directory` / `expects a directory, got file` | wrong provider for the path shape | Switch `file-watch:` ⇄ `configtree:` — the error text names the right one. |
 | Startup fails: `unsupported provider type` | typo in provider name, or assumed a bare path means file-watch | Bare paths route to gs's built-in `file` provider with **no watching**; write `file-watch:` explicitly. |
-| Values never hot-reload, no errors | watcher creation failed silently (best-effort, starter.go:86-105 returns without logging) or fsnotify/inotify limits exhausted | Check `ulimit`/inotify watches; look for the missing `loaded` line after an edit; restart recovers. |
+| Values never hot-reload, no errors | watcher creation failed silently (best-effort, watch.go:86-105 returns without logging) or fsnotify/inotify limits exhausted | Check `ulimit`/inotify watches; look for the missing `loaded` line after an edit; restart recovers. |
 | Edit applied, then config "sticks" stale | a later edit broke parsing; refresh errors are swallowed (§4.3) | Fix the file; watch for the next `loaded ... config` line to confirm recovery. |
 | Changed a value but the field didn't move | bound as a plain field, not `gs.Dync` | Only `gs.Dync[T]` hot-reloads; plain `value:` tags are startup-only. |
 | Nested import not loading | imports inside an imported file are ignored (one level only, gs_conf/conf.go:210-215) | Declare all imports in `conf/app.*`. |

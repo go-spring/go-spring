@@ -19,6 +19,7 @@ package StarterGoRedis
 import (
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -101,27 +102,19 @@ type Config struct {
 	// Shorter values facilitate smoother traffic switching during service discovery updates.
 	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=2m}"`
 
-	// ServiceName is the service discovery name for a single Redis instance.
-	// When set, Addr is ignored and the actual address is resolved via service
-	// discovery. It applies to single mode only: sentinel and cluster topologies
-	// self-discover their nodes, so combining ServiceName with those modes is
-	// rejected at startup.
-	ServiceName string `value:"${service-name:=}"`
+	// Addressing is the shared discovery-citation block: ServiceName switches
+	// the entry to discovery routing (single mode only — sentinel and cluster
+	// topologies self-discover their nodes, so combining ServiceName with those
+	// modes is rejected at startup; Addr is then ignored), Discovery cites the
+	// backend bean (falling back to ${spring.go-redis.default.discovery} via
+	// the starter wiring). See discovery.Addressing for the shared contract.
+	discovery.Addressing
 
 	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
 	// "https"). Empty (the default) returns every scheme; set it when a service
 	// exposes both plain and secure instances and this client should reach only
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
-
-	// Discovery names the discovery backend bean that resolves ServiceName
-	// (bean name = label). It is only consulted when ServiceName is set; the
-	// starter wiring resolves this label against every registered discovery
-	// backend bean and passes the result to the driver as the backend argument
-	// of CreateClient.
-	// Empty means unset: no discovery backend is wired and the entry must not
-	// route by service-name alone.
-	Discovery string `value:"${discovery:=}"`
 
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext.

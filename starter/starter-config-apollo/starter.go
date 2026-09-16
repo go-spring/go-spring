@@ -33,6 +33,7 @@ import (
 	"github.com/apolloconfig/agollo/v4"
 	agconfig "github.com/apolloconfig/agollo/v4/env/config"
 	agstorage "github.com/apolloconfig/agollo/v4/storage"
+	"go-spring.org/cloud/confrefresh"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
@@ -71,8 +72,10 @@ func (a agolloClientAdapter) GetConfigContent(namespace string) string {
 }
 
 func init() {
-	conf.RegisterProvider("apollo", (&apolloCtrl{}).Load)
+	conf.RegisterProvider("apollo", newApolloCtrl().Load)
 }
+
+var starterTag = log.RegisterAppTag("config_apollo", "")
 
 // apolloCtrl owns the full lifecycle of apollo configuration: loading
 // namespaces, listening for changes, and triggering property refresh.
@@ -82,12 +85,24 @@ type apolloCtrl struct {
 	listened map[string]struct{}
 }
 
+// newApolloCtrl creates a controller with its caches ready, so the lazy
+// nil-checks are kept out of the hot paths.
+func newApolloCtrl() *apolloCtrl {
+	return &apolloCtrl{
+		clients:  map[string]apolloClient{},
+		listened: map[string]struct{}{},
+	}
+}
+
 // TriggerRefresh is called by the config listener when a watched namespace
 // changes. Before the app has started, gs.RefreshProperties returns an
 // error and the change is dropped — the initial load already captured the
 // state.
 func (c *apolloCtrl) TriggerRefresh() {
-	_ = gs.RefreshProperties()
+	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
+		log.Warnf(context.Background(), starterTag,
+			"property refresh after apollo change failed, stale snapshot retained: %v", err)
+	}
 }
 
 // apolloSource holds the parsed components of an apollo provider source.
@@ -153,9 +168,6 @@ func (c *apolloCtrl) clientFor(cs apolloSource) (apolloClient, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.clients == nil {
-		c.clients = map[string]apolloClient{}
-	}
 	if cli, ok := c.clients[key]; ok {
 		return cli, nil
 	}
@@ -183,13 +195,13 @@ func (c *apolloCtrl) clientFor(cs apolloSource) (apolloClient, error) {
 func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "parse source %q failed: %v", source, err)
+		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
 	cli, err := c.clientFor(cs)
 	if err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "create apollo client for appId=%s failed: %v", cs.appID, err)
+		log.Errorf(context.Background(), starterTag, "create apollo client for appId=%s failed: %v", cs.appID, err)
 		return nil, err
 	}
 
@@ -199,7 +211,7 @@ func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, erro
 	content := cli.GetConfigContent(cs.namespace)
 	if content == "" {
 		if optional {
-			log.Warnf(context.Background(), log.TagAppDef, "optional apollo namespace %s is empty (skipped)", cs.namespace)
+			log.Warnf(context.Background(), starterTag, "optional apollo namespace %s is empty (skipped)", cs.namespace)
 			return nil, nil
 		}
 		return nil, errutil.Explain(nil, "apollo namespace %s is empty", cs.namespace)
@@ -209,7 +221,7 @@ func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, erro
 	if err != nil {
 		return nil, errutil.Explain(err, "parse apollo namespace %s as %s failed", cs.namespace, cs.format)
 	}
-	log.Infof(context.Background(), log.TagAppDef, "loaded apollo namespace %s keys=%d", cs.namespace, len(m))
+	log.Infof(context.Background(), starterTag, "loaded apollo namespace %s keys=%d", cs.namespace, len(m))
 	return flatten.Flatten(m), nil
 }
 
@@ -219,9 +231,6 @@ func (c *apolloCtrl) registerListener(cli apolloClient, cs apolloSource) {
 	lk := clientKey(cs)
 
 	c.mu.Lock()
-	if c.listened == nil {
-		c.listened = map[string]struct{}{}
-	}
 	if _, ok := c.listened[lk]; ok {
 		c.mu.Unlock()
 		return

@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -78,6 +79,14 @@ func (f *fakeConsul) set(entries []*api.ServiceEntry) {
 }
 
 func (f *fakeConsul) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The catalog listing backs the backend's startup and health probes: any
+	// answer shaped like a services map satisfies both.
+	if strings.Contains(r.URL.Path, "/catalog/services") {
+		w.Header().Set("X-Consul-Index", "1")
+		_ = json.NewEncoder(w).Encode(map[string][]string{})
+		return
+	}
+
 	tag := r.URL.Query().Get("tag")
 	idx, _ := strconv.ParseUint(r.URL.Query().Get("index"), 10, 64)
 

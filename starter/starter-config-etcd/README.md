@@ -70,6 +70,29 @@ flow.
   process-level `gs.RefreshProperties()` facade. That reloads all configuration
   sources (re-running this provider) and re-binds every `gs.Dync` field via a
   two-phase, atomic commit.
+
+## Design Notes
+
+**The provider builds its own client.** The provider runs during property
+refresh, before any bean exists, so it cannot receive an injected connection —
+it constructs a clientv3 from the import string itself. Clients are cached per
+`(endpoint, username, password)` tuple; since the provider re-runs on every
+refresh, an uncached client would leak its background goroutines each time.
+
+**The watcher is armed before the read.** The watch is registered before the
+key is fetched, so an `optional:` import whose key does not exist yet still
+hot-loads: the first PUT triggers a refresh that picks the value up. Reversing
+the order would silently break this case.
+
+**One key per import, no prefix watch.** An import targets a single key holding
+one config document; multi-key fan-out is left to the application. This keeps
+the mental model identical to the Consul and Nacos config providers.
+
+**Discovery in the same starter — rejected.** etcd can serve both roles, but
+config and discovery live at different layers. Splitting by role (mirroring
+Spring Cloud Alibaba) keeps the module graph clean; etcd naming belongs to a
+separate starter.
+
 ### Log tag
 
 Runtime logs from this module carry the tag `_app_config_etcd` (etcd config source). Tune them independently of the

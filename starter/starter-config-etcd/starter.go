@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/cloud/confrefresh"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
@@ -48,7 +49,7 @@ func init() {
 	// solely through the registered provider. Watch-triggered refreshes go
 	// through the gs.RefreshProperties package-level facade, so the
 	// controller needs no bean wiring at all.
-	conf.RegisterProvider("etcd", (&etcdCtrl{}).Load)
+	conf.RegisterProvider("etcd", newEtcdCtrl().Load)
 }
 
 var starterTag = log.RegisterAppTag("config_etcd", "")
@@ -66,12 +67,21 @@ type etcdCtrl struct {
 	listened map[string]struct{}
 }
 
+// newEtcdCtrl creates a controller with its caches ready, so the lazy
+// nil-checks are kept out of the hot paths.
+func newEtcdCtrl() *etcdCtrl {
+	return &etcdCtrl{
+		clients:  map[string]*clientv3.Client{},
+		listened: map[string]struct{}{},
+	}
+}
+
 // TriggerRefresh is called by the watch goroutines when a watched key
 // changes. Before the app has started, gs.RefreshProperties returns an
 // error and the change is dropped — the startup load already captured the
 // state.
 func (c *etcdCtrl) TriggerRefresh() {
-	if err := gs.RefreshProperties(); err != nil {
+	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
 		log.Warnf(context.Background(), starterTag,
 			"property refresh after etcd change failed, stale snapshot retained: %v", err)
 	}
@@ -140,9 +150,6 @@ func (c *etcdCtrl) clientFor(cs configSource) (*clientv3.Client, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.clients == nil {
-		c.clients = map[string]*clientv3.Client{}
-	}
 	if cli, ok := c.clients[key]; ok {
 		return cli, nil
 	}
@@ -220,9 +227,6 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, option
 	lk := clientKey(cs) + "|" + cs.key
 
 	c.mu.Lock()
-	if c.listened == nil {
-		c.listened = map[string]struct{}{}
-	}
 	if _, ok := c.listened[lk]; ok {
 		c.mu.Unlock()
 		return
@@ -230,22 +234,35 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, option
 	c.listened[lk] = struct{}{}
 	c.mu.Unlock()
 
-	ch := cli.Watch(context.Background(), cs.key)
 	go func() {
-		for wr := range ch {
-			deleted := false
-			for _, ev := range wr.Events {
-				if ev.Type == clientv3.EventTypeDelete {
-					deleted = true
+		for {
+			ch := cli.Watch(context.Background(), cs.key)
+			for wr := range ch {
+				if err := wr.Err(); err != nil {
+					log.Warnf(context.Background(), starterTag,
+						"etcd watch on key %s returned an error: %v", cs.key, err)
+				}
+				deleted := false
+				for _, ev := range wr.Events {
+					if ev.Type == clientv3.EventTypeDelete {
+						deleted = true
+					}
+				}
+				if deleted && !optional {
+					log.Warnf(context.Background(), starterTag,
+						"etcd key %s deleted; stale snapshot retained until the key is restored", cs.key)
+				}
+				if len(wr.Events) > 0 {
+					c.TriggerRefresh()
 				}
 			}
-			if deleted && !optional {
-				log.Warnf(context.Background(), starterTag,
-					"etcd key %s deleted; stale snapshot retained until the key is restored", cs.key)
-			}
-			if len(wr.Events) > 0 {
-				c.TriggerRefresh()
-			}
+			// The channel closes only when the watcher is genuinely dead
+			// (client closed / unrecoverable error). Without this loop the
+			// goroutine would exit silently and this key would never refresh
+			// again; resubscribe and keep watching.
+			log.Errorf(context.Background(), starterTag,
+				"etcd watch channel for key %s closed; resubscribing in 5s", cs.key)
+			time.Sleep(5 * time.Second)
 		}
 	}()
 }

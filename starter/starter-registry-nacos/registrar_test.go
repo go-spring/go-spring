@@ -19,6 +19,7 @@ package StarterRegistryNacos
 import (
 	"testing"
 
+	"go-spring.org/stdlib/netutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -33,16 +34,16 @@ func TestNormalizeWeight(t *testing.T) {
 
 func TestSplitAddr(t *testing.T) {
 	// A well-formed address splits into host and numeric port.
-	host, port, err := splitAddr("10.0.0.5:8080")
+	host, port, err := netutil.SplitHostPort("10.0.0.5:8080")
 	assert.Error(t, err).Nil()
 	assert.That(t, host).Equal("10.0.0.5")
 	assert.That(t, port).Equal(uint64(8080))
 
 	// A missing port fails fast before any Nacos call.
-	_, _, err = splitAddr("no-port")
+	_, _, err = netutil.SplitHostPort("no-port")
 	assert.Error(t, err).Matches("must be host:port")
 
 	// A non-numeric port fails fast too.
-	_, _, err = splitAddr("host:abc")
+	_, _, err = netutil.SplitHostPort("host:abc")
 	assert.Error(t, err).Matches("non-numeric port")
 }

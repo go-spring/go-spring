@@ -16,6 +16,8 @@
 
 package StarterRegistryNacos
 
+import "go-spring.org/cloud/tlsconf"
+
 // NacosConfig binds the Nacos naming-server connection under
 // ${spring.registry.nacos}.
 type NacosConfig struct {
@@ -41,4 +43,15 @@ type NacosConfig struct {
 	// TimeoutMs bounds each Nacos API call, including the startup connectivity
 	// probe used to fail fast on an unreachable server.
 	TimeoutMs uint64 `value:"${timeout-ms:=5000}"`
+
+	// TLS configures optional transport-layer security for a TLS-enabled
+	// Nacos server. Off by default. Uses the shared spring/cloud/tlsconf
+	// block so every starter exposes the same tls.* keys.
+	TLS tlsconf.TLSConfig `value:"${tls}"`
+
+	// HealthEnabled controls whether the starter contributes a health.Indicator
+	// bean for this block (named "registry-nacos:<name>"). On by default; the
+	// indicator is only instantiated when a collector (e.g. starter-actuator)
+	// autowires it.
+	HealthEnabled bool `value:"${health.enabled:=true}"`
 }

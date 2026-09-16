@@ -249,7 +249,7 @@ All keys live under `spring.redigo.instances.<name>.`.
 | `addr` | string | — | Static target. ⚠ Exactly one of `addr` / `service-name` required (RequireAny [starter.go:111]). | Neither → boot error; both → service-name wins, addr ignored. |
 | `service-name` | string | — | Discovery-resolved address; `addr` becomes a label only. Per-dial endpoint pick + conn-max-lifetime recycling. | Unregistered backend → boot error. |
 | `scheme` | string | — | Narrows discovery endpoints to one scheme. Only with service-name. | — |
-| `discovery` | string | — | Which discovery backend resolves service-name. The wiring resolves this label to a bean and passes it to the driver (`CreateClient` / `NewPool`) as the `backend` argument. | Unset or an unregistered name while service-name is set → boot error. |
+| `discovery` | string | — | Which discovery backend resolves service-name. The wiring resolves this label to a bean and passes it to the driver (`CreateClient` / `NewPool`) as the `backend` argument. Falls back to `${spring.redigo.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 | `password` / `username` | string | — | Dial auth; username only appended when non-empty [pool.go:94-96]. | Wrong → first dial (or startup-ping) fails. |
 | `db` | int | 0 | `SELECT` executed on each fresh conn (non-zero only) [pool.go:125-131]. | Out-of-range → dial fails. |
 | `pool-size` | int | 10 | MaxActive. `Wait:true` → borrowers block when exhausted. | Too low → latency, not errors. |
@@ -307,7 +307,7 @@ to `redigo:<service-name|addr>` via `loadbalance.Pool.BindSelection`, so
 **in place** — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*; per-command
 failures belong to the resilience executor. Direct (`addr`-only) pools have no candidate set, so
-these keys are inert for them. See `cloud/governance/CONFIG_CN.md` §3.1.
+these keys are inert for them. See `cloud/governance/README.md` §3.1.
 
 ### 4.4 Cache abstraction wiring
 

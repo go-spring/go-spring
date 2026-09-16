@@ -17,6 +17,11 @@
 package StarterConfigK8s
 
 import (
+	"context"
+	"sync"
+
+	"go-spring.org/cloud/confrefresh"
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 )
@@ -29,13 +34,15 @@ func init() {
 	// package-level variable — so its state is reachable solely through
 	// those two registrations. Refreshes go through the gs.RefreshProperties
 	// package-level facade, so the controller has no autowired dependencies.
-	c := &k8sCtrl{}
+	c := newK8sCtrl()
 	conf.RegisterProvider("k8s", c.Load)
 	gs.Provide(c).
 		Name("k8sController").
 		Export(gs.As[gs.Rooter]()).
 		Destroy((*k8sCtrl).Destroy)
 }
+
+var starterTag = log.RegisterAppTag("config_k8s", "")
 
 // k8sCtrl is the single object that owns the full lifecycle of k8s
 // configuration: loading ConfigMaps/Secrets, watching via informers, and
@@ -44,7 +51,41 @@ type k8sCtrl struct {
 	// manager tracks informers so they can be stopped on shutdown.
 	manager *watchManager
 
+	// clientMu guards clients, the clientset cache keyed by kubeconfig path.
+	// Load runs on every property refresh; without the cache each refresh
+	// would build a fresh clientset (re-reading the in-cluster config, and
+	// leaving the old connection pool behind) instead of reusing one.
+	clientMu sync.Mutex
+	clients  map[string]k8sClient
+
 	onTrigger func() // test hook; nil in production
+}
+
+// newK8sCtrl creates a controller with its watch manager and client cache
+// ready, so neither ensureWatch nor clientFor needs a lazy nil-check.
+func newK8sCtrl() *k8sCtrl {
+	return &k8sCtrl{
+		manager: &watchManager{watched: map[string]struct{}{}},
+		clients: map[string]k8sClient{},
+	}
+}
+
+// clientFor returns a cached clientset for the kubeconfig path, creating one
+// if necessary. The cache is what keeps repeated refreshes from leaking a
+// clientset's connection pool per Load call.
+func (c *k8sCtrl) clientFor(kubeconfig string) (k8sClient, error) {
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
+
+	if cli, ok := c.clients[kubeconfig]; ok {
+		return cli, nil
+	}
+	cli, err := buildClient(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	c.clients[kubeconfig] = cli
+	return cli, nil
 }
 
 // TriggerRefresh is called by the informer event handlers when a watched
@@ -56,7 +97,10 @@ func (c *k8sCtrl) TriggerRefresh() {
 		c.onTrigger()
 		return
 	}
-	_ = gs.RefreshProperties()
+	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
+		log.Warnf(context.Background(), starterTag,
+			"property refresh after k8s change failed, stale snapshot retained: %v", err)
+	}
 }
 
 // Destroy tears down every informer. It is the bean destructor, invoked once by

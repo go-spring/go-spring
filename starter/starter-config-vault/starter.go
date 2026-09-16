@@ -28,8 +28,10 @@ package StarterConfigVault
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -38,6 +40,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/vault/api"
+	"go-spring.org/cloud/confrefresh"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
@@ -51,8 +54,10 @@ func init() {
 	// the global controller's Load method. Poll-triggered refreshes go
 	// through the gs.RefreshProperties package-level facade, so the
 	// controller needs no bean wiring at all.
-	conf.RegisterProvider("vault", (&vaultCtrl{}).Load)
+	conf.RegisterProvider("vault", newVaultCtrl().Load)
 }
+
+var starterTag = log.RegisterAppTag("config_vault", "")
 
 // vaultCtrl is the single object that owns the full lifecycle of vault
 // configuration: loading secrets, polling for changes, and triggering
@@ -64,12 +69,25 @@ type vaultCtrl struct {
 	loadedFP map[string]string // fingerprint of last loaded data
 }
 
+// newVaultCtrl creates a controller with its caches ready, so the lazy
+// nil-checks are kept out of the hot paths.
+func newVaultCtrl() *vaultCtrl {
+	return &vaultCtrl{
+		clients:  map[string]*api.Client{},
+		listened: map[string]struct{}{},
+		loadedFP: map[string]string{},
+	}
+}
+
 // TriggerRefresh is called by the polling watchers when a secret's content
 // fingerprint changes. Before the app has started, gs.RefreshProperties
 // returns an error and the change is dropped — the initial config load
 // already captured the state.
 func (c *vaultCtrl) TriggerRefresh() {
-	_ = gs.RefreshProperties()
+	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
+		log.Warnf(context.Background(), starterTag,
+			"property refresh after vault change failed, stale snapshot retained: %v", err)
+	}
 }
 
 // configSource holds the parsed components of a vault provider source string.
@@ -180,9 +198,6 @@ func (c *vaultCtrl) clientFor(cs configSource) (*api.Client, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.clients == nil {
-		c.clients = map[string]*api.Client{}
-	}
 	if cli, ok := c.clients[key]; ok {
 		return cli, nil
 	}
@@ -212,15 +227,15 @@ func watchKey(cs configSource) string {
 func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "parse source %q failed: %v", source, err)
+		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), log.TagAppDef, "loading vault config from address=%s mount=%s path=%s kvVersion=%d key=%s format=%s", cs.address, cs.mount, cs.path, cs.kvVersion, cs.key, cs.format)
+	log.Debugf(context.Background(), starterTag, "loading vault config from address=%s mount=%s path=%s kvVersion=%d key=%s format=%s", cs.address, cs.mount, cs.path, cs.kvVersion, cs.key, cs.format)
 
 	cli, err := c.clientFor(cs)
 	if err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "create vault client for address=%s failed: %v", cs.address, err)
+		log.Errorf(context.Background(), starterTag, "create vault client for address=%s failed: %v", cs.address, err)
 		return nil, err
 	}
 
@@ -229,7 +244,7 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 	data, err := c.readSecret(cli, cs)
 	if err != nil {
 		if optional {
-			log.Warnf(context.Background(), log.TagAppDef, "optional config read secret %s/%s failed (skipped): %v", cs.mount, cs.path, err)
+			log.Warnf(context.Background(), starterTag, "optional config read secret %s/%s failed (skipped): %v", cs.mount, cs.path, err)
 			return nil, nil
 		}
 		return nil, err
@@ -237,18 +252,15 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 
 	lk := watchKey(cs)
 	c.mu.Lock()
-	if c.loadedFP == nil {
-		c.loadedFP = map[string]string{}
-	}
 	c.loadedFP[lk] = fingerprint(data)
 	c.mu.Unlock()
 
 	if data == nil {
 		if optional {
-			log.Warnf(context.Background(), log.TagAppDef, "optional config secret %s/%s not found (skipped)", cs.mount, cs.path)
+			log.Warnf(context.Background(), starterTag, "optional config secret %s/%s not found (skipped)", cs.mount, cs.path)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), log.TagAppDef, "vault secret %s/%s not found", cs.mount, cs.path)
+		log.Errorf(context.Background(), starterTag, "vault secret %s/%s not found", cs.mount, cs.path)
 		return nil, errutil.Explain(nil, "vault secret %s/%s not found", cs.mount, cs.path)
 	}
 
@@ -256,7 +268,7 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 	if err != nil {
 		return nil, err
 	}
-	log.Infof(context.Background(), log.TagAppDef, "loaded vault config from %s/%s keys=%d", cs.mount, cs.path, len(props))
+	log.Infof(context.Background(), starterTag, "loaded vault config from %s/%s keys=%d", cs.mount, cs.path, len(props))
 	return props, nil
 }
 
@@ -332,9 +344,6 @@ func (c *vaultCtrl) registerWatch(cli *api.Client, cs configSource) {
 	lk := watchKey(cs)
 
 	c.mu.Lock()
-	if c.listened == nil {
-		c.listened = map[string]struct{}{}
-	}
 	if _, ok := c.listened[lk]; ok {
 		c.mu.Unlock()
 		return
@@ -347,13 +356,38 @@ func (c *vaultCtrl) registerWatch(cli *api.Client, cs configSource) {
 
 // watchLoop polls the secret and triggers a refresh whenever the content
 // fingerprint differs from the last loaded value.
+//
+// The fingerprint is deliberately NOT updated here: loadedFP is the
+// "currently loaded" baseline, and only Load moves it forward (Load re-runs
+// as part of the RefreshProperties cycle and stamps the new fingerprint once
+// the data is actually loaded). Leaving the stale value behind is what makes
+// a failed refresh retry on the next poll instead of silently swallowing the
+// change.
+//
+// Read failures are self-healing (the loop keeps polling) but never silent:
+// the first failure logs a warning, subsequent ones only debug, and recovery
+// logs once at info.
 func (c *vaultCtrl) watchLoop(cli *api.Client, cs configSource, lk string) {
 	interval := time.Duration(cs.pollMs) * time.Millisecond
+	failing := false
 	for {
 		time.Sleep(interval)
 		data, err := c.readSecret(cli, cs)
 		if err != nil {
+			if !failing {
+				log.Warnf(context.Background(), starterTag,
+					"vault poll on %s/%s failing, changes are missed until it recovers: %v", cs.mount, cs.path, err)
+				failing = true
+			} else {
+				log.Debugf(context.Background(), starterTag,
+					"vault poll on %s/%s still failing: %v", cs.mount, cs.path, err)
+			}
 			continue
+		}
+		if failing {
+			log.Infof(context.Background(), starterTag,
+				"vault poll on %s/%s recovered", cs.mount, cs.path)
+			failing = false
 		}
 		c.mu.Lock()
 		fp := c.loadedFP[lk]
@@ -364,7 +398,11 @@ func (c *vaultCtrl) watchLoop(cli *api.Client, cs configSource, lk string) {
 	}
 }
 
-// fingerprint produces a stable string representation of a KV data map.
+// fingerprint produces a stable, fixed-length digest of a KV data map for
+// change detection. encoding/json sorts map keys, so the marshaled form is
+// deterministic regardless of map iteration order; the SHA-256 digest keeps
+// the stored fingerprint constant-size (and avoids holding a second plain
+// copy of the secret in memory) even for large payloads.
 func fingerprint(data map[string]any) string {
 	if data == nil {
 		return "<nil>"
@@ -373,5 +411,5 @@ func fingerprint(data map[string]any) string {
 	if err != nil {
 		return ""
 	}
-	return string(b)
+	return fmt.Sprintf("%x", sha256.Sum256(b))
 }

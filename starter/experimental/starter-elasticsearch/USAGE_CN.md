@@ -270,7 +270,7 @@ Addresses（或 CloudID）原样使用。
 | `addresses` | list | — | 节点 URL，如 `http://127.0.0.1:9200`（逗号分隔）。校验非空（`len($) > 0`）。⚠ 即使被 `service-name` 覆盖也必填——example 故意带一个不可解析的哑地址。⚠ 设置 `cloud-id` 时被忽略（客户端侧优先级）。 | 空 → BindEach 报错；首探不可达 → 启动报 "failed to reach elasticsearch cluster"。 |
 | `service-name` | string | — | 经已注册 discovery 后端解析节点地址，并让 transport 的节点集持续跟随它（pool.go）；覆盖 `addresses`。mesh 模式忽略。⚠ 与 `scheme`/`discovery`/`discovery-scheme` 成组。 | 启动期服务无端点 → 启动报 `discovery %q returned no endpoints`；运行期空快照 → 保留上一份可用集合。 |
 | `scheme` | string | — | 将 discovery 收敛到单一传输 scheme 的端点。仅在设置 `service-name` 时生效。 | — |
-| `discovery` | string | — | 用哪个已注册后端解析 `service-name`。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
+| `discovery` | string | — | 用哪个已注册后端解析 `service-name`。未配置时回退 `${spring.elasticsearch.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 | `discovery-scheme` | string | `http` | 拼到发现的 `host:port` 端点前的 URL scheme（`http`/`https`）。 | scheme 错 → 启动首探失败。 |
 | `cloud-id` | string | — | Elastic Cloud 部署 ID；设置后客户端优先于 `addresses`。 | — |
 

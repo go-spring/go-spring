@@ -20,7 +20,10 @@
 package netutil
 
 import (
+	"errors"
+	"fmt"
 	"net"
+	"strconv"
 	"sync"
 )
 
@@ -49,4 +52,27 @@ func LocalIPv4() string {
 		}
 	})
 	return localIPv4Str
+}
+
+// SplitHostPort splits a "host:port" address into its parts, requiring both
+// the host and the port to be present and the port to be numeric. The split
+// is delegated to net.SplitHostPort, so bracketed IPv6 literals
+// ("[::1]:8848") parse correctly.
+//
+// It returns the port as uint64 — the shape most SDK server-config structs
+// (nacos, dubbo, trpc) consume. Callers that need a narrower type range-check
+// the value themselves.
+func SplitHostPort(addr string) (string, uint64, error) {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", 0, fmt.Errorf("address %q must be host:port: %w", addr, err)
+	}
+	if host == "" || portStr == "" {
+		return "", 0, fmt.Errorf("address %q must be host:port: %w", addr, errors.New("missing host or port"))
+	}
+	port, err := strconv.ParseUint(portStr, 10, 64)
+	if err != nil {
+		return "", 0, fmt.Errorf("address %q has a non-numeric port: %w", addr, err)
+	}
+	return host, port, nil
 }

@@ -247,7 +247,7 @@ key——观测无条件开启（见 §3.3）。
 | `max-conn-idle-time` | duration | `0` | 0 = 不限；如 `5m` 清理空闲连接。⚠ 配 `service-name` 时有限值可在不重启的情况下把连接逐步迁到新端点。 | `0` + 发现 → 连接在被踢掉的端点上滞留到断开。 |
 | `service-name` | string | — | 经已注册的发现后端解析地址；每次建连由 loader-backed（`Pool.Pick`）拨号替代 URI host [starter.go:133-144]。⚠ **绕过 MongoDB 自身拓扑发现**（副本集/mongos）——驱动拨命名服务给出的地址；需在 URI 配合 `directConnection=true`（[config.go:80-84]）。mesh 模式下忽略（sidecar 负责发现+LB）。 | 副本集 URI 不加 `directConnection=true` → "no such host"/拓扑报错；占位 URI 只有在 loader/pool 真被咨询时才能证明发现生效。 |
 | `scheme` | string | — | 把发现端点收窄到一种传输 scheme（如 `tls`）。仅 service-name 生效时被咨询。 | — |
-| `discovery` | string | — | 用哪个已注册发现后端解析 service-name。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
+| `discovery` | string | — | 用哪个已注册发现后端解析 service-name。未配置时回退 `${spring.mongodb.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 | `tls.*` | group | off | 共享 `tlsconf` 块（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）；`tls.Build` 报错直接失败启动 [starter.go:112-119]。enabled=false → 不启 TLS，除非 URI 自己要求（`mongodbs://` / `tls=true`）。 | 配一半 → 启动报 "mongodb: build TLS"。 |
 
 ### 3.2 resilience / fault（govern.*，不在实例前缀下）
@@ -265,7 +265,7 @@ seam 在**建连层**：breaker 策略表现为拒绝*连接*；故障注入按�
 random / p2c）与 `outlier-threshold` / `outlier-suspend-for` **原地生效**——下一次拨号走新策略，
 不用重启，也不会重建已有连接。直连（只配 URI）的实例没有候选集，这些 key 对它无效。
 ⚠ dialer 能拿到的成败信号只有拨号本身，所以 `outlier-threshold` 摘的是**反复连不上**的实例；
-单条命令的失败归上层 resilience executor 管。详见 `cloud/governance/CONFIG_CN.md` §3.1。
+单条命令的失败归上层 resilience executor 管。详见 `cloud/governance/README.md` §3.1。
 
 ### 3.3 可观测性
 

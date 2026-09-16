@@ -285,7 +285,7 @@ func slicesToEndpoints(cfg Config, slices []*discoveryv1.EndpointSlice) []discov
 			ready := e.Conditions.Ready == nil || *e.Conditions.Ready
 			var md map[string]string
 			if e.Zone != nil && *e.Zone != "" {
-				md = map[string]string{"zone": *e.Zone}
+				md = map[string]string{discovery.MetaKeyZone: *e.Zone}
 			}
 			for _, addr := range e.Addresses {
 				eps = append(eps, discovery.Endpoint{

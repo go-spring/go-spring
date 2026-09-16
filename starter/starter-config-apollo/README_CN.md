@@ -46,6 +46,33 @@ apollo:<host>:<port>/<namespace>?appId=&cluster=&secret=&format=
 - `secret` — 可选访问密钥（带访问密钥的命名空间）
 - `format` — 配置格式；默认按命名空间后缀推断，否则 `properties`
 
+## 设计要点
+
+**用 agollo v4 而非手写 HTTP client。** agollo 是官方 Apollo Go SDK，自带
+`notifications/v2` 长轮询、namespace 内存缓存、本地文件备份与 secret 签名。
+在标准库上重造这些——或改走没有推送通知的 Apollo OpenAPI——都等于手写通知循环，
+毫无收益。唯一代价：agollo 在 client 创建时固定 `NamespaceName`，因此 namespace
+进了 client 缓存 key。
+
+**线路解析交给 agollo。** agollo 初始同步走 `/configfiles/json/...`（纯 JSON
+对象，非 ApolloConfig envelope）；starter 只依赖 agollo 自身的解析，namespace
+*内容*才由 `spring/conf/reader` 自行解析。
+
+**mock config service 而非 docker 化 quick-start。** Apollo quick-start 需要
+MySQL 加 configservice/admin/portal 三件套；starter 的契约是 provider seam，
+example 的 mock 恰好实现 agollo 所需的两个端点，即可端到端覆盖，无需整栈、
+CI 也不依赖 docker。
+
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_config_apollo`（apollo 配置源）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.config_apollo.type=Logger
+logger.config_apollo.level=WARN
+logger.config_apollo.tag=_app_config_apollo
+```
+
 ## 说明
 
 - 每个 `(server, appId, cluster, secret, namespace)` 元组一个 agollo client。

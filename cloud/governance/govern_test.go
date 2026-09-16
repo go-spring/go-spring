@@ -40,7 +40,7 @@ func enabledTimeout(d int) Config {
 // config as an embedded field, and that a Config built with Fault set both
 // preserves it (so Center.Init can read cfg.Fault and build the injector) and
 // does not disturb resilience PolicyFor. This is the structural anchor of fault
-// centralization (DESIGN_CN.md §8).
+// centralization (README.md 设计说明 §8).
 func TestConfig_FaultEmbedding(t *testing.T) {
 	// Zero Config: fault disabled (transparent), resilience disabled.
 	var zero Config

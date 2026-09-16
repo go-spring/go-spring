@@ -121,3 +121,28 @@ conf.RegisterDecryptDriver("kms", func() (decrypt.Decryptor, error) { ... })
   重绑所有 `gs.Dync` 字段。
 - 绑定过程中,任何被 `ENC(...)` / `{cipher}` 包裹的值由 `spring/conf/decrypt`
   解密。
+
+## 设计要点
+
+**轮询,因为 Vault 没有 push。** Vault 不提供原生变更通知,轮询是唯一选择。
+本 starter 不去造一层假的 push 接口,而是把精力放在轻量轮询与"每次变更恰好检测一次"上。
+
+**变更基线取应用真正加载到的值。** 每次成功加载都会记录 secret 数据的共享指纹;轮询循环
+拿本次读取与之比较,检测到变更后重跑 provider 并重新播种指纹——因此一次变更恰好触发一次
+刷新。若以 watcher 自己的首次轮询做基线,会静默丢掉 `optional:` 下"secret 在启动后才被
+创建"的场景;而以加载时的播种为基线,启动本身也不会引发伪刷新。watcher 同样在首次读取
+secret 之前注册,因此 secret 尚不存在时热更新依然可用。
+
+**token 有意走带外解析。** token 只从查询串、`VAULT_TOKEN` 或 token 文件解析,
+绝不从 `spring.config.vault.*` 属性读取。否则一个自身要读属性的解密缝隙就可能与 token
+陷入鸡生蛋循环。
+
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_config_vault`（vault 配置源）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.config_vault.type=Logger
+logger.config_vault.level=WARN
+logger.config_vault.tag=_app_config_vault
+```

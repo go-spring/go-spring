@@ -1,7 +1,7 @@
 # starter-registry-zookeeper 使用说明 — 参考手册
 
 详细使用文档。概览见 [README](README_CN.md)。所有行为声明均已对照 starter 源码（`starter.go`、
-`registrar.go`、`center.go`、`discovery_zookeeper.go`、`config.go`、`registrar_test.go`）、
+`registrar.go`、`starter.go`、`discovery_zookeeper.go`、`config.go`、`registrar_test.go`）、
 注册核心（`../starter-registry/starter.go`、`../starter-registry/config.go`）、`cloud/discovery`
 接缝（`cloud/discovery/registrar.go`、`cloud/loadbalance/pool.go`）与可运行的 [example/](example/)
 （`example/check.sh` 跑单测 + docker-compose ZooKeeper 端到端启动）核实。**ZooKeeper 自身语义
@@ -10,7 +10,7 @@
 本文只讲 go-spring 的增量。
 
 **激活条件**：每个 `spring.registry.zookeeper.<name>` 块即一个注册中心 —— 一个共享会话、一次
-启动探测、一套生命周期（`center.go`）。名为 `zookeeper.<name>` 的 bean 同时导出
+启动探测、一套生命周期（`starter.go`）。名为 `zookeeper.<name>` 的 bean 同时导出
 `discovery.Registrar`（设置了 `spring.registry.service-name` 时由 starter-registry 核心收集
 —— 纯消费方应用不注册任何实例）与 `discovery.Discovery`（按 bean 名引用，纯提供方不为读侧
 付出成本）。本 starter **两侧都做**：把本实例以临时 znode 发布到 ZooKeeper，同时携带客户端
@@ -122,13 +122,13 @@ docker exec -it starter-registry-zookeeper zkCli.sh
 
 ## 2. 装配与时序
 
-### 2.1 bean 生命周期时间线（`center.go` / `registrar.go` / 核心的 `starter.go`）
+### 2.1 bean 生命周期时间线（`starter.go` / `registrar.go` / 核心的 `starter.go`）
 
 ```
 blank-import starter-registry-zookeeper
   ├─ 每个块 ${spring.registry.zookeeper.<name>}：Provide(newZkBackend)
   │    Name("zookeeper."+name).Export(As[discovery.Discovery], As[discovery.Registrar])
-  │    条件：gs.OnProperty("spring.registry.zookeeper")              [center.go]
+  │    条件：gs.OnProperty("spring.registry.zookeeper")              [starter.go]
   └─ import starter-registry（核心，每进程恰一次）
        └─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
             条件：gs.OnProperty("spring.registry.service-name")
@@ -136,7 +136,7 @@ gs.Run()
   ├─ conf.BindEach 遍历 spring.registry.zookeeper.* → 每块一份 ZookeeperConfig
   ├─ 每块 newZkBackend：zk.Connect(servers, session-timeout)；设置了凭证则 digest
   │    AddAuth + fail-fast 探活 Exists("/") —— 阻塞到会话连上，因此集群不可达在
-  │    启动期失败，而不是等第一次 Register 才暴露                    [center.go]
+  │    启动期失败，而不是等第一次 Register 才暴露                    [starter.go]
   ├─ registryServer 经 []discovery.Registrar 切片注入收集所有后端的 registrar
   │    （跨所有后端 —— zookeeper、nacos……）
   ├─ Run：就绪前校验 service-name/addr 且 registrar ≥ 1 个
@@ -194,13 +194,14 @@ unregistered instance`），负权重映射为 1 但 0 原样放行，然后用 
 
 连接 key 按块绑定在 `${spring.registry.zookeeper.<name>}` 下（`config.go`）；实例 key 绑定在
 `${spring.registry}` 下（`../starter-registry/config.go`）。不存在 discovery 配置：后端 bean
-**就是**该块的 bean，名为 `zookeeper.<name>`（`center.go`）。
+**就是**该块的 bean，名为 `zookeeper.<name>`（`starter.go`）。
 
 | key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|---------|
 | `spring.registry.zookeeper.<n>.servers` | []string | —（必填） | 集群成员；**设置它即激活该块** | 到处未设：starter 沉默不生效；配错：启动在探活处失败（`registry-zookeeper: startup probe failed`） |
 | `spring.registry.zookeeper.<n>.session-timeout` | duration | `10s` | zk 会话超时；同时限定启动探活时长、以及崩溃进程的临时节点残留多久 | ⚠ 过长拖慢崩溃摘除；过短则在 GC 停顿/瞬时分区下会话过期 → 无声注销 |
 | `spring.registry.zookeeper.<n>.base-path` | string | `/services` | 持久父 znode；尾部 `/` 会被裁剪；服务目录按需创建 | 消费方必须列同一 path；不一致对提供方不可见 |
+| `spring.registry.zookeeper.<n>.health.enabled` | bool | `true` | 贡献名为 `registry-zookeeper:<name>` 的 `health.Indicator` bean,探针做一次 `Exists("/")`(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 集群健康对 readiness 探针不可见 |
 | `spring.registry.zookeeper.<n>.username` | string | `` | digest 认证，经 `AddAuth("digest", user:pass)` 生效；与 `password` 成对设置 | ⚠ 只设其一 → 认证报错 / ACL 拒绝写入 |
 | `spring.registry.zookeeper.<n>.password` | string | `` | digest 密码（同上） | 同上 |
 | `spring.registry.service-name` | string | `` | 逻辑服务名；成为 znode 目录名，也是发现侧解析的名字。**注册意图信号**：配了块而不设 → 合法的纯消费方 | 设了而 `addr` 为空：Run 返回 `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required`——此时应用其他部分已起来 |

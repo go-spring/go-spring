@@ -40,7 +40,6 @@ package StarterGovernanceNacos
 import (
 	"context"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -55,6 +54,7 @@ import (
 	"go-spring.org/starter-governance/rules"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/netutil"
 )
 
 var starterTag = log.RegisterAppTag("governance_nacos", "")
@@ -96,7 +96,7 @@ func init() {
 		}
 
 		r.Provide(func() (*NacosSource, error) {
-			host, port, err := splitHostPort(c.Server)
+			host, port, err := netutil.SplitHostPort(c.Server)
 			if err != nil {
 				return nil, err
 			}
@@ -139,19 +139,6 @@ func extOf(name string) string {
 		return name[i:]
 	}
 	return ""
-}
-
-// splitHostPort splits a "host:port" Nacos server address.
-func splitHostPort(server string) (string, uint64, error) {
-	host, portStr, ok := strings.Cut(server, ":")
-	if !ok || host == "" || portStr == "" {
-		return "", 0, errutil.Explain(nil, "nacos server address must be host:port, got %q", server)
-	}
-	port, err := strconv.ParseUint(portStr, 10, 64)
-	if err != nil {
-		return "", 0, errutil.Explain(err, "invalid nacos server port in %q", server)
-	}
-	return host, port, nil
 }
 
 // governSource is the resolved wiring one NacosSource carries: which dataId to

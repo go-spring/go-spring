@@ -18,6 +18,7 @@ package StarterRegistryZookeeper
 
 import (
 	"errors"
+	"go-spring.org/cloud/discovery"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -34,13 +35,13 @@ func newHealRegistrar() (*zkRegistrar, *atomic.Int32) {
 		basePath:    "/services",
 		backoffBase: 5 * time.Millisecond,
 		backoffCap:  20 * time.Millisecond,
-		regs:        map[string]instance{},
+		regs:        map[string]discovery.Instance{},
 		done:        make(chan struct{}),
 	}
 	var cur atomic.Int32
 	cur.Store(int32(zk.StateHasSession))
 	r.state = func() zk.State { return zk.State(cur.Load()) }
-	r.reRegister = func(instance) error { return nil }
+	r.reRegister = func(discovery.Instance) error { return nil }
 	return r, &cur
 }
 
@@ -71,9 +72,9 @@ func TestReconcileSession(t *testing.T) {
 func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 	r, cur := newHealRegistrar()
 	var mu sync.Mutex
-	created := []instance{}
+	created := []discovery.Instance{}
 	failures := int32(2) // first two heal passes fail, as if the session flaps
-	r.reRegister = func(reg instance) error {
+	r.reRegister = func(reg discovery.Instance) error {
 		if atomic.AddInt32(&failures, -1) >= 0 {
 			return errors.New("connection lost")
 		}
@@ -82,8 +83,8 @@ func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 		mu.Unlock()
 		return nil
 	}
-	r.regs["/services/orders/orders-1.2.3.4:80"] = instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
-	r.regs["/service2"] = instance{ServiceName: "billing", Addr: "1.2.3.4:90", Weight: 3}
+	r.regs["/services/orders/orders-1.2.3.4:80"] = discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
+	r.regs["/service2"] = discovery.Instance{ServiceName: "billing", Addr: "1.2.3.4:90", Weight: 3}
 
 	go r.monitorSession()
 	// Session drops, then recovers on the next poll.
@@ -106,7 +107,7 @@ func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 	defer mu.Unlock()
 	// Assert by name: the heal pass walks r.regs, a map, so the order the two
 	// instances are re-created in is not defined.
-	byName := map[string]instance{}
+	byName := map[string]discovery.Instance{}
 	for _, in := range created {
 		byName[in.ServiceName] = in
 	}
@@ -120,7 +121,7 @@ func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 // after deregister would resurrect a drained instance.
 func TestDeregisterRemovesFromHealSet(t *testing.T) {
 	r, _ := newHealRegistrar()
-	reg := instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
+	reg := discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
 	r.regs[r.pathFor(reg)] = reg
 	// Deregister deletes from the map before touching the (here nil) conn; the
 	// map bookkeeping is what the heal set reads.
@@ -134,11 +135,11 @@ func TestDeregisterRemovesFromHealSet(t *testing.T) {
 // healAll exits when Close is called even while every attempt fails.
 func TestHealAllExitsOnClose(t *testing.T) {
 	r, _ := newHealRegistrar()
-	// One tracked instance, so each heal pass must call reRegister (an empty
+	// One tracked discovery.Instance, so each heal pass must call reRegister (an empty
 	// heal set succeeds trivially and the loop would exit without any call).
-	r.regs["/services/orders/orders-1.2.3.4:80"] = instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
+	r.regs["/services/orders/orders-1.2.3.4:80"] = discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
 	calls := make(chan struct{}, 16)
-	r.reRegister = func(instance) error { calls <- struct{}{}; return errors.New("down") }
+	r.reRegister = func(discovery.Instance) error { calls <- struct{}{}; return errors.New("down") }
 	done := make(chan struct{})
 	go func() { r.healAll(); close(done) }()
 	<-calls // at least one failed attempt happened

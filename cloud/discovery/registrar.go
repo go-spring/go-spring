@@ -24,6 +24,12 @@ import "context"
 // ${spring.registry} identity block, so every backend registers the SAME
 // instance content (a multi-registry setup is one publication fanned out to
 // several centers, not several publications).
+//
+// Version, Zone and Scheme mirror the routing dimensions consumers read:
+// Scheme lands in [Endpoint.Scheme], while version and zone surface through
+// [Endpoint.Metadata] under the reserved keys. Backends whose protocol has
+// only a metadata map (Nacos, Consul) store these three fields under the
+// reserved keys at write time.
 type Instance struct {
 	// ServiceName is the service this instance belongs to; consumers resolve
 	// endpoints by this name.
@@ -40,9 +46,23 @@ type Instance struct {
 	// "drained" under the repo-wide Weight=0 drain semantics.
 	Weight int
 
-	// Metadata carries backend-agnostic attributes (zone, version, ...). Each
-	// registry backend stores it the way its protocol allows and hands it back
-	// through [Endpoint.Metadata].
+	// Version is the application version of this instance; empty means not
+	// advertised. Consumers may route on it (e.g. canary by version).
+	Version string
+
+	// Zone is the availability zone / unit this instance sits in; empty means
+	// not advertised. Consumers may prefer same-zone instances.
+	Zone string
+
+	// Scheme selects the transport consumers should dial: "" or "tcp" for a
+	// plain TCP connection (the default), "tls"/"https" when it requires TLS,
+	// "http"/"https" for HTTP-level routing. It is advisory, and mirrors
+	// [Endpoint.Scheme].
+	Scheme string
+
+	// Metadata carries additional backend-agnostic attributes. Each registry
+	// backend stores it the way its protocol allows and hands it back through
+	// [Endpoint.Metadata].
 	Metadata map[string]string
 }
 

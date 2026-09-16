@@ -127,7 +127,7 @@ func intGaugeValue(t *testing.T, name string, want map[string]string) int64 {
 func TestSelfHealReRegistrationIsReported(t *testing.T) {
 	r := &zkRegistrar{
 		basePath: "/services",
-		regs: map[string]instance{
+		regs: map[string]discovery.Instance{
 			"/services/orders/orders-1.2.3.4:80": {
 				ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1,
 			},
@@ -137,7 +137,7 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 
 	// The session is not usable yet: the pass fails and the instance is not
 	// discoverable, which is exactly what the gauge must say.
-	r.reRegister = func(instance) error { return errors.New("ensemble unreachable") }
+	r.reRegister = func(discovery.Instance) error { return errors.New("ensemble unreachable") }
 	assert.Error(t, r.reRegisterAll()).NotNil()
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
 		"system": obsSystem, "service": "orders",
@@ -147,7 +147,7 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 		Zero("a session loss that could not be healed must report as unpublished")
 
 	// The session recovers: healAll retries the pass and the node comes back.
-	r.reRegister = func(instance) error { return nil }
+	r.reRegister = func(discovery.Instance) error { return nil }
 	assert.Error(t, r.reRegisterAll()).Nil()
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
 		"system": obsSystem, "service": "orders",

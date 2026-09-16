@@ -94,6 +94,11 @@ Connection, bound per block under `spring.registry.consul.<name>`:
 | `datacenter` | (empty) | Datacenter to register into; empty uses the agent's. |
 | `token` | (empty) | ACL token. |
 | `namespace` | (empty) | Consul Enterprise namespace. |
+| `tls.enabled` | `false` | Turn on the shared TLS block (with `scheme=https`). |
+| `tls.ca-file` | (empty) | CA bundle for the Consul server (private CA). |
+| `tls.cert-file` | (empty) | Client certificate for mTLS; requires `tls.key-file`. |
+| `tls.key-file` | (empty) | Client private key for mTLS; requires `tls.cert-file`. |
+| `tls.insecure-skip-verify` | `false` | Skip server certificate verification (testing only). |
 | `ttl` | `15s` | TTL health check; the starter heartbeats at half this interval. |
 | `deregister-critical-after` | `1m` | Consul drops the instance if its check stays critical this long (e.g. after a crash). |
 
@@ -125,7 +130,7 @@ spring.registry.consul.main.address=127.0.0.1:8500
 spring.registry.service-name=orders
 spring.registry.addr=10.0.0.5:8080
 # discovery: cite the block's bean name, nothing to configure
-spring.http-client.backends.users.discovery=consul.main
+spring.http-client.instances.users.discovery=consul.main
 ```
 
 The discovery bean is lazy — a pure provider that never resolves anything
@@ -136,7 +141,7 @@ registers nothing: registration activates only when
 ```properties
 # consumer-only app: connection blocks, no service-name/addr, registers nothing
 spring.registry.consul.main.address=127.0.0.1:8500
-spring.http-client.backends.users.discovery=consul.main
+spring.http-client.instances.users.discovery=consul.main
 ```
 
 Multi-agent discovery is now just multiple blocks: discover from `consul.dr`

@@ -17,7 +17,7 @@
 // This file is the CONSUMER half of etcd service discovery: the
 // cloud/discovery Discovery backend serving snapshots of the instances the
 // registrar (registrar.go) publishes. It is derived from the
-// ${spring.registry.etcd} center (center.go) under the fixed label "etcd" —
+// ${spring.registry.etcd} center (starter.go) under the fixed label "etcd" —
 // there is no separate discovery config block. Freshness is internal: each
 // resolved service gets a background etcd watcher that keeps the cached
 // snapshot current, so Resolve is a cheap read after the first call.
@@ -145,27 +145,46 @@ func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
 // kvsToEndpoints maps one etcd Get/watch response's key-value pairs to
 // discovery endpoints, decoding the instanceValue JSON the registrar writes.
 // Every key found is healthy (lease liveness) and enabled (the registrar has
-// no disabled state); an optional "scheme" metadata key carries transport
-// selection, mirroring the nacos adapter.
+// no disabled state); the payload's scheme field carries transport selection.
 func kvsToEndpoints(kvs []*mvccpb.KeyValue) []discovery.Endpoint {
 	eps := make([]discovery.Endpoint, 0, len(kvs))
 	for _, kv := range kvs {
 		var v instanceValue
 		if err := json.Unmarshal(kv.Value, &v); err != nil {
-			// A malformed payload is one bad instance, not a broken snapshot.
+			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
 			log.Warnf(context.Background(), starterTag, "registry-etcd: skip malformed instance %q: %v", string(kv.Key), err)
 			continue
 		}
 		eps = append(eps, discovery.Endpoint{
 			Addr:     v.Addr,
-			Scheme:   v.Metadata["scheme"],
+			Scheme:   v.Scheme,
 			Weight:   v.Weight,
 			Healthy:  true,
-			Metadata: v.Metadata,
+			Metadata: withDimensions(v.Metadata, v.Version, v.Zone),
 		})
 	}
 	sortEndpoints(eps)
 	return eps
+}
+
+// withDimensions surfaces the payload's version/zone fields through the
+// metadata map consumers route on (zone-aware balancing reads the zone key),
+// copying only when something must be added.
+func withDimensions(md map[string]string, version, zone string) map[string]string {
+	if version == "" && zone == "" {
+		return md
+	}
+	out := make(map[string]string, len(md)+2)
+	for k, v := range md {
+		out[k] = v
+	}
+	if version != "" {
+		out[discovery.MetaKeyVersion] = version
+	}
+	if zone != "" {
+		out[discovery.MetaKeyZone] = zone
+	}
+	return out
 }
 
 // sortEndpoints orders endpoints by address so snapshots are comparable.

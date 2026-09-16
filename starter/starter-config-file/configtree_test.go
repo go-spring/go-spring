@@ -83,8 +83,8 @@ func TestWalkConfigTree_NestedKeysAndTrim(t *testing.T) {
 }
 
 func TestProviderTypeSymmetry(t *testing.T) {
-	fw := &fileWatchCtrl{}
-	ct := &configTreeCtrl{}
+	fw := newFileWatchCtrl()
+	ct := newConfigTreeCtrl()
 
 	tmp := t.TempDir()
 
@@ -98,12 +98,12 @@ func TestProviderTypeSymmetry(t *testing.T) {
 	if err := os.WriteFile(file, []byte("v"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if _, err := ct.LoadConfigTree(false, file); err == nil {
+	if _, err := ct.load(false, file); err == nil {
 		t.Fatalf("configtree on a file must error")
 	}
 
 	// optional:true tolerates a missing path for both providers.
-	if m, err := ct.LoadConfigTree(true, filepath.Join(tmp, "nope")); err != nil || m != nil {
+	if m, err := ct.load(true, filepath.Join(tmp, "nope")); err != nil || m != nil {
 		t.Fatalf("optional missing configtree: m=%v err=%v", m, err)
 	}
 }

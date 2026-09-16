@@ -116,7 +116,9 @@ func newCtrlWithFake(source string, fake kvAPI) (*consulCtrl, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &consulCtrl{clients: map[string]kvAPI{clientKey(cs): fake}}, nil
+	c := newConsulCtrl()
+	c.clients[clientKey(cs)] = fake
+	return c, nil
 }
 
 func TestLoadProperties(t *testing.T) {
@@ -198,7 +200,7 @@ func TestWatchLoopAdvancesIndex(t *testing.T) {
 		result(&api.KVPair{Value: []byte("a=1\n")}, 5, nil).
 		result(&api.KVPair{Value: []byte("a=2\n")}, 9, nil)
 
-	c := &consulCtrl{}
+	c := newConsulCtrl()
 	go c.watchLoop(fake, configSource{kvPath: "app.properties"}, false)
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -211,7 +213,7 @@ func TestWatchLoopAdvancesIndex(t *testing.T) {
 func TestTriggerRefreshNilRefresherIsNoop(t *testing.T) {
 	// Before the IoC container autowires the PropertiesRefresher, a Consul
 	// index bump must be a harmless no-op rather than a nil dereference.
-	c := &consulCtrl{}
+	c := newConsulCtrl()
 	c.TriggerRefresh()
 }
 

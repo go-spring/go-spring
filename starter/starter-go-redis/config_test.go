@@ -17,6 +17,7 @@
 package StarterGoRedis
 
 import (
+	"go-spring.org/cloud/discovery"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -34,7 +35,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "single with service-name only",
-			cfg:  Config{Mode: "single", ServiceName: "my-redis"},
+			cfg:  Config{Mode: "single", Addressing: discovery.Addressing{ServiceName: "my-redis"}},
 		},
 		{
 			name:    "single with neither addr nor service-name",
@@ -52,7 +53,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name:    "sentinel with service-name rejected",
-			cfg:     Config{Mode: "sentinel", MasterName: "m", SentinelAddrs: []string{"127.0.0.1:26379"}, ServiceName: "x"},
+			cfg:     Config{Mode: "sentinel", MasterName: "m", SentinelAddrs: []string{"127.0.0.1:26379"}, Addressing: discovery.Addressing{ServiceName: "x"}},
 			wantErr: "service-name is not supported in sentinel mode",
 		},
 		{

@@ -40,7 +40,7 @@ func init() {
 	// key and its unparsed, trimmed content is the value. This is the shape of a
 	// Kubernetes Secret / env-style ConfigMap mount (many scalar key files), and
 	// the model Spring Boot calls "configtree".
-	conf.RegisterProvider("configtree", (&configTreeCtrl{}).LoadConfigTree)
+	conf.RegisterProvider("configtree", newConfigTreeCtrl().load)
 }
 
 // configTreeCtrl is the "configtree" provider: a directory of scalar key
@@ -50,30 +50,36 @@ type configTreeCtrl struct {
 	watchCore
 }
 
-// LoadConfigTree implements conf/provider.Provider for the "configtree" source.
+// newConfigTreeCtrl creates the "configtree" provider controller with its
+// watch machinery ready.
+func newConfigTreeCtrl() *configTreeCtrl {
+	return &configTreeCtrl{watchCore: newWatchCore()}
+}
+
+// load implements conf/provider.Provider for the "configtree" source.
 // It walks a directory tree, turning each non-dot leaf file into a property
 // keyed by its dotted relative path and valued by its trimmed raw content, and
 // installs a watcher on every directory in the tree so any change triggers an
 // application property refresh.
-func (c *configTreeCtrl) LoadConfigTree(optional bool, source string) (map[string]string, error) {
+func (c *configTreeCtrl) load(optional bool, source string) (map[string]string, error) {
 	path := source
 	if path == "" {
 		return nil, errutil.Explain(nil, "configtree: missing path")
 	}
 
-	log.Debugf(context.Background(), log.TagAppDef, "loading configtree from %s", path)
+	log.Debugf(context.Background(), starterTag, "loading configtree from %s", path)
 
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && optional {
-			log.Warnf(context.Background(), log.TagAppDef, "optional configtree path %s not found (skipped)", path)
+			log.Warnf(context.Background(), starterTag, "optional configtree path %s not found (skipped)", path)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), log.TagAppDef, "stat %s failed: %v", path, err)
+		log.Errorf(context.Background(), starterTag, "stat %s failed: %v", path, err)
 		return nil, errutil.Explain(err, "configtree: stat %s failed", path)
 	}
 	if !info.IsDir() {
-		log.Errorf(context.Background(), log.TagAppDef, "configtree expects a directory, got file %s", path)
+		log.Errorf(context.Background(), starterTag, "configtree expects a directory, got file %s", path)
 		return nil, errutil.Explain(nil, "configtree expects a directory, got file %s (a single config document belongs to the file-watch provider)", path)
 	}
 
@@ -81,7 +87,7 @@ func (c *configTreeCtrl) LoadConfigTree(optional bool, source string) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	log.Infof(context.Background(), log.TagAppDef, "loaded configtree from dir=%s keys=%d", path, len(m))
+	log.Infof(context.Background(), starterTag, "loaded configtree from dir=%s keys=%d", path, len(m))
 	return m, nil
 }
 

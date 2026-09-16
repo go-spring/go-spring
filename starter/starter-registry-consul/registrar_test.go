@@ -18,6 +18,7 @@ package StarterRegistryConsul
 
 import (
 	"context"
+	"go-spring.org/cloud/discovery"
 	"testing"
 	"time"
 
@@ -27,9 +28,9 @@ import (
 
 func TestServiceID(t *testing.T) {
 	// An explicit ID is used verbatim.
-	assert.That(t, serviceID(instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
+	assert.That(t, serviceID(discovery.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
 	// Otherwise it is derived from name and addr so restarts replace the entry.
-	assert.That(t, serviceID(instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
+	assert.That(t, serviceID(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
 }
 
 func TestRegister_BadAddr(t *testing.T) {
@@ -39,10 +40,10 @@ func TestRegister_BadAddr(t *testing.T) {
 	assert.Error(t, err).Nil()
 	r := &consulRegistrar{client: client, ttl: time.Second, heartbeats: map[string]chan struct{}{}}
 
-	err = r.Register(context.Background(), instance{ServiceName: "orders", Addr: "no-port"})
+	err = r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "no-port"})
 	assert.Error(t, err).Matches("must be host:port")
 
-	err = r.Register(context.Background(), instance{ServiceName: "orders", Addr: "host:abc"})
+	err = r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "host:abc"})
 	assert.Error(t, err).Matches("non-numeric port")
 }
 
@@ -61,24 +62,24 @@ func TestNormalizeWeight(t *testing.T) {
 func TestUpdateWeight_Unregistered(t *testing.T) {
 	client, err := api.NewClient(&api.Config{Address: "127.0.0.1:8500"})
 	assert.Error(t, err).Nil()
-	r := &consulRegistrar{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
+	r := &consulRegistrar{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
 
-	err = r.UpdateWeight(context.Background(), instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
+	err = r.UpdateWeight(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
 	assert.Error(t, err).Matches("unregistered instance")
 }
 
 func TestBuildRegistration_AdvertisesDrainWeight(t *testing.T) {
 	// A drain weight of 0 is advertised as a zero passing weight — Consul
 	// routes no traffic to it — rather than being normalized away.
-	r := &consulRegistrar{heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
-	asr := r.buildRegistration(instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0})
+	r := &consulRegistrar{heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
+	asr := r.buildRegistration(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0})
 	assert.That(t, asr.Weights.Passing).Equal(0)
 }
 
 func TestReRegister(t *testing.T) {
 	// An unknown id is a no-op (the instance was deregistered; the heartbeat's
 	// recovery path must not resurrect it).
-	r := &consulRegistrar{heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
+	r := &consulRegistrar{heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
 	assert.Error(t, r.reRegister("orders-1.2.3.4:80")).Nil()
 
 	// A known id attempts the upsert against the (here unreachable) agent: a
@@ -87,8 +88,8 @@ func TestReRegister(t *testing.T) {
 	// drained weight — is what gets re-registered.
 	client, err := api.NewClient(&api.Config{Address: "127.0.0.1:1"})
 	assert.Error(t, err).Nil()
-	r = &consulRegistrar{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]instance{}}
-	drained := instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0}
+	r = &consulRegistrar{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
+	drained := discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0}
 	r.regs["orders-1.2.3.4:80"] = drained
 	asr := r.buildRegistration(drained)
 	assert.That(t, asr.Weights.Passing).Equal(0)

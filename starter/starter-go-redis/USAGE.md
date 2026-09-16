@@ -222,7 +222,7 @@ bound to `redis:<service-name|master-name|addr>` via `loadbalance.Pool.BindSelec
 in place — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*. Sentinel and
 cluster clients self-discover and have no pool, so these keys do not reach them. See
-`cloud/governance/CONFIG_CN.md` §3.1.
+`cloud/governance/README.md` §3.1.
 
 ---
 
@@ -245,7 +245,7 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 | `route-by-latency` / `route-randomly` | bool | false | Cluster read routing. Both set → go-redis semantics. | — |
 | `service-name` | string | — | Single mode only: resolve addr via discovery. ⚠ Rejected with sentinel/cluster modes. | Wrong combo → boot error; see §2.4. |
 | `scheme` | string | — | Narrows discovery endpoints to one transport scheme. Only consulted when service-name set. | — |
-| `discovery` | string | — | Which registered discovery backend resolves service-name. | Unset or an unregistered name while service-name is set → boot error. |
+| `discovery` | string | — | Which registered discovery backend resolves service-name. Falls back to `${spring.go-redis.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 
 ### 3.2 Connection & auth
 

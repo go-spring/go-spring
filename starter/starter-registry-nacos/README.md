@@ -94,7 +94,7 @@ the discovery half.
 
 ```properties
 spring.registry.nacos.main.server=127.0.0.1:8848
-spring.http-client.backends.users.discovery=nacos.main
+spring.http-client.instances.users.discovery=nacos.main
 ```
 
 Read and write share the block's namespace/group/cluster, so they can never
@@ -113,6 +113,10 @@ Connection, bound per block under `spring.registry.nacos.<name>`:
 | `username` | (empty) | Auth username; empty for anonymous clusters. |
 | `password` | (empty) | Auth password. |
 | `timeout-ms` | `5000` | Per-call timeout, including the startup probe. |
+| `tls.enabled` | `false` | Turn on the shared TLS block (TLS-enabled Nacos server). |
+| `tls.ca-file` | (empty) | CA bundle for the server (private CA). |
+| `tls.cert-file` / `tls.key-file` | (empty) | Client certificate / key for mTLS. |
+| `tls.insecure-skip-verify` | `false` | Skip server certificate verification (testing only). |
 
 Instance, bound under `spring.registry` (backend-agnostic — switching registry
 backends is a blank-import swap, not a config migration):

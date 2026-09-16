@@ -19,6 +19,7 @@
 package StarterMemcached
 
 import (
+	"go-spring.org/cloud/discovery"
 	"time"
 )
 
@@ -38,7 +39,11 @@ type Config struct {
 	// is resolved a single time at boot (fail-fast) rather than kept live. A
 	// changing cluster membership requires a restart to pick up. In mesh mode
 	// discovery is skipped entirely and Servers is used as-is.
-	ServiceName string `value:"${service-name:=}"`
+	// Addressing is the shared discovery-citation block (see discovery.Addressing
+	// for the shared contract); the family-specific caveats above the fields it
+	// replaced still apply. Discovery falls back to ${spring.memcached.default.discovery} via
+	// the starter wiring.
+	discovery.Addressing
 
 	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
 	// "https"). Empty (the default) returns every scheme; set it when a service
@@ -46,14 +51,6 @@ type Config struct {
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
 
-	// Discovery names the discovery backend bean that resolves ServiceName
-	// (bean name = label). It is only consulted when ServiceName is set; the
-	// starter wiring resolves this label to the backend bean and passes it to
-	// the driver as the backend argument of CreateClient — it is never written
-	// back into Config.
-	// Empty means unset: no discovery backend is wired and the entry must not
-	// route by service-name alone.
-	Discovery string `value:"${discovery:=}"`
 
 	// Timeout is the socket read/write timeout for each request,
 	// 0 uses the driver default (100ms), e.g., "100ms".

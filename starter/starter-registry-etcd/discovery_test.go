@@ -42,7 +42,7 @@ func mustKV(t *testing.T, key string, v instanceValue) *mvccpb.KeyValue {
 func TestKvsToEndpoints(t *testing.T) {
 	kvs := []*mvccpb.KeyValue{
 		mustKV(t, "/services/orders/a", instanceValue{ServiceName: "orders", Addr: "10.0.0.2:8080", Weight: 3,
-			Metadata: map[string]string{"zone": "b", "scheme": "tls"}}),
+			Version: "v2", Zone: "b", Scheme: "tls"}),
 		mustKV(t, "/services/orders/b", instanceValue{ServiceName: "orders", Addr: "10.0.0.1:8080"}),
 		// A malformed payload is skipped, not fatal to the snapshot.
 		{Key: []byte("/services/orders/bad"), Value: []byte("not-json")},
@@ -58,15 +58,17 @@ func TestKvsToEndpoints(t *testing.T) {
 	assert.That(t, eps[0].Healthy).True()
 	assert.That(t, eps[1].Healthy).True()
 
-	// Weight and metadata (incl. scheme passthrough) survive the mapping.
+	// Weight and the routing dimensions survive the mapping: scheme lands in
+	// Endpoint.Scheme, version/zone surface through metadata.
 	assert.That(t, eps[1].Weight).Equal(3)
 	assert.That(t, eps[1].Scheme).Equal("tls")
+	assert.That(t, eps[1].Metadata["version"]).Equal("v2")
 	assert.That(t, eps[1].Metadata["zone"]).Equal("b")
 }
 
 func TestKvsToEndpointsSchemeFilter(t *testing.T) {
 	kvs := []*mvccpb.KeyValue{
-		mustKV(t, "/services/s/a", instanceValue{Addr: "10.0.0.1:80", Metadata: map[string]string{"scheme": "tls"}}),
+		mustKV(t, "/services/s/a", instanceValue{Addr: "10.0.0.1:80", Scheme: "tls"}),
 		mustKV(t, "/services/s/b", instanceValue{Addr: "10.0.0.2:80"}),
 	}
 	// FilterByScheme narrows to the tls instance only.

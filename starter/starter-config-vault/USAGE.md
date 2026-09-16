@@ -181,6 +181,13 @@ Key timings verified from source:
   produces identical data does NOT trigger a refresh; KV v2 version numbers are ignored.
 - **The watcher never re-reads the token**: an expired token keeps the client cached
   (clientKey = address|namespace|token), and `watchLoop` swallows read errors — see §4.4.
+- **The watcher is registered before the secret is first read** (`registerWatch` precedes
+  `readSecret` in the chain above), so an `optional:` secret that does not exist at startup
+  is still hot-reloaded once it is created.
+- **The fingerprint baseline is shared, not per-poll**: every successful `Load` writes the
+  fingerprint that the polling loop compares against. A change therefore fires exactly one
+  refresh — the rerun provider reseeds the baseline — and startup itself never fires a
+  spurious refresh (the load seeds the fingerprint before the first poll).
 
 ### 2.3 One rotation, layer by layer
 
@@ -349,5 +356,5 @@ Design suspects (for the audit ledger; first three carried over from the previou
    `GS_CONFIG_DECRYPT_AES_KEY`, and `example.go` declares an unused `aesKey` const plus an
    init comment claiming it sets env vars it does not set — the ENC-decryption leg of the
    smoke test cannot pass as scripted; fix the script or the init.
-7. No health indicator, no metrics, no dedicated log tag (uses `_app_def`): staleness is
+7. No health indicator, no metrics, dedicated log tag `_app_config_vault`: staleness is
    unobservable without external probing.

@@ -129,6 +129,10 @@ Notes verified in source:
   override earlier ones (same doc).
 - **Placeholder resolution**: the import source string goes through `conf.Resolve` first, so
   `etcd:${etcd.addr:=127.0.0.1:2379}/key` works.
+- **Why the watch precedes the Get**: arming the watcher first closes the race where the key
+  is created between the empty initial fetch and the watch start — an `optional:` import of a
+  not-yet-existing key still hot-loads on its first PUT, because the PUT is observed and
+  triggers the refresh that re-reads it.
 
 ### 2.2 Watch → refresh path, step by step
 

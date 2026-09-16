@@ -18,12 +18,12 @@ package StarterTrpc
 
 import (
 	"context"
-	"net"
-	"strconv"
+	"math"
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/netutil"
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/filter"
 	"trpc.group/trpc-go/trpc-go/server"
@@ -124,13 +124,12 @@ func NewSimpleTrpcServer(cfg Config, reg ServiceRegister) *SimpleTrpcServer {
 // internally, so it runs in a goroutine while Run parks on the done channel;
 // Stop closes the server and done to hand control back to Go-Spring.
 func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-	host, portStr, err := net.SplitHostPort(s.cfg.Addr)
+	host, port, err := netutil.SplitHostPort(s.cfg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "failed to parse addr %s", s.cfg.Addr)
 	}
-	port, err := strconv.ParseUint(portStr, 10, 16)
-	if err != nil {
-		return errutil.Explain(err, "failed to parse port from addr %s", s.cfg.Addr)
+	if port > math.MaxUint16 {
+		return errutil.Explain(nil, "failed to parse port from addr %s: exceeds 65535", s.cfg.Addr)
 	}
 
 	// Build the tRPC config in code instead of loading trpc_go.yaml, so the

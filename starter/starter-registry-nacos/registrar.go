@@ -18,23 +18,17 @@ package StarterRegistryNacos
 
 import (
 	"context"
-	"net"
-	"strconv"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/netutil"
 )
 
 // instance is the instance this process advertises to the Nacos registry. It is
 // the local write-side value built from RegistrationConfig in Server.Run; the
 // crash-safety contract every registry starter follows lives in starter/DESIGN
-// instance is the process advertisement the registrar publishes; it is the
-// neutral [discovery.Instance] contract. The crash-safety contract every
-// registry starter follows lives in starter/DESIGN §3 (Register must
-// self-renew so correctness never depends on Deregister).
-type instance = discovery.Instance
 
 // nacosRegistrar publishes instances to a Nacos naming service. Instances are
 // registered as ephemeral, so the Nacos SDK keeps them alive with its own
@@ -70,8 +64,8 @@ func normalizeWeight(w int) int {
 // Register publishes reg as an ephemeral Nacos instance. The SDK then keeps it
 // alive with its own heartbeat until Deregister. Registering the same ip:port
 // again refreshes the entry.
-func (r *nacosRegistrar) Register(ctx context.Context, reg instance) error {
-	host, port, err := splitAddr(reg.Addr)
+func (r *nacosRegistrar) Register(ctx context.Context, reg discovery.Instance) error {
+	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return err
 	}
@@ -89,7 +83,7 @@ func (r *nacosRegistrar) Register(ctx context.Context, reg instance) error {
 		Enable:      true,
 		Healthy:     true,
 		Ephemeral:   true,
-		Metadata:    reg.Metadata,
+		Metadata:    instanceMetadata(reg),
 	})
 	// A server-side rejection is a failed registration just as much as a
 	// transport error, so both fold into the reported outcome.
@@ -104,8 +98,8 @@ func (r *nacosRegistrar) Register(ctx context.Context, reg instance) error {
 
 // Deregister removes the instance. It is idempotent: deregistering an instance
 // that is not registered is a no-op on the Nacos side.
-func (r *nacosRegistrar) Deregister(ctx context.Context, reg instance) error {
-	host, port, err := splitAddr(reg.Addr)
+func (r *nacosRegistrar) Deregister(ctx context.Context, reg discovery.Instance) error {
+	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return err
 	}
@@ -130,8 +124,8 @@ func (r *nacosRegistrar) Deregister(ctx context.Context, reg instance) error {
 // running and discovery subscribers (the Nacos push channel) receive the new
 // weight without any re-registration. Mirrors the etcd registrar's
 // UpdateWeight so both starters offer the same optional hot-reload API.
-func (r *nacosRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int) error {
-	host, port, err := splitAddr(reg.Addr)
+func (r *nacosRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
+	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return err
 	}
@@ -148,7 +142,7 @@ func (r *nacosRegistrar) UpdateWeight(ctx context.Context, reg instance, weight 
 		Weight:      w,
 		Enable:      true,
 		Ephemeral:   true,
-		Metadata:    reg.Metadata,
+		Metadata:    instanceMetadata(reg),
 	})
 	if err == nil && !ok {
 		err = errutil.Explain(nil, "registry-nacos: update weight %q was rejected by the server", reg.ServiceName)
@@ -159,16 +153,29 @@ func (r *nacosRegistrar) UpdateWeight(ctx context.Context, reg instance, weight 
 	return err
 }
 
+// instanceMetadata folds the instance's routing dimensions (version, zone,
+// scheme) into the metadata map handed to Nacos: the SDK has no dedicated
+// fields for them, and the discovery read side restores them from these
+// reserved keys.
+func instanceMetadata(reg discovery.Instance) map[string]string {
+	if reg.Version == "" && reg.Zone == "" && reg.Scheme == "" {
+		return reg.Metadata
+	}
+	md := make(map[string]string, len(reg.Metadata)+3)
+	for k, v := range reg.Metadata {
+		md[k] = v
+	}
+	if reg.Version != "" {
+		md[discovery.MetaKeyVersion] = reg.Version
+	}
+	if reg.Zone != "" {
+		md[discovery.MetaKeyZone] = reg.Zone
+	}
+	if reg.Scheme != "" {
+		md[discovery.MetaKeyScheme] = reg.Scheme
+	}
+	return md
+}
+
 // splitAddr splits a "host:port" advertised address into a host and numeric
 // port, returning an explanatory error on either malformation.
-func splitAddr(addr string) (string, uint64, error) {
-	host, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		return "", 0, errutil.Explain(err, "registry-nacos: addr %q must be host:port", addr)
-	}
-	port, err := strconv.ParseUint(portStr, 10, 64)
-	if err != nil {
-		return "", 0, errutil.Explain(err, "registry-nacos: addr %q has a non-numeric port", addr)
-	}
-	return host, port, nil
-}

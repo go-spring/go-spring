@@ -1,7 +1,7 @@
 # starter-config-file 使用说明 — 参考手册
 
 详细使用参考。总览见 [README_CN.md](README_CN.md)。所有行为声明均对照 starter 源码
-（`starter.go`、`filewatch.go`、`configtree.go`）、gs 核心
+（`watch.go`、`filewatch.go`、`configtree.go`）、gs 核心
 （`spring/conf/provider/provider.go`、`spring/gs/internal/gs_conf/conf.go`、
 `spring/gs/internal/gs_app/app.go`）以及冒烟通过的 [example/](example/) 与
 [example-configtree/](example-configtree/)（两个 `check.sh` 均为绿色）核对。
@@ -133,7 +133,7 @@ echo 'demo:\n  message: flipped' > example/mount/application.yaml
 ```
 import starter-config-file
   ├─ init: conf.RegisterProvider("file-watch", controller.Load)      (filewatch.go:50)
-  └─ init: conf.RegisterProvider("configtree", controller.LoadConfigTree)  (configtree.go:43)
+  └─ init: conf.RegisterProvider("configtree", controller.load)  (configtree.go:43)
         │
 gs.Run() → App.Start()                                               (app.go:285)
   1. 挂载 gs.RefreshProperties / gs.AppStarted 门面目标
@@ -161,16 +161,17 @@ controller 之所以不需要是 bean，尽管配置加载发生在 bean 装配�
   （gs_conf/conf.go:210-215）。
 - import 列表逗号分隔并去重（`Imports []string value:"${spring.config.import:=}"`，
   gs_conf/conf.go:218）。
-- watcher 按目录去重（`watched` map，starter.go:86-106）：启动加载和之后的每次刷新都会
-  重新调用 `Load`/`LoadConfigTree`，不去重则每次刷新叠加一个 fsnotify watcher。
+- watcher 按目录去重（`watched` map，watch.go:86-106）：启动加载和之后的每次刷新都会
+  重新调用 `Load`/`load`，不去重则每次刷新叠加一个 fsnotify watcher。
 
 ### 2.2 一次文件变更，逐层走读
 
 1. 编辑器或 kubelet 写入新的时间戳目录并把 `..data` rename 到它上面（原子）。
 2. fsnotify 在**目录上**送出 CREATE/RENAME 事件（文件 inode 已变 —— 这正是 watch 挂在
-   父目录而非文件本身的原因，filewatch.go:80-86）。
+   父目录而非文件本身的原因，filewatch.go:80-86）。常见编辑器同样以原子 rename 保存，
+   因此普通编辑走的也是同一条路径。
 3. `watchLoop` 对每个事件都响应、不过滤文件名（这是正确的：K8s 更新表现为 `..data` 上的
-   事件而非 key 文件上的事件 —— starter.go:112-116）→ `TriggerRefresh`。
+   事件而非 key 文件上的事件 —— watch.go:112-116）→ `TriggerRefresh`。
 4. `RefreshProperties` 在应用未完成装配时拒绝执行（app.go:248）；否则重新跑完整配置
    加载 —— 两个 provider、环境变量、命令行参数 —— 按优先级合并后原子替换 `gs.Dync`
    值。一次交换通常产生两个事件（临时符号链接 create + rename），因此每次更新会看到
@@ -200,7 +201,7 @@ gs 核心解析的 import 字符串文法 `[optional:]<provider>:<path>`（provi
 ### 3.2 不存在的东西
 
 没有刷新间隔、防抖、include/exclude 或格式 query 参数；没有 `enabled` key；没有专属
-log tag（用共享的 `_app_def` 基础设施 tag）；没有健康检查；没有指标。
+log tag `_app_config_file`（见 README）；没有健康检查；没有指标。
 
 ---
 
@@ -257,7 +258,7 @@ spring.config.import=optional:file-watch:/etc/config/application.yaml
 
 ### 4.5 可观测信号
 
-log tag `_app_def`（基础设施默认）：每次加载 —— `loading ... from <path>`（Debug）、
+log tag `_app_config_file`：每次加载 —— `loading ... from <path>`（Debug）、
 `loaded ... keys=<n>`（Info）、`optional ... not found (skipped)`（Warn）。无指标/span；
 刷新次数只能从重复的 `loaded` 行推断。
 

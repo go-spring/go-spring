@@ -132,3 +132,35 @@ example ships an `ENC(...)` value end-to-end.
   field via a two-phase, atomic commit.
 - Any bound value wrapped in `ENC(...)` / `{cipher}` is decrypted by the
   `spring/conf/decrypt` seam during binding.
+
+## Design Notes
+
+**Polling, because Vault has no push.** Vault exposes no native change
+notifications, so polling is the only option. Rather than build a fake push
+interface, the starter puts its effort into polling cheaply and detecting each
+change exactly once.
+
+**The change baseline is what the application actually loaded.** Every
+successful load records a shared fingerprint of the secret's data; the polling
+loop compares its own read against that baseline, and a detected change reruns
+the provider, which reseeds the fingerprint — so one change fires exactly one
+refresh. Basing the baseline on the watcher's own first poll would silently
+drop the `optional:` case where the secret is created only after startup, and
+the seeded baseline means startup itself never fires a spurious refresh. The
+watcher is likewise registered before the secret is first read, so hot-reload
+works even when the secret does not exist yet.
+
+**Token resolution is deliberately out of band.** The token is resolved from
+the query string, `VAULT_TOKEN`, or a token file — never from a
+`spring.config.vault.*` property. A decryption seam that itself reads
+properties could otherwise enter a chicken-and-egg loop with the token.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_vault` (vault config source). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_vault.type=Logger
+logger.config_vault.level=WARN
+logger.config_vault.tag=_app_config_vault
+```

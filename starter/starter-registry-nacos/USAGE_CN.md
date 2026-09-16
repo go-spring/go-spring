@@ -1,7 +1,7 @@
 # starter-registry-nacos 使用说明 — 参考手册
 
 详细使用参考。总览见 [README_CN.md](README_CN.md)。所有行为声明均已对照 starter 源码
-（`starter.go`、`config.go`、`center.go`、`registrar.go`、`discovery_nacos.go`）、注册核心
+（`starter.go`、`config.go`、`starter.go`、`registrar.go`、`discovery_nacos.go`）、注册核心
 （`../starter-registry/starter.go`、`../starter-registry/config.go`）与可运行的
 [example/](example/)（docker-compose + `check.sh`）核实。**Nacos 自身语义
 （服务/分组/命名空间/集群、ephemeral 实例、心跳）见
@@ -14,11 +14,11 @@ bean 承载 ——
   本进程注册进每一个已配置的 Nacos 中心。面向 VM / 裸机 / 混合部署；纯 Kubernetes 下平台
   已替你注册 Pod。
 - **Consumer 半区**（自身零配置）：同一个 bean 就是一个 `cloud/discovery` 后端，client
-  starter（gateway 的 `lb://` 路由、`spring.http-client.backends.<n>.discovery` 等）通过引用
+  starter（gateway 的 `lb://` 路由、`spring.http-client.instances.<n>.discovery` 等）通过引用
   bean 名 `nacos.<name>` 来解析。
 
 **激活方式**：每个 `spring.registry.nacos.<name>` 块即一个注册中心 —— 一个共享 naming
-client、一次启动探测、一套生命周期（`center.go`）。名为 `nacos.<name>` 的 bean 同时导出
+client、一次启动探测、一套生命周期（`starter.go`）。名为 `nacos.<name>` 的 bean 同时导出
 `discovery.Registrar`（设置了 `spring.registry.service-name` 时由 starter-registry 核心收集
 —— 纯消费方应用不注册任何实例）与 `discovery.Discovery`（按 bean 名引用，纯提供方不为读
 侧付出任何成本）。
@@ -122,7 +122,7 @@ spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
 # 路由的负载均衡策略不是 gateway 的 key，而是该路由标签上的治理规则：
 # govern.rules[N].resources=gateway:orders + govern.rules[N].balancer=weighted
-# （见 cloud/governance/CONFIG_CN.md §3.1）
+# （见 cloud/governance/README.md §3.1）
 ```
 
 **验证**（nacos 来自 `example/docker-compose.yml` —— `docker compose up -d`，然后等
@@ -152,14 +152,14 @@ starter 只按块贡献 registrar bean：
 import starter-registry-nacos
   ├─ 每个块 ${spring.registry.nacos.<name>}：Provide(newNacosBackend)
   │    Name("nacos."+name).Export(As[discovery.Discovery], As[discovery.Registrar])
-  │    条件：gs.OnProperty("spring.registry.nacos")                   [center.go]
+  │    条件：gs.OnProperty("spring.registry.nacos")                   [starter.go]
   └─ import starter-registry（核心，每进程恰一次）
        └─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
             条件：gs.OnProperty("spring.registry.service-name")
 gs.Run()
   ├─ conf.BindEach 遍历 spring.registry.nacos.* → 每块一份 NacosConfig
   ├─ 每块 newNacosBackend：建 nacos naming client + FAIL-FAST 探活
-  │    （GetAllServicesInfo 取 1 行 —— server 不可达/凭证错误直接终止启动）[center.go]
+  │    （GetAllServicesInfo 取 1 行 —— server 不可达/凭证错误直接终止启动）[starter.go]
   ├─ registryServer 经 []discovery.Registrar 切片注入收集所有后端的 registrar
   │    （跨所有后端 —— nacos、zookeeper……）
   ├─ Run：就绪前校验 service-name/addr 非空且 registrar ≥ 1 个
@@ -220,6 +220,7 @@ gs.Run()
 | `cluster` | string | DEFAULT | 两半共享的 Nacos 集群名。 | provider 在集群 X、本块钉在别处 → 看不到。 |
 | `username` / `password` | string | "" | Nacos 鉴权；由启动探活验证。 | 凭证错误 → 启动在探活处失败，而非首次 Register。 |
 | `timeout-ms` | uint64 | 5000 | 界定每次 nacos API 调用（含探活）。 | 过小 → 慢链路上探活/注册抖动。 |
+| `health.enabled` | bool | true | 贡献名为 `registry-nacos:<name>` 的 `health.Indicator` bean,探针在块的 namespace/group 内做一次单服务列举(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 服务端健康对 readiness 探针不可见 |
 
 同一 `<name>` 的两个块会在容器里因 bean 重名而响亮报错；不同后端之间的块名永不冲突
 （bean 名带后端类型，如 `nacos.main` 与 `zookeeper.main`）。
@@ -237,10 +238,10 @@ gs.Run()
 ### 3.3 发现（零 key —— 引用 bean 名）
 
 不存在按后端命名的 discovery 配置路径。每个块的 bean **就是**发现后端，名为
-`nacos.<name>`（`center.go`），共享该块的 naming client、namespace、group 与 cluster ——
+`nacos.<name>`（`starter.go`），共享该块的 naming client、namespace、group 与 cluster ——
 读写用的是同一组值，天然不会漂移。client 按 bean 名引用：gateway 的
 `spring.gateway.discovery=nacos.main` / 路由级 `upstream.discovery=nacos.main`、
-`spring.http-client.backends.<n>.discovery=nacos.main` 等。读侧在首次引用前零成本：纯提供方
+`spring.http-client.instances.<n>.discovery=nacos.main` 等。读侧在首次引用前零成本：纯提供方
 不为它付出任何成本。要从多个中心解析，在需要处分别引用各中心的 bean 名即可。
 
 ---

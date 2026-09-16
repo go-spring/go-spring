@@ -7,7 +7,7 @@ tests plus a docker-compose etcd end-to-end boot). **etcd's own semantics (lease
 auth) are [etcd documentation](https://etcd.io/docs/)** — everything below is go-spring's increment.
 
 **Model**: config is NAMED BLOCKS — each `spring.registry.etcd.<name>.*` block describes ONE etcd
-cluster and becomes ONE backend bean named `etcd.<name>` (`center.go`). The bean implements BOTH
+cluster and becomes ONE backend bean named `etcd.<name>` (`starter.go`). The bean implements BOTH
 sides of the naming idiom: `discovery.Registrar` (write — collected by the `registryServer` from
 the [starter-registry](../starter-registry) core, imported transitively, which registers into
 EVERY configured center across backends) and `discovery.Discovery` (read — consumers cite the bean
@@ -140,7 +140,7 @@ etcdctl get /services/orders/ --prefix
 ```
 import starter-registry-etcd (transitively imports starter-registry)
   ├─ per ${spring.registry.etcd.<name>} block: gs.Provide(newEtcdBackend).Name("etcd.<name>")
-  │      Module Condition: OnProperty("spring.registry.etcd")       [center.go]
+  │      Module Condition: OnProperty("spring.registry.etcd")       [starter.go]
   │      Export(As[discovery.Discovery], As[discovery.Registrar]) + Destroy(Close)
   │
   ├─ starter-registry core: gs.Provide(NewServer).Name("registryServer")
@@ -153,7 +153,7 @@ gs.Run()
   │        ${spring.registry} → Server.Config field
   ├─ newEtcdBackend (per block): clientv3.New + Status probe on endpoints[0] —
   │      unreachable/misauthed cluster FAILS STARTUP here, not on first
-  │      Register; once per block                                   [center.go]
+  │      Register; once per block                                   [starter.go]
   ├─ discovery half of each backend (lazy) resolves on the block's client at first use
   ├─ Runners start → readiness signal fires
   ├─ registryServer.Run: validate service-name/addr + ≥1 registrar
@@ -252,12 +252,13 @@ prefix check); every block is bound via `BindEach` and probed at boot.
 
 | key | type | default | behavior / interactions | misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `endpoints` | []string | — | Required per block. Probed at boot: `Status` on `endpoints[0]`. | unset: block fails bind (`endpoints is required`); unreachable: startup fails `registry-etcd: startup probe failed` (`center.go`) |
+| `endpoints` | []string | — | Required per block. Probed at boot: `Status` on `endpoints[0]`. | unset: block fails bind (`endpoints is required`); unreachable: startup fails `registry-etcd: startup probe failed` (`starter.go`) |
 | `username` / `password` | string | "" | etcd auth credentials. | auth-enabled cluster without them → probe fails at startup |
 | `dial-timeout` | duration | 5s | Bounds client dial AND the startup probe timeout. | too low → flaky startup failures on slow networks |
 | `ttl` | duration | 15s | Lease TTL; rounded up to whole seconds, min 1s. ⚠ `<=0` silently becomes 15s, not a bind error. | too long delays crash-eviction to ~TTL; 0 does not disable anything |
 | `key-prefix` | string | `/services/` | Prepended to every key (read AND write share it). ⚠ must equal the block the consumer cites — the coupling is documented but never validated. | mismatch → provider registers, consumers resolve nothing, both "succeed" |
 | `tls.*` | tlsconf | off | Shared `cloud/tlsconf` block: `enabled`, `cert-file`, `key-file`, `ca-file`, `server-name`, `insecure-skip-verify`. | wrong CA → startup probe failure |
+| `health.enabled` | bool | true | Contributes a `health.Indicator` bean named `registry-etcd:<name>` probing `endpoints[0]` (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the cluster's health is invisible to readiness probes |
 
 Two blocks = two centers = dual registration (the registryServer registers into both). Mixing
 backends (an etcd block + a zookeeper block in one app) works identically — the registrar
@@ -276,8 +277,8 @@ collection is backend-agnostic.
 ### 3.3 Discovery — cite the block's bean name (no config)
 
 There is no discovery configuration path. Every block's backend bean IS a
-`cloud/discovery.Discovery` named `etcd.<name>` on the block's shared client (`center.go`).
-Client starters cite that bean name (`spring.http-client.backends.<n>.discovery=etcd.main`).
+`cloud/discovery.Discovery` named `etcd.<name>` on the block's shared client (`starter.go`).
+Client starters cite that bean name (`spring.http-client.instances.<n>.discovery=etcd.main`).
 The bean is lazy — a pure provider never resolves, never pays for the read half. A pure consumer
 configures only connection blocks (no `service-name`/`addr`) and registers nothing.
 Multi-cluster discovery is just multiple blocks: cite whichever block's cluster you want to read
@@ -341,7 +342,7 @@ All drills use `etcdctl` (or `curl` v3 API) against the §1 stack. Keys:
    events resume.
 
 8. **Bad cluster fail-fast**: set a block's `endpoints=127.0.0.1:9999`, boot → startup fails with
-   `registry-etcd: startup probe failed for 127.0.0.1:9999` (`center.go`) — not a
+   `registry-etcd: startup probe failed for 127.0.0.1:9999` (`starter.go`) — not a
    silent runtime gap.
 
 Runtime logs carry tag `_app_registry_etcd`: `creating etcd registrar`, `registering service=...`,

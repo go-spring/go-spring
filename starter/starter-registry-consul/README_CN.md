@@ -81,6 +81,11 @@ spring.registry.metadata.version=v1
 | `datacenter` | (空) | 注册到的 datacenter,空则用 agent 的。 |
 | `token` | (空) | ACL token。 |
 | `namespace` | (空) | Consul Enterprise namespace。 |
+| `tls.enabled` | `false` | 打开共享 TLS 配置块（配合 `scheme=https`）。 |
+| `tls.ca-file` | (空) | Consul 服务端 CA 证书（自建 CA）。 |
+| `tls.cert-file` | (空) | mTLS 客户端证书；需配合 `tls.key-file`。 |
+| `tls.key-file` | (空) | mTLS 客户端私钥；需配合 `tls.cert-file`。 |
+| `tls.insecure-skip-verify` | `false` | 跳过服务端证书校验（仅测试用）。 |
 | `ttl` | `15s` | TTL 健康检查;starter 以 TTL 一半的间隔心跳。 |
 | `deregister-critical-after` | `1m` | 检查持续 critical 超过此时长(如崩溃后),Consul 自动摘除实例。 |
 
@@ -109,7 +114,7 @@ spring.registry.consul.main.address=127.0.0.1:8500
 spring.registry.service-name=orders
 spring.registry.addr=10.0.0.5:8080
 # 发现:引用块的 bean 名即可,无需任何配置
-spring.http-client.backends.users.discovery=consul.main
+spring.http-client.instances.users.discovery=consul.main
 ```
 
 discovery bean 是惰性的——从不做解析的纯 provider 不会为它付出任何代价。**纯消费方**
@@ -118,7 +123,7 @@ discovery bean 是惰性的——从不做解析的纯 provider 不会为它付�
 ```properties
 # 纯消费应用:只配连接块,无 service-name/addr,不注册
 spring.registry.consul.main.address=127.0.0.1:8500
-spring.http-client.backends.users.discovery=consul.main
+spring.http-client.instances.users.discovery=consul.main
 ```
 
 多 agent 发现现在就是多个块:注册进 `consul.main` 与 `consul.dr` 的同时从 `consul.dr`

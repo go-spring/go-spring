@@ -21,6 +21,7 @@ package StarterNeo4j
 import (
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -78,7 +79,11 @@ type Config struct {
 	// point, so this is a one-shot resolution at startup — address changes after
 	// startup are not picked up until the client is rebuilt. When empty, the URI
 	// host is used unchanged.
-	ServiceName string `value:"${service-name:=}"`
+	// Addressing is the shared discovery-citation block (see discovery.Addressing
+	// for the shared contract); the family-specific caveats above the fields it
+	// replaced still apply. Discovery falls back to ${spring.neo4j.default.discovery} via
+	// the starter wiring.
+	discovery.Addressing
 
 	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
 	// "https"). Empty (the default) returns every scheme; set it when a service
@@ -86,11 +91,4 @@ type Config struct {
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
 
-	// Discovery names the discovery backend bean that resolves ServiceName.
-	// It is only consulted when ServiceName is set. The starter wiring resolves
-	// this label to the backend bean and hands the result to the client assembly
-	// (and on to the Driver) as the backend argument. Empty means unset: no
-	// discovery backend is wired and the entry must not route by service-name
-	// alone.
-	Discovery string `value:"${discovery:=}"`
 }

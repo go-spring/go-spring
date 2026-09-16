@@ -171,6 +171,11 @@ gs.Run()
   触发刷新；KV v2 version 号被忽略。
 - **watcher 从不重读 token**：过期 token 的 client 仍按
   address|namespace|token 缓存，且 `watchLoop` 吞掉读错误——见 §4.4。
+- **watcher 在首次读取 secret 之前注册**（上面链路中 `registerWatch` 先于
+  `readSecret`），因此 `optional:` 且启动时还不存在的 secret，创建之后依然能热刷新。
+- **指纹基线是共享的，而非每次轮询自建**：每次成功的 `Load` 都会写入供轮询循环比较的
+  指纹。因此一次变更恰好触发一次刷新——provider 重跑会重新播种基线——启动本身也不会引发
+  伪刷新（加载在首轮轮询前已播种指纹）。
 
 ### 2.3 一次轮换，逐层走读
 
@@ -332,4 +337,4 @@ env -u VAULT_TOKEN go run .   # ERROR "no vault token found (set VAULT_TOKEN, VA
 6. example 漂移：`example/check.sh` 只 export `VAULT_TOKEN` 没有
    `GS_CONFIG_DECRYPT_AES_KEY`，`example.go` 声明了未使用的 `aesKey` 常量、init 注释声称
    设置了实际没设的环境变量——按现脚本 ENC 解密一腿的冒烟无法通过；需修脚本或 init。
-7. 无健康检查、无指标、无专属 log tag（用 `_app_def`）：配置陈旧与否离开外部探测不可观测。
+7. 无健康检查、无指标；有专属 log tag `_app_config_vault`：变更与失败均记日志，但配置陈旧与否离开外部探测不可观测。

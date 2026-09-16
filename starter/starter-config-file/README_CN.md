@@ -123,3 +123,31 @@ K8s Secret/ConfigMap 挂载是扁平的（一个 key 一个文件；key 名允�
   都会变——这正是监听必须落在**父目录**（稳定）而非**文件本身**（每次更新 inode 都被替换）上的原因。
 - 变更触发监听器，其回调直接调用框架的进程级门面 `gs.RefreshProperties()`：重新加载所有
   配置源（重跑本 Provider），并通过两阶段原子提交重新绑定所有 `gs.Dync` 字段。
+
+## 设计要点
+
+**两个 Provider、一条共享桥接——且没有面向用户的 bean。** `file-watch` 与 `configtree` 都在
+`init()` 里经 `conf.RegisterProvider` 注册，挂在同一个内部 controller 上；本 starter 不暴露
+任何 bean、property key 或 server。Provider 在配置加载阶段运行，早于任何 bean 存在——这正是
+刷新走进程级门面而非依赖注入的原因。
+
+**目录合并——否决。** 把一目录的配置文档合并进同一个属性集没有良定义的先后，因此 `file-watch`
+拒绝这么做：优先级归属于 `spring.config.import` 的行序，分层覆盖按每个文件一行 import 表达。
+标量 key 文件目录则是另一种模型——路径唯一、key 永不冲突——由 `configtree` 承担。
+
+**轮询——否决。** fsnotify 能立刻观察到 kubelet 的软链交换；轮询循环只会增加 CPU 开销，
+不会缩短反应时间。
+
+**不接受 `?format=` 覆盖。** `file-watch` 指向一个具体文件，按扩展名走共享的 conf reader
+注册表路由解析；要求可识别的扩展名让 import 字符串保持无 query、依赖也更轻。`configtree`
+挂载中的 value 是裸字符串，从不解析。
+
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_config_file`（文件配置源）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.config_file.type=Logger
+logger.config_file.level=WARN
+logger.config_file.tag=_app_config_file
+```

@@ -18,6 +18,7 @@ package StarterRegistryEtcd
 
 import (
 	"errors"
+	"go-spring.org/cloud/discovery"
 	"sync"
 	"testing"
 	"time"
@@ -92,7 +93,7 @@ func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
 	r, fails, lastKA := newHealRegistrar()
 	fails.set(errors.New("etcd down"), errors.New("etcd down"))
 
-	h := newHold(instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
+	h := newHold(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka1); close(done) }()
@@ -123,7 +124,7 @@ func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
 func TestWatchKeepAliveExitsOnStopWithoutRePublish(t *testing.T) {
 	r, fails, _ := newHealRegistrar()
 
-	h := newHold(instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
+	h := newHold(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	ka := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka); close(done) }()
@@ -141,7 +142,7 @@ func TestWatchKeepAliveExitsOnStopWithoutRePublish(t *testing.T) {
 // stopHold must be safe against a concurrent publish storing the cancel func,
 // and idempotent when Deregister and a re-Register retire the same hold.
 func TestHoldStopIdempotent(t *testing.T) {
-	h := newHold(instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
+	h := newHold(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
 	h.stop()
 	h.stop() // must not panic on double close
 	assert.That(t, h.stopped()).True()

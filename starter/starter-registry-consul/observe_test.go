@@ -174,10 +174,10 @@ func TestRegisterFailureIsReported(t *testing.T) {
 		client:     closedPortClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
-		regs:       map[string]instance{},
+		regs:       map[string]discovery.Instance{},
 	}
 
-	err := r.Register(context.Background(), instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
+	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	assert.Error(t, err).NotNil()
 
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
@@ -193,13 +193,13 @@ func TestRegisterFailureIsReported(t *testing.T) {
 // the Registrar interface, so this asserts it is reported anyway — with
 // reason=self_heal, and with the gauge following each attempt's outcome.
 func TestSelfHealIsReported(t *testing.T) {
-	in := instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1}
 	id := serviceID(in)
 	r := &consulRegistrar{
 		client:     closedPortClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
-		regs:       map[string]instance{id: in},
+		regs:       map[string]discovery.Instance{id: in},
 	}
 	gauge := map[string]string{"system": obsSystem, "service": "payments"}
 
@@ -227,7 +227,7 @@ func TestSelfHealIsReported(t *testing.T) {
 // 404 for an id it no longer holds is that no-op, and it must be reported as
 // success so a clean shutdown does not look like a wave of deregister failures.
 func TestDeregisterRepeatIsANoOp(t *testing.T) {
-	in := instance{ServiceName: "orders-repeat", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-repeat", Addr: "1.2.3.4:80", Weight: 1}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`Unknown service ID "orders-repeat-1.2.3.4:80"`))
@@ -239,7 +239,7 @@ func TestDeregisterRepeatIsANoOp(t *testing.T) {
 		client:     client,
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
-		regs:       map[string]instance{},
+		regs:       map[string]discovery.Instance{},
 	}
 
 	assert.Error(t, r.Deregister(context.Background(), in)).Nil()
@@ -252,13 +252,13 @@ func TestDeregisterRepeatIsANoOp(t *testing.T) {
 // duration metric — the drain path in particular, which the registry core does
 // not log.
 func TestDeregisterAndWeightChangeAreReported(t *testing.T) {
-	in := instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
 	id := serviceID(in)
 	r := &consulRegistrar{
 		client:     reachableClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
-		regs:       map[string]instance{id: in},
+		regs:       map[string]discovery.Instance{id: in},
 	}
 	ctx := context.Background()
 

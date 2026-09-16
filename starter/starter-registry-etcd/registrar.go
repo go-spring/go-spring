@@ -28,18 +28,20 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// instance is the process advertisement the registrar publishes; it is the
-// neutral [discovery.Instance] contract. The crash-safety contract every
-// registry starter follows lives in starter/DESIGN §3 (Register must
-// self-renew so correctness never depends on Deregister).
-type instance = discovery.Instance
-
-// instanceValue is the JSON payload stored at an instance key. A discovery
-// backend reading the same prefix reconstructs an Endpoint from it.
+// instanceValue is THIS backend's stored JSON payload; a discovery reader of
+// the same prefix/path reconstructs an Endpoint from it. The near-identical
+// struct in the zookeeper starter is deliberate duplication, not a shared
+// contract: the wire format is a frozen compatibility surface owned by each
+// backend's storage (old entries must keep decoding), so sharing one type
+// would couple the two formats' evolution - a field added for one backend's
+// needs would silently become part of the other's stored data.
 type instanceValue struct {
 	ServiceName string            `json:"service_name"`
 	Addr        string            `json:"addr"`
 	Weight      int               `json:"weight,omitempty"`
+	Version     string            `json:"version,omitempty"`
+	Zone        string            `json:"zone,omitempty"`
+	Scheme      string            `json:"scheme,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
@@ -74,7 +76,7 @@ type etcdRegistrar struct {
 type hold struct {
 	leaseID clientv3.LeaseID
 	cancel  context.CancelFunc
-	reg     instance
+	reg     discovery.Instance
 
 	// done is closed by stop to end the keep-alive drain and the re-register
 	// retry loop; stopOnce makes stop idempotent (Deregister + re-Register).
@@ -83,7 +85,7 @@ type hold struct {
 }
 
 // newHold builds a hold for reg with its stop signal wired up.
-func newHold(reg instance) *hold {
+func newHold(reg discovery.Instance) *hold {
 	return &hold{reg: reg, done: make(chan struct{})}
 }
 
@@ -121,7 +123,7 @@ func (r *etcdRegistrar) stopHold(h *hold) {
 
 // newEtcdRegistrar returns a registrar writing through cli (the shared center
 // client; the cluster was already probed when cli was built) with c's prefix
-// and TTL. It does NOT close cli — the owner (etcdCenter) does.
+// and TTL. It does NOT close cli — the owner (etcdBackend) does.
 func newEtcdRegistrar(c EtcdConfig, cli *clientv3.Client) (*etcdRegistrar, error) {
 	if cli == nil {
 		return nil, errutil.Explain(nil, "registry-etcd: nil etcd client")
@@ -140,7 +142,7 @@ func newEtcdRegistrar(c EtcdConfig, cli *clientv3.Client) (*etcdRegistrar, error
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
 // or a stable one derived from the service name and advertised address.
-func instanceID(reg instance) string {
+func instanceID(reg discovery.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -149,7 +151,7 @@ func instanceID(reg instance) string {
 
 // keyFor returns the etcd key an instance is written under: prefix + service +
 // "/" + instance id.
-func (r *etcdRegistrar) keyFor(reg instance) string {
+func (r *etcdRegistrar) keyFor(reg discovery.Instance) string {
 	return r.keyPrefix + reg.ServiceName + "/" + instanceID(reg)
 }
 
@@ -170,7 +172,7 @@ func normalizeWeight(w int) int {
 // restart, lease lost), re-registers with backoff so the key never silently
 // vanishes. Registering the same instance again refreshes it: the previous
 // lease is revoked first.
-func (r *etcdRegistrar) Register(ctx context.Context, reg instance) error {
+func (r *etcdRegistrar) Register(ctx context.Context, reg discovery.Instance) error {
 	if err := errutil.RequireField("registry-etcd", "addr", reg.Addr); err != nil {
 		return err
 	}
@@ -214,6 +216,9 @@ func (r *etcdRegistrar) etcdPublish(h *hold) (<-chan *clientv3.LeaseKeepAliveRes
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,
 		Weight:      reg.Weight,
+		Version:     reg.Version,
+		Zone:        reg.Zone,
+		Scheme:      reg.Scheme,
 		Metadata:    reg.Metadata,
 	})
 	if err != nil {
@@ -305,7 +310,7 @@ func (r *etcdRegistrar) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.
 // no lease is granted, revoked or re-kept-alive, so the instance never
 // disappears from discovery mid-update and watchers simply see a new value
 // for the same key. It fails if reg was never registered through Register.
-func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int) error {
+func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]
@@ -319,6 +324,9 @@ func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg instance, weight i
 		ServiceName: updated.ServiceName,
 		Addr:        updated.Addr,
 		Weight:      updated.Weight,
+		Version:     updated.Version,
+		Zone:        updated.Zone,
+		Scheme:      updated.Scheme,
 		Metadata:    updated.Metadata,
 	})
 	if err != nil {
@@ -340,7 +348,7 @@ func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg instance, weight i
 
 // Deregister stops the keep-alive and revokes the lease, which deletes the key.
 // It is idempotent: deregistering an instance that is not registered is a no-op.
-func (r *etcdRegistrar) Deregister(ctx context.Context, reg instance) error {
+func (r *etcdRegistrar) Deregister(ctx context.Context, reg discovery.Instance) error {
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]

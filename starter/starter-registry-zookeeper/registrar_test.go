@@ -18,6 +18,7 @@ package StarterRegistryZookeeper
 
 import (
 	"encoding/json"
+	"go-spring.org/cloud/discovery"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -25,16 +26,16 @@ import (
 
 func TestInstanceID(t *testing.T) {
 	// An explicit ID is used verbatim.
-	assert.That(t, instanceID(instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
+	assert.That(t, instanceID(discovery.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
 	// Otherwise it is derived from name and addr so restarts replace the entry.
-	assert.That(t, instanceID(instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
+	assert.That(t, instanceID(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
 }
 
 func TestPathFor(t *testing.T) {
 	// The base path's trailing slash is normalised away at construction, so the
 	// znode path has exactly one separator per level.
 	r := &zkRegistrar{basePath: "/services"}
-	got := r.pathFor(instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
+	got := r.pathFor(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
 	assert.That(t, got).Equal("/services/orders/orders-1.2.3.4:80")
 }
 

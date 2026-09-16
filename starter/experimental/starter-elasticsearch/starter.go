@@ -50,7 +50,7 @@ func init() {
 			// does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("${spring.elasticsearch.instances."+name+".discovery:=none}?")),
+				gs.IndexArg(2, gs.TagArg("${spring.elasticsearch.instances."+name+".discovery:=${spring.elasticsearch.default.discovery:=none}}?")),
 				gs.IndexArg(3, gs.TagArg("${spring.elasticsearch.instances."+name+".driver:=${spring.elasticsearch.default.driver:=?}}")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the

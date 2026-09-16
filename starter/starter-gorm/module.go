@@ -99,9 +99,11 @@ func Module[C any](d Dialect[C]) {
 				return db, nil
 			},
 				// Bind the constructor's disc parameter: the backend bean named
-				// by this entry's ${discovery} key ("none" is a never-existing
-				// bean name, so an unset key yields the optional nil).
-				gs.IndexArg(1, gs.TagArg("${"+d.Prefix+".instances."+name+".discovery:=none}?")),
+				// by this entry's ${discovery} key, falling back to the dialect
+				// family's ${<prefix>.default.discovery} ("none" is a
+				// never-existing bean name, so an unset key yields the optional
+				// nil).
+				gs.IndexArg(1, gs.TagArg("${"+d.Prefix+".instances."+name+".discovery:=${"+d.Prefix+".default.discovery:=none}}?")),
 			).Name(beanName).Init((*DB).Init).Destroy((*DB).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the

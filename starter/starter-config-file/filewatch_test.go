@@ -23,7 +23,7 @@ import (
 )
 
 func TestLoad_ParsesByExtension(t *testing.T) {
-	ctl := &fileWatchCtrl{}
+	ctl := newFileWatchCtrl()
 
 	root := t.TempDir()
 	path := filepath.Join(root, "app.properties")
@@ -41,7 +41,7 @@ func TestLoad_ParsesByExtension(t *testing.T) {
 }
 
 func TestLoad_YamlNestedFlattened(t *testing.T) {
-	ctl := &fileWatchCtrl{}
+	ctl := newFileWatchCtrl()
 	root := t.TempDir()
 	path := filepath.Join(root, "app.yaml")
 	if err := os.WriteFile(path, []byte("server:\n  port: 8080\n"), 0o644); err != nil {
@@ -58,7 +58,7 @@ func TestLoad_YamlNestedFlattened(t *testing.T) {
 }
 
 func TestLoad_UnsupportedExtensionErrors(t *testing.T) {
-	ctl := &fileWatchCtrl{}
+	ctl := newFileWatchCtrl()
 
 	root := t.TempDir()
 	path := filepath.Join(root, "readme.md") // no reader registered for .md
@@ -71,7 +71,7 @@ func TestLoad_UnsupportedExtensionErrors(t *testing.T) {
 }
 
 func TestLoad_EmptyPathErrors(t *testing.T) {
-	ctl := &fileWatchCtrl{}
+	ctl := newFileWatchCtrl()
 
 	if _, err := ctl.Load(false, ""); err == nil {
 		t.Fatalf("Load on empty path must error")
@@ -79,7 +79,7 @@ func TestLoad_EmptyPathErrors(t *testing.T) {
 }
 
 func TestLoad_OptionalMissingReturnsNil(t *testing.T) {
-	ctl := &fileWatchCtrl{}
+	ctl := newFileWatchCtrl()
 
 	m, err := ctl.Load(true, filepath.Join(t.TempDir(), "nope"))
 	if err != nil || m != nil {

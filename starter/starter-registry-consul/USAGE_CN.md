@@ -5,7 +5,7 @@
 ——本文只写绑定面。
 
 **模型**:配置是**命名块**——每个 `spring.registry.consul.<name>.*` 块描述一个 Consul
-agent,成为名为 `consul.<name>` 的后端 bean(`center.go`)。该 bean 同时实现命名体系的
+agent,成为名为 `consul.<name>` 的后端 bean(`starter.go`)。该 bean 同时实现命名体系的
 两半:`discovery.Registrar`(写侧——由传递依赖自动引入的
 [starter-registry](../starter-registry) 核心之 `registryServer` 收集,跨后端注册进
 **每一个**已配置中心)与 `discovery.Discovery`(读侧——消费方按 bean 名引用,如
@@ -40,6 +40,7 @@ blank-import + `gs.Run()`。注册器用 TTL 心跳保活;`PreStop` 反注册。
 | `namespace` | string | ""(Enterprise) | |
 | `ttl` | duration | 15s | 心跳间隔 |
 | `deregister-critical-after` | duration | 1m | 0 = 关闭;agent 卡死时可见性很快消失 |
+| `health.enabled` | bool | true | 贡献名为 `registry-consul:<name>` 的 `health.Indicator` bean,探针用一次 catalog 列表探 agent(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → agent 健康对 readiness 探针不可见 |
 
 ### `spring.registry.*`(实例,5 key)
 
@@ -53,7 +54,7 @@ blank-import + `gs.Run()`。注册器用 TTL 心跳保活;`PreStop` 反注册。
 ### 发现 —— 按块 bean 名引用(零配置)
 
 发现**无需任何自有配置**:每个块的后端 bean 本身就是 `cloud/discovery.Discovery`,名为
-`consul.<name>`(`center.go`),client 按 bean 名引用(`discovery=consul.main`)。
+`consul.<name>`(`starter.go`),client 按 bean 名引用(`discovery=consul.main`)。
 该 bean 惰性——纯 provider 从不解析、从不付费;纯消费方只配连接块(不设
 `service-name`/`addr`),不注册任何实例。多 agent 发现就是多个块:引用哪个块就从哪个
 agent 读。调用侧 `discovery.WithTag` 仍可逐次按 Consul 服务标签收窄查询。

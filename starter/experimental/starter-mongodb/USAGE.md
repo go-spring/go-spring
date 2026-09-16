@@ -256,7 +256,7 @@ There are no observability keys — observation is unconditional (see §3.3).
 | `max-conn-idle-time` | duration | `0` | 0 = no limit; e.g. `5m` prunes idle conns. ⚠ With `service-name`, a finite value recycles connections onto updated endpoints without a restart. | `0` + discovery → conns linger on a removed endpoint until they break. |
 | `service-name` | string | — | Resolve addressing via the registered discovery backend; a loader-backed (Pool-`Pick`) dialer replaces the URI hosts per connection [starter.go:133-144]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the loader/pool is actually consulted. |
 | `scheme` | string | — | Narrows discovery endpoints to one transport scheme (e.g. `tls`). Only consulted when service-name is set. | — |
-| `discovery` | string | — | Which registered discovery backend resolves service-name. | Unset or an unregistered name while service-name is set → boot error. |
+| `discovery` | string | — | Which registered discovery backend resolves service-name. Falls back to `${spring.mongodb.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 | `tls.*` | group | off | Shared `tlsconf` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:112-119]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
 
 ### 3.2 Resilience / fault (govern.*, not under the instance prefix)
@@ -277,7 +277,7 @@ consistent_hash / weighted / zone_aware / random / p2c) and `outlier-threshold` 
 re-dial of existing connections. Direct (URI-only) instances have no candidate set, so these keys
 are inert for them. ⚠ The dialer's only outcome signal is the dial itself, so `outlier-threshold`
 evicts instances that keep refusing *connections*; per-command failures belong to the resilience
-executor above. See `cloud/governance/CONFIG_CN.md` §3.1.
+executor above. See `cloud/governance/README.md` §3.1.
 
 ### 3.3 Observability
 

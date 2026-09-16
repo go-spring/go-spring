@@ -345,6 +345,15 @@ func (t *task) queueWorker(ctx context.Context, scheduled time.Time) {
 		t.mu.Lock()
 		if t.queued {
 			scheduled, t.queued = t.queuedAt, false
+			// A fire parked while the scheduler is stopping stays parked: running
+			// it would feed an already-cancelled context into TryAcquire and log
+			// a bogus lock failure on every shutdown. Drop it silently instead —
+			// the fire belongs to a schedule that no longer exists.
+			if ctx.Err() != nil {
+				t.running = false
+				t.mu.Unlock()
+				return
+			}
 			t.mu.Unlock()
 			continue
 		}

@@ -1,7 +1,7 @@
 # starter-config-bus Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `bus.go`, `config.go`) and the runnable,
+against the starter source (`starter.go`, `config.go`) and the runnable,
 docker-gated [example/](example/) (`example/check.sh` smoke test). The bus is a config
 **event bus**: it carries refresh *signals* over NATS, never configuration content — the
 source of truth stays with your config center or local files. NATS's own semantics are
@@ -13,7 +13,7 @@ source of truth stays with your config center or local files. NATS's own semanti
 you can ship the import in a shared module without every app configuring NATS. Once any
 `spring.config.bus.*` key is present (setting `spring.config.bus.subject` alone is enough),
 the bean assembles and the autowire tag
-`${spring.config.bus.nats-instance:=config-bus}` (`bus.go:55`) requires a NATS instance named
+`${spring.config.bus.nats-instance:=config-bus}` (`starter.go:116`) requires a NATS instance named
 `config-bus` (or your override) to exist under `spring.nats.instances.*`; if it does not, container
 wiring fails and startup aborts. There is no separate `enabled` switch.
 
@@ -161,7 +161,7 @@ gs.Run() → App.Start()                                                       [
   │    ├─ ConfigBus fields autowired:
   │    │    Conn      ← NATS instance by name (${spring.config.bus.nats-instance:=config-bus})
   │    │    Config    ← ${spring.config.bus} value tags (config.go)
-  │    └─ bean Init hook: subscribe() — NATS Subscribe on Config.Subject      [bus.go:66-99]
+  │    └─ bean Init hook: subscribe() — NATS Subscribe on Config.Subject      [starter.go:136-171]
   │         logs "subscribed to bus subject=... prefixes=[...]"
   ├─ app.started = true            ← RefreshProperties is allowed from here on
   ├─ Runners → Servers → readiness
@@ -192,7 +192,7 @@ Two timing facts matter for a *bus*:
   (`spring.config.bus.*`, `spring.nats.instances.<name>.*`) are read once at wiring time. If a refresh
   event changes `spring.config.bus.subject`, the subscription does **not** move — the bean
   re-reads only via a restart. The same applies to `watch-prefixes`: `subscribe()` parses
-  them once (`bus.go:67-71`). So treat all `spring.config.bus.*` keys as boot-time constants;
+  them once (`starter.go:150-154`). So treat all `spring.config.bus.*` keys as boot-time constants;
   never put them under a namespace you expect to hot-reload.
 
 ### 2.3 Publish → subscribe → gs.Dync refresh, step by step
@@ -204,7 +204,7 @@ Two timing facts matter for a *bus*:
    `Conn.PublishMsgContext(ctx, ...)` — the ctx-aware entry, so the producer span is a child
    of the caller's trace and the W3C context rides the message header.
 3. Every instance subscribed to that subject receives the message inside a consumer span
-   that continues the publisher's trace; each runs `onMessage` (`bus.go`):
+   that continues the publisher's trace; each runs `onMessage` (`starter.go`):
    - empty payload → treated as a zero-value `RefreshEvent` (full-fleet refresh);
    - malformed JSON → counted `malformed`, warn-logged, and dropped;
    - `shouldRefresh(ev.Prefix)` filter: honor when the event prefix is
@@ -233,14 +233,14 @@ Note the refresh is whole-app, not scoped: `Prefix` filters *which instances rea
 ## 3. Per-key behavior reference
 
 All keys live under the top-level absolute prefix `spring.config.bus` (bound via value tags
-in `config.go`; the `nats-instance` tag sits on the bean struct itself in `bus.go`). None are
+in `config.go`; the `nats-instance` tag sits on the bean struct itself in `starter.go`). None are
 required — but see consequences.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.config.bus.subject` | string | `spring.config.refresh` | NATS subject for publish+subscribe; all instances sharing it form one bus. Read once at wiring — changing it via a refresh event does not resubscribe (§2.2). | Two fleets silently split if one instance typos the subject: refreshes propagate only within each half; no error anywhere. |
 | `spring.config.bus.watch-prefixes` | string | `` (empty) | Comma-separated prefix filter, parsed once in `subscribe()`. Empty = react to every event. Non-empty = react only to empty-prefix events or bidirectional prefix overlaps (`db` ↔ `db.pool`). ⚠ dead key for hot-reload: reparsed only on restart. | Over-scoped list refreshes more than intended (harmless but noisy); a prefix that never matches published prefixes makes the instance silently skip scoped refreshes while still honoring `Publish("")`. |
-| `spring.config.bus.nats-instance` | string | `config-bus` | Name of the `spring.nats.instances.<name>.*` connection injected as transport (autowire by instance name, `bus.go:55`). ⚠ the named instance must exist — this is the de-facto activation gate. | No matching `spring.nats.instances.<name>.*` block → container wiring failure at startup (the bean cannot be assembled). Sharing the name with a business NATS connection couples bus failures to that connection. |
+| `spring.config.bus.nats-instance` | string | `config-bus` | Name of the `spring.nats.instances.<name>.*` connection injected as transport (autowire by instance name, `starter.go:116`). ⚠ the named instance must exist — this is the de-facto activation gate. | No matching `spring.nats.instances.<name>.*` block → container wiring failure at startup (the bean cannot be assembled). Sharing the name with a business NATS connection couples bus failures to that connection. |
 
 Beyond these, the referenced NATS instance carries its own `spring.nats.instances.<name>.*` keys
 (url, auth, ...) — see starter-nats documentation. A NATS connection is a hard prerequisite;
@@ -281,7 +281,7 @@ unless your own subscription honors it.
 2. Publish `db` → refresh happens (`db` is watched).
 3. Publish `demo` → **no refresh** — `shouldRefresh` returns false and the message is
    dropped with a debug-level line `config bus: ignoring refresh event outside watched
-   prefixes (...)` (`bus.go:82-87`). This is the expected quiet opt-out; enable debug
+   prefixes (...)` (`starter.go:186-191`). This is the expected quiet opt-out; enable debug
    logging if you need to see it.
 4. Publish `""` → always refreshes, regardless of the watch list.
 
@@ -294,7 +294,7 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 ```
 
 Subscriber logs `ignoring malformed refresh event: ...` (Warn) and stays healthy. An
-**empty** payload is not malformed — it is a valid full-fleet refresh (`bus.go:74-81`). JSON
+**empty** payload is not malformed — it is a valid full-fleet refresh (`starter.go:178-184`). JSON
 with unknown fields is tolerated (standard unmarshal).
 
 ### 4.5 Drill: startup trap reproduction

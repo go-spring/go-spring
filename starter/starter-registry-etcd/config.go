@@ -52,6 +52,12 @@ type EtcdConfig struct {
 	// the shared spring/cloud/tlsconf block so every starter exposes the same
 	// tls.* keys.
 	TLS tlsconf.TLSConfig `value:"${tls}"`
+
+	// HealthEnabled controls whether the starter contributes a health.Indicator
+	// bean for this block (named "registry-etcd:<name>"). On by default; the
+	// indicator is only instantiated when a collector (e.g. starter-actuator)
+	// autowires it.
+	HealthEnabled bool `value:"${health.enabled:=true}"`
 }
 
 // ttlSeconds returns the lease TTL in whole seconds, clamped to a minimum of one

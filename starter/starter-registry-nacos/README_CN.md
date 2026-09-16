@@ -81,7 +81,7 @@ spring.registry.metadata.version=v1
 
 ```properties
 spring.registry.nacos.main.server=127.0.0.1:8848
-spring.http-client.backends.users.discovery=nacos.main
+spring.http-client.instances.users.discovery=nacos.main
 ```
 
 读写共享该块的 namespace/group/cluster，天然不会漂移。
@@ -99,6 +99,10 @@ spring.http-client.backends.users.discovery=nacos.main
 | `username` | （空） | 认证用户名，匿名集群留空。 |
 | `password` | （空） | 认证密码。 |
 | `timeout-ms` | `5000` | 每次调用超时，含启动探测。 |
+| `tls.enabled` | `false` | 打开共享 TLS 配置块（TLS 版 Nacos 服务端）。 |
+| `tls.ca-file` | (空) | 服务端 CA 证书（自建 CA）。 |
+| `tls.cert-file` / `tls.key-file` | (空) | mTLS 客户端证书/私钥。 |
+| `tls.insecure-skip-verify` | `false` | 跳过服务端证书校验（仅测试用）。 |
 
 实例配置，绑定于 `spring.registry`（描述实例本身，与注册中心后端无关）：
 

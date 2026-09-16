@@ -55,7 +55,7 @@ func TestNewPickPoolBindsSelection(t *testing.T) {
 	f := &fakeSelectionProvider{}
 	f.install(t)
 
-	c := Common{ServiceName: "user-db", Scheme: "tcp"}
+	c := Common{Addressing: discovery.Addressing{ServiceName: "user-db"}, Scheme: "tcp"}
 	backend := discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:3306", Healthy: true, Weight: 1})
 
 	const label = "gorm:mysql:user-db"

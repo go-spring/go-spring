@@ -79,22 +79,18 @@ type PoolSettings struct {
 type Common struct {
 	PoolSettings
 
-	// ServiceName is the service discovery name. When set, the connection dials a
-	// live instance resolved from the discovery backend instead of the configured
-	// address.
-	ServiceName string `value:"${service-name:=}"`
+	// Addressing is the shared discovery-citation block: ServiceName switches
+	// the entry to discovery routing (the connection then dials a live instance
+	// resolved from the backend instead of the configured address), Discovery
+	// cites the backend bean (falling back to ${<dialect-prefix>.default.
+	// discovery} via the module wiring). See discovery.Addressing for the
+	// shared contract.
+	discovery.Addressing
 	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
 	// "https"). Empty (the default) returns every scheme; set it when a service
 	// exposes both plain and secure instances and this client should reach only
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
-	// Discovery names the discovery backend bean that resolves ServiceName
-	// (bean name = label). Only consulted when ServiceName is set; the starter
-	// wiring resolves this label against every registered discovery backend
-	// bean and hands the result to the dialect's Build as its backend argument.
-	// Empty means unset: no discovery backend is wired and the entry must not
-	// route by service-name alone.
-	Discovery string `value:"${discovery:=}"`
 
 	// ObserveEnabled is the hard per-instance kill switch for the gorm observe
 	// plugin (trace span + metric + access log on every Create/Query/Update/
@@ -128,7 +124,7 @@ func (c PoolSettings) Pool() PoolConfig {
 func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (discovery.Resolver, error) {
 	if c.ServiceName != "" && backend == nil {
 		if c.Discovery == "" {
-			return nil, errutil.Explain(nil, "gorm: instance routes by service-name but sets no discovery backend (set <prefix>.instances.<name>.discovery to the name of a discovery backend bean)")
+			return nil, errutil.Explain(nil, "gorm: instance routes by service-name but sets no discovery backend (set <prefix>.instances.<name>.discovery or <prefix>.default.discovery to the name of a discovery backend bean)")
 		}
 		return nil, errutil.Explain(nil, "gorm: instance cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", c.Discovery)
 	}

@@ -40,7 +40,7 @@ import _ "go-spring.org/starter-governance-sentinel"
 driver 是**全进程选一次**,不按客户端选:治理文档用 `govern.driver` 指定,每个经
 治理中心解析 executor 的客户端都会拿到它。`govern.*` 键写在治理文档里 —— 那是
 它自己的一套系统,不是 `app.properties`(见
-[`cloud/governance/CONFIG_CN.md`](../../../cloud/governance/CONFIG_CN.md)):
+[`cloud/governance/README.md`](../../../cloud/governance/README.md)):
 
 ```properties
 govern.enabled=true

@@ -71,3 +71,31 @@ publish to hot-reload flow.
   the framework's process-level `gs.RefreshProperties()` facade. That reloads all
   configuration sources (re-running this provider) and re-binds every `gs.Dync`
   field via a two-phase, atomic commit.
+
+## Design Notes
+
+**The watcher is registered before the first read.** `registerWatch` runs before
+the initial `KV().Get`, so an `optional:` import whose key does not exist yet
+still hot-reloads — a later publish triggers a refresh that re-runs the provider.
+Reversing the order is a silent regression, so the sequencing is treated as a
+load-bearing constraint.
+
+**Config and discovery stay in separate starters.** `config` and `discovery`
+live at different layers (provider registration vs. bean wiring), so one
+mega-starter covering both would blur the module graph. The split mirrors Spring
+Cloud Alibaba's `nacos-config` / `nacos-discovery`.
+
+**A hand-rolled blocking query, not the `consul/api/watch` library.** The
+provider only needs "did the index change since last time", which a blocking
+`KV().Get` loop expresses in ~30 lines and keeps the watcher structurally
+identical to the etcd variant.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_consul` (consul config source). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_consul.type=Logger
+logger.config_consul.level=WARN
+logger.config_consul.tag=_app_config_consul
+```

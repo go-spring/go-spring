@@ -122,6 +122,9 @@ key 可以喂给任意 bean 的配置。etcd Get 本身发生在第 2 步——�
 - **顺序**：import 的 source 与文件进同一分层存储；后加载的覆盖先加载的（同上注释）。
 - **占位符解析**：import source 字符串先过 `conf.Resolve`，因此
   `etcd:${etcd.addr:=127.0.0.1:2379}/key` 可用。
+- **watch 为何先于 Get**：先装 watcher 封掉了"初始拉取为空与 watch 建立之间 key 被写入"
+  的竞态——`optional:` 导入一个尚不存在的 key 时，首次 PUT 仍能热加载：PUT 被观测到并
+  触发刷新，刷新重读该 key 即取到值。
 
 ### 2.2 watch → 刷新路径，逐步走读
 

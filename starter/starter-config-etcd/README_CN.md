@@ -64,6 +64,26 @@ etcd key 变更时，Provider 的 watcher 会触发一次应用属性刷新，�
 - key 变更会推送一次 watch 事件，其回调直接调用框架的进程级门面
   `gs.RefreshProperties()`：重新加载所有配置源（重跑本 Provider），并通过两阶段
   原子提交重新绑定所有 `gs.Dync` 字段。
+
+## 设计要点
+
+**Provider 必须自建 client。** Provider 运行在属性刷新阶段，早于任何 bean 存在，
+拿不到注入的连接——只能从 import 串自己构造 clientv3。客户端按
+`(endpoint, username, password)` 元组缓存；由于每次刷新都会重跑 Provider，
+不缓存的话每轮都会泄漏一个 client 及其后台 goroutine。
+
+**先装 watcher 再读 key。** watch 在取值之前注册，因此 `optional:` 导入的 key
+即使尚不存在也能热加载：首次 PUT 会触发一次刷新取到新值。顺序颠倒会静默破坏
+这一场景。
+
+**一个 import 一个 key，不做前缀 watch。** 一条 import 指向持有单个配置文档的
+单个 key；多 key 扇出交给应用自己组织。这让心智模型与 Consul、Nacos 配置
+Provider 完全一致。
+
+**在同一个 starter 里做 discovery——否决。** etcd 能同时承担两种角色，但配置与
+服务发现位于不同层。按角色拆分（对齐 Spring Cloud Alibaba）让模块依赖图更干净；
+etcd naming 属于独立的 starter。
+
 ### 日志 tag
 
 本模块的运行期日志使用 tag `_app_config_etcd`（etcd 配置源）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：

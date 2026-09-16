@@ -1,7 +1,7 @@
 # starter-registry-zookeeper Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
-the starter source (`starter.go`, `registrar.go`, `center.go`, `discovery_zookeeper.go`,
+the starter source (`starter.go`, `registrar.go`, `starter.go`, `discovery_zookeeper.go`,
 `config.go`, `registrar_test.go`), the registration core (`../starter-registry/starter.go`,
 `../starter-registry/config.go`), the `cloud/discovery` seam (`cloud/discovery/registrar.go`,
 `cloud/loadbalance/pool.go`) and the runnable [example/](example/) (`example/check.sh` runs unit
@@ -11,7 +11,7 @@ ephemeral znodes, watchers, digest auth) are
 everything below is go-spring's increment.
 
 **Activation**: each `spring.registry.zookeeper.<name>` block is one registry center — one shared
-session, one startup probe, one lifecycle (`center.go`). The bean named `zookeeper.<name>` exports
+session, one startup probe, one lifecycle (`starter.go`). The bean named `zookeeper.<name>` exports
 BOTH `discovery.Registrar` (collected by the starter-registry core when
 `spring.registry.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half). This
@@ -129,13 +129,13 @@ docker exec -it starter-registry-zookeeper zkCli.sh
 
 ## 2. Assembly & timing
 
-### 2.1 Bean lifecycle timeline (`center.go` / `registrar.go` / the core's `starter.go`)
+### 2.1 Bean lifecycle timeline (`starter.go` / `registrar.go` / the core's `starter.go`)
 
 ```
 blank-import starter-registry-zookeeper
   ├─ per block ${spring.registry.zookeeper.<name>}: Provide(newZkBackend)
   │    Name("zookeeper."+name).Export(As[discovery.Discovery], As[discovery.Registrar])
-  │    condition: gs.OnProperty("spring.registry.zookeeper")           [center.go]
+  │    condition: gs.OnProperty("spring.registry.zookeeper")           [starter.go]
   └─ import starter-registry (core, exactly once per process)
        └─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
             condition: gs.OnProperty("spring.registry.service-name")
@@ -143,7 +143,7 @@ gs.Run()
   ├─ conf.BindEach over spring.registry.zookeeper.* → one ZookeeperConfig per block
   ├─ newZkBackend per block: zk.Connect(servers, session-timeout) + digest AddAuth
   │    when set + fail-fast probe Exists("/") — blocks until the session connects,
-  │    so an unreachable ensemble fails STARTUP, not the first Register   [center.go]
+  │    so an unreachable ensemble fails STARTUP, not the first Register   [starter.go]
   ├─ registryServer collects every backend's Registrar via []discovery.Registrar
   │    slice injection (across ALL backends — zookeeper, nacos, ...)
   ├─ Run: validate service-name/addr AND ≥1 registrar BEFORE readiness
@@ -212,13 +212,14 @@ so `weight=0` in config registers an already-drained instance.
 
 Connection keys bind per block under `${spring.registry.zookeeper.<name>}` (`config.go`);
 instance keys under `${spring.registry}` (`../starter-registry/config.go`). There is no
-discovery config: the backend bean IS the block's bean, named `zookeeper.<name>` (`center.go`).
+discovery config: the backend bean IS the block's bean, named `zookeeper.<name>` (`starter.go`).
 
 | key | type | default | behavior / interactions | misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.registry.zookeeper.<n>.servers` | []string | — (required) | ensemble members; **its presence activates the block** | unset everywhere: starter inert, no error; wrong value: startup fails at the probe (`registry-zookeeper: startup probe failed`) |
 | `spring.registry.zookeeper.<n>.session-timeout` | duration | `10s` | zk session timeout; bounds the startup probe AND how long a crashed process's ephemeral node lingers | ⚠ too long delays crash-driven instance removal; too short risks session expiry on GC pauses / transient partitions → silent deregistration |
 | `spring.registry.zookeeper.<n>.base-path` | string | `/services` | persistent parent znode; trailing `/` trimmed; service dirs created on demand | consumers must list the same path; a mismatch is invisible to the provider |
+| `spring.registry.zookeeper.<n>.health.enabled` | bool | `true` | Contributes a `health.Indicator` bean named `registry-zookeeper:<name>` probing the ensemble with one `Exists("/")` call (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the ensemble's health is invisible to readiness probes |
 | `spring.registry.zookeeper.<n>.username` | string | `` | digest auth, applied via `AddAuth("digest", user:pass)`; set together with `password` | ⚠ one set, one empty → auth scheme error / ACL-denied writes |
 | `spring.registry.zookeeper.<n>.password` | string | `` | digest password (see above) | as above |
 | `spring.registry.service-name` | string | `` | logical name; becomes the znode directory and what discovery clients resolve. **Registration intent signal**: unset with blocks configured → a valid pure consumer | set with `addr` empty: Run returns `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required` — after the app is otherwise up |

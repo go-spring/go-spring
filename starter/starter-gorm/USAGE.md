@@ -158,7 +158,7 @@ govern.default.max-retries=1
 govern.default.timeout=500ms
 # Endpoint selection rides the same label: govern.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for for "gorm:mysql:orders-db" drive the
-# entry's pool in place (see cloud/governance/CONFIG_CN.md §3.1).
+# entry's pool in place (see cloud/governance/README.md §3.1).
 ```
 
 Every dialect that dials through discovery builds its pool with a suspension tracker and binds it
@@ -284,7 +284,7 @@ the same level as the dialect's own fields). Reconciled against
 | `slow-threshold` | duration | 0 | `>0` installs a warn-level gorm slow-query logger whose output is routed through **go-spring.org/log** (`log.Warnf`, TagAppDef) — it lands in the configured appenders, not raw stdout. 0 keeps gorm's default logger. ⚠ The message body is GORM's one-line text, not structured fields. | 0 → no slow log at all; expecting structured fields → the payload is plain text (use the access log for that). |
 | `service-name` | string | — | Switches addressing to service discovery: the dialect binds a discovery-backed dialer so each new connection reaches a live instance. When set, `addr` is ignored (the example uses a dummy `0.0.0.0:0` to prove it). In mesh mode (`GS_MESH=on`) a sidecar owns discovery and `addr` is used as-is. | Unset + no `addr` → dialect build error ("one of addr or service-name must be set"). |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme (e.g. `tls`). ⚠ Dead unless `service-name` is set (only consulted then). | Set without service-name → silently ignored. |
-| `discovery` | string | — | Which registered discovery backend resolves `service-name`. ⚠ Dead unless `service-name` is set. | Unset or an unregistered name while service-name is set → boot error; set without service-name → silently ignored. |
+| `discovery` | string | — | Which registered discovery backend resolves `service-name`. Falls back to `${spring.gorm.<dialect>.default.discovery}` when unset. ⚠ Dead unless `service-name` is set. | Both unset or an unregistered name while service-name is set → boot error; set without service-name → silently ignored. |
 | `observe.enabled` | bool | true | Hard kill switch for the gorm observe plugin: when false the plugin is not installed at all — no span, no metric, no access log, no per-query callbacks. | false → per-query observability silently absent (deliberate for hot instances). |
 
 Dead-key notes: for **sqlite** the whole discovery trio (`service-name`/`scheme`/

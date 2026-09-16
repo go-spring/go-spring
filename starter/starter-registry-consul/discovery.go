@@ -17,7 +17,7 @@
 // This file is the CONSUMER half of Consul service discovery: the
 // cloud/discovery Discovery backend serving snapshots of the instances the
 // registrar (registrar.go) publishes. It is derived from the
-// ${spring.registry.consul} center (center.go) under the fixed label "consul"
+// ${spring.registry.consul} center (starter.go) under the fixed label "consul"
 // — there is no separate discovery config block. Freshness is internal: each
 // resolved service gets a background Consul blocking query (index-based long
 // poll) that keeps the cached snapshot current, so Resolve is a cheap read
@@ -204,7 +204,7 @@ func serviceEntriesToEndpoints(entries []*api.ServiceEntry) []discovery.Endpoint
 		}
 		eps = append(eps, discovery.Endpoint{
 			Addr:     fmt.Sprintf("%s:%d", host, svc.Port),
-			Scheme:   svc.Meta["scheme"],
+			Scheme:   svc.Meta[discovery.MetaKeyScheme],
 			Weight:   svc.Weights.Passing,
 			Healthy:  true,
 			Metadata: svc.Meta,

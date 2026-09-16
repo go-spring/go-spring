@@ -210,7 +210,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 `govern.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号
 就用新策略。dialer 把拨号结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例。
 sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不了它们。详见
-`cloud/governance/CONFIG_CN.md` §3.1。
+`cloud/governance/README.md` §3.1。
 
 ---
 
@@ -233,7 +233,7 @@ sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不
 | `route-by-latency` / `route-randomly` | bool | false | cluster 只读路由。 | — |
 | `service-name` | string | — | 仅 single：经服务发现解析地址。⚠ 与 sentinel/cluster 组合被拒。 | 组合错 → 启动报错；见 §2.4。 |
 | `scheme` | string | — | 把发现端点收窄到单一传输 scheme。仅在 service-name 设置时生效。 | — |
-| `discovery` | string | — | 用哪个已注册的 discovery 后端。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
+| `discovery` | string | — | 用哪个已注册的 discovery 后端。未配置时回退 `${spring.go-redis.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 
 ### 3.2 连接与认证
 

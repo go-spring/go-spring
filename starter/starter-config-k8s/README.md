@@ -84,6 +84,31 @@ starter's directory semantics; entries with an unknown extension and no forced
 - The controller bean's destructor stops every informer on shutdown (it stays
   a bean only for the `.Destroy` lifecycle; it has no autowire fields).
 
+## Design Notes
+
+**A narrow client seam keeps the cluster out of the tests.** The provider takes
+a `k8sClient` interface exposing only the `CoreV1` read access it needs, rather
+than a `*kubernetes.Clientset` directly. Tests inject the client-go fake
+clientset, so parse/read/filter/hot-reload coverage runs with no cluster at
+all; `buildClient` resolves the real client from in-cluster config or a
+kubeconfig only in production.
+
+**Hand-rolled watchers were rejected in favor of `SharedInformerFactory`.** The
+informer already provides resync, connection retries, and event coalescing;
+reimplementing those on raw watches would be unwarranted duplication with more
+failure modes.
+
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_k8s` (k8s config source). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_k8s.type=Logger
+logger.config_k8s.level=WARN
+logger.config_k8s.tag=_app_config_k8s
+```
+
 ## RBAC
 
 The ServiceAccount needs `get/list/watch` on the target `configmaps`/`secrets`

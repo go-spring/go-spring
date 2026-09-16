@@ -165,6 +165,12 @@ There is **no per-key change callback**: a push re-fetches the whole dataId (and
 source), and each `gs.Dync[T]` re-resolves its `${...}` expression. Plain `value` fields keep
 their startup value forever. `OnProperty` conditions are startup-only.
 
+The listener is registered **before** the fetch, unconditionally. If `ListenConfig`
+were only installed after a successful `GetConfig`, an `optional:` import against a
+data id that does not exist yet would return early and never install the listener —
+a later publish would never trigger a refresh. This ordering is why `optional:`
+imports still hot-reload once the data id appears (starter.go:249).
+
 ### 2.3 Governance rules-push path (moved out)
 
 Governance rule sourcing from Nacos now lives in its own module,

@@ -70,6 +70,38 @@ atomically.
   namespace with a `.yaml`/`.yml`/`.json` extension makes the Apollo server
   return that format, which the provider parses accordingly.
 
+## Design Notes
+
+**agollo v4 instead of a hand-rolled HTTP client.** agollo is the official
+Apollo Go SDK and already ships the `notifications/v2` long-polling loop, the
+in-memory namespace cache, local-file backup and secret signing. Rebuilding
+those on the standard library — or switching to the Apollo OpenAPI, which has
+no push notification — would mean hand-rolling the notification loop for no
+gain. The one concession: agollo fixes `NamespaceName` at client creation,
+which is why the namespace is part of the client cache key.
+
+**Delegate wire parsing to agollo.** agollo's initial sync fetches
+`/configfiles/json/...` (a raw JSON object, not the ApolloConfig envelope);
+the starter relies on agollo's own parsing there and only parses namespace
+*content* itself via `spring/conf/reader`.
+
+**A mock config service instead of a dockerized quick-start.** Apollo's
+quick-start stack needs MySQL plus the configservice/admin/portal trio; since
+the starter's contract is the provider seam, the example's mock — serving
+exactly the two endpoints agollo needs — exercises it end to end without the
+stack (and without a docker dependency in CI).
+
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_apollo` (apollo config source). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_apollo.type=Logger
+logger.config_apollo.level=WARN
+logger.config_apollo.tag=_app_config_apollo
+```
+
 ## Limitations
 
 - No `governance.Source` integration yet; if Apollo should back governance

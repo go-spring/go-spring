@@ -129,7 +129,7 @@ spring.registry.etcd.dr.endpoints=10.9.0.1:2379
 spring.registry.service-name=orders
 spring.registry.addr=10.0.0.5:8080
 # discovery: cite the block's bean name, nothing to configure
-spring.http-client.backends.users.discovery=etcd.main
+spring.http-client.instances.users.discovery=etcd.main
 ```
 
 The discovery bean is lazy — a pure provider that never resolves anything
@@ -140,7 +140,7 @@ registers nothing: registration activates only when
 ```properties
 # consumer-only app: connection blocks, no service-name/addr, registers nothing
 spring.registry.etcd.main.endpoints=127.0.0.1:2379
-spring.http-client.backends.users.discovery=etcd.main
+spring.http-client.instances.users.discovery=etcd.main
 ```
 
 Multi-cluster discovery is now just multiple blocks: discover from `etcd.dr`

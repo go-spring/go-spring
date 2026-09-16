@@ -140,3 +140,39 @@ accepted — values are raw strings. See
   `gs.RefreshProperties()` facade. That reloads all configuration sources
   (re-running this provider) and re-binds every `gs.Dync` field via a
   two-phase, atomic commit.
+
+## Design Notes
+
+**Two providers, one shared bridge — and no user-facing beans.** Both
+`file-watch` and `configtree` register in `init()` via `conf.RegisterProvider`
+and hang off a single internal controller; the starter exposes no beans, no
+property keys, and no server of its own. The providers run during the config
+load, before any bean exists, which is why the refresh goes through the
+process-level facade rather than dependency injection.
+
+**Directory merging — rejected.** Merging a directory of config documents into
+one key set has no well-defined precedence, so `file-watch` refuses to do it:
+priority belongs to the `spring.config.import` line order, and layered
+overrides are expressed as one import per file. A directory of scalar key
+files is a different model entirely — paths are unique, so keys can never
+collide — and that is what `configtree` serves.
+
+**Polling — rejected.** fsnotify observes the kubelet's symlink swap
+immediately; a poll loop would only add CPU cost without improving reaction
+time.
+
+**No `?format=` override.** `file-watch` targets one concrete file and routes
+parsing by extension through the shared conf reader registry; requiring a
+recognizable extension keeps the import string query-free and the starter
+dependency-light. Values in a `configtree` mount are raw strings and are never
+parsed at all.
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_file` (file config source). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_file.type=Logger
+logger.config_file.level=WARN
+logger.config_file.tag=_app_config_file
+```

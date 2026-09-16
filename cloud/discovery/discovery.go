@@ -40,6 +40,24 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
+// Reserved metadata keys. The dimensions consumers route on (version, zone,
+// scheme) travel inside Endpoint.Metadata / Instance.Metadata so backends
+// store them without per-backend mapping. These keys are the single source of
+// truth for that convention: the write side (starter-registry) folds the
+// ${spring.registry} identity fields in under these keys, and the read side
+// (backends restoring [Endpoint.Scheme], zone-aware balancing) reads them back.
+const (
+	// MetaKeyVersion carries the application version of the instance.
+	MetaKeyVersion = "version"
+
+	// MetaKeyZone carries the availability zone of the instance.
+	MetaKeyZone = "zone"
+
+	// MetaKeyScheme carries the transport hint, restored to
+	// [Endpoint.Scheme] by discovery backends.
+	MetaKeyScheme = "scheme"
+)
+
 // Endpoint is a single connectable instance returned by a [Discovery] backend.
 type Endpoint struct {
 	// Addr is the connectable "host:port".

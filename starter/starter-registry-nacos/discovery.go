@@ -16,7 +16,7 @@
 
 // This file is the CONSUMER half of Nacos service discovery: the
 // cloud/discovery Discovery backend serving snapshots of instances from Nacos
-// naming. It is derived from the ${spring.registry.nacos} center (center.go)
+// naming. It is derived from the ${spring.registry.nacos} center (starter.go)
 // under the fixed label "nacos" — there is no separate discovery config block;
 // read and write share the center's namespace/group/cluster, so they can never
 // diverge. Freshness is internal: the first Resolve of a service subscribes to
@@ -168,7 +168,7 @@ func instancesToEndpoints(instances []model.Instance) []discovery.Endpoint {
 	for _, in := range instances {
 		eps = append(eps, discovery.Endpoint{
 			Addr:     fmt.Sprintf("%s:%d", in.Ip, in.Port),
-			Scheme:   in.Metadata["scheme"],
+			Scheme:   in.Metadata[discovery.MetaKeyScheme],
 			Weight:   int(in.Weight),
 			Disabled: !in.Enable,
 			Healthy:  in.Healthy,

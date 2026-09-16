@@ -36,12 +36,14 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+	"go-spring.org/cloud/confrefresh"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/netutil"
 )
 
 func init() {
@@ -51,7 +53,7 @@ func init() {
 	// solely through the registered provider. Watch-triggered refreshes go
 	// through the gs.RefreshProperties package-level facade, so the
 	// controller needs no bean wiring at all.
-	conf.RegisterProvider("nacos", (&nacosCtrl{}).Load)
+	conf.RegisterProvider("nacos", newNacosCtrl().Load)
 }
 
 var starterTag = log.RegisterAppTag("config_nacos", "")
@@ -69,12 +71,24 @@ type nacosCtrl struct {
 	listened map[string]struct{}
 }
 
+// newNacosCtrl creates a controller with its caches ready, so the lazy
+// nil-checks are kept out of the hot paths.
+func newNacosCtrl() *nacosCtrl {
+	return &nacosCtrl{
+		clients:  map[string]config_client.IConfigClient{},
+		listened: map[string]struct{}{},
+	}
+}
+
 // TriggerRefresh is called by the config listener when a watched data id
 // changes. Before the app has started, gs.RefreshProperties returns an
 // error and the change is dropped — the initial config load already
 // captured the state.
 func (c *nacosCtrl) TriggerRefresh() {
-	_ = gs.RefreshProperties()
+	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
+		log.Warnf(context.Background(), starterTag,
+			"property refresh after nacos change failed, stale snapshot retained: %v", err)
+	}
 }
 
 // configSource holds the parsed components of a nacos provider source string.
@@ -127,7 +141,7 @@ func parseSource(source string) (configSource, error) {
 	cs.timeoutMs = 5000
 	if v := q.Get("timeout-ms"); v != "" {
 		n, err := strconv.ParseUint(v, 10, 64)
-		if err != nil {
+		if err != nil || n == 0 {
 			return configSource{}, errutil.Explain(err, "invalid timeout-ms in %q", source)
 		}
 		cs.timeoutMs = n
@@ -147,14 +161,11 @@ func (c *nacosCtrl) clientFor(cs configSource) (config_client.IConfigClient, err
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.clients == nil {
-		c.clients = map[string]config_client.IConfigClient{}
-	}
 	if cli, ok := c.clients[key]; ok {
 		return cli, nil
 	}
 
-	host, port, err := splitHostPort(cs.server)
+	host, port, err := netutil.SplitHostPort(cs.server)
 	if err != nil {
 		return nil, err
 	}
@@ -172,19 +183,6 @@ func (c *nacosCtrl) clientFor(cs configSource) (config_client.IConfigClient, err
 	}
 	c.clients[key] = cli
 	return cli, nil
-}
-
-// splitHostPort splits "host:port" into its parts.
-func splitHostPort(server string) (string, uint64, error) {
-	host, portStr, ok := strings.Cut(server, ":")
-	if !ok || host == "" || portStr == "" {
-		return "", 0, errutil.Explain(nil, "nacos server address must be host:port, got %q", server)
-	}
-	port, err := strconv.ParseUint(portStr, 10, 64)
-	if err != nil {
-		return "", 0, errutil.Explain(err, "invalid nacos server port in %q", server)
-	}
-	return host, port, nil
 }
 
 // Load implements conf/provider.Provider. It fetches configuration content
@@ -241,9 +239,6 @@ func (c *nacosCtrl) registerListener(cli config_client.IConfigClient, cs configS
 	lk := clientKey(cs) + "|" + cs.group + "|" + cs.dataID
 
 	c.mu.Lock()
-	if c.listened == nil {
-		c.listened = map[string]struct{}{}
-	}
 	if _, ok := c.listened[lk]; ok {
 		c.mu.Unlock()
 		return
@@ -259,6 +254,12 @@ func (c *nacosCtrl) registerListener(cli config_client.IConfigClient, cs configS
 		},
 	})
 	if err != nil {
+		// Un-mark so the next Load retries, and surface the failure: a
+		// listener that never installs means this dataId silently stops
+		// hot-reloading.
+		log.Errorf(context.Background(), starterTag,
+			"nacos listen config %s/%s failed; %s will not hot-reload until the listen succeeds: %v",
+			cs.group, cs.dataID, cs.dataID, err)
 		c.mu.Lock()
 		delete(c.listened, lk)
 		c.mu.Unlock()

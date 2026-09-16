@@ -163,6 +163,11 @@ type App struct {
 	// run before this flag is set to avoid operating on a partially-wired
 	// container.
 	started atomic.Bool
+
+	// refreshMu serializes RefreshProperties calls: each refresh reads all
+	// sources only after acquiring the lock, so a slower older refresh can
+	// never overwrite a newer snapshot.
+	refreshMu sync.Mutex
 }
 
 // NewApp creates a new App instance with an initialized root context.
@@ -215,12 +220,19 @@ func (app *App) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefinition {
 //
 // Thread safety:
 //   - This method is thread-safe and can be called from any goroutine
+//   - Concurrent calls are serialized: a refresh reads all sources after
+//     acquiring the lock, so a slower older refresh can never overwrite a
+//     newer snapshot (without serialization, refresh A could read sources
+//     before refresh B, apply after B, and leave stale properties active
+//     until the next change)
 //   - All dynamic field updates are atomic
 //   - If validation fails, no partial updates are applied
 func (app *App) RefreshProperties() error {
 	if !app.started.Load() {
 		return errutil.Explain(nil, "app not started yet, cannot refresh properties")
 	}
+	app.refreshMu.Lock()
+	defer app.refreshMu.Unlock()
 	p, err := app.p.Refresh()
 	if err != nil {
 		return err

@@ -38,6 +38,7 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	"go-spring.org/cloud/confrefresh"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -59,13 +60,20 @@ type watchCore struct {
 	watched map[string]struct{} // directories already watched
 }
 
+// newWatchCore creates the shared watch machinery with its dedup set ready,
+// so ensureWatch needs no lazy nil-check. The per-provider constructors in
+// filewatch.go and configtree.go embed it.
+func newWatchCore() watchCore {
+	return watchCore{watched: map[string]struct{}{}}
+}
+
 // TriggerRefresh is called by the watcher goroutines when a watched directory
 // changes. Before the app has started, gs.RefreshProperties returns an error
 // and the change is dropped — the initial config load already captured the
 // state.
 func (c *watchCore) TriggerRefresh() {
-	if err := gs.RefreshProperties(); err != nil {
-		log.Warnf(context.Background(), log.TagAppDef,
+	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
+		log.Warnf(context.Background(), starterTag,
 			"property refresh after file change failed, previous snapshot retained: %v", err)
 	}
 }
@@ -76,9 +84,6 @@ func (c *watchCore) TriggerRefresh() {
 // startup still succeeds with a static snapshot, only losing hot-reload.
 func (c *watchCore) ensureWatch(dir string) {
 	c.mu.Lock()
-	if c.watched == nil {
-		c.watched = map[string]struct{}{}
-	}
 	if _, ok := c.watched[dir]; ok {
 		c.mu.Unlock()
 		return
@@ -87,14 +92,14 @@ func (c *watchCore) ensureWatch(dir string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		c.mu.Unlock()
-		log.Warnf(context.Background(), log.TagAppDef,
+		log.Warnf(context.Background(), starterTag,
 			"create file watcher for %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
 		return
 	}
 	if err = w.Add(dir); err != nil {
 		_ = w.Close()
 		c.mu.Unlock()
-		log.Warnf(context.Background(), log.TagAppDef,
+		log.Warnf(context.Background(), starterTag,
 			"watch directory %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
 		return
 	}
@@ -114,14 +119,21 @@ func (c *watchCore) watchLoop(w *fsnotify.Watcher) {
 		select {
 		case _, ok := <-w.Events:
 			if !ok {
+				// The events channel closes only when the watcher is closed
+				// out from under us; without this line the goroutine would
+				// exit silently and hot-reload would stop working.
+				log.Errorf(context.Background(), starterTag,
+					"file watcher closed; hot-reload is disabled until restart")
 				return
 			}
 			c.TriggerRefresh()
 		case err, ok := <-w.Errors:
 			if !ok {
+				log.Errorf(context.Background(), starterTag,
+					"file watcher closed; hot-reload is disabled until restart")
 				return
 			}
-			log.Warnf(context.Background(), log.TagAppDef, "file watcher error: %v", err)
+			log.Warnf(context.Background(), starterTag, "file watcher error: %v", err)
 		}
 	}
 }

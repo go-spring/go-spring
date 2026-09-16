@@ -32,12 +32,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-// instance is the process advertisement the registrar publishes; it is the
-// neutral [discovery.Instance] contract. The crash-safety contract every
-// registry starter follows lives in starter/DESIGN §3 (Register must
-// self-renew so correctness never depends on Deregister).
-type instance = discovery.Instance
-
 // consulRegistrar publishes instances to a Consul agent and keeps each one live
 // by passing its TTL health check on a background heartbeat until Deregister.
 type consulRegistrar struct {
@@ -46,8 +40,8 @@ type consulRegistrar struct {
 	deregisterCriticalAfter time.Duration
 
 	mu         sync.Mutex
-	heartbeats map[string]chan struct{} // service ID -> heartbeat stop channel
-	regs       map[string]instance      // service ID -> last registered value
+	heartbeats map[string]chan struct{}      // service ID -> heartbeat stop channel
+	regs       map[string]discovery.Instance // service ID -> last registered value
 }
 
 // newConsulRegistrar returns a registrar writing through client (the shared
@@ -63,13 +57,36 @@ func newConsulRegistrar(c ConsulConfig, client *api.Client) (*consulRegistrar, e
 		ttl:                     c.TTL,
 		deregisterCriticalAfter: c.DeregisterCriticalAfter,
 		heartbeats:              map[string]chan struct{}{},
-		regs:                    map[string]instance{},
+		regs:                    map[string]discovery.Instance{},
 	}, nil
 }
 
 // serviceID returns the Consul service instance id: the caller-supplied ID, or a
 // stable one derived from the service name and advertised address.
-func serviceID(reg instance) string {
+// registrationMeta folds the instance's routing dimensions (version, zone,
+// scheme) into the meta map Consul stores: the catalog has no dedicated fields
+// for them, and the discovery read side restores them from these reserved keys.
+func registrationMeta(reg discovery.Instance) map[string]string {
+	if reg.Version == "" && reg.Zone == "" && reg.Scheme == "" {
+		return reg.Metadata
+	}
+	md := make(map[string]string, len(reg.Metadata)+3)
+	for k, v := range reg.Metadata {
+		md[k] = v
+	}
+	if reg.Version != "" {
+		md[discovery.MetaKeyVersion] = reg.Version
+	}
+	if reg.Zone != "" {
+		md[discovery.MetaKeyZone] = reg.Zone
+	}
+	if reg.Scheme != "" {
+		md[discovery.MetaKeyScheme] = reg.Scheme
+	}
+	return md
+}
+
+func serviceID(reg discovery.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -90,7 +107,7 @@ func normalizeWeight(w int) int {
 // Register publishes reg with a TTL health check, passes the check immediately
 // so the instance is healthy without waiting a full TTL, then keeps it passing
 // on a background heartbeat until Deregister.
-func (r *consulRegistrar) Register(ctx context.Context, reg instance) error {
+func (r *consulRegistrar) Register(ctx context.Context, reg discovery.Instance) error {
 	reg.Weight = normalizeWeight(reg.Weight)
 	if _, _, err := net.SplitHostPort(reg.Addr); err != nil {
 		return errutil.Explain(err, "registry-consul: addr %q must be host:port", reg.Addr)
@@ -149,14 +166,14 @@ func (r *consulRegistrar) reRegister(id string) error {
 // is the single write step shared by Register, the heartbeat's self-healing
 // re-register, and UpdateWeight, so all three advertise the identical entry
 // apart from the weight.
-func (r *consulRegistrar) upsert(reg instance) error {
+func (r *consulRegistrar) upsert(reg discovery.Instance) error {
 	return r.client.Agent().ServiceRegister(r.buildRegistration(reg))
 }
 
 // buildRegistration assembles the full Consul service registration for reg —
 // the TTL check definition included — so Register and UpdateWeight both
 // upsert the identical entry apart from the weight.
-func (r *consulRegistrar) buildRegistration(reg instance) *api.AgentServiceRegistration {
+func (r *consulRegistrar) buildRegistration(reg discovery.Instance) *api.AgentServiceRegistration {
 	host, portStr, err := net.SplitHostPort(reg.Addr)
 	if err != nil {
 		host = reg.Addr
@@ -167,7 +184,10 @@ func (r *consulRegistrar) buildRegistration(reg instance) *api.AgentServiceRegis
 		Name:    reg.ServiceName,
 		Address: host,
 		Port:    port,
-		Meta:    reg.Metadata,
+		// Consul has no dedicated fields for the routing dimensions, so they
+		// ride in the meta map under the reserved keys; the discovery read
+		// side restores them from there.
+		Meta: registrationMeta(reg),
 		// Consul treats a passing weight of 0 as "no traffic", which is exactly
 		// the drain signal; a positive weight is advertised as-is.
 		Weights: &api.AgentWeights{Passing: reg.Weight, Warning: 1},
@@ -185,7 +205,7 @@ func (r *consulRegistrar) buildRegistration(reg instance) *api.AgentServiceRegis
 // without any re-registration. A weight of 0 drains the instance — Consul
 // routes no traffic to a zero-weight service. It fails if reg was never
 // registered through Register.
-func (r *consulRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int) error {
+func (r *consulRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
 	id := serviceID(reg)
 	r.mu.Lock()
 	last, ok := r.regs[id]
@@ -256,7 +276,7 @@ func (r *consulRegistrar) heartbeat(id string, stop <-chan struct{}) {
 // Consul to drop the id, and Consul answering 404 for an id it does not hold is
 // that no-op — the registry core calls Deregister from both PreStop and the
 // Stop fallback, so a repeat call is the normal shutdown path, not a failure.
-func (r *consulRegistrar) Deregister(ctx context.Context, reg instance) error {
+func (r *consulRegistrar) Deregister(ctx context.Context, reg discovery.Instance) error {
 	id := serviceID(reg)
 	r.mu.Lock()
 	if stop, ok := r.heartbeats[id]; ok {

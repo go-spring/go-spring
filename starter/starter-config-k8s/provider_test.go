@@ -58,7 +58,7 @@ func TestParseSource(t *testing.T) {
 }
 
 func TestLoadConfigMapYAML(t *testing.T) {
-	c := &k8sCtrl{}
+	c := newK8sCtrl()
 
 	client := fake.NewSimpleClientset(configMap("cm-yaml", map[string]string{
 		"application.yaml": "server:\n  port: 8080\nname: demo\n",
@@ -74,7 +74,7 @@ func TestLoadConfigMapYAML(t *testing.T) {
 }
 
 func TestLoadSecretPropsWithKeyFilter(t *testing.T) {
-	c := &k8sCtrl{}
+	c := newK8sCtrl()
 
 	client := fake.NewSimpleClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "sec", Namespace: "default"},
@@ -96,7 +96,7 @@ func TestLoadSecretPropsWithKeyFilter(t *testing.T) {
 }
 
 func TestLoadOptionalMissing(t *testing.T) {
-	c := &k8sCtrl{}
+	c := newK8sCtrl()
 
 	client := fake.NewSimpleClientset()
 	cs, err := parseSource("configmap/absent")
@@ -111,7 +111,7 @@ func TestLoadOptionalMissing(t *testing.T) {
 }
 
 func TestUnknownExtensionSkippedButKeyFilterErrors(t *testing.T) {
-	c := &k8sCtrl{}
+	c := newK8sCtrl()
 
 	client := fake.NewSimpleClientset(configMap("mixed", map[string]string{
 		"application.yaml": "a: 1\n",
@@ -139,7 +139,8 @@ func TestHotReloadTriggersRefresh(t *testing.T) {
 	assert.Error(t, err).Nil()
 
 	fired := make(chan struct{}, 8)
-	c := &k8sCtrl{onTrigger: func() { fired <- struct{}{} }}
+	c := newK8sCtrl()
+	c.onTrigger = func() { fired <- struct{}{} }
 
 	_, err = c.loadFromClient(client, cs, false)
 	assert.Error(t, err).Nil()

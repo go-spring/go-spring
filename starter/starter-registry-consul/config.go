@@ -16,7 +16,11 @@
 
 package StarterRegistryConsul
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/cloud/tlsconf"
+)
 
 // ConsulConfig binds the Consul agent connection under ${spring.registry.consul}.
 type ConsulConfig struct {
@@ -36,6 +40,11 @@ type ConsulConfig struct {
 	// Namespace is the Consul Enterprise namespace, empty for none.
 	Namespace string `value:"${namespace:=}"`
 
+	// TLS configures optional transport-layer security for ${scheme=https}.
+	// Off by default. Uses the shared spring/cloud/tlsconf block so every
+	// starter exposes the same tls.* keys.
+	TLS tlsconf.TLSConfig `value:"${tls}"`
+
 	// TTL is the Consul TTL health check interval. The registrar refreshes the
 	// check on a heartbeat at half this interval so the instance stays passing;
 	// if the process dies the check goes critical after one TTL.
@@ -45,4 +54,10 @@ type ConsulConfig struct {
 	// its check stays critical this long (e.g. after an ungraceful crash that
 	// skipped Deregister). Zero disables auto-deregistration.
 	DeregisterCriticalAfter time.Duration `value:"${deregister-critical-after:=1m}"`
+
+	// HealthEnabled controls whether the starter contributes a health.Indicator
+	// bean for this block (named "registry-consul:<name>"). On by default; the
+	// indicator is only instantiated when a collector (e.g. starter-actuator)
+	// autowires it.
+	HealthEnabled bool `value:"${health.enabled:=true}"`
 }

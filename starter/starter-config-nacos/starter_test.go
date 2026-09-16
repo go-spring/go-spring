@@ -20,7 +20,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -54,19 +53,11 @@ func TestParseSource(t *testing.T) {
 	assert.That(t, err).NotNil()
 	_, err = parseSource("127.0.0.1:8848")
 	assert.That(t, err).NotNil()
-	// Bad timeout-ms is rejected at parse time.
+	// Bad timeout-ms is rejected at parse time — including zero, which the
+	// SDK would otherwise read as "no timeout" and stall the refresh cycle.
 	_, err = parseSource("127.0.0.1:8848/app?timeout-ms=abc")
 	assert.That(t, err).NotNil()
-}
-
-func TestSplitHostPort(t *testing.T) {
-	h, p, err := splitHostPort("127.0.0.1:8848")
-	assert.That(t, err).Nil()
-	assert.That(t, h).Equal("127.0.0.1")
-	assert.That(t, p).Equal(uint64(8848))
-	_, _, err = splitHostPort("noport")
-	assert.That(t, err).NotNil()
-	_, _, err = splitHostPort("127.0.0.1:x")
+	_, err = parseSource("127.0.0.1:8848/app?timeout-ms=0")
 	assert.That(t, err).NotNil()
 }
 
@@ -77,7 +68,8 @@ func newCtrlWithFake(source string, fake *fakeConfigClient) (*nacosCtrl, error) 
 	if err != nil {
 		return nil, err
 	}
-	c := &nacosCtrl{clients: map[string]config_client.IConfigClient{clientKey(cs): fake}}
+	c := newNacosCtrl()
+	c.clients[clientKey(cs)] = fake
 	return c, nil
 }
 
@@ -137,6 +129,6 @@ func TestListenerRegisteredOncePerSource(t *testing.T) {
 func TestTriggerRefreshNilRefresherIsNoop(t *testing.T) {
 	// Before the IoC container autowires the PropertiesRefresher, a Nacos push
 	// must be a harmless no-op rather than a nil dereference.
-	c := &nacosCtrl{}
+	c := newNacosCtrl()
 	c.TriggerRefresh()
 }

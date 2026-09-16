@@ -30,27 +30,84 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// testReader collects the instruments this starter emits. It is installed once
-// in TestMain.
-var testReader sdkmetric.Reader
+// testReader collects the instruments this starter emits; testSpans holds its
+// spans. Both are installed once in TestMain.
+var (
+	testReader sdkmetric.Reader
+	testSpans  *tracetest.InMemoryExporter
+)
 
-// TestMain installs the in-memory meter provider before any test runs. The OTel
-// global meter binds to the FIRST provider set, so installing here keeps these
-// assertions independent of which test happens to touch the instrumentation
-// first; installing per-test would record nowhere.
+// TestMain installs the in-memory OTel providers before any test runs. The OTel
+// global meter/tracer binds to the FIRST provider set, so installing here keeps
+// these assertions independent of which test happens to touch the
+// instrumentation first; installing per-test would record nowhere.
 func TestMain(m *testing.M) {
-	prev := otel.GetMeterProvider()
+	prevMP := otel.GetMeterProvider()
+	prevTP := otel.GetTracerProvider()
+	testSpans = tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(testSpans))
 	testReader = sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(testReader))
+	otel.SetTracerProvider(tp)
 	otel.SetMeterProvider(mp)
 	code := m.Run()
-	otel.SetMeterProvider(prev)
+	otel.SetMeterProvider(prevMP)
+	otel.SetTracerProvider(prevTP)
+	_ = tp.Shutdown(context.Background())
 	_ = mp.Shutdown(context.Background())
 	os.Exit(code)
+}
+
+// TestInstrumentEmitsSpan pins the trace half of the instrumentation: an
+// instrumented run opens a consumer span named after the job, carrying the job
+// name attribute, and a failing run's span ends in error with the outcome
+// attribute set. Without an SDK installed the wrap is a no-op pass-through, so
+// this is the only proof the span link actually exists.
+func TestInstrumentEmitsSpan(t *testing.T) {
+	testSpans.Reset()
+	s := newTestServer()
+
+	_ = s.instrument("t_span", func(context.Context) error { return nil })(context.Background())
+	err := s.instrument("t_span_fail", func(context.Context) error { return errors.New("boom") })(context.Background())
+	assert.Error(t, err).NotNil()
+
+	found, failed := false, false
+	for _, sp := range testSpans.GetSpans() {
+		attrs := map[string]string{}
+		for _, a := range sp.Attributes {
+			attrs[string(a.Key)] = a.Value.AsString()
+		}
+		switch {
+		case attrs["scheduler.job.name"] == "t_span":
+			found = true
+			if sp.Name != "scheduler.job t_span" {
+				t.Fatalf("span name must be %q, got %q", "scheduler.job t_span", sp.Name)
+			}
+			if attrs["scheduling.outcome"] != "ok" {
+				t.Fatalf("a successful run's span must carry outcome=ok, got %q", attrs["scheduling.outcome"])
+			}
+			if sp.Status.Code == codes.Error {
+				t.Fatal("a successful run's span must not be an error")
+			}
+		case attrs["scheduler.job.name"] == "t_span_fail":
+			failed = true
+			if attrs["scheduling.outcome"] != "error" {
+				t.Fatalf("a failed run's span must carry outcome=error, got %q", attrs["scheduling.outcome"])
+			}
+			if sp.Status.Code != codes.Error {
+				t.Fatal("a failed run's span must end in error status")
+			}
+		}
+	}
+	assert.That(t, found).True("no span for the successful run was emitted")
+	assert.That(t, failed).True("no span for the failed run was emitted")
 }
 
 // attrsMatch reports whether a datapoint carries every wanted key/value.

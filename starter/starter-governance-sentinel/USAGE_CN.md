@@ -194,7 +194,7 @@ policy 并**清空 loaded 集合**。sentinel 的 `LoadRulesOfResource` 会替�
 `max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `govern.default.*`，某个资源
 单独配用 `govern.rules[N].*` —— 经 `ExecutorFor` + `Refresh` 到达本驱动。字段含义见
 [cloud/governance/resilience](../../../cloud/governance/resilience)，键的排布见
-[`cloud/governance/CONFIG_CN.md`](../../../cloud/governance/CONFIG_CN.md)。
+[`cloud/governance/README.md`](../../../cloud/governance/README.md)。
 
 ---
 

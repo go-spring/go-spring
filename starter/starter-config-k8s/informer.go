@@ -17,6 +17,7 @@
 package StarterConfigK8s
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -27,6 +28,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -69,10 +71,6 @@ type watchManager struct {
 // ensureWatch starts a namespaced, name-scoped informer on the target object
 // and triggers a full property refresh on every add/update/delete.
 func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
-	if c.manager == nil {
-		c.manager = &watchManager{watched: map[string]struct{}{}}
-	}
-
 	id := fmt.Sprintf("%s/%s/%s", cs.kind, cs.namespace, cs.name)
 
 	c.manager.mu.Lock()
@@ -108,6 +106,8 @@ func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
 		DeleteFunc: func(any) { c.TriggerRefresh() },
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
+		log.Errorf(context.Background(), starterTag,
+			"k8s config: add event handler for %s failed; %s will not hot-reload until a restart: %v", id, id, err)
 		c.manager.forget(id)
 		return
 	}
@@ -116,6 +116,8 @@ func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
 	factory.Start(stop)
 	if !cache.WaitForCacheSync(stop, informer.HasSynced) {
 		close(stop)
+		log.Errorf(context.Background(), starterTag,
+			"k8s config: cache sync for %s timed out; %s will not hot-reload until a restart", id, id)
 		c.manager.forget(id)
 		return
 	}

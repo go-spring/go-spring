@@ -19,6 +19,7 @@ package StarterRedigo
 import (
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -57,9 +58,11 @@ type Config struct {
 	// Shorter values facilitate smoother traffic switching during service discovery updates.
 	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=2m}"`
 
-	// ServiceName is the service discovery name for Redis cluster.
-	// When set, Addr is ignored and the actual address is resolved via service discovery.
-	ServiceName string `value:"${service-name:=}"`
+	// Addressing is the shared discovery-citation block: ServiceName switches
+	// the entry to discovery routing (Addr is then ignored), Discovery cites
+	// the backend bean (falling back to ${spring.redigo.default.discovery} via
+	// the starter wiring). See discovery.Addressing for the shared contract.
+	discovery.Addressing
 
 	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
 	// "https"). Empty (the default) returns every scheme; set it when a service
@@ -67,16 +70,6 @@ type Config struct {
 	// one. Only consulted when ServiceName is set. Field layout matches
 	// starter-go-redis.
 	Scheme string `value:"${scheme:=}"`
-
-	// Discovery names the discovery backend bean that resolves ServiceName
-	// (bean name = label). It is only consulted when ServiceName is set; the
-	// starter wiring resolves this label to the backend bean and passes it to
-	// the driver as the backend argument of CreateClient / the backend
-	// argument of NewPool — it is never written back into Config. Field layout
-	// matches starter-go-redis.
-	// Empty means unset: no discovery backend is wired and the entry must not
-	// route by service-name alone.
-	Discovery string `value:"${discovery:=}"`
 
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext. Field layout matches

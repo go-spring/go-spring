@@ -50,7 +50,7 @@ func TestNormalizeBasePath(t *testing.T) {
 func TestValuesToEndpoints(t *testing.T) {
 	vals := map[string][]byte{
 		"orders-10.0.0.2:8080": mustPayload(t, instanceValue{ServiceName: "orders", Addr: "10.0.0.2:8080", Weight: 3,
-			Metadata: map[string]string{"zone": "b", "scheme": "tls"}}),
+			Version: "v2", Zone: "b", Scheme: "tls"}),
 		"orders-10.0.0.1:8080": mustPayload(t, instanceValue{ServiceName: "orders", Addr: "10.0.0.1:8080"}),
 		// A malformed payload is skipped, not fatal to the snapshot.
 		"orders-bad": []byte("not-json"),
@@ -69,6 +69,7 @@ func TestValuesToEndpoints(t *testing.T) {
 	// Weight and metadata (incl. scheme passthrough) survive the mapping.
 	assert.That(t, eps[1].Weight).Equal(3)
 	assert.That(t, eps[1].Scheme).Equal("tls")
+	assert.That(t, eps[1].Metadata["version"]).Equal("v2")
 	assert.That(t, eps[1].Metadata["zone"]).Equal("b")
 }
 
@@ -84,7 +85,7 @@ func TestValuesToEndpointsDrainEncoding(t *testing.T) {
 
 func TestValuesToEndpointsSchemeFilter(t *testing.T) {
 	vals := map[string][]byte{
-		"s-10.0.0.1:80": mustPayload(t, instanceValue{Addr: "10.0.0.1:80", Metadata: map[string]string{"scheme": "tls"}}),
+		"s-10.0.0.1:80": mustPayload(t, instanceValue{Addr: "10.0.0.1:80", Scheme: "tls"}),
 		"s-10.0.0.2:80": mustPayload(t, instanceValue{Addr: "10.0.0.2:80"}),
 	}
 	// FilterByScheme narrows to the tls instance only.

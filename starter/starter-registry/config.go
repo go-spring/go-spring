@@ -37,6 +37,21 @@ type RegistrationConfig struct {
 	// Weight is the initial load-balancing weight; 0 means drained.
 	Weight int `value:"${weight:=100}"`
 
-	// Metadata carries backend-agnostic attributes (zone, version, ...).
+	// Version is the application version of this instance; empty means not
+	// advertised. Consumers may route on it (e.g. canary by version).
+	Version string `value:"${version:=}"`
+
+	// Zone is the availability zone / unit this instance sits in; empty means
+	// not advertised. Consumers may prefer same-zone instances.
+	Zone string `value:"${zone:=}"`
+
+	// Scheme selects the transport consumers should dial: "" or "tcp" for a
+	// plain TCP connection (the default), "tls"/"https" when it requires TLS,
+	// "http"/"https" for HTTP-level routing. It is advisory.
+	Scheme string `value:"${scheme:=}"`
+
+	// Metadata carries additional backend-agnostic attributes. Version, Zone
+	// and Scheme are advertised separately and take precedence over same-key
+	// entries here.
 	Metadata map[string]string `value:"${metadata:=}"`
 }

@@ -272,7 +272,7 @@ func init() {
 |-----|------|--------|-------------|----------|
 | `addr` | string | "" | 直连模式:`fixedHostTransport` 把每个请求钉到该 host:port。可与 `service-name` 同配,此时 service-name 只是纯治理 label(不触发发现)。 | 都不配 → 快速失败 "one of addr or service-name is required"。 |
 | `service-name` | string | "" | 发现模式:经指定后端解析的逻辑名;只要设置了就同时是治理 resource label(发现与直连模式皆是)。配了 `addr` 时它不是发现目标。 | 都不配 → 快速失败;只配 service-name 不配 `addr`/`discovery` → 快速失败。 |
-| `discovery` | string | "" | 发现后端 bean 名(bean 名=标签，由 registry starter 注册)。`service-name` 未配 `addr` 时必填(config.go validate)。 | 缺失 → 快速失败。名字未知 → 装配期报错并列出已注册 bean(starter.go newRoute)。 |
+| `discovery` | string | "" | 发现后端 bean 名(bean 名=标签，由 registry starter 注册)。未配置时回退 `${spring.http-client.default.discovery}`。`service-name` 未配 `addr` 时必填(config.go validate)。 | 两层都缺失 → 快速失败。名字未知 → 装配期报错并列出已注册 bean(starter.go newRoute)。 |
 | `observability.level` | string | brief | executor 包裹层的访问日志开关:off / brief / detailed(observe/config.go:50)。 | brief 默认**开**——预期每次受保护调用一条日志。 |
 | `observability.maxArgBytes` | int | 512 | 日志中参数截断长度。 | 大 body 被静默截断。 |
 | `observability.skipOps` | []string | "" | 不记访问日志的操作名。 | |

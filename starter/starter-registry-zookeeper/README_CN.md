@@ -80,7 +80,7 @@ spring.registry.metadata.version=v1
 
 ```properties
 spring.registry.zookeeper.main.servers=127.0.0.1:2181
-spring.http-client.backends.users.discovery=zookeeper.main
+spring.http-client.instances.users.discovery=zookeeper.main
 ```
 
 读写共享该块的 base-path，天然不会漂移。健康度由 znode 存活推导：实例是一个临时节点，

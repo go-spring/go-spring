@@ -298,7 +298,7 @@ IndexArg(1)), not the absolute-property Pool rule.
 | `uri` | string | — | **required** (`expr:"$ != ''"`). Scheme selects routing+encryption: `bolt`/`neo4j` plain, `neo4j+s`/`bolt+s` TLS, `+ssc` self-signed. ⚠ Host is replaced by discovery output when `service-name` is set (example uses dummy `bolt://0.0.0.0:0` on purpose). | Missing → BindEach error naming the instance; bad scheme → driver error at ctor. |
 | `service-name` | string | — | Resolve the boot-time address through a discovery backend, and keep a live router set for `neo4j://` clients to recover with (§2.4). ⚠ Requires a matching named backend bean. | Unregistered backend → boot error "neo4j: resolve service …". |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name`. | — |
-| `discovery` | string | — | Which registered backend resolves `service-name`. | Unset or an unregistered name while service-name is set → boot error. |
+| `discovery` | string | — | Which registered backend resolves `service-name`. Falls back to `${spring.neo4j.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 
 ### 3.2 Auth & connection pool
 

@@ -78,6 +78,26 @@ file starter 的目录语义一致;无可识别扩展名且未强制 `format` �
 - controller bean 的析构函数在关停时停止所有 informer(它保持 bean 身份只是为了
   `.Destroy` 生命周期;已无 autowire 字段)。
 
+## 设计要点
+
+**收窄的 client 缝隙让测试无需真集群。** provider 依赖的是只暴露所需 `CoreV1`
+读能力的 `k8sClient` 接口，而不是直接接 `*kubernetes.Clientset`。测试注入
+client-go 的 fake clientset，解析/读取/过滤/热刷新覆盖全部离线运行；只有在
+生产路径上，`buildClient` 才从 in-cluster 配置或 kubeconfig 构建真 client。
+
+**否决自造 watcher，选用 `SharedInformerFactory`。** informer 已提供 resync、
+连接重试与事件合并；在裸 watch 上手写这些是无谓的重复，还会引入更多失败模式。
+
+### 日志 tag
+
+本模块的运行期日志使用 tag `_app_config_k8s`（k8s 配置源）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
+
+```properties
+logger.config_k8s.type=Logger
+logger.config_k8s.level=WARN
+logger.config_k8s.tag=_app_config_k8s
+```
+
 ## RBAC
 
 ServiceAccount 需在其命名空间内对目标 `configmaps`/`secrets` 拥有 `get/list/watch`

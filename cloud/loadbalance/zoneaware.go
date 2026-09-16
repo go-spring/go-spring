@@ -23,8 +23,10 @@ import (
 )
 
 // DefaultZoneKey is the [discovery.Endpoint.Metadata] key a zone-aware balancer
-// reads to learn an instance's locality when none is given explicitly.
-const DefaultZoneKey = "zone"
+// reads to learn an instance's locality when none is given explicitly. It
+// aliases [discovery.MetaKeyZone], the write-side publication key, so the two
+// sides cannot drift apart.
+const DefaultZoneKey = discovery.MetaKeyZone
 
 func init() {
 	Register(ZoneAware, func() Balancer {

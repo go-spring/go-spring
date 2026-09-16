@@ -98,6 +98,9 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 		ID:          s.Config.ID,
 		Addr:        s.Config.Addr,
 		Weight:      s.Config.Weight,
+		Version:     s.Config.Version,
+		Zone:        s.Config.Zone,
+		Scheme:      s.Config.Scheme,
 		Metadata:    s.Config.Metadata,
 	}
 
@@ -143,6 +146,7 @@ func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
 	}
 	for _, r := range s.Registrars {
 		if err := r.UpdateWeight(ctx, s.inst, weight); err != nil {
+			log.Errorf(ctx, starterTag, "update weight service=%s to %d failed: %v", s.inst.ServiceName, weight, err)
 			return errutil.Explain(err, "registry: update weight to %d", weight)
 		}
 	}

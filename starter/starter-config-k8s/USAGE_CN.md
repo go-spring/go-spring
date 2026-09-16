@@ -206,6 +206,10 @@ provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动�
 | `format` | query | 按扩展名 | 为所有读到的条目强制指定解析器（provider.go:215、111-115）。取值必须是 `reader.Has` 认识的格式——parse 阶段即校验。 | 未知取值 → 连集群都还没碰就启动报错 "unsupported k8s config format"。 |
 | `kubeconfig` | query | 集群内 | 集群外运行时的 kubeconfig 文件路径（informer.go:43-47）。空 → `rest.InClusterConfig()`（informer.go:49-52）。 | 集群外且未给参数 → 启动报错 "in-cluster config (set kubeconfig when running outside a cluster)"——`optional:` 下为 Warn+跳过。 |
 
+对 ConfigMap，`data` 与 `binaryData` 会先合并为一个 `name -> bytes` map 再解析
+（`provider.go:194-200`）——条目无论放在哪个字段都一视同仁，`key=`/`format=`
+对两者统一生效。
+
 ### 3.2 属性 key
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -297,11 +301,11 @@ cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
 | 启动报错 `in-cluster config (set kubeconfig when running outside a cluster)` | 本地运行且未给 `kubeconfig=` 参数 | 加 `?kubeconfig=$HOME/.kube/config`，或 `optional:` 跳过 |
 | 启动报错 `get configmap … not found` | `name`/`namespace` 写错，或对象未 apply | 改 source 字符串或 apply ConfigMap；用 `optional:` 容忍 |
 | 启动报错 `forbidden: User … cannot get/list/watch configmaps` | RBAC 缺失/过窄 | apply example/deploy/rbac.yaml；informer 需要 get+list+watch，且在目标命名空间 |
-| 配置能加载但从不热刷新 | informer best-effort 失败（cache 同步）或缺少 watch 权限而 get 正常 | 检查 RBAC 的 `watch`；重启以重试 watch 建立；看 tag `_app_def` 下的 Warn/Error |
+| 配置能加载但从不热刷新 | informer best-effort 失败（cache 同步）或缺少 watch 权限而 get 正常 | 检查 RBAC 的 `watch`；重启以重试 watch 建立；看 tag `_app_config_k8s` 下的 Warn/Error |
 | 集群内 `demo.message` 一直是默认值 | import 实际没写进 `spring.config.import`，或 `key=` 选了不存在的条目 | `key=` 无匹配得到的是空（而非失败）的 import——核对 data 条目名 |
 | 启动报错 `entry "README" has no known format; set format=` | `key=` 选中了无扩展名条目 | 加 `&format=properties`（等），或去掉 `key=` 让其被跳过 |
 | 启动报错 `unsupported k8s config kind "deployment"` | 只支持 `configmap`/`secret` | 二选一 |
-| 看不到 starter 的日志 | Debug 级日志被隐藏（provider.go:129 以 Debug 记录解析出的 source） | 调高 tag `_app_def` 的 logger 级别 |
+| 看不到 starter 的日志 | Debug 级日志被隐藏（provider.go:129 以 Debug 记录解析出的 source） | 调高 tag `_app_config_k8s` 的 logger 级别 |
 
 ---
 

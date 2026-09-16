@@ -171,7 +171,7 @@ func newTestRegistrar(reject bool) (*nacosRegistrar, *fakeRegistrarClient) {
 // A successful publish is counted and marks the instance discoverable.
 func TestRegisterSuccessIsReported(t *testing.T) {
 	r, client := newTestRegistrar(false)
-	in := instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
 
 	assert.Error(t, r.Register(context.Background(), in)).Nil()
 
@@ -190,7 +190,7 @@ func TestRegisterSuccessIsReported(t *testing.T) {
 // the Nacos SDK reports it that way, and it must not be mistaken for success.
 func TestRegisterServerRejectionIsReported(t *testing.T) {
 	r, _ := newTestRegistrar(true)
-	in := instance{ServiceName: "orders-rejected", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-rejected", Addr: "1.2.3.4:80", Weight: 1}
 
 	err := r.Register(context.Background(), in)
 	assert.Error(t, err).Matches("rejected by the server")
@@ -209,7 +209,7 @@ func TestRegisterServerRejectionIsReported(t *testing.T) {
 // own ephemeral heartbeat — so reason=self_heal never appears for this backend.
 func TestDeregisterAndWeightChangeAreReported(t *testing.T) {
 	r, client := newTestRegistrar(false)
-	in := instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
 	ctx := context.Background()
 
 	assert.Error(t, r.Register(ctx, in)).Nil()

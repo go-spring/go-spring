@@ -97,3 +97,61 @@ func TestDriverBeanNamedSelection(t *testing.T) {
 		}
 	})
 }
+
+// captureDriver records the discovery backend each CreateClient received, so
+// tests can assert which backend label an entry resolved to.
+type captureDriver struct {
+	got discovery.Discovery
+}
+
+func (d *captureDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error) {
+	d.got = backend
+	return NewPool(ctx, c, backend)
+}
+
+// TestDiscoveryDefaultFallback pins the two-layer citation semantics: an
+// instance that sets no ${discovery} falls back to the family-wide
+// ${spring.redigo.default.discovery}; an instance-level ${discovery} overrides
+// it. Both resolve against real named backend beans, fail-loud on a dangling
+// label either way.
+func TestDiscoveryDefaultFallback(t *testing.T) {
+	def, ovr := discovery.NewStaticDiscovery(), discovery.NewStaticDiscovery()
+
+	// Fallback: no instance-level discovery → the default label wins.
+	dflt := &captureDriver{}
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.redigo.default.discovery", "etcd.main")
+		app.Property("spring.redigo.instances.cache.service-name", "cache-svc")
+		app.Provide(func() discovery.Discovery { return def }).Name("etcd.main")
+		app.Provide(func() Driver { return dflt })
+	}).RunTest(t, func(ts *struct {
+		Pool *Pool `autowire:"cache"`
+	}) {
+		if ts.Pool == nil {
+			t.Fatal("expected a wired pool")
+		}
+	})
+	if dflt.got == nil || dflt.got != def {
+		t.Fatalf("instance without ${discovery} must fall back to ${spring.redigo.default.discovery}, got %v", dflt.got)
+	}
+
+	// Override: the instance-level label wins over the family default.
+	over := &captureDriver{}
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.redigo.default.discovery", "etcd.main")
+		app.Property("spring.redigo.instances.cache.service-name", "cache-svc")
+		app.Property("spring.redigo.instances.cache.discovery", "consul.main")
+		app.Provide(func() discovery.Discovery { return def }).Name("etcd.main")
+		app.Provide(func() discovery.Discovery { return ovr }).Name("consul.main")
+		app.Provide(func() Driver { return over })
+	}).RunTest(t, func(ts *struct {
+		Pool *Pool `autowire:"cache"`
+	}) {
+		if ts.Pool == nil {
+			t.Fatal("expected a wired pool")
+		}
+	})
+	if over.got != ovr {
+		t.Fatalf("instance-level ${discovery} must override the family default, got %v", over.got)
+	}
+}

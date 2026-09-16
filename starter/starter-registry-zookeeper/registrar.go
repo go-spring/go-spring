@@ -30,24 +30,27 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-// instance is the instance this process advertises to the ZooKeeper registry.
-// It is the local write-side value built from RegistrationConfig in Server.Run;
-// the crash-safety contract every registry starter follows lives in
-// starter/DESIGN §3 (Register must self-renew so correctness never depends on
-// instance is the process advertisement the registrar publishes; it is the
-// neutral [discovery.Instance] contract. The crash-safety contract every
-// registry starter follows lives in starter/DESIGN §3 (Register must
-// self-renew so correctness never depends on Deregister).
-type instance = discovery.Instance
-
-// instanceValue is the JSON payload stored at an instance znode. A discovery
-// backend reading the same base path reconstructs an Endpoint from it.
+// instanceValue is THIS backend's stored JSON payload; a discovery reader of
+// the same prefix/path reconstructs an Endpoint from it. The near-identical
+// struct in the etcd starter is deliberate duplication, not a shared
+// contract: the wire format is a frozen compatibility surface owned by each
+// backend's storage (old entries must keep decoding), so sharing one type
+// would couple the two formats' evolution - a field added for one backend's
+// needs would silently become part of the other's stored data.
 type instanceValue struct {
 	ServiceName string            `json:"service_name"`
 	Addr        string            `json:"addr"`
 	Weight      int               `json:"weight,omitempty"`
+	Version     string            `json:"version,omitempty"`
+	Zone        string            `json:"zone,omitempty"`
+	Scheme      string            `json:"scheme,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
+
+// instance is the instance this process advertises to the ZooKeeper registry.
+// It is the local write-side value built from RegistrationConfig in Server.Run;
+// the crash-safety contract every registry starter follows lives in
+// starter/DESIGN §3 (Register must self-renew so correctness never depends on
 
 // zkRegistrar publishes instances to a ZooKeeper ensemble as ephemeral znodes.
 // An ephemeral node lives only as long as the client session, so ZooKeeper
@@ -73,10 +76,10 @@ type zkRegistrar struct {
 	// implementations read Conn.State and re-run the node-creation step, and
 	// tests replace them to drive loss/recovery without an ensemble.
 	state      func() zk.State
-	reRegister func(reg instance) error
+	reRegister func(reg discovery.Instance) error
 
 	mu   sync.Mutex
-	regs map[string]instance // znode path -> last advertised value
+	regs map[string]discovery.Instance // znode path -> last advertised value
 
 	done     chan struct{}
 	doneOnce sync.Once
@@ -104,18 +107,18 @@ func newZookeeperRegistrar(c ZookeeperConfig, conn *zk.Conn) (*zkRegistrar, erro
 		acl:         zk.WorldACL(zk.PermAll),
 		backoffBase: time.Second,
 		backoffCap:  time.Minute,
-		regs:        map[string]instance{},
+		regs:        map[string]discovery.Instance{},
 		done:        make(chan struct{}),
 	}
 	r.state = r.conn.State
-	r.reRegister = func(reg instance) error { return r.createNode(reg) }
+	r.reRegister = func(reg discovery.Instance) error { return r.createNode(reg) }
 	go r.monitorSession()
 	return r, nil
 }
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
 // or a stable one derived from the service name and advertised address.
-func instanceID(reg instance) string {
+func instanceID(reg discovery.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -123,7 +126,7 @@ func instanceID(reg instance) string {
 }
 
 // pathFor returns the znode an instance is written to: basePath/service/id.
-func (r *zkRegistrar) pathFor(reg instance) string {
+func (r *zkRegistrar) pathFor(reg discovery.Instance) string {
 	return r.basePath + "/" + reg.ServiceName + "/" + instanceID(reg)
 }
 
@@ -143,7 +146,7 @@ func normalizeWeight(w int) int {
 // the entry is refreshed rather than duplicated. The advertised value is also
 // remembered so the session monitor can re-create the node (with its latest
 // weight) after a session loss.
-func (r *zkRegistrar) Register(ctx context.Context, reg instance) error {
+func (r *zkRegistrar) Register(ctx context.Context, reg discovery.Instance) error {
 	if reg.Addr == "" {
 		return errutil.Explain(nil, "registry-zookeeper: addr is required")
 	}
@@ -163,11 +166,14 @@ func (r *zkRegistrar) Register(ctx context.Context, reg instance) error {
 // createNode performs the raw znode write: marshal, create persistent parents,
 // then create (or replace) the ephemeral leaf. It is the single (re-)creation
 // step used by Register and by the session monitor's recovery loop.
-func (r *zkRegistrar) createNode(reg instance) error {
+func (r *zkRegistrar) createNode(reg discovery.Instance) error {
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,
 		Weight:      reg.Weight,
+		Version:     reg.Version,
+		Zone:        reg.Zone,
+		Scheme:      reg.Scheme,
 		Metadata:    reg.Metadata,
 	})
 	if err != nil {
@@ -199,12 +205,15 @@ func (r *zkRegistrar) createNode(reg instance) error {
 // are undisturbed and a discovery backend simply sees the new value. A weight
 // of 0 is the drain signal: it serializes as an omitted weight field, which
 // readers reconstruct as 0 and exclude from picking.
-func (r *zkRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int) error {
+func (r *zkRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
 	weight = normalizeWeight(weight)
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,
 		Weight:      weight,
+		Version:     reg.Version,
+		Zone:        reg.Zone,
+		Scheme:      reg.Scheme,
 		Metadata:    reg.Metadata,
 	})
 	if err != nil {
@@ -234,7 +243,7 @@ func (r *zkRegistrar) UpdateWeight(ctx context.Context, reg instance, weight int
 
 // Deregister removes the instance znode. It is idempotent: deregistering an
 // instance that is not registered (ErrNoNode) is a no-op.
-func (r *zkRegistrar) Deregister(ctx context.Context, reg instance) error {
+func (r *zkRegistrar) Deregister(ctx context.Context, reg discovery.Instance) error {
 	path := r.pathFor(reg)
 	r.mu.Lock()
 	delete(r.regs, path)
@@ -326,7 +335,7 @@ func (r *zkRegistrar) healAll() {
 // createNode is idempotent so partial progress is not a problem.
 func (r *zkRegistrar) reRegisterAll() error {
 	r.mu.Lock()
-	regs := make([]instance, 0, len(r.regs))
+	regs := make([]discovery.Instance, 0, len(r.regs))
 	for _, reg := range r.regs {
 		regs = append(regs, reg)
 	}

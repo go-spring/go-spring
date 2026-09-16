@@ -39,4 +39,10 @@ type ZookeeperConfig struct {
 	// both empty for an open ensemble.
 	Username string `value:"${username:=}"`
 	Password string `value:"${password:=}"`
+
+	// HealthEnabled controls whether the starter contributes a health.Indicator
+	// bean for this block (named "registry-zookeeper:<name>"). On by default;
+	// the indicator is only instantiated when a collector (e.g.
+	// starter-actuator) autowires it.
+	HealthEnabled bool `value:"${health.enabled:=true}"`
 }

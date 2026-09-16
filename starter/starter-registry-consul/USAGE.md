@@ -8,7 +8,7 @@ starter source (`starter.go`, `registrar.go`, `config.go`, `registrar_test.go`) 
 increment.
 
 **Model**: config is NAMED BLOCKS — each `spring.registry.consul.<name>.*` block describes ONE
-Consul agent and becomes ONE backend bean named `consul.<name>` (`center.go`). The bean implements
+Consul agent and becomes ONE backend bean named `consul.<name>` (`starter.go`). The bean implements
 BOTH sides of the naming idiom: `discovery.Registrar` (write — collected by the `registryServer`
 from the [starter-registry](../starter-registry) core, imported transitively, which registers into
 EVERY configured center across backends) and `discovery.Discovery` (read — consumers cite the bean
@@ -114,7 +114,7 @@ flip the weight via the app's `UpdateWeight` (§2.3) and re-query — `Weights.P
 
 ## 2. Assembly & timing
 
-Timeline (`center.go`, `registrar.go`, and the starter-registry core's `starter.go`):
+Timeline (`starter.go`, `registrar.go`, and the starter-registry core's `starter.go`):
 
 1. For each `${spring.registry.consul.<name>}` block the module (`OnProperty("spring.registry.consul")`,
    bound via `BindEach`) builds ONE `*api.Client` and probes the agent (`Catalog().Services`, 5s
@@ -187,6 +187,7 @@ every center.
 | `spring.registry.consul.<name>.namespace` | string | `` | Consul Enterprise namespace | silently wrong partition on CE |
 | `spring.registry.consul.<name>.ttl` | duration | `15s` | TTL check interval; heartbeat at `ttl/2` | ⚠ too long delays crash detection to ~TTL + `deregister-critical-after` |
 | `spring.registry.consul.<name>.deregister-critical-after` | duration | `1m` | auto-drop after check critical this long; `0` disables | ⚠ must exceed `ttl` or Consul may drop live instances on a hiccup |
+| `spring.registry.consul.<name>.health.enabled` | bool | `true` | Contributes a `health.Indicator` bean named `registry-consul:<name>` probing the agent with a catalog listing (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the agent's health is invisible to readiness probes |
 | `spring.registry.service-name` | string | `` | logical service name clients resolve; **its presence is the registration intent signal** | empty: pure consumer; set with no block: Run error `... no registry center is configured` |
 | `spring.registry.addr` | string | `` (required when registering) | advertised `host:port` | empty with service-name set: startup error; malformed: Register error (`registrar.go`) |
 | `spring.registry.id` | string | `` | instance ID override; empty derives `<name>-<addr>` | ⚠ duplicate IDs across processes → one entry overwrites the other |
@@ -225,7 +226,7 @@ passing-only queries keep unhealthy instances out of the snapshot.
    (`kill -CONT`) before the critical window and the next heartbeat re-passes the check with no
    re-registration needed.
 6. **Bad address fail-fast**: set `address=127.0.0.1:9999`, boot → startup fails at the center
-   probe with `registry-consul: startup probe failed for 127.0.0.1:9999` (`center.go`).
+   probe with `registry-consul: startup probe failed for 127.0.0.1:9999` (`starter.go`).
 7. **Unregistered UpdateWeight**: calling `UpdateWeight` before Run registers returns
    `registry: instance not registered yet` (starter-registry `starter.go`).
 

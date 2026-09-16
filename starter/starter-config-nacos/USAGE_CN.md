@@ -160,6 +160,11 @@ Nacos 推送 dataId 变更
 `gs.Dync[T]` 重新解析自己的 `${...}` 表达式。普通 `value` 字段的值永远是启动时的；
 `OnProperty` 条件只在启动时评估。
 
+listener 在拉取**之前**被无条件注册。若 `ListenConfig` 只在 `GetConfig` 成功后才安装，
+`optional:` 导入遇上尚不存在的 dataId 时会提前返回、永远装不上 listener——之后再发布也
+不会触发刷新。正是这个顺序保证了 `optional:` 导入在 dataId 出现后仍能热更新
+（starter.go:249）。
+
 ### 2.3 治理规则推送链路（已移出）
 
 nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`govern.source.nacos.*`）。

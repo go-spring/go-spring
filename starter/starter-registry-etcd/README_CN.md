@@ -113,7 +113,7 @@ spring.registry.etcd.dr.endpoints=10.9.0.1:2379
 spring.registry.service-name=orders
 spring.registry.addr=10.0.0.5:8080
 # 发现:引用块的 bean 名即可,无需任何配置
-spring.http-client.backends.users.discovery=etcd.main
+spring.http-client.instances.users.discovery=etcd.main
 ```
 
 discovery bean 是惰性的——从不做解析的纯 provider 不会为它付出任何代价。**纯消费方**
@@ -122,7 +122,7 @@ discovery bean 是惰性的——从不做解析的纯 provider 不会为它付�
 ```properties
 # 纯消费应用:只配连接块,无 service-name/addr,不注册
 spring.registry.etcd.main.endpoints=127.0.0.1:2379
-spring.http-client.backends.users.discovery=etcd.main
+spring.http-client.instances.users.discovery=etcd.main
 ```
 
 多集群发现现在就是多个块:注册进 `etcd.main` 与 `etcd.dr` 的同时从 `etcd.dr` 发现——

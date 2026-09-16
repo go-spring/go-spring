@@ -82,3 +82,16 @@ logger.config_nacos.type=Logger
 logger.config_nacos.level=WARN
 logger.config_nacos.tag=_app_config_nacos
 ```
+
+## Design Notes
+
+**Bootstrap infrastructure, not a bean.** The provider runs during property
+refresh, before any bean exists, so it builds its own Nacos SDK client from the
+import string instead of receiving one through injection. Clients are cached per
+connection tuple so repeated refreshes do not leak clients and their background
+gRPC connections, and a remote change reaches the container through the
+process-level `gs.RefreshProperties()` facade rather than bean wiring.
+
+**Config-only role — intentional.** Nacos config and Nacos naming live at
+different layers, so this starter covers the config center only — mirroring
+Spring Cloud Alibaba's `nacos-config` / `nacos-discovery` split.

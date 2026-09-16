@@ -286,7 +286,7 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 | `uri` | string | — | **必填**（`expr:"$ != ''"`）。scheme 决定路由+加密：`bolt`/`neo4j` 明文，`neo4j+s`/`bolt+s` TLS，`+ssc` 自签。⚠ 设置 `service-name` 时 host 被发现结果替换（example 故意用哑地址 `bolt://0.0.0.0:0`）。 | 缺失 → BindEach 报错并点名实例；scheme 非法 → 构造期 driver 报错。 |
 | `service-name` | string | — | 经发现后端解析**启动地址**，并为 `neo4j://` client 保留一份活的路由集用于自愈（§2.4）。⚠ 需有匹配的命名后端 bean。 | 后端未注册 → 启动报错 "neo4j: resolve service …"。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme 的端点；仅 `service-name` 生效时被读取。 | — |
-| `discovery` | string | — | 用哪个已注册后端解析 `service-name`。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错。 |
+| `discovery` | string | — | 用哪个已注册后端解析 `service-name`。未配置时回退 `${spring.neo4j.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 
 ### 3.2 认证与连接池
 

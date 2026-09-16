@@ -81,11 +81,43 @@ full broadcast to refresh flow.
   the configured NATS connection.
 - `Publish(ctx, prefix)` sends a small JSON `RefreshEvent{prefix, origin}` on the
   subject. An empty prefix means a full-fleet refresh; a non-empty prefix lets
-  prefix-scoped subscribers opt out. The ctx parents the producer span on your
-  trace.
+  prefix-scoped subscribers opt out (an event applies when its prefix overlaps a
+  watched prefix in either direction, so a `db` watcher reacts to a `db.pool`
+  event and vice versa). The ctx parents the producer span on your trace.
 - On receipt each subscriber calls the framework's process-level
   `gs.RefreshProperties()` facade, which reloads all configuration sources and
   re-binds every `gs.Dync` field via a two-phase, atomic commit.
+- The bus does not own the NATS connection: it injects a `*StarterNats.Conn` by
+  instance name and leaves lifecycle and close to `starter-nats`.
+
+## Design Notes
+
+**Signals only, never configuration content.** The bus tells subscribers
+"reload from your own sources now"; the config center or local files remain the
+single source of truth. A malformed message is warn-logged and dropped; an empty
+payload is a valid full-fleet refresh. Applications must never rely on message
+bodies as configuration.
+
+**Refresh failures never unsubscribe the instance.** A failed `RefreshProperties`
+is counted (`refresh_error`), logged, and returned to the transport so the
+consumer span is marked failed — but the subscription stays up. One broken
+refresh must not silently drop an instance out of the fleet.
+
+**The named root object is load-bearing.** `gs.Rooter` is `any`, so the bean is
+registered under the explicit name `configBus` (never `__default__`); that name
+is also the autowire handle for `Publish` callers.
+
+**Broadcasting configuration content — rejected.** It would make the bus a
+second source of truth and race with each subscriber's own config-center watch.
+
+**Other transports (Kafka/Redis) — deferred.** NATS was chosen first because a
+Go-Spring app is likely to already run it; a second transport can be a peer
+starter with the same subject/prefix model.
+
+**JetStream durable subscriptions — deliberately not used.** A missed broadcast
+is recoverable: the instance's own remote config watcher observes the underlying
+change on its next tick, and admins can always republish. Durability would add
+operational cost without changing the correctness model.
 
 ## Observability
 

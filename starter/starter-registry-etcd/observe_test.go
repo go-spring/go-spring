@@ -29,6 +29,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -162,7 +163,7 @@ func TestRegisterFailedPublishIsReported(t *testing.T) {
 	r, fails, _ := newHealRegistrar()
 	fails.set(errors.New("etcd down"))
 
-	err := r.Register(context.Background(), instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
+	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	assert.Error(t, err).NotNil()
 
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
@@ -178,7 +179,7 @@ func TestRegisterFailedPublishIsReported(t *testing.T) {
 func TestRegisterSuccessIsReported(t *testing.T) {
 	ctx := context.Background()
 	r, _, lastKA := newHealRegistrar()
-	in := instance{ServiceName: "orders-ok", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-ok", Addr: "1.2.3.4:80", Weight: 1}
 
 	assert.Error(t, r.Register(ctx, in)).Nil()
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
@@ -215,7 +216,7 @@ func TestSelfHealFailureIsReported(t *testing.T) {
 		return nil, errors.New("etcd down")
 	}
 
-	h := newHold(instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1})
+	h := newHold(discovery.Instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka1); close(done) }()
@@ -244,7 +245,7 @@ func TestSelfHealFailureIsReported(t *testing.T) {
 // edge of the same signal, so an alert on "registered == 0" clears by itself.
 func TestSelfHealSuccessRestoresPublished(t *testing.T) {
 	r, _, lastKA := newHealRegistrar()
-	h := newHold(instance{ServiceName: "payments-back", Addr: "1.2.3.4:80", Weight: 1})
+	h := newHold(discovery.Instance{ServiceName: "payments-back", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka1); close(done) }()
@@ -338,6 +339,40 @@ func TestDiscoveryReportsSuccessfulSeedSyncLive(t *testing.T) {
 	assert.Number(t, floatGaugeValue(t, "discovery.cache.age_seconds", map[string]string{
 		"system": obsSystem, "service": "orders",
 	})).LessThan(1.0, "a just-confirmed snapshot must read as fresh")
+}
+
+// The trace half of the same instrumentation: a failed initial publish must
+// open a client span named for the operation, carrying the backend's system
+// and ending in error. The metric assertions above prove the counters; this
+// proves the span link a consumer of the trace actually sees.
+func TestRegisterEmitsClientSpan(t *testing.T) {
+	testSpans.Reset()
+	r, fails, _ := newHealRegistrar()
+	fails.set(errors.New("etcd down"))
+
+	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders-span", Addr: "1.2.3.4:80", Weight: 1})
+	assert.Error(t, err).NotNil()
+
+	for _, s := range testSpans.GetSpans() {
+		if s.Name != "register" {
+			continue
+		}
+		attrs := map[string]string{}
+		for _, a := range s.Attributes {
+			attrs[string(a.Key)] = a.Value.AsString()
+		}
+		if attrs["registry.system"] != obsSystem || attrs["registry.service"] != "orders-span" {
+			continue
+		}
+		if attrs["registry.reason"] != discovery.ReasonInitial {
+			t.Fatalf("an initial publish's span must carry reason=%s, got %q", discovery.ReasonInitial, attrs["registry.reason"])
+		}
+		if s.Status.Code == codes.Error {
+			return
+		}
+		t.Fatalf("the failed register's span must end in error status, got %v", s.Status)
+	}
+	t.Fatal("no register span with system=etcd was emitted")
 }
 
 // The tag name is a user-facing config key: USAGE documents tuning this

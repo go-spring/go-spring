@@ -30,7 +30,7 @@ import "sync/atomic"
 // the injector's own [Config.Rules], and the resource label is consulted at decision time
 // by the injector (in maybe) via WrapExecutor/Apply — not at lookup time. The
 // MaxDuration/MaxAffected guardrails are therefore process-global counters; see
-// cloud/governance/DESIGN_CN.md §8 for the rationale.
+// cloud/governance/README.md 设计说明 §8 for the rationale.
 
 // injectorHolder is the process-wide injector registered once by starter-govern after it
 // builds the governance center. nil (the zero value) means fault injection is off for the

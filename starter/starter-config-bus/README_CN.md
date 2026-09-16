@@ -74,10 +74,36 @@ _ = svc.Bus.Publish(ctx, "db")
 - 启动时 `ConfigBus` bean 被急切创建（以名字 `configBus` 导出 `gs.Rooter`）,并在
   配置的 NATS 连接上订阅 `spring.config.bus.subject`。
 - `Publish(ctx, prefix)` 在主题上发送一条精简的 JSON `RefreshEvent{prefix, origin}`。
-  空前缀表示全量刷新;非空前缀允许带前缀过滤的订阅者跳过。ctx 把 producer span
+  空前缀表示全量刷新;非空前缀允许带前缀过滤的订阅者跳过（事件前缀与某个已订阅前缀
+  双向有交集即生效——`db` 订阅者会响应 `db.pool` 事件，反之亦然）。ctx 把 producer span
   挂到你的 trace 下。
 - 收到消息后,每个订阅者直接调用框架的进程级门面 `gs.RefreshProperties()`,重新加载
   所有配置源,并通过两阶段原子提交重新绑定每个 `gs.Dync` 字段。
+- 总线不拥有 NATS 连接：它按实例名注入 `*StarterNats.Conn`，生命周期与关闭都交给
+  `starter-nats`。
+
+## 设计要点
+
+**只搬信号，不搬配置内容。** 总线只告诉订阅者"现在从你自己的源重新拉一次"；配置中心
+或本地文件仍是唯一事实源。报文格式错误只记 warn 并丢弃；空负载是合法的全量刷新。应用
+永远不能把消息体当配置。
+
+**刷新失败绝不让实例退订。** `RefreshProperties` 失败会计入 `refresh_error`、记日志，
+并回传给传输层使 consumer span 标记失败——但订阅保持不变。一次刷新失败不能让实例
+静默脱离集群。
+
+**命名 root 对象是关键。** `gs.Rooter` 是 `any`，因此 bean 以显式名字 `configBus`
+注册（绝不落入 `__default__`）；该名字同时也是 `Publish` 调用方的 autowire 句柄。
+
+**广播配置内容——否决。** 会让总线变成第二事实源，且与每个订阅者自己的配置中心
+watch 竞争。
+
+**换传输（Kafka/Redis）——搁置。** 首版选 NATS，因为使用 Go-Spring 的应用很可能
+已经运行它；后续可以另起一个使用相同 subject/prefix 模型的对等 starter。
+
+**JetStream 持久订阅——刻意不用。** 漏掉一次广播是可恢复的：实例自己的远程配置
+watcher 会在下一轮观察到底层变化，运维也可以随时重发。持久性会增加运维成本，却不
+改变正确性模型。
 
 ## 可观测性
 

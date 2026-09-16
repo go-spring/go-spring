@@ -74,7 +74,9 @@ func newCtrlWithFake(source string, fake *fakeApolloClient) (*apolloCtrl, error)
 	if err != nil {
 		return nil, err
 	}
-	return &apolloCtrl{clients: map[string]apolloClient{clientKey(cs): fake}}, nil
+	c := newApolloCtrl()
+	c.clients[clientKey(cs)] = fake
+	return c, nil
 }
 
 // TestLoadProperties pins the happy path: properties content parsed and
@@ -131,9 +133,9 @@ func TestListenerRegisteredOncePerSource(t *testing.T) {
 // OnNewestChange reaches TriggerRefresh, which before the container wires the
 // PropertiesRefresher must be a harmless no-op rather than a nil dereference.
 func TestListenerChangeFiresRefresh(t *testing.T) {
-	l := &apolloListener{ctrl: &apolloCtrl{}}
+	l := &apolloListener{ctrl: newApolloCtrl()}
 	l.OnChange(&agolloChangeEvent{})
 	l.OnNewestChange(&agolloFullChangeEvent{})
-	c := &apolloCtrl{}
+	c := newApolloCtrl()
 	c.TriggerRefresh()
 }

@@ -33,7 +33,7 @@ import (
 // never Register-ed is an explanatory error, not a silent no-op.
 func TestUpdateWeightUnregistered(t *testing.T) {
 	r := &etcdRegistrar{keyPrefix: "/services/", holds: map[string]*hold{}}
-	err := r.UpdateWeight(context.Background(), instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
+	err := r.UpdateWeight(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
 	assert.Error(t, err).Matches("unregistered instance")
 }
 
@@ -80,13 +80,13 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 	}
 
 	const service = "orders"
-	a := instance{ServiceName: service, ID: "a", Addr: "10.0.0.1:8080", Weight: 9}
-	b := instance{ServiceName: service, ID: "b", Addr: "10.0.0.2:8080", Weight: 1}
-	for _, in := range []instance{a, b} {
+	a := discovery.Instance{ServiceName: service, ID: "a", Addr: "10.0.0.1:8080", Weight: 9}
+	b := discovery.Instance{ServiceName: service, ID: "b", Addr: "10.0.0.2:8080", Weight: 1}
+	for _, in := range []discovery.Instance{a, b} {
 		assert.Error(t, reg.Register(ctx, in)).Nil()
 	}
 	t.Cleanup(func() {
-		for _, in := range []instance{a, b} {
+		for _, in := range []discovery.Instance{a, b} {
 			_ = reg.Deregister(context.Background(), in)
 		}
 	})

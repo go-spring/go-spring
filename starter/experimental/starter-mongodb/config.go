@@ -21,6 +21,7 @@ package StarterMongoDB
 import (
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/tlsconf"
 )
 
@@ -69,31 +70,18 @@ type Config struct {
 	// TLS (unless the URI itself requests it).
 	TLS tlsconf.TLSConfig `value:"${tls}"`
 
-	// ServiceName resolves the connection address through a registered discovery
-	// backend instead of relying solely on the URI hosts. When set (and mesh mode
-	// is off), a Resolver-backed dialer is injected as the client's ContextDialer,
-	// so every new connection reaches a currently-live instance and address
-	// changes take effect without rebuilding the client. In mesh mode the sidecar
-	// owns discovery+LB, so ServiceName is ignored and the URI hosts are dialed
-	// directly. When ServiceName is empty (in non-mesh mode), the URI hosts are
-	// dialed directly.
-	//
-	// Note: this bypasses MongoDB's own topology discovery (replica set / mongos)
-	// — the driver dials whatever the naming service hands out. Use it when the
-	// intent is "reach the service via the company naming service"; keep it empty
-	// to let the driver manage replica-set/mongos topology from the URI.
-	ServiceName string `value:"${service-name:=}"`
+	// Addressing is the shared discovery-citation block: ServiceName resolves
+	// the connection address through a discovery backend instead of the URI
+	// hosts (mesh mode ignores it — the sidecar owns discovery+LB; it also
+	// bypasses MongoDB's own replica-set/mongos topology discovery — the driver
+	// dials whatever the naming service hands out), Discovery cites the backend
+	// bean (falling back to ${spring.mongodb.default.discovery} via the starter
+	// wiring). See discovery.Addressing for the shared contract.
+	discovery.Addressing
 
 	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
 	// "https"). Empty (the default) returns every scheme; set it when a service
 	// exposes both plain and secure instances and this client should reach only
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
-
-	// Discovery names the discovery backend bean that resolves ServiceName.
-	// It is only consulted when ServiceName is set. The starter wiring resolves
-	// this label to the backend bean and hands the result to the client assembly
-	// (newPickPool) as the backend argument. Empty means unset: no discovery
-	// backend is wired and the entry must not route by service-name alone.
-	Discovery string `value:"${discovery:=}"`
 }

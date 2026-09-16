@@ -150,7 +150,7 @@ govern.default.max-retries=1
 govern.default.timeout=500ms
 # 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 govern.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for 原地驱动该 entry 的池
-# （见 cloud/governance/CONFIG_CN.md §3.1）。
+# （见 cloud/governance/README.md §3.1）。
 ```
 
 每个走发现拨号的方言都给池挂上 suspension tracker，并经 `loadbalance.Pool.BindSelection` 绑到
@@ -264,7 +264,7 @@ gorm:query processor 链
 | `slow-threshold` | duration | 0 | `>0` 安装 warn 级 gorm 慢查询 logger,输出经 **go-spring.org/log**(`log.Warnf`,TagAppDef)转发——进配置的 appender,而非裸 stdout。0 保持 gorm 默认 logger。⚠ 消息体是 GORM 的单行文本,不是结构化字段。 | 0 → 完全没有慢日志;要结构化字段 → 消息体是纯文本(改用访问日志)。 |
 | `service-name` | string | — | 切换为服务发现寻址:方言绑定 discovery 拨号器,每条新连接到达存活实例。设置后 `addr` 被忽略(示例故意用 dummy `0.0.0.0:0` 证明)。mesh 模式(`GS_MESH=on`)下 sidecar 接管发现,`addr` 原样使用。 | 不设且无 `addr` → 方言构建报错("one of addr or service-name must be set")。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme(如 `tls`)。⚠ 未设 `service-name` 时为死 key(仅在此时被读取)。 | 设了但无 service-name → 静默忽略。 |
-| `discovery` | string | — | 选择解析 `service-name` 的已注册 discovery 后端。⚠ 未设 `service-name` 时为死 key。 | service-name 已设但 discovery 未配置或名字无对应 bean → 启动报错；设了但无 service-name → 静默忽略。 |
+| `discovery` | string | — | 选择解析 `service-name` 的已注册 discovery 后端。未配置时回退 `${spring.gorm.<dialect>.default.discovery}`。⚠ 未设 `service-name` 时为死 key。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错；设了但无 service-name → 静默忽略。 |
 | `observe.enabled` | bool | true | gorm observe 插件的硬开关:false 时插件完全不安装——无 span、无 metric、无访问日志、无逐查询回调。 | false → 逐查询可观测静默消失(为高吞吐实例有意为之)。 |
 
 死 key 说明:对 **sqlite** 而言整个发现三件套(`service-name`/`scheme`/`discovery`)结构性
