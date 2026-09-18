@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-scheduler` is a **global / infrastructure** starter (see
-[starter/DESIGN.md](../../DESIGN.md) §2.4) that drives periodic and
+[starter/DESIGN.md](../DESIGN.md) §2.4) that drives periodic and
 cron-scheduled background jobs as part of the Go-Spring server lifecycle.
 Triggers and concurrency primitives come from the zero-dep
 `cloud/scheduling` package; this starter is the thin integration layer.

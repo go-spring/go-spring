@@ -295,6 +295,14 @@ cd example-otel && go run .                               # 20 RPCs, asserts tra
 curl -s :9090/metrics | grep kitex                        # starter-otel's prometheus exporter
 ```
 
+Access log (internal/accesslog): one line per call, installed alongside the suite and
+**always** written — the `tracing.enable` / `metrics.enable` switches do not cover it. The
+span and the kitex RPC metrics come from `kitex-contrib/obs-opentelemetry`; the access log
+is the only per-call signal this starter contributes. Tag `_app_kitex_access`
+(`log.RegisterAppTag("kitex", "access")`); fields `rpc.system` (`kitex`), `rpc.method`
+(`service/method`, matching the tracing suite's method), `status` (`ok`|`error`) and
+`duration_ms`, plus `error` on failure.
+
 ### 4.3 Registry drill (etcd)
 
 ```bash

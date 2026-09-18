@@ -1,0 +1,34 @@
+name: checks
+
+# The read-only verification gate. Everything it runs is also runnable by hand:
+# `bash scripts/check-all.sh` is the same entry point, so a local green means a
+# CI green.
+#
+# Deliberately NOT here:
+#   - tests. Many starters need a broker/registry container (their examples ship
+#     docker-compose), so a bare `go test ./...` across the workspace would fail
+#     for reasons unrelated to the change. Tests are run per module, by hand or
+#     by the example smoke scripts.
+#   - scripts/check-go-modules.sh — it rewrites sources in place (go fix /
+#     modernize). A gate must not modify the tree it is judging.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The modules do not declare one version (268 say 1.26.1, 41 say 1.26, one
+      # says 1.24), so pin the newest of them — a newer toolchain builds the
+      # older-version modules, and the workflow only needs a toolchain for gofmt.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: starter/starter-http-client/go.mod
+          cache: false
+
+      - name: Read-only checks
+        run: bash scripts/check-all.sh

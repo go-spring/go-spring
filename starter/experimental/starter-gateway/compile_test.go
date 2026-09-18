@@ -31,8 +31,8 @@ import (
 func newTestTable(t *testing.T) *RouteTable {
 	t.Helper()
 	tbl := &RouteTable{
-		ctx:     context.Background(),
-		metrics: newMetrics(),
+		ctx: context.Background(),
+		obs: newObserver(),
 	}
 	return tbl
 }

@@ -64,6 +64,21 @@ type carrier []attribute.KeyValue
 // Nested spans inherit: a child is started from a context derived from this
 // one, so the attributes reach it too.
 //
+// Two limits shape what this can do, and neither fails loudly:
+//
+// The attributes are applied when a span starts, so they cover "annotate
+// before the call". A span the framework started internally cannot take
+// attributes discovered while it ran -- by the time the caller learns them,
+// the span is the framework's, not the caller's. Attributes for a caller's
+// own span need no help from here: span.SetAttributes works until span.End.
+//
+// Something has to read the carrier. This function only puts attributes on a
+// context; a registered sdktrace.SpanProcessor applies them (see
+// starter-otel/trace.ContextAttributesProcessor, which NewTracerProvider
+// registers on its own). An application that builds its own TracerProvider
+// without it gets a context that carries attributes nobody applies -- no
+// error, no attributes.
+//
 // The attributes live exactly as long as the context does. There is no Clear
 // counterpart, and none is needed: unlike a thread-local, a context is never
 // pooled for reuse.

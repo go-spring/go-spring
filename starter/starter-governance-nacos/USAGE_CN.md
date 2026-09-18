@@ -2,14 +2,14 @@
 
 详细使用参考。总览见 [README_CN.md](README_CN.md)。以下每条行为断言都对照过 starter
 源码（`governance.go`、`governance_test.go`）、共享解析胶水
-[starter-governance/rules](../../starter-governance/rules/rules.go)、核心契约
-[cloud/governance](../../../cloud/governance)（`source.go`），以及自断言的
+[starter-governance/rules](../starter-governance/rules/rules.go)、核心契约
+[cloud/governance](../../cloud/governance)（`source.go`），以及自断言的
 [example/](example)（`example/example.go`、`example/check.sh`）。Nacos 自身的语义（dataId、
 group、namespace、`ListenConfig`）见 [Nacos 文档](https://nacos.io/docs/latest/manual/admin/config/)——
 以下都是 go-spring 的增量。
 
 **本 starter 是什么**：治理规则源家族的 Nacos 适配器，是一个 `governance.Source` 实现；
-治理中心本身的呈现是 [starter-governance](../../starter-governance) 的职责。存在
+治理中心本身的呈现是 [starter-governance](../starter-governance) 的职责。存在
 `govern.source.nacos.*` 配置项之前，空导入本包是惰性的。
 
 ---
@@ -196,14 +196,14 @@ gs.Run()
 这与 `starter-config-nacos` import 串的 `timeout-ms` 不同。
 
 ⚠ `govern.source.*` 只是引导面。规则文档本身永不走 `app.properties`——它住在自己的 dataId 里，
-其键是 `govern.*` 词表，文档见 [starter-governance 的 USAGE](../../starter-governance/USAGE.md)。
+其键是 `govern.*` 词表，文档见 [starter-governance 的 USAGE](../starter-governance/USAGE.md)。
 
 ### 3.1 文档的逐字节可移植性
 
 文档由 `starter-governance` 的 file 源与 http 源共用的同一个 `rules.Parse` 解析：先扁平化，
 要求至少含一个 `govern.*` 键，再绑定进 `governance.Config`。因此一份能作为本地规则文件工作的文档，
 作为 Nacos dataId（反之亦然，以及作为 etcd 值配合
-[starter-governance-etcd](../../starter-governance-etcd)）也能原样工作。
+[starter-governance-etcd](../starter-governance-etcd)）也能原样工作。
 
 ---
 
@@ -282,5 +282,5 @@ docker 或 compose 命令不可用时，`check.sh` 优雅跳过。否则它拉�
   文档，这是可接受的。
 - 解析胶水（`rules.Parse`）作为 `starter-governance` 的子包安放，而非放进 `cloud/governance`，
   这样容器无关的核心保持不含 `spring` 依赖，同时各后端共享同一个解析器。
-- etcd 兄弟适配器（[starter-governance-etcd](../../starter-governance-etcd)）形态相同；两者保持
+- etcd 兄弟适配器（[starter-governance-etcd](../starter-governance-etcd)）形态相同；两者保持
   结构对齐，便于读者在两者之间迁移。

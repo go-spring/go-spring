@@ -54,32 +54,31 @@ func (s *stubAdmissionExecutor) Execute(ctx context.Context, _ string, fn func(c
 func (s *stubAdmissionExecutor) Close() error                    { return nil }
 func (s *stubAdmissionExecutor) Refresh(resilience.Policy) error { return nil }
 
-// countingProcessor records how often the service implementation ran, and can
-// fail on demand.
-type countingProcessor struct {
+// countingFunc is a service implementation: it records how often it ran and can
+// fail on demand. The middleware seam makes the service a TProcessorFunction,
+// not a TProcessor, so the tests drive [admit] directly with one.
+type countingFunc struct {
 	runs int
 	err  thrift.TException
 }
 
-func (p *countingProcessor) Process(ctx context.Context, in, out thrift.TProtocol) (bool, thrift.TException) {
-	p.runs++
-	if p.err != nil {
-		return false, p.err
+func (f *countingFunc) Process(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
+	f.runs++
+	if f.err != nil {
+		return false, f.err
 	}
 	return true, nil
 }
 
-func (p *countingProcessor) ProcessorMap() map[string]thrift.TProcessorFunction { return nil }
-func (p *countingProcessor) AddToProcessorMap(string, thrift.TProcessorFunction) {}
-
-func newAdmission(inner thrift.TProcessor, exec resilience.Executor) thrift.TProcessor {
-	return &admissionProcessor{inner: inner, exec: exec, resource: "thrift:test"}
+// admitWith drives admit for one call, as the Admit middleware would.
+func admitWith(exec resilience.Executor, svc thrift.TProcessorFunction) (bool, thrift.TException) {
+	return admit(context.Background(), exec, "thrift:test", "Ping", 1, nil, nil, svc)
 }
 
 func TestAdmission_PassThroughRunsServiceOnce(t *testing.T) {
-	svc := &countingProcessor{}
+	svc := &countingFunc{}
 	exec := &stubAdmissionExecutor{}
-	ok, ex := newAdmission(svc, exec).Process(context.Background(), nil, nil)
+	ok, ex := admitWith(exec, svc)
 	if !ok || ex != nil {
 		t.Fatalf("pass-through should succeed: ok=%v err=%v", ok, ex)
 	}
@@ -97,8 +96,8 @@ func TestAdmission_RejectionNeverReachesService(t *testing.T) {
 		"circuit open":  resilience.ErrCircuitOpen,
 	} {
 		t.Run(name, func(t *testing.T) {
-			svc := &countingProcessor{}
-			ok, ex := newAdmission(svc, &stubAdmissionExecutor{reject: reject}).Process(context.Background(), nil, nil)
+			svc := &countingFunc{}
+			ok, ex := admitWith(&stubAdmissionExecutor{reject: reject}, svc)
 			if ok {
 				t.Fatal("a rejected call must not report success")
 			}
@@ -125,9 +124,9 @@ func TestAdmission_RejectionNeverReachesService(t *testing.T) {
 // executor, or the breaker would never see server-side errors.
 func TestAdmission_ServiceExceptionPassesThrough(t *testing.T) {
 	want := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "no such method")
-	svc := &countingProcessor{err: want}
+	svc := &countingFunc{err: want}
 	exec := &stubAdmissionExecutor{}
-	ok, ex := newAdmission(svc, exec).Process(context.Background(), nil, nil)
+	ok, ex := admitWith(exec, svc)
 	if ok || ex != want {
 		t.Fatalf("service exception must pass through unchanged: ok=%v err=%v", ok, ex)
 	}
@@ -140,9 +139,9 @@ func TestAdmission_ServiceExceptionPassesThrough(t *testing.T) {
 // service implementation. The retry sees no error (the guard returns nil) and
 // the service still runs exactly once.
 func TestAdmission_DoesNotReplayService(t *testing.T) {
-	svc := &countingProcessor{err: thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "boom")}
+	svc := &countingFunc{err: thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "boom")}
 	exec := &stubAdmissionExecutor{attempts: 3}
-	_, ex := newAdmission(svc, exec).Process(context.Background(), nil, nil)
+	_, ex := admitWith(exec, svc)
 	if svc.runs != 1 {
 		t.Fatalf("service must run exactly once despite retries, ran %d", svc.runs)
 	}

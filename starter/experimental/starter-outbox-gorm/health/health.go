@@ -27,7 +27,7 @@ import (
 // is a plain reachability round trip to the backing database — the same
 // *gorm.DB the relay drains, so an unreachable db is surfaced here too.
 func NewRelayHealth(name string, db *gorm.DB) *health.Indicator {
-	return &health.Indicator{Name: "outbox:"+name, Probe: func(ctx context.Context) error {
+	return &health.Indicator{Name: "outbox:" + name, Probe: func(ctx context.Context) error {
 		return db.WithContext(ctx).Exec("SELECT 1").Error
 	}}
 }

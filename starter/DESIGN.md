@@ -376,6 +376,71 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   the OTel globals or bridges the library's internal logs into go-spring `log`
   via a `SetLogger` hook; it must also add a go-spring `FileLogger` sink or the
   console output is lost.
+- **Component observability follows one rule: same kind → same name, same
+  instrument type, same completeness, and a name states the capability, not the
+  implementation** (`db.client.operation.duration`, never
+  `redis.command.duration`). Three principles bound it, and dropping any one
+  bends the rule:
+  - *Completeness* — every component carries the signals it can: a span, a
+    duration metric, an in-flight gauge, and one access-log line per call. A
+    missing signal, or a result dimension that cannot tell success from failure,
+    is a **defect**, not a style difference. This holds for a component with no
+    siblings as much as for a family member.
+  - *Commonality* — the members of a family (interchangeable backends behind one
+    capability) must agree **on the parts that mean the same thing**: same key,
+    same instrument type, same value vocabulary. That is what lets a backend be
+    swapped without rewriting every dashboard, alert and query against it.
+  - *Flexibility* — a component-specific key is allowed. Nothing is a violation
+    merely for differing from its neighbours.
+  - *Two tiers, because a shared name is only meaningful for a shared meaning.*
+    `status` (`ok`/`error`), `rpc.method` and `duration_ms` mean exactly the same
+    thing in every RPC backend, so they must share one name — they are the only
+    thing a cross-framework query can join on. A transport-specific code
+    (`rpc.grpc.status_code`, `rpc.thrift.status_code`) carries a different value
+    vocabulary per backend, so forcing one name there would put two meanings
+    under one key — worse than two names. The same split applies to HTTP: the
+    shared axis is `status`, the detail is `http.response.status_code`.
+  - *Logs must join metrics.* An identity key in a log line must exist under the
+    same name as an attribute (span attribute or metric label), or a failing
+    metric cannot be traced to the line that explains it. Duration keys (ending
+    in `_ms`) and `error` are the line's own payload, not identity.
+  The per-family key lists are mechanical and live in
+  `scripts/check-observability.sh`, which is the enforcement — a family rule
+  lists what every member must have, and anything outside that list is left
+  alone. Its sections, and the gaps that are registered rather than closed:
+  - *families* — DB, messaging, HTTP server, RPC. A member whose metric or span
+    is emitted by a third-party library is registered with an access-point
+    evidence regex (checked against comment-stripped source, so deleting the
+    wiring but keeping the comment still fails).
+  - *baseline* — self-built instrumentation with no interchangeable siblings
+    (`scheduler`, `config-bus`, `mail`, `gateway`): completeness and joinability
+    only; commonality has nothing to bind them to.
+  - *delegation* — signals come wholly from a shared layer (`http-client`,
+    `oauth2-client`, the four `lock` backends, the three `transaction` backends,
+    the config providers, the registry backends); what is checked is that the
+    wiring is still there.
+  - *forward list* — components that must be instrumented. The model discovers
+    members by the instruments they already build, so a component that was never
+    instrumented is invisible to it; this list is what makes "should have been
+    done and was not" visible.
+  - *accepted gaps* — `starter-oauth2-client` logs every business call through the
+    same resilience layer as `starter-http-client` (it reaches that layer via
+    `ExecutorFor` instead of calling `WrapExecutor` itself), but the
+    token-endpoint exchange inside the oauth2 library bypasses that round tripper,
+    so it is traced and not logged;
+    kitex's and kratos's duration metrics carry no `status` dimension because the
+    libraries emit them; `cloud/experimental/transaction` emits spans only (its
+    `Observer` is the whole-path-replacement seam that §1.5 keeps as-is, so the
+    framework does not prescribe the other two signals for it);
+    `cloud/confrefresh` emits metrics only, with no log by design — its package
+    doc states the reason (callers already log failures, and the module that knows
+    the subject owns the log line).
+  - *connection state* — `messaging.client.connection.state_changes` is emitted
+    only by the members whose client library exposes connection-state callbacks
+    (mqtt, nats, rabbitmq). It is deliberately not part of the messaging family's
+    shared list: requiring it of a library that has no such callback could only
+    produce fabricated data. The checker holds the registered list and fails if a
+    registered member stops emitting it, or if an unregistered member starts.
 - **Registry backends report at their own seams.** A registry starter calls
   `cloud/discovery`'s reporting functions (`RegisterAttempt`,
   `DeregisterAttempt`, `WeightChange`, `Synced`) with its backend name, passing
@@ -390,7 +455,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   platform registers Pods for you) has no such seam to report at: it defines
   `obsSystem` and reports `discovery.Synced` on both sync outcomes, and emits
   none of the three registrar operations. Registered as an exception in
-  `scripts/check-registry-observability.sh`.
+  `scripts/check-observability.sh` (its registry section).
 
 ## 4. Adding a New Starter — Checklist
 
@@ -431,8 +496,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    interface instead — the self-heal path does not cross it. A discovery-only
    backend of the family (`starter-registry-k8s`) has no registrar: it defines
    `obsSystem` and reports `discovery.Synced` only, and is registered as an
-   exception in `scripts/check-registry-observability.sh`.
-   `scripts/check-registry-observability.sh` enforces this.
+   exception in `scripts/check-observability.sh` (its registry section).
+   `scripts/check-observability.sh` (its registry section) enforces this.
 8. Add health, TLS, and destroy where the underlying library supports them.
 9. Ship a bilingual README pair and an `example/` with `check.sh` only (no
    deployment scaffolding).

@@ -18,7 +18,6 @@ package StarterWebhook
 
 import (
 	"time"
-
 )
 
 // Config defines one webhook notifier instance.

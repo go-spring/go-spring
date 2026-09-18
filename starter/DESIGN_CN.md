@@ -269,6 +269,47 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **可观测遵循"中心定义、边缘桥接"。** starter 通过 OTel 全局输出,或用 `SetLogger`
   钩子把库的内部日志桥接进 go-spring `log`;桥接时必须同时补一个 go-spring
   `FileLogger` sink,否则会丢掉 console 输出。
+- **组件可观测遵循同一条规则:同类型 → 同名、同型、同齐整,且名字取能力不取实现**
+  （`db.client.operation.duration`,绝不是 `redis.command.duration`）。三条原则支撑它,
+  少一条就会走偏:
+  - *完整性* —— 每个组件都要带上它能带的信号:span、时长指标、在途 gauge,以及每调用
+    一行访问日志。缺信号、缺一个能分辨成败的结果维度,都是**缺陷**,不是「风格不同」。
+    这一条对没有同类的组件与族成员同样成立。
+  - *共同性* —— 同族成员（同一能力背后的可互换后端）必须在**含义相同的那些部分**上
+    一致:同样的键、同样的仪器类型、同样的取值词表。这正是「换一个后端不必重写看板、
+    告警与查询」的由来。
+  - *灵活性* —— 组件特有的键是允许的。没有任何东西仅因为「和别人不一样」而违规。
+  - *分两档,因为同名只在同义时才成立。* `status`（`ok`/`error`）、`rpc.method`、
+    `duration_ms` 在每个 RPC 后端里含义完全相同,所以必须同名 —— 它们是跨框架查询
+    唯一能 join 的东西。而 transport 专属的状态码（`rpc.grpc.status_code`、
+    `rpc.thrift.status_code`）各家取值词表不同,强行同名等于把两个含义塞进一个键,
+    比不同名更糟。HTTP 同此一刀:共用的轴是 `status`,细节是
+    `http.response.status_code`。
+  - *日志必须能 join 指标。* 日志行里的身份键必须在某个属性（span 属性或 metric label）
+    上同名存在,否则失败的指标落不到解释它的那行日志上。时长键（以 `_ms` 结尾）与
+    `error` 是日志行自身的载荷,不是身份。
+  各族的键清单是机械的,落在 `scripts/check-observability.sh` 里,它就是执行面 ——
+  族规列出每个成员必须有的东西,清单之外一律不管。它的各节,以及**登记而非关闭**的缺口:
+  - *族* —— DB、消息、HTTP server、RPC。指标或 span 由第三方库发出的成员需附接入点
+    证据正则登记（证据在**去注释源码**上匹配,所以删掉接线、留着注释照样失败）。
+  - *底线段* —— 自建插桩、但没有可互换同类的组件（`scheduler`、`config-bus`、`mail`、
+    `gateway`）:只查完整性与可 join,因为共同性没有对象可绑。
+  - *委托段* —— 信号完全来自共享层（`http-client`、`oauth2-client`、四个 `lock`
+    后端、三个 `transaction` 后端、各配置源、registry 后端）:查的是接线还在不在。
+  - *正向清单* —— 必须被插桩的组件。这套模型靠「已经建了仪器」反向识别成员,所以一个
+    从未插桩的组件对它完全隐形;这张清单让「该做而没做」变得可见。
+  - *已登记缺口* —— `starter-oauth2-client` 的业务调用经 resilience 层打每调用日志（与
+    `starter-http-client` 同源:它走 `ExecutorFor` 而非自己调 `WrapExecutor`）;但 oauth2
+    库内部的 token 端点换取不经过那个 RoundTripper,故它只有 span、没有日志。
+    kitex 与 kratos 的时长指标没有 `status` 维度,因为指标由库发出;
+    `cloud/experimental/transaction` 只有 span
+    （它的 `Observer` 是整条替换型缝,§1.5 已裁决保持现状,故框架不为它规定另外两种信号）;
+    `cloud/confrefresh` 只有指标、**故意不记日志** —— 包注释写明了理由（调用方已经记录失败,
+    且日志该由知道主题的那个模块来打）。
+  - *连接状态* —— `messaging.client.connection.state_changes` 只在**客户端库提供连接状态回调**
+    的成员上出现（mqtt、nats、rabbitmq）。它**不进**消息族的共同清单:对没有这种回调的库硬
+    要求,只能逼出假数据。checker 持有这份登记,并在「已登记成员不再上报」或「未登记成员开始
+    上报」时报错。
 - **Registry 后端在自己的缝上上报。** registry starter 用后端名调用 `cloud/discovery`
   的上报函数（`RegisterAttempt`、`DeregisterAttempt`、`WeightChange`、`Synced`）,后台
   重注册传 `discovery.ReasonSelfHeal`。要报在「首次发布」与「自愈路径」**共同经过**的
@@ -278,7 +319,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   `cloud/discovery/observe.go` 里有一份 —— 后端自己从不命名 instrument。本家族的
   **只做发现**后端（`starter-registry-k8s`,集群内平台已替你把 Pod 注册好）没有这样的
   漏斗可报:它定义 `obsSystem`、在成功与失败两侧上报 `discovery.Synced`,三个注册操作
-  一个都不产出;该例外登记在 `scripts/check-registry-observability.sh`。
+  一个都不产出;该例外登记在 `scripts/check-observability.sh`(registry 段)。
 
 ## 4. 新增 starter —— 检查清单
 
@@ -309,7 +350,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    `WeightChange`,以及成功与失败两侧的 `discovery.Synced`);绝不要改成包 `Registrar`
    接口 —— 自愈路径不经过它。本家族的只做发现后端（`starter-registry-k8s`）没有
    registrar:只定义 `obsSystem` 并上报 `discovery.Synced`,登记为本检查的例外。
-   `scripts/check-registry-observability.sh` 强制以上各项。
+   `scripts/check-observability.sh`(registry 段) 强制以上各项。
 8. 在底层库支持的前提下补 health、TLS、destroy。
 9. 提供双语 README,以及只含 `check.sh` 的 `example/`(不放部署脚手架)。
 10. 内部依赖走 `go.work`,不写 `require`。

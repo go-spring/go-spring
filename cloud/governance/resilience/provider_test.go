@@ -17,9 +17,13 @@
 package resilience
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 
+	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -56,4 +60,38 @@ func TestExecutorForAttachesListenerThroughResolve(t *testing.T) {
 	err := exec.Execute(t.Context(), "", func(context.Context) error { return nil })
 	assert.That(t, err).Nil()
 	assert.That(t, built.listener != nil).True()
+}
+
+// TestExecutorForEmitsPerCallAccessLog locks in what the [ExecutorFor] seam
+// delivers on its own: [resolve] wraps even the no-op executor with
+// [WrapExecutor], so a client that protects its calls through the seam gets one
+// access log per call with no provider registered and governance unconfigured.
+//
+// starter-oauth2-client relies on exactly this. It reaches the observe layer
+// through ExecutorFor + NewRoundTripper instead of calling WrapExecutor itself,
+// which an earlier audit misread as "no per-call access log" — the log's shape
+// is identical to starter-http-client's because it is the same layer.
+func TestExecutorForEmitsPerCallAccessLog(t *testing.T) {
+	cache.Delete("test:log")
+	provider.Store(nil) // no provider = governance off
+	t.Cleanup(func() {
+		cache.Delete("test:log")
+		provider.Store(nil)
+	})
+
+	prev := log.Stdout
+	buf := bytes.NewBuffer(nil)
+	log.Stdout = buf
+	defer func() { log.Stdout = prev }()
+
+	err := ExecutorFor("oauth2", "test:log").Execute(t.Context(), "test:log",
+		func(context.Context) error { return errutil.Explain(nil, "boom") })
+	assert.That(t, err).NotNil()
+
+	// A failure logs at Warn, so it survives the default Info level (successes
+	// log at Debug, matching http-client).
+	line := buf.String()
+	for _, want := range []string{"system=oauth2", "resource=test:log", "status=error"} {
+		assert.That(t, strings.Contains(line, want)).True()
+	}
 }

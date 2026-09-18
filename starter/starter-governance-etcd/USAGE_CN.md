@@ -13,7 +13,7 @@
 **激活方式**：任一 `govern.source.etcd.*` 配置即武装条件模块（`gs.OnProperty` 是**前缀**
 匹配，单个子键就能触发），并注册一个 `governance.Source` Bean。空导入且无该配置则不注册
 任何东西。Bean 本身并不武装治理——
-[`starter-governance`](../starter-governance/README.md) 的接线 Bean 才是把它注入中心的
+[`starter-governance`](../starter-governance/README_CN.md) 的接线 Bean 才是把它注入中心的
 那一环，需一并引入。进程只有一个生效 Source（中心只持一个），因此 file/http/etcd/nacos
 只配其中一个。
 

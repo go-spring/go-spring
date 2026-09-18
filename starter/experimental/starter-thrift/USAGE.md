@@ -238,18 +238,18 @@ gs.Run()
 ### 2.2 Processor chain — exact order and why
 
 ```
-TSimpleServer → WrapProcessor (observedProcessor) → your decorator → generated processor
+TSimpleServer → thrift.WrapProcessor(Observe, AccessLog, Admit) → your decorator → generated processor
 ```
 
 - **WrapProcessor outermost** (applied in `Run`, around whatever bean you provided): every
   call — including calls your decorator short-circuits or mangles — is counted, timed and
   spanned. Metric instruments are created once at `WrapProcessor` time and stored on the
   struct ("avoiding any lazy init on the hot path", per the source comment on
-  `observedProcessor`).
+  the middleware).
 - **Your decorator inner**: it consumes the message header to learn the method name, then
   dispatches via `ProcessorMap()` (see §1 for why it must re-implement dispatch).
 - The starter deliberately has **no built-in middleware chain** — no recovery, no request-id,
-  no access log, no admission, no fault injection. The decorator is the only cross-cutting
+  no admission, no fault injection. The decorator is the only cross-cutting
   seam (design stance: no shared interceptor protocol; each family carries a minimal seam).
 
 ### 2.3 One call, layer by layer
@@ -258,14 +258,16 @@ TSimpleServer → WrapProcessor (observedProcessor) → your decorator → gener
 
 1. Client writes a framed compact message to :9292.
 2. `TSimpleServer` accept loop hands the connection to a goroutine.
-3. `observedProcessor.Process`: starts OTel server span `thrift.process`
+3. **`Observe()` middleware**: starts an OTel server span **named after the thrift method**
+   (thrift hands the method name to a `ProcessorMiddleware`, which is why the instrumentation
+   rides that hook and not `TProcessor.Process`)
    (`rpc.system=thrift`; a **new root** — see §4.2), increments
    `rpc.server.active_requests`, starts the clock.
 4. Your decorator: `ReadMessageBegin` → logs method/seq → dispatches `Echo` via ProcessorMap.
 5. Generated processor decodes args, calls `Controller.Echo`, encodes the reply.
 6. Unwind: `observeEnd` records `rpc.server.request_count` +1 and
    `rpc.server.request.duration` (seconds; buckets 5ms…10s) with
-   `rpc.thrift.status_code=ok|error`; in-flight −1; span ends — on TException the span also
+   `status=ok|error`; in-flight −1; span ends — on TException the span also
    gets `thrift.error_code` (numeric `TExceptionType`) and Error status.
 
 ---
@@ -310,21 +312,26 @@ go run .                                     # sends 20 Echo RPCs, verifies Jaeg
 curl -s :9090/metrics | grep -E 'rpc_server_request_(count|duration)|rpc_server_active_requests'
 ```
 
-- **Spans**: name `thrift.process`, kind server, attribute `rpc.system=thrift`; on error also
+- **Spans**: name = the thrift method, kind server, attributes `rpc.system=thrift`, `rpc.method=<method>`; on error also
   `thrift.error_code` + Error status. Trace propagation depends on the protocol:
   - `protocol=header` (THeaderProtocol): W3C trace-context propagation **works** — the client
     injects `traceparent` into the message headers (e.g. Go client: `THeaderProtocol.SetWriteHeader`),
-    and the server extracts it via the global OTel propagator and parents `thrift.process` to the
-    remote span (implemented in `middleware.go` `observedProcessor.Process`; no-op without
+    and the server extracts it via the global OTel propagator and parents the method span to the
+    remote span (implemented in `middleware.go` `Observe()`; no-op without
     starter-otel, same global-first pattern as starter-kitex).
   - `binary` / `compact` / `json`: no header channel exists on the wire — every span is a **new
     root**, and cross-service traces show up disconnected. Adding one would require a custom
     protocol envelope, i.e. a breaking wire change — ruled out (see §6).
 - **Metrics**: `rpc.server.request_count` (counter), `rpc.server.request.duration`
   (seconds histogram, explicit buckets 0.005…10), `rpc.server.active_requests` (up-down
-  gauge), all with `rpc.system=thrift`; count/duration add `rpc.thrift.status_code=ok|error`.
+  gauge), all with `rpc.system=thrift` and `rpc.method=<method>`; count/duration add
+  `status=ok|error`.
 - **Logs**: only the app-def lines the starter emits (`thrift server created/starting/
-  shutting down`, tag `app-def`) plus whatever your decorator logs — there is no access log.
+  shutting down`, tag `app-def`) plus whatever your decorator logs.
+- **Access log**: one line per call under the `thrift`/`access` tag, **always installed**
+  (not behind `ObserverConfig`): `rpc.system`, `rpc.method`, `status`, `duration_ms`, plus
+  `error` on failure. Its identity keys are the metric's, so a failing method selected on a
+  dashboard lands on the line that explains it.
 
 ### 4.3 Fault drill
 
@@ -372,7 +379,7 @@ Design suspects (for the audit ledger):
 1. example/conf comment claims a ":9292 default" — there is none (still present; conf file,
    not Go source).
 2. ~~Trace propagation absent~~ **Resolved**: with `protocol=header` the server now extracts
-   W3C trace context from THeaderProtocol message headers and parents `thrift.process` to the
+   W3C trace context from THeaderProtocol message headers and parents the method span to the
    remote span (middleware.go). For binary/compact/json this stays impossible without a
    custom protocol envelope (breaking wire change) — declared boundary, won't fix.
 3. ~~No graceful drain~~ **Declared boundary**: `TSimpleServer.Stop` only closes the

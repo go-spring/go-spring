@@ -124,7 +124,7 @@ and other NATS features the driver does not model.
 
 Both directions of an operation are instrumented on the connection itself — a
 span, a duration/in-flight metric and an access log — and ride the global
-`TracerProvider` and propagator installed by [starter-otel](../../starter-otel).
+`TracerProvider` and propagator installed by [starter-otel](../starter-otel).
 Without starter-otel they are no-ops, so the instrumentation is a safe,
 zero-config opt-in.
 

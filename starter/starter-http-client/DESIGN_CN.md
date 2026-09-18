@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-http-client` 属于 *client* 形态(见
-[starter/DESIGN.md](../../DESIGN.md) §2.2,HTTP 场景变体),为
+[starter/DESIGN.md](../DESIGN.md) §2.2,HTTP 场景变体),为
 `gs-http-gen` 生成的声明式 HTTP 客户端(Go-Spring 的 OpenFeign /
 `@HttpExchange` 等价物)装配运行时传输栈。它**不注册默认单例**——每个
 发布的 `*http.Client` 都在 `${spring.http-client}` 下具名,按名注入。

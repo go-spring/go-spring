@@ -233,16 +233,16 @@ gs.Run()
 ### 2.2 Processor 链 —— 精确顺序与理由
 
 ```
-TSimpleServer → WrapProcessor (observedProcessor) → 你的装饰器 → 生成的 processor
+TSimpleServer → thrift.WrapProcessor(Observe, AccessLog, Admit) → 你的装饰器 → 生成的 processor
 ```
 
 - **WrapProcessor 在最外层**（`Run` 中套在你提供的 bean 之外）：每一次调用——包括
   你的装饰器短路或写坏的调用——都被计数、计时、建 span。metric instrument 在
-  `WrapProcessor` 时一次性创建并存放在 struct 上（源码注释：observedProcessor
+  `WrapProcessor` 时一次性创建并存放在 struct 上（源码注释：observer
   "avoiding any lazy init on the hot path"）。
 - **你的装饰器在内层**：它消费消息头拿到方法名，再经 `ProcessorMap()` 分发
   （为何必须重写分发见 §1）。
-- starter 刻意**没有内置中间件链**——无 recover、无 request-id、无 access log、无准入、
+- starter 刻意**没有内置中间件链**——无 recover、无 request-id、无准入、
   无 fault 注入。装饰器是唯一的横切缝隙（设计口径：不建共享拦截器协议；各家族自带
   最小缝隙）。
 
@@ -252,13 +252,14 @@ TSimpleServer → WrapProcessor (observedProcessor) → 你的装饰器 → 生�
 
 1. 客户端把一帧 compact 消息写到 :9292。
 2. `TSimpleServer` accept 循环把连接交给一个 goroutine。
-3. `observedProcessor.Process`：起 OTel server span `thrift.process`
+3. **`Observe()` 中间件**：起一个 OTel server span,**名字即 thrift 方法名** —— thrift 会把方法名
+   交给 `ProcessorMiddleware`,插桩因此落在那个钩子上,而不是 `TProcessor.Process` 外层
    （`rpc.system=thrift`；**新根**——见 §4.2），`rpc.server.active_requests` +1，开始计时。
 4. 你的装饰器：`ReadMessageBegin` → 打方法名/seq 日志 → 经 ProcessorMap 分发 `Echo`。
 5. 生成的 processor 解码参数、调 `Controller.Echo`、编码响应。
 6. 回程：`observeEnd` 记 `rpc.server.request_count` +1 与
    `rpc.server.request.duration`（秒；桶 5ms…10s），维度
-   `rpc.thrift.status_code=ok|error`；in-flight −1；span 结束——有 TException 时 span
+   `status=ok|error`；in-flight −1；span 结束——有 TException 时 span
    额外带 `thrift.error_code`（数字 `TExceptionType`）并置 Error 状态。
 
 ---
@@ -303,20 +304,23 @@ go run .                                     # 发 20 个 Echo RPC，校验 Jaeg
 curl -s :9090/metrics | grep -E 'rpc_server_request_(count|duration)|rpc_server_active_requests'
 ```
 
-- **Span**：名称 `thrift.process`，kind server，属性 `rpc.system=thrift`；出错时另有
+- **Span**：名称为 thrift 方法名，kind server，属性 `rpc.system=thrift`；出错时另有
   `thrift.error_code` + Error 状态。trace 传播取决于 protocol：
   - `protocol=header`（THeaderProtocol）：W3C trace-context 传播**可用**——客户端把
     `traceparent` 注入消息头（Go 客户端用 `THeaderProtocol.SetWriteHeader`），服务端经
-    全局 OTel propagator 提取，`thrift.process` 挂到远端 span 之下（实现在 `middleware.go`
-    `observedProcessor.Process`；未 import starter-otel 时为 no-op，与 starter-kitex 同样的
+    全局 OTel propagator 提取，该方法名 span 挂到远端 span 之下（实现在 `middleware.go`
+    `Observe()`；未 import starter-otel 时为 no-op，与 starter-kitex 同样的
     global-first 模式）。
   - `binary` / `compact` / `json`：线上格式没有 header 通道——每个 span 都是**新根**，
     跨服务 trace 互不相连。要加就得自定义协议信封 = 破坏性线上变更，已否决（见 §6）。
 - **指标**：`rpc.server.request_count`（counter）、`rpc.server.request.duration`
   （秒直方图，显式桶 0.005…10）、`rpc.server.active_requests`（up-down gauge），
-  均带 `rpc.system=thrift`；count/duration 另加 `rpc.thrift.status_code=ok|error`。
+  均带 `rpc.system=thrift` 与 `rpc.method=<method>`；count/duration 另加 `status=ok|error`。
 - **日志**：starter 只打 app-def 行（"thrift server created/starting/shutting down"，
-  tag `app-def`）加你的装饰器自己打的——没有 access log。
+  tag `app-def`）加你的装饰器自己打的。
+- **访问日志**：每调用一行，走 `thrift`/`access` tag，**始终安装**（不受 `ObserverConfig`
+  控制）：`rpc.system`、`rpc.method`、`status`、`duration_ms`，失败时另有 `error`。
+  身份键与指标同名,所以看板上选中的失败方法能落到解释它的那行日志上。
 
 ### 4.3 故障演练
 
@@ -361,7 +365,7 @@ transport、打断 accept 循环。thrift 的 `TSimpleServer.Stop` 并不等待�
 
 1. example/conf 注释声称 ":9292 默认值"——不存在（仍在；是 conf 文件，非 Go 源码）。
 2. ~~缺 trace 传播~~ **已解决**：`protocol=header` 时服务端从 THeaderProtocol 消息头
-   提取 W3C trace context，`thrift.process` 挂到远端 span 之下（middleware.go）。
+   提取 W3C trace context，该方法名 span 挂到远端 span 之下（middleware.go）。
    binary/compact/json 要传播必须自定义协议信封（破坏性线上变更）——声明边界，不做。
 3. ~~无优雅排空~~ **声明边界**：`TSimpleServer.Stop` 只关 transport；此处不建排空，
    生产 thrift 请用成熟框架。

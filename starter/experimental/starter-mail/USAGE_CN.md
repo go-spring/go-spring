@@ -164,13 +164,18 @@ release at shutdown"（starter.go init / Mailer 文档）。
    （`AttachReader`）。
 2. **投递阶段** —— 单次 `DialAndSendWithContext` 开一条 SMTP 连接发完全部消息后关闭。
    部分失败语义归 go-mail；starter 只把错误包一层 `errutil.Explain(err, "mail: send failed")`。
-3. **Tracing（选配，调用侧）** —— 若应用调用了 `StartSendSpan`（trace.go:41），span
-   `mail.send`（SpanKind=client，属性 `messaging.system=smtp`、`messaging.operation=send`、
-   `mail.purpose=<purpose>`）在 `EndSpan` 里记录错误并结束。不引入 starter-otel 时
+3. **观测（始终开启）** —— `Send` 记录时长指标 `email.client.operation.duration`
+   （label `email.system`、`status`），维护在途 gauge `email.client.active_requests`，
+   并为每次发送写一行访问日志（`email.system`、`status`、`duration_ms`，失败时另有
+   `error`），走 `mail`/`access` tag。**无论调用方有没有开 span 都会发** —— 一次发送
+   必须在两种情况下都可度量。
+4. **Tracing（选配，调用侧）** —— 若应用调用了 `StartSendSpan`（trace.go:41），span
+   `mail.send`（SpanKind=client，属性 `email.system=smtp`、`email.operation=send`、
+   `mail.purpose=<purpose>`）在 `EndSpan` 里记录结果并结束。不引入 starter-otel 时
    OTel 全局 TracerProvider 是 no-op——线上零字节，也不告警。
 
 注意 trace span **不在** `Send` 内部：starter 暴露两个辅助函数，由调用方夹住调用
-（已记入 §6 设计嫌疑）。
+（已记入 §6 设计嫌疑）。**指标与访问日志在 `Send` 内部，所以只有 trace 是选配的。**
 
 ---
 
@@ -228,7 +233,7 @@ cd example-otel && docker compose up -d && go run .   # example 自带断言 Jae
 curl -s 'http://127.0.0.1:16686/api/traces?service=mail-otel-example&limit=1' | grep '"data":\['
 ```
 
-可读 span 字段：operation `mail.send`、kind CLIENT、属性 `messaging.system=smtp`、
+可读 span 字段：operation `mail.send`、kind CLIENT、属性 `email.system=smtp`、
 `mail.purpose`（你传入的字符串）、失败时有 error 事件 + status Error。
 
 ### 4.5 From 回退演练

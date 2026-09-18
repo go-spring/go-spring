@@ -129,7 +129,7 @@ spring.grpc.server.loadtest.enabled=true
 spring.grpc.server.observer.tracing.enabled=true
 spring.grpc.server.observer.metrics.enabled=true
 
-# Access-log verbosity for the observe layer (level: brief|full|off).
+# The per-call access log has no switch: it is always installed (see §4.2).
 
 # --- observability (starter-otel; mirror of example-otel/conf) ----------------
 spring.observability.service-name=demo
@@ -208,7 +208,7 @@ Unary chain (`buildOptions`, starter.go:165-209; composed with `grpc.ChainUnaryI
 the single-setter `UnaryInterceptor` — see the code comment on the historical shadowing bug):
 
 ```
-user interceptors → LoadTest → Tracing → Metrics → Resilience(admission, unary only)
+user interceptors → LoadTest → Tracing → AccessLog → Metrics → Resilience(admission, unary only)
                   → Fault → Recover → handler
 ```
 
@@ -317,8 +317,9 @@ grpcurl -plaintext :9494 grpc.health.v1.Health/Check   # {"status":"SERVING"}
 
 Unary: `rpc.server.request_count` (counter), `rpc.server.request.duration` (histogram, seconds,
 explicit buckets 5ms…10s), `rpc.server.active_requests` (UpDownCounter, `rpc.method` only).
-Streams: `rpc.server.stream_count`, `rpc.server.stream_duration`. Duration/count attributes:
-`rpc.method` = FullMethod, `rpc.grpc.status_code` = e.g. `OK`, `ResourceExhausted`.
+Streams: `rpc.server.stream_count`, `rpc.server.stream.duration`. Duration/count attributes:
+`rpc.system` = `grpc`, `rpc.method` = FullMethod, `status` = `ok`|`error`,
+`rpc.grpc.status_code` = e.g. `OK`, `ResourceExhausted`.
 
 ```bash
 curl -s :9090/metrics | grep -E 'rpc_server_request_(duration|count)|active_requests'
@@ -328,6 +329,12 @@ Spans (tracing.go): name = FullMethod; `rpc.system=grpc`, `rpc.service` (from th
 `rpc.method`; on error `rpc.grpc.status_code` + Error status + recorded error event.
 example-otel verifies end-to-end against the Jaeger API
 (`http://127.0.0.1:16686/api/traces?service=grpc-otel-example`).
+
+Access log (accesslog.go): one line per call, written **always** — the
+`observer.*.enabled` switches do not cover it (§2.2). Tag `_app_grpc_access`
+(`log.RegisterAppTag("grpc", "access")`); the identity keys are the ones the metrics carry
+(`rpc.system` = `grpc`, `rpc.method`, `status`), while `rpc.grpc.status_code`, `duration_ms`
+and (on failure) `error` are the line's own payload. A failure is a Warn line.
 
 ### 4.3 Fault drill — hot toggle, no restart (fault.go)
 

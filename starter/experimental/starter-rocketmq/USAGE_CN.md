@@ -332,7 +332,8 @@ curl -s :9090/metrics | grep resilience_calls
 - driver 观察器：直方图 `messaging.client.operation.duration`（单位 s）与 up-down 计数器
   `messaging.client.active_requests`，属性 `messaging.system=rocketmq`、
   `messaging.operation=publish|consume`（直方图另有 `status`）[observe.go]。访问日志 tag
-  `_app_rocketmq_access`：字段 `operation`、`destination`（截断至 512）、`duration_ms`；
+  `_app_rocketmq_access`：字段 `messaging.operation`、`messaging.destination.name`
+  （截断至 512）、`status`、`duration_ms`；
   带目的地成功 Debug、无目的地成功 Info、出错 Warn。
 - guarded 路径：计数器 `resilience.calls` / `resilience.breaker.state_change`，日志 tag
   `_app_rocketmq_resilience`。

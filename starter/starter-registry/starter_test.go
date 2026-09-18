@@ -179,8 +179,8 @@ func TestUpdateWeightBroadcast(t *testing.T) {
 	defer func() { regB.fail = nil }()
 
 	s := &Server{
-		inst:        discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
-		Registrars:  []discovery.Registrar{regA, regB},
+		inst:       discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
+		Registrars: []discovery.Registrar{regA, regB},
 	}
 
 	// Broadcast order follows the slice: regA succeeds, regB fails.

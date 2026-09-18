@@ -9,13 +9,13 @@ them, participates in graceful shutdown, and can de-duplicate jobs across
 replicas via a distributed lock.
 
 It follows the *global / infrastructure* archetype (see
-[starter/DESIGN.md](../../DESIGN.md) §2.4): it opens no network port. It exports a
+[starter/DESIGN.md](../DESIGN.md) §2.4): it opens no network port. It exports a
 `gs.Server` so the scheduler joins the server lifecycle — jobs start firing once
 the application is ready and, on `SIGTERM`, in-flight runs drain before the
 process exits.
 
 The trigger and concurrency primitives come from the zero-dependency
-[`cloud/scheduling`](../../../cloud/scheduling) package; this starter is the thin
+[`cloud/scheduling`](../../cloud/scheduling) package; this starter is the thin
 integration layer that binds the IoC container to it. A job's schedule is part of
 the job, so it is declared where the job is registered — the only configuration
 is process-level (`enabled`, `drain-timeout`).
@@ -110,10 +110,17 @@ own bound on its graceful shutdown.
 ## Observability
 
 With `starter-otel` (or any SDK provider) imported, every job run opens a span
-(`scheduler.job <name>`) and every fire — run or skipped — feeds three metrics:
-`scheduling.runs{job,outcome}`, `scheduling.run.duration{job,outcome}` and
-`scheduling.lag{job}`. The outcome vocabulary is `ok`, `error`, `panic`,
-`skipped_policy`, `skipped_lock`.
+(`scheduler.job <name>`, with a `status` attribute) and every fire — run or
+skipped — feeds three metrics: `scheduling.runs{job,status}`,
+`scheduling.run.duration{job,status}` and `scheduling.lag{job}`. The status
+vocabulary is `ok`, `error`, `panic`, `skipped_policy`, `skipped_lock`.
+
+Each fire also writes one log line under its own tag `_app_scheduler_access`
+(`log.RegisterAppTag("scheduler", "access")`) instead of the default app tag;
+the lifecycle lines (starting / started / drain) stay on the default tag. The
+line carries the same `job` and `status` the metrics record, plus `reason`
+(skips), `duration_ms` and, on failure, `error` — so a series can be joined to
+the line that explains it.
 
 `lag` is the distance between a fire's scheduled instant and when its run
 actually started: a rising one means runs are starting later and later, which no

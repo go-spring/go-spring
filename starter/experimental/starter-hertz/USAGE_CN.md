@@ -288,11 +288,11 @@ curl -sD- -o/dev/null -H 'X-Request-Id: fixed-42' 127.0.0.1:8003/echo/a | grep -
 ### 4.2 观测中间件链
 
 - 访问日志（tag `_app_hertz_access`，经 `log.RegisterAppTag("hertz","access")` 注册）：
-  每请求一条结构化记录——`method`、`path`、`status`、`size`、`ip`、`latency`、
-  `request_id`。定级：≥500 Error、≥400 Warn、其余 Info。
+  每请求一条结构化记录——`http.request.method`、`url.path`、`http.response.status_code`、
+  `duration_ms`，外加 `size`、`ip`、`request_id`（starter 特有字段）。定级：≥500 Error、≥400 Warn、其余 Info。
 - 指标（meter `go-spring.org/starter-hertz`）：
   - 计数 `http.server.request_count`
-  - 直方图 `http.server.request_duration`（秒；OTel HTTP semconv 桶 0.005…10）——
+  - 直方图 `http.server.request.duration`（秒；OTel HTTP semconv 桶 0.005…10）——
     属性 `http.request.method`、`http.route`、`http.response.status_code`
   - 上下量表 `http.server.active_requests`——属性 method + `http.route`。
   ⚠ 此处 `http.route` 是**原始请求路径**（`c.Request.URI().Path()`），非路由模板——

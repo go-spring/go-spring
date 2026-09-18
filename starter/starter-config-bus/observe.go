@@ -104,7 +104,15 @@ func newInstruments() instruments {
 // never reached a refresh, so no meaningless zero is recorded against the
 // histogram.
 func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent, dur time.Duration, err error) {
-	attrs := metric.WithAttributes(attribute.String("status", outcome))
+	// prefix is a configuration NAMESPACE (e.g. "db"), not a property key: its
+	// cardinality is the number of namespaces the fleet publishes, which is
+	// bounded by configuration. It is on the metric so "which namespace's
+	// refresh is failing" can be selected directly, and on the log lines for the
+	// same outcome so that selection lands on the line explaining it.
+	attrs := metric.WithAttributes(
+		attribute.String("status", outcome),
+		attribute.String("prefix", ev.Prefix),
+	)
 	b.ins.events.Add(ctx, 1, attrs)
 
 	// The log line carries the same outcome the counter just counted, under the
@@ -121,6 +129,7 @@ func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent,
 	case outcomeRefreshError:
 		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
 		log.Error(ctx, starterTag, append(eventFields(outcome),
+			log.String("prefix", ev.Prefix),
 			log.Any("error", err),
 			log.Msg("config bus: property refresh failed"))...)
 	case outcomeIgnored:

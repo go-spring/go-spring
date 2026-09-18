@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-governance-etcd` 是治理规则源家族中的 etcd 成员——与
-[`starter-governance`](../starter-governance/README.md) 内 file、http 两个源同款
+[`starter-governance`](../starter-governance/README_CN.md) 内 file、http 两个源同款
 datasource 形态。它监听一个 etcd key 上的一份治理规则文档，并把每一次变更版本
 经 [`go-spring.org/cloud/governance`](../../cloud/governance) 的 `governance.Source`
 契约推入治理中心。

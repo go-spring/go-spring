@@ -3,10 +3,10 @@
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`starter.go`, `executor.go`, `breaker_listener.go`,
 `executor_test.go`), the abstraction in
-[cloud/governance/resilience](../../../cloud/governance/resilience) (`driver.go`,
+[cloud/governance/resilience](../../cloud/governance/resilience) (`driver.go`,
 `provider.go`), and the self-asserting [example/](example/) (`example/check.sh` — no
 container, no external deps). **Resilience semantics (breaker windows, retry backoff,
-policy vocabulary) are [cloud/governance/resilience](../../../cloud/governance/resilience);
+policy vocabulary) are [cloud/governance/resilience](../../cloud/governance/resilience);
 sentinel-golang behavior is [official docs](https://github.com/alibaba/sentinel-golang)** —
 only the driver wiring is covered here.
 
@@ -206,8 +206,8 @@ yields nothing. The `Policy` knobs (`rate-limit`, `error-threshold`, `open-durat
 `max-concurrent`, `max-retries`, `timeout`, ...) are set in the **governance document** —
 `govern.default.*` for the whole process, `govern.rules[N].*` for a specific resource — and
 reach this driver through `ExecutorFor` + `Refresh`. Field meanings:
-[cloud/governance/resilience](../../../cloud/governance/resilience); key layout:
-[`cloud/governance/README.md`](../../../cloud/governance/README.md).
+[cloud/governance/resilience](../../cloud/governance/resilience); key layout:
+[`cloud/governance/README.md`](../../cloud/governance/README.md).
 
 ---
 

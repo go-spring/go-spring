@@ -68,6 +68,7 @@ func MetricsUnaryInterceptor() grpc.UnaryServerInterceptor {
 
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		attrs := metric.WithAttributes(
+			attribute.String("rpc.system", rpcSystem),
 			attribute.String("rpc.method", info.FullMethod),
 		)
 		requestsInFlight.Add(ctx, 1, attrs)
@@ -76,18 +77,16 @@ func MetricsUnaryInterceptor() grpc.UnaryServerInterceptor {
 		resp, err := handler(ctx, req)
 
 		code := status.Code(err).String()
-		requestCount.Add(ctx, 1,
-			metric.WithAttributes(
-				attribute.String("rpc.method", info.FullMethod),
-				attribute.String("rpc.grpc.status_code", code),
-			),
+		status := statusOf(err)
+		done := metric.WithAttributes(
+			attribute.String("rpc.system", rpcSystem),
+			attribute.String("rpc.method", info.FullMethod),
+			attribute.String("status", status),
+			attribute.String("rpc.grpc.status_code", code),
 		)
-		requestDuration.Record(ctx, time.Since(start).Seconds(),
-			metric.WithAttributes(
-				attribute.String("rpc.method", info.FullMethod),
-				attribute.String("rpc.grpc.status_code", code),
-			),
-		)
+		requestCount.Add(ctx, 1, done)
+		dur := time.Since(start)
+		requestDuration.Record(ctx, dur.Seconds(), done)
 		requestsInFlight.Add(ctx, -1, attrs)
 		return resp, err
 	}
@@ -118,18 +117,16 @@ func MetricsStreamInterceptor() grpc.StreamServerInterceptor {
 		start := time.Now()
 		err := handler(srv, ss)
 		code := status.Code(err).String()
-		streamCount.Add(ss.Context(), 1,
-			metric.WithAttributes(
-				attribute.String("rpc.method", info.FullMethod),
-				attribute.String("rpc.grpc.status_code", code),
-			),
+		status := statusOf(err)
+		done := metric.WithAttributes(
+			attribute.String("rpc.system", rpcSystem),
+			attribute.String("rpc.method", info.FullMethod),
+			attribute.String("status", status),
+			attribute.String("rpc.grpc.status_code", code),
 		)
-		streamDuration.Record(ss.Context(), time.Since(start).Seconds(),
-			metric.WithAttributes(
-				attribute.String("rpc.method", info.FullMethod),
-				attribute.String("rpc.grpc.status_code", code),
-			),
-		)
+		streamCount.Add(ss.Context(), 1, done)
+		dur := time.Since(start)
+		streamDuration.Record(ss.Context(), dur.Seconds(), done)
 		return err
 	}
 }

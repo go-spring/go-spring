@@ -4,7 +4,7 @@
 （`starter.go`、`config.go`、`job.go`）与可运行的 [example/](example/)（冒烟：
 `example/check.sh`，无需 docker）及 [example-otel/](example-otel/)（docker 门控 Jaeger）
 核实。**触发器语义——cron 解析、fixed-rate/fixed-delay、并发策略——来自
-[go-spring.org/cloud/scheduling](../../../cloud/scheduling)**；
+[go-spring.org/cloud/scheduling](../../cloud/scheduling)**；
 本 starter 把它们接进 gs 生命周期并加上按 job 的跨副本锁。
 
 **激活条件**：`spring.scheduler.enabled` 为 true（**默认开**，`MatchIfMissing`）**且**
@@ -135,7 +135,7 @@ cd example-otel && docker compose up -d && go run .
 ```
 
 范围说明（已对源码核实）：每次 job 运行会在**全局** otel 管路上开一个 span
-（`scheduler.job <name>`，带 job 名属性与结局属性 `ok|error|panic`；starter.go 的
+（`scheduler.job <name>`，带 job 名属性与 `status` 属性 `ok|error|panic`；starter.go 的
 `instrument`。未装 starter-otel 或任何 SDK provider 时 otel.Tracer 为 no-op，零开销
 ——按协议/组件 starter 约定，本 starter 从不自建管路）。跳过的触发不发 span（没有真正
 运行），改由 metric 与日志承载。
@@ -144,13 +144,20 @@ cd example-otel && docker compose up -d && go run .
 
 | Instrument | 类型 | 属性 | 回答 |
 |------------|------|------|------|
-| `scheduling.runs` | counter | `job`、`outcome` | 每次触发各以什么结局收场 |
-| `scheduling.run.duration` | histogram（秒） | `job`、`outcome` | 单次运行耗时 |
+| `scheduling.runs` | counter | `job`、`status` | 每次触发各以什么结局收场 |
+| `scheduling.run.duration` | histogram（秒） | `job`、`status` | 单次运行耗时 |
 | `scheduling.lag` | histogram（秒） | `job` | 运行比计划时刻晚了多少才开始 |
 
-`outcome` 是一个词表覆盖所有结局：`ok`、`error`、`panic`、`skipped_policy`、
+`status` 是一个词表覆盖所有结局：`ok`、`error`、`panic`、`skipped_policy`、
 `skipped_lock`——后者区分「被并发策略丢弃」与「别的副本正在跑」。job 名可以作 metric
 维度，因为它是代码里写死的；lock key 则不然，基数是调用方决定的、无界。
+
+每次触发还会写一行日志（observe.go）——即 per-fire 访问日志，走自己的 tag
+`_app_scheduler_access`（`log.RegisterAppTag("scheduler", "access")`），从而能与应用日志
+分开选取。生命周期行（starting / started / drain）仍留在默认 app tag。该行携带 metric
+刚记下的同一组 `job` 与 `status`，外加跳过时的 `reason`、运行时的 `duration_ms` /
+`error`——因此 `scheduling.runs{job,status}` 与 `scheduling.run.duration{job,status}` 能
+join 到解释它的那一行。失败与 panic 为 Error 级，跳过与成功运行为 Debug 级。
 
 `lag` 是调度器自身的健康信号：它不是漂移（下一发仍锚在计划时刻），但持续爬升说明运行
 开始得越来越晚，指向一个被压垮或卡住的进程——这是框架里别处拿不到的信号。Prometheus
@@ -290,9 +297,12 @@ scheduler: job "slow" skipped (previous run still in flight)   # Debug，含原�
 panic 的 job 同样上报，级别为 Error，措辞是 `panicked` 而非 `failed`——它的错误包着
 `scheduling.ErrJobPanicked`，用 `errors.Is` 就能和「跑完返回了错误」区分开。
 
-同一批触发也计入 metric（见 §1.1）：失败 job 会让 `scheduling.runs{outcome="error"}` 上涨；
+同一批触发也计入 metric（见 §1.1）：失败 job 会让 `scheduling.runs{status="error"}` 上涨；
 两种跳过也能区分——`skipped_policy` 说明这个 job 已经跟不上趟，`skipped_lock` 则只是多副本
 共用一个调度时的常态。
+
+这些行在 `_app_scheduler_access` tag 上，可以与应用自己的日志分开路由
+（`logger.scheduler_access.tag=_app_scheduler_access`）；生命周期行仍在默认 app tag。
 
 没有重试：失败的运行记日志后按计划等下一次触发。需要重试请自包（或把工作推进 asynq）。
 
@@ -358,7 +368,7 @@ scheduler.Provide("tick", fn, scheduler.Every(time.Second),
   ——运行或跳过——都喂给 observe.go 里的三个 metric（`scheduling.runs`、
   `scheduling.run.duration`、`scheduling.lag`）。未装 starter-otel（或任何 SDK provider）
   时全部为 no-op。这需要一处核心改动：panic 现在包着 `ErrJobPanicked`
-  （cloud/scheduling），观察者才能把它单列为一个 outcome，而不是去匹配错误字符串。
+  （cloud/scheduling），观察者才能把它单列为一个 status 值，而不是去匹配错误字符串。
 - ~~包文档注释的 cron 示例是 6 字段~~ 已修：示例改为 5 字段（`*/5 * * * *`），与
   ParseCron 一致（scheduling/cron.go:81-83）。
 - 无 Init 期校验：全部 job 校验在 `Run/build()`；报错在 Runner 期浮出（仍先于就绪，

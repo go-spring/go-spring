@@ -5,7 +5,7 @@ against the starter source (`starter.go`, `config.go`, `job.go`) and the runnabl
 [example/](example/) (smoke: `example/check.sh`, no docker) plus
 [example-otel/](example-otel/) (docker-gated Jaeger). **Trigger semantics — cron parsing,
 fixed-rate/fixed-delay, concurrency policies — come from
-[go-spring.org/cloud/scheduling](../../../cloud/scheduling)**;
+[go-spring.org/cloud/scheduling](../../cloud/scheduling)**;
 this starter wires them into the gs lifecycle and adds per-job cross-replica locks.
 
 **Activation**: the scheduler bean `schedulerServer` is provided when `spring.scheduler.enabled`
@@ -146,21 +146,29 @@ Scope note (verified against source): each job run opens a span on the GLOBAL ot
 (`scheduler.job <name>` with the job-name attribute, `instrument` in starter.go — no-op
 tracer unless starter-otel or any SDK provider is installed; this starter never builds its
 own pipeline, per the protocol/component-starter convention). Spans carry the job name and
-an outcome attribute (`ok|error|panic`); skipped fires emit no span — there is no run to
+a `status` attribute (`ok|error|panic`); skipped fires emit no span — there is no run to
 trace, and they reach the metrics and logs instead.
 
 The same observer emits three metrics per fire (observe.go):
 
 | Instrument | Type | Attributes | Answers |
 |------------|------|------------|---------|
-| `scheduling.runs` | counter | `job`, `outcome` | how many fires ended each way |
-| `scheduling.run.duration` | histogram (s) | `job`, `outcome` | how long runs take |
+| `scheduling.runs` | counter | `job`, `status` | how many fires ended each way |
+| `scheduling.run.duration` | histogram (s) | `job`, `status` | how long runs take |
 | `scheduling.lag` | histogram (s) | `job` | how late runs start vs their planned instant |
 
-`outcome` is one vocabulary covering every ending: `ok`, `error`, `panic`,
+`status` is one vocabulary covering every ending: `ok`, `error`, `panic`,
 `skipped_policy`, `skipped_lock` — a fire a concurrency policy dropped, versus one another
 replica was running. The job name is a metric dimension because it is fixed in code, unlike
 a lock key, whose cardinality is unbounded.
+
+Each fire also writes one log line (observe.go) — the per-fire access log, on its own tag
+`_app_scheduler_access` (`log.RegisterAppTag("scheduler", "access")`) so it can be selected
+apart from application logs. The lifecycle lines (starting / started / drain) stay on the
+default app tag. The line carries the same `job` and `status` the metrics just recorded,
+plus `reason` on a skip and `duration_ms` / `error` on a run — so `scheduling.runs{job,status}`
+and `scheduling.run.duration{job,status}` join the line that explains them. Failures and
+panics are Error level, a skip and a successful run are Debug.
 
 `lag` is the scheduler's own health signal: it is not drift — the next fire stays anchored
 on the planned instant — but a rising lag means runs are starting later and later, which
@@ -315,9 +323,13 @@ A panicking job is reported the same way, at Error level, with `panicked` rather
 `failed` — its error wraps `scheduling.ErrJobPanicked`, so `errors.Is` separates a panic
 from a run that merely returned an error.
 
-The same fires are counted in metrics (see §1.1): `scheduling.runs{outcome="error"}` climbs
+The same fires are counted in metrics (see §1.1): `scheduling.runs{status="error"}` climbs
 for the failing job, and the two skip kinds are told apart — `skipped_policy` means the job
 is not keeping up, while `skipped_lock` is routine when several replicas share a schedule.
+
+These lines are on the `_app_scheduler_access` tag, so they can be routed independently of
+the application's own logs (`logger.scheduler_access.tag=_app_scheduler_access`); the
+lifecycle lines stay on the default app tag.
 
 There is no retry: a failed run is logged and the next fire is per schedule. Wrap your own
 retry (or push the work into asynq) if you need one.
@@ -386,8 +398,8 @@ Design suspects (kept from the prior edition, plus new findings):
   run or skipped — feeds the three metrics in observe.go (`scheduling.runs`,
   `scheduling.run.duration`, `scheduling.lag`). All of it is a no-op unless starter-otel (or
   any SDK provider) is present. This needed one core addition: panics now wrap
-  `ErrJobPanicked` (cloud/scheduling), so the observer can count them as their own outcome
-  instead of matching on an error string.
+  `ErrJobPanicked` (cloud/scheduling), so the observer can count them as their own status
+  value instead of matching on an error string.
 - ~~The package doc comment's cron example is 6-field~~ Fixed: the example is now 5-field
   (`*/5 * * * *`), matching ParseCron (scheduling/cron.go:81-83).
 - No `Init`-phase validation: all job validation happens in `Run/build()`; an error surfaces

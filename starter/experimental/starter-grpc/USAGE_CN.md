@@ -136,6 +136,8 @@ spring.grpc.server.loadtest.enabled=true
 spring.grpc.server.observer.tracing.enabled=true
 spring.grpc.server.observer.metrics.enabled=true
 
+# 每调用访问日志没有开关：始终安装（见 §4.2）。
+
 
 # --- 可观测（starter-otel；与 example-otel/conf 同构）-------------------------
 spring.observability.service-name=demo
@@ -214,7 +216,7 @@ Unary 链（`buildOptions`，starter.go:165-209；用 `grpc.ChainUnaryIntercepto
 单 setter 的 `UnaryInterceptor`——源码注释记录了历史上后调覆盖前调的 bug）：
 
 ```
-用户拦截器 → LoadTest → Tracing → Metrics → Resilience(准入，仅 unary)
+用户拦截器 → LoadTest → Tracing → AccessLog → Metrics → Resilience(准入，仅 unary)
            → Fault → Recover → handler
 ```
 
@@ -317,8 +319,9 @@ grpcurl -plaintext :9494 grpc.health.v1.Health/Check   # {"status":"SERVING"}
 
 Unary：`rpc.server.request_count`（counter）、`rpc.server.request.duration`（直方图，秒，
 显式桶 5ms…10s）、`rpc.server.active_requests`（UpDownCounter，仅 `rpc.method` 属性）。
-Stream：`rpc.server.stream_count`、`rpc.server.stream_duration`。时长/计数属性：
-`rpc.method` = FullMethod、`rpc.grpc.status_code` = 如 `OK`、`ResourceExhausted`。
+Stream：`rpc.server.stream_count`、`rpc.server.stream.duration`。时长/计数属性：
+`rpc.system` = `grpc`、`rpc.method` = FullMethod、`status` = `ok`|`error`、
+`rpc.grpc.status_code` = 如 `OK`、`ResourceExhausted`。
 
 ```bash
 curl -s :9090/metrics | grep -E 'rpc_server_request_(duration|count)|active_requests'
@@ -328,6 +331,11 @@ Span（tracing.go）：名字 = FullMethod；`rpc.system=grpc`、`rpc.service`�
 `rpc.method`；出错时 `rpc.grpc.status_code` + Error 状态 + 记录的错误事件。
 example-otel 端到端验证走 Jaeger API
 （`http://127.0.0.1:16686/api/traces?service=grpc-otel-example`）。
+
+访问日志（accesslog.go）：每次调用一行，**始终**写出——`observer.*.enabled` 开关管不到它
+（§2.2）。tag 为 `_app_grpc_access`（`log.RegisterAppTag("grpc", "access")`）；身份键与指标
+一致（`rpc.system` = `grpc`、`rpc.method`、`status`），`rpc.grpc.status_code`、`duration_ms`
+以及失败时的 `error` 是该行自己的载荷。失败为 Warn 级。
 
 ### 4.3 fault 演练 — 热切换、不重启（fault.go）
 

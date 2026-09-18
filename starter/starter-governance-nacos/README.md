@@ -5,14 +5,14 @@
 `starter-governance-nacos` adapts [Nacos](https://nacos.io/) as a governance
 rule source for Go-Spring. It listens on one Nacos dataId holding the
 governance rule document and pushes every published version into the
-[`go-spring.org/cloud/governance`](../../../cloud/governance) center through
+[`go-spring.org/cloud/governance`](../../cloud/governance) center through
 the `governance.Source` contract, so a rule change re-resolves governance live
 without a restart and without an application-wide property re-bind.
 
 It is the Nacos member of the governance-source adapter family (the
 Sentinel-datasource shape); the etcd member is
-[starter-governance-etcd](../../starter-governance-etcd) and the file/http
-members live in [starter-governance](../../starter-governance). All of them
+[starter-governance-etcd](../starter-governance-etcd) and the file/http
+members live in [starter-governance](../starter-governance). All of them
 parse the same rule document through `rules.Parse`, so a document is
 byte-portable between backends.
 
@@ -85,9 +85,9 @@ govern:
 Every published version is re-parsed and pushed into the center. The rule
 vocabulary (`govern.enabled`, `govern.default.*`, `govern.rules[n].*`,
 `govern.fault.*`) belongs to the governance domain; see
-[starter-governance's USAGE](../../starter-governance/USAGE.md) for the full
+[starter-governance's USAGE](../starter-governance/USAGE.md) for the full
 reference. Introducing the governance center itself is still
-[starter-governance](../../starter-governance)'s job — this module only supplies
+[starter-governance](../starter-governance)'s job — this module only supplies
 the source.
 
 ## Configuration Keys

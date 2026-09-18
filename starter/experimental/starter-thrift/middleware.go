@@ -34,49 +34,123 @@ const tracerName = "go-spring.org/starter-thrift"
 // meterName identifies metrics emitted by this starter.
 const meterName = "go-spring.org/starter-thrift"
 
-// observedProcessor wraps a thrift.TProcessor, adding OTel tracing and metrics
-// around every call. When starter-otel is not imported, the OTel globals are
-// no-ops so the wrapper adds negligible overhead.
-//
-// Metric instruments are created once at WrapProcessor time (server setup, runs
-// single-threaded) and stored on the struct, avoiding any lazy init on the hot
-// path — the previous package-level metricsInit flag was a data race on first
-// concurrent use.
-type observedProcessor struct {
-	inner           thrift.TProcessor
-	requestCounter  metric.Int64Counter
+// rpcSystem is the value the RPC family's rpc.system label carries for this
+// backend. Together with rpc.method and status it is one of the three keys
+// every RPC backend emits under the same name, because a query spanning
+// frameworks has nothing else to join on.
+const rpcSystem = "thrift"
+
+// observer holds one server's instruments. They are built once, when the
+// middleware is created (server setup, single-threaded), so nothing is
+// allocated or initialized on the hot path — an earlier package-level init flag
+// was a data race on first concurrent use.
+type observer struct {
+	requestCount    metric.Int64Counter
 	requestDuration metric.Float64Histogram
 	requestInflight metric.Int64UpDownCounter
 }
 
-// WrapProcessor returns a TProcessor that wraps each Process call with an OTel
-// span and records request metrics (count, duration). Metric names follow the
-// OTel stable RPC semantic conventions (rpc.server.request.duration); the
-// request_count counter and active_requests gauge are kept as complementary
-// dimensions (not redundant with the duration histogram).
-func WrapProcessor(inner thrift.TProcessor) thrift.TProcessor {
-	meter := otel.GetMeterProvider().Meter(meterName)
-	requestCounter, _ := meter.Int64Counter(
+// Observe returns the middleware that wraps every method call with an OTel
+// span and request metrics. The per-call access log is a separate middleware
+// ([AccessLog]) because it is always installed, while this one is behind
+// [ObserverConfig].
+//
+// It is a [thrift.ProcessorMiddleware] rather than a TProcessor wrapper because
+// the library hands a middleware the METHOD NAME as its first argument. That is
+// the one thing a wrapper around TProcessor.Process cannot see: at that level
+// the name exists only inside the protocol frame, and recovering it means
+// reading the frame and replaying it by hand. Wrapping the per-method functions
+// gives the method to the span name and to the rpc.method label, so traces and
+// metrics both identify the method instead of an undifferentiated
+// "thrift.process".
+//
+// Install it OUTERMOST, so a call the admission middleware rejects is still
+// traced and counted:
+//
+//	proc = thrift.WrapProcessor(proc, Observe(), AccessLog(), Admit(label, system))
+func Observe() thrift.ProcessorMiddleware {
+	m := otel.GetMeterProvider().Meter(meterName)
+	requestCount, _ := m.Int64Counter(
 		"rpc.server.request_count",
 		metric.WithDescription("Number of Thrift RPC requests received"),
 		metric.WithUnit("{request}"),
 	)
-	requestDuration, _ := meter.Float64Histogram(
+	requestDuration, _ := m.Float64Histogram(
 		"rpc.server.request.duration",
 		metric.WithDescription("Duration of Thrift RPC requests"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10),
 	)
-	requestInflight, _ := meter.Int64UpDownCounter(
+	requestInflight, _ := m.Int64UpDownCounter(
 		"rpc.server.active_requests",
 		metric.WithDescription("Number of Thrift RPC requests currently in-flight"),
 		metric.WithUnit("{request}"),
 	)
-	return &observedProcessor{
-		inner:           inner,
-		requestCounter:  requestCounter,
+	o := &observer{
+		requestCount:    requestCount,
 		requestDuration: requestDuration,
 		requestInflight: requestInflight,
+	}
+	return o.observe
+}
+
+// observe wraps one method's TProcessorFunction.
+func (o *observer) observe(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
+	return thrift.WrappedTProcessorFunction{
+		Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
+			// Trace propagation needs request headers, which on the wire means
+			// THeaderProtocol. They are readable here without consuming the
+			// frame: the generated processor read the message begin before
+			// dispatching to this function, so the headers are already parsed.
+			// With binary/compact/json protocols there is no header channel at
+			// all, so each call becomes a new root span (documented boundary,
+			// see USAGE.md).
+			if hp, ok := in.(*thrift.THeaderProtocol); ok {
+				ctx = otel.GetTextMapPropagator().Extract(ctx, tHeaderCarrier{m: hp.GetReadHeaders()})
+			}
+
+			inflight := metric.WithAttributes(
+				attribute.String("rpc.system", rpcSystem),
+				attribute.String("rpc.method", name),
+			)
+			o.requestInflight.Add(ctx, 1, inflight)
+			start := time.Now()
+
+			ctx, span := otel.Tracer(tracerName).Start(ctx, name,
+				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithAttributes(
+					attribute.String("rpc.system", rpcSystem),
+					attribute.String("rpc.method", name),
+				),
+			)
+
+			ok, ex := next.Process(ctx, seqID, in, out)
+
+			dur := time.Since(start)
+			status := statusOf(ex)
+			o.requestInflight.Add(ctx, -1, inflight)
+			// status is the family's shared result axis (ok|error). The
+			// transport-specific detail is thrift.error_code, on the span —
+			// not a second metric label carrying the same two words under a
+			// different name.
+			done := metric.WithAttributes(
+				attribute.String("rpc.system", rpcSystem),
+				attribute.String("rpc.method", name),
+				attribute.String("status", status),
+			)
+			o.requestCount.Add(ctx, 1, done)
+			o.requestDuration.Record(ctx, dur.Seconds(), done)
+
+			if ex != nil {
+				span.SetAttributes(
+					attribute.Int("thrift.error_code", int(ex.TExceptionType())),
+				)
+				span.SetStatus(codes.Error, ex.Error())
+				span.RecordError(ex)
+			}
+			span.End()
+			return ok, ex
+		},
 	}
 }
 
@@ -97,104 +171,4 @@ func (c tHeaderCarrier) Keys() []string {
 		keys = append(keys, k)
 	}
 	return keys
-}
-
-// replayProtocol serves the first ReadMessageBegin call from a message begin
-// already consumed by observedProcessor (which needed it to reach the frame
-// headers before starting the span), then delegates everything else to the
-// inner protocol. All other TProtocol methods delegate untouched.
-type replayProtocol struct {
-	thrift.TProtocol
-	name   string
-	typeID thrift.TMessageType
-	seqID  int32
-	used   bool
-}
-
-func (p *replayProtocol) ReadMessageBegin(ctx context.Context) (string, thrift.TMessageType, int32, error) {
-	if !p.used {
-		p.used = true
-		return p.name, p.typeID, p.seqID, nil
-	}
-	return p.TProtocol.ReadMessageBegin(ctx)
-}
-
-func (p *observedProcessor) Process(ctx context.Context, in, out thrift.TProtocol) (bool, thrift.TException) {
-	// Trace propagation is only possible when the request carries headers,
-	// which on the wire means THeaderProtocol (protocol=header). The headers
-	// of a frame are only available after its message begin has been read, so
-	// the message begin is consumed here, the W3C trace context extracted, and
-	// the message begin replayed to the inner processor via replayProtocol.
-	// With binary/compact/json protocols there is no header channel at all;
-	// each request gets a new root span (documented boundary, see USAGE.md).
-	if hp, ok := in.(*thrift.THeaderProtocol); ok {
-		name, typeID, seqID, err := hp.ReadMessageBegin(ctx)
-		if err != nil {
-			return false, thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err.Error())
-		}
-		ctx = otel.GetTextMapPropagator().Extract(ctx, tHeaderCarrier{m: hp.GetReadHeaders()})
-		in = &replayProtocol{TProtocol: hp, name: name, typeID: typeID, seqID: seqID}
-	}
-
-	ctx, span := otel.Tracer(tracerName).Start(ctx, "thrift.process",
-		trace.WithSpanKind(trace.SpanKindServer),
-		trace.WithAttributes(
-			attribute.String("rpc.system", "thrift"),
-		),
-	)
-	defer span.End()
-
-	start, attrs := p.observeStart(ctx)
-	ok, ex := p.inner.Process(ctx, in, out)
-	p.observeEnd(ctx, start, attrs, ex)
-
-	if ex != nil {
-		span.SetAttributes(
-			attribute.Int("thrift.error_code", int(ex.TExceptionType())),
-		)
-		span.SetStatus(codes.Error, ex.Error())
-		span.RecordError(ex)
-	}
-	return ok, ex
-}
-
-func (p *observedProcessor) ProcessorMap() map[string]thrift.TProcessorFunction {
-	return p.inner.ProcessorMap()
-}
-
-func (p *observedProcessor) AddToProcessorMap(key string, fn thrift.TProcessorFunction) {
-	p.inner.AddToProcessorMap(key, fn)
-}
-
-// --- metrics helpers ---
-//
-// Instruments live on the observedProcessor (created once at WrapProcessor
-// time), so these helpers require no lazy init and no synchronization.
-
-func (p *observedProcessor) observeStart(ctx context.Context) (time.Time, metric.MeasurementOption) {
-	attrs := metric.WithAttributes(
-		attribute.String("rpc.system", "thrift"),
-	)
-	p.requestInflight.Add(ctx, 1, attrs)
-	return time.Now(), attrs
-}
-
-func (p *observedProcessor) observeEnd(ctx context.Context, start time.Time, attrs metric.MeasurementOption, ex thrift.TException) {
-	// Per the cross-RPC convention (rpc.grpc.status_code, rpc.trpc.status_code),
-	// each RPC system names its status attribute "<rpc>.<system>.status_code".
-	status := metric.WithAttributes(
-		attribute.String("rpc.system", "thrift"),
-		attribute.String("rpc.thrift.status_code", statusOf(ex)),
-	)
-	p.requestCounter.Add(ctx, 1, status)
-	p.requestDuration.Record(ctx, time.Since(start).Seconds(), status)
-	p.requestInflight.Add(ctx, -1, attrs)
-}
-
-// statusOf maps a thrift exception to a coarse status string for metric dims.
-func statusOf(ex thrift.TException) string {
-	if ex != nil {
-		return "error"
-	}
-	return "ok"
 }

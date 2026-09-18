@@ -298,11 +298,12 @@ carries `request_id` (example-otel's handler demonstrates the pattern).
 ### 4.2 Observing the middleware chain
 
 - Access log (tag `_app_hertz_access`, registered via `log.RegisterAppTag("hertz","access")`):
-  one structured record per request — `method`, `path`, `status`, `size`, `ip`, `latency`,
-  `request_id`. Severity: ≥500 Error, ≥400 Warn, else Info.
+  one structured record per request — `http.request.method`, `url.path`,
+  `http.response.status_code`, `duration_ms`, plus `size`, `ip`, `request_id` (the
+  starter-specific extras). Severity: ≥500 Error, ≥400 Warn, else Info.
 - Metrics (meter `go-spring.org/starter-hertz`):
   - counter `http.server.request_count`
-  - histogram `http.server.request_duration` (seconds; OTel HTTP semconv buckets
+  - histogram `http.server.request.duration` (seconds; OTel HTTP semconv buckets
     0.005…10) — attributes `http.request.method`, `http.route`, `http.response.status_code`
   - updown gauge `http.server.active_requests` — attributes method + `http.route`.
   ⚠ `http.route` here is the **raw request path** (`c.Request.URI().Path()`), not the route

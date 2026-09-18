@@ -181,7 +181,7 @@ func (s *Server) build() error {
 // build a local provider here). The tracer comes from otel.Tracer, which is the
 // no-op implementation unless starter-otel (or any SDK-based provider) has
 // installed a global TracerProvider — so without otel the wrap is a zero-cost
-// pass-through. The span carries the job name and the run's outcome (same
+// pass-through. The span carries the job name and the run's status (same
 // vocabulary as the metrics, see observe.go); the error status and duration come
 // from the run's result. Skipped fires emit no span — there is no run to trace,
 // and the observer reports them as metrics and logs instead.
@@ -194,7 +194,7 @@ func (s *Server) instrument(name string, run scheduling.Job) scheduling.Job {
 			trace.WithSpanKind(trace.SpanKindConsumer),
 		)
 		err := run(ctx)
-		span.SetAttributes(attribute.String("scheduling.outcome", outcomeOfRun(err)))
+		span.SetAttributes(attribute.String("status", statusOfRun(err)))
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())

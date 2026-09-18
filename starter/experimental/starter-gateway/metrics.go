@@ -20,129 +20,124 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sort"
-	"strings"
-	"sync"
-	"sync/atomic"
+	"time"
 
-	"go-spring.org/cloud/actuator/endpoint"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/log"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
-// Metrics accumulates per-route request counters exposed as Prometheus text on
-// the actuator management port. It is intentionally dependency-free (no
-// prometheus client) so the gateway keeps a minimal footprint; a heavier OTel
-// meter can be layered on later without changing the seam.
-type Metrics struct {
-	mu        sync.RWMutex
-	routes    map[string]*routeMetric
-	inFlight  int64
-	reloadErr int64
+// meterName identifies metrics emitted by this starter.
+const meterName = "go-spring.org/starter-gateway"
+
+// accessTag is the static log tag for the gateway access log.
+var accessTag = log.RegisterAppTag("gateway", "access")
+
+// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
+// semconv recommended set, the same one the other starters use.
+var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
+
+// observer holds the gateway's instruments. They are built once, when the
+// observer is constructed (container assembly), so nothing is allocated or
+// initialized per request.
+//
+// These used to be hand-rolled atomic counters rendered as Prometheus text on a
+// private /gateway/metrics endpoint. They now ride the OTel pipeline like every
+// other starter's, which is the whole point: the gateway's numbers appear in the
+// same scrape and the same OTLP stream as the rest of the application, instead
+// of a private subset that no other dashboard reads. The exposition that used to
+// be hand-written is served by starter-otel's Prometheus exporter — /metrics on
+// the actuator management port, or on metrics.port when that is set.
+type observer struct {
+	requests     metric.Int64Counter
+	active       metric.Int64UpDownCounter
+	reloadErrors metric.Int64Counter
 }
 
-type routeMetric struct {
-	c2xx, c3xx, c4xx, c5xx int64
+func newObserver() *observer {
+	m := otel.GetMeterProvider().Meter(meterName)
+	requests, _ := m.Int64Counter(
+		"gateway.requests",
+		metric.WithDescription("Requests proxied by the gateway"),
+		metric.WithUnit("{request}"),
+	)
+	active, _ := m.Int64UpDownCounter(
+		"gateway.active_requests",
+		metric.WithDescription("Requests currently being proxied by the gateway"),
+		metric.WithUnit("{request}"),
+	)
+	reloadErrors, _ := m.Int64Counter(
+		"gateway.route_reload_errors",
+		metric.WithDescription("Route table reloads that failed and kept the previous table"),
+		metric.WithUnit("{event}"),
+	)
+	return &observer{requests: requests, active: active, reloadErrors: reloadErrors}
 }
 
-func newMetrics() *Metrics {
-	return &Metrics{routes: map[string]*routeMetric{}}
-}
-
-func (m *Metrics) metric(route string) *routeMetric {
-	m.mu.RLock()
-	rm, ok := m.routes[route]
-	m.mu.RUnlock()
-	if ok {
-		return rm
+// logAccess writes the per-request access log. Its identity keys are the ones
+// the metric carries (gateway.route, status), so selecting a failing route on a
+// dashboard lands on the lines that explain it; the request's own detail
+// (method, path, status code, duration) is the line's payload, under the names
+// the HTTP semantics use everywhere else.
+func logAccess(ctx context.Context, route string, r *http.Request, code int, status string, dur time.Duration) {
+	fields := []log.Field{
+		log.String("gateway.route", route),
+		log.String("status", status),
+		log.String("http.request.method", r.Method),
+		log.String("url.path", r.URL.Path),
+		log.Int("http.response.status_code", code),
+		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if rm, ok = m.routes[route]; ok {
-		return rm
+	if code >= 500 {
+		log.Warn(ctx, accessTag, fields...)
+		return
 	}
-	rm = &routeMetric{}
-	m.routes[route] = rm
-	return rm
+	log.Info(ctx, accessTag, fields...)
 }
 
-func (m *Metrics) record(route string, status int) {
-	rm := m.metric(route)
-	switch {
-	case status >= 500:
-		atomic.AddInt64(&rm.c5xx, 1)
-	case status >= 400:
-		atomic.AddInt64(&rm.c4xx, 1)
-	case status >= 300:
-		atomic.AddInt64(&rm.c3xx, 1)
-	default:
-		atomic.AddInt64(&rm.c2xx, 1)
+// statusOf maps the response status onto the ecosystem-wide result axis: a 5xx
+// is a gateway failure, anything else is not. The code itself is what carries
+// the detail, under http.response.status_code — one axis, two granularities,
+// the same split the RPC family uses for status vs rpc.grpc.status_code.
+func statusOf(code int) string {
+	if code >= 500 {
+		return "error"
 	}
+	return "ok"
 }
-
-func (m *Metrics) recordReloadError() { atomic.AddInt64(&m.reloadErr, 1) }
 
 // instrument wraps a route's handler to stamp the route id into the context
-// (for rate-limit keys and downstream correlation) and to count response status
-// codes and in-flight requests.
+// (for rate-limit keys and downstream correlation) and to record the request:
+// the in-flight gauge, the counter and one access-log line.
 func (t *RouteTable) instrument(id string, next http.Handler) http.Handler {
-	m := t.metrics
+	o := t.obs
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&m.inFlight, 1)
-		defer atomic.AddInt64(&m.inFlight, -1)
+		ctx := withRouteID(r.Context(), id)
+		attrs := metric.WithAttributes(attribute.String("gateway.route", id))
+
+		o.active.Add(ctx, 1, attrs)
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
-		r = r.WithContext(withRouteID(r.Context(), id))
-		next.ServeHTTP(sw, r)
-		m.record(id, sw.status)
+		start := time.Now()
+
+		next.ServeHTTP(sw, r.WithContext(ctx))
+
+		dur := time.Since(start)
+		status := statusOf(sw.status)
+		o.active.Add(ctx, -1, attrs)
+		o.requests.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("gateway.route", id),
+			attribute.String("status", status),
+			attribute.Int("http.response.status_code", sw.status),
+		))
+		logAccess(ctx, id, r, sw.status, status, dur)
 	})
 }
 
-// metricsEndpoint renders the counters in Prometheus text format. The path is
-// distinct from the actuator's built-ins and from a separate otel /metrics so
-// both can coexist.
-type metricsEndpoint struct {
-	m *Metrics
-}
-
-// newMetricsEndpoint contributes GET /gateway/metrics to the actuator
-// management server (endpoint.Endpoint seam).
-func newMetricsEndpoint(m *Metrics) *endpoint.Endpoint {
-	return &endpoint.Endpoint{Pattern: "/gateway/metrics", Handler: &metricsEndpoint{m: m}}
-}
-
-func (e *metricsEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	m := e.m
-	m.mu.RLock()
-	ids := make([]string, 0, len(m.routes))
-	for id := range m.routes {
-		ids = append(ids, id)
-	}
-	m.mu.RUnlock()
-	sort.Strings(ids)
-
-	var b strings.Builder
-	b.WriteString("# HELP gateway_requests_total Total gateway requests by route and status class.\n")
-	b.WriteString("# TYPE gateway_requests_total counter\n")
-	for _, id := range ids {
-		rm := m.metric(id)
-		line(&b, id, "2xx", atomic.LoadInt64(&rm.c2xx))
-		line(&b, id, "3xx", atomic.LoadInt64(&rm.c3xx))
-		line(&b, id, "4xx", atomic.LoadInt64(&rm.c4xx))
-		line(&b, id, "5xx", atomic.LoadInt64(&rm.c5xx))
-	}
-	b.WriteString("# HELP gateway_in_flight_requests Requests currently being proxied.\n")
-	b.WriteString("# TYPE gateway_in_flight_requests gauge\n")
-	fmt.Fprintf(&b, "gateway_in_flight_requests %d\n", atomic.LoadInt64(&m.inFlight))
-	b.WriteString("# HELP gateway_route_reload_errors_total Failed route table reloads.\n")
-	b.WriteString("# TYPE gateway_route_reload_errors_total counter\n")
-	fmt.Fprintf(&b, "gateway_route_reload_errors_total %d\n", atomic.LoadInt64(&m.reloadErr))
-
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	_, _ = w.Write([]byte(b.String()))
-}
-
-func line(b *strings.Builder, route, class string, v int64) {
-	fmt.Fprintf(b, "gateway_requests_total{route=%q,status=%q} %d\n", route, class, v)
-}
+// reloadError counts one failed route-table reload. The previous table stays in
+// service, so this is the only signal that a config edit did not take effect.
+func (o *observer) reloadError(ctx context.Context) { o.reloadErrors.Add(ctx, 1) }
 
 // newGatewayHealth reports the gateway as a health.Indicator. It stays UP as
 // long as the route table is loaded; a route whose lb:// upstream currently

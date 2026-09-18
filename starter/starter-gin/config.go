@@ -32,13 +32,13 @@ import (
 // this starter coupling to cloud/governance. Fault injection stays server-local (it
 // is chaos tooling, not governance).
 type Config struct {
-	Address       string                `value:"${addr}"`
-	ReadTimeout   time.Duration         `value:"${readTimeout:=5s}"`
-	WriteTimeout  time.Duration         `value:"${writeTimeout:=5s}"`
-	IdleTimeout   time.Duration         `value:"${idleTimeout:=60s}"`
-	TLS           tlsconf.TLSConfig     `value:"${tls}"`
-	Health        HealthConfig          `value:"${health}"`
-	Middleware    MiddlewareConfig      `value:"${middleware}"`
+	Address      string            `value:"${addr}"`
+	ReadTimeout  time.Duration     `value:"${readTimeout:=5s}"`
+	WriteTimeout time.Duration     `value:"${writeTimeout:=5s}"`
+	IdleTimeout  time.Duration     `value:"${idleTimeout:=60s}"`
+	TLS          tlsconf.TLSConfig `value:"${tls}"`
+	Health       HealthConfig      `value:"${health}"`
+	Middleware   MiddlewareConfig  `value:"${middleware}"`
 }
 
 // HealthConfig exposes an optional liveness/readiness endpoint served by the

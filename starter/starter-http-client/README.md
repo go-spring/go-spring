@@ -4,7 +4,7 @@
 
 `starter-http-client` is the runtime half of Go-Spring's **declarative HTTP
 client**. Declare a remote service as an interface in an IDL, generate the call
-sites with [`gs-http-gen`](../../../gs/gs-http-gen), and inject an assembled
+sites with [`gs-http-gen`](../../gs/gs-http-gen), and inject an assembled
 `*http.Client` into the generated client. Service discovery, load balancing,
 resilience and trace propagation are wired for you.
 
@@ -34,15 +34,15 @@ The generated `Client` holds only a `Target`. The starter assembles one
 `httpclt.DoRequest` (the single send seam of `stdlib/httpclt`) with a hook that
 dispatches on the call's `Target`, so generated clients and imperative helpers
 pick it up with zero wiring. The chain is
-by [`starter-http-client/httpx`](../../../starter-http-client/httpx) from three composable stdlib
+by [`starter-http-client/httpx`](httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
-* [`discovery`](../../../cloud/discovery) — when a `service-name` is set, a
+* [`discovery`](../../cloud/discovery) — when a `service-name` is set, a
   `Resolver` keeps a fresh endpoint snapshot;
-* [`loadbalance`](../../../cloud/loadbalance) — a `Pool` picks one live endpoint
+* [`loadbalance`](../../cloud/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier suspension) and the
   transport rewrites the request host to it;
-* [`resilience`](../../../cloud/governance/resilience) — an optional executor wraps the whole
+* [`resilience`](../../cloud/governance/resilience) — an optional executor wraps the whole
   chain, so rate limiting, circuit breaking and retry protect every call.
   Because it sits *outside* the balancer, a retry re-picks a fresh endpoint and
   the breaker keys on the logical service name.
@@ -138,12 +138,12 @@ floor of `min-requests=5` (a higher explicit value in the govern rule wins) — 
 
 ## Observability
 
-Observability is built into [`starter-http-client/httpx`](../../../starter-http-client/httpx): the base
+Observability is built into [`starter-http-client/httpx`](httpx): the base
 transport is [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)-wrapped,
 and an active resilience executor is wrapped with fault + observe (outcome-classified
 metrics). Every outbound request
 emits a client span and injects a W3C `traceparent` header through the
-OpenTelemetry globals that [`starter-otel`](../../starter-otel)
+OpenTelemetry globals that [`starter-otel`](../starter-otel)
 installs. Without `starter-otel` the globals are no-ops. This is the same
 zero-config opt-in the other client starters use.
 

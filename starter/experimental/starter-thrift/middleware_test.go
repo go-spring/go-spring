@@ -28,27 +28,52 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// stubProcessor records the context it was invoked with and consumes the
-// request message begin (already replayed by replayProtocol when the input is
-// a THeaderProtocol) plus the message end. It writes no response, which is
-// enough for span-parenting assertions.
-type stubProcessor struct {
+// recordingFunc is a service implementation: it records the context it ran
+// with and consumes the message end.
+type recordingFunc struct {
 	lastCtx context.Context
-	lastArg thrift.TProtocol
+	runs    int
 }
 
-func (s *stubProcessor) Process(ctx context.Context, in, out thrift.TProtocol) (bool, thrift.TException) {
-	s.lastCtx = ctx
-	s.lastArg = in
+func (f *recordingFunc) Process(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
+	f.runs++
+	f.lastCtx = ctx
 	if err := in.ReadMessageEnd(ctx); err != nil {
 		return false, thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err.Error())
 	}
 	return true, nil
 }
 
-func (s *stubProcessor) ProcessorMap() map[string]thrift.TProcessorFunction { return nil }
+// stubProcessor mimics what a generated thrift processor does: read the message
+// begin, look the method up in its map, dispatch to it. The observation
+// middleware rides exactly that dispatch — which is why the map must be
+// populated here: thrift.WrapProcessor wraps the functions present in it, and a
+// processor with an empty map gets no observation at all.
+type stubProcessor struct {
+	methods map[string]thrift.TProcessorFunction
+}
 
-func (s *stubProcessor) AddToProcessorMap(key string, fn thrift.TProcessorFunction) {}
+func newStubProcessor(method string, fn thrift.TProcessorFunction) *stubProcessor {
+	return &stubProcessor{methods: map[string]thrift.TProcessorFunction{method: fn}}
+}
+
+func (s *stubProcessor) Process(ctx context.Context, in, out thrift.TProtocol) (bool, thrift.TException) {
+	name, _, seqID, err := in.ReadMessageBegin(ctx)
+	if err != nil {
+		return false, thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err.Error())
+	}
+	fn, ok := s.methods[name]
+	if !ok {
+		return false, thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, name)
+	}
+	return fn.Process(ctx, seqID, in, out)
+}
+
+func (s *stubProcessor) ProcessorMap() map[string]thrift.TProcessorFunction { return s.methods }
+
+func (s *stubProcessor) AddToProcessorMap(key string, fn thrift.TProcessorFunction) {
+	s.methods[key] = fn
+}
 
 // setupTestTracer installs an in-memory SDK tracer provider and the W3C
 // propagator on the OTel globals, restoring the previous values on cleanup.
@@ -87,10 +112,25 @@ func writeHeaderMessage(ctx context.Context, t *testing.T, buf thrift.TTransport
 	}
 }
 
+// spanNamed returns the single recorded span with the given name.
+func spanNamed(t *testing.T, rec *tracetest.SpanRecorder, name string) sdktrace.ReadOnlySpan {
+	t.Helper()
+	for _, s := range rec.Ended() {
+		if s.Name() == name {
+			return s
+		}
+	}
+	return nil
+}
+
 // TestHeaderProtocolTracePropagation verifies that when the server protocol is
-// THeaderProtocol, the server span started by WrapProcessor is parented to the
-// client span whose context was injected into the message headers, and that
-// the extracted span context reaches the inner processor via ctx.
+// THeaderProtocol, the server span is parented to the client span whose context
+// was injected into the message headers, and that the extracted span context
+// reaches the service function via ctx.
+//
+// It also pins the span NAME to the method. That is the point of instrumenting
+// on the per-method seam: a single Process-level span cannot know the method and
+// would have to call every span "thrift.process".
 func TestHeaderProtocolTracePropagation(t *testing.T) {
 	rec := setupTestTracer(t)
 
@@ -104,8 +144,8 @@ func TestHeaderProtocolTracePropagation(t *testing.T) {
 	wire := thrift.NewTMemoryBuffer()
 	writeHeaderMessage(ctx, t, wire, "Ping", headers)
 
-	stub := &stubProcessor{}
-	proc := WrapProcessor(stub)
+	svc := &recordingFunc{}
+	proc := thrift.WrapProcessor(newStubProcessor("Ping", svc), Observe())
 	serverIn := thrift.NewTHeaderProtocolConf(wire, nil)
 	serverOut := thrift.NewTHeaderProtocolConf(thrift.NewTMemoryBuffer(), nil)
 
@@ -115,18 +155,13 @@ func TestHeaderProtocolTracePropagation(t *testing.T) {
 	span.End()
 
 	wantSC := span.SpanContext()
-	if !trace.SpanFromContext(stub.lastCtx).SpanContext().IsValid() {
-		t.Fatal("inner processor ctx does not carry a valid span")
+	if !trace.SpanFromContext(svc.lastCtx).SpanContext().IsValid() {
+		t.Fatal("the service function's ctx does not carry a valid span")
 	}
 
-	var serverSpan sdktrace.ReadOnlySpan
-	for _, s := range rec.Ended() {
-		if s.Name() == "thrift.process" {
-			serverSpan = s
-		}
-	}
+	serverSpan := spanNamed(t, rec, "Ping")
 	if serverSpan == nil {
-		t.Fatal("thrift.process span not recorded")
+		t.Fatal(`span named after the method ("Ping") not recorded`)
 	}
 	gotSC := serverSpan.SpanContext()
 	if gotSC.TraceID() != wantSC.TraceID() {
@@ -145,7 +180,6 @@ func TestHeaderProtocolTracePropagation(t *testing.T) {
 func TestBinaryProtocolNoPropagation(t *testing.T) {
 	rec := setupTestTracer(t)
 
-	// Inject nothing; build a plain binary-protocol request frame.
 	ctx, span := otel.Tracer("test-client").Start(context.Background(), "client-call")
 	span.End()
 
@@ -157,8 +191,7 @@ func TestBinaryProtocolNoPropagation(t *testing.T) {
 	if err := sender.WriteMessageEnd(ctx); err != nil {
 		t.Fatalf("WriteMessageEnd: %v", err)
 	}
-	stub := &stubProcessor{}
-	proc := WrapProcessor(stub)
+	proc := thrift.WrapProcessor(newStubProcessor("Ping", &recordingFunc{}), Observe())
 	serverIn := thrift.NewTBinaryProtocolConf(wire, nil)
 	serverOut := thrift.NewTBinaryProtocolConf(thrift.NewTMemoryBuffer(), nil)
 
@@ -166,55 +199,60 @@ func TestBinaryProtocolNoPropagation(t *testing.T) {
 		t.Fatalf("Process: ok=%v ex=%v", ok, ex)
 	}
 
-	for _, s := range rec.Ended() {
-		if s.Name() != "thrift.process" {
-			continue
-		}
-		if s.Parent().IsValid() {
-			t.Errorf("binary-protocol server span should be a root span, got parent %s", s.Parent().SpanID())
-		}
-		if s.SpanContext().TraceID() == span.SpanContext().TraceID() {
-			t.Error("server span must not share the client trace (no propagation channel)")
-		}
+	serverSpan := spanNamed(t, rec, "Ping")
+	if serverSpan == nil {
+		t.Fatal("server span not recorded")
+	}
+	if serverSpan.Parent().IsValid() {
+		t.Errorf("binary-protocol server span should be a root span, got parent %s", serverSpan.Parent().SpanID())
+	}
+	if serverSpan.SpanContext().TraceID() == span.SpanContext().TraceID() {
+		t.Error("server span must not share the client trace (no propagation channel)")
 	}
 }
 
-// TestReplayProtocol verifies the replay wrapper returns the pre-consumed
-// message begin exactly once, then delegates to the inner protocol.
-func TestReplayProtocol(t *testing.T) {
+// rejecting denies every call without reaching the service — the shape of an
+// inbound admission rejection.
+var rejecting thrift.ProcessorMiddleware = func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
+	return thrift.WrappedTProcessorFunction{
+		Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
+			return false, thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "rejected")
+		},
+	}
+}
+
+// TestRejectionIsStillObserved guards the ORDER promise: with Observe listed
+// first it is the outermost middleware, so a call a later middleware rejects
+// still returns through it and is traced. Put admission one layer above the
+// per-method functions instead and a rejection short-circuits before any of
+// them runs, leaving no trace at all.
+func TestRejectionIsStillObserved(t *testing.T) {
+	rec := setupTestTracer(t)
+
 	wire := thrift.NewTMemoryBuffer()
 	sender := thrift.NewTBinaryProtocolConf(wire, nil)
 	ctx := context.Background()
-	if err := sender.WriteMessageBegin(ctx, "Ping", thrift.CALL, 7); err != nil {
-		t.Fatal(err)
+	if err := sender.WriteMessageBegin(ctx, "Ping", thrift.CALL, 1); err != nil {
+		t.Fatalf("WriteMessageBegin: %v", err)
 	}
 	if err := sender.WriteMessageEnd(ctx); err != nil {
-		t.Fatal(err)
+		t.Fatalf("WriteMessageEnd: %v", err)
 	}
 
-	inner := thrift.NewTBinaryProtocolConf(wire, nil)
-	if _, _, _, err := inner.ReadMessageBegin(ctx); err != nil {
-		t.Fatal(err) // consume like observedProcessor does
-	}
-	p := &replayProtocol{TProtocol: inner, name: "Ping", typeID: thrift.CALL, seqID: 7}
+	svc := &recordingFunc{}
+	proc := thrift.WrapProcessor(newStubProcessor("Ping", svc), Observe(), rejecting)
+	serverIn := thrift.NewTBinaryProtocolConf(wire, nil)
+	serverOut := thrift.NewTBinaryProtocolConf(thrift.NewTMemoryBuffer(), nil)
 
-	name, typeID, seqID, err := p.ReadMessageBegin(ctx)
-	if err != nil || name != "Ping" || typeID != thrift.CALL || seqID != 7 {
-		t.Fatalf("replayed ReadMessageBegin = %q %v %d %v", name, typeID, seqID, err)
+	ok, ex := proc.Process(context.Background(), serverIn, serverOut)
+	if ok || ex == nil {
+		t.Fatalf("a rejected call must fail: ok=%v ex=%v", ok, ex)
 	}
-	// Second message written to the same buffer: the next call must delegate.
-	if err := sender.WriteMessageBegin(ctx, "Pong", thrift.CALL, 8); err != nil {
-		t.Fatal(err)
+	if svc.runs != 0 {
+		t.Fatalf("a rejected call must not reach the service, ran %d times", svc.runs)
 	}
-	if err := sender.WriteMessageEnd(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.ReadMessageEnd(ctx); err != nil {
-		t.Fatalf("ReadMessageEnd: %v", err)
-	}
-	name, _, _, err = p.ReadMessageBegin(ctx)
-	if err != nil || name != "Pong" {
-		t.Fatalf("delegated ReadMessageBegin = %q %v", name, err)
+	if spanNamed(t, rec, "Ping") == nil {
+		t.Fatal("a rejected call must still be traced — Observe has to be the outermost middleware")
 	}
 }
 

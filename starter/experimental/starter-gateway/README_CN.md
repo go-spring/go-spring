@@ -15,7 +15,9 @@
 
 上游分为**直连**（`http(s)://host:port`）与**服务发现**（`lb://<service>`）两类，后者复用
 `cloud/discovery` + `cloud/loadbalance`。转发经由 `cloud/governance/resilience` 完成重试／熔断／
-限流，网关还会向 actuator 管理端口贡献 `/gateway/metrics`。
+限流。网关自身的指标是 OTel instrument（`gateway.requests`、`gateway.active_requests`、
+`gateway.route_reload_errors`），因此走应用配置的那条管道 —— starter-otel 的 Prometheus
+exporter 会把它们和其他组件一起暴露在 actuator 的 `/metrics` 上。
 
 ## 安装
 
@@ -104,8 +106,12 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 
 ## 可观测
 
-* `/gateway/metrics` 以 Prometheus 文本形式贡献到 actuator 管理端口：按状态类别统计的
-  各路由请求数、在途请求数，以及路由重载错误数。
+* 网关的指标与其他组件一样走 OTel 管道：`gateway.requests`（按 `gateway.route`、`status`、
+  `http.response.status_code`）、`gateway.active_requests`、`gateway.route_reload_errors`。
+  配了 starter-otel 时由它的 Prometheus exporter 暴露在 actuator 的 `/metrics` 上；
+  网关自己不再保留任何端点。
+* 每个被代理的请求一行访问日志（`gateway.route`、`status`、`http.request.method`、
+  `url.path`、`http.response.status_code`、`duration_ms`）。
 * 名为 `gateway` 的 `health.Indicator` 只要路由表已加载即报告 UP。
 
 ## 核心特性

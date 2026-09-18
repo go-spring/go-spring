@@ -290,7 +290,8 @@ With starter-otel imported (example-otel):
 docker compose -f example-otel/docker-compose.yml up -d   # Jaeger :16686 / OTLP :4317
 cd example-otel && go run .                               # sends 20 RPCs, self-verifies
 open http://localhost:16686    # service "trpc-otel-example": one span per RPC, named
-                               # {service}/{method}, attributes rpc.system=trpc
+                               # {service}/{method}, attributes rpc.system=trpc and a
+                               # status attribute (ok|error) on the result
 ```
 
 Metrics (when exported via starter-otel's Prometheus):
@@ -298,6 +299,15 @@ Metrics (when exported via starter-otel's Prometheus):
 ```bash
 curl -s :9090/metrics | grep -E 'rpc_server_request_duration|rpc_server_request_count|rpc_server_active_requests'
 ```
+
+The duration/count metrics carry `rpc.system` (`trpc`), `rpc.method` and `status`
+(`ok`|`error`) — before the `status` label existed the series could not tell a failed RPC
+from a successful one.
+
+Access log (filter.go): one line per call, written always. Tag `_app_trpc_access`
+(`log.RegisterAppTag("trpc", "access")`), distinct from the bridge's `_rpc_trpc` tag; the
+identity keys are the ones the metrics carry (`rpc.system`, `rpc.method`, `status`), and
+`duration_ms` plus (on failure) `error` are the line's own payload.
 
 ### 4.3 Lifecycle verification
 

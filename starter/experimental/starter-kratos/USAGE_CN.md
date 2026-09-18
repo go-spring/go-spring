@@ -189,7 +189,7 @@ gs.Run()
 ### 2.2 中间件链 —— 精确顺序与理由（http/grpc）
 
 ```
-recovery.Recovery() → tracing.Server() → [kmetrics.Server()，metrics.enable 时]
+recovery.Recovery() → tracing.Server() → accesslog.Server() → [kmetrics.Server()，metrics.enable 时]
 → 你的 service handler（经 ServiceRegister 注册）
 ```
 
@@ -198,11 +198,13 @@ recovery.Recovery() → tracing.Server() → [kmetrics.Server()，metrics.enable
 - **recovery 最外层**：下游任何一层的 panic 在跨越 transport 边界前被 recover。
 - **tracing 在 metrics 之前**：tracing 开 span，随后 metrics 在活跃 span/context 下
   记录。`tracing.Server()` 读 starter-otel 安装的全局 OTel provider；没有它就是 no-op。
+- **access log 在 tracing 之后、metrics 之前**：每次调用一行 —— kratos/v2 自身不发射的
+  per-call 信号。挂在 tracing 里面，因此该行带 span 的 trace_id。它无条件安装，与 metrics 不同。
 - **metrics 最内层**：counter/histogram 观测的是 handler 的结果与耗时。
 
-本 starter 没有 fault/governance、loadtest、request-id、access-log 层 —— 也没有配置或
-bean 缝隙可以追加 kratos 中间件（`khttp.Middleware`/`kgrpc.Middleware` 未暴露），
-链是固定的（见设计嫌疑清单）。
+本 starter 没有 fault/governance、loadtest、request-id 层 —— 也没有配置或 bean 缝隙可以
+追加 kratos 中间件（`khttp.Middleware`/`kgrpc.Middleware` 未暴露），链是固定的（见设计
+嫌疑清单）。access log 是本 starter 贡献的唯一 per-call 层。
 
 **ws 完全没有中间件链** —— tx7do transport 不做埋点：无 tracing、无 metrics，recovery
 只有 kratos-transport 内部机制。
@@ -216,9 +218,10 @@ bean 缝隙可以追加 kratos 中间件（`khttp.Middleware`/`kgrpc.Middleware`
 2. recovery 布防（defer recover）。
 3. tracing 从 gRPC metadata 提取 span context、开 server span（没有 starter-otel 的
    provider 时为 no-op）。
-4. metrics 递增 `server_requests_code_total`，开始 `server_requests_seconds` 观测。
-5. 你的 handler 执行；应答按 4→3 展开：耗时记录、span 结束。
-6. 这条路径上的 kratos 框架事件（transport 错误等）经日志桥（§3.5）流进 go-spring
+4. access log 在调用退出时写下一行，tag `_app_kratos_access`（§4.4）。
+5. metrics 递增 `server_requests_code_total`，开始 `server_requests_seconds` 观测。
+6. 你的 handler 执行；应答按 5→4→3 展开：耗时记录、访问日志行写出、span 结束。
+7. 这条路径上的 kratos 框架事件（transport 错误等）经日志桥（§3.5）流进 go-spring
    log，tag `_rpc_kratos`。
 
 ---
@@ -327,6 +330,10 @@ ETCDCTL_API=3 etcdctl get --prefix /microservices/kratos-grpc/   # 停止后为�
   `server_requests_seconds`，经 `otel.Meter(cfg.Name)` 创建 —— 属性跟随 kratos metrics
   中间件默认（`operation`、`code`）；按 server `name` 隔离。
 - **Tracing**：每请求一个 span（`tracing.Server()`）；打流量后到 collector 看。
+- **访问日志**（`internal/accesslog`，grpc 与 http 两个包共用）：每次调用一行，无条件
+  安装。tag 为 `_app_kratos_access`（`log.RegisterAppTag("kratos", "access")`）；字段为
+  `rpc.system`（`kratos`）、`rpc.method`（transport 的 `Operation`）、`status`
+  （`ok`|`error`）、`duration_ms`，失败时另有 `error`。
 - **日志**：框架行在 `_rpc_kratos`；业务行用你自己的 tag；启停行在 app-def tag。
 
 ---

@@ -135,7 +135,7 @@ services:
 
 ```bash
 docker compose up -d
-go run .              # expect: "subscribed to bus subject=..." then
+go run .              # expect: "config bus: subscribed subject=..." then
                       # "config-bus refresh observed: v-..." and clean exit
 docker compose down -v
 ```
@@ -162,7 +162,7 @@ gs.Run() → App.Start()                                                       [
   │    │    Conn      ← NATS instance by name (${spring.config.bus.nats-instance:=config-bus})
   │    │    Config    ← ${spring.config.bus} value tags (config.go)
   │    └─ bean Init hook: subscribe() — NATS Subscribe on Config.Subject      [starter.go:136-171]
-  │         logs "subscribed to bus subject=... prefixes=[...]"
+  │         logs "config bus: subscribed subject=... prefixes=[...] origin=..."
   ├─ app.started = true            ← RefreshProperties is allowed from here on
   ├─ Runners → Servers → readiness
   └─ on SIGTERM: bean Destroy → sub.Unsubscribe(); the NATS conn closes in starter-nats
@@ -264,7 +264,7 @@ go run .                                       # prints "config-bus refresh obse
 
 Observability: log tag `_app_config_bus` (registered via
 `log.RegisterAppTag("config_bus", "")`, `starter.go:41`; tune verbosity with
-`logger.config_bus.*`). Expect, in order: `subscribed to bus subject=... prefixes=[...]`,
+`logger.config_bus.*`). Expect, in order: `config bus: subscribed subject=... prefixes=[...] origin=...`,
 then on each event `config bus: refreshed properties on event (prefix="..." origin="...")`.
 
 ### 4.2 Drill: publish with no subscribers
@@ -309,21 +309,28 @@ with unknown fields is tolerated (standard unmarshal).
 ### 4.6 Refresh failure observability
 
 If a source fails to re-load (bad file, invalid content), `RefreshProperties` returns an
-error and the subscriber logs `config bus: property refresh failed: ...`; previous property
-values remain in effect (the refresh is all-or-nothing per `app.go` doc comment). The signal
-is not retried — republish after fixing the source.
+error and the subscriber logs `config bus: property refresh failed` with `status="refresh_error"`
+and a `prefix` field naming the namespace that failed; previous property values remain in
+effect (the refresh is all-or-nothing per `app.go` doc comment). The signal is not retried —
+republish after fixing the source.
 
 ### 4.7 Reading the observability signals
 
 With starter-otel exporting metrics, each broadcast lands in exactly one series of
-`config.bus.events` under its `outcome`. The two queries worth having on a dashboard:
+`config.bus.events` under its `status` — and under its `prefix`, the configuration
+namespace it carried. The queries worth having on a dashboard:
 
 ```promql
 # How often a broadcast arrived and was honored, but the reload then failed.
-sum(rate(config_bus_events_total{outcome="refresh_error"}[5m]))
+sum(rate(config_bus_events_total{status="refresh_error"}[5m]))
+# Per namespace, so a single failing namespace is visible on its own.
+sum by (prefix) (rate(config_bus_events_total{status="refresh_error"}[5m]))
 # Whether the fleet is actually being refreshed at all.
-sum(rate(config_bus_events_total{outcome="refreshed"}[5m]))
+sum(rate(config_bus_events_total{status="refreshed"}[5m]))
 ```
+
+The same `status` and `prefix` are on the log lines, so a series can be joined to the line
+that explains it (rather than only traced by wall-clock time).
 
 Traces: a broadcast is one trace with a `publish` span (a child of the caller's span when
 `Publish` was called from one) and one `consume` span per subscriber. Health: `/readiness`

@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -35,10 +36,49 @@ const tracerName = "go-spring.org/starter-trpc"
 // meterName identifies metrics emitted by this starter.
 const meterName = "go-spring.org/starter-trpc"
 
+// rpcSystem is the value the RPC family's rpc.system label carries for this
+// backend. Together with rpc.method and status it is one of the three keys
+// every RPC backend emits under the same name, because a query spanning
+// frameworks has nothing else to join on.
+const rpcSystem = "trpc"
+
+// accessTag is the static log tag for the tRPC access log. It is distinct from
+// the tag the framework's own logs are bridged under (internal/logger): that
+// one carries whatever tRPC logs, this one carries one line per call.
+var accessTag = log.RegisterAppTag("trpc", "access")
+
 // rpcName extracts the fully qualified RPC name from the tRPC context.
 func rpcName(ctx context.Context) string {
 	msg := trpc.Message(ctx)
 	return msg.CalleeServiceName() + "/" + msg.CalleeMethod()
+}
+
+// statusOf names the outcome the way the family's status label and log field
+// expect — the same two words the other RPC backends use, so a dashboard can
+// span frameworks.
+func statusOf(err error) string {
+	if err != nil {
+		return "error"
+	}
+	return "ok"
+}
+
+// logCall writes the per-call access log. Its identity keys are the ones the
+// metrics carry (rpc.system / rpc.method / status), so selecting a failing
+// method on a dashboard lands on the lines that explain it. duration_ms and
+// error are the line's own payload.
+func logCall(ctx context.Context, method, status string, dur time.Duration, err error) {
+	fields := []log.Field{
+		log.String("rpc.system", rpcSystem),
+		log.String("rpc.method", method),
+		log.String("status", status),
+		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
+	}
+	if err != nil {
+		log.Warn(ctx, accessTag, append(fields, log.Any("error", err))...)
+		return
+	}
+	log.Info(ctx, accessTag, fields...)
 }
 
 // TracingServerFilter is a tRPC ServerFilter that starts and ends an OTel
@@ -50,12 +90,13 @@ func TracingServerFilter() filter.ServerFilter {
 		ctx, span := otel.Tracer(tracerName).Start(ctx, name,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
-				attribute.String("rpc.system", "trpc"),
+				attribute.String("rpc.system", rpcSystem),
 				attribute.String("rpc.service", trpc.Message(ctx).CalleeServiceName()),
 				attribute.String("rpc.method", name),
 			),
 		)
 		rsp, err := next(ctx, req)
+		span.SetAttributes(attribute.String("status", statusOf(err)))
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			span.RecordError(err)
@@ -91,17 +132,28 @@ func MetricsServerFilter() filter.ServerFilter {
 
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
 		name := rpcName(ctx)
-		attrs := metric.WithAttributes(
+		// The in-flight gauge is recorded before the call, so it cannot carry a
+		// status; the completed signals carry the family's shared result axis.
+		inflight := metric.WithAttributes(
+			attribute.String("rpc.system", rpcSystem),
 			attribute.String("rpc.method", name),
 		)
-		requestsInFlight.Add(ctx, 1, attrs)
+		requestsInFlight.Add(ctx, 1, inflight)
 		start := time.Now()
 
 		rsp, err := next(ctx, req)
 
-		requestsInFlight.Add(ctx, -1, attrs)
-		requestCount.Add(ctx, 1, attrs)
-		requestDuration.Record(ctx, time.Since(start).Seconds(), attrs)
+		dur := time.Since(start)
+		status := statusOf(err)
+		done := metric.WithAttributes(
+			attribute.String("rpc.system", rpcSystem),
+			attribute.String("rpc.method", name),
+			attribute.String("status", status),
+		)
+		requestsInFlight.Add(ctx, -1, inflight)
+		requestCount.Add(ctx, 1, done)
+		requestDuration.Record(ctx, dur.Seconds(), done)
+		logCall(ctx, name, status, dur, err)
 		return rsp, err
 	}
 }

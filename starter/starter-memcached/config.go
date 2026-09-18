@@ -51,7 +51,6 @@ type Config struct {
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
 
-
 	// Timeout is the socket read/write timeout for each request,
 	// 0 uses the driver default (100ms), e.g., "100ms".
 	Timeout time.Duration `value:"${timeout:=0}"`

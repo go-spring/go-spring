@@ -4,7 +4,7 @@
 
 `starter-governance-sentinel` registers [alibaba/sentinel-golang][sentinel] as the
 production driver for the resilience framework defined in
-[`cloud/governance/resilience`](../../../cloud/governance/resilience). Blank-import it
+[`cloud/governance/resilience`](../../cloud/governance/resilience). Blank-import it
 alongside [`starter-governance`](../starter-governance) and name it in the
 governance document (`govern.driver=sentinel`) — every client that resolves its
 executor through the governance center then gets adaptive rate limiting,
@@ -12,7 +12,7 @@ circuit breaking, and bulkhead isolation on top of the same neutral `Policy`,
 with no per-client key and no code change.
 
 It follows the *global / infrastructure* archetype (see
-[starter/DESIGN.md](../../DESIGN.md) §2.4): it contributes exactly one bean — the
+[starter/DESIGN.md](../DESIGN.md) §2.4): it contributes exactly one bean — the
 `sentinel`-named `resilience.Driver` that [`starter-governance`](../starter-governance)
 collects into the driver directory — and opens no port. `sentinel.InitDefault`
 runs at import time so a broken environment fails loudly on boot rather than on
@@ -45,7 +45,7 @@ The driver is chosen once for the whole process, not per client: the governance
 document names it in `govern.driver`, and every client that resolves its
 executor through the governance center picks it up. The `govern.*` keys live in
 the governance document — its own system, not `app.properties` (see
-[`cloud/governance/README.md`](../../../cloud/governance/README.md)):
+[`cloud/governance/README.md`](../../cloud/governance/README.md)):
 
 ```properties
 govern.enabled=true

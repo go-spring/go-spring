@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-batch-redis` contributes a Redis-backed
-[`batch.JobRepository`](../../../cloud/batch) bean to a Go-Spring application, so
+[`batch.JobRepository`](../../../cloud/experimental/batch) bean to a Go-Spring application, so
 chunk jobs and short-lived tasks persist their progress in Redis and survive a
 process restart from the last committed chunk.
 

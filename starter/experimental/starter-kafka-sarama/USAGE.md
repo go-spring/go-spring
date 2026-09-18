@@ -345,7 +345,7 @@ Publish then consume on the same topic (partition consumer from oldest, as in
 ### 4.4 Observables read-out
 
 ```bash
-grep _app_kafka_access app.log | tail      # system=kafka op=publish|consume topic=... status/duration
+grep _app_kafka_access app.log | tail      # messaging.system=kafka messaging.operation=publish|consume messaging.destination.name=... status/duration_ms
 curl -s :9090/metrics | grep messaging_client   # duration + in-flight, attrs messaging.system=kafka
 # spans: "publish"/"consume", attr messaging.destination.name=<topic>
 ```

@@ -87,6 +87,17 @@ logging.logger.root.file=app.log
 logging.logger.root.layout.type=JSONLayout
 ```
 
+## Observability
+
+* **Access log** — one line per call, always installed. Tag `_app_trpc_access`
+  (`log.RegisterAppTag("trpc", "access")`), distinct from the bridge's `_rpc_trpc` tag:
+  that one carries whatever tRPC logs, this one carries one line per call. Fields are
+  `rpc.system` (`trpc`), `rpc.method`, `status` (`ok`|`error`) and `duration_ms`, plus
+  `error` on failure.
+* **Tracing & metrics** — with `starter-otel` imported: one span per RPC named
+  `{service}/{method}`, carrying a `status` attribute on the result; the duration/count
+  metrics carry `rpc.system`, `rpc.method` and `status`.
+
 ## Signal handling — a caveat
 
 tRPC-Go's `server.Serve()` installs its own OS signal handlers

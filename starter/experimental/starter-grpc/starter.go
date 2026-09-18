@@ -91,16 +91,16 @@ type LoadTestConfig struct {
 
 // Config defines gRPC server configuration.
 type Config struct {
-	Addr                 string                `value:"${addr}"`
-	ConnectionTimeout    time.Duration         `value:"${connectionTimeout:=0}"`
-	MaxRecvMsgSize       int                   `value:"${maxRecvMsgSize:=0}"`
-	MaxSendMsgSize       int                   `value:"${maxSendMsgSize:=0}"`
-	MaxConcurrentStreams uint32                `value:"${maxConcurrentStreams:=0}"`
-	Keepalive            KeepaliveConfig       `value:"${keepalive}"`
-	TLS                  tlsconf.TLSConfig     `value:"${tls}"`
-	Health               HealthConfig          `value:"${health}"`
-	LoadTest             LoadTestConfig        `value:"${loadtest}"`
-	Observer             ObserverConfig        `value:"${observer}"`
+	Addr                 string            `value:"${addr}"`
+	ConnectionTimeout    time.Duration     `value:"${connectionTimeout:=0}"`
+	MaxRecvMsgSize       int               `value:"${maxRecvMsgSize:=0}"`
+	MaxSendMsgSize       int               `value:"${maxSendMsgSize:=0}"`
+	MaxConcurrentStreams uint32            `value:"${maxConcurrentStreams:=0}"`
+	Keepalive            KeepaliveConfig   `value:"${keepalive}"`
+	TLS                  tlsconf.TLSConfig `value:"${tls}"`
+	Health               HealthConfig      `value:"${health}"`
+	LoadTest             LoadTestConfig    `value:"${loadtest}"`
+	Observer             ObserverConfig    `value:"${observer}"`
 }
 
 // ObserverConfig groups the built-in observability interceptors the starter can
@@ -108,6 +108,11 @@ type Config struct {
 // starter-otel installs; they are on by default because the interceptors are
 // no-ops when starter-otel is not imported — enabling them upfront saves a
 // config change when adopting OTel.
+//
+// The per-call access log is NOT covered by these switches: it is installed
+// always, because the RPC family requires every member to have one, and a
+// toggle that can silently remove a required signal is a trap. Turning both
+// switches off leaves the server logging one line per call, and nothing else.
 type ObserverConfig struct {
 	Tracing TracingConfig `value:"${tracing}"`
 	Metrics MetricsConfig `value:"${metrics}"`
@@ -214,6 +219,13 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 		unary = append(unary, TracingUnaryInterceptor())
 		stream = append(stream, TracingStreamInterceptor())
 	}
+	// The access log is installed unconditionally, unlike the two above: it is
+	// the one signal the RPC family requires of every member, so a config change
+	// must not be able to remove it. It sits just inside tracing (the line then
+	// carries the span's trace_id) and outside admission, fault injection and
+	// recovery (so it reports what the caller actually got).
+	unary = append(unary, AccessLogUnaryInterceptor())
+	stream = append(stream, AccessLogStreamInterceptor())
 	if s.cfg.Observer.Metrics.Enabled {
 		unary = append(unary, MetricsUnaryInterceptor())
 		stream = append(stream, MetricsStreamInterceptor())

@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-governance-sentinel` is a **global / infrastructure** starter (see
-[starter/DESIGN.md](../../DESIGN.md) §2.4) that registers
+[starter/DESIGN.md](../DESIGN.md) §2.4) that registers
 [alibaba/sentinel-golang][sentinel] as the production driver for
 `cloud/governance/resilience`. It contributes one bean — the `sentinel`-named
 `resilience.Driver` — and opens no port; alongside `starter-governance`, a blank

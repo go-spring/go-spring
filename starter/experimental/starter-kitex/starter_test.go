@@ -65,9 +65,10 @@ func TestObservabilityOptionsGlobalPipeline(t *testing.T) {
 		if localProvider != nil {
 			t.Fatal("global pipeline present: must not create a local otel provider")
 		}
-		// Exactly one option: the tracing suite. No prometheus tracer (no port).
-		if len(opts) != 1 {
-			t.Fatalf("expected 1 option (tracing suite only), got %d", len(opts))
+		// Two options: the always-installed access log, plus the tracing suite.
+		// No prometheus tracer (no port).
+		if len(opts) != 2 {
+			t.Fatalf("expected 2 options (access log + tracing suite), got %d", len(opts))
 		}
 	})
 
@@ -77,8 +78,8 @@ func TestObservabilityOptionsGlobalPipeline(t *testing.T) {
 		if localProvider != nil {
 			t.Fatal("global pipeline present: must not create a local otel provider")
 		}
-		if len(opts) != 2 {
-			t.Fatalf("expected 2 options (suite + prometheus tracer), got %d", len(opts))
+		if len(opts) != 3 {
+			t.Fatalf("expected 3 options (access log + suite + prometheus tracer), got %d", len(opts))
 		}
 	})
 }
@@ -103,19 +104,23 @@ func TestObservabilityOptionsLocalFallback(t *testing.T) {
 			// restore the no-op default so later tests are unaffected.
 			otel.SetTracerProvider(tracenoop.NewTracerProvider())
 		})
-		if len(opts) != 1 {
-			t.Fatalf("expected 1 option (tracing suite only), got %d", len(opts))
+		if len(opts) != 2 {
+			t.Fatalf("expected 2 options (access log + tracing suite), got %d", len(opts))
 		}
 	})
 
+	// The access log is deliberately NOT gated by tracing.enable: it is the one
+	// per-call signal go-spring contributes here (the span and metrics come from
+	// kitex-contrib/obs-opentelemetry), so a config change must not be able to
+	// remove a signal the RPC family requires.
 	t.Run("tracing disabled", func(t *testing.T) {
 		cfg := Config{ServiceName: "svc", Tracing: TracingCfg{Enable: false}}
 		opts, localProvider := observabilityOptions(cfg)
 		if localProvider != nil {
 			t.Fatal("tracing.enable=false: must not create any provider or suite")
 		}
-		if len(opts) != 0 {
-			t.Fatalf("expected no options, got %d", len(opts))
+		if len(opts) != 1 {
+			t.Fatalf("expected 1 option (the always-installed access log), got %d", len(opts))
 		}
 	})
 }

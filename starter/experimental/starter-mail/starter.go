@@ -68,6 +68,7 @@ type Message struct {
 type Mailer struct {
 	client *mail.Client
 	from   string
+	obs    *observer
 }
 
 func init() {
@@ -144,7 +145,7 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config) (*Mailer, error) 
 	}
 
 	log.Infof(pctx, log.TagAppDef, "mailer created host=%s port=%d", c.Host, c.Port)
-	return &Mailer{client: client, from: c.From}, nil
+	return &Mailer{client: client, from: c.From, obs: newObserver()}, nil
 }
 
 // parseAuthType maps the config string onto a go-mail SMTP auth mechanism.
@@ -166,10 +167,23 @@ func parseAuthType(s string) (mail.SMTPAuthType, error) {
 // Send delivers one or more messages. It opens a single connection, sends all of
 // them, and closes it. An error is returned if any message is invalid or if the
 // connection or delivery fails.
+//
+// Each call is observed: a duration metric, the in-flight gauge and one
+// access-log line — emitted here, not by the caller-side span helpers, because a
+// send must be measurable whether or not the caller started a span.
 func (m *Mailer) Send(ctx context.Context, msgs ...*Message) error {
 	if len(msgs) == 0 {
 		return nil
 	}
+	inflight, start := m.obs.start(ctx)
+	err := m.deliver(ctx, msgs)
+	m.obs.done(ctx, inflight, start, err)
+	return err
+}
+
+// deliver is the unobserved send: build every message, then hand the batch to
+// the client in one connection.
+func (m *Mailer) deliver(ctx context.Context, msgs []*Message) error {
 	built := make([]*mail.Msg, 0, len(msgs))
 	for _, msg := range msgs {
 		mm, err := m.build(msg)

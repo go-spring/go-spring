@@ -48,8 +48,8 @@ func proxySpan(routeID string, next http.Handler) http.Handler {
 		ctx, serverSpan := otel.Tracer(tracerName).Start(ctx, "gateway "+routeID,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
-				attribute.String("http.method", r.Method),
-				attribute.String("http.target", r.URL.Path),
+				attribute.String("http.request.method", r.Method),
+				attribute.String("url.path", r.URL.Path),
 				attribute.String("gateway.route", routeID),
 			),
 		)
@@ -67,13 +67,18 @@ func proxySpan(routeID string, next http.Handler) http.Handler {
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(sw, r.WithContext(ctx))
 
-		clientSpan.SetAttributes(attribute.Int("http.status_code", sw.status))
+		clientSpan.SetAttributes(attribute.Int("http.response.status_code", sw.status))
 		if sw.status >= 500 {
 			clientSpan.SetStatus(codes.Error, http.StatusText(sw.status))
 		}
 		clientSpan.End()
 
-		serverSpan.SetAttributes(attribute.Int("http.status_code", sw.status))
+		// The result axis and the code travel together: status is the axis every
+		// component shares, http.response.status_code the HTTP-specific detail.
+		serverSpan.SetAttributes(
+			attribute.Int("http.response.status_code", sw.status),
+			attribute.String("status", statusOf(sw.status)),
+		)
 		serverSpan.End()
 	})
 }

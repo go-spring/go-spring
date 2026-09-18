@@ -14,7 +14,7 @@
 
 本 starter 注册的是一个**朴素实例**（任意传输协议 —— HTTP、gRPC……）。RPC 框架的
 provider 注册仍保持框架原生，不在本 starter 范围内（见
-[starter/DESIGN_CN.md §3](../../DESIGN_CN.md)）。
+[starter/DESIGN_CN.md §3](../DESIGN_CN.md)）。
 
 ## 命名块，一个中心一个 bean
 

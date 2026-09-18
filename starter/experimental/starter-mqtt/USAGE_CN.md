@@ -322,7 +322,7 @@ subscriber 消费：**只有 Payload 存活**；Key/Headers/Timestamp 到达时�
 ### 4.4 可观测读取
 
 - 访问日志：tag `_app_mqtt_access`（observe.go 注册 `app.mqtt.access`）。每次 span 助手
-  观测一条记录：`operation=publish|consume duration_ms=...`（附 topic），出错时 Warn 并
+  观测一条记录：`messaging.operation=publish|consume messaging.destination.name=<topic> status=<ok|error> duration_ms=...`，出错时 Warn 并
   带 `error` 字段。
 - 指标：`messaging.client.operation.duration`（秒）与 `messaging.client.active_requests`，
   属性 `messaging.system=mqtt`、`messaging.operation`，span 上另有

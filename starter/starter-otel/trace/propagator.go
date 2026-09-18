@@ -33,7 +33,7 @@ import (
 // global, so a propagator registered here rides every inbound and outbound hop
 // once it is composed into that global by setupTrace.
 var (
-	propMu sync.RWMutex
+	propMu  sync.RWMutex
 	propReg = make(map[string]propagation.TextMapPropagator)
 )
 

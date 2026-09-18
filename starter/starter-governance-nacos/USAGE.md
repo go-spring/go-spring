@@ -2,15 +2,15 @@
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
 against the starter source (`governance.go`, `governance_test.go`), the shared parse glue
-[starter-governance/rules](../../starter-governance/rules/rules.go), the core contract
-[cloud/governance](../../../cloud/governance) (`source.go`), and the self-asserting
+[starter-governance/rules](../starter-governance/rules/rules.go), the core contract
+[cloud/governance](../../cloud/governance) (`source.go`), and the self-asserting
 [example/](example) (`example/example.go`, `example/check.sh`). Nacos's own semantics (dataId,
 group, namespace, `ListenConfig`) are [Nacos docs](https://nacos.io/docs/latest/manual/admin/config/)
 — everything below is go-spring's increment.
 
 **What this starter is**: the Nacos adapter of the governance rule-source family. It is a
 `governance.Source` implementation; presenting the governance center itself is
-[starter-governance](../../starter-governance)'s job. Blank-importing this package is inert until a
+[starter-governance](../starter-governance)'s job. Blank-importing this package is inert until a
 `govern.source.nacos.*` key is present.
 
 ---
@@ -211,7 +211,7 @@ starter surface.
 
 ⚠ `govern.source.*` is the bootstrap surface only. The rules document itself never rides
 `app.properties` — it lives in its own dataId, and its keys are the `govern.*` vocabulary
-documented in [starter-governance's USAGE](../../starter-governance/USAGE.md).
+documented in [starter-governance's USAGE](../starter-governance/USAGE.md).
 
 ### 3.1 Byte-portability of the document
 
@@ -219,7 +219,7 @@ The document is parsed by the same `rules.Parse` used by the `starter-governance
 sources: it is flattened, required to carry at least one `govern.*` key, then bound into
 `governance.Config`. Consequently a document that works as a local rules file works unchanged as a
 Nacos dataId (and vice versa, and as an etcd value with
-[starter-governance-etcd](../../starter-governance-etcd)).
+[starter-governance-etcd](../starter-governance-etcd)).
 
 ---
 
@@ -304,5 +304,5 @@ Design notes (for the audit ledger):
 - The parse glue (`rules.Parse`) lives as a subpackage of `starter-governance`, not inside
   `cloud/governance`, so the container-free core stays free of the `spring` dependency while every
   backend shares one parser.
-- The sibling etcd adapter ([starter-governance-etcd](../../starter-governance-etcd)) has the same
+- The sibling etcd adapter ([starter-governance-etcd](../starter-governance-etcd)) has the same
   shape; the two are kept structurally parallel so a reader can move between them.

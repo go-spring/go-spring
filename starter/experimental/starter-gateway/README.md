@@ -18,8 +18,10 @@ table in place, so a bad edit never takes the gateway down.
 Upstreams are either **direct** (`http(s)://host:port`) or **discovery-backed**
 (`lb://<service>`), the latter reusing `cloud/discovery` + `cloud/loadbalance`.
 Forwarding runs through `cloud/governance/resilience` for retry / circuit-breaking / rate
-limiting, and the gateway contributes `/gateway/metrics` to the actuator
-management port.
+limiting. Its own metrics are OTel instruments (`gateway.requests`,
+`gateway.active_requests`, `gateway.route_reload_errors`), so they surface through whatever
+pipeline the application configured — starter-otel's Prometheus exporter serves them on
+the actuator `/metrics`, beside every other component's.
 
 ## Installation
 
@@ -115,9 +117,13 @@ policy share pooled breaker/limiter state.
 
 ## Observability
 
-* `/gateway/metrics` is contributed to the actuator management port as Prometheus
-  text: per-route request counts by status class, in-flight requests, and route
-  reload errors.
+* The gateway's metrics ride the OTel pipeline like every other component's:
+  `gateway.requests` (by `gateway.route`, `status` and `http.response.status_code`),
+  `gateway.active_requests`, `gateway.route_reload_errors`. With starter-otel they are
+  exposed by its Prometheus exporter on the actuator `/metrics`; the gateway keeps no
+  endpoint of its own.
+* One access-log line per proxied request (`gateway.route`, `status`,
+  `http.request.method`, `url.path`, `http.response.status_code`, `duration_ms`).
 * A `health.Indicator` named `gateway` reports UP as long as the route table is
   loaded.
 

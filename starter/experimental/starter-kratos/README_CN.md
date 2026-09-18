@@ -81,4 +81,8 @@ import `go-spring.org/starter-kratos/ws`,在 `spring.kratos.ws.server` 前缀下
   端点归 `starter-otel` 所有 —— 本 starter 自己不起任何 Prometheus 端点。
 * **Logging** —— kratos 的框架日志被桥接进 Go-Spring 的 `log` 模块(见 `internal/logger`),应用只需配置
   单一的日志管线。
+* **访问日志** —— 每次调用一行,是 kratos/v2 自身不发射的 per-call 信号。在 HTTP 与 gRPC 两条链上
+  都无条件安装,位于 tracing 与 metrics 之间;tag 为 `_app_kratos_access`
+  (`log.RegisterAppTag("kratos", "access")`),字段为 `rpc.system`(`kratos`)、`rpc.method`
+  (transport 的 `Operation`)、`status`、`duration_ms`,失败时另有 `error`。
 * **WebSocket** —— WebSocket transport 没有中间件链,有意**不**做 tracing / metrics 埋点。

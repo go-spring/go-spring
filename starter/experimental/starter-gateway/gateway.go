@@ -21,8 +21,9 @@ import (
 )
 
 func init() {
-	// Shared metrics collector for the route table and the /metrics endpoint.
-	gs.Provide(newMetrics)
+	// Shared instrument set for the route table. Its metrics ride the OTel
+	// pipeline; there is no private endpoint to keep in sync with it.
+	gs.Provide(newObserver)
 
 	// The compiled, hot-reloadable route table. Its ${spring.gateway} config
 	// and optional FilterWrapper beans (jwt-auth, lua) are populated by field
@@ -44,7 +45,8 @@ func init() {
 		Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.gateway.server.addr"))
 
-	// Contribute /gateway/metrics to the actuator and report gateway health.
-	gs.Provide(newMetricsEndpoint)
+	// Report gateway health. The metrics need no contribution: they are OTel
+	// instruments now, so starter-otel's Prometheus exporter exposes them on the
+	// same /metrics (actuator management port) as the rest of the application.
 	gs.Provide(newGatewayHealth)
 }

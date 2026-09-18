@@ -88,7 +88,6 @@ type Config struct {
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
 
-
 	// DiscoveryScheme is the URL scheme ("http" or "https") prepended to each
 	// discovered "host:port" endpoint, since discovery yields addresses without a
 	// scheme. It is only used when ServiceName is set; default is "http".

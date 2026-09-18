@@ -119,9 +119,9 @@ func (s *LuohuaSSO) Validate(_ context.Context, token string) (*security.Authent
 			Subject: c.Subject,
 			Claims:  map[string]any{"issuer": c.Issuer, "tenant": c.Tenant},
 		},
-		Token:        token,
+		Token:         token,
 		Authenticated: true,
-		Authorities:  c.Authorities,
+		Authorities:   c.Authorities,
 	}, nil
 }
 

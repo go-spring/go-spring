@@ -282,7 +282,7 @@ With the `log.FieldsFromContext` hook from §1, every business log line carries 
 
 - Access log (tag `_app_gin_access`): one structured record per request —
   `http.request.method`, `url.path`, `http.route`, `http.response.status_code`,
-  `http.response.body_size`, `duration_ms`, `request_id`, `trace_id`/`span_id` (when starter-otel
+  `http.response.body.size`, `duration_ms`, `request_id`, `trace_id`/`span_id` (when starter-otel
   is live), `req.body`/`req.query`/`req.headers`/`resp.body` (payload capture), `event.count`
   (SSE), `panic`+`stack`. Severity: ≥500 Error, ≥400 Warn, else Info.
 - Metrics (Prometheus via starter-otel, example-otel uses :9090):

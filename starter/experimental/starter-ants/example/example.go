@@ -29,9 +29,9 @@ import (
 	"time"
 
 	"go-spring.org/log"
-	"go-spring.org/stdlib/goutil"
 	"go-spring.org/spring/gs"
 	StarterAnts "go-spring.org/starter-ants"
+	"go-spring.org/stdlib/goutil"
 )
 
 // panics counts task panics reported through the shared goutil panic chain,

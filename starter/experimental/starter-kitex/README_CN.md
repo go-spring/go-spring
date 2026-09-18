@@ -81,6 +81,17 @@ logging.logger.root.file=app.log
 logging.logger.root.layout.type=JSONLayout
 ```
 
+## 可观测
+
+* **访问日志** —— 每次调用一行，始终安装：`tracing.enable` / `metrics.enable` 开关管不到
+  它。tag 为 `_app_kitex_access`（`log.RegisterAppTag("kitex", "access")`）；字段为
+  `rpc.system`（`kitex`）、`rpc.method`（`service/method`）、`status`（`ok`|`error`）、
+  `duration_ms`，失败时另有 `error`。
+* **Trace 与指标** —— span 与指标由 `kitex-contrib/obs-opentelemetry` 提供，不由本 starter
+  提供；全局优先的姿势见
+  [USAGE §4.2](USAGE_CN.md#42-trace-与指标--全局优先一进程一管道)（进程里有全局 OTel 管道
+  时挂上去，否则自建回落 provider）。无论哪种姿势访问日志都照写——它不受 suite 开关约束。
+
 ## 说明
 
 - Starter 监听地址由 `${spring.kitex.server.addr}` 决定——无默认值；设置该 key 即注册 server bean（不存在 `enabled` key）。

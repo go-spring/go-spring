@@ -2,10 +2,10 @@
 
 详细使用参考。概览见 [README_CN.md](README_CN.md)。所有行为声明均已对照 starter 源码
 （`starter.go`、`executor.go`、`breaker_listener.go`、`executor_test.go`）、抽象层
-[cloud/governance/resilience](../../../cloud/governance/resilience)（`driver.go`、
+[cloud/governance/resilience](../../cloud/governance/resilience)（`driver.go`、
 `provider.go`）与自断言的 [example/](example/)（`example/check.sh` —— 无容器、无外部
 依赖）。**resilience 语义（熔断窗口、重试退避、policy 词汇）见
-[cloud/governance/resilience](../../../cloud/governance/resilience)；sentinel-golang 行为见
+[cloud/governance/resilience](../../cloud/governance/resilience)；sentinel-golang 行为见
 [官方文档](https://github.com/alibaba/sentinel-golang)** —— 下文只写驱动接线。
 
 **激活方式**：与 [`starter-governance`](../starter-governance) 一起 blank import
@@ -193,8 +193,8 @@ policy 并**清空 loaded 集合**。sentinel 的 `LoadRulesOfResource` 会替�
 `Policy` 各字段（`rate-limit`、`error-threshold`、`open-duration`、`max-concurrent`、
 `max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `govern.default.*`，某个资源
 单独配用 `govern.rules[N].*` —— 经 `ExecutorFor` + `Refresh` 到达本驱动。字段含义见
-[cloud/governance/resilience](../../../cloud/governance/resilience)，键的排布见
-[`cloud/governance/README.md`](../../../cloud/governance/README.md)。
+[cloud/governance/resilience](../../cloud/governance/resilience)，键的排布见
+[`cloud/governance/README.md`](../../cloud/governance/README.md)。
 
 ---
 

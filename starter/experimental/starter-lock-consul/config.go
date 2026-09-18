@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"go-spring.org/cloud/tlsconf"
-
 )
 
 // Config binds one Consul-backed distributed-lock instance under
@@ -65,5 +64,4 @@ type Config struct {
 	// to get the bare locker. When starter-otel is not imported the OTel
 	// providers are no-ops, so leaving this on costs almost nothing.
 	ObserveEnabled bool `value:"${observe.enabled:=true}"`
-
 }

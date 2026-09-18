@@ -112,7 +112,7 @@ bean 仍可用于 JetStream、请求-应答等 driver 未建模的 NATS 能力�
 ## 可观测性
 
 收发两个方向都直接在连接上埋点——span、耗时/在途 metric、access log——并依赖
-[starter-otel](../../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
+[starter-otel](../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
 starter-otel 时它们为 no-op，因此埋点是安全的零配置可选项。
 
 ```go

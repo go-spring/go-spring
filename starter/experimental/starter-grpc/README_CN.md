@@ -87,6 +87,18 @@ gs.Provide(func(c *Controller) StarterGrpc.ServiceRegister {
 3. **通过 `grpc.SetHeader` 回写响应头**：handler 在响应头中写入
    `x-handler=echo`；客户端通过 `grpc.Header(&md)` 调用选项捕获并断言。
 
+## 可观测
+
+* **访问日志** —— 每次调用一行，始终安装：`observer.tracing.enabled` /
+  `observer.metrics.enabled` 两个开关都管不到它（RPC 家族要求每个成员都必须有）。
+  tag 为 `_app_grpc_access`（`log.RegisterAppTag("grpc", "access")`）；字段为
+  `rpc.system`（`grpc`）、`rpc.method`、`status`（`ok`|`error`）、
+  `rpc.grpc.status_code`、`duration_ms`，失败时另有 `error`。
+* **Trace 与指标** —— 默认开启，走 `starter-otel` 安装的全局 OTel；未引入时是静默
+  no-op。span 以完整方法名命名；时长/计数指标带 `rpc.system`、`rpc.method`、`status`
+  与 `rpc.grpc.status_code`。instrument 清单见
+  [USAGE §4.2](USAGE_CN.md#42-指标名与属性metricsgo-meter-go-springorgstarter-grpc)。
+
 ## 说明
 
 - Starter 监听地址由 `${spring.grpc.server.addr}` 决定——无默认值；设置该 key 即注册 server bean（不存在 `enabled` key）。

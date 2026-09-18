@@ -302,7 +302,7 @@ func (e *Executor) callback(ctx context.Context, logID, logDateTime int64, res h
 // serving (the executor is ready). Named after the instance name, matching
 // the bean name in starter.go (sibling-starters convention).
 func (e *Executor) Health() *health.Indicator {
-	return &health.Indicator{Name: "xxljob:"+e.name, Probe: func(ctx context.Context) error {
+	return &health.Indicator{Name: "xxljob:" + e.name, Probe: func(ctx context.Context) error {
 		if e.srv == nil {
 			return fmt.Errorf("xxljob: executor not started")
 		}

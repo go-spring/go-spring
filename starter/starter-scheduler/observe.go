@@ -34,7 +34,7 @@ import (
 // observer, and this is where that report becomes a metric and a log line. One
 // status value drives both, so the metric can never disagree with the log:
 //
-//	outcome    ok | error | panic | skipped_policy | skipped_lock
+//	status     ok | error | panic | skipped_policy | skipped_lock
 //
 // The status answers "how did this fire end?" in a single dimension, the same
 // shape the lock package uses for its status. A skipped fire is one that a
@@ -58,6 +58,12 @@ var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5,
 // the interesting range is sub-millisecond to seconds — finer than
 // durationBuckets, which starts at 5ms.
 var lagBuckets = []float64{0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5}
+
+// accessTag is the static log tag for the per-fire log lines. The lifecycle
+// lines (starting / started / drain) stay on the default tag: only the
+// one-line-per-fire records are the access log, and only they need a tag of
+// their own to be selectable apart from application logs.
+var accessTag = log.RegisterAppTag("scheduler", "access")
 
 // instruments bundles the metrics the observer records. They are built at
 // wiring time (see Server.Run), not at package init, so an SDK installed later
@@ -88,10 +94,10 @@ func newInstruments() instruments {
 	return instruments{runs: runs, duration: duration, lag: lag}
 }
 
-// outcomeOfRun classifies a finished run. A panic is reported as an error
+// statusOfRun classifies a finished run. A panic is reported as an error
 // wrapping [scheduling.ErrJobPanicked], which is what makes it separable from a
 // run that merely returned an error.
-func outcomeOfRun(err error) string {
+func statusOfRun(err error) string {
 	switch {
 	case errors.Is(err, scheduling.ErrJobPanicked):
 		return "panic"
@@ -102,27 +108,27 @@ func outcomeOfRun(err error) string {
 	}
 }
 
-// outcomeOf classifies one fire. A skipped fire is a whole outcome of its own,
+// statusOf classifies one fire. A skipped fire is a whole status of its own,
 // and its reason is folded into the value rather than made a second dimension —
 // "skipped_" plus [scheduling.Event.Reason], so an unknown reason still reports
 // honestly instead of being folded into a known one.
-func outcomeOf(ev scheduling.Event) string {
+func statusOf(ev scheduling.Event) string {
 	if ev.Skipped {
 		return "skipped_" + ev.Reason
 	}
-	return outcomeOfRun(ev.Err)
+	return statusOfRun(ev.Err)
 }
 
 // record emits the metrics and the log line for one fire. The log level carries
 // the same status: a panic or a failed run at Error, an ordinary fire — and a
 // swallowed one, which is routine under multi-replica de-duplication — at Debug.
 func (s *Server) record(ev scheduling.Event) {
-	outcome := outcomeOf(ev)
+	status := statusOf(ev)
 	ctx := context.Background()
 
 	s.instruments.runs.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("job", ev.Name),
-		attribute.String("status", outcome),
+		attribute.String("status", status),
 	))
 
 	// A skipped fire has no run: no duration and no start, so neither histogram
@@ -130,7 +136,7 @@ func (s *Server) record(ev scheduling.Event) {
 	if !ev.Skipped {
 		s.instruments.duration.Record(ctx, ev.Duration.Seconds(), metric.WithAttributes(
 			attribute.String("job", ev.Name),
-			attribute.String("status", outcome),
+			attribute.String("status", status),
 		))
 		if !ev.Start.IsZero() {
 			s.instruments.lag.Record(ctx, ev.Start.Sub(ev.Scheduled).Seconds(),
@@ -139,28 +145,28 @@ func (s *Server) record(ev scheduling.Event) {
 	}
 
 	// The log line carries the same job and status the metrics above just
-	// recorded, under the same keys, so the line joins runs{job,outcome} and
-	// run.duration{job,outcome} instead of only describing them in prose.
-	switch outcome {
+	// recorded, under the same keys, so the line joins runs{job,status} and
+	// run.duration{job,status} instead of only describing them in prose.
+	switch status {
 	case "panic":
-		log.Error(ctx, log.TagAppDef, append(runFields(ev, outcome),
+		log.Error(ctx, accessTag, append(runFields(ev, status),
 			log.Float("duration_ms", ms(ev.Duration)),
 			log.Any("error", ev.Err),
 			log.Msg("scheduler: job panicked"))...)
 	case "error":
-		log.Error(ctx, log.TagAppDef, append(runFields(ev, outcome),
+		log.Error(ctx, accessTag, append(runFields(ev, status),
 			log.Float("duration_ms", ms(ev.Duration)),
 			log.Any("error", ev.Err),
 			log.Msg("scheduler: job failed"))...)
 	case "skipped_policy", "skipped_lock":
-		log.Debug(ctx, log.TagAppDef, func() []log.Field {
-			return append(runFields(ev, outcome),
+		log.Debug(ctx, accessTag, func() []log.Field {
+			return append(runFields(ev, status),
 				log.String("reason", ev.Reason),
 				log.Msg("scheduler: job skipped"))
 		})
 	default:
-		log.Debug(ctx, log.TagAppDef, func() []log.Field {
-			return append(runFields(ev, outcome),
+		log.Debug(ctx, accessTag, func() []log.Field {
+			return append(runFields(ev, status),
 				log.Float("duration_ms", ms(ev.Duration)),
 				log.Msg("scheduler: job ran"))
 		})
@@ -170,10 +176,10 @@ func (s *Server) record(ev scheduling.Event) {
 // runFields returns the fields one fire's log line carries: the keys are the
 // metric attribute names, so the line and the counters for the same fire can
 // never be read as describing different things.
-func runFields(ev scheduling.Event, outcome string) []log.Field {
+func runFields(ev scheduling.Event, status string) []log.Field {
 	return []log.Field{
 		log.String("job", ev.Name),
-		log.String("status", outcome),
+		log.String("status", status),
 	}
 }
 

@@ -7,12 +7,12 @@
 starter 负责驱动它们、参与优雅停机,并可借助分布式锁在多副本间去重。
 
 它属于 *global / infrastructure*(全局 / 基础设施)形态(见
-[starter/DESIGN.md](../../DESIGN.md) §2.4):不开监听端口,而是导出一个 `gs.Server`,
+[starter/DESIGN.md](../DESIGN.md) §2.4):不开监听端口,而是导出一个 `gs.Server`,
 让调度器加入 server 生命周期——应用就绪后任务才开始触发;收到 `SIGTERM` 时,进程
 退出前会先排空在途运行。
 
 触发与并发原语来自零依赖的
-[`cloud/scheduling`](../../../cloud/scheduling) 包;本 starter 只是把 IoC 容器接入其
+[`cloud/scheduling`](../../cloud/scheduling) 包;本 starter 只是把 IoC 容器接入其
 上的薄集成层。任务的节奏是任务本身的一部分,所以在注册任务的地方声明——配置里只剩
 进程级旋钮(`enabled`、`drain-timeout`)。
 
@@ -104,10 +104,15 @@ import (
 ## 可观测性
 
 引入 `starter-otel`（或任何 SDK provider）后，每次 job 运行会开一个 span
-（`scheduler.job <name>`），每次触发——运行或跳过——都会喂给三个 metric：
-`scheduling.runs{job,outcome}`、`scheduling.run.duration{job,outcome}` 和
-`scheduling.lag{job}`。outcome 词表为 `ok`、`error`、`panic`、`skipped_policy`、
-`skipped_lock`。
+（`scheduler.job <name>`，带 `status` 属性），每次触发——运行或跳过——都会喂给三个 metric：
+`scheduling.runs{job,status}`、`scheduling.run.duration{job,status}` 和
+`scheduling.lag{job}`。status 词表为 `ok`、`error`、`panic`、`skipped_policy`、`skipped_lock`。
+
+每次触发还会写一行日志，走自己的 tag `_app_scheduler_access`
+（`log.RegisterAppTag("scheduler", "access")`）而不是默认 app tag；生命周期行
+（starting / started / drain）仍留在默认 tag。该行携带与 metric 相同的 `job` 与 `status`，
+外加 `reason`（跳过时）、`duration_ms` 与失败时的 `error`——因此可以从序列 join 到解释它
+的那一行。
 
 `lag` 是触发被计划的时刻与运行真正开始时刻之间的距离：它持续爬升说明运行开始得越来越
 晚，这是别的 instrument 看不到的。未装 SDK provider 时以上全部为 no-op。完整的

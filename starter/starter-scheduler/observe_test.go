@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 
 // TestInstrumentEmitsSpan pins the trace half of the instrumentation: an
 // instrumented run opens a consumer span named after the job, carrying the job
-// name attribute, and a failing run's span ends in error with the outcome
+// name attribute, and a failing run's span ends in error with the status
 // attribute set. Without an SDK installed the wrap is a no-op pass-through, so
 // this is the only proof the span link actually exists.
 func TestInstrumentEmitsSpan(t *testing.T) {
@@ -90,16 +90,16 @@ func TestInstrumentEmitsSpan(t *testing.T) {
 			if sp.Name != "scheduler.job t_span" {
 				t.Fatalf("span name must be %q, got %q", "scheduler.job t_span", sp.Name)
 			}
-			if attrs["scheduling.outcome"] != "ok" {
-				t.Fatalf("a successful run's span must carry outcome=ok, got %q", attrs["scheduling.outcome"])
+			if attrs["status"] != "ok" {
+				t.Fatalf("a successful run's span must carry status=ok, got %q", attrs["status"])
 			}
 			if sp.Status.Code == codes.Error {
 				t.Fatal("a successful run's span must not be an error")
 			}
 		case attrs["scheduler.job.name"] == "t_span_fail":
 			failed = true
-			if attrs["scheduling.outcome"] != "error" {
-				t.Fatalf("a failed run's span must carry outcome=error, got %q", attrs["scheduling.outcome"])
+			if attrs["status"] != "error" {
+				t.Fatalf("a failed run's span must carry status=error, got %q", attrs["status"])
 			}
 			if sp.Status.Code != codes.Error {
 				t.Fatal("a failed run's span must end in error status")
@@ -185,7 +185,7 @@ func newTestServer() *Server {
 	return s
 }
 
-// Every outcome of a fire lands in the runs counter under its own outcome
+// Every outcome of a fire lands in the runs counter under its own status
 // value — including the two ways a fire can be swallowed, which are told apart
 // because a lock skip is routine under multi-replica de-duplication while a
 // policy skip means the job is not keeping up.
@@ -205,7 +205,7 @@ func TestObserveCountsEachStatus(t *testing.T) {
 	s.observe(scheduling.Event{Name: "t_policy", Skipped: true, Reason: "policy"})
 	s.observe(scheduling.Event{Name: "t_lock", Skipped: true, Reason: "lock"})
 
-	for job, outcome := range map[string]string{
+	for job, status := range map[string]string{
 		"t_ok":     "ok",
 		"t_err":    "error",
 		"t_panic":  "panic",
@@ -213,7 +213,7 @@ func TestObserveCountsEachStatus(t *testing.T) {
 		"t_lock":   "skipped_lock",
 	} {
 		assert.Number(t, sumValue(t, "scheduling.runs", map[string]string{
-			"job": job, "status": outcome,
+			"job": job, "status": status,
 		})).Equal(int64(1))
 	}
 }
@@ -265,7 +265,7 @@ func TestObserveRecordsDurationAndLag(t *testing.T) {
 }
 
 // The scheduler's log lines and its counters must attribute the same fire the
-// same way, or a dashboard selecting scheduler.runs{job,outcome} lands on lines
+// same way, or a dashboard selecting scheduler.runs{job,status} lands on lines
 // that cannot be joined to it. The keys are what make them joinable, and a
 // drifted key is silent — hence pinning them here rather than trusting each
 // call site to keep spelling them the same.
@@ -274,7 +274,7 @@ func TestRunFieldsCarryTheMetricKeys(t *testing.T) {
 	for _, f := range runFields(scheduling.Event{Name: "cleanup", Reason: "policy"}, "skipped_policy") {
 		keys = append(keys, f.Key)
 	}
-	// Only the keys are pinned: job and outcome are the values handed to the
+	// Only the keys are pinned: job and status are the values handed to the
 	// counters alongside, so the keys are the whole drift surface.
 	assert.That(t, keys).Equal([]string{"job", "status"})
 }

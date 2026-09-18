@@ -90,5 +90,4 @@ type Config struct {
 	// exposes both plain and secure instances and this client should reach only
 	// one. Only consulted when ServiceName is set.
 	Scheme string `value:"${scheme:=}"`
-
 }

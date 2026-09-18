@@ -97,7 +97,7 @@ go run .
 curl -i :9440/api/orders/42                 # 200;上游收到 /orders/42、X-From: gw
 curl -i :9440/api/users/1 -X POST           # 超过 50 rps/客户端 IP 后 429
 curl -i :9440/nope                           # 404 Not Found(网关自身返回)
-curl -s :9370/gateway/metrics | grep gateway_requests_total
+curl -s :9370/metrics | grep gateway_requests           # starter-otel 的 exporter
 curl -i :9370/healthz                        # 路由表编译成功后 gateway 指示器 UP
 ```
 
@@ -118,8 +118,8 @@ import starter-gateway
   ├─ gs.Provide(newGatewayServer).Name("gatewayServer")
   │      .Export(gs.As[gs.Server]())
   │      .Condition(gs.OnProperty("spring.gateway.server.addr"))
-  ├─ gs.Provide(newMetricsEndpoint).Export(endpoint.Endpoint) // GET /gateway/metrics
   └─ gs.Provide(newGatewayHealth).Export(health.Indicator)    // "gateway"
+       (指标走 OTel;由 starter-otel 的 exporter 在 /metrics 上暴露)
         │
 gs.Run()
   ├─ 配置绑定:${spring.gateway} → gatewayConfig(routes 走 gs.Dync、resilience map、
@@ -306,7 +306,7 @@ curl -i :9440/nope                     # 404 Not Found —— 无路由匹配
 2. 新(坏)路由不存在:`curl -i :9440/ping/x` → 404。
 3. 错误高声暴露 —— grep 应用日志:
    `grep 'route reload failed, keeping previous table'`(compile.go:123,Error 级,tag AppDef)。
-4. 指标递增:`curl -s :9370/gateway/metrics | grep gateway_route_reload_errors_total` → 1。
+4. 指标递增:`curl -s :9370/metrics | grep gateway_route_reload_errors` → 1。
 5. 坏 map 的指针被采纳(compile.go:125),同一份坏编辑不会每请求重试;修好配置再刷新即
    正常重编译。
 
@@ -322,9 +322,15 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
 
 ### 4.5 可观测
 
-- 指标(actuator `GET /gateway/metrics`,Prometheus 文本,metrics.go:110-139):
-  `gateway_requests_total{route="orders",status="2xx"}`、`gateway_in_flight_requests`、
-  `gateway_route_reload_errors_total`。
+- 指标(OTel instrument,metrics.go:96-124;配了 starter-otel 时出现在 actuator 的
+  `GET /metrics` 上,或 `spring.observability.metrics.port` 指定的端口):
+  `gateway.requests{gateway.route="orders",status="ok",http.response.status_code="200"}`、
+  `gateway.active_requests`、`gateway.route_reload_errors`。网关自身不提供指标端点 ——
+  要抓取端口就配 exporter。
+- 访问日志:每个被代理的请求一行,走 `gateway`/`access` tag。
+- Span:服务端 span `gateway <route>` 与客户端 span `proxy <route>`,属性
+  `http.request.method`、`url.path`、`gateway.route`,结束时再加
+  `http.response.status_code` 与 `status`。
 - 健康:`curl :9370/healthz` —— `gateway` 指示器在路由表已编译时 UP(metrics.go:150-157)。
   `lb://` 路由无存活实例时仍 UP —— 这是每路由的局部问题(503 + Warn 日志),不是整个
   网关的失败。
@@ -346,7 +352,7 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
 |------|----------|------|
 | 网关不监听 | 缺 `spring.gateway.server.addr` | 配上——它是激活 key。只配路由不配它现在会在启动时打 WARN 点名孤儿路由(RouteTable.Init,compile.go)——这些路由不会被服务。 |
 | 启动失败 `route %q: gateway: invalid …` | 初始路由表有 parse error(predicate/upstream/filter) | 修字面量;首次编译按设计即致命(server.go:82)。 |
-| 日志出现 `route reload failed, keeping previous table` | 热编辑坏了;旧表仍在服务 | 修字面量再刷新;观察 `gateway_route_reload_errors_total`。 |
+| 日志出现 `route reload failed, keeping previous table` | 热编辑坏了;旧表仍在服务 | 修字面量再刷新;观察 `gateway.route_reload_errors`。 |
 | 永远 404 | 没有路由断言能匹配(path 拼写错、methods/host/headers 断言拒绝) | 记住按 priority→id 顺序取首个匹配;id 靠后的更具体路由赢不了靠前的重叠路由——配 `priority` 可覆盖。 |
 | `unknown resilience policy` | `resilience.policy` 指向的名字不在 `spring.gateway.resilience` 下 | 把名字加为(无值的)key;策略值来自治理规则文档(`govern.*`)、资源标签 `gateway:<name>`。 |
 | 遗留 `resilience.<name>.max-retries` 等不生效 | 设计如此——value 是空结构体;绑定器忽略子 key(route.go:121-128) | 把策略迁到治理中心,资源标签 `gateway:<name>`。 |

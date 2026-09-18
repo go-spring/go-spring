@@ -130,7 +130,7 @@ services:
 
 ```bash
 docker compose up -d
-go run .              # 预期：先 "subscribed to bus subject=..."，
+go run .              # 预期：先 "config bus: subscribed subject=..."，
                       # 再 "config-bus refresh observed: v-..."，干净退出
 docker compose down -v
 ```
@@ -157,7 +157,7 @@ gs.Run() → App.Start()                                                       [
   │    │    Conn      ← 按名注入 NATS 实例（${spring.config.bus.nats-instance:=config-bus}）
   │    │    Config    ← ${spring.config.bus} value tag（config.go）
   │    └─ bean Init 钩子：subscribe() —— 对 Config.Subject 做 NATS Subscribe  [starter.go:136-171]
-  │         打日志 "subscribed to bus subject=... prefixes=[...]"
+  │         打日志 "config bus: subscribed subject=... prefixes=[...] origin=..."
   ├─ app.started = true            ← 从此刻起 RefreshProperties 才被允许
   ├─ Runners → Servers → 就绪
   └─ SIGTERM：bean Destroy → sub.Unsubscribe()；NATS 连接由 starter-nats 负责关闭
@@ -250,7 +250,7 @@ go run .                                       # 打印 "config-bus refresh obse
 
 可观测面：日志 tag `_app_config_bus`（经 `log.RegisterAppTag("config_bus", "")` 注册，
 starter.go:41；用 `logger.config_bus.*` 调级别）。预期顺序：
-`subscribed to bus subject=... prefixes=[...]`，随后每个事件一条
+`config bus: subscribed subject=... prefixes=[...] origin=...`，随后每个事件一条
 `config bus: refreshed properties on event (prefix="..." origin="...")`。
 
 ### 4.2 演练：无订阅者的发布
@@ -265,7 +265,7 @@ starter.go:41；用 `logger.config_bus.*` 调级别）。预期顺序：
 1. 以 `spring.config.bus.watch-prefixes=db,cache` 启动。
 2. 发布 `db` → 刷新发生（`db` 在 watch 列表）。
 3. 发布 `demo` → **不刷新**，但会打一条 debug 级日志（prefix/事件 prefix/watch 列表），
-   并计入 `config.bus.events{outcome="ignored_prefix"}`。这是预期的安静退出；别去 grep
+   并计入 `config.bus.events{status="ignored_prefix"}`。这是预期的安静退出；别去 grep
    错误。
 4. 发布 `""` → 永远刷新，与 watch 列表无关。
 
@@ -292,20 +292,26 @@ docker run --rm --network host nats:2.10 nats -s nats://127.0.0.1:4222 pub sprin
 ### 4.6 刷新失败可观测性
 
 若某个 source 重载失败（文件坏、内容非法），`RefreshProperties` 返回错误，订阅方打
-`config bus: property refresh failed: ...`；先前的属性值继续生效（按 app.go 文档注释，
-刷新是全有或全无）。信号不会重试——修好 source 后重新发布。
+`config bus: property refresh failed`，带 `status="refresh_error"` 与标明失败命名空间的
+`prefix` 字段；先前的属性值继续生效（按 app.go 文档注释，刷新是全有或全无）。信号不会
+重试——修好 source 后重新发布。
 
 ### 4.7 读取可观测信号
 
-配合 starter-otel 导出 metrics 后，每次广播恰好落入 `config.bus.events` 的一个 `outcome`
-序列。值得上仪表盘的两条查询：
+配合 starter-otel 导出 metrics 后，每次广播恰好落入 `config.bus.events` 的一个 `status`
+序列——同时落在它携带的 `prefix`（配置命名空间）上。值得上仪表盘的查询：
 
 ```promql
 # 信号到了、也被放行，但随后重载失败的频率。
-sum(rate(config_bus_events_total{outcome="refresh_error"}[5m]))
+sum(rate(config_bus_events_total{status="refresh_error"}[5m]))
+# 按命名空间拆分，让单个失败的命名空间自己显形。
+sum by (prefix) (rate(config_bus_events_total{status="refresh_error"}[5m]))
 # 舰队到底有没有在被刷新。
-sum(rate(config_bus_events_total{outcome="refreshed"}[5m]))
+sum(rate(config_bus_events_total{status="refreshed"}[5m]))
 ```
+
+同样的 `status` 与 `prefix` 也在日志行上，因此序列可以 join 到解释它的那一行（而不只是
+按墙钟时间去猜）。
 
 trace：一次广播是一条链路，含一个 `publish` span（若 `Publish` 在 span 内调用，它是其子）
 和每个订阅者一个 `consume` span。健康：`/readiness` 携带 `config-bus:configBus`，它在订阅
@@ -318,7 +324,7 @@ trace：一次广播是一条链路，含一个 `publish` span（若 `Publish` �
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动时装配 `configBus` 失败 | `spring.nats.instances.*` 下没有 `nats-instance` 指名（默认 `config-bus`）的实例 | 定义 `spring.nats.instances.config-bus.url=...`，或把 `nats-instance` 指到已有实例名 |
-| 发布成功但没人刷新 | subject 不一致（舰队裂分），或所有订阅方的 `watch-prefixes` 都不含发布的 prefix | 各实例对齐 `subject`；检查 `config.bus.events{outcome="refreshed"}` 与 debug 级 ignored_prefix 日志注明的原因（`db` 匹配 `db.pool`，不匹配 `demo`） |
+| 发布成功但没人刷新 | subject 不一致（舰队裂分），或所有订阅方的 `watch-prefixes` 都不含发布的 prefix | 各实例对齐 `subject`；检查 `config.bus.events{status="refreshed"}` 与 debug 级 ignored_prefix 日志注明的原因（`db` 匹配 `db.pool`，不匹配 `demo`） |
 | 别的实例刷了、这台没刷 | 本实例启动晚——NATS core 无回放，`subscribe()` 之前的信号已丢 | 全部实例就绪后再发布；bus 不是持久日志 |
 | `property refresh failed: app not started yet` | 事件落在 `app.started` 置位前的装配窗口（§2.1） | 启动期属良性；变更重要则就绪后重发 |
 | `property refresh failed: <source 错误>` | 某配置 source 重载失败；旧值保留 | 修复 source 后重新发布——不会自动重试 |

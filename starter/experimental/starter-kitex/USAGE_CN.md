@@ -284,6 +284,13 @@ cd example-otel && go run .                               # 20 个 RPC，自验 
 curl -s :9090/metrics | grep kitex                        # starter-otel 的 prometheus exporter
 ```
 
+访问日志（internal/accesslog）：每次调用一行，与 suite 一同安装且**始终**写出——
+`tracing.enable` / `metrics.enable` 开关管不到它。span 与 kitex 的 RPC 指标来自
+`kitex-contrib/obs-opentelemetry`；访问日志是本 starter 贡献的唯一 per-call 信号。tag 为
+`_app_kitex_access`（`log.RegisterAppTag("kitex", "access")`）；字段为 `rpc.system`
+（`kitex`）、`rpc.method`（`service/method`，与 tracing suite 的方法一致）、
+`status`（`ok`|`error`）、`duration_ms`，失败时另有 `error`。
+
 ### 4.3 注册演练（etcd）
 
 ```bash

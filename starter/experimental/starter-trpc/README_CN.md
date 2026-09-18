@@ -86,6 +86,16 @@ logging.logger.root.file=app.log
 logging.logger.root.layout.type=JSONLayout
 ```
 
+## 可观测
+
+* **访问日志** —— 每次调用一行，始终安装。tag 为 `_app_trpc_access`
+  （`log.RegisterAppTag("trpc", "access")`），与桥接的 `_rpc_trpc` tag 不同：后者承载
+  tRPC 自己打的日志，前者承载每次调用一行。字段为 `rpc.system`（`trpc`）、
+  `rpc.method`、`status`（`ok`|`error`）、`duration_ms`，失败时另有 `error`。
+* **Trace 与指标** —— 引入 `starter-otel` 后：每个 RPC 一个 span，名为
+  `{service}/{method}`，结果上带 `status` 属性；时长/计数指标带 `rpc.system`、
+  `rpc.method` 与 `status`。
+
 ## 信号处理 —— 一个注意点
 
 tRPC-Go 的 `server.Serve()` 会自己注册 OS 信号处理器

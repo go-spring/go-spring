@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-scheduler` 属于 **global / infrastructure** 形态(见
-[starter/DESIGN.md](../../DESIGN.md) §2.4),驱动周期与 cron 定时后台任务,
+[starter/DESIGN.md](../DESIGN.md) §2.4),驱动周期与 cron 定时后台任务,
 作为 Go-Spring server 生命周期的一部分。触发与并发原语来自零依赖的
 `cloud/scheduling`;本 starter 只是薄薄的集成层。
 

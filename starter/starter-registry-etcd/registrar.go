@@ -380,7 +380,7 @@ func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance
 	// Reported around the write itself: a marshal failure above never reached
 	// the center, so it is not a registry-center operation outcome.
 	if err := discovery.WeightChange(ctx, obsSystem, reg.ServiceName, func(ctx context.Context) error {
-			_, err := r.client.Put(ctx, key, string(val), lease)
+		_, err := r.client.Put(ctx, key, string(val), lease)
 		return err
 	}); err != nil {
 		return errutil.Explain(err, "registry-etcd: update weight put %q", key)

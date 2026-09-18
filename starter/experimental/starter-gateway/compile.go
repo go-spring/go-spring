@@ -63,8 +63,8 @@ type TracingConfig struct {
 // map changes. Matching reads a lock-free atomic snapshot; recompilation only
 // happens when the underlying Dync map is swapped by a config refresh.
 type RouteTable struct {
-	ctx     context.Context
-	metrics *Metrics
+	ctx context.Context
+	obs *observer
 
 	// Cfg is bound from ${spring.gateway} by field injection after construction.
 	// Its Routes field is a gs.Dync map, so a config refresh swaps the underlying
@@ -118,11 +118,11 @@ type RouteTable struct {
 // bad initial config fails startup. backends is the container's named discovery
 // backend beans (optional: an app with none gets an empty directory, and any
 // lb:// upstream then fails to compile with the label it could not resolve).
-func newRouteTable(ctx *gs.ContextProvider, m *Metrics, backends map[string]discovery.Discovery,
+func newRouteTable(ctx *gs.ContextProvider, o *observer, backends map[string]discovery.Discovery,
 	limiters map[string]resilience.LimiterDriver) *RouteTable {
 	return &RouteTable{
 		ctx:      ctx.Context,
-		metrics:  m,
+		obs:      o,
 		backends: backends,
 		limiters: limiters,
 	}
@@ -172,7 +172,7 @@ func (t *RouteTable) current() []*Route {
 		if err := t.recompile(raw); err != nil {
 			// Keep serving the previous table: a bad hot edit must never take the
 			// gateway down. Surface it loudly via log + metric.
-			t.metrics.recordReloadError()
+			t.obs.reloadError(t.ctx)
 			log.Errorf(t.ctx, log.TagAppDef, "gateway: route reload failed, keeping previous table: %v", err)
 			// Adopt the pointer so we do not retry the same broken map every request.
 			atomic.StoreUintptr(&t.lastPtr, reflect.ValueOf(raw).Pointer())

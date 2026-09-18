@@ -166,14 +166,21 @@ done, so there is nothing to release at shutdown" (starter.go init / Mailer doc)
 2. **Delivery phase** — a single `DialAndSendWithContext` opens one SMTP connection, delivers
    all messages, and closes it. Partial failure semantics are go-mail's; the starter wraps any
    error with `errutil.Explain(err, "mail: send failed")`.
-3. **Tracing (opt-in, caller-side)** — if the app called `StartSendSpan` (trace.go:41), the
-   span `mail.send` (SpanKind client, attributes `messaging.system=smtp`,
-   `messaging.operation=send`, `mail.purpose=<purpose>`) records the error and ends via
+3. **Observation (always on)** — `Send` records the duration metric
+   `email.client.operation.duration` (labels `email.system`, `status`), keeps the in-flight
+   gauge `email.client.active_requests`, and writes one access-log line per send
+   (`email.system`, `status`, `duration_ms`, plus `error` on failure) under the
+   `mail`/`access` tag. This happens whether or not the caller started a span — a send must
+   be measurable either way.
+4. **Tracing (opt-in, caller-side)** — if the app called `StartSendSpan` (trace.go:41), the
+   span `mail.send` (SpanKind client, attributes `email.system=smtp`,
+   `email.operation=send`, `mail.purpose=<purpose>`) records the outcome and ends via
    `EndSpan`. Without starter-otel the OTel global TracerProvider is a no-op — nothing is sent
    on the wire, nothing warns.
 
 Note the trace span is **not** inside `Send`: the starter exposes the two helpers and the
-caller brackets the call (recorded as a design suspect in §6).
+caller brackets the call (recorded as a design suspect in §6). The metric and the access log
+are inside `Send`, so **only the trace is opt-in**.
 
 ---
 
@@ -231,7 +238,7 @@ cd example-otel && docker compose up -d && go run .   # asserts traces in Jaeger
 curl -s 'http://127.0.0.1:16686/api/traces?service=mail-otel-example&limit=1' | grep '"data":\['
 ```
 
-Span fields to read: operation `mail.send`, kind CLIENT, attributes `messaging.system=smtp`,
+Span fields to read: operation `mail.send`, kind CLIENT, attributes `email.system=smtp`,
 `mail.purpose` (the string you passed), error event + status Error on failure.
 
 ### 4.5 From-fallback drill

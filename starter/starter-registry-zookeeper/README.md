@@ -16,7 +16,7 @@ discovery-only backend — and register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to ZooKeeper.
 RPC-framework provider registration stays framework-native and is out of scope (see
-[starter/DESIGN §3](../../DESIGN.md)).
+[starter/DESIGN §3](../DESIGN.md)).
 
 ## Named Blocks, One Bean Per Center
 

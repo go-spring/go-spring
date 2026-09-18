@@ -29,6 +29,7 @@ import (
 	etcd "github.com/kitex-contrib/registry-etcd"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/starter-kitex/internal/accesslog"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 
@@ -98,7 +99,7 @@ type TracingCfg struct {
 // Enable is on by default, but the dedicated scrape server only starts when
 // Port is explicitly configured — server ports are never defaulted here (the
 // "server ports must be explicitly configured" repo convention). With a global
-// pipeline present and no Port set, kitex RPC metrics (kitex.server.duration
+// pipeline present and no Port set, kitex RPC metrics (rpc.server.duration
 // histogram recorded by the tracing suite) ride the global metrics exporter
 // instead, so no dedicated endpoint is needed.
 type MetricsCfg struct {
@@ -158,7 +159,7 @@ func globalTracingActive() bool {
 //
 //	Global pipeline present  → attach tracing.NewServerSuite() only. The suite
 //	                           reads the OTel globals (provider + propagator),
-//	                           so kitex spans and the kitex.server.duration
+//	                           so kitex spans and the rpc.server.duration
 //	                           metric flow into the unified pipeline. No
 //	                           provider is created and the TracingCfg endpoint
 //	                           fields are ignored.
@@ -184,6 +185,12 @@ func globalTracingActive() bool {
 // caller and shut down on Stop to flush pending spans.
 func observabilityOptions(cfg Config) (opts []server.Option, localProvider provider.OtelProvider) {
 	active := globalTracingActive()
+
+	// One access-log line per call, always installed. The span and the metrics
+	// come from kitex-contrib/obs-opentelemetry, so this is the only per-call
+	// signal go-spring contributes; gating it behind a tracing/metrics toggle
+	// would let a config change quietly remove a signal the family requires.
+	opts = append(opts, server.WithMiddleware(accesslog.Server()))
 
 	if cfg.Tracing.Enable {
 		if active {
@@ -218,7 +225,7 @@ func observabilityOptions(cfg Config) (opts []server.Option, localProvider provi
 				fmt.Sprintf(":%d", cfg.Metrics.Port), cfg.Metrics.Path)))
 		case active:
 			log.Infof(context.Background(), log.TagAppDef,
-				"kitex metrics ride the global otel pipeline (kitex.server.duration via the tracing suite); set metrics.port for a dedicated prometheus endpoint")
+				"kitex metrics ride the global otel pipeline (rpc.server.duration via the tracing suite); set metrics.port for a dedicated prometheus endpoint")
 		default:
 			log.Infof(context.Background(), log.TagAppDef,
 				"kitex metrics disabled: no global otel pipeline and no metrics.port configured; set spring.kitex.server.metrics.port to start a dedicated prometheus endpoint")

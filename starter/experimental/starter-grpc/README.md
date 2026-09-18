@@ -86,6 +86,19 @@ each asserted end-to-end by `runTest`:
    `x-handler=echo` to the response headers. The client passes
    `grpc.Header(&md)` as a call option and asserts the header round-tripped.
 
+## Observability
+
+* **Access log** — one line per call, always installed: the `observer.tracing.enabled` /
+  `observer.metrics.enabled` switches do not cover it (the RPC family requires every
+  backend to have one). Tag `_app_grpc_access` (`log.RegisterAppTag("grpc", "access")`);
+  fields `rpc.system` (`grpc`), `rpc.method`, `status` (`ok`|`error`),
+  `rpc.grpc.status_code`, `duration_ms`, plus `error` on failure.
+* **Tracing & metrics** — on by default, riding the OTel globals `starter-otel` installs;
+  silent no-ops without it. Spans are named after the full method; the duration/count
+  metrics carry `rpc.system`, `rpc.method`, `status` and `rpc.grpc.status_code`.
+  See [USAGE §4.2](USAGE.md#42-metrics-names--attributes-metricsgo-meter-go-springorgstarter-grpc)
+  for the instrument list.
+
 ## Notes
 
 - The starter listens on `${spring.grpc.server.addr}` — no default; setting that key is what registers the

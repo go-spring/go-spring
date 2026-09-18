@@ -17,11 +17,11 @@
 package gormcore
 
 import (
-	"go-spring.org/cloud/discovery"
 	"context"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"go-spring.org/cloud/discovery"
 	"strings"
 	"testing"
 

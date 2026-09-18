@@ -85,5 +85,10 @@ binary-payload notes in `ws/starter.go`.
   stands up no Prometheus endpoint of its own.
 * **Logging** — kratos' framework logs are bridged into Go-Spring's `log` module (see
   `internal/logger`), so an application configures a single logging pipeline.
+* **Access log** — one line per call, the per-call signal kratos/v2 does not emit itself.
+  Installed unconditionally in both the HTTP and gRPC chains, between tracing and metrics;
+  tag `_app_kratos_access` (`log.RegisterAppTag("kratos", "access")`), fields `rpc.system`
+  (`kratos`), `rpc.method` (the transport `Operation`), `status`, `duration_ms` and, on
+  failure, `error`.
 * **WebSocket** — the WebSocket transport has no middleware chain and is intentionally **not**
   instrumented for tracing or metrics.

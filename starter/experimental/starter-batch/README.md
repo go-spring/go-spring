@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-batch` runs [`cloud/experimental/batch`](../../../cloud/batch) jobs — chunk-oriented
+`starter-batch` runs [`cloud/experimental/batch`](../../../cloud/experimental/batch) jobs — chunk-oriented
 batches and one-shot Cloud Tasks — as part of the Go-Spring application
 lifecycle. Blank-import it, register a `JobDefinition` per job, and either flip
 `run-on-startup=true` (Cloud Task) or trigger the job through the exported
@@ -16,7 +16,7 @@ launches are drained before the process exits.
 
 The engine, `Reader`/`Processor`/`Writer` interfaces, `JobRepository` seam and
 the in-process memory repository all come from the zero-dependency
-[`cloud/experimental/batch`](../../../cloud/batch) package; this starter is the thin
+[`cloud/experimental/batch`](../../../cloud/experimental/batch) package; this starter is the thin
 integration layer that binds configuration and the IoC container to it. Durable
 backends (Redis, SQL, ...) are separate starters that contribute their own
 `batch.JobRepository` bean.

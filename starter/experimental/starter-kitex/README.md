@@ -83,6 +83,18 @@ logging.logger.root.file=app.log
 logging.logger.root.layout.type=JSONLayout
 ```
 
+## Observability
+
+* **Access log** — one line per call, always installed: the `tracing.enable` / `metrics.enable`
+  switches do not affect it. Tag `_app_kitex_access` (`log.RegisterAppTag("kitex", "access")`);
+  fields `rpc.system` (`kitex`), `rpc.method` (`service/method`), `status` (`ok`|`error`) and
+  `duration_ms`, plus `error` on failure.
+* **Tracing & metrics** — the span and the metrics come from
+  `kitex-contrib/obs-opentelemetry`, not from this starter; see
+  [USAGE §4.2](USAGE.md#42-tracing-and-metrics--global-first-one-pipeline-per-process) for the
+  global-first posture (attach to the global OTel pipeline when one is live, else build a
+  fallback provider). Either way the access log is written — it is not gated on the suite.
+
 ## Notes
 
 - The starter listens on `${spring.kitex.server.addr}` — no default; setting that key is what registers the

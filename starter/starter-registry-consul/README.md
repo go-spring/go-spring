@@ -18,7 +18,7 @@ register nothing.
 
 This starter publishes a **plain instance** (any transport — HTTP, gRPC, ...) to
 Consul. RPC-framework provider registration stays framework-native and is out of
-scope (see [starter/DESIGN §3](../../DESIGN.md)).
+scope (see [starter/DESIGN §3](../DESIGN.md)).
 
 ## Model
 

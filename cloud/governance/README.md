@@ -96,7 +96,7 @@ scheduling 资源标签**：
 
 ## 配置
 
-治理规则使用 `govern.*` 键命名空间（如 `govern.enabled`、`govern.default.*`、`govern.rules`），与 Go 包名 `governance` 独立。规则是**独立文档**，经 Source 契约进入中心，不写进 `app.properties`——本地文件用 `govern.source.file.path` 引导（见 [starter-governance](../starter-governance/README.md)）。
+治理规则使用 `govern.*` 键命名空间（如 `govern.enabled`、`govern.default.*`、`govern.rules`），与 Go 包名 `governance` 独立。规则是**独立文档**，经 Source 契约进入中心，不写进 `app.properties`——本地文件用 `govern.source.file.path` 引导（见 [starter-governance](../../starter/starter-governance/README_CN.md)）。
 
 本包**容器无关**（不 import spring/gs）：gs 接线（绑定注入的 Source、seam 注册、`GoLive`）在 **starter-governance** 的常驻 wiring bean 里。应用侧：
 
@@ -350,7 +350,7 @@ import (
 
 **其它规则来源**：
 
-- `govern.source.http.*`（轮询远程控制台/规则 API，见 [starter-governance README](../../starter/starter-governance/README.md)）；
+- `govern.source.http.*`（轮询远程控制台/规则 API，见 [starter-governance README](../../starter/starter-governance/README_CN.md)）；
 - config 中心的 source 适配器（nacos/etcd）各自独立成模块（`starter-governance-nacos`、`starter-governance-etcd`），内容同样是这份 `govern.*` 文档；
 - 代码里 `governance.SetSource(...)` 静态注入或推流。
 

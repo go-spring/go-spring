@@ -282,7 +282,8 @@ import starter-otel 后（example-otel）：
 docker compose -f example-otel/docker-compose.yml up -d   # Jaeger :16686 / OTLP :4317
 cd example-otel && go run .                               # 发 20 个 RPC 并自验
 open http://localhost:16686    # 服务 "trpc-otel-example"：每 RPC 一个 span，名为
-                               # {service}/{method}，属性 rpc.system=trpc
+                               # {service}/{method}，属性 rpc.system=trpc，结果上另有
+                               # status 属性（ok|error）
 ```
 
 指标（经 starter-otel 的 Prometheus 导出时）：
@@ -290,6 +291,14 @@ open http://localhost:16686    # 服务 "trpc-otel-example"：每 RPC 一个 spa
 ```bash
 curl -s :9090/metrics | grep -E 'rpc_server_request_duration|rpc_server_request_count|rpc_server_active_requests'
 ```
+
+时长/计数指标带 `rpc.system`（`trpc`）、`rpc.method` 与 `status`（`ok`|`error`）——在
+`status` label 出现之前，这些序列分不出失败的 RPC。
+
+访问日志（filter.go）：每次调用一行，始终写出。tag 为 `_app_trpc_access`
+（`log.RegisterAppTag("trpc", "access")`），与桥接的 `_rpc_trpc` tag 不同；身份键与指标
+一致（`rpc.system`、`rpc.method`、`status`），`duration_ms` 以及失败时的 `error` 是该行
+自己的载荷。
 
 ### 4.3 生命周期验证
 

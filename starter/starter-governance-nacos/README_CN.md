@@ -4,12 +4,12 @@
 
 `starter-governance-nacos` 把 [Nacos](https://nacos.io/) 接入为 Go-Spring 的治理规则源。
 它监听一个承载治理规则文档的 Nacos dataId，把每个已发布的版本经 `governance.Source`
-契约推送进 [`go-spring.org/cloud/governance`](../../../cloud/governance) 治理中心——
+契约推送进 [`go-spring.org/cloud/governance`](../../cloud/governance) 治理中心——
 规则变更实时重解析治理策略，无需重启，也不触发全应用属性重绑。
 
 它是治理规则源适配器家族（Sentinel-datasource 形态）的 Nacos 成员；etcd 成员是
-[starter-governance-etcd](../../starter-governance-etcd)，file/http 成员在
-[starter-governance](../../starter-governance)。三者都经 `rules.Parse` 解析同一份规则文档，
+[starter-governance-etcd](../starter-governance-etcd)，file/http 成员在
+[starter-governance](../starter-governance)。三者都经 `rules.Parse` 解析同一份规则文档，
 所以文档在各后端之间逐字节可移植。
 
 ## 与 starter-config-nacos 的关系
@@ -71,8 +71,8 @@ govern:
 
 每个已发布版本都会被重新解析并推送进治理中心。规则词表（`govern.enabled`、`govern.default.*`、
 `govern.rules[n].*`、`govern.fault.*`）属于治理域，完整参考见
-[starter-governance 的 USAGE](../../starter-governance/USAGE.md)。引入治理中心本身仍是
-[starter-governance](../../starter-governance) 的职责——本模块只提供规则源。
+[starter-governance 的 USAGE](../starter-governance/USAGE.md)。引入治理中心本身仍是
+[starter-governance](../starter-governance) 的职责——本模块只提供规则源。
 
 ## 配置项
 

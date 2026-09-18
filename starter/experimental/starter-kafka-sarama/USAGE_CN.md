@@ -333,7 +333,7 @@ producer.SendMessage(msg)  // 裸句柄依旧不受保护 —— wrapper 不改�
 ### 4.4 观测量读取
 
 ```bash
-grep _app_kafka_access app.log | tail      # system=kafka op=publish|consume topic=... status/duration
+grep _app_kafka_access app.log | tail      # messaging.system=kafka messaging.operation=publish|consume messaging.destination.name=... status/duration_ms
 curl -s :9090/metrics | grep messaging_client   # messaging.client.operation.duration + in-flight，属性 messaging.system=kafka
 # span 名："publish"/"consume"，属性 messaging.destination.name=<topic>
 ```

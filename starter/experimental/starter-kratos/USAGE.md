@@ -196,7 +196,7 @@ Design notes (from source comments, verified):
 ### 2.2 Middleware chain — exact order and why (http/grpc)
 
 ```
-recovery.Recovery() → tracing.Server() → [kmetrics.Server() if metrics.enable]
+recovery.Recovery() → tracing.Server() → accesslog.Server() → [kmetrics.Server() if metrics.enable]
 → your service handlers (registered via ServiceRegister)
 ```
 
@@ -207,11 +207,15 @@ Rationale (from the source comment in `Run`):
 - **tracing before metrics**: tracing starts the span, then metrics records under the
   active span/context. `tracing.Server()` reads the global OTel provider installed by
   starter-otel; absent that it is a no-op.
+- **access log after tracing, before metrics**: one line per call — the per-call signal
+  kratos/v2 does not emit itself. Sitting inside tracing means the line carries the span's
+  trace_id. It is installed unconditionally, unlike metrics.
 - **metrics innermost**: the counter/histogram observe the handler's outcome and duration.
 
-There is no fault/governance, loadtest, request-id or access-log layer in this starter —
-kratos' middleware system is yours to extend by adding `khttp.Middleware`/`kgrpc.Middleware`
-is NOT exposed via config; the chain is fixed (see design suspects).
+There is no fault/governance, loadtest or request-id layer in this starter — kratos'
+middleware system is yours to extend by adding `khttp.Middleware`/`kgrpc.Middleware`
+is NOT exposed via config; the chain is fixed (see design suspects). The access log is the
+one per-call layer the starter contributes.
 
 **ws has no middleware chain at all** — the tx7do transport is not instrumented: no tracing,
 no metrics, no recovery beyond kratos-transport internals.
@@ -225,11 +229,13 @@ no metrics, no recovery beyond kratos-transport internals.
 2. recovery arms (deferred recover).
 3. tracing extracts the span context from gRPC metadata; starts the server span (no-op
    without starter-otel's provider).
-4. metrics increments `server_requests_code_total` and starts the
+4. access log writes one line for the call on exit, under tag `_app_kratos_access` (§4.4).
+5. metrics increments `server_requests_code_total` and starts the
    `server_requests_seconds` observation.
-5. your handler runs; the reply unwinds 4→3: duration recorded, span ended.
-6. kratos framework events on this path (transport errors etc.) flow through the log bridge
-   (§3.3) into go-spring's log under tag `_rpc_kratos`.
+6. your handler runs; the reply unwinds 5→4→3: duration recorded, access line written,
+   span ended.
+7. kratos framework events on this path (transport errors etc.) flow through the log bridge
+   (§3.5) into go-spring's log under tag `_rpc_kratos`.
 
 ---
 
@@ -345,6 +351,11 @@ Observables:
   `server_requests_seconds`, created via `otel.Meter(cfg.Name)` — attributes follow kratos'
   metrics middleware defaults (`operation`, `code`); instrumented per server `name`.
 - **Tracing**: span per request from `tracing.Server()`; check your collector after traffic.
+- **Access log** (`internal/accesslog`, shared by the grpc and http packages): one line per
+  call, installed unconditionally. Tag `_app_kratos_access`
+  (`log.RegisterAppTag("kratos", "access")`); fields `rpc.system` (`kratos`), `rpc.method`
+  (the transport `Operation`), `status` (`ok`|`error`) and `duration_ms`, plus `error` on
+  failure.
 - **Logs**: framework lines under `_rpc_kratos`; business lines under your own tags; startup
   and shutdown lines under the app-def tag.
 

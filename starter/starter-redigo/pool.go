@@ -38,13 +38,13 @@ import (
 type Pool struct {
 	*redis.Pool
 
-	cfg      Config                  // address fields feed the resilience resource label
-	duration metric.Float64Histogram  // db.client.operation.duration; no-op instrument when starter-otel is absent
+	cfg      Config                    // address fields feed the resilience resource label
+	duration metric.Float64Histogram   // db.client.operation.duration; no-op instrument when starter-otel is absent
 	active   metric.Int64UpDownCounter // db.client.active_requests; same
-	exec     resilience.Executor     // resolved via resilience.ExecutorFor; no-op when governance is off
-	chain    []CommandInterceptor    // user interceptor chain, first entry outermost; nil when none registered
-	resource string                  // resilience resource label (stable per pool)
-	stop     func()                  // detaches the endpoint-selection binding
+	exec     resilience.Executor       // resolved via resilience.ExecutorFor; no-op when governance is off
+	chain    []CommandInterceptor      // user interceptor chain, first entry outermost; nil when none registered
+	resource string                    // resilience resource label (stable per pool)
+	stop     func()                    // detaches the endpoint-selection binding
 }
 
 // backend is the discovery backend the entry's ${discovery} label resolved to,

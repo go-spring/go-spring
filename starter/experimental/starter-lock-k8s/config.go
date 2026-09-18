@@ -22,7 +22,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"go-spring.org/stdlib/errutil"
-
 )
 
 // Config binds one Kubernetes-Lease-backed distributed-lock instance under
@@ -57,7 +56,6 @@ type Config struct {
 	// to get the bare locker. When starter-otel is not imported the OTel
 	// providers are no-ops, so leaving this on costs almost nothing.
 	ObserveEnabled bool `value:"${observe.enabled:=true}"`
-
 }
 
 // buildClient builds a Kubernetes clientset for c: in-cluster when Kubeconfig

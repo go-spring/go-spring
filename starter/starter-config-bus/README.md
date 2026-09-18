@@ -126,17 +126,24 @@ acknowledgement — so nothing but the subscriber can report whether a refresh
 actually happened. The bus therefore reports one outcome per event, driving both
 a metric and a log line so the two can never disagree:
 
-| Metric | Outcome values |
-| --- | --- |
-| `config.bus.events` | `refreshed` · `ignored_prefix` · `malformed` · `refresh_error` |
-| `config.bus.refresh.duration` | `refreshed` · `refresh_error` |
-| `config.bus.publishes` | `ok` · `error` |
+| Metric | Labels | `status` values |
+| --- | --- | --- |
+| `config.bus.events` | `status`, `prefix` | `refreshed` · `ignored_prefix` · `malformed` · `refresh_error` |
+| `config.bus.refresh.duration` | `status`, `prefix` | `refreshed` · `refresh_error` |
+| `config.bus.publishes` | `status` | `ok` · `error` |
 
-The outcomes are exclusive, so `config.bus.events` summed over `outcome` is the
+The statuses are exclusive, so `config.bus.events` summed over `status` is the
 number of broadcasts received — there is no separate counter that could
 double-count. `refresh_error` is the one worth alerting on: the signal arrived
 and was honored, but the property reload failed, leaving the instance on stale
 configuration.
+
+`prefix` is a configuration namespace (e.g. `db`), not a property key — its
+cardinality is the number of namespaces the fleet publishes, bounded by
+configuration. It is on `config.bus.events` and `config.bus.refresh.duration`,
+and on the matching log lines, so "which namespace's refresh is failing" can be
+selected on a dashboard and joined to the line that explains it.
+`config.bus.publishes` is the publishing side and carries no `prefix`.
 
 Traces come from the transport: `Publish` opens a producer span (parented on your
 `ctx`) and injects the W3C context into the message header, and the subscription's

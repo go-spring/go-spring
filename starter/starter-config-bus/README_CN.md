@@ -111,15 +111,20 @@ watcher 会在下一轮观察到底层变化，运维也可以随时重发。持
 真的发生。总线为此对每条事件报告一个 outcome，并由同一个值同时驱动 metric 与日志行，
 两者不可能打架：
 
-| Metric | outcome 取值 |
-| --- | --- |
-| `config.bus.events` | `refreshed` · `ignored_prefix` · `malformed` · `refresh_error` |
-| `config.bus.refresh.duration` | `refreshed` · `refresh_error` |
-| `config.bus.publishes` | `ok` · `error` |
+| Metric | label | `status` 取值 |
+| --- | --- | --- |
+| `config.bus.events` | `status`、`prefix` | `refreshed` · `ignored_prefix` · `malformed` · `refresh_error` |
+| `config.bus.refresh.duration` | `status`、`prefix` | `refreshed` · `refresh_error` |
+| `config.bus.publishes` | `status` | `ok` · `error` |
 
-各 outcome 互斥，因此 `config.bus.events` 按 `outcome` 求和即为收到的广播数，不需要
+各 status 互斥，因此 `config.bus.events` 按 `status` 求和即为收到的广播数，不需要
 另一个可能重复计数的计数器。其中 `refresh_error` 最值得告警：信号收到了也被放行，但
 属性重载失败，实例停留在过期配置上。
+
+`prefix` 是配置命名空间（如 `db`），不是属性 key——它的基数是舰队发布的命名空间数量，
+由配置决定、有界。它同时挂在 `config.bus.events` / `config.bus.refresh.duration` 与
+对应的日志行上，因此「哪个命名空间的刷新在失败」既能在看板上选出，也能 join 到解释它
+的那一行。`config.bus.publishes` 属发布侧，不带 `prefix`。
 
 trace 来自传输层：`Publish` 打开 producer span（父节点是你的 `ctx`）并把 W3C 上下文注入
 消息 header，订阅侧的 consumer span 延续它，因此一次广播在追踪里表现为横跨发布方与

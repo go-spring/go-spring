@@ -45,6 +45,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/otel"
 
+	"go-spring.org/starter-kratos/internal/accesslog"
 	"go-spring.org/starter-kratos/internal/logger"
 )
 
@@ -111,9 +112,9 @@ func NewHttpServer(cfg Config, reg ServiceRegister) *HttpServer {
 // back to Go-Spring after tearing the App down.
 func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// Middleware order: recovery outermost, then tracing (starts the span), then
-	// metrics (records under the active span/context). tracing.Server() reads the
-	// global OTel provider installed by starter-otel; absent that it is a no-op.
-	mw := []middleware.Middleware{recovery.Recovery(), tracing.Server()}
+	// the access log (one line per call — the per-call signal kratos/v2 does not
+	// emit itself), then metrics (records under the active span/context).
+	mw := []middleware.Middleware{recovery.Recovery(), tracing.Server(), accesslog.Server()}
 	if s.cfg.Metrics.Enable {
 		meter := otel.Meter(s.cfg.Name)
 		requests, err := kmetrics.DefaultRequestsCounter(meter, "server_requests_code_total")

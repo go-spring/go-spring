@@ -339,7 +339,8 @@ curl -s :9090/metrics | grep resilience_calls
 - Driver observers: histogram `messaging.client.operation.duration` (unit s) and up-down counter
   `messaging.client.active_requests`, attributes `messaging.system=rocketmq`,
   `messaging.operation=publish|consume`, `status` on the histogram [observe.go]. Access log tag
-  `_app_rocketmq_access`: fields `operation`, `destination` (truncated to 512), `duration_ms`;
+  `_app_rocketmq_access`: fields `messaging.operation`, `messaging.destination.name`
+  (truncated to 512), `status`, `duration_ms`;
   success with a destination at Debug, success without one at Info, error Warn.
 - Guarded path: counters `resilience.calls` / `resilience.breaker.state_change`, log tag
   `_app_rocketmq_resilience`.

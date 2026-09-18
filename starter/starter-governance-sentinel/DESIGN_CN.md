@@ -3,7 +3,7 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 `starter-governance-sentinel` 属于 **global / infrastructure** 形态(见
-[starter/DESIGN.md](../../DESIGN.md) §2.4),把
+[starter/DESIGN.md](../DESIGN.md) §2.4),把
 [alibaba/sentinel-golang][sentinel] 注册为 `cloud/governance/resilience` 的生产 driver。
 只贡献一个 bean —— 名为 `sentinel` 的 `resilience.Driver` —— 且不开端口;与
 `starter-governance` 一起空导入,治理中心即可为所有客户端解析

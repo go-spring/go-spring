@@ -99,7 +99,7 @@ go run .
 curl -i :9440/api/orders/42                 # 200; upstream sees /orders/42, X-From: gw
 curl -i :9440/api/users/1 -X POST           # 429 above 50 rps per client IP
 curl -i :9440/nope                           # 404 Not Found (gateway itself)
-curl -s :9370/gateway/metrics | grep gateway_requests_total
+curl -s :9370/metrics | grep gateway_requests           # starter-otel's exporter
 curl -i :9370/healthz                        # gateway indicator UP once table compiled
 ```
 
@@ -120,8 +120,8 @@ import starter-gateway
   ├─ gs.Provide(newGatewayServer).Name("gatewayServer")
   │      .Export(gs.As[gs.Server]())
   │      .Condition(gs.OnProperty("spring.gateway.server.addr"))
-  ├─ gs.Provide(newMetricsEndpoint).Export(endpoint.Endpoint) // GET /gateway/metrics
   └─ gs.Provide(newGatewayHealth).Export(health.Indicator)    // "gateway"
+       (metrics ride OTel; starter-otel's exporter serves them on /metrics)
         │
 gs.Run()
   ├─ config bind: ${spring.gateway} → gatewayConfig (routes via gs.Dync, resilience map,
@@ -317,7 +317,7 @@ Inject a broken route (parse error), e.g. `filters=stripPrefix(abc)` or
 3. Error surfaced loudly — grep the app log:
    `grep 'route reload failed, keeping previous table'` (compile.go:123, Error level, tag AppDef).
 4. Metric incremented:
-   `curl -s :9370/gateway/metrics | grep gateway_route_reload_errors_total` → 1.
+   `curl -s :9370/metrics | grep gateway_route_reload_errors` → 1.
 5. The broken map's pointer is adopted (compile.go:125) so the same broken edit is NOT retried
    every request; fixing the config and refreshing again recompiles normally.
 
@@ -333,9 +333,15 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
 
 ### 4.5 Observability
 
-- Metrics (actuator `GET /gateway/metrics`, Prometheus text, metrics.go:110-139):
-  `gateway_requests_total{route="orders",status="2xx"}`, `gateway_in_flight_requests`,
-  `gateway_route_reload_errors_total`.
+- Metrics (OTel instruments, metrics.go:96-124; with starter-otel they appear on the
+  actuator `GET /metrics`, or on `spring.observability.metrics.port` when that is set):
+  `gateway.requests{gateway.route="orders",status="ok",http.response.status_code="200"}`,
+  `gateway.active_requests`, `gateway.route_reload_errors`. The gateway serves no metrics
+  endpoint of its own — an app that wants a scrape port configures the exporter.
+- Access log: one line per proxied request under the `gateway`/`access` tag.
+- Spans: server span `gateway <route>` and client span `proxy <route>`, attributes
+  `http.request.method`, `url.path`, `gateway.route`, and on completion
+  `http.response.status_code` + `status`.
 - Health: `curl :9370/healthz` — the `gateway` indicator is UP iff the route table compiled
   (metrics.go:150-157). An `lb://` route with zero live instances stays UP by design — that is
   a per-route concern (503s + Warn logs), not a gateway-wide failure.
@@ -357,7 +363,7 @@ Stop the upstream → each request gets `502 Bad Gateway` (proxy.go:180) with a 
 |---------|--------------|-----|
 | Gateway doesn't listen | `spring.gateway.server.addr` missing | Set it — it is the activation key. Routes configured without it now log a startup WARN naming the orphaned route(s) (RouteTable.Init, compile.go) — they are never served. |
 | App fails at startup with `route %q: gateway: invalid …` | Initial route table has a parse error (predicate/upstream/filter) | Fix the literal; first compile is fatal by design (server.go:82). |
-| `route reload failed, keeping previous table` in logs | Hot edit broken; old table still serving | Fix the literal and refresh again; watch `gateway_route_reload_errors_total`. |
+| `route reload failed, keeping previous table` in logs | Hot edit broken; old table still serving | Fix the literal and refresh again; watch `gateway.route_reload_errors`. |
 | Always 404 | No route's predicates match (path typo, methods/host/headers predicate rejecting) | Remember first-match in priority-then-id order; a more specific route with a later id never wins over an overlapping earlier id — set `priority` to override. |
 | `unknown resilience policy` | `resilience.policy` names no key under `spring.gateway.resilience` | Add the name as a (value-less) key; policy VALUES come from the governance rules document (`govern.*`) under `gateway:<name>`. |
 | Legacy `resilience.<name>.max-retries` etc. have no effect | By design — value is an empty struct; driver ignores sub-keys (route.go:121-128) | Move policy to the governance center, resource label `gateway:<name>`. |

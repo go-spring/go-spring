@@ -155,15 +155,26 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	if err != nil {
 		return err
 	}
-	// Inbound admission (always installed): each call passes the resource's
-	// rate-limit / bulkhead / breaker policy before reaching the service. It sits
-	// INSIDE the observing wrapper so a rejection is still traced and counted;
-	// with governance off the executor is a transparent pass-through, so
-	// installing it costs a call frame and changes nothing else.
-	proc := WrapAdmission(s.proc, resilience.ResourceLabel("thrift", s.cfg.Addr), "thrift")
+	// All three middlewares ride the library's own per-method hook, so ORDER is
+	// what makes the promises hold: Observe is listed first (outermost) so a
+	// call Admit rejects is still traced and counted, and AccessLog sits inside
+	// Observe (its line then carries the span's trace_id) but outside Admit (so
+	// a rejection is logged too). A rejection short-circuits inside Admit and
+	// returns back through the two outer middlewares.
+	//
+	// Observe is the only one behind a switch — it rides the OTel globals.
+	// AccessLog is always installed (the RPC family requires every member to
+	// have one), and so is admission: each call passes the resource's
+	// rate-limit / bulkhead / breaker policy before reaching the service; with
+	// governance off the executor is a transparent pass-through, so installing
+	// it costs a call frame and changes nothing else.
+	var mws []thrift.ProcessorMiddleware
 	if s.cfg.Observer.Tracing.Enabled || s.cfg.Observer.Metrics.Enabled {
-		proc = WrapProcessor(proc)
+		mws = append(mws, Observe())
 	}
+	mws = append(mws, AccessLog())
+	mws = append(mws, Admit(resilience.ResourceLabel("thrift", s.cfg.Addr), "thrift"))
+	proc := thrift.WrapProcessor(s.proc, mws...)
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()
 	log.Infof(ctx, log.TagAppDef, "thrift server starting on %s", s.cfg.Addr)

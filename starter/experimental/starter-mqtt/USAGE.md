@@ -326,8 +326,9 @@ metadata into the payload yourself).
 ### 4.4 Observability reads
 
 - Access log: tag `_app_mqtt_access` (observe.go registers `app.mqtt.access`). One
-  record per span-helper observation: `operation=publish|consume duration_ms=...`
-  (+ topic), errors at Warn with an `error` field.
+  record per span-helper observation: `messaging.operation=publish|consume`,
+  `messaging.destination.name=<topic>`, `status=<ok|error>`, `duration_ms=...`; errors at
+  Warn with an `error` field.
 - Metrics: `messaging.client.operation.duration` (s) and `messaging.client.active_requests`,
   attributes `messaging.system=mqtt`, `messaging.operation`, and
   `messaging.destination.name` (topic) on spans [observe.go].
