@@ -30,12 +30,12 @@ import (
 //
 // A broadcast is fire-and-forget: core NATS gives the publisher no acknowledgement,
 // so nothing but the subscriber can report whether a refresh actually happened.
-// Every received event therefore ends in exactly one outcome, and that one value
+// Every received event therefore ends in exactly one status, and that one value
 // drives both the metric and the log line, so the two can never disagree:
 //
 //	outcome    refreshed | ignored_prefix | malformed | refresh_error
 //
-// Because the outcome is exclusive, "events received" is the sum over the
+// Because the status is exclusive, "events received" is the sum over the
 // dimension — there is no separate received counter that could double-count.
 // The publisher's side is a different direction with a different vocabulary, so
 // it gets its own counter rather than muddying this one.
@@ -52,7 +52,7 @@ import (
 // it unique across starters.
 const instrumentationName = "go-spring.org/starter-config-bus"
 
-// The exclusive outcomes of one received broadcast.
+// The exclusive statuses of one received broadcast.
 const (
 	// outcomeRefreshed — the event applied and the property refresh succeeded.
 	outcomeRefreshed = "refreshed"
@@ -64,7 +64,7 @@ const (
 	outcomeRefreshError = "refresh_error"
 )
 
-// Publish outcomes, a separate vocabulary for the sending direction.
+// Publish statuses, a separate vocabulary for the sending direction.
 const (
 	outcomePublishOK    = "ok"
 	outcomePublishError = "error"
@@ -104,39 +104,64 @@ func newInstruments() instruments {
 // never reached a refresh, so no meaningless zero is recorded against the
 // histogram.
 func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent, dur time.Duration, err error) {
-	attrs := metric.WithAttributes(attribute.String("outcome", outcome))
+	attrs := metric.WithAttributes(attribute.String("status", outcome))
 	b.ins.events.Add(ctx, 1, attrs)
 
+	// The log line carries the same outcome the counter just counted, under the
+	// same key, so the two can never be read as disagreeing — and a dashboard
+	// selecting config.bus.events{outcome=...} lands on the line explaining it.
 	switch outcome {
 	case outcomeRefreshed:
 		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
-		log.Infof(ctx, starterTag,
-			"config bus: refreshed properties on event (prefix=%q origin=%q duration_ms=%.3f)",
-			ev.Prefix, ev.Origin, float64(dur.Nanoseconds())/1e6)
+		log.Info(ctx, starterTag, append(eventFields(outcome),
+			log.String("prefix", ev.Prefix),
+			log.String("origin", ev.Origin),
+			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
+			log.Msg("config bus: refreshed properties on event"))...)
 	case outcomeRefreshError:
 		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
-		log.Errorf(ctx, starterTag,
-			"config bus: property refresh failed: %v", err)
+		log.Error(ctx, starterTag, append(eventFields(outcome),
+			log.Any("error", err),
+			log.Msg("config bus: property refresh failed"))...)
 	case outcomeIgnored:
-		log.Debugf(ctx, starterTag,
-			"config bus: ignoring refresh event outside watched prefixes (prefix=%q origin=%q watched=%v)",
-			ev.Prefix, ev.Origin, b.prefixes)
+		log.Debug(ctx, starterTag, func() []log.Field {
+			return append(eventFields(outcome),
+				log.String("prefix", ev.Prefix),
+				log.String("origin", ev.Origin),
+				log.Any("watched", b.prefixes),
+				log.Msg("config bus: ignoring refresh event outside watched prefixes"))
+		})
 	case outcomeMalformed:
-		log.Warnf(ctx, starterTag, "config bus: ignoring malformed refresh event: %v", err)
+		log.Warn(ctx, starterTag, append(eventFields(outcome),
+			log.Any("error", err),
+			log.Msg("config bus: ignoring malformed refresh event"))...)
 	}
+}
+
+// eventFields returns the fields every bus log line carries: the outcome under
+// the key the counters attribute it with. It lives in one place for the same
+// reason the metric's own keys do — a key spelled out at each call site drifts,
+// and a drifted key is silent: the line still looks right and joins nothing.
+func eventFields(outcome string) []log.Field {
+	return []log.Field{log.String("status", outcome)}
 }
 
 // recordPublish is the sending-direction sibling of record: one outcome per
 // broadcast, driving the counter and a log line at the same level.
 func (b *ConfigBus) recordPublish(ctx context.Context, outcome string, dur time.Duration, err error) {
-	b.ins.publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	b.ins.publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", outcome)))
 	if err != nil {
-		log.Errorf(ctx, starterTag,
-			"config bus: publish refresh event failed (subject=%q duration_ms=%.3f): %v",
-			b.Config.Subject, float64(dur.Nanoseconds())/1e6, err)
+		log.Error(ctx, starterTag, append(eventFields(outcome),
+			log.String("subject", b.Config.Subject),
+			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
+			log.Any("error", err),
+			log.Msg("config bus: publish refresh event failed"))...)
 		return
 	}
-	log.Debugf(ctx, starterTag,
-		"config bus: published refresh event (subject=%q duration_ms=%.3f)",
-		b.Config.Subject, float64(dur.Nanoseconds())/1e6)
+	log.Debug(ctx, starterTag, func() []log.Field {
+		return append(eventFields(outcome),
+			log.String("subject", b.Config.Subject),
+			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
+			log.Msg("config bus: published refresh event"))
+	})
 }

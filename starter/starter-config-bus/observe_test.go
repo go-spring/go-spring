@@ -140,7 +140,7 @@ func msgFor(t *testing.T, ev RefreshEvent) *nats.Msg {
 // Every way a broadcast can end lands in the events counter under its own
 // outcome, and the outcomes are exclusive — so their sum is the number of
 // broadcasts received, with no double counting.
-func TestObserveCountsEachOutcome(t *testing.T) {
+func TestObserveCountsEachStatus(t *testing.T) {
 	b := newTestBus(func() error { return nil })
 	ctx := context.Background()
 
@@ -168,7 +168,7 @@ func TestObserveCountsEachOutcome(t *testing.T) {
 		outcomeRefreshed, outcomeMalformed, outcomeIgnored, outcomeRefreshError,
 	} {
 		assert.Number(t, sumValue(t, "config.bus.events", map[string]string{
-			"outcome": outcome,
+			"status": outcome,
 		})).Equal(int64(1))
 	}
 }
@@ -189,21 +189,21 @@ func TestObserveRecordsDurationOnlyWhenRefreshRuns(t *testing.T) {
 	// satisfy. Prefixes cleared means the event applies.
 	b.prefixes = nil
 	assert.Error(t, b.onMessage(ctx, msgFor(t, RefreshEvent{Prefix: "db"}))).Nil()
-	if !hasHist(t, "config.bus.refresh.duration", map[string]string{"outcome": outcomeRefreshed}) {
+	if !hasHist(t, "config.bus.refresh.duration", map[string]string{"status": outcomeRefreshed}) {
 		t.Fatal("a completed refresh must record its duration")
 	}
 }
 
 // The publish direction has its own counter and vocabulary, kept separate from
 // the receive outcomes so a single dimension never mixes two directions.
-func TestObserveCountsPublishOutcome(t *testing.T) {
+func TestObserveCountsPublishStatus(t *testing.T) {
 	b := newTestBus(func() error { return nil })
 	// No observer is armed on the Conn here; recordPublish is driven directly,
 	// which is the same call Publish makes once the wire call returns.
 	b.recordPublish(context.Background(), outcomePublishOK, 0, nil)
 
 	assert.Number(t, sumValue(t, "config.bus.publishes", map[string]string{
-		"outcome": outcomePublishOK,
+		"status": outcomePublishOK,
 	})).Equal(int64(1))
 }
 
@@ -239,4 +239,19 @@ func TestShouldRefresh(t *testing.T) {
 			assert.That(t, b.shouldRefresh(c.prefix)).Equal(c.expected)
 		})
 	}
+}
+
+// The bus's log lines and its counters must attribute the same event the same
+// way, or a dashboard selecting config.bus.events{outcome=...} lands on lines
+// that cannot be joined to it. The keys are what make them joinable, and a
+// drifted key is silent — hence pinning them here rather than trusting the
+// call sites to keep spelling them the same.
+func TestEventFieldsCarryTheMetricKeys(t *testing.T) {
+	keys := make([]string, 0, 1)
+	for _, f := range eventFields(outcomeRefreshError) {
+		keys = append(keys, f.Key)
+	}
+	// Only the keys are pinned: the value is the outcome handed straight to the
+	// counter alongside, so the key is the whole drift surface.
+	assert.That(t, keys).Equal([]string{"status"})
 }

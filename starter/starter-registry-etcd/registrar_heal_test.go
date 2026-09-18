@@ -18,80 +18,27 @@ package StarterRegistryEtcd
 
 import (
 	"errors"
-	"go-spring.org/cloud/discovery"
-	"sync"
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// scriptedFailures is the queue the fake publish consumes: each entry makes one
-// publish call fail (as if etcd is still down); an empty queue lets it succeed.
-// It is mutex-guarded because the healing loop consumes from its own goroutine
-// while the test reads the remaining count — an unguarded slice would race.
-type scriptedFailures struct {
-	mu    sync.Mutex
-	items []error
-}
-
-// set replaces the scripted failures.
-func (s *scriptedFailures) set(errs ...error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.items = errs
-}
-
-// pull takes the next scripted failure, if any.
-func (s *scriptedFailures) pull() (error, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.items) == 0 {
-		return nil, false
-	}
-	err := s.items[0]
-	s.items = s.items[1:]
-	return err, true
-}
-
-// remaining reports how many scripted failures are left unconsumed.
-func (s *scriptedFailures) remaining() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.items)
-}
-
-// newHealRegistrar returns a registrar whose publish step is faked: each call
-// either fails (as if etcd is still down) or returns a caller-controlled
-// keep-alive channel. No etcd server is needed to drive the self-healing loop.
-func newHealRegistrar() (*etcdRegistrar, *scriptedFailures, chan chan *clientv3.LeaseKeepAliveResponse) {
-	r := &etcdRegistrar{
-		keyPrefix:   "/services/",
-		ttlSecs:     15,
-		backoffBase: 5 * time.Millisecond,
-		backoffCap:  20 * time.Millisecond,
-		holds:       map[string]*hold{},
-	}
-	fails := &scriptedFailures{}
-	lastKA := make(chan chan *clientv3.LeaseKeepAliveResponse, 4)
-	r.publish = func(*hold) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
-		if err, ok := fails.pull(); ok {
-			return nil, err
-		}
-		ch := make(chan *clientv3.LeaseKeepAliveResponse)
-		lastKA <- ch
-		return ch, nil
-	}
-	return r, fails, lastKA
+// newHealRegistrar returns a registrar reading through an in-process fake etcd,
+// so the self-healing loop can be driven without a cluster.
+func newHealRegistrar() (*etcdRegistrar, *fakeKV) {
+	f := newFakeKV()
+	return newTestRegistrar(f, "/services/"), f
 }
 
 // A keep-alive channel closing (etcd restart / lease lost) must trigger a
-// re-publish: failures are retried with backoff until one succeeds, then the
-// new channel is drained for the next cycle.
+// re-publish: failures are retried with backoff until one succeeds, which puts
+// the key back under a fresh lease.
 func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
-	r, fails, lastKA := newHealRegistrar()
-	fails.set(errors.New("etcd down"), errors.New("etcd down"))
+	r, f := newHealRegistrar()
+	f.grantErrs = []error{errors.New("etcd down"), errors.New("etcd down")}
 
 	h := newHold(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
@@ -104,13 +51,15 @@ func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
 		t.Fatal("watcher exited without re-registering")
 	case <-time.After(2 * time.Second):
 	}
-	// Two failures were consumed (with backoff sleeps) and the third publish
-	// succeeded, so the watcher is alive and draining a fresh channel.
-	assert.Number(t, fails.remaining()).Equal(0)
-	h.stop()
-	// With a real etcd client, cancelling the keep-alive context closes the
-	// channel; emulate that for the fake so the drain loop observes it.
-	close(<-lastKA)
+	// Both scripted failures were consumed (with backoff sleeps) and the third
+	// attempt went through the real publish step, so the instance is back in the
+	// center — asserted on the write itself, not on the loop's bookkeeping.
+	waitFor(t, func() bool { return f.writes() == 1 }, "the self-heal never re-published the key")
+	assert.Number(t, f.grantRemaining()).Equal(0)
+
+	// Stop through the registrar, not h.stop(): publish stores the cancel func
+	// under the registrar lock, so the stop has to take it too.
+	r.stopHold(h)
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -120,23 +69,24 @@ func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
 
 // A keep-alive channel closing because the hold was stopped (Deregister or a
 // refresh re-Register) must NOT trigger a re-publish — that would resurrect a
-// deregistered instance.
+// deregistered instance. Asserting on the write count is what makes this the
+// real check: an empty failure queue only proves the fake was not asked.
 func TestWatchKeepAliveExitsOnStopWithoutRePublish(t *testing.T) {
-	r, fails, _ := newHealRegistrar()
+	r, f := newHealRegistrar()
 
 	h := newHold(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	ka := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka); close(done) }()
 
-	h.stop()
+	r.stopHold(h)
 	close(ka)
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("watcher did not exit after stop")
 	}
-	assert.Number(t, fails.remaining()).Equal(0)
+	assert.Number(t, f.writes()).Equal(0)
 }
 
 // stopHold must be safe against a concurrent publish storing the cancel func,

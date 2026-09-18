@@ -189,7 +189,7 @@ func newTestServer() *Server {
 // value — including the two ways a fire can be swallowed, which are told apart
 // because a lock skip is routine under multi-replica de-duplication while a
 // policy skip means the job is not keeping up.
-func TestObserveCountsEachOutcome(t *testing.T) {
+func TestObserveCountsEachStatus(t *testing.T) {
 	s := newTestServer()
 	scheduled := time.Now()
 
@@ -213,7 +213,7 @@ func TestObserveCountsEachOutcome(t *testing.T) {
 		"t_lock":   "skipped_lock",
 	} {
 		assert.Number(t, sumValue(t, "scheduling.runs", map[string]string{
-			"job": job, "outcome": outcome,
+			"job": job, "status": outcome,
 		})).Equal(int64(1))
 	}
 }
@@ -247,7 +247,7 @@ func TestObserveRecordsDurationAndLag(t *testing.T) {
 		Duration:  40 * time.Millisecond,
 	})
 
-	dur, ok := tryHist(t, "scheduling.run.duration", map[string]string{"job": "t_timing", "outcome": "ok"})
+	dur, ok := tryHist(t, "scheduling.run.duration", map[string]string{"job": "t_timing", "status": "ok"})
 	if !ok {
 		t.Fatal("a run must record its duration")
 	}
@@ -262,4 +262,19 @@ func TestObserveRecordsDurationAndLag(t *testing.T) {
 	assert.Number(t, l.Count).Equal(uint64(1))
 	assert.That(t, math.Abs(l.Sum-lag.Seconds()) < 1e-9).
 		True(fmt.Sprintf("lag sum should be 3ms, got %v", l.Sum))
+}
+
+// The scheduler's log lines and its counters must attribute the same fire the
+// same way, or a dashboard selecting scheduler.runs{job,outcome} lands on lines
+// that cannot be joined to it. The keys are what make them joinable, and a
+// drifted key is silent — hence pinning them here rather than trusting each
+// call site to keep spelling them the same.
+func TestRunFieldsCarryTheMetricKeys(t *testing.T) {
+	keys := make([]string, 0, 2)
+	for _, f := range runFields(scheduling.Event{Name: "cleanup", Reason: "policy"}, "skipped_policy") {
+		keys = append(keys, f.Key)
+	}
+	// Only the keys are pinned: job and outcome are the values handed to the
+	// counters alongside, so the keys are the whole drift surface.
+	assert.That(t, keys).Equal([]string{"job", "status"})
 }

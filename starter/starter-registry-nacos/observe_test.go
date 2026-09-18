@@ -97,6 +97,14 @@ func (f *fakeRegistrarClient) UpdateInstance(p vo.UpdateInstanceParam) (bool, er
 	return !f.reject, nil
 }
 
+// setReject toggles the server-side rejection the fake reports, so one test can
+// publish successfully and then have the follow-up call rejected.
+func (f *fakeRegistrarClient) setReject(v bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reject = v
+}
+
 // counts reports how many writes of each kind the fake received.
 func (f *fakeRegistrarClient) counts() (int, int, int) {
 	f.mu.Lock()
@@ -202,6 +210,29 @@ func TestRegisterServerRejectionIsReported(t *testing.T) {
 	assert.Number(t, intGaugeValue(t, "registry.instance.registered", map[string]string{
 		"system": obsSystem, "service": in.ServiceName,
 	})).Zero()
+}
+
+// The same rejection rule applies on the way out. A deregister the server
+// rejects (ok=false, no transport error) must not be reported as one that
+// succeeded: that would flip the published gauge to 0 while the instance is
+// still in the registry — a leak hidden behind a gauge saying the opposite.
+func TestDeregisterServerRejectionIsReported(t *testing.T) {
+	r, client := newTestRegistrar(false)
+	in := discovery.Instance{ServiceName: "orders-drain-rejected", Addr: "1.2.3.4:80", Weight: 1}
+	ctx := context.Background()
+
+	// Publish first, so the gauge has a real published state to wrongly clear.
+	assert.Error(t, r.Register(ctx, in)).Nil()
+	assert.Number(t, intGaugeValue(t, "registry.instance.registered", map[string]string{
+		"system": obsSystem, "service": in.ServiceName,
+	})).Equal(int64(1))
+
+	client.setReject(true)
+	assert.Error(t, r.Deregister(ctx, in)).Matches("rejected by the server")
+
+	assert.Number(t, intGaugeValue(t, "registry.instance.registered", map[string]string{
+		"system": obsSystem, "service": in.ServiceName,
+	})).Equal(int64(1), "a rejected deregister leaves the instance published")
 }
 
 // Deregistration clears the published state; a weight change is reported as its

@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/log"
 )
 
 // dnsResolver is the subset of net.Resolver the DNS backend needs. Abstracting
@@ -114,6 +115,14 @@ func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discove
 			if e.eps == nil {
 				return nil, err
 			}
+			// Serving the stale snapshot is otherwise silent: the metric records
+			// the failure but nothing says the addresses handed out are old.
+			// Logged against the caller's ctx — a cancelled ctx still carries the
+			// trace identity, so this line stays joinable to the request.
+			log.Warn(ctx, starterTag, append(
+				discovery.SyncFailedFields(obsSystem, name, err),
+				log.Msg("registry-k8s: dns refresh failed; serving the stale snapshot"),
+			)...)
 		} else {
 			e.eps, e.fetchedAt = eps, time.Now()
 			discovery.Synced(obsSystem, name, nil)

@@ -45,7 +45,7 @@ var tracer = otel.Tracer(tracerName)
 // package init, so an SDK installed later still receives the records.
 type observer struct {
 	duration metric.Float64Histogram
-	active   metric.Float64UpDownCounter
+	active   metric.Int64UpDownCounter
 }
 
 // newObserver builds the messaging.client.operation.duration histogram and
@@ -62,7 +62,7 @@ func newObserver() *observer {
 		metric.WithDescription("Duration of RocketMQ produce/consume operations"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	a, _ := m.Float64UpDownCounter("messaging.client.active_requests",
+	a, _ := m.Int64UpDownCounter("messaging.client.active_requests",
 		metric.WithDescription("In-flight RocketMQ operations"),
 		metric.WithUnit("{request}"))
 	return &observer{duration: h, active: a}
@@ -137,11 +137,12 @@ func (s *span) End(err error) {
 	))
 
 	fields := []log.Field{
-		log.String("operation", s.op),
+		log.String("messaging.operation", s.op),
+		log.String("status", status),
 		log.Float("duration_ms", float64(elapsed.Nanoseconds())/1e6),
 	}
 	if s.dest != "" {
-		fields = append(fields, log.String("destination", strutil.Truncate(s.dest, 512)))
+		fields = append(fields, log.String("messaging.destination.name", strutil.Truncate(s.dest, 512)))
 	}
 	switch {
 	case err != nil:

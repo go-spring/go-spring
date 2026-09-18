@@ -206,7 +206,10 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
 		discovery.Synced(obsSystem, name, err)
-		log.Warnf(context.Background(), starterTag, "informer handler for %q failed (%v); serving seed/stale snapshots", name, err)
+		log.Warn(context.Background(), starterTag, append(
+			discovery.SyncFailedFields(obsSystem, name, err),
+			log.Msg("registry-k8s: informer handler registration failed; serving seed/stale snapshots"),
+		)...)
 		return
 	}
 
@@ -214,8 +217,12 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 	factory.Start(h.done)
 	if !cache.WaitForCacheSync(h.done, informer.HasSynced) {
 		h.stop()
-		discovery.Synced(obsSystem, name, fmt.Errorf("registry-k8s: cache sync for %q failed", name))
-		log.Warnf(context.Background(), starterTag, "cache sync for %q failed; serving seed snapshots", name)
+		err := fmt.Errorf("registry-k8s: cache sync for %q failed", name)
+		discovery.Synced(obsSystem, name, err)
+		log.Warn(context.Background(), starterTag, append(
+			discovery.SyncFailedFields(obsSystem, name, err),
+			log.Msg("registry-k8s: cache sync failed; serving seed snapshots"),
+		)...)
 		return
 	}
 
@@ -233,6 +240,10 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 			slices, err := lister.List(labels.Everything())
 			if err != nil {
 				discovery.Synced(obsSystem, name, err)
+				log.Warn(context.Background(), starterTag, append(
+					discovery.SyncFailedFields(obsSystem, name, err),
+					log.Msg("registry-k8s: refresh from the informer cache failed (keeping stale snapshot)"),
+				)...)
 				continue
 			}
 			eps := slicesToEndpoints(cfg, slices)

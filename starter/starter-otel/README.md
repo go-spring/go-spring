@@ -108,7 +108,7 @@ All keys live under `${spring.observability}`.
 | Key | Default | Description |
 | --- | --- | --- |
 | `enable` | `true` | Master switch; when `false` the starter installs nothing. |
-| `service-name` | `${spring.application.name:=go-spring-app}` | `service.name` resource attribute. |
+| `service-name` | `${spring.application.name:=go-spring-app}` | `service.name` resource attribute; `OTEL_SERVICE_NAME` overrides it. The resource also carries OTel's defaults and `OTEL_RESOURCE_ATTRIBUTES`. |
 
 Trace, under `${spring.observability.trace}`:
 

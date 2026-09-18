@@ -18,10 +18,10 @@ package luohua
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"go-spring.org/cloud/governance/traffic/canonical"
-	"go-spring.org/log"
 	"go-spring.org/starter-otel/trace"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -29,23 +29,23 @@ import (
 
 // TestPropagationRidesOtelGlobal proves the axis-1 chain end to end, offline:
 // with luohua's named-header propagator composed into the OTel global (exactly
-// what starter-otel setupTrace does for propagator=w3c,luohua) and the log
-// hook installed, a request carrying X-Tenant is extracted by the same global
-// the gin/echo/grpc transports call — then luohua's log hook prints the tenant.
+// what starter-otel setupTrace does for propagator=w3c,luohua), a request
+// carrying X-Tenant is extracted by the same global the gin/echo/grpc
+// transports call — and the configured field is attached to the context right
+// there, so everything below carries it in both signals.
 func TestPropagationRidesOtelGlobal(t *testing.T) {
 	// Preserve process globals and restore them so this test is hermetic.
-	prevLogHook := log.FieldsFromContext
 	prevProp := otel.GetTextMapPropagator()
 	prevTrafficHeader, prevMeta := canonical.HeaderLoadTest, canonical.MetaKeyLoadTest
 	defer func() {
-		log.FieldsFromContext = prevLogHook
 		otel.SetTextMapPropagator(prevProp)
 		canonical.HeaderLoadTest, canonical.MetaKeyLoadTest = prevTrafficHeader, prevMeta
 		setCarriedHeaders(nil)
+		setObservabilityFields(nil)
 	}()
 
 	// Arm luohua: the wire vocabulary (X-Tenant carried) + observability (it is
-	// also printed on logs). No traffic-header override here.
+	// also surfaced on logs and spans). No traffic-header override here.
 	if err := applyPropagate(PropagateConfig{Headers: []string{"X-Tenant"}}); err != nil {
 		t.Fatalf("applyPropagate: %v", err)
 	}
@@ -68,15 +68,13 @@ func TestPropagationRidesOtelGlobal(t *testing.T) {
 		t.Fatalf("inbound X-Tenant = %q, want acme", got)
 	}
 
-	// The observability log hook surfaces it as a log field.
-	fields := log.FieldsFromContext(ctx)
-	saw := false
-	for _, f := range fields {
-		if f.Key == "X-Tenant" {
-			saw = true
-		}
+	// Extraction is where the values entered the process, so the rest of the
+	// call tree was given them there: the log line ...
+	if line := logLine(ctx); !strings.Contains(line, "X-Tenant=acme") {
+		t.Fatalf("log line %q does not carry X-Tenant=acme", line)
 	}
-	if !saw {
-		t.Fatal("log hook did not surface the carried X-Tenant field")
+	// ... and the span attributes, which the hook it replaced never covered.
+	if v, ok := carriedAttr(ctx, "X-Tenant"); !ok || v != "acme" {
+		t.Fatalf("span attribute X-Tenant = %q (present=%v), want acme", v, ok)
 	}
 }

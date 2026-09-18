@@ -58,9 +58,10 @@ type zkDiscovery struct {
 	conn     *zk.Conn
 	basePath string
 
-	// done stops the background watchers; closed by Close (standalone
-	// backends). Inherited backends have no destructor, so their watchers exit
-	// when the center closes the shared connection instead.
+	// done stops the background watchers and is the ONLY terminal signal they
+	// take: the backend closes it before the shared session goes away, so a
+	// watcher retires on that rather than inferring shutdown from a connection
+	// error it cannot tell apart from a reconnect.
 	done     chan struct{}
 	doneOnce sync.Once
 
@@ -76,14 +77,11 @@ type serviceEntry struct {
 	seeded bool
 }
 
-// Close stops the background watchers and closes the backend's own
-// connection. It is idempotent.
-func (d *zkDiscovery) Close() error {
+// Close stops the background watchers. It is idempotent. It does NOT close the
+// session: the registrar reads through the same connection, and the backend
+// that created it is what releases it (zkBackend.Close).
+func (d *zkDiscovery) Close() {
 	d.doneOnce.Do(func() { close(d.done) })
-	if d.conn != nil {
-		d.conn.Close()
-	}
-	return nil
 }
 
 // servicePath returns the znode path holding name's instances:
@@ -172,13 +170,21 @@ func (d *zkDiscovery) watchLoop(name string, e *serviceEntry) {
 		// events after it fire a watch — no gap either way.
 		_, _, childEv, err := d.conn.ChildrenW(path)
 		if err != nil {
-			if errConnectionClosed(err) {
-				return
-			}
+			// A connection-closed error means the ensemble dropped the session,
+			// NOT that this watcher is done — the client reconnects on its own
+			// and shutdown is signalled by done. Treating it as terminal is what
+			// let a blip landing on this very call retire the watcher for good
+			// while the registrar (which polls Conn.State) recovered and
+			// re-registered, leaving the instance published but undiscoverable.
+			//
 			// Ensemble unreachable (or the directory gone): keep the stale
 			// snapshot and retry arming later. Reported so the stale window is
 			// visible rather than only living inside this retry loop.
 			discovery.Synced(obsSystem, name, err)
+			log.Warn(context.Background(), starterTag, append(
+				discovery.SyncFailedFields(obsSystem, name, err),
+				log.Msgf("registry-zookeeper: arm watch %q failed (keeping stale snapshot)", path),
+			)...)
 			select {
 			case <-d.done:
 				return
@@ -199,22 +205,48 @@ func (d *zkDiscovery) watchLoop(name string, e *serviceEntry) {
 
 // fetchWatches snapshots path's instances into e (armed with GetW so in-place
 // payload rewrites fire too) and returns the armed watch channels.
+//
+// A child that vanishes mid-snapshot is one bad child, the same rule the seed
+// fetch applies. Any other read failure means the snapshot is missing instances
+// that are known to exist, so the previous snapshot is kept and the failure
+// reported instead of publishing the short one: reporting it ok would reset the
+// freshness clock and hide the loss behind a healthy-looking gauge, which is
+// the one signal this side of the instrumentation has.
 func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Event {
 	path := d.servicePath(name)
 	children, _, err := d.conn.Children(path)
 	if err != nil {
 		discovery.Synced(obsSystem, name, err)
+		log.Warn(context.Background(), starterTag, append(
+			discovery.SyncFailedFields(obsSystem, name, err),
+			log.Msgf("registry-zookeeper: list %q failed (keeping stale snapshot)", path),
+		)...)
 		return nil
 	}
 	vals := make(map[string][]byte, len(children))
 	var evs []<-chan zk.Event
+	var readErr error
 	for _, child := range children {
 		data, _, ev, err := d.conn.GetW(path + "/" + child)
 		if err != nil {
+			if errors.Is(err, zk.ErrNoNode) {
+				// The ephemeral node's session died between Children and GetW.
+				continue
+			}
+			readErr = err
 			continue
 		}
 		vals[child] = data
 		evs = append(evs, ev)
+	}
+	if readErr != nil {
+		discovery.Synced(obsSystem, name, readErr)
+		log.Warn(context.Background(), starterTag, append(
+			discovery.SyncFailedFields(obsSystem, name, readErr),
+			log.Msgf("registry-zookeeper: refresh %q failed (keeping stale snapshot)", path),
+		)...)
+		// The watches already armed stay live, so the next change re-runs this.
+		return evs
 	}
 	eps := valuesToEndpoints(vals)
 	e.mu.Lock()
@@ -257,7 +289,11 @@ func valuesToEndpoints(vals map[string][]byte) []discovery.Endpoint {
 		var v instanceValue
 		if err := json.Unmarshal(data, &v); err != nil {
 			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
-			log.Warnf(context.Background(), starterTag, "registry-zookeeper: skip malformed instance %q: %v", name, err)
+			log.Warn(context.Background(), starterTag,
+				log.String("system", obsSystem),
+				log.String("node", name),
+				log.Any("error", err),
+				log.Msg("registry-zookeeper: skipping a malformed instance payload"))
 			continue
 		}
 		eps = append(eps, discovery.Endpoint{

@@ -258,9 +258,13 @@ func record(ctx context.Context, level Level, tag string, logger Logger, skip in
 		ctxString = StringFromContext(ctx)
 	}
 
-	var ctxFields []Field
+	// Contextual fields, in evaluation order: what the context itself carries
+	// (the WithFields chain, then the Collector's accumulated fields), and
+	// finally whatever a user-installed FieldsFromContext hook returns. Later
+	// wins on a duplicate key, so the hook keeps the last word it has always had.
+	ctxFields := contextFields(ctx)
 	if FieldsFromContext != nil {
-		ctxFields = FieldsFromContext(ctx)
+		ctxFields = append(ctxFields, FieldsFromContext(ctx)...)
 	}
 
 	e := getEvent()

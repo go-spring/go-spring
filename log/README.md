@@ -141,6 +141,35 @@ Both hooks are package-level function variables set once at process startup (`st
 automatically to emit tracing fields). Extracted fields are placed before business fields. Both are
 invoked for every log entry - keep them lightweight and prefer cached values.
 
+#### Attaching fields from within a call
+
+The hooks above are process-wide and single-slot. For per-request fields, put them on the context:
+
+```go
+// Applies to everything logged below this point, framework-emitted lines
+// included.
+ctx = log.WithFields(ctx, log.String("user", u), log.String("tenant", t))
+```
+
+`WithFields` flows downward: a deeper frame that adds a field cannot be seen by the frame above it.
+For a single summary line printed at the end of a request - the wide-event shape, where handlers
+accumulate as they go and one line carries the result - use a `Collector`, which is shared and
+mutable:
+
+```go
+// At the entry point:
+ctx, col := log.NewCollector(ctx)
+// Anywhere below, including business code:
+log.Collect(ctx, log.String("order_id", id))
+// At the end of the request:
+log.Info(ctx, tag, col.Fields()...)
+```
+
+Every log event printed with such a context picks both channels up automatically - no call site has
+to opt in, which is why framework-emitted lines carry them too. Fields are snapshotted when added,
+and live exactly as long as the context does; there is no cleanup to call. On a duplicate key the
+later source wins, in this order: `WithFields` chain → `Collector` → `FieldsFromContext`.
+
 ## Logging API
 
 Every level comes in two styles: structured and formatted. Note that the field parameter takes

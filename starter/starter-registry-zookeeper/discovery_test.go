@@ -99,3 +99,19 @@ func TestFirstEventEmptyIsNil(t *testing.T) {
 	// the correct "nothing to wait on" case.
 	assert.That(t, firstEvent(nil) == nil).True()
 }
+
+// Close is the ONLY terminal signal a watcher takes: a connection error is not
+// one, since the client reconnects and a blip mid-re-arm must not retire the
+// watcher. So Close closing done is the whole shutdown contract — and it has to
+// survive being called twice, because the bean destructor and a teardown can
+// both reach it.
+func TestDiscoveryCloseStopsWatchersAndIsIdempotent(t *testing.T) {
+	d := &zkDiscovery{done: make(chan struct{})}
+	d.Close()
+	d.Close() // must not panic on a double close
+	select {
+	case <-d.done:
+	default:
+		t.Fatal("Close must signal the background watchers to stop")
+	}
+}

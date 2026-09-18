@@ -183,7 +183,7 @@ gs.Run()
   ├─ RefreshPrepare → applyModules → setup()              [starter.go:69-93]
   │     ├─ bind ${spring.observability} → Config
   │     ├─ enable=false → log + return (globals stay OTel no-ops)   [starter.go:74-77]
-  │     ├─ trace.NewResource(service-name)                [trace/provider.go:32-36]
+  │     ├─ trace.NewResource(service-name)                [trace/provider.go:29-55]
   │     ├─ setupTrace: TracerProvider + propagator → otel.Set*Globals
   │     │     └─ gs.RegisterStopper("otel-trace", tp.Shutdown)      [starter.go:121]
   │     └─ setupMetrics: MeterProvider → otel.SetMeterProvider
@@ -273,6 +273,45 @@ every registered stopper (gs/stopper.go:26-30, 86-100). Registered here: `otel-t
 8. On SIGTERM: servers drain → container closes → `otel-trace`/`otel-metrics` stoppers flush the
    last batch to the collector (§2.3).
 
+### 2.5 Adding your own attributes to spans
+
+Process-level dimensions (env, cluster, tenant, version) belong on the **resource** — see
+`service-name` in §3 and `OTEL_RESOURCE_ATTRIBUTES`; they then appear on every span and metric.
+Per-request dimensions go on the **context**:
+
+```go
+ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+```
+
+The carrier lives in `cloud/observability`, not here: putting something on a context is a contract, and
+a writer — business code, a company middleware library — should not have to depend on the OTel SDK to
+do it. This starter holds only the *reader*, which does need the SDK.
+
+Everything a span needs is already done at that point. The attributes reach every span started with
+that context — **including spans the framework starts on your behalf**. That is the reason this is a
+context carrier rather than a span option: a registry registration, a lock acquisition, a cache or DB
+call all start their span *below* your frame and hand the span-carrying context to an inner
+closure, never back to you. `trace.SpanFromContext(ctx)` on your context finds the parent span, so
+there would be nothing to call `SetAttributes` on. A `SpanProcessor` registered on the provider
+(§2.1) reads the carrier in `OnStart`, where the OTel SDK hands it the same context you passed to
+`trace.Start` — one place, covering every span in the process, and **no instrumentation point has to
+cooperate**.
+
+Nested spans inherit: a child is started from a context derived from the carried one. On a duplicate
+key the later source wins.
+
+go-spring uses the same mechanism for one attribute of its own: every span of a request tagged as
+synthetic load carries `load_test=true`, so a load-test run can be filtered out of production
+dashboards and alerts instead of blending into them. That is a **read** of the `traffic` contract
+(see `cloud/governance/traffic`), not an action on it — deciding what a load-test request should
+*do* stays the application's business.
+
+**Metrics are not covered.** The metric SDK has no per-record hook, so built-in metric labels stay
+closed by design; to attach attributes to your own instrument, pass them where you record it.
+
+For **log** fields the same shape exists on the log side — `log.WithFields` and `log.Collector`; see
+the log module's README.
+
 ---
 
 ## 3. Per-key behavior reference
@@ -283,7 +322,7 @@ All under `spring.observability.*`. 17 keys total (verified against `grep -rhoE 
 | Key | Type | Default | Behavior | Misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
 | `enable` | bool | true | Master switch inside setup; false leaves OTel globals as SDK no-ops (starter.go:74-77). | false + instrumented components → everything runs, nothing is exported, no warning. |
-| `service-name` | string | `${spring.application.name:=go-spring-app}` | Becomes the sole resource attribute `service.name` (schemaless resource, trace/provider.go:32-36). | Unset → silent `go-spring-app`; all defaulted services merge in every backend. |
+| `service-name` | string | `${spring.application.name:=go-spring-app}` | `service.name` on the process resource. `OTEL_SERVICE_NAME`, when set, overrides it (trace/provider.go:29-55). The resource also carries OTel's defaults (`telemetry.sdk.*`) and whatever `OTEL_RESOURCE_ATTRIBUTES` declares — the standard way to attach process-level dimensions (env, cluster, tenant) to every span and metric, with no go-spring API of its own. | Unset → silent `go-spring-app`; all defaulted services merge in every backend. |
 | `trace.enable` | bool | true | false (or `exporter=none`) skips the TracerProvider only — the **propagator is still installed** (starter.go setupTrace): context/baggage relay keeps working even with no span export (2026-08 fix; the key used to be ignored entirely when tracing was off). | To drop propagation too, set `trace.propagator=none`. |
 | `trace.exporter` | string | otlp-grpc | Registry lookup (§2.2): otlp-grpc \| otlp-http \| stdout \| none. | Unknown name → setup fails at boot with the registered-names error. |
 | `trace.endpoint` | string | "" | Host:port for otlp exporters; empty falls back to SDK default localhost:4317/:4318 (trace/otlp/exporter.go). Ignored by stdout/none. | Wrong endpoint → one startup WARN from the connectivity probe (internal/probe, 3s TCP dial, never fatal — the collector may start later), then spans silently queue and drop until it is reachable. |

@@ -26,7 +26,7 @@ import (
 )
 
 // fakeExecutor returns a fixed error from Execute so a test can drive every
-// outcome classification without wiring a real driver.
+// status classification without wiring a real driver.
 type fakeExecutor struct{ err error }
 
 func (f fakeExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
@@ -54,11 +54,11 @@ func TestClassifyOutcome(t *testing.T) {
 		{errors.Join(ErrCircuitOpen, errutil.Explain(nil, "detail")), "circuit_open"},
 	}
 	for _, c := range cases {
-		assert.That(t, classifyOutcome(c.err)).Equal(c.want)
+		assert.That(t, classifyStatus(c.err)).Equal(c.want)
 	}
 }
 
-// TestWrapExecutor_PassesErrorThrough exercises every outcome end to end: the
+// TestWrapExecutor_PassesErrorThrough exercises every status end to end: the
 // wrapper must return the inner error unchanged (no swallowing) while emitting
 // signals. The OTel globals are no-ops here, so this only proves pass-through +
 // no-panic; metric values are verified by the SDK-backed test below.

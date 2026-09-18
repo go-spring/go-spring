@@ -138,7 +138,11 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 	// The session is not usable yet: the pass fails and the instance is not
 	// discoverable, which is exactly what the gauge must say.
 	r.reRegister = func(discovery.Instance) error { return errors.New("ensemble unreachable") }
-	assert.Error(t, r.reRegisterAll()).NotNil()
+	// The failing service comes back with the error, so the caller's log line
+	// can carry the identity that joins it to the metric below.
+	failed, err := r.reRegisterAll()
+	assert.Error(t, err).NotNil()
+	assert.That(t, failed).Equal("orders")
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
 		"system": obsSystem, "service": "orders",
 		"reason": discovery.ReasonSelfHeal, "status": "failed",
@@ -148,7 +152,8 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 
 	// The session recovers: healAll retries the pass and the node comes back.
 	r.reRegister = func(discovery.Instance) error { return nil }
-	assert.Error(t, r.reRegisterAll()).Nil()
+	_, err = r.reRegisterAll()
+	assert.Error(t, err).Nil()
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
 		"system": obsSystem, "service": "orders",
 		"reason": discovery.ReasonSelfHeal, "status": "ok",

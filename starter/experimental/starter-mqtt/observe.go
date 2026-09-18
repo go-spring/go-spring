@@ -43,6 +43,51 @@ var tracer = otel.Tracer("go-spring.org/starter-mqtt")
 // maxLogArg bounds the topic captured in the access log.
 const maxLogArg = 512
 
+// Connection-state values the counter and the log lines share.
+const (
+	connConnected    = "connected"
+	connLost         = "lost"
+	connReconnecting = "reconnecting"
+)
+
+// connStateCounter counts the connection-lifecycle transitions paho reports.
+// Those events had only log lines: a client that kept losing its broker was
+// visible in text and invisible to every dashboard — and they are the signal
+// that precedes publishes starting to fail.
+//
+// The driver builds it, next to the callbacks it counts for, because paho takes
+// the handlers only as construction options: there is no post-construction slot
+// to install them from the starter's side, so splitting the pair would mean
+// dropping one of them.
+type connStateCounter struct {
+	changes metric.Int64Counter
+}
+
+// newConnStateCounter builds the counter from whatever meter provider is
+// current — invoked at wiring time (inside the driver), not at package init, so
+// an SDK installed later still receives the records.
+func newConnStateCounter() *connStateCounter {
+	changes, _ := otel.Meter("go-spring.org/starter-mqtt").Int64Counter("messaging.client.connection.state_changes",
+		metric.WithDescription("Connection-state transitions reported by the mqtt client"),
+		metric.WithUnit("{event}"))
+	return &connStateCounter{changes: changes}
+}
+
+// record counts one transition and returns the fields its log line carries.
+// Returning them is what keeps the metric's attribute and the log's key from
+// being spelled twice — the drift this pairing exists to prevent, and a drifted
+// key is silent: the line still looks right and joins nothing.
+func (c *connStateCounter) record(ctx context.Context, state string) []log.Field {
+	c.changes.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("messaging.system", "mqtt"),
+		attribute.String("state", state),
+	))
+	return []log.Field{
+		log.String("messaging.system", "mqtt"),
+		log.String("state", state),
+	}
+}
+
 // observer emits the span + metric + access-log trio for one operation
 // direction (publish or consume). kind selects the span kind.
 type observer struct {
@@ -130,11 +175,12 @@ func (s *span) End(err error) {
 
 	fields := func() []log.Field {
 		f := []log.Field{
-			log.String("operation", s.op),
+			log.String("messaging.operation", s.op),
+			log.String("status", status),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 		}
 		if s.arg != "" {
-			f = append(f, log.String("topic", strutil.Truncate(s.arg, maxLogArg)))
+			f = append(f, log.String("messaging.destination.name", strutil.Truncate(s.arg, maxLogArg)))
 		}
 		return f
 	}

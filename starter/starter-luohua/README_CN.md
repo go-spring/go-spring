@@ -24,7 +24,7 @@ import _ "go-spring.org/starter-luohua"
 | `enabled` | `true` | 整个基线的总开关。 |
 | `propagate.load-test-header` | 空 | 覆盖 `traffic.HeaderLoadTest`，让压测标识的探测/注入用 luohua 自己的 header（G1 缝）。gRPC metadata 键由小写派生。 |
 | `propagate.headers` | 空 | luohua 具名 header propagator 全链路携带的业务头（`X-Tenant`、`X-User`…）。它们挂在 OTel 全局 propagator 上，httpx / gin / echo / grpc 全部生效。 |
-| `observability.fields` | 空 | luohua 在每条日志打印的上下文字段（与 `propagate.headers` 同名，如 `X-Tenant`）。 |
+| `observability.fields` | 空 | luohua 在每条日志**与每个 span** 上露出的上下文字段（与 `propagate.headers` 同名，如 `X-Tenant`）。在抽取头的那一刻挂到请求 context 上。 |
 
 具名 header propagator 以名字 `luohua` 注册进 `starter-otel/trace`（G2 缝）。要让它跑起来，
 把它复合进全局 propagator：
@@ -88,8 +88,9 @@ govern.rules[0].max-retries=2
 
 ## 你保留的自定义位
 
-luohua 碰到的每个东西都可覆盖：压测头是包级变量可直接重赋；propagator 列表是配置；log 钩子是**组合**而非替换旧的。
-要更严格的顺序，就在 luohua 之后装你自己的 `log.FieldsFromContext`。
+luohua 碰到的每个东西都可覆盖：压测头是包级变量可直接重赋；propagator 列表是配置；它露出的上下文字段
+不可能与别人冲突——因为 luohua **根本不占用**全局的 `log.FieldsFromContext` 槽位，而是在抽取头的那一刻
+就把它们挂到了请求 context 上。你自己装的钩子若存在，完全不受影响。
 
 ## 完整基线（`app.properties`）
 
@@ -114,4 +115,4 @@ spring.luohua.observability.fields=X-Tenant
 
 `spring.luohua.propagate.headers` 指定 `luohua` propagator 携带的业务 header（它只有在
 `spring.observability.trace.propagator` 里出现 `luohua` 时才生效）；
-`spring.luohua.observability.fields` 指定其中哪些也打印到每条日志。
+`spring.luohua.observability.fields` 指定其中哪些还会露在每条日志**与抽取点之下的每个 span** 上。

@@ -151,10 +151,9 @@ func (r *zkRegistrar) Register(ctx context.Context, reg discovery.Instance) erro
 		return errutil.Explain(nil, "registry-zookeeper: addr is required")
 	}
 	reg.Weight = normalizeWeight(reg.Weight)
-	attempt := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial)
-	err := r.createNode(reg)
-	attempt(err)
-	if err != nil {
+	if err := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
+		return r.createNode(reg)
+	}); err != nil {
 		return err
 	}
 	r.mu.Lock()
@@ -225,10 +224,10 @@ func (r *zkRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance, 
 	} else if stat == nil {
 		return errutil.Explain(nil, "registry-zookeeper: update weight for unregistered instance %q", path)
 	}
-	report := discovery.WeightChange(ctx, obsSystem, reg.ServiceName)
-	_, err = r.conn.Set(path, val, -1)
-	report(err)
-	if err != nil {
+	if err := discovery.WeightChange(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+		_, err := r.conn.Set(path, val, -1)
+		return err
+	}); err != nil {
 		return errutil.Explain(err, "registry-zookeeper: update weight set %q", path)
 	}
 	// Remember the new weight so a post-recovery re-create advertises it.
@@ -248,15 +247,16 @@ func (r *zkRegistrar) Deregister(ctx context.Context, reg discovery.Instance) er
 	r.mu.Lock()
 	delete(r.regs, path)
 	r.mu.Unlock()
-	report := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName)
-	err := r.conn.Delete(path, -1)
-	if errors.Is(err, zk.ErrNoNode) {
-		err = nil // already gone: the desired end state holds, so this is a success
-	} else if err != nil {
-		err = errutil.Explain(err, "registry-zookeeper: deregister %q", reg.ServiceName)
-	}
-	report(err)
-	return err
+	return discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+		err := r.conn.Delete(path, -1)
+		if errors.Is(err, zk.ErrNoNode) {
+			return nil // already gone: the desired end state holds, so this is a success
+		}
+		if err != nil {
+			return errutil.Explain(err, "registry-zookeeper: delete %q", path)
+		}
+		return nil
+	})
 }
 
 // monitorSession polls the connection state once a second. Leaving
@@ -279,8 +279,9 @@ func (r *zkRegistrar) monitorSession() {
 			var heal bool
 			degraded, heal = reconcileSession(degraded, r.state())
 			if degraded && !wasDegraded {
-				log.Errorf(context.Background(), starterTag,
-					"zookeeper session lost (state=%s); registered nodes are gone or going, they will be re-created once the session is re-established", r.state())
+				log.Error(context.Background(), starterTag,
+					log.String("system", obsSystem),
+					log.Msgf("zookeeper session lost (state=%s); registered nodes are gone or going, they will be re-created once the session is re-established", r.state()))
 			}
 			if heal {
 				r.healAll()
@@ -311,12 +312,16 @@ func (r *zkRegistrar) healAll() {
 			return
 		default:
 		}
-		if err := r.reRegisterAll(); err == nil {
-			log.Infof(context.Background(), starterTag, "re-created registered zookeeper node(s) after session recovery")
+		if service, err := r.reRegisterAll(); err == nil {
+			log.Info(context.Background(), starterTag,
+				log.String("system", obsSystem),
+				log.Msg("re-created registered zookeeper node(s) after session recovery"))
 			return
 		} else {
-			log.Errorf(context.Background(), starterTag,
-				"re-create zookeeper node(s) failed: %v; retrying in %s", err, backoff)
+			log.Error(context.Background(), starterTag, append(
+				discovery.RegisterFailedFields(obsSystem, service, discovery.ReasonSelfHeal, err),
+				log.Msgf("re-create zookeeper node(s) failed; retrying in %s", backoff),
+			)...)
 		}
 		select {
 		case <-r.done:
@@ -333,7 +338,10 @@ func (r *zkRegistrar) healAll() {
 // reRegisterAll re-runs the node-creation step for every tracked instance.
 // The first failure aborts the pass; healAll retries the whole pass, and
 // createNode is idempotent so partial progress is not a problem.
-func (r *zkRegistrar) reRegisterAll() error {
+// reRegisterAll returns the service whose re-creation failed, if any, so the
+// caller's log line can carry the identity that joins it to the registration
+// metric for that instance.
+func (r *zkRegistrar) reRegisterAll() (string, error) {
 	r.mu.Lock()
 	regs := make([]discovery.Instance, 0, len(r.regs))
 	for _, reg := range r.regs {
@@ -344,14 +352,13 @@ func (r *zkRegistrar) reRegisterAll() error {
 		// Each re-creation is a registration attempt of its own: it reports as
 		// self_heal so a dashboard can tell "the ensemble lost my node" from the
 		// initial publish, and healAll retrying the whole pass reports again.
-		attempt := discovery.RegisterAttempt(context.Background(), obsSystem, reg.ServiceName, discovery.ReasonSelfHeal)
-		err := r.reRegister(reg)
-		attempt(err)
-		if err != nil {
-			return err
+		if err := discovery.RegisterAttempt(context.Background(), obsSystem, reg.ServiceName, discovery.ReasonSelfHeal, func(context.Context) error {
+			return r.reRegister(reg)
+		}); err != nil {
+			return reg.ServiceName, err
 		}
 	}
-	return nil
+	return "", nil
 }
 
 // ensureParents creates every persistent ancestor of path that does not yet

@@ -156,7 +156,7 @@ func (l *observedLocker) record(ctx context.Context, op, key, status string, sta
 		return []log.Field{
 			log.String("system", l.system),
 			log.String("operation", op),
-			log.String("key", key),
+			log.String("lock.key", key),
 			log.String("status", status),
 			log.Float("duration_ms", float64(elapsed.Nanoseconds())/1e6),
 		}
@@ -278,7 +278,7 @@ func (h *observedLock) reportLost() {
 	fields := func() []log.Field {
 		return []log.Field{
 			log.String("system", h.locker.system),
-			log.String("key", h.key),
+			log.String("lock.key", h.key),
 			log.Float("held_ms", float64(time.Since(h.acquired).Nanoseconds())/1e6),
 		}
 	}

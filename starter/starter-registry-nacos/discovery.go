@@ -145,7 +145,10 @@ func (d *nacosDiscovery) subscribe(name string, e *nacosEntry) error {
 	cb := func(services []model.Instance, err error) {
 		if err != nil {
 			discovery.Synced(obsSystem, name, err)
-			log.Warnf(context.Background(), starterTag, "registry-nacos: push for %s failed (keeping last snapshot): %v", name, err)
+			log.Warn(context.Background(), starterTag, append(
+				discovery.SyncFailedFields(obsSystem, name, err),
+				log.Msg("registry-nacos: push failed (keeping last snapshot)"),
+			)...)
 			return
 		}
 		eps := instancesToEndpoints(services)

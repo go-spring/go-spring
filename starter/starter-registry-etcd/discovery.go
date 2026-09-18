@@ -31,6 +31,7 @@ package StarterRegistryEtcd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,12 +45,29 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+const (
+	// watchReArmBase/watchReArmCap pace the watch re-arm after etcd cancels a
+	// watch: 1s doubling up to 1min, matching the registrar's self-heal pacing.
+	watchReArmBase = time.Second
+	watchReArmCap  = time.Minute
+
+	// fetchTimeout bounds one snapshot read: the watch loop has no caller
+	// context to inherit a deadline from.
+	fetchTimeout = 5 * time.Second
+)
+
+// errWatchEnded reports a watch channel closed without etcd cancelling it —
+// the stream ended for a reason the client did not name.
+var errWatchEnded = errors.New("registry-etcd: watch channel closed")
+
 // etcdDiscovery serves snapshots of service instances stored under one etcd
 // prefix. It implements [discovery.Discovery]. The
 // first Resolve of a service seeds a per-service cache and starts a background
 // etcd watcher that keeps it current; later calls are in-memory reads.
 type etcdDiscovery struct {
-	client    *clientv3.Client
+	// client is the read-side seam (client.go): the production value wraps the
+	// backend's *clientv3.Client, tests inject an in-process double.
+	client    discoveryKV
 	keyPrefix string
 
 	// bgCtx anchors the background watchers for the backend's lifetime.
@@ -118,21 +136,60 @@ func (d *etcdDiscovery) Resolve(ctx context.Context, name string, opts ...discov
 	return eps, nil
 }
 
-// watchLoop refreshes a service's cache on every etcd change below its prefix
-// until the backend's lifetime context ends. A failed refresh keeps the stale
-// snapshot — stale addresses are safer than none — and is reported to the
-// freshness metric so the stale window stays visible instead of only ever
-// appearing as a warn line.
+// watchLoop keeps a service's cache current with an etcd watch and re-arms that
+// watch if etcd cancels it — compaction, a revoked permission, or a revision
+// etcd can no longer serve. Re-arming is what makes a cancelled watch
+// survivable: the stream carries no events and never recovers on its own, so
+// without it the cache would freeze at its last value while every gauge stayed
+// nominally alive, the failure looking exactly like a quiet cluster. A failed
+// refresh keeps the stale snapshot — stale addresses are safer than none — and
+// is reported to the freshness metric so the stale window stays visible instead
+// of only ever appearing as a warn line.
 func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
 	prefix := d.servicePrefix(name)
-	wch := d.client.Watch(d.bgCtx, prefix, clientv3.WithPrefix())
-	for range wch {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	backoff := watchReArmBase
+	for d.bgCtx.Err() == nil {
+		wch := d.client.Watch(d.bgCtx, prefix, clientv3.WithPrefix())
+		err := d.drainWatch(name, e, prefix, wch)
+		if d.bgCtx.Err() != nil {
+			// The watch ended because the backend is closing, not because it
+			// failed: nothing to report and nothing to re-arm.
+			return
+		}
+		discovery.Synced(obsSystem, name, err)
+		log.Error(context.Background(), starterTag, append(
+			discovery.SyncFailedFields(obsSystem, name, err),
+			log.Msgf("registry-etcd: watch %q ended; re-arming in %s", prefix, backoff),
+		)...)
+		select {
+		case <-d.bgCtx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > watchReArmCap {
+			backoff = watchReArmCap
+		}
+	}
+}
+
+// drainWatch consumes one watch stream, refreshing the cache on every event,
+// and returns why the stream ended: etcd's own reason when it cancelled the
+// watch, or errWatchEnded when the channel simply closed.
+func (d *etcdDiscovery) drainWatch(name string, e *serviceEntry, prefix string, wch clientv3.WatchChan) error {
+	for resp := range wch {
+		if err := resp.Err(); err != nil {
+			return errutil.Explain(err, "registry-etcd: watch %q cancelled", prefix)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		eps, err := d.fetch(ctx, prefix)
 		cancel()
 		if err != nil {
 			discovery.Synced(obsSystem, name, err)
-			log.Warnf(context.Background(), starterTag, "registry-etcd: refresh %q failed (keeping stale snapshot): %v", prefix, err)
+			log.Warn(context.Background(), starterTag, append(
+				discovery.SyncFailedFields(obsSystem, name, err),
+				log.Msgf("registry-etcd: refresh %q failed (keeping stale snapshot)", prefix),
+			)...)
 			continue
 		}
 		e.mu.Lock()
@@ -140,6 +197,7 @@ func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
 		e.mu.Unlock()
 		discovery.Synced(obsSystem, name, nil)
 	}
+	return errWatchEnded
 }
 
 // kvsToEndpoints maps one etcd Get/watch response's key-value pairs to
@@ -152,7 +210,11 @@ func kvsToEndpoints(kvs []*mvccpb.KeyValue) []discovery.Endpoint {
 		var v instanceValue
 		if err := json.Unmarshal(kv.Value, &v); err != nil {
 			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
-			log.Warnf(context.Background(), starterTag, "registry-etcd: skip malformed instance %q: %v", string(kv.Key), err)
+			log.Warn(context.Background(), starterTag,
+				log.String("system", obsSystem),
+				log.String("key", string(kv.Key)),
+				log.Any("error", err),
+				log.Msg("registry-etcd: skipping a malformed instance payload"))
 			continue
 		}
 		eps = append(eps, discovery.Endpoint{

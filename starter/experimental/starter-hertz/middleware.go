@@ -198,12 +198,12 @@ func accessLog(skip map[string]struct{}) app.HandlerFunc {
 		}
 
 		fields := []log.Field{
-			log.String("method", string(c.Method())),
-			log.String("path", path),
-			log.Int("status", c.Response.StatusCode()),
+			log.String("http.request.method", string(c.Method())),
+			log.String("url.path", path),
+			log.Int("http.response.status_code", c.Response.StatusCode()),
 			log.Int("size", len(c.Response.Body())),
 			log.String("ip", c.ClientIP()),
-			log.String("latency", time.Since(start).String()),
+			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
 		}
 		if rid := requestid.Get(c); rid != "" {
 			fields = append(fields, log.String("request_id", rid))

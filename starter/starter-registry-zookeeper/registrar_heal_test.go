@@ -129,7 +129,8 @@ func TestDeregisterRemovesFromHealSet(t *testing.T) {
 	delete(r.regs, r.pathFor(reg))
 	r.mu.Unlock()
 	assert.Number(t, len(r.regs)).Equal(0)
-	assert.Error(t, r.reRegisterAll()).Nil()
+	_, err := r.reRegisterAll()
+	assert.Error(t, err).Nil()
 }
 
 // healAll exits when Close is called even while every attempt fails.

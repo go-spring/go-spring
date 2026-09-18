@@ -177,7 +177,7 @@ gs.Run()
   ├─ RefreshPrepare → applyModules → setup()                [starter.go:69-93]
   │     ├─ 绑定 ${spring.observability} → Config
   │     ├─ enable=false → 打日志直接返回(全局对象保持 OTel no-op) [starter.go:74-77]
-  │     ├─ trace.NewResource(service-name)                  [trace/provider.go:32-36]
+  │     ├─ trace.NewResource(service-name)                  [trace/provider.go:29-55]
   │     ├─ setupTrace:TracerProvider + 传播器 → otel.Set*Globals
   │     │     └─ gs.RegisterStopper("otel-trace", tp.Shutdown)        [starter.go:121]
   │     └─ setupMetrics:MeterProvider → otel.SetMeterProvider
@@ -263,6 +263,39 @@ SIGTERM 后,待所有 server 停止、IoC 容器关闭,`runStoppers` 逐个调�
 8. SIGTERM:server 排空 → 容器关闭 → `otel-trace`/`otel-metrics` stopper 把最后一批冲到
    collector(§2.3)。
 
+### 2.5 往 span 上加你自己的属性
+
+**进程级**维度(env、cluster、tenant、version)属于 **resource**——见 §3 的 `service-name`
+与 `OTEL_RESOURCE_ATTRIBUTES`,挂上去后每个 span 和 metric 都带。
+**每请求**维度则挂到 context 上:
+
+```go
+ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+```
+
+载体本身在 `cloud/observability`,不在这里:往 context 上放东西是**契约**,写方(业务代码、
+公司中间件库)不该为了这个去依赖 OTel SDK。本 starter 只持有**读方**,那才需要 SDK。
+
+到这里就结束了,span 侧无需再做任何事。这些属性会到达用该 context 启动的每一个 span——
+**包括框架代你启动的那些**。这正是它做成 context 载体、而不是 span 选项的原因:注册中心注册、
+加锁、缓存/DB 访问,这些 span 都在**你的 frame 之下**创建,带 span 的 context 只交给内部闭包,
+从不回传给你。你在自己的 context 上调 `trace.SpanFromContext(ctx)` 拿到的是父 span,
+根本没有 `SetAttributes` 的对象。装在 provider 上的 `SpanProcessor`(§2.1)在 `OnStart` 里读载体——
+OTel SDK 在那里交给它的,正是你传给 `trace.Start` 的同一个 context——**一处代码覆盖进程内全部
+span,任何插桩点都无需配合**。
+
+子 span 自动继承:子 span 由继承自该载体的 context 启动。同名字段后者胜。
+
+go-spring 自己也用这套机制加了一个属性:被标记为压测流量的请求,其每个 span 都带
+`load_test=true`,于是压测运行可以从生产看板与告警里筛出去,而不是混在里面。
+这是对 `traffic` 契约的**读取**(见 `cloud/governance/traffic`),不是对它采取行动——
+压测请求"该做什么"仍然由应用决定。
+
+**metric 不在覆盖范围内。** metric SDK 没有"记录时的钩子",所以内置 metric 标签按设计保持封闭;
+要给你自己的 instrument 加属性,在记录处传入即可。
+
+**日志**字段在 log 侧有同形状的机制——`log.WithFields` 与 `log.Collector`,见 log 模块 README。
+
 ---
 
 ## 3. 逐 key 行为参考
@@ -273,7 +306,7 @@ SIGTERM 后,待所有 server 停止、IoC 容器关闭,`runStoppers` 逐个调�
 | Key | 类型 | 默认值 | 行为 | 配错后果 |
 |-----|------|--------|------|----------|
 | `enable` | bool | true | setup 内的总开关;false 时全局对象保持 SDK no-op(starter.go:74-77)。 | false + 被埋点组件 → 一切照跑、什么都不导出、无告警。 |
-| `service-name` | string | `${spring.application.name:=go-spring-app}` | 唯一的 resource 属性 `service.name`(schemaless resource,trace/provider.go:32-36)。 | 不设 → 静默 `go-spring-app`;所有默认名服务在后端混流。 |
+| `service-name` | string | `${spring.application.name:=go-spring-app}` | 进程 resource 上的 `service.name`。若设了 `OTEL_SERVICE_NAME`，后者优先（trace/provider.go:29-55）。resource 同时带上 OTel 默认属性（`telemetry.sdk.*`）与 `OTEL_RESOURCE_ATTRIBUTES` 声明的属性——这是把进程级维度（env、cluster、tenant）挂到每个 span 和 metric 上的标准做法，不需要 go-spring 自建 API。 | 不设 → 静默 `go-spring-app`;所有默认名服务在后端混流。 |
 | `trace.enable` | bool | true | false(或 `exporter=none`)整条 trace 支柱跳过——连传播器也不装(starter.go:103)。 | ⚠ 关 trace 同时丢 W3C 传播:跨服务 trace 上下文不再转发,组件还在(空转地)调全局对象。 |
 | `trace.exporter` | string | otlp-grpc | 注册表查找(§2.2):otlp-grpc \| otlp-http \| stdout \| none。 | 未知名 → 启动期 setup 失败,错误列出合法名。 |
 | `trace.endpoint` | string | "" | otlp exporter 的 host:port;空回落 SDK 默认 localhost:4317/:4318(trace/otlp/exporter.go)。stdout/none 忽略。 | 配错 → 启动时连通性探针(internal/probe,3s TCP 拨号)WARN 一次并点名 endpoint——绝不阻断启动(collector 可能晚于应用起);之后 span 静默排队丢弃直到恢复。 |

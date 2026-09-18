@@ -126,11 +126,12 @@ func (s *Span) End(err error) {
 
 	fields := func() []log.Field {
 		f := []log.Field{
-			log.String("operation", s.o.op),
+			log.String("messaging.operation", s.o.op),
+			log.String("status", status),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 		}
 		if s.arg != "" {
-			f = append(f, log.String("destination", strutil.Truncate(s.arg, 512)))
+			f = append(f, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
 		}
 		return f
 	}

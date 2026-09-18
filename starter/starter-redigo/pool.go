@@ -39,7 +39,8 @@ type Pool struct {
 	*redis.Pool
 
 	cfg      Config                  // address fields feed the resilience resource label
-	duration metric.Float64Histogram // db.client.operation.duration; no-op instrument when starter-otel is absent
+	duration metric.Float64Histogram  // db.client.operation.duration; no-op instrument when starter-otel is absent
+	active   metric.Int64UpDownCounter // db.client.active_requests; same
 	exec     resilience.Executor     // resolved via resilience.ExecutorFor; no-op when governance is off
 	chain    []CommandInterceptor    // user interceptor chain, first entry outermost; nil when none registered
 	resource string                  // resilience resource label (stable per pool)
@@ -94,7 +95,7 @@ func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool,
 	// executor, and the instrumented Dial wrap. The observer is unconditional:
 	// without starter-otel the OTel globals are no-ops, so it costs one map
 	// lookup per command.
-	w.duration = newDuration()
+	w.duration, w.active = newInstruments()
 	if err := w.setupResilience(); err != nil {
 		_ = w.Close()
 		return nil, err
@@ -236,7 +237,7 @@ func (p *Pool) wrapConn(raw redis.Conn) redis.Conn {
 	var layers []CommandInterceptor
 	layers = append(layers, p.chain...)
 	if p.duration != nil {
-		layers = append(layers, observeInterceptor(p.duration))
+		layers = append(layers, observeInterceptor(p.duration, p.active))
 	}
 	if p.exec != nil {
 		layers = append(layers, resilienceInterceptor(p.exec, p.resource))

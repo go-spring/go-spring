@@ -124,21 +124,22 @@ func (s obsSpan) End(err error) {
 	s.active.Add(s.ctx, -1, s.inflight)
 
 	common := []log.Field{
-		log.String("operation", s.op),
+		log.String("messaging.operation", s.op),
+		log.String("status", status),
 		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 	}
 	switch {
 	case err != nil:
 		fields := common
 		if s.arg != "" {
-			fields = append(fields, log.String("destination", strutil.Truncate(s.arg, 512)))
+			fields = append(fields, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
 		}
 		log.Warn(s.ctx, accessTag, append(fields, log.Any("error", err))...)
 	case s.arg != "":
 		// Success carrying a topic: high-frequency and uninteresting until it
 		// fails, so Debug — and built lazily, truncation included.
 		log.Debug(s.ctx, accessTag, func() []log.Field {
-			return append(common, log.String("destination", strutil.Truncate(s.arg, 512)))
+			return append(common, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
 		})
 	default:
 		log.Info(s.ctx, accessTag, common...)

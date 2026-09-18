@@ -70,12 +70,13 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer func() { _ = cli.Close() }()
 
-	reg := &etcdRegistrar{client: cli, keyPrefix: "/services/weight-test/", ttlSecs: 15, holds: map[string]*hold{}}
-	// Wire the real publish step: a method value cannot go in the literal, and
-	// leaving it nil panics on the first Register (constructor does this).
-	reg.publish = reg.etcdPublish
+	// Both halves go through the production constructor and adapter, so this
+	// live test covers the real wiring rather than a struct literal.
+	kv := etcdClient{cli}
+	reg, err := newEtcdRegistrar(EtcdConfig{KeyPrefix: "/services/weight-test/"}, kv)
+	assert.Error(t, err).Nil()
 	disc := &etcdDiscovery{
-		client: cli, keyPrefix: "/services/weight-test/",
+		client: kv, keyPrefix: "/services/weight-test/",
 		bgCtx: context.Background(), entries: map[string]*serviceEntry{},
 	}
 

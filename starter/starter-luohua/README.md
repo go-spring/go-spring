@@ -29,7 +29,7 @@ is wrong.
 | `enabled` | `true` | Master switch for the whole baseline. |
 | `propagate.load-test-header` | (empty) | Override `traffic.HeaderLoadTest` so load-test detection/injection uses luohua's own header (the G1 seam). The gRPC metadata key is derived by lower-casing. |
 | `propagate.headers` | (empty) | Business headers a luohua named-header propagator carries across every hop (`X-Tenant`, `X-User`, …). They ride the OTel global propagator, so httpx / gin / echo / grpc all honour them. |
-| `observability.fields` | (empty) | Context fields luohua prints on every log line (same names as `propagate.headers`, e.g. `X-Tenant`). |
+| `observability.fields` | (empty) | Context fields luohua surfaces on every log line **and every span** (same names as `propagate.headers`, e.g. `X-Tenant`). Attached to the request context when the headers are extracted. |
 
 The named-header propagator is registered into `starter-otel/trace` under the
 name `luohua` (the G2 seam). To run it, compose it into the fleet propagator:
@@ -102,9 +102,10 @@ fights a company bean.
 ## Customization points you keep
 
 Everything luohua touches stays overridable: the traffic header is a package
-variable you may re-bind; the propagator list is config; the log hook composes
-(not replaces) the previous one. If you need a stricter ordering, install your
-own `log.FieldsFromContext` after luohua runs.
+variable you may re-bind; the propagator list is config; the context fields it
+surfaces cannot collide with anything else, because luohua does not occupy the
+global `log.FieldsFromContext` slot at all — it attaches them to the request
+context at extraction time. Your own hook, if you install one, is untouched.
 
 ## Full baseline (`app.properties`)
 
@@ -131,4 +132,5 @@ spring.luohua.observability.fields=X-Tenant
 `spring.luohua.propagate.headers` names the business headers the `luohua`
 propagator carries (it is inert unless `luohua` appears in
 `spring.observability.trace.propagator`); `spring.luohua.observability.fields`
-names which of them also print on every log line.
+names which of them are also surfaced on every log line **and on every span**
+started below the point of extraction.

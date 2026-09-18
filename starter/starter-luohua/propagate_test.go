@@ -17,14 +17,42 @@
 package luohua
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
 
 	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/propagation"
 )
+
+// luohuaTestTag is registered at package level: log.RegisterTag panics once the
+// log system has been refreshed, so it has to happen before any test runs.
+var luohuaTestTag = log.RegisterTag("_luohua_test")
+
+// logLine renders one log event with ctx and returns the line, so a test can
+// assert on the fields that reached the log through the context.
+func logLine(ctx context.Context) string {
+	prev := log.Stdout
+	buf := bytes.NewBuffer(nil)
+	log.Stdout = buf
+	defer func() { log.Stdout = prev }()
+	log.Info(ctx, luohuaTestTag, log.Msgf("probe"))
+	return buf.String()
+}
+
+// carriedAttr reads one span attribute off ctx, as the SpanProcessor in
+// starter-otel would see it.
+func carriedAttr(ctx context.Context, key string) (string, bool) {
+	for _, a := range observability.ContextAttributes(ctx) {
+		if string(a.Key) == key {
+			return a.Value.Emit(), true
+		}
+	}
+	return "", false
+}
 
 // TestPropagateRoundTrip verifies the named-header propagator carries a
 // configured business header (X-Tenant) across a text-map carrier and back
@@ -71,32 +99,56 @@ func TestApplyPropagateOverridesTrafficHeader(t *testing.T) {
 	}
 }
 
-// TestApplyObservabilityLogHook verifies the log context hook prints luohua's
-// carried business fields on top of any existing hook.
-func TestApplyObservabilityLogHook(t *testing.T) {
-	prev := log.FieldsFromContext
-	defer func() { log.FieldsFromContext = prev }()
+// TestApplyObservabilitySurfacesCarriedFields verifies luohua's configured
+// business fields reach BOTH signals: the log line and the span attributes. It
+// is what replaced the log.FieldsFromContext hook -- one push covers both,
+// instead of a hook that covered logs only and occupied the single global slot.
+func TestApplyObservabilitySurfacesCarriedFields(t *testing.T) {
+	defer setObservabilityFields(nil)
+	if err := applyObservability(ObservabilityConfig{Fields: []string{"X-Tenant"}}); err != nil {
+		t.Fatalf("applyObservability: %v", err)
+	}
+
+	ctx := annotate(putCarriedHeader(context.Background(), "X-Tenant", "acme"))
+
+	if line := logLine(ctx); !strings.Contains(line, "X-Tenant=acme") {
+		t.Fatalf("log line %q does not carry X-Tenant=acme", line)
+	}
+	if v, ok := carriedAttr(ctx, "X-Tenant"); !ok || v != "acme" {
+		t.Fatalf("span attribute X-Tenant = %q (present=%v), want acme", v, ok)
+	}
+}
+
+// TestAnnotateLeavesUntouchedContextsAlone proves annotate is inert when it has
+// nothing configured or nothing carried -- it must not wrap the context, and
+// must not invent fields.
+func TestAnnotateLeavesUntouchedContextsAlone(t *testing.T) {
+	setObservabilityFields(nil)
+	defer setObservabilityFields(nil)
+
+	plain := context.Background()
+	if got := annotate(plain); got != plain {
+		t.Fatal("annotate with nothing configured should return the context unchanged")
+	}
 
 	if err := applyObservability(ObservabilityConfig{Fields: []string{"X-Tenant"}}); err != nil {
 		t.Fatalf("applyObservability: %v", err)
 	}
-	if log.FieldsFromContext == nil {
-		t.Fatal("log.FieldsFromContext was not installed")
+	// Configured, but the value never arrived: nothing to attach.
+	if got := annotate(plain); got != plain {
+		t.Fatal("annotate with nothing carried should return the context unchanged")
 	}
+}
 
-	ctx := putCarriedHeader(context.Background(), "X-Tenant", "acme")
-	fields := log.FieldsFromContext(ctx)
-	found := false
-	for _, f := range fields {
-		if f.Key == "X-Tenant" {
-			found = true
-		}
+// TestApplyObservabilityNoFields proves an empty field list leaves both signals
+// untouched, so a deployment that configures nothing gets no extra telemetry.
+func TestApplyObservabilityNoFields(t *testing.T) {
+	defer setObservabilityFields(nil)
+	if err := applyObservability(ObservabilityConfig{}); err != nil {
+		t.Fatalf("applyObservability: %v", err)
 	}
-	if !found {
-		var keys []string
-		for _, f := range fields {
-			keys = append(keys, f.Key)
-		}
-		t.Fatalf("log fields %v do not include X-Tenant", strings.Join(keys, ","))
+	ctx := putCarriedHeader(context.Background(), "X-Tenant", "acme")
+	if got := annotate(ctx); got != ctx {
+		t.Fatal("annotate with no fields configured should return the context unchanged")
 	}
 }

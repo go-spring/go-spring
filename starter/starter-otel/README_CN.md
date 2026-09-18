@@ -101,7 +101,7 @@ Collector 转换/路由——参见[对接多种后端](#对接多种后端)。
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `enable` | `true` | 总开关；为 `false` 时本 starter 不安装任何东西。 |
-| `service-name` | `${spring.application.name:=go-spring-app}` | `service.name` 资源属性。 |
+| `service-name` | `${spring.application.name:=go-spring-app}` | `service.name` 资源属性;`OTEL_SERVICE_NAME` 优先。resource 同时带上 OTel 默认属性与 `OTEL_RESOURCE_ATTRIBUTES`。 |
 
 Trace，位于 `${spring.observability.trace}`：
 

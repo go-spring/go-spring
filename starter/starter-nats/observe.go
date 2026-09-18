@@ -42,6 +42,51 @@ var tracer = otel.Tracer("go-spring.org/starter-nats")
 // maxLogArg bounds the subject captured in the access log.
 const maxLogArg = 512
 
+// Connection-state values the counter and the log lines share.
+const (
+	connDisconnected = "disconnected"
+	connReconnected  = "reconnected"
+	connClosed       = "closed"
+)
+
+// connStateCounter counts the connection-state transitions the NATS client's own
+// handlers report. Those events had only log lines: a connection that flapped or
+// died was visible in text and invisible to every dashboard — and they are the
+// signal that precedes operations starting to fail.
+//
+// The driver builds it, next to the handlers it counts for, because nats.Conn's
+// Set*Handler methods REPLACE a slot rather than chaining: a counter installed
+// from the starter's lifecycle would silently displace whatever handlers a
+// custom Driver had set. Keeping the pair in one place is what lets both survive.
+type connStateCounter struct {
+	changes metric.Int64Counter
+}
+
+// newConnStateCounter builds the counter from whatever meter provider is
+// current — invoked at wiring time (inside the driver), not at package init, so
+// an SDK installed later still receives the records.
+func newConnStateCounter() *connStateCounter {
+	changes, _ := otel.Meter("go-spring.org/starter-nats").Int64Counter("messaging.client.connection.state_changes",
+		metric.WithDescription("Connection-state transitions reported by the nats client"),
+		metric.WithUnit("{event}"))
+	return &connStateCounter{changes: changes}
+}
+
+// record counts one transition and returns the fields its log line carries.
+// Returning them is what keeps the metric's attribute and the log's key from
+// being spelled twice — the drift this pairing exists to prevent, and a drifted
+// key is silent: the line still looks right and joins nothing.
+func (c *connStateCounter) record(ctx context.Context, state string) []log.Field {
+	c.changes.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("messaging.system", "nats"),
+		attribute.String("state", state),
+	))
+	return []log.Field{
+		log.String("messaging.system", "nats"),
+		log.String("state", state),
+	}
+}
+
 // observer emits the span + metric + access-log trio for one operation
 // direction (publish or consume). kind selects the span kind.
 type observer struct {
@@ -129,11 +174,12 @@ func (s *span) End(err error) {
 
 	fields := func() []log.Field {
 		f := []log.Field{
-			log.String("operation", s.op),
+			log.String("messaging.operation", s.op),
+			log.String("status", status),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 		}
 		if s.arg != "" {
-			f = append(f, log.String("subject", strutil.Truncate(s.arg, maxLogArg)))
+			f = append(f, log.String("messaging.destination.name", strutil.Truncate(s.arg, maxLogArg)))
 		}
 		return f
 	}

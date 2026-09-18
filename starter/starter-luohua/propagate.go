@@ -83,7 +83,11 @@ func (luohuaPropagator) Inject(ctx context.Context, carrier propagation.TextMapC
 	}
 }
 
-// Extract reads every configured header from carrier into ctx.
+// Extract reads every configured header from carrier into ctx, then attaches
+// the ones luohua surfaces to the context as log fields and span attributes
+// (see [annotate]). Extraction is the point where these values enter the
+// process, so it is also the point where the rest of the call tree can be given
+// them -- no global hook and no per-instrumentation cooperation.
 func (luohuaPropagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	luohuaHeaders.RLock()
 	defer luohuaHeaders.RUnlock()
@@ -92,7 +96,7 @@ func (luohuaPropagator) Extract(ctx context.Context, carrier propagation.TextMap
 			ctx = putCarriedHeader(ctx, name, v)
 		}
 	}
-	return ctx
+	return annotate(ctx)
 }
 
 // Fields reports the configured header names, so trace tooling knows what the

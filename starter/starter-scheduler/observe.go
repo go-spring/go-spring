@@ -19,6 +19,7 @@ package StarterScheduler
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go-spring.org/cloud/scheduling"
 	"go-spring.org/log"
@@ -31,11 +32,11 @@ import (
 //
 // Every fire — whether it ran or was swallowed — is reported to the scheduling
 // observer, and this is where that report becomes a metric and a log line. One
-// outcome value drives both, so the metric can never disagree with the log:
+// status value drives both, so the metric can never disagree with the log:
 //
 //	outcome    ok | error | panic | skipped_policy | skipped_lock
 //
-// The outcome answers "how did this fire end?" in a single dimension, the same
+// The status answers "how did this fire end?" in a single dimension, the same
 // shape the lock package uses for its status. A skipped fire is one that a
 // concurrency policy dropped (policy) or one another replica was running (lock);
 // telling them apart matters because under multi-replica de-duplication lock
@@ -70,7 +71,7 @@ type instruments struct {
 func newInstruments() instruments {
 	m := otel.Meter(instrumentationName)
 	runs, _ := m.Int64Counter("scheduling.runs",
-		metric.WithDescription("Scheduled job fires by outcome"),
+		metric.WithDescription("Scheduled job fires by status"),
 		metric.WithUnit("{fire}"))
 	duration, _ := m.Float64Histogram("scheduling.run.duration",
 		metric.WithDescription("Duration of a job run"),
@@ -113,7 +114,7 @@ func outcomeOf(ev scheduling.Event) string {
 }
 
 // record emits the metrics and the log line for one fire. The log level carries
-// the same outcome: a panic or a failed run at Error, an ordinary fire — and a
+// the same status: a panic or a failed run at Error, an ordinary fire — and a
 // swallowed one, which is routine under multi-replica de-duplication — at Debug.
 func (s *Server) record(ev scheduling.Event) {
 	outcome := outcomeOf(ev)
@@ -121,7 +122,7 @@ func (s *Server) record(ev scheduling.Event) {
 
 	s.instruments.runs.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("job", ev.Name),
-		attribute.String("outcome", outcome),
+		attribute.String("status", outcome),
 	))
 
 	// A skipped fire has no run: no duration and no start, so neither histogram
@@ -129,7 +130,7 @@ func (s *Server) record(ev scheduling.Event) {
 	if !ev.Skipped {
 		s.instruments.duration.Record(ctx, ev.Duration.Seconds(), metric.WithAttributes(
 			attribute.String("job", ev.Name),
-			attribute.String("outcome", outcome),
+			attribute.String("status", outcome),
 		))
 		if !ev.Start.IsZero() {
 			s.instruments.lag.Record(ctx, ev.Start.Sub(ev.Scheduled).Seconds(),
@@ -137,14 +138,47 @@ func (s *Server) record(ev scheduling.Event) {
 		}
 	}
 
+	// The log line carries the same job and status the metrics above just
+	// recorded, under the same keys, so the line joins runs{job,outcome} and
+	// run.duration{job,outcome} instead of only describing them in prose.
 	switch outcome {
 	case "panic":
-		log.Errorf(ctx, log.TagAppDef, "scheduler: job %q panicked after %s: %v", ev.Name, ev.Duration, ev.Err)
+		log.Error(ctx, log.TagAppDef, append(runFields(ev, outcome),
+			log.Float("duration_ms", ms(ev.Duration)),
+			log.Any("error", ev.Err),
+			log.Msg("scheduler: job panicked"))...)
 	case "error":
-		log.Errorf(ctx, log.TagAppDef, "scheduler: job %q failed after %s: %v", ev.Name, ev.Duration, ev.Err)
+		log.Error(ctx, log.TagAppDef, append(runFields(ev, outcome),
+			log.Float("duration_ms", ms(ev.Duration)),
+			log.Any("error", ev.Err),
+			log.Msg("scheduler: job failed"))...)
 	case "skipped_policy", "skipped_lock":
-		log.Debugf(ctx, log.TagAppDef, "scheduler: job %q skipped (%s)", ev.Name, ev.Reason)
+		log.Debug(ctx, log.TagAppDef, func() []log.Field {
+			return append(runFields(ev, outcome),
+				log.String("reason", ev.Reason),
+				log.Msg("scheduler: job skipped"))
+		})
 	default:
-		log.Debugf(ctx, log.TagAppDef, "scheduler: job %q ran in %s", ev.Name, ev.Duration)
+		log.Debug(ctx, log.TagAppDef, func() []log.Field {
+			return append(runFields(ev, outcome),
+				log.Float("duration_ms", ms(ev.Duration)),
+				log.Msg("scheduler: job ran"))
+		})
 	}
+}
+
+// runFields returns the fields one fire's log line carries: the keys are the
+// metric attribute names, so the line and the counters for the same fire can
+// never be read as describing different things.
+func runFields(ev scheduling.Event, outcome string) []log.Field {
+	return []log.Field{
+		log.String("job", ev.Name),
+		log.String("status", outcome),
+	}
+}
+
+// ms renders a duration the way the other domain packages' access logs do, so
+// the field is comparable across starters.
+func ms(d time.Duration) float64 {
+	return float64(d.Nanoseconds()) / 1e6
 }

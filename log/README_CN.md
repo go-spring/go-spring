@@ -113,6 +113,31 @@ logger 的 `level` 支持两种形式：
 写入链路追踪字段）。抽取的字段排在业务字段之前，每条日志都会触发调用，请保持钩子轻量、
 尽量读缓存值。
 
+#### 在调用链中附加字段
+
+上面的钩子是进程级、单槽位的。要附加每请求的字段，把它们放到 context 上：
+
+```go
+// 此处以下的每条日志都会带上，包括框架自己打的行。
+ctx = log.WithFields(ctx, log.String("user", u), log.String("tenant", t))
+```
+
+`WithFields` 是**向下流动**的：内层追加的字段，外层看不到。若要在请求结束时打**一条**汇总行
+（wide event 形态：handler 边执行边累积，最后一行承载结果），用 `Collector`——它是共享且可变的：
+
+```go
+// 在入口处：
+ctx, col := log.NewCollector(ctx)
+// 其下任意位置，包括业务代码：
+log.Collect(ctx, log.String("order_id", id))
+// 请求结束时：
+log.Info(ctx, tag, col.Fields()...)
+```
+
+用这样的 context 打印的每条日志都会自动带上两个通道的字段——没有任何调用点需要显式声明，
+这正是**框架自己打的日志行同样能带上**的原因。字段在写入时快照，生命周期与 context 完全一致，
+没有清理 API 需要调用。同名字段后者胜出，顺序为：`WithFields` 链 → `Collector` → `FieldsFromContext`。
+
 ## 日志 API
 
 各级别均提供两种风格：结构化版本与格式化版本。注意字段参数的形式分两档：

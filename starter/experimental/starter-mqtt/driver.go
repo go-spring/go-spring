@@ -37,6 +37,12 @@ import (
 // At most one Driver bean is expected per process; every client under
 // ${spring.mqtt} is built through it, and per-instance differences are expressed
 // through [Config].
+//
+// The connection-lifecycle callbacks are part of the driver's assembly: paho's
+// Set*Handler options only take effect at construction, so connection-layer
+// reporting (log + metric, see connStateCounter) cannot be layered on afterwards
+// from the starter's side. A custom Driver that omits them therefore reports no
+// connection events at all.
 type Driver interface {
 	CreateClient(ctx context.Context, c Config) (mqtt.Client, error)
 }
@@ -59,16 +65,24 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (mqtt.Client, e
 		SetKeepAlive(c.KeepAlive).
 		SetConnectTimeout(c.ConnectTimeout)
 
-	// Bridge connection-lifecycle events into go-spring's log so the client's
-	// health (default auto-reconnect stays on) shows up alongside app logs.
+	// Connection-lifecycle events are counted as well as logged, from this one
+	// place (see connStateCounter for why the pair cannot be split), so the
+	// client's health shows up both alongside app logs and on a dashboard.
+	connState := newConnStateCounter()
 	opts.SetOnConnectHandler(func(_ mqtt.Client) {
-		log.Infof(ctx, log.TagAppDef, "mqtt connected to %q", c.Broker)
+		log.Info(ctx, log.TagAppDef, append(connState.record(ctx, connConnected),
+			log.String("broker", c.Broker),
+			log.Msg("mqtt connected"))...)
 	})
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
-		log.Warnf(ctx, log.TagAppDef, "mqtt connection lost: %v", err)
+		log.Warn(ctx, log.TagAppDef, append(connState.record(ctx, connLost),
+			log.Any("error", err),
+			log.Msg("mqtt connection lost"))...)
 	})
 	opts.SetReconnectingHandler(func(_ mqtt.Client, _ *mqtt.ClientOptions) {
-		log.Infof(ctx, log.TagAppDef, "mqtt reconnecting to %q", c.Broker)
+		log.Info(ctx, log.TagAppDef, append(connState.record(ctx, connReconnecting),
+			log.String("broker", c.Broker),
+			log.Msg("mqtt reconnecting"))...)
 	})
 
 	tlsCfg, err := c.TLS.BuildClient()

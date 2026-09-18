@@ -52,6 +52,11 @@ func newConsulRegistrar(c ConsulConfig, client *api.Client) (*consulRegistrar, e
 	if client == nil {
 		return nil, errutil.Explain(nil, "registry-consul: nil consul client")
 	}
+	// A non-positive TTL would make the heartbeat's ticker panic, so reject it
+	// at construction where the misconfiguration is still attributable.
+	if c.TTL <= 0 {
+		return nil, errutil.Explain(nil, "registry-consul: ttl must be positive, got %s", c.TTL)
+	}
 	return &consulRegistrar{
 		client:                  client,
 		ttl:                     c.TTL,
@@ -117,16 +122,18 @@ func (r *consulRegistrar) Register(ctx context.Context, reg discovery.Instance) 
 	}
 	id := serviceID(reg)
 	checkID := "service:" + id
-	attempt := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial)
-	err := r.upsert(reg)
-	attempt(err)
-	if err != nil {
+	if err := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
+		return r.upsert(reg)
+	}); err != nil {
 		return errutil.Explain(err, "registry-consul: register %q", reg.ServiceName)
 	}
 	// The first TTL pass is best-effort: the heartbeat below retries it every
 	// half TTL, so a failure here only delays "passing", it never fails Register.
 	if err := r.client.Agent().UpdateTTL(checkID, "", api.HealthPassing); err != nil {
-		log.Warnf(ctx, starterTag, "consul initial TTL pass for check=%s failed: %v", checkID, err)
+		log.Warn(ctx, starterTag, append(
+			discovery.RegisterFailedFields(obsSystem, reg.ServiceName, discovery.ReasonInitial, err),
+			log.Msgf("consul initial TTL pass for check=%s failed (the heartbeat below retries it)", checkID),
+		)...)
 	}
 
 	stop := make(chan struct{})
@@ -139,7 +146,7 @@ func (r *consulRegistrar) Register(ctx context.Context, reg discovery.Instance) 
 	r.regs[id] = reg
 	r.mu.Unlock()
 
-	go r.heartbeat(id, stop)
+	go r.heartbeat(id, reg.ServiceName, stop)
 	return nil
 }
 
@@ -156,10 +163,9 @@ func (r *consulRegistrar) reRegister(id string) error {
 	if !ok {
 		return nil
 	}
-	report := discovery.RegisterAttempt(context.Background(), obsSystem, reg.ServiceName, discovery.ReasonSelfHeal)
-	err := r.upsert(reg)
-	report(err)
-	return err
+	return discovery.RegisterAttempt(context.Background(), obsSystem, reg.ServiceName, discovery.ReasonSelfHeal, func(context.Context) error {
+		return r.upsert(reg)
+	})
 }
 
 // upsert writes reg's full service-and-check registration, weight included. It
@@ -214,10 +220,9 @@ func (r *consulRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instan
 		return errutil.Explain(nil, "registry-consul: update weight for unregistered instance %q", id)
 	}
 	last.Weight = normalizeWeight(weight)
-	report := discovery.WeightChange(ctx, obsSystem, last.ServiceName)
-	err := r.upsert(last)
-	report(err)
-	if err != nil {
+	if err := discovery.WeightChange(ctx, obsSystem, last.ServiceName, func(context.Context) error {
+		return r.upsert(last)
+	}); err != nil {
 		return errutil.Explain(err, "registry-consul: update weight %q", last.ServiceName)
 	}
 	r.mu.Lock()
@@ -232,7 +237,10 @@ func (r *consulRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instan
 // service is re-registered — an idempotent upsert — because if the outage
 // outlasted DeregisterCriticalServiceAfter (or the agent restarted), the
 // check no longer exists and only a re-register brings the instance back.
-func (r *consulRegistrar) heartbeat(id string, stop <-chan struct{}) {
+// service is carried only to identify the log lines: the heartbeat's failures
+// are the per-instance signal an operator alerts on, and the service name is
+// what joins them to the registration metrics for the same instance.
+func (r *consulRegistrar) heartbeat(id, service string, stop <-chan struct{}) {
 	checkID := "service:" + id
 	interval := r.ttl / 2
 	if interval <= 0 {
@@ -254,18 +262,24 @@ func (r *consulRegistrar) heartbeat(id string, stop <-chan struct{}) {
 			}
 			failures++
 			if failures >= persistAfter {
-				log.Errorf(context.Background(), starterTag,
-					"consul TTL heartbeat for check=%s failed %d times in a row; re-registering the service to recover: %v",
-					checkID, failures, err)
+				log.Error(context.Background(), starterTag, append(
+					discovery.RegisterFields(obsSystem, service, discovery.ReasonSelfHeal),
+					log.Msgf("consul TTL heartbeat for check=%s failed %d times in a row; re-registering the service to recover", checkID, failures),
+					log.Any("error", err),
+				)...)
 				// Re-register (upsert) instead of only logging: recreates the
 				// service and check if Consul already dropped them.
 				if rerr := r.reRegister(id); rerr != nil {
-					log.Errorf(context.Background(), starterTag,
-						"consul re-register for service=%s failed: %v", id, rerr)
+					log.Error(context.Background(), starterTag, append(
+						discovery.RegisterFailedFields(obsSystem, service, discovery.ReasonSelfHeal, rerr),
+						log.Msgf("consul re-register for service=%s failed", id),
+					)...)
 				}
 			} else {
-				log.Warnf(context.Background(), starterTag,
-					"consul TTL heartbeat for check=%s failed (%d/%d): %v", checkID, failures, persistAfter, err)
+				log.Warn(context.Background(), starterTag, append(
+					discovery.RegisterFailedFields(obsSystem, service, discovery.ReasonSelfHeal, err),
+					log.Msgf("consul TTL heartbeat for check=%s failed (%d/%d)", checkID, failures, persistAfter),
+				)...)
 			}
 		}
 	}
@@ -285,14 +299,14 @@ func (r *consulRegistrar) Deregister(ctx context.Context, reg discovery.Instance
 	}
 	delete(r.regs, id)
 	r.mu.Unlock()
-	report := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName)
-	err := r.client.Agent().ServiceDeregister(id)
-	var statusErr api.StatusError
-	if errors.As(err, &statusErr) && statusErr.Code == http.StatusNotFound {
-		err = nil // already gone: the desired end state holds
-	}
-	report(err)
-	if err != nil {
+	if err := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+		err := r.client.Agent().ServiceDeregister(id)
+		var statusErr api.StatusError
+		if errors.As(err, &statusErr) && statusErr.Code == http.StatusNotFound {
+			err = nil // already gone: the desired end state holds
+		}
+		return err
+	}); err != nil {
 		return errutil.Explain(err, "registry-consul: deregister %q", reg.ServiceName)
 	}
 	return nil

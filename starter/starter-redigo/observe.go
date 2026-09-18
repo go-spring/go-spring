@@ -46,16 +46,32 @@ var (
 // so instrumenting it is pure noise.
 var skipOps = map[string]struct{}{"PING": {}}
 
-// newDuration builds the db.client.operation.duration histogram from
-// whatever meter provider is current — created per pool at construction,
-// not at package init, so an SDK installed after this package's init still
-// receives the records.
-func newDuration() metric.Float64Histogram {
-	h, _ := otel.Meter("go-spring.org/starter-redigo").Float64Histogram("db.client.operation.duration",
+// redisSystem is the value the family's db.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
+const redisSystem = "redis"
+
+// newInstruments builds the db.* instruments from whatever meter provider is
+// current — created per pool at construction, not at package init, so an SDK
+// installed after this package's init still receives the records.
+func newInstruments() (metric.Float64Histogram, metric.Int64UpDownCounter) {
+	m := otel.Meter("go-spring.org/starter-redigo")
+	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of redis client operations"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	return h
+	active, _ := m.Int64UpDownCounter("db.client.active_requests",
+		metric.WithDescription("Number of in-flight redis client operations"),
+		metric.WithUnit("{request}"))
+	return duration, active
+}
+
+// statusOf names the outcome the way the family's metric label and log field
+// expect — the same two words the other DB backends use.
+func statusOf(err error) string {
+	if err != nil {
+		return "error"
+	}
+	return "ok"
 }
 
 // observeInterceptor is the observe layer of the command chain: it starts a
@@ -66,7 +82,7 @@ func newDuration() metric.Float64Histogram {
 // paths. The span sits OUTSIDE the resilience layer, so one Execute (with any
 // retries the policy drives) is covered by a single span. Skipped ops pass
 // through untouched.
-func observeInterceptor(duration metric.Float64Histogram) CommandInterceptor {
+func observeInterceptor(duration metric.Float64Histogram, active metric.Int64UpDownCounter) CommandInterceptor {
 	return func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (reply interface{}, err error) {
 			if _, skip := skipOps[strings.ToUpper(cmd)]; skip {
@@ -74,10 +90,15 @@ func observeInterceptor(duration metric.Float64Histogram) CommandInterceptor {
 			}
 			start := time.Now()
 			statement := summarizeCommand(cmd, args)
+			inflight := metric.WithAttributes(
+				attribute.String("db.system", redisSystem),
+				attribute.String("db.operation", strings.ToLower(cmd)),
+			)
+			active.Add(ctx, 1, inflight)
 			ctx, span := cmdTracer.Start(ctx, cmd,
 				trace.WithSpanKind(trace.SpanKindClient),
 				trace.WithAttributes(
-					attribute.String("db.system", "redis"),
+					attribute.String("db.system", redisSystem),
 					attribute.String("db.operation", strings.ToLower(cmd)),
 					attribute.String("db.statement", statement),
 				))
@@ -86,7 +107,7 @@ func observeInterceptor(duration metric.Float64Histogram) CommandInterceptor {
 				span.SetStatus(codes.Error, err.Error())
 			}
 			span.End()
-			record(ctx, duration, cmd, statement, args, start, err)
+			record(ctx, duration, active, inflight, cmd, statement, len(args) > 0, start, err)
 			return reply, err
 		}
 	}
@@ -96,21 +117,23 @@ func observeInterceptor(duration metric.Float64Histogram) CommandInterceptor {
 // command. The log level carries the outcome: an error at Warn, a success
 // that names its key at Debug (lazy — the common case is uninteresting), and
 // a keyless success (ECHO, FLUSHALL, SELECT, ...) at Info.
-func record(ctx context.Context, duration metric.Float64Histogram, cmd, statement string, args []interface{}, start time.Time, err error) {
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
+func record(ctx context.Context, duration metric.Float64Histogram, active metric.Int64UpDownCounter, inflight metric.MeasurementOption, cmd, statement string, hasArgs bool, start time.Time, err error) {
+	status := statusOf(err)
 	dur := float64(time.Since(start).Nanoseconds()) / 1e6
 	duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+		attribute.String("db.system", redisSystem),
 		attribute.String("db.operation", strings.ToLower(cmd)),
 		attribute.String("status", status),
 	))
+	active.Add(ctx, -1, inflight)
 
+	// Log keys are the metric labels' names, so a dashboard selecting failed
+	// commands lands on the lines that explain them.
 	common := func() []log.Field {
 		return []log.Field{
-			log.String("operation", cmd),
-			log.String("statement", statement),
+			log.String("db.operation", strings.ToLower(cmd)),
+			log.String("status", status),
+			log.String("db.statement", statement),
 			log.Float("duration_ms", dur),
 		}
 	}
@@ -118,7 +141,7 @@ func record(ctx context.Context, duration metric.Float64Histogram, cmd, statemen
 	case err != nil:
 		fields := append(common(), log.Any("error", err))
 		log.Warn(ctx, accessTag, fields...)
-	case len(args) > 0:
+	case hasArgs:
 		log.Debug(ctx, accessTag, common)
 	default:
 		log.Info(ctx, accessTag, common()...)

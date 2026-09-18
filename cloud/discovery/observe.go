@@ -18,10 +18,12 @@ package discovery
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"sync"
 	"time"
 
+	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -155,6 +157,63 @@ func instruments() {
 	})
 }
 
+// SyncFields returns the identity fields a per-sync log line has to carry to be
+// joinable, BY FIELD, to the discovery metrics and spans for the same service:
+// the keys are the metric attribute names, so a dashboard can select the failed
+// syncs and land on the lines that explain them.
+//
+// It lives here rather than in each backend for the same reason one status
+// value drives both the metric and the log in cloud/lock: keys spelled out at
+// every call site drift, and a drifted key is a silent one — the log still
+// looks right and simply never joins anything.
+//
+// The caller adds its own message and its own detail (the key, the action
+// taken); this covers only what identifies the operation.
+func SyncFields(system, service string) []log.Field {
+	return []log.Field{
+		log.String("system", system),
+		log.String("service", service),
+		log.String("operation", "sync"),
+	}
+}
+
+// SyncFailedFields returns the fields a FAILED per-sync log line carries:
+// [SyncFields]' identity, the outcome, and the error itself. The status comes
+// from the same [statusOf] the metric uses, so the log can never report an
+// outcome the counter disagrees with.
+//
+// The caller still calls log.Warn/Error itself and supplies its own message —
+// that keeps the line's caller attribution, which a wrapper would collapse onto
+// the wrapper's own file and line.
+func SyncFailedFields(system, service string, err error) []log.Field {
+	return append(SyncFields(system, service),
+		log.String("status", statusOf(err)),
+		log.Any("error", err),
+	)
+}
+
+// RegisterFields returns the identity fields a per-registration log line has to
+// carry — the keys RegisterAttempt puts on the span and the counter for the same
+// operation, so the line joins them (see [SyncFields] for why the keys live
+// here). reason separates the initial publish from a self-healing re-publish,
+// which is the distinction an operator alerts on.
+func RegisterFields(system, service, reason string) []log.Field {
+	return []log.Field{
+		log.String("system", system),
+		log.String("service", service),
+		log.String("operation", opRegister),
+		log.String("reason", reason),
+	}
+}
+
+// RegisterFailedFields adds the outcome and the error to [RegisterFields].
+func RegisterFailedFields(system, service, reason string, err error) []log.Field {
+	return append(RegisterFields(system, service, reason),
+		log.String("status", statusOf(err)),
+		log.Any("error", err),
+	)
+}
+
 // statusOf names an outcome the way the metric attributes expect.
 func statusOf(err error) string {
 	if err != nil {
@@ -196,8 +255,15 @@ func endOp(ctx context.Context, span trace.Span, system, op, service string, sta
 	))
 }
 
-// RegisterAttempt reports one registration attempt against a registry center
-// and returns the finisher to call with its outcome.
+// RegisterAttempt runs and reports one registration attempt against a registry
+// center: fn executes the attempt, and its error becomes the attempt's outcome.
+// It returns fn's error unchanged so the caller keeps its normal error flow.
+//
+// fn receives the context carrying the attempt's span: the span is created
+// here, so a backend that logs with its own context emits lines that join
+// nothing — a span and a log for the same event, unconnected. Taking fn's
+// context as a parameter (rather than returning it alongside a finisher) makes
+// threading it into the attempt the path of least resistance.
 //
 // A backend reports at the seam BOTH its first publish and its background
 // re-registration funnel through, so a self-healing re-publish is covered too.
@@ -207,10 +273,12 @@ func endOp(ctx context.Context, span trace.Span, system, op, service string, sta
 //
 // The gauge follows the outcome either way: a failed attempt means the instance
 // is not published (any more), which is exactly the state worth alerting on.
-func RegisterAttempt(ctx context.Context, system, service, reason string) func(error) {
+// A panic inside fn is reported as a failed attempt before propagating, so an
+// aborted attempt never leaves the span and gauge dangling.
+func RegisterAttempt(ctx context.Context, system, service, reason string, fn func(ctx context.Context) error) error {
 	start := obsNow()
 	ctx, span := startOp(ctx, system, opRegister, service, reason)
-	return func(err error) {
+	return finishAttempt(ctx, func(err error) {
 		endOp(ctx, span, system, opRegister, service, start, err)
 		regAttempts.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("system", system),
@@ -219,33 +287,50 @@ func RegisterAttempt(ctx context.Context, system, service, reason string) func(e
 			attribute.String("status", statusOf(err)),
 		))
 		setPublished(system, service, err == nil)
-	}
+	}, fn)
 }
 
-// DeregisterAttempt reports one deregistration attempt and returns the finisher
-// to call with its outcome. Unlike registration, a FAILED deregister leaves the
-// published state untouched — the instance may well still be discoverable, and
-// reporting it as gone would hide a leak.
-func DeregisterAttempt(ctx context.Context, system, service string) func(error) {
+// DeregisterAttempt runs and reports one deregistration attempt (see
+// [RegisterAttempt] for the fn/context contract). Unlike registration, a FAILED
+// deregister leaves the published state untouched — the instance may well still
+// be discoverable, and reporting it as gone would hide a leak.
+func DeregisterAttempt(ctx context.Context, system, service string, fn func(ctx context.Context) error) error {
 	start := obsNow()
 	ctx, span := startOp(ctx, system, opDeregister, service, "")
-	return func(err error) {
+	return finishAttempt(ctx, func(err error) {
 		endOp(ctx, span, system, opDeregister, service, start, err)
 		if err == nil {
 			setPublished(system, service, false)
 		}
-	}
+	}, fn)
 }
 
-// WeightChange reports one weight re-advertisement — the operation that keeps
-// an instance discoverable while it drains, and the one path the registry core
-// does not log. It carries no reason: a weight change is never a re-register.
-func WeightChange(ctx context.Context, system, service string) func(error) {
+// WeightChange runs and reports one weight re-advertisement — the operation
+// that keeps an instance discoverable while it drains, and the one path the
+// registry core does not log (see [RegisterAttempt] for the fn/context
+// contract). It carries no reason: a weight change is never a re-register.
+func WeightChange(ctx context.Context, system, service string, fn func(ctx context.Context) error) error {
 	start := obsNow()
 	ctx, span := startOp(ctx, system, opUpdateWeight, service, "")
-	return func(err error) {
+	return finishAttempt(ctx, func(err error) {
 		endOp(ctx, span, system, opUpdateWeight, service, start, err)
-	}
+	}, fn)
+}
+
+// finishAttempt runs fn, reports the outcome through end, and returns fn's
+// error unchanged. A panic inside fn is reported as a failed attempt before it
+// propagates, so an aborted attempt never leaves the span and metrics dangling.
+func finishAttempt(ctx context.Context, end func(err error), fn func(ctx context.Context) error) error {
+	var err error
+	defer func() {
+		if p := recover(); p != nil {
+			end(fmt.Errorf("panic: %v", p))
+			panic(p)
+		}
+		end(err)
+	}()
+	err = fn(ctx)
+	return err
 }
 
 // Synced reports the outcome of one background endpoint-cache sync for service.

@@ -125,11 +125,33 @@ func (o *Client) ManagedWriteAPI() api.WriteAPI {
 				if err == nil {
 					continue
 				}
-				log.Errorf(context.Background(), starterTag, "influxdb: async write failed: %v", err)
+				// A flushed batch has no request context and no span — the
+				// client's own goroutine flushes it — so the operation is named
+				// explicitly to keep this line joinable to the db.client.*
+				// records the synchronous path writes for the same endpoint.
+				log.Error(context.Background(), accessTag, append(asyncWriteFields(),
+					log.Any("error", err),
+					log.Msg("influxdb: async write failed"))...)
 			}
 		}()
 	})
 	return w
+}
+
+// asyncWriteOp is the operation label the transport records for the same
+// endpoint (method + path, see obsTransport), so an async failure and a
+// synchronous one for the same write name the same operation.
+const asyncWriteOp = "POST /api/v2/write"
+
+// asyncWriteFields returns the fields an async write failure carries: the same
+// db.operation/status keys the access log uses, so the line joins the
+// db.client.operation.duration records for that operation instead of only
+// describing the failure in prose.
+func asyncWriteFields() []log.Field {
+	return []log.Field{
+		log.String("db.operation", asyncWriteOp),
+		log.String("status", "error"),
+	}
 }
 
 // Org returns the configured default organization (for callers that need to

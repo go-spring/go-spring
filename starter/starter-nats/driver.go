@@ -53,11 +53,18 @@ type DefaultDriver struct{}
 
 // CreateClient dials NATS from the provided configuration. It owns the raw
 // connection assembly — the name/reconnect/timeout options, the async
-// error/disconnect/reconnect/close logging handlers, the user/token/creds/nkey
-// auth and TLS — but not the observe observers, the JetStream context, the
-// resilience wiring or the *Conn wrapper, which are the starter's lifecycle
-// concerns (see newConn below).
+// error/disconnect/reconnect/close handlers (which both log and count, see
+// connStateCounter), the user/token/creds/nkey auth and TLS — but not the
+// observe observers, the JetStream context, the resilience wiring or the *Conn
+// wrapper, which are the starter's lifecycle concerns (see newConn below).
+//
+// A custom Driver that omits the handlers therefore reports no connection-layer
+// events at all, rather than losing them to a starter-side override: nats.Conn's
+// Set*Handler methods replace a slot, so the two cannot be layered.
 func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, error) {
+	// Connection-layer events are counted as well as logged, from this one
+	// place (see connStateCounter for why the pair cannot be split).
+	connState := newConnStateCounter()
 	opts := []nats.Option{
 		nats.Name(c.Name),
 		nats.MaxReconnects(c.MaxReconnects),
@@ -71,13 +78,18 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, er
 			log.Errorf(ctx, log.TagAppDef, "nats async error on %q: %v", subj, err)
 		}),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
-			log.Warnf(ctx, log.TagAppDef, "nats disconnected: %v", err)
+			log.Warn(ctx, log.TagAppDef, append(connState.record(ctx, connDisconnected),
+				log.Any("error", err),
+				log.Msg("nats disconnected"))...)
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
-			log.Infof(ctx, log.TagAppDef, "nats reconnected to %q", nc.ConnectedUrl())
+			log.Info(ctx, log.TagAppDef, append(connState.record(ctx, connReconnected),
+				log.String("url", nc.ConnectedUrl()),
+				log.Msg("nats reconnected"))...)
 		}),
 		nats.ClosedHandler(func(_ *nats.Conn) {
-			log.Infof(ctx, log.TagAppDef, "nats connection closed")
+			log.Info(ctx, log.TagAppDef, append(connState.record(ctx, connClosed),
+				log.Msg("nats connection closed"))...)
 		}),
 	}
 	if c.Username != "" {

@@ -26,14 +26,32 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// NewResource builds a schemaless resource carrying just service.name. Being
-// schemaless avoids coupling the whole starter to a single semconv version
-// (the same choice made in contrib/go-kratos/provider/observability.go), while
-// still giving backends a stable service dimension to group traces/metrics by.
+// NewResource builds the process-level resource every span and metric carries:
+// the OTel default resource -- the telemetry.sdk.* attributes and whatever
+// OTEL_RESOURCE_ATTRIBUTES declares -- overlaid with service.name. This is how
+// a process attaches its own dimensions (deployment environment, cluster,
+// tenant, version) without go-spring defining an API for it: the mechanism is
+// OTel's, so no per-component adaptation is needed.
+//
+// OTEL_SERVICE_NAME, when set, wins over serviceName: the environment variable
+// is the operator-level override, which is also OTel's own precedence (its
+// fromEnv detector runs after the fallback name). Without it the configured
+// name is used.
+//
+// The default resource is merged FIRST so go-spring's own attribute wins: the
+// default always carries a service.name of its own -- OTel's
+// "unknown_service:<binary>" fallback -- so merging it last would clobber the
+// configured name on every process that does not set OTEL_SERVICE_NAME. The
+// explicit environment read above is the other half of the rule: it is what
+// lets OTEL_SERVICE_NAME win over the configured name rather than the reverse.
 func NewResource(serviceName string) (*resource.Resource, error) {
-	return resource.NewSchemaless(
+	env := resource.Environment().Set()
+	if v, ok := env.Value(attribute.Key("service.name")); ok && v.AsString() != "" {
+		serviceName = v.AsString()
+	}
+	return resource.Merge(resource.Default(), resource.NewSchemaless(
 		attribute.String("service.name", serviceName),
-	), nil
+	))
 }
 
 // NewTracerProvider builds a batching TracerProvider for the configured
@@ -58,6 +76,16 @@ func NewTracerProvider(cfg TraceConfig, res *resource.Resource) (*sdktrace.Trace
 
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
+		// Applies the attributes a context carries (see
+		// observability.WithContextAttributes) to every span in the process,
+		// including the ones instrumentation starts inside the framework.
+		// Registered alongside the batcher: the SDK keeps a list of processors,
+		// and this one holds no resources.
+		sdktrace.WithSpanProcessor(ContextAttributesProcessor()),
+		// Tags every span of a load-test request, so synthetic traffic is
+		// separable from production traffic in traces and metrics. Reads the
+		// traffic contract; the marker package itself stays passive.
+		sdktrace.WithSpanProcessor(LoadTestProcessor()),
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(NewSampler(cfg.SamplerRatio)),
 	), nil

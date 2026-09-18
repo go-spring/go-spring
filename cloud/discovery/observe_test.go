@@ -182,13 +182,28 @@ func TestObserveReporting(t *testing.T) {
 // testRegistryLifecycle asserts each registration outcome's span, duration,
 // counter and the registered gauge — including the self-heal path, which never
 // passes through the Registrar interface.
+// reportRegister / reportDeregister / reportWeight run one reported operation
+// to completion with the given outcome: these tests assert on the instruments,
+// and the span-context correlation is covered by the backends' own tests.
+func reportRegister(ctx context.Context, sys, svc, reason string, err error) {
+	_ = RegisterAttempt(ctx, sys, svc, reason, func(context.Context) error { return err })
+}
+
+func reportDeregister(ctx context.Context, sys, svc string, err error) {
+	_ = DeregisterAttempt(ctx, sys, svc, func(context.Context) error { return err })
+}
+
+func reportWeight(ctx context.Context, sys, svc string, err error) {
+	_ = WeightChange(ctx, sys, svc, func(context.Context) error { return err })
+}
+
 func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
 	ctx := context.Background()
 	fail := errutil.Explain(nil, "center unreachable")
 	const sys, svc = "etcd", "orders"
 
 	// --- initial registration succeeds: span, duration, counter, gauge=1 ---
-	RegisterAttempt(ctx, sys, svc, ReasonInitial)(nil)
+	reportRegister(ctx, sys, svc, ReasonInitial, nil)
 
 	spans := spanExp.GetSpans()
 	require.NotEmpty(t, spans)
@@ -218,7 +233,7 @@ func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rd
 	}
 
 	// --- a failed self-heal declares the instance unpublishable ---
-	RegisterAttempt(ctx, sys, svc, ReasonSelfHeal)(fail)
+	reportRegister(ctx, sys, svc, ReasonSelfHeal, fail)
 	if v, ok := findSum(t, rdr, "registry.registration.attempts_total", map[string]string{
 		"system": sys, "service": svc, "reason": ReasonSelfHeal, "status": "failed",
 	}); assert.True(t, ok, "self-heal failure counter missing") {
@@ -231,7 +246,7 @@ func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rd
 	}
 
 	// --- the center recovers: the next self-heal succeeds and the gauge clears ---
-	RegisterAttempt(ctx, sys, svc, ReasonSelfHeal)(nil)
+	reportRegister(ctx, sys, svc, ReasonSelfHeal, nil)
 	if v, _ := findIntGauge(t, rdr, "registry.instance.registered", map[string]string{
 		"system": sys, "service": svc,
 	}); assert.Equal(t, int64(1), v) {
@@ -246,14 +261,14 @@ func testRegistryFailureSemantics(t *testing.T, rdr sdkmetric.Reader) {
 	const sys, svc = "consul", "orders"
 	want := map[string]string{"system": sys, "service": svc}
 
-	RegisterAttempt(ctx, sys, svc, ReasonInitial)(nil)
+	reportRegister(ctx, sys, svc, ReasonInitial, nil)
 	require.Equal(t, int64(1), mustGauge(t, rdr, want))
 
-	DeregisterAttempt(ctx, sys, svc)(errutil.Explain(nil, "revoke failed"))
+	reportDeregister(ctx, sys, svc, errutil.Explain(nil, "revoke failed"))
 	assert.Equal(t, int64(1), mustGauge(t, rdr, want),
 		"a failed deregister must not claim the instance is gone")
 
-	DeregisterAttempt(ctx, sys, svc)(nil)
+	reportDeregister(ctx, sys, svc, nil)
 	assert.Equal(t, int64(0), mustGauge(t, rdr, want))
 }
 
@@ -272,7 +287,7 @@ func testWeightChangeObserved(t *testing.T, spanExp *tracetest.InMemoryExporter,
 	ctx := context.Background()
 	const sys, svc = "nacos", "orders"
 
-	WeightChange(ctx, sys, svc)(nil)
+	reportWeight(ctx, sys, svc, nil)
 
 	spans := spanExp.GetSpans()
 	require.NotEmpty(t, spans)

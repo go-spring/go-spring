@@ -162,7 +162,10 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 				return
 			}
 			discovery.Synced(obsSystem, name, err)
-			log.Warnf(context.Background(), starterTag, "registry-consul: watch %q failed (keeping stale snapshot): %v", name, err)
+			log.Warn(context.Background(), starterTag, append(
+				discovery.SyncFailedFields(obsSystem, name, err),
+				log.Msg("registry-consul: watch failed (keeping stale snapshot)"),
+			)...)
 			select {
 			case <-d.bgCtx.Done():
 				return
@@ -173,6 +176,13 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 		// A smaller index than we hold means the agent restarted (its index
 		// counter reset); drop ours so the next query is answered immediately.
 		if meta.LastIndex < idx {
+			// The agent restarted and its index counter reset; dropping ours makes
+			// the next query answer immediately instead of blocking. Worth a line:
+			// the snapshot about to be served is only as fresh as the restart.
+			log.Info(context.Background(), starterTag, append(
+				discovery.SyncFields(obsSystem, name),
+				log.Msgf("registry-consul: watch saw the index go backwards (%d -> %d); treating it as an agent restart", idx, meta.LastIndex),
+			)...)
 			idx = 0
 			continue
 		}

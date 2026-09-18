@@ -92,29 +92,39 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*amqp.
 		log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq: close probe channel failed url=%s: %v", c.URL, err)
 	}
 
-	// Bridge connection-level events into go-spring's log. NotifyClose fires
-	// once when the connection tears down (server-initiated or network drop);
-	// NotifyBlocked fires whenever the broker throttles the publisher due to
-	// resource alarms. Both channels are closed by amqp091 on connection
-	// shutdown, so the goroutines exit naturally without leaking.
+	// Bridge connection-level events into go-spring's log AND the connection
+	// metric. NotifyClose fires once when the connection tears down
+	// (server-initiated or network drop); NotifyBlocked fires whenever the
+	// broker throttles the publisher due to resource alarms. Both channels are
+	// closed by amqp091 on connection shutdown, so the goroutines exit
+	// naturally without leaking.
+	connState := newConnStateCounter()
 	closeCh := conn.NotifyClose(make(chan *amqp.Error, 1))
 	blockCh := conn.NotifyBlocked(make(chan amqp.Blocking, 1))
 	go func() {
 		for e := range closeCh {
 			if e == nil {
-				log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection closed: %s", c.URL)
+				log.Info(ctx.Context, log.TagAppDef, append(connState.record(ctx.Context, connClosed),
+					log.Msgf("rabbitmq connection closed: %s", c.URL))...)
 				continue
 			}
-			log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq connection closed: code=%d reason=%q server=%t recover=%t",
-				e.Code, e.Reason, e.Server, e.Recover)
+			log.Warn(ctx.Context, log.TagAppDef, append(connState.record(ctx.Context, connClosed),
+				log.Int("code", e.Code),
+				log.String("reason", e.Reason),
+				log.Bool("server", e.Server),
+				log.Bool("recover", e.Recover),
+				log.Msg("rabbitmq connection closed"))...)
 		}
 	}()
 	go func() {
 		for b := range blockCh {
 			if b.Active {
-				log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq connection blocked: %s", b.Reason)
+				log.Warn(ctx.Context, log.TagAppDef, append(connState.record(ctx.Context, connBlocked),
+					log.String("reason", b.Reason),
+					log.Msg("rabbitmq connection blocked"))...)
 			} else {
-				log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection unblocked")
+				log.Info(ctx.Context, log.TagAppDef, append(connState.record(ctx.Context, connUnblocked),
+					log.Msg("rabbitmq connection unblocked"))...)
 			}
 		}
 	}()

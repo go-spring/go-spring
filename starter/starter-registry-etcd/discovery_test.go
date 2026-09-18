@@ -89,8 +89,8 @@ func TestEndpointsKey(t *testing.T) {
 var _ discovery.Discovery = (*etcdDiscovery)(nil)
 
 // TestEtcdDiscoveryNoClientPanics guards the zero-value degenerate case: the
-// adapter is only constructible via newEtcdDiscovery, which always sets the
-// client; nothing in the type relies on lazy initialization.
+// backend always sets client, and nothing in the type relies on lazy
+// initialization, so the pure helpers stay usable on a zero value.
 func TestEtcdDiscoveryNoClientPanics(t *testing.T) {
 	d := &etcdDiscovery{keyPrefix: "/services/"}
 	assert.That(t, d.servicePrefix("x")).Equal("/services/x/")

@@ -38,7 +38,7 @@ var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5,
 var resilienceTag = log.RegisterAppTag("resilience", "")
 
 // WrapExecutor returns an [Executor] that wraps inner with an internal span
-// (system/resource/outcome attributes), the resilience metrics, and an
+// (system/resource/status attributes), the resilience metrics, and an
 // access log per call. Pass the system label (e.g. "redis", "gorm", "grpc")
 // so calls from several protected clients are distinguishable. A nil inner
 // returns nil — no wrapper, so an unarmed client stays untouched.
@@ -65,10 +65,10 @@ func WrapExecutor(inner Executor, system string) Executor {
 		metric.WithDescription("Duration of resilience-protected calls"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	// calls counts protected calls with the outcome classified as one of:
+	// calls counts protected calls with the status classified as one of:
 	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
 	calls, _ := meter.Int64Counter("resilience.calls",
-		metric.WithDescription("Number of resilience-protected calls by outcome"),
+		metric.WithDescription("Number of resilience-protected calls by status"),
 		metric.WithUnit("{call}"))
 	// breakerChanges counts circuit-breaker state transitions (from/to attrs).
 	breakerChanges, _ := meter.Int64Counter("resilience.breaker.state_change",
@@ -128,7 +128,7 @@ func (w *wrappedExecutor) OnBreakerStateChange(resource string, from, to Breaker
 }
 
 // Execute wraps the inner call in an internal span, records the duration
-// histogram and the outcome-classified call counter, and writes the access
+// histogram and the status-classified call counter, and writes the access
 // log: a rejection or error at Warn, a success at Debug (protected calls are
 // frequent; the success record is there for troubleshooting, not everyday
 // reading).
@@ -141,8 +141,8 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 			attribute.String("resilience.resource", resource),
 		))
 	err := w.inner.Execute(ctx, resource, fn)
-	outcome := classifyOutcome(err)
-	span.SetAttributes(attribute.String("outcome", outcome))
+	status := classifyStatus(err)
+	span.SetAttributes(attribute.String("status", status))
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -151,12 +151,12 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 	w.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("resource", resource),
-		attribute.String("outcome", outcome),
+		attribute.String("status", status),
 	))
 	w.calls.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("resource", resource),
-		attribute.String("outcome", outcome),
+		attribute.String("status", status),
 	))
 
 	if err != nil {
@@ -164,7 +164,7 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 			log.String("system", w.system),
 			log.String("resource", resource),
 			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
-			log.String("outcome", outcome),
+			log.String("status", status),
 			log.Any("error", err))
 		return err
 	}
@@ -173,7 +173,7 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 			log.String("system", w.system),
 			log.String("resource", resource),
 			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
-			log.String("outcome", outcome),
+			log.String("status", status),
 		}
 	})
 	return nil
@@ -187,11 +187,12 @@ func (w *wrappedExecutor) Refresh(p Policy) error {
 	return w.inner.Refresh(p)
 }
 
-// classifyOutcome maps an Executor's return error to a coarse outcome dimension.
+// classifyStatus maps an Executor's return error to the coarse status dimension
+// go-spring uses everywhere else for "how did this end".
 // The resilience sentinels (rate-limited / circuit-open / bulkhead-full) are
 // distinguished from caller timeouts and ordinary errors so a dashboard can
 // separate "rejected by protection" from "downstream failed".
-func classifyOutcome(err error) string {
+func classifyStatus(err error) string {
 	switch {
 	case err == nil:
 		return "success"

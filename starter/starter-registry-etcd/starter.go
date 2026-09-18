@@ -87,6 +87,18 @@ type etcdBackend struct {
 	reg  *etcdRegistrar
 	disc *etcdDiscovery
 
+	// bgCancel ends the discovery half's background watches. It is the signal
+	// that separates "the backend is closing" from "a watch failed": the watch
+	// loop re-arms on failure, so without a lifetime signal of its own it would
+	// keep re-arming against a closed client for as long as the process lived.
+	bgCancel context.CancelFunc
+
+	// cli is the concrete client this block owns. The data-plane halves hold
+	// only the narrow seams (client.go); the control-plane calls that have no
+	// behaviour worth faking — the health probe's Status and the bean
+	// destructor's Close — stay here, on the real client.
+	cli *clientv3.Client
+
 	// endpoints is the block's dial list; kept for the health probe, which
 	// targets the first endpoint.
 	endpoints []string
@@ -120,14 +132,18 @@ func newEtcdBackend(c EtcdConfig) (*etcdBackend, error) {
 		_ = cli.Close()
 		return nil, errutil.Explain(err, "registry-etcd: startup probe failed for %s", c.Endpoints[0])
 	}
-	reg, err := newEtcdRegistrar(c, cli)
+	kv := etcdClient{cli}
+	reg, err := newEtcdRegistrar(c, kv)
 	if err != nil {
 		_ = cli.Close()
 		return nil, err
 	}
+	bgCtx, bgCancel := context.WithCancel(context.Background())
 	return &etcdBackend{
 		reg:       reg,
-		disc:      &etcdDiscovery{client: cli, keyPrefix: c.KeyPrefix, bgCtx: context.Background(), entries: map[string]*serviceEntry{}},
+		disc:      &etcdDiscovery{client: kv, keyPrefix: c.KeyPrefix, bgCtx: bgCtx, entries: map[string]*serviceEntry{}},
+		bgCancel:  bgCancel,
+		cli:       cli,
 		endpoints: c.Endpoints,
 	}, nil
 }
@@ -136,7 +152,7 @@ func newEtcdBackend(c EtcdConfig) (*etcdBackend, error) {
 // Status call against the first endpoint, the same check the startup probe
 // runs, repeated on demand.
 func (b *etcdBackend) probe(ctx context.Context) error {
-	if _, err := b.reg.client.Status(ctx, b.endpoints[0]); err != nil {
+	if _, err := b.cli.Status(ctx, b.endpoints[0]); err != nil {
 		return errutil.Explain(err, "registry-etcd: probe %s", b.endpoints[0])
 	}
 	return nil
@@ -144,13 +160,16 @@ func (b *etcdBackend) probe(ctx context.Context) error {
 
 // Close releases the block's client. It is the bean destructor.
 func (b *etcdBackend) Close() error {
-	if b == nil || b.reg == nil {
+	if b == nil || b.cli == nil {
 		return nil
 	}
+	// Retire the watch loops before the client they read through goes away, so
+	// they exit on their lifetime signal rather than reading a closed client.
+	b.bgCancel()
 	// Explain(nil, ...) BUILDS an error rather than passing one through, so it
 	// must only be reached with a real cause: wrapping unconditionally here
 	// reported a failure on every clean shutdown.
-	if err := b.reg.client.Close(); err != nil {
+	if err := b.cli.Close(); err != nil {
 		return errutil.Explain(err, "registry-etcd: close backend client")
 	}
 	return nil

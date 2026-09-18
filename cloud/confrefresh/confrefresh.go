@@ -41,12 +41,14 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// Outcome attribute values. The outcomes are exclusive, so
-// config.refresh.total summed over outcome is the number of refreshes
+// Status attribute values. The statuses are exclusive, so
+// config.refresh.total summed over status is the number of refreshes
 // triggered — there is no separate counter that could double-count.
+// "status" is the name this axis carries everywhere in go-spring (the db /
+// messaging / http families, discovery and lock); it was "outcome" here.
 const (
-	outcomeOK    = "ok"
-	outcomeError = "error"
+	statusOK    = "ok"
+	statusError = "error"
 )
 
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
@@ -68,7 +70,7 @@ var (
 func newInstruments() instruments {
 	m := otel.Meter("go-spring.org/cloud/confrefresh")
 	total, _ := m.Int64Counter("config.refresh.total",
-		metric.WithDescription("Property refreshes triggered, by outcome"),
+		metric.WithDescription("Property refreshes triggered, by status"),
 		metric.WithUnit("{refresh}"))
 	duration, _ := m.Float64Histogram("config.refresh.duration",
 		metric.WithDescription("Duration of a triggered property refresh"),
@@ -80,7 +82,7 @@ func newInstruments() instruments {
 	return instruments{total: total, duration: duration, lastSuccess: lastSuccess}
 }
 
-// Run executes fn once and records the outcome: one exclusive outcome on
+// Run executes fn once and records the status: one exclusive value on
 // config.refresh.total, the elapsed time on config.refresh.duration, and the
 // wall-clock time on config.refresh.last_success when fn succeeded. fn's error
 // is returned unchanged — this is instrumentation, not error policy.
@@ -91,11 +93,11 @@ func Run(fn func() error) error {
 	elapsed := time.Since(start)
 
 	ctx := context.Background()
-	outcome := outcomeOK
+	status := statusOK
 	if err != nil {
-		outcome = outcomeError
+		status = statusError
 	}
-	ins.total.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	ins.total.Add(ctx, 1, metric.WithAttributes(attribute.String("status", status)))
 	ins.duration.Record(ctx, elapsed.Seconds())
 	if err == nil {
 		ins.lastSuccess.Record(ctx, float64(time.Now().Unix()))

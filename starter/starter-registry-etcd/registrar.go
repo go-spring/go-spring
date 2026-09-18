@@ -52,7 +52,9 @@ type instanceValue struct {
 // registrar re-grants a lease and re-puts the key with exponential backoff, so
 // the entry always comes back without operator action.
 type etcdRegistrar struct {
-	client    *clientv3.Client
+	// client is the lease-protocol seam (client.go): the production value wraps
+	// the backend's *clientv3.Client, tests inject an in-process double.
+	client    registrarKV
 	keyPrefix string
 	ttlSecs   int64
 
@@ -60,10 +62,6 @@ type etcdRegistrar struct {
 	// loss: 1s doubling up to 1min. Fields (not constants) so tests shrink them.
 	backoffBase time.Duration
 	backoffCap  time.Duration
-
-	// publish is the grant+put+keepalive step, a field so tests can fake the
-	// cluster side of the self-healing loop without an etcd server.
-	publish func(h *hold) (<-chan *clientv3.LeaseKeepAliveResponse, error)
 
 	mu    sync.Mutex
 	holds map[string]*hold // instance key -> its lease keep-alive
@@ -124,20 +122,18 @@ func (r *etcdRegistrar) stopHold(h *hold) {
 // newEtcdRegistrar returns a registrar writing through cli (the shared center
 // client; the cluster was already probed when cli was built) with c's prefix
 // and TTL. It does NOT close cli — the owner (etcdBackend) does.
-func newEtcdRegistrar(c EtcdConfig, cli *clientv3.Client) (*etcdRegistrar, error) {
+func newEtcdRegistrar(c EtcdConfig, cli registrarKV) (*etcdRegistrar, error) {
 	if cli == nil {
 		return nil, errutil.Explain(nil, "registry-etcd: nil etcd client")
 	}
-	r := &etcdRegistrar{
+	return &etcdRegistrar{
 		client:      cli,
 		keyPrefix:   c.KeyPrefix,
 		ttlSecs:     c.ttlSeconds(),
 		backoffBase: time.Second,
 		backoffCap:  time.Minute,
 		holds:       map[string]*hold{},
-	}
-	r.publish = r.etcdPublish
-	return r, nil
+	}, nil
 }
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
@@ -154,6 +150,29 @@ func instanceID(reg discovery.Instance) string {
 func (r *etcdRegistrar) keyFor(reg discovery.Instance) string {
 	return r.keyPrefix + reg.ServiceName + "/" + instanceID(reg)
 }
+
+// revokeQuietly releases id on the way out of a path that has already failed,
+// so a revoke error must never mask the failure being reported. Nothing renews
+// a lease released here, so it expires within its TTL rather than leaking — but
+// a key already written under it stays discoverable until then, which is a
+// window the published gauge cannot show. The log is what makes it visible.
+//
+// The call is bounded (revokeTimeout): it runs on failure paths where the
+// cluster is often the reason for the failure, and one caller (Register's
+// supersede path) holds the registrar lock — an unbounded revoke against a
+// dead cluster would block Register, and every later operation, forever.
+func (r *etcdRegistrar) revokeQuietly(id clientv3.LeaseID, what string) {
+	ctx, cancel := context.WithTimeout(context.Background(), revokeTimeout)
+	defer cancel()
+	if _, err := r.client.Revoke(ctx, id); err != nil {
+		log.Warnf(context.Background(), starterTag,
+			"registry-etcd: revoke lease after %s failed (it expires with its TTL): %v", what, err)
+	}
+}
+
+// revokeTimeout bounds one lease-revoke on a failure path: the cluster is
+// often the reason that path failed, so the cleanup must not block on it.
+const revokeTimeout = 5 * time.Second
 
 // normalizeWeight clamps a misconfigured negative weight to 1 at write time.
 // 0 passes through as the drain signal; an unset weight is expressed by the
@@ -179,10 +198,12 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg discovery.Instance) er
 	reg.Weight = normalizeWeight(reg.Weight)
 
 	h := newHold(reg)
-	attempt := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial)
-	ka, err := r.publish(h)
-	attempt(err)
-	if err != nil {
+	var ka <-chan *clientv3.LeaseKeepAliveResponse
+	if err := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial, func(ctx context.Context) error {
+		var err error
+		ka, err = r.etcdPublish(ctx, h)
+		return err
+	}); err != nil {
 		return err
 	}
 
@@ -192,7 +213,7 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg discovery.Instance) er
 	// (Already under r.mu, so retire inline rather than via stopHold.)
 	if old, ok := r.holds[key]; ok {
 		old.stop()
-		_, _ = r.client.Revoke(context.Background(), old.leaseID)
+		r.revokeQuietly(old.leaseID, "superseded "+key)
 	}
 	r.holds[key] = h
 	r.mu.Unlock()
@@ -206,7 +227,7 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg discovery.Instance) er
 // lease and cancel func in h so UpdateWeight writes ride the current lease and
 // stop cancels the live keep-alive. It is the single (re-)registration step
 // used by both Register and the self-healing loop.
-func (r *etcdRegistrar) etcdPublish(h *hold) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
+func (r *etcdRegistrar) etcdPublish(ctx context.Context, h *hold) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
 	// Snapshot the payload under the lock: UpdateWeight may rewrite h.reg
 	// concurrently, and a re-publish must carry the latest advertised weight.
 	r.mu.Lock()
@@ -226,16 +247,18 @@ func (r *etcdRegistrar) etcdPublish(h *hold) (<-chan *clientv3.LeaseKeepAliveRes
 	}
 	// The publish step runs detached from Register's ctx (the self-healing loop
 	// calls it from its own goroutine), so bound each etcd call by the lease
-	// TTL — a dead cluster fails this step rather than blocking forever.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(r.ttlSecs)*time.Second)
+	// TTL — a dead cluster fails this step rather than blocking forever. The
+	// caller's ctx (the attempt's span ctx) is still the parent, so logs and
+	// spans for one attempt stay one trace event.
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(r.ttlSecs)*time.Second)
 	defer cancel()
 	grant, err := r.client.Grant(ctx, r.ttlSecs)
 	if err != nil {
 		return nil, errutil.Explain(err, "registry-etcd: grant lease for %q", reg.ServiceName)
 	}
 	key := r.keyFor(reg)
-	if _, err := r.client.Put(ctx, key, string(val), clientv3.WithLease(grant.ID)); err != nil {
-		_, _ = r.client.Revoke(context.Background(), grant.ID)
+	if _, err := r.client.Put(ctx, key, string(val), grant.ID); err != nil {
+		r.revokeQuietly(grant.ID, "failed put "+key)
 		return nil, errutil.Explain(err, "registry-etcd: put %q", key)
 	}
 
@@ -245,7 +268,7 @@ func (r *etcdRegistrar) etcdPublish(h *hold) (<-chan *clientv3.LeaseKeepAliveRes
 	ka, err := r.client.KeepAlive(kaCtx, grant.ID)
 	if err != nil {
 		kaCancel()
-		_, _ = r.client.Revoke(context.Background(), grant.ID)
+		r.revokeQuietly(grant.ID, "failed keepalive "+key)
 		return nil, errutil.Explain(err, "registry-etcd: keepalive for %q", reg.ServiceName)
 	}
 
@@ -276,23 +299,38 @@ func (r *etcdRegistrar) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.
 		if h.stopped() {
 			return
 		}
-		log.Errorf(context.Background(), starterTag,
-			"keepalive for key=%s died (etcd unreachable or lease lost); re-registering with backoff", key)
+		log.Error(context.Background(), starterTag, append(
+			discovery.RegisterFields(obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal),
+			log.Msgf("keepalive for key=%s died (etcd unreachable or lease lost); re-registering with backoff", key),
+		)...)
 		backoff := r.backoffBase
 		for {
 			if h.stopped() {
 				return
 			}
-			attempt := discovery.RegisterAttempt(context.Background(), obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal)
-			nka, err := r.publish(h)
-			attempt(err)
+			// The attempt's span ctx is what these lines log against, so the
+			// failure that is being retried and the span recording it are the
+			// same event in the trace, not two unconnected ones.
+			var nka <-chan *clientv3.LeaseKeepAliveResponse
+			var spanCtx context.Context
+			err := discovery.RegisterAttempt(context.Background(), obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal, func(ctx context.Context) error {
+				spanCtx = ctx
+				var err error
+				nka, err = r.etcdPublish(ctx, h)
+				return err
+			})
 			if err == nil {
-				log.Infof(context.Background(), starterTag, "re-registered key=%s under a new lease", key)
+				log.Info(spanCtx, starterTag, append(
+					discovery.RegisterFields(obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal),
+					log.Msgf("re-registered key=%s under a new lease", key),
+				)...)
 				ka = nka
 				break
 			}
-			log.Errorf(context.Background(), starterTag,
-				"re-register key=%s failed: %v; retrying in %s", key, err, backoff)
+			log.Error(spanCtx, starterTag, append(
+				discovery.RegisterFailedFields(obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal, err),
+				log.Msgf("re-register key=%s failed; retrying in %s", key, backoff),
+			)...)
 			select {
 			case <-h.done:
 				return
@@ -314,6 +352,13 @@ func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]
+	var lease clientv3.LeaseID
+	if ok {
+		// Snapshot the lease under the same lock: a concurrent self-heal
+		// re-publish rewrites h.leaseID, and reading it later unsynchronized
+		// is a data race.
+		lease = h.leaseID
+	}
 	r.mu.Unlock()
 	if !ok {
 		return errutil.Explain(nil, "registry-etcd: update weight for unregistered instance %q", key)
@@ -334,10 +379,10 @@ func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance
 	}
 	// Reported around the write itself: a marshal failure above never reached
 	// the center, so it is not a registry-center operation outcome.
-	report := discovery.WeightChange(ctx, obsSystem, reg.ServiceName)
-	_, err = r.client.Put(ctx, key, string(val), clientv3.WithLease(h.leaseID))
-	report(err)
-	if err != nil {
+	if err := discovery.WeightChange(ctx, obsSystem, reg.ServiceName, func(ctx context.Context) error {
+			_, err := r.client.Put(ctx, key, string(val), lease)
+		return err
+	}); err != nil {
 		return errutil.Explain(err, "registry-etcd: update weight put %q", key)
 	}
 	r.mu.Lock()
@@ -352,18 +397,22 @@ func (r *etcdRegistrar) Deregister(ctx context.Context, reg discovery.Instance) 
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]
+	var lease clientv3.LeaseID
 	if ok {
 		delete(r.holds, key)
+		// Snapshot the lease under the same lock (see UpdateWeight): a
+		// concurrent self-heal re-publish rewrites h.leaseID.
+		lease = h.leaseID
 	}
 	r.mu.Unlock()
 	if !ok {
 		return nil
 	}
 	r.stopHold(h)
-	report := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName)
-	_, err := r.client.Revoke(ctx, h.leaseID)
-	report(err)
-	if err != nil {
+	if err := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName, func(ctx context.Context) error {
+		_, err := r.client.Revoke(ctx, lease)
+		return err
+	}); err != nil {
 		return errutil.Explain(err, "registry-etcd: revoke lease for %q", reg.ServiceName)
 	}
 	return nil

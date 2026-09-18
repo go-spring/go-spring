@@ -18,10 +18,11 @@ package StarterRegistryEtcd
 
 import (
 	"context"
-	"go-spring.org/cloud/discovery"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -54,6 +55,34 @@ func TestNormalizeWeight(t *testing.T) {
 	assert.That(t, normalizeWeight(0)).Equal(0)
 	// An explicit positive weight passes through unchanged.
 	assert.That(t, normalizeWeight(100)).Equal(100)
+}
+
+// Register must write the instance as the JSON payload a reader of the same
+// prefix decodes, under the key that reader looks up. The decode half is pinned
+// by kvsToEndpoints; this pins the encode half against the same struct.
+func TestRegisterWritesInstancePayload(t *testing.T) {
+	f := newFakeKV()
+	r := newTestRegistrar(f, "/services/")
+	in := discovery.Instance{
+		ServiceName: "orders", ID: "a", Addr: "10.0.0.1:8080",
+		Weight: 7, Version: "v2", Zone: "b", Scheme: "tls",
+	}
+	assert.Error(t, r.Register(context.Background(), in)).Nil()
+
+	val, ok := f.lastPut("/services/orders/a")
+	assert.That(t, ok).True()
+	var got instanceValue
+	assert.Error(t, json.Unmarshal([]byte(val), &got)).Nil()
+	assert.That(t, got).Equal(instanceValue{
+		ServiceName: "orders", Addr: "10.0.0.1:8080", Weight: 7,
+		Version: "v2", Zone: "b", Scheme: "tls",
+	})
+
+	// Retire the watcher this Register started.
+	r.mu.Lock()
+	h := r.holds[r.keyFor(in)]
+	r.mu.Unlock()
+	h.stop()
 }
 
 func TestDeregisterIdempotent(t *testing.T) {

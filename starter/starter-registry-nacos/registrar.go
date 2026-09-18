@@ -67,33 +67,34 @@ func normalizeWeight(w int) int {
 func (r *nacosRegistrar) Register(ctx context.Context, reg discovery.Instance) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
-		return err
+		return errutil.Explain(err, "registry-nacos: register %q", reg.ServiceName)
 	}
 	// Nacos treats weight 0 as "receive no traffic", so an explicit 0 is the
 	// drain signal and passes through untouched.
 	weight := float64(normalizeWeight(reg.Weight))
-	attempt := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial)
-	ok, err := r.client.RegisterInstance(vo.RegisterInstanceParam{
-		Ip:          host,
-		Port:        port,
-		ServiceName: reg.ServiceName,
-		GroupName:   r.group,
-		ClusterName: r.cluster,
-		Weight:      weight,
-		Enable:      true,
-		Healthy:     true,
-		Ephemeral:   true,
-		Metadata:    instanceMetadata(reg),
+	return discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
+		ok, err := r.client.RegisterInstance(vo.RegisterInstanceParam{
+			Ip:          host,
+			Port:        port,
+			ServiceName: reg.ServiceName,
+			GroupName:   r.group,
+			ClusterName: r.cluster,
+			Weight:      weight,
+			Enable:      true,
+			Healthy:     true,
+			Ephemeral:   true,
+			Metadata:    instanceMetadata(reg),
+		})
+		// A server-side rejection is a failed registration just as much as a
+		// transport error, so both fold into the reported outcome.
+		if err != nil {
+			return errutil.Explain(err, "registry-nacos: register %q", reg.ServiceName)
+		}
+		if !ok {
+			return errutil.Explain(nil, "registry-nacos: register %q was rejected by the server", reg.ServiceName)
+		}
+		return nil
 	})
-	// A server-side rejection is a failed registration just as much as a
-	// transport error, so both fold into the reported outcome.
-	if err == nil && !ok {
-		err = errutil.Explain(nil, "registry-nacos: register %q was rejected by the server", reg.ServiceName)
-	} else if err != nil {
-		err = errutil.Explain(err, "registry-nacos: register %q", reg.ServiceName)
-	}
-	attempt(err)
-	return err
 }
 
 // Deregister removes the instance. It is idempotent: deregistering an instance
@@ -101,22 +102,29 @@ func (r *nacosRegistrar) Register(ctx context.Context, reg discovery.Instance) e
 func (r *nacosRegistrar) Deregister(ctx context.Context, reg discovery.Instance) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
-		return err
-	}
-	report := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName)
-	_, err = r.client.DeregisterInstance(vo.DeregisterInstanceParam{
-		Ip:          host,
-		Port:        port,
-		ServiceName: reg.ServiceName,
-		GroupName:   r.group,
-		Cluster:     r.cluster,
-		Ephemeral:   true,
-	})
-	report(err)
-	if err != nil {
 		return errutil.Explain(err, "registry-nacos: deregister %q", reg.ServiceName)
 	}
-	return nil
+	return discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+		ok, err := r.client.DeregisterInstance(vo.DeregisterInstanceParam{
+			Ip:          host,
+			Port:        port,
+			ServiceName: reg.ServiceName,
+			GroupName:   r.group,
+			Cluster:     r.cluster,
+			Ephemeral:   true,
+		})
+		// Same rule as Register: a server-side rejection is a failed deregister just
+		// as much as a transport error. Reporting it as success would flip the
+		// published gauge to 0 while the instance is still in the registry — a leak
+		// hidden behind a gauge saying the opposite.
+		if err != nil {
+			return errutil.Explain(err, "registry-nacos: deregister %q", reg.ServiceName)
+		}
+		if !ok {
+			return errutil.Explain(nil, "registry-nacos: deregister %q was rejected by the server", reg.ServiceName)
+		}
+		return nil
+	})
 }
 
 // UpdateWeight re-publishes reg with a new weight via the naming service's
@@ -127,30 +135,31 @@ func (r *nacosRegistrar) Deregister(ctx context.Context, reg discovery.Instance)
 func (r *nacosRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
-		return err
+		return errutil.Explain(err, "registry-nacos: update weight %q", reg.ServiceName)
 	}
 	// Weight 0 is the drain signal and passes through — Nacos natively treats
 	// 0 as "receive no traffic".
 	w := float64(normalizeWeight(weight))
-	report := discovery.WeightChange(ctx, obsSystem, reg.ServiceName)
-	ok, err := r.client.UpdateInstance(vo.UpdateInstanceParam{
-		Ip:          host,
-		Port:        port,
-		ServiceName: reg.ServiceName,
-		GroupName:   r.group,
-		ClusterName: r.cluster,
-		Weight:      w,
-		Enable:      true,
-		Ephemeral:   true,
-		Metadata:    instanceMetadata(reg),
+	return discovery.WeightChange(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+		ok, err := r.client.UpdateInstance(vo.UpdateInstanceParam{
+			Ip:          host,
+			Port:        port,
+			ServiceName: reg.ServiceName,
+			GroupName:   r.group,
+			ClusterName: r.cluster,
+			Weight:      w,
+			Enable:      true,
+			Ephemeral:   true,
+			Metadata:    instanceMetadata(reg),
+		})
+		if err != nil {
+			return errutil.Explain(err, "registry-nacos: update weight %q", reg.ServiceName)
+		}
+		if !ok {
+			return errutil.Explain(nil, "registry-nacos: update weight %q was rejected by the server", reg.ServiceName)
+		}
+		return nil
 	})
-	if err == nil && !ok {
-		err = errutil.Explain(nil, "registry-nacos: update weight %q was rejected by the server", reg.ServiceName)
-	} else if err != nil {
-		err = errutil.Explain(err, "registry-nacos: update weight %q", reg.ServiceName)
-	}
-	report(err)
-	return err
 }
 
 // instanceMetadata folds the instance's routing dimensions (version, zone,

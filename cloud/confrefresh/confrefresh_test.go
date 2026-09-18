@@ -44,7 +44,7 @@ func withReader(t *testing.T) *metric.ManualReader {
 	return rdr
 }
 
-// totals collects config.refresh.total into an outcome -> count map.
+// totals collects config.refresh.total into a status -> count map.
 func totals(t *testing.T, rdr *metric.ManualReader) map[string]int64 {
 	t.Helper()
 	var rm metricdata.ResourceMetrics
@@ -57,7 +57,7 @@ func totals(t *testing.T, rdr *metric.ManualReader) map[string]int64 {
 			}
 			for _, dp := range m.Data.(metricdata.Sum[int64]).DataPoints {
 				for _, kv := range dp.Attributes.ToSlice() {
-					if kv.Key == "outcome" {
+					if kv.Key == "status" {
 						out[kv.Value.AsString()] = dp.Value
 					}
 				}
@@ -79,7 +79,7 @@ func TestRun(t *testing.T) {
 	sentinel := errors.New("boom")
 	assert.That(t, errors.Is(Run(func() error { return sentinel }), sentinel)).True()
 
-	// One ok and one error: outcomes are exclusive, sum equals refreshes run.
+	// One ok and one error: statuses are exclusive, sum equals refreshes run.
 	got := totals(t, rdr)
 	assert.That(t, got["ok"]).Equal(int64(1))
 	assert.That(t, got["error"]).Equal(int64(1))

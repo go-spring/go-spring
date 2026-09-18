@@ -52,15 +52,29 @@ var (
 	tracer = otel.Tracer("go-spring.org/starter-gorm/observe")
 )
 
-// newDuration builds the db.client.operation.duration histogram from whatever
-// meter provider is current — created per plugin, not at package init, so an
-// SDK installed later than this package's init still receives the records.
-func newDuration() metric.Float64Histogram {
-	h, _ := otel.Meter("go-spring.org/starter-gorm/observe").Float64Histogram("db.client.operation.duration",
+// newInstruments builds the db.* instruments from whatever meter provider is
+// current — created per plugin, not at package init, so an SDK installed later
+// than this package's init still receives the records.
+func newInstruments() (metric.Float64Histogram, metric.Int64UpDownCounter) {
+	m := otel.Meter("go-spring.org/starter-gorm/observe")
+	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of gorm client operations"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	return h
+	active, _ := m.Int64UpDownCounter("db.client.active_requests",
+		metric.WithDescription("Number of in-flight gorm client operations"),
+		metric.WithUnit("{request}"))
+	return duration, active
+}
+
+// inflightOf names the in-flight gauge's dimensions. The +1 in the Before
+// callback and the -1 in After must carry identical attributes or the gauge
+// never balances, so both go through here.
+func inflightOf(system, op string) metric.MeasurementOption {
+	return metric.WithAttributes(
+		attribute.String("db.system", system),
+		attribute.String("db.operation", op),
+	)
 }
 
 // gormSpans correlates a gorm operation's Before callback (which opens the
@@ -81,13 +95,15 @@ var gormSpans sync.Map // *gorm.DB -> *opSpan
 type observePlugin struct {
 	system   string
 	duration metric.Float64Histogram
+	active   metric.Int64UpDownCounter
 }
 
 // NewPlugin builds a gorm.Plugin that emits trace span + duration metric +
 // access log for every operation under the given db.system label (e.g. "mysql",
 // "postgresql", "clickhouse", "microsoft.sql_server").
 func NewPlugin(system string) gorm.Plugin {
-	return &observePlugin{system: system, duration: newDuration()}
+	duration, active := newInstruments()
+	return &observePlugin{system: system, duration: duration, active: active}
 }
 
 func (p *observePlugin) Name() string { return "go-spring:observe" }
@@ -165,6 +181,7 @@ type opSpan struct {
 
 // start opens the operation's client span.
 func (p *observePlugin) start(ctx context.Context, op string) *opSpan {
+	p.active.Add(ctx, 1, inflightOf(p.system, op))
 	ctx, span := tracer.Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
@@ -200,22 +217,26 @@ func (s *opSpan) End(err error) {
 		attribute.String("db.operation", s.op),
 		attribute.String("status", status),
 	))
+	p.active.Add(s.ctx, -1, inflightOf(p.system, s.op))
 	if err != nil {
 		s.span.SetStatus(codes.Error, err.Error())
 		s.span.RecordError(err)
 	}
 	s.span.End()
 
+	// Log keys are the metric labels' names, so a dashboard selecting failed
+	// queries lands on the lines that explain them.
 	common := []log.Field{
-		log.String("system", p.system),
-		log.String("operation", s.op),
+		log.String("db.system", p.system),
+		log.String("db.operation", s.op),
+		log.String("status", status),
 		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 	}
 	switch {
 	case err != nil:
 		log.Warn(s.ctx, accessTag, append(common, log.Any("error", err))...)
 	case s.arg != "":
-		fields := append(common, log.String("statement", s.arg))
+		fields := append(common, log.String("db.statement", s.arg))
 		log.Debug(s.ctx, accessTag, func() []log.Field { return fields })
 	default:
 		log.Info(s.ctx, accessTag, common...)

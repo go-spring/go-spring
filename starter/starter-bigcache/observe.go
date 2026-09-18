@@ -39,6 +39,10 @@ var accessTag = log.RegisterAppTag("bigcache", "access")
 // obsTracer names the tracer/meter this starter's instruments register under.
 const obsTracer = "go-spring.org/starter-bigcache"
 
+// bigcacheSystem is the value the family's db.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
+const bigcacheSystem = "bigcache"
+
 // dbObserver emits the trace span, the duration metric, and the access log
 // for one cache's per-operation traffic. bigcache is an in-process heap cache
 // with no network, so the spans are root spans (no caller context to link) and
@@ -51,6 +55,17 @@ const obsTracer = "go-spring.org/starter-bigcache"
 // emits through the project log package.
 type dbObserver struct {
 	duration metric.Float64Histogram
+	active   metric.Int64UpDownCounter
+}
+
+// inflightOf names the in-flight gauge's dimensions. The +1 at start and the
+// -1 at end must carry identical attributes or the gauge never balances, so
+// both go through here.
+func inflightOf(op string) metric.MeasurementOption {
+	return metric.WithAttributes(
+		attribute.String("db.system", bigcacheSystem),
+		attribute.String("db.operation", op),
+	)
 }
 
 // newDBObserver builds the db.client.operation.duration histogram from
@@ -63,19 +78,24 @@ type dbObserver struct {
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
 
 func newDBObserver() *dbObserver {
-	h, _ := otel.Meter(obsTracer).Float64Histogram("db.client.operation.duration",
+	m := otel.Meter(obsTracer)
+	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of cache operations"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	return &dbObserver{duration: h}
+	active, _ := m.Int64UpDownCounter("db.client.active_requests",
+		metric.WithDescription("Number of in-flight cache operations"),
+		metric.WithUnit("{request}"))
+	return &dbObserver{duration: duration, active: active}
 }
 
 // start opens the operation's client span. arg is the cache key, carried as
 // db.statement truncated to 512 bytes so a pathological key can't flood the
 // span attributes.
 func (o *dbObserver) start(ctx context.Context, op, arg string) (context.Context, trace.Span) {
+	o.active.Add(ctx, 1, inflightOf(op))
 	attrs := []attribute.KeyValue{
-		attribute.String("db.system", "bigcache"),
+		attribute.String("db.system", bigcacheSystem),
 		attribute.String("db.operation", op),
 	}
 	if arg != "" {
@@ -99,15 +119,18 @@ func (o *dbObserver) record(ctx context.Context, op, arg string, start time.Time
 	span.End()
 
 	dur := float64(time.Since(start).Nanoseconds()) / 1e6
+	status := statusOf(err)
 	o.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
-		attribute.String("db.system", "bigcache"),
+		attribute.String("db.system", bigcacheSystem),
 		attribute.String("db.operation", op),
-		attribute.String("status", statusOf(err)),
+		attribute.String("status", status),
 	))
+	o.active.Add(ctx, -1, inflightOf(op))
 
 	fields := func() []log.Field {
 		fs := []log.Field{
 			log.String("db.operation", op),
+			log.String("status", status),
 			log.Float("duration_ms", dur),
 		}
 		if arg != "" {

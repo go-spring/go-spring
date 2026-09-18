@@ -47,7 +47,6 @@ package StarterRegistryZookeeper
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/go-zookeeper/zk"
@@ -86,6 +85,11 @@ var (
 type zkBackend struct {
 	reg  *zkRegistrar
 	disc *zkDiscovery
+
+	// conn is the session this block created and owns. The registrar and the
+	// discovery watchers both read through it; nothing else in the process
+	// holds it, so Close is what releases it.
+	conn *zk.Conn
 }
 
 // newZkBackend builds the session (probing the ensemble) and both halves. The
@@ -109,16 +113,22 @@ func newZkBackend(c ZookeeperConfig) (*zkBackend, error) {
 			done:     make(chan struct{}),
 			entries:  map[string]*serviceEntry{},
 		},
+		conn: conn,
 	}, nil
 }
 
-// Close releases the block's session (stopping the registrar's session
-// monitor and the discovery watchers with it). It is the bean destructor.
+// Close releases the block's session. It is the bean destructor. The background
+// loops are stopped first, so they retire on their own signal instead of
+// racing the session close — the discovery watchers in particular cannot infer
+// shutdown from a connection error, which is indistinguishable from a
+// reconnect they are expected to survive.
 func (b *zkBackend) Close() error {
 	if b == nil || b.reg == nil {
 		return nil
 	}
 	b.reg.Close()
+	b.disc.Close()
+	b.conn.Close()
 	return nil
 }
 
@@ -179,12 +189,6 @@ func connectZookeeper(c ZookeeperConfig) (*zk.Conn, error) {
 		return nil, errutil.Explain(err, "registry-zookeeper: startup probe failed for %v", c.Servers)
 	}
 	return conn, nil
-}
-
-// errConnectionClosed reports whether err means the zk connection is closed
-// for good (no retry can succeed).
-func errConnectionClosed(err error) bool {
-	return errors.Is(err, zk.ErrConnectionClosed) || errors.Is(err, zk.ErrClosing)
 }
 
 func init() {

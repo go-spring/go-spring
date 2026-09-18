@@ -214,12 +214,12 @@ func accessLog(skip map[string]struct{}) echo.MiddlewareFunc {
 			path := c.Request().URL.Path
 			if _, ok := skip[path]; !ok {
 				fields := []log.Field{
-					log.String("method", c.Request().Method),
-					log.String("path", path),
-					log.Int("status", c.Response().Status),
+					log.String("http.request.method", c.Request().Method),
+					log.String("url.path", path),
+					log.Int("http.response.status_code", c.Response().Status),
 					log.Int("size", c.Response().Size),
 					log.String("ip", c.RealIP()),
-					log.String("latency", time.Since(start).String()),
+					log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
 				}
 				if rid := c.Response().Header().Get(echo.HeaderXRequestID); rid != "" {
 					fields = append(fields, log.String("request_id", rid))

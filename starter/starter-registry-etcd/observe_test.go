@@ -160,8 +160,9 @@ func floatGaugeValue(t *testing.T, name string, want map[string]string) float64 
 // A failed initial publish must be counted and must leave the instance reported
 // as unpublished — the state an operator has to be able to alert on.
 func TestRegisterFailedPublishIsReported(t *testing.T) {
-	r, fails, _ := newHealRegistrar()
-	fails.set(errors.New("etcd down"))
+	f := newFakeKV()
+	f.grantErrs = []error{errors.New("etcd down")}
+	r := newTestRegistrar(f, "/services/")
 
 	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	assert.Error(t, err).NotNil()
@@ -178,7 +179,7 @@ func TestRegisterFailedPublishIsReported(t *testing.T) {
 // A successful publish marks the instance published.
 func TestRegisterSuccessIsReported(t *testing.T) {
 	ctx := context.Background()
-	r, _, lastKA := newHealRegistrar()
+	r, _ := newHealRegistrar()
 	in := discovery.Instance{ServiceName: "orders-ok", Addr: "1.2.3.4:80", Weight: 1}
 
 	assert.Error(t, r.Register(ctx, in)).Nil()
@@ -190,12 +191,12 @@ func TestRegisterSuccessIsReported(t *testing.T) {
 		"system": obsSystem, "service": in.ServiceName,
 	})).Equal(int64(1))
 
-	// Retire the watcher the successful register started.
+	// Retire the watcher the successful register started, through the registrar
+	// so the stop takes the lock publish stored the cancel func under.
 	r.mu.Lock()
 	h := r.holds[r.keyFor(in)]
 	r.mu.Unlock()
-	h.stop()
-	close(<-lastKA)
+	r.stopHold(h)
 }
 
 // The self-healing re-registration never passes through the Registrar interface,
@@ -205,16 +206,9 @@ func TestSelfHealFailureIsReported(t *testing.T) {
 	// Every re-publish fails, so the healing loop stays in the retry select that
 	// honours stop() — a loop that had succeeded once would sit draining its
 	// keep-alive channel and never observe the stop.
-	r := &etcdRegistrar{
-		keyPrefix:   "/services/",
-		ttlSecs:     15,
-		backoffBase: 2 * time.Millisecond,
-		backoffCap:  5 * time.Millisecond,
-		holds:       map[string]*hold{},
-	}
-	r.publish = func(*hold) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
-		return nil, errors.New("etcd down")
-	}
+	f := newFakeKV()
+	f.grantDown = true
+	r := newTestRegistrar(f, "/services/")
 
 	h := newHold(discovery.Instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
@@ -237,14 +231,14 @@ func TestSelfHealFailureIsReported(t *testing.T) {
 		"system": obsSystem, "service": "payments",
 	})).Zero("an instance the center lost must report as unpublished")
 
-	h.stop()
+	r.stopHold(h)
 	<-done
 }
 
 // A successful self-heal reports the instance published again — the recovery
 // edge of the same signal, so an alert on "registered == 0" clears by itself.
 func TestSelfHealSuccessRestoresPublished(t *testing.T) {
-	r, _, lastKA := newHealRegistrar()
+	r, _ := newHealRegistrar()
 	h := newHold(discovery.Instance{ServiceName: "payments-back", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
@@ -263,10 +257,9 @@ func TestSelfHealSuccessRestoresPublished(t *testing.T) {
 		"system": obsSystem, "service": "payments-back",
 	})).Equal(int64(1))
 
-	// Safe to read now: the fake sends the new channel before publish returns,
-	// and the counter observed above is recorded only after that.
-	h.stop()
-	close(<-lastKA)
+	// The stop cancels the keep-alive context, which closes the fake's channel
+	// the way clientv3 closes the real one, so the watcher retires on its own.
+	r.stopHold(h)
 	<-done
 }
 
@@ -294,7 +287,7 @@ func TestDiscoveryReportsFailedSeedSync(t *testing.T) {
 	defer func() { _ = cli.Close() }()
 
 	d := &etcdDiscovery{
-		client: cli, keyPrefix: "/services/",
+		client: etcdClient{cli}, keyPrefix: "/services/",
 		bgCtx: context.Background(), entries: map[string]*serviceEntry{},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -324,7 +317,7 @@ func TestDiscoveryReportsSuccessfulSeedSyncLive(t *testing.T) {
 	defer func() { _ = cli.Close() }()
 
 	d := &etcdDiscovery{
-		client: cli, keyPrefix: "/services/obs-test/",
+		client: etcdClient{cli}, keyPrefix: "/services/obs-test/",
 		bgCtx: context.Background(), entries: map[string]*serviceEntry{},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -347,8 +340,9 @@ func TestDiscoveryReportsSuccessfulSeedSyncLive(t *testing.T) {
 // proves the span link a consumer of the trace actually sees.
 func TestRegisterEmitsClientSpan(t *testing.T) {
 	testSpans.Reset()
-	r, fails, _ := newHealRegistrar()
-	fails.set(errors.New("etcd down"))
+	f := newFakeKV()
+	f.grantErrs = []error{errors.New("etcd down")}
+	r := newTestRegistrar(f, "/services/")
 
 	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders-span", Addr: "1.2.3.4:80", Weight: 1})
 	assert.Error(t, err).NotNil()
