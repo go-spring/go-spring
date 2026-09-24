@@ -92,7 +92,7 @@ identically:
 per-acquisition Option  >  starter DefaultOptions  >  package default
 ```
 
-A starter's `spring.lock.instances.<name>.ttl` is an *overridable default*: it fills in
+A starter's `spring.lock.instances.<backend>.<name>.ttl` is an *overridable default*: it fills in
 what the caller left unset, and a per-call `WithTTL` always wins. A negative
 `WithRenewInterval` (auto-renew disabled) survives the layering. Backends call
 `Resolve` at the top of `Acquire`/`TryAcquire` to get this precedence; a
@@ -113,11 +113,11 @@ elect := lock.NewElection(lock.ElectionConfig{
     Locker: locker,
     Key:    "leaders/reporter",
     TTL:    15 * time.Second,
-    OnElected: func(ctx context.Context) {
+    OnStartedLeading: func(ctx context.Context) {
         // leader work; ctx is cancelled on loss — honour it and return
         <-ctx.Done()
     },
-    OnResigned: func() { /* cleanup */ },
+    OnStoppedLeading: func() { /* cleanup */ },
 })
 
 // blocks until ctx is done; run it on a background goroutine / as a Runner
@@ -126,11 +126,11 @@ err := elect.Run(ctx)
 
 - `IsLeader()` reports current leadership.
 - On lease loss the term context is cancelled first, then `Run` waits for
-  `OnElected` to return, then unlocks — always in that order — before
+  `OnStartedLeading` to return, then unlocks — always in that order — before
   re-campaigning. `RetryInterval` also paces how often a follower
   re-campaigns.
-- `NewElection` panics on missing `Locker`/`Key`: a misconfigured election can
-  never elect anyone; fail fast.
+- `NewElection` returns an error on missing `Locker`/`Key`: a misconfigured
+  election can never elect anyone; fail fast.
 
 ## Backends
 
@@ -146,30 +146,36 @@ never changes.
 | etcd | `starter-lock-etcd` |
 | Consul | `starter-lock-consul` |
 | Kubernetes Lease (`coordination.k8s.io`) | `starter-lock-k8s` |
-| In-process (tests / single node) | `lock.NewMemoryLocker()` |
+| In-process (tests / single node) | `lock.NewMemoryLocker()` or `starter-lock-memory` |
 
-Switching backend is a blank-import swap. The K8s backend needs no external
+Switching backend is a blank-import swap. Backends may also coexist: each
+starter binds only its own `spring.lock.instances.<backend>.*` subtree and
+names its beans `<backend>.<name>`, so `autowire:"redis.jobs"` and
+`autowire:"memory.demo"` can live in one process (the gorm
+"<dialect>.<instance>" pattern). The K8s backend needs no external
 middleware beyond the in-cluster control plane and exposes no starter-level
 timing config — its knobs are the per-call `Option`s, identical to the other
 backends.
 
 ## Observability
 
-`WrapLocker` decorates a `Locker` at the interface, so no backend carries
+`Observe` decorates a `Locker` at the interface, so no backend carries
 instrumentation of its own. Each lock starter installs it with its backend's
 system value:
 
 ```go
-locker = lock.WrapLocker("redis", inner)
+locker = lock.Observe(inner, "redis")
 ```
 
 Every operation (`acquire`, `try_acquire`, `unlock`) gets a client span, a
-`lock.operation.duration` datapoint, and an access log on `_app_lock_access`.
-They share the backend as `system` and an outcome as `status` — `ok`, `missed`,
-`error` or `not_held` — so one dashboard covers all four backends and a metric
-can never disagree with the log line beside it.
+`lock.operation.total` count, a `lock.operation.duration` datapoint, and an
+access log on `_app_lock_access`. They share the backend as `system` and an
+outcome as `status` — `ok`, `missed`, `error` or `not_held` — so one dashboard
+covers all four backends and a metric can never disagree with the log line
+beside it.
 
-The handle `Acquire` returns is observed too. `lock.lost.total` counts the
+The handle `Acquire` returns is observed too. `lock.held` is a gauge of the
+locks currently held through this locker, and `lock.lost.total` counts the
 leases lost while the caller was still working — the failure a distributed lock
 exists to prevent, and the one that otherwise surfaces as duplicate work. An
 ordinary `Unlock` closes the same channel but is not counted, so the number
@@ -186,6 +192,15 @@ backend, and renewal never crosses the `Locker` interface, so a failing renewal
 is visible only through its outcome — `lock.lost.total`. Reporting the attempts
 themselves would take a hook in all four starters, which is not worth paying
 until the loss counter proves insufficient.
+
+Acquire's wait is another structural blind spot, for a different reason: the
+backends wait heterogeneously. etcd and consul block on the backend's native
+watch/session wait (event-driven, no polling — not degradable), while redis,
+k8s and MemoryLocker poll at `RetryInterval`. So one blocked acquire surfaces
+as a single `lock.operation.duration` datapoint (which already includes the
+wait); per-attempt counts exist nowhere, unifying them into a polling template
+would downgrade the native waiters, and per-backend hooks are the hand-rolled
+path this package rejected.
 
 Without starter-otel the global providers are no-ops, so the wrapper adds
 negligible overhead and changes no behavior. A starter's `observe.enabled=false`
@@ -220,6 +235,9 @@ A runnable, self-asserting demo lives in [`example/`](example/):
 cd cloud/lock/example && go run .
 ```
 
-It exercises `Acquire`/`TryAcquire` contention, the fencing token, `Lost()` on
-lease takeover, and a leader-election handover — all on `MemoryLocker`, no
-external services required.
+It is wired the way a real application is: the locker arrives from
+configuration ("spring.lock.instances.demo") through starter-lock-memory,
+business code injects `lock.Locker` and never knows the backend — swap the
+blank import to a backed starter and the same code runs against Redis/etcd.
+The demo covers a guarded critical section, a contended TryAcquire skip, and
+one leader-election handover, then self-terminates.

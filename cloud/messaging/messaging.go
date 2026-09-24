@@ -25,9 +25,10 @@
 // for broker-specific features this abstraction deliberately does not model.
 //
 // Observability rides the envelope: because Headers is a plain map[string]string
-// it doubles as a W3C trace-context carrier, so a driver injects trace context
-// on publish and extracts it on consume without this package importing any
-// tracing library.
+// it doubles as a W3C trace-context carrier, so trace context is injected on
+// publish and extracted on consume without any driver importing a tracing
+// library. [Observe] supplies the whole layer — spans, metrics, access log,
+// propagation — as a decorator over [Driver].
 package messaging
 
 import (

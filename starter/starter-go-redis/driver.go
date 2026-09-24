@@ -142,7 +142,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		if err != nil {
 			return nil, nil, err
 		}
-		lb := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+		lb := loadbalance.NewPool(resolver, bal,
 			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
 		stop := lb.BindSelection(resourceLabel(c))
 		opts.Addr = c.ServiceName

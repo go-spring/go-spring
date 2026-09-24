@@ -37,11 +37,11 @@ import (
 func init() {
 	// Register one etcd-backed Locker per entry under "${spring.lock}". A
 	// hand-rolled gs.Module (rather than gs.Group) is required so each bean
-	// can Export the lock.Locker interface — consumers inject that interface
-	// and never see the concrete *etcdLocker type, which is what makes the
-	// blank-import swap possible.
-	gs.Module(gs.OnProperty("spring.lock.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.lock.instances}", func(name string, c Config) error {
+	// gets its entry name; newLocker already returns the lock.Locker
+	// interface, so consumers inject that interface and never see the
+	// concrete *etcdLocker type.
+	gs.Module(gs.OnProperty("spring.lock.instances.etcd"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.lock.instances.etcd}", func(name string, c Config) error {
 			if len(c.Endpoints) == 0 {
 				return errutil.Explain(nil, "lock-etcd: endpoints is required for instance %q", name)
 			}
@@ -50,8 +50,7 @@ func init() {
 			// separate "<name>-observed" bean — the primary name is already
 			// observed.
 			r.Provide(newLocker, gs.ValueArg(c)).
-				Name(name).
-				Export(gs.As[lock.Locker]()).
+				Name("etcd." + name).
 				Destroy(destroyLocker).
 				Caller(1)
 			return nil

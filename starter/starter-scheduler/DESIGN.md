@@ -28,44 +28,53 @@ Triggers and concurrency primitives come from the zero-dep
   synchronous next-fire anchored on `LastCompletion`, distinct from
   `fixed-rate` / `cron` which dispatch asynchronously and are governed
   by a `ConcurrencyPolicy` (`skip` / `queue` / `replace`).
-- **A job's schedule is declared where the job is registered.**
-  `scheduler.Provide(name, fn, opts...)` takes the trigger ([Every] /
-  [After] / [Cron]) and the execution options as `JobOption`s, so a job
-  reads in one place and its validity is settled at startup rather than
-  by a name-keyed lookup. The earlier design keyed
+- **A job's schedule is declared where the job is constructed.**
+  `scheduling.NewJob(name, trigger, run, opts...)` takes the cloud
+  package's own types — the work is a `scheduling.Job`, the trigger a
+  `scheduling.Trigger` (FixedRate / FixedDelay / ParseCron), the options
+  `scheduling.Option`s — so what a job declares reads exactly as
+  cloud/scheduling documents it, and user code depends on cloud types;
+  the starter adds only the bean and the lock-by-bean-name bridge. The
+  earlier design keyed
   `${spring.scheduler.jobs.<name>.*}` against bean names across two
   sources, and validated asymmetrically — config→bean was an error,
   bean→config only a warning, so a typo on the bean side left a job that
   silently never fired. What remains in config is process-level only:
-  `spring.scheduler.enabled` and `drain-timeout`.
-- **Registration sugar `scheduler.Provide(name, fn, opts...)`.** One call
-  does `gs.Provide` + `Name(name)` + `Export(gs.As[Job]())`. Naked
-  `NewJob` is not collected because the container only indexes exported
-  interfaces (see the `gs export interface index` note in project
-  memory). A missing or duplicated trigger panics here — at registration,
-  i.e. during startup — rather than being re-checked later.
-- **Locks by bean name, adapted at the boundary.**
-  `Lockers map[string]lock.Locker autowire:"?"` collects every
-  contributed locker keyed by its bean name; a job names one with
-  `WithLock`, and the name is resolved when the scheduler starts, since
+  `spring.scheduler.enabled`.
+- **One form: the concrete bean.** A job is a `*scheduling.Job`, built by
+  `NewJob` from the work (usually a bound method of the author's own
+  struct) and registered with `gs.Provide(...).Name(name)` — no Export,
+  since there is no interface to index. Because registration goes through
+  the container, the constructor's dependencies — other beans, or config
+  bound onto a value-tagged struct — are resolved like any bean's; a form
+  that runs before the container could never reach either. An empty name,
+  nil run or nil trigger is rejected by `NewJob` with an error — at wiring —
+  rather than being re-checked later.
+- **Locks passed straight through.**
+  A job attaches its lock at construction — the `WithLock(lk, key, ttl)`
+  option —
+  with the `lock.Locker` bean injected into the job's constructor, so the
+  reference cannot dangle. WithLock takes the cloud/lock type directly; no
+  adapter and no intermediate interface stands between the caller and the
+  lock. (The earlier design keyed lockers by bean name and
+  resolved at start, since
   the bean does not exist yet at registration time. `cloud/scheduling` defines its
   own minimal `Locker` / `Lock` interfaces to stay zero-dep, so a
   `lockerAdapter` in the starter bridges `lock.Locker` and bakes
   TTL / renewal options into the adapter.
-- **Instrumentation lives in the starter, not in `cloud/scheduling`.**
-  The zero-dep reasoning that keeps `Locker` minimal applies to
-  telemetry too: the cloud package exposes the `Observer` / `Event` seam
-  and nothing else, while this starter turns each `Event` into a span,
-  three metrics and a log line (`observe.go`). Putting the OTel bridge
-  in the cloud package — the way `lock` does with `WrapLocker` — would
-  force it to import OTel, which is exactly what its zero-dependency
-  claim rules out. One core addition was unavoidable: panics now wrap
-  `ErrJobPanicked`, so a panic is a countable outcome instead of an
-  error string the observer would have to match on.
-- **Drain is the scheduler's own bound on shutdown.**
-  `spring.scheduler.drain-timeout` (default `30s`) bounds `Stop` —
-  the scheduler stops accepting new fires immediately and waits for the
-  in-flight set.
+- **Instrumentation is built into `cloud/scheduling`.** Per the repo-wide
+  "local instrumentation" direction (the observe kit was dissolved), the
+  cloud package reports every fire itself — `scheduling.runs{job,status}`,
+  `scheduling.run.duration`, `scheduling.lag`, one log line with the same
+  keys, and a span per run on the global OTel pipeline. This starter
+  carries no observability code; it only wires jobs into the lifecycle.
+  Panics wrap `ErrJobPanicked`, so a panic is a countable outcome
+  (`status=panic`) instead of an error string to match on.
+- **Drain is bounded by the shutdown context, not a knob.**
+  `Stop` drains within the framework's shutdown ctx —
+  the orchestrator's kill deadline (K8s terminationGracePeriod, systemd
+  TimeoutStopSec) is the real bound and force-kills past it, so a second
+  in-process timeout would only ever fire in environments without one.
 
 ## 3. Constraints
 

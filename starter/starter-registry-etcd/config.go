@@ -19,7 +19,7 @@ package StarterRegistryEtcd
 import (
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // EtcdConfig binds the etcd cluster connection under ${spring.registry.etcd}.
@@ -49,9 +49,9 @@ type EtcdConfig struct {
 	KeyPrefix string `value:"${key-prefix:=/services/}"`
 
 	// TLS configures optional transport-layer security. Off by default. Uses
-	// the shared spring/cloud/tlsconf block so every starter exposes the same
+	// the shared spring/cloud/security block so every starter exposes the same
 	// tls.* keys.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// HealthEnabled controls whether the starter contributes a health.Indicator
 	// bean for this block (named "registry-etcd:<name>"). On by default; the

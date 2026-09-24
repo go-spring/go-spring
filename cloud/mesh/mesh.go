@@ -24,7 +24,7 @@
 // service's stable DNS address (letting the sidecar balance) instead of
 // building a discovery Resolver or a load-balance Pool.
 //
-// [Enabled] resolves the GS_MESH environment variable:
+// [Enabled] resolves the GS_MESH_MODE environment variable:
 //
 //   - "on"  — forced on.
 //   - "off" — forced off.
@@ -40,7 +40,7 @@ import (
 
 // ModeEnv is the environment variable that selects mesh mode. See the package
 // doc for the accepted values ("on", "off", "auto"/unset).
-const ModeEnv = "GS_MESH"
+const ModeEnv = "GS_MESH_MODE"
 
 // envPrefixes are environment-variable name prefixes injected into a workload
 // container by common service meshes; their presence signals a sidecar.

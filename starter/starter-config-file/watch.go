@@ -38,7 +38,7 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
-	"go-spring.org/cloud/confrefresh"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -71,11 +71,10 @@ func newWatchCore() watchCore {
 // changes. Before the app has started, gs.RefreshProperties returns an error
 // and the change is dropped — the initial config load already captured the
 // state.
-func (c *watchCore) TriggerRefresh() {
-	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
-		log.Warnf(context.Background(), starterTag,
-			"property refresh after file change failed, previous snapshot retained: %v", err)
-	}
+func (c *watchCore) TriggerRefresh(ctx context.Context) {
+	// The refresh outcome (status, duration, error) is logged and metered
+	// centrally by observability.RefreshConf; this layer only records backend events.
+	_ = observability.RefreshConf(ctx, gs.RefreshProperties)
 }
 
 // ensureWatch starts a background directory watcher for dir, deduplicated so
@@ -126,7 +125,7 @@ func (c *watchCore) watchLoop(w *fsnotify.Watcher) {
 					"file watcher closed; hot-reload is disabled until restart")
 				return
 			}
-			c.TriggerRefresh()
+			c.TriggerRefresh(context.Background())
 		case err, ok := <-w.Errors:
 			if !ok {
 				log.Errorf(context.Background(), starterTag,

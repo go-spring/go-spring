@@ -19,6 +19,7 @@ package log
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"math"
 	"testing"
 
@@ -531,5 +532,35 @@ func TestTextEncoder(t *testing.T) {
 		enc.AppendBool(false)
 		enc.AppendEncoderEnd()
 		assert.String(t, buf.String()).Equal("true_val=true false_val=false")
+	})
+}
+
+func TestErrorField(t *testing.T) {
+
+	t.Run("Err fixed key", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		enc := NewJSONEncoder(buf)
+		enc.AppendEncoderBegin()
+		EncodeFields(enc, []Field{Err(errors.New("boom"))})
+		enc.AppendEncoderEnd()
+		assert.String(t, buf.String()).Equal(`{"error":"boom"}`)
+	})
+
+	t.Run("Err nil is null", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		enc := NewJSONEncoder(buf)
+		enc.AppendEncoderBegin()
+		EncodeFields(enc, []Field{Err(nil)})
+		enc.AppendEncoderEnd()
+		assert.String(t, buf.String()).Equal(`{"error":null}`)
+	})
+
+	t.Run("Any dispatches error to message", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		enc := NewJSONEncoder(buf)
+		enc.AppendEncoderBegin()
+		EncodeFields(enc, []Field{Any("cause", errors.New("bang"))})
+		enc.AppendEncoderEnd()
+		assert.String(t, buf.String()).Equal(`{"cause":"bang"}`)
 	})
 }

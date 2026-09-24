@@ -43,5 +43,5 @@ func wrapIfObserved(c Config, inner lock.Locker) lock.Locker {
 	if !c.ObserveEnabled {
 		return inner
 	}
-	return lock.WrapLocker("k8s", inner)
+	return lock.Observe(inner, "k8s")
 }

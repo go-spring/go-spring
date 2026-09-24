@@ -57,24 +57,36 @@ import (
     scheduler "go-spring.org/starter-scheduler"
 )
 
+// Every job is a bean of the concrete type scheduler.Job, built by
+// scheduling.NewJob in the work's constructor — the work is usually a method
+// of your own struct — and registered via gs.Provide so the container
+// resolves the constructor's dependencies. The work, the trigger and the
+// options are cloud/scheduling types under their real names; only the lock
+// configuration (a bean-name bridge cloud cannot know) uses the starter's
+// chained setters. No Export is needed: the scheduler collects beans of
+// exactly this type.
+type tickWork struct{}
+
+func (tickWork) Run(context.Context) error { return nil } // fixed-rate
+
+func NewTickJob() *scheduling.Job {
+    return scheduling.NewJob("tick", scheduling.FixedRate(200*time.Millisecond), tickWork{}.Run)
+}
+
+type cleanupWork struct{}
+
+func (cleanupWork) Run(context.Context) error {
+    return nil // guarded by the lock below: only the holder runs
+}
+
+func NewCleanupJob() *scheduling.Job {
+    return scheduling.NewJob("cleanup", scheduling.FixedRate(200*time.Millisecond), cleanupWork{}.Run).
+        scheduling.WithLock(lk, "cleanup", 5*time.Second)
+}
+
 func main() {
-    // One Job bean per unit of work. Provide names the bean after the job,
-    // exports it as Job so the scheduler collects it, and takes the schedule as
-    // an option — the cadence is read here, beside the work it describes.
-    scheduler.Provide("tick", func(ctx context.Context) error { // fixed-rate
-        return nil
-    }, scheduler.Every(200*time.Millisecond))
-    scheduler.Provide("delay", func(ctx context.Context) error { // fixed-delay
-        time.Sleep(50 * time.Millisecond) // never overlaps by construction
-        return nil
-    }, scheduler.After(200*time.Millisecond))
-    scheduler.Provide("beat", func(ctx context.Context) error { // cron, 5-field
-        return nil
-    }, scheduler.Cron("* * * * *"))
-    scheduler.Provide("cleanup", func(ctx context.Context) error {
-        return nil // guarded by the lock below: only the holder runs
-    }, scheduler.Every(200*time.Millisecond),
-        scheduler.WithLock("memory"), scheduler.WithLockTTL(5*time.Second))
+    gs.Provide(NewTickJob)
+    gs.Provide(NewCleanupJob)
 
     // Cross-replica dedup: reference a lock.Locker bean BY BEAN NAME. In
     // production it comes from starter-lock-{redis,etcd,consul}; here an
@@ -96,7 +108,6 @@ trigger at registration.
 spring.scheduler.enabled=true
 
 # Bound on graceful-shutdown drain of in-flight runs.
-spring.scheduler.drain-timeout=5s
 ```
 
 In the snippet above: `Every(200ms)` is a fixed-rate trigger — fires every 200ms
@@ -104,7 +115,8 @@ measured from each scheduled fire time, with overlapping runs subject to
 `WithConcurrency`. `After(200ms)` fires 200ms after the previous run *ends* and
 never overlaps. `Cron("* * * * *")` is a standard 5-field expression (minute hour
 dom month dow); 6-field-with-seconds expressions are rejected by `ParseCron`, and
-an unparsable one panics at registration. `WithLock("memory")` names a
+an unparsable one fails at construction. The lock rides on the Job via
+`WithLock(lk, key, ttl)`, with the lock.Locker bean injected.
 `lock.Locker` bean, `WithLockKey` (default: the job name) is the key acquired on
 it, and `WithLockTTL` is the lease, auto-renewed while held.
 
@@ -143,13 +155,13 @@ cd example-otel && docker compose up -d && go run .
 ```
 
 Scope note (verified against source): each job run opens a span on the GLOBAL otel pipeline
-(`scheduler.job <name>` with the job-name attribute, `instrument` in starter.go — no-op
-tracer unless starter-otel or any SDK provider is installed; this starter never builds its
-own pipeline, per the protocol/component-starter convention). Spans carry the job name and
+(`scheduler.job <name>` with the job-name attribute, opened inside `cloud/scheduling`
+itself — no-op tracer unless starter-otel or any SDK provider is installed; no starter
+ever builds its own pipeline, per the protocol/component-starter convention). Spans carry the job name and
 a `status` attribute (`ok|error|panic`); skipped fires emit no span — there is no run to
 trace, and they reach the metrics and logs instead.
 
-The same observer emits three metrics per fire (observe.go):
+The same built-in instrumentation emits three metrics per fire (cloud/scheduling):
 
 | Instrument | Type | Attributes | Answers |
 |------------|------|------------|---------|
@@ -162,7 +174,7 @@ The same observer emits three metrics per fire (observe.go):
 replica was running. The job name is a metric dimension because it is fixed in code, unlike
 a lock key, whose cardinality is unbounded.
 
-Each fire also writes one log line (observe.go) — the per-fire access log, on its own tag
+Each fire also writes one log line — the per-fire access log, on its own tag
 `_app_scheduler_access` (`log.RegisterAppTag("scheduler", "access")`) so it can be selected
 apart from application logs. The lifecycle lines (starting / started / drain) stay on the
 default app tag. The line carries the same `job` and `status` the metrics just recorded,
@@ -193,20 +205,20 @@ gs.Run()
   ├─ config bind: ${spring.scheduler} → Server.Config (NO expr validation —
   │  see §2.2 asymmetry), plus field injection:
   │    Jobs    []Job                 `autowire:"?"`   (all Job beans)
-  │    Lockers map[string]lock.Locker `autowire:"?"`  (all locker beans, by name)
+  │    (no Lockers map: each job holds its bridged locker already)
   ├─ Rooter Init phase: your Provide()d jobs and lockers are beans already;
   │    nothing scheduler-side runs here
   ├─ Runner phase: Server.Run (starter.go:87-105)
   │   ├─ build() — validates what a job cannot know about itself, BEFORE readiness:
   │   │    duplicate job bean → error
   │   │    lock references a missing locker bean → error
-  │   │    (the trigger and its options were already settled at registration:
+  │   │    (the trigger and its options were already settled at construction:
   │   │      missing/duplicated trigger, non-positive duration or bad cron
-  │   │      panic in Provide/NewJob, i.e. during startup — see §2.2)
+  │   │      rejected by NewJob with an error, during wiring — see §2.2)
   │   ├─ <-sig.TriggerAndWait() → readiness flips AFTER build succeeds
   │   └─ sched.Start(ctx) — "Scheduling begins only after the application is
   │        ready, so jobs never race application startup" (starter.go:85-86)
-  └─ on SIGTERM: Stop wraps ctx with drain-timeout and drains in-flight
+  └─ on SIGTERM: Stop drains in-flight
        runs via sched.Stop(ctx); a timeout logs "scheduler drain timed out"
 ```
 
@@ -214,10 +226,11 @@ gs.Run()
 
 Validation is split by what each layer can know:
 
-- **At registration** — `Provide`/`NewJob` panic, i.e. during startup, on a missing or
-  duplicated trigger, a non-positive `Every`/`After` duration, or an unparsable cron
+- **At construction** — `NewJob` returns an error, during wiring, on an empty
+  name, a nil run function or a nil trigger; a non-positive duration or an
+  unparsable cron fails inside cloud/scheduling
   expression (job.go). There is **no** `expr` validation and no `JobConfig` to bind
-  (config.go binds only `drain-timeout`): the schedule never travels through config, so the
+  (no config is bound at all): the schedule never travels through config, so the
   name-keyed coupling between a `jobs.<name>.*` entry and a bean — and its asymmetry, where
   config→bean was an error but bean→config only a warning, so a bean-side typo left a job
   that silently never fired — no longer exists.
@@ -231,7 +244,8 @@ Validation is split by what each layer can know:
 1. Every `lock.Locker` bean in the container is collected into `Server.Lockers`, keyed by
    **bean name** (`autowire:"?"` map, starter.go). Contributing backends:
    `starter-lock-redis` / `-etcd` / `-consul` (or your own bean, as in the example).
-2. A job opts in with `WithLock("<bean-name>")` — a name, not the bean, because the bean
+2. A job opts in with the `WithLock(lk, key, ttl)` option — the lock.Locker bean is
+   injected into the job constructor, so it is the bean itself, bridged
    does not exist yet when the job is registered. `build()` resolves it and **fails fast** if
    the bean does not exist (starter.go).
 3. The acquired key is `WithLockKey`, **defaulting to the job name** — "so two jobs sharing a
@@ -251,9 +265,8 @@ Validation is split by what each layer can know:
    fixed-delay, which never overlaps by construction).
 3. If a lock is configured: `TryAcquire(key)` — loss ⇒ skip with reason.
 4. If `timeout > 0`: the run ctx is wrapped with a timeout.
-5. `Job.Run(ctx)` executes; the Observer seam fires with `{Name, Duration, Err, Skipped,
-   Reason}` and the starter logs it — Debug for ran/skipped, Error for failures
-   (starter.go:196-206).
+5. `Job.Run(ctx)` executes; `cloud/scheduling` reports the fire — metrics plus a log
+   line (Debug for ran/skipped, Error for failures) and a span for the run.
 
 ---
 
@@ -266,7 +279,6 @@ absolute keys.
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.scheduler.enabled` | bool | true (MatchIfMissing) | Master switch; false removes the bean even if jobs exist. | Set false by accident → all jobs silently stop. |
-| `spring.scheduler.drain-timeout` | duration | 30s | Bounds Stop's drain of in-flight runs (starter.go). | Too low → runs abandoned mid-flight on deploy (no retry — unlike a queue). |
 
 That is the whole config surface. Everything else about a job is a registration
 option, so this second table is a reference for the `JobOption`s rather than for
@@ -280,7 +292,7 @@ config keys:
 | — | — | — | A job must declare **exactly one** of the three triggers above. | None, or two → panic at registration. |
 | `WithTimeout(d)` | duration | 0 (off) | `>0` cancels the run ctx after it elapses. | 0 → a hung job blocks nothing but runs forever (and, if locked, holds the lease). |
 | `WithConcurrency(p)` | `scheduling.ConcurrencyPolicy` | `Skip` | `Skip` \| `Queue` \| `Replace` — a typed value, so no invalid one is expressible. | — |
-| `WithLock(bean)` | string | empty | Bean name of a `lock.Locker`; each fire TryAcquires — only the holder runs. ⚠ must match a locker bean's name exactly (fail-fast otherwise, in `build()`). | Unknown name → startup error before readiness. |
+| `WithLock(l, key, ttl)` | — | — | Attaches the lock.Locker; each fire TryAcquires — only the holder runs. | — |
 | `WithLockKey(k)` | string | job name | The key acquired on the locker — the cross-replica coordination point. ⚠ two jobs intentionally serialized must share locker AND key. | Accidental key sharing across jobs → they serialize against each other. |
 | `WithLockTTL(d)` | duration | locker's default | Lease duration, auto-renewed while held. | Below a typical run + renewal jitter → lease lost mid-run, second replica starts. |
 
@@ -304,14 +316,14 @@ so for a real drill swap in starter-lock-redis:
 
 ```bash
 docker run -d -p 6379:6379 redis:7
-# configure spring.lock.instances.redis... bean "redis" + WithLock("redis") in example.go, then:
+# configure spring.lock.instances.redis... and inject that lock.Locker bean into the job, then:
 go run . & go run . & wait
 # exactly one process logs "job \"cleanup\" ran"; the other logs nothing for it
 ```
 
 ### 4.3 Failure and skip observability
 
-Make a job return an error, and another a slow run with `scheduler.Every(100*time.Millisecond)`
+Make a job return an error, and another a slow run with `scheduling.FixedRate(100*time.Millisecond)`
 and the default `Skip` policy:
 
 ```
@@ -336,28 +348,30 @@ retry (or push the work into asynq) if you need one.
 
 ### 4.4 Drain on shutdown
 
-Start a 3s job, `kill -TERM` mid-run: shutdown waits up to `drain-timeout`; set it to 1s to
-watch `scheduler drain timed out: context deadline exceeded` (Warn).
+Start a 3s job, `kill -TERM` mid-run: shutdown waits within the framework's
+shutdown context; a deadline there surfaces as
+`scheduler drain timed out: context deadline exceeded` (Warn). The bound to
+raise in production is the orchestrator's (K8s terminationGracePeriod), not a
+config value.
 
 ### 4.5 Validation drills (fail fast)
 
-Each of these panics at registration — that is, during startup, before readiness:
+Each of these is rejected by `NewJob` with an error — in the constructor,
+during wiring, before readiness:
 
 ```go
-scheduler.Provide("orphan", fn)                          // → "has no trigger"
-scheduler.Provide("tick", fn, scheduler.Every(0))        // → "requires a positive duration"
-scheduler.Provide("beat", fn,
-    scheduler.Every(time.Second), scheduler.Cron("* * * * *"))  // → "sets more than one trigger"
-scheduler.Provide("beat", fn, scheduler.Cron("0 */5 * * * *"))  // → "must have 5 fields, got 6"
+scheduling.NewJob("", tr, run)                               // → error "job name must not be empty"
+scheduling.NewJob("j", nil, scheduling.FixedRate(time.Second)) // → "job run function must not be nil"
+scheduling.NewJob("j", run, nil)                               // → "has no trigger"
+scheduling.FixedRate(0)   // → "requires a positive duration" (cloud/scheduling panics)
 ```
 
 And these fail in `build()`, still before readiness:
 
 ```go
-scheduler.Provide("tick", fn, scheduler.Every(time.Second))
-scheduler.Provide("tick", fn, scheduler.Every(time.Second))     // → "duplicate job bean"
-scheduler.Provide("tick", fn, scheduler.Every(time.Second),
-    scheduler.WithLock("nope"))                                 // → "references lock \"nope\" ..."
+// a second Job built with the same name → Schedule reports "duplicate task name"
+// a lock reference cannot dangle: the locker is injected as a bean, so a wrong
+// wiring fails the constructor at startup
 ```
 
 ---
@@ -366,13 +380,13 @@ scheduler.Provide("tick", fn, scheduler.Every(time.Second),
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Panic at startup "has no trigger" | `Provide`/`NewJob` called without `Every`/`After`/`Cron` | Add exactly one trigger option. |
+| Startup error "has no trigger" | `NewJob` called with a nil trigger | Pass FixedRate / FixedDelay / ParseCron. |
 | "sets more than one trigger" | Two trigger options on one job | Keep one. |
 | "must have 5 fields" on cron | Seconds-style 6-field expression | Use 5-field (`* * * * *`). |
 | "references lock %q but no lock.Locker bean" | `WithLock` value isn't a locker bean name | Match the starter-lock bean name exactly. |
 | "duplicate job bean named %q" | Two jobs registered under the same name | Rename one; the name is the task name and the default lock key. |
 | Both replicas run the "locked" job | Locker is per-process (memory) or `WithLockKey` differs between deployments | Use a shared backend and the same key; key defaults to the job name. |
-| Runs abandoned on deploy | `drain-timeout` shorter than the longest run | Raise it; remember there is no re-run of drained jobs. |
+| Runs abandoned on deploy | the orchestrator's kill deadline shorter than the longest run | Raise the deadline (K8s terminationGracePeriod...); remember there is no re-run of drained jobs. |
 | Two jobs mysteriously serialize | Same locker AND same `WithLockKey` | Give each job its own key (default already does). |
 
 ## 6. Design Health
@@ -393,17 +407,17 @@ Design suspects (kept from the prior edition, plus new findings):
 - A job's cadence can no longer be retuned without a rebuild. Deliberate — an ops-tunable
   cadence is what a job platform (`starter-xxl-job`) is for — but it is the one thing the
   config surface previously bought.
-- ~~The observe seam is log-only~~ Fixed: each job run opens a span on the GLOBAL otel
-  pipeline (`scheduler.job <name>` via otel.Tracer, starter.go instrument), and every fire —
-  run or skipped — feeds the three metrics in observe.go (`scheduling.runs`,
-  `scheduling.run.duration`, `scheduling.lag`). All of it is a no-op unless starter-otel (or
-  any SDK provider) is present. This needed one core addition: panics now wrap
-  `ErrJobPanicked` (cloud/scheduling), so the observer can count them as their own status
-  value instead of matching on an error string.
+- ~~The observe seam is log-only~~ Superseded: observability is now built into
+  `cloud/scheduling` itself — each run opens a span on the GLOBAL otel pipeline
+  (`scheduler.job <name>`), and every fire — run or skipped — feeds the three metrics
+  (`scheduling.runs`, `scheduling.run.duration`, `scheduling.lag`) plus one log line.
+  All of it is a no-op unless starter-otel (or any SDK provider) is present. Panics wrap
+  `ErrJobPanicked` (cloud/scheduling), so they count as their own `panic` status value
+  instead of matching on an error string.
 - ~~The package doc comment's cron example is 6-field~~ Fixed: the example is now 5-field
   (`*/5 * * * *`), matching ParseCron (scheduling/cron.go:81-83).
 - No `Init`-phase validation: all job validation happens in `Run/build()`; an error surfaces
   at Runner time (still pre-readiness, but later than the bind-time validation other starters
   do via `expr`).
-- `drain-timeout` expiry abandons in-flight runs with no re-run or handoff — acceptable for
+- a kill deadline expiring abandons in-flight runs with no re-run or handoff — acceptable for
   idempotent jobs, undocumented as a policy for others.

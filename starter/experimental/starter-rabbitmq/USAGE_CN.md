@@ -234,19 +234,19 @@ Publish [client.go:89-107]：
    （toAMQPTable，空则 nil）、`MessageId` ← `msg.Key` [client.go:90-94]。
 2. 若 `traffic.IsLoadTest(ctx)`，标记写入 AMQP header `x-loadtest`
    [client.go:97-102]，让消费侧识别压测流量。
-3. `startPublish` 开启模块内生产者观测（span `publish <queue>`、指标
-   `messaging.client.operation.duration`）并向 `pub.Headers` 注入 W3C trace
-   context。
+3. NewDriver 处包了 `messaging.Observe`：装饰器已先打开 "publish" producer
+   span、把 W3C trace 上下文注入信封 headers（第 1 步已映射进 `pub.Headers`）、
+   记 `messaging.operation.*` 指标；driver 路径上没有模块内插桩。
 4. `PublishWithContext` 发往默认 exchange（`""`），队列名即 routing key；
-   `sp.End(err)` 记时长、平衡 in-flight 计数、出访问日志 [client.go:103-106]。
+   Observe 把结果记到指标与访问日志。
 
 Consume [client.go:122-150]：
 
 1. handler 先包 `messaging.Recover` —— panic 转为正常 error 路径，不再
    冲散 SDK goroutine [client.go:125]。
 2. `Consume(autoAck=false)`；后台循环 range delivery channel [client.go:126-133]。
-3. 每条投递：`startConsume` 从 headers 提取上游 trace 并开启消费者观测
-   [command.go:205-212]；load-test 标记从 AMQP headers 读回并写进 ctx
+3. 每条投递：`messaging.Observe` 的 handler 包装从信封 headers 提取上游
+   trace 并开启消费者 span；load-test 标记从 AMQP headers 读回并写进 ctx
    [client.go:136-138]。
 4. `fromDelivery` 反向映射：`Key` ← MessageId、仅字符串值的 headers、
    `Timestamp` ← 投递时间戳 [client.go:178-194]。
@@ -267,7 +267,7 @@ channel 侧的对应物。
 ## 3. 逐 key 行为参考
 
 所有 key 位于 `spring.rabbitmq.instances.<name>.*`。自有 value tag 4 个（config.go:28-55）
-加共享 tlsconf（6 个）块共 10 个；必填 1 个。
+加共享 security（6 个）块共 10 个；必填 1 个。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
@@ -275,7 +275,7 @@ channel 侧的对应物。
 | `vhost` | string | "" | 传入 `amqp.Config`，覆盖从 URL 解析出的 vhost [driver.go:72-76]。同时进入治理 resource label。 | URL 与 vhost 冲突 → 启动期 AMQP 握手错误。 |
 | `heartbeat` | duration | 10s | `>0`（或有 TLS/vhost）使 `amqp.Dial` → `amqp.DialConfig` 并携带 `Heartbeat` [driver.go:72-80]。`0` = URL/服务端默认。⚠ 非默认 heartbeat 会把普通拨号也切到 DialConfig 分支，值仍生效。 | 过低 → 高负载下误判断连；0 → 服务端默认可能超过 TCP 空闲超时。 |
 | `tls.enabled` | bool | false | 与 `amqps://` 隐式等效；显式开启后把构建的 `*tls.Config` 接进拨号 [driver.go:69-79]。 | 明文 `amqp://` + `tls.enabled=true` → 对 cleartext 端口跑 TLS → 启动报错。 |
-| `tls.ca-file` / `cert-file` / `key-file` | string | "" | 自定义 CA / mTLS 证书对，由共享 `tlsconf` 块加载（跨 starter 统一 key，config.go:44-48）。 | 文件缺失 → 启动期 TLS 构建失败 [driver.go:64-68]。 |
+| `tls.ca-file` / `cert-file` / `key-file` | string | "" | 自定义 CA / mTLS 证书对，由共享 `security` 块加载（跨 starter 统一 key，config.go:44-48）。 | 文件缺失 → 启动期 TLS 构建失败 [driver.go:64-68]。 |
 | `tls.server-name` | string | "" | SNI/校验名覆盖。 | 不匹配 → 启动期 x509 hostname 错误。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过证书校验。 | 生产置 true = 静默 MITM 暴露。 |
 

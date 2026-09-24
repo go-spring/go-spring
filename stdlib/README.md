@@ -30,6 +30,8 @@ making everyday Go development more convenient and enjoyable.
 | [httputil](./httputil/) | OTel-free HTTP semantic-convention attributes derived from an inbound request, shared by server starters |
 | [formutil](./formutil/) | Form processing utilities: decode form values into typed structs |
 | [netutil](./netutil/) | Network related utilities |
+| [timeutil](./timeutil/) | Time helpers: context-aware Sleep |
+| [randutil](./randutil/) | Random identifier strings: Hex and URLSafe tokens |
 
 ### JSON & Data Shaping
 

@@ -20,7 +20,7 @@ package discovery
 // the two keys that switch an entry from direct addressing to discovery
 // routing. Embed it in the starter's Config; the relative value tags resolve
 // under whatever block prefix the entry binds to (the same embedding
-// tlsconf.TLSConfig uses across the starter families).
+// security.TLSConfig uses across the starter families).
 //
 // The tags are deliberately plain — the family-wide default fallback
 // (${<family>.default.discovery}) cannot live here: its key carries the family

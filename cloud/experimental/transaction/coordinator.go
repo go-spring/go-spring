@@ -23,7 +23,11 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Option configures the in-process [Coordinator] built by [NewCoordinator].
@@ -47,12 +51,23 @@ func NewCoordinator(opts ...Option) Coordinator {
 	for _, opt := range opts {
 		opt(c)
 	}
+	c.outcomes, _ = otel.Meter("go-spring.org/cloud/experimental/transaction").
+		Int64Counter("transaction.saga.outcome.total",
+			metric.WithDescription("Saga terminal states, by status"),
+			metric.WithUnit("{saga}"))
 	return c
 }
 
 type coordinator struct {
 	store    Store
 	observer Observer
+
+	// outcomes counts saga terminal states — the event counter of the metrics
+	// rules: a saga's outcome is a rare, semantically major event, named after
+	// itself rather than riding the total/duration operation template. The saga
+	// ID is unbounded cardinality and stays out of the attributes. Built at
+	// construction so an OTel SDK installed later still receives the records.
+	outcomes metric.Int64Counter
 }
 
 // completedStep records a step that succeeded, so compensation can replay it in
@@ -231,8 +246,26 @@ func (c *coordinator) persistRunning(ctx context.Context, s Saga, completed []co
 
 // finish writes the terminal saga log. A committed saga's log is deleted (the
 // work is done and needs no recovery); a compensated or failed saga's log is
-// kept so operators and recovery can inspect it.
+// kept so operators and recovery can inspect it. Every terminal state leaves a
+// log line too — a saga's outcome is the key lifecycle event an operator
+// greps for, and the span alone is not greppable text.
 func (c *coordinator) finish(ctx context.Context, s Saga, res *Result, completed []completedStep) {
+	c.outcomes.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("status", res.Status.String()),
+	))
+	if res.Status == StatusCommitted {
+		log.Info(ctx, log.TagAppDef,
+			log.String("saga", s.ID),
+			log.String("status", res.Status.String()),
+			log.Int("steps", len(completed)),
+			log.Msg("transaction: saga committed"))
+	} else {
+		log.Warn(ctx, log.TagAppDef,
+			log.String("saga", s.ID),
+			log.String("status", res.Status.String()),
+			log.Int("steps", len(completed)),
+			log.Msg("transaction: saga did not commit"))
+	}
 	if c.store == nil {
 		return
 	}

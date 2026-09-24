@@ -72,7 +72,7 @@
           },
           "tls": {
             "type": "object",
-            "description": "tlsconf shared block: enabled/cert-file/key-file/ca-file/server-name/insecure-skip-verify"
+            "description": "security shared block: enabled/cert-file/key-file/ca-file/server-name/insecure-skip-verify"
           }
         }
       }

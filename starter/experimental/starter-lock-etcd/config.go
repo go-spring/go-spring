@@ -19,11 +19,11 @@ package StarterLockEtcd
 import (
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config binds one etcd-backed distributed-lock instance under
-// spring.lock.instances.<name>. Endpoints is required; every other field has a sensible
+// spring.lock.instances.etcd.<name>. Endpoints is required; every other field has a sensible
 // default so a minimal configuration only needs the cluster address.
 type Config struct {
 	// Endpoints lists the etcd cluster nodes to dial. Required; an empty list
@@ -50,9 +50,9 @@ type Config struct {
 	KeyPrefix string `value:"${key-prefix:=/lock/}"`
 
 	// TLS configures optional transport-layer security. Off by default. Uses
-	// the shared spring/cloud/tlsconf block so every starter exposes the same
+	// the shared spring/cloud/security block so every starter exposes the same
 	// tls.* keys.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// ObserveEnabled toggles the observe-lock instrumentation layer (trace
 	// span + duration metric + access log) around the Locker. On by

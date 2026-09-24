@@ -129,7 +129,7 @@ docker compose up -d                        # bitnami/kafka:3.7, KRaft single no
 # wait for the port, broker boot is slow (~30s)
 go run .                                    # boot fails fast if brokers unreachable
 curl -s :9370/readyz | jq .                 # kafka:a component (app-side indicator)
-grep kafka.access app.log | tail -3         # publish/consume access records
+grep messaging.access app.log | tail -3         # publish/consume access records
 ```
 
 The self-asserting smoke test is [example/check.sh](example/check.sh); the governance/health/
@@ -214,7 +214,7 @@ starter's lifecycle concerns [driver.go:62-66 comment].
 5. Inside the client the hooks fire: kotel produce span + metric; observeHook
    `OnProduceRecordBuffered` opens an access-log record named `publish` and
    `OnProduceRecordUnbuffered` ends it with the outcome and buffered→unbuffered duration
-   [command.go:57-69]. Access log tag: `kafka.access` (`RegisterAppTag("kafka","access")` in observe.go).
+   [command.go:57-69]. Access log tag: `messaging.access` (`RegisterAppTag("messaging","access")` in observe.go).
 
 `Subscribe(ctx, handler)` on a subscriber bound to source `hello` [client.go:109-144]:
 
@@ -286,7 +286,7 @@ governance-resilience `govern.driver` selecting a rule source, not this starter.
 
 ### 3.3 TLS
 
-Shared `tlsconf` block — property names uniform across starters [config.go:43-47].
+Shared `security` block — property names uniform across starters [config.go:43-47].
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -328,7 +328,7 @@ Placement in readiness/startup (never liveness — a broker outage must not rest
 
 ```bash
 go run .    # §1 service: publish Key=k1 Payload=value Header origin=demo, consume prints it
-grep kafka.access app.log | tail -2   # publish record (with duration) + consume record
+grep messaging.access app.log | tail -2   # publish record (with duration) + consume record
 ```
 
 Surviving fields: Key, Payload, Headers, and the broker-stamped Timestamp on consume
@@ -359,7 +359,7 @@ limiter/breaker; verify via the resilience outcome counters
   plugin (see [kotel](https://github.com/twmb/franz-go/tree/main/plugin/kotel)). example-otel
   ships OTLP gRPC → Jaeger on :4317; check the UI for linked produce/consume spans (trace
   context rides record headers, §2.3 steps 2/5).
-- Access log tag `kafka.access` (rendered `_app_kafka_access`): op names `publish`
+- Access log tag `messaging.access` (rendered `_app_messaging_access`): op names `publish`
   (duration-carrying) and `consume` (duration-less — no paired start hook
   [command.go:40-42,71-75]).
 - franz-go client-internal logs (reconnects, request failures) under `log.TagAppDef`,
@@ -386,7 +386,7 @@ franz-go reconnects automatically (its own semantics).
 | Driver consumer group "ignored" | `NewSubscriber` group arg is dead | Set `spring.kafka.instances.<name>.group` (fixed at construction). |
 | No rate limit despite govern.* on | Calling raw `ProduceSync` on the client bean | Only `GuardedProduceSync` and the driver publisher are guarded. |
 | No traces/metrics | starter-otel not imported | kotel rides the OTel globals; import starter-otel. |
-| No access log lines | log tag filtered | Check the `kafka.access` tag filter. |
+| No access log lines | log tag filtered | Check the `messaging.access` tag filter. |
 | Handler errors vanish after a log line | By design: no nack/redelivery in this driver | Build retry/redelivery in the handler or use retry.go from messaging. |
 
 ## 6. Design Health

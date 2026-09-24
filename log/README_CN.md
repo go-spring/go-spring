@@ -160,6 +160,7 @@ log.Infof(ctx, tag, "用户 %s 登录成功", userID)
 |------|------|
 | 消息 | `Msg` / `Msgf` |
 | 标量 | `Nil` / `Bool` / `Int` / `Uint` / `Float` / `String`（各带 `XxxPtr` 可空版本） |
+| 错误 | `Err`（固定 `error` 键记录错误消息，nil 记 null） |
 | 切片 | `Bools` / `Ints` / `Uints` / `Floats` / `Strings` |
 | 复合 | `Reflect`（反射编码任意值）/ `Any` / `Array` / `Object`（嵌套字段）/ `FieldsFromMap` |
 

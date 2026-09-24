@@ -98,7 +98,7 @@ eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"), discovery.WithT
 ```go
 load, err := discovery.NewResolver(ctx, "default", "orders-redis")
 bal, _ := loadbalance.New(loadbalance.RoundRobin)
-pool := loadbalance.NewPool(loadbalance.SourceFunc(load), bal)
+pool := loadbalance.NewPool(load, bal)
 ep, err := pool.Pick(loadbalance.PickInfo{})
 ```
 
@@ -109,7 +109,7 @@ ep, err := pool.Pick(loadbalance.PickInfo{})
   内存读,不掩盖注册中心抖动。
 - 端点选择——round-robin、权重、一致性哈希、失败摘除——全在上一层
   [`loadbalance`](../loadbalance/README_CN.md),它把 resolver 经
-  `loadbalance.SourceFunc` 收作端点源。发现本身不携带选择策略,resolver 也不持有
+  函数本体)收作端点源。发现本身不携带选择策略,resolver 也不持有
   任何资源——新鲜度全在后端内部,没有什么可 Stop。
 
 想自己管理端点集？需要快照时直接 `Resolve`:

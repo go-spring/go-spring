@@ -30,6 +30,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/timeutil"
 )
 
 // k8sLocker implements [lock.Locker] on top of coordination.k8s.io/Lease
@@ -91,7 +92,7 @@ func (l *k8sLocker) Acquire(ctx context.Context, key string, opts ...lock.Option
 		if ok {
 			return held, nil
 		}
-		if !sleep(ctx, o.RetryInterval) {
+		if !timeutil.Sleep(ctx, o.RetryInterval) {
 			return nil, ctx.Err()
 		}
 	}
@@ -298,13 +299,3 @@ func (h *k8sLock) leaseSeconds() int {
 }
 
 // sleep waits for d or until ctx is done; it returns false if ctx ended first.
-func sleep(ctx context.Context, d time.Duration) bool {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-t.C:
-		return true
-	}
-}

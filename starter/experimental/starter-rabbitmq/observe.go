@@ -38,7 +38,6 @@ var accessTag = log.RegisterAppTag("rabbitmq", "access")
 
 // tracer starts this module's messaging spans; instrument handles live in the
 // observers so they bind to whatever OTel provider is current at construction.
-var tracer = otel.Tracer(tracerName)
 
 // Connection-state values the counter and the log lines share.
 const (
@@ -122,7 +121,7 @@ func (o *observer) Start(ctx context.Context, op, arg string) (context.Context, 
 	if arg != "" {
 		spanAttrs = append(spanAttrs, attribute.String("messaging.destination.name", strutil.Truncate(arg, 512)))
 	}
-	ctx, span := tracer.Start(ctx, op,
+	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(o.kind),
 		trace.WithAttributes(spanAttrs...))
 	inflight := metric.WithAttributes(
@@ -175,7 +174,7 @@ func (s obsSpan) End(err error) {
 		if s.arg != "" {
 			fields = append(fields, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
 		}
-		log.Warn(s.ctx, accessTag, append(fields, log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(fields, log.Err(err))...)
 	case s.arg != "":
 		// Success carrying an exchange/routing key: high-frequency and
 		// uninteresting until it fails, so Debug — and built lazily, truncation

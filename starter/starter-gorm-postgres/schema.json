@@ -100,7 +100,7 @@
     },
     "tls": {
       "type": "object",
-      "description": "Shared tlsconf block: enabled, cert-file, key-file, ca-file, server-name, insecure-skip-verify. When enabled, the built *tls.Config is injected into the pgx connection; conflicts with sslmode=disable fail at startup."
+      "description": "Shared security block: enabled, cert-file, key-file, ca-file, server-name, insecure-skip-verify. When enabled, the built *tls.Config is injected into the pgx connection; conflicts with sslmode=disable fail at startup."
     }
   }
 }

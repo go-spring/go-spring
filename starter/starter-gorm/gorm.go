@@ -153,7 +153,7 @@ func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, re
 	if err != nil {
 		return nil, nil, func() {}, err
 	}
-	pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+	pool := loadbalance.NewPool(resolver, bal,
 		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
 	return pool, resolver, pool.BindSelection(resource), nil
 }

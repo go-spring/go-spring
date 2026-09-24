@@ -18,8 +18,8 @@ package StarterGateway
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
+
+	"go-spring.org/stdlib/randutil"
 )
 
 // routeIDContextKey carries the matched route id down the filter chain so
@@ -39,8 +39,4 @@ func routeIDFromContext(ctx context.Context) string {
 
 // newRequestID returns a random 128-bit hex id used by the request-id filter
 // when the inbound request carries none.
-func newRequestID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return hex.EncodeToString(b[:])
-}
+func newRequestID() string { return randutil.Hex(16) }

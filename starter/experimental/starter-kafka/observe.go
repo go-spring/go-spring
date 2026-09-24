@@ -49,28 +49,37 @@ const kafkaSystem = "kafka"
 // HTTP semconv recommended set, shared with the other family members.
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
 
-// accessTag is the static log tag for the kafka access log.
-var accessTag = log.RegisterAppTag("kafka", "access")
+// accessTag is the static log tag for the kafka access log — the messaging
+// family's shared tag, so one filter greps every broker's records.
+var accessTag = log.RegisterAppTag("messaging", "access")
 
 var (
 	// instruments are resolved on first use rather than at package init, so a
 	// SDK installed later (starter-otel) still receives the records.
 	instOnce sync.Once
 
+	opTotal    metric.Int64Counter
 	opDuration metric.Float64Histogram
 	activeReqs metric.Int64UpDownCounter
 )
 
+// instruments builds the messaging.operation.* instruments — the same names,
+// attributes and status words cloud/messaging's Observe decorator uses — so
+// kafka's client-hook instrumentation (which cannot wrap in Observe without
+// double-counting every record) still lands on the family's dashboards.
 func instruments() {
 	instOnce.Do(func() {
 		m := otel.Meter("go-spring.org/starter-kafka")
-		opDuration, _ = m.Float64Histogram("messaging.client.operation.duration",
-			metric.WithDescription("Duration of kafka client operations"),
+		opTotal, _ = m.Int64Counter("messaging.operation.total",
+			metric.WithDescription("Messages published and consumed, by operation and status"),
+			metric.WithUnit("{message}"))
+		opDuration, _ = m.Float64Histogram("messaging.operation.duration",
+			metric.WithDescription("Duration of a publish or a consume"),
 			metric.WithUnit("s"),
 			metric.WithExplicitBucketBoundaries(durationBuckets...))
-		activeReqs, _ = m.Int64UpDownCounter("messaging.client.active_requests",
-			metric.WithDescription("Number of in-flight kafka client operations"),
-			metric.WithUnit("{request}"))
+		activeReqs, _ = m.Int64UpDownCounter("messaging.operation.active",
+			metric.WithDescription("Number of in-flight messaging operations"),
+			metric.WithUnit("{operation}"))
 	})
 }
 
@@ -120,11 +129,14 @@ func startAccess(ctx context.Context, op, arg string) *accessRecord {
 // at Info.
 func (s *accessRecord) End(err error) {
 	status := statusOf(err)
-	opDuration.Record(s.ctx, time.Since(s.start).Seconds(), metric.WithAttributes(
+	dur := time.Since(s.start)
+	attrs := metric.WithAttributes(
 		attribute.String("messaging.system", kafkaSystem),
 		attribute.String("messaging.operation", s.op),
 		attribute.String("status", status),
-	))
+	)
+	opTotal.Add(s.ctx, 1, attrs)
+	opDuration.Record(s.ctx, dur.Seconds(), attrs)
 	activeReqs.Add(s.ctx, -1, s.inflight)
 
 	// Log keys are the metric labels' names, so a dashboard selecting failed
@@ -133,7 +145,7 @@ func (s *accessRecord) End(err error) {
 		f := []log.Field{
 			log.String("messaging.operation", s.op),
 			log.String("status", status),
-			log.Float("duration_ms", float64(time.Since(s.start).Nanoseconds())/1e6),
+			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 		}
 		if s.arg != "" {
 			f = append(f, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
@@ -141,7 +153,7 @@ func (s *accessRecord) End(err error) {
 		return f
 	}
 	if err != nil {
-		log.Warn(s.ctx, accessTag, append(fields(), log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(fields(), log.Err(err))...)
 		return
 	}
 	if s.arg != "" {

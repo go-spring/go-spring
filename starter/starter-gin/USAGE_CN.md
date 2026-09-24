@@ -46,7 +46,7 @@ key 在 `spring.gin.server.*` 下(含 tls 约 54 个)。只有 `addr` 必填,其
 |-----|------|--------|------|
 | `addr` | string | — | 必填;存在即激活 starter |
 | `readTimeout` / `writeTimeout` / `idleTimeout` | duration | 5s / 5s / 60s | readTimeout 兼作 ReadHeaderTimeout |
-| `tls.enabled` / `tls.cert-file` / `tls.key-file` / `tls.ca-file` | | false / — / — / — | 走 `tlsconf.BuildServer`(与 starter-grpc 同语义);配置 `ca-file` 即开启 **mTLS**(ClientCAs + `RequireAndVerifyClientCert`,客户端必须出示该 CA 签发的证书)。`server-name`/`insecure-skip-verify` 是客户端 key,server 侧无效。 |
+| `tls.enabled` / `tls.cert-file` / `tls.key-file` / `tls.ca-file` | | false / — / — / — | 走 `security.BuildServer`(与 starter-grpc 同语义);配置 `ca-file` 即开启 **mTLS**(ClientCAs + `RequireAndVerifyClientCert`,客户端必须出示该 CA 签发的证书)。`server-name`/`insecure-skip-verify` 是客户端 key,server 侧无效。 |
 | `health.enabled` / `health.path` | bool / string | false / /healthz | |
 | `middleware.enabled` | bool | true | 总开关;false = 手动模式,自己调导出的中间件函数 |
 
@@ -99,7 +99,7 @@ Observe 之内。)手动模式导出 `ApplyMiddlewares`、`LoadTest`、`RequestI
 
 1. README 激活声明(`spring.gin.server.enabled`、"默认 :8001")有误——真实条件是 `addr`
    存在;中间件顺序表过期;requestId 归属写错。
-2. 已修复——server 侧改用 `tlsconf.BuildServer`(原来 `ServeTLS` 只吃 cert/key):`ca-file`
+2. 已修复——server 侧改用 `security.BuildServer`(原来 `ServeTLS` 只吃 cert/key):`ca-file`
    即开启 mTLS(`RequireAndVerifyClientCert`),与 starter-grpc 对齐;`server-name`/
    `insecure-skip-verify` 仍为客户端 key,server 侧无效果。
 3. 报文捕获默认开(512 KiB 进日志)——隐私/体量惊讶点。

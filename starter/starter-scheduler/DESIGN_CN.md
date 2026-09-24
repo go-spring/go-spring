@@ -23,32 +23,40 @@
   `cloud/scheduling` 用同步 next-fire 实现,以 `LastCompletion` 为锚;与
   `fixed-rate` / `cron` 的异步 dispatch 区分,后者由
   `ConcurrencyPolicy`(`skip` / `queue` / `replace`)治理。
-- **调度在注册处声明。**`scheduler.Provide(name, fn, opts...)` 把触发方式
-  (`Every` / `After` / `Cron`)与执行选项都收成 `JobOption`:任务在一个地方
-  读完,合法性在启动时定,而不是靠按名查配置。此前把
+- **调度在构造处声明。**`scheduling.NewJob(name, run, trigger, opts...)` 收的全是
+  cloud 包自己的类型——工作是 `scheduling.Job`,触发器是
+  `scheduling.Trigger`(FixedRate / FixedDelay / ParseCron),选项是
+  `scheduling.Option`——job 声明的东西与 cloud/scheduling 的文档逐字对应,
+  用户代码依赖的是 cloud 类型;starter 只补 bean 本身和按名解析锁的桥。此前把
   `${spring.scheduler.jobs.<name>.*}` 按名字对到 bean 上,且校验不对称——
   配置→bean 报错、bean→配置仅告警,于是 bean 侧拼错就是"永不触发的任务"。
-  配置里只剩进程级旋钮:`spring.scheduler.enabled` 与 `drain-timeout`。
-- **注册糖 `scheduler.Provide(name, fn, opts...)`。**一次做完
-  `gs.Provide` + `Name(name)` + `Export(gs.As[Job]())`。裸 `NewJob` 收集
-  不到,因为容器只按导出接口建索引(见 memory `gs export interface
-  index`)。触发方式缺失或给了两个,就在这里 panic——注册即启动期,
-  而不是留到后面再查一遍。
-- **锁按 bean 名解析,边界处适配。**
-  `Lockers map[string]lock.Locker autowire:"?"` 按 bean 名收集所有 locker,
+  配置里只剩进程级旋钮:`spring.scheduler.enabled`。
+- **统一形态:具体 bean。**job 就是 `*scheduling.Job`,由 `NewJob` 从工作
+  (通常是作者自有 struct 的绑定方法)建成,经 `gs.Provide(...).Name(name)`
+  注册——无需 Export,因为没有接口要建索引。注册走容器,构造函数的依赖
+  ——其他 bean、或绑定到 value tag struct 的配置——与任何 bean 一样被解析;
+  先于容器运行的形态永远够不到这两样。空名字、nil 运行函数或 nil 触发器,
+  被 `NewJob` 以错误拒绝——装配期,而不是留到后面再查一遍。
+- **锁直通。**
+  job 在构造时经 `WithLock(lk, key, ttl)` 选项挂锁——`lock.Locker` bean
+  注入 job 构造函数,引用不可能悬空。WithLock 直接收 cloud/lock 类型;
+  调用方与锁之间没有适配器、没有中间接口。
+  (更早的设计按 bean 名索引 locker、启动时解析,因为
   任务用 `WithLock` 指名,名字在调度器启动时才解析(注册时那个 bean 还
   不存在)。`cloud/scheduling` 自定义了极简
   `Locker` / `Lock` 接口(保零依赖),故 starter 内 `lockerAdapter` 桥接
   `lock.Locker` 并把 TTL / 续租 option 烤进适配器。
-- **插桩留在 starter,不进 `cloud/scheduling`。**让 `Locker` 保持最小的
-  零依赖理由同样适用于遥测:cloud 包只暴露 `Observer` / `Event` 这条缝,
-  由本 starter 把每个 `Event` 变成一根 span、三个 metric 和一条日志
-  (`observe.go`)。把 OTel 桥放进 cloud 包(像 `lock` 的 `WrapLocker` 那样)
-  会逼它 import OTel,而零依赖恰恰是它明确声明的。有一处核心改动无法避免:
-  panic 现在包着 `ErrJobPanicked`,于是 panic 成了一个可计数的 outcome,
-  而不需要观察者去匹配错误字符串。
-- **停机由调度器自定边界。**`spring.scheduler.drain-timeout`(默认 `30s`)
-  约束 `Stop`——调度器立刻停止接受新触发,等在途集合结束。
+- **插桩内置在 `cloud/scheduling`。**按全仓「插桩并入领域包」的方向
+  (observe 套件已拆除),cloud 包自己上报每次触发——
+  `scheduling.runs{job,status}`、`scheduling.run.duration`、`scheduling.lag`,
+  一条同键日志,以及每次运行在全局 OTel 管线上的一根 span。本 starter
+  不含任何可观测代码,只负责把 job 接进生命周期。panic 包着
+  `ErrJobPanicked`,于是 panic 成了一个可计数的 outcome(`status=panic`),
+  而不是要去匹配的错误字符串。
+- **停机边界是 shutdown ctx,不是旋钮。**`Stop` 在框架的 shutdown ctx
+  内排空——真正的期限是编排层的击杀时限(K8s terminationGracePeriod、
+  systemd TimeoutStopSec),过了就强杀;进程内再造一个超时旋钮只会在没有
+  编排层的环境里生效。
 
 ## 3. 约束
 

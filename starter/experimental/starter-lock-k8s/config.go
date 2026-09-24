@@ -25,7 +25,7 @@ import (
 )
 
 // Config binds one Kubernetes-Lease-backed distributed-lock instance under
-// "${spring.lock.instances.<name>}". Every field has a default so a minimal in-cluster
+// "${spring.lock.instances.k8s.<name>}". Every field has a default so a minimal in-cluster
 // configuration needs no keys at all; the ServiceAccount config and the
 // "default" namespace are used.
 //

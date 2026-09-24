@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.lock",
   "type": "object",
-  "description": "Two buckets: spring.lock.default holds family-wide values (each overridable per instance), spring.lock.instances.<name> holds one entry per named instance. No other key belongs directly under spring.lock.",
+  "description": "Two buckets: spring.lock.default holds family-wide values (each overridable per instance), spring.lock.instances.etcd.<name> holds one entry per named instance. No other key belongs directly under spring.lock.",
   "properties": {
     "instances": {
       "type": "object",

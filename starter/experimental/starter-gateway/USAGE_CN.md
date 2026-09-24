@@ -262,9 +262,9 @@ bean 型 token(从注入的 `Wrappers` map 解析,不走注册表):
 |-----|------|--------|-------------|----------|
 | `addr` | string | — | **激活 key**(gateway.go:40);端口冲突在 `net.Listen` 失败(server.go:92)。 | 缺失 → 路由绑定但无人服务;无任何告警。 |
 | `tls.enabled` | bool | false | 启用 TLS 监听。 | |
-| `tls.cert-file` / `tls.key-file` | string | "" | 服务端证书;经 `tlsconf.BuildServer` 构建——文件缺失/不可读启动失败。 | |
+| `tls.cert-file` / `tls.key-file` | string | "" | 服务端证书;经 `security.BuildServer` 构建——文件缺失/不可读启动失败。 | |
 | `tls.ca-file` | string | "" | **mTLS 开关**:出现即 `RequireAndVerifyClientCert`(server.go:69-75)。⚠ 与 echo starter 不同,这里 mTLS 是接通的。 | |
-| `tls.server-name` / `tls.insecure-skip-verify` | string/bool | — | 共享 tlsconf 结构的客户端侧 key —— 在服务端**绑定了但无效**。 | 静默空操作。 |
+| `tls.server-name` / `tls.insecure-skip-verify` | string/bool | — | 共享 security 结构的客户端侧 key —— 在服务端**绑定了但无效**。 | 静默空操作。 |
 
 ---
 
@@ -387,5 +387,5 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
    可选每路由 `priority` key,大者优先,并列回落 id 排序。
 6. ~~`schema.json` 是空壳;example-otel 只有配置没有 main.go~~——已修(2026-08-28):
    schema.json 已覆盖真实配置面;example-otel/main.go 已补齐可运行。
-7. `tls.server-name` / `tls.insecure-skip-verify` 是共享 tlsconf 结构的客户端侧 key——
+7. `tls.server-name` / `tls.insecure-skip-verify` 是共享 security 结构的客户端侧 key——
    在服务端绑定但无效(与其他 starter 同款模式)。

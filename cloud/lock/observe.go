@@ -67,53 +67,67 @@ var lockTag = log.RegisterAppTag("lock", "access")
 // so an SDK installed later than this package's init still receives the
 // records.
 type instruments struct {
+	total    metric.Int64Counter
 	duration metric.Float64Histogram
 	lost     metric.Int64Counter
+	held     metric.Int64UpDownCounter
 }
 
 func newInstruments() instruments {
 	m := otel.Meter("go-spring.org/cloud/lock")
+	total, _ := m.Int64Counter("lock.operation.total",
+		metric.WithDescription("Lock operations executed, by operation and status"),
+		metric.WithUnit("{operation}"))
 	duration, _ := m.Float64Histogram("lock.operation.duration",
-		metric.WithDescription("Duration of lock operations"),
+		metric.WithDescription("Duration of lock operations; for acquire this includes the blocking wait and retry time"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
 	lost, _ := m.Int64Counter("lock.lost.total",
 		metric.WithDescription("Locks lost while still in use, because the lease expired or renewal failed"))
-	return instruments{duration: duration, lost: lost}
+	held, _ := m.Int64UpDownCounter("lock.held",
+		metric.WithDescription("Locks currently held through this locker, by backend"),
+		metric.WithUnit("{lock}"))
+	return instruments{total: total, duration: duration, lost: lost, held: held}
 }
 
-// WrapLocker returns a [Locker] that decorates inner with a client span per
-// operation, the lock.operation.duration and lock.lost.total metrics, and an
-// access log, labelled with the backend's system value. When starter-otel is
-// not imported the global OTel providers are no-ops, so the wrapper adds
-// negligible overhead and changes no behaviour.
+// Observe returns a [Locker] that decorates inner with a client span per
+// operation, the lock.operation.total, lock.operation.duration,
+// lock.lost.total and lock.held metrics, and an access log, labelled with the
+// backend's system value. When starter-otel is not imported the global OTel
+// providers are no-ops, so the wrapper adds negligible overhead and changes no
+// behaviour.
 //
-// Tracer and instruments are resolved from whatever OTel providers are current
-// — here, at wiring time, not at package init — so an SDK installed after this
-// package's init still receives the spans and records.
+// Instruments are resolved from whatever meter provider is current — here, at
+// wiring time, not at package init — so an SDK installed after this package's
+// init still receives the records. The tracer is looked up per use for the
+// same reason.
 //
 // A lock starter installs it with its backend's system value:
 //
-//	locker = lock.WrapLocker("redis", inner)
-func WrapLocker(system string, inner Locker) Locker {
+//	locker = lock.Observe(inner, "redis")
+func Observe(inner Locker, system string) Locker {
 	return &observedLocker{
 		system:      system,
 		inner:       inner,
-		tracer:      otel.Tracer("go-spring.org/cloud/lock"),
 		instruments: newInstruments(),
 	}
 }
 
+// tracerName names the tracer the operation spans open on. The tracer is
+// looked up per use (otel.Tracer at call time), never cached in a field or
+// package variable: one captured before any provider is set stops forwarding
+// once the global provider is set, unset and set again.
+const tracerName = "go-spring.org/cloud/lock"
+
 type observedLocker struct {
 	system      string
 	inner       Locker
-	tracer      trace.Tracer
 	instruments instruments
 }
 
-// start opens the operation's client span.
-func (l *observedLocker) start(ctx context.Context, op, key string) (context.Context, trace.Span) {
-	return l.tracer.Start(ctx, op,
+// startSpan opens the operation's client span.
+func (l *observedLocker) startSpan(ctx context.Context, op, key string) (context.Context, trace.Span) {
+	return otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("lock.system", l.system),
@@ -146,11 +160,13 @@ func statusOf(err error, acquired bool) string {
 // acquisition is frequent and uninteresting until it fails or misses).
 func (l *observedLocker) record(ctx context.Context, op, key, status string, start time.Time, err error) {
 	elapsed := time.Since(start)
-	l.instruments.duration.Record(ctx, elapsed.Seconds(), metric.WithAttributes(
+	attrs := metric.WithAttributes(
 		attribute.String("system", l.system),
 		attribute.String("operation", op),
 		attribute.String("status", status),
-	))
+	)
+	l.instruments.total.Add(ctx, 1, attrs)
+	l.instruments.duration.Record(ctx, elapsed.Seconds(), attrs)
 
 	fields := func() []log.Field {
 		return []log.Field{
@@ -163,7 +179,7 @@ func (l *observedLocker) record(ctx context.Context, op, key, status string, sta
 	}
 	switch status {
 	case "error", "not_held":
-		log.Warn(ctx, lockTag, append(fields(), log.Any("error", err))...)
+		log.Warn(ctx, lockTag, append(fields(), log.Err(err), log.Msg("lock operation failed"))...)
 	case "missed":
 		log.Info(ctx, lockTag, fields()...)
 	default:
@@ -173,7 +189,7 @@ func (l *observedLocker) record(ctx context.Context, op, key, status string, sta
 
 func (l *observedLocker) Acquire(ctx context.Context, key string, opts ...Option) (Lock, error) {
 	start := time.Now()
-	ctx, span := l.start(ctx, "acquire", key)
+	ctx, span := l.startSpan(ctx, "acquire", key)
 	held, err := l.inner.Acquire(ctx, key, opts...)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
@@ -191,7 +207,7 @@ func (l *observedLocker) Acquire(ctx context.Context, key string, opts ...Option
 
 func (l *observedLocker) TryAcquire(ctx context.Context, key string, opts ...Option) (Lock, bool, error) {
 	start := time.Now()
-	ctx, span := l.start(ctx, "try_acquire", key)
+	ctx, span := l.startSpan(ctx, "try_acquire", key)
 	held, ok, err := l.inner.TryAcquire(ctx, key, opts...)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
@@ -209,19 +225,26 @@ func (l *observedLocker) Close() error { return l.inner.Close() }
 // observe wraps a held lock so its release and its loss are reported through
 // the same system the acquisition was.
 func (l *observedLocker) observe(ctx context.Context, inner Lock, key string) Lock {
+	l.instruments.held.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("system", l.system),
+	))
+	// The loss is reported from a goroutine that outlives the call that
+	// acquired the lock, so the caller's context is long done by then. Carry
+	// the acquisition's span context forward so the loss lands in the same
+	// trace, but nothing else: rebuilding it on Background avoids pinning the
+	// caller's request-scoped values (or passing a cancelled ctx around) for
+	// as long as the lock is held.
+	// spanCtx is just the trace identity; lossCtx is the detached context the
+	// loss goroutine reports under — same trace, no request-scoped baggage.
+	spanCtx := trace.SpanContextFromContext(ctx)
+	lossCtx := trace.ContextWithSpanContext(context.Background(), spanCtx)
 	h := &observedLock{
 		locker:   l,
 		inner:    inner,
 		key:      key,
 		lost:     inner.Lost(),
 		acquired: time.Now(),
-		// The loss is reported from a goroutine that outlives the call that
-		// acquired the lock, so the caller's context is long done by then.
-		// Carry the acquisition's span context forward so the loss lands in the
-		// same trace, but nothing else: rebuilding it from Background avoids
-		// pinning the caller's request-scoped values for as long as the lock is
-		// held.
-		ctx: trace.ContextWithSpanContext(context.Background(), trace.SpanContextFromContext(ctx)),
+		ctx:      lossCtx,
 	}
 	// Watching a channel costs one goroutine per held lock, which is the price
 	// of reporting a loss at the moment it happens. A backend whose lease can
@@ -254,11 +277,17 @@ func (h *observedLock) Lost() <-chan struct{} { return h.lost }
 
 func (h *observedLock) Unlock(ctx context.Context) error {
 	// Set before the call: a release that fails is still a release attempt, not
-	// a silent loss.
-	h.released.Store(true)
+	// a silent loss. The Swap return halves the held gauge exactly once per
+	// handle — repeated Unlock calls must not under-count it.
+	firstUnlock := !h.released.Swap(true)
+	if firstUnlock {
+		h.locker.instruments.held.Add(ctx, -1, metric.WithAttributes(
+			attribute.String("system", h.locker.system),
+		))
+	}
 
 	start := time.Now()
-	ctx, span := h.locker.start(ctx, "unlock", h.key)
+	ctx, span := h.locker.startSpan(ctx, "unlock", h.key)
 	err := h.inner.Unlock(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
@@ -289,8 +318,13 @@ func (h *observedLock) reportLost() {
 		return
 	}
 
+	h.locker.instruments.held.Add(h.ctx, -1, metric.WithAttributes(
+		attribute.String("system", h.locker.system),
+	))
 	h.locker.instruments.lost.Add(h.ctx, 1, metric.WithAttributes(
 		attribute.String("system", h.locker.system),
 	))
-	log.Warn(h.ctx, lockTag, append(fields(), log.String("status", "lost"))...)
+	log.Warn(h.ctx, lockTag, append(fields(),
+		log.String("status", "lost"),
+		log.Msg("lock lost while still held"))...)
 }

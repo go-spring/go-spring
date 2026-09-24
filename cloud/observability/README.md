@@ -75,10 +75,27 @@ func (myInterceptor) Do(ctx context.Context, ...) {
 }
 ```
 
+## RefreshConf: the property-refresh funnel
+
+Every config backend (nacos, etcd, consul, vault, k8s, file, ...) fires the
+same application-wide property refresh when its watch reports a change.
+`RefreshConf` is the shared funnel for those triggers: it runs the refresh
+once and records the outcome — `config.refresh.total` by exclusive `status`,
+`config.refresh.duration`, `config.refresh.last_success_timestamp`, and the
+one log line for a fleet-wide event. Callers log only their backend events.
+
+```go
+_ = observability.RefreshConf(ctx, gs.RefreshProperties)
+```
+
+The refresh function is passed in (not referenced), so the package stays
+spring-free; fn's error is returned unchanged — this is instrumentation, not
+error policy.
+
 ## Scope
 
 | Not covered | Where it belongs instead |
 |---|---|
-| **Metrics** — the metric SDK has no per-record hook, so built-in metric labels stay closed by design | pass attributes where you record your own instrument |
+| **Context-carrier attributes on metrics** — the metric SDK has no per-record hook, so built-in metric labels stay closed by design | pass attributes where you record your own instrument |
 | **Process-level dimensions** (env, cluster, version) — the same for every span in the process | the OTel resource: `spring.observability.service-name`, `OTEL_RESOURCE_ATTRIBUTES` |
 | **Log fields** | `log.WithFields` / `log.Collector` in the log module |

@@ -21,7 +21,7 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/starter-http-client/httpx"
 )
 
@@ -56,7 +56,7 @@ type Config struct {
 	// peer name (tls.server-name) and an insecure escape hatch. Off by default;
 	// when enabled it is wired into the transport's TLS config, so
 	// WithScheme("https") gets verifiable TLS instead of system defaults.
-	TLS tlsconf.TLSConfig `value:"${tls:=}"`
+	TLS security.TLSConfig `value:"${tls:=}"`
 }
 
 // Resilience, fault and endpoint-selection policy are NOT bound here: they live

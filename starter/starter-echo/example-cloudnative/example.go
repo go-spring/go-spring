@@ -191,7 +191,7 @@ func runTest() {
 	if err != nil {
 		fail("new balancer: %v", err)
 	}
-	ep, err := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal).Pick(loadbalance.PickInfo{})
+	ep, err := loadbalance.NewPool(resolver, bal).Pick(loadbalance.PickInfo{})
 	if err != nil {
 		fail("resolve: %v", err)
 	}

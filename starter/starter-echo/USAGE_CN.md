@@ -239,7 +239,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 | `readTimeout` | duration | 5s | 兼限 header 读取。 | 过低会掐死慢客户端。 |
 | `writeTimeout` / `idleTimeout` | duration | 5s / 60s | 透传 `http.Server`。 | idleTimeout 过低 → keep-alive 频繁重建。 |
 | `health.enabled` / `health.path` | bool / string | false / `/healthz` | starter 服务的存活路由;路径自动并入访问日志跳过集。 | 自定义路径只有在用 starter 服务的那条才自动跳过。 |
-| `tls.enabled` + `cert-file`/`key-file` | — | 关 | 切到 `tlsconf.BuildServer()` 构建的 TLS listener(与 starter-grpc 同语义);配置 `ca-file` 即开启 **mTLS**(ClientCAs + `RequireAndVerifyClientCert`,客户端必须出示该 CA 签发的证书)。`server-name`/`insecure-skip-verify` 是客户端 key,此处绑定但无效。 | 随手配 `ca-file` → 没有证书的客户端全部被拒。 |
+| `tls.enabled` + `cert-file`/`key-file` | — | 关 | 切到 `security.TLSConfig.BuildServer()` 构建的 TLS listener(与 starter-grpc 同语义);配置 `ca-file` 即开启 **mTLS**(ClientCAs + `RequireAndVerifyClientCert`,客户端必须出示该 CA 签发的证书)。`server-name`/`insecure-skip-verify` 是客户端 key,此处绑定但无效。 | 随手配 `ca-file` → 没有证书的客户端全部被拒。 |
 
 ### 3.2 middleware 组
 

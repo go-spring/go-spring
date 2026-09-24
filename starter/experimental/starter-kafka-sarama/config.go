@@ -17,7 +17,7 @@
 package StarterKafkaSarama
 
 import (
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config defines Kafka client configuration via the sarama driver.
@@ -39,10 +39,10 @@ type Config struct {
 	SASL SASLConfig `value:"${sasl}"`
 
 	// TLS configures transport encryption, disabled by default. It uses the
-	// shared spring/cloud/tlsconf block so property keys are uniform across
+	// shared spring/cloud/security block so property keys are uniform across
 	// starters (cert-file / key-file / ca-file / server-name /
 	// insecure-skip-verify).
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// Producer tunes producer-side compression and acks.
 	Producer ProducerConfig `value:"${producer}"`

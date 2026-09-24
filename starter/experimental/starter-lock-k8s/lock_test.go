@@ -166,12 +166,13 @@ func TestElectionElectsOneLeader(t *testing.T) {
 	defer func() { assert.Error(t, l.Close()).Nil() }()
 
 	elected := make(chan struct{}, 1)
-	e := lock.NewElection(lock.ElectionConfig{
-		Locker:        l,
-		Key:           "leader",
-		RetryInterval: 20 * time.Millisecond,
-		OnElected:     func(ctx context.Context) { elected <- struct{}{} },
+	e, err := lock.NewElection(lock.ElectionConfig{
+		Locker:           l,
+		Key:              "leader",
+		RetryInterval:    20 * time.Millisecond,
+		OnStartedLeading: func(ctx context.Context) { elected <- struct{}{} },
 	})
+	assert.That(t, err).Nil()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

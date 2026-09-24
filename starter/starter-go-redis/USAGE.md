@@ -258,7 +258,7 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 | `max-retries` | int | 0 | go-redis command retries. ⚠ Keep the RESILIENCE retry at 0 too — double retry loops amplify latency and can re-send non-idempotent commands (config.go:152-154 comment). | Large value + resilience retry → multiplied attempts. |
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Passed through; dial-timeout also bounds the startup ping [starter.go:229]. | — |
 | `conn-max-lifetime` | duration | 2m | Conn reuse window; short values smooth discovery traffic switching. | Very large + discovery → stale-endpoint conns linger. |
-| `tls.*` | group | off | `tlsconf` client TLS (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify). | Partial config → `tls.Build` error at boot. |
+| `tls.*` | group | off | `security` client TLS (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify). | Partial config → `tls.Build` error at boot. |
 | `health.enabled` | bool | true | Contributes the `redis:<name>` health.Indicator for the instance — the same switch starter-redigo exposes. | false → no indicator bean for the instance; readiness of that Redis is no longer reported. |
 
 ### 3.3 Instrumentation

@@ -14,7 +14,7 @@ starter 负责驱动它们、参与优雅停机,并可借助分布式锁在多�
 触发与并发原语来自零依赖的
 [`cloud/scheduling`](../../cloud/scheduling) 包;本 starter 只是把 IoC 容器接入其
 上的薄集成层。任务的节奏是任务本身的一部分,所以在注册任务的地方声明——配置里只剩
-进程级旋钮(`enabled`、`drain-timeout`)。
+进程级旋钮(`enabled`);停机排空由编排层的击杀期限约束,不是配置值。
 
 ## 安装
 
@@ -30,61 +30,68 @@ go get go-spring.org/starter-scheduler
 import _ "go-spring.org/starter-scheduler"
 ```
 
-### 2. 注册 Job 并同时给出调度
+### 2. 定义 Job bean
 
-`scheduler.Provide` 会以任务名命名 bean、将其导出为 `Job` 供调度器收集,并把调度作为
-选项收下——节奏就写在它所描述的工作旁边。
+job 就是 cloud 类型 `scheduling.Job`(没有接口——不会有类型意外实现它,
+代码跳转直达 struct 本体),由工作自己的构造函数调 `scheduling.NewJob`
+建成,通常传入你自有 struct 的绑定方法,让任务的依赖待在那个 struct 里、
+由容器解析。**不需要 `Export`**:starter 直接收集这个类型的 bean;job
+构造里不会用到任何 starter 符号。
 
 ```go
-import scheduler "go-spring.org/starter-scheduler"
+import scheduling "go-spring.org/cloud/scheduling"
+
+type CleanupService struct {
+    db *gormcore.DB // 容器认识的任意 bean
+}
+
+func (s *CleanupService) Cleanup(ctx context.Context) error { ... }
+
+func NewCleanupJob(db *gormcore.DB) *scheduling.Job {
+    return scheduling.NewJob("cleanup", scheduling.FixedRate(5 * time.Minute), svc.Cleanup)
+}
 
 func main() {
-    scheduler.Provide("cleanup", func(ctx context.Context) error {
-        return svc.Cleanup(ctx)
-    }, scheduler.Every(5*time.Minute))
-
-    scheduler.Provide("nightly", svc.Prune, scheduler.Cron("0 3 * * *"))
+    gs.Provide(NewCleanupJob)
     gs.Run()
 }
 ```
 
-没有触发方式、或给了两个,都会在注册时 panic,也就是在启动期间——错误在启动时暴露,
-而不是变成一个悄无声息永不触发的任务。
+空名字、nil 运行函数或 nil 触发器都会被 `NewJob` 拒绝(返回错误),也就是在装配期间
+——错误在启动时暴露,而不是变成一个悄无声息永不触发的任务。触发器一侧的错误
+(非正时长、解析不了的 cron)在 cloud 包里失败——同样发生在构造函数里,同样是
+启动期。
 
-## 触发方式
+## 触发器与选项
 
-每个任务**恰好声明一个**:
+触发器和每任务选项都是 cloud 包自己的类型——完整契约见
+[cloud/scheduling](../../../cloud/scheduling/README_CN.md)。三个触发器:
+`scheduling.FixedRate(d)`(每隔 `d`,以每次计划触发时刻为基准)、
+`scheduling.FixedDelay(d)`(上次运行**结束后**再过 `d`;永不重叠)、
+`scheduling.ParseCron(expr)`(标准 5 段 cron)。选项:
+`scheduling.WithTimeout`、`scheduling.WithConcurrencyPolicy`(对
+FixedDelay 无效——后者天生串行)。
 
-| 选项                   | 含义                                                     |
-|------------------------|----------------------------------------------------------|
-| `scheduler.Cron(expr)` | 标准 5 段 cron 表达式(`分 时 日 月 周`)。                |
-| `scheduler.Every(d)`   | 每隔 `d` 触发,以每次计划触发时刻为基准。                 |
-| `scheduler.After(d)`   | 上一次运行**结束后**再过 `d` 触发;永不重叠。             |
-
-## 每任务选项
-
-与触发方式一起在注册时给出:
-
-| 选项                           | 默认             | 含义                                                          |
-|--------------------------------|------------------|---------------------------------------------------------------|
-| `scheduler.WithTimeout(d)`     | 无               | 为正时,运行超过 `d` 后其 context 被取消。                     |
-| `scheduler.WithConcurrency(p)` | `scheduling.Skip`| `Every`/`Cron` 的重叠策略:`Skip`、`Queue` 或 `Replace`。      |
-| `scheduler.WithLock(bean)`     | —                | 一个 `lock.Locker` bean 的名字;每次触发只有持锁者运行。       |
-| `scheduler.WithLockKey(k)`     | 任务名           | 在 locker 上获取的键。                                        |
-| `scheduler.WithLockTTL(d)`     | locker 自身默认  | 租约时长;持锁期间自动续租。                                   |
-
-`WithConcurrency` 对 `After` 任务无效——后者天生串行。
+锁也是 cloud 概念:`WithLock(l, key, ttl)` 选项直接收 `cloud/lock.Locker`
+——就是 starter-lock-{redis,etcd,consul} 贡献的 bean 本来的类型——中间没有
+适配器。
 
 ## 多副本去重
 
-要让某任务在同一时刻只在一个副本上运行,把它的 `WithLock` 指向由
-`starter-lock-{redis,etcd,consul}` 贡献的 `lock.Locker` bean。每次触发都会尝试获取
-锁,未抢到的副本跳过本次。
+要让某任务在同一时刻只在一个副本上运行,给 Job 挂锁:把
+`lock.Locker` bean（由 `starter-lock-{redis,etcd,consul}` 贡献）注进 job
+构造函数直接传入 `WithLock`。每次触发都会尝试获取锁,未抢到的副本跳过
+本次。
 
 ```go
-scheduler.Provide("nightly", svc.Prune, scheduler.Cron("0 2 * * *"),
-    scheduler.WithLock("jobs"),                // 名为 "jobs" 的 lock.Locker bean
-    scheduler.WithLockTTL(5*time.Minute))
+func NewNightlyJob(svc *Service, lk lock.Locker) (*scheduling.Job, error) {
+    tr, err := scheduling.ParseCron("0 2 * * *")
+    if err != nil {
+        return nil, err
+    }
+    return scheduling.NewJob("nightly", tr, svc.Prune,
+        scheduling.WithLock(lk, "nightly", 5*time.Minute))
+}
 ```
 
 ```go
@@ -98,7 +105,7 @@ import (
 ## 优雅停机
 
 收到 `SIGTERM` 后,调度器停止触发并等待在途运行结束,受
-`spring.scheduler.drain-timeout`(默认 `30s`)约束——这是调度器对自身优雅停机
+框架的 shutdown ctx 约束——生产上真正的期限是编排层(K8s terminationGracePeriod、systemd TimeoutStopSec),过了就强杀,所以 starter 不设第二个旋钮。这是调度器对自身优雅停机
 的边界。
 
 ## 可观测性
@@ -123,7 +130,6 @@ instrument 参考见 [USAGE §1.1](USAGE_CN.md#11-可观测变体example-otel)�
 | 键                               | 默认    | 说明                                       |
 |----------------------------------|---------|--------------------------------------------|
 | `spring.scheduler.enabled`       | `true`  | 启用调度器(注册 ≥1 个 Job 后才真正生效)。 |
-| `spring.scheduler.drain-timeout` | `30s`   | `Stop` 等待在途运行的最长时间。            |
 
 ## 示例
 

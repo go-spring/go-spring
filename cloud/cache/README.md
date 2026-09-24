@@ -65,6 +65,23 @@ expiry). bigcache ignores it and uses the global `LifeWindow` set at
 construction. A backend that cannot honor per-entry ttl ignores the argument
 and says so in its own docs; it does not panic.
 
+## Metrics
+
+`New` wraps every backend in an observability decorator, so every operation —
+typed or promoted — records one metric under the `go-spring.org/cloud/cache`
+meter:
+
+- `cache.operation.total` — counter by exclusive `status` per `operation`
+  (`get`: `hit`/`miss`/`error`; `set`/`delete`: `ok`/`error`). Summed over
+  status it equals the operations executed; hit rate is
+  `rate(get.hit) / rate(get.hit + get.miss)`.
+
+The key never appears in a metric. No duration is recorded — an operation's
+latency is the backend client's, which the backends already report as
+`db.client.operation.duration` — and no logs either: cache calls are too
+frequent for a per-call line, and backend errors keep being reported by the
+backends' own instrumentation.
+
 ## Implementing a backend
 
 Implement `ByteCache`, the three raw primitives a remote client maps 1:1 to

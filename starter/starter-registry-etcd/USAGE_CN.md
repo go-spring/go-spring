@@ -244,7 +244,7 @@ gs.Run()
 | `dial-timeout` | duration | 5s | 约束 client dial 与启动探活超时。 | 过小 → 慢网络下启动偶发失败 |
 | `ttl` | duration | 15s | lease TTL;向上取整到整秒、最小 1s。⚠ `<=0` 静默变 15s,不是绑定期报错。 | 过长 → 崩溃驱逐延迟到 ~TTL;0 不会禁用任何东西 |
 | `key-prefix` | string | `/services/` | 所有 key 的前缀(读写共享)。⚠ 必须与消费方引用的块一致——耦合只有文档约束、从不校验。 | 不一致 → provider 正常注册、consumer 什么都发现不了,双方都"成功" |
-| `tls.*` | tlsconf | 关 | 共享 `cloud/tlsconf` 块:`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`。 | CA 错 → 启动探活失败 |
+| `tls.*` | security | 关 | 共享 `cloud/security` 块:`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`。 | CA 错 → 启动探活失败 |
 | `health.enabled` | bool | true | 贡献名为 `registry-etcd:<name>` 的 `health.Indicator` bean,探针打 `endpoints[0]`(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 集群健康对 readiness 探针不可见 |
 
 两个块 = 两个中心 = 双注册(registryServer 会注册进两者)。跨后端混搭(etcd 块 +

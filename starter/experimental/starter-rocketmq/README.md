@@ -104,8 +104,9 @@ synthetic load stays recognisable downstream.
 
 - **Tracing**: `StartProducerSpan` / `StartConsumerSpan` / `EndSpan` wrap raw
   sends and handlers in OTel spans; the driver path is instrumented
-  automatically. Everything rides the globals installed by `starter-otel`
-  and is a no-op without it. See `example-otel/`.
+  automatically by the broker-neutral `messaging.Observe` decorator. Everything
+  rides the globals installed by `starter-otel` and is a no-op without it. See
+  `example-otel/`.
 
 ## Resilience
 

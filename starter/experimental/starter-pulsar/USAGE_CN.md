@@ -244,10 +244,11 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
 2. 信封 → `pulsar.ProducerMessage`：`Payload`、`Properties`（= headers）、**Key 仅在
    非空时设置** [driver.go:91-97]。未映射：`Timestamp`（信封有，但 Pulsar 发布时间由
    服务端定）及一切 Pulsar 专有字段（OrderingKey、DeliverAt……）。
-3. `startProduce` 打开模块内观测（span `publish`、时长/在途指标、访问日志），
-   并把 W3C trace context 注入 `pm.Properties`。
+3. NewDriver 处包了 `messaging.Observe`：装饰器已先打开 "publish" producer span、
+   把 W3C trace 上下文注入信封 headers（第 2 步已映射进 `pm.Properties`）；
+   driver 路径上没有模块内插桩。
 4. `producer.Send(ctx, pm)` —— 同步，阻塞到 broker ack。
-5. `sp.End(err)` 在三路信号上记录结果。
+5. Observe 把结果记到 `messaging.operation.total/duration/active` 与访问日志。
 
 ### 2.4 一次 driver 消费，逐层走读
 
@@ -257,8 +258,8 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
    打穿 SDK goroutine [driver.go:121-123]。
 2. 循环 ctx 派生自 `context.WithoutCancel(ctx)` —— 只有 Close 显式取消，调用方 ctx
    取消不影响 [driver.go:123]。
-3. `c.Receive` → `startConsume` 从 `msg.Properties()` 提取上游 trace，开 consumer 子
-   span [command.go:195-198]。
+3. `c.Receive` → 消息交给 `messaging.Observe` 的 handler 包装：从信封 headers
+   （映射自 `Properties()`）提取上游 trace，开 consumer span。
 4. 压测标记：若生产者往 Properties 里写了 `x-load-test`，handler ctx 会经
    `traffic.WithLoadTest` 重新打标 [driver.go:141-143]。
 5. `fromPulsarMsg` 反向映射：Pulsar `Key()` → 信封 Key、`Payload()`、`Properties()` →

@@ -190,7 +190,7 @@ gs.Run()
   │    ├─ useDiscovery = service-name != "" && !mesh.Enabled()
   │    ├─ useNative = useDiscovery || TLS.Enabled
   │    │    native: ch.Options{Addr, Auth, Dial/ReadTimeout}
-  │    │      + opts.TLS = tlsconf.BuildClient()          （TLS 开启时）
+  │    │      + opts.TLS = security.BuildClient()          （TLS 开启时）
   │    │      + opts.DialContext = resolver 选点     （discovery 时）
   │    │      → clickhouse.New(Config{Conn: ch.OpenDB(opts)})
   │    └─ 直连路径：clickhouse.Open(DSN)              （无 TLS、无 discovery）
@@ -244,7 +244,7 @@ key 位于 `spring.gorm.clickhouse.instances.<name>.*`。Common keys（10 个）
 | `dialTimeout` | duration | 0 | DSN `dial_timeout=2s`（Go duration 字符串，不截断）/ `ch.Options.DialTimeout`。 | 太小 → 冷集群拨号超时。 |
 | `readTimeout` | duration | 0 | DSN `read_timeout=30s` / `ch.Options.ReadTimeout`。⚠ 长分析查询需要足够大或不设。 | 太小 → 大 SELECT 中途中断。 |
 
-### 3.2 TLS 块（`tls.*`，共享 tlsconf.TLSConfig 绑定于 config.go:45）
+### 3.2 TLS 块（`tls.*`，共享 security.TLSConfig 绑定于 config.go:45）
 
 与 sqlserver（DSN 参数）不同，ClickHouse 的 TLS 是真正的 `*tls.Config`：开启后
 **把 starter 切到 native 驱动路径**（`useNative`，starter.go:78），设置
@@ -255,7 +255,7 @@ key 位于 `spring.gorm.clickhouse.instances.<name>.*`。Common keys（10 个）
 |-----|--------|------|
 | `tls.enabled` | false | 开 → native 路径 + `opts.TLS`。不可读的 `ca-file` 在任何拨号*之前*就让 build 失败（starter_test.go 钉死）。 |
 | `tls.ca-file` | "" | 验证服务端的根 CA 包（`RootCAs`）。 |
-| `tls.cert-file` + `tls.key-file` | "" | 客户端密钥对 —— 本方言**可表达 mTLS**（tlsconf `Build()` 两者都加载）。 |
+| `tls.cert-file` + `tls.key-file` | "" | 客户端密钥对 —— 本方言**可表达 mTLS**（security `Build()` 两者都加载）。 |
 | `tls.server-name` | "" | 覆盖对服务器证书校验的名字 —— 按 IP 拨号时有用。 |
 | `tls.insecure-skip-verify` | false | 仅限开发的逃生门。 |
 

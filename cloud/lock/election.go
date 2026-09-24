@@ -22,7 +22,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/timeutil"
 )
 
 // ElectionConfig configures an [Election]. Locker and Key are required.
@@ -42,16 +44,16 @@ type ElectionConfig struct {
 	RenewInterval time.Duration
 	RetryInterval time.Duration
 
-	// OnElected is called when this instance becomes leader. Its ctx is cancelled
+	// OnStartedLeading is called when this instance becomes leader. Its ctx is cancelled
 	// when leadership is lost (lease expired) or the election stops, so a leader's
 	// work should honour ctx and return promptly. It runs on its own goroutine;
 	// [Election.Run] does not wait for it to return before re-campaigning after a
 	// loss, but it is cancelled first.
-	OnElected func(ctx context.Context)
+	OnStartedLeading func(ctx context.Context)
 
-	// OnResigned is called once each time this instance stops being leader
+	// OnStoppedLeading is called once each time this instance stops being leader
 	// (loss or shutdown). Optional.
-	OnResigned func()
+	OnStoppedLeading func()
 }
 
 // Election runs leader election on top of a [Locker]: many instances call
@@ -63,16 +65,16 @@ type Election struct {
 	leader atomic.Bool
 }
 
-// NewElection builds an [Election]. It panics if Locker or Key is unset, since a
-// misconfigured election can never elect anyone.
-func NewElection(cfg ElectionConfig) *Election {
+// NewElection builds an [Election]. It returns an error if Locker or Key is
+// unset, since a misconfigured election can never elect anyone.
+func NewElection(cfg ElectionConfig) (*Election, error) {
 	if cfg.Locker == nil {
-		panic(errutil.Explain(nil, "lock: election requires a Locker"))
+		return nil, errutil.Explain(nil, "lock: election requires a Locker")
 	}
 	if cfg.Key == "" {
-		panic(errutil.Explain(nil, "lock: election requires a Key"))
+		return nil, errutil.Explain(nil, "lock: election requires a Key")
 	}
-	return &Election{cfg: cfg}
+	return &Election{cfg: cfg}, nil
 }
 
 // IsLeader reports whether this instance currently holds leadership.
@@ -80,7 +82,7 @@ func (e *Election) IsLeader() bool { return e.leader.Load() }
 
 // Run campaigns for leadership until ctx is done, then releases the lock and
 // returns ctx.Err(). While running it acquires the lock (blocking as a
-// follower), invokes OnElected on win, watches for loss, and re-campaigns. Run
+// follower), invokes OnStartedLeading on win, watches for loss, and re-campaigns. Run
 // blocks; typically it is registered as a background runner in the application
 // lifecycle.
 func (e *Election) Run(ctx context.Context) error {
@@ -106,7 +108,7 @@ func (e *Election) Run(ctx context.Context) error {
 				return ctx.Err()
 			}
 			// Transient backend error: back off and retry the campaign.
-			if !sleep(ctx, e.retryInterval()) {
+			if !timeutil.Sleep(ctx, e.retryInterval()) {
 				return ctx.Err()
 			}
 			continue
@@ -121,34 +123,58 @@ func (e *Election) Run(ctx context.Context) error {
 }
 
 // serveTerm runs one leadership term: it marks this instance leader, launches
-// OnElected with a term context, and blocks until leadership is lost or ctx ends,
+// OnStartedLeading with a term context, and blocks until leadership is lost or ctx ends,
 // then resigns and releases the lock.
+//
+// Leadership transitions are fleet-significant lifecycle events, so each one
+// gets its own line on the default tag, log-keyed by lock.key: became leader
+// at Info, a lost term at Warn, a term ended by shutdown at Info. A failed
+// release is Warned too — the broker may redeliver the key later than expected.
 func (e *Election) serveTerm(ctx context.Context, held Lock) {
 	termCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	e.leader.Store(true)
+	log.Info(ctx, log.TagAppDef,
+		log.String("lock.key", e.cfg.Key),
+		log.Msg("election: became leader"))
 
 	var wg sync.WaitGroup
-	if e.cfg.OnElected != nil {
+	if e.cfg.OnStartedLeading != nil {
 		wg.Go(func() {
-			e.cfg.OnElected(termCtx)
+			e.cfg.OnStartedLeading(termCtx)
 		})
 	}
 
+	lost := false
 	select {
 	case <-ctx.Done():
 	case <-held.Lost():
+		lost = true
 	}
 
 	// Resign: stop the leader work, mark follower, run the callback, release.
 	e.leader.Store(false)
 	cancel()
 	wg.Wait()
-	if e.cfg.OnResigned != nil {
-		e.cfg.OnResigned()
+	if e.cfg.OnStoppedLeading != nil {
+		e.cfg.OnStoppedLeading()
 	}
-	_ = held.Unlock(context.WithoutCancel(ctx))
+	if lost {
+		log.Warn(ctx, log.TagAppDef,
+			log.String("lock.key", e.cfg.Key),
+			log.Msg("election: leadership lost"))
+	} else {
+		log.Info(ctx, log.TagAppDef,
+			log.String("lock.key", e.cfg.Key),
+			log.Msg("election: term ended"))
+	}
+	if err := held.Unlock(context.WithoutCancel(ctx)); err != nil {
+		log.Warn(ctx, log.TagAppDef,
+			log.String("lock.key", e.cfg.Key),
+			log.Err(err),
+			log.Msg("election: release failed"))
+	}
 }
 
 func (e *Election) retryInterval() time.Duration {
@@ -156,16 +182,4 @@ func (e *Election) retryInterval() time.Duration {
 		return e.cfg.RetryInterval
 	}
 	return 100 * time.Millisecond
-}
-
-// sleep waits for d or until ctx is done; it returns false if ctx ended first.
-func sleep(ctx context.Context, d time.Duration) bool {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-t.C:
-		return true
-	}
 }

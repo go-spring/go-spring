@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // StepContext carries the state a [Step] needs to run and to record progress. A
@@ -63,15 +66,44 @@ type Job struct {
 // execution of the instance did not complete, it resumes: completed steps are
 // skipped and the interrupted step continues from its checkpoint. It returns the
 // (updated) [JobExecution] so callers can inspect status and counts.
-func (j *Job) Run(ctx context.Context, repo JobRepository, params Params) (*JobExecution, error) {
+func (j *Job) Run(ctx context.Context, repo JobRepository, params Params) (je *JobExecution, err error) {
 	if repo == nil {
 		return nil, ErrNoRepository
 	}
 
-	je, _, err := repo.ObtainExecution(ctx, j.Name, params)
+	je, _, err = repo.ObtainExecution(ctx, j.Name, params)
 	if err != nil {
 		return nil, err
 	}
+
+	// A job run reaching a terminal state is the batch family's operation
+	// metric: batch.job.total + batch.job.duration with an exclusive status
+	// axis. Runs that end early on a repository error never reach a terminal
+	// status and are not counted — the caller's error explains those. The
+	// instruments are built per run: job runs are far too rare for that to
+	// cost anything, and it binds to whatever meter provider is current.
+	runStart := time.Now()
+	defer func() {
+		switch {
+		case je == nil, err == nil && je.Status != StatusCompleted,
+			err != nil && je.Status != StatusFailed && je.Status != StatusStopped:
+			return // no terminal status was reached
+		}
+		status := je.Status.String()
+		attrs := metric.WithAttributes(
+			attribute.String("job", j.Name),
+			attribute.String("status", status),
+		)
+		m := otel.Meter("go-spring.org/cloud/experimental/batch")
+		total, _ := m.Int64Counter("batch.job.total",
+			metric.WithDescription("Batch job runs reaching a terminal state, by status"),
+			metric.WithUnit("{run}"))
+		duration, _ := m.Float64Histogram("batch.job.duration",
+			metric.WithDescription("Duration of one batch job run"),
+			metric.WithUnit("s"))
+		total.Add(ctx, 1, attrs)
+		duration.Record(ctx, time.Since(runStart).Seconds(), attrs)
+	}()
 
 	je.Status = StatusStarted
 	je.FailureMsg = ""

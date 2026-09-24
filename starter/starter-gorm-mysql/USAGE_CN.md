@@ -207,7 +207,7 @@ slow-threshold、service-name/scheme/discovery、observe.enabled——见
 | `charset` | string | "" | DSN `charset=`。 | 空 = 服务端默认（老服务端常 latin1）→ 乱码。 |
 | `parseTime` | bool | **false** | 仅在设置时输出 `parseTime=true`。⚠ 经典坑：默认 false 时把 `DATETIME`/`TIMESTAMP` 列扫进 `time.Time` 会失败（`unsupported Scan`）；带时间字段的 gorm 模型必须 `parseTime=true`。 | 所有时间列运行期扫描报错。 |
 | `loc` | string | "" | DSN `loc=`，做 QueryEscape（`Asia/Shanghai` → `Asia%2FShanghai`）。仅在 `parseTime=true` 时有意义。 | 不设 = UTC；时区列出现意外偏移。 |
-| `tls.*` | block | off | 6 个共享 `tlsconf` key（`tls.enabled`、`tls.ca-file`、`tls.cert-file`、`tls.key-file`、`tls.server-name`、`tls.insecure-skip-verify`）。启用时向驱动注册名为 `gstls_<n>` 的 `*tls.Config`，DSN 写 `tls=gstls_<n>`。⚠ DSN 内建短名 `tls=true`/`skip-verify`/`preferred` **无法**通过配置触达——starter 一律用自注册配置。`ca-file` 留空回退系统根证书。 | `ca-file` 不可读会在 build 期失败（fail-fast）。`server-name` 未设且 addr 是 IP → 校验模式下证书主机名不匹配。 |
+| `tls.*` | block | off | 6 个共享 `security` key（`tls.enabled`、`tls.ca-file`、`tls.cert-file`、`tls.key-file`、`tls.server-name`、`tls.insecure-skip-verify`）。启用时向驱动注册名为 `gstls_<n>` 的 `*tls.Config`，DSN 写 `tls=gstls_<n>`。⚠ DSN 内建短名 `tls=true`/`skip-verify`/`preferred` **无法**通过配置触达——starter 一律用自注册配置。`ca-file` 留空回退系统根证书。 | `ca-file` 不可读会在 build 期失败（fail-fast）。`server-name` 未设且 addr 是 IP → 校验模式下证书主机名不匹配。 |
 
 方言侧 ⚠ 耦合：`parseTime`+`loc` 成对出现；`service-name` 下 `addr`+`net` 均为死 key；
 `tls.enabled=true` 要求引用的证书文件在绑定时存在。
@@ -285,5 +285,5 @@ ETCDCTL_API=3 etcdctl del /services/mysql-cluster/b
 | "注意/坑"条数 | 6（parseTime、password 转义、tls 短名不可达、发现模式死 addr/net、ping 不校验 db、loc 耦合） |
 
 设计嫌疑：`user`/`password`/`db` 缺 expr `Require` 校验（空值以驱动认证/`No database selected`
-错误而非绑定期配置错误暴露）；驱动的内建 `tls=true`/`skip-verify` 模式不经完整 tlsconf 块无法
+错误而非绑定期配置错误暴露）；驱动的内建 `tls=true`/`skip-verify` 模式不经完整 security 块无法
 使用；`parseTime=false` 默认值与"带时间字段的 gorm 模型"这一常见设定相悖。

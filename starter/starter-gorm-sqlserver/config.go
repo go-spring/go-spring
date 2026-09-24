@@ -48,14 +48,14 @@ type Config struct {
 	// TLS binds the tls.* keys the SQL Server DSN can actually express:
 	// tls.enabled → "encrypt=true", tls.insecure-skip-verify →
 	// "TrustServerCertificate=true", tls.ca-file → "certificate",
-	// tls.server-name → "hostNameInCertificate". The wider tlsconf.TLSConfig
+	// tls.server-name → "hostNameInCertificate". The wider security.TLSConfig
 	// block is deliberately not used: its client-cert (cert-file/key-file) keys
 	// have no DSN slot here, so binding them would advertise dead
 	// configuration. mTLS therefore needs a custom connector.
 	TLS TLSConfig `value:"${tls}"`
 }
 
-// TLSConfig is the SQL Server subset of the shared cloud/tlsconf block: only
+// TLSConfig is the SQL Server subset of the shared cloud/security block: only
 // the keys that map onto DSN parameters. mTLS (client certificates) is not
 // expressible through the sqlserver DSN; use a custom connector if you need it.
 type TLSConfig struct {

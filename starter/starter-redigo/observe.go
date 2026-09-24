@@ -34,12 +34,15 @@ import (
 // durationBuckets are the duration-histogram boundaries (seconds) — the OTel
 // HTTP semconv recommended set.
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-var (
-	// accessTag is the static log tag for the redigo access log.
-	accessTag = log.RegisterAppTag("redigo", "access")
 
-	cmdTracer = otel.Tracer("go-spring.org/starter-redigo")
-)
+// accessTag is the static log tag for the redigo access log.
+var accessTag = log.RegisterAppTag("redigo", "access")
+
+// tracerName names the tracer the command spans open on. The tracer is looked
+// up per use (otel.Tracer at call time), never cached in a package variable: a
+// package-level otel.Tracer captured before any provider is set stops
+// forwarding once the global provider is set, unset and set again.
+const tracerName = "go-spring.org/starter-redigo"
 
 // skipOps are commands that skip instrumentation entirely (span + metric +
 // log together): PING fires on every health probe and pool test-on-borrow,
@@ -95,7 +98,7 @@ func observeInterceptor(duration metric.Float64Histogram, active metric.Int64UpD
 				attribute.String("db.operation", strings.ToLower(cmd)),
 			)
 			active.Add(ctx, 1, inflight)
-			ctx, span := cmdTracer.Start(ctx, cmd,
+			ctx, span := otel.Tracer(tracerName).Start(ctx, cmd,
 				trace.WithSpanKind(trace.SpanKindClient),
 				trace.WithAttributes(
 					attribute.String("db.system", redisSystem),
@@ -139,7 +142,7 @@ func record(ctx context.Context, duration metric.Float64Histogram, active metric
 	}
 	switch {
 	case err != nil:
-		fields := append(common(), log.Any("error", err))
+		fields := append(common(), log.Err(err))
 		log.Warn(ctx, accessTag, fields...)
 	case hasArgs:
 		log.Debug(ctx, accessTag, common)

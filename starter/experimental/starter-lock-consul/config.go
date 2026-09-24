@@ -19,11 +19,11 @@ package StarterLockConsul
 import (
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config binds one Consul-backed distributed-lock instance under
-// "spring.lock.instances.<name>". Every instance owns its own consul API client; two
+// "spring.lock.instances.consul.<name>". Every instance owns its own consul API client; two
 // instances that need to share a client should not exist — declare one entry
 // and inject it by name.
 type Config struct {
@@ -55,7 +55,7 @@ type Config struct {
 	// when TLS.Enabled is true; otherwise the client dials in plaintext.
 	// TLS.ServerName overrides the SNI/hostname checked against the server
 	// certificate when dialing by IP.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// ObserveEnabled toggles the observe-lock instrumentation layer (trace
 	// span + duration metric + access log) around the Locker. On by

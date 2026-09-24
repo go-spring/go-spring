@@ -273,7 +273,7 @@ routing table from the address it was dialed with, i.e. exactly when the seeded 
 So a routing-mode client recovers onto the current cluster without a restart; a **direct
 `bolt://` client has no routing table and stays on its boot-time address**. On a registry hiccup
 the hook hands back the address the driver already had, so it never turns a bad read into an empty
-router list. In mesh mode (`GS_MESH=on`) the sidecar owns discovery+LB and the URI is used
+router list. In mesh mode (`GS_MESH_MODE=on`) the sidecar owns discovery+LB and the URI is used
 unchanged [starter.go:80-87].
 
 ⚠ **Deliberately not wired to governed endpoint selection.** There is no per-query pick to govern:

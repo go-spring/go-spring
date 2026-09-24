@@ -386,7 +386,7 @@ Design suspects (for the audit ledger):
    cardinality and inconsistent with starter-echo/gin (`metrics.go` `metricsMiddleware`).
 3. Tracing span name `HTTP <method>` carries no route — spans of different endpoints are
    indistinguishable (`tracing.go` `tracingMiddleware`).
-4. Fixed: the server now uses `tlsconf.BuildServer()` (was `Build()`, client semantics) —
+4. Fixed: the server now uses `security.TLSConfig.BuildServer()` (was `Build()`, client semantics) —
    `ca-file` enables mTLS (`RequireAndVerifyClientCert`), matching starter-grpc;
    `server-name`/`insecure-skip-verify` remain client-side keys with no server effect.
 5. No resilience admission (rate limit/breaker) on the inbound path — asymmetric with

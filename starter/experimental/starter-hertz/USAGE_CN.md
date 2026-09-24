@@ -374,7 +374,7 @@ curl -i -H 'X-LoadTest: 1' 127.0.0.1:8003/echo/x       # ~20% → 503 service un
    starter-echo/gin 不一致（`metrics.go` `metricsMiddleware`）。
 3. tracing span 名 `HTTP <method>` 不含路由——不同端点的 span 不可区分
    （`tracing.go` `tracingMiddleware`）。
-4. 已修复：server 侧改用 `tlsconf.BuildServer()`（原 `Build()` 是客户端语义）——`ca-file`
+4. 已修复：server 侧改用 `security.TLSConfig.BuildServer()`（原 `Build()` 是客户端语义）——`ca-file`
    即开启 mTLS（`RequireAndVerifyClientCert`），与 starter-grpc 对齐；`server-name`/
    `insecure-skip-verify` 仍为客户端 key，server 侧无效果。
 5. 入站路径无韧性准入（限流/熔断）——与 starter-gin 不对称；fault 注入已接线、防护没有。

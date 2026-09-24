@@ -20,6 +20,7 @@ import (
 	"sync"
 	"testing"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -80,7 +81,7 @@ func TestBindSelectionWithoutProvider(t *testing.T) {
 	RegisterSelectionProvider(nil)
 	t.Cleanup(func() { RegisterSelectionProvider(nil) })
 
-	p := NewPool(staticSource(eps("a", "b")), NewRoundRobin())
+	p := NewPool(staticSource(eps("a", "b")...), NewRoundRobin())
 	stop := p.BindSelection("demo:resource")
 	stop()
 	stop()
@@ -99,7 +100,7 @@ func TestBindSelectionAppliesCurrentAndLaterChanges(t *testing.T) {
 	f := &fakeProvider{cur: Selection{Balancer: LeastConn, OutlierThreshold: 2, OutlierSuspendFor: 30}}
 	installFake(t, f)
 
-	p := NewPool(staticSource(eps("a", "b")), NewRoundRobin(),
+	p := NewPool(staticSource(eps("a", "b")...), NewRoundRobin(),
 		WithTracker(NewTracker(TrackerConfig{})))
 	stop := p.BindSelection("demo:resource")
 	defer stop()
@@ -121,10 +122,10 @@ func TestBindSelectionStrategyTakesEffect(t *testing.T) {
 	f := &fakeProvider{}
 	installFake(t, f)
 
-	src := staticSource{
-		{Addr: "a", Healthy: true, Weight: 9},
-		{Addr: "b", Healthy: true, Weight: 1},
-	}
+	src := staticSource(
+		discovery.Endpoint{Addr: "a", Healthy: true, Weight: 9},
+		discovery.Endpoint{Addr: "b", Healthy: true, Weight: 1},
+	)
 	p := NewPool(src, NewRoundRobin())
 	stop := p.BindSelection("demo:resource")
 	defer stop()
@@ -155,7 +156,7 @@ func TestBindSelectionUnknownNameKeepsLastGood(t *testing.T) {
 	f := &fakeProvider{}
 	installFake(t, f)
 
-	p := NewPool(staticSource(eps("a")), NewRoundRobin())
+	p := NewPool(staticSource(eps("a")...), NewRoundRobin())
 	stop := p.BindSelection("demo:resource")
 	defer stop()
 
@@ -179,8 +180,8 @@ func TestBindSelectionIsPerPoolNotPerLabel(t *testing.T) {
 	f := &fakeProvider{}
 	installFake(t, f)
 
-	p1 := NewPool(staticSource(eps("a")), NewRoundRobin())
-	p2 := NewPool(staticSource(eps("a")), NewRoundRobin())
+	p1 := NewPool(staticSource(eps("a")...), NewRoundRobin())
+	p2 := NewPool(staticSource(eps("a")...), NewRoundRobin())
 	stop1 := p1.BindSelection("demo:resource")
 	stop2 := p2.BindSelection("demo:resource")
 	defer stop2()
@@ -207,11 +208,11 @@ func TestRegisterSelectionProviderNilDisarms(t *testing.T) {
 	f := &fakeProvider{cur: Selection{Balancer: LeastConn}}
 	installFake(t, f)
 
-	p := NewPool(staticSource(eps("a")), NewRoundRobin())
+	p := NewPool(staticSource(eps("a")...), NewRoundRobin())
 	assert.That(t, p.BindSelection("demo:resource")).NotNil()
 
 	RegisterSelectionProvider(nil)
-	p2 := NewPool(staticSource(eps("a")), NewRoundRobin())
+	p2 := NewPool(staticSource(eps("a")...), NewRoundRobin())
 	p2.BindSelection("demo:resource")
 	assert.Number(t, len(f.labels)).Equal(1)
 	assert.That(t, p2.Selection().Balancer).Equal("")

@@ -39,18 +39,19 @@ package lock
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"time"
+
+	"go-spring.org/stdlib/randutil"
 )
 
 // ErrNotHeld is returned by [Lock.Unlock] when the lock is no longer owned by the
 // caller — it has expired, been lost, or was already released.
 var ErrNotHeld = errors.New("lock: not held by caller")
 
-// ErrLockHeld is returned by [Locker.TryAcquire] via ok=false; it is also usable
-// by backends that need to surface contention as an error.
+// ErrLockHeld is a sentinel a backend may return to surface contention as an
+// error. Ordinary contention is NOT an error: [Locker.TryAcquire] reports it as
+// ok=false with a nil error.
 var ErrLockHeld = errors.New("lock: already held")
 
 // Lock is a currently held distributed lock. Implementations must be safe for
@@ -142,15 +143,8 @@ func (o *Options) normalize() {
 		o.RetryInterval = 100 * time.Millisecond
 	}
 	if o.Token == "" {
-		o.Token = newToken()
+		o.Token = randutil.Hex(16) // random fencing token
 	}
-}
-
-// newToken returns a random 16-byte hex string used as a fencing token.
-func newToken() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
 }
 
 // DefaultOptions is the starter/backend-level default options layered
@@ -158,8 +152,19 @@ func newToken() string {
 // package default", so a backend only populates the fields its config
 // actually exposes.
 type DefaultOptions struct {
-	TTL           time.Duration
+	// TTL is the starter-level lease duration, applied when the acquisition
+	// did not pass [WithTTL]. Zero means no opinion.
+	TTL time.Duration
+
+	// RenewInterval is the starter-level renew interval, applied when the
+	// acquisition did not pass [WithRenewInterval]. Zero means no opinion; any
+	// non-zero value is layered, negative included (a starter-wide disabled
+	// renew).
 	RenewInterval time.Duration
+
+	// RetryInterval is the starter-level [Locker.Acquire] retry interval,
+	// applied when the acquisition did not pass [WithRetryInterval]. Zero
+	// means no opinion.
 	RetryInterval time.Duration
 }
 

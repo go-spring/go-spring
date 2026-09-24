@@ -36,6 +36,11 @@ Verified dependency facts (do not violate):
   general-purpose utility library (a completion of the Go standard library:
   types, encoding, collections, ...); beyond utilities it also hosts **pure
   semantic pieces with no ecosystem dependency** (`httpsvr`, `httpclt`).
+  Adding a subpackage needs **all three**: the pattern appears twice or more in
+  the repo (an extraction, not a speculation), the helpers share one verb (one
+  package, one concern — no grab-bag), and the standard library genuinely lacks
+  it. Utility package names point at the standard-library package they wrap
+  (`timeutil`→`time`, `md5util`→`md5`, `randutil`→`crypto/rand`).
 - `log/` depends on `stdlib/` (plus an ANTLR parser for its config grammar); it is
   a foundation module, not part of `spring`.
 - `spring/` depends on `log/` and `stdlib/` only, and contains **only the pure
@@ -106,7 +111,7 @@ Two recurring traps:
 - *"I'll just add a small helper shared by two starters."* No — cross-starter
   shared helper packages are disallowed when no natural home exists
   ([starter/DESIGN.md §3](starter/DESIGN.md)). First check whether one of the
-  existing natural homes covers it - `cloud/tlsconf` (TLS config),
+  existing natural homes covers it - `cloud/security` (TLS config),
   `cloud/actuator/health.NewIndicator` (health indicator factory),
   `stdlib/errutil.RequireField`/`RequireAny` (fail-fast validation). If yes,
   import it. If no, inline per-starter; a shared package materializes only

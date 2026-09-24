@@ -97,9 +97,9 @@ driver 会在消息 user properties 里注入/提取 W3C trace 上下文与压�
 ## 可观测性
 
 - **追踪**：`StartProducerSpan` / `StartConsumerSpan` / `EndSpan` 把原生
-  发送与处理包成 OTel span；driver 路径自动埋点。全部依赖
-  `starter-otel` 安装的全局 provider，未导入时是 no-op。见
-  `example-otel/`。
+  发送与处理包成 OTel span；driver 路径由 broker 中立的 `messaging.Observe`
+  装饰器自动埋点。全部依赖 `starter-otel` 安装的全局 provider，未导入时是
+  no-op。见 `example-otel/`。
 
 ## 韧性
 

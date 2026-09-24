@@ -19,7 +19,7 @@ package StarterAsynq
 import (
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config defines one Asynq instance (a Redis-backed task queue). One instance
@@ -36,8 +36,8 @@ type Config struct {
 	// DB is the Redis database index (default 0).
 	DB int `value:"${db:=0}"`
 
-	// TLS configures client-to-Redis TLS (tlsconf shared block).
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	// TLS configures client-to-Redis TLS (security shared block).
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// Concurrency is the maximum number of tasks the server processes
 	// concurrently (default 10).

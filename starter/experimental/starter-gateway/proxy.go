@@ -113,7 +113,7 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+	return loadbalance.NewPool(resolver, bal,
 		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{}))), nil
 }
 

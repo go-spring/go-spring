@@ -39,7 +39,7 @@
           },
           "tls": {
             "type": "object",
-            "description": "tlsconf shared block"
+            "description": "security shared block"
           },
           "concurrency": {
             "type": "integer",

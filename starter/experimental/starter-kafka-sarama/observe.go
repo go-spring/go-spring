@@ -41,9 +41,6 @@ var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5,
 var (
 	// accessTag is the static log tag for the kafka access log.
 	accessTag = log.RegisterAppTag("kafka", "access")
-
-	// tracer opens the publish/consume spans.
-	tracer = otel.Tracer(instrumentScope)
 )
 
 // observer emits the span + metrics + access log for one operation direction
@@ -92,7 +89,7 @@ func (o *observer) Start(ctx context.Context, arg string) (context.Context, *Spa
 	if arg != "" {
 		attrs = append(attrs, attribute.String("messaging.destination.name", strutil.Truncate(arg, 512)))
 	}
-	ctx, span := tracer.Start(ctx, o.op, trace.WithSpanKind(o.kind), trace.WithAttributes(attrs...))
+	ctx, span := otel.Tracer(instrumentScope).Start(ctx, o.op, trace.WithSpanKind(o.kind), trace.WithAttributes(attrs...))
 	inflight := metric.WithAttributes(
 		attribute.String("messaging.system", "kafka"),
 		attribute.String("messaging.operation", o.op),
@@ -136,7 +133,7 @@ func (s *Span) End(err error) {
 		return f
 	}
 	if err != nil {
-		log.Warn(s.ctx, accessTag, append(fields(), log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(fields(), log.Err(err))...)
 		return
 	}
 	if s.arg != "" {

@@ -240,7 +240,7 @@ type Resolver func() ([]Endpoint, error)
 // It returns (nil, nil) — "discovery not in effect" — when d is nil or name is
 // empty or mesh mode is on (a sidecar owns discovery+LB), in which case the
 // caller dials its configured address directly. The mesh check reads the
-// GS_MESH switch (see [go-spring.org/cloud/mesh.Enabled]); it is folded in here
+// GS_MESH_MODE switch (see [go-spring.org/cloud/mesh.Enabled]); it is folded in here
 // so no caller repeats the same gate.
 func NewResolver(ctx context.Context, d Discovery, name string, opts ...Option) (Resolver, error) {
 	if d == nil || name == "" || mesh.Enabled() {

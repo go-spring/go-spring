@@ -31,9 +31,9 @@ import (
 // routing decision. It mirrors what a client starter builds: a suspension tracker
 // attached so the thresholds have somewhere to land.
 func selectionPool() *loadbalance.Pool {
-	src := loadbalance.SourceFunc(func() ([]discovery.Endpoint, error) {
+	src := func() ([]discovery.Endpoint, error) {
 		return []discovery.Endpoint{{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}}, nil
-	})
+	}
 	bal, err := loadbalance.New(loadbalance.RoundRobin)
 	if err != nil {
 		panic(err)

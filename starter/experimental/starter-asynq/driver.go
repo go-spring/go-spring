@@ -24,7 +24,7 @@ import (
 	"crypto/tls"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -49,7 +49,7 @@ type Driver interface {
 type DefaultDriver struct{}
 
 // RedisConnOpt builds the Redis connection options from Config. TLS is
-// enabled only when requested (tlsconf shared block); asynq's URI form
+// enabled only when requested (security shared block); asynq's URI form
 // otherwise matches the plain host:port dial.
 func (DefaultDriver) RedisConnOpt(ctx context.Context, c Config) (asynq.RedisConnOpt, error) {
 	if c.TLS.Enabled {
@@ -79,5 +79,5 @@ func (DefaultDriver) RedisConnOpt(ctx context.Context, c Config) (asynq.RedisCon
 	}, nil
 }
 
-// ensure tlsconf stays referenced for the doc comment.
-var _ = tlsconf.TLSConfig{}
+// ensure security stays referenced for the doc comment.
+var _ = security.TLSConfig{}

@@ -105,7 +105,7 @@ Both are no-ops when empty — pass config values through unconditionally.
 ```go
 load, err := discovery.NewResolver(ctx, "default", "orders-redis")
 bal, _ := loadbalance.New(loadbalance.RoundRobin)
-pool := loadbalance.NewPool(loadbalance.SourceFunc(load), bal)
+pool := loadbalance.NewPool(load, bal)
 ep, err := pool.Pick(loadbalance.PickInfo{})
 ```
 
@@ -119,7 +119,7 @@ ep, err := pool.Pick(loadbalance.PickInfo{})
 - Endpoint selection — round-robin, weights, consistent hash, failure
   ejection — all of that lives one layer up in
   [`loadbalance`](../loadbalance/README.md), which takes the resolver (via
-  `loadbalance.SourceFunc`) as its endpoint source. Discovery itself carries
+  the resolver func) as its endpoint source. Discovery itself carries
   no selection policy, and the resolver owns no resources — freshness lives
   inside the backend, so there is nothing to stop.
 

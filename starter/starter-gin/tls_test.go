@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -59,7 +59,7 @@ func TestGinServer_MTLS(t *testing.T) {
 	addr := freeAddr(t)
 	cfg := Config{
 		Address: addr,
-		TLS: tlsconf.TLSConfig{
+		TLS: security.TLSConfig{
 			Enabled:  true,
 			CertFile: certPath,
 			KeyFile:  keyPath,

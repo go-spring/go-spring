@@ -73,8 +73,9 @@ _ = token.Error()
   仅存在于 MQTT 5,而此 paho v3 客户端并不支持。把链路上下文塞进业务 payload 或 topic
   会破坏消息契约,故不采用。
 
-实际影响:生产者与消费者的 span 无法跨 broker 串联。连接层事件(连接、连接丢失、
-重连中)仍会桥接进 go-spring 日志以供运维观测。
+实际影响:生产者与消费者的 span 无法跨 broker 串联。`messaging.Observe` 装饰器
+仍会给 driver 插桩——`messaging.operation.*` 指标与访问日志——但其 span 是不相连的
+根。连接层事件(连接、连接丢失、重连中)也仍会桥接进 go-spring 日志以供运维观测。
 
 ## 消息 Driver
 
@@ -110,7 +111,8 @@ _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
 
 `destination` 与 `source` 都是 topic,以 QoS 1 收发。该 driver 是 **payload-only**:
 MQTT 3.1.1 无每消息元数据,所以 `Key`、`Headers`、`Timestamp` 不会上线,而且 ——
-在所有 driver 中唯一地 —— **不发任何 trace context 或 span**(无处可骑)。`group`
+在所有 driver 中唯一地 —— **trace context 无法随消息传输**(无处可骑),因此
+`messaging.Observe` 插桩产出指标、日志与 span,但没有跨 broker 的 trace 串联。`group`
 不使用,因为 3.1.1 没有 shared subscription。paho 回调是 fire-and-forget、无 ack/nack,
 因此 handler 出错只记日志。原生 `mqtt.Client` bean 仍可用于 retained 消息、自定义 QoS、
 通配符 topic 等 driver 未建模的 MQTT 能力。

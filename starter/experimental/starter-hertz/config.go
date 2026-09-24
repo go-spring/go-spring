@@ -19,7 +19,7 @@ package StarterHertz
 import (
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // HealthConfig exposes an optional liveness/readiness endpoint served by the
@@ -36,14 +36,14 @@ type HealthConfig struct {
 // (WithMaxRequestBodySize), not a middleware. The Middleware block adds the
 // built-in cross-cutting middlewares.
 type Config struct {
-	Addr         string            `value:"${addr}"`
-	ReadTimeout  time.Duration     `value:"${readTimeout:=5s}"`
-	WriteTimeout time.Duration     `value:"${writeTimeout:=5s}"`
-	IdleTimeout  time.Duration     `value:"${idleTimeout:=60s}"`
-	MaxBodySize  int               `value:"${maxBodySize:=0}"`
-	TLS          tlsconf.TLSConfig `value:"${tls}"`
-	Health       HealthConfig      `value:"${health}"`
-	Middleware   MiddlewareConfig  `value:"${middleware}"`
+	Addr         string             `value:"${addr}"`
+	ReadTimeout  time.Duration      `value:"${readTimeout:=5s}"`
+	WriteTimeout time.Duration      `value:"${writeTimeout:=5s}"`
+	IdleTimeout  time.Duration      `value:"${idleTimeout:=60s}"`
+	MaxBodySize  int                `value:"${maxBodySize:=0}"`
+	TLS          security.TLSConfig `value:"${tls}"`
+	Health       HealthConfig       `value:"${health}"`
+	Middleware   MiddlewareConfig   `value:"${middleware}"`
 }
 
 // MiddlewareConfig groups the built-in middlewares the starter can install on

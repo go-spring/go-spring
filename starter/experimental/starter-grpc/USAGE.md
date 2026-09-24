@@ -293,7 +293,7 @@ All keys under `spring.grpc.server.*`. Reconciled with
 | `keepalive.maxConnectionIdle` / `maxConnectionAge` | duration | 0 | Connection lifecycle bounds. | |
 | `tls.enabled` | bool | false | `credentials.NewTLS(TLS.BuildServer())`. | Expecting plaintext on a TLS port → handshake failures. |
 | `tls.cert-file` / `tls.key-file` | string | — | Key pair for the server cert. ⚠ both needed together once `tls.enabled`. | Boot error "build TLS" from `Run`. |
-| `tls.ca-file` | string | — | **Server-side this means mTLS**: sets ClientCAs + `RequireAndVerifyClientCert` (tlsconf.BuildServer). | Setting it casually → all clients without certs rejected. |
+| `tls.ca-file` | string | — | **Server-side this means mTLS**: sets ClientCAs + `RequireAndVerifyClientCert` (security.BuildServer). | Setting it casually → all clients without certs rejected. |
 | `tls.server-name` / `tls.insecure-skip-verify` | | — | Client-side knobs; **dead keys here** (ignored by BuildServer). | False confidence; no effect. |
 | `health.enabled` | bool | true | Registers `grpc_health_v1`, overall status SERVING. | false → probes/LB health checks get Unimplemented. |
 | `loadtest.enabled` | bool | true | Installs LoadTest interceptors reading `x-loadtest` metadata (lowercase — grpc metadata keys are lower-case). | false → load-test marker invisible; fault `scope: loadtest` never fires. |

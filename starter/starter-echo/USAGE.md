@@ -251,7 +251,7 @@ Rationale (from the source comments, verified):
 | `readTimeout` | duration | 5s | Also bounds header read. | 0/unset → default; too low kills slow clients mid-header. |
 | `writeTimeout` / `idleTimeout` | duration | 5s / 60s | Passed to `http.Server`. | keep-alive churn if idleTimeout too low. |
 | `health.enabled` / `health.path` | bool / string | false / `/healthz` | Starter-served liveness route; path auto-merged into the access-log skip set (probes never flood the log). | Custom path must be re-listed in skipPaths only if you disable the merge. |
-| `tls.enabled` + `cert-file`/`key-file` | — | off | Switches `Serve` to a TLS listener built via `tlsconf.BuildServer()` (same semantics as starter-grpc). `ca-file` **enables mTLS**: ClientCAs + `RequireAndVerifyClientCert` — clients must present a certificate signed by that CA. `server-name`/`insecure-skip-verify` are client-side keys — bound but dead here. | Setting `ca-file` casually → all clients without certs rejected. |
+| `tls.enabled` + `cert-file`/`key-file` | — | off | Switches `Serve` to a TLS listener built via `security.TLSConfig.BuildServer()` (same semantics as starter-grpc). `ca-file` **enables mTLS**: ClientCAs + `RequireAndVerifyClientCert` — clients must present a certificate signed by that CA. `server-name`/`insecure-skip-verify` are client-side keys — bound but dead here. | Setting `ca-file` casually → all clients without certs rejected. |
 
 ### 3.2 Middleware groups
 

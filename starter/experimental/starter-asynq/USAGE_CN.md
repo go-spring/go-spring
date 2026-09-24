@@ -118,7 +118,7 @@ spring.asynq.instances.a.concurrency=4            # worker：并发处理任务�
 spring.asynq.instances.a.server.enabled=true
 # spring.asynq.instances.a.shutdown-timeout=8s    # worker 退出排空上限
 
-# --- 到 Redis 的 TLS（共享 tlsconf 块；此处关闭）------------------------------
+# --- 到 Redis 的 TLS（共享 security 块；此处关闭）------------------------------
 # spring.asynq.instances.a.tls.enabled=true
 # spring.asynq.instances.a.tls.cert-file=...      # 另有 key-file / ca-file / server-name /
 #                                       #   insecure-skip-verify
@@ -217,7 +217,7 @@ gs.Run()
 | `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`；同时构成治理资源标签 `asynq:<addr>`。必填（`expr:"$ != ''"`）。 | 缺失 → 绑定期启动报错。 |
 | `..username` / `..password` | string | 空 | Redis ACL 认证。 | 配错 → 运行期投递/消费失败而非启动期（健康检查能探出）。 |
 | `..db` | int | 0 | Redis 数据库编号。 | 生产者与 worker 的 db 不一致 → 任务投了却没人消费。 |
-| `..tls.*` | 块 | 关 | 共享 tlsconf（`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`）；开启时 DefaultDriver 构建 TLS RedisClientOpt（driver.go:58-77）。 | TLS 配一半 → bean 构建期报错。 |
+| `..tls.*` | 块 | 关 | 共享 security（`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`）；开启时 DefaultDriver 构建 TLS RedisClientOpt（driver.go:58-77）。 | TLS 配一半 → bean 构建期报错。 |
 | `..concurrency` | int | 10 | worker：并发处理任务上限。对纯生产者实例无效。 | 过低 → 队列积压；`server.enabled=false` 时静默无效。 |
 | `..queues` | map[string]int | 空 → asynq "default":1 | 队列 → 优先级权重（越高越常被处理）。⚠ 投递侧 `asynq.Queue(...)` 选项必须指向已配置的队列（或回退 default），否则 worker 取不到。 | 投到未列出的队列 → 任务永久 pending。 |
 | `..shutdown-timeout` | duration | 8s | worker 排空上限（`srv.Shutdown()`）；传给 `Stop` 的 ctx 不被使用——排空由该 timeout 兜底（client.go:176-183）。 | 过短 → 发布时在途任务被弃。 |

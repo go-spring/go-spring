@@ -124,9 +124,11 @@ var currentApp atomic.Pointer[App]
 // RefreshProperties refreshes the properties of the running application and
 // propagates the changes to the IoC container. It returns an error when no
 // app has started yet (or ever, e.g. in unit tests that never call Run).
-func RefreshProperties() error {
+// The ctx is the refresh's context, accepted for cancellation and trace
+// propagation; the reload pipeline does not consume it yet.
+func RefreshProperties(ctx context.Context) error {
 	if app := currentApp.Load(); app != nil {
-		return app.RefreshProperties()
+		return app.RefreshProperties(ctx)
 	}
 	return errutil.Explain(nil, "no running app, cannot refresh properties")
 }
@@ -227,7 +229,10 @@ func (app *App) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefinition {
 //     until the next change)
 //   - All dynamic field updates are atomic
 //   - If validation fails, no partial updates are applied
-func (app *App) RefreshProperties() error {
+//
+// The ctx is the refresh's context, accepted for cancellation and trace
+// propagation; the reload pipeline does not consume it yet.
+func (app *App) RefreshProperties(ctx context.Context) error {
 	if !app.started.Load() {
 		return errutil.Explain(nil, "app not started yet, cannot refresh properties")
 	}

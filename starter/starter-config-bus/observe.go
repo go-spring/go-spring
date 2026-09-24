@@ -130,7 +130,7 @@ func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent,
 		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
 		log.Error(ctx, starterTag, append(eventFields(outcome),
 			log.String("prefix", ev.Prefix),
-			log.Any("error", err),
+			log.Err(err),
 			log.Msg("config bus: property refresh failed"))...)
 	case outcomeIgnored:
 		log.Debug(ctx, starterTag, func() []log.Field {
@@ -142,7 +142,7 @@ func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent,
 		})
 	case outcomeMalformed:
 		log.Warn(ctx, starterTag, append(eventFields(outcome),
-			log.Any("error", err),
+			log.Err(err),
 			log.Msg("config bus: ignoring malformed refresh event"))...)
 	}
 }
@@ -163,7 +163,7 @@ func (b *ConfigBus) recordPublish(ctx context.Context, outcome string, dur time.
 		log.Error(ctx, starterTag, append(eventFields(outcome),
 			log.String("subject", b.Config.Subject),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-			log.Any("error", err),
+			log.Err(err),
 			log.Msg("config bus: publish refresh event failed"))...)
 		return
 	}

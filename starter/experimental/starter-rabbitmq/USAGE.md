@@ -236,21 +236,21 @@ Publish [client.go:89-107]:
    (toAMQPTable, nil when empty), `MessageId` ← `msg.Key` [client.go:90-94].
 2. If `traffic.IsLoadTest(ctx)`, the marker is stamped into AMQP header `x-loadtest`
    [client.go:97-102] so the consumer recognises synthetic load.
-3. `startPublish` opens the module-local producer observation (span
-   `publish <queue>`, metric `messaging.client.operation.duration`) and injects the W3C
-   trace context into `pub.Headers`.
+3. NewDriver wraps the driver in `messaging.Observe`: the decorator already opened the
+   "publish" producer span, injected the W3C trace context into the envelope headers
+   (which step 1 mapped onto `pub.Headers`) and took the `messaging.operation.*`
+   metrics; no module-local instrumentation runs on the driver path.
 4. `PublishWithContext` to the default exchange (`""`) with the queue name as routing
-   key; `sp.End(err)` records duration, balances the in-flight gauge, emits the access
-   log [client.go:103-106].
+   key; Observe records the outcome on the metrics and the access log.
 
 Consume [client.go:122-150]:
 
 1. Handler wrapped in `messaging.Recover` — a panic becomes a normal error path
    instead of unwinding into the SDK goroutine [client.go:125].
 2. `Consume(autoAck=false)`; a background loop ranges the delivery channel [client.go:126-133].
-3. Per delivery: `startConsume` extracts the upstream trace from the headers and opens
-   the consumer observation [command.go:205-212]; the load-test marker is re-read from
-   the AMQP headers and re-entered into ctx [client.go:136-138].
+3. Per delivery: `messaging.Observe`'s handler wrapper extracts the upstream trace
+   from the envelope headers and opens the consumer span; the load-test marker is
+   re-read from the AMQP headers and re-entered into ctx [client.go:136-138].
 4. `fromDelivery` maps back: `Key` ← MessageId, string-valued headers only,
    `Timestamp` ← delivery timestamp [client.go:178-194].
 5. Handler error → error log + `Nack(multiple=false, requeue=true)` (broker redelivers);
@@ -271,7 +271,7 @@ is a resilience sentinel. Manual tracing (`StartPublishSpan` / `StartConsumeSpan
 ## 3. Per-key behavior reference
 
 All keys live under `spring.rabbitmq.instances.<name>.*`. Four own value tags
-(config.go:28-55) plus the shared tlsconf (6) block = 10; 1 required.
+(config.go:28-55) plus the shared security (6) block = 10; 1 required.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|------------------------|------------------------------|
@@ -279,7 +279,7 @@ All keys live under `spring.rabbitmq.instances.<name>.*`. Four own value tags
 | `vhost` | string | "" | Overrides the vhost parsed from the URL by being passed into `amqp.Config` [driver.go:72-76]. Also part of the governance resource label. | Conflict between URL and vhost → AMQP handshake error at boot. |
 | `heartbeat` | duration | 10s | `>0` (or TLS, or vhost set) switches `amqp.Dial` → `amqp.DialConfig` with `Heartbeat` [driver.go:72-80]. `0` = URL/server default. ⚠ With the plain-`Dial` branch (no TLS/vhost), a non-default heartbeat key silently forces the DialConfig branch — value still applies. | Too low → false connection drops under load; 0 → server default may outlive TCP idle timeouts. |
 | `tls.enabled` | bool | false | With `amqps://` implicitly, or explicitly, routes the built `*tls.Config` into the dial [driver.go:69-79]. | Plain `amqp://` + `tls.enabled=true` → TLS on a cleartext port → dial error at boot. |
-| `tls.ca-file` / `cert-file` / `key-file` | string | "" | Custom CA / mTLS pair, loaded by the shared `tlsconf` block (uniform keys across starters, config.go:44-48). | Missing files → boot fails in TLS build [driver.go:64-68]. |
+| `tls.ca-file` / `cert-file` / `key-file` | string | "" | Custom CA / mTLS pair, loaded by the shared `security` block (uniform keys across starters, config.go:44-48). | Missing files → boot fails in TLS build [driver.go:64-68]. |
 | `tls.server-name` | string | "" | SNI/verification name override. | Mismatch → x509 hostname error at boot. |
 | `tls.insecure-skip-verify` | bool | false | Skips cert verification. | true in prod = silent MITM exposure. |
 

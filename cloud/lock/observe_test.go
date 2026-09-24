@@ -184,6 +184,30 @@ func lostCount(rdr sdkmetric.Reader, system string) int64 {
 	return total
 }
 
+// heldValue reads the current lock.held gauge for one backend system.
+func heldValue(t *testing.T, rdr sdkmetric.Reader, system string) int64 {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, rdr.Collect(context.Background(), &rm))
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "lock.held" {
+				continue
+			}
+			g, ok := m.Data.(metricdata.Sum[int64])
+			if !ok {
+				continue
+			}
+			for _, p := range g.DataPoints {
+				if s, ok := attrValue(p.Attributes.ToSlice(), "system"); ok && s.AsString() == system {
+					return p.Value
+				}
+			}
+		}
+	}
+	return 0
+}
+
 // durationStatuses collects the status attribute of every duration datapoint
 // recorded for one operation on one backend.
 func durationStatuses(t *testing.T, rdr sdkmetric.Reader, system, op string) []string {
@@ -204,14 +228,14 @@ func durationStatuses(t *testing.T, rdr sdkmetric.Reader, system, op string) []s
 	return out
 }
 
-// TestWrapLocker_AcquireSuccess asserts the Acquire path: a client span named
+// TestObserve_AcquireSuccess asserts the Acquire path: a client span named
 // "acquire" carrying system + key, and a operation.duration
 // metric datapoint tagged status=ok.
-func TestWrapLocker_AcquireSuccess(t *testing.T) {
+func TestObserve_AcquireSuccess(t *testing.T) {
 	spanExp, rdr, cleanup := installGlobals(t)
 	defer cleanup()
 
-	l := WrapLocker("redis", fakeLocker{})
+	l := Observe(fakeLocker{}, "redis")
 	held, err := l.Acquire(context.Background(), "jobs:1")
 	require.NoError(t, err)
 	assert.Equal(t, "jobs:1", held.Key())
@@ -234,6 +258,10 @@ func TestWrapLocker_AcquireSuccess(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "ok", status.AsString())
 
+	// The held gauge rose with the wrapped handle; the unlock scenario below
+	// brings it back down.
+	assert.Equal(t, int64(1), heldValue(t, rdr, "redis"))
+
 	// The remaining scenarios run under the same provider install: the OTel
 	// global meter caches by name and only ever delegates to the first provider
 	// set, so a second installGlobals in this file would see no records.
@@ -244,14 +272,63 @@ func TestWrapLocker_AcquireSuccess(t *testing.T) {
 	testLostReported(t, rdr)
 	testNilLostChannel(t, rdr)
 	testResignedNotLost(t, rdr)
+	testOperationTotals(t, rdr)
 }
 
-// TestWrapLocker_TryAcquireMiss asserts the miss path: a span named
+// operationTotals collects lock.operation.total into a "operation.status" ->
+// count map.
+func operationTotals(t *testing.T, rdr sdkmetric.Reader) map[string]int64 {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, rdr.Collect(context.Background(), &rm))
+	out := map[string]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "lock.operation.total" {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			if !ok {
+				continue
+			}
+			for _, dp := range sum.DataPoints {
+				op, status := "", ""
+				for _, kv := range dp.Attributes.ToSlice() {
+					if kv.Key == "operation" {
+						op = kv.Value.AsString()
+					}
+					if kv.Key == "status" {
+						status = kv.Value.AsString()
+					}
+				}
+				require.NotEmpty(t, status)
+				out[op+"."+status] += dp.Value
+			}
+		}
+	}
+	return out
+}
+
+// testOperationTotals asserts the counter side of the scenarios above: every
+// status the file exercises has at least one exclusive datapoint on
+// lock.operation.total, so summed over status the counter equals the
+// operations executed.
+func testOperationTotals(t *testing.T, rdr sdkmetric.Reader) {
+	t.Helper()
+	got := operationTotals(t, rdr)
+	assert.GreaterOrEqual(t, got["acquire.ok"], int64(1))
+	assert.GreaterOrEqual(t, got["acquire.error"], int64(1))
+	assert.GreaterOrEqual(t, got["try_acquire.missed"], int64(1))
+	assert.GreaterOrEqual(t, got["unlock.ok"], int64(1))
+	assert.GreaterOrEqual(t, got["unlock.not_held"], int64(1))
+}
+
+// TestObserve_TryAcquireMiss asserts the miss path: a span named
 // "try_acquire" whose duration datapoint carries acquired=false, so a
 // dashboard can separate misses from wins without parsing errors.
 func testTryAcquireMiss(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
 
-	l := WrapLocker("etcd", fakeLocker{tryOK: false})
+	l := Observe(fakeLocker{tryOK: false}, "etcd")
 	_, ok, err := l.TryAcquire(context.Background(), "leader")
 	require.NoError(t, err)
 	assert.False(t, ok)
@@ -279,7 +356,7 @@ func testTryAcquireMiss(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr s
 func testAcquireError(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
 	backendErr := errutil.Explain(nil, "backend down")
 
-	l := WrapLocker("consul", fakeLocker{err: backendErr})
+	l := Observe(fakeLocker{err: backendErr}, "consul")
 	_, err := l.Acquire(context.Background(), "jobs:2")
 	require.ErrorIs(t, err, backendErr)
 
@@ -308,7 +385,7 @@ func testAcquireError(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdk
 // "unlock" client span and a duration datapoint, so a dashboard can see how
 // often releasing fails as well as how long locks are held.
 func testUnlockOK(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
-	l := WrapLocker("k8s", fakeLocker{})
+	l := Observe(fakeLocker{}, "k8s")
 	held, err := l.Acquire(context.Background(), "jobs:3")
 	require.NoError(t, err)
 	require.NoError(t, held.Unlock(context.Background()))
@@ -329,7 +406,7 @@ func testUnlockNotHeld(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sd
 	handle := newFakeLock("jobs:4")
 	handle.unlockErr = ErrNotHeld
 
-	l := WrapLocker("memory", fakeLocker{handle: handle})
+	l := Observe(fakeLocker{handle: handle}, "memory")
 	held, err := l.Acquire(context.Background(), "jobs:4")
 	require.NoError(t, err)
 	require.ErrorIs(t, held.Unlock(context.Background()), ErrNotHeld)
@@ -348,7 +425,7 @@ func testUnlockNotHeld(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sd
 func testLostReported(t *testing.T, rdr sdkmetric.Reader) {
 	handle := newFakeLock("jobs:5")
 
-	l := WrapLocker("k8s", fakeLocker{handle: handle})
+	l := Observe(fakeLocker{handle: handle}, "k8s")
 	_, err := l.Acquire(context.Background(), "jobs:5")
 	require.NoError(t, err)
 
@@ -367,7 +444,7 @@ func testLostReported(t *testing.T, rdr sdkmetric.Reader) {
 func testNilLostChannel(t *testing.T, rdr sdkmetric.Reader) {
 	handle := &fakeLock{key: "jobs:7"} // no lost channel: nothing can be lost
 
-	l := WrapLocker("memory", fakeLocker{handle: handle})
+	l := Observe(fakeLocker{handle: handle}, "memory")
 	held, err := l.Acquire(context.Background(), "jobs:7")
 	require.NoError(t, err)
 	assert.Nil(t, held.Lost(), "the wrapper must not invent a channel the backend never had")
@@ -383,7 +460,7 @@ func testNilLostChannel(t *testing.T, rdr sdkmetric.Reader) {
 func testResignedNotLost(t *testing.T, rdr sdkmetric.Reader) {
 	handle := newFakeLock("jobs:6")
 
-	l := WrapLocker("etcd", fakeLocker{handle: handle})
+	l := Observe(fakeLocker{handle: handle}, "etcd")
 	held, err := l.Acquire(context.Background(), "jobs:6")
 	require.NoError(t, err)
 	require.NoError(t, held.Unlock(context.Background()))

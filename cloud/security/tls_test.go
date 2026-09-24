@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package tlsconf
+package security
 
 import (
 	"crypto/rand"
@@ -134,4 +134,22 @@ func writeSelfSignedPair(t *testing.T, dir string) (certPath, keyPath string) {
 	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
 	require.NoError(t, os.WriteFile(keyPath, keyPEM, 0o600))
 	return certPath, keyPath
+}
+
+func TestTLSConfig_Build_HalfKeyPair(t *testing.T) {
+	// cert-file without key-file, on both build paths.
+	_, err := TLSConfig{Enabled: true, CertFile: "/cert.pem"}.BuildClient()
+	assert.Contains(t, err.Error(), "cert-file is set but key-file is empty")
+	_, err = TLSConfig{Enabled: true, CertFile: "/cert.pem"}.BuildServer()
+	assert.Contains(t, err.Error(), "cert-file is set but key-file is empty")
+
+	// key-file without cert-file.
+	_, err = TLSConfig{Enabled: true, KeyFile: "/key.pem"}.BuildClient()
+	assert.Contains(t, err.Error(), "key-file is set but cert-file is empty")
+}
+
+func TestTLSConfig_BuildServer_RequiresKeyPair(t *testing.T) {
+	_, err := TLSConfig{Enabled: true}.BuildServer()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "server TLS requires cert-file and key-file")
 }

@@ -18,14 +18,13 @@ package at
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"slices"
 	"sync"
 
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 )
 
 // ErrUnknownTransaction is returned when a branch registers under, or a caller
@@ -192,11 +191,7 @@ func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase 
 }
 
 // newXID returns a random 16-byte hex global transaction id.
-func newXID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return hex.EncodeToString(b[:])
-}
+func newXID() string { return randutil.Hex(16) }
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It

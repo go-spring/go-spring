@@ -246,7 +246,7 @@ sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不
 | `max-retries` | int | 0 | go-redis 命令重试。⚠ resilience 侧重试也要保持 0——双重重试放大时延，且可能重发非幂等命令（config.go:152-154 注释）。 | 调大 + resilience 重试 → 尝试次数相乘。 |
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 直传；dial-timeout 同时限定启动 ping [starter.go:229]。 | — |
 | `conn-max-lifetime` | duration | 2m | 连接复用窗口；较短值利于发现流量切换。 | 很大 + discovery → 老端点连接滞留。 |
-| `tls.*` | group | off | `tlsconf` 客户端 TLS（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）。 | 配一半 → `tls.Build` 启动报错。 |
+| `tls.*` | group | off | `security` 客户端 TLS（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）。 | 配一半 → `tls.Build` 启动报错。 |
 | `health.enabled` | bool | true | 为实例注册 `redis:<name>` 健康指示器——与 starter-redigo 同名开关。 | false → 该实例无指示器 bean，不再上报就绪。 |
 
 ### 3.3 观测

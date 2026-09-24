@@ -262,7 +262,7 @@ gorm:query processor 链
 | `conn-max-idle-time` | duration | 0 | `>0` → `SetConnMaxIdleTime`;0 = 不限。 | 主要与上面 lifetime 联动。 |
 | `ping-timeout` | duration | 5s | 启动 fail-fast ping(`PingContext`)的时限。`<=0` 回落 5s。 | 太小 → 冷启动 DB 时启动失败;太大 → DB 宕机时启动缓慢。 |
 | `slow-threshold` | duration | 0 | `>0` 安装 warn 级 gorm 慢查询 logger,输出经 **go-spring.org/log**(`log.Warnf`,TagAppDef)转发——进配置的 appender,而非裸 stdout。0 保持 gorm 默认 logger。⚠ 消息体是 GORM 的单行文本,不是结构化字段。 | 0 → 完全没有慢日志;要结构化字段 → 消息体是纯文本(改用访问日志)。 |
-| `service-name` | string | — | 切换为服务发现寻址:方言绑定 discovery 拨号器,每条新连接到达存活实例。设置后 `addr` 被忽略(示例故意用 dummy `0.0.0.0:0` 证明)。mesh 模式(`GS_MESH=on`)下 sidecar 接管发现,`addr` 原样使用。 | 不设且无 `addr` → 方言构建报错("one of addr or service-name must be set")。 |
+| `service-name` | string | — | 切换为服务发现寻址:方言绑定 discovery 拨号器,每条新连接到达存活实例。设置后 `addr` 被忽略(示例故意用 dummy `0.0.0.0:0` 证明)。mesh 模式(`GS_MESH_MODE=on`)下 sidecar 接管发现,`addr` 原样使用。 | 不设且无 `addr` → 方言构建报错("one of addr or service-name must be set")。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme(如 `tls`)。⚠ 未设 `service-name` 时为死 key(仅在此时被读取)。 | 设了但无 service-name → 静默忽略。 |
 | `discovery` | string | — | 选择解析 `service-name` 的已注册 discovery 后端。未配置时回退 `${spring.gorm.<dialect>.default.discovery}`。⚠ 未设 `service-name` 时为死 key。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错；设了但无 service-name → 静默忽略。 |
 | `observe.enabled` | bool | true | gorm observe 插件的硬开关:false 时插件完全不安装——无 span、无 metric、无访问日志、无逐查询回调。 | false → 逐查询可观测静默消失(为高吞吐实例有意为之)。 |

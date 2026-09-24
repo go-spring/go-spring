@@ -45,6 +45,7 @@
 package governance
 
 import (
+	"context"
 	"maps"
 	"reflect"
 	"slices"
@@ -54,6 +55,7 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -261,11 +263,18 @@ func (c *center) goLive() {
 // [center.refresh] AND swaps the fault injector's config. It is the single sink
 // for ALL source pushes, which is what keeps the fault chain source-agnostic —
 // fault.Config always rides inside [Config], so any Source drives it for free.
+// A push is a fleet-wide policy change, so it always leaves an Info line: the
+// sources log only their own failures, not what actually took effect.
 func (c *center) adopt(cfg Config) {
 	c.refresh(cfg)
 	if c.injector != nil {
 		c.injector.SetConfig(cfg.Fault)
 	}
+	log.Info(context.Background(), log.TagAppDef,
+		log.Bool("enabled", cfg.Enabled),
+		log.String("driver", cfg.Driver),
+		log.Int("rules", len(cfg.Rules)),
+		log.Msg("governance: policy applied"))
 }
 
 // bindSource makes s the active source: install its handle, subscribe with a

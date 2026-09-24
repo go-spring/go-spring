@@ -301,3 +301,12 @@ func TestMemoryAcquireHonoursContext(t *testing.T) {
 	_, err := m.Acquire(ctx, "k", lock.WithRetryInterval(5*time.Millisecond), lock.WithRenewInterval(-1))
 	assert.Error(t, err).NotNil()
 }
+
+func TestMemoryLockerZeroValueFailsFast(t *testing.T) {
+	var m lock.MemoryLocker
+	_, _, err := m.TryAcquire(context.Background(), "k")
+	assert.Error(t, err).NotNil()
+	_, err = m.Acquire(context.Background(), "k")
+	assert.Error(t, err).NotNil()
+	assert.Error(t, m.Close()).NotNil()
+}

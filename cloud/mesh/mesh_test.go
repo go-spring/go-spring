@@ -22,51 +22,51 @@ import "testing"
 // t.Parallel.
 
 func TestEnabled_On(t *testing.T) {
-	t.Setenv("GS_MESH", "on")
+	t.Setenv("GS_MESH_MODE", "on")
 	// Forced on even with no sidecar signal.
 	if !Enabled() {
-		t.Fatal(`GS_MESH=on should force Enabled true`)
+		t.Fatal(`GS_MESH_MODE=on should force Enabled true`)
 	}
 }
 
 func TestEnabled_Off(t *testing.T) {
 	t.Setenv("ISTIO_META_WORKLOAD_NAME", "user-svc") // sidecar present
-	t.Setenv("GS_MESH", "off")
+	t.Setenv("GS_MESH_MODE", "off")
 	// Forced off overrides sidecar detection.
 	if Enabled() {
-		t.Fatal(`GS_MESH=off should force Enabled false even with a sidecar`)
+		t.Fatal(`GS_MESH_MODE=off should force Enabled false even with a sidecar`)
 	}
 }
 
 func TestEnabled_AutoNoSidecar(t *testing.T) {
-	t.Setenv("GS_MESH", "auto")
+	t.Setenv("GS_MESH_MODE", "auto")
 	// auto + no sidecar → off, so client-side discovery stays active.
 	if Enabled() {
-		t.Fatal(`GS_MESH=auto with no sidecar should be false`)
+		t.Fatal(`GS_MESH_MODE=auto with no sidecar should be false`)
 	}
 }
 
 func TestEnabled_AutoWithSidecar(t *testing.T) {
-	t.Setenv("GS_MESH", "auto")
+	t.Setenv("GS_MESH_MODE", "auto")
 	t.Setenv("ISTIO_META_WORKLOAD_NAME", "user-svc")
 	// auto + sidecar detected → on, zero code config.
 	if !Enabled() {
-		t.Fatal(`GS_MESH=auto with a sidecar should be true`)
+		t.Fatal(`GS_MESH_MODE=auto with a sidecar should be true`)
 	}
 }
 
 func TestEnabled_EmptyIsAuto(t *testing.T) {
-	t.Setenv("GS_MESH", "") // empty == unset for os.Getenv; both mean auto
+	t.Setenv("GS_MESH_MODE", "") // empty == unset for os.Getenv; both mean auto
 	t.Setenv("ISTIO_META_WORKLOAD_NAME", "user-svc")
 	if !Enabled() {
-		t.Fatal(`empty/unset GS_MESH should behave as auto (sidecar detected → true)`)
+		t.Fatal(`empty/unset GS_MESH_MODE should behave as auto (sidecar detected → true)`)
 	}
 }
 
 func TestEnabled_TrimLower(t *testing.T) {
-	t.Setenv("GS_MESH", "  ON  ")
+	t.Setenv("GS_MESH_MODE", "  ON  ")
 	if !Enabled() {
-		t.Fatal(`GS_MESH should be matched case-insensitively after trimming`)
+		t.Fatal(`GS_MESH_MODE should be matched case-insensitively after trimming`)
 	}
 }
 

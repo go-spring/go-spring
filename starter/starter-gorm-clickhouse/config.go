@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/starter-gorm"
 )
 
@@ -40,9 +40,9 @@ type Config struct {
 
 	// TLS configuration. When TLS.Enabled is set, the native ClickHouse driver
 	// negotiates a secure connection using the *tls.Config produced by the
-	// shared tlsconf.TLSConfig builder. Keys are nested
+	// shared security.TLSConfig builder. Keys are nested
 	// (spring.gorm.clickhouse.instances.<name>.tls.enabled, ...tls.cert-file, ...).
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 }
 
 // DSN constructs the ClickHouse URL-style Data Source Name based on the configuration.

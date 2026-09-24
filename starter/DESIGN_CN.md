@@ -115,7 +115,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     标签注入的后端 bean 调 `discovery.NewResolver` + `WithScheme`,后端缺失、
     `ServiceName` 为空或 mesh 开启时返回 `nil`)。`Resolver` 是纯快照函数——无资源、
     无 `Stop`,新鲜度全在 discovery 后端 bean 内部——所以不按 client 缓存、
-    `Destroy` 时也无需回收。driver 各自的 dialer(经 `loadbalance.SourceFunc` 把
+    `Destroy` 时也无需回收。driver 各自的 dialer(把
     resolver 包进 round-robin `Pool`,每次建连 `Pick`)留在 `config.go` /
     `starter.go`;这里只放 resolver 的构建。所有发现模式的池都按同一套建:挂
     suspension `Tracker`、在建连处把 `Pick` 与 `Complete` 配对、再
@@ -245,7 +245,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **服务网格模式集中退化客户端栈,而非逐 starter 判断。** 注入 sidecar
   (Istio/Envoy、Linkerd)后它已负责发现与负载均衡,应用自带的再叠加就会双重负载
   均衡,并让拓扑/离群逻辑错乱。用一个进程级全局开关(`mesh.Enabled`,默认按 sidecar
-  环境变量自动探测;`GS_MESH` 环境变量 on/off/auto 可覆盖),在发现与负载均衡的
+  环境变量自动探测;`GS_MESH_MODE` 环境变量 on/off/auto 可覆盖),在发现与负载均衡的
   Factory 装配处 —— 各 client starter 的
   mesh 门控 loader 构建器(见 §2.2)与 `loadbalance.Pool` —— 读取并统一退化为直通:
   服务名解析为唯一稳定的 Service 地址(ClusterIP)交给 sidecar 拦截,负载均衡器不再
@@ -304,8 +304,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     kitex 与 kratos 的时长指标没有 `status` 维度,因为指标由库发出;
     `cloud/experimental/transaction` 只有 span
     （它的 `Observer` 是整条替换型缝,§1.5 已裁决保持现状,故框架不为它规定另外两种信号）;
-    `cloud/confrefresh` 只有指标、**故意不记日志** —— 包注释写明了理由（调用方已经记录失败,
-    且日志该由知道主题的那个模块来打）。
+    属性刷新漏斗（`observability.RefreshConf`）是唯一既出指标又记录刷新结果日志的地方 ——
+    调用方只记自己的后端事件,「集群是否刷新成功」这条日志归漏斗
+    （日志该由知道主题的那个模块来打）。
   - *连接状态* —— `messaging.client.connection.state_changes` 只在**客户端库提供连接状态回调**
     的成员上出现（mqtt、nats、rabbitmq）。它**不进**消息族的共同清单:对没有这种回调的库硬
     要求,只能逼出假数据。checker 持有这份登记,并在「已登记成员不再上报」或「未登记成员开始

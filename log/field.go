@@ -276,6 +276,17 @@ func FieldsFromMap(m map[string]any) Field {
 	return Field{Key: "", Type: ValueTypeFromMap, Any: m}
 }
 
+// Err creates a Field for an error value under the conventional "error" key.
+// It is the dedicated constructor for the most common structured-log field,
+// so the key is fixed once instead of being retyped at every call site. A nil
+// error records a JSON null.
+func Err(err error) Field {
+	if err == nil {
+		return Nil("error")
+	}
+	return String("error", err.Error())
+}
+
 // Any creates a Field from a value of any type by inspecting its dynamic type.
 // It dispatches to the appropriate typed constructor based on the actual value.
 // If the type is not explicitly handled, it falls back to using Reflect.
@@ -381,6 +392,9 @@ func Any(key string, value any) Field {
 		return StringPtr(key, val)
 	case []string:
 		return Strings(key, val)
+
+	case error:
+		return String(key, val.Error())
 
 	default:
 		return Reflect(key, val)

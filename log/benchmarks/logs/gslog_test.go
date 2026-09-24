@@ -44,6 +44,6 @@ func fakeGSlogFields() []log.Field {
 		log.Any("user1", _oneUser),
 		log.Any("user2", _oneUser),
 		log.Any("users", _tenUsers),
-		log.Any("error", errExample),
+		log.Err(errExample),
 	}
 }

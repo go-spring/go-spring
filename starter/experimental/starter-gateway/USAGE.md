@@ -267,9 +267,9 @@ Extension seams:
 |-----|------|---------|-------------------------|------------------------------|
 | `addr` | string | — | **Activation key** (gateway.go:40); port clash fails at `net.Listen` (server.go:92). | Missing → routes bind but nothing serves; no warning is emitted. |
 | `tls.enabled` | bool | false | Enables TLS listen. | |
-| `tls.cert-file` / `tls.key-file` | string | "" | Server certificate; built via `tlsconf.BuildServer` — missing/unreadable files fail startup. | |
+| `tls.cert-file` / `tls.key-file` | string | "" | Server certificate; built via `security.BuildServer` — missing/unreadable files fail startup. | |
 | `tls.ca-file` | string | "" | **mTLS switch**: presence → `RequireAndVerifyClientCert` (server.go:69-75). ⚠ unlike the echo starter, this IS wired for mTLS. | |
-| `tls.server-name` / `tls.insecure-skip-verify` | string/bool | — | Client-side keys of the shared tlsconf struct — **bound but dead** on a server. | Silent no-op. |
+| `tls.server-name` / `tls.insecure-skip-verify` | string/bool | — | Client-side keys of the shared security struct — **bound but dead** on a server. | Silent no-op. |
 
 ---
 
@@ -398,5 +398,5 @@ Design suspects (for the audit ledger):
    optional per-route `priority` key; larger priority matches first, ties keep id order.
 6. ~~`schema.json` is a stub; example-otel has config but no main.go~~ — resolved 2026-08-28:
    schema.json now mirrors the full config surface; example-otel/main.go makes it runnable.
-7. `tls.server-name` / `tls.insecure-skip-verify` are client-side keys of the shared tlsconf
+7. `tls.server-name` / `tls.insecure-skip-verify` are client-side keys of the shared security
    struct — bound but dead on the server side (same pattern as other starters).

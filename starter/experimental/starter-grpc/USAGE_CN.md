@@ -295,7 +295,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 | `keepalive.maxConnectionIdle` / `maxConnectionAge` | duration | 0 | 连接生命周期边界。 | |
 | `tls.enabled` | bool | false | `credentials.NewTLS(TLS.BuildServer())`。 | 期望明文却开 TLS → 握手失败。 |
 | `tls.cert-file` / `tls.key-file` | string | — | 服务端证书对。⚠ `tls.enabled` 后两者需成对出现。 | 启动时报 "build TLS"（来自 `Run`）。 |
-| `tls.ca-file` | string | — | **服务端语义 = mTLS**：设 ClientCAs + `RequireAndVerifyClientCert`（tlsconf.BuildServer）。 | 随手一配 → 所有无证书客户端被拒。 |
+| `tls.ca-file` | string | — | **服务端语义 = mTLS**：设 ClientCAs + `RequireAndVerifyClientCert`（security.BuildServer）。 | 随手一配 → 所有无证书客户端被拒。 |
 | `tls.server-name` / `tls.insecure-skip-verify` | | — | 客户端旋钮；**此处为死 key**（BuildServer 忽略）。 | 虚假安全感；无任何效果。 |
 | `health.enabled` | bool | true | 注册 `grpc_health_v1`，整体状态 SERVING。 | false → 探针/LB 健康检查得到 Unimplemented。 |
 | `loadtest.enabled` | bool | true | 安装 LoadTest 拦截器，读 `x-loadtest` metadata（小写——grpc metadata key 一律小写）。 | false → load-test 标记不可见；fault `scope: loadtest` 永不触发。 |

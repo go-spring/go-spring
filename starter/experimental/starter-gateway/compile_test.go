@@ -131,7 +131,7 @@ func selectionPool(t *testing.T) *loadbalance.Pool {
 	}
 	eps := []discovery.Endpoint{{Addr: "10.0.0.1:9000", Healthy: true}}
 	return loadbalance.NewPool(
-		loadbalance.SourceFunc(func() ([]discovery.Endpoint, error) { return eps, nil }),
+		func() ([]discovery.Endpoint, error) { return eps, nil },
 		bal,
 		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})),
 	)

@@ -35,9 +35,9 @@ import (
 spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # 绑定到该客户端的 Locker，`client` 是 Redis 实例名。
-spring.lock.instances.jobs.client=cache
-spring.lock.instances.jobs.ttl=30s
-spring.lock.instances.jobs.key-prefix=myapp:
+spring.lock.instances.redis.jobs.client=cache
+spring.lock.instances.redis.jobs.ttl=30s
+spring.lock.instances.redis.jobs.key-prefix=myapp:
 ```
 
 `client` 属性是**必填**的。启动时若缺失，Starter 会 fail-fast 直接拒绝启动，
@@ -65,7 +65,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 
 ## 配置项
 
-所有键都位于 `spring.lock.instances.<name>` 下：
+所有键都位于 `spring.lock.instances.redis.<name>` 下：
 
 | 键               | 默认值   | 说明                                                                                     |
 |------------------|----------|------------------------------------------------------------------------------------------|
@@ -84,7 +84,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 el := lock.NewElection(lock.ElectionConfig{
     Locker: s.Lock,
     Key:    "scheduler-leader",
-    OnElected: func(ctx context.Context) {
+    OnStartedLeading: func(ctx context.Context) {
         // 只有 Leader 才会执行的工作；ctx 取消时尽快返回。
     },
 })

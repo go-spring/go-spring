@@ -22,6 +22,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/stdlib/errutil"
 )
 
 // redisTokenBucket is the atomic token-bucket refill/consume, evaluated entirely
@@ -84,18 +85,18 @@ func (d redisLimiterDriver) NewRateLimiter(p resilience.LimitPolicy) (resilience
 // client. Contribute it to the container under the name consumers will cite —
 // the gateway's rateLimit filter driver= argument, for instance:
 //
-//	gs.Provide(func() resilience.LimiterDriver {
+//	gs.Provide(func() (resilience.LimiterDriver, error) {
 //	    return experimental.NewLimiterDriver(client)
 //	}).Name("redis")
 //
 // It returns the interface, so the bean is indexed under
-// [resilience.LimiterDriver] and needs no Export. A nil client panics here
-// rather than surfacing as a limiter error on the first request.
-func NewLimiterDriver(client redis.UniversalClient) resilience.LimiterDriver {
+// [resilience.LimiterDriver] and needs no Export. A nil client fails here with
+// an error rather than surfacing as a limiter error on the first request.
+func NewLimiterDriver(client redis.UniversalClient) (resilience.LimiterDriver, error) {
 	if client == nil {
-		panic("starter-go-redis: nil redis limiter client")
+		return nil, errutil.Explain(nil, "starter-go-redis: nil redis limiter client")
 	}
-	return redisLimiterDriver{client: client}
+	return redisLimiterDriver{client: client}, nil
 }
 
 // NewRateLimiter builds a global [resilience.RateLimiter] over client from a

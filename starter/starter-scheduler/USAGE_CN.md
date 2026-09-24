@@ -55,23 +55,33 @@ import (
     scheduler "go-spring.org/starter-scheduler"
 )
 
+// 每个 job 都是具体类型 scheduler.Job 的 bean，由工作自己的构造函数调
+// scheduling.NewJob 建成——工作通常是自有 struct 的方法——经 gs.Provide 注册
+// （容器解析构造函数的依赖）。工作、触发器、选项都是 cloud/scheduling 的
+// 类型与本名；只有锁配置（cloud 不知道 bean）用 starter 的链式 setter。
+// 无需 Export：调度器直接收集这个类型的 bean。
+type tickWork struct{}
+
+func (tickWork) Run(context.Context) error { return nil } // fixed-rate
+
+func NewTickJob() *scheduling.Job {
+    return scheduling.NewJob("tick", scheduling.FixedRate(200*time.Millisecond), tickWork{}.Run)
+}
+
+type cleanupWork struct{}
+
+func (cleanupWork) Run(context.Context) error {
+    return nil // 由下面的锁守护：只有持锁者运行
+}
+
+func NewCleanupJob() *scheduling.Job {
+    return scheduling.NewJob("cleanup", scheduling.FixedRate(200*time.Millisecond), cleanupWork{}.Run).
+        scheduling.WithLock(lk, "cleanup", 5*time.Second)
+}
+
 func main() {
-    // 每个工作单元一个 Job bean。Provide 以 job 名命名 bean、导出为 Job 供调度器
-    // 收集，并把调度作为选项收下——节奏就写在它所描述的工作旁边。
-    scheduler.Provide("tick", func(ctx context.Context) error { // fixed-rate
-        return nil
-    }, scheduler.Every(200*time.Millisecond))
-    scheduler.Provide("delay", func(ctx context.Context) error { // fixed-delay
-        time.Sleep(50 * time.Millisecond) // 结构上保证不重叠
-        return nil
-    }, scheduler.After(200*time.Millisecond))
-    scheduler.Provide("beat", func(ctx context.Context) error { // cron，5 字段
-        return nil
-    }, scheduler.Cron("* * * * *"))
-    scheduler.Provide("cleanup", func(ctx context.Context) error {
-        return nil // 由下面的锁守护：只有持锁者运行
-    }, scheduler.Every(200*time.Millisecond),
-        scheduler.WithLock("memory"), scheduler.WithLockTTL(5*time.Second))
+    gs.Provide(NewTickJob)
+    gs.Provide(NewCleanupJob)
 
     // 跨副本去重：按 bean 名引用 lock.Locker。生产来自
     // starter-lock-{redis,etcd,consul}；此处用进程内实现顶替。
@@ -91,13 +101,13 @@ func main() {
 spring.scheduler.enabled=true
 
 # 优雅退出时排空在途运行的时限。
-spring.scheduler.drain-timeout=5s
 ```
 
 上段代码里：`Every(200ms)` 是 fixed-rate 触发——自每次计划触发点起每 200ms 触发，重叠运行
 受 `WithConcurrency` 约束。`After(200ms)` 在上一次运行**结束后** 200ms 触发，永不重叠。
 `Cron("* * * * *")` 是标准 5 字段表达式（分 时 日 月 周）；带秒的 6 字段会被 `ParseCron`
-拒绝，解析不了则在注册时 panic。`WithLock("memory")` 指定 `lock.Locker` 的 bean 名，
+拒绝，解析不了则在构造时失败。锁经 `WithLock(lk, key, ttl)` 挂在 Job 上，
+`lock.Locker` bean 注入 job 构造函数。
 `WithLockKey`（默认 job 名）是在其上获取的 key，`WithLockTTL` 是租约，持有期间自动续期。
 
 **验证**：
@@ -135,12 +145,12 @@ cd example-otel && docker compose up -d && go run .
 ```
 
 范围说明（已对源码核实）：每次 job 运行会在**全局** otel 管路上开一个 span
-（`scheduler.job <name>`，带 job 名属性与 `status` 属性 `ok|error|panic`；starter.go 的
-`instrument`。未装 starter-otel 或任何 SDK provider 时 otel.Tracer 为 no-op，零开销
-——按协议/组件 starter 约定，本 starter 从不自建管路）。跳过的触发不发 span（没有真正
+（`scheduler.job <name>`，带 job 名属性与 `status` 属性 `ok|error|panic`；由
+`cloud/scheduling` 内部开启。未装 starter-otel 或任何 SDK provider 时 otel.Tracer 为
+no-op，零开销——按协议/组件 starter 约定，starter 从不自建管路）。跳过的触发不发 span（没有真正
 运行），改由 metric 与日志承载。
 
-同一个观察者对每次触发发三个 metric（observe.go）：
+同一套内置插桩对每次触发发三个 metric（cloud/scheduling）：
 
 | Instrument | 类型 | 属性 | 回答 |
 |------------|------|------|------|
@@ -152,7 +162,7 @@ cd example-otel && docker compose up -d && go run .
 `skipped_lock`——后者区分「被并发策略丢弃」与「别的副本正在跑」。job 名可以作 metric
 维度，因为它是代码里写死的；lock key 则不然，基数是调用方决定的、无界。
 
-每次触发还会写一行日志（observe.go）——即 per-fire 访问日志，走自己的 tag
+每次触发还会写一行日志——即 per-fire 访问日志，走自己的 tag
 `_app_scheduler_access`（`log.RegisterAppTag("scheduler", "access")`），从而能与应用日志
 分开选取。生命周期行（starting / started / drain）仍留在默认 app tag。该行携带 metric
 刚记下的同一组 `job` 与 `status`，外加跳过时的 `reason`、运行时的 `duration_ms` /
@@ -180,20 +190,20 @@ gs.Run()
   ├─ 配置绑定：${spring.scheduler} → Server.Config（无 expr 校验——
   │  见 §2.2 的不对称），另有字段注入：
   │    Jobs    []Job                 `autowire:"?"`  （全部 Job bean）
-  │    Lockers map[string]lock.Locker `autowire:"?"` （全部 locker bean，按名）
+  │    （无 Lockers map：每个 job 已持有桥接好的 locker）
   ├─ Rooter Init 阶段：你 Provide 的 job 与 locker 已是 bean；
   │    调度器侧此阶段无事可做
   ├─ Runner 阶段：Server.Run（starter.go:87-105）
   │   ├─ build()——校验 job 自己不可能知道的两件事，先于就绪：
   │   │    重复 job bean → 报错
   │   │    lock 引用不存在的 locker bean → 报错
-  │   │    （触发方式与选项早在注册时就定了：缺失或重复的 trigger、
-  │   │      非正时长、非法 cron 都在 Provide/NewJob 处 panic，
-  │   │      即启动期间——见 §2.2）
+  │   │    （触发方式与选项早在构造时就定了：缺失或重复的 trigger、
+  │   │      非正时长、非法 cron 都在 NewJob 处失败，
+  │   │      即装配期间——见 §2.2）
   │   ├─ <-sig.TriggerAndWait() → build 成功后才翻就绪
   │   └─ sched.Start(ctx)——"Scheduling begins only after the application is
   │        ready, so jobs never race application startup"（starter.go:85-86）
-  └─ SIGTERM 时：Stop 用 drain-timeout 包 ctx，经 sched.Stop(ctx) 排空
+  └─ SIGTERM 时：Stop 在框架 shutdown ctx 内经 sched.Stop(ctx) 排空
        在途运行；超时则记 "scheduler drain timed out"
 ```
 
@@ -201,9 +211,9 @@ gs.Run()
 
 校验按"每层能知道什么"切开：
 
-- **注册时**——`Provide`/`NewJob` panic（即启动期间）：trigger 缺失或给了两个、
-  `Every`/`After` 时长非正、cron 解析不了（job.go）。`Config` 上**没有**任何 `expr` 校验，
-  也没有 `JobConfig` 可绑（config.go 只绑 `drain-timeout`）：调度从不经过配置，于是
+- **构造时**——`NewJob` 返回错误（即装配期间）：空名字、nil 运行函数或 nil
+  触发器；时长非正、cron 解析不了则在 cloud/scheduling 内部失败。`Config` 上**没有**任何 `expr` 校验，
+  也没有 `JobConfig` 可绑（不绑任何配置）：调度从不经过配置，于是
   `jobs.<name>.*` 条目与 bean 之间那种按名字的耦合、以及它的不对称（配置→bean 报错、
   bean→配置仅告警，bean 侧拼错就是"永不触发的任务"）一并消失。
 - **`Server.Run → build()`（starter.go）**——job 自己不可能知道的两件事：名字重复，
@@ -215,7 +225,8 @@ gs.Run()
 1. 容器内所有 `lock.Locker` bean 被收进 `Server.Lockers`，按 **bean 名**索引
    （`autowire:"?"` map，starter.go）。可用后端：starter-lock-redis / -etcd /
    -consul（或像 example 那样自给 bean）。
-2. job 用 `WithLock("<bean名>")` 选配开启——给的是**名字**不是 bean，因为注册时那个
+2. job 用 `WithLock(lk, key, ttl)` 选配开启——`lock.Locker` bean 注入 job
+   构造函数，给的是 bean 本体经桥接
    bean 还不存在。`build()` 解析，bean 不存在则**快速失败**（starter.go）。
 3. 获取的 key 是 `WithLockKey`，**默认 job 名**——"so two jobs sharing a locker do not
    collide"（job.go）。跨副本：同一 locker + 同一 key = 同一把分布式锁。
@@ -231,8 +242,8 @@ gs.Run()
 2. 并发策略生效（默认 `skip`；`queue` / `replace`；对 fixed-delay 无效——它结构上不重叠）。
 3. 配了锁时：`TryAcquire(key)`——失败即带原因跳过。
 4. `timeout > 0` 时：运行 ctx 包上超时。
-5. `Job.Run(ctx)` 执行；Observer seam 以 `{Name, Duration, Err, Skipped, Reason}` 回调，
-   starter 记日志——运行/跳过 Debug、失败 Error（starter.go:196-206）。
+5. `Job.Run(ctx)` 执行；`cloud/scheduling` 上报本次触发——metric 加一行日志
+   （运行/跳过 Debug、失败 Error），运行另有 span。
 
 ---
 
@@ -244,7 +255,6 @@ gs.Run()
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
 | `spring.scheduler.enabled` | bool | true（MatchIfMissing） | 总开关；false 时即便有 job 也移除 bean。 | 误设 false → 所有 job 静默停摆。 |
-| `spring.scheduler.drain-timeout` | duration | 30s | 退出时排空在途运行的时限（starter.go）。 | 过短 → 发布时运行中途被弃（无重试——不像队列）。 |
 
 这就是配置的全部面。job 的其余一切都在注册处作为选项给出，所以下表是 `JobOption` 的
 参考，而非配置 key：
@@ -257,7 +267,7 @@ gs.Run()
 | — | — | — | 一个 job 必须**恰好声明一个**上面的触发方式。 | 一个都没有、或给了两个 → 注册时 panic。 |
 | `WithTimeout(d)` | duration | 0（关） | `>0` 时到点取消运行 ctx。 | 0 → 卡死的 job 不会被切断（持锁时还一直占租约）。 |
 | `WithConcurrency(p)` | `scheduling.ConcurrencyPolicy` | `Skip` | `Skip` \| `Queue` \| `Replace`——类型化取值，非法值根本无法表达。 | — |
-| `WithLock(bean)` | string | 空 | `lock.Locker` 的 bean 名；每次触发 TryAcquire——仅持锁者运行。⚠ 必须与 locker bean 名完全一致（否则快速失败，在 build() 中）。 | 名字不存在 → 就绪前启动报错。 |
+| `WithLock(l, key, ttl)` | — | — | 挂上 lock.Locker；每次触发 TryAcquire——仅持锁者运行。 | — |
 | `WithLockKey(k)` | string | job 名 | 在 locker 上获取的 key——跨副本协同点。⚠ 想让两个 job 互斥须共用 locker 且共用 key。 | job 间意外共用 key → 相互串行。 |
 | `WithLockTTL(d)` | duration | locker 自身默认 | 租约时长，持有期间自动续。 | 低于典型运行+续租抖动 → 运行中丢租约，第二个副本启动。 |
 
@@ -280,7 +290,7 @@ starter-lock-redis：
 
 ```bash
 docker run -d -p 6379:6379 redis:7
-# 配 spring.lock.instances.redis... 的 "redis" bean + example.go 里 WithLock("redis")，然后：
+# 配 spring.lock.instances.redis... 并把该 lock.Locker bean 注入 job 构造函数，然后：
 go run . & go run . & wait
 # 只有一个进程记录 "job \"cleanup\" ran"；另一个对它无任何日志
 ```
@@ -308,28 +318,26 @@ panic 的 job 同样上报，级别为 Error，措辞是 `panicked` 而非 `fail
 
 ### 4.4 退出排空
 
-起一个 3s 的 job，运行中 `kill -TERM`：退出最多等 `drain-timeout`；调到 1s 可看到
+起一个 3s 的 job，运行中 `kill -TERM`：退出在框架 shutdown ctx 内等待；把它收短可看到
 `scheduler drain timed out: context deadline exceeded`（Warn）。
 
 ### 4.5 校验演练（快速失败）
 
-以下每一条都在注册时 panic——也就是启动期间、就绪之前：
+以下每一条都被 `NewJob` 以错误拒绝——发生在构造函数里，也就是装配期间、就绪之前：
 
 ```go
-scheduler.Provide("orphan", fn)                          // → "has no trigger"
-scheduler.Provide("tick", fn, scheduler.Every(0))        // → "requires a positive duration"
-scheduler.Provide("beat", fn,
-    scheduler.Every(time.Second), scheduler.Cron("* * * * *"))  // → "sets more than one trigger"
-scheduler.Provide("beat", fn, scheduler.Cron("0 */5 * * * *"))  // → "must have 5 fields, got 6"
+scheduling.NewJob("", tr, run)                               // → error "job name must not be empty"
+scheduling.NewJob("j", nil, scheduling.FixedRate(time.Second)) // → "job run function must not be nil"
+scheduling.NewJob("j", run, nil)                               // → "has no trigger"
+scheduling.FixedRate(0)   // → "requires a positive duration"（cloud/scheduling panic）
 ```
 
-以下两条在 build() 里失败，同样先于就绪：
+以下在 build() 里失败，同样先于就绪：
 
 ```go
-scheduler.Provide("tick", fn, scheduler.Every(time.Second))
-scheduler.Provide("tick", fn, scheduler.Every(time.Second))     // → "duplicate job bean"
-scheduler.Provide("tick", fn, scheduler.Every(time.Second),
-    scheduler.WithLock("nope"))                                 // → "references lock \"nope\" ..."
+// 同名 job 的第二个构造返回的 Job 再注册 → Schedule 报 "duplicate task name"
+// a lock reference cannot dangle: the locker is injected as a bean, so a wrong
+// wiring fails the constructor at startup
 ```
 
 ---
@@ -338,13 +346,13 @@ scheduler.Provide("tick", fn, scheduler.Every(time.Second),
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动 panic "has no trigger" | 调 `Provide`/`NewJob` 时没给 `Every`/`After`/`Cron` | 补上恰好一个触发选项。 |
+| 启动报错 "has no trigger" | 调 `NewJob` 时没给触发器 | 补上触发器。 |
 | "sets more than one trigger" | 一个 job 给了两个触发选项 | 只留一个。 |
 | cron 报 "must have 5 fields" | 用了带秒的 6 字段表达式 | 用 5 字段（`* * * * *`）。 |
 | "references lock %q but no lock.Locker bean" | `WithLock` 的值不是 locker bean 名 | 与 starter-lock 的 bean 名完全一致。 |
 | "duplicate job bean named %q" | 两个 job 用了同一个名字 | 改掉一个；这个名字就是任务名兼默认 lock key。 |
 | 两个副本都在跑"带锁" job | locker 是进程内的（memory），或两套部署 `WithLockKey` 不同 | 用共享后端且同 key；key 默认即 job 名。 |
-| 发布时运行被弃 | `drain-timeout` 短于最长运行 | 调大；排空的 job 不会被补跑。 |
+| 发布时运行被弃 | 编排层击杀时限短于最长运行 | 调大时限（K8s terminationGracePeriod 等）；排空的 job 不会被补跑。 |
 | 两个 job 莫名串行 | 同一 locker 且同一 `WithLockKey` | 各给各的 key（默认已如此）。 |
 
 ## 6. 设计体检表
@@ -363,15 +371,15 @@ scheduler.Provide("tick", fn, scheduler.Every(time.Second),
   名字查表。整个 `jobs.<name>.*` 面消失。
 - job 的节奏不再能改配置（不重新编译）就调整。这是有意的——可运维调节的节奏正是任务平台
   (`starter-xxl-job`) 的领域——但这是配置面此前唯一买到的东西。
-- ~~observe seam 只有日志~~ 已修：每次 job 运行在全局 otel 管路开 span
-  （`scheduler.job <name>`，经 otel.Tracer，见 starter.go 的 instrument），且每次触发
-  ——运行或跳过——都喂给 observe.go 里的三个 metric（`scheduling.runs`、
-  `scheduling.run.duration`、`scheduling.lag`）。未装 starter-otel（或任何 SDK provider）
-  时全部为 no-op。这需要一处核心改动：panic 现在包着 `ErrJobPanicked`
-  （cloud/scheduling），观察者才能把它单列为一个 status 值，而不是去匹配错误字符串。
+- ~~observe seam 只有日志~~ 已被取代：可观测性现内置在 `cloud/scheduling`——每次
+  运行在全局 otel 管路开 span（`scheduler.job <name>`），每次触发——运行或跳过——都
+  喂三个 metric（`scheduling.runs`、`scheduling.run.duration`、`scheduling.lag`）加
+  一行日志。未装 starter-otel（或任何 SDK provider）时全部为 no-op。panic 包着
+  `ErrJobPanicked`（cloud/scheduling），单列为一个 `panic` status 值，而不是去匹配
+  错误字符串。
 - ~~包文档注释的 cron 示例是 6 字段~~ 已修：示例改为 5 字段（`*/5 * * * *`），与
   ParseCron 一致（scheduling/cron.go:81-83）。
 - 无 Init 期校验：全部 job 校验在 `Run/build()`；报错在 Runner 期浮出（仍先于就绪，
   但晚于其它 starter 用 `expr` 做的绑定期校验）。
-- `drain-timeout` 到期直接弃置在途运行，无补跑无交接——对幂等 job 可接受，对其它
+- 击杀时限一到直接弃置在途运行，无补跑无交接——对幂等 job 可接受，对其它
   job 是未成文的策略空白。

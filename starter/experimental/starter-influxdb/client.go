@@ -130,7 +130,7 @@ func (o *Client) ManagedWriteAPI() api.WriteAPI {
 				// explicitly to keep this line joinable to the db.client.*
 				// records the synchronous path writes for the same endpoint.
 				log.Error(context.Background(), accessTag, append(asyncWriteFields(),
-					log.Any("error", err),
+					log.Err(err),
 					log.Msg("influxdb: async write failed"))...)
 			}
 		}()

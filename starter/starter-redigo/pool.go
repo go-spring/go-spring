@@ -83,7 +83,7 @@ func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool,
 		if err != nil {
 			return nil, err
 		}
-		lb = loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+		lb = loadbalance.NewPool(resolver, bal,
 			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
 		stop = lb.BindSelection(resource)
 	}

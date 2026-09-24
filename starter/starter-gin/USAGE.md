@@ -172,7 +172,7 @@ gs.Run()
   │    4. register(e)      — your RouterRegister, innermost                 [starter.go:122]
   │    → CORS misconfig returns error here → container fails fast (no first-request panic)
   ├─ Run(): net.Listen immediately, then <-sig.TriggerAndWait() → serve
-  │    (TLS: tls.NewListener with tlsconf.BuildServer — tls.cert-file/key-file pair; tls.ca-file enables mTLS)
+  │    (TLS: tls.NewListener with security.BuildServer — tls.cert-file/key-file pair; tls.ca-file enables mTLS)
   └─ on SIGTERM: Stop → http.Server.Shutdown(ctx) drains in-flight requests
 ```
 
@@ -241,7 +241,7 @@ All keys live under `spring.gin.server.*`. Reconciled against
 | `addr` | string | — | **Activation key.** Presence registers the server bean (`OnProperty`). | Missing → whole starter silently inactive. |
 | `readTimeout` | duration | 5s | Also reused as `ReadHeaderTimeout` (starter.go:134-136). | Too low kills slow clients mid-header. |
 | `writeTimeout` / `idleTimeout` | duration | 5s / 60s | Passed to `http.Server`. | keep-alive churn if idleTimeout too low. |
-| `tls.enabled` + `cert-file`/`key-file` | bool/strings | off | Switches `Serve` to a TLS listener built via `tlsconf.BuildServer` (same semantics as starter-grpc). `ca-file` **enables mTLS**: ClientCAs + `RequireAndVerifyClientCert` — clients must present a certificate signed by that CA. `server-name`/`insecure-skip-verify` are client-side keys — bound but dead on a server. | Setting `ca-file` casually → all clients without certs rejected. |
+| `tls.enabled` + `cert-file`/`key-file` | bool/strings | off | Switches `Serve` to a TLS listener built via `security.BuildServer` (same semantics as starter-grpc). `ca-file` **enables mTLS**: ClientCAs + `RequireAndVerifyClientCert` — clients must present a certificate signed by that CA. `server-name`/`insecure-skip-verify` are client-side keys — bound but dead on a server. | Setting `ca-file` casually → all clients without certs rejected. |
 | `health.enabled` / `health.path` | bool / string | false / `/healthz` | Starter-served liveness route, registered before app routes; path auto-appended to access-log skip set (middleware.go:115-117). | Custom path is auto-skipped too — only if health.enabled. |
 
 ### 3.2 Middleware groups (`middleware.*`)
@@ -366,7 +366,7 @@ Design suspects (audit ledger; carried over from the previous edition):
 1. **Still open** — README inaccuracies: claims a `spring.gin.server.enabled` activation key and
    a default `:8001` (real condition: `addr` presence, no default); stale middleware-order table;
    requestId attribution. Docs-only fix.
-2. **Fixed** — the server now uses `tlsconf.BuildServer` (was `ServeTLS` with only
+2. **Fixed** — the server now uses `security.BuildServer` (was `ServeTLS` with only
    cert/key files): `ca-file` enables mTLS (`RequireAndVerifyClientCert`), matching
    starter-grpc. `server-name`/`insecure-skip-verify` remain client-side keys with no
    server-side effect.

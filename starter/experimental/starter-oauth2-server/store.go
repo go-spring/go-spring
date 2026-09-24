@@ -17,9 +17,9 @@
 package StarterOAuth2Server
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"sync"
+
+	"go-spring.org/stdlib/randutil"
 )
 
 // authCode is a pending authorization code: it captures what /authorize granted
@@ -66,11 +66,7 @@ func newStore() *store {
 
 // opaqueToken returns a 32-byte URL-safe random string used as an authorization
 // code or refresh token value.
-func opaqueToken() string {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
-}
+func opaqueToken() string { return randutil.URLSafe(32) }
 
 // putCode stores c under a freshly generated code and returns it.
 func (s *store) putCode(c authCode) string {

@@ -101,9 +101,9 @@ func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
 	}
 
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(any) { c.TriggerRefresh() },
-		UpdateFunc: func(any, any) { c.TriggerRefresh() },
-		DeleteFunc: func(any) { c.TriggerRefresh() },
+		AddFunc:    func(any) { c.TriggerRefresh(context.Background()) },
+		UpdateFunc: func(any, any) { c.TriggerRefresh(context.Background()) },
+		DeleteFunc: func(any) { c.TriggerRefresh(context.Background()) },
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
 		log.Errorf(context.Background(), starterTag,

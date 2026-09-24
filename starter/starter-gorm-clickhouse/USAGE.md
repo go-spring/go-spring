@@ -190,7 +190,7 @@ gs.Run()
   │    ├─ useDiscovery = service-name != "" && !mesh.Enabled()
   │    ├─ useNative = useDiscovery || TLS.Enabled
   │    │    native: ch.Options{Addr, Auth, Dial/ReadTimeout}
-  │    │      + opts.TLS = tlsconf.BuildClient()          (when TLS on)
+  │    │      + opts.TLS = security.BuildClient()          (when TLS on)
   │    │      + opts.DialContext = resolver pick     (when discovery)
   │    │      → clickhouse.New(Config{Conn: ch.OpenDB(opts)})
   │    └─ plain path: clickhouse.Open(DSN)           (no TLS, no discovery)
@@ -245,7 +245,7 @@ Keys under `spring.gorm.clickhouse.instances.<name>.*`. Common keys (10) and wra
 | `dialTimeout` | duration | 0 | DSN `dial_timeout=2s` (Go duration string, not truncated) / `ch.Options.DialTimeout`. | Too low → dial timeouts on cold clusters. |
 | `readTimeout` | duration | 0 | DSN `read_timeout=30s` / `ch.Options.ReadTimeout`. ⚠ Long analytical queries need this generous or unset. | Too low → big SELECTs aborted mid-read. |
 
-### 3.2 TLS block (`tls.*`, shared tlsconf.TLSConfig at config.go:45)
+### 3.2 TLS block (`tls.*`, shared security.TLSConfig at config.go:45)
 
 Unlike sqlserver (DSN params), ClickHouse TLS is a real `*tls.Config`: enabling it **switches
 the starter to the native driver path** (`useNative`, starter.go:78) and sets
@@ -256,7 +256,7 @@ emitted**. All six keys are live here:
 |-----|---------|----------|
 | `tls.enabled` | false | On → native path + `opts.TLS`. An unreadable `ca-file` fails the build *before* any dial (starter_test.go pins this). |
 | `tls.ca-file` | "" | Root CA bundle for server verification (`RootCAs`). |
-| `tls.cert-file` + `tls.key-file` | "" | Client key pair — **mTLS is expressible** for this dialect (tlsconf `Build()` loads both). |
+| `tls.cert-file` + `tls.key-file` | "" | Client key pair — **mTLS is expressible** for this dialect (security `Build()` loads both). |
 | `tls.server-name` | "" | Overrides the name checked against the server cert — useful when dialing by IP. |
 | `tls.insecure-skip-verify` | false | Dev-only escape hatch. |
 

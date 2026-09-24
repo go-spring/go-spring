@@ -47,12 +47,13 @@ import (
 // safe for concurrent use), opened by the driver and closed on Close. Both
 // declare the queue idempotently so a round trip works without external setup.
 //
-// Trace context rides the envelope: publish injects the current W3C context into
-// the message headers via StartPublishSpan and consume extracts it via
-// StartConsumeSpan, so a trace links producer to consumer across services. All
-// tracing is a no-op without starter-otel.
+// Trace context rides the envelope: the messaging.Observe decorator wraps this
+// driver, injecting the current W3C context into the message headers on
+// publish (mapped onto AMQP headers) and extracting it on consume, so a trace
+// links producer to consumer across services. It also supplies the spans,
+// metrics and access log. All of it is a no-op without starter-otel.
 func NewDriver(conn *amqp.Connection) messaging.Driver {
-	return &driver{conn: conn}
+	return messaging.Observe(&driver{conn: conn}, "rabbitmq")
 }
 
 type driver struct{ conn *amqp.Connection }
@@ -105,13 +106,10 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		}
 		pub.Headers[canonical.MetaKeyLoadTest] = "1"
 	}
-	ctx, sp := startPublish(ctx, p.queue, &pub)
 	// Route through the same resilience executor the raw client API uses
 	// (GuardedPublish): a no-op pass-through when governance is off for this
 	// connection, a rejection sentinel when rate-limited/circuit-open.
-	err := GuardedPublish(ctx, p.conn, p.ch, "", p.queue, false, false, pub)
-	sp.End(err)
-	return err
+	return GuardedPublish(ctx, p.conn, p.ch, "", p.queue, false, false, pub)
 }
 
 func (p *publisher) Close() error { return p.ch.Close() }
@@ -139,13 +137,12 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 	go func() {
 		defer close(s.done)
 		for d := range deliveries {
-			msgCtx, sp := startConsume(context.Background(), &d)
+			msgCtx := context.Background()
 			// Extract the load-test marker the producer put in the AMQP headers.
 			if v, ok := d.Headers[canonical.MetaKeyLoadTest].(string); ok && canonical.IsAffirmative(v) {
 				msgCtx = canonical.WithLoadTest(msgCtx, "amqp-header")
 			}
 			herr := handler(msgCtx, fromDelivery(&d))
-			sp.End(herr)
 			if herr != nil {
 				log.Errorf(msgCtx, log.TagAppDef, "rabbitmq driver handler error on %q: %v", s.queue, herr)
 				if err := d.Nack(false, true); err != nil {

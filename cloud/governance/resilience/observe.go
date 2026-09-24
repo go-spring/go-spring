@@ -165,7 +165,7 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 			log.String("resource", resource),
 			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
 			log.String("status", status),
-			log.Any("error", err))
+			log.Err(err))
 		return err
 	}
 	log.Debug(ctx, resilienceTag, func() []log.Field {

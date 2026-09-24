@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-package confrefresh
+package observability
 
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -29,11 +28,10 @@ import (
 )
 
 // withReader installs a manual reader as the global meter provider for the
-// test, so the package-level lazy instruments bind to it. The instruments are
-// reset first because sync.Once may have bound them to another test's reader.
+// test; since RefreshConf builds its instruments per call, they always bind
+// to the provider that is current at call time.
 func withReader(t *testing.T) *metric.ManualReader {
 	t.Helper()
-	insOnce = sync.Once{}
 	rdr := metric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(metric.NewMeterProvider(metric.WithReader(rdr)))
@@ -44,8 +42,8 @@ func withReader(t *testing.T) *metric.ManualReader {
 	return rdr
 }
 
-// totals collects config.refresh.total into a status -> count map.
-func totals(t *testing.T, rdr *metric.ManualReader) map[string]int64 {
+// refreshTotals collects config.refresh.total into a status -> count map.
+func refreshTotals(t *testing.T, rdr *metric.ManualReader) map[string]int64 {
 	t.Helper()
 	var rm metricdata.ResourceMetrics
 	assert.That(t, rdr.Collect(context.Background(), &rm)).Nil()
@@ -67,20 +65,20 @@ func totals(t *testing.T, rdr *metric.ManualReader) map[string]int64 {
 	return out
 }
 
-func TestRun(t *testing.T) {
+func TestRefreshConf(t *testing.T) {
 	rdr := withReader(t)
 
 	// Success path: nil passes through, fn runs exactly once, counted ok.
 	calls := 0
-	assert.That(t, Run(func() error { calls++; return nil })).Nil()
+	assert.That(t, RefreshConf(context.Background(), func(context.Context) error { calls++; return nil })).Nil()
 	assert.That(t, calls).Equal(1)
 
 	// Failure path: the error passes through unchanged and counts as error.
 	sentinel := errors.New("boom")
-	assert.That(t, errors.Is(Run(func() error { return sentinel }), sentinel)).True()
+	assert.That(t, errors.Is(RefreshConf(context.Background(), func(context.Context) error { return sentinel }), sentinel)).True()
 
 	// One ok and one error: statuses are exclusive, sum equals refreshes run.
-	got := totals(t, rdr)
+	got := refreshTotals(t, rdr)
 	assert.That(t, got["ok"]).Equal(int64(1))
 	assert.That(t, got["error"]).Equal(int64(1))
 }

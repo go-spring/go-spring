@@ -49,8 +49,8 @@ import (
 // independent bean instances proving multi-instance wiring; both share the same
 // underlying Consul cluster but own separate api.Client sessions.
 type Service struct {
-	Jobs      lock.Locker `autowire:"jobs"`
-	Singleton lock.Locker `autowire:"singleton"`
+	Jobs      lock.Locker `autowire:"consul.jobs"`
+	Singleton lock.Locker `autowire:"consul.singleton"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

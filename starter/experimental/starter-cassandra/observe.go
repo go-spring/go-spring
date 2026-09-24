@@ -34,6 +34,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// tracerName names the tracer the spans open on. The tracer is looked up
+// per use (otel.Tracer at call time), never cached in a package variable: a
+// package-level otel.Tracer captured before any provider is set stops
+// forwarding once the global provider is set, unset and set again.
+const tracerName = "go-spring.org/starter-cassandra"
+
 // maxArg bounds the operation argument captured on span attributes and the
 // access log.
 const maxArg = 512
@@ -43,7 +49,6 @@ var accessTag = log.RegisterAppTag("cassandra", "access")
 
 // tracer opens this starter's client spans through the OTel global
 // TracerProvider that starter-otel installs (a no-op when absent).
-var tracer = otel.Tracer("go-spring.org/starter-cassandra")
 
 // dbObserver emits the cassandra client signals for one instance: the
 // db.client.operation.duration histogram, the db.client.active_requests
@@ -92,7 +97,7 @@ func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context
 	if arg != "" {
 		attrs = append(attrs, attribute.String("db.statement", strutil.Truncate(arg, maxArg)))
 	}
-	ctx, span := tracer.Start(ctx, op,
+	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(attrs...))
 	return ctx, &dbSpan{o: o, ctx: ctx, span: span, op: op, arg: arg, start: time.Now(), inflight: inflight}
@@ -148,7 +153,7 @@ func (s *dbSpan) End(err error) {
 	}
 	switch {
 	case err != nil:
-		log.Warn(s.ctx, accessTag, append(common(), log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(common(), log.Err(err))...)
 	case s.arg != "":
 		log.Debug(s.ctx, accessTag, common)
 	default:

@@ -21,7 +21,7 @@ go get go-spring.org/cloud
 ## Usage: you configure, starters react
 
 Mesh mode is a fixed trait of a deployment, so it is carried by the
-environment, not runtime config or code. Set `GS_MESH`:
+environment, not runtime config or code. Set `GS_MESH_MODE`:
 
 | Value          | Behavior                                             |
 |----------------|------------------------------------------------------|
@@ -30,13 +30,13 @@ environment, not runtime config or code. Set `GS_MESH`:
 | `auto` / unset | On iff a sidecar is detected (default)               |
 
 ```bash
-# In Kubernetes with Istio injected — no config needed: GS_MESH is unset,
+# In Kubernetes with Istio injected — no config needed: GS_MESH_MODE is unset,
 # auto-detect sees ISTIO_META_* and turns mesh mode on.
 
 # Same app outside the mesh — also no config; nothing is detected.
 
 # Force a mode when auto-detect doesn't fit (e.g. debugging double balancing):
-export GS_MESH=off
+export GS_MESH_MODE=off
 ```
 
 With mesh mode on, a starter configured with `service-name` ignores client-side
@@ -52,7 +52,7 @@ mesh.Enabled() // bool — the one call starters make
 mesh.Detect()  // bool — sidecar inference only (backs "auto"); rarely called directly
 ```
 
-- `Enabled()` resolves `GS_MESH`: `on`/`off` force the answer (matched
+- `Enabled()` resolves `GS_MESH_MODE`: `on`/`off` force the answer (matched
   case-insensitively after trimming whitespace); any other value — including
   unset and `auto` — infers it via `Detect()`.
 - `Detect()` reports whether sidecar-injected environment variables are present

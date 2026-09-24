@@ -17,9 +17,7 @@
 package messaging
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"time"
+	"go-spring.org/stdlib/randutil"
 )
 
 // Reserved header keys every driver in this family honours. They are ordinary
@@ -47,19 +45,7 @@ const (
 // NewMessageID returns a fresh unique message id for [HeaderMessageID]:
 // 32 hex characters from 16 random bytes. It is not a UUID — it only has to
 // be unique enough to key de-duplication.
-func NewMessageID() string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand never fails on the supported platforms; if it somehow
-		// does, fall back to a time-based id rather than panic mid-publish.
-		now := time.Now().UnixNano()
-		for i := range b {
-			b[i] = byte(now >> (uint(i%8) * 8))
-			now = now*6364136223846793005 + 1442695040888963407
-		}
-	}
-	return hex.EncodeToString(b[:])
-}
+func NewMessageID() string { return randutil.Hex(16) }
 
 // EnsureMessageID stamps a fresh [NewMessageID] onto msg when its
 // [HeaderMessageID] is empty, leaving an existing id untouched. Publishers call

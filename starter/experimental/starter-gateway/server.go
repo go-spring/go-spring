@@ -22,7 +22,7 @@ import (
 	"net"
 	"net/http"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -32,13 +32,13 @@ import (
 // separate from the business web server so both can run in one process on
 // distinct ports.
 //
-// The nested TLS block reuses the shared tlsconf.TLSConfig for its cert/key/CA
+// The nested TLS block reuses the shared security.TLSConfig for its cert/key/CA
 // fields; for the gateway CAFile means "PEM bundle of client CAs" (presence
 // enables mTLS), which is the server-side counterpart of the shared struct's
 // generic "verify the peer" role.
 type ServerConfig struct {
-	Addr string            `value:"${addr}"`
-	TLS  tlsconf.TLSConfig `value:"${tls}"`
+	Addr string             `value:"${addr}"`
+	TLS  security.TLSConfig `value:"${tls}"`
 }
 
 // GatewayServer adapts the gateway to the Go-Spring server lifecycle. It listens
@@ -67,7 +67,7 @@ func (s *GatewayServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // tlsConfig builds the server-side *tls.Config from the bound TLS settings via
-// tlsconf.BuildServer, failing fast if certificate files are missing or
+// security.BuildServer, failing fast if certificate files are missing or
 // unreadable. A configured CAFile means "bundle of client CAs" and turns on
 // mTLS (RequireAndVerifyClientCert).
 func (s *GatewayServer) tlsConfig() (*tls.Config, error) {

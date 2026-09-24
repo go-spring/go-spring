@@ -9,7 +9,7 @@ it opens no listener and holds no connection of its own.
 
 ## 1. Responsibilities & Boundaries
 
-- Binds `spring.lock.instances.<name>` entries to Redis-backed `lock.Locker` beans,
+- Binds `spring.lock.instances.redis.<name>` entries to Redis-backed `lock.Locker` beans,
   one per entry, registered under the config name and exported as
   `lock.Locker`.
 - The `Locker` implements Redis SETNX + Lua-scripted release / renew and
@@ -31,12 +31,12 @@ it opens no listener and holds no connection of its own.
   starter wires the two by calling `gs.TagArg(c.Client)` on the provide
   builder — the seam that ties one `Locker` to a specific Redis instance.
 - **Shared prefix across lock backends.** All lock starters bind under
-  `spring.lock.instances.<name>` (`starter/DESIGN.md` §3), so business code injects
+  `spring.lock.instances.redis.<name>` (`starter/DESIGN.md` §3), so business code injects
   `lock.Locker` by name and never changes when the backend changes.
 
 ## 3. Constraints
 
-- **`Client` is required.** An empty `spring.lock.instances.<name>.client` is rejected
+- **`Client` is required.** An empty `spring.lock.instances.redis.<name>.client` is rejected
   at boot via `errutil.Explain`. Silently defaulting to some arbitrary
   Redis instance would hide a misconfiguration until the first `Acquire`
   (possibly in production).
@@ -56,7 +56,7 @@ it opens no listener and holds no connection of its own.
 - **Auto-detect a `*redis.Client` bean — rejected.** Explicit `client=`
   keeps the mapping obvious; auto-detect would break as soon as an app
   ran more than one Redis instance.
-- **Bundling Redis config into `spring.lock.instances.<name>` — rejected.** Reusing
+- **Bundling Redis config into `spring.lock.instances.redis.<name>` — rejected.** Reusing
   the existing `*redis.Client` bean means switching topologies
   (share-a-cluster / dedicated-cluster) is a config-only change on the
   Redis side.

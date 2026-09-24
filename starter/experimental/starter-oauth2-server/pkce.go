@@ -17,10 +17,11 @@
 package StarterOAuth2Server
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+
+	"go-spring.org/stdlib/randutil"
 )
 
 // PKCE (RFC 7636) binds an authorization_code to the client that started the
@@ -34,11 +35,7 @@ import (
 // base64url-encoded 32 random bytes) suitable for a client to hold across the
 // redirect. It is exported so the example (and real clients) can drive the flow
 // without pulling in a separate OAuth2 client library.
-func GenerateVerifier() string {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
-}
+func GenerateVerifier() string { return randutil.URLSafe(32) }
 
 // Challenge derives the code_challenge from a verifier under the given method:
 // "S256" (recommended) is BASE64URL(SHA256(verifier)); "plain" (and the empty

@@ -60,7 +60,7 @@ func Server() middleware.Middleware {
 				log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 			}
 			if err != nil {
-				log.Warn(ctx, tag, append(fields, log.Any("error", err))...)
+				log.Warn(ctx, tag, append(fields, log.Err(err))...)
 				return rsp, err
 			}
 			log.Info(ctx, tag, fields...)

@@ -18,7 +18,7 @@
 // application to run leader election over a coordination.k8s.io/Lease, with no
 // external middleware.
 //
-// The starter exports a lock.Locker under "${spring.lock.instances.<name>}"; business code
+// The starter exports a lock.Locker under "${spring.lock.instances.k8s.<name>}"; business code
 // injects that interface and builds a lock.Election on top, exactly as it would
 // with the etcd/consul/redis backends — switching backend is a blank-import swap.
 //
@@ -46,11 +46,11 @@ import (
 	"go-spring.org/spring/gs"
 
 	// Blank-import registers the Lease-backed Locker beans declared under
-	// spring.lock.instances.
+	// spring.lock.instances.k8s.
 	_ "go-spring.org/starter-lock-k8s"
 )
 
-// lockName matches the map key set under spring.lock.instances.<lockName> below; leaderKey
+// lockName matches the map key set under spring.lock.instances.k8s.<lockName> below; leaderKey
 // is the Lease name candidates contend for.
 const (
 	lockName  = "default"
@@ -60,7 +60,7 @@ const (
 // ElectionDemo injects the Lease-backed Locker and runs a leader election on it.
 // It is registered as a root object only when a cluster is reachable (see main).
 type ElectionDemo struct {
-	Locker lock.Locker `autowire:""`
+	Locker lock.Locker `autowire:"k8s.default"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
@@ -109,9 +109,9 @@ func main() {
 	gs.Configure(func(app gs.App) {
 		// Declare one Lease-backed Locker named "default". Namespace defaults to
 		// "default"; kubeconfig is only set when running out-of-cluster.
-		app.Property("spring.lock.instances."+lockName+".namespace", "default")
+		app.Property("spring.lock.instances.k8s."+lockName+".namespace", "default")
 		if kubeconfig != "" {
-			app.Property("spring.lock.instances."+lockName+".kubeconfig", kubeconfig)
+			app.Property("spring.lock.instances.k8s."+lockName+".kubeconfig", kubeconfig)
 		}
 		// The main server is unused; keep the smoke test focused on the lock.
 		app.Property("spring.http.server.enabled", "false")
@@ -131,12 +131,16 @@ func (d *ElectionDemo) runElection() {
 	}
 
 	elected := make(chan struct{}, 1)
-	e := lock.NewElection(lock.ElectionConfig{
-		Locker:        d.Locker,
-		Key:           leaderKey,
-		OnElected:     func(context.Context) { elected <- struct{}{} },
-		RetryInterval: 500 * time.Millisecond,
+	e, err := lock.NewElection(lock.ElectionConfig{
+		Locker:           d.Locker,
+		Key:              leaderKey,
+		OnStartedLeading: func(context.Context) { elected <- struct{}{} },
+		RetryInterval:    500 * time.Millisecond,
 	})
+	if err != nil {
+		log.Error(ctx, "election config", log.Err(err))
+		return
+	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	go func() { _ = e.Run(runCtx) }()

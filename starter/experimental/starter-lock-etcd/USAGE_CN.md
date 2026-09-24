@@ -9,7 +9,7 @@
 [etcd 官方文档](https://etcd.io/docs/latest/dev-guide/api_concurrency_reference/)——本文只写
 go-spring 的增量。
 
-**激活方式**：任一 `spring.lock.instances.<name>.*` 配置即为每个 `<name>` 注册一个 etcd 后端的
+**激活方式**：任一 `spring.lock.instances.etcd.<name>.*` 配置即为每个 `<name>` 注册一个 etcd 后端的
 `lock.Locker` 实例（`spring.lock` 前缀为四个锁后端共享——一个二进制只 blank-import 一个
 锁后端）。
 
@@ -98,12 +98,12 @@ func (b *Batch) Run(ctx context.Context) {
 
 ```properties
 # --- etcd 锁 -------------------------------------------------------------------
-spring.lock.instances.main.endpoints=127.0.0.1:2379
-spring.lock.instances.main.ttl=10s
-spring.lock.instances.main.key-prefix=/starter-lock-etcd/
+spring.lock.instances.etcd.main.endpoints=127.0.0.1:2379
+spring.lock.instances.etcd.main.ttl=10s
+spring.lock.instances.etcd.main.key-prefix=/starter-lock-etcd/
 # dial-timeout 同时限定初始连接与启动就绪探针——集群不可达时启动即失败，
 # 而不是等到第一次 Acquire。
-# spring.lock.instances.main.dial-timeout=5s
+# spring.lock.instances.etcd.main.dial-timeout=5s
 
 # --- 可观测（starter-otel） ----------------------------------------------------
 spring.observability.service-name=demo
@@ -138,7 +138,7 @@ import starter-lock-etcd
              │                                                        Destroy → Close）
              └─ 除非 observe.enabled=false，newLocker 默认用 observe-lock 包装
   ├─ newEtcdLocker：
-  │    clientv3.New（DialTimeout，tls 时经 tlsconf.Build）
+  │    clientv3.New（DialTimeout，tls 时经 security.Build）
   │    + 就绪探针：DialTimeout 内对 endpoints[0] 执行 cli.Status——
   │      启动期即验证凭据/TLS；失败则关闭 client 并中止启动
   ├─ bean 装配：消费方 autowire:"<name>" 解析（bean 已默认带 observe 包装）
@@ -157,7 +157,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 | 层 | 来源 | 本后端 |
 |----|------|--------|
 | 1. 每次调用 option | `lock.WithTTL` / `WithRenewInterval` / `WithRetryInterval` | 全部生效 |
-| 2. starter 默认 | `spring.lock.instances.<name>.ttl` 等 | **仅 TTL** —— etcd concurrency 包自行维持每个 session 的 lease，因此没有 renew/retry key |
+| 2. starter 默认 | `spring.lock.instances.etcd.<name>.ttl` 等 | **仅 TTL** —— etcd concurrency 包自行维持每个 session 的 lease，因此没有 renew/retry key |
 | 3. 包默认 | TTL `30s`、renew `TTL/3`、retry `100ms` | 兜底仍未设置的项 |
 
 解析后的 TTL 换算为整秒，不足 1 秒**向上取整**且下限 1 秒（`lock.go` ttlSeconds），
@@ -185,7 +185,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.lock.instances.<name>` 之下（精确匹配，无宽松形态）。
+所有 key 位于 `spring.lock.instances.etcd.<name>` 之下（精确匹配，无宽松形态）。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
@@ -194,7 +194,7 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 | `dial-timeout` | duration | `5s` | 同时限定初始连接**与**就绪探针预算。 | 过低 → 慢网络启动失败；过高 → fail-fast 变慢。 |
 | `ttl` | duration | `30s` | 每把锁的 lease TTL，进 §2.2 第 2 层。不足 1 秒**向上取整**。 | `500ms` 无声变 `1s`。 |
 | `key-prefix` | string | `/lock/` | 拼在每个锁 key 前；尾部斜杠保留。 | 跨应用共享前缀 → 互相争锁。 |
-| `tls.enabled` | bool | `false` | 经 `tlsconf.Build` 应用共享 `tlsconf` 块（`server-name`、`ca-file`、`cert-file`、`key-file`、`insecure-skip-verify`）。 | 材料错误 → 启动期建 client 失败。 |
+| `tls.enabled` | bool | `false` | 经 `security.Build` 应用共享 `security` 块（`server-name`、`ca-file`、`cert-file`、`key-file`、`insecure-skip-verify`）。 | 材料错误 → 启动期建 client 失败。 |
 | `observe.enabled` | bool | `true` | 默认用 observe-lock 适配器包装 `<name>` 主 Locker bean（trace span + metric + 访问日志）。`false` = 裸 locker。 | 迁移：`<name>-observed` bean 已移除，请注入 `<name>`。 |
 
 ⚠ 本 starter **没有** `renew-interval`/`retry-interval` key：etcd concurrency 包自动维持
@@ -217,7 +217,7 @@ ETCDCTL_API=3 etcdctl get --prefix /starter-lock-etcd/ --keys-only   # 持有者
 
 ### 4.2 持锁期间 TTL 到期（宕机演练）
 
-1. 短 TTL 获取：`lock.WithTTL(5 * time.Second)`（或配 `spring.lock.instances.main.ttl=5s`）。
+1. 短 TTL 获取：`lock.WithTTL(5 * time.Second)`（或配 `spring.lock.instances.etcd.main.ttl=5s`）。
 2. `kill -9` 持有者——不 Unlock、无 keepalive。
 3. lease 约 TTL 后过期；key 消失，副本 B 中等待的 `Acquire` 在 watch 时延内获胜。
 4. 也演练活进程路径：改用 SIGSTOP 暂停持有者——keepalive 停但 session 对象还在；TTL 后

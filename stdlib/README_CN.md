@@ -28,6 +28,8 @@
 | [httputil](./httputil/) | 从入站请求推导 OTel-free 的 HTTP 语义约定属性，供各 server starter 复用 |
 | [formutil](./formutil/) | 表单处理工具：把表单值解码进类型化结构体 |
 | [netutil](./netutil/) | 网络相关工具 |
+| [timeutil](./timeutil/) | 时间相关工具：context 感知的 Sleep |
+| [randutil](./randutil/) | 随机标识符字符串：Hex 与 URLSafe token |
 
 ### JSON 与数据整型
 

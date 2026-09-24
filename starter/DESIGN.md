@@ -156,7 +156,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     snapshot function — no resources, no `Stop`, freshness lives inside the
     discovery backend bean — so nothing is cached per client and nothing is torn
     down on `Destroy`. The driver's per-backend dialer (which wraps the resolver
-    via `loadbalance.SourceFunc` in a round-robin `Pool` and `Pick`s per
+    as the source of a round-robin `Pool` and `Pick`s per
     connection) stays in `config.go` / `starter.go`; only the resolver build
     lives here. Every discovery-mode pool is built the same way: with a
     suspension `Tracker`, `Pick` paired with `Complete` at the dial site, and
@@ -300,7 +300,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   package.** The three concerns every starter touches - TLS config, health
   indicator construction, fail-fast validation - each have a single home
   decided by their nature, not by who consumes them:
-  `cloud/tlsconf.TLSConfig` (config fields -> `*tls.Config`),
+  `cloud/security.TLSConfig` (config fields -> `*tls.Config`),
   `cloud/actuator/health.NewIndicator` (factory for that package's
   `Indicator` interface), `stdlib/errutil.RequireField`/`RequireAny`
   (formatting sugar over `errutil.Explain`). Starters import these directly.
@@ -338,7 +338,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   starter.** When a sidecar (Istio/Envoy, Linkerd) is injected it already does
   discovery and load balancing, so running the app's own on top double-balances
   and confuses locality/outlier logic. A single process-global switch
-  (`mesh.Enabled`, auto-detected from sidecar env vars by default; the `GS_MESH`
+  (`mesh.Enabled`, auto-detected from sidecar env vars by default; the `GS_MESH_MODE`
   env var — on/off/auto — overrides) is read at the discovery and load-balancing
   factory points — each client starter's mesh-gated loader builder (§2.2) and
   `loadbalance.Pool` — and degrades both to a
@@ -432,9 +432,10 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     libraries emit them; `cloud/experimental/transaction` emits spans only (its
     `Observer` is the whole-path-replacement seam that §1.5 keeps as-is, so the
     framework does not prescribe the other two signals for it);
-    `cloud/confrefresh` emits metrics only, with no log by design — its package
-    doc states the reason (callers already log failures, and the module that knows
-    the subject owns the log line).
+    the property-refresh funnel (`observability.RefreshConf`) is the one place
+    that both emits metrics and logs the refresh outcome — callers log only
+    their backend events, so the funnel owns the "was the fleet refreshed"
+    log line (the module that knows the subject owns the log).
   - *connection state* — `messaging.client.connection.state_changes` is emitted
     only by the members whose client library exposes connection-state callbacks
     (mqtt, nats, rabbitmq). It is deliberately not part of the messaging family's

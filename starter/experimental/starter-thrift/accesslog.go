@@ -71,7 +71,7 @@ func logCall(ctx context.Context, method, status string, dur time.Duration, ex t
 		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 	}
 	if ex != nil {
-		log.Warn(ctx, accessTag, append(fields, log.Any("error", ex))...)
+		log.Warn(ctx, accessTag, append(fields, log.Err(ex))...)
 		return
 	}
 	log.Info(ctx, accessTag, fields...)

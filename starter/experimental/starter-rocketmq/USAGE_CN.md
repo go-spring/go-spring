@@ -155,8 +155,8 @@ go run .
 **验证**：
 
 ```bash
-grep _app_rocketmq_access app.log | tail -2   # driver publish/consume 记录
-curl -s :9090/metrics | grep messaging_client_operation_duration
+grep _app_messaging_access app.log | tail -2   # driver publish/consume 记录
+curl -s :9090/metrics | grep messaging_operation_duration
 curl -s :9370/healthz
 ```
 
@@ -231,11 +231,12 @@ GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
 1. 为 publisher 的固定 topic 构建 `primitive.Message`；`Key`（单个字符串）经 `WithKeys`
    成为消息 key [driver.go:87-88]；每个 Header 写入 user property [driver.go:89-91]。
 2. 若 ctx 携带压测标记，写入 `x-loadtest=1` user property [driver.go:92-96; traffic.go:60]。
-3. `startProduce` 打开 starter 自带的生产观测（"publish"，producer span）并把 W3C
-   traceparent 注入 user properties [observe.go]——无 starter-otel 时为 no-op。
+3. NewDriver 处包了 `messaging.Observe`：装饰器已先打开 "publish" producer span、
+   把 W3C traceparent 注入信封 headers——第 1 步已将其映射为 user properties。
+   driver 路径上没有 starter 本地插桩；无 starter-otel 时全为 no-op。
 4. 裸 `SendSync`（绕过 resilience executor——见 §2.2）。
-5. `sp.End(err)` 记录时长直方图、平衡 in-flight 计数、结束 span 并输出
-   `_app_rocketmq_access` 日志记录 [observe.go]。
+5. Observe 把结果记到 `messaging.operation.total/duration/active` 与
+   `_app_messaging_access` 访问日志。
 
 ### 2.4 一次 consume 逐层走读（driver 路径）
 
@@ -243,8 +244,8 @@ SDK push-consumer 协程回调 starter 的 handler [driver.go:125-141]：
 
 1. Subscribe 时已用 `messaging.Recover` 预包裹：handler panic 转为普通错误
    （nack/重投），不会 unwind 进 SDK 协程 [driver.go:119]。
-2. 每条消息：`startConsume` 从 user properties 提取上游 trace 并打开 "consume" 观测
-   [command.go:160-163]。
+2. 每条消息：`messaging.Observe` 的 handler 包装从信封 headers（映射自 user
+   properties）提取上游 trace 并打开 "consume" span。
 3. `x-loadtest` property 映射回 ctx，handler 里 `traffic.IsLoadTest(ctx)` 为真
    [driver.go:131-133]。
 4. `fromMessageExt` 构建信封：`Key` 取 KEYS property、`Payload` = body、
@@ -329,12 +330,13 @@ curl -s :9090/metrics | grep resilience_calls
 
 ### 4.5 metrics / span / 日志读取
 
-- driver 观察器：直方图 `messaging.client.operation.duration`（单位 s）与 up-down 计数器
-  `messaging.client.active_requests`，属性 `messaging.system=rocketmq`、
-  `messaging.operation=publish|consume`（直方图另有 `status`）[observe.go]。访问日志 tag
-  `_app_rocketmq_access`：字段 `messaging.operation`、`messaging.destination.name`
+- driver 路径（messaging.Observe）：计数器 `messaging.operation.total`、直方图
+  `messaging.operation.duration`（单位 s）与 up-down 计数器
+  `messaging.operation.active`，属性 `messaging.system=rocketmq`、
+  `messaging.operation=publish|consume`（total/duration 另有 `status`）。访问日志 tag
+  `_app_messaging_access`：字段 `messaging.operation`、`messaging.destination.name`
   （截断至 512）、`status`、`duration_ms`；
-  带目的地成功 Debug、无目的地成功 Info、出错 Warn。
+  成功 Debug、出错 Warn。
 - guarded 路径：计数器 `resilience.calls` / `resilience.breaker.state_change`，日志 tag
   `_app_rocketmq_resilience`。
 - 手动 helper（裸客户端）：tracer `go-spring.org/starter-rocketmq` 产出 span

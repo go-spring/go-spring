@@ -75,3 +75,97 @@ func TestFixedRateAndDelayPanicOnNonPositive(t *testing.T) {
 	assert.Panic(t, func() { scheduling.FixedRate(0) }, "positive")
 	assert.Panic(t, func() { scheduling.FixedDelay(-1) }, "positive")
 }
+
+func TestFixedRateInitialDelay(t *testing.T) {
+	tr := scheduling.FixedRate(10*time.Second, scheduling.WithInitialDelay(30*time.Second))
+	base := time.Date(2026, 7, 18, 10, 0, 0, 0, time.UTC)
+
+	// The first fire waits out the initial delay instead of one interval.
+	first := tr.Next(scheduling.TriggerContext{Now: base})
+	assert.That(t, first).Equal(base.Add(30 * time.Second))
+
+	// Later fires follow the normal cadence, anchored on LastScheduled.
+	next := tr.Next(scheduling.TriggerContext{
+		Now:           first.Add(time.Second),
+		LastScheduled: first,
+	})
+	assert.That(t, next).Equal(first.Add(10 * time.Second))
+}
+
+func TestFixedDelayInitialDelay(t *testing.T) {
+	tr := scheduling.FixedDelay(10*time.Second, scheduling.WithInitialDelay(30*time.Second))
+	base := time.Date(2026, 7, 18, 10, 0, 0, 0, time.UTC)
+
+	first := tr.Next(scheduling.TriggerContext{Now: base})
+	assert.That(t, first).Equal(base.Add(30 * time.Second))
+
+	// Later fires measure from LastCompletion as usual.
+	next := tr.Next(scheduling.TriggerContext{
+		Now:            base.Add(60 * time.Second),
+		LastScheduled:  first,
+		LastCompletion: base.Add(60 * time.Second),
+	})
+	assert.That(t, next).Equal(base.Add(70 * time.Second))
+}
+
+func TestAfterFiresOnce(t *testing.T) {
+	tr := scheduling.After(5 * time.Second)
+	base := time.Date(2026, 7, 18, 10, 0, 0, 0, time.UTC)
+
+	// The single fire is d after now.
+	first := tr.Next(scheduling.TriggerContext{Now: base})
+	assert.That(t, first).Equal(base.Add(5 * time.Second))
+
+	// Once it has fired (LastScheduled set), the trigger reports no next time.
+	next := tr.Next(scheduling.TriggerContext{
+		Now:           first.Add(time.Second),
+		LastScheduled: first,
+	})
+	assert.That(t, next).Equal(time.Time{})
+}
+
+func TestAfterAndInitialDelayPanicOnNonPositive(t *testing.T) {
+	assert.Panic(t, func() { scheduling.After(0) }, "positive")
+	assert.Panic(t, func() { scheduling.FixedRate(10*time.Second, scheduling.WithInitialDelay(-1)) }, "positive")
+}
+
+func TestFixedRateJitterDelaysWithinBound(t *testing.T) {
+	tr := scheduling.FixedRate(10*time.Second, scheduling.WithJitter(5*time.Second))
+	base := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+
+	// The first fire lands somewhere in [d, d+jitter) — never earlier than d,
+	// never later than d+jitter.
+	for i := 0; i < 100; i++ {
+		first := tr.Next(scheduling.TriggerContext{Now: base})
+		assert.That(t, !first.Before(base.Add(10*time.Second))).True()
+		assert.That(t, first.Before(base.Add(15*time.Second))).True()
+	}
+
+	// Subsequent fires are jittered too, on top of the anchored slot.
+	for i := 0; i < 100; i++ {
+		last := base.Add(10 * time.Second)
+		next := tr.Next(scheduling.TriggerContext{Now: base.Add(11 * time.Second), LastScheduled: last})
+		assert.That(t, !next.Before(last.Add(10*time.Second))).True()
+		assert.That(t, next.Before(last.Add(15*time.Second))).True()
+	}
+}
+
+func TestFixedDelayJitterDelaysWithinBound(t *testing.T) {
+	tr := scheduling.FixedDelay(10*time.Second, scheduling.WithJitter(5*time.Second))
+	base := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	done := base.Add(50 * time.Second)
+
+	for i := 0; i < 100; i++ {
+		next := tr.Next(scheduling.TriggerContext{
+			Now:            done,
+			LastScheduled:  base.Add(40 * time.Second),
+			LastCompletion: done,
+		})
+		assert.That(t, !next.Before(done.Add(10*time.Second))).True()
+		assert.That(t, next.Before(done.Add(15*time.Second))).True()
+	}
+}
+
+func TestWithJitterPanicOnNonPositive(t *testing.T) {
+	assert.Panic(t, func() { scheduling.FixedRate(10*time.Second, scheduling.WithJitter(0)) }, "positive")
+}

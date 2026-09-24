@@ -32,7 +32,7 @@ tracker := loadbalance.NewTracker(loadbalance.TrackerConfig{
     Threshold:  3,              // consecutive failures before suspension
     SuspendFor: 5 * time.Second, // half-open trial after a 5s cool-down
 })
-pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTracker(tracker))
 
 for {
     ep, err := pool.Pick(loadbalance.PickInfo{})
@@ -48,12 +48,12 @@ for {
 an optional `Tracker`.
 
 ```go
-pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTracker(tracker))
 ```
 
 - **The endpoint source** is anything implementing
   `Endpoints() ([]discovery.Endpoint, error)`; a discovery `Resolver` plugs in via
-  `loadbalance.SourceFunc(resolver)` — freshness lives entirely inside the
+  the `discovery.Resolver` itself — freshness lives entirely inside the
   discovery backend, so each `Pick` re-reads the latest snapshot.
 - Each `Pick` filters in order: **discovery eligibility** (disabled/unhealthy
   instances) → **suspension** (instances cooling down in the `Tracker`) →

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -91,16 +91,16 @@ type LoadTestConfig struct {
 
 // Config defines gRPC server configuration.
 type Config struct {
-	Addr                 string            `value:"${addr}"`
-	ConnectionTimeout    time.Duration     `value:"${connectionTimeout:=0}"`
-	MaxRecvMsgSize       int               `value:"${maxRecvMsgSize:=0}"`
-	MaxSendMsgSize       int               `value:"${maxSendMsgSize:=0}"`
-	MaxConcurrentStreams uint32            `value:"${maxConcurrentStreams:=0}"`
-	Keepalive            KeepaliveConfig   `value:"${keepalive}"`
-	TLS                  tlsconf.TLSConfig `value:"${tls}"`
-	Health               HealthConfig      `value:"${health}"`
-	LoadTest             LoadTestConfig    `value:"${loadtest}"`
-	Observer             ObserverConfig    `value:"${observer}"`
+	Addr                 string             `value:"${addr}"`
+	ConnectionTimeout    time.Duration      `value:"${connectionTimeout:=0}"`
+	MaxRecvMsgSize       int                `value:"${maxRecvMsgSize:=0}"`
+	MaxSendMsgSize       int                `value:"${maxSendMsgSize:=0}"`
+	MaxConcurrentStreams uint32             `value:"${maxConcurrentStreams:=0}"`
+	Keepalive            KeepaliveConfig    `value:"${keepalive}"`
+	TLS                  security.TLSConfig `value:"${tls}"`
+	Health               HealthConfig       `value:"${health}"`
+	LoadTest             LoadTestConfig     `value:"${loadtest}"`
+	Observer             ObserverConfig     `value:"${observer}"`
 }
 
 // ObserverConfig groups the built-in observability interceptors the starter can

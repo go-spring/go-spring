@@ -41,6 +41,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// tracerName names the tracer the spans open on. The tracer is looked up
+// per use (otel.Tracer at call time), never cached in a package variable: a
+// package-level otel.Tracer captured before any provider is set stops
+// forwarding once the global provider is set, unset and set again.
+const tracerName = "go-spring.org/starter-gorm/observe"
+
 // durationBuckets are the duration-histogram boundaries (seconds) — the OTel
 // HTTP semconv recommended set.
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
@@ -48,8 +54,6 @@ var (
 	// accessTag is the static log tag for the gorm access log; the engine is a
 	// log field, not part of the tag.
 	accessTag = log.RegisterAppTag("gorm", "access")
-
-	tracer = otel.Tracer("go-spring.org/starter-gorm/observe")
 )
 
 // newInstruments builds the db.* instruments from whatever meter provider is
@@ -182,7 +186,7 @@ type opSpan struct {
 // start opens the operation's client span.
 func (p *observePlugin) start(ctx context.Context, op string) *opSpan {
 	p.active.Add(ctx, 1, inflightOf(p.system, op))
-	ctx, span := tracer.Start(ctx, op,
+	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("db.system", p.system),
@@ -234,7 +238,7 @@ func (s *opSpan) End(err error) {
 	}
 	switch {
 	case err != nil:
-		log.Warn(s.ctx, accessTag, append(common, log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(common, log.Err(err))...)
 	case s.arg != "":
 		fields := append(common, log.String("db.statement", s.arg))
 		log.Debug(s.ctx, accessTag, func() []log.Field { return fields })

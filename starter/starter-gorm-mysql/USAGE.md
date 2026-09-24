@@ -208,7 +208,7 @@ slow-threshold, service-name/scheme/discovery, observe.enabled — are in
 | `charset` | string | "" | DSN `charset=`. | Empty = server default (often latin1 on old servers) → mojibake. |
 | `parseTime` | bool | **false** | DSN `parseTime=true` only when set. ⚠ Classic gotcha: with the default false, scanning `DATETIME`/`TIMESTAMP` columns into `time.Time` fails (`unsupported Scan`); gorm models with time fields need `parseTime=true`. | Runtime scan errors on every time column. |
 | `loc` | string | "" | DSN `loc=`, QueryEscaped (`Asia/Shanghai` → `Asia%2FShanghai`). Only meaningful with `parseTime=true`. | Unset = UTC; TIME_ZONE columns shift surprisingly. |
-| `tls.*` | block | off | 6 shared `tlsconf` keys (`tls.enabled`, `tls.ca-file`, `tls.cert-file`, `tls.key-file`, `tls.server-name`, `tls.insecure-skip-verify`). When enabled, a `*tls.Config` is registered with the driver as `gstls_<n>` and the DSN gets `tls=gstls_<n>`. ⚠ The DSN's built-in `tls=true`/`skip-verify`/`preferred` short names are **not reachable** through config — the starter always uses its own registered config. Empty `ca-file` falls back to system roots. | Unreadable `ca-file` fails the build (fail-fast). `server-name` unset + addr-as-IP → cert hostname mismatch in verify modes. |
+| `tls.*` | block | off | 6 shared `security` keys (`tls.enabled`, `tls.ca-file`, `tls.cert-file`, `tls.key-file`, `tls.server-name`, `tls.insecure-skip-verify`). When enabled, a `*tls.Config` is registered with the driver as `gstls_<n>` and the DSN gets `tls=gstls_<n>`. ⚠ The DSN's built-in `tls=true`/`skip-verify`/`preferred` short names are **not reachable** through config — the starter always uses its own registered config. Empty `ca-file` falls back to system roots. | Unreadable `ca-file` fails the build (fail-fast). `server-name` unset + addr-as-IP → cert hostname mismatch in verify modes. |
 
 Dialect-specific ⚠ couplings: `parseTime`+`loc` travel together; `addr`+`net` are both dead under
 `service-name`; `tls.enabled=true` requires the cert files it references to exist at bind time.
@@ -289,5 +289,5 @@ Remove `parseTime=true`, run a model with a `time.Time` field → every scan of 
 
 Design suspects: `user`/`password`/`db` lack expr `Require` validation (empty values surface as
 driver auth/`No database selected` errors instead of a config error at bind time); the driver's
-built-in `tls=true`/`skip-verify` modes are unreachable without the full tlsconf block;
+built-in `tls=true`/`skip-verify` modes are unreachable without the full security block;
 `parseTime=false` default contradicts the common gorm-with-time-fields setup.

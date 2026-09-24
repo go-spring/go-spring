@@ -27,7 +27,7 @@
 //     endpoint set and a [PickInfo] it returns one endpoint, plus the
 //     Complete method that settles the request it issued.
 //   - [Pool] binds a live discovery source (a [discovery.Resolver] bound to one
-//     service name via [discovery.NewResolver], adapted by [SourceFunc]) and a
+//     service name via [discovery.NewResolver]) and a
 //     [Tracker] (outlier suspension) to a Balancer, so the candidate set stays
 //     fresh as instances come and go and unhealthy instances are suspended.
 //

@@ -32,7 +32,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/confrefresh"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
@@ -80,11 +80,10 @@ func newEtcdCtrl() *etcdCtrl {
 // changes. Before the app has started, gs.RefreshProperties returns an
 // error and the change is dropped — the startup load already captured the
 // state.
-func (c *etcdCtrl) TriggerRefresh() {
-	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
-		log.Warnf(context.Background(), starterTag,
-			"property refresh after etcd change failed, stale snapshot retained: %v", err)
-	}
+func (c *etcdCtrl) TriggerRefresh(ctx context.Context) {
+	// The refresh outcome (status, duration, error) is logged and metered
+	// centrally by observability.RefreshConf; this layer only records backend events.
+	_ = observability.RefreshConf(ctx, gs.RefreshProperties)
 }
 
 // configSource holds the parsed components of an etcd provider source string.
@@ -253,7 +252,7 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, option
 						"etcd key %s deleted; stale snapshot retained until the key is restored", cs.key)
 				}
 				if len(wr.Events) > 0 {
-					c.TriggerRefresh()
+					c.TriggerRefresh(context.Background())
 				}
 			}
 			// The channel closes only when the watcher is genuinely dead

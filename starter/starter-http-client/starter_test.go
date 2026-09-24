@@ -19,7 +19,7 @@ package StarterHTTPClient
 import (
 	"testing"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -62,7 +62,7 @@ func TestDirectModeBlanksServiceNameForTransport(t *testing.T) {
 // The bound tls.* block is handed to httpx verbatim; the TLS surface itself is
 // built by starter-http-client/httpx (covered by its own tests).
 func TestTLSConfigPassthrough(t *testing.T) {
-	c := Config{Addr: "10.0.0.1:8080", TLS: tlsconf.TLSConfig{Enabled: true, ServerName: "svc.internal"}}
+	c := Config{Addr: "10.0.0.1:8080", TLS: security.TLSConfig{Enabled: true, ServerName: "svc.internal"}}
 	cfg := c.toTransportConfig(nil)
 	assert.That(t, cfg.TLS.ServerName).Equal("svc.internal")
 }

@@ -19,7 +19,7 @@ package StarterCassandra
 import (
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config defines the Cassandra/ScyllaDB client configuration. gocql speaks
@@ -56,6 +56,6 @@ type Config struct {
 	// CQLVersion is the CQL dialect version (default "3.0.0").
 	CQLVersion string `value:"${cql-version:=3.0.0}"`
 
-	// TLS configures client-to-server TLS (tlsconf shared block).
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	// TLS configures client-to-server TLS (security shared block).
+	TLS security.TLSConfig `value:"${tls}"`
 }

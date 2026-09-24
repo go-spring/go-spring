@@ -23,7 +23,11 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Option configures the in-process [Coordinator] built by [NewCoordinator].
@@ -47,12 +51,22 @@ func NewCoordinator(opts ...Option) Coordinator {
 	for _, opt := range opts {
 		opt(c)
 	}
+	c.outcomes, _ = otel.Meter("go-spring.org/cloud/experimental/transaction/tcc").
+		Int64Counter("transaction.tcc.outcome.total",
+			metric.WithDescription("TCC terminal states, by status"),
+			metric.WithUnit("{transaction}"))
 	return c
 }
 
 type coordinator struct {
 	store    Store
 	observer Observer
+
+	// outcomes counts TCC terminal states — the event counter of the metrics
+	// rules, named after the event itself. The transaction ID is unbounded
+	// cardinality and stays out of the attributes. Built at construction so an
+	// OTel SDK installed later still receives the records.
+	outcomes metric.Int64Counter
 }
 
 // triedParticipant records a participant whose Try ran, with the value it
@@ -244,6 +258,22 @@ func (c *coordinator) persist(ctx context.Context, t Transaction, status Status,
 // deleted (the work is done and needs no recovery); a cancelled or failed
 // transaction's log is kept so operators and recovery can inspect it.
 func (c *coordinator) finish(ctx context.Context, t Transaction, res *Result, tried []triedParticipant) {
+	c.outcomes.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("status", res.Status.String()),
+	))
+	if res.Status == StatusCommitted {
+		log.Info(ctx, log.TagAppDef,
+			log.String("transaction", t.ID),
+			log.String("status", res.Status.String()),
+			log.Int("participants", len(tried)),
+			log.Msg("transaction: tcc committed"))
+	} else {
+		log.Warn(ctx, log.TagAppDef,
+			log.String("transaction", t.ID),
+			log.String("status", res.Status.String()),
+			log.Int("participants", len(tried)),
+			log.Msg("transaction: tcc did not commit"))
+	}
 	if c.store == nil {
 		return
 	}

@@ -18,13 +18,12 @@ package scheduling_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/lock"
 	"go-spring.org/cloud/scheduling"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -33,16 +32,11 @@ import (
 // fire runs right after the in-flight one finishes (still sequentially), and a
 // fire arriving while one is already queued is skipped.
 func TestConcurrencyPolicyQueue(t *testing.T) {
-	var mu sync.Mutex
-	var events []scheduling.Event
-	s := scheduling.NewScheduler(scheduling.WithObserver(func(ev scheduling.Event) {
-		mu.Lock()
-		events = append(events, ev)
-		mu.Unlock()
-	}))
+	rdr := withMeter(t)
+	s := scheduling.NewScheduler()
 
-	var inFlight, maxSeen, runs, skips atomic.Int64
-	_, err := s.Schedule("q", scheduling.FixedRate(10*time.Millisecond),
+	var inFlight, maxSeen, runs atomic.Int64
+	_, err := s.Schedule(mustJob(t, "q", scheduling.FixedRate(10*time.Millisecond),
 		func(context.Context) error {
 			runs.Add(1)
 			cur := inFlight.Add(1)
@@ -55,7 +49,7 @@ func TestConcurrencyPolicyQueue(t *testing.T) {
 			time.Sleep(40 * time.Millisecond)
 			inFlight.Add(-1)
 			return nil
-		}, scheduling.WithConcurrencyPolicy(scheduling.Queue))
+		}, scheduling.WithConcurrencyPolicy(scheduling.Queue)))
 	assert.Error(t, err).Nil()
 
 	assert.Error(t, s.Start(context.Background())).Nil()
@@ -67,44 +61,28 @@ func TestConcurrencyPolicyQueue(t *testing.T) {
 	// Queued runs still execute strictly one at a time.
 	assert.That(t, maxSeen.Load()).Equal(int64(1))
 
-	mu.Lock()
-	defer mu.Unlock()
-	seen := make(map[time.Time]bool, len(events))
-	for _, ev := range events {
-		if ev.Skipped {
-			skips.Add(1)
-			assert.String(t, ev.Reason).Equal("policy")
-		}
-		// Every fire reports its own scheduled time — including one that waited
-		// behind a run under Queue — so no two events share a Scheduled value.
-		assert.That(t, seen[ev.Scheduled]).False("duplicate Scheduled time in events")
-		seen[ev.Scheduled] = true
-	}
 	// With 40ms runs on a 10ms rate, most fires find a run in flight and one
-	// already queued, so skips must happen; but some fires did queue and run
-	// sequentially (more runs than the skip-only pattern would allow).
-	assert.That(t, skips.Load() > 0).True("expected extra fires beyond one queued to be skipped")
+	// already queued, so skipped_policy must happen; but some fires did queue
+	// and run sequentially (more runs than the skip-only pattern would allow).
+	got := fireCounts(t, rdr)
+	skips := got["q|skipped_policy"]
+	assert.That(t, skips > 0).True("expected extra fires beyond one queued to be skipped")
 	assert.That(t, runs.Load() > 1).True("expected queued fires to run after the in-flight one")
 }
 
 // TestWithTimeoutCancelsRun verifies a per-run timeout cancels the job's context
-// and the failure surfaces on the observer event.
+// and the failure is reported as an error-status fire.
 func TestWithTimeoutCancelsRun(t *testing.T) {
-	var mu sync.Mutex
-	var events []scheduling.Event
-	s := scheduling.NewScheduler(scheduling.WithObserver(func(ev scheduling.Event) {
-		mu.Lock()
-		events = append(events, ev)
-		mu.Unlock()
-	}))
+	rdr := withMeter(t)
+	s := scheduling.NewScheduler()
 
 	var gotErr atomic.Value
-	_, err := s.Schedule("slow", scheduling.FixedRate(20*time.Millisecond),
+	_, err := s.Schedule(mustJob(t, "slow", scheduling.FixedRate(20*time.Millisecond),
 		func(ctx context.Context) error {
 			<-ctx.Done() // honour cancellation
 			gotErr.Store(ctx.Err())
 			return ctx.Err()
-		}, scheduling.WithTimeout(15*time.Millisecond))
+		}, scheduling.WithTimeout(15*time.Millisecond)))
 	assert.Error(t, err).Nil()
 
 	assert.Error(t, s.Start(context.Background())).Nil()
@@ -114,17 +92,13 @@ func TestWithTimeoutCancelsRun(t *testing.T) {
 	assert.Error(t, s.Stop(stopCtx)).Nil()
 
 	assert.That(t, gotErr.Load()).Equal(context.DeadlineExceeded)
-
-	mu.Lock()
-	defer mu.Unlock()
-	assert.That(t, len(events) >= 1).True()
-	assert.That(t, events[0].Skipped).False()
-	assert.Error(t, events[0].Err).Is(context.DeadlineExceeded)
+	assert.That(t, fireCounts(t, rdr)["slow|error"] >= 1).True("timed-out runs must report status error")
 }
 
-// TestWithLockSkipEmitsEvent verifies a fire skipped because another replica
-// holds the lock emits a Skipped event with reason "lock".
-func TestWithLockSkipEmitsEvent(t *testing.T) {
+// TestWithLockSkipRecordsStatus verifies a fire skipped because another replica
+// holds the lock reports status skipped_lock.
+func TestWithLockSkipRecordsStatus(t *testing.T) {
+	rdr := withMeter(t)
 	locker := newStubLocker()
 	// Pre-hold the key so the scheduler can never acquire it.
 	l, ok, err := locker.TryAcquire(context.Background(), "held")
@@ -132,16 +106,9 @@ func TestWithLockSkipEmitsEvent(t *testing.T) {
 	assert.That(t, ok).True()
 	defer func() { _ = l.Unlock(context.Background()) }()
 
-	var mu sync.Mutex
-	var events []scheduling.Event
-	s := scheduling.NewScheduler(scheduling.WithObserver(func(ev scheduling.Event) {
-		mu.Lock()
-		events = append(events, ev)
-		mu.Unlock()
-	}))
-	_, err = s.Schedule("locked", scheduling.FixedRate(10*time.Millisecond),
-		func(context.Context) error { return nil },
-		scheduling.WithLock(locker, "held"))
+	s := scheduling.NewScheduler()
+	_, err = s.Schedule(mustJob(t, "locked", scheduling.FixedRate(10*time.Millisecond),
+		func(context.Context) error { return nil }, scheduling.WithLock(locker, "held", 0)))
 	assert.Error(t, err).Nil()
 
 	assert.Error(t, s.Start(context.Background())).Nil()
@@ -150,36 +117,31 @@ func TestWithLockSkipEmitsEvent(t *testing.T) {
 	defer cancel()
 	assert.Error(t, s.Stop(stopCtx)).Nil()
 
-	mu.Lock()
-	defer mu.Unlock()
-	assert.That(t, len(events) >= 1).True()
-	for _, ev := range events {
-		assert.That(t, ev.Skipped).True()
-		assert.String(t, ev.Reason).Equal("lock")
-		assert.That(t, ev.Start.IsZero()).True("skipped run must not record a start")
-	}
+	got := fireCounts(t, rdr)
+	assert.That(t, got["locked|skipped_lock"] >= 1).True("lock contention must report skipped_lock")
+	assert.That(t, got["locked|ok"] == 0).True("a pre-held lock must never let the job run")
 }
 
 // errLocker always fails, simulating a lock backend outage.
 type errLocker struct{}
 
-func (errLocker) TryAcquire(context.Context, string) (scheduling.Lock, bool, error) {
+func (errLocker) TryAcquire(context.Context, string, ...lock.Option) (lock.Lock, bool, error) {
 	return nil, false, context.DeadlineExceeded
 }
 
-// TestWithLockAcquireErrorSkips verifies a locker error is surfaced on the event
-// (distinct from ordinary contention) and the run is skipped.
+func (errLocker) Acquire(context.Context, string, ...lock.Option) (lock.Lock, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func (errLocker) Close() error { return nil }
+
+// TestWithLockAcquireErrorSkips verifies a locker error (distinct from ordinary
+// contention) also skips the run and reports skipped_lock.
 func TestWithLockAcquireErrorSkips(t *testing.T) {
-	var mu sync.Mutex
-	var events []scheduling.Event
-	s := scheduling.NewScheduler(scheduling.WithObserver(func(ev scheduling.Event) {
-		mu.Lock()
-		events = append(events, ev)
-		mu.Unlock()
-	}))
-	_, err := s.Schedule("err", scheduling.FixedRate(10*time.Millisecond),
-		func(context.Context) error { return nil },
-		scheduling.WithLock(errLocker{}, "k"))
+	rdr := withMeter(t)
+	s := scheduling.NewScheduler()
+	_, err := s.Schedule(mustJob(t, "err", scheduling.FixedRate(10*time.Millisecond),
+		func(context.Context) error { return nil }, scheduling.WithLock(errLocker{}, "k", 0)))
 	assert.Error(t, err).Nil()
 
 	assert.Error(t, s.Start(context.Background())).Nil()
@@ -188,14 +150,9 @@ func TestWithLockAcquireErrorSkips(t *testing.T) {
 	defer cancel()
 	assert.Error(t, s.Stop(stopCtx)).Nil()
 
-	mu.Lock()
-	defer mu.Unlock()
-	assert.That(t, len(events) >= 1).True()
-	for _, ev := range events {
-		assert.That(t, ev.Skipped).True()
-		assert.String(t, ev.Reason).Equal("lock")
-		assert.Error(t, ev.Err).Is(context.DeadlineExceeded)
-	}
+	got := fireCounts(t, rdr)
+	assert.That(t, got["err|skipped_lock"] >= 1).True("a locker error must skip and report skipped_lock")
+	assert.That(t, got["err|ok"] == 0).True("a failing locker must never let the job run")
 }
 
 // TestMultipleJobsRunConcurrently registers several fast jobs on one scheduler
@@ -206,8 +163,8 @@ func TestMultipleJobsRunConcurrently(t *testing.T) {
 	const jobs = 5
 	counts := make([]atomic.Int64, jobs)
 	for i := range jobs {
-		_, err := s.Schedule(fmt.Sprintf("job-%d", i), scheduling.FixedRate(10*time.Millisecond),
-			func(context.Context) error { counts[i].Add(1); return nil })
+		_, err := s.Schedule(mustJob(t, fmt.Sprintf("job-%d", i), scheduling.FixedRate(10*time.Millisecond),
+			func(context.Context) error { counts[i].Add(1); return nil }))
 		assert.Error(t, err).Nil()
 	}
 
@@ -229,8 +186,8 @@ func TestScheduleAfterStartLaunchesLoop(t *testing.T) {
 	assert.Error(t, s.Start(context.Background())).Nil()
 
 	var count atomic.Int64
-	_, err := s.Schedule("late", scheduling.FixedRate(10*time.Millisecond),
-		func(context.Context) error { count.Add(1); return nil })
+	_, err := s.Schedule(mustJob(t, "late", scheduling.FixedRate(10*time.Millisecond),
+		func(context.Context) error { count.Add(1); return nil }))
 	assert.Error(t, err).Nil()
 
 	time.Sleep(45 * time.Millisecond)
@@ -240,26 +197,21 @@ func TestScheduleAfterStartLaunchesLoop(t *testing.T) {
 	assert.That(t, count.Load() >= 2).True("late-registered task should fire")
 }
 
-// TestJobPanicDoesNotKillLoop verifies a panicking job is converted into an
-// event error that errors.Is identifies as a panic, and the schedule keeps
-// firing afterwards.
+// TestJobPanicDoesNotKillLoop verifies a panicking job is classified as a
+// panic-status fire — the classification rides errors.Is(ErrJobPanicked) — and
+// the schedule keeps firing afterwards.
 func TestJobPanicDoesNotKillLoop(t *testing.T) {
-	var mu sync.Mutex
-	var events []scheduling.Event
-	s := scheduling.NewScheduler(scheduling.WithObserver(func(ev scheduling.Event) {
-		mu.Lock()
-		events = append(events, ev)
-		mu.Unlock()
-	}))
+	rdr := withMeter(t)
+	s := scheduling.NewScheduler()
 
 	var panics atomic.Int64
-	_, err := s.Schedule("bad", scheduling.FixedRate(10*time.Millisecond),
+	_, err := s.Schedule(mustJob(t, "bad", scheduling.FixedRate(10*time.Millisecond),
 		func(context.Context) error {
 			if panics.Add(1) <= 2 {
 				panic("boom")
 			}
 			return nil
-		})
+		}))
 	assert.Error(t, err).Nil()
 
 	assert.Error(t, s.Start(context.Background())).Nil()
@@ -268,19 +220,9 @@ func TestJobPanicDoesNotKillLoop(t *testing.T) {
 	defer cancel()
 	assert.Error(t, s.Stop(stopCtx)).Nil()
 
-	mu.Lock()
-	defer mu.Unlock()
-	assert.That(t, len(events) >= 3).True("loop must survive panics and keep firing")
-	sawPanicErr := false
-	for _, ev := range events {
-		if ev.Err != nil && !ev.Skipped {
-			sawPanicErr = true
-			assert.Error(t, ev.Err).Matches("job panicked")
-			assert.That(t, errors.Is(ev.Err, scheduling.ErrJobPanicked)).
-				True("a panic must be identifiable, not just some error")
-		}
-	}
-	assert.That(t, sawPanicErr).True("panic should surface as an event error")
+	got := fireCounts(t, rdr)
+	assert.That(t, got["bad|panic"]).Equal(int64(2))
+	assert.That(t, got["bad|ok"] >= 1).True("loop must survive panics and keep firing")
 }
 
 // TestQueueDropsParkedFireOnStop pins the shutdown contract: a fire parked in
@@ -288,16 +230,11 @@ func TestJobPanicDoesNotKillLoop(t *testing.T) {
 // fed an already-cancelled context (which a Locker would report as a bogus
 // lock failure polluting the skip metrics).
 func TestQueueDropsParkedFireOnStop(t *testing.T) {
-	var mu sync.Mutex
-	var events []scheduling.Event
-	s := scheduling.NewScheduler(scheduling.WithObserver(func(ev scheduling.Event) {
-		mu.Lock()
-		events = append(events, ev)
-		mu.Unlock()
-	}))
+	rdr := withMeter(t)
+	s := scheduling.NewScheduler()
 
 	firstRun := make(chan struct{})
-	_, err := s.Schedule("q-stop", scheduling.FixedRate(10*time.Millisecond),
+	_, err := s.Schedule(mustJob(t, "q-stop", scheduling.FixedRate(10*time.Millisecond),
 		func(ctx context.Context) error {
 			select {
 			case <-firstRun:
@@ -306,7 +243,7 @@ func TestQueueDropsParkedFireOnStop(t *testing.T) {
 			}
 			<-ctx.Done() // the first run occupies the worker until shutdown
 			return ctx.Err()
-		}, scheduling.WithConcurrencyPolicy(scheduling.Queue))
+		}, scheduling.WithConcurrencyPolicy(scheduling.Queue)))
 	assert.Error(t, err).Nil()
 
 	assert.Error(t, s.Start(context.Background())).Nil()
@@ -317,14 +254,10 @@ func TestQueueDropsParkedFireOnStop(t *testing.T) {
 	defer cancel()
 	assert.Error(t, s.Stop(stopCtx)).Nil()
 
-	mu.Lock()
-	defer mu.Unlock()
-	ran := 0
-	for _, ev := range events {
-		if !ev.Skipped {
-			ran++
-		}
-	}
-	// Exactly one run (the first); the parked fire never executed.
-	assert.That(t, ran).Equal(1, fmt.Sprintf("the parked fire must be dropped on stop, events=%v", events))
+	got := fireCounts(t, rdr)
+	// The first run ends with the loop context cancelled, so it reports as
+	// error, not ok; either way the parked fire never executed: exactly one
+	// non-skipped fire in total.
+	ran := got["q-stop|ok"] + got["q-stop|error"] + got["q-stop|panic"]
+	assert.That(t, ran == 1).True(fmt.Sprintf("the parked fire must be dropped on stop, counts=%v", got))
 }

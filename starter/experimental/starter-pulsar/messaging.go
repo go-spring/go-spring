@@ -40,12 +40,14 @@ import (
 // pulsar.Consumer for its subscription; both are created lazily by the driver
 // and released on Close.
 //
-// Trace context rides the envelope: publish injects the current W3C context into
-// the message Properties via StartProducerSpan and consume extracts it via
-// StartConsumerSpan, so a trace links producer to consumer across services. All
-// tracing is a no-op without starter-otel.
+// Trace context rides the envelope: the messaging.Observe decorator wraps this
+// driver, injecting the current W3C context into the message headers on
+// publish (mapped onto Pulsar message Properties) and extracting it on
+// consume, so a trace links producer to consumer across services. It also
+// supplies the spans, metrics and access log. All of it is a no-op without
+// starter-otel.
 func NewDriver(cl pulsar.Client) messaging.Driver {
-	return &driver{cl: cl}
+	return messaging.Observe(&driver{cl: cl}, "pulsar")
 }
 
 type driver struct{ cl pulsar.Client }
@@ -102,12 +104,10 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	if msg.Key != "" {
 		pm.Key = msg.Key
 	}
-	ctx, sp := startProduce(ctx, p.p.Topic(), pm)
 	// Route through the same resilience executor the raw client API uses
 	// (GuardedSend): a no-op pass-through when governance is off for this
 	// client, a rejection sentinel when rate-limited/circuit-open.
 	_, err := GuardedSend(ctx, p.cl, p.p, pm)
-	sp.End(err)
 	return err
 }
 
@@ -145,14 +145,13 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				log.Errorf(loopCtx, log.TagAppDef, "pulsar driver receive error: %v", err)
 				continue
 			}
-			msgCtx, sp := startConsume(loopCtx, msg)
+			msgCtx := loopCtx
 			// Extract the load-test marker the producer put in Properties so the
 			// handler sees synthetic load via traffic.IsLoadTest(msgCtx).
 			if canonical.IsAffirmative(msg.Properties()[canonical.MetaKeyLoadTest]) {
 				msgCtx = canonical.WithLoadTest(msgCtx, "pulsar-property")
 			}
 			herr := handler(msgCtx, fromPulsarMsg(msg))
-			sp.End(herr)
 			if herr != nil {
 				log.Errorf(msgCtx, log.TagAppDef, "pulsar driver handler error on %q: %v", msg.Topic(), herr)
 				s.c.Nack(msg)

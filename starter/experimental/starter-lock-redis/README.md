@@ -38,9 +38,9 @@ import (
 spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 # A Locker bound to that client. `client` is the redis instance name.
-spring.lock.instances.jobs.client=cache
-spring.lock.instances.jobs.ttl=30s
-spring.lock.instances.jobs.key-prefix=myapp:
+spring.lock.instances.redis.jobs.client=cache
+spring.lock.instances.redis.jobs.ttl=30s
+spring.lock.instances.redis.jobs.key-prefix=myapp:
 ```
 
 The `client` property is **required**. Booting without it fails fast — the
@@ -68,7 +68,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 
 ## Configuration
 
-All keys sit under `spring.lock.instances.<name>`:
+All keys sit under `spring.lock.instances.redis.<name>`:
 
 | Key              | Default | Description                                                                                     |
 |------------------|---------|-------------------------------------------------------------------------------------------------|
@@ -87,7 +87,7 @@ Leader election is available on top of any `lock.Locker` via
 el := lock.NewElection(lock.ElectionConfig{
     Locker: s.Lock,
     Key:    "scheduler-leader",
-    OnElected: func(ctx context.Context) {
+    OnStartedLeading: func(ctx context.Context) {
         // Run leader-only work; return promptly when ctx is cancelled.
     },
 })

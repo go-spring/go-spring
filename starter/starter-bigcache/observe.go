@@ -140,7 +140,7 @@ func (o *dbObserver) record(ctx context.Context, op, arg string, start time.Time
 	}
 	switch {
 	case err != nil:
-		log.Warn(ctx, accessTag, append(fields(), log.Any("error", err))...)
+		log.Warn(ctx, accessTag, append(fields(), log.Err(err))...)
 	case arg != "":
 		log.Debug(ctx, accessTag, fields)
 	default:

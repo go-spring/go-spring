@@ -169,7 +169,7 @@ gs.Run()
   │    2. CreateClient: assembles paho options (broker, id,
   │       credentials, clean-session, keep-alive, connect-timeout),
   │       bridges connect/lost/reconnecting events into go-spring log  [driver.go:64-72],
-  │       builds TLS (tlsconf BuildClient) and registers the will            [driver.go:74-85]
+  │       builds TLS (security BuildClient) and registers the will            [driver.go:74-85]
   │    3. client.Connect() + token.Wait() — fail-fast probe: a dead
   │       broker, bad credentials or TLS mismatch abort the boot       [starter.go:70-75]
   │    4. applyResilience — attaches the governance executor, indexed
@@ -275,7 +275,7 @@ All keys live under `spring.mqtt.instances.<name>.` (per-instance prefix binding
 | `will.payload` | string | "" | Will body. | — |
 | `will.qos` | byte | 0 | Will QoS (0/1/2). | — |
 | `will.retained` | bool | false | Broker retains the will. | — |
-| `tls.enabled` | bool | false | Enables `tlsconf` client TLS; pair with an `ssl://` broker URL. | Plaintext broker + tls on → connect failure at boot. |
+| `tls.enabled` | bool | false | Enables `security` client TLS; pair with an `ssl://` broker URL. | Plaintext broker + tls on → connect failure at boot. |
 | `tls.ca-file` / `cert-file` / `key-file` | string | — | CA / mutual-TLS client material, `tls.Build()` at client creation [driver.go:83-90]. | Partial config → Build error at boot. |
 | `tls.server-name` / `insecure-skip-verify` | string/bool | — | SNI override / skip verification. | — |
 

@@ -32,15 +32,15 @@ import (
 
 	// Blank-import both starters: starter-go-redis publishes the *redis.Client
 	// under spring.go-redis.instances.<name>, and starter-lock-redis contributes a
-	// lock.Locker per spring.lock.instances.<name> that reuses that client by name.
+	// lock.Locker per spring.lock.instances.redis.<name> that reuses that client by name.
 	_ "go-spring.org/starter-go-redis"
 	_ "go-spring.org/starter-lock-redis"
 )
 
 // Service exercises the injected Locker. The `jobs` tag matches the instance
-// name in app.properties (spring.lock.instances.jobs).
+// name in app.properties (spring.lock.instances.redis.jobs).
 type Service struct {
-	Lock lock.Locker `autowire:"jobs"`
+	Lock lock.Locker `autowire:"redis.jobs"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

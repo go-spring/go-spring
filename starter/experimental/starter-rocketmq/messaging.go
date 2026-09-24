@@ -45,12 +45,13 @@ import (
 // again by the client's own teardown, where Shutdown is idempotent enough to
 // be safe).
 //
-// Trace context rides the envelope: publish injects the current W3C context
-// into the message user properties via StartProducerSpan and consume extracts
-// it via StartConsumerSpan, so a trace links producer to consumer across
-// services. All tracing is a no-op without starter-otel.
+// Trace context rides the envelope: the messaging.Observe decorator wraps this
+// driver, injecting the current W3C context into the message headers on
+// publish (mapped onto RocketMQ user properties) and extracting it on consume,
+// so a trace links producer to consumer across services. It also supplies the
+// spans, metrics and access log. All of it is a no-op without starter-otel.
 func NewDriver(cl *Client) messaging.Driver {
-	return &driver{cl: cl}
+	return messaging.Observe(&driver{cl: cl}, "rocketmq")
 }
 
 type driver struct{ cl *Client }
@@ -60,7 +61,7 @@ func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.
 	if err != nil {
 		return nil, err
 	}
-	return &publisher{p: p, topic: destination, obs: newObserver()}, nil
+	return &publisher{p: p, topic: destination}, nil
 }
 
 func (b *driver) NewSubscriber(_ context.Context, source, group string) (messaging.Subscriber, error) {
@@ -74,14 +75,13 @@ func (b *driver) NewSubscriber(_ context.Context, source, group string) (messagi
 	if err != nil {
 		return nil, err
 	}
-	return &subscriber{cl: b.cl, c: c, topic: source, obs: newObserver()}, nil
+	return &subscriber{cl: b.cl, c: c, topic: source}, nil
 }
 
 // publisher produces envelopes to a fixed topic via its own producer.
 type publisher struct {
 	p     rocketmq.Producer
 	topic string
-	obs   *observer
 }
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
@@ -98,9 +98,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		// consumer can recognise synthetic load.
 		m.WithProperty(canonical.MetaKeyLoadTest, "1")
 	}
-	ctx, sp := p.obs.startProduce(ctx, p.topic, m)
 	_, err := p.p.SendSync(ctx, m)
-	sp.End(err)
 	return err
 }
 
@@ -115,7 +113,6 @@ type subscriber struct {
 	cl    *Client
 	c     rocketmq.PushConsumer
 	topic string
-	obs   *observer
 }
 
 func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) error {
@@ -129,17 +126,15 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 		Expression: "*",
 	}, func(ctx context.Context, exts ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
 		for _, ext := range exts {
-			msgCtx, sp := s.obs.startConsume(ctx, ext)
 			// Extract the load-test marker the producer put in the user
 			// properties so the handler sees synthetic load via
-			// traffic.IsLoadTest(msgCtx).
+			// traffic.IsLoadTest(ctx).
 			if canonical.IsAffirmative(ext.GetProperty(canonical.MetaKeyLoadTest)) {
-				msgCtx = canonical.WithLoadTest(msgCtx, "rocketmq-property")
+				ctx = canonical.WithLoadTest(ctx, "rocketmq-property")
 			}
-			herr := handler(msgCtx, fromMessageExt(ext))
-			sp.End(herr)
+			herr := handler(ctx, fromMessageExt(ext))
 			if herr != nil {
-				log.Errorf(msgCtx, log.TagAppDef, "rocketmq driver handler error on %q: %v", ext.Topic, herr)
+				log.Errorf(ctx, log.TagAppDef, "rocketmq driver handler error on %q: %v", ext.Topic, herr)
 				return consumer.ConsumeRetryLater, herr
 			}
 		}

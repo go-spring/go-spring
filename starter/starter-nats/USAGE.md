@@ -208,29 +208,30 @@ are logged (`nats disconnected` Warn) and the client auto-reconnects [driver.go:
    `Headers`) [driver.go:59-73]. Empty header map → nil header.
 2. Load-test marker: if `traffic.IsLoadTest(ctx)`, `X-LoadTest: 1` (canonical header name)
    is stamped so consumers recognise synthetic load [driver.go:62-67].
-3. `publishCtx` opens the producer span + duration/in-flight metric + access log. The
-   entry point decides the span's parent: `PublishMsgContext(ctx, msg)` parents it on the
-   caller's active span, while `PublishMsg(msg)` (the embedded-method override, kept for
-   compatibility) starts from `context.Background()` — a NEW ROOT, because
-   `nats.PublishMsg` carries no ctx parameter. Consume-side continuation works either way
-   through the injected `traceparent` header (step 4).
-4. `injectW3C` puts `traceparent` into `msg.Header` so the consumer continues this span
-   [command.go:51-56, 87].
-5. Raw `c.Conn.PublishMsg` (async buffered write — returns before broker ack; use Flush
-   for confirmation; see [nats.go docs](https://docs.nats.io/)).
-6. `sp.End(err)` records outcome.
+3. The driver is wrapped in `messaging.Observe` at [NewDriver]: before the driver runs,
+   the decorator opened the producer span (parented on the caller's active span via the
+   Publish ctx), the `messaging.operation.*` metrics and the access log, and injected the
+   W3C `traceparent` into `msg.Headers` — which step 1 mapped into `nm.Header`, so the
+   consumer continues the trace.
+4. Raw `c.Conn.PublishMsg` (async buffered write — returns before broker ack; use Flush
+   for confirmation; see [nats.go docs](https://docs.nats.io/)). The raw call is used
+   precisely so the message is not counted a second time by `PublishMsgContext`'s
+   instrumentation.
+5. Observe records the outcome.
 
 What this path does NOT get: resilience (guarded methods are separate, §2.4).
 
 ### 2.3 One consume, layer by layer
 
 `sub.Subscribe(handler)` [driver.go:79-116]: handler wrapped in `messaging.Recover`
-(panic → error path, not SDK-goroutine crash) [driver.go:86-88]; `Subscribe` vs
+(panic → error path, not SDK-goroutine crash) [driver.go:86-88]; raw `Subscribe` vs
 `QueueSubscribe` on non-empty group (competing consumers) [driver.go:105-110]. Per message:
 
-1. `Consume` subscribes with a `ContextHandler`; its `wrapConsume` adapter extracts the
-   W3C `traceparent` from `nm.Header` and opens the consumer span (child of the producer
-   span) + metric + log before calling the handler [command.go:120-152].
+1. The driver is wrapped in `messaging.Observe` at [NewDriver]: its handler wrapper extracts
+   the W3C `traceparent` from the envelope headers (mapped from `nm.Header`) and opens the
+   consumer span (child of the producer span) + `messaging.operation.*` metrics + access log
+   before calling the handler. The raw subscription is used precisely so the message is not
+   counted a second time by `Conn.Consume`'s instrumentation.
 2. `X-LoadTest` header re-materialised into ctx as the load-test marker [driver.go:94-96].
 3. `fromNatsMsg`: multi-valued NATS headers flattened to single values (`Get` = first
    value wins) [driver.go:138-149].
@@ -251,8 +252,9 @@ resilience executor is reached only through opt-in **methods** [command.go:152-1
 
 | Entry point | Observe | Resilience guard |
 |---|---|---|
-| `Conn.PublishMsg` / `Conn.PublishMsgContext` (incl. driver publish) | span+metric+log | **no** |
-| `Conn.Consume(ctx, subject, queue, handler)` (incl. driver subscribe) | span+metric+log | **no** |
+| `Conn.PublishMsg` / `Conn.PublishMsgContext` (raw-client path) | span+metric+log | **no** |
+| `Conn.Consume(ctx, subject, queue, handler)` (raw-client path) | span+metric+log | **no** |
+| messaging.Driver publish/subscribe (`messaging.Observe` decorator) | span+metric+log | **no** |
 | `Conn.Publish` / `Conn.Request` / `Subscribe` / `QueueSubscribe` / JetStream | **no** | **no** |
 | `Conn.PublishGuarded(ctx, subj, data)` | span+metric+log (routes through `PublishMsgContext`) | yes |
 | `Conn.RequestGuarded(ctx, subj, data, timeout)` | **no** | yes |
@@ -283,7 +285,7 @@ readiness — the indicator is then not registered at all, rather than registere
 ## 3. Per-key behavior reference
 
 All keys live under `spring.nats.instances.<name>.*`. The `tls` group key binds a nested shared
-struct — its sub-keys belong to tlsconf, not this starter.
+struct — its sub-keys belong to security, not this starter.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -293,7 +295,7 @@ struct — its sub-keys belong to tlsconf, not this starter.
 | `token` | string | "" | → `nats.Token` [driver.go:63-65]. | Combined with username → last-applied nats option wins (NATS-defined). |
 | `creds-file` | string | "" | JWT+nkey seed file → `nats.UserCredentials` [driver.go:66-68]. | Bad path → connect fails at boot. |
 | `nkey-file` | string | "" | nkey seed → `nats.NkeyOptionFromSeed`; load failure is explained and fails boot [driver.go:69-76]. | Bad seed file → boot error. |
-| `tls` | group | off | `tls.enabled=true` → `tlsconf.BuildClient()` → `nats.Secure`; BuildClient()==nil → bare `nats.Secure()` [driver.go:77-88]. ⚠ `Build()` not `BuildServer()` — same client-TLS posture as other client starters. Sub-keys: `enabled`/`ca-file`/`cert-file`/`key-file`/`insecure-skip-verify`/`server-name` (tlsconf's tags). | TLS mismatch → connect error at boot. |
+| `tls` | group | off | `tls.enabled=true` → `security.BuildClient()` → `nats.Secure`; BuildClient()==nil → bare `nats.Secure()` [driver.go:77-88]. ⚠ `Build()` not `BuildServer()` — same client-TLS posture as other client starters. Sub-keys: `enabled`/`ca-file`/`cert-file`/`key-file`/`insecure-skip-verify`/`server-name` (security's tags). | TLS mismatch → connect error at boot. |
 | `max-reconnects` | int | 60 | → `nats.MaxReconnects`; -1 = unlimited [config.go:63; driver.go:49]. | -1 with dead broker → reconnect loop forever (by design). |
 | `reconnect-wait` | duration | 2s | Delay between reconnect attempts [driver.go:50]. | Too low → busy reconnect against a down cluster. |
 | `connect-timeout` | duration | 5s | Bounds the **initial dial only** [driver.go:51]. | Too low → spurious boot failures on slow networks. |
@@ -383,7 +385,7 @@ Publish an envelope with `Payload` + `Headers{"tenant":"acme"}`; in the consumer
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 15 starter-local value tags (+ tls group sub-keys in tlsconf) |
+| Config keys | 15 starter-local value tags (+ tls group sub-keys in security) |
 | Required | 1 (`url`) |
 | Quickstart external deps | 1 (nats; collector optional for observability) |
 | "Watch out" entries | 4 |

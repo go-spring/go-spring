@@ -135,7 +135,8 @@ sub, err := conn.Consume(ctx, "demo.pubsub", "", func(ctx context.Context, msg *
   调用方有 trace 时请用 `PublishMsgContext`。
 * `Consume(ctx, subject, queue, handler)` 接收带 ctx 的 handler 与可选 queue group——
   queue 为空即普通广播订阅。它的 ctx 只约束订阅建立；consumer span 的父节点来自消息 header。
-* [messaging.Driver](#messaging-driver) 建立在这两个入口之上，只额外做信封转换。
+* [messaging.Driver](#messaging-driver) 直接调用裸 `*nats.Conn`，只额外做信封转换；
+  其插桩来自 broker 中立的 `messaging.Observe` 装饰器，两条路径不会重复计数。
 * `Conn.Healthy()` 反映自动重连客户端的实时状态，且 starter 会按实例注册
   `health.Indicator`（`nats:<name>`），因此同时引入 starter-actuator 的应用可把
   NATS 连通性并入 `/readiness`。若某实例的连通性不应计入就绪，设 `health.enabled=false`。

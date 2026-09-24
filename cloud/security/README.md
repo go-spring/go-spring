@@ -111,6 +111,54 @@ err := security.Require("orders:write")(ctx, func(ctx context.Context) error {
   `ParseBearerToken`, `NewCSRFToken` / `MatchCSRFToken` (constant-time
   compare), `DefaultCSRFCookieName` / `DefaultCSRFHeaderName`.
 - **Error sentinels** `ErrUnauthenticated` (→ 401) and `ErrForbidden` (→ 403).
+- **`TLSConfig`** — the shared `tls.*` property block every TLS-speaking
+  starter embeds; see the next section.
+
+## TLS: the shared `tls.*` block
+
+`TLSConfig` is the shared TLS configuration used by every Go-Spring starter
+that terminates or dials TLS (redis, gorm dialects, kafka, nats, mqtt, grpc,
+gin, gateway, neo4j, cassandra, registry/lock backends, ...). It binds the
+off-by-default `tls.*` property block to a `*tls.Config`, loading the key
+pair and CA bundle from disk when provided.
+
+Embed it under a `tls` key; the bound properties then read as `tls.*` under
+the starter's own config prefix — `spring.go-redis.instances.main.tls.enabled`
+on a multi-instance client starter, `spring.gin.tls.enabled` on a server
+starter:
+
+```go
+type Config struct {
+    ...
+    TLS security.TLSConfig `value:"${tls}"`
+}
+```
+
+| Property | Default | Meaning |
+|---|---|---|
+| `tls.enabled` | `false` | Turn TLS on; never negotiated unless asked. |
+| `tls.cert-file` / `tls.key-file` | empty | PEM key pair this side presents. |
+| `tls.ca-file` | empty | CA bundle (PEM) to verify the peer. Empty = host root set. |
+| `tls.server-name` | empty | Override the name checked against the peer cert (dial-by-IP, discovery labels). |
+| `tls.insecure-skip-verify` | `false` | Disable verification. Local testing only. |
+
+The config surface is shared across 20+ starters, so the semantics are too:
+an operator moving between redis, kafka, and grpc finds the same knobs
+behaving the same way.
+
+- **`BuildClient()`** returns a client-side `*tls.Config`, or `(nil, nil)`
+  when disabled — every client library accepts a nil config as "no TLS", so
+  starters pass the result straight through. `ca-file` sets `RootCAs`; on the
+  client it is always just the root set, never an mTLS trigger.
+- **`BuildServer()`** returns a server-side `*tls.Config` with three server
+  differences: a key pair is required (rejected at build time otherwise);
+  `ca-file` is the bundle trusted to sign **client** certificates and turns
+  on `RequireAndVerifyClientCert` (mTLS); `server-name` and
+  `insecure-skip-verify` are client-side knobs and are ignored.
+
+Errors carry a `tls:` prefix (the builders do not know which component they
+serve); wrap with `errutil.Explain(err, "redis: ...")` for a
+component-specific one.
 
 ## Where the HTTP middleware lives
 

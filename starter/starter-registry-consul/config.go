@@ -19,7 +19,7 @@ package StarterRegistryConsul
 import (
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // ConsulConfig binds the Consul agent connection under ${spring.registry.consul}.
@@ -41,9 +41,9 @@ type ConsulConfig struct {
 	Namespace string `value:"${namespace:=}"`
 
 	// TLS configures optional transport-layer security for ${scheme=https}.
-	// Off by default. Uses the shared spring/cloud/tlsconf block so every
+	// Off by default. Uses the shared spring/cloud/security block so every
 	// starter exposes the same tls.* keys.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// TTL is the Consul TTL health check interval. The registrar refreshes the
 	// check on a heartbeat at half this interval so the instance stays passing;

@@ -56,7 +56,7 @@
         "addr": { "type": "string", "description": "Listen address, required (no default by design); setting it activates the server bean — routes without it are never served (startup WARN)" },
         "tls": {
           "type": "object",
-          "description": "tlsconf shared block; ca-file = client CA bundle enabling mTLS",
+          "description": "security shared block; ca-file = client CA bundle enabling mTLS",
           "properties": {
             "enabled": { "type": "boolean", "default": false },
             "cert-file": { "type": "string", "default": "" },

@@ -33,6 +33,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// tracerName names the tracer the spans open on. The tracer is looked up
+// per use (otel.Tracer at call time), never cached in a package variable: a
+// package-level otel.Tracer captured before any provider is set stops
+// forwarding once the global provider is set, unset and set again.
+const tracerName = "go-spring.org/starter-memcached"
+
 // durationBuckets are the duration-histogram boundaries (seconds) — the OTel
 // HTTP semconv recommended set.
 var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
@@ -44,8 +50,6 @@ const memcachedSystem = "memcached"
 var (
 	// accessTag is the static log tag for the memcached access log.
 	accessTag = log.RegisterAppTag("memcached", "access")
-
-	tracer = otel.Tracer("go-spring.org/starter-memcached")
 )
 
 // newObserver builds the OTel instruments from whatever meter provider is
@@ -81,7 +85,7 @@ func (o *observer) Start(ctx context.Context, op, arg string) obsSpan {
 		attribute.String("db.operation", op),
 	)
 	o.active.Add(ctx, 1, inflight)
-	ctx, sp := tracer.Start(ctx, op,
+	ctx, sp := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("db.system", o.system),
@@ -127,7 +131,7 @@ func (s obsSpan) End(err error) {
 	}
 	switch {
 	case err != nil:
-		log.Warn(s.ctx, accessTag, append(common, log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(common, log.Err(err))...)
 	case s.arg != "":
 		// Success carrying a key/statement: high-frequency and uninteresting
 		// until it fails, so Debug — and built lazily, truncation included.

@@ -257,7 +257,7 @@ prefix check); every block is bound via `BindEach` and probed at boot.
 | `dial-timeout` | duration | 5s | Bounds client dial AND the startup probe timeout. | too low → flaky startup failures on slow networks |
 | `ttl` | duration | 15s | Lease TTL; rounded up to whole seconds, min 1s. ⚠ `<=0` silently becomes 15s, not a bind error. | too long delays crash-eviction to ~TTL; 0 does not disable anything |
 | `key-prefix` | string | `/services/` | Prepended to every key (read AND write share it). ⚠ must equal the block the consumer cites — the coupling is documented but never validated. | mismatch → provider registers, consumers resolve nothing, both "succeed" |
-| `tls.*` | tlsconf | off | Shared `cloud/tlsconf` block: `enabled`, `cert-file`, `key-file`, `ca-file`, `server-name`, `insecure-skip-verify`. | wrong CA → startup probe failure |
+| `tls.*` | security | off | Shared `cloud/security` block: `enabled`, `cert-file`, `key-file`, `ca-file`, `server-name`, `insecure-skip-verify`. | wrong CA → startup probe failure |
 | `health.enabled` | bool | true | Contributes a `health.Indicator` bean named `registry-etcd:<name>` probing `endpoints[0]` (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the cluster's health is invisible to readiness probes |
 
 Two blocks = two centers = dual registration (the registryServer registers into both). Mixing

@@ -14,16 +14,18 @@
  * limitations under the License.
  */
 
-package StarterScheduler
+package scheduling_test
 
-import "time"
+import (
+	"testing"
 
-// Config binds ${spring.scheduler}. Only process-level knobs live here: a job's
-// trigger and execution options are declared where the job is registered (see
-// [Provide]), so a schedule is read in one place instead of being matched to
-// code by name across two sources.
-type Config struct {
-	// DrainTimeout bounds how long Stop waits for in-flight runs to finish during
-	// graceful shutdown before giving up.
-	DrainTimeout time.Duration `value:"${drain-timeout:=30s}"`
+	"go-spring.org/cloud/scheduling"
+	"go-spring.org/stdlib/testing/assert"
+)
+
+func TestConcurrencyPolicyString(t *testing.T) {
+	assert.That(t, scheduling.Skip.String()).Equal("skip")
+	assert.That(t, scheduling.Queue.String()).Equal("queue")
+	assert.That(t, scheduling.Replace.String()).Equal("replace")
+	assert.That(t, scheduling.ConcurrencyPolicy(99).String()).Equal("unknown")
 }

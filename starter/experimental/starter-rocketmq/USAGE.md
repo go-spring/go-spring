@@ -156,8 +156,8 @@ starts (this is why [example/check.sh](example/check.sh) gates on `mqadmin topic
 **Verify**:
 
 ```bash
-grep _app_rocketmq_access app.log | tail -2   # driver publish/consume records
-curl -s :9090/metrics | grep messaging_client_operation_duration
+grep _app_messaging_access app.log | tail -2   # driver publish/consume records
+curl -s :9090/metrics | grep messaging_operation_duration
 curl -s :9370/healthz
 ```
 
@@ -236,11 +236,13 @@ GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
    [driver.go:89-91].
 2. If the ctx carries the load-test marker, `x-loadtest=1` is added to the user properties
    [driver.go:92-96; traffic.go:60].
-3. `startProduce` opens the starter's own producer observation ("publish", span kind producer)
-   and injects W3C traceparent into the user properties [observe.go] — no-op without starter-otel.
+3. The driver is wrapped in `messaging.Observe` at [NewDriver]: the decorator already opened the
+   "publish" producer span and injected the W3C traceparent into the envelope headers — which
+   step 1 mapped onto the user properties. No starter-local instrumentation runs on the driver
+   path; without starter-otel it is all a no-op.
 4. Plain `SendSync` (bypasses the resilience executor — see §2.2).
-5. `sp.End(err)` records the duration histogram, balances the in-flight counter, ends the span and
-   emits the `_app_rocketmq_access` log record [observe.go].
+5. Observe records the outcome on `messaging.operation.total/duration/active` and the
+   `_app_messaging_access` access log.
 
 ### 2.4 One consume, layer by layer (driver path)
 
@@ -248,8 +250,8 @@ The SDK push-consumer goroutines invoke the starter's handler [driver.go:125-141
 
 1. `messaging.Recover` was pre-wrapped at Subscribe so a handler panic becomes a normal
    error (nack/redelivery) instead of unwinding the SDK goroutine [driver.go:119].
-2. Per message: `startConsume` extracts the upstream trace from the user properties and opens a
-   "consume" observation [command.go:160-163].
+2. Per message: `messaging.Observe`'s handler wrapper extracts the upstream trace from the
+   envelope headers (mapped from the user properties) and opens the "consume" span.
 3. The `x-loadtest` property is mapped back onto the ctx, so the handler sees
    `traffic.IsLoadTest(ctx)` [driver.go:131-133].
 4. `fromMessageExt` builds the envelope: `Key` from the KEYS property, `Payload` = body,
@@ -336,12 +338,12 @@ curl -s :9090/metrics | grep resilience_calls
 
 ### 4.5 Metrics / span / log reads
 
-- Driver observers: histogram `messaging.client.operation.duration` (unit s) and up-down counter
-  `messaging.client.active_requests`, attributes `messaging.system=rocketmq`,
-  `messaging.operation=publish|consume`, `status` on the histogram [observe.go]. Access log tag
-  `_app_rocketmq_access`: fields `messaging.operation`, `messaging.destination.name`
-  (truncated to 512), `status`, `duration_ms`;
-  success with a destination at Debug, success without one at Info, error Warn.
+- Driver path (messaging.Observe): counter `messaging.operation.total`, histogram
+  `messaging.operation.duration` (unit s) and up-down counter `messaging.operation.active`,
+  attributes `messaging.system=rocketmq`, `messaging.operation=publish|consume`, `status` on
+  total/duration. Access log tag `_app_messaging_access`: fields `messaging.operation`,
+  `messaging.destination.name` (truncated to 512), `status`, `duration_ms`; success at Debug,
+  error Warn.
 - Guarded path: counters `resilience.calls` / `resilience.breaker.state_change`, log tag
   `_app_rocketmq_resilience`.
 - Manual helpers (raw client): spans `rocketmq.produce` / `rocketmq.consume <topic>` from tracer

@@ -47,7 +47,7 @@ import (
 // Service consumes the framework-agnostic lock.Locker interface. The concrete
 // implementation is chosen by which starter is blank-imported.
 type Service struct {
-	Locker lock.Locker `autowire:"main"`
+	Locker lock.Locker `autowire:"etcd.main"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

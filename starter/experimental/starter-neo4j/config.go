@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config defines Neo4j connection configuration.
@@ -67,7 +67,7 @@ type Config struct {
 	// a placeholder for config-shape parity; these fields only customize the
 	// trust store, peer name and client certificate. They are ignored for the
 	// plaintext "bolt"/"neo4j" schemes.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// ServiceName resolves the connection address through a registered discovery
 	// backend instead of relying solely on the URI host. When set, the endpoint

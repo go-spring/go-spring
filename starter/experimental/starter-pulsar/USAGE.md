@@ -249,10 +249,13 @@ fault injection; the injected error flows through the inner retry loop, so the b
    when non-empty** [driver.go:91-97]. Not mapped: `Timestamp` (messaging envelope has one;
    Pulsar sets publish time server-side) and any Pulsar-specific field (OrderingKey,
    DeliverAt…).
-3. `startProduce` opens the module-local observation (span `publish`, duration/in-flight
-   metrics, access log) and injects W3C trace context into `pm.Properties`.
+3. NewDriver wraps the driver in `messaging.Observe`: the decorator already opened the
+   "publish" producer span and injected the W3C trace context into the envelope headers
+   (which step 2 mapped onto `pm.Properties`); no module-local instrumentation runs on the
+   driver path.
 4. `producer.Send(ctx, pm)` — synchronous, blocks until broker ack.
-5. `sp.End(err)` records the outcome on all three signals.
+5. Observe records the outcome on `messaging.operation.total/duration/active` and the
+   access log.
 
 ### 2.4 One driver consume, layer by layer
 
@@ -262,8 +265,9 @@ fault injection; the injected error flows through the inner retry loop, so the b
    redelivery, never an SDK-goroutine crash [driver.go:121-123].
 2. Loop ctx derives from `context.WithoutCancel(ctx)` — Close cancels it explicitly, the
    caller's ctx cancellation does not [driver.go:123].
-3. `c.Receive` → `startConsume` extracts the upstream trace from `msg.Properties()` and opens
-   a consumer-span child [command.go:195-198].
+3. `c.Receive` → the message goes to `messaging.Observe`'s handler wrapper, which extracts
+   the upstream trace from the envelope headers (mapped from `Properties()`) and opens the
+   consumer span.
 4. Load-test marker: if the producer stamped `x-load-test` in Properties, the handler ctx is
    re-marked via `traffic.WithLoadTest` [driver.go:141-143].
 5. `fromPulsarMsg` maps back: Pulsar `Key()` → envelope Key, `Payload()`, `Properties()` →

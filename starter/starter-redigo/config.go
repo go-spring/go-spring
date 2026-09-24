@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config defines Redis connection configuration.
@@ -74,7 +74,7 @@ type Config struct {
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext. Field layout matches
 	// starter-go-redis so the two starters stay interchangeable.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// StartupPing, when true, dials one connection at boot and PINGs it so a
 	// misconfigured address or unreachable server surfaces during startup

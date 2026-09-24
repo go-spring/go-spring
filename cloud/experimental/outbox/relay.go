@@ -26,6 +26,9 @@ import (
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Relay drains a [Store] to a broker through a [messaging.Driver]. Run it on
@@ -43,17 +46,28 @@ type Relay struct {
 	obs    []Observer
 	pubsMu sync.Mutex
 	pubs   map[string]messaging.Publisher // destination → publisher, lazily opened
+
+	// delivered counts relay outcomes on outbox.record.total with an exclusive
+	// status axis (published | retry | dead), so summed over status it is the
+	// number of relay decisions taken. Built at construction so an OTel SDK
+	// installed later still receives the records.
+	delivered metric.Int64Counter
 }
 
 // NewRelay assembles a Relay over store and driver with cfg normalized to its
 // defaults. Observers receive publish/retry/dead events; they are called
 // synchronously from the relay loop.
 func NewRelay(store Store, driver messaging.Driver, cfg Config, obs ...Observer) *Relay {
+	delivered, _ := otel.Meter("go-spring.org/cloud/experimental/outbox").
+		Int64Counter("outbox.record.total",
+			metric.WithDescription("Outbox records relayed, by outcome"),
+			metric.WithUnit("{record}"))
 	return &Relay{
-		store:  store,
-		driver: driver,
-		cfg:    cfg.withDefaults(),
-		obs:    obs,
+		store:     store,
+		driver:    driver,
+		cfg:       cfg.withDefaults(),
+		obs:       obs,
+		delivered: delivered,
 	}
 }
 
@@ -93,6 +107,8 @@ func (r *Relay) Close() error {
 // cancellation it stops fetching but finishes the record in flight (or marks
 // it failed for the next run), then returns ctx.Err().
 func (r *Relay) Run(ctx context.Context) error {
+	log.Info(ctx, log.TagAppDef, log.Msg("outbox relay: started"))
+	defer log.Info(context.Background(), log.TagAppDef, log.Msg("outbox relay: stopped"))
 	ticker := time.NewTicker(r.cfg.PollInterval)
 	defer ticker.Stop()
 	for {
@@ -132,6 +148,7 @@ func (r *Relay) deliver(ctx context.Context, rec *Record) {
 	err := r.publish(ctx, rec)
 	if err == nil {
 		if markErr := r.store.MarkSent(ctx, rec.ID, time.Now()); markErr == nil {
+			r.delivered.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "published")))
 			r.notify(func(o Observer) { o.OnPublished(rec) })
 			return
 		} else {
@@ -167,6 +184,7 @@ func (r *Relay) fail(ctx context.Context, rec *Record, err error) {
 	if attempts < r.cfg.MaxAttempts {
 		next := time.Now().Add(r.cfg.backoff(attempts))
 		if markErr := r.store.MarkFailed(ctx, rec.ID, err, next); markErr == nil {
+			r.delivered.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "retry")))
 			r.notify(func(o Observer) { o.OnRetry(rec, err, next) })
 			return
 		}
@@ -175,6 +193,7 @@ func (r *Relay) fail(ctx context.Context, rec *Record, err error) {
 	}
 	if r.cfg.DLQSuffix == "" {
 		if r.store.MarkDead(ctx, rec.ID, err) == nil {
+			r.delivered.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "dead")))
 			r.notify(func(o Observer) { o.OnDead(rec, err) })
 		}
 		return
@@ -186,6 +205,7 @@ func (r *Relay) fail(ctx context.Context, rec *Record, err error) {
 		return
 	}
 	if r.store.MarkDead(ctx, rec.ID, err) == nil {
+		r.delivered.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "dead")))
 		r.notify(func(o Observer) { o.OnDead(rec, err) })
 	}
 }

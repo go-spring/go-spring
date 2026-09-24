@@ -52,6 +52,7 @@ Extensibility is a judgment call, not a reflex. It lives in tension with Section
 - **Interfaces**: Single-method interfaces end with the `-er` suffix (`Handler`, `Provider`); use descriptive nouns for large interfaces.
 - **Variables**: Concise yet meaningful; avoid unnecessarily long names.
 - **Method receivers**: Short and consistent (1–2 letters); don't use `me`/`this`/`that`.
+- **Boolean method names**: Prefer dropping the `Is` prefix — use the state adjective directly (`Enabled()`, `Healthy()`). Keep `Is` only when the remaining word cannot stand alone as a yes/no question without ambiguity (`IsLeader()` — `Leader()` reads like it returns who the leader is; `IsZero()`). Criterion: delete `Is` and see whether the name still works.
 
 ## 3. Code Formatting and Organization
 
@@ -99,17 +100,36 @@ The project uniformly uses the **dual-semantic error-wrapping pattern** of `stdl
 - **Explanatory wrapping** (`errutil.Explain`) — adds business semantics: `errutil.Explain(err, "failed to connect to database")`.
 - **Path wrapping** (`errutil.Stack`) — tracks the call chain: `errutil.Stack(err, "InitService")`.
 - **Fail fast, return early**: Return business errors as early as possible; for unrecoverable programming errors during initialization, panic directly.
+- **The panic boundary for constructors and validation**: Constructors (`New*`, returning a runtime component with a lifecycle) always return an `error`, never panic. Option/DSL value builders (`WithX`, `FixedRate` — functions returning a configuration value, always used inside an inline expression, with no error channel) and init-time registration (`Register*`) may panic to fail fast. The criterion: is the returned thing a runtime component, or a wiring-time configuration value?
 - **Preserve the unwrap chain**: `errutil` internally guarantees `%w` semantics, fully supporting `errors.Is()`/`errors.As()`.
 - **Sufficient context**: Error messages should carry enough context to locate the source.
 
-## 5. Documentation and Comments
+## 5. Log and Metric Leveling
+
+### 5.1 Log Leveling
+
+- **Every key action node gets a log line**: state transitions, lifecycle events, and cross-boundary actions all leave a trace — the difference is only the level. The rule is not "too frequent to log" but "frequent means a quieter level".
+- **Arrange by level**: successful high-frequency access records at `Debug` (off by default, opened when investigating); rare normal flow (startup, elected, config refresh) at `Info`; abnormal but self-healing/degraded at `Warn`; failures needing human intervention at `Error`. The level carries the consequence; the fields carry the dimensions.
+- **Structured first**: keys share names and dimensions with the metrics/spans; messages go in `log.Msg`. Pure-dimension access records may omit the message text, but failure event lines carry both `log.Err` and `log.Msg`.
+
+### 5.2 Which Nodes Must Report Metrics
+
+One-line criterion: **logs answer "what happened"; metrics answer "how much / how long / how is it right now"** — a node that needs trending, rate calculation, or alerting must have a metric. Three shapes:
+
+- **Operation nodes** (per-request/per-message cross-boundary actions): `<family>.operation.total` + `<family>.operation.duration` with an exclusive status axis (summed over status = the operation count, no double counting) and explicit duration buckets.
+- **Event nodes** (rare but semantically major state transitions): a dedicated counter named after the event itself (`lock.lost.total`, `resilience.breaker.state_change`) — not the total/duration template; an event is not an operation.
+- **State nodes** (where "how is it right now" matters): a gauge (`messaging.operation.active`, `config.refresh.last_success_timestamp`, breaker state).
+
+Dimension discipline: unbounded cardinality (keys, addresses, destination values) never enters a metric — spans and logs only. The status axis carries the outcome. Pure low-frequency config-change events (e.g. governance policy applied) are fine with a log line alone.
+
+## 6. Documentation and Comments
 
 - **Package docs**: Every public package must have a package comment explaining "what", "why", and use cases, without dwelling on implementation details.
 - **Function docs**: Every exported function must have a comment — description, parameters and return values, error conditions (if any); complex cases may include examples.
 - **Self-documenting code**: Use clear naming and simple structure so the code explains itself; don't add unnecessary comments.
 - **AI-collaboration comments**: When you need to constrain AI behavior, add special comments, e.g. `// AI: do NOT refactor this function`.
 
-## 6. Testing Style
+## 7. Testing Style
 
 - **Utility libraries first**: Prefer `stdlib/testing`'s `assert` (continue on failure) / `require` (abort on failure) assertions; don't pull in third-party libraries like testify. Default to `assert`, and use `require` only when a failure would cause subsequent code to panic or become meaningless (e.g. a nil check before dereferencing). Use the standard library `testing` directly only when you want to avoid extra dependencies.
 - **Subtest grouping**: Use `t.Run()` to logically group different scenarios.
@@ -117,7 +137,7 @@ The project uniformly uses the **dual-semantic error-wrapping pattern** of `stdl
 - **Boundaries of raw assertions**: Use `t.Error`/`t.Fatal` only where there's no corresponding assertion — e.g. timeout protection, `select` branches, or unrecoverable initialization failures.
 - **Tests alongside production**: Test files live in the same package directory as production code; tests are living documentation.
 
-## 7. Go Idioms
+## 8. Go Idioms
 
 - **Authentic Go**: Adapt Spring concepts without forcing object orientation; keep Go's natural idioms.
 - **Use context correctly**: Request flows must carry `context.Context`; avoid casually using `context.TODO()`/`context.Background()`.
@@ -126,7 +146,7 @@ The project uniformly uses the **dual-semantic error-wrapping pattern** of `stdl
 - **Minimal dependencies**: Add only necessary external dependencies.
 - **Subprocess IO**: When invoking external commands, wire stdout/stderr straight to `os.Stdout/Stderr` to keep output streaming; buffer only when you need to parse the output.
 
-## 8. Concurrency-Safe Design
+## 9. Concurrency-Safe Design
 
 - **Not concurrency-safe by default**: Unless explicitly designed for it, concurrency safety is not guaranteed; the caller decides whether to synchronize.
 - **Declare explicitly**: If a type supports concurrent access, the documentation must say so.

@@ -33,11 +33,16 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// tracerName names the tracer the spans open on. The tracer is looked up
+// per use (otel.Tracer at call time), never cached in a package variable: a
+// package-level otel.Tracer captured before any provider is set stops
+// forwarding once the global provider is set, unset and set again.
+const tracerName = "go-spring.org/starter-asynq"
+
 // accessTag is the static log tag for the Asynq access log.
 var accessTag = log.RegisterAppTag("asynq", "access")
 
 // tracer starts the producer spans of the enqueue path.
-var tracer = otel.Tracer("go-spring.org/starter-asynq")
 
 // observer holds the enqueue path's OTel instruments. They are created by
 // newObserver at wiring time (Client.Init), not at package init, so an SDK
@@ -79,7 +84,7 @@ func (o *observer) start(ctx context.Context, op, taskType string) (context.Cont
 	if taskType != "" {
 		attrs = append(attrs, attribute.String("messaging.destination.name", taskType))
 	}
-	ctx, inner := tracer.Start(ctx, op,
+	ctx, inner := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindProducer),
 		trace.WithAttributes(attrs...))
 	o.active.Add(ctx, 1, metric.WithAttributes(
@@ -135,7 +140,7 @@ func (s *span) End(err error) {
 	}
 	switch {
 	case err != nil:
-		log.Warn(s.ctx, accessTag, append(fields, log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(fields, log.Err(err))...)
 	case s.dest != "":
 		log.Debug(s.ctx, accessTag, func() []log.Field { return fields })
 	default:

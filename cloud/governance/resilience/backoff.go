@@ -19,6 +19,7 @@ package resilience
 import (
 	"context"
 	"errors"
+	"go-spring.org/stdlib/timeutil"
 	"math/rand"
 	"time"
 )
@@ -89,12 +90,5 @@ func SleepFor(ctx context.Context, d time.Duration) bool {
 	if d <= 0 {
 		return true
 	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return true
-	case <-ctx.Done():
-		return false
-	}
+	return timeutil.Sleep(ctx, d)
 }

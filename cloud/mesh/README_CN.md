@@ -18,7 +18,7 @@ go get go-spring.org/cloud
 
 ## 使用方式：你配置，starter 反应
 
-mesh 模式是部署的固定属性，由环境承载，而非运行时配置或代码。设置 `GS_MESH`：
+mesh 模式是部署的固定属性，由环境承载，而非运行时配置或代码。设置 `GS_MESH_MODE`：
 
 | 取值          | 行为                                       |
 |---------------|--------------------------------------------|
@@ -28,12 +28,12 @@ mesh 模式是部署的固定属性，由环境承载，而非运行时配置或
 
 ```bash
 # 在注入了 Istio 的 Kubernetes 里——无需任何配置：
-# GS_MESH 未设置，auto-detect 看到 ISTIO_META_* 即开启 mesh 模式。
+# GS_MESH_MODE 未设置，auto-detect 看到 ISTIO_META_* 即开启 mesh 模式。
 
 # 同一个应用部署在 mesh 外——同样无需配置；什么也检测不到。
 
 # auto-detect 不适用时强制指定（比如排查双重负载均衡）：
-export GS_MESH=off
+export GS_MESH_MODE=off
 ```
 
 mesh 模式开启时，配置了 `service-name` 的 starter 会忽略客户端发现，直接拨号
@@ -48,7 +48,7 @@ mesh.Enabled() // bool — starter 唯一需要的调用
 mesh.Detect()  // bool — 仅做 sidecar 探测（"auto" 的底层）；很少直接调用
 ```
 
-- `Enabled()` 解析 `GS_MESH`：`on`/`off` 强制给出答案（大小写不敏感、忽略首尾
+- `Enabled()` 解析 `GS_MESH_MODE`：`on`/`off` 强制给出答案（大小写不敏感、忽略首尾
   空白）；其他任何取值——包括未设置和 `auto`——经 `Detect()` 从环境推断。
 - `Detect()` 报告 sidecar 注入的环境变量是否存在（Istio/Envoy 的
   `ISTIO_META_*`、Linkerd 的 `LINKERD2_PROXY_*`）。无网络 I/O，启动期调用安全。

@@ -17,6 +17,7 @@
 package StarterConfigApollo
 
 import (
+	"context"
 	agstorage "github.com/apolloconfig/agollo/v4/storage"
 	"testing"
 
@@ -137,5 +138,5 @@ func TestListenerChangeFiresRefresh(t *testing.T) {
 	l.OnChange(&agolloChangeEvent{})
 	l.OnNewestChange(&agolloFullChangeEvent{})
 	c := newApolloCtrl()
-	c.TriggerRefresh()
+	c.TriggerRefresh(context.Background())
 }

@@ -213,7 +213,7 @@ func kvsToEndpoints(kvs []*mvccpb.KeyValue) []discovery.Endpoint {
 			log.Warn(context.Background(), starterTag,
 				log.String("system", obsSystem),
 				log.String("key", string(kv.Key)),
-				log.Any("error", err),
+				log.Err(err),
 				log.Msg("registry-etcd: skipping a malformed instance payload"))
 			continue
 		}

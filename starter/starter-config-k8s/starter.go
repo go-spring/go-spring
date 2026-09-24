@@ -20,7 +20,7 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/confrefresh"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -92,15 +92,14 @@ func (c *k8sCtrl) clientFor(kubeconfig string) (k8sClient, error) {
 // ConfigMap or Secret changes. Before the app has started,
 // gs.RefreshProperties returns an error and the change is dropped — the
 // initial config load already captured the state.
-func (c *k8sCtrl) TriggerRefresh() {
+func (c *k8sCtrl) TriggerRefresh(ctx context.Context) {
 	if c.onTrigger != nil {
 		c.onTrigger()
 		return
 	}
-	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
-		log.Warnf(context.Background(), starterTag,
-			"property refresh after k8s change failed, stale snapshot retained: %v", err)
-	}
+	// The refresh outcome (status, duration, error) is logged and metered
+	// centrally by observability.RefreshConf; this layer only records backend events.
+	_ = observability.RefreshConf(ctx, gs.RefreshProperties)
 }
 
 // Destroy tears down every informer. It is the bean destructor, invoked once by

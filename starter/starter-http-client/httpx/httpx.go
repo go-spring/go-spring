@@ -55,7 +55,7 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -90,7 +90,7 @@ type Config struct {
 	// enabled it is wired into the base transport, so Scheme "https"/"tls" gets
 	// verifiable TLS instead of system defaults. Ignored when Base is set — an
 	// explicit Base owns the dialer.
-	TLS tlsconf.TLSConfig
+	TLS security.TLSConfig
 
 	// Resource is the governance resource label protecting this client (e.g.
 	// "http:user-svc"). When empty it is derived as
@@ -202,7 +202,7 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 		// The resolver (bound by-name re-read of the backend snapshot) feeds the
 		// Pool as its endpoint source, so it follows the naming service in real
 		// time.
-		pool = loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+		pool = loadbalance.NewPool(resolver, bal,
 			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
 		base = &balancedTransport{base: base, pool: pool}
 	} else if cfg.Addr != "" {

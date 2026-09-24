@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config defines Redis connection configuration.
@@ -118,7 +118,7 @@ type Config struct {
 
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// Otel toggles the redisotel tracing/metrics instrumentation attached to
 	// the client at construction. Both default to true — redisotel rides the

@@ -24,19 +24,28 @@
 // application is ready and, on SIGTERM, Stop drains the in-flight runs before
 // the process exits (the drain the graceful-shutdown orchestration expects).
 //
-// A job is registered with its schedule, next to the work it describes:
+// A job is a bean of the concrete type scheduler.Job (no interface: nothing
+// can implement it by accident, and navigation lands on the struct), built by
+// scheduling.NewJob in the work's constructor — typically from a bound method
+// of your own struct, so the job's dependencies are resolved by the container.
+// The schedule is declared there too, next to the work it describes:
 //
-//	scheduler.Provide("cleanup", svc.Cleanup, scheduler.Every(5*time.Minute))
-//	scheduler.Provide("nightly", svc.Prune,   scheduler.Cron("0 3 * * *"))
+//	func NewCleanupJob(db *gormcore.DB) *scheduler.Job {
+//	    svc := &CleanupService{db: db}
+//	    return scheduler.NewJob("cleanup", svc.Cleanup, scheduling.FixedRate(5*time.Minute))
+//	}
 //
-// The three trigger kinds — [Every], [After] and [Cron] — wrap the triggers in
-// [go-spring.org/cloud/scheduling]. Multi-replica de-duplication is opt-in per
-// job via [WithLock], which names a lock.Locker bean contributed by
-// starter-lock-{redis,etcd,consul}; only the replica that wins the lock runs the
-// fire. See [go-spring.org/cloud/lock].
+//	gs.Provide(NewCleanupJob)
+
+// Triggers, execution options and the lock are all cloud types (see
+// [go-spring.org/cloud/scheduling] and [go-spring.org/cloud/lock]):
+// multi-replica de-duplication attaches a lock to the Job with
+// WithLock taking the injected lock.Locker bean directly; only the
+// replica that wins the lock runs the fire.
 //
-// Only process-level knobs come from configuration: `spring.scheduler.enabled`
-// and `spring.scheduler.drain-timeout`. A job's cadence is part of what the job
+// Only one process-level knob comes from configuration:
+// `spring.scheduler.enabled`. The shutdown drain is bounded by the
+// orchestrator's kill deadline, not a config value. A job's cadence is part of what the job
 // is, so it is not something an operator retunes from a config file — for
 // ops-managed schedules use a job platform (e.g. starter-xxl-job) instead.
 package StarterScheduler
@@ -44,21 +53,11 @@ package StarterScheduler
 import (
 	"context"
 
-	"go-spring.org/cloud/lock"
 	"go-spring.org/cloud/scheduling"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 )
-
-// instrumentationName is the otel scope the job spans and metrics ride. Both go
-// to the GLOBAL pipeline installed by starter-otel (or any SDK provider); this
-// starter never builds its own, so without an SDK they are no-ops.
-const instrumentationName = "go-spring.org/starter-scheduler"
 
 func init() {
 	// Register the scheduler as a gs.Server under a distinct name so it coexists
@@ -68,26 +67,19 @@ func init() {
 	gs.Provide(&Server{}).
 		Name("schedulerServer").
 		Condition(gs.OnProperty("spring.scheduler.enabled").HavingValue("true").MatchIfMissing()).
-		Condition(gs.OnBean[Job]()).
+		Condition(gs.OnBean[*scheduling.Job]()).
 		Export(gs.As[gs.Server]())
 }
 
 // Server drives the scheduled jobs and plugs the scheduler into the Go-Spring
 // server lifecycle. Its exported fields are populated by the IoC container.
 type Server struct {
-	// Config is bound from ${spring.scheduler}.
-	Config Config `value:"${spring.scheduler}"`
+	// Jobs are all beans of the cloud package's scheduling.Job type — the
+	// units of work the application registered, each carrying its own
+	// schedule, options and lock.
+	Jobs []*scheduling.Job `autowire:"?"`
 
-	// Jobs are all beans exported as Job — the units of work the application
-	// registered with Provide or NewJob, each carrying its own schedule.
-	Jobs []Job `autowire:"?"`
-
-	// Lockers are all lock.Locker beans, keyed by bean name, so a job's `lock`
-	// config key can reference one by name for multi-replica de-duplication.
-	Lockers map[string]lock.Locker `autowire:"?"`
-
-	sched       scheduling.Scheduler
-	instruments instruments // built at wiring time in Run
+	sched *scheduling.Scheduler
 }
 
 // Run wires the configured jobs, then blocks until the application shuts down.
@@ -98,11 +90,7 @@ type Server struct {
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	log.Debugf(context.Background(), log.TagAppDef, "scheduler starting with %d job(s)", len(s.Jobs))
 
-	// Resolve the instruments here, at wiring time rather than package init, so an
-	// SDK installed later than this package's init still receives the records.
-	s.instruments = newInstruments()
-	s.sched = scheduling.NewScheduler(scheduling.WithObserver(s.observe))
-
+	s.sched = scheduling.NewScheduler()
 	if err := s.build(); err != nil {
 		return err
 	}
@@ -118,17 +106,14 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return nil
 }
 
-// Stop halts scheduling and drains in-flight runs, bounded by the
-// configured drain timeout. It is called during graceful shutdown with the
-// framework's shutdown context, which is threaded into the scheduler drain.
+// Stop halts scheduling and drains in-flight runs. It is called during
+// graceful shutdown with the framework's shutdown context; the drain is
+// bounded by whatever that context carries — in production the orchestrator
+// (K8s terminationGracePeriod, systemd TimeoutStopSec) is the real deadline
+// and force-kills the process past it, so the starter adds no second knob.
 func (s *Server) Stop(ctx context.Context) error {
 	if s.sched == nil {
 		return nil
-	}
-	if s.Config.DrainTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, s.Config.DrainTimeout)
-		defer cancel()
 	}
 	if err := s.sched.Stop(ctx); err != nil {
 		log.Warnf(ctx, log.TagAppDef, "scheduler drain timed out: %v", err)
@@ -137,75 +122,16 @@ func (s *Server) Stop(ctx context.Context) error {
 	return nil
 }
 
-// build turns the registered Job beans into scheduled tasks. Each job carries its
-// own trigger and options, so this validates the two things a job cannot know
-// about itself: that its name is unique, and that the lock bean it names exists.
-// Everything else was already checked when the job was registered.
+// build turns the registered Job beans into scheduled tasks. Each Job was
+// validated by scheduling.NewJob at construction; what remains here is only
+// what a job cannot know about itself: that its name is unique on this
+// scheduler. A job's lock references a locker it already holds (bridged by
+// WithLock at construction), so there is nothing left to resolve.
 func (s *Server) build() error {
-	seen := make(map[string]bool, len(s.Jobs))
 	for _, j := range s.Jobs {
-		name := j.JobName()
-		if seen[name] {
-			return errutil.Explain(nil, "scheduler: duplicate job bean named %q", name)
-		}
-		seen[name] = true
-
-		spec := j.Spec()
-		opts := []scheduling.Option{scheduling.WithConcurrencyPolicy(spec.Concurrency)}
-		if spec.Timeout > 0 {
-			opts = append(opts, scheduling.WithTimeout(spec.Timeout))
-		}
-		if spec.Lock != "" {
-			locker, ok := s.Lockers[spec.Lock]
-			if !ok {
-				return errutil.Explain(nil,
-					"scheduler: job %q references lock %q but no lock.Locker bean of that name is registered", name, spec.Lock)
-			}
-			key := spec.LockKey
-			if key == "" {
-				key = name
-			}
-			adapter := lockerAdapter{l: locker, opts: lockTTLOption(spec.LockTTL)}
-			opts = append(opts, scheduling.WithLock(adapter, key))
-		}
-
-		if _, err := s.sched.Schedule(name, j.Trigger(), s.instrument(name, j.Run), opts...); err != nil {
-			return errutil.Explain(err, "scheduler: failed to schedule job %q", name)
+		if _, err := s.sched.Schedule(j); err != nil {
+			return errutil.Explain(err, "scheduler: failed to schedule job %q", j.Name())
 		}
 	}
 	return nil
-}
-
-// instrument wraps a job's Run so each execution opens a span on the GLOBAL
-// otel pipeline (the repo convention for protocol/component starters: never
-// build a local provider here). The tracer comes from otel.Tracer, which is the
-// no-op implementation unless starter-otel (or any SDK-based provider) has
-// installed a global TracerProvider — so without otel the wrap is a zero-cost
-// pass-through. The span carries the job name and the run's status (same
-// vocabulary as the metrics, see observe.go); the error status and duration come
-// from the run's result. Skipped fires emit no span — there is no run to trace,
-// and the observer reports them as metrics and logs instead.
-func (s *Server) instrument(name string, run scheduling.Job) scheduling.Job {
-	return func(ctx context.Context) error {
-		ctx, span := otel.Tracer(instrumentationName).Start(ctx, "scheduler.job "+name,
-			trace.WithAttributes(
-				attribute.String("scheduler.job.name", name),
-			),
-			trace.WithSpanKind(trace.SpanKindConsumer),
-		)
-		err := run(ctx)
-		span.SetAttributes(attribute.String("status", statusOfRun(err)))
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-		}
-		span.End()
-		return err
-	}
-}
-
-// observe receives every fire — run or skipped — and hands it to [Server.record],
-// which turns it into metrics and a log line. It must not block.
-func (s *Server) observe(ev scheduling.Event) {
-	s.record(ev)
 }

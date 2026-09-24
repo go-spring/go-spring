@@ -127,7 +127,7 @@ docker compose up -d                        # bitnami/kafka:3.7，KRaft 单节�
 # 等端口就绪，broker 启动慢（约 30s）
 go run .                                    # broker 不可达则启动快速失败
 curl -s :9370/readyz | jq .                 # kafka:a 组件（应用侧 indicator）
-grep kafka.access app.log | tail -3         # publish/consume 访问记录
+grep messaging.access app.log | tail -3         # publish/consume 访问记录
 ```
 
 自断言冒烟脚本是 [example/check.sh](example/check.sh)（`./check.sh`）；治理/健康/dync 组合见
@@ -209,7 +209,7 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
 5. client 内部钩子触发：kotel produce span + metric；observeHook 的
    `OnProduceRecordBuffered` 开启名为 `publish` 的访问日志记录，
    `OnProduceRecordUnbuffered` 以结果与 buffered→unbuffered 时长收尾
-   [command.go:57-69]。访问日志 tag：`kafka.access`（observe.go 的
+   [command.go:57-69]。访问日志 tag：`messaging.access`（observe.go 的
    `RegisterAppTag("kafka","access")`）。
 
 绑定到 source `hello` 的 subscriber 上 `Subscribe(ctx, handler)` [client.go:109-144]：
@@ -279,7 +279,7 @@ conf 里的 `driver` 指治理的 `govern.driver` 选择规则源，与本 start
 
 ### 3.3 TLS
 
-共享 `tlsconf` 块——跨 starter 属性名统一 [config.go:43-47]。
+共享 `security` 块——跨 starter 属性名统一 [config.go:43-47]。
 
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
@@ -322,7 +322,7 @@ curl -s :9370/readyz                 # 503 OUT_OF_SERVICE
 
 ```bash
 go run .    # §1 服务：publish Key=k1 Payload=value Header origin=demo，消费打印
-grep kafka.access app.log | tail -2   # publish 记录（带时长）+ consume 记录
+grep messaging.access app.log | tail -2   # publish 记录（带时长）+ consume 记录
 ```
 
 存活字段：消费侧 Key、Payload、Headers、broker 盖的 Timestamp [client.go:172-186]。
@@ -353,7 +353,7 @@ go run .    # 打印 "resilience: N produce admitted, M rejected with ErrRateLim
   （见 [kotel](https://github.com/twmb/franz-go/tree/main/plugin/kotel)）。example-otel 配
   OTLP gRPC → :4317 Jaeger；在 Jaeger UI 检查生产/消费 span 的链路关联（trace context 随
   record headers 走，§2.3 第 2/5 步）。
-- 访问日志 tag `kafka.access`（渲染形如 `_app_kafka_access`）：op 名 `publish`（带时长）与
+- 访问日志 tag `messaging.access`（渲染形如 `_app_messaging_access`）：op 名 `publish`（带时长）与
   `consume`（无时长——消费没有成对的起始钩子 [command.go:40-42,71-75]）。
 - franz-go client 内部日志（重连、请求失败）出现在 `log.TagAppDef` 下，Info 阈值桥接
   [driver.go:177-192]。
@@ -379,7 +379,7 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 | driver 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.instances.<name>.group`（构造期固定）。 |
 | govern.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync` | 只有 `GuardedProduceSync` 与 driver publisher 受保护。 |
 | 无 traces/metrics | 未 import starter-otel | kotel 挂 OTel 全局；import starter-otel。 |
-| 无访问日志 | 日志 tag 被过滤 | 检查 `kafka.access` tag 过滤。 |
+| 无访问日志 | 日志 tag 被过滤 | 检查 `messaging.access` tag 过滤。 |
 | handler 错误只留一行日志 | 设计如此：本 driver 无 nack/重投 | 在 handler 内自建重试，或用 messaging 的 retry.go。 |
 
 ## 6. 设计体检表

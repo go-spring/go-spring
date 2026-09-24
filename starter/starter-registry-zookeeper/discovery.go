@@ -292,7 +292,7 @@ func valuesToEndpoints(vals map[string][]byte) []discovery.Endpoint {
 			log.Warn(context.Background(), starterTag,
 				log.String("system", obsSystem),
 				log.String("node", name),
-				log.Any("error", err),
+				log.Err(err),
 				log.Msg("registry-zookeeper: skipping a malformed instance payload"))
 			continue
 		}

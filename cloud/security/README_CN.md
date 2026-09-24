@@ -103,6 +103,48 @@ err := security.Require("orders:write")(ctx, func(ctx context.Context) error {
   `NewCSRFToken` / `MatchCSRFToken`（常量时间比较）、
   `DefaultCSRFCookieName` / `DefaultCSRFHeaderName`。
 - **错误哨兵** `ErrUnauthenticated`（→ 401）与 `ErrForbidden`（→ 403）。
+- **`TLSConfig`**——所有走 TLS 的 starter 共享的 `tls.*` 属性块；见下一节。
+
+## TLS：共享的 `tls.*` 块
+
+`TLSConfig` 是所有终结或拨号 TLS 的 Go-Spring starter（redis、gorm 各方言、
+kafka、nats、mqtt、grpc、gin、gateway、neo4j、cassandra、registry/lock 各
+后端……）共享的 TLS 配置。它把默认关闭的 `tls.*` 属性块绑定成
+`*tls.Config`，并在提供了路径时从磁盘加载密钥对与 CA。
+
+在 starter 自己的配置前缀下以 `tls` key 内嵌，绑定出的属性读作该前缀下的
+`tls.*`——多实例 client starter 是
+`spring.go-redis.instances.main.tls.enabled`，server starter 是
+`spring.gin.tls.enabled`：
+
+```go
+type Config struct {
+    ...
+    TLS security.TLSConfig `value:"${tls}"`
+}
+```
+
+| 属性 | 默认 | 含义 |
+|---|---|---|
+| `tls.enabled` | `false` | 打开 TLS；不主动请求就不协商。 |
+| `tls.cert-file` / `tls.key-file` | 空 | 本侧出示的 PEM 密钥对。 |
+| `tls.ca-file` | 空 | 校验对端的 CA bundle（PEM）。空 = 宿主机根证书集。 |
+| `tls.server-name` | 空 | 覆盖对端证书校验的名字（按 IP 拨号、discovery 标签）。 |
+| `tls.insecure-skip-verify` | `false` | 关闭校验。仅限本地测试。 |
+
+这份配置面被 20+ 个 starter 共享，语义也共享：运维从 redis 换到 kafka、
+grpc，看到的同名旋钮行为一致。
+
+- **`BuildClient()`** 返回客户端 `*tls.Config`，未启用时返回 `(nil, nil)`
+  ——所有 client 库都把 nil 当"无 TLS"，starter 可以直传。`ca-file` 设
+  `RootCAs`；客户端侧它永远只是校验用的根集合，不触发 mTLS。
+- **`BuildServer()`** 返回服务端 `*tls.Config`，有三处服务端差异：密钥对
+  必填（缺失在构建期报错）；`ca-file` 是签发**客户端**证书的信任 bundle，
+  并打开 `RequireAndVerifyClientCert`（mTLS）；`server-name` 与
+  `insecure-skip-verify` 是客户端旋钮，服务端忽略。
+
+错误带 `tls:` 前缀（构建器不知道自己服务哪个组件）；要组件专属前缀就用
+`errutil.Explain(err, "redis: ...")` 再包一层。
 
 ## HTTP 中间件在哪里
 

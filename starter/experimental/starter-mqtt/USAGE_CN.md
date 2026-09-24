@@ -174,7 +174,7 @@ gs.Run()
   │    2. CreateClient：组装 paho options（broker、id、凭证、
   │       clean-session、keep-alive、connect-timeout），把
   │       connect/lost/reconnecting 事件桥接进 go-spring 日志    [driver.go:64-72]，
-  │       构建 TLS（tlsconf BuildClient）并注册 will                  [driver.go:74-85]
+  │       构建 TLS（security BuildClient）并注册 will                  [driver.go:74-85]
   │    3. client.Connect() + token.Wait() —— fail-fast 探测：broker 挂了、
   │       凭证错误或 TLS 不匹配都会中止启动                      [starter.go:70-75]
   │    4. applyResilience —— 挂上治理 executor，按 client 索引；
@@ -274,7 +274,7 @@ driver 固定 QoS 1（`defaultQoS`）、发布 `retained=false`；retained 消�
 | `will.payload` | string | "" | will 消息体。 | — |
 | `will.qos` | byte | 0 | will 的 QoS（0/1/2）。 | — |
 | `will.retained` | bool | false | broker 是否保留 will。 | — |
-| `tls.enabled` | bool | false | 启用 `tlsconf` 客户端 TLS；须搭配 `ssl://` 的 broker URL。 | 明文 broker + 开 TLS → 启动期连接失败。 |
+| `tls.enabled` | bool | false | 启用 `security` 客户端 TLS；须搭配 `ssl://` 的 broker URL。 | 明文 broker + 开 TLS → 启动期连接失败。 |
 | `tls.ca-file` / `cert-file` / `key-file` | string | — | CA / mTLS 客户端材料，建 client 时 `tls.Build()` [driver.go:83-90]。 | 配一半 → 启动期 Build 报错。 |
 | `tls.server-name` / `insecure-skip-verify` | string/bool | — | SNI 覆写 / 跳过校验。 | — |
 

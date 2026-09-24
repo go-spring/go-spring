@@ -169,7 +169,7 @@ func newTestPool(t *testing.T, addrs ...string) *loadbalance.Pool {
 		eps = append(eps, discovery.Endpoint{Addr: a, Healthy: true})
 	}
 	return loadbalance.NewPool(
-		loadbalance.SourceFunc(func() ([]discovery.Endpoint, error) { return eps, nil }),
+		func() ([]discovery.Endpoint, error) { return eps, nil },
 		bal,
 		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})),
 	)

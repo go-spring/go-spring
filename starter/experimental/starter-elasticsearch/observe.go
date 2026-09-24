@@ -127,7 +127,7 @@ func (s *dbSpan) End(err error) {
 	}
 	switch {
 	case err != nil:
-		log.Warn(s.ctx, accessTag, append(common(), log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(common(), log.Err(err))...)
 	case s.arg != "":
 		log.Debug(s.ctx, accessTag, common)
 	default:

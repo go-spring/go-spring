@@ -241,7 +241,7 @@ key 位于 `spring.gorm.sqlserver.instances.<name>.*`。Common keys（10 个）�
 
 ### 3.2 TLS 块（`tls.*`，sqlserver 本地子集，见 config.go）
 
-映射目标是 **DSN 参数**，不是 `*tls.Config`。只绑定 DSN 能表达的 key；共享 tlsconf
+映射目标是 **DSN 参数**，不是 `*tls.Config`。只绑定 DSN 能表达的 key；共享 security
 块的 `cert-file`/`key-file` 在 DSN 里没有位置，绑上去就是死配置，已于 2026-08 **移除**：
 
 | Key | 默认值 | 映射到 | 说明 |
@@ -332,7 +332,7 @@ logger（经 go-spring.org/log 转发，TagAppDef，消息体为纯文本）。
 | 方言特有 key | 连接 7 + tls 4 = 11（+10 Common，+1 wrapper） |
 | 必填 | 3（`user`、`password`、`db`）+ host 或 service-name |
 | quickstart 外部依赖 | 1（SQL Server，docker） |
-| 死绑定 key | 0（无法绑定的 tlsconf key 已于 2026-08 移除；server-name 于 2026-09 重新绑定） |
+| 死绑定 key | 0（无法绑定的 security key 已于 2026-08 移除；server-name 于 2026-09 重新绑定） |
 | "注意/坑" 条数 | 5 |
 
 设计嫌疑：discovery 接管寻址时仍要求可解析的哑 host/port 供 DSN 解析；没有通往基于

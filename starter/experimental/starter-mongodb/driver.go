@@ -60,7 +60,7 @@ func newPickPool(ctx context.Context, c Config, backend discovery.Discovery) (*l
 	// The tracker makes outlier suspension possible; the binding puts the
 	// resource's endpoint selection under the same governance rule that already
 	// drives its protection executor.
-	pool := loadbalance.NewPool(loadbalance.SourceFunc(resolver), bal,
+	pool := loadbalance.NewPool(resolver, bal,
 		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
 	return pool, pool.BindSelection(resourceLabel(c)), nil
 }

@@ -23,7 +23,7 @@ import (
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -49,13 +49,13 @@ func init() {
 // Observer toggles OTel tracing and metrics via a wrapped TProcessor.
 // Both are on by default; importing starter-otel activates them.
 type Config struct {
-	Addr          string            `value:"${addr}"`
-	ClientTimeout time.Duration     `value:"${clientTimeout:=0}"`
-	Protocol      string            `value:"${protocol:=binary}"`
-	Transport     string            `value:"${transport:=none}"`
-	BufferSize    int               `value:"${bufferSize:=4096}"`
-	TLS           tlsconf.TLSConfig `value:"${tls}"`
-	Observer      ObserverConfig    `value:"${observer}"`
+	Addr          string             `value:"${addr}"`
+	ClientTimeout time.Duration      `value:"${clientTimeout:=0}"`
+	Protocol      string             `value:"${protocol:=binary}"`
+	Transport     string             `value:"${transport:=none}"`
+	BufferSize    int                `value:"${bufferSize:=4096}"`
+	TLS           security.TLSConfig `value:"${tls}"`
+	Observer      ObserverConfig     `value:"${observer}"`
 }
 
 // ObserverConfig groups the built-in observability options the starter can

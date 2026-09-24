@@ -150,8 +150,9 @@ sub, err := conn.Consume(ctx, "demo.pubsub", "", func(ctx context.Context, msg *
   optional queue group — an empty queue is a plain broadcast subscription. Its
   setup ctx bounds the subscribe only; the consumer span's parent comes from the
   message header.
-* The [messaging.Driver](#messaging-driver) is built on these two entries and adds
-  only envelope conversion.
+* The [messaging.Driver](#messaging-driver) calls the raw *nats.Conn and adds only
+  envelope conversion; its instrumentation comes from the broker-neutral
+  `messaging.Observe` decorator, so the two paths never double-count a message.
 * `Conn.Healthy()` reflects the live state of the auto-reconnecting client, and
   the starter registers a `health.Indicator` per instance (`nats:<name>`) so an
   app that also imports starter-actuator gets nats connectivity folded into

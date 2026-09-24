@@ -17,10 +17,10 @@
 package security
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/base64"
 	"strings"
+
+	"go-spring.org/stdlib/randutil"
 )
 
 // ParseBearerToken extracts the credential from an "Authorization: Bearer
@@ -50,11 +50,7 @@ const (
 // NewCSRFToken returns a fresh 32-byte URL-safe random token, suitable for the
 // double-submit-cookie exchange: the server stores it in a cookie and the
 // client must echo it back in a header on every state-changing request.
-func NewCSRFToken() string {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
-}
+func NewCSRFToken() string { return randutil.URLSafe(32) }
 
 // MatchCSRFToken reports whether the header token equals the cookie token,
 // comparing in constant time so a timing attack cannot recover the expected

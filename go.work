@@ -108,6 +108,7 @@ use (
 	./starter/experimental/starter-lock-etcd/example
 	./starter/experimental/starter-lock-etcd/example-otel
 	./starter/experimental/starter-lock-k8s
+	./starter/experimental/starter-lock-memory
 	./starter/experimental/starter-lock-k8s/example
 	./starter/experimental/starter-lock-redis
 	./starter/experimental/starter-lock-redis/example

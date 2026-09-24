@@ -265,7 +265,7 @@ func (r *consulRegistrar) heartbeat(id, service string, stop <-chan struct{}) {
 				log.Error(context.Background(), starterTag, append(
 					discovery.RegisterFields(obsSystem, service, discovery.ReasonSelfHeal),
 					log.Msgf("consul TTL heartbeat for check=%s failed %d times in a row; re-registering the service to recover", checkID, failures),
-					log.Any("error", err),
+					log.Err(err),
 				)...)
 				// Re-register (upsert) instead of only logging: recreates the
 				// service and check if Consul already dropped them.

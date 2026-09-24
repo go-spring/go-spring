@@ -17,6 +17,7 @@
 package StarterConfigConsul
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -214,7 +215,7 @@ func TestTriggerRefreshNilRefresherIsNoop(t *testing.T) {
 	// Before the IoC container autowires the PropertiesRefresher, a Consul
 	// index bump must be a harmless no-op rather than a nil dereference.
 	c := newConsulCtrl()
-	c.TriggerRefresh()
+	c.TriggerRefresh(context.Background())
 }
 
 // Compile-time guard: the real Consul KV handle satisfies the fake-able

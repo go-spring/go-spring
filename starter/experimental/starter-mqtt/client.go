@@ -46,12 +46,13 @@ const defaultQoS byte = 1
 //
 // Envelope mapping is payload-only: MQTT 3.1.1 packets carry no per-message
 // metadata, so Key, Headers and Timestamp are NOT transmitted. That also means
-// W3C trace context cannot ride the message, so this driver emits no producer /
-// consumer spans (unlike the Kafka/NATS/Pulsar/RabbitMQ drivers). Applications
-// needing message metadata should use an MQTT 5.0 broker/client or a different
-// transport.
+// W3C trace context cannot ride the message: the messaging.Observe decorator
+// still supplies the operation metrics and access log, but its producer and
+// consumer spans land as unlinked roots (unlike the Kafka/NATS/Pulsar/RocketMQ
+// drivers). Applications needing message metadata should use an MQTT 5.0
+// broker/client or a different transport.
 func NewDriver(cl mqtt.Client) messaging.Driver {
-	return &driver{cl: cl}
+	return messaging.Observe(&driver{cl: cl}, "mqtt")
 }
 
 type driver struct{ cl mqtt.Client }

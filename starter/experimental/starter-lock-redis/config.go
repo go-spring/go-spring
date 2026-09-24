@@ -21,7 +21,7 @@ import (
 )
 
 // Config configures one Redis-backed [go-spring.org/spring/lock.Locker] instance
-// bound under spring.lock.instances.<name>. It intentionally does not carry Redis
+// bound under spring.lock.instances.redis.<name>. It intentionally does not carry Redis
 // connection details: locking reuses an existing *redis.Client bean registered
 // by starter-go-redis, so switching between share-a-cluster / dedicated-cluster
 // topologies is a config-only change on the redis side.

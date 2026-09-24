@@ -17,6 +17,7 @@
 package StarterConfigNacos
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -130,5 +131,5 @@ func TestTriggerRefreshNilRefresherIsNoop(t *testing.T) {
 	// Before the IoC container autowires the PropertiesRefresher, a Nacos push
 	// must be a harmless no-op rather than a nil dereference.
 	c := newNacosCtrl()
-	c.TriggerRefresh()
+	c.TriggerRefresh(context.Background())
 }

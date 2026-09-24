@@ -278,7 +278,7 @@ bean by name, and naming a missing bean fails startup.
 | `sasl.mechanism` | string | `plain` | `plain` / `scram-sha-256` / `scram-sha-512` (case-insensitive); SCRAM wires an xdg-go/scram client generator per handshake [scram.go:56-63]. ⚠ SCRAM needs a `version` high enough — check [sarama docs](https://github.com/IBM/sarama). | Any other value → boot error `unsupported kafka sasl mechanism` (no silent PLAIN fallback [driver.go:99-100]). |
 | `sasl.username` / `sasl.password` | string | "" / "" | Copied into `cfg.Net.SASL` [driver.go:103-104]. | Wrong → SASL handshake fails at boot (fail-fast). |
 
-### 3.3 TLS (`tls.*`) — shared `cloud/tlsconf` block [config.go:42-46]
+### 3.3 TLS (`tls.*`) — shared `cloud/security` block [config.go:42-46]
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|

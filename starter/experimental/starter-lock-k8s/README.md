@@ -9,7 +9,7 @@ leader election** for Go-Spring, with **no external middleware**. It backs
 so an in-cluster application elects a leader or guards an exclusive section
 using only the control plane it already runs on.
 
-Blank-importing this starter and declaring a `spring.lock.instances.<name>` entry
+Blank-importing this starter and declaring a `spring.lock.instances.k8s.<name>` entry
 registers one `lock.Locker` bean (from `cloud/lock`) under `<name>`. Business
 code injects `lock.Locker` / builds a `lock.Election` and never sees this
 package; switching to the etcd/consul/redis backend is a blank-import swap
@@ -48,7 +48,7 @@ func (w *Worker) Elect(ctx context.Context) {
     e := lock.NewElection(lock.ElectionConfig{
         Locker:    w.Locker,
         Key:       "example-leader",
-        OnElected: func(ctx context.Context) { /* leader-only work */ },
+        OnStartedLeading: func(ctx context.Context) { /* leader-only work */ },
     })
     _ = e.Run(ctx) // blocks; typically a background runner
 }
@@ -66,7 +66,7 @@ if err == nil {
 
 ## Configuration
 
-Bound under `spring.lock.instances.<name>`:
+Bound under `spring.lock.instances.k8s.<name>`:
 
 | Key | Default | Description |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ identically across every backend.
 
 ## How It Works
 
-- Each `spring.lock.instances.<name>` entry builds one Locker owning a shared clientset,
+- Each `spring.lock.instances.k8s.<name>` entry builds one Locker owning a shared clientset,
   created eagerly so a missing ServiceAccount or bad kubeconfig fails at boot.
 - `Acquire`/`TryAcquire` map the lock key to a single Lease
   (`<key-prefix><key>`). The acquire-or-renew logic mirrors client-go's leader

@@ -36,7 +36,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/confrefresh"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
@@ -84,11 +84,10 @@ func newNacosCtrl() *nacosCtrl {
 // changes. Before the app has started, gs.RefreshProperties returns an
 // error and the change is dropped — the initial config load already
 // captured the state.
-func (c *nacosCtrl) TriggerRefresh() {
-	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
-		log.Warnf(context.Background(), starterTag,
-			"property refresh after nacos change failed, stale snapshot retained: %v", err)
-	}
+func (c *nacosCtrl) TriggerRefresh(ctx context.Context) {
+	// The refresh outcome (status, duration, error) is logged and metered
+	// centrally by observability.RefreshConf; this layer only records backend events.
+	_ = observability.RefreshConf(ctx, gs.RefreshProperties)
 }
 
 // configSource holds the parsed components of a nacos provider source string.
@@ -250,7 +249,7 @@ func (c *nacosCtrl) registerListener(cli config_client.IConfigClient, cs configS
 		DataId: cs.dataID,
 		Group:  cs.group,
 		OnChange: func(namespace, group, dataId, data string) {
-			c.TriggerRefresh()
+			c.TriggerRefresh(context.Background())
 		},
 	})
 	if err != nil {

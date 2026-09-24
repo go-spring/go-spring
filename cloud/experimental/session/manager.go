@@ -17,10 +17,14 @@
 package session
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"context"
 	"net/http"
 	"time"
+
+	"go-spring.org/stdlib/randutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Options configures how a [Manager] carries the session id in the HTTP cookie
@@ -94,7 +98,9 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var sess *Session
 		if id := m.readCookie(r); id != "" {
-			if s, ok, err := m.store.Load(r.Context(), id); err == nil && ok {
+			s, ok, err := m.store.Load(r.Context(), id)
+			m.countStoreOp("load", err, ok)
+			if err == nil && ok {
 				sess = s
 			}
 		}
@@ -108,6 +114,29 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// session persisted and cookie set.
 		sw.commit()
 	})
+}
+
+// countStoreOp reports one session-store operation on session.operation.total
+// with an exclusive status axis (ok | missed | error): load distinguishes a
+// miss, save/delete are ok or error. Total only, no duration — the latency is
+// the store backend's, not the session layer's (the cache family's rule). The
+// instruments are built per call: the OTel meter caches by name, so this is a
+// map lookup, and it binds to whatever provider is current.
+func (m *Manager) countStoreOp(op string, err error, ok bool) {
+	status := "ok"
+	if err != nil {
+		status = "error"
+	} else if !ok {
+		status = "missed"
+	}
+	total, _ := otel.Meter("go-spring.org/cloud/experimental/session").
+		Int64Counter("session.operation.total",
+			metric.WithDescription("Session store operations, by operation and status"),
+			metric.WithUnit("{operation}"))
+	total.Add(context.Background(), 1, metric.WithAttributes(
+		attribute.String("operation", op),
+		attribute.String("status", status),
+	))
 }
 
 // readCookie returns the session id carried by the request, or "".
@@ -152,13 +181,7 @@ func (m *Manager) clearCookie(w http.ResponseWriter) {
 
 // generateID returns a cryptographically-random, URL-safe session id. 32 bytes
 // (256 bits) of entropy makes ids unguessable, defeating session-prediction.
-func generateID() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
-}
+func generateID() string { return randutil.URLSafe(32) }
 
 // sessionWriter wraps the ResponseWriter so the session is written back exactly
 // once, before the first header/byte reaches the client — Set-Cookie must precede
@@ -199,7 +222,8 @@ func (sw *sessionWriter) commit() {
 
 	if s.invalid {
 		if s.id != "" {
-			_ = m.store.Delete(ctx, s.id)
+			err := m.store.Delete(ctx, s.id)
+			m.countStoreOp("delete", err, err == nil)
 		}
 		m.clearCookie(sw.ResponseWriter)
 		return
@@ -214,20 +238,17 @@ func (sw *sessionWriter) commit() {
 	}
 
 	if s.renew && hadID {
-		_ = m.store.Delete(ctx, s.id)
+		err := m.store.Delete(ctx, s.id)
+		m.countStoreOp("delete", err, err == nil)
 		s.id = ""
 		hadID = false
 	}
 	if s.id == "" {
-		id, err := generateID()
-		if err != nil {
-			// Without a random id we cannot safely persist; skip write-back and
-			// leave the client without a cookie rather than issue a weak id.
-			return
-		}
-		s.id = id
+		s.id = generateID()
 	}
-	if err := m.store.Save(ctx, s, m.opt.IdleTimeout); err != nil {
+	err := m.store.Save(ctx, s, m.opt.IdleTimeout)
+	m.countStoreOp("save", err, err == nil)
+	if err != nil {
 		// Mid-response: the headers are about to be written, so there is no way
 		// to surface the error to the handler. Drop the cookie so we do not hand
 		// the client an id that was never stored.

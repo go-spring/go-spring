@@ -3,10 +3,10 @@
   "title": "spring.scheduler",
   "type": "object",
   "properties": {
-    "drain-timeout": {
-      "type": "string",
-      "description": "Duration string, e.g. '5s', '1m', '1h'",
-      "default": "30s"
+    "enabled": {
+      "type": "boolean",
+      "description": "Enable the scheduler starter; active once at least one *scheduling.Job bean is present",
+      "default": true
     }
   }
 }

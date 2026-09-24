@@ -88,6 +88,25 @@ _ = sub.Subscribe(ctx, messaging.DeadLetter(
 带原生死信机制的 broker(RabbitMQ DLX、RocketMQ DLQ topic)可以配置成走原
 生——两条路都保留原始 payload,只是失败元数据不同。
 
+## 可观测
+
+`Observe(driver, system)` 给 Driver 包上完整的插桩层，能做成 broker 无关的，
+靠的是信封的 headers 本身就是 W3C trace-context 载体：
+
+- **Trace**：每次 `Publish` 开 producer span、每次 handler 调用开 consumer
+  span；发布时把 trace context 注入消息 headers、消费时提取，链路跨服务把
+  生产者与消费者连成一条 trace。
+- **指标**：`messaging.operation.total` 与 `messaging.operation.duration`，
+  互斥的 `status` 轴（`ok | error`）加 `operation`（`publish | consume`）与
+  `messaging.system`（传入的 broker 名）；`messaging.operation.active` 记
+  在途操作数。
+- **日志**：每条消息一行访问日志（`messaging.access` tag）——错误 Warn、
+  成功 Debug。
+
+driver starter 在构造 Driver 的地方包一次即可。handler 的 error 原样透传：
+失败如何呈现（nack、重投）仍是 driver 的契约。未装 OTel provider 时全部是
+no-op。
+
 ## 抽象刻意不建模的部分
 
 - **不做延迟/定时消息。** 各家支持参差不齐;要 broker 无关的延迟投递,用

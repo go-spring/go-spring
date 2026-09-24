@@ -36,8 +36,11 @@ import (
 // accessTag is the static log tag for the nats access log.
 var accessTag = log.RegisterAppTag("nats", "access")
 
-// tracer opens the per-operation producer/consumer spans.
-var tracer = otel.Tracer("go-spring.org/starter-nats")
+// tracerName names the tracer the per-operation spans open on. The tracer is
+// looked up per use (otel.Tracer at call time), never cached in a package
+// variable: a package-level otel.Tracer captured before any provider is set
+// stops forwarding once the global provider is set, unset and set again.
+const tracerName = "go-spring.org/starter-nats"
 
 // maxLogArg bounds the subject captured in the access log.
 const maxLogArg = 512
@@ -138,7 +141,7 @@ func (o *observer) Start(ctx context.Context, op, arg string) (context.Context, 
 	if arg != "" {
 		attrs = append(attrs, attribute.String("messaging.destination.name", arg))
 	}
-	ctx, sp := tracer.Start(ctx, op,
+	ctx, sp := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(o.kind),
 		trace.WithAttributes(attrs...))
 	inflight := metric.WithAttributes(
@@ -185,7 +188,7 @@ func (s *span) End(err error) {
 	}
 	switch {
 	case err != nil:
-		log.Warn(s.ctx, accessTag, append(fields(), log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(fields(), log.Err(err))...)
 	case s.arg != "":
 		log.Debug(s.ctx, accessTag, fields)
 	default:

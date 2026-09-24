@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/starter-gorm"
 )
 
@@ -47,14 +47,14 @@ type Config struct {
 	SSLCert     string `value:"${sslcert:=}"`     // Path to client certificate (PEM)
 	SSLKey      string `value:"${sslkey:=}"`      // Path to client private key (PEM)
 
-	// TLS is the shared tlsconf.TLSConfig block (nested keys: tls.enabled,
+	// TLS is the shared security.TLSConfig block (nested keys: tls.enabled,
 	// tls.cert-file, tls.key-file, tls.ca-file, tls.server-name,
 	// tls.insecure-skip-verify), symmetric with the mysql starter. When enabled,
 	// the built *tls.Config is injected into the pgx connection config; sslmode
 	// still decides whether TLS is negotiated at all, so tls.enabled together
 	// with sslmode=disable is rejected at startup instead of silently dialing
 	// plaintext.
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 }
 
 // DSN constructs the PostgreSQL Data Source Name based on the configuration.

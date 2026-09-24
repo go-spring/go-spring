@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -65,7 +65,7 @@ func TestEchoServer_MTLS(t *testing.T) {
 
 	cfg := Config{
 		Address: addr,
-		TLS: tlsconf.TLSConfig{
+		TLS: security.TLSConfig{
 			Enabled:  true,
 			CertFile: certPath,
 			KeyFile:  keyPath,

@@ -99,9 +99,9 @@ func gatewayPool(t *testing.T, addrs ...string) *loadbalance.Pool {
 	}
 	bal, err := loadbalance.New(loadbalance.RoundRobin)
 	assert.That(t, err).Nil()
-	return loadbalance.NewPool(loadbalance.SourceFunc(func() ([]discovery.Endpoint, error) {
+	return loadbalance.NewPool(func() ([]discovery.Endpoint, error) {
 		return eps, nil
-	}), bal)
+	}, bal)
 }
 
 // TestClientIPHeadersAreNotTheOnlySource keeps the helper honest for a request

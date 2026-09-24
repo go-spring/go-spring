@@ -31,14 +31,14 @@ import (
 	"go-spring.org/spring/gs"
 
 	// Blank-import the etcd backend. Switching to Redis/Consul is a one-line
-	// change here plus a properties swap under spring.lock.instances.
+	// change here plus a properties swap under spring.lock.instances.etcd.
 	_ "go-spring.org/starter-lock-etcd"
 )
 
 // Service consumes the framework-agnostic lock.Locker interface. The concrete
 // implementation is chosen by which starter is blank-imported.
 type Service struct {
-	Locker lock.Locker `autowire:"main"`
+	Locker lock.Locker `autowire:"etcd.main"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

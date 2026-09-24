@@ -267,7 +267,7 @@ ctx），包装器只能用 `context.Background()` —— 逐调用时限要用 
 | `sasl.mechanism` | string | `plain` | `plain` / `scram-sha-256` / `scram-sha-512`（大小写不敏感）；SCRAM 每次握手接 xdg-go/scram 客户端生成器 [scram.go:56-63]。⚠ SCRAM 需够高的 `version` —— 查 [sarama 文档](https://github.com/IBM/sarama)。 | 其他值 → 启动报错 `unsupported kafka sasl mechanism`（不会静默回退 PLAIN [driver.go:99-100]）。 |
 | `sasl.username` / `sasl.password` | string | "" / "" | 拷入 `cfg.Net.SASL` [driver.go:103-104]。 | 配错 → 启动期 SASL 握手失败（fail-fast）。 |
 
-### 3.3 TLS（`tls.*`）—— 共享 `cloud/tlsconf` 块 [config.go:42-46]
+### 3.3 TLS（`tls.*`）—— 共享 `cloud/security` 块 [config.go:42-46]
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|

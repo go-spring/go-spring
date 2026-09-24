@@ -33,7 +33,7 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -130,7 +130,7 @@ func liveRouterAddresses(resolve discovery.Resolver) neo4j.ServerAddressResolver
 // mutual TLS. Both only take effect for the "+s"/"+ssc" URI schemes — Enabled
 // does not control encryption here (the URI scheme does), it is a placeholder
 // kept for config-shape parity.
-func applyTLS(t tlsconf.TLSConfig, conf *neo4j.Config) error {
+func applyTLS(t security.TLSConfig, conf *neo4j.Config) error {
 	if t.CAFile != "" || t.ServerName != "" || t.InsecureSkipVerify {
 		conf.TlsConfig = &tls.Config{}
 	}
@@ -188,9 +188,9 @@ func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (str
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: balancer for %s", c.ServiceName)
 	}
-	ep, err := loadbalance.NewPool(loadbalance.SourceFunc(func() ([]discovery.Endpoint, error) {
+	ep, err := loadbalance.NewPool(func() ([]discovery.Endpoint, error) {
 		return eps, nil
-	}), bal).Pick(loadbalance.PickInfo{})
+	}, bal).Pick(loadbalance.PickInfo{})
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}

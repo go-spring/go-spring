@@ -36,9 +36,12 @@ import (
 // accessTag is the static log tag for the pulsar access log.
 var accessTag = log.RegisterAppTag("pulsar", "access")
 
-// tracer starts this module's messaging spans; instrument handles live in the
+// tracerName names the tracer this module's messaging spans open on; it
+// doubles as the meter name. The tracer is looked up per use (otel.Tracer at
+// call time), never cached in a package variable: a package-level otel.Tracer
+// captured before any provider is set stops forwarding once the global
+// provider is set, unset and set again. Instrument handles live in the
 // observers so they bind to whatever OTel provider is current at construction.
-var tracer = otel.Tracer(tracerName)
 
 // observer emits the span/metric/access-log triple for one direction of the
 // driver path. kind selects producer or consumer spans. When starter-otel is
@@ -81,7 +84,7 @@ func (o *observer) Start(ctx context.Context, op, arg string) (context.Context, 
 	if arg != "" {
 		spanAttrs = append(spanAttrs, attribute.String("messaging.destination.name", strutil.Truncate(arg, 512)))
 	}
-	ctx, span := tracer.Start(ctx, op,
+	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(o.kind),
 		trace.WithAttributes(spanAttrs...))
 	inflight := metric.WithAttributes(
@@ -134,7 +137,7 @@ func (s obsSpan) End(err error) {
 		if s.arg != "" {
 			fields = append(fields, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
 		}
-		log.Warn(s.ctx, accessTag, append(fields, log.Any("error", err))...)
+		log.Warn(s.ctx, accessTag, append(fields, log.Err(err))...)
 	case s.arg != "":
 		// Success carrying a topic: high-frequency and uninteresting until it
 		// fails, so Debug — and built lazily, truncation included.

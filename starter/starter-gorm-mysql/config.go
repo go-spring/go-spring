@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 	"go-spring.org/starter-gorm"
 )
 
@@ -46,9 +46,9 @@ type Config struct {
 	// TLS configuration. When TLS.Enabled is set, the connection negotiates TLS
 	// and a *tls.Config built from CA/cert/key/server-name/insecure-skip-verify
 	// is registered with the mysql driver, then referenced in the DSN as
-	// tls=<unique-name>. Uses the shared tlsconf.TLSConfig block, so keys
+	// tls=<unique-name>. Uses the shared security.TLSConfig block, so keys
 	// are nested (spring.gorm.mysql.instances.<name>.tls.enabled, ...tls.cert-file, ...).
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// tlsParam carries the resolved MySQL DSN "tls" value (built-in mode name or
 	// a registered custom config name). It is set internally, not bound from

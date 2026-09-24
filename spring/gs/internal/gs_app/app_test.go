@@ -439,7 +439,7 @@ func TestApp(t *testing.T) {
 		t.Cleanup(Reset)
 
 		app := NewApp()
-		err := app.RefreshProperties()
+		err := app.RefreshProperties(context.Background())
 		assert.Error(t, err).Matches("app not started yet, cannot refresh properties")
 	})
 
@@ -467,7 +467,7 @@ func TestRefreshProperties_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = app.RefreshProperties()
+			_ = app.RefreshProperties(context.Background())
 		}()
 	}
 	wg.Wait()

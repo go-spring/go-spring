@@ -17,11 +17,15 @@
 package loadbalance
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/log"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // suspendState is one endpoint address's suspension bookkeeping. suspendedAt
@@ -77,16 +81,40 @@ type Tracker struct {
 	// deterministically. Defaults to time.Now.
 	now func() time.Time
 
+	// suspension events and current-suspension gauge, built at construction so
+	// an OTel SDK installed later still receives the records.
+	suspensions metric.Int64Counter
+	suspended   metric.Int64UpDownCounter
+
 	mu     sync.Mutex
 	states map[string]*suspendState
+}
+
+// newSuspensionInstruments builds the suspension metrics from whatever meter
+// provider is current. The suspension of an endpoint is an event (a dedicated
+// counter named after the event, per the metrics rules), and the number of
+// currently suspended endpoints is a state — a gauge. The endpoint address is
+// unbounded cardinality and never a metric attribute; it lives in the log line.
+func newSuspensionInstruments() (metric.Int64Counter, metric.Int64UpDownCounter) {
+	m := otel.Meter("go-spring.org/cloud/loadbalance")
+	suspensions, _ := m.Int64Counter("loadbalance.endpoint.suspension.total",
+		metric.WithDescription("Endpoints suspended for consecutive failures, including re-suspensions after failed half-open trials"),
+		metric.WithUnit("{event}"))
+	suspended, _ := m.Int64UpDownCounter("loadbalance.endpoint.suspended",
+		metric.WithDescription("Endpoints currently suspended from rotation"),
+		metric.WithUnit("{endpoint}"))
+	return suspensions, suspended
 }
 
 // NewTracker builds a [Tracker] from cfg. A zero SuspendFor is normalized to
 // the 5s default here.
 func NewTracker(cfg TrackerConfig) *Tracker {
+	suspensions, suspended := newSuspensionInstruments()
 	t := &Tracker{
-		now:    time.Now,
-		states: map[string]*suspendState{},
+		now:         time.Now,
+		states:      map[string]*suspendState{},
+		suspensions: suspensions,
+		suspended:   suspended,
 	}
 	t.SetConfig(cfg)
 	return t
@@ -161,7 +189,12 @@ func (t *Tracker) admitLocked(addr string, suspendFor time.Duration) bool {
 	if t.now().Sub(s.suspendedAt) < suspendFor {
 		return false // suspended, cooling down
 	}
-	s.halfOpen = true // cool-down elapsed: admit a trial request
+	if !s.halfOpen {
+		s.halfOpen = true // cool-down elapsed: admit a trial request
+		log.Info(context.Background(), log.TagAppDef,
+			log.String("address", addr),
+			log.Msg("loadbalance: cool-down elapsed, admitting a half-open trial"))
+	}
 	return true
 }
 
@@ -186,20 +219,40 @@ func (t *Tracker) Record(addr string, success bool) {
 		t.states[addr] = s
 	}
 	if success {
+		wasDown := !s.suspendedAt.IsZero() || s.halfOpen
 		s.failures = 0
 		s.suspendedAt = time.Time{}
 		s.halfOpen = false
+		if wasDown {
+			t.suspended.Add(context.Background(), -1)
+			log.Info(context.Background(), log.TagAppDef,
+				log.String("address", addr),
+				log.Msg("loadbalance: endpoint recovered, back in rotation"))
+		}
 		return
 	}
 	if s.halfOpen {
-		// Trial request failed: restart the cool-down window.
+		// Trial request failed: restart the cool-down window. The endpoint was
+		// counted as suspended all along (half-open is still out of steady
+		// rotation), so the gauge does not move — only the event counter does.
 		s.halfOpen = false
 		s.suspendedAt = t.now()
+		t.suspensions.Add(context.Background(), 1)
+		log.Warn(context.Background(), log.TagAppDef,
+			log.String("address", addr),
+			log.Msg("loadbalance: half-open trial failed, endpoint re-suspended"))
 		return
 	}
 	s.failures++
-	if s.failures >= cfg.Threshold {
+	if s.failures >= cfg.Threshold && s.suspendedAt.IsZero() {
 		s.suspendedAt = t.now()
+		t.suspensions.Add(context.Background(), 1)
+		t.suspended.Add(context.Background(), 1)
+		log.Warn(context.Background(), log.TagAppDef,
+			log.String("address", addr),
+			log.Int("failures", s.failures),
+			log.Float("suspend_for_ms", float64(cfg.SuspendFor.Nanoseconds())/1e6),
+			log.Msg("loadbalance: endpoint suspended after consecutive failures"))
 	}
 }
 

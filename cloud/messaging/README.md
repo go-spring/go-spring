@@ -94,6 +94,27 @@ Brokers with native dead-lettering (RabbitMQ DLX, RocketMQ DLQ topics) can be
 configured instead — both routes carry the original payload; only the failure
 metadata differs.
 
+## Observability
+
+`Observe(driver, system)` wraps a Driver with the whole instrumentation layer,
+broker-neutral because the envelope's headers are a W3C trace-context carrier:
+
+- **Trace**: a producer span around each `Publish`, a consumer span around each
+  handler call; the trace context is injected into the message headers on
+  publish and extracted on consume, so a trace links producer to consumer
+  across services.
+- **Metrics**: `messaging.operation.total` and `messaging.operation.duration`
+  with an exclusive `status` axis (`ok | error`) plus `operation`
+  (`publish | consume`) and `messaging.system` (the broker name passed in); a
+  `messaging.operation.active` gauge tracks in-flight operations.
+- **Log**: one access line per message (`messaging.access` tag) — Warn on
+  error, Debug on success.
+
+A driver starter applies this once where it constructs its Driver. Handlers'
+errors pass through unchanged: how a failure surfaces (nack, redelivery) stays
+the driver's contract. Without an OTel provider installed everything is a
+no-op.
+
 ## What the abstraction deliberately does not model
 
 - **No delay / scheduled messages.** Broker support is wildly uneven; compose

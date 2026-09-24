@@ -245,7 +245,7 @@ Keys under `spring.gorm.sqlserver.instances.<name>.*`. Common keys (10) and wrap
 ### 3.2 TLS block (`tls.*`, a SQL Server-local subset — config.go)
 
 The mapping is onto **DSN parameters**, not a `*tls.Config`. Only the keys the DSN can
-express are bound; the wider shared tlsconf block's `cert-file`/`key-file` have no DSN slot
+express are bound; the wider shared security block's `cert-file`/`key-file` have no DSN slot
 here, so binding them would advertise dead configuration and they were **removed** (2026-08):
 
 | Key | Default | Maps to | Note |
@@ -338,7 +338,7 @@ logger (routed through go-spring.org/log, TagAppDef, plain-text body).
 | Dialect-specific keys | 7 conn + 4 tls = 11 (+10 Common, +1 wrapper) |
 | Required | 3 (`user`, `password`, `db`) + host-or-service-name |
 | Quickstart external deps | 1 (SQL Server, docker) |
-| Dead bound keys | 0 (unbound tlsconf keys removed 2026-08; server-name re-bound 2026-09) |
+| Dead bound keys | 0 (unbound security keys removed 2026-08; server-name re-bound 2026-09) |
 | "Watch out" entries | 5 |
 
 Design suspects: dummy host/port still required for DSN parsing when

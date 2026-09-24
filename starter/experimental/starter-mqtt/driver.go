@@ -76,7 +76,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (mqtt.Client, e
 	})
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
 		log.Warn(ctx, log.TagAppDef, append(connState.record(ctx, connLost),
-			log.Any("error", err),
+			log.Err(err),
 			log.Msg("mqtt connection lost"))...)
 	})
 	opts.SetReconnectingHandler(func(_ mqtt.Client, _ *mqtt.ClientOptions) {

@@ -16,7 +16,8 @@
 
 // Package observability carries per-request telemetry attributes on a context,
 // so they reach the observations the framework makes on the caller's behalf
-// without any instrumentation point having to cooperate.
+// without any instrumentation point having to cooperate, and provides
+// RefreshConf, the shared funnel for property-refresh triggers.
 //
 // Why a context carrier rather than a span option. Most of go-spring's
 // instrumentation starts its span inside the framework: a registry
@@ -34,9 +35,10 @@
 // is built (starter-otel's trace package, which registers it automatically).
 // The same split as log's WithFields for logs.
 //
-// Metrics are out of scope: the metric SDK has no per-record hook, so built-in
-// metric labels stay closed to arbitrary attributes by design. To attach
-// attributes to your own instrument, pass them where you record it.
+// The context carrier does not reach metrics: the metric SDK has no
+// per-record hook, so built-in metric labels stay closed to arbitrary
+// attributes by design. To attach attributes to your own instrument, pass
+// them where you record it.
 package observability
 
 import (

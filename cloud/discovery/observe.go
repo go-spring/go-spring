@@ -188,7 +188,7 @@ func SyncFields(system, service string) []log.Field {
 func SyncFailedFields(system, service string, err error) []log.Field {
 	return append(SyncFields(system, service),
 		log.String("status", statusOf(err)),
-		log.Any("error", err),
+		log.Err(err),
 	)
 }
 
@@ -210,7 +210,7 @@ func RegisterFields(system, service, reason string) []log.Field {
 func RegisterFailedFields(system, service, reason string, err error) []log.Field {
 	return append(RegisterFields(system, service, reason),
 		log.String("status", statusOf(err)),
-		log.Any("error", err),
+		log.Err(err),
 	)
 }
 

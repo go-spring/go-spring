@@ -194,6 +194,7 @@ Common field constructors:
 |----------|-----------|
 | Message | `Msg` / `Msgf` |
 | Scalars | `Nil` / `Bool` / `Int` / `Uint` / `Float` / `String` (each with a nullable `XxxPtr` variant) |
+| Error | `Err` (records the error message under the fixed `error` key; nil records null) |
 | Slices | `Bools` / `Ints` / `Uints` / `Floats` / `Strings` |
 | Composite | `Reflect` (encode any value via reflection) / `Any` / `Array` / `Object` (nested fields) / `FieldsFromMap` |
 

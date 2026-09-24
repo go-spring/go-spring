@@ -31,6 +31,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // ErrMiss is returned by Get/GetBytes when the key is absent. It is distinct
@@ -85,13 +87,14 @@ func WithCodec(c Codec) Option {
 }
 
 // New wraps bc in a [Cache]: the config starts at the defaults (JSON codec)
-// and opts replace them.
+// and opts replace them. bc is wrapped in the observability decorator, so
+// every method — typed or promoted — records cache.operation metrics.
 func New(bc ByteCache, opts ...Option) *Cache {
 	cfg := config{codec: JSONCodec{}}
 	for _, o := range opts {
 		o(&cfg)
 	}
-	return &Cache{ByteCache: bc, cfg: cfg}
+	return &Cache{ByteCache: newObservability(bc), cfg: cfg}
 }
 
 // configFor copies the cache's config and applies the per-call opts on top.
@@ -115,7 +118,10 @@ func (c Cache) Get(ctx context.Context, key string, val any, opts ...Option) err
 	if err != nil {
 		return err
 	}
-	return c.configFor(opts).codec.Unmarshal(b, val)
+	if err := c.configFor(opts).codec.Unmarshal(b, val); err != nil {
+		return errutil.Explain(err, "cache: decode %q", key)
+	}
+	return nil
 }
 
 // Set encodes val and stores it under key. A non-positive ttl means the entry
@@ -124,7 +130,7 @@ func (c Cache) Get(ctx context.Context, key string, val any, opts ...Option) err
 func (c Cache) Set(ctx context.Context, key string, val any, ttl time.Duration, opts ...Option) error {
 	b, err := c.configFor(opts).codec.Marshal(val)
 	if err != nil {
-		return err
+		return errutil.Explain(err, "cache: encode %q", key)
 	}
 	return c.SetBytes(ctx, key, b, ttl)
 }

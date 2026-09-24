@@ -75,8 +75,10 @@ deliberate decision rather than a gap:
   not done.
 
 The practical consequence: producer and consumer spans cannot be linked across
-the broker. Connection-layer events (connect, connection lost, reconnecting) are
-still bridged into go-spring's log for operational visibility.
+the broker. The `messaging.Observe` decorator still instruments the driver —
+`messaging.operation.*` metrics and the access log — but its spans land as
+unlinked roots. Connection-layer events (connect, connection lost, reconnecting)
+are also bridged into go-spring's log for operational visibility.
 
 ## Messaging Driver
 
@@ -115,8 +117,9 @@ _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
 `destination` and `source` are topics, published and subscribed at QoS 1. This
 driver is **payload-only**: MQTT 3.1.1 carries no per-message metadata, so
 `Key`, `Headers` and `Timestamp` are not transmitted, and — uniquely among the
-drivers — **no trace context or spans are emitted** (there is nowhere to ride
-them). `group` is unused because 3.1.1 has no shared subscriptions. The paho
+drivers — **trace context cannot ride the message** (there is nowhere to ride
+it), so the `messaging.Observe` instrumentation emits metrics, logs and spans,
+but no cross-broker trace links. `group` is unused because 3.1.1 has no shared subscriptions. The paho
 callback is fire-and-forget with no ack/nack, so a handler error is only logged.
 The raw `mqtt.Client` bean stays available for retained messages, custom QoS,
 wildcard topics and other MQTT features the driver does not model.

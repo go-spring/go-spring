@@ -40,7 +40,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/vault/api"
-	"go-spring.org/cloud/confrefresh"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
@@ -83,11 +83,10 @@ func newVaultCtrl() *vaultCtrl {
 // fingerprint changes. Before the app has started, gs.RefreshProperties
 // returns an error and the change is dropped — the initial config load
 // already captured the state.
-func (c *vaultCtrl) TriggerRefresh() {
-	if err := confrefresh.Run(gs.RefreshProperties); err != nil {
-		log.Warnf(context.Background(), starterTag,
-			"property refresh after vault change failed, stale snapshot retained: %v", err)
-	}
+func (c *vaultCtrl) TriggerRefresh(ctx context.Context) {
+	// The refresh outcome (status, duration, error) is logged and metered
+	// centrally by observability.RefreshConf; this layer only records backend events.
+	_ = observability.RefreshConf(ctx, gs.RefreshProperties)
 }
 
 // configSource holds the parsed components of a vault provider source string.
@@ -393,7 +392,7 @@ func (c *vaultCtrl) watchLoop(cli *api.Client, cs configSource, lk string) {
 		fp := c.loadedFP[lk]
 		c.mu.Unlock()
 		if fingerprint(data) != fp {
-			c.TriggerRefresh()
+			c.TriggerRefresh(context.Background())
 		}
 	}
 }

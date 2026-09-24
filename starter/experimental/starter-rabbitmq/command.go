@@ -206,28 +206,6 @@ func subObserver() *observer {
 	return defaultSubObs
 }
 
-// startPublish opens a producer observation and injects the W3C trace context
-// into pub.Headers. For the driver's publish path.
-func startPublish(ctx context.Context, routingKey string, pub *amqp.Publishing) (context.Context, obsSpan) {
-	ctx, sp := pubObserver().Start(ctx, "publish", routingKey)
-	if pub.Headers == nil {
-		pub.Headers = amqp.Table{}
-	}
-	otel.GetTextMapPropagator().Inject(ctx, publishingCarrier{pub})
-	return ctx, sp
-}
-
-// startConsume extracts the upstream trace from the delivery and opens a consumer
-// observation. For the driver's consume loop.
-func startConsume(ctx context.Context, d *amqp.Delivery) (context.Context, obsSpan) {
-	ctx = otel.GetTextMapPropagator().Extract(ctx, deliveryCarrier{d})
-	dest := d.Exchange
-	if dest == "" {
-		dest = d.RoutingKey
-	}
-	return subObserver().Start(ctx, "consume", dest)
-}
-
 // clientGuard is the per-client resilience attachment: the executor chain and
 // the stable resource label it executes under, colocated so a guard lookup
 // reads the pair atomically (no torn exec/resource combination).

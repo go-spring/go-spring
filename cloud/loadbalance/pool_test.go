@@ -20,16 +20,17 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestPoolHealthFilter(t *testing.T) {
-	src := staticSource{
-		{Addr: "a", Healthy: true},
-		{Addr: "b", Healthy: false},
-		{Addr: "c", Healthy: true},
-	}
+	src := staticSource(
+		discovery.Endpoint{Addr: "a", Healthy: true},
+		discovery.Endpoint{Addr: "b", Healthy: false},
+		discovery.Endpoint{Addr: "c", Healthy: true},
+	)
 	p := NewPool(src, NewRoundRobin())
 	m := map[string]int{}
 	for range 20 {
@@ -44,7 +45,7 @@ func TestPoolHealthFilter(t *testing.T) {
 }
 
 func TestPoolEvictionViaComplete(t *testing.T) {
-	src := staticSource(eps("a", "b"))
+	src := staticSource(eps("a", "b")...)
 	tr := NewTracker(TrackerConfig{Threshold: 2, SuspendFor: time.Minute})
 	p := NewPool(src, NewRoundRobin(), WithTracker(tr))
 
@@ -70,7 +71,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 }
 
 func TestPoolEmpty(t *testing.T) {
-	p := NewPool(staticSource(nil), NewRoundRobin())
+	p := NewPool(staticSource(), NewRoundRobin())
 	_, err := p.Pick(PickInfo{})
 	assert.Error(t, err).Is(ErrNoAvailable)
 }
@@ -78,7 +79,7 @@ func TestPoolEmpty(t *testing.T) {
 func TestPoolWithoutTracker(t *testing.T) {
 	// No WithTracker: the nil tracker is a transparent pass-through (nil-receiver
 	// methods), and Complete with failures must not suspend anything.
-	src := staticSource(eps("a", "b"))
+	src := staticSource(eps("a", "b")...)
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
 		ep, err := p.Pick(PickInfo{})
@@ -100,10 +101,10 @@ func TestPoolWithoutTracker(t *testing.T) {
 func TestPoolZeroWeightDrains(t *testing.T) {
 	// A zero weight (the drain signal) removes the instance from picking,
 	// across every strategy — here round-robin, which otherwise ignores weight.
-	src := staticSource{
-		{Addr: "a", Healthy: true, Weight: 1},
-		{Addr: "b", Healthy: true, Weight: 0},
-	}
+	src := staticSource(
+		discovery.Endpoint{Addr: "a", Healthy: true, Weight: 1},
+		discovery.Endpoint{Addr: "b", Healthy: true, Weight: 0},
+	)
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
 		ep, err := p.Pick(PickInfo{})
@@ -117,10 +118,10 @@ func TestPoolAllZeroWeightFallsBack(t *testing.T) {
 	// Every endpoint zero-weighted (an unnormalized snapshot from registrants
 	// predating the weight contract): fall back to an even split rather than
 	// blackholing the pool.
-	src := staticSource{
-		{Addr: "a", Healthy: true},
-		{Addr: "b", Healthy: true},
-	}
+	src := staticSource(
+		discovery.Endpoint{Addr: "a", Healthy: true},
+		discovery.Endpoint{Addr: "b", Healthy: true},
+	)
 	p := NewPool(src, NewRoundRobin())
 	m := map[string]int{}
 	for range 20 {
@@ -137,10 +138,10 @@ func TestPoolAllZeroWeightFallsBack(t *testing.T) {
 func TestPoolNegativeWeightKept(t *testing.T) {
 	// Negative weight is misconfiguration, not a drain signal: the instance
 	// stays in rotation (the weighted balancer treats it as the default).
-	src := staticSource{
-		{Addr: "a", Healthy: true, Weight: -1},
-		{Addr: "b", Healthy: true, Weight: 0},
-	}
+	src := staticSource(
+		discovery.Endpoint{Addr: "a", Healthy: true, Weight: -1},
+		discovery.Endpoint{Addr: "b", Healthy: true, Weight: 0},
+	)
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
 		ep, err := p.Pick(PickInfo{})

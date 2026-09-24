@@ -110,3 +110,26 @@ func TestCronRespectsLastScheduled(t *testing.T) {
 	got := tr.Next(scheduling.TriggerContext{Now: now, LastScheduled: last})
 	assert.That(t, got).Equal(time.Date(2026, 7, 18, 10, 32, 0, 0, time.UTC))
 }
+
+func TestParseCronMalformedRange(t *testing.T) {
+	// A range whose halves are not numbers: the Atoi failures in both arms.
+	for _, c := range []string{"a-5 * * * *", "5-a * * * *"} {
+		_, err := scheduling.ParseCron(c)
+		assert.Error(t, err).NotNil(c)
+	}
+}
+
+func TestCronSkipsNonMatchingMonths(t *testing.T) {
+	// Feb 29 exists only in leap years: from July 2026 the next match is
+	// Feb 29, 2028, exercising the advance-to-next-month path.
+	ref := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
+	got := nextAfter(t, "0 0 29 2 *", ref)
+	assert.That(t, got).Equal(time.Date(2028, 2, 29, 0, 0, 0, 0, time.UTC))
+}
+
+func TestCronImpossibleDateNeverFires(t *testing.T) {
+	// Feb 30 does not exist within the five-year horizon: Next reports the
+	// zero time (never fires again).
+	got := nextAfter(t, "0 0 30 2 *", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	assert.That(t, got).Equal(time.Time{})
+}

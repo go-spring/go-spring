@@ -205,16 +205,14 @@ gs.Run()
    空 header map → nil header。
 2. 压测标记：若 `traffic.IsLoadTest(ctx)`，写入 `X-LoadTest: 1`（canonical header 名），
    供消费侧识别合成流量 [driver.go:62-67]。
-3. `publishCtx` 打开 producer span + 时长/在途 metric + access log。span 的父节点由入口
-   决定：`PublishMsgContext(ctx, msg)` 挂到调用方的活动 span 下，而 `PublishMsg(msg)`
-   （覆写内嵌方法、为兼容保留）仍从 `context.Background()` 起——即新根，因为
-   `nats.PublishMsg` 不携带 ctx 参数。消费侧的 trace 延续两条路径都成立，
-   经注入的 `traceparent` header（第 4 步）。
-4. `injectW3C` 把 `traceparent` 写入 `msg.Header`，消费侧得以延续该 span
-   [command.go:51-56, 87]。
-5. 裸 `c.Conn.PublishMsg`（异步缓冲写——broker 确认前即返回；需确认用 Flush，
-   见 [nats.go 文档](https://docs.nats.io/)）。
-6. `sp.End(err)` 记录结果。
+3. NewDriver 处包了 `messaging.Observe`：driver 运行前，装饰器已打开 producer span
+   （经 Publish 的 ctx 挂到调用方活动 span 下）、`messaging.operation.*` 指标与
+   access log，并把 W3C `traceparent` 注入 `msg.Headers`——第 1 步已将其映射进
+   `nm.Header`，消费侧得以延续 trace。
+4. 裸 `c.Conn.PublishMsg`（异步缓冲写——broker 确认前即返回；需确认用 Flush，
+   见 [nats.go 文档](https://docs.nats.io/)）。刻意走裸调用，避免
+   `PublishMsgContext` 的插桩把每条消息重复计一次。
+5. Observe 记录结果。
 
 该路径拿不到的东西：resilience（保护走独立方法，见 §2.4）。
 
@@ -224,17 +222,18 @@ gs.Run()
 （panic → error 路径，不冲垮 SDK goroutine）[driver.go:86-88]；group 非空时走
 `QueueSubscribe`（竞争消费），否则 `Subscribe` [driver.go:105-110]。每条消息：
 
-1. `Consume` 以 `ContextHandler` 订阅；其 `wrapConsume` 适配器从 `nm.Header` 提取
-   W3C `traceparent`，在调用 handler 前打开 consumer span（producer span 的子）
-   + metric + log [command.go:120-152]。
+1. NewDriver 处包了 `messaging.Observe`：其 handler 包装从信封 headers（映射自
+   `nm.Header`）提取 W3C `traceparent`，在调用 handler 前打开 consumer span
+   （producer span 的子）+ `messaging.operation.*` 指标 + access log。刻意走裸
+   订阅，避免 `Conn.Consume` 的插桩把每条消息重复计一次。
 2. `X-LoadTest` header 重新物化进 ctx 作为压测标记 [driver.go:94-96]。
 3. `fromNatsMsg`：多值 NATS header 压平为单值（`Get` = 首值优先）
    [driver.go:138-149]。
 4. handler 执行；`sp.End(err)` 记录结果，handler 返回的错误也会让 consumer span
    标记为失败。Close = `Subscription.Unsubscribe`。
 
-同一条路径服务于任何 `Conn.Consume(ctx, subject, queue, handler)` 调用方——driver 只额外
-做信封转换，因此直接消费裸 `*nats.Msg` 的业务代码得到完全相同的插桩。
+这条路径服务于任何 `Conn.Consume(ctx, subject, queue, handler)` 调用方；messaging.Driver
+的订阅路径则由 `messaging.Observe` 装饰器提供等价插桩（两条路径互不重复计数）。
 
 未插桩：**JetStream 消费**，它有自己的 API 面。需要可追踪的 pub/sub 请用
 `PublishMsgContext`/`Consume`。
@@ -246,8 +245,9 @@ executor 只经**方法**式选装入口触达 [command.go:152-160]：
 
 | 入口 | Observe | Resilience guard |
 |---|---|---|
-| `Conn.PublishMsg` / `Conn.PublishMsgContext`（含 driver 发布） | span+metric+log | **否** |
-| `Conn.Consume(ctx, subject, queue, handler)`（含 driver 订阅） | span+metric+log | **否** |
+| `Conn.PublishMsg` / `Conn.PublishMsgContext`（裸客户端路径） | span+metric+log | **否** |
+| messaging.Driver 发布/订阅（`messaging.Observe` 装饰器） | span+metric+log | **否** |
+| `Conn.Consume(ctx, subject, queue, handler)`（裸客户端路径） | span+metric+log | **否** |
 | `Conn.Publish` / `Conn.Request` / `Subscribe` / `QueueSubscribe` / JetStream | **否** | **否** |
 | `Conn.PublishGuarded(ctx, subj, data)` | span+metric+log（经 `PublishMsgContext`） | 是 |
 | `Conn.RequestGuarded(ctx, subj, data, timeout)` | **否** | 是 |
@@ -277,7 +277,7 @@ resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/
 ## 3. 逐 key 行为参考
 
 所有 key 位于 `spring.nats.instances.<name>.*`。分组 key `tls` 绑定嵌套共享
-struct——其子 key 属于 tlsconf，不属于本 starter。
+struct——其子 key 属于 security，不属于本 starter。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
@@ -287,7 +287,7 @@ struct——其子 key 属于 tlsconf，不属于本 starter。
 | `token` | string | "" | → `nats.Token` [driver.go:63-65]。 | 与 username 并用 → nats option 后者覆盖（NATS 定义）。 |
 | `creds-file` | string | "" | JWT+nkey seed 文件 → `nats.UserCredentials` [driver.go:66-68]。 | 路径错误 → 启动失败。 |
 | `nkey-file` | string | "" | nkey seed → `nats.NkeyOptionFromSeed`；加载失败带解释并中断启动 [driver.go:69-76]。 | 坏 seed → 启动报错。 |
-| `tls` | group | 关 | `tls.enabled=true` → `tlsconf.BuildClient()` → `nats.Secure`；BuildClient()==nil → 裸 `nats.Secure()` [driver.go:77-88]。⚠ 用 `BuildClient()` 而非 `BuildServer()`——与其他 client starter 同样的 client-TLS 姿态。子 key：`enabled`/`ca-file`/`cert-file`/`key-file`/`insecure-skip-verify`/`server-name`（tlsconf 的 tag）。 | TLS 不匹配 → 启动期连接错误。 |
+| `tls` | group | 关 | `tls.enabled=true` → `security.BuildClient()` → `nats.Secure`；BuildClient()==nil → 裸 `nats.Secure()` [driver.go:77-88]。⚠ 用 `BuildClient()` 而非 `BuildServer()`——与其他 client starter 同样的 client-TLS 姿态。子 key：`enabled`/`ca-file`/`cert-file`/`key-file`/`insecure-skip-verify`/`server-name`（security 的 tag）。 | TLS 不匹配 → 启动期连接错误。 |
 | `max-reconnects` | int | 60 | → `nats.MaxReconnects`；-1 = 无限 [config.go:63; driver.go:49]。 | -1 且 broker 宕机 → 永久重连循环（设计如此）。 |
 | `reconnect-wait` | duration | 2s | 重连尝试间隔 [driver.go:50]。 | 过小 → 对宕机集群高频重连。 |
 | `connect-timeout` | duration | 5s | 仅约束**首次拨号** [driver.go:51]。 | 过小 → 慢网络误判启动失败。 |
@@ -375,7 +375,7 @@ executor 的 resource 是 `nats:<name>` (colon format; falls back to `nats:<url>
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key | 15 个 starter 本地 value tag（+ tls 分组子 key 在 tlsconf） |
+| 配置 key | 15 个 starter 本地 value tag（+ tls 分组子 key 在 security） |
 | 必填 | 1（`url`） |
 | quickstart 前置外部依赖 | 1（nats；collector 可选用于可观测） |
 | "注意/坑"条数 | 4 |

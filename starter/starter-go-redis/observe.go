@@ -166,7 +166,7 @@ func (h *observeHook) record(ctx context.Context, op, arg string, start time.Tim
 			log.String("db.operation", op),
 			log.String("status", status),
 			log.Float("duration_ms", dur),
-			log.Any("error", err),
+			log.Err(err),
 		)
 		return
 	}

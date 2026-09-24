@@ -79,7 +79,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, er
 		}),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
 			log.Warn(ctx, log.TagAppDef, append(connState.record(ctx, connDisconnected),
-				log.Any("error", err),
+				log.Err(err),
 				log.Msg("nats disconnected"))...)
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {

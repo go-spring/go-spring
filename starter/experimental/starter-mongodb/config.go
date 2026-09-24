@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/tlsconf"
+	"go-spring.org/cloud/security"
 )
 
 // Config defines MongoDB client connection configuration.
@@ -66,9 +66,9 @@ type Config struct {
 	MaxConnIdleTime time.Duration `value:"${max-conn-idle-time:=0}"`
 
 	// TLS configures transport encryption for the connection. It is the shared
-	// block from spring/cloud/tlsconf; leave TLS.Enabled=false to negotiate no
+	// block from spring/cloud/security; leave TLS.Enabled=false to negotiate no
 	// TLS (unless the URI itself requests it).
-	TLS tlsconf.TLSConfig `value:"${tls}"`
+	TLS security.TLSConfig `value:"${tls}"`
 
 	// Addressing is the shared discovery-citation block: ServiceName resolves
 	// the connection address through a discovery backend instead of the URI
