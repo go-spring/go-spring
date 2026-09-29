@@ -1,6 +1,6 @@
 services:
   kafka:
-    image: bitnami/kafka:3.7
+    image: soldevelo/kafka:3.7
     container_name: starter-kafka-sarama
     ports:
       - "127.0.0.1:9092:9092"
