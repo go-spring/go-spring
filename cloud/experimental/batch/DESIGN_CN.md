@@ -30,7 +30,7 @@ XML/注解 DSL。持久化后端(Redis / 数据库)由 starter 单独贡献
   `Open` 处把上次提交的 `Checkpoint` 交回,并在每次 chunk 提交后取新值。不实
   现就从头开始重放。
 - **读在 retry 之外,处理+写在 retry 之内。** 每个 chunk 读一次进缓冲;
-  `resilience.Executor`(由 `ChunkStep.Retry` 构造,或直接注入)包裹缓冲后
+  `resilience.ClientExecutor`(由 `ChunkStep.Retry` 构造,或直接注入)包裹缓冲后
   的处理+写。reader 无法把已推进的 item 吐回来,把读也放进 retry 会破坏状态。
 - **`Step` 接口抹掉泛型**,让 `Job` 能在同一个 slice 里放不同 item 类型的
   step。

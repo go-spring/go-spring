@@ -118,13 +118,13 @@ func TestDSNTLSLandsOnTheDriver(t *testing.T) {
 
 func TestBuild(t *testing.T) {
 	// Neither host nor service-name: rejected up front.
-	if _, err := build(context.Background(), Config{User: "sa", Password: "p", DB: "master"}, nil); err == nil {
+	if _, err := build(context.Background(), Config{User: "sa", Password: "p", DB: "master"}, nil, nil); err == nil {
 		t.Fatal("build must require host or service-name")
 	}
 
 	c := Config{User: "sa", Password: "p", Host: "127.0.0.1", Port: "1", DB: "master"}
 	c.PingTimeout = 500 * time.Millisecond
-	spec, err := build(context.Background(), c, nil)
+	spec, err := build(context.Background(), c, nil, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("plain-host build must return a dialector")

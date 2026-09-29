@@ -32,7 +32,7 @@ Seata AT 的效果——由资源侧捕获的 before-image 自动派生 undo / r
   要注册步骤——AT 没手写步骤:branch 从资源 interceptor 自动注册。aspect
   只负责 begin / resolve + 注入 XID。
 - **`Observer` 缝隙**,starter 接 otel 不进 stdlib。
-- **`RetryPolicy = resilience.Policy` 别名**——二阶段重试与出站韧性共用
+- **`RetryPolicy = resilience.ClientPolicy` 别名**——二阶段重试与出站韧性共用
   同一套配置。
 
 ## 3. 约束

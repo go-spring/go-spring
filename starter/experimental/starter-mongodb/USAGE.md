@@ -134,8 +134,7 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=5
+govern.client.default.rate-limit=5
 
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
@@ -182,11 +181,11 @@ gs.Run()
   │   → SetDialer(shared dialerWrapper) [starter.go:153]
   │   → mongo.Connect → fail-fast Ping bounded by connect-timeout (10s fallback)
   │     [starter.go:163-171] — a dead server fails the BOOT, not the first query
-  ├─ Init [client.go:90]: newDBObserver("mongodb") → module-local observer (span + metric + access log)
-  │   → fault.WrapExecutor(resilience.ExecutorFor("mongodb", resource))
-  │   → swap dialerWrapper.dial = resilience.NewDialer(base, exec, resource)
+  ├─ Init [client.go:108]: newDBObserver("mongodb") → module-local observer (span + metric + access log)
+  │   → fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
+  │   → swap dialerWrapper.dial = resilience.NewDialer(base, exec)
   ├─ readiness: mongo:<name> indicator runs client.Ping against the live server
-  └─ SIGTERM → Destroy [client.go:112]: exec.Close → client.Disconnect
+  └─ SIGTERM → Destroy [client.go:126]: exec.Close → client.Disconnect
       (the loader holds no resources, so nothing discovery-related is released)
 ```
 
@@ -221,7 +220,7 @@ its CommandMonitor type is incompatible with v2; the bridge here is module-local
 1. `coll.FindOne(ctx, ...)` runs on the embedded `*mongo.Client` — no wrapper interception;
    every driver method promotes unchanged.
 2. If the pool has no idle connection, the driver calls `dialerWrapper.DialContext` →
-   resilience executor asks for a permit (resource label `mongodb:<service-name or uri>` —
+   resilience executor asks for a permit (service label `mongodb:<service-name or uri>` —
    per instance, [client.go:99]); over the rate limit the dial is rejected and the operation
    surfaces `resilience.ErrRateLimited`. With service-name set, the base dial first asks the
    loader-backed `Pool` to pick a live endpoint and ignores the URI address ([starter.go:137-144]).
@@ -262,16 +261,17 @@ There are no observability keys — observation is unconditional (see §3.3).
 ### 3.2 Resilience / fault (govern.*, not under the instance prefix)
 
 Policy keys live in the governance rules document under `govern.*` (starter-governance's governance center);
-this starter resolves `resilience.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` and
-`fault.InjectorFor` in `Init` [client.go:97-102]. Relevant keys (see starter-governance USAGE
+this starter arms `fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
+in `Init` [client.go:110-115], where `mgr`/`inj` are the `*resilience.Manager` / `*fault.Injector`
+beans the container injects into `newClient`. Relevant keys (see starter-governance USAGE
 for the full set): `govern.enabled`, `govern.driver`, `govern.<driver>.rate-limit` /
-`error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `govern.fault.*`
+`error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `govern.client.fault.*`
 injection block (enable/rate/error). ⚠ Remember the seam is the **dial layer**: a breaker
 policy manifests as rejected *connections*; a fault injection fires per dial, not per command.
 
 **Endpoint selection is governed by the same rule, same label.** In discovery mode the pool is
 built with a suspension tracker and bound to `mongodb:<service-name|uri>` via
-`loadbalance.Pool.BindSelection`, so `govern.rules[N].balancer` (round_robin / least_conn /
+`lbMgr.Bind(pool, label)` (the `*loadbalance.Manager` bean injected into `newClient`), so `govern.client.rules[N].balancer` (round_robin / least_conn /
 consistent_hash / weighted / zone_aware / random / p2c) and `outlier-threshold` /
 `outlier-suspend-for` apply **in place** — the next dial uses the new strategy, no restart and no
 re-dial of existing connections. Direct (URI-only) instances have no candidate set, so these keys
@@ -325,8 +325,7 @@ grep _app_mongodb_access app.log | tail -1
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=5
+govern.client.default.rate-limit=5
 spring.mongodb.instances.a.max-pool-size=100   # room for the burst to force fresh dials
 ```
 
@@ -340,9 +339,9 @@ the executor hot-reloads without restart (governance center).
 
 ```properties
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.fault.enabled=true
-govern.fault.rate=0.5
-govern.fault.error=generic    # or: timeout / reset
+govern.client.fault.enabled=true
+govern.client.fault.rate=0.5
+govern.client.fault.error=generic    # or: timeout / reset
 ```
 
 Run [example-load](example-load/): the upsert/FindOne closed loop prints throughput, latency

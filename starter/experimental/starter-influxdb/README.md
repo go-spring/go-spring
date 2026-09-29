@@ -71,8 +71,9 @@ DeleteAPI, Setup, ...) promotes unchanged.
   (db.system/db.operation/db.statement), the `db.client.operation.duration`
   histogram + `db.client.active_requests` gauge, and an access-log line via
   the `_app_influxdb_access` tag at the log package's native levels.
-- **Resilience** — blocking writes route through the governance seams; with
-  `starter-governance` absent the write path is observe-only.
+- **Resilience** — blocking writes route through the executor built from the
+  injected `*resilience.Manager`; with `starter-governance` absent that
+  executor is a pass-through and the write path is observe-only.
 
 ## Advanced Features
 

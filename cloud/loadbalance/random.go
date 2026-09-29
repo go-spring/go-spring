@@ -23,7 +23,12 @@ import (
 )
 
 func init() {
-	Register(Random, NewRandom)
+	Register(Random, func(cfg Config) (Balancer, error) {
+		if err := cfg.only(); err != nil {
+			return nil, err
+		}
+		return NewRandom(), nil
+	})
 }
 
 // randomBalancer is fully stateless: no cursor, no lock, no per-address map —

@@ -32,6 +32,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -109,6 +110,7 @@ func main() {
 }
 
 func runTest(s *Service, c *Config) {
+	ctx := context.Background()
 	// --- 1. Health --------------------------------------------------------
 	mustStatus("http://127.0.0.1:9370/readyz", http.StatusOK)
 	mustStatus("http://127.0.0.1:9370/health", http.StatusOK)
@@ -117,10 +119,10 @@ func runTest(s *Service, c *Config) {
 	// --- 2. Discovery -----------------------------------------------------
 	// The instance's address comes from the discovery backend, not config. A
 	// successful round-trip proves resolve -> dial -> serve.
-	if err := s.Memcached.Set(&memcache.Item{Key: "cn:key", Value: []byte("cn-value")}); err != nil {
+	if err := s.Memcached.Set(ctx, &memcache.Item{Key: "cn:key", Value: []byte("cn-value")}); err != nil {
 		fail("memcached set via discovery: %v", err)
 	}
-	item, err := s.Memcached.Get("cn:key")
+	item, err := s.Memcached.Get(ctx, "cn:key")
 	if err != nil || string(item.Value) != "cn-value" {
 		fail("memcached get via discovery: got=%q err=%v", item, err)
 	}
@@ -129,7 +131,7 @@ func runTest(s *Service, c *Config) {
 	// --- 3. Resilience ----------------------------------------------------
 	var admitted, rejected int
 	for range 15 {
-		err := s.Memcached.Set(&memcache.Item{Key: "cn:rl", Value: []byte("x")})
+		err := s.Memcached.Set(ctx, &memcache.Item{Key: "cn:rl", Value: []byte("x")})
 		switch {
 		case err == nil:
 			admitted++

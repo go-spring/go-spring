@@ -16,7 +16,7 @@ Cloud Task。[`Job`](job.go) 是有序的 [`Step`](job.go) 列表;
   starter 贡献 bean(见 `starter-batch-redis`)。
 - Reader 可实现 `Checkpointer` 持久化位置;Reader/Writer 可实现 `Closer` 释放
   资源。
-- 韧性:设置 `ChunkStep.Retry` 或注入 `resilience.Executor`,为每个 chunk 加
+- 韧性:设置 `ChunkStep.Retry` 或注入 `resilience.ClientExecutor`,为每个 chunk 加
   重试 / 熔断。
 
 ## 用法

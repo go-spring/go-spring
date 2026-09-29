@@ -48,10 +48,11 @@ type HTTPSource struct {
 	client   *http.Client
 	headers  map[string]string // e.g. an Authorization header for the console
 
-	mu  sync.Mutex
-	cfg governance.Config
-	cb  func(governance.Config)
+	// push holds the snapshot and the subscriber; this source is a transport
+	// (polling) that parses and feeds it.
+	push *governance.PushSource
 
+	mu      sync.Mutex
 	cancel  context.CancelFunc
 	started bool
 	stopped bool
@@ -74,7 +75,7 @@ func NewHTTPSource(url string, interval time.Duration, format string, headers ma
 	if err != nil {
 		return nil, err
 	}
-	src.cfg = cfg
+	src.push = governance.NewPushSource(cfg)
 	src.interval = interval
 	return src, nil
 }
@@ -121,40 +122,23 @@ func (s *HTTPSource) Close() error {
 }
 
 // Snapshot returns the latest good snapshot.
-func (s *HTTPSource) Snapshot() governance.Config {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.cfg
-}
+func (s *HTTPSource) Snapshot() governance.Config { return s.push.Snapshot() }
 
 // Subscribe registers cb as the push target (the center is the only consumer).
-func (s *HTTPSource) Subscribe(cb func(governance.Config)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.cb = cb
-}
+func (s *HTTPSource) Subscribe(cb func(governance.Config)) { s.push.Subscribe(cb) }
 
 // poll fetches once and, on a good fetch that actually changed the rules,
-// swaps the snapshot and pushes.
+// pushes it.
 func (s *HTTPSource) poll() {
 	cfg, err := s.fetch(context.Background())
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "governance http source: poll %s failed (keeping last good config): %v", s.url, err)
 		return
 	}
-
-	s.mu.Lock()
-	unchanged := reflect.DeepEqual(s.cfg, cfg)
-	s.cfg = cfg
-	cb := s.cb
-	s.mu.Unlock()
-
-	if unchanged {
+	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
 		return
 	}
-	if cb != nil {
-		cb(cfg)
-	}
+	s.push.Push(cfg)
 }
 
 // fetch performs one GET and parses the body through the shared core.

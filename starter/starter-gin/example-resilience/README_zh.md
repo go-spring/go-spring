@@ -1,6 +1,6 @@
 # starter-gin 韧性(resilience)示例
 
-演示 starter-gin 的**入站韧性准入**:开启 `spring.gin.server.resilience.enabled` 后,每个请求都会通过所选韧性驱动的 `Executor`,超过配置限流的突发流量会在执行业务处理器之前被以 HTTP 429 丢弃(熔断打开时为 503)。
+演示 starter-gin 的**入站韧性准入**:开启 `spring.gin.server.resilience.enabled` 后,每个请求都会通过所选韧性驱动的 `ClientExecutor`,超过配置限流的突发流量会在执行业务处理器之前被以 HTTP 429 丢弃(熔断打开时为 503)。
 
 ## 特性
 

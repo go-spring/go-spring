@@ -60,7 +60,7 @@ const (
 	addrFlaky    = "127.0.0.1:9473"
 
 	// serviceName is the logical name the "discovered" client resolves through
-	// the static discovery backend below. It doubles as the resilience resource
+	// the static discovery backend below. It doubles as the governance service
 	// key for the "guarded" client (the breaker keys on the request host, which
 	// is the generated client's Target).
 	serviceName = "greet-svc"

@@ -168,7 +168,7 @@ gs.Run()
   ├─ Rooter Init 阶段：应用 Service.Init 注册 handler（mux 惰性创建，
   │  client.go:129-147——之后注册也可以，但 worker 开始消费后 handler 集合固定）
   ├─ Client.Init (client.go)：newObserver()（observe.go）、
-  │    resilience.ResourceLabel("asynq", addr)、fault executor 就绪
+  │    resilience.ServiceLabel("asynq", addr)、fault executor 就绪
   ├─ Server.Init (client.go:111-127)：asynq.NewServer(connOpt, Config{...})
   ├─ Runner 阶段：Server.Run——srv.Start(mux)、sig.TriggerAndWait() → 就绪，
   │    随后阻塞于 <-ctx.Done()
@@ -195,8 +195,9 @@ gs.Run()
    调用内嵌提升的 `*asynq.Client.Enqueue`——只有 wrapper 走守护链。
 2. 观测层开启生产者观测（`o.obs.start(ctx, "enqueue", task.Type())`，
    observe.go）：span、指标与访问日志。
-3. executor 执行：`fault.WrapExecutor(resilience.ExecutorFor("asynq", "asynq:<addr>"))`——带
-   starter-governance 时，限流拒绝/熔断开启会在**接触 Redis 之前**中止；未引入则为直通。
+3. executor 执行：`Init` 用注入的 `*resilience.Manager` 构建、并由注入的
+   `*fault.Injector` 包裹的那一个——带 starter-governance 时，限流拒绝/熔断开启会在
+   **接触 Redis 之前**中止；未引入则为直通。
 4. `Client.EnqueueContext` 把任务写入 Redis（asynq 语义：队列/优先级由 opts 决定）。
 5. worker 的 `ServeMux` 按任务类型匹配注册的 pattern（`:` 作中间件分组分隔符），在
    `concurrency` 个槽位之一上调你的 `HandlerFunc`。
@@ -214,7 +215,7 @@ gs.Run()
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`；同时构成治理资源标签 `asynq:<addr>`。必填（`expr:"$ != ''"`）。 | 缺失 → 绑定期启动报错。 |
+| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`；同时构成治理服务标签 `asynq:<addr>`。必填（`expr:"$ != ''"`）。 | 缺失 → 绑定期启动报错。 |
 | `..username` / `..password` | string | 空 | Redis ACL 认证。 | 配错 → 运行期投递/消费失败而非启动期（健康检查能探出）。 |
 | `..db` | int | 0 | Redis 数据库编号。 | 生产者与 worker 的 db 不一致 → 任务投了却没人消费。 |
 | `..tls.*` | 块 | 关 | 共享 security（`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`）；开启时 DefaultDriver 构建 TLS RedisClientOpt（driver.go:58-77）。 | TLS 配一半 → bean 构建期报错。 |
@@ -268,7 +269,7 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 
 ### 4.5 治理守护（可选）
 
-带 starter-governance + `govern` source 时，对资源 `asynq:<addr>` 开熔断/限流：
+带 starter-governance + `govern` source 时，对服务 `asynq:<addr>` 开熔断/限流：
 `Client.Enqueue` 直接返回拒绝、**不触 Redis**；提升来的 `asynq.Client` 路径则完全绕过
 守护（见 §5 第 2 行）。
 

@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -36,43 +35,66 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-// fakeAdmissionExec is a resilience.Executor stub that admits the first
+// fakeServerExec is a resilience.ServerExecutor stub that admits the first
 // "allowed" calls and rejects everything beyond with ErrRateLimited — the
-// admission-control behavior a rate-limit policy produces.
-type fakeAdmissionExec struct {
+// admission-control behavior a rate-limit admission model produces.
+type fakeServerExec struct {
 	calls   atomic.Int32
 	allowed int32
 }
 
-func (f *fakeAdmissionExec) Execute(ctx context.Context, _ string, fn func(context.Context) error) error {
+func (f *fakeServerExec) Execute(ctx context.Context, fn func(context.Context) error) error {
 	if f.calls.Add(1) > f.allowed {
 		return resilience.ErrRateLimited
 	}
 	return fn(ctx)
 }
-func (f *fakeAdmissionExec) Close() error                    { return nil }
-func (f *fakeAdmissionExec) Refresh(resilience.Policy) error { return nil }
+func (f *fakeServerExec) Close() error                          { return nil }
+func (f *fakeServerExec) Refresh(resilience.ServerPolicy) error { return nil }
 
-// admissionRegistry dispatches the process-wide executor provider seam by
-// resource label. resilience.RegisterExecutorProvider cannot be un-registered
-// and memoizes executors per label, so each test installs its fake under a
-// UNIQUE label (a unique Addr) and unknown labels resolve to the transparent
-// no-op executor — mirroring "governance not configured".
-var (
-	admissionOnce    sync.Once
-	admissionFakes   sync.Map // resource label -> resilience.Executor
-	uniqueAddrSerial atomic.Int64
-)
+// fakeServerDriver is a resilience.Driver that hands out the fake executor
+// for every admission model, so a Manager armed with it resolves each label to
+// the same admission behavior — the test-local stand-in for a governance
+// document's server block.
+type fakeServerDriver struct{ exec resilience.ServerExecutor }
+
+func (d fakeServerDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (resilience.ClientExecutor, error) {
+	return resilience.NewDefaultDriver(nil).NewClientExecutor(service, p)
+}
+
+func (d fakeServerDriver) NewServerExecutor(service string, a resilience.ServerPolicy) (resilience.ServerExecutor, error) {
+	return d.exec, nil
+}
+
+// armedManager returns a Manager armed with the fake executor: the admission
+// resolver hands every label the zero model, which the fake driver turns into the
+// fake executor, so a label the manager resolves runs through it. Without a
+// resolver the manager stays pass-through (see Manager.build).
+func armedManager(t *testing.T, exec resilience.ServerExecutor) *resilience.Manager {
+	t.Helper()
+	mgr := resilience.NewManager()
+	mgr.SetDrivers(map[string]resilience.Driver{"fake": fakeServerDriver{exec: exec}})
+	assert.That(t, mgr.Apply(resilience.Settings{
+		Enabled:             true,
+		Driver:              "fake",
+		ResolveServerPolicy: func(string) resilience.ServerPolicy { return resilience.ServerPolicy{} },
+	})).Nil()
+	return mgr
+}
 
 func uniqueTestAddr(prefix string) string {
-	return fmt.Sprintf("%s-%d", prefix, uniqueAddrSerial.Add(1))
+	return fmt.Sprintf("%s-%d", prefix, addrSerial.Add(1))
 }
+
+// addrSerial keeps each test's server address distinct so two servers never
+// bind the same endpoint within one run.
+var addrSerial atomic.Int64
 
 // TestResilienceUnaryInterceptor_Unit drives the interceptor directly: the
 // admitted call reaches the handler and returns its response; the rejected call
 // surfaces the executor's error and the handler never runs.
 func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
-	exec := &fakeAdmissionExec{allowed: 1}
+	exec := &fakeServerExec{allowed: 1}
 	ic := resilienceUnaryInterceptor(exec, "grpc:test")
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 
@@ -93,31 +115,20 @@ func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
 }
 
 // TestAdmission_EndToEndOverBufconn exercises the full assembly path a real
-// request takes: buildOptions wires the resilience interceptor resolved from
-// the neutral resilience.ExecutorFor seam, so a policy that admits only the
-// first call lets exactly one RPC through to the health handler and rejects
-// the rest.
+// request takes: buildOptions wires the resilience interceptor built from the
+// injected Manager, so a policy that admits only the first call lets exactly one
+// RPC through to the health handler and rejects the rest.
 //
-// Admission rejections are mapped to semantic status codes (see
-// mapAdmissionError): a rate-limit rejection crosses the wire as
+// ServerPolicy rejections are mapped to semantic status codes (see
+// mapServerPolicyError): a rate-limit rejection crosses the wire as
 // ResourceExhausted with message "resilience: rate limited", so consumers
 // branching on status code can recognise throttling.
 func TestAdmission_EndToEndOverBufconn(t *testing.T) {
 	addr := uniqueTestAddr("admission-e2e")
-	resource := resilience.ResourceLabel("grpc", addr)
-	exec := &fakeAdmissionExec{allowed: 1}
-	admissionFakes.Store(resource, exec)
+	exec := &fakeServerExec{allowed: 1}
+	mgr := armedManager(t, exec)
 
-	admissionOnce.Do(func() {
-		resilience.RegisterExecutorProvider(func(label string) resilience.Executor {
-			if v, ok := admissionFakes.Load(label); ok {
-				return v.(resilience.Executor)
-			}
-			return nil // unknown label => transparent no-op executor
-		})
-	})
-
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil)
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, mgr, nil, nil)
 	opts, err := s.buildOptions()
 	assert.That(t, err).Nil()
 
@@ -154,12 +165,12 @@ func TestAdmission_EndToEndOverBufconn(t *testing.T) {
 	assert.That(t, status.Code(err)).Equal(codes.ResourceExhausted)
 }
 
-// TestAdmission_NoProviderForLabelIsTransparent pins the governance-off
-// default: a label the provider does not know resolves to the no-op executor,
-// so every RPC runs the handler untouched.
-func TestAdmission_NoProviderForLabelIsTransparent(t *testing.T) {
+// TestAdmission_UnarmedManagerIsTransparent pins the governance-off default: no
+// manager bean (nil) is normalized to an unarmed manager, whose executor is a
+// no-op, so every RPC runs the handler untouched.
+func TestAdmission_UnarmedManagerIsTransparent(t *testing.T) {
 	addr := uniqueTestAddr("admission-unarmed")
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil)
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, nil, nil, nil)
 	ri, ok := s.buildResilienceInterceptors()
 	assert.That(t, ok).True()
 

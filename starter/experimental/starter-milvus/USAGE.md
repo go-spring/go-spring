@@ -13,7 +13,7 @@ prefix check [starter.go:29]). Each `spring.milvus.instances.<name>` entry creat
 **Honest scope note**: since the per-RPC governance guard landed (guard.go — gRPC client
 interceptors on the SDK dial options), every Milvus RPC is transparently protected
 (rate-limit/breaker/bulkhead/retry/timeout + fault injection) with no opt-in at the call
-site; the executor resolved through `resilience.ExecutorFor` emits the guard execution's observation
+site; the executor built from the injected `*resilience.Manager` emits the guard execution's observation
 (spans + outcome metrics + access log). There is no separate per-RPC trace layer for
 unguarded traffic — when governance is off the executor is a transparent no-op. The health
 indicator remains the always-on liveness signal (§2.2, §6).
@@ -156,8 +156,9 @@ gs.Run()
   │   interceptors installed (inert until Init arms them); then fail-fast probe:
   │   ListCollections once, error → cl.Close() + boot fails — a wrong address or bad
   │   credential never reaches "serving"
-  ├─ Init [client.go]: resource = ResourceLabel("milvus", addr) →
-  │   fault.WrapExecutor(resilience.ExecutorFor("milvus", resource)) →
+  ├─ Init [client.go]: service = ServiceLabel("milvus", addr) →
+  │   fault.WrapClientExecutor(mgr.ClientExecutorFor("milvus", service), service, inj) from the
+  │   injected *resilience.Manager / *fault.Injector →
   │   slot.arm — the
   │   interceptors guard every RPC from here on; governance off → no-op executor
   ├─ readiness: indicator repeats the same ListCollections probe periodically
@@ -181,7 +182,8 @@ That is the whole story, plus the guard. **The guard is a gRPC interceptor chain
 (keepalive, connect backoff, 2GB recv limit) are re-added first and the guard
 interceptors (unary + stream-open) appended — additive, not a replacement. The
 interceptors read a per-client slot that `Init` arms with
-`fault.WrapExecutor(resilience.ExecutorFor("milvus", "milvus:<addr>"))`
+`fault.WrapClientExecutor(mgr.ClientExecutorFor("milvus", "milvus:<addr>"), "milvus:<addr>", inj)`, built from
+the injected `*resilience.Manager` and `*fault.Injector`
 (governance off → no-op, passthrough; the fail-fast probe in
 `newClient` runs pre-Init and relies on that passthrough). Every RPC — collections,
 indexes, search, insert — rides it with zero call-site changes, the same transparent

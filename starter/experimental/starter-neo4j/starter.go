@@ -22,11 +22,12 @@ import (
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	health2 "go-spring.org/starter-neo4j/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
@@ -39,11 +40,12 @@ func init() {
 	// registration to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.neo4j.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.neo4j.instances}", func(name string, c Config) error {
-			// The wrapper bean owns the resilience executor + discovery watch, so
-			// Init arms it (InitMethod) and Close tears it down (Destroy). The
-			// instance's discovery.Discovery backend bean is injected by name from
-			// the entry's ${discovery} label (default "default"; optional, so an
-			// app with no backend beans at all gets nil here). The Driver bean
+			// The wrapper bean owns the resilience executor, so the ctor arms
+			// it (ArmGovernance, with the injected governance beans) and Close
+			// tears it down (Destroy). The instance's discovery.Discovery
+			// backend bean is injected by name from the entry's ${discovery}
+			// label (default "default"; optional, so an app with no backend
+			// beans at all gets nil here). The Driver bean
 			// is selected by the entry's ${driver} key: unset → "?" (nullable
 			// by-type — injects the single Driver bean when one is provided,
 			// nil otherwise, and the ctor falls back to the bundled
@@ -53,13 +55,23 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.neo4j.instances."+name+".discovery:=${spring.neo4j.default.discovery:=none}}?")),
 				gs.IndexArg(3, gs.TagArg("${spring.neo4j.instances."+name+".driver:=${spring.neo4j.default.driver:=?}}")),
-			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. ArmGovernance
+				// treats a nil bean as an unarmed authority, i.e. a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(5, gs.TagArg("?")), // inj *fault.Injector
+			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// driver just registered above by name. The wrapper is what is
 			// autowired; the embedded neo4j.DriverWithContext is handed to the
 			// indicator.
 			r.Provide(func(w *Client) *health.Indicator {
-				return health2.NewDriverHealth(name, w.DriverWithContext)
+				return NewDriverHealth(name, w.DriverWithContext)
 			}, gs.TagArg(name)).Name("neo4j:" + name).Caller(1)
 			return nil
 		})
@@ -86,7 +98,12 @@ func init() {
 // — it is how a neo4j:// (routing) client re-finds the cluster after the seeded
 // host disappears. In mesh mode the sidecar owns discovery+LB, so the URI is used
 // unchanged. See Config.ServiceName.
-func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver) (*Client, error) {
+//
+// mgr and inj are the governance beans starter-governance provides. The wiring
+// injects them NULLABLY, so both are nil in a container without
+// starter-governance as well as in a standalone (non-gs) call;
+// [Client.ArmGovernance] treats a nil bean as "governance off".
+func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating neo4j client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
 	if c.ServiceName != "" && !mesh.Enabled() {
@@ -109,6 +126,13 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d
 	}
 
 	w := &Client{DriverWithContext: client, cfg: c}
+	// Arm governance on the wrapper. It runs here, not inside the driver, so a
+	// custom Driver's client is governed too — without the Driver interface
+	// carrying a dependency on cloud/governance.
+	if err := w.ArmGovernance(mgr, inj); err != nil {
+		_ = client.Close(ctx.Context)
+		return nil, err
+	}
 	// Fail fast: verify the server is reachable before handing out the driver.
 	vctx, cancel := verifyContext(ctx.Context, c.SocketConnectTimeout)
 	defer cancel()

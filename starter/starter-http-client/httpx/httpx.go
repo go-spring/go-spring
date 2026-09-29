@@ -32,17 +32,22 @@
 //   - resilience — an executor wraps the whole chain so rate limiting, circuit
 //     breaking and retry protect every call; because it sits outside the
 //     balancer, a retry re-picks a fresh endpoint and the breaker keys on the
-//     logical service name. When no explicit executor is supplied, one is
-//     resolved from the centralized governance authority under Resource;
+//     logical service name. When no explicit executor is supplied, it comes from
+//     the injected [resilience.Manager] under Service — the same
+//     [resilience.Manager.ClientExecutorFor] path every other client starter uses;
 //   - TLS — the certificate surface for https targets is built into the base
 //     transport;
 //
 // Observability is built in, not layered on by a starter: the base transport is
-// wrapped with otelhttp so every call carries a client span, and an active
-// resilience executor is wrapped with fault + observe so each call emits
-// outcome-classified metrics and an access log (gated by Observability). With no
+// wrapped with otelhttp so every call carries a client span, and the resilience
+// executor carries observe (applied by the manager when it builds the executor)
+// plus fault, so each call emits outcome-classified metrics and an access log
+// (gated by Observability). With no
 // OTel SDK registered these are no-ops, so the transport stays usable bare. The
-// package never imports a concrete starter.
+// package never imports a concrete starter; the governance authority reaches it
+// as the beans [NewTransport] takes — a [resilience.Manager], a [fault.Injector]
+// and a [loadbalance.Manager] for the selection half — never through a
+// package-level seam.
 package httpx
 
 import (
@@ -50,11 +55,11 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/security"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -92,26 +97,28 @@ type Config struct {
 	// explicit Base owns the dialer.
 	TLS security.TLSConfig
 
-	// Resource is the governance resource label protecting this client (e.g.
-	// "http:user-svc"). When empty it is derived as
-	// resilience.ResourceLabel("http", ServiceName, Addr) — service-name wins
-	// whenever set, only an entry with no service-name falls back to its
-	// address, so the label stays stable across addressing-mode switches.
-	// Set it explicitly to decouple the label from addressing entirely.
-	Resource string
+	// Service is the governance service label protecting this client (e.g.
+	// "http:user-svc") — the name a govern rule matches. When empty it is derived
+	// as resilience.ServiceLabel("http", ServiceName, Addr): ServiceName wins
+	// whenever set, only an entry with no service-name falls back to its address,
+	// so the label stays stable across addressing-mode switches. Set it
+	// explicitly to decouple the label from addressing entirely. Distinct from
+	// ServiceName, which is what discovery resolves; this is what governance
+	// protects.
+	Service string
 
 	// ResilienceDriver is the resilience backend to protect calls with. The
 	// caller resolves it by name from the container's driver directory (the
 	// starter's ${...driver} entry key) and passes the driver itself, since this
 	// package is container-free. When neither Executor nor ResilienceDriver is
-	// set, the executor is resolved from the centralized governance authority
-	// (governance.Register under Resource); with governance off the armed policy
-	// is zero and the executor is a transparent pass-through.
+	// set, the executor is resolved from the injected [resilience.Manager] under
+	// Service; with governance off the armed policy is zero and the executor is
+	// a transparent pass-through.
 	ResilienceDriver resilience.Driver
 
 	// ResiliencePolicy is the backend-neutral protection applied when
 	// ResilienceDriver is set.
-	ResiliencePolicy resilience.Policy
+	ResiliencePolicy resilience.ClientPolicy
 
 	// Executor is a pre-built resilience executor to use in place of the
 	// ResilienceDriver+ResiliencePolicy pair. When non-nil it takes precedence:
@@ -119,12 +126,14 @@ type Config struct {
 	// that owns its hot-reload), and httpx only wraps the transport with it. This
 	// lets a caller attach a policy that refreshes externally without httpx
 	// knowing about the governance source. WrapExec still wraps it (fault/observe).
-	Executor resilience.Executor
+	Executor resilience.ClientExecutor
 
-	// WrapExec, when non-nil, replaces the default executor wrap (which layers
-	// observe over fault over the raw executor) — the escape hatch for a caller
-	// that needs its own ordering or extra layers. nil means the default wrap.
-	WrapExec func(resilience.Executor) resilience.Executor
+	// WrapExec, when non-nil, replaces the default executor wrap (fault over the
+	// raw executor, with observe added here only when the executor came from the
+	// driver/Executor escape hatches rather than from the manager) — the escape
+	// hatch for a caller that needs its own ordering or extra layers. nil means
+	// the default wrap.
+	WrapExec func(resilience.ClientExecutor) resilience.ClientExecutor
 
 	// Base is the raw underlying transport every request ultimately flows
 	// through — tracing is layered on top of it by this package, so pass the
@@ -139,16 +148,40 @@ type Config struct {
 	// cross-cutting concern — without having to replace the whole chain or
 	// disable the built-in layers. Applied outermost, so it sees each request
 	// before the built-in layers; to detect load-test traffic from a wrapper,
-	// read traffic.IsLoadTest(req.Context()) (the ctx is tagged at every layer).
+	// ask the injected propagator's IsLoadTest(req.Context()) (the ctx is tagged
+	// at every layer).
 	WrapTransport func(http.RoundTripper) http.RoundTripper
 }
 
 // NewTransport assembles the http.RoundTripper for cfg and returns it together
-// with a close function that releases the discovery watch and resilience
-// executor. It fails fast when ServiceName is set but the discovery backend or
-// load-balancing strategy cannot be resolved, so misconfiguration surfaces at
-// wiring time rather than on the first request.
-func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err error) {
+// with a close function that releases what the transport owns — an executor it
+// built itself, the discovery watch. An executor taken from [resilience.Manager]
+// is not released here: the manager owns it for the process lifetime. It fails
+// fast when ServiceName is set but the discovery backend or load-balancing
+// strategy cannot be resolved, so misconfiguration surfaces at wiring time
+// rather than on the first request.
+//
+// mgr and inj are the governance beans the caller received from the container
+// (starter-governance provides both); a standalone caller that has neither
+// passes nil, which is normalized here to fresh unarmed authorities. A nil
+// [*resilience.Manager] would panic on its first method call, so normalizing at
+// the assembly point keeps every other caller free of nil branches; the
+// [*fault.Injector] is nil-safe and simply leaves the fault layer transparent.
+// prop is the application's load-test convention bean (nil means go-spring's
+// default), which stamps the marker onto every outbound request.
+func NewTransport(cfg Config, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	if lbMgr == nil {
+		lbMgr = loadbalance.NewManager()
+	}
+	if prop == nil {
+		if prop, err = traffic.NewDefaultPropagator(traffic.DefaultBinding()); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	// Base dialer: an explicit Base wins; otherwise DefaultTransport, cloned with
 	// the configured TLS surface when enabled (nil BuildClient keeps system
 	// defaults, so a plain http route is untouched).
@@ -187,11 +220,8 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 	}
 	if resolver != nil {
 		// Round-robin is only the starting strategy: the governance subscription
-		// below replaces it when a rule for this resource names one.
-		bal, err := loadbalance.New(loadbalance.RoundRobin)
-		if err != nil {
-			return nil, nil, err
-		}
+		// below replaces it when a rule for this service names one.
+		bal := loadbalance.NewRoundRobin()
 
 		// The tracker is attached unconditionally and starts disabled
 		// (Threshold 0): outlier suspension is a governance decision now, so
@@ -202,8 +232,7 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 		// The resolver (bound by-name re-read of the backend snapshot) feeds the
 		// Pool as its endpoint source, so it follows the naming service in real
 		// time.
-		pool = loadbalance.NewPool(resolver, bal,
-			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
+		pool = loadbalance.NewPool(resolver, bal)
 		base = &balancedTransport{base: base, pool: pool}
 	} else if cfg.Addr != "" {
 		// Direct mode: pin every request to the configured address so callers
@@ -212,26 +241,35 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 	}
 
 	// Resilience wraps the (possibly balanced) transport so a retry re-enters
-	// the balancer and picks a fresh endpoint, and the breaker keys on the host
-	// carried by the generated client (the logical service name in discovery
-	// mode). Three executor sources, first match wins: a pre-built Executor, an
-	// explicit ResilienceDriver+Policy, or the centralized governance authority
-	// under Resource (the default — with governance off the armed policy is
-	// zero and the executor is a transparent pass-through, with hot-reload
-	// through the governance subscription when it is on).
-	var exec resilience.Executor
+	// the balancer and picks a fresh endpoint, and the breaker keys on
+	// cfg.service() — the same label the policy is resolved under, so limiter/
+	// breaker state and driver rule names agree with the govern rule that armed
+	// them. Three executor sources, first match wins: a pre-built Executor, an
+	// explicit ResilienceDriver+Policy, or — the default, and the same path every
+	// other client starter takes — the injected [resilience.Manager] under
+	// Service. The manager owns that executor: it is built once per label, shared
+	// by every user of the label, refreshes itself on a policy change, and
+	// already carries the observe layer; with governance off the armed policy is
+	// zero and it is a transparent pass-through.
+	var exec resilience.ClientExecutor
+	managerOwned := false
 	switch {
 	case cfg.Executor != nil:
 		exec = cfg.Executor
 	case cfg.ResilienceDriver != nil:
-		if exec, err = cfg.ResilienceDriver.NewExecutor(cfg.ResiliencePolicy); err != nil {
+		if exec, err = cfg.ResilienceDriver.NewClientExecutor(cfg.service(), cfg.ResiliencePolicy); err != nil {
 			closeAll(closeFns)
 			return nil, nil, err
 		}
 	default:
-		if exec, err = governedExecutor(cfg.resource(), pool); err != nil {
-			closeAll(closeFns)
-			return nil, nil, err
+		exec = mgr.ClientExecutorFor("http", cfg.service())
+		managerOwned = true
+		// The pool's endpoint-selection half follows the governance rule through
+		// its own subscription on the loadbalance manager — the protection policy
+		// reaches the executor, the selection reaches the pool, and neither change
+		// rebuilds anything. A nil pool (direct addressing) opts out.
+		if pool != nil {
+			lbMgr.Bind(pool, cfg.service())
 		}
 	}
 
@@ -239,17 +277,32 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 	// the still-private raw executor, so it attaches its breaker listener at
 	// construction; fault then injects outside it, but the injected error still
 	// flows through the real executor's retry loop and breaker. observe records
-	// the final outcome (span, outcome-classified metrics, access log). WrapExec,
-	// when set, replaces this stack entirely.
+	// the final outcome (span, outcome-classified metrics, access log).
+	//
+	// The manager-owned executor is already instrumented — the manager applies
+	// the same observe layer when it builds the backing executor, which is how
+	// every client starter gets it — so only fault is added on top; an executor
+	// httpx built itself gets observe here. WrapExec, when set, replaces this
+	// stack entirely and receives the raw executor either way.
 	wrap := cfg.WrapExec
 	if wrap == nil {
-		wrap = func(e resilience.Executor) resilience.Executor {
-			return fault.WrapExecutor(resilience.WrapExecutor(e, "http"))
+		if managerOwned {
+			wrap = func(e resilience.ClientExecutor) resilience.ClientExecutor {
+				return fault.WrapClientExecutor(e, cfg.service(), inj)
+			}
+		} else {
+			wrap = func(e resilience.ClientExecutor) resilience.ClientExecutor {
+				return fault.WrapClientExecutor(resilience.WrapClientExecutor(e, "http", cfg.service()), cfg.service(), inj)
+			}
 		}
 	}
 	exec = wrap(exec)
-	base = resilience.NewRoundTripper(base, exec, nil)
-	closeFns = append(closeFns, exec.Close)
+	base = resilience.NewRoundTripper(base, exec)
+	// The manager owns its executor for the process lifetime, so closing it with
+	// one transport would be wrong; only an httpx-built one is released here.
+	if !managerOwned {
+		closeFns = append(closeFns, exec.Close)
+	}
 
 	// Traffic: inject the load-test marker onto every outbound request when the
 	// call's ctx carries it, so downstream hops can recognise synthetic load and
@@ -257,8 +310,8 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 	// the marker (the header is set on the original request, which the retry
 	// loop reuses), and below the user WrapTransport so a custom wrapper can
 	// still observe or override the header. Inert — and effectively free —
-	// unless traffic.IsLoadTest(ctx) is true.
-	base = &trafficTransport{base: base}
+	// unless the propagator reports the ctx as load-test traffic.
+	base = &trafficTransport{base: base, prop: prop}
 
 	// User extension seam: the outermost layer, applied last so it wraps the
 	// complete built-in stack (traffic included).
@@ -274,10 +327,13 @@ func NewTransport(cfg Config) (rt http.RoundTripper, close func() error, err err
 // the outbound seam for [go-spring.org/cloud/governance/traffic] on the HTTP client path.
 type trafficTransport struct {
 	base http.RoundTripper
+	prop traffic.Propagator
 }
 
 func (t *trafficTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	canonical.InjectHTTP(req.Context(), req)
+	// The header adapter writes through Header.Set, so the key lands in
+	// canonical spelling and reads back through Get.
+	t.prop.Inject(req.Context(), propagate.Header(req.Header))
 	return t.base.RoundTrip(req)
 }
 
@@ -321,82 +377,14 @@ func (t *fixedHostTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return t.base.RoundTrip(r)
 }
 
-// resource derives the governance resource label: explicit Resource wins;
+// service derives the governance service label: explicit Service wins;
 // otherwise service-name (whenever set) before the direct address, so the
 // label a govern rule matches on stays stable across addressing-mode switches.
-func (c Config) resource() string {
-	if c.Resource != "" {
-		return c.Resource
+func (c Config) service() string {
+	if c.Service != "" {
+		return c.Service
 	}
-	return resilience.ResourceLabel("http", c.ServiceName, c.Addr)
-}
-
-// minRequestsFloor is the minimum sample size enforced on an error-rate breaker
-// resolved for an http resource. resilience's own zero-value floor is 1 — a
-// single failure at a 100% rate trips the breaker immediately, which is too
-// hair-trigger for typical http traffic. Unless a govern rule sets a HIGHER
-// value explicitly, MinRequests is raised to this floor. Applies only to
-// policies resolved through the governance path here; resilience core defaults
-// are untouched, and the consecutive strategy is unaffected (MinRequests is an
-// error-rate-only knob).
-const minRequestsFloor = 5
-
-// governedExecutor builds the resilience executor for one http resource from
-// the centralized governance authority, applying the minRequestsFloor to the
-// resolved policy. It subscribes through the governance facade rather than the
-// resilience.ExecutorFor seam, because the floor must see the resolved
-// policy — a seam executor is opaque to it. With governance off the armed
-// policy is zero and the executor is a transparent pass-through, exactly as
-// with ExecutorFor; hot-reload works the same way (governance re-invokes the
-// subscriber, the executor Refreshes).
-//
-// pool, when non-nil, is driven by the same subscription: the resolved policy
-// also carries the resource's endpoint-selection decisions (balancer strategy,
-// outlier suspension), so one subscription keeps the transport's protection
-// and its selection in step with the same rule — and neither needs a rebuild.
-// A nil pool (direct addressing, no discovery) simply opts out of the
-// selection half.
-func governedExecutor(resource string, pool *loadbalance.Pool) (resilience.Executor, error) {
-	var exec resilience.Executor
-	refresh := func(p resilience.Policy) {
-		p = floorMinRequests(p)
-		if e := exec; e != nil {
-			_ = e.Refresh(p)
-		}
-		if pool != nil {
-			governSelection(pool, p)
-		}
-	}
-	// Register invokes refresh immediately with the armed policy, so the pool
-	// is in step before the executor exists; the executor itself is built from
-	// that same floored policy below.
-	// The subscription is not cancelled: the transport (and so this
-	// subscription) lives for the life of the client, which httpx builds once.
-	p := floorMinRequests(governance.Register(resource, refresh).Policy)
-	e, err := governance.NewExecutor(p)
-	if err != nil {
-		return nil, err
-	}
-	exec = e
-	return exec, nil
-}
-
-// governSelection applies a resolved policy's endpoint-selection half to a live
-// pool. Both halves land in place, so a pushed rule takes effect on the next
-// request without rebuilding the transport; the "unknown strategy is ignored"
-// rule lives in [loadbalance.Pool.ApplySelection].
-func governSelection(pool *loadbalance.Pool, p resilience.Policy) {
-	pool.ApplySelection(p.Balancer, p.OutlierThreshold, p.OutlierSuspendFor)
-}
-
-// floorMinRequests raises an error-rate policy's MinRequests to
-// minRequestsFloor when unset or lower. A policy that is zero or consecutive
-// is returned unchanged.
-func floorMinRequests(p resilience.Policy) resilience.Policy {
-	if p.ResolvedBreakerStrategy() == resilience.BreakerErrorRate && p.ErrorRateThreshold > 0 && p.MinRequests < minRequestsFloor {
-		p.MinRequests = minRequestsFloor
-	}
-	return p
+	return resilience.ServiceLabel("http", c.ServiceName, c.Addr)
 }
 
 func closeAll(fns []func() error) error {

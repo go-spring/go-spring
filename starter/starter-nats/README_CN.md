@@ -74,7 +74,8 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 driver 会按已配置实例自动注册为 bean，与连接共用实例名，因此可像其他 client bean
 一样按名注入（`Driver messaging.Driver \`autowire:"main"\``）。bean 以名字与类型
 双键区分，所以它和原生 `*Conn` bean 互不冲突。若想手工构造，调用
-`StarterNats.NewDriver(conn)` 即可。
+`StarterNats.NewDriver(conn, prop)` 即可，`prop` 为进程的 `traffic.Propagator`
+（传 nil 则回退到 `traffic.NewDefaultPropagator(traffic.DefaultBinding())`）。
 
 然后通过信封收发:
 

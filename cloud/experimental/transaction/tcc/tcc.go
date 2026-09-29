@@ -84,12 +84,12 @@ import (
 )
 
 // RetryPolicy governs how a [Participant] phase (try, confirm or cancel) is
-// retried on failure. It reuses [resilience.Policy] rather than inventing a
+// retried on failure. It reuses [resilience.ClientPolicy] rather than inventing a
 // second knob set, so the same declarative fields (MaxRetries, Timeout, ...)
 // govern both outbound resilience and TCC phase retries. The zero value means a
 // single attempt with no retry. Confirm and Cancel in particular benefit from a
 // non-zero policy, since the TCC contract requires them to eventually succeed.
-type RetryPolicy = resilience.Policy
+type RetryPolicy = resilience.ClientPolicy
 
 // Participant is one TCC resource that splits its work into three phases: a
 // reversible Try that reserves the resource, a Confirm that commits the

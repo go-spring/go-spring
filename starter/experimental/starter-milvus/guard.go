@@ -32,28 +32,26 @@ import (
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 )
 
-// guardSlot carries the executor + resource Init arms after gs field-injects
+// guardSlot carries the executor Init arms after gs field-injects
 // Observability. The interceptors consult it on every RPC; before Init it is
 // transparent (nil exec) — the same shape as starter-tdengine's clientSlot.
 type guardSlot struct {
-	mu       sync.RWMutex
-	exec     resilience.Executor
-	resource string
+	mu   sync.RWMutex
+	exec resilience.ClientExecutor
 }
 
-// arm installs the executor + resource the interceptors route through.
-func (s *guardSlot) arm(exec resilience.Executor, resource string) {
+// arm installs the executor the interceptors route through.
+func (s *guardSlot) arm(exec resilience.ClientExecutor) {
 	s.mu.Lock()
 	s.exec = exec
-	s.resource = resource
 	s.mu.Unlock()
 }
 
-// load returns the armed executor + resource, or (nil, "") before Init.
-func (s *guardSlot) load() (resilience.Executor, string) {
+// load returns the armed executor + service, or (nil, "") before Init.
+func (s *guardSlot) load() resilience.ClientExecutor {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.exec, s.resource
+	return s.exec
 }
 
 // guardDialOptions returns the gRPC dial options that route every RPC through
@@ -79,8 +77,8 @@ func unaryGuard(slot *guardSlot) grpc.UnaryClientInterceptor {
 		method string, req, reply any,
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
 	) error {
-		if exec, resource := slot.load(); exec != nil {
-			return exec.Execute(ctx, resource, func(ctx context.Context) error {
+		if exec := slot.load(); exec != nil {
+			return exec.Execute(ctx, func(ctx context.Context) error {
 				return invoker(ctx, method, req, reply, cc, opts...)
 			})
 		}
@@ -98,9 +96,9 @@ func streamGuard(slot *guardSlot) grpc.StreamClientInterceptor {
 		desc *grpc.StreamDesc, cc *grpc.ClientConn,
 		method string, streamer grpc.Streamer, opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
-		if exec, resource := slot.load(); exec != nil {
+		if exec := slot.load(); exec != nil {
 			var cs grpc.ClientStream
-			err := exec.Execute(ctx, resource, func(ctx context.Context) error {
+			err := exec.Execute(ctx, func(ctx context.Context) error {
 				var e error
 				cs, e = streamer(ctx, desc, cc, method, opts...)
 				return e

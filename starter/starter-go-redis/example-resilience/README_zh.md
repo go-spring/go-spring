@@ -1,6 +1,6 @@
 # starter-go-redis 韧性(resilience)示例
 
-演示 starter-go-redis 的**韧性保护**:开启 `resilience.enabled` 后,每条 Redis 命令都会通过所选驱动的 `Executor`,超过限流的突发会在到达 Redis 之前被以 `ErrRateLimited` 拒绝。
+演示 starter-go-redis 的**韧性保护**:开启 `resilience.enabled` 后,每条 Redis 命令都会通过所选驱动的 `ClientExecutor`,超过限流的突发会在到达 Redis 之前被以 `ErrRateLimited` 拒绝。
 
 ## 特性
 

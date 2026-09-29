@@ -69,7 +69,10 @@ type DefaultDriver struct{}
 // Servers list (the service's stable DNS address).
 func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*memcache.Client, error) {
 	servers := c.Servers
-	resolver, err := newLiveResolver(ctx, c, backend)
+	// A nil resolver (service-name unset, or mesh mode where a sidecar owns
+	// discovery+LB) means the caller uses the configured Servers list.
+	// Resolver freshness lives inside the backend, so there is nothing to release.
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
 	}
@@ -96,13 +99,4 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		client.MaxIdleConns = c.MaxIdleConns
 	}
 	return client, nil
-}
-
-// newLiveResolver resolves the discovery backend for c into a by-name
-// Resolver that re-reads the service's live endpoint snapshot. It returns
-// (nil, nil) when service-name is unset or mesh mode is enabled (a sidecar owns
-// discovery+LB), in which case the caller uses the configured Servers list.
-// Resolver freshness lives inside the backend, so there is nothing to release.
-func newLiveResolver(ctx context.Context, c Config, backend discovery.Discovery) (discovery.Resolver, error) {
-	return discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 }

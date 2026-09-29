@@ -87,9 +87,11 @@ func TestNewRunner_RampIncreasesRate(t *testing.T) {
 // op context as load-test traffic (parity with the legacy Run).
 func TestNewRunner_TagsOpContextLoadTest(t *testing.T) {
 	var seen atomic.Bool
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
 	New().Driver(ClosedLoop{Concurrency: 2}).Duration(20*time.Millisecond).
 		Run(context.Background(), func(ctx context.Context) error {
-			if traffic.IsLoadTest(ctx) {
+			if prop.IsLoadTest(ctx) {
 				seen.Store(true)
 			}
 			return nil

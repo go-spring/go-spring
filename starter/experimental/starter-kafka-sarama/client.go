@@ -25,10 +25,20 @@ import (
 	"fmt"
 
 	"github.com/IBM/sarama"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // newClient creates a shared low-level sarama.Client by dispatching to an
@@ -44,8 +54,10 @@ import (
 // misconfigured broker list, bad credentials or TLS mismatch fail fast at
 // startup instead of surfacing on the first produce/consume. A defensive
 // non-empty Brokers() check guards against future sarama changes that might
-// otherwise swallow a fully empty cluster.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (sarama.Client, error) {
+// otherwise swallow a fully empty cluster. The resilience executor is attached
+// from the injected governance beans (mgr, inj) — both nil in a standalone,
+// non-gs call, which applyResilience treats as "governance off".
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (sarama.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka sarama client, brokers=%s", c.Brokers)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -62,7 +74,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (sarama
 		log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: no brokers after metadata fetch: %s", c.Brokers)
 		return nil, fmt.Errorf("kafka client has no brokers after metadata fetch: %s", c.Brokers)
 	}
-	if err := applyResilience(c, cl, resilience.ResourceLabel("kafka", c.Brokers)); err != nil {
+	if err := applyResilience(c, cl, resilience.ServiceLabel("kafka", c.Brokers), mgr, inj); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: resilience setup failed: %v", err)
 		_ = cl.Close()
 		return nil, err

@@ -14,6 +14,24 @@
  * limitations under the License.
  */
 
+// ratelimit.go is the rate-limit stage of the resilience package: the executor's
+// own budget ([rateState]), the [Counters] seam (where a cross-replica budget
+// lives), and the counting algorithms. The stage's policy knobs
+// (rate-limit/burst/algorithm/window/rate-limit-max-wait) live with every other
+// stage's in policy.go; the seam that builds an [ClientExecutor] over them is
+// executor.go, and the stage runs inside executor_default.go.
+//
+// Rate limiting is a stage of a protected call, not an API of its own: the call
+// either gets its budget or comes back as [ErrRateLimited]. By default the stage
+// counts in a budget the executor holds for its service, exactly like the other
+// stages hold their state — one budget per service, since one executor serves
+// one service and the manager builds one executor per label.
+//
+// One thing goes beyond that default, and it is a [Counters] store's property:
+// HOW WIDE a budget reaches. Supply one over a shared backend (Redis, typically)
+// and the limit covers every replica. With no store, the budget is this
+// executor's alone.
+
 package resilience
 
 import (
@@ -21,157 +39,105 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/timeutil"
 )
 
-// RateLimiter is a first-class, standalone throttle: it answers "may this unit
-// of work against key run right now?" and consumes budget when it says yes. It
-// is separate from [Executor] on purpose — the executor bundles limiting with
-// breaking/retry/timeout for outbound calls, whereas a RateLimiter is the bare
-// flow-control primitive you place anywhere (an inbound HTTP middleware, a
-// per-tenant quota, a background job pacer).
-//
-// The seam is what makes distributed limiting pluggable: the bundled default
-// driver keeps counters in-process (per-replica limiting), while a Redis-backed
-// driver enforces a single global budget shared across replicas — same
-// interface, selected by driver name. Implementations must be safe for
-// concurrent use.
-type RateLimiter interface {
-	// Allow reports whether one unit of work against key may proceed now,
-	// consuming one token when it returns true. key scopes independent budgets
-	// (per tenant, per route, ...); pass a constant for a single global budget.
-	Allow(ctx context.Context, key string) (bool, error)
-
-	// AllowN is [RateLimiter.Allow] for n units at once. It is all-or-nothing: it
-	// consumes n tokens and returns true, or consumes none and returns false.
-	AllowN(ctx context.Context, key string, n int) (bool, error)
-
-	// Close releases any background resources (connections, pumps). It is safe to
-	// call more than once.
-	Close() error
-}
-
-// Algorithm names the counting strategy a [LimitPolicy] asks for.
+// Algorithm names the counting strategy a rate limit asks for.
 type Algorithm string
 
 const (
-	// TokenBucket refills tokens continuously at Rate up to Burst; it smooths
-	// bursts and is the default.
+	// TokenBucket refills tokens continuously at [ClientPolicy.RateLimit] up to
+	// [ClientPolicy.Burst]; it smooths bursts and is the default.
 	TokenBucket Algorithm = "token-bucket"
-	// SlidingWindow counts events over a rolling Window, giving a hard cap on
-	// events per window with less burst tolerance than a token bucket.
+	// SlidingWindow counts events over a rolling [ClientPolicy.Window], giving a hard
+	// cap on events per window with less burst tolerance than a token bucket.
 	SlidingWindow Algorithm = "sliding-window"
 )
 
-// LimitPolicy is a backend-neutral description of a rate limit. Each
-// [LimiterDriver] maps it onto its own primitives (the default driver reads it
-// directly; a Redis driver translates it into a Lua token-bucket script). A
-// zero policy (Rate 0) is an unlimited pass-through.
-type LimitPolicy struct {
-	// Rate is the sustained permitted throughput in operations per second. 0
-	// disables limiting (every call is allowed).
-	Rate float64
-
-	// Burst is the maximum momentary excess over Rate for [TokenBucket]. It
-	// defaults to a small multiple of Rate when unset and is ignored by
-	// [SlidingWindow].
-	Burst int
-
-	// Algorithm selects the counting strategy; empty means [TokenBucket].
-	Algorithm Algorithm
-
-	// Window is the rolling interval for [SlidingWindow]; it defaults to one
-	// second and is ignored by [TokenBucket]. The window cap is Rate*Window.
-	Window time.Duration
+// Counters is the rate-limit stage's counting seam. Handing one to a driver
+// changes one thing about the executors it builds, and only that: their budgets
+// live in the store instead of the executor, so a limit over a shared backend
+// holds across replicas, with each call charged under the service the executor
+// is bound to. Everything else about the stage stays the executor's own.
+//
+// A client never builds one: the container provides it if some backend starter
+// contributed it, and the default driver passes it to the executors it builds
+// (see [NewDefaultDriver]).
+//
+// Implementations must be safe for concurrent use and must keep each scope's
+// counters apart: keeping one budget per scope is what makes a limit cover every
+// caller that spends it. An implementation may also see only one policy per
+// scope — alternating policies on one scope would ask it to restart that
+// scope's budget on every call.
+type Counters interface {
+	// Allow consumes n units of scope's budget under p. It returns
+	// [ErrRateLimited] when the budget is exhausted (after waiting up to
+	// [ClientPolicy.RateLimitMaxWait]) and the store's own error when the counters
+	// could not be read or updated. A zero [ClientPolicy.RateLimit] means unlimited,
+	// and n <= 0 always passes.
+	Allow(ctx context.Context, scope string, p ClientPolicy, n int) error
 }
 
-// LimiterDriver builds a [RateLimiter] from a [LimitPolicy]. Backends implement
-// it and are contributed to the container as a bean named after the backend,
-// exported as a [LimiterDriver] so name-keyed directory injection finds them —
-// the same shape [Driver] backends use.
-type LimiterDriver interface {
-	NewRateLimiter(LimitPolicy) (RateLimiter, error)
-}
-
-// DefaultLimiterName is the name the bundled [NewDefaultLimiterDriver] answers
-// to, and the name a caller falls back to when no limiter backend is named.
-const DefaultLimiterName = "default"
-
-// NewDefaultLimiterDriver returns the bundled limiter driver: in-process
-// counters, no third-party dependencies. It limits each replica independently —
-// select a Redis-backed driver for a single budget shared across replicas.
-func NewDefaultLimiterDriver() LimiterDriver { return defaultLimiterDriver{} }
-
-type defaultLimiterDriver struct{}
-
-func (defaultLimiterDriver) NewRateLimiter(p LimitPolicy) (RateLimiter, error) {
-	if p.Rate < 0 {
-		return nil, errutil.Explain(nil, "resilience: negative rate %v", p.Rate)
+// allow charges one unit of the rate-limit stage for this executor's service and
+// reports [ErrRateLimited] when there is none. It spends the supplied store when
+// the driver was handed one — that is what gives the budget a reach beyond this
+// executor — and otherwise the budget this executor holds (rate), built for the
+// current policy. The store is charged under the executor's service: an executor
+// covers one service, so keys belong to whoever needs them, not here.
+func (e *defaultExecutor) allow(ctx context.Context, rate rateState, p ClientPolicy) error {
+	if e.counters != nil {
+		return e.counters.Allow(ctx, e.service, p, 1)
 	}
-	return &defaultRateLimiter{policy: p, states: map[string]any{}}, nil
+	if p.RateLimit <= 0 {
+		return nil
+	}
+	if rate.window != nil {
+		if rate.window.allowN(1) {
+			return nil
+		}
+		return ErrRateLimited
+	}
+	if rate.bucket.waitN(ctx, 1, p.RateLimitMaxWait) {
+		return nil
+	}
+	return ErrRateLimited
 }
 
-// defaultRateLimiter keeps per-key counter state so independent budgets do not
-// interfere. The concrete state type depends on the configured algorithm.
-type defaultRateLimiter struct {
-	policy LimitPolicy
-	mu     sync.Mutex
-	states map[string]any
+// rateState is the budget ONE executor holds for its ONE service. It is rebuilt
+// whenever the policy changes (see [defaultExecutor.adopt]), so a hot-reloaded
+// rate starts its budget over exactly as a freshly built executor would, and the
+// hot path never diffs policies. The zero value means "no rate limit
+// configured", which the stage treats as unlimited.
+type rateState struct {
+	bucket *tokenBucket
+	window *slidingWindow
 }
 
-func (l *defaultRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
-	return l.AllowN(ctx, key, 1)
-}
-
-func (l *defaultRateLimiter) AllowN(_ context.Context, key string, n int) (bool, error) {
-	if l.policy.Rate == 0 { // unlimited
-		return true, nil
+// newRateState builds the local budget p asks for.
+func newRateState(p ClientPolicy) rateState {
+	if p.RateLimit <= 0 {
+		return rateState{}
 	}
-	if n <= 0 {
-		return true, nil
+	if p.Algorithm == SlidingWindow {
+		win := p.Window
+		if win <= 0 {
+			win = time.Second
+		}
+		limit := p.RateLimit * win.Seconds()
+		if limit < 1 {
+			limit = 1
+		}
+		return rateState{window: &slidingWindow{limit: limit, window: win, curStart: time.Now()}}
 	}
-	switch l.policy.Algorithm {
-	case SlidingWindow:
-		return l.window(key).allowN(n), nil
-	default:
-		return l.bucket(key).allowN(float64(n)), nil
-	}
-}
-
-func (l *defaultRateLimiter) bucket(key string) *tokenBucket {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if s, ok := l.states[key].(*tokenBucket); ok {
-		return s
-	}
-	burst := l.policy.Burst
+	burst := p.Burst
 	if burst <= 0 {
-		if burst = int(l.policy.Rate); burst < 1 {
+		// A small burst keeps steady traffic from being clipped by timing jitter
+		// while still bounding spikes.
+		if burst = int(p.RateLimit); burst < 1 {
 			burst = 1
 		}
 	}
-	b := newTokenBucket(l.policy.Rate, burst)
-	l.states[key] = b
-	return b
-}
-
-func (l *defaultRateLimiter) window(key string) *slidingWindow {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if s, ok := l.states[key].(*slidingWindow); ok {
-		return s
-	}
-	win := l.policy.Window
-	if win <= 0 {
-		win = time.Second
-	}
-	limit := l.policy.Rate * win.Seconds()
-	if limit < 1 {
-		limit = 1
-	}
-	w := &slidingWindow{limit: limit, window: win, curStart: time.Now()}
-	l.states[key] = w
-	return w
+	return rateState{bucket: newTokenBucket(p.RateLimit, burst)}
 }
 
 // tokenBucket is a minimal, dependency-free rate limiter. Tokens refill
@@ -193,8 +159,7 @@ func newTokenBucket(rate float64, burst int) *tokenBucket {
 	}
 }
 
-// allowN consumes n tokens if at least n are available. It is the single token
-// consumer: the executor passes 1, the standalone RateLimiter passes n.
+// allowN consumes n tokens if at least n are available.
 func (b *tokenBucket) allowN(n float64) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -209,6 +174,50 @@ func (b *tokenBucket) allowN(n float64) bool {
 	}
 	b.tokens -= n
 	return true
+}
+
+// waitN consumes n tokens, waiting up to maxWait (and no longer than ctx allows)
+// when the bucket is momentarily empty. It is the queueing form of allowN:
+// maxWait 0 reduces to the immediate allow/reject decision. A false return means
+// no token was obtained (deadline exceeded or ctx done), and no token is
+// consumed in that case.
+func (b *tokenBucket) waitN(ctx context.Context, n float64, maxWait time.Duration) bool {
+	if maxWait <= 0 {
+		return b.allowN(n) // no queueing budget: immediate allow/reject
+	}
+	deadline := time.Now().Add(maxWait)
+	if d, ok := ctx.Deadline(); ok {
+		if deadline.IsZero() || d.Before(deadline) {
+			deadline = d
+		}
+	}
+	for {
+		b.mu.Lock()
+		now := time.Now()
+		b.tokens += now.Sub(b.last).Seconds() * b.rate
+		if b.tokens > b.burst {
+			b.tokens = b.burst
+		}
+		b.last = now
+		if b.tokens >= n {
+			b.tokens -= n
+			b.mu.Unlock()
+			return true
+		}
+		// Tokens missing and how long until n of them refill.
+		need := time.Duration((n - b.tokens) / b.rate * float64(time.Second))
+		b.mu.Unlock()
+		if now.Add(need).After(deadline) {
+			return false
+		}
+		sleep := need
+		if sleep > 10*time.Millisecond {
+			sleep = 10 * time.Millisecond // re-check often; refill is continuous
+		}
+		if !timeutil.Sleep(ctx, sleep) {
+			return false
+		}
+	}
 }
 
 // slidingWindow approximates a rolling-window counter with the standard
@@ -249,5 +258,3 @@ func (w *slidingWindow) allowN(n int) bool {
 	w.curCount += float64(n)
 	return true
 }
-
-func (l *defaultRateLimiter) Close() error { return nil }

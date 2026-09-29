@@ -56,7 +56,7 @@ func main() {
 // A breaker with threshold 3 trips after three refused dials; the fourth is
 // short-circuited with the neutral ErrCircuitOpen before touching the network.
 func demoClientDialer(driver resilience.Driver) {
-	exec, err := driver.NewExecutor(resilience.Policy{ErrorThreshold: 3, OpenDuration: time.Minute})
+	exec, err := driver.NewClientExecutor("sentinel:dialer", resilience.ClientPolicy{ErrorThreshold: 3, OpenDuration: time.Minute})
 	if err != nil {
 		fail("dialer executor: %v", err)
 	}
@@ -70,7 +70,7 @@ func demoClientDialer(driver resilience.Driver) {
 	_ = ln.Close()
 
 	base := resilience.DialFunc((&net.Dialer{Timeout: time.Second}).DialContext)
-	dial := resilience.NewDialer(base, exec, "dead-service")
+	dial := resilience.NewDialer(base, exec)
 
 	for i := 1; i <= 3; i++ {
 		if _, err := dial(context.Background(), "tcp", deadAddr); err == nil {
@@ -92,11 +92,11 @@ func demoClientDialer(driver resilience.Driver) {
 // is recovered transparently within the retry budget while the (generous) limit
 // and breaker stay closed.
 func demoComposedRetry(driver resilience.Driver) {
-	exec, err := driver.NewExecutor(resilience.Policy{
+	exec, err := driver.NewClientExecutor("sentinel:composed", resilience.ClientPolicy{
 		RateLimit:      100,
 		ErrorThreshold: 10,
 		MaxRetries:     3,
-		Timeout:        time.Second,
+		AttemptTimeout: time.Second,
 	})
 	if err != nil {
 		fail("composed executor: %v", err)
@@ -120,7 +120,7 @@ func demoComposedRetry(driver resilience.Driver) {
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
+	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec)}
 	resp, err := client.Get("http://" + ln.Addr().String() + "/flaky")
 	if err != nil {
 		fail("composed request: %v", err)

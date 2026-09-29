@@ -104,8 +104,8 @@ curl -i :9370/healthz                        # gateway indicator UP once table c
 ```
 
 Prerequisites: none for direct `http(s)://` targets. `lb://` routes additionally need a
-discovery backend (starter-registry-nacos etc.); cross-replica `rateLimit` a redis limiter
-driver; tracing an OTel collector (see example-otel/conf).
+discovery backend (starter-registry-nacos etc.); cross-replica `rateLimit` a shared counter
+store (starter-ratelimit-redis); tracing an OTel collector (see example-otel/conf).
 
 ---
 
@@ -153,10 +153,10 @@ id-sorted order):
    error → whole recompile aborted.
 2. **Upstream parse** (`parseUpstream`, compile.go:377) — `lb://svc` becomes a discovery-backed
    `Upstream`; anything else must parse as `http(s)://host` or it errors.
-3. **Executor resolve** (compile.go:232) — a non-empty `resilience.policy` must name a key of
-   `spring.gateway.resilience`; unknown name errors. Executors come from
-   `resilience.ExecutorFor("gateway:<name>", "gateway:<name>")` (compile.go:211) — the governance center owns all
-   policy values and hot-reloads them; governance off yields a transparent no-op.
+3. **ClientExecutor resolve** (compile.go:232) — a non-empty `resilience.policy` must name a key of
+   `spring.gateway.resilience`; unknown name errors. Executors come from the injected
+   `*resilience.Manager`: `mgr.ClientExecutorFor("gateway:<name>", "gateway:<name>")` — the governance center owns all
+   policy values and hot-reloads them in place; governance off yields a transparent no-op.
 4. **Proxy handler** (`newProxyHandler`, proxy.go:159) — see §2.3.
 5. **Filter DSL parse** (`buildFilters` → `splitFilters`, compile.go:268-373) — tokens split on
    commas at paren depth 0; unknown filter name, bad args, or a `jwt-auth`/`lua` token whose
@@ -218,9 +218,9 @@ On any stage error the compiled table is left untouched (keep-last-good, §4.2).
 | `priority` | int | 0 | Matching order: larger priority is checked first; ties (incl. all-unset) fall back to ascending id — the historical default. Hot-reloadable with the rest of the route. | Overlapping paths resolve to the higher priority (then lower id); renaming an id no longer changes precedence among prioritized routes. |
 | `filters` | string | "" | Filter DSL, §3.3; applied outermost-first in declaration order. | Parse errors at compile time, not bind time. |
 | `upstream.target` | string | — | **Required in practice**: `lb://<service>` or `http(s)://host[:port]`. Missing/malformed → `parseError` (compile.go:379-392). | Route fails to compile. |
-| *(removed)* | — | — | `upstream.balancer` moved to governance: `govern.rules[N].balancer` on the rule matching `gateway:<route-id>`. An unknown strategy there is ignored (keeps the current one) rather than failing the reload. | The pool is retuned in place on push — no route-table reload needed. |
+| *(removed)* | — | — | `upstream.balancer` moved to governance: `govern.client.rules[N].balancer` on the rule matching `gateway:<route-id>`. An unknown strategy there is ignored (keeps the current one) rather than failing the reload. | The pool is retuned in place on push — no route-table reload needed. |
 | `upstream.discovery` | string | "" | Per-route backend override of top-level `discovery`. | |
-| *(removed)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` moved to governance: `govern.rules[N].outlier-threshold` / `.outlier-suspend-for`, with `outlier-suspend-for` empty falling back to the tracker's 5s default. | A zombie instance (up but failing) stops receiving traffic for the cool-down instead of yielding periodic 502s. |
+| *(removed)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` moved to governance: `govern.client.rules[N].outlier-threshold` / `.outlier-suspend-for`, with `outlier-suspend-for` empty falling back to the tracker's 5s default. | A zombie instance (up but failing) stops receiving traffic for the cool-down instead of yielding periodic 502s. |
 | `resilience.policy` | string | "" | Must name an existing `spring.gateway.resilience.<name>` key. ⚠ Coupling: unknown name → `unknown resilience policy` compile error (compile.go:236). | Startup failure / reload keeps old table. |
 
 ⚠ **Precedence coupling**: when no route sets `priority`, matching order is sorted by route id
@@ -245,7 +245,7 @@ registered via `RegisterFilter`. Registered built-ins (filter.go:73-86):
 | `rewriteHost(h)` | host | Override outbound Host. |
 | `preserveHostHeader()` | — | Keep inbound Host instead of the upstream's; sets a marker the Director honors (proxy.go:174). |
 | `requestId([header])` | optional | Ensure an `X-Request-Id` (or the given header) exists; generates a random 128-bit hex id when absent. |
-| `rateLimit(k=v,…)` | see below | `rate` (req/s, **required** >0), `burst`, `driver` (default `default`; a redis driver gives cross-replica budgets), `algorithm` (`token-bucket`/`sliding-window`), `key` (`route` default / `ip`). Reject → `429 Too Many Requests`; **fails open** on limiter backend error with a Warn log (filter.go:269-277). |
+| `rateLimit(k=v,…)` | see below | `rate` (req/s, **required** >0), `burst`, `algorithm` (`token-bucket` default / `sliding-window`), `window`, `max-wait`, `key` (`route` default / `ip`). Reject → `429 Too Many Requests`; **fails open** on a counter-store error with a Warn log. |
 
 Bean-backed tokens (resolved from the injected `Wrappers` map, NOT the registry):
 
@@ -366,10 +366,10 @@ Stop the upstream → each request gets `502 Bad Gateway` (proxy.go:180) with a 
 | `route reload failed, keeping previous table` in logs | Hot edit broken; old table still serving | Fix the literal and refresh again; watch `gateway.route_reload_errors`. |
 | Always 404 | No route's predicates match (path typo, methods/host/headers predicate rejecting) | Remember first-match in priority-then-id order; a more specific route with a later id never wins over an overlapping earlier id — set `priority` to override. |
 | `unknown resilience policy` | `resilience.policy` names no key under `spring.gateway.resilience` | Add the name as a (value-less) key; policy VALUES come from the governance rules document (`govern.*`) under `gateway:<name>`. |
-| Legacy `resilience.<name>.max-retries` etc. have no effect | By design — value is an empty struct; driver ignores sub-keys (route.go:121-128) | Move policy to the governance center, resource label `gateway:<name>`. |
+| Legacy `resilience.<name>.max-retries` etc. have no effect | By design — value is an empty struct; driver ignores sub-keys (route.go:121-128) | Move policy to the governance center, service label `gateway:<name>`. |
 | `no FilterWrapper bean named …` | `jwt-auth(x)`/`lua(x)` references a bean not exported as `gateway.FilterWrapper` | Export the bean with `.Export(gs.As[gateway.FilterWrapper]())` before startup (wrappers inject pre-warmup). |
 | `lb:// upstream cannot resolve … mesh mode active` | lb route with no discovery backend, or mesh mode on | Set `upstream.discovery`/`spring.gateway.discovery`; in mesh mode route to the service's stable address instead (proxy.go:115). |
-| 429s you didn't ask for / limiter not shared across replicas | `rateLimit` key defaults to route id; driver defaults to `default` (local) | Use `key=ip` for per-client, a `redis` driver for cross-replica budgets. |
+| 429s you didn't ask for / limiter not shared across replicas | `rateLimit` key defaults to route id, and the in-memory counter store counts per replica | Use `key=ip` for per-client budgets; run a starter that contributes a shared counter store (`starter-ratelimit-redis`) for cross-replica budgets. |
 | Upstream sees wrong path/Host | stripPrefix count off; Host rewritten by default | Tune `stripPrefix(n)`; add `preserveHostHeader()` or `rewriteHost(h)`. |
 | No traces despite `tracing.enabled=true` | starter-otel not imported | Add it; the OTel globals are otherwise silent no-ops. |
 

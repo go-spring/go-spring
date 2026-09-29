@@ -119,7 +119,7 @@ lb     := &proto.Client{Target: "greet-svc"}          // 发现模式
 spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) 服务发现 + 负载均衡:按逻辑服务名路由。
-# LB 策略与端点剔除是该 entry 的治理规则(govern.rules[N].balancer / .outlier-threshold),
+# LB 策略与端点剔除是该 entry 的治理规则(govern.client.rules[N].balancer / .outlier-threshold),
 # 不是这里的 key —— 见下文。
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
@@ -130,9 +130,8 @@ spring.http-client.instances.guarded.addr=127.0.0.1:9473
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.error-threshold=2
-govern.default.open-duration=30s
+govern.client.default.error-threshold=2
+govern.client.default.open-duration=30s
 
 # 本 demo 不需要入站 HTTP server。
 spring.http.server.enabled=false
@@ -198,9 +197,10 @@ gs.Run()
 - **discovery/LB 在 resilience 之下**:"a retry re-picks a fresh endpoint and the breaker
   keys on the logical service name"(httpx.go:32-34)。熔断按逻辑调用计数,重试在实例级
   失败后会换实例。
-- **resilience 包住 balanced transport**:`resilience.NewRoundTripper(base, exec, nil)`
-  的默认 resource func 是 `r.URL.Host`——在该层深度仍是逻辑 target,因为 host 改写
-  发生在更下一层(httpx.go:180-192,resilience/roundtripper.go:70)。
+- **resilience 包住 balanced transport**:`resilience.NewRoundTripper(base, exec)`
+  ——service 标签是 `resilience.ServiceLabel("http", ServiceName, Addr)`(httpx.go:342-347),
+  与策略解析用的是同一个标签,所以限流/熔断状态和 driver 的规则名同武装它的 govern 规则一致。
+  每个 client 一个标签:改写 host 换实例发生在更下一层(httpx.go:307-318),不会泄进标签。
 - **traffic 在 resilience 之上**:每次重试尝试都携带标记(header 设在原始请求上,重试
   循环复用它);在用户 middleware 之下以便 wrapper 仍可覆盖(httpx.go:207-213)。
 - **executor 栈序 `observe(fault(rawExec))`**(httpx.go 默认包装):fault 注入在真实
@@ -210,7 +210,7 @@ gs.Run()
 - **熔断按逻辑调用计数而非按尝试**(历史 bug 已修):executor 在重试循环结束后对整个
   `Execute` 只记录一次熔断结果,"rather than once per attempt … which would trip the
   circuit far faster than the configured ErrorThreshold … implies (the 'resilience on =>
-  breaker trips instantly' symptom)"(resilience/executor.go:210-218)。限流器仍按尝试
+  breaker trips instantly' symptom)"(resilience/executor_default.go)。限流器仍按尝试
   计费——每次尝试都是真实的下游请求。
 
 ### 2.3 一次请求逐层走读
@@ -225,7 +225,7 @@ gs.Run()
    无路由 → 请求时报错 `http-client: no transport for target <target>`**。查表放在这一层而不是
    RoundTripper 里,是因为 net/http 只把 `*http.Request` 交给 transport——在这一层路由才能让
    声明的 Target 直接当键,同时也让重定向的每一跳都留在调用起始的那条路由上。
-3. trafficTransport 当且仅当 `traffic.IsLoadTest(ctx)` 时注入压测标记 header。
+3. trafficTransport 当且仅当 propagator 的 `IsLoadTest(ctx)` 时注入压测标记 header。
 4. executor 把整个 round-trip 作为一次受保护调用执行:限流 → 熔断闸门 → 每次尝试
    超时(`attempt-timeout`)→ 带退避的重试循环,整体受 `MaxDuration` 约束;熔断对
    整个调用只记录**一次**结果(§2.2)。
@@ -234,7 +234,7 @@ gs.Run()
    outlier suspension 因此能看到每次调用(httpx.go:245-262)。
 6. otelhttp transport 打开 client span、注入 `traceparent`、建连。
 7. 响应回卷:span 结束(executor 包过则带 `resilience.outcome`)、计数
-   `resilience.calls{outcome=...}`、按 `observability.level` 出访问日志。
+   `resilience.client.calls{outcome=...}`、按 `observability.level` 出访问日志。
 8. 直连模式下第 5 步换成 `fixedHostTransport` 把每个请求钉到 `addr`——链上同一位置,
    两种寻址模式下 resilience 与调用侧行为完全一致(httpx.go:264-277)。
 
@@ -271,7 +271,7 @@ func init() {
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `addr` | string | "" | 直连模式:`fixedHostTransport` 把每个请求钉到该 host:port。可与 `service-name` 同配,此时 service-name 只是纯治理 label(不触发发现)。 | 都不配 → 快速失败 "one of addr or service-name is required"。 |
-| `service-name` | string | "" | 发现模式:经指定后端解析的逻辑名;只要设置了就同时是治理 resource label(发现与直连模式皆是)。配了 `addr` 时它不是发现目标。 | 都不配 → 快速失败;只配 service-name 不配 `addr`/`discovery` → 快速失败。 |
+| `service-name` | string | "" | 发现模式:经指定后端解析的逻辑名;只要设置了就同时是治理 service label(发现与直连模式皆是)。配了 `addr` 时它不是发现目标。 | 都不配 → 快速失败;只配 service-name 不配 `addr`/`discovery` → 快速失败。 |
 | `discovery` | string | "" | 发现后端 bean 名(bean 名=标签，由 registry starter 注册)。未配置时回退 `${spring.http-client.default.discovery}`。`service-name` 未配 `addr` 时必填(config.go validate)。 | 两层都缺失 → 快速失败。名字未知 → 装配期报错并列出已注册 bean(starter.go newRoute)。 |
 | `observability.level` | string | brief | executor 包裹层的访问日志开关:off / brief / detailed(observe/config.go:50)。 | brief 默认**开**——预期每次受保护调用一条日志。 |
 | `observability.maxArgBytes` | int | 512 | 日志中参数截断长度。 | 大 body 被静默截断。 |
@@ -282,27 +282,27 @@ func init() {
 | `tls.server-name` | string | "" | 校验对端证书时检查的名字——按 IP 拨号或经发现 label 时有用。 | 名字错 → 每请求 TLS 校验失败。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过对端校验(仅本地测试)。 | 生产打开 = 未认证 TLS。 |
 
-**label 稳定 —— `service-name` 优先**:治理 resource label 是
-`resilience.ResourceLabel("http", ServiceName, Addr)` → 只要设置了 `service-name`(发现模式,
+**label 稳定 —— `service-name` 优先**:治理 service label 是
+`resilience.ServiceLabel("http", ServiceName, Addr)` → 只要设置了 `service-name`(发现模式,
 或直连模式下作为纯 label 保留)就是 `http:<service-name>`,只有完全没有 service-name 的
-entry 才回退 `http:<addr>`(httpx.go `Config.resource`)。因此按 `http:<service-name>`
-配的 `govern.rules[].resources` 在直连/发现两种寻址间切换时始终匹配——切换时保留
+entry 才回退 `http:<addr>`(httpx.go `Config.service`)。因此按 `http:<service-name>`
+配的 `govern.client.rules[].services` 在直连/发现两种寻址间切换时始终匹配——切换时保留
 service-name 即可;只有彻底删掉 service-name 才会换 key。
 另:直连模式下熔断按 host:port 计——同一后端两种 `addr` 写法得到两个熔断器。
 
 **不在这里**(`spring.http-client.*` 下没有):超时、重试、熔断、限流、故障注入。所有
 策略是进程级 `govern.*`(starter-governance)——`govern.enabled`、`govern.driver`、
-`govern.default.<策略字段>`(rate-limit / burst / error-threshold / open-duration /
+`govern.client.default.<策略字段>`(rate-limit / burst / error-threshold / open-duration /
 breaker-strategy / error-rate-threshold / min-requests / max-concurrent / max-retries /
 initial-interval / multiplier / max-interval / attempt-timeout / max-duration),故障注入在
-`govern.fault.*`。按 target 定策略 = 一条 `govern.rules[n]`,resource 指向上面的 label。
+`govern.client.fault.*`。按 target 定策略 = 一条 `govern.client.rules[n]`,service 指向上面的 label。
 该配置面详见 starter-governance 的 USAGE。
 
-`min-requests`:本 starter 对解析到其 `http:*` 资源的 error-rate 策略强制 **5** 的下限
-(httpx.go `minRequestsFloor`)——resilience 自身的零值下限是 1,低流量下单次失败即熔断,
-过于敏感。govern rule 显式配更高的 `min-requests` 时以显式值为准;consecutive 策略不受影响。
+`min-requests`:error-rate 熔断的最小样本数直接取自 govern rule,由 resilience 施加;未配置
+即 resilience 自己的零值下限 1,低流量下单次失败就可能跳闸——下游是低流量时请显式配置。
+consecutive 策略不使用该字段。
 ⚠ 重试会重发非幂等 POST(roundtripper 每次尝试回卷 body,
-resilience/roundtripper.go:83-94)——相应约束 `max-retries`。
+resilience/adapter_http.go:83-94)——相应约束 `max-retries`。
 
 ---
 
@@ -334,7 +334,7 @@ endpoint,看打散变化——池是原地换策略的,不用重启;用真实注
 
 ### 4.3 熔断演练 ——打开、快速失败、恢复
 
-`guarded` 路由指向 :9473 上恒返 500 的后端,配置 `govern.default.error-threshold=2`、
+`guarded` 路由指向 :9473 上恒返 500 的后端,配置 `govern.client.default.error-threshold=2`、
 `open-duration=30s`:
 
 1. 跑 example:`./check.sh`。守卫客户端最初几次调用打网络失败;连续 2 次失败后熔断
@@ -342,31 +342,31 @@ endpoint,看打散变化——池是原地换策略的,不用重启;用真实注
    `resilience.ErrCircuitOpen`,微秒级返回(无网络往返)。
 2. 用自己的 binary 做等价手工演练:杀掉后端、循环调用,观察错误从网络/500 错误变为
    `circuit open`;恢复后端后等 `open-duration`(30s)——half-open 试探成功、熔断闭合。
-3. 观察跳变:`resilience.breaker.state_change{from=...,to=...}` 计数器递增并输出状态
+3. 观察跳变:`resilience.client.breaker.state_change{from=...,to=...}` 计数器递增并输出状态
    迁移日志(cloud/governance/resilience/observe.go:98-110)。
 
 ### 4.4 故障注入(免重启)
 
-fault 挂在同一治理 source 上;`govern.fault.*` 热加载(见 example-load 的 conf 注释)。
+fault 挂在同一治理 source 上;`govern.client.fault.*` 热加载(见 example-load 的 conf 注释)。
 在配置文件里翻转:
 
 ```properties
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.fault.enabled=true
-govern.fault.rate=0.5
-govern.fault.error=timeout    # 或 generic / reset
+govern.client.fault.enabled=true
+govern.client.fault.rate=0.5
+govern.client.fault.error=timeout    # 或 generic / reset
 ```
 
 注入的故障流经 resilience executor **之内**(§2.2),因此重试会触发、熔断会计数、
-`resilience.calls{outcome=timeout|error}` 会记录——演练验证的是整个栈,不只是注入器。
+`resilience.client.calls{outcome=timeout|error}` 会记录——演练验证的是整个栈,不只是注入器。
 
 ### 4.5 观测项
 
 - 指标(starter-otel 的 prometheus exporter,如 example-otel 的 `:9090/metrics`):
-  `resilience.calls` 计数器,属性 `resilience.system="http"`、
-  `resilience.resource="http:greet-svc"`、`resilience.outcome` ∈
+  `resilience.client.calls` 计数器,属性 `resilience.system="http"`、
+  `resilience.service="http:greet-svc"`、`resilience.outcome` ∈
   {success, rate_limited, circuit_open, bulkhead_full, timeout, error};
-  `resilience.breaker.state_change` 带 from/to。
+  `resilience.client.breaker.state_change` 带 from/to。
 - 访问日志:由 `observability.level` 门控(默认 brief = 开),tag
   `_app_http_resilience`(`log.RegisterAppTag("http", "resilience")`)。
 - trace:httpx 内置的 otelhttp 层每请求一个 client span(命名遵循
@@ -383,8 +383,8 @@ govern.fault.error=timeout    # 或 generic / reset
 | 请求报 `http-client: no transport for target "x"` | 没有 addr/service-name 等于客户端 `Target` 的配置项(错配在请求期而非装配期暴露——starter.go:188-195) | 补一条配置或修正 Target;必须精确匹配。 |
 | 容器启动失败:"one of addr or service-name is required" / "discovery is required" | validate() 规则(config.go) | 至少配一种寻址;只配 service-name 时必须配 `discovery`。 |
 | 一切正常但没有熔断/限流 | 未设 `govern.enabled`——治理 executor 在其未启用时是透明 no-op | 启用 starter-governance 并配策略。 |
-| 单次失败即熔断 | `breaker-strategy=error-rate` 且 `min-requests` 低于 starter 下限 | starter 已把 `min-requests` 下限提到 5;可在 govern rule 调高 `error-rate-threshold`/`min-requests`。 |
-| addr ↔ service-name 切换后策略"失效" | ⚠ label 耦合:resource key 变了(§3) | 把 `govern.rules[].resources` 更新为新 label。 |
+| 单次失败即熔断 | `breaker-strategy=error-rate` 且 `min-requests` 未配置 | 在 govern rule 里显式配 `min-requests`(如 5)或调高 `error-rate-threshold`;未配置时熔断可能在第一次失败就跳闸。 |
+| addr ↔ service-name 切换后策略"失效" | ⚠ label 耦合:service key 变了(§3) | 把 `govern.client.rules[].services` 更新为新 label。 |
 | 客户端无 trace / 指标 | 未 import starter-otel;otelhttp 与 meter 依赖 OTel globals | 空导入 starter-otel 并配 `spring.observability.*`。 |
 | TLS/https 不通 | 该 entry 未设 `tls.enabled` | 打开 entry 的 `tls.*` 配置块(`ca-file`/`server-name`/...);它会在 otel base 下接入 TLS 配置过的 transport。 |
 | 加入本 starter 后进程内其他 httpclt 使用方异常 | starter 替换了进程级 `httpclt.DoRequest`——所有 httpclt 调用都经它路由 | 确保进程内每个 httpclt Target 都对应一条配置路由。 |
@@ -408,12 +408,15 @@ govern.fault.error=timeout    # 或 generic / reset
 2. ~~虚构的 `resilience.*` key~~ —— 已修 2026-08-27:README/conf 注释改指 `govern.*`。
 3. ~~死 key `timeout`~~ —— 已修 2026-08-27:已从 Config 与 README 移除。
 4. ~~熔断按尝试计数("开 resilience => 100% 失败/秒开")~~ —— 已修:executor 现在按逻辑
-   Execute 只记录一次熔断结果(resilience/executor.go:210-218);限流器有意仍按尝试计费。
+   Execute 只记录一次熔断结果(resilience/executor_default.go);限流器有意仍按尝试计费。
 5. 静默全局接管 `httpclt.DoRequest`;未知 target 在请求期而非装配期失败。
 6. ~~治理 label 随寻址模式静默变化~~ —— 已修 2026-08-28:只要设置 service-name,label 就是
    `http:<service-name>`(允许与 addr 同配作纯 label);完全没有 service-name 才是 `http:<addr>`。
-7. ~~error-rate 熔断下 `min-requests` 默认 0——单次失败即跳闸~~ —— 已修 2026-08-28:starter 对
-   其资源的 error-rate 策略把 `min-requests` 下限提到 5(显式更高值优先)。
+7. `min-requests` 与 error-rate 熔断 —— 2026-08-28:starter 对其服务把下限提到 5;2026-09-28:
+   下限已删除。它正是 httpx 自己造 resilience executor、不走 manager 派发通道的唯一原因,导致
+   熔断/限流状态按 client 分而非按 label 分,和其他 client starter 不一致。当初的报障(单次失败
+   即跳闸)根因是熔断按每次重试 attempt 计数,resilience 已单独修掉;现在 `min-requests` 直接取自
+   govern rule,starter 不再覆盖。
 8. ~~孤立的 `ResilienceConfig` 注释~~ —— 已修 2026-08-27。
 9. ~~完全没有 TLS key~~ —— 已修 2026-08-28:新增 `tls.*` 配置块(enabled/cert-file/key-file/
    ca-file/server-name/insecure-skip-verify),接入 otel base 之下克隆的 `http.Transport`;

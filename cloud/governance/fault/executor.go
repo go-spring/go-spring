@@ -22,8 +22,8 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 )
 
-// WrapExecutor returns an Executor that injects faults into fn before
-// delegating to inner.
+// WrapClientExecutor returns an Executor that injects faults into fn before
+// delegating to inner, using in as the injector.
 //
 // The injection happens INSIDE inner's retry loop: the wrapped fn either
 // returns the injected error (so the real executor retries, the breaker counts
@@ -33,36 +33,34 @@ import (
 // would, rather than short-circuiting at the boundary where none of those
 // mechanisms are in play.
 //
-// The process-wide injector ([InjectorFor]) is resolved LAZILY on each Execute:
-// this lets client starters wrap at wiring time (in their InitMethod) even
-// though starter-govern registers the injector later, at Runner time — mirroring
-// how [resilience.ExecutorFor] defers provider resolution to call time. When no
-// injector is registered, fn runs once untouched (zero-config transparency).
+// in is the injector bean the caller received from the container; holding the
+// pointer is enough to observe config changes, because the injector swaps its
+// config in place ([Injector.SetConfig]) rather than being replaced. A nil in —
+// the caller injected nothing, i.e. the governance starter is absent — returns
+// inner unwrapped: with no governance there is no fault layer, so the wrap is
+// always safe to apply.
+//
+// service is the label this executor protects, and the scope the injector's own
+// rules are matched against; it is the same label inner was built for, so a
+// fault rule and a resilience rule name the same service. The injector's CLIENT
+// side supplies the faults here (see [Injector.gate]); the server side is
+// [ApplyServer]'s and never touches an outbound call.
 //
 // nil inner => returns nil.
-func WrapExecutor(inner resilience.Executor) resilience.Executor {
+func WrapClientExecutor(inner resilience.ClientExecutor, service string, in *Injector) resilience.ClientExecutor {
 	if inner == nil {
+		return nil
+	}
+	if in == nil {
 		return inner
 	}
-	return &faultExecutor{inner: inner}
-}
-
-// WrapExecutorWith is [WrapExecutor] with an explicitly supplied injector: in
-// is used directly on every Execute instead of resolving [InjectorFor]. This is
-// the path tests and [cloud/experimental/loadtest] take to inject an explicit, locally-built
-// injector.
-//
-// nil inner => returns nil.
-func WrapExecutorWith(inner resilience.Executor, in *Injector) resilience.Executor {
-	if inner == nil {
-		return inner
-	}
-	return &faultExecutor{inner: inner, in: in}
+	return &faultExecutor{inner: inner, service: service, in: in}
 }
 
 type faultExecutor struct {
-	inner resilience.Executor
-	in    *Injector
+	inner   resilience.ClientExecutor
+	service string
+	in      *Injector
 }
 
 // Execute wraps fn so each attempt is faulted per the injector's live config
@@ -70,25 +68,14 @@ type faultExecutor struct {
 // via the attempt context); if the sleep is cancelled the context error is
 // returned so the executor's budget/timeout logic reacts rather than retrying
 // blindly.
-//
-// When e.in is nil (the lazy-global path) the injector is resolved here, per
-// Execute, via [InjectorFor]; nil means no fault is configured and inner runs fn
-// untouched.
-func (e *faultExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
-	in := e.in
-	if in == nil {
-		in = InjectorFor()
-	}
-	if in == nil {
-		return e.inner.Execute(ctx, resource, fn)
-	}
-	// Each attempt runs through the injector's shared Gate sequence (scope
-	// gating, guardrails, latency, error) before the real fn — a fault flows
-	// through retry/breaker/timeout exactly as a real downstream failure would.
-	wrapped := func(attemptCtx context.Context) error {
-		return in.Gate(attemptCtx, resource, fn)
-	}
-	return e.inner.Execute(ctx, resource, wrapped)
+func (e *faultExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+	// Each attempt runs through the injector's shared injection sequence (scope
+	// gating, guardrails, latency, error) on the CLIENT side before the real fn —
+	// a fault flows through retry/breaker/timeout exactly as a real downstream
+	// failure would.
+	return e.inner.Execute(ctx, func(attemptCtx context.Context) error {
+		return e.in.gate(attemptCtx, &e.in.client, e.service, fn)
+	})
 }
 
 // Close releases the inner executor's resources.
@@ -97,4 +84,4 @@ func (e *faultExecutor) Close() error { return e.inner.Close() }
 // Refresh forwards the new policy to the inner executor. The fault injector
 // itself has no policy to refresh — its own config is swapped via
 // [Injector.SetConfig] whenever the governance source pushes a new config.
-func (e *faultExecutor) Refresh(p resilience.Policy) error { return e.inner.Refresh(p) }
+func (e *faultExecutor) Refresh(p resilience.ClientPolicy) error { return e.inner.Refresh(p) }

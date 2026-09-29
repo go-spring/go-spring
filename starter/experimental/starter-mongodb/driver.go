@@ -38,29 +38,23 @@ import (
 // — in which case the caller dials the configured URI hosts directly. It fails
 // loudly when service-name is set (and mesh is off) but backend is nil (no
 // backend bean cited by the ${discovery} label). Resolver freshness lives inside
-// the backend, so the pool has no resources to release; the returned stop func
-// detaches the pool's endpoint-selection binding instead, and must run on client
-// teardown.
-func newPickPool(ctx context.Context, c Config, backend discovery.Discovery) (*loadbalance.Pool, func(), error) {
-	noop := func() {}
+// the backend, so the pool has no resources to release.
+//
+// The pool is returned unbound: binding it to the service's governance label
+// needs the injected *loadbalance.Manager, which the constructor holds (see
+// newClient), not this dial seam.
+func newPickPool(ctx context.Context, c Config, backend discovery.Discovery) (*loadbalance.Pool, error) {
 	if c.ServiceName != "" && backend == nil && !mesh.Enabled() {
 		if c.Discovery == "" {
-			return nil, noop, errutil.Explain(nil, "mongodb: instance routes by service-name but sets no discovery backend (set spring.mongodb.instances.<name>.discovery to the name of a discovery backend bean)")
+			return nil, errutil.Explain(nil, "mongodb: instance routes by service-name but sets no discovery backend (set spring.mongodb.instances.<name>.discovery to the name of a discovery backend bean)")
 		}
-		return nil, noop, errutil.Explain(nil, "mongodb: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
+		return nil, errutil.Explain(nil, "mongodb: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
 	}
 	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil || resolver == nil {
-		return nil, noop, err
+		return nil, err
 	}
-	bal, err := loadbalance.New(loadbalance.RoundRobin)
-	if err != nil {
-		return nil, noop, err
-	}
-	// The tracker makes outlier suspension possible; the binding puts the
-	// resource's endpoint selection under the same governance rule that already
-	// drives its protection executor.
-	pool := loadbalance.NewPool(resolver, bal,
-		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
-	return pool, pool.BindSelection(resourceLabel(c)), nil
+	bal := loadbalance.NewRoundRobin()
+	// The tracker makes outlier suspension possible.
+	return loadbalance.NewPool(resolver, bal), nil
 }

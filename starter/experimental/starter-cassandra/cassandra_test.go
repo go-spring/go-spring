@@ -56,11 +56,11 @@ func TestParseConsistency(t *testing.T) {
 // from the default resilience driver. The embedded *gocql.Session is nil —
 // the tests drive Client.guard directly with a stubbed call, so no live
 // Cassandra cluster is needed.
-func newGuardedClient(t *testing.T, p resilience.Policy) *Client {
-	d := resilience.NewDefaultDriver()
-	exec, err := d.NewExecutor(p)
+func newGuardedClient(t *testing.T, p resilience.ClientPolicy) *Client {
+	d := resilience.NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &Client{exec: exec, resource: "cassandra:test"}
+	return &Client{exec: exec, service: "cassandra:test"}
 }
 
 // TestGuardPassThrough proves the zero-config stance: a Client with no
@@ -75,7 +75,7 @@ func TestGuardPassThrough(t *testing.T) {
 // TestGuardRateLimit confirms the flow-control path: once the burst is spent,
 // the statement is rejected without invoking the call.
 func TestGuardRateLimit(t *testing.T) {
-	c := newGuardedClient(t, resilience.Policy{RateLimit: 1, Burst: 1})
+	c := newGuardedClient(t, resilience.ClientPolicy{RateLimit: 1, Burst: 1})
 	var ran int
 	stub := func(context.Context) error {
 		ran++

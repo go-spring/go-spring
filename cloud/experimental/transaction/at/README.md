@@ -16,7 +16,7 @@ each statement, and rollback restores rows from those images automatically.
   (`ErrLockConflict` on conflict); a distributed deployment supplies a shared
   backend.
 - `Observer` seam for otel spans (nil disables observation).
-- `RetryPolicy = resilience.Policy` alias for second-phase retries.
+- `RetryPolicy = resilience.ClientPolicy` alias for second-phase retries.
 - `GlobalAT(coord)` decorator — the AT `@GlobalTransactional` equivalent; no
   per-method registry needed.
 

@@ -28,8 +28,8 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/log"
 )
 
@@ -52,11 +52,22 @@ import (
 // publish (mapped onto AMQP headers) and extracting it on consume, so a trace
 // links producer to consumer across services. It also supplies the spans,
 // metrics and access log. All of it is a no-op without starter-otel.
-func NewDriver(conn *amqp.Connection) messaging.Driver {
-	return messaging.Observe(&driver{conn: conn}, "rabbitmq")
+//
+// prop is the process's load-test convention (nullable — nil falls back to
+// traffic.NewDefaultPropagator), carried on every publisher/subscriber this
+// driver hands out.
+func NewDriver(conn *amqp.Connection, prop traffic.Propagator) messaging.Driver {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
+	return messaging.Observe(&driver{conn: conn, prop: prop}, "rabbitmq")
 }
 
-type driver struct{ conn *amqp.Connection }
+type driver struct {
+	conn *amqp.Connection
+	prop traffic.Propagator
+}
 
 func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.Publisher, error) {
 	ch, err := b.conn.Channel()
@@ -67,7 +78,7 @@ func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.
 		_ = ch.Close()
 		return nil, err
 	}
-	return &publisher{conn: b.conn, ch: ch, queue: destination}, nil
+	return &publisher{conn: b.conn, ch: ch, queue: destination, prop: b.prop}, nil
 }
 
 func (b *driver) NewSubscriber(_ context.Context, source, _ string) (messaging.Subscriber, error) {
@@ -79,7 +90,7 @@ func (b *driver) NewSubscriber(_ context.Context, source, _ string) (messaging.S
 		_ = ch.Close()
 		return nil, err
 	}
-	return &subscriber{ch: ch, queue: source}, nil
+	return &subscriber{ch: ch, queue: source, prop: b.prop}, nil
 }
 
 // publisher sends envelopes to a fixed queue via the default exchange. It holds
@@ -89,6 +100,7 @@ type publisher struct {
 	conn  *amqp.Connection
 	ch    *amqp.Channel
 	queue string
+	prop  traffic.Propagator
 }
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
@@ -99,12 +111,16 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		MessageId: msg.Key,
 	}
 	// Carry the load-test marker in the AMQP headers so the consumer recognises
-	// synthetic load.
-	if traffic.IsLoadTest(ctx) {
+	// synthetic load. toAMQPTable yields nil for an empty header map, so the
+	// table is allocated on demand and the written entries go into it as
+	// strings.
+	c := propagate.StringMap{}
+	p.prop.Inject(ctx, c)
+	for k, v := range c {
 		if pub.Headers == nil {
 			pub.Headers = amqp.Table{}
 		}
-		pub.Headers[canonical.MetaKeyLoadTest] = "1"
+		pub.Headers[k] = v
 	}
 	// Route through the same resilience executor the raw client API uses
 	// (GuardedPublish): a no-op pass-through when governance is off for this
@@ -121,6 +137,7 @@ func (p *publisher) Close() error { return p.ch.Close() }
 type subscriber struct {
 	ch    *amqp.Channel
 	queue string
+	prop  traffic.Propagator
 	done  chan struct{}
 	once  sync.Once
 }
@@ -137,11 +154,8 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 	go func() {
 		defer close(s.done)
 		for d := range deliveries {
-			msgCtx := context.Background()
 			// Extract the load-test marker the producer put in the AMQP headers.
-			if v, ok := d.Headers[canonical.MetaKeyLoadTest].(string); ok && canonical.IsAffirmative(v) {
-				msgCtx = canonical.WithLoadTest(msgCtx, "amqp-header")
-			}
+			msgCtx := s.prop.Extract(context.Background(), tableCarrier(d.Headers))
 			herr := handler(msgCtx, fromDelivery(&d))
 			if herr != nil {
 				log.Errorf(msgCtx, log.TagAppDef, "rabbitmq driver handler error on %q: %v", s.queue, herr)
@@ -205,4 +219,33 @@ func fromDelivery(d *amqp.Delivery) *messaging.Message {
 		m.SetHeader(messaging.HeaderDeliveryAttempt, "2")
 	}
 	return m
+}
+
+// tableCarrier adapts an AMQP table to [propagate.Carrier]: only string
+// values read — non-string table entries are not the marker's shape. A view:
+// Set writes through.
+type tableCarrier amqp.Table
+
+var _ propagate.Carrier = tableCarrier(nil)
+
+// Keys returns the table's keys, in no particular order.
+func (t tableCarrier) Keys() []string {
+	keys := make([]string, 0, len(t))
+	for k := range t {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// Values returns the string value stored under key, nil otherwise.
+func (t tableCarrier) Values(key string) []string {
+	if v, ok := t[key].(string); ok && v != "" {
+		return []string{v}
+	}
+	return nil
+}
+
+// Set stores value under key as a string, replacing.
+func (t tableCarrier) Set(key, value string) {
+	t[key] = value
 }

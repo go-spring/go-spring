@@ -160,7 +160,7 @@ func main() {
 	// backend the governance center falls back to when govern.driver is unset, and
 	// the only one cloud/governance/resilience ships with (no external dependency).
 	var err error
-	exec, err = resilience.NewDefaultDriver().NewExecutor(resilience.Policy{RateLimit: 3})
+	exec, err = resilience.NewDefaultDriver(nil).NewExecutor("example:cloudnative", resilience.Policy{RateLimit: 3})
 	if err != nil {
 		fail("resilience executor: %v", err)
 	}
@@ -257,7 +257,7 @@ func runTest() {
 	// ErrRateLimited while still admitting a non-empty head.
 	var admitted, rejected int
 	for range 15 {
-		err := exec.Execute(ctx, "app:fn", func(context.Context) error { return nil })
+		err := exec.Execute(ctx, func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			admitted++
@@ -450,7 +450,7 @@ type admissionHandler struct {
 
 func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	served := false
-	err := h.exec.Execute(r.Context(), h.resource(r), func(ctx context.Context) error {
+	err := h.exec.Execute(r.Context(), func(ctx context.Context) error {
 		if served {
 			return nil
 		}

@@ -68,10 +68,10 @@ func runLoad(s *Service) {
 	ctx := context.Background()
 	mc := s.Memcached
 	op := func(ctx context.Context) error {
-		if err := mc.Set(&memcache.Item{Key: "load", Value: []byte("v")}); err != nil {
+		if err := mc.Set(ctx, &memcache.Item{Key: "load", Value: []byte("v")}); err != nil {
 			return err
 		}
-		_, err := mc.Get("load")
+		_, err := mc.Get(ctx, "load")
 		return err
 	}
 	loadtest.Run(ctx, loadtest.Config{Concurrency: *concurrency, Duration: *duration}, op).Print(os.Stdout)

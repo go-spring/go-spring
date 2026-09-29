@@ -41,7 +41,6 @@ import (
 	"context"
 	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
@@ -160,9 +159,9 @@ type NacosSource struct {
 	src governSource
 	doc string // latest document bytes (for dedupe before parsing)
 
-	mu  sync.Mutex
-	cfg governance.Config
-	cb  func(governance.Config)
+	// push holds the snapshot and the subscriber; this source is a transport
+	// (the nacos listener) that parses and feeds it.
+	push *governance.PushSource
 }
 
 // NewNacosSource seeds the snapshot from the dataId's current content.
@@ -175,7 +174,7 @@ func NewNacosSource(cli config_client.IConfigClient, src governSource) (*NacosSo
 	if err != nil {
 		return nil, err
 	}
-	return &NacosSource{cli: cli, src: src, doc: content, cfg: cfg}, nil
+	return &NacosSource{cli: cli, src: src, doc: content, push: governance.NewPushSource(cfg)}, nil
 }
 
 // Init installs the change listener (the gs bean lifecycle hook).
@@ -199,22 +198,14 @@ func (s *NacosSource) Close() error {
 }
 
 // Snapshot returns the latest good snapshot.
-func (s *NacosSource) Snapshot() governance.Config {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.cfg
-}
+func (s *NacosSource) Snapshot() governance.Config { return s.push.Snapshot() }
 
 // Subscribe registers cb as the push target (the center is the only consumer).
-func (s *NacosSource) Subscribe(cb func(governance.Config)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.cb = cb
-}
+func (s *NacosSource) Subscribe(cb func(governance.Config)) { s.push.Subscribe(cb) }
 
 // apply parses one delivered document and, when the rules actually changed,
-// swaps the snapshot and pushes. Byte-equal re-deliveries (nacos may re-push on
-// reconnect) and bad documents push nothing.
+// pushes it. Byte-equal re-deliveries (nacos may re-push on reconnect) and bad
+// documents push nothing.
 func (s *NacosSource) apply(data string) {
 	if data == s.doc {
 		return
@@ -224,17 +215,9 @@ func (s *NacosSource) apply(data string) {
 		log.Errorf(context.Background(), starterTag, "governance nacos source: %s/%s published an invalid document (keeping last good config): %v", s.src.group, s.src.dataID, err)
 		return
 	}
-
-	s.mu.Lock()
-	unchanged := reflect.DeepEqual(s.cfg, cfg)
-	s.cfg, s.doc = cfg, data
-	cb := s.cb
-	s.mu.Unlock()
-
-	if unchanged {
+	s.doc = data
+	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
 		return
 	}
-	if cb != nil {
-		cb(cfg)
-	}
+	s.push.Push(cfg)
 }

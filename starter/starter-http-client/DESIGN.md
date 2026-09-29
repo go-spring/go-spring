@@ -60,14 +60,14 @@ resilience  →  discovery + LB (balancedTransport rewrites host)  →  otelhttp
   and the code has a `HTTPClient *http.Client` seam populated by DI.
 - **`managedTransport` carries a `closeFn`.** The starter's destroy
   type-asserts the transport to `io.Closer` and releases the discovery
-  watch + `resilience.Executor` behind it, so an instance removed at
+  watch + `resilience.ClientExecutor` behind it, so an instance removed at
   refresh time does not leak goroutines.
 - **Fail-fast at assembly.** `httpx.NewTransport` returns an error if a
   ServiceName cannot be resolved to a registered discovery backend or
   the resilience driver is unknown; the boot surfaces the config
   problem, not the first request.
-- **In direct-connect mode `Target` is a resource name.** The generated
-  client's `Target` becomes the circuit-breaker resource label and
+- **In direct-connect mode `Target` is a service name.** The generated
+  client's `Target` becomes the circuit-breaker service label and
   shows up in logs, but does not affect routing — `httpx` fully owns
   addressing by rewriting the host.
 

@@ -32,6 +32,7 @@ demo/
 ```
 require (
     go-spring.org/spring                  v1.3.x
+    go-spring.org/starter-governance       latest
     go-spring.org/starter-governance-nacos latest
 )
 ```
@@ -42,24 +43,38 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/governance"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 
+    _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-governance-nacos"
 )
 
 // poller 观察某个 label 解析出的策略，因此无需任何客户端接线即可看到规则推送。
-type poller struct{}
+type poller struct {
+    // mgr 是治理 starter 的 resilience manager bean，在此注入，
+    // 而不是从进程级 seam 解析。
+    mgr *resilience.Manager
+}
 
 func (p *poller) Run(ctx context.Context) error {
-    // ... 约 1 秒后发布一份新文档，然后轮询 governance.PolicyFor，
+    // ... 约 1 秒后发布一份新文档，然后轮询 mgr.PolicyFor，
     //     直到观察到被推送的 timeout ...
-    pol := governance.PolicyFor("demo:resource")
+    pol := p.mgr.PolicyFor("demo:service")
     fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.Timeout, pol.MaxRetries)
 }
 
+// newPoller 在注入的 manager 之上构建 poller。manager 为 nil——没有
+// starter-governance 的容器——时归一化为一个新的未武装实例。
+func newPoller(mgr *resilience.Manager) *poller {
+    if mgr == nil {
+        mgr = resilience.NewManager()
+    }
+    return &poller{mgr: mgr}
+}
+
 func init() {
-    gs.Provide(&poller{}).Export(gs.As[gs.Runner]())
+    gs.Provide(newPoller, gs.IndexArg(0, gs.TagArg("?"))).Export(gs.As[gs.Runner]())
 }
 
 func main() { gs.Run() }
@@ -81,10 +96,11 @@ govern.source.nacos.group=DEFAULT_GROUP
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
-    max-retries: 2
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
+      max-retries: 2
 ```
 
 **验证**（配合本地 Nacos，例如 [example/docker-compose.yml](example/docker-compose.yml)）：
@@ -216,7 +232,7 @@ cd example && ./check.sh        # docker 门控：compose 拉起 Nacos，运行�
 ```
 
 示例在启动前用 100 ms 的 `attempt-timeout` 播种 dataId（使规则源的初始 `GetConfig` 成功），随后
-发布一份 900 ms 的文档；poller 观察到 `governance.PolicyFor("demo:resource").Timeout == 900ms`
+发布一份 900 ms 的文档；poller 观察到 `mgr.PolicyFor("demo:service").Timeout == 900ms`
 后以 0 退出。
 
 ### 4.2 坏发布保留上一份好配置（手动）

@@ -33,6 +33,13 @@ func init() {
 	gs.Provide(
 		NewSimpleThriftServer,
 		gs.IndexArg(0, gs.TagArg("${spring.thrift.server}")),
+		// The governance manager is a NULLABLE injection: it exists whenever
+		// starter-governance is in the container (the normal case) and is absent
+		// from a container without it. Without the "?" gs would treat an absent
+		// bean as a wiring error and the app would not boot — turning "governance
+		// is off" into "governance must be imported". Admit treats a nil manager
+		// as an unarmed authority, i.e. a transparent pass-through.
+		gs.IndexArg(2, gs.TagArg("?")), // mgr *resilience.Manager
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.thrift.server.addr"))
 }
@@ -82,13 +89,19 @@ type SimpleThriftServer struct {
 	cfg  Config
 	proc thrift.TProcessor
 	svr  *thrift.TSimpleServer
+
+	// mgr is the governance bean gs injects (nil in a standalone call); it backs
+	// the inbound admission middleware Run installs.
+	mgr *resilience.Manager
 }
 
-// NewSimpleThriftServer creates a SimpleThriftServer from ${spring.thrift.server} configuration.
-func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor) *SimpleThriftServer {
+// NewSimpleThriftServer creates a SimpleThriftServer from ${spring.thrift.server}
+// configuration. mgr is the injected [resilience.Manager] the admission
+// middleware is armed from.
+func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, mgr *resilience.Manager) *SimpleThriftServer {
 	log.Debugf(context.Background(), log.TagAppDef, "thrift server created addr=%s protocol=%s transport=%s",
 		cfg.Addr, cfg.Protocol, cfg.Transport)
-	return &SimpleThriftServer{cfg: cfg, proc: proc}
+	return &SimpleThriftServer{cfg: cfg, proc: proc, mgr: mgr}
 }
 
 // newTransport builds a server transport honoring the client timeout and,
@@ -164,7 +177,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	//
 	// Observe is the only one behind a switch — it rides the OTel globals.
 	// AccessLog is always installed (the RPC family requires every member to
-	// have one), and so is admission: each call passes the resource's
+	// have one), and so is admission: each call passes the service's
 	// rate-limit / bulkhead / breaker policy before reaching the service; with
 	// governance off the executor is a transparent pass-through, so installing
 	// it costs a call frame and changes nothing else.
@@ -173,7 +186,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 		mws = append(mws, Observe())
 	}
 	mws = append(mws, AccessLog())
-	mws = append(mws, Admit(resilience.ResourceLabel("thrift", s.cfg.Addr), "thrift"))
+	mws = append(mws, Admit(resilience.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.mgr))
 	proc := thrift.WrapProcessor(s.proc, mws...)
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()

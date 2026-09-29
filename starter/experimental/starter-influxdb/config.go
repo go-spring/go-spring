@@ -16,8 +16,6 @@
 
 package StarterInfluxdb
 
-import ()
-
 // Config defines the InfluxDB 2.x client configuration.
 type Config struct {
 	// ServerURL is the InfluxDB base URL, e.g., "http://127.0.0.1:8086".

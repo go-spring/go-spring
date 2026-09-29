@@ -184,10 +184,7 @@ func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (str
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}
-	bal, err := loadbalance.New(loadbalance.RoundRobin)
-	if err != nil {
-		return "", errutil.Explain(err, "neo4j: balancer for %s", c.ServiceName)
-	}
+	bal := loadbalance.NewRoundRobin()
 	ep, err := loadbalance.NewPool(func() ([]discovery.Endpoint, error) {
 		return eps, nil
 	}, bal).Pick(loadbalance.PickInfo{})

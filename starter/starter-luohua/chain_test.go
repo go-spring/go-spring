@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/starter-otel/trace"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -36,10 +35,8 @@ import (
 func TestPropagationRidesOtelGlobal(t *testing.T) {
 	// Preserve process globals and restore them so this test is hermetic.
 	prevProp := otel.GetTextMapPropagator()
-	prevTrafficHeader, prevMeta := canonical.HeaderLoadTest, canonical.MetaKeyLoadTest
 	defer func() {
 		otel.SetTextMapPropagator(prevProp)
-		canonical.HeaderLoadTest, canonical.MetaKeyLoadTest = prevTrafficHeader, prevMeta
 		setCarriedHeaders(nil)
 		setObservabilityFields(nil)
 	}()

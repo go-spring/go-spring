@@ -190,7 +190,7 @@ gs.Run()
   │      config.go:391-513; application.name blank or 0 registries → fail fast)
   ├─ RegisterReference beans bind ${spring.dubbo.consumer.references.<n>} → typed stubs via NewClient
   ├─ wiring order note: Rooters (dyncPoller) are wired BEFORE Runners (governance engine)
-  │     — see dync.go:90-94 comment; governance.OnReady re-polls to close the gap
+  │     — see dync.go:90-94 comment; the injected center's OnReady re-polls to close the gap
   ├─ SimpleDubboServer.Run: buildOptions(provider, protocols, registries) → d.NewServer()
   │     → regAll(): every ServiceRegister bean invoked → <-sig.TriggerAndWait() → svr.Serve()  [server.go:297-327]
   ├─ readiness: ready signal fires after Run's trigger; in-flight RPCs drain on Stop
@@ -223,12 +223,13 @@ Two dubbo-go filters are registered at init time; both are **opt-in per service*
 name to the provider's `filter` key (comma-separated, dubbo-go semantics for the rest):
 
 - **`loadtest`** (loadtest.go:38): reads the load-test marker from the inbound dubbo attachment
-  (string or []byte, both handled) and tags the context so `traffic.IsLoadTest(ctx)` works in
+  (string or []byte, both handled) and tags the context so the propagator's `IsLoadTest(ctx)` works in
   later filters and in your service impl. Put it **first** in the chain (source comment,
   loadtest.go:31-34) so the marker lands before anything else branches on it.
-- **`fault`** (fault.go:40): resolves `fault.InjectorFor()` from the governance seam **on every
-  call** — hot-toggleable, transparent pass-through when governance is absent (fault.go:50-65).
-  An injected failure surfaces as `result.RPCResult{Err: fault.ErrInjected}`.
+- **`fault`** (fault.go:40): reads the governance starter's fault injector bean, which a wiring
+  hook installs because dubbo's filter registry offers no constructor to inject into; the
+  handle is read **on every call** — hot-toggleable, transparent pass-through when governance
+  is absent. An injected failure surfaces as `result.RPCResult{Err: fault.ErrInjected}`.
 
 Filters are **frozen at Refer/export time** (dync.go:60) — changing a `filter` key needs a
 restart; timeout/retries do not (§4.2).
@@ -403,26 +404,27 @@ land, the reference's `version`/`group` must match what the provider exported.
 ### 4.4 Governance merge path (dynamic timeout from the center)
 
 Optional; active only when starter-governance is imported and its rules document sets
-`govern.enabled=true`. The poller
-subscribes to governance policies under two resource labels (dync.go:263-264):
+`govern.enabled=true`. The poller injects the `*resilience.Manager` and the
+`*governance.Center` as nullable constructor params (dync.go:48-49) and
+subscribes to governance policies under two service labels (dync.go:263-264):
 
 - `dubbo:<application.name>` — consumer-level defaults
 - `dubbo:<interface>:<version>:<group>` — per reference (same colon-separated key as §4.3)
 
 `Policy.Timeout` (ms) and `Policy.MaxRetries` override the `timeout`/`retries` params when > 0
 (dync.go:288-295); note MaxRetries maps to dubbo's **cluster** retries, not resilience-layer
-retry. Ordering is handled: Rooters wire before Runners, so `governance.OnReady` re-polls once
-the engine is live (dync.go:90-99). Drill: flip `govern.*` timeout in the center's source, watch
-the reference override re-push without restart.
+retry. Ordering is handled: Rooters wire before Runners, so the injected `*governance.Center`'s
+`OnReady` re-polls once the engine is live (dync.go:90-99). Drill: flip `govern.*` timeout in the
+center's source, watch the reference override re-push without restart.
 
 ### 4.5 Fault drill (provider side, no restart)
 
 1. Add `fault` to the service's filter chain: `...services.greet.filter=loadtest,fault`.
-2. Import starter-governance; configure `govern.fault.*` (rate/error/scope) via a hot source.
+2. Import starter-governance; configure `govern.client.fault.*` (rate/error/scope) via a hot source.
 3. With `scope: loadtest`, only invocations carrying the load-test marker burn — mark them by
    injecting the outbound carrier (cloud/governance/traffic) from a marked upstream, or use
    `scope: real` in a dedicated environment.
-4. Watch: consumer receives the injected error; `traffic.IsLoadTest(ctx)` returns true inside
+4. Watch: consumer receives the injected error; the propagator's `IsLoadTest(ctx)` returns true inside
    the impl for marked calls (loadtest filter ordered first).
 
 ### 4.6 Observing the log bridge

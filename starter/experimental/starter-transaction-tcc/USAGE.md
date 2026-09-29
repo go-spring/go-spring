@@ -290,7 +290,7 @@ Confirm/Cancel to eventually succeed (give them a non-zero `Participant.Retry`).
 
 Design rationale worth knowing: persistence errors during the in-flight log writes are
 intentionally swallowed ("failing the whole operation on a log write would be worse than a gap
-in the log", coordinator.go); retries reuse `resilience.Policy` via a "default" executor so TCC
+in the log", coordinator.go); retries reuse `resilience.ClientPolicy` via a "default" executor so TCC
 phase retries and outbound resilience share one knob set.
 
 ---

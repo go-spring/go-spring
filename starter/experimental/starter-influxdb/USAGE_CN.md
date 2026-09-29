@@ -170,8 +170,9 @@ gs.Run()
   │    4. fail-fast 探测：client.Health() → /health 必须报告 "pass"，
   │       否则关闭 client 并启动失败 [starter.go:80-83]
   ├─ Init [client.go:69]：构建 dbObserver（"influxdb"）+ obsTransport；
-  │    解析 executor = fault.WrapExecutor(resilience.ExecutorFor(
-  │    "influxdb", "influxdb:<server-url>"))；dyn.Swap
+  │    用注入的 `*resilience.Manager` / `*fault.Injector` 构建
+  │    executor = fault.WrapClientExecutor(mgr.ClientExecutorFor(
+  │    "influxdb", "influxdb:<server-url>"), "influxdb:<server-url>", inj)；dyn.Swap
   │    换入 resilience round-tripper——观测+治理自此生效
   ├─ 就绪：指示器翻 UP（每次探测 = 一趟 /health 往返）
   └─ SIGTERM → Destroy [client.go:93]：Client.Close()——flush 异步 writer
@@ -199,7 +200,7 @@ influxdb-client-go → resilience round-tripper（exec.Execute）→ obsTranspor
 
 设计理由（源码注释 [client.go:76-88]、[command.go:30-44]）：
 
-- **resilience 最外层**：executor 许可（限流/熔断/注入故障，按资源键
+- **resilience 最外层**：executor 许可（限流/熔断/注入故障，按服务键
   `influxdb:<server-url>` 圈定——每实例一个 scope，而非每操作）在观测与发送之前
   检查；它的拒绝正是外层观测随后记录的东西。
 - **obsTransport 承载全部三个信号**：influxdb-client-go 自身不带 OTel 插桩，因此
@@ -219,7 +220,7 @@ influxdb-client-go → resilience round-tripper（exec.Execute）→ obsTranspor
 2. 创建 `WriteAPIBlocking(org, bucket)`，整个写入在**第二层** executor 运行内
    （`o.exec.Execute`）——过载敏感路径上的逐调用保护。
 3. SDK 发出 `POST /api/v2/write`；该请求再穿过传输层 executor 与 obsTransport，
-   因此一次 WritePoints 两次跨越 executor（两层共用同一资源键，故限流/熔断状态
+   因此一次 WritePoints 两次跨越 executor（两层共用同一服务键，故限流/熔断状态
    共享——内层的拒绝也计入外层的视野）。
 
 **`QueryAPI(org).QueryRaw`（内嵌 SDK 方法）**：不加逐调用守卫（DESIGN.md §4——
@@ -250,7 +251,7 @@ resilience transport——该 client 的 resilience 即不可用 [starter.go:74-
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `server-url` | string | — | InfluxDB 基础 URL；同时派生 resilience 资源键 `influxdb:<server-url>`。⚠ HTTPS 由 URL scheme 表达——没有 `tls.*` 块。 | 空 → BindEach 启动失败（`expr:"$ != ''"` [config.go:26]）；host 错 → fail-fast /health 探测启动失败。 |
+| `server-url` | string | — | InfluxDB 基础 URL；同时派生 resilience 服务键 `influxdb:<server-url>`。⚠ HTTPS 由 URL scheme 表达——没有 `tls.*` 块。 | 空 → BindEach 启动失败（`expr:"$ != ''"` [config.go:26]）；host 错 → fail-fast /health 探测启动失败。 |
 | `auth-token` | string | — | 传给 SDK 的 API token。 | 空 → 启动报错；token 错 → 写/查逐请求失败（/health 探测不做鉴权，可能仍绿）。 |
 | `org` | string | `""` | `WritePoints`/`ManagedWriteAPI` 与 `Org()` 的默认 org。⚠ **调用期**才需要，装配期不校验：不配 org/bucket 的 client 照样能服务 Query/Delete API。 | 缺失 → `WritePoints` 返回 error，`ManagedWriteAPI` **panic**（失败方式不一致——设计嫌疑）。 |
 | `bucket` | string | `""` | 写助手的目标 bucket 默认值。⚠ 与 `org` 同一调用期规则。 | 同 `org`。 |
@@ -303,10 +304,10 @@ server 在启动**之后**挂掉：readiness 翻 DOWN（§4.1）；阻塞写返�
 
 ### 4.4 治理演练
 
-配置 starter-governance 后，资源 `influxdb:http://127.0.0.1:8086` 上的限流/熔断策略
+配置 starter-governance 后，服务 `influxdb:http://127.0.0.1:8086` 上的限流/熔断策略
 对经 transport executor 的**每一个**请求生效（写、查、健康探测）。压测 `WritePoints`
 并观察拒绝以 `_app_influxdb_access` 记录与 resilience observer 的 outcome 计数器浮出。
-运行期翻策略——executor 热更新，无需重启。注入故障（`govern.fault.*`）也在同一
+运行期翻策略——executor 热更新，无需重启。注入故障（`govern.client.fault.*`）也在同一
 seam 生效。
 
 ### 4.5 异步 writer 排干
@@ -346,7 +347,7 @@ error）。
   observe transport，每次 readiness 检查多一条访问日志。
 - `WritePoints` 之外的内嵌方法只有传输层治理、没有逐调用治理；`ManagedWriteAPI` 则
   完全没有——两档保护强度在调用点不可见。
-- `WritePoints` 两次跨越 executor（逐调用 + 传输层）且共用一个资源键——熔断计数被
+- `WritePoints` 两次跨越 executor（逐调用 + 传输层）且共用一个服务键——熔断计数被
   放大，与 2026-08 修复的 http-client 同类 bug 同族。
 - 无 `tls.*` / `service-name`，与兄弟 starter 不一致——HTTPS-only-via-scheme 面更小
   但属需文档化的不对称。

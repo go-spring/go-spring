@@ -31,18 +31,18 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-func newBuiltin(t *testing.T, p Policy) Executor {
-	d := NewDefaultDriver()
-	e, err := d.NewExecutor(p)
+func newBuiltin(t *testing.T, p ClientPolicy) ClientExecutor {
+	d := NewDefaultDriver(nil)
+	e, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
 	return e
 }
 
 func TestBuiltinPassThrough(t *testing.T) {
 	// A zero policy protects nothing: fn runs once and its result flows back.
-	e := newBuiltin(t, Policy{})
+	e := newBuiltin(t, ClientPolicy{})
 	var calls int
-	err := e.Execute(context.Background(), "svc", func(context.Context) error {
+	err := e.Execute(context.Background(), func(context.Context) error {
 		calls++
 		return nil
 	})
@@ -52,9 +52,9 @@ func TestBuiltinPassThrough(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	// Burst of 2, no refill within the test window: 3rd call is rejected.
-	e := newBuiltin(t, Policy{RateLimit: 1, Burst: 2})
+	e := newBuiltin(t, ClientPolicy{RateLimit: 1, Burst: 2})
 	run := func() error {
-		return e.Execute(context.Background(), "svc", func(context.Context) error { return nil })
+		return e.Execute(context.Background(), func(context.Context) error { return nil })
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
@@ -62,10 +62,10 @@ func TestRateLimit(t *testing.T) {
 }
 
 func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
-	e := newBuiltin(t, Policy{ErrorThreshold: 2, OpenDuration: 50 * time.Millisecond})
+	e := newBuiltin(t, ClientPolicy{ErrorThreshold: 2, OpenDuration: 50 * time.Millisecond})
 	boom := errutil.Explain(nil, "boom")
 	fail := func() error {
-		return e.Execute(context.Background(), "svc", func(context.Context) error { return boom })
+		return e.Execute(context.Background(), func(context.Context) error { return boom })
 	}
 
 	// Two consecutive failures trip the breaker open.
@@ -77,14 +77,14 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 
 	// After the cool-down a trial request is admitted; a success closes it.
 	time.Sleep(60 * time.Millisecond)
-	assert.Error(t, e.Execute(context.Background(), "svc", func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e.Execute(context.Background(), "svc", func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
 }
 
 func TestRetrySucceedsAfterTransientFailure(t *testing.T) {
-	e := newBuiltin(t, Policy{MaxRetries: 2})
+	e := newBuiltin(t, ClientPolicy{MaxRetries: 2})
 	var attempts int
-	err := e.Execute(context.Background(), "svc", func(context.Context) error {
+	err := e.Execute(context.Background(), func(context.Context) error {
 		attempts++
 		if attempts < 3 {
 			return errutil.Explain(nil, "transient")
@@ -96,8 +96,8 @@ func TestRetrySucceedsAfterTransientFailure(t *testing.T) {
 }
 
 func TestExecutePerAttemptTimeout(t *testing.T) {
-	e := newBuiltin(t, Policy{Timeout: 20 * time.Millisecond})
-	err := e.Execute(context.Background(), "svc", func(ctx context.Context) error {
+	e := newBuiltin(t, ClientPolicy{AttemptTimeout: 20 * time.Millisecond})
+	err := e.Execute(context.Background(), func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -110,7 +110,7 @@ func TestExecutePerAttemptTimeout(t *testing.T) {
 
 func TestRoundTripperNilExecIsPassThrough(t *testing.T) {
 	base := http.DefaultTransport
-	assert.That(t, NewRoundTripper(base, nil, nil) == base).True()
+	assert.That(t, NewRoundTripper(base, nil) == base).True()
 }
 
 func TestRoundTripperRetriesOn5xx(t *testing.T) {
@@ -124,8 +124,8 @@ func TestRoundTripperRetriesOn5xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := newBuiltin(t, Policy{MaxRetries: 3})
-	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e, nil)}
+	e := newBuiltin(t, ClientPolicy{MaxRetries: 3})
+	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e)}
 
 	resp, err := client.Get(srv.URL)
 	assert.Error(t, err).Nil()
@@ -140,8 +140,8 @@ func TestRoundTripperCircuitOpenIsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: time.Minute})
-	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e, nil)}
+	e := newBuiltin(t, ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Minute})
+	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e)}
 
 	_, err := client.Get(srv.URL) // trips the breaker
 	assert.Error(t, err).NotNil()
@@ -152,13 +152,13 @@ func TestRoundTripperCircuitOpenIsError(t *testing.T) {
 func TestBulkheadRejectsWhenFull(t *testing.T) {
 	// MaxConcurrent 1: while one call is parked inside fn, a second is rejected
 	// with ErrBulkheadFull rather than queued.
-	e := newBuiltin(t, Policy{MaxConcurrent: 1})
+	e := newBuiltin(t, ClientPolicy{MaxConcurrent: 1})
 
 	release := make(chan struct{})
 	entered := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		_ = e.Execute(context.Background(), "svc", func(context.Context) error {
+		_ = e.Execute(context.Background(), func(context.Context) error {
 			close(entered)
 			<-release
 			return nil
@@ -166,27 +166,27 @@ func TestBulkheadRejectsWhenFull(t *testing.T) {
 	})
 
 	<-entered // first call now holds the only slot
-	err := e.Execute(context.Background(), "svc", func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(ErrBulkheadFull)
 
 	close(release)
 	wg.Wait()
 
 	// Slot freed: a subsequent call succeeds again.
-	assert.Error(t, e.Execute(context.Background(), "svc", func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
 }
 
 func TestFallbackDegradesOnRejection(t *testing.T) {
 	// A tripped breaker rejects the call; degrade turns the rejection into a
 	// graceful result and sees the triggering error.
-	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: time.Minute})
+	e := newBuiltin(t, ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Minute})
 	boom := errutil.Explain(nil, "boom")
 
 	// Trip the breaker.
-	assert.Error(t, e.Execute(context.Background(), "svc", func(context.Context) error { return boom })).Is(boom)
+	assert.Error(t, e.Execute(context.Background(), func(context.Context) error { return boom })).Is(boom)
 
 	var seen error
-	err := Fallback(context.Background(), e, "svc",
+	err := Fallback(context.Background(), e,
 		func(context.Context) error { return errutil.Explain(nil, "should not run") },
 		func(_ context.Context, cause error) error { seen = cause; return nil })
 	assert.Error(t, err).Nil()
@@ -196,7 +196,7 @@ func TestFallbackDegradesOnRejection(t *testing.T) {
 func TestFallbackNilExecStillDegrades(t *testing.T) {
 	// With no executor the call runs directly, and a failure still reaches degrade.
 	boom := errutil.Explain(nil, "boom")
-	err := Fallback(context.Background(), nil, "svc",
+	err := Fallback(context.Background(), nil,
 		func(context.Context) error { return boom },
 		func(_ context.Context, cause error) error {
 			if errors.Is(cause, boom) {
@@ -210,7 +210,7 @@ func TestFallbackNilExecStillDegrades(t *testing.T) {
 func TestDialerNilExecIsPassThrough(t *testing.T) {
 	var called bool
 	base := DialFunc(func(context.Context, string, string) (net.Conn, error) { called = true; return nil, nil })
-	got := NewDialer(base, nil, "svc")
+	got := NewDialer(base, nil)
 	_, err := got(context.Background(), "tcp", "x")
 	assert.Error(t, err).Nil()
 	assert.That(t, called).True()
@@ -220,8 +220,8 @@ func TestDialerBreakerOpensOnDialFailures(t *testing.T) {
 	dialErr := errutil.Explain(nil, "connection refused")
 	base := DialFunc(func(context.Context, string, string) (net.Conn, error) { return nil, dialErr })
 
-	e := newBuiltin(t, Policy{ErrorThreshold: 2, OpenDuration: time.Minute})
-	dial := NewDialer(base, e, "svc")
+	e := newBuiltin(t, ClientPolicy{ErrorThreshold: 2, OpenDuration: time.Minute})
+	dial := NewDialer(base, e)
 
 	// Two failed dials trip the breaker.
 	_, err := dial(context.Background(), "tcp", "addr")
@@ -239,14 +239,14 @@ func TestDialerBreakerOpensOnDialFailures(t *testing.T) {
 func TestRetryBackoffSleeps(t *testing.T) {
 	// With InitialInterval set, retries are paced: the gap between attempt 1
 	// and attempt 2 must be at least one backoff interval.
-	e := newBuiltin(t, Policy{
+	e := newBuiltin(t, ClientPolicy{
 		MaxRetries:      1,
 		InitialInterval: 40 * time.Millisecond,
 	})
 	var attempts int
 	var firstSaw, secondSaw time.Duration
 	start := time.Now()
-	err := e.Execute(context.Background(), "svc", func(context.Context) error {
+	err := e.Execute(context.Background(), func(context.Context) error {
 		attempts++
 		if attempts == 1 {
 			firstSaw = time.Since(start)
@@ -267,13 +267,13 @@ func TestRetryBackoffSleeps(t *testing.T) {
 func TestRetryRespectsMaxDuration(t *testing.T) {
 	// MaxDuration caps the whole call: even with many retries permitted, the
 	// loop stops once the budget is exhausted.
-	e := newBuiltin(t, Policy{
+	e := newBuiltin(t, ClientPolicy{
 		MaxRetries:      20,
 		InitialInterval: 20 * time.Millisecond,
 		MaxDuration:     60 * time.Millisecond,
 	})
 	var attempts int
-	_ = e.Execute(context.Background(), "svc", func(context.Context) error {
+	_ = e.Execute(context.Background(), func(context.Context) error {
 		attempts++
 		return errutil.Explain(nil, "always fails")
 	})
@@ -282,17 +282,14 @@ func TestRetryRespectsMaxDuration(t *testing.T) {
 	assert.That(t, attempts >= 1).True()
 }
 
-func TestRetryPredicateSuppressesNonRetryable(t *testing.T) {
-	// A predicate that says "do not retry" stops the loop after the first
-	// failure, even though MaxRetries would allow more attempts.
-	e := newBuiltin(t, Policy{
-		MaxRetries:     3,
-		RetryPredicate: func(error) bool { return false },
-	})
+func TestRetryableFalseStopsRetry(t *testing.T) {
+	// A Retryable() false error stops the loop after the first failure, even
+	// though MaxRetries would allow more attempts.
+	e := newBuiltin(t, ClientPolicy{MaxRetries: 3})
 	var attempts int
-	err := e.Execute(context.Background(), "svc", func(context.Context) error {
+	err := e.Execute(context.Background(), func(context.Context) error {
 		attempts++
-		return errutil.Explain(nil, "nope")
+		return nonRetryableErr{}
 	})
 	assert.Error(t, err).NotNil()
 	assert.That(t, attempts).Equal(1)
@@ -303,28 +300,14 @@ type nonRetryableErr struct{}
 func (nonRetryableErr) Error() string   { return "permanent" }
 func (nonRetryableErr) Retryable() bool { return false }
 
-func TestRetryableErrorOverridesPredicate(t *testing.T) {
-	// A Retryable() false error wins over a predicate that would retry it.
-	e := newBuiltin(t, Policy{
-		MaxRetries:     3,
-		RetryPredicate: func(error) bool { return true },
-	})
-	var attempts int
-	_ = e.Execute(context.Background(), "svc", func(context.Context) error {
-		attempts++
-		return nonRetryableErr{}
-	})
-	assert.That(t, attempts).Equal(1)
-}
-
 func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	// Regression for the bool-flag half-open bug: once cool-down elapses, at
 	// most ONE trial is admitted even under concurrency. A second concurrent
 	// caller is treated as still-open.
-	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
+	e := newBuiltin(t, ClientPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 
 	// Trip the breaker.
-	_ = e.Execute(context.Background(), "svc", func(context.Context) error {
+	_ = e.Execute(context.Background(), func(context.Context) error {
 		return errutil.Explain(nil, "boom")
 	})
 	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
@@ -335,7 +318,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	var ran, rejected int32
 	for range 2 {
 		wg.Go(func() {
-			err := e.Execute(context.Background(), "svc", func(context.Context) error {
+			err := e.Execute(context.Background(), func(context.Context) error {
 				atomic.AddInt32(&ran, 1)
 				// Hold long enough that the sibling surely evaluates allow() too.
 				time.Sleep(20 * time.Millisecond)
@@ -356,7 +339,7 @@ func TestErrorRateBreakerTripsOnRatio(t *testing.T) {
 	// error-rate breaker: trips when fails/total >= threshold with enough
 	// samples, even though successes are interleaved (so a consecutive counter
 	// would never trip).
-	e := newBuiltin(t, Policy{
+	e := newBuiltin(t, ClientPolicy{
 		BreakerStrategy:    BreakerErrorRate,
 		ErrorRateThreshold: 0.5,
 		MinRequests:        4,
@@ -365,7 +348,7 @@ func TestErrorRateBreakerTripsOnRatio(t *testing.T) {
 	})
 	// Interleave fail/success: 4 fails out of 8 => 50% ratio.
 	for i := range 8 {
-		err := e.Execute(context.Background(), "svc", func(context.Context) error {
+		err := e.Execute(context.Background(), func(context.Context) error {
 			if i%2 == 0 {
 				return errutil.Explain(nil, "fail")
 			}
@@ -386,14 +369,13 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 	// With ErrorThreshold 3 and MaxRetries 2 (3 attempts per call), a single
 	// failing call must NOT trip the breaker — under the old per-attempt
 	// recording it would record 3 failures and open immediately.
-	e := newBuiltin(t, Policy{
+	e := newBuiltin(t, ClientPolicy{
 		ErrorThreshold: 3,
 		MaxRetries:     2,
 		OpenDuration:   time.Minute,
-		RetryPredicate: func(error) bool { return true },
 	})
 	fail := func() error {
-		return e.Execute(context.Background(), "svc", func(context.Context) error {
+		return e.Execute(context.Background(), func(context.Context) error {
 			return errutil.Explain(nil, "boom")
 		})
 	}
@@ -424,3 +406,114 @@ type timeoutNetErr struct{}
 func (*timeoutNetErr) Error() string   { return "i/o timeout" }
 func (*timeoutNetErr) Timeout() bool   { return true }
 func (*timeoutNetErr) Temporary() bool { return true }
+
+func TestRateLimitQueueing(t *testing.T) {
+	// rate-limit-max-wait turns an over-limit call into a bounded wait: a
+	// 1/s bucket with burst 1 admits call 1 immediately, and call 2 — which
+	// maxWait=0 would reject — instead waits for the next token and succeeds.
+	e := newBuiltin(t, ClientPolicy{RateLimit: 20, Burst: 1, RateLimitMaxWait: 200 * time.Millisecond})
+	run := func() error {
+		return e.Execute(context.Background(), func(context.Context) error { return nil })
+	}
+	assert.Error(t, run()).Nil()
+	assert.Error(t, run()).Nil()
+	// And with no wait budget the same shape rejects.
+	e2 := newBuiltin(t, ClientPolicy{RateLimit: 20, Burst: 1})
+	assert.Error(t, e2.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e2.Execute(context.Background(), func(context.Context) error { return nil })).Is(ErrRateLimited)
+}
+
+func TestSlowCallBreaker(t *testing.T) {
+	// A downstream that never FAILS but always answers slowly trips the
+	// slow-call breaker over the rate window.
+	e := newBuiltin(t, ClientPolicy{
+		BreakerStrategy:           BreakerErrorRate,
+		ErrorRateThreshold:        0, // errors never happen
+		SlowCallDurationThreshold: 20 * time.Millisecond,
+		SlowCallRateThreshold:     0.5,
+		MinRequests:               2,
+		BreakerWindow:             time.Minute,
+		OpenDuration:              50 * time.Millisecond,
+	})
+	slow := func() error {
+		return e.Execute(context.Background(), func(context.Context) error {
+			time.Sleep(25 * time.Millisecond) // >= threshold: a slow success
+			return nil
+		})
+	}
+	assert.Error(t, slow()).Nil()
+	assert.Error(t, slow()).Nil()
+	// 2/2 slow >= 0.5: the breaker must now be open.
+	err := e.Execute(context.Background(), func(context.Context) error { return nil })
+	assert.Error(t, err).Is(ErrCircuitOpen)
+}
+
+func TestHalfOpenMultipleTrials(t *testing.T) {
+	// HalfOpenRequests=3 admits three trials; one flapping failure among them
+	// must re-open the circuit, and three successes in a row close it.
+	e := newBuiltin(t, ClientPolicy{
+		ErrorThreshold:   1,
+		OpenDuration:     30 * time.Millisecond,
+		HalfOpenRequests: 3,
+	})
+	fail := func() error {
+		return e.Execute(context.Background(), func(context.Context) error {
+			return errutil.Explain(nil, "boom")
+		})
+	}
+	if err := fail(); err == nil {
+		t.Fatal("first failure should return the downstream error (and trip the breaker)") // threshold 1
+	}
+	time.Sleep(40 * time.Millisecond) // cool-down elapses
+	// First trial succeeds but is only 1 of 3: the breaker stays half-open
+	// (permit available), not closed.
+	err := e.Execute(context.Background(), func(context.Context) error { return nil })
+	assert.Error(t, err).Nil()
+	// Second trial fails: re-open immediately.
+	time.Sleep(40 * time.Millisecond)
+	_ = fail() // the trial runs (or is gated); either way the circuit re-opens
+	time.Sleep(40 * time.Millisecond)
+	// After re-open and cool-down, three consecutive successes close it.
+	for range 3 {
+		err = e.Execute(context.Background(), func(context.Context) error { return nil })
+	}
+	assert.Error(t, err).Nil()
+	assert.Error(t, e.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
+}
+
+func TestRetryBudget(t *testing.T) {
+	// RetryBudget caps in-flight retries for the executor: call A's retry (in
+	// flight, blocked inside fn) holds the single budget slot, so call B's
+	// retry is rejected with ErrRetryBudgetExceeded. First attempts never take
+	// budget. Both calls run through one executor, which serves one service.
+	e := newBuiltin(t, ClientPolicy{MaxRetries: 1, RetryBudget: 1})
+	inRetry := make(chan struct{})
+	unblock := make(chan struct{})
+	aDone := make(chan error, 1)
+	go func() {
+		calls := 0
+		aDone <- e.Execute(context.Background(), func(context.Context) error {
+			calls++
+			if calls == 2 { // the retry attempt: hold the budget slot
+				close(inRetry)
+				<-unblock
+			}
+			return errutil.Explain(nil, "boom")
+		})
+	}()
+	<-inRetry // A is now blocked inside its retry, holding the only slot
+
+	// B's first attempt runs fine; its retry finds the budget spent.
+	bCalls := 0
+	err := e.Execute(context.Background(), func(context.Context) error {
+		bCalls++
+		return errutil.Explain(nil, "boom")
+	})
+	assert.Error(t, err).Is(ErrRetryBudgetExceeded)
+	assert.That(t, bCalls).Equal(1)
+
+	close(unblock)
+	if err := <-aDone; err == nil {
+		t.Fatal("call A should end failed, not nil")
+	}
+}

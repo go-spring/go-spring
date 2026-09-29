@@ -21,7 +21,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/messaging"
 )
 
@@ -39,24 +39,36 @@ import (
 // instrumented Conn.PublishMsgContext/Conn.Consume): the messaging path is
 // observed once, by Observe, and the raw path by the Conn wrapper. All tracing
 // is a no-op without starter-otel.
-func NewDriver(conn *Conn) messaging.Driver {
-	return messaging.Observe(&driver{conn: conn}, "nats")
+//
+// prop is the load-test convention the driver carries: publish stamps the
+// marker onto the NATS message header and consume reads it back. A nil
+// propagator falls back to [traffic.NewDefaultPropagator].
+func NewDriver(conn *Conn, prop traffic.Propagator) messaging.Driver {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
+	return messaging.Observe(&driver{conn: conn, prop: prop}, "nats")
 }
 
-type driver struct{ conn *Conn }
+type driver struct {
+	conn *Conn
+	prop traffic.Propagator
+}
 
 func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.Publisher, error) {
-	return &publisher{conn: b.conn, subject: destination}, nil
+	return &publisher{conn: b.conn, subject: destination, prop: b.prop}, nil
 }
 
 func (b *driver) NewSubscriber(_ context.Context, source, group string) (messaging.Subscriber, error) {
-	return &subscriber{conn: b.conn, subject: source, group: group}, nil
+	return &subscriber{conn: b.conn, subject: source, group: group, prop: b.prop}, nil
 }
 
 // publisher sends envelopes to a fixed NATS subject.
 type publisher struct {
 	conn    *Conn
 	subject string
+	prop    traffic.Propagator
 }
 
 // headerMsgKey carries the envelope's ordering key across NATS: core NATS
@@ -74,12 +86,14 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		nm.Header.Set(headerMsgKey, msg.Key)
 	}
 	// Carry the load-test marker in the NATS message header so the consumer
-	// recognises synthetic load. NATS header Set canonicalises like net/http.
-	if traffic.IsLoadTest(ctx) {
+	// recognises synthetic load. The header map is allocated on demand because a
+	// headerless message leaves it nil and writing to it must not panic; the
+	// adapter writes through Header.Set, so the key lands in canonical spelling.
+	if p.prop.IsLoadTest(ctx) {
 		if nm.Header == nil {
 			nm.Header = nats.Header{}
 		}
-		nm.Header.Set(canonical.HeaderLoadTest, "1")
+		p.prop.Inject(ctx, propagate.Header(nm.Header))
 	}
 	// Publish through the raw *nats.Conn: the Observe decorator already opened
 	// the producer span, injected the W3C trace context into msg.Headers (which
@@ -99,6 +113,7 @@ type subscriber struct {
 	conn    *Conn
 	subject string
 	group   string
+	prop    traffic.Propagator
 	sub     *nats.Subscription
 }
 
@@ -114,9 +129,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 	cb := func(nm *nats.Msg) {
 		octx := context.Background()
 		// Extract the load-test marker the producer put in the NATS header.
-		if canonical.IsAffirmative(nm.Header.Get(canonical.HeaderLoadTest)) {
-			octx = canonical.WithLoadTest(octx, "nats-header")
-		}
+		octx = s.prop.Extract(octx, propagate.Header(nm.Header))
 		_ = handler(octx, fromNatsMsg(nm)) // core NATS delivery is fire-and-forget
 	}
 	var sub *nats.Subscription

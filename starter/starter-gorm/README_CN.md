@@ -20,7 +20,7 @@ starter（`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、
 - gorm observe 插件——每次 Create / Query / Update / Delete 产生一个 client
   span、一条时长指标、一行访问日志，走 OTel 全局对象，因此未装 `starter-otel`
   时开销近乎为零；
-- resilience 回调——每个操作都在同一个后端中立的 `resilience.Executor` 下执行，
+- resilience 回调——每个操作都在同一个后端中立的 `resilience.ClientExecutor` 下执行，
   `gorm.ErrRecordNotFound` 视为成功；
 - open 之后的 `DBCustomizer` 扩展缝，以及带方言限定的 bean 命名
   （`<dialect>.<name>`），使两个方言可以携带同名实例而不冲突。

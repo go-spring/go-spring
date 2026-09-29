@@ -70,11 +70,11 @@ import (
 )
 
 // RetryPolicy governs how a branch's second-phase operation (commit or
-// rollback) is retried on failure. It reuses [resilience.Policy] rather than
+// rollback) is retried on failure. It reuses [resilience.ClientPolicy] rather than
 // inventing a second knob set, so the same declarative fields (MaxRetries,
 // Timeout, ...) govern both outbound resilience and AT phase retries. The zero
 // value means a single attempt with no retry.
-type RetryPolicy = resilience.Policy
+type RetryPolicy = resilience.ClientPolicy
 
 // SQLType is the kind of DML a branch captured, which determines how a row is
 // restored on rollback: an inserted row is deleted, a deleted row is

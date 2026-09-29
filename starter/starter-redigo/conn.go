@@ -18,7 +18,6 @@ package StarterRedigo
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -171,14 +170,13 @@ func (c *Conn) run(ctx context.Context, cmd string, args []interface{},
 // (rate-limited / circuit-open / bulkhead-full) surface to the caller verbatim.
 // The executor plumbing (nil-as-success + rejection/fault translation) lives in
 // [resilience.Run], shared with the other client adapters.
-func resilienceInterceptor(exec resilience.Executor, resource string) CommandInterceptor {
+func resilienceInterceptor(exec resilience.ClientExecutor, service string) CommandInterceptor {
 	return func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-			return resilience.Run(ctx, exec, resource, func(e error) bool {
-				return errors.Is(e, redis.ErrNil)
-			}, func(attemptCtx context.Context) (interface{}, error) {
-				return next(attemptCtx, cmd, args)
-			})
+			return resilience.Run(ctx, exec,
+				func(attemptCtx context.Context) (interface{}, error) {
+					return next(attemptCtx, cmd, args)
+				}, resilience.Tolerate(redis.ErrNil))
 		}
 	}
 }

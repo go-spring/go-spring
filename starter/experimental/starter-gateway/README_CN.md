@@ -82,7 +82,7 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 | `rewriteHost(h)` | 覆盖发往上游的 Host 头 |
 | `preserveHostHeader` | 保留入站 Host 而非替换为上游 Host |
 | `requestId([header])` | 确保存在 `X-Request-Id`（或指定头） |
-| `rateLimit(rate=..,burst=..,...)` | 经 resilience RateLimiter 限流 |
+| `rateLimit(rate=..,burst=..,...)` | 经 resilience executor 限流 |
 | `jwt-auth(<bean>)` / `lua(<bean>)` | 委派给 bean 形态的 `FilterWrapper`（见下） |
 
 用 `StarterGateway.RegisterFilter(name, factory)` 注册自定义过滤器。
@@ -100,7 +100,7 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 
 ## 韧性（Resilience）
 
-`spring.gateway.resilience.<name>` 下的命名策略与 `resilience.Policy` 一一对应（限流速率、
+`spring.gateway.resilience.<name>` 下的命名策略与 `resilience.ClientPolicy` 一一对应（限流速率、
 突发、错误阈值、熔断打开时长、最大并发、重试次数、超时）。路由通过
 `resilience.policy=<name>` 引用；引用同一策略的路由共享熔断／限流状态。
 

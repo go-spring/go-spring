@@ -57,12 +57,12 @@ type ChunkStep[I, O any] struct {
 	// retry/circuit-breaker via the resilience default driver, so a transient
 	// failure retries the chunk instead of failing the step. Ignored when
 	// Executor is set.
-	Retry resilience.Policy
+	Retry resilience.ClientPolicy
 
 	// Executor, when set, is used to guard each chunk instead of building one
 	// from Retry — plug in a production driver (e.g. sentinel) here. When both
 	// Executor and Retry are unset, a chunk runs once with no retry.
-	Executor resilience.Executor
+	Executor resilience.ClientExecutor
 }
 
 // StepName implements [Step].
@@ -70,14 +70,14 @@ func (s *ChunkStep[I, O]) StepName() string { return s.Name }
 
 // executor returns the resilience executor guarding each chunk, or nil when no
 // protection is configured (the chunk then runs once).
-func (s *ChunkStep[I, O]) executor() (resilience.Executor, error) {
+func (s *ChunkStep[I, O]) executor() (resilience.ClientExecutor, error) {
 	if s.Executor != nil {
 		return s.Executor, nil
 	}
 	if s.Retry.IsZero() {
 		return nil, nil
 	}
-	return resilience.NewDefaultDriver().NewExecutor(s.Retry)
+	return resilience.NewDefaultDriver(nil).NewClientExecutor(s.Name, s.Retry)
 }
 
 // Run implements [Step]. It resumes from rc.StepExecution, drives the chunk
@@ -170,7 +170,7 @@ func (s *ChunkStep[I, O]) Run(ctx context.Context, rc *StepContext) error {
 		}
 
 		if exec != nil {
-			err = exec.Execute(ctx, s.Name, writeChunk)
+			err = exec.Execute(ctx, writeChunk)
 		} else {
 			err = writeChunk(ctx)
 		}

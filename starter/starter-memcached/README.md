@@ -40,8 +40,8 @@ type Service struct {
 ### 4. Use the Memcached Instance
 
 ```go
-err := s.Memcached.Set(&memcache.Item{Key: "key", Value: []byte("value")})
-item, err := s.Memcached.Get("key")
+err := s.Memcached.Set(ctx, &memcache.Item{Key: "key", Value: []byte("value")})
+item, err := s.Memcached.Get(ctx, "key")
 ```
 
 ## Core Features

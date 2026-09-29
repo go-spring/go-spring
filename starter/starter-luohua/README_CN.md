@@ -22,7 +22,7 @@ import _ "go-spring.org/starter-luohua"
 | 键 | 默认 | 含义 |
 | --- | --- | --- |
 | `enabled` | `true` | 整个基线的总开关。 |
-| `propagate.load-test-header` | 空 | 覆盖 `traffic.HeaderLoadTest`，让压测标识的探测/注入用 luohua 自己的 header（G1 缝）。gRPC metadata 键由小写派生。 |
+| `propagate.load-test-header` | 空 | 覆盖 propagator 的 header 名，让压测标识的探测/注入用 luohua 自己的 header（G1 缝）。gRPC metadata 键由小写派生。 |
 | `propagate.headers` | 空 | luohua 具名 header propagator 全链路携带的业务头（`X-Tenant`、`X-User`…）。它们挂在 OTel 全局 propagator 上，httpx / gin / echo / grpc 全部生效。 |
 | `observability.fields` | 空 | luohua 在每条日志**与每个 span** 上露出的上下文字段（与 `propagate.headers` 同名，如 `X-Tenant`）。在抽取头的那一刻挂到请求 context 上。 |
 
@@ -67,15 +67,15 @@ Cache *cache.Cache `autowire:"luohua"`
 
 ## 治理
 
-luohua 刻意**不造自己的治理引擎** —— 出站调用已走 go-spring 中性的 `resilience.ExecutorFor` /
-`fault.InjectorFor` 缝、挂在单一治理权威下;没有自研后端的公司应骑官方引擎、按舰队钉默认策略。
+luohua 刻意**不造自己的治理引擎** —— 出站调用已走治理 starter 注册的 `resilience.Manager` /
+`fault.Injector` bean、挂在单一治理权威下;没有自研后端的公司应骑官方引擎、按舰队钉默认策略。
 写在治理规则文档里即可(见 starter-governance):
 
 ```properties
 govern.driver=default
-govern.rules[0].resources=orders
-govern.rules[0].timeout=500ms
-govern.rules[0].max-retries=2
+govern.client.rules[0].service=orders
+govern.client.rules[0].attempt-timeout=500ms
+govern.client.rules[0].max-retries=2
 ```
 
 要注册公司自己的 resilience 后端(替换 `default`)就是贡献一个 bean ——

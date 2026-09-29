@@ -51,11 +51,11 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new TDengine client from the provided configuration.
 // It owns full client assembly: parsing the DSN into a taosWS connector,
-// wrapping it so Init can later arm per-statement resilience + observability
-// (database/sql offers no transport to swap, so the guard rides the
-// driver.Conn level), and applying the pool settings — but not the startup
-// ping probe or the resilience wiring, which are the starter's lifecycle
-// concerns (see newClient in starter.go).
+// wrapping it so the starter can later arm per-statement resilience +
+// observability (database/sql offers no transport to swap, so the guard rides
+// the driver.Conn level), and applying the pool settings — but not the startup
+// ping probe nor the resilience wiring, which are the starter's lifecycle
+// concerns ([Client.ArmGovernance] and newClient in starter.go).
 func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*Client, error) {
 	cfg, err := taosws.ParseDSN(c.DSN)
 	if err != nil {
@@ -74,12 +74,12 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*Client, error
 	return &Client{DB: db, cfg: c, slot: slot}, nil
 }
 
-// clientSlot carries the executor + observer Init arms. Connections consult it
-// on every statement; before Init it is transparent (nil exec, nil obs).
+// clientSlot carries the executor + observer the starter arms
+// ([Client.ArmGovernance] and Init respectively). Connections consult it on
+// every statement; while unarmed it is transparent (nil exec, nil obs).
 type clientSlot struct {
-	exec     resilience.Executor
-	resource string
-	obs      *dbObserver
+	exec resilience.ClientExecutor
+	obs  *dbObserver
 }
 
 // guardedConnector wraps a driver.Connector so every connection it hands out
@@ -150,7 +150,7 @@ func (g guardedConn) guard(ctx context.Context, call func(context.Context) error
 	if g.slot.exec == nil {
 		return call(ctx)
 	}
-	return g.slot.exec.Execute(ctx, g.slot.resource, call)
+	return g.slot.exec.Execute(ctx, call)
 }
 
 // execObserved opens an observation around the call when an observer is armed.

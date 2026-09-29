@@ -74,7 +74,8 @@ func main() {
 func runTest(s *Service) {
 	ctx := context.Background()
 
-	driver := starter.NewDriver(s.Client)
+	// nil propagator: the canonical load-test convention.
+	driver := starter.NewDriver(s.Client, nil)
 
 	// Subscribe before publishing so the message is not missed.
 	sub, err := driver.NewSubscriber(ctx, topic, group)

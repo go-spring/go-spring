@@ -22,6 +22,9 @@ import (
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
@@ -35,7 +38,7 @@ import (
 type Spec struct {
 	Dialector      gorm.Dialector
 	Pool           PoolConfig
-	Resource       string
+	Service        string // governance service label (precomputed resilience.ServiceLabel)
 	ObserveEnabled bool
 	Closers        []func()
 }
@@ -46,14 +49,20 @@ type Spec struct {
 type Dialect[C any] struct {
 	Prefix       string // e.g. "spring.gorm.mysql"
 	BeanPrefix   string // bean-name qualifier, e.g. "mysql"; defaults to the Prefix tail
-	Engine       string // db.system + observe + resource label, e.g. "mysql"
+	Engine       string // db.system + observe + service label, e.g. "mysql"
 	HealthPrefix string // e.g. "gorm:mysql:"
 	// Build assembles the dialector for one entry. backend is the discovery
 	// backend bean the entry's ${discovery} label resolved to (nil when the
 	// label named no bean), handed in as an argument rather than carried on
 	// Config so Config stays a pure bound value; dialects with no network
-	// transport (e.g. sqlite) ignore it.
-	Build func(ctx context.Context, c C, backend discovery.Discovery) (Spec, error)
+	// transport (e.g. sqlite) ignore it, and so do dialects that dial a fixed
+	// address.
+	//
+	// lbMgr is the injected endpoint-selection authority. A dialect that builds
+	// a pick pool for a discovery-routed entry passes it to
+	// [Common.NewPickPool], which binds the pool to the entry's governance
+	// label; it is nil in a standalone call.
+	Build func(ctx context.Context, c C, backend discovery.Discovery, lbMgr *loadbalance.Manager) (Spec, error)
 }
 
 // Module declares a dialect starter as a gs module: it wires one *DB bean (plus
@@ -77,16 +86,19 @@ func Module[C any](d Dialect[C]) {
 			// ${discovery} label (nil when the key is unset or the entry dials
 			// a static address); it is handed to the dialect Build, which is the
 			// only consumer, and never carried on the Config value.
-			r.Provide(func(ctx *gs.ContextProvider, disc discovery.Discovery) (*DB, error) {
-				spec, err := d.Build(ctx.Context, c, disc)
+			r.Provide(func(ctx *gs.ContextProvider, disc discovery.Discovery,
+				mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*DB, error) {
+				spec, err := d.Build(ctx.Context, c, disc, lbMgr)
 				if err != nil {
 					return nil, err
 				}
 				db, err := Open(spec.Dialector, spec.Pool, Options{
 					Engine:         d.Engine,
-					Resource:       spec.Resource,
+					Service:        spec.Service,
 					ObserveEnabled: spec.ObserveEnabled,
 					Closers:        spec.Closers,
+					Mgr:            mgr,
+					Inj:            inj,
 				})
 				if err != nil {
 					for _, closer := range spec.Closers {
@@ -104,6 +116,17 @@ func Module[C any](d Dialect[C]) {
 				// never-existing bean name, so an unset key yields the optional
 				// nil).
 				gs.IndexArg(1, gs.TagArg("${"+d.Prefix+".instances."+name+".discovery:=${"+d.Prefix+".default.discovery:=none}}?")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container (the normal
+				// case) and are absent from a container without it. Without the
+				// "?" gs would treat an absent bean as a wiring error and the app
+				// would not boot, turning "governance is off" into "governance
+				// must be imported" — which is not the contract: (*DB).Init and
+				// the dialect Build treat a nil bean as an unarmed authority, a
+				// transparent pass-through.
+				gs.IndexArg(2, gs.TagArg("?")),
+				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(4, gs.TagArg("?")),
 			).Name(beanName).Init((*DB).Init).Destroy((*DB).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the

@@ -40,6 +40,15 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // -----------------------------------------------------------------------------
@@ -198,11 +207,11 @@ func startConsume(ctx context.Context, msg pulsar.Message) (context.Context, obs
 // -----------------------------------------------------------------------------
 
 // clientGuard is the per-client resilience attachment: the executor chain and
-// the stable resource label it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/resource combination).
+// the stable service label it executes under, colocated so a guard lookup
+// reads the pair atomically (no torn exec/service combination).
 type clientGuard struct {
-	exec     resilience.Executor
-	resource string
+	exec    resilience.ClientExecutor
+	service string
 }
 
 // clientGuards indexes the guard by the raw client bean, so GuardedSend can resolve
@@ -215,14 +224,17 @@ var clientGuards sync.Map // pulsar.Client -> *clientGuard
 // producers are caller-created, so the executor is driven through an opt-in
 // call-site guard (GuardedSend) on the synchronous Producer.Send path.
 //
-// Both the executor and the fault injector are resolved through neutral seams
-// ([resilience.ExecutorFor] / [fault.InjectorFor]) that starter-govern backs with
-// the governance center — so this function has zero coupling to cloud/governance.
-// When governance is off, ExecutorFor yields a transparent no-op executor; fault
-// wraps it when an injector is registered (nil-safe otherwise).
-func applyResilience(cl pulsar.Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor("pulsar", resource))
-	clientGuards.Store(cl, &clientGuard{exec: exec, resource: resource})
+// mgr and inj are the governance beans gs injects into the client constructor.
+// A nil mgr is normalized here — an unarmed manager yields a transparent no-op
+// executor, which is exactly "governance off", while a nil pointer would panic
+// on the method call; inj is nil-safe at its use site, so a nil injector simply
+// adds no fault.
+func applyResilience(cl pulsar.Client, service string, mgr *resilience.Manager, inj *fault.Injector) error {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("pulsar", service), service, inj)
+	clientGuards.Store(cl, &clientGuard{exec: exec, service: service})
 	return nil
 }
 
@@ -244,7 +256,7 @@ func guard(ctx context.Context, cl pulsar.Client, call func(context.Context) err
 		return call(ctx)
 	}
 	g := v.(*clientGuard)
-	return g.exec.Execute(ctx, g.resource, call)
+	return g.exec.Execute(ctx, call)
 }
 
 // GuardedSend sends msg synchronously on producer, routed through the resilience

@@ -144,10 +144,12 @@ gs.Run()
   │     `spring.cassandra.instances.<name>.driver = <bean 名>`，留空 = 按类型注入
   │     唯一 Driver bean，指定的 bean 不存在则启动失败）→ driver.CreateClient
   │     → HealthCheck 探活（fail fast，见下）
-  ├─ Init [client.go:59]：newDBObserver("cassandra") → resource label
-  │     → fault.WrapExecutor(resilience.ExecutorFor("cassandra", resource)) —— exec 链就绪
+  ├─ 构造 newClient [starter.go:72] 武装治理 [client.go:79]：
+  │     fault.WrapClientExecutor(mgr.ClientExecutorFor("cassandra", service), service, inj)，mgr/inj 为注入的
+  │     *resilience.Manager / *fault.Injector bean —— exec 链就绪
+  ├─ Init [client.go:59]：newDBObserver("cassandra") → 语句观测器
   ├─ readiness：每个实例的 indicator 查询 system.local
-  └─ SIGTERM → Destroy [client.go:75]：exec.Close（若已武装）→ Session.Close
+  └─ SIGTERM → Destroy [client.go:95]：exec.Close（若已武装）→ Session.Close
 ```
 
 consistency 值未知、集群不可达都会中止启动——进程绝不会带着一个死掉的
@@ -175,8 +177,8 @@ wrapper [query.go]，其执行方法全部过执行器 + 观察者。`Client.Exe
 1. `obs.Start(ctx, "exec", stmt)` 打开名为 `exec` 的 client 型 span（语句作为有界
    `db.statement` 属性）、抬升 in-flight 计数、开启一条 access-log 记录。无 starter-otel 全局件时
    span/metric 为 no-op；access log 恒输出。
-2. `exec.Execute(ctx, resource, call)` 向治理执行器申请许可 —— limiter/breaker 作用于
-   resource label `cassandra:<hosts[0]>`（按实例，且**只取第一个 host**
+2. `exec.Execute(ctx, call)` 向治理执行器申请许可 —— limiter/breaker 作用于
+   service label `cassandra:<hosts[0]>`（按实例，且**只取第一个 host**
    [client.go:66]）。拒绝时语句**根本不会执行**。治理关闭时执行器是透明 no-op。
 3. `Session.Query(stmt, values...).WithContext(ctx).Exec()`（经 wrapper 内嵌的
    `*gocql.Query`）执行 —— 完整 gocql 语义（预编译缓存、gocql 配置的重试、实例配置
@@ -194,16 +196,18 @@ wrapper）——请用 wrapper 自带的 `WithContext`/`Bind` 保持防护。后
 `Client.Query`/`Client.Bind`/`Client.Exec` 出发，读写都有 breaker/limiter/metrics/
 access-log。
 
-`Exec` 的分层顺序（由外向内）：observer start → fault 注入器（`fault.WrapExecutor`，
-进程级）→ resilience observer（`resilience.WrapExecutor`，outcome 计数）→
-resilience 执行器（治理中心）→ gocql。resilience observer 紧贴执行器、fault 注入器在其
-外层，因此注入故障与 breaker 拒绝都会被计数和记录。
+`Exec` 的分层顺序（由外向内）：fault 注入器（`fault.WrapClientExecutor` 包住注入 manager 解析
+出的执行器）→ resilience observer（`resilience.WrapClientExecutor`，outcome 计数）→
+resilience 执行器（限流/熔断/重试核心）→ 语句观测器 [client.go:59] → gocql。fault 注入器
+包裹的是核心执行的那个操作函数，因此注入故障与 breaker 拒绝都会走完
+重试/熔断/超时并被计数和记录。
 
 ### 2.4 Driver 构造缝
 
 `Driver.CreateClient(ctx, Config) (*gocql.Session, error)` 拥有完整 session 装配 ——
 hosts、PasswordAuthenticator、一致性级别、超时、CQL 版本、TLS [driver.go:51-86] —— 而
-启动探活、resource label 与 resilience 接线留在 starter 生命周期里。session 装配是
+启动探活与 resilience 接线留在 starter 生命周期里（`newClient` → `ArmGovernance`
+[client.go:79]、`Init` [client.go:59]）。session 装配是
 **可选容器 bean**：公司/伞包 starter 可把自己的 `Driver` 作为 bean 提供
 （`gs.Provide(func() StarterCassandra.Driver{...})`，因为是 bean，可在装配期注入从配置
 文件绑定的配置）；`spring.cassandra` 下每个实例都经它构建。没有该 bean 时 starter 在
@@ -276,9 +280,9 @@ curl -s :9370/metrics | grep db.client   # 时长直方图 + active_requests
 
 ### 4.3 故障 / resilience 演练（需 starter-governance）
 
-为 resource `cassandra:127.0.0.1` 在 `govern.*` 下配 breaker 或 limiter，压测 `Exec`
+为 service `cassandra:127.0.0.1` 在 `govern.*` 下配 breaker 或 limiter，压测 `Exec`
 插入，观察拒绝以快速错误返回且语句**未执行**（Cassandra 侧无行），并有 resilience
-observer 的 outcome 计数。运行期翻转策略 —— 执行器热生效，无需重启。注意 resource label
+observer 的 outcome 计数。运行期翻转策略 —— 执行器热生效，无需重启。注意 service label
 只取 hosts[0]：首 host 相同的实例 `b` 与实例 `a` 共用同一个 breaker 桶。
 
 ### 4.4 fail-fast 探活演练
@@ -301,7 +305,7 @@ docker stop cassandra-example && go run .
 | Exec 无 span/metric | 未 import starter-otel | observer 搭 OTel 全局件；import starter-otel（access log 仍会输出）。 |
 | 完全没有 access log 行 | logger 级别过滤掉了 Debug/Info，或 `_app_cassandra_access` tag 被过滤 | 检查 logger 级别及其对 `_app_cassandra_access` tag 的过滤。 |
 | breaker/limiter 永不触发 | 用的是裸 `*gocql.Session`（如别处取得的 session）、或 batch、或链式配置方法丢掉了 wrapper | 语句从 `Client.Query`/`Client.Bind`/`Client.Exec` 出发（§2.3）。 |
-| 两个实例意外共用一个 breaker | resource label 是 `cassandra:<hosts[0]>` [client.go:66] | 设计行为（多 seed 折叠到首个 host）；需要隔离就拆接触点列表。 |
+| 两个实例意外共用一个 breaker | service label 是 `cassandra:<hosts[0]>` [client.go:66] | 设计行为（多 seed 折叠到首个 host）；需要隔离就拆接触点列表。 |
 | Exec 可用但健康 DOWN | indicator 带自身 ctx 查 system.local；查权限/超时 | 看 /readiness 中该 component 的错误详情。 |
 
 ## 6. 设计体检表
@@ -317,5 +321,5 @@ docker stop cassandra-example && go run .
 
 - ~~只有 `Exec` 有防护/观测~~ 已修：带防护的 `*Query` wrapper 覆盖常规语句路径
   （§2.3）；batch 与 `Iter` 深翻页仍在守卫之外。
-- resource label 只用 `hosts[0]`，多 seed 配置共享一个以首 host 为键的 resilience 桶。
+- service label 只用 `hosts[0]`，多 seed 配置共享一个以首 host 为键的 resilience 桶。
 - 健康指示器没有关闭 key（与 redigo 的 `health.enabled` 家族不对称）。

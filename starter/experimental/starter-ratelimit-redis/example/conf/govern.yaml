@@ -1,0 +1,11 @@
+# Governance rules, standalone. One rule for the service label the example's two
+# handlers share: burst 5, sustained 2/s. A rule fully replaces
+# govern.client.default for the matched service (no field-wise merge), which is
+# why the label carries both knobs.
+govern:
+  enabled: true
+  client:
+    rules:
+      - service: ratelimit-redis:api
+        rate-limit: 2
+        burst: 5

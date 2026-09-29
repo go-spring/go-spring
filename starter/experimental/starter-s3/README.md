@@ -81,8 +81,9 @@ The wrapper embeds `*minio.Client`, so every SDK method promotes unchanged.
   ships no OTel instrumentation of its own, so the starter
   transport carries all three signals.
 - **Resilience** — rate limiting, circuit breaking and fault injection are
-  enforced on the client's HTTP transport through the governance seams; with
-  `starter-governance` absent the transport is observe-only.
+  enforced on the client's HTTP transport through the executor built from the
+  injected governance beans; with `starter-governance` absent the transport is
+  observe-only.
 
 ## Advanced Features
 

@@ -6,6 +6,7 @@ require (
 	dubbo.apache.org/dubbo-go/v3 v3.3.1
 	github.com/dubbogo/gost v1.14.3
 	github.com/stretchr/testify v1.11.1
+	go-spring.org/starter-governance v0.0.0
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
@@ -113,3 +114,5 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
+
+replace go-spring.org/starter-governance => ../starter-governance

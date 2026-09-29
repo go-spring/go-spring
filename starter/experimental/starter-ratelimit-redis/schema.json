@@ -2,29 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.ratelimit.redis",
   "type": "object",
-  "description": "Two buckets: spring.ratelimit.redis.default holds family-wide values (each overridable per instance), spring.ratelimit.redis.instances.<name> holds one entry per named instance. No other key belongs directly under spring.ratelimit.redis.",
+  "description": "The Redis-backed counter store's single block. Its presence turns the starter on; client names the *goredis.Client bean whose Redis instance holds the shared rate-limit budgets. No other key belongs under spring.ratelimit.redis.",
   "properties": {
-    "default": {
-      "type": "object",
-      "description": "Family-wide values, each overridable by an instance.",
-      "properties": {
-        "driver": {
-          "type": "string",
-          "description": "Names the Driver bean that assembles every instance's transport unless an instance names its own. Empty injects the single Driver bean by type; naming a missing bean fails startup."
-        }
-      }
-    },
-    "instances": {
-      "type": "object",
-      "description": "One entry per instance; the key is the bean name, and any name is legal.",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "client": {
-            "type": "string"
-          }
-        }
-      }
+    "client": {
+      "type": "string",
+      "description": "Name of the *goredis.Client bean (provided by starter-go-redis under spring.go-redis.instances.<name>) whose Redis instance backs the shared counters. Required; an empty value fails wiring."
     }
-  }
+  },
+  "required": [
+    "client"
+  ]
 }

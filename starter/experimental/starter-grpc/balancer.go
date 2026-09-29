@@ -43,15 +43,23 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 	"google.golang.org/grpc/resolver"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Scheme is the target scheme handled by the discovery-backed resolver. Dial
@@ -100,13 +108,13 @@ func backendLabels() []string {
 	return labels
 }
 
-// clientGovernLabel is the governance resource label the pre-registered
+// clientGovernLabel is the governance service label the pre-registered
 // balancers resolve their endpoint-selection policy from — both halves: the
 // outlier-suspension thresholds and the strategy override. It deliberately names
 // no service: these balancers are process-wide and shared by every client that
 // selects them through service config, so their only sensible policy is the
-// process-wide default — govern.default.* — which is exactly what a label
-// matching no rule resolves to. Write govern.rules[N].resources=grpc:client to
+// process-wide default — govern.client.default.* — which is exactly what a label
+// matching no rule resolves to. Write govern.client.rules[N].service=grpc:client to
 // target them explicitly.
 //
 // The label being process-wide is what makes `balancer` here a blunt instrument:
@@ -135,41 +143,88 @@ var builtinStrategies = []string{
 	loadbalance.ZoneAware,
 }
 
+// builtinTrackers holds one suspension tracker per built-in strategy, all
+// starting DISABLED: suspension is a governance decision now, resolved from the
+// process-wide default and applied in place by [applyGovernedSelection], so a rule
+// push retunes them all without re-registering a balancer. This is the same
+// "unset means inert" rule every other governed knob follows — a client that
+// wants eviction configures it. It is package state rather than an init local so
+// the governance subscription (installed by [newSelectionHook] at wiring time, long
+// after init returned) can reach the trackers.
+var builtinTrackers []*loadbalance.Tracker
+
 func init() {
 	resolver.Register(discoveryResolverBuilder{})
 
-	// One tracker per built-in strategy, all starting DISABLED: suspension is a
-	// governance decision now, resolved from the process-wide default and applied
-	// in place, so a rule push retunes them all without re-registering a
-	// balancer. This is the same "unset means inert" rule every other governed
-	// knob follows — a client that wants eviction configures it.
-	trackers := make([]*loadbalance.Tracker, 0, len(builtinStrategies))
+	// One tracker per built-in strategy, all starting disabled.
 	for _, s := range builtinStrategies {
 		t := loadbalance.NewTracker(loadbalance.TrackerConfig{})
 		registerBalancer(BalancerName(s), s, t, true)
-		trackers = append(trackers, t)
+		builtinTrackers = append(builtinTrackers, t)
 	}
-	governance.Register(clientGovernLabel, func(p resilience.Policy) {
-		// Suspension half: retune every built-in tracker in place, keeping the
-		// per-endpoint failure state.
-		for _, t := range trackers {
-			t.SetConfig(loadbalance.TrackerConfig{
-				Threshold:  p.OutlierThreshold,
-				SuspendFor: p.OutlierSuspendFor,
-			})
-		}
-		// Strategy half: an empty name leaves each balancer on the strategy the
-		// app chose through service config; an unknown name is IGNORED and the
-		// last good override stands, since the governance Source contract has no
-		// error channel ("everything you push, you vouch for").
-		if p.Balancer == "" {
-			governedBal.Store(nil)
-			return
-		}
-		if bal, err := loadbalance.New(p.Balancer); err == nil {
-			governedBal.Store(&bal)
-		}
-	})
+
+	// The install-and-hold bean that wires governance onto the built-in
+	// balancers. gRPC's balancer registry builds balancers through a no-arg
+	// constructor (see [newSelectionHook]), so the loadbalance manager cannot arrive
+	// as a balancer constructor parameter: a bean receives it and subscribes on
+	// their behalf, writing the resulting policy into the package handles
+	// ([builtinTrackers], [governedBal]) the pickers read. Exported as a gs.Rooter
+	// so gs instantiates it even though nothing injects it — without a
+	// collected-type export an unreachable bean is never created and the policy
+	// would never be applied.
+	gs.Provide(newSelectionHook, gs.IndexArg(0, gs.TagArg("?"))).
+		Export(gs.As[gs.Rooter]()).Caller(1)
+}
+
+// managerHook is the marker bean whose construction subscribes the built-in
+// balancers to the governance manager.
+type managerHook struct{}
+
+// newSelectionHook subscribes the built-in gs_* balancers to the manager's policy
+// for [clientGovernLabel]. mgr is nil when starter-governance is not imported —
+// the same "governance off" case as a disabled center — and there is then nothing
+// to subscribe, so each balancer keeps its own registered default. The manager
+// bean is a NULLABLE injection ("?"), so an absent bean leaves the app booting
+// instead of failing wiring.
+//
+// Subscribe arms the callback immediately with the current policy (a zero policy
+// on a manager that is not yet live), so the built-ins start inert and are
+// retuned the moment governance goes live — no OnReady deferral is needed.
+func newSelectionHook(lbMgr *loadbalance.Manager) (*managerHook, error) {
+	if lbMgr != nil {
+		lbMgr.Subscribe(clientGovernLabel, func(s loadbalance.Selection) error {
+			applyGovernedSelection(s)
+			return nil
+		})
+	}
+	return &managerHook{}, nil
+}
+
+// applyGovernedSelection is the governance callback for the built-in balancers: it
+// retunes every built-in tracker in place (keeping the per-endpoint failure
+// state) and swaps the process-wide strategy override. An empty Balancer leaves
+// each balancer on the strategy the app chose through service config; an unknown
+// name is IGNORED and the last good override stands, since the governance Source
+// contract has no error channel ("everything you push, you vouch for").
+//
+// It takes the selection half only: the protection half of the same rule drives
+// the client-side executor and has nothing to say to a gRPC balancer.
+func applyGovernedSelection(s loadbalance.Selection) {
+	// Suspension half.
+	for _, t := range builtinTrackers {
+		t.SetConfig(loadbalance.TrackerConfig{
+			Threshold:  s.OutlierThreshold,
+			SuspendFor: s.OutlierSuspendFor,
+		})
+	}
+	// Strategy half.
+	if s.Balancer == "" {
+		governedBal.Store(nil)
+		return
+	}
+	if bal, err := loadbalance.New(s.Balancer, s.BalancerConfig()); err == nil {
+		governedBal.Store(&bal)
+	}
 }
 
 // BalancerName is the gRPC balancer name for a loadbalance strategy, e.g.
@@ -200,7 +255,7 @@ func RegisterBalancer(name, strategy string, tc loadbalance.TrackerConfig) {
 // governed marks the built-ins, whose strategy the governance center may override
 // in place.
 func registerBalancer(name, strategy string, tracker *loadbalance.Tracker, governed bool) {
-	bal, err := loadbalance.New(strategy)
+	bal, err := loadbalance.New(strategy, loadbalance.Config{})
 	if err != nil {
 		panic("starter-grpc: " + err.Error())
 	}

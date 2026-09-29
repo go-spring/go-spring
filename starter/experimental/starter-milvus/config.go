@@ -16,8 +16,6 @@
 
 package StarterMilvus
 
-import ()
-
 // Config defines one Milvus connection.
 type Config struct {
 	// Addr is the Milvus gRPC endpoint, "host:19530". Required.

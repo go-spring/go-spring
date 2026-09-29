@@ -94,7 +94,8 @@ func main() {
 	// Define a handler to GET a Memcached key value.
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		item, err := s.Memcached.Get("key")
+		ctx := r.Context()
+		item, err := s.Memcached.Get(ctx, "key")
 		if err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
@@ -105,7 +106,8 @@ func main() {
 	// Define a handler to SET a Memcached key value.
 	http.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		if err := s.Memcached.Set(&memcache.Item{Key: "key", Value: []byte("value")}); err != nil {
+		ctx := r.Context()
+		if err := s.Memcached.Set(ctx, &memcache.Item{Key: "key", Value: []byte("value")}); err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
 		}
@@ -115,7 +117,8 @@ func main() {
 	// Define a handler to INCR a Memcached counter key.
 	http.HandleFunc("/incr", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		n, err := s.Memcached.Increment("counter", 1)
+		ctx := r.Context()
+		n, err := s.Memcached.Increment(ctx, "counter", 1)
 		if err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
@@ -152,11 +155,11 @@ func runTest(s *Service) {
 	ctx := context.Background()
 
 	// Feature 1: String SET/GET.
-	if err := s.Memcached.Set(&memcache.Item{Key: "key", Value: []byte("value")}); err != nil {
+	if err := s.Memcached.Set(ctx, &memcache.Item{Key: "key", Value: []byte("value")}); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
 		os.Exit(1)
 	}
-	item, err := s.Memcached.Get("key")
+	item, err := s.Memcached.Get(ctx, "key")
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "GET failed: err=%v", err)
 		os.Exit(1)
@@ -167,13 +170,13 @@ func runTest(s *Service) {
 	}
 
 	// Feature 2: INCR counter — seed then increment three times.
-	if err := s.Memcached.Set(&memcache.Item{Key: "counter", Value: []byte("0")}); err != nil {
+	if err := s.Memcached.Set(ctx, &memcache.Item{Key: "counter", Value: []byte("0")}); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "SET counter failed: %v", err)
 		os.Exit(1)
 	}
 	var n uint64
 	for i := 0; i < 3; i++ {
-		n, err = s.Memcached.Increment("counter", 1)
+		n, err = s.Memcached.Increment(ctx, "counter", 1)
 		if err != nil {
 			log.Errorf(ctx, log.TagAppDef, "INCR failed: %v", err)
 			os.Exit(1)
@@ -185,11 +188,11 @@ func runTest(s *Service) {
 	}
 
 	// Feature 3: DELETE + cache-miss GET.
-	if err := s.Memcached.Delete("key"); err != nil {
+	if err := s.Memcached.Delete(ctx, "key"); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "DELETE failed: %v", err)
 		os.Exit(1)
 	}
-	if _, err := s.Memcached.Get("key"); !errors.Is(err, memcache.ErrCacheMiss) {
+	if _, err := s.Memcached.Get(ctx, "key"); !errors.Is(err, memcache.ErrCacheMiss) {
 		log.Errorf(ctx, log.TagAppDef, "expected cache miss after delete, got err=%v", err)
 		os.Exit(1)
 	}
@@ -199,11 +202,11 @@ func runTest(s *Service) {
 	// Feature 4: the discovery-backed client. Its server list came from the
 	// registered discovery backend (service-name=memcached-cluster), not from
 	// conf, so a successful round-trip proves discovery is wired.
-	if err := s.DiscoveryMemcached.Set(&memcache.Item{Key: "disc-key", Value: []byte("disc-value")}); err != nil {
+	if err := s.DiscoveryMemcached.Set(ctx, &memcache.Item{Key: "disc-key", Value: []byte("disc-value")}); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "discovery SET failed: %v", err)
 		os.Exit(1)
 	}
-	discItem, err := s.DiscoveryMemcached.Get("disc-key")
+	discItem, err := s.DiscoveryMemcached.Get(ctx, "disc-key")
 	if err != nil || string(discItem.Value) != "disc-value" {
 		log.Errorf(ctx, log.TagAppDef, "discovery GET failed: err=%v", err)
 		os.Exit(1)
@@ -212,7 +215,7 @@ func runTest(s *Service) {
 
 	// Feature 5: health check. The client's Ping probes every configured server
 	// and is the readiness signal — read straight off the autowired client.
-	if err := s.Memcached.Ping(); err != nil {
+	if err := s.Memcached.Ping(ctx, ); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "health ping failed: %v", err)
 		os.Exit(1)
 	}

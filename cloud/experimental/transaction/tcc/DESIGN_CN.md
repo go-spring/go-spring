@@ -30,7 +30,7 @@ AT 在 [`transaction/at`](../at/DESIGN.md)。
   `@GlobalTransactional(type = TCC)`:业务在 wiring 期注册;interceptor 按
   joinpoint 方法名查。未注册方法透明放行。
 - **`Observer` 缝隙**——每阶段一 span(nil 关闭)。
-- **`RetryPolicy = resilience.Policy` 别名**——TCC 阶段重试与出站韧性共用
+- **`RetryPolicy = resilience.ClientPolicy` 别名**——TCC 阶段重试与出站韧性共用
   一套配置。Confirm / Cancel 因契约"最终必成功",建议非零策略。
 - **决策日志驱动恢复。** Recovery 读 `Status`:`StatusConfirming`(决策 =
   commit)= 前向 Confirm;其他 in-flight = 后向 Cancel。任意崩溃点都能幂等

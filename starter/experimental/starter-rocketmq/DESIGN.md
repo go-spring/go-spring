@@ -40,8 +40,8 @@ starter-pulsar / starter-kafka.
   mirroring kafka-go's `recordCarrier`).
 - **`GuardedSend` (command.go)** — the resilience seam: the SDK exposes no
   reject-capable middleware, so the governance executor is an opt-in wrapper
-  on the synchronous `SendSync` path, resolved through the neutral
-  `resilience.ExecutorFor` / `fault.InjectorFor` seams (no coupling to
+  on the synchronous `SendSync` path, assembled from the injected
+  `*resilience.Manager` / `*fault.Injector` beans (the wiring lives in
   starter-governance).
 
 ## 3. Constraints

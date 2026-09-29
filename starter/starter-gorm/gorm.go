@@ -36,6 +36,15 @@ import (
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // PoolConfig carries the driver-agnostic connection-pool and logging settings
@@ -86,6 +95,7 @@ type Common struct {
 	// discovery} via the module wiring). See discovery.Addressing for the
 	// shared contract.
 	discovery.Addressing
+
 	// Scheme narrows discovery to endpoints of one transport scheme (e.g. "tls",
 	// "https"). Empty (the default) returns every scheme; set it when a service
 	// exposes both plain and secure instances and this client should reach only
@@ -132,30 +142,35 @@ func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (d
 }
 
 // NewPickPool builds the shared per-connection endpoint selector over the
-// resolver from [Common.NewResolver]: a round-robin [loadbalance.Pool] the
+// resolver from [Common.NewResolver]: a [loadbalance.Pool] built from the entry's balancer config the
 // dialect starter's DialContext calls on every new connection. It returns
 // (nil, nil, ...) when discovery is not in effect; otherwise the pool (and its
 // source resolver, which has no resources to release).
 //
-// resource is the entry's governance label ([resilience.ResourceLabel], e.g.
+// service is the entry's governance label ([resilience.ServiceLabel], e.g.
 // "gorm:mysql:orders-db"). The pool is built with a suspension tracker and its
-// endpoint selection is bound to that label, so one govern.rules[N] rule that
+// endpoint selection is bound to that label, so one govern.client.rules[N] rule that
 // matches the entry's protection executor also governs its balancing strategy
 // and outlier suspension. The returned stop func detaches that binding and must
 // run on client teardown; it is a no-op when governance is not in the process
 // and when discovery is not in effect.
-func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, resource string) (*loadbalance.Pool, discovery.Resolver, func(), error) {
+//
+// lbMgr is the injected endpoint-selection authority, threaded down from the
+// dialect (which receives it from the gs module ctor). A nil manager is the
+// standalone case (no container); an unarmed one is exactly "governance off",
+// where Bind is a no-op — normalizing here keeps the binding free of a nil
+// branch.
+func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, service string, lbMgr *loadbalance.Manager) (*loadbalance.Pool, discovery.Resolver, func(), error) {
 	resolver, err := c.NewResolver(ctx, backend)
 	if err != nil || resolver == nil {
 		return nil, resolver, func() {}, err
 	}
-	bal, err := loadbalance.New(loadbalance.RoundRobin)
-	if err != nil {
-		return nil, nil, func() {}, err
+	bal := loadbalance.NewRoundRobin()
+	pool := loadbalance.NewPool(resolver, bal)
+	if lbMgr == nil {
+		lbMgr = loadbalance.NewManager()
 	}
-	pool := loadbalance.NewPool(resolver, bal,
-		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
-	return pool, resolver, pool.BindSelection(resource), nil
+	return pool, resolver, lbMgr.Bind(pool, service), nil
 }
 
 // logWriter adapts GORM's logger onto the repo log core: every message GORM

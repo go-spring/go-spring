@@ -30,6 +30,15 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go.opentelemetry.io/otel/trace"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // MQTT observability is driven by these kit-backed helpers rather than a
@@ -100,11 +109,11 @@ func EndSpan(span *span, err error) {
 }
 
 // clientGuard is the per-client resilience attachment: the executor chain and
-// the stable resource label it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/resource combination).
+// the stable service label it executes under, colocated so a guard lookup
+// reads the pair atomically (no torn exec/service combination).
 type clientGuard struct {
-	exec     resilience.Executor
-	resource string
+	exec    resilience.ClientExecutor
+	service string
 }
 
 // clientGuards indexes the guard by the raw client bean, so GuardedPublish can resolve
@@ -121,13 +130,17 @@ var clientGuards sync.Map // mqtt.Client -> *clientGuard
 // and short-circuiting (circuit breaker) when the broker is unhealthy. It is
 // driven through an opt-in call-site guard (GuardedPublish).
 //
-// The executor is resolved through the neutral [resilience.ExecutorFor] seam,
-// which starter-govern backs with the governance center — so this function has
-// zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
-// transparent no-op executor; fault wraps it when enabled.
-func applyResilience(cl mqtt.Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor("mqtt", resource))
-	clientGuards.Store(cl, &clientGuard{exec: exec, resource: resource})
+// mgr and inj are the governance beans gs injects into the client constructor.
+// A nil mgr is normalized here — an unarmed manager yields a transparent no-op
+// executor, which is exactly "governance off", while a nil pointer would panic
+// on the method call; inj is nil-safe at its use site, so a nil injector simply
+// adds no fault.
+func applyResilience(cl mqtt.Client, service string, mgr *resilience.Manager, inj *fault.Injector) error {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", service), service, inj)
+	clientGuards.Store(cl, &clientGuard{exec: exec, service: service})
 	return nil
 }
 
@@ -147,7 +160,7 @@ func guard(ctx context.Context, cl mqtt.Client, call func(context.Context) error
 		return call(ctx)
 	}
 	g := v.(*clientGuard)
-	return g.exec.Execute(ctx, g.resource, call)
+	return g.exec.Execute(ctx, call)
 }
 
 // GuardedPublish publishes payload to topic at qos, routed through the

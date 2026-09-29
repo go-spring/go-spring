@@ -150,7 +150,7 @@ func TestChunkStep_RetryRecoversChunk(t *testing.T) {
 			return nil
 		}),
 		ChunkSize: 5,
-		Retry:     resilience.Policy{MaxRetries: 3},
+		Retry:     resilience.ClientPolicy{MaxRetries: 3},
 	}
 
 	job := &batch.Job{Name: "flaky-job", Steps: []batch.Step{step}}

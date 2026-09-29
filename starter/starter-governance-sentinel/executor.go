@@ -19,6 +19,7 @@ package StarterGovernanceSentinel
 import (
 	"context"
 	"fmt"
+	"go-spring.org/stdlib/timeutil"
 	"sync"
 	"sync/atomic"
 
@@ -31,80 +32,83 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 )
 
-// sentinelExecutor maps a backend-neutral resilience.Policy onto sentinel-golang
-// rules. sentinel keys everything by resource name, so rules are loaded lazily
-// the first time a resource is seen; retry and per-attempt timeout are applied
+// sentinelExecutor maps a backend-neutral resilience.ClientPolicy onto sentinel-golang
+// rules. sentinel keys everything by resource name, and this executor IS one
+// resource — the service it was built for, whose rules are loaded lazily on the
+// first call; retry and per-attempt timeout are applied
 // around sentinel's entry check, since sentinel itself models neither.
 type sentinelExecutor struct {
-	policy resilience.Policy
+	policy  resilience.ClientPolicy
+	service string
 
 	mu       sync.Mutex
-	loaded   map[string]bool
+	loaded   bool
 	listener atomic.Pointer[resilience.BreakerEventListener]
 }
 
 // SetBreakerEventListener attaches l and routes sentinel breaker state changes
-// for every resource this executor builds (via ensureRules) to it. Satisfies
+// for the resource this executor serves (via ensureRules) to it. Satisfies
 // [resilience.BreakerEventListenerSetter]; observe-resilience uses it.
 func (e *sentinelExecutor) SetBreakerEventListener(l resilience.BreakerEventListener) {
 	ensureRouteListener()
 	e.listener.Store(&l)
 }
 
-// isoSuffix namespaces the bulkhead (isolation) resource so an Entry that holds
+// isoSuffix namespaces the bulkhead (isolation) resource name so an Entry that holds
 // the concurrency slot across all retries does not collide with the per-attempt
 // Entry sentinel uses for flow + circuit breaking. sentinel evaluates every rule
 // type registered under a resource on each Entry for that resource, so the two
 // concerns must live under distinct resource names to be acquired independently.
 const isoSuffix = "$bulkhead"
 
-func newSentinelExecutor(p resilience.Policy) (resilience.Executor, error) {
+func newSentinelExecutor(service string, p resilience.ClientPolicy) (*sentinelExecutor, error) {
 	if p.RateLimit < 0 {
 		return nil, fmt.Errorf("resilience: negative rate limit %v", p.RateLimit)
 	}
-	return &sentinelExecutor{policy: p, loaded: map[string]bool{}}, nil
+	return &sentinelExecutor{service: service, policy: p}, nil
 }
 
-// ensureRules loads flow, circuit-breaker and isolation rules for resource once,
+// ensureRules loads this executor's flow, circuit-breaker and isolation rules once,
 // translating the neutral Policy knobs into sentinel's own rule shapes. The
-// breaker rule is selected by [resilience.Policy.BreakerStrategy] so the driver
+// breaker rule is selected by [resilience.ClientPolicy.BreakerStrategy] so the driver
 // matches the builtin's semantics, and both strategies set ProbeNum=1 for an
 // exactly-one-trial half-open (aligning with the builtin's single-permit gate).
-func (e *sentinelExecutor) ensureRules(resource string) error {
+func (e *sentinelExecutor) ensureRules() error {
+	service := e.service
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.loaded[resource] {
+	if e.loaded {
 		return nil
 	}
 
 	if e.policy.RateLimit > 0 {
-		if _, err := flow.LoadRulesOfResource(resource, []*flow.Rule{{
-			Resource:               resource,
+		if _, err := flow.LoadRulesOfResource(service, []*flow.Rule{{
+			Resource:               service,
 			TokenCalculateStrategy: flow.Direct,
 			ControlBehavior:        flow.Reject,
 			Threshold:              e.policy.RateLimit,
 			StatIntervalInMs:       1000,
 		}}); err != nil {
-			return fmt.Errorf("resilience: load flow rule for %q: %w", resource, err)
+			return fmt.Errorf("resilience: load flow rule for %q: %w", service, err)
 		}
 	}
 
 	if e.policy.BreakerActive() {
-		if err := e.loadBreakerRule(resource); err != nil {
+		if err := e.loadBreakerRule(service); err != nil {
 			return err
 		}
-		// Route sentinel breaker state changes for this resource to the
+		// Route sentinel breaker state changes for this service to the
 		// attached listener (if any), so observe-resilience gets the events.
 		if l := e.listener.Load(); l != nil {
-			registerBreakerRoute(resource, *l)
+			registerBreakerRoute(service, *l)
 		}
 	}
 
 	if e.policy.MaxConcurrent > 0 {
-		// The isolation rule lives under the bulkhead-suffixed resource so it is
+		// The isolation rule lives under the bulkhead-suffixed resource name so it is
 		// acquired once for the whole Execute (see Execute below) and held across
 		// retries, matching the builtin's bulkhead-scope contract (DESIGN.md §3).
-		isoResource := resource + isoSuffix
+		isoResource := service + isoSuffix
 		if _, err := isolation.LoadRulesOfResource(isoResource, []*isolation.Rule{{
 			Resource:   isoResource,
 			MetricType: isolation.Concurrency,
@@ -114,15 +118,15 @@ func (e *sentinelExecutor) ensureRules(resource string) error {
 		}
 	}
 
-	e.loaded[resource] = true
+	e.loaded = true
 	return nil
 }
 
-// loadBreakerRule registers a circuit-breaker rule under resource, choosing
-// sentinel's strategy from [resilience.Policy.BreakerStrategy]. Both strategies
+// loadBreakerRule registers a circuit-breaker rule under service, choosing
+// sentinel's strategy from [resilience.ClientPolicy.BreakerStrategy]. Both strategies
 // share the same stat window and a single half-open probe so they align with
 // the builtin driver rather than silently diverging.
-func (e *sentinelExecutor) loadBreakerRule(resource string) error {
+func (e *sentinelExecutor) loadBreakerRule(service string) error {
 	openMs := uint32(e.policy.OpenDuration.Milliseconds())
 	if openMs == 0 {
 		openMs = 5000
@@ -140,7 +144,7 @@ func (e *sentinelExecutor) loadBreakerRule(resource string) error {
 			minReq = 1
 		}
 		rule = &circuitbreaker.Rule{
-			Resource:         resource,
+			Resource:         service,
 			Strategy:         circuitbreaker.ErrorRatio,
 			RetryTimeoutMs:   openMs,
 			MinRequestAmount: minReq,
@@ -150,7 +154,7 @@ func (e *sentinelExecutor) loadBreakerRule(resource string) error {
 		}
 	default: // BreakerConsecutive
 		rule = &circuitbreaker.Rule{
-			Resource:         resource,
+			Resource:         service,
 			Strategy:         circuitbreaker.ErrorCount,
 			RetryTimeoutMs:   openMs,
 			MinRequestAmount: 1,
@@ -159,34 +163,34 @@ func (e *sentinelExecutor) loadBreakerRule(resource string) error {
 			ProbeNum:         1,
 		}
 	}
-	if _, err := circuitbreaker.LoadRulesOfResource(resource, []*circuitbreaker.Rule{rule}); err != nil {
-		return fmt.Errorf("resilience: load breaker rule for %q: %w", resource, err)
+	if _, err := circuitbreaker.LoadRulesOfResource(service, []*circuitbreaker.Rule{rule}); err != nil {
+		return fmt.Errorf("resilience: load breaker rule for %q: %w", service, err)
 	}
 	return nil
 }
 
-// Refresh adopts p as the new policy and clears the per-resource loaded set, so
+// Refresh adopts p as the new policy and clears the loaded flag, so
 // the next Execute reloads flow/breaker/isolation rules under the new thresholds.
-// It is the [resilience.Executor.Refresh] implementation for the sentinel driver.
+// It is the [resilience.ClientExecutor.Refresh] implementation for the sentinel driver.
 //
-// sentinel's LoadRulesOfResource replaces a resource's existing rules, so an
-// already-loaded resource gets fresh rules (and a reset breaker stat window) on
+// sentinel's LoadRulesOfResource replaces a service's existing rules, so an
+// already-loaded service gets fresh rules (and a reset breaker stat window) on
 // its next Execute. This mirrors the default driver's "discard state, rebuild on
 // next call" lazy semantic. Already-registered breaker route listeners are
-// re-registered when ensureRules re-runs for each resource.
-func (e *sentinelExecutor) Refresh(p resilience.Policy) error {
+// re-registered when ensureRules re-runs.
+func (e *sentinelExecutor) Refresh(p resilience.ClientPolicy) error {
 	if p.RateLimit < 0 {
 		return fmt.Errorf("resilience: negative rate limit %v", p.RateLimit)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.policy = p
-	e.loaded = map[string]bool{}
+	e.loaded = false
 	return nil
 }
 
-func (e *sentinelExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
-	if err := e.ensureRules(resource); err != nil {
+func (e *sentinelExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+	if err := e.ensureRules(); err != nil {
 		return err
 	}
 
@@ -194,7 +198,7 @@ func (e *sentinelExecutor) Execute(ctx context.Context, resource string, fn func
 	// Execute (retries included) via defer. This restores the bulkhead-scope
 	// invariant the builtin upholds and DESIGN.md §3 documents.
 	if e.policy.MaxConcurrent > 0 {
-		isoEntry, blockErr := sentinel.Entry(resource+isoSuffix, sentinel.WithTrafficType(base.Outbound))
+		isoEntry, blockErr := sentinel.Entry(e.service+isoSuffix, sentinel.WithTrafficType(base.Outbound))
 		if blockErr != nil {
 			return mapBlockError(blockErr)
 		}
@@ -213,7 +217,7 @@ func (e *sentinelExecutor) Execute(ctx context.Context, resource string, fn func
 	var err error
 	for i := range attempts {
 		// Per-attempt Entry drives sentinel's flow and circuit-breaking rules.
-		entry, blockErr := sentinel.Entry(resource, sentinel.WithTrafficType(base.Outbound))
+		entry, blockErr := sentinel.Entry(e.service, sentinel.WithTrafficType(base.Outbound))
 		if blockErr != nil {
 			return mapBlockError(blockErr)
 		}
@@ -236,7 +240,7 @@ func (e *sentinelExecutor) Execute(ctx context.Context, resource string, fn func
 		if i == attempts-1 {
 			break
 		}
-		if !resilience.SleepFor(budgetCtx, e.policy.Backoff(i)) {
+		if !timeutil.Sleep(budgetCtx, e.policy.Backoff(i)) {
 			break
 		}
 	}
@@ -246,10 +250,10 @@ func (e *sentinelExecutor) Execute(ctx context.Context, resource string, fn func
 // runOnce applies the per-attempt timeout, if any, around fn. The ctx it
 // receives is already bounded by the Execute-level MaxDuration budget.
 func (e *sentinelExecutor) runOnce(ctx context.Context, fn func(context.Context) error) error {
-	if e.policy.Timeout <= 0 {
+	if e.policy.AttemptTimeout <= 0 {
 		return fn(ctx)
 	}
-	attemptCtx, cancel := context.WithTimeout(ctx, e.policy.Timeout)
+	attemptCtx, cancel := context.WithTimeout(ctx, e.policy.AttemptTimeout)
 	defer cancel()
 	return fn(attemptCtx)
 }

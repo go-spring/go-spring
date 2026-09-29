@@ -102,9 +102,11 @@ func TestRun_RespectsMinConcurrency(t *testing.T) {
 // as load-test traffic, so downstream clients can recognise synthetic load.
 func TestRun_TagsOpContextLoadTest(t *testing.T) {
 	var seen atomic.Bool
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
 	Run(context.Background(), Config{Concurrency: 2, Duration: 20 * time.Millisecond},
 		func(ctx context.Context) error {
-			if traffic.IsLoadTest(ctx) {
+			if prop.IsLoadTest(ctx) {
 				seen.Store(true)
 			}
 			return nil

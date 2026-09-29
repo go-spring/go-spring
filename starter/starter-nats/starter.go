@@ -21,10 +21,10 @@ package StarterNats
 
 import (
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	connhealth "go-spring.org/starter-nats/health"
 	"go-spring.org/stdlib/flatten"
 )
 
@@ -38,27 +38,43 @@ func init() {
 			// key: unset → "?" (nullable by-type — injects the single Driver
 			// bean when a company provides one, nil otherwise, and newConn
 			// falls back to DefaultDriver); set → that bean name, and naming
-			// a bean that does not exist fails loud.
+			// a bean that does not exist fails loud. The trailing governance
+			// beans (*resilience.Manager / *fault.Injector) are injected nullable
+			// ("?"), since starter-governance may legitimately be absent from the
+			// container.
 			r.Provide(newConn,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.nats.instances."+name+".driver:=${spring.nats.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container (the normal
+				// case) and are absent from a container without it. Without the
+				// "?" gs would treat an absent bean as a wiring error and the app
+				// would not boot, turning "governance is off" into "governance
+				// must be imported" — which is not the contract: applyResilience
+				// treats a nil bean as an unarmed authority, a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")),
+				gs.IndexArg(5, gs.TagArg("?")),
 			).Name(name).Destroy(destroyConn).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a
 			// bean, so consumers (starter-outbox-gorm, app pub/sub) autowire it like
 			// any client bean. It shares the connection's bean name; beans are keyed
-			// by (name, type), so it stays distinct from the raw *Conn bean.
-			r.Provide(func(conn *Conn) messaging.Driver {
-				return NewDriver(conn)
-			}, gs.TagArg(name)).Name(name).Caller(1)
+			// by (name, type), so it stays distinct from the raw *Conn bean. The
+			// traffic.Propagator (index 1) is a NULLABLE injection: the single
+			// propagator bean when the application provides one, nil otherwise (the
+			// driver then falls back to traffic.NewDefaultPropagator).
+			r.Provide(func(conn *Conn, prop traffic.Propagator) messaging.Driver {
+				return NewDriver(conn, prop)
+			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
 
 			// Contribute a health indicator for this instance unless the user
 			// disabled it (health.enabled=false), injecting the connection just
 			// registered above by name.
 			if c.HealthEnabled {
 				r.Provide(func(conn *Conn) *health.Indicator {
-					return connhealth.NewConnHealth(name, conn.Conn)
+					return NewConnHealth(name, conn.Conn)
 				}, gs.TagArg(name)).Name("nats:" + name)
 			}
 			return nil

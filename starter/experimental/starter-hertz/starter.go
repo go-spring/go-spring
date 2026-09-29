@@ -22,6 +22,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -31,6 +33,14 @@ func init() {
 	gs.Provide(
 		NewSimpleHertzServer,
 		gs.IndexArg(1, gs.TagArg("${spring.hertz.server}")),
+		// The fault injector is a NULLABLE injection: it exists whenever
+		// starter-governance is in the container (the normal case) and is absent
+		// from a container without it. Without the "?" gs would treat an absent
+		// bean as a wiring error and the app would not boot — turning "governance
+		// is off" into "governance must be imported". fault.ApplyServer treats a nil
+		// injector as a transparent pass-through.
+		gs.IndexArg(2, gs.TagArg("?")), // inj *fault.Injector
+		gs.IndexArg(3, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.hertz.server.addr"))
 }
@@ -60,7 +70,13 @@ type SimpleHertzServer struct {
 // so Recovery is configurable via the middleware block. It returns an error
 // when a built-in middleware (notably CORS) is misconfigured, so the server
 // fails fast at startup instead of panicking on the first request.
-func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServer, error) {
+//
+// inj is the fault injector bean gs injects (nil in a standalone call); the
+// inbound fault middleware captures it once here rather than resolving per
+// request, so a config swap on the bean takes effect without re-resolution.
+// prop is the application's load-test convention bean (nil means go-spring's
+// default), handed to the inbound LoadTest middleware.
+func NewSimpleHertzServer(register RouterRegister, cfg Config, inj *fault.Injector, prop traffic.Propagator) (*SimpleHertzServer, error) {
 	opts := []config.Option{
 		server.WithHostPorts(cfg.Addr),
 		server.WithReadTimeout(cfg.ReadTimeout),
@@ -84,7 +100,7 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServ
 
 	h := server.New(opts...)
 
-	if err := applyMiddlewares(h, cfg); err != nil {
+	if err := applyMiddlewares(h, cfg, inj, prop); err != nil {
 		return nil, err
 	}
 

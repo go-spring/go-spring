@@ -40,7 +40,7 @@ TC/TM/RM roles or bytecode magic.
   globals `starter-otel` installs — the standard zero-dep pattern
   (call-site span helpers live in the starter layer).
 - **Retry policy reuses `cloud/governance/resilience`.** `RetryPolicy =
-  resilience.Policy` (an alias in `cloud/experimental/transaction`), so retries
+  resilience.ClientPolicy` (an alias in `cloud/experimental/transaction`), so retries
   are executed through the resilience `default` driver rather than
   a second retry loop.
 

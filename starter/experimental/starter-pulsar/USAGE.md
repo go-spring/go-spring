@@ -145,7 +145,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # OTel metrics via actuator only
 
-# --- governance (breaker/limiter for resource pulsar:pulsar://127.0.0.1:6650)
+# --- governance (breaker/limiter for service pulsar:pulsar://127.0.0.1:6650)
 govern.source.file.path=conf/govern.yaml
 ```
 
@@ -190,8 +190,10 @@ gs.Run()
   │    3. FailFast probe: cl.TopicPartitions(HealthCheckTopic) — a lookup
   │       that exercises address+auth+TLS without producing; failure →
   │       cl.Close + metrics shutdown + boot error                       [starter.go:69-76]
-  │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor("pulsar", "pulsar:<url>"))
-  │       → indexed by client                                           [command.go:229-230]
+  │    4. applyResilience: fault.WrapClientExecutor(
+  │       mgr.ClientExecutorFor("pulsar", "pulsar:<url>"), "pulsar:<url>", inj)
+  │       with mgr/inj the injected *resilience.Manager / *fault.Injector
+  │       → indexed by client                                           [command.go:227-228]
   ├─ readiness: no health indicator exists — the probe is boot-time only
   └─ SIGTERM → destroyClient [client.go:44-49]: closeResilience (executor Close)
        → cl.Close() (releases all producers/consumers) → shutdownMetrics (:port server)
@@ -214,25 +216,26 @@ into go-spring's log under tag `_app_def` with a `pulsar: ` prefix [driver.go:20
 The resilience executor attached in the ctor is only driven through **one seam**:
 
 ```
-GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
-  └─ guard: resilienceExecs.Load(cl)                      [command.go:243-250]
+GuardedSend(ctx, cl, producer, msg)                       [command.go:264-275]
+  └─ guard: clientGuards.Load(cl)                         [command.go:244-251]
        ├─ not found (governance off) → producer.Send runs inline, identical to raw
-       └─ found → exec.Execute(ctx, "pulsar:<url>", send)  — fault-injector outermost
-                  (fault.WrapExecutor), resilience observer inside it; rejection returns
+       └─ found → exec.Execute(ctx, send)                  — fault-injector outermost
+                  (fault.WrapClientExecutor), resilience observer inside it; rejection returns
                   a resilience sentinel and the send never reaches the wire
 ```
 
-Wrap order inside `applyResilience` [command.go:229]: `resilience.ExecutorFor("pulsar", resource)`
-returns the fully assembled executor (core breaker/limiter/retry wrapped by the resilience
-observer — outcome counters + access log) → wrapped outermost by `fault.WrapExecutor` (runtime
-fault injection; the injected error flows through the inner retry loop, so the breaker counts it).
+Wrap order inside `applyResilience` [command.go:227]: `mgr.ClientExecutorFor("pulsar", service)` —
+mgr being the injected `*resilience.Manager` — returns the fully assembled executor (core
+breaker/limiter/retry wrapped by the resilience observer — outcome counters + access log) →
+wrapped outermost by `fault.WrapClientExecutor(..., inj)` (runtime fault injection from the injected
+`*fault.Injector`; the injected error flows through the inner retry loop, so the breaker counts it).
 
 **NOT guarded** (each deliberate, per source comments):
 - `producer.SendAsync` — intentionally untouched; the async path has no synchronous outcome
   to reject [command.go:261-263].
 - ~~driver `Publish`~~ — **now guarded**: the driver routes through `GuardedSend` with the
   client-scoped executor [driver.go], so driver publishes get span+trace injection *and*
-  breaker/limiter/fault. Give the resource label (`pulsar:<url>`) an all-zero rule to make
+  breaker/limiter/fault. Give the service label (`pulsar:<url>`) an all-zero rule to make
   every call path effectively bare.
 - Consumer `Receive`/handlers — no consumer-side protection exists.
 - `CreateProducer`/`Subscribe`/`TopicPartitions` — lifecycle calls, only the FailFast probe
@@ -243,7 +246,7 @@ fault injection; the injected error flows through the inner retry loop, so the b
 `pub.Publish(ctx, msg)` with `Key: "k"`, `Headers: h`, load-test marker on ctx
 [driver.go:81-102]:
 
-1. Header copy: if `traffic.IsLoadTest(ctx)`, headers are **copied** (caller's map never
+1. Header copy: if the propagator's `IsLoadTest(ctx)`, headers are **copied** (caller's map never
    mutated) and `x-load-test=1` is added [driver.go:85-90].
 2. Envelope → `pulsar.ProducerMessage`: `Payload`, `Properties` (= headers), and **Key only
    when non-empty** [driver.go:91-97]. Not mapped: `Timestamp` (messaging envelope has one;
@@ -269,7 +272,7 @@ fault injection; the injected error flows through the inner retry loop, so the b
    the upstream trace from the envelope headers (mapped from `Properties()`) and opens the
    consumer span.
 4. Load-test marker: if the producer stamped `x-load-test` in Properties, the handler ctx is
-   re-marked via `traffic.WithLoadTest` [driver.go:141-143].
+   re-marked via `prop.WithLoadTest(ctx)` [driver.go:141-143].
 5. `fromPulsarMsg` maps back: Pulsar `Key()` → envelope Key, `Payload()`, `Properties()` →
    Headers (including the injected `traceparent` — consumer headers gain keys), `PublishTime()`
    → Timestamp [driver.go:171-178]. Both directions preserve Key and Properties.
@@ -290,7 +293,7 @@ absolute-property Pool rule). 18 value tags found by grep — table covers every
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `url` | string | — | **Required** (`expr:"$ != ''"`). `pulsar://` plaintext or `pulsar+ssl://` TLS. Also becomes the resilience resource label `pulsar\|<url>` [starter.go:76]. | Missing/empty → BindEach boot error. |
+| `url` | string | — | **Required** (`expr:"$ != ''"`). `pulsar://` plaintext or `pulsar+ssl://` TLS. Also becomes the resilience service label `pulsar\|<url>` [starter.go:76]. | Missing/empty → BindEach boot error. |
 | `operation-timeout` | duration | 30s | Producer/subscribe/lookup timeout passed to ClientOptions [driver.go:72]. | Too low → intermittent CreateProducer failures. |
 | `connection-timeout` | duration | 5s | TCP connect timeout [driver.go:73]. | — |
 | `token` | string | — | JWT token value, OR a file path when `token-from-file=true` [driver.go:86-90]. ⚠ Auth priority: mTLS cert+key beats token if both set. | Wrong token → FailFast probe fails at boot. |
@@ -344,7 +347,7 @@ govern:
       failure-rate: 50
 ```
 
-Resource label is `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]. Kill the broker, then:
+Service label is `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]. Kill the broker, then:
 hammer `GuardedSend` → after the threshold the breaker opens, calls fail fast with a
 resilience sentinel, and resilience outcome counters appear;
 hammer driver `Publish` instead → every call blocks into the client's own retry/timeout, no

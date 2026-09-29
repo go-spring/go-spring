@@ -28,10 +28,10 @@ import (
 )
 
 // TestFaultUnaryInterceptor_NoInjectorPassthrough pins the zero-config
-// transparency claim: with no injector registered the always-installed
-// interceptor is a pass-through.
+// transparency claim: with no injector injected the always-installed interceptor
+// is a pass-through.
 func TestFaultUnaryInterceptor_NoInjectorPassthrough(t *testing.T) {
-	ic := FaultUnaryInterceptor()
+	ic := FaultUnaryInterceptor(nil)
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 	resp, err := ic(context.Background(), nil, info,
 		func(context.Context, any) (any, error) { return "ok", nil })
@@ -40,16 +40,14 @@ func TestFaultUnaryInterceptor_NoInjectorPassthrough(t *testing.T) {
 }
 
 // TestFaultUnaryInterceptor_InjectsErrorAtRate1 covers the "set fire" path:
-// with a registered injector at Rate 1 every call returns the injected error
-// and the handler never runs; hot-toggling the injector off (SetConfig on the
-// live injector, no restart) restores pass-through on the next call because
-// the interceptor resolves fault.InjectorFor() per call.
+// with an injected injector at Rate 1 every call returns the injected error and
+// the handler never runs; hot-toggling the injector off (SetConfig on the live
+// injector, no restart) restores pass-through on the next call because the
+// interceptor captured the injector and observes its config in place.
 func TestFaultUnaryInterceptor_InjectsErrorAtRate1(t *testing.T) {
-	in := fault.NewInjector(fault.Config{Enabled: true, Rate: 1, Error: "generic"})
-	fault.RegisterInjector(in)
-	t.Cleanup(func() { fault.RegisterInjector(nil) })
+	in := fault.NewInjector(fault.Configs{Server: fault.Config{Enabled: true, Rate: 1, Error: "generic"}}, nil)
 
-	ic := FaultUnaryInterceptor()
+	ic := FaultUnaryInterceptor(in)
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 	hits := 0
 
@@ -59,7 +57,7 @@ func TestFaultUnaryInterceptor_InjectsErrorAtRate1(t *testing.T) {
 	assert.That(t, hits).Equal(0)
 
 	// Hot-toggle off: the same interceptor passes the next call through.
-	in.SetConfig(fault.Config{})
+	in.SetConfig(fault.Configs{})
 	resp, err := ic(context.Background(), nil, info,
 		func(context.Context, any) (any, error) { hits++; return "ok", nil })
 	assert.That(t, err).Nil()
@@ -70,11 +68,9 @@ func TestFaultUnaryInterceptor_InjectsErrorAtRate1(t *testing.T) {
 // TestFaultUnaryInterceptor_InjectsLatency verifies the latency knob: the
 // injected sleep happens before the handler, and the call still succeeds.
 func TestFaultUnaryInterceptor_InjectsLatency(t *testing.T) {
-	in := fault.NewInjector(fault.Config{Enabled: true, Latency: 50 * time.Millisecond})
-	fault.RegisterInjector(in)
-	t.Cleanup(func() { fault.RegisterInjector(nil) })
+	in := fault.NewInjector(fault.Configs{Server: fault.Config{Enabled: true, Latency: 50 * time.Millisecond}}, nil)
 
-	ic := FaultUnaryInterceptor()
+	ic := FaultUnaryInterceptor(in)
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 	start := time.Now()
 	resp, err := ic(context.Background(), nil, info,
@@ -88,11 +84,9 @@ func TestFaultUnaryInterceptor_InjectsLatency(t *testing.T) {
 // injected error aborts the stream handler, and disabling the injector
 // restores the pass-through.
 func TestFaultStreamInterceptor_InjectThenDisable(t *testing.T) {
-	in := fault.NewInjector(fault.Config{Enabled: true, Rate: 1, Error: "generic"})
-	fault.RegisterInjector(in)
-	t.Cleanup(func() { fault.RegisterInjector(nil) })
+	in := fault.NewInjector(fault.Configs{Server: fault.Config{Enabled: true, Rate: 1, Error: "generic"}}, nil)
 
-	ic := FaultStreamInterceptor()
+	ic := FaultStreamInterceptor(in)
 	info := &grpc.StreamServerInfo{FullMethod: "/demo.Service/Chat"}
 	hits := 0
 
@@ -101,7 +95,7 @@ func TestFaultStreamInterceptor_InjectThenDisable(t *testing.T) {
 	assert.That(t, errors.Is(err, fault.ErrInjected)).True()
 	assert.That(t, hits).Equal(0)
 
-	in.SetConfig(fault.Config{})
+	in.SetConfig(fault.Configs{})
 	err = ic(nil, stubServerStream{}, info,
 		func(any, grpc.ServerStream) error { hits++; return nil })
 	assert.That(t, err).Nil()

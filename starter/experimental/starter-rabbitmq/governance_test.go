@@ -24,7 +24,9 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
@@ -35,21 +37,23 @@ var errGovernanceStub = errors.New("governance: rejected by test stub")
 // the driver path went through the executor without a live broker.
 type stubExecutor struct{ called atomic.Int32 }
 
-func (s *stubExecutor) Execute(context.Context, string, func(context.Context) error) error {
+func (s *stubExecutor) Execute(context.Context, func(context.Context) error) error {
 	s.called.Add(1)
 	return errGovernanceStub
 }
-func (s *stubExecutor) Close() error                    { return nil }
-func (s *stubExecutor) Refresh(resilience.Policy) error { return nil }
+func (s *stubExecutor) Close() error                          { return nil }
+func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 
-// applyResilience always attaches an executor. Whether it protects anything is
-// decided by the governance rule for the resource label, not by a per-instance
-// switch: with governance off the executor is a transparent pass-through, so
-// attaching one costs a call frame and changes nothing else.
+// applyResilience always attaches an executor, whether or not the governance
+// beans are wired. Whether it protects anything is decided by the governance
+// rule for the service label, not by a per-instance switch: an unarmed manager
+// yields a transparent pass-through, so attaching one costs a call frame and
+// changes nothing else.
 func TestApplyResilienceAttachesGuard(t *testing.T) {
 	conn := &amqp.Connection{}
 
-	if err := applyResilience(conn, "rabbitmq:test"); err != nil {
+	// A nil manager models the standalone caller with no container.
+	if err := applyResilience(conn, "rabbitmq:test", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := clientGuards.Load(conn); !ok {
@@ -64,14 +68,16 @@ func TestApplyResilienceAttachesGuard(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	conn := &amqp.Connection{}
 	stub := &stubExecutor{}
-	clientGuards.Store(conn, &clientGuard{exec: stub, resource: "rabbitmq:test"})
+	clientGuards.Store(conn, &clientGuard{exec: stub, service: "rabbitmq:test"})
 	defer func() {
 		clientGuards.Delete(conn)
 	}()
 	// A nil channel is safe here: the executor rejects before the guarded
 	// closure runs, which is exactly what this test asserts.
-	p := &publisher{conn: conn, queue: "q"}
-	err := p.Publish(context.Background(), &messaging.Message{Payload: []byte("x")})
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
+	p := &publisher{conn: conn, queue: "q", prop: prop}
+	err = p.Publish(context.Background(), &messaging.Message{Payload: []byte("x")})
 	if !errors.Is(err, errGovernanceStub) {
 		t.Fatalf("expected stub rejection, got %v", err)
 	}

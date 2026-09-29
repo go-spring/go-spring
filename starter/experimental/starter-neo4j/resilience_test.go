@@ -35,11 +35,11 @@ type fakeDriver struct {
 
 // newGuardedNeo4jClient builds a Client whose executor comes from the default
 // resilience driver. The embedded driver is nil.
-func newGuardedNeo4jClient(t *testing.T, p resilience.Policy) *Client {
-	d := resilience.NewDefaultDriver()
-	exec, err := d.NewExecutor(p)
+func newGuardedNeo4jClient(t *testing.T, p resilience.ClientPolicy) *Client {
+	d := resilience.NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &Client{DriverWithContext: fakeDriver{}, exec: exec, resource: "neo4j:test"}
+	return &Client{DriverWithContext: fakeDriver{}, exec: exec}
 }
 
 // TestRunWithResiliencePassThrough proves the zero-config stance: a Client
@@ -56,7 +56,7 @@ func TestRunWithResiliencePassThrough(t *testing.T) {
 // TestRunWithResilienceRateLimit confirms the flow-control path: once the
 // burst is spent, fn is rejected without running.
 func TestRunWithResilienceRateLimit(t *testing.T) {
-	c := newGuardedNeo4jClient(t, resilience.Policy{RateLimit: 1, Burst: 1})
+	c := newGuardedNeo4jClient(t, resilience.ClientPolicy{RateLimit: 1, Burst: 1})
 	var ran int
 	fn := func(context.Context) error {
 		ran++

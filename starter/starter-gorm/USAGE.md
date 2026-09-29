@@ -151,19 +151,19 @@ spring.observability.metrics.port=0        # /metrics via actuator only
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.error-threshold=20
-govern.default.open-duration=5s
-govern.default.max-retries=1
-govern.default.timeout=500ms
-# Endpoint selection rides the same label: govern.rules[N].balancer /
+govern.client.default.error-threshold=20
+govern.client.default.open-duration=5s
+govern.client.default.max-retries=1
+govern.client.default.attempt-timeout=500ms
+# Endpoint selection rides the same label: govern.client.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for for "gorm:mysql:orders-db" drive the
 # entry's pool in place (see cloud/governance/README.md §3.1).
 ```
 
 Every dialect that dials through discovery builds its pool with a suspension tracker and binds it
-to the entry's resource label via `loadbalance.Pool.BindSelection` — the same label that already
-carries its protection policy — so `balancer` / `outlier-threshold` / `outlier-suspend-for` apply
+to the entry's service label via `lbMgr.Bind(pool, label)` — the `*loadbalance.Manager` bean is
+injected into the module ctor and threaded down to the dialect's `Build` — the same label that
+already carries its protection policy — so `balancer` / `outlier-threshold` / `outlier-suspend-for` apply
 in place, without restarting or rebuilding the client. The dialer's only outcome signal is the
 dial itself, so `outlier-threshold` evicts instances that keep refusing *connections*; query
 failures belong to the resilience executor. Direct (`addr`/`host`-only) entries have no candidate
@@ -199,7 +199,7 @@ gs.Run()
   ├─ config bind: conf.BindEach over ${spring.gorm.mysql} → one Config per <name>
   ├─ per instance <name>:
   │    ├─ Dialect.Build(ctx, c)      dialect builds DSN/dialector; resolves TLS,
-  │    │                             service discovery (mysql only), resource label
+  │    │                             service discovery (mysql only), service label
   │    ├─ gormcore.Open:  gorm.Open → ApplyPool (pool knobs + fail-fast ping)
   │    │                  → ApplyDBCustomizers (user seam, registration order)
   │    ├─ Provide *DB .Name(<dialect>.<entry>).Init((*DB).Init).Destroy((*DB).Destroy)
@@ -227,9 +227,9 @@ credentials surface at boot, not on first query.
 gorm:query processor chain
   1. go-spring:observe:before_query   span start + metric start + in-flight +1
   2. gorm:query  ← REPLACED by the resilience wrapper:
-        resilience.Run(ctx, exec, "gorm:mysql:<addr>", op)
+        resilience.Run(ctx, exec, op)
           ├─ admission (rate limit / bulkhead, if configured)
-          ├─ fault injector (govern.fault.* — may short-circuit the attempt)
+          ├─ fault injector (govern.client.fault.* — may short-circuit the attempt)
           ├─ timeout / breaker / retry envelope
           └─ the ORIGINAL gorm:query body: builds SQL, executes, applies
              gorm's own logger (slow-query warn, see slow-threshold)
@@ -256,9 +256,9 @@ Rationale (from source comments, verified):
 - **Rejection propagation** (resilience/callbacks.go:76-83): a resilience rejection
   (rate-limited / circuit-open / bulkhead-full) or a fault-injected error is put
   on `tx.Error`; a real op error is left as gorm set it.
-- **No-op by default**: with governance unconfigured, `resilience.ExecutorFor`
-  returns a transparent executor — callbacks still wrap but add no behavior, so
-  the chain costs nothing to leave installed.
+- **No-op by default**: with no governance bean in the container, the executor
+  `Init` arms is a transparent pass-through — callbacks still wrap but add no behavior,
+  so the chain costs nothing to leave installed.
 
 ### 2.3 Transactions
 
@@ -354,8 +354,8 @@ chain (it calls `sqlDB.PingContext` directly, health.go:31-38).
 Using the governance config from §1 plus a file source (see starter-governance)
 or the example-load layout (`starter-gorm-mysql/example-load`):
 
-1. Start the app with `govern.fault.enabled=false`; baseline queries succeed.
-2. Flip `govern.fault.enabled=true` (+ `rate`, `error`) — the governance source
+1. Start the app with `govern.client.fault.enabled=false`; baseline queries succeed.
+2. Flip `govern.client.fault.enabled=true` (+ `rate`, `error`) — the governance source
    hot-reloads.
 3. Faulted attempts short-circuit before the SQL runs: the injected error lands
    on `tx.Error`, the breaker counts it, and the observe layer still records the

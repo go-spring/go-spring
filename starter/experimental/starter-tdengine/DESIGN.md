@@ -27,9 +27,10 @@ the wire protocol and the seam at which resilience/observability attach.
   transport or callback to swap after construction, so DefaultDriver wraps
   the taosWS connector in `guardedConnector`/`guardedConn`: every pooled
   connection consults a `clientSlot` on each `ExecContext`/`QueryContext`.
-  Init builds the observer + executor (through the neutral
-  `resilience.ExecutorFor` / `fault.InjectorFor` seams) and arms the slot;
-  before that statements pass through untouched. This is the database/sql
+  ArmGovernance (called from the ctor with the injected
+  `*resilience.Manager` / `*fault.Injector` beans) builds the executor and
+  arms the slot, Init builds the observer; before that statements pass
+  through untouched. This is the database/sql
   analog of starter-gorm's callback chain and the HTTP starters'
   RoundTripper adapters.
 - **health** — `PingContext`, matching the gorm family's probe shape.

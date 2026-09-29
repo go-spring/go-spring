@@ -1,8 +1,8 @@
 # starter-memcached 使用说明 — 参考手册
 
 详细使用参考。概览见 [README.md](README.md)。所有行为声明均已对照 starter 源码
-（`starter.go`、`client.go`、`command.go`、`driver.go`、`config.go`、`health/health.go`、
-`bytecache/bytecache.go`）与可运行的 [example/](example/)（`check.sh` 拉起 docker memcached
+（`starter.go`、`client.go`、`driver.go`、`config.go`、`health.go`、
+`bytecache.go`）与可运行的 [example/](example/)（`check.sh` 拉起 docker memcached
 并自证 SET/GET/INCR 往返）。**gomemcache 自身语义（分片、文本协议、Item 字段）见
 [gomemcache 文档](https://github.com/bradfitz/gomemcache)** —— 下文只写 go-spring 的增量。
 
@@ -134,7 +134,7 @@ gs.Run()
   ├─ 构造 newClient [starter.go:80]：校验 → 可选 Driver bean
   │     （无则用内置 DefaultDriver）→ d.CreateClient(c, backend) → 启动 PING
   ├─ Client.Init：observer + resilience/fault executor               client.go:66-71
-  ├─ 就绪：健康指示器把 Ping 折入 /readiness                          health/health.go:33-36
+  ├─ 就绪：健康指示器把 Ping 折入 /readiness                          `health.go`
   └─ 停机：Client.Destroy —— 释放 executor、停 discovery watch        client.go:77-82
 ```
 
@@ -157,7 +157,7 @@ gomemcache 的 `Ping` 探测全部已配置服务器，`servers` 里一个死节
 `driver.go:100-102`）。初始快照在构建期读一次作为 fail-fast 闸门——空快照使启动失败并报
 `memcached: discovery returned no endpoints for %q`（`driver.go:73-79`）——随后 client 建在一个
 **活的 `ServerSelector`**（`selector.go`）之上，每次 key 查找都重读快照。于是实例的加入/离开在
-下一次操作就可见：不用重启，也不用挂代理。Resolver 的新鲜度在 backend 内部，没有资源需要释放。
+下一次操作就可见：不用重启，也不用挂代理。Resolver 的新鲜度在 backend 内部，没有服务需要释放。
 
 两个性质是刻意的，因为对 memcached 而言**选择器就是缓存语义**：
 
@@ -171,31 +171,32 @@ mesh 模式下完全跳过 discovery，`servers` 原样使用（sidecar 负责�
 
 ### 2.3 一次 Set 调用逐层走读
 
-`Client.Set(item)`（`command.go:70-75`）：
+`Client.Set(ctx, item)`（`client.go`）：
 
-1. `instrument("set", item.Key)` 开启模块本地 observer 的 client span（`observe.go`）。
-   gomemcache API 无 context，span 是用 `context.Background()` 的**根 span** —— 不与调用方
-   请求 trace 关联（`command.go:38-40`，局限 documented 于 `client.go:37-41`）。
-2. `guardErr` 经 `resilience.Run` 在 resilience executor 下执行操作（`command.go:174-181`）：
-   limiter/breaker 以资源 `memcached:<instance-name>` 隔离（`client.go:69`）；
-   `memcache.ErrCacheMiss` 计为成功，miss 不会触发熔断（`command.go:168`）；executor 一行构建——
-   `fault.WrapExecutor(resilience.ExecutorFor("memcached", resource))`（`client.go:69`），
-   observe 层在 resolve 内应用。governance 关闭时为透明 no-op。
-3. 内嵌的 `*memcache.Client` 执行实际写入；end 回调以错误收尾 span。
+1. `run`/`runErr` 以**调用方的 ctx** 开启模块本地 observer 的 client span（`observe.go`），
+   因此 span 会挂进调用方的请求 trace。gomemcache 的网络调用本身不感知 ctx（socket 等待由
+   `timeout` 约束），但 ctx 仍治理 resilience 层的取消（限流等待、重试间隔、熔断判定）。
+2. `run` 经 `resilience.Run` 在 resilience executor 下执行操作：
+   limiter/breaker 以服务 `memcached:<service-name 或实例名>` 隔离（`client.go`）；
+   `memcache.ErrCacheMiss` 计为成功，miss 不会触发熔断（`resilience.Tolerate`）；executor 一行装备——
+   `fault.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service), service, inj)`，其中 `mgr`/`inj` 是容器注入
+   `newClient` 的 `*resilience.Manager` / `*fault.Injector` bean，
+   observe 层在 resolve 内应用。容器内无治理 bean 时为透明 no-op。
+3. 内嵌的 `*memcache.Client` 执行实际写入；span 以错误收尾。
 
 全部 17 个操作（get/get_and_touch/get_multi/touch/set/add/replace/append/prepend/cas/delete/
-delete_all/increment/decrement/ping/flush_all）同构（`command.go:45-162`）。未覆写的方法
+delete_all/increment/decrement/ping/flush_all）同构（`client.go`）。未覆写的方法
 （生命周期里只有 `Close`）从内嵌 client 原样提升。
 
 ### 2.4 缓存抽象 bean
 
 除包装类型外，每实例另提供一个类型化 `cache.Cache` bean，名为
-`memcached:<memcached 实例名>`（`starter.go:61-67`，经 `bytecache.NewByteCache`，
-`bytecache/bytecache.go:33-36`）——用 autowire tag `memcached:<实例名>` 按名注入。
+`memcached:<service-name 或实例名>`（`starter.go:61-67`，经 `NewByteCache`，
+`bytecache.go`）——用 autowire tag `memcached:<实例名>` 按名注入。
 无人注入则不实例化，因此无配置开关。TTL 转换：`toExp` 把 ttl 映射为
 int32 秒——**0/负值 = 永不过期**，亚秒向上取整为 1s，避免被静默当成 forever
-（`bytecache/bytecache.go:42-50`）。`GetBytes` 把 `ErrCacheMiss` 映射为 `cache.ErrMiss`；
-删除不存在的 key 不算错（`bytecache/bytecache.go:55-79`）。
+（`bytecache.go`）。`GetBytes` 把 `ErrCacheMiss` 映射为 `cache.ErrMiss`；
+删除不存在的 key 不算错（`bytecache.go`）。
 
 ---
 
@@ -215,7 +216,7 @@ starter）。
 
 `driver` key 按名指定 Driver bean：留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（见 §2.1），配置
 bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自治理中心
-（starter-governance 的 `govern.*` 配置），按资源 `memcached:<instance-name>` 隔离。
+（starter-governance 的 `govern.*` 配置），按服务 `memcached:<service-name 或实例名>` 隔离。
 
 ---
 
@@ -224,7 +225,7 @@ bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自�
 1. **SET/GET 往返**：`curl :9090/set` → `OK`；`curl :9090/get` → `value`
    （handler 见 `example/example.go`；check.sh 无头断言）。
 2. **cache-miss 语义**：删除 key 后 `curl :9090/get` → `memcache: cache miss`；开 governance
-   时反复 miss **不会**熔断（ErrCacheMiss 计为成功，`command.go:168`）。
+   时反复 miss **不会**熔断（ErrCacheMiss 计为成功，`client.go`）。
 3. **server-down fail-fast**：停掉 memcached（`docker stop demo-memcached`）再启动应用 →
    容器装配以 `memcached: startup ping failed` 中止（`starter.go:98-100`）。坏 `servers`
    地址表现相同 —— 这是 fail-fast 姿态，没有懒模式。
@@ -234,14 +235,14 @@ bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自�
 5. **成员变更局限演练**：discovery 实例运行中，从后端快照移除端点 —— client 持续拨旧地址
    直到重启（§2.2）。这是 documented 的 gomemcache 约束，不是接线 bug。
 6. **健康/就绪**：import starter-actuator；每个实例贡献名为 `memcache:<name>` 的指示器，
-   探测即一次真实 `Ping`（`starter.go:53`、`health/health.go:34-36`）。杀掉服务器后
+   探测即一次真实 `Ping`（`starter.go:53`、`health.go`）。杀掉服务器后
    `curl :9370/readiness` 翻 DOWN。注意探测无 deadline —— gomemcache 的 `Ping` 无 context，
-   由 client 超时兜底（`health/health.go:30-32`）。
+   由 client 超时兜底（`health.go`）。
 7. **多实例**：`cache` 与 `session` 实例并存（bean 名 = map key，`starter.go:47-50`）；两个
-   项指向同一服务器也是独立 bean、独立 executor（资源标签 `memcached:cache` 与
+   项指向同一服务器也是独立 bean、独立 executor（服务标签 `memcached:cache` 与
    `memcached:session`）。
 8. **可观测**：import starter-otel 后，每次调用出现以操作名（`get`/`set`/...）命名的
-   span（根 span，§2.3）；`db.client.operation.duration` 直方图与访问日志来自模块本地
+   span，经传入的 ctx 挂进调用方 trace（§2.3）；`db.client.operation.duration` 直方图与访问日志来自模块本地
    observer（`observe.go`）。
 
 ---
@@ -255,8 +256,8 @@ bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自�
 | 启动报 `discovery resolve "..." failed` | 设了 `service-name` 但 `discovery` 名下无后端 | 启动前注册命名后端 bean |
 | 启动报 `discovery returned no endpoints` | 后端健康但服务无实例（或 `scheme` 过滤过度） | 拉起实例/清空 `scheme`（`driver.go:75-79`） |
 | 集群扩缩容后 server 列表不更新 | gomemcache 创建即固定 server 集；watch 仅管生命周期 | 重启进程重新解析（`driver.go:60-66`） |
-| trace 里 memcached span 与请求 trace 断联 | gomemcache API 无 context；span 为根 span | 已知局限（`client.go:37-41`）；按 key/时间关联 |
-| 熔断在 cache miss 下永不触发 | 设计如此：ErrCacheMiss 计为成功 | 熔断演练须用真实故障而非 miss（`command.go:168`） |
+| trace 里 memcached span 与请求 trace 断联 | 调用方传了无 trace 的 ctx（如 `context.Background()`）；span 跟随调用方 ctx | 传请求的 ctx 让 span 挂进 trace；网络调用本身仍不感知 ctx（受 `timeout` 约束） |
+| 熔断在 cache miss 下永不触发 | 设计如此：ErrCacheMiss 计为成功 | 熔断演练须用真实故障而非 miss（`client.go`） |
 | readiness 持续 UP 但操作失败 | 指示器只探 `Ping`；慢而活着的服务器照样通过 | 看 observe 指标的真实时延/错误 |
 
 ---
@@ -273,9 +274,9 @@ bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自�
 设计嫌疑清单（沿自上一版，已更新）：
 
 - ~~无健康指示器~~ —— **已解决**：每个实例现已注册导出的 `health.Indicator`
-  `memcache:<name>`（`starter.go:53`、`health/health.go:33-36`）；配合 starter-actuator
+  `memcache:<name>`（`starter.go:53`、`health.go`）；配合 starter-actuator
   自动折入 `/readiness`，无需额外接线。
 - discovery watch 仅管生命周期：成员变更需重启（gomemcache 结构性约束，`driver.go:60-66`）
   —— 可考虑 rebuild seam 或 client 原子替换模式（参照 dubbo 动态超时的 swap 方案）。
-- span 为根 span（gomemcache API 无 context）—— trace 关联弱于 redis/gorm starter
+- 网络调用无法经 ctx 取消（gomemcache API 无 context；受 `timeout` 约束）——只有 resilience 层感知取消（`client.go`）。
   （`client.go:37-41`）。

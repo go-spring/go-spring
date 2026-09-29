@@ -18,7 +18,9 @@ package StarterRabbitMQ
 
 import (
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -43,15 +45,28 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.rabbitmq.instances."+name+".driver:=${spring.rabbitmq.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. applyResilience
+				// treats a nil bean as an unarmed authority, i.e. a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(5, gs.TagArg("?")), // inj *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a
 			// bean, so consumers (starter-outbox-gorm, app pub/sub) autowire it like
 			// any client bean. It shares the connection's bean name; beans are keyed
 			// by (name, type), so it stays distinct from the raw *amqp.Connection bean.
-			r.Provide(func(conn *amqp.Connection) messaging.Driver {
-				return NewDriver(conn)
-			}, gs.TagArg(name)).Name(name).Caller(1)
+			// The load-test convention bean is a NULLABLE injection (index 1):
+			// present when the application provides one, absent otherwise, and
+			// NewDriver falls back to the canonical convention.
+			r.Provide(func(conn *amqp.Connection, prop traffic.Propagator) messaging.Driver {
+				return NewDriver(conn, prop)
+			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
 			return nil
 		})
 	})
@@ -68,7 +83,12 @@ func init() {
 // the AMQP layer is usable, then close/block notifiers are bridged into
 // go-spring's log so broker-driven events land alongside app logs, and finally
 // the resilience executor is attached.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*amqp.Connection, error) {
+//
+// mgr and inj are the governance beans starter-governance provides. The wiring
+// injects them NULLABLY, so both are nil in a container without
+// starter-governance as well as in a standalone (non-gs) call; applyResilience
+// treats a nil bean as "governance off".
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*amqp.Connection, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating rabbitmq connection, url=%s vhost=%s", c.URL, c.Vhost)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -130,7 +150,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*amqp.
 	}()
 
 	log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection initialized, url=%s", c.URL)
-	if err := applyResilience(conn, resilience.ResourceLabel("rabbitmq", c.Vhost, c.URL)); err != nil {
+	if err := applyResilience(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL), mgr, inj); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: resilience setup failed: %v", err)
 		_ = conn.Close()
 		return nil, err

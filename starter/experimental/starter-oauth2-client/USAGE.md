@@ -73,7 +73,7 @@ type Service struct {
 func main() {
     svr := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]()) // root-reachable
     _ = svr
-    // ... use s.Client.Get("https://api.example.com/resource") from a handler
+    // ... use s.Client.Get("https://api.example.com/service") from a handler
     gs.Run()
 }
 ```
@@ -99,14 +99,13 @@ spring.oauth2.authcode.instances.login.redirect-url=https://app.example.com/call
 spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance (resilience for the *http.Client transport) ------------------
-# Same resource label as the client: oauth2:<client-id>.
+# Same service label as the client: oauth2:<client-id>.
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.max-retries=3
-govern.default.error-threshold=10
-govern.default.attempt-timeout=2s
+govern.client.default.max-retries=3
+govern.client.default.error-threshold=10
+govern.client.default.attempt-timeout=2s
 
 # --- observability (starter-otel, optional) ----------------------------------
 spring.observability.service-name=demo
@@ -187,7 +186,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
 
 ### 2.3 One request, layer by layer
 
-`s.Client.Get("https://api.example.com/resource")` with governance on:
+`s.Client.Get("https://api.example.com/service")` with governance on:
 
 1. `client.Timeout` bounds the whole request (`timeout` key, if > 0).
 2. `oauth2.Transport` (from `clientcredentials`) checks its cached token; on miss it POSTs
@@ -198,11 +197,11 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
    the executor wraps the outer transport, not the token exchange — see §4.4 drill).
 4. The access token is cached; the `Authorization: Bearer <token>` header is set on the
    outbound request *before* the base transport runs.
-5. `resilience.NewRoundTripper` executes the request through the executor resolved for
-   resource label `oauth2:<client-id>` — retry / circuit breaker / rate limit policy from
-   the governance center; transparent no-op when governance is off. The resolved executor
-   already carries the observe layer, so trips/rejects/retries emit span + counter +
-   histogram + access log.
+5. `resilience.NewRoundTripper` executes the request through the executor built from the
+   injected `*resilience.Manager` for service label `oauth2:<client-id>` — retry / circuit
+   breaker / rate limit policy from the governance document; transparent no-op when
+   governance is off. The executor already carries the observe layer, so trips/rejects/
+   retries emit span + counter + histogram + access log.
 6. `otelhttp` emits the client span (method/url); without starter-otel these are no-ops.
 7. Response unwinds; on 401 the oauth2 layer does not retry (client_credentials has no
    refresh token) — the next call re-fetches.
@@ -219,7 +218,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
 | `client-secret` | string | — | Client credential; in Basic header or body per `auth-style`. | Empty → boot fails (expr). |
 | `token-url` | string | — | Token endpoint for the client-credentials grant. | Empty → boot fails (expr). Wrong URL → first request fails with the token-endpoint error. |
 | `scopes` | []string | — | Comma list requested with the token. | Scope rejected by the IdP → token fetch error at first request, not at boot. |
-| `endpoint-params.<k>` | map[string]string | — | Extra body params on the token request (Auth0 `audience`, Azure `resource`). One sub-key per param. | Wrong param → token-endpoint error at request time. |
+| `endpoint-params.<k>` | map[string]string | — | Extra body params on the token request (Auth0 `audience`, Azure `service`). One sub-key per param. | Wrong param → token-endpoint error at request time. |
 | `auth-style` | string | `auto` | `auto` \| `header` \| `params` — how credentials are sent . `auto` lets x/oauth2 probe once and cache. | IdP requiring Basic with `params` set → 401 on every token fetch. |
 | `timeout` | duration | 0 | Applied twice: to the otel base client (bounds the token fetch) *and* to the returned `*http.Client` (bounds each downstream request). 0 = no timeout. ⚠ large value + governance `attempt-timeout`: the per-attempt bound bites first. | 0 → a hung token endpoint or downstream hangs forever. |
 
@@ -284,7 +283,7 @@ req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 ```
 
 Also observable: with starter-otel + governance, breaker trips on the wrapped client emit
-`oauth2`-labeled spans/metrics (`resilience.ExecutorFor("oauth2", resource)`); nothing equivalent
+`oauth2`-labeled spans/metrics (`mgr.ClientExecutorFor("oauth2", service)`); nothing equivalent
 exists for `TokenSource`.
 
 ### 4.5 Governance hot-toggle

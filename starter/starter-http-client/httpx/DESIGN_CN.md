@@ -14,10 +14,12 @@ import 具体 starter。
   (透传生成客户端设置的 host)。
 - 可观测内置:`otelhttp` 包住底层传输(client span、trace 传播);启用 resilience
   时执行器默认包成 `observe(fault(raw))`——fault 注入在最内层,注入的故障看起来
-  与真实下游失败一致,observe 记录最终结果。无 OTel SDK / 未注册 injector 时均
-  为 no-op。
-- 默认受治理保护:未显式给执行器时,从集中治理中心按 `Resource` 解析执行器
-  (error-rate 熔断施加 `min-requests=5` 下限);治理未启用时为透明 pass-through。
+  与真实下游失败一致,observe 记录最终结果。observe 那一层由持有执行器的一方施加:
+  manager 派发的由 manager 加,httpx 自己从 driver 建的由 httpx 加。无 OTel SDK /
+  未注册 injector 时均为 no-op。
+- 默认受治理保护:未显式给执行器时,从集中治理中心按 `Resource` 取执行器——
+  即 manager 自己的 per-label 执行器,与该 label 的其他使用方共享;治理未启用时
+  为透明 pass-through。
 - 构建 TLS 面:启用的 `tls.*` 块接进底层传输的 TLS 配置;显式 `Base` 则完全接管
   拨号。
 - 拒绝介入传输层以上。Cookie jar、请求体缓冲以便重试、为追踪加 header 都不在这

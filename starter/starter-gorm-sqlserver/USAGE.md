@@ -301,11 +301,11 @@ instance (per-dial `Pick()`).
 cd example-load && docker compose up -d
 go run . -duration=10s                       # baseline SELECT 1 throughput
 # set fire — edit conf/govern.properties (hot-reload via starter-governance's file source):
-#   govern.fault.enabled=true  govern.fault.rate=0.5  govern.fault.error=generic
+#   govern.client.fault.enabled=true  govern.client.fault.rate=0.5  govern.client.fault.error=generic
 go run . -duration=10s                       # error breakdown shows ~50% injected
 ```
 
-The breaker (`govern.default.error-threshold=20`) trips visible in the same breakdown;
+The breaker (`govern.client.default.error-threshold=20`) trips visible in the same breakdown;
 `WithContext` threads the harness deadline so the 500 ms timeout can interrupt in-flight
 queries.
 

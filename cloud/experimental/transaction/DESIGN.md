@@ -38,7 +38,7 @@ different failure semantics and it is honest to keep them separate.
   avoids reflecting into business function bodies.
 - **`Observer` seam** — a starter opens one span per step phase (action /
   compensate). Nil disables observation entirely.
-- **`RetryPolicy = resilience.Policy` alias** — deliberate reuse of the same
+- **`RetryPolicy = resilience.ClientPolicy` alias** — deliberate reuse of the same
   knob set (`MaxRetries`, `Timeout`, ...) so saga step retries and outbound
   resilience share one config surface instead of duplicating retry logic.
 

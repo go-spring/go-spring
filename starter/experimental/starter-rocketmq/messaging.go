@@ -26,8 +26,8 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/log"
 )
 
@@ -50,18 +50,29 @@ import (
 // publish (mapped onto RocketMQ user properties) and extracting it on consume,
 // so a trace links producer to consumer across services. It also supplies the
 // spans, metrics and access log. All of it is a no-op without starter-otel.
-func NewDriver(cl *Client) messaging.Driver {
-	return messaging.Observe(&driver{cl: cl}, "rocketmq")
+//
+// prop is the process's load-test convention (nullable — nil falls back to
+// traffic.NewDefaultPropagator), carried on every producer/consumer this driver
+// hands out.
+func NewDriver(cl *Client, prop traffic.Propagator) messaging.Driver {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
+	return messaging.Observe(&driver{cl: cl, prop: prop}, "rocketmq")
 }
 
-type driver struct{ cl *Client }
+type driver struct {
+	cl   *Client
+	prop traffic.Propagator
+}
 
 func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.Publisher, error) {
 	p, err := b.cl.NewProducer(producer.WithGroupName("go-spring-" + destination))
 	if err != nil {
 		return nil, err
 	}
-	return &publisher{p: p, topic: destination}, nil
+	return &publisher{p: p, topic: destination, prop: b.prop}, nil
 }
 
 func (b *driver) NewSubscriber(_ context.Context, source, group string) (messaging.Subscriber, error) {
@@ -75,13 +86,14 @@ func (b *driver) NewSubscriber(_ context.Context, source, group string) (messagi
 	if err != nil {
 		return nil, err
 	}
-	return &subscriber{cl: b.cl, c: c, topic: source}, nil
+	return &subscriber{cl: b.cl, c: c, topic: source, prop: b.prop}, nil
 }
 
 // publisher produces envelopes to a fixed topic via its own producer.
 type publisher struct {
 	p     rocketmq.Producer
 	topic string
+	prop  traffic.Propagator
 }
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
@@ -93,10 +105,13 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	for k, v := range msg.Headers {
 		m.WithProperty(k, v)
 	}
-	if traffic.IsLoadTest(ctx) {
-		// Carry the load-test marker (if any) in the user properties so the
-		// consumer can recognise synthetic load.
-		m.WithProperty(canonical.MetaKeyLoadTest, "1")
+	// Carry the load-test marker (if any) in the user properties so the
+	// consumer can recognise synthetic load. A message is not a map, so the
+	// written entries go through its own property setter.
+	c := propagate.StringMap{}
+	p.prop.Inject(ctx, c)
+	for k, v := range c {
+		m.WithProperty(k, v)
 	}
 	_, err := p.p.SendSync(ctx, m)
 	return err
@@ -113,6 +128,7 @@ type subscriber struct {
 	cl    *Client
 	c     rocketmq.PushConsumer
 	topic string
+	prop  traffic.Propagator
 }
 
 func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) error {
@@ -127,11 +143,9 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 	}, func(ctx context.Context, exts ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
 		for _, ext := range exts {
 			// Extract the load-test marker the producer put in the user
-			// properties so the handler sees synthetic load via
-			// traffic.IsLoadTest(ctx).
-			if canonical.IsAffirmative(ext.GetProperty(canonical.MetaKeyLoadTest)) {
-				ctx = canonical.WithLoadTest(ctx, "rocketmq-property")
-			}
+			// properties so the handler sees synthetic load via the
+			// propagator's IsLoadTest(ctx).
+			ctx = s.prop.Extract(ctx, propagate.StringMap(ext.GetProperties()))
 			herr := handler(ctx, fromMessageExt(ext))
 			if herr != nil {
 				log.Errorf(ctx, log.TagAppDef, "rocketmq driver handler error on %q: %v", ext.Topic, herr)

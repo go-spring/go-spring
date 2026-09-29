@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`starter.go`, `config.go`, `pool.go`, `conn.go`, `driver.go`,
-`health/health.go`, `bytecache/`) and the runnable [example/](example/) — file:line spot-checks
+`health.go`, `bytecache.go`) and the runnable [example/](example/) — file:line spot-checks
 in brackets. **Redigo semantics (the Do / connection-borrow model, reply helpers) are
 [redigo's own documentation](https://github.com/gomodule/redigo)** — everything below is
 go-spring's increment. Field layout deliberately mirrors starter-go-redis single mode, so
@@ -212,7 +212,7 @@ Init, before traffic.
    (command + first arg only — values are never logged; bounded to 512 bytes
    [observe.go]). ctx is the CALLER's context, so the span links to the request trace
    and an attempt-timeout can interrupt the call.
-3. resilience layer asks the executor (resource label `redigo:<addr-or-service-name>`,
+3. resilience layer asks the executor (service label `redigo:<addr-or-service-name>`,
    per pool [pool.go:190]) for a permit; on retry-able failures it re-drives the inner call.
 4. The inner `Do` writes/reads Redis; a hit returns the bulk string.
 5. `redis.ErrNil` (a miss) is classified success via the nil-as-success predicate
@@ -282,7 +282,7 @@ All keys live under `spring.redigo.instances.<name>.`.
 ### 4.1 Health via actuator
 
 ```bash
-curl -s :9370/readyz            # redigo:main borrows a conn and PINGs [health/health.go:32-39]
+curl -s :9370/readyz            # redigo:main borrows a conn and PINGs [`health.go`]
 docker stop <redis>; curl -s :9370/readyz   # 503
 ```
 
@@ -302,8 +302,9 @@ backing Redis; `Stats()` (`ActiveCount`/`IdleCount`) shows conns recycling onto 
 endpoint within 30s — no restart, no client rebuild.
 
 The pool's strategy is governed, not hardcoded: it is built with a suspension tracker and bound
-to `redigo:<service-name|addr>` via `loadbalance.Pool.BindSelection`, so
-`govern.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
+to `redigo:<service-name|addr>` via `loadbalance.Manager.Bind(pool, label)` on the injected
+`*loadbalance.Manager` bean, so
+`govern.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
 **in place** — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*; per-command
 failures belong to the resilience executor. Direct (`addr`-only) pools have no candidate set, so
@@ -317,7 +318,7 @@ v, _ := redis.String(s.Main.Get().(*StarterRedigo.Conn).Do("GET", "k"))  // read
 ```
 
 A façade miss returns `cache.ErrMiss`; the raw Do returns `redis.ErrNil` — the boundary maps
-one to the other (starter-redigo/bytecache).
+one to the other (this package's bytecache.go).
 
 ### 4.5 Interceptor short-circuit drill
 

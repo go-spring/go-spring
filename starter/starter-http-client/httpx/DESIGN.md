@@ -18,12 +18,14 @@ starter.
 - Observe every call: `otelhttp` wraps the base transport (client span, trace
   propagation) and an active executor is wrapped as `observe(fault(raw))` —
   fault injects innermost so an injected fault looks like a real downstream
-  failure, observe records the final outcome. Both are no-ops without an OTel
-  SDK / registered injector.
+  failure, observe records the final outcome. The observe half is added by
+  whichever side owns the executor: the manager for the one it hands out, httpx
+  for one it built itself from a driver. Both are no-ops without an OTel SDK /
+  registered injector.
 - Protect by default: when no explicit executor is supplied, one is resolved
-  from the centralized governance authority under `Resource` (with an
-  error-rate `min-requests=5` floor); with governance off it is a transparent
-  pass-through.
+  from the centralized governance authority under `Resource` — the manager's
+  own per-label executor, shared with every other user of the label; with
+  governance off it is a transparent pass-through.
 - Build the TLS surface: the `tls.*` block (when enabled) is wired into the
   base transport's TLS config; an explicit `Base` owns the dialer instead.
 - Refuse to touch anything above the transport layer. Cookie jars, retry-body

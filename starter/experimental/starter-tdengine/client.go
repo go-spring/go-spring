@@ -17,7 +17,7 @@
 // client.go is the "resource entity" concept of this starter: the Client
 // wrapper TDengine connections are injected as — a *sql.DB pool whose
 // connections route statements through the armed executor + observer — plus
-// its lifecycle (Init/Destroy) and the resource label.
+// its lifecycle (Init/Destroy) and the service label.
 package StarterTdengine
 
 import (
@@ -25,44 +25,85 @@ import (
 
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Client is the wrapper bean TDengine connections are injected as. It embeds
 // the *sql.DB pool (so every database/sql method promotes unchanged).
-// newClient returns one; gs calls Init (InitMethod) to build the observer +
-// executor and arm them on the connection slot the driver installed.
+// newClient returns one, arms its governance stack through
+// [Client.ArmGovernance], and lets gs call Init (InitMethod) to build the
+// per-statement observer on the connection slot the driver installed.
 type Client struct {
 	*sql.DB
 
-	// cfg is the connection config, retained for the resource label.
+	// cfg is the connection config, retained for the service label.
 	cfg Config
 	// slot is the per-statement guard the DefaultDriver installed on every
 	// pooled connection; Init arms it.
 	slot *clientSlot
-	// exec is the resilience executor, resolved via resilience.ExecutorFor;
-	// no-op when governance is off.
-	exec resilience.Executor
-	// resource is the resilience resource key ("tdengine:<dsn addr>") exec
+	// exec is the resilience executor, armed by ArmGovernance; nil means
+	// "governance off" — statements are observe-only.
+	exec resilience.ClientExecutor
+	// service is the resilience service key ("tdengine:<dsn addr>") exec
 	// scopes limiter/breaker state by.
-	resource string
+	service string
 }
 
-// Init is the gs InitMethod: it builds the per-statement observer and resolves
-// the executor through the neutral [resilience.ExecutorFor] seam (backed by
-// starter-govern's governance center when imported), wraps it with the
-// process-wide fault injector and observe-resilience, and arms both on the
-// connection slot. When governance is off the resolved executor is a
-// transparent no-op (statements are observe-only).
+// Init is the gs InitMethod: it builds the per-statement observer and arms it on
+// the connection slot. Governance (the resilience executor) is armed separately
+// by [Client.ArmGovernance], which the gs wiring calls with the injected beans —
+// see that method for why it is not part of this lifecycle hook.
 func (o *Client) Init() error {
 	if o.slot != nil {
 		o.slot.obs = newDBObserver("tdengine")
 	}
-	o.resource = resourceLabel(o.cfg)
-	exec := fault.WrapExecutor(resilience.ExecutorFor("tdengine", o.resource))
-	o.exec = exec
+	return nil
+}
+
+// ArmGovernance arms the governance-driven resilience stack. It is called by
+// the gs wiring with the injected beans — nil when the container has no
+// starter-governance, and nil from a standalone caller, both of which mean
+// "governance off".
+//
+// The stack is fault( observe( core ) ): the executor [Manager.ClientExecutorFor]
+// returns already carries the resilience observe layer around the
+// limiter/breaker/retry core, and fault.WrapClientExecutor wraps the operation fn that
+// executor runs — so an injected fault flows through retry/breaker/timeout
+// exactly as a downstream failure would, instead of short-circuiting where none
+// of those mechanisms are in play. The slot observer [Client.Init] arms stays
+// innermost and times each statement. inj is nil-safe:
+// with no injector (governance off / fault disabled) WrapClientExecutor returns the
+// inner executor unchanged, so the fault layer is a transparent pass-through.
+// Resolution is deferred to call time, so the order of this arming relative to
+// starter-governance's wiring is irrelevant.
+//
+// Arming the slot here (rather than in Init) is what keeps the pool's own
+// construction — done by the Driver — free of a governance dependency, and lets
+// a custom Driver's client be governed without changing the Driver interface.
+func (o *Client) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector) error {
+	// A nil manager is the unwired case — a container without
+	// starter-governance (the wiring injects it nullably, so it is nil there
+	// too), or a standalone caller that built the pool itself. A fresh
+	// unarmed manager is exactly
+	// "governance off": every resolve is a pass-through, so the slot runs
+	// statements inline and they are observe-only.
+	// Normalizing here keeps the rest of this method (and every caller) free of
+	// nil branches.
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	o.service = serviceLabel(o.cfg)
+	o.exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("tdengine", o.service), o.service, inj)
 	if o.slot != nil {
-		o.slot.exec = exec
-		o.slot.resource = o.resource
+		o.slot.exec = o.exec
 	}
 	return nil
 }
@@ -76,10 +117,10 @@ func (o *Client) Destroy() error {
 	return o.DB.Close()
 }
 
-// resourceLabel derives a stable resilience resource key for a client, so
+// serviceLabel derives a stable resilience service key for a client, so
 // limiter and breaker state is scoped per TDengine instance rather than per
 // statement.
-func resourceLabel(c Config) string {
+func serviceLabel(c Config) string {
 	addr := dsnAddr(c.DSN)
-	return resilience.ResourceLabel("tdengine", addr)
+	return resilience.ServiceLabel("tdengine", addr)
 }

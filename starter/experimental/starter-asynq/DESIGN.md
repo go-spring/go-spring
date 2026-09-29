@@ -22,10 +22,11 @@ opt-in, a worker Server (dequeue + run).
   explicit operator decision, matching the no-autoconfig-exclude stance
   (see spring/DESIGN.md §4).
 - **`Client.Enqueue` guard** — the synchronous enqueue touches Redis and is
-  the overload-sensitive path; it routes through the neutral
-  `resilience.ExecutorFor` / `fault.InjectorFor` seams and the starter's own
-  producer observation (observe.go), degrading to `Client.EnqueueContext`
-  when governance is off.
+  the overload-sensitive path; it routes through the resilience executor built
+  from the injected `*resilience.Manager`, wrapped with the injected
+  `*fault.Injector`, plus the starter's own producer observation (observe.go).
+  With governance unwired the executor is a transparent pass-through, so the
+  path degrades to `Client.EnqueueContext`.
 - **`Server` implements `gs.Server`, not `gs.Runner`** — this is the
   load-bearing seam. gs.Runner is a startup-time, must-not-block interface
   (migrations, cache warm); gs.Server is the long-running, gracefully-stopped

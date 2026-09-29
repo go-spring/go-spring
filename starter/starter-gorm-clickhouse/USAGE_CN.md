@@ -305,7 +305,7 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 cd example-load && docker compose up -d
 go run . -duration=10s                        # SELECT 1 基线
 # 放火（starter-governance 热加载）：
-#   govern.fault.enabled=true  govern.fault.rate=0.5  govern.fault.error=generic
+#   govern.client.fault.enabled=true  govern.client.fault.rate=0.5  govern.client.fault.error=generic
 go run . -duration=10s                        # 错误分布显示 ~50% 注入
 ```
 

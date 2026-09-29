@@ -22,11 +22,11 @@ import (
 	"github.com/allegro/bigcache/v3"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/starter-bigcache/bytecache"
-	health2 "go-spring.org/starter-bigcache/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"go.opentelemetry.io/otel"
@@ -51,21 +51,34 @@ func init() {
 			// unset → "?" (nullable by-type — injects the single Driver bean
 			// when a company provides one, nil otherwise, and newClient falls
 			// back to DefaultDriver); set → that bean name, and naming a bean
-			// that does not exist fails loud.
+			// that does not exist fails loud. The trailing governance beans
+			// (*resilience.Manager / *fault.Injector) are injected nullable ("?"),
+			// since starter-governance may legitimately be absent from the
+			// container.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.bigcache.instances."+name+".driver:=${spring.bigcache.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container (the normal
+				// case) and are absent from a container without it. Without the
+				// "?" gs would treat an absent bean as a wiring error and the app
+				// would not boot, turning "governance is off" into "governance
+				// must be imported" — which is not the contract: (*Cache).Init
+				// treats a nil bean as an unarmed authority, a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")),
+				gs.IndexArg(5, gs.TagArg("?")),
 			).Name(name).Init((*Cache).Init).Destroy((*Cache).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
-			r.Provide(func(c *Cache) *health.Indicator { return health2.NewBigCacheHealth(name, c.BigCache) }, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
+			r.Provide(func(c *Cache) *health.Indicator { return NewBigCacheHealth(name, c.BigCache) }, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
 			// Expose this instance as a cache.Cache (the adapter lives in
-			// starter-bigcache/bytecache). Named "bigcache:<name>" — cache.Cache
+			// this package's bytecache.go). Named "bigcache:<name>" — cache.Cache
 			// is a shared type across backend starters, so the prefix keeps the
 			// (name, type) key unique. Un-injected, the bean never instantiates.
 			r.Provide(func(c *Cache) *cache.Cache {
-				return cache.New(bytecache.NewByteCache(c.BigCache))
+				return cache.New(NewByteCache(c.BigCache))
 			}, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
 			return nil
 		})
@@ -75,7 +88,11 @@ func init() {
 // newClient creates a new BigCache instance based on the provided configuration,
 // wrapped so Get/Set/Delete flow through the module-local observe layer, and registers OTel
 // gauges for its statistics, labeled by the instance name.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Cache, error) {
+//
+// mgr and inj are the governance beans the container injects (both nil in a
+// standalone, non-gs call); they are retained on the Cache for Init
+// (InitMethod) to arm the resilience executor with.
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Cache, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating bigcache instance, name=%s shards=%d max-size=%d", name, c.Shards, c.MaxEntrySize)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -92,8 +109,8 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Cache
 	registerMetrics(name, client)
 	log.Infof(ctx.Context, log.TagAppDef, "bigcache instance initialized, name=%s shards=%d", name, c.Shards)
 	// Return the wrapper; gs calls Init (InitMethod) after this returns to
-	// build the observer + executor.
-	return &Cache{BigCache: client, name: name}, nil
+	// build the observer + executor from the injected governance beans.
+	return &Cache{BigCache: client, name: name, mgr: mgr, inj: inj}, nil
 }
 
 // metricsMeter is the OTel meter all bigcache instruments register under. It

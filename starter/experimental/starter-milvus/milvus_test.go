@@ -39,12 +39,12 @@ func TestConfigDefaults(t *testing.T) {
 // newGuardedSlot builds a slot armed with a real executor from the default
 // resilience driver, for driving the interceptors directly (no live Milvus
 // server is needed).
-func newGuardedSlot(t *testing.T, p resilience.Policy) *guardSlot {
-	d := resilience.NewDefaultDriver()
-	exec, err := d.NewExecutor(p)
+func newGuardedSlot(t *testing.T, p resilience.ClientPolicy) *guardSlot {
+	d := resilience.NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
 	s := &guardSlot{}
-	s.arm(exec, "milvus:test")
+	s.arm(exec)
 	return s
 }
 
@@ -64,7 +64,7 @@ func TestUnaryGuardPassThrough(t *testing.T) {
 // TestUnaryGuardRateLimit confirms the flow-control path: once the burst is
 // spent, the RPC is rejected without reaching the invoker.
 func TestUnaryGuardRateLimit(t *testing.T) {
-	slot := newGuardedSlot(t, resilience.Policy{RateLimit: 1, Burst: 1})
+	slot := newGuardedSlot(t, resilience.ClientPolicy{RateLimit: 1, Burst: 1})
 	var ran int
 	invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
 		ran++
@@ -80,7 +80,7 @@ func TestUnaryGuardRateLimit(t *testing.T) {
 // TestStreamGuardRateLimit confirms the stream path short-circuits the same
 // way: the stream open is rejected without calling the streamer.
 func TestStreamGuardRateLimit(t *testing.T) {
-	slot := newGuardedSlot(t, resilience.Policy{RateLimit: 1, Burst: 1})
+	slot := newGuardedSlot(t, resilience.ClientPolicy{RateLimit: 1, Burst: 1})
 	var ran int
 	streamer := func(context.Context, *grpc.StreamDesc, *grpc.ClientConn, string, ...grpc.CallOption) (grpc.ClientStream, error) {
 		ran++

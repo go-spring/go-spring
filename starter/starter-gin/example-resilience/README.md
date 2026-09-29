@@ -2,7 +2,7 @@
 
 Demonstrates starter-gin's **inbound resilience admission**: with
 `spring.gin.server.resilience.enabled`, every request runs through the selected
-resilience driver's `Executor`, so a burst over the configured rate limit is
+resilience driver's `ClientExecutor`, so a burst over the configured rate limit is
 shed with HTTP 429 (circuit-open → 503) before the business handler runs.
 
 ## Features

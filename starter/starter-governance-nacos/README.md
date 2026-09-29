@@ -74,17 +74,19 @@ Put the rules in their OWN dataId, with the same `govern.*` keys an
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
-  rules:
-    - resources: demo:resource
-      attempt-timeout: 50ms
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
+  client:
+    rules:
+      - services: demo:service
+        attempt-timeout: 50ms
 ```
 
 Every published version is re-parsed and pushed into the center. The rule
-vocabulary (`govern.enabled`, `govern.default.*`, `govern.rules[n].*`,
-`govern.fault.*`) belongs to the governance domain; see
+vocabulary (`govern.enabled`, `govern.client.default.*`, `govern.client.rules[n].*`,
+`govern.client.fault.*`) belongs to the governance domain; see
 [starter-governance's USAGE](../starter-governance/USAGE.md) for the full
 reference. Introducing the governance center itself is still
 [starter-governance](../starter-governance)'s job — this module only supplies

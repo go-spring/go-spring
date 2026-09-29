@@ -195,16 +195,16 @@ func newXID() string { return randutil.Hex(16) }
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
-// reuses [resilience.Policy] so AT phase retries and outbound resilience share
+// reuses [resilience.ClientPolicy] so AT phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
 func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewDefaultDriver().NewExecutor(p)
+	exec, err := resilience.NewDefaultDriver(nil).NewClientExecutor(resource, p)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = exec.Close() }()
-	return exec.Execute(ctx, resource, fn)
+	return exec.Execute(ctx, fn)
 }

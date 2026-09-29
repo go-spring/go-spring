@@ -16,7 +16,7 @@
 
 // Package gormresilience is the shared gorm resilience adapter. It replaces
 // gorm's standard create/query/update/delete/row/raw callback processors with
-// wrappers that run each operation under one [resilience.Executor], so every
+// wrappers that run each operation under one [resilience.ClientExecutor], so every
 // gorm dialect starter (mysql, postgres, clickhouse, sqlserver) shares one
 // implementation instead of copy-pasting the ~100-line callback chain each.
 //
@@ -32,7 +32,6 @@ package gormresilience
 
 import (
 	"context"
-	"errors"
 
 	"go-spring.org/cloud/governance/resilience"
 	"gorm.io/gorm"
@@ -46,11 +45,11 @@ type callbackProcessor interface {
 }
 
 // ApplyCallbacks replaces gorm's six standard processors with wrappers that run
-// each operation under exec, scoped to resource. A [gorm.ErrRecordNotFound] from
+// each operation under exec, scoped to service. A [gorm.ErrRecordNotFound] from
 // the op is treated as success; resilience rejections (ErrRateLimited /
 // ErrCircuitOpen / ErrBulkheadFull) surface on tx.Error so the caller sees them.
 // It is a no-op for any processor gorm has not registered (Get returns nil).
-func ApplyCallbacks(db *gorm.DB, exec resilience.Executor, resource string) error {
+func ApplyCallbacks(db *gorm.DB, exec resilience.ClientExecutor, service string) error {
 	steps := []struct {
 		p    callbackProcessor
 		name string
@@ -69,7 +68,7 @@ func ApplyCallbacks(db *gorm.DB, exec resilience.Executor, resource string) erro
 		}
 		fn := orig
 		wrapped := func(tx *gorm.DB) {
-			err := runGuard(tx.Statement.Context, exec, resource, func() error {
+			err := runGuard(tx.Statement.Context, exec, service, func() error {
 				fn(tx)
 				return tx.Error
 			})
@@ -94,12 +93,12 @@ func ApplyCallbacks(db *gorm.DB, exec resilience.Executor, resource string) erro
 // A real op error propagates through the executor (feeding retry/breaker); the
 // rejection sentinels are returned as-is so ApplyCallbacks' wrapper can put them
 // on tx.Error.
-func runGuard(ctx context.Context, exec resilience.Executor, resource string, call func() error) error {
+func runGuard(ctx context.Context, exec resilience.ClientExecutor, service string, call func() error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, err := resilience.Run(ctx, exec, resource,
-		func(e error) bool { return errors.Is(e, gorm.ErrRecordNotFound) },
-		func(context.Context) (struct{}, error) { return struct{}{}, call() })
+	_, err := resilience.Run(ctx, exec,
+		func(context.Context) (struct{}, error) { return struct{}{}, call() },
+		resilience.Tolerate(gorm.ErrRecordNotFound))
 	return err
 }

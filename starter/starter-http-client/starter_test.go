@@ -23,17 +23,17 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// The governance resource label must be STABLE across addressing modes: an
+// The governance service label must be STABLE across addressing modes: an
 // entry that keeps service-name set must resolve to http:<service-name> whether
 // it addresses directly (addr pinned, service-name a pure label) or through
-// discovery — govern.rules scoped to the label keep matching either way.
-func TestResourceLabelStableAcrossAddressingModes(t *testing.T) {
-	assert.That(t, Config{ServiceName: "user-svc", Discovery: "nacos"}.toTransportConfig(nil).Resource).
+// discovery — govern.client.rules scoped to the label keep matching either way.
+func TestServiceLabelStableAcrossAddressingModes(t *testing.T) {
+	assert.That(t, Config{ServiceName: "user-svc", Discovery: "nacos"}.toTransportConfig(nil).Service).
 		Equal("http:user-svc")
-	assert.That(t, Config{Addr: "10.0.0.1:8080", ServiceName: "user-svc"}.toTransportConfig(nil).Resource).
+	assert.That(t, Config{Addr: "10.0.0.1:8080", ServiceName: "user-svc"}.toTransportConfig(nil).Service).
 		Equal("http:user-svc")
 	// Only an entry with no service-name at all falls back to its address.
-	assert.That(t, Config{Addr: "10.0.0.1:8080"}.toTransportConfig(nil).Resource).
+	assert.That(t, Config{Addr: "10.0.0.1:8080"}.toTransportConfig(nil).Service).
 		Equal("http:10.0.0.1:8080")
 }
 
@@ -46,13 +46,13 @@ func TestValidateAddressingModes(t *testing.T) {
 }
 
 // In direct mode the service-name must NOT be handed to httpx as a discovery
-// target: it is a pure governance label there, carried via Resource.
+// target: it is a pure governance label there, carried via Service.
 func TestDirectModeBlanksServiceNameForTransport(t *testing.T) {
 	c := Config{Addr: "10.0.0.1:8080", ServiceName: "svc"}
 	cfg := c.toTransportConfig(nil)
 	assert.That(t, cfg.Addr).Equal("10.0.0.1:8080")
 	assert.That(t, cfg.ServiceName).Equal("")
-	assert.That(t, cfg.Resource).Equal("http:svc")
+	assert.That(t, cfg.Service).Equal("http:svc")
 
 	c2 := Config{ServiceName: "svc", Discovery: "nacos"}
 	cfg2 := c2.toTransportConfig(nil)

@@ -1,8 +1,8 @@
 # starter-memcached Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
-the starter source (`starter.go`, `client.go`, `command.go`, `driver.go`, `config.go`,
-`health/health.go`, `bytecache/bytecache.go`) and the runnable [example/](example/)
+the starter source (`starter.go`, `client.go`, `driver.go`, `config.go`,
+`health.go`, `bytecache.go`) and the runnable [example/](example/)
 (`check.sh` brings up a docker memcached and self-asserts a SET/GET/INCR round-trip).
 **gomemcache's own semantics (sharding, text protocol, Item fields) are
 [gomemcache documentation](https://github.com/bradfitz/gomemcache)** — everything below is
@@ -136,7 +136,7 @@ gs.Run()
   ├─ ctor newClient [starter.go:80]: validate → optional Driver bean
   │     (none → bundled DefaultDriver) → d.CreateClient(c, backend) → STARTUP PING
   ├─ Client.Init: observer + resilience/fault executor               client.go:66-71
-  ├─ readiness: health indicator folds Ping into /readiness          health/health.go:33-36
+  ├─ readiness: health indicator folds Ping into /readiness          `health.go`
   └─ shutdown: Client.Destroy — release executor, stop discovery watch  client.go:77-82
 ```
 
@@ -182,36 +182,37 @@ discovery+LB, `driver.go:69-70` comment).
 
 ### 2.3 One Set call, layer by layer
 
-`Client.Set(item)` (`command.go:70-75`):
+`Client.Set(ctx, item)` (`client.go`):
 
-1. `instrument("set", item.Key)` starts a client span from the module-local observer
-   (`observe.go`). gomemcache's API carries no context, so the span is a **root span** using
-   `context.Background()` — not linked to the caller's request trace (`command.go:38-40`,
-   limitation documented at `client.go:37-41`).
-2. `guardErr` runs the op under the resilience executor via `resilience.Run`
-   (`command.go:174-181`): limiter/breaker scoped to resource `memcached:<instance-name>`
-   (`client.go:69`); `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
-   (`command.go:168`); the executor is built in one line —
-   `fault.WrapExecutor(resilience.ExecutorFor("memcached", resource))` (`client.go:69`), with the
-   observe layer applied inside resolve. With governance off it is a transparent no-op.
-3. The embedded `*memcache.Client` performs the actual write; the end callback closes the span with
+1. `run`/`runErr` start a client span from the module-local observer (`observe.go`) **with the
+   caller's ctx**, so the span joins the caller's request trace. gomemcache's wire call itself
+   cannot honor ctx (the socket wait is bounded by `timeout`), but ctx still governs the
+   resilience layer's cancellation (rate-limit wait, retry backoff, breaker checks).
+2. `run` runs the op under the resilience executor via `resilience.Run`:
+   limiter/breaker scoped to service `memcached:<service-name or instance-name>` (`client.go`);
+   `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
+   (resilience.Tolerate); the executor is armed in one line —
+   `fault.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service), service, inj)`, where `mgr`/`inj` are the
+   `*resilience.Manager` / `*fault.Injector` beans the container injects into `newClient`, with the
+   observe layer applied inside resolve. With no governance bean it is a transparent no-op.
+3. The embedded `*memcache.Client` performs the actual write; the span closes with
    the error.
 
 All 17 operations (get/get_and_touch/get_multi/touch/set/add/replace/append/prepend/cas/delete/
-delete_all/increment/decrement/ping/flush_all) follow this same shape (`command.go:45-162`). Methods
+delete_all/increment/decrement/ping/flush_all) follow this same shape (`client.go`). Methods
 not overridden (only `Close` among lifecycle ones) are promoted unchanged from the embedded client.
 
 ### 2.4 The cache abstraction bean
 
 Alongside the wrapper, each instance is provided as a typed `cache.Cache` bean named
-`memcached:<memcached-instance-name>` (`starter.go:61-67`) over `bytecache.NewByteCache`
-(`bytecache/bytecache.go:33-36`) — inject `*cache.Cache` with the autowire tag
-`memcached:<instance-name>`. Un-injected, the bean never instantiates, so there is no config
+`memcached:<service-name or instance-name>` (`starter.go:61-67`) over `NewByteCache`
+(`bytecache.go`) — inject `*cache.Cache` with the autowire tag
+`memcached:<service-name or instance-name>`. Un-injected, the bean never instantiates, so there is no config
 switch to set. TTL conversion:
 `toExp` maps ttl to int32 seconds — **0/negative means never expire**, sub-second rounds up to 1s
-so it is not silently "forever" (`bytecache/bytecache.go:42-50`). `GetBytes` maps
+so it is not silently "forever" (`bytecache.go`). `GetBytes` maps
 `ErrCacheMiss` to `cache.ErrMiss`; `Delete` of an absent key is not an error
-(`bytecache/bytecache.go:55-79`).
+(`bytecache.go`).
 
 ---
 
@@ -232,8 +233,8 @@ the output belongs to the example app, not the starter).
 The `driver` key names the Driver bean: empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type (see
 §2.1), set to a bean name to select one explicitly; no `resilience` key: resilience/fault come from the governance center
 (`govern.*` config of
-starter-governance), keyed by resource `memcached:<instance-name>`.: resilience/fault come from the governance center (`govern.*` config of
-starter-governance), keyed by resource `memcached:<instance-name>`.
+starter-governance), keyed by service `memcached:<service-name or instance-name>`.: resilience/fault come from the governance center (`govern.*` config of
+starter-governance), keyed by service `memcached:<service-name or instance-name>`.
 
 ---
 
@@ -243,7 +244,7 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
    (handlers in `example/example.go`; check.sh asserts them headlessly).
 2. **Cache-miss semantics**: delete the key, `curl :9090/get` → `memcache: cache miss`; with
    governance on, repeated misses do NOT open the breaker (ErrCacheMiss is success,
-   `command.go:168`).
+   `client.go`).
 3. **Server-down fail-fast**: stop memcached (`docker stop demo-memcached`), boot the app →
    container assembly aborts with `memcached: startup ping failed` (`starter.go:98-100`). Bad
    `servers` address behaves identically — this is the fail-fast posture, there is no lazy mode.
@@ -254,15 +255,16 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
    from the backend snapshot — the client keeps dialing the old address until restarted
    (§2.2). This is a documented gomemcache constraint, not a wiring bug.
 6. **Health / readiness**: import starter-actuator; each instance contributes an indicator named
-   `memcache:<name>` whose probe is a live `Ping` (`starter.go:53`, `health/health.go:34-36`).
+   `memcache:<name>` whose probe is a live `Ping` (`starter.go:53`, `health.go`).
    Kill the server, then `curl :9370/readiness` flips DOWN. Note the probe carries no deadline —
-   gomemcache's `Ping` has no context; the client timeout bounds it (`health/health.go:30-32`).
+   gomemcache's `Ping` has no context; the client timeout bounds it (`health.go`).
 7. **Multi-instance**: `cache` and `session` instances coexist (distinct bean names = the map
    keys, `starter.go:47-50`); two entries pointing at the same server are independent beans with
-   independent executors (resource labels `memcached:cache` vs `memcached:session`).
+   independent executors (service labels `memcached:cache` vs `memcached:session`).
 8. **Observability**: with starter-otel imported, a client span named after the operation
-   (`get`/`set`/...) appears per call (root spans, §2.3); the `db.client.operation.duration`
-   histogram and the access log come from the module-local observer (`observe.go`).
+   (`get`/`set`/...) appears per call, joined to the caller's trace via the passed ctx (§2.3); the
+   `db.client.operation.duration` histogram and the access log come from the module-local observer
+   (`observe.go`).
 
 ---
 
@@ -275,8 +277,8 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
 | Boot fails `discovery resolve "..." failed` | `service-name` set but no backend under the `discovery` name | register the backend bean (named discovery.Discovery) before boot |
 | Boot fails `discovery returned no endpoints` | backend healthy but the service has no instances (or `scheme` over-filters) | start instances / clear `scheme` (`driver.go:75-79`) |
 | Stale server list after cluster scale-out/scale-in | gomemcache fixes the server set at creation; watch is lifecycle-only | restart the process to re-resolve (`driver.go:60-66`) |
-| Traces show memcached spans disconnected from request traces | gomemcache API has no context; spans are root spans | known limitation (`client.go:37-41`); correlate by key/time |
-| Breaker never trips on cache misses | by design: ErrCacheMiss counts as success | trip drills must use real failures, not misses (`command.go:168`) |
+| Traces show memcached spans disconnected from request traces | a `context.Background()`-style ctx (no trace) was passed; spans follow the caller's ctx | pass the request's ctx so the span joins the trace; the wire call itself still ignores ctx (bounded by `timeout`) |
+| Breaker never trips on cache misses | by design: ErrCacheMiss counts as success | trip drills must use real failures, not misses (`client.go`) |
 | Readiness stays UP while ops fail | indicator probes `Ping` only; a slow-but-alive server still passes | watch observe metrics for real latency/errors |
 
 ---
@@ -293,10 +295,10 @@ starter-governance), keyed by resource `memcached:<instance-name>`.
 Suspect ledger (carried from the previous edition, updated):
 
 - ~~No health indicator~~ — **resolved**: each instance now registers `memcache:<name>` as an
-  exported `health.Indicator` (`starter.go:53`, `health/health.go:33-36`); with starter-actuator it
+  exported `health.Indicator` (`starter.go:53`, `health.go`); with starter-actuator it
   folds into `/readiness` with no extra wiring.
 - Discovery watch is lifecycle-only: membership changes need a restart (structural gomemcache
   constraint, `driver.go:60-66`) — consider documenting a rebuild seam or a client-swap pattern
   (cf. the dubbo dynamic-timeout atomic-swap approach).
-- Spans are root spans (no context in gomemcache API) — trace correlation is weaker than the
-  redis/gorm starters (`client.go:37-41`).
+- The wire call cannot be cancelled via ctx (no context in gomemcache API; bounded by `timeout`) —
+  only the resilience layer honors cancellation (`client.go`).

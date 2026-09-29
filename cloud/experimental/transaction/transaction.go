@@ -56,11 +56,11 @@ import (
 )
 
 // RetryPolicy describes how an individual [Step] phase (action or compensation)
-// is retried on failure. It reuses [resilience.Policy] rather than inventing a
+// is retried on failure. It reuses [resilience.ClientPolicy] rather than inventing a
 // second knob set, so the same declarative fields (MaxRetries, Timeout, ...)
 // govern both outbound resilience and Saga step retries. The zero value means a
 // single attempt with no retry.
-type RetryPolicy = resilience.Policy
+type RetryPolicy = resilience.ClientPolicy
 
 // Step is one compensable unit of a [Saga]. Action is the forward operation;
 // Compensate undoes it if a later step fails.

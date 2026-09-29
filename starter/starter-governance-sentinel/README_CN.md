@@ -6,7 +6,7 @@
 [`cloud/governance/resilience`](../../cloud/governance/resilience) 韧性框架的生产 driver。
 与 [`starter-governance`](../starter-governance) 一起空导入,并在治理文档里
 写 `govern.driver=sentinel` —— 此后每个经治理中心解析 executor 的客户端,都在
-同一份中立 `Policy` 之上获得自适应限流、熔断与并发隔离,无需按客户端配 key,
+同一份中立 `ClientPolicy` 之上获得自适应限流、熔断与并发隔离,无需按客户端配 key,
 也无需改代码。
 
 它属于 *global / infrastructure*(全局 / 基础设施)形态(见
@@ -45,9 +45,9 @@ driver 是**全进程选一次**,不按客户端选:治理文档用 `govern.driv
 ```properties
 govern.enabled=true
 govern.driver=sentinel
-govern.default.max-retries=3
-govern.default.error-threshold=10
-govern.default.attempt-timeout=1s
+govern.client.default.max-retries=3
+govern.client.default.error-threshold=10
+govern.client.default.attempt-timeout=1s
 ```
 
 ### 3. 或直接使用
@@ -55,7 +55,7 @@ govern.default.attempt-timeout=1s
 ```go
 import "go-spring.org/cloud/governance/resilience"
 
-exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor(resilience.Policy{
+exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit:      100,
     ErrorThreshold: 10,
     OpenDuration:   30 * time.Second,
@@ -64,10 +64,10 @@ exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor(resilienc
 })
 
 // 客户端传输
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec)}
 
 // 客户端拨号
-dial := resilience.NewDialer(baseDialer, exec, "upstream")
+dial := resilience.NewDialer(baseDialer, exec)
 ```
 
 见 [`example/`](example) 的自包含冒烟——端到端验证 `Dialer` 以及限流 +
@@ -75,9 +75,9 @@ dial := resilience.NewDialer(baseDialer, exec, "upstream")
 
 ## Policy 映射
 
-中立的 `resilience.Policy` 按 resource 懒加载到 sentinel 规则:
+中立的 `resilience.ClientPolicy` 按 service 懒加载到 sentinel 规则:
 
-| `Policy` 字段    | Sentinel 规则          | 触发时的中立 error         |
+| `ClientPolicy` 字段    | Sentinel 规则          | 触发时的中立 error         |
 | ---------------- | ---------------------- | -------------------------- |
 | `RateLimit`      | flow(Direct/Reject)   | `ErrRateLimited`           |
 | `ErrorThreshold` | circuit breaker        | `ErrCircuitOpen`           |

@@ -46,6 +46,16 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.kafka-sarama.instances."+name+".driver:=${spring.kafka-sarama.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. applyResilience
+				// treats a nil bean as an unarmed authority, i.e. a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(5, gs.TagArg("?")), // inj *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})

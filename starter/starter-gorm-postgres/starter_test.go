@@ -42,7 +42,7 @@ func TestBuildPlainDSN(t *testing.T) {
 	}
 	c.PingTimeout = 500 * time.Millisecond
 
-	spec, err := build(context.Background(), c, nil)
+	spec, err := build(context.Background(), c, nil, nil)
 	if err != nil {
 		t.Fatalf("build failed: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestBuildPlainDSN(t *testing.T) {
 
 	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{
 		Engine:         "postgresql",
-		Resource:       spec.Resource,
+		Service:        spec.Service,
 		ObserveEnabled: spec.ObserveEnabled,
 		Closers:        spec.Closers,
 	})

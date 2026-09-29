@@ -72,7 +72,8 @@ func (s *Service) IsCritical() bool { return true }
 
 func init() {
     gs.Provide(func(s *Service) (messaging.Driver, error) {
-        return StarterKafka.NewDriver(s.Client), nil
+        // propagator 传 nil → 回退到 traffic.NewDefaultPropagator(traffic.DefaultBinding())
+        return StarterKafka.NewDriver(s.Client, nil), nil
     })
     gs.Provide(func(b messaging.Driver) gs.Runner {
         return func(ctx context.Context) {
@@ -115,8 +116,7 @@ spring.observability.metrics.exporter=prometheus
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=8
+govern.client.default.rate-limit=8
 ```
 
 **验证**（broker 启动同 [example/docker-compose.yml](example/docker-compose.yml) —— KRaft
@@ -153,8 +153,8 @@ gs.Run()
   │   2. d.CreateClient：完整 client 装配（见 §2.2）                [driver.go:57]
   │   3. Ping 10s 超时——坏 brokers/凭证/TLS 让启动失败，
   │      而不是等第一次 produce 才暴露                                [starter.go:51,76]
-  │   4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor(
-  │      "kafka", "kafka:<brokers>"))，以
+  │   4. applyResilience：fault.WrapClientExecutor(mgr.ClientExecutorFor(
+  │      "kafka", "kafka:<brokers>"), "kafka:<brokers>", inj)，以
   │      client 指针索进包级 sync.Map                              [command.go:99-105]
   ├─ 无 Init 钩子；*kgo.Client bean 在 ctor 后即就绪
   ├─ Destroy(destroyClient) [starter.go:95-102]:
@@ -201,10 +201,10 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
    ⚠ `msg.Timestamp` **不映射**——由 broker 盖时间戳。
 2. OTel propagator 经 `recordCarrier` 把 W3C trace context 注入 record headers
    [client.go:87]；无 starter-otel 时为 no-op。
-3. 若 `traffic.IsLoadTest(ctx)`，压测标记随 record header 携带，消费侧可识别合成流量
-   [client.go:90-92]。
+3. `prop.Inject` 把压测标记写入 record header（非压测流量下为空操作），
+   消费侧可识别合成流量。
 4. `GuardedProduceSync(ctx, p.cl, rec).FirstErr()` —— 同步生产，走与裸 client API 同一个
-   resilience executor（没有规则命中该 client 的 resource label 时为透明 no-op）
+   resilience executor（没有规则命中该 client 的 service label 时为透明 no-op）
    [client.go:93-99]，broker ack / 拒绝直接返回给调用方。
 5. client 内部钩子触发：kotel produce span + metric；observeHook 的
    `OnProduceRecordBuffered` 开启名为 `publish` 的访问日志记录，
@@ -230,7 +230,7 @@ franz-go 构造约束带来的两个 driver 陷阱 [client.go:43-51 注释]：
 `NewSubscriber(ctx, source, group)` **静默丢弃 `group` 实参**（用 client 的 `group` 配置
 ——client.go:68）；且一个 client 只是一个 consumer——每个逻辑 consumer 用一个 client bean。
 
-### 2.4 GuardedProduceSync —— resilience seam 的精确语义
+### 2.4 GuardedProduceSync —— resilience 路径的精确语义
 
 franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [command.go:21-22,126-137 注释]。
 `GuardedProduceSync(ctx, cl, recs...)` [command.go:138-154]：
@@ -238,16 +238,16 @@ franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [comm
 - guard 解析 `cl` 上挂的 executor；没有（governance 关）则原样内联执行——与
   `cl.ProduceSync` 行为一致。
 - governance 开启时，调用经过已组装好的 executor
-  `fault.WrapExecutor(resilience.ExecutorFor("kafka", resource))` [command.go:100]：运行时
-  故障注入与 resilience 结果 metric 包住 produce，资源标签 `kafka:<brokers>`
-  （`resilience.ResourceLabel("kafka", c.Brokers)` [starter.go:83]，格式 `prefix:name`
-  [resilience/config.go:151-158]）。
+  `fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)` [command.go:100]：运行时
+  故障注入与 resilience 结果 metric 包住 produce，服务标签 `kafka:<brokers>`
+  （`resilience.ServiceLabel("kafka", c.Brokers)` [starter.go:83]，格式 `prefix:name`
+  [resilience/policy.go:216-230]）。
 - 被拒（限流 / 熔断打开）时 produce **绝不执行**；拒绝错误编码为逐 record 错误，调用方的
   `.FirstErr()` 像真实 produce 失败一样拿到它 [command.go:145-151]。example-cloudnative
   断言突发流量会得到 `resilience.ErrRateLimited`。
 - **不受保护**的路径：直接在 client bean 上调裸 `ProduceSync`/`Produce`，以及整条
   consume/poll 路径（被动）。driver 的 publish **已受保护**（§2.3 第 4 步）。
-  想让某个 client 事实上不受治理：给它的 resource label（`kafka:<brokers>`）配一条
+  想让某个 client 事实上不受治理：给它的 service label（`kafka:<brokers>`）配一条
   所有旋钮都为 0 的 rule —— Rule 是整体替换 default，全零 rule 即透传。
 
 ---
@@ -261,7 +261,7 @@ key 都在 `spring.kafka.instances.<name>.*` 下——ctor 参数经 `conf.BindE
 
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:30]）；CSV seed brokers；同时构成 resilience 资源标签 `kafka:<brokers>`。 | 空 → 启动报错；错但可达的主机在 10s 启动 Ping 处失败。 |
+| `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:30]）；CSV seed brokers；同时构成 resilience 服务标签 `kafka:<brokers>`。 | 空 → 启动报错；错但可达的主机在 10s 启动 Ping 处失败。 |
 | `topic` | string | "" | 传给 `kgo.ConsumeTopics`——消费 topic 构造期固定；driver subscriber 按它过滤。空 = 纯生产 client。 | 能生产、消费永不投递（未订阅 topic）。 |
 | `group` | string | "" | 传给 `kgo.ConsumerGroup`；group 语义属 Kafka 自身（offset、rebalance——见 kafka.apache.org）。⚠ driver `NewSubscriber` 的 group 实参是死的——本 key 是唯一 group 开关。 | 空 + 有 topic = 无 group（随机 group/急切）消费；offset 不提交。 |
 
@@ -332,7 +332,7 @@ grep messaging.access app.log | tail -2   # publish 记录（带时长）+ consu
 ### 4.3 受保护 vs 不受保护的生产路径
 
 ```bash
-# example-cloudnative 配 govern.default.rate-limit=8：
+# example-cloudnative 配 govern.client.default.rate-limit=8：
 go run .    # 打印 "resilience: N produce admitted, M rejected with ErrRateLimited"
 ```
 
@@ -342,7 +342,7 @@ go run .    # 打印 "resilience: N produce admitted, M rejected with ErrRateLim
 
 ### 4.4 治理标签核对
 
-资源标签是 `kafka:<brokers>`——就是 `brokers` 字符串本身，不是按 topic 或按 client 名
+服务标签是 `kafka:<brokers>`——就是 `brokers` 字符串本身，不是按 topic 或按 client 名
 [starter.go:83]。两个共享同一 broker 列表的 client bean 共享一个 limiter/breaker；边压
 `GuardedProduceSync` 边看 resilience 结果计数（`curl -s :9370/metrics | grep resilience`）
 即可验证。

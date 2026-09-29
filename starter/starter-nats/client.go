@@ -49,10 +49,10 @@ type Conn struct {
 	subObs *observer
 
 	// exec is nil unless governance is enabled; when set, the guarded
-	// methods route through it. resource is the stable per-instance key so the
+	// methods route through it. service is the stable per-instance key so the
 	// limiter/breaker state is scoped per connection rather than per subject.
-	exec     resilience.Executor
-	resource string
+	exec    resilience.ClientExecutor
+	service string
 }
 
 // Healthy reports whether the connection is currently established. It reflects
@@ -66,7 +66,7 @@ func (c *Conn) Healthy() bool {
 // destroyConn drains the connection, letting in-flight subscriptions finish
 // before the underlying socket is closed. Drain closes the connection when done.
 // When a resilience executor is attached its Close releases any background
-// resources of a production driver.
+// services of a production driver.
 func destroyConn(conn *Conn) error {
 	var execErr error
 	if conn.exec != nil {

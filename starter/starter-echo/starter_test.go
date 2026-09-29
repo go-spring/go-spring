@@ -25,7 +25,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
@@ -51,7 +50,7 @@ func newTestEngine(t *testing.T, props map[string]any) *echo.Echo {
 	t.Helper()
 	e := echo.New()
 	e.HideBanner = true
-	assert.That(t, applyMiddlewares(e, bindConfig(t, props))).Nil()
+	assert.That(t, applyMiddlewares(e, bindConfig(t, props), nil, nil, nil)).Nil()
 	return e
 }
 
@@ -62,7 +61,6 @@ func TestConfig_BindDefaults(t *testing.T) {
 	c := bindConfig(t, map[string]any{})
 
 	assert.That(t, c.Middleware.LoadTest.Enabled).True()
-	assert.That(t, c.Middleware.LoadTest.Header).Equal("X-LoadTest")
 	assert.That(t, c.Middleware.Recovery.Enabled).True()
 	assert.That(t, c.Middleware.RequestID.Enabled).True()
 	assert.That(t, c.Middleware.AccessLog.Enabled).True()
@@ -115,16 +113,18 @@ func TestConfig_AddrRequiredWithoutDefault(t *testing.T) {
 
 func TestLoadTestMiddleware_TagsContextFromHeader(t *testing.T) {
 	var saw bool
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
 	e := echo.New()
-	e.Use(LoadTest(""))
+	e.Use(LoadTest(nil))
 	e.GET("/x", func(c echo.Context) error {
-		saw = traffic.IsLoadTest(c.Request().Context())
+		saw = prop.IsLoadTest(c.Request().Context())
 		return c.String(http.StatusOK, "ok")
 	})
 
 	// With the marker header: the handler sees a load-test context.
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set(canonical.HeaderLoadTest, "1")
+	req.Header.Set("X-LoadTest", "1")
 	e.ServeHTTP(httptest.NewRecorder(), req)
 	assert.That(t, saw).True()
 
@@ -134,22 +134,35 @@ func TestLoadTestMiddleware_TagsContextFromHeader(t *testing.T) {
 	assert.That(t, saw).False()
 }
 
-func TestLoadTestMiddleware_CustomHeaderAndTruthyValues(t *testing.T) {
+func TestLoadTestMiddleware_RebasedHeaderAndTruthyValues(t *testing.T) {
 	var saw bool
+	// The header a hop reads belongs to the propagator, so a company re-bases it
+	// there (not in the middleware config).
+	b := traffic.DefaultBinding()
+	b.Key = "X-Stress"
+	prop, err := traffic.NewDefaultPropagator(b)
+	assert.Error(t, err).Nil()
 	e := echo.New()
-	e.Use(LoadTest("X-Stress"))
+	e.Use(LoadTest(prop))
 	e.GET("/x", func(c echo.Context) error {
-		saw = traffic.IsLoadTest(c.Request().Context())
+		saw = prop.IsLoadTest(c.Request().Context())
 		return c.String(http.StatusOK, "ok")
 	})
 
-	// Custom header: all truthy spellings match.
-	for _, v := range []string{"1", "true", "ON", "Yes"} {
+	// Custom header: the wire value matches, other values do not.
+	for _, v := range []string{"1"} {
 		saw = false
 		req := httptest.NewRequest(http.MethodGet, "/x", nil)
 		req.Header.Set("X-Stress", v)
 		e.ServeHTTP(httptest.NewRecorder(), req)
 		assert.That(t, saw).True()
+	}
+	for _, v := range []string{"true", "ON", "0"} {
+		saw = false
+		req := httptest.NewRequest(http.MethodGet, "/x", nil)
+		req.Header.Set("X-Stress", v)
+		e.ServeHTTP(httptest.NewRecorder(), req)
+		assert.That(t, saw).False()
 	}
 
 	// Non-truthy value does not tag.
@@ -162,7 +175,7 @@ func TestLoadTestMiddleware_CustomHeaderAndTruthyValues(t *testing.T) {
 	// The default header does NOT match when a custom one is configured.
 	saw = false
 	req2 := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req2.Header.Set(canonical.HeaderLoadTest, "1")
+	req2.Header.Set("X-LoadTest", "1")
 	e.ServeHTTP(httptest.NewRecorder(), req2)
 	assert.That(t, saw).False()
 }
@@ -208,7 +221,7 @@ func TestRequestIDMiddleware_HonorsIncomingHeader(t *testing.T) {
 // --- enabled switches ---------------------------------------------------------
 
 // TestMiddlewareChain_TogglesOff asserts the opt-out path through the real
-// assembly: with every toggle off (and no fault registered) the engine adds no
+// assembly: with every toggle off (and no fault injected) the engine adds no
 // RequestID header and no secure headers — i.e. the switches actually remove
 // the middleware, not just flip a flag.
 func TestMiddlewareChain_TogglesOff(t *testing.T) {
@@ -354,16 +367,16 @@ func TestBodyLimit_RejectsOversizedBodyWith413(t *testing.T) {
 // --- fault injection --------------------------------------------------------------
 
 // TestFaultMiddleware_Injects503ThenPassesThrough covers the always-installed
-// fault middleware: with a registered injector at Rate 1 every request fails
+// fault middleware: with an injected injector at Rate 1 every request fails
 // with 503; hot-toggling the injector off (no restart) restores pass-through.
-// The injector is resolved lazily per request via fault.InjectorFor, which is
-// why the middleware was built before the injector existed.
+// The middleware captures the injector when it is built, so the test injects it
+// up front and drives the toggle through SetConfig on the same instance.
 func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
-	in := fault.NewInjector(fault.Config{Enabled: true, Rate: 1, Error: "generic"})
-	fault.RegisterInjector(in)
-	t.Cleanup(func() { fault.RegisterInjector(nil) })
+	in := fault.NewInjector(fault.Configs{Server: fault.Config{Enabled: true, Rate: 1, Error: "generic"}}, nil)
 
-	e := newTestEngine(t, map[string]any{})
+	e := echo.New()
+	e.HideBanner = true
+	assert.That(t, applyMiddlewares(e, bindConfig(t, map[string]any{}), nil, in, nil)).Nil()
 	e.GET("/x", func(c echo.Context) error {
 		return c.String(http.StatusOK, "ok")
 	})
@@ -374,7 +387,7 @@ func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
 	assert.That(t, w.Body.String()).Equal("service unavailable")
 
 	// Hot-toggle: swap the live config, the next request passes through.
-	in.SetConfig(fault.Config{})
+	in.SetConfig(fault.Configs{})
 	w2 := httptest.NewRecorder()
 	e.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/x", nil))
 	assert.That(t, w2.Code).Equal(http.StatusOK)
@@ -432,7 +445,7 @@ func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
 	svr, err := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{
 		"health.enabled": true,
 		"health.path":    "/livez",
-	}))
+	}), nil, nil, nil)
 	assert.That(t, err).Nil()
 	e := svr.svr.Handler.(*echo.Echo)
 
@@ -444,7 +457,7 @@ func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
 	// Health disabled by default: the route is absent, and an unrouted request
 	// gets echo's own 404 — buildFault passes handler errors through and only
 	// rewrites INJECTED faults as 503 (mirroring gin's buildFault).
-	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{}))
+	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{}), nil, nil, nil)
 	assert.That(t, err2).Nil()
 	e2 := svr2.svr.Handler.(*echo.Echo)
 	w2 := httptest.NewRecorder()

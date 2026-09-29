@@ -124,8 +124,8 @@ spring.gateway.discovery=nacos.main                 # the backend bean's name
 spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
 # The route's balancing strategy is NOT a gateway key: it is a governance rule
-# for the route's label — govern.rules[N].resources=gateway:orders with
-# govern.rules[N].balancer=weighted (see cloud/governance/README.md §3.1).
+# for the route's label — govern.client.rules[N].service=gateway:orders with
+# govern.client.rules[N].balancer=weighted (see cloud/governance/README.md §3.1).
 ```
 
 **Verify** (nacos from `example/docker-compose.yml` — `docker compose up -d`, then wait for

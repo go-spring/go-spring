@@ -39,8 +39,8 @@ import (
 // DialHook is left untouched — connection establishment is discovery's concern,
 // not the command-level protection we add here.
 type resilienceHook struct {
-	exec     resilience.Executor
-	resource string
+	exec    resilience.ClientExecutor
+	service string
 }
 
 var _ redis.Hook = (*resilienceHook)(nil)
@@ -89,12 +89,11 @@ func (h *resilienceHook) guard(ctx context.Context, cmd redis.Cmder, call func(c
 // record anything. callErr is tracked for that distinction.
 func (h *resilienceHook) run(ctx context.Context, setErr func(error), call func(context.Context) error) error {
 	var callErr error
-	_, err := resilience.Run(ctx, h.exec, h.resource,
-		func(e error) bool { return errors.Is(e, redis.Nil) },
+	_, err := resilience.Run(ctx, h.exec,
 		func(actx context.Context) (struct{}, error) {
 			callErr = call(actx)
 			return struct{}{}, callErr
-		})
+		}, resilience.Tolerate(redis.Nil))
 	if err != nil && callErr == nil {
 		setErr(err)
 	}

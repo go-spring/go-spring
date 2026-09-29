@@ -33,6 +33,7 @@ demo/
 ```
 require (
     go-spring.org/spring                  v1.3.x
+    go-spring.org/starter-governance       latest
     go-spring.org/starter-governance-nacos latest
 )
 ```
@@ -43,25 +44,39 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/governance"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 
+    _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-governance-nacos"
 )
 
 // poller observes the resolved policy for one label, so a rule push is visible
 // without any client wiring.
-type poller struct{}
+type poller struct {
+    // mgr is the governance starter's resilience manager bean, injected here
+    // rather than resolved from a process-wide seam.
+    mgr *resilience.Manager
+}
 
 func (p *poller) Run(ctx context.Context) error {
-    // ... publish a new document after ~1s, then poll governance.PolicyFor
+    // ... publish a new document after ~1s, then poll mgr.PolicyFor
     //     until the pushed timeout is observed ...
-    pol := governance.PolicyFor("demo:resource")
+    pol := p.mgr.PolicyFor("demo:service")
     fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.Timeout, pol.MaxRetries)
 }
 
+// newPoller builds the poller over the injected manager. A nil manager — a
+// container without starter-governance — is normalized to a fresh unarmed one.
+func newPoller(mgr *resilience.Manager) *poller {
+    if mgr == nil {
+        mgr = resilience.NewManager()
+    }
+    return &poller{mgr: mgr}
+}
+
 func init() {
-    gs.Provide(&poller{}).Export(gs.As[gs.Runner]())
+    gs.Provide(newPoller, gs.IndexArg(0, gs.TagArg("?"))).Export(gs.As[gs.Runner]())
 }
 
 func main() { gs.Run() }
@@ -84,10 +99,11 @@ govern.source.nacos.group=DEFAULT_GROUP
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
-    max-retries: 2
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
+      max-retries: 2
 ```
 
 **Verify** (with a local Nacos, e.g. [example/docker-compose.yml](example/docker-compose.yml)):
@@ -233,7 +249,7 @@ cd example && ./check.sh        # docker-gated: compose up Nacos, run self-asser
 
 The example seeds the dataId with a 100 ms `attempt-timeout` before startup (so the source's
 initial `GetConfig` succeeds), then publishes a 900 ms document; the poller observes
-`governance.PolicyFor("demo:resource").Timeout == 900ms` and exits 0.
+`mgr.PolicyFor("demo:service").Timeout == 900ms` and exits 0.
 
 ### 4.2 Bad publish keeps last good (manual)
 

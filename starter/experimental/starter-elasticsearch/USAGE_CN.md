@@ -178,9 +178,9 @@ gs.Run()
   │        client 并中止启动
   ├─ Init [client.go:78]：newDBObserver("elasticsearch") → 模块内建 observer
   │    → obsTransport（指标 + 访问日志，无 span）
-  │    → fault.WrapExecutor(resilience.ExecutorFor("elasticsearch", resource))——治理
-  │      seam + outcome 计数 + resilience span
-  │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, →resource)) [client.go:86-92]
+  │    → fault.WrapClientExecutor(mgr.ClientExecutorFor("elasticsearch", service), service, inj)——注入的
+  │      治理 bean + outcome 计数 + resilience span
+  │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec)) [client.go:86-92]
   ├─ 就绪：指示器转 UP（执行 client.Info）
   └─ SIGTERM → Destroy [client.go:98]：exec.Close → 停 discovery watch → client.Close
 ```
@@ -199,7 +199,7 @@ elasticsearch API（Index/Get/...）
   → elastictransport 重试循环（MaxRetries / DisableRetry）
   → dynamicTransport（RWMutex 间接层；Init 换入前直通 http.DefaultTransport）
   → resilience roundTripper：executor = fault(observe(限流/熔断/bulkhead/重试))：
-      fault.InjectorFor 在最外，observe 层（每次 Execute 的 span + outcome 计数 +
+      注入的 fault injector 在最外，observe 层（每次 Execute 的 span + outcome 计数 +
       访问日志）在其内，治理核心在最内
   → obsTransport：db.client.operation.duration 直方图 + db.client.active_requests gauge
       + _app_elasticsearch_access 日志（模块内建 observer 不出 span——不重复）
@@ -212,7 +212,7 @@ elasticsearch API（Index/Get/...）
   `elasticsearch.Config.Instrumentation`，因此 span 覆盖重试；[observe.go] 的模块内建
   observer 不出 span，只补 metric+log 缺口。
 - **resilience 位于 observe transport 之外**——与 go-redis 相反（那边访问日志包
-  在熔断器外）。这里的 executor 经 `resilience.ExecutorFor` 解析后已自带 observe 层，
+  在熔断器外）。这里的 executor 由注入的 `*resilience.Manager` 构建后已自带 observe 层，
   使熔断跳闸/限流拒绝获得**自己的** span + outcome 计数，而 obsTransport 在被保护调用
   内部记录 HTTP 结果。
 - **用 dynamicTransport 而非固定 transport**：ES 的 transport 在构造期固定、事后无法
@@ -229,9 +229,9 @@ elasticsearch API（Index/Get/...）
 1. 生成的 API 构造 `POST /demo-docs/_search`；elastictransport 打开 client span
    （无 starter-otel 全局时为 no-op）。
 2. 重试循环（至多 `max-retries`，默认 3）把请求交给 dynamicTransport。
-3. resilience executor 以 resource label 为作用域申请许可，例如
+3. resilience executor 以 service label 为作用域申请许可，例如
    `elasticsearch:es-cluster` 或 `elasticsearch:http://127.0.0.1:9200`（取首个地址，
-   经 `resilience.ResourceLabel` 派生 [client.go:114-122]）——按集群而非按请求。
+   经 `resilience.ServiceLabel` 派生 [client.go:114-122]）——按集群而非按请求。
    治理关闭时 executor 是透明的 no-op。
 4. obsTransport 从 method + URL path 得到操作名 `POST /demo-docs/_search`，抬升
    in-flight gauge，完成时输出 duration 直方图 + 访问日志 [command.go:44-51]。
@@ -287,7 +287,7 @@ Addresses（或 CloudID）原样使用。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `max-retries` | int | 3 | elastictransport 重试次数。⚠ 与治理 executor 的重试（`govern.default.max-retries`）叠加——两层重试相乘放大次数与时延。 | 大值 + 治理重试 → 尝试次数成倍。 |
+| `max-retries` | int | 3 | elastictransport 重试次数。⚠ 与治理 executor 的重试（`govern.client.default.max-retries`）叠加——两层重试相乘放大次数与时延。 | 大值 + 治理重试 → 尝试次数成倍。 |
 | `disable-retry` | bool | false | 彻底关闭客户端重试循环。 | — |
 | `compress-request-body` | bool | false | 请求体 gzip 压缩。 | — |
 | `enable-metrics` | bool | true | 客户端内建 elastictransport 指标开关（⚠ schema.json 误写默认 false——以代码为准）。 | — |
@@ -317,11 +317,11 @@ docker start starter-elasticsearch
 - **指标**（OTel，经 starter-otel 全局）：`db.client.operation.duration` 直方图与
   `db.client.active_requests` gauge，属性 `db.system=elasticsearch`、
   `db.operation` = `"<METHOD> <path>"`、`status` = ok/error。resilience 层另有
-  `resilience.calls` 计数器，带 `resilience.outcome` ∈
+  `resilience.client.calls` 计数器，带 `resilience.outcome` ∈
   {success, rate_limited, circuit_open, bulkhead_full, timeout, error}。
 - **span**：每请求一个 client span（来自 elastictransport 插桩，形如
   `POST /demo-docs/_search`）；每次 resilience Execute 一个 internal span
-  （`resilience.resource` 属性）。验证：`curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
+  （`resilience.service` 属性）。验证：`curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
   并 grep `"data":[{`（与 example-otel 自测同款）。
 - **访问日志**：每请求一行，tag 为 `_app_elasticsearch_access`
   （`log.RegisterAppTag("elasticsearch", "access")`），按原生级别——失败 → Warn；带捕获
@@ -339,11 +339,10 @@ grep _app_elasticsearch_access app.log | tail -1
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
-govern.default.error-threshold=20
-govern.default.open-duration=5s
-govern.fault.enabled=false           # 置 true + rate=0.5 + error=timeout 即"放火"
+govern.client.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
+govern.client.default.error-threshold=20
+govern.client.default.open-duration=5s
+govern.client.fault.enabled=false           # 置 true + rate=0.5 + error=timeout 即"放火"
 ```
 
 运行 [example-load/](example-load/)（`go run . -concurrency=16 -duration=5s`）：打印的

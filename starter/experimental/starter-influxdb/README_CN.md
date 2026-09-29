@@ -68,8 +68,8 @@ Setup……）原样提升可用。
   db.statement 属性）、`db.client.operation.duration` 直方图 +
   `db.client.active_requests` 计量，以及 `_app_influxdb_access` tag 的访问
   日志（走 log 包原生分级）。
-- **韧性** — 阻塞写路径走治理 seam；未导入 `starter-governance` 时仅做
-  观测。
+- **韧性** — 阻塞写路径走由注入的 `*resilience.Manager` 构建的 executor；
+  未导入 `starter-governance` 时该 executor 为直通，仅做观测。
 
 ## 高级特性
 

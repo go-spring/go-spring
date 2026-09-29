@@ -27,6 +27,7 @@ import (
 	"sync"
 
 	"go-spring.org/cloud/actuator/endpoint"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -60,6 +61,24 @@ func init() {
 	// (e.g. a gorm client calling db.Use) are constructed. Building the providers
 	// lazily inside a bean constructor would break that ordering.
 	gs.Module(nil, setup)
+
+	// The span processor that tags load-test spans is built together with the
+	// tracer provider during the prepare phase, before any bean exists, so it
+	// installs go-spring's default convention there; this hook swaps in the
+	// container's bean before serving. Exported as a gs.Rooter so gs
+	// instantiates it even though nothing autowires it.
+	gs.Provide(newLoadTestHook, gs.IndexArg(0, gs.TagArg("?"))).
+		Export(gs.As[gs.Rooter]()).Caller(1)
+}
+
+// loadTestHook is the marker bean whose construction installs the container's
+// load-test convention into the span processor. A nil bean (no propagator
+// provided) restores go-spring's default.
+type loadTestHook struct{}
+
+func newLoadTestHook(p traffic.Propagator) (*loadTestHook, error) {
+	trace.SetLoadTestPropagator(p)
+	return &loadTestHook{}, nil
 }
 
 // setup binds ${spring.observability} and builds the shared trace/metrics

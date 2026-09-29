@@ -119,7 +119,7 @@ hertz core；RequestID/CORS/Gzip 来自 hertz-contrib；LoadTest/Tracing/Metrics
 | 中间件 | 默认 | 来源 | 说明 |
 |---|---|---|---|
 | `recovery` | 开 | core `recovery.Recovery()`（starter 接缝） | 捕获请求 goroutine 的 panic；关闭可能导致进程崩溃。starter 用 `server.New`（而非 `server.Default`）使其可配置。 |
-| `loadtest` | 开 | 自实现 | 请求携带 `X-LoadTest`（可配置）标记头时给请求 context 打标，下游可通过 `traffic.IsLoadTest` 分流。 |
+| `loadtest` | 开 | 自实现 | 请求携带 `X-LoadTest`（可配置）标记头时给请求 context 打标，下游可通过 propagator 的 `IsLoadTest` 分流。 |
 | `tracing` | 开 | 自实现 | 每请求一个 OTel server span；未引入 `starter-otel` 时为 no-op。 |
 | `metrics` | 开 | 自实现 | 经 OTel 全局记录请求数/时长/在途数；未引入 `starter-otel` 时为 no-op。 |
 | `requestId` | 开 | hertz-contrib/requestid | 生成/透传 `X-Request-Id`，同时写入请求 context（见 `RequestIDFromContext`）。 |

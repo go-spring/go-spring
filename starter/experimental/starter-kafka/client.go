@@ -28,8 +28,8 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -56,24 +56,36 @@ import (
 // links producer to consumer across services (a no-op without an OTel
 // propagator). Per-request client spans are already emitted by the kotel hooks
 // installed on the client.
-func NewDriver(cl *kgo.Client) messaging.Driver {
-	return &driver{cl: cl}
+//
+// prop is the load-test convention the driver carries: publish stamps the
+// marker into a record header and consume reads it back. A nil propagator
+// falls back to [traffic.NewDefaultPropagator].
+func NewDriver(cl *kgo.Client, prop traffic.Propagator) messaging.Driver {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
+	return &driver{cl: cl, prop: prop}
 }
 
-type driver struct{ cl *kgo.Client }
+type driver struct {
+	cl   *kgo.Client
+	prop traffic.Propagator
+}
 
 func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.Publisher, error) {
-	return &publisher{cl: b.cl, topic: destination}, nil
+	return &publisher{cl: b.cl, topic: destination, prop: b.prop}, nil
 }
 
 func (b *driver) NewSubscriber(_ context.Context, source, _ string) (messaging.Subscriber, error) {
-	return &subscriber{cl: b.cl, topic: source}, nil
+	return &subscriber{cl: b.cl, topic: source, prop: b.prop}, nil
 }
 
 // publisher produces envelopes to a fixed topic.
 type publisher struct {
 	cl    *kgo.Client
 	topic string
+	prop  traffic.Propagator
 }
 
 func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
@@ -88,10 +100,9 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	}
 	otel.GetTextMapPropagator().Inject(ctx, recordCarrier{rec})
 	// Carry the load-test marker in a record header so the consumer recognises
-	// synthetic load.
-	if traffic.IsLoadTest(ctx) {
-		recordCarrier{rec}.Set(canonical.MetaKeyLoadTest, "1")
-	}
+	// synthetic load. recordCarrier doubles as the traffic carrier: its Set is
+	// idempotent, so re-injection never appends a second header.
+	p.prop.Inject(ctx, recordCarrier{rec})
 	// Route through the same resilience executor the raw client API uses
 	// (GuardedProduceSync): a no-op pass-through when governance is off for
 	// this client, a rejection sentinel when rate-limited/circuit-open.
@@ -106,6 +117,7 @@ func (p *publisher) Close() error { return nil }
 type subscriber struct {
 	cl     *kgo.Client
 	topic  string
+	prop   traffic.Propagator
 	cancel context.CancelFunc
 	done   chan struct{}
 	once   sync.Once
@@ -136,9 +148,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				}
 				msgCtx := otel.GetTextMapPropagator().Extract(loopCtx, recordCarrier{rec})
 				// Extract the load-test marker the producer put in a record header.
-				if canonical.IsAffirmative(recordCarrier{rec}.Get(canonical.MetaKeyLoadTest)) {
-					msgCtx = canonical.WithLoadTest(msgCtx, "kafka-header")
-				}
+				msgCtx = s.prop.Extract(msgCtx, recordCarrier{rec})
 				if err := handler(msgCtx, fromRecord(rec)); err != nil {
 					log.Errorf(msgCtx, log.TagAppDef, "kafka driver handler error on %q: %v", rec.Topic, err)
 				}
@@ -191,8 +201,11 @@ func fromRecord(rec *kgo.Record) *messaging.Message {
 }
 
 // recordCarrier adapts a kgo.Record's headers to the OTel TextMapCarrier
-// interface for trace-context injection (publish) and extraction (consume).
+// interface for trace-context injection (publish) and extraction (consume),
+// and to propagate.Carrier for the load-test marker.
 type recordCarrier struct{ rec *kgo.Record }
+
+var _ propagate.Carrier = recordCarrier{}
 
 func (c recordCarrier) Get(key string) string {
 	for _, h := range c.rec.Headers {
@@ -201,6 +214,14 @@ func (c recordCarrier) Get(key string) string {
 		}
 	}
 	return ""
+}
+
+// Values returns the single value Get finds, nil when absent or empty.
+func (c recordCarrier) Values(key string) []string {
+	if v := c.Get(key); v != "" {
+		return []string{v}
+	}
+	return nil
 }
 
 func (c recordCarrier) Set(key, value string) {

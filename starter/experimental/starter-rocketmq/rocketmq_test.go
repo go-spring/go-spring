@@ -24,7 +24,8 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -34,11 +35,11 @@ import (
 // newClientWithPolicy builds a Client whose executor is wired to a real
 // executor from the default resilience driver. The tests never dial a name
 // server — they drive execute directly with a stubbed call.
-func newClientWithPolicy(t *testing.T, p resilience.Policy) *Client {
-	d := resilience.NewDefaultDriver()
-	exec, err := d.NewExecutor(p)
+func newClientWithPolicy(t *testing.T, p resilience.ClientPolicy) *Client {
+	d := resilience.NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &Client{exec: exec, resource: "rocketmq:test"}
+	return &Client{exec: exec, service: "rocketmq:test"}
 }
 
 // TestExecutePassThrough proves the zero-config opt-in: a Client with no
@@ -54,7 +55,7 @@ func TestExecutePassThrough(t *testing.T) {
 // TestExecuteRateLimit confirms the flow-control path: once the burst is spent,
 // further calls are rejected without invoking the stub.
 func TestExecuteRateLimit(t *testing.T) {
-	cl := newClientWithPolicy(t, resilience.Policy{RateLimit: 1, Burst: 2})
+	cl := newClientWithPolicy(t, resilience.ClientPolicy{RateLimit: 1, Burst: 2})
 	var ran int
 	stub := func(context.Context) error {
 		ran++
@@ -105,12 +106,20 @@ func TestFromMessageExt(t *testing.T) {
 	ext.StoreTimestamp = 1700000000000
 	ext.WithKeys([]string{"k1"})
 	ext.WithProperty("from", "example")
-	ext.WithProperty(canonical.MetaKeyLoadTest, "1")
+
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
+	c := propagate.StringMap{}
+	prop.Inject(prop.WithLoadTest(context.Background()), c)
+	for k, v := range c {
+		ext.WithProperty(k, v)
+	}
 
 	msg := fromMessageExt(ext)
 	assert.That(t, msg.Key).Equal("k1")
 	assert.That(t, string(msg.Payload)).Equal("value")
 	assert.That(t, msg.Headers["from"]).Equal("example")
-	assert.That(t, msg.Headers[canonical.MetaKeyLoadTest]).Equal("1")
+	roundTrip := prop.Extract(context.Background(), propagate.StringMap(msg.Headers))
+	assert.That(t, prop.IsLoadTest(roundTrip)).True()
 	assert.That(t, msg.Timestamp.UnixMilli()).Equal(int64(1700000000000))
 }

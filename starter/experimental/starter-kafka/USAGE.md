@@ -73,7 +73,8 @@ func (s *Service) CheckHealth(ctx context.Context) error {
 
 func init() {
     gs.Provide(func(s *Service) (messaging.Driver, error) {
-        return StarterKafka.NewDriver(s.Client), nil
+        // nil propagator → traffic.NewDefaultPropagator(traffic.DefaultBinding())
+        return StarterKafka.NewDriver(s.Client, nil), nil
     })
     gs.Provide(func(b messaging.Driver) gs.Runner {
         return func(ctx context.Context) {
@@ -117,8 +118,7 @@ spring.observability.metrics.exporter=prometheus
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=8
+govern.client.default.rate-limit=8
 ```
 
 **Verify** (broker startup mirrors [example/docker-compose.yml](example/docker-compose.yml) —
@@ -155,8 +155,8 @@ gs.Run()
   │   2. d.CreateClient: full client assembly (see §2.2)                    [driver.go:57]
   │   3. Ping with 10s timeout — bad brokers/credentials/TLS fail the
   │      boot instead of the first produce                                [starter.go:51,76]
-  │   4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor(
-  │      "kafka", "kafka:<brokers>")), indexed by
+  │   4. applyResilience: fault.WrapClientExecutor(mgr.ClientExecutorFor(
+  │      "kafka", "kafka:<brokers>"), "kafka:<brokers>", inj), indexed by
   │      client pointer in package-level sync.Maps                        [command.go:99-105]
   ├─ no Init hook; the *kgo.Client bean is ready after the ctor
   ├─ Destroy(destroyClient) [starter.go:95-102]:
@@ -205,11 +205,12 @@ starter's lifecycle concerns [driver.go:62-66 comment].
    `Headers` = the envelope headers (nil when empty), `Key` only when non-empty [client.go:79-86].
    ⚠ `msg.Timestamp` is **not** mapped — the broker stamps the record.
 2. OTel propagator injects W3C trace context into record headers via `recordCarrier`
-   [client.go:87] (no-op without starter-otel); if `traffic.IsLoadTest(ctx)`, the load-test
-   marker rides a record header so the consumer recognises synthetic load [client.go:90-92].
+   [client.go:87] (no-op without starter-otel); `prop.Inject` then stamps the load-test
+   marker into a record header (a no-op outside load-test traffic), so the consumer
+   recognises synthetic load.
 4. `GuardedProduceSync(ctx, p.cl, rec).FirstErr()` — synchronous produce routed through the
    same resilience executor the raw client API uses (a no-op pass-through when no govern rule
-   matches this client's resource label) [client.go:93-99], broker ack / rejection surfaced to
+   matches this client's service label) [client.go:93-99], broker ack / rejection surfaced to
    the caller.
 5. Inside the client the hooks fire: kotel produce span + metric; observeHook
    `OnProduceRecordBuffered` opens an access-log record named `publish` and
@@ -235,7 +236,7 @@ Two driver traps inherited from the franz-go construction constraint [client.go:
 `NewSubscriber(ctx, source, group)` **silently drops the `group` argument** (use the client's
 `group` config, client.go:68), and one client is a single consumer — one client bean per logical consumer.
 
-### 2.4 GuardedProduceSync — the resilience seam, exact semantics
+### 2.4 GuardedProduceSync — the resilience path, exact semantics
 
 franz-go's async `Produce` returns immediately, so only the synchronous path can be wrapped
 [command.go:21-22,126-137 comments]. `GuardedProduceSync(ctx, cl, recs...)` [command.go:138-154]:
@@ -244,15 +245,15 @@ franz-go's async `Produce` returns immediately, so only the synchronous path can
   `cl.ProduceSync`. (An executor is always attached now; with governance off or no rule
   matching the label it is a transparent no-op, so the two paths are equivalent.)
 - With a rule matching, the call passes through the assembled executor
-  `fault.WrapExecutor(resilience.ExecutorFor("kafka", resource))` [command.go:100] — runtime
-  fault injection and resilience outcome metrics around the produce; resource label
-  `kafka:<brokers>` (format `prefix:name`, [resilience/config.go:151-158]).
+  `fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)` [command.go:100] — runtime
+  fault injection and resilience outcome metrics around the produce; service label
+  `kafka:<brokers>` (format `prefix:name`, [resilience/policy.go:216-230]).
 - On rejection (rate-limit / open breaker) the produce is **never invoked**; the rejection error
   is encoded as a per-record error so `.FirstErr()` surfaces it like a produce failure
   [command.go:145-151]. example-cloudnative asserts bursts get `resilience.ErrRateLimited`.
 - What is **not** guarded: raw `ProduceSync`/`Produce` called directly on the client bean and
   the entire consume/poll path (passive). The driver's publish **is** guarded (§2.3 step 4).
-  To make a client effectively ungoverned, give its resource label (`kafka:<brokers>`) a
+  To make a client effectively ungoverned, give its service label (`kafka:<brokers>`) a
   govern rule with every knob at zero — a Rule replaces the default wholesale, so an all-zero
   rule is a pass-through.
 
@@ -267,7 +268,7 @@ per-instance prefix binding). `value:` tags reconciled against source: 20 keys t
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:30]); CSV of seed brokers; also becomes the resilience resource label `kafka:<brokers>`. | Empty → boot error; a wrong-but-reachable host fails the 10s startup Ping. |
+| `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:30]); CSV of seed brokers; also becomes the resilience service label `kafka:<brokers>`. | Empty → boot error; a wrong-but-reachable host fails the 10s startup Ping. |
 | `topic` | string | "" | Passed as `kgo.ConsumeTopics` — consumer topics fixed at construction; the driver subscriber filters by it. Empty = produce-only client. | Produce works, consume never delivers (no topic subscribed). |
 | `group` | string | "" | Passed as `kgo.ConsumerGroup`; group semantics are Kafka's own (offsets, rebalancing — see kafka.apache.org). ⚠ the driver's `NewSubscriber` group arg is dead — this key is the only group switch. | Empty + topic set = ungrouped (random-group / eager) consumption; offsets not committed. |
 
@@ -338,7 +339,7 @@ W3C trace keys or the load-test header is overwritten by the inject step [client
 ### 4.3 Guarded vs unguarded produce
 
 ```bash
-# example-cloudnative with govern.default.rate-limit=8:
+# example-cloudnative with govern.client.default.rate-limit=8:
 go run .    # prints "resilience: N produce admitted, M rejected with ErrRateLimited"
 ```
 
@@ -348,7 +349,7 @@ restart (governance center hot-reload).
 
 ### 4.4 Governance label check
 
-The resource label is `kafka:<brokers>` — exactly the `brokers` string, not a per-topic or
+The service label is `kafka:<brokers>` — exactly the `brokers` string, not a per-topic or
 per-client-name label [starter.go:83]. Two client beans sharing one broker list share one
 limiter/breaker; verify via the resilience outcome counters
 (`curl -s :9370/metrics | grep resilience`) while hammering `GuardedProduceSync`.

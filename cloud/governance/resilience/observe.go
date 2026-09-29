@@ -37,17 +37,17 @@ var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5,
 // protected client's system is a log field, not part of the tag.
 var resilienceTag = log.RegisterAppTag("resilience", "")
 
-// WrapExecutor returns an [Executor] that wraps inner with an internal span
-// (system/resource/status attributes), the resilience metrics, and an
+// WrapClientExecutor returns an [ClientExecutor] that wraps inner with an internal span
+// (system/service/status attributes), the resilience metrics, and an
 // access log per call. Pass the system label (e.g. "redis", "gorm", "grpc")
 // so calls from several protected clients are distinguishable. A nil inner
 // returns nil — no wrapper, so an unarmed client stays untouched.
 //
-// This is an internal composition step, not a client API: [ExecutorFor] applies
+// This is an internal composition step, not a client API: [ClientExecutorFor] applies
 // it while the provider-built executor is still private (see [resolve]), so
 // clients get an already-observed executor and never wrap one themselves. The
 // only other caller is a client that composes its own stack around a raw
-// executor it built directly (e.g. httpx's custom Executor / ResilienceDriver
+// executor it built directly (e.g. httpx's custom ClientExecutor / ResilienceDriver
 // paths).
 //
 // Attaching the breaker listener happens here, while inner is still private:
@@ -56,27 +56,28 @@ var resilienceTag = log.RegisterAppTag("resilience", "")
 // instruments are resolved from whatever OTel providers are current — at
 // first-resolve time, not at package init — so an SDK installed after this
 // package's init still receives the spans and records.
-func WrapExecutor(inner Executor, system string) Executor {
+func WrapClientExecutor(inner ClientExecutor, system, service string) ClientExecutor {
 	if inner == nil {
 		return nil
 	}
 	meter := otel.Meter("go-spring.org/cloud/governance/resilience")
-	duration, _ := meter.Float64Histogram("resilience.operation.duration",
+	duration, _ := meter.Float64Histogram("resilience.client.duration",
 		metric.WithDescription("Duration of resilience-protected calls"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
 	// calls counts protected calls with the status classified as one of:
 	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
-	calls, _ := meter.Int64Counter("resilience.calls",
+	calls, _ := meter.Int64Counter("resilience.client.calls",
 		metric.WithDescription("Number of resilience-protected calls by status"),
 		metric.WithUnit("{call}"))
 	// breakerChanges counts circuit-breaker state transitions (from/to attrs).
-	breakerChanges, _ := meter.Int64Counter("resilience.breaker.state_change",
+	breakerChanges, _ := meter.Int64Counter("resilience.client.breaker.state_change",
 		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
 		metric.WithUnit("{event}"))
-	w := &wrappedExecutor{
+	w := &wrappedClientExecutor{
 		inner:          inner,
 		system:         system,
+		service:        service,
 		tracer:         otel.Tracer("go-spring.org/cloud/governance/resilience"),
 		duration:       duration,
 		calls:          calls,
@@ -92,9 +93,10 @@ func WrapExecutor(inner Executor, system string) Executor {
 	return w
 }
 
-type wrappedExecutor struct {
-	inner  Executor
-	system string
+type wrappedClientExecutor struct {
+	inner   ClientExecutor
+	system  string
+	service string
 
 	tracer         trace.Tracer
 	duration       metric.Float64Histogram
@@ -105,16 +107,16 @@ type wrappedExecutor struct {
 // OnBreakerStateChange satisfies [BreakerEventListener]. It is invoked
 // synchronously from inside the breaker's transition (so it must not call back
 // into the executor); it emits a state-change counter and a log line.
-func (w *wrappedExecutor) OnBreakerStateChange(resource string, from, to BreakerState) {
+func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to BreakerState) {
 	w.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", w.system),
-		attribute.String("resource", resource),
+		attribute.String("service", w.service),
 		attribute.String("from", from.String()),
 		attribute.String("to", to.String()),
 	))
 	fields := []log.Field{
 		log.String("system", w.system),
-		log.String("resource", resource),
+		log.String("service", w.service),
 		log.String("from", from.String()),
 		log.String("to", to.String()),
 	}
@@ -132,15 +134,15 @@ func (w *wrappedExecutor) OnBreakerStateChange(resource string, from, to Breaker
 // log: a rejection or error at Warn, a success at Debug (protected calls are
 // frequent; the success record is there for troubleshooting, not everyday
 // reading).
-func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
+func (w *wrappedClientExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	start := time.Now()
-	ctx, span := w.tracer.Start(ctx, resource,
+	ctx, span := w.tracer.Start(ctx, w.service,
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
 			attribute.String("resilience.system", w.system),
-			attribute.String("resilience.resource", resource),
+			attribute.String("resilience.service", w.service),
 		))
-	err := w.inner.Execute(ctx, resource, fn)
+	err := w.inner.Execute(ctx, fn)
 	status := classifyStatus(err)
 	span.SetAttributes(attribute.String("status", status))
 	if err != nil {
@@ -150,19 +152,19 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 
 	w.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		attribute.String("system", w.system),
-		attribute.String("resource", resource),
+		attribute.String("service", w.service),
 		attribute.String("status", status),
 	))
 	w.calls.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("system", w.system),
-		attribute.String("resource", resource),
+		attribute.String("service", w.service),
 		attribute.String("status", status),
 	))
 
 	if err != nil {
 		log.Warn(ctx, resilienceTag,
 			log.String("system", w.system),
-			log.String("resource", resource),
+			log.String("service", w.service),
 			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
 			log.String("status", status),
 			log.Err(err))
@@ -171,7 +173,7 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 	log.Debug(ctx, resilienceTag, func() []log.Field {
 		return []log.Field{
 			log.String("system", w.system),
-			log.String("resource", resource),
+			log.String("service", w.service),
 			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
 			log.String("status", status),
 		}
@@ -179,15 +181,155 @@ func (w *wrappedExecutor) Execute(ctx context.Context, resource string, fn func(
 	return nil
 }
 
-func (w *wrappedExecutor) Close() error { return w.inner.Close() }
+func (w *wrappedClientExecutor) Close() error { return w.inner.Close() }
 
 // Refresh forwards p to the inner executor, keeping the wrapper's
 // metrics/listener intact. The inner driver always implements Refresh.
-func (w *wrappedExecutor) Refresh(p Policy) error {
+func (w *wrappedClientExecutor) Refresh(p ClientPolicy) error {
 	return w.inner.Refresh(p)
 }
 
-// classifyStatus maps an Executor's return error to the coarse status dimension
+// WrapServerExecutor returns a [ServerExecutor] that wraps inner with an
+// internal span, the inbound admission metrics, and an access log per request —
+// the server-side counterpart of [WrapClientExecutor], applied by [Manager.ServerExecutorFor]
+// at the same point and for the same reason (the executor is still private when it
+// is wrapped, so the breaker-listener handshake below can reach it).
+//
+// The instruments are a SEPARATE family (resilience.server.*) rather than a
+// direction attribute on the outbound ones: the outcome sets genuinely differ —
+// inbound has no retry, so no retry_budget_exceeded and no per-attempt timeout —
+// and keeping them apart leaves every existing outbound dashboard untouched. The
+// access log reuses the resilience tag, with system/service naming the route.
+func WrapServerExecutor(inner ServerExecutor, system, service string) ServerExecutor {
+	if inner == nil {
+		return nil
+	}
+	meter := otel.Meter("go-spring.org/cloud/governance/resilience")
+	duration, _ := meter.Float64Histogram("resilience.server.duration",
+		metric.WithDescription("Duration of inbound requests under resilience admission"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
+	// calls counts admitted requests with the status classified as one of:
+	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
+	calls, _ := meter.Int64Counter("resilience.server.calls",
+		metric.WithDescription("Number of inbound requests by admission status"),
+		metric.WithUnit("{request}"))
+	// breakerChanges counts inbound circuit-breaker state transitions (from/to attrs).
+	breakerChanges, _ := meter.Int64Counter("resilience.server.breaker.state_change",
+		metric.WithDescription("Inbound circuit-breaker state transitions (from/to attrs)"),
+		metric.WithUnit("{event}"))
+	w := &wrappedServerExecutor{
+		inner:          inner,
+		system:         system,
+		service:        service,
+		tracer:         otel.Tracer("go-spring.org/cloud/governance/resilience"),
+		duration:       duration,
+		calls:          calls,
+		breakerChanges: breakerChanges,
+	}
+	// Construction-time handshake, exactly as in WrapClientExecutor: the breaker does
+	// not exist yet, so the listener is installed on the still-private executor
+	// and is in place for every transition of its life.
+	if setter, ok := inner.(BreakerEventListenerSetter); ok {
+		setter.SetBreakerEventListener(w)
+	}
+	return w
+}
+
+type wrappedServerExecutor struct {
+	inner   ServerExecutor
+	system  string
+	service string
+
+	tracer         trace.Tracer
+	duration       metric.Float64Histogram
+	calls          metric.Int64Counter
+	breakerChanges metric.Int64Counter
+}
+
+// OnBreakerStateChange satisfies [BreakerEventListener] for the inbound breaker. A
+// trip (→open) is a route-level degradation worth flagging at Warn; recovery and
+// half-open trial are Info — the same levelling the outbound listener uses.
+func (w *wrappedServerExecutor) OnBreakerStateChange(service string, from, to BreakerState) {
+	w.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
+		attribute.String("system", w.system),
+		attribute.String("service", w.service),
+		attribute.String("from", from.String()),
+		attribute.String("to", to.String()),
+	))
+	fields := []log.Field{
+		log.String("system", w.system),
+		log.String("service", w.service),
+		log.String("from", from.String()),
+		log.String("to", to.String()),
+	}
+	if to == BreakerOpen {
+		log.Warn(context.Background(), resilienceTag, fields...)
+	} else {
+		log.Info(context.Background(), resilienceTag, fields...)
+	}
+}
+
+// Execute wraps the inner call in an internal span, records the duration histogram
+// and the status-classified request counter, and writes the access log: a
+// rejection or error at Warn, a success at Debug.
+func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+	start := time.Now()
+	ctx, span := w.tracer.Start(ctx, w.service,
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.String("resilience.system", w.system),
+			attribute.String("resilience.service", w.service),
+			attribute.String("resilience.direction", "inbound"),
+		))
+	err := w.inner.Execute(ctx, fn)
+	status := classifyStatus(err)
+	span.SetAttributes(attribute.String("status", status))
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
+
+	w.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+		attribute.String("system", w.system),
+		attribute.String("service", w.service),
+		attribute.String("status", status),
+	))
+	w.calls.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("system", w.system),
+		attribute.String("service", w.service),
+		attribute.String("status", status),
+	))
+
+	if err != nil {
+		log.Warn(ctx, resilienceTag,
+			log.String("system", w.system),
+			log.String("service", w.service),
+			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
+			log.String("status", status),
+			log.Err(err))
+		return err
+	}
+	log.Debug(ctx, resilienceTag, func() []log.Field {
+		return []log.Field{
+			log.String("system", w.system),
+			log.String("service", w.service),
+			log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
+			log.String("status", status),
+		}
+	})
+	return nil
+}
+
+func (w *wrappedServerExecutor) Close() error { return w.inner.Close() }
+
+// Refresh forwards a to the inner executor, keeping the wrapper's
+// metrics/listener intact.
+func (w *wrappedServerExecutor) Refresh(p ServerPolicy) error {
+	return w.inner.Refresh(p)
+}
+
+// classifyStatus maps an ClientExecutor's return error to the coarse status dimension
 // go-spring uses everywhere else for "how did this end".
 // The resilience sentinels (rate-limited / circuit-open / bulkhead-full) are
 // distinguished from caller timeouts and ordinary errors so a dashboard can
@@ -202,6 +344,8 @@ func classifyStatus(err error) string {
 		return "circuit_open"
 	case errors.Is(err, ErrBulkheadFull):
 		return "bulkhead_full"
+	case errors.Is(err, ErrRetryBudgetExceeded):
+		return "retry_budget_exceeded"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
 	default:

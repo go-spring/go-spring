@@ -172,7 +172,7 @@ gs.Run()
   │  client.go:129-147 — registration may also happen later, but handlers are
   │  fixed once the worker starts consuming)
   ├─ Client.Init (client.go): newObserver() (observe.go),
-  │    resilience.ResourceLabel("asynq", addr), fault executor armed
+  │    resilience.ServiceLabel("asynq", addr), fault executor armed
   ├─ Server.Init (client.go:111-127): builds asynq.NewServer(connOpt, Config{...})
   ├─ Runner phase: Server.Run — srv.Start(mux), sig.TriggerAndWait() → ready,
   │    then blocks on <-ctx.Done()
@@ -200,9 +200,9 @@ gs.Run()
    call the promoted `*asynq.Client.Enqueue` — only the wrapper routes through the guard.
 2. The observe layer opens a producer observation (`o.obs.start(ctx, "enqueue", task.Type())`,
    observe.go): span, metrics, and access log.
-3. The executor runs: `fault.WrapExecutor(resilience.ExecutorFor("asynq", "asynq:<addr>"))` — with
-   starter-governance, a rate-limit rejection or open circuit aborts **before** Redis is
-   touched; without it the executor is a pass-through.
+3. The executor runs: the one `Init` built from the injected `*resilience.Manager` wrapped
+   with the injected `*fault.Injector` — with starter-governance, a rate-limit rejection or
+   open circuit aborts **before** Redis is touched; without it the executor is a pass-through.
 4. `Client.EnqueueContext` writes the task to Redis (asynq semantics: queue/priority from opts).
 5. The worker's `ServeMux` matches the task type against the registered pattern (`:` groups
    for middleware scoping) and invokes your `HandlerFunc` on one of `concurrency` slots.
@@ -220,7 +220,7 @@ these ARE instance-prefixed).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`; also feeds the governance resource label `asynq:<addr>`. Required (`expr:"$ != ''"`). | Missing → bind-time startup error. |
+| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`; also feeds the governance service label `asynq:<addr>`. Required (`expr:"$ != ''"`). | Missing → bind-time startup error. |
 | `..username` / `..password` | string | empty | Redis ACL auth. | Wrong → enqueue/handler failures at runtime, not at boot (health probe catches it). |
 | `..db` | int | 0 | Redis database index. | Mismatched db between producer/worker instances → tasks enqueued but never consumed. |
 | `..tls.*` | block | off | Shared security (`enabled`, `cert-file`, `key-file`, `ca-file`, `server-name`, `insecure-skip-verify`); when on, DefaultDriver builds a TLS RedisClientOpt (driver.go:58-77). | Half-configured TLS → driver build error at bean construction. |
@@ -274,7 +274,7 @@ than the run abandons it (asynq then retries it on the next delivery — asynq s
 
 ### 4.5 Governance guard (optional)
 
-With starter-governance + a `govern` source, open the circuit / set a rate limit on resource
+With starter-governance + a `govern` source, open the circuit / set a rate limit on service
 `asynq:<addr>`: `Client.Enqueue` returns the rejection **without touching Redis**; the
 promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 

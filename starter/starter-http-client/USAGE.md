@@ -126,7 +126,7 @@ spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) Service discovery + load balancing: routes by logical service name.
 # The LB strategy and endpoint suspension for this entry are governance rules
-# (govern.rules[N].balancer / .outlier-threshold), not keys here — see below.
+# (govern.client.rules[N].balancer / .outlier-threshold), not keys here — see below.
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
@@ -137,9 +137,8 @@ spring.http-client.instances.guarded.addr=127.0.0.1:9473
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.error-threshold=2
-govern.default.open-duration=30s
+govern.client.default.error-threshold=2
+govern.client.default.open-duration=30s
 
 # No inbound HTTP server needed in this demo.
 spring.http.server.enabled=false
@@ -208,10 +207,11 @@ Rationale (from the source comments, verified):
 - **discovery/LB sits below resilience**: "a retry re-picks a fresh endpoint and the breaker keys
   on the logical service name" (httpx.go:32-34). The breaker therefore counts logical calls, and a
   retry lands on a different instance after an instance-level failure.
-- **resilience wraps the balanced transport**: `resilience.NewRoundTripper(base, exec, nil)` with
-  the default resource func `r.URL.Host` — which is still the logical target at that depth,
-  because the host rewrite happens one layer further down (httpx.go:180-192,
-  resilience/roundtripper.go:70).
+- **resilience wraps the balanced transport**: `resilience.NewRoundTripper(base, exec)`
+  — the service label is `resilience.ServiceLabel("http", ServiceName, Addr)` (httpx.go:342-347),
+  the same label the policy is resolved under, so limiter/breaker state and the driver's rule names
+  agree with the govern rule that armed them. One label per client: the host rewrite to a picked
+  instance happens one layer further down (httpx.go:307-318) and never leaks into the label.
 - **traffic above resilience**: each retry attempt carries the marker (the header is set on the
   original request, which the retry loop reuses); below user middleware so a wrapper can still
   override it (httpx.go:207-213).
@@ -222,7 +222,7 @@ Rationale (from the source comments, verified):
 - **Breaker counting is per logical call, not per attempt** (the historically fixed bug): the
   executor records the breaker outcome once per `Execute`, after the retry loop, "rather than once
   per attempt … which would trip the circuit far faster than the configured ErrorThreshold …
-  implies (the 'resilience on => breaker trips instantly' symptom)" (resilience/executor.go:210-218).
+  implies (the 'resilience on => breaker trips instantly' symptom)" (resilience/executor_default.go).
   The rate limiter still charges per attempt — each attempt is a real downstream request.
 
 ### 2.3 One request, layer by layer
@@ -239,7 +239,7 @@ Rationale (from the source comments, verified):
    because `net/http` hands a transport nothing but the `*http.Request` — routing at this layer is
    what keeps the declared Target as the key, and it also keeps every hop of a redirect on the
    route the call started on.
-3. trafficTransport injects the load-test marker header iff `traffic.IsLoadTest(ctx)`.
+3. trafficTransport injects the load-test marker header iff the propagator's `IsLoadTest(ctx)`.
 4. The executor runs the round-trip as one protected call: rate limit → breaker gate →
    per-attempt timeout (`attempt-timeout`) → retry loop with backoff, all under `MaxDuration`;
    the breaker records ONE outcome for the whole call (§2.2).
@@ -248,7 +248,7 @@ Rationale (from the source comments, verified):
    `res.Done` so least-conn accounting and outlier suspension see every call (httpx.go:245-262).
 6. otelhttp transport opens the client span, injects `traceparent`, dials.
 7. The response unwinds: span ends (with `resilience.outcome` if the executor wrapped it),
-   `resilience.calls{outcome=...}` counted, access log emitted per `observability.level`.
+   `resilience.client.calls{outcome=...}` counted, access log emitted per `observability.level`.
 8. In direct mode step 5 is `fixedHostTransport` pinning every request to `addr` — same spot in
    the chain, so resilience and call sites behave identically in both modes (httpx.go:264-277).
 
@@ -288,7 +288,7 @@ Keys under `spring.http-client.instances.<name>.*` (cross-checked with
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `addr` | string | "" | Direct mode: `fixedHostTransport` pins every request to this host:port. May be combined with `service-name`, which then stays a pure governance label (no discovery). | Neither set → fail fast "one of addr or service-name is required". |
-| `service-name` | string | "" | Discovery mode: logical name resolved via the named backend; ALWAYS the governance resource label when set (discovery or direct mode). With `addr` set it is not a discovery target. | Neither set → fail fast; set without `addr` and without `discovery` → fail fast. |
+| `service-name` | string | "" | Discovery mode: logical name resolved via the named backend; ALWAYS the governance service label when set (discovery or direct mode). With `addr` set it is not a discovery target. | Neither set → fail fast; set without `addr` and without `discovery` → fail fast. |
 | `discovery` | string | "" | Names a discovery backend bean (bean name = label, registered by a registry starter). Falls back to `${spring.http-client.default.discovery}` when unset. Required iff `service-name` set without `addr` (config.go validate). | Missing at both levels → fail fast. Unknown name → wiring-time error listing the registered beans (starter.go newRoute). |
 | `observability.level` | string | brief | Access-log gate for the executor wrap: off / brief / detailed (observe/config.go:50). | brief is ON by default — expect one log record per protected call. |
 | `observability.maxArgBytes` | int | 512 | Argument truncation in those logs. | Large bodies silently truncated. |
@@ -299,11 +299,11 @@ Keys under `spring.http-client.instances.<name>.*` (cross-checked with
 | `tls.server-name` | string | "" | Name checked against the peer certificate — useful when dialing by IP or via a discovery label. | Wrong name → per-request TLS verification failure. |
 | `tls.insecure-skip-verify` | bool | false | Skips peer verification (local testing only). | Enabled in production = unauthenticated TLS. |
 
-**Label stability — `service-name` wins**: the governance resource label is
-`resilience.ResourceLabel("http", ServiceName, Addr)` → `http:<service-name>` whenever
+**Label stability — `service-name` wins**: the governance service label is
+`resilience.ServiceLabel("http", ServiceName, Addr)` → `http:<service-name>` whenever
 `service-name` is set (discovery mode AND direct mode, where it stays a pure label), falling back
-to `http:<addr>` only for entries with no service-name at all (httpx.go `Config.resource`).
-So a `govern.rules[].resources` entry scoped to `http:<service-name>` keeps matching when the
+to `http:<addr>` only for entries with no service-name at all (httpx.go `Config.service`).
+So a `govern.client.rules[].services` entry scoped to `http:<service-name>` keeps matching when the
 entry switches between direct and discovery addressing — keep `service-name` set across the
 switch. Only dropping service-name entirely changes the key. Also: in direct mode the breaker
 keys per host:port — same backend reached through two different `addr` spellings gets two
@@ -311,18 +311,18 @@ breakers.
 
 **Not here** (no keys under `spring.http-client.*`): timeouts, retries, breaker, rate limit, fault.
 All policy is process-wide under `govern.*` via starter-governance — `govern.enabled`,
-`govern.driver`, `govern.default.<policy-field>` (rate-limit / burst / error-threshold /
+`govern.driver`, `govern.client.default.<policy-field>` (rate-limit / burst / error-threshold /
 open-duration / breaker-strategy / error-rate-threshold / min-requests / max-concurrent /
 max-retries / initial-interval / multiplier / max-interval / attempt-timeout / max-duration) and
-`govern.fault.*` for fault injection. Per-target policy = one `govern.rules[n]` entry scoped to the
-resource label above. See the starter-governance USAGE for that surface.
+`govern.client.fault.*` for fault injection. Per-target policy = one `govern.client.rules[n]` entry scoped to the
+service label above. See the starter-governance USAGE for that surface.
 
-`min-requests`: the starter enforces a floor of **5** on error-rate policies resolved for its
-`http:*` resources (httpx.go `minRequestsFloor`) — resilience's own zero-value floor of 1 would
-let a single failure at low traffic trip the breaker. A govern rule setting a HIGHER
-`min-requests` wins; the consecutive strategy is unaffected.
+`min-requests`: an error-rate breaker's minimum sample size is read straight from the govern rule
+and applied by resilience; unset means resilience's own zero-value floor of 1, so a single failure
+at low traffic can trip the breaker — set it explicitly when the downstream is low-volume. The
+consecutive strategy ignores it.
 ⚠ Retries re-send non-idempotent POSTs (roundtripper rewinds the body per attempt,
-resilience/roundtripper.go:83-94) — bound `max-retries` accordingly.
+resilience/adapter_http.go:83-94) — bound `max-retries` accordingly.
 
 ---
 
@@ -356,7 +356,7 @@ loses it and the loader-bound `Pool` stops picking it (httpx.go:200-221).
 ### 4.3 Breaker drill — open, fast-fail, recover
 
 The `guarded` route targets the always-500 backend on :9473 with
-`govern.default.error-threshold=2`, `open-duration=30s`:
+`govern.client.default.error-threshold=2`, `open-duration=30s`:
 
 1. Run the example: `./check.sh`. The guarded client's first calls fail against the network; after
    2 consecutive failures the breaker opens and the run prints
@@ -365,32 +365,32 @@ The `guarded` route targets the always-500 backend on :9473 with
 2. Equivalent manual drill with your own binary: kill the backend, loop the call, watch the error
    change from a network/500 error to `circuit open`, wait out `open-duration` (30s) with the
    backend restored — the half-open trial succeeds and the breaker closes.
-3. Observe the trip: `resilience.breaker.state_change{from=...,to=...}` counter increments and a
+3. Observe the trip: `resilience.client.breaker.state_change{from=...,to=...}` counter increments and a
    state-change log line is emitted (cloud/governance/resilience/observe.go:98-110).
 
 ### 4.4 Fault injection (no restart)
 
-Fault rides the same governance source; `govern.fault.*` hot-reloads (see example-load's
+Fault rides the same governance source; `govern.client.fault.*` hot-reloads (see example-load's
 conf comments). Flip in the config file:
 
 ```properties
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.fault.enabled=true
-govern.fault.rate=0.5
-govern.fault.error=timeout    # or generic / reset
+govern.client.fault.enabled=true
+govern.client.fault.rate=0.5
+govern.client.fault.error=timeout    # or generic / reset
 ```
 
 Injected faults flow *inside* the resilience executor (§2.2), so retries fire, the breaker counts
-the failure, and `resilience.calls{outcome=timeout|error}` records it — the drill validates the
+the failure, and `resilience.client.calls{outcome=timeout|error}` records it — the drill validates the
 whole stack, not just the injector.
 
 ### 4.5 Observables
 
 - Metrics (starter-otel's prometheus exporter, e.g. example-otel `:9090/metrics`):
-  `resilience.calls` counter with attributes `resilience.system="http"`,
-  `resilience.resource="http:greet-svc"`, `resilience.outcome` ∈
+  `resilience.client.calls` counter with attributes `resilience.system="http"`,
+  `resilience.service="http:greet-svc"`, `resilience.outcome` ∈
   {success, rate_limited, circuit_open, bulkhead_full, timeout, error};
-  `resilience.breaker.state_change` with from/to.
+  `resilience.client.breaker.state_change` with from/to.
 - Access log: gated by `observability.level` (default brief = on), tag `_app_http_resilience`
   (`log.RegisterAppTag("http", "resilience")`).
 - Traces: client span per request from httpx's built-in otelhttp layer (`GET /greet`-style naming per
@@ -407,7 +407,7 @@ whole stack, not just the injector.
 | Request fails `http-client: no transport for target "x"` | No `spring.http-client` entry whose addr/service-name equals the client's `Target` (mismatch surfaces at request time, not wiring — starter.go:188-195) | Add an entry or fix the Target; they must match exactly. |
 | Container fails: "one of addr or service-name is required" / "discovery is required" | validate() rules (config.go) | Set at least one addressing mode; add `discovery` when `service-name` is set without `addr`. |
 | Everything works but no breaker/rate limit | `govern.enabled` not set — the governance-backed executor is a transparent no-op without it | Enable starter-governance and a policy. |
-| Breaker trips on a single failure | `breaker-strategy=error-rate` with `min-requests` below the starter floor | The starter already floors `min-requests` to 5; raising `error-rate-threshold` or `min-requests` in the govern rule. |
+| Breaker trips on a single failure | `breaker-strategy=error-rate` with `min-requests` unset | Set `min-requests` in the govern rule (e.g. 5) or raise `error-rate-threshold`; an unset value means the breaker may trip on the first failure. |
 | Policy seems ignored after switching addr ↔ service-name | Label switched because `service-name` was dropped entirely | Keep `service-name` set across the mode switch — the label is `http:<service-name>` whenever it is set. |
 | No traces / metrics from the client | starter-otel not imported; otelhttp + meter ride the OTel globals | Blank-import starter-otel and configure `spring.observability.*`. |
 | TLS/https fails or is unreachable | `tls.enabled` not set on the entry | Enable the entry's `tls.*` block (`ca-file`/`server-name`/...); it wires a TLS-configured transport under the otel base. |
@@ -434,15 +434,19 @@ Design suspects (for the audit ledger):
 3. ~~Dead `timeout` key~~ — FIXED 2026-08-27: removed from Config and README.
 4. ~~Breaker per-attempt counting ("resilience on => 100% fail / trips instantly")~~ — FIXED:
    the executor now records the breaker outcome once per logical Execute
-   (resilience/executor.go:210-218); the rate limiter intentionally still charges per attempt.
+   (resilience/executor_default.go); the rate limiter intentionally still charges per attempt.
 5. Silent global takeover of `httpclt.DoRequest`; unknown targets fail at request time, not
    wiring time.
 6. ~~Governance label silently changes with addressing mode~~ — FIXED 2026-08-28: the label is
    `http:<service-name>` whenever set (service-name is now allowed alongside addr as a pure
    label), `http:<addr>` only when no service-name exists.
-7. ~~`min-requests` defaults to 0 with error-rate breaker — trips on one failure~~ — FIXED
-   2026-08-28: the starter floors `min-requests` to 5 on error-rate policies resolved for its
-   resources (higher explicit values win).
+7. `min-requests` with an error-rate breaker — 2026-08-28: the starter floored it to 5 for its
+   services; 2026-09-28: the floor was REMOVED. It was the only reason httpx built its own
+   resilience executor instead of taking the one the manager hands out, so the breaker/limiter
+   state was per-client rather than per-label like every other client starter. The underlying
+   symptom (a single failure tripping the breaker) came from the breaker counting once per retry
+   ATTEMPT, which resilience fixed separately; `min-requests` is now read straight from the
+   govern rule with no starter-side override.
 8. ~~Orphaned `ResilienceConfig` comment~~ — FIXED 2026-08-27.
 9. ~~No TLS keys at all~~ — FIXED 2026-08-28: `tls.*` block (enabled/cert-file/key-file/ca-file/
    server-name/insecure-skip-verify) added, built into the base transport by httpx; an https

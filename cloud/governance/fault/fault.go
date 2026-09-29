@@ -15,7 +15,7 @@
  */
 
 // Package fault is the in-process fault-injection companion to
-// go-spring.org/cloud/governance/resilience. It wraps a [resilience.Executor] so a
+// go-spring.org/cloud/governance/resilience. It wraps a [resilience.ClientExecutor] so a
 // configurable fraction of operations are made to fail or slow down on demand
 // — "setting fire" to a running client — to verify that retry, circuit-breaker,
 // per-attempt timeout and Fallback actually engage, and that the observe kit
@@ -24,7 +24,7 @@
 // The injection happens INSIDE the resilience executor's retry loop (the
 // wrapped operation fn returns the injected error, then the real executor
 // retries/breaks around it), so a fault exercises the protection stack rather
-// than bypassing it. See [WrapExecutor].
+// than bypassing it. See [WrapClientExecutor].
 //
 // fault stays stdlib-only and depends only on [resilience]; the gs runtime
 // binding (hot-reload via the governance source) lives in starter-governance,
@@ -38,10 +38,22 @@ import (
 	"syscall"
 )
 
+// ErrInjected is a convenience sentinel for a generic injected failure. The
+// typed kinds ("timeout", "reset") return distinct *InjectedError values that
+// wrap a real error; detect them all with errors.As against *InjectedError.
+var ErrInjected = &InjectedError{Kind: "generic"}
+
+// IsInjected reports whether err is a fault-injected failure of any kind. It is
+// a shorthand for the errors.As call documented on [InjectedError].
+func IsInjected(err error) bool {
+	var ie *InjectedError
+	return errors.As(err, &ie)
+}
+
 // InjectedError is the error shape every fault-injected failure returns. It
 // implements [resilience.Retryable] (Retryable reports true) so the resilience
 // executor's retry loop treats injected faults as retryable — the resolution in
-// [resilience.Policy.ShouldRetry] lets a Retryable error's verdict win, so
+// [resilience.ClientPolicy.ShouldRetry] lets a Retryable error's verdict win, so
 // injection deterministically drives retries regardless of the host's configured
 // retry predicate.
 //
@@ -52,11 +64,12 @@ import (
 //
 // Inner, when set, lets the injected error surface as a familiar Go error:
 // context.DeadlineExceeded for the "timeout" kind, syscall.ECONNRESET for
-// "reset". errors.Is(err, context.DeadlineExceeded) then works as expected, so
-// downstream classifiers (e.g. the observe outcome mapping) label the call the
-// same way a real timeout would be labelled.
+// "reset", syscall.ECONNREFUSED for "refused". errors.Is(err,
+// context.DeadlineExceeded) then works as expected, so downstream classifiers
+// (e.g. the observe outcome mapping) label the call the same way a real
+// timeout would be labelled.
 type InjectedError struct {
-	Kind  string // "generic", "timeout" or "reset"
+	Kind  string // "generic", "timeout", "reset" or "refused"
 	Inner error  // optional underlying error
 }
 
@@ -75,11 +88,6 @@ func (e *InjectedError) Retryable() bool { return true }
 // checks work for the typed kinds.
 func (e *InjectedError) Unwrap() error { return e.Inner }
 
-// ErrInjected is a convenience sentinel for a generic injected failure. The
-// typed kinds ("timeout", "reset") return distinct *InjectedError values that
-// wrap a real error; detect them all with errors.As against *InjectedError.
-var ErrInjected = &InjectedError{Kind: "generic"}
-
 // Is reports whether target is an [InjectedError] (any kind). It lets callers
 // write errors.Is(err, fault.ErrInjected) to detect any injected fault,
 // including the typed kinds that do not share identity with ErrInjected.
@@ -88,22 +96,17 @@ func (e *InjectedError) Is(target error) bool {
 	return ok
 }
 
-// mapError translates a configured kind into the error returned to the
-// executor. Empty or unknown kinds behave as "generic".
-func mapError(kind string) error {
+// newInjectedError builds the error returned to the executor for a configured
+// kind. Empty or unknown kinds behave as "generic".
+func newInjectedError(kind string) error {
 	switch kind {
 	case "timeout":
 		return &InjectedError{Kind: "timeout", Inner: context.DeadlineExceeded}
 	case "reset":
 		return &InjectedError{Kind: "reset", Inner: syscall.ECONNRESET}
+	case "refused":
+		return &InjectedError{Kind: "refused", Inner: syscall.ECONNREFUSED}
 	default:
 		return ErrInjected
 	}
-}
-
-// IsInjected reports whether err is a fault-injected failure of any kind. It is
-// a shorthand for the errors.As call documented on [InjectedError].
-func IsInjected(err error) bool {
-	var ie *InjectedError
-	return errors.As(err, &ie)
 }

@@ -81,9 +81,8 @@ spring.http-client.instances.discovered.discovery=static
 # conf/govern.properties referenced by govern.source.file.path). Breaker trips
 # after 2 consecutive failures:
 #   govern.enabled=true
-#   govern.default.enabled=true
-#   govern.default.error-threshold=2
-#   govern.default.open-duration=30s
+#   govern.client.default.error-threshold=2
+#   govern.client.default.open-duration=30s
 ```
 
 ### 3. Call
@@ -116,25 +115,24 @@ and asserts all four outcomes end to end:
 | Key | Default | Description |
 | --- | --- | --- |
 | `spring.http-client.instances.<name>.addr` | — | Direct `host:port`. May be combined with `service-name`, which then stays a pure governance label. |
-| `spring.http-client.instances.<name>.service-name` | — | Logical name resolved through discovery; whenever set it is also the governance resource label. |
+| `spring.http-client.instances.<name>.service-name` | — | Logical name resolved through discovery; whenever set it is also the governance service label. |
 | `spring.http-client.instances.<name>.discovery` | — | Registered discovery backend name. Required when `service-name` is set. |
 | `spring.http-client.default.driver` | — | Family-wide Driver bean for every instance that names none of its own. |
 | `spring.http-client.instances.<name>.driver` | — | Overrides the family default for this instance. Embed `DefaultDriver` to add auth/metrics around the assembled transport, or replace it entirely with your own `httpx.NewTransport` call. Empty = inject the single Driver bean by type; naming a missing bean fails startup. |
 | `spring.http-client.instances.<name>.tls.enabled` | `false` | Turns the entry's TLS surface on (see the `tls.*` block: cert-file/key-file/ca-file/server-name/insecure-skip-verify). |
 
 Resilience, fault injection and endpoint selection have **no keys here**: they
-are per-resource policy and live in the governance rules document (see
-starter-governance). The governance resource label is `http:<service-name>`
+are per-service policy and live in the governance rules document (see
+starter-governance). The governance service label is `http:<service-name>`
 whenever `service-name` is set (either addressing mode), `http:<addr>` only when
 no service-name exists. Per-request timeout comes from
-`govern.default.attempt-timeout`; the load-balancing strategy and outlier
+`govern.client.default.attempt-timeout`; the load-balancing strategy and outlier
 suspension come from `balancer` / `outlier-threshold` / `outlier-suspend-for` on
 the rule matching that label.
 
 The starter fails fast at wiring time: at least one of `addr` / `service-name`
 must be set, and `discovery` is mandatory when routing by service name alone
-(no `addr`). Error-rate breakers resolved for `http:*` resources get a starter
-floor of `min-requests=5` (a higher explicit value in the govern rule wins) — both applied by `starter-http-client/httpx`.
+(no `addr`) — both applied by `starter-http-client/httpx`.
 
 ## Observability
 

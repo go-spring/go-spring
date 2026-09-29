@@ -24,11 +24,12 @@ import (
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	health2 "go-spring.org/starter-mongodb/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -48,17 +49,31 @@ func init() {
 			// Init arms it (InitMethod) and Close tears it down (Destroy). The
 			// instance's discovery.Discovery backend bean is injected by name from
 			// the entry's ${discovery} label (default "default"; optional, so an
-			// app with no backend beans at all gets nil here).
+			// app with no backend beans at all gets nil here). The trailing
+			// governance beans (*resilience.Manager / *fault.Injector /
+			// *loadbalance.Manager) are injected nullable ("?"), since
+			// starter-governance may legitimately be absent from the container.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.mongodb.instances."+name+".discovery:=${spring.mongodb.default.discovery:=none}}?")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container (the normal
+				// case) and are absent from a container without it. Without the
+				// "?" gs would treat an absent bean as a wiring error and the app
+				// would not boot, turning "governance is off" into "governance
+				// must be imported" — which is not the contract: (*Client).Init and the pool bind
+				// treats a nil bean as an unarmed authority, a transparent
+				// pass-through.
+				gs.IndexArg(3, gs.TagArg("?")),
+				gs.IndexArg(4, gs.TagArg("?")),
+				gs.IndexArg(5, gs.TagArg("?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The wrapper is what is
 			// autowired; the embedded *mongo.Client is handed to the indicator.
 			r.Provide(func(w *Client) *health.Indicator {
-				return health2.NewClientHealth(name, w.Client)
+				return NewClientHealth(name, w.Client)
 			}, gs.TagArg(name)).Name("mongo:" + name).Caller(1)
 			return nil
 		})
@@ -66,12 +81,12 @@ func init() {
 }
 
 // newClient creates a new MongoDB client based on the provided configuration,
-// wrapped so gs can field-inject resilience + observability and
+// wrapped so gs can inject resilience + observability and
 // Init (InitMethod) can arm them. The command monitor (observability)
 // and the dial seam (resilience) are installed dynamically: newClient wires a
 // mutable monitor + dialer into the driver, and Init later swaps in
 // the observe observer and the resilience-wrapped dial function once the
-// injected policy is available. After the client is built it is pinged so that
+// injected governance manager is in hand. After the client is built it is pinged so that
 // misconfiguration or an unreachable server fails fast at startup rather than
 // on first use.
 //
@@ -84,7 +99,13 @@ func init() {
 // mesh mode a sidecar owns discovery+LB, so the URI hosts are dialed directly.
 // When c.ServiceName is empty this dials the URI hosts directly, unchanged from
 // before.
-func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery) (*Client, error) {
+//
+// mgr, inj and lbMgr are the governance beans the container injects (all nil in
+// a standalone, non-gs call). mgr and inj are retained on the Client for Init
+// (InitMethod) to arm the resilience executor with; lbMgr binds the discovery
+// pick pool this constructor builds, which is where the pool first exists.
+func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery,
+	mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
 	opts := options.Client().ApplyURI(c.URI)
@@ -118,21 +139,29 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery) (
 		opts.SetTLSConfig(tlsCfg)
 	}
 
-	w := &Client{cfg: c}
+	w := &Client{cfg: c, mgr: mgr, inj: inj}
 	// The command monitor observes operations; it reads the observer lazily so
 	// Init can build it from the injected Observability config once
 	// the wrapper is field-injected. No commands run before Init.
 	opts.SetMonitor(newCommandMonitor(func() *dbObserver { return w.obs.Load() }))
 
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
-	pool, stop, err := newPickPool(ctx.Context, c, backend)
+	pool, err := newPickPool(ctx.Context, c, backend)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: build discovery resolver failed: %v", err)
 		return nil, err
 	}
 	if pool != nil {
 		nd := &net.Dialer{Timeout: c.ConnectTimeout}
-		w.stop = stop
+		// Bind the pool to the service's governance label so one govern.client.rules[N]
+		// rule drives both its balancing strategy and its protection executor. A
+		// nil manager is the standalone case (no container); an unarmed one is
+		// exactly "governance off", where Bind is a no-op — so normalizing here
+		// keeps the binding free of a nil branch.
+		if lbMgr == nil {
+			lbMgr = loadbalance.NewManager()
+		}
+		w.stop = lbMgr.Bind(pool, serviceLabel(c))
 		// The discovery dialer ignores the URI address and picks a live
 		// endpoint from the loader-backed pool on each new connection.
 		baseDial = func(ctx context.Context, network, _ string) (net.Conn, error) {

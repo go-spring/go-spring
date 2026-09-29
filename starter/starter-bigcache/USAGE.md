@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`starter.go`, `config.go`, `client.go`, `command.go`, `driver.go`,
-`health/health.go`, `bytecache/`) and the self-asserting [example/](example/) — file:line
+`health.go`, `bytecache.go`) and the self-asserting [example/](example/) — file:line
 spot-checks in brackets. **BigCache semantics (sharding, life-window eviction, hard size cap,
 byte-only values) are [the official README](https://github.com/allegro/bigcache)** — everything
 below is go-spring's increment.
@@ -140,10 +140,12 @@ gs.Run()
   │   (bigcache.DefaultConfig(LifeWindow) + knobs → bigcache.New)
   │   → registerMetrics(name, client) — OTel observable gauges [starter.go:144-156]
   │   NOTE: no connectivity probe — there is nothing to probe (in-process heap)
-  ├─ Init [client.go]: newDBObserver() → resource label
-  │   "bigcache:<name>" → fault.WrapExecutor(resilience.ExecutorFor("bigcache", resource))
+  ├─ Init [client.go]: newDBObserver() → service label
+  │   "bigcache:<name>" → fault.WrapClientExecutor(mgr.ClientExecutorFor("bigcache", service), service, inj)
+  │   (mgr/inj = the *resilience.Manager / *fault.Injector beans injected into newClient;
+  │    without them the executor is a transparent pass-through)
   ├─ your Runner uses Get/Set/Delete (each = span + executor + access log)
-  └─ SIGTERM → Destroy [client.go:85-90]: exec.Close → BigCache.Close
+  └─ SIGTERM → Destroy [client.go:90-95]: exec.Close → BigCache.Close
       (stops the background eviction goroutine — hence the mandatory destroy)
 ```
 
@@ -169,7 +171,7 @@ observe span (start) → resilience executor (guard) → bigcache core → span 
 ### 2.3 One operation through the layers: `Get("key")` on a miss
 
 1. observe span starts (`get`, arg `key`).
-2. guard asks the executor for a permit (resource `bigcache:<name>` — per instance).
+2. guard asks the executor for a permit (service `bigcache:<name>` — per instance).
 3. bigcache returns `ErrEntryNotFound`; guard classifies it as success (nil to the executor).
 4. The original error is still returned to the caller verbatim [command.go:50]; the span/log
    record it as the op's outcome without feeding the breaker.
@@ -204,7 +206,7 @@ values are pulled on scrape via callbacks.
 `*cache.Cache` bean named `bigcache:<bigcache-instance-name>` [starter.go:63-69] — inject
 `*cache.Cache` with the autowire tag `bigcache:<instance-name>`. Un-injected, the bean never
 instantiates, so there is no config switch to set. `ErrEntryNotFound` maps to `cache.ErrMiss`
-at this boundary (starter-bigcache/bytecache).
+at this boundary (this package's bytecache.go).
 
 **Assembly extension point**: cache assembly is owned by a `Driver` interface [driver.go:32-35].
 A company/umbrella starter may provide its own `Driver` as an **optional container bean**
@@ -225,7 +227,7 @@ naming a missing bean fails startup).
 curl -s :9370/readyz    # bigcache:hot / bigcache:cold present
 ```
 
-The indicator always reports UP [health/health.go:33-36]: an in-process heap cache has no
+The indicator always reports UP [`health.go`]: an in-process heap cache has no
 connectivity to probe — the instance existing means it is ready. Its value is confirming the
 instance is registered and folded into readiness.
 
@@ -271,7 +273,7 @@ A façade miss returns `cache.ErrMiss`; the wrapper returns `bigcache.ErrEntryNo
 | No access log | level unset + tag filtered, or `off` | Set `detailed`; check logger config for `_app_bigcache_access`. |
 | Values truncated / realloc churn | `max-entry-size` under-guessed | It is a pre-allocation hint — size to real entries. |
 | Entries disappear early | `hard-max-cache-size` cap evicting oldest | Raise or remove the cap. |
-| Health shows component but "probe seems fake" | By design — always UP [health/health.go:26-32] | Watch gauges/log instead for real signal. |
+| Health shows component but "probe seems fake" | By design — always UP [`health.go`] | Watch gauges/log instead for real signal. |
 | Stale values served | `clean-window=0` disabled the cleaner | Set a non-zero clean-window. |
 | Breaker trips on every miss | It does not — ErrEntryNotFound is success [command.go:42-45] | Look for a real failure. |
 

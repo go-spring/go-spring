@@ -1,8 +1,8 @@
 # starter-go-redis 使用说明 — 参考手册
 
 详细使用文档。概览见 [README.md](README_CN.md)。所有行为声明均已对照源码
-（`starter.go`、`config.go`、`client.go`、`command.go`、`driver.go`、`health/health.go`、
-`bytecache/bytecache.go`）与可运行的 [example/](example/) 核实——下文括号内为 file:line 抽查点。
+（`starter.go`、`config.go`、`client.go`、`command.go`、`driver.go`、`health.go`、
+`bytecache.go`）与可运行的 [example/](example/) 核实——下文括号内为 file:line 抽查点。
 **Redis 语义与 go-redis API 见 [go-redis 官方文档](https://redis.io/docs/latest/develop/clients/go/)**
 ——本文只写 go-spring 的增量。
 
@@ -153,11 +153,12 @@ gs.Run()
   ├─ 构造 newClient [starter.go:97]：validateConfig → 查 driver → driver.CreateClient
   │   → instrument()（redisotel tracing+metrics，由 otel.* 开关门控）
   │   → failFastPing（无条件执行，上限 dial-timeout 或 5s）[starter.go:218]
-  ├─ Init [client.go:55]：resourceLabel → fault.WrapExecutor(resilience.ExecutorFor("redis", resource))
+  ├─ Init [client.go:61]：resourceLabel → fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj)
+  │   （mgr/inj = 容器注入构造函数的 *resilience.Manager / *fault.Injector bean）
   │   → applyObservability（访问日志 hook）
   │   → AddHook(resilienceHook)——命令链装配完成
   ├─ 就绪：探针翻转 UP（指示器执行 client.Ping）
-  └─ SIGTERM → Destroy [client.go:78]：exec.Close → 停 discovery watch → client.Close
+  └─ SIGTERM → Destroy [client.go:88]：exec.Close → 摘除 selection 订阅 → client.Close
 ```
 
 mode 配错或启动 ping 失败都会导致启动失败——进程不会带着一个死 Redis 进入"服务中"状态。
@@ -184,7 +185,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 
 1. redisotel 开 client span（无 starter-otel 时为 no-op）。
 2. observeHook 开一条名为 `get` 的访问日志记录（cmd.FullName()）。
-3. resilienceHook 向 executor 申请许可（限流/熔断作用域是 resource 标签，如
+3. resilienceHook 向 executor 申请许可（限流/熔断作用域是 service 标签，如
    `redis:127.0.0.1:6379`——按实例而非按命令 [client.go:90-96]）。
 4. go-redis 执行；key 不存在，返回 `redis.Nil`。
 5. `run()` 通过 nil-as-success 谓词把 `redis.Nil` 判为成功 [command.go:94]——
@@ -205,9 +206,9 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 `0.0.0.0:0` 来证明这点）。sentinel/cluster 模式下设置 `service-name` 会在启动期被拒绝：
 这两种拓扑自己发现节点 [starter.go:170-194]。
 
-**池的策略归治理管，不是写死的。** 它挂着 suspension tracker，并经
-`loadbalance.Pool.BindSelection` 绑到 `redis:<service-name|master-name|addr>`，所以该 label 命中的
-`govern.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号
+**池的策略归治理管，不是写死的。** 它挂着 suspension tracker，由 Driver 交出、由 Client 经 `lbMgr.Bind(pool, label)` 绑到
+`redis:<service-name|master-name|addr>`，所以该 label 命中的
+`govern.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号
 就用新策略。dialer 把拨号结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例。
 sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不了它们。详见
 `cloud/governance/README.md` §3.1。
@@ -259,10 +260,10 @@ sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不
 ### 3.4 缓存抽象 bean
 
 除包装类型外，每实例另提供一个 `*cache.Cache` bean（包
-`bytecache.NewByteCache(c.UniversalClient)`），名为 `go-redis:<redis 实例名>`
+`NewByteCache(c.UniversalClient)`），名为 `go-redis:<redis 实例名>`
 [starter.go:87-94]——用 autowire tag `go-redis:<实例名>` 按名注入。无人注入则不实例化，
 因此无配置开关。`redis.Nil` 在该边界被映射为 `cache.ErrMiss`
-[bytecache/bytecache.go:42-51]。
+[`bytecache.go`]。
 
 ---
 
@@ -308,7 +309,7 @@ val, _ := s.Main.Get(ctx, "k").Result()       // 裸客户端读同一 key："v"
 
 ### 4.5 故障/弹性演练
 
-配置 starter-governance 后给资源 `redis:<addr>` 设熔断/限流策略；压测并观察拒绝如何出现在
+配置 starter-governance 后给服务 `redis:<addr>` 设熔断/限流策略；压测并观察拒绝如何出现在
 `_app_redis_access` 记录与 resilience observer 的 outcome 计数里。策略可运行时热切换——
 executor 无需重启即刷新。
 

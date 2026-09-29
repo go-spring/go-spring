@@ -69,9 +69,10 @@ The key holds governance's rules, using the `govern.*` namespace:
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
 ```
 
 ### 4. Run

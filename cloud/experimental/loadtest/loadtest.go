@@ -156,7 +156,7 @@ func DefaultClassify(err error) string {
 // Run drives op as a closed-loop load across cfg.Concurrency workers for
 // cfg.Duration, then returns the aggregate [Result]. It is the legacy
 // one-liner; for open-loop, ramp, assertions or a custom driver use [New]().
-// Each op's context is tagged as load-test traffic (see [traffic.WithLoadTest])
+// Each op's context is tagged as load-test traffic (see [Runner.Propagator])
 // so downstream clients can recognise the synthetic load.
 func Run(ctx context.Context, cfg Config, op Op) *Result {
 	return New().

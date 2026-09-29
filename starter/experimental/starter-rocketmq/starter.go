@@ -24,7 +24,9 @@ package StarterRocketmq
 import (
 	"strings"
 
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -49,15 +51,28 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.rocketmq.instances."+name+".driver:=${spring.rocketmq.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. applyResilience
+				// treats a nil bean as an unarmed authority, i.e. a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(5, gs.TagArg("?")), // inj *fault.Injector
 			).Name(name).Destroy((*Client).Close).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
 			// so consumers (starter-outbox-gorm, app pub/sub) autowire it like any
 			// client bean. It shares the connection's bean name; beans are keyed by
 			// (name, type), so it stays distinct from the raw *Client bean.
-			r.Provide(func(cl *Client) messaging.Driver {
-				return NewDriver(cl)
-			}, gs.TagArg(name)).Name(name).Caller(1)
+			// The load-test convention bean is a NULLABLE injection (index 1):
+			// present when the application provides one, absent otherwise, and
+			// NewDriver falls back to the canonical convention.
+			r.Provide(func(cl *Client, prop traffic.Propagator) messaging.Driver {
+				return NewDriver(cl, prop)
+			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
 			return nil
 		})
 	})
@@ -69,7 +84,12 @@ func init() {
 // enabled) so a wrong name server list fails fast at startup instead of
 // surfacing on the first produce/consume, then the resilience executor is
 // attached.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Client, error) {
+//
+// mgr and inj are the governance beans starter-governance provides. The wiring
+// injects them NULLABLY, so both are nil in a container without
+// starter-governance as well as in a standalone (non-gs) call; applyResilience
+// treats a nil bean as "governance off".
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating rocketmq client, name-servers=%v fail-fast=%v", c.NameServers, c.FailFast)
 
 	if (c.AccessKey == "") != (c.SecretKey == "") {
@@ -91,7 +111,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Clien
 			return nil, errutil.Explain(err, "rocketmq name server probe failed on %v", c.NameServers)
 		}
 	}
-	if err := applyResilience(c, cl, resilience.ResourceLabel("rocketmq", strings.Join(c.NameServers, ","))); err != nil {
+	if err := applyResilience(c, cl, resilience.ServiceLabel("rocketmq", strings.Join(c.NameServers, ",")), mgr, inj); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "rocketmq: resilience setup failed: %v", err)
 		return nil, err
 	}

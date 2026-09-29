@@ -24,6 +24,9 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -34,6 +37,9 @@ func init() {
 		NewSimpleEchoServer,
 		gs.IndexArg(1, gs.TagArg("?")), // nullable EngineMiddleware outer hook
 		gs.IndexArg(2, gs.TagArg("${spring.echo.server}")),
+		gs.IndexArg(3, gs.TagArg("?")), // nullable resilience.Manager bean
+		gs.IndexArg(4, gs.TagArg("?")), // nullable fault.Injector bean
+		gs.IndexArg(5, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.echo.server.addr"))
 }
@@ -75,8 +81,13 @@ type SimpleEchoServer struct {
 // middlewares, applies the registered RouterRegister, and wraps it in an HTTP
 // server configured from ${spring.echo.server}. outer is the application-supplied
 // EngineMiddleware hook (nil when none is provided); it runs before the built-in
-// chain so middleware it installs ends up outermost.
-func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Config) (*SimpleEchoServer, error) {
+// chain so middleware it installs ends up outermost. mgr is the governance
+// starter's resilience manager bean (nil when governance is not imported), which
+// supplies the inbound admission middleware's policy; inj is the fault injector
+// bean (nil likewise), handed to applyMiddlewares for the inbound fault
+// middleware. prop is the application's load-test convention bean (nil means
+// go-spring's default), handed to the inbound LoadTest middleware.
+func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Config, mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) (*SimpleEchoServer, error) {
 	e := echo.New()
 	e.HideBanner = true
 
@@ -87,7 +98,7 @@ func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Co
 		outer(e)
 	}
 
-	if err := applyMiddlewares(e, cfg); err != nil {
+	if err := applyMiddlewares(e, cfg, mgr, inj, prop); err != nil {
 		return nil, err
 	}
 

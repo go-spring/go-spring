@@ -59,6 +59,3 @@ type Config struct {
 	// 0 uses the driver default (2).
 	MaxIdleConns int `value:"${max-idle-conns:=0}"`
 }
-
-// Resilience is not a field of Config: it comes from the governance center
-// (starter-govern) and is consumed by Client.Init (the gs InitMethod).

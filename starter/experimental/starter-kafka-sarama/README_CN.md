@@ -81,14 +81,15 @@ starter-otel 时它们是空操作,也不会改动任何消息字节,因此埋�
 ```go
 import starter "go-spring.org/starter-kafka-sarama"
 
+// prop 为进程的 traffic.Propagator；传 nil 即用默认约定。
 // 生产端:开启 span 并把 W3C 链路上下文注入到消息头。
 msg := &sarama.ProducerMessage{Topic: "hello", Value: sarama.StringEncoder("v")}
-_, span := starter.StartProducerSpan(ctx, msg)
+_, span := starter.StartProducerSpan(ctx, msg, prop)
 _, _, err := producer.SendMessage(msg)
 starter.EndSpan(span, err)
 
 // 消费端:延续消息头里携带的链路。
-ctx, span := starter.StartConsumerSpan(ctx, msg)
+ctx, span := starter.StartConsumerSpan(ctx, msg, prop)
 err := handle(ctx, msg)
 starter.EndSpan(span, err)
 ```

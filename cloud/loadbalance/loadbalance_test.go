@@ -24,15 +24,40 @@ import (
 
 func TestRegistry(t *testing.T) {
 	for _, name := range []string{RoundRobin, LeastConn, ConsistentHash, Weighted, ZoneAware, Random, P2C} {
-		b, err := New(name)
+		b, err := New(name, Config{})
 		assert.Error(t, err).Nil()
 		assert.That(t, b).NotNil()
 	}
 
-	_, err := New("does-not-exist")
+	_, err := New("does-not-exist", Config{})
 	assert.Error(t, err).Matches("no strategy registered")
 
-	assert.Panic(t, func() { Register("", func() Balancer { return nil }) }, "empty name")
+	assert.Panic(t, func() { Register("", func(Config) (Balancer, error) { return nil, nil }) }, "empty name")
 	assert.Panic(t, func() { Register("x", nil) }, "nil factory")
-	assert.Panic(t, func() { Register(RoundRobin, NewRoundRobin) }, "already registered")
+	assert.Panic(t, func() { Register(RoundRobin, func(Config) (Balancer, error) { return NewRoundRobin(), nil }) }, "already registered")
+}
+
+func TestConfigPartition(t *testing.T) {
+	// A parameter aimed at another strategy is rejected, not silently dropped.
+	_, err := New(LeastConn, Config{Replicas: 200})
+	assert.Error(t, err).Matches("ignored by this strategy")
+
+	_, err = New(ConsistentHash, Config{ZoneKey: "zone"})
+	assert.Error(t, err).Matches("ignored by this strategy")
+
+	// The strategy's own fields pass; the zero config passes everywhere.
+	for _, name := range []string{RoundRobin, LeastConn, ConsistentHash, Weighted, ZoneAware, Random, P2C} {
+		if _, err := New(name, Config{}); err != nil {
+			t.Fatalf("zero config rejected for %s: %v", name, err)
+		}
+	}
+	if _, err := New(ConsistentHash, Config{Replicas: 200}); err != nil {
+		t.Fatal(err)
+	}
+
+	// zone_aware delegate errors: unknown name, and self-delegation.
+	_, err = New(ZoneAware, Config{Delegate: "nope"})
+	assert.Error(t, err).Matches("zone_aware delegate")
+	_, err = New(ZoneAware, Config{Delegate: ZoneAware})
+	assert.Error(t, err).Matches("cannot delegate to itself")
 }

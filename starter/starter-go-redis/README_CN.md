@@ -131,5 +131,6 @@ Dragonfly 与 Kvrocks 说 Redis 线协议，因此本 starter 可直接驱动它
   详见 [app.properties](example/conf/app.properties) 中的注释示例。
 * **分布式缓存后端**：`AsCache(client, codec)` 将客户端适配为 `cloud/cache.Cache`,作为多级缓存的共享(远端)层。
   值用 codec 序列化(传 nil 默认 JSON)。
-* **全局限流器**：`NewRateLimiter(client, resilience.LimitPolicy{...})` 返回基于原子 Lua 令牌桶的
-  `resilience.RateLimiter`,所有副本共享同一配额——区别于每副本独立的内置限流器。
+* **分布式限流计数器**：`NewCounters(client)` 返回基于原子 Lua 令牌桶的
+  `resilience.Counters`。把它贡献成 bean，driver 构建的每个 executor 都花它，
+  同一 scope 的一份预算即跨副本共享——不贡献时每个 executor 各自持有私有预算。

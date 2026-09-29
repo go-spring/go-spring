@@ -27,7 +27,6 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -59,7 +58,7 @@ func (r *recordRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestNewTransport_DirectMode(t *testing.T) {
 	rec := &recordRT{}
-	rt, closeFn, err := NewTransport(Config{Base: rec})
+	rt, closeFn, err := NewTransport(Config{Base: rec}, nil, nil, nil, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -72,7 +71,7 @@ func TestNewTransport_DirectMode(t *testing.T) {
 
 func TestNewTransport_AddrPinsHost(t *testing.T) {
 	rec := &recordRT{}
-	rt, closeFn, err := NewTransport(Config{Addr: "10.9.8.7:80", Base: rec})
+	rt, closeFn, err := NewTransport(Config{Addr: "10.9.8.7:80", Base: rec}, nil, nil, nil, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -95,7 +94,7 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 		ServiceName: "user-svc",
 		Discovery:   backend,
 		Base:        rec,
-	})
+	}, nil, nil, nil, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -112,14 +111,18 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 
 func TestNewTransport_FailFast(t *testing.T) {
 	// A discovery backend whose seed Resolve fails -> fail fast.
-	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: errorDiscovery{}})
+	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: errorDiscovery{}}, nil, nil, nil, nil)
 	assert.Error(t, err).Matches("resolve")
 }
 
-// A govern rule's balancer replaces the pool's strategy in place, and the
-// outlier half of the same policy lands on the attached tracker — one
-// subscription, no transport rebuild.
-func TestGovernSelection_RewritesLivePool(t *testing.T) {
+// TestGovernSelection_BindsThroughManager pins the wiring that replaced the
+// removed in-package mapping: a governed transport hands its pool to the
+// loadbalance manager, which applies the rule's selection half in place — the
+// strategy is swapped without a transport rebuild and the suspension half lands
+// on the attached tracker. The mapping itself (SelectionConfig -> Selection) and
+// the "an unknown strategy keeps the current one" rule are loadbalance's
+// concern now, covered by that package's tests.
+func TestGovernSelection_BindsThroughManager(t *testing.T) {
 	pool := newTestPool(t, "10.0.0.1:9000", "10.0.0.2:9000")
 
 	// Round-robin (the construction default) alternates between the two.
@@ -127,11 +130,16 @@ func TestGovernSelection_RewritesLivePool(t *testing.T) {
 	second, _ := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
 	assert.That(t, first.Addr).NotEqual(second.Addr)
 
-	governSelection(pool, resilience.Policy{
-		Balancer:          loadbalance.ConsistentHash,
-		OutlierThreshold:  3,
-		OutlierSuspendFor: time.Second,
-	})
+	mgr := loadbalance.NewManager()
+	mgr.Apply(loadbalance.Settings{Enabled: true, Resolve: func(string) loadbalance.Selection {
+		return loadbalance.Selection{
+			Balancer:          loadbalance.ConsistentHash,
+			OutlierThreshold:  3,
+			OutlierSuspendFor: time.Second,
+		}
+	}})
+	stop := mgr.Bind(pool, "http:test")
+	defer stop()
 
 	// consistent_hash pins one key to one address...
 	a, _ := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
@@ -142,27 +150,11 @@ func TestGovernSelection_RewritesLivePool(t *testing.T) {
 	assert.That(t, pool.Tracker().Config().SuspendFor).Equal(time.Second)
 }
 
-// An unknown strategy name in a rule must not take the client down: the
-// governance Source contract has no error channel, so the pool keeps its
-// current strategy while the rest of the policy still applies.
-func TestGovernSelection_UnknownBalancerKeepsCurrent(t *testing.T) {
-	pool := newTestPool(t, "10.0.0.1:9000", "10.0.0.2:9000")
-
-	governSelection(pool, resilience.Policy{Balancer: "no-such-lb", OutlierThreshold: 2})
-
-	// Still alternating = still round-robin.
-	first, err1 := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
-	second, err2 := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
-	assert.That(t, err1 == nil && err2 == nil).True()
-	assert.That(t, first.Addr).NotEqual(second.Addr)
-	assert.That(t, pool.Tracker().Config().Threshold).Equal(2)
-}
-
 // newTestPool builds a pool over a fixed endpoint set, with the same disabled
 // tracker httpx attaches at construction.
 func newTestPool(t *testing.T, addrs ...string) *loadbalance.Pool {
 	t.Helper()
-	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
 	assert.That(t, err == nil).True()
 	eps := make([]discovery.Endpoint, 0, len(addrs))
 	for _, a := range addrs {
@@ -171,7 +163,6 @@ func newTestPool(t *testing.T, addrs ...string) *loadbalance.Pool {
 	return loadbalance.NewPool(
 		func() ([]discovery.Endpoint, error) { return eps, nil },
 		bal,
-		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})),
 	)
 }
 
@@ -185,10 +176,10 @@ func (errorDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]d
 func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{
-		ResilienceDriver: resilience.NewDefaultDriver(),
-		ResiliencePolicy: resilience.Policy{ErrorThreshold: 2},
+		ResilienceDriver: resilience.NewDefaultDriver(nil),
+		ResiliencePolicy: resilience.ClientPolicy{ErrorThreshold: 2},
 		Base:             rec,
-	})
+	}, nil, nil, nil, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -220,8 +211,10 @@ func (h *headerRT) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestNewTransport_InjectsLoadTestMarker(t *testing.T) {
-	rec := &headerRT{headerKey: canonical.HeaderLoadTest}
-	rt, closeFn, err := NewTransport(Config{Base: rec})
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
+	rec := &headerRT{headerKey: "X-LoadTest"}
+	rt, closeFn, err := NewTransport(Config{Base: rec}, nil, nil, nil, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -232,7 +225,7 @@ func TestNewTransport_InjectsLoadTestMarker(t *testing.T) {
 
 	// Load-test ctx: the traffic layer injects the marker header.
 	req2, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
-	req2 = req2.WithContext(canonical.WithLoadTest(context.Background(), "test"))
+	req2 = req2.WithContext(prop.WithLoadTest(context.Background()))
 	_, _ = rt.RoundTrip(req2)
 	assert.That(t, rec.seen).True()
 }
@@ -244,25 +237,27 @@ func TestNewTransport_WrapTransportIsOutermost(t *testing.T) {
 	// receives the injected header. This proves the user seam wraps the whole
 	// built-in stack and can both observe (via ctx) and delegate.
 	var wrapperRan, wrapperSawHeaderBeforeTraffic, wrapperSawLoadTestCtx bool
-	base := &headerRT{headerKey: canonical.HeaderLoadTest}
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
+	base := &headerRT{headerKey: "X-LoadTest"}
 	rt, closeFn, err := NewTransport(Config{
 		Base: base,
 		WrapTransport: func(inner http.RoundTripper) http.RoundTripper {
 			return roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				wrapperRan = true
 				// Outermost: header not yet injected by the traffic layer below.
-				wrapperSawHeaderBeforeTraffic = req.Header.Get(canonical.HeaderLoadTest) != ""
+				wrapperSawHeaderBeforeTraffic = req.Header.Get("X-LoadTest") != ""
 				// ...but the ctx is already tagged, so a wrapper can always tell.
-				wrapperSawLoadTestCtx = traffic.IsLoadTest(req.Context())
+				wrapperSawLoadTestCtx = prop.IsLoadTest(req.Context())
 				return inner.RoundTrip(req)
 			})
 		},
-	})
+	}, nil, nil, nil, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
 	req, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
-	req = req.WithContext(canonical.WithLoadTest(context.Background(), "test"))
+	req = req.WithContext(prop.WithLoadTest(context.Background()))
 	_, err = rt.RoundTrip(req)
 	assert.That(t, err).Nil()
 	assert.That(t, wrapperRan).True()
@@ -281,12 +276,12 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	called := false
 	rt, closeFn, err := NewTransport(Config{
 		Base:     rec,
-		Executor: resilience.ExecutorFor("test", "test-resource"),
-		WrapExec: func(e resilience.Executor) resilience.Executor {
+		Executor: resilience.NewManager().ClientExecutorFor("test", "test-service"),
+		WrapExec: func(e resilience.ClientExecutor) resilience.ClientExecutor {
 			called = true
 			return e
 		},
-	})
+	}, nil, nil, nil, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -297,37 +292,50 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	assert.That(t, called).True()
 }
 
-func TestFloorMinRequests(t *testing.T) {
-	// error-rate policy with unset MinRequests → floored.
-	p := floorMinRequests(resilience.Policy{BreakerStrategy: resilience.BreakerErrorRate, ErrorRateThreshold: 0.5})
-	assert.That(t, p.MinRequests).Equal(minRequestsFloor)
+// TestNewTransport_ResilienceFollowsManager proves the default executor comes
+// from the injected manager — the same [resilience.Manager.ClientExecutorFor] path
+// every other client starter takes — so arming that manager hot-swaps the policy
+// behind a transport that was already built, with no transport rebuild.
+func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
+	mgr := resilience.NewManager()
+	rec := &recordRT{status: http.StatusInternalServerError}
+	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, mgr, nil, nil, nil)
+	assert.That(t, err).Nil()
+	defer func() { _ = closeFn() }()
 
-	// an explicit higher value wins; a lower explicit value is raised too.
-	assert.That(t, floorMinRequests(resilience.Policy{BreakerStrategy: resilience.BreakerErrorRate, ErrorRateThreshold: 0.5, MinRequests: 10}).MinRequests).Equal(10)
-	assert.That(t, floorMinRequests(resilience.Policy{BreakerStrategy: resilience.BreakerErrorRate, ErrorRateThreshold: 0.5, MinRequests: 2}).MinRequests).Equal(minRequestsFloor)
+	// Unarmed: the manager's executor is a transparent pass-through, so every
+	// call reaches the base transport (a 5xx surfaces as an adapter error).
+	for range 3 {
+		req, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
+		_, _ = rt.RoundTrip(req)
+	}
+	before := len(rec.hosts)
+	assert.That(t, before).Equal(3)
 
-	// consecutive and zero policies are untouched.
-	assert.That(t, floorMinRequests(resilience.Policy{ErrorThreshold: 5}).MinRequests).Equal(0)
-	assert.That(t, floorMinRequests(resilience.Policy{RateLimit: 10}).MinRequests).Equal(0)
-	// error-rate strategy with the breaker disabled (no threshold) is untouched.
-	assert.That(t, floorMinRequests(resilience.Policy{BreakerStrategy: resilience.BreakerErrorRate}).MinRequests).Equal(0)
+	// Arm the manager with an error-threshold breaker for the label and push it,
+	// exactly as starter-governance's center does on a config change.
+	mgr.Apply(resilience.Settings{
+		Enabled:             true,
+		ResolveClientPolicy: func(string) resilience.ClientPolicy { return resilience.ClientPolicy{ErrorThreshold: 2} },
+	})
+
+	// Two consecutive 5xx now trip the breaker; the third call is rejected
+	// before it reaches the base transport — no rebuild in between.
+	for range 2 {
+		req, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
+		_, _ = rt.RoundTrip(req)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
+	_, err = rt.RoundTrip(req)
+	assert.Error(t, err).Matches("circuit")
+	assert.That(t, len(rec.hosts)).Equal(before + 2)
 }
 
-// With governance not armed, governedExecutor still yields a working (no-op)
-// executor — the same contract resilience.ExecutorFor gives.
-func TestGovernedExecutorWithoutGovernance(t *testing.T) {
-	exec, err := governedExecutor("http:test-svc", nil)
-	assert.That(t, err == nil).True()
-	assert.That(t, exec != nil).True()
-	err = exec.Execute(t.Context(), "host:1", func(ctx context.Context) error { return nil })
-	assert.That(t, err == nil).True()
-}
-
-// Resource derivation: explicit Resource wins; otherwise service-name before
+// Service derivation: explicit Service wins; otherwise service-name before
 // the direct address, so the label stays stable across addressing-mode switches.
-func TestConfigResourceDerivation(t *testing.T) {
-	assert.That(t, Config{ServiceName: "user-svc"}.resource()).Equal("http:user-svc")
-	assert.That(t, Config{Addr: "10.0.0.1:8080", ServiceName: "user-svc"}.resource()).Equal("http:user-svc")
-	assert.That(t, Config{Addr: "10.0.0.1:8080"}.resource()).Equal("http:10.0.0.1:8080")
-	assert.That(t, Config{Resource: "custom", Addr: "10.0.0.1:8080"}.resource()).Equal("custom")
+func TestConfigServiceDerivation(t *testing.T) {
+	assert.That(t, Config{ServiceName: "user-svc"}.service()).Equal("http:user-svc")
+	assert.That(t, Config{Addr: "10.0.0.1:8080", ServiceName: "user-svc"}.service()).Equal("http:user-svc")
+	assert.That(t, Config{Addr: "10.0.0.1:8080"}.service()).Equal("http:10.0.0.1:8080")
+	assert.That(t, Config{Service: "custom", Addr: "10.0.0.1:8080"}.service()).Equal("custom")
 }

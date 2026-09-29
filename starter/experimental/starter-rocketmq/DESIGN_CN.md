@@ -33,9 +33,9 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
   `msgCarrier`（`primitive.Message` 上的 `propagation.TextMapCarrier` 适配，
   对应 kafka-go 的 `recordCarrier`）走 user properties。
 - **`GuardedSend`（command.go）** — 韧性 seam：SDK 没有可拒绝的中间件，
-  治理执行器以可选包装的形式挂在同步 `SendSync` 路径上，经中立的
-  `resilience.ExecutorFor` / `fault.InjectorFor` seam 解析（与
-  starter-governance 零耦合）。
+  治理执行器以可选包装的形式挂在同步 `SendSync` 路径上，由注入的
+  `*resilience.Manager` / `*fault.Injector` bean 组装（装配在
+  starter-governance 中）。
 
 ## 3. 约束
 

@@ -72,8 +72,8 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
   （属性 `db.system`/`db.operation`/`db.statement`）、
   `db.client.operation.duration` 指标与访问日志（tag `_app_s3_access`）。
   minio-go 自身不带 OTel 埋点，因此由 starter 的传输层承载全部三信号。
-- **韧性** — 限流、熔断、故障注入在客户端 HTTP 传输层经治理 seam 强制
-  执行；未导入 `starter-governance` 时传输层仅做观测。
+- **韧性** — 限流、熔断、故障注入在客户端 HTTP 传输层经注入的治理 bean
+  构建的执行器强制执行；未导入 `starter-governance` 时传输层仅做观测。
 
 ## 高级特性
 

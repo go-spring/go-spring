@@ -8,7 +8,7 @@ production driver for the resilience framework defined in
 alongside [`starter-governance`](../starter-governance) and name it in the
 governance document (`govern.driver=sentinel`) — every client that resolves its
 executor through the governance center then gets adaptive rate limiting,
-circuit breaking, and bulkhead isolation on top of the same neutral `Policy`,
+circuit breaking, and bulkhead isolation on top of the same neutral `ClientPolicy`,
 with no per-client key and no code change.
 
 It follows the *global / infrastructure* archetype (see
@@ -50,9 +50,9 @@ the governance document — its own system, not `app.properties` (see
 ```properties
 govern.enabled=true
 govern.driver=sentinel
-govern.default.max-retries=3
-govern.default.error-threshold=10
-govern.default.attempt-timeout=1s
+govern.client.default.max-retries=3
+govern.client.default.error-threshold=10
+govern.client.default.attempt-timeout=1s
 ```
 
 ### 3. Or drive it directly
@@ -60,7 +60,7 @@ govern.default.attempt-timeout=1s
 ```go
 import "go-spring.org/cloud/governance/resilience"
 
-exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor(resilience.Policy{
+exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit:      100,
     ErrorThreshold: 10,
     OpenDuration:   30 * time.Second,
@@ -69,10 +69,10 @@ exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor(resilienc
 })
 
 // client-side transport
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec)}
 
 // client-side dial
-dial := resilience.NewDialer(baseDialer, exec, "upstream")
+dial := resilience.NewDialer(baseDialer, exec)
 ```
 
 See [`example/`](example) for a self-contained smoke that asserts the `Dialer`
@@ -81,10 +81,10 @@ required).
 
 ## Policy mapping
 
-The neutral `resilience.Policy` translates onto sentinel rules per resource,
+The neutral `resilience.ClientPolicy` translates onto sentinel rules per service,
 loaded lazily on the first entry:
 
-| `Policy` field   | Sentinel rule       | Neutral error on trip    |
+| `ClientPolicy` field   | Sentinel rule       | Neutral error on trip    |
 | ---------------- | ------------------- | ------------------------ |
 | `RateLimit`      | flow (Direct/Reject)| `ErrRateLimited`         |
 | `ErrorThreshold` | circuit breaker     | `ErrCircuitOpen`         |

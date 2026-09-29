@@ -953,7 +953,7 @@ func TestEngineMiddleware_RunsBeforeBuiltins(t *testing.T) {
 			Enabled:   true,
 			RequestID: RequestIDConfig{Enabled: true},
 		},
-	}); err != nil {
+	}, nil, nil, nil); err != nil {
 		t.Fatalf("ApplyMiddlewares: %v", err)
 	}
 	e.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
@@ -989,7 +989,7 @@ func TestEngineMiddleware_NilIsNoOp(t *testing.T) {
 			Enabled:   true,
 			RequestID: RequestIDConfig{Enabled: true},
 		},
-	}); err != nil {
+	}, nil, nil, nil); err != nil {
 		t.Fatalf("ApplyMiddlewares: %v", err)
 	}
 	e.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
@@ -1028,7 +1028,7 @@ func TestApplyMiddlewares_ManualComposition(t *testing.T) {
 			Enabled:   true,
 			RequestID: RequestIDConfig{Enabled: true},
 		},
-	}); err != nil {
+	}, nil, nil, nil); err != nil {
 		t.Fatalf("ApplyMiddlewares: %v", err)
 	}
 	e.GET("/m", func(c *gin.Context) { c.String(http.StatusOK, "ok") })

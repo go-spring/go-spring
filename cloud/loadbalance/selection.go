@@ -14,100 +14,59 @@
  * limitations under the License.
  */
 
+// selection.go is the endpoint-selection half of a governance rule: the flat,
+// directly bindable policy the loadbalance pool applies. Like
+// resilience.ClientPolicy it is ONE definition — the bindable form IS the runtime
+// form; there is no separate binding twin.
+
 package loadbalance
 
-import (
-	"sync/atomic"
-	"time"
-)
+import "time"
 
-// Selection is a resolved endpoint-selection policy in plain values: the
-// strategy name and the outlier-suspension thresholds. It mirrors
-// [Pool.ApplySelection] so this package carries no dependency on the policy
-// model that produces it.
+// Selection is the resolved endpoint-selection policy: the strategy (with its
+// construction parameters, flat) and the outlier-suspension thresholds. A
+// balancer's construction parameters take effect together with a Balancer name
+// change — a rule that only retunes thresholds leaves the current strategy
+// untouched.
 type Selection struct {
 	// Balancer is the strategy name to select endpoints with (e.g.
 	// "least_conn"). Empty means "leave the pool's current strategy alone".
-	Balancer string
+	Balancer string `value:"${balancer:=}"`
+
+	// BalancerReplicas is the number of virtual nodes per endpoint for
+	// consistent-hash strategies (0 = the strategy default).
+	BalancerReplicas int `value:"${balancer-replicas:=0}"`
+
+	// BalancerZoneKey is the endpoint metadata key a zone-aware strategy reads
+	// for locality (empty = the loadbalance default).
+	BalancerZoneKey string `value:"${balancer-zone-key:=}"`
+
+	// BalancerDelegate names the strategy a zone-aware balancer delegates the
+	// final choice to (empty = round-robin).
+	BalancerDelegate string `value:"${balancer-delegate:=}"`
 
 	// OutlierThreshold is the consecutive-failure count that suspends an
 	// endpoint. 0 disables suspension.
-	OutlierThreshold int
+	OutlierThreshold int `value:"${outlier-threshold:=0}"`
 
 	// OutlierSuspendFor is the cool-down before a suspended endpoint gets a
 	// half-open trial request. Ignored when [Selection.OutlierThreshold] is 0.
-	OutlierSuspendFor time.Duration
+	OutlierSuspendFor time.Duration `value:"${outlier-suspend-for:=0}"`
 }
 
-// SelectionProvider resolves the current [Selection] for a resource label and
-// keeps the caller in step with it. The contract is:
-//
-//   - invoke apply immediately with the current Selection, so a pool is already
-//     under its policy before the first Pick rather than only after the next
-//     push;
-//   - invoke apply again on every change;
-//   - return an idempotent stop func that detaches the subscription (nil means
-//     "nothing to stop").
-//
-// It is the selection counterpart of [resilience.Provider]: the governance
-// authority registers one process-wide, and clients reach it through
-// [Pool.BindSelection] without naming the authority or its policy model.
-type SelectionProvider func(label string, apply func(Selection)) (stop func())
-
-// selectionProvider is the process-wide provider, installed by the governance
-// authority once it is live. nil (the zero value) means endpoint selection is
-// unmanaged for the whole process — [Pool.BindSelection] is then a no-op and
-// each pool keeps the strategy it was built with.
-var selectionProvider atomic.Pointer[SelectionProvider]
-
-// RegisterSelectionProvider installs p as the process-wide selection provider.
-// The governance authority calls this once, when it goes live; clients never
-// call it. Passing nil DISARMS the seam — every later [Pool.BindSelection]
-// returns a no-op stop, and pools already bound keep living under the last
-// policy they were given. Disarming is what lets in-process tests install a
-// fake provider and take it back out again.
-func RegisterSelectionProvider(p SelectionProvider) {
-	if p == nil {
-		selectionProvider.Store(nil)
-		return
-	}
-	selectionProvider.Store(&p)
+// BalancerConfig translates the flat selection knobs into the [Config] a
+// strategy factory consumes. It is the only place the flat names meet the
+// factory's parameter struct.
+func (s Selection) BalancerConfig() Config {
+	return Config{Replicas: s.BalancerReplicas, ZoneKey: s.BalancerZoneKey, Delegate: s.BalancerDelegate}
 }
 
-// BindSelection wires the pool's endpoint selection to label's managed policy:
-// the current policy is applied immediately and again on every change, in
-// place — no pool rebuild, and the next [Pool.Pick] already sees it.
-//
-// It returns the detach func. A pool whose lifetime is not the whole process
-// MUST call it — exactly as a caller must cancel a governance subscription;
-// otherwise the authority keeps a callback pointing at a dead pool. With no
-// provider registered it returns a no-op and costs a single atomic load, which
-// is the transparent pass-through in a process without the governance starter.
-//
-// The strategy half works on any pool. The suspension half needs a [Tracker]
-// attached (see [WithTracker]) and the caller to pair every [Pool.Pick] with a
-// [Pool.Complete] — without both, the thresholds are set on nothing.
-func (p *Pool) BindSelection(label string) (stop func()) {
-	prov := selectionProvider.Load()
-	if prov == nil || *prov == nil {
-		return func() {}
-	}
-	stop = (*prov)(label, func(s Selection) {
-		p.ApplySelection(s.Balancer, s.OutlierThreshold, s.OutlierSuspendFor)
-	})
-	if stop == nil {
-		return func() {}
-	}
-	return stop
-}
-
-// Selection returns the endpoint-selection policy most recently applied to the
-// pool through [Pool.ApplySelection], or the zero Selection when none ever was.
+// Selection returns the endpoint-selection policy currently in force.
 //
 // The strategy name is the last one *accepted*: applying an empty name leaves
 // it untouched, and an unknown name is ignored, so the name keeps describing
-// the strategy actually in force. [Pool.SetBalancer] called directly does not
-// update it — it takes an instance, not a name. It is an inspection and test
+// the strategy actually in force. The balancer handed to [NewPool] is not
+// recorded here — it had no name to record. It is an inspection and test
 // helper.
 func (p *Pool) Selection() Selection {
 	if s := p.sel.Load(); s != nil {

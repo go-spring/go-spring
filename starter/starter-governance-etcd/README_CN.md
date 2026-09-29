@@ -61,9 +61,10 @@ key 中存放治理的规则，使用 `govern.*` 命名空间：
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
 ```
 
 ### 4. 运行

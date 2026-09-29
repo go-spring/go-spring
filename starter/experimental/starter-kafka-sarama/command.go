@@ -31,7 +31,7 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/propagate"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -84,37 +84,50 @@ func subObserver() *observer {
 
 // StartProducerSpan opens a producer observation for msg (span + duration/in-
 // flight metric + access log) and injects the current W3C trace context into
-// msg.Headers so downstream consumers can continue the trace. Call it right
+// msg.Headers so downstream consumers can continue the trace. When ctx is
+// load-test traffic the marker is stamped into msg.Headers too. Call it right
 // before SyncProducer.SendMessage and End the returned span once the send
 // completes:
 //
-//	_, span := StarterKafkaSarama.StartProducerSpan(ctx, msg)
+//	_, span := StarterKafkaSarama.StartProducerSpan(ctx, msg, prop)
 //	_, _, err := producer.SendMessage(msg)
 //	StarterKafkaSarama.EndSpan(span, err)
-func StartProducerSpan(ctx context.Context, msg *sarama.ProducerMessage) (context.Context, *Span) {
+//
+// prop is the process's load-test convention; a nil propagator falls back to
+// [traffic.NewDefaultPropagator].
+func StartProducerSpan(ctx context.Context, msg *sarama.ProducerMessage, prop traffic.Propagator) (context.Context, *Span) {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
 	ctx, sp := pubObserver().Start(ctx, msg.Topic)
 	otel.GetTextMapPropagator().Inject(ctx, producerCarrier{msg})
 	// Carry the load-test marker in a record header so the consumer recognises
-	// synthetic load.
-	if traffic.IsLoadTest(ctx) {
-		producerCarrier{msg}.Set(canonical.MetaKeyLoadTest, "1")
-	}
+	// synthetic load. producerCarrier doubles as the traffic carrier: its Set is
+	// idempotent, so re-injection never appends a second header.
+	prop.Inject(ctx, producerCarrier{msg})
 	return ctx, sp
 }
 
 // StartConsumerSpan extracts the upstream trace context carried in msg.Headers
-// and opens a consumer observation. Call it when a record is received and End
-// once processing finishes:
+// and opens a consumer observation, tagging the returned context as load-test
+// traffic when msg carries the marker. Call it when a record is received and
+// End once processing finishes:
 //
-//	_, span := StarterKafkaSarama.StartConsumerSpan(ctx, msg)
+//	_, span := StarterKafkaSarama.StartConsumerSpan(ctx, msg, prop)
 //	err := handle(ctx, msg)
 //	StarterKafkaSarama.EndSpan(span, err)
-func StartConsumerSpan(ctx context.Context, msg *sarama.ConsumerMessage) (context.Context, *Span) {
+//
+// prop is the process's load-test convention; a nil propagator falls back to
+// [traffic.NewDefaultPropagator].
+func StartConsumerSpan(ctx context.Context, msg *sarama.ConsumerMessage, prop traffic.Propagator) (context.Context, *Span) {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
 	ctx = otel.GetTextMapPropagator().Extract(ctx, consumerCarrier{msg})
 	// Extract the load-test marker the producer put in a record header.
-	if canonical.IsAffirmative(consumerCarrier{msg}.Get(canonical.MetaKeyLoadTest)) {
-		ctx = canonical.WithLoadTest(ctx, "kafka-sarama-header")
-	}
+	ctx = prop.Extract(ctx, consumerCarrier{msg})
 	return subObserver().Start(ctx, msg.Topic)
 }
 
@@ -124,8 +137,11 @@ func EndSpan(span *Span, err error) {
 }
 
 // producerCarrier adapts a sarama.ProducerMessage's headers to the OTel
-// TextMapCarrier interface for context injection.
+// TextMapCarrier interface for context injection, and to propagate.Carrier
+// for the load-test marker.
 type producerCarrier struct{ msg *sarama.ProducerMessage }
+
+var _ propagate.Carrier = producerCarrier{}
 
 func (c producerCarrier) Get(key string) string {
 	for _, h := range c.msg.Headers {
@@ -134,6 +150,14 @@ func (c producerCarrier) Get(key string) string {
 		}
 	}
 	return ""
+}
+
+// Values returns the single value Get finds, nil when absent or empty.
+func (c producerCarrier) Values(key string) []string {
+	if v := c.Get(key); v != "" {
+		return []string{v}
+	}
+	return nil
 }
 
 func (c producerCarrier) Set(key, value string) {
@@ -156,9 +180,12 @@ func (c producerCarrier) Keys() []string {
 }
 
 // consumerCarrier adapts a sarama.ConsumerMessage's headers to the OTel
-// TextMapCarrier interface for context extraction. Extraction never mutates the
-// message, so Set is a no-op.
+// TextMapCarrier interface for context extraction, and to propagate.Carrier
+// for the load-test marker. Extraction never mutates the message, so Set is a
+// no-op.
 type consumerCarrier struct{ msg *sarama.ConsumerMessage }
+
+var _ propagate.Carrier = consumerCarrier{}
 
 func (c consumerCarrier) Get(key string) string {
 	for _, h := range c.msg.Headers {
@@ -167,6 +194,14 @@ func (c consumerCarrier) Get(key string) string {
 		}
 	}
 	return ""
+}
+
+// Values returns the single value Get finds, nil when absent or empty.
+func (c consumerCarrier) Values(key string) []string {
+	if v := c.Get(key); v != "" {
+		return []string{v}
+	}
+	return nil
 }
 
 func (c consumerCarrier) Set(string, string) {}
@@ -185,11 +220,11 @@ var _ propagation.TextMapCarrier = producerCarrier{}
 var _ propagation.TextMapCarrier = consumerCarrier{}
 
 // clientGuard is the per-client resilience attachment: the executor chain and
-// the stable resource label it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/resource combination).
+// the stable service label it executes under, colocated so a guard lookup
+// reads the pair atomically (no torn exec/service combination).
 type clientGuard struct {
-	exec     resilience.Executor
-	resource string
+	exec    resilience.ClientExecutor
+	service string
 }
 
 // clientGuards indexes the guard by the raw client bean, so WrapSyncProducer can resolve
@@ -202,13 +237,17 @@ var clientGuards sync.Map // sarama.Client -> *clientGuard
 // so the executor is driven through a transparent SyncProducer wrapper (see
 // WrapSyncProducer) that callers opt into once after creating their producer.
 //
-// The executor is resolved through the neutral [resilience.ExecutorFor] seam,
-// which starter-govern backs with the governance center — so this function has
-// zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
-// transparent no-op executor; fault wraps it when enabled.
-func applyResilience(c Config, client sarama.Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor("kafka", resource))
-	clientGuards.Store(client, &clientGuard{exec: exec, resource: resource})
+// mgr and inj are the governance beans gs injects into the client constructor.
+// A nil mgr is normalized here — an unarmed manager yields a transparent no-op
+// executor, which is exactly "governance off", while a nil pointer would panic
+// on the method call; inj is nil-safe at its use site, so a nil injector simply
+// adds no fault.
+func applyResilience(c Config, client sarama.Client, service string, mgr *resilience.Manager, inj *fault.Injector) error {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)
+	clientGuards.Store(client, &clientGuard{exec: exec, service: service})
 	return nil
 }
 
@@ -219,16 +258,16 @@ func closeResilience(client sarama.Client) {
 	}
 }
 
-// executorFor loads the executor and resource label attached to client. Returns
+// executorFor loads the executor and service label attached to client. Returns
 // (nil, "") when resilience is disabled for that client, so the wrapper falls
 // back to a direct call.
-func executorFor(client sarama.Client) (resilience.Executor, string) {
+func executorFor(client sarama.Client) (resilience.ClientExecutor, string) {
 	v, ok := clientGuards.Load(client)
 	if !ok {
 		return nil, ""
 	}
 	g := v.(*clientGuard)
-	return g.exec, g.resource
+	return g.exec, g.service
 }
 
 // WrapSyncProducer returns a sarama.SyncProducer that routes SendMessage and
@@ -247,11 +286,11 @@ func executorFor(client sarama.Client) (resilience.Executor, string) {
 //	prod = StarterKafkaSarama.WrapSyncProducer(cl, prod)
 //	_, _, err := prod.SendMessage(msg) // now rate-limited / circuit-guarded
 func WrapSyncProducer(cl sarama.Client, p sarama.SyncProducer) sarama.SyncProducer {
-	exec, resource := executorFor(cl)
+	exec, service := executorFor(cl)
 	if exec == nil {
 		return p
 	}
-	return &guardedSyncProducer{p: p, exec: exec, resource: resource}
+	return &guardedSyncProducer{p: p, exec: exec, service: service}
 }
 
 // guardedSyncProducer is a transparent sarama.SyncProducer wrapper that drives
@@ -259,15 +298,15 @@ func WrapSyncProducer(cl sarama.Client, p sarama.SyncProducer) sarama.SyncProduc
 // methods (Close, transaction lifecycle, status queries) delegate to the inner
 // producer unchanged — they are control-plane, not the protected data path.
 type guardedSyncProducer struct {
-	p        sarama.SyncProducer
-	exec     resilience.Executor
-	resource string
+	p       sarama.SyncProducer
+	exec    resilience.ClientExecutor
+	service string
 }
 
 var _ sarama.SyncProducer = (*guardedSyncProducer)(nil)
 
 func (g *guardedSyncProducer) SendMessage(msg *sarama.ProducerMessage) (partition int32, offset int64, err error) {
-	err = g.exec.Execute(context.Background(), g.resource, func(context.Context) error {
+	err = g.exec.Execute(context.Background(), func(context.Context) error {
 		var perr error
 		partition, offset, perr = g.p.SendMessage(msg)
 		return perr
@@ -279,7 +318,7 @@ func (g *guardedSyncProducer) SendMessage(msg *sarama.ProducerMessage) (partitio
 }
 
 func (g *guardedSyncProducer) SendMessages(msgs []*sarama.ProducerMessage) error {
-	return g.exec.Execute(context.Background(), g.resource, func(context.Context) error {
+	return g.exec.Execute(context.Background(), func(context.Context) error {
 		return g.p.SendMessages(msgs)
 	})
 }

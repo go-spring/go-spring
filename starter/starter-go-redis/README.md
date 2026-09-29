@@ -138,5 +138,6 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   see the commented block in [app.properties](example/conf/app.properties).
 * **Distributed cache backend**: `AsCache(client, codec)` adapts the client to `cloud/cache.Cache`, the shared (far)
   level of a multi-level cache. Values are serialized with the codec (nil defaults to JSON).
-* **Global rate limiter**: `NewRateLimiter(client, resilience.LimitPolicy{...})` returns a `resilience.RateLimiter`
-  backed by an atomic Lua token bucket, so every replica shares one budget — in contrast to the per-replica builtin.
+* **Distributed rate-limit counters**: `NewCounters(client)` returns a `resilience.Counters` backed by an atomic
+  Lua token bucket. Contribute it as a bean and every executor the driver builds spends it, so one budget per scope
+  is shared across replicas — with none contributed each executor keeps a private budget of its own.

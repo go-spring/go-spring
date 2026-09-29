@@ -38,7 +38,7 @@ import (
 // no-op, so the overhead is a single function call.
 func (c *Cache) guard(ctx context.Context, fn func(context.Context) error) error {
 	var callErr error
-	execErr := c.exec.Execute(ctx, c.resource, func(ctx context.Context) error {
+	execErr := c.exec.Execute(ctx, func(ctx context.Context) error {
 		callErr = fn(ctx)
 		if callErr != nil && !errors.Is(callErr, bigcache.ErrEntryNotFound) {
 			return callErr // a real failure feeds the breaker/retry

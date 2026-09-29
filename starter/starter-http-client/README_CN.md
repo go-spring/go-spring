@@ -71,9 +71,8 @@ spring.http-client.instances.discovered.discovery=static
 # 韧性与端点选择不在这里配置:策略写在治理规则文档的 govern.* 下(starter-governance;
 # conf/govern.properties,由 govern.source.file.path 指向)。连续 2 次失败熔断:
 #   govern.enabled=true
-#   govern.default.enabled=true
-#   govern.default.error-threshold=2
-#   govern.default.open-duration=30s
+#   govern.client.default.error-threshold=2
+#   govern.client.default.open-duration=30s
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
 ```
 
@@ -104,20 +103,19 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 | 配置键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `spring.http-client.instances.<name>.addr` | — | 直连 `host:port`;可与 `service-name` 同配,此时 service-name 只作纯治理 label。 |
-| `spring.http-client.instances.<name>.service-name` | — | 经由发现解析的逻辑名;只要设置即同时是治理 resource label。 |
+| `spring.http-client.instances.<name>.service-name` | — | 经由发现解析的逻辑名;只要设置即同时是治理 service label。 |
 | `spring.http-client.instances.<name>.discovery` | — | 已注册的发现后端名,设置 `service-name` 时必填。 |
 | `spring.http-client.default.driver` | — | 家族级 Driver bean，供所有未自行指定的实例使用。 |
 | `spring.http-client.instances.<name>.driver` | — | 覆盖本实例的家族级默认。嵌 `DefaultDriver` 在装配产物外加 auth/metric，或整体替换为自己的 `httpx.NewTransport` 调用。留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败。 |
 | `spring.http-client.instances.<name>.tls.enabled` | `false` | 打开该 entry 的 TLS 配置面(完整 `tls.*`:cert-file/key-file/ca-file/server-name/insecure-skip-verify)。 |
 
-韧性、故障注入与端点选择在这里**没有配置 key**:它们是按资源的策略,写在治理规则文档里(见
-starter-governance)。治理资源标签在发现模式下为 `http:<service-name>`,直连模式下为
-`http:<addr>`。单次请求超时来自 `govern.default.attempt-timeout`;负载均衡策略与端点剔除来自
+韧性、故障注入与端点选择在这里**没有配置 key**:它们是按服务的策略,写在治理规则文档里(见
+starter-governance)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
+`http:<addr>`。单次请求超时来自 `govern.client.default.attempt-timeout`;负载均衡策略与端点剔除来自
 命中该标签的规则上的 `balancer` / `outlier-threshold` / `outlier-suspend-for`。
 
 本 starter 在装配期即快速失败:`addr` 与 `service-name` 至少设置其一;仅按
-服务名路由(未配 `addr`)时 `discovery` 必填。解析到 `http:*` 资源的 error-rate
-熔断有 `min-requests=5` 下限(govern rule 显式更高值优先)——由 `starter-http-client/httpx` 施加。
+服务名路由(未配 `addr`)时 `discovery` 必填——均由 `starter-http-client/httpx` 施加。
 
 ## 可观测性
 

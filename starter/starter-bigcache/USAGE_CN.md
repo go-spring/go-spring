@@ -64,7 +64,7 @@ Get/Set/Delete 会经过 observe（访问日志/指标/trace）与 resilience（
   `bigcache.hits` / `misses` / `delete_hits` / `delete_misses` / `collisions` / `entries` /
   `capacity`。引入 starter-otel 时导出，否则为 no-op。
 - 缓存抽象 bean：除包装类型外，每实例另提供一个 `*cache.Cache` bean，名为
-  `bigcache:<instance>`（适配器在 starter-bigcache/bytecache）——用 autowire tag
+  `bigcache:<instance>`（适配器在 this package's bytecache.go）——用 autowire tag
   `bigcache:<instance>` 按名注入。无人注入则不实例化，因此无配置开关。
 - 自定义客户端装配：装配由 `Driver` 接口（`CreateClient(ctx, Config)`，driver.go）负责。公司/
   伞包 starter 可把自己的 `Driver` 作为**可选容器 bean** 提供
@@ -73,8 +73,9 @@ Get/Set/Delete 会经过 observe（访问日志/指标/trace）与 resilience（
   `bigcache.Config.OnRemove` 等字段的唯一途径。当容器中存在多个 Driver bean 时，实例可按名指定：
   `spring.bigcache.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean
   不存在则启动失败）。
-- resilience：实例级资源标签 `bigcache:<name>`；策略来自治理中心（starter-govern），
-  未引入时为 no-op。
+- resilience：实例级服务标签 `bigcache:<name>`；执行器由 `Init` 从容器注入的
+  `*resilience.Manager` bean 派生（`*fault.Injector` bean 可选包裹），容器内没有治理 bean 时
+  为透明 no-op。
 
 ## 4. 设计体检表
 

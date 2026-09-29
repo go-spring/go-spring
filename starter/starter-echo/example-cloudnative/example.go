@@ -85,7 +85,7 @@ var dep = &health.Indicator{
 }
 
 // exec is the resilience executor built from the builtin "default" driver.
-var exec resilience.Executor
+var exec resilience.ClientExecutor
 
 func init() {
 	// Serve the app's own echo address through discovery (a real deployment
@@ -117,7 +117,7 @@ func main() {
 	}
 
 	var err error
-	exec, err = resilience.NewDefaultDriver().NewExecutor(resilience.Policy{RateLimit: 3})
+	exec, err = resilience.NewDefaultDriver(nil).NewClientExecutor("echo:demo", resilience.ClientPolicy{RateLimit: 3})
 	if err != nil {
 		fail("resilience executor: %v", err)
 	}
@@ -137,7 +137,7 @@ func main() {
 			// A rate-limited route: the handler body runs through the resilience
 			// executor, so excess requests are shed with HTTP 429.
 			e.GET("/limited", func(ctx echo.Context) error {
-				err := exec.Execute(ctx.Request().Context(), "app:limited", func(context.Context) error {
+				err := exec.Execute(ctx.Request().Context(), func(context.Context) error {
 					return ctx.String(http.StatusOK, "ok")
 				})
 				if errors.Is(err, resilience.ErrRateLimited) {
@@ -187,7 +187,7 @@ func runTest() {
 	if err != nil {
 		fail("new resolver: %v", err)
 	}
-	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
 	if err != nil {
 		fail("new balancer: %v", err)
 	}
@@ -204,7 +204,7 @@ func runTest() {
 	// --- 3. Resilience ---------------------------------------------------
 	var admitted, rejected int
 	for range 15 {
-		err := exec.Execute(ctx, "app:fn", func(context.Context) error { return nil })
+		err := exec.Execute(ctx, func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			admitted++

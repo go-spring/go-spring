@@ -31,13 +31,15 @@ const LuohuaZone = "cn-luohua"
 
 func init() {
 	// Registering a company Balancer under the fleet-standard "luohua" name makes
-	// it selectable by loadbalance.New("luohua") (and by any consumer that names
+	// it selectable by loadbalance.New("luohua", loadbalance.Config{}) (and by any consumer that names
 	// a load-balance policy). Like the bundled p2c / least-conn / consistent-hash
 	// backends this is an init-time availability registration, not a config-gated
 	// activation — the balancer only governs when a pool is built with it. This
 	// is the go-spring loadbalance seam's company extension point: a real luohua
 	// company would hang its own routing/affinity logic here.
-	loadbalance.Register("luohua", func() loadbalance.Balancer { return luohuaBalancer{} })
+	loadbalance.Register("luohua", func(loadbalance.Config) (loadbalance.Balancer, error) {
+		return luohuaBalancer{}, nil
+	})
 }
 
 // luohuaBalancer is the luohua load-balance policy: it prefers the fleet's

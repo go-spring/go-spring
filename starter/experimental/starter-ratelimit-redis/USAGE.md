@@ -1,43 +1,44 @@
 # starter-ratelimit-redis Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
-against the starter source (`starter.go`, `config.go`, `driver.go`), the token-bucket
-implementation in `starter-go-redis/experimental/ratelimit.go`, the
-[resilience limiter registry](../../../cloud/governance/resilience), and the self-asserting
-[example/](example) (`example/check.sh`). Rate-limiting semantics (token bucket) are standard —
-everything below is go-spring's increment.
+against the starter source (`starter.go`, `config.go`), the counter implementation in
+`starter-go-redis/experimental/ratelimit.go`, the [governance wiring](../../starter-governance/wiring.go)
+that injects the store into the driver bean, and the self-asserting [example/](example)
+(`example/check.sh`). Rate-limiting semantics themselves are documented in
+`cloud/governance/resilience` — everything below is this starter's increment.
 
-**Activation**: any `spring.ratelimit.redis.instances.<name>.*` property registers one
-`resilience.LimiterDriver` bean per `<name>`, named after the driver; each reuses the
-`*redis.Client` bean named by its `client` field (provided by starter-go-redis under
-`spring.go-redis.instances.<client>`). Consumers select the driver by name against the
-container's limiter directory — starter-gateway's `rateLimit(driver=...)` filter, or an
-injected `map[string]resilience.LimiterDriver`.
+**Activation**: any `spring.ratelimit.redis.*` key arms the starter's module, and the block's one key
+must be set: `spring.ratelimit.redis.client` names the `*goredis.Client` bean (provided by
+starter-go-redis under `spring.go-redis.instances.<client>`) whose Redis instance backs the
+counters. The starter contributes ONE bean of type `resilience.Counters`. With none in the container
+each executor counts in a budget of its own, so contributing this one is the whole switch:
+[starter-governance](../../starter-governance)'s driver bean injects it, and every executor in the
+process then spends one Redis budget per scope — across replicas, which an executor-local budget
+cannot do.
 
 ---
 
 ## 1. Complete worked project
 
 Two HTTP "replicas" sharing one global token budget in Redis — the drill-ground for cross-replica
-limiting. File tree:
+limiting. File tree (this is the checked-in example, verbatim):
 
 ```
 demo/
 ├── go.mod
 ├── main.go
-├── web.go
 └── conf/
-    └── app.properties
+    ├── app.properties
+    └── govern.yaml
 ```
 
 **go.mod** (module deps that matter):
 
 ```
 require (
-    github.com/redis/go-redis/v9        latest
-    go-spring.org/spring                v1.3.x
-    go-spring.org/starter-go-redis      latest
-    go-spring.org/starter-ratelimit-redis latest
+    go-spring.org/spring                   v1.3.x
+    go-spring.org/starter-go-redis         latest
+    go-spring.org/starter-ratelimit-redis  latest
 )
 ```
 
@@ -55,76 +56,79 @@ import (
 func main() { gs.Run() }
 ```
 
-**web.go** — the application's entire limiting surface:
+**web.go** — the application's entire limiting surface. The budget is a
+`resilience.ClientPolicy` read from the governance rules, and the call goes through the executor:
 
 ```go
 package main
 
 import (
+    "context"
+    "errors"
     "net/http"
 
     "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 )
 
-func init() {
-    // Inject the Driver bean by instance name; LimitPolicy is per call site,
-    // NOT starter config.
-    gs.Provide(func(d resilience.LimiterDriver) *gs.HttpServeMux {
-        mk := func() resilience.RateLimiter {
-            lim, err := d.NewRateLimiter(resilience.LimitPolicy{
-                Rate:  2,  // tokens per second
-                Burst: 5,  // bucket capacity; <=0 defaults to max(1, Rate)
-            })
-            if err != nil {
-                panic(err) // "no redis client bound" — wiring bug
-            }
-            return lim
-        }
-        limA, limB := mk(), mk() // two "replicas" — ONE shared budget in Redis
+// The service label the handlers share; the rule in conf/govern.yaml is keyed
+// by it, and it is the scope the budget is kept per.
+const service = "ratelimit-redis:api"
 
+func init() {
+    gs.Provide(func(mgr *resilience.Manager) *gs.HttpServeMux {
         mux := http.NewServeMux()
-        serve := func(l resilience.RateLimiter) http.HandlerFunc {
-            return func(w http.ResponseWriter, r *http.Request) {
-                ok, err := l.Allow(r.Context(), "api") // key "api" under "ratelimit:"
-                if err != nil {
-                    http.Error(w, "limiter backend error: "+err.Error(), http.StatusInternalServerError)
-                    return
-                }
-                if !ok {
-                    http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
-                    return
-                }
-                _, _ = w.Write([]byte("ok"))
-            }
-        }
-        mux.Handle("/a/", serve(limA))
-        mux.Handle("/b/", serve(limB))
+        // Two handlers model two replicas: no shared in-process state. Both
+        // spend the one Redis-backed counter store this process contributed.
+        mux.Handle("/a/", serve(mgr.ClientExecutorFor("ratelimit-redis", service)))
+        mux.Handle("/b/", serve(mgr.ClientExecutorFor("ratelimit-redis", service)))
         return &gs.HttpServeMux{Handler: mux}
-    }, gs.TagArg("gateway"))
+    })
+}
+
+func serve(exec resilience.ClientExecutor) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        err := exec.Execute(r.Context(), func(context.Context) error { return nil })
+        switch {
+        case err == nil:
+            _, _ = w.Write([]byte("ok"))
+        case errors.Is(err, resilience.ErrRateLimited):
+            http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
+        default:
+            http.Error(w, "executor error: "+err.Error(), http.StatusInternalServerError)
+        }
+    }
 }
 ```
 
 **conf/app.properties** — the complete, commented surface used above:
 
 ```properties
-# --- redis client (owned by starter-go-redis; the driver reuses it by name) --
+# --- redis client (owned by starter-go-redis; the counters count through it) --
 spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
-# --- limiter driver --------------------------------------------------------------
-spring.ratelimit.redis.instances.gateway.client=cache
-spring.ratelimit.redis.instances.gateway.driver=redis    # name registered in the limiter registry
-                                               # (defaults to the instance name when unset)
+# --- the starter's one key ---------------------------------------------------
+# Which *goredis.Client bean backs the shared counters. Required.
+spring.ratelimit.redis.client=cache
+
+# --- governance rules (their own file, their own refresh channel) ------------
+govern.source.file.path=conf/govern.yaml
 ```
 
-Pure-config consumption with starter-gateway instead of code:
+**conf/govern.yaml** — the budget itself, a policy, not starter config:
 
-```properties
-spring.gateway.route.demo.filters=rateLimit(rate=100,driver=redis)
+```yaml
+govern:
+  enabled: true
+  client:
+    rules:
+      - service: ratelimit-redis:api
+        rate-limit: 2      # sustained 2/s
+        burst: 5           # momentary allowance
 ```
 
-Moving from per-replica to cross-replica limiting is only a driver-name change; breaker/retry/
-timeout keep the default driver — the limiter registry is independent of the executor registry.
+A rule fully replaces `govern.client.default` for the matched service (no field-wise merge), so the rule
+carries every knob the service needs.
 
 **Verify** (with a local Redis, e.g. `example/docker-compose.yml`):
 
@@ -146,69 +150,67 @@ docker compose.
 ```
 import starter-go-redis + starter-ratelimit-redis
   └─ gs.Module(gs.OnProperty("spring.ratelimit.redis"))
-        └─ conf.BindEach("${spring.ratelimit.redis}") per entry <name>:
-             ├─ fail fast when client == ""        (boot error naming the instance)
-             ├─ driver name = c.Driver, or the instance <name> when unset
-             └─ Provide func(client) *Driver → bean "<name>"
-                  (gs.TagArg(c.Client); Export resilience.LimiterDriver — the Export makes
-                   the concrete *Driver visible to name-keyed interface injection)
+        └─ conf.Bind("${spring.ratelimit.redis}") → Config{Client}
+             ├─ fail fast when Client == ""   (boot error naming the property)
+             └─ Provide func(client *goredis.Client) (resilience.Counters, error)
+                  (gs.TagArg(c.Client); the interface return type IS the bean type —
+                   no Export is needed)
 
 gs.Run()
-  ├─ config bind: ${spring.ratelimit.redis.instances.<name>} → Config (value tags)
-  ├─ ctor: driverFor(driver, client)
-  │    - process-global sync.Map "drivers" holds ONE Driver per driver name, so a
-  │      later wiring pass (e.g. gs.RunTest in the same test binary) rebinds the
-  │      client instead of handing out a second driver
-  ├─ bean wiring: the bean is NAMED after the driver, so a duplicate driver name
-  │      (this module's other instance, or another module's backend) surfaces as a
-  │      duplicate-bean error at boot
-  └─ on SIGTERM: nothing to release — the driver is process-global and the redis
-                 client's Close belongs to starter-go-redis.
+  ├─ this store is now the container's only resilience.Counters bean
+  ├─ bean wiring: the *goredis.Client bean named by client is injected by name;
+  │     NewCounters wraps its UniversalClient (a nil client is a ctor error)
+  ├─ the resilience driver bean injects resilience.Counters, so every executor
+  │     it builds spends this store — and the store itself instantiates because
+  │     that driver needs it
+  └─ on SIGTERM: nothing to release — the store holds no state of its own and
+                 the redis client's Close belongs to starter-go-redis
 ```
 
-The Driver bean itself is a thin adapter: `NewRateLimiter(p)` captures the bound client at call
-time (RWMutex-guarded) and delegates to `experimental.NewRateLimiter` from
-starter-go-redis — that is where the Lua token bucket actually lives.
+### 2.2 One Execute call, layer by layer
 
-### 2.2 One Allow call, layer by layer
+`exec.Execute(ctx, fn)` with the rule `rate-limit: 2, burst: 5`:
 
-`lim.Allow(ctx, "api")` with `LimitPolicy{Rate: 2, Burst: 5}`:
+1. The executor's rate-limit stage calls `Counters.Allow(ctx, service, policy, 1)` — the executor
+   charges every attempt, and the scope is the service the executor was built for.
+2. Zero `RateLimit` short-circuits to an unlimited pass-through with **no Redis round-trip**. A lost
+   rule therefore means no limiting at all: that is a governance-config symptom, not a store one.
+3. The atomic Lua script runs entirely inside Redis on key `ratelimit:<scope>` (hash of `tokens` +
+   `ts`): refill by `elapsed × rate` capped at `burst`, consume if enough, `HSET` the new state,
+   `EXPIRE` the key to `ceil(burst/rate)+1` seconds (idle keys self-delete — abandoned budgets never
+   leak).
+4. The script answers 1 or 0. Because the state lives in Redis, every replica drawing on the same
+   key shares one budget — the whole point of this starter.
+5. A 0 comes back as `resilience.ErrRateLimited`; the caller answers 429 (the example/gateway do).
+6. `Burst <= 0` defaults to `max(1, int(RateLimit))` inside the store.
+7. A Redis outage makes `Allow` return an error: the executor logs it and lets the call through, so a
+   broken counter backend degrades to no limiting rather than an outage.
 
-1. Zero `Rate` short-circuits to an unlimited pass-through with **no Redis round-trip**
-   (misconfiguration danger: a lost policy = no limiting).
-2. The atomic Lua script runs entirely inside Redis on key `ratelimit:api` (hash of
-   `tokens` + `ts`): refill by `elapsed × rate` capped at `burst`, consume one token if
-   available, `HSET` the new state, `EXPIRE` the key to `ceil(burst/rate)+1` seconds (idle keys
-   self-delete — abandoned budgets never leak).
-3. Returns `1`/allowed or `0`/limited. Because state lives in Redis, every replica drawing on
-   the same key shares one budget — the whole point of this starter.
-4. `Burst <= 0` defaults to `max(1, int(Rate))` at limiter construction.
-5. A Redis outage makes `Allow` return an error — the consumer decides fail-open vs fail-closed
-   (the example answers 500; gateway treats it per its own policy).
+### 2.3 What the store does NOT do
 
-### 2.3 What the driver does NOT do
-
-- `LimitPolicy.Algorithm` is **rejected loudly**: `NewRateLimiter` returns an error when the policy
-  asks for anything other than token bucket (`""` or `token-bucket`) — a `SlidingWindow` policy used
-  to be silently downgraded to a token bucket with a different burst profile. `Window` is still
-  ignored (it is meaningless for a token bucket, per the policy contract).
-- Replica clock skew affects refill fairness: `now` is caller-supplied into the script.
-- No metrics of its own — limiter observability, if any, surfaces at the consumer
-  (gateway/resilience executor).
+- It does not implement sliding windows: an `algorithm: sliding-window` policy is counted as a token
+  bucket. The atomic script is what makes a shared budget correct, and a window does not map onto one
+  script cheaply — use a token bucket when the counters are shared.
+- It does not queue: `rate-limit-max-wait` is ignored and an over-limit unit is rejected immediately.
+  Waiting for a token would mean polling Redis; keep queueing for the in-memory store.
+- It keeps no metrics of its own — a rate-limited call shows up as `status=rate_limited` on the
+  executor's observe layer.
+- It does not adjudicate: rejecting over-limit calls and choosing open-vs-closed on a counter error
+  are the executor's decisions.
 
 ---
 
-## 3. Per-key behavior reference
+## 3. Configuration reference
 
-All keys live under `spring.ratelimit.redis.instances.<name>` (exact-match, no relaxed forms).
+All keys live under `spring.ratelimit.redis` (exact-match, no relaxed forms). The block's presence is
+what arms the starter; no other key belongs under it.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `client` | string | — | **Required.** Name of the `*redis.Client` bean under `spring.go-redis.instances.<client>`; checked before bean registration. `TagArg(c.Client)` is the seam tying driver to redis instance. | Empty → boot fails naming the instance; typo → bean-wiring failure at boot. |
-| `driver` | string | instance name | The name this limiter's bean is contributed under — the string gateway's `rateLimit(driver=...)` resolves against the container's limiter directory. ⚠ Defaults to the instance name when unset: `spring.ratelimit.redis.instances.web.*` silently contributes a driver named `web`, which may collide with an unrelated name. Duplicate names fail fast at boot: two instances of this starter claiming one name get a startup error naming both; a name already taken by another module's bean is a duplicate-bean error at wiring. | Same-name instances → boot error naming both; unintended default name → consumers resolve a limiter you did not plan for. |
+| `client` | string | — | **Required.** Name of the `*goredis.Client` bean under `spring.go-redis.instances.<client>`; checked before bean registration and injected with `TagArg(c.Client)` at construction. | Empty → boot fails naming the property; a name with no such bean → bean-wiring failure at boot. |
 
-⚠ Limit parameters (`rate`, `burst`, key) come per call site via `resilience.LimitPolicy`, not
-from this config.
+⚠ The rate-limit knobs (`rate-limit`, `burst`, `algorithm`, `window`, `rate-limit-max-wait`) are NOT
+starter config: they are `resilience.ClientPolicy` fields on the governance rule document, per service.
 
 ---
 
@@ -226,30 +228,28 @@ done; echo   # exactly burst 200s interleaved across /a/ and /b/, rest 429
 State in Redis:
 
 ```bash
-redis-cli hgetall ratelimit:api          # tokens + ts
-redis-cli ttl ratelimit:api              # ceil(burst/rate)+1
+redis-cli hgetall ratelimit:ratelimit-redis:api   # tokens + ts
+redis-cli ttl ratelimit:ratelimit-redis:api       # ceil(burst/rate)+1
 ```
 
 ### 4.2 Burst + refill drill
 
-With `Rate: 2, Burst: 5`: drain the budget (5×200), then wait ~2.2s and confirm continuous
+With `rate-limit: 2, burst: 5`: drain the budget (5×200), then wait ~2.2s and confirm continuous
 refill (`curl` loop → at least `rate × seconds` new 200s). The example automates exactly this.
 
-### 4.3 Fail-open/fail-closed drill
+### 4.3 Redis outage drill
 
-Stop Redis (`docker compose stop redis`): every `Allow` returns an error. Your handler decides —
-the example answers 500 (fail-closed). Choose explicitly per endpoint sensitivity.
+Stop Redis (`docker compose stop redis`): every `Allow` errors and the executor allows the call, so
+the endpoints keep answering 200 — a broken counter backend means no limiting, not an outage. Fix
+Redis to restore enforcement.
 
-### 4.4 Directory lookup drill
+### 4.4 Through starter-gateway
 
-From app code, with the limiter directory injected the same way gateway's route table gets it:
+Nothing per route: with this starter configured, a route's budget is already shared by every gateway
+replica, and the filter takes the budget only.
 
-```go
-// limiters map[string]resilience.LimiterDriver `autowire:"?"`
-d, err := resilience.Resolve(limiters, "redis", resilience.DefaultLimiterName,
-    "limiter driver", resilience.NewDefaultLimiterDriver())
-lim, _ := d.NewRateLimiter(resilience.LimitPolicy{Rate: 100, Burst: 50})
-ok, err := lim.Allow(ctx, "tenant-a")
+```properties
+spring.gateway.route.api.filters=rateLimit(rate=100)
 ```
 
 ### 4.5 Smoke test
@@ -264,14 +264,13 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails `ratelimit-redis: instance "<n>" missing required property ...client` | instance without `client` | Set it to an existing `spring.go-redis.instances.<name>`. |
-| Boot fails: driver name `x` claimed by both instance `a` and `b` | two instances resolved to the same driver name (remember the instance-name default) | Give each instance an explicit, distinct `driver` (the error names both). |
-| `NewRateLimiter` errors `no redis client bound` | driver bean constructed without the client injection path | Only construct via the starter (or bind before first use in tests). |
-| No limiting at all, everything 200 | `LimitPolicy.Rate` zero → unlimited pass-through | Set an explicit positive Rate. |
-| `NewRateLimiter` errors on `Algorithm: SlidingWindow` | unsupported algorithms are now rejected loudly (token bucket only) | Model the cap as Rate/Burst, or pick a driver that implements sliding windows. |
-| 500s instead of 429s | Redis unreachable; `Allow` errors and the handler surfaces it as 500 | Decide fail-open vs fail-closed per endpoint; fix Redis. |
-| Different replicas limit independently | instances point at different Redis clients/keys, or key strings differ | Same `client` + same Allow key across replicas. |
-| Test binary panics on second wiring | registry registration is once-per-process | The starter rebinds the client for the same name; avoid registering two different names pointing at one driver string. |
+| Boot fails `ratelimit-redis: missing required property "spring.ratelimit.redis.client"` | the block is present but `client` is empty | Set it to an existing `spring.go-redis.instances.<name>`. |
+| Boot fails while wiring the store (no bean named `<x>` of type `*goredis.Client`) | `client` names a redis instance that is not configured | Add `spring.go-redis.instances.<x>` (or fix the name). |
+| Different replicas limit independently | no store is contributed (each executor kept its private budget), or replicas point at different Redis instances | Configure this starter on every replica and point them at one Redis. |
+| No limiting at all, everything 200 | the service's policy has `rate-limit: 0`, or Redis is unreachable (the executor fails open) | Set an explicit positive `rate-limit` in the rules file; check Redis. |
+| The burst is larger/smaller than the window arithmetic suggests | the rule asks for `algorithm: sliding-window`, which the shared store counts as a token bucket | Model the cap as `rate-limit`/`burst`, or keep sliding windows on the in-memory store. |
+| Calls pile up instead of being rejected | `rate-limit-max-wait` is set but the shared store does not queue | Keep queueing for the in-memory store, or drop the knob. |
+| A `govern.enabled=false` app has no limiting | the center is switched off, so every executor is a pass-through | Enable governance; this starter only moves the counters. |
 
 ---
 
@@ -279,17 +278,17 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 2 |
+| Config keys | 1 |
 | Required | 1 (`client`) |
 | Quickstart external deps | 1 (Redis) |
-| "Watch out" entries | 4 |
+| "Watch out" entries | 2 (sliding window → token bucket, no queueing) |
 
 Design suspects (for the audit ledger):
 
-- RESOLVED (2026-08): duplicate driver names no longer panic or silently share — same-starter
-  collisions fail at boot naming both instances; cross-module collisions (e.g. `default`) are a
-  clear ctor error.
-- The process-global `drivers` sync.Map + registry makes behavior depend on wiring order across
-  tests in one binary (mitigated by rebind, but only for the client, not the registered set).
-- RESOLVED (2026-08): `Algorithm` values other than token bucket are now rejected with an error
-  from `NewRateLimiter` instead of being silently ignored.
+- RESOLVED (2026-09): the per-instance limiter registry is gone. At most one counter store exists in
+  the container, and the container chooses it (none is contributed unless a backend starter does
+  so), so the old failure modes — a driver name claimed twice, a route citing a driver name nobody
+  registered, limiter state depending on wiring order across tests in one binary — no longer exist.
+- The store's two documented limits (sliding window counted as a token bucket, no queueing) are
+  deliberate: the atomic script is what makes a shared budget correct. They are re-stated wherever
+  the store is described so a caller cannot be surprised by them.

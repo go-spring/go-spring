@@ -22,49 +22,63 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/governance/resilience"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
-// Admission returns the inbound admission filter: every request runs through
+// ServerPolicy returns the inbound admission filter: every request runs through
 // the governance executor for label, so the configured rate-limit / bulkhead /
 // breaker policy is enforced before the wrapped handler. It is the stdlib
 // member of the same family as gin's and echo's admission middleware, which
 // their starters install automatically — here you compose it yourself, because
 // this package provides filters rather than owning a server.
 //
-// label is the governance resource label this server is addressed as, e.g.
+// label is the governance service label this server is addressed as, e.g.
 // "http-server::9090" (see cloud/governance/README.md 设计说明 §6). Build it with
-// resilience.ResourceLabel(system, addr) if you want the conventional shape;
-// govern rules match it with govern.rules[N].resources=<label>.
+// resilience.ServiceLabel(system, addr) if you want the conventional shape;
+// govern rules match it with govern.client.rules[N].service=<label>.
 //
-// The executor is resolved through the NEUTRAL provider seam
-// [resilience.ExecutorFor]: starter-govern registers a provider backed by the
-// governance center, so this filter gets its policy WITHOUT importing
-// cloud/governance. With governance off the seam yields a transparent no-op
-// executor, so the filter runs and never rejects.
+// mgr is the resilience authority the filter's executor is resolved from. This
+// package provides filters rather than owning a server, so it has no bean to
+// inject into: whoever composes the chain takes the *resilience.Manager bean as
+// a parameter on their own bean and passes it here. A nil manager is the
+// standalone case — the filter then runs under an unarmed manager, i.e. a
+// transparent pass-through that never rejects.
 //
 // Rejections map to 429 (rate limit, bulkhead full) and 503 (circuit open); a
 // handler-committed 5xx is fed back to the executor so the breaker sees
 // server-side errors. Inbound admission never retries — a handler that already
-// produced side effects cannot be replayed — so leave Policy.MaxRetries at 0; a
-// reentry guard makes a retrying policy harmless anyway.
+// produced side effects cannot be replayed, and [resilience.ServerPolicy] has no
+// retry field to express one with; a reentry guard makes a stray retry harmless
+// regardless.
 //
 // Compose it inside Chain, after the security filters that must run even for a
 // rejected request, and outside the handler:
 //
-//	Chain(CORS(corsCfg), Admission("http-server::9090"))(mux)
-func Admission(label string) Middleware {
-	return admissionWith(resilience.ExecutorFor("http-server", label), label)
+//	Chain(CORS(corsCfg), ServerPolicy("http-server::9090", mgr))(mux)
+func ServerPolicy(label string, mgr *resilience.Manager) Middleware {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	return admissionWith(mgr.ServerExecutorFor("http-server", label), label)
 }
 
 // admissionWith builds the filter over an already-resolved executor. It is the
 // seam the tests build on, and keeps the executor lookup out of the filter
 // itself.
-func admissionWith(exec resilience.Executor, label string) Middleware {
+func admissionWith(exec resilience.ServerExecutor, label string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sw := &statusWriter{ResponseWriter: w}
 			var served bool
-			err := exec.Execute(r.Context(), label, func(ctx context.Context) error {
+			err := exec.Execute(r.Context(), func(ctx context.Context) error {
 				if served {
 					return nil // reentry guard: the handler already ran this request
 				}
@@ -103,7 +117,7 @@ func (e errHTTP5xx) Error() string { return http.StatusText(e.code) }
 // Flush / Hijack / SetWriteDeadline keep working through this wrapper; Flush is
 // also forwarded directly for handlers that assert http.Flusher. A handler that
 // asserts http.Hijacker directly (older websocket libraries) will not see it —
-// use http.NewResponseController(w) instead, or put Admission outside the
+// use http.NewResponseController(w) instead, or put ServerPolicy outside the
 // upgrade path.
 type statusWriter struct {
 	http.ResponseWriter

@@ -110,10 +110,63 @@ type Balancer interface {
 	Complete(ep discovery.Endpoint, err error)
 }
 
-// Factory builds a fresh, independent [Balancer]. The registry stores factories
-// (not balancers) because balancers hold mutable per-target state, so every
-// target gets its own instance.
-type Factory func() Balancer
+// Config carries the tunable parameters a [Balancer] strategy may consume at
+// construction — the same shared-config shape as governance/resilience's
+// PolicyConfig, so the registry stays name-keyed while instances can differ in
+// parameters. Each strategy consumes only its own fields and REJECTS a Config
+// that sets any other field (see [Config.only]): a parameter aimed at another
+// strategy is a construction error, never a silently dropped value. The zero
+// Config builds every strategy with its documented defaults.
+type Config struct {
+	// Replicas is the number of virtual nodes per endpoint for consistent-hash
+	// strategies. <=0 uses the strategy default (100).
+	Replicas int
+
+	// ZoneKey is the [discovery.Endpoint.Metadata] key a zone-aware strategy
+	// reads for an endpoint's locality. Empty uses [DefaultZoneKey].
+	ZoneKey string
+
+	// Delegate names the strategy a zone-aware balancer delegates the final
+	// choice to (e.g. "least_conn" for least-conn inside the zone). Empty uses
+	// round-robin. Naming zone_aware itself is an error (it would recurse).
+	Delegate string
+}
+
+// only verifies that no field of c is set except the ones named in fields,
+// returning an error listing the set-but-uncategorized ones. It is the shared
+// strict-partition check every registered factory runs before building. A
+// Config field added later joins the checked set here, so every strategy
+// rejects it by default until it opts in by naming it.
+func (c Config) only(fields ...string) error {
+	set := map[string]bool{}
+	if c.Replicas != 0 {
+		set["replicas"] = true
+	}
+	if c.ZoneKey != "" {
+		set["zone_key"] = true
+	}
+	if c.Delegate != "" {
+		set["delegate"] = true
+	}
+	for _, f := range fields {
+		delete(set, f)
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return errutil.Explain(nil, "loadbalance: config fields ignored by this strategy: %v", slices.Sorted(maps.Keys(set)))
+}
+
+// Factory builds a fresh, independent [Balancer] from cfg. The registry stores
+// factories (not balancers) because balancers hold mutable per-target state,
+// so every target gets its own instance.
+//
+// A factory first validates strict field partition via [Config.only] and
+// errors on a misdirected parameter (replicas on least_conn), so a bad Config
+// surfaces at construction instead of silently doing nothing. The error
+// propagates out of [New]; [Pool.ApplySelection] degrades it to "keep the
+// current strategy", the same fail-static as an unknown name.
+type Factory func(cfg Config) (Balancer, error)
 
 var (
 	mu       sync.RWMutex
@@ -137,9 +190,10 @@ func Register(name string, f Factory) {
 	registry[name] = f
 }
 
-// New builds a new [Balancer] for the registered strategy name, or returns an
-// error listing the available strategies when none matches.
-func New(name string) (Balancer, error) {
+// New builds a new [Balancer] for the registered strategy name, tuned by cfg
+// (the zero Config selects every strategy's defaults), or returns an error
+// listing the available strategies when none matches.
+func New(name string, cfg Config) (Balancer, error) {
 	mu.RLock()
 	f, ok := registry[name]
 	if !ok {
@@ -148,5 +202,5 @@ func New(name string) (Balancer, error) {
 		return nil, errutil.Explain(nil, "loadbalance: no strategy registered as %q (registered: %v)", name, names)
 	}
 	mu.RUnlock()
-	return f(), nil
+	return f(cfg)
 }

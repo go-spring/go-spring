@@ -80,7 +80,7 @@ type Service struct {
 
 func init() {
     gs.Provide(func(s *Service) (gs.Runner, error) {
-        driver := StarterRocketmq.NewDriver(s.Client)
+        driver := StarterRocketmq.NewDriver(s.Client, nil)
 
         sub, err := driver.NewSubscriber(context.Background(), "orders", "order-workers")
         if err != nil {
@@ -183,8 +183,9 @@ gs.Run()
   │       bridge (process-global, exactly once via sync.Once)                 [driver.go:94-96]
   │    3. FailFast probe: TCP dial, first reachable addr wins, 3s budget
   │       per address; failure → boot error                                    [driver.go:146-160]
-  │    4. applyResilience: fault.WrapExecutor(resilience.ExecutorFor("rocketmq", resource))
-  │       → attached to the Client                                          [command.go:156-161]
+  │    4. applyResilience: fault.WrapClientExecutor(mgr.ClientExecutorFor("rocketmq", service), service, inj),
+  │       mgr/inj being the injected *resilience.Manager / *fault.Injector beans
+  │       → attached to the Client                                          [command.go:168-176]
   ├─ app injects *Client wherever `autowire:"<name>"` appears
   ├─ app creates producers/consumers/driver at its own pace (each registered
   │  on the Client under a mutex)                                             [client.go:104-157]
@@ -209,8 +210,8 @@ Notes verified in source:
 ```
 GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
   └─ cl.execute                                           [client.go:188]
-       └─ exec.Execute(ctx, "rocketmq:<name-servers>", call)     — resilience.Executor
-            layers outside-in as composed in applyResilience [command.go:157]:
+       └─ exec.Execute(ctx, call)                                — resilience.ClientExecutor
+            layers outside-in as composed in applyResilience [command.go:168]:
             fault.Injector (outer) → resilience observer (6 outcomes)
             → resilience core (rate limit / breaker / ...) → producer.SendSync
 ```
@@ -218,11 +219,11 @@ GuardedSend(ctx, cl, producer, msg)                      [command.go:208]
 - The executor wraps **only** `GuardedSend`'s synchronous `SendSync`. **NOT guarded**: the driver's
   `Publish` (it calls `p.p.SendSync` directly [driver.go:98]), raw `SendSync`, and by design
   `SendAsync`/`SendOneWay` [command.go:205-207]. The consume path never touches the executor.
-- Resource label is `rocketmq:<name-servers>` — the comma-joined `name-servers` list, same
-  convention as the kafka starters [starter.go:80, resilience/config.go:151-158]. Two config
-  entries pointing at the same name-server cluster therefore share one governance resource.
-- With governance off, `ExecutorFor` yields a transparent pass-through and `GuardedSend` behaves
-  exactly like `SendSync` [command.go:176-179, client.go:189-191] (proved by
+- Service label is `rocketmq:<name-servers>` — the comma-joined `name-servers` list, same
+  convention as the kafka starters [starter.go:80, resilience/policy.go:216-230]. Two config
+  entries pointing at the same name-server cluster therefore share one governance service.
+- With governance off, `mgr.ClientExecutorFor` yields a transparent pass-through and `GuardedSend`
+  behaves exactly like `SendSync` [command.go:198-209, client.go:189-194] (proved by
   TestExecutePassThrough [rocketmq_test.go:47-53]).
 - Rejections (rate limit / open breaker) return a resilience sentinel error and **never invoke the
   send** (proved by TestExecuteRateLimit [rocketmq_test.go:57-69]).
@@ -253,7 +254,7 @@ The SDK push-consumer goroutines invoke the starter's handler [driver.go:125-141
 2. Per message: `messaging.Observe`'s handler wrapper extracts the upstream trace from the
    envelope headers (mapped from the user properties) and opens the "consume" span.
 3. The `x-loadtest` property is mapped back onto the ctx, so the handler sees
-   `traffic.IsLoadTest(ctx)` [driver.go:131-133].
+   the propagator's `IsLoadTest(ctx)` [driver.go:131-133].
 4. `fromMessageExt` builds the envelope: `Key` from the KEYS property, `Payload` = body,
    `Headers` = **all** user properties, `Timestamp` from StoreTimestamp [driver.go:154-161].
 5. Handler error → logged at Error + `ConsumeRetryLater` (broker redelivers per RocketMQ retry
@@ -319,7 +320,7 @@ reachability only — a valid TCP endpoint with wrong ACL still boots.
 
 ### 4.3 Guarded vs unguarded
 
-With a governance rate-limit policy on resource `rocketmq:127.0.0.1:9876` (label = `rocketmq:` +
+With a governance rate-limit policy on service `rocketmq:127.0.0.1:9876` (label = `rocketmq:` +
 comma-joined name-servers — check it matches your govern rules):
 
 - Hammer `GuardedSend` → rejections return `resilience.ErrRateLimited`, the send is never invoked,
@@ -332,7 +333,7 @@ comma-joined name-servers — check it matches your govern rules):
 
 ```bash
 curl -s :9090/metrics | grep resilience_calls
-# attribute resilience.resource / resource label must be "rocketmq:127.0.0.1:9876" —
+# attribute resilience.service / service label must be "rocketmq:127.0.0.1:9876" —
 # the name-server list, NOT the config entry name (§2.2)
 ```
 
@@ -344,15 +345,15 @@ curl -s :9090/metrics | grep resilience_calls
   total/duration. Access log tag `_app_messaging_access`: fields `messaging.operation`,
   `messaging.destination.name` (truncated to 512), `status`, `duration_ms`; success at Debug,
   error Warn.
-- Guarded path: counters `resilience.calls` / `resilience.breaker.state_change`, log tag
+- Guarded path: counters `resilience.client.calls` / `resilience.client.breaker.state_change`, log tag
   `_app_rocketmq_resilience`.
 - Manual helpers (raw client): spans `rocketmq.produce` / `rocketmq.consume <topic>` from tracer
   `go-spring.org/starter-rocketmq` with `messaging.system/destination.name/operation` attributes
   [command.go:64-97]; W3C context rides the user properties via `msgCarrier` (round-trip proved by
   TestMsgCarrierRoundTrip [rocketmq_test.go:74-98]). [example-otel](example-otel/main.go) verifies
   the linked spans land in Jaeger (`:16686`, service `rocketmq-otel-example`).
-- Load-test marker drill: publish under a ctx marked by the traffic layer; the consumer handler's
-  `traffic.IsLoadTest(ctx)` is true via the `x-loadtest` property [driver.go:92-96, 131-133].
+- Load-test marker drill: publish under a ctx marked by the traffic layer; inside the consumer
+  handler the propagator's `IsLoadTest(ctx)` is true via the `x-loadtest` property [driver.go:92-96, 131-133].
 
 ---
 
@@ -389,7 +390,7 @@ Design suspects (audit ledger; from the previous doc unless noted):
   asymmetry between the two produce paths (carried over, unfixed).
 - Consume envelope leaks SDK-internal user properties (`traceparent`, KEYS, `x-loadtest`) into
   `Headers`, and multi-key round trips return a joined string (§2.4; new).
-- The `name-servers` segment of the resource label is dead — `ResourceLabel` returns at the
+- The `name-servers` segment of the service label is dead — `ResourceLabel` returns at the
   client name, so the passed address list can never appear in the label (§2.2; new; the previous
   doc's `rocketmq|<name>|<name-servers>` label claim was wrong and is corrected here).
 - Fixed: none of the previous suspects have been addressed in code as of this writing.

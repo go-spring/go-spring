@@ -1,13 +1,20 @@
 # Governance rules, standalone. Same keys an app.properties entry would use;
 # watched live — edit while the app runs and the policy changes without a
-# restart (and without an app-wide property re-bind). The fault section rides
-# the same file: flip fault.enabled to arm chaos engineering live.
+# restart (and without an app-wide property re-bind). The document is split by
+# direction: client.* is what this process wants when it CALLS something (the
+# policy it runs under, plus its own fault fire), server.* is what it wants
+# against the requests it RECEIVES. Flip client.fault.enabled to arm an outbound
+# fire; server.fault.enabled arms an inbound one.
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
-    max-retries: 2
-  fault:
-    enabled: false
-    rate: 0.5
+  client:
+    default:
+      attempt-timeout: 100ms
+      max-retries: 2
+    fault:
+      enabled: false
+      rate: 0.5
+  server:
+    fault:
+      enabled: false
+      rate: 0.5

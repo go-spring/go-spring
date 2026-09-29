@@ -30,6 +30,10 @@ import (
 	"sort"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -69,6 +73,18 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.http-client.instances."+name+".driver:=${spring.http-client.default.driver:=?}}")),
 				gs.IndexArg(4, gs.TagArg("?")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. The driver
+				// forwards a nil bean to httpx, which treats it as an unarmed
+				// authority, i.e. a transparent pass-through.
+				gs.IndexArg(5, gs.TagArg("?")),
+				gs.IndexArg(6, gs.TagArg("?")),
+				gs.IndexArg(7, gs.TagArg("?")), // nullable *loadbalance.Manager bean
+				gs.IndexArg(8, gs.TagArg("?")), // nullable traffic.Propagator bean
 			).Name(name).Destroy((*route).Close).Caller(1)
 			return nil
 		}); err != nil {
@@ -90,7 +106,13 @@ func init() {
 // backend bean in the container (bean name = label); the entry resolves its
 // ${discovery} label against it, so different entries may cite different
 // registries.
-func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, backends map[string]discovery.Discovery) (*route, error) {
+//
+// mgr and inj are the governance beans starter-governance provides (nil when it
+// is not imported — gs autowires a missing bean as nil); they are threaded to
+// the driver, which hands them to the transport assembler. Neither the entry's
+// own config nor its service label carries them: governance is a bean, not a
+// bound value.
+func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, backends map[string]discovery.Discovery, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (*route, error) {
 	var backend discovery.Discovery
 	if c.Discovery != "" {
 		b, ok := backends[c.Discovery]
@@ -104,7 +126,7 @@ func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, backends
 		}
 		backend = b
 	}
-	rt, closeFn, err := assembleTransport(ctx, name, c, backend, d)
+	rt, closeFn, err := assembleTransport(ctx, name, c, backend, d, mgr, inj, lbMgr, prop)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +161,8 @@ func newDispatchTransport(routes []*route) (*dispatchTransport, error) {
 // Driver bean (the bundled DefaultDriver when none is provided). backend is the
 // entry's already-resolved discovery backend (nil when it cites none). closeFn
 // (when non-nil) releases the discovery watch and resilience executor behind it.
-func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend discovery.Discovery, d Driver) (rt http.RoundTripper, closeFn func() error, err error) {
+// mgr and inj are the governance beans, forwarded to the driver unchanged.
+func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend discovery.Discovery, d Driver, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (rt http.RoundTripper, closeFn func() error, err error) {
 	if err = c.validate(); err != nil {
 		return nil, nil, err
 	}
@@ -155,7 +178,7 @@ func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend d
 		gctx = ctx.Context
 	}
 	log.Debugf(gctx, log.TagAppDef, "assembling http transport, addr=%s service-name=%s", c.Addr, c.ServiceName)
-	rt, closeFn, err = d.CreateTransport(gctx, name, c, backend)
+	rt, closeFn, err = d.CreateTransport(gctx, name, c, backend, mgr, inj, lbMgr, prop)
 	if err != nil {
 		log.Errorf(gctx, log.TagAppDef, "http-client: create transport failed: %v", err)
 		return nil, nil, err

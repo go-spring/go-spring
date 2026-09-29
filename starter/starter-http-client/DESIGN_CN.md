@@ -47,12 +47,12 @@ resilience  →  discovery + LB(balancedTransport 改写 host)  →  otelhttp tr
   `stdlib/httpclt`,绝不 import 具体 starter。声明式通过代码生成(无运行
   时代理),代码带 `HTTPClient *http.Client` 缝隙供 DI 填充。
 - **`managedTransport` 带 `closeFn`。**starter destroy 把 transport 断言
-  为 `io.Closer` 并释放其内的服务发现 watch 与 `resilience.Executor`,
+  为 `io.Closer` 并释放其内的服务发现 watch 与 `resilience.ClientExecutor`,
   以避免刷新时移除实例导致 goroutine 泄漏。
 - **装配期 fail-fast。**若 ServiceName 无法解析到已注册后端、或 resilience
   driver 未知,`httpx.NewTransport` 返回错误;启动期就暴露,而非首次请求。
-- **直连模式下 `Target` 是资源名。**生成客户端的 `Target` 作为熔断
-  resource label 出现在日志中,但**不影响路由**——`httpx` 通过改写 host
+- **直连模式下 `Target` 是服务名。**生成客户端的 `Target` 作为熔断
+  service label 出现在日志中,但**不影响路由**——`httpx` 通过改写 host
   完全接管寻址。
 
 ## 4. 约束

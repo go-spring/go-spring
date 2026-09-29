@@ -67,7 +67,7 @@ type observer struct {
 // Install it OUTERMOST, so a call the admission middleware rejects is still
 // traced and counted:
 //
-//	proc = thrift.WrapProcessor(proc, Observe(), AccessLog(), Admit(label, system))
+//	proc = thrift.WrapProcessor(proc, Observe(), AccessLog(), Admit(label, system, mgr))
 func Observe() thrift.ProcessorMiddleware {
 	m := otel.GetMeterProvider().Meter(meterName)
 	requestCount, _ := m.Int64Counter(

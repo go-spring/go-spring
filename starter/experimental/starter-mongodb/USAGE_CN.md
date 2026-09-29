@@ -131,8 +131,7 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=5
+govern.client.default.rate-limit=5
 
 # --- actuator + otel -------------------------------------------------------
 spring.actuator.addr=:9370
@@ -178,11 +177,11 @@ gs.Run()
   │   → SetDialer(共享 dialerWrapper)[starter.go:153]
   │   → mongo.Connect → fail-fast Ping，由 connect-timeout 约束（兜底 10s）
   │     [starter.go:163-171] —— server 挂掉失败的是启动，不是第一条查询
-  ├─ Init [client.go:90]：newDBObserver("mongodb") → 模块内建 observer（span + 指标 + 访问日志）
-  │   → fault.WrapExecutor(resilience.ExecutorFor("mongodb", resource))
-  │   → 换入 dialerWrapper.dial = resilience.NewDialer(base, exec, resource)
+  ├─ Init [client.go:108]：newDBObserver("mongodb") → 模块内建 observer（span + 指标 + 访问日志）
+  │   → fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
+  │   → 换入 dialerWrapper.dial = resilience.NewDialer(base, exec)
   ├─ 就绪：mongo:<name> 指示器对真实 server 跑 client.Ping
-  └─ SIGTERM → Destroy [client.go:112]：exec.Close → client.Disconnect
+  └─ SIGTERM → Destroy [client.go:126]：exec.Close → client.Disconnect
       （loader 无资源，无需释放任何 discovery 相关的东西）
 ```
 
@@ -214,7 +213,7 @@ seam：
 1. `coll.FindOne(ctx, ...)` 在内嵌的 `*mongo.Client` 上执行——wrapper 不拦截；所有驱动
    方法原样提升。
 2. 池中无空闲连接时，驱动调 `dialerWrapper.DialContext` → resilience executor 申请配额
-   （资源标签 `mongodb:<service-name 或 uri>`，按实例，[client.go:99]）；超限的拨号被拒，
+   （服务标签 `mongodb:<service-name 或 uri>`，按实例，[client.go:99]）；超限的拨号被拒，
    操作浮出 `resilience.ErrRateLimited`。设置 service-name 时，底层拨号先经
    loader-backed `Pool` 选活端点、忽略 URI 地址（[starter.go:137-144]）。
 3. 驱动发出 `find` 命令；monitor 的 `Started` 触发：`obs.Start(ctx, "find", "test")` ——
@@ -252,16 +251,18 @@ key——观测无条件开启（见 §3.3）。
 
 ### 3.2 resilience / fault（govern.*，不在实例前缀下）
 
-策略 key 位于顶层 `govern.*`（starter-governance 治理中心）；本 starter 在 `Init` 里解析
-`resilience.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` 与 `fault.InjectorFor`
-[client.go:97-102]。相关 key（全集见 starter-governance USAGE）：`govern.enabled`、
+策略 key 位于顶层 `govern.*`（starter-governance 治理中心）；本 starter 在 `Init` 里装备
+`fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
+[client.go:110-115]，其中 `mgr`/`inj` 是容器注入 `newClient` 的
+`*resilience.Manager` / `*fault.Injector` bean。相关 key（全集见 starter-governance USAGE）：`govern.enabled`、
 `govern.driver`、`govern.<driver>.rate-limit` / `error-threshold` / `open-duration` /
-`max-retries` / `timeout`，以及 `govern.fault.*` 注入块（enable/rate/error）。⚠ 记住
+`max-retries` / `timeout`，以及 `govern.client.fault.*` 注入块（enable/rate/error）。⚠ 记住
 seam 在**建连层**：breaker 策略表现为拒绝*连接*；故障注入按拨号触发，不按命令。
 
 **端点选择由同一条规则、同一个标签管**。发现模式下池会挂上 suspension tracker 并经
-`loadbalance.Pool.BindSelection` 绑到 `mongodb:<service-name|uri>`，于是
-`govern.rules[N].balancer`（round_robin / least_conn / consistent_hash / weighted / zone_aware /
+`lbMgr.Bind(pool, label)`（`*loadbalance.Manager` bean 注入 `newClient`）绑到
+`mongodb:<service-name|uri>`，于是
+`govern.client.rules[N].balancer`（round_robin / least_conn / consistent_hash / weighted / zone_aware /
 random / p2c）与 `outlier-threshold` / `outlier-suspend-for` **原地生效**——下一次拨号走新策略，
 不用重启，也不会重建已有连接。直连（只配 URI）的实例没有候选集，这些 key 对它无效。
 ⚠ dialer 能拿到的成败信号只有拨号本身，所以 `outlier-threshold` 摘的是**反复连不上**的实例；
@@ -312,8 +313,7 @@ grep _app_mongodb_access app.log | tail -1
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=5
+govern.client.default.rate-limit=5
 spring.mongodb.instances.a.max-pool-size=100   # 给爆发留出强制新建连接的空间
 ```
 
@@ -326,9 +326,9 @@ executor 热更新，无需重启（治理中心）。
 
 ```properties
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.fault.enabled=true
-govern.fault.rate=0.5
-govern.fault.error=generic    # 或：timeout / reset
+govern.client.fault.enabled=true
+govern.client.fault.rate=0.5
+govern.client.fault.error=generic    # 或：timeout / reset
 ```
 
 运行 [example-load](example-load/)：upsert/FindOne 闭环输出吞吐、延迟分位与错误分布；

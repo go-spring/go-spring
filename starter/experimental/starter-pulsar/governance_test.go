@@ -24,7 +24,9 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
@@ -35,12 +37,12 @@ var errGovernanceStub = errors.New("governance: rejected by test stub")
 // the driver path went through the executor without a live broker.
 type stubExecutor struct{ called atomic.Int32 }
 
-func (s *stubExecutor) Execute(context.Context, string, func(context.Context) error) error {
+func (s *stubExecutor) Execute(context.Context, func(context.Context) error) error {
 	s.called.Add(1)
 	return errGovernanceStub
 }
-func (s *stubExecutor) Close() error                    { return nil }
-func (s *stubExecutor) Refresh(resilience.Policy) error { return nil }
+func (s *stubExecutor) Close() error                          { return nil }
+func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 
 // fakePulsarClient is a map-key-only stand-in for the client bean; no method
 // is ever invoked because the executor rejects first.
@@ -56,13 +58,13 @@ type fakePulsarProducer struct {
 func (f *fakePulsarProducer) Topic() string { return f.topic }
 
 // applyResilience always attaches an executor. Whether it protects anything is
-// decided by the governance rule for the resource label, not by a per-instance
+// decided by the governance rule for the service label, not by a per-instance
 // switch: with governance off the executor is a transparent pass-through, so
 // attaching one costs a call frame and changes nothing else.
 func TestApplyResilienceAttachesGuard(t *testing.T) {
 	cl := &fakePulsarClient{}
 
-	if err := applyResilience(cl, "pulsar:test"); err != nil {
+	if err := applyResilience(cl, "pulsar:test", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := clientGuards.Load(cl); !ok {
@@ -77,12 +79,14 @@ func TestApplyResilienceAttachesGuard(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	cl := &fakePulsarClient{}
 	stub := &stubExecutor{}
-	clientGuards.Store(cl, &clientGuard{exec: stub, resource: "pulsar:test"})
+	clientGuards.Store(cl, &clientGuard{exec: stub, service: "pulsar:test"})
 	defer func() {
 		clientGuards.Delete(cl)
 	}()
-	p := &publisher{cl: cl, p: &fakePulsarProducer{topic: "t"}}
-	err := p.Publish(context.Background(), &messaging.Message{Payload: []byte("x")})
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
+	p := &publisher{cl: cl, p: &fakePulsarProducer{topic: "t"}, prop: prop}
+	err = p.Publish(context.Background(), &messaging.Message{Payload: []byte("x")})
 	if !errors.Is(err, errGovernanceStub) {
 		t.Fatalf("expected stub rejection, got %v", err)
 	}

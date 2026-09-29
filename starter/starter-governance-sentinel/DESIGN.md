@@ -16,24 +16,25 @@ for every client.
 
 - **In scope:** call `sentinel.InitDefault()` at import time and contribute the
   backend as the `sentinel`-named `resilience.Driver` bean. Translate a
-  backend-neutral `resilience.Policy` into sentinel rules per resource.
+  backend-neutral `resilience.ClientPolicy` into sentinel rules per service.
 - **Out of scope:** deciding *where* resilience is applied — that is the
   adapter's job. `cloud/governance/resilience` ships the client seams
   (`NewRoundTripper` for HTTP clients, `NewDialer` for connection dial);
   inbound admission middlewares are built by the protocol starters on the
-  `resilience.ExecutorFor` seam. This starter never chooses between them.
+  `ExecutorFor` of the `resilience.Manager` they inject. This starter never
+  chooses between them.
 
 ## 2. Key Decisions
 
 - **No single universal per-request seam.** Every client library has a
   different hook (oauth2 → `http.RoundTripper`, go-redis → `redis.Hook`,
   gorm → plugin callback, MQ → call-site helper). `cloud/governance/resilience`
-  keeps a neutral `Executor.Execute(ctx, resource, fn)` and lets each
+  keeps a neutral `Executor.Execute(ctx, fn)` and lets each
   adapter bridge to its own shape. This starter provides the *engine*,
   not the *seam*.
-- **`Policy` → sentinel rule mapping is lazy per resource.** Rules are
-  loaded on the first `Entry` for a given resource, since sentinel keys
-  everything by resource name. Concurrent first-touch is guarded by a
+- **`ClientPolicy` → sentinel rule mapping is lazy per service.** Rules are
+  loaded on the first `Entry` for a given service, since sentinel keys
+  everything by service name. Concurrent first-touch is guarded by a
   `sync.Mutex` + `loaded` map.
 - **`MaxRetries` and `Timeout` are applied *outside* sentinel `Entry`.**
   Sentinel models neither, so the executor wraps them. `ctx.Err()`

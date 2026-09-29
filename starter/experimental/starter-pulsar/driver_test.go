@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -79,10 +80,12 @@ func (f *fakeConsumer) Close()              {}
 // logs the failure instead of panicking, and shuts down cleanly.
 func TestSubscriberAckErrorCoversWarnPath(t *testing.T) {
 	fc := &fakeConsumer{ackErr: errors.New("ack refused")}
-	s := &subscriber{c: fc}
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
+	s := &subscriber{c: fc, prop: prop}
 
 	done := make(chan struct{})
-	err := s.Subscribe(context.Background(), func(_ context.Context, m *messaging.Message) error {
+	err = s.Subscribe(context.Background(), func(_ context.Context, m *messaging.Message) error {
 		defer close(done)
 		assert.That(t, len(m.Payload) > 0).True()
 		return nil

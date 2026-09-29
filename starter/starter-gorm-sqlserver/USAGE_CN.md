@@ -296,11 +296,11 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 cd example-load && docker compose up -d
 go run . -duration=10s                       # SELECT 1 基线吞吐
 # 放火 —— 编辑 conf/app.properties（starter-governance 热加载）：
-#   govern.fault.enabled=true  govern.fault.rate=0.5  govern.fault.error=generic
+#   govern.client.fault.enabled=true  govern.client.fault.rate=0.5  govern.client.fault.error=generic
 go run . -duration=10s                       # 错误分布显示 ~50% 注入
 ```
 
-熔断（`govern.default.error-threshold=20`）触发同样体现在错误分布里；`WithContext`
+熔断（`govern.client.default.error-threshold=20`）触发同样体现在错误分布里；`WithContext`
 透传 harness 截止时间，500ms 超时可打断在途查询。
 
 ### 4.4 可观测（example-otel）

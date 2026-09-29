@@ -142,11 +142,12 @@ govern.source.file.path=conf/govern.yaml
 ```yaml
 govern:
   enabled: true
-  fault:
-    enabled: false        # 改成 true 即"点火",无需重启
-    rate: 0.2
-    error: timeout
-    scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
+  server:
+    fault:
+      enabled: false        # 改成 true 即"点火",无需重启
+      rate: 0.2
+      error: timeout
+      scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
 ```
 
 **验证**:
@@ -190,7 +191,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 理由(源自源码注释,已核对):
 
 - **LoadTest 最外层**:标记在任何东西之前落到请求 context 上,后续每一层——以及 handler
-  调用的每个出站 client——都能用 `traffic.IsLoadTest(ctx)` 分流。单次头查找;无标记即空操作。
+  调用的每个出站 client——都能用 propagator 的 `IsLoadTest(ctx)` 分流。单次头查找;无标记即空操作。
 - **Recovery** 兜住所有内层的 panic,并上报到共享的 goutil panic 链(统一 panic 策略),
   不是裸用 echo 自带 Recover。
 - **RequestID 在 AccessLog 之前**:每条访问记录都带请求 id;id 同时存进请求 context
@@ -199,8 +200,8 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 - **AccessLog 包住策略中间件**:短路响应(BodyLimit 的 413、CORS 的 403、204)也会被记录。
 - **admission 在 fault 外层**:被入站限流/隔离/熔断拦下(或放行)的请求不会再被放火;它产生的
   429/503 照样过 AccessLog/Tracing/Metrics。**无条件安装**——治理关着时 executor 是透明透传,
-  只多一帧调用,别的不变。资源 label 是 `echo:<address>`(如 `echo::8080`),与治理规则一致:
-  `govern.rules[N].resources=echo::8080`,配 `rate-limit` / `max-concurrent` / `error-threshold`
+  只多一帧调用,别的不变。服务 label 是 `echo:<address>`(如 `echo::8080`),与治理规则一致:
+  `govern.server.rules[N].service=echo::8080`,配 `rate-limit` / `max-concurrent` / `error-threshold`
   等旋钮。拒绝映射为 **429**(限流、隔离满)与 **503**(熔断打开);handler 返回错误或已提交的
   5xx 会作为本次调用的失败回喂给 executor,熔断因此能看到服务端错误。入站准入**从不重试**
   ——handler 已产生副作用就不能重放——所以 `max-retries` 请留 0;真有重试策略也有重入守卫兜住
@@ -213,14 +214,15 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 
 带 `X-LoadTest: 1` 的 `GET /echo/world`,fault scope 已启用:
 
-1. LoadTest 打标(`traffic.IsLoadTest(ctx) == true`)
+1. LoadTest 打标(propagator 的 `IsLoadTest(ctx) == true`)
 2. Recovery 布防
 3. RequestID 生成/透传 id → 响应头
 4. Tracing 开 server span `{method} {route}`(无 OTel provider 时空操作)
 5. Metrics 加 in-flight、起耗时观测
 6. AccessLog 布防(字段在出口捕获)
 7. SecureHeaders/CORS/Gzip 按配置;BodyLimit 执行 `maxBodySize`
-8. fault:`fault.Apply(ctx, InjectorFor(), "echo", handler)`——`scope: loadtest` 且有标记时,
+8. fault:`fault.ApplyServer(ctx, inj, "echo", handler)`——`inj` 是注入的 `*fault.Injector` bean,
+   `scope: loadtest` 且有标记时,
    约 `rate` 比例的请求拿到注入错误 → 503;其余放行
 9. 你的路由执行;响应按 6→5→4→3 解栈:访问记录落盘(按状态定级)、
    带 `http.request.method`/`http.route`/`http.response.status_code` 属性的耗时入库、
@@ -247,7 +249,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 
 | Key | 默认 | 说明 |
 |-----|------|------|
-| `middleware.loadtest.enabled` / `.header` | 开 / `X-LoadTest` | 标记头名;空则回落 traffic 包默认。 |
+| `middleware.loadtest.enabled` | 开 | 标记头经 propagator 的 `Extract` 落 ctx;用哪个头是 propagator bean 的事,不在本 starter。 |
 | `middleware.requestId.enabled` / `.header` | 开 / `X-Request-Id` | 缺失时生成、存在时透传。 |
 | `middleware.tracing.enabled` / `metrics.enabled` | 开 / 开 | 无 starter-otel 的 OTel 全局对象时空操作——没有任何告警。 |
 | `middleware.accessLog.skipPaths` | — | 与健康路径合并。 |
@@ -308,7 +310,7 @@ curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
 ### 4.5 压测标记演练
 
 把 `scope` 换成 `real` 则注入作用于无标记流量——只在专用环境用。handler 里
-`traffic.IsLoadTest(ctx)` 分流同一标记,业务代码可在合成流量下自动降级功能。
+propagator 的 `IsLoadTest(ctx)` 分流同一标记,业务代码可在合成流量下自动降级功能。
 
 ---
 

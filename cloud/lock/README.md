@@ -66,7 +66,7 @@ defer l.Unlock(ctx)
 
 | Member | Semantics |
 |---|---|
-| `Key()` | the resource key this lock guards |
+| `Key()` | the service key this lock guards |
 | `Token()` | unique fencing token for this acquisition; a downstream store can reject writes from a stale holder |
 | `Unlock(ctx)` | idempotent — releasing an already-released or expired lock returns nil; `ErrNotHeld` only when the backend can prove takeover by someone else |
 | `Lost()` | closed when the lease expires or renewal fails |

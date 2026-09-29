@@ -32,9 +32,10 @@ starter）；差异点在下面单独说明。
   OTel 埋点，因此 starter 自带的传输层承载 span + 指标 + 日志
   （observe.go：client span 带 `db.system`/`db.operation`/`db.statement`、
   `db.client.*` 指标、`_app_s3_access` 访问日志）。
-- **韧性** — `resilience.NewRoundTripper` 把 observe 传输包上由中性 seam 组装
-  出的执行器（`fault.WrapExecutor(resilience.ExecutorFor("s3", resource))`），
-  以 `resilience.ResourceLabel("s3", endpoint)` 圈定作用域。
+- **韧性** — `resilience.NewRoundTripper` 把 observe 传输包上由注入的
+  `*resilience.Manager` / `*fault.Injector` bean 组装出的执行器
+  （`fault.WrapClientExecutor(mgr.ClientExecutorFor("s3", service), service, inj)`），
+  以 `resilience.ServiceLabel("s3", endpoint)` 圈定作用域。
 
 ## 3. 约束
 

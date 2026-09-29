@@ -284,7 +284,7 @@ moment a durable-Store starter contributes its own transaction.Store"）。
 
 值得知道的设计取舍：`persistRunning` 期间的持久化错误被有意吞掉 —— "the saga has
 already made progress and failing the whole operation on a log write would be worse than a gap
-in the log"（coordinator.go）。重试复用 `resilience.Policy`（"default" executor），使 saga
+in the log"（coordinator.go）。重试复用 `resilience.ClientPolicy`（"default" executor），使 saga
 步骤重试与出站 resilience 共用一套旋钮。
 
 ---

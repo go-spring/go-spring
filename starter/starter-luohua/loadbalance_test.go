@@ -28,7 +28,7 @@ import (
 // loadbalance seam) with a real, observable company policy — it pins traffic to
 // the fleet's cn-luohua zone. A company owns its routing/affinity decision here.
 func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
-	b, err := loadbalance.New("luohua")
+	b, err := loadbalance.New("luohua", loadbalance.Config{})
 	if err != nil {
 		t.Fatalf("luohua balancer not registered: %v", err)
 	}

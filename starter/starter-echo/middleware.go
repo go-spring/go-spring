@@ -26,7 +26,9 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/log"
 )
 
@@ -41,21 +43,22 @@ type requestIDCtxKey struct{}
 
 // LoadTest installs the inbound load-test traffic identification middleware.
 // When the incoming request carries the configured marker header (default
-// X-LoadTest) it tags the request context via canonical.WithLoadTest, so the
-// handler chain and every outbound client the handlers drive can recognise
-// synthetic load through traffic.IsLoadTest(c.Request().Context()). It is the
-// inbound companion to cloud/governance/traffic's outbound injection. An empty header
-// falls back to the traffic package default. Without the marker it is a no-op.
-func LoadTest(header string) echo.MiddlewareFunc {
-	if header == "" {
-		header = canonical.HeaderLoadTest
+// X-LoadTest) it tags the request context, so the handler chain and every
+// outbound client the handlers drive can recognise synthetic load through the
+// propagator's IsLoadTest. It is the inbound companion to
+// cloud/governance/traffic's outbound injection: together they let a load-test
+// flag ride an HTTP hop end to end. An empty header falls back to the
+// propagator's own header name; prop nil means go-spring's default. Without the
+// marker it is a no-op.
+func LoadTest(prop traffic.Propagator) echo.MiddlewareFunc {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			if canonical.IsAffirmative(c.Request().Header.Get(header)) {
-				ctx := canonical.WithLoadTest(c.Request().Context(), "http-header")
-				c.SetRequest(c.Request().WithContext(ctx))
-			}
+			ctx := prop.Extract(c.Request().Context(), propagate.Header(c.Request().Header))
+			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}
 	}
@@ -89,15 +92,16 @@ func RequestIDFromContext(ctx context.Context) string {
 // both; AccessLog wraps the policy middlewares so short-circuit responses (413,
 // 204, 403) are still logged. BodyLimit sits inside the chain so an over-limit
 // 413 is logged and recovered like any other response.
-func applyMiddlewares(e *echo.Echo, cfg Config) error {
+func applyMiddlewares(e *echo.Echo, cfg Config, mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the
 	// request context before Recovery, RequestID or any handler runs, letting
 	// every downstream layer (and any outbound client the handler calls) branch
-	// on traffic.IsLoadTest. A single header lookup; off when disabled.
+	// on the load-test convention's IsLoadTest. A single header lookup; off when
+	// disabled.
 	if mw.LoadTest.Enabled {
-		e.Use(LoadTest(mw.LoadTest.Header))
+		e.Use(LoadTest(prop))
 	}
 	if mw.Recovery.Enabled {
 		// Starter-owned recover (see recover.go): echo's middleware.Recover
@@ -134,30 +138,34 @@ func applyMiddlewares(e *echo.Echo, cfg Config) error {
 	// Resilience admission (always installed): runs the request through the
 	// configured rate-limit / bulkhead / breaker before the handler chain. Sits
 	// inside AccessLog so 429/503 rejects are still logged, and outside fault so
-	// a rate-limited request is not also faulted. With governance off the
-	// executor is a transparent pass-through, so installing it costs a call
+	// a rate-limited request is not also faulted. mgr is the governance
+	// starter's manager bean (nil when governance is not imported); without it
+	// the executor is a transparent pass-through, so installing it costs a call
 	// frame and changes nothing else.
-	e.Use(buildAdmission(cfg))
+	e.Use(buildServerPolicy(cfg, mgr))
 
 	// Fault injection (always installed, innermost so the resulting 503 is still
-	// logged by the access log). The injector is resolved from the neutral
-	// [fault.InjectorFor] seam (nil-safe: a transparent pass-through when fault is
-	// off / governance not imported), letting an operator "set fire" to the running
+	// logged by the access log). inj is the governance starter's injector bean,
+	// captured once here and reused for every request (nil-safe: a transparent
+	// pass-through when governance is not imported); the center hot-swaps the
+	// injector's config in place, so an operator can "set fire" to the running
 	// server and hot-toggle it at runtime without a restart.
-	e.Use(buildFault())
+	e.Use(buildFault(inj))
 	return nil
 }
 
 // buildFault builds the inbound fault-injection middleware. It gates the handler
-// call with [fault.Apply] so a configured fraction of inbound requests fail or
+// call with [fault.ApplyServer] so a configured fraction of inbound requests fail or
 // slow down — the server-side counterpart to the client starters'
-// fault.WrapExecutor. The injector comes from the neutral [fault.InjectorFor]
-// seam (backed by the governance center); when no injector is registered Apply
-// is a transparent pass-through.
-func buildFault() echo.MiddlewareFunc {
+// fault.WrapClientExecutor. inj is the governance starter's injector bean, held for
+// the life of the middleware: the center swaps its config in place
+// ([fault.Injector.SetConfig]) rather than replacing the bean, so the captured
+// reference always sees the live config. When it is nil, Apply is a transparent
+// pass-through.
+func buildFault(inj *fault.Injector) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			err := fault.Apply(c.Request().Context(), fault.InjectorFor(), "echo", func() error {
+			err := fault.ApplyServer(c.Request().Context(), inj, "echo", func() error {
 				return next(c)
 			})
 			// Only an INJECTED fault (or a latency cancelled by the request

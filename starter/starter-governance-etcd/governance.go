@@ -140,9 +140,11 @@ type EtcdSource struct {
 	format string
 	doc    string // latest document bytes (for dedupe before parsing)
 
+	// push holds the snapshot and the subscriber; this source is a transport
+	// (the etcd watch stream) that parses and feeds it.
+	push *governance.PushSource
+
 	mu     sync.Mutex
-	cfg    governance.Config
-	cb     func(governance.Config)
 	cancel context.CancelFunc
 }
 
@@ -162,7 +164,7 @@ func NewEtcdSource(kv etcdKV, key, format string) (*EtcdSource, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &EtcdSource{kv: kv, key: key, format: format, doc: doc, cfg: cfg}, nil
+	return &EtcdSource{kv: kv, key: key, format: format, doc: doc, push: governance.NewPushSource(cfg)}, nil
 }
 
 // Init opens the watch stream (the gs bean lifecycle hook). The stream runs
@@ -200,22 +202,13 @@ func (s *EtcdSource) Close() error {
 }
 
 // Snapshot returns the latest good snapshot.
-func (s *EtcdSource) Snapshot() governance.Config {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.cfg
-}
+func (s *EtcdSource) Snapshot() governance.Config { return s.push.Snapshot() }
 
 // Subscribe registers cb as the push target (the center is the only consumer).
-func (s *EtcdSource) Subscribe(cb func(governance.Config)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.cb = cb
-}
+func (s *EtcdSource) Subscribe(cb func(governance.Config)) { s.push.Subscribe(cb) }
 
-// apply parses one delivered value and, when the rules actually changed, swaps
-// the snapshot and pushes. Byte-equal re-deliveries and bad values push
-// nothing.
+// apply parses one delivered value and, when the rules actually changed,
+// pushes it. Byte-equal re-deliveries and bad values push nothing.
 func (s *EtcdSource) apply(data string) {
 	if data == s.doc {
 		return
@@ -225,17 +218,9 @@ func (s *EtcdSource) apply(data string) {
 		log.Errorf(context.Background(), starterTag, "governance etcd source: key %s got an invalid value (keeping last good config): %v", s.key, err)
 		return
 	}
-
-	s.mu.Lock()
-	unchanged := reflect.DeepEqual(s.cfg, cfg)
-	s.cfg, s.doc = cfg, data
-	cb := s.cb
-	s.mu.Unlock()
-
-	if unchanged {
+	s.doc = data
+	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
 		return
 	}
-	if cb != nil {
-		cb(cfg)
-	}
+	s.push.Push(cfg)
 }

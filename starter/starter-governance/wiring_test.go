@@ -18,14 +18,15 @@ package StarterGovernance
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/testing/assert"
 )
 
 // recordingDriver is a backend that flags every executor it builds, so a test
@@ -33,86 +34,117 @@ import (
 // executor exists.
 type recordingDriver struct{ used bool }
 
-func (d *recordingDriver) NewExecutor(resilience.Policy) (resilience.Executor, error) {
+func (d *recordingDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (resilience.ClientExecutor, error) {
 	return recordingExecutor{mark: func() { d.used = true }}, nil
 }
 
-// recordingExecutor runs fn and marks its driver used.
-type recordingExecutor struct{ mark func() }
+func (d *recordingDriver) NewServerExecutor(service string, a resilience.ServerPolicy) (resilience.ServerExecutor, error) {
+	return recordingServerExecutor{mark: func() { d.used = true }}, nil
+}
 
-func (e recordingExecutor) Execute(ctx context.Context, _ string, fn func(context.Context) error) error {
+// recordingServerExecutor is the inbound twin of recordingExecutor.
+type recordingServerExecutor struct{ mark func() }
+
+func (e recordingServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	e.mark()
 	return fn(ctx)
 }
 
-func (recordingExecutor) Refresh(resilience.Policy) error { return nil }
+func (recordingServerExecutor) Refresh(resilience.ServerPolicy) error { return nil }
+
+func (recordingServerExecutor) Close() error { return nil }
+
+// recordingExecutor runs fn and marks its driver used.
+type recordingExecutor struct{ mark func() }
+
+func (e recordingExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+	e.mark()
+	return fn(ctx)
+}
+
+func (recordingExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 
 func (recordingExecutor) Close() error { return nil }
 
-// govCfg builds a governance.Config with the given default attempt timeout and
-// an armed fault section.
+// govCfg builds a document with an outbound timeout and a CLIENT-side fault
+// fire; the server side is covered by the same shape on the other block.
 func govCfg(timeoutMs int, fc fault.Config) governance.Config {
 	return governance.Config{
 		Enabled: true,
-		Default: resilience.PolicyConfig{AttemptTimeout: time.Duration(timeoutMs) * time.Millisecond},
-		Fault:   fc,
+		Client: governance.ClientConfig{
+			Default: governance.ClientDefaultPolicy{
+				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: time.Duration(timeoutMs) * time.Millisecond},
+			},
+			Fault: fc,
+		},
 	}
 }
 
-// TestWiring_SrcBeanArmsCenter drives the wiring bean's normal branch: a Source
-// bean is present, so Init binds it and GoLive arms the center from its snapshot
-// — the same sequence gs runs on the wiring bean in production.
-//
-// It cannot go through gs.RunTest: gs_init.Beans() CLONES global bean
-// definitions under testing.Testing() (test isolation), so a test binary wires
-// a copy of the bean while the governance facade still reads the package
-// singleton. Driving Init directly covers the same code path without that gap.
-func TestWiring_SrcBeanArmsCenter(t *testing.T) {
-	defer governance.Reset()
+// managerProbe is a placeholder bean: its only job is to be constructed with
+// the resilience manager injected, so a test can capture the very instance the
+// wiring also drives. It carries no behaviour.
+type managerProbe struct{}
 
-	w := newWiring()
+// newTestWiring builds the wiring over a fresh set of authorities, exactly as
+// this package's init registers them as beans: one instance per module, shared
+// between the center and the callers that inject them.
+func newTestWiring() (*wiring, *resilience.Manager, *loadbalance.Manager, *fault.Injector) {
+	res := resilience.NewManager()
+	lb := loadbalance.NewManager()
+	inj := fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil)
+	return &wiring{Ctr: governance.NewCenter(governance.Config{}, res, lb, inj)}, res, lb, inj
+}
+
+// TestWiring_SrcBeanArmsCenter drives the wiring bean's normal branch: a Source
+// bean is present, so Init binds it and GoLive distributes its snapshot into the
+// module authorities — the same sequence gs runs on the wiring bean in production.
+func TestWiring_SrcBeanArmsCenter(t *testing.T) {
+	w, res, _, inj := newTestWiring()
+
 	w.Src = governance.NewPushSource(govCfg(300, fault.Config{Enabled: true, Rate: 0.25}))
 	if err := w.Init(); err != nil {
 		t.Fatal(err)
 	}
 
-	if !governance.Enabled() {
-		t.Fatal("wiring should arm the center from the Source bean's snapshot")
+	if p := res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != 300*time.Millisecond {
+		t.Fatalf("src bean policy: want 300ms, got %v", p.AttemptTimeout)
 	}
-	if p := governance.PolicyFor("redis:cache"); p.Timeout != 300*time.Millisecond {
-		t.Fatalf("src bean policy: want 300ms, got %v", p.Timeout)
-	}
-	if in := fault.InjectorFor(); in == nil || !in.Config().Enabled || in.Config().Rate != 0.25 {
-		t.Fatal("GoLive should register the injector built from the snapshot's Fault")
+	if cf := inj.ClientConfig(); !cf.Enabled || cf.Rate != 0.25 {
+		t.Fatal("GoLive should push the snapshot's Fault into the injected injector")
 	}
 	ready := false
-	governance.OnReady(func() { ready = true })
+	w.Ctr.OnReady(func() { ready = true })
 	if !ready {
-		t.Fatal("GoLive should mark the authority live")
+		t.Fatal("GoLive should mark the center live")
+	}
+	if !w.Ctr.Live() {
+		t.Fatal("Live() should report the center armed")
 	}
 }
 
 // TestWiring_NoSource_StaysDisabled pins the no-source contract: with no Source
-// bean Init still runs GoLive (registering the seams and firing OnReady) but the
-// center stays disabled, so every client resolves a transparent pass-through.
+// bean Init still runs GoLive (distributing an empty document and firing
+// OnReady) but every service resolves a transparent pass-through.
 func TestWiring_NoSource_StaysDisabled(t *testing.T) {
-	defer governance.Reset()
+	w, res, lb, inj := newTestWiring()
 
-	w := newWiring()
 	if err := w.Init(); err != nil {
 		t.Fatal(err)
 	}
 
-	if governance.Enabled() {
-		t.Fatal("no source configured: center must stay disabled")
+	if p := res.ClientPolicyFor("redis:cache"); !p.IsZero() {
+		t.Fatalf("no source: resilience must resolve a zero policy, got %v", p)
 	}
-	if p := governance.PolicyFor("redis:cache"); !p.IsZero() {
-		t.Fatalf("disabled center must resolve a zero policy, got %v", p)
+	if lb.Enabled() {
+		t.Fatal("no source: selection must stay unarmed")
+	}
+	if inj.ClientConfig().Enabled || inj.ServerConfig().Enabled {
+		t.Fatal("no source: fault must stay disabled")
 	}
 	ready := false
-	governance.OnReady(func() { ready = true })
+	w.Ctr.OnReady(func() { ready = true })
 	if !ready {
-		t.Fatal("GoLive should mark the authority live even with no source")
+		t.Fatal("GoLive should mark the center live even with no source")
 	}
 }
 
@@ -120,17 +152,36 @@ func TestWiring_NoSource_StaysDisabled(t *testing.T) {
 // a SetSource called before wiring pre-empts the Src bean (BindDefault is a
 // no-op when a source is already bound).
 func TestWiring_ExplicitSetSourceWinsOverSrc(t *testing.T) {
-	defer governance.Reset()
+	w, res, _, _ := newTestWiring()
 
-	governance.SetSource(governance.NewPushSource(govCfg(200, fault.Config{})))
-
-	w := newWiring()
+	w.Ctr.SetSource(governance.NewPushSource(govCfg(200, fault.Config{})))
 	w.Src = governance.NewPushSource(govCfg(300, fault.Config{}))
 	if err := w.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if p := governance.PolicyFor("x"); p.Timeout != 200*time.Millisecond {
-		t.Fatalf("explicit SetSource should win: want 200ms, got %v", p.Timeout)
+	if p := res.ClientPolicyFor("x"); p.AttemptTimeout != 200*time.Millisecond {
+		t.Fatalf("explicit SetSource should win: want 200ms, got %v", p.AttemptTimeout)
+	}
+}
+
+// TestWiring_LatePushDrivesArmedModules pins the push path end to end: after
+// Init, a source push reaches the module authorities without any further wiring.
+func TestWiring_LatePushDrivesArmedModules(t *testing.T) {
+	w, res, _, inj := newTestWiring()
+
+	src := governance.NewPushSource(govCfg(100, fault.Config{}))
+	w.Src = src
+	if err := w.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// A live push swaps both the resilience side and the fault side.
+	src.Push(govCfg(400, fault.Config{Enabled: true, Rate: 0.5}))
+	if p := res.ClientPolicyFor("x"); p.AttemptTimeout != 400*time.Millisecond {
+		t.Fatalf("push should reach the resilience manager: want 400ms, got %v", p.AttemptTimeout)
+	}
+	if cf := inj.ClientConfig(); !cf.Enabled || cf.Rate != 0.5 {
+		t.Fatalf("push should reach the injector: %+v", cf)
 	}
 }
 
@@ -138,25 +189,27 @@ func TestWiring_ExplicitSetSourceWinsOverSrc(t *testing.T) {
 // directory the wiring bean injects is what govern.driver resolves against, so
 // naming a backend builds through THAT backend — not through the bundled one.
 func TestWiring_DriverDirectorySelectsBackend(t *testing.T) {
-	defer governance.Reset()
+	w, res, _, _ := newTestWiring()
 
 	drv := &recordingDriver{}
-	w := newWiring()
 	w.Src = governance.NewPushSource(governance.Config{Enabled: true, Driver: "custom"})
 	w.Drivers = map[string]resilience.Driver{"custom": drv}
 	if err := w.Init(); err != nil {
 		t.Fatal(err)
 	}
 
-	exec, err := governance.NewExecutor(resilience.Policy{})
+	exec, err := res.NewClientExecutor("svc", resilience.ClientPolicy{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := exec.Execute(context.Background(), "res:1", func(context.Context) error { return nil }); err != nil {
+	if err := exec.Execute(context.Background(), func(context.Context) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if !drv.used {
 		t.Fatal("govern.driver=custom must build through the directory's custom driver")
+	}
+	if d := res.Driver(); d != "custom" {
+		t.Fatalf("Driver() = %q, want custom", d)
 	}
 }
 
@@ -164,25 +217,29 @@ func TestWiring_DriverDirectorySelectsBackend(t *testing.T) {
 // center whose configured driver matches nothing aborts wiring rather than
 // silently serving a pass-through, which would look like "resilience is on".
 func TestWiring_UnknownDriverFailsStartup(t *testing.T) {
-	defer governance.Reset()
+	w, _, _, _ := newTestWiring()
 
-	w := newWiring()
 	w.Src = governance.NewPushSource(governance.Config{Enabled: true, Driver: "nope"})
 	w.Drivers = map[string]resilience.Driver{"custom": &recordingDriver{}}
-	assert.Panic(t, func() { _ = w.Init() },
-		`resilience: no driver named "nope" \(available: \[custom default\]\)`)
+	err := w.Init()
+	if err == nil {
+		t.Fatal("an uninstalled driver name must fail Init")
+	}
+	if !strings.Contains(err.Error(), `no driver named "nope"`) {
+		t.Fatalf("error should name the missing driver, got: %v", err)
+	}
 }
 
 // TestWiring_DriverBeansAreCollectedFromContainer is the regression guard for
-// the whole refactor: a backend contributed as a named bean — the way
-// starter-governance-sentinel and starter-luohua contribute theirs — must be collected
-// by the wiring bean's directory field, rooted, and selectable by govern.driver.
-// The Export is load-bearing (gs indexes beans by exact type), so dropping it
-// here must fail this test.
+// the directory's container route: a backend contributed as a named bean — the
+// way the sentinel and luohua backends contribute theirs — must reach the
+// manager the wiring arms, and a client that injects that manager must build
+// through it. The Export is load-bearing (gs indexes beans by exact type), so
+// dropping it here must fail this test.
 func TestWiring_DriverBeansAreCollectedFromContainer(t *testing.T) {
-	defer governance.Reset()
-
 	drv := &recordingDriver{}
+	var mgr *resilience.Manager
+
 	gs.Web(false).Configure(func(app gs.App) {
 		app.Provide(func() governance.Source {
 			return governance.NewPushSource(governance.Config{Enabled: true, Driver: "corp"})
@@ -190,9 +247,21 @@ func TestWiring_DriverBeansAreCollectedFromContainer(t *testing.T) {
 		app.Provide(func() *recordingDriver { return drv }).
 			Name("corp").
 			Export(gs.As[resilience.Driver]())
+		// A stand-in for a client starter: it injects the manager bean the
+		// wiring also drives, which is what makes the directory shared. It is
+		// exported as a Rooter so gs instantiates it despite nothing autowiring
+		// it; capturing at construction is enough, since the assertion only
+		// needs the instance.
+		app.Provide(func(m *resilience.Manager) *managerProbe {
+			mgr = m
+			return &managerProbe{}
+		}).Export(gs.As[gs.Rooter]())
 	}).RunTest(t, func(_ *struct{}) {
-		exec := resilience.ExecutorFor("sys", "res:1")
-		if err := exec.Execute(context.Background(), "res:1", func(context.Context) error { return nil }); err != nil {
+		if mgr == nil {
+			t.Fatal("the resilience manager bean was not injected")
+		}
+		exec := mgr.ClientExecutorFor("sys", "res:1")
+		if err := exec.Execute(context.Background(), func(context.Context) error { return nil }); err != nil {
 			t.Fatal(err)
 		}
 		if !drv.used {
@@ -201,21 +270,36 @@ func TestWiring_DriverBeansAreCollectedFromContainer(t *testing.T) {
 	})
 }
 
-// TestWiring_DriverBeanWithoutExportFailsStartup pins the other half of the
+// TestWiring_DriverBeanWithoutExportIsInvisible pins the other half of the
 // directory contract: gs indexes beans by their exact type, so a backend that
-// forgets Export(gs.As[resilience.Driver]()) is invisible to the directory —
-// and naming it must fail startup rather than silently falling back to the
+// forgets Export(gs.As[resilience.Driver]()) never reaches the directory — and a
+// config naming it then fails startup rather than silently falling back to the
 // bundled driver. This is the most likely mistake a new backend module makes.
-func TestWiring_DriverBeanWithoutExportFailsStartup(t *testing.T) {
-	defer governance.Reset()
+//
+// The source here is left disabled so the app still starts and the collected
+// directory can be inspected directly; the startup failure a real config would
+// trigger is pinned by TestWiring_UnknownDriverFailsStartup.
+func TestWiring_DriverBeanWithoutExportIsInvisible(t *testing.T) {
+	var captured *wiring
 
-	assert.Panic(t, func() {
-		gs.Web(false).Configure(func(app gs.App) {
-			app.Provide(func() governance.Source {
-				return governance.NewPushSource(governance.Config{Enabled: true, Driver: "corp"})
-			})
-			// No Export: the concrete *recordingDriver is indexed under its own type.
-			app.Provide(func() *recordingDriver { return &recordingDriver{} }).Name("corp")
-		}).RunTest(t, func(_ *struct{}) {})
-	}, `no driver named "corp"`)
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Provide(func() governance.Source {
+			return governance.NewPushSource(governance.Config{})
+		})
+		// No Export: the concrete *recordingDriver is indexed under its own type.
+		app.Provide(func() *recordingDriver { return &recordingDriver{} }).Name("corp")
+		app.Provide(func(w *wiring) *wiringProbe { captured = w; return &wiringProbe{} }).
+			Export(gs.As[gs.Rooter]())
+	}).RunTest(t, func(_ *struct{}) {
+		if captured == nil {
+			t.Fatal("the wiring bean was not constructed")
+		}
+		if _, ok := captured.Drivers["corp"]; ok {
+			t.Fatal("a driver bean without Export must be invisible to the directory")
+		}
+	})
 }
+
+// wiringProbe is a placeholder bean whose only job is to be constructed with
+// the wiring bean injected, so a test can inspect what the container handed it.
+type wiringProbe struct{}

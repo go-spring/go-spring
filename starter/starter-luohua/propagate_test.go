@@ -22,7 +22,8 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/propagation"
@@ -80,22 +81,36 @@ func TestPropagateRoundTrip(t *testing.T) {
 	}
 }
 
-// TestApplyPropagateOverridesTrafficHeader verifies the G1 seam: configuring a
-// load-test header re-binds traffic detection onto luohua's convention.
-func TestApplyPropagateOverridesTrafficHeader(t *testing.T) {
+// TestLoadTestPropagatorRebasesTheMarker verifies the G1 seam: configuring a
+// load-test header yields luohua's convention — its own HTTP header with the
+// metadata key derived lowercase — and leaves go-spring's in place when unset.
+func TestLoadTestPropagatorRebasesTheMarker(t *testing.T) {
 	const hdr, meta = "X-Luohua-Load", "x-luohua-load"
-	defer func() {
-		canonical.HeaderLoadTest, canonical.MetaKeyLoadTest = "X-LoadTest", "x-loadtest"
-	}()
 
-	if err := applyPropagate(PropagateConfig{LoadTestHeader: hdr}); err != nil {
-		t.Fatalf("applyPropagate: %v", err)
+	p, err := loadTestPropagator(PropagateConfig{LoadTestHeader: hdr})
+	if err != nil {
+		t.Fatalf("loadTestPropagator: %v", err)
 	}
-	if canonical.HeaderLoadTest != hdr {
-		t.Fatalf("canonical.HeaderLoadTest = %q, want %q", canonical.HeaderLoadTest, hdr)
+	if p == nil {
+		t.Fatal("loadTestPropagator returned nil with a header configured")
 	}
-	if canonical.MetaKeyLoadTest != meta {
-		t.Fatalf("canonical.MetaKeyLoadTest = %q, want %q", canonical.MetaKeyLoadTest, meta)
+	// The wire vocabulary is the propagator's own business, so it is read back
+	// through its own outbound seams rather than off an internal field.
+	if _, ok := p.(traffic.DefaultPropagator); !ok {
+		t.Fatalf("loadTestPropagator returned %T, want go-spring's propagator", p)
+	}
+	ctx := p.WithLoadTest(context.Background())
+	carrier := propagate.MultiMap{}
+	p.Inject(ctx, carrier)
+	if got := carrier[meta]; len(got) != 1 || got[0] != "1" {
+		t.Fatalf("Inject wrote %v, want %q=1 under %q", got, "1", meta)
+	}
+	plain, err := loadTestPropagator(PropagateConfig{})
+	if err != nil {
+		t.Fatalf("loadTestPropagator: %v", err)
+	}
+	if plain != nil {
+		t.Fatal("an unset load-test header must keep go-spring's convention")
 	}
 }
 

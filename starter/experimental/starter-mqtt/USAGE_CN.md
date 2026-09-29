@@ -196,32 +196,32 @@ paho.mqtt.golang 没有钩子/插件扩展点，所以不存在透明 client 包
 构造期挂载的 executor 加**调用点自愿接入的 guard** [command.go:17-27]：
 
 ```
-applyResilience [command.go:128-134]：
-  exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt", "mqtt:<broker>"))  // 治理中心 + observe 桥
+applyResilience [command.go:129-136]：
+  exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", "mqtt:<broker>"), "mqtt:<broker>", inj)  // 注入的 *resilience.Manager + *fault.Injector
   以 mqtt.Client 值为键存入 sync.Map
 
-GuardedPublish [command.go:166-172]：
-  guard() → executor.Execute(ctx, "mqtt:<broker>", call)              [command.go:147-154]
+GuardedPublish [command.go:167-173]：
+  guard() → executor.Execute(ctx, call)                               [command.go:148-155]
   call = cl.Publish(...) + token.Wait() + token.Error()
 ```
 
 包裹顺序（外→内）：**fault 注入 → observe（受保护调用的 span+metric+访问日志）→
 resilience 策略（限流/熔断/重试）→ paho Publish → token 等待**。设计理由（源码
 注释）：paho 自管队列与重连，因此 executor 有意保持极小 —— 只限发布速率、在 broker
-不健康时短路 [command.go:117-122]。资源标签是 `mqtt:<broker-url>` —— 按 broker 而非
-按 topic [starter.go:70, resilience/config.go:151-155]。
+不健康时短路 [command.go:119-124]。服务标签是 `mqtt:<broker-url>` —— 按 broker 而非
+按 topic [starter.go:70, resilience/policy.go:216-230]。
 
 **未被保护的部分**（已核实）：
 
 - 裸 `client.Publish`（直接调 client bean）—— 完全绕过 resilience；`GuardedPublish`
   与 driver 的 `Publish` 都走 executor
-  [command.go:156-172]。
+  [command.go:157-173]。
 - `Subscribe` / `Unsubscribe` / 订阅回调 —— 没有对应的 guard。
 - driver 订阅 handler：只有 panic 保护（`messaging.Recover` 把 panic 转成 error）
   [client.go:92]；该 error 之后仅记日志 [client.go:95-97]。
 
-治理关闭时 `ExecutorFor` 返回透明的 no-op executor，`GuardedPublish` 的行为与裸
-publish + wait 完全一致 [command.go:123-127, 156-160]。
+治理未接线时，注入的 manager 归一化为未武装的 manager、返回透明的 no-op executor，
+`GuardedPublish` 的行为与裸 publish + wait 完全一致 [command.go:125-129, 157-161]。
 
 ### 2.3 一次发布与一次消费的逐层走读
 
@@ -231,9 +231,9 @@ span 助手：
 1. `StartPublishSpan(ctx, topic)` 打开名为 `publish` 的 producer 观测，带
    `messaging.destination.name = topic` [command.go, observe.go]。
 2. `guard` 从 sync.Map 解析该 client 的 executor [command.go:148-153]。
-3. fault 注入检查（govern.fault.* 策略，启用时）。
+3. fault 注入检查（govern.client.fault.* 策略，启用时）。
 4. observe 桥记录受保护调用的结果（span/metric/访问日志）。
-5. resilience 策略：资源 `mqtt:<broker>` 上的限流器 / 熔断器；被拒时返回 sentinel
+5. resilience 策略：服务 `mqtt:<broker>` 上的限流器 / 熔断器；被拒时返回 sentinel
    错误且 **paho Publish 根本不会执行** [command.go:160-163]。
 6. `cl.Publish(topic, qos, retained, payload)` 交给 paho 出站队列；`token.Wait()`
    阻塞到包写出（QoS 0）或 PUBACK/PUBCOMP 到达（QoS 1/2）[command.go:164-171]。
@@ -264,7 +264,7 @@ driver 固定 QoS 1（`defaultQoS`）、发布 `retained=false`；retained 消�
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `broker` | string | — | **必填**（`expr:"$ != ''"`），如 `tcp://host:1883`，MQTTS 用 `ssl://`。同时构成 resilience 资源标签 `mqtt:<broker>`。 | 缺失 → 报出实例名的绑定错误。 |
+| `broker` | string | — | **必填**（`expr:"$ != ''"`），如 `tcp://host:1883`，MQTTS 用 `ssl://`。同时构成 resilience 服务标签 `mqtt:<broker>`。 | 缺失 → 报出实例名的绑定错误。 |
 | `client-id` | string | "" | 呈给 broker 的标识；空则由库生成。⚠ MQTT broker 拒绝两个同 client-id 的活跃连接 —— 多副本必须各配各的 id。 | 重复 id → 运行期反复被踢，启动期不报错。 |
 | `username` / `password` | string | "" | broker 认证。 | 错误 → 启动期 fail-fast 连接失败 [starter.go:66-69]。 |
 | `clean-session` | bool | true | 断开时 broker 丢弃会话状态。`false` + 固定 client-id 可获得离线消息补投语义。 | 见 [MQTT 规范 §3.1](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html)。 |
@@ -295,7 +295,7 @@ docker start <mosquitto> && go run .   # 正常启动，日志 "mqtt client init
 
 ### 4.2 受保护 vs 未受保护路径
 
-配置 starter-governance 后，为资源 `mqtt:tcp://127.0.0.1:1883` 加限流/熔断策略：
+配置 starter-governance 后，为服务 `mqtt:tcp://127.0.0.1:1883` 加限流/熔断策略：
 
 ```yaml
 govern:
@@ -307,7 +307,7 @@ govern:
 
 压测 `GuardedPublish` → 拒绝以 resilience sentinel 错误与 `_app_mqtt_access` 访问记录
 浮出。同等流量直接在 client bean 上裸调
-`client.Publish` 则完全不受影响 —— driver 已走同一 guard，退出口是资源级
+`client.Publish` 则完全不受影响 —— driver 已走同一 guard，退出口是服务级
 （给 `mqtt:<broker>` 配一条全零 rule，或整体关治理），不再是调用点
 [command.go:147-172, client.go]。
 策略免重启热切换（治理中心）。

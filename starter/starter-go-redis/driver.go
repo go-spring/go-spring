@@ -18,14 +18,12 @@ package StarterGoRedis
 
 import (
 	"context"
-	"io"
 	"net"
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/goutil"
 )
 
 // Driver interface defines how to create a single/sentinel Redis client, whose
@@ -41,26 +39,32 @@ import (
 // it regardless of Mode; a service that also uses cluster mode must provide a
 // Driver that implements [ClusterDriver] too.
 //
-// The returned io.Closer is the teardown for anything the driver built beyond
-// the client itself — for DefaultDriver that is the discovery resolver's
-// background watch; a driver with nothing to clean up returns goutil.NopCloser().
-// (*Client).Close calls it on shutdown.
-//
 // backend is the discovery backend the entry's ${discovery} label resolved to,
 // already looked up by the starter wiring; it is nil when the entry does not use
 // service discovery (an unknown label fails at wiring, before the driver is
 // called). It is passed as an argument rather than carried on Config so a custom
 // driver can actually reach it — Config stays a pure bound value.
+//
+// The returned *loadbalance.Pool is the endpoint-selection pool the driver built
+// for a discovery-routed entry, or nil when it built none. The driver does NOT
+// bind it to governance — it hands it back so the caller can, which keeps a
+// company Driver entirely unaware of governance: build a pool if your topology
+// needs one, return it, forget about it. The starter binds it to the injected
+// [loadbalance.Manager] and folds the detach into [Client.Destroy].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*redis.Client, io.Closer, error)
+	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*redis.Client, *loadbalance.Pool, error)
 }
 
 // ClusterDriver is an optional interface a Driver may also implement to support
 // cluster mode, whose bean type is *redis.ClusterClient. It is kept separate
 // from Driver so a Driver bean that only builds *redis.Client stays valid: the
 // starter type-asserts to ClusterDriver only for instances with Mode=cluster.
+//
+// It has no pool return because cluster mode self-discovers through the
+// cluster's own topology and the client seeds dialing with c.Addrs — there is no
+// per-endpoint pick pool to hand back.
 type ClusterDriver interface {
-	CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, io.Closer, error)
+	CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface. It also
@@ -84,7 +88,10 @@ var (
 //
 // In sentinel mode the client connects to the master resolved by c.MasterName
 // through c.SentinelAddrs; service discovery is not used.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*redis.Client, io.Closer, error) {
+//
+// The returned pool is non-nil only for a discovery-routed single-mode entry;
+// see the Driver interface for the contract.
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*redis.Client, *loadbalance.Pool, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, nil, errutil.Explain(err, "redis: build TLS")
@@ -107,8 +114,8 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 			WriteTimeout:     c.WriteTimeout,
 			TLSConfig:        tlsConfig,
 		})
-		// Sentinel self-discovers its master; no background resolver to stop.
-		return client, goutil.NopCloser(), nil
+		// Sentinel self-discovers its master; no resolver and no pick pool.
+		return client, nil, nil
 	}
 
 	opts := &redis.Options{
@@ -133,18 +140,14 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 	if resolver != nil {
 		nd := &net.Dialer{Timeout: c.DialTimeout}
 		// Addr becomes a label for the pool; the dialer picks a live endpoint
-		// through the shared loadbalance machinery (round-robin, per connection).
-		// Freshness lives inside the discovery backend, so the resolver has no
-		// resources to release. The tracker makes outlier suspension possible and
-		// the binding puts the resource's endpoint selection under the same
-		// governance rule that already drives its protection executor.
-		bal, err := loadbalance.New(loadbalance.RoundRobin)
-		if err != nil {
-			return nil, nil, err
-		}
-		lb := loadbalance.NewPool(resolver, bal,
-			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
-		stop := lb.BindSelection(resourceLabel(c))
+		// through the shared loadbalance machinery (per the balancer config, per connection).
+		// Freshness lives inside the discovery backend, so the resolver owns no
+		// resources. The tracker makes outlier suspension possible; the pool is
+		// handed back to the caller, which binds it to governance so the
+		// service's endpoint selection follows the same rule that drives its
+		// protection executor.
+		bal := loadbalance.NewRoundRobin()
+		lb := loadbalance.NewPool(resolver, bal)
 		opts.Addr = c.ServiceName
 		opts.Dialer = func(ctx context.Context, network, _ string) (net.Conn, error) {
 			ep, err := lb.Pick(loadbalance.PickInfo{})
@@ -159,20 +162,20 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 			return conn, derr
 		}
 		client := redis.NewClient(opts)
-		return client, goutil.CloserFunc(func() error { stop(); return nil }), nil
+		return client, lb, nil
 	}
 
 	client := redis.NewClient(opts)
-	return client, goutil.NopCloser(), nil
+	return client, nil, nil
 }
 
 // CreateClusterClient creates a cluster Redis client seeded by c.Addrs. The bean
 // type is *redis.ClusterClient. Cluster mode self-discovers its nodes, so
 // c.ServiceName / the discovery resolver is not used here.
-func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, io.Closer, error) {
+func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config) (*redis.ClusterClient, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
-		return nil, nil, errutil.Explain(err, "redis: build TLS")
+		return nil, errutil.Explain(err, "redis: build TLS")
 	}
 	client := redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs:           c.Addrs,
@@ -190,6 +193,6 @@ func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config) (*redis.
 		WriteTimeout:    c.WriteTimeout,
 		TLSConfig:       tlsConfig,
 	})
-	// Cluster self-discovers its nodes; no background resolver to stop.
-	return client, goutil.NopCloser(), nil
+	// Cluster self-discovers its nodes; no resolver and no pick pool.
+	return client, nil
 }

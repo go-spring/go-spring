@@ -24,15 +24,18 @@ import (
     "go-spring.org/cloud/loadbalance"
 )
 
-resolver, err := discovery.NewResolver(ctx, "default", "orders")
+backend := discovery.NewStaticDiscovery(
+    discovery.Endpoint{Host: "10.0.0.1", Port: 8080},
+    discovery.Endpoint{Host: "10.0.0.2", Port: 8080},
+)
+resolver, err := discovery.NewResolver(ctx, backend, "orders")
 if err != nil { return err }
 
-bal, _ := loadbalance.New(loadbalance.RoundRobin)
-tracker := loadbalance.NewTracker(loadbalance.TrackerConfig{
+bal := loadbalance.NewRoundRobin()
+pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTrackerConfig(loadbalance.TrackerConfig{
     Threshold:  3,              // consecutive failures before suspension
     SuspendFor: 5 * time.Second, // half-open trial after a 5s cool-down
-})
-pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTracker(tracker))
+}))
 
 for {
     ep, err := pool.Pick(loadbalance.PickInfo{})
@@ -45,10 +48,11 @@ for {
 ## Pool: assembly and filtering
 
 `Pool` glues three things into a runtime: an endpoint source, a strategy, and
-an optional `Tracker`.
+its own `Tracker` (built disabled, so suspension becomes governable without
+any wiring; set initial thresholds with `WithTrackerConfig`).
 
 ```go
-pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(resolver, bal)
 ```
 
 - **The endpoint source** is anything implementing
@@ -88,7 +92,7 @@ A custom strategy implements the `Balancer` interface and registers like any
 built-in:
 
 ```go
-loadbalance.Register("my_strategy", func() loadbalance.Balancer {
+loadbalance.Register("my_strategy", func(loadbalance.Config) loadbalance.Balancer {
     return &myBalancer{} // implement Pick and Complete; be concurrency-safe
 })
 ```
@@ -128,39 +132,45 @@ SuspendFor, no longer picked)
 
 A single success resets the failure count, so sporadic failures never
 trigger suspension; when every instance is suspended the filter falls back to
-the full set. `Threshold <= 0` (or no `WithTracker`) is fully transparent.
+the full set. `Threshold <= 0` (the default when `WithTrackerConfig` is not used)
+is fully transparent.
 
 ## Managed selection (governance)
 
 A pool's strategy and suspension thresholds can be driven from outside the
-process, by resource label rather than by construction-time argument:
+process, by service label rather than by construction-time argument. The caller
+injects the `*loadbalance.Manager` bean (see [Manager](manager.go)) and hands it
+the pool:
 
 ```go
-stop := pool.BindSelection("http:user-svc") // no-op when governance is absent
+// mgr is the injected *loadbalance.Manager; nil means no governance is present.
+stop := mgr.Bind(pool, "http:user-svc")
 defer stop()
 ```
 
-- `BindSelection(label)` applies the label's current `Selection` **immediately**
-  and again on every change, in place — no rebuild, no re-dial, the very next
-  `Pick` sees it. It returns the detach func; a pool that is not process-lifetime
-  MUST call it, or the authority keeps a callback pointing at a dead pool.
-- With no provider registered (the governance starter is not imported, or
-  governance is off) the call is a no-op and the pool keeps the strategy it was
-  built with — the same transparent pass-through as `resilience.ExecutorFor`.
+- `Bind(pool, label)` applies the label's current `Selection` **immediately** and
+  again on every change, in place — no rebuild, no re-dial, the very next `Pick`
+  sees it. It returns the detach func; a pool that is not process-lifetime MUST
+  call it, or the manager keeps a callback pointing at a dead pool.
+- Binding an **unarmed** manager is safe and is the normal case for a pool built
+  during container wiring: the subscription is remembered and armed by the first
+  `Apply`. With no manager injected at all (a container without
+  starter-governance, or a standalone caller) the pool keeps the strategy it was
+  built with — a transparent pass-through.
 - An empty strategy name leaves the current strategy alone; an **unknown** name
   is ignored and the last good strategy stays in force. The suspension thresholds
   are always applied.
-- The suspension half only has an effect on a pool with a `Tracker` attached
-  (`WithTracker`) whose `Pick` is paired with `Complete` — without both, the
-  thresholds are set on nothing.
+- The suspension half only has an effect on a pool whose `Pick` is paired with
+  `Complete` — the tracker is always there, but unpaired calls leave it nothing
+  to count, so the thresholds are set on nothing.
 
-`RegisterSelectionProvider` is called once, by whoever owns the policy — the
-governance starter calls it when it goes live; clients never call it. Passing
-`nil` disarms the seam again, which is what makes it testable in-process.
+`Manager.Apply(Settings{...})` is the single entry point the governance center
+calls — once with the source's snapshot, then on every push — and
+`Manager.SelectionFor(label)` reads back what a label currently resolves to.
 
 `Pool.ApplySelection` is the same sink reached directly, and `Pool.Selection()`
 reads back the policy most recently accepted — useful when you drive selection
-from your own config instead of a provider.
+from your own config instead of the manager.
 
 ## The Pick/Complete contract
 

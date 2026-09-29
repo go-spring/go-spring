@@ -130,7 +130,7 @@
   + `<family>.operation.duration`，status 轴互斥（sum over status = 操作数，无双重
   计数），duration 用显式桶界
 - **事件类节点**（低频但语义重大的状态变迁）：专用计数器按事件本身命名
-  （`lock.lost.total`、`resilience.breaker.state_change`），不用 total/duration
+  （`lock.lost.total`、`resilience.client.breaker.state_change`），不用 total/duration
   模板——事件不是操作
 - **状态类节点**（需要知道"现在怎样"）：gauge（`messaging.operation.active`、
   `config.refresh.last_success_timestamp`、断路器状态）

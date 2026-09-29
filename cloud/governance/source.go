@@ -54,14 +54,20 @@ type Source interface {
 }
 
 // PushSource is a ready-made mutable [Source]: it holds one snapshot and
-// forwards pushes to its subscriber. It is the building block for console-
-// stream and static-injection integrations — create one, [SetSource] it, then
-// Push on every upstream event:
+// forwards pushes to its subscriber. It is the shared core of every push-style
+// adapter — the file, http, etcd and nacos sources in the governance starter
+// family each wrap one behind their own transport — and the building block for
+// console-stream and static-injection integrations: create one, hand it to the
+// center with [Center.SetSource], then Push on every upstream event:
 //
 //	src := governance.NewPushSource(governance.Config{})
-//	governance.SetSource(src)
+//	ctr.SetSource(src)
 //	// later, on each console event:
 //	src.Push(cfg)
+//
+// The usual route is the bean one instead: export a [Source] and let
+// starter-governance bind it (see [Center.BindDefault]); SetSource is the eager
+// path for a caller that holds the center and wants to pre-empt the default.
 //
 // Safe for concurrent use.
 type PushSource struct {

@@ -71,9 +71,8 @@ type I18nConfig struct {
 // here — a company adopts luohua's convention in one place and every transport
 // follows (see the per-capability notes).
 type PropagateConfig struct {
-	// LoadTestHeader overrides the traffic.HeaderLoadTest marker so inbound and
-	// outbound load-test detection uses luohua's own header. Empty keeps the
-	// go-spring canonical "X-LoadTest".
+	// LoadTestHeader contributes luohua's own load-test convention so inbound and
+	// outbound detection uses its header. Empty keeps go-spring's.
 	LoadTestHeader string `value:"${load-test-header:=}"`
 
 	// Headers lists the luohua business headers a named-header propagator

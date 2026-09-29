@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 )
 
@@ -31,8 +32,11 @@ import (
 func newTestTable(t *testing.T) *RouteTable {
 	t.Helper()
 	tbl := &RouteTable{
-		ctx: context.Background(),
-		obs: newObserver(),
+		ctx:      context.Background(),
+		obs:      newObserver(),
+		mgr:      resilience.NewManager(),
+		lbMgr:    loadbalance.NewManager(),
+		counters: newMemoryCounters(),
 	}
 	return tbl
 }
@@ -125,7 +129,7 @@ func TestParseFilterTokenAcceptsPlainValues(t *testing.T) {
 // subscription to.
 func selectionPool(t *testing.T) *loadbalance.Pool {
 	t.Helper()
-	bal, err := loadbalance.New(loadbalance.RoundRobin)
+	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
 	if err != nil {
 		t.Fatalf("loadbalance.New: %v", err)
 	}
@@ -133,7 +137,6 @@ func selectionPool(t *testing.T) *loadbalance.Pool {
 	return loadbalance.NewPool(
 		func() ([]discovery.Endpoint, error) { return eps, nil },
 		bal,
-		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})),
 	)
 }
 

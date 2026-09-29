@@ -130,11 +130,12 @@ govern.source.file.path=conf/govern.yaml
 ```yaml
 govern:
   enabled: true
-  fault:
-    enabled: false        # flip to true to "set fire" without restart
-    rate: 0.2
-    error: timeout
-    scope: loadtest       # only traffic marked x-loadtest is affected
+  server:
+    fault:
+      enabled: false        # flip to true to "set fire" without restart
+      rate: 0.2
+      error: timeout
+      scope: loadtest       # only traffic marked x-loadtest is affected
 ```
 
 **Verify** (mirrors example/check.sh, which is self-asserting):
@@ -198,10 +199,10 @@ service code / service config. Per-filter behavior:
 
 | Filter | Registered when | What it does |
 |--------|-----------------|--------------|
-| `loadtest` | `loadtest.enabled` (default true) | Reads inbound server metadata key `x-loadtest`; if affirmative, tags ctx via `traffic.WithLoadTest(ctx, "trpc-metadata")` so every downstream layer (and your handler, via `traffic.IsLoadTest(ctx)`) can branch. No-op without the marker. Put it **first** so the marker lands before tracing/metrics/handler. |
+| `loadtest` | `loadtest.enabled` (default true) | Reads inbound server metadata key `x-loadtest`; if affirmative, tags ctx via `prop.Extract(ctx, <metadata carrier>)` so every downstream layer (and your handler, via the propagator's `IsLoadTest(ctx)`) can branch. No-op without the marker. Put it **first** so the marker lands before tracing/metrics/handler. |
 | `tracing` | `observer.tracing.enabled` (default true) | Starts an OTel server span named `{calleeService}/{method}` with `rpc.system=trpc`, `rpc.service`, `rpc.method` attributes; errors set span status + RecordError. Rides the OTel globals — no-op without starter-otel. |
 | `metrics` | `observer.metrics.enabled` (default true) | `rpc.server.request_count` counter, `rpc.server.request.duration` histogram (seconds, explicit buckets 5ms..10s), `rpc.server.active_requests` UpDownCounter, all attributed `rpc.method`. Rides the OTel globals. |
-| `fault` | always | `fault.Apply(ctx, fault.InjectorFor(), "trpc", next)` — injects latency/errors per governance rules; transparent pass-through when unconfigured. |
+| `fault` | always | `fault.ApplyServer(ctx, inj, "trpc", next)` — `inj` is the injected `*fault.Injector` bean; injects latency/errors per governance rules; transparent pass-through when unconfigured. |
 
 Recommended chain (what the starter's comments prescribe): `loadtest` first, then `tracing`,
 `metrics`, `fault`, then the handler — same rationale as the HTTP starters: the marker must be
@@ -212,10 +213,10 @@ errors still flow out through metrics/tracing and remain observable.
 
 Client `Greet("world")` with metadata `x-loadtest: 1`, fault scope `loadtest` engaged:
 
-1. `loadtest` reads `ServerMetaData()["x-loadtest"]` → ctx tagged `traffic.IsLoadTest()==true`
+1. `loadtest` reads `ServerMetaData()["x-loadtest"]` → ctx tagged, so the propagator's `IsLoadTest()==true`
 2. `tracing` starts the server span `trpc.demo.greet.GreetService/Greet`
 3. `metrics`: active_requests +1, duration observation starts
-4. `fault`: `fault.Apply` consults the governance injector; with `scope: loadtest` and the
+4. `fault`: `fault.ApplyServer` consults the governance injector; with `scope: loadtest` and the
    marker present, ~`rate` of calls get the injected latency/error; the rest pass through
 5. your handler runs; the response unwinds 3→2: counters/histogram recorded with
    `rpc.method`, span ended (status Error + recorded error if the call failed)
@@ -241,7 +242,7 @@ All keys under `spring.trpc.server.*` (8 total). Only `addr` is required.
 |-----|------|---------|----------|------------------------------|
 | `observer.tracing.enabled` | bool | true | Registers the `tracing` server filter. No-op without starter-otel's globals — nothing warns. | false (or no starter-otel) → no spans, silently. |
 | `observer.metrics.enabled` | bool | true | Registers the `metrics` server filter. Same no-op caveat. | false/no starter-otel → no RPC metrics, silently. |
-| `loadtest.enabled` | bool | true | Registers the `loadtest` server filter. | false → load-test marker no longer rides this hop; downstream `traffic.IsLoadTest` stays false. |
+| `loadtest.enabled` | bool | true | Registers the `loadtest` server filter. | false → load-test marker no longer rides this hop; downstream, the propagator's `IsLoadTest` stays false. |
 
 ⚠ **Registration ≠ execution**: filters go into tRPC's global name registry; they run only if
 the generated service config references those names (tRPC filter-composition rules). If your
@@ -324,7 +325,8 @@ requests are **not drained** — see §6.
 1. Start with `govern.yaml` as in §1 (`fault.enabled: false`), `fault` in the filter chain.
 2. Generate baseline traffic → all calls succeed.
 3. Flip `fault.enabled: true` in the file — the governance source hot-reloads; the filter
-   resolves `fault.InjectorFor()` per call, so no restart is needed.
+   captures the injected `*fault.Injector`, whose config the center swaps in place, so no
+   restart is needed.
 4. Marked traffic burns (metadata `x-loadtest: 1` on the client call), normal traffic is
    unaffected: ~20% of marked calls get the injected `timeout`.
 5. Watch the fire: `rpc.server.request.duration` buckets shift, spans on faulted calls carry
@@ -333,7 +335,7 @@ requests are **not drained** — see §6.
 ### 4.5 Load-test marking drill
 
 `scope: real` inverts the filter — unmarked traffic burns; use only in dedicated environments.
-In your handler, `traffic.IsLoadTest(ctx)` branches on the same marker (set by the `loadtest`
+In your handler, the propagator's `IsLoadTest(ctx)` branches on the same marker (set by the `loadtest`
 filter from inbound metadata), so business code can degrade features under synthetic load.
 
 ---

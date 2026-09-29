@@ -16,7 +16,7 @@
 
 // client.go is the "resource entity" concept of this starter: the Client
 // wrapper Cassandra sessions are injected as, plus its lifecycle (Init/
-// Destroy), the resource label, and the guard seam that routes statements
+// Destroy), the service label, and the guard seam that routes statements
 // through the resilience executor + observer. gocql exposes no reject-capable
 // middleware, so the guard rides the guarded *Query wrapper every
 // Client.Query/Client.Bind call returns (query.go) — coverage of the normal
@@ -29,36 +29,76 @@ import (
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Client is the wrapper bean Cassandra sessions are injected as. It embeds
 // the concrete *gocql.Session (so Query/Iter/Close and friends promote
-// unchanged). newClient returns one; gs calls Init (InitMethod) to build
-// the observer + executor.
+// unchanged). newClient returns one, arms its governance stack through
+// [Client.ArmGovernance], and lets gs call Init (InitMethod) to build the
+// observer.
 type Client struct {
 	*gocql.Session
 
-	// cfg is the connection config, retained for the resource label.
+	// cfg is the connection config, retained for the service label.
 	cfg Config
-	// exec is the resilience executor protecting Exec, resolved via
-	// resilience.ExecutorFor; no-op when governance is off.
-	exec resilience.Executor
-	// resource is the resilience resource key ("cassandra:<hosts>") exec
+	// exec is the resilience executor protecting statements, armed by
+	// ArmGovernance; nil means "governance off" — the guard runs the call
+	// inline and the path is observe-only.
+	exec resilience.ClientExecutor
+	// service is the resilience service key ("cassandra:<hosts>") exec
 	// scopes limiter/breaker state by.
-	resource string
+	service string
 	// obs is the observer behind the guarded statement path (see observe.go).
 	obs *dbObserver
 }
 
-// Init is the gs InitMethod: it builds the observer and resolves the executor
-// through the neutral [resilience.ExecutorFor] seam (backed by
-// starter-govern's governance center when imported), wraps it with the
-// process-wide fault injector and observe-resilience. When governance is off
-// the resolved executor is a transparent no-op.
+// Init is the gs InitMethod: it builds the observer behind the guarded
+// statement path. Governance (the resilience executor) is armed separately by
+// [Client.ArmGovernance], which the gs wiring calls with the injected beans —
+// see that method for why it is not part of this lifecycle hook.
 func (o *Client) Init() error {
 	o.obs = newDBObserver("cassandra")
-	o.resource = resilience.ResourceLabel("cassandra", o.cfg.Hosts[0])
-	o.exec = fault.WrapExecutor(resilience.ExecutorFor("cassandra", o.resource))
+	return nil
+}
+
+// ArmGovernance arms the governance-driven resilience stack. It is called by
+// the gs wiring with the injected beans — nil when the container has no
+// starter-governance, and nil from a standalone caller, both of which mean
+// "governance off".
+//
+// The stack is fault( observe( core ) ): the executor [Manager.ClientExecutorFor]
+// returns already carries the resilience observe layer around the
+// limiter/breaker/retry core, and fault.WrapClientExecutor wraps the operation fn that
+// executor runs — so an injected fault flows through retry/breaker/timeout
+// exactly as a downstream failure would, instead of short-circuiting where none
+// of those mechanisms are in play. The observer [Client.Init] builds stays
+// innermost and times the statement itself. inj is
+// nil-safe: with no injector (governance off / fault disabled) WrapClientExecutor
+// returns the inner executor unchanged, so the fault layer is a transparent
+// pass-through. Resolution is deferred to call time, so the order of this arming
+// relative to starter-governance's wiring is irrelevant.
+func (o *Client) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector) error {
+	// A nil manager is the unwired case — a container without
+	// starter-governance (the wiring injects it nullably, so it is nil there
+	// too), or a standalone caller that built the client itself. A fresh
+	// unarmed manager is exactly
+	// "governance off": every resolve is an observe-only pass-through.
+	// Normalizing here keeps the rest of this method (and every caller) free of
+	// nil branches.
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	o.service = resilience.ServiceLabel("cassandra", o.cfg.Hosts[0])
+	o.exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("cassandra", o.service), o.service, inj)
 	return nil
 }
 
@@ -89,7 +129,7 @@ func (o *Client) guard(ctx context.Context, op, stmt string, call func(context.C
 	if o.exec == nil {
 		return call(ctx)
 	}
-	return o.exec.Execute(ctx, o.resource, call)
+	return o.exec.Execute(ctx, call)
 }
 
 // Exec executes a statement synchronously through the guarded path. It is now

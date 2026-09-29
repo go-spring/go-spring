@@ -26,7 +26,7 @@ import (
 // Address must be explicitly configured; the server won't start without it.
 //
 // Inbound admission (rate-limit / bulkhead / breaker) no longer has a per-server
-// resilience binding here: it flows through the neutral resilience.ExecutorFor
+// resilience binding here: it flows through the neutral resilience.ClientExecutorFor
 // seam (backed by starter-govern when armed), so an incoming request's protection
 // policy is governed alongside every outbound client and hot-reloads without
 // this starter coupling to cloud/governance. Fault injection stays server-local (it
@@ -86,12 +86,12 @@ type MiddlewareConfig struct {
 // (the default — it costs a single header lookup per request) the LoadTest
 // middleware reads the marker header off the incoming request and tags the
 // request context, so every downstream handler, middleware and outbound client
-// can tell synthetic load apart from real traffic via traffic.IsLoadTest. The
+// can tell synthetic load apart from real traffic through the propagator's
+// IsLoadTest. The
 // header name defaults to the canonical X-LoadTest used across go-spring; set it
 // to match whatever an upstream proxy or load generator sends.
 type LoadTestConfig struct {
-	Enabled bool   `value:"${enabled:=true}"`
-	Header  string `value:"${header:=X-LoadTest}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // RequestIDConfig toggles per-request id generation and propagation. It is on

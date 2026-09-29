@@ -24,31 +24,35 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 )
 
 const rulesV1 = `govern.enabled=true
-govern.default.attempt-timeout=100ms
+govern.client.default.attempt-timeout=100ms
 `
 
 const rulesV2 = `govern.enabled=true
-govern.default.attempt-timeout=300ms
-govern.default.max-retries=1
+govern.client.default.attempt-timeout=300ms
+govern.client.default.max-retries=1
 `
 
 // YAML variants of the same rules, to exercise format-by-extension and the
 // malformed/empty cases (properties syntax almost never hard-fails).
 const rulesV1YAML = `govern:
   enabled: true
-  default:
-    attempt-timeout: 100ms
+  client:
+    default:
+      attempt-timeout: 100ms
 `
 
 const rulesV2YAML = `govern:
   enabled: true
-  default:
-    attempt-timeout: 300ms
-    max-retries: 1
+  client:
+    default:
+      attempt-timeout: 300ms
+      max-retries: 1
 `
 
 // writeRules writes a rules file and returns its path.
@@ -67,13 +71,13 @@ func awaitCfg(t *testing.T, s *FileSource, d time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if cfg := s.Snapshot(); cfg.Default.AttemptTimeout == d {
+		if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout == d {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	cfg := s.Snapshot()
-	t.Fatalf("snapshot default timeout: want %v, got %v", d, cfg.Default.AttemptTimeout)
+	t.Fatalf("snapshot default timeout: want %v, got %v", d, cfg.Client.Default.AttemptTimeout)
 }
 
 func TestFileSource_InitialSnapshot(t *testing.T) {
@@ -84,7 +88,7 @@ func TestFileSource_InitialSnapshot(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	cfg := s.Snapshot()
-	if !cfg.Enabled || cfg.Default.AttemptTimeout != 100*time.Millisecond {
+	if !cfg.Enabled || cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
 		t.Fatalf("initial snapshot wrong: %+v", cfg)
 	}
 }
@@ -119,8 +123,8 @@ func TestFileSource_HotReload(t *testing.T) {
 	awaitCfg(t, s, 300*time.Millisecond)
 	mu.Lock()
 	defer mu.Unlock()
-	if got.Default.MaxRetries != 1 {
-		t.Fatalf("pushed config should carry the new rules: %+v", got.Default)
+	if got.Client.Default.MaxRetries != 1 {
+		t.Fatalf("pushed config should carry the new rules: %+v", got.Client.Default)
 	}
 }
 
@@ -155,8 +159,8 @@ func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitStable()
-	if cfg := s.Snapshot(); cfg.Default.AttemptTimeout != 100*time.Millisecond {
-		t.Fatalf("malformed edit must keep last good snapshot: %+v", cfg.Default)
+	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+		t.Fatalf("malformed edit must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 
 	// Empty file: parses "fine" but carries no govern.* keys — a truncating
@@ -165,8 +169,8 @@ func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitStable()
-	if cfg := s.Snapshot(); cfg.Default.AttemptTimeout != 100*time.Millisecond {
-		t.Fatalf("empty edit must keep last good snapshot: %+v", cfg.Default)
+	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+		t.Fatalf("empty edit must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 	if pushes != 0 {
 		t.Fatalf("no bad edit may push, got %d pushes", pushes)
@@ -191,13 +195,12 @@ func TestFileSource_MissingFileFailsFast(t *testing.T) {
 	}
 }
 
-// TestFileSource_EndToEndWithCenter wires the source into the governance
-// singleton through the PUBLIC facade (Arm + SetSource — the same Source
-// contract the starter's bean injection feeds) and asserts the fan-out reaches
-// a registered label on a live file edit.
+// TestFileSource_EndToEndWithCenter wires the source into a governance center
+// built directly over its own module authorities (the same Center.SetSource
+// contract the starter's bean injection drives) and asserts the fan-out reaches
+// a subscribed label on a live file edit. There is no process-global to reset:
+// the center and its authorities belong to this test alone.
 func TestFileSource_EndToEndWithCenter(t *testing.T) {
-	defer governance.Reset()
-
 	path := writeRules(t, rulesV1)
 	s, err := NewFileSource(path)
 	if err != nil {
@@ -208,16 +211,18 @@ func TestFileSource_EndToEndWithCenter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	governance.Arm(governance.Config{})
-	governance.SetSource(s)
+	res := resilience.NewManager()
+	ctr := governance.NewCenter(governance.Config{},
+		res, loadbalance.NewManager(), fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil))
+	ctr.SetSource(s) // adopts the source's initial snapshot, arming res
 
 	var mu sync.Mutex
-	var got resilience.Policy
-	governance.Register("demo:resource", func(p resilience.Policy) { mu.Lock(); got = p; mu.Unlock() })
+	var got resilience.ClientPolicy
+	res.Subscribe("demo:service", func(p resilience.ClientPolicy) { mu.Lock(); got = p; mu.Unlock() })
 	mu.Lock()
-	if got.Timeout != 100*time.Millisecond {
+	if got.AttemptTimeout != 100*time.Millisecond {
 		mu.Unlock()
-		t.Fatalf("armed policy: want 100ms, got %v", got.Timeout)
+		t.Fatalf("armed policy: want 100ms, got %v", got.AttemptTimeout)
 	}
 	mu.Unlock()
 
@@ -227,7 +232,7 @@ func TestFileSource_EndToEndWithCenter(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		mu.Lock()
-		done := got.Timeout == 300*time.Millisecond
+		done := got.AttemptTimeout == 300*time.Millisecond
 		mu.Unlock()
 		if done {
 			return // fan-out delivered

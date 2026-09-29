@@ -151,11 +151,12 @@ govern.source.file.path=conf/govern.yaml
 ```yaml
 govern:
   enabled: true
-  fault:
-    enabled: false        # 改成 true 即"点火"，无需重启
-    rate: 0.2
-    error: timeout
-    scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
+  server:
+    fault:
+      enabled: false        # 改成 true 即"点火"，无需重启
+      rate: 0.2
+      error: timeout
+      scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
 ```
 
 **验证**（与 `example/check.sh` 断言同构——X-App 头、X-Request-Id 头、JSON 体、
@@ -205,7 +206,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 理由（源自 `applyMiddlewares` 注释，已核对）：
 
 - **LoadTest 最外层**：标记在任何东西之前落到请求 context 上，后续每一层——以及
-  handler 调用的每个出站 client——都能用 `traffic.IsLoadTest(ctx)` 分流。单次头查找
+  handler 调用的每个出站 client——都能用 propagator 的 `IsLoadTest(ctx)` 分流。单次头查找
   （`Header.Peek`）；无标记即空操作。
 - **Recovery**（starter 自有 `Recover()`，非 hertz contrib 中间件）兜住所有内层 panic，
   上报共享 goutil panic 链（统一 panic 策略），然后 500 中止。
@@ -222,7 +223,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 
 带 `X-LoadTest: 1` 的 `GET /echo/world`，fault scope 已启用：
 
-1. LoadTest 打标（`traffic.WithLoadTest(ctx, "http-header")`）
+1. LoadTest 打标（`prop.Extract(ctx, <hertz 头 carrier>)`）
 2. Recovery 布防（`defer`/`recover`）
 3. RequestID：hertz-contrib/requestid 生成/透传 id → 响应头；
    `propagateRequestID` 把 id 复制到请求 ctx
@@ -231,7 +232,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 5. Metrics 加 in-flight 量表、起耗时观测
 6. AccessLog 布防（字段在出口捕获）
 7. SecureHeaders/CORS/Gzip 按配置（引擎独立执行 `maxBodySize`）
-8. fault：`fault.Apply(ctx, fault.InjectorFor(), "hertz", handler)`——`scope: loadtest`
+8. fault：`fault.ApplyServer(ctx, inj, "hertz", handler)`（inj = 注入的 bean）——`scope: loadtest`
    且有标记时，约 `rate` 比例的请求拿到注入错误 → 503；其余放行
 9. 你的路由执行；响应按 6→5→4→3 解栈：访问记录落盘（按状态定级）、耗时/计数入库、
    in-flight 减一、span 结束（5xx 标 Error）、id 头写回。
@@ -261,9 +262,9 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 
 | Key | 默认 | 说明 |
 |-----|------|------|
-| `middleware.loadtest.enabled` / `.header` | 开 / `X-LoadTest` | 标记头名；空则回落 `traffic.HeaderLoadTest`。 |
+| `middleware.loadtest.enabled` | 开 | 标记头经 propagator 的 `Extract` 落 ctx；用哪个头是 propagator bean 的事，不在本 starter。 |
 | `middleware.recovery.enabled` | 开 | 关掉后请求 goroutine 的 panic 会打崩整个进程（hertz 核心行为）。 |
-| `middleware.requestId.enabled` | 开 | hertz-contrib/requestid 默认头 `X-Request-Id`；缺失生成、存在透传。⚠ 无可配置头 key（loadtest 有）。 |
+| `middleware.requestId.enabled` | 开 | hertz-contrib/requestid 默认头 `X-Request-Id`；缺失生成、存在透传。其头名固定为 hertz-contrib 默认。 |
 | `middleware.tracing.enabled` / `metrics.enabled` | 开 / 开 | 无 starter-otel 的 OTel 全局对象时空操作——没有任何告警。 |
 | `middleware.accessLog.enabled` / `.skipPaths` | 开 / — | skip 列表与健康路径合并。 |
 | `middleware.cors.enabled` + 7 个子 key（`allowAllOrigins`、`allowedOrigins`、`allowedMethods`、`allowedHeaders`、`exposeHeaders`、`allowCredentials`、`maxAge`） | 全关/空 | `allowedMethods` 空 → 代码默认全动词集（`corsMiddleware`）；配置启动期经 `c.Validate()` 校验——坏策略启动即失败报 `hertz: invalid cors config`，而非首个请求 panic。`allowAllOrigins` 与显式 `allowedOrigins` 互斥。 |
@@ -337,7 +338,7 @@ curl -i -H 'X-LoadTest: 1' 127.0.0.1:8003/echo/x       # ~20% → 503 service un
 ### 4.5 压测标记演练
 
 把 `scope` 换成 `real` 则注入作用于无标记流量——只在专用环境用。handler 里
-`traffic.IsLoadTest(ctx)` 分流同一标记，业务代码可在合成流量下自动降级功能。
+propagator 的 `IsLoadTest(ctx)` 分流同一标记，业务代码可在合成流量下自动降级功能。
 
 ---
 
@@ -378,6 +379,7 @@ curl -i -H 'X-LoadTest: 1' 127.0.0.1:8003/echo/x       # ~20% → 503 service un
    即开启 mTLS（`RequireAndVerifyClientCert`），与 starter-grpc 对齐；`server-name`/
    `insecure-skip-verify` 仍为客户端 key，server 侧无效果。
 5. 入站路径无韧性准入（限流/熔断）——与 starter-gin 不对称；fault 注入已接线、防护没有。
-6. `requestId` 组无可配置头 key（loadtest 有）——轻微不对称。
+6. `requestId` 与 `loadtest` 都不再暴露头名：标记头归 propagator bean，请求 id 归
+   hertz-contrib 默认。
 7. 无 `middleware.enabled` 总开关，与 echo/gin 不同——只有逐 key 开关（可能更安全；
    记录备跨家族一致性评审）。

@@ -160,9 +160,9 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     connection) stays in `config.go` / `starter.go`; only the resolver build
     lives here. Every discovery-mode pool is built the same way: with a
     suspension `Tracker`, `Pick` paired with `Complete` at the dial site, and
-    `Pool.BindSelection(entry label)` — so the entry's governance rule drives
-    `balancer` / `outlier-threshold` / `outlier-suspend-for` in place, through
-    the neutral `loadbalance` seam rather than by importing `cloud/governance`.
+    `lbMgr.Bind(pool, entry label)` on the injected `*loadbalance.Manager` — so the entry's
+    governance rule drives `balancer` / `outlier-threshold` / `outlier-suspend-for` in place,
+    through the `loadbalance` manager rather than by importing `cloud/governance`.
   - `resilience.go` — the wrapper bean's `ApplyResilience` InitMethod, the
     executor, and its `Close`/`CloseDriver` Destroy hook.
   - `observability.go` — the observe kit bridge (trace/metric/access-log hooks).
@@ -200,8 +200,9 @@ facilities.
 - **`starter-governance-sentinel`** contributes one process-wide bean — the
   `sentinel`-named `resilience.Driver` — into the governance center's driver
   directory. Imported alongside `starter-governance`, the governance document's
-  `govern.driver=sentinel` switches every client at once. No port, no keys of its
-  own.
+  `govern.driver=sentinel` switches every executor at once — inbound admission
+  included, since one `Driver` answers for both directions. No port, no keys of
+  its own.
 
 ### 2.5 Config-provider starters (remote configuration center)
 
@@ -424,8 +425,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     instrumented is invisible to it; this list is what makes "should have been
     done and was not" visible.
   - *accepted gaps* — `starter-oauth2-client` logs every business call through the
-    same resilience layer as `starter-http-client` (it reaches that layer via
-    `ExecutorFor` instead of calling `WrapExecutor` itself), but the
+    same resilience layer as `starter-http-client` (it reaches that layer via the injected
+    `resilience.Manager`'s `ExecutorFor` instead of composing the wrapper itself), but the
     token-endpoint exchange inside the oauth2 library bypasses that round tripper,
     so it is traced and not logged;
     kitex's and kratos's duration metrics carry no `status` dimension because the
@@ -477,10 +478,10 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    **Dials through discovery?** → build the pool as the same three-piece set every
    time: a `loadbalance.Tracker` attached, `Pool.Pick` paired with `Pool.Complete`
    at the dial site (feeding the dial outcome — without it the tracker is blind),
-   and `Pool.BindSelection(<entry label>)` with the *same* `resilience.ResourceLabel`
-   the entry's executor uses. That is what makes `balancer` /
-   `outlier-threshold` / `outlier-suspend-for` configurable through the governance
-   rule instead of hardcoded — no `balancer` key of your own, and no import of
+   and `lbMgr.Bind(pool, <entry label>)` on the injected `*loadbalance.Manager` with the
+   *same* `resilience.ServiceLabel` the entry's executor uses. That is what makes
+   `balancer` / `outlier-threshold` / `outlier-suspend-for` configurable through the
+   governance rule instead of hardcoded — no `balancer` key of your own, and no import of
    `cloud/governance`. A client that cannot re-pick (one-shot resolution, or a
    library that owns its own selector) stays out of this on purpose; say so in its
    USAGE.

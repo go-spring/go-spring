@@ -102,8 +102,8 @@ curl -i :9370/healthz                        # 路由表编译成功后 gateway 
 ```
 
 前置依赖:直连 `http(s)://` 目标无需任何外部系统。`lb://` 路由另需 discovery 后端
-(starter-registry-nacos 等);跨实例 `rateLimit` 需 redis 限流器;tracing 需 OTel
-collector(见 example-otel/conf)。
+(starter-registry-nacos 等);跨实例 `rateLimit` 需共享计数器存储
+(starter-ratelimit-redis);tracing 需 OTel collector(见 example-otel/conf)。
 
 ---
 
@@ -150,9 +150,9 @@ gs.Run()
    → 整次重编译中止。
 2. **Upstream 解析**(`parseUpstream`,compile.go:377)——`lb://svc` 变成 discovery 支撑的
    `Upstream`;其余必须能解析为 `http(s)://host`,否则报错。
-3. **Executor 解析**(compile.go:232)——非空 `resilience.policy` 必须指向
-   `spring.gateway.resilience` 下的某个 key;未知名字报错。Executor 来自
-   `resilience.ExecutorFor("gateway:<name>", "gateway:<name>")`(compile.go:211)——策略值全部归治理中心
+3. **ClientExecutor 解析**(compile.go:232)——非空 `resilience.policy` 必须指向
+   `spring.gateway.resilience` 下的某个 key;未知名字报错。ClientExecutor 来自注入的
+   `*resilience.Manager`:`mgr.ClientExecutorFor("gateway:<name>", "gateway:<name>")`——策略值全部归治理中心
    所有并可热更;治理未开时得到透明的 no-op executor。
 4. **代理 handler**(`newProxyHandler`,proxy.go:159)——见 §2.3。
 5. **Filter DSL 解析**(`buildFilters` → `splitFilters`,compile.go:268-373)——只在括号
@@ -214,9 +214,9 @@ gs.Run()
 | `priority` | int | 0 | 匹配顺序:priority 大的先被检查;并列(含全不配)回落到 id 升序——历史默认。随路由一起热更新。 | 重叠路径解析到 priority 更大(其次 id 更小)的路由;配了 priority 后改名 id 不再改变优先级。 |
 | `filters` | string | "" | filter DSL,见 §3.3;按声明顺序由外向内生效。 | 编译期(而非绑定期)报错。 |
 | `upstream.target` | string | — | **事实必填**:`lb://<service>` 或 `http(s)://host[:port]`。缺失/畸形 → `parseError`(compile.go:379-392)。 | 路由编译失败。 |
-| *(已移除)* | — | — | `upstream.balancer` 迁到治理:命中 `gateway:<route-id>` 的规则的 `govern.rules[N].balancer`。策略名未知会被忽略(沿用当前策略),不会让 reload 失败。 | 池是 push 时原地换策略,不需要重载路由表。 |
+| *(已移除)* | — | — | `upstream.balancer` 迁到治理:命中 `gateway:<route-id>` 的规则的 `govern.client.rules[N].balancer`。策略名未知会被忽略(沿用当前策略),不会让 reload 失败。 | 池是 push 时原地换策略,不需要重载路由表。 |
 | `upstream.discovery` | string | "" | 覆盖顶层 `discovery` 的每路由后端。 | |
-| *(已移除)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` 迁到治理:`govern.rules[N].outlier-threshold` / `.outlier-suspend-for`,`outlier-suspend-for` 留空回落 tracker 的 5s 默认。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
+| *(已移除)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` 迁到治理:`govern.client.rules[N].outlier-threshold` / `.outlier-suspend-for`,`outlier-suspend-for` 留空回落 tracker 的 5s 默认。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
 | `resilience.policy` | string | "" | 必须指向已存在的 `spring.gateway.resilience.<name>` key。⚠ 耦合:未知名字 → `unknown resilience policy` 编译错误(compile.go:236)。 | 启动失败 / reload 保留旧表。 |
 
 ⚠ **优先级耦合**:没有任何路由配 `priority` 时,匹配顺序按路由 id 排序(compile.go)。
@@ -240,7 +240,7 @@ gs.Run()
 | `rewriteHost(h)` | host | 覆写出站 Host。 |
 | `preserveHostHeader()` | — | 保留入站 Host 而非上游的;设置 Director 认领的标记(proxy.go:174)。 |
 | `requestId([header])` | 可选 | 确保存在 `X-Request-Id`(或指定 header);缺失时生成随机 128-bit hex。 |
-| `rateLimit(k=v,…)` | 见说明 | `rate`(req/s,**必填** >0)、`burst`、`driver`(默认 `default`;redis driver 提供跨实例预算)、`algorithm`(`token-bucket`/`sliding-window`)、`key`(默认 `route` / `ip`)。超限 → `429 Too Many Requests`;限流后端出错时 **fail open** 并打 Warn 日志(filter.go:269-277)。 |
+| `rateLimit(k=v,…)` | 见说明 | `rate`(req/s,**必填** >0)、`burst`、`algorithm`(默认 `token-bucket` / `sliding-window`)、`window`、`max-wait`、`key`(默认 `route` / `ip`)。超限 → `429 Too Many Requests`;计数器存储出错时 **fail open** 并打 Warn 日志。 |
 
 bean 型 token(从注入的 `Wrappers` map 解析,不走注册表):
 
@@ -354,11 +354,11 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
 | 启动失败 `route %q: gateway: invalid …` | 初始路由表有 parse error(predicate/upstream/filter) | 修字面量;首次编译按设计即致命(server.go:82)。 |
 | 日志出现 `route reload failed, keeping previous table` | 热编辑坏了;旧表仍在服务 | 修字面量再刷新;观察 `gateway.route_reload_errors`。 |
 | 永远 404 | 没有路由断言能匹配(path 拼写错、methods/host/headers 断言拒绝) | 记住按 priority→id 顺序取首个匹配;id 靠后的更具体路由赢不了靠前的重叠路由——配 `priority` 可覆盖。 |
-| `unknown resilience policy` | `resilience.policy` 指向的名字不在 `spring.gateway.resilience` 下 | 把名字加为(无值的)key;策略值来自治理规则文档(`govern.*`)、资源标签 `gateway:<name>`。 |
-| 遗留 `resilience.<name>.max-retries` 等不生效 | 设计如此——value 是空结构体;绑定器忽略子 key(route.go:121-128) | 把策略迁到治理中心,资源标签 `gateway:<name>`。 |
+| `unknown resilience policy` | `resilience.policy` 指向的名字不在 `spring.gateway.resilience` 下 | 把名字加为(无值的)key;策略值来自治理规则文档(`govern.*`)、服务标签 `gateway:<name>`。 |
+| 遗留 `resilience.<name>.max-retries` 等不生效 | 设计如此——value 是空结构体;绑定器忽略子 key(route.go:121-128) | 把策略迁到治理中心,服务标签 `gateway:<name>`。 |
 | `no FilterWrapper bean named …` | `jwt-auth(x)`/`lua(x)` 引用的 bean 未以 `gateway.FilterWrapper` 导出 | 用 `.Export(gs.As[gateway.FilterWrapper]())` 导出(bean 注入发生在 warmup 之前)。 |
 | `lb:// upstream cannot resolve … mesh mode active` | lb 路由缺 discovery 后端,或 mesh 模式开启 | 配 `upstream.discovery`/`spring.gateway.discovery`;mesh 模式下改路由到服务的稳定地址(proxy.go:115)。 |
-| 莫名 429 / 限流不跨实例 | `rateLimit` key 默认按路由 id;driver 默认 `default`(本地) | 按客户端用 `key=ip`;跨实例预算用 `redis` driver。 |
+| 莫名 429 / 限流不跨实例 | `rateLimit` key 默认按路由 id,内存计数器存储按副本计数 | 按客户端用 `key=ip`;跨实例预算需起一个贡献共享计数器存储的 starter(`starter-ratelimit-redis`)。 |
 | 上游收到错误 path/Host | stripPrefix 段数不对;Host 默认被改写 | 调 `stripPrefix(n)`;加 `preserveHostHeader()` 或 `rewriteHost(h)`。 |
 | `tracing.enabled=true` 却没有 trace | 未导入 starter-otel | 加上;否则 OTel 全局是静默空操作。 |
 

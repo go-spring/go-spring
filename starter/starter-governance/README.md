@@ -37,12 +37,14 @@ A rules file's keys are the `govern.*` namespace, and its format is detected by 
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
-  rules:
-    - resources: redis:cache
-      attempt-timeout: 50ms
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
+  client:
+    rules:
+      - service: redis:cache
+        attempt-timeout: 50ms
 ```
 
 Behavior highlights:

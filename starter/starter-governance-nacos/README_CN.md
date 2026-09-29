@@ -61,16 +61,18 @@ govern.source.nacos.group=DEFAULT_GROUP
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
-  rules:
-    - resources: demo:resource
-      attempt-timeout: 50ms
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
+  client:
+    rules:
+      - services: demo:service
+        attempt-timeout: 50ms
 ```
 
-每个已发布版本都会被重新解析并推送进治理中心。规则词表（`govern.enabled`、`govern.default.*`、
-`govern.rules[n].*`、`govern.fault.*`）属于治理域，完整参考见
+每个已发布版本都会被重新解析并推送进治理中心。规则词表（`govern.enabled`、`govern.client.default.*`、
+`govern.client.rules[n].*`、`govern.client.fault.*`）属于治理域，完整参考见
 [starter-governance 的 USAGE](../starter-governance/USAGE.md)。引入治理中心本身仍是
 [starter-governance](../starter-governance) 的职责——本模块只提供规则源。
 

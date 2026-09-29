@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -32,58 +33,69 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	// Blank-import both starters: starter-go-redis publishes the *redis.Client
-	// under spring.go-redis.instances.<name>, and starter-ratelimit-redis contributes a
-	// limiter driver per spring.ratelimit.redis.instances.<name> that reuses that client.
+	// Blank-import both starters: starter-go-redis publishes the *goredis.Client
+	// bean named by spring.ratelimit.redis.client, and starter-ratelimit-redis
+	// contributes the Redis-backed resilience.Counters store — the one the
+	// resilience driver injects, in place of the private per-executor stores a
+	// container with no store bean gets.
 	_ "go-spring.org/starter-go-redis"
 	_ "go-spring.org/starter-ratelimit-redis"
 )
 
-// The budget under test: burst 5, sustained 2/s. Slow enough that the smoke
-// test's first burst drains the bucket without a refill racing it, fast enough
-// that the refill check only waits ~2s.
-var (
+// The budget under test, configured as a governance rule in conf/govern.yaml:
+// burst 5, sustained 2/s. These constants mirror that rule so the assertions
+// below can name the numbers they expect; the executor reads the rule, not
+// them.
+const (
 	rate  = 2.0
 	burst = 5
 )
 
+// service is the resilience service label the two handlers share: the same
+// label means the same executor and the same scope, so both "replicas" spend
+// one budget per scope.
+const service = "ratelimit-redis:api"
+
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
+
+func init() {
+	gs.Provide(func(mgr *resilience.Manager) *gs.HttpServeMux {
+		// Handlers A and B model two replicas of a service: they share NO
+		// in-process state. Each gets its own executor handle for the same
+		// service label, and both draw on the one Redis-backed counter store
+		// this process contributed, so the budget is global.
+		mux := http.NewServeMux()
+		mux.Handle("/a/", serve(executor(mgr)))
+		mux.Handle("/b/", serve(executor(mgr)))
+		return &gs.HttpServeMux{Handler: mux}
+	})
+}
+
+// executor returns the handle for the shared service label. ClientExecutorFor
+// resolves its backing executor lazily, on each Execute, so the policy is read
+// after the governance center has gone live.
+func executor(mgr *resilience.Manager) resilience.ClientExecutor {
+	return mgr.ClientExecutorFor("ratelimit-redis", service)
+}
+
+// serve runs one protected call per request. The executor's rate-limit stage
+// charges the shared store; an over-budget call comes back as ErrRateLimited.
+func serve(exec resilience.ClientExecutor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := exec.Execute(r.Context(), func(context.Context) error { return nil })
+		switch {
+		case err == nil:
+			_, _ = w.Write([]byte("ok"))
+		case errors.Is(err, resilience.ErrRateLimited):
+			http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
+		default:
+			http.Error(w, "executor error: "+err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
 
 func main() {
 	flag.Parse()
-
-	// Handler A and handler B model two replicas of a service. They share NO
-	// in-process state; each builds its own limiter from the registered "redis"
-	// driver, and the budget is enforced by the shared Redis token bucket.
-	gs.Provide(func(d resilience.LimiterDriver) *gs.HttpServeMux {
-		limA, err := d.NewRateLimiter(resilience.LimitPolicy{Rate: rate, Burst: burst})
-		if err != nil {
-			panic(err)
-		}
-		limB, err := d.NewRateLimiter(resilience.LimitPolicy{Rate: rate, Burst: burst})
-		if err != nil {
-			panic(err)
-		}
-
-		mux := http.NewServeMux()
-		serve := func(l resilience.RateLimiter) http.HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request) {
-				ok, err := l.Allow(r.Context(), "api")
-				if err != nil {
-					http.Error(w, "limiter backend error: "+err.Error(), http.StatusInternalServerError)
-					return
-				}
-				if !ok {
-					http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
-					return
-				}
-				_, _ = w.Write([]byte("ok"))
-			}
-		}
-		mux.Handle("/a/", serve(limA))
-		mux.Handle("/b/", serve(limB))
-		return &gs.HttpServeMux{Handler: mux}
-	}, gs.TagArg("gateway"))
 
 	if !*manual {
 		go func() {
@@ -102,8 +114,8 @@ const base = "http://127.0.0.1:9090"
 
 func runTest() {
 	// Feature 1: shared budget across "replicas". Ten alternating requests
-	// against A and B: exactly `burst` pass in total, the rest get 429 —
-	// the bucket lives in Redis, not behind either handler.
+	// against A and B: exactly `burst` pass in total, the rest get 429 — the
+	// counter state lives in Redis, not behind either handler.
 	pass, limited := 0, 0
 	for i := 0; i < burst*2; i++ {
 		path := "/a/"

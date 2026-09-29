@@ -158,7 +158,7 @@ gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {
 ```
 
 `starter-session-redis` contributes that `session.SessionStore` per
-`spring.session.redis.instances.<name>` entry. An in-process store is
+`spring.session.redis.instances.<name>` entry. An in-memory store is
 contributed the same way: [example/](example/) defines a local starter in
 [starter.go](example/starter.go) that does it under
 `spring.session.memory.instances.<name>`, so the two backends differ by a

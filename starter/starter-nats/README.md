@@ -79,7 +79,9 @@ The driver is registered as a bean per configured instance, under the same name
 as the connection, so inject it by name like any client bean (`Driver
 messaging.Driver \`autowire:"main"\``). Beans are keyed by name *and* type, so
 it stays distinct from the raw `*Conn` bean. To build one by hand instead, call
-`StarterNats.NewDriver(conn)`.
+`StarterNats.NewDriver(conn, prop)`, where `prop` is the process's
+`traffic.Propagator` (a nil propagator falls back to
+`traffic.NewDefaultPropagator(traffic.DefaultBinding())`).
 
 Then publish and subscribe through the envelope:
 

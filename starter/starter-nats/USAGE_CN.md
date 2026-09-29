@@ -183,9 +183,10 @@ gs.Run()
   │           [driver.go:155-156]
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
   │           [driver.go:158-164]
-  ├─ applyResilience：fault.WrapExecutor(resilience.ExecutorFor("nats", resource))
-  │           —— 治理关闭时是透明 no-op executor
-  │           [driver.go:166; command.go:167-172]
+  ├─ applyResilience：fault.WrapClientExecutor(mgr.ClientExecutorFor("nats", service), service, inj)
+  │           —— mgr/inj = 容器注入 newConn 的 *resilience.Manager / *fault.Injector bean；
+  │             容器内无治理 bean 时是透明 no-op executor
+  │           [driver.go:173; command.go:167-172]
   ├─ Run / 就绪
   └─ SIGTERM：destroyConn → exec.Close()（错误在 Drain 后向上返回）再 Conn.Drain()
               —— 在途订阅收尾后关闭 socket [client.go:70-74]
@@ -203,8 +204,8 @@ gs.Run()
 1. 信封 → `nats.Msg{Subject, Data, Header}`；`messaging.Message.Key` 经保留 header
    `x-msg-key` 透传（消费侧还原进 `Key`，不会泄漏进 `Headers`）[driver.go:59-73]。
    空 header map → nil header。
-2. 压测标记：若 `traffic.IsLoadTest(ctx)`，写入 `X-LoadTest: 1`（canonical header 名），
-   供消费侧识别合成流量 [driver.go:62-67]。
+2. 压测标记：`prop.Inject(ctx, …)` 写入标记（canonical 为 `X-LoadTest: 1`），
+   供消费侧识别合成流量；非压测流量下是空操作，header map 按需分配。
 3. NewDriver 处包了 `messaging.Observe`：driver 运行前，装饰器已打开 producer span
    （经 Publish 的 ctx 挂到调用方活动 span 下）、`messaging.operation.*` 指标与
    access log，并把 W3C `traceparent` 注入 `msg.Headers`——第 1 步已将其映射进
@@ -252,12 +253,12 @@ executor 只经**方法**式选装入口触达 [command.go:152-160]：
 | `Conn.PublishGuarded(ctx, subj, data)` | span+metric+log（经 `PublishMsgContext`） | 是 |
 | `Conn.RequestGuarded(ctx, subj, data, timeout)` | **否** | 是 |
 
-`applyResilience` 内部包裹顺序 [command.go:167-172]：`ExecutorFor("nats", resource)`（治理中心
-背书；治理关闭时透明 no-op；已自带 observe 层——为熔断跳闸/拒绝/重试发
-span/counter/histogram——resilience 核心自身不发）→ `fault.WrapExecutor`（故障注入，最外层）。
+`applyResilience` 内部包裹顺序 [command.go:167-172]：`mgr.ClientExecutorFor("nats", service)`（由注入的
+`*resilience.Manager` bean 装备；容器内无治理 bean 时透明 no-op；已自带 observe 层——为熔断跳闸/拒绝/重试发
+span/counter/histogram——resilience 核心自身不发）→ `fault.WrapClientExecutor`（故障注入，最外层）。
 拒绝时 guarded 调用返回
 resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/请求不会被调用
-——[resilience_test.go:63-84] 有证明。`resource` 是 `nats:<name>` (colon format; falls back to `nats:<url>` when name unset)（按连接而非
+——[resilience_test.go:63-84] 有证明。`service` 是 `nats:<url>`（按连接而非
 按 subject）[driver.go:166]，限流/熔断状态在同一连接的全部 subject 间共享。
 
 `PublishGuarded` 接收调用方 ctx，并把它同时透传给 executor 与 producer span
@@ -282,7 +283,7 @@ struct——其子 key 属于 security，不属于本 starter。
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
 | `url` | string | — | **必填**（`expr:"$ != ''"` [config.go:31]）；逗号分隔多服务器交给 `nats.Connect`。 | 缺失/空 → 启动期绑定错误。 |
-| `name` | string | "" | 服务端连接名 + **治理 resource label 组成部分** [driver.go:166]。 | 空名可用；label 用 ""。 |
+| `name` | string | "" | 服务端连接名 + **治理 service label 组成部分** [driver.go:166]。 | 空名可用；label 用 ""。 |
 | `username` / `password` | string | "" | 都设置 → `nats.UserInfo`。与其他认证风格正交 [driver.go:60-62]。 | 只设 username → 发送空密码。 |
 | `token` | string | "" | → `nats.Token` [driver.go:63-65]。 | 与 username 并用 → nats option 后者覆盖（NATS 定义）。 |
 | `creds-file` | string | "" | JWT+nkey seed 文件 → `nats.UserCredentials` [driver.go:66-68]。 | 路径错误 → 启动失败。 |
@@ -326,7 +327,7 @@ false；恢复 broker → Info `nats reconnected to ...` [driver.go:57-65]。
 
 ### 4.3 治理标签核对
 
-executor 的 resource 是 `nats:<name>` (colon format; falls back to `nats:<url>` when name unset) [driver.go:166]。把 govern.yaml 规则限定到
+executor 的 service 是 `nats:<url>` [driver.go:166]。把 govern.yaml 规则限定到
 `nats:orders-service`（或前缀），策略即精确落到该连接。验证：wrapped-executor
 的拒绝会发 span + counter（`system="nats"`，由 resilience-observe 桥命名）
 [command.go:170-172]——演练后去 trace/metric 里 grep `nats`。

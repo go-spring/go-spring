@@ -28,6 +28,16 @@ import (
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/spring/gs"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Client is the bean Milvus connections are injected as. It embeds the SDK's
@@ -38,18 +48,30 @@ type Client struct {
 	cfg Config
 	// slot is armed by Init; the gRPC interceptors read it on every RPC.
 	slot *guardSlot
-	// exec is the resilience executor, resolved via resilience.ExecutorFor;
-	// no-op when governance is off.
-	exec resilience.Executor
-	// resource is the resilience resource key ("milvus:<addr>") exec scopes
+	// exec is the resilience executor built from the injected
+	// resilience.Manager; no-op when governance is off.
+	exec resilience.ClientExecutor
+	// service is the resilience service key ("milvus:<addr>") exec scopes
 	// limiter/breaker state by.
-	resource string
+	service string
+	// mgr and inj are the governance beans gs injects into the constructor
+	// (both nil in a standalone call). mgr is normalized in Init, since an
+	// unarmed manager is exactly the "governance off" pass-through while a nil
+	// pointer would panic on the method call; inj is nil-safe at its use site.
+	mgr *resilience.Manager
+	inj *fault.Injector
 }
 
 // newClient builds the Milvus client — with the guard interceptors installed
 // on the dial options — and probes it once so a wrong address or bad
-// credential fails fast at startup instead of on first query.
-func newClient(ctx context.Context, c Config) (*Client, error) {
+// credential fails fast at startup instead of on first query. The governance
+// beans (mgr, inj) are retained on the Client for Init to build the executor
+// with; both are nil in a standalone, non-gs call.
+//
+// cp carries the application context gs injects into a constructor (a bare
+// context.Context is not an injectable bean).
+func newClient(cp *gs.ContextProvider, c Config, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+	ctx := cp.Context
 	slot := &guardSlot{}
 	cl, err := client.NewClient(ctx, client.Config{
 		Address:     c.Addr,
@@ -66,19 +88,21 @@ func newClient(ctx context.Context, c Config) (*Client, error) {
 		_ = cl.Close()
 		return nil, err
 	}
-	return &Client{Client: cl, cfg: c, slot: slot}, nil
+	return &Client{Client: cl, cfg: c, slot: slot, mgr: mgr, inj: inj}, nil
 }
 
-// Init is the gs InitMethod: it resolves the executor through the neutral
-// [resilience.ExecutorFor] seam (backed by starter-govern's governance center
-// when imported), wraps it with the process-wide fault injector and
-// observe-resilience, and arms the slot the interceptors read. When governance
-// is off the resolved executor is a transparent no-op.
+// Init is the gs InitMethod: it builds the executor from the injected
+// resilience.Manager, wraps it with the fault injector and observe-resilience,
+// and arms the slot the interceptors read. When governance is off the executor
+// is a transparent no-op.
 func (o *Client) Init() error {
-	o.resource = resilience.ResourceLabel("milvus", o.cfg.Addr)
-	exec := fault.WrapExecutor(resilience.ExecutorFor("milvus", o.resource))
+	o.service = resilience.ServiceLabel("milvus", o.cfg.Addr)
+	if o.mgr == nil {
+		o.mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(o.mgr.ClientExecutorFor("milvus", o.service), o.service, o.inj)
 	o.exec = exec
-	o.slot.arm(exec, o.resource)
+	o.slot.arm(exec)
 	return nil
 }
 

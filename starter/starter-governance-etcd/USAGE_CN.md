@@ -6,7 +6,7 @@
 （`governance.go`、`governance_test.go`）、共享解析子包
 [`starter-governance/rules`](../starter-governance/rules)、
 [`cloud/governance`](../../cloud/governance) 的两方法 `governance.Source` 契约
-（`source.go`、`global.go`）与可运行、自校验的 [example](example)
+（`source.go`、`center.go`）与可运行、自校验的 [example](example)
 （`example/main.go`、`example/check.sh`）核实。etcd 自身客户端语义见
 [etcd 官方文档](https://etcd.io/docs/latest/)——本文只写 go-spring 的增量。
 
@@ -52,14 +52,18 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/governance"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-governance-etcd"
 )
 
-type printer struct{}
+type printer struct {
+    // mgr 是治理 starter 的 resilience manager bean，在此注入，
+    // 而不是从进程级 seam 解析。
+    mgr *resilience.Manager
+}
 
 func (p *printer) Run(ctx context.Context) error {
     // 有意非阻塞：阻塞的 Runner 会拖住应用启动。
@@ -70,14 +74,23 @@ func (p *printer) Run(ctx context.Context) error {
                 return
             case <-time.After(time.Second):
             }
-            pol := governance.PolicyFor("demo:resource")
+            pol := p.mgr.PolicyFor("demo:service")
             fmt.Printf("enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.Timeout, pol.MaxRetries)
         }
     }()
     return nil
 }
 
-func init() { gs.Provide(&printer{}).Export(gs.As[gs.Runner]()) }
+// newPrinter 在注入的 manager 之上构建 printer。manager 为 nil——没有
+// starter-governance 的容器——时归一化为一个新的未武装实例。
+func newPrinter(mgr *resilience.Manager) *printer {
+    if mgr == nil {
+        mgr = resilience.NewManager()
+    }
+    return &printer{mgr: mgr}
+}
+
+func init() { gs.Provide(newPrinter, gs.IndexArg(0, gs.TagArg("?"))).Export(gs.As[gs.Runner]()) }
 
 func main() { gs.Run() }
 ```
@@ -96,9 +109,10 @@ govern.source.etcd.key=/app/govern.yaml
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
 ```
 
 **验证**（本地 etcd，可用 `example/docker-compose.yml`）：
@@ -155,7 +169,7 @@ import starter-governance-etcd
   ├─ import starter-governance：其接线 Bean 字段注入该 Source（autowire "?"）
   │     └─ BindDefault(src) 订阅 + 采纳 Snapshot()；GoLive() 武装中心
   ├─ 源 Bean Init：watch goroutine 启动
-  └─ SIGTERM 时：wiring.Destroy() → governance.CloseActiveSource() → EtcdSource.Close()
+  └─ SIGTERM 时：wiring.Destroy() → center.Close() → EtcdSource.Close()
 ```
 
 本源自建并独占其 etcd client（`clientv3.New`，5s 拨号超时），与任何配置导入的引导 client
@@ -210,7 +224,7 @@ logger.governance_etcd.tag=_app_governance_etcd
 
 文档本身由 `rules.Parse` 解析，它要求**至少有一个 `govern.*` 键**——能解析但一个 `govern.*`
 键都没有的文档（被截断或被清空）是错误，而非"没有治理"。规则键（`govern.enabled`、
-`govern.default.*`、`govern.rules[n].*`、`govern.fault.*`）见
+`govern.client.default.*`、`govern.client.rules[n].*`、`govern.client.fault.*`）见
 [`starter-governance`](../starter-governance/USAGE_CN.md)，各后端完全一致。
 
 ---
@@ -236,7 +250,7 @@ go run . &
 etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
 ```
 
-无需重启；`governance.PolicyFor("...")` 下次调用即翻到新超时。
+无需重启；注入的 resilience 权威的 `PolicyFor("...")` 下次调用即翻到新超时。
 
 ### 4.3 坏值保留上一份好快照
 

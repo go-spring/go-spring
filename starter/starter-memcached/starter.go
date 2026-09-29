@@ -20,11 +20,11 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/starter-memcached/bytecache"
-	health2 "go-spring.org/starter-memcached/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
@@ -48,22 +48,35 @@ func init() {
 			// unset → "?" (nullable by-type — injects the single Driver bean when
 			// a company provides one, nil otherwise, and newClient falls back to
 			// DefaultDriver); set → that bean name, and naming a bean that does
-			// not exist fails loud.
+			// not exist fails loud. The trailing governance beans
+			// (*resilience.Manager / *fault.Injector) are injected nullable ("?"),
+			// since starter-governance may legitimately be absent from the
+			// container.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.memcached.instances."+name+".driver:=${spring.memcached.default.driver:=?}}")),
 				gs.IndexArg(4, gs.TagArg("${spring.memcached.instances."+name+".discovery:=${spring.memcached.default.discovery:=none}}?")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container (the normal
+				// case) and are absent from a container without it. Without the
+				// "?" gs would treat an absent bean as a wiring error and the app
+				// would not boot, turning "governance is off" into "governance
+				// must be imported" — which is not the contract: (*Client).Init
+				// treats a nil bean as an unarmed authority, a transparent
+				// pass-through.
+				gs.IndexArg(5, gs.TagArg("?")),
+				gs.IndexArg(6, gs.TagArg("?")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
-			r.Provide(func(c *Client) *health.Indicator { return health2.NewClientHealth(name, c.Client) }, gs.TagArg(name)).Name("memcache:" + name).Caller(1)
+			r.Provide(func(c *Client) *health.Indicator { return NewClientHealth(name, c.Client) }, gs.TagArg(name)).Name("memcache:" + name).Caller(1)
 			// Expose this instance as a cache.Cache (the adapter lives in
-			// starter-memcached/bytecache). Named "memcached:<name>" — cache.Cache
+			// this package). Named "memcached:<name>" — cache.Cache
 			// is a shared type across backend starters, so the prefix keeps the
 			// (name, type) key unique. Un-injected, the bean never instantiates.
 			r.Provide(func(c *Client) *cache.Cache {
-				return cache.New(bytecache.NewByteCache(c.Client))
+				return cache.New(NewByteCache(c))
 			}, gs.TagArg(name)).Name("memcached:" + name).Caller(1)
 			return nil
 		})
@@ -75,7 +88,12 @@ func init() {
 //
 // disc is the discovery backend bean cited by the entry's ${discovery} label
 // (nil when the key is unset or the entry uses a static server list).
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, disc discovery.Discovery) (*Client, error) {
+//
+// mgr and inj are the governance beans the container injects (both nil in a
+// standalone, non-gs call); they are retained on the Client for Init
+// (InitMethod) to arm the resilience executor with.
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, disc discovery.Discovery,
+	mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating memcached client, servers=%v service-name=%s", c.Servers, c.ServiceName)
 
 	if len(c.Servers) == 0 && c.ServiceName == "" {
@@ -108,7 +126,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, disc di
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "memcached client initialized, servers=%v", c.Servers)
 	// Return the wrapper; gs calls Init (InitMethod) on it to build the
-	// observer + executor. Close (Destroy) stops any discovery
-	// Resolver watch and closes the executor.
-	return &Client{Client: client, name: name}, nil
+	// observer + executor from the injected governance beans. Close (Destroy)
+	// stops any discovery Resolver watch and closes the executor.
+	return &Client{Client: client, serviceName: c.ServiceName, name: name, mgr: mgr, inj: inj}, nil
 }

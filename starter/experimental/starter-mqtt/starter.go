@@ -18,6 +18,7 @@ package StarterMQTT
 
 import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
@@ -43,6 +44,16 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.mqtt.instances."+name+".driver:=${spring.mqtt.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. applyResilience
+				// treats a nil bean as an unarmed authority, i.e. a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(5, gs.TagArg("?")), // inj *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
@@ -62,8 +73,9 @@ func init() {
 // credentials, will). After the client is built it is connected so a misconfigured
 // broker URL, bad credentials or TLS mismatch fail fast at startup instead of
 // surfacing on the first publish/consume, then the resilience executor is
-// attached.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (mqtt.Client, error) {
+// attached from the injected governance beans (mgr, inj) — both nil in a
+// standalone, non-gs call, which applyResilience treats as "governance off".
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (mqtt.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating mqtt client, broker=%s client-id=%s", c.Broker, c.ClientID)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -87,7 +99,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (mqtt.C
 		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: connect failed broker=%s: %v", c.Broker, err)
 		return nil, err
 	}
-	if err := applyResilience(client, resilience.ResourceLabel("mqtt", c.Broker)); err != nil {
+	if err := applyResilience(client, resilience.ServiceLabel("mqtt", c.Broker), mgr, inj); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: resilience setup failed: %v", err)
 		client.Disconnect(250)
 		return nil, err

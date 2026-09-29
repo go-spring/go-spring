@@ -96,11 +96,11 @@ func TestSqliteDefaultsNotTriggered(t *testing.T) {
 }
 
 // TestBuildSpec pins the Spec the dialect hands to gormcore for this Config:
-// the engine resource label and the observe flag flow through.
+// the engine service label and the observe flag flow through.
 func TestBuildSpec(t *testing.T) {
 	c := Config{File: ":memory:"}
 	c.ObserveEnabled = false
-	spec, err := build(context.Background(), c, nil)
+	spec, err := build(context.Background(), c, nil, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("build must return a dialector")

@@ -36,16 +36,24 @@ const LuohuaResilienceDriverName = "luohua"
 // observable luohua marker, so a mis-wired backend is discoverable instead of
 // silently passing through — the same "default + observable company flavor"
 // shape the redigo [RedisDriver] layers on its pools.
-type luohuaResilienceDriver struct{}
+type luohuaResilienceDriver struct {
+	// counters is the rate-limit counter store the container holds, if any,
+	// passed through so a luohua fleet keeps whatever sharing breadth the rest
+	// of the process has (a Redis store, typically, which is what carries a
+	// budget across replicas). It is nullable, and nil is the ordinary case: no
+	// backend starter contributed a store, so the bundled engine gives each
+	// executor a private one — one budget per service label all the same.
+	counters resilience.Counters
+}
 
-// NewExecutor builds a luohua-flavored [resilience.Executor] on top of the
-// bundled engine.
-func (luohuaResilienceDriver) NewExecutor(p resilience.Policy) (resilience.Executor, error) {
-	inner, err := resilience.NewDefaultDriver().NewExecutor(p)
+// NewClientExecutor builds a luohua-flavored [resilience.ClientExecutor] for service on top
+// of the bundled engine.
+func (d luohuaResilienceDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (resilience.ClientExecutor, error) {
+	inner, err := resilience.NewDefaultDriver(d.counters).NewClientExecutor(service, p)
 	if err != nil {
 		return nil, err
 	}
-	return &luohuaExecutor{inner: inner}, nil
+	return &luohuaExecutor{inner: inner, service: service}, nil
 }
 
 func init() {
@@ -55,8 +63,9 @@ func init() {
 	// "default" (and sentinel's blank-import contribution) this is an init-time
 	// availability registration, not a config-gated activation — the driver only
 	// governs when the process actually selects it.
-	gs.Provide(func() *luohuaResilienceDriver { return &luohuaResilienceDriver{} }).
-		Name(LuohuaResilienceDriverName).
+	gs.Provide(func(c resilience.Counters) *luohuaResilienceDriver {
+		return &luohuaResilienceDriver{counters: c}
+	}, gs.TagArg("?")).Name(LuohuaResilienceDriverName).
 		Export(gs.As[resilience.Driver]()).
 		Caller(1)
 }
@@ -64,22 +73,23 @@ func init() {
 // luohuaExecutor wraps the inner (default) executor and stamps each governed
 // call with the luohua verification marker before delegating.
 type luohuaExecutor struct {
-	inner resilience.Executor
+	inner   resilience.ClientExecutor
+	service string
 }
 
-func (e *luohuaExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
+func (e *luohuaExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	// luohua verification flavor: a per-call trace tagged luohua/governance, so
 	// a process where govern.driver=luohua is in effect is observable in logs.
 	// This is the company hook point — a real luohua company would hang its own
 	// policy/abort/audit logic here.
-	log.Debugf(ctx, log.TagAppDef, "luohua/governance resource=%s", resource)
-	return e.inner.Execute(ctx, resource, fn)
+	log.Debugf(ctx, log.TagAppDef, "luohua/governance service=%s", e.service)
+	return e.inner.Execute(ctx, fn)
 }
 
 // SetBreakerEventListener forwards to the inner executor so the breakers of the
 // driver beneath luohua still emit state transitions. A wrapper that swallowed
 // this capability would silently disable breaker observability for
-// govern.driver=luohua, since [resilience.ExecutorFor] attaches the observe
+// govern.driver=luohua, since [resilience.ClientExecutorFor] attaches the observe
 // listener through this handshake.
 func (e *luohuaExecutor) SetBreakerEventListener(l resilience.BreakerEventListener) {
 	if s, ok := e.inner.(resilience.BreakerEventListenerSetter); ok {
@@ -87,6 +97,44 @@ func (e *luohuaExecutor) SetBreakerEventListener(l resilience.BreakerEventListen
 	}
 }
 
-func (e *luohuaExecutor) Refresh(p resilience.Policy) error { return e.inner.Refresh(p) }
+func (e *luohuaExecutor) Refresh(p resilience.ClientPolicy) error { return e.inner.Refresh(p) }
 
 func (e *luohuaExecutor) Close() error { return e.inner.Close() }
+
+// NewServerExecutor is the inbound counterpart of [luohuaResilienceDriver.NewClientExecutor]:
+// it builds the bundled driver's admission executor and wraps it with the same
+// luohua marker, so govern.driver=luohua flavors inbound admission too — a fleet
+// whose only outbound calls were marked would leave the inbound half of its
+// governance unobservable.
+func (d luohuaResilienceDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (resilience.ServerExecutor, error) {
+	inner, err := resilience.NewDefaultDriver(d.counters).NewServerExecutor(service, p)
+	if err != nil {
+		return nil, err
+	}
+	return &luohuaServerExecutor{inner: inner, service: service}, nil
+}
+
+// luohuaServerExecutor is the inbound twin of [luohuaExecutor]: the same
+// marker, the same delegating contract, refreshed with the admission model it was
+// built from.
+type luohuaServerExecutor struct {
+	inner   resilience.ServerExecutor
+	service string
+}
+
+func (e *luohuaServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+	log.Debugf(ctx, log.TagAppDef, "luohua/governance inbound service=%s", e.service)
+	return e.inner.Execute(ctx, fn)
+}
+
+func (e *luohuaServerExecutor) SetBreakerEventListener(l resilience.BreakerEventListener) {
+	if s, ok := e.inner.(resilience.BreakerEventListenerSetter); ok {
+		s.SetBreakerEventListener(l)
+	}
+}
+
+func (e *luohuaServerExecutor) Refresh(p resilience.ServerPolicy) error {
+	return e.inner.Refresh(p)
+}
+
+func (e *luohuaServerExecutor) Close() error { return e.inner.Close() }

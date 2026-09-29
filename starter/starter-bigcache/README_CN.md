@@ -42,7 +42,7 @@ type Service struct {
 ```
 
 注入的 bean 是 starter 的 `*Cache` 封装（原生 `*bigcache.BigCache` 以内嵌字段
-`s.Cache.BigCache` 提供）；其 Get/Set/Delete 会经过 observe 与 resilience 接线。
+`s.Cache.BigCache` 提供）；其 Get/Set/Delete 会经过 observe 与 resilience 两层。
 
 ### 4. 使用 BigCache 实例
 

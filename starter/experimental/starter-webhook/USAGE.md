@@ -109,7 +109,7 @@ spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.trace.insecure=true
 
-# --- governance (optional; resource label webhook:alert:dingtalk) ------------
+# --- governance (optional; service label webhook:alert:dingtalk) ------------
 govern.source.file.path=conf/govern.yaml
 ```
 
@@ -134,22 +134,23 @@ curl -s -X POST http://127.0.0.1:18080/hook ...   # or watch the span/metrics be
 
 ```
 import starter-webhook
-  └─ init(): gs.Group("${spring.webhook}", newNotifier, nil)  [thin, mail-style:
-        stateless per call, no destroy hook]
+  └─ init(): gs.Module(OnProperty("spring.webhook.instances")) → one
+        r.Provide(newNotifier) per entry [thin, mail-style: stateless per call,
+        no destroy hook]
 
 gs.Run()
   ├─ config bind: spring.webhook.instances.<name>.* → Config (value tags; url required via expr)
   ├─ newNotifier:
   │    ├─ dry-run buildPayload with an empty Notification — validates channel value and
   │    │   (for dingtalk/feishu) that signing works, WITHOUT any network call
-  │    ├─ exec := fault.WrapExecutor(resilience.ExecutorFor("webhook", "webhook:<name>:<channel>"))
+  │    ├─ exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("webhook", "webhook:<name>:<channel>"), "webhook:<name>:<channel>", inj)
   │    └─ &http.Client{Timeout: c.Timeout} — per-notifier client, no pooling
   ├─ bean ready: *Notifier injected wherever `autowire:"<name>"` appears
   ├─ Run / serve: no background goroutines, no probe (rationale in §Activation)
   └─ SIGTERM: no destroy hook (each Send is a stateless HTTP request)
 ```
 
-The resilience resource label is `webhook:<name>:<channel>` — per instance **and** channel,
+The resilience service label is `webhook:<name>:<channel>` — per instance **and** channel,
 so two notifiers on the same URL but different names get independent breaker/limiter state
 (contrast starter-s3, whose label is endpoint-only).
 
@@ -170,7 +171,7 @@ so two notifiers on the same URL but different names get independent breaker/lim
 2. **Span** — `startSend` opens the producer span `webhook.send` (attributes
    `messaging.system=webhook`, `webhook.channel`, `webhook.destination.host` —
    scheme://host only, keeping signed URLs out of telemetry).
-3. **Executor** — the POST closure runs through the governance executor under the resource
+3. **ClientExecutor** — the POST closure runs through the governance executor under the service
    label: rate limit / circuit breaking / retry (if configured via governance) / fault
    injection when starter-governance is armed; transparent pass-through otherwise.
    The observe layer resolved inside the executor emits the outcome span + call counter +
@@ -181,7 +182,7 @@ so two notifiers on the same URL but different names get independent breaker/lim
 5. `EndSpan(span, err)` records the failure and closes the span.
 
 Retry behavior: **no built-in retry**. Retries happen only if a retry policy for the
-`webhook:<name>:<channel>` resource is armed through starter-governance; without governance
+`webhook:<name>:<channel>` service is armed through starter-governance; without governance
 a failed POST returns the error to the caller immediately. ⚠ DingTalk/Feishu report some
 failures as HTTP 200 with an error body — `post` checks only the status code, so those are
 treated as success (see suspect §6).

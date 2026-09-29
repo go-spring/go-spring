@@ -44,7 +44,7 @@ knowledge into stdlib. Sibling patterns Saga and TCC live in
   the transaction and injects the XID.
 - **`Observer` seam** for per-branch-phase spans, so a starter attaches otel
   without stdlib importing otel.
-- **`RetryPolicy = resilience.Policy` alias** — reused so second-phase retries
+- **`RetryPolicy = resilience.ClientPolicy` alias** — reused so second-phase retries
   and outbound resilience share one config surface.
 
 ## 3. Constraints

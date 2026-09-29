@@ -14,79 +14,80 @@
  * limitations under the License.
  */
 
-// Package StarterRatelimitRedis contributes Redis-backed limiter drivers to a
-// Go-Spring application: one resilience.LimiterDriver per entry under
-// spring.ratelimit.redis.instances.<name>, each reusing the *redis.Client bean named by
-// its `client` field (provided by starter-go-redis under
-// spring.go-redis.instances.<client>).
+// Package StarterRatelimitRedis contributes a [resilience.Counters] backed by
+// Redis — the store the rate-limit stage of a [resilience.ClientExecutor] spends — so
+// one budget per scope covers every replica instead of each replica counting its
+// own.
 //
-// This is a Contributor-archetype starter: it exports no port of its own, it
-// adapts the existing Lua token-bucket implementation
-// (starter-go-redis/experimental) into a bean named after the driver, exported
-// as [resilience.LimiterDriver] — the container is the limiter directory — so
-// consumers that select limiters by driver name (starter-gateway's rateLimit
-// filter, app code) switch from per-replica to cross-replica limiting purely by
-// changing that name:
+// Nothing to step aside for: without this starter the process contributes NO
+// counter store, and each executor counts in a budget of its own (one budget per
+// service label, since the manager builds one executor per label).
+// Contributing this one is the whole switch — starter-governance's driver bean
+// injects whatever store the container holds, so every executor it builds, the
+// bundled "default" as much as any other backend, spends the shared budget.
+// Only the WIDTH of a budget changes, never what it covers: the scope is still
+// the target's label.
 //
-//	# before: each replica limits on its own counters
-//	spring.gateway.route... = rateLimit(rate=100)
-//	# after: one global budget shared by every replica
-//	spring.ratelimit.redis.instances.web.client = cache
-//	spring.ratelimit.redis.instances.web.driver = redis
-//	spring.gateway.route... = rateLimit(rate=100,driver=redis)
+// The store reuses a *goredis.Client bean published by starter-go-redis under
+// spring.go-redis.instances.<name>, named by the starter's one property:
 //
-// The resilience executor driver is untouched: breaker/retry/timeout keep the
-// "default" (or sentinel) driver while limiting alone moves to Redis, because
-// the limiter registry is independent of the executor registry by design.
+//	import _ "go-spring.org/starter-ratelimit-redis"
+//	# spring.ratelimit.redis.client=cache
+//
+// The rate-limit knobs themselves (rate-limit/burst/algorithm/window/
+// rate-limit-max-wait) are resilience.ClientPolicy fields on the governance rule
+// document, not starter configuration: this starter only decides WHERE the
+// counters live.
+//
+// The executor/breaker/retry driver is untouched — rejecting or queueing
+// over-limit calls stays the executor's job, and no route argument or per-route
+// switch is involved.
 package StarterRatelimitRedis
 
 import (
 	"context"
 
-	goredis "go-spring.org/starter-go-redis"
-
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
+	goredis "go-spring.org/starter-go-redis"
+	experimental "go-spring.org/starter-go-redis/experimental"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
 
+// configured turns the starter on when its block is present. An imported but
+// unconfigured starter contributes nothing, so each executor keeps counting in
+// its own budget — limiting stays per-replica until the application asks for a
+// shared one.
+var configured = gs.OnProperty("spring.ratelimit.redis")
+
 func init() {
-	gs.Module(gs.OnProperty("spring.ratelimit.redis.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.ratelimit.redis.instances}", func(name string, c Config) error {
-			// Fail fast: an empty client would otherwise surface only at the
-			// first Allow call — as an unlimited pass-through.
-			if c.Client == "" {
-				return errutil.Explain(nil, "ratelimit-redis: instance %q missing required property %q",
-					name, "spring.ratelimit.redis.instances."+name+".client")
-			}
-			driver := c.Driver
-			if driver == "" {
-				driver = name
-			}
-			// Fail fast on a driver name claimed by another instance of THIS
-			// starter: two instances sharing one name would otherwise surface as
-			// a duplicate-bean error, which names the bean but not the two
-			// instance keys that collided.
-			if err := claimDriverName(driver, name); err != nil {
-				return err
-			}
-			log.Debugf(context.Background(), log.TagAppDef, "creating redis limiter driver instance=%s driver=%s client=%s", name, driver, c.Client)
-			// TagArg injects the *redis.Client bean by name — the seam that ties
-			// this driver to a specific redis instance. The bean is NAMED after
-			// the driver, not the instance, because the container's limiter
-			// directory is keyed by the driver name the rateLimit filter's
-			// driver= argument addresses; Export makes it visible to name-keyed
-			// LimiterDriver injection.
-			r.Provide(func(client *goredis.Client) *Driver {
-				return driverFor(driver, client)
-			}, gs.TagArg(c.Client)).
-				Name(driver).
-				Export(gs.As[resilience.LimiterDriver]()).
-				Caller(1)
-			return nil
-		})
-	})
+	gs.Module(configured, setup)
+}
+
+// setup binds ${spring.ratelimit.redis} and contributes the Redis-backed store.
+// It is a gs.Module, not a plain bean, because the block's presence is the
+// switch: the module's condition gates the contribution, and setup binds the
+// block before providing the bean.
+func setup(r gs.BeanProvider, p flatten.Storage) error {
+	var c Config
+	if err := conf.Bind(p, &c, "${spring.ratelimit.redis}"); err != nil {
+		return err
+	}
+	// Fail fast: an empty client would otherwise surface only at the first
+	// protected call — as a limiting decision made by the wrong store.
+	if c.Client == "" {
+		return errutil.Explain(nil, "ratelimit-redis: missing required property %q", "spring.ratelimit.redis.client")
+	}
+	log.Debugf(context.Background(), log.TagAppDef, "contributing redis rate-limit counters client=%s", c.Client)
+	// TagArg injects the *goredis.Client bean by name — the seam that ties the
+	// counters to one Redis instance. The ctor returns the interface type, so gs
+	// indexes the bean under resilience.Counters: no Export is needed, and that
+	// type is what starter-governance's driver bean injects.
+	r.Provide(func(client *goredis.Client) (resilience.Counters, error) {
+		return experimental.NewCounters(client.UniversalClient)
+	}, gs.TagArg(c.Client)).Caller(1)
+	return nil
 }

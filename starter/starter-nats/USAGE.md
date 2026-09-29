@@ -186,9 +186,10 @@ gs.Run()
   │           [driver.go:155-156]
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
   │           [driver.go:158-164]
-  ├─ applyResilience: fault.WrapExecutor(resilience.ExecutorFor("nats", resource))
-  │           — no-op executor when governance is off
-  │           [driver.go:166; command.go:167-172]
+  ├─ applyResilience: fault.WrapClientExecutor(mgr.ClientExecutorFor("nats", service), service, inj)
+  │           — mgr/inj = the *resilience.Manager / *fault.Injector beans injected
+  │             into newConn; a no-op executor when no governance bean is present
+  │           [driver.go:173; command.go:167-172]
   ├─ Run / readiness
   └─ SIGTERM: destroyConn → exec.Close() (error returned after Drain) then Conn.Drain()
               — in-flight subscriptions finish, then the socket closes [client.go:70-74]
@@ -206,8 +207,9 @@ are logged (`nats disconnected` Warn) and the client auto-reconnects [driver.go:
 1. Envelope → `nats.Msg{Subject, Data, Header}`; `messaging.Message.Key` rides the
    reserved `x-msg-key` header (restored into `Key` on consume; never leaks into
    `Headers`) [driver.go:59-73]. Empty header map → nil header.
-2. Load-test marker: if `traffic.IsLoadTest(ctx)`, `X-LoadTest: 1` (canonical header name)
-   is stamped so consumers recognise synthetic load [driver.go:62-67].
+2. Load-test marker: `prop.Inject(ctx, …)` stamps the marker (canonical
+   `X-LoadTest: 1`) so consumers recognise synthetic load; it is a no-op outside
+   load-test traffic, and the header map is allocated on demand.
 3. The driver is wrapped in `messaging.Observe` at [NewDriver]: before the driver runs,
    the decorator opened the producer span (parented on the caller's active span via the
    Publish ctx), the `messaging.operation.*` metrics and the access log, and injected the
@@ -259,13 +261,14 @@ resilience executor is reached only through opt-in **methods** [command.go:152-1
 | `Conn.PublishGuarded(ctx, subj, data)` | span+metric+log (routes through `PublishMsgContext`) | yes |
 | `Conn.RequestGuarded(ctx, subj, data, timeout)` | **no** | yes |
 
-Wrap order inside `applyResilience` [command.go:167-172]: `ExecutorFor("nats", resource)` (governance
-center-backed; transparent no-op when governance off; already carries the observe layer —
+Wrap order inside `applyResilience` [command.go:167-172]: `mgr.ClientExecutorFor("nats", service)` (armed
+from the injected `*resilience.Manager` bean; transparent no-op when no governance bean is present;
+already carries the observe layer —
 spans/counters/histograms for breaker trips, rejects, retries — the resilience core emits none) →
-`fault.WrapExecutor` (fault injection, outermost). On rejection the guarded call returns
+`fault.WrapClientExecutor` (fault injection, outermost). On rejection the guarded call returns
 a resilience sentinel (`ErrRateLimited` / `ErrCircuitOpen`) and the underlying publish/request
-is never invoked — proven by [resilience_test.go:63-84]. The `resource` is
-`nats:<name>` (colon format; falls back to `nats:<url>` when name unset) (per connection, not per subject) [driver.go:166], so limiter/breaker
+is never invoked — proven by [resilience_test.go:63-84]. The `service` is
+`nats:<url>` (per connection, not per subject) [driver.go:166], so limiter/breaker
 state is shared across all subjects on one connection.
 
 `PublishGuarded` takes the caller's ctx and threads it into both the executor and the producer span
@@ -290,7 +293,7 @@ struct — its sub-keys belong to security, not this starter.
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `url` | string | — | **Required** (`expr:"$ != ''"` [config.go:31]); comma-separated server list handed to `nats.Connect`. | Missing/empty → bind error at boot. |
-| `name` | string | "" | Connection name reported to the server + **governance resource label component** [driver.go:166]. | Empty name still works; label uses "". |
+| `name` | string | "" | Connection name reported to the server + **governance service label component** [driver.go:166]. | Empty name still works; label uses "". |
 | `username` / `password` | string | "" | Both set → `nats.UserInfo`. Orthogonal to other auth styles [driver.go:60-62]. | Username without password → empty password sent. |
 | `token` | string | "" | → `nats.Token` [driver.go:63-65]. | Combined with username → last-applied nats option wins (NATS-defined). |
 | `creds-file` | string | "" | JWT+nkey seed file → `nats.UserCredentials` [driver.go:66-68]. | Bad path → connect fails at boot. |
@@ -335,7 +338,7 @@ With governance on and a tight rate limit (§1 govern.yaml):
 
 ### 4.3 Governance label check
 
-The executor resource is `nats:<name>` (colon format; falls back to `nats:<url>` when name unset) [driver.go:166]. Scope your govern.yaml
+The executor service is `nats:<url>` [driver.go:166]. Scope your govern.yaml
 rules to `nats:orders-service` (or a prefix) so the policy lands on exactly
 this connection. Verify: wrapped-executor rejections emit a span + counter named by the
 resilience-observe bridge (`system="nats"`) [command.go:170-172] — grep traces/metrics for

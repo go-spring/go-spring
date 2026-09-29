@@ -3,40 +3,42 @@
 [English](USAGE.md) | [中文](USAGE_CN.md)
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
-（`starter.go`、`config.go`、`driver.go`）、`starter-go-redis/experimental/ratelimit.go` 的
-令牌桶实现、[resilience 限流器注册表](../../../cloud/governance/resilience) 与自校验的
-[example/](example)（`example/check.sh`）核实。限流语义（令牌桶）是标准概念——本文只写
-go-spring 的增量。
+（`starter.go`、`config.go`）、`starter-go-redis/experimental/ratelimit.go` 的计数器实现、
+把存储注入 driver bean 的 [governance 装配](../../starter-governance/wiring.go) 以及
+自校验的 [example/](example)（`example/check.sh`）核实。限流语义本身记在
+`cloud/governance/resilience`——本文只写本 starter 的增量。
 
-**激活方式**：任一 `spring.ratelimit.redis.instances.<name>.*` 配置即为每个 `<name>` 注册一个
-`resilience.LimiterDriver` bean，bean 名即 driver 名；每个实例复用其 `client` 字段指名的
-`*redis.Client` bean（由 starter-go-redis 在 `spring.go-redis.instances.<client>` 下提供）。
-消费方按名在容器的 limiter 目录里查——starter-gateway 的 `rateLimit(driver=...)` 过滤器，
-或注入 `map[string]resilience.LimiterDriver`。
+**激活方式**：任一 `spring.ratelimit.redis.*` 键即武装 starter 的 module，且该配置块唯一的键
+必须设置：`spring.ratelimit.redis.client` 指名的 `*goredis.Client` bean（由 starter-go-redis
+在 `spring.go-redis.instances.<client>` 下提供）所连的 Redis 实例承载计数器。starter 只贡献
+一个 `resilience.Counters` 类型的 bean。容器里没有它时，每个 executor 用自己的一份预算计数，
+所以贡献本存储就是全部的开关：[starter-governance](../../starter-governance) 的 driver bean
+会注入它，进程内每个 executor 从此花 Redis 里每个 scope 的同一个预算——而且是跨副本的，这是
+executor 本地预算做不到的。
 
 ---
 
 ## 1. 完整工程示例
 
-两个 HTTP"副本"共享 Redis 中的一个全局令牌预算——跨副本限流的演练场。文件树：
+两个 HTTP"副本"共享 Redis 中的一个全局令牌预算——跨副本限流的演练场。文件树（即仓内示例，
+原文照录）：
 
 ```
 demo/
 ├── go.mod
 ├── main.go
-├── web.go
 └── conf/
-    └── app.properties
+    ├── app.properties
+    └── govern.yaml
 ```
 
 **go.mod**（关键依赖）：
 
 ```
 require (
-    github.com/redis/go-redis/v9        latest
-    go-spring.org/spring                v1.3.x
-    go-spring.org/starter-go-redis      latest
-    go-spring.org/starter-ratelimit-redis latest
+    go-spring.org/spring                   v1.3.x
+    go-spring.org/starter-go-redis         latest
+    go-spring.org/starter-ratelimit-redis  latest
 )
 ```
 
@@ -54,87 +56,88 @@ import (
 func main() { gs.Run() }
 ```
 
-**web.go** —— 应用的全部限流面：
+**web.go** —— 应用的全部限流面。预算来自治理规则里的 `resilience.ClientPolicy`，调用走 executor：
 
 ```go
 package main
 
 import (
+    "context"
+    "errors"
     "net/http"
 
     "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 )
 
-func init() {
-    // 按实例名注入 Driver bean；LimitPolicy 是每个调用点的事，
-    // 不是 starter 配置。
-    gs.Provide(func(d resilience.LimiterDriver) *gs.HttpServeMux {
-        mk := func() resilience.RateLimiter {
-            lim, err := d.NewRateLimiter(resilience.LimitPolicy{
-                Rate:  2,  // 每秒令牌数
-                Burst: 5,  // 桶容量；<=0 时默认 max(1, Rate)
-            })
-            if err != nil {
-                panic(err) // "no redis client bound" —— 装配 bug
-            }
-            return lim
-        }
-        limA, limB := mk(), mk() // 两个"副本"——Redis 里一份共享预算
+// 两个 handler 共享的 service label；conf/govern.yaml 里的规则以它为键，
+// 它也是预算按之保存的 scope。
+const service = "ratelimit-redis:api"
 
+func init() {
+    gs.Provide(func(mgr *resilience.Manager) *gs.HttpServeMux {
         mux := http.NewServeMux()
-        serve := func(l resilience.RateLimiter) http.HandlerFunc {
-            return func(w http.ResponseWriter, r *http.Request) {
-                ok, err := l.Allow(r.Context(), "api") // key "api"，挂在 "ratelimit:" 下
-                if err != nil {
-                    http.Error(w, "limiter backend error: "+err.Error(), http.StatusInternalServerError)
-                    return
-                }
-                if !ok {
-                    http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
-                    return
-                }
-                _, _ = w.Write([]byte("ok"))
-            }
-        }
-        mux.Handle("/a/", serve(limA))
-        mux.Handle("/b/", serve(limB))
+        // 两个 handler 模拟两个副本：不共享任何进程内状态。两者都花本进程
+        // 贡献的同一个 Redis 计数器存储。
+        mux.Handle("/a/", serve(mgr.ClientExecutorFor("ratelimit-redis", service)))
+        mux.Handle("/b/", serve(mgr.ClientExecutorFor("ratelimit-redis", service)))
         return &gs.HttpServeMux{Handler: mux}
-    }, gs.TagArg("gateway"))
+    })
+}
+
+func serve(exec resilience.ClientExecutor) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        err := exec.Execute(r.Context(), func(context.Context) error { return nil })
+        switch {
+        case err == nil:
+            _, _ = w.Write([]byte("ok"))
+        case errors.Is(err, resilience.ErrRateLimited):
+            http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
+        default:
+            http.Error(w, "executor error: "+err.Error(), http.StatusInternalServerError)
+        }
+    }
 }
 ```
 
-**conf/app.properties** —— 上述代码用到的完整注释配置面：
+**conf/app.properties** —— 上述用到的全部配置面，含注释：
 
 ```properties
-# --- redis client（starter-go-redis 持有；driver 按名复用） --------------------
+# --- redis 客户端（归 starter-go-redis；计数器通过它计数）-------------------
 spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
-# --- limiter driver --------------------------------------------------------------
-spring.ratelimit.redis.instances.gateway.client=cache
-spring.ratelimit.redis.instances.gateway.driver=redis    # 注册进 limiter 注册表的名字
-                                               # （不设时默认用实例名）
+# --- 本 starter 唯一的键 ------------------------------------------------------
+# 哪个 *goredis.Client bean 提供共享计数器。必填。
+spring.ratelimit.redis.client=cache
+
+# --- 治理规则（独立文件，独立刷新通道）---------------------------------------
+govern.source.file.path=conf/govern.yaml
 ```
 
-不用代码、纯配置消费（配 starter-gateway）：
+**conf/govern.yaml** —— 预算本身，是 policy，不是 starter 配置：
 
-```properties
-spring.gateway.route.demo.filters=rateLimit(rate=100,driver=redis)
+```yaml
+govern:
+  enabled: true
+  client:
+    rules:
+      - service: ratelimit-redis:api
+        rate-limit: 2      # 持续 2/s
+        burst: 5           # 瞬时额度
 ```
 
-从"每副本各自限流"切到"跨副本共享预算"只是换 driver 名；breaker/retry/timeout 仍走默认
-driver——limiter 注册表与 executor 注册表相互独立。
+规则对被匹配的 service 完整取代 `govern.client.default`（不做逐字段合并），所以规则要带上该 service
+需要的全部参数。
 
-**验证**（本地 Redis，可用 `example/docker-compose.yml`）：
+**验证**（本地 Redis，例如 `example/docker-compose.yml`）：
 
 ```bash
 go run . &
 for i in $(seq 1 10); do curl -s -o/dev/null -w '%{http_code}\n' localhost:9090/a/; done
-# 前 5 个（burst）→ 200，其后 → 429；/b/ 消耗的是同一份预算
+# 前 5 个（burst）→ 200，其余 → 429；/b/ 花的是同一个预算
 ```
 
-可运行的 [example/](example) 断言共享预算与持续补充；`example/check.sh` 用 docker compose
-包裹执行。
+可运行的 [example/](example) 断言共享预算与补充；`example/check.sh` 用 docker compose 包起来。
 
 ---
 
@@ -145,141 +148,137 @@ for i in $(seq 1 10); do curl -s -o/dev/null -w '%{http_code}\n' localhost:9090/
 ```
 import starter-go-redis + starter-ratelimit-redis
   └─ gs.Module(gs.OnProperty("spring.ratelimit.redis"))
-        └─ conf.BindEach("${spring.ratelimit.redis}") 逐条目 <name>：
-             ├─ client == "" 时 fail fast（启动报错并点名实例）
-             ├─ driver 名 = c.Driver，未设时用实例 <name>
-             └─ Provide func(client) *Driver → bean 名为 <driver>
-                  （gs.TagArg(c.Client)；Export resilience.LimiterDriver——Export
-                   让具体的 *Driver 能被按名接口注入看见）
+        └─ conf.Bind("${spring.ratelimit.redis}") → Config{Client}
+             ├─ Client == "" 时 fail fast（启动报错并点名该属性）
+             └─ Provide func(client *goredis.Client) (resilience.Counters, error)
+                  （gs.TagArg(c.Client)；接口返回类型即 bean 类型——
+                   不需要 Export）
 
 gs.Run()
-  ├─ 配置绑定：${spring.ratelimit.redis.instances.<name>} → Config（value tag）
-  ├─ ctor：driverFor(driver, client)
-  │    - 进程级 sync.Map "drivers"：每个 driver 名一个 Driver，后续装配
-  │      （如同一测试二进制里的 gs.RunTest）重绑 client 而非再建一个
-  ├─ bean 装配：bean 名即 driver 名，重名（本模块另一实例、或别的模块的后端）
-  │      在启动期以 duplicate bean 报错
-  └─ SIGTERM：无需释放——driver 是进程级的，redis client 的 Close
-                 属于 starter-go-redis。
+  ├─ 本存储成为容器里唯一的 resilience.Counters bean
+  ├─ bean 装配：client 指名的 *goredis.Client bean 按名注入；
+  │     NewCounters 包住它的 UniversalClient（client 为 nil 是构造函数错误）
+  ├─ resilience driver bean 注入 resilience.Counters，所以它构建的每个 executor
+  │     都花这份存储——存储本身也因此被实例化（driver 需要它）
+  └─ SIGTERM 时：无需释放——存储自身不持有状态，redis 客户端的 Close
+                 归 starter-go-redis
 ```
 
-Driver bean 本身是薄适配器：`NewRateLimiter(p)` 在调用时捕获已绑定的 client（RWMutex
-保护），委托给 starter-go-redis 的 `experimental.NewRateLimiter`——Lua 令牌桶真正住在那里。
+### 2.2 一次 Execute 调用，逐层
 
-### 2.2 一次 Allow 的逐层走读
+`exec.Execute(ctx, fn)` 配规则 `rate-limit: 2, burst: 5`：
 
-`LimitPolicy{Rate: 2, Burst: 5}` 下 `lim.Allow(ctx, "api")`：
+1. executor 的限流阶段调用 `Counters.Allow(ctx, service, policy, 1)`——executor 对每次尝试都
+   计费，scope 即该 executor 构建时绑定的 service。
+2. `RateLimit` 为零直接放行为无限流，**不碰 Redis**。规则丢失意味着完全没有限流：这是治理
+   配置的症状，不是存储的症状。
+3. 原子 Lua 脚本完全在 Redis 内跑，键为 `ratelimit:<scope>`（`tokens` + `ts` 的 hash）：按
+   `elapsed × rate` 补充并以 `burst` 封顶、够则扣减、`HSET` 新状态、`EXPIRE` 到
+   `ceil(burst/rate)+1` 秒（空闲键自删——被弃用的预算不会泄漏）。
+4. 脚本回答 1 或 0。因为状态在 Redis，所有花同一个键的副本共享一个预算——本 starter 的全部
+   意义所在。
+5. 0 以 `resilience.ErrRateLimited` 返回；调用方回 429（示例与 gateway 都如此）。
+6. `Burst <= 0` 在存储内部缺省为 `max(1, int(RateLimit))`。
+7. Redis 故障时 `Allow` 返回错误：executor 记录后放行，所以计数器后端坏掉退化为"不限流"，
+   而不是一次故障。
 
-1. `Rate` 为 0 时短路为无限放行且**不发生 Redis 往返**（配置丢失 = 不限流，属危险面）。
-2. 原子 Lua 脚本完全在 Redis 内对 key `ratelimit:api`（`tokens` + `ts` 的 hash）执行：
-   按 `流逝秒数 × rate` 补充并封顶 `burst`，够则扣一个令牌，`HSET` 新状态，并把 key
-   `EXPIRE` 为 `ceil(burst/rate)+1` 秒（闲置 key 自删——废弃预算不泄漏）。
-3. 返回 `1`/放行或 `0`/限流。状态在 Redis 里，因此同一 key 上的所有副本共享一份预算——
-   这正是本 starter 的意义。
-4. `Burst <= 0` 在构造 limiter 时默认为 `max(1, int(Rate))`。
-5. Redis 故障时 `Allow` 返回错误——fail-open 还是 fail-closed 由消费方决定（example 答
-   500；gateway 按它自己的策略）。
+### 2.3 存储不做的事
 
-### 2.3 driver 不做的事
-
-- `LimitPolicy.Algorithm` 现在**响亮报错**：策略要求的算法不是令牌桶（`""` 或
-  `token-bucket`）时 `NewRateLimiter` 直接返回错误——此前 `SlidingWindow` 会被静默降级成
-  突发特性完全不同的令牌桶。`Window` 仍被忽略（对令牌桶无意义，策略契约如此）。
-- 副本时钟偏差影响补充公平性：`now` 由调用方传入脚本。
-- 自身无指标——限流可观测（若有）在消费侧（gateway/resilience executor）呈现。
+- 不实现 sliding window：`algorithm: sliding-window` 的 policy 按令牌桶计数。共享预算的正确性
+  来自那条原子脚本，而窗口无法廉价地套进一条脚本——计数器共享时请用令牌桶。
+- 不排队：`rate-limit-max-wait` 被忽略，超限的单位立即被拒绝。等一个令牌意味着轮询 Redis；
+  排队留给内存存储。
+- 自身不记指标——被限流的调用体现在 executor 观测层的 `status=rate_limited` 上。
+- 不裁决：拒绝超限调用、计数器出错时放行还是拒绝，都是 executor 的决定。
 
 ---
 
-## 3. 逐 key 行为参考
+## 3. 配置参考
 
-所有 key 位于 `spring.ratelimit.redis.instances.<name>` 之下（精确匹配，无宽松形态）。
+所有键都在 `spring.ratelimit.redis` 下（精确匹配，无宽松形式）。配置块存在即武装本 starter；
+其下不应再有别的键。
 
-| Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
-|-----|------|--------|-------------|----------|
-| `client` | string | — | **必填**。`spring.go-redis.instances.<client>` 下的 `*redis.Client` bean 名，注册前检查。`TagArg(c.Client)` 即 driver 与 redis 实例的接线 seam。 | 空 → 启动失败并点名实例；拼错 → 启动期装配失败。 |
-| `driver` | string | 实例名 | 本 limiter 的 bean 贡献名——gateway `rateLimit(driver=...)` 在容器 limiter 目录里查的字符串。⚠ 不设时默认用实例名：`spring.ratelimit.redis.instances.web.*` 会静默贡献名为 `web` 的 driver，可能与无关名字冲突。重名启动期快速失败：本 starter 两个实例撞名 → 启动错误点名双方；名字已被别的模块 bean 占用 → 装配期 duplicate bean 报错。 | 同名实例 → 启动报错点名双方；意外的默认名 → 消费方解析到计划外的 limiter。 |
+| 键 | 类型 | 缺省 | 行为 / 交互 | 配错的后果 |
+|----|------|------|-------------|------------|
+| `client` | string | — | **必填。** `spring.go-redis.instances.<client>` 下 `*goredis.Client` bean 的名字；注册 bean 前先校验，构造时以 `TagArg(c.Client)` 注入。 | 为空 → 启动失败并点名该属性；名字没有对应 bean → 启动期 bean 装配失败。 |
 
-⚠ 限流参数（`rate`、`burst`、key）由每个调用点的 `resilience.LimitPolicy` 给出，不在此
-配置里。
+⚠ 限流参数（`rate-limit`、`burst`、`algorithm`、`window`、`rate-limit-max-wait`）**不是**
+starter 配置：它们是治理规则文档上按 service 生效的 `resilience.ClientPolicy` 字段。
 
 ---
 
 ## 4. 验证与故障演练
 
-### 4.1 跨"副本"共享预算
+### 4.1 "副本"之间共享预算
 
 ```bash
 for i in $(seq 1 10); do
   p=/a/; [ $((i%2)) -eq 1 ] || p=/b/
   curl -s -o/dev/null -w "%{http_code} " localhost:9090$p
-done; echo   # 恰好 burst 个 200 在 /a/ 与 /b/ 间交错，其余 429
+done; echo   # 恰好 burst 个 200 交替落在 /a/ 与 /b/，其余 429
 ```
 
-Redis 里的状态：
+Redis 中的状态：
 
 ```bash
-redis-cli hgetall ratelimit:api          # tokens + ts
-redis-cli ttl ratelimit:api              # ceil(burst/rate)+1
+redis-cli hgetall ratelimit:ratelimit-redis:api   # tokens + ts
+redis-cli ttl ratelimit:ratelimit-redis:api       # ceil(burst/rate)+1
 ```
 
-### 4.2 burst + 补充演练
+### 4.2 突发与补充演练
 
-`Rate: 2, Burst: 5`：打光预算（5×200）后等 ~2.2 秒，确认持续补充（curl 循环 → 至少
-`rate × 秒数` 个新 200）。example 自动化了这一步。
+配 `rate-limit: 2, burst: 5`：先抽干预算（5×200），再等约 2.2 秒确认连续补充（`curl` 循环 →
+至少 `rate × 秒数` 个新的 200）。示例正是自动做这件事。
 
-### 4.3 fail-open/fail-closed 演练
+### 4.3 Redis 故障演练
 
-停掉 Redis（`docker compose stop redis`）：每次 `Allow` 返回错误。你的 handler 决定——
-example 答 500（fail-closed）。按端点敏感度显式选择。
+停掉 Redis（`docker compose stop redis`）：每次 `Allow` 报错，executor 放行，于是各端点继续
+回 200——计数器后端坏掉意味着不限流，而不是故障。恢复 Redis 即恢复限流。
 
-### 4.4 目录查询演练
+### 4.4 经 starter-gateway
 
-应用代码（gateway 路由表拿到 limiter 目录的方式一样）：
+没有任何按路由的东西：本 starter 配好后，一条路由的预算已经由所有 gateway 副本共享，过滤器
+只写预算。
 
-```go
-// limiters map[string]resilience.LimiterDriver `autowire:"?"`
-d, err := resilience.Resolve(limiters, "redis", resilience.DefaultLimiterName,
-    "limiter driver", resilience.NewDefaultLimiterDriver())
-lim, _ := d.NewRateLimiter(resilience.LimitPolicy{Rate: 100, Burst: 50})
-ok, err := lim.Allow(ctx, "tenant-a")
+```properties
+spring.gateway.route.api.filters=rateLimit(rate=100)
 ```
 
 ### 4.5 冒烟测试
 
 ```bash
-cd example && ./check.sh    # docker 门控：compose 起 redis，跑自校验 example
+cd example && ./check.sh    # docker 门控：compose 起 redis，跑自断言示例
 ```
 
 ---
 
-## 5. 排障表
+## 5. 排错
 
-| 症状 | 可能原因 | 处置 |
+| 症状 | 可能原因 | 处理 |
 |------|----------|------|
-| 启动报 `ratelimit-redis: instance "<n>" missing required property ...client` | 实例缺 `client` | 设为既有 `spring.go-redis.instances.<name>`。 |
-| 启动失败：driver 名 `x` 被实例 `a`、`b` 同时占用 | 两个实例解析到同一 driver 名（别忘了实例名默认） | 每个实例显式、互异的 `driver`（错误会点名双方）。 |
-| `NewRateLimiter` 报 `no redis client bound` | driver bean 未走 client 注入路径构造 | 只经 starter 构造（或测试中先绑定再使用）。 |
-| 完全不限流、全 200 | `LimitPolicy.Rate` 为 0 → 无限放行 | 显式设置正的 Rate。 |
-| `NewRateLimiter` 对 `Algorithm: SlidingWindow` 报错 | 不支持的算法现在响亮拒绝（只有令牌桶） | 用 Rate/Burst 表达上限，或选支持滑动窗口的 driver。 |
-| 出现 500 而不是 429 | Redis 不可达；`Allow` 报错被 handler 转成 500 | 按端点决定 fail-open/closed；修复 Redis。 |
-| 各副本独立限流 | 实例指向不同 Redis client/key，或 Allow 的 key 串不同 | 副本间同 `client` + 同 Allow key。 |
-| 测试二进制第二次装配 panic | 注册表注册每进程一次 | starter 对同名会重绑 client；避免用不同实例名注册同一 driver 串。 |
+| 启动失败 `ratelimit-redis: missing required property "spring.ratelimit.redis.client"` | 配置块存在但 `client` 为空 | 填成已存在的 `spring.go-redis.instances.<name>`。 |
+| 装配计数器存储时启动失败（没有名为 `<x>` 的 `*goredis.Client` bean） | `client` 指的是没配置的 redis 实例 | 补上 `spring.go-redis.instances.<x>`（或改正名字）。 |
+| 各副本各自限流 | 没有存储被贡献（每个 executor 保持自己的私有预算），或副本指向不同 Redis 实例 | 每个副本都配置本 starter，并指向同一个 Redis。 |
+| 完全不限流，全是 200 | 该 service 的 policy `rate-limit: 0`，或 Redis 不可达（executor 放行） | 在规则文件里给正数 `rate-limit`；检查 Redis。 |
+| 实际突发与窗口算法对不上 | 规则要求 `algorithm: sliding-window`，而共享存储按令牌桶计数 | 把上限建模成 `rate-limit`/`burst`，或让 sliding window 继续用内存存储。 |
+| 调用堆积而不是被拒绝 | 设了 `rate-limit-max-wait`，但共享存储不排队 | 排队继续留给内存存储，或去掉该参数。 |
+| `govern.enabled=false` 的应用完全没有限流 | 治理中心被关，所有 executor 都是直通 | 打开治理；本 starter 只搬计数器。 |
 
 ---
 
-## 6. 设计体检表
+## 6. 设计健康度
 
-| 指标 | 数值 |
-|------|------|
-| 配置 key 总数 | 2 |
-| 其中必填 | 1（`client`） |
-| quickstart 前置外部依赖 | 1（Redis） |
-| "注意/坑"条数 | 4 |
+| 指标 | 值 |
+|------|-----|
+| 配置键数 | 1 |
+| 必填 | 1（`client`） |
+| 快速上手外部依赖 | 1（Redis） |
+| "注意"条目 | 2（sliding window 按令牌桶计数、不排队） |
 
-设计嫌疑清单：
+设计疑点（审计台账用）：
 
-- 已解决（2026-08）：driver 重名不再 panic 也不再静默共享——本 starter 内两实例撞名 →
-  启动错误点名双方；跨模块撞名（如 `default`）→ ctor 明确报错。
-- 进程级 `drivers` sync.Map + 注册表使同一测试二进制内的行为依赖装配顺序（重绑只缓解
-  client，不覆盖已注册集合）。
-- 已解决（2026-08）：`Algorithm` 取非令牌桶值时 `NewRateLimiter` 直接报错，不再静默忽略。
+- 已解决（2026-09）：按实例的 limiter 注册表已删除。容器里至多有一个计数器存储，由容器挑选
+  （除非有后端 starter 贡献，否则一个都没有），所以旧失败模式——driver 名被两次占用、某个路由
+  引用了没人注册的 driver 名、限流状态依赖同一测试二进制内的装配顺序——都不存在了。
+- 存储的两条明示边界（sliding window 按令牌桶计数、不排队）是有意的：共享预算的正确性来自
+  那条原子脚本。凡描述该存储之处都会重复这两条，以免调用方被它们意外到。

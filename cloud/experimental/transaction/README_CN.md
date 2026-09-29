@@ -19,7 +19,7 @@ TCC / AT 见子包 [`transaction/tcc`](tcc/README.md) 与
   `AtObserver`),模型子包不依赖 otel。
 - `StepRegistry` + `GlobalTransactional(coord, reg)`——装饰器级的
   `@GlobalTransactional` 等价物,按方法名匹配。
-- 步骤级 `RetryPolicy`(等价 `resilience.Policy`)复用出站韧性的同一套配置。
+- 步骤级 `RetryPolicy`(等价 `resilience.ClientPolicy`)复用出站韧性的同一套配置。
 
 ## 用法
 

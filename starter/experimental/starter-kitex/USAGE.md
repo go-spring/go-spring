@@ -191,8 +191,8 @@ optional etcd registry, optional compatible-unary middleware — layered on last
 **no middleware chain of its own**: kitex middleware is composed inside your `ServiceRegister`
 (or via suites you attach in your codegen). Consequences vs the sibling RPC starters:
 
-- no loadtest identification filter (no `traffic.IsLoadTest` tagging on this hop)
-- no fault-injection filter (no `fault.InjectorFor` wiring; governance cannot "set fire" here)
+- no loadtest identification filter (no propagator `IsLoadTest` tagging on this hop)
+- no fault-injection filter (no `*fault.Injector` bean wiring; governance cannot "set fire" here)
 - no resilience admission (rate-limit/breaker)
 
 ### 2.3 One call, layer by layer

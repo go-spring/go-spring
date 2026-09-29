@@ -31,17 +31,20 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-governance"
 )
 
 // printer prints the resolved policy AND the fault-injection config for one
-// resource label every second, so a rules-file edit is visible in the log
+// service label every second, so a rules-file edit is visible in the log
 // without any client wiring — resilience and fault ride the same source.
-type printer struct{}
+type printer struct {
+	inj *fault.Injector
+	mgr *resilience.Manager
+}
 
 func (p *printer) Run(ctx context.Context) error {
 	// Print from a background goroutine: a Runner that blocks would hold up app
@@ -51,15 +54,18 @@ func (p *printer) Run(ctx context.Context) error {
 		tk := time.NewTicker(time.Second)
 		defer tk.Stop()
 		for i := 0; ; i++ {
-			p := governance.PolicyFor("demo:resource")
-			fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v", !p.IsZero(), p.Timeout, p.MaxRetries, p.RateLimit)
-			if in := fault.InjectorFor(); in != nil {
-				c := in.Config()
-				fmt.Printf(" | fault: enabled=%v rate=%v", c.Enabled, c.Rate)
+			pol := p.mgr.ClientPolicyFor("demo:service")
+			fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v", !pol.IsZero(), pol.AttemptTimeout, pol.MaxRetries, pol.RateLimit)
+			if in := p.inj; in != nil {
+				// Both directions' fires are printed: they are independent, so the
+				// example shows one being switched without moving the other.
+				cf, sf := in.ClientConfig(), in.ServerConfig()
+				fmt.Printf(" | fault: client(enabled=%v rate=%v) server(enabled=%v rate=%v)",
+					cf.Enabled, cf.Rate, sf.Enabled, sf.Rate)
 			}
 			fmt.Println()
 			if i == 3 {
-				fmt.Println(">>> edit conf/govern.yaml now: policy AND fault toggle live (e.g. set fault.enabled=true)")
+				fmt.Println(">>> edit conf/govern.yaml now: policy AND fault toggle live (e.g. set client.fault.enabled=true)")
 			}
 			select {
 			case <-ctx.Done():
@@ -72,7 +78,22 @@ func (p *printer) Run(ctx context.Context) error {
 }
 
 func init() {
-	gs.Provide(&printer{}).Export(gs.As[gs.Runner]())
+	// The injector and the resilience manager are taken as beans rather than
+	// resolved from a process-wide seam: starter-governance registers them, and
+	// the "?" makes an absent bean (a container without this starter) nil rather
+	// than a wiring error — the same contract every client starter's governance
+	// params use. A nil manager is normalized to a fresh unarmed one so the print
+	// loop never dereferences nil (an unarmed manager reads a zero policy, which
+	// is exactly "governance off").
+	gs.Provide(func(inj *fault.Injector, mgr *resilience.Manager) *printer {
+		if mgr == nil {
+			mgr = resilience.NewManager()
+		}
+		return &printer{inj: inj, mgr: mgr}
+	},
+		gs.IndexArg(0, gs.TagArg("?")), // nullable *fault.Injector bean
+		gs.IndexArg(1, gs.TagArg("?")), // nullable *resilience.Manager bean
+	).Export(gs.As[gs.Runner]())
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (stay up until killed)")

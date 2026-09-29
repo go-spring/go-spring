@@ -18,103 +18,68 @@ package resilience_test
 
 import (
 	"context"
+	"errors"
 	"testing"
-	"time"
 
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-func newLimiter(t *testing.T, p resilience.LimitPolicy) resilience.RateLimiter {
-	rl, err := resilience.NewDefaultLimiterDriver().NewRateLimiter(p)
+// testCounters is a minimal store for seam-level tests: it counts units per
+// scope and rejects once a scope's count reaches the policy's burst. It exists
+// only to observe HOW the executor charges a store, not to test algorithms.
+type testCounters struct {
+	spent map[string]int
+}
+
+func (c *testCounters) Allow(_ context.Context, scope string, p resilience.ClientPolicy, n int) error {
+	if c.spent == nil {
+		c.spent = map[string]int{}
+	}
+	if c.spent[scope]+n > p.Burst {
+		return resilience.ErrRateLimited
+	}
+	c.spent[scope] += n
+	return nil
+}
+
+// TestDefaultDriverCountsPerExecutor pins the default the rate-limit stage
+// follows every other stage's: its state belongs to the executor. Two executors
+// built by one driver do NOT share a budget, because each counts in a private
+// store — and that is still one budget per service through the manager, which
+// builds one executor per label and hands it to every caller of that label.
+func TestDefaultDriverCountsPerExecutor(t *testing.T) {
+	d := resilience.NewDefaultDriver(nil)
+	p := resilience.ClientPolicy{RateLimit: 1, Burst: 1}
+	ctx := context.Background()
+	e1, err := d.NewClientExecutor("svc", p)
 	assert.That(t, err).Nil()
-	return rl
-}
-
-func TestRateLimiterUnlimited(t *testing.T) {
-	rl := newLimiter(t, resilience.LimitPolicy{}) // Rate 0 -> pass-through
-	for range 1000 {
-		ok, err := rl.Allow(context.Background(), "k")
-		assert.That(t, err).Nil()
-		assert.That(t, ok).True()
-	}
-}
-
-func TestRateLimiterTokenBucketBurst(t *testing.T) {
-	rl := newLimiter(t, resilience.LimitPolicy{Rate: 1, Burst: 3})
-	ctx := context.Background()
-	// Burst of 3 is available immediately; the 4th is rejected.
-	for range 3 {
-		ok, _ := rl.Allow(ctx, "k")
-		assert.That(t, ok).True()
-	}
-	ok, _ := rl.Allow(ctx, "k")
-	assert.That(t, ok).False()
-}
-
-func TestRateLimiterPerKeyIsolation(t *testing.T) {
-	rl := newLimiter(t, resilience.LimitPolicy{Rate: 1, Burst: 1})
-	ctx := context.Background()
-	ok, _ := rl.Allow(ctx, "a")
-	assert.That(t, ok).True()
-	// A different key has its own budget.
-	ok, _ = rl.Allow(ctx, "b")
-	assert.That(t, ok).True()
-	// The first key is now empty.
-	ok, _ = rl.Allow(ctx, "a")
-	assert.That(t, ok).False()
-}
-
-func TestRateLimiterAllowN(t *testing.T) {
-	rl := newLimiter(t, resilience.LimitPolicy{Rate: 1, Burst: 5})
-	ctx := context.Background()
-	ok, _ := rl.AllowN(ctx, "k", 5)
-	assert.That(t, ok).True()
-	ok, _ = rl.AllowN(ctx, "k", 1)
-	assert.That(t, ok).False()
-}
-
-func TestRateLimiterSlidingWindow(t *testing.T) {
-	// Rate 10/s over a 1s window => cap of 10 events per rolling second.
-	rl := newLimiter(t, resilience.LimitPolicy{
-		Rate:      10,
-		Algorithm: resilience.SlidingWindow,
-		Window:    time.Second,
-	})
-	ctx := context.Background()
-	allowed := 0
-	for range 20 {
-		if ok, _ := rl.Allow(ctx, "k"); ok {
-			allowed++
-		}
-	}
-	assert.That(t, allowed).Equal(10)
-}
-
-// TestResolveLimiterDirectory pins the name resolution callers use to pick a
-// limiter backend out of the container-provided directory: the empty and
-// "default" names fall back to the bundled driver, a matching entry wins, and
-// an unknown name is a loud error listing what is available.
-func TestResolveLimiterDirectory(t *testing.T) {
-	fallback := resilience.NewDefaultLimiterDriver()
-	dir := map[string]resilience.LimiterDriver{"redis": stubLimiterDriver{}}
-
-	for _, name := range []string{"", resilience.DefaultLimiterName} {
-		got, err := resilience.Resolve(dir, name, resilience.DefaultLimiterName, "limiter driver", fallback)
-		assert.That(t, err).Nil()
-		assert.That(t, got).Equal(fallback)
-	}
-
-	got, err := resilience.Resolve(dir, "redis", resilience.DefaultLimiterName, "limiter driver", fallback)
+	e2, err := d.NewClientExecutor("svc", p)
 	assert.That(t, err).Nil()
-	assert.That(t, got).Equal(dir["redis"])
-
-	_, err = resilience.Resolve(dir, "nope", resilience.DefaultLimiterName, "limiter driver", fallback)
-	assert.Error(t, err).Matches(`no limiter driver named "nope" \(available: \[default redis\]\)`)
+	run := func(e resilience.ClientExecutor) error {
+		return e.Execute(ctx, func(context.Context) error { return nil })
+	}
+	assert.That(t, run(e1)).Nil() // e1 spends its own budget...
+	assert.That(t, run(e2)).Nil() // ...so e2 still has one of its own
+	assert.That(t, errors.Is(run(e1), resilience.ErrRateLimited)).True()
 }
 
-type stubLimiterDriver struct{}
-
-func (stubLimiterDriver) NewRateLimiter(resilience.LimitPolicy) (resilience.RateLimiter, error) {
-	return nil, nil
+// TestDefaultDriverSharesSuppliedStore is the other half of that default: hand
+// the driver a store and every executor it builds counts in that one, charged
+// under the service each executor is bound to. This is what puts a single limit
+// beyond the process (to every replica) when the store is over a shared
+// backend.
+func TestDefaultDriverSharesSuppliedStore(t *testing.T) {
+	store := &testCounters{}
+	d := resilience.NewDefaultDriver(store)
+	p := resilience.ClientPolicy{RateLimit: 1, Burst: 1}
+	ctx := context.Background()
+	e1, err := d.NewClientExecutor("svc", p)
+	assert.That(t, err).Nil()
+	e2, err := d.NewClientExecutor("svc", p)
+	assert.That(t, err).Nil()
+	assert.That(t, e1.Execute(ctx, func(context.Context) error { return nil })).Nil()
+	assert.That(t, errors.Is(e2.Execute(ctx, func(context.Context) error { return nil }), resilience.ErrRateLimited)).True()
+	// The charge landed under the service name, not some private key.
+	assert.That(t, store.spent["svc"]).Equal(1)
 }

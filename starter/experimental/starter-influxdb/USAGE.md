@@ -175,8 +175,9 @@ gs.Run()
   │    4. fail-fast probe: client.Health() → /health must report "pass",
   │       otherwise the client is closed and the boot fails [starter.go:80-83]
   ├─ Init [client.go:69]: build dbObserver ("influxdb") + obsTransport;
-  │    resolve executor = fault.WrapExecutor(resilience.ExecutorFor(
-  │    "influxdb", "influxdb:<server-url>"));
+  │    build executor = fault.WrapClientExecutor(mgr.ClientExecutorFor(
+  │    "influxdb", "influxdb:<server-url>"), "influxdb:<server-url>", inj)
+  │    from the injected *resilience.Manager / *fault.Injector;
   │    dyn.Swap the resilience round-tripper in — observe+governance are
   │    live from now on
   ├─ readiness: indicators flip UP (each probe = one /health round trip)
@@ -207,7 +208,7 @@ influxdb-client-go → resilience round-tripper (exec.Execute) → obsTransport
 Rationale (source comments [client.go:76-88], [command.go:30-44]):
 
 - **Resilience outermost**: the executor permit (rate limiter / breaker / injected fault,
-  scoped to the resource key `influxdb:<server-url>` — one scope per instance, not per
+  scoped to the service key `influxdb:<server-url>` — one scope per instance, not per
   operation) is checked before anything is observed or sent. Its rejections are what the
   observe layer then records.
 - **obsTransport carries all three signals**: influxdb-client-go ships no OTel
@@ -229,7 +230,7 @@ Rationale (source comments [client.go:76-88], [command.go:30-44]):
    executor run (`o.exec.Execute`) — the per-call guard on the overload-sensitive path.
 3. The SDK issues `POST /api/v2/write`; that request passes through the transport-level
    executor and obsTransport, so a single WritePoints crosses the executor twice (both
-   layers share the same resource key and therefore the same limiter/breaker state —
+   layers share the same service key and therefore the same limiter/breaker state —
    rejections at the inner layer count in the outer one's view).
 
 **`QueryAPI(org).QueryRaw` (embedded SDK method)**: no per-call guard is added
@@ -264,7 +265,7 @@ All keys live under `spring.influxdb.instances.<name>.` — per-instance prefix 
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `server-url` | string | — | InfluxDB base URL; also seeds the resilience resource key `influxdb:<server-url>`. ⚠ HTTPS is expressed by the URL scheme — there is no `tls.*` block. | Empty → BindEach fails the boot (`expr:"$ != ''"` [config.go:26]); wrong host → fail-fast /health probe fails the boot. |
+| `server-url` | string | — | InfluxDB base URL; also seeds the resilience service key `influxdb:<server-url>`. ⚠ HTTPS is expressed by the URL scheme — there is no `tls.*` block. | Empty → BindEach fails the boot (`expr:"$ != ''"` [config.go:26]); wrong host → fail-fast /health probe fails the boot. |
 | `auth-token` | string | — | API token passed to the SDK. | Empty → boot error; wrong token → writes/queries fail per request (the /health probe may still pass — it does not authenticate). |
 | `org` | string | `""` | Default org for `WritePoints`/`ManagedWriteAPI` and `Org()`. ⚠ Required **at call time**, not at wiring: a client without org/bucket still serves Query/Delete APIs. | Missing → `WritePoints` returns an error, `ManagedWriteAPI` **panics** (inconsistent failure modes — design suspect). |
 | `bucket` | string | `""` | Default destination bucket for the write helpers. ⚠ Same call-time rule as `org`. | Same as `org`. |
@@ -317,12 +318,12 @@ executor/transport error; the breaker (if a governance policy targets
 
 ### 4.4 Governance drill
 
-With starter-governance configured, a limiter/breaker policy on resource
+With starter-governance configured, a limiter/breaker policy on service
 `influxdb:http://127.0.0.1:8086` applies to **every** request (write, query, health probe)
 through the transport executor — hammer `WritePoints` and watch rejections surface as
 `_app_influxdb_access` records and in the resilience observer's outcome counters. Flip the
 policy at runtime; the executor hot-reloads without restart. Injected faults
-(`govern.fault.*`) strike at the same seam.
+(`govern.client.fault.*`) strike at the same seam.
 
 ### 4.5 Async-writer drain
 
@@ -362,7 +363,7 @@ Design suspects (audit ledger — carried over plus new):
 - Embedded-client methods other than `WritePoints` get no per-call governance (transport
   layer only); `ManagedWriteAPI` gets none at all — two guardedness tiers that are invisible
   at the call site.
-- `WritePoints` crosses the executor twice (per-call + transport) over one shared resource
+- `WritePoints` crosses the executor twice (per-call + transport) over one shared service
   key — breaker counts are amplified, mirroring the http-client bug family fixed 2026-08.
 - No `tls.*` / `service-name` unlike sibling starters — HTTPS-only-via-scheme is a smaller
   surface but an asymmetry to document.

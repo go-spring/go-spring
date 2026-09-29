@@ -46,8 +46,8 @@ type Service struct {
 参见 [example.go](example/example.go) 文件。
 
 ```go
-err := s.Memcached.Set(&memcache.Item{Key: "key", Value: []byte("value")})
-item, err := s.Memcached.Get("key")
+err := s.Memcached.Set(ctx, &memcache.Item{Key: "key", Value: []byte("value")})
+item, err := s.Memcached.Get(ctx, "key")
 ```
 
 ## 核心功能

@@ -146,10 +146,12 @@ gs.Run()
   │     `spring.cassandra.default.driver`, then the single Driver bean by type, naming a missing bean fails startup)
   │     → driver.CreateClient
   │     → HealthCheck probe (fail fast, see below)
-  ├─ Init [client.go:59]: newDBObserver("cassandra") → resource label
-  │     → fault.WrapExecutor(resilience.ExecutorFor("cassandra", resource)) — exec chain complete
+  ├─ ctor newClient [starter.go:72] arms governance [client.go:79]:
+  │     fault.WrapClientExecutor(mgr.ClientExecutorFor("cassandra", service), service, inj) over the injected
+  │     *resilience.Manager / *fault.Injector beans — exec chain complete
+  ├─ Init [client.go:59]: newDBObserver("cassandra") → the statement observer
   ├─ readiness: indicator queries system.local per instance
-  └─ SIGTERM → Destroy [client.go:75]: exec.Close (if armed) → Session.Close
+  └─ SIGTERM → Destroy [client.go:95]: exec.Close (if armed) → Session.Close
 ```
 
 An unknown consistency value or an unreachable cluster fails the boot — the process never reaches
@@ -179,8 +181,8 @@ against the earlier opt-in helper). Every statement execution method — `Exec`,
 1. `obs.Start(ctx, "exec", stmt)` opens a client-kind span named `exec` with the statement as
    the bounded `db.statement` attribute, bumps the in-flight gauge, and starts an access-log
    record. No-op span/metric without starter-otel's globals; the access log always emits.
-2. `exec.Execute(ctx, resource, call)` asks the governance executor for a permit — limiter/
-   breaker scoped to the resource label `cassandra:<hosts[0]>` (per instance, keyed on the
+2. `exec.Execute(ctx, call)` asks the governance executor for a permit — limiter/
+   breaker scoped to the service label `cassandra:<hosts[0]>` (per instance, keyed on the
    FIRST host only [client.go:66]). On rejection the statement is **never attempted**.
    With governance off the executor is a transparent no-op.
 3. `Session.Query(stmt, values...).WithContext(ctx).Exec()` runs (via the wrapper's embedded
@@ -202,17 +204,18 @@ wrapper's own `WithContext`/`Bind` to stay guarded. Consequence: reads and write
 breaker/limiter/metrics/access-log as long as they start from `Client.Query`/`Client.Bind`/
 `Client.Exec`.
 
-Layer order on `Exec` (outside-in): observer start → fault injector (`fault.WrapExecutor`,
-process-wide) → resilience observer (`resilience.WrapExecutor`, outcome counters) →
-resilience executor (governance center) → gocql. The observer layer wraps the still-private
-executor itself and the fault injector sits outside it, so injected faults and breaker
-rejections are both counted and logged.
+Layer order on `Exec` (outside-in): fault injector (`fault.WrapClientExecutor` over the executor the
+injected manager resolves) → resilience observer (`resilience.WrapClientExecutor`, outcome counters)
+→ resilience executor (limiter/breaker/retry core) → the statement observer [client.go:59] →
+gocql. The fault injector wraps the operation fn that core runs, so injected faults and breaker
+rejections both flow through retry/breaker/timeout and are counted and logged.
 
 ### 2.4 Driver seam
 
 `Driver.CreateClient(ctx, Config) (*gocql.Session, error)` owns full session assembly — hosts,
 PasswordAuthenticator, consistency, timeouts, CQL version, TLS [driver.go:51-86] — while the
-startup probe, resource label, and resilience wiring stay in the starter's lifecycle. Session
+startup probe and the resilience wiring stay in the starter's lifecycle
+(`newClient` → `ArmGovernance` [client.go:79], `Init` [client.go:59]). Session
 assembly is an **optional container bean**: a company or umbrella starter may provide its own
 `Driver` bean (a `gs.Provide(func() StarterCassandra.Driver{...})`, so it can inject config bound
 from the properties file at wiring time); every instance under `spring.cassandra` is then built
@@ -286,10 +289,10 @@ delta, no span (that path is unobserved by design, §2.3).
 
 ### 4.3 Fault / resilience drill (needs starter-governance)
 
-Configure a breaker or limiter for resource `cassandra:127.0.0.1` under `govern.*`, hammer
+Configure a breaker or limiter for service `cassandra:127.0.0.1` under `govern.*`, hammer
 `Exec` inserts, and watch rejections surface as fast errors WITHOUT the statement executing
 (no Cassandra-side rows), plus outcome counters from the resilience observer. Flip the policy
-at runtime — the executor hot-reloads without restart. Note the resource label uses hosts[0]
+at runtime — the executor hot-reloads without restart. Note the service label uses hosts[0]
 only: instance `b` with the same first host shares instance `a`'s breaker bucket.
 
 ### 4.4 Fail-fast probe drill
@@ -312,7 +315,7 @@ docker stop cassandra-example && go run .
 | No spans/metrics from Exec | starter-otel not imported | The observer rides the OTel globals; import starter-otel (access log still emits). |
 | No access-log lines at all | The logger's level filter drops Debug/Info, or the `_app_cassandra_access` tag is filtered | Check the logger's level and its tag filter for `_app_cassandra_access`. |
 | Breaker/limiter never triggers | Calls use the raw `*gocql.Session` (e.g. a session obtained elsewhere), or a batch, or chained configurators that dropped the wrapper | Start statements from `Client.Query`/`Client.Bind`/`Client.Exec` (§2.3). |
-| Two instances share one breaker unexpectedly | Resource label is `cassandra:<hosts[0]>` [client.go:66] | By design (multi-seed configs collapse to the first host); split contact lists if isolation is needed. |
+| Two instances share one breaker unexpectedly | Service label is `cassandra:<hosts[0]>` [client.go:66] | By design (multi-seed configs collapse to the first host); split contact lists if isolation is needed. |
 | Health DOWN though Exec works | Probe scans system.local with the indicator ctx; check permissions/timeout | Inspect the component error body in /readiness. |
 
 ## 6. Design Health
@@ -328,6 +331,6 @@ Design suspects (audit ledger — kept from the previous audit, still true):
 
 - ~~Only `Exec` is guarded/observed~~ Fixed: the guarded `*Query` wrapper covers the normal
   statement path (§2.3); batches and deep `Iter` paging remain outside the guard.
-- Resource label uses `hosts[0]` only, so multi-seed configs share one resilience bucket keyed
+- Service label uses `hosts[0]` only, so multi-seed configs share one resilience bucket keyed
   on the first host.
 - Health indicator has no opt-out key (family asymmetry with redigo's `health.enabled`).

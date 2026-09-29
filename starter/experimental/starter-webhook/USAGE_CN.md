@@ -106,7 +106,7 @@ spring.observability.trace.exporter=otlp-grpc
 spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.trace.insecure=true
 
-# --- governance（可选；资源标签 webhook:alert:dingtalk）------------------------
+# --- governance（可选；服务标签 webhook:alert:dingtalk）------------------------
 govern.source.file.path=conf/govern.yaml
 ```
 
@@ -131,22 +131,22 @@ curl -s -X POST http://127.0.0.1:18080/hook ...
 
 ```
 import starter-webhook
-  └─ init(): gs.Group("${spring.webhook}", newNotifier, nil)  [薄壳、mail 风格：
-        按调用无状态，无 destroy hook]
+  └─ init(): gs.Module(OnProperty("spring.webhook.instances")) → 每个条目
+        一个 r.Provide(newNotifier) [薄壳、mail 风格：按调用无状态，无 destroy hook]
 
 gs.Run()
   ├─ 配置绑定：spring.webhook.instances.<name>.* → Config（value tag；url 经 expr 必填）
   ├─ newNotifier：
   │    ├─ 用空 Notification 干跑一次 buildPayload——校验 channel 取值、
   │    │   （dingtalk/feishu）签名可用性，全程无网络请求
-  │    ├─ exec := fault.WrapExecutor(resilience.ExecutorFor("webhook", "webhook:<name>:<channel>"))
+  │    ├─ exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("webhook", "webhook:<name>:<channel>"), "webhook:<name>:<channel>", inj)
   │    └─ &http.Client{Timeout: c.Timeout} —— 每 notifier 一个 client，不池化
   ├─ bean 就绪：*Notifier 注入所有 `autowire:"<name>"` 处
   ├─ Run / 服务：无后台 goroutine、无探测（理由见顶部激活说明）
   └─ SIGTERM：无 destroy hook（每次 Send 是无状态 HTTP 请求）
 ```
 
-resilience 资源标签为 `webhook:<name>:<channel>`——按实例**且**按渠道，因此同 URL
+resilience 服务标签为 `webhook:<name>:<channel>`——按实例**且**按渠道，因此同 URL
 不同名的两个 notifier 拥有独立的熔断/限流状态（对比 starter-s3，其标签只有 endpoint）。
 
 ### 2.2 一次投递的逐层走读
@@ -166,7 +166,7 @@ resilience 资源标签为 `webhook:<name>:<channel>`——按实例**且**按�
 2. **Span** —— `startSend` 开 producer span `webhook.send`（属性
    `messaging.system=webhook`、`webhook.channel`、`webhook.destination.host`——只有
    scheme://host，签名 URL 不进遥测）。
-3. **Executor** —— POST 闭包经资源标签下的治理 executor：引入 starter-governance 后
+3. **ClientExecutor** —— POST 闭包经服务标签下的治理 executor：引入 starter-governance 后
    限流 / 熔断 / retry（若经治理配置）/ fault 注入生效，否则透明直通。
    executor 内部解析出的 observe 层按级别发 outcome span + 调用计数 + 时长直方图 +
    访问日志。手工构造的零值 Notifier（测试场景）没有 executor，直接 POST——
@@ -176,7 +176,7 @@ resilience 资源标签为 `webhook:<name>:<channel>`——按实例**且**按�
 5. `EndSpan(span, err)` 记录失败并关闭 span。
 
 重试行为：**无内建 retry**。仅当通过 starter-governance 为
-`webhook:<name>:<channel>` 资源配置了 retry 策略才会重试；无治理时失败的 POST 立即
+`webhook:<name>:<channel>` 服务配置了 retry 策略才会重试；无治理时失败的 POST 立即
 把错误返回给调用方。⚠ DingTalk/Feishu 有些失败以 HTTP 200 + 错误 body 返回——
 `post` 只检查状态码，这类响应当作成功（见 §6 嫌疑）。
 

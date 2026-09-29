@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/errutil"
 )
 
 // DefaultZoneKey is the [discovery.Endpoint.Metadata] key a zone-aware balancer
@@ -29,8 +30,29 @@ import (
 const DefaultZoneKey = discovery.MetaKeyZone
 
 func init() {
-	Register(ZoneAware, func() Balancer {
-		return NewZoneAware(DefaultZoneKey, NewRoundRobin())
+	Register(ZoneAware, func(cfg Config) (Balancer, error) {
+		if err := cfg.only("zone_key", "delegate"); err != nil {
+			return nil, err
+		}
+		zoneKey := cfg.ZoneKey
+		if zoneKey == "" {
+			zoneKey = DefaultZoneKey
+		}
+		// An unknown or self-naming delegate is a config error, not a silent
+		// fallback to round-robin: the caller asked for a specific inner
+		// strategy and would otherwise never learn it was dropped.
+		delegate := Balancer(NewRoundRobin())
+		if cfg.Delegate != "" {
+			if cfg.Delegate == ZoneAware {
+				return nil, errutil.Explain(nil, "loadbalance: zone_aware cannot delegate to itself")
+			}
+			bal, err := New(cfg.Delegate, Config{})
+			if err != nil {
+				return nil, errutil.Explain(err, "loadbalance: zone_aware delegate %q", cfg.Delegate)
+			}
+			delegate = bal
+		}
+		return NewZoneAware(zoneKey, delegate), nil
 	})
 }
 

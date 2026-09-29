@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
@@ -48,6 +49,9 @@ const topic = "hello"
 
 type Service struct {
 	Client sarama.Client `autowire:"a"`
+	// Prop is the process's load-test convention, handed to the span helpers so
+	// the marker crosses the Kafka hop.
+	Prop traffic.Propagator
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
@@ -55,9 +59,14 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 func main() {
 	flag.Parse()
 
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	if err != nil {
+		panic(err)
+	}
+
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.
-	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
+	svrBean := gs.Provide(&Service{Prop: prop}).Export(gs.As[gs.Rooter]())
 
 	if !*manual {
 		go func() {
@@ -87,7 +96,7 @@ func (s *Service) publish(ctx context.Context, value string) error {
 	defer producer.Close()
 	msg := &sarama.ProducerMessage{Topic: topic, Value: sarama.StringEncoder(value)}
 
-	_, span := starter.StartProducerSpan(ctx, msg)
+	_, span := starter.StartProducerSpan(ctx, msg, s.Prop)
 	_, _, err = producer.SendMessage(msg)
 	starter.EndSpan(span, err)
 	return err
@@ -112,7 +121,7 @@ func (s *Service) consume(ctx context.Context, timeout time.Duration) (string, e
 
 	select {
 	case msg := <-pc.Messages():
-		_, span := starter.StartConsumerSpan(ctx, msg)
+		_, span := starter.StartConsumerSpan(ctx, msg, s.Prop)
 		starter.EndSpan(span, nil)
 		return string(msg.Value), nil
 	case err := <-pc.Errors():

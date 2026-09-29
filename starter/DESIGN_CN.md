@@ -119,9 +119,9 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     resolver 包进 round-robin `Pool`,每次建连 `Pick`)留在 `config.go` /
     `starter.go`;这里只放 resolver 的构建。所有发现模式的池都按同一套建:挂
     suspension `Tracker`、在建连处把 `Pick` 与 `Complete` 配对、再
-    `Pool.BindSelection(entry label)`——于是该 entry 的治理规则原地驱动
-    `balancer` / `outlier-threshold` / `outlier-suspend-for`,走的是 `loadbalance`
-    的中立 seam,不需要 import `cloud/governance`。
+    `lbMgr.Bind(pool, entry label)`(在注入的 `*loadbalance.Manager` 上)——于是该 entry 的
+    治理规则原地驱动 `balancer` / `outlier-threshold` / `outlier-suspend-for`,走的是
+    `loadbalance` manager,不需要 import `cloud/governance`。
   - `resilience.go` —— wrapper bean 的 `ApplyResilience` InitMethod、executor,以及
     它的 `Close` / `CloseDriver` Destroy 钩子。
   - `observability.go` —— observe kit 桥接(trace/metric/access-log 钩子)。
@@ -151,7 +151,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   与应用主端口隔开。
 - **`starter-governance-sentinel`** 只贡献一个进程级 bean —— 名为 `sentinel` 的
   `resilience.Driver` —— 给治理中心的 driver 目录。与 `starter-governance` 一起导入后,
-  治理文档的 `govern.driver=sentinel` 一次切换全部客户端。无端口、无自有 key。
+  治理文档的 `govern.driver=sentinel` 一次切换全部 executor——**含入站准入**，因为同一个
+  `Driver` 同时应答两个方向。无端口、无自有 key。
 
 ### 2.5 配置 Provider 类(远程配置中心)
 
@@ -299,7 +300,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   - *正向清单* —— 必须被插桩的组件。这套模型靠「已经建了仪器」反向识别成员,所以一个
     从未插桩的组件对它完全隐形;这张清单让「该做而没做」变得可见。
   - *已登记缺口* —— `starter-oauth2-client` 的业务调用经 resilience 层打每调用日志（与
-    `starter-http-client` 同源:它走 `ExecutorFor` 而非自己调 `WrapExecutor`）;但 oauth2
+    `starter-http-client` 同源:它走注入的 `resilience.Manager` 的 `ExecutorFor` 而非自己
+    组装包装层）;但 oauth2
     库内部的 token 端点换取不经过那个 RoundTripper,故它只有 span、没有日志。
     kitex 与 kratos 的时长指标没有 `status` 维度,因为指标由库发出;
     `cloud/experimental/transaction` 只有 span
@@ -337,9 +339,10 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    `scripts/check-config-namespace.sh` 会检查。
    **走发现拨号?** → 建池一律这三件套:挂 `loadbalance.Tracker`、在建连处把 `Pool.Pick`
    与 `Pool.Complete` 配对(把拨号结果喂回去,不喂 tracker 就是瞎的)、再用**与 executor
-   同一个** `resilience.ResourceLabel` 调 `Pool.BindSelection(<entry label>)`。这才是
-   `balancer` / `outlier-threshold` / `outlier-suspend-for` 可经治理规则配置而不是写死的
-   原因——自己不加 `balancer` 配置键,也不 import `cloud/governance`。不能重挑的 client
+   同一个** `resilience.ServiceLabel`,在注入的 `*loadbalance.Manager` 上调
+   `lbMgr.Bind(pool, <entry label>)`。这才是 `balancer` / `outlier-threshold` /
+   `outlier-suspend-for` 可经治理规则配置而不是写死的原因——自己不加 `balancer` 配置键,
+   也不 import `cloud/governance`。不能重挑的 client
    (一次性解析、或库自持选择器)刻意不接,要在它的 USAGE 里写明。
 5. Server? → 自持端口、提前监听/就绪后 serve、优雅 `Stop`、应用提供注册 bean、
    默认开启开关。

@@ -25,14 +25,22 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Client is the wrapper bean Neo4j drivers are injected as. It
 // embeds the neo4j.DriverWithContext interface (so every driver method promotes
-// unchanged) and resolves its resilience executor through the neutral
-// [resilience.ExecutorFor] seam, so the policy comes from the governance
-// document and hot-reloads inside the executor. newClient returns one; gs calls
-// Init (InitMethod) to build the executor for the call-site guard.
+// unchanged) and carries the resilience executor built by [Client.ArmGovernance],
+// so the policy comes from the governance document and hot-reloads inside the
+// executor. newClient returns one and arms it.
 //
 // The Neo4j seam: the driver's ExecuteQuery is a package-level function (not a
 // method on the driver), so there is no transport / dialer / hook to intercept —
@@ -43,29 +51,41 @@ import (
 // un-protected) unless it calls [RunWithResilience].
 type Client struct {
 	neo4j.DriverWithContext
-	// Both resilience and fault are resolved through neutral seams
-	// ([resilience.ExecutorFor] / [fault.InjectorFor]) backed by starter-govern's
-	// governance center — so this struct has zero coupling to cloud/governance.
 
-	// cfg is the connection config, retained for the resilience resource label.
+	// cfg is the connection config, retained for the resilience service label.
 	cfg Config
-	// exec is the resilience executor protecting queries, resolved via
-	// resilience.ExecutorFor; no-op when governance is off.
-	exec resilience.Executor
-	// resource is the resilience resource key ("neo4j:<...>") exec scopes
-	// limiter/breaker state by.
-	resource string
+	// exec is the resilience executor protecting queries, armed by
+	// ArmGovernance; nil means "governance off" — [Query] and
+	// [RunWithResilience] run their call inline.
+	exec resilience.ClientExecutor
 }
 
-// Init is the gs InitMethod: it resolves the executor through the neutral
-// [resilience.ExecutorFor] seam (backed by starter-govern's governance center
-// when imported), wraps it with the process-wide fault injector
-// ([fault.InjectorFor], nil-safe), and stores it on the wrapper so [Query] /
-// [RunWithResilience] can route through it. When governance is off the resolved
-// executor is a transparent no-op.
-func (o *Client) Init() error {
-	o.resource = resilience.ResourceLabel("neo4j", o.cfg.ServiceName, o.cfg.URI)
-	o.exec = fault.WrapExecutor(resilience.ExecutorFor("neo4j", o.resource))
+// ArmGovernance arms the governance-driven resilience stack. It is called by
+// the gs wiring with the injected beans — nil when the container has no
+// starter-governance, and nil from a standalone caller, both of which mean
+// "governance off".
+//
+// The stack is observe( fault( execFor ) ): fault wraps the resolved executor's
+// operation fn so injected failures land INSIDE the retry/breaker loop (and so
+// are observed), and the observer behind [Query] / [RunWithResilience] sits
+// outermost. inj is nil-safe: with no injector (governance off / fault disabled)
+// WrapClientExecutor returns the inner executor unchanged, so the fault layer is a
+// transparent pass-through. Resolution is deferred to call time, so the order of
+// this arming relative to starter-governance's wiring is irrelevant.
+func (o *Client) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector) error {
+	// A nil manager is the unwired case — a container without
+	// starter-governance (the wiring injects it nullably, so it is nil there
+	// too), or a standalone caller that built the driver itself. A fresh
+	// unarmed manager is exactly
+	// "governance off": every resolve is a pass-through, so [Query] and
+	// [RunWithResilience] run their call inline.
+	// Normalizing here keeps the rest of this method (and every caller) free of
+	// nil branches.
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	service := resilience.ServiceLabel("neo4j", o.cfg.ServiceName, o.cfg.URI)
+	o.exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("neo4j", service), service, inj)
 	return nil
 }
 

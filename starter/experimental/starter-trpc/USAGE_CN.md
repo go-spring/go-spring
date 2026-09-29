@@ -127,11 +127,12 @@ govern.source.file.path=conf/govern.yaml
 ```yaml
 govern:
   enabled: true
-  fault:
-    enabled: false        # 置 true 即免重启"放火"
-    rate: 0.2
-    error: timeout
-    scope: loadtest       # 只影响带 x-loadtest 标记的流量
+  server:
+    fault:
+      enabled: false        # 置 true 即免重启"放火"
+      rate: 0.2
+      error: timeout
+      scope: loadtest       # 只影响带 x-loadtest 标记的流量
 ```
 
 **验证**（与自断言的 example/check.sh 同构）：
@@ -193,10 +194,10 @@ starter **不装固定链**。它把命名 filter 注册进 tRPC 全局 filter �
 
 | Filter | 注册条件 | 行为 |
 |--------|---------|------|
-| `loadtest` | `loadtest.enabled`（默认 true） | 读入站 server metadata 的 `x-loadtest` 键；肯定值则经 `traffic.WithLoadTest(ctx, "trpc-metadata")` 打标，下游所有层（及你的 handler，用 `traffic.IsLoadTest(ctx)`）都能分支。无标记时 no-op。放**最前**，让标记先于 tracing/metrics/handler 落 ctx。 |
+| `loadtest` | `loadtest.enabled`（默认 true） | 读入站 server metadata 的 `x-loadtest` 键；肯定值则经 `prop.Extract(ctx, <metadata carrier>)` 打标，下游所有层（及你的 handler，用 propagator 的 `IsLoadTest(ctx)`）都能分支。无标记时 no-op。放**最前**，让标记先于 tracing/metrics/handler 落 ctx。 |
 | `tracing` | `observer.tracing.enabled`（默认 true） | 起名为 `{calleeService}/{method}` 的 OTel server span，属性 `rpc.system=trpc`、`rpc.service`、`rpc.method`；出错置 span 状态 + RecordError。挂在 OTel 全局上——无 starter-otel 时 no-op。 |
 | `metrics` | `observer.metrics.enabled`（默认 true） | `rpc.server.request_count` 计数器、`rpc.server.request.duration` 直方图（秒，显式桶 5ms..10s）、`rpc.server.active_requests` UpDownCounter，均带 `rpc.method` 属性。挂在 OTel 全局上。 |
-| `fault` | 恒注册 | `fault.Apply(ctx, fault.InjectorFor(), "trpc", next)` —— 按治理规则注入延迟/错误；未配置时透明直通。 |
+| `fault` | 恒注册 | `fault.ApplyServer(ctx, inj, "trpc", next)` —— `inj` 是注入的 `*fault.Injector` bean；按治理规则注入延迟/错误；未配置时透明直通。 |
 
 推荐链（starter 注释的处方）：`loadtest` 最前，随后 `tracing`、`metrics`、`fault`，
 最后 handler —— 与 HTTP 系 starter 同理：标记须先落 ctx 才能被分支；fault 贴着 handler，
@@ -206,10 +207,10 @@ starter **不装固定链**。它把命名 filter 注册进 tRPC 全局 filter �
 
 客户端 `Greet("world")`，metadata 带 `x-loadtest: 1`，fault scope=loadtest 已生效：
 
-1. `loadtest` 读 `ServerMetaData()["x-loadtest"]` → ctx 打标 `traffic.IsLoadTest()==true`
+1. `loadtest` 读 `ServerMetaData()["x-loadtest"]` → ctx 打标，使 propagator 的 `IsLoadTest()==true`
 2. `tracing` 起 server span `trpc.demo.greet.GreetService/Greet`
 3. `metrics`：active_requests +1，时长观测开始
-4. `fault`：`fault.Apply` 咨询治理 injector；scope=loadtest 且有标记时，约 `rate` 比例
+4. `fault`：`fault.ApplyServer` 咨询治理 injector；scope=loadtest 且有标记时，约 `rate` 比例
    的调用被注入延迟/错误，其余直通
 5. handler 执行；应答按 3→2 展开回收：计数器/直方图带 `rpc.method` 记录，
    span 结束（失败则 Error 状态 + 记录错误）
@@ -235,7 +236,7 @@ starter **不装固定链**。它把命名 filter 注册进 tRPC 全局 filter �
 |-----|------|--------|------|---------|
 | `observer.tracing.enabled` | bool | true | 注册 `tracing` server filter。无 starter-otel 全局时 no-op——无任何告警。 | false（或未 import starter-otel）→ 静默无 span。 |
 | `observer.metrics.enabled` | bool | true | 注册 `metrics` server filter。同样 no-op。 | false/无 starter-otel → 静默无 RPC 指标。 |
-| `loadtest.enabled` | bool | true | 注册 `loadtest` server filter。 | false → 压测标记不再随这一跳传递，下游 `traffic.IsLoadTest` 恒 false。 |
+| `loadtest.enabled` | bool | true | 注册 `loadtest` server filter。 | false → 压测标记不再随这一跳传递，下游 propagator 的 `IsLoadTest` 恒 false。 |
 
 ⚠ **注册 ≠ 执行**：filter 进的是 tRPC 全局名字注册表；只有生成服务配置引用这些名字
 才会执行（tRPC filter 组合规则）。若你的 codegen 产出自己的 filter 列表，把
@@ -314,8 +315,8 @@ kill -TERM %1                   # 日志："trpc server shutting down ..." 后�
 
 1. 按 §1 的 `govern.yaml` 启动（`fault.enabled: false`），filter 链里有 `fault`。
 2. 打基线流量 → 全部成功。
-3. 把文件里 `fault.enabled` 置 true —— 治理 source 热加载；filter 每次调用都重新解析
-   `fault.InjectorFor()`，无需重启。
+3. 把文件里 `fault.enabled` 置 true —— 治理 source 热加载；filter 持有注入的
+   `*fault.Injector`，其配置由治理中心就地替换，无需重启。
 4. 带标流量着火（客户端调用 metadata 带 `x-loadtest: 1`），正常流量不受影响：约 20% 的
    带标调用被注入 `timeout`。
 5. 观测着火：`rpc.server.request.duration` 桶位移动、被注入调用的 span 带 Error 状态、
@@ -324,7 +325,7 @@ kill -TERM %1                   # 日志："trpc server shutting down ..." 后�
 ### 4.5 压测标记录演练
 
 `scope: real` 反转过滤——不带标的流量着火；只在专用环境使用。handler 里
-`traffic.IsLoadTest(ctx)` 分支同一个标记（由 `loadtest` filter 从入站 metadata 打上），
+propagator 的 `IsLoadTest(ctx)` 分支同一个标记（由 `loadtest` filter 从入站 metadata 打上），
 业务代码可在合成压力下降级功能。
 
 ---

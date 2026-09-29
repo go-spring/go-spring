@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/traffic"
 )
 
 // Classify maps an op's error to a bucket label. The default ([DefaultClassify])
@@ -42,6 +42,7 @@ type Runner struct {
 	driver   Driver
 	duration time.Duration
 	classify Classify
+	prop     traffic.Propagator
 	gc       bool
 	asserts  []namedAssert
 }
@@ -52,12 +53,28 @@ type namedAssert struct {
 }
 
 // New returns a Runner with sensible defaults: closed-loop driver (1 worker),
-// [DefaultClassify], no duration (run until ctx cancels), no asserts.
+// [DefaultClassify], go-spring's load-test convention
+// ([traffic.NewDefaultPropagator]), no duration (run until ctx cancels), no
+// asserts.
 func New() *Runner {
+	prop, _ := traffic.NewDefaultPropagator(traffic.DefaultBinding()) // DefaultBinding is complete, so this cannot fail.
 	return &Runner{
 		driver:   ClosedLoop{Concurrency: 1},
 		classify: DefaultClassify,
+		prop:     prop,
 	}
+}
+
+// Propagator sets the load-test convention the run is tagged with, so the
+// operations it drives can recognise synthetic load through the application's
+// own convention. A nil propagator means go-spring's default.
+func (r *Runner) Propagator(p traffic.Propagator) *Runner {
+	if p == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		p, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
+	r.prop = p
+	return r
 }
 
 // Driver sets the scheduling strategy. See [ClosedLoop], [OpenLoop], [Ramp],
@@ -105,7 +122,7 @@ func (r *Runner) Run(ctx context.Context, op Op) *Result {
 		runCtx, cancel = context.WithTimeout(ctx, r.duration)
 		defer cancel()
 	}
-	runCtx = canonical.WithLoadTest(runCtx, "loadtest.Run")
+	runCtx = r.prop.WithLoadTest(runCtx)
 
 	rec := newRecorder(r.classify)
 

@@ -38,7 +38,7 @@ type stubExecutor struct {
 	fnErr    error
 }
 
-func (s *stubExecutor) Execute(ctx context.Context, _ string, fn func(context.Context) error) error {
+func (s *stubExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	if s.reject != nil {
 		return s.reject
 	}
@@ -55,17 +55,17 @@ func (s *stubExecutor) Execute(ctx context.Context, _ string, fn func(context.Co
 	return err
 }
 
-func (s *stubExecutor) Close() error                    { return nil }
-func (s *stubExecutor) Refresh(resilience.Policy) error { return nil }
+func (s *stubExecutor) Close() error                          { return nil }
+func (s *stubExecutor) Refresh(resilience.ServerPolicy) error { return nil }
 
-// serveAdmission drives one GET through an echo engine carrying only the
+// serveServerPolicy drives one GET through an echo engine carrying only the
 // admission middleware, and reports the response plus how often the handler
 // itself ran.
-func serveAdmission(t *testing.T, exec resilience.Executor, handler echo.HandlerFunc) (*httptest.ResponseRecorder, int) {
+func serveServerPolicy(t *testing.T, exec resilience.ServerExecutor, handler echo.HandlerFunc) (*httptest.ResponseRecorder, int) {
 	t.Helper()
 	e := echo.New()
 	handlerRuns := 0
-	e.Use(resilienceAdmission(exec, "echo:test"))
+	e.Use(resilienceServerPolicy(exec, "echo:test"))
 	e.GET("/x", func(c echo.Context) error {
 		handlerRuns++
 		return handler(c)
@@ -77,7 +77,7 @@ func serveAdmission(t *testing.T, exec resilience.Executor, handler echo.Handler
 
 func TestAdmission_PassThroughRunsHandlerOnce(t *testing.T) {
 	exec := &stubExecutor{}
-	rec, handlerRuns := serveAdmission(t, exec, func(c echo.Context) error {
+	rec, handlerRuns := serveServerPolicy(t, exec, func(c echo.Context) error {
 		return c.String(http.StatusOK, "ok")
 	})
 	if rec.Code != http.StatusOK {
@@ -101,7 +101,7 @@ func TestAdmission_RejectsMapToStatus(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			exec := &stubExecutor{reject: tc.exec}
-			rec, handlerRuns := serveAdmission(t, exec, func(c echo.Context) error {
+			rec, handlerRuns := serveServerPolicy(t, exec, func(c echo.Context) error {
 				return c.String(http.StatusOK, "ok")
 			})
 			if rec.Code != tc.want {
@@ -118,7 +118,7 @@ func TestAdmission_RejectsMapToStatus(t *testing.T) {
 // HTTPErrorHandler untouched, so the admission layer only owns its rejections.
 func TestAdmission_HandlerErrorPassesThrough(t *testing.T) {
 	exec := &stubExecutor{}
-	rec, _ := serveAdmission(t, exec, func(c echo.Context) error {
+	rec, _ := serveServerPolicy(t, exec, func(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusTeapot, "handler said so")
 	})
 	if rec.Code != http.StatusTeapot {
@@ -130,7 +130,7 @@ func TestAdmission_HandlerErrorPassesThrough(t *testing.T) {
 // breaker would never see server-side errors.
 func TestAdmission_Handler5xxFeedsBreaker(t *testing.T) {
 	exec := &stubExecutor{}
-	rec, _ := serveAdmission(t, exec, func(c echo.Context) error {
+	rec, _ := serveServerPolicy(t, exec, func(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, "boom")
 	})
 	if rec.Code != http.StatusInternalServerError {
@@ -147,7 +147,7 @@ func TestAdmission_Handler5xxFeedsBreaker(t *testing.T) {
 // stops — a second fn invocation, not a third.
 func TestAdmission_DoesNotReplayHandler(t *testing.T) {
 	exec := &stubExecutor{attempts: 3}
-	rec, handlerRuns := serveAdmission(t, exec, func(c echo.Context) error {
+	rec, handlerRuns := serveServerPolicy(t, exec, func(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, "boom")
 	})
 	if handlerRuns != 1 {

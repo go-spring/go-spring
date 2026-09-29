@@ -30,7 +30,7 @@ NATS 同一连接同时承载 core + JetStream 两套 API。
   actuator 就绪探针看到自动重连客户端的实时状态，而不是启动期的旧成功值。
 - **`destroy = Drain`，不是 `Close`。** `Drain` 让 in-flight 订阅完成再关
   连接，符合框架优雅关停契约。
-- **resource key 按实例而非按 subject。** resilience executor 的
+- **service key 按实例而非按 subject。** resilience executor 的
   `resource` 字符串就是连接 bean 名，limiter / breaker 状态按连接维度
   聚合，而非按 subject。
 

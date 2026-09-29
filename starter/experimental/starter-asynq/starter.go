@@ -21,9 +21,10 @@ import (
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	health2 "go-spring.org/starter-asynq/health"
 	"go-spring.org/stdlib/flatten"
 )
 
@@ -44,6 +45,15 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. Init treats a nil
+				// bean as an unarmed authority, i.e. a transparent pass-through.
+				gs.IndexArg(3, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(4, gs.TagArg("?")), // inj *fault.Injector
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			if c.Server.Enabled {
@@ -64,15 +74,17 @@ func init() {
 				if err != nil {
 					return nil, err
 				}
-				return health2.NewClientHealth(name, connOpt), nil
+				return NewClientHealth(name, connOpt), nil
 			}, gs.IndexArg(0, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}"))).Name("asynq:" + name).Caller(1)
 			return nil
 		})
 	})
 }
 
-// newClient builds the producer Client bean through the supplied Driver.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
+// newClient builds the producer Client bean through the supplied Driver. The
+// governance beans (mgr, inj) are retained on the Client for Init to arm the
+// executor with; both are nil in a standalone, non-gs call.
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
@@ -82,7 +94,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
 		return nil, err
 	}
 	cl := asynq.NewClient(connOpt)
-	return &Client{Client: cl, cfg: c}, nil
+	return &Client{Client: cl, cfg: c, mgr: mgr, inj: inj}, nil
 }
 
 // newServer builds the worker Server bean, holding the resolved Driver so

@@ -60,12 +60,12 @@ func TestGuardedConnPassThrough(t *testing.T) {
 // TestGuardedConnRateLimit confirms the flow-control path: once the burst is
 // spent, the statement is rejected without reaching the connection.
 func TestGuardedConnRateLimit(t *testing.T) {
-	d := resilience.NewDefaultDriver()
-	exec, err := d.NewExecutor(resilience.Policy{RateLimit: 1, Burst: 1})
+	d := resilience.NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", resilience.ClientPolicy{RateLimit: 1, Burst: 1})
 	assert.Error(t, err).Nil()
 
 	sc := &stubConn{}
-	conn := guardedConn{base: sc, slot: &clientSlot{exec: exec, resource: "tdengine:test"}}
+	conn := guardedConn{base: sc, slot: &clientSlot{exec: exec}}
 
 	_, err = conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 1)", nil)
 	assert.Error(t, err).Nil()

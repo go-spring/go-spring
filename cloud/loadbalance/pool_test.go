@@ -46,8 +46,7 @@ func TestPoolHealthFilter(t *testing.T) {
 
 func TestPoolEvictionViaComplete(t *testing.T) {
 	src := staticSource(eps("a", "b")...)
-	tr := NewTracker(TrackerConfig{Threshold: 2, SuspendFor: time.Minute})
-	p := NewPool(src, NewRoundRobin(), WithTracker(tr))
+	p := NewPool(src, NewRoundRobin(), WithTrackerConfig(TrackerConfig{Threshold: 2, SuspendFor: time.Minute}))
 
 	// Drive "a" to failure through the pool's Complete wiring, twice, to suspend it.
 	for range 5 {
@@ -59,7 +58,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 			p.Complete(ep, nil)
 		}
 	}
-	assert.That(t, tr.Suspended("a")).True()
+	assert.That(t, p.Tracker().Suspended("a")).True()
 
 	// Subsequent picks avoid the evicted instance.
 	for range 10 {
@@ -76,15 +75,15 @@ func TestPoolEmpty(t *testing.T) {
 	assert.Error(t, err).Is(ErrNoAvailable)
 }
 
-func TestPoolWithoutTracker(t *testing.T) {
-	// No WithTracker: the nil tracker is a transparent pass-through (nil-receiver
-	// methods), and Complete with failures must not suspend anything.
+func TestPoolWithoutTrackerConfig(t *testing.T) {
+	// No WithTrackerConfig: the pool's own tracker is disabled (threshold 0), so
+	// Complete with failures must not suspend anything.
 	src := staticSource(eps("a", "b")...)
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		p.Complete(ep, errutil.Explain(nil, "boom")) // failures, but no tracker attached
+		p.Complete(ep, errutil.Explain(nil, "boom")) // failures, but no thresholds set
 	}
 	// Both endpoints keep receiving traffic.
 	m := map[string]int{}

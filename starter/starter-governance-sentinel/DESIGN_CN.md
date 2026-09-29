@@ -15,20 +15,20 @@
 
 - **在范围内:**import 时调用 `sentinel.InitDefault()`,并把后端贡献为名为
   `sentinel` 的 `resilience.Driver` bean;把中立
-  `resilience.Policy` 按 resource 翻译成 sentinel 规则。
+  `resilience.ClientPolicy` 按 service 翻译成 sentinel 规则。
 - **不在范围内:**决定韧性*施加在哪里*——那是适配器的活。`cloud/governance/resilience`
   提供客户端 seam:HTTP 客户端 `NewRoundTripper`、连接拨号 `NewDialer`;
-  入站 admission 中间件由各协议 starter 基于 `resilience.ExecutorFor` seam
-  自建。本 starter 从不在其中选择。
+  入站 admission 中间件由各协议 starter 基于它们注入的 `resilience.Manager`
+  的 `ExecutorFor` 自建。本 starter 从不在其中选择。
 
 ## 2. 关键决策
 
 - **没有"单一通用 per-request seam"。**各 client 库钩子不同(oauth2 →
   `http.RoundTripper`,go-redis → `redis.Hook`,gorm → plugin callback,
   MQ → call-site helper)。`cloud/governance/resilience` 保留中立
-  `Executor.Execute(ctx, resource, fn)`,让每个适配器桥接到自家形态。
+  `Executor.Execute(ctx, fn)`,让每个适配器桥接到自家形态。
   本 starter 提供*引擎*,不提供*缝隙*。
-- **`Policy` → sentinel 规则按 resource 懒加载。**sentinel 按 resource 名
+- **`ClientPolicy` → sentinel 规则按 service 懒加载。**sentinel 按 service 名
   索引,规则在首次 `Entry` 时载入;并发首触由 `sync.Mutex` + `loaded`
   map 守护。
 - **`MaxRetries` 与 `Timeout` 在 sentinel `Entry` 之外应用。**sentinel

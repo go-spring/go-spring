@@ -90,7 +90,7 @@ func init() {
 // Init 在注入完成后运行（gs.Rooter）：启动竞争消费者。
 func (a *App) Init(ctx context.Context) error {
     // driver 提供的 publisher：trace context 与插桩自动生效。
-    b := StarterRabbitMQ.NewDriver(a.Conn)
+    b := StarterRabbitMQ.NewDriver(a.Conn, nil)
     pub, err := b.NewPublisher(ctx, "orders.created")
     if err != nil { return err }
     if err := pub.Publish(ctx, &messaging.Message{
@@ -194,7 +194,7 @@ gs.Run()
   │   ├─ 打开并关闭一条探测 channel，确认 AMQP 层可用                      [starter.go:69-76]
   │   ├─ NotifyClose/NotifyBlocked 桥接进 go-spring 日志（连接关闭时
   │   │   amqp091 关闭 channel，goroutine 自然退出）                        [starter.go:83-103]
-  │   └─ applyResilience：executor 以 *amqp.Connection 为键索引             [starter.go:106]
+  │   └─ applyResilience：executor 以 *amqp.Connection 为键索引             [starter.go:138]
   ├─ 就绪：连接 bean 可按实例名注入 *amqp.Connection
   └─ SIGTERM：destroyClient → closeResilience（executor Close）后
       conn.Close()，同时排空 notifier goroutine                            [starter.go:118-121]
@@ -202,10 +202,10 @@ gs.Run()
 
 ### 2.2 治理守卫的包裹顺序
 
-每连接的 executor 在 `applyResilience` 内由内向外构建 [command.go:234-240]：
+每连接的 executor 在 `applyResilience` 内由内向外构建 [command.go:246-254]：
 
 ```
-fault.WrapExecutor( resilience.ExecutorFor("rabbitmq", resource) )   ← 最外层
+fault.WrapClientExecutor( mgr.ClientExecutorFor("rabbitmq", service), service, inj )     ← 最外层
         │
    observe 层（在 resolve 内应用）                          ← 包住治理 executor
         │
@@ -216,15 +216,16 @@ fault.WrapExecutor( resilience.ExecutorFor("rabbitmq", resource) )   ← 最外�
 
 即：受治理的 publish 在外层被 fault 包裹——注入的故障会穿过 observe 层（span +
 `resilience.*` 指标 + 访问日志）与治理 executor 的重试 / 限流 / 熔断，与真实失败
-走完全相同的路径。executor 经中立的
-`resilience.ExecutorFor` seam 获取 —— 治理关闭时它是透明 no-op，`guard` 甚至查不到
-executor 而直接透传（command.go:253-260）。
+走完全相同的路径。executor 由注入的
+`*resilience.Manager` / `*fault.Injector` bean 构建 —— 治理关闭时 manager 未武装，
+返回透明直通，`guard` 甚至查不到
+executor 而直接透传（command.go:267-275）。
 
-**不在守卫内**：`GuardedPublish` 是唯一受守卫的入口 [command.go:271-275]。driver 的
+**不在守卫内**：`GuardedPublish` 是唯一受守卫的入口 [command.go:285-289]。driver 的
 裸 `ch.PublishWithContext`、整个消费路径、queue/exchange 声明与 ack 全部绕过
 resilience。消费侧保护是 handler 自己的事。driver 的 `Publish` **已受保护**——走
 `GuardedPublish` 与连接级 executor [client.go]；想让所有调用路径事实上裸跑，给
-resource label（`rabbitmq:<vhost|url>`）配一条全零 rule。
+service label（`rabbitmq:<vhost|url>`）配一条全零 rule。
 
 ### 2.3 一次 publish 与一次 consume 逐层走读（driver 路径）
 
@@ -232,7 +233,7 @@ Publish [client.go:89-107]：
 
 1. 信封 → `amqp.Publishing`：`Body` ← Payload、`Headers` ← 字符串头
    （toAMQPTable，空则 nil）、`MessageId` ← `msg.Key` [client.go:90-94]。
-2. 若 `traffic.IsLoadTest(ctx)`，标记写入 AMQP header `x-loadtest`
+2. 若 propagator 的 `IsLoadTest(ctx)`，标记写入 AMQP header `x-loadtest`
    [client.go:97-102]，让消费侧识别压测流量。
 3. NewDriver 处包了 `messaging.Observe`：装饰器已先打开 "publish" producer
    span、把 W3C trace 上下文注入信封 headers（第 1 步已映射进 `pub.Headers`）、
@@ -257,7 +258,7 @@ Consume [client.go:122-150]：
 
 `GuardedPublish(ctx, conn, ch, exchange, key, mandatory, immediate, pub)` 按
 **连接**（而非 channel）解析 executor —— channel 可能在某些模式下比连接 bean 活得久，
-而 executor 始终限定在 starter 创建的连接上（command.go:266-270 注释）。拒绝时底层
+而 executor 始终限定在 starter 创建的连接上（command.go:282-284 注释）。拒绝时底层
 publish 根本不执行，返回的是 resilience 哨兵错误。手动追踪助手
 （`StartPublishSpan` / `StartConsumeSpan` / `EndSpan`，command.go:72-129）是裸
 channel 侧的对应物。
@@ -272,7 +273,7 @@ channel 侧的对应物。
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `url` | string | — | **必填**（`expr:"$ != ''"`，config.go:33）。`amqp://` 或 `amqps://`；仅 `amqps://` scheme 也会强制走 TLS 配置拨号分支 [driver.go:69-72]。 | 为空 → 绑定报错；凭据/TLS 错 → **启动失败**（同步拨号）。 |
-| `vhost` | string | "" | 传入 `amqp.Config`，覆盖从 URL 解析出的 vhost [driver.go:72-76]。同时进入治理 resource label。 | URL 与 vhost 冲突 → 启动期 AMQP 握手错误。 |
+| `vhost` | string | "" | 传入 `amqp.Config`，覆盖从 URL 解析出的 vhost [driver.go:72-76]。同时进入治理 service label。 | URL 与 vhost 冲突 → 启动期 AMQP 握手错误。 |
 | `heartbeat` | duration | 10s | `>0`（或有 TLS/vhost）使 `amqp.Dial` → `amqp.DialConfig` 并携带 `Heartbeat` [driver.go:72-80]。`0` = URL/服务端默认。⚠ 非默认 heartbeat 会把普通拨号也切到 DialConfig 分支，值仍生效。 | 过低 → 高负载下误判断连；0 → 服务端默认可能超过 TCP 空闲超时。 |
 | `tls.enabled` | bool | false | 与 `amqps://` 隐式等效；显式开启后把构建的 `*tls.Config` 接进拨号 [driver.go:69-79]。 | 明文 `amqp://` + `tls.enabled=true` → 对 cleartext 端口跑 TLS → 启动报错。 |
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | 自定义 CA / mTLS 证书对，由共享 `security` 块加载（跨 starter 统一 key，config.go:44-48）。 | 文件缺失 → 启动期 TLS 构建失败 [driver.go:64-68]。 |
@@ -303,14 +304,14 @@ docker stop demo-rabbit && go run .   # example 下：broker 停掉跑 ./check.s
 
 ### 4.2 受守卫 vs 未守卫路径
 
-引入 starter-governance，并对 rabbitmq 资源（label 为
-`rabbitmq:<vhost>`(冒号格式;vhost 为空时回落 `rabbitmq:<url>`)，starter.go:106）配置 fault 规则：
+引入 starter-governance，并对 rabbitmq 服务（label 为
+`rabbitmq:<vhost>`(冒号格式;vhost 为空时回落 `rabbitmq:<url>`)，starter.go:138）配置 fault 规则：
 
 1. `GuardedPublish` 调用 → resilience 哨兵错误，publish 根本不进 channel，
    产出 `resilience.*` 指标 + `_app_rabbitmq_access` 日志记录。
 2. 同一规则下的 driver `Publish` → 同样的 resilience 哨兵错误（走连接级 executor，
    §2.2）。自行开 channel 裸调 `PublishWithContext` → 不受影响（没有 executor 跳跃）。
-   退出口在资源级：给 `rabbitmq:<vhost|url>` 配一条全零 rule。
+   退出口在服务级：给 `rabbitmq:<vhost|url>` 配一条全零 rule。
 
 ### 4.3 消息往返 / 映射字段存活
 
@@ -331,7 +332,7 @@ driver 到 driver 往返：`Payload`、字符串 `Headers`、`Key`（经 Message
   `messaging.client.active_requests`，属性 `messaging.system=rabbitmq`、
   `messaging.operation=publish|consume`、`messaging.destination.name=<queue>`，
   另有 `status=ok|error` 维度（observe.go）。受守卫
-  路径另有 `resilience.operation.duration` / `resilience.active_requests`。
+  路径另有 `resilience.client.duration` / `resilience.active_requests`。
 - span：driver —— `publish <queue>`（producer kind）/ `consume <queue>`（consumer
   kind），经 W3C headers 跨 broker 串联；手动助手 —— `rabbitmq.publish <dest>` /
   `rabbitmq.consume <dest>`，带 `messaging.rabbitmq.destination.routing_key` 属性
@@ -365,7 +366,7 @@ health indicator —— 进程会在死连接上继续跑。
 | broker 重启后消息消失 | driver 队列非持久化且消息瞬态 | 用裸连接做 durable 声明（client.go:64,76；rabbitmq.com/docs/durability）。 |
 | 跨服务 `Key`/headers "丢失" | 对端生产者写了原生 AMQP 路由头 / 非字符串值消费侧被丢弃 | 信封 headers 仅字符串；Key 走 MessageId（client.go:183-194）。 |
 | driver 无 trace/指标 | 未 import starter-otel | 加上；否则 OTel 全局是静默 no-op（command.go:57-59）。 |
-| GuardedPublish 返回 resilience 哨兵错误 | 触发限流 / 熔断开启 / 注入 fault | 读 `resilience.*` 指标 + 访问日志；这是治理契约（command.go:264-266）。 |
+| GuardedPublish 返回 resilience 哨兵错误 | 触发限流 / 熔断开启 / 注入 fault | 读 `resilience.*` 指标 + 访问日志；这是治理契约（command.go:267-275）。 |
 
 ## 6. 设计体检表
 
@@ -386,4 +387,4 @@ health indicator —— 进程会在死连接上继续跑。
 - 生产侧 `msg.Timestamp` 未写入 `amqp.Publishing.Timestamp`（client.go:90-94）。
 - 非字符串 AMQP header 值消费侧被静默丢弃（client.go:183-186）。
 - driver 发布不受守卫而裸路径可以 —— starter 自身携带的两条路径治理面不对称
-  （client.go:104 vs command.go:271）。
+  （client.go:104 vs command.go:285）。

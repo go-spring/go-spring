@@ -28,6 +28,7 @@ import (
 	gormsqlite "github.com/glebarez/sqlite"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/starter-gorm"
 )
 
@@ -43,13 +44,14 @@ func init() {
 
 // build constructs the driver-specific dialector for a Config. SQLite needs no
 // TLS registration (no transport) and no discovery dialer (the "server" is a
-// file path), so the Spec carries only the dialector and pool settings and the
-// backend argument — required by the shared Dialect.Build shape — is ignored.
-func build(ctx context.Context, c Config, _ discovery.Discovery) (gormcore.Spec, error) {
+// file path), so the Spec carries only the dialector and pool settings; the
+// backend and lbMgr arguments — required by the shared Dialect.Build shape — are
+// ignored, since there is no candidate set to select from.
+func build(ctx context.Context, c Config, _ discovery.Discovery, _ *loadbalance.Manager) (gormcore.Spec, error) {
 	return gormcore.Spec{
 		Dialector:      gormsqlite.Open(c.DSN()),
 		Pool:           c.Pool(),
-		Resource:       resilience.ResourceLabel("gorm:sqlite", c.File),
+		Service:        resilience.ServiceLabel("gorm:sqlite", c.File),
 		ObserveEnabled: c.ObserveEnabled,
 	}, nil
 }

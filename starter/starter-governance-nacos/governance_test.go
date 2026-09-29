@@ -28,17 +28,17 @@ import (
 
 const govRulesV1 = `govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
+  client:
+    default:
+      attempt-timeout: 100ms
 `
 
 const govRulesV2 = `govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 300ms
-    max-retries: 1
+  client:
+    default:
+      attempt-timeout: 300ms
+      max-retries: 1
 `
 
 // fakeConfigClient stands in for a nacos server: it serves one document and
@@ -103,14 +103,14 @@ func TestNacosSource_PushChain(t *testing.T) {
 	var pushed governance.Config
 	src.Subscribe(func(cfg governance.Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
-	if cfg := src.Snapshot(); cfg.Default.AttemptTimeout != 100*time.Millisecond {
-		t.Fatalf("seed snapshot: %+v", cfg.Default)
+	if cfg := src.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+		t.Fatalf("seed snapshot: %+v", cfg.Client.Default)
 	}
 
 	// A publish with new rules pushes.
 	fake.publish(govRulesV2)
 	mu.Lock()
-	got, n := pushed.Default.AttemptTimeout, pushes
+	got, n := pushed.Client.Default.AttemptTimeout, pushes
 	mu.Unlock()
 	if n != 1 || got != 300*time.Millisecond {
 		t.Fatalf("publish should push new rules once: n=%d timeout=%v", n, got)
@@ -118,8 +118,8 @@ func TestNacosSource_PushChain(t *testing.T) {
 
 	// A bad publish keeps the last good snapshot and pushes nothing.
 	fake.publish("govern: { broken")
-	if cfg := src.Snapshot(); cfg.Default.AttemptTimeout != 300*time.Millisecond {
-		t.Fatalf("bad publish must keep last good snapshot: %+v", cfg.Default)
+	if cfg := src.Snapshot(); cfg.Client.Default.AttemptTimeout != 300*time.Millisecond {
+		t.Fatalf("bad publish must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 	mu.Lock()
 	n = pushes

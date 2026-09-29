@@ -113,7 +113,7 @@ spring.s3.instances.b.secret-access-key=minioadmin
 # --- actuator（把 s3:<name> 指示器并入 readiness）----------------------------
 spring.actuator.addr=:9370
 
-# --- governance（可选：s3:<endpoint> 资源下的 retry/limiter/breaker/fault）----
+# --- governance（可选：s3:<endpoint> 服务下的 retry/limiter/breaker/fault）----
 govern.source.file.path=conf/govern.yaml
 ```
 
@@ -155,12 +155,14 @@ gs.Run()
   │    │      → d.CreateClient：静态凭据 + region + bucket-lookup
   │    │        + minio.Options 里的 dynamicTransport 占位
   │    │      → dynamicTransports.LoadAndDelete 把占位交给 wrapper
+  │    ├─ ArmGovernance()（client.go:97）：mgr/inj 为注入的
+  │    │      *resilience.Manager / *fault.Injector bean
+  │    │      exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("s3", "s3:<endpoint>"), "s3:<endpoint>", inj)  // outcome span/计数
   │    ├─ fail-fast 探测：HealthCheck → ListBuckets —— 端点不可达或凭据被拒
-  │    │      都会中止启动（starter.go:76-78）
-  │    └─ Init()（client.go）：
+  │    │      都会中止启动
+  │    └─ Init()（client.go:67）：
   │          obsTransport（span + db.client.* 指标 + 访问日志，observe.go）
-  │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3", "s3:<endpoint>"))  // outcome span/计数
-  │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, → resource))
+  │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec))
   ├─ Run / 服务：readyz 并入每个 s3:<name> 指示器（需 starter-actuator）
   └─ SIGTERM：Destroy() 关闭 resilience executor；minio 侧无会话可关
 ```
@@ -171,7 +173,7 @@ minio-go 在构造时把 `http.Transport` 固定进 `minio.Options` 且不提供
 真正的 transport（埋点 + resilience）只能在 client 存在**之后**换入。因此
 `DefaultDriver.CreateClient`
 装一个薄的 `dynamicTransport`——原子 RoundTripper 间接层（RWMutex 守护而非
-atomic.Value，因为活动的 tripper 是多种具体类型之一；见 client.go:104-114）——并按
+atomic.Value，因为活动的 tripper 是多种具体类型之一；见 client.go:131-151）——并按
 返回的 client 为键登记进包级 `dynamicTransports sync.Map`。`newClient` 取出它
 （`LoadAndDelete`），`Init` 再把真正的 observe+resilience transport 换进去。Init
 运行前，请求直通 `http.DefaultTransport`。
@@ -182,10 +184,11 @@ atomic.Value，因为活动的 tripper 是多种具体类型之一；见 client.
 
 1. minio-go 用 SigV4 静态凭据签名，经配置的 transport 发 HTTP 请求——即被换入的
    resilience round-tripper。
-2. Resilience round-tripper：请求进入按资源 `s3:<endpoint>` 解析的 executor——引入
+2. Resilience round-tripper：请求进入由注入的 `*resilience.Manager` 为服务
+   `s3:<endpoint>` 构建的 executor——引入
    starter-governance 后 retry / rate-limit / circuit-breaker / bulkhead 生效（经治理
-   中心可热切换），否则透明直通；进程级 fault 注入器（`fault.InjectorFor`，nil 安全）
-   可为演练注入失败。executor 内部解析出的 observe 层为熔断跳闸、限流拒绝、隔舱拒绝
+   中心可热切换），否则透明直通；注入的 `*fault.Injector`（nil 安全）
+   可为演练注入失败。executor 内部的 observe 层为熔断跳闸、限流拒绝、隔舱拒绝
    发出 outcome span + 调用计数 + 时长直方图 + 访问日志。
 3. obsTransport（command.go:38）：以操作名 `"PUT /bucket/key"`（方法 + URL path）
    开 per-request observer span，跑底层 `http.DefaultTransport`，带错误结束 span ——
@@ -252,7 +255,7 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 
 ### 4.5 fault/resilience 演练（需 starter-governance）
 
-按端点资源标签 `s3:127.0.0.1:9000` 配置治理规则：对该资源的 `fault.rate` 让一部分
+按端点服务标签 `s3:127.0.0.1:9000` 配置治理规则：对该服务的 `fault.rate` 让一部分
 上传经 executor 失败——可通过 executor 的 observe 层 outcome span/计数观测。
 改回规则文件即撤火（经治理 source 热切换）。⚠ 注意 retry 按 round-trip 重试而非按流：
 大 body 上传可能重发 body。
@@ -284,7 +287,7 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
   DefaultDriver 一个实现，driver 与 wrapper 之间的 dynamicTransport 握手是隐式的
   （挂在 sync.Map 上）。
 - `bucket-lookup` 对同一模式接受 "virtual-host" 与 "dns" 两个别名——配置面轻度冗余。
-- 新增：资源标签只有 `s3:<endpoint>`——同端点两实例（如 example 的 `a`/`b`）共享
+- 新增：服务标签只有 `s3:<endpoint>`——同端点两实例（如 example 的 `a`/`b`）共享
   一个 resilience 作用域，无按实例区分。
 - 新增：健康探测与 fail-fast 探测同为 ListBuckets 但代码重复
   （starter.go HealthCheck vs health/health.go）——无害，可小幅合并。

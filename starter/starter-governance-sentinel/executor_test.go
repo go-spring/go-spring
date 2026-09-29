@@ -38,21 +38,25 @@ import (
 func TestDriverBuilds(t *testing.T) {
 	d := NewSentinelDriver()
 	assert.That(t, d).NotNil()
-	e, err := d.NewExecutor(resilience.Policy{})
+	e, err := d.NewClientExecutor("svc-builds", resilience.ClientPolicy{})
 	assert.Error(t, err).Nil()
 	assert.That(t, e).NotNil()
 }
 
-func newExec(t *testing.T, p resilience.Policy) resilience.Executor {
-	e, err := NewSentinelDriver().NewExecutor(p)
+// newExec builds a sentinel executor for service. Each test names its own
+// service: sentinel's rule registry AND its per-resource stat window are
+// process-global, so a shared resource name would let one test's calls trip
+// another test's rule.
+func newExec(t *testing.T, service string, p resilience.ClientPolicy) resilience.ClientExecutor {
+	e, err := NewSentinelDriver().NewClientExecutor(service, p)
 	assert.Error(t, err).Nil()
 	return e
 }
 
 func TestSentinelPassThrough(t *testing.T) {
-	e := newExec(t, resilience.Policy{})
+	e := newExec(t, "svc-passthrough", resilience.ClientPolicy{})
 	var calls int
-	err := e.Execute(context.Background(), "svc-passthrough", func(context.Context) error {
+	err := e.Execute(context.Background(), func(context.Context) error {
 		calls++
 		return nil
 	})
@@ -63,9 +67,9 @@ func TestSentinelPassThrough(t *testing.T) {
 func TestSentinelRateLimit(t *testing.T) {
 	// Threshold 2 QPS: the third call within the same second is rejected as a
 	// flow-control block, surfaced through the neutral ErrRateLimited.
-	e := newExec(t, resilience.Policy{RateLimit: 2})
+	e := newExec(t, "svc-ratelimit", resilience.ClientPolicy{RateLimit: 2})
 	run := func() error {
-		return e.Execute(context.Background(), "svc-ratelimit", func(context.Context) error { return nil })
+		return e.Execute(context.Background(), func(context.Context) error { return nil })
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
@@ -87,8 +91,8 @@ func TestSentinelRoundTripperRetry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := newExec(t, resilience.Policy{MaxRetries: 3, Timeout: time.Second})
-	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, e, nil)}
+	e := newExec(t, "sentinel:test", resilience.ClientPolicy{MaxRetries: 3, AttemptTimeout: time.Second})
+	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, e)}
 
 	resp, err := client.Get(srv.URL)
 	assert.Error(t, err).Nil()
@@ -101,7 +105,7 @@ func TestSentinelRoundTripperRetry(t *testing.T) {
 // sentinel's isolation (concurrency) rule: with a limit of 1, a second call made
 // while the first is still in-flight is rejected as the neutral ErrBulkheadFull.
 func TestSentinelBulkhead(t *testing.T) {
-	e := newExec(t, resilience.Policy{MaxConcurrent: 1})
+	e := newExec(t, "svc-bulkhead", resilience.ClientPolicy{MaxConcurrent: 1})
 
 	release := make(chan struct{})
 	entered := make(chan struct{})
@@ -109,7 +113,7 @@ func TestSentinelBulkhead(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = e.Execute(context.Background(), "svc-bulkhead", func(context.Context) error {
+		_ = e.Execute(context.Background(), func(context.Context) error {
 			close(entered)
 			<-release
 			return nil
@@ -117,14 +121,14 @@ func TestSentinelBulkhead(t *testing.T) {
 	}()
 
 	<-entered // first call holds the only concurrency slot
-	err := e.Execute(context.Background(), "svc-bulkhead", func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(resilience.ErrBulkheadFull)
 
 	close(release)
 	wg.Wait()
 
 	// Slot freed: a subsequent call is admitted again.
-	assert.Error(t, e.Execute(context.Background(), "svc-bulkhead", func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
 }
 
 // TestSentinelBulkheadHeldAcrossRetries verifies the isolation slot is held for
@@ -133,7 +137,7 @@ func TestSentinelBulkhead(t *testing.T) {
 // call must be rejected for the entire retry sequence — not admitted in the
 // gap between attempts.
 func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {
-	e := newExec(t, resilience.Policy{MaxConcurrent: 1, MaxRetries: 3, InitialInterval: 20 * time.Millisecond})
+	e := newExec(t, "svc-bulk-retry", resilience.ClientPolicy{MaxConcurrent: 1, MaxRetries: 3, InitialInterval: 20 * time.Millisecond})
 
 	release := make(chan struct{})
 	entered := make(chan struct{})
@@ -141,7 +145,7 @@ func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = e.Execute(context.Background(), "svc-bulk-retry", func(context.Context) error {
+		_ = e.Execute(context.Background(), func(context.Context) error {
 			close(entered)
 			<-release // park with the slot held across what would be retries
 			return nil
@@ -151,7 +155,7 @@ func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {
 	<-entered
 	// While the first call holds the slot (parked inside fn), the second is
 	// rejected — proving the bulkhead is held for the duration of Execute.
-	err := e.Execute(context.Background(), "svc-bulk-retry", func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(resilience.ErrBulkheadFull)
 
 	close(release)
@@ -162,7 +166,7 @@ func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {
 // sentinel's ErrorRatio rule: it trips on failure ratio with enough samples
 // even when successes are interleaved (so a consecutive counter would not trip).
 func TestSentinelErrorRateBreaker(t *testing.T) {
-	e := newExec(t, resilience.Policy{
+	e := newExec(t, "svc-errrate", resilience.ClientPolicy{
 		BreakerStrategy:    resilience.BreakerErrorRate,
 		ErrorRateThreshold: 0.5,
 		MinRequests:        4,
@@ -171,7 +175,7 @@ func TestSentinelErrorRateBreaker(t *testing.T) {
 	})
 	tripped := false
 	for i := range 10 {
-		err := e.Execute(context.Background(), "svc-errrate", func(context.Context) error {
+		err := e.Execute(context.Background(), func(context.Context) error {
 			if i%2 == 0 {
 				return errors.New("fail")
 			}
@@ -191,73 +195,73 @@ func TestSentinelErrorRateBreaker(t *testing.T) {
 // loadBreakerRule) so a single probe decides recovery — the closest sentinel
 // equivalent to the builtin's strict single-permit half-open gate.
 func TestSentinelHalfOpenRecovery(t *testing.T) {
-	e := newExec(t, resilience.Policy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
+	e := newExec(t, "svc-halfopen", resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 
 	// Trip the breaker.
-	_ = e.Execute(context.Background(), "svc-halfopen", func(context.Context) error {
+	_ = e.Execute(context.Background(), func(context.Context) error {
 		return errors.New("boom")
 	})
 	// Open: short-circuited.
-	err := e.Execute(context.Background(), "svc-halfopen", func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(resilience.ErrCircuitOpen)
 
 	// After cool-down a successful trial closes the circuit.
 	time.Sleep(40 * time.Millisecond)
-	err = e.Execute(context.Background(), "svc-halfopen", func(context.Context) error { return nil })
+	err = e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.Error(t, err).Nil()
 	// Now closed: a normal call runs.
-	err = e.Execute(context.Background(), "svc-halfopen", func(context.Context) error { return nil })
+	err = e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.Error(t, err).Nil()
 }
 
 // TestSentinelHalfOpenReopensOnFailedTrial verifies the other half of the
 // half-open contract: a failing trial re-opens the cool-down window.
 func TestSentinelHalfOpenReopensOnFailedTrial(t *testing.T) {
-	e := newExec(t, resilience.Policy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
+	e := newExec(t, "svc-reopen", resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 
-	_ = e.Execute(context.Background(), "svc-reopen", func(context.Context) error {
+	_ = e.Execute(context.Background(), func(context.Context) error {
 		return errors.New("boom")
 	})
 	time.Sleep(40 * time.Millisecond) // half-open
 
 	// Failing trial re-opens the circuit.
-	_ = e.Execute(context.Background(), "svc-reopen", func(context.Context) error {
+	_ = e.Execute(context.Background(), func(context.Context) error {
 		return errors.New("still bad")
 	})
-	err := e.Execute(context.Background(), "svc-reopen", func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(resilience.ErrCircuitOpen)
 }
 
 // sentinelRec captures breaker state transitions routed from sentinel-golang via
 // the global routeListener, for TestSentinelBreakerEvents.
 type sentinelRec struct {
-	events []struct{ resource, from, to string }
+	events []struct{ service, from, to string }
 }
 
-func (l *sentinelRec) OnBreakerStateChange(resource string, from, to resilience.BreakerState) {
-	l.events = append(l.events, struct{ resource, from, to string }{resource, from.String(), to.String()})
+func (l *sentinelRec) OnBreakerStateChange(service string, from, to resilience.BreakerState) {
+	l.events = append(l.events, struct{ service, from, to string }{service, from.String(), to.String()})
 }
 
 // TestSentinelBreakerEvents verifies the sentinel driver emits the same
 // closed->open->half-open->closed transitions as the builtin, routed through the
 // global routeListener to a listener attached via SetBreakerEventListener.
 func TestSentinelBreakerEvents(t *testing.T) {
-	e := newExec(t, resilience.Policy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
+	e := newExec(t, "svc-evt", resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 	rec := &sentinelRec{}
 	e.(resilience.BreakerEventListenerSetter).SetBreakerEventListener(rec)
 
 	// Trip: closed -> open.
-	_ = e.Execute(context.Background(), "svc-evt", func(context.Context) error { return errors.New("boom") })
+	_ = e.Execute(context.Background(), func(context.Context) error { return errors.New("boom") })
 	assert.That(t, len(rec.events)).Equal(1)
 	assert.That(t, rec.events[0].to).Equal("open")
 
 	// Breaker open: rejected before fn runs, no transition.
-	_ = e.Execute(context.Background(), "svc-evt", func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.That(t, len(rec.events)).Equal(1)
 
 	// After cool-down a successful trial: open -> half-open -> closed.
 	time.Sleep(40 * time.Millisecond)
-	_ = e.Execute(context.Background(), "svc-evt", func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), func(context.Context) error { return nil })
 	assert.That(t, len(rec.events)).Equal(3)
 	assert.That(t, rec.events[1].to).Equal("half_open")
 	assert.That(t, rec.events[2].to).Equal("closed")

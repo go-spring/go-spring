@@ -23,15 +23,18 @@ import (
     "go-spring.org/cloud/loadbalance"
 )
 
-resolver, err := discovery.NewResolver(ctx, "default", "orders")
+backend := discovery.NewStaticDiscovery(
+    discovery.Endpoint{Host: "10.0.0.1", Port: 8080},
+    discovery.Endpoint{Host: "10.0.0.2", Port: 8080},
+)
+resolver, err := discovery.NewResolver(ctx, backend, "orders")
 if err != nil { return err }
 
-bal, _ := loadbalance.New(loadbalance.RoundRobin)
-tracker := loadbalance.NewTracker(loadbalance.TrackerConfig{
+bal := loadbalance.NewRoundRobin()
+pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTrackerConfig(loadbalance.TrackerConfig{
     Threshold:  3,               // 连续失败 3 次摘除
     SuspendFor: 5 * time.Second, // 摘除 5s 后半开试探
-})
-pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTracker(tracker))
+}))
 
 for {
     ep, err := pool.Pick(loadbalance.PickInfo{})
@@ -43,10 +46,11 @@ for {
 
 ## Pool:组装与过滤
 
-`Pool` 把三样东西粘成运行时:一个端点来源、一个策略、一个可选的 `Tracker`。
+`Pool` 把三样东西粘成运行时:一个端点来源、一个策略、属于它自己的 `Tracker`
+(构造即为禁用态,无需任何接线就可被治理;初始阈值用 `WithTrackerConfig` 设定)。
 
 ```go
-pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTracker(tracker))
+pool := loadbalance.NewPool(resolver, bal)
 ```
 
 - **端点来源**是任何实现 `Endpoints() ([]discovery.Endpoint, error)` 的对象,
@@ -80,7 +84,7 @@ pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTracker(tracker))
 自定义策略实现 `Balancer` 接口后注册即可,与内置策略同等可用:
 
 ```go
-loadbalance.Register("my_strategy", func() loadbalance.Balancer {
+loadbalance.Register("my_strategy", func(loadbalance.Config) loadbalance.Balancer {
     return &myBalancer{} // 实现 Pick 和 Complete;须并发安全
 })
 ```
@@ -114,32 +118,35 @@ ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 ```
 
 一笔成功即清零失败计数,偶发失败不触发摘除;所有实例都被摘除时回退全量。
-`Threshold <= 0`(或不挂 `WithTracker`)时完全透明,零开销。
+`Threshold <= 0`(不传 `WithTrackerConfig` 时的默认值)时完全透明,零开销。
 
 ## 受管选择(治理)
 
-池的策略与摘除阈值可以从进程外驱动:按**资源标签**而不是构造期参数传进来。
+池的策略与摘除阈值可以从进程外驱动:按**服务标签**而不是构造期参数传进来。调用方注入
+`*loadbalance.Manager` bean(见 [manager.go](manager.go)),把池交给它:
 
 ```go
-stop := pool.BindSelection("http:user-svc") // 治理缺席时是空操作
+// mgr 是注入进来的 *loadbalance.Manager;nil 表示进程里没有治理
+stop := mgr.Bind(pool, "http:user-svc")
 defer stop()
 ```
 
-- `BindSelection(label)` **立刻**应用该标签当前的 `Selection`,之后每次变更再应用一次,
+- `Bind(pool, label)` **立刻**应用该标签当前的 `Selection`,之后每次变更再应用一次,
   全部原地生效——不重建、不重连,下一次 `Pick` 就走新策略。它返回解绑函数:生命周期
-  短于进程的池**必须**调用,否则治理中心会留着一个指向已死池的回调。
-- 没有注册 provider 时(没 import 治理 starter,或治理关闭)该调用是空操作,池保持构造
-  时的策略——与 `resilience.ExecutorFor` 同样的透明旁路。
+  短于进程的池**必须**调用,否则 Manager 会留着一个指向已死池的回调。
+- 给**尚未武装**的 Manager 绑定是安全的,而且是容器接线期建池的常态:订阅会被记住,
+  等第一次 `Apply` 时自动武装。完全没有注入 Manager 时(容器里没有 starter-governance,
+  或独立调用方)池保持构造时的策略——透明旁路。
 - 策略名留空 = 保持当前策略;策略名写错 = **被忽略**,沿用上一个可用策略。摘除阈值
   总是应用。
-- 摘除那一半只在挂了 `Tracker`(`WithTracker`)且 `Pick` 配对了 `Complete` 的池上才有效果
-  ——两者缺一,阈值就是设在了空气上。
+- 摘除那一半只在 `Pick` 配对了 `Complete` 的池上才有效果——`Tracker` 一直在,
+  但没有配对就没有成败可计,阈值就是设在了空气上。
 
-`RegisterSelectionProvider` 由策略归属方调用一次——治理 starter 在 go live 时调用它,
-客户端永远不调。传 `nil` 重新解除,这也是它能被进程内测试的原因。
+`Manager.Apply(Settings{...})` 是治理中心唯一的入口——启动时用来源快照调一次,之后每次
+推送再调;`Manager.SelectionFor(label)` 读回某标签当前解析出的选择。
 
 `Pool.ApplySelection` 是同一个落点的直接入口,`Pool.Selection()` 可读回最近一次被接受的
-策略——自己管配置、不经 provider 时用得上。
+策略——自己管配置、不经 Manager 时用得上。
 
 ## Pick/Complete 契约
 

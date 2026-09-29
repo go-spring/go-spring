@@ -28,7 +28,7 @@ import (
 // redisTokenBucket is the atomic token-bucket refill/consume, evaluated entirely
 // inside Redis so concurrent replicas share one budget. State lives in a hash
 // (tokens + last-refill ms); the key auto-expires once idle long enough to
-// refill fully, so abandoned keys never leak. It returns 1 when the requested
+// refill fully, so abandoned scopes never leak. It returns 1 when the requested
 // tokens were granted, 0 otherwise.
 var redisTokenBucket = redis.NewScript(`
 local rate = tonumber(ARGV[1])
@@ -55,89 +55,65 @@ redis.call('EXPIRE', KEYS[1], ttl)
 return allowed
 `)
 
-// redisRateLimiter is a Redis-backed [resilience.RateLimiter]: it enforces a
-// single global token-bucket budget shared across every replica, in contrast to
-// the builtin per-replica limiter. It is the distributed limiting seam — same
-// interface, global enforcement. The sliding-window algorithm is not offered
-// here; the token bucket is what maps cleanly onto an atomic Lua script.
-type redisRateLimiter struct {
+// redisCounters is a Redis-backed [resilience.Counters]: one token budget per
+// scope, shared by every replica, in contrast to the bundled in-memory store,
+// which counts each replica on its own. The counters live in Redis and the
+// refill/consume runs as one atomic script, so replicas cannot overspend a
+// budget between them.
+//
+// Two limits are deliberate. Sliding-window scopes are counted as token buckets
+// (the atomic script is what makes a shared budget correct, and a window does not
+// map onto one script cheaply). Queueing ([resilience.ClientPolicy.RateLimitMaxWait])
+// is not offered either: waiting for a token would mean polling Redis, so a redis
+// store rejects an over-limit unit immediately — keep queueing for the in-process
+// store.
+type redisCounters struct {
 	client redis.UniversalClient
 	prefix string
-	rate   float64
-	burst  float64
 }
 
-var _ resilience.RateLimiter = (*redisRateLimiter)(nil)
+var _ resilience.Counters = (*redisCounters)(nil)
 
-// redisLimiterDriver adapts a bound Redis client into a [resilience.LimiterDriver]
-// so the container can hold it under a name and gateway (or any other caller)
-// can resolve it by that name. The [resilience.LimiterDriver] interface takes
-// only a [resilience.LimitPolicy] (no client), so the client is bound at
-// construction.
-type redisLimiterDriver struct{ client redis.UniversalClient }
-
-// NewRateLimiter builds a [resilience.RateLimiter] for the bound client.
-func (d redisLimiterDriver) NewRateLimiter(p resilience.LimitPolicy) (resilience.RateLimiter, error) {
-	return NewRateLimiter(d.client, p), nil
-}
-
-// NewLimiterDriver returns a Redis-backed [resilience.LimiterDriver] over
-// client. Contribute it to the container under the name consumers will cite —
-// the gateway's rateLimit filter driver= argument, for instance:
+// NewCounters returns a Redis-backed [resilience.Counters] over client.
+// Contribute it to the container and the resilience driver injects it, so every
+// executor in the process — and every replica running this starter — spends one
+// budget per scope, instead of each executor counting privately:
 //
-//	gs.Provide(func() (resilience.LimiterDriver, error) {
-//	    return experimental.NewLimiterDriver(client)
-//	}).Name("redis")
+//	gs.Provide(func() (resilience.Counters, error) {
+//	    return experimental.NewCounters(client)
+//	})
 //
-// It returns the interface, so the bean is indexed under
-// [resilience.LimiterDriver] and needs no Export. A nil client fails here with
-// an error rather than surfacing as a limiter error on the first request.
-func NewLimiterDriver(client redis.UniversalClient) (resilience.LimiterDriver, error) {
+// It returns the interface, so the bean is indexed under [resilience.Counters]
+// and needs no Export. A nil client fails here with an error rather than
+// surfacing as a counter error on the first protected call.
+func NewCounters(client redis.UniversalClient) (resilience.Counters, error) {
 	if client == nil {
-		return nil, errutil.Explain(nil, "starter-go-redis: nil redis limiter client")
+		return nil, errutil.Explain(nil, "starter-go-redis: nil redis counters client")
 	}
-	return redisLimiterDriver{client: client}, nil
+	return &redisCounters{client: client, prefix: "ratelimit:"}, nil
 }
 
-// NewRateLimiter builds a global [resilience.RateLimiter] over client from a
-// [resilience.LimitPolicy]. A zero Rate yields an unlimited pass-through (no
-// Redis round-trip). Burst defaults to a small multiple of Rate when unset. Keys
-// are namespaced under "ratelimit:" so per-key budgets never collide with
-// application data.
-func NewRateLimiter(client redis.UniversalClient, p resilience.LimitPolicy) resilience.RateLimiter {
+// Allow charges n units of scope's budget to Redis. Keys are namespaced under
+// "ratelimit:" so per-scope counters never collide with application data.
+func (c *redisCounters) Allow(ctx context.Context, scope string, p resilience.ClientPolicy, n int) error {
+	if p.RateLimit <= 0 || n <= 0 { // no budget configured
+		return nil
+	}
 	burst := p.Burst
 	if burst <= 0 {
-		if burst = int(p.Rate); burst < 1 {
+		if burst = int(p.RateLimit); burst < 1 {
 			burst = 1
 		}
 	}
-	return &redisRateLimiter{
-		client: client,
-		prefix: "ratelimit:",
-		rate:   p.Rate,
-		burst:  float64(burst),
-	}
-}
-
-func (l *redisRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
-	return l.AllowN(ctx, key, 1)
-}
-
-func (l *redisRateLimiter) AllowN(ctx context.Context, key string, n int) (bool, error) {
-	if l.rate == 0 || n <= 0 { // unlimited / no-op
-		return true, nil
-	}
-	now := time.Now().UnixMilli()
-	res, err := redisTokenBucket.Run(ctx, l.client,
-		[]string{l.prefix + key},
-		l.rate, l.burst, now, n,
+	res, err := redisTokenBucket.Run(ctx, c.client,
+		[]string{c.prefix + scope},
+		p.RateLimit, float64(burst), time.Now().UnixMilli(), n,
 	).Int64()
 	if err != nil {
-		return false, err
+		return err
 	}
-	return res == 1, nil
+	if res != 1 {
+		return resilience.ErrRateLimited
+	}
+	return nil
 }
-
-// Close is a no-op: the limiter borrows the shared client, whose lifecycle the
-// owning bean's destructor manages.
-func (l *redisRateLimiter) Close() error { return nil }

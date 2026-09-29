@@ -171,9 +171,9 @@ gs.Run()
   │        client and aborts boot
   ├─ Init [client.go:78]: newDBObserver("elasticsearch") → module-local observer
   │    → obsTransport (metric + access log, no span)
-  │    → fault.WrapExecutor(resilience.ExecutorFor("elasticsearch", resource)) — governance
-  │      seams + outcome counter + resilience span
-  │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, →resource)) [client.go:86-92]
+  │    → fault.WrapClientExecutor(mgr.ClientExecutorFor("elasticsearch", service), service, inj) — the injected
+  │      governance beans + outcome counter + resilience span
+  │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec)) [client.go:86-92]
   ├─ readiness: indicator flips UP (runs client.Info)
   └─ SIGTERM → Destroy [client.go:98]: exec.Close → stop discovery watch → client.Close
 ```
@@ -192,7 +192,7 @@ elasticsearch API (Index/Get/...)
   → elastictransport retry loop (MaxRetries / DisableRetry)
   → dynamicTransport (RWMutex indirection; http.DefaultTransport until Init swaps)
   → resilience roundTripper: executor = fault(observe(limiter/breaker/bulkhead/retry)):
-      fault.InjectorFor outermost, the observe layer (span + outcome counter + access log
+      the injected fault injector outermost, the observe layer (span + outcome counter + access log
       per Execute) inside it, the governed core innermost
   → obsTransport: db.client.operation.duration histogram + db.client.active_requests gauge
       + _app_elasticsearch_access log (module-local observer emits no span — no duplicate)
@@ -205,8 +205,8 @@ Rationale (source comments, [command.go:17-41] and [client.go:56-95]):
   `elasticsearch.Config.Instrumentation`, so the span covers retries too; the module-local
   observer in [observe.go] emits no span and only fills the metric+log gap.
 - **Resilience OUTSIDE the observe transport** — deliberate difference from go-redis
-  (where the access log wraps the breaker). Here the executor resolved via
-  `resilience.ExecutorFor` already carries the observe layer, so breaker trips / rate-limit
+  (where the access log wraps the breaker). Here the executor built from the injected
+  `*resilience.Manager` already carries the observe layer, so breaker trips / rate-limit
   rejections get their *own* span + outcome counter, while obsTransport records the HTTP
   outcome inside the protected call.
 - **dynamicTransport instead of a fixed transport**: the ES transport is fixed at construction
@@ -224,9 +224,9 @@ Rationale (source comments, [command.go:17-41] and [client.go:56-95]):
 1. The generated API builds `POST /demo-docs/_search`; elastictransport opens the client span
    (no-op without starter-otel's globals).
 2. The retry loop (up to `max-retries`, default 3) hands the request to dynamicTransport.
-3. The resilience executor asks for a permit scoped to the resource label, e.g.
+3. The resilience executor asks for a permit scoped to the service label, e.g.
    `elasticsearch:es-cluster` or `elasticsearch:http://127.0.0.1:9200` (first address;
-   derived via `resilience.ResourceLabel` [client.go:114-122]) — per cluster, not per request.
+   derived via `resilience.ServiceLabel` [client.go:114-122]) — per cluster, not per request.
    With governance off, the executor is a transparent no-op.
 4. obsTransport derives the operation `POST /demo-docs/_search` from method + URL path, bumps
    the in-flight gauge, and emits the duration histogram + access log on completion
@@ -289,7 +289,7 @@ unconditional (see §3.4).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `max-retries` | int | 3 | elastictransport retry count. ⚠ Interacts with the governance executor's retry (`govern.default.max-retries`) — two stacked retry loops multiply attempts and latency. | Large + governance retry → multiplied attempts. |
+| `max-retries` | int | 3 | elastictransport retry count. ⚠ Interacts with the governance executor's retry (`govern.client.default.max-retries`) — two stacked retry loops multiply attempts and latency. | Large + governance retry → multiplied attempts. |
 | `disable-retry` | bool | false | Disables the client retry loop entirely. | — |
 | `compress-request-body` | bool | false | gzip request bodies. | — |
 | `enable-metrics` | bool | true | Client's built-in elastictransport metrics switch (⚠ schema.json wrongly says default false — code is the truth). | — |
@@ -320,11 +320,11 @@ docker start starter-elasticsearch
 - **Metrics** (OTel, via starter-otel's globals): `db.client.operation.duration` histogram
   and `db.client.active_requests` gauge, attributes `db.system=elasticsearch`,
   `db.operation` = `"<METHOD> <path>"`, `status` = ok/error. Resilience layer adds
-  `resilience.calls` counter with `resilience.outcome` ∈
+  `resilience.client.calls` counter with `resilience.outcome` ∈
   {success, rate_limited, circuit_open, bulkhead_full, timeout, error}.
 - **Spans**: client span per request from elastictransport instrumentation (name like
   `POST /demo-docs/_search`); one internal span per resilience Execute
-  (`resilience.resource` attribute). Verify: `curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
+  (`resilience.service` attribute). Verify: `curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
   and grep for `data":[{` (same check as example-otel's self-test).
 - **Access log**: one line per request under tag `_app_elasticsearch_access`
   (`log.RegisterAppTag("elasticsearch", "access")`) at native levels — error → Warn; success
@@ -342,11 +342,10 @@ grep _app_elasticsearch_access app.log | tail -1
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
-govern.default.error-threshold=20
-govern.default.open-duration=5s
-govern.fault.enabled=false           # flip to true + rate=0.5 + error=timeout to "set fire"
+govern.client.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
+govern.client.default.error-threshold=20
+govern.client.default.open-duration=5s
+govern.client.fault.enabled=false           # flip to true + rate=0.5 + error=timeout to "set fire"
 ```
 
 Run [example-load/](example-load/) (`go run . -concurrency=16 -duration=5s`): the printed

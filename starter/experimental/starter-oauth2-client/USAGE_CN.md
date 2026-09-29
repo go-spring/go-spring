@@ -70,7 +70,7 @@ type Service struct {
 func main() {
     svr := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]()) // 根可达
     _ = svr
-    // ... 在 handler 里 s.Client.Get("https://api.example.com/resource")
+    // ... 在 handler 里 s.Client.Get("https://api.example.com/service")
     gs.Run()
 }
 ```
@@ -96,14 +96,13 @@ spring.oauth2.authcode.instances.login.redirect-url=https://app.example.com/call
 spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance(*http.Client transport 的韧性)-------------------------------
-# 与 client 同一资源标签:oauth2:<client-id>。
+# 与 client 同一服务标签:oauth2:<client-id>。
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.max-retries=3
-govern.default.error-threshold=10
-govern.default.attempt-timeout=2s
+govern.client.default.max-retries=3
+govern.client.default.error-threshold=10
+govern.client.default.attempt-timeout=2s
 
 # --- observability(starter-otel,可选)--------------------------------------
 spring.observability.service-name=demo
@@ -166,7 +165,7 @@ key 触发该 module,前缀下每个子 map 条目成为一个实例(`conf.BindE
 
 | Bean | token 机制 | Tracing | Resilience | Destroy |
 |------|-----------|---------|------------|---------|
-| `*http.Client` | `clientcredentials.Config.Client(...)`——惰性取 token、自动刷新、每个请求带 bearer 头 | 有:transport base 是 `otelhttp`,每次取 token 和每个下游请求各一个 span | 有:transport 包了 `resilience.NewRoundTripper`,资源标签 `oauth2:<client-id>` | 有(关 transport) |
+| `*http.Client` | `clientcredentials.Config.Client(...)`——惰性取 token、自动刷新、每个请求带 bearer 头 | 有:transport base 是 `otelhttp`,每次取 token 和每个下游请求各一个 span | 有:transport 包了 `resilience.NewRoundTripper`,服务标签 `oauth2:<client-id>` | 有(关 transport) |
 | `*TokenSource` | `clientcredentials.Config.TokenSource(...)`——同样的惰性取/刷新,返回裸 token | 部分:传给 source 的 context 带 otel client(token 端点请求有 trace) | **没有**——不包 executor,无 retry/breaker/limiter | 无(无可关闭资源) |
 
 设计理由(源自源码注释):client 包 transport 是让 bearer token 在 resilience 层
@@ -180,7 +179,7 @@ TokenSource 服务于自己注入 token 的调用点(gRPC metadata、WebSocket �
 
 ### 2.3 一次请求,逐层走读
 
-governance 开启时的 `s.Client.Get("https://api.example.com/resource")`:
+governance 开启时的 `s.Client.Get("https://api.example.com/service")`:
 
 1. `client.Timeout` 约束整个请求(`timeout` key,>0 时)。
 2. `oauth2.Transport`(来自 `clientcredentials`)检查缓存 token;缺失则向 `token-url`
@@ -190,10 +189,10 @@ governance 开启时的 `s.Client.Get("https://api.example.com/resource")`:
    (executor 包的是外层 transport,不含 token 交换——见 §4.4 演练)。
 4. access token 入缓存;出站请求在 base transport 运行*之前*带上
    `Authorization: Bearer <token>` 头。
-5. `resilience.NewRoundTripper` 经资源标签 `oauth2:<client-id>` 解析出的 executor 执行
-   请求——retry/熔断/限流策略来自治理中心;governance 关闭时是透明空操作。解析出的
-   executor 已自带 observe 层,trip/reject/retry 会发 span + 计数 + 直方图 +
-   访问日志。
+5. `resilience.NewRoundTripper` 经注入的 `*resilience.Manager` 为服务标签
+   `oauth2:<client-id>` 构建的 executor 执行请求——retry/熔断/限流策略来自治理文档;
+   governance 关闭时是透明空操作。该 executor 已自带 observe 层,trip/reject/retry 会发
+   span + 计数 + 直方图 + 访问日志。
 6. `otelhttp` 发 client span(method/url);无 starter-otel 时为空操作。
 7. 响应解栈;401 时 oauth2 层不重试(client_credentials 无 refresh token)——下一次调用
    重新取 token。
@@ -210,7 +209,7 @@ governance 开启时的 `s.Client.Get("https://api.example.com/resource")`:
 | `client-secret` | string | — | 客户端凭据;按 `auth-style` 进 Basic 头或 body。 | 空 → 启动失败(expr)。 |
 | `token-url` | string | — | client-credentials grant 的 token 端点。 | 空 → 启动失败(expr);URL 错 → 首个请求报 token 端点错误。 |
 | `scopes` | []string | — | 随 token 申请的逗号列表。 | 被 IdP 拒绝的 scope → 首次请求时报错,不在启动期。 |
-| `endpoint-params.<k>` | map[string]string | — | token 请求的额外 body 参数(Auth0 `audience`、Azure `resource`);一个子 key 一个参数。 | 参数错 → 请求期 token 端点报错。 |
+| `endpoint-params.<k>` | map[string]string | — | token 请求的额外 body 参数(Auth0 `audience`、Azure `service`);一个子 key 一个参数。 | 参数错 → 请求期 token 端点报错。 |
 | `auth-style` | string | `auto` | `auto` \| `header` \| `params`——凭据的发送方式;`auto` 由 x/oauth2 探测一次并缓存。 | IdP 要求 Basic 而配了 `params` → 每次取 token 401。 |
 | `timeout` | duration | 0 | 应用两处:otel base client(约束取 token)*和*返回的 `*http.Client`(约束每个下游请求)。0 = 无超时。⚠ 值大 + governance `attempt-timeout`:先到的是 per-attempt 上限。 | 0 → token 端点或下游挂死则永久挂起。 |
 
@@ -274,7 +273,7 @@ req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 ```
 
 同样可观测:starter-otel + governance 下,被包 client 的熔断动作发出 `oauth2` 标签的
-span/指标(`resilience.ExecutorFor("oauth2", resource)`);`TokenSource` 没有对等物。
+span/指标(`mgr.ClientExecutorFor("oauth2", service)`);`TokenSource` 没有对等物。
 
 ### 4.5 governance 热切换
 

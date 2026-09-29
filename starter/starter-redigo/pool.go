@@ -38,12 +38,13 @@ import (
 type Pool struct {
 	*redis.Pool
 
-	cfg      Config                    // address fields feed the resilience resource label
+	cfg      Config                    // address fields feed the governance service label
 	duration metric.Float64Histogram   // db.client.operation.duration; no-op instrument when starter-otel is absent
 	active   metric.Int64UpDownCounter // db.client.active_requests; same
-	exec     resilience.Executor       // resolved via resilience.ExecutorFor; no-op when governance is off
+	exec     resilience.ClientExecutor // armed by ArmGovernance; observe-only when governance is off
 	chain    []CommandInterceptor      // user interceptor chain, first entry outermost; nil when none registered
-	resource string                    // resilience resource label (stable per pool)
+	service  string                    // governance service label (stable per pool)
+	lbPool   *loadbalance.Pool         // endpoint-selection pool, nil when discovery is not in effect
 	stop     func()                    // detaches the endpoint-selection binding
 }
 
@@ -67,39 +68,32 @@ func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool,
 	if err != nil {
 		return nil, err
 	}
-	// The resource label scopes limiter/breaker state AND endpoint selection to
+	// The service label scopes limiter/breaker state AND endpoint selection to
 	// this Redis instance (not per command): fall back across the address fields
-	// via the shared [resilience.ResourceLabel] helper. Computed here because the
+	// via the shared [resilience.ServiceLabel] helper. Computed here because the
 	// pool's selection binding needs it before the executor is built.
-	resource := resilience.ResourceLabel("redigo", c.ServiceName, c.Addr)
+	service := resilience.ServiceLabel("redigo", c.ServiceName, c.Addr)
 
 	// Endpoint selection rides the shared loadbalance machinery (round-robin
 	// here, per opened connection). The tracker makes outlier suspension possible
 	// and the binding makes the label's governance rule drive both halves.
 	var lb *loadbalance.Pool
-	stop := func() {}
 	if resolver != nil {
-		bal, err := loadbalance.New(loadbalance.RoundRobin)
-		if err != nil {
-			return nil, err
-		}
-		lb = loadbalance.NewPool(resolver, bal,
-			loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{})))
-		stop = lb.BindSelection(resource)
+		bal := loadbalance.NewRoundRobin()
+		lb = loadbalance.NewPool(resolver, bal)
 	}
 
 	pool := newRawPool(c, tlsConfig, lb)
-	w := &Pool{Pool: pool, cfg: c, resource: resource, stop: stop}
+	w := &Pool{Pool: pool, cfg: c, service: service, lbPool: lb, stop: func() {}}
 
-	// Arm the standard instrumentation: the command observer, the resilience
-	// executor, and the instrumented Dial wrap. The observer is unconditional:
-	// without starter-otel the OTel globals are no-ops, so it costs one map
-	// lookup per command.
+	// Arm the standard instrumentation: the command observer and the
+	// instrumented Dial wrap. The observer is unconditional: without
+	// starter-otel the OTel globals are no-ops, so it costs one map lookup per
+	// command. Governance (the resilience executor and the endpoint-selection
+	// binding) is armed separately by [Pool.ArmGovernance], which the gs wiring
+	// calls with the injected beans — see that method for why it is not part of
+	// this pure assembly.
 	w.duration, w.active = newInstruments()
-	if err := w.setupResilience(); err != nil {
-		_ = w.Close()
-		return nil, err
-	}
 
 	w.setupDial()
 	return w, nil
@@ -196,33 +190,43 @@ func (p *Pool) UseCommandInterceptor(i ...CommandInterceptor) {
 	p.chain = append(p.chain, i...)
 }
 
-// setupResilience builds the executor stack from the governance-driven
-// resilience seam and the process-wide fault injector, storing it on the pool
-// so every Conn threads each command through it. Both come from neutral seams
-// ([resilience.ExecutorFor] / [fault.InjectorFor]) that starter-govern backs
-// with the governance center, so this pool neither injects nor names
-// cloud/governance.
+// ArmGovernance attaches the governance-driven stack to the pool, so every Conn
+// threads each command through it: the resilience executor this pool's service
+// label resolves to, and the process-wide fault injector wrapping it. The three
+// authorities are the beans starter-governance registers, handed in by the gs
+// wiring; a standalone caller passes nil, which this method normalizes to a
+// fresh unarmed authority — exactly "governance off", so callers need no nil
+// branches of their own.
 //
 // The stack is observe( fault( execFor ) ): fault wraps the resolved executor's
 // operation fn so injected failures land INSIDE the retry/breaker loop (and so
 // are observed), and observe sits outermost so trips / rejects / retries emit
 // span + counter + histogram + access log (the resilience core emits none).
-// fault is nil-safe: when no injector is registered (governance off / fault
-// disabled) WrapExecutor returns the inner executor unchanged, so the fault
-// layer is a transparent pass-through. Rate/Error/Latency/Enabled hot-toggle
-// at runtime via the center's single OnChanged without a restart.
-//
-// On a config change the bound policy is adopted without a restart via the
-// executor's Refresh seam.
-func (o *Pool) setupResilience() error {
-	// The resilience executor is resolved through the NEUTRAL provider seam
-	// [resilience.ExecutorFor]: starter-govern registers a provider backed by
-	// the governance center, so this pool gets its timeout/retry/breaker policy
-	// WITHOUT injecting or naming cloud/governance. When governance is not
-	// configured the seam yields a transparent no-op executor, so this call is
-	// always safe. Resolution is deferred to call time, hence the order of this
-	// setup relative to starter-govern's wiring is irrelevant.
-	o.exec = fault.WrapExecutor(resilience.ExecutorFor("redigo", o.resource))
+// inj is nil-safe: with no injector, WrapClientExecutor returns the inner executor
+// unchanged, so the fault layer is a transparent pass-through. Rate / Error /
+// Latency / Enabled hot-toggle at runtime because the center swaps the
+// injector's config in place; the bound protection policy is adopted the same
+// way, through the executor's Refresh, and a selection change reaches the pool
+// through its binding. None of it needs a restart.
+func (o *Pool) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) error {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	if lbMgr == nil {
+		lbMgr = loadbalance.NewManager()
+	}
+
+	// Resolution is deferred to call time, so the order of this arming relative
+	// to starter-governance's wiring is irrelevant.
+	o.exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("redigo", o.service), o.service, inj)
+
+	// Endpoint selection rides the shared loadbalance machinery. Binding it here
+	// (rather than during assembly) is what keeps the pool's own construction a
+	// pure function of its Config, and lets a custom Driver's pool be governed
+	// without changing the Driver interface.
+	if o.lbPool != nil {
+		o.stop = lbMgr.Bind(o.lbPool, o.service)
+	}
 	return nil
 }
 
@@ -240,7 +244,7 @@ func (p *Pool) wrapConn(raw redis.Conn) redis.Conn {
 		layers = append(layers, observeInterceptor(p.duration, p.active))
 	}
 	if p.exec != nil {
-		layers = append(layers, resilienceInterceptor(p.exec, p.resource))
+		layers = append(layers, resilienceInterceptor(p.exec, p.service))
 	}
 	return NewConn(raw, layers...)
 }

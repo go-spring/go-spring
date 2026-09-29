@@ -16,8 +16,6 @@
 
 package StarterS3
 
-import ()
-
 // Config defines the S3-protocol object storage client configuration.
 //
 // The starter speaks the S3 protocol through minio-go, so one config surface

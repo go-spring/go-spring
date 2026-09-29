@@ -23,7 +23,7 @@ Sibling patterns Saga and AT live in [`cloud/experimental/transaction`](../READM
 - `Observer` seam for otel spans without stdlib depending on otel.
 - `ParticipantRegistry` + `GlobalTCC(coord, reg)` aspect — the AOP form,
   keyed by method name.
-- `RetryPolicy = resilience.Policy` alias reuses the outbound resilience
+- `RetryPolicy = resilience.ClientPolicy` alias reuses the outbound resilience
   knob set; recommended non-zero for Confirm/Cancel since the TCC contract
   requires them to eventually succeed.
 

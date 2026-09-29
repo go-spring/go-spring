@@ -25,37 +25,52 @@ import (
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
-// buildAdmission builds the inbound admission middleware. The resilience
-// executor is resolved through the NEUTRAL provider seam
-// [resilience.ExecutorFor]: starter-govern registers a provider backed by the
-// governance center, so this server gets its rate-limit / bulkhead / breaker
-// policy WITHOUT injecting *governance.Center or even importing cloud/governance. When
-// governance is not configured the seam yields a transparent no-op executor, so
-// the admission middleware runs but never rejects (fn runs once, untouched).
-// Hot-reload is driven on the backing executor by the provider, so an operator
-// can tighten inbound admission without a restart, the same way every outbound
-// client's policy is tuned. The executor is wrapped with observe-resilience so
-// breaker trips / rejects emit span + counter + histogram + access log.
-func buildAdmission(cfg Config) (gin.HandlerFunc, error) {
-	resource := resilience.ResourceLabel("gin", cfg.Address)
-	exec := resilience.ExecutorFor("gin", resource)
-	return resilienceAdmission(exec, resource), nil
+// buildServerPolicy builds the inbound admission middleware. The admission executor
+// is built from the injected [resilience.Manager], so this server gets its
+// rate-limit / bulkhead / breaker limits from the governance document's SERVER
+// block (govern.server.*) WITHOUT naming *governance.Center. A nil manager — a
+// standalone call, or an app that does not import starter-governance — is
+// normalized to an unarmed one, whose executor is a transparent pass-through, so
+// the admission middleware runs but never rejects (fn runs once, untouched). The
+// executor handle resolves its backing implementation per call and follows the
+// manager's hot-reload, so an operator can tighten inbound admission without a
+// restart, independently of every outbound client's policy. The executor is
+// wrapped with observe-resilience so breaker trips / rejects emit span + counter
+// + histogram + access log.
+func buildServerPolicy(cfg Config, mgr *resilience.Manager) (gin.HandlerFunc, error) {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	service := resilience.ServiceLabel("gin", cfg.Address)
+	exec := mgr.ServerExecutorFor("gin", service)
+	return resilienceServerPolicy(exec, service), nil
 }
 
-// resilienceAdmission is the inbound admission middleware: each request runs
+// resilienceServerPolicy is the inbound admission middleware: each request runs
 // through exec so the configured rate-limit / bulkhead / breaker policy is
 // enforced before the handler chain. Rejects map to 429 (rate/bulkhead) or 503
 // (circuit open); a handler-emitted 5xx counts as a failure for the breaker.
 //
-// Inbound admission must NOT retry — a handler that has already produced side
-// effects cannot be replayed (inbound serving is not idempotent). Leave
-// Policy.MaxRetries at 0; a Written() guard also prevents reentry regardless.
-func resilienceAdmission(exec resilience.Executor, resource string) gin.HandlerFunc {
+// Inbound admission cannot retry — a handler that has already produced side
+// effects cannot be replayed (inbound serving is not idempotent). That is
+// structural here: [resilience.ServerPolicy] has no retry field, so the executor
+// built from the server block has no retry stage at all; a Written() guard also
+// prevents reentry regardless.
+func resilienceServerPolicy(exec resilience.ServerExecutor, service string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var served bool
-		err := exec.Execute(c.Request.Context(), resource, func(ctx context.Context) error {
+		err := exec.Execute(c.Request.Context(), func(ctx context.Context) error {
 			if served {
 				return nil // reentry guard: handler already ran this request
 			}
@@ -89,18 +104,21 @@ type errHTTP5xx struct{ code int }
 func (e errHTTP5xx) Error() string { return fmt.Sprintf("http: server returned %d", e.code) }
 
 // buildFault builds the inbound fault-injection middleware. It is the server-
-// side counterpart to the client starters' fault.WrapExecutor: instead of
-// wrapping an outbound Executor, it gates the handler call with [fault.Apply] so
+// side counterpart to the client starters' fault.WrapClientExecutor: instead of
+// wrapping an outbound Executor, it gates the handler call with [fault.ApplyServer] so
 // a configured fraction of inbound requests are made to fail or slow down —
 // letting an operator "set fire" to a running server to verify its observe, its
 // own resilience admission, and the upstream clients' retry/breaker behavior.
-// The injector comes from the neutral [fault.InjectorFor] seam (backed by the
-// governance center); when no injector is registered Apply is a transparent
-// pass-through, so this is always installed. Unlike the static-cfg build it
-// replaces, fault can now be hot-toggled at runtime without a restart.
-func buildFault() gin.HandlerFunc {
+//
+// inj is the governance starter's injector bean, captured once here and reused
+// for every request: the center hot-swaps the injector's config in place
+// ([fault.Injector.SetConfig]) rather than replacing the bean, so this reference
+// always observes the live config and fault stays runtime-toggleable without a
+// restart. A nil inj — governance not imported — makes Apply a transparent
+// pass-through, so the middleware is always installed.
+func buildFault(inj *fault.Injector) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		err := fault.Apply(c.Request.Context(), fault.InjectorFor(), "gin", func() error {
+		err := fault.ApplyServer(c.Request.Context(), inj, "gin", func() error {
 			c.Next()
 			return nil
 		})

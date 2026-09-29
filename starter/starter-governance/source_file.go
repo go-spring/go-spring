@@ -33,12 +33,12 @@ import (
 // FileSource is a governance.Source backed by ONE standalone rules file — the
 // self-built refresh chain. It watches the file with fsnotify and pushes each
 // good re-parse to its subscriber; the governance center then fans the new
-// policy out to every registered resource. It deliberately
+// policy out to every registered service. It deliberately
 // bypasses gs's properties-refresh pipeline: a governance rule change refreshes
 // governance only, never re-binds the whole app.
 //
 // The file uses the SAME keys an app.properties entry would (govern.enabled,
-// govern.default.attempt-timeout, govern.rules[0].resources, ...), parsed by
+// govern.client.default.attempt-timeout, govern.client.rules[0].resources, ...), parsed by
 // extension through the shared conf reader registry (json/properties/yaml/
 // toml), so a rules file is literally a snippet of app.config carved out.
 //
@@ -49,10 +49,11 @@ import (
 type FileSource struct {
 	path string
 
-	mu  sync.Mutex
-	cfg governance.Config
-	cb  func(governance.Config)
+	// push holds the snapshot and the subscriber; this source is a transport
+	// (fsnotify) that parses and feeds it.
+	push *governance.PushSource
 
+	mu      sync.Mutex
 	watcher *fsnotify.Watcher
 	stopped chan struct{}
 }
@@ -66,7 +67,7 @@ func NewFileSource(path string) (*FileSource, error) {
 	if err != nil {
 		return nil, err
 	}
-	src.cfg = cfg
+	src.push = governance.NewPushSource(cfg)
 	return src, nil
 }
 
@@ -142,41 +143,24 @@ func (s *FileSource) watchLoop(w *fsnotify.Watcher) {
 }
 
 // Snapshot returns the latest good snapshot.
-func (s *FileSource) Snapshot() governance.Config {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.cfg
-}
+func (s *FileSource) Snapshot() governance.Config { return s.push.Snapshot() }
 
 // Subscribe registers cb as the push target (the center is the only consumer).
-func (s *FileSource) Subscribe(cb func(governance.Config)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.cb = cb
-}
+func (s *FileSource) Subscribe(cb func(governance.Config)) { s.push.Subscribe(cb) }
 
-// reload re-reads and re-parses the file; on success it swaps the snapshot and
-// pushes it (skipping no-op re-deliveries of an identical config). On failure
-// it keeps the last good snapshot and logs.
+// reload re-reads and re-parses the file; on success it pushes the new config
+// (skipping no-op re-deliveries of an identical one). On failure it keeps the
+// last good snapshot and logs.
 func (s *FileSource) reload() {
 	cfg, err := s.load()
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "governance file source: reload %s failed (keeping last good config): %v", s.path, err)
 		return
 	}
-
-	s.mu.Lock()
-	unchanged := reflect.DeepEqual(s.cfg, cfg)
-	s.cfg = cfg
-	cb := s.cb
-	s.mu.Unlock()
-
-	if unchanged {
+	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
 		return // a touch that did not change the rules pushes nothing
 	}
-	if cb != nil {
-		cb(cfg)
-	}
+	s.push.Push(cfg)
 }
 
 // load reads and parses the rules file into a governance.Config through the

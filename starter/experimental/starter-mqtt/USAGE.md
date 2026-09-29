@@ -192,12 +192,12 @@ wrapper. Instead the seam is an executor attached at construction and **opt-in c
 guards** [command.go:17-27]:
 
 ```
-applyResilience [command.go:128-134]:
-  exec = fault.WrapExecutor(resilience.ExecutorFor("mqtt", "mqtt:<broker>"))  // governance center + observe bridge
+applyResilience [command.go:129-136]:
+  exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", "mqtt:<broker>"), "mqtt:<broker>", inj)  // injected *resilience.Manager + *fault.Injector
   stored in sync.Map keyed by the mqtt.Client value
 
-GuardedPublish [command.go:166-172]:
-  guard() → executor.Execute(ctx, "mqtt:<broker>", call)              [command.go:147-154]
+GuardedPublish [command.go:167-173]:
+  guard() → executor.Execute(ctx, call)                               [command.go:148-155]
   call = cl.Publish(...) + token.Wait() + token.Error()
 ```
 
@@ -205,21 +205,22 @@ Wrap order (outer→inner): **fault injection → observe (span+metric+access lo
 call) → resilience policy (limiter/breaker/retry) → paho Publish → token wait**. Rationale
 (source comments): paho manages its own queueing and reconnect, so the executor is
 intentionally minimal — rate-limit the publish rate and short-circuit when the broker is
-unhealthy [command.go:117-122]. The resource label is `mqtt:<broker-url>` — per broker, not
-per topic [starter.go:70, resilience/config.go:151-155].
+unhealthy [command.go:119-124]. The service label is `mqtt:<broker-url>` — per broker, not
+per topic [starter.go:70, resilience/policy.go:216-230].
 
 **What is NOT guarded** (verified):
 
 - plain `client.Publish` called directly on the client bean — bypasses resilience entirely;
   only `GuardedPublish` and the driver's `Publish` route through the executor
-  [command.go:156-172, client.go].
+  [command.go:157-173, client.go].
 - `Subscribe` / `Unsubscribe` / subscription callbacks — no guard exists for them.
 - driver subscribe handlers: guarded only against panics (`messaging.Recover`
   converts a panic into an error) [client.go:92]; the error is then only logged
   [client.go:95-97].
 
-When governance is off, `ExecutorFor` yields a transparent no-op executor, so
-`GuardedPublish` behaves exactly like plain publish + wait [command.go:123-127, 156-160].
+When governance is unwired, the injected manager normalizes to an unarmed one and yields a
+transparent no-op executor, so `GuardedPublish` behaves exactly like plain publish + wait
+[command.go:125-129, 157-161].
 
 ### 2.3 One publish and one consume, layer by layer
 
@@ -229,9 +230,9 @@ span helper wrapped around it:
 1. `StartPublishSpan(ctx, topic)` opens a producer observation named `publish` with
    `messaging.destination.name = topic` [command.go, observe.go].
 2. `guard` resolves the executor for this client from the sync.Map [command.go:148-153].
-3. fault injection check (govern.fault.* policy, if enabled).
+3. fault injection check (govern.client.fault.* policy, if enabled).
 4. observe bridge records the guarded call's outcome (span/metric/access log).
-5. resilience policy: rate limiter / circuit breaker on resource `mqtt:<broker>`;
+5. resilience policy: rate limiter / circuit breaker on service `mqtt:<broker>`;
    on rejection the sentinel error returns and **paho Publish is never invoked**
    [command.go:160-163].
 6. `cl.Publish(topic, qos, retained, payload)` hands off to paho's outbound queue;
@@ -265,7 +266,7 @@ All keys live under `spring.mqtt.instances.<name>.` (per-instance prefix binding
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `broker` | string | — | **Required** (`expr:"$ != ''"`), e.g. `tcp://host:1883`, `ssl://` for MQTTS. Also becomes the resilience resource label `mqtt:<broker>`. | Missing → bind error naming the instance. |
+| `broker` | string | — | **Required** (`expr:"$ != ''"`), e.g. `tcp://host:1883`, `ssl://` for MQTTS. Also becomes the resilience service label `mqtt:<broker>`. | Missing → bind error naming the instance. |
 | `client-id` | string | "" | Presented to the broker; empty = library-generated. ⚠ MQTT brokers reject two live connections with the same client-id — scale replicas need distinct ids. | Duplicate ids → connect loop / kicked connections at runtime, not at boot. |
 | `username` / `password` | string | "" | Broker auth. | Wrong → fail-fast connect error at boot [starter.go:66-69]. |
 | `clean-session` | bool | true | Broker discards session state on disconnect. `false` + stable client-id gives queued-offline-message semantics. | See [MQTT spec §3.1](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html). |
@@ -296,7 +297,7 @@ docker start <mosquitto> && go run .   # boots, logs "mqtt client initialized" [
 
 ### 4.2 Guarded vs unguarded path
 
-With starter-governance configured, add a breaker/limiter policy for resource
+With starter-governance configured, add a breaker/limiter policy for service
 `mqtt:tcp://127.0.0.1:1883`:
 
 ```yaml
@@ -310,7 +311,7 @@ govern:
 Hammer `GuardedPublish` → rejections surface as resilience sentinel errors and as
 `_app_mqtt_access` records. The identical traffic through
 plain `client.Publish` on the client bean is unaffected — the driver now rides the same
-guard, so opting out is a resource-level decision (an all-zero rule for
+guard, so opting out is a service-level decision (an all-zero rule for
 `mqtt:<broker>`, or governance off), not a per call site one
 [command.go:147-172, client.go:73-77]. Policies hot-reload without restart
 (governance center).

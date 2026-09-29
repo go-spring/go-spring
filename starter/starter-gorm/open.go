@@ -30,10 +30,17 @@ import (
 // [Open]: the observability label and the teardown closers for driver-scoped
 // state (discovery watches, registered TLS configs).
 type Options struct {
-	Engine         string   // db.system + resource label (e.g. "mysql", "postgresql")
-	Resource       string   // precomputed resilience.ResourceLabel for this instance
+	Engine         string   // db.system + service label (e.g. "mysql", "postgresql")
+	Service        string   // precomputed resilience.ServiceLabel for this instance
 	ObserveEnabled bool     // per-instance kill switch for the gorm observe plugin
 	Closers        []func() // teardown hooks run by Destroy before the pool closes
+
+	// Mgr and Inj are the governance beans the gs module injects (both nil in a
+	// standalone call) and hands over for Init to arm the executor with. They are
+	// passed as arguments rather than carried on the dialect Spec so the Spec
+	// stays a pure description of what the dialect built.
+	Mgr *resilience.Manager
+	Inj *fault.Injector
 }
 
 // DB is the wrapper bean gorm clients are injected as, shared verbatim by every
@@ -42,10 +49,12 @@ type DB struct {
 	*gorm.DB
 
 	engine         string
-	resource       string
+	service        string
 	observeEnabled bool
 	closers        []func()
-	exec           resilience.Executor // resolved via resilience.ExecutorFor; no-op when governance is off
+	mgr            *resilience.Manager       // injected governance manager
+	inj            *fault.Injector           // injected fault injector
+	exec           resilience.ClientExecutor // from mgr.ClientExecutorFor; no-op when governance is off
 }
 
 // Open opens gorm with the given dialector, applies the pool settings and runs
@@ -68,26 +77,33 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	return &DB{
 		DB:             db,
 		engine:         opt.Engine,
-		resource:       opt.Resource,
+		service:        opt.Service,
 		observeEnabled: opt.ObserveEnabled,
 		closers:        opt.Closers,
+		mgr:            opt.Mgr,
+		inj:            opt.Inj,
 	}, nil
 }
 
-// Init is the gs InitMethod. It installs the shared gorm observe plugin,
-// resolves the resilience executor through the neutral [resilience.ExecutorFor]
-// seam (backed by starter-govern's governance center when configured; a
-// transparent no-op otherwise), wraps it with the process-wide fault injector
-// ([fault.InjectorFor], nil-safe), and routes every gorm processor through it
-// via [gormresilience.ApplyCallbacks].
+// Init is the gs InitMethod. It installs the shared gorm observe plugin, arms
+// the resilience executor from the injected governance manager, and routes every
+// gorm processor through it via [gormresilience.ApplyCallbacks]. The manager's
+// ClientExecutorFor resolves its backing executor lazily, on each Execute, so the
+// arming order relative to starter-governance's wiring is irrelevant; the fault
+// injector wraps it with inj, which is nil-safe (with no injector the fault layer
+// is a transparent pass-through). When governance is off — an unarmed manager —
+// the resolved executor is a transparent no-op.
 func (o *DB) Init() error {
 	if o.observeEnabled {
 		if err := o.DB.Use(gormobserve.NewPlugin(o.engine)); err != nil {
 			return err
 		}
 	}
-	o.exec = fault.WrapExecutor(resilience.ExecutorFor(o.engine, o.resource))
-	if err := gormresilience.ApplyCallbacks(o.DB, o.exec, o.resource); err != nil {
+	if o.mgr == nil {
+		o.mgr = resilience.NewManager()
+	}
+	o.exec = fault.WrapClientExecutor(o.mgr.ClientExecutorFor(o.engine, o.service), o.service, o.inj)
+	if err := gormresilience.ApplyCallbacks(o.DB, o.exec, o.service); err != nil {
 		return err
 	}
 	return nil

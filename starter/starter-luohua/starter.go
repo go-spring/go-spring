@@ -37,6 +37,7 @@ package luohua
 import (
 	"context"
 
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -77,14 +78,27 @@ func init() {
 			return nil
 		}
 		log.Infof(context.Background(), tagAppLuohua, "luohua baseline armed")
-		return apply(c)
+		return apply(r, c)
 	})
 }
 
 // apply runs each enabled capability through its public seam. Order matters
 // only where one capability feeds another (propagation before observability,
 // which reads the same context fields).
-func apply(c Config) error {
+func apply(r gs.BeanProvider, c Config) error {
+	// The load-test marker is luohua's convention when the config re-bases it:
+	// it is contributed as the process's traffic.Propagator bean, which the
+	// server / messaging / client starters inject. Registered unconditionally
+	// when the key is set — that key IS the application's declaration — so an
+	// application that also provides its own bean gets a duplicate-bean wiring
+	// error instead of one of the two silently winning.
+	p, err := loadTestPropagator(c.Propagate)
+	if err != nil {
+		return err
+	}
+	if p != nil {
+		r.Provide(func() traffic.Propagator { return p }).Caller(1)
+	}
 	if err := applyPropagate(c.Propagate); err != nil {
 		return err
 	}

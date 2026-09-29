@@ -156,15 +156,16 @@ gs.Run()
   │     DefaultDriver（d == nil [starter.go:65-67]）；容器中存在多个 Driver bean
   │     时，实例可按名指定：`spring.tdengine.instances.<name>.driver = <bean 名>`
   │     （留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）
-  │     → d.CreateClient [starter.go:68]：ParseDSN → taosws.NewConnector →
+  │     → d.CreateClient [starter.go:73]：ParseDSN → taosws.NewConnector →
   │       guardedConnector → sql.OpenDB → 应用连接池参数
-  │     → fail-fast PingContext，10s 上限 [starter.go:74-77]；失败则关闭半成品
+  │     → ArmGovernance [client.go:81]：resourceLabel（"tdengine:<dsn addr>"）→
+  │       fault.WrapClientExecutor(mgr.ClientExecutorFor("tdengine", service), service, inj)，mgr/inj
+  │       为注入的 *resilience.Manager / *fault.Injector bean → exec 装到 slot 上
+  │     → fail-fast PingContext，10s 上限；失败则关闭半成品
   │       client，启动失败
-  ├─ Init [client.go:58]：resourceLabel（"tdengine:<dsn addr>"）→
-  │     fault.WrapExecutor(resilience.ExecutorFor("tdengine", resource)) →
-  │     newDBObserver("tdengine") 装到 slot 上
+  ├─ Init [client.go:55]：newDBObserver("tdengine") 装到 slot 上
   ├─ readiness：指示器对每实例跑 db.PingContext
-  └─ SIGTERM → Destroy [client.go:81]：exec.Close → db.Close
+  └─ SIGTERM → Destroy [client.go:102]：exec.Close → db.Close
 ```
 
 DSN 写错、凭据不对或 server 低于驱动下限都会导致启动失败——进程不会带着死的
@@ -190,7 +191,7 @@ taosWS connector 包进 `guardedConnector`，池内每条连接都是 `guardedCo
 ```
 *sql.DB 池
   └─ guardedConn.QueryContext [driver.go:143]
-        ├─ guard：exec.Execute(ctx, resource, call) [driver.go:160-165]
+        ├─ guard：exec.Execute(ctx, call) [driver.go:160-165]
         │    （外层：限流/熔断/故障注入在语句执行**之前**裁决；被拒绝的语句
         │     根本到不了连接——有单测 [tdengine_test.go:62-76]。
         │     governance 关闭时 executor 是透明 no-op。）
@@ -216,7 +217,7 @@ driver-go 自身不带埋点，所以这里由模块本地观察者独占三信�
 Init 装配 slot 之前，语句原样透传（exec、obs 均为 nil——零配置直通有单测覆盖
 [tdengine_test.go:51-58]）。
 
-### 2.3 resource label
+### 2.3 service label
 
 `resourceLabel` 从 DSN 提取展示安全地址
 （"root:taosdata@ws(127.0.0.1:6041)/power" → "127.0.0.1:6041"）并拼出
@@ -234,7 +235,7 @@ Init 装配 slot 之前，语句原样透传（exec、obs 均为 nil——零配
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `dsn` | string | — | **必填**（expr `$ != ''` [config.go:33]）。驱动统一 DSN `[user[:password]@]ws(host:port)/[dbname][?params]`。也是 resilience resource label（§2.3）与启动错误信息的来源。TLS 在这里表达（`wss(...)`、证书参数）——没有 `tls.*` 块。 | 空 → BindEach 启动报错。地址/凭据错 → fail-fast ping 报 "failed to reach tdengine at <addr>"。 |
+| `dsn` | string | — | **必填**（expr `$ != ''` [config.go:33]）。驱动统一 DSN `[user[:password]@]ws(host:port)/[dbname][?params]`。也是 resilience service label（§2.3）与启动错误信息的来源。TLS 在这里表达（`wss(...)`、证书参数）——没有 `tls.*` 块。 | 空 → BindEach 启动报错。地址/凭据错 → fail-fast ping 报 "failed to reach tdengine at <addr>"。 |
 | `max-open-conns` | int | 8 | 内嵌池的 `db.SetMaxOpenConns` [driver.go:81]。 | 过小 → 语句排队等连接。 |
 | `max-idle-conns` | int | 2 | `db.SetMaxIdleConns`。⚠ 应 ≤ max-open-conns（database/sql 会静默封顶，但超出即是配置坏味道）。 | 大于 open conns → 被钳制，idle 抖动。 |
 | `conn-max-lifetime` | duration | 0s | `db.SetConnMaxLifetime`；0 = 永不退役。⚠ 与 redis（默认 2m）不同，这里没有 discovery 需要跟随，0 是安全的。 | — |
@@ -265,8 +266,8 @@ docker start <tdengine>
 | Span | `exec` / `query`，kind = client，tracer `go-spring.org/starter-tdengine` | `db.system=tdengine`、`db.operation=exec\|query`、`db.statement=<sql，截断>` |
 | 指标 | `db.client.operation.duration`（直方图，s） | `db.system`、`db.operation`、`status=ok\|error` |
 | 指标 | `db.client.active_requests`（up-down counter） | `db.system`、`db.operation` |
-| 指标 | `resilience.calls`（counter） | `resilience.system=tdengine`、`resilience.resource`、`resilience.outcome=success\|rate_limited\|circuit_open\|bulkhead_full\|timeout\|error` |
-| 指标 | `resilience.breaker.state_change`（counter） | from/to 属性 |
+| 指标 | `resilience.client.calls`（counter） | `resilience.system=tdengine`、`resilience.service`、`resilience.outcome=success\|rate_limited\|circuit_open\|bulkhead_full\|timeout\|error` |
+| 指标 | `resilience.client.breaker.state_change`（counter） | from/to 属性 |
 | 日志 | tag `_app_tdengine_access` | system=tdengine op=… status duration；错误 → Warn，成功且带 SQL（截断至 512 字节）→ Debug，普通成功 → Info |
 | 日志 | tag `_app_tdengine_resilience` | resilience 拒绝事件 |
 
@@ -281,10 +282,10 @@ grep _app_tdengine_access app.log | tail -1
 
 ### 4.3 resilience 演练
 
-引入 starter-governance 后，为 resource `tdengine:127.0.0.1:6041`（§2.3）配策略——
+引入 starter-governance 后，为 service `tdengine:127.0.0.1:6041`（§2.3）配策略——
 例如限流。压测 `ExecContext`；超限语句以 `resilience.ErrRateLimited` 拒绝，
 **不会到达连接**（有单测 [tdengine_test.go:62-76]），体现在
-`resilience.calls{outcome="rate_limited"}` 与 `_app_tdengine_resilience` 日志。运行期
+`resilience.client.calls{outcome="rate_limited"}` 与 `_app_tdengine_resilience` 日志。运行期
 切换策略——executor 经 governance 中心热加载，无需重启。
 
 ### 4.4 fail-fast 演练
@@ -309,7 +310,7 @@ server 版本全部正常。
 | 无 span/指标 | 未引入 starter-otel | 观察者挂在 OTel 全局 provider 上；import starter-otel。 |
 | 无访问日志 | logger 级别过滤掉 Debug/Info，或日志 tag 被过滤 | 检查 logger 级别及对 `_app_tdengine_access` 的配置。 |
 | 经 db.Prepare 的语句无治理无观测 | `Prepare` 设计上绕过 slot [driver.go:189-191] | 改用 ExecContext/QueryContext。 |
-| 熔断状态跨"库"共享 | resource label 按 host:port 划分，DSN 参数不参与 | 有意为之（按实例划分）；要分桶就分开 host。 |
+| 熔断状态跨"库"共享 | service label 按 host:port 划分，DSN 参数不参与 | 有意为之（按实例划分）；要分桶就分开 host。 |
 | `Begin` 报错 | TDengine 无事务 | 设计如此——driver 会报错。 |
 
 ## 6. 设计体检表
@@ -322,7 +323,7 @@ server 版本全部正常。
 | "注意/坑" 条数 | 4 |
 
 设计嫌疑（保留上一轮审计条目，另加新增）：
-- DSN 是不透明字符串——resilience resource label 靠从中解析地址，仅参数或库名不同的
+- DSN 是不透明字符串——resilience service label 靠从中解析地址，仅参数或库名不同的
   两个 DSN 共享同一个桶；无 `tls.*`/`service-name`，与兄弟 starter 不一致（家族不对称）。
 - `Prepare` 完全绕出 guard seam——走 prepared statement 的 ORM 会静默失去
   resilience + observability 覆盖。

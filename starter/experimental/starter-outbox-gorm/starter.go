@@ -46,7 +46,6 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	health2 "go-spring.org/starter-outbox-gorm/health"
 	"go-spring.org/stdlib/flatten"
 	"gorm.io/gorm"
 )
@@ -70,7 +69,7 @@ func init() {
 
 			// Health indicator probes the backing database through gorm.
 			r.Provide(func(db *gorm.DB) *health.Indicator {
-				return health2.NewRelayHealth(name, db)
+				return NewRelayHealth(name, db)
 			}, gs.TagArg(c.DB)).Name("outbox:" + name).Caller(1)
 			return nil
 		})

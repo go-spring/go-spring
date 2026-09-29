@@ -33,8 +33,19 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
+	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Notification is one outbound webhook message. Title is the headline (shown
@@ -51,30 +62,57 @@ type Notification struct {
 type Notifier struct {
 	cfg    Config
 	client *http.Client
-	exec   resilience.Executor
+	exec   resilience.ClientExecutor
 }
 
 func init() {
-	// Register multiple webhook notifiers as a group. Each instance is created
-	// from the configuration under "${spring.webhook}", so adding a second
-	// endpoint is a pure-config change. There is no default singleton —
+	// Register multiple webhook notifiers as a group, one per entry under
+	// "${spring.webhook.instances}". A gs.Module (rather than gs.Group) is used
+	// because the constructor takes the injected governance beans alongside the
+	// config entry — the manager and injector arm each notifier's executor. Adding
+	// a second endpoint is a pure-config change. There is no default singleton —
 	// select one by name (e.g. autowire:"alert").
 	//
 	// No destroy callback: each Send is a stateless HTTP request, so there is
 	// nothing to release at shutdown.
-	gs.Group("${spring.webhook.instances}", newNotifier, nil)
+	gs.Module(gs.OnProperty("spring.webhook.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.webhook.instances}", func(name string, c Config) error {
+			r.Provide(newNotifier,
+				gs.IndexArg(1, gs.ValueArg(name)),
+				gs.IndexArg(2, gs.ValueArg(c)),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container (the normal
+				// case) and are absent from a container without it. Without the
+				// "?" gs would treat an absent bean as a wiring error and the app
+				// would not boot — turning "governance is off" into "governance
+				// must be imported". The ctor treats a nil manager as an unarmed
+				// authority, i.e. a transparent pass-through.
+				gs.IndexArg(3, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(4, gs.TagArg("?")), // inj *fault.Injector
+			).Name(name).Caller(1)
+			return nil
+		})
+	})
 }
 
 // newNotifier builds a Notifier from config. There is deliberately no startup
 // probe: the only universal probe would be a real POST, and sending a junk
 // notification at boot is worse than failing on first use (see DESIGN).
-func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, error) {
+//
+// mgr and inj are the governance beans gs injects (both nil in a standalone
+// call). A nil manager is normalized to an unarmed one, whose executor is a
+// transparent pass-through — governance off and standalone callers then behave
+// identically; the injector is nil-safe at its use site.
+func newNotifier(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.Manager, inj *fault.Injector) (*Notifier, error) {
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err
 	}
 	log.Debugf(ctx.Context, log.TagAppDef, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
 
-	exec := fault.WrapExecutor(resilience.ExecutorFor("webhook", resilience.ResourceLabel("webhook", name, c.Channel)))
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("webhook", resilience.ServiceLabel("webhook", c.Channel, name)), resilience.ServiceLabel("webhook", c.Channel, name), inj)
 	return &Notifier{
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},
@@ -105,7 +143,7 @@ func (n *Notifier) Send(ctx context.Context, notification *Notification) error {
 	// A zero-value Notifier (built by hand in tests) has no executor; the
 	// starter-built one always does, but keep Send usable either way.
 	if n.exec != nil {
-		err = n.exec.Execute(ctx, endpoint, post)
+		err = n.exec.Execute(ctx, post)
 	} else {
 		err = post(ctx)
 	}

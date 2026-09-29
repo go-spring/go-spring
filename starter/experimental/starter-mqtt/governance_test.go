@@ -36,12 +36,12 @@ var errGovernanceStub = errors.New("governance: rejected by test stub")
 // the driver path went through the executor without a live broker.
 type stubExecutor struct{ called atomic.Int32 }
 
-func (s *stubExecutor) Execute(context.Context, string, func(context.Context) error) error {
+func (s *stubExecutor) Execute(context.Context, func(context.Context) error) error {
 	s.called.Add(1)
 	return errGovernanceStub
 }
-func (s *stubExecutor) Close() error                    { return nil }
-func (s *stubExecutor) Refresh(resilience.Policy) error { return nil }
+func (s *stubExecutor) Close() error                          { return nil }
+func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 
 // fakeToken is a completed paho token.
 type fakeToken struct{ err error }
@@ -63,13 +63,13 @@ func (f *fakeMQTTClient) Publish(topic string, qos byte, retained bool, payload 
 }
 
 // applyResilience always attaches an executor. Whether it protects anything is
-// decided by the governance rule for the resource label, not by a per-instance
+// decided by the governance rule for the service label, not by a per-instance
 // switch: with governance off the executor is a transparent pass-through, so
 // attaching one costs a call frame and changes nothing else.
 func TestApplyResilienceAttachesGuard(t *testing.T) {
 	cl := &fakeMQTTClient{}
 
-	if err := applyResilience(cl, "mqtt:test"); err != nil {
+	if err := applyResilience(cl, "mqtt:test", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := clientGuards.Load(cl); !ok {
@@ -85,7 +85,7 @@ func TestApplyResilienceAttachesGuard(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	cl := &fakeMQTTClient{}
 	stub := &stubExecutor{}
-	clientGuards.Store(cl, &clientGuard{exec: stub, resource: "mqtt:test"})
+	clientGuards.Store(cl, &clientGuard{exec: stub, service: "mqtt:test"})
 
 	b := NewDriver(cl)
 	pub, err := b.NewPublisher(context.Background(), "t")

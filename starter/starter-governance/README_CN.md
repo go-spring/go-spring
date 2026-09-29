@@ -37,12 +37,14 @@ govern.source.file.path=/etc/app/govern.yaml
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
-  rules:
-    - resources: redis:cache
-      attempt-timeout: 50ms
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
+  client:
+    rules:
+      - service: redis:cache
+        attempt-timeout: 50ms
 ```
 
 行为要点：

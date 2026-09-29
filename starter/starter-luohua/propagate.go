@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/starter-otel/trace"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -113,16 +113,25 @@ func init() {
 	trace.RegisterPropagator(propagatorName, luohuaPropagator{})
 }
 
-// applyPropagate re-bases the wire vocabulary onto luohua's: it overrides the
-// load-test marker header (the G1 seam) when configured, and arms the named
-// business headers the propagator carries.
-func applyPropagate(c PropagateConfig) error {
-	if c.LoadTestHeader != "" {
-		canonical.HeaderLoadTest = c.LoadTestHeader
-		// gRPC metadata keys must be lowercase; derive from the HTTP header so
-		// the two stay in lockstep for the same convention.
-		canonical.MetaKeyLoadTest = strings.ToLower(c.LoadTestHeader)
+// loadTestPropagator builds luohua's load-test convention when the config
+// re-bases the marker, or nil when it leaves go-spring's in place. The key is
+// spelled lower-case — gRPC metadata keys must be, and HTTP header names are
+// case-insensitive, so the canonicalised spelling is the same name. The header
+// comes from the application's config, so an unusable one is reported rather
+// than carried.
+func loadTestPropagator(c PropagateConfig) (traffic.Propagator, error) {
+	if c.LoadTestHeader == "" {
+		return nil, nil
 	}
+	binding := traffic.DefaultBinding()
+	binding.Key = strings.ToLower(c.LoadTestHeader)
+	return traffic.NewDefaultPropagator(binding)
+}
+
+// applyPropagate re-bases the wire vocabulary onto luohua's: it arms the named
+// business headers the propagator carries. The load-test marker (the G1 seam)
+// is contributed as a bean by [apply], which has the provider.
+func applyPropagate(c PropagateConfig) error {
 	if len(c.Headers) > 0 {
 		setCarriedHeaders(c.Headers)
 	}

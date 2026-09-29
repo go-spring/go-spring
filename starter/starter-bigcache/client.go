@@ -24,6 +24,15 @@ import (
 	"github.com/allegro/bigcache/v3"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // --- per-operation observe wrapper -------------------------------------------
@@ -49,32 +58,39 @@ type Cache struct {
 	// db.client.operation.duration metric, access log.
 	obs *dbObserver
 
-	// Both resilience and fault are resolved through neutral seams
-	// ([resilience.ExecutorFor] / [fault.InjectorFor]) backed by starter-govern's
-	// governance center — so this struct has zero coupling to cloud/governance.
+	// mgr and inj are the governance beans gs injects into the constructor (both
+	// nil in a standalone call). mgr is normalized in Init: an unarmed manager is
+	// exactly the "governance off" pass-through, while a nil pointer would panic
+	// on the method call. inj is nil-safe at its use site.
+	mgr *resilience.Manager
+	inj *fault.Injector
 
 	// name is the instance name (the spring.bigcache.instances.<name> map key), used for
-	// the resilience resource label. Set by newClient; Init reads it.
+	// the resilience service label. Set by newClient; Init reads it.
 	name string
 
-	// exec is the resilience executor protecting Get/Set/Delete, resolved via
-	// resilience.ExecutorFor; no-op when governance is off.
-	exec resilience.Executor
-	// resource is the resilience resource key ("bigcache:<instance-name>")
+	// exec is the resilience executor protecting Get/Set/Delete, resolved from the
+	// injected manager; no-op when governance is off.
+	exec resilience.ClientExecutor
+	// service is the resilience service key ("bigcache:<instance-name>")
 	// exec scopes limiter/breaker state by.
-	resource string
+	service string
 }
 
 // Init is the gs InitMethod. It builds the per-operation observer (observe.go)
-// and resolves the executor through the neutral [resilience.ExecutorFor] seam
-// (backed by starter-govern's governance center when imported), so this cache
-// neither injects nor names cloud/governance. The executor is wrapped with the
-// process-wide fault injector ([fault.InjectorFor], nil-safe); when governance
-// is off the resolved executor is a transparent no-op.
+// and arms the executor from the injected governance manager. The manager's
+// ClientExecutorFor resolves its backing executor lazily, on each Execute, so the
+// arming order relative to starter-governance's wiring is irrelevant; the fault
+// injector wraps it with inj, which is nil-safe (with no injector the fault layer
+// is a transparent pass-through). When governance is off — an unarmed manager —
+// the resolved executor is a transparent no-op.
 func (c *Cache) Init() error {
 	c.obs = newDBObserver()
-	c.resource = resilience.ResourceLabel("bigcache", c.name)
-	c.exec = fault.WrapExecutor(resilience.ExecutorFor("bigcache", c.resource))
+	c.service = resilience.ServiceLabel("bigcache", c.name)
+	if c.mgr == nil {
+		c.mgr = resilience.NewManager()
+	}
+	c.exec = fault.WrapClientExecutor(c.mgr.ClientExecutorFor("bigcache", c.service), c.service, c.inj)
 	return nil
 }
 

@@ -18,7 +18,7 @@ persists progress so a crashed run resumes from the last committed chunk.
   durable backends contribute a bean (see `starter-batch-redis`).
 - Optional `Checkpointer` on a reader to persist its resume position; optional
   `Closer` on reader/writer for resource cleanup.
-- Optional resilience: set `ChunkStep.Retry` or plug in a `resilience.Executor`
+- Optional resilience: set `ChunkStep.Retry` or plug in a `resilience.ClientExecutor`
   to wrap each chunk with retry / circuit-breaker.
 
 ## Usage

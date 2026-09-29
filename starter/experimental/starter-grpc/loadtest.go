@@ -19,43 +19,53 @@ package StarterGrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/propagate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 // LoadTestUnaryInterceptor tags the handler context as load-test traffic when
-// the incoming gRPC metadata carries the marker key (default x-loadtest). It is
-// the gRPC inbound companion to cloud/governance/traffic's outbound carrier injection,
-// letting a load-test flag ride a gRPC hop end to end. Installed first in the
-// server interceptor chain (outermost), so tracing, metrics, resilience and the
-// handler all see the marker via traffic.IsLoadTest(ctx).
+// the incoming gRPC metadata carries prop's marker key. It is the gRPC inbound
+// companion to cloud/governance/traffic's outbound carrier injection, letting a
+// load-test flag ride a gRPC hop end to end. Installed first in the server
+// interceptor chain (outermost), so tracing, metrics, resilience and the handler
+// all see the marker via prop.IsLoadTest(ctx).
 //
-// Without the marker the interceptor is a no-op. gRPC metadata keys are
-// lower-case, so the key is canonical.MetaKeyLoadTest ("x-loadtest") rather than
-// the HTTP header spelling.
-func LoadTestUnaryInterceptor() grpc.UnaryServerInterceptor {
+// Without the marker the interceptor is a no-op. gRPC metadata keys must be
+// lower-case, and go-spring's metadata key is spelled that way ("x-loadtest")
+// rather than like its HTTP header. A nil propagator means go-spring's default
+// convention.
+func LoadTestUnaryInterceptor(prop traffic.Propagator) grpc.UnaryServerInterceptor {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
 	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		ctx = extractLoadTest(ctx)
+		ctx = extractLoadTest(prop, ctx)
 		return handler(ctx, req)
 	}
 }
 
 // LoadTestStreamInterceptor is the streaming-RPC counterpart of
 // LoadTestUnaryInterceptor.
-func LoadTestStreamInterceptor() grpc.StreamServerInterceptor {
+func LoadTestStreamInterceptor(prop traffic.Propagator) grpc.StreamServerInterceptor {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
 	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ctx := extractLoadTest(ss.Context())
+		ctx := extractLoadTest(prop, ss.Context())
 		return handler(srv, &wrappedServerStream{ServerStream: ss, ctx: ctx})
 	}
 }
 
-// extractLoadTest tags ctx from the incoming metadata when the marker is
+// extractLoadTest tags ctx from the incoming metadata when prop's marker is
 // present. Missing metadata or marker => ctx unchanged.
-func extractLoadTest(ctx context.Context) context.Context {
+func extractLoadTest(prop traffic.Propagator, ctx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return ctx
 	}
-	return canonical.ExtractCarrier(ctx, canonical.Carrier(md), canonical.MetaKeyLoadTest, "grpc-metadata")
+	return prop.Extract(ctx, propagate.MultiMap(md))
 }

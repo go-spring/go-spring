@@ -18,11 +18,13 @@ package StarterGateway
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
@@ -227,28 +229,37 @@ func requestIDFilter(args []string) (Filter, error) {
 	}, nil
 }
 
-// rateLimitFilter throttles matching requests using the resilience RateLimiter
-// abstraction. Args are key=value pairs: rate (req/s, required), burst, driver
-// (default "default"; a redis driver gives cross-replica limiting), algorithm
-// ("token-bucket"/"sliding-window"), key ("route"/"ip"). The route id is the
-// default bucket key so independent routes get independent budgets.
+// rateLimitFilter throttles matching requests through a resilience executor —
+// the one place rate limiting lives. Args are key=value pairs: rate (req/s,
+// required), burst, algorithm ("token-bucket"/"sliding-window"), window,
+// max-wait, key ("route"/"ip"). The route id is the scope, so independent routes
+// get independent budgets; key=ip adds the client to the scope for a per-client
+// budget.
 //
-// driver is resolved through resolve, not from a package registry: the
-// container holds the limiter backends, so the route table injects the
-// directory and the filter asks it by name. The empty name and "default" fall
-// back to the bundled in-process limiter.
-func rateLimitFilter(args []string, resolve func(string) (resilience.LimiterDriver, error)) (Filter, error) {
+// The budget is spent through the counter store the wiring provides, because the
+// scope here is a KEY (the route, or route|client-ip) rather than the service a
+// protection executor is bound to — per-key counting is the store's own trade.
+// One store covers the whole process, and with a shared backend (a Redis store,
+// say) every gateway replica shares one budget per key with no route-level
+// switch.
+func rateLimitFilter(args []string, counters resilience.Counters) (Filter, error) {
+	if counters == nil {
+		// A hand-built RouteTable (a test, a caller that skipped the wiring) has no
+		// store; normalize here so the filter never dereferences a nil store, the
+		// same way newRouteTable normalizes the injected one.
+		counters = newMemoryCounters()
+	}
 	kv, err := parseKV(args)
 	if err != nil {
 		return nil, err
 	}
-	pol := resilience.LimitPolicy{Algorithm: resilience.Algorithm(kv["algorithm"])}
+	pol := resilience.ClientPolicy{Algorithm: resilience.Algorithm(kv["algorithm"])}
 	if s := kv["rate"]; s != "" {
-		if pol.Rate, err = strconv.ParseFloat(s, 64); err != nil {
+		if pol.RateLimit, err = strconv.ParseFloat(s, 64); err != nil {
 			return nil, &parseError{what: "rateLimit rate", token: s}
 		}
 	}
-	if pol.Rate <= 0 {
+	if pol.RateLimit <= 0 {
 		return nil, &parseError{what: "rateLimit rate (must be > 0)", token: kv["rate"]}
 	}
 	if s := kv["burst"]; s != "" {
@@ -256,29 +267,34 @@ func rateLimitFilter(args []string, resolve func(string) (resilience.LimiterDriv
 			return nil, &parseError{what: "rateLimit burst", token: s}
 		}
 	}
-	d, err := resolve(kv["driver"])
-	if err != nil {
-		return nil, err
+	if s := kv["window"]; s != "" {
+		if pol.Window, err = time.ParseDuration(s); err != nil {
+			return nil, &parseError{what: "rateLimit window", token: s}
+		}
 	}
-	limiter, err := d.NewRateLimiter(pol)
-	if err != nil {
-		return nil, err
+	if s := kv["max-wait"]; s != "" {
+		if pol.RateLimitMaxWait, err = time.ParseDuration(s); err != nil {
+			return nil, &parseError{what: "rateLimit max-wait", token: s}
+		}
 	}
 	keyMode := kv["key"] // "" or "route" -> per-route budget; "ip" -> per client
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			key := routeIDFromContext(r.Context())
+			scope := routeIDFromContext(r.Context())
 			if keyMode == "ip" {
-				key = key + "|" + clientIP(r)
+				scope = scope + "|" + clientIP(r)
 			}
-			ok, err := limiter.Allow(r.Context(), key)
-			if err != nil {
-				// Fail-open on limiter backend errors (e.g. redis blip): a broken
-				// limiter must not take the gateway down, only log it.
-				log.Warnf(r.Context(), log.TagAppDef, "gateway: rate limiter error: %v", err)
-			} else if !ok {
+			err := counters.Allow(r.Context(), scope, pol, 1)
+			switch {
+			case err == nil:
+			case errors.Is(err, resilience.ErrRateLimited):
 				http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
 				return
+			default:
+				// Fail open on anything else: the executor already logged a
+				// failing counter store (e.g. a Redis blip) and let the call
+				// through, so a broken limiter must not take the gateway down.
+				log.Warnf(r.Context(), log.TagAppDef, "gateway: rate limit check failed: %v", err)
 			}
 			next.ServeHTTP(w, r)
 		})

@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/stdlib/testing/assert"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -32,7 +31,9 @@ import (
 func TestLoadTestProcessorTagsMarkedSpans(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := canonical.WithLoadTest(context.Background(), "http-header")
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
+	ctx := prop.WithLoadTest(context.Background())
 	_, span := tp.Tracer("test").Start(ctx, "op")
 	span.End()
 
@@ -54,18 +55,29 @@ func TestLoadTestProcessorLeavesRealTrafficAlone(t *testing.T) {
 	assert.String(t, attrsToString(ended[0].Attributes())).Equal("")
 }
 
-// TestLoadTestProcessorFollowsTheContract proves the processor reads the
-// traffic contract rather than the canonical marker: a process that installs
-// its own predicate gets its own answer, without importing go-spring's default.
+// alwaysBound is the shape a company supplies when its own codebase already
+// records synthetic traffic on a context of its own: go-spring's convention with
+// the slot swapped for one that calls every context load-test traffic.
+func alwaysBound() traffic.Binding {
+	b := traffic.DefaultBinding()
+	b.Bind = func(ctx context.Context) context.Context { return ctx }
+	b.Bound = func(context.Context) bool { return true }
+	return b
+}
+
+// TestLoadTestProcessorFollowsTheContract proves the processor asks the
+// installed [traffic.Propagator] rather than reading the context marker: a
+// process that re-bases the convention gets the answer of its own convention.
 func TestLoadTestProcessorFollowsTheContract(t *testing.T) {
-	prev := traffic.IsLoadTest
-	defer func() { traffic.IsLoadTest = prev }()
-	traffic.IsLoadTest = func(context.Context) bool { return true }
+	prop, err := traffic.NewDefaultPropagator(alwaysBound())
+	assert.Error(t, err).Nil()
+	SetLoadTestPropagator(prop)
+	defer SetLoadTestPropagator(nil)
 
 	tp, rec := newTestRecorderProvider()
 
-	// A plain context: the canonical marker is absent, only the installed
-	// predicate says this is load-test traffic.
+	// A plain context: no marker was set, only the installed convention says
+	// this is load-test traffic.
 	_, span := tp.Tracer("test").Start(context.Background(), "op")
 	span.End()
 
@@ -89,7 +101,9 @@ func TestNewTracerProviderWiresLoadTest(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer func() { _ = tp.Shutdown(context.Background()) }()
 
-	ctx := canonical.WithLoadTest(context.Background(), "loadtest.Run")
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
+	ctx := prop.WithLoadTest(context.Background())
 	_, span := tp.Tracer("test").Start(ctx, "op")
 	span.End()
 	assert.Error(t, tp.ForceFlush(context.Background())).Nil()

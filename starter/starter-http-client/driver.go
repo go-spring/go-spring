@@ -21,7 +21,20 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/starter-http-client/httpx"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Driver defines how to create one client entry's transport — THE extension
@@ -54,8 +67,16 @@ import (
 // label (an unknown label fails at wiring, before the driver is called). It is
 // passed as an argument rather than carried on Config so a custom driver can
 // actually reach it — Config stays a pure bound value.
+//
+// mgr and inj are the governance beans the container injected into the starter
+// (nil when starter-governance is absent — gs autowires a missing bean as nil).
+// They are handed to the driver rather than read from a package-level seam, so
+// a custom driver can wrap, replace or simply forward them; the bundled
+// DefaultDriver forwards both to [httpx.NewTransport], which normalizes a nil
+// manager to an unarmed one. prop is the application's load-test convention
+// bean (nil when none is provided), forwarded the same way.
 type Driver interface {
-	CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery) (rt http.RoundTripper, close func() error, err error)
+	CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface: the
@@ -65,7 +86,8 @@ type DefaultDriver struct{}
 // CreateTransport maps the bound Config onto the starter-http-client/httpx assembler input
 // and assembles the transport. Everything — trace, TLS surface,
 // governance-resolved resilience executor, fault + observe wrap — is owned by
-// starter-http-client/httpx; see [httpx.NewTransport].
-func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery) (http.RoundTripper, func() error, error) {
-	return httpx.NewTransport(c.toTransportConfig(backend))
+// starter-http-client/httpx; see [httpx.NewTransport]. mgr, inj and prop are
+// forwarded verbatim: httpx owns how they are used and what a nil means.
+func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
+	return httpx.NewTransport(c.toTransportConfig(backend), mgr, inj, lbMgr, prop)
 }

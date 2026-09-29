@@ -35,6 +35,15 @@ import (
 	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	gormmysql "gorm.io/driver/mysql"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // tlsSeq makes each registered custom TLS config name unique.
@@ -61,7 +70,7 @@ func init() {
 // the client. In mesh mode a sidecar owns discovery+LB, so the configured Addr
 // is used as-is. When c.ServiceName is empty this is a plain Addr dial,
 // unchanged from before.
-func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *loadbalance.Manager) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
 	}
@@ -94,8 +103,8 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 
 	dsn := c.DSN()
 
-	resource := resilience.ResourceLabel("gorm:mysql", c.ServiceName, c.Addr)
-	conn, err := newDiscoveryConn(ctx, c, backend, resource)
+	service := resilience.ServiceLabel("gorm:mysql", c.ServiceName, c.Addr)
+	conn, err := newDiscoveryConn(ctx, c, backend, service, lbMgr)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm mysql: build discovery dialer failed: %v", err)
 		if tlsCloser != nil {
@@ -124,7 +133,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 	return gormcore.Spec{
 		Dialector:      gormmysql.Open(dsn),
 		Pool:           c.Pool(),
-		Resource:       resource,
+		Service:        service,
 		ObserveEnabled: c.ObserveEnabled,
 		Closers:        closers,
 	}, nil
@@ -153,10 +162,10 @@ type discoveryConn struct {
 // returns (nil, nil) when service-name is unset or mesh mode is enabled (a
 // sidecar owns discovery+LB), in which case the caller dials the configured Addr
 // directly. The caller owns the lifecycle and must release the conn via
-// stopDiscoveryConn. resource is the entry's governance label, to which the
+// stopDiscoveryConn. service is the entry's governance label, to which the
 // pool's endpoint selection is bound.
-func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery, resource string) (*discoveryConn, error) {
-	lb, _, stop, err := c.NewPickPool(ctx, backend, resource)
+func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery, service string, lbMgr *loadbalance.Manager) (*discoveryConn, error) {
+	lb, _, stop, err := c.NewPickPool(ctx, backend, service, lbMgr)
 	if err != nil {
 		return nil, err
 	}

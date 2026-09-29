@@ -27,6 +27,15 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/spring/gs"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Client is the producer bean: it enqueues tasks into one Asynq queue. It
@@ -36,17 +45,27 @@ import (
 type Client struct {
 	*asynq.Client
 
-	cfg      Config
-	resource string
-	exec     resilience.Executor
-	obs      *observer
+	cfg     Config
+	service string
+	exec    resilience.ClientExecutor
+	obs     *observer
+
+	// mgr and inj are the governance beans gs injects into the constructor
+	// (both nil in a standalone call). mgr is normalized in Init, since an
+	// unarmed manager is exactly the "governance off" pass-through while a nil
+	// pointer would panic on the method call; inj is nil-safe at its use site.
+	mgr *resilience.Manager
+	inj *fault.Injector
 }
 
 // Init arms the observer and the resilience executor after injection.
 func (o *Client) Init() error {
 	o.obs = newObserver()
-	o.resource = resilience.ResourceLabel("asynq", o.cfg.Addr)
-	o.exec = fault.WrapExecutor(resilience.ExecutorFor("asynq", o.resource))
+	o.service = resilience.ServiceLabel("asynq", o.cfg.Addr)
+	if o.mgr == nil {
+		o.mgr = resilience.NewManager()
+	}
+	o.exec = fault.WrapClientExecutor(o.mgr.ClientExecutorFor("asynq", o.service), o.service, o.inj)
 	return nil
 }
 
@@ -81,7 +100,7 @@ func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Op
 	if o.exec == nil {
 		return info, call(ctx)
 	}
-	if err := o.exec.Execute(ctx, o.resource, call); err != nil {
+	if err := o.exec.Execute(ctx, call); err != nil {
 		return nil, err
 	}
 	return info, nil
@@ -96,17 +115,17 @@ func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Op
 // (per-task handling is asynq's domain — handler errors/panics are recovered
 // and retried by asynq), so it carries no observability config.
 type Server struct {
-	cfg      Config
-	resource string
-	driver   Driver
-	mux      *asynq.ServeMux
-	srv      *asynq.Server
+	cfg     Config
+	service string
+	driver  Driver
+	mux     *asynq.ServeMux
+	srv     *asynq.Server
 }
 
 // Init builds the asynq server (reusing any mux the app already created via
 // RegisterHandler).
 func (o *Server) Init() error {
-	o.resource = resilience.ResourceLabel("asynq", o.cfg.Addr)
+	o.service = resilience.ServiceLabel("asynq", o.cfg.Addr)
 	connOpt, err := o.driver.RedisConnOpt(context.Background(), o.cfg)
 	if err != nil {
 		return err

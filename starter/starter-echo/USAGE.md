@@ -146,11 +146,12 @@ govern.source.file.path=conf/govern.yaml
 ```yaml
 govern:
   enabled: true
-  fault:
-    enabled: false        # flip to true to "set fire" without restart
-    rate: 0.2
-    error: timeout
-    scope: loadtest       # only traffic marked X-LoadTest is affected
+  server:
+    fault:
+      enabled: false        # flip to true to "set fire" without restart
+      rate: 0.2
+      error: timeout
+      scope: loadtest       # only traffic marked X-LoadTest is affected
 ```
 
 **Verify**:
@@ -197,7 +198,7 @@ Rationale (from the source comments, verified):
 
 - **LoadTest outermost**: the marker lands on the request context before anything else runs, so
   every downstream layer — and every outbound client your handler calls — can branch on
-  `traffic.IsLoadTest(ctx)`. Single header lookup; no-op without the marker.
+  the propagator's `IsLoadTest(ctx)`. Single header lookup; no-op without the marker.
 - **Recovery** catches panics from every later layer and reports through the shared goutil panic
   chain (unified panic policy), not echo's stock Recover alone.
 - **RequestID before AccessLog**: every access record carries the request id; the id is also
@@ -208,9 +209,9 @@ Rationale (from the source comments, verified):
 - **admission outside fault**: a request admitted (or rejected) by the inbound rate-limit /
   bulkhead / breaker never also gets faulted, and its 429/503 still passes AccessLog/Tracing/
   Metrics. Installed unconditionally — with governance off the executor is a transparent
-  pass-through, so it costs a call frame and changes nothing else. The resource label is
+  pass-through, so it costs a call frame and changes nothing else. The service label is
   `echo:<address>` (e.g. `echo::8080`), the same one a govern rule uses:
-  `govern.rules[N].resources=echo::8080` with the usual `rate-limit` / `max-concurrent` /
+  `govern.server.rules[N].service=echo::8080` with the usual `rate-limit` / `max-concurrent` /
   `error-threshold` knobs. Rejections map to **429** (rate limit, bulkhead full) and **503**
   (circuit open); a handler error or a committed 5xx is fed back to the executor as the call's
   failure, so the breaker sees server-side errors. Inbound admission never retries — a handler
@@ -225,14 +226,15 @@ Rationale (from the source comments, verified):
 
 `GET /echo/world` with header `X-LoadTest: 1`, fault scope engaged:
 
-1. LoadTest tags ctx (`traffic.IsLoadTest(ctx) == true`)
+1. LoadTest tags ctx (the propagator's `IsLoadTest(ctx) == true`)
 2. Recovery arms
 3. RequestID generates/propagates the id → response header
 4. Tracing starts the server span `{method} {route}` (no-op without an OTel provider)
 5. Metrics increments in-flight, starts the duration observation
 6. AccessLog arms (fields captured on the way out)
 7. SecureHeaders/CORS/Gzip as enabled; BodyLimit enforces `maxBodySize`
-8. fault: `fault.Apply(ctx, InjectorFor(), "echo", handler)` — with `scope: loadtest` and the
+8. fault: `fault.ApplyServer(ctx, inj, "echo", handler)` — `inj` is the injected `*fault.Injector`
+   bean; with `scope: loadtest` and the
    marker present, ~`rate` of requests get the injected error → 503; others pass through
 9. your route runs; the response unwinds through 6→5→4→3: access record logged (severity by
    status), duration recorded with `http.request.method`/`http.route`/`http.response.status_code`
@@ -259,7 +261,7 @@ Every group has `.enabled`; semantics per layer are in §2.2/§2.3.
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `middleware.loadtest.enabled` / `.header` | on / `X-LoadTest` | Marker header name; empty falls back to the traffic package default. |
+| `middleware.loadtest.enabled` | on | Marker header → ctx tag through the propagator's `Extract`. Which header that is belongs to the propagator bean, not to this starter. |
 | `middleware.requestId.enabled` / `.header` | on / `X-Request-Id` | Generated when absent, propagated when present. |
 | `middleware.tracing.enabled` / `metrics.enabled` | on / on | No-op without starter-otel's OTel globals — nothing warns. |
 | `middleware.accessLog.skipPaths` | — | Merged with the health path. |
@@ -323,7 +325,7 @@ curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
 ### 4.5 Load-test marking drill
 
 With `scope: real` instead of `loadtest`, the injector affects unmarked traffic — use only in
-dedicated environments. `traffic.IsLoadTest(ctx)` in your handler branches on the same marker,
+dedicated environments. The propagator's `IsLoadTest(ctx)` in your handler branches on the same marker,
 so business code can degrade features under synthetic load.
 
 ---

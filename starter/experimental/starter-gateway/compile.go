@@ -28,10 +28,19 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // FilterWrapper is the seam a bean-backed filter (jwt-auth, lua) satisfies:
@@ -93,23 +102,31 @@ type RouteTable struct {
 	// time; it never changes across hot reloads.
 	backends map[string]discovery.Discovery
 
-	// limiters is the container's named rate-limiter backend beans (bean name =
-	// driver name), injected once by newRouteTable. The rateLimit filter resolves
-	// its driver= argument against it; the bundled in-process limiter answers to
-	// the empty/"default" name without a bean.
-	limiters map[string]resilience.LimiterDriver
-
 	// execs pools resilience executors by policy name so routes sharing a policy
 	// share breaker/limiter state. Rebuilt on each recompile.
-	execs map[string]resilience.Executor
+	execs map[string]resilience.ClientExecutor
 
-	// selection holds one governance subscription per route id, driving that
-	// route's load-balancing pool (strategy + outlier suspension). It is
-	// reconciled on every recompile: a rebuilt route gets a fresh subscription
-	// (its pool is new), and a route that disappeared has its subscription
-	// cancelled — otherwise the center would accumulate subscribers, each
-	// pinning a discarded pool, on every route-table edit.
-	selection map[string]governance.Subscription
+	// mgr and lbMgr are the governance authorities the container injected (a
+	// fresh unarmed instance when starter-governance is absent, so the table is
+	// always safe to use). mgr hands out the per-route protection executors;
+	// lbMgr binds each route's pool to its label for strategy + suspension.
+	mgr   *resilience.Manager
+	lbMgr *loadbalance.Manager
+
+	// counters is the rate-limit store the rateLimit filter spends. A route's
+	// budget is keyed by route id (and the client IP, under key=ip), which is
+	// per-KEY counting rather than per-service — the store's own trade, not an
+	// executor's, so the filter uses it directly. With a shared backend
+	// contributed, every replica draws on the same budgets.
+	counters resilience.Counters
+
+	// selection holds one governance binding per route id, driving that route's
+	// load-balancing pool (strategy + outlier suspension). It is reconciled on
+	// every recompile: a rebuilt route gets a fresh binding (its pool is new),
+	// and a route that disappeared has its binding detached — otherwise the
+	// manager would accumulate subscribers, each pinning a discarded pool, on
+	// every route-table edit.
+	selection map[string]func()
 }
 
 // newRouteTable builds the table. Config (Cfg) and bean-backed filters (Wrappers)
@@ -118,22 +135,33 @@ type RouteTable struct {
 // bad initial config fails startup. backends is the container's named discovery
 // backend beans (optional: an app with none gets an empty directory, and any
 // lb:// upstream then fails to compile with the label it could not resolve).
+//
+// mgr and lbMgr are the governance beans starter-governance provides; both are
+// nil when it is not imported (gs autowires a missing bean as nil) and are
+// normalized here to fresh unarmed authorities — a nil *Manager panics on its
+// first method call, so doing it once at assembly keeps every other method free
+// of nil branches, and an unarmed authority is exactly "governance off".
 func newRouteTable(ctx *gs.ContextProvider, o *observer, backends map[string]discovery.Discovery,
-	limiters map[string]resilience.LimiterDriver) *RouteTable {
+	mgr *resilience.Manager, lbMgr *loadbalance.Manager, counters resilience.Counters) *RouteTable {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	if lbMgr == nil {
+		lbMgr = loadbalance.NewManager()
+	}
+	if counters == nil {
+		// No counter store was contributed, so per-route and per-client budgets are
+		// this process's own — the same reach a per-service executor would have.
+		counters = newMemoryCounters()
+	}
 	return &RouteTable{
 		ctx:      ctx.Context,
 		obs:      o,
 		backends: backends,
-		limiters: limiters,
+		mgr:      mgr,
+		lbMgr:    lbMgr,
+		counters: counters,
 	}
-}
-
-// limiterFor resolves a rateLimit filter's driver name against the injected
-// limiter directory, falling back to the bundled in-process limiter for the
-// empty name and "default".
-func (t *RouteTable) limiterFor(name string) (resilience.LimiterDriver, error) {
-	return resilience.Resolve(t.limiters, name, resilience.DefaultLimiterName,
-		"limiter driver", resilience.NewDefaultLimiterDriver())
 }
 
 // Init runs after field injection. It warns when routes are configured but the
@@ -243,73 +271,77 @@ func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 	return nil
 }
 
-// reconcileSelection brings the per-route governance subscriptions in line with
-// the freshly compiled routes. Caller holds t.mu.
+// reconcileSelection brings the per-route governance bindings in line with the
+// freshly compiled routes. Caller holds t.mu.
 //
 // A rebuilt route always gets a NEW pool (recompile is what creates pools), so
-// its previous subscription is cancelled and replaced; a route that disappeared
-// from the config has its subscription cancelled outright. Without the cancels
-// the center would keep one subscriber — and one reference to a discarded pool —
-// per route-table edit, for the life of the process.
+// its previous binding is detached and replaced; a route that disappeared from
+// the config has its binding detached outright. Without the detaches the manager
+// would keep one subscriber — and one reference to a discarded pool — per
+// route-table edit, for the life of the process.
 //
 // The label is "gateway:<route-id>", which is also the label the resilience
 // executors use (see buildExecutors) — one rule matches a route's whole
-// governance: protection, strategy and suspension.
+// governance: protection, strategy and suspension. Binding (rather than
+// subscribing and hand-building a Selection) is what keeps gateway's strategy
+// and suspension in step with the label's resolved rule: the manager owns the
+// policy-to-selection mapping, including the "an unknown strategy keeps the
+// current one" rule.
 func (t *RouteTable) reconcileSelection(routes []*Route) {
 	if t.selection == nil {
-		t.selection = make(map[string]governance.Subscription, len(routes))
+		t.selection = make(map[string]func(), len(routes))
 	}
 	live := make(map[string]struct{}, len(routes))
 	for _, r := range routes {
 		live[r.ID] = struct{}{}
 		if old, ok := t.selection[r.ID]; ok {
-			old.Cancel()
+			old()
 			delete(t.selection, r.ID)
 		}
 		if r.Upstream == nil || r.Upstream.pool == nil {
 			continue // direct upstream: no candidate set to select from
 		}
-		pool := r.Upstream.pool
-		t.selection[r.ID] = governance.Register("gateway:"+r.ID, func(p resilience.Policy) {
-			pool.ApplySelection(p.Balancer, p.OutlierThreshold, p.OutlierSuspendFor)
-		})
+		t.selection[r.ID] = t.lbMgr.Bind(r.Upstream.pool, "gateway:"+r.ID)
 	}
-	for id, sub := range t.selection {
+	for id, stop := range t.selection {
 		if _, ok := live[id]; !ok {
-			sub.Cancel()
+			stop()
 			delete(t.selection, id)
 		}
 	}
 }
 
 // buildExecutors turns each named resilience policy into an Executor. Routes
-// reference these by name so they share breaker state. Each executor is resolved
-// through the NEUTRAL provider seam [resilience.ExecutorFor] keyed by
-// "gateway:<name>": starter-govern registers a provider backed by the governance
-// center, so gateway's per-route protection is governed centrally (and
-// hot-reloaded on the backing executor by the provider) WITHOUT this package
-// injecting or even naming cloud/governance. When governance is off the seam yields a
-// transparent no-op executor. Cfg.Resilience stays as the name registry routes
-// reference (its local policy VALUES are no longer consumed — the governance
-// authority owns all policy values now, uniformly with every other starter).
-func (t *RouteTable) buildExecutors() (map[string]resilience.Executor, error) {
+// reference these by name so they share breaker state. Each executor comes from
+// the INJECTED [resilience.Manager] under "gateway:<name>", so gateway's
+// per-route protection is governed centrally and hot-reloaded in place: the
+// manager owns the label's policy, the driver and the refresh subscription, and
+// when governance is off the returned executor is a transparent pass-through.
+// Cfg.Resilience stays as the name registry routes reference (its local policy
+// VALUES are not consumed — the governance rules document owns all policy
+// values now, uniformly with every other starter).
+func (t *RouteTable) buildExecutors() (map[string]resilience.ClientExecutor, error) {
 	if len(t.Cfg.Resilience) == 0 {
 		return nil, nil
 	}
-	out := make(map[string]resilience.Executor, len(t.Cfg.Resilience))
+	out := make(map[string]resilience.ClientExecutor, len(t.Cfg.Resilience))
 	for name := range t.Cfg.Resilience {
-		// Always non-nil: a transparent no-op when governance is off; the real
-		// policy-carrying executor (hot-reloaded by the provider) when on, and
-		// observed under the same label so trips/rejects/retries emit span +
-		// counter + histogram + access log.
-		out[name] = resilience.ExecutorFor("gateway:"+name, "gateway:"+name)
+		// Always non-nil: a transparent pass-through when governance is off; the
+		// real policy-carrying executor otherwise, observed under the same label
+		// so trips/rejects/retries emit span + counter + histogram + access log.
+		out[name] = t.mgr.ClientExecutorFor(gatewayLabel(name), gatewayLabel(name))
 	}
 	return out, nil
 }
 
+// gatewayLabel is the governance service label of the policy named name — the
+// label a govern rule matches and the one the executor's limiter/breaker state
+// is scoped by, so both halves name the same service.
+func gatewayLabel(name string) string { return "gateway:" + name }
+
 // compileRoute assembles one Route: predicates, an upstream, the resilience
 // executor its policy references, and the filter chain wrapping the proxy.
-func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resilience.Executor) (*Route, error) {
+func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resilience.ClientExecutor) (*Route, error) {
 	preds, err := buildPredicates(raw)
 	if err != nil {
 		return nil, err
@@ -320,16 +352,17 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 		return nil, err
 	}
 
-	var exec resilience.Executor
+	var exec resilience.ClientExecutor
+	var service string
 	if name := strings.TrimSpace(raw.Resilience.Policy); name != "" {
 		e, ok := execs[name]
 		if !ok {
 			return nil, fmt.Errorf("unknown resilience policy %q", name)
 		}
-		exec = e
+		exec, service = e, gatewayLabel(name)
 	}
 
-	proxy, err := t.newProxyHandler(id, up, exec)
+	proxy, err := t.newProxyHandler(id, up, exec, service)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +389,7 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 // buildFilters parses a route's filter list into an ordered slice of Filters.
 // Self-contained filters come from the registry; bean-backed ones (jwt-auth,
 // lua) are resolved by name from the injected wrapper map, and rateLimit
-// resolves its driver against the injected limiter directory.
+// runs the request through a resilience executor built from its args.
 func (t *RouteTable) buildFilters(spec string) ([]Filter, error) {
 	tokens, err := splitFilters(spec)
 	if err != nil {
@@ -367,7 +400,7 @@ func (t *RouteTable) buildFilters(spec string) ([]Filter, error) {
 		name, args := tok.name, tok.args
 		switch name {
 		case "rateLimit":
-			f, err := rateLimitFilter(args, t.limiterFor)
+			f, err := rateLimitFilter(args, t.counters)
 			if err != nil {
 				return nil, err
 			}

@@ -20,7 +20,7 @@
 //
 // Importing this starter is inert until it is configured. When a source IS
 // configured, its bean is injected onto the governance center (priority: an
-// explicit governance.SetSource wins, then this bean), and rule updates refresh
+// explicit Center.SetSource wins, then this bean), and rule updates refresh
 // governance only — they never trigger an app-wide property re-bind.
 //
 // Available sources:

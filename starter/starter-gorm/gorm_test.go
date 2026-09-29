@@ -165,7 +165,7 @@ func TestOpenLifecycle(t *testing.T) {
 		PingTimeout:  time.Second,
 	}, Options{
 		Engine:         "fake",
-		Resource:       "gorm:fake:life",
+		Service:        "gorm:fake:life",
 		ObserveEnabled: true, // exercises the observe plugin + resilience callbacks path
 		Closers:        []func(){func() { closerRan = true }},
 	})

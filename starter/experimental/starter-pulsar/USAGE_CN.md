@@ -144,7 +144,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # OTel 指标仅经 actuator 暴露
 
-# --- 治理（资源 pulsar|pulsar://127.0.0.1:6650 的熔断/限流）-------------------
+# --- 治理（服务 pulsar|pulsar://127.0.0.1:6650 的熔断/限流）-------------------
 govern.source.file.path=conf/govern.yaml
 ```
 
@@ -189,8 +189,10 @@ gs.Run()
   │    3. FailFast 探测：cl.TopicPartitions(HealthCheckTopic) —— 一次
   │       覆盖地址+认证+TLS 的 lookup（不产生消息）；失败 →
   │       cl.Close + metrics 下线 + 启动报错                              [starter.go:69-76]
-  │    4. applyResilience：fault.WrapExecutor(resilience.ExecutorFor("pulsar", "pulsar:<url>"))
-  │       → 按 client 索引                                               [command.go:229-230]
+  │    4. applyResilience：fault.WrapClientExecutor(
+  │       mgr.ClientExecutorFor("pulsar", "pulsar:<url>"), "pulsar:<url>", inj)
+  │       —— mgr/inj 即注入的 *resilience.Manager / *fault.Injector
+  │       → 按 client 索引                                               [command.go:227-228]
   ├─ 就绪：无 health indicator —— 探测只在启动期生效
   └─ SIGTERM → destroyClient [client.go:44-49]：closeResilience（executor Close）
        → cl.Close()（释放全部 producer/consumer）→ shutdownMetrics（:port server）
@@ -212,24 +214,24 @@ tag 为 `_app_def`，前缀 `pulsar: ` [driver.go:208-223]。
 ctor 里挂上的 resilience executor 只经**一个 seam** 驱动：
 
 ```
-GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
-  └─ guard: resilienceExecs.Load(cl)                      [command.go:243-250]
+GuardedSend(ctx, cl, producer, msg)                       [command.go:264-275]
+  └─ guard: clientGuards.Load(cl)                         [command.go:244-251]
        ├─ 未找到（治理关闭）→ producer.Send 原样内联执行，与裸调用一致
-       └─ 找到 → exec.Execute(ctx, "pulsar:<url>", send) —— fault 注入器最外层
-                  （fault.WrapExecutor），resilience observer 在其内层；拒绝时返回
+       └─ 找到 → exec.Execute(ctx, send)                 —— fault 注入器最外层
+                  （fault.WrapClientExecutor），resilience observer 在其内层；拒绝时返回
                   resilience 哨兵错误，发送根本不会上线
 ```
 
-`applyResilience` 内部包裹顺序 [command.go:229]：`resilience.ExecutorFor("pulsar", resource)`
-返回已完整组装的 executor（核心熔断/限流/重试外包 resilience observer——outcome 计数 +
-访问日志）→ `fault.WrapExecutor` 最外层（运行期故障注入；注入的错误穿过内层重试循环，
-熔断器照常计数）。
+`applyResilience` 内部包裹顺序 [command.go:227]：`mgr.ClientExecutorFor("pulsar", service)`
+（mgr 即注入的 `*resilience.Manager`）返回已完整组装的 executor（核心熔断/限流/重试外包
+resilience observer——outcome 计数 + 访问日志）→ `fault.WrapClientExecutor(..., inj)` 最外层
+（注入的 `*fault.Injector` 做运行期故障注入；注入的错误穿过内层重试循环，熔断器照常计数）。
 
 **未保护面**（均有源码注释说明是有意的）：
 - `producer.SendAsync` —— 刻意不碰；异步路径没有可拒绝的同步结果 [command.go:261-263]。
 - driver 的 `Publish` —— **现已受保护**：driver 走 `GuardedSend` 与 client 级 executor
   [driver.go]，span+trace 注入与熔断/限流/fault 都有。想让所有调用路径事实上裸跑：
-  给 resource label（`pulsar:<url>`）配一条全零 rule。
+  给 service label（`pulsar:<url>`）配一条全零 rule。
 - 消费侧 `Receive`/handler —— 没有消费端保护。
 - `CreateProducer`/`Subscribe`/`TopicPartitions` —— 生命周期调用，仅启动期 FailFast
   探测覆盖。
@@ -239,7 +241,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
 `pub.Publish(ctx, msg)`，其中 `Key: "k"`、`Headers: h`、ctx 带压测标记
 [driver.go:81-102]：
 
-1. header 拷贝：若 `traffic.IsLoadTest(ctx)`，headers 被**复制**（绝不改调用方的 map）
+1. header 拷贝：若 propagator 的 `IsLoadTest(ctx)`，headers 被**复制**（绝不改调用方的 map）
    并追加 `x-load-test=1` [driver.go:85-90]。
 2. 信封 → `pulsar.ProducerMessage`：`Payload`、`Properties`（= headers）、**Key 仅在
    非空时设置** [driver.go:91-97]。未映射：`Timestamp`（信封有，但 Pulsar 发布时间由
@@ -261,7 +263,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go:263-274]
 3. `c.Receive` → 消息交给 `messaging.Observe` 的 handler 包装：从信封 headers
    （映射自 `Properties()`）提取上游 trace，开 consumer span。
 4. 压测标记：若生产者往 Properties 里写了 `x-load-test`，handler ctx 会经
-   `traffic.WithLoadTest` 重新打标 [driver.go:141-143]。
+   `prop.WithLoadTest(ctx)` 重新打标 [driver.go:141-143]。
 5. `fromPulsarMsg` 反向映射：Pulsar `Key()` → 信封 Key、`Payload()`、`Properties()` →
    Headers（含注入的 `traceparent` —— 消费侧 headers 会多出 key）、`PublishTime()` →
    Timestamp [driver.go:171-178]。两个方向都保留 Key 与 Properties。
@@ -282,7 +284,7 @@ Close 顺序：取消循环 ctx → 等 `done`（在途 handler 收尾）→ `co
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `url` | string | — | **必填**（`expr:"$ != ''"`）。`pulsar://` 明文或 `pulsar+ssl://` TLS。同时构成 resilience 资源标签 `pulsar\|<url>` [starter.go:76]。 | 缺失/空 → BindEach 启动报错。 |
+| `url` | string | — | **必填**（`expr:"$ != ''"`）。`pulsar://` 明文或 `pulsar+ssl://` TLS。同时构成 resilience 服务标签 `pulsar\|<url>` [starter.go:76]。 | 缺失/空 → BindEach 启动报错。 |
 | `operation-timeout` | duration | 30s | producer/订阅/lookup 超时，传给 ClientOptions [driver.go:72]。 | 过低 → CreateProducer 间歇失败。 |
 | `connection-timeout` | duration | 5s | TCP 连接超时 [driver.go:73]。 | — |
 | `token` | string | — | JWT token 值，或 `token-from-file=true` 时的文件路径 [driver.go:86-90]。⚠ 认证优先级：mTLS cert+key 高于 token。 | token 错 → FailFast 探测启动失败。 |
@@ -334,7 +336,7 @@ govern:
       failure-rate: 50
 ```
 
-资源标签是 `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]。停掉 broker 后：压
+服务标签是 `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]。停掉 broker 后：压
 `GuardedSend` → 过阈值后熔断打开，调用快速失败返回 resilience 哨兵错误，出现
 resilience outcome 计数；改压 driver `Publish` → 每次调用
 阻塞进 client 自身的重试/超时，没有哨兵、没有熔断。这个对比就是 §2.2 的边界。

@@ -34,7 +34,7 @@ a separate starter that supplies a `JobRepository` bean.
   a new one after each committed chunk. Readers that cannot resume simply
   replay from the beginning on restart.
 - **Read is outside the retry guard; process+write is inside.** Reads advance
-  once per chunk into a buffer; a `resilience.Executor` (built from
+  once per chunk into a buffer; a `resilience.ClientExecutor` (built from
   `ChunkStep.Retry` or supplied directly) wraps process+write of the buffered
   chunk. A reader cannot re-yield items it already advanced past, so retrying
   the read would corrupt state.

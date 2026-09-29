@@ -33,6 +33,15 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // -----------------------------------------------------------------------------
@@ -147,16 +156,33 @@ func (c msgCarrier) Keys() []string {
 // reject-capable middleware, so the executor is driven through an opt-in
 // call-site guard (GuardedSend) on the synchronous Producer.SendSync path.
 //
-// Both the executor and the fault injector are resolved through neutral seams
-// ([resilience.ExecutorFor] / [fault.InjectorFor]) that starter-govern backs with
-// the governance center — so this function has zero coupling to
-// cloud/governance. When governance is off, ExecutorFor yields a transparent
-// no-op executor; fault wraps it when an injector is registered (nil-safe
-// otherwise).
-func applyResilience(c Config, cl *Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor("rocketmq", resource))
+// Both halves of the stack come from the container: the executor from the
+// injected *resilience.Manager, the fault layer from the injected
+// *fault.Injector. The manager's executor already carries the resilience observe
+// layer (span + outcome counter + histogram + access log) and the
+// limiter/breaker/retry core, so there is nothing to wrap around it here; fault
+// wraps the operation fn that executor runs, which is what makes an injected
+// fault flow through retry/breaker/timeout exactly as a downstream failure
+// would, instead of short-circuiting where none of those mechanisms are in play.
+//
+// A nil manager is the unwired case — a container without starter-governance
+// (the wiring injects it nullably, so it is nil there too), or a standalone
+// caller with no container. A fresh unarmed manager is exactly "governance
+// off": every resolve is a
+// pass-through, so [GuardedSend] runs the send inline. Normalizing here keeps
+// every caller free of nil branches. inj is nil-safe: with no injector
+// WrapClientExecutor returns the inner executor unchanged, so the fault layer is a
+// transparent pass-through.
+//
+// Resolution is deferred to call time, so the order of this arming relative to
+// starter-governance's wiring is irrelevant.
+func applyResilience(c Config, cl *Client, service string, mgr *resilience.Manager, inj *fault.Injector) error {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("rocketmq", service), service, inj)
 	cl.exec = exec
-	cl.resource = resource
+	cl.service = service
 	return nil
 }
 

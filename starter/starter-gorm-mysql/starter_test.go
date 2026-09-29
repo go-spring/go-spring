@@ -71,7 +71,7 @@ func TestDSN(t *testing.T) {
 
 func TestBuildValidation(t *testing.T) {
 	// Neither addr nor service-name: must be rejected before anything registers.
-	if _, err := build(context.Background(), Config{User: "u", Password: "p", DB: "test"}, nil); err == nil {
+	if _, err := build(context.Background(), Config{User: "u", Password: "p", DB: "test"}, nil, nil); err == nil {
 		t.Fatal("build must require addr or service-name")
 	}
 
@@ -79,7 +79,7 @@ func TestBuildValidation(t *testing.T) {
 	c := Config{User: "u", Password: "p", Addr: "127.0.0.1:3306", DB: "test"}
 	c.TLS.Enabled = true
 	c.TLS.CAFile = "/nonexistent/ca.pem"
-	if _, err := build(context.Background(), c, nil); err == nil {
+	if _, err := build(context.Background(), c, nil, nil); err == nil {
 		t.Fatal("build must fail on an unreadable CA file")
 	}
 }
@@ -88,7 +88,7 @@ func TestBuildPlainSpec(t *testing.T) {
 	c := Config{User: "u", Password: "p", Addr: "127.0.0.1:3306", DB: "test"}
 	c.PingTimeout = 500 * time.Millisecond
 
-	spec, err := build(context.Background(), c, nil)
+	spec, err := build(context.Background(), c, nil, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("plain-addr build must return a dialector")
@@ -99,7 +99,7 @@ func TestBuildPlainSpec(t *testing.T) {
 
 	// Port 1 on loopback is closed: the open must fail fast with a connection
 	// error from the shared open path, returning a nil client.
-	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "mysql", Resource: spec.Resource})
+	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "mysql", Service: spec.Service})
 	if err == nil {
 		_ = client.Destroy()
 		t.Fatal("expected a connection error for a closed port")

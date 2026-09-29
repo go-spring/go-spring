@@ -71,6 +71,33 @@ type sentinelDriver struct{}
 // the same backend is contributed as the bean named [SentinelName].
 func NewSentinelDriver() resilience.Driver { return sentinelDriver{} }
 
-func (sentinelDriver) NewExecutor(p resilience.Policy) (resilience.Executor, error) {
-	return newSentinelExecutor(p)
+func (sentinelDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (resilience.ClientExecutor, error) {
+	return newSentinelExecutor(service, p)
+}
+
+// NewServerExecutor builds the inbound admission executor. Sentinel maps the shared
+// knobs (flow rule, circuit breaker, isolation) onto the SAME primitives for both
+// directions — its flow rule is keyed by resource, and the resource is the route
+// label here — so the driver projects the admission model exactly as the bundled
+// one does, and nothing is lost. Sentinel's genuinely inbound-only primitives
+// (system rules, hotspot rules) have no [resilience.ServerPolicy] field to arrive
+// through yet; when they do, they land in this method.
+func (sentinelDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (resilience.ServerExecutor, error) {
+	e, err := newSentinelExecutor(service, p.AsPolicy())
+	if err != nil {
+		return nil, err
+	}
+	return sentinelServerExecutor{e}, nil
+}
+
+// sentinelServerExecutor adapts the sentinel engine — which is defined over
+// [resilience.ClientPolicy] — to the inbound seam, whose model is
+// [resilience.ServerPolicy]. Only the refresh seam needs the wrapper: the engine is
+// the same type, and the admission model is re-projected on each refresh.
+type sentinelServerExecutor struct {
+	*sentinelExecutor
+}
+
+func (e sentinelServerExecutor) Refresh(p resilience.ServerPolicy) error {
+	return e.sentinelExecutor.Refresh(p.AsPolicy())
 }

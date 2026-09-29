@@ -2,7 +2,7 @@
 
 Demonstrates starter-go-redis's **resilience protection**: with
 `resilience.enabled`, every Redis command runs through the selected driver's
-`Executor`, so a burst over the rate limit is rejected with `ErrRateLimited`
+`ClientExecutor`, so a burst over the rate limit is rejected with `ErrRateLimited`
 before reaching Redis.
 
 ## Features

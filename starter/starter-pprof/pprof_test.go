@@ -56,7 +56,7 @@ func startPProf(t *testing.T, c Config) string {
 
 	svr := NewSimplePProfServer(&gs.ContextProvider{Context: context.Background()}, c)
 	go func() { _ = svr.Run(context.Background(), firedSignal{}) }()
-	t.Cleanup(func() { _ = svr.Stop() })
+	t.Cleanup(func() { _ = svr.Stop(context.Background()) })
 
 	base := "http://" + addr
 	for i := 0; i < 100; i++ {

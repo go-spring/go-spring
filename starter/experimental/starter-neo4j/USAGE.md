@@ -138,10 +138,9 @@ spring.actuator.addr=:9370
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=100
-govern.default.max-retries=1
-govern.default.timeout=500ms
+govern.client.default.rate-limit=100
+govern.client.default.max-retries=1
+govern.client.default.attempt-timeout=500ms
 ```
 
 **Verify** (start Neo4j first — `docker run -d -e NEO4J_AUTH=neo4j/password -p 7687:7687 -p 7474:7474 neo4j:5`,
@@ -173,7 +172,7 @@ import starter-neo4j
                  the indicator) [starter.go:44-53]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:88]: log instance creation
+  ├─ ctor newClient [starter.go:96]: log instance creation
   │   ├─ if service-name set and mesh off: resolveURI → one endpoint picked,
   │   │  its address spliced into the URI host [starter.go:91-98, driver.go:129-157];
   │   │  the same resolver also feeds the driver's AddressResolver, so a
@@ -186,11 +185,12 @@ gs.Run()
   │   └─ fail-fast VerifyConnectivity, bounded by socket-connect-timeout or
   │      5s; on failure the client is closed and the boot aborts
   │      [starter.go:112-118]
-  ├─ Init [client.go:68-69]: resource = resilience.ResourceLabel("neo4j",
-  │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor("neo4j", resource))
-  │   — no-op executor when governance is off
+  ├─ ArmGovernance [client.go:68-80]: service = resilience.ServiceLabel("neo4j",
+  │   ServiceName, URI) → fault.WrapClientExecutor(mgr.ClientExecutorFor("neo4j", service), service, inj),
+  │   mgr/inj being the injected *resilience.Manager / *fault.Injector beans
+  │   — pass-through executor when governance is off
   ├─ readiness: indicator runs VerifyConnectivity per probe
-  └─ SIGTERM → Destroy [client.go:89-95]: exec.Close → stopLiveResolver →
+  └─ SIGTERM → Destroy [client.go:91-96]: exec.Close → stopLiveResolver →
       driver.Close(context.Background())
 ```
 
@@ -224,7 +224,7 @@ command.go:31-44 comments call this a documented gap, not an oversight). What ex
 | `StarterNeo4j.RunWithResilience` | wraps arbitrary session/transaction code in the resilience guard only (no span/metric/log) | opt-in |
 | `StarterNeo4j.StartSpan` / `EndSpan` | manual span + metric + access log for ops you drive via `driver.NewSession` | opt-in |
 | health indicator `neo4j:<name>` | `VerifyConnectivity` per actuator probe | automatic, always |
-| observe layer applied inside `resilience.ExecutorFor` | outcome metrics (`resilience.*`) for guarded executions | automatic when governance on |
+| observe layer applied by the manager's executor (`resilience.WrapClientExecutor`) | outcome metrics (`resilience.*`) for guarded executions | automatic when governance on |
 
 `Query`'s span/metric/log ride a **package-level** default observer (built lazily on first
 use, command.go:50) that emits through this module's own instrumentation ([observe.go]) on the
@@ -246,9 +246,10 @@ Emissions when `Query` is used:
 1. `defaultObs.Start(ctx, "query", cypher)` starts the span, bumps the in-flight gauge, and
    opens an access-log record [command.go:66].
 2. `queryResilience(driver)` type-asserts the driver back to `*Client` [command.go:111-116].
-   On the wrapper, the executor is always resolved (a no-op when governance is off), so the
-   call routes through `exec.Execute(ctx, resource, fn)` — rate limit / breaker / retry /
-   bulkhead / timeout scoped to the resource label `neo4j:<service-name|uri>` [client.go:75].
+   On the wrapper the executor is armed at construction (nil — a plain call — when governance
+   is off), so the
+   call routes through `exec.Execute(ctx, fn)` — rate limit / breaker / retry /
+   bulkhead / timeout scoped to the service label `neo4j:<service-name|uri>` [client.go:78].
    A **raw** `neo4j.DriverWithContext` passed instead of the wrapper yields `(nil, "")` and
    runs unguarded, silently.
 3. `neo4j.ExecuteQuery[T]` runs the Cypher (driver retries transient errors up to
@@ -278,7 +279,7 @@ unchanged [starter.go:80-87].
 
 ⚠ **Deliberately not wired to governed endpoint selection.** There is no per-query pick to govern:
 the boot-time pick is frozen into a URI string and the pool is built, used, and discarded in that
-one function. `govern.rules[N].balancer` / `outlier-threshold` therefore have no effect on neo4j;
+one function. `govern.client.rules[N].balancer` / `outlier-threshold` therefore have no effect on neo4j;
 its governance stops at the protection policy (timeout / retries / breaker under the label
 `neo4j:<service-name|uri>`). Recorded here so the absence reads as a decision, not a gap. (The
 `AddressResolver` hook above is about *which cluster*, not *which node* — the driver still chooses
@@ -365,8 +366,7 @@ silence is the un-intercepted path, not a broken pipeline (§2.2).
 ```properties
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
-govern.default.enabled=true
-govern.default.rate-limit=5
+govern.client.default.rate-limit=5
 ```
 
 ```bash
@@ -374,8 +374,8 @@ go run ./example-cloudnative -manual   # self-asserts: burst of 15 → some admi
                                        # some rejected with resilience.ErrRateLimited
 ```
 
-Fault injection (hot-reload, example-load): flip `govern.fault.enabled=true`,
-`govern.fault.rate=0.5`, `govern.fault.error=timeout` in `conf/app.properties` while the load
+Fault injection (hot-reload, example-load): flip `govern.client.fault.enabled=true`,
+`govern.client.fault.rate=0.5`, `govern.client.fault.error=timeout` in `conf/app.properties` while the load
 binary runs — the error breakdown moves without restart.
 
 ### 4.4 Discovery drill

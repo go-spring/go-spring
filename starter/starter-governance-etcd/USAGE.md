@@ -6,7 +6,7 @@ Detailed usage reference. Overview: [README.md](README.md). Every behavior claim
 against the starter source (`governance.go`, `governance_test.go`), the shared parse subpackage
 [`starter-governance/rules`](../starter-governance/rules), the two-method
 `governance.Source` contract of [`cloud/governance`](../../cloud/governance) (`source.go`,
-`global.go`), and the runnable, self-asserting [example](example) (`example/main.go`,
+`center.go`), and the runnable, self-asserting [example](example) (`example/main.go`,
 `example/check.sh`). etcd's own client semantics are [etcd docs](https://etcd.io/docs/latest/) —
 everything below is go-spring's increment.
 
@@ -53,14 +53,18 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/governance"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance"
     _ "go-spring.org/starter-governance-etcd"
 )
 
-type printer struct{}
+type printer struct {
+    // mgr is the governance starter's resilience manager bean, injected here
+    // rather than resolved from a process-wide seam.
+    mgr *resilience.Manager
+}
 
 func (p *printer) Run(ctx context.Context) error {
     // Non-blocking on purpose: a Runner that blocks would hold up app startup.
@@ -71,14 +75,23 @@ func (p *printer) Run(ctx context.Context) error {
                 return
             case <-time.After(time.Second):
             }
-            pol := governance.PolicyFor("demo:resource")
+            pol := p.mgr.PolicyFor("demo:service")
             fmt.Printf("enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.Timeout, pol.MaxRetries)
         }
     }()
     return nil
 }
 
-func init() { gs.Provide(&printer{}).Export(gs.As[gs.Runner]()) }
+// newPrinter builds the printer over the injected manager. A nil manager — a
+// container without starter-governance — is normalized to a fresh unarmed one.
+func newPrinter(mgr *resilience.Manager) *printer {
+    if mgr == nil {
+        mgr = resilience.NewManager()
+    }
+    return &printer{mgr: mgr}
+}
+
+func init() { gs.Provide(newPrinter, gs.IndexArg(0, gs.TagArg("?"))).Export(gs.As[gs.Runner]()) }
 
 func main() { gs.Run() }
 ```
@@ -97,9 +110,10 @@ govern.source.etcd.key=/app/govern.yaml
 ```yaml
 govern:
   enabled: true
-  default:
-    enabled: true
-    attempt-timeout: 100ms
+  client:
+    default:
+      enabled: true
+      attempt-timeout: 100ms
 ```
 
 **Verify** (with a local etcd, e.g. `example/docker-compose.yml`):
@@ -159,7 +173,7 @@ import starter-governance-etcd
   ├─ import starter-governance: its wiring bean field-injects the Source (autowire "?")
   │     └─ BindDefault(src) subscribes + adopts Snapshot(); GoLive() arms the center
   ├─ source bean Init: the watch goroutine starts
-  └─ on SIGTERM: wiring.Destroy() → governance.CloseActiveSource() → EtcdSource.Close()
+  └─ on SIGTERM: wiring.Destroy() → center.Close() → EtcdSource.Close()
 ```
 
 The source builds and owns its etcd client (`clientv3.New` with a 5s dial timeout), separate from
@@ -217,7 +231,7 @@ a non-properties document therefore needs an explicit `format`.
 
 The document itself is parsed by `rules.Parse`, which requires **at least one `govern.*` key** — a
 document that parses but carries none (truncated, or emptied) is an error, not "no governance".
-The rules keys (`govern.enabled`, `govern.default.*`, `govern.rules[n].*`, `govern.fault.*`) are
+The rules keys (`govern.enabled`, `govern.client.default.*`, `govern.client.rules[n].*`, `govern.client.fault.*`) are
 documented in [`starter-governance`](../starter-governance/USAGE.md); they are identical across
 backends.
 
@@ -244,7 +258,8 @@ go run . &
 etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
 ```
 
-No restart; `governance.PolicyFor("...")` flips to the new timeout on the next call.
+No restart; the injected resilience authority's `PolicyFor("...")` flips to the new timeout on the
+next call.
 
 ### 4.3 Bad value keeps the last good snapshot
 

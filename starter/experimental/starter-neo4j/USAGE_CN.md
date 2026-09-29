@@ -139,10 +139,9 @@ spring.actuator.addr=:9370
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=100
-govern.default.max-retries=1
-govern.default.timeout=500ms
+govern.client.default.rate-limit=100
+govern.client.default.max-retries=1
+govern.client.default.attempt-timeout=500ms
 ```
 
 **验证**（先启动 Neo4j —— `docker run -d -e NEO4J_AUTH=neo4j/password -p 7687:7687 -p 7474:7474 neo4j:5`，
@@ -174,7 +173,7 @@ import starter-neo4j
                  [starter.go:44-53]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:88]：记录实例创建日志
+  ├─ 构造 newClient [starter.go:96]：记录实例创建日志
   │   ├─ 若设置 service-name 且 mesh 关闭：resolveURI → 选一个端点，
   │   │  地址拼进 URI host [starter.go:91-98, driver.go:129-157]；同一个 resolver
   │   │  还喂给 driver 的 AddressResolver，种子主机挂掉后 neo4j:// client 可重新找回集群
@@ -186,11 +185,12 @@ gs.Run()
   │   └─ fail-fast VerifyConnectivity，受 socket-connect-timeout 或 5s 约束；
   │      失败时关闭 client，启动中止
   │      [starter.go:112-118]
-  ├─ Init [client.go:68-69]：resource = resilience.ResourceLabel("neo4j",
-  │   ServiceName, URI) → fault.WrapExecutor(resilience.ExecutorFor("neo4j", resource))
-  │   ——治理关闭时 executor 为透明 no-op
+  ├─ ArmGovernance [client.go:68-80]：service = resilience.ServiceLabel("neo4j",
+  │   ServiceName, URI) → fault.WrapClientExecutor(mgr.ClientExecutorFor("neo4j", service), service, inj)，
+  │   mgr/inj 为注入的 *resilience.Manager / *fault.Injector bean
+  │   ——治理关闭时 executor 为透明直通
   ├─ readiness：指示器每次探测跑 VerifyConnectivity
-  └─ SIGTERM → Destroy [client.go:89-95]：exec.Close → stopLiveResolver →
+  └─ SIGTERM → Destroy [client.go:91-96]：exec.Close → stopLiveResolver →
       driver.Close(context.Background())
 ```
 
@@ -221,7 +221,7 @@ neo4j.ExecuteQuery / Query）（client.go:81-88 注释）。
 | `StarterNeo4j.RunWithResilience` | 仅把任意 session/事务代码套进韧性保护（无 span/指标/日志） | 可选 |
 | `StarterNeo4j.StartSpan` / `EndSpan` | 为手工 `driver.NewSession` 操作补 span + 指标 + 访问日志 | 可选 |
 | 健康指示器 `neo4j:<name>` | 每次 actuator 探测跑 `VerifyConnectivity` | 自动，恒注册 |
-| 由 `resilience.ExecutorFor` 内部应用的 observe 层 | 受保护执行的 outcome 指标（`resilience.*`） | 治理开启时自动 |
+| 由 manager 的执行器（`resilience.WrapClientExecutor`）应用的 observe 层 | 受保护执行的 outcome 指标（`resilience.*`） | 治理开启时自动 |
 
 `Query` 的 span/指标/日志挂在**包级**默认 observer 上（首次使用时惰性构建，
 command.go:50），由本模块内建埋点（[observe.go]）产出、随 starter-otel 安装的 OTel
@@ -242,9 +242,9 @@ globals——没有任何配置开关；Query 的访问日志恒经该包级 obs
 1. `defaultObs.Start(ctx, "query", cypher)` 开 span、加在飞 gauge、开访问日志记录
    [command.go:66]。
 2. `queryResilience(driver)` 把 driver 断言回 `*Client` [command.go:111-116]。是
-   wrapper 时 executor 恒已解析（治理关闭为 no-op），调用走
-   `exec.Execute(ctx, resource, fn)`——限流/熔断/重试/bulkhead/超时，作用于资源标签
-   `neo4j:<service-name|uri>` [client.go:75]。传入**裸** `neo4j.DriverWithContext`
+   wrapper 时 executor 在构造期就已武装（治理关闭为 nil——即直接调用），调用走
+   `exec.Execute(ctx, fn)`——限流/熔断/重试/bulkhead/超时，作用于服务标签
+   `neo4j:<service-name|uri>` [client.go:78]。传入**裸** `neo4j.DriverWithContext`
    则得 `(nil, "")`，静默无保护运行。
 3. `neo4j.ExecuteQuery[T]` 执行 Cypher（驱动自身对瞬时错误重试至
    `max-transaction-retry-time`——驱动语义，见
@@ -267,7 +267,7 @@ globals——没有任何配置开关；Query 的访问日志恒经该包级 obs
 sidecar 负责发现+LB，URI 原样使用 [starter.go:80-87]。
 
 ⚠ **刻意不接受管的端点选择。** 没有"每次查询挑选"可管：启动那次挑选被固化进 URI 字符串，池在同一
-个函数里建了就用、用完就丢。因此 `govern.rules[N].balancer` / `outlier-threshold` 对 neo4j 无效；
+个函数里建了就用、用完就丢。因此 `govern.client.rules[N].balancer` / `outlier-threshold` 对 neo4j 无效；
 它的治理止于保护策略（label 为 `neo4j:<service-name|uri>` 的 timeout / retries / breaker）。写在这里
 是为了让这个缺口读起来是**决策**而不是遗漏。（上面的 `AddressResolver` 管的是**哪个集群**，
 不是**哪个节点**——节点仍然由 driver 自己选。）
@@ -352,8 +352,7 @@ curl -s :9090/metrics | grep -E 'db.client.(operation.duration|active_requests)'
 ```properties
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
-govern.default.enabled=true
-govern.default.rate-limit=5
+govern.client.default.rate-limit=5
 ```
 
 ```bash
@@ -362,7 +361,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 ```
 
 故障注入（热切换，example-load）：压测进程运行中把 `conf/app.properties` 的
-`govern.fault.enabled=true`、`govern.fault.rate=0.5`、`govern.fault.error=timeout`
+`govern.client.fault.enabled=true`、`govern.client.fault.rate=0.5`、`govern.client.fault.error=timeout`
 打开——错误分布即时变化，无需重启。
 
 ### 4.4 发现演练

@@ -27,13 +27,24 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/starter-redigo/bytecache"
-	poolhealth "go-spring.org/starter-redigo/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it. starter-governance registers the four beans this file injects
+	// (*resilience.Manager, *loadbalance.Manager, *fault.Injector, *governance.
+	// Center), so a deployment gets governance wiring by importing a client
+	// starter alone; turning governance OFF is govern.enabled=false (or binding
+	// no rule source), not the absence of the starter. The injected parameters
+	// are still nullable, so a container that somehow lacks these beans degrades
+	// to a transparent pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 func init() {
@@ -59,6 +70,17 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.redigo.instances."+name+".driver:=${spring.redigo.default.driver:=?}}")),
 				gs.IndexArg(3, gs.TagArg("${spring.redigo.instances."+name+".discovery:=${spring.redigo.default.discovery:=none}}?")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. ArmGovernance
+				// treats a nil bean as an unarmed authority, i.e. a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")),
+				gs.IndexArg(5, gs.TagArg("?")),
+				gs.IndexArg(6, gs.TagArg("?")),
 			).Name(name).Destroy(destroyPool)
 
 			// Contribute a health indicator for this instance unless the user
@@ -66,15 +88,15 @@ func init() {
 			// registered above by name.
 			if c.HealthEnabled {
 				r.Provide(func(w *Pool) *health.Indicator {
-					return poolhealth.NewPoolHealth(name, w.Pool)
+					return NewPoolHealth(name, w.Pool)
 				}, gs.TagArg(name)).Name("redigo:" + name)
 			}
 			// Expose this instance as a cache.Cache (the adapter lives in
-			// starter-redigo/bytecache). Named "redigo:<name>" — cache.Cache is
+			// this package's bytecache.go). Named "redigo:<name>" — cache.Cache is
 			// a shared type across backend starters, so the prefix keeps the
 			// (name, type) key unique. Un-injected, the bean never instantiates.
 			r.Provide(func(w *Pool) *cache.Cache {
-				return cache.New(bytecache.NewByteCache(w.Pool))
+				return cache.New(NewByteCache(w.Pool))
 			}, gs.TagArg(name)).Name("redigo:" + name)
 			return nil
 		})
@@ -91,7 +113,7 @@ func init() {
 //
 // disc is the discovery backend bean cited by the entry's ${discovery} label
 // (nil when the key is unset or the entry dials a static Addr).
-func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery) (*Pool, error) {
+func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*Pool, error) {
 
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
 
@@ -127,6 +149,16 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disc
 		return nil, errutil.Explain(nil, "redis driver returned a nil pool")
 	}
 	w.cfg = c
+
+	// Arm governance on the driver's pool. It runs here, not inside the driver,
+	// so a custom Driver's pool is governed too — without the Driver interface
+	// carrying a dependency on cloud/governance. The beans are injected into this
+	// bean's constructor and are nil in a standalone (non-gs) call, which
+	// ArmGovernance treats as "governance off".
+	if err := w.ArmGovernance(mgr, inj, lbMgr); err != nil {
+		_ = w.Close()
+		return nil, err
+	}
 
 	// Fail fast (opt-in): the redigo pool dials lazily, so when StartupPing is
 	// set, dial one connection directly and PING it at startup. A misconfigured

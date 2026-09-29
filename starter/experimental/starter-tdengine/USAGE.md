@@ -161,15 +161,17 @@ gs.Run()
   │     when several Driver beans coexist, the entry selects one by name:
   │     spring.tdengine.instances.<name>.driver = <bean-name> (empty = the single Driver
   │     bean by type; naming a missing bean fails startup)
-  │     → d.CreateClient [starter.go:68]: ParseDSN → taosws.NewConnector →
+  │     → d.CreateClient [starter.go:73]: ParseDSN → taosws.NewConnector →
   │       guardedConnector → sql.OpenDB → pool settings applied
-  │     → fail-fast PingContext bounded by 10s [starter.go:74-77]; on error the
+  │     → ArmGovernance [client.go:81]: resourceLabel ("tdengine:<dsn addr>") →
+  │       fault.WrapClientExecutor(mgr.ClientExecutorFor("tdengine", service), service, inj), mgr/inj
+  │       being the injected *resilience.Manager / *fault.Injector beans →
+  │       exec armed on the slot
+  │     → fail-fast PingContext bounded by 10s; on error the
   │       half-built client is Closed and the boot fails
-  ├─ Init [client.go:58]: resourceLabel ("tdengine:<dsn addr>") →
-  │     fault.WrapExecutor(resilience.ExecutorFor("tdengine", resource)) →
-  │     newDBObserver("tdengine") armed on the slot
+  ├─ Init [client.go:55]: newDBObserver("tdengine") armed on the slot
   ├─ readiness: indicator runs db.PingContext per instance
-  └─ SIGTERM → Destroy [client.go:81]: exec.Close → db.Close
+  └─ SIGTERM → Destroy [client.go:102]: exec.Close → db.Close
 ```
 
 A wrong DSN, wrong credentials, or a server older than the driver's minimum fails the boot —
@@ -197,7 +199,7 @@ One statement, e.g. `QueryContext("SELECT COUNT(*) ...")`:
 ```
 *sql.DB pool
   └─ guardedConn.QueryContext [driver.go:143]
-        ├─ guard: exec.Execute(ctx, resource, call) [driver.go:160-165]
+        ├─ guard: exec.Execute(ctx, call) [driver.go:160-165]
         │    (OUTER: rate limit / breaker / fault decide BEFORE the statement runs; a
         │     rejection never reaches the connection — unit-tested [tdengine_test.go:62-76].
         │     When governance is off the executor is a transparent no-op.)
@@ -224,7 +226,7 @@ What is NOT covered by the guard [driver.go:189-198]:
 Before Init arms the slot, statements pass through untouched (nil exec, nil obs — the
 zero-config pass-through is unit-tested [tdengine_test.go:51-58]).
 
-### 2.3 Resource label
+### 2.3 Service label
 
 `resourceLabel` extracts a display-safe address from the DSN
 ("root:taosdata@ws(127.0.0.1:6041)/power" → "127.0.0.1:6041") and builds
@@ -242,7 +244,7 @@ All keys live under `spring.tdengine.instances.<name>.` — bound per instance v
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `dsn` | string | — | **required** (expr `$ != ''` [config.go:33]). Driver's unified DSN `[user[:password]@]ws(host:port)/[dbname][?params]`. Also the source of the resilience resource label (§2.3) and of boot error messages. TLS is expressed here (`wss(...)`, cert params) — there is no `tls.*` block. | Empty → boot error at BindEach. Wrong addr/credentials → fail-fast ping error "failed to reach tdengine at <addr>". |
+| `dsn` | string | — | **required** (expr `$ != ''` [config.go:33]). Driver's unified DSN `[user[:password]@]ws(host:port)/[dbname][?params]`. Also the source of the resilience service label (§2.3) and of boot error messages. TLS is expressed here (`wss(...)`, cert params) — there is no `tls.*` block. | Empty → boot error at BindEach. Wrong addr/credentials → fail-fast ping error "failed to reach tdengine at <addr>". |
 | `max-open-conns` | int | 8 | `db.SetMaxOpenConns` on the embedded pool [driver.go:81]. | Too low → statements queue waiting for a free conn. |
 | `max-idle-conns` | int | 2 | `db.SetMaxIdleConns`. ⚠ Should be ≤ max-open-conns (database/sql silently caps it, but a value above is a config smell). | Larger than open conns → clamped, idle churn. |
 | `conn-max-lifetime` | duration | 0s | `db.SetConnMaxLifetime`; 0 = never retire. ⚠ Unlike redis (2m default), there is no discovery to follow here, so 0 is safe. | — |
@@ -273,8 +275,8 @@ The probe draws a real websocket connection and exercises taosAdapter's action c
 | Span | `exec` / `query`, kind = client, tracer `go-spring.org/starter-tdengine` | `db.system=tdengine`, `db.operation=exec\|query`, `db.statement=<sql, bounded>` |
 | Metric | `db.client.operation.duration` (histogram, s) | `db.system`, `db.operation`, `status=ok\|error` |
 | Metric | `db.client.active_requests` (up-down counter) | `db.system`, `db.operation` |
-| Metric | `resilience.calls` (counter) | `resilience.system=tdengine`, `resilience.resource`, `resilience.outcome=success\|rate_limited\|circuit_open\|bulkhead_full\|timeout\|error` |
-| Metric | `resilience.breaker.state_change` (counter) | from/to attrs |
+| Metric | `resilience.client.calls` (counter) | `resilience.system=tdengine`, `resilience.service`, `resilience.outcome=success\|rate_limited\|circuit_open\|bulkhead_full\|timeout\|error` |
+| Metric | `resilience.client.breaker.state_change` (counter) | from/to attrs |
 | Log | tag `_app_tdengine_access` | system=tdengine op=… status duration; error → Warn, success with the SQL (truncated to 512 bytes) → Debug, plain success → Info |
 | Log | tag `_app_tdengine_resilience` | resilience rejections |
 
@@ -289,10 +291,10 @@ grep _app_tdengine_access app.log | tail -1
 
 ### 4.3 Resilience drill
 
-With starter-governance imported, define a policy for resource `tdengine:127.0.0.1:6041`
+With starter-governance imported, define a policy for service `tdengine:127.0.0.1:6041`
 (§2.3) — e.g. a rate limit. Hammer `ExecContext`; over-limit statements are rejected with
 `resilience.ErrRateLimited` **without reaching the connection** (unit-tested
-[tdengine_test.go:62-76]), surface in `resilience.calls{outcome="rate_limited"}` and the
+[tdengine_test.go:62-76]), surface in `resilience.client.calls{outcome="rate_limited"}` and the
 `_app_tdengine_resilience` log. Flip the policy at runtime — the executor hot-reloads via
 the governance center without restart.
 
@@ -318,7 +320,7 @@ succeeds proves credentials, DSN and server version are all good.
 | No spans/metrics | starter-otel not imported | The observer rides the OTel globals; import starter-otel. |
 | No access log lines | Logger level drops Debug/Info, or the log tag is filtered | Check the logger level and logger config for `_app_tdengine_access`. |
 | Statements through db.Prepare are unguarded/unobserved | `Prepare` bypasses the slot by design [driver.go:189-191] | Use ExecContext/QueryContext. |
-| Breaker state shared across "databases" | Resource label is per host:port, DSN params ignored | Intentional (per-instance scoping); split backends by host to get separate buckets. |
+| Breaker state shared across "databases" | Service label is per host:port, DSN params ignored | Intentional (per-instance scoping); split backends by host to get separate buckets. |
 | `Begin` errors | TDengine has no transactions | By design — the driver reports it. |
 
 ## 6. Design Health
@@ -331,7 +333,7 @@ succeeds proves credentials, DSN and server version are all good.
 | "Watch out" entries | 4 |
 
 Design suspects (kept from the previous audit, plus new):
-- DSN is an opaque string — the resilience resource label is derived by parsing the address
+- DSN is an opaque string — the resilience service label is derived by parsing the address
   out of it, so two DSNs differing only in params or database share one bucket; no
   `tls.*`/`service-name` unlike sibling starters (family asymmetry).
 - `Prepare` escapes the guard seam entirely — an ORM that prepares statements silently loses

@@ -50,7 +50,7 @@ func TestDSN(t *testing.T) {
 
 func TestBuild(t *testing.T) {
 	// Neither addr nor service-name: rejected up front.
-	if _, err := build(context.Background(), Config{}, nil); err == nil {
+	if _, err := build(context.Background(), Config{}, nil, nil); err == nil {
 		t.Fatal("build must require addr or service-name")
 	}
 
@@ -58,7 +58,7 @@ func TestBuild(t *testing.T) {
 	c.PingTimeout = 500 * time.Millisecond
 
 	// Plain path: DSN dialector, pool settings flow through.
-	spec, err := build(context.Background(), c, nil)
+	spec, err := build(context.Background(), c, nil, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil || spec.Dialector.Name() != "clickhouse" {
 		t.Fatalf("plain build must return a clickhouse dialector: %v", spec.Dialector)
@@ -70,13 +70,13 @@ func TestBuild(t *testing.T) {
 	// TLS path: a broken CA must fail the build before any dial.
 	c.TLS.Enabled = true
 	c.TLS.CAFile = "/nonexistent/ca.pem"
-	if _, err := build(context.Background(), c, nil); err == nil {
+	if _, err := build(context.Background(), c, nil, nil); err == nil {
 		t.Fatal("build must fail on an unreadable CA file")
 	}
 	c.TLS.CAFile = ""
 
 	// Closed port: the open must fail fast, returning a nil client.
-	spec, err = build(context.Background(), c, nil)
+	spec, err = build(context.Background(), c, nil, nil)
 	assert.Error(t, err).Nil("build")
 	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "clickhouse"})
 	if err == nil {

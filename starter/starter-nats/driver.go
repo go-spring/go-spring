@@ -27,6 +27,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -137,7 +138,12 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*nats.Conn, er
 // wired. Connection-layer events (async errors, disconnect, reconnect, close) are
 // bridged into go-spring's log by the driver's handlers so they show up alongside
 // app logs.
-func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Conn, error) {
+//
+// mgr and inj are the governance beans the container injects (both nil in a
+// standalone, non-gs call); applyResilience arms the guarded call sites with the
+// executor they resolve.
+func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
+	mgr *resilience.Manager, inj *fault.Injector) (*Conn, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating nats connection, url=%s name=%s", c.URL, c.Name)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -164,7 +170,7 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Conn, e
 		}
 		conn.JetStream = js
 	}
-	if err := applyResilience(c, conn, resilience.ResourceLabel("nats", c.Name, c.URL)); err != nil {
+	if err := applyResilience(c, conn, resilience.ServiceLabel("nats", c.URL), mgr, inj); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "nats: resilience setup failed: %v", err)
 		nc.Close()
 		return nil, err

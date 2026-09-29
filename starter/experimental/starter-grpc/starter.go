@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -37,6 +40,11 @@ func init() {
 	gs.Provide(
 		NewSimpleGrpcServer,
 		gs.IndexArg(0, gs.TagArg("${spring.grpc.server}")),
+		gs.IndexArg(2, gs.TagArg("?")), // nullable []grpc.UnaryServerInterceptor beans
+		gs.IndexArg(3, gs.TagArg("?")), // nullable []grpc.StreamServerInterceptor beans
+		gs.IndexArg(4, gs.TagArg("?")), // nullable resilience.Manager bean
+		gs.IndexArg(5, gs.TagArg("?")), // nullable fault.Injector bean
+		gs.IndexArg(6, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.grpc.server.addr"))
 
@@ -81,10 +89,10 @@ type HealthConfig struct {
 
 // LoadTestConfig toggles inbound load-test traffic identification on the gRPC
 // server. When enabled (the default — it costs one metadata lookup per RPC) the
-// LoadTest interceptors read the marker key (x-loadtest) off the incoming
+// LoadTest interceptors read the propagator's marker key off the incoming
 // metadata and tag the handler context, so tracing, metrics, resilience and the
-// handler itself can branch on traffic.IsLoadTest(ctx). It is the gRPC inbound
-// counterpart to cloud/governance/traffic's outbound carrier injection.
+// handler itself can branch on the propagator's IsLoadTest(ctx). It is the gRPC
+// inbound counterpart to cloud/governance/traffic's outbound carrier injection.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }
@@ -136,24 +144,47 @@ type SimpleGrpcServer struct {
 	// []grpc.StreamServerInterceptor) — per-container, no package-level stack.
 	userUnary  []grpc.UnaryServerInterceptor
 	userStream []grpc.StreamServerInterceptor
-	svr        *grpc.Server
+	// inj is the governance starter's fault injector bean (nil when governance
+	// is not imported); it backs the always-installed fault interceptors.
+	inj *fault.Injector
+	// mgr is the governance starter's resilience manager bean (nil when
+	// governance is not imported); it supplies the inbound admission policy.
+	mgr *resilience.Manager
+	// prop is the application's load-test convention bean (nil-normalized to
+	// go-spring's default); the LoadTest interceptors read the inbound marker
+	// through it.
+	prop traffic.Propagator
+	svr  *grpc.Server
 }
 
 // NewSimpleGrpcServer creates a SimpleGrpcServer from ${spring.grpc.server}
-// configuration. Inbound admission protection (rate-limit / breaker) is
-// resolved inside buildResilienceInterceptors via the neutral
-// governance/resilience seam. User-contributed interceptors arrive as bean
-// collections: an application gs.Provides each interceptor and exports it As
-// the interceptor type, and the container injects every one of them here —
-// per-container, so two containers in one process carry independent stacks.
+// configuration. Inbound admission protection (rate-limit / breaker) is built
+// inside buildResilienceInterceptors from the injected mgr. User-contributed
+// interceptors arrive as bean collections: an application gs.Provides each
+// interceptor and exports it As the interceptor type, and the container injects
+// every one of them here — per-container, so two containers in one process carry
+// independent stacks. Both collections are nullable, so an application that
+// contributes no interceptor of its own still starts. mgr and inj are the
+// governance starter's resilience manager and fault injector beans, captured
+// here and reused by the admission and fault interceptors (both nil when
+// governance is not imported). prop is the application's load-test convention
+// bean, handed to the LoadTest interceptors (nil means go-spring's default).
 func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
-	userUnary []grpc.UnaryServerInterceptor, userStream []grpc.StreamServerInterceptor) *SimpleGrpcServer {
+	userUnary []grpc.UnaryServerInterceptor, userStream []grpc.StreamServerInterceptor,
+	mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) *SimpleGrpcServer {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
 	log.Debugf(context.Background(), log.TagAppDef, "grpc server created addr=%s", cfg.Addr)
 	return &SimpleGrpcServer{
 		cfg:        cfg,
 		reg:        reg,
 		userUnary:  userUnary,
 		userStream: userStream,
+		mgr:        mgr,
+		inj:        inj,
+		prop:       prop,
 	}
 }
 
@@ -209,11 +240,11 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	stream = append(stream, s.userStream...)
 	// LoadTest identification is outermost of the built-ins so the marker is on
 	// the context before tracing, metrics, resilience or the handler run, letting
-	// every downstream layer branch on traffic.IsLoadTest(ctx). A no-op when the
-	// inbound metadata lacks the marker key.
+	// every downstream layer branch on the injected propagator's IsLoadTest(ctx).
+	// A no-op when the inbound metadata lacks the marker key.
 	if s.cfg.LoadTest.Enabled {
-		unary = append(unary, LoadTestUnaryInterceptor())
-		stream = append(stream, LoadTestStreamInterceptor())
+		unary = append(unary, LoadTestUnaryInterceptor(s.prop))
+		stream = append(stream, LoadTestStreamInterceptor(s.prop))
 	}
 	if s.cfg.Observer.Tracing.Enabled {
 		unary = append(unary, TracingUnaryInterceptor())
@@ -234,12 +265,13 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 		unary = append(unary, ropts.unary)
 	}
 	// Fault injection (always installed), innermost so an injected error flows
-	// back through tracing/metrics/resilience and is observed. The injector is
-	// resolved from the neutral [fault.InjectorFor] seam on each call (nil-safe:
-	// a transparent pass-through when fault is off), so fault can be hot-toggled
-	// at runtime without a restart.
-	unary = append(unary, FaultUnaryInterceptor())
-	stream = append(stream, FaultStreamInterceptor())
+	// back through tracing/metrics/resilience and is observed. The interceptors
+	// capture the injected injector bean once (nil-safe: a transparent
+	// pass-through when governance is not imported), so fault can be hot-toggled
+	// at runtime without a restart — the center swaps the injector's config in
+	// place.
+	unary = append(unary, FaultUnaryInterceptor(s.inj))
+	stream = append(stream, FaultStreamInterceptor(s.inj))
 	// Recovery (always installed), innermost so a converted panic flows back
 	// through tracing/metrics/resilience as a codes.Internal error and is
 	// observed — grpc-go recovers handler panics nowhere by itself.

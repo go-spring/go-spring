@@ -49,11 +49,12 @@ type DefaultDriver struct{}
 // CreateClient creates a new minio.Client from the provided configuration.
 //
 // The transport is fixed inside minio.Options at construction and cannot be
-// swapped on the client afterwards, and the resilience/observability policy is
-// only injected into the wrapper after CreateClient returns. So CreateClient
-// installs a thin [dynamicTransport] (an atomic RoundTripper indirection)
-// whose behavior Init later swaps in — the observe+resilience transport built
-// from the injected policy. The dynamic transport is tracked in
+// swapped on the client afterwards, and the observe+resilience transport is
+// only built by the wrapper's lifecycle (Init) after CreateClient returns. So
+// CreateClient installs a thin [dynamicTransport] (an atomic RoundTripper
+// indirection) whose behavior Init later swaps in — the observe transport plus
+// whatever executor [Client.ArmGovernance] armed. The dynamic transport is
+// tracked in
 // [dynamicTransports] (keyed by the returned client) so newClient can hand it
 // to the wrapper.
 func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*minio.Client, error) {
@@ -93,7 +94,7 @@ func bucketLookupType(s string) (minio.BucketLookupType, error) {
 }
 
 // dynamicTransports tracks the dynamic transport DefaultDriver installed for
-// each client, so newClient can hand it to the wrapper for Init to arm. The
-// key is the *minio.Client value; only clients built by DefaultDriver appear
-// here.
+// each client, so newClient can hand it to the wrapper for Init to swap the
+// observe+resilience transport into. The key is the *minio.Client value; only
+// clients built by DefaultDriver appear here.
 var dynamicTransports sync.Map // *minio.Client -> *dynamicTransport

@@ -25,13 +25,23 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/starter-go-redis/bytecache"
-	health2 "go-spring.org/starter-go-redis/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 func init() {
@@ -51,13 +61,27 @@ func init() {
 			// by-type — injects the single Driver bean when a company provides
 			// one, nil otherwise, and the ctor falls back to DefaultDriver);
 			// set → that bean name, and naming a bean that does not exist
-			// fails loud.
+			// fails loud. The trailing governance beans (*resilience.Manager /
+			// *fault.Injector, plus *loadbalance.Manager for the non-cluster
+			// ctor) are injected nullable ("?"), since starter-governance may
+			// legitimately be absent from the container.
 			switch c.Mode {
 			case "", "single", "sentinel":
 				r.Provide(newClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
 					gs.IndexArg(3, gs.TagArg("${spring.go-redis.instances."+name+".discovery:=${spring.go-redis.default.discovery:=none}}?")),
+					// The governance beans are NULLABLE injections: they exist
+					// whenever starter-governance is in the container (the normal
+					// case) and are absent from a container without it. Without the
+					// "?" gs would treat an absent bean as a wiring error and the
+					// app would not boot, turning "governance is off" into
+					// "governance must be imported" — which is not the contract:
+					// (*Client).Init treats a nil bean as an unarmed authority, a
+					// transparent pass-through.
+					gs.IndexArg(4, gs.TagArg("?")),
+					gs.IndexArg(5, gs.TagArg("?")),
+					gs.IndexArg(6, gs.TagArg("?")),
 				).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				// Contribute a health indicator for this instance unless the
 				// user disabled it (health.enabled=false), injecting the
@@ -68,29 +92,35 @@ func init() {
 				// wrapper bean; the concrete type embeds it.
 				if c.HealthEnabled {
 					r.Provide(func(w *Client) *health.Indicator {
-						return health2.NewClientHealth(name, w.UniversalClient)
+						return NewClientHealth(name, w.UniversalClient)
 					}, gs.TagArg(name)).Name("redis:" + name).Caller(1)
 				}
 			case "cluster":
 				r.Provide(newClusterClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
+					// The governance beans are NULLABLE injections, for the reason
+					// spelled out on the non-cluster ctor above: absent without
+					// starter-governance, and (*Client).Init treats a nil bean as
+					// an unarmed authority, a transparent pass-through.
+					gs.IndexArg(3, gs.TagArg("?")),
+					gs.IndexArg(4, gs.TagArg("?")),
 				).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 				if c.HealthEnabled {
 					r.Provide(func(w *Client) *health.Indicator {
-						return health2.NewClusterHealth(name, w.UniversalClient)
+						return NewClusterHealth(name, w.UniversalClient)
 					}, gs.TagArg(name)).Name("redis:" + name).Caller(1)
 				}
 			default:
 				return errutil.Explain(nil, "redis: invalid mode %q for instance %q (want single/sentinel/cluster)", c.Mode, name)
 			}
 			// Expose this instance as a cache.Cache (the adapter lives in
-			// starter-go-redis/bytecache; both modes register a *Client, so one
+			// this package's bytecache.go; both modes register a *Client, so one
 			// Provide covers them). Named "go-redis:<name>" — cache.Cache is a
 			// shared type across backend starters, so the prefix keeps the
 			// (name, type) key unique. Un-injected, the bean never instantiates.
 			r.Provide(func(c *Client) *cache.Cache {
-				return cache.New(bytecache.NewByteCache(c.UniversalClient))
+				return cache.New(NewByteCache(c.UniversalClient))
 			}, gs.TagArg(name)).Name("go-redis:" + name).Caller(1)
 			return nil
 		})
@@ -106,7 +136,14 @@ func init() {
 //
 // disc is the discovery backend bean cited by the entry's ${discovery} label
 // (nil when the key is unset or the entry does not use service discovery).
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery) (*Client, error) {
+//
+// mgr, inj and lbMgr are the governance beans the container injects (all nil in
+// a standalone, non-gs call). All three are retained on the Client, not handed
+// to the Driver: the Driver builds a pick pool when its topology needs one and
+// returns it, and Init (InitMethod) binds that pool to lbMgr. Keeping the bind
+// out of the Driver is what lets a company Driver stay unaware of governance.
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery,
+	mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redis client, addr=%s mode=%s", c.Addr, c.Mode)
 
 	if err := validateConfig(c); err != nil {
@@ -129,12 +166,12 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disco
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, stop, err := d.CreateClient(ctx.Context, c, disc)
+	client, lbPool, err := d.CreateClient(ctx.Context, c, disc)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: create client failed: %v", err)
 		return nil, err
 	}
-	w := &Client{UniversalClient: client, cfg: c, stop: stop}
+	w := &Client{UniversalClient: client, cfg: c, mgr: mgr, inj: inj, lbMgr: lbMgr, lbPool: lbPool}
 	if err := instrument(client, c.Otel); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: instrument client failed: %v", err)
 		_ = w.Close()
@@ -153,7 +190,13 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disco
 // Client. The driver must implement ClusterDriver; the redisotel
 // hooks attach per-node via ClusterClient.OnNewNode, so tracing/metrics cover
 // every node discovered.
-func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
+//
+// mgr and inj are the governance beans the container injects (both nil in a
+// standalone, non-gs call); they are retained on the Client for Init
+// (InitMethod) to arm the per-command executor with. Cluster mode self-discovers
+// its nodes, so no endpoint-selection pool exists and no manager is threaded to
+// the driver.
+func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redis cluster client, addrs=%v", c.Addrs)
 
 	if err := validateConfig(c); err != nil {
@@ -169,12 +212,12 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, err
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
 		return nil, errutil.Explain(nil, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
 	}
-	client, stop, err := cd.CreateClusterClient(ctx.Context, c)
+	client, err := cd.CreateClusterClient(ctx.Context, c)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: create cluster client failed: %v", err)
 		return nil, err
 	}
-	w := &Client{UniversalClient: client, cfg: c, stop: stop}
+	w := &Client{UniversalClient: client, cfg: c, mgr: mgr, inj: inj}
 	if err := instrument(client, c.Otel); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: instrument cluster client failed: %v", err)
 		_ = w.Close()
@@ -264,6 +307,7 @@ func pingTimeout(c Config) time.Duration {
 	return 5 * time.Second
 }
 
-// Client teardown is handled by (*Client).Close (the gs destroy
-// method): it closes the resilience executor (if armed), stops any discovery
-// watch, and closes the underlying client.
+// Client teardown is handled by (*Client).Destroy (the gs destroy
+// method): it closes the resilience executor (if armed), releases the
+// endpoint-selection subscription (when armed), and closes the underlying
+// client.

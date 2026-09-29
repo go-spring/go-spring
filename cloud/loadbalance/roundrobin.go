@@ -23,7 +23,12 @@ import (
 )
 
 func init() {
-	Register(RoundRobin, NewRoundRobin)
+	Register(RoundRobin, func(cfg Config) (Balancer, error) {
+		if err := cfg.only(); err != nil {
+			return nil, err
+		}
+		return NewRoundRobin(), nil
+	})
 }
 
 // roundRobin holds only a monotonically increasing cursor; the candidate set is

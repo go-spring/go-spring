@@ -16,21 +16,20 @@
 
 package StarterRatelimitRedis
 
-// Config configures one Redis-backed limiter driver instance bound under
-// spring.ratelimit.redis.instances.<name>. Like the other redis-consuming starters it
-// carries no Redis connection details: the driver reuses a *redis.Client bean
-// registered by starter-go-redis, so topology changes (shared cluster vs
-// dedicated cluster) stay config-only on the redis side.
+// Config binds ${spring.ratelimit.redis}, the starter's single block. There is
+// one counter store per process, so the only thing to configure is the
+// connection it counts through: the starter carries no Redis connection details
+// of its own, it reuses a *goredis.Client bean registered by starter-go-redis.
+//
+// The rate-limit knobs (rate-limit/burst/algorithm/window/rate-limit-max-wait)
+// are NOT here: they are fields of resilience.ClientPolicy, configured per service on
+// the governance rule document, and read by the executor that spends the
+// budget.
 type Config struct {
-	// Client is the name of the *redis.Client bean backing this limiter driver.
-	// The bean must be provided by starter-go-redis under spring.go-redis.instances.<Client>.
-	// Empty is a fail-fast configuration error — silently defaulting would hide
-	// a misconfiguration until the first (unlimited!) Allow call in production.
+	// Client names the *goredis.Client bean whose Redis instance backs the
+	// shared counters. The bean is provided by starter-go-redis under
+	// spring.go-redis.instances.<Client>. The key is required: an empty value is
+	// a fail-fast wiring error, since silently defaulting would hide a
+	// misconfiguration until the first protected call.
 	Client string `value:"${client}"`
-
-	// Driver is the name this limiter's bean is contributed under — the string
-	// consumers pass as gateway's rateLimit `driver=` argument, resolved against
-	// the container's limiter directory. Defaults to the instance name, so
-	// multi-instance setups get one driver name each without extra config.
-	Driver string `value:"${driver:=}"`
 }

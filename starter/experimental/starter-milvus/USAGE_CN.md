@@ -12,7 +12,7 @@ example/ 下）。所有行为声明均已对照 starter 源码（`starter.go`�
 
 **诚实的边界声明**：自逐 RPC 治理守卫落地（guard.go——装在 SDK dial options 上的
 gRPC 客户端拦截器）起，所有 Milvus RPC 都被透明保护（限流/熔断/隔舱/重试/超时 + 故障
-注入），调用点零改动、无 opt-in；经 `resilience.ExecutorFor` 解析出的 executor 产出守卫执行的观测（span +
+注入），调用点零改动、无 opt-in；经注入的 `*resilience.Manager` 构建出的 executor 产出守卫执行的观测（span +
 outcome 指标 + 访问日志）。治理关闭时 executor 是透明 no-op——未受保护流量没有独立的
 逐 RPC trace 层。健康指示器仍是常开的存活信号（§2.2、§6）。
 
@@ -153,8 +153,9 @@ gs.Run()
   │   DBName, DialOptions: guardDialOptions(slot)}) gRPC 拨号（守卫拦截器随拨号装上，
   │   Init 之前为透传）；随后 fail-fast 探针：ListCollections 一次，出错 →
   │   cl.Close() + 启动失败——地址/凭据错，进程到不了 "serving"
-  ├─ Init [client.go]：resource = ResourceLabel("milvus", addr) →
-  │   fault.WrapExecutor(resilience.ExecutorFor("milvus", resource)) →
+  ├─ Init [client.go]：service = ServiceLabel("milvus", addr) →
+  │   用注入的 `*resilience.Manager` / `*fault.Injector` 构建
+  │   fault.WrapClientExecutor(mgr.ClientExecutorFor("milvus", service), service, inj) →
   │   slot.arm——此后每个
   │   RPC 都过守卫；治理关闭 → no-op executor
   ├─ readiness：指示器周期性重复同一个 ListCollections 探针
@@ -176,8 +177,9 @@ gs.Run()
 这就是全部，外加守卫。**守卫是 gRPC 拦截器链** [guard.go]：`newClient` 传入自定义
 dial options，SDK 自己的 `DefaultGrpcOpts`（keepalive、连接退避、2GB 收包上限）被先补
 回、再追加守卫拦截器（unary + stream 建流）——是叠加不是替换。拦截器读每 client 一个
-slot，`Init` 用 `fault.WrapExecutor(resilience.ExecutorFor("milvus", "milvus:<addr>"))`
-武装它（治理关闭 → no-op 透传；构造期的 fail-fast 探针在
+slot，`Init` 用 `fault.WrapClientExecutor(mgr.ClientExecutorFor("milvus", "milvus:<addr>"), "milvus:<addr>", inj)`
+武装它——由注入的 `*resilience.Manager` 与 `*fault.Injector` 构建
+（治理关闭 → no-op 透传；构造期的 fail-fast 探针在
 Init 之前跑，正依赖该透传）。collection/index/search/insert 等全部 RPC 零改动过守卫，
 与其他 NoSQL starter 的透明逐请求口径一致。实际存在的可观测性另有健康指示器：
 `milvus:<name>` 恒注册，探针即 wrapper 自带的 `Health(ctx)`，一次 `ListCollections`

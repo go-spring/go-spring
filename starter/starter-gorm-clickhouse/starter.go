@@ -34,6 +34,15 @@ import (
 	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/clickhouse"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 func init() {
@@ -57,14 +66,14 @@ func init() {
 // client. In mesh mode a sidecar owns discovery+LB, so the configured Addr is
 // used as-is. When c.ServiceName is empty this is a plain DSN dial, unchanged
 // from before.
-func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *loadbalance.Manager) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
 	}
 
 	log.Debugf(ctx, log.TagAppDef, "creating gorm clickhouse client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
 
-	resource := resilience.ResourceLabel("gorm:clickhouse", c.ServiceName, c.Addr)
+	service := resilience.ServiceLabel("gorm:clickhouse", c.ServiceName, c.Addr)
 
 	var (
 		dialector = clickhouse.Open(c.DSN())
@@ -97,7 +106,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 			opts.TLS = tlsCfg
 		}
 		if useDiscovery {
-			lb, _, stopSelection, derr := c.NewPickPool(ctx, backend, resource)
+			lb, _, stopSelection, derr := c.NewPickPool(ctx, backend, service, lbMgr)
 			if derr != nil {
 				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build discovery resolver failed: %v", derr)
 				return gormcore.Spec{}, derr
@@ -130,7 +139,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 	return gormcore.Spec{
 		Dialector:      dialector,
 		Pool:           c.Pool(),
-		Resource:       resource,
+		Service:        service,
 		ObserveEnabled: c.ObserveEnabled,
 		Closers:        closers,
 	}, nil

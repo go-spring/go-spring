@@ -576,7 +576,7 @@ DELEGATES="
 # starter-oauth2-client 的每调用日志**来自 resilience 层**,与 starter-http-client 同源:
 # 它不自己调 WrapExecutor,而是经 resilience.ExecutorFor 取执行器 —— 而 resolve() 无条件用
 # WrapExecutor 包住拿到的执行器(provider 没注册时包的是 noopExecutor),所以观察层照样接上,
-# 每次 Execute 一行(resource/system/status/duration_ms),成功 Debug、失败 Warn。
+# 每次 Execute 一行(service/system/status/duration_ms),成功 Debug、失败 Warn。
 # 曾把这条误判为「没有每调用日志」,是因为只看了 starter 源码里没有 WrapExecutor 字样。
 # 故证据里补上 ExecutorFor + NewRoundTripper:拆掉这条接线,日志与指标会一起消失。
 #

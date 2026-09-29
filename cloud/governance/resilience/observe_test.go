@@ -29,14 +29,14 @@ import (
 // status classification without wiring a real driver.
 type fakeExecutor struct{ err error }
 
-func (f fakeExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
+func (f fakeExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	return f.err
 }
-func (fakeExecutor) Close() error           { return nil }
-func (fakeExecutor) Refresh(p Policy) error { return nil }
+func (fakeExecutor) Close() error                 { return nil }
+func (fakeExecutor) Refresh(p ClientPolicy) error { return nil }
 
-func TestWrapExecutor_NilInnerReturnsNil(t *testing.T) {
-	assert.That(t, WrapExecutor(nil, "redis")).Nil()
+func TestWrapClientExecutor_NilInnerReturnsNil(t *testing.T) {
+	assert.That(t, WrapClientExecutor(nil, "sys", "svc")).Nil()
 }
 
 func TestClassifyOutcome(t *testing.T) {
@@ -58,11 +58,11 @@ func TestClassifyOutcome(t *testing.T) {
 	}
 }
 
-// TestWrapExecutor_PassesErrorThrough exercises every status end to end: the
+// TestWrapClientExecutor_PassesErrorThrough exercises every status end to end: the
 // wrapper must return the inner error unchanged (no swallowing) while emitting
 // signals. The OTel globals are no-ops here, so this only proves pass-through +
 // no-panic; metric values are verified by the SDK-backed test below.
-func TestWrapExecutor_PassesErrorThrough(t *testing.T) {
+func TestWrapClientExecutor_PassesErrorThrough(t *testing.T) {
 	for _, err := range []error{
 		nil,
 		ErrRateLimited,
@@ -71,8 +71,8 @@ func TestWrapExecutor_PassesErrorThrough(t *testing.T) {
 		context.DeadlineExceeded,
 		errutil.Explain(nil, "downstream"),
 	} {
-		exec := WrapExecutor(fakeExecutor{err: err}, "redis")
-		got := exec.Execute(context.Background(), "svc", func(ctx context.Context) error { return nil })
+		exec := WrapClientExecutor(fakeExecutor{err: err}, "redis", "svc")
+		got := exec.Execute(context.Background(), func(ctx context.Context) error { return nil })
 		assert.That(t, errors.Is(got, err)).True()
 	}
 	_ = ErrBulkheadFull // keep import even if slice above changes

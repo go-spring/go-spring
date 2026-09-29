@@ -70,8 +70,8 @@ func Query[T any](
 	ctx, sp := defaultObs().Start(ctx, "query", query)
 	var res T
 	var err error
-	if exec, resource := queryResilience(driver); exec != nil {
-		err = exec.Execute(ctx, resource, func(ctx context.Context) error {
+	if exec := queryResilience(driver); exec != nil {
+		err = exec.Execute(ctx, func(ctx context.Context) error {
 			res, err = neo4j.ExecuteQuery[T](ctx, driver, query, parameters, newResultTransformer, settings...)
 			return err
 		})
@@ -89,8 +89,8 @@ func Query[T any](
 // is registered for driver, fn runs unprotected. fn receives a context derived
 // from ctx (the executor may derive a per-attempt timeout from it).
 func RunWithResilience(ctx context.Context, driver neo4j.DriverWithContext, fn func(context.Context) error) error {
-	if exec, resource := queryResilience(driver); exec != nil {
-		return exec.Execute(ctx, resource, fn)
+	if exec := queryResilience(driver); exec != nil {
+		return exec.Execute(ctx, fn)
 	}
 	return fn(ctx)
 }
@@ -108,13 +108,13 @@ func EndSpan(span *dbSpan, err error) {
 	span.End(err)
 }
 
-// queryResilience returns the executor + resource on a wrapped driver, or
+// queryResilience returns the executor + service on a wrapped driver, or
 // (nil, "") when the driver is not a *Client wrapper (e.g. a raw neo4j driver
 // passed directly). On a wrapped driver the executor is always resolved (a
 // no-op when governance is off), so callers route through it unconditionally.
-func queryResilience(driver neo4j.DriverWithContext) (resilience.Executor, string) {
+func queryResilience(driver neo4j.DriverWithContext) resilience.ClientExecutor {
 	if w, ok := driver.(*Client); ok {
-		return w.exec, w.resource
+		return w.exec
 	}
-	return nil, ""
+	return nil
 }

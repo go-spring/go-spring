@@ -38,9 +38,9 @@ below.
   `db.client.*` metrics, `_app_s3_access` access log).
 - **Resilience** — `resilience.NewRoundTripper` wraps the observe transport
   with the executor assembled by
-  `fault.WrapExecutor(resilience.ExecutorFor("s3", resource))` through the
-  neutral seams, scoped by
-  `resilience.ResourceLabel("s3", endpoint)`.
+  `fault.WrapClientExecutor(mgr.ClientExecutorFor("s3", service), service, inj)` from the injected
+  `*resilience.Manager` / `*fault.Injector` beans, scoped by
+  `resilience.ServiceLabel("s3", endpoint)`.
 
 ## 3. Constraints
 

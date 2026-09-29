@@ -155,11 +155,12 @@ govern.source.file.path=conf/govern.yaml
 ```yaml
 govern:
   enabled: true
-  fault:
-    enabled: false        # flip to true to "set fire" without restart
-    rate: 0.2
-    error: timeout
-    scope: loadtest       # only traffic marked X-LoadTest is affected
+  server:
+    fault:
+      enabled: false        # flip to true to "set fire" without restart
+      rate: 0.2
+      error: timeout
+      scope: loadtest       # only traffic marked X-LoadTest is affected
 ```
 
 **Verify** (structurally identical to what `example/check.sh` asserts — X-App header,
@@ -211,7 +212,7 @@ Rationale (from the `applyMiddlewares` comment, verified):
 
 - **LoadTest outermost**: the marker lands on the request context before anything else runs,
   so every downstream layer — and every outbound client your handler calls — can branch on
-  `traffic.IsLoadTest(ctx)`. Single header lookup (`Header.Peek`); no-op without the marker.
+  the propagator's `IsLoadTest(ctx)`. Single header lookup (`Header.Peek`); no-op without the marker.
 - **Recovery** (starter-owned `Recover()`, not hertz's contrib middleware) catches panics from
   every later layer and reports through the shared goutil panic chain (unified panic policy),
   then aborts with 500.
@@ -231,7 +232,7 @@ Rationale (from the `applyMiddlewares` comment, verified):
 
 `GET /echo/world` with header `X-LoadTest: 1`, fault scope engaged:
 
-1. LoadTest tags ctx (`traffic.WithLoadTest(ctx, "http-header")`)
+1. LoadTest tags ctx (`prop.Extract(ctx, <hertz header carrier>)`)
 2. Recovery arms (`defer`/`recover`)
 3. RequestID: hertz-contrib/requestid generates/propagates the id → response header;
    `propagateRequestID` copies it onto the request ctx
@@ -240,7 +241,7 @@ Rationale (from the `applyMiddlewares` comment, verified):
 5. Metrics increments the in-flight gauge, starts the duration observation
 6. AccessLog arms (fields captured on the way out)
 7. SecureHeaders/CORS/Gzip as enabled (engine enforces `maxBodySize` independently)
-8. fault: `fault.Apply(ctx, fault.InjectorFor(), "hertz", handler)` — with `scope: loadtest`
+8. fault: `fault.ApplyServer(ctx, inj, "hertz", handler)` (inj = the injected bean) — with `scope: loadtest`
    and the marker present, ~`rate` of requests get the injected error → 503; others pass
 9. your route runs; the response unwinds through 6→5→4→3: access record logged (severity by
    status), duration/count recorded, in-flight decremented, span ended and marked errored on
@@ -271,9 +272,9 @@ Semantics per layer are in §2.2/§2.3.
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `middleware.loadtest.enabled` / `.header` | on / `X-LoadTest` | Marker header name; empty falls back to `traffic.HeaderLoadTest`. |
+| `middleware.loadtest.enabled` | on | Marker header → ctx tag through the propagator's `Extract`. Which header that is belongs to the propagator bean, not to this starter. |
 | `middleware.recovery.enabled` | on | Off = a request-goroutine panic crashes the whole process (hertz core behavior). |
-| `middleware.requestId.enabled` | on | hertz-contrib/requestid default header `X-Request-Id`; generated when absent, propagated when present. ⚠ no configurable header key (unlike loadtest). |
+| `middleware.requestId.enabled` | on | hertz-contrib/requestid default header `X-Request-Id`; generated when absent, propagated when present. Its header is fixed to hertz-contrib's default. |
 | `middleware.tracing.enabled` / `metrics.enabled` | on / on | No-op without starter-otel's OTel globals — nothing warns. |
 | `middleware.accessLog.enabled` / `.skipPaths` | on / — | skip list merged with the health path. |
 | `middleware.cors.enabled` + 7 sub-keys (`allowAllOrigins`, `allowedOrigins`, `allowedMethods`, `allowedHeaders`, `exposeHeaders`, `allowCredentials`, `maxAge`) | all off/false/empty | `allowedMethods` empty → code default full verb set (`corsMiddleware`); config validated at startup via `c.Validate()` — a bad policy fails boot with `hertz: invalid cors config` instead of panicking on first request. `allowAllOrigins` and explicit `allowedOrigins` are mutually exclusive postures. |
@@ -348,7 +349,7 @@ curl -i -H 'X-LoadTest: 1' 127.0.0.1:8003/echo/x       # ~20% → 503 service un
 ### 4.5 Load-test marking drill
 
 With `scope: real` instead of `loadtest`, the injector affects unmarked traffic — use only in
-dedicated environments. `traffic.IsLoadTest(ctx)` in your handler branches on the same marker,
+dedicated environments. The propagator's `IsLoadTest(ctx)` in your handler branches on the same marker,
 so business code can degrade features under synthetic load.
 
 ---
@@ -391,6 +392,7 @@ Design suspects (for the audit ledger):
    `server-name`/`insecure-skip-verify` remain client-side keys with no server effect.
 5. No resilience admission (rate limit/breaker) on the inbound path — asymmetric with
    starter-gin; fault injection is wired, protection is not.
-6. `requestId` group has no configurable header key (loadtest does) — minor asymmetry.
+6. Neither `requestId` nor `loadtest` exposes a header name: the marker header belongs to the
+   propagator bean, the request id to hertz-contrib's default.
 7. No master `middleware.enabled` switch, unlike echo/gin — per-key toggles only (arguably
    safer; recorded for cross-family consistency review).

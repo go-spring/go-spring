@@ -37,20 +37,20 @@ import (
 // This is the closed loop the design calls "证明保护机制不是摆设": 放火制造故障,
 // 压测制造压力, 断言熔断真的开。
 func TestIntegration_LoadFaultBreaker(t *testing.T) {
-	d := resilience.NewDefaultDriver()
-	exec, err := d.NewExecutor(resilience.Policy{ErrorThreshold: 3, OpenDuration: time.Minute})
+	d := resilience.NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", resilience.ClientPolicy{ErrorThreshold: 3, OpenDuration: time.Minute})
 	assert.Error(t, err).Nil()
 	t.Cleanup(func() { _ = exec.Close() })
 
 	// Fault wraps the executor: every call returns an injected error.
-	fexec := fault.WrapExecutorWith(exec, fault.NewInjector(fault.Config{
-		Enabled: true, Rate: 1, Error: "generic",
-	}))
+	fexec := fault.WrapClientExecutor(exec, "svc", fault.NewInjector(fault.Configs{
+		Client: fault.Config{Enabled: true, Rate: 1, Error: "generic"},
+	}, nil))
 
 	// The op routes through the faulted executor; its inner fn would succeed,
 	// so any failure is fault/resilience, not the op itself.
 	op := func(ctx context.Context) error {
-		return fexec.Execute(ctx, "svc", func(context.Context) error { return nil })
+		return fexec.Execute(ctx, func(context.Context) error { return nil })
 	}
 
 	r := New().
@@ -81,16 +81,16 @@ func TestIntegration_LoadFaultBreaker(t *testing.T) {
 // closed loop the other way: with scope "real", load-test traffic (which the
 // harness tags) is NOT faulted, so the breaker never opens.
 func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
-	d := resilience.NewDefaultDriver()
-	exec, err := d.NewExecutor(resilience.Policy{ErrorThreshold: 1, OpenDuration: time.Minute})
+	d := resilience.NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Minute})
 	assert.Error(t, err).Nil()
 	t.Cleanup(func() { _ = exec.Close() })
 
-	fexec := fault.WrapExecutorWith(exec, fault.NewInjector(fault.Config{
-		Enabled: true, Rate: 1, Error: "generic", Scope: "real", // skip load-test traffic
-	}))
+	fexec := fault.WrapClientExecutor(exec, "svc", fault.NewInjector(fault.Configs{
+		Client: fault.Config{Enabled: true, Rate: 1, Error: "generic", Scope: "real"}, // skip load-test traffic
+	}, nil))
 	op := func(ctx context.Context) error {
-		return fexec.Execute(ctx, "svc", func(context.Context) error { return nil })
+		return fexec.Execute(ctx, func(context.Context) error { return nil })
 	}
 
 	r := New().Driver(ClosedLoop{Concurrency: 4}).Duration(150*time.Millisecond).

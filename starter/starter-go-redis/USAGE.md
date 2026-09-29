@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`starter.go`, `config.go`, `client.go`, `command.go`, `driver.go`,
-`health/health.go`, `bytecache/bytecache.go`) and the runnable [example/](example/) — file:line
+`health.go`, `bytecache.go`) and the runnable [example/](example/) — file:line
 spot-checks in brackets below. **Redis semantics and the go-redis API are [go-redis's own
 documentation](https://redis.io/docs/latest/develop/clients/go/)** — everything below is
 go-spring's increment.
@@ -156,11 +156,12 @@ gs.Run()
   ├─ ctor newClient [starter.go:97]: validateConfig → driver lookup → driver.CreateClient
   │   → instrument() (redisotel tracing+metrics, gated by otel.* keys)
   │   → failFastPing (unconditional, bounded by dial-timeout or 5s) [starter.go:218]
-  ├─ Init [client.go:55]: resourceLabel → fault.WrapExecutor(resilience.ExecutorFor("redis", resource))
+  ├─ Init [client.go:61]: resourceLabel → fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj)
+  │   (mgr/inj = the *resilience.Manager / *fault.Injector beans injected into the ctor)
   │   → applyObservability (access-log hook)
   │   → AddHook(resilienceHook) — command chain complete
   ├─ readiness: probes flip UP (indicator runs client.Ping)
-  └─ SIGTERM → Destroy [client.go:78]: exec.Close → stop discovery watch → client.Close
+  └─ SIGTERM → Destroy [client.go:88]: exec.Close → detach selection → client.Close
 ```
 
 A misconfigured mode (`mode=foo`) or a failed startup ping fails the boot — the process never
@@ -192,7 +193,7 @@ Rationale (source comments, [client.go:59-69] and [command.go:17-27]):
 
 1. redisotel starts the client span (no-op without starter-otel's globals).
 2. observeHook starts an access-log record named `get` (cmd.FullName()).
-3. resilienceHook asks the executor for a permit (rate limiter / breaker scoped to the resource
+3. resilienceHook asks the executor for a permit (rate limiter / breaker scoped to the service
    label, e.g. `redis:127.0.0.1:6379` — per instance, not per command [client.go:90-96]).
 4. go-redis executes; the key is absent so it returns `redis.Nil`.
 5. `run()` classifies `redis.Nil` as success via the nil-as-success predicate [command.go:94] —
@@ -216,9 +217,10 @@ starter logs a WARN naming the ignored `addr` at startup (the example sets a dum
 Setting `service-name` in sentinel or cluster mode is
 rejected at startup: those topologies discover their own nodes [starter.go:170-194].
 
-**The pool's strategy is governed, not hardcoded.** It is built with a suspension tracker and
-bound to `redis:<service-name|master-name|addr>` via `loadbalance.Pool.BindSelection`, so
-`govern.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
+**The pool's strategy is governed, not hardcoded.** It is built with a suspension tracker, returned by the Driver, and bound to
+`redis:<service-name|master-name|addr>` by the Client via `lbMgr.Bind(pool, label)` — the
+binding lives outside the Driver so a company Driver never has to know about governance, so
+`govern.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
 in place — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*. Sentinel and
 cluster clients self-discover and have no pool, so these keys do not reach them. See
@@ -271,11 +273,11 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 ### 3.4 Cache abstraction bean
 
 Alongside the wrapper, each instance is provided as a `*cache.Cache` bean (wrapping
-`bytecache.NewByteCache(c.UniversalClient)`) named `go-redis:<redis-instance-name>`
+`NewByteCache(c.UniversalClient)`) named `go-redis:<redis-instance-name>`
 [starter.go:87-94] — inject `*cache.Cache` with the autowire tag `go-redis:<instance-name>`.
 Un-injected, the bean never instantiates, so there is no config switch to set.
 `redis.Nil` is mapped to `cache.ErrMiss` at this boundary
-[bytecache/bytecache.go:42-51].
+[`bytecache.go`].
 
 ---
 
@@ -322,7 +324,7 @@ form. A miss through the façade returns `cache.ErrMiss`, not `redis.Nil`.
 
 ### 4.5 Fault / resilience drill
 
-With starter-governance configured, set a breaker/limiter policy for resource `redis:<addr>`;
+With starter-governance configured, set a breaker/limiter policy for service `redis:<addr>`;
 hammer the instance and watch rejections surface in `_app_redis_access` records and the
 resilience observer's outcome counters. Flip policy at runtime — the executor hot-reloads
 without restart.

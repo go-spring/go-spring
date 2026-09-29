@@ -21,9 +21,18 @@ import (
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/cloud/governance/resilience"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
-// Admit returns the middleware that runs every call through the resource's
+// Admit returns the middleware that runs every call through the service's
 // governance executor before it reaches the service implementation: inbound
 // rate limiting, bulkhead isolation and circuit breaking for the whole server.
 // It is the thrift counterpart of gin's and echo's admission middleware.
@@ -35,16 +44,18 @@ import (
 // and logged. With admission one layer above, a rejection short-circuits before
 // the per-method functions run and would leave no trace at all.
 //
-// The executor is resolved through the NEUTRAL provider seam
-// [resilience.ExecutorFor]: starter-govern registers a provider backed by the
-// governance center, so this server gets its policy WITHOUT injecting
-// *governance.Center or even importing cloud/governance. When governance is not
-// configured the seam yields a transparent no-op executor, so the middleware
-// runs and never rejects. Hot-reload is driven on the backing executor by the
-// provider, so inbound admission can be tightened without a restart, the same
-// way every outbound client's policy is tuned.
-func Admit(label string, system string) thrift.ProcessorMiddleware {
-	exec := resilience.ExecutorFor(system, label)
+// The executor is built from the injected [resilience.Manager], so this server
+// gets its policy from the governance document without naming *governance.Center.
+// A nil manager (a standalone call) is normalized to an unarmed one, whose
+// executor is a transparent pass-through, so the middleware runs and never
+// rejects. The executor handle resolves its backing implementation per call and
+// follows the manager's hot-reload, so inbound admission can be tightened
+// without a restart, the same way every outbound client's policy is tuned.
+func Admit(label string, system string, mgr *resilience.Manager) thrift.ProcessorMiddleware {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := mgr.ServerExecutorFor(system, label)
 	return func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 		return thrift.WrappedTProcessorFunction{
 			Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
@@ -61,16 +72,16 @@ func Admit(label string, system string) thrift.ProcessorMiddleware {
 // breaker, which is what lets the breaker trip on server-side errors.
 //
 // Inbound admission must NOT retry — a handler that has already produced side
-// effects cannot be replayed — so leave Policy.MaxRetries at 0. The served
-// guard makes a retrying policy harmless anyway: the service implementation
-// still runs exactly once.
-func admit(ctx context.Context, exec resilience.Executor, resource, name string, seqID int32, in, out thrift.TProtocol, next thrift.TProcessorFunction) (bool, thrift.TException) {
+// effects cannot be replayed, and [resilience.ServerPolicy] has no retry field to
+// express one with. The served guard makes a stray retry harmless regardless:
+// the service implementation still runs exactly once.
+func admit(ctx context.Context, exec resilience.ServerExecutor, service, name string, seqID int32, in, out thrift.TProtocol, next thrift.TProcessorFunction) (bool, thrift.TException) {
 	var (
 		ok     bool
 		svcErr thrift.TException
 		served bool
 	)
-	err := exec.Execute(ctx, resource, func(ctx context.Context) error {
+	err := exec.Execute(ctx, func(ctx context.Context) error {
 		if served {
 			return nil // reentry guard: the service already ran this call
 		}

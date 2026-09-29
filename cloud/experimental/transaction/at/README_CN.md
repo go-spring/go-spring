@@ -14,7 +14,7 @@ image,回滚时自动按镜像还原行。
 - `GlobalLock` 接口 + 内建 `MemoryGlobalLock` 提供写-写隔离(冲突返
   `ErrLockConflict`);分布式部署换共享后端。
 - `Observer` 缝隙接 otel(nil 关掉观测)。
-- `RetryPolicy = resilience.Policy` 别名,用于二阶段重试。
+- `RetryPolicy = resilience.ClientPolicy` 别名,用于二阶段重试。
 - `GlobalAT(coord)` aspect——AT 版 `@GlobalTransactional`;无需 per-method
   注册表。
 

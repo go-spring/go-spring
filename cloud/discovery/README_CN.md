@@ -96,8 +96,9 @@ eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"), discovery.WithT
 ## Resolver:按名绑定的消费方
 
 ```go
-load, err := discovery.NewResolver(ctx, "default", "orders-redis")
-bal, _ := loadbalance.New(loadbalance.RoundRobin)
+backend := discovery.NewStaticDiscovery(/* ... 来自注册中心的实时端点 ... */)
+load, err := discovery.NewResolver(ctx, backend, "orders-redis")
+bal := loadbalance.NewRoundRobin()
 pool := loadbalance.NewPool(load, bal)
 ep, err := pool.Pick(loadbalance.PickInfo{})
 ```

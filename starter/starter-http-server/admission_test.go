@@ -25,17 +25,17 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 )
 
-// stubAdmissionExecutor is an Executor whose outcome the test dictates. reject
+// stubServerExecutor is an Executor whose outcome the test dictates. reject
 // simulates a pre-handler rejection; attempts > 1 simulates a policy with
 // retries; fnErr records what the filter fed back as the call's outcome.
-type stubAdmissionExecutor struct {
+type stubServerExecutor struct {
 	reject   error
 	attempts int
 	runs     int
 	fnErr    error
 }
 
-func (s *stubAdmissionExecutor) Execute(ctx context.Context, _ string, fn func(context.Context) error) error {
+func (s *stubServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	if s.reject != nil {
 		return s.reject
 	}
@@ -51,15 +51,15 @@ func (s *stubAdmissionExecutor) Execute(ctx context.Context, _ string, fn func(c
 	return err
 }
 
-func (s *stubAdmissionExecutor) Close() error                    { return nil }
-func (s *stubAdmissionExecutor) Refresh(resilience.Policy) error { return nil }
+func (s *stubServerExecutor) Close() error                          { return nil }
+func (s *stubServerExecutor) Refresh(resilience.ServerPolicy) error { return nil }
 
-// serveAdmission drives one request through the admission filter built over a
+// serveServerPolicy drives one request through the admission filter built over a
 // stub executor, and reports the response plus how often the handler ran.
-func serveAdmission(t *testing.T, exec *stubAdmissionExecutor, handler http.HandlerFunc) (*httptest.ResponseRecorder, int) {
+func serveServerPolicy(t *testing.T, exec *stubServerExecutor, handler http.HandlerFunc) (*httptest.ResponseRecorder, int) {
 	t.Helper()
 	handlerRuns := 0
-	// Wrap the stub in a filter built the same way Admission builds one, so the
+	// Wrap the stub in a filter built the same way ServerPolicy builds one, so the
 	// upstream resolution stays out of the test's way.
 	mw := admissionWith(exec, "http-server::9090")
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -72,8 +72,8 @@ func serveAdmission(t *testing.T, exec *stubAdmissionExecutor, handler http.Hand
 }
 
 func TestAdmission_PassThroughRunsHandlerOnce(t *testing.T) {
-	exec := &stubAdmissionExecutor{}
-	rec, handlerRuns := serveAdmission(t, exec, func(w http.ResponseWriter, r *http.Request) {
+	exec := &stubServerExecutor{}
+	rec, handlerRuns := serveServerPolicy(t, exec, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
 	if rec.Code != http.StatusOK {
@@ -96,8 +96,8 @@ func TestAdmission_RejectsMapToStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			exec := &stubAdmissionExecutor{reject: tc.exec}
-			rec, handlerRuns := serveAdmission(t, exec, func(w http.ResponseWriter, r *http.Request) {
+			exec := &stubServerExecutor{reject: tc.exec}
+			rec, handlerRuns := serveServerPolicy(t, exec, func(w http.ResponseWriter, r *http.Request) {
 				_, _ = w.Write([]byte("ok"))
 			})
 			if rec.Code != tc.want {
@@ -113,8 +113,8 @@ func TestAdmission_RejectsMapToStatus(t *testing.T) {
 // A handler-committed 5xx must be reported to the executor, or the breaker
 // would never see server-side errors.
 func TestAdmission_Handler5xxFeedsBreaker(t *testing.T) {
-	exec := &stubAdmissionExecutor{}
-	rec, _ := serveAdmission(t, exec, func(w http.ResponseWriter, r *http.Request) {
+	exec := &stubServerExecutor{}
+	rec, _ := serveServerPolicy(t, exec, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	})
 	if rec.Code != http.StatusInternalServerError {
@@ -129,8 +129,8 @@ func TestAdmission_Handler5xxFeedsBreaker(t *testing.T) {
 // handler. The retry sees no error (the guard returns nil) and the handler
 // still runs exactly once.
 func TestAdmission_DoesNotReplayHandler(t *testing.T) {
-	exec := &stubAdmissionExecutor{attempts: 3}
-	rec, handlerRuns := serveAdmission(t, exec, func(w http.ResponseWriter, r *http.Request) {
+	exec := &stubServerExecutor{attempts: 3}
+	rec, handlerRuns := serveServerPolicy(t, exec, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	})
 	if handlerRuns != 1 {

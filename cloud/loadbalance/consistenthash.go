@@ -33,8 +33,11 @@ import (
 const defaultReplicas = 100
 
 func init() {
-	Register(ConsistentHash, func() Balancer {
-		return NewConsistentHash(defaultReplicas)
+	Register(ConsistentHash, func(cfg Config) (Balancer, error) {
+		if err := cfg.only("replicas"); err != nil {
+			return nil, err
+		}
+		return NewConsistentHash(cfg.Replicas), nil
 	})
 }
 

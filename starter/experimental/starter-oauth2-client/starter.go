@@ -26,6 +26,15 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 	"golang.org/x/oauth2/clientcredentials"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 func init() {
@@ -44,6 +53,14 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
+				// The governance manager is a NULLABLE injection: it exists
+				// whenever starter-governance is in the container (the normal
+				// case) and is absent from a container without it. Without the
+				// "?" gs would treat an absent bean as a wiring error and the app
+				// would not boot — turning "governance is off" into "governance
+				// must be imported". The ctor treats a nil manager as an unarmed
+				// authority, i.e. a transparent pass-through.
+				gs.IndexArg(3, gs.TagArg("?")), // mgr *resilience.Manager
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})
@@ -56,10 +73,14 @@ func init() {
 // exchange and downstream requests are traced via otelContext (no-op without
 // starter-otel). The transport is additionally wrapped so downstream requests
 // flow through the resilience executor (rate limiter, circuit breaker, retry)
-// resolved via [resilience.ExecutorFor] — a transparent no-op when governance
-// is off — so the bearer token is already attached before the resilience layer
-// runs and each protected attempt is a complete request.
-func newClient(ctx *gs.ContextProvider, name string, c Config) (*http.Client, error) {
+// built from the injected [resilience.Manager] — a transparent no-op when
+// governance is off — so the bearer token is already attached before the
+// resilience layer runs and each protected attempt is a complete request.
+//
+// mgr is the governance bean gs injects (nil in a standalone call); a nil
+// manager is normalized to an unarmed one, whose executor is a transparent
+// pass-through, so governance off and standalone callers behave identically.
+func newClient(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.Manager) (*http.Client, error) {
 
 	cfg := &clientcredentials.Config{
 		ClientID:       c.ClientID,
@@ -77,18 +98,18 @@ func newClient(ctx *gs.ContextProvider, name string, c Config) (*http.Client, er
 		client.Timeout = c.Timeout
 	}
 
-	// Resolve the resilience executor through the NEUTRAL provider seam
-	// [resilience.ExecutorFor]: starter-govern registers a provider backed by the
-	// governance center, so this client gets its rate-limit/breaker/retry policy
-	// WITHOUT injecting *governance.Center or even importing cloud/governance. When
-	// governance is not configured the seam yields a transparent no-op executor,
-	// so this call is always safe. Always non-nil; resolution is deferred to call
-	// time, so the order of this setup relative to starter-govern is irrelevant.
-	resource := resilience.ResourceLabel("oauth2", c.ClientID)
-	exec := resilience.ExecutorFor("oauth2", resource)
-	// Scope the roundtripper's per-call Execute to the same label so limiter/
-	// breaker state all agree.
-	client.Transport = resilience.NewRoundTripper(client.Transport, exec, func(*http.Request) string { return resource })
+	// Build the resilience executor from the injected manager, so this client gets
+	// its rate-limit/breaker/retry policy from the governance document without
+	// naming *governance.Center. An unarmed manager yields a transparent
+	// pass-through executor, so this call is always safe. The executor handle
+	// resolves its backing implementation per call, so the order of this setup
+	// relative to the container's wiring is irrelevant.
+	service := resilience.ServiceLabel("oauth2", c.ClientID)
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := mgr.ClientExecutorFor("oauth2", service)
+	client.Transport = resilience.NewRoundTripper(client.Transport, exec)
 	return client, nil
 }
 

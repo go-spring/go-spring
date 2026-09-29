@@ -26,7 +26,12 @@ import (
 )
 
 func init() {
-	Register(P2C, NewP2C)
+	Register(P2C, func(cfg Config) (Balancer, error) {
+		if err := cfg.only(); err != nil {
+			return nil, err
+		}
+		return NewP2C(), nil
+	})
 }
 
 // ewmaBeta is the weight of each new sample in the latency moving average.

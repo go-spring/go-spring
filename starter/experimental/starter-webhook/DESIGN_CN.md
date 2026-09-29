@@ -3,8 +3,9 @@
 [English](DESIGN.md) | [中文](DESIGN_CN.md)
 
 一个薄客户端原型 starter（`starter/DESIGN.md` §2.2），以 starter-mail 为
-模板：按次无状态、`gs.Group` 无 destroy 钩子、trace 助手依赖 OTel 全局。
-与 mail 唯一有意的分歧是韧性 seam —— 本仓库所有客户端 starter 都带。
+模板：按次无状态、`gs.Module` 注册的组、无 destroy 钩子、trace 助手依赖
+OTel 全局。与 mail 唯一有意的分歧是注入的治理 bean —— 本仓库所有客户端
+starter 都带。
 
 ## 1. 职责与边界
 
@@ -18,9 +19,10 @@
 
 - **`Notifier`（starter.go）** — 一个端点 + 一个通道 + 一个签名密钥；
   `Send` 构建载荷、把 POST 包进 `webhook.send` producer span，并路由穿过
-  `fault.WrapExecutor(resilience.ExecutorFor("webhook",
-  "webhook:<name>:<channel>"))` —— 与所有客户端 starter 相同的、已完整组装的
-  中性 seam 栈，与 starter-governance 零耦合。
+  `fault.WrapClientExecutor(mgr.ClientExecutorFor("webhook",
+  "webhook:<name>:<channel>"), "webhook:<name>:<channel>", inj)` —— 与所有客户端
+  starter 相同的、已完整组装的栈，由注入的 `*resilience.Manager` / `*fault.Injector`
+  bean 构建。
 - **`buildPayload`（payload.go）** — 纯函数 通道 →（body, 额外 query）。
   钉钉加签向 URL 追加 `timestamp`/`sign`；飞书签名进 body；两者都是对
   `<毫秒>\n<secret>` 的 HMAC-SHA256。纯函数让格式可以脱离网络做单测。

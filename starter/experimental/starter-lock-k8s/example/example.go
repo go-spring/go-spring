@@ -138,7 +138,7 @@ func (d *ElectionDemo) runElection() {
 		RetryInterval:    500 * time.Millisecond,
 	})
 	if err != nil {
-		log.Error(ctx, "election config", log.Err(err))
+		log.Error(ctx, log.TagAppDef, log.Msg("election config"), log.Err(err))
 		return
 	}
 

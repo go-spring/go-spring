@@ -143,9 +143,9 @@ type OtelConfig struct {
 	MetricsEnabled bool `value:"${metrics.enabled:=true}"`
 }
 
-// Resilience is no longer a field of Config: it is resolved by the Client
-// wrapper bean's Init (the gs InitMethod) through the neutral
-// resilience.ExecutorFor seam.
+// Resilience is no longer a field of Config: it is armed by the Client wrapper
+// bean's Init (the gs InitMethod) from the *resilience.Manager bean the
+// container injects.
 
 // Resilience binds the backend-neutral resilience knobs shared by every client
 // starter (see [resilience.Config]). Driver selects which registered backend

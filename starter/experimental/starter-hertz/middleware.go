@@ -29,9 +29,19 @@ import (
 	"github.com/hertz-contrib/gzip"
 	"github.com/hertz-contrib/requestid"
 	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // accessLogTag categorizes the structured access records emitted by the
@@ -72,15 +82,15 @@ func RequestIDFromContext(ctx context.Context) string {
 // 403) are still logged. Body limiting is handled by the engine option
 // WithMaxRequestBodySize, not a middleware, so an over-limit 413 is likewise
 // logged.
-func applyMiddlewares(h *server.Hertz, cfg Config) error {
+func applyMiddlewares(h *server.Hertz, cfg Config, inj *fault.Injector, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the
 	// request context before Recovery, RequestID or any handler runs, letting
-	// every downstream layer branch on traffic.IsLoadTest(ctx). A single header
-	// lookup; off when disabled.
+	// every downstream layer branch on the load-test convention's IsLoadTest. A
+	// single header lookup; off when disabled.
 	if mw.LoadTest.Enabled {
-		h.Use(LoadTest(mw.LoadTest.Header))
+		h.Use(LoadTest(prop))
 	}
 	if mw.Recovery.Enabled {
 		// Starter-owned recover (see recover.go): hertz's recovery middleware
@@ -115,23 +125,24 @@ func applyMiddlewares(h *server.Hertz, cfg Config) error {
 		h.Use(gzip.Gzip(mw.Gzip.Level))
 	}
 	// Fault injection (always installed, innermost so the resulting 503 is still
-	// logged). The injector is resolved from the neutral [fault.InjectorFor]
-	// seam (nil-safe: a transparent pass-through when fault is off / governance
-	// not imported), letting an operator "set fire" to the running server and
-	// hot-toggle it at runtime without a restart.
-	h.Use(buildFault())
+	// logged). The injector is the bean gs passes in (nil-safe: a transparent
+	// pass-through when fault is off / no injector bean), letting an operator
+	// "set fire" to the running server and hot-toggle it at runtime without a
+	// restart.
+	h.Use(buildFault(inj))
 	return nil
 }
 
 // buildFault builds the inbound fault-injection middleware. It gates the handler
-// call with [fault.Apply] so a configured fraction of inbound requests fail or
+// call with [fault.ApplyServer] so a configured fraction of inbound requests fail or
 // slow down — the server-side counterpart to the client starters'
-// fault.WrapExecutor. The injector comes from the neutral [fault.InjectorFor]
-// seam (backed by the governance center); when no injector is registered Apply
-// is a transparent pass-through.
-func buildFault() app.HandlerFunc {
+// fault.WrapClientExecutor. The injector is captured once, from the bean the server
+// constructor was given; when it is nil Apply is a transparent pass-through.
+// Capturing it rather than re-resolving per request is what lets a config swap
+// on the injector bean take effect in place.
+func buildFault(inj *fault.Injector) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
-		err := fault.Apply(ctx, fault.InjectorFor(), "hertz", func() error {
+		err := fault.ApplyServer(ctx, inj, "hertz", func() error {
 			c.Next(ctx)
 			return nil
 		})
@@ -157,19 +168,26 @@ func accessLogSkipSet(cfg Config) map[string]struct{} {
 
 // LoadTest installs the inbound load-test traffic identification middleware.
 // When the incoming request carries the configured marker header (default
-// X-LoadTest) it tags the request context via canonical.WithLoadTest, so handlers
-// and outbound clients can recognise synthetic load through traffic.IsLoadTest.
-// It is the inbound companion to cloud/governance/traffic's outbound injection. An empty
-// header falls back to the traffic package default. Without the marker it is a
-// no-op. Hertz stores headers as []byte; Peek returns the raw value.
-func LoadTest(header string) app.HandlerFunc {
-	if header == "" {
-		header = canonical.HeaderLoadTest
+// X-LoadTest) it tags the request context, so handlers and outbound clients can
+// recognise synthetic load through the propagator's IsLoadTest. It is the
+// inbound companion to cloud/governance/traffic's outbound injection: together
+// they let a load-test flag ride an HTTP hop end to end. An empty header falls
+// back to the propagator's own header name; prop nil means go-spring's default.
+// Without the marker it is a no-op. Hertz stores headers as []byte; Peek returns
+// the raw value.
+func LoadTest(prop traffic.Propagator) app.HandlerFunc {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
 	return func(ctx context.Context, c *app.RequestContext) {
-		if canonical.IsAffirmative(string(c.Request.Header.Peek(header))) {
-			ctx = canonical.WithLoadTest(ctx, "http-header")
-		}
+		// Hertz stores header names and values as []byte; VisitAll walks them
+		// into the seam's string multi-map.
+		h := propagate.MultiMap{}
+		c.Request.Header.VisitAll(func(k, v []byte) {
+			h[string(k)] = append(h[string(k)], string(v))
+		})
+		ctx = prop.Extract(ctx, h)
 		c.Next(ctx)
 	}
 }

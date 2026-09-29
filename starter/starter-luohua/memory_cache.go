@@ -22,7 +22,15 @@ import (
 	"time"
 
 	"go-spring.org/cloud/cache"
+	"go-spring.org/spring/gs"
 )
+
+// init exposes the store above as a *cache.Cache bean under the one
+// company-wide name "luohua" — autowire it as `cache.Cache` with tag "luohua".
+// Un-injected, the bean never instantiates, so no config gate is needed.
+func init() {
+	gs.Provide(func() *cache.Cache { return NewLuohuaCache() }).Name("luohua")
+}
 
 // luohuaCache is the company's standard backend: an in-process, TTL-aware,
 // bytes-native store. It is deliberately trivial — the point is the seam, not

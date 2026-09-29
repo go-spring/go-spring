@@ -136,8 +136,7 @@ spring.observability.metrics.path=/metrics
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.rate-limit=5
+govern.server.default.rate-limit=5    # INBOUND admission: 5 QPS on every route
 ```
 
 **Verify** (structurally identical to what the examples assert):
@@ -193,7 +192,7 @@ Rationale (from the source comments in `ApplyMiddlewares`, middleware.go:89-174)
   RequestID and Observe without disabling the defaults (starter.go:57-74).
 - **LoadTest first of the built-ins**: the marker lands on the request context before anything
   else runs, so every downstream layer — and every outbound client your handler calls — can
-  branch on `traffic.IsLoadTest(ctx)`. Single header lookup; no-op without the marker.
+  branch on the propagator's `IsLoadTest(ctx)`. Single header lookup; no-op without the marker.
 - **RequestID before Observe**: the id is on the context from the very start, so Observe reads
   it at any point (not only in its defer); a panic in RequestID itself cannot happen (trivial
   body), handler panics are still recovered by Observe's defer.
@@ -213,13 +212,14 @@ Rationale (from the source comments in `ApplyMiddlewares`, middleware.go:89-174)
 
 `GET /echo/gin` with header `X-LoadTest: 1`, governance armed with rate-limit + fault:
 
-1. (optional app `EngineMiddleware`, then) LoadTest tags ctx → `traffic.IsLoadTest(ctx)==true`
+1. (optional app `EngineMiddleware`, then) LoadTest tags ctx → the propagator's `IsLoadTest(ctx)==true`
 2. RequestID generates/propagates the id → response header `X-Request-Id`, ctx value for logs
 3. Observe: skip-check (path or route pattern), span `{method} {route}` starts, in-flight
    gauge +1 (opt-in), request body tee'd into a bounded buffer (payload capture)
 4. admission: `exec.Execute` around the handler — over limit → 429, breaker open → 503;
    handler 5xx feeds the breaker as a failure
-5. fault: `fault.Apply(ctx, InjectorFor(), "gin", handler)` — marked traffic at `rate` gets
+5. fault: `fault.ApplyServer(ctx, inj, "gin", handler)` — `inj` is the injected `*fault.Injector`
+   bean; marked traffic at `rate` gets
    the injected error → 503
 6. SecureHeaders/CORS/Gzip as enabled; ResponseCapture wraps the writer
 7. health route / your route runs; unwind: SSE trailing events finalized, then Observe's defer
@@ -249,7 +249,7 @@ All keys live under `spring.gin.server.*`. Reconciled against
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `middleware.enabled` | bool | true | Master switch. false = manual mode: starter installs NOTHING (Recovery included) — you call `ApplyMiddlewares`/exported constructors from your RouterRegister. ⚠ an `EngineMiddleware` bean is silently ignored in manual mode. | No recovery → a handler panic crashes the process. |
-| `loadtest.enabled` / `.header` | bool / string | true / `X-LoadTest` | Marker header → ctx tag via `traffic.WithLoadTest`. Empty header falls back to the traffic package default. | — |
+| `loadtest.enabled` | bool | true | Marker header → ctx tag through the propagator's `Extract`. Which header that is belongs to the propagator bean, not to this starter. | — |
 | `requestId.enabled` / `.header` | bool / string | true / `X-Request-Id` | Self-implemented (uuid v4), NOT gin-contrib/requestid; incoming id honored, echoed on the response, stored on ctx (`RequestIDFromContext`). | — |
 | `accessLog.skipPaths` | []string | — | Skips ALL THREE signals (span+metric+log); an entry matches the concrete path OR the gin route pattern (`/users/:id`). A panic overrides the skip. | — |
 | `accessLog.payload.enabled` | bool | **true** ⚠ | Captures req body+query+headers and resp body into the access log. On by default — privacy/volume surprise. | Sensitive bodies in logs. |
@@ -261,7 +261,7 @@ All keys live under `spring.gin.server.*`. Reconciled against
 | `secureHeaders.enabled` | bool | false | When on: `X-Content-Type-Options:nosniff` always; `frameOptions` (DENY), `referrerPolicy` (no-referrer); "" omits. | — |
 | `secureHeaders.frameOptions` / `.referrerPolicy` | string | DENY / no-referrer | See above. | — |
 | `secureHeaders.hsts.enabled` / `.maxAge` / `.includeSubDomains` / `.preload` | — | off / 0s / false / false | Emitted only when the request is TLS and maxAge>0 (per-request `c.Request.TLS` check). | Set without TLS → header silently absent. |
-| `admission` / `fault` | — | — | **No starter keys.** Driven entirely by the governance center (the `govern.*` rules document), resource label `gin::{addr}`, hot-reloaded. | — |
+| `admission` / `fault` | — | — | **No starter keys.** Driven entirely by the governance center (the `govern.*` rules document), service label `gin::{addr}`, hot-reloaded. | — |
 
 ---
 
@@ -311,16 +311,17 @@ curl -i :8001/healthz    # starter-served liveness, independent of app routes
 
 ### 4.4 Admission drill (no restart — mirrors example-resilience/check.sh)
 
-1. Start §1's project with `govern.default.rate-limit=5`.
+1. Start §1's project with `govern.server.default.rate-limit=5` (inbound admission
+   reads the `server` block — see cloud/governance README §4).
 2. Burst: `for i in $(seq 1 20); do curl -s -o/dev/null -w '%{http_code}\n' :8001/echo/x; done`
    → both 200s and 429s (the smoke asserts exactly that). Breaker open → 503
    (`admission.go:79-82`).
-3. Tighten at runtime: governance hot-reloads (`ExecutorFor` provider seam) — raise/lower
+3. Tighten at runtime: governance hot-reloads (`Manager.ServerExecutorFor` seam) — raise/lower
    `rate-limit` without restart and re-burst.
 
 ### 4.5 Fault drill (no restart)
 
-Governance fault keys are hot-toggled (middleware is always installed; `fault.Apply` is a
+Governance fault keys are hot-toggled (middleware is always installed; `fault.ApplyServer` is a
 pass-through when no injector is registered):
 
 ```bash
@@ -332,7 +333,7 @@ curl -i :8001/echo/x                     # ~20% → 503; access log shows Warn r
 ### 4.6 Load-test marking drill
 
 `curl -H 'X-LoadTest: 1' :8001/echo/x` tags the ctx; handlers branch on
-`traffic.IsLoadTest(c.Request.Context())` to degrade features under synthetic load, and
+the propagator's `IsLoadTest(c.Request.Context())` to degrade features under synthetic load, and
 fault/admission can scope to marked traffic.
 
 ---
@@ -348,7 +349,7 @@ fault/admission can scope to marked traffic.
 | Everything works, no traces/metrics | starter-otel not imported | Add it; the OTel hooks are silent no-ops without it. |
 | Container fails at boot: "gin: invalid cors config" | mutually exclusive cors posture | Pick `allowAllOrigins` OR explicit `allowedOrigins`. |
 | Sensitive request bodies appear in logs | payload capture is ON by default (512 KiB) | `middleware.accessLog.payload.enabled=false`. |
-| 429s under modest traffic | governance rate-limit too low for the workload | Raise `govern.default.rate-limit` (hot-reload). |
+| 429s under modest traffic | governance rate-limit too low for the workload | Raise `govern.server.default.rate-limit` (hot-reload). |
 | Clients rejected at TLS handshake with cert errors | `tls.ca-file` set — that enables **mTLS** (`RequireAndVerifyClientCert`) | Remove it for one-way TLS, or issue client certs. |
 | Access log shows garbage `resp.body` under gzip | — should not happen: ResponseCapture sits inside gzip; if you rebuild the chain manually, keep it innermost | In manual mode install `ResponseCapture` innermost, inside any transformer. |
 

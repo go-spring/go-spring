@@ -24,24 +24,24 @@ import (
 	"go-spring.org/cloud/governance/resilience"
 )
 
-// breakerRoutes maps a sentinel resource name to the resilience BreakerEventListener
+// breakerRoutes maps a sentinel resource name (a service label) to the resilience BreakerEventListener
 // that wants its state transitions. sentinel-golang's StateChangeListener is a
 // process-wide singleton (circuitbreaker.stateChangeListeners), not per-rule, so a
 // single registered routeListener demultiplexes by rule.Resource to the right
-// per-executor listener. Keyed by resource because a sentinelExecutor builds one
-// breaker rule per resource (ensureRules), and the resource string is globally
-// unique within a process (derived from resilience.ResourceLabel).
-var breakerRoutes sync.Map // resource (string) -> resilience.BreakerEventListener
+// per-executor listener. Keyed by the label because a sentinelExecutor builds one
+// breaker rule per service (ensureRules), and the label is globally
+// unique within a process (derived from resilience.ServiceLabel).
+var breakerRoutes sync.Map // service label (string) -> resilience.BreakerEventListener
 
-func registerBreakerRoute(resource string, l resilience.BreakerEventListener) {
+func registerBreakerRoute(service string, l resilience.BreakerEventListener) {
 	if l == nil {
 		return
 	}
-	breakerRoutes.Store(resource, l)
+	breakerRoutes.Store(service, l)
 }
 
 // routeListener is registered once with sentinel-golang and forwards every
-// circuit-breaker state transition to the per-resource resilience listener
+// circuit-breaker state transition to the per-service resilience listener
 // stored in breakerRoutes. It implements circuitbreaker.StateChangeListener.
 type routeListener struct{}
 
@@ -57,15 +57,15 @@ func (routeListener) OnTransformToHalfOpen(prev circuitbreaker.State, rule circu
 	forwardBreaker(rule.Resource, prev, circuitbreaker.HalfOpen)
 }
 
-// forwardBreaker looks up the listener for resource and translates the sentinel
-// transition into a resilience.BreakerState change. A resource with no route
+// forwardBreaker looks up the listener for a service label and translates the
+// sentinel transition into a resilience.BreakerState change. A label with no route
 // (e.g. a breaker rule loaded outside go-spring) is silently ignored.
-func forwardBreaker(resource string, from, to circuitbreaker.State) {
-	v, ok := breakerRoutes.Load(resource)
+func forwardBreaker(service string, from, to circuitbreaker.State) {
+	v, ok := breakerRoutes.Load(service)
 	if !ok {
 		return
 	}
-	v.(resilience.BreakerEventListener).OnBreakerStateChange(resource, toBreakerState(from), toBreakerState(to))
+	v.(resilience.BreakerEventListener).OnBreakerStateChange(service, toBreakerState(from), toBreakerState(to))
 }
 
 // toBreakerState maps sentinel-golang's circuitbreaker.State onto the

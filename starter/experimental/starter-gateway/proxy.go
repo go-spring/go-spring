@@ -109,32 +109,30 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	// disabled: both are governance decisions now (the rule matching
 	// "gateway:<route-id>"), applied in place by RouteTable.reconcileSelection.
 	// Attaching a disabled tracker costs nothing when nothing governs the route.
-	bal, err := loadbalance.New(loadbalance.RoundRobin)
-	if err != nil {
-		return nil, err
-	}
-	return loadbalance.NewPool(resolver, bal,
-		loadbalance.WithTracker(loadbalance.NewTracker(loadbalance.TrackerConfig{}))), nil
+	bal := loadbalance.NewRoundRobin()
+	return loadbalance.NewPool(resolver, bal), nil
 }
 
 // newProxyHandler assembles the terminal handler of a route's chain: a reverse
 // proxy whose Transport is wrapped with the route's resilience executor so
 // retries and circuit breaking happen on the forwarding hop. exec may be nil
 // (no resilience configured), in which case NewRoundTripper returns the base
-// transport unchanged.
+// transport unchanged. service is the label exec was built under (the route's
+// policy name, see gatewayLabel): routes sharing a policy share an executor and
+// therefore a label, so limiter/breaker state is scoped per policy, not per route.
 //
 // The target is picked once in the outer handler (not the Director) so a pick
 // failure — no live upstream instance — is a clean 503 instead of a dial to an
 // empty host. The Director then just applies the chosen target; on a resilience
 // retry the same target is reused.
-func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec resilience.Executor) (http.Handler, error) {
+func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec resilience.ClientExecutor, service string) (http.Handler, error) {
 	pick, err := t.buildPicker(up)
 	if err != nil {
 		return nil, err
 	}
 
 	base := http.DefaultTransport.(*http.Transport).Clone()
-	transport := resilience.NewRoundTripper(base, exec, func(*http.Request) string { return routeID })
+	transport := resilience.NewRoundTripper(base, exec)
 
 	rp := &httputil.ReverseProxy{
 		Transport: transport,

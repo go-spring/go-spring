@@ -121,7 +121,7 @@ spring.gateway.discovery=nacos.main                 # 后端 bean 名
 spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
 # 路由的负载均衡策略不是 gateway 的 key，而是该路由标签上的治理规则：
-# govern.rules[N].resources=gateway:orders + govern.rules[N].balancer=weighted
+# govern.client.rules[N].service=gateway:orders + govern.client.rules[N].balancer=weighted
 # （见 cloud/governance/README.md §3.1）
 ```
 

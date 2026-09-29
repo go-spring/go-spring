@@ -117,7 +117,7 @@ The project uniformly uses the **dual-semantic error-wrapping pattern** of `stdl
 One-line criterion: **logs answer "what happened"; metrics answer "how much / how long / how is it right now"** — a node that needs trending, rate calculation, or alerting must have a metric. Three shapes:
 
 - **Operation nodes** (per-request/per-message cross-boundary actions): `<family>.operation.total` + `<family>.operation.duration` with an exclusive status axis (summed over status = the operation count, no double counting) and explicit duration buckets.
-- **Event nodes** (rare but semantically major state transitions): a dedicated counter named after the event itself (`lock.lost.total`, `resilience.breaker.state_change`) — not the total/duration template; an event is not an operation.
+- **Event nodes** (rare but semantically major state transitions): a dedicated counter named after the event itself (`lock.lost.total`, `resilience.client.breaker.state_change`) — not the total/duration template; an event is not an operation.
 - **State nodes** (where "how is it right now" matters): a gauge (`messaging.operation.active`, `config.refresh.last_success_timestamp`, breaker state).
 
 Dimension discipline: unbounded cardinality (keys, addresses, destination values) never enters a metric — spans and logs only. The status axis carries the outcome. Pure low-frequency config-change events (e.g. governance policy applied) are fine with a log line alone.

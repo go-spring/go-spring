@@ -86,14 +86,15 @@ no message bytes, so instrumenting your code is a safe, zero-config opt-in.
 ```go
 import starter "go-spring.org/starter-kafka-sarama"
 
+// prop is the process's traffic.Propagator; nil means the default convention.
 // Producer: start a span and inject W3C trace context into the record headers.
 msg := &sarama.ProducerMessage{Topic: "hello", Value: sarama.StringEncoder("v")}
-_, span := starter.StartProducerSpan(ctx, msg)
+_, span := starter.StartProducerSpan(ctx, msg, prop)
 _, _, err := producer.SendMessage(msg)
 starter.EndSpan(span, err)
 
 // Consumer: continue the trace carried in the record headers.
-ctx, span := starter.StartConsumerSpan(ctx, msg)
+ctx, span := starter.StartConsumerSpan(ctx, msg, prop)
 err := handle(ctx, msg)
 starter.EndSpan(span, err)
 ```

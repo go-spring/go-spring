@@ -54,10 +54,11 @@ type Client struct {
 	nameServers []string
 	cfg         Config
 
-	// exec / resource carry the resilience executor attached in newClient;
-	// exec is nil (transparent pass-through) when governance is off.
-	exec     resilience.Executor
-	resource string
+	// exec / service carry the resilience executor applyResilience arms from
+	// the injected governance beans; exec is nil (transparent pass-through)
+	// when governance is off.
+	exec    resilience.ClientExecutor
+	service string
 
 	mu        sync.Mutex
 	closed    bool
@@ -189,5 +190,5 @@ func (cl *Client) execute(ctx context.Context, call func(context.Context) error)
 	if cl.exec == nil {
 		return call(ctx)
 	}
-	return cl.exec.Execute(ctx, cl.resource, call)
+	return cl.exec.Execute(ctx, call)
 }

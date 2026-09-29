@@ -40,7 +40,7 @@ or rollback) is made only after every Try succeeds. Saga lives in the parent
   participants once at wiring time; the interceptor looks them up by joinpoint
   method name, keeping un-declared methods transparent.
 - **`Observer` seam** for otel spans (nil disables observation).
-- **`RetryPolicy = resilience.Policy` alias** — reused so TCC phase retries
+- **`RetryPolicy = resilience.ClientPolicy` alias** — reused so TCC phase retries
   and outbound resilience share one config surface. Recommended non-zero for
   Confirm/Cancel; the contract requires them to eventually succeed.
 - **Decision-log-driven recovery.** Recovery reads the persisted `Status`:

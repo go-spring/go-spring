@@ -29,11 +29,11 @@ import (
 // the default resilience driver, but whose embedded *nats.Conn is nil. The
 // tests never invoke methods that touch the embedded conn — they drive guard
 // directly with a stubbed call — so no live nats server is needed.
-func newConnWithPolicy(t *testing.T, p resilience.Policy) *Conn {
-	d := resilience.NewDefaultDriver()
-	exec, err := d.NewExecutor(p)
+func newConnWithPolicy(t *testing.T, p resilience.ClientPolicy) *Conn {
+	d := resilience.NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &Conn{exec: exec, resource: "nats:test"}
+	return &Conn{exec: exec, service: "nats:test"}
 }
 
 // TestGuardPassThrough proves the zero-config opt-in: a Conn with no executor
@@ -51,7 +51,7 @@ func TestGuardPassThrough(t *testing.T) {
 // TestGuardRateLimit confirms the flow-control path: once the burst is spent,
 // further calls are rejected without invoking the stub.
 func TestGuardRateLimit(t *testing.T) {
-	h := newConnWithPolicy(t, resilience.Policy{RateLimit: 1, Burst: 2})
+	h := newConnWithPolicy(t, resilience.ClientPolicy{RateLimit: 1, Burst: 2})
 	var ran int
 	stub := func(context.Context) error {
 		ran++
@@ -67,7 +67,7 @@ func TestGuardRateLimit(t *testing.T) {
 // TestGuardCircuitOpen confirms genuine failures still open the circuit and
 // the rejection short-circuits the next call before the stub runs.
 func TestGuardCircuitOpen(t *testing.T) {
-	h := newConnWithPolicy(t, resilience.Policy{ErrorThreshold: 2})
+	h := newConnWithPolicy(t, resilience.ClientPolicy{ErrorThreshold: 2})
 	boom := errors.New("connection reset")
 
 	assert.Error(t, h.guard(context.Background(), func(context.Context) error { return boom })).Is(boom)

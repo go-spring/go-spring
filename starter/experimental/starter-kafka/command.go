@@ -30,6 +30,15 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // newObserveHook builds a kgo hook that emits a per-message access log (see
@@ -67,11 +76,11 @@ func (h *observeHook) OnFetchRecordRead(r *kgo.Record) {
 }
 
 // clientGuard is the per-client resilience attachment: the executor chain and
-// the stable resource label it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/resource combination).
+// the stable service label it executes under, colocated so a guard lookup
+// reads the pair atomically (no torn exec/service combination).
 type clientGuard struct {
-	exec     resilience.Executor
-	resource string
+	exec    resilience.ClientExecutor
+	service string
 }
 
 // clientGuards indexes the guard by the raw client bean, so the package-level
@@ -84,16 +93,19 @@ var clientGuards sync.Map // *kgo.Client -> *clientGuard
 // (a record is handed to the internal producer and a callback fires on
 // completion), so wrapping it in exec.Execute has no meaning. The synchronous
 // ProduceSync path, which blocks until the broker acknowledges, is what
-// GuardedProduceSync protects. resource scopes the limiter/breaker state.
+// GuardedProduceSync protects. service scopes the limiter/breaker state.
 //
-// Both the executor and the fault injector are resolved through neutral seams
-// ([resilience.ExecutorFor] / [fault.InjectorFor]) that starter-govern backs with
-// the governance center — so this function has zero coupling to cloud/governance.
-// When governance is off, ExecutorFor yields a transparent no-op executor; fault
-// wraps it when an injector is registered (nil-safe otherwise).
-func applyResilience(cl *kgo.Client, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor("kafka", resource))
-	clientGuards.Store(cl, &clientGuard{exec: exec, resource: resource})
+// The executor is built from the injected [resilience.Manager] and wrapped with
+// the injected [fault.Injector] — the governance beans gs passes in, so this
+// function needs no reference to the governance center. A nil manager is
+// normalized to an unarmed one, whose executor is a transparent pass-through;
+// the injector is nil-safe, so fault wraps only when an injector is present.
+func applyResilience(cl *kgo.Client, service string, mgr *resilience.Manager, inj *fault.Injector) error {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)
+	clientGuards.Store(cl, &clientGuard{exec: exec, service: service})
 	return nil
 }
 
@@ -115,7 +127,7 @@ func guard(ctx context.Context, cl *kgo.Client, call func(context.Context) error
 		return call(ctx)
 	}
 	g := v.(*clientGuard)
-	return g.exec.Execute(ctx, g.resource, call)
+	return g.exec.Execute(ctx, call)
 }
 
 // GuardedProduceSync produces recs synchronously on cl, routed through the

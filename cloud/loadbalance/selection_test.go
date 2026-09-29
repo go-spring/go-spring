@@ -24,65 +24,52 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// fakeProvider stands in for the governance-backed provider: it records the
-// labels it was asked about, arms each subscriber immediately with a current
-// Selection (as the real provider must), lets a test push a later change, and
-// counts detaches so a stop path can be asserted.
-type fakeProvider struct {
-	mu       sync.Mutex
-	cur      Selection
-	labels   []string
-	subs     []func(Selection)
-	detached int
+// fakeSource stands in for the governance center's rule document: it records the
+// labels it was asked to resolve and lets a test push a later change through
+// [Manager.Apply], which is the only entry point the center uses.
+type fakeSource struct {
+	mu     sync.Mutex
+	cur    Selection
+	labels []string
 }
 
-func (f *fakeProvider) provider() SelectionProvider {
-	return func(label string, apply func(Selection)) func() {
-		f.mu.Lock()
-		f.labels = append(f.labels, label)
-		i := len(f.subs)
-		f.subs = append(f.subs, apply)
-		cur := f.cur
-		f.mu.Unlock()
-		apply(cur)
-		return func() {
-			f.mu.Lock()
-			defer f.mu.Unlock()
-			f.subs[i] = nil
-			f.detached++
-		}
-	}
-}
-
-func (f *fakeProvider) push(s Selection) {
+func (f *fakeSource) resolve(label string) Selection {
 	f.mu.Lock()
-	subs := append([]func(Selection){}, f.subs...)
+	defer f.mu.Unlock()
+	f.labels = append(f.labels, label)
+	return f.cur
+}
+
+// manager returns a Manager armed against this source.
+func (f *fakeSource) manager() *Manager {
+	m := NewManager()
+	m.Apply(Settings{Enabled: true, Resolve: f.resolve})
+	return m
+}
+
+// push adopts s as the source's current selection and re-applies, delivering the
+// change to every bound pool.
+func (f *fakeSource) push(m *Manager, s Selection) {
+	f.mu.Lock()
+	f.cur = s
 	f.mu.Unlock()
-	for _, apply := range subs {
-		if apply != nil {
-			apply(s)
-		}
-	}
+	m.Apply(Settings{Enabled: true, Resolve: f.resolve})
 }
 
-// installFake registers f as the process-wide provider and disarms it again when
-// the test ends, so the seam never leaks into another test.
-func installFake(t *testing.T, f *fakeProvider) {
-	t.Helper()
-	RegisterSelectionProvider(f.provider())
-	t.Cleanup(func() { RegisterSelectionProvider(nil) })
+func (f *fakeSource) labelCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.labels)
 }
 
-// TestBindSelectionWithoutProvider pins the transparent pass-through: with no
-// provider registered (governance absent from the process) a pool keeps the
-// strategy it was built with, the returned stop is a no-op, and a double stop is
-// harmless.
-func TestBindSelectionWithoutProvider(t *testing.T) {
-	RegisterSelectionProvider(nil)
-	t.Cleanup(func() { RegisterSelectionProvider(nil) })
+// TestBindWithoutManager pins the transparent pass-through: with an unarmed
+// manager (governance absent from the process) a pool keeps the strategy it was
+// built with, the returned stop is a no-op, and a double stop is harmless.
+func TestBindWithoutManager(t *testing.T) {
+	m := NewManager()
 
 	p := NewPool(staticSource(eps("a", "b")...), NewRoundRobin())
-	stop := p.BindSelection("demo:resource")
+	stop := m.Bind(p, "demo:service")
 	stop()
 	stop()
 
@@ -92,42 +79,40 @@ func TestBindSelectionWithoutProvider(t *testing.T) {
 	assert.That(t, ep.Addr == "a" || ep.Addr == "b").True()
 }
 
-// TestBindSelectionAppliesCurrentAndLaterChanges covers the provider contract
-// end to end: the current policy lands before the first Pick (not only on the
-// next push), a later push lands in place, and both the strategy name and the
-// suspension thresholds are readable back off the pool.
-func TestBindSelectionAppliesCurrentAndLaterChanges(t *testing.T) {
-	f := &fakeProvider{cur: Selection{Balancer: LeastConn, OutlierThreshold: 2, OutlierSuspendFor: 30}}
-	installFake(t, f)
+// TestBindAppliesCurrentAndLaterChanges covers the contract end to end: the
+// current selection lands before the first Pick (not only on the next push), a
+// later push lands in place, and both the strategy name and the suspension
+// thresholds are readable back off the pool.
+func TestBindAppliesCurrentAndLaterChanges(t *testing.T) {
+	f := &fakeSource{cur: Selection{Balancer: LeastConn, OutlierThreshold: 2, OutlierSuspendFor: 30}}
+	m := f.manager()
 
-	p := NewPool(staticSource(eps("a", "b")...), NewRoundRobin(),
-		WithTracker(NewTracker(TrackerConfig{})))
-	stop := p.BindSelection("demo:resource")
+	p := NewPool(staticSource(eps("a", "b")...), NewRoundRobin())
+	stop := m.Bind(p, "demo:service")
 	defer stop()
 
-	assert.That(t, f.labels).Equal([]string{"demo:resource"})
 	assert.That(t, p.Selection().Balancer).Equal(LeastConn)
 	assert.Number(t, p.Selection().OutlierThreshold).Equal(2)
 	assert.Number(t, p.Tracker().Config().Threshold).Equal(2)
 
-	f.push(Selection{Balancer: Weighted, OutlierThreshold: 5, OutlierSuspendFor: 60})
+	f.push(m, Selection{Balancer: Weighted, OutlierThreshold: 5, OutlierSuspendFor: 60})
 	assert.That(t, p.Selection().Balancer).Equal(Weighted)
 	assert.Number(t, p.Tracker().Config().Threshold).Equal(5)
 }
 
-// TestBindSelectionStrategyTakesEffect proves the swap is real and not just
-// bookkeeping: round-robin splits the picks evenly, while a pushed weighted
-// policy makes the pool follow the 9:1 weights instead.
-func TestBindSelectionStrategyTakesEffect(t *testing.T) {
-	f := &fakeProvider{}
-	installFake(t, f)
+// TestBindStrategyTakesEffect proves the swap is real and not just bookkeeping:
+// round-robin splits the picks evenly, while a pushed weighted selection makes
+// the pool follow the 9:1 weights instead.
+func TestBindStrategyTakesEffect(t *testing.T) {
+	f := &fakeSource{}
+	m := f.manager()
 
 	src := staticSource(
 		discovery.Endpoint{Addr: "a", Healthy: true, Weight: 9},
 		discovery.Endpoint{Addr: "b", Healthy: true, Weight: 1},
 	)
 	p := NewPool(src, NewRoundRobin())
-	stop := p.BindSelection("demo:resource")
+	stop := m.Bind(p, "demo:service")
 	defer stop()
 
 	counts := map[string]int{}
@@ -138,7 +123,7 @@ func TestBindSelectionStrategyTakesEffect(t *testing.T) {
 	}
 	assert.Number(t, counts["a"]).Equal(20) // even split: the strategy is still round_robin
 
-	f.push(Selection{Balancer: Weighted})
+	f.push(m, Selection{Balancer: Weighted})
 	counts = map[string]int{}
 	for range 100 {
 		ep, err := p.Pick(PickInfo{})
@@ -149,71 +134,125 @@ func TestBindSelectionStrategyTakesEffect(t *testing.T) {
 	assert.That(t, counts["a"] > 80).True()
 }
 
-// TestBindSelectionUnknownNameKeepsLastGood pins the degrade-don't-fail rule:
-// the governance Source contract has no error channel, so a rule naming a
-// strategy that does not exist leaves the last accepted one in force.
-func TestBindSelectionUnknownNameKeepsLastGood(t *testing.T) {
-	f := &fakeProvider{}
-	installFake(t, f)
+// TestBindUnknownNameKeepsLastGood pins the degrade-don't-fail rule: the
+// governance Source contract has no error channel, so a rule naming a strategy
+// that does not exist leaves the last accepted one in force.
+func TestBindUnknownNameKeepsLastGood(t *testing.T) {
+	f := &fakeSource{}
+	m := f.manager()
 
 	p := NewPool(staticSource(eps("a")...), NewRoundRobin())
-	stop := p.BindSelection("demo:resource")
+	stop := m.Bind(p, "demo:service")
 	defer stop()
 
-	f.push(Selection{Balancer: LeastConn})
+	f.push(m, Selection{Balancer: LeastConn})
 	assert.That(t, p.Selection().Balancer).Equal(LeastConn)
 
-	f.push(Selection{Balancer: "no_such_strategy"})
+	f.push(m, Selection{Balancer: "no_such_strategy"})
 	assert.That(t, p.Selection().Balancer).Equal(LeastConn)
 
 	// An empty name leaves the strategy alone too, but still applies thresholds.
-	f.push(Selection{OutlierThreshold: 3})
+	f.push(m, Selection{OutlierThreshold: 3})
 	assert.That(t, p.Selection().Balancer).Equal(LeastConn)
 	assert.Number(t, p.Selection().OutlierThreshold).Equal(3)
 }
 
-// TestBindSelectionIsPerPoolNotPerLabel pins the non-memoized contract: one
-// label may legitimately back several pools (two entries sharing a service
-// name, a rebuilt client), so each bind subscribes independently and a change
-// reaches every pool.
-func TestBindSelectionIsPerPoolNotPerLabel(t *testing.T) {
-	f := &fakeProvider{}
-	installFake(t, f)
+// TestBindIsPerPoolNotPerLabel pins the non-memoized contract: one label may
+// legitimately back several pools (two entries sharing a service name, a rebuilt
+// client), so each bind subscribes independently and a change reaches every pool.
+func TestBindIsPerPoolNotPerLabel(t *testing.T) {
+	f := &fakeSource{}
+	m := f.manager()
 
 	p1 := NewPool(staticSource(eps("a")...), NewRoundRobin())
 	p2 := NewPool(staticSource(eps("a")...), NewRoundRobin())
-	stop1 := p1.BindSelection("demo:resource")
-	stop2 := p2.BindSelection("demo:resource")
+	stop1 := m.Bind(p1, "demo:service")
+	stop2 := m.Bind(p2, "demo:service")
 	defer stop2()
 
-	assert.That(t, f.labels).Equal([]string{"demo:resource", "demo:resource"})
-
-	f.push(Selection{Balancer: P2C})
+	f.push(m, Selection{Balancer: P2C})
 	assert.That(t, p1.Selection().Balancer).Equal(P2C)
 	assert.That(t, p2.Selection().Balancer).Equal(P2C)
 
 	// Detaching one leaves the other live — a torn-down client must not silence
 	// its still-running neighbour.
 	stop1()
-	assert.Number(t, f.detached).Equal(1)
-	f.push(Selection{Balancer: LeastConn})
+	f.push(m, Selection{Balancer: LeastConn})
 	assert.That(t, p1.Selection().Balancer).Equal(P2C)
 	assert.That(t, p2.Selection().Balancer).Equal(LeastConn)
 }
 
-// TestRegisterSelectionProviderNilDisarms pins the testability escape hatch: a
-// nil provider turns the seam back off, so a later bind is a no-op that does not
-// even reach a provider.
-func TestRegisterSelectionProviderNilDisarms(t *testing.T) {
-	f := &fakeProvider{cur: Selection{Balancer: LeastConn}}
-	installFake(t, f)
+// TestApplyDisabledDisarms pins that a disabled settings switches the manager
+// back off, so a later bind is a no-op that does not even consult the resolver.
+func TestApplyDisabledDisarms(t *testing.T) {
+	f := &fakeSource{cur: Selection{Balancer: LeastConn}}
+	m := f.manager()
 
 	p := NewPool(staticSource(eps("a")...), NewRoundRobin())
-	assert.That(t, p.BindSelection("demo:resource")).NotNil()
+	stop := m.Bind(p, "demo:service")
+	assert.That(t, p.Selection().Balancer).Equal(LeastConn)
+	stop()
+	before := f.labelCount()
 
-	RegisterSelectionProvider(nil)
+	m.Apply(Settings{Enabled: false, Resolve: f.resolve})
 	p2 := NewPool(staticSource(eps("a")...), NewRoundRobin())
-	p2.BindSelection("demo:resource")
-	assert.Number(t, len(f.labels)).Equal(1)
+	p2stop := m.Bind(p2, "demo:service")
+	p2stop()
+
+	assert.Number(t, f.labelCount()).Equal(before) // the resolver was never consulted
 	assert.That(t, p2.Selection().Balancer).Equal("")
+	assert.That(t, m.Enabled()).False()
+}
+
+// TestSelectionForUnarmedIsZero pins the read path on an unarmed manager.
+func TestSelectionForUnarmedIsZero(t *testing.T) {
+	m := NewManager()
+	assert.That(t, m.SelectionFor("demo:service")).Equal(Selection{})
+	assert.That(t, m.Enabled()).False()
+}
+
+// TestBindBeforeArmingSurvives is the regression guard for a silent loss of the
+// binding: a pool is built during bean CONSTRUCTION, which runs before the
+// wiring bean arms the center (Centre.GoLive is an Init hook). A subscription
+// taken at that moment must be REMEMBERED and armed once the manager is armed —
+// dropping it would leave the pool unmanaged for the life of the process, with
+// nothing to indicate it.
+func TestBindBeforeArmingSurvives(t *testing.T) {
+	m := NewManager() // unarmed: this is the state at construction time
+	pool := NewPool(staticSource(eps("a")...), NewRoundRobin())
+
+	stop := m.Bind(pool, "demo:service")
+	defer stop()
+	// Unarmed: the pool keeps the strategy it was built with.
+	assert.That(t, pool.Selection().Balancer).Equal("")
+
+	// The center goes live and arms the manager.
+	f := &fakeSource{cur: Selection{Balancer: LeastConn, OutlierThreshold: 2, OutlierSuspendFor: 30}}
+	m.Apply(Settings{Enabled: true, Resolve: f.resolve})
+
+	// The binding taken before arming must now be live.
+	assert.That(t, pool.Selection().Balancer).Equal(LeastConn)
+	assert.Number(t, pool.Tracker().Config().Threshold).Equal(2)
+
+	// ...and must keep following later changes.
+	f.push(m, Selection{Balancer: Weighted, OutlierThreshold: 5, OutlierSuspendFor: 60})
+	assert.That(t, pool.Selection().Balancer).Equal(Weighted)
+	assert.Number(t, pool.Tracker().Config().Threshold).Equal(5)
+}
+
+// TestBindWhileDisabledArmsOnEnable is the same guard across a disable/enable
+// cycle: a manager that is explicitly disabled still remembers subscriptions, so
+// switching governance back on reaches the pools that bound while it was off.
+func TestBindWhileDisabledArmsOnEnable(t *testing.T) {
+	m := NewManager()
+	m.Apply(Settings{Enabled: false})
+
+	pool := NewPool(staticSource(eps("a")...), NewRoundRobin())
+	stop := m.Bind(pool, "demo:service")
+	defer stop()
+	assert.That(t, pool.Selection().Balancer).Equal("")
+
+	f := &fakeSource{cur: Selection{Balancer: P2C}}
+	m.Apply(Settings{Enabled: true, Resolve: f.resolve})
+	assert.That(t, pool.Selection().Balancer).Equal(P2C)
 }

@@ -26,7 +26,7 @@ goroutine，必须在关停时释放。
   接 `destroy` 就为这个（`project_starter_bigcache`）。
 - **`AsCache` 适配器直接导出 bean。** starter 对 `cloud/cache` 的贡献是
   每实例一个名为 `bigcache:<name>` 的 `cache.Cache` bean（适配器见
-  `bytecache/`），按名注入即可；没人注入则不实例化，无配置开关。
+  `bytecache.go`），按名注入即可；没人注入则不实例化，无配置开关。
 - **`check.sh` 不需要 docker。** 进程内缓存无服务容器——冒烟就是
   普通 `go test`。
 

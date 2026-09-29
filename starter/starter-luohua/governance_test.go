@@ -32,9 +32,9 @@ import (
 func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
 	d := luohuaResilienceDriver{}
 
-	ex, err := d.NewExecutor(resilience.Policy{})
+	ex, err := d.NewClientExecutor("svc", resilience.ClientPolicy{})
 	if err != nil {
-		t.Fatalf("NewExecutor: %v", err)
+		t.Fatalf("NewClientExecutor: %v", err)
 	}
 	lh, ok := ex.(*luohuaExecutor)
 	if !ok {
@@ -45,7 +45,7 @@ func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
 	}
 
 	ran := false
-	if err := ex.Execute(context.Background(), "demo:resource", func(context.Context) error {
+	if err := ex.Execute(context.Background(), func(context.Context) error {
 		ran = true
 		return nil
 	}); err != nil {

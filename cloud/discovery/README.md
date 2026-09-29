@@ -103,8 +103,9 @@ Both are no-ops when empty — pass config values through unconditionally.
 ## Resolver: the bound by-name consumer
 
 ```go
-load, err := discovery.NewResolver(ctx, "default", "orders-redis")
-bal, _ := loadbalance.New(loadbalance.RoundRobin)
+backend := discovery.NewStaticDiscovery(/* ... live endpoints from the registry ... */)
+load, err := discovery.NewResolver(ctx, backend, "orders-redis")
+bal := loadbalance.NewRoundRobin()
 pool := loadbalance.NewPool(load, bal)
 ep, err := pool.Pick(loadbalance.PickInfo{})
 ```

@@ -23,7 +23,7 @@ For TCC and AT patterns see the subpackages
   `AtObserver`) in the parent package, model subpackages stay otel-free.
 - `StepRegistry` + `GlobalTransactional(coord, reg)` — the decorator-level
   `@GlobalTransactional` equivalent, keyed by method name.
-- Step-level `RetryPolicy` (aliased to `resilience.Policy`) reuses the same
+- Step-level `RetryPolicy` (aliased to `resilience.ClientPolicy`) reuses the same
   knob set as outbound resilience.
 
 ## Usage

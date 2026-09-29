@@ -22,10 +22,11 @@ import (
 	"time"
 
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	health2 "go-spring.org/starter-tdengine/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
@@ -38,8 +39,9 @@ func init() {
 	// to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.tdengine.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.tdengine.instances}", func(name string, c Config) error {
-			// The wrapper bean owns the resilience executor, so Init arms it
-			// (InitMethod) and Destroy tears it down. The Driver bean is
+			// The wrapper bean owns the resilience executor, so the ctor arms
+			// it (ArmGovernance, with the injected governance beans) and
+			// Destroy tears it down. The Driver bean is
 			// selected by the entry's ${driver} key: unset → "?" (nullable
 			// by-type — injects the single Driver bean when one is provided,
 			// nil otherwise, and the ctor falls back to the bundled
@@ -48,11 +50,21 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.tdengine.instances."+name+".driver:=${spring.tdengine.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. ArmGovernance
+				// treats a nil bean as an unarmed authority, i.e. a transparent
+				// pass-through.
+				gs.IndexArg(3, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(4, gs.TagArg("?")), // inj *fault.Injector
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
 			r.Provide(func(w *Client) *health.Indicator {
-				return health2.NewClientHealth(name, w.DB)
+				return NewClientHealth(name, w.DB)
 			}, gs.TagArg(name)).Name("tdengine:" + name).Caller(1)
 			return nil
 		})
@@ -63,7 +75,12 @@ func init() {
 // configuration. The server is pinged once at startup so that
 // misconfiguration or an unreachable taosAdapter fails fast rather than on
 // first use.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
+//
+// mgr and inj are the governance beans starter-governance provides. The wiring
+// injects them NULLABLY, so both are nil in a container without
+// starter-governance as well as in a standalone (non-gs) call;
+// [Client.ArmGovernance] treats a nil bean as "governance off".
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating tdengine client, dsn-addr=%s", dsnAddr(c.DSN))
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -72,6 +89,13 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver) (*Client, error) {
 	}
 	cl, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
+		return nil, err
+	}
+	// Arm governance on the client. It runs here, not inside the driver, so a
+	// custom Driver's client is governed too — without the Driver interface
+	// carrying a dependency on cloud/governance.
+	if err := cl.ArmGovernance(mgr, inj); err != nil {
+		_ = cl.Close()
 		return nil, err
 	}
 	pctx, cancel := context.WithTimeout(ctx.Context, 10*time.Second)

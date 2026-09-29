@@ -130,7 +130,7 @@ func TestChunkStep_RetryReplaysBufferWithoutRereading(t *testing.T) {
 			return nil
 		}),
 		ChunkSize: 5,
-		Retry:     resilience.Policy{MaxRetries: 3},
+		Retry:     resilience.ClientPolicy{MaxRetries: 3},
 	}
 
 	je, err := (&batch.Job{Name: "replay", Steps: []batch.Step{step}}).Run(ctx, repo, nil)

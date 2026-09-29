@@ -46,7 +46,6 @@ import (
 	StarterNats "go-spring.org/starter-nats"
 
 	"go-spring.org/spring/gs"
-	bushealth "go-spring.org/starter-config-bus/health"
 )
 
 var (
@@ -77,7 +76,7 @@ func init() {
 	// every other probe and is exactly what leaves an instance silently stuck on
 	// stale configuration.
 	gs.Provide(func(bus *ConfigBus) *health.Indicator {
-		return bushealth.NewBusHealth("configBus", bus.Healthy)
+		return NewBusHealth("configBus", bus.Healthy)
 	}, gs.TagArg("configBus")).
 		Condition(gs.OnProperty("spring.config.bus")).
 		Name("config-bus:configBus")

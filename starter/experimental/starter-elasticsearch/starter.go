@@ -22,10 +22,11 @@ import (
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	health2 "go-spring.org/starter-elasticsearch/health"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
@@ -52,13 +53,22 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.elasticsearch.instances."+name+".discovery:=${spring.elasticsearch.default.discovery:=none}}?")),
 				gs.IndexArg(3, gs.TagArg("${spring.elasticsearch.instances."+name+".driver:=${spring.elasticsearch.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container (the normal
+				// case) and are absent from a container without it. Without the
+				// "?" gs would treat an absent bean as a wiring error and the app
+				// would not boot — turning "governance is off" into "governance
+				// must be imported". Init treats a nil manager as an unarmed
+				// authority, i.e. a transparent pass-through.
+				gs.IndexArg(4, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(5, gs.TagArg("?")), // inj *fault.Injector
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The wrapper is what is
 			// autowired; the embedded *elasticsearch.Client is handed to the
 			// indicator.
 			r.Provide(func(w *Client) *health.Indicator {
-				return health2.NewClientHealth(name, w.Client)
+				return NewClientHealth(name, w.Client)
 			}, gs.TagArg(name)).Name("elasticsearch:" + name).Caller(1)
 			return nil
 		})
@@ -78,7 +88,10 @@ func init() {
 // so cluster membership keeps following the naming service (see pool.go). In mesh
 // mode the sidecar owns discovery+LB, so the static Addresses (or CloudID) are
 // used unchanged. See Config.ServiceName.
-func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver) (*Client, error) {
+// The trailing governance beans are injected by type (nil in a standalone call)
+// and retained on the wrapper for Init to arm the executor with.
+func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver,
+	mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	if c.ServiceName != "" && !mesh.Enabled() {
 		addrs, err := resolveAddresses(ctx.Context, c, backend)
 		if err != nil {
@@ -95,7 +108,7 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create elasticsearch client")
 	}
-	w := &Client{Client: client, cfg: c}
+	w := &Client{Client: client, cfg: c, mgr: mgr, inj: inj}
 	// The DefaultDriver attaches a dynamic transport (its executor swapped in by
 	// Init); pick it up so the wrapper can arm it. Custom drivers may
 	// not install one - resilience is then simply unavailable for that client.

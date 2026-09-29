@@ -77,7 +77,7 @@ err = c.Start()
 
 ```go
 func ProvideDriver(cl *StarterRocketmq.Client) messaging.Driver {
-    return StarterRocketmq.NewDriver(cl)
+    return StarterRocketmq.NewDriver(cl, nil)
 }
 ```
 

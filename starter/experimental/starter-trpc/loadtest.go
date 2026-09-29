@@ -19,27 +19,37 @@ package StarterTrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/propagate"
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/filter"
 )
 
 // LoadTestServerFilter is a tRPC ServerFilter that tags the handler context as
-// load-test traffic when the inbound server metadata carries the marker key
-// (x-loadtest). The starter registers it under the name "loadtest"
-// (filter.Register); add "loadtest" to the service filter chain — ideally first,
-// so the marker is on the context before tracing, metrics and the handler run,
-// letting every downstream layer branch on traffic.IsLoadTest(ctx).
+// load-test traffic when the inbound server metadata carries prop's marker key.
+// The starter registers it under the name "loadtest" (filter.Register); add
+// "loadtest" to the service filter chain — ideally first, so the marker is on the
+// context before tracing, metrics and the handler run, letting every downstream
+// layer branch on prop.IsLoadTest(ctx).
 //
 // It is the tRPC inbound companion to cloud/governance/traffic's outbound carrier
 // injection, letting a load-test flag ride a tRPC hop end to end. Without the
-// marker the filter is a no-op pass-through.
-func LoadTestServerFilter() filter.ServerFilter {
+// marker the filter is a no-op pass-through. A nil propagator means go-spring's
+// default convention.
+func LoadTestServerFilter(prop traffic.Propagator) filter.ServerFilter {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
+		// tRPC metadata values are []byte; walk them into the seam's string
+		// multi-map.
 		md := trpc.Message(ctx).ServerMetaData()
-		if v, ok := md[canonical.MetaKeyLoadTest]; ok && canonical.IsAffirmative(string(v)) {
-			ctx = canonical.WithLoadTest(ctx, "trpc-metadata")
+		h := propagate.MultiMap{}
+		for k, v := range md {
+			h[k] = []string{string(v)}
 		}
+		ctx = prop.Extract(ctx, h)
 		return next(ctx, req)
 	}
 }

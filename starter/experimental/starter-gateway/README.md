@@ -89,7 +89,7 @@ Filters wrap the proxy handler outermost-first in declaration order, listed unde
 | `rewriteHost(h)` | override the outbound Host header |
 | `preserveHostHeader` | keep the incoming Host instead of the upstream's |
 | `requestId([header])` | ensure an `X-Request-Id` (or a named header) is present |
-| `rateLimit(rate=..,burst=..,...)` | throttle via the resilience RateLimiter |
+| `rateLimit(rate=..,burst=..,...)` | throttle through the resilience executor |
 | `jwt-auth(<bean>)` / `lua(<bean>)` | delegate to a bean-backed `FilterWrapper` (see below) |
 
 Register your own filter with `StarterGateway.RegisterFilter(name, factory)`.
@@ -110,7 +110,7 @@ Register your own filter with `StarterGateway.RegisterFilter(name, factory)`.
 
 ## Resilience
 
-Named policies under `spring.gateway.resilience.<name>` mirror `resilience.Policy`
+Named policies under `spring.gateway.resilience.<name>` mirror `resilience.ClientPolicy`
 (rate limit, burst, error threshold, open duration, max concurrent, retries,
 timeout). A route references one by `resilience.policy=<name>`; routes sharing a
 policy share pooled breaker/limiter state.

@@ -34,6 +34,15 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go.opentelemetry.io/otel/propagation"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Both directions are reachable without the messaging.Driver:
@@ -153,14 +162,20 @@ func (c *Conn) wrapConsume(subject string, handler ContextHandler) nats.MsgHandl
 // through opt-in call-site guards (PublishGuarded/RequestGuarded) rather than a
 // transparent interceptor. Only the adapter shape differs — the core is reused.
 //
-// The executor is resolved through the neutral [resilience.ExecutorFor] seam,
-// which starter-govern backs with the governance center — so this function has
-// zero coupling to cloud/governance. When governance is off, ExecutorFor yields a
-// transparent no-op executor; fault wraps it when enabled.
-func applyResilience(c Config, conn *Conn, resource string) error {
-	exec := fault.WrapExecutor(resilience.ExecutorFor("nats", resource))
+// The executor is armed from the *resilience.Manager bean the container injects
+// into the connection's constructor. mgr is normalized here: an unarmed manager
+// is exactly the "governance off" pass-through, while a nil pointer would panic
+// on the method call. The fault injector wraps it with inj, which is nil-safe
+// (with no injector the fault layer is a transparent pass-through). The
+// manager's ClientExecutorFor resolves its backing executor lazily, on each Execute, so
+// the arming order relative to starter-governance's wiring is irrelevant.
+func applyResilience(c Config, conn *Conn, service string, mgr *resilience.Manager, inj *fault.Injector) error {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("nats", service), service, inj)
 	conn.exec = exec
-	conn.resource = resource
+	conn.service = service
 	return nil
 }
 
@@ -172,7 +187,7 @@ func (c *Conn) guard(ctx context.Context, call func(context.Context) error) erro
 	if c.exec == nil {
 		return call(ctx)
 	}
-	return c.exec.Execute(ctx, c.resource, call)
+	return c.exec.Execute(ctx, call)
 }
 
 // PublishGuarded publishes data on subj, routed through the resilience executor

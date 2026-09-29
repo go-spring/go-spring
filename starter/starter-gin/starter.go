@@ -24,6 +24,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -36,6 +39,9 @@ func init() {
 		NewSimpleGinServer,
 		gs.IndexArg(1, gs.TagArg("?")),
 		gs.IndexArg(2, gs.TagArg("${spring.gin.server}")),
+		gs.IndexArg(3, gs.TagArg("?")), // nullable resilience.Manager bean
+		gs.IndexArg(4, gs.TagArg("?")), // nullable fault.Injector bean
+		gs.IndexArg(5, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.gin.server.addr"))
 }
@@ -91,11 +97,15 @@ type SimpleGinServer struct {
 //
 // outer is the application-supplied EngineMiddleware hook (nullable - nil when
 // none is provided); it runs before the built-in set so app middleware sits on
-// the outside of the chain. cfg is bound from ${spring.gin.server}. Inbound
-// admission protection (rate-limit / breaker) is resolved inside
-// ApplyMiddlewares via the neutral resilience.ExecutorFor seam, so this server
-// has no coupling to cloud/governance.
-func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config) (*SimpleGinServer, error) {
+// the outside of the chain. cfg is bound from ${spring.gin.server}. mgr is the
+// governance starter's resilience manager bean (nullable - nil when governance
+// is not imported), which supplies the inbound admission middleware's
+// rate-limit / bulkhead / breaker policy; inj is the fault injector bean
+// (nullable likewise), handed to ApplyMiddlewares for the inbound fault
+// middleware. prop is the application's load-test convention bean (nullable -
+// nil when none is provided), which the inbound LoadTest middleware tags the
+// request context with.
+func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) (*SimpleGinServer, error) {
 	e := gin.New()
 
 	// Run the application-supplied outer hook first, so it wraps the built-in
@@ -106,7 +116,7 @@ func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Con
 	}
 
 	if cfg.Middleware.Enabled {
-		if err := ApplyMiddlewares(e, cfg); err != nil {
+		if err := ApplyMiddlewares(e, cfg, mgr, inj, prop); err != nil {
 			return nil, err
 		}
 	}

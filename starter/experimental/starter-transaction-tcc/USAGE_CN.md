@@ -297,7 +297,7 @@ gs.Run()
 
 值得知道的设计取舍：在飞日志的持久化错误被有意吞掉（"failing the whole operation on a
 log write would be worse than a gap in the log"，coordinator.go）；重试复用
-`resilience.Policy`（"default" executor），使 TCC 相位重试与出站 resilience 共用一套旋钮。
+`resilience.ClientPolicy`（"default" executor），使 TCC 相位重试与出站 resilience 共用一套旋钮。
 
 ---
 

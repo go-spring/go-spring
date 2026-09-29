@@ -23,7 +23,12 @@ import (
 )
 
 func init() {
-	Register(Weighted, NewWeighted)
+	Register(Weighted, func(cfg Config) (Balancer, error) {
+		if err := cfg.only(); err != nil {
+			return nil, err
+		}
+		return NewWeighted(), nil
+	})
 }
 
 // weighted keeps a "current weight" per endpoint address across picks, which is

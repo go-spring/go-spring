@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/influxdata/influxdb-client-go/v2/domain"
-	health2 "go-spring.org/starter-influxdb/health"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -31,11 +30,11 @@ import (
 // carries the reported message.
 func TestHealthError(t *testing.T) {
 	pass := domain.HealthCheckStatusPass
-	assert.Error(t, health2.HealthError(&domain.HealthCheck{Status: pass})).Nil()
+	assert.Error(t, HealthError(&domain.HealthCheck{Status: pass})).Nil()
 
 	fail := domain.HealthCheckStatusFail
 	msg := "corrupt tsdb"
-	err := health2.HealthError(&domain.HealthCheck{Status: fail, Message: &msg})
+	err := HealthError(&domain.HealthCheck{Status: fail, Message: &msg})
 	assert.That(t, err != nil).True()
 	assert.That(t, strings.Contains(err.Error(), "corrupt tsdb")).True()
 }

@@ -25,7 +25,10 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go-spring.org/cloud/governance/traffic/canonical"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/propagate"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -86,18 +89,24 @@ func RequestIDFromContext(ctx context.Context) string {
 // same ${spring.gin.server} tag the starter uses) and calls ApplyMiddlewares
 // from its RouterRegister; the individual constructors (RequestID, Observe, ...)
 // are also exported for finer-grained composition.
-func ApplyMiddlewares(e *gin.Engine, cfg Config) error {
+//
+// mgr is the governance starter's *resilience.Manager bean, which supplies the
+// admission middleware's policy; a nil manager disables admission (a transparent
+// pass-through). inj is the governance starter's *fault.Injector bean the fault
+// middleware gates requests on (nil likewise, which disables injection). prop is
+// the application's load-test convention bean (nil means go-spring's default).
+func ApplyMiddlewares(e *gin.Engine, cfg Config, mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all: it tags the request context
 	// with the load-test marker (when the inbound header carries it) before
 	// RequestID, Observe or any handler runs, so every downstream layer —
 	// access logs, metrics, the handler, and any outbound client the handler
-	// calls — can branch on traffic.IsLoadTest(c.Request.Context()). The check
-	// is a single header lookup, so leaving it on (the default) is effectively
+	// calls — can branch on the load-test convention's IsLoadTest. The check is
+	// a single header lookup, so leaving it on (the default) is effectively
 	// free; flip middleware.loadtest.enabled off to disable.
 	if mw.LoadTest.Enabled {
-		e.Use(LoadTest(mw.LoadTest.Header))
+		e.Use(LoadTest(prop))
 	}
 
 	// RequestID is outermost: it stamps the request id onto the request context
@@ -120,7 +129,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config) error {
 	// Resilience admission (opt-in): runs the request through the configured
 	// rate-limit / bulkhead / breaker before the handler chain. Sits inside
 	// Observe so 429/503 rejects are still observed.
-	adm, err := buildAdmission(cfg)
+	adm, err := buildServerPolicy(cfg, mgr)
 	if err != nil {
 		return errutil.Explain(err, "gin: resilience admission")
 	}
@@ -128,15 +137,14 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config) error {
 		e.Use(adm)
 	}
 
-	// Fault injection (opt-in): injects latency/errors into inbound requests so
-	// an operator can "set fire" to the running server. Sits inside Observe so
-	// the resulting 503s are observed, and after admission so a rate-limited
-	// request is not also faulted.
-	// Fault injection (always installed). The injector is resolved from the
-	// neutral [fault.InjectorFor] seam (nil-safe: a transparent pass-through when
-	// fault is off / governance not imported), letting an operator "set fire" to
-	// the running server and hot-toggle it at runtime without a restart.
-	e.Use(buildFault())
+	// Fault injection (always installed). The injector is the governance
+	// starter's bean, captured here once (nil-safe: a transparent pass-through
+	// when governance is not imported), letting an operator "set fire" to the
+	// running server and hot-toggle it at runtime without a restart — the center
+	// swaps the injector's config in place. Sits inside Observe so the resulting
+	// 503s are observed, and after admission so a rate-limited request is not
+	// also faulted.
+	e.Use(buildFault(inj))
 
 	// Policy middlewares - opt-in, and they sit inside Observe so short-circuit
 	// responses (204, 403) are still observed.
@@ -174,25 +182,25 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config) error {
 }
 
 // LoadTest installs the inbound load-test traffic identification middleware.
-// When the incoming request carries the configured marker header (default
-// X-LoadTest) it tags the request context via canonical.WithLoadTest, so the
-// handler chain and every outbound client the handlers drive can recognise
-// synthetic load through traffic.IsLoadTest(c.Request.Context()). It is the
-// inbound companion to cloud/governance/traffic's outbound injection: together they let a
-// load-test flag ride an HTTP hop end to end. An empty header falls back to the
-// traffic package default so the exported constructor is safe to call directly.
+// When the incoming request carries the propagator's marker header it tags the
+// request context, so the handler chain and every outbound client the handlers
+// drive can recognise synthetic load through prop. It is the inbound companion
+// to cloud/governance/traffic's outbound injection: together they let a
+// load-test flag ride an HTTP hop end to end.
+//
+// Which header that is belongs to the propagator (a company re-bases it there,
+// not here), so the middleware only supplies gin's own lookup.
 //
 // Installed outermost (before RequestID and Observe), the marker reaches every
 // downstream layer; without the header the middleware is a no-op.
-func LoadTest(header string) gin.HandlerFunc {
-	if header == "" {
-		header = canonical.HeaderLoadTest
+func LoadTest(prop traffic.Propagator) gin.HandlerFunc {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
 	return func(c *gin.Context) {
-		if canonical.IsAffirmative(c.GetHeader(header)) {
-			ctx := canonical.WithLoadTest(c.Request.Context(), "http-header")
-			c.Request = c.Request.WithContext(ctx)
-		}
+		ctx := prop.Extract(c.Request.Context(), propagate.Header(c.Request.Header))
+		c.Request = c.Request.WithContext(ctx)
 	}
 }
 

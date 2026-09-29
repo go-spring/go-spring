@@ -24,7 +24,9 @@ import (
 
 	"dubbo.apache.org/dubbo-go/v3/config_center"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/loadbalance"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
@@ -36,11 +38,32 @@ func setDyncConsumer(p *dyncPoller, c DubboConsumer) {
 	(*dync)(unsafe.Pointer(&p.Consumer)).v.Store(c)
 }
 
+// newTestPoller builds a poller over a fresh UNARMED resilience manager, so
+// these (non-governance) tests see Enabled()==false and do not inherit overrides
+// from another test. There is no process-global authority to reset any more —
+// each test owns its manager.
 func newTestPoller() *dyncPoller {
-	// Clear any authority a prior governance test armed on the global facade so
-	// these (non-governance) tests see Enabled()==false and don't inherit overrides.
-	governance.Reset()
-	return newDyncPoller(DubboApplication{Name: testApp})
+	return newDyncPoller(DubboApplication{Name: testApp}, resilience.NewManager(), nil)
+}
+
+// armedPoller builds a poller over a center constructed from cfg, then drives
+// the center live so the manager is armed with cfg's policy — the behavior the
+// old package-level Arm helper provided. It returns only the poller: tests assert on the
+// published override rules, not on the center.
+func armedPoller(cfg governance.Config) *dyncPoller {
+	res := resilience.NewManager()
+	ctr := governance.NewCenter(cfg, res, loadbalance.NewManager(), fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil))
+	if err := ctr.GoLive(); err != nil {
+		panic(err)
+	}
+	return &dyncPoller{
+		dynCfg:  mapconfig.Singleton(),
+		appName: testApp,
+		mgr:     res,
+		ctr:     ctr,
+		last:    make(map[string]map[string]string),
+		regged:  make(map[string]bool),
+	}
 }
 
 // getRule fetches an override rule from the config center.
@@ -399,29 +422,26 @@ func TestDyncPoller_SidePresent(t *testing.T) {
 }
 
 // TestDyncPoller_GovernOverride is the Level A test: when a governance center is
-// armed, its PolicyFor for each dubbo resource label overrides timeout/retries in
+// armed, its ClientPolicyFor for each dubbo service label overrides timeout/retries in
 // the published override rules, regardless of the dubbo-native values. This is
 // how the governance rules document takes over dubbo's dynamic timeout/retry.
 func TestDyncPoller_GovernOverride(t *testing.T) {
 	dc := mapconfig.Singleton()
-	reset := governance.Arm(governance.Config{
+	p := armedPoller(governance.Config{
 		Enabled: true,
 		Driver:  "default",
-		Default: resilience.PolicyConfig{AttemptTimeout: 2 * time.Second, MaxRetries: 4},
-		// Per-reference override: a different timeout for one service. The key is
-		// the full dubbo resource label ("dubbo:" + colonSeparatedKey).
-		Rules: []governance.Rule{{
-			Resources:    []string{"dubbo:greet.GreetService::"},
-			PolicyConfig: resilience.PolicyConfig{AttemptTimeout: 500 * time.Millisecond, MaxRetries: 1},
-		}},
+		Client: governance.ClientConfig{
+			Default: governance.ClientDefaultPolicy{
+				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 2 * time.Second, MaxRetries: 4},
+			},
+			// Per-reference override: a different timeout for one service. The key
+			// is the full dubbo service label ("dubbo:" + colonSeparatedKey).
+			Rules: []governance.ClientRule{{
+				Service:      "dubbo:greet.GreetService::",
+				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 500 * time.Millisecond, MaxRetries: 1},
+			}},
+		},
 	})
-	t.Cleanup(reset) // don't leak into other tests
-	p := &dyncPoller{
-		dynCfg:  mapconfig.Singleton(),
-		appName: testApp,
-		last:    make(map[string]map[string]string),
-		regged:  make(map[string]bool),
-	}
 
 	setDyncConsumer(p, DubboConsumer{
 		// Dubbo-native values that the center must override:
@@ -466,10 +486,12 @@ func TestDyncPoller_GovernOverride(t *testing.T) {
 func TestDyncPoller_GovernDisabledIsNoop(t *testing.T) {
 	dc := mapconfig.Singleton()
 	// Disabled authority: Enabled=false even though Default has a policy.
-	reset := governance.Arm(governance.Config{Enabled: false, Default: resilience.PolicyConfig{AttemptTimeout: 2 * time.Second}})
-	t.Cleanup(reset)
-	p := &dyncPoller{dynCfg: mapconfig.Singleton(), appName: testApp,
-		last: make(map[string]map[string]string), regged: make(map[string]bool)}
+	p := armedPoller(governance.Config{
+		Enabled: false,
+		Client: governance.ClientConfig{
+			Default: governance.ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 2 * time.Second}},
+		},
+	})
 
 	setDyncConsumer(p, DubboConsumer{
 		RequestTimeout: "3000", Retries: 2,

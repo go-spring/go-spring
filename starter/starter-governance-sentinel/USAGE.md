@@ -4,7 +4,7 @@ Detailed usage reference. Overview: [README.md](README.md). All behavior claims 
 against the starter source (`starter.go`, `executor.go`, `breaker_listener.go`,
 `executor_test.go`), the abstraction in
 [cloud/governance/resilience](../../cloud/governance/resilience) (`driver.go`,
-`provider.go`), and the self-asserting [example/](example/) (`example/check.sh` — no
+`manager.go`), and the self-asserting [example/](example/) (`example/check.sh` — no
 container, no external deps). **Resilience semantics (breaker windows, retry backoff,
 policy vocabulary) are [cloud/governance/resilience](../../cloud/governance/resilience);
 sentinel-golang behavior is [official docs](https://github.com/alibaba/sentinel-golang)** —
@@ -16,7 +16,7 @@ directory into the governance center). `init` (starter.go) calls `sentinel.InitD
 (panicking on failure — "a misconfigured environment fails loudly here rather than on first
 use", per the source comment) and contributes the backend as the `sentinel`-named
 `resilience.Driver` bean. No port, **no configuration keys of its own** — the governance
-document's `govern.driver=sentinel` selects it, and policies are configured per resource.
+document's `govern.driver=sentinel` selects it, and policies are configured per service.
 
 ---
 
@@ -69,20 +69,20 @@ func main() {
 // demoClientDialer: a breaker with threshold 3 trips after three refused dials;
 // the fourth is short-circuited with the neutral ErrCircuitOpen BEFORE touching
 // the network.
-exec, _ := driver.NewExecutor(resilience.Policy{ErrorThreshold: 3, OpenDuration: time.Minute})
+exec, _ := driver.NewExecutor("dead-service", resilience.ClientPolicy{ErrorThreshold: 3, OpenDuration: time.Minute})
 ln, _ := net.Listen("tcp", "127.0.0.1:0"); deadAddr := ln.Addr().String(); _ = ln.Close()
 base := resilience.DialFunc((&net.Dialer{Timeout: time.Second}).DialContext)
-dial := resilience.NewDialer(base, exec, "dead-service")
+dial := resilience.NewDialer(base, exec)
 for i := 1; i <= 3; i++ { _, err := dial(ctx, "tcp", deadAddr) /* real dial error */ }
 _, err := dial(ctx, "tcp", deadAddr)
 errors.Is(err, resilience.ErrCircuitOpen) // true — breaker open, network untouched
 
 // demoComposedRetry: flaky upstream 503s twice then succeeds — recovered within
 // the retry budget while rate limit and breaker stay transparent.
-exec2, _ := driver.NewExecutor(resilience.Policy{
+exec2, _ := driver.NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit: 100, ErrorThreshold: 10, MaxRetries: 3, Timeout: time.Second,
 })
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec2, nil)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec2)}
 resp, _ := client.Get("http://127.0.0.1:PORT/flaky") // 200; server hit exactly 3 times
 ```
 
@@ -96,8 +96,9 @@ cd starter/starter-governance-sentinel/example && ./check.sh
 
 The more common production path is declarative: set `govern.driver=sentinel` once in the
 governance document and every client resolves through this backend — clients do not pick a
-driver at all, they call `resilience.ExecutorFor(system, label)` (see §2.2). With
-`govern.driver` unset everything stays on the zero-dependency `default` driver.
+driver at all: they inject the `*resilience.Manager` bean and call
+`mgr.ClientExecutorFor(system, label)` (see §2.2). With `govern.driver` unset everything stays on
+the zero-dependency `default` driver.
 
 ---
 
@@ -112,45 +113,55 @@ import starter-governance-sentinel
              // the container is the driver directory; govern.driver=sentinel selects it
 ```
 
-- `sentinelDriver.NewExecutor(p)` (starter.go) → `newSentinelExecutor(p)`
+- `sentinelDriver.NewClientExecutor(service, p)` (starter.go) → `newSentinelExecutor(service, p)`
   (executor.go): rejects a negative `RateLimit` up front; otherwise constructs the
-  executor with an empty per-resource loaded set.
-- sentinel keys everything by resource name, so **rules load lazily** the first time a
-  resource is seen: `ensureRules(resource)` (executor.go) installs, under mutex, at most
+  executor with an empty per-service loaded set.
+- `sentinelDriver.NewServerExecutor(service, a)` is the INBOUND twin: sentinel keys everything by
+  resource name and the route label doubles as that name, so its flow/breaker/isolation
+  primitives serve both directions unchanged — the driver projects the `ServerPolicy` onto them
+  (`a.AsPolicy()`). Sentinel's genuinely inbound-only primitives (system rules, hotspot rules)
+  have no `ServerPolicy` field to arrive through yet; when they do, they land in this method.
+- sentinel keys everything by resource name — the service label doubles as that name — so
+  **rules load lazily** the first time a service is seen: `ensureRules()` installs, under mutex, at most
   three rule types — flow (RateLimit>0), circuit-breaker (BreakerActive()), isolation
-  (MaxConcurrent>0, under the suffixed name, see §2.3) — then marks the resource loaded.
+  (MaxConcurrent>0, under the suffixed name, see §2.3) — then marks the service loaded.
 
-### 2.2 The ExecutorFor seam (governance center integration)
+### 2.2 The ExecutorFor / ServerExecutorFor seams (governance center integration)
 
-`resilience.ExecutorFor(system, resource)` (provider.go in the abstraction, NOT this starter)
-is the single call clients use instead of injecting a governance center:
+`resilience.Manager.ClientExecutorFor(system, service)` (`manager.go` in the abstraction, NOT this
+starter) is the single call OUTBOUND clients use — on the `*resilience.Manager` bean they
+inject. `resilience.Manager.ServerExecutorFor(system, service)` is its inbound twin, used by protocol
+starters' admission middleware; it resolves the same label in a separate lane and builds through
+`Driver.NewServerExecutor` instead of `Driver.NewClientExecutor`, so `govern.driver=sentinel` covers both
+directions with one key while the two configs stay independent:
 
-- It returns a stable `resolvedExecutor` holding the system and resource labels; the backing
+- It returns a stable `managedExecutor` holding the system and service labels; the backing
   executor is resolved **lazily on each Execute** and memoized per label (sync.Map cache).
   The observe layer is applied during that resolve, on the still-private executor, so the
   client gets a fully composed executor and never wraps one itself.
-- The provider is installed once by starter-govern after building the governance center;
-  because resolution is deferred to call time, client-vs-govern wiring order is irrelevant.
-- With no provider registered (starter-govern absent or governance disabled), the executor
-  is a transparent **no-op**: fn runs once, untouched — uniform client code whether or not
-  resilience is configured.
-- Hot-reload rides on the backing executor: the provider registers a governance
-  subscription and refreshes it in place; this starter's `Refresh` (below) is what actually
+- The manager is armed once by starter-governance when the center goes live (one bean serves
+  both the center and the clients); because resolution is deferred to call time,
+  client-vs-govern wiring order is irrelevant.
+- With no manager injected (starter-governance absent) or an unarmed/disabled one, the
+  executor is a transparent **no-op**: fn runs once, untouched — uniform client code whether
+  or not resilience is configured.
+- Hot-reload rides on the backing executor: building it registers a subscription on that
+  manager and refreshes it in place; this starter's `Refresh` (below) is what actually
   applies the new policy to sentinel.
 
 ### 2.3 One Execute call, layer by layer
 
-`exec.Execute(ctx, "my-resource", fn)` (executor.go):
+`exec.Execute(ctx, fn)` (executor.go):
 
-1. `ensureRules("my-resource")` — load/verify flow + breaker + isolation rules.
-2. **Bulkhead first**: if `MaxConcurrent>0`, one Entry under `"my-resource$bulkhead"`
+1. `ensureRules()` — load/verify flow + breaker + isolation rules for the executor's `service`.
+2. **Bulkhead first**: if `MaxConcurrent>0`, one Entry under `"my-service$bulkhead"`
    (`isoSuffix`), held via defer for the WHOLE Execute including retries. The suffix exists
-   because sentinel evaluates every rule type registered under a resource on each Entry —
-   the concurrency slot and the per-attempt entry must live under distinct resource names
+   because sentinel evaluates every rule type registered under a resource name on each
+   Entry — the concurrency slot and the per-attempt entry must live under distinct names
    to be acquired independently (source comment).
 3. **MaxDuration budget**: if set, a `context.WithTimeout` wraps everything below.
 4. Per attempt (up to `MaxRetries+1`):
-   - `sentinel.Entry(resource, Outbound)` — drives flow + circuit-breaking. A block error
+   - `sentinel.Entry(service, Outbound)` — drives flow + circuit-breaking. A block error
      exits immediately through `mapBlockError` (§2.5); no retry on blocks.
    - `runOnce` applies the per-attempt `Timeout` (if >0) around `fn`.
    - On error: `sentinel.TraceError(entry, err)` feeds the breaker statistic, then the loop
@@ -162,7 +173,7 @@ is the single call clients use instead of injecting a governance center:
 
 `sentinelExecutor.Refresh(p)` (executor.go): validates `RateLimit>=0`, swaps the policy and
 **clears the loaded set** under mutex. sentinel's `LoadRulesOfResource` replaces a
-resource's existing rules, so the next Execute reloads everything under the new thresholds
+service's existing rules, so the next Execute reloads everything under the new thresholds
 — and resets the breaker's stat window. This mirrors the default driver's
 "discard state, rebuild on next call" lazy semantic (source comment). Route listeners are
 re-registered when `ensureRules` re-runs.
@@ -174,9 +185,9 @@ re-registered when `ensureRules` re-runs.
   sync.Map to the per-executor `resilience.BreakerEventListener`. Attachment:
   `SetBreakerEventListener(l)` (implements `resilience.BreakerEventListenerSetter`;
   observe-resilience's WrapExecutor uses it); the listener is registered with sentinel
-  once (`ensureRouteListener`, sync.Once) and per resource inside `ensureRules`. States map
+  once (`ensureRouteListener`, sync.Once) and per service inside `ensureRules`. States map
   1:1: sentinel Open/HalfOpen/Closed → `resilience.BreakerOpen/BreakerHalfOpen/BreakerClosed`.
-  A resource with no route (breaker rules loaded outside go-spring) is silently ignored.
+  A service with no route (breaker rules loaded outside go-spring) is silently ignored.
 - **Block outcomes**: `mapBlockError` translates sentinel's block reason into the neutral
   sentinels — `BlockTypeCircuitBreaking` → `ErrCircuitOpen`, `BlockTypeIsolation` →
   `ErrBulkheadFull`, everything else (i.e. flow rejection) → `ErrRateLimited` — so callers
@@ -186,13 +197,13 @@ re-registered when `ensureRules` re-runs.
 
 | Policy field | Sentinel rule | Default when zero |
 |---|---|---|
-| `RateLimit` | flow.Rule Direct/Reject, `StatIntervalInMs=1000`, `Threshold=RateLimit` | not installed when `<=0` |
+| `RateLimit` | flow.ClientRule Direct/Reject, `StatIntervalInMs=1000`, `Threshold=RateLimit` | not installed when `<=0` |
 | `BreakerStrategy=ErrorRate` | circuitbreaker.ErrorRatio; `Threshold=ErrorRateThreshold`; `MinRequestAmount=MinRequests` | MinRequests → 1 |
 | `BreakerStrategy=Consecutive` | circuitbreaker.ErrorCount; `Threshold=float64(ErrorThreshold)`; `MinRequestAmount=1` | — |
 | `OpenDuration` | `RetryTimeoutMs` | 5000ms |
 | `BreakerWindow` | `StatIntervalMs` | 1000ms |
 | (both strategies) | `ProbeNum=1` — exactly-one-trial half-open, aligning with the builtin's single-permit gate | — |
-| `MaxConcurrent` | isolation.Rule Concurrency under `resource$bulkhead` | not installed when `<=0` |
+| `MaxConcurrent` | isolation.ClientRule Concurrency under `service$bulkhead` | not installed when `<=0` |
 
 Retry and per-attempt timeout are NOT sentinel concepts — they wrap the entry check in this
 executor (`Execute`/`runOnce`).
@@ -202,9 +213,9 @@ executor (`Execute`/`runOnce`).
 ## 3. Per-key behavior reference
 
 **No keys under this module's own prefix.** `grep -rhoE 'value:"[^"]+"' starter-governance-sentinel`
-yields nothing. The `Policy` knobs (`rate-limit`, `error-threshold`, `open-duration`,
+yields nothing. The `ClientPolicy` knobs (`rate-limit`, `error-threshold`, `open-duration`,
 `max-concurrent`, `max-retries`, `timeout`, ...) are set in the **governance document** —
-`govern.default.*` for the whole process, `govern.rules[N].*` for a specific resource — and
+`govern.client.default.*` for the whole process, `govern.client.rules[N].*` for a specific service — and
 reach this driver through `ExecutorFor` + `Refresh`. Field meanings:
 [cloud/governance/resilience](../../cloud/governance/resilience); key layout:
 [`cloud/governance/README.md`](../../cloud/governance/README.md).
@@ -246,14 +257,14 @@ not the breaker — did the recovery, and the generous limit stayed transparent.
 ### 4.5 Refresh drill (hot-reload)
 
 Hold an executor built with `RateLimit: 1`, observe throttling as in §4.4, then call
-`exec.Refresh(resilience.Policy{RateLimit: 1000})` (or push the change through the
-governance source when running under starter-govern): the next Execute reloads rules and
+`exec.Refresh(resilience.ClientPolicy{RateLimit: 1000})` (or push the change through the
+governance source when running under starter-governance): the next Execute reloads rules and
 throttling stops. Note the breaker stat window resets on refresh (§2.4).
 
 ### 4.6 Breaker event observation
 
 Implement `resilience.BreakerEventListener`, attach via `SetBreakerEventListener` before
-first Execute of the resource: transitions fire as Closed→Open→HalfOpen→Closed during the
+first Execute of the service: transitions fire as Closed→Open→HalfOpen→Closed during the
 drills above — the seam observe-resilience's WrapExecutor consumes.
 
 ---
@@ -267,9 +278,9 @@ drills above — the seam observe-resilience's WrapExecutor consumes.
 | Consumers stay on builtin resilience | the governance document's `govern.driver` is not `sentinel` | Set `govern.driver=sentinel` — one process-wide switch, effective everywhere (suspect #3). |
 | Breaker never opens | `MinRequestAmount` not yet reached, or `ErrorThreshold`/window mis-sized | Check the defaults table §2.6 (`MinRequests` → 1, window → 1000ms). |
 | Breaker state looks reset after a config push | `Refresh` clears rules; sentinel replaces them and resets the stat window | Intended lazy-reload semantic (§2.4). |
-| Doubled resources in sentinel console/metrics | bulkhead lives under `resource$bulkhead` | Driver-internal naming (suspect #2) — filter by suffix. |
+| Doubled resources in the sentinel console/metrics | bulkhead lives under `<label>$bulkhead` | Driver-internal naming (suspect #2) — filter by suffix. |
 | No retry despite `MaxRetries` set | `ShouldRetry(err)` false, or `MaxDuration` budget exhausted before next attempt | Check the policy's retry predicate and budget. |
-| Everything no-op despite sentinel imported | running via `ExecutorFor` with no provider (no starter-govern / governance disabled) | Expected zero-cost fallback — configure governance or use the driver directly. |
+| Everything no-op despite sentinel imported | running via `Manager.ClientExecutorFor` with no injected manager (no starter-governance / governance disabled) | Expected zero-cost fallback — configure governance or use the driver directly. |
 
 ---
 
@@ -286,7 +297,7 @@ Design suspects (kept from the previous edition; for the audit ledger):
 
 1. `sentinel.InitDefault()` + panic at import time makes the failure mode an import-order
    crash rather than a normal boot error.
-2. Bulkhead lives under a `resource$bulkhead` suffixed name — sentinel console/metrics show
-   twice the resources; leakage of driver internals into observability.
-3. Driver selection is process-wide (`govern.driver`) and latched per resource at first
+2. Bulkhead lives under a `service$bulkhead` suffixed name — sentinel console/metrics show
+   twice the services; leakage of driver internals into observability.
+3. Driver selection is process-wide (`govern.driver`) and latched per service at first
    resolve, so a later change to the key does not rebuild already-resolved executors.

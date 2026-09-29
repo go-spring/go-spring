@@ -17,20 +17,27 @@
 package fault
 
 import (
-	"slices"
 	"time"
 )
 
-// Config binds the fault-injection knobs from go-spring ${...} value tags. It is
-// embedded in [governance.Config] (field tag `${fault:=}`, so its keys bind as
-// govern.fault.*) and shares that single binding with resilience — there is no
-// per-starter fault key anymore. A zero
-// Config (Enabled false) injects nothing; the process-wide injector built from
-// it is a transparent no-op.
+// Config binds the fault-injection knobs from go-spring ${...} value tags. The
+// SAME type serves both traffic directions: [Injector] holds one per direction
+// ([Configs]), fed from governance.Config's two direction blocks — the client
+// side from govern.client.fault.*, the server side from govern.server.fault.*.
+// There is no per-starter fault key.
 //
-// The top-level Rate/Latency/Error apply to every resource; per-resource
-// overrides go under Rules (matched by the resource label a starter passes to
-// the executor/Apply seam).
+// One type for both is deliberate: the model is direction-symmetric (a fraction
+// of calls fails or slows down) and only the values differ, so two structurally
+// identical types would buy nothing but conversions. Direction is expressed
+// where a reader must pick one — the config block, and the entry point
+// ([WrapClientExecutor] for outbound, [ApplyServer] for inbound).
+//
+// A zero Config (Enabled false) injects nothing; a side built from it is a
+// transparent no-op.
+//
+// The top-level Rate/Latency/Error apply to every service of that ONE direction;
+// per-service overrides go under Rules (matched by the service label a starter
+// passes to the executor/ApplyServer seam).
 type Config struct {
 	// Enabled turns fault injection on. When false no faults are injected even
 	// if Rate/Latency/Error are set.
@@ -46,15 +53,24 @@ type Config struct {
 	// it to exercise slow-call and per-attempt timeout paths. 0 disables.
 	Latency time.Duration `value:"${latency:=0}"`
 
+	// LatencyJitter randomizes the injected latency: each call sleeps Latency
+	// plus a uniform draw in [-LatencyJitter, +LatencyJitter], clamped to ≥ 0.
+	// A fixed Latency can resonate with a fixed retry backoff; jitter spreads
+	// the slow-down the way real network variance does. 0 (the default) keeps
+	// the sleep exactly Latency.
+	LatencyJitter time.Duration `value:"${latency-jitter:=0}"`
+
 	// Error selects the injected failure kind, applied at Rate:
 	//   "" / "generic" — a retryable injected error ([ErrInjected])
 	//   "timeout"      — wraps context.DeadlineExceeded
 	//   "reset"        — wraps syscall.ECONNRESET
+	//   "refused"      — wraps syscall.ECONNREFUSED
 	// Empty (the default) plus Rate 0 means no errors are injected.
 	Error string `value:"${error:=}"`
 
 	// Scope restricts fault injection to a class of traffic identified by the
-	// load-test marker carried in the call's context ([traffic.IsLoadTest]):
+	// load-test marker carried in the call's context (the injected
+	// [traffic.Propagator]'s IsLoadTest):
 	//   ""        — inject into all traffic (the default; the historic behavior)
 	//   "real"    — inject only into real traffic, skipping load-test requests
 	//               (so synthetic load from cloud/experimental/loadtest does not get faulted)
@@ -79,38 +95,40 @@ type Config struct {
 	// default) means no count bound.
 	MaxAffected int64 `value:"${max-affected:=0}"`
 
-	// Rules are per-resource overrides. A call whose resource label matches a
-	// rule (exact match against any of the rule's Resources, or the rule itself
-	// when Resources is empty — a catch-all) uses that rule's Rate/Latency/Error
-	// instead of the top-level ones. The first matching rule wins, so list
-	// specific rules before a catch-all. When no rule matches, the top-level
-	// Rate/Latency/Error apply (so adding Rules only adds specificity, never
-	// removes the global default). Empty (the default) keeps the historic
-	// single-rule behavior. Bind via indexed properties:
+	// Rules are per-service overrides — one service per Rule, no grouping
+	// several labels into one entry (they would silently share an injection
+	// profile). A call whose service label matches a rule (exact match, or the
+	// rule itself when Service is empty — a catch-all) uses that rule's
+	// Rate/Latency/Error instead of the top-level ones. The first matching rule
+	// wins, so list specific rules before a catch-all. When no rule matches, the
+	// top-level Rate/Latency/Error apply (so adding Rules only adds specificity,
+	// never removes the global default). Empty (the default) keeps the historic
+	// single-rule behavior. Bind via indexed properties — the same shape on
+	// either side, under that side's block, e.g.:
 	//
-	//	fault.rules[0].resources=svc-a,svc-b
-	//	fault.rules[0].rate=0.5
-	//	fault.rules[1].rate=1   # empty resources => catch-all
+	//	govern.client.fault.rules[0].service=redis:cache
+	//	govern.client.fault.rules[0].rate=0.5
+	//	govern.server.fault.rules[0].rate=1   # empty service => catch-all inbound
 	Rules []Rule `value:"${rules:=}"`
 }
 
-// Rule is one per-resource fault rule. See [Config.Rules].
+// Rule is one per-service fault rule. See [Config.Rules].
 type Rule struct {
-	// Resources are the resource labels this rule matches, exact-compare. Empty
-	// means catch-all (matches every resource). A resource label is what a
+	// Service is the service label this rule matches, exact-compare. Empty
+	// means catch-all (matches every service). A service label is what a
 	// starter passes to the executor/fault seam — e.g. "redis", "gorm:mysql",
 	// "http:user-svc", "gin", a downstream service name.
-	Resources []string      `value:"${resources:=}"`
-	Rate      float64       `value:"${rate:=0}"`
-	Latency   time.Duration `value:"${latency:=0}"`
-	Error     string        `value:"${error:=}"`
+	Service string        `value:"${service:=}"`
+	Rate    float64       `value:"${rate:=0}"`
+	Latency time.Duration `value:"${latency:=0}"`
+
+	// LatencyJitter randomizes this rule's Latency; see [Config.LatencyJitter].
+	LatencyJitter time.Duration `value:"${latency-jitter:=0}"`
+	Error         string        `value:"${error:=}"`
 }
 
-// matches reports whether r applies to resource: catch-all when r has no
-// Resources, else exact membership.
-func (r Rule) matches(resource string) bool {
-	if len(r.Resources) == 0 {
-		return true
-	}
-	return slices.Contains(r.Resources, resource)
+// matches reports whether r applies to the service label: catch-all when r has
+// an empty Service, else exact compare.
+func (r Rule) matches(service string) bool {
+	return r.Service == "" || r.Service == service
 }

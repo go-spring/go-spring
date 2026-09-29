@@ -187,7 +187,7 @@ gs.Run()
   │      config.go:391-513；application.name 为空或 0 个 registry → 快速失败）
   ├─ RegisterReference bean 绑定 ${spring.dubbo.consumer.references.<n>} → 经 NewClient 产类型化 stub
   ├─ 装配顺序注意：Rooter（dyncPoller）先于 Runner（治理引擎）装配
-  │     ——见 dync.go:90-94 注释；governance.OnReady 会补一次 poll 弥合时差
+  │     ——见 dync.go:90-94 注释；注入 center 的 OnReady 会补一次 poll 弥合时差
   ├─ SimpleDubboServer.Run：buildOptions(provider, protocols, registries) → d.NewServer()
   │     → regAll()：逐个调用 ServiceRegister bean → <-sig.TriggerAndWait() → svr.Serve()  [server.go:297-327]
   ├─ 就绪：Run 触发就绪信号后生效；Stop 时排水在途 RPC
@@ -219,10 +219,11 @@ init 期注册两个 dubbo-go filter；都是**按 service 显式启用**——�
 `filter` key（逗号分隔，其余语义归 dubbo-go）：
 
 - **`loadtest`**（loadtest.go:38）：从入站 dubbo attachment 读压测标记（string 与 []byte
-  都处理），给 context 打标，使后续 filter 与你的服务实现里 `traffic.IsLoadTest(ctx)` 可用。
+  都处理），给 context 打标，使后续 filter 与你的服务实现里 propagator 的 `IsLoadTest(ctx)` 可用。
   请放在链的**最前**（源码注释，loadtest.go:31-34），标记要先于任何依赖它的层落位。
-- **`fault`**（fault.go:40）：**每次调用**从治理 seam 解析 `fault.InjectorFor()`——可运行期
-  热切换，治理缺席时透明直通（fault.go:50-65）。注入的失败以
+- **`fault`**（fault.go:40）：读治理 starter 的 fault injector bean——dubbo 的 filter 注册表
+  只提供无参构造，无处注入，故由一个接线钩子装入；句柄**每次调用**读取——可运行期
+  热切换，治理缺席时透明直通。注入的失败以
   `result.RPCResult{Err: fault.ErrInjected}` 呈现。
 
 Filter 在 Refer/导出时**冻结**（dync.go:60）——改 `filter` key 要重启；timeout/retries 不用
@@ -389,25 +390,26 @@ reference 的 `version`/`group` 必须与 provider 导出的一致。
 
 ### 4.4 治理合入通道（中心的动态超时）
 
-可选；仅当引入 starter-govern 且 `govern.enabled=true` 时激活。poller 订阅两类治理资源
-label（dync.go:263-264）：
+可选；仅当引入 starter-governance 且 `govern.enabled=true` 时激活。poller 以可空构造函数
+参数注入 `*resilience.Manager` 与 `*governance.Center`（dync.go:48-49），并订阅两类治理
+服务 label（dync.go:263-264）：
 
 - `dubbo:<application.name>` —— consumer 级默认
 - `dubbo:<interface>:<version>:<group>` —— 按 reference（与 §4.3 同一冒号分隔 key）
 
 `Policy.Timeout`（毫秒）与 `Policy.MaxRetries` 在 > 0 时覆盖 `timeout`/`retries` 参数
 （dync.go:288-295）；注意 MaxRetries 映射到 dubbo 的 **cluster** 重试，不是 resilience 层
-重试。顺序问题已处理：Rooter 先于 Runner 装配，引擎就绪后 `governance.OnReady` 补一次
-poll（dync.go:90-99）。演练：在治理源里改 `govern.*` 超时，观察 reference override 免重启
-重新下发。
+重试。顺序问题已处理：Rooter 先于 Runner 装配，引擎就绪后注入的 `*governance.Center` 的
+`OnReady` 补一次 poll（dync.go:90-99）。演练：在治理源里改 `govern.*` 超时，观察 reference
+override 免重启重新下发。
 
 ### 4.5 故障演练（provider 侧，免重启）
 
 1. 给 service 的 filter 链加 `fault`：`...services.greet.filter=loadtest,fault`。
-2. 引入 starter-governance；经热源配置 `govern.fault.*`（rate/error/scope）。
+2. 引入 starter-governance；经热源配置 `govern.client.fault.*`（rate/error/scope）。
 3. `scope: loadtest` 时只有带压测标记的调用被烧——由带标记的上游注入出站 carrier
    （cloud/governance/traffic）来打标，或在专属环境用 `scope: real`。
-4. 观察：consumer 收到注入错误；带标记调用在实现内 `traffic.IsLoadTest(ctx)` 为 true
+4. 观察：consumer 收到注入错误；带标记调用在实现内 propagator 的 `IsLoadTest(ctx)` 为 true
    （loadtest filter 排最前）。
 
 ### 4.6 观测日志桥

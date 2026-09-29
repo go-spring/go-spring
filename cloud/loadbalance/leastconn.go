@@ -23,7 +23,12 @@ import (
 )
 
 func init() {
-	Register(LeastConn, NewLeastConn)
+	Register(LeastConn, func(cfg Config) (Balancer, error) {
+		if err := cfg.only(); err != nil {
+			return nil, err
+		}
+		return NewLeastConn(), nil
+	})
 }
 
 // leastConn tracks in-flight request counts per endpoint address. Counts persist

@@ -69,7 +69,7 @@ func TestGinServer_MTLS(t *testing.T) {
 	}
 	svr, err := NewSimpleGinServer(func(e *gin.Engine) {
 		e.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
-	}, nil, cfg)
+	}, nil, cfg, nil, nil, nil)
 	assert.That(t, err).Nil()
 
 	ctx, cancel := context.WithCancel(context.Background())

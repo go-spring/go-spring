@@ -64,13 +64,13 @@ func TestNewClientDriverFallback(t *testing.T) {
 	cp := &gs.ContextProvider{Context: context.Background()}
 
 	// No Driver bean → the bundled DefaultDriver assembles the client.
-	c, err := newClient(cp, Config{Addr: "127.0.0.1:6379"}, nil)
+	c, err := newClient(cp, Config{Addr: "127.0.0.1:6379"}, nil, nil, nil)
 	assert.Error(t, err).Nil()
 	_ = c.Close()
 
 	// A provided Driver bean override is used as-is.
 	fd := &fakeDriver{}
-	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379"}, fd)
+	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379"}, fd, nil, nil)
 	assert.Error(t, err).Nil()
 	_ = c.Close()
 	assert.That(t, fd.called).True()

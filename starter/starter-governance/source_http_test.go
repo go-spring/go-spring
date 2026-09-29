@@ -36,7 +36,7 @@ func TestParseGovernanceDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Enabled || cfg.Default.AttemptTimeout != 100*time.Millisecond {
+	if !cfg.Enabled || cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
 		t.Fatalf("properties parse: %+v", cfg)
 	}
 
@@ -45,8 +45,8 @@ func TestParseGovernanceDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Default.AttemptTimeout != 100*time.Millisecond {
-		t.Fatalf("yaml parse: %+v", cfg.Default)
+	if cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+		t.Fatalf("yaml parse: %+v", cfg.Client.Default)
 	}
 
 	// format given explicitly, name without extension.
@@ -65,6 +65,38 @@ func TestParseGovernanceDoc(t *testing.T) {
 	// malformed yaml → error.
 	if _, err = rules.Parse("govern.yaml", []byte("govern: {"), ""); err == nil {
 		t.Fatal("malformed document must be rejected")
+	}
+}
+
+// TestParse_LegacyKeysArmNothing pins the no-compatibility promise of the
+// client/server split: the pre-split keys (govern.default / govern.rules /
+// govern.fault) are simply unknown now, so a document still written against them
+// binds NOTHING — neither direction gets a policy or a fire, and the failure is
+// loud only where it should be (the operator's own document review).
+func TestParse_LegacyKeysArmNothing(t *testing.T) {
+	cfg, err := rules.Parse("govern.properties", []byte(`govern.enabled=true
+govern.driver=default
+govern.default.attempt-timeout=100ms
+govern.rules[0].service=redis:cache
+govern.rules[0].attempt-timeout=50ms
+govern.fault.enabled=true
+govern.fault.rate=1
+`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The document still binds the keys that survived the split.
+	if !cfg.Enabled || cfg.Driver != "default" {
+		t.Fatalf("enabled/driver must still bind: %+v", cfg)
+	}
+	if !cfg.Client.Default.ClientPolicy.IsZero() || len(cfg.Client.Rules) != 0 {
+		t.Fatalf("legacy govern.default/rules must arm no outbound policy: %+v", cfg.Client)
+	}
+	if !cfg.Server.Default.IsZero() || len(cfg.Server.Rules) != 0 {
+		t.Fatalf("legacy keys must arm no inbound admission: %+v", cfg.Server)
+	}
+	if cfg.Client.Fault.Enabled || cfg.Server.Fault.Enabled {
+		t.Fatalf("legacy govern.fault must arm neither fire: %+v / %+v", cfg.Client.Fault, cfg.Server.Fault)
 	}
 }
 
@@ -99,8 +131,8 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 	var pushed governance.Config
 	s.Subscribe(func(cfg governance.Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
-	if cfg := s.Snapshot(); cfg.Default.AttemptTimeout != 100*time.Millisecond {
-		t.Fatalf("initial snapshot: %+v", cfg.Default)
+	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+		t.Fatalf("initial snapshot: %+v", cfg.Client.Default)
 	}
 
 	// Console publishes new rules; the next poll must pick them up and push.
@@ -110,7 +142,7 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		mu.Lock()
-		done := pushed.Default.AttemptTimeout == 300*time.Millisecond
+		done := pushed.Client.Default.AttemptTimeout == 300*time.Millisecond
 		mu.Unlock()
 		if done {
 			break
@@ -118,7 +150,7 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	mu.Lock()
-	got := pushed.Default.AttemptTimeout
+	got := pushed.Client.Default.AttemptTimeout
 	mu.Unlock()
 	if got != 300*time.Millisecond {
 		t.Fatalf("poll should converge on the new document: %v", got)
@@ -132,8 +164,8 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 	body = ""
 	muBody.Unlock()
 	time.Sleep(300 * time.Millisecond)
-	if cfg := s.Snapshot(); cfg.Default.AttemptTimeout != 300*time.Millisecond {
-		t.Fatalf("broken console must keep last good snapshot: %+v", cfg.Default)
+	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 300*time.Millisecond {
+		t.Fatalf("broken console must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 	mu.Lock()
 	after := pushes

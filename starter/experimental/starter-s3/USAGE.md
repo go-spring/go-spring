@@ -160,12 +160,14 @@ gs.Run()
   │    │      → d.CreateClient: static creds + region + bucket-lookup
   │    │        + a dynamicTransport placeholder inside minio.Options
   │    │      → dynamicTransports.LoadAndDelete hands the placeholder to the wrapper
+  │    ├─ ArmGovernance() [client.go:97]: mgr/inj are the injected
+  │    │      *resilience.Manager / *fault.Injector beans
+  │    │      exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("s3", "s3:<endpoint>"), "s3:<endpoint>", inj)  // outcome spans/counter
   │    ├─ fail-fast probe: HealthCheck → ListBuckets — unreachable endpoint or rejected
-  │    │      credentials abort startup (starter.go:76-78)
-  │    └─ Init() [client.go]:
+  │    │      credentials abort startup
+  │    └─ Init() [client.go:67]:
   │          obsTransport (span + db.client.* metrics + access log, observe.go)
-  │          exec := fault.WrapExecutor(resilience.ExecutorFor("s3", "s3:<endpoint>"))  // outcome spans/counter
-  │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec, → resource))
+  │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec))
   ├─ Run / serve: readyz folds in every s3:<name> indicator (needs starter-actuator)
   └─ SIGTERM: Destroy() closes the resilience executor; minio holds no session to close
 ```
@@ -177,7 +179,7 @@ setter, while the real transport (instrumentation + resilience) can only be swap
 **after** the client exists.
 `DefaultDriver.CreateClient` therefore installs a thin `dynamicTransport` — an atomic
 RoundTripper indirection (RWMutex-guarded, not atomic.Value, because the active tripper is
-one of several concrete types; see client.go:104-114) — and records it in a package-level
+one of several concrete types; see client.go:131-151) — and records it in a package-level
 `dynamicTransports sync.Map` keyed by the returned client. `newClient` picks it up
 (`LoadAndDelete`) so `Init` can swap the real observe+resilience transport in. Until Init
 runs, requests pass straight through to `http.DefaultTransport`.
@@ -188,11 +190,12 @@ runs, requests pass straight through to `http.DefaultTransport`.
 
 1. minio-go signs the request (SigV4 static credentials) and issues the HTTP request through
    the configured transport — which is the swapped-in resilience round-tripper.
-2. Resilience round-tripper: the request enters the executor resolved for resource
-   `s3:<endpoint>` — retry / rate-limit / circuit-breaker / bulkhead when starter-governance
+2. Resilience round-tripper: the request enters the executor built for service
+   `s3:<endpoint>` from the injected `*resilience.Manager` — retry / rate-limit /
+   circuit-breaker / bulkhead when starter-governance
    arms them (hot-reloadable through the governance center), transparent pass-through
-   otherwise; the process-wide fault injector (`fault.InjectorFor`, nil-safe) may inject
-   failures for drills. The observe layer resolved inside the executor emits an outcome
+   otherwise; the injected `*fault.Injector` (nil-safe) may inject
+   failures for drills. The observe layer inside the executor emits an outcome
    span + call counter + duration histogram + access log for breaker trips, limit rejects,
    bulkhead rejections.
 3. obsTransport (command.go:38): starts the per-request observer span with operation
@@ -266,8 +269,8 @@ successful one carrying the URL-path argument logs at Debug, a plain success at 
 
 ### 4.5 Fault/resilience drill (needs starter-governance)
 
-Arms per endpoint resource label `s3:127.0.0.1:9000`: a governance rule with
-`fault.rate` against that resource makes a fraction of uploads fail through the executor —
+Arms per endpoint service label `s3:127.0.0.1:9000`: a governance rule with
+`fault.rate` against that service makes a fraction of uploads fail through the executor —
 observable as outcome-tagged spans/counters from the executor's observe layer. Flip the rule
 file to withdraw (hot-reload through the governance source). ⚠ note the retry policy retries
 per round-trip, not per stream: uploads with large bodies may re-send the body.
@@ -300,7 +303,7 @@ Design suspects (for the audit ledger; first two carried over from the previous 
   wrapper is implicit (keyed off a sync.Map).
 - `bucket-lookup` accepts both "virtual-host" and "dns" aliases for one mode — mild config
   surface redundancy.
-- NEW: resource label is `s3:<endpoint>` only — two instances on one endpoint (like the
+- NEW: service label is `s3:<endpoint>` only — two instances on one endpoint (like the
   example's `a`/`b`) share one resilience scope; no per-instance disambiguation.
 - NEW: health probe and fail-fast probe are the same ListBuckets call but duplicated in code
   (starter.go HealthCheck vs health/health.go) — harmless but a small consolidation target.

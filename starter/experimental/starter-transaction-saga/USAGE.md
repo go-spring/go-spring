@@ -291,7 +291,7 @@ its own transaction.Store").
 
 Design rationale worth knowing: persistence errors during `persistRunning` are intentionally
 swallowed — "the saga has already made progress and failing the whole operation on a log write
-would be worse than a gap in the log" (coordinator.go). Retries reuse `resilience.Policy` via a
+would be worse than a gap in the log" (coordinator.go). Retries reuse `resilience.ClientPolicy` via a
 "default" executor so saga step retries and outbound resilience share one knob set.
 
 ---

@@ -23,7 +23,7 @@ here, shared by all five instead of copy-pasted:
   access-log line per Create/Query/Update/Delete, riding the OTel globals so it
   is near-zero overhead without `starter-otel`;
 - the resilience callbacks — every operation runs under one backend-neutral
-  `resilience.Executor`, with `gorm.ErrRecordNotFound` counted as success;
+  `resilience.ClientExecutor`, with `gorm.ErrRecordNotFound` counted as success;
 - the post-open `DBCustomizer` extension seam, and the dialect-qualified bean
   naming (`<dialect>.<name>`) that lets two dialects carry an instance of the
   same name without colliding.

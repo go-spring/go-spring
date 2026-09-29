@@ -119,7 +119,7 @@ type RouteRaw struct {
 		Discovery string `value:"${discovery:=}"`
 		// The load-balancing strategy and outlier suspension for this route's
 		// lb:// upstream are NOT keys here: they are governance rules matched by
-		// "gateway:<route-id>" (govern.rules[N].balancer / .outlier-threshold /
+		// "gateway:<route-id>" (govern.client.rules[N].balancer / .outlier-threshold /
 		// .outlier-suspend-for), applied to the live pool on every change.
 	} `value:"${upstream}"`
 
@@ -128,18 +128,11 @@ type RouteRaw struct {
 	} `value:"${resilience}"`
 }
 
-// policyRaw is the value type of the spring.gateway.resilience.<name> map. After
-// the ExecutorFor migration only the map KEYS matter — they name the routes a
-// gateway builds executors for (each resolved via resilience.ExecutorFor, policy
-// driven by the governance center). The fields below are retained so existing
-// spring.gateway.resilience.<name>.* config keeps binding without error, but they
-// are no longer read: a route's timeout/retry/breaker now comes from the governance rules document (govern.*),
-// keyed by the "gateway:<name>" label, not from this struct.
 // policyRaw is the value type of the spring.gateway.resilience.<name> map.
 // Only the map KEYS matter — they name the routes a gateway builds executors
-// for (each resolved via resilience.ExecutorFor, policy driven by the
-// governance center under the "gateway:<name>" label). The value carries no
-// fields: legacy per-route policy knobs were removed when policy moved to
-// the governance rules document; unknown sub-keys under spring.gateway.resilience.<name>.* are
-// ignored by the driver.
+// for (each resolved from the injected resilience manager under the
+// "gateway:<name>" label). The value carries no fields: legacy per-route policy
+// knobs were removed when policy moved to the governance rules document;
+// unknown sub-keys under spring.gateway.resilience.<name>.* are ignored by the
+// driver.
 type policyRaw struct{}

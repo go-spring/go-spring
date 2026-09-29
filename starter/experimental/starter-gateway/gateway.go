@@ -28,13 +28,23 @@ func init() {
 	// The compiled, hot-reloadable route table. Its ${spring.gateway} config
 	// and optional FilterWrapper beans (jwt-auth, lua) are populated by field
 	// injection; the container's named discovery backend beans are collected by
-	// the constructor (lb:// upstreams resolve their label against them); route
-	// compilation is deferred to server startup (warmup). Discovery runs inside
-	// the backend (loaders have no resources), so there is no destroy half to
-	// register.
+	// the constructor (lb:// upstreams resolve their label against them), and so
+	// are the governance authorities it drives per-route protection and endpoint
+	// selection with; route compilation is deferred to server startup (warmup).
+	// Discovery runs inside the backend (loaders have no resources), so there is
+	// no destroy half to register.
 	gs.Provide(newRouteTable,
 		gs.IndexArg(2, gs.TagArg("?")),
+		// The governance beans are NULLABLE injections: they exist whenever
+		// starter-governance is in the container, which is the normal case, and
+		// are absent from a container without it. Without the "?" gs would treat
+		// an absent bean as a wiring error and the app would not boot — turning
+		// "governance is off" into "governance must be imported", which is not
+		// the contract. newRouteTable normalizes a nil bean to an unarmed
+		// authority, i.e. a transparent pass-through.
 		gs.IndexArg(3, gs.TagArg("?")),
+		gs.IndexArg(4, gs.TagArg("?")),
+		gs.IndexArg(5, gs.TagArg("?")),
 	).Caller(1)
 
 	// The listen-port server, wired into graceful drain as a gs.Server. Named

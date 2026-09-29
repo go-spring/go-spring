@@ -20,6 +20,8 @@ import (
 	"context"
 	"math"
 
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -39,6 +41,8 @@ func init() {
 	gs.Provide(
 		NewSimpleTrpcServer,
 		gs.IndexArg(0, gs.TagArg("${spring.trpc.server}")),
+		gs.IndexArg(2, gs.TagArg("?")), // nullable fault.Injector bean
+		gs.IndexArg(3, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.trpc.server.addr"))
 }
@@ -72,7 +76,8 @@ type Config struct {
 // LoadTestConfig toggles registration of the inbound load-test identification
 // filter ("loadtest"). Enabled by default; add "loadtest" to a service's filter
 // chain (first position) to activate it — it tags the handler context from
-// inbound metadata so downstream code can branch on traffic.IsLoadTest.
+// inbound metadata so downstream code can branch on the injected propagator's
+// IsLoadTest(ctx).
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }
@@ -105,18 +110,33 @@ type MetricsConfig struct {
 // the server's internal closeCh and unblock Serve. A direct SIGTERM is caught by
 // both, which is harmless: whichever path fires first tears the server down.
 type SimpleTrpcServer struct {
-	cfg  Config
-	reg  ServiceRegister
+	cfg Config
+	reg ServiceRegister
+	// inj is the governance starter's fault injector bean (nil when governance
+	// is not imported); it backs the always-registered "fault" server filter.
+	inj *fault.Injector
+	// prop is the application's load-test convention bean (nil-normalized to
+	// go-spring's default); the "loadtest" server filter reads the inbound marker
+	// through it.
+	prop traffic.Propagator
 	svr  *server.Server
 	done chan struct{}
 }
 
 // NewSimpleTrpcServer creates a SimpleTrpcServer from ${spring.trpc.server}
-// config and the registered ServiceRegister bean.
-func NewSimpleTrpcServer(cfg Config, reg ServiceRegister) *SimpleTrpcServer {
+// config and the registered ServiceRegister bean. inj is the governance
+// starter's fault injector bean, captured here and reused by the "fault" server
+// filter (nil when governance is not imported). prop is the application's
+// load-test convention bean, handed to the "loadtest" server filter (nil means
+// go-spring's default).
+func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, inj *fault.Injector, prop traffic.Propagator) *SimpleTrpcServer {
+	if prop == nil {
+		// DefaultBinding is complete, so this cannot fail.
+		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	}
 	log.Debugf(context.Background(), log.TagAppDef, "trpc server created addr=%s service=%s network=%s protocol=%s",
 		cfg.Addr, cfg.ServiceName, cfg.Network, cfg.Protocol)
-	return &SimpleTrpcServer{cfg: cfg, reg: reg, done: make(chan struct{})}
+	return &SimpleTrpcServer{cfg: cfg, reg: reg, inj: inj, prop: prop, done: make(chan struct{})}
 }
 
 // Run builds the tRPC server from a programmatic *trpc.Config (no trpc_go.yaml)
@@ -160,15 +180,16 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// service's filter chain (first position) to activate it; it tags the
 	// handler context from inbound metadata when the marker is present.
 	if s.cfg.LoadTest.Enabled {
-		filter.Register("loadtest", LoadTestServerFilter(), nil)
+		filter.Register("loadtest", LoadTestServerFilter(s.prop), nil)
 	}
 	// Register the inbound fault-injection filter ("fault"). Add "fault" to a
 	// service's filter chain to activate it; it injects latency/errors into
-	// inbound RPCs per the injector resolved from the neutral [fault.InjectorFor]
-	// seam (nil-safe pass-through when fault is off) — the server-side counterpart
-	// to the client starters' fault.WrapExecutor. Always registered; the injector
-	// is resolved per call so fault can be hot-toggled at runtime without a restart.
-	filter.Register("fault", FaultServerFilter(), nil)
+	// inbound RPCs per the injected [fault.Injector] bean (nil-safe pass-through
+	// when governance is not imported) — the server-side counterpart to the client
+	// starters' fault.WrapClientExecutor. Always registered; the filter captures the
+	// injector once, and the center swaps its config in place, so fault can be
+	// hot-toggled at runtime without a restart.
+	filter.Register("fault", FaultServerFilter(s.inj), nil)
 
 	// Bind the concrete service handler; the adapter itself stays service-agnostic.
 	s.reg(s.svr)

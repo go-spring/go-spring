@@ -32,7 +32,7 @@ be released on shutdown.
   `destroy` for exactly this reason (`project_starter_bigcache`).
 - **`AsCache` adapter exports a bean directly.** The starter's
   contribution to `cloud/cache` is one `cache.Cache` bean named
-  `bigcache:<name>` per instance (adapter in `bytecache/`), injected by
+  `bigcache:<name>` per instance (adapter in `bytecache.go`), injected by
   name; un-injected beans never instantiate, so no config gate.
 - **`check.sh` needs no docker.** In-process cache has no service
   container — smoke is a plain `go test`.

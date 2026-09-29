@@ -44,7 +44,7 @@ type Service struct {
 
 The bean is the starter's `*Cache` wrapper (the raw `*bigcache.BigCache` is embedded
 and available as `s.Cache.BigCache`); Get/Set/Delete on it flow through the observe
-and resilience seams.
+and resilience layers.
 
 ### 4. Use the BigCache Instance
 

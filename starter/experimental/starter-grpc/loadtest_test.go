@@ -21,25 +21,26 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/governance/traffic/canonical"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 func TestLoadTestUnaryInterceptor_TagsFromMetadata(t *testing.T) {
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
 	hits := 0
 	var saw bool
 	handler := func(ctx context.Context, _ any) (any, error) {
 		hits++
-		saw = traffic.IsLoadTest(ctx)
+		saw = prop.IsLoadTest(ctx)
 		return "ok", nil
 	}
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/Method"}
-	intc := LoadTestUnaryInterceptor()
+	intc := LoadTestUnaryInterceptor(prop)
 
 	// With the marker metadata: handler ctx is tagged.
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(canonical.MetaKeyLoadTest, "1"))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-loadtest", "1"))
 	_, _ = intc(ctx, nil, info, handler)
 	assert.That(t, hits).Equal(1)
 	assert.That(t, saw).True()
@@ -65,23 +66,25 @@ type fakeStream struct {
 func (f *fakeStream) Context() context.Context { return f.ctx }
 
 func TestLoadTestStreamInterceptor_TagsFromMetadata(t *testing.T) {
+	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	assert.Error(t, err).Nil()
 	var saw bool
 	handler := func(_ any, ss grpc.ServerStream) error {
-		saw = traffic.IsLoadTest(ss.Context())
+		saw = prop.IsLoadTest(ss.Context())
 		return nil
 	}
 	info := &grpc.StreamServerInfo{}
 
 	// Marker present in inbound metadata => stream ctx tagged.
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(canonical.MetaKeyLoadTest, "1"))
-	err := LoadTestStreamInterceptor()(nil, &fakeStream{ctx: ctx}, info, handler)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-loadtest", "1"))
+	err = LoadTestStreamInterceptor(prop)(nil, &fakeStream{ctx: ctx}, info, handler)
 	assert.Error(t, err).Nil()
 	assert.That(t, saw).True()
 
 	// Absent => untagged.
 	saw = false
 	ctx2 := metadata.NewIncomingContext(context.Background(), nil)
-	_ = LoadTestStreamInterceptor()(nil, &fakeStream{ctx: ctx2}, info, handler)
+	_ = LoadTestStreamInterceptor(prop)(nil, &fakeStream{ctx: ctx2}, info, handler)
 	assert.That(t, saw).False()
 }
 
@@ -96,7 +99,7 @@ func TestUserInterceptorsComposeInOrder(t *testing.T) {
 		return h(ctx, nil)
 	}
 
-	s := NewSimpleGrpcServer(Config{}, func(*grpc.Server) {}, []grpc.UnaryServerInterceptor{outer, inner}, nil)
+	s := NewSimpleGrpcServer(Config{}, func(*grpc.Server) {}, []grpc.UnaryServerInterceptor{outer, inner}, nil, nil, nil, nil)
 	opts, err := s.buildOptions()
 	if err != nil {
 		t.Fatal(err)

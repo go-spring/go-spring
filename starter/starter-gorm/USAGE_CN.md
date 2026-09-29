@@ -143,18 +143,18 @@ spring.observability.metrics.port=0        # /metrics 仅经 actuator
 # NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
 govern.enabled=true
 govern.driver=default
-govern.default.enabled=true
-govern.default.error-threshold=20
-govern.default.open-duration=5s
-govern.default.max-retries=1
-govern.default.timeout=500ms
-# 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 govern.rules[N].balancer /
+govern.client.default.error-threshold=20
+govern.client.default.open-duration=5s
+govern.client.default.max-retries=1
+govern.client.default.attempt-timeout=500ms
+# 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 govern.client.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for 原地驱动该 entry 的池
 # （见 cloud/governance/README.md §3.1）。
 ```
 
-每个走发现拨号的方言都给池挂上 suspension tracker，并经 `loadbalance.Pool.BindSelection` 绑到
-该 entry 的资源标签——也就是它保护策略用的同一个标签——于是 `balancer` / `outlier-threshold` /
+每个走发现拨号的方言都给池挂上 suspension tracker，并经 `lbMgr.Bind(pool, label)` 绑到
+该 entry 的服务标签——`*loadbalance.Manager` bean 注入模块构造函数后一路传到方言的 `Build`——
+也就是它保护策略用的同一个标签——于是 `balancer` / `outlier-threshold` /
 `outlier-suspend-for` 原地生效，不用重启、不用重建客户端。dialer 能拿到的成败信号只有拨号本身，
 所以 `outlier-threshold` 摘的是**反复连不上**的实例；查询失败归 resilience executor 管。直连
 （只配 `addr`/`host`）的 entry 没有候选集，这些 key 对它无效。
@@ -189,7 +189,7 @@ gs.Run()
   ├─ 配置绑定:conf.BindEach 遍历 ${spring.gorm.mysql} → 每个 <name> 一份 Config
   ├─ 每个实例 <name>:
   │    ├─ Dialect.Build(ctx, c)   方言构造 DSN/dialector;处理 TLS、服务发现
-  │    │                          (仅 mysql 等)、resource label
+  │    │                          (仅 mysql 等)、service label
   │    ├─ gormcore.Open:  gorm.Open → ApplyPool(连接池旋钮 + fail-fast ping)
   │    │                  → ApplyDBCustomizers(用户 seam,按注册顺序)
   │    ├─ Provide *DB .Name(<dialect>.<entry>).Init((*DB).Init).Destroy((*DB).Destroy)
@@ -215,9 +215,9 @@ gs.Run()
 gorm:query processor 链
   1. go-spring:observe:before_query   span 开始 + metric 开始 + in-flight +1
   2. gorm:query  ← 已被 resilience wrapper 替换:
-        resilience.Run(ctx, exec, "gorm:mysql:<addr>", op)
+        resilience.Run(ctx, exec, op)
           ├─ 准入(限流 / 舱壁,若已配置)
-          ├─ fault 注入器(govern.fault.*——可能短路本次尝试)
+          ├─ fault 注入器(govern.client.fault.*——可能短路本次尝试)
           ├─ timeout / breaker / retry 包络
           └─ 原始 gorm:query 主体:构造 SQL、执行、应用 gorm 自身
              logger(慢查询 warn,见 slow-threshold)
@@ -239,7 +239,7 @@ gorm:query processor 链
   是正常结果不是故障,不得触发熔断(DB 侧的 redis.Nil 对应物)。
 - **拒绝错误传播**(resilience/callbacks.go:76-83):resilience 拒绝(限流/熔断开/
   舱壁满)或 fault 注入错误会写到 `tx.Error`;真实操作错误保持 gorm 原样。
-- **默认零开销**:未配置治理时 `resilience.ExecutorFor` 返回透明 executor——回调仍包裹
+- **默认零开销**:容器内无治理 bean 时,`Init` 装备的 executor 是透明直通——回调仍包裹
   但无任何行为,链路留在原地不产生成本。
 
 ### 2.3 事务
@@ -330,8 +330,8 @@ health.go:31-38),因此探针失败不会触发 resilience 熔断。
 用 §1 的治理配置加文件 source(见 starter-governance)或 example-load 布局
 (`starter-gorm-mysql/example-load`):
 
-1. 以 `govern.fault.enabled=false` 启动;基线查询全部成功。
-2. 翻转 `govern.fault.enabled=true`(配 `rate`、`error`)——治理 source 热加载。
+1. 以 `govern.client.fault.enabled=false` 启动;基线查询全部成功。
+2. 翻转 `govern.client.fault.enabled=true`(配 `rate`、`error`)——治理 source 热加载。
 3. 被注入的尝试在 SQL 执行前短路:注入错误落到 `tx.Error`,熔断计数,observe 层仍
    记录失败操作——可以在访问日志和 `db.client.operation.duration` 的错误 status 桶
    里观察"火情"。

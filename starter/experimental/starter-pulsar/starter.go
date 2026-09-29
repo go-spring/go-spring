@@ -22,7 +22,9 @@ package StarterPulsar
 
 import (
 	"github.com/apache/pulsar-client-go/pulsar"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -47,15 +49,28 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.pulsar.instances."+name+".driver:=${spring.pulsar.default.driver:=?}}")),
+				// The governance beans are NULLABLE injections: they exist
+				// whenever starter-governance is in the container, which is the
+				// normal case, and are absent from a container without it. Without
+				// the "?" gs would treat an absent bean as a wiring error and the
+				// app would not boot — turning "governance is off" into "governance
+				// must be imported", which is not the contract. applyResilience
+				// treats a nil bean as an unarmed authority, i.e. a transparent
+				// pass-through.
+				gs.IndexArg(4, gs.TagArg("?")), // mgr *resilience.Manager
+				gs.IndexArg(5, gs.TagArg("?")), // inj *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
 			// so consumers (starter-outbox-gorm, app pub/sub) autowire it like any
 			// client bean. It shares the connection's bean name; beans are keyed by
 			// (name, type), so it stays distinct from the raw pulsar.Client bean.
-			r.Provide(func(cl pulsar.Client) messaging.Driver {
-				return NewDriver(cl)
-			}, gs.TagArg(name)).Name(name).Caller(1)
+			// The load-test convention bean is a NULLABLE injection (index 1):
+			// present when the application provides one, absent otherwise, and
+			// NewDriver falls back to the canonical convention.
+			r.Provide(func(cl pulsar.Client, prop traffic.Propagator) messaging.Driver {
+				return NewDriver(cl, prop)
+			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
 			return nil
 		})
 	})
@@ -67,8 +82,9 @@ func init() {
 // the client is built it is probed (when FailFast is enabled) so a misconfigured
 // broker list, bad credentials or TLS mismatch fail fast at startup instead of
 // surfacing on the first produce/consume, then the resilience executor is
-// attached.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (pulsar.Client, error) {
+// attached from the injected governance beans (mgr, inj) — both nil in a
+// standalone, non-gs call, which applyResilience treats as "governance off".
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (pulsar.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating pulsar client, url=%s fail-fast=%v", c.URL, c.FailFast)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -88,7 +104,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (pulsar
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
 	}
-	if err := applyResilience(cl, resilience.ResourceLabel("pulsar", c.URL)); err != nil {
+	if err := applyResilience(cl, resilience.ServiceLabel("pulsar", c.URL), mgr, inj); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "pulsar: resilience setup failed: %v", err)
 		cl.Close()
 		shutdownMetrics(cl)

@@ -36,6 +36,15 @@ import (
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 func init() {
@@ -58,21 +67,21 @@ func init() {
 // resolverDialer adapter, which implements mssql.Dialer. In mesh mode a sidecar
 // owns discovery+LB, so the configured Host is used as-is. When c.ServiceName
 // is empty this stays a plain DSN dial, unchanged from before.
-func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *loadbalance.Manager) (gormcore.Spec, error) {
 	if c.Host == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
 	}
 
 	log.Debugf(ctx, log.TagAppDef, "creating gorm sqlserver client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
 
-	resource := resilience.ResourceLabel("gorm:sqlserver", c.ServiceName, c.Host)
+	service := resilience.ServiceLabel("gorm:sqlserver", c.ServiceName, c.Host)
 
 	var (
 		dialector gorm.Dialector
 		closer    func()
 	)
 
-	lb, _, stopSelection, err := c.NewPickPool(ctx, backend, resource)
+	lb, _, stopSelection, err := c.NewPickPool(ctx, backend, service, lbMgr)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: build discovery resolver failed: %v", err)
 		return gormcore.Spec{}, err
@@ -99,7 +108,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery) (gormcore
 	return gormcore.Spec{
 		Dialector:      dialector,
 		Pool:           c.Pool(),
-		Resource:       resource,
+		Service:        service,
 		ObserveEnabled: c.ObserveEnabled,
 		Closers:        closers,
 	}, nil

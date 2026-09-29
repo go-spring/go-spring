@@ -24,41 +24,55 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/governance/resilience"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
-// buildAdmission builds the inbound admission middleware. The resilience
-// executor is resolved through the NEUTRAL provider seam
-// [resilience.ExecutorFor]: starter-govern registers a provider backed by the
-// governance center, so this server gets its rate-limit / bulkhead / breaker
-// policy WITHOUT injecting *governance.Center or even importing cloud/governance.
-// When governance is not configured the seam yields a transparent no-op
-// executor, so the admission middleware runs but never rejects (next runs once,
-// untouched). Hot-reload is driven on the backing executor by the provider, so
-// an operator can tighten inbound admission without a restart, the same way
-// every outbound client's policy is tuned.
+// buildServerPolicy builds the inbound admission middleware. The resilience
+// executor is built from the injected [resilience.Manager], so this server gets
+// its rate-limit / bulkhead / breaker limits from the governance document's SERVER
+// block (govern.server.*)
+// WITHOUT naming *governance.Center. A nil manager — a standalone call, or an app
+// that does not import starter-governance — is normalized to an unarmed one,
+// whose executor is a transparent pass-through, so the admission middleware runs
+// but never rejects (next runs once, untouched). The executor handle resolves its
+// backing implementation per call and follows the manager's hot-reload, so an
+// operator can tighten inbound admission without a restart, the same way every
+// outbound client's policy is tuned.
 //
 // The label is "echo:<address>", the same one the fault middleware's sibling
 // tables use for this server, so one govern rule covers the whole inbound side.
-func buildAdmission(cfg Config) echo.MiddlewareFunc {
-	resource := resilience.ResourceLabel("echo", cfg.Address)
-	return resilienceAdmission(resilience.ExecutorFor("echo", resource), resource)
+func buildServerPolicy(cfg Config, mgr *resilience.Manager) echo.MiddlewareFunc {
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	service := resilience.ServiceLabel("echo", cfg.Address)
+	return resilienceServerPolicy(mgr.ServerExecutorFor("echo", service), service)
 }
 
-// resilienceAdmission is the inbound admission middleware: each request runs
-// through exec so the configured rate-limit / bulkhead / breaker policy is
+// resilienceServerPolicy is the inbound admission middleware: each request runs
+// through exec so the configured rate-limit / bulkhead / breaker limits are
 // enforced before the handler chain. Rejects map to 429 (rate/bulkhead) or 503
 // (circuit open); a handler error or a committed 5xx counts as a failure for the
 // breaker.
 //
 // Inbound admission must NOT retry — a handler that has already produced side
 // effects cannot be replayed (inbound serving is not idempotent). Leave
-// Policy.MaxRetries at 0; the committed guard also prevents reentry regardless.
-func resilienceAdmission(exec resilience.Executor, resource string) echo.MiddlewareFunc {
+// [resilience.ServerPolicy] has no retry field at all, so the executor built from the
+// server block has no retry stage; the committed guard also prevents reentry.
+func resilienceServerPolicy(exec resilience.ServerExecutor, service string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			var served bool
 			var handlerErr error
-			err := exec.Execute(c.Request().Context(), resource, func(ctx context.Context) error {
+			err := exec.Execute(c.Request().Context(), func(ctx context.Context) error {
 				if served {
 					return nil // reentry guard: handler already ran this request
 				}

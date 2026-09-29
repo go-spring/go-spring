@@ -105,7 +105,7 @@ correlation).
 | Middleware | Default | Source | Notes |
 |---|---|---|---|
 | `recovery` | on | `middleware.Recover()` (starter seam) | Catches request-goroutine panics; turning it off risks a process crash. |
-| `loadtest` | on | self | Tags the request context when the `X-LoadTest` (configurable) marker header is present, so downstream code can branch on `traffic.IsLoadTest`. |
+| `loadtest` | on | self | Tags the request context when the `X-LoadTest` (configurable) marker header is present, so downstream code can branch on the propagator's `IsLoadTest`. |
 | `requestId` | on | `middleware.RequestID()` | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
 | `tracing` | on | self | OTel server span per request; no-op until `starter-otel` is imported. |
 | `metrics` | on | self | Request count/duration/in-flight via the OTel globals; no-op until `starter-otel` is imported. |
@@ -117,7 +117,7 @@ correlation).
 
 Order (outermost first): `LoadTest -> Recovery -> RequestID -> Tracing -> Metrics -> AccessLog
 -> SecureHeaders -> CORS -> Gzip -> BodyLimit -> fault`. LoadTest is outermost so every later
-layer can branch on `traffic.IsLoadTest`; Recovery catches panics from every later layer;
+layer can branch on the propagator's `IsLoadTest`; Recovery catches panics from every later layer;
 RequestID runs before AccessLog so each access record carries the id; AccessLog wraps the policy
 middlewares so short-circuit responses (413, 204, 403) are still logged. A fault-injection
 middleware is always installed innermost (transparent when the governance center has no fault

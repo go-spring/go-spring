@@ -168,10 +168,11 @@ spring.observability.metrics.port=0        # /metrics served by actuator only
 ```yaml
 govern:
   enabled: true
-  fault:
-    enabled: false
-    rate: 0.2
-    error: timeout
+  client:
+    fault:
+      enabled: false
+      rate: 0.2
+      error: timeout
 ```
 
 **Verify**:

@@ -24,6 +24,7 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
+	go-spring.org/starter-governance v0.0.0
 	go-spring.org/log v0.1.4
 	go-spring.org/stdlib v0.1.7
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -39,3 +40,4 @@ require (
 require go-spring.org/cloud v0.0.0
 
 replace go-spring.org/cloud => ../../../cloud
+replace go-spring.org/starter-governance => ../../starter-governance

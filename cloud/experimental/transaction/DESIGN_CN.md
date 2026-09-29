@@ -28,7 +28,7 @@
   joinpoint 方法名查。未注册方法透明放行,不反射业务函数体。
 - **`Observer` 缝隙。** starter 每 phase 起一个 span(action / compensate)。
   nil 完全关掉观测。
-- **`RetryPolicy = resilience.Policy` 别名。** 有意复用同一套字段
+- **`RetryPolicy = resilience.ClientPolicy` 别名。** 有意复用同一套字段
   (`MaxRetries`、`Timeout` ...),saga 步骤重试与出站韧性共用配置,不重复
   实现。
 

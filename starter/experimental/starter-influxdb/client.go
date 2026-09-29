@@ -16,7 +16,7 @@
 
 // client.go is the "resource entity" concept of this starter: the Client
 // wrapper InfluxDB clients are injected as, plus its lifecycle (Init/
-// Destroy), the resource label, and the dynamicTransport indirection that
+// Destroy), the service label, and the dynamicTransport indirection that
 // lets Init swap the observe+resilience transport into a client whose HTTP
 // client is fixed at construction time. It mirrors starter-s3's client.go.
 // The per-request observe seam lives in command.go.
@@ -33,6 +33,15 @@ import (
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
+
+	// Blank import: importing this starter brings the governance authority with
+	// it — starter-governance registers the *resilience.Manager, *loadbalance.
+	// Manager, *fault.Injector and *governance.Center beans this package injects.
+	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// not the absence of the starter. The injected parameters stay nullable, so a
+	// container that somehow lacks these beans degrades to a transparent
+	// pass-through instead of failing to boot.
+	_ "go-spring.org/starter-governance"
 )
 
 // Client is the wrapper bean InfluxDB clients are injected as. It embeds the
@@ -43,37 +52,44 @@ type Client struct {
 	influxdb2.Client
 
 	// cfg is the connection config, retained for the write helpers and the
-	// resilience resource label.
+	// resilience service label.
 	cfg Config
 	// dyn is the dynamic transport DefaultDriver installed; Init swaps the
 	// observe+resilience transport into it. nil for custom drivers.
 	dyn *dynamicTransport
-	// exec is the resilience executor protecting writes, resolved via
-	// resilience.ExecutorFor; no-op when governance is off.
-	exec resilience.Executor
-	// resource is the resilience resource key ("influxdb:<url>") exec scopes
+	// exec is the resilience executor protecting writes, built from the
+	// injected resilience.Manager; no-op when governance is off.
+	exec resilience.ClientExecutor
+	// service is the resilience service key ("influxdb:<url>") exec scopes
 	// limiter/breaker state by.
-	resource string
+	service string
+	// mgr and inj are the governance beans gs injects into the constructor
+	// (both nil in a standalone call). mgr is normalized in Init, since an
+	// unarmed manager is exactly the "governance off" pass-through while a nil
+	// pointer would panic on the method call; inj is nil-safe at its use site.
+	mgr *resilience.Manager
+	inj *fault.Injector
 	// errDone tracks the async-writer error drain goroutine.
 	errOnce sync.Once
 }
 
 // Init is the gs InitMethod: it builds the observe transport (influxdb-client-go
 // ships no OTel instrumentation of its own, so the transport carries all three
-// signals) and resolves the executor through the neutral
-// [resilience.ExecutorFor] seam, wraps it with the process-wide fault injector
-// and observe-resilience, and swaps the result into the client's dynamic
-// transport. When governance is off the resolved executor is a transparent
-// no-op (the transport is effectively observe-only).
+// signals) and builds the executor from the injected resilience.Manager, wraps
+// it with the fault injector and observe-resilience, and swaps the result into
+// the client's dynamic transport. When governance is off the executor is a
+// transparent no-op (the transport is effectively observe-only).
 func (o *Client) Init() error {
 	obs := newDBObserver("influxdb")
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
-	o.resource = resilience.ResourceLabel("influxdb", o.cfg.ServerURL)
-	exec := fault.WrapExecutor(resilience.ExecutorFor("influxdb", o.resource))
+	o.service = resilience.ServiceLabel("influxdb", o.cfg.ServerURL)
+	if o.mgr == nil {
+		o.mgr = resilience.NewManager()
+	}
+	exec := fault.WrapClientExecutor(o.mgr.ClientExecutorFor("influxdb", o.service), o.service, o.inj)
 	o.exec = exec
 	if o.dyn != nil {
-		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec,
-			func(*http.Request) string { return o.resource }))
+		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec))
 	}
 	return nil
 }
@@ -99,7 +115,7 @@ func (o *Client) WritePoints(ctx context.Context, points ...*write.Point) error 
 		return errMissingOrgBucket()
 	}
 	w := o.Client.WriteAPIBlocking(o.cfg.Org, o.cfg.Bucket)
-	return o.exec.Execute(ctx, o.resource, func(ctx context.Context) error {
+	return o.exec.Execute(ctx, func(ctx context.Context) error {
 		return w.WritePoint(ctx, points...)
 	})
 }

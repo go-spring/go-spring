@@ -23,6 +23,7 @@ import (
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/spring/gs"
 )
 
@@ -38,11 +39,11 @@ func init() {
 		Prefix:       "spring.gorm.fake",
 		Engine:       "fake",
 		HealthPrefix: "gorm:fake:",
-		Build: func(ctx context.Context, c fakeCfg, _ discovery.Discovery) (Spec, error) {
+		Build: func(ctx context.Context, c fakeCfg, _ discovery.Discovery, _ *loadbalance.Manager) (Spec, error) {
 			return Spec{
 				Dialector:      fakeDialector{},
 				Pool:           PoolConfig{PingTimeout: time.Second},
-				Resource:       "gorm:fake:" + c.File,
+				Service:        "gorm:fake:" + c.File,
 				ObserveEnabled: false,
 			}, nil
 		},
@@ -55,11 +56,11 @@ func init() {
 		BeanPrefix:   "fake2",
 		Engine:       "fake2",
 		HealthPrefix: "gorm:fake2:",
-		Build: func(ctx context.Context, c fakeCfg, _ discovery.Discovery) (Spec, error) {
+		Build: func(ctx context.Context, c fakeCfg, _ discovery.Discovery, _ *loadbalance.Manager) (Spec, error) {
 			return Spec{
 				Dialector:      fakeDialector{},
 				Pool:           PoolConfig{PingTimeout: time.Second},
-				Resource:       "gorm:fake2:" + c.File,
+				Service:        "gorm:fake2:" + c.File,
 				ObserveEnabled: false,
 			}, nil
 		},

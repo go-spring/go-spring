@@ -27,7 +27,7 @@ is wrong.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `enabled` | `true` | Master switch for the whole baseline. |
-| `propagate.load-test-header` | (empty) | Override `traffic.HeaderLoadTest` so load-test detection/injection uses luohua's own header (the G1 seam). The gRPC metadata key is derived by lower-casing. |
+| `propagate.load-test-header` | (empty) | Override the propagator's header name so load-test detection/injection uses luohua's own header (the G1 seam). The gRPC metadata key is derived by lower-casing. |
 | `propagate.headers` | (empty) | Business headers a luohua named-header propagator carries across every hop (`X-Tenant`, `X-User`, …). They ride the OTel global propagator, so httpx / gin / echo / grpc all honour them. |
 | `observability.fields` | (empty) | Context fields luohua surfaces on every log line **and every span** (same names as `propagate.headers`, e.g. `X-Tenant`). Attached to the request context when the headers are extracted. |
 
@@ -76,16 +76,16 @@ The bean carries no config gate: if nothing injects it, it never instantiates.
 ## Governance
 
 Luohua deliberately brings **no governance engine of its own** — outbound calls
-already funnel through go-spring's neutral `resilience.ExecutorFor` /
-`fault.InjectorFor` seams under the single governance authority, and a company
+already funnel through the `resilience.Manager` / `fault.Injector` beans the
+governance starter registers, under the single governance authority, and a company
 that has no bespoke backend should ride the official one and pin its policy per
 fleet. Do that in a governance rules document (see starter-governance):
 
 ```properties
 govern.driver=default
-govern.rules[0].resources=orders
-govern.rules[0].timeout=500ms
-govern.rules[0].max-retries=2
+govern.client.rules[0].service=orders
+govern.client.rules[0].attempt-timeout=500ms
+govern.client.rules[0].max-retries=2
 ```
 
 Registering a company resilience backend (instead of `default`) is a plain bean —

@@ -72,11 +72,10 @@ type MiddlewareConfig struct {
 // (the default — one header lookup per request) the LoadTest middleware reads
 // the marker header off the incoming request and tags the request context, so
 // every downstream handler, middleware and outbound client can tell synthetic
-// load apart from real traffic via traffic.IsLoadTest. Defaults to the canonical
-// X-LoadTest header used across go-spring.
+// load apart from real traffic through the load-test convention's IsLoadTest.
+// Defaults to the canonical X-LoadTest header used across go-spring.
 type LoadTestConfig struct {
-	Enabled bool   `value:"${enabled:=true}"`
-	Header  string `value:"${header:=X-LoadTest}"`
+	Enabled bool `value:"${enabled:=true}"`
 }
 
 // RecoveryConfig toggles middleware.Recover. It is on by default: an unrecovered

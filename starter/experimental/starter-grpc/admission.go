@@ -32,14 +32,16 @@ type resilienceInterceptors struct {
 	unary grpc.UnaryServerInterceptor
 }
 
-// buildResilienceInterceptors constructs an inbound-admission executor via the
-// NEUTRAL provider seam [resilience.ExecutorFor] and returns the unary
-// interceptor that runs each RPC through it. starter-govern registers a provider
-// backed by the governance center, so this server gets its rate-limit /
-// bulkhead / breaker policy WITHOUT injecting *governance.Center or even importing
-// cloud/governance. When governance is not configured the seam yields a transparent
-// no-op executor (fn runs once, untouched). Hot-reload is driven on the backing
-// executor by the provider. The executor is wrapped with observe-resilience so
+// buildResilienceInterceptors constructs an inbound-admission executor from the
+// injected [resilience.Manager] and returns the unary interceptor that runs each
+// RPC through it. The manager is the governance starter's bean, so this server
+// gets its rate-limit / bulkhead / breaker limits from the governance document's
+// SERVER block (govern.server.*)
+// WITHOUT naming *governance.Center. A nil manager — a standalone call, or an app
+// that does not import starter-governance — is normalized to an unarmed one,
+// whose executor is a transparent pass-through (fn runs once, untouched). The
+// executor handle resolves its backing implementation per call and follows the
+// manager's hot-reload. The executor is wrapped with observe-resilience so
 // breaker trips / rate rejects / bulkhead rejects emit span + counter +
 // histogram.
 //
@@ -49,10 +51,14 @@ type resilienceInterceptors struct {
 // retry for inbound (a handler that has already produced side effects cannot be
 // replayed) — leave MaxRetries at 0: inbound serving is not idempotent.
 func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors, bool) {
-	resource := resilience.ResourceLabel("grpc", s.cfg.Addr)
-	exec := resilience.ExecutorFor("grpc", resource)
+	mgr := s.mgr
+	if mgr == nil {
+		mgr = resilience.NewManager()
+	}
+	service := resilience.ServiceLabel("grpc", s.cfg.Addr)
+	exec := mgr.ServerExecutorFor("grpc", service)
 	return resilienceInterceptors{
-		unary: resilienceUnaryInterceptor(exec, resource),
+		unary: resilienceUnaryInterceptor(exec, service),
 	}, true
 }
 
@@ -60,28 +66,28 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 // configured rate-limit / bulkhead / breaker (admission) policy is enforced
 // before the handler runs.
 //
-// Admission rejections are mapped to semantic gRPC status codes so consumers
+// ServerPolicy rejections are mapped to semantic gRPC status codes so consumers
 // that branch on status code (retry policies, circuit breakers, dashboards)
 // can tell "this client is being throttled" from an arbitrary handler failure:
 // rate/bulkhead rejections are ResourceExhausted, an open circuit is
 // Unavailable. Without the mapping they cross the wire as codes.Unknown,
 // which no consumer can act on.
-func resilienceUnaryInterceptor(exec resilience.Executor, resource string) grpc.UnaryServerInterceptor {
+func resilienceUnaryInterceptor(exec resilience.ServerExecutor, service string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		var resp any
-		err := exec.Execute(ctx, resource, func(ctx context.Context) error {
+		err := exec.Execute(ctx, func(ctx context.Context) error {
 			var e error
 			resp, e = handler(ctx, req)
 			return e
 		})
-		return resp, mapAdmissionError(err)
+		return resp, mapServerPolicyError(err)
 	}
 }
 
-// mapAdmissionError translates resilience admission rejections into semantic
+// mapServerPolicyError translates resilience admission rejections into semantic
 // gRPC status errors; every other error (handler failure, injected fault, ...)
 // passes through untouched.
-func mapAdmissionError(err error) error {
+func mapServerPolicyError(err error) error {
 	if err == nil {
 		return nil
 	}

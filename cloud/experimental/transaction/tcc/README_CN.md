@@ -20,7 +20,7 @@ Confirm / Cancel 决定去留。
   bean。
 - `Observer` 缝隙接 otel(stdlib 不 import otel)。
 - `ParticipantRegistry` + `GlobalTCC(coord, reg)` 切面形态——按方法名匹配。
-- `RetryPolicy = resilience.Policy` 别名,复用出站韧性配置;Confirm / Cancel
+- `RetryPolicy = resilience.ClientPolicy` 别名,复用出站韧性配置;Confirm / Cancel
   按 TCC 契约"最终必须成功",推荐设非零策略。
 
 ## 用法

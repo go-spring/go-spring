@@ -1,7 +1,7 @@
 # starter-redigo 使用说明 — 参考手册
 
 详细使用文档。概览见 [README.md](README_CN.md)。所有行为声明均已对照源码
-（`starter.go`、`config.go`、`pool.go`、`conn.go`、`driver.go`、`health/health.go`、`bytecache/`）
+（`starter.go`、`config.go`、`pool.go`、`conn.go`、`driver.go`、`health.go`、`bytecache.go`）
 与可运行的 [example/](example/) 核实——下文括号内为 file:line 抽查点。
 **redigo 语义（Do/借连接模型、reply 辅助函数）见 [redigo 官方仓库](https://github.com/gomodule/redigo)**
 ——本文只写 go-spring 的增量。字段布局刻意与 starter-go-redis single 模式对齐，两者切换只需
@@ -206,7 +206,7 @@ bean Init 里注册。
 2. observe 层开名为 `get` 的 span，参数摘要是 `GET key`（只记命令+首个参数——值永不入日志；
    截断到 512 字节 [observe.go]）。ctx 是**调用方**的 context，span 因此挂到请求
    trace 上，attempt-timeout 也能打断调用。
-3. resilience 层向 executor（resource 标签 `redigo:<地址或服务名>`，按池
+3. resilience 层向 executor（service 标签 `redigo:<地址或服务名>`，按池
    [pool.go:190]）申请许可；可重试失败会重新驱动内层调用。
 4. 内层 `Do` 读写 Redis；命中返回 bulk string。
 5. `redis.ErrNil`（miss）经 nil-as-success 谓词判为成功 [conn.go:201-204]——
@@ -273,7 +273,7 @@ pool.Get()（你的代码）
 ### 4.1 经 actuator 验证健康
 
 ```bash
-curl -s :9370/readyz            # redigo:main 借一条连接并 PING [health/health.go:32-39]
+curl -s :9370/readyz            # redigo:main 借一条连接并 PING [`health.go`]
 docker stop <redis>; curl -s :9370/readyz   # 503
 ```
 
@@ -291,8 +291,9 @@ curl -s :9370/metrics | grep -E 'redigo|db.client'   # 时延直方图 + 在途 
 用 `discovery` 实例（`service-name` + `conn-max-lifetime=30s`），迁移/扩缩后端 Redis；
 `Stats()`（ActiveCount/IdleCount）显示 30s 内连接回收到新端点——无需重启、无需重建客户端。
 
-池的策略归治理管，不是写死的：它挂着 suspension tracker，并经 `loadbalance.Pool.BindSelection`
-绑到 `redigo:<service-name|addr>`，所以该 label 命中的 `govern.rules[N].balancer` /
+池的策略归治理管，不是写死的：它挂着 suspension tracker，并经注入的 `*loadbalance.Manager`
+bean 上的 `loadbalance.Manager.Bind(pool, label)` 绑到 `redigo:<service-name|addr>`，所以该
+label 命中的 `govern.client.rules[N].balancer` /
 `outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号就用新策略。dialer 把拨号
 结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例；单条命令的失败归
 resilience executor 管。直连（只配 `addr`）的池没有候选集，这些 key 对它无效。详见
@@ -306,7 +307,7 @@ v, _ := redis.String(s.Main.Get().(*StarterRedigo.Conn).Do("GET", "k"))  // 读�
 ```
 
 门面 miss 返回 `cache.ErrMiss`；裸 Do 返回 `redis.ErrNil`——边界做了映射
-（starter-redigo/bytecache）。
+（this package's bytecache.go）。
 
 ### 4.5 拦截器短路演练
 
