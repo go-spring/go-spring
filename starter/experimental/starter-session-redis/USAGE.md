@@ -129,7 +129,7 @@ import starter-go-redis + starter-session-redis
   └─ gs.Module(gs.OnProperty("spring.session.redis"))
         └─ conf.BindEach("${spring.session.redis}") per entry <name>:
              ├─ fail fast when client == ""   (boot error naming the instance)
-             └─ Provide newStore → bean "<name>"   (Export session.SessionStore;
+             └─ Provide newStore → bean "redis.<name>"   (Export session.SessionStore;
                   gs.ValueArg(c), gs.TagArg(c.Client)   NO destroy hook)
 
 gs.Run()
@@ -139,7 +139,7 @@ gs.Run()
   │    all session (de)serialization stays in the stdlib abstraction; the
   │    concrete type is only a named, exportable wrapper (gs beans cannot
   │    return unexported interface impls).
-  ├─ bean wiring: consumers' autowire:"<name>" resolved
+  ├─ bean wiring: consumers' autowire:"redis.<name>" resolved
   └─ on SIGTERM: nothing to release — no destroy hook; sessions persist in
                  Redis and expire via key TTL. The redis client's Close belongs
                  to starter-go-redis.

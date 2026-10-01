@@ -82,10 +82,10 @@ that has no bespoke backend should ride the official one and pin its policy per
 fleet. Do that in a governance rules document (see starter-governance):
 
 ```properties
-govern.driver=default
-govern.client.rules[0].service=orders
-govern.client.rules[0].attempt-timeout=500ms
-govern.client.rules[0].max-retries=2
+spring.governance.driver=default
+spring.governance.client.rules[0].service=orders
+spring.governance.client.rules[0].attempt-timeout=500ms
+spring.governance.client.rules[0].max-retries=2
 ```
 
 Registering a company resilience backend (instead of `default`) is a plain bean —

@@ -88,14 +88,33 @@ keeps an in-flight table; p2c keeps a latency model). All state is keyed by
 endpoint address, so instances coming and going — or a reordered snapshot —
 never disturbs the state of the survivors.
 
-A custom strategy implements the `Balancer` interface and registers like any
-built-in:
+A custom strategy implements `Balancer` (Pick/Complete, concurrency-safe) and is
+contributed as a named `Factory` bean — the bean name is the strategy name a
+rule cites, and the strategy's own parameters arrive in `Params`:
 
 ```go
-loadbalance.Register("my_strategy", func(loadbalance.Config) loadbalance.Balancer {
-    return &myBalancer{} // implement Pick and Complete; be concurrency-safe
-})
+type myFactory struct{}
+
+func (myFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbalance.Balancer, error) {
+    window, err := p.Duration("window", time.Second) // the strategy's own parameter
+    if err != nil {
+        return nil, err
+    }
+    if err := p.Done(); err != nil { // reject keys this strategy does not know
+        return nil, err
+    }
+    return &myBalancer{window: window}, nil
+}
+
+// in a starter's init:
+gs.Provide(func() loadbalance.Factory { return myFactory{} }).
+    Name("my_strategy").
+    Export(gs.As[loadbalance.Factory]()).Caller(1)
 ```
+
+The core knows no strategy parameter — `Params` is the flat `balancer-params`
+map of the rule, and the strategy reads the keys it owns and rejects the rest.
+Adding a strategy, with parameters of its own, changes nothing in this package.
 
 Under retry, simply `Pick` again per attempt — the candidate set is re-filtered
 each time, so there is no (and needs no) failed-endpoint blacklist API;
@@ -168,9 +187,23 @@ defer stop()
 calls — once with the source's snapshot, then on every push — and
 `Manager.SelectionFor(label)` reads back what a label currently resolves to.
 
-`Pool.ApplySelection` is the same sink reached directly, and `Pool.Selection()`
-reads back the policy most recently accepted — useful when you drive selection
-from your own config instead of the manager.
+A rule names the strategy and carries its parameters as a flat sub-map, opaque to
+this package:
+
+```yaml
+balancer: consistent_hash
+balancer-params:
+  replicas: 200
+outlier-threshold: 5
+```
+
+`Bind` is where a strategy name becomes a strategy: it resolves the name against
+the manager's `Directory` — the built-in strategies plus any `Factory` beans the
+container contributed — and hands the pool a built `Balancer`, so a pool never
+holds the factory table. `Pool.ApplyBalancer` (strategy) and
+`Pool.ApplySuspension` (thresholds) are the same two halves reached directly, and
+`Pool.Selection()` reads back the policy most recently accepted — useful when you
+drive selection from your own config instead of the manager.
 
 ## The Pick/Complete contract
 

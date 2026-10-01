@@ -48,6 +48,10 @@ type nacosDiscovery struct {
 	group   string
 	cluster string
 
+	// obs is the block's observability layer; it carries the identity (system,
+	// center) every reported sync and log line is labelled with.
+	obs *discovery.Observer
+
 	mu      sync.Mutex // guards entries
 	entries map[string]*nacosEntry
 }
@@ -63,11 +67,12 @@ type nacosEntry struct {
 // newNacosDiscovery returns the read side of one block, backed by client. The
 // cache map is created here: a caller that builds the struct literally leaves
 // it nil and panics on the first Resolve.
-func newNacosDiscovery(client naming_client.INamingClient, group, cluster string) *nacosDiscovery {
+func newNacosDiscovery(client naming_client.INamingClient, group, cluster string, obs *discovery.Observer) *nacosDiscovery {
 	return &nacosDiscovery{
 		client:  client,
 		group:   group,
 		cluster: cluster,
+		obs:     obs,
 		entries: map[string]*nacosEntry{},
 	}
 }
@@ -94,13 +99,13 @@ func (d *nacosDiscovery) Resolve(ctx context.Context, name string, opts ...disco
 	if !e.seeded {
 		instances, err := d.selectInstances(ctx, name)
 		if err != nil {
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			return nil, err
 		}
 		// A failed subscription means the cache can never be kept current, so
 		// it counts as a failed sync rather than a merely partial seed.
 		if err := d.subscribe(name, e); err != nil {
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			return nil, err
 		}
 		e.eps = instancesToEndpoints(instances)
@@ -108,7 +113,7 @@ func (d *nacosDiscovery) Resolve(ctx context.Context, name string, opts ...disco
 		e.seeded = true
 		// The seed is this service's first confirmed snapshot; reporting it
 		// starts the freshness clock before any push arrives.
-		discovery.Synced(obsSystem, name, nil)
+		d.obs.Synced(name, nil)
 	}
 	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
 	return eps, nil
@@ -144,9 +149,16 @@ func (d *nacosDiscovery) selectInstances(_ context.Context, name string) ([]mode
 func (d *nacosDiscovery) subscribe(name string, e *nacosEntry) error {
 	cb := func(services []model.Instance, err error) {
 		if err != nil {
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			log.Warn(context.Background(), starterTag, append(
-				discovery.SyncFailedFields(obsSystem, name, err),
+				[]log.Field{
+					log.String("system", d.obs.System()),
+					log.String("center", d.obs.Center()),
+					log.String("service", name),
+					log.String("operation", "sync"),
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+				},
 				log.Msg("registry-nacos: push failed (keeping last snapshot)"),
 			)...)
 			return
@@ -156,7 +168,7 @@ func (d *nacosDiscovery) subscribe(name string, e *nacosEntry) error {
 		e.mu.Lock()
 		e.eps = eps
 		e.mu.Unlock()
-		discovery.Synced(obsSystem, name, nil)
+		d.obs.Synced(name, nil)
 	}
 	return d.client.Subscribe(&vo.SubscribeParam{
 		ServiceName: name, GroupName: d.group, Clusters: d.clusterList(), SubscribeCallback: cb,

@@ -17,7 +17,7 @@
 // Package StarterRegistryNacos adapts Nacos as a service registry. Each
 // ${spring.registry.nacos.<name>} block becomes ONE backend bean named
 // "nacos.<name>" serving both sides of the naming idiom: the write side (a
-// discovery.Registrar collected by the starter-registry core, which registers
+// discovery.Registry collected by the starter-registry core, which registers
 // this instance once the app is ready and deregisters it on shutdown) and the
 // read side (a discovery.Discovery consumers cite by the bean's name).
 // Blank-import the package and configure one block per Nacos server:
@@ -76,7 +76,7 @@ const obsSystem = "nacos"
 // ${spring.registry.nacos.<name>} block made a bean. It owns the single Nacos
 // naming client for that server (probed at construction, closed by the bean
 // destructor) and serves both halves of the naming idiom through it: the
-// write side (a discovery.Registrar collected by the starter-registry core)
+// write side (a discovery.Registry collected by the starter-registry core)
 // and the read side (a discovery.Discovery consumers cite by the bean's name
 // "nacos.<name>"; lazy, so an app that never cites it pays nothing for the
 // read half). Both sides resolve within the block's namespace/group/cluster,
@@ -84,6 +84,10 @@ const obsSystem = "nacos"
 type nacosBackend struct {
 	reg  *nacosRegistrar
 	disc *nacosDiscovery
+
+	// obs is this block's observability layer: one observer per configured
+	// block, closed by the bean destructor below.
+	obs *discovery.Observer
 
 	// namespace/group scope the health probe's one-service listing the same
 	// way the startup probe scopes it.
@@ -94,7 +98,7 @@ type nacosBackend struct {
 // newNacosBackend builds the naming client (probing the server) and both
 // halves. The probe is the fail-fast: a misconfigured or unreachable Nacos
 // fails startup here, once per block.
-func newNacosBackend(c NacosConfig) (*nacosBackend, error) {
+func newNacosBackend(c NacosConfig, name string) (*nacosBackend, error) {
 	if c.Server == "" {
 		return nil, errutil.Explain(nil, "registry-nacos: server is required")
 	}
@@ -102,7 +106,12 @@ func newNacosBackend(c NacosConfig) (*nacosBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	reg, err := newNacosRegistrar(c, client)
+	obs, err := discovery.NewObserver(obsSystem, name)
+	if err != nil {
+		client.CloseClient()
+		return nil, err
+	}
+	reg, err := newNacosRegistrar(c, client, obs)
 	if err != nil {
 		client.CloseClient()
 		return nil, err
@@ -110,7 +119,8 @@ func newNacosBackend(c NacosConfig) (*nacosBackend, error) {
 	log.Debugf(context.Background(), starterTag, "nacos backend for server=%s group=%s ready", c.Server, c.Group)
 	return &nacosBackend{
 		reg:       reg,
-		disc:      newNacosDiscovery(client, c.Group, c.Cluster),
+		disc:      newNacosDiscovery(client, c.Group, c.Cluster, obs),
+		obs:       obs,
 		namespace: c.Namespace,
 		group:     c.Group,
 	}, nil
@@ -134,6 +144,9 @@ func (b *nacosBackend) Close() error {
 		return nil
 	}
 	b.disc.client.CloseClient()
+	// Drop this block's gauge callbacks with it: the block owns them, so nothing
+	// of it may keep reporting after it is gone.
+	_ = b.obs.Close()
 	return nil
 }
 
@@ -210,7 +223,7 @@ func init() {
 	// One NAMED bean per block under ${spring.registry.nacos.<name>}: the bean
 	// name "nacos.<name>" is the label a client starter cites to pick this
 	// backend for discovery, and the starter-registry core collects the same
-	// bean (as a discovery.Registrar) into the single publication lifecycle.
+	// bean (as a discovery.Registry) into the single publication lifecycle.
 	// Blocks across backends never collide (the name carries the backend
 	// type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -218,8 +231,9 @@ func init() {
 		return conf.BindEach(p, "${spring.registry.nacos}", func(name string, c NacosConfig) error {
 			r.Provide(newNacosBackend,
 				gs.IndexArg(0, gs.ValueArg(c)),
+				gs.IndexArg(1, gs.ValueArg(name)),
 			).Name("nacos."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registrar]()).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
 				Destroy((*nacosBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this server unless the user

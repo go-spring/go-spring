@@ -100,12 +100,12 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance (resilience for the *http.Client transport) ------------------
 # Same service label as the client: oauth2:<client-id>.
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.max-retries=3
-govern.client.default.error-threshold=10
-govern.client.default.attempt-timeout=2s
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.max-retries=3
+spring.governance.client.default.error-threshold=10
+spring.governance.client.default.attempt-timeout=2s
 
 # --- observability (starter-otel, optional) ----------------------------------
 spring.observability.service-name=demo
@@ -288,7 +288,7 @@ exists for `TokenSource`.
 
 ### 4.5 Governance hot-toggle
 
-With `govern.source.file.path`, flip `max-retries=0` in the file while the example runs —
+With `spring.governance.source.file.path`, flip `max-retries=0` in the file while the example runs —
 the same flaky call now fails fast to the caller (executor policy is resolved at call
 time. No restart.
 

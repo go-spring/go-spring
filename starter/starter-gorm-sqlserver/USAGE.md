@@ -300,12 +300,12 @@ instance (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # baseline SELECT 1 throughput
-# set fire — edit conf/govern.properties (hot-reload via starter-governance's file source):
-#   govern.client.fault.enabled=true  govern.client.fault.rate=0.5  govern.client.fault.error=generic
+# set fire — edit conf/governance.properties (hot-reload via starter-governance's file source):
+#   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                       # error breakdown shows ~50% injected
 ```
 
-The breaker (`govern.client.default.error-threshold=20`) trips visible in the same breakdown;
+The breaker (`spring.governance.client.default.error-threshold=20`) trips visible in the same breakdown;
 `WithContext` threads the harness deadline so the 500 ms timeout can interrupt in-flight
 queries.
 

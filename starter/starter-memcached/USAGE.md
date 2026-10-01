@@ -232,8 +232,8 @@ the output belongs to the example app, not the starter).
 
 The `driver` key names the Driver bean: empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type (see
 §2.1), set to a bean name to select one explicitly; no `resilience` key: resilience/fault come from the governance center
-(`govern.*` config of
-starter-governance), keyed by service `memcached:<service-name or instance-name>`.: resilience/fault come from the governance center (`govern.*` config of
+(`spring.governance.*` config of
+starter-governance), keyed by service `memcached:<service-name or instance-name>`.: resilience/fault come from the governance center (`spring.governance.*` config of
 starter-governance), keyed by service `memcached:<service-name or instance-name>`.
 
 ---

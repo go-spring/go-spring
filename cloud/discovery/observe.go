@@ -23,7 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/log"
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -35,7 +36,7 @@ import (
 // built from.
 const instrumentationName = "go-spring.org/cloud/discovery"
 
-// Registration reasons a backend passes to [RegisterAttempt]: the first
+// Registration reasons a backend passes to [Observer.RegisterAttempt]: the first
 // publish of an instance, and a background re-publish after the center lost it.
 // A rising self_heal count (or a registered gauge stuck at 0) is the signal
 // that an instance is serving while no longer discoverable.
@@ -51,17 +52,9 @@ const (
 	opUpdateWeight = "update_weight"
 )
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set, shared with the other domain packages.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 // obsNow reads the wall clock. A variable so tests can advance time and assert
 // that a stale snapshot's age actually climbs.
 var obsNow = time.Now
-
-// obsKey identifies one (backend, service) pair in the state the observable
-// gauges read.
-type obsKey struct{ system, service string }
 
 // syncState tracks how fresh one service's cached endpoint snapshot is.
 // origin is the first reported attempt, last advances only on a successful
@@ -81,141 +74,240 @@ func (s syncState) ageAt(now time.Time) time.Duration {
 	return now.Sub(s.last)
 }
 
-var (
-	// obsOnce resolves the instruments and registers the observable gauges
-	// exactly once per process.
-	obsOnce sync.Once
-
+// insts is the discovery instrument set: one per process, resolved lazily on
+// first use so it binds to whichever providers are current then, and immutable
+// afterwards. It holds no per-instance state — the values the two observable
+// gauges report live in each Observer, not here.
+//
+// The gauges are created WITHOUT a callback on purpose; see [Observer.register]
+// for why a creation-time callback would report only the first block.
+type insts struct {
+	meter       metric.Meter
 	opDuration  metric.Float64Histogram
 	regAttempts metric.Int64Counter
 	syncTotal   metric.Int64Counter
+	registered  metric.Int64ObservableGauge
+	age         metric.Float64ObservableGauge
+}
 
-	// obsMu guards the state maps below. The gauge callbacks snapshot them
-	// instead of observing under the lock: OTel advises against locking inside
-	// a callback (Go mutexes are not reentrant, and collection is concurrent).
-	obsMu     sync.Mutex
-	published = map[obsKey]bool{}
-	syncs     = map[obsKey]*syncState{}
-)
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
 
-// instruments resolves the synchronous instruments and registers the
-// process-wide observable gauges. Resolution happens on first use — after
-// starter-otel has installed the global providers — not at package init, so
-// records reach whichever SDK is current. Without starter-otel the globals are
-// no-ops and the whole file costs a couple of map lookups.
-func instruments() {
-	obsOnce.Do(func() {
-		m := otel.Meter(instrumentationName)
-		opDuration, _ = m.Float64Histogram("registry.operation.duration",
-			metric.WithDescription("Duration of registry-center operations"),
-			metric.WithUnit("s"),
-			metric.WithExplicitBucketBoundaries(durationBuckets...))
-		regAttempts, _ = m.Int64Counter("registry.registration.attempts_total",
-			metric.WithDescription("Registration attempts against a registry center, by reason and outcome"))
-		syncTotal, _ = m.Int64Counter("discovery.sync_total",
-			metric.WithDescription("Background endpoint-cache syncs, by outcome"))
+func buildInstruments() *insts {
+	m := otel.Meter(instrumentationName)
+	in := &insts{meter: m}
+	in.opDuration, _ = m.Float64Histogram("registry.operation.duration",
+		metric.WithDescription("Duration of registry-center operations"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	in.regAttempts, _ = m.Int64Counter("registry.registration.attempts_total",
+		metric.WithDescription("Registration attempts against a registry center, by reason and outcome"))
+	in.syncTotal, _ = m.Int64Counter("discovery.sync_total",
+		metric.WithDescription("Background endpoint-cache syncs, by outcome"))
+	in.registered, _ = m.Int64ObservableGauge("registry.instance.registered",
+		metric.WithDescription("1 while this instance is published into the registry center, 0 while it is not"))
+	in.age, _ = m.Float64ObservableGauge("discovery.cache.age_seconds",
+		metric.WithDescription("Seconds since the cached endpoint snapshot for this service was last confirmed fresh"),
+		metric.WithUnit("s"))
+	return in
+}
 
-		_, _ = m.Int64ObservableGauge("registry.instance.registered",
-			metric.WithDescription("1 while this instance is published into the registry center, 0 while it is not"),
-			metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
-				obsMu.Lock()
-				snapshot := make(map[obsKey]bool, len(published))
-				maps.Copy(snapshot, published)
-				obsMu.Unlock()
-				for k, ok := range snapshot {
-					var v int64
-					if ok {
-						v = 1
-					}
-					o.Observe(v, metric.WithAttributes(
-						attribute.String("system", k.system),
-						attribute.String("service", k.service),
-					))
-				}
-				return nil
-			}))
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
-		_, _ = m.Float64ObservableGauge("discovery.cache.age_seconds",
-			metric.WithDescription("Seconds since the cached endpoint snapshot for this service was last confirmed fresh"),
-			metric.WithUnit("s"),
-			metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
-				now := obsNow()
-				obsMu.Lock()
-				snapshot := make(map[obsKey]time.Duration, len(syncs))
-				for k, s := range syncs {
-					snapshot[k] = s.ageAt(now)
-				}
-				obsMu.Unlock()
-				for k, age := range snapshot {
-					o.Observe(age.Seconds(), metric.WithAttributes(
-						attribute.String("system", k.system),
-						attribute.String("service", k.service),
-					))
-				}
-				return nil
-			}))
+// Observer reports one configured registry block: the registration operations of
+// its write half, the endpoint syncs of its read half, and the two gauges they
+// feed. It is a layer the block owns — created by the block's constructor,
+// closed by its destructor — so the state it accumulates lives exactly as long
+// as the block that produced it, and two blocks in one process cannot
+// contaminate each other. The instrument set those readings go through is shared
+// by every block (see [instruments]); only the state is per block.
+//
+// The two axes of that identity travel with every reading: system names the
+// backend implementation ("etcd", "nacos", ...), center names the configured
+// block (${spring.registry.<backend>.<name>}). Both are needed for more than
+// bookkeeping: one process routinely publishes the same service into several
+// centers at once (the registry core drives every configured registrar), so
+// without center the readings of two clusters would be one indistinguishable
+// series.
+type Observer struct {
+	system string
+	center string
+
+	// regOnce registers this block's gauge callbacks against the shared
+	// instruments. It runs on first use, not at construction: the callbacks must
+	// be in place before the first collection, and the instruments must be
+	// resolved after starter-otel has installed the global providers — which a
+	// test may also do later than this constructor runs.
+	regOnce sync.Once
+
+	// mu guards the state below: the two maps the observable gauges read, and
+	// the callback registrations Close needs. The gauge callbacks snapshot the
+	// maps instead of observing under the lock: OTel advises against locking
+	// inside a callback (Go mutexes are not reentrant, and collection is
+	// concurrent).
+	mu        sync.Mutex
+	closed    bool
+	published map[string]bool
+	syncs     map[string]*syncState
+	unregs    []metric.Registration
+}
+
+// NewObserver builds the observer for one configured block. system and center
+// are the values every instrument attribute and log field of that block carries,
+// so neither may be empty — an empty one would label the readings of this block
+// indistinguishably from another's, which is a defect that shows up only in a
+// dashboard, long after the config that caused it.
+func NewObserver(system, center string) (*Observer, error) {
+	if system == "" {
+		return nil, errutil.Explain(nil, "discovery: observer system is required")
+	}
+	if center == "" {
+		return nil, errutil.Explain(nil, "discovery: observer center is required")
+	}
+	return &Observer{
+		system:    system,
+		center:    center,
+		published: map[string]bool{},
+		syncs:     map[string]*syncState{},
+	}, nil
+}
+
+// System and Center report this block's identity — the values its instrument
+// attributes carry. A backend's log lines take them from here rather than from
+// its own copy, so a log line and a metric can never disagree about which block
+// they describe.
+func (o *Observer) System() string { return o.system }
+
+// Center names the configured registry block (see [NewObserver]).
+func (o *Observer) Center() string { return o.center }
+
+// attrs is the identity prefix every instrument of this block carries.
+func (o *Observer) attrs(extra ...attribute.KeyValue) []attribute.KeyValue {
+	return append([]attribute.KeyValue{
+		attribute.String("system", o.system),
+		attribute.String("center", o.center),
+	}, extra...)
+}
+
+// live reports whether this observer still publishes. A closed observer stops
+// reporting and drops the operation's span; the operation itself still runs.
+//
+// A nil observer — one a caller never wired — reports nothing either, the same
+// pass-through as a nil injector in cloud/governance/fault: instrumentation is
+// declared by construction, and its absence must never decide whether an
+// operation runs.
+func (o *Observer) live() bool {
+	if o == nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return !o.closed
+}
+
+// register registers this block's gauge callbacks against the shared gauges. It
+// runs once per observer and pairs with [Observer.Close]'s unregistration: a
+// block that is torn down (and rebuilt later, as a re-armed watch or a
+// re-registered instance is) must not leave its callbacks behind, or the same
+// service would be reported twice.
+//
+// RegisterCallback is used rather than a creation-time callback because one
+// instrument descriptor can only be created once per meter: a second observer's
+// creation-time callbacks would be silently dropped, so every block but the
+// first would report nothing. RegisterCallback is additive, and unlike creation
+// it is reversible.
+func (o *Observer) register() {
+	o.regOnce.Do(func() {
+		in := instruments()
+		for _, c := range []struct {
+			fn    func(context.Context, metric.Observer) error
+			gauge metric.Observable
+		}{
+			{o.observeRegistered, in.registered},
+			{o.observeAge, in.age},
+		} {
+			if reg, err := in.meter.RegisterCallback(c.fn, c.gauge); err == nil {
+				o.mu.Lock()
+				o.unregs = append(o.unregs, reg)
+				o.mu.Unlock()
+			}
+		}
 	})
 }
 
-// SyncFields returns the identity fields a per-sync log line has to carry to be
-// joinable, BY FIELD, to the discovery metrics and spans for the same service:
-// the keys are the metric attribute names, so a dashboard can select the failed
-// syncs and land on the lines that explain them.
-//
-// It lives here rather than in each backend for the same reason one status
-// value drives both the metric and the log in cloud/lock: keys spelled out at
-// every call site drift, and a drifted key is a silent one — the log still
-// looks right and simply never joins anything.
-//
-// The caller adds its own message and its own detail (the key, the action
-// taken); this covers only what identifies the operation.
-func SyncFields(system, service string) []log.Field {
-	return []log.Field{
-		log.String("system", system),
-		log.String("service", service),
-		log.String("operation", "sync"),
+// ready resolves the shared instruments and registers this block's gauge
+// callbacks. Both happen once; calling it on every reporting path is what keeps
+// the resolution lazy — after starter-otel has installed the global providers,
+// and not at construction.
+func (o *Observer) ready() {
+	instruments()
+	o.register()
+}
+
+// observeRegistered reports this block's per-service publication state.
+func (o *Observer) observeRegistered(_ context.Context, ob metric.Observer) error {
+	o.mu.Lock()
+	snapshot := make(map[string]bool, len(o.published))
+	maps.Copy(snapshot, o.published)
+	o.mu.Unlock()
+	registered := instruments().registered
+	for service, ok := range snapshot {
+		var v int64
+		if ok {
+			v = 1
+		}
+		ob.ObserveInt64(registered, v, metric.WithAttributes(o.attrs(attribute.String("service", service))...))
 	}
+	return nil
 }
 
-// SyncFailedFields returns the fields a FAILED per-sync log line carries:
-// [SyncFields]' identity, the outcome, and the error itself. The status comes
-// from the same [statusOf] the metric uses, so the log can never report an
-// outcome the counter disagrees with.
-//
-// The caller still calls log.Warn/Error itself and supplies its own message —
-// that keeps the line's caller attribution, which a wrapper would collapse onto
-// the wrapper's own file and line.
-func SyncFailedFields(system, service string, err error) []log.Field {
-	return append(SyncFields(system, service),
-		log.String("status", statusOf(err)),
-		log.Err(err),
-	)
-}
-
-// RegisterFields returns the identity fields a per-registration log line has to
-// carry — the keys RegisterAttempt puts on the span and the counter for the same
-// operation, so the line joins them (see [SyncFields] for why the keys live
-// here). reason separates the initial publish from a self-healing re-publish,
-// which is the distinction an operator alerts on.
-func RegisterFields(system, service, reason string) []log.Field {
-	return []log.Field{
-		log.String("system", system),
-		log.String("service", service),
-		log.String("operation", opRegister),
-		log.String("reason", reason),
+// observeAge reports, per service, how long this block's cached endpoint
+// snapshot has gone unconfirmed. A service whose watch died reports a climbing
+// value instead of nothing at all, which is the failure this gauge exists for.
+func (o *Observer) observeAge(_ context.Context, ob metric.Observer) error {
+	now := obsNow()
+	o.mu.Lock()
+	snapshot := make(map[string]time.Duration, len(o.syncs))
+	for service, s := range o.syncs {
+		snapshot[service] = s.ageAt(now)
 	}
+	o.mu.Unlock()
+	age := instruments().age
+	for service, d := range snapshot {
+		ob.ObserveFloat64(age, d.Seconds(), metric.WithAttributes(o.attrs(attribute.String("service", service))...))
+	}
+	return nil
 }
 
-// RegisterFailedFields adds the outcome and the error to [RegisterFields].
-func RegisterFailedFields(system, service, reason string, err error) []log.Field {
-	return append(RegisterFields(system, service, reason),
-		log.String("status", statusOf(err)),
-		log.Err(err),
-	)
+// Close stops this observer from reporting and unregisters its gauge callbacks.
+// It is the block destructor's obligation: a block that is torn down (and
+// rebuilt later, as a re-armed watch or a re-registered instance is) must not
+// leave its callbacks behind, or the same service would be reported twice.
+func (o *Observer) Close() error {
+	if o == nil {
+		return nil
+	}
+	o.mu.Lock()
+	o.closed = true
+	unregs := o.unregs
+	o.unregs = nil
+	o.mu.Unlock()
+	for _, r := range unregs {
+		_ = r.Unregister()
+	}
+	return nil
 }
 
-// statusOf names an outcome the way the metric attributes expect.
-func statusOf(err error) string {
+// StatusOf names an outcome the way the metric attributes and the span status
+// expect. A backend's log line carries this under "status" rather than spelling
+// the vocabulary itself: the value is "failed" — not the "error" the RPC and
+// DB families use — and a line that gets it wrong silently stops joining the
+// counter and the span for the operation it explains.
+func StatusOf(err error) string {
 	if err != nil {
 		return "failed"
 	}
@@ -225,10 +317,11 @@ func statusOf(err error) string {
 // startOp opens the client span for one registry-center operation. The span
 // attributes are namespaced (registry.*) while the metric attributes are bare,
 // matching the other domain packages' instrumentation.
-func startOp(ctx context.Context, system, op, service, reason string) (context.Context, trace.Span) {
-	instruments()
+func (o *Observer) startOp(ctx context.Context, op, service, reason string) (context.Context, trace.Span) {
+	o.ready()
 	attrs := []attribute.KeyValue{
-		attribute.String("registry.system", system),
+		attribute.String("registry.system", o.system),
+		attribute.String("registry.center", o.center),
 		attribute.String("registry.operation", op),
 		attribute.String("registry.service", service),
 	}
@@ -241,23 +334,24 @@ func startOp(ctx context.Context, system, op, service, reason string) (context.C
 }
 
 // endOp closes the span and records the operation's duration.
-func endOp(ctx context.Context, span trace.Span, system, op, service string, start time.Time, err error) {
-	instruments()
+func (o *Observer) endOp(ctx context.Context, span trace.Span, op, service string, start time.Time, err error) {
+	o.ready()
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 	}
 	span.End()
-	opDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
-		attribute.String("system", system),
-		attribute.String("operation", op),
-		attribute.String("service", service),
-		attribute.String("status", statusOf(err)),
-	))
+	instruments().opDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+		o.attrs(
+			attribute.String("operation", op),
+			attribute.String("service", service),
+			attribute.String("status", StatusOf(err)),
+		)...))
 }
 
-// RegisterAttempt runs and reports one registration attempt against a registry
-// center: fn executes the attempt, and its error becomes the attempt's outcome.
-// It returns fn's error unchanged so the caller keeps its normal error flow.
+// RegisterAttempt runs and reports one registration attempt against this
+// observer's registry center: fn executes the attempt, and its error becomes the
+// attempt's outcome. It returns fn's error unchanged so the caller keeps its
+// normal error flow.
 //
 // fn receives the context carrying the attempt's span: the span is created
 // here, so a backend that logs with its own context emits lines that join
@@ -275,45 +369,54 @@ func endOp(ctx context.Context, span trace.Span, system, op, service string, sta
 // is not published (any more), which is exactly the state worth alerting on.
 // A panic inside fn is reported as a failed attempt before propagating, so an
 // aborted attempt never leaves the span and gauge dangling.
-func RegisterAttempt(ctx context.Context, system, service, reason string, fn func(ctx context.Context) error) error {
+func (o *Observer) RegisterAttempt(ctx context.Context, service, reason string, fn func(ctx context.Context) error) error {
+	if !o.live() {
+		return fn(ctx)
+	}
 	start := obsNow()
-	ctx, span := startOp(ctx, system, opRegister, service, reason)
+	ctx, span := o.startOp(ctx, opRegister, service, reason)
 	return finishAttempt(ctx, func(err error) {
-		endOp(ctx, span, system, opRegister, service, start, err)
-		regAttempts.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("system", system),
-			attribute.String("service", service),
-			attribute.String("reason", reason),
-			attribute.String("status", statusOf(err)),
-		))
-		setPublished(system, service, err == nil)
+		o.endOp(ctx, span, opRegister, service, start, err)
+		instruments().regAttempts.Add(ctx, 1, metric.WithAttributes(
+			o.attrs(
+				attribute.String("service", service),
+				attribute.String("reason", reason),
+				attribute.String("status", StatusOf(err)),
+			)...))
+		o.setPublished(service, err == nil)
 	}, fn)
 }
 
 // DeregisterAttempt runs and reports one deregistration attempt (see
-// [RegisterAttempt] for the fn/context contract). Unlike registration, a FAILED
-// deregister leaves the published state untouched — the instance may well still
-// be discoverable, and reporting it as gone would hide a leak.
-func DeregisterAttempt(ctx context.Context, system, service string, fn func(ctx context.Context) error) error {
+// [Observer.RegisterAttempt] for the fn/context contract). Unlike registration,
+// a FAILED deregister leaves the published state untouched — the instance may
+// well still be discoverable, and reporting it as gone would hide a leak.
+func (o *Observer) DeregisterAttempt(ctx context.Context, service string, fn func(ctx context.Context) error) error {
+	if !o.live() {
+		return fn(ctx)
+	}
 	start := obsNow()
-	ctx, span := startOp(ctx, system, opDeregister, service, "")
+	ctx, span := o.startOp(ctx, opDeregister, service, "")
 	return finishAttempt(ctx, func(err error) {
-		endOp(ctx, span, system, opDeregister, service, start, err)
+		o.endOp(ctx, span, opDeregister, service, start, err)
 		if err == nil {
-			setPublished(system, service, false)
+			o.setPublished(service, false)
 		}
 	}, fn)
 }
 
 // WeightChange runs and reports one weight re-advertisement — the operation
 // that keeps an instance discoverable while it drains, and the one path the
-// registry core does not log (see [RegisterAttempt] for the fn/context
+// registry core does not log (see [Observer.RegisterAttempt] for the fn/context
 // contract). It carries no reason: a weight change is never a re-register.
-func WeightChange(ctx context.Context, system, service string, fn func(ctx context.Context) error) error {
+func (o *Observer) WeightChange(ctx context.Context, service string, fn func(ctx context.Context) error) error {
+	if !o.live() {
+		return fn(ctx)
+	}
 	start := obsNow()
-	ctx, span := startOp(ctx, system, opUpdateWeight, service, "")
+	ctx, span := o.startOp(ctx, opUpdateWeight, service, "")
 	return finishAttempt(ctx, func(err error) {
-		endOp(ctx, span, system, opUpdateWeight, service, start, err)
+		o.endOp(ctx, span, opUpdateWeight, service, start, err)
 	}, fn)
 }
 
@@ -333,31 +436,34 @@ func finishAttempt(ctx context.Context, end func(err error), fn func(ctx context
 	return err
 }
 
-// Synced reports the outcome of one background endpoint-cache sync for service.
+// Synced reports one background endpoint-cache sync: a successful one advances
+// this service's freshness clock, a failed one only counts.
 //
-// It is metric-only by design: the sync loop is a high-frequency background
-// path (a span per sync would be noise), and the backend already logs failures
+// It is deliberately a different shape from the registration half — no span
+// (a span per sync would be noise), and the backend already logs failures
 // itself. Only a successful sync advances freshness, so a watch that has died
 // shows up as a steadily climbing discovery.cache.age_seconds rather than a
 // value frozen at zero — the failure mode where discovery keeps handing out
 // stale addresses that look perfectly healthy.
-func Synced(system, service string, err error) {
-	instruments()
+func (o *Observer) Synced(service string, err error) {
+	if !o.live() {
+		return
+	}
+	o.ready()
 	ctx := context.Background()
-	syncTotal.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("system", system),
-		attribute.String("service", service),
-		attribute.String("status", statusOf(err)),
-	))
+	instruments().syncTotal.Add(ctx, 1, metric.WithAttributes(
+		o.attrs(
+			attribute.String("service", service),
+			attribute.String("status", StatusOf(err)),
+		)...))
 
 	now := obsNow()
-	key := obsKey{system, service}
-	obsMu.Lock()
-	defer obsMu.Unlock()
-	s := syncs[key]
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	s := o.syncs[service]
 	if s == nil {
 		s = &syncState{origin: now}
-		syncs[key] = s
+		o.syncs[service] = s
 	}
 	if err == nil {
 		s.last = now
@@ -366,12 +472,11 @@ func Synced(system, service string, err error) {
 
 // setPublished records whether the instance is currently published.
 //
-// The maps here are keyed by (system, service) and live for the process: a
-// registry core publishes exactly one service identity per process, so the
-// cardinality is the number of configured centers, plus one entry per resolved
-// service name on the discovery side.
-func setPublished(system, service string, ok bool) {
-	obsMu.Lock()
-	defer obsMu.Unlock()
-	published[obsKey{system, service}] = ok
+// The state is per service and lives as long as this observer: a registry block
+// publishes exactly one service identity per process, and the discovery half
+// adds one entry per service name it resolves.
+func (o *Observer) setPublished(service string, ok bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.published[service] = ok
 }

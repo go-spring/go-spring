@@ -9,9 +9,9 @@ holding a governance rule document and pushes each changed version into the
 governance center through the `governance.Source` contract of
 [`go-spring.org/cloud/governance`](../../cloud/governance).
 
-Blank-importing this module is inert until `govern.source.etcd.*` is configured;
+Blank-importing this module is inert until `spring.governance.source.etcd.*` is configured;
 then it registers one `governance.Source` bean. The document in the key uses the
-same `govern.*` keys any other source accepts, so a rules file is byte-portable
+same `spring.governance.*` keys any other source accepts, so a rules file is byte-portable
 between the file, http and etcd backends.
 
 ## Why a separate module from `starter-config-etcd`
@@ -55,8 +55,8 @@ Add the two bootstrap keys to your
 [configuration file](example/conf/app.properties):
 
 ```properties
-govern.source.etcd.endpoint=127.0.0.1:2379
-govern.source.etcd.key=/app/govern.yaml
+spring.governance.source.etcd.endpoint=127.0.0.1:2379
+spring.governance.source.etcd.key=/app/governance.yaml
 ```
 
 Only `endpoint` and `key` are required; auth and format fall back to their
@@ -64,15 +64,16 @@ defaults.
 
 ### 3. Publish the rules document to the key
 
-The key holds governance's rules, using the `govern.*` namespace:
+The key holds governance's rules, using the `spring.governance.*` namespace:
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
 ```
 
 ### 4. Run
@@ -83,7 +84,7 @@ that, every PUT on the key is pushed into the center without a restart.
 
 ## Configuration Keys
 
-All keys live under `govern.source.etcd` (exact match):
+All keys live under `spring.governance.source.etcd` (exact match):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -96,7 +97,7 @@ All keys live under `govern.source.etcd` (exact match):
 ## Core Behavior
 
 * **Conditional registration.** The bean is registered only when a
-  `govern.source.etcd.*` key is present (`gs.OnProperty` is a prefix check), so a
+  `spring.governance.source.etcd.*` key is present (`gs.OnProperty` is a prefix check), so a
   blank import without configuration is inert.
 * **Fail-fast seeding.** Construction does an initial `Get`; a missing key or a
   document that does not parse fails startup instead of arming a silently
@@ -106,7 +107,7 @@ All keys live under `govern.source.etcd` (exact match):
   actually changed, pushed to the center.
 * **Last-good on bad edits.** A value that fails to parse keeps the previous
   snapshot and is logged, never pushed; governance is turned off with
-  `govern.enabled=false`, not with a broken or emptied document.
+  `spring.governance.enabled=false`, not with a broken or emptied document.
 * **No-change dedupe.** A byte-identical re-delivery, or a re-parse that yields
   an equal config, pushes nothing — a touch does not churn executors.
 * **Owned client.** The source builds and owns its etcd client, and closes it

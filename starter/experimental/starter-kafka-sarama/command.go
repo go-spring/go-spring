@@ -243,9 +243,6 @@ var clientGuards sync.Map // sarama.Client -> *clientGuard
 // on the method call; inj is nil-safe at its use site, so a nil injector simply
 // adds no fault.
 func applyResilience(c Config, client sarama.Client, service string, mgr *resilience.Manager, inj *fault.Injector) error {
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
 	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)
 	clientGuards.Store(client, &clientGuard{exec: exec, service: service})
 	return nil

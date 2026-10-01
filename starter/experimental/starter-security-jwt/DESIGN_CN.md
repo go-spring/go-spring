@@ -26,10 +26,13 @@
 - **同一 bean,两个挂载点。**
   - `Wrap(next http.Handler) http.Handler`——HTTP 中间件缝隙,对齐
     `starter-lua-filter`,无框架耦合。
-  - `security.TokenValidator`——同一 `*Authenticator` 亦满足与传输无关的
-    validator,可从 gRPC metadata、WebSocket 握手等场景复用。
-- **多实例经 `gs.Group("${spring.security.jwt}", ...)`。**应用可为多签发方
-  各配一项。destroy 传 `nil`(无 goroutine,JWKS 缓存按需刷新)。
+  - `security.TokenValidator`——每个实例都**导出为**这个与传输无关的缝隙,
+    应用按名注入即可(代码里不出现具体类型),可从 gRPC metadata、WebSocket
+    握手等场景复用。
+- **多实例经手写的 `gs.Module` 遍历 `"${spring.security.jwt.instances}"`。**
+  应用可为多签发方各配一项。这里用不了 `gs.Group`:它每项只返回一个 bean、
+  拿不到注册表,因此挂不上 `Name` + `Export`。无 destroy 钩子(无 goroutine,
+  JWKS 缓存按需刷新)。
 
 ## 3. 约束
 
@@ -41,9 +44,9 @@
 - **JWKS 内建解析**,不引外部 `keyfunc`。RSA `n`/`e`、EC `crv`/`x`/`y` 直接
   从 base64url 解码;依赖图仅止于 `golang-jwt/jwt/v5`。缓存按配置间隔刷新,
   遇未知 `kid` 时也刷新。
-- **构造期取不到 bean 名。**`gs.Group` 构造函数签名收不到名字
-  (`gs.go:488` 限制),per-instance `RegisterValidator(name)` 无法直接实现;
-  调用方需要具名复用时通过 DI 注入 `*Authenticator`。
+- **bean 名经参数 1 传给构造函数。**因为模块是手写的,配置子键显式传入
+  (`gs.IndexArg(1, gs.ValueArg(name))`)——bean 因此带上这个名字,应用也就
+  能用 `autowire:"<name>"` 选中它。
 - 内部依赖靠 `go.work` 解析;不跑 `go mod tidy`。外部依赖仅
   `github.com/golang-jwt/jwt/v5`。
 

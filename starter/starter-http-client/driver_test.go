@@ -64,7 +64,7 @@ func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Co
 	d.called = true
 	d.backend = backend
 	d.mgr, d.inj = mgr, inj
-	return d.DefaultDriver.CreateTransport(ctx, name, c, backend, mgr, inj, nil, prop)
+	return d.DefaultDriver.CreateTransport(ctx, name, c, backend, mgr, inj, lbMgr, prop)
 }
 
 // TestCustomDriverUsed proves a provided Driver bean is the one assembleTransport

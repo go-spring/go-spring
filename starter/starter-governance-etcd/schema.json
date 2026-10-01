@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "govern.source.etcd",
-  "description": "Etcd-backed governance rule source. The bean is registered only when govern.source.etcd is present.",
+  "title": "spring.governance.source.etcd",
+  "description": "Etcd-backed governance rule source. The bean is registered only when spring.governance.source.etcd is present.",
   "type": "object",
   "properties": {
-    "govern.source.etcd": {
+    "spring.governance.source.etcd": {
       "type": "object",
-      "description": "Governance rules source bound at govern.source.etcd.*",
+      "description": "Governance rules source bound at spring.governance.source.etcd.*",
       "properties": {
         "endpoint": {
           "type": "string",

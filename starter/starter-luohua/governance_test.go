@@ -26,7 +26,7 @@ import (
 // TestGovernanceDriverRegisteredAndFlavored locks the luohua governance
 // capability: importing luohua registers a "luohua" resilience backend (a real,
 // verifiable extension — a distinct luohua executor over the bundled engine),
-// selectable by govern.driver=luohua. This is the observable-flavor rule: an
+// selectable by spring.governance.driver=luohua. This is the observable-flavor rule: an
 // extension with no verifiable behavior would silently pass through and a
 // mis-wire would go unnoticed.
 func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {

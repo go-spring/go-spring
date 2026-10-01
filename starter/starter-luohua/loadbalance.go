@@ -21,31 +21,47 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/spring/gs"
 )
 
-// LuohuaZone is the company's preferred data-center zone. The luohua Balancer
-// pins traffic to endpoints that advertise this zone — the fleet's internal
-// services mark their instances with it, and a consumer that selects the
-// "luohua" load balancer stays inside the company's own region.
+// LuohuaZone is the company's preferred data-center zone, used as the default
+// for the "luohua" balancer's zone parameter. A rule may override it with
+// `balancer-params: {zone: ...}`.
 const LuohuaZone = "cn-luohua"
 
+// luohuaStrategy is the bean name the company's balancer answers to: a rule
+// selects it with `balancer: luohua`.
+const luohuaStrategy = "luohua"
+
 func init() {
-	// Registering a company Balancer under the fleet-standard "luohua" name makes
-	// it selectable by loadbalance.New("luohua", loadbalance.Config{}) (and by any consumer that names
-	// a load-balance policy). Like the bundled p2c / least-conn / consistent-hash
-	// backends this is an init-time availability registration, not a config-gated
-	// activation — the balancer only governs when a pool is built with it. This
-	// is the go-spring loadbalance seam's company extension point: a real luohua
-	// company would hang its own routing/affinity logic here.
-	loadbalance.Register("luohua", func(loadbalance.Config) (loadbalance.Balancer, error) {
-		return luohuaBalancer{}, nil
-	})
+	// Contributing the company Balancer as a NAMED Factory bean is the whole
+	// extension — no change to cloud/loadbalance. The bean name IS the strategy
+	// name a selection rule cites, and the Export is what makes the bean visible
+	// to the governance wiring's directory map.
+	gs.Provide(func() loadbalance.Factory { return luohuaFactory{} }).
+		Name(luohuaStrategy).
+		Export(gs.As[loadbalance.Factory]()).Caller(1)
 }
 
-// luohuaBalancer is the luohua load-balance policy: it prefers the fleet's
-// cn-luohua zone, so in-region traffic never leaves the company's own data
-// centers while a cn-luohua replica exists.
-type luohuaBalancer struct{}
+// luohuaFactory builds the company's zone-affine [loadbalance.Balancer]. Its
+// only parameter is the preferred zone, so a deployment can pin a service to a
+// different zone without a new strategy.
+type luohuaFactory struct{}
+
+func (luohuaFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbalance.Balancer, error) {
+	zone := p.String("zone", LuohuaZone)
+	if err := p.Done(); err != nil {
+		return nil, err
+	}
+	return luohuaBalancer{zone: zone}, nil
+}
+
+// luohuaBalancer is the luohua load-balance policy: it prefers endpoints that
+// advertise the configured zone, so in-region traffic never leaves the
+// company's own data centers while a matching replica exists.
+type luohuaBalancer struct {
+	zone string
+}
 
 // healthy reports an endpoint as pickable: not administratively disabled and
 // not drained. A zero weight is the runtime drain signal (Weight=0 → 摘流), so a
@@ -53,9 +69,9 @@ type luohuaBalancer struct{}
 func healthy(e discovery.Endpoint) bool { return !e.Disabled && e.Weight > 0 }
 
 // Pick implements [loadbalance.Balancer].
-func (luohuaBalancer) Pick(eps []discovery.Endpoint, _ loadbalance.PickInfo) (discovery.Endpoint, error) {
+func (b luohuaBalancer) Pick(eps []discovery.Endpoint, _ loadbalance.PickInfo) (discovery.Endpoint, error) {
 	for _, e := range eps {
-		if healthy(e) && e.Metadata["zone"] == LuohuaZone {
+		if healthy(e) && e.Metadata["zone"] == b.zone {
 			return e, nil
 		}
 	}

@@ -27,10 +27,10 @@
 // client exclusively, so it is free to carry its own instrumentation
 // independently of the config-import bootstrap client.
 //
-// Configure with ${govern.source.etcd.*}:
+// Configure with ${spring.governance.source.etcd.*}:
 //
-//	govern.source.etcd.endpoint=127.0.0.1:2379
-//	govern.source.etcd.key=/app/govern.yaml
+//	spring.governance.source.etcd.endpoint=127.0.0.1:2379
+//	spring.governance.source.etcd.key=/app/governance.yaml
 //
 // The bean is registered only when that key is present, so importing this
 // package is inert otherwise.
@@ -58,8 +58,8 @@ var starterTag = log.RegisterAppTag("governance_etcd", "")
 // dialTimeout bounds the source's client dial.
 const dialTimeout = 5 * time.Second
 
-// governEtcdConfig binds ${govern.source.etcd.*}.
-type governEtcdConfig struct {
+// governanceEtcdConfig binds ${spring.governance.source.etcd.*}.
+type governanceEtcdConfig struct {
 	// Endpoint is the etcd endpoint to watch.
 	Endpoint string `value:"${endpoint}" expr:"$ != ''"`
 
@@ -76,9 +76,9 @@ type governEtcdConfig struct {
 }
 
 func init() {
-	gs.Module(gs.OnProperty("govern.source.etcd"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var c governEtcdConfig
-		if err := conf.Bind(p, &c, "${govern.source.etcd:=}"); err != nil {
+	gs.Module(gs.OnProperty("spring.governance.source.etcd"), func(r gs.BeanProvider, p flatten.Storage) error {
+		var c governanceEtcdConfig
+		if err := conf.Bind(p, &c, "${spring.governance.source.etcd:=}"); err != nil {
 			return err
 		}
 		format := sourceFormat(c.Format, c.Key)

@@ -9,7 +9,7 @@
 ## 它做什么
 
 每个后端 starter 为每个已配置的 `${spring.registry.<backend>.<name>}` 块派生
-一个 discovery.Registrar。本核心把它们全部收集起来——跨后端——并统一驱动：
+一个 discovery.Registry。本核心把它们全部收集起来——跨后端——并统一驱动：
 
 - 应用就绪后，注册到所有中心；
 - 停机开始时（PreStop，先于任何 server 停止），从所有中心反注册——无损下线时序；
@@ -57,7 +57,7 @@ spring.registry.addr=10.0.0.5:8080      # 注册时必填
 ### ② 注册中心——命名块，一块一个中心
 
 块数不限、后端可混用（etcd + zookeeper 同进程正常）。每个块是一个 bean，名字为
-`<backend>.<name>`，**一体两面**：写侧被本核心收集为 Registrar，读侧是消费端按名引用的
+`<backend>.<name>`，**一体两面**：写侧被本核心收集为 Registry，读侧是消费端按名引用的
 Discovery 后端。各后端的完整 key 见其 starter 的 README/USAGE。
 
 ```properties

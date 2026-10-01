@@ -14,7 +14,7 @@ observability.
 starter.go:60). Each entry becomes one route bean — named after the entry, holding its target
 (addr or service-name) and its assembled transport — and the route table collects them.
 Resilience/fault policy is NOT configured here — it is process-wide
-under `govern.*` (starter-governance).
+under `spring.governance.*` (starter-governance).
 
 ---
 
@@ -126,19 +126,19 @@ spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) Service discovery + load balancing: routes by logical service name.
 # The LB strategy and endpoint suspension for this entry are governance rules
-# (govern.client.rules[N].balancer / .outlier-threshold), not keys here — see below.
+# (spring.governance.client.rules[N].balancer / .outlier-threshold), not keys here — see below.
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
-# (3) Resilience-guarded route: policy is process-wide under govern.*.
+# (3) Resilience-guarded route: policy is process-wide under spring.governance.*.
 # The bundled DefaultDriver trips the breaker after two consecutive failures and
 # keeps it open 30s.
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.error-threshold=2
-govern.client.default.open-duration=30s
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.error-threshold=2
+spring.governance.client.default.open-duration=30s
 
 # No inbound HTTP server needed in this demo.
 spring.http.server.enabled=false
@@ -210,7 +210,7 @@ Rationale (from the source comments, verified):
 - **resilience wraps the balanced transport**: `resilience.NewRoundTripper(base, exec)`
   — the service label is `resilience.ServiceLabel("http", ServiceName, Addr)` (httpx.go:342-347),
   the same label the policy is resolved under, so limiter/breaker state and the driver's rule names
-  agree with the govern rule that armed them. One label per client: the host rewrite to a picked
+  agree with the governance rule that armed them. One label per client: the host rewrite to a picked
   instance happens one layer further down (httpx.go:307-318) and never leaks into the label.
 - **traffic above resilience**: each retry attempt carries the marker (the header is set on the
   original request, which the retry loop reuses); below user middleware so a wrapper can still
@@ -303,21 +303,21 @@ Keys under `spring.http-client.instances.<name>.*` (cross-checked with
 `resilience.ServiceLabel("http", ServiceName, Addr)` → `http:<service-name>` whenever
 `service-name` is set (discovery mode AND direct mode, where it stays a pure label), falling back
 to `http:<addr>` only for entries with no service-name at all (httpx.go `Config.service`).
-So a `govern.client.rules[].services` entry scoped to `http:<service-name>` keeps matching when the
+So a `spring.governance.client.rules[].services` entry scoped to `http:<service-name>` keeps matching when the
 entry switches between direct and discovery addressing — keep `service-name` set across the
 switch. Only dropping service-name entirely changes the key. Also: in direct mode the breaker
 keys per host:port — same backend reached through two different `addr` spellings gets two
 breakers.
 
 **Not here** (no keys under `spring.http-client.*`): timeouts, retries, breaker, rate limit, fault.
-All policy is process-wide under `govern.*` via starter-governance — `govern.enabled`,
-`govern.driver`, `govern.client.default.<policy-field>` (rate-limit / burst / error-threshold /
+All policy is process-wide under `spring.governance.*` via starter-governance — `spring.governance.enabled`,
+`spring.governance.driver`, `spring.governance.client.default.<policy-field>` (rate-limit / burst / error-threshold /
 open-duration / breaker-strategy / error-rate-threshold / min-requests / max-concurrent /
 max-retries / initial-interval / multiplier / max-interval / attempt-timeout / max-duration) and
-`govern.client.fault.*` for fault injection. Per-target policy = one `govern.client.rules[n]` entry scoped to the
+`spring.governance.client.fault.*` for fault injection. Per-target policy = one `spring.governance.client.rules[n]` entry scoped to the
 service label above. See the starter-governance USAGE for that surface.
 
-`min-requests`: an error-rate breaker's minimum sample size is read straight from the govern rule
+`min-requests`: an error-rate breaker's minimum sample size is read straight from the governance rule
 and applied by resilience; unset means resilience's own zero-value floor of 1, so a single failure
 at low traffic can trip the breaker — set it explicitly when the downstream is low-volume. The
 consecutive strategy ignores it.
@@ -348,7 +348,7 @@ curl -s '127.0.0.1:9471/greet?name=x'; curl -s '127.0.0.1:9472/greet?name=x'  # 
 kill %1
 ```
 
-Switch the rule's `balancer` from `round_robin` to `least_conn` in conf/govern.properties, or add a
+Switch the rule's `balancer` from `round_robin` to `least_conn` in conf/governance.properties, or add a
 third endpoint, to see the spread change — the pool is retuned in place, no restart;
 deregistering an instance (with a real registry) drops it from rotation: the backend's snapshot
 loses it and the loader-bound `Pool` stops picking it (httpx.go:200-221).
@@ -356,7 +356,7 @@ loses it and the loader-bound `Pool` stops picking it (httpx.go:200-221).
 ### 4.3 Breaker drill — open, fast-fail, recover
 
 The `guarded` route targets the always-500 backend on :9473 with
-`govern.client.default.error-threshold=2`, `open-duration=30s`:
+`spring.governance.client.default.error-threshold=2`, `open-duration=30s`:
 
 1. Run the example: `./check.sh`. The guarded client's first calls fail against the network; after
    2 consecutive failures the breaker opens and the run prints
@@ -370,14 +370,14 @@ The `guarded` route targets the always-500 backend on :9473 with
 
 ### 4.4 Fault injection (no restart)
 
-Fault rides the same governance source; `govern.client.fault.*` hot-reloads (see example-load's
+Fault rides the same governance source; `spring.governance.client.fault.*` hot-reloads (see example-load's
 conf comments). Flip in the config file:
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.client.fault.enabled=true
-govern.client.fault.rate=0.5
-govern.client.fault.error=timeout    # or generic / reset
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.client.fault.enabled=true
+spring.governance.client.fault.rate=0.5
+spring.governance.client.fault.error=timeout    # or generic / reset
 ```
 
 Injected faults flow *inside* the resilience executor (§2.2), so retries fire, the breaker counts
@@ -406,8 +406,8 @@ whole stack, not just the injector.
 |---------|--------------|-----|
 | Request fails `http-client: no transport for target "x"` | No `spring.http-client` entry whose addr/service-name equals the client's `Target` (mismatch surfaces at request time, not wiring — starter.go:188-195) | Add an entry or fix the Target; they must match exactly. |
 | Container fails: "one of addr or service-name is required" / "discovery is required" | validate() rules (config.go) | Set at least one addressing mode; add `discovery` when `service-name` is set without `addr`. |
-| Everything works but no breaker/rate limit | `govern.enabled` not set — the governance-backed executor is a transparent no-op without it | Enable starter-governance and a policy. |
-| Breaker trips on a single failure | `breaker-strategy=error-rate` with `min-requests` unset | Set `min-requests` in the govern rule (e.g. 5) or raise `error-rate-threshold`; an unset value means the breaker may trip on the first failure. |
+| Everything works but no breaker/rate limit | `spring.governance.enabled` not set — the governance-backed executor is a transparent no-op without it | Enable starter-governance and a policy. |
+| Breaker trips on a single failure | `breaker-strategy=error-rate` with `min-requests` unset | Set `min-requests` in the governance rule (e.g. 5) or raise `error-rate-threshold`; an unset value means the breaker may trip on the first failure. |
 | Policy seems ignored after switching addr ↔ service-name | Label switched because `service-name` was dropped entirely | Keep `service-name` set across the mode switch — the label is `http:<service-name>` whenever it is set. |
 | No traces / metrics from the client | starter-otel not imported; otelhttp + meter ride the OTel globals | Blank-import starter-otel and configure `spring.observability.*`. |
 | TLS/https fails or is unreachable | `tls.enabled` not set on the entry | Enable the entry's `tls.*` block (`ca-file`/`server-name`/...); it wires a TLS-configured transport under the otel base. |
@@ -430,7 +430,7 @@ Design suspects (for the audit ledger):
 1. ~~Stale README bean surface~~ — FIXED 2026-08-27: README (EN/CN) rewritten around the
    process-wide `httpclt.DoRequest` transport; the phantom injection examples are gone.
 2. ~~Phantom `resilience.*` keys~~ — FIXED 2026-08-27: README/conf comments now point at
-   `govern.*`.
+   `spring.governance.*`.
 3. ~~Dead `timeout` key~~ — FIXED 2026-08-27: removed from Config and README.
 4. ~~Breaker per-attempt counting ("resilience on => 100% fail / trips instantly")~~ — FIXED:
    the executor now records the breaker outcome once per logical Execute
@@ -446,7 +446,7 @@ Design suspects (for the audit ledger):
    state was per-client rather than per-label like every other client starter. The underlying
    symptom (a single failure tripping the breaker) came from the breaker counting once per retry
    ATTEMPT, which resilience fixed separately; `min-requests` is now read straight from the
-   govern rule with no starter-side override.
+   governance rule with no starter-side override.
 8. ~~Orphaned `ResilienceConfig` comment~~ — FIXED 2026-08-27.
 9. ~~No TLS keys at all~~ — FIXED 2026-08-28: `tls.*` block (enabled/cert-file/key-file/ca-file/
    server-name/insecure-skip-verify) added, built into the base transport by httpx; an https

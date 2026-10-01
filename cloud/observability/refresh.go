@@ -18,6 +18,7 @@ package observability
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"go-spring.org/log"
@@ -36,7 +37,40 @@ const (
 	statusError = "error"
 )
 
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
+// instrumentSet bundles the metrics a refresh records: one per process, resolved
+// lazily on first use so the set binds to whichever OTel global provider is
+// current then (starter-otel wires it during RefreshPrepare, after all package
+// inits), and immutable afterwards. It holds no per-refresh state.
+type instrumentSet struct {
+	total       metric.Int64Counter
+	duration    metric.Float64Histogram
+	lastSuccess metric.Float64Gauge
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	m := otel.Meter("go-spring.org/cloud/observability")
+	in := &instrumentSet{}
+	in.total, _ = m.Int64Counter("config.refresh.total",
+		metric.WithDescription("Property refreshes triggered, by status"),
+		metric.WithUnit("{refresh}"))
+	in.duration, _ = m.Float64Histogram("config.refresh.duration",
+		metric.WithDescription("Duration of a triggered property refresh"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(DurationBuckets()...))
+	in.lastSuccess, _ = m.Float64Gauge("config.refresh.last_success_timestamp",
+		metric.WithDescription("Unix time of the last successful property refresh"),
+		metric.WithUnit("s"))
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // RefreshConf is the shared funnel for property-refresh triggers. Every config
 // backend (nacos, etcd, consul, vault, k8s, file, ...) fires the same
@@ -67,23 +101,11 @@ var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5,
 // watch callbacks (k8s informer handlers, SDK listeners) that often carry no
 // context, so callers without one pass context.Background() at the boundary.
 //
-// The instruments are created per call on purpose: they must be built after
-// the OTel global provider is installed (starter-otel wires it during
-// RefreshPrepare, after all package inits), and the OTel meter returns the
-// same cached instrument for a given name+type, so re-creating them costs a
-// map lookup and never forks a metric into a second timeline.
+// The instruments are package-wide and resolved lazily on first use, so they
+// are built after the OTel global provider is installed (starter-otel wires it
+// during RefreshPrepare, after all package inits); see [instruments].
 func RefreshConf(ctx context.Context, fn func(context.Context) error) error {
-	m := otel.Meter("go-spring.org/cloud/observability")
-	total, _ := m.Int64Counter("config.refresh.total",
-		metric.WithDescription("Property refreshes triggered, by status"),
-		metric.WithUnit("{refresh}"))
-	duration, _ := m.Float64Histogram("config.refresh.duration",
-		metric.WithDescription("Duration of a triggered property refresh"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	lastSuccess, _ := m.Float64Gauge("config.refresh.last_success_timestamp",
-		metric.WithDescription("Unix time of the last successful property refresh"),
-		metric.WithUnit("s"))
+	in := instruments()
 
 	start := time.Now()
 	err := fn(ctx)
@@ -93,10 +115,10 @@ func RefreshConf(ctx context.Context, fn func(context.Context) error) error {
 	if err != nil {
 		status = statusError
 	}
-	total.Add(ctx, 1, metric.WithAttributes(attribute.String("status", status)))
-	duration.Record(ctx, elapsed.Seconds())
+	in.total.Add(ctx, 1, metric.WithAttributes(attribute.String("status", status)))
+	in.duration.Record(ctx, elapsed.Seconds())
 	if err == nil {
-		lastSuccess.Record(ctx, float64(time.Now().Unix()))
+		in.lastSuccess.Record(ctx, float64(time.Now().Unix()))
 	}
 
 	// One status value drives both the metrics and the log, so they can never

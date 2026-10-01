@@ -18,7 +18,7 @@ provider 注册仍保持框架原生,不在本 starter 范围内(见
 ## 模型
 
 配置是**命名块**:每个 `spring.registry.etcd.<name>.*` 块描述一个 etcd 集群,并成为
-一个名为 `etcd.<name>` 的后端 bean,同时实现写侧(`discovery.Registrar`)与读侧
+一个名为 `etcd.<name>` 的后端 bean,同时实现写侧(`discovery.Registry`)与读侧
 (`discovery.Discovery`),共享该块的客户端与键前缀。没有默认/无名块。
 
 注册本身由 [starter-registry](../starter-registry) 核心拥有(传递依赖自动引入):它

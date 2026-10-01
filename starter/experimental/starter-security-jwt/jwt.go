@@ -181,10 +181,10 @@ func (a *Authenticator) Validate(_ context.Context, token string) (*security.Aut
 // security.Authentication is attached to the request context.
 func (a *Authenticator) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := bearerToken(r)
+		token := security.ParseBearerToken(r.Header.Get("Authorization"))
 		if token == "" {
 			if a.cfg.Required {
-				unauthorized(w, "missing bearer token")
+				unauthorized(w, "missing bearer token", "")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -192,27 +192,17 @@ func (a *Authenticator) Wrap(next http.Handler) http.Handler {
 		}
 		auth, err := a.Validate(r.Context(), token)
 		if err != nil {
-			unauthorized(w, "invalid token")
+			unauthorized(w, "invalid token", security.BearerErrorInvalidToken)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(security.WithAuthentication(r.Context(), auth)))
 	})
 }
 
-// bearerToken extracts the token from an "Authorization: Bearer <token>" header,
-// returning "" when absent or malformed.
-func bearerToken(r *http.Request) string {
-	const prefix = "bearer "
-	h := r.Header.Get("Authorization")
-	if len(h) < len(prefix) || !strings.EqualFold(h[:len(prefix)], prefix) {
-		return ""
-	}
-	return strings.TrimSpace(h[len(prefix):])
-}
-
-// unauthorized writes a 401 with a Bearer challenge.
-func unauthorized(w http.ResponseWriter, msg string) {
-	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+// unauthorized writes a 401 with a Bearer challenge. errCode is an RFC 6750
+// code, or "" when the request carried no credential at all.
+func unauthorized(w http.ResponseWriter, msg, errCode string) {
+	w.Header().Set("WWW-Authenticate", security.BearerChallenge(errCode))
 	http.Error(w, msg, http.StatusUnauthorized)
 }
 

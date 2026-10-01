@@ -18,7 +18,7 @@
 // this process's publication lifecycle across every configured registry
 // center. The backend starters (starter-registry-etcd, starter-registry-consul,
 // starter-registry-nacos, starter-registry-zookeeper) each contribute one
-// discovery.Registrar per configured ${spring.registry.<backend>.<name>}
+// discovery.Registry per configured ${spring.registry.<backend>.<name>}
 // block; this server collects them all and drives them in lockstep —
 // registered everywhere once the app is ready, deregistered everywhere as
 // shutdown begins, weight changes broadcast to all. A backend missing from
@@ -55,8 +55,8 @@ func init() {
 	// Activated only when the registration intent signal is set: a
 	// ${spring.registry.service-name} means this process publishes itself.
 	// Pure consumers leave it unset and nothing registers anywhere. The
-	// Registrars field is the container's slice collection of every
-	// discovery.Registrar bean the backend starters derived from their
+	// Registries field is the container's slice collection of every
+	// discovery.Registry bean the backend starters derived from their
 	// configured blocks.
 	gs.Provide(NewServer).
 		Name("registryServer").
@@ -72,9 +72,9 @@ type Server struct {
 	// shared by every center.
 	Config RegistrationConfig `value:"${spring.registry}"`
 
-	// Registrars collects every backend's registrar bean — one per configured
+	// Registries collects every backend's registrar bean — one per configured
 	// registry-center block, across all backends.
-	Registrars []discovery.Registrar `autowire:"?"`
+	Registries []discovery.Registry `autowire:"?"`
 
 	inst discovery.Instance
 }
@@ -90,7 +90,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if s.Config.ServiceName == "" || s.Config.Addr == "" {
 		return errutil.Explain(nil, "registry: ${spring.registry.service-name} and ${spring.registry.addr} are required")
 	}
-	if len(s.Registrars) == 0 {
+	if len(s.Registries) == 0 {
 		return errutil.Explain(nil, "registry: ${spring.registry.service-name} is set but no registry center is configured (e.g. ${spring.registry.etcd.<name>.endpoints})")
 	}
 	s.inst = discovery.Instance{
@@ -106,14 +106,14 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Debugf(ctx, starterTag, "registering service=%s id=%s addr=%s weight=%d into %d registry center(s)", s.inst.ServiceName, s.inst.ID, s.inst.Addr, s.inst.Weight, len(s.Registrars))
-	for _, r := range s.Registrars {
+	log.Debugf(ctx, starterTag, "registering service=%s id=%s addr=%s weight=%d into %d registry center(s)", s.inst.ServiceName, s.inst.ID, s.inst.Addr, s.inst.Weight, len(s.Registries))
+	for _, r := range s.Registries {
 		if err := r.Register(ctx, s.inst); err != nil {
 			log.Errorf(ctx, starterTag, "register service=%s failed: %v", s.inst.ServiceName, err)
 			return errutil.Explain(err, "registry: register %q", s.inst.ServiceName)
 		}
 	}
-	log.Infof(ctx, starterTag, "registered %q at %s in %d registry center(s)", s.inst.ServiceName, s.inst.Addr, len(s.Registrars))
+	log.Infof(ctx, starterTag, "registered %q at %s in %d registry center(s)", s.inst.ServiceName, s.inst.Addr, len(s.Registries))
 
 	<-ctx.Done()
 	return nil
@@ -144,7 +144,7 @@ func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
 	if s.inst.Addr == "" {
 		return errutil.Explain(nil, "registry: instance not registered yet")
 	}
-	for _, r := range s.Registrars {
+	for _, r := range s.Registries {
 		if err := r.UpdateWeight(ctx, s.inst, weight); err != nil {
 			log.Errorf(ctx, starterTag, "update weight service=%s to %d failed: %v", s.inst.ServiceName, weight, err)
 			return errutil.Explain(err, "registry: update weight to %d", weight)
@@ -154,7 +154,7 @@ func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
 }
 
 func (s *Server) deregister(ctx context.Context) {
-	for _, r := range s.Registrars {
+	for _, r := range s.Registries {
 		if err := r.Deregister(ctx, s.inst); err != nil {
 			log.Warnf(ctx, starterTag, "deregister %q: %v", s.inst.ServiceName, err)
 		}

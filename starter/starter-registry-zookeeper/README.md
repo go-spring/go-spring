@@ -23,7 +23,7 @@ RPC-framework provider registration stays framework-native and is out of scope (
 Configuration is **named blocks**: one `spring.registry.zookeeper.<name>.*` block per
 ZooKeeper ensemble. There is no default or unnamed block — the name is part of the address.
 Each block becomes ONE backend bean named `zookeeper.<name>` implementing BOTH
-`discovery.Registrar` (write) and `discovery.Discovery` (read), sharing the block's session
+`discovery.Registry` (write) and `discovery.Discovery` (read), sharing the block's session
 and base-path:
 
 ```properties

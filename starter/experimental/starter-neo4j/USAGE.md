@@ -135,12 +135,12 @@ spring.observability.metrics.exporter=prometheus
 # --- actuator: readiness folds in neo4j:graph and neo4j:analytics -----------
 spring.actuator.addr=:9370
 # --- governance: guard for Query / RunWithResilience ------------------------
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=100
-govern.client.default.max-retries=1
-govern.client.default.attempt-timeout=500ms
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=100
+spring.governance.client.default.max-retries=1
+spring.governance.client.default.attempt-timeout=500ms
 ```
 
 **Verify** (start Neo4j first — `docker run -d -e NEO4J_AUTH=neo4j/password -p 7687:7687 -p 7474:7474 neo4j:5`,
@@ -279,7 +279,7 @@ unchanged [starter.go:80-87].
 
 ⚠ **Deliberately not wired to governed endpoint selection.** There is no per-query pick to govern:
 the boot-time pick is frozen into a URI string and the pool is built, used, and discarded in that
-one function. `govern.client.rules[N].balancer` / `outlier-threshold` therefore have no effect on neo4j;
+one function. `spring.governance.client.rules[N].balancer` / `outlier-threshold` therefore have no effect on neo4j;
 its governance stops at the protection policy (timeout / retries / breaker under the label
 `neo4j:<service-name|uri>`). Recorded here so the absence reads as a decision, not a gap. (The
 `AddressResolver` hook above is about *which cluster*, not *which node* — the driver still chooses
@@ -312,7 +312,7 @@ IndexArg(1)), not the absolute-property Pool rule.
 | `max-connection-lifetime` | duration | 1h | Retire-and-reconnect window. | — |
 | `connection-acquisition-timeout` | duration | 1m | Max wait for a pooled connection. | Too low → spuriously failed queries under burst. |
 | `socket-connect-timeout` | duration | 5s | TCP connect timeout; ⚠ also bounds the startup fail-fast probe (starter.go:110,132-137). | 0/negative silently falls back to 5s for the probe. |
-| `max-transaction-retry-time` | duration | 30s | Driver-level transient-error retry budget. ⚠ Stacks with `govern.*.max-retries` — two retry loops can multiply attempts. | Large value + governance retry → multiplied latency. |
+| `max-transaction-retry-time` | duration | 30s | Driver-level transient-error retry budget. ⚠ Stacks with `spring.governance.*.max-retries` — two retry loops can multiply attempts. | Large value + governance retry → multiplied latency. |
 
 ### 3.3 TLS
 
@@ -364,9 +364,9 @@ silence is the un-intercepted path, not a broken pipeline (§2.2).
 ### 4.3 Resilience drill (example-cloudnative / example-load shape)
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.client.default.rate-limit=5
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.client.default.rate-limit=5
 ```
 
 ```bash
@@ -374,8 +374,8 @@ go run ./example-cloudnative -manual   # self-asserts: burst of 15 → some admi
                                        # some rejected with resilience.ErrRateLimited
 ```
 
-Fault injection (hot-reload, example-load): flip `govern.client.fault.enabled=true`,
-`govern.client.fault.rate=0.5`, `govern.client.fault.error=timeout` in `conf/app.properties` while the load
+Fault injection (hot-reload, example-load): flip `spring.governance.client.fault.enabled=true`,
+`spring.governance.client.fault.rate=0.5`, `spring.governance.client.fault.error=timeout` in `conf/app.properties` while the load
 binary runs — the error breakdown moves without restart.
 
 ### 4.4 Discovery drill

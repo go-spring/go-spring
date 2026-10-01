@@ -5,7 +5,7 @@
 `starter-governance-sentinel` 把 [alibaba/sentinel-golang][sentinel] 注册为
 [`cloud/governance/resilience`](../../cloud/governance/resilience) 韧性框架的生产 driver。
 与 [`starter-governance`](../starter-governance) 一起空导入,并在治理文档里
-写 `govern.driver=sentinel` —— 此后每个经治理中心解析 executor 的客户端,都在
+写 `spring.governance.driver=sentinel` —— 此后每个经治理中心解析 executor 的客户端,都在
 同一份中立 `ClientPolicy` 之上获得自适应限流、熔断与并发隔离,无需按客户端配 key,
 也无需改代码。
 
@@ -37,17 +37,17 @@ import _ "go-spring.org/starter-governance-sentinel"
 
 ### 2. 在治理文档里选它
 
-driver 是**全进程选一次**,不按客户端选:治理文档用 `govern.driver` 指定,每个经
-治理中心解析 executor 的客户端都会拿到它。`govern.*` 键写在治理文档里 —— 那是
+driver 是**全进程选一次**,不按客户端选:治理文档用 `spring.governance.driver` 指定,每个经
+治理中心解析 executor 的客户端都会拿到它。`spring.governance.*` 键写在治理文档里 —— 那是
 它自己的一套系统,不是 `app.properties`(见
 [`cloud/governance/README.md`](../../cloud/governance/README.md)):
 
 ```properties
-govern.enabled=true
-govern.driver=sentinel
-govern.client.default.max-retries=3
-govern.client.default.error-threshold=10
-govern.client.default.attempt-timeout=1s
+spring.governance.enabled=true
+spring.governance.driver=sentinel
+spring.governance.client.default.max-retries=3
+spring.governance.client.default.error-threshold=10
+spring.governance.client.default.attempt-timeout=1s
 ```
 
 ### 3. 或直接使用

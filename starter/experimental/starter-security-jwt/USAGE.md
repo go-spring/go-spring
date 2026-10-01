@@ -187,7 +187,8 @@ curl -i :9370/healthz                                # actuator liveness
 
 ```
 import starter-security-jwt
-  └─ gs.Group("${spring.security.jwt}", newAuthenticator, nil)      [starter.go:35]
+  └─ gs.Module(OnProperty("spring.security.jwt.instances"))        [starter.go:41]
+       → per sub-key: Provide(newAuthenticator).Name(name).Export(As[security.TokenValidator])
 gs.Run()
   ├─ bind: each sub-key -> Config (value tags)
   ├─ newAuthenticator (jwt.go:57-103), per source — all fail fast:
@@ -206,10 +207,11 @@ gs.Run()
 
 ### 2.2 One request, layer by layer — `GET /me` with a bearer token
 
-1. **Wrap** (jwt.go:182-200): `bearerToken(r)` extracts `Authorization: Bearer <token>`
-   (case-insensitive prefix, jwt.go:204-211).
+1. **Wrap** (jwt.go:182-200): `security.ParseBearerToken(r.Header.Get("Authorization"))`
+   extracts `Authorization: Bearer <token>` through the shared helper.
 2. No token: `Required` (default true) → 401 `missing bearer token` with
-   `WWW-Authenticate: Bearer error="invalid_token"`; false → pass through with **no**
+   `WWW-Authenticate: Bearer` (no `error` param — RFC 6750 reserves error codes
+   for a credential that was present); false → pass through with **no**
    Authentication attached, deferring to method-level guards.
 3. Token present → `Validate` (jwt.go:150-172): `parser.ParseWithClaims`:
    - **algorithm screening first**: `WithValidMethods(validMethods)` — for an
@@ -269,7 +271,7 @@ All drills run against the §1 project (`go run . -manual`); mint via token.go.
 1. **Round trip**: user token → `200 hello alice`; admin token → `200 admin ok`;
    user token on `/admin` → `403` (example/check.sh asserts all three).
 2. **Missing token**: `curl -s -o/dev/null -w '%{http_code}\n' :9090/me` → `401`,
-   body `missing bearer token`, header `WWW-Authenticate: Bearer error="invalid_token"`.
+   body `missing bearer token`, header `WWW-Authenticate: Bearer`.
 3. **Garbage/invalid token**: `curl -s -H "Authorization: Bearer not-a-real-token" :9090/me`
    → `401 invalid token` (check.sh Feature 5). Also mint with a wrong secret
    (`[]byte("wrong")`) → same 401.
@@ -331,8 +333,8 @@ Design suspects (kept + new, for the audit ledger):
 - New: a failed JWKS reload serves stale cached keys with **no staleness bound**
   (jwks.go:75-79) — a long outage silently keeps old keys authoritative.
 - New: no auth-failure observability (no counter/log on 401 paths).
-- New: `WWW-Authenticate` always says `error="invalid_token"` even for *missing*
-  tokens (jwt.go:214-217) — technically the missing-token case should carry no error
-  param per RFC 6750; cosmetic but spec-visible.
+- Fixed: `WWW-Authenticate` now distinguishes the two 401 cases through the shared
+  `security.BearerChallenge` — a missing token yields the bare `Bearer`, a rejected
+  one the RFC 6750 `error="invalid_token"`.
 - New: `required` exists here as a config key but the sibling starter pushes the same
   knob app-side (`security.Authenticate(v, required)`) — inconsistent posture knobs.

@@ -40,7 +40,7 @@ type governanceProbe struct {
 // import of starter-governance exists for: importing a client starter ALONE puts
 // the governance beans in the container, so a deployment gets governance wiring
 // without knowing the governance starter exists. Turning governance off is then
-// govern.enabled=false (or binding no rule source), not the absence of a bean.
+// spring.governance.enabled=false (or binding no rule source), not the absence of a bean.
 //
 // The injected parameters stay nullable precisely so this is a one-way door: if
 // the blank import is ever dropped, the fields go nil and this test fails,

@@ -58,6 +58,10 @@ type etcdRegistrar struct {
 	keyPrefix string
 	ttlSecs   int64
 
+	// obs is the backend block's observability layer; it carries the identity
+	// (system, center) every reported attempt and log line is labelled with.
+	obs *discovery.Observer
+
 	// backoffBase/backoffCap pace the re-register retry loop after a keep-alive
 	// loss: 1s doubling up to 1min. Fields (not constants) so tests shrink them.
 	backoffBase time.Duration
@@ -122,7 +126,7 @@ func (r *etcdRegistrar) stopHold(h *hold) {
 // newEtcdRegistrar returns a registrar writing through cli (the shared center
 // client; the cluster was already probed when cli was built) with c's prefix
 // and TTL. It does NOT close cli — the owner (etcdBackend) does.
-func newEtcdRegistrar(c EtcdConfig, cli registrarKV) (*etcdRegistrar, error) {
+func newEtcdRegistrar(c EtcdConfig, cli registrarKV, obs *discovery.Observer) (*etcdRegistrar, error) {
 	if cli == nil {
 		return nil, errutil.Explain(nil, "registry-etcd: nil etcd client")
 	}
@@ -132,6 +136,7 @@ func newEtcdRegistrar(c EtcdConfig, cli registrarKV) (*etcdRegistrar, error) {
 		ttlSecs:     c.ttlSeconds(),
 		backoffBase: time.Second,
 		backoffCap:  time.Minute,
+		obs:         obs,
 		holds:       map[string]*hold{},
 	}, nil
 }
@@ -199,7 +204,7 @@ func (r *etcdRegistrar) Register(ctx context.Context, reg discovery.Instance) er
 
 	h := newHold(reg)
 	var ka <-chan *clientv3.LeaseKeepAliveResponse
-	if err := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial, func(ctx context.Context) error {
+	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonInitial, func(ctx context.Context) error {
 		var err error
 		ka, err = r.etcdPublish(ctx, h)
 		return err
@@ -300,7 +305,13 @@ func (r *etcdRegistrar) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.
 			return
 		}
 		log.Error(context.Background(), starterTag, append(
-			discovery.RegisterFields(obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal),
+			[]log.Field{
+				log.String("system", r.obs.System()),
+				log.String("center", r.obs.Center()),
+				log.String("service", h.reg.ServiceName),
+				log.String("operation", "register"),
+				log.String("reason", discovery.ReasonSelfHeal),
+			},
 			log.Msgf("keepalive for key=%s died (etcd unreachable or lease lost); re-registering with backoff", key),
 		)...)
 		backoff := r.backoffBase
@@ -313,7 +324,7 @@ func (r *etcdRegistrar) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.
 			// same event in the trace, not two unconnected ones.
 			var nka <-chan *clientv3.LeaseKeepAliveResponse
 			var spanCtx context.Context
-			err := discovery.RegisterAttempt(context.Background(), obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal, func(ctx context.Context) error {
+			err := r.obs.RegisterAttempt(context.Background(), h.reg.ServiceName, discovery.ReasonSelfHeal, func(ctx context.Context) error {
 				spanCtx = ctx
 				var err error
 				nka, err = r.etcdPublish(ctx, h)
@@ -321,14 +332,28 @@ func (r *etcdRegistrar) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.
 			})
 			if err == nil {
 				log.Info(spanCtx, starterTag, append(
-					discovery.RegisterFields(obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal),
+					[]log.Field{
+						log.String("system", r.obs.System()),
+						log.String("center", r.obs.Center()),
+						log.String("service", h.reg.ServiceName),
+						log.String("operation", "register"),
+						log.String("reason", discovery.ReasonSelfHeal),
+					},
 					log.Msgf("re-registered key=%s under a new lease", key),
 				)...)
 				ka = nka
 				break
 			}
 			log.Error(spanCtx, starterTag, append(
-				discovery.RegisterFailedFields(obsSystem, h.reg.ServiceName, discovery.ReasonSelfHeal, err),
+				[]log.Field{
+					log.String("system", r.obs.System()),
+					log.String("center", r.obs.Center()),
+					log.String("service", h.reg.ServiceName),
+					log.String("operation", "register"),
+					log.String("reason", discovery.ReasonSelfHeal),
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+				},
 				log.Msgf("re-register key=%s failed; retrying in %s", key, backoff),
 			)...)
 			select {
@@ -379,7 +404,7 @@ func (r *etcdRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance
 	}
 	// Reported around the write itself: a marshal failure above never reached
 	// the center, so it is not a registry-center operation outcome.
-	if err := discovery.WeightChange(ctx, obsSystem, reg.ServiceName, func(ctx context.Context) error {
+	if err := r.obs.WeightChange(ctx, reg.ServiceName, func(ctx context.Context) error {
 		_, err := r.client.Put(ctx, key, string(val), lease)
 		return err
 	}); err != nil {
@@ -409,7 +434,7 @@ func (r *etcdRegistrar) Deregister(ctx context.Context, reg discovery.Instance) 
 		return nil
 	}
 	r.stopHold(h)
-	if err := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName, func(ctx context.Context) error {
+	if err := r.obs.DeregisterAttempt(ctx, reg.ServiceName, func(ctx context.Context) error {
 		_, err := r.client.Revoke(ctx, lease)
 		return err
 	}); err != nil {

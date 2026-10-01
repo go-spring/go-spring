@@ -11,7 +11,7 @@
 
 **激活条件**：每个 `spring.registry.zookeeper.<name>` 块即一个注册中心 —— 一个共享会话、一次
 启动探测、一套生命周期（`starter.go`）。名为 `zookeeper.<name>` 的 bean 同时导出
-`discovery.Registrar`（设置了 `spring.registry.service-name` 时由 starter-registry 核心收集
+`discovery.Registry`（设置了 `spring.registry.service-name` 时由 starter-registry 核心收集
 —— 纯消费方应用不注册任何实例）与 `discovery.Discovery`（按 bean 名引用，纯提供方不为读侧
 付出成本）。本 starter **两侧都做**：把本实例以临时 znode 发布到 ZooKeeper，同时携带客户端
 发现后端（见 §1 消费侧说明）。不监听端口 —— 注册经核心的 `registryServer` 接进应用生命周期。
@@ -127,7 +127,7 @@ docker exec -it starter-registry-zookeeper zkCli.sh
 ```
 blank-import starter-registry-zookeeper
   ├─ 每个块 ${spring.registry.zookeeper.<name>}：Provide(newZkBackend)
-  │    Name("zookeeper."+name).Export(As[discovery.Discovery], As[discovery.Registrar])
+  │    Name("zookeeper."+name).Export(As[discovery.Discovery], As[discovery.Registry])
   │    条件：gs.OnProperty("spring.registry.zookeeper")              [starter.go]
   └─ import starter-registry（核心，每进程恰一次）
        └─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
@@ -137,7 +137,7 @@ gs.Run()
   ├─ 每块 newZkBackend：zk.Connect(servers, session-timeout)；设置了凭证则 digest
   │    AddAuth + fail-fast 探活 Exists("/") —— 阻塞到会话连上，因此集群不可达在
   │    启动期失败，而不是等第一次 Register 才暴露                    [starter.go]
-  ├─ registryServer 经 []discovery.Registrar 切片注入收集所有后端的 registrar
+  ├─ registryServer 经 []discovery.Registry 切片注入收集所有后端的 registrar
   │    （跨所有后端 —— zookeeper、nacos……）
   ├─ Run：就绪前校验 service-name/addr 且 registrar ≥ 1 个
   ├─ 等待 <-sig.TriggerAndWait() —— 就绪闸门：所有其他 server 起来后才注册
@@ -283,7 +283,7 @@ zk 侧检查均可用容器内 `zkCli.sh`（见 §1）或任意 zk 客户端完�
 2. 会话丢失后无重注册：zk 库会透明重连，但会话一旦过期临时节点已删，运行中的进程毫无感知——
    实例无声从发现侧消失，直到重启。候选修法是 SessionW/State 驱动的重注册循环。
 3. ~~不带消费侧~~ 已解决：`discovery_zookeeper.go` 自带发现后端——自 2026-09 多注册中心命名块
-   改造起，它就是该块的 bean（`zookeeper.<name>`），同时实现 `discovery.Registrar` 与
+   改造起，它就是该块的 bean（`zookeeper.<name>`），同时实现 `discovery.Registry` 与
    `discovery.Discovery`；注册收进共享的 starter-registry 核心。
 4. `addr` 写入时不校验 `host:port` 形态（consul 校验数字端口）；畸形值原样存储，只在消费方
    拨号时失败。

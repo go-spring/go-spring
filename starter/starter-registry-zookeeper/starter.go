@@ -17,7 +17,7 @@
 // Package StarterRegistryZookeeper adapts ZooKeeper as a service registry.
 // Each ${spring.registry.zookeeper.<name>} block becomes ONE backend bean
 // named "zookeeper.<name>" serving both sides of the naming idiom: the write
-// side (a discovery.Registrar collected by the starter-registry core, which
+// side (a discovery.Registry collected by the starter-registry core, which
 // registers this instance once the app is ready and deregisters it on
 // shutdown) and the read side (a discovery.Discovery consumers cite by the
 // bean's name). Blank-import the package and configure one block per
@@ -77,7 +77,7 @@ var (
 // ${spring.registry.zookeeper.<name>} block made a bean. It owns the single
 // ZooKeeper session for that ensemble (probed at construction, closed by the
 // bean destructor) and serves both halves of the naming idiom through it: the
-// write side (a discovery.Registrar collected by the starter-registry core)
+// write side (a discovery.Registry collected by the starter-registry core)
 // and the read side (a discovery.Discovery consumers cite by the bean's name
 // "zookeeper.<name>"; lazy, so an app that never cites it pays nothing for
 // the read half). Both sides share the block's base-path, so read and write
@@ -85,6 +85,10 @@ var (
 type zkBackend struct {
 	reg  *zkRegistrar
 	disc *zkDiscovery
+
+	// obs is this block's observability layer: one observer per configured
+	// block, closed by the bean destructor below.
+	obs *discovery.Observer
 
 	// conn is the session this block created and owns. The registrar and the
 	// discovery watchers both read through it; nothing else in the process
@@ -95,12 +99,17 @@ type zkBackend struct {
 // newZkBackend builds the session (probing the ensemble) and both halves. The
 // probe is the fail-fast: a misconfigured or unreachable ensemble fails
 // startup here, once per block.
-func newZkBackend(c ZookeeperConfig) (*zkBackend, error) {
+func newZkBackend(c ZookeeperConfig, name string) (*zkBackend, error) {
 	conn, err := connectZookeeper(c)
 	if err != nil {
 		return nil, err
 	}
-	reg, err := newZookeeperRegistrar(c, conn)
+	obs, err := discovery.NewObserver(obsSystem, name)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	reg, err := newZookeeperRegistrar(c, conn, obs)
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -111,8 +120,10 @@ func newZkBackend(c ZookeeperConfig) (*zkBackend, error) {
 			conn:     conn,
 			basePath: strings.TrimRight(c.BasePath, "/"),
 			done:     make(chan struct{}),
+			obs:      obs,
 			entries:  map[string]*serviceEntry{},
 		},
+		obs:  obs,
 		conn: conn,
 	}, nil
 }
@@ -129,6 +140,9 @@ func (b *zkBackend) Close() error {
 	b.reg.Close()
 	b.disc.Close()
 	b.conn.Close()
+	// Drop this block's gauge callbacks with it: the block owns them, so nothing
+	// of it may keep reporting after it is gone.
+	_ = b.obs.Close()
 	return nil
 }
 
@@ -195,7 +209,7 @@ func init() {
 	// One NAMED bean per block under ${spring.registry.zookeeper.<name>}: the
 	// bean name "zookeeper.<name>" is the label a client starter cites to pick
 	// this backend for discovery, and the starter-registry core collects the
-	// same bean (as a discovery.Registrar) into the single publication
+	// same bean (as a discovery.Registry) into the single publication
 	// lifecycle. Blocks across backends never collide (the name carries the
 	// backend type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -203,8 +217,9 @@ func init() {
 		return conf.BindEach(p, "${spring.registry.zookeeper}", func(name string, c ZookeeperConfig) error {
 			r.Provide(newZkBackend,
 				gs.IndexArg(0, gs.ValueArg(c)),
+				gs.IndexArg(1, gs.ValueArg(name)),
 			).Name("zookeeper."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registrar]()).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
 				Destroy((*zkBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this ensemble unless the user

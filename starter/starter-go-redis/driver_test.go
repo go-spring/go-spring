@@ -40,10 +40,7 @@ type poolDriver struct {
 
 func (d *poolDriver) CreateClient(context.Context, Config, discovery.Discovery) (*redis.Client, *loadbalance.Pool, error) {
 	src := func() ([]discovery.Endpoint, error) { return d.endpoints, nil }
-	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
-	if err != nil {
-		return nil, nil, err
-	}
+	bal := loadbalance.NewRoundRobin()
 	d.returned = loadbalance.NewPool(src, bal)
 	// A real *redis.Client is not needed: this driver builds no dialer.
 	return redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), d.returned, nil
@@ -92,8 +89,7 @@ func TestDriverPoolIsBoundByCaller(t *testing.T) {
 func (d *poolDriver) returnedPool(t *testing.T) *loadbalance.Pool {
 	t.Helper()
 	src := func() ([]discovery.Endpoint, error) { return d.endpoints, nil }
-	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
-	assert.Error(t, err).Nil()
+	bal := loadbalance.NewRoundRobin()
 	d.returned = loadbalance.NewPool(src, bal)
 	return d.returned
 }

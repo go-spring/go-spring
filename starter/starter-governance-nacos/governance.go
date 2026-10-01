@@ -27,11 +27,11 @@
 // client exclusively, so it is free to carry its own instrumentation
 // independently of the config-import bootstrap client.
 //
-// Configure with ${govern.source.nacos.*}:
+// Configure with ${spring.governance.source.nacos.*}:
 //
-//	govern.source.nacos.server=127.0.0.1:8848
-//	govern.source.nacos.data-id=app-govern.yaml
-//	govern.source.nacos.group=DEFAULT_GROUP
+//	spring.governance.source.nacos.server=127.0.0.1:8848
+//	spring.governance.source.nacos.data-id=app-governance.yaml
+//	spring.governance.source.nacos.group=DEFAULT_GROUP
 //
 // The bean is registered only when that key is present, so importing this
 // package is inert otherwise.
@@ -61,8 +61,8 @@ var starterTag = log.RegisterAppTag("governance_nacos", "")
 // dialTimeoutMs bounds the source's own client calls.
 const dialTimeoutMs = 5000
 
-// governNacosConfig binds ${govern.source.nacos.*}.
-type governNacosConfig struct {
+// governanceNacosConfig binds ${spring.governance.source.nacos.*}.
+type governanceNacosConfig struct {
 	// Server is the Nacos server address, host:port.
 	Server string `value:"${server}" expr:"$ != ''"`
 
@@ -83,12 +83,12 @@ type governNacosConfig struct {
 }
 
 func init() {
-	gs.Module(gs.OnProperty("govern.source.nacos"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var c governNacosConfig
-		if err := conf.Bind(p, &c, "${govern.source.nacos:=}"); err != nil {
+	gs.Module(gs.OnProperty("spring.governance.source.nacos"), func(r gs.BeanProvider, p flatten.Storage) error {
+		var c governanceNacosConfig
+		if err := conf.Bind(p, &c, "${spring.governance.source.nacos:=}"); err != nil {
 			return err
 		}
-		src := governSource{
+		src := governanceSource{
 			dataID: c.DataID,
 			group:  c.Group,
 			format: sourceFormat(c.Format, c.DataID),
@@ -140,9 +140,9 @@ func extOf(name string) string {
 	return ""
 }
 
-// governSource is the resolved wiring one NacosSource carries: which dataId to
+// governanceSource is the resolved wiring one NacosSource carries: which dataId to
 // read and how to parse it.
-type governSource struct {
+type governanceSource struct {
 	dataID string
 	group  string
 	format string
@@ -156,7 +156,7 @@ type governSource struct {
 // snapshot and logs.
 type NacosSource struct {
 	cli config_client.IConfigClient
-	src governSource
+	src governanceSource
 	doc string // latest document bytes (for dedupe before parsing)
 
 	// push holds the snapshot and the subscriber; this source is a transport
@@ -165,7 +165,7 @@ type NacosSource struct {
 }
 
 // NewNacosSource seeds the snapshot from the dataId's current content.
-func NewNacosSource(cli config_client.IConfigClient, src governSource) (*NacosSource, error) {
+func NewNacosSource(cli config_client.IConfigClient, src governanceSource) (*NacosSource, error) {
 	content, err := cli.GetConfig(vo.ConfigParam{DataId: src.dataID, Group: src.group})
 	if err != nil {
 		return nil, errutil.Explain(err, "governance nacos source: get %s/%s failed", src.group, src.dataID)

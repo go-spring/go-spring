@@ -34,9 +34,14 @@ import (
 
 // installGlobals wires in-memory OTel providers so the assertions below see
 // real spans and records. It is called exactly once, from [TestObserveReporting];
-// every scenario is driven under that single install because the OTel global
-// meter caches by name and only ever delegates to the FIRST provider set — a
-// second install would resolve instruments that record nowhere.
+// every scenario is driven under that single install.
+//
+// resetInstruments keeps the install deterministic. This package's instrument
+// set is process-wide and resolved once, on first use, so it would otherwise
+// keep whichever instruments an earlier use in this test binary had already
+// resolved - against the no-op provider every test starts with - and these
+// records would go nowhere. Nothing resolves it before this point today; the
+// reset is what keeps that from being a load-bearing ordering accident.
 func installGlobals(t *testing.T) (*tracetest.InMemoryExporter, sdkmetric.Reader, func()) {
 	t.Helper()
 	prevTP := otel.GetTracerProvider()
@@ -49,6 +54,7 @@ func installGlobals(t *testing.T) (*tracetest.InMemoryExporter, sdkmetric.Reader
 
 	otel.SetTracerProvider(tp)
 	otel.SetMeterProvider(mp)
+	resetInstruments()
 	return spanExp, rdr, func() {
 		otel.SetTracerProvider(prevTP)
 		otel.SetMeterProvider(prevMP)
@@ -177,33 +183,75 @@ func TestObserveReporting(t *testing.T) {
 	testRegistryFailureSemantics(t, rdr)
 	testWeightChangeObserved(t, spanExp, rdr)
 	testSyncAgeClimbs(t, rdr)
+	testTwoCentersStayDistinct(t, rdr)
+}
+
+// testTwoCentersStayDistinct pins why center is part of the identity: one process
+// publishes the same service into EVERY configured center (the registry core
+// drives all collected registrars), and each block keeps its own state. Without
+// center the two blocks would be one series — and now that the state is per
+// block, two datapoints sharing a label set, which is a scrape error rather than
+// a wrong number.
+//
+// Closing must also take a block's series away: a re-armed watch or a
+// re-registered instance rebuilds its block, and a callback left behind would
+// report the same service twice for as long as the process lived.
+func testTwoCentersStayDistinct(t *testing.T, rdr sdkmetric.Reader) {
+	const sys, svc = "etcd", "orders"
+	alpha := newObserver(t, sys, "alpha")
+	beta := newObserver(t, sys, "beta")
+
+	reportRegister(alpha, svc, ReasonInitial, nil)
+	reportRegister(beta, svc, ReasonInitial, errutil.Explain(nil, "center unreachable"))
+
+	assert.Equal(t, int64(1), mustGauge(t, rdr, map[string]string{"system": sys, "center": "alpha", "service": svc}))
+	assert.Equal(t, int64(0), mustGauge(t, rdr, map[string]string{"system": sys, "center": "beta", "service": svc}))
+
+	require.NoError(t, beta.Close())
+	if _, ok := findIntGauge(t, rdr, "registry.instance.registered", map[string]string{
+		"system": sys, "center": "beta", "service": svc,
+	}); assert.False(t, ok, "a closed observer must drop its series") {
+	}
+	assert.Equal(t, int64(1), mustGauge(t, rdr, map[string]string{"system": sys, "center": "alpha", "service": svc}),
+		"closing one block must leave its siblings reporting")
+}
+
+// newObserver builds the observer for one scenario. Its gauge callbacks are
+// dropped at the end of the test: an observer that outlived its scenario would
+// keep reporting into the next scenario's collection.
+func newObserver(t *testing.T, system, center string) *Observer {
+	t.Helper()
+	o, err := NewObserver(system, center)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = o.Close() })
+	return o
+}
+
+// reportRegister / reportDeregister / reportWeight run one reported operation to
+// completion with the given outcome: these tests assert on the instruments, and
+// the span-context correlation is covered by the backends' own tests.
+func reportRegister(o *Observer, svc, reason string, err error) {
+	_ = o.RegisterAttempt(context.Background(), svc, reason, func(context.Context) error { return err })
+}
+
+func reportDeregister(o *Observer, svc string, err error) {
+	_ = o.DeregisterAttempt(context.Background(), svc, func(context.Context) error { return err })
+}
+
+func reportWeight(o *Observer, svc string, err error) {
+	_ = o.WeightChange(context.Background(), svc, func(context.Context) error { return err })
 }
 
 // testRegistryLifecycle asserts each registration outcome's span, duration,
 // counter and the registered gauge — including the self-heal path, which never
-// passes through the Registrar interface.
-// reportRegister / reportDeregister / reportWeight run one reported operation
-// to completion with the given outcome: these tests assert on the instruments,
-// and the span-context correlation is covered by the backends' own tests.
-func reportRegister(ctx context.Context, sys, svc, reason string, err error) {
-	_ = RegisterAttempt(ctx, sys, svc, reason, func(context.Context) error { return err })
-}
-
-func reportDeregister(ctx context.Context, sys, svc string, err error) {
-	_ = DeregisterAttempt(ctx, sys, svc, func(context.Context) error { return err })
-}
-
-func reportWeight(ctx context.Context, sys, svc string, err error) {
-	_ = WeightChange(ctx, sys, svc, func(context.Context) error { return err })
-}
-
+// passes through the Registry interface.
 func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
-	ctx := context.Background()
 	fail := errutil.Explain(nil, "center unreachable")
-	const sys, svc = "etcd", "orders"
+	const sys, center, svc = "etcd", "main", "orders"
+	o := newObserver(t, sys, center)
 
 	// --- initial registration succeeds: span, duration, counter, gauge=1 ---
-	reportRegister(ctx, sys, svc, ReasonInitial, nil)
+	reportRegister(o, svc, ReasonInitial, nil)
 
 	spans := spanExp.GetSpans()
 	require.NotEmpty(t, spans)
@@ -233,7 +281,7 @@ func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rd
 	}
 
 	// --- a failed self-heal declares the instance unpublishable ---
-	reportRegister(ctx, sys, svc, ReasonSelfHeal, fail)
+	reportRegister(o, svc, ReasonSelfHeal, fail)
 	if v, ok := findSum(t, rdr, "registry.registration.attempts_total", map[string]string{
 		"system": sys, "service": svc, "reason": ReasonSelfHeal, "status": "failed",
 	}); assert.True(t, ok, "self-heal failure counter missing") {
@@ -246,7 +294,7 @@ func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rd
 	}
 
 	// --- the center recovers: the next self-heal succeeds and the gauge clears ---
-	reportRegister(ctx, sys, svc, ReasonSelfHeal, nil)
+	reportRegister(o, svc, ReasonSelfHeal, nil)
 	if v, _ := findIntGauge(t, rdr, "registry.instance.registered", map[string]string{
 		"system": sys, "service": svc,
 	}); assert.Equal(t, int64(1), v) {
@@ -257,18 +305,18 @@ func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rd
 // simply follow the error: a failed deregister leaves the instance published
 // (that is exactly the leak worth alerting on), while a successful one clears it.
 func testRegistryFailureSemantics(t *testing.T, rdr sdkmetric.Reader) {
-	ctx := context.Background()
-	const sys, svc = "consul", "orders"
-	want := map[string]string{"system": sys, "service": svc}
+	const sys, center, svc = "consul", "main", "orders"
+	o := newObserver(t, sys, center)
+	want := map[string]string{"system": sys, "center": center, "service": svc}
 
-	reportRegister(ctx, sys, svc, ReasonInitial, nil)
+	reportRegister(o, svc, ReasonInitial, nil)
 	require.Equal(t, int64(1), mustGauge(t, rdr, want))
 
-	reportDeregister(ctx, sys, svc, errutil.Explain(nil, "revoke failed"))
+	reportDeregister(o, svc, errutil.Explain(nil, "revoke failed"))
 	assert.Equal(t, int64(1), mustGauge(t, rdr, want),
 		"a failed deregister must not claim the instance is gone")
 
-	reportDeregister(ctx, sys, svc, nil)
+	reportDeregister(o, svc, nil)
 	assert.Equal(t, int64(0), mustGauge(t, rdr, want))
 }
 
@@ -284,10 +332,10 @@ func mustGauge(t *testing.T, rdr sdkmetric.Reader, want map[string]string) int64
 // operation on the duration metric — it is the drain path, and the one the
 // registry core does not log.
 func testWeightChangeObserved(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
-	ctx := context.Background()
-	const sys, svc = "nacos", "orders"
+	const sys, center, svc = "nacos", "main", "orders"
+	o := newObserver(t, sys, center)
 
-	reportWeight(ctx, sys, svc, nil)
+	reportWeight(o, svc, nil)
 
 	spans := spanExp.GetSpans()
 	require.NotEmpty(t, spans)
@@ -304,8 +352,9 @@ func testWeightChangeObserved(t *testing.T, spanExp *tracetest.InMemoryExporter,
 // leave the clock alone (the snapshot was not confirmed fresh), otherwise the
 // gauge would freeze at zero on exactly the outage it exists to expose.
 func testSyncAgeClimbs(t *testing.T, rdr sdkmetric.Reader) {
-	const sys, svc = "zookeeper", "orders"
-	key := map[string]string{"system": sys, "service": svc}
+	const sys, center, svc = "zookeeper", "main", "orders"
+	o := newObserver(t, sys, center)
+	key := map[string]string{"system": sys, "center": center, "service": svc}
 
 	// Pin the clock so the assertions are about the rule, not about timing.
 	base := time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC)
@@ -314,22 +363,22 @@ func testSyncAgeClimbs(t *testing.T, rdr sdkmetric.Reader) {
 	obsNow = func() time.Time { return now }
 	t.Cleanup(func() { obsNow = prev })
 
-	Synced(sys, svc, nil)
+	o.Synced(svc, nil)
 	assert.InDelta(t, 0, mustAge(t, rdr, key), 0.001, "a fresh sync has no age")
 
 	// The watch dies: 90 seconds pass with a failed sync in between.
 	now = base.Add(90 * time.Second)
-	Synced(sys, svc, errutil.Explain(nil, "watch closed"))
+	o.Synced(svc, errutil.Explain(nil, "watch closed"))
 	assert.InDelta(t, 90, mustAge(t, rdr, key), 0.001,
 		"a failed sync must not reset the freshness clock")
 
 	// Another failure later: the age keeps climbing rather than stalling.
 	now = base.Add(150 * time.Second)
-	Synced(sys, svc, errutil.Explain(nil, "watch closed"))
+	o.Synced(svc, errutil.Explain(nil, "watch closed"))
 	assert.InDelta(t, 150, mustAge(t, rdr, key), 0.001, "age must keep growing while stale")
 
 	// The watch comes back: freshness is restored.
-	Synced(sys, svc, nil)
+	o.Synced(svc, nil)
 	assert.InDelta(t, 0, mustAge(t, rdr, key), 0.001, "a successful sync restores freshness")
 
 	// Both outcomes are counted, so a failing stretch is visible as a rate.

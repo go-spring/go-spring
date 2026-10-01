@@ -1,0 +1,25 @@
+# Governance rules, standalone. This file is NOT app.properties: it is the
+# document the file source (spring.governance.source.file.path) watches and
+# pushes each good re-parse to the governance center, so a change refreshes
+# governance only — never re-binds the whole app. Keys use the same
+# spring.governance.* namespace a governance document carries whether it arrives
+# from this file, an HTTP console, or a config center; they are simply read from
+# their own source rather than from the app's property storage. The document is
+# split by direction: client.* is what this process wants when it CALLS
+# something (the policy it runs under, plus its own fault fire), server.* is what
+# it wants against the requests it RECEIVES. Flip client.fault.enabled to arm an
+# outbound fire; server.fault.enabled arms an inbound one.
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        attempt-timeout: 100ms
+        max-retries: 2
+      fault:
+        enabled: false
+        rate: 0.5
+    server:
+      fault:
+        enabled: false
+        rate: 0.5

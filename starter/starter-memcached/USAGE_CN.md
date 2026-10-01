@@ -216,7 +216,7 @@ starter）。
 
 `driver` key 按名指定 Driver bean：留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（见 §2.1），配置
 bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自治理中心
-（starter-governance 的 `govern.*` 配置），按服务 `memcached:<service-name 或实例名>` 隔离。
+（starter-governance 的 `spring.governance.*` 配置），按服务 `memcached:<service-name 或实例名>` 隔离。
 
 ---
 

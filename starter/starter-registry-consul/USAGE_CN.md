@@ -6,7 +6,7 @@
 
 **模型**:配置是**命名块**——每个 `spring.registry.consul.<name>.*` 块描述一个 Consul
 agent,成为名为 `consul.<name>` 的后端 bean(`starter.go`)。该 bean 同时实现命名体系的
-两半:`discovery.Registrar`(写侧——由传递依赖自动引入的
+两半:`discovery.Registry`(写侧——由传递依赖自动引入的
 [starter-registry](../starter-registry) 核心之 `registryServer` 收集,跨后端注册进
 **每一个**已配置中心)与 `discovery.Discovery`(读侧——消费方按 bean 名引用,如
 `discovery=consul.main`;bean 惰性)。读写共享该块的客户端,永不分裂。没有默认/无名块。
@@ -68,7 +68,7 @@ query(index 长轮询)保鲜,后续 Resolve 读缓存;`Meta["scheme"]` → `Endp
 - 每块一个后端 bean `consul.<name>`(共享该块 `*api.Client`;Consul 客户端无需关闭,
   Destroy 只停 discovery 半边的后台查询)。
 - `registryServer` 来自 [starter-registry](../starter-registry) 核心(传递依赖),
-  `Registrars []discovery.Registrar` 切片收集所有后端的 registrar。
+  `Registries []discovery.Registry` 切片收集所有后端的 registrar。
 - `UpdateWeight(ctx, w)` 以 `Weights.Passing = w` 逐中心 upsert(0 = 摘流透传;未注册时报错)。
 - 运行期日志带专属 tag `_app_registry_consul`（`log.RegisterAppTag("registry_consul", "")`），
   经 `logger.<name>.tag=_app_registry_consul` 单独调级（与 registry-etcd/nacos 一致）。

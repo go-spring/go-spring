@@ -19,9 +19,11 @@ package lock
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -53,42 +55,48 @@ import (
 //   - Every backend closes the lost channel on a voluntary release as well as
 //     on a real loss, so the two are told apart by whether Unlock ran first.
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 // lockTag is the static log tag of the lock access log (renders as
 // "_app_lock_access"); the backend's system is a log field, not part of the
 // tag.
 var lockTag = log.RegisterAppTag("lock", "access")
 
-// instruments bundles the metrics the wrapper records. They are built from
-// whatever meter provider is current — created per Wrap, not at package init,
-// so an SDK installed later than this package's init still receives the
-// records.
-type instruments struct {
+// instrumentSet is this package's metric set: one per process, resolved lazily
+// on first use so it binds to whichever meter provider is current then, and
+// immutable afterwards. It holds no per-locker state — the system label travels
+// with each wrapper, not here.
+type instrumentSet struct {
 	total    metric.Int64Counter
 	duration metric.Float64Histogram
 	lost     metric.Int64Counter
 	held     metric.Int64UpDownCounter
 }
 
-func newInstruments() instruments {
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/cloud/lock")
-	total, _ := m.Int64Counter("lock.operation.total",
+	in := &instrumentSet{}
+	in.total, _ = m.Int64Counter("lock.operation.total",
 		metric.WithDescription("Lock operations executed, by operation and status"),
 		metric.WithUnit("{operation}"))
-	duration, _ := m.Float64Histogram("lock.operation.duration",
+	in.duration, _ = m.Float64Histogram("lock.operation.duration",
 		metric.WithDescription("Duration of lock operations; for acquire this includes the blocking wait and retry time"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	lost, _ := m.Int64Counter("lock.lost.total",
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	in.lost, _ = m.Int64Counter("lock.lost.total",
 		metric.WithDescription("Locks lost while still in use, because the lease expired or renewal failed"))
-	held, _ := m.Int64UpDownCounter("lock.held",
+	in.held, _ = m.Int64UpDownCounter("lock.held",
 		metric.WithDescription("Locks currently held through this locker, by backend"),
 		metric.WithUnit("{lock}"))
-	return instruments{total: total, duration: duration, lost: lost, held: held}
+	return in
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // Observe returns a [Locker] that decorates inner with a client span per
 // operation, the lock.operation.total, lock.operation.duration,
@@ -97,19 +105,19 @@ func newInstruments() instruments {
 // providers are no-ops, so the wrapper adds negligible overhead and changes no
 // behaviour.
 //
-// Instruments are resolved from whatever meter provider is current — here, at
-// wiring time, not at package init — so an SDK installed after this package's
-// init still receives the records. The tracer is looked up per use for the
-// same reason.
+// Instruments come from the package's process-wide set, resolved on first use —
+// here, at wiring time, not at package init — so an SDK installed after this
+// package's init still receives the records. The tracer is looked up per use for
+// the same reason.
 //
 // A lock starter installs it with its backend's system value:
 //
 //	locker = lock.Observe(inner, "redis")
 func Observe(inner Locker, system string) Locker {
 	return &observedLocker{
-		system:      system,
-		inner:       inner,
-		instruments: newInstruments(),
+		system: system,
+		inner:  inner,
+		ins:    instruments(),
 	}
 }
 
@@ -120,9 +128,12 @@ func Observe(inner Locker, system string) Locker {
 const tracerName = "go-spring.org/cloud/lock"
 
 type observedLocker struct {
-	system      string
-	inner       Locker
-	instruments instruments
+	system string
+	inner  Locker
+
+	// ins is the shared instrument set; the tracer is deliberately NOT held
+	// alongside it (see [tracerName]).
+	ins *instrumentSet
 }
 
 // startSpan opens the operation's client span.
@@ -165,8 +176,8 @@ func (l *observedLocker) record(ctx context.Context, op, key, status string, sta
 		attribute.String("operation", op),
 		attribute.String("status", status),
 	)
-	l.instruments.total.Add(ctx, 1, attrs)
-	l.instruments.duration.Record(ctx, elapsed.Seconds(), attrs)
+	l.ins.total.Add(ctx, 1, attrs)
+	l.ins.duration.Record(ctx, elapsed.Seconds(), attrs)
 
 	fields := func() []log.Field {
 		return []log.Field{
@@ -225,7 +236,7 @@ func (l *observedLocker) Close() error { return l.inner.Close() }
 // observe wraps a held lock so its release and its loss are reported through
 // the same system the acquisition was.
 func (l *observedLocker) observe(ctx context.Context, inner Lock, key string) Lock {
-	l.instruments.held.Add(ctx, 1, metric.WithAttributes(
+	l.ins.held.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("system", l.system),
 	))
 	// The loss is reported from a goroutine that outlives the call that
@@ -281,7 +292,7 @@ func (h *observedLock) Unlock(ctx context.Context) error {
 	// handle — repeated Unlock calls must not under-count it.
 	firstUnlock := !h.released.Swap(true)
 	if firstUnlock {
-		h.locker.instruments.held.Add(ctx, -1, metric.WithAttributes(
+		h.locker.ins.held.Add(ctx, -1, metric.WithAttributes(
 			attribute.String("system", h.locker.system),
 		))
 	}
@@ -318,10 +329,10 @@ func (h *observedLock) reportLost() {
 		return
 	}
 
-	h.locker.instruments.held.Add(h.ctx, -1, metric.WithAttributes(
+	h.locker.ins.held.Add(h.ctx, -1, metric.WithAttributes(
 		attribute.String("system", h.locker.system),
 	))
-	h.locker.instruments.lost.Add(h.ctx, 1, metric.WithAttributes(
+	h.locker.ins.lost.Add(h.ctx, 1, metric.WithAttributes(
 		attribute.String("system", h.locker.system),
 	))
 	log.Warn(h.ctx, lockTag, append(fields(),

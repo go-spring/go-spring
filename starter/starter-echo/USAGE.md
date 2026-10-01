@@ -138,20 +138,21 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime fault injection) ------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** (fault drills in §4.4 use this):
+**conf/governance.yaml** (fault drills in §4.4 use this):
 
 ```yaml
-govern:
-  enabled: true
-  server:
-    fault:
-      enabled: false        # flip to true to "set fire" without restart
-      rate: 0.2
-      error: timeout
-      scope: loadtest       # only traffic marked X-LoadTest is affected
+spring:
+  governance:
+    enabled: true
+    server:
+      fault:
+        enabled: false        # flip to true to "set fire" without restart
+        rate: 0.2
+        error: timeout
+        scope: loadtest       # only traffic marked X-LoadTest is affected
 ```
 
 **Verify**:
@@ -210,8 +211,8 @@ Rationale (from the source comments, verified):
   bulkhead / breaker never also gets faulted, and its 429/503 still passes AccessLog/Tracing/
   Metrics. Installed unconditionally — with governance off the executor is a transparent
   pass-through, so it costs a call frame and changes nothing else. The service label is
-  `echo:<address>` (e.g. `echo::8080`), the same one a govern rule uses:
-  `govern.server.rules[N].service=echo::8080` with the usual `rate-limit` / `max-concurrent` /
+  `echo:<address>` (e.g. `echo::8080`), the same one a governance rule uses:
+  `spring.governance.server.rules[N].service=echo::8080` with the usual `rate-limit` / `max-concurrent` /
   `error-threshold` knobs. Rejections map to **429** (rate limit, bulkhead full) and **503**
   (circuit open); a handler error or a committed 5xx is fed back to the executor as the call's
   failure, so the breaker sees server-side errors. Inbound admission never retries — a handler
@@ -309,7 +310,7 @@ curl -i :9370/healthz    # the echo-side liveness is on :8002/healthz (starter-s
 
 ### 4.4 Fault drill (no restart)
 
-1. Start with `govern.yaml` as in §1 (`fault.enabled: false`).
+1. Start with `governance.yaml` as in §1 (`fault.enabled: false`).
 2. Generate baseline traffic: `curl :8002/echo/x` → 200s.
 3. Flip `fault.enabled: true` in the file — the governance source hot-reloads.
 4. Marked traffic burns, normal traffic unaffected:

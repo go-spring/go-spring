@@ -63,7 +63,7 @@ type Upstream struct {
 	// pool is the load-balancing pool for an lb:// upstream, nil for a direct
 	// one. It is kept on the compiled upstream so the route table can drive it
 	// from governance: the balancer strategy and outlier suspension for a route
-	// come from the govern rule matching "gateway:<route-id>", applied in place
+	// come from the governance rule matching "gateway:<route-id>", applied in place
 	// by [RouteTable.reconcileSelection] on every recompile and on every
 	// governance push.
 	pool *loadbalance.Pool
@@ -119,7 +119,7 @@ type RouteRaw struct {
 		Discovery string `value:"${discovery:=}"`
 		// The load-balancing strategy and outlier suspension for this route's
 		// lb:// upstream are NOT keys here: they are governance rules matched by
-		// "gateway:<route-id>" (govern.client.rules[N].balancer / .outlier-threshold /
+		// "gateway:<route-id>" (spring.governance.client.rules[N].balancer / .outlier-threshold /
 		// .outlier-suspend-for), applied to the live pool on every change.
 	} `value:"${upstream}"`
 

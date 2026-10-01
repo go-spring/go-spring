@@ -201,7 +201,7 @@ starter-Pool 的绝对属性规则）。已用 `grep -rhoE 'value:"[^"]+"'` 双�
 | `password` | string | `""` | 见 `username`。 | 见 `username`。 |
 
 无 `driver` 注册表、无 `mode`（单机/集群是服务端拓扑）、无服务发现、无 otel key——
-治理（resilience + fault）经共享 `govern.*` 规则由逐 RPC 守卫消费，没有 milvus 专属
+治理（resilience + fault）经共享 `spring.governance.*` 规则由逐 RPC 守卫消费，没有 milvus 专属
 key——这就是全部面。
 
 ---
@@ -233,7 +233,7 @@ curl -s :9370/metrics | grep -i milvus   # 治理关闭时本 starter 无任何�
 grep _app_ app.log | grep -i milvus      # 治理关闭时不发访问日志
 ```
 
-治理（starter-governance + `govern.*` 规则）关闭时两条都应为空：守卫 executor 是
+治理（starter-governance + `spring.governance.*` 规则）关闭时两条都应为空：守卫 executor 是
 no-op，本 starter 发出的唯一信号是健康组件。治理开启后 `resilience.*` outcome 指标
 与守卫访问日志随之出现。Milvus 服务端自身的指标在服务端的 `:9091`（example compose
 已暴露），不经本 client。
@@ -256,7 +256,7 @@ grep "round trip" app.log    # check.sh grep 的 marker（"Milvus round trip OK:
 | 重启后 `NewCollection` 失败 | 上次运行已建同名集合 | 先 drop，或容忍该错误（example 的 check.sh 用固定名）。 |
 | Search 结果为空 | 查询前漏了 `Flush` + `LoadCollection`（SDK 语义） | 先 flush 再 load，同 example/example.go:80-85。 |
 | 查询正常但健康 DOWN | 指示器的 `ListCollections` 需要与 client 相同的库/鉴权 | 看 /readiness 里组件的错误体。 |
-| Milvus 操作无 trace/指标/访问日志 | 治理关闭（executor 是 no-op） | 开启治理（starter-governance + `govern.*` 规则）；服务端 :9091 指标补充。 |
+| Milvus 操作无 trace/指标/访问日志 | 治理关闭（executor 是 no-op） | 开启治理（starter-governance + `spring.governance.*` 规则）；服务端 :9091 指标补充。 |
 
 ## 6. 设计体检表
 

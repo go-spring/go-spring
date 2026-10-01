@@ -39,7 +39,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -98,9 +98,6 @@ type Client struct {
 func (c *Client) Init() error {
 	c.obs = newObserver()
 	c.service = resilience.ServiceLabel("memcached", c.serviceName, c.name)
-	if c.mgr == nil {
-		c.mgr = resilience.NewManager()
-	}
 	c.exec = fault.WrapClientExecutor(c.mgr.ClientExecutorFor("memcached", c.service), c.service, c.inj)
 	return nil
 }

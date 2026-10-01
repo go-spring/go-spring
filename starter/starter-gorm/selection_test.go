@@ -62,7 +62,7 @@ func (a *armedManager) push(sel loadbalance.Selection) {
 // TestNewPickPoolBindsSelection covers the gorm half of endpoint selection: the
 // shared pool builder attaches a suspension tracker (without one the thresholds
 // land on nothing) and binds the pool to the entry's service label through the
-// injected manager, so one govern.client.rules[N] rule — the same label that drives the
+// injected manager, so one spring.governance.client.rules[N] rule — the same label that drives the
 // entry's protection executor — also governs its balancing strategy. The returned
 // stop detaches.
 func TestNewPickPoolBindsSelection(t *testing.T) {
@@ -99,10 +99,11 @@ func TestNewPickPoolBindsSelection(t *testing.T) {
 
 // TestNewPickPoolAnUnarmedManagerIsPassThrough pins the "governance off" case: an
 // unarmed manager (no rules in the process) leaves the pool on the strategy it
-// was built with, and a stop from it is safe to call anyway. A nil manager takes
-// the same path — NewPickPool normalizes it.
+// was built with, and a stop from it is safe to call anyway. The manager is
+// REQUIRED — the starter blank-imports starter-governance, so the container
+// always has one; "governance off" is an unarmed manager, never a nil one.
 func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
-	for _, mgr := range []*loadbalance.Manager{loadbalance.NewManager(), nil} {
+	for _, mgr := range []*loadbalance.Manager{loadbalance.NewManager()} {
 		c := Common{Addressing: discovery.Addressing{ServiceName: "user-db"}, Scheme: "tcp"}
 		backend := discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:3306", Healthy: true, Weight: 1})
 

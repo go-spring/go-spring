@@ -24,7 +24,7 @@ demo/
 ├── idl/                      # 生成物：greet.pb.go / greet.trpc.go（trpc-go codegen）
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod**（关键依赖）：
@@ -119,20 +119,21 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- 治理（运行期 fault 注入） -------------------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml**（§4.4 的故障演练用）：
+**conf/governance.yaml**（§4.4 的故障演练用）：
 
 ```yaml
-govern:
-  enabled: true
-  server:
-    fault:
-      enabled: false        # 置 true 即免重启"放火"
-      rate: 0.2
-      error: timeout
-      scope: loadtest       # 只影响带 x-loadtest 标记的流量
+spring:
+  governance:
+    enabled: true
+    server:
+      fault:
+        enabled: false        # 置 true 即免重启"放火"
+        rate: 0.2
+        error: timeout
+        scope: loadtest       # 只影响带 x-loadtest 标记的流量
 ```
 
 **验证**（与自断言的 example/check.sh 同构）：
@@ -313,7 +314,7 @@ kill -TERM %1                   # 日志："trpc server shutting down ..." 后�
 
 ### 4.4 故障演练（免重启）
 
-1. 按 §1 的 `govern.yaml` 启动（`fault.enabled: false`），filter 链里有 `fault`。
+1. 按 §1 的 `governance.yaml` 启动（`fault.enabled: false`），filter 链里有 `fault`。
 2. 打基线流量 → 全部成功。
 3. 把文件里 `fault.enabled` 置 true —— 治理 source 热加载；filter 持有注入的
    `*fault.Injector`，其配置由治理中心就地替换，无需重启。

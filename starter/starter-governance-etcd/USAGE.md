@@ -10,7 +10,7 @@ against the starter source (`governance.go`, `governance_test.go`), the shared p
 `example/check.sh`). etcd's own client semantics are [etcd docs](https://etcd.io/docs/latest/) —
 everything below is go-spring's increment.
 
-**Activation**: any `govern.source.etcd.*` property arms the conditional module (`gs.OnProperty`
+**Activation**: any `spring.governance.source.etcd.*` property arms the conditional module (`gs.OnProperty`
 is a **prefix** check, so a single sub-key is enough to fire it), and a single
 `governance.Source` bean is registered. A blank import with no such property registers nothing.
 The bean alone does not arm governance — the wiring bean of
@@ -100,29 +100,30 @@ func main() { gs.Run() }
 
 ```properties
 # The governance rules live in their OWN etcd key, watched by
-# starter-governance-etcd — nothing under govern.* rides app.properties.
-govern.source.etcd.endpoint=127.0.0.1:2379
-govern.source.etcd.key=/app/govern.yaml
+# starter-governance-etcd — nothing under spring.governance.* rides app.properties.
+spring.governance.source.etcd.endpoint=127.0.0.1:2379
+spring.governance.source.etcd.key=/app/governance.yaml
 ```
 
 **The rules document** (seeded to the key before startup):
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
 ```
 
 **Verify** (with a local etcd, e.g. `example/docker-compose.yml`):
 
 ```bash
 docker compose up -d
-ETCDCTL_API=3 etcdctl put /app/govern.yaml "$(cat govern.yaml)"   # seed BEFORE the app starts
+ETCDCTL_API=3 etcdctl put /app/governance.yaml "$(cat governance.yaml)"   # seed BEFORE the app starts
 go run .
-ETCDCTL_API=3 etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
+ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
 # no restart: the source pushes the new document and PolicyFor flips to 300ms
 ```
 
@@ -160,7 +161,7 @@ omissions, all inherited from the contract:
 
 ```
 import starter-governance-etcd
-  └─ gs.Module(gs.OnProperty("govern.source.etcd"))       ← prefix match arms the module
+  └─ gs.Module(gs.OnProperty("spring.governance.source.etcd"))       ← prefix match arms the module
         ├─ conf.Bind → governEtcdConfig (${endpoint}/${key} expr-validated non-empty)
         └─ Provide newEtcdSource bean
              .Init((*EtcdSource).Init)                    ← opens the watch stream
@@ -197,7 +198,7 @@ any config-import bootstrap client — see the boundary note in [README.md](READ
 
 A **DELETE** on the key is not a PUT, so it is ignored and the last good snapshot stays in effect —
 deleting the document is not how governance is turned off. Turning it off is
-`govern.enabled=false`, a key that IS present.
+`spring.governance.enabled=false`, a key that IS present.
 
 ### 2.4 Log tag
 
@@ -214,7 +215,7 @@ logger.governance_etcd.tag=_app_governance_etcd
 
 ## 3. Per-key behavior reference
 
-All keys live under `govern.source.etcd` (exact match, no relaxed forms). There is no `instances`
+All keys live under `spring.governance.source.etcd` (exact match, no relaxed forms). There is no `instances`
 dimension — a source is a single object, and the center holds one.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
@@ -226,12 +227,12 @@ dimension — a source is a single object, and the center holds one.
 | `format` | string | key extension, else `properties` | Overrides document-format detection. `"yaml" \| "json" \| "properties" \| "toml"` (any format registered in the shared reader registry). | Wrong-but-known format → parse error (startup error on seed, keep-last-good after). |
 
 Format inference: an explicit `format` wins; otherwise the key's dotted extension is used
-(`/app/govern.yaml` → `yaml`); otherwise it falls back to `properties`. A key with no extension and
+(`/app/governance.yaml` → `yaml`); otherwise it falls back to `properties`. A key with no extension and
 a non-properties document therefore needs an explicit `format`.
 
-The document itself is parsed by `rules.Parse`, which requires **at least one `govern.*` key** — a
+The document itself is parsed by `rules.Parse`, which requires **at least one `spring.governance.*` key** — a
 document that parses but carries none (truncated, or emptied) is an error, not "no governance".
-The rules keys (`govern.enabled`, `govern.client.default.*`, `govern.client.rules[n].*`, `govern.client.fault.*`) are
+The rules keys (`spring.governance.enabled`, `spring.governance.client.default.*`, `spring.governance.client.rules[n].*`, `spring.governance.client.fault.*`) are
 documented in [`starter-governance`](../starter-governance/USAGE.md); they are identical across
 backends.
 
@@ -245,7 +246,7 @@ Prereqs: a local etcd (`example/docker-compose.yml`; no auth, so no credentials)
 ### 4.1 Cold seed
 
 ```bash
-ETCDCTL_API=3 etcdctl put /app/govern.yaml "$(cat govern.yaml)"
+ETCDCTL_API=3 etcdctl put /app/governance.yaml "$(cat governance.yaml)"
 go run .        # boots; the initial Get seeds the snapshot
 ```
 
@@ -255,7 +256,7 @@ The key must exist before the app starts — the source's construction does an i
 
 ```bash
 go run . &
-etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
+etcdctl put /app/governance.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
 ```
 
 No restart; the injected resilience authority's `PolicyFor("...")` flips to the new timeout on the
@@ -264,7 +265,7 @@ next call.
 ### 4.3 Bad value keeps the last good snapshot
 
 ```bash
-etcdctl put /app/govern.yaml 'govern: { broken'      # or a document with no govern.* keys
+etcdctl put /app/governance.yaml 'govern: { broken'      # or a document with no spring.governance.* keys
 ```
 
 Expected: an Error log `governance etcd source: key ... got an invalid value (keeping last good
@@ -283,9 +284,9 @@ only advances on a successful parse.
 
 ### 4.5 Deleting the key
 
-`etcdctl del /app/govern.yaml` fires a DELETE event, which the source ignores (only PUT is
+`etcdctl del /app/governance.yaml` fires a DELETE event, which the source ignores (only PUT is
 applied). Governance keeps the last good rules, with no log. To disable governance, publish a
-document with `govern.enabled=false`.
+document with `spring.governance.enabled=false`.
 
 ### 4.6 Smoke test
 
@@ -306,10 +307,10 @@ compose is unavailable.
 | Governance stays off (`enabled=false`) despite the key changing | `starter-governance` not imported → no wiring bean, the Source is never injected | Import `go-spring.org/starter-governance`. |
 | Startup fails `key <key> is empty` | Required key not present before boot | Seed the key before starting. |
 | Startup fails `get <key> failed` | etcd unreachable, wrong port, or auth required but no `username`/`password` | Check endpoint and credentials. |
-| Startup fails on an empty `endpoint`/`key` | `govern.source.etcd.*` partially configured (`OnProperty` fired on any sub-key) | Provide both required keys, or remove the whole prefix. |
-| Rules don't change after a `put` | (a) value byte-identical or DeepEqual to current; (b) value unparseable / carries no `govern.*` key (Error log, last good kept); (c) another source already bound the single center slot | Check the `_app_governance_etcd` lines; configure exactly one source. |
-| Governance keeps old rules after deleting the key | DELETE is not a PUT and is ignored by design | Re-PUT a document; to disable use `govern.enabled=false`. |
-| Parse error on a key with no extension | format inference defaulted to `properties` | Set `govern.source.etcd.format`. |
+| Startup fails on an empty `endpoint`/`key` | `spring.governance.source.etcd.*` partially configured (`OnProperty` fired on any sub-key) | Provide both required keys, or remove the whole prefix. |
+| Rules don't change after a `put` | (a) value byte-identical or DeepEqual to current; (b) value unparseable / carries no `spring.governance.*` key (Error log, last good kept); (c) another source already bound the single center slot | Check the `_app_governance_etcd` lines; configure exactly one source. |
+| Governance keeps old rules after deleting the key | DELETE is not a PUT and is ignored by design | Re-PUT a document; to disable use `spring.governance.enabled=false`. |
+| Parse error on a key with no extension | format inference defaulted to `properties` | Set `spring.governance.source.etcd.format`. |
 
 ---
 
@@ -330,4 +331,4 @@ Design suspects (for the audit ledger):
 - **No watch-gap surfacing.** A dropped/compacted watch or a rejected auth refresh produces no log
   or metric; DELETEs are silently ignored. Observability increment candidate.
 - **Shared parse semantics** are the reason documents are portable across backends; any change to
-  `rules.Parse` (e.g. the "must carry a `govern.*` key" rule) applies to every source at once.
+  `rules.Parse` (e.g. the "must carry a `spring.governance.*` key" rule) applies to every source at once.

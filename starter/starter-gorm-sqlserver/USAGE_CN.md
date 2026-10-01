@@ -214,7 +214,7 @@ nil）直接使用配置的 Host —— sidecar 负责 discovery+LB。
 
 `db.WithContext(ctx).Raw("SELECT @@VERSION").Scan(&v)`：
 
-1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `govern.*` 的
+1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `spring.governance.*` 的
    timeout/retry/breaker，放火时含 fault 注入器；`gorm.ErrRecordNotFound` 视为成功）。
 2. observe 插件锚在 `before_raw` 的 span（db.system=microsoft.sql_server）+ 指标。
 3. 原 processor：池取连接 → resolverDialer.DialContext（discovery 实例）或驱动直拨
@@ -296,11 +296,11 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 cd example-load && docker compose up -d
 go run . -duration=10s                       # SELECT 1 基线吞吐
 # 放火 —— 编辑 conf/app.properties（starter-governance 热加载）：
-#   govern.client.fault.enabled=true  govern.client.fault.rate=0.5  govern.client.fault.error=generic
+#   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                       # 错误分布显示 ~50% 注入
 ```
 
-熔断（`govern.client.default.error-threshold=20`）触发同样体现在错误分布里；`WithContext`
+熔断（`spring.governance.client.default.error-threshold=20`）触发同样体现在错误分布里；`WithContext`
 透传 harness 截止时间，500ms 超时可打断在途查询。
 
 ### 4.4 可观测（example-otel）

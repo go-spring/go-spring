@@ -46,16 +46,11 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.nats.instances."+name+".driver:=${spring.nats.default.driver:=?}}")),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container (the normal
-				// case) and are absent from a container without it. Without the
-				// "?" gs would treat an absent bean as a wiring error and the app
-				// would not boot, turning "governance is off" into "governance
-				// must be imported" — which is not the contract: applyResilience
-				// treats a nil bean as an unarmed authority, a transparent
-				// pass-through.
-				gs.IndexArg(4, gs.TagArg("?")),
-				gs.IndexArg(5, gs.TagArg("?")),
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(4, gs.TagArg("")),
+				gs.IndexArg(5, gs.TagArg("")),
 			).Name(name).Destroy(destroyConn).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a

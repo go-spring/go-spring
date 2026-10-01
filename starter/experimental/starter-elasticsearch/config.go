@@ -51,13 +51,13 @@ type Config struct {
 
 	// MaxRetries is how many times the Elasticsearch client re-issues a request
 	// that failed with a retryable error, default is 3. This retry is INSIDE the
-	// client, so it multiplies with govern's `max-retries` for the same service
+	// client, so it multiplies with governance's `max-retries` for the same service
 	// when both are non-zero: set `disable-retry=true` (or 0 here) if you route
-	// retries through govern instead, or leave govern's at 0 and use this one.
+	// retries through govern instead, or leave governance's at 0 and use this one.
 	MaxRetries int `value:"${max-retries:=3}"`
 
 	// DisableRetry disables the client's retry mechanism entirely, default is
-	// false. See MaxRetries for how it interacts with govern's.
+	// false. See MaxRetries for how it interacts with governance's.
 	DisableRetry bool `value:"${disable-retry:=false}"`
 
 	// CompressRequestBody enables gzip compression of request bodies, default is false.

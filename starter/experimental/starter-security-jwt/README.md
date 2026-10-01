@@ -120,8 +120,11 @@ The [example.go](example/example.go) program demonstrates and asserts:
 * **Optional authentication**: set `required=false` to let unauthenticated
   requests through with no identity attached, deferring the decision to a
   method-level guard.
-* **Programmatic validation**: the `*Authenticator` implements
-  `security.TokenValidator`, so it can verify a raw token string outside the
-  HTTP path (e.g. on gRPC/WebSocket transports).
+* **Programmatic validation**: each instance is exported as
+  `security.TokenValidator` under its config sub-key name, so a non-HTTP caller
+  — or any server family's `Authenticate` middleware — injects the neutral seam
+  (`Validator security.TokenValidator `autowire:"api"``) instead of this
+  package's `*Authenticator`. The concrete type stays injectable for `Wrap`.
 * **Multiple authenticators**: define several entries under
-  `spring.security.jwt.instances.*` and select each by name with `gs.TagArg("...")`.
+  `spring.security.jwt.instances.*` and select each by name — `autowire:"<name>"`
+  for the seam, `gs.TagArg("...")` for the concrete authenticator.

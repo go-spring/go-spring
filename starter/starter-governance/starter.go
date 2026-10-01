@@ -26,19 +26,19 @@
 // Available sources:
 //
 //   - "file" (source_file.go) — one standalone rules file, watched with
-//     fsnotify. Keys are the same govern.* keys an app.properties entry would
+//     fsnotify. Keys are the same spring.governance.* keys an app.properties entry would
 //     use; format by extension (json/properties/yaml/toml). Configure with:
 //
-//     govern.source.file.path=/etc/app/govern.yaml
+//     spring.governance.source.file.path=/etc/app/governance.yaml
 //
 //   - "http" (source_http.go) — polls a governance console / rules API on a
 //     fixed interval and converges on whatever document it serves. Configure
 //     with:
 //
-//     govern.source.http.url=https://console.example.com/rules/app.yaml
-//     govern.source.http.interval=10s
-//     govern.source.http.format=yaml
-//     govern.source.http.headers.authorization=Bearer xxx
+//     spring.governance.source.http.url=https://console.example.com/rules/app.yaml
+//     spring.governance.source.http.interval=10s
+//     spring.governance.source.http.format=yaml
+//     spring.governance.source.http.headers.authorization=Bearer xxx
 //
 // Exactly one source may be active per process (the center holds one). Remote
 // config-center adapters (nacos/etcd direct listeners) live in their own
@@ -58,16 +58,16 @@ import (
 var starterTag = log.RegisterAppTag("governance", "")
 
 // fileSourceConfig is the "file" source's own configuration, bound from
-// ${govern.source.file.*} (the source config lives under govern.*, next to
-// the rules it feeds — one namespace, two roles: govern.* is the rules,
-// govern.source.* is where the rules come from).
+// ${spring.governance.source.file.*} (the source config lives under spring.governance.*, next to
+// the rules it feeds — one namespace, two roles: spring.governance.* is the rules,
+// spring.governance.source.* is where the rules come from).
 type fileSourceConfig struct {
 	// Path is the rules file to watch. Required.
 	Path string `value:"${path}" expr:"$ != ''"`
 }
 
 // httpSourceConfig is the "http" source's configuration, bound from
-// ${govern.source.http.*}.
+// ${spring.governance.source.http.*}.
 type httpSourceConfig struct {
 	// URL is the console/rules endpoint to poll. Required.
 	URL string `value:"${url}" expr:"$ != ''"`
@@ -86,10 +86,10 @@ type httpSourceConfig struct {
 func init() {
 	// One source per process (the center holds exactly one active source), so
 	// this is a plain conditional bean, not a Group. OnProperty is a prefix
-	// check: any govern.source.file.* key arms the module.
-	gs.Module(gs.OnProperty("govern.source.file"), func(r gs.BeanProvider, p flatten.Storage) error {
+	// check: any spring.governance.source.file.* key arms the module.
+	gs.Module(gs.OnProperty("spring.governance.source.file"), func(r gs.BeanProvider, p flatten.Storage) error {
 		var c fileSourceConfig
-		if err := conf.Bind(p, &c, "${govern.source.file:=}"); err != nil {
+		if err := conf.Bind(p, &c, "${spring.governance.source.file:=}"); err != nil {
 			return err
 		}
 
@@ -105,9 +105,9 @@ func init() {
 
 	// "http": poll a governance console. Same registration shape as "file" —
 	// each adapter is a conditional singleton exported as governance.Source.
-	gs.Module(gs.OnProperty("govern.source.http"), func(r gs.BeanProvider, p flatten.Storage) error {
+	gs.Module(gs.OnProperty("spring.governance.source.http"), func(r gs.BeanProvider, p flatten.Storage) error {
 		var c httpSourceConfig
-		if err := conf.Bind(p, &c, "${govern.source.http:=}"); err != nil {
+		if err := conf.Bind(p, &c, "${spring.governance.source.http:=}"); err != nil {
 			return err
 		}
 		r.Provide(func() (*HTTPSource, error) { return NewHTTPSource(c.URL, c.Interval, c.Format, c.Headers) }).

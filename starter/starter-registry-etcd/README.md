@@ -25,7 +25,7 @@ scope (see [starter/DESIGN §3](../DESIGN.md)).
 Configuration is **named blocks**: each
 `spring.registry.etcd.<name>.*` block describes ONE etcd cluster and becomes
 ONE backend bean named `etcd.<name>` that implements BOTH the write side
-(`discovery.Registrar`) and the read side (`discovery.Discovery`), sharing the
+(`discovery.Registry`) and the read side (`discovery.Discovery`), sharing the
 block's client and key prefix. There is no default/unnamed block.
 
 Registration itself is owned by the [starter-registry](../starter-registry)

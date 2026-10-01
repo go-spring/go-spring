@@ -26,7 +26,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -43,7 +43,7 @@ import (
 // label is the governance service label this server is addressed as, e.g.
 // "http-server::9090" (see cloud/governance/README.md 设计说明 §6). Build it with
 // resilience.ServiceLabel(system, addr) if you want the conventional shape;
-// govern rules match it with govern.client.rules[N].service=<label>.
+// governance rules match it with spring.governance.client.rules[N].service=<label>.
 //
 // mgr is the resilience authority the filter's executor is resolved from. This
 // package provides filters rather than owning a server, so it has no bean to

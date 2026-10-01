@@ -27,22 +27,19 @@ import (
 	"go-spring.org/cloud/security"
 )
 
-// secValidator is a security.TokenValidator that accepts exactly one token.
-type secValidator struct {
-	good        string
-	authorities []string
-}
-
-func (s secValidator) Validate(_ context.Context, token string) (*security.Authentication, error) {
-	if token != s.good {
-		return nil, errors.New("bad token")
-	}
-	return &security.Authentication{
-		Principal:     security.Principal{Subject: "alice"},
-		Token:         token,
-		Authenticated: true,
-		Authorities:   s.authorities,
-	}, nil
+// validator returns a security.TokenValidator accepting exactly one token.
+func validator(good string, authorities ...string) security.ValidatorFunc {
+	return security.ValidatorFunc(func(_ context.Context, token string) (*security.Authentication, error) {
+		if token != good {
+			return nil, errors.New("bad token")
+		}
+		return &security.Authentication{
+			Principal:     security.Principal{Subject: "alice"},
+			Token:         token,
+			Authenticated: true,
+			Authorities:   authorities,
+		}, nil
+	})
 }
 
 func TestEchoAuthenticateAuthorize(t *testing.T) {
@@ -65,7 +62,7 @@ func TestEchoAuthenticateAuthorize(t *testing.T) {
 			e.GET("/x", func(c echo.Context) error {
 				ran = true
 				return c.String(http.StatusOK, "ok")
-			}, Authenticate(secValidator{good: "T", authorities: tt.authorities}, false), Authorize(tt.require...))
+			}, Authenticate(validator("T", tt.authorities...), false), Authorize(tt.require...))
 
 			req := httptest.NewRequest(http.MethodGet, "/x", nil)
 			if tt.token != "" {
@@ -93,7 +90,7 @@ func TestEchoAuthenticateStoresAuthentication(t *testing.T) {
 			subject = a.Principal.Subject
 		}
 		return c.String(http.StatusOK, "ok")
-	}, Authenticate(secValidator{good: "T"}, true))
+	}, Authenticate(validator("T"), true))
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	req.Header.Set("Authorization", "Bearer T")

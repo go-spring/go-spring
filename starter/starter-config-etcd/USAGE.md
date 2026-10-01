@@ -13,7 +13,7 @@ alone does nothing. The imported keys feed application properties and hot-reload
 fields.
 
 Governance rule sourcing from etcd now lives in its own module,
-`go-spring.org/starter-governance-etcd` (`govern.source.etcd.*`).
+`go-spring.org/starter-governance-etcd` (`spring.governance.source.etcd.*`).
 
 ---
 
@@ -158,7 +158,7 @@ etcd PUT on a watched key
 ### 2.3 Governance rules-push path
 
 Governance rule sourcing from etcd now lives in its own module,
-`go-spring.org/starter-governance-etcd` (`govern.source.etcd.*`).
+`go-spring.org/starter-governance-etcd` (`spring.governance.source.etcd.*`).
 
 ---
 
@@ -186,7 +186,7 @@ watcher (deduplicated per client+key).
 ### 3.2 Governance property surface — moved out
 
 Governance rule sourcing from etcd now lives in its own module,
-`go-spring.org/starter-governance-etcd` (`govern.source.etcd.*`).
+`go-spring.org/starter-governance-etcd` (`spring.governance.source.etcd.*`).
 
 ### 3.3 Keys this starter does NOT have
 

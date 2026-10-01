@@ -19,6 +19,7 @@ package session
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"go-spring.org/stdlib/randutil"
@@ -116,12 +117,35 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// instrumentSet bundles the metrics a manager records: one per process,
+// resolved lazily on first use so the set binds to whichever OTel global
+// provider is current then, and immutable afterwards.
+type instrumentSet struct {
+	total metric.Int64Counter
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	in := &instrumentSet{}
+	in.total, _ = otel.Meter("go-spring.org/cloud/experimental/session").
+		Int64Counter("session.operation.total",
+			metric.WithDescription("Session store operations, by operation and status"),
+			metric.WithUnit("{operation}"))
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
 // countStoreOp reports one session-store operation on session.operation.total
 // with an exclusive status axis (ok | missed | error): load distinguishes a
 // miss, save/delete are ok or error. Total only, no duration — the latency is
-// the store backend's, not the session layer's (the cache family's rule). The
-// instruments are built per call: the OTel meter caches by name, so this is a
-// map lookup, and it binds to whatever provider is current.
+// the store backend's, not the session layer's (the cache family's rule).
 func (m *Manager) countStoreOp(op string, err error, ok bool) {
 	status := "ok"
 	if err != nil {
@@ -129,11 +153,7 @@ func (m *Manager) countStoreOp(op string, err error, ok bool) {
 	} else if !ok {
 		status = "missed"
 	}
-	total, _ := otel.Meter("go-spring.org/cloud/experimental/session").
-		Int64Counter("session.operation.total",
-			metric.WithDescription("Session store operations, by operation and status"),
-			metric.WithUnit("{operation}"))
-	total.Add(context.Background(), 1, metric.WithAttributes(
+	instruments().total.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("operation", op),
 		attribute.String("status", status),
 	))

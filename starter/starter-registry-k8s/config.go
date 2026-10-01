@@ -117,15 +117,19 @@ func (c Config) validate() error {
 }
 
 // newBackend builds the discovery.Discovery backend for the given Config.
-func newBackend(ctx *gs.ContextProvider, c Config) (discovery.Discovery, error) {
+func newBackend(ctx *gs.ContextProvider, c Config, name string) (discovery.Discovery, error) {
 	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	obs, err := discovery.NewObserver(obsSystem, name)
+	if err != nil {
 		return nil, err
 	}
 	switch c.Mode {
 	case ModeDNS:
-		return newDNSDiscovery(c, nil), nil
+		return newDNSDiscovery(c, nil, obs), nil
 	case ModeEndpointSlice:
-		return newEndpointSliceDiscovery(c)
+		return newEndpointSliceDiscovery(c, obs)
 	default:
 		// Unreachable: validate already rejected unknown modes.
 		return nil, errutil.Explain(nil, "registry-k8s: invalid mode %q", c.Mode)

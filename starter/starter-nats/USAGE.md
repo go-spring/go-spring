@@ -23,7 +23,7 @@ demo/
 ├── messaging.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod** (deps that matter):
@@ -140,19 +140,20 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime resilience) -------------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** (drills in §4 use this):
+**conf/governance.yaml** (drills in §4 use this):
 
 ```yaml
-govern:
-  enabled: true
-  resilience:
-    nats:                 # matches the ResourceLabel scheme, see §4.3
-      rate-limit: 100
-      breaker:
-        error-threshold: 5
+spring:
+  governance:
+    enabled: true
+    resilience:
+      nats:                 # matches the ResourceLabel scheme, see §4.3
+        rate-limit: 100
+        breaker:
+          error-threshold: 5
 ```
 
 **Broker + verify**:
@@ -326,7 +327,7 @@ returns false; restart the broker → Info `nats reconnected to ...` [driver.go:
 
 ### 4.2 Guarded vs unguarded path
 
-With governance on and a tight rate limit (§1 govern.yaml):
+With governance on and a tight rate limit (§1 governance.yaml):
 
 - `conn.Publish("s", b)` — always succeeds (no guard) [client.go:33-39].
 - `conn.PublishGuarded(ctx, "s", b)` in a hot loop → rejects with `resilience.ErrRateLimited`
@@ -338,7 +339,7 @@ With governance on and a tight rate limit (§1 govern.yaml):
 
 ### 4.3 Governance label check
 
-The executor service is `nats:<url>` [driver.go:166]. Scope your govern.yaml
+The executor service is `nats:<url>` [driver.go:166]. Scope your governance.yaml
 rules to `nats:orders-service` (or a prefix) so the policy lands on exactly
 this connection. Verify: wrapped-executor rejections emit a span + counter named by the
 resilience-observe bridge (`system="nats"`) [command.go:170-172] — grep traces/metrics for
@@ -378,7 +379,7 @@ Publish an envelope with `Payload` + `Headers{"tenant":"acme"}`; in the consumer
 | Boot aborts `failed to create jetstream context` | `jetstream.enabled=true` but broker started without `-js` [driver.go:158-164] | Start server with `-js` or disable the key. |
 | `Conn.JetStream` is nil | `jetstream.enabled` unset | Set it; JS is derived lazily-but-at-boot from the same conn. |
 | Consumer gets messages but no traces/metrics on consumes | using the raw embedded `Conn.Subscribe`/`QueueSubscribe` instead of `Conn.Consume` | Consume via `Conn.Consume(ctx, subject, queue, handler)` or messaging.Driver. |
-| Guarded calls suddenly fail with sentinel errors | rate limit exhausted or breaker open — by design [command.go:177-186] | Check govern.yaml policy; breaker recovers after cool-down. |
+| Guarded calls suddenly fail with sentinel errors | rate limit exhausted or breaker open — by design [command.go:177-186] | Check governance.yaml policy; breaker recovers after cool-down. |
 | Producer trace never links to the caller's span | the publish used `PublishMsg` (no ctx parameter), so its span is a new root | Use `PublishMsgContext(ctx, msg)` — `PublishGuarded` already does. |
 | `/readiness` reports `nats:<name>` down | the auto-reconnecting client is between reconnects | Expected; if this instance's connectivity should not gate readiness, set `health.enabled=false` on it. |
 | Missing 2nd header value | driver flattens multi-value headers to the first value (single-valued envelope) | Carry the extra values in the payload or use the raw Conn API. |

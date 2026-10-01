@@ -45,9 +45,10 @@ type Pool struct {
 	tracker *Tracker
 	sel     atomic.Pointer[Selection]
 
-	// selMu serializes the read-modify-write of sel in [Pool.ApplySelection], so
-	// two concurrent policy applications cannot drop each other's strategy name.
-	// It guards nothing on the hot path: Pick and Complete never touch it.
+	// selMu serializes the read-modify-write of sel in [Pool.ApplyBalancer] and
+	// [Pool.ApplySuspension], so two concurrent policy applications cannot drop
+	// each other's half. It guards nothing on the hot path: Pick and Complete
+	// never touch it.
 	selMu sync.Mutex
 }
 
@@ -79,53 +80,39 @@ func NewPool(src discovery.Resolver, bal Balancer, opts ...PoolOption) *Pool {
 	return p
 }
 
-// ApplySelection applies a resolved endpoint-selection policy in place: the
-// balancer strategy named by s (with its parameters) and the suspension
-// thresholds. It is the whole-selection entry point a governance subscriber
-// calls, and it takes the package's own [Selection] value so the policy model
-// stays out of this package's API.
+// ApplyBalancer installs b as the pool's strategy — the strategy half of a
+// resolved selection policy. The manager builds b from its [Directory] and calls
+// this, so a pool never resolves a strategy name itself and stays free of the
+// factory table. s carries the applied name and parameters, recorded for
+// inspection through [Pool.Selection].
 //
-// An empty s.Balancer leaves the current strategy alone. A strategy name that
-// fails to build — unknown, or a parameter aimed at another strategy — is
-// IGNORED rather than fatal: the pool degrades to the last good strategy
-// instead of taking the client down, and the build error is RETURNED for the
-// caller to surface (the governance [Source] contract has no error channel —
-// "everything you push, you vouch for" — so the pusher's own logging is the
-// rejection's only trace). The suspension half is always applied, so a rule
-// that only retunes thresholds still works.
-//
-// This is the sink [Pool.BindSelection] points at a managed policy; the values
-// it accepted are readable back through [Pool.Selection].
-func (p *Pool) ApplySelection(s Selection) error {
+// The swap is in place and lock-free on the hot path. The old strategy's own
+// state (least_conn in-flight counts, a hash ring, p2c's latency model) is not
+// carried across — a switch starts it over.
+func (p *Pool) ApplyBalancer(b Balancer, s Selection) {
+	p.selMu.Lock()
+	defer p.selMu.Unlock()
+	sel := p.Selection()
+	sel.Balancer = s.Balancer
+	sel.Params = s.Params
+	p.sel.Store(&sel)
+	p.bal.Store(&b)
+}
+
+// ApplySuspension retunes the pool's suspension tracker — the other half of a
+// resolved selection policy, applied on its own so a rule that only changes
+// thresholds still works while the strategy stays as it was. The tracker
+// retunes in place, keeping the per-endpoint failure state so a mid-flight
+// threshold change does not forget what the pool already observed.
+func (p *Pool) ApplySuspension(cfg TrackerConfig) {
 	p.selMu.Lock()
 	sel := p.Selection()
-	var buildErr error
-	if s.Balancer != "" {
-		params := s.BalancerConfig()
-		bal, err := New(s.Balancer, params)
-		switch {
-		case err != nil:
-			buildErr = err
-		default:
-			// In-place swap, lock-free on the hot path. The old strategy's own
-			// state (least_conn in-flight counts, a hash ring, p2c's latency
-			// model) is not carried across — a switch starts it over.
-			p.bal.Store(&bal)
-			sel.Balancer = s.Balancer
-			sel.BalancerReplicas = s.BalancerReplicas
-			sel.BalancerZoneKey = s.BalancerZoneKey
-			sel.BalancerDelegate = s.BalancerDelegate
-		}
-	}
-	sel.OutlierThreshold = s.OutlierThreshold
-	sel.OutlierSuspendFor = s.OutlierSuspendFor
+	sel.OutlierThreshold = cfg.Threshold
+	sel.OutlierSuspendFor = cfg.SuspendFor
 	p.sel.Store(&sel)
 	p.selMu.Unlock()
 
-	// The tracker retunes in place, keeping the per-endpoint failure state so a
-	// mid-flight threshold change does not forget what the pool already observed.
-	p.tracker.SetConfig(TrackerConfig{Threshold: s.OutlierThreshold, SuspendFor: s.OutlierSuspendFor})
-	return buildErr
+	p.tracker.SetConfig(cfg)
 }
 
 // Tracker returns the pool's suspension tracker. Every pool owns one (a fully

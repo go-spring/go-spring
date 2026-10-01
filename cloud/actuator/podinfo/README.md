@@ -34,9 +34,9 @@ API. If you write the manifests by hand, match these names:
 | `GS_NODE_NAME`            | `node.name`            | `spec.nodeName`              |
 | `GS_NODE_IP`              | `node.ip`              | `status.hostIP`              |
 | `GS_POD_SERVICE_ACCOUNT`  | `pod.service.account`  | `spec.serviceAccountName`    |
-| `pod.labels.path` (config) | `pod.labels.path`      | labels volume mount path     |
+| *(config only, no env var)* | `spring.actuator.podinfo.labels-path` | labels volume mount path     |
 
-> Note: `pod.labels.path` is set in the `k8s` config profile (not an env var),
+> Note: `spring.actuator.podinfo.labels-path` is set in the `k8s` config profile (not an env var),
 > because the `GS_` env → property mapping cannot produce hyphens or arbitrary
 > paths. Labels are mounted as a file (e.g. `/etc/podinfo/labels`).
 

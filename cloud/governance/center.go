@@ -293,6 +293,18 @@ func (c *Center) SetSource(s Source) {
 // name against it. A nil map leaves the bundled driver as the only backend.
 func (c *Center) SetDrivers(dir map[string]resilience.Driver) { c.res.SetDrivers(dir) }
 
+// SetBalancerFactories installs the directory of load-balancing strategy
+// backends the container provided, keyed by bean name, onto the loadbalance
+// authority this center drives. It is the endpoint-selection counterpart of
+// [Center.SetDrivers]: a rule's `balancer` name is resolved against this table
+// plus the built-in strategies, so a deployment adds a strategy — with its own
+// parameters — by contributing a named [go-spring.org/cloud/loadbalance.Factory]
+// bean. It must run before [Center.GoLive]; a nil map or a name that shadows a
+// built-in is left to the manager, which reports a collision as an error.
+func (c *Center) SetBalancerFactories(dir map[string]loadbalance.Factory) error {
+	return c.lb.SetFactories(dir)
+}
+
 // BindDefault installs s as the active source only when none is bound yet, so
 // an explicit [Center.SetSource] always outranks the wiring default. The wiring
 // starter calls it once at startup with the bean-injected source. The

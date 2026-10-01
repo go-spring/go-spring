@@ -20,7 +20,7 @@ provider 注册仍保持框架原生，不在本 starter 范围内（见
 
 配置是**命名块**：每个 Nacos 服务端一个 `spring.registry.nacos.<name>.*` 块。没有默认
 块、没有匿名块 —— 名字就是地址的一部分。每个块成为**一个**名为 `nacos.<name>` 的后端
-bean，同时实现 `discovery.Registrar`（写）与 `discovery.Discovery`（读），共享该块的
+bean，同时实现 `discovery.Registry`（写）与 `discovery.Discovery`（读），共享该块的
 client 与 namespace/group/cluster：
 
 ```properties

@@ -53,6 +53,7 @@ func init() {
 		return conf.BindEach(p, "${spring.registry.k8s}", func(name string, c Config) error {
 			r.Provide(newBackendBean,
 				gs.IndexArg(1, gs.ValueArg(c)),
+				gs.IndexArg(2, gs.ValueArg(name)),
 			).Name("k8s." + name).Destroy(destroyBackendBean).Caller(1)
 			log.Debugf(context.Background(), starterTag, "declared k8s discovery backend bean name=%s mode=%s namespace=%s", "k8s."+name, c.Mode, c.Namespace)
 			return nil
@@ -62,18 +63,18 @@ func init() {
 
 // newBackendBean builds the discovery backend for c. It runs at injection
 // time, so an invalid mode or an unreachable API server fails startup.
-func newBackendBean(ctx *gs.ContextProvider, c Config) (discovery.Discovery, error) {
+func newBackendBean(ctx *gs.ContextProvider, c Config, name string) (discovery.Discovery, error) {
 	log.Debugf(ctx.Context, starterTag, "creating k8s discovery backend mode=%s namespace=%s", c.Mode, c.Namespace)
-	b, err := newBackend(ctx, c)
+	b, err := newBackend(ctx, c, name)
 	if err != nil {
 		return nil, errutil.Explain(err, "registry-k8s: build backend")
 	}
 	return b, nil
 }
 
-// destroyBackendBean releases the backend's background resources on shutdown.
-// dns-mode backends hold nothing to close; endpointslice-mode backends expose
-// Close.
+// destroyBackendBean releases the backend's background resources on shutdown —
+// the endpointslice mode's watchers, and in both modes the gauge callbacks the
+// backend's observer registered.
 func destroyBackendBean(d discovery.Discovery) error {
 	if c, ok := d.(interface{ Close() error }); ok {
 		return errutil.Explain(c.Close(), "registry-k8s: close backend")

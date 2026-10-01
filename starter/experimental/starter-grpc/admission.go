@@ -36,7 +36,7 @@ type resilienceInterceptors struct {
 // injected [resilience.Manager] and returns the unary interceptor that runs each
 // RPC through it. The manager is the governance starter's bean, so this server
 // gets its rate-limit / bulkhead / breaker limits from the governance document's
-// SERVER block (govern.server.*)
+// SERVER block (spring.governance.server.*)
 // WITHOUT naming *governance.Center. A nil manager — a standalone call, or an app
 // that does not import starter-governance — is normalized to an unarmed one,
 // whose executor is a transparent pass-through (fn runs once, untouched). The

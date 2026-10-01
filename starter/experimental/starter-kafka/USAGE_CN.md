@@ -113,10 +113,10 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance（同步生产路径上的限流）--------------------------------------
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=8
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=8
 ```
 
 **验证**（broker 启动同 [example/docker-compose.yml](example/docker-compose.yml) —— KRaft
@@ -267,7 +267,7 @@ key 都在 `spring.kafka.instances.<name>.*` 下——ctor 参数经 `conf.BindE
 
 `driver` key 为实例按名指定 Driver bean：不配置 → 装配由按类型注入的可选 Driver bean（见
 §2.1）或内置 `DefaultDriver` 负责；配置 → 按名注入该 bean，指定的 bean 不存在则启动失败。（下方
-conf 里的 `driver` 指治理的 `govern.driver` 选择规则源，与本 starter 无关。）
+conf 里的 `driver` 指治理的 `spring.governance.driver` 选择规则源，与本 starter 无关。）
 
 ### 3.2 SASL
 
@@ -332,12 +332,12 @@ grep messaging.access app.log | tail -2   # publish 记录（带时长）+ consu
 ### 4.3 受保护 vs 不受保护的生产路径
 
 ```bash
-# example-cloudnative 配 govern.client.default.rate-limit=8：
+# example-cloudnative 配 spring.governance.client.default.rate-limit=8：
 go run .    # 打印 "resilience: N produce admitted, M rejected with ErrRateLimited"
 ```
 
 同一突发走 **driver** publisher 会被同样限流——它走同一个 executor（§2.3 第 4 步）；
-只有直接在 client bean 上裸调 `ProduceSync` 才绕过。改被监听源里的 `govern.*` 可免重启
+只有直接在 client bean 上裸调 `ProduceSync` 才绕过。改被监听源里的 `spring.governance.*` 可免重启
 换策略（治理中心热加载）。
 
 ### 4.4 治理标签核对
@@ -377,7 +377,7 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 | 启动失败 "unsupported kafka sasl mechanism / required-acks / compression" | 枚举 key 拼写错误 | 枚举精确匹配（大小写不敏感）；改对值。 |
 | driver 消费者收不到 | `NewSubscriber` source ≠ 所配 `topic`，或 `topic` 为空 | source 必须等于 client 的 `topic`；否则静默过滤。 |
 | driver 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.instances.<name>.group`（构造期固定）。 |
-| govern.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync` | 只有 `GuardedProduceSync` 与 driver publisher 受保护。 |
+| spring.governance.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync` | 只有 `GuardedProduceSync` 与 driver publisher 受保护。 |
 | 无 traces/metrics | 未 import starter-otel | kotel 挂 OTel 全局；import starter-otel。 |
 | 无访问日志 | 日志 tag 被过滤 | 检查 `messaging.access` tag 过滤。 |
 | handler 错误只留一行日志 | 设计如此：本 driver 无 nack/重投 | 在 handler 内自建重试，或用 messaging 的 retry.go。 |

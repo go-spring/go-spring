@@ -29,7 +29,7 @@ demo/
 ├── main.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod** (module deps that matter):
@@ -71,7 +71,7 @@ import (
     "go-spring.org/spring/gs"
 )
 
-// The service label the handlers share; the rule in conf/govern.yaml is keyed
+// The service label the handlers share; the rule in conf/governance.yaml is keyed
 // by it, and it is the scope the budget is kept per.
 const service = "ratelimit-redis:api"
 
@@ -112,22 +112,23 @@ spring.go-redis.instances.cache.addr=127.0.0.1:6379
 spring.ratelimit.redis.client=cache
 
 # --- governance rules (their own file, their own refresh channel) ------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** — the budget itself, a policy, not starter config:
+**conf/governance.yaml** — the budget itself, a policy, not starter config:
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    rules:
-      - service: ratelimit-redis:api
-        rate-limit: 2      # sustained 2/s
-        burst: 5           # momentary allowance
+spring:
+  governance:
+    enabled: true
+    client:
+      rules:
+        - service: ratelimit-redis:api
+          rate-limit: 2      # sustained 2/s
+          burst: 5           # momentary allowance
 ```
 
-A rule fully replaces `govern.client.default` for the matched service (no field-wise merge), so the rule
+A rule fully replaces `spring.governance.client.default` for the matched service (no field-wise merge), so the rule
 carries every knob the service needs.
 
 **Verify** (with a local Redis, e.g. `example/docker-compose.yml`):
@@ -270,7 +271,7 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 | No limiting at all, everything 200 | the service's policy has `rate-limit: 0`, or Redis is unreachable (the executor fails open) | Set an explicit positive `rate-limit` in the rules file; check Redis. |
 | The burst is larger/smaller than the window arithmetic suggests | the rule asks for `algorithm: sliding-window`, which the shared store counts as a token bucket | Model the cap as `rate-limit`/`burst`, or keep sliding windows on the in-memory store. |
 | Calls pile up instead of being rejected | `rate-limit-max-wait` is set but the shared store does not queue | Keep queueing for the in-memory store, or drop the knob. |
-| A `govern.enabled=false` app has no limiting | the center is switched off, so every executor is a pass-through | Enable governance; this starter only moves the counters. |
+| A `spring.governance.enabled=false` app has no limiting | the center is switched off, so every executor is a pass-through | Enable governance; this starter only moves the counters. |
 
 ---
 

@@ -438,10 +438,7 @@ func selectionPool() *loadbalance.Pool {
 	src := func() ([]discovery.Endpoint, error) {
 		return []discovery.Endpoint{{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}}, nil
 	}
-	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
-	if err != nil {
-		panic(err)
-	}
+	bal := loadbalance.NewRoundRobin()
 	return loadbalance.NewPool(src, bal)
 }
 

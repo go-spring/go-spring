@@ -3,6 +3,7 @@ module go-spring.org/starter-trpc
 go 1.26.1
 
 require (
+	go-spring.org/cloud v0.0.0
 	go-spring.org/starter-governance v0.0.0
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
@@ -66,4 +67,5 @@ require (
 	trpc.group/trpc/trpc-protocol/pb/go/trpc v1.0.0 // indirect
 )
 
+replace go-spring.org/cloud => ../../../cloud
 replace go-spring.org/starter-governance => ../../starter-governance

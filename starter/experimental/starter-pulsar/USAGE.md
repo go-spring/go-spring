@@ -146,7 +146,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # OTel metrics via actuator only
 
 # --- governance (breaker/limiter for service pulsar:pulsar://127.0.0.1:6650)
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
 **Start Pulsar** (same as [example/docker-compose.yml](example/docker-compose.yml)):
@@ -337,14 +337,15 @@ Publish `Key="user-42"`, `Headers={"h1":"v1"}` per §1; in the handler log
 ### 4.3 Guarded vs unguarded (governance label check)
 
 ```yaml
-# conf/govern.yaml
-govern:
-  enabled: true
-  resilience:
-    breaker:
-      enabled: true
-      min-calls: 4
-      failure-rate: 50
+# conf/governance.yaml
+spring:
+  governance:
+    enabled: true
+    resilience:
+      breaker:
+        enabled: true
+        min-calls: 4
+        failure-rate: 50
 ```
 
 Service label is `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]. Kill the broker, then:

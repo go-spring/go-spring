@@ -9,7 +9,7 @@ increment.
 
 **Model**: config is NAMED BLOCKS — each `spring.registry.consul.<name>.*` block describes ONE
 Consul agent and becomes ONE backend bean named `consul.<name>` (`starter.go`). The bean implements
-BOTH sides of the naming idiom: `discovery.Registrar` (write — collected by the `registryServer`
+BOTH sides of the naming idiom: `discovery.Registry` (write — collected by the `registryServer`
 from the [starter-registry](../starter-registry) core, imported transitively, which registers into
 EVERY configured center across backends) and `discovery.Discovery` (read — consumers cite the bean
 name, e.g. `discovery=consul.main`; the bean is lazy). Read and write share the block's client, so
@@ -119,9 +119,9 @@ Timeline (`starter.go`, `registrar.go`, and the starter-registry core's `starter
 1. For each `${spring.registry.consul.<name>}` block the module (`OnProperty("spring.registry.consul")`,
    bound via `BindEach`) builds ONE `*api.Client` and probes the agent (`Catalog().Services`, 5s
    timeout) so a bad address fails startup here, once per block. The bean named `consul.<name>`
-   exports BOTH `discovery.Registrar` and `discovery.Discovery` (lazy read half) on that client.
+   exports BOTH `discovery.Registry` and `discovery.Discovery` (lazy read half) on that client.
 2. The starter-registry core provides `gs.Provide(NewServer).Name("registryServer")` conditioned
-   on `spring.registry.service-name`; its `Registrars []discovery.Registrar` field slice-collects
+   on `spring.registry.service-name`; its `Registries []discovery.Registry` field slice-collects
    EVERY backend's registrar (consul, etcd, ... mixed). `Run` validates `service-name`/`addr` and
    ≥1 registrar **before** signalling readiness, waits `<-sig.TriggerAndWait()` (the ready-gate:
    registration happens only after every other server is up), then `Agent().ServiceRegister` into

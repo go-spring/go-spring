@@ -289,7 +289,7 @@ delta, no span (that path is unobserved by design, §2.3).
 
 ### 4.3 Fault / resilience drill (needs starter-governance)
 
-Configure a breaker or limiter for service `cassandra:127.0.0.1` under `govern.*`, hammer
+Configure a breaker or limiter for service `cassandra:127.0.0.1` under `spring.governance.*`, hammer
 `Exec` inserts, and watch rejections surface as fast errors WITHOUT the statement executing
 (no Cassandra-side rows), plus outcome counters from the resilience observer. Flip the policy
 at runtime — the executor hot-reloads without restart. Note the service label uses hosts[0]

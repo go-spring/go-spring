@@ -237,52 +237,43 @@ func (w *captureWriter) capturedBody() []byte {
 
 // --- metrics (M) ------------------------------------------------------------
 
-// sseMetrics owns the per-event SSE metric instruments: the event counter (always
-// on) and the size/interval distribution histograms (toggleable; no-ops when off).
-// Built once at registration and shared across streams; per-event data (chunk
-// size, interval) is passed to Record.
+// sseMetrics owns the per-event SSE metric configuration: the event counter
+// (always on) and the size/interval distribution histograms (toggleable). It
+// holds no instrument itself - the values live in the process-wide set (see
+// instruments) and are resolved at the use site; only the toggle is per
+// middleware. Built once at registration and shared across streams; per-event
+// data (chunk size, interval) is passed to Record.
 type sseMetrics struct {
-	counter       metric.Int64Counter
-	eventSize     metric.Int64Histogram
-	eventInterval metric.Float64Histogram
+	distributions bool
 }
 
 func newSSEMetrics(sseDistributions bool) *sseMetrics {
-	meter := otel.Meter(meterName)
-	counter, _ := meter.Int64Counter(
-		"http.server.sse.events",
-		metric.WithDescription("Number of SSE events streamed by the server"),
-		metric.WithUnit("{event}"),
-	)
-	// Per-event distributions. Unlike the per-event child span, these survive
-	// trace sampling (metrics are counted every time), so they are the reliable
-	// source for "p99 event size" and "event interval / stall" dashboards and
-	// alerts - the quantities that only lived on the span before and were
-	// therefore unreliable under sampling. Toggleable via metrics.sseDistributions;
-	// when off, fall back to no-op histograms so the flush path needs no per-event
-	// branch (the records just go nowhere).
-	var eventSize metric.Int64Histogram
-	var eventInterval metric.Float64Histogram
-	if sseDistributions {
-		eventSize, _ = meter.Int64Histogram(
-			"http.server.sse.event.size",
-			metric.WithDescription("Size of each SSE event streamed by the server"),
-			metric.WithUnit("By"),
-			// Bytes: from a tiny heartbeat to a sizable JSON payload.
-			metric.WithExplicitBucketBoundaries(16, 64, 256, 1024, 4096, 16384, 65536, 262144),
-		)
-		eventInterval, _ = meter.Float64Histogram(
-			"http.server.sse.event.interval",
-			metric.WithDescription("Interval between consecutive SSE events (seconds)"),
-			metric.WithUnit("s"),
-			// Seconds: heartbeat (sub-second) to a stalled stream (tens of seconds).
-			metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
-		)
-	} else {
-		eventSize = metricnoop.Int64Histogram{}
-		eventInterval = metricnoop.Float64Histogram{}
+	return &sseMetrics{distributions: sseDistributions}
+}
+
+// size returns the per-event size histogram to record through: the shared
+// instrument when the toggle is on, a no-op otherwise. Per-event distributions
+// survive trace sampling (metrics are counted every time), so they are the
+// reliable source for "p99 event size" and "event interval / stall" dashboards
+// and alerts - the quantities that only lived on the span before and were
+// therefore unreliable under sampling.
+//
+// Toggleable via metrics.sseDistributions; when off, fall back to a no-op
+// histogram so the flush path needs no per-event branch (the records just go
+// nowhere) and the descriptor is never registered.
+func (m *sseMetrics) size() metric.Int64Histogram {
+	if !m.distributions {
+		return metricnoop.Int64Histogram{}
 	}
-	return &sseMetrics{counter: counter, eventSize: eventSize, eventInterval: eventInterval}
+	return instruments().eventSize()
+}
+
+// interval returns the per-event interval histogram to record through (see size).
+func (m *sseMetrics) interval() metric.Float64Histogram {
+	if !m.distributions {
+		return metricnoop.Float64Histogram{}
+	}
+	return instruments().eventInterval()
 }
 
 // Record bumps the event counter and records the per-event size and interval
@@ -293,9 +284,9 @@ func newSSEMetrics(sseDistributions bool) *sseMetrics {
 // per-instance.
 func (m *sseMetrics) Record(ef eventFacts) {
 	attrs := metric.WithAttributes(ef.attrs...)
-	m.counter.Add(ef.ctx, 1, attrs)
-	m.eventSize.Record(ef.ctx, int64(ef.chunkSize), attrs)
-	m.eventInterval.Record(ef.ctx, ef.interval.Seconds(), attrs)
+	instruments().sseCounter.Add(ef.ctx, 1, attrs)
+	m.size().Record(ef.ctx, int64(ef.chunkSize), attrs)
+	m.interval().Record(ef.ctx, ef.interval.Seconds(), attrs)
 }
 
 // eventFacts bundles the per-event values the three SSE signal objects share at
@@ -316,16 +307,16 @@ type eventFacts struct {
 
 // --- trace (T) --------------------------------------------------------------
 
-// sseTracer owns the OTel tracer and performs the per-event span lifecycle,
-// mirroring httpTracer on the post-gzip side. It holds only the tracer (created
-// once at registration), so it is safe to share across streams; per-event state
-// (seq, size, interval) is passed in via eventFacts.
-type sseTracer struct {
-	tracer trace.Tracer
-}
+// sseTracer performs the per-event span lifecycle, mirroring httpTracer on the
+// post-gzip side. It holds no tracer: the tracer is looked up per event, never
+// cached in a field or a package variable - a captured otel.Tracer stops
+// forwarding once the global provider is set again. It is therefore safe to
+// share across streams; per-event state (seq, size, interval) is passed in via
+// eventFacts.
+type sseTracer struct{}
 
 func newSSETracer() *sseTracer {
-	return &sseTracer{tracer: otel.Tracer(tracerName)}
+	return &sseTracer{}
 }
 
 // Stamp opens an sse.event child span under the request's server span (started
@@ -336,7 +327,7 @@ func newSSETracer() *sseTracer {
 // starter-otel is absent: the noop tracer returns a non-recording span. The span
 // carries seq + size only; the full event text lives in the log record.
 func (t *sseTracer) Stamp(ef eventFacts, start, end time.Time) {
-	_, span := t.tracer.Start(ef.ctx, "sse.event",
+	_, span := otel.Tracer(tracerName).Start(ef.ctx, "sse.event",
 		trace.WithTimestamp(start),
 	)
 	span.SetAttributes(

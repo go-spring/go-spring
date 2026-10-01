@@ -35,15 +35,11 @@ func init() {
 	// no destroy half to register.
 	gs.Provide(newRouteTable,
 		gs.IndexArg(2, gs.TagArg("?")),
-		// The governance beans are NULLABLE injections: they exist whenever
-		// starter-governance is in the container, which is the normal case, and
-		// are absent from a container without it. Without the "?" gs would treat
-		// an absent bean as a wiring error and the app would not boot — turning
-		// "governance is off" into "governance must be imported", which is not
-		// the contract. newRouteTable normalizes a nil bean to an unarmed
-		// authority, i.e. a transparent pass-through.
-		gs.IndexArg(3, gs.TagArg("?")),
-		gs.IndexArg(4, gs.TagArg("?")),
+		// The governance beans are REQUIRED: this starter blank-imports
+		// starter-governance, so "governance off" is spring.governance.enabled=false,
+		// never an absent bean.
+		gs.IndexArg(3, gs.TagArg("")),
+		gs.IndexArg(4, gs.TagArg("")),
 		gs.IndexArg(5, gs.TagArg("?")),
 	).Caller(1)
 

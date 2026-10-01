@@ -4,7 +4,7 @@
 service label `ratelimit-redis:api` 下，预算（burst 5，2/s）花的是本 starter 贡献的同一个
 Redis 计数器存储——整个进程每个 scope 一个预算，配置相同的每个副本也共享它。
 
-预算本身是治理规则（`conf/govern.yaml`），不是 starter 配置：`spring.ratelimit.redis.client=cache`
+预算本身是治理规则（`conf/governance.yaml`），不是 starter 配置：`spring.ratelimit.redis.client=cache`
 只说明计数器通过哪个 Redis 客户端计数。
 
 ## 运行方式

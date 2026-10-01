@@ -17,11 +17,11 @@ self-terminates after 6s unless `-manual`).
    the `*governance.Center` over them — hands the injected `governance.Source` bean to the
    center and marks the authority live.
 2. **Source adapters** (conditional, `source_file.go` / `source_http.go`): when a
-   `govern.source.*` key is present, a `governance.Source` bean is injected into the wiring;
+   `spring.governance.source.*` key is present, a `governance.Source` bean is injected into the wiring;
    rules refresh governance only — never an app-wide property re-bind.
 
 Governance configuration is its own document (a rules file, a console, a config center) — it is
-NOT written into `app.properties`; only the one `govern.source.*` bootstrap key is.
+NOT written into `app.properties`; only the one `spring.governance.source.*` bootstrap key is.
 
 Governance semantics themselves (policy resolution, breaker/retry/ratelimit behavior, fault
 injection model) are documented in `cloud/governance` — everything below is the starter's wiring
@@ -40,7 +40,7 @@ demo/
 ├── main.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod** (module deps that matter):
@@ -95,7 +95,7 @@ func (p *printer) Run(ctx context.Context) error {
         }
         fmt.Println()
         if i == 3 {
-            fmt.Println(">>> edit conf/govern.yaml now: policy AND fault toggle live")
+            fmt.Println(">>> edit conf/governance.yaml now: policy AND fault toggle live")
         }
         select {
         case <-ctx.Done():
@@ -124,29 +124,30 @@ func main() {
 
 ```properties
 # The governance rules live in their OWN file, watched by starter-governance's
-# file source — nothing under govern.* here. This key arms the starter's
+# file source — nothing under spring.governance.* here. This key arms the starter's
 # conditional module, whose Source bean is injected onto the governance center.
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** — same keys an app.properties entry would use, watched live:
+**conf/governance.yaml** — same keys an app.properties entry would use, watched live:
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
-      max-retries: 2
-  client:
-    fault:
-      enabled: false        # flip to true mid-run — see §4.2
-      rate: 0.5
-  client:
-    rules:
-      - service: demo:service
-        attempt-timeout: 50ms
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
+        max-retries: 2
+    client:
+      fault:
+        enabled: false        # flip to true mid-run — see §4.2
+        rate: 0.5
+    client:
+      rules:
+        - service: demo:service
+          attempt-timeout: 50ms
 ```
 
 **Verify** (from the example directory; the app self-terminates after 6s unless `-manual`):
@@ -154,14 +155,14 @@ govern:
 ```bash
 go run . -manual
 # policy: enabled=true timeout=100ms retries=2 rate-limit=0 | fault: enabled=false rate=0.5
-# >>> edit conf/govern.yaml now: policy AND fault toggle live
+# >>> edit conf/governance.yaml now: policy AND fault toggle live
 #   ... change attempt-timeout to 77ms, or fault.enabled to true ...
 # policy: enabled=true timeout=77ms retries=2 rate-limit=0 | fault: enabled=true rate=0.5
 ```
 
 The change lands within ~1s of saving (fsnotify), with no restart and no app-wide re-bind.
 
-**Variant — another source**: swap `govern.source.file.path` for `govern.source.http.*` (a
+**Variant — another source**: swap `spring.governance.source.file.path` for `spring.governance.source.http.*` (a
 console), or a nacos/etcd source key from their own modules. Exactly one source is active per
 process, and there is no longer an app.properties path: rules always come through a Source.
 
@@ -212,12 +213,12 @@ import starter-governance
   │      .Init((*wiring).Init).Destroy((*wiring).Destroy)
   │      .Export(gs.As[gs.Rooter]())            ← the wall + the fix, see below
   └─ init() starter.go: two conditional gs.Module beans
-         ├─ OnProperty("govern.source.file")  → *FileSource, Export(As[governance.Source]())
-         └─ OnProperty("govern.source.http")  → *HTTPSource, Export(As[governance.Source]())
-              (OnProperty is a PREFIX check: any govern.source.<x>.* key arms it)
+         ├─ OnProperty("spring.governance.source.file")  → *FileSource, Export(As[governance.Source]())
+         └─ OnProperty("spring.governance.source.http")  → *HTTPSource, Export(As[governance.Source]())
+              (OnProperty is a PREFIX check: any spring.governance.source.<x>.* key arms it)
 
 gs.Run()
-  ├─ config bind: source config from ${govern.source.file|http.*} (expr-validated)
+  ├─ config bind: source config from ${spring.governance.source.file|http.*} (expr-validated)
   ├─ bean wiring: the source bean's Export makes it visible; it is field-injected into
   │      wiring.Src (`autowire:"?"` — nullable: no bean ⇒ nil ⇒ default path)
   ├─ wiring.Init():
@@ -260,12 +261,12 @@ guarantees each callback runs exactly once whichever side wins the race.
 
 ### 2.4 One rules edit, end to end
 
-1. You save `conf/govern.yaml` (any editor; atomic rename is fine — the watcher watches the
+1. You save `conf/governance.yaml` (any editor; atomic rename is fine — the watcher watches the
    parent *directory*, never the file, precisely because rename swaps the inode
    (`source_file.go:87-94`). The loop reacts to every directory event, not just the file's name.)
 2. `FileSource.reload()` re-reads and parses through `rules.Parse` — format inferred from the
    extension (`.yaml`), parsed by the shared conf reader registry, flattened, required to carry
-   at least one `govern.*` key, then bound into `governance.Config` through the same value-tag
+   at least one `spring.governance.*` key, then bound into `governance.Config` through the same value-tag
    machinery (`rules/rules.go:57-75`). A parse failure or a
    govern-key-less document logs `reload ... failed (keeping last good config)` and stops.
 3. Unchanged config (DeepEqual) pushes nothing — a touch does not churn executors.
@@ -286,47 +287,47 @@ guarantees each callback runs exactly once whichever side wins the race.
 
 ### 3.1 Source keys (this starter)
 
-Bound with the explicit prefix `${govern.source.file:=}` / `${govern.source.http:=}` via
-`conf.Bind` — these are the only keys under `govern.*` that are wiring, not rules. ⚠ One
-namespace, two roles: `govern.*` is the rules; `govern.source.*` is where the rules come from.
+Bound with the explicit prefix `${spring.governance.source.file:=}` / `${spring.governance.source.http:=}` via
+`conf.Bind` — these are the only keys under `spring.governance.*` that are wiring, not rules. ⚠ One
+namespace, two roles: `spring.governance.*` is the rules; `spring.governance.source.*` is where the rules come from.
 
 | Key | Type | Default | Required | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|----------|-------------------------|------------------------------|
-| `govern.source.file.path` | string | — | yes (`expr:"$ != ''"`) | fsnotify on the parent directory; format by extension (json/properties/yaml/toml). Initial load failure fails startup. | Wrong/missing path → startup error (deliberate: a disabled center must not arm silently). |
-| `govern.source.http.url` | string | — | yes (`expr:"$ != ''"`) | Polled with GET; document byte-compatible with the file source. | Bad URL / non-200 / bad body → startup error on first fetch; later, keep-last-good + log. |
-| `govern.source.http.interval` | duration | 5s | no | Poll period AND the HTTP client timeout (`source_http.go:70`). | Too small → fetches time out against themselves; too large → slow convergence. |
-| `govern.source.http.format` | string | inferred from URL extension | no | `"yaml" \| "json" \| "properties" \| "toml"`; overrides inference (use it when the URL has no/useful extension). | Wrong format → parse error → keep-last-good (or startup failure on first fetch). |
-| `govern.source.http.headers` | map[string]string | empty | no | Sent with every request, e.g. `headers.authorization=Bearer xxx` for a console. | Missing auth → every fetch 401 → stuck on last good config. |
+| `spring.governance.source.file.path` | string | — | yes (`expr:"$ != ''"`) | fsnotify on the parent directory; format by extension (json/properties/yaml/toml). Initial load failure fails startup. | Wrong/missing path → startup error (deliberate: a disabled center must not arm silently). |
+| `spring.governance.source.http.url` | string | — | yes (`expr:"$ != ''"`) | Polled with GET; document byte-compatible with the file source. | Bad URL / non-200 / bad body → startup error on first fetch; later, keep-last-good + log. |
+| `spring.governance.source.http.interval` | duration | 5s | no | Poll period AND the HTTP client timeout (`source_http.go:70`). | Too small → fetches time out against themselves; too large → slow convergence. |
+| `spring.governance.source.http.format` | string | inferred from URL extension | no | `"yaml" \| "json" \| "properties" \| "toml"`; overrides inference (use it when the URL has no/useful extension). | Wrong format → parse error → keep-last-good (or startup failure on first fetch). |
+| `spring.governance.source.http.headers` | map[string]string | empty | no | Sent with every request, e.g. `headers.authorization=Bearer xxx` for a console. | Missing auth → every fetch 401 → stuck on last good config. |
 
 Exactly ONE source is active per process: configuring both file and http arms two beans but the
 center holds one — the bean injection race is unspecified; configure exactly one. Remote adapters
-in their own modules: `govern.source.nacos.*` (starter-governance-nacos, ListenConfig push) and
-`govern.source.etcd.*` (starter-governance-etcd: `endpoint`, `key`, …, Watch push) — the documents are
+in their own modules: `spring.governance.source.nacos.*` (starter-governance-nacos, ListenConfig push) and
+`spring.governance.source.etcd.*` (starter-governance-etcd: `endpoint`, `key`, …, Watch push) — the documents are
 byte-portable across all of these backends.
 
-There is no default path: without a `govern.source.*` key (or an injected/`SetSource` source) the
-center stays disabled. ⚠ `govern.source.*` is bootstrap ONLY — the rules themselves never live in
+There is no default path: without a `spring.governance.source.*` key (or an injected/`SetSource` source) the
+center stays disabled. ⚠ `spring.governance.source.*` is bootstrap ONLY — the rules themselves never live in
 app.properties.
 
 ### 3.2 Rules document — top level
 
 | Key | Type | Default | Behavior | Misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
-| `govern.enabled` | bool | false | Master switch. false → the resilience authority's `PolicyFor` always returns a zero Policy (pass-through) regardless of Default/Rules. | Everything configured but still off — the #1 "why doesn't it work" cause. |
-| `govern.driver` | string | "default" | Resilience backend for ALL services, resolved against the container's driver directory: a contributed driver bean's name (e.g. "sentinel"), or "default" for the bundled one. | Unknown driver → startup panic listing the available names (a typo must not silently disable protection). |
-| `govern.client.default.*` | resilience.ClientPolicy | all off | Baseline policy for every service no ClientRule matches. | — |
-| `govern.client.rules[n].*` | []ClientRule | empty | The ClientRule whose Service equals the label wins (labels are unique — a duplicate is rejected). ⚠ A matched ClientRule **fully replaces** Default — no field-wise merge: a zero policy field means "disabled", so a partial merge could not distinguish "explicitly 0" from "unset" (`govern.go:87-90`). List specific rules first. | ClientRule setting only `attempt-timeout` silently turns OFF the default's retries for that service. |
-| `govern.client.fault.*` | fault.Config | all off | OUTBOUND fault injection — the fire that tests this process's own retry/breaker/timeout, see §3.4. | — |
-| `govern.server.default.*` | resilience.ServerPolicy | all off | Baseline INBOUND admission for every route no ClientRule matches: rate limit, concurrency cap, inbound breaker, handling budget. | — |
-| `govern.server.rules[n].*` | []ServerRule | empty | Per-route admission override, matched by the same exact label the inbound middleware passes (e.g. `gin::8080`, `grpc:/pkg.Svc/Method`). Same full-replace semantics as the client rules. | — |
-| `govern.server.fault.*` | fault.Config | all off | INBOUND fault injection — the fire that tests this server's error paths, observe classification and inbound breaker, see §3.4. | — |
+| `spring.governance.enabled` | bool | false | Master switch. false → the resilience authority's `PolicyFor` always returns a zero Policy (pass-through) regardless of Default/Rules. | Everything configured but still off — the #1 "why doesn't it work" cause. |
+| `spring.governance.driver` | string | "default" | Resilience backend for ALL services, resolved against the container's driver directory: a contributed driver bean's name (e.g. "sentinel"), or "default" for the bundled one. | Unknown driver → startup panic listing the available names (a typo must not silently disable protection). |
+| `spring.governance.client.default.*` | resilience.ClientPolicy | all off | Baseline policy for every service no ClientRule matches. | — |
+| `spring.governance.client.rules[n].*` | []ClientRule | empty | The ClientRule whose Service equals the label wins (labels are unique — a duplicate is rejected). ⚠ A matched ClientRule **fully replaces** Default — no field-wise merge: a zero policy field means "disabled", so a partial merge could not distinguish "explicitly 0" from "unset" (`cloud/governance/center.go:364`). List specific rules first. | ClientRule setting only `attempt-timeout` silently turns OFF the default's retries for that service. |
+| `spring.governance.client.fault.*` | fault.Config | all off | OUTBOUND fault injection — the fire that tests this process's own retry/breaker/timeout, see §3.4. | — |
+| `spring.governance.server.default.*` | resilience.ServerPolicy | all off | Baseline INBOUND admission for every route no ClientRule matches: rate limit, concurrency cap, inbound breaker, handling budget. | — |
+| `spring.governance.server.rules[n].*` | []ServerRule | empty | Per-route admission override, matched by the same exact label the inbound middleware passes (e.g. `gin::8080`, `grpc:/pkg.Svc/Method`). Same full-replace semantics as the client rules. | — |
+| `spring.governance.server.fault.*` | fault.Config | all off | INBOUND fault injection — the fire that tests this server's error paths, observe classification and inbound breaker, see §3.4. | — |
 
 Service labels live in a **value**, never a key (`config.go`): `redis:cache`,
 `gorm:mysql:primary`, `gin:api`, `dubbo:com.example.Foo:1.0.0` — colons and dots need no escaping.
 
-### 3.3 Policy knobs (16, usable under `govern.client.default.*` and each `govern.client.rules[n].*`, all default 0/off)
+### 3.3 Policy knobs (16, usable under `spring.governance.client.default.*` and each `spring.governance.client.rules[n].*`, all default 0/off)
 
-The INBOUND model (`resilience.ServerPolicy`, under `govern.server.*`) accepts the same knobs
+The INBOUND model (`resilience.ServerPolicy`, under `spring.governance.server.*`) accepts the same knobs
 **minus the retry family** (`max-retries` / `retry-budget` / `initial-interval` / `multiplier` /
 `max-interval` / `randomization-factor`) and minus `max-duration`: a handler that already
 produced side effects cannot be replayed, so inbound has no retry to express, and with one
@@ -347,11 +348,11 @@ without relearning.
 | `retry-budget` | int | retry | cap on in-flight retries across one executor; over-budget retries get `resilience: retry budget exceeded`. |
 | `attempt-timeout` / `max-duration` | duration / duration | timeout | per-attempt bound; overall bound (attempt budget = min(Timeout, remaining MaxDuration)). |
 
-Driver selection and the on/off switch are process-wide (`govern.enabled`/`govern.driver`) and
+Driver selection and the on/off switch are process-wide (`spring.governance.enabled`/`spring.governance.driver`) and
 deliberately NOT re-bindable per service. Semantics of each knob (backoff math, breaker states)
 are `cloud/governance/resilience` territory — the starter only binds and fans them out.
 
-### 3.4 Fault knobs (`govern.client.fault.*` and `govern.server.fault.*`)
+### 3.4 Fault knobs (`spring.governance.client.fault.*` and `spring.governance.server.fault.*`)
 
 One knobs table, TWO independent blocks: the client block drives `WrapClientExecutor`'s per-attempt
 gate (outbound), the server block drives `ApplyServer`'s inbound-handler gate. Each side counts its own
@@ -377,25 +378,25 @@ gate (outbound), the server block drives `ApplyServer`'s inbound-handler gate. E
 ```bash
 cd example && go run . -manual
 # baseline:  policy: enabled=true timeout=100ms retries=2 rate-limit=0 | fault: client(enabled=false rate=0.5) server(enabled=false rate=0.5)
-sed -i '' 's/attempt-timeout: 100ms/attempt-timeout: 77ms/' conf/govern.yaml   # lands within ~1s
+sed -i '' 's/attempt-timeout: 100ms/attempt-timeout: 77ms/' conf/governance.yaml   # lands within ~1s
 ```
 
 Negative drill — bad edit keeps the last good config (watch the log tag `governance`):
 
 ```bash
-echo "govern: {enabled: true}" > conf/govern.yaml        # truncated: still has a govern key
-printf '' > conf/govern.yaml                              # EMPTY: no govern.* key → reload error
-# log: governance file source: reload conf/govern.yaml failed (keeping last good config): ...
+echo "spring.governance: {enabled: true}" > conf/governance.yaml   # truncated: still carries a spring.governance key
+printf '' > conf/governance.yaml                              # EMPTY: no spring.governance.* key → reload error
+# log: governance file source: reload conf/governance.yaml failed (keeping last good config): ...
 ```
 
-Turning governance off is `govern.enabled=false` — a key that IS present — never an emptied file.
+Turning governance off is `spring.governance.enabled=false` — a key that IS present — never an emptied file.
 
 ### 4.2 Fault drill, no restart
 
 The drill below arms the CLIENT fire (flip `client.fault.enabled`); `server.fault.enabled` is the
 inbound twin and behaves identically against the requests this process receives.
 
-1. Start with `client.fault.enabled: false` in govern.yaml.
+1. Start with `client.fault.enabled: false` in governance.yaml.
 2. Flip it to true and save — `injector.SetConfig` swaps in place; the next call is subject to it.
 3. With `scope: loadtest`, only traffic marked `X-LoadTest: 1` burns; `real` inverts that
    (dedicated environments only); empty scope hits everything.
@@ -459,10 +460,10 @@ the center never merges — whole-replace; removing a custom source is not suppo
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Everything configured, nothing governed | `govern.enabled` false (default) | Set `govern.enabled=true` — it is the master switch. |
+| Everything configured, nothing governed | `spring.governance.enabled` false (default) | Set `spring.governance.enabled=true` — it is the master switch. |
 | Rules file edited, policy never changes | Wrong path; or the file is a symlink target the dir-watch misses (rare) | Check the startup-armed path; check the log tag `governance` for `reload ... failed`. |
-| `reload ... failed (keeping last good config)` in logs | Truncated/emptied document (no `govern.*` key) or syntax error | Fix the document; "off" is `govern.enabled=false`, not an empty file. |
-| Startup error `governance source: ... contains no govern.* keys` | First load of an empty document | Same as above, at construction time — deliberate. |
+| `reload ... failed (keeping last good config)` in logs | Truncated/emptied document (no `spring.governance.*` key) or syntax error | Fix the document; "off" is `spring.governance.enabled=false`, not an empty file. |
+| Startup error `governance source: ... contains no spring.governance.* keys` | First load of an empty document | Same as above, at construction time — deliberate. |
 | Custom Source bean silently ignored | Missing `Export(gs.As[governance.Source]())` | Add the Export — without it the bean is invisible to interface injection. |
 | HTTP source stuck on old rules | Console auth/availability: every poll fails, keep-last-good | Check `headers.*`; check the console returns 200 with a valid document. |
 | Per-service rule killed the default's retries | Matched rule fully REPLACES default (no merge) | Restate every knob you want kept in the rule. |
@@ -484,7 +485,7 @@ the center never merges — whole-replace; removing a custom source is not suppo
 
 Design suspects (audit ledger; carried over from the previous edition, none newly fixed):
 
-1. `govern.*` is both the rules namespace and the source config lives under `govern.source.*` —
+1. `spring.governance.*` is both the rules namespace and the source config lives under `spring.governance.source.*` —
    one namespace, two roles.
 2. Replace-vs-merge asymmetry between resilience rules (full replace, empty service matches
    nothing) and fault rules (catch-all + global fallback) — must be memorized.

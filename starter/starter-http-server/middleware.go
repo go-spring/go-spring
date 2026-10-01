@@ -56,7 +56,7 @@ func Chain(ms ...Middleware) Middleware {
 // Authenticate returns the authentication filter: it reads the bearer token,
 // verifies it with v, and on success attaches the resulting Authentication to
 // the request context so downstream handlers and the Authorize filter (or the
-// method-level security.Require decorator) can read it via
+// method-level security.Require check) can read it via
 // security.FromContext.
 //
 // When the request carries no token: required=true rejects with 401;
@@ -69,15 +69,15 @@ func Authenticate(v security.TokenValidator, required bool) Middleware {
 			token := security.ParseBearerToken(r.Header.Get("Authorization"))
 			if token == "" {
 				if required {
-					writeUnauthorized(w, "missing bearer token")
+					writeUnauthorized(w, "missing bearer token", "")
 					return
 				}
 				next.ServeHTTP(w, r)
 				return
 			}
 			auth, err := v.Validate(r.Context(), token)
-			if err != nil {
-				writeUnauthorized(w, "invalid token")
+			if err != nil || auth == nil || !auth.Authenticated {
+				writeUnauthorized(w, "invalid token", security.BearerErrorInvalidToken)
 				return
 			}
 			next.ServeHTTP(w, r.WithContext(security.WithAuthentication(r.Context(), auth)))
@@ -89,8 +89,8 @@ func Authenticate(v security.TokenValidator, required bool) Middleware {
 // already carries a verified Authentication (see Authenticate) holding at least
 // one of authorities. With no authorities it degrades to "authenticated caller
 // required". It is the HTTP-layer counterpart of the method-level
-// security.Require decorator: use this to gate a route, Require to gate a
-// service method.
+// security.Require check: use this to gate a route, Require to gate the
+// top of a service method.
 //
 // A missing/anonymous identity yields 401; an authenticated caller lacking the
 // authority yields 403.
@@ -99,11 +99,11 @@ func Authorize(authorities ...string) Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			auth, _ := security.FromContext(r.Context())
 			if !auth.HasAnyAuthority() {
-				writeUnauthorized(w, "unauthenticated")
+				writeUnauthorized(w, "unauthenticated", "")
 				return
 			}
 			if !auth.HasAnyAuthority(authorities...) {
-				http.Error(w, "forbidden", http.StatusForbidden)
+				writeForbidden(w, "forbidden")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -111,10 +111,18 @@ func Authorize(authorities ...string) Middleware {
 	}
 }
 
-// writeUnauthorized writes a 401 with a Bearer challenge.
-func writeUnauthorized(w http.ResponseWriter, msg string) {
-	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+// writeUnauthorized writes a 401 with a Bearer challenge. errCode is an RFC 6750
+// code, or "" when the request carried no credential at all.
+func writeUnauthorized(w http.ResponseWriter, msg, errCode string) {
+	w.Header().Set("WWW-Authenticate", security.BearerChallenge(errCode))
 	http.Error(w, msg, http.StatusUnauthorized)
+}
+
+// writeForbidden writes a 403 with the Bearer challenge RFC 6750 defines for a
+// credential that is valid but lacks the authority.
+func writeForbidden(w http.ResponseWriter, msg string) {
+	w.Header().Set("WWW-Authenticate", security.BearerChallenge(security.BearerErrorInsufficientScope))
+	http.Error(w, msg, http.StatusForbidden)
 }
 
 // CORSConfig configures the cross-origin resource sharing filter. The zero value
@@ -259,7 +267,7 @@ func CSRF(c CSRFConfig) Middleware {
 	}
 	safe := c.SafeMethods
 	if len(safe) == 0 {
-		safe = []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace}
+		safe = security.DefaultSafeMethods()
 	}
 
 	return func(next http.Handler) http.Handler {

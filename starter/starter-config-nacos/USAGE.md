@@ -13,7 +13,7 @@ everything below is go-spring's increment.
 key.
 
 Governance rule sourcing from Nacos now lives in its own module,
-`go-spring.org/starter-governance-nacos` (`govern.source.nacos.*`).
+`go-spring.org/starter-governance-nacos` (`spring.governance.source.nacos.*`).
 
 ---
 
@@ -174,7 +174,7 @@ imports still hot-reload once the data id appears (starter.go:249).
 ### 2.3 Governance rules-push path (moved out)
 
 Governance rule sourcing from Nacos now lives in its own module,
-`go-spring.org/starter-governance-nacos` (`govern.source.nacos.*`).
+`go-spring.org/starter-governance-nacos` (`spring.governance.source.nacos.*`).
 
 ---
 
@@ -204,7 +204,7 @@ single `host:port`.
 ### 3.2 Governance property keys (moved out)
 
 Governance rule sourcing from Nacos now lives in its own module,
-`go-spring.org/starter-governance-nacos` (`govern.source.nacos.*`).
+`go-spring.org/starter-governance-nacos` (`spring.governance.source.nacos.*`).
 
 ---
 
@@ -235,7 +235,7 @@ self-asserting, 60 s watchdog).
 ### 4.3 Governance rules push (moved out)
 
 Governance rule sourcing from Nacos now lives in its own module,
-`go-spring.org/starter-governance-nacos` (`govern.source.nacos.*`).
+`go-spring.org/starter-governance-nacos` (`spring.governance.source.nacos.*`).
 
 ### 4.4 Malformed dataId / source string
 

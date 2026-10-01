@@ -293,7 +293,7 @@ curl -s :9370/metrics | grep -E 'redigo|db.client'   # 时延直方图 + 在途 
 
 池的策略归治理管，不是写死的：它挂着 suspension tracker，并经注入的 `*loadbalance.Manager`
 bean 上的 `loadbalance.Manager.Bind(pool, label)` 绑到 `redigo:<service-name|addr>`，所以该
-label 命中的 `govern.client.rules[N].balancer` /
+label 命中的 `spring.governance.client.rules[N].balancer` /
 `outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号就用新策略。dialer 把拨号
 结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例；单条命令的失败归
 resilience executor 管。直连（只配 `addr`）的池没有候选集，这些 key 对它无效。详见

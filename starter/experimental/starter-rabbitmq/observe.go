@@ -22,8 +22,10 @@ package StarterRabbitMQ
 
 import (
 	"context"
-	"go-spring.org/stdlib/strutil"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -95,16 +97,12 @@ type observer struct {
 // provider is current — invoked at wiring time, not at package init, so an SDK
 // installed later still receives the records.
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 func newObserver(kind trace.SpanKind) *observer {
 	m := otel.Meter(tracerName)
 	duration, _ := m.Float64Histogram("messaging.client.operation.duration",
 		metric.WithDescription("Duration of rabbitmq client operations"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
 	active, _ := m.Int64UpDownCounter("messaging.client.active_requests",
 		metric.WithDescription("Number of in-flight rabbitmq client operations"),
 		metric.WithUnit("{request}"))

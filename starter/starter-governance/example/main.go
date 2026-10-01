@@ -15,8 +15,8 @@
  */
 
 // Command example demonstrates the governance self-built refresh chain: rules
-// live in their OWN file (conf/govern.yaml) watched by starter-governance's
-// file source, NOT in app.properties. Edit conf/govern.yaml while the app runs
+// live in their OWN file (conf/governance.yaml) watched by starter-governance's
+// file source, NOT in app.properties. Edit conf/governance.yaml while the app runs
 // (e.g. change attempt-timeout, flip enabled, add a rule) and watch the
 // printed policy change within a second — no restart, and no app-wide
 // property re-bind.
@@ -65,7 +65,7 @@ func (p *printer) Run(ctx context.Context) error {
 			}
 			fmt.Println()
 			if i == 3 {
-				fmt.Println(">>> edit conf/govern.yaml now: policy AND fault toggle live (e.g. set client.fault.enabled=true)")
+				fmt.Println(">>> edit conf/governance.yaml now: policy AND fault toggle live (e.g. set client.fault.enabled=true)")
 			}
 			select {
 			case <-ctx.Done():

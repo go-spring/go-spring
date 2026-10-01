@@ -20,8 +20,10 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -38,32 +40,41 @@ const meterName = "go-spring.org/starter-http-server"
 // uses an underscore because a tag is a syntax marker, not a path.
 var accessTag = log.RegisterAppTag("http_server", "access")
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// semconv recommended set, the same one the other HTTP servers use.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
-// instruments holds this middleware's instruments. They are built once, when
-// the middleware is constructed, so nothing is allocated per request.
-type instruments struct {
+// instrumentSet holds this starter's instruments. It is built once per process
+// (see instruments), so nothing is allocated per request.
+type instrumentSet struct {
 	duration metric.Float64Histogram
 	active   metric.Int64UpDownCounter
 }
 
-func newInstruments() *instruments {
-	m := otel.GetMeterProvider().Meter(meterName)
+// instruments is the one instrument set this starter uses for the whole
+// process. Resolution is deferred to the first use, not run at package init, so
+// the instruments bind to whichever providers are current then - starter-otel
+// installs them before any handler is served, but a test may replace them later
+// and a value resolved at init would keep pointing at the old SDK.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	m := otel.Meter(meterName)
 	duration, _ := m.Float64Histogram(
 		"http.server.request.duration",
 		metric.WithDescription("Duration of inbound HTTP requests"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
 	)
 	active, _ := m.Int64UpDownCounter(
 		"http.server.active_requests",
 		metric.WithDescription("Inbound HTTP requests currently being served"),
 		metric.WithUnit("{request}"),
 	)
-	return &instruments{duration: duration, active: active}
+	return &instrumentSet{duration: duration, active: active}
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // Observe returns the server-side observability middleware: one span per
 // request, the request duration histogram and in-flight gauge, and one
@@ -82,11 +93,10 @@ func newInstruments() *instruments {
 // same dashboards. The span rides the OTel globals starter-otel installs;
 // without it they are no-ops and only the access log is emitted.
 func Observe() Middleware {
-	ins := newInstruments()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			ins.active.Add(ctx, 1, metric.WithAttributes(
+			instruments().active.Add(ctx, 1, metric.WithAttributes(
 				attribute.String("http.request.method", r.Method),
 			))
 			start := time.Now()
@@ -103,10 +113,10 @@ func Observe() Middleware {
 			next.ServeHTTP(sw, r.WithContext(ctx))
 
 			dur := time.Since(start)
-			ins.active.Add(ctx, -1, metric.WithAttributes(
+			instruments().active.Add(ctx, -1, metric.WithAttributes(
 				attribute.String("http.request.method", r.Method),
 			))
-			ins.duration.Record(ctx, dur.Seconds(), metric.WithAttributes(
+			instruments().duration.Record(ctx, dur.Seconds(), metric.WithAttributes(
 				attribute.String("http.request.method", r.Method),
 				attribute.String("http.response.status_code", strconv.Itoa(sw.status)),
 			))

@@ -26,7 +26,7 @@ demo/
 ├── health.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod** (the deps that matter):
@@ -163,16 +163,17 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics served by actuator only
 ```
 
-**conf/govern.yaml** (not actuator-specific, just part of the full picture):
+**conf/governance.yaml** (not actuator-specific, just part of the full picture):
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    fault:
-      enabled: false
-      rate: 0.2
-      error: timeout
+spring:
+  governance:
+    enabled: true
+    client:
+      fault:
+        enabled: false
+        rate: 0.2
+        error: timeout
 ```
 
 **Verify**:

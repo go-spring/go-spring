@@ -19,6 +19,7 @@ package StarterRegistryEtcd
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/discovery"
 	"sync"
 	"time"
 
@@ -127,11 +128,22 @@ func (f *fakeKV) KeepAlive(ctx context.Context, id clientv3.LeaseID) (<-chan *cl
 
 // newTestRegistrar wires a registrar over client with test-sized backoff. Tests
 // build through here rather than through a struct literal so the construction
+// newTestObserver builds the observation layer a test's backend block would own.
+// The identity is fixed (center "test"): what these tests exercise is the
+// reporting, not the labelling.
+func newTestObserver() *discovery.Observer {
+	o, err := discovery.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
+}
+
 // defaults live in one place: a literal skips newEtcdRegistrar entirely, which
 // is how the live weight test ended up with a zero backoff — a retry loop that
 // spins hot instead of pacing.
 func newTestRegistrar(client registrarKV, keyPrefix string) *etcdRegistrar {
-	r, err := newEtcdRegistrar(EtcdConfig{KeyPrefix: keyPrefix}, client)
+	r, err := newEtcdRegistrar(EtcdConfig{KeyPrefix: keyPrefix}, client, newTestObserver())
 	if err != nil {
 		panic(err)
 	}

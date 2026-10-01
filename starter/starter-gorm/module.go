@@ -116,17 +116,12 @@ func Module[C any](d Dialect[C]) {
 				// never-existing bean name, so an unset key yields the optional
 				// nil).
 				gs.IndexArg(1, gs.TagArg("${"+d.Prefix+".instances."+name+".discovery:=${"+d.Prefix+".default.discovery:=none}}?")),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container (the normal
-				// case) and are absent from a container without it. Without the
-				// "?" gs would treat an absent bean as a wiring error and the app
-				// would not boot, turning "governance is off" into "governance
-				// must be imported" — which is not the contract: (*DB).Init and
-				// the dialect Build treat a nil bean as an unarmed authority, a
-				// transparent pass-through.
-				gs.IndexArg(2, gs.TagArg("?")),
-				gs.IndexArg(3, gs.TagArg("?")),
-				gs.IndexArg(4, gs.TagArg("?")),
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(2, gs.TagArg("")),
+				gs.IndexArg(3, gs.TagArg("")),
+				gs.IndexArg(4, gs.TagArg("")),
 			).Name(beanName).Init((*DB).Init).Destroy((*DB).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the

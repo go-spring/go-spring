@@ -165,6 +165,34 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
   `cloud/resilience`'s built-in strategies, and the starter archetypes all
   consume their own registries/interfaces. If a built-in can't be expressed
   through the public seam, the seam is wrong, not the built-in.
+- **An extension is a layer, not a table entry.** Prefer the onion: wrap the
+  thing you extend (`WrapClientExecutor(inner, ...)`, `Observe(inner Driver, ...)`,
+  a middleware chain) instead of registering a name in a global map, and instead
+  of every call site writing into one package-level state object. Layers compose
+  by nesting — retry → circuit breaker → bulkhead → observe — each knowing only
+  the interface it wraps, and each owning the state it accumulates: that state's
+  lifetime is the wrapped object's lifetime, so there is nothing global to reset
+  and no way for two instances in one process to contaminate each other. A
+  registry keeps its place as the *selection* mechanism (a config value picks an
+  implementation), but what it hands back has to be a layer carrying the behavior
+  and the state, not a global that the behavior writes into.
+- **A layer owns its state; it may still read through a shared instrument set.**
+  The rule above is about the state a layer accumulates — that state's lifetime is
+  the wrapped object's. Its *instruments* are a different thing: the OTel SDK
+  already keys an instrument by name/description/unit/kind process-wide, so a
+  per-instance copy is invisible at best and, for an observable gauge, actively
+  wrong. A layer therefore resolves one shared, immutable instrument set — once
+  per process — while still owning every piece of state it accumulates. The rules
+  that go with it (how a gauge is registered, who unregisters it) are in
+  [starter/DESIGN.md §3](starter/DESIGN.md).
+- **A layer only sees what crosses the seam it wraps, so wrap the lowest thing
+  every path crosses.** If a path bypasses the interface — a library's internal
+  retry, a self-healing re-registration that never re-enters `Register` — a layer
+  around that interface silently misses it, and silent missing coverage is worse
+  than having no layer at all. Wrap the primitive both paths funnel through, or
+  read the bypass as evidence that the seam sits in the wrong place — the same
+  verdict as "if a built-in can't be expressed through the public seam, the seam
+  is wrong, not the built-in".
 - **This is a framework-layer duty, not a universal one.** Downstream business
   code (apps stamped from `layout/`, and `examples/` / `contrib/`) follows YAGNI
   instead: leave a seam only when a real second case crosses the line (see the

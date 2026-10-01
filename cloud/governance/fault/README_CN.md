@@ -11,13 +11,13 @@
 - 配置集中、可热刷新。fault 随 resilience 共用同一个 `governance.Config`(也就是同一份
   source 文档,见 [README 设计说明 §8](../README.md));starter-governance 持有唯一的
   `*Injector`(以 bean 形式导出),通过 `SetConfig` 原地热更——运行时切换放火,无需重启。
-- **一个方向一份配置**,一侧的火碰不到另一侧:`govern.client.fault.*` 烧出站调用,
-  `govern.server.fault.*` 烧入站请求,两侧各算自己的 MaxDuration/MaxAffected 护栏——
+- **一个方向一份配置**,一侧的火碰不到另一侧:`spring.governance.client.fault.*` 烧出站调用,
+  `spring.governance.server.fault.*` 烧入站请求,两侧各算自己的 MaxDuration/MaxAffected 护栏——
   出站烧到自愈不会顺手关掉入站那场演练。
 - 三种注入类型:`generic`(可重试的注入错误)、`timeout`(`context.DeadlineExceeded`)、
   `reset`(`syscall.ECONNRESET`);另有纯延迟模式。per-service 定向走 `Config.Rules`。
 - 注入错误实现 `resilience.Retryable`,无论宿主的谓词如何,都稳定触发重试。
-- 仅依赖 stdlib + resilience —— 无第三方依赖,不依赖 gs/spring。gs 接线在 starter-govern,不在此包。
+- 仅依赖 stdlib + resilience —— 无第三方依赖,不依赖 gs/spring。gs 接线在 starter-governance,不在此包。
 
 ## 安装
 
@@ -59,16 +59,16 @@ err := fault.ApplyServer(ctx, inj, "gin", func() error { return next(ctx) })
 
 ```properties
 # 出站:WrapExecutor 的 per-attempt 闸门(mgr.ClientExecutorFor → fault.WrapClientExecutor)
-govern.client.fault.enabled=true
-govern.client.fault.rate=0.5
-govern.client.fault.error=generic        # "" | "generic" | "timeout" | "reset" | "refused"
-govern.client.fault.latency=50ms         # 可选,对每次调用生效
-govern.client.fault.latency-jitter=20ms   # 可选,每次睡眠 latency ± U[0,20ms]
+spring.governance.client.fault.enabled=true
+spring.governance.client.fault.rate=0.5
+spring.governance.client.fault.error=generic        # "" | "generic" | "timeout" | "reset" | "refused"
+spring.governance.client.fault.latency=50ms         # 可选,对每次调用生效
+spring.governance.client.fault.latency-jitter=20ms   # 可选,每次睡眠 latency ± U[0,20ms]
 
 # 入站:Apply 的入站 handler 闸门(gin / echo / grpc / hertz / trpc / dubbo)
-govern.server.fault.enabled=true
-govern.server.fault.rate=0.2
-govern.server.fault.error=timeout
+spring.governance.server.fault.enabled=true
+spring.governance.server.fault.rate=0.2
+spring.governance.server.fault.error=timeout
 ```
 
 读当前生效值用 `Injector.ClientConfig()` / `Injector.ServerConfig()`。
@@ -136,7 +136,7 @@ outcome 映射)会把这次调用标记得和真实超时/复位一致。
 **两个方向,一个 Injector。** [Injector] 内部每个方向持有一个 `side`(配置 + 护栏计数),
 所以出站的火与入站的火互不可见、互不触发:[WrapClientExecutor] 的 per-attempt 闸门读出站侧,
 [ApplyServer] 读入站侧。这也解释了为什么两份配置必须拆成两组 key
-(`govern.client.fault.*` / `govern.server.fault.*`),而不是一个块加一个 per-rule 方向标记——
+(`spring.governance.client.fault.*` / `spring.governance.server.fault.*`),而不是一个块加一个 per-rule 方向标记——
 最需要方向的恰恰是 `rate`/`latency`/`error`/`scope`/护栏这些**全局**旋钮,它们没有 service
 label 可供标记挂靠。
 

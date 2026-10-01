@@ -27,7 +27,7 @@ import (
 // Authenticate returns the bearer-authentication middleware: it reads the
 // Authorization header, verifies the token with v, and on success attaches the
 // resulting Authentication to the request context so handlers and the Authorize
-// middleware (or the method-level security.Require decorator) can read it via
+// middleware (or the method-level security.Require check) can read it via
 // security.FromContext(c.Request().Context()).
 //
 // When the request carries no token: required=true rejects with 401;
@@ -40,14 +40,14 @@ func Authenticate(v security.TokenValidator, required bool) echo.MiddlewareFunc 
 			token := security.ParseBearerToken(c.Request().Header.Get("Authorization"))
 			if token == "" {
 				if required {
-					c.Response().Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+					c.Response().Header().Set("WWW-Authenticate", security.BearerChallenge(""))
 					return echo.NewHTTPError(http.StatusUnauthorized, "missing bearer token")
 				}
 				return next(c)
 			}
 			auth, err := v.Validate(c.Request().Context(), token)
-			if err != nil {
-				c.Response().Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+			if err != nil || auth == nil || !auth.Authenticated {
+				c.Response().Header().Set("WWW-Authenticate", security.BearerChallenge(security.BearerErrorInvalidToken))
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 			}
 			c.SetRequest(c.Request().WithContext(security.WithAuthentication(c.Request().Context(), auth)))
@@ -60,8 +60,8 @@ func Authenticate(v security.TokenValidator, required bool) echo.MiddlewareFunc 
 // already carries a verified Authentication (see Authenticate) holding at least
 // one of authorities. With no authorities it degrades to "authenticated caller
 // required". It is the route-level counterpart of the method-level
-// security.Require decorator: use this to gate a route, Require to gate a
-// service method.
+// security.Require check: use this to gate a route, Require to gate the
+// top of a service method.
 //
 // A missing/anonymous identity yields 401; an authenticated caller lacking the
 // authority yields 403.
@@ -70,10 +70,11 @@ func Authorize(authorities ...string) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			auth, _ := security.FromContext(c.Request().Context())
 			if !auth.HasAnyAuthority() {
-				c.Response().Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+				c.Response().Header().Set("WWW-Authenticate", security.BearerChallenge(""))
 				return echo.NewHTTPError(http.StatusUnauthorized, "unauthenticated")
 			}
 			if !auth.HasAnyAuthority(authorities...) {
+				c.Response().Header().Set("WWW-Authenticate", security.BearerChallenge(security.BearerErrorInsufficientScope))
 				return echo.NewHTTPError(http.StatusForbidden, "forbidden")
 			}
 			return next(c)
@@ -124,7 +125,7 @@ func CSRF(cfg CSRFConfig) echo.MiddlewareFunc {
 	}
 	safe := cfg.SafeMethods
 	if len(safe) == 0 {
-		safe = []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace}
+		safe = security.DefaultSafeMethods()
 	}
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {

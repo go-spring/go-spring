@@ -115,10 +115,10 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance (rate limit on the sync produce path) -----------------------
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=8
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=8
 ```
 
 **Verify** (broker startup mirrors [example/docker-compose.yml](example/docker-compose.yml) —
@@ -209,7 +209,7 @@ starter's lifecycle concerns [driver.go:62-66 comment].
    marker into a record header (a no-op outside load-test traffic), so the consumer
    recognises synthetic load.
 4. `GuardedProduceSync(ctx, p.cl, rec).FirstErr()` — synchronous produce routed through the
-   same resilience executor the raw client API uses (a no-op pass-through when no govern rule
+   same resilience executor the raw client API uses (a no-op pass-through when no governance rule
    matches this client's service label) [client.go:93-99], broker ack / rejection surfaced to
    the caller.
 5. Inside the client the hooks fire: kotel produce span + metric; observeHook
@@ -254,7 +254,7 @@ franz-go's async `Produce` returns immediately, so only the synchronous path can
 - What is **not** guarded: raw `ProduceSync`/`Produce` called directly on the client bean and
   the entire consume/poll path (passive). The driver's publish **is** guarded (§2.3 step 4).
   To make a client effectively ungoverned, give its service label (`kafka:<brokers>`) a
-  govern rule with every knob at zero — a Rule replaces the default wholesale, so an all-zero
+  governance rule with every knob at zero — a Rule replaces the default wholesale, so an all-zero
   rule is a pass-through.
 
 ---
@@ -275,7 +275,7 @@ per-instance prefix binding). `value:` tags reconciled against source: 20 keys t
 The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
 optional Driver bean injected by type (see §2.1) or the bundled `DefaultDriver`; set → that
 bean by name, and naming a missing bean fails startup. (`driver` in a conf below refers to the
-governance-resilience `govern.driver` selecting a rule source, not this starter.)
+governance-resilience `spring.governance.driver` selecting a rule source, not this starter.)
 
 ### 3.2 SASL
 
@@ -339,12 +339,12 @@ W3C trace keys or the load-test header is overwritten by the inject step [client
 ### 4.3 Guarded vs unguarded produce
 
 ```bash
-# example-cloudnative with govern.client.default.rate-limit=8:
+# example-cloudnative with spring.governance.client.default.rate-limit=8:
 go run .    # prints "resilience: N produce admitted, M rejected with ErrRateLimited"
 ```
 
 The same burst via the **driver** publisher is limited identically — it rides the same executor
-(§2.3 step 4); only a direct raw `ProduceSync` on the client bean bypasses it. Flip `govern.*` in the watched source to change policy without
+(§2.3 step 4); only a direct raw `ProduceSync` on the client bean bypasses it. Flip `spring.governance.*` in the watched source to change policy without
 restart (governance center hot-reload).
 
 ### 4.4 Governance label check
@@ -385,7 +385,7 @@ franz-go reconnects automatically (its own semantics).
 | Boot fails "unsupported kafka sasl mechanism / required-acks / compression" | Typo in an enum key | Exact-match enums (case-insensitive); correct the value. |
 | Driver consumer never receives | `NewSubscriber` source ≠ configured `topic`, or `topic` empty | Source must equal the client's `topic`; silent filter otherwise. |
 | Driver consumer group "ignored" | `NewSubscriber` group arg is dead | Set `spring.kafka.instances.<name>.group` (fixed at construction). |
-| No rate limit despite govern.* on | Calling raw `ProduceSync` on the client bean | Only `GuardedProduceSync` and the driver publisher are guarded. |
+| No rate limit despite spring.governance.* on | Calling raw `ProduceSync` on the client bean | Only `GuardedProduceSync` and the driver publisher are guarded. |
 | No traces/metrics | starter-otel not imported | kotel rides the OTel globals; import starter-otel. |
 | No access log lines | log tag filtered | Check the `messaging.access` tag filter. |
 | Handler errors vanish after a log line | By design: no nack/redelivery in this driver | Build retry/redelivery in the handler or use retry.go from messaging. |

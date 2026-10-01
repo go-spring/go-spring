@@ -23,7 +23,7 @@ import (
 // Config binds the fault-injection knobs from go-spring ${...} value tags. The
 // SAME type serves both traffic directions: [Injector] holds one per direction
 // ([Configs]), fed from governance.Config's two direction blocks — the client
-// side from govern.client.fault.*, the server side from govern.server.fault.*.
+// side from spring.governance.client.fault.*, the server side from spring.governance.server.fault.*.
 // There is no per-starter fault key.
 //
 // One type for both is deliberate: the model is direction-symmetric (a fraction
@@ -106,9 +106,9 @@ type Config struct {
 	// single-rule behavior. Bind via indexed properties — the same shape on
 	// either side, under that side's block, e.g.:
 	//
-	//	govern.client.fault.rules[0].service=redis:cache
-	//	govern.client.fault.rules[0].rate=0.5
-	//	govern.server.fault.rules[0].rate=1   # empty service => catch-all inbound
+	//	spring.governance.client.fault.rules[0].service=redis:cache
+	//	spring.governance.client.fault.rules[0].rate=0.5
+	//	spring.governance.server.fault.rules[0].rate=1   # empty service => catch-all inbound
 	Rules []Rule `value:"${rules:=}"`
 }
 

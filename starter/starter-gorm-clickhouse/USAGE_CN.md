@@ -219,7 +219,7 @@ native 驱动的 `ch.Options.DialContext` 是两参 `func(ctx, addr string)` —
 
 `db.WithContext(ctx).Raw("SELECT version()").Scan(&v)`：
 
-1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `govern.*` 的
+1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `spring.governance.*` 的
    timeout/retry/breaker，放火时含 fault 注入器；`gorm.ErrRecordNotFound` 视为成功）。
 2. observe 插件 span（db.system=clickhouse）+ in-flight 指标。
 3. 原 processor：池取连接 → native DialContext（discovery 重新选点）→ native 协议
@@ -305,7 +305,7 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 cd example-load && docker compose up -d
 go run . -duration=10s                        # SELECT 1 基线
 # 放火（starter-governance 热加载）：
-#   govern.client.fault.enabled=true  govern.client.fault.rate=0.5  govern.client.fault.error=generic
+#   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                        # 错误分布显示 ~50% 注入
 ```
 

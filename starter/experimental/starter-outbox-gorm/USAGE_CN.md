@@ -23,7 +23,7 @@ demo/
 ├── order.go
 └── conf/
     ├── app.properties
-    └── govern.yaml          # outbox 本身不需要；为对齐生态件展示
+    └── governance.yaml          # outbox 本身不需要；为对齐生态件展示
 ```
 
 **go.mod**（关键依赖）：

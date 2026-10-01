@@ -32,9 +32,9 @@ go get go-spring.org/cloud
 | `GS_NODE_NAME`             | `node.name`           | `spec.nodeName`             |
 | `GS_NODE_IP`               | `node.ip`             | `status.hostIP`             |
 | `GS_POD_SERVICE_ACCOUNT`   | `pod.service.account` | `spec.serviceAccountName`   |
-| `pod.labels.path`（配置）  | `pod.labels.path`     | labels 卷的挂载路径          |
+| *（仅配置，无环境变量）* | `spring.actuator.podinfo.labels-path` | labels 卷的挂载路径          |
 
-> 注意：`pod.labels.path` 在 `k8s` 配置 profile 里设置（不是环境变量），因为
+> 注意：`spring.actuator.podinfo.labels-path` 在 `k8s` 配置 profile 里设置（不是环境变量），因为
 > `GS_` env → 属性的映射无法产出连字符或任意路径。labels 以文件形式挂载
 > （如 `/etc/podinfo/labels`）。
 

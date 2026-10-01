@@ -40,7 +40,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -255,9 +255,6 @@ var clientGuards sync.Map // *amqp.Connection -> *clientGuard
 // Resolution is deferred to call time, so the order of this arming relative to
 // starter-governance's wiring is irrelevant.
 func applyResilience(conn *amqp.Connection, service string, mgr *resilience.Manager, inj *fault.Injector) error {
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
 	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("rabbitmq", service), service, inj)
 	clientGuards.Store(conn, &clientGuard{exec: exec, service: service})
 	return nil

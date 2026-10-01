@@ -116,7 +116,7 @@ spring.batch-repository.instances.main.key-prefix=demo:batch:
 spring.batch-repository.instances.main.ttl=24h
 
 # --- batch runner（starter-batch 命名空间）——按名引用 repository --------------
-spring.batch.repository=main
+spring.batch.repository=redis.main
 spring.batch.drain-timeout=30s
 spring.batch.jobs.reconcile.run-on-startup=true
 spring.batch.jobs.reconcile.params.date=2026-08-28
@@ -221,8 +221,9 @@ gs.Run()
 
 ⚠ 命名空间拆分是设计使然：repository 绑定在 `spring.batch-repository.instances.<name>` 下，因为
 runner 拥有 `spring.batch.*` 用于 job/step/chunk 配置（`config.go:27-31`）。
-`spring.batch.repository`（单数，runner 侧）引用 `spring.batch-repository.instances.<name>`（复数，
-本 starter）。
+`spring.batch.repository`（单数，runner 侧）引用的是一个 **bean 名**，不是配置条目：bean 名为
+`redis.<name>`——本 starter 的后端限定词加上配置实例名——因为 `batch.JobRepository` 是可替换接缝，
+第二个后端也能提供同名实例（见 starter/DESIGN.md §2.2）。
 
 ---
 

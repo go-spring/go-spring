@@ -43,13 +43,14 @@ import (
 
 // newConsulDiscovery builds a Discovery backed by a Consul client. tag is the
 // service tag narrowing every query (empty spans all tags).
-func newConsulDiscovery(client *api.Client, tag string) *consulDiscovery {
+func newConsulDiscovery(client *api.Client, tag string, obs *discovery.Observer) *consulDiscovery {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	return &consulDiscovery{
 		client:   client,
 		tag:      tag,
 		bgCtx:    bgCtx,
 		bgCancel: bgCancel,
+		obs:      obs,
 		entries:  map[string]*serviceEntry{},
 	}
 }
@@ -66,6 +67,10 @@ type consulDiscovery struct {
 	// lifetime; bgCancel ends them on Close.
 	bgCtx    context.Context
 	bgCancel context.CancelFunc
+
+	// obs is the block's observability layer; it carries the identity (system,
+	// center) every reported sync and log line is labelled with.
+	obs *discovery.Observer
 
 	mu      sync.Mutex // guards entries
 	entries map[string]*serviceEntry
@@ -134,13 +139,13 @@ func (d *consulDiscovery) Resolve(ctx context.Context, name string, opts ...disc
 	if !e.seeded {
 		eps, err := d.fetch(ctx, name, d.tag)
 		if err != nil {
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			return nil, errutil.Explain(err, "registry-consul: query %q failed", name)
 		}
 		e.eps, e.seeded = eps, true
 		// The seed is this service's first confirmed snapshot; reporting it
 		// starts the freshness clock before any watch event arrives.
-		discovery.Synced(obsSystem, name, nil)
+		d.obs.Synced(name, nil)
 		go d.watchLoop(name, e)
 	}
 	return discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), q.Scheme), nil
@@ -161,9 +166,16 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 			if d.bgCtx.Err() != nil {
 				return
 			}
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			log.Warn(context.Background(), starterTag, append(
-				discovery.SyncFailedFields(obsSystem, name, err),
+				[]log.Field{
+					log.String("system", d.obs.System()),
+					log.String("center", d.obs.Center()),
+					log.String("service", name),
+					log.String("operation", "sync"),
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+				},
 				log.Msg("registry-consul: watch failed (keeping stale snapshot)"),
 			)...)
 			select {
@@ -180,7 +192,12 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 			// the next query answer immediately instead of blocking. Worth a line:
 			// the snapshot about to be served is only as fresh as the restart.
 			log.Info(context.Background(), starterTag, append(
-				discovery.SyncFields(obsSystem, name),
+				[]log.Field{
+					log.String("system", d.obs.System()),
+					log.String("center", d.obs.Center()),
+					log.String("service", name),
+					log.String("operation", "sync"),
+				},
 				log.Msgf("registry-consul: watch saw the index go backwards (%d -> %d); treating it as an agent restart", idx, meta.LastIndex),
 			)...)
 			idx = 0
@@ -191,7 +208,7 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 		e.mu.Lock()
 		e.eps = eps
 		e.mu.Unlock()
-		discovery.Synced(obsSystem, name, nil)
+		d.obs.Synced(name, nil)
 	}
 }
 

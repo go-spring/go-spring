@@ -10,7 +10,7 @@ group、namespace、`ListenConfig`）见 [Nacos 文档](https://nacos.io/docs/la
 
 **本 starter 是什么**：治理规则源家族的 Nacos 适配器，是一个 `governance.Source` 实现；
 治理中心本身的呈现是 [starter-governance](../starter-governance) 的职责。存在
-`govern.source.nacos.*` 配置项之前，空导入本包是惰性的。
+`spring.governance.source.nacos.*` 配置项之前，空导入本包是惰性的。
 
 ---
 
@@ -84,23 +84,24 @@ func main() { gs.Run() }
 
 ```properties
 # 治理规则放在它自己的 dataId 里，由 starter-governance-nacos 监听——
-# app.properties 里不含任何 govern.* 键。下面这段就是全部接线：它武装条件模块，
+# app.properties 里不含任何 spring.governance.* 键。下面这段就是全部接线：它武装条件模块，
 # 其 Source Bean 被注入治理中心。
-govern.source.nacos.server=127.0.0.1:8848
-govern.source.nacos.data-id=gs-govern-demo.yaml
-govern.source.nacos.group=DEFAULT_GROUP
+spring.governance.source.nacos.server=127.0.0.1:8848
+spring.governance.source.nacos.data-id=gs-govern-demo.yaml
+spring.governance.source.nacos.group=DEFAULT_GROUP
 ```
 
 **规则文档**（发布到 dataId，不存于 `app.properties`）：
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
-      max-retries: 2
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
+        max-retries: 2
 ```
 
 **验证**（配合本地 Nacos，例如 [example/docker-compose.yml](example/docker-compose.yml)）：
@@ -148,9 +149,9 @@ type Source interface {
 
 ```
 空导入 starter-governance-nacos
-  └─ init() governance.go: gs.Module(gs.OnProperty("govern.source.nacos"), ...)
-         （OnProperty 是前缀匹配：任何 govern.source.nacos.* 键都会武装它）
-       ├─ conf.Bind(p, &c, "${govern.source.nacos:=}")   绑定并 expr 校验各 key
+  └─ init() governance.go: gs.Module(gs.OnProperty("spring.governance.source.nacos"), ...)
+         （OnProperty 是前缀匹配：任何 spring.governance.source.nacos.* 键都会武装它）
+       ├─ conf.Bind(p, &c, "${spring.governance.source.nacos:=}")   绑定并 expr 校验各 key
        └─ Provide newNacosSource:
             clients.NewConfigClient（namespace、5s 超时、鉴权、NotLoadCacheAtStart）
               → NewNacosSource: 初始 GetConfig + rules.Parse   ← 在此快速失败
@@ -185,18 +186,18 @@ gs.Run()
 ### 2.4 格式解析
 
 文档格式由 `sourceFormat` 解析（与 etcd 兄弟模块同款）：显式的 `format` 键优先，否则取 dataId 的
-点号后缀，否则 `properties`。dataId 带受支持后缀（`app-govern.yaml`、`app-govern.json`、
-`app-govern.toml`）时无需 `format` 键；无后缀或未知后缀的 dataId 默认为 `properties`。
+点号后缀，否则 `properties`。dataId 带受支持后缀（`app-governance.yaml`、`app-governance.json`、
+`app-governance.toml`）时无需 `format` 键；无后缀或未知后缀的 dataId 默认为 `properties`。
 
 `rules.Parse` 经相同的 `conf` value-tag 机制以前缀 `govern` 绑定，并拒绝「能解析但不含任何
-`govern.*` 键」的文档（被截断或清空的文档）——关闭治理的正确姿势是 `govern.enabled=false`，
+`spring.governance.*` 键」的文档（被截断或清空的文档）——关闭治理的正确姿势是 `spring.governance.enabled=false`，
 一个确实存在的键。
 
 ---
 
 ## 3. 逐 key 行为参考
 
-所有配置项挂在 `govern.source.nacos` 之下，经 `conf.Bind` 用显式前缀 `${govern.source.nacos:=}`
+所有配置项挂在 `spring.governance.source.nacos` 之下，经 `conf.Bind` 用显式前缀 `${spring.governance.source.nacos:=}`
 绑定（精确匹配，无归一化形态）。这是本 starter 唯一的对外接口面。
 
 | Key | 类型 | 默认值 | 必填 | 行为 / 交互 | 错配后果 |
@@ -211,13 +212,13 @@ gs.Run()
 ⚠ 没有 `timeout` 键：SDK 客户端超时固定为 5000 ms（`governance.go` 中的 `dialTimeoutMs`），
 这与 `starter-config-nacos` import 串的 `timeout-ms` 不同。
 
-⚠ `govern.source.*` 只是引导面。规则文档本身永不走 `app.properties`——它住在自己的 dataId 里，
-其键是 `govern.*` 词表，文档见 [starter-governance 的 USAGE](../starter-governance/USAGE.md)。
+⚠ `spring.governance.source.*` 只是引导面。规则文档本身永不走 `app.properties`——它住在自己的 dataId 里，
+其键是 `spring.governance.*` 词表，文档见 [starter-governance 的 USAGE](../starter-governance/USAGE.md)。
 
 ### 3.1 文档的逐字节可移植性
 
 文档由 `starter-governance` 的 file 源与 http 源共用的同一个 `rules.Parse` 解析：先扁平化，
-要求至少含一个 `govern.*` 键，再绑定进 `governance.Config`。因此一份能作为本地规则文件工作的文档，
+要求至少含一个 `spring.governance.*` 键，再绑定进 `governance.Config`。因此一份能作为本地规则文件工作的文档，
 作为 Nacos dataId（反之亦然，以及作为 etcd 值配合
 [starter-governance-etcd](../starter-governance-etcd)）也能原样工作。
 
@@ -273,9 +274,9 @@ docker 或 compose 命令不可用时，`check.sh` 优雅跳过。否则它拉�
 |------|----------|------|
 | 启动报错 `nacos server address must be host:port` | `server` 无 `:` 或 host/port 为空 | 使用 `host:port`，单服务端。 |
 | 启动报错 `governance nacos source: get <group>/<dataId> failed` | dataId 缺失、分组/命名空间错误、凭据错误、或服务端宕机 | 在正确的分组/命名空间下创建 dataId；检查鉴权。 |
-| 启动在 `rules.Parse` 内报错 | dataId 里的文档不可解析或不含 `govern.*` 键 | 先发布一份合法文档——播种按设计快速失败。 |
-| 配了治理，`PolicyFor` 却始终为零 | 文档里 `govern.enabled` 为 false（默认） | 设为 `govern.enabled=true`——它是总开关。 |
-| 一次发布没改变策略 | 日志出现 `published an invalid document (keeping last good config)` | 修正文档；「关闭」是 `govern.enabled=false`，不是空文档。 |
+| 启动在 `rules.Parse` 内报错 | dataId 里的文档不可解析或不含 `spring.governance.*` 键 | 先发布一份合法文档——播种按设计快速失败。 |
+| 配了治理，`PolicyFor` 却始终为零 | 文档里 `spring.governance.enabled` 为 false（默认） | 设为 `spring.governance.enabled=true`——它是总开关。 |
+| 一次发布没改变策略 | 日志出现 `published an invalid document (keeping last good config)` | 修正文档；「关闭」是 `spring.governance.enabled=false`，不是空文档。 |
 | 发布内容完全相同却毫无反应 | 设计如此——逐字节相同的重复投递与 DeepEqual 相等的文档都不推送 | 符合预期。 |
 | 自定义 Source Bean 被静默忽略 | 缺少 `Export(gs.As[governance.Source]())` | 补上 Export——否则该 Bean 对接口注入不可见。 |
 | 规则变更始终不到达 | Nacos 连通性，或推送目标不是被监听的 `(group, dataId)` | 确认发布落在配置的 group/dataId 上。 |

@@ -25,7 +25,7 @@ demo/
 ├── router.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod**（关键依赖）：
@@ -143,20 +143,21 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance（运行期故障注入）----------------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml**（§4.4 的故障演练用它）：
+**conf/governance.yaml**（§4.4 的故障演练用它）：
 
 ```yaml
-govern:
-  enabled: true
-  server:
-    fault:
-      enabled: false        # 改成 true 即"点火"，无需重启
-      rate: 0.2
-      error: timeout
-      scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
+spring:
+  governance:
+    enabled: true
+    server:
+      fault:
+        enabled: false        # 改成 true 即"点火"，无需重启
+        rate: 0.2
+        error: timeout
+        scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
 ```
 
 **验证**（与 `example/check.sh` 断言同构——X-App 头、X-Request-Id 头、JSON 体、

@@ -66,6 +66,10 @@ type zkRegistrar struct {
 	basePath string
 	acl      []zk.ACL
 
+	// obs is the block's observability layer; it carries the identity (system,
+	// center) every reported attempt and log line is labelled with.
+	obs *discovery.Observer
+
 	// backoffBase/backoffCap pace the re-register retry loop after a session
 	// recovery: 1s doubling up to 1min. Fields (not constants) so tests shrink
 	// them.
@@ -97,7 +101,7 @@ func (r *zkRegistrar) Close() {
 // newZookeeperRegistrar returns a registrar writing through conn (the shared
 // center connection; the ensemble was already probed when conn was built)
 // with c's base path. It does NOT close conn — the owner (zkCenter) does.
-func newZookeeperRegistrar(c ZookeeperConfig, conn *zk.Conn) (*zkRegistrar, error) {
+func newZookeeperRegistrar(c ZookeeperConfig, conn *zk.Conn, obs *discovery.Observer) (*zkRegistrar, error) {
 	if conn == nil {
 		return nil, errutil.Explain(nil, "registry-zookeeper: nil zookeeper connection")
 	}
@@ -107,6 +111,7 @@ func newZookeeperRegistrar(c ZookeeperConfig, conn *zk.Conn) (*zkRegistrar, erro
 		acl:         zk.WorldACL(zk.PermAll),
 		backoffBase: time.Second,
 		backoffCap:  time.Minute,
+		obs:         obs,
 		regs:        map[string]discovery.Instance{},
 		done:        make(chan struct{}),
 	}
@@ -151,7 +156,7 @@ func (r *zkRegistrar) Register(ctx context.Context, reg discovery.Instance) erro
 		return errutil.Explain(nil, "registry-zookeeper: addr is required")
 	}
 	reg.Weight = normalizeWeight(reg.Weight)
-	if err := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
+	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
 		return r.createNode(reg)
 	}); err != nil {
 		return err
@@ -224,7 +229,7 @@ func (r *zkRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instance, 
 	} else if stat == nil {
 		return errutil.Explain(nil, "registry-zookeeper: update weight for unregistered instance %q", path)
 	}
-	if err := discovery.WeightChange(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+	if err := r.obs.WeightChange(ctx, reg.ServiceName, func(context.Context) error {
 		_, err := r.conn.Set(path, val, -1)
 		return err
 	}); err != nil {
@@ -247,7 +252,7 @@ func (r *zkRegistrar) Deregister(ctx context.Context, reg discovery.Instance) er
 	r.mu.Lock()
 	delete(r.regs, path)
 	r.mu.Unlock()
-	return discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+	return r.obs.DeregisterAttempt(ctx, reg.ServiceName, func(context.Context) error {
 		err := r.conn.Delete(path, -1)
 		if errors.Is(err, zk.ErrNoNode) {
 			return nil // already gone: the desired end state holds, so this is a success
@@ -280,7 +285,8 @@ func (r *zkRegistrar) monitorSession() {
 			degraded, heal = reconcileSession(degraded, r.state())
 			if degraded && !wasDegraded {
 				log.Error(context.Background(), starterTag,
-					log.String("system", obsSystem),
+					log.String("system", r.obs.System()),
+					log.String("center", r.obs.Center()),
 					log.Msgf("zookeeper session lost (state=%s); registered nodes are gone or going, they will be re-created once the session is re-established", r.state()))
 			}
 			if heal {
@@ -314,12 +320,21 @@ func (r *zkRegistrar) healAll() {
 		}
 		if service, err := r.reRegisterAll(); err == nil {
 			log.Info(context.Background(), starterTag,
-				log.String("system", obsSystem),
+				log.String("system", r.obs.System()),
+				log.String("center", r.obs.Center()),
 				log.Msg("re-created registered zookeeper node(s) after session recovery"))
 			return
 		} else {
 			log.Error(context.Background(), starterTag, append(
-				discovery.RegisterFailedFields(obsSystem, service, discovery.ReasonSelfHeal, err),
+				[]log.Field{
+					log.String("system", r.obs.System()),
+					log.String("center", r.obs.Center()),
+					log.String("service", service),
+					log.String("operation", "register"),
+					log.String("reason", discovery.ReasonSelfHeal),
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+				},
 				log.Msgf("re-create zookeeper node(s) failed; retrying in %s", backoff),
 			)...)
 		}
@@ -352,7 +367,7 @@ func (r *zkRegistrar) reRegisterAll() (string, error) {
 		// Each re-creation is a registration attempt of its own: it reports as
 		// self_heal so a dashboard can tell "the ensemble lost my node" from the
 		// initial publish, and healAll retrying the whole pass reports again.
-		if err := discovery.RegisterAttempt(context.Background(), obsSystem, reg.ServiceName, discovery.ReasonSelfHeal, func(context.Context) error {
+		if err := r.obs.RegisterAttempt(context.Background(), reg.ServiceName, discovery.ReasonSelfHeal, func(context.Context) error {
 			return r.reRegister(reg)
 		}); err != nil {
 			return reg.ServiceName, err

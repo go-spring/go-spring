@@ -60,18 +60,23 @@ go-redis、redigo、memcached 支持逐条 ttl,非正数表示不过期。bigcac
 这个参数,用构造期设置的全局 `LifeWindow`。无法支持逐条 ttl 的后端忽略该参
 数,并在自己的文档里说明,不会 panic。
 
-## 指标
+## 可观测
 
 `New` 会给每个后端套上观测装饰器,所有操作(类型化或原样提升)都在
-`go-spring.org/cloud/cache` meter 下记录一个指标:
+`go-spring.org/cloud/cache` 的 meter/tracer 下记录同一套信号:
 
 - `cache.operation.total` —— 按 `operation` × 互斥 `status` 计数
   (`get`:`hit`/`miss`/`error`;`set`/`delete`:`ok`/`error`)。按 status 求和
   即执行的操作数;命中率 = `rate(get.hit) / rate(get.hit + get.miss)`。
+- `cache.operation.duration` —— 同一套 `operation` × `status` 维度上的直方图。
+  在这里记而不只靠后端客户端,是因为后者的 `db.client.operation.duration`
+  分不出命中与未命中,而这两种的时延分布本来就不同。
+- 每个操作一个 client span,名为 `get`/`set`/`delete`,带 `cache.operation`、
+  `cache.key`、`cache.status`。
 
-key 永不进指标。不记 duration——操作的时延就是后端客户端的时延,各后端
-已经以 `db.client.operation.duration` 上报;也不记日志:缓存调用太频繁,
-逐调用日志只是噪音,后端错误继续由各后端自己的插桩上报。
+观测单位是字节层:取到字节即为 hit,哪怕上层 codec 随后解码失败。key 永不进
+指标(基数无界),只进 span。不记日志:缓存调用太频繁,逐调用日志只是噪音,
+后端错误继续由各后端自己的插桩上报。
 
 ## 实现一个后端
 

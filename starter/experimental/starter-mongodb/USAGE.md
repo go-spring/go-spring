@@ -131,10 +131,10 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 
 # --- governance: policy for the dial seam (rate-limit makes the dial
 #     protection observable; breaker/retry/timeout also apply) ---------------
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=5
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=5
 
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
@@ -258,20 +258,20 @@ There are no observability keys — observation is unconditional (see §3.3).
 | `discovery` | string | — | Which registered discovery backend resolves service-name. Falls back to `${spring.mongodb.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 | `tls.*` | group | off | Shared `security` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:112-119]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
 
-### 3.2 Resilience / fault (govern.*, not under the instance prefix)
+### 3.2 Resilience / fault (spring.governance.*, not under the instance prefix)
 
-Policy keys live in the governance rules document under `govern.*` (starter-governance's governance center);
+Policy keys live in the governance rules document under `spring.governance.*` (starter-governance's governance center);
 this starter arms `fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
 in `Init` [client.go:110-115], where `mgr`/`inj` are the `*resilience.Manager` / `*fault.Injector`
 beans the container injects into `newClient`. Relevant keys (see starter-governance USAGE
-for the full set): `govern.enabled`, `govern.driver`, `govern.<driver>.rate-limit` /
-`error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `govern.client.fault.*`
+for the full set): `spring.governance.enabled`, `spring.governance.driver`, `spring.governance.<driver>.rate-limit` /
+`error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `spring.governance.client.fault.*`
 injection block (enable/rate/error). ⚠ Remember the seam is the **dial layer**: a breaker
 policy manifests as rejected *connections*; a fault injection fires per dial, not per command.
 
 **Endpoint selection is governed by the same rule, same label.** In discovery mode the pool is
 built with a suspension tracker and bound to `mongodb:<service-name|uri>` via
-`lbMgr.Bind(pool, label)` (the `*loadbalance.Manager` bean injected into `newClient`), so `govern.client.rules[N].balancer` (round_robin / least_conn /
+`lbMgr.Bind(pool, label)` (the `*loadbalance.Manager` bean injected into `newClient`), so `spring.governance.client.rules[N].balancer` (round_robin / least_conn /
 consistent_hash / weighted / zone_aware / random / p2c) and `outlier-threshold` /
 `outlier-suspend-for` apply **in place** — the next dial uses the new strategy, no restart and no
 re-dial of existing connections. Direct (URI-only) instances have no candidate set, so these keys
@@ -322,26 +322,26 @@ grep _app_mongodb_access app.log | tail -1
 ### 4.3 Dial-layer resilience drill (from example-cloudnative)
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=5
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=5
 spring.mongodb.instances.a.max-pool-size=100   # room for the burst to force fresh dials
 ```
 
 Fire 40 concurrent `InsertOne` on a cold pool: dials beyond the limit fail with
 `resilience.ErrRateLimited` surfaced as the operation's connection error; admitted ops succeed
 ([example-cloudnative/example.go:197-225]). Then note the flip side: once the pool is warm,
-the same burst sails through — protection is connection-level. Flip `govern.*` at runtime —
+the same burst sails through — protection is connection-level. Flip `spring.governance.*` at runtime —
 the executor hot-reloads without restart (governance center).
 
 ### 4.4 Fault injection + load drill (example-load)
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.client.fault.enabled=true
-govern.client.fault.rate=0.5
-govern.client.fault.error=generic    # or: timeout / reset
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.client.fault.enabled=true
+spring.governance.client.fault.rate=0.5
+spring.governance.client.fault.error=generic    # or: timeout / reset
 ```
 
 Run [example-load](example-load/): the upsert/FindOne closed loop prints throughput, latency
@@ -365,7 +365,7 @@ restart. Verify via `_app_mongodb_access` records or by stopping the old endpoin
 | Boot fails at binding on `uri` | `uri` empty — it is expr-validated non-empty | Set `spring.mongodb.instances.<name>.uri`. |
 | Boot fails "build TLS" / "build discovery resolver" | Partial `tls.*` config; `discovery` names nothing registered | Complete the security block; register the backend as a named discovery bean. |
 | Discovery client errors "no such host" / topology errors | `service-name` bypasses driver topology discovery | Add `directConnection=true` to the URI, or drop service-name for replica-set/mongos URIs. |
-| Ops fail with `ErrRateLimited` under burst | Governance rate-limit on the dial seam | Raise `govern.<driver>.rate-limit` or `max-pool-size`/`min-pool-size` (warm pool skips dials). |
+| Ops fail with `ErrRateLimited` under burst | Governance rate-limit on the dial seam | Raise `spring.governance.<driver>.rate-limit` or `max-pool-size`/`min-pool-size` (warm pool skips dials). |
 | Breaker never opens despite slow queries | By design — resilience is dial-layer only; slow-but-connected commands are invisible to it | Alert on `db.client.operation.duration` instead; see §2.2. |
 | No spans/metrics though commands work | starter-otel not imported — the monitor rides the OTel globals | `_ "go-spring.org/starter-otel"` + `spring.observability.*`. |
 | Injecting `*mongo.Client` fails | The bean is the wrapper `*StarterMongoDB.Client` | Autowire the wrapper type; driver methods promote unchanged. |

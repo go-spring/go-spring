@@ -26,19 +26,21 @@ import (
 	"go-spring.org/cloud/governance"
 )
 
-const govRulesV1 = `govern:
-  enabled: true
-  client:
-    default:
-      attempt-timeout: 100ms
+const govRulesV1 = `spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        attempt-timeout: 100ms
 `
 
-const govRulesV2 = `govern:
-  enabled: true
-  client:
-    default:
-      attempt-timeout: 300ms
-      max-retries: 1
+const govRulesV2 = `spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        attempt-timeout: 300ms
+        max-retries: 1
 `
 
 // fakeConfigClient stands in for a nacos server: it serves one document and
@@ -76,14 +78,14 @@ func (f *fakeConfigClient) publish(data string) {
 	cb := f.onChange
 	f.mu.Unlock()
 	if cb != nil {
-		cb("", "DEFAULT_GROUP", "govern.yaml", data)
+		cb("", "DEFAULT_GROUP", "governance.yaml", data)
 	}
 }
 
 func newGovTestSource(t *testing.T, data string) (*NacosSource, *fakeConfigClient) {
 	t.Helper()
 	fake := &fakeConfigClient{data: data}
-	src, err := NewNacosSource(fake, governSource{dataID: "govern.yaml", group: "DEFAULT_GROUP", format: "yaml"})
+	src, err := NewNacosSource(fake, governanceSource{dataID: "governance.yaml", group: "DEFAULT_GROUP", format: "yaml"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +144,7 @@ func TestNacosSource_PushChain(t *testing.T) {
 // initial document fails construction instead of arming a disabled center.
 func TestNacosSource_BadSeedFailsFast(t *testing.T) {
 	fake := &fakeConfigClient{data: "govern: {"}
-	if _, err := NewNacosSource(fake, governSource{dataID: "govern.yaml", format: "yaml"}); err == nil {
+	if _, err := NewNacosSource(fake, governanceSource{dataID: "governance.yaml", format: "yaml"}); err == nil {
 		t.Fatal("bad initial document should fail construction")
 	}
 }

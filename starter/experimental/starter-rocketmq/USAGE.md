@@ -136,7 +136,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance (rate limit / breaker for rocketmq:127.0.0.1:9876) ---------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
 **Start RocketMQ** (copy [example/docker-compose.yml](example/docker-compose.yml) +
@@ -321,7 +321,7 @@ reachability only — a valid TCP endpoint with wrong ACL still boots.
 ### 4.3 Guarded vs unguarded
 
 With a governance rate-limit policy on service `rocketmq:127.0.0.1:9876` (label = `rocketmq:` +
-comma-joined name-servers — check it matches your govern rules):
+comma-joined name-servers — check it matches your governance rules):
 
 - Hammer `GuardedSend` → rejections return `resilience.ErrRateLimited`, the send is never invoked,
   and `_app_rocketmq_resilience` records appear with `resilience.outcome=rate_limited`

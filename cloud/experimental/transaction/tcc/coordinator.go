@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync"
 	"time"
 
 	"go-spring.org/cloud/governance/resilience"
@@ -42,6 +43,35 @@ func WithStore(s Store) Option { return func(c *coordinator) { c.store = s } }
 // e.g. a starter that opens otel spans.
 func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
 
+// instrumentSet bundles the metrics a TCC transaction records: one per process,
+// resolved lazily on first use so the set binds to whichever OTel global
+// provider is current then, and immutable afterwards. It holds no per-transaction
+// state.
+type instrumentSet struct {
+	// outcomes counts TCC terminal states — the event counter of the metrics
+	// rules, named after the event itself. The transaction ID is unbounded
+	// cardinality and stays out of the attributes.
+	outcomes metric.Int64Counter
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	in := &instrumentSet{}
+	in.outcomes, _ = otel.Meter("go-spring.org/cloud/experimental/transaction/tcc").
+		Int64Counter("transaction.tcc.outcome.total",
+			metric.WithDescription("TCC terminal states, by status"),
+			metric.WithUnit("{transaction}"))
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
 // NewCoordinator returns the bundled in-process [Coordinator]: it tries every
 // participant in order and then confirms all (on success) or cancels the tried
 // ones in reverse (on any try failure). With no options it uses no store and no
@@ -51,22 +81,12 @@ func NewCoordinator(opts ...Option) Coordinator {
 	for _, opt := range opts {
 		opt(c)
 	}
-	c.outcomes, _ = otel.Meter("go-spring.org/cloud/experimental/transaction/tcc").
-		Int64Counter("transaction.tcc.outcome.total",
-			metric.WithDescription("TCC terminal states, by status"),
-			metric.WithUnit("{transaction}"))
 	return c
 }
 
 type coordinator struct {
 	store    Store
 	observer Observer
-
-	// outcomes counts TCC terminal states — the event counter of the metrics
-	// rules, named after the event itself. The transaction ID is unbounded
-	// cardinality and stays out of the attributes. Built at construction so an
-	// OTel SDK installed later still receives the records.
-	outcomes metric.Int64Counter
 }
 
 // triedParticipant records a participant whose Try ran, with the value it
@@ -258,7 +278,7 @@ func (c *coordinator) persist(ctx context.Context, t Transaction, status Status,
 // deleted (the work is done and needs no recovery); a cancelled or failed
 // transaction's log is kept so operators and recovery can inspect it.
 func (c *coordinator) finish(ctx context.Context, t Transaction, res *Result, tried []triedParticipant) {
-	c.outcomes.Add(ctx, 1, metric.WithAttributes(
+	instruments().outcomes.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("status", res.Status.String()),
 	))
 	if res.Status == StatusCommitted {

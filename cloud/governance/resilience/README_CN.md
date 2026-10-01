@@ -132,10 +132,10 @@ sentinel 驱动。
   它没有入站专有原语;sentinel 那类后端则各自映射到本土的 flow / circuit-breaker
   规则。adapter 只依赖 `ClientExecutor` / `ServerExecutor`。**接口之所以两个方法而不是
   一个**,是因为两个方向不共享模型,而**同一个对象同时实现两个方法**,所以
-  `govern.driver=sentinel` 仍然是一句话切全进程。
+  `spring.governance.driver=sentinel` 仍然是一句话切全进程。
 - **容器即驱动目录。** 本包不带任何注册表:后端以自身名字贡献为 bean、导出为
   `Driver`,governance 的 wiring bean 把所有这类 bean 收成按名字索引的 map。
-  `govern.driver` 在这个目录里解析出选中项 —— 与 `discovery`
+  `spring.governance.driver` 在这个目录里解析出选中项 —— 与 `discovery`
   和 client starter 的 `Driver` 同一形态。内置驱动无需 bean 即应答 `"default"`。
 - **中立拒绝错误**(`ErrRateLimited` / `ErrCircuitOpen` / `ErrBulkheadFull`)
   让 adapter 做协议特定映射(协议 starter 的 admission 中间件里 429 vs 503),

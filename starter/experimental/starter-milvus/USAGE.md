@@ -209,7 +209,7 @@ All keys live under `spring.milvus.instances.<name>.` — bound per-instance via
 
 No `driver` registry, no `mode` (one topology: standalone/cluster is server-side), no
 discovery, no otel keys — governance (resilience + fault) arrives via the shared
-`govern.*` rules consumed by the per-RPC guard, not a milvus-specific key.
+`spring.governance.*` rules consumed by the per-RPC guard, not a milvus-specific key.
 
 ---
 
@@ -240,7 +240,7 @@ curl -s :9370/metrics | grep -i milvus   # nothing from this starter with govern
 grep _app_ app.log | grep -i milvus      # no access-log tag exists with governance off
 ```
 
-With governance off (no starter-governance / no `govern.*` rules) expect empty output for
+With governance off (no starter-governance / no `spring.governance.*` rules) expect empty output for
 both: the guard executor is a no-op and the only signal this starter emits is the health
 component. Turn governance on and the `resilience.*` outcome metrics and guard access log
 appear. Milvus's own server metrics live on the server's `:9091` (exposed by the example

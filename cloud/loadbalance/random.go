@@ -22,13 +22,15 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-func init() {
-	Register(Random, func(cfg Config) (Balancer, error) {
-		if err := cfg.only(); err != nil {
-			return nil, err
-		}
-		return NewRandom(), nil
-	})
+// randomFactory is the [Factory] behind the [Random] name. The strategy has no
+// parameters: any key in the bag is rejected by [Params.Done].
+type randomFactory struct{}
+
+func (randomFactory) Build(_ Directory, p *Params) (Balancer, error) {
+	if err := p.Done(); err != nil {
+		return nil, err
+	}
+	return NewRandom(), nil
 }
 
 // randomBalancer is fully stateless: no cursor, no lock, no per-address map —

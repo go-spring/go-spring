@@ -17,7 +17,7 @@
 // Package StarterRegistryEtcd adapts etcd as a service registry. Each
 // ${spring.registry.etcd.<name>} block becomes ONE backend bean named
 // "etcd.<name>" serving both sides of the naming idiom: the write side (a
-// discovery.Registrar collected by the starter-registry core, which registers
+// discovery.Registry collected by the starter-registry core, which registers
 // this instance once the app is ready and deregisters it on shutdown) and the
 // read side (a discovery.Discovery consumers cite by the bean's name). Blank-
 // import the package and configure one block per etcd cluster:
@@ -75,7 +75,7 @@ const obsSystem = "etcd"
 // construction, closed by the bean destructor) and serves both halves of the
 // naming idiom through it:
 //
-//   - discovery.Registrar — the write side. The starter-registry core collects
+//   - discovery.Registry — the write side. The starter-registry core collects
 //     every backend's registrar (across all backends) and drives them through
 //     one publication lifecycle.
 //   - discovery.Discovery — the read side. Consumers cite this bean by its
@@ -86,6 +86,10 @@ const obsSystem = "etcd"
 type etcdBackend struct {
 	reg  *etcdRegistrar
 	disc *etcdDiscovery
+
+	// obs is this block's observability layer: one observer per configured
+	// block, closed by the bean destructor below.
+	obs *discovery.Observer
 
 	// bgCancel ends the discovery half's background watches. It is the signal
 	// that separates "the backend is closing" from "a watch failed": the watch
@@ -107,7 +111,7 @@ type etcdBackend struct {
 // newEtcdBackend builds the client and probes the cluster. The probe is the
 // fail-fast: a misconfigured or unreachable cluster fails startup here, once
 // per block.
-func newEtcdBackend(c EtcdConfig) (*etcdBackend, error) {
+func newEtcdBackend(c EtcdConfig, name string) (*etcdBackend, error) {
 	if len(c.Endpoints) == 0 {
 		return nil, errutil.Explain(nil, "registry-etcd: endpoints is required")
 	}
@@ -133,7 +137,12 @@ func newEtcdBackend(c EtcdConfig) (*etcdBackend, error) {
 		return nil, errutil.Explain(err, "registry-etcd: startup probe failed for %s", c.Endpoints[0])
 	}
 	kv := etcdClient{cli}
-	reg, err := newEtcdRegistrar(c, kv)
+	obs, err := discovery.NewObserver(obsSystem, name)
+	if err != nil {
+		_ = cli.Close()
+		return nil, err
+	}
+	reg, err := newEtcdRegistrar(c, kv, obs)
 	if err != nil {
 		_ = cli.Close()
 		return nil, err
@@ -141,7 +150,8 @@ func newEtcdBackend(c EtcdConfig) (*etcdBackend, error) {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	return &etcdBackend{
 		reg:       reg,
-		disc:      &etcdDiscovery{client: kv, keyPrefix: c.KeyPrefix, bgCtx: bgCtx, entries: map[string]*serviceEntry{}},
+		disc:      &etcdDiscovery{client: kv, keyPrefix: c.KeyPrefix, bgCtx: bgCtx, entries: map[string]*serviceEntry{}, obs: obs},
+		obs:       obs,
 		bgCancel:  bgCancel,
 		cli:       cli,
 		endpoints: c.Endpoints,
@@ -166,6 +176,9 @@ func (b *etcdBackend) Close() error {
 	// Retire the watch loops before the client they read through goes away, so
 	// they exit on their lifetime signal rather than reading a closed client.
 	b.bgCancel()
+	// Drop this block's gauge callbacks with it: the block is the unit that owns
+	// them, so nothing of it may keep reporting after it is gone.
+	_ = b.obs.Close()
 	// Explain(nil, ...) BUILDS an error rather than passing one through, so it
 	// must only be reached with a real cause: wrapping unconditionally here
 	// reported a failure on every clean shutdown.
@@ -201,7 +214,7 @@ func init() {
 	// One NAMED bean per block under ${spring.registry.etcd.<name>}: the bean
 	// name "etcd.<name>" is the label a client starter cites to pick this
 	// backend for discovery, and the starter-registry core collects the same
-	// bean (as a discovery.Registrar) into the single publication lifecycle.
+	// bean (as a discovery.Registry) into the single publication lifecycle.
 	// Blocks across backends never collide (the name carries the backend
 	// type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -210,7 +223,7 @@ func init() {
 			r.Provide(newEtcdBackend,
 				gs.IndexArg(0, gs.ValueArg(c)),
 			).Name("etcd."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registrar]()).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
 				Destroy((*etcdBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this cluster unless the user

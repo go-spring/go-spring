@@ -114,7 +114,7 @@ spring.s3.instances.b.secret-access-key=minioadmin
 spring.actuator.addr=:9370
 
 # --- governance（可选：s3:<endpoint> 服务下的 retry/limiter/breaker/fault）----
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
 本地依赖：`cd example && docker compose up -d`（MinIO :9000/:9001，另有 `initbucket`

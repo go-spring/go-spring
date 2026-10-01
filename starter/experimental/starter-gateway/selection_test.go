@@ -70,9 +70,10 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	}
 	assert.Number(t, len(seen)).Equal(2)
 
-	// A governed strategy change — the same in-place sink the route's
-	// governance subscription calls — makes the hint authoritative.
-	pool.ApplySelection(loadbalance.Selection{Balancer: loadbalance.ConsistentHash})
+	// A governed strategy change — the same in-place sink the route's governance
+	// subscription drives through the manager — makes the hint authoritative.
+	sel := loadbalance.Selection{Balancer: loadbalance.ConsistentHash}
+	pool.ApplyBalancer(loadbalance.NewConsistentHash(0), sel)
 	assert.That(t, pool.Selection().Balancer).Equal(loadbalance.ConsistentHash)
 
 	first := pickFor("203.0.113.7")
@@ -97,8 +98,7 @@ func gatewayPool(t *testing.T, addrs ...string) *loadbalance.Pool {
 	for _, a := range addrs {
 		eps = append(eps, discovery.Endpoint{Addr: a, Healthy: true, Weight: 1})
 	}
-	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
-	assert.That(t, err).Nil()
+	bal := loadbalance.NewRoundRobin()
 	return loadbalance.NewPool(func() ([]discovery.Endpoint, error) {
 		return eps, nil
 	}, bal)

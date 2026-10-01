@@ -17,20 +17,35 @@
 package StarterSecurityJWT
 
 import (
+	"go-spring.org/cloud/security"
+	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
-	// Register multiple JWT authenticators as a group, one per entry under
-	// "${spring.security.jwt}". Each bean is named after its config sub-key
-	// (e.g. spring.security.jwt.instances.api -> bean "api"), so an application selects an
-	// authenticator with gs.TagArg("api") when wiring its *gs.HttpServeMux via
-	// Wrap, or injects it as a security.TokenValidator for non-HTTP transports.
+	// One Authenticator bean per entry under "${spring.security.jwt.instances}",
+	// named after its config sub-key (e.g. ...instances.api -> bean "api"). Each
+	// is also exported as security.TokenValidator, so an application injects the
+	// seam — and composes it with a server family's Authenticate middleware — by
+	// name, without depending on this package's concrete types, exactly as the
+	// sibling validators (oauth2-resource-server, luohua) do. Injecting
+	// *Authenticator directly still works when Wrap is needed.
 	//
-	// An empty "${spring.security.jwt}" map registers nothing, so importing the
-	// starter without configuration is inert — configuration is the enable switch.
+	// An empty map registers nothing, so importing the starter without
+	// configuration is inert — configuration is the enable switch.
 	//
 	// An authenticator holds no closable resource (the JWKS cache refreshes
-	// on-demand with no background goroutine), so the destroy hook is nil.
-	gs.Group("${spring.security.jwt.instances}", newAuthenticator, nil)
+	// on-demand with no background goroutine), so there is no destroy hook.
+	gs.Module(gs.OnProperty("spring.security.jwt.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.security.jwt.instances}", func(name string, c Config) error {
+			r.Provide(newAuthenticator,
+				gs.IndexArg(1, gs.ValueArg(name)),
+				gs.IndexArg(2, gs.ValueArg(c))).
+				Name(name).
+				Export(gs.As[security.TokenValidator]()).
+				Caller(1)
+			return nil
+		})
+	})
 }

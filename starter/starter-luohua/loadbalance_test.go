@@ -24,16 +24,41 @@ import (
 )
 
 // TestLoadBalanceCompanyRegisteredAndZoneAffine locks the luohua loadbalance
-// capability: importing luohua registers a "luohua" Balancer (the go-spring
-// loadbalance seam) with a real, observable company policy — it pins traffic to
-// the fleet's cn-luohua zone. A company owns its routing/affinity decision here.
+// capability: the company contributes a "luohua" Factory (the go-spring
+// loadbalance extension point) with a real, observable company policy — it pins
+// traffic to the configured zone, defaulting to the fleet's cn-luohua. A
+// company owns its routing/affinity decision here, and a deployment can retune
+// the zone through the strategy's own parameter.
 func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
-	b, err := loadbalance.New("luohua", loadbalance.Config{})
+	dir, err := loadbalance.NewDirectory(map[string]loadbalance.Factory{luohuaStrategy: luohuaFactory{}})
 	if err != nil {
-		t.Fatalf("luohua balancer not registered: %v", err)
+		t.Fatalf("luohua factory not accepted: %v", err)
+	}
+	b, err := dir.Build(luohuaStrategy, loadbalance.NewParams(nil))
+	if err != nil {
+		t.Fatalf("luohua balancer not built: %v", err)
 	}
 	if _, ok := b.(luohuaBalancer); !ok {
 		t.Fatalf("balancer is %T, want luohuaBalancer", b)
+	}
+
+	// The zone parameter overrides the default, so one strategy pins traffic to
+	// whichever zone a rule names.
+	other, err := dir.Build(luohuaStrategy, loadbalance.NewParams(map[string]string{"zone": "cn-other-2"}))
+	if err != nil {
+		t.Fatalf("luohua balancer with a zone parameter: %v", err)
+	}
+	zoned := []discovery.Endpoint{
+		{Addr: "10.0.0.1:8080", Weight: 100, Metadata: map[string]string{"zone": "cn-other"}},
+		{Addr: "10.0.0.2:8080", Weight: 100, Metadata: map[string]string{"zone": "cn-other-2"}},
+	}
+	if got, err := other.Pick(zoned, loadbalance.PickInfo{}); err != nil || got.Addr != "10.0.0.2:8080" {
+		t.Fatalf("Pick with zone=cn-other-2: got %s err=%v, want 10.0.0.2", got.Addr, err)
+	}
+
+	// An unknown parameter is rejected at construction, not silently dropped.
+	if _, err := dir.Build(luohuaStrategy, loadbalance.NewParams(map[string]string{"zoen": "typo"})); err == nil {
+		t.Fatal("a misspelled parameter must fail construction")
 	}
 
 	eps := []discovery.Endpoint{

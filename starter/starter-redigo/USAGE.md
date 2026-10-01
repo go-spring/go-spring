@@ -304,7 +304,7 @@ endpoint within 30s — no restart, no client rebuild.
 The pool's strategy is governed, not hardcoded: it is built with a suspension tracker and bound
 to `redigo:<service-name|addr>` via `loadbalance.Manager.Bind(pool, label)` on the injected
 `*loadbalance.Manager` bean, so
-`govern.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
+`spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
 **in place** — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*; per-command
 failures belong to the resilience executor. Direct (`addr`-only) pools have no candidate set, so

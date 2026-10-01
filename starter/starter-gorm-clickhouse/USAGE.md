@@ -308,7 +308,7 @@ pool connections land on it (per-dial `Pick()`).
 cd example-load && docker compose up -d
 go run . -duration=10s                        # baseline SELECT 1
 # set fire (hot-reload via starter-governance):
-#   govern.client.fault.enabled=true  govern.client.fault.rate=0.5  govern.client.fault.error=generic
+#   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                        # ~50% injected in the breakdown
 ```
 

@@ -36,7 +36,7 @@
 //
 // The `gs k8s` scaffolding generates a Deployment that wires the matching
 // Downward API environment variables and the labels volume, plus a k8s config
-// profile that sets pod.labels.path.
+// profile that sets spring.actuator.podinfo.labels-path.
 package podinfo
 
 import (
@@ -80,7 +80,7 @@ type PodInfo struct {
 
 	// LabelsPath is the mount path of the Downward API labels file (e.g.
 	// /etc/podinfo/labels). Empty when no labels volume is mounted.
-	LabelsPath string `value:"${pod.labels.path:=}"`
+	LabelsPath string `value:"${spring.actuator.podinfo.labels-path:=}"`
 }
 
 // Metadata returns the non-empty scalar fields as a map, suitable as a source of

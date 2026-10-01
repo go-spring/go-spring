@@ -25,7 +25,7 @@ scope (see [starter/DESIGN §3](../DESIGN.md)).
 Configuration is **named blocks**: each
 `spring.registry.consul.<name>.*` block describes ONE Consul agent/cluster and
 becomes ONE backend bean named `consul.<name>` that implements BOTH the write
-side (`discovery.Registrar`) and the read side (`discovery.Discovery`), sharing
+side (`discovery.Registry`) and the read side (`discovery.Discovery`), sharing
 the block's client. There is no default/unnamed block.
 
 Registration itself is owned by the [starter-registry](../starter-registry)

@@ -68,7 +68,7 @@ type Message struct {
 type Mailer struct {
 	client *mail.Client
 	from   string
-	obs    *observer
+	obs    *instrumentSet
 }
 
 func init() {
@@ -145,7 +145,7 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config) (*Mailer, error) 
 	}
 
 	log.Infof(pctx, log.TagAppDef, "mailer created host=%s port=%d", c.Host, c.Port)
-	return &Mailer{client: client, from: c.From, obs: newObserver()}, nil
+	return &Mailer{client: client, from: c.From, obs: instruments()}, nil
 }
 
 // parseAuthType maps the config string onto a go-mail SMTP auth mechanism.

@@ -22,13 +22,15 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-func init() {
-	Register(LeastConn, func(cfg Config) (Balancer, error) {
-		if err := cfg.only(); err != nil {
-			return nil, err
-		}
-		return NewLeastConn(), nil
-	})
+// leastConnFactory is the [Factory] behind the [LeastConn] name. The strategy
+// has no parameters: any key in the bag is rejected by [Params.Done].
+type leastConnFactory struct{}
+
+func (leastConnFactory) Build(_ Directory, p *Params) (Balancer, error) {
+	if err := p.Done(); err != nil {
+		return nil, err
+	}
+	return NewLeastConn(), nil
 }
 
 // leastConn tracks in-flight request counts per endpoint address. Counts persist

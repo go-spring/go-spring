@@ -24,7 +24,7 @@ demo/
 ├── health.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod**（关键依赖）：
@@ -159,16 +159,17 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 只由 actuator 提供
 ```
 
-**conf/govern.yaml**（非 actuator 专属，展示全貌用）：
+**conf/governance.yaml**（非 actuator 专属，展示全貌用）：
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    fault:
-      enabled: false
-      rate: 0.2
-      error: timeout
+spring:
+  governance:
+    enabled: true
+    client:
+      fault:
+        enabled: false
+        rate: 0.2
+        error: timeout
 ```
 
 **验证**：

@@ -56,17 +56,12 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.mongodb.instances."+name+".discovery:=${spring.mongodb.default.discovery:=none}}?")),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container (the normal
-				// case) and are absent from a container without it. Without the
-				// "?" gs would treat an absent bean as a wiring error and the app
-				// would not boot, turning "governance is off" into "governance
-				// must be imported" — which is not the contract: (*Client).Init and the pool bind
-				// treats a nil bean as an unarmed authority, a transparent
-				// pass-through.
-				gs.IndexArg(3, gs.TagArg("?")),
-				gs.IndexArg(4, gs.TagArg("?")),
-				gs.IndexArg(5, gs.TagArg("?")),
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(3, gs.TagArg("")),
+				gs.IndexArg(4, gs.TagArg("")),
+				gs.IndexArg(5, gs.TagArg("")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the
@@ -153,14 +148,11 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery,
 	}
 	if pool != nil {
 		nd := &net.Dialer{Timeout: c.ConnectTimeout}
-		// Bind the pool to the service's governance label so one govern.client.rules[N]
+		// Bind the pool to the service's governance label so one spring.governance.client.rules[N]
 		// rule drives both its balancing strategy and its protection executor. A
 		// nil manager is the standalone case (no container); an unarmed one is
 		// exactly "governance off", where Bind is a no-op — so normalizing here
 		// keeps the binding free of a nil branch.
-		if lbMgr == nil {
-			lbMgr = loadbalance.NewManager()
-		}
 		w.stop = lbMgr.Bind(pool, serviceLabel(c))
 		// The discovery dialer ignores the URI address and picks a live
 		// endpoint from the loader-backed pool on each new connection.

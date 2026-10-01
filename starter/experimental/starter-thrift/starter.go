@@ -33,13 +33,10 @@ func init() {
 	gs.Provide(
 		NewSimpleThriftServer,
 		gs.IndexArg(0, gs.TagArg("${spring.thrift.server}")),
-		// The governance manager is a NULLABLE injection: it exists whenever
-		// starter-governance is in the container (the normal case) and is absent
-		// from a container without it. Without the "?" gs would treat an absent
-		// bean as a wiring error and the app would not boot — turning "governance
-		// is off" into "governance must be imported". Admit treats a nil manager
-		// as an unarmed authority, i.e. a transparent pass-through.
-		gs.IndexArg(2, gs.TagArg("?")), // mgr *resilience.Manager
+		// The governance beans are REQUIRED: this starter blank-imports
+		// starter-governance, so "governance off" is spring.governance.enabled=false,
+		// never an absent bean.
+		gs.IndexArg(2, gs.TagArg("")), // *resilience.Manager
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.thrift.server.addr"))
 }

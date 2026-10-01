@@ -25,10 +25,21 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
+)
+
+// Direct (non-gs) construction must now supply the governance authorities: they
+// are REQUIRED because the starter blank-imports starter-governance, so the
+// container always provides them. A test that calls the constructor directly
+// passes the same unarmed ones the container would.
+var (
+	testMgr   = resilience.NewManager()
+	testInj   = fault.NewInjector(fault.Configs{}, nil)
+	testLbMgr = loadbalance.NewManager()
 )
 
 // stubDiscovery serves a fixed endpoint set.
@@ -58,7 +69,7 @@ func (r *recordRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestNewTransport_DirectMode(t *testing.T) {
 	rec := &recordRT{}
-	rt, closeFn, err := NewTransport(Config{Base: rec}, nil, nil, nil, nil)
+	rt, closeFn, err := NewTransport(Config{Base: rec}, testMgr, testInj, testLbMgr, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -71,7 +82,7 @@ func TestNewTransport_DirectMode(t *testing.T) {
 
 func TestNewTransport_AddrPinsHost(t *testing.T) {
 	rec := &recordRT{}
-	rt, closeFn, err := NewTransport(Config{Addr: "10.9.8.7:80", Base: rec}, nil, nil, nil, nil)
+	rt, closeFn, err := NewTransport(Config{Addr: "10.9.8.7:80", Base: rec}, testMgr, testInj, testLbMgr, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -94,7 +105,7 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 		ServiceName: "user-svc",
 		Discovery:   backend,
 		Base:        rec,
-	}, nil, nil, nil, nil)
+	}, testMgr, testInj, testLbMgr, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -111,7 +122,7 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 
 func TestNewTransport_FailFast(t *testing.T) {
 	// A discovery backend whose seed Resolve fails -> fail fast.
-	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: errorDiscovery{}}, nil, nil, nil, nil)
+	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: errorDiscovery{}}, testMgr, testInj, testLbMgr, nil)
 	assert.Error(t, err).Matches("resolve")
 }
 
@@ -154,8 +165,7 @@ func TestGovernSelection_BindsThroughManager(t *testing.T) {
 // tracker httpx attaches at construction.
 func newTestPool(t *testing.T, addrs ...string) *loadbalance.Pool {
 	t.Helper()
-	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
-	assert.That(t, err == nil).True()
+	bal := loadbalance.NewRoundRobin()
 	eps := make([]discovery.Endpoint, 0, len(addrs))
 	for _, a := range addrs {
 		eps = append(eps, discovery.Endpoint{Addr: a, Healthy: true})
@@ -179,7 +189,7 @@ func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {
 		ResilienceDriver: resilience.NewDefaultDriver(nil),
 		ResiliencePolicy: resilience.ClientPolicy{ErrorThreshold: 2},
 		Base:             rec,
-	}, nil, nil, nil, nil)
+	}, testMgr, testInj, testLbMgr, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -214,7 +224,7 @@ func TestNewTransport_InjectsLoadTestMarker(t *testing.T) {
 	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	assert.Error(t, err).Nil()
 	rec := &headerRT{headerKey: "X-LoadTest"}
-	rt, closeFn, err := NewTransport(Config{Base: rec}, nil, nil, nil, nil)
+	rt, closeFn, err := NewTransport(Config{Base: rec}, testMgr, testInj, testLbMgr, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -252,7 +262,7 @@ func TestNewTransport_WrapTransportIsOutermost(t *testing.T) {
 				return inner.RoundTrip(req)
 			})
 		},
-	}, nil, nil, nil, nil)
+	}, testMgr, testInj, testLbMgr, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -281,7 +291,7 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 			called = true
 			return e
 		},
-	}, nil, nil, nil, nil)
+	}, testMgr, testInj, testLbMgr, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -299,7 +309,7 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
 	mgr := resilience.NewManager()
 	rec := &recordRT{status: http.StatusInternalServerError}
-	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, mgr, nil, nil, nil)
+	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, mgr, testInj, testLbMgr, nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 

@@ -68,11 +68,11 @@ spring.http-client.instances.direct.addr=127.0.0.1:9471
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
-# 韧性与端点选择不在这里配置:策略写在治理规则文档的 govern.* 下(starter-governance;
-# conf/govern.properties,由 govern.source.file.path 指向)。连续 2 次失败熔断:
-#   govern.enabled=true
-#   govern.client.default.error-threshold=2
-#   govern.client.default.open-duration=30s
+# 韧性与端点选择不在这里配置:策略写在治理规则文档的 spring.governance.* 下(starter-governance;
+# conf/governance.properties,由 spring.governance.source.file.path 指向)。连续 2 次失败熔断:
+#   spring.governance.enabled=true
+#   spring.governance.client.default.error-threshold=2
+#   spring.governance.client.default.open-duration=30s
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
 ```
 
@@ -111,7 +111,7 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 
 韧性、故障注入与端点选择在这里**没有配置 key**:它们是按服务的策略,写在治理规则文档里(见
 starter-governance)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
-`http:<addr>`。单次请求超时来自 `govern.client.default.attempt-timeout`;负载均衡策略与端点剔除来自
+`http:<addr>`。单次请求超时来自 `spring.governance.client.default.attempt-timeout`;负载均衡策略与端点剔除来自
 命中该标签的规则上的 `balancer` / `outlier-threshold` / `outlier-suspend-for`。
 
 本 starter 在装配期即快速失败:`addr` 与 `service-name` 至少设置其一;仅按

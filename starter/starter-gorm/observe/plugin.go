@@ -28,9 +28,11 @@ package gormobservability
 
 import (
 	"context"
-	"go-spring.org/stdlib/strutil"
 	"sync"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -47,29 +49,44 @@ import (
 // forwarding once the global provider is set, unset and set again.
 const tracerName = "go-spring.org/starter-gorm/observe"
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
 var (
 	// accessTag is the static log tag for the gorm access log; the engine is a
 	// log field, not part of the tag.
 	accessTag = log.RegisterAppTag("gorm", "access")
 )
 
-// newInstruments builds the db.* instruments from whatever meter provider is
-// current — created per plugin, not at package init, so an SDK installed later
-// than this package's init still receives the records.
-func newInstruments() (metric.Float64Histogram, metric.Int64UpDownCounter) {
+// instrumentSet is this package's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever meter provider is current then,
+// and immutable afterwards. It holds no per-plugin state — the db.system /
+// db.operation / status labels travel with each record, not here.
+type instrumentSet struct {
+	duration metric.Float64Histogram
+	active   metric.Int64UpDownCounter
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+// buildInstruments builds the db.* instruments from whatever meter provider is
+// current — resolved on first use, not at package init, so an SDK installed
+// later than this package's init still receives the records.
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/starter-gorm/observe")
 	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of gorm client operations"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
 	active, _ := m.Int64UpDownCounter("db.client.active_requests",
 		metric.WithDescription("Number of in-flight gorm client operations"),
 		metric.WithUnit("{request}"))
-	return duration, active
+	return &instrumentSet{duration: duration, active: active}
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // inflightOf names the in-flight gauge's dimensions. The +1 in the Before
 // callback and the -1 in After must carry identical attributes or the gauge
@@ -97,17 +114,14 @@ var gormSpans sync.Map // *gorm.DB -> *opSpan
 // callbacks (row processing, transaction bookkeeping) are not observable as
 // operations here, so no op-skip list is needed.
 type observePlugin struct {
-	system   string
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
+	system string
 }
 
 // NewPlugin builds a gorm.Plugin that emits trace span + duration metric +
 // access log for every operation under the given db.system label (e.g. "mysql",
 // "postgresql", "clickhouse", "microsoft.sql_server").
 func NewPlugin(system string) gorm.Plugin {
-	duration, active := newInstruments()
-	return &observePlugin{system: system, duration: duration, active: active}
+	return &observePlugin{system: system}
 }
 
 func (p *observePlugin) Name() string { return "go-spring:observe" }
@@ -185,7 +199,7 @@ type opSpan struct {
 
 // start opens the operation's client span.
 func (p *observePlugin) start(ctx context.Context, op string) *opSpan {
-	p.active.Add(ctx, 1, inflightOf(p.system, op))
+	instruments().active.Add(ctx, 1, inflightOf(p.system, op))
 	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
@@ -216,12 +230,12 @@ func (s *opSpan) End(err error) {
 	if err != nil {
 		status = "error"
 	}
-	p.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
+	instruments().duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
 		attribute.String("db.system", p.system),
 		attribute.String("db.operation", s.op),
 		attribute.String("status", status),
 	))
-	p.active.Add(s.ctx, -1, inflightOf(p.system, s.op))
+	instruments().active.Add(s.ctx, -1, inflightOf(p.system, s.op))
 	if err != nil {
 		s.span.SetStatus(codes.Error, err.Error())
 		s.span.RecordError(err)

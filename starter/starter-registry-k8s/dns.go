@@ -53,6 +53,11 @@ type dnsDiscovery struct {
 	cfg Config
 	res dnsResolver
 
+	// obs is the block's observability layer; it carries the identity (system,
+	// center) every reported sync and log line is labelled with, and its gauge
+	// callbacks are released by Close.
+	obs *discovery.Observer
+
 	mu      sync.Mutex // guards entries
 	entries map[string]*dnsEntry
 }
@@ -67,11 +72,11 @@ type dnsEntry struct {
 
 // newDNSDiscovery builds a DNS-mode backend. A nil res selects
 // net.DefaultResolver; tests pass a fake.
-func newDNSDiscovery(cfg Config, res dnsResolver) *dnsDiscovery {
+func newDNSDiscovery(cfg Config, res dnsResolver, obs *discovery.Observer) *dnsDiscovery {
 	if res == nil {
 		res = net.DefaultResolver
 	}
-	return &dnsDiscovery{cfg: cfg, res: res, entries: map[string]*dnsEntry{}}
+	return &dnsDiscovery{cfg: cfg, res: res, obs: obs, entries: map[string]*dnsEntry{}}
 }
 
 // fqdn builds the cluster-internal FQDN for a Service name:
@@ -111,7 +116,7 @@ func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discove
 			// Both outcomes are reported: only a success advances the freshness
 			// clock, so a lookup that has stopped working shows up as a climbing
 			// cache age rather than a healthy-looking stale snapshot.
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			if e.eps == nil {
 				return nil, err
 			}
@@ -120,12 +125,19 @@ func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discove
 			// Logged against the caller's ctx — a cancelled ctx still carries the
 			// trace identity, so this line stays joinable to the request.
 			log.Warn(ctx, starterTag, append(
-				discovery.SyncFailedFields(obsSystem, name, err),
+				[]log.Field{
+					log.String("system", d.obs.System()),
+					log.String("center", d.obs.Center()),
+					log.String("service", name),
+					log.String("operation", "sync"),
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+				},
 				log.Msg("registry-k8s: dns refresh failed; serving the stale snapshot"),
 			)...)
 		} else {
 			e.eps, e.fetchedAt = eps, time.Now()
-			discovery.Synced(obsSystem, name, nil)
+			d.obs.Synced(name, nil)
 		}
 	}
 	return discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme), nil
@@ -194,3 +206,8 @@ func addrKey(eps []discovery.Endpoint) string {
 	sort.Strings(addrs)
 	return strings.Join(addrs, ",")
 }
+
+// Close releases this backend's observability layer. The DNS mode holds no
+// watchers, but it registered gauge callbacks like every other backend, and the
+// bean destructor releases them through this.
+func (d *dnsDiscovery) Close() error { return d.obs.Close() }

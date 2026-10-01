@@ -135,7 +135,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance（rocketmq:127.0.0.1:9876 的限流/熔断）---------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
 **启动 RocketMQ**（复制 [example/docker-compose.yml](example/docker-compose.yml) 与
@@ -313,7 +313,7 @@ TCP 可达但 ACL 错误照样能启动。
 ### 4.3 guarded 与 unguarded 对比
 
 对服务 `rocketmq:127.0.0.1:9876` 配 governance 限流策略（标签 = `rocketmq:` + 逗号拼接的
-name-servers——须与 govern 规则一致）：
+name-servers——须与 governance 规则一致）：
 
 - 压 `GuardedSend` → 拒绝返回 `resilience.ErrRateLimited`，发送未被调用，出现
   `resilience.outcome=rate_limited` 的 `_app_rocketmq_resilience` 记录

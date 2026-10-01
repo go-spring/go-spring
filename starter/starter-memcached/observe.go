@@ -22,8 +22,11 @@ package StarterMemcached
 
 import (
 	"context"
-	"go-spring.org/stdlib/strutil"
+	"sync"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -39,10 +42,6 @@ import (
 // forwarding once the global provider is set, unset and set again.
 const tracerName = "go-spring.org/starter-memcached"
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 // memcachedSystem is the value the family's db.system label carries for this
 // backend — the family's shared vocabulary, not a per-file choice.
 const memcachedSystem = "memcached"
@@ -52,29 +51,51 @@ var (
 	accessTag = log.RegisterAppTag("memcached", "access")
 )
 
-// newObserver builds the OTel instruments from whatever meter provider is
-// current — created per observer (client construction), not at package init,
-// so an SDK installed later still receives the records.
-func newObserver() *observer {
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever meter provider is current then,
+// and immutable afterwards. It holds no per-client state — the db.system /
+// db.operation / status labels travel with each record, not here.
+type instrumentSet struct {
+	duration metric.Float64Histogram
+	active   metric.Int64UpDownCounter
+}
+
+// instruments is the one instrument set this starter uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+// buildInstruments builds the OTel instruments from whatever meter provider is
+// current — resolved on first use, not at package init, so an SDK installed
+// later than this package's init still receives the records.
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/starter-memcached")
 	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of memcached client operations"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
 	active, _ := m.Int64UpDownCounter("db.client.active_requests",
 		metric.WithDescription("Number of in-flight memcached client operations"),
 		metric.WithUnit("{request}"))
-	return &observer{system: memcachedSystem, duration: duration, active: active}
+	return &instrumentSet{duration: duration, active: active}
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // observer emits the span/metric/access-log triple for one client instance.
 // When starter-otel is not imported the global OTel providers are no-ops, so
 // span+metric add negligible overhead; the access log always emits through the
-// project log package.
+// project log package. Its records go through the process-wide instrument set
+// (see [instruments]); only the db.system label is per client.
 type observer struct {
-	system   string
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
+	system string
+}
+
+// newObserver builds the observer for one client.
+func newObserver() *observer {
+	return &observer{system: memcachedSystem}
 }
 
 // Start bumps the in-flight gauge, opens the operation's client span and
@@ -84,7 +105,7 @@ func (o *observer) Start(ctx context.Context, op, arg string) obsSpan {
 		attribute.String("db.system", o.system),
 		attribute.String("db.operation", op),
 	)
-	o.active.Add(ctx, 1, inflight)
+	instruments().active.Add(ctx, 1, inflight)
 	ctx, sp := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
@@ -115,12 +136,12 @@ func (s obsSpan) End(err error) {
 
 	status := statusOf(err)
 	dur := float64(time.Since(s.start).Nanoseconds()) / 1e6
-	s.o.duration.Record(s.ctx, time.Since(s.start).Seconds(), metric.WithAttributes(
+	instruments().duration.Record(s.ctx, time.Since(s.start).Seconds(), metric.WithAttributes(
 		attribute.String("db.system", s.o.system),
 		attribute.String("db.operation", s.op),
 		attribute.String("status", status),
 	))
-	s.o.active.Add(s.ctx, -1, s.inflight)
+	instruments().active.Add(s.ctx, -1, s.inflight)
 
 	// Log keys are the metric labels' names, so a dashboard selecting failed
 	// operations lands on the lines that explain them.

@@ -199,7 +199,7 @@ bean 不存在则启动失败）。
 
 ```
 SendMessage / SendMessages
-  → fault.WrapClientExecutor（govern.client.fault 启用时注入故障）
+  → fault.WrapClientExecutor（spring.governance.client.fault 启用时注入故障）
     → resilience executor 包装（span + outcome 计数 + duration + 访问日志）
       → resilience executor（breaker / rate limit / retry，策略来自治理中心）
         → 内层 p.SendMessage（真实 sarama）

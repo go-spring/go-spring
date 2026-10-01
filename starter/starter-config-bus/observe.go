@@ -18,8 +18,10 @@ package StarterConfigBus
 
 import (
 	"context"
+	"sync"
 	"time"
 
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -70,33 +72,43 @@ const (
 	outcomePublishError = "error"
 )
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set, shared with the other domain packages.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
-// instruments bundles the metrics the bus records. They are built at wiring time
-// (see Init), not at package init, so an SDK installed later than this package's
-// init still receives the records.
-type instruments struct {
+// instrumentSet bundles the metrics the bus records. It is one per process,
+// resolved lazily on first use so it binds to whichever providers are current
+// then.
+type instrumentSet struct {
 	events     metric.Int64Counter
 	refreshDur metric.Float64Histogram
 	publishes  metric.Int64Counter
 }
 
-func newInstruments() instruments {
+// instruments is the one instrument set this starter uses for the whole
+// process. Resolution is deferred to the first use, not run at package init, so
+// the instruments bind to whichever providers are current then - starter-otel
+// installs them before any bean is built, but a test may replace them later and
+// a value resolved at init would keep pointing at the old SDK.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
 	m := otel.Meter(instrumentationName)
-	events, _ := m.Int64Counter("config.bus.events",
+	in := &instrumentSet{}
+	in.events, _ = m.Int64Counter("config.bus.events",
 		metric.WithDescription("Configuration refresh broadcasts received, by outcome"),
 		metric.WithUnit("{event}"))
-	refreshDur, _ := m.Float64Histogram("config.bus.refresh.duration",
+	in.refreshDur, _ = m.Float64Histogram("config.bus.refresh.duration",
 		metric.WithDescription("Duration of the property refresh triggered by a broadcast"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	publishes, _ := m.Int64Counter("config.bus.publishes",
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	in.publishes, _ = m.Int64Counter("config.bus.publishes",
 		metric.WithDescription("Configuration refresh broadcasts published, by outcome"),
 		metric.WithUnit("{event}"))
-	return instruments{events: events, refreshDur: refreshDur, publishes: publishes}
+	return in
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // record is the single sink for one received event: it counts the outcome,
 // records the refresh duration when a refresh was actually attempted, and emits
@@ -113,21 +125,21 @@ func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent,
 		attribute.String("status", outcome),
 		attribute.String("prefix", ev.Prefix),
 	)
-	b.ins.events.Add(ctx, 1, attrs)
+	instruments().events.Add(ctx, 1, attrs)
 
 	// The log line carries the same outcome the counter just counted, under the
 	// same key, so the two can never be read as disagreeing — and a dashboard
 	// selecting config.bus.events{outcome=...} lands on the line explaining it.
 	switch outcome {
 	case outcomeRefreshed:
-		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
+		instruments().refreshDur.Record(ctx, dur.Seconds(), attrs)
 		log.Info(ctx, starterTag, append(eventFields(outcome),
 			log.String("prefix", ev.Prefix),
 			log.String("origin", ev.Origin),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 			log.Msg("config bus: refreshed properties on event"))...)
 	case outcomeRefreshError:
-		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
+		instruments().refreshDur.Record(ctx, dur.Seconds(), attrs)
 		log.Error(ctx, starterTag, append(eventFields(outcome),
 			log.String("prefix", ev.Prefix),
 			log.Err(err),
@@ -158,7 +170,7 @@ func eventFields(outcome string) []log.Field {
 // recordPublish is the sending-direction sibling of record: one outcome per
 // broadcast, driving the counter and a log line at the same level.
 func (b *ConfigBus) recordPublish(ctx context.Context, outcome string, dur time.Duration, err error) {
-	b.ins.publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", outcome)))
+	instruments().publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", outcome)))
 	if err != nil {
 		log.Error(ctx, starterTag, append(eventFields(outcome),
 			log.String("subject", b.Config.Subject),

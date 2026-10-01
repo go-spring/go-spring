@@ -220,7 +220,7 @@ rejected at startup: those topologies discover their own nodes [starter.go:170-1
 **The pool's strategy is governed, not hardcoded.** It is built with a suspension tracker, returned by the Driver, and bound to
 `redis:<service-name|master-name|addr>` by the Client via `lbMgr.Bind(pool, label)` — the
 binding lives outside the Driver so a company Driver never has to know about governance, so
-`govern.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
+`spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
 in place — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*. Sentinel and
 cluster clients self-discover and have no pool, so these keys do not reach them. See

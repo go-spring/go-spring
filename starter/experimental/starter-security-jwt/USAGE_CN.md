@@ -183,7 +183,8 @@ curl -i :9370/healthz                                # actuator liveness
 
 ```
 import starter-security-jwt
-  └─ gs.Group("${spring.security.jwt}", newAuthenticator, nil)      [starter.go:35]
+  └─ gs.Module(OnProperty("spring.security.jwt.instances"))        [starter.go:41]
+       → per sub-key: Provide(newAuthenticator).Name(name).Export(As[security.TokenValidator])
 gs.Run()
   ├─ 绑定：每个子 key -> Config（value tag）
   ├─ newAuthenticator（jwt.go:57-103），按 source —— 全部 fail fast：
@@ -202,10 +203,11 @@ gs.Run()
 
 ### 2.2 一次请求的逐层走读 —— 带 bearer token 的 `GET /me`
 
-1. **Wrap**（jwt.go:182-200）：`bearerToken(r)` 抽取
-   `Authorization: Bearer <token>`（前缀大小写不敏感，jwt.go:204-211）。
+1. **Wrap**（jwt.go:182-200）：`security.ParseBearerToken(r.Header.Get("Authorization"))`
+   经共享 helper 抽取 `Authorization: Bearer <token>`。
 2. 无 token：`Required`（默认 true）→ 401 `missing bearer token`，响应头
-   `WWW-Authenticate: Bearer error="invalid_token"`；false → **不带身份**放行，
+   `WWW-Authenticate: Bearer`（不带 `error` 参数 —— RFC 6750 的 error 码留给
+   “凭证存在但被拒”的场景）；false → **不带身份**放行，
    决定权交给方法级 guard。
 3. 有 token → `Validate`（jwt.go:150-172）：`parser.ParseWithClaims`：
    - **先做算法筛查**：`WithValidMethods(validMethods)` —— 非对称 source 的
@@ -263,8 +265,7 @@ key 位于 `spring.security.jwt.instances.<name>.*`，共 13 个（与
 1. **正常往返**：user token → `200 hello alice`；admin token → `200 admin ok`；
    user token 访问 `/admin` → `403`（example/check.sh 断言了这三条）。
 2. **缺 token**：`curl -s -o/dev/null -w '%{http_code}\n' :9090/me` → `401`，
-   body `missing bearer token`，响应头
-   `WWW-Authenticate: Bearer error="invalid_token"`。
+   body `missing bearer token`，响应头 `WWW-Authenticate: Bearer`。
 3. **垃圾/非法 token**：
    `curl -s -H "Authorization: Bearer not-a-real-token" :9090/me` → `401 invalid
    token`（check.sh Feature 5）。用错误 secret（`[]byte("wrong")`）铸的 token
@@ -326,8 +327,7 @@ key 位于 `spring.security.jwt.instances.<name>.*`，共 13 个（与
 - 新增：JWKS reload 失败时无上限地继续用旧缓存 key（jwks.go:75-79）—— 长时间
   故障会静默让旧 key 持续有效。
 - 新增：认证失败无可观测性（401 路径无计数/日志）。
-- 新增：`WWW-Authenticate` 对**缺 token** 的场景也写 `error="invalid_token"`
-  （jwt.go:214-217）—— 按 RFC 6750，缺 token 场景本不该带 error 参数；瑕疵
-  但属规范可见面。
+- 已修：`WWW-Authenticate` 现经共享的 `security.BearerChallenge` 区分两种 401 ——
+  缺 token 输出裸 `Bearer`，凭证被拒输出 RFC 6750 的 `error="invalid_token"`。
 - 新增：`required` 在这里是配置 key，而兄弟 starter 把同一个旋钮放在应用侧
   （`security.Authenticate(v, required)`）—— 姿态旋钮不一致。

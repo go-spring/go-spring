@@ -33,7 +33,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -97,9 +97,6 @@ func newClient(cp *gs.ContextProvider, c Config, mgr *resilience.Manager, inj *f
 // is a transparent no-op.
 func (o *Client) Init() error {
 	o.service = resilience.ServiceLabel("milvus", o.cfg.Addr)
-	if o.mgr == nil {
-		o.mgr = resilience.NewManager()
-	}
 	exec := fault.WrapClientExecutor(o.mgr.ClientExecutorFor("milvus", o.service), o.service, o.inj)
 	o.exec = exec
 	o.slot.arm(exec)

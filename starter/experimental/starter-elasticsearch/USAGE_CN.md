@@ -287,7 +287,7 @@ Addresses（或 CloudID）原样使用。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `max-retries` | int | 3 | elastictransport 重试次数。⚠ 与治理 executor 的重试（`govern.client.default.max-retries`）叠加——两层重试相乘放大次数与时延。 | 大值 + 治理重试 → 尝试次数成倍。 |
+| `max-retries` | int | 3 | elastictransport 重试次数。⚠ 与治理 executor 的重试（`spring.governance.client.default.max-retries`）叠加——两层重试相乘放大次数与时延。 | 大值 + 治理重试 → 尝试次数成倍。 |
 | `disable-retry` | bool | false | 彻底关闭客户端重试循环。 | — |
 | `compress-request-body` | bool | false | 请求体 gzip 压缩。 | — |
 | `enable-metrics` | bool | true | 客户端内建 elastictransport 指标开关（⚠ schema.json 误写默认 false——以代码为准）。 | — |
@@ -336,18 +336,18 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 resilience / fault 演练（example-load 风格）
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
-govern.client.default.error-threshold=20
-govern.client.default.open-duration=5s
-govern.client.fault.enabled=false           # 置 true + rate=0.5 + error=timeout 即"放火"
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
+spring.governance.client.default.error-threshold=20
+spring.governance.client.default.open-duration=5s
+spring.governance.client.fault.enabled=false           # 置 true + rate=0.5 + error=timeout 即"放火"
 ```
 
 运行 [example-load/](example-load/)（`go run . -concurrency=16 -duration=5s`）：打印的
 错误分解会显示限流/熔断 outcome；resilience outcome 计数与熔断状态变更日志随之出现，
-无需重启。策略可热更（Dync）——改 govern.* 后 executor 自动生效。
+无需重启。策略可热更（Dync）——改 spring.governance.* 后 executor 自动生效。
 
 ### 4.4 discovery 接线
 

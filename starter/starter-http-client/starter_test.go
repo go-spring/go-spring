@@ -26,7 +26,7 @@ import (
 // The governance service label must be STABLE across addressing modes: an
 // entry that keeps service-name set must resolve to http:<service-name> whether
 // it addresses directly (addr pinned, service-name a pure label) or through
-// discovery — govern.client.rules scoped to the label keep matching either way.
+// discovery — spring.governance.client.rules scoped to the label keep matching either way.
 func TestServiceLabelStableAcrossAddressingModes(t *testing.T) {
 	assert.That(t, Config{ServiceName: "user-svc", Discovery: "nacos"}.toTransportConfig(nil).Service).
 		Equal("http:user-svc")

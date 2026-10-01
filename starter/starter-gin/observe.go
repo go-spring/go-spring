@@ -24,9 +24,11 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/bufutil"
 	"go-spring.org/stdlib/httputil"
@@ -373,10 +375,12 @@ type finalizeFacts struct {
 
 // --- trace (T) --------------------------------------------------------------
 
-// httpTracer owns the OTel tracer and performs the per-request span lifecycle:
-// start a server span at entry, end it (with status/error/exception) at finalize.
-// It holds only the tracer (created once at registration), so it is safe to share
-// across requests; per-request state (the span itself) is returned to the caller.
+// httpTracer performs the per-request span lifecycle: start a server span at
+// entry, end it (with status/error/exception) at finalize. It holds no tracer -
+// the tracer is looked up per request, never cached in a field or a package
+// variable (a captured otel.Tracer stops forwarding once the global provider is
+// set again) - so it is safe to share across requests; per-request state (the
+// span itself) is returned to the caller.
 type httpTracer struct{}
 
 func newHTTPTracer() *httpTracer {
@@ -451,39 +455,129 @@ func (t *httpTracer) End(ff finalizeFacts) {
 
 // --- metrics (M) ------------------------------------------------------------
 
-// httpMetrics owns the request-level metric instruments: the request-duration
-// histogram (always on) and the in-flight gauge (opt-in; a no-op when off). Built
-// once at registration and shared across requests; per-request data (start time,
-// status, the inflight attribute set) is passed to its methods.
-type httpMetrics struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use (see instruments) so it binds to whichever providers are
+// current then.
+//
+// The two always-on instruments are built with the set. The config-gated ones
+// are not: metrics.activeRequests and metrics.sseDistributions default to off,
+// and an off toggle must leave the descriptor unregistered rather than create it
+// and never record (a deployment that never enables one stays byte-identical to
+// one built before the instrument existed). Each is therefore created on first
+// use and resolved at most once per set.
+type instrumentSet struct {
+	meter metric.Meter
+
+	duration   metric.Float64Histogram
+	sseCounter metric.Int64Counter
+
+	activeOnce   sync.Once
+	active       metric.Int64UpDownCounter
+	sizeOnce     sync.Once
+	sseSize      metric.Int64Histogram
+	intervalOnce sync.Once
+	sseInterval  metric.Float64Histogram
 }
 
-func newHTTPMetrics(cfg MetricsConfig) *httpMetrics {
-	meter := otel.Meter(meterName)
-	duration, _ := meter.Float64Histogram(
+// instruments is the one instrument set this starter uses for the whole
+// process. Resolution is deferred to the first use, not run at package init, so
+// the instruments bind to whichever providers are current then - starter-otel
+// installs them before any middleware runs, but a test may replace them later
+// and a value resolved at init would keep pointing at the old SDK.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	m := otel.Meter(meterName)
+	in := &instrumentSet{meter: m}
+	in.duration, _ = m.Float64Histogram(
 		"http.server.request.duration",
 		metric.WithDescription("Duration of HTTP server requests"),
 		metric.WithUnit("s"),
 		// OTel HTTP semconv recommended buckets (seconds).
-		metric.WithExplicitBucketBoundaries(
-			0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
 	)
-	// The in-flight gauge is off by default (low-value for short requests;
-	// derivable from QPS+latency). When off, don't even create the instrument -
-	// a no-op satisfies the calls so the per-request +1/-1 record nowhere at no
-	// cost, with no branch at the call sites. Opt in for long-lived connections
-	// (SSE), where in-flight count is a capacity essential.
-	active := metric.Int64UpDownCounter(metricnoop.Int64UpDownCounter{})
-	if cfg.ActiveRequests {
-		active, _ = meter.Int64UpDownCounter(
+	in.sseCounter, _ = m.Int64Counter(
+		"http.server.sse.events",
+		metric.WithDescription("Number of SSE events streamed by the server"),
+		metric.WithUnit("{event}"),
+	)
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
+// activeRequests returns the shared in-flight gauge, creating it on first use.
+func (in *instrumentSet) activeRequests() metric.Int64UpDownCounter {
+	in.activeOnce.Do(func() {
+		in.active, _ = in.meter.Int64UpDownCounter(
 			"http.server.active_requests",
 			metric.WithDescription("Number of active HTTP server requests"),
 			metric.WithUnit("{request}"),
 		)
+	})
+	return in.active
+}
+
+// eventSize returns the shared per-event size histogram, creating it on first
+// use.
+func (in *instrumentSet) eventSize() metric.Int64Histogram {
+	in.sizeOnce.Do(func() {
+		in.sseSize, _ = in.meter.Int64Histogram(
+			"http.server.sse.event.size",
+			metric.WithDescription("Size of each SSE event streamed by the server"),
+			metric.WithUnit("By"),
+			// Bytes: from a tiny heartbeat to a sizable JSON payload.
+			metric.WithExplicitBucketBoundaries(16, 64, 256, 1024, 4096, 16384, 65536, 262144),
+		)
+	})
+	return in.sseSize
+}
+
+// eventInterval returns the shared per-event interval histogram, creating it on
+// first use.
+func (in *instrumentSet) eventInterval() metric.Float64Histogram {
+	in.intervalOnce.Do(func() {
+		in.sseInterval, _ = in.meter.Float64Histogram(
+			"http.server.sse.event.interval",
+			metric.WithDescription("Interval between consecutive SSE events (seconds)"),
+			metric.WithUnit("s"),
+			// Seconds: heartbeat (sub-second) to a stalled stream (tens of seconds).
+			metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
+		)
+	})
+	return in.sseInterval
+}
+
+// httpMetrics owns the request-level metric configuration: the request-duration
+// histogram (always on) and the in-flight gauge (opt-in). It holds no instrument
+// itself - the values live in the process-wide set (see instruments) and are
+// resolved at the use site; only the toggle is per middleware. Built once at
+// registration and shared across requests; per-request data (start time, status,
+// the inflight attribute set) is passed to its methods.
+type httpMetrics struct {
+	activeRequests bool
+}
+
+func newHTTPMetrics(cfg MetricsConfig) *httpMetrics {
+	return &httpMetrics{activeRequests: cfg.ActiveRequests}
+}
+
+// active returns the in-flight gauge this middleware records through: the shared
+// instrument when the toggle is on, a no-op otherwise. The gauge is off by
+// default (low-value for short requests; derivable from QPS+latency), and an
+// off toggle must not even create the instrument - a no-op satisfies the calls so
+// the per-request +1/-1 record nowhere at no cost, with no branch at the call
+// sites. Opt in for long-lived connections (SSE), where in-flight count is a
+// capacity essential.
+func (m *httpMetrics) active() metric.Int64UpDownCounter {
+	if !m.activeRequests {
+		return metricnoop.Int64UpDownCounter{}
 	}
-	return &httpMetrics{duration: duration, active: active}
+	return instruments().activeRequests()
 }
 
 // Begin bumps the in-flight gauge (+1) and returns the attribute set the matching
@@ -495,7 +589,7 @@ func (m *httpMetrics) Begin(ctx context.Context, f requestFacts) metric.Measurem
 		attribute.String(attrURLScheme, f.urlScheme),
 		attribute.String(attrNetworkProtocolVersion, f.proto),
 	)
-	m.active.Add(ctx, 1, inflightAttrs)
+	m.active().Add(ctx, 1, inflightAttrs)
 	return inflightAttrs
 }
 
@@ -527,9 +621,9 @@ func (m *httpMetrics) End(ff finalizeFacts, inflight metric.MeasurementOption) {
 	if mf.wasSSE {
 		durAttrs = append(durAttrs, attribute.String(attrHTTPResponseStream, "sse"))
 	}
-	m.duration.Record(ff.ctx, time.Since(ff.start).Seconds(), metric.WithAttributes(durAttrs...))
+	instruments().duration.Record(ff.ctx, time.Since(ff.start).Seconds(), metric.WithAttributes(durAttrs...))
 	if !mf.skipped {
-		m.active.Add(ff.ctx, -1, inflight)
+		m.active().Add(ff.ctx, -1, inflight)
 	}
 }
 

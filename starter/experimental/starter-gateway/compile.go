@@ -36,7 +36,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -143,12 +143,6 @@ type RouteTable struct {
 // of nil branches, and an unarmed authority is exactly "governance off".
 func newRouteTable(ctx *gs.ContextProvider, o *observer, backends map[string]discovery.Discovery,
 	mgr *resilience.Manager, lbMgr *loadbalance.Manager, counters resilience.Counters) *RouteTable {
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
-	if lbMgr == nil {
-		lbMgr = loadbalance.NewManager()
-	}
 	if counters == nil {
 		// No counter store was contributed, so per-route and per-client budgets are
 		// this process's own — the same reach a per-service executor would have.
@@ -335,7 +329,7 @@ func (t *RouteTable) buildExecutors() (map[string]resilience.ClientExecutor, err
 }
 
 // gatewayLabel is the governance service label of the policy named name — the
-// label a govern rule matches and the one the executor's limiter/breaker state
+// label a governance rule matches and the one the executor's limiter/breaker state
 // is scoped by, so both halves name the same service.
 func gatewayLabel(name string) string { return "gateway:" + name }
 

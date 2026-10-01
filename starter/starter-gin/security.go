@@ -27,7 +27,7 @@ import (
 // Authenticate returns the bearer-authentication middleware: it reads the
 // Authorization header, verifies the token with v, and on success attaches the
 // resulting Authentication to the request context so handlers and the Authorize
-// middleware (or the method-level security.Require decorator) can read it via
+// middleware (or the method-level security.Require check) can read it via
 // security.FromContext(c.Request.Context()).
 //
 // When the request carries no token: required=true aborts with 401;
@@ -39,7 +39,7 @@ func Authenticate(v security.TokenValidator, required bool) gin.HandlerFunc {
 		token := security.ParseBearerToken(c.GetHeader("Authorization"))
 		if token == "" {
 			if required {
-				c.Header("WWW-Authenticate", `Bearer error="invalid_token"`)
+				c.Header("WWW-Authenticate", security.BearerChallenge(""))
 				c.AbortWithStatus(http.StatusUnauthorized)
 				return
 			}
@@ -47,8 +47,8 @@ func Authenticate(v security.TokenValidator, required bool) gin.HandlerFunc {
 			return
 		}
 		auth, err := v.Validate(c.Request.Context(), token)
-		if err != nil {
-			c.Header("WWW-Authenticate", `Bearer error="invalid_token"`)
+		if err != nil || auth == nil || !auth.Authenticated {
+			c.Header("WWW-Authenticate", security.BearerChallenge(security.BearerErrorInvalidToken))
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
@@ -61,8 +61,8 @@ func Authenticate(v security.TokenValidator, required bool) gin.HandlerFunc {
 // already carries a verified Authentication (see Authenticate) holding at least
 // one of authorities. With no authorities it degrades to "authenticated caller
 // required". It is the route-level counterpart of the method-level
-// security.Require decorator: use this to gate a route group, Require to gate a
-// service method.
+// security.Require check: use this to gate a route group, Require to gate the
+// top of a service method.
 //
 // A missing/anonymous identity yields 401; an authenticated caller lacking the
 // authority yields 403.
@@ -70,11 +70,12 @@ func Authorize(authorities ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth, _ := security.FromContext(c.Request.Context())
 		if !auth.HasAnyAuthority() {
-			c.Header("WWW-Authenticate", `Bearer error="invalid_token"`)
+			c.Header("WWW-Authenticate", security.BearerChallenge(""))
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 		if !auth.HasAnyAuthority(authorities...) {
+			c.Header("WWW-Authenticate", security.BearerChallenge(security.BearerErrorInsufficientScope))
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
@@ -125,7 +126,7 @@ func CSRF(cfg CSRFConfig) gin.HandlerFunc {
 	}
 	safe := cfg.SafeMethods
 	if len(safe) == 0 {
-		safe = []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace}
+		safe = security.DefaultSafeMethods()
 	}
 
 	return func(c *gin.Context) {

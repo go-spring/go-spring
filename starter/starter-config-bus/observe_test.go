@@ -44,6 +44,10 @@ func TestMain(m *testing.M) {
 	testReader = sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(testReader))
 	otel.SetMeterProvider(mp)
+	// The instrument set is process-wide and resolved once, so a fresh
+	// MeterProvider must reset it or the records below keep going to the
+	// provider that was current when it was first resolved.
+	resetInstruments()
 	code := m.Run()
 	otel.SetMeterProvider(prev)
 	_ = mp.Shutdown(context.Background())
@@ -117,13 +121,12 @@ func hasHist(t *testing.T, name string, want map[string]string) bool {
 	return false
 }
 
-// newTestBus builds a bus with its instruments resolved, as Init does at wiring
-// time, but without the container or a NATS connection. refresh is the property-
-// refresh seam, which onMessage calls.
+// newTestBus builds a bus without the container or a NATS connection; its
+// metrics come from the package-wide instrument set (see observe.go). refresh
+// is the property-refresh seam, which onMessage calls.
 func newTestBus(refresh func(context.Context) error) *ConfigBus {
 	return &ConfigBus{
 		Config:  Config{Subject: "t.subject", Origin: "test-origin"},
-		ins:     newInstruments(),
 		refresh: refresh,
 		origin:  "test-origin",
 	}

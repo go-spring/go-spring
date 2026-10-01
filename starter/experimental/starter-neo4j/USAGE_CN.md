@@ -136,12 +136,12 @@ spring.observability.metrics.exporter=prometheus
 spring.actuator.addr=:9370
 
 # --- governance：Query / RunWithResilience 的保护 ----------------------------
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=100
-govern.client.default.max-retries=1
-govern.client.default.attempt-timeout=500ms
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=100
+spring.governance.client.default.max-retries=1
+spring.governance.client.default.attempt-timeout=500ms
 ```
 
 **验证**（先启动 Neo4j —— `docker run -d -e NEO4J_AUTH=neo4j/password -p 7687:7687 -p 7474:7474 neo4j:5`，
@@ -267,7 +267,7 @@ globals——没有任何配置开关；Query 的访问日志恒经该包级 obs
 sidecar 负责发现+LB，URI 原样使用 [starter.go:80-87]。
 
 ⚠ **刻意不接受管的端点选择。** 没有"每次查询挑选"可管：启动那次挑选被固化进 URI 字符串，池在同一
-个函数里建了就用、用完就丢。因此 `govern.client.rules[N].balancer` / `outlier-threshold` 对 neo4j 无效；
+个函数里建了就用、用完就丢。因此 `spring.governance.client.rules[N].balancer` / `outlier-threshold` 对 neo4j 无效；
 它的治理止于保护策略（label 为 `neo4j:<service-name|uri>` 的 timeout / retries / breaker）。写在这里
 是为了让这个缺口读起来是**决策**而不是遗漏。（上面的 `AddressResolver` 管的是**哪个集群**，
 不是**哪个节点**——节点仍然由 driver 自己选。）
@@ -299,7 +299,7 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 | `max-connection-lifetime` | duration | 1h | 连接退役重连窗口。 | — |
 | `connection-acquisition-timeout` | duration | 1m | 从池里取连接的最长等待。 | 过小 → 突发下查询假性失败。 |
 | `socket-connect-timeout` | duration | 5s | TCP 建连超时；⚠ 同时约束启动 fail-fast 探测（starter.go:110,132-137）。 | 0/负值时探测静默回退 5s。 |
-| `max-transaction-retry-time` | duration | 30s | 驱动级瞬时错误重试预算。⚠ 与 `govern.*.max-retries` 叠加——两层重试相乘。 | 大值 + 治理重试 → 延迟放大。 |
+| `max-transaction-retry-time` | duration | 30s | 驱动级瞬时错误重试预算。⚠ 与 `spring.governance.*.max-retries` 叠加——两层重试相乘。 | 大值 + 治理重试 → 延迟放大。 |
 
 ### 3.3 TLS
 
@@ -350,9 +350,9 @@ curl -s :9090/metrics | grep -E 'db.client.(operation.duration|active_requests)'
 ### 4.3 韧性演练（example-cloudnative / example-load 形态）
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.client.default.rate-limit=5
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.client.default.rate-limit=5
 ```
 
 ```bash
@@ -361,7 +361,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 ```
 
 故障注入（热切换，example-load）：压测进程运行中把 `conf/app.properties` 的
-`govern.client.fault.enabled=true`、`govern.client.fault.rate=0.5`、`govern.client.fault.error=timeout`
+`spring.governance.client.fault.enabled=true`、`spring.governance.client.fault.rate=0.5`、`spring.governance.client.fault.error=timeout`
 打开——错误分布即时变化，无需重启。
 
 ### 4.4 发现演练

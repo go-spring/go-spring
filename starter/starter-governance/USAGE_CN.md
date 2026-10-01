@@ -14,12 +14,12 @@
 1. **接线**（常驻注册，`wiring.go`）：注册四个治理 bean —— `*resilience.Manager`、
    `*loadbalance.Manager`、`*fault.Injector` 三个模块权威，以及建在它们之上的
    `*governance.Center` —— 把注入的 `governance.Source` bean 交给中心，并标记 authority 为 live。
-2. **Source 适配器**（条件注册，`source_file.go` / `source_http.go`）：配置了 `govern.source.*`
+2. **Source 适配器**（条件注册，`source_file.go` / `source_http.go`）：配置了 `spring.governance.source.*`
    key 后，一个 `governance.Source` bean 被注入 wiring；规则变更**只刷新治理**——绝不触发
    全应用属性 re-bind。
 
 治理配置是它自己的一份文档（规则文件、控制台、配置中心），**不写进 `app.properties`**；
-app.properties 里只放那一个 `govern.source.*` 引导 key。
+app.properties 里只放那一个 `spring.governance.source.*` 引导 key。
 
 治理语义本身（policy 解析、breaker/retry/ratelimit 行为、故障注入模型）见 `cloud/governance`
 文档——下面全部是 starter 的接线增量加上使用契约所需的部分。
@@ -36,7 +36,7 @@ demo/
 ├── main.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod**（关键依赖）：
@@ -90,7 +90,7 @@ func (p *printer) Run(ctx context.Context) error {
         }
         fmt.Println()
         if i == 3 {
-            fmt.Println(">>> edit conf/govern.yaml now: policy AND fault toggle live")
+            fmt.Println(">>> edit conf/governance.yaml now: policy AND fault toggle live")
         }
         select {
         case <-ctx.Done():
@@ -119,29 +119,30 @@ func main() {
 
 ```properties
 # 治理规则放在自己的文件里，由 starter-governance 的 file source 监听——
-# 这里没有任何 govern.* 规则。这个 key 激活 starter 的条件 module，其
+# 这里没有任何 spring.governance.* 规则。这个 key 激活 starter 的条件 module，其
 # Source bean 注入治理中心。
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** —— 键就是 `govern.*` 命名空间，在线监听：
+**conf/governance.yaml** —— 键就是 `spring.governance.*` 命名空间，在线监听：
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
-      max-retries: 2
-  client:
-    fault:
-      enabled: false        # 运行中改为 true —— 见 §4.2
-      rate: 0.5
-  client:
-    rules:
-      - service: demo:service
-        attempt-timeout: 50ms
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
+        max-retries: 2
+    client:
+      fault:
+        enabled: false        # 运行中改为 true —— 见 §4.2
+        rate: 0.5
+    client:
+      rules:
+        - service: demo:service
+          attempt-timeout: 50ms
 ```
 
 **验证**（在 example 目录；应用 6 秒后自灭，除非 `-manual`）：
@@ -149,14 +150,14 @@ govern:
 ```bash
 go run . -manual
 # policy: enabled=true timeout=100ms retries=2 rate-limit=0 | fault: enabled=false rate=0.5
-# >>> edit conf/govern.yaml now: policy AND fault toggle live
+# >>> edit conf/governance.yaml now: policy AND fault toggle live
 #   ... 把 attempt-timeout 改成 77ms，或 fault.enabled 改成 true ...
 # policy: enabled=true timeout=77ms retries=2 rate-limit=0 | fault: enabled=true rate=0.5
 ```
 
 保存后 ~1 秒内生效（fsnotify），无需重启、无全应用 re-bind。
 
-**变体 —— 换一个 source**：把 `govern.source.file.path` 换成 `govern.source.http.*`（控制台），
+**变体 —— 换一个 source**：把 `spring.governance.source.file.path` 换成 `spring.governance.source.http.*`（控制台），
 或用各自模块的 nacos/etcd source key。每个进程只有一个活跃 source；已经不存在
 app.properties 内嵌规则的路径——规则一律经 Source 进入。
 
@@ -204,12 +205,12 @@ import starter-governance
   │      .Init((*wiring).Init).Destroy((*wiring).Destroy)
   │      .Export(gs.As[gs.Rooter]())            ← 见下文，这堵墙 + 这个修复
   └─ init() starter.go: 两个条件 gs.Module bean
-         ├─ OnProperty("govern.source.file")  → *FileSource, Export(As[governance.Source]())
-         └─ OnProperty("govern.source.http")  → *HTTPSource, Export(As[governance.Source]())
-              （OnProperty 是前缀匹配：任一 govern.source.<x>.* key 即激活）
+         ├─ OnProperty("spring.governance.source.file")  → *FileSource, Export(As[governance.Source]())
+         └─ OnProperty("spring.governance.source.http")  → *HTTPSource, Export(As[governance.Source]())
+              （OnProperty 是前缀匹配：任一 spring.governance.source.<x>.* key 即激活）
 
 gs.Run()
-  ├─ config bind: 源配置来自 ${govern.source.file|http.*}（expr 校验）
+  ├─ config bind: 源配置来自 ${spring.governance.source.file|http.*}（expr 校验）
   ├─ bean wiring: source bean 的 Export 让它可见；被字段注入到
   │      wiring.Src（`autowire:"?"` 可空——无 bean ⇒ nil ⇒ 治理保持 disabled）
   ├─ wiring.Init():
@@ -247,11 +248,11 @@ poller）可能在 wiring Rooter arm 治理之前初始化。`center.OnReady(cb)
 
 ### 2.4 一次规则编辑的端到端走读
 
-1. 你保存 `conf/govern.yaml`（任何编辑器；原子重命名也行——watcher 监听的是父**目录**而非
+1. 你保存 `conf/governance.yaml`（任何编辑器；原子重命名也行——watcher 监听的是父**目录**而非
    文件本身，正因为 rename 会换 inode（`source_file.go:87-94`）。循环对每个目录事件反应，
    不只看文件名。）
 2. `FileSource.reload()` 重新读取并经 `rules.Parse` 解析——格式按扩展名推断（`.yaml`），
-   由共享 conf reader registry 解析、展平、要求至少含一个 `govern.*` key，再经 value-tag
+   由共享 conf reader registry 解析、展平、要求至少含一个 `spring.governance.*` key，再经 value-tag
    机制绑成 `governance.Config`（`rules/rules.go:57-75`）。解析失败或
    无 govern key 的文档记 `reload ... failed (keeping last good config)` 日志并终止。
 3. 配置未变（DeepEqual）不推送——touch 不会搅动 executor。
@@ -270,45 +271,45 @@ poller）可能在 wiring Rooter arm 治理之前初始化。`center.OnReady(cb)
 
 ### 3.1 Source key（本 starter）
 
-经 `conf.Bind` 以显式前缀 `${govern.source.file:=}` / `${govern.source.http:=}` 绑定——这是
-`govern.*` 下唯一"是接线不是规则"的 key。⚠ 一个命名空间两种角色：`govern.*` 是规则，
-`govern.source.*` 是规则从哪来。
+经 `conf.Bind` 以显式前缀 `${spring.governance.source.file:=}` / `${spring.governance.source.http:=}` 绑定——这是
+`spring.governance.*` 下唯一"是接线不是规则"的 key。⚠ 一个命名空间两种角色：`spring.governance.*` 是规则，
+`spring.governance.source.*` 是规则从哪来。
 
 | Key | 类型 | 默认值 | 必填 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------|-------------|----------|
-| `govern.source.file.path` | string | — | 是（`expr:"$ != ''"`） | fsnotify 监听父目录；格式按扩展名（json/properties/yaml/toml）。初始加载失败直接启动报错。 | 路径错/缺失 → 启动错误（刻意：不许静默 arm 一个 disabled 中心）。 |
-| `govern.source.http.url` | string | — | 是（`expr:"$ != ''"`） | GET 轮询；文档与 file source 逐字节兼容。 | 坏 URL / 非 200 / 坏 body → 首次抓取启动报错；之后保旧 + 日志。 |
-| `govern.source.http.interval` | duration | 5s | 否 | 轮询周期同时是 HTTP client 超时（`source_http.go:70`）。 | 太小 → 抓取自我超时；太大 → 收敛慢。 |
-| `govern.source.http.format` | string | 从 URL 扩展名推断 | 否 | `"yaml" \| "json" \| "properties" \| "toml"`；覆盖推断（URL 无/无意义扩展名时用）。 | 格式错 → 解析错误 → 保旧（或首次抓取启动失败）。 |
-| `govern.source.http.headers` | map[string]string | 空 | 否 | 每次请求都带，如控制台的 `headers.authorization=Bearer xxx`。 | 缺鉴权 → 每次抓取 401 → 卡在上一份好配置。 |
+| `spring.governance.source.file.path` | string | — | 是（`expr:"$ != ''"`） | fsnotify 监听父目录；格式按扩展名（json/properties/yaml/toml）。初始加载失败直接启动报错。 | 路径错/缺失 → 启动错误（刻意：不许静默 arm 一个 disabled 中心）。 |
+| `spring.governance.source.http.url` | string | — | 是（`expr:"$ != ''"`） | GET 轮询；文档与 file source 逐字节兼容。 | 坏 URL / 非 200 / 坏 body → 首次抓取启动报错；之后保旧 + 日志。 |
+| `spring.governance.source.http.interval` | duration | 5s | 否 | 轮询周期同时是 HTTP client 超时（`source_http.go:70`）。 | 太小 → 抓取自我超时；太大 → 收敛慢。 |
+| `spring.governance.source.http.format` | string | 从 URL 扩展名推断 | 否 | `"yaml" \| "json" \| "properties" \| "toml"`；覆盖推断（URL 无/无意义扩展名时用）。 | 格式错 → 解析错误 → 保旧（或首次抓取启动失败）。 |
+| `spring.governance.source.http.headers` | map[string]string | 空 | 否 | 每次请求都带，如控制台的 `headers.authorization=Bearer xxx`。 | 缺鉴权 → 每次抓取 401 → 卡在上一份好配置。 |
 
 每进程恰有一个活跃 source：同时配 file 和 http 会注册两个 bean 但中心只持一个——bean 注入
-竞争结果未定义；只配一个。各模块里的远端适配器：`govern.source.nacos.*`
-（starter-governance-nacos，ListenConfig 推送）与 `govern.source.etcd.*`（starter-governance-etcd：
+竞争结果未定义；只配一个。各模块里的远端适配器：`spring.governance.source.nacos.*`
+（starter-governance-nacos，ListenConfig 推送）与 `spring.governance.source.etcd.*`（starter-governance-etcd：
 `endpoint`、`key`……，Watch 推送）——文档在所有这些后端间逐字节可移植。
 
-没有默认路径：没有 `govern.source.*` key（也没有注入/`SetSource` 的 source）时中心保持 disabled。
-⚠ `govern.source.*` 只是引导——规则本身绝不写进 app.properties。
+没有默认路径：没有 `spring.governance.source.*` key（也没有注入/`SetSource` 的 source）时中心保持 disabled。
+⚠ `spring.governance.source.*` 只是引导——规则本身绝不写进 app.properties。
 
 ### 3.2 规则文档 —— 顶层
 
 | Key | 类型 | 默认 | 行为 | 配错后果 |
 |-----|------|------|------|----------|
-| `govern.enabled` | bool | false | 总开关。false → 无论 Default/Rules 为何，resilience 权威的 `PolicyFor` 恒返回零 Policy（透传）。 | 全配了却没生效——"为什么不工作"的头号原因。 |
-| `govern.driver` | string | "default" | 所有服务共用的 resilience 后端，在容器的驱动目录里解析：已贡献的 driver bean 名（如 "sentinel"），或内置的 "default"。 | 未知 driver → 启动 panic 并列出可用名字（拼错不能静默关掉保护）。 |
-| `govern.client.default.*` | resilience.ClientPolicy | 全 off | 没有规则匹配的服务的基础 policy。 | — |
-| `govern.client.rules[n].*` | []ClientRule | 空 | Resources 含该 label 的第一条 ClientRule 胜出。⚠ 命中的 ClientRule **整体替换** Default——不做字段级合并：零值 policy 字段意为"禁用"，部分合并无法区分"显式 0"与"未设"（`govern.go:87-90`）。具体规则放前面。 | 只设 `attempt-timeout` 的规则会静默关掉该服务的默认 retries。 |
-| `govern.client.fault.*` | fault.Config | 全 off | **出站**故障注入——烧的是本进程自己的 retry/breaker/timeout，见 §3.4。 | — |
-| `govern.server.default.*` | resilience.ServerPolicy | 全 off | 没有规则匹配的路由的基础**入站**准入：限流、并发上限、入站熔断、处理预算。 | — |
-| `govern.server.rules[n].*` | []ServerRule | 空 | 按**入站 label** 逐路由覆盖（如 `gin::8080`、`grpc:/pkg.Svc/Method`），整体替换语义与出站规则一致。 | — |
-| `govern.server.fault.*` | fault.Config | 全 off | **入站**故障注入——烧的是本服务的错误路径、observe 归类与入站熔断，见 §3.4。 | — |
+| `spring.governance.enabled` | bool | false | 总开关。false → 无论 Default/Rules 为何，resilience 权威的 `PolicyFor` 恒返回零 Policy（透传）。 | 全配了却没生效——"为什么不工作"的头号原因。 |
+| `spring.governance.driver` | string | "default" | 所有服务共用的 resilience 后端，在容器的驱动目录里解析：已贡献的 driver bean 名（如 "sentinel"），或内置的 "default"。 | 未知 driver → 启动 panic 并列出可用名字（拼错不能静默关掉保护）。 |
+| `spring.governance.client.default.*` | resilience.ClientPolicy | 全 off | 没有规则匹配的服务的基础 policy。 | — |
+| `spring.governance.client.rules[n].*` | []ClientRule | 空 | Resources 含该 label 的第一条 ClientRule 胜出。⚠ 命中的 ClientRule **整体替换** Default——不做字段级合并：零值 policy 字段意为"禁用"，部分合并无法区分"显式 0"与"未设"（`cloud/governance/center.go:364`）。具体规则放前面。 | 只设 `attempt-timeout` 的规则会静默关掉该服务的默认 retries。 |
+| `spring.governance.client.fault.*` | fault.Config | 全 off | **出站**故障注入——烧的是本进程自己的 retry/breaker/timeout，见 §3.4。 | — |
+| `spring.governance.server.default.*` | resilience.ServerPolicy | 全 off | 没有规则匹配的路由的基础**入站**准入：限流、并发上限、入站熔断、处理预算。 | — |
+| `spring.governance.server.rules[n].*` | []ServerRule | 空 | 按**入站 label** 逐路由覆盖（如 `gin::8080`、`grpc:/pkg.Svc/Method`），整体替换语义与出站规则一致。 | — |
+| `spring.governance.server.fault.*` | fault.Config | 全 off | **入站**故障注入——烧的是本服务的错误路径、observe 归类与入站熔断，见 §3.4。 | — |
 
 服务 label 在 **value** 里、绝不在 key 里（`config.go`）：`redis:cache`、
 `gorm:mysql:primary`、`gin:api`、`dubbo:com.example.Foo:1.0.0`——冒号和点都不用转义。
 
-### 3.3 policy 旋钮（16 个，可用于 `govern.client.default.*` 与每个 `govern.client.rules[n].*`，默认全 0/off）
+### 3.3 policy 旋钮（16 个，可用于 `spring.governance.client.default.*` 与每个 `spring.governance.client.rules[n].*`，默认全 0/off）
 
-入站模型（`resilience.ServerPolicy`，配在 `govern.server.*`）接受**同样的旋钮，但去掉 retry 族**
+入站模型（`resilience.ServerPolicy`，配在 `spring.governance.server.*`）接受**同样的旋钮，但去掉 retry 族**
 （`max-retries` / `retry-budget` / `initial-interval` / `multiplier` / `max-interval` /
 `randomization-factor`）与 `max-duration`：handler 已产生副作用、不能重放，所以入站写不出重试；
 只有一次尝试，也就没有"重试总和"可限制（`attempt-timeout` 就是整个处理预算）。其余旋钮名称与
@@ -327,11 +328,11 @@ poller）可能在 wiring Rooter arm 治理之前初始化。`center.OnReady(cb)
 | `retry-budget` | int | retry | 单个 executor 内在途重试总量上限；超预算的重试得到 `resilience: retry budget exceeded`。 |
 | `attempt-timeout` / `max-duration` | duration / duration | timeout | 单次尝试上限；总上限（尝试预算 = min(Timeout, 剩余 MaxDuration)）。 |
 
-driver 选择与开关是进程级的（`govern.enabled`/`govern.driver`），刻意**不可**按服务重绑。
+driver 选择与开关是进程级的（`spring.governance.enabled`/`spring.governance.driver`），刻意**不可**按服务重绑。
 每个旋钮的语义（退避数学、breaker 状态机）属于 `cloud/governance/resilience`——starter 只
 负责绑定与分发。
 
-### 3.4 fault 旋钮（`govern.client.fault.*` 与 `govern.server.fault.*`）
+### 3.4 fault 旋钮（`spring.governance.client.fault.*` 与 `spring.governance.server.fault.*`）
 
 一张旋钮表，**两个互不相干的块**：client 块驱动 `WrapClientExecutor` 的 per-attempt 闸门（出站），
 server 块驱动 `ApplyServer` 的入站 handler 闸门。两侧各算自己的 `max-duration` / `max-affected`，
@@ -357,25 +358,25 @@ server 块驱动 `ApplyServer` 的入站 handler 闸门。两侧各算自己的 
 ```bash
 cd example && go run . -manual
 # 基线:  policy: enabled=true timeout=100ms retries=2 rate-limit=0 | fault: enabled=false rate=0.5
-sed -i '' 's/attempt-timeout: 100ms/attempt-timeout: 77ms/' conf/govern.yaml   # ~1s 内生效
+sed -i '' 's/attempt-timeout: 100ms/attempt-timeout: 77ms/' conf/governance.yaml   # ~1s 内生效
 ```
 
 负向演练 —— 坏编辑保留上一份好配置（看日志 tag `governance`）：
 
 ```bash
-echo "govern: {enabled: true}" > conf/govern.yaml        # 截断：仍有 govern key
-printf '' > conf/govern.yaml                              # 空：无 govern.* key → reload 错误
-# log: governance file source: reload conf/govern.yaml failed (keeping last good config): ...
+echo "spring.governance: {enabled: true}" > conf/governance.yaml   # 截断：仍带 spring.governance key
+printf '' > conf/governance.yaml                              # 空：无 spring.governance.* key → reload 错误
+# log: governance file source: reload conf/governance.yaml failed (keeping last good config): ...
 ```
 
-关治理的正确姿势是 `govern.enabled=false`——一个**存在**的 key——绝不是清空文件。
+关治理的正确姿势是 `spring.governance.enabled=false`——一个**存在**的 key——绝不是清空文件。
 
 ### 4.2 放火演练，不重启
 
 下面的演练点的是**出站**火（翻 `client.fault.enabled`）；`server.fault.enabled` 是入站孪生，
 行为一致，只是对象换成"本进程收到的请求"。
 
-1. govern.yaml 里以 `client.fault.enabled: false` 启动。
+1. governance.yaml 里以 `client.fault.enabled: false` 启动。
 2. 改成 true 并保存——`injector.SetConfig` 原地热换；下一次调用即受影响。
 3. `scope: loadtest` 时只有带 `X-LoadTest: 1` 标记的流量被烧；`real` 反过来（只用于专用
    环境）；空 scope 全量。
@@ -437,10 +438,10 @@ src.Push(cfg)
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 全配了却没治理 | `govern.enabled` 为 false（默认） | 设 `govern.enabled=true`——它是总开关。 |
+| 全配了却没治理 | `spring.governance.enabled` 为 false（默认） | 设 `spring.governance.enabled=true`——它是总开关。 |
 | 改了规则文件 policy 不动 | 路径错；或目录监听漏掉的罕见 symlink 场景 | 核对启动时 arm 的路径；看日志 tag `governance` 有没有 `reload ... failed`。 |
-| 日志出现 `reload ... failed (keeping last good config)` | 文档被截断/清空（无 `govern.*` key）或语法错 | 修文档；"关"是 `govern.enabled=false`，不是空文件。 |
-| 启动报错 `governance source: ... contains no govern.* keys` | 首次加载到空文档 | 同上，发生在构造期——刻意设计。 |
+| 日志出现 `reload ... failed (keeping last good config)` | 文档被截断/清空（无 `spring.governance.*` key）或语法错 | 修文档；"关"是 `spring.governance.enabled=false`，不是空文件。 |
+| 启动报错 `governance source: ... contains no spring.governance.* keys` | 首次加载到空文档 | 同上，发生在构造期——刻意设计。 |
 | 自定义 Source bean 被静默忽略 | 少了 `Export(gs.As[governance.Source]())` | 补上 Export——没有它 bean 对接口注入不可见。 |
 | HTTP source 卡在旧规则 | 控制台鉴权/可用性：每次轮询失败，保旧 | 查 `headers.*`；确认控制台返回 200 且文档合法。 |
 | 按服务的规则把默认 retries 干掉了 | 命中规则整体**替换** default（无合并） | 在规则里重述所有想保留的旋钮。 |
@@ -462,7 +463,7 @@ src.Push(cfg)
 
 设计嫌疑清单（审计台账；沿用上一版，无新修复项）：
 
-1. `govern.*` 既是规则命名空间，source 配置又放在 `govern.source.*`——一个命名空间两种角色。
+1. `spring.governance.*` 既是规则命名空间，source 配置又放在 `spring.governance.source.*`——一个命名空间两种角色。
 2. resilience 规则（整体替换、空 service 不匹配）与 fault 规则（catch-all + 全局兜底）的
    替换/合并不对称——必须死记。
 3. 少了 `Export(gs.As[...])` 的自定义 Source bean 会让治理静默 disabled（启动日志有

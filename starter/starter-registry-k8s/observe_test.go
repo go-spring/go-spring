@@ -136,7 +136,7 @@ func syncTestConfig() Config {
 // The discovery side must report a failed sync: a backend that never syncs
 // successfully is exactly the one whose cache age has to be observable.
 func TestDiscoveryReportsFailedSync(t *testing.T) {
-	d := newDNSDiscovery(syncTestConfig(), errResolver{err: errors.New("no such host")})
+	d := newDNSDiscovery(syncTestConfig(), errResolver{err: errors.New("no such host")}, newTestObserver())
 
 	if _, err := d.Resolve(context.Background(), "cart"); err == nil {
 		t.Fatal("expected the first lookup to fail")
@@ -154,7 +154,7 @@ func TestDiscoveryReportsFailedSync(t *testing.T) {
 func TestDiscoveryReportsSuccessfulSync(t *testing.T) {
 	f := &fakeResolver{}
 	f.set([]*net.SRV{{Target: "10.0.0.1.", Port: 80}}, nil)
-	d := newDNSDiscovery(syncTestConfig(), f)
+	d := newDNSDiscovery(syncTestConfig(), f, newTestObserver())
 
 	if _, err := d.Resolve(context.Background(), "orders"); err != nil {
 		t.Fatalf("resolve: %v", err)

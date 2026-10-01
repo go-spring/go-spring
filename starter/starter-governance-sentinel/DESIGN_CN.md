@@ -7,7 +7,7 @@
 [alibaba/sentinel-golang][sentinel] 注册为 `cloud/governance/resilience` 的生产 driver。
 只贡献一个 bean —— 名为 `sentinel` 的 `resilience.Driver` —— 且不开端口;与
 `starter-governance` 一起空导入,治理中心即可为所有客户端解析
-`govern.driver=sentinel`。
+`spring.governance.driver=sentinel`。
 
 [sentinel]: https://github.com/alibaba/sentinel-golang
 

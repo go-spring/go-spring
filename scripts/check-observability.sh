@@ -416,11 +416,13 @@ check_registry() {
       *" $b "*) ;;
       *)
         has_call() { grep -rq "$1" --include='*.go' --exclude='*_test.go' "$dir"; }
-        has_call 'discovery.RegisterAttempt(' \
+        # 上报走块自己的 observer 层(cloud/discovery.Observer),不写包级状态:
+        # 匹配的是方法名,实例变量名随各后端自便。
+        has_call '\.RegisterAttempt(' \
           || report "[registry] $b: 未上报 RegisterAttempt(注册,含自愈重注册)"
-        has_call 'discovery.DeregisterAttempt(' \
+        has_call '\.DeregisterAttempt(' \
           || report "[registry] $b: 未上报 DeregisterAttempt"
-        has_call 'discovery.WeightChange(' \
+        has_call '\.WeightChange(' \
           || report "[registry] $b: 未上报 WeightChange"
         has_call 'discovery.ReasonInitial' \
           || report "[registry] $b: RegisterAttempt 未用 ReasonInitial"
@@ -438,9 +440,9 @@ check_registry() {
     esac
 
     # 3) 读侧成功/失败两侧都报。数出现次数而非命中行数:一行两处也要算两处。
-    synced=$(grep -ro 'discovery\.Synced(' --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null | wc -l | tr -d ' ')
+    synced=$(grep -ro '\.Synced(' --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null | wc -l | tr -d ' ')
     [ "$synced" -ge 2 ] \
-      || report "[registry] $b: discovery.Synced 调用仅 $synced 处(需要成功与失败两侧)"
+      || report "[registry] $b: 同步上报调用仅 $synced 处(需要成功与失败两侧)"
   done
 }
 

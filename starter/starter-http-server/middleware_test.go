@@ -26,22 +26,19 @@ import (
 	"go-spring.org/cloud/security"
 )
 
-// mwValidator is a security.TokenValidator that accepts exactly one token.
-type mwValidator struct {
-	good        string
-	authorities []string
-}
-
-func (s mwValidator) Validate(_ context.Context, token string) (*security.Authentication, error) {
-	if token != s.good {
-		return nil, errors.New("bad token")
-	}
-	return &security.Authentication{
-		Principal:     security.Principal{Subject: "alice"},
-		Token:         token,
-		Authenticated: true,
-		Authorities:   s.authorities,
-	}, nil
+// validator returns a security.TokenValidator accepting exactly one token.
+func validator(good string, authorities ...string) security.ValidatorFunc {
+	return security.ValidatorFunc(func(_ context.Context, token string) (*security.Authentication, error) {
+		if token != good {
+			return nil, errors.New("bad token")
+		}
+		return &security.Authentication{
+			Principal:     security.Principal{Subject: "alice"},
+			Token:         token,
+			Authenticated: true,
+			Authorities:   authorities,
+		}, nil
+	})
 }
 
 // okHandler writes 200 and records whether it ran.
@@ -74,19 +71,21 @@ func TestChainOrder(t *testing.T) {
 }
 
 func TestAuthenticate(t *testing.T) {
-	v := mwValidator{good: "T"}
+	v := validator("T")
 
 	tests := []struct {
-		name     string
-		token    string
-		required bool
-		want     int
-		wantAuth bool
+		name          string
+		token         string
+		required      bool
+		want          int
+		wantAuth      bool
+		wantChallenge string
 	}{
-		{"valid", "T", true, http.StatusOK, true},
-		{"missing-required", "", true, http.StatusUnauthorized, false},
-		{"missing-optional", "", false, http.StatusOK, false},
-		{"invalid", "X", true, http.StatusUnauthorized, false},
+		{"valid", "T", true, http.StatusOK, true, ""},
+		// No credential at all: the bare scheme, no RFC 6750 error code.
+		{"missing-required", "", true, http.StatusUnauthorized, false, "Bearer"},
+		{"missing-optional", "", false, http.StatusOK, false, ""},
+		{"invalid", "X", true, http.StatusUnauthorized, false, `Bearer error="invalid_token"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,26 +111,31 @@ func TestAuthenticate(t *testing.T) {
 			if sawAuth != tt.wantAuth {
 				t.Fatalf("sawAuth = %v, want %v", sawAuth, tt.wantAuth)
 			}
+			if got := rr.Header().Get("WWW-Authenticate"); got != tt.wantChallenge {
+				t.Fatalf("WWW-Authenticate = %q, want %q", got, tt.wantChallenge)
+			}
 		})
 	}
 }
 
 func TestAuthorize(t *testing.T) {
 	tests := []struct {
-		name        string
-		token       string
-		authorities []string
-		require     []string
-		want        int
+		name          string
+		token         string
+		authorities   []string
+		require       []string
+		want          int
+		wantChallenge string
 	}{
-		{"has-authority", "T", []string{"admin"}, []string{"admin"}, http.StatusOK},
-		{"missing-authority", "T", []string{"user"}, []string{"admin"}, http.StatusForbidden},
-		{"anonymous", "", nil, []string{"admin"}, http.StatusUnauthorized},
-		{"any-authenticated", "T", []string{"user"}, nil, http.StatusOK},
+		{"has-authority", "T", []string{"admin"}, []string{"admin"}, http.StatusOK, ""},
+		// Authenticated but lacking the authority: RFC 6750 insufficient_scope.
+		{"missing-authority", "T", []string{"user"}, []string{"admin"}, http.StatusForbidden, `Bearer error="insufficient_scope"`},
+		{"anonymous", "", nil, []string{"admin"}, http.StatusUnauthorized, "Bearer"},
+		{"any-authenticated", "T", []string{"user"}, nil, http.StatusOK, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			v := mwValidator{good: "T", authorities: tt.authorities}
+			v := validator("T", tt.authorities...)
 			ran := false
 			h := Chain(Authenticate(v, false), Authorize(tt.require...))(okHandler(&ran))
 
@@ -147,6 +151,9 @@ func TestAuthorize(t *testing.T) {
 			}
 			if ran != (tt.want == http.StatusOK) {
 				t.Fatalf("handler ran = %v, want %v", ran, tt.want == http.StatusOK)
+			}
+			if got := rr.Header().Get("WWW-Authenticate"); got != tt.wantChallenge {
+				t.Fatalf("WWW-Authenticate = %q, want %q", got, tt.wantChallenge)
 			}
 		})
 	}
@@ -256,5 +263,32 @@ func TestCSRF(t *testing.T) {
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("POST with wrong header: status = %d, want 403", rr.Code)
+	}
+}
+
+func TestAuthenticateRejectsNonIdentity(t *testing.T) {
+	// A validator that returns no error but no verified identity either breaks the
+	// TokenValidator contract; the middleware must fail closed instead of
+	// attaching an anonymous Authentication for a later gate to misread as 403.
+	bogus := []struct {
+		name string
+		fn   security.ValidatorFunc
+	}{
+		{"nil-identity", func(context.Context, string) (*security.Authentication, error) { return nil, nil }},
+		{"unauthenticated", func(context.Context, string) (*security.Authentication, error) {
+			return &security.Authentication{Authenticated: false}, nil
+		}},
+	}
+	for _, b := range bogus {
+		t.Run(b.name, func(t *testing.T) {
+			h := Authenticate(b.fn, true)(okHandler(nil))
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Authorization", "Bearer T")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			if rr.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", rr.Code)
+			}
+		})
 	}
 }

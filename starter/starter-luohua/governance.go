@@ -32,7 +32,7 @@ const LuohuaResilienceDriverName = "luohua"
 // new resilience standard — it reuses the bundled "default" Driver (the
 // policy/breaker engine) via [resilience.NewDefaultDriver], then wraps the
 // resulting executor with a luohua verification flavor. A fleet sets
-// govern.driver=luohua once in the rules document and every governed call then carries an
+// spring.governance.driver=luohua once in the rules document and every governed call then carries an
 // observable luohua marker, so a mis-wired backend is discoverable instead of
 // silently passing through — the same "default + observable company flavor"
 // shape the redigo [RedisDriver] layers on its pools.
@@ -58,7 +58,7 @@ func (d luohuaResilienceDriver) NewClientExecutor(service string, p resilience.C
 
 func init() {
 	// Contributing the backend as a bean named "luohua" makes it selectable by
-	// govern.driver=luohua: starter-governance's wiring bean collects every bean
+	// spring.governance.driver=luohua: starter-governance's wiring bean collects every bean
 	// exported as resilience.Driver into a name-keyed directory. Like the bundled
 	// "default" (and sentinel's blank-import contribution) this is an init-time
 	// availability registration, not a config-gated activation — the driver only
@@ -79,7 +79,7 @@ type luohuaExecutor struct {
 
 func (e *luohuaExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	// luohua verification flavor: a per-call trace tagged luohua/governance, so
-	// a process where govern.driver=luohua is in effect is observable in logs.
+	// a process where spring.governance.driver=luohua is in effect is observable in logs.
 	// This is the company hook point — a real luohua company would hang its own
 	// policy/abort/audit logic here.
 	log.Debugf(ctx, log.TagAppDef, "luohua/governance service=%s", e.service)
@@ -89,7 +89,7 @@ func (e *luohuaExecutor) Execute(ctx context.Context, fn func(context.Context) e
 // SetBreakerEventListener forwards to the inner executor so the breakers of the
 // driver beneath luohua still emit state transitions. A wrapper that swallowed
 // this capability would silently disable breaker observability for
-// govern.driver=luohua, since [resilience.ClientExecutorFor] attaches the observe
+// spring.governance.driver=luohua, since [resilience.ClientExecutorFor] attaches the observe
 // listener through this handshake.
 func (e *luohuaExecutor) SetBreakerEventListener(l resilience.BreakerEventListener) {
 	if s, ok := e.inner.(resilience.BreakerEventListenerSetter); ok {
@@ -103,7 +103,7 @@ func (e *luohuaExecutor) Close() error { return e.inner.Close() }
 
 // NewServerExecutor is the inbound counterpart of [luohuaResilienceDriver.NewClientExecutor]:
 // it builds the bundled driver's admission executor and wraps it with the same
-// luohua marker, so govern.driver=luohua flavors inbound admission too — a fleet
+// luohua marker, so spring.governance.driver=luohua flavors inbound admission too — a fleet
 // whose only outbound calls were marked would leave the inbound half of its
 // governance unobservable.
 func (d luohuaResilienceDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (resilience.ServerExecutor, error) {

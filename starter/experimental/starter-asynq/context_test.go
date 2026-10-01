@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
@@ -78,7 +80,8 @@ func TestEnqueueSpanCarriesContextAttributes(t *testing.T) {
 	}()
 
 	cp := &gs.ContextProvider{Context: context.Background()}
-	c, err := newClient(cp, Config{Addr: "127.0.0.1:1"}, nil, nil, nil)
+	c, err := newClient(cp, Config{Addr: "127.0.0.1:1"}, nil,
+		resilience.NewManager(), fault.NewInjector(fault.Configs{}, nil))
 	assert.Error(t, err).Nil()
 	defer func() { _ = c.Client.Close() }()
 	assert.Error(t, c.Init()).Nil()

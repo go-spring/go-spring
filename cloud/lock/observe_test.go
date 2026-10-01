@@ -115,6 +115,10 @@ func installGlobals(t *testing.T) (*tracetest.InMemoryExporter, sdkmetric.Reader
 
 	otel.SetTracerProvider(tp)
 	otel.SetMeterProvider(mp)
+	// The instrument set is process-wide and resolved once, so without this the
+	// records would keep going to whichever provider an earlier use resolved
+	// against.
+	resetInstruments()
 	return spanExp, rdr, func() {
 		otel.SetTracerProvider(prevTP)
 		otel.SetMeterProvider(prevMP)

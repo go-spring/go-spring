@@ -11,7 +11,7 @@ go-spring 的增量。
 **激活方式**——只有单一角色：只要 `spring.config.import` 出现 `nacos:` 条目即生效（blank
 import 在 `init()` 里注册 provider：`starter.go:58`）。没有 `enabled` 开关。
 
-nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`govern.source.nacos.*`）。
+nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`spring.governance.source.nacos.*`）。
 
 ---
 
@@ -167,7 +167,7 @@ listener 在拉取**之前**被无条件注册。若 `ListenConfig` 只在 `GetC
 
 ### 2.3 治理规则推送链路（已移出）
 
-nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`govern.source.nacos.*`）。
+nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`spring.governance.source.nacos.*`）。
 
 ---
 
@@ -195,7 +195,7 @@ nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` �
 
 ### 3.2 治理属性 key（已移出）
 
-nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`govern.source.nacos.*`）。
+nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`spring.governance.source.nacos.*`）。
 
 ---
 
@@ -225,7 +225,7 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
 
 ### 4.3 治理规则推送（已移出）
 
-nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`govern.source.nacos.*`）。
+nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`spring.governance.source.nacos.*`）。
 
 ### 4.4 畸形 dataId / source 串
 

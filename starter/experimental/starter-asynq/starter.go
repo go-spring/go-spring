@@ -45,15 +45,11 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}")),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container, which is the
-				// normal case, and are absent from a container without it. Without
-				// the "?" gs would treat an absent bean as a wiring error and the
-				// app would not boot — turning "governance is off" into "governance
-				// must be imported", which is not the contract. Init treats a nil
-				// bean as an unarmed authority, i.e. a transparent pass-through.
-				gs.IndexArg(3, gs.TagArg("?")), // mgr *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("?")), // inj *fault.Injector
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
+				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 
 			if c.Server.Enabled {

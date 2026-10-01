@@ -34,6 +34,17 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
+// newTestObserver builds the observation layer a test's backend block would own.
+// The identity is fixed (center "test"): what these tests exercise is the
+// reporting, not the labelling.
+func newTestObserver() *discovery.Observer {
+	o, err := discovery.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
+}
+
 // testReader collects the instruments this starter emits; testSpans holds its
 // spans. Both are installed once in TestMain.
 var (
@@ -173,7 +184,7 @@ func intGaugeValue(t *testing.T, name string, want map[string]string) int64 {
 // newTestRegistrar returns a nacos registrar over a fake naming client.
 func newTestRegistrar(reject bool) (*nacosRegistrar, *fakeRegistrarClient) {
 	client := &fakeRegistrarClient{fakeNamingClient: &fakeNamingClient{}, reject: reject}
-	return &nacosRegistrar{client: client, group: "DEFAULT_GROUP", cluster: "DEFAULT"}, client
+	return &nacosRegistrar{client: client, group: "DEFAULT_GROUP", cluster: "DEFAULT", obs: newTestObserver()}, client
 }
 
 // A successful publish is counted and marks the instance discoverable.

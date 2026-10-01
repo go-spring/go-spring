@@ -42,7 +42,7 @@ import (
 	_ "go-spring.org/starter-ratelimit-redis"
 )
 
-// The budget under test, configured as a governance rule in conf/govern.yaml:
+// The budget under test, configured as a governance rule in conf/governance.yaml:
 // burst 5, sustained 2/s. These constants mirror that rule so the assertions
 // below can name the numbers they expect; the executor reads the rule, not
 // them.

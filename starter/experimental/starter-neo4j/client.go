@@ -29,7 +29,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -81,9 +81,6 @@ func (o *Client) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector) err
 	// [RunWithResilience] run their call inline.
 	// Normalizing here keeps the rest of this method (and every caller) free of
 	// nil branches.
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
 	service := resilience.ServiceLabel("neo4j", o.cfg.ServiceName, o.cfg.URI)
 	o.exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("neo4j", service), service, inj)
 	return nil

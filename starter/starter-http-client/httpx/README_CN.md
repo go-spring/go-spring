@@ -17,7 +17,7 @@
   zone-aware),可选离群剔除。
 - 直连模式:只填 `Addr` 即把每次请求重写到该主机,生成客户端的 `Target` 可留空。
 - 默认走治理:未显式给执行器时,直接从集中治理中心按 `Resource`(由
-  ServiceName/Addr 推导)取执行器——进程级 `govern.*` 规则 + 热更新生效。
+  ServiceName/Addr 推导)取执行器——进程级 `spring.governance.*` 规则 + 热更新生效。
 - TLS:`tls.*` 证书面(客户端证书对、CA bundle、server name、insecure 逃生舱)
   直接构建进底层传输。
 - 可选 `resilience` 执行器包住整条链,重试会重新进入负载均衡挑一个新端点,熔断按

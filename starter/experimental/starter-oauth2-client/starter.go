@@ -30,7 +30,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -53,14 +53,10 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance manager is a NULLABLE injection: it exists
-				// whenever starter-governance is in the container (the normal
-				// case) and is absent from a container without it. Without the
-				// "?" gs would treat an absent bean as a wiring error and the app
-				// would not boot — turning "governance is off" into "governance
-				// must be imported". The ctor treats a nil manager as an unarmed
-				// authority, i.e. a transparent pass-through.
-				gs.IndexArg(3, gs.TagArg("?")), // mgr *resilience.Manager
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})
@@ -105,9 +101,6 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.M
 	// resolves its backing implementation per call, so the order of this setup
 	// relative to the container's wiring is irrelevant.
 	service := resilience.ServiceLabel("oauth2", c.ClientID)
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
 	exec := mgr.ClientExecutorFor("oauth2", service)
 	client.Transport = resilience.NewRoundTripper(client.Transport, exec)
 	return client, nil

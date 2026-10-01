@@ -25,7 +25,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -52,9 +52,6 @@ import (
 // follows the manager's hot-reload, so inbound admission can be tightened
 // without a restart, the same way every outbound client's policy is tuned.
 func Admit(label string, system string, mgr *resilience.Manager) thrift.ProcessorMiddleware {
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
 	exec := mgr.ServerExecutorFor(system, label)
 	return func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 		return thrift.WrappedTProcessorFunction{

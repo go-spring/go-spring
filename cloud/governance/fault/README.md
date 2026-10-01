@@ -20,7 +20,7 @@ records the resulting outcomes.
   `*Injector` — exported as a bean — and swaps its config in place via
   `SetConfig`, so toggling fires at runtime with no restart.
 - One config per DIRECTION, so a fire on one side cannot touch the other:
-  govern.client.fault.* drives outbound calls, govern.server.fault.* drives
+  spring.governance.client.fault.* drives outbound calls, spring.governance.server.fault.* drives
   inbound requests, and each side counts its own MaxDuration/MaxAffected
   guardrails. An outbound fire that self-heals leaves the inbound one armed.
 - Three injection kinds: `generic` (a retryable injected error), `timeout`
@@ -29,7 +29,7 @@ records the resulting outcomes.
 - Injected errors implement `resilience.Retryable`, so they deterministically
   drive retries regardless of the host's retry predicate.
 - stdlib + resilience only — no third-party deps, no gs/spring dependency. The
-  gs wiring lives in starter-govern, not here.
+  gs wiring lives in starter-governance, not here.
 
 ## Install
 
@@ -76,16 +76,16 @@ see [README 配置指南 §6](../README.md)):
 
 ```properties
 # outbound: WrapExecutor's per-attempt gate (mgr.ClientExecutorFor → fault.WrapClientExecutor)
-govern.client.fault.enabled=true
-govern.client.fault.rate=0.5
-govern.client.fault.error=generic        # "" | "generic" | "timeout" | "reset" | "refused"
-govern.client.fault.latency=50ms         # optional, applied to every call
-govern.client.fault.latency-jitter=20ms   # optional, sleep latency ± U[0,20ms]
+spring.governance.client.fault.enabled=true
+spring.governance.client.fault.rate=0.5
+spring.governance.client.fault.error=generic        # "" | "generic" | "timeout" | "reset" | "refused"
+spring.governance.client.fault.latency=50ms         # optional, applied to every call
+spring.governance.client.fault.latency-jitter=20ms   # optional, sleep latency ± U[0,20ms]
 
 # inbound: Apply's inbound-handler gate (gin / echo / grpc / hertz / trpc / dubbo)
-govern.server.fault.enabled=true
-govern.server.fault.rate=0.2
-govern.server.fault.error=timeout
+spring.governance.server.fault.enabled=true
+spring.governance.server.fault.rate=0.2
+spring.governance.server.fault.error=timeout
 ```
 
 Read the live values with `Injector.ClientConfig()` / `Injector.ServerConfig()`.
@@ -166,7 +166,7 @@ genuine timeout/reset.
 guardrail counters) per direction, so an outbound fire and an inbound fire never
 see or trip each other: [WrapClientExecutor]'s per-attempt gate reads the client side,
 [ApplyServer] reads the server side. That is why the two configs must be separate keys
-(`govern.client.fault.*` / `govern.server.fault.*`) rather than one block with a
+(`spring.governance.client.fault.*` / `spring.governance.server.fault.*`) rather than one block with a
 per-rule direction flag — the knobs that need the direction most
 (`rate`/`latency`/`error`/`scope`/guardrails) are the GLOBAL ones, which carry no
 service label for a flag to hang on.

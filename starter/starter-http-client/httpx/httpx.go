@@ -98,7 +98,7 @@ type Config struct {
 	TLS security.TLSConfig
 
 	// Service is the governance service label protecting this client (e.g.
-	// "http:user-svc") — the name a govern rule matches. When empty it is derived
+	// "http:user-svc") — the name a governance rule matches. When empty it is derived
 	// as resilience.ServiceLabel("http", ServiceName, Addr): ServiceName wins
 	// whenever set, only an entry with no service-name falls back to its address,
 	// so the label stays stable across addressing-mode switches. Set it
@@ -170,12 +170,6 @@ type Config struct {
 // prop is the application's load-test convention bean (nil means go-spring's
 // default), which stamps the marker onto every outbound request.
 func NewTransport(cfg Config, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
-	if lbMgr == nil {
-		lbMgr = loadbalance.NewManager()
-	}
 	if prop == nil {
 		if prop, err = traffic.NewDefaultPropagator(traffic.DefaultBinding()); err != nil {
 			return nil, nil, err
@@ -243,7 +237,7 @@ func NewTransport(cfg Config, mgr *resilience.Manager, inj *fault.Injector, lbMg
 	// Resilience wraps the (possibly balanced) transport so a retry re-enters
 	// the balancer and picks a fresh endpoint, and the breaker keys on
 	// cfg.service() — the same label the policy is resolved under, so limiter/
-	// breaker state and driver rule names agree with the govern rule that armed
+	// breaker state and driver rule names agree with the governance rule that armed
 	// them. Three executor sources, first match wins: a pre-built Executor, an
 	// explicit ResilienceDriver+Policy, or — the default, and the same path every
 	// other client starter takes — the injected [resilience.Manager] under
@@ -379,7 +373,7 @@ func (t *fixedHostTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 // service derives the governance service label: explicit Service wins;
 // otherwise service-name (whenever set) before the direct address, so the
-// label a govern rule matches on stays stable across addressing-mode switches.
+// label a governance rule matches on stays stable across addressing-mode switches.
 func (c Config) service() string {
 	if c.Service != "" {
 		return c.Service

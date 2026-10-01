@@ -42,13 +42,17 @@ type consulRegistrar struct {
 	mu         sync.Mutex
 	heartbeats map[string]chan struct{}      // service ID -> heartbeat stop channel
 	regs       map[string]discovery.Instance // service ID -> last registered value
+
+	// obs is the block's observability layer; it carries the identity (system,
+	// center) every reported attempt and log line is labelled with.
+	obs *discovery.Observer
 }
 
 // newConsulRegistrar returns a registrar writing through client (the shared
 // center client; the agent was already probed when client was built) with c's
 // TTL and auto-deregistration window. It does NOT close client — the owner
 // (consulCenter, or the standalone fallback in starter.go) does.
-func newConsulRegistrar(c ConsulConfig, client *api.Client) (*consulRegistrar, error) {
+func newConsulRegistrar(c ConsulConfig, client *api.Client, obs *discovery.Observer) (*consulRegistrar, error) {
 	if client == nil {
 		return nil, errutil.Explain(nil, "registry-consul: nil consul client")
 	}
@@ -122,7 +126,7 @@ func (r *consulRegistrar) Register(ctx context.Context, reg discovery.Instance) 
 	}
 	id := serviceID(reg)
 	checkID := "service:" + id
-	if err := discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
+	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
 		return r.upsert(reg)
 	}); err != nil {
 		return errutil.Explain(err, "registry-consul: register %q", reg.ServiceName)
@@ -131,7 +135,15 @@ func (r *consulRegistrar) Register(ctx context.Context, reg discovery.Instance) 
 	// half TTL, so a failure here only delays "passing", it never fails Register.
 	if err := r.client.Agent().UpdateTTL(checkID, "", api.HealthPassing); err != nil {
 		log.Warn(ctx, starterTag, append(
-			discovery.RegisterFailedFields(obsSystem, reg.ServiceName, discovery.ReasonInitial, err),
+			[]log.Field{
+				log.String("system", r.obs.System()),
+				log.String("center", r.obs.Center()),
+				log.String("service", reg.ServiceName),
+				log.String("operation", "register"),
+				log.String("reason", discovery.ReasonInitial),
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+			},
 			log.Msgf("consul initial TTL pass for check=%s failed (the heartbeat below retries it)", checkID),
 		)...)
 	}
@@ -163,7 +175,7 @@ func (r *consulRegistrar) reRegister(id string) error {
 	if !ok {
 		return nil
 	}
-	return discovery.RegisterAttempt(context.Background(), obsSystem, reg.ServiceName, discovery.ReasonSelfHeal, func(context.Context) error {
+	return r.obs.RegisterAttempt(context.Background(), reg.ServiceName, discovery.ReasonSelfHeal, func(context.Context) error {
 		return r.upsert(reg)
 	})
 }
@@ -220,7 +232,7 @@ func (r *consulRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instan
 		return errutil.Explain(nil, "registry-consul: update weight for unregistered instance %q", id)
 	}
 	last.Weight = normalizeWeight(weight)
-	if err := discovery.WeightChange(ctx, obsSystem, last.ServiceName, func(context.Context) error {
+	if err := r.obs.WeightChange(ctx, last.ServiceName, func(context.Context) error {
 		return r.upsert(last)
 	}); err != nil {
 		return errutil.Explain(err, "registry-consul: update weight %q", last.ServiceName)
@@ -263,7 +275,13 @@ func (r *consulRegistrar) heartbeat(id, service string, stop <-chan struct{}) {
 			failures++
 			if failures >= persistAfter {
 				log.Error(context.Background(), starterTag, append(
-					discovery.RegisterFields(obsSystem, service, discovery.ReasonSelfHeal),
+					[]log.Field{
+						log.String("system", r.obs.System()),
+						log.String("center", r.obs.Center()),
+						log.String("service", service),
+						log.String("operation", "register"),
+						log.String("reason", discovery.ReasonSelfHeal),
+					},
 					log.Msgf("consul TTL heartbeat for check=%s failed %d times in a row; re-registering the service to recover", checkID, failures),
 					log.Err(err),
 				)...)
@@ -271,13 +289,29 @@ func (r *consulRegistrar) heartbeat(id, service string, stop <-chan struct{}) {
 				// service and check if Consul already dropped them.
 				if rerr := r.reRegister(id); rerr != nil {
 					log.Error(context.Background(), starterTag, append(
-						discovery.RegisterFailedFields(obsSystem, service, discovery.ReasonSelfHeal, rerr),
+						[]log.Field{
+							log.String("system", r.obs.System()),
+							log.String("center", r.obs.Center()),
+							log.String("service", service),
+							log.String("operation", "register"),
+							log.String("reason", discovery.ReasonSelfHeal),
+							log.String("status", discovery.StatusOf(rerr)),
+							log.Err(rerr),
+						},
 						log.Msgf("consul re-register for service=%s failed", id),
 					)...)
 				}
 			} else {
 				log.Warn(context.Background(), starterTag, append(
-					discovery.RegisterFailedFields(obsSystem, service, discovery.ReasonSelfHeal, err),
+					[]log.Field{
+						log.String("system", r.obs.System()),
+						log.String("center", r.obs.Center()),
+						log.String("service", service),
+						log.String("operation", "register"),
+						log.String("reason", discovery.ReasonSelfHeal),
+						log.String("status", discovery.StatusOf(err)),
+						log.Err(err),
+					},
 					log.Msgf("consul TTL heartbeat for check=%s failed (%d/%d)", checkID, failures, persistAfter),
 				)...)
 			}
@@ -299,7 +333,7 @@ func (r *consulRegistrar) Deregister(ctx context.Context, reg discovery.Instance
 	}
 	delete(r.regs, id)
 	r.mu.Unlock()
-	if err := discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+	if err := r.obs.DeregisterAttempt(ctx, reg.ServiceName, func(context.Context) error {
 		err := r.client.Agent().ServiceDeregister(id)
 		var statusErr api.StatusError
 		if errors.As(err, &statusErr) && statusErr.Code == http.StatusNotFound {

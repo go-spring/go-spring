@@ -29,31 +29,40 @@ import (
 // sides cannot drift apart.
 const DefaultZoneKey = discovery.MetaKeyZone
 
-func init() {
-	Register(ZoneAware, func(cfg Config) (Balancer, error) {
-		if err := cfg.only("zone_key", "delegate"); err != nil {
-			return nil, err
+// Parameter names the zone-aware strategy reads. ZoneKey overrides the metadata
+// key it matches locality on; Delegate names the sibling strategy it hands the
+// final choice to.
+const (
+	ParamZoneKey  = "zone-key"
+	ParamDelegate = "delegate"
+)
+
+// zoneAwareFactory is the [Factory] behind the [ZoneAware] name. It composes
+// with any sibling strategy through [Directory], which is why a factory
+// receives the directory it was built from.
+type zoneAwareFactory struct{}
+
+func (zoneAwareFactory) Build(dir Directory, p *Params) (Balancer, error) {
+	zoneKey := p.String(ParamZoneKey, DefaultZoneKey)
+
+	// An unknown or self-naming delegate is a construction error, not a silent
+	// fallback to round-robin: the caller asked for a specific inner strategy
+	// and would otherwise never learn it was dropped.
+	delegate := Balancer(NewRoundRobin())
+	if name := p.String(ParamDelegate, ""); name != "" {
+		if name == ZoneAware {
+			return nil, errutil.Explain(nil, "loadbalance: zone_aware cannot delegate to itself")
 		}
-		zoneKey := cfg.ZoneKey
-		if zoneKey == "" {
-			zoneKey = DefaultZoneKey
+		bal, err := dir.Build(name, nil)
+		if err != nil {
+			return nil, errutil.Explain(err, "loadbalance: zone_aware delegate %q", name)
 		}
-		// An unknown or self-naming delegate is a config error, not a silent
-		// fallback to round-robin: the caller asked for a specific inner
-		// strategy and would otherwise never learn it was dropped.
-		delegate := Balancer(NewRoundRobin())
-		if cfg.Delegate != "" {
-			if cfg.Delegate == ZoneAware {
-				return nil, errutil.Explain(nil, "loadbalance: zone_aware cannot delegate to itself")
-			}
-			bal, err := New(cfg.Delegate, Config{})
-			if err != nil {
-				return nil, errutil.Explain(err, "loadbalance: zone_aware delegate %q", cfg.Delegate)
-			}
-			delegate = bal
-		}
-		return NewZoneAware(zoneKey, delegate), nil
-	})
+		delegate = bal
+	}
+	if err := p.Done(); err != nil {
+		return nil, err
+	}
+	return NewZoneAware(zoneKey, delegate), nil
 }
 
 // zoneAware is a filter, not a strategy: it narrows the candidate set to the

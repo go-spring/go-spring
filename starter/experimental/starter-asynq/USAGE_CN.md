@@ -269,7 +269,7 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 
 ### 4.5 治理守护（可选）
 
-带 starter-governance + `govern` source 时，对服务 `asynq:<addr>` 开熔断/限流：
+带 starter-governance + 已配置的规则来源时，对服务 `asynq:<addr>` 开熔断/限流：
 `Client.Enqueue` 直接返回拒绝、**不触 Redis**；提升来的 `asynq.Client` 路径则完全绕过
 守护（见 §5 第 2 行）。
 

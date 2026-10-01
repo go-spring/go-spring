@@ -19,7 +19,7 @@ bean 承载 ——
 
 **激活方式**：每个 `spring.registry.nacos.<name>` 块即一个注册中心 —— 一个共享 naming
 client、一次启动探测、一套生命周期（`starter.go`）。名为 `nacos.<name>` 的 bean 同时导出
-`discovery.Registrar`（设置了 `spring.registry.service-name` 时由 starter-registry 核心收集
+`discovery.Registry`（设置了 `spring.registry.service-name` 时由 starter-registry 核心收集
 —— 纯消费方应用不注册任何实例）与 `discovery.Discovery`（按 bean 名引用，纯提供方不为读
 侧付出任何成本）。
 
@@ -121,7 +121,7 @@ spring.gateway.discovery=nacos.main                 # 后端 bean 名
 spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
 # 路由的负载均衡策略不是 gateway 的 key，而是该路由标签上的治理规则：
-# govern.client.rules[N].service=gateway:orders + govern.client.rules[N].balancer=weighted
+# spring.governance.client.rules[N].service=gateway:orders + spring.governance.client.rules[N].balancer=weighted
 # （见 cloud/governance/README.md §3.1）
 ```
 
@@ -151,7 +151,7 @@ starter 只按块贡献 registrar bean：
 ```
 import starter-registry-nacos
   ├─ 每个块 ${spring.registry.nacos.<name>}：Provide(newNacosBackend)
-  │    Name("nacos."+name).Export(As[discovery.Discovery], As[discovery.Registrar])
+  │    Name("nacos."+name).Export(As[discovery.Discovery], As[discovery.Registry])
   │    条件：gs.OnProperty("spring.registry.nacos")                   [starter.go]
   └─ import starter-registry（核心，每进程恰一次）
        └─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
@@ -160,7 +160,7 @@ gs.Run()
   ├─ conf.BindEach 遍历 spring.registry.nacos.* → 每块一份 NacosConfig
   ├─ 每块 newNacosBackend：建 nacos naming client + FAIL-FAST 探活
   │    （GetAllServicesInfo 取 1 行 —— server 不可达/凭证错误直接终止启动）[starter.go]
-  ├─ registryServer 经 []discovery.Registrar 切片注入收集所有后端的 registrar
+  ├─ registryServer 经 []discovery.Registry 切片注入收集所有后端的 registrar
   │    （跨所有后端 —— nacos、zookeeper……）
   ├─ Run：就绪前校验 service-name/addr 非空且 registrar ≥ 1 个
   ├─ <-sig.TriggerAndWait()   ← 就绪门：整个应用起来后才注册

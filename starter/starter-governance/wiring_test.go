@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
@@ -186,7 +187,7 @@ func TestWiring_LatePushDrivesArmedModules(t *testing.T) {
 }
 
 // TestWiring_DriverDirectorySelectsBackend pins the driver contract: the
-// directory the wiring bean injects is what govern.driver resolves against, so
+// directory the wiring bean injects is what spring.governance.driver resolves against, so
 // naming a backend builds through THAT backend — not through the bundled one.
 func TestWiring_DriverDirectorySelectsBackend(t *testing.T) {
 	w, res, _, _ := newTestWiring()
@@ -206,7 +207,7 @@ func TestWiring_DriverDirectorySelectsBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !drv.used {
-		t.Fatal("govern.driver=custom must build through the directory's custom driver")
+		t.Fatal("spring.governance.driver=custom must build through the directory's custom driver")
 	}
 	if d := res.Driver(); d != "custom" {
 		t.Fatalf("Driver() = %q, want custom", d)
@@ -298,6 +299,86 @@ func TestWiring_DriverBeanWithoutExportIsInvisible(t *testing.T) {
 			t.Fatal("a driver bean without Export must be invisible to the directory")
 		}
 	})
+}
+
+// TestWiring_BalancerFactoryBeansAreCollectedFromContainer is the load-balancing
+// counterpart of the driver-directory guard: a strategy contributed as a named
+// bean — the way a company contributes its own balancer — must reach the manager
+// the wiring arms, and a pool bound to a rule naming it must actually build
+// through it. That is the whole "new strategy, with parameters of its own,
+// without touching cloud/loadbalance" promise.
+func TestWiring_BalancerFactoryBeansAreCollectedFromContainer(t *testing.T) {
+	var captured *wiring
+	fac := &recordingFactory{}
+	var pool *loadbalance.Pool
+	var mgr *loadbalance.Manager
+
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Provide(func() governance.Source {
+			return governance.NewPushSource(governance.Config{
+				Enabled: true,
+				Client: governance.ClientConfig{
+					Rules: []governance.ClientRule{{
+						Service: "sys",
+						Selection: loadbalance.Selection{
+							Balancer: "corp",
+							Params:   map[string]string{"size": "7"},
+						},
+					}},
+				},
+			})
+		})
+		app.Provide(func() loadbalance.Factory { return fac }).
+			Name("corp").
+			Export(gs.As[loadbalance.Factory]())
+		app.Provide(func(w *wiring) *wiringProbe { captured = w; return &wiringProbe{} }).
+			Export(gs.As[gs.Rooter]())
+		// A stand-in for a client starter: it injects the manager bean the wiring
+		// also drives, then binds a pool to the governed label.
+		app.Provide(func(m *loadbalance.Manager) *managerProbe {
+			mgr = m
+			pool = loadbalance.NewPool(func() ([]discovery.Endpoint, error) {
+				return []discovery.Endpoint{{Addr: "10.0.0.1:80", Healthy: true, Weight: 1}}, nil
+			}, loadbalance.NewRoundRobin())
+			m.Bind(pool, "sys")
+			return &managerProbe{}
+		}).Export(gs.As[gs.Rooter]())
+	}).RunTest(t, func(_ *struct{}) {
+		if captured == nil || mgr == nil || pool == nil {
+			t.Fatal("the wiring or client beans were not constructed")
+		}
+		if _, ok := captured.Factories["corp"]; !ok {
+			t.Fatal("a factory bean exported as loadbalance.Factory must reach the wiring's directory")
+		}
+		if _, err := pool.Pick(loadbalance.PickInfo{}); err != nil {
+			t.Fatal(err)
+		}
+		if !fac.used || fac.size != 7 {
+			t.Fatalf("the pool must have been built through the contributed factory with its params, used=%v size=%d", fac.used, fac.size)
+		}
+		if pool.Selection().Balancer != "corp" {
+			t.Fatalf("the pool's strategy: want corp, got %q", pool.Selection().Balancer)
+		}
+	})
+}
+
+// recordingFactory is a contributed strategy that flags every build, so a test
+// can prove the pool resolved through it — and can see the parameter it read.
+type recordingFactory struct {
+	used bool
+	size int
+}
+
+func (f *recordingFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbalance.Balancer, error) {
+	size, err := p.Int("size", 1)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.Done(); err != nil {
+		return nil, err
+	}
+	f.used, f.size = true, size
+	return loadbalance.NewRoundRobin(), nil
 }
 
 // wiringProbe is a placeholder bean whose only job is to be constructed with

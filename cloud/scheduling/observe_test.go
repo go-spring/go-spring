@@ -37,6 +37,10 @@ func withMeter(t *testing.T) *sdkmetric.ManualReader {
 	rdr := sdkmetric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(rdr)))
+	// The instrument set is process-wide and resolved once, so a test running
+	// after one that already resolved it would keep reporting into the earlier
+	// provider.
+	scheduling.ResetInstruments()
 	t.Cleanup(func() {
 		_ = rdr.Shutdown(context.Background())
 		otel.SetMeterProvider(prev)

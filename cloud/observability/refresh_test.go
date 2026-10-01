@@ -28,13 +28,17 @@ import (
 )
 
 // withReader installs a manual reader as the global meter provider for the
-// test; since RefreshConf builds its instruments per call, they always bind
-// to the provider that is current at call time.
+// test; since RefreshConf resolves its instruments lazily, they bind to the
+// provider that is current at first use.
 func withReader(t *testing.T) *metric.ManualReader {
 	t.Helper()
 	rdr := metric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(metric.NewMeterProvider(metric.WithReader(rdr)))
+	// The instrument set is process-wide and resolved once, so a test running
+	// after one that already resolved it would keep reporting into the earlier
+	// provider.
+	resetInstruments()
 	t.Cleanup(func() {
 		_ = rdr.Shutdown(context.Background())
 		otel.SetMeterProvider(prev)

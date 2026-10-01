@@ -38,16 +38,20 @@ type nacosRegistrar struct {
 	client  naming_client.INamingClient
 	group   string
 	cluster string
+
+	// obs is the block's observability layer; it carries the identity (system,
+	// center) every reported attempt and log line is labelled with.
+	obs *discovery.Observer
 }
 
 // newNacosRegistrar returns a registrar writing through client (the shared
 // center client; the server was already probed when client was built) with
 // c's group/cluster. It does NOT close client — the owner (nacosCenter) does.
-func newNacosRegistrar(c NacosConfig, client naming_client.INamingClient) (*nacosRegistrar, error) {
+func newNacosRegistrar(c NacosConfig, client naming_client.INamingClient, obs *discovery.Observer) (*nacosRegistrar, error) {
 	if client == nil {
 		return nil, errutil.Explain(nil, "registry-nacos: nil naming client")
 	}
-	return &nacosRegistrar{client: client, group: c.Group, cluster: c.Cluster}, nil
+	return &nacosRegistrar{client: client, group: c.Group, cluster: c.Cluster, obs: obs}, nil
 }
 
 // normalizeWeight clamps a misconfigured negative weight to 1 at write time.
@@ -72,7 +76,7 @@ func (r *nacosRegistrar) Register(ctx context.Context, reg discovery.Instance) e
 	// Nacos treats weight 0 as "receive no traffic", so an explicit 0 is the
 	// drain signal and passes through untouched.
 	weight := float64(normalizeWeight(reg.Weight))
-	return discovery.RegisterAttempt(ctx, obsSystem, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
+	return r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
 		ok, err := r.client.RegisterInstance(vo.RegisterInstanceParam{
 			Ip:          host,
 			Port:        port,
@@ -104,7 +108,7 @@ func (r *nacosRegistrar) Deregister(ctx context.Context, reg discovery.Instance)
 	if err != nil {
 		return errutil.Explain(err, "registry-nacos: deregister %q", reg.ServiceName)
 	}
-	return discovery.DeregisterAttempt(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+	return r.obs.DeregisterAttempt(ctx, reg.ServiceName, func(context.Context) error {
 		ok, err := r.client.DeregisterInstance(vo.DeregisterInstanceParam{
 			Ip:          host,
 			Port:        port,
@@ -140,7 +144,7 @@ func (r *nacosRegistrar) UpdateWeight(ctx context.Context, reg discovery.Instanc
 	// Weight 0 is the drain signal and passes through — Nacos natively treats
 	// 0 as "receive no traffic".
 	w := float64(normalizeWeight(weight))
-	return discovery.WeightChange(ctx, obsSystem, reg.ServiceName, func(context.Context) error {
+	return r.obs.WeightChange(ctx, reg.ServiceName, func(context.Context) error {
 		ok, err := r.client.UpdateInstance(vo.UpdateInstanceParam{
 			Ip:          host,
 			Port:        port,

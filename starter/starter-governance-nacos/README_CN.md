@@ -38,16 +38,16 @@ go get go-spring.org/starter-governance-nacos
 import _ "go-spring.org/starter-governance-nacos"
 ```
 
-只有存在 `govern.source.nacos.*` 配置项时才会注册 Bean，因此空导入在其余情况下是惰性的。
+只有存在 `spring.governance.source.nacos.*` 配置项时才会注册 Bean，因此空导入在其余情况下是惰性的。
 
 ### 2. 配置规则源
 
 在[配置文件](example/conf/app.properties)中添加引导 key：
 
 ```properties
-govern.source.nacos.server=127.0.0.1:8848
-govern.source.nacos.data-id=app-govern.yaml
-govern.source.nacos.group=DEFAULT_GROUP
+spring.governance.source.nacos.server=127.0.0.1:8848
+spring.governance.source.nacos.data-id=app-governance.yaml
+spring.governance.source.nacos.group=DEFAULT_GROUP
 ```
 
 `server` 与 `data-id` 是必填项，其余字段都有默认值（见[配置项](#配置项)）。dataId 必须已存在：
@@ -59,26 +59,27 @@ govern.source.nacos.group=DEFAULT_GROUP
 把规则放进它自己的 dataId，键与 `app.properties` 条目完全相同：
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
-  client:
-    rules:
-      - services: demo:service
-        attempt-timeout: 50ms
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
+    client:
+      rules:
+        - services: demo:service
+          attempt-timeout: 50ms
 ```
 
-每个已发布版本都会被重新解析并推送进治理中心。规则词表（`govern.enabled`、`govern.client.default.*`、
-`govern.client.rules[n].*`、`govern.client.fault.*`）属于治理域，完整参考见
+每个已发布版本都会被重新解析并推送进治理中心。规则词表（`spring.governance.enabled`、`spring.governance.client.default.*`、
+`spring.governance.client.rules[n].*`、`spring.governance.client.fault.*`）属于治理域，完整参考见
 [starter-governance 的 USAGE](../starter-governance/USAGE.md)。引入治理中心本身仍是
 [starter-governance](../starter-governance) 的职责——本模块只提供规则源。
 
 ## 配置项
 
-所有配置项挂在 `govern.source.nacos` 之下：
+所有配置项挂在 `spring.governance.source.nacos` 之下：
 
 | Key         | 默认值                 | 说明                                          |
 |-------------|------------------------|-----------------------------------------------|

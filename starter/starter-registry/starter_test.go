@@ -82,7 +82,7 @@ func (f *fakeRegistrar) UpdateWeight(ctx context.Context, inst discovery.Instanc
 }
 
 // compile-time contract: the fake stands in for a real backend registrar.
-var _ discovery.Registrar = (*fakeRegistrar)(nil)
+var _ discovery.Registry = (*fakeRegistrar)(nil)
 
 // regA / regB are the two fake backend registrars the test container collects.
 // The same instances back every test in this file; each test resets them, and
@@ -93,13 +93,13 @@ var (
 )
 
 func init() {
-	// Two named fake registrar beans exported as discovery.Registrar: the
+	// Two named fake registrar beans exported as discovery.Registry: the
 	// container's slice collection the Server bean autowires is exactly the
 	// mechanism under test (one bean per configured center, across backends).
 	gs.Provide(func() *fakeRegistrar { return regA }).
-		Name("fake-a").Export(gs.As[discovery.Registrar]())
+		Name("fake-a").Export(gs.As[discovery.Registry]())
 	gs.Provide(func() *fakeRegistrar { return regB }).
-		Name("fake-b").Export(gs.As[discovery.Registrar]())
+		Name("fake-b").Export(gs.As[discovery.Registry]())
 }
 
 // waitFor polls cond until it holds or the deadline passes.
@@ -131,8 +131,8 @@ func TestServerLifecycle(t *testing.T) {
 		if s.Server == nil {
 			t.Fatal("registryServer bean must exist when ${spring.registry.service-name} is set")
 		}
-		if len(s.Server.Registrars) != 2 {
-			t.Fatalf("the server must collect every registrar bean, want 2 got %d", len(s.Server.Registrars))
+		if len(s.Server.Registries) != 2 {
+			t.Fatalf("the server must collect every registrar bean, want 2 got %d", len(s.Server.Registries))
 		}
 
 		// Registration runs after the ready signal, which races this callback;
@@ -180,7 +180,7 @@ func TestUpdateWeightBroadcast(t *testing.T) {
 
 	s := &Server{
 		inst:       discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
-		Registrars: []discovery.Registrar{regA, regB},
+		Registries: []discovery.Registry{regA, regB},
 	}
 
 	// Broadcast order follows the slice: regA succeeds, regB fails.
@@ -196,7 +196,7 @@ func TestUpdateWeightBroadcast(t *testing.T) {
 // only after Run has published the instance.
 func TestUpdateWeightBeforeRegister(t *testing.T) {
 	s := NewServer()
-	s.Registrars = []discovery.Registrar{regA}
+	s.Registries = []discovery.Registry{regA}
 	err := s.UpdateWeight(context.Background(), 1)
 	assert.Error(t, err).Matches("not registered yet")
 }
@@ -213,7 +213,7 @@ func TestDeregisterContinuesPastFailure(t *testing.T) {
 
 	s := &Server{
 		inst:       discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
-		Registrars: []discovery.Registrar{regA, regB},
+		Registries: []discovery.Registry{regA, regB},
 	}
 	s.deregister(context.Background())
 

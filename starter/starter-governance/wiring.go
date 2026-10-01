@@ -95,6 +95,14 @@ type wiring struct {
 	// unexported concrete driver would be invisible here. Naming a driver that
 	// is not in this map fails startup (Center.SetDrivers → GoLive).
 	Drivers map[string]resilience.Driver `autowire:"?"`
+
+	// Factories is every load-balancing strategy bean in the container, keyed by
+	// bean name — the directory a rule's `balancer` name is resolved against,
+	// beside the built-in strategies. A deployment contributes one with
+	// gs.Provide(...).Name("<strategy>").Export(gs.As[loadbalance.Factory]());
+	// the Export is required for the same reason as Drivers. A name that
+	// shadows a built-in strategy fails startup (Center.SetBalancerFactories).
+	Factories map[string]loadbalance.Factory `autowire:"?"`
 }
 
 // Init binds the bean-injected source and completes the center's startup. An
@@ -109,10 +117,14 @@ func (w *wiring) Init() error {
 	if w.Ctr == nil {
 		return errutil.Explain(nil, "starter-governance: governance center bean is missing")
 	}
-	// Drivers first: GoLive validates the configured driver name against the
-	// directory, so the directory must be in place before the center goes live.
-	// A nil map is a no-op (the manager keeps its bundled driver).
+	// Directories first: GoLive validates the configured driver name against the
+	// resilience one, so both must be in place before the center goes live. A nil
+	// map is a no-op in each case — the manager keeps its bundled driver, the
+	// pool keeps the built-in strategies.
 	w.Ctr.SetDrivers(w.Drivers)
+	if err := w.Ctr.SetBalancerFactories(w.Factories); err != nil {
+		return err
+	}
 	w.Ctr.BindDefault(w.Src)
 	return w.Ctr.GoLive()
 }

@@ -77,12 +77,12 @@ spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
 # Resilience and endpoint selection are NOT configured here: policy lives under
-# govern.* in the governance rules document (starter-governance;
-# conf/govern.properties referenced by govern.source.file.path). Breaker trips
+# spring.governance.* in the governance rules document (starter-governance;
+# conf/governance.properties referenced by spring.governance.source.file.path). Breaker trips
 # after 2 consecutive failures:
-#   govern.enabled=true
-#   govern.client.default.error-threshold=2
-#   govern.client.default.open-duration=30s
+#   spring.governance.enabled=true
+#   spring.governance.client.default.error-threshold=2
+#   spring.governance.client.default.open-duration=30s
 ```
 
 ### 3. Call
@@ -126,7 +126,7 @@ are per-service policy and live in the governance rules document (see
 starter-governance). The governance service label is `http:<service-name>`
 whenever `service-name` is set (either addressing mode), `http:<addr>` only when
 no service-name exists. Per-request timeout comes from
-`govern.client.default.attempt-timeout`; the load-balancing strategy and outlier
+`spring.governance.client.default.attempt-timeout`; the load-balancing strategy and outlier
 suspension come from `balancer` / `outlier-threshold` / `outlier-suspend-for` on
 the rule matching that label.
 

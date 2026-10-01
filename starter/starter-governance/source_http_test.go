@@ -28,11 +28,11 @@ import (
 )
 
 // TestParseGovernanceDoc pins the shared parse core every backend adapter
-// funnels through: the same govern.* keys every source document uses, format inference
+// funnels through: the same spring.governance.* keys every source document uses, format inference
 // by name, and the no-govern-keys guard.
 func TestParseGovernanceDoc(t *testing.T) {
 	// properties (default format), same keys an app.properties entry would use.
-	cfg, err := rules.Parse("govern.properties", []byte(rulesV1), "")
+	cfg, err := rules.Parse("governance.properties", []byte(rulesV1), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestParseGovernanceDoc(t *testing.T) {
 	}
 
 	// yaml inferred from the name.
-	cfg, err = rules.Parse("govern.yaml", []byte(rulesV1YAML), "")
+	cfg, err = rules.Parse("governance.yaml", []byte(rulesV1YAML), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,29 +58,29 @@ func TestParseGovernanceDoc(t *testing.T) {
 		t.Fatal("explicit-format parse should bind enabled")
 	}
 
-	// no govern.* keys → error, never a silently disabled center.
-	if _, err = rules.Parse("govern.yaml", []byte("foo: bar\n"), ""); err == nil {
-		t.Fatal("document without govern.* keys must be rejected")
+	// no spring.governance.* keys → error, never a silently disabled center.
+	if _, err = rules.Parse("governance.yaml", []byte("foo: bar\n"), ""); err == nil {
+		t.Fatal("document without spring.governance.* keys must be rejected")
 	}
 	// malformed yaml → error.
-	if _, err = rules.Parse("govern.yaml", []byte("govern: {"), ""); err == nil {
+	if _, err = rules.Parse("governance.yaml", []byte("spring.governance: {"), ""); err == nil {
 		t.Fatal("malformed document must be rejected")
 	}
 }
 
 // TestParse_LegacyKeysArmNothing pins the no-compatibility promise of the
-// client/server split: the pre-split keys (govern.default / govern.rules /
-// govern.fault) are simply unknown now, so a document still written against them
+// client/server split: the pre-split keys (spring.governance.default / spring.governance.rules /
+// spring.governance.fault) are simply unknown now, so a document still written against them
 // binds NOTHING — neither direction gets a policy or a fire, and the failure is
 // loud only where it should be (the operator's own document review).
 func TestParse_LegacyKeysArmNothing(t *testing.T) {
-	cfg, err := rules.Parse("govern.properties", []byte(`govern.enabled=true
-govern.driver=default
-govern.default.attempt-timeout=100ms
-govern.rules[0].service=redis:cache
-govern.rules[0].attempt-timeout=50ms
-govern.fault.enabled=true
-govern.fault.rate=1
+	cfg, err := rules.Parse("governance.properties", []byte(`spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.default.attempt-timeout=100ms
+spring.governance.rules[0].service=redis:cache
+spring.governance.rules[0].attempt-timeout=50ms
+spring.governance.fault.enabled=true
+spring.governance.fault.rate=1
 `), "")
 	if err != nil {
 		t.Fatal(err)
@@ -90,13 +90,13 @@ govern.fault.rate=1
 		t.Fatalf("enabled/driver must still bind: %+v", cfg)
 	}
 	if !cfg.Client.Default.ClientPolicy.IsZero() || len(cfg.Client.Rules) != 0 {
-		t.Fatalf("legacy govern.default/rules must arm no outbound policy: %+v", cfg.Client)
+		t.Fatalf("legacy spring.governance.default/rules must arm no outbound policy: %+v", cfg.Client)
 	}
 	if !cfg.Server.Default.IsZero() || len(cfg.Server.Rules) != 0 {
 		t.Fatalf("legacy keys must arm no inbound admission: %+v", cfg.Server)
 	}
 	if cfg.Client.Fault.Enabled || cfg.Server.Fault.Enabled {
-		t.Fatalf("legacy govern.fault must arm neither fire: %+v / %+v", cfg.Client.Fault, cfg.Server.Fault)
+		t.Fatalf("legacy spring.governance.fault must arm neither fire: %+v / %+v", cfg.Client.Fault, cfg.Server.Fault)
 	}
 }
 

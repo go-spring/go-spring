@@ -32,6 +32,17 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
+// newTestObserver builds the observation layer a test's backend block would own.
+// The identity is fixed (center "test"): what these tests exercise is the
+// reporting, not the labelling.
+func newTestObserver() *discovery.Observer {
+	o, err := discovery.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
+}
+
 // fakeConsul stands in for a Consul agent's health endpoint: it serves one
 // snapshot per index and honors the blocking-query contract — a request whose
 // index is not older than the current one blocks until the snapshot advances
@@ -121,7 +132,7 @@ func newTestDiscovery(t *testing.T, fake *fakeConsul, tag string) *consulDiscove
 	t.Cleanup(srv.Close)
 	client, err := api.NewClient(&api.Config{Address: srv.URL})
 	assert.That(t, err).Nil()
-	d := newConsulDiscovery(client, tag)
+	d := newConsulDiscovery(client, tag, newTestObserver())
 	t.Cleanup(d.Close)
 	return d
 }

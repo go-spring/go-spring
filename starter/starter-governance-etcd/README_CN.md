@@ -8,8 +8,8 @@ datasource 形态。它监听一个 etcd key 上的一份治理规则文档，�
 经 [`go-spring.org/cloud/governance`](../../cloud/governance) 的 `governance.Source`
 契约推入治理中心。
 
-空导入本模块在未配置 `govern.source.etcd.*` 时是惰性的；配置后注册一个
-`governance.Source` Bean。key 里的文档使用与其他源相同的 `govern.*` 键，因此一份
+空导入本模块在未配置 `spring.governance.source.etcd.*` 时是惰性的；配置后注册一个
+`governance.Source` Bean。key 里的文档使用与其他源相同的 `spring.governance.*` 键，因此一份
 规则文件在 file、http、etcd 各后端间逐字节可移植。
 
 ## 为何与 `starter-config-etcd` 分成两个模块
@@ -48,23 +48,24 @@ import (
 在[配置文件](example/conf/app.properties) 中添加两个引导键：
 
 ```properties
-govern.source.etcd.endpoint=127.0.0.1:2379
-govern.source.etcd.key=/app/govern.yaml
+spring.governance.source.etcd.endpoint=127.0.0.1:2379
+spring.governance.source.etcd.key=/app/governance.yaml
 ```
 
 只有 `endpoint` 与 `key` 是必填项，认证与格式走各自默认值。
 
 ### 3. 把规则文档发布到该 key
 
-key 中存放治理的规则，使用 `govern.*` 命名空间：
+key 中存放治理的规则，使用 `spring.governance.*` 命名空间：
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
 ```
 
 ### 4. 运行
@@ -74,7 +75,7 @@ govern:
 
 ## 配置项
 
-所有配置项位于 `govern.source.etcd` 之下（精确匹配）：
+所有配置项位于 `spring.governance.source.etcd` 之下（精确匹配）：
 
 | Key | 默认值 | 说明 |
 |-----|--------|------|
@@ -86,14 +87,14 @@ govern:
 
 ## 核心行为
 
-* **条件注册。** 仅当存在 `govern.source.etcd.*` 配置时注册 Bean（`gs.OnProperty`
+* **条件注册。** 仅当存在 `spring.governance.source.etcd.*` 配置时注册 Bean（`gs.OnProperty`
   是前缀匹配），因此空导入且不配置是惰性的。
 * **快速失败播种。** 构造期执行一次初始 `Get`；key 缺失或文档无法解析都会让启动
   失败，而不是静默装一个 disabled 的中心。
 * **Watch 推送。** 启动后本源监听这一个 key 并应用每次 PUT：取值经共享的规则解析器
   解析，规则确有变化时才推入中心。
 * **坏编辑保底。** 解析失败的值保留上一份快照并打日志，绝不推送；关闭治理的正确姿势是
-  `govern.enabled=false`，不是坏文档或空文档。
+  `spring.governance.enabled=false`，不是坏文档或空文档。
 * **无变更去重。** 逐字节相同的重复投递，或重新解析后配置相等，都不会推送——touch
   不会触发 executor 重建。
 * **独占 client。** 本源自建并独占其 etcd client，Bean 销毁时关闭。

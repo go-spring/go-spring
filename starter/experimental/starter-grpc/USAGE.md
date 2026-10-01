@@ -141,27 +141,28 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance (admission + fault; hot-reloaded from this file) --------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** (fault drill in §4.3; admission under resilience):
+**conf/governance.yaml** (fault drill in §4.3; admission under resilience):
 
 ```yaml
-govern:
-  enabled: true
-  # INBOUND (this server): admission + fault drills, read from the server block.
-  server:
-    rules:
-      - service: "grpc::9494"   # label = "grpc:{addr}" (admission.go)
-        rate-limit: 100         # QPS cap; over → codes.ResourceExhausted
-        max-concurrent: 50      # bulkhead; over → codes.ResourceExhausted
-    fault:
-      enabled: false            # flip to true to "set fire" without restart
-      scope: loadtest           # only traffic marked x-loadtest is affected
+spring:
+  governance:
+    enabled: true
+    # INBOUND (this server): admission + fault drills, read from the server block.
+    server:
       rules:
-        - service: "grpc:/EchoService/Echo"   # rule label = "grpc:{FullMethod}"
-          rate: 0.2
-          error: timeout
+        - service: "grpc::9494"   # label = "grpc:{addr}" (admission.go)
+          rate-limit: 100         # QPS cap; over → codes.ResourceExhausted
+          max-concurrent: 50      # bulkhead; over → codes.ResourceExhausted
+      fault:
+        enabled: false            # flip to true to "set fire" without restart
+        scope: loadtest           # only traffic marked x-loadtest is affected
+        rules:
+          - service: "grpc:/EchoService/Echo"   # rule label = "grpc:{FullMethod}"
+            rate: 0.2
+            error: timeout
 ```
 
 **Verify** (structurally identical to what the examples assert):
@@ -262,13 +263,13 @@ Rationale (from the source comments, verified):
 - Select a strategy purely via service config: `grpc.WithDefaultServiceConfig(
   StarterGrpc.LoadBalancingConfig(strategy))`. Balancer names are `gs_round_robin`, `gs_least_conn`,
   `gs_consistent_hash`, `gs_weighted`, `gs_zone_aware`. They are pre-registered in init and
-  start with suspension DISABLED; configure it once for all of them with a govern rule —
-  `govern.client.default.outlier-threshold` / `.outlier-suspend-for` (they resolve under the
-  process-wide default; `govern.client.rules[N].service=grpc:client` targets them explicitly).
+  start with suspension DISABLED; configure it once for all of them with a governance rule —
+  `spring.governance.client.default.outlier-threshold` / `.outlier-suspend-for` (they resolve under the
+  process-wide default; `spring.governance.client.rules[N].service=grpc:client` targets them explicitly).
   A rule's `balancer` **overrides** that service-config choice for every built-in `gs_*` name — the
   pickers re-read it per pick, so a pushed strategy lands on the next RPC with no re-dial. Empty
   `balancer` leaves service config in charge; an unknown name is ignored. Because the label is
-  process-wide, `grpc:client` (and `govern.client.default.balancer`) flips **all** built-in clients at
+  process-wide, `grpc:client` (and `spring.governance.client.default.balancer`) flips **all** built-in clients at
   once — that is the blunt edge of this seam. Names registered via `RegisterBalancer` are exempt:
   they keep their own strategy by design.
 - Per-call hints: `WithHashKey` (consistent-hash affinity), `WithZone` (zone-aware preference).
@@ -341,7 +342,7 @@ and (on failure) `error` are the line's own payload. A failure is a Warn line.
 
 ### 4.3 Fault drill — hot toggle, no restart (fault.go)
 
-1. Start with `govern.yaml` `fault.enabled: false`.
+1. Start with `governance.yaml` `fault.enabled: false`.
 2. Baseline traffic → all OK.
 3. Flip `fault.enabled: true` in the file — the interceptor holds the injected `*fault.Injector`
    and the center swaps its config in place, so the change applies on the next RPC without restart.
@@ -358,7 +359,7 @@ grpcurl -plaintext -d '{"message":"x"}' :9494 EchoService/Echo                  
 
 ### 4.4 Admission drill (admission.go)
 
-Service label is `grpc:{addr}` → `grpc::9494`. Add a rule (`govern.client.rules[n].service=grpc::9494`,
+Service label is `grpc:{addr}` → `grpc::9494`. Add a rule (`spring.governance.client.rules[n].service=grpc::9494`,
 `rate-limit=...`) below your traffic rate:
 rejections surface as `codes.ResourceExhausted` (rate/bulkhead) or `codes.Unavailable` (open
 breaker) — `mapAdmissionError` guarantees consumers can branch on the code. The wrapped
@@ -388,7 +389,7 @@ the shared goutil panic chain (`goutil.ReportPanic`) — visible in log and span
 | Tracing/metrics "enabled" but nothing exported | starter-otel not imported — OTel globals are silent no-ops | Add the import (example-otel pattern). |
 | Config for interceptors ignored | Wrong prefix: it's `observer.*`, not `interceptor.*` (example-otel's conf has this dead key) | Use `spring.grpc.server.observer.tracing/metrics.enabled`. |
 | Clients rejected at TLS handshake with cert errors | `tls.ca-file` set — that enables **mTLS** (`RequireAndVerifyClientCert`) | Remove it for one-way TLS, or issue client certs. |
-| Everything works, no fault/admission effect | starter-governance not imported or `govern.source` not configured — seams yield pass-through | Import it and point `govern.source.file.path` at your file. |
+| Everything works, no fault/admission effect | starter-governance not imported or `spring.governance.source` not configured — seams yield pass-through | Import it and point `spring.governance.source.file.path` at your file. |
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` below payload | Raise the cap. |
 | Stream RPCs bypass rate limit | Admission is unary-only by design | Guard streams with a user stream-interceptor bean (injected as grpc.StreamServerInterceptor). |
 | GOAWAY / connection churn | Aggressive `keepalive.time` vs client ping rate | grpc keepalive semantics; relax server params. |

@@ -26,7 +26,7 @@ demo/
 ├── idl/                      # generated: greet.pb.go / greet.trpc.go (trpc-go codegen)
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod** (module deps that matter):
@@ -122,20 +122,21 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance (runtime fault injection) ------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** (fault drills in §4.4 use this):
+**conf/governance.yaml** (fault drills in §4.4 use this):
 
 ```yaml
-govern:
-  enabled: true
-  server:
-    fault:
-      enabled: false        # flip to true to "set fire" without restart
-      rate: 0.2
-      error: timeout
-      scope: loadtest       # only traffic marked x-loadtest is affected
+spring:
+  governance:
+    enabled: true
+    server:
+      fault:
+        enabled: false        # flip to true to "set fire" without restart
+        rate: 0.2
+        error: timeout
+        scope: loadtest       # only traffic marked x-loadtest is affected
 ```
 
 **Verify** (mirrors example/check.sh, which is self-asserting):
@@ -322,7 +323,7 @@ requests are **not drained** — see §6.
 
 ### 4.4 Fault drill (no restart)
 
-1. Start with `govern.yaml` as in §1 (`fault.enabled: false`), `fault` in the filter chain.
+1. Start with `governance.yaml` as in §1 (`fault.enabled: false`), `fault` in the filter chain.
 2. Generate baseline traffic → all calls succeed.
 3. Flip `fault.enabled: true` in the file — the governance source hot-reloads; the filter
    captures the injected `*fault.Injector`, whose config the center swaps in place, so no

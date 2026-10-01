@@ -231,7 +231,7 @@ span 助手：
 1. `StartPublishSpan(ctx, topic)` 打开名为 `publish` 的 producer 观测，带
    `messaging.destination.name = topic` [command.go, observe.go]。
 2. `guard` 从 sync.Map 解析该 client 的 executor [command.go:148-153]。
-3. fault 注入检查（govern.client.fault.* 策略，启用时）。
+3. fault 注入检查（spring.governance.client.fault.* 策略，启用时）。
 4. observe 桥记录受保护调用的结果（span/metric/访问日志）。
 5. resilience 策略：服务 `mqtt:<broker>` 上的限流器 / 熔断器；被拒时返回 sentinel
    错误且 **paho Publish 根本不会执行** [command.go:160-163]。
@@ -298,11 +298,12 @@ docker start <mosquitto> && go run .   # 正常启动，日志 "mqtt client init
 配置 starter-governance 后，为服务 `mqtt:tcp://127.0.0.1:1883` 加限流/熔断策略：
 
 ```yaml
-govern:
-  enabled: true
-  resilience:
-    mqtt:tcp://127.0.0.1:1883:
-      rateLimiter: { limit: 1, period: 1s }
+spring:
+  governance:
+    enabled: true
+    resilience:
+      mqtt:tcp://127.0.0.1:1883:
+        rateLimiter: { limit: 1, period: 1s }
 ```
 
 压测 `GuardedPublish` → 拒绝以 resilience sentinel 错误与 `_app_mqtt_access` 访问记录

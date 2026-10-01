@@ -22,8 +22,11 @@ package StarterNats
 
 import (
 	"context"
-	"go-spring.org/stdlib/strutil"
+	"sync"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -52,6 +55,44 @@ const (
 	connClosed       = "closed"
 )
 
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever providers are current then, and
+// shared by every connection in the process.
+type instrumentSet struct {
+	duration    metric.Float64Histogram
+	active      metric.Int64UpDownCounter
+	connChanges metric.Int64Counter
+}
+
+// instruments is the one instrument set this starter uses for the whole
+// process. Resolution is deferred to the first use, not run at package init, so
+// the instruments bind to whichever providers are current then - starter-otel
+// installs them before any bean is built, but a test may replace them later and
+// a value resolved at init would keep pointing at the old SDK.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	m := otel.Meter(tracerName)
+	in := &instrumentSet{}
+	in.duration, _ = m.Float64Histogram("messaging.client.operation.duration",
+		metric.WithDescription("Duration of nats client operations"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	in.active, _ = m.Int64UpDownCounter("messaging.client.active_requests",
+		metric.WithDescription("Number of in-flight nats client operations"),
+		metric.WithUnit("{request}"))
+	in.connChanges, _ = m.Int64Counter("messaging.client.connection.state_changes",
+		metric.WithDescription("Connection-state transitions reported by the nats client"),
+		metric.WithUnit("{event}"))
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
 // connStateCounter counts the connection-state transitions the NATS client's own
 // handlers report. Those events had only log lines: a connection that flapped or
 // died was visible in text and invisible to every dashboard — and they are the
@@ -62,17 +103,14 @@ const (
 // from the starter's lifecycle would silently displace whatever handlers a
 // custom Driver had set. Keeping the pair in one place is what lets both survive.
 type connStateCounter struct {
-	changes metric.Int64Counter
+	ins *instrumentSet
 }
 
-// newConnStateCounter builds the counter from whatever meter provider is
-// current — invoked at wiring time (inside the driver), not at package init, so
-// an SDK installed later still receives the records.
+// newConnStateCounter takes the shared instrument set — invoked at wiring time
+// (inside the driver), not at package init, so an SDK installed later still
+// receives the records.
 func newConnStateCounter() *connStateCounter {
-	changes, _ := otel.Meter("go-spring.org/starter-nats").Int64Counter("messaging.client.connection.state_changes",
-		metric.WithDescription("Connection-state transitions reported by the nats client"),
-		metric.WithUnit("{event}"))
-	return &connStateCounter{changes: changes}
+	return &connStateCounter{ins: instruments()}
 }
 
 // record counts one transition and returns the fields its log line carries.
@@ -80,7 +118,7 @@ func newConnStateCounter() *connStateCounter {
 // being spelled twice — the drift this pairing exists to prevent, and a drifted
 // key is silent: the line still looks right and joins nothing.
 func (c *connStateCounter) record(ctx context.Context, state string) []log.Field {
-	c.changes.Add(ctx, 1, metric.WithAttributes(
+	c.ins.connChanges.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("messaging.system", "nats"),
 		attribute.String("state", state),
 	))
@@ -93,29 +131,15 @@ func (c *connStateCounter) record(ctx context.Context, state string) []log.Field
 // observer emits the span + metric + access-log trio for one operation
 // direction (publish or consume). kind selects the span kind.
 type observer struct {
-	kind     trace.SpanKind
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
+	kind trace.SpanKind
+	ins  *instrumentSet
 }
 
-// newObserver builds the observer's instruments from whatever meter provider
-// is current — created at wiring time (newConn), not at package init, so an
-// SDK installed later than this package's init still receives the records.
-
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
+// newObserver takes the shared instrument set and the span kind of one
+// direction — created at wiring time (newConn), not at package init, so an SDK
+// installed later than this package's init still receives the records.
 func newObserver(kind trace.SpanKind) *observer {
-	m := otel.Meter("go-spring.org/starter-nats")
-	duration, _ := m.Float64Histogram("messaging.client.operation.duration",
-		metric.WithDescription("Duration of nats client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	active, _ := m.Int64UpDownCounter("messaging.client.active_requests",
-		metric.WithDescription("Number of in-flight nats client operations"),
-		metric.WithUnit("{request}"))
-	return &observer{kind: kind, duration: duration, active: active}
+	return &observer{kind: kind, ins: instruments()}
 }
 
 // span is the handle returned by observer.Start; End records the outcome.
@@ -148,7 +172,7 @@ func (o *observer) Start(ctx context.Context, op, arg string) (context.Context, 
 		attribute.String("messaging.system", "nats"),
 		attribute.String("messaging.operation", op),
 	)
-	o.active.Add(ctx, 1, inflight)
+	o.ins.active.Add(ctx, 1, inflight)
 	return ctx, &span{o: o, ctx: ctx, span: sp, op: op, arg: arg, start: time.Now(), inflight: inflight}
 }
 
@@ -163,12 +187,12 @@ func (s *span) End(err error) {
 	if err != nil {
 		status = "error"
 	}
-	o.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
+	o.ins.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
 		attribute.String("messaging.system", "nats"),
 		attribute.String("messaging.operation", s.op),
 		attribute.String("status", status),
 	))
-	o.active.Add(s.ctx, -1, s.inflight)
+	o.ins.active.Add(s.ctx, -1, s.inflight)
 	if err != nil {
 		s.span.RecordError(err)
 		s.span.SetStatus(codes.Error, err.Error())

@@ -81,40 +81,57 @@ type Tracker struct {
 	// deterministically. Defaults to time.Now.
 	now func() time.Time
 
-	// suspension events and current-suspension gauge, built at construction so
-	// an OTel SDK installed later still receives the records.
-	suspensions metric.Int64Counter
-	suspended   metric.Int64UpDownCounter
+	// ins is the shared instrument set, resolved once on first use (see
+	// [instruments]) so an OTel SDK installed later still receives the records.
+	// The tracer is deliberately NOT held here.
+	ins *instrumentSet
 
 	mu     sync.Mutex
 	states map[string]*suspendState
 }
 
-// newSuspensionInstruments builds the suspension metrics from whatever meter
-// provider is current. The suspension of an endpoint is an event (a dedicated
-// counter named after the event, per the metrics rules), and the number of
-// currently suspended endpoints is a state — a gauge. The endpoint address is
-// unbounded cardinality and never a metric attribute; it lives in the log line.
-func newSuspensionInstruments() (metric.Int64Counter, metric.Int64UpDownCounter) {
+// instrumentSet is this package's metric set: one per process, resolved lazily
+// on first use so it binds to whichever meter provider is current then, and
+// immutable afterwards. It holds no per-tracker state — the endpoint address is
+// never a metric attribute, so no per-endpoint value travels here either.
+//
+// The suspension of an endpoint is an event (a dedicated counter named after the
+// event, per the metrics rules), and the number of currently suspended endpoints
+// is a state — a gauge. The endpoint address is unbounded cardinality and never a
+// metric attribute; it lives in the log line.
+type instrumentSet struct {
+	suspensions metric.Int64Counter
+	suspended   metric.Int64UpDownCounter
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/cloud/loadbalance")
-	suspensions, _ := m.Int64Counter("loadbalance.endpoint.suspension.total",
+	in := &instrumentSet{}
+	in.suspensions, _ = m.Int64Counter("loadbalance.endpoint.suspension.total",
 		metric.WithDescription("Endpoints suspended for consecutive failures, including re-suspensions after failed half-open trials"),
 		metric.WithUnit("{event}"))
-	suspended, _ := m.Int64UpDownCounter("loadbalance.endpoint.suspended",
+	in.suspended, _ = m.Int64UpDownCounter("loadbalance.endpoint.suspended",
 		metric.WithDescription("Endpoints currently suspended from rotation"),
 		metric.WithUnit("{endpoint}"))
-	return suspensions, suspended
+	return in
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // NewTracker builds a [Tracker] from cfg. A zero SuspendFor is normalized to
 // the 5s default here.
 func NewTracker(cfg TrackerConfig) *Tracker {
-	suspensions, suspended := newSuspensionInstruments()
 	t := &Tracker{
-		now:         time.Now,
-		states:      map[string]*suspendState{},
-		suspensions: suspensions,
-		suspended:   suspended,
+		now:    time.Now,
+		states: map[string]*suspendState{},
+		ins:    instruments(),
 	}
 	t.SetConfig(cfg)
 	return t
@@ -224,7 +241,7 @@ func (t *Tracker) Record(addr string, success bool) {
 		s.suspendedAt = time.Time{}
 		s.halfOpen = false
 		if wasDown {
-			t.suspended.Add(context.Background(), -1)
+			t.ins.suspended.Add(context.Background(), -1)
 			log.Info(context.Background(), log.TagAppDef,
 				log.String("address", addr),
 				log.Msg("loadbalance: endpoint recovered, back in rotation"))
@@ -237,7 +254,7 @@ func (t *Tracker) Record(addr string, success bool) {
 		// rotation), so the gauge does not move — only the event counter does.
 		s.halfOpen = false
 		s.suspendedAt = t.now()
-		t.suspensions.Add(context.Background(), 1)
+		t.ins.suspensions.Add(context.Background(), 1)
 		log.Warn(context.Background(), log.TagAppDef,
 			log.String("address", addr),
 			log.Msg("loadbalance: half-open trial failed, endpoint re-suspended"))
@@ -246,8 +263,8 @@ func (t *Tracker) Record(addr string, success bool) {
 	s.failures++
 	if s.failures >= cfg.Threshold && s.suspendedAt.IsZero() {
 		s.suspendedAt = t.now()
-		t.suspensions.Add(context.Background(), 1)
-		t.suspended.Add(context.Background(), 1)
+		t.ins.suspensions.Add(context.Background(), 1)
+		t.ins.suspended.Add(context.Background(), 1)
 		log.Warn(context.Background(), log.TagAppDef,
 			log.String("address", addr),
 			log.Int("failures", s.failures),

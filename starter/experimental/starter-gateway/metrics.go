@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"go-spring.org/cloud/actuator/health"
@@ -35,13 +36,8 @@ const meterName = "go-spring.org/starter-gateway"
 // accessTag is the static log tag for the gateway access log.
 var accessTag = log.RegisterAppTag("gateway", "access")
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// semconv recommended set, the same one the other starters use.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
-// observer holds the gateway's instruments. They are built once, when the
-// observer is constructed (container assembly), so nothing is allocated or
-// initialized per request.
+// instrumentSet holds the gateway's instruments. It is built once per process
+// (see instruments), so nothing is allocated or initialized per request.
 //
 // These used to be hand-rolled atomic counters rendered as Prometheus text on a
 // private /gateway/metrics endpoint. They now ride the OTel pipeline like every
@@ -50,14 +46,21 @@ var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5,
 // of a private subset that no other dashboard reads. The exposition that used to
 // be hand-written is served by starter-otel's Prometheus exporter — /metrics on
 // the actuator management port, or on metrics.port when that is set.
-type observer struct {
+type instrumentSet struct {
 	requests     metric.Int64Counter
 	active       metric.Int64UpDownCounter
 	reloadErrors metric.Int64Counter
 }
 
-func newObserver() *observer {
-	m := otel.GetMeterProvider().Meter(meterName)
+// instruments is the one instrument set this starter uses for the whole
+// process. Resolution is deferred to the first use, not run at package init, so
+// the instruments bind to whichever providers are current then - starter-otel
+// installs them before the gateway serves, but a test may replace them later and
+// a value resolved at init would keep pointing at the old SDK.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	m := otel.Meter(meterName)
 	requests, _ := m.Int64Counter(
 		"gateway.requests",
 		metric.WithDescription("Requests proxied by the gateway"),
@@ -73,8 +76,21 @@ func newObserver() *observer {
 		metric.WithDescription("Route table reloads that failed and kept the previous table"),
 		metric.WithUnit("{event}"),
 	)
-	return &observer{requests: requests, active: active, reloadErrors: reloadErrors}
+	return &instrumentSet{requests: requests, active: active, reloadErrors: reloadErrors}
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
+// observer is the container bean the route table reaches its reporting through.
+// It carries no state of its own: every reading goes to the process-wide
+// instrument set (see instruments), resolved at the use site.
+type observer struct{}
+
+func newObserver() *observer { return &observer{} }
 
 // logAccess writes the per-request access log. Its identity keys are the ones
 // the metric carries (gateway.route, status), so selecting a failing route on a
@@ -112,12 +128,11 @@ func statusOf(code int) string {
 // (for rate-limit keys and downstream correlation) and to record the request:
 // the in-flight gauge, the counter and one access-log line.
 func (t *RouteTable) instrument(id string, next http.Handler) http.Handler {
-	o := t.obs
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := withRouteID(r.Context(), id)
 		attrs := metric.WithAttributes(attribute.String("gateway.route", id))
 
-		o.active.Add(ctx, 1, attrs)
+		instruments().active.Add(ctx, 1, attrs)
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
 
@@ -125,8 +140,8 @@ func (t *RouteTable) instrument(id string, next http.Handler) http.Handler {
 
 		dur := time.Since(start)
 		status := statusOf(sw.status)
-		o.active.Add(ctx, -1, attrs)
-		o.requests.Add(ctx, 1, metric.WithAttributes(
+		instruments().active.Add(ctx, -1, attrs)
+		instruments().requests.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("gateway.route", id),
 			attribute.String("status", status),
 			attribute.Int("http.response.status_code", sw.status),
@@ -137,7 +152,7 @@ func (t *RouteTable) instrument(id string, next http.Handler) http.Handler {
 
 // reloadError counts one failed route-table reload. The previous table stays in
 // service, so this is the only signal that a config edit did not take effect.
-func (o *observer) reloadError(ctx context.Context) { o.reloadErrors.Add(ctx, 1) }
+func (o *observer) reloadError(ctx context.Context) { instruments().reloadErrors.Add(ctx, 1) }
 
 // newGatewayHealth reports the gateway as a health.Indicator. It stays UP as
 // long as the route table is loaded; a route whose lb:// upstream currently

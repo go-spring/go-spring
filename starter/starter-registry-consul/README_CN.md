@@ -19,7 +19,7 @@ provider 注册仍保持框架原生,不在本 starter 范围内(见
 
 配置是**命名块**:每个 `spring.registry.consul.<name>.*` 块描述一个 Consul
 agent/集群,并成为一个名为 `consul.<name>` 的后端 bean,同时实现写侧
-(`discovery.Registrar`)与读侧(`discovery.Discovery`),共享该块的客户端。没有默认/无名块。
+(`discovery.Registry`)与读侧(`discovery.Discovery`),共享该块的客户端。没有默认/无名块。
 
 注册本身由 [starter-registry](../starter-registry) 核心拥有(传递依赖自动引入):它
 唯一的 `registryServer`(`gs.Server`)收集**所有**已配置中心的 registrar bean——跨后端

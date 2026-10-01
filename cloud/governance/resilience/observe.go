@@ -19,8 +19,10 @@ package resilience
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -29,13 +31,66 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 // resilienceTag is the static log tag for the resilience access log; the
 // protected client's system is a log field, not part of the tag.
 var resilienceTag = log.RegisterAppTag("resilience", "")
+
+// resilienceScope names the OTel scope this package's spans and instruments
+// register under.
+const resilienceScope = "go-spring.org/cloud/governance/resilience"
+
+// instrumentSet is this package's instruments: one per process, resolved lazily
+// on first use so it binds to whichever providers are current then, and immutable
+// afterwards. It holds no per-client state — the system and service labels travel
+// with each wrapper, not here.
+//
+// The outbound (resilience.client.*) and inbound (resilience.server.*) families
+// are separate instruments rather than one family with a direction attribute: the
+// outcome sets genuinely differ (inbound has no retry, so no retry_budget_exceeded
+// and no per-attempt timeout), and keeping them apart leaves existing outbound
+// dashboards untouched.
+type instrumentSet struct {
+	clientDuration       metric.Float64Histogram
+	clientCalls          metric.Int64Counter
+	clientBreakerChanges metric.Int64Counter
+
+	serverDuration       metric.Float64Histogram
+	serverCalls          metric.Int64Counter
+	serverBreakerChanges metric.Int64Counter
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	m := otel.Meter(resilienceScope)
+	in := &instrumentSet{}
+	in.clientDuration, _ = m.Float64Histogram("resilience.client.duration",
+		metric.WithDescription("Duration of resilience-protected calls"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	// calls counts protected calls with the status classified as one of:
+	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
+	in.clientCalls, _ = m.Int64Counter("resilience.client.calls",
+		metric.WithDescription("Number of resilience-protected calls by status"),
+		metric.WithUnit("{call}"))
+	// breakerChanges counts circuit-breaker state transitions (from/to attrs).
+	in.clientBreakerChanges, _ = m.Int64Counter("resilience.client.breaker.state_change",
+		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
+		metric.WithUnit("{event}"))
+
+	in.serverDuration, _ = m.Float64Histogram("resilience.server.duration",
+		metric.WithDescription("Duration of inbound requests under resilience admission"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	in.serverCalls, _ = m.Int64Counter("resilience.server.calls",
+		metric.WithDescription("Number of inbound requests by admission status"),
+		metric.WithUnit("{request}"))
+	in.serverBreakerChanges, _ = m.Int64Counter("resilience.server.breaker.state_change",
+		metric.WithDescription("Inbound circuit-breaker state transitions (from/to attrs)"),
+		metric.WithUnit("{event}"))
+	return in
+}
 
 // WrapClientExecutor returns an [ClientExecutor] that wraps inner with an internal span
 // (system/service/status attributes), the resilience metrics, and an
@@ -52,36 +107,19 @@ var resilienceTag = log.RegisterAppTag("resilience", "")
 //
 // Attaching the breaker listener happens here, while inner is still private:
 // the type assertion below is a construction-time handshake, so the executor
-// never escapes without its listener and no late binding is needed. Tracer and
-// instruments are resolved from whatever OTel providers are current — at
-// first-resolve time, not at package init — so an SDK installed after this
-// package's init still receives the spans and records.
+// never escapes without its listener and no late binding is needed. The shared
+// instruments are resolved at this point — the first resolve time, not package
+// init — so an SDK installed after this package's init still receives the spans
+// and records. The tracer is not held at all; see [wrappedClientExecutor.Execute].
 func WrapClientExecutor(inner ClientExecutor, system, service string) ClientExecutor {
 	if inner == nil {
 		return nil
 	}
-	meter := otel.Meter("go-spring.org/cloud/governance/resilience")
-	duration, _ := meter.Float64Histogram("resilience.client.duration",
-		metric.WithDescription("Duration of resilience-protected calls"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	// calls counts protected calls with the status classified as one of:
-	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
-	calls, _ := meter.Int64Counter("resilience.client.calls",
-		metric.WithDescription("Number of resilience-protected calls by status"),
-		metric.WithUnit("{call}"))
-	// breakerChanges counts circuit-breaker state transitions (from/to attrs).
-	breakerChanges, _ := meter.Int64Counter("resilience.client.breaker.state_change",
-		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
-		metric.WithUnit("{event}"))
 	w := &wrappedClientExecutor{
-		inner:          inner,
-		system:         system,
-		service:        service,
-		tracer:         otel.Tracer("go-spring.org/cloud/governance/resilience"),
-		duration:       duration,
-		calls:          calls,
-		breakerChanges: breakerChanges,
+		inner:   inner,
+		system:  system,
+		service: service,
+		ins:     instruments(),
 	}
 	// If the inner executor emits breaker state transitions, subscribe so each
 	// trip / half-open / recovery emits a counter + log automatically. Drivers
@@ -98,17 +136,17 @@ type wrappedClientExecutor struct {
 	system  string
 	service string
 
-	tracer         trace.Tracer
-	duration       metric.Float64Histogram
-	calls          metric.Int64Counter
-	breakerChanges metric.Int64Counter
+	// ins is the shared instrument set. The tracer is deliberately NOT held
+	// alongside it: a captured otel.Tracer stops forwarding once the global
+	// provider is set again, so it is looked up per use.
+	ins *instrumentSet
 }
 
 // OnBreakerStateChange satisfies [BreakerEventListener]. It is invoked
 // synchronously from inside the breaker's transition (so it must not call back
 // into the executor); it emits a state-change counter and a log line.
 func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to BreakerState) {
-	w.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
+	w.ins.clientBreakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
 		attribute.String("from", from.String()),
@@ -136,7 +174,7 @@ func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to Br
 // reading).
 func (w *wrappedClientExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	start := time.Now()
-	ctx, span := w.tracer.Start(ctx, w.service,
+	ctx, span := otel.Tracer(resilienceScope).Start(ctx, w.service,
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
 			attribute.String("resilience.system", w.system),
@@ -150,12 +188,12 @@ func (w *wrappedClientExecutor) Execute(ctx context.Context, fn func(context.Con
 	}
 	span.End()
 
-	w.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+	w.ins.clientDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
 		attribute.String("status", status),
 	))
-	w.calls.Add(ctx, 1, metric.WithAttributes(
+	w.ins.clientCalls.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
 		attribute.String("status", status),
@@ -195,37 +233,18 @@ func (w *wrappedClientExecutor) Refresh(p ClientPolicy) error {
 // at the same point and for the same reason (the executor is still private when it
 // is wrapped, so the breaker-listener handshake below can reach it).
 //
-// The instruments are a SEPARATE family (resilience.server.*) rather than a
-// direction attribute on the outbound ones: the outcome sets genuinely differ —
-// inbound has no retry, so no retry_budget_exceeded and no per-attempt timeout —
-// and keeping them apart leaves every existing outbound dashboard untouched. The
-// access log reuses the resilience tag, with system/service naming the route.
+// The inbound instruments are a separate family (resilience.server.*); see
+// [instrumentSet] for why. The access log reuses the resilience tag, with
+// system/service naming the route.
 func WrapServerExecutor(inner ServerExecutor, system, service string) ServerExecutor {
 	if inner == nil {
 		return nil
 	}
-	meter := otel.Meter("go-spring.org/cloud/governance/resilience")
-	duration, _ := meter.Float64Histogram("resilience.server.duration",
-		metric.WithDescription("Duration of inbound requests under resilience admission"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	// calls counts admitted requests with the status classified as one of:
-	// success, rate_limited, circuit_open, bulkhead_full, timeout, error.
-	calls, _ := meter.Int64Counter("resilience.server.calls",
-		metric.WithDescription("Number of inbound requests by admission status"),
-		metric.WithUnit("{request}"))
-	// breakerChanges counts inbound circuit-breaker state transitions (from/to attrs).
-	breakerChanges, _ := meter.Int64Counter("resilience.server.breaker.state_change",
-		metric.WithDescription("Inbound circuit-breaker state transitions (from/to attrs)"),
-		metric.WithUnit("{event}"))
 	w := &wrappedServerExecutor{
-		inner:          inner,
-		system:         system,
-		service:        service,
-		tracer:         otel.Tracer("go-spring.org/cloud/governance/resilience"),
-		duration:       duration,
-		calls:          calls,
-		breakerChanges: breakerChanges,
+		inner:   inner,
+		system:  system,
+		service: service,
+		ins:     instruments(),
 	}
 	// Construction-time handshake, exactly as in WrapClientExecutor: the breaker does
 	// not exist yet, so the listener is installed on the still-private executor
@@ -241,17 +260,16 @@ type wrappedServerExecutor struct {
 	system  string
 	service string
 
-	tracer         trace.Tracer
-	duration       metric.Float64Histogram
-	calls          metric.Int64Counter
-	breakerChanges metric.Int64Counter
+	// ins is the shared instrument set; the tracer is looked up per use, for the
+	// reason given on [wrappedClientExecutor].
+	ins *instrumentSet
 }
 
 // OnBreakerStateChange satisfies [BreakerEventListener] for the inbound breaker. A
 // trip (→open) is a route-level degradation worth flagging at Warn; recovery and
 // half-open trial are Info — the same levelling the outbound listener uses.
 func (w *wrappedServerExecutor) OnBreakerStateChange(service string, from, to BreakerState) {
-	w.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
+	w.ins.serverBreakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
 		attribute.String("from", from.String()),
@@ -275,7 +293,7 @@ func (w *wrappedServerExecutor) OnBreakerStateChange(service string, from, to Br
 // rejection or error at Warn, a success at Debug.
 func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	start := time.Now()
-	ctx, span := w.tracer.Start(ctx, w.service,
+	ctx, span := otel.Tracer(resilienceScope).Start(ctx, w.service,
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(
 			attribute.String("resilience.system", w.system),
@@ -290,12 +308,12 @@ func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Con
 	}
 	span.End()
 
-	w.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+	w.ins.serverDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
 		attribute.String("status", status),
 	))
-	w.calls.Add(ctx, 1, metric.WithAttributes(
+	w.ins.serverCalls.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
 		attribute.String("status", status),

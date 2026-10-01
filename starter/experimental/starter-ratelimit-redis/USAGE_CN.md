@@ -29,7 +29,7 @@ demo/
 ├── main.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod**（关键依赖）：
@@ -70,7 +70,7 @@ import (
     "go-spring.org/spring/gs"
 )
 
-// 两个 handler 共享的 service label；conf/govern.yaml 里的规则以它为键，
+// 两个 handler 共享的 service label；conf/governance.yaml 里的规则以它为键，
 // 它也是预算按之保存的 scope。
 const service = "ratelimit-redis:api"
 
@@ -111,22 +111,23 @@ spring.go-redis.instances.cache.addr=127.0.0.1:6379
 spring.ratelimit.redis.client=cache
 
 # --- 治理规则（独立文件，独立刷新通道）---------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** —— 预算本身，是 policy，不是 starter 配置：
+**conf/governance.yaml** —— 预算本身，是 policy，不是 starter 配置：
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    rules:
-      - service: ratelimit-redis:api
-        rate-limit: 2      # 持续 2/s
-        burst: 5           # 瞬时额度
+spring:
+  governance:
+    enabled: true
+    client:
+      rules:
+        - service: ratelimit-redis:api
+          rate-limit: 2      # 持续 2/s
+          burst: 5           # 瞬时额度
 ```
 
-规则对被匹配的 service 完整取代 `govern.client.default`（不做逐字段合并），所以规则要带上该 service
+规则对被匹配的 service 完整取代 `spring.governance.client.default`（不做逐字段合并），所以规则要带上该 service
 需要的全部参数。
 
 **验证**（本地 Redis，例如 `example/docker-compose.yml`）：
@@ -262,7 +263,7 @@ cd example && ./check.sh    # docker 门控：compose 起 redis，跑自断言�
 | 完全不限流，全是 200 | 该 service 的 policy `rate-limit: 0`，或 Redis 不可达（executor 放行） | 在规则文件里给正数 `rate-limit`；检查 Redis。 |
 | 实际突发与窗口算法对不上 | 规则要求 `algorithm: sliding-window`，而共享存储按令牌桶计数 | 把上限建模成 `rate-limit`/`burst`，或让 sliding window 继续用内存存储。 |
 | 调用堆积而不是被拒绝 | 设了 `rate-limit-max-wait`，但共享存储不排队 | 排队继续留给内存存储，或去掉该参数。 |
-| `govern.enabled=false` 的应用完全没有限流 | 治理中心被关，所有 executor 都是直通 | 打开治理；本 starter 只搬计数器。 |
+| `spring.governance.enabled=false` 的应用完全没有限流 | 治理中心被关，所有 executor 都是直通 | 打开治理；本 starter 只搬计数器。 |
 
 ---
 

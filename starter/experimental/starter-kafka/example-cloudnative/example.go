@@ -56,7 +56,7 @@ import (
 
 	_ "go-spring.org/starter-actuator"    // aggregates health.Indicator beans on :9370
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
-	_ "go-spring.org/starter-governance"  // centralized governance center (govern.* config)
+	_ "go-spring.org/starter-governance"  // centralized governance center (spring.governance.* config)
 	StarterKafka "go-spring.org/starter-kafka"
 )
 

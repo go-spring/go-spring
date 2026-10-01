@@ -97,12 +97,12 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance(*http.Client transport 的韧性)-------------------------------
 # 与 client 同一服务标签:oauth2:<client-id>。
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.max-retries=3
-govern.client.default.error-threshold=10
-govern.client.default.attempt-timeout=2s
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.max-retries=3
+spring.governance.client.default.error-threshold=10
+spring.governance.client.default.attempt-timeout=2s
 
 # --- observability(starter-otel,可选)--------------------------------------
 spring.observability.service-name=demo
@@ -277,7 +277,7 @@ span/指标(`mgr.ClientExecutorFor("oauth2", service)`);`TokenSource` 没有对�
 
 ### 4.5 governance 热切换
 
-配置 `govern.source.file.path` 后,example 运行中把文件里 `max-retries` 改成 `0`——
+配置 `spring.governance.source.file.path` 后,example 运行中把文件里 `max-retries` 改成 `0`——
 同一个 flaky 调用立刻快速失败给调用方(executor 策略在调用期解析)。无需重启。
 
 ---

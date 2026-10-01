@@ -390,7 +390,7 @@ reference 的 `version`/`group` 必须与 provider 导出的一致。
 
 ### 4.4 治理合入通道（中心的动态超时）
 
-可选；仅当引入 starter-governance 且 `govern.enabled=true` 时激活。poller 以可空构造函数
+可选；仅当引入 starter-governance 且 `spring.governance.enabled=true` 时激活。poller 以可空构造函数
 参数注入 `*resilience.Manager` 与 `*governance.Center`（dync.go:48-49），并订阅两类治理
 服务 label（dync.go:263-264）：
 
@@ -400,13 +400,13 @@ reference 的 `version`/`group` 必须与 provider 导出的一致。
 `Policy.Timeout`（毫秒）与 `Policy.MaxRetries` 在 > 0 时覆盖 `timeout`/`retries` 参数
 （dync.go:288-295）；注意 MaxRetries 映射到 dubbo 的 **cluster** 重试，不是 resilience 层
 重试。顺序问题已处理：Rooter 先于 Runner 装配，引擎就绪后注入的 `*governance.Center` 的
-`OnReady` 补一次 poll（dync.go:90-99）。演练：在治理源里改 `govern.*` 超时，观察 reference
+`OnReady` 补一次 poll（dync.go:90-99）。演练：在治理源里改 `spring.governance.*` 超时，观察 reference
 override 免重启重新下发。
 
 ### 4.5 故障演练（provider 侧，免重启）
 
 1. 给 service 的 filter 链加 `fault`：`...services.greet.filter=loadtest,fault`。
-2. 引入 starter-governance；经热源配置 `govern.client.fault.*`（rate/error/scope）。
+2. 引入 starter-governance；经热源配置 `spring.governance.client.fault.*`（rate/error/scope）。
 3. `scope: loadtest` 时只有带压测标记的调用被烧——由带标记的上游注入出站 carrier
    （cloud/governance/traffic）来打标，或在专属环境用 `scope: real`。
 4. 观察：consumer 收到注入错误；带标记调用在实现内 propagator 的 `IsLoadTest(ctx)` 为 true

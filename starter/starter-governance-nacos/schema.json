@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "govern.source.nacos",
-  "description": "Nacos-backed governance rule source. The bean is registered only when govern.source.nacos is present.",
+  "title": "spring.governance.source.nacos",
+  "description": "Nacos-backed governance rule source. The bean is registered only when spring.governance.source.nacos is present.",
   "type": "object",
   "properties": {
-    "govern.source.nacos": {
+    "spring.governance.source.nacos": {
       "type": "object",
-      "description": "Governance rules source bound at govern.source.nacos.*",
+      "description": "Governance rules source bound at spring.governance.source.nacos.*",
       "properties": {
         "server": {
           "type": "string",

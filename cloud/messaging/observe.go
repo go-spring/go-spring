@@ -24,8 +24,10 @@ package messaging
 
 import (
 	"context"
+	"sync"
 	"time"
 
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/strutil"
 	"go.opentelemetry.io/otel"
@@ -57,12 +59,6 @@ const (
 // maxLogArg bounds the destination captured in the access log.
 const maxLogArg = 512
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// default boundaries assume request latencies; message handling routinely
-// exceeds them, so the same explicit list the scheduling and refresh
-// instruments use is reused here.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 // Observe wraps d so every publisher and subscriber it opens is instrumented:
 // publish/consume spans, the messaging.operation.* metrics, an access log per
 // message, and W3C trace-context propagation through the envelope's headers —
@@ -74,34 +70,63 @@ var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5,
 // A driver starter applies this once where it constructs its Driver; a Driver
 // that already propagates and spans on its own must not be wrapped again, or
 // every message would be counted and logged twice.
+//
+// The instruments come from the package's process-wide set, resolved on first
+// use — here, at wiring time, not at package init. This relies on Observe
+// running after the OTel global provider is installed — under the framework it
+// does, since driver beans are constructed after RefreshPrepare, where
+// starter-otel installs the provider. A driver built before any provider is set
+// records to the no-op meter.
 func Observe(d Driver, system string) Driver {
-	m := otel.Meter("go-spring.org/cloud/messaging")
-	total, _ := m.Int64Counter("messaging.operation.total",
-		metric.WithDescription("Messages published and consumed, by operation and status"),
-		metric.WithUnit("{message}"))
-	duration, _ := m.Float64Histogram("messaging.operation.duration",
-		metric.WithDescription("Duration of a publish or a consume"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	active, _ := m.Int64UpDownCounter("messaging.operation.active",
-		metric.WithDescription("Number of in-flight messaging operations"),
-		metric.WithUnit("{operation}"))
-	o := &observer{system: system, total: total, duration: duration, active: active}
-	return &observedDriver{Driver: d, o: o}
+	return &observedDriver{Driver: d, o: &observer{system: system, ins: instruments()}}
 }
 
-// observer holds the instruments shared by every operation of one wrapped
-// Driver. They are built once in [Observe] and reused: message flows are too
-// frequent for a per-message meter lookup. This relies on Observe running
-// after the OTel global provider is installed — under the framework it does,
-// since driver beans are constructed after RefreshPrepare, where starter-otel
-// installs the provider. A driver built before any provider is set records to
-// the no-op meter.
-type observer struct {
-	system   string
+// instrumentSet is this package's metric set: one per process, resolved lazily
+// on first use so it binds to whichever meter provider is current then, and
+// immutable afterwards. It holds no per-driver state — the system label travels
+// with each wrapped Driver, not here.
+type instrumentSet struct {
 	total    metric.Int64Counter
 	duration metric.Float64Histogram
 	active   metric.Int64UpDownCounter
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	m := otel.Meter("go-spring.org/cloud/messaging")
+	in := &instrumentSet{}
+	in.total, _ = m.Int64Counter("messaging.operation.total",
+		metric.WithDescription("Messages published and consumed, by operation and status"),
+		metric.WithUnit("{message}"))
+	in.duration, _ = m.Float64Histogram("messaging.operation.duration",
+		metric.WithDescription("Duration of a publish or a consume"),
+		metric.WithUnit("s"),
+		// OTel's default boundaries assume request latencies; message handling
+		// routinely exceeds them, so the framework-wide explicit set is used.
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	in.active, _ = m.Int64UpDownCounter("messaging.operation.active",
+		metric.WithDescription("Number of in-flight messaging operations"),
+		metric.WithUnit("{operation}"))
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
+// observer holds one wrapped Driver's identity plus the shared instruments every
+// operation goes through. Message flows are too frequent for a per-message meter
+// lookup, so the set is resolved once here, at wiring time.
+type observer struct {
+	system string
+
+	// ins is the shared instrument set; the tracer is deliberately NOT held
+	// alongside it (see [tracerName]).
+	ins *instrumentSet
 }
 
 // observedDriver decorates the [Driver]; publishers and subscribers it opens
@@ -196,7 +221,7 @@ func (s *observedSubscriber) Subscribe(ctx context.Context, handler Handler) err
 // begin bumps the in-flight gauge for one starting operation; the matching
 // end call brings it back down.
 func (o *observer) begin(ctx context.Context, op string) {
-	o.active.Add(ctx, 1, metric.WithAttributes(
+	o.ins.active.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("messaging.system", o.system),
 		attribute.String("messaging.operation", op),
 	))
@@ -222,9 +247,9 @@ func (o *observer) end(ctx context.Context, sp trace.Span, op, destination strin
 		attribute.String("messaging.operation", op),
 		attribute.String("status", status),
 	)
-	o.total.Add(ctx, 1, attrs)
-	o.duration.Record(ctx, dur.Seconds(), attrs)
-	o.active.Add(ctx, -1, metric.WithAttributes(
+	o.ins.total.Add(ctx, 1, attrs)
+	o.ins.duration.Record(ctx, dur.Seconds(), attrs)
+	o.ins.active.Add(ctx, -1, metric.WithAttributes(
 		attribute.String("messaging.system", o.system),
 		attribute.String("messaging.operation", op),
 	))

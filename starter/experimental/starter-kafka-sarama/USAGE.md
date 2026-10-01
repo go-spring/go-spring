@@ -207,7 +207,7 @@ returned unchanged — wrapping is a zero-risk unconditional idiom. Guarded surf
 
 ```
 SendMessage / SendMessages
-  → fault.WrapClientExecutor (injected faults when govern.client.fault enabled)
+  → fault.WrapClientExecutor (injected faults when spring.governance.client.fault enabled)
     → resilience executor wrapper (span + outcome counters + duration + access log)
       → resilience executor (breaker / rate limit / retry, policy from governance center)
         → inner p.SendMessage (real sarama)

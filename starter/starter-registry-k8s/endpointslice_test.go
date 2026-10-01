@@ -55,6 +55,7 @@ func newESD(t *testing.T, cfg Config, objs ...*discoveryv1.EndpointSlice) *endpo
 		assert.Error(t, err).Nil()
 	}
 	return &endpointSliceDiscovery{
+		obs:      newTestObserver(),
 		cfg:      cfg,
 		client:   client,
 		entries:  map[string]*esEntry{},

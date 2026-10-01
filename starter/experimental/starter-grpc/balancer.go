@@ -55,7 +55,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -113,8 +113,8 @@ func backendLabels() []string {
 // outlier-suspension thresholds and the strategy override. It deliberately names
 // no service: these balancers are process-wide and shared by every client that
 // selects them through service config, so their only sensible policy is the
-// process-wide default — govern.client.default.* — which is exactly what a label
-// matching no rule resolves to. Write govern.client.rules[N].service=grpc:client to
+// process-wide default — spring.governance.client.default.* — which is exactly what a label
+// matching no rule resolves to. Write spring.governance.client.rules[N].service=grpc:client to
 // target them explicitly.
 //
 // The label being process-wide is what makes `balancer` here a blunt instrument:
@@ -152,6 +152,13 @@ var builtinStrategies = []string{
 // the governance subscription (installed by [newSelectionHook] at wiring time, long
 // after init returned) can reach the trackers.
 var builtinTrackers []*loadbalance.Tracker
+
+// builtinDir resolves the strategy names the gs_* balancers are registered
+// over. Those registrations happen in init, before any governance manager
+// exists, so they resolve against the built-ins alone; a governed override goes
+// through the manager's directory instead, which also carries any strategy a
+// deployment contributed (see [applyGovernedSelection]).
+var builtinDir = loadbalance.BuiltinDirectory()
 
 func init() {
 	resolver.Register(discoveryResolverBuilder{})
@@ -193,7 +200,7 @@ type managerHook struct{}
 func newSelectionHook(lbMgr *loadbalance.Manager) (*managerHook, error) {
 	if lbMgr != nil {
 		lbMgr.Subscribe(clientGovernLabel, func(s loadbalance.Selection) error {
-			applyGovernedSelection(s)
+			applyGovernedSelection(lbMgr, s)
 			return nil
 		})
 	}
@@ -209,7 +216,11 @@ func newSelectionHook(lbMgr *loadbalance.Manager) (*managerHook, error) {
 //
 // It takes the selection half only: the protection half of the same rule drives
 // the client-side executor and has nothing to say to a gRPC balancer.
-func applyGovernedSelection(s loadbalance.Selection) {
+//
+// lbMgr is the manager the subscription came from; it resolves the strategy name
+// against the same directory the pools use, so a strategy a deployment
+// contributed works here too. A nil lbMgr falls back to the built-ins.
+func applyGovernedSelection(lbMgr *loadbalance.Manager, s loadbalance.Selection) {
 	// Suspension half.
 	for _, t := range builtinTrackers {
 		t.SetConfig(loadbalance.TrackerConfig{
@@ -222,7 +233,14 @@ func applyGovernedSelection(s loadbalance.Selection) {
 		governedBal.Store(nil)
 		return
 	}
-	if bal, err := loadbalance.New(s.Balancer, s.BalancerConfig()); err == nil {
+	var bal loadbalance.Balancer
+	var err error
+	if lbMgr != nil {
+		bal, err = lbMgr.Build(s.Balancer, s.Params)
+	} else {
+		bal, err = builtinDir.Build(s.Balancer, loadbalance.NewParams(s.Params))
+	}
+	if err == nil {
 		governedBal.Store(&bal)
 	}
 }
@@ -255,7 +273,7 @@ func RegisterBalancer(name, strategy string, tc loadbalance.TrackerConfig) {
 // governed marks the built-ins, whose strategy the governance center may override
 // in place.
 func registerBalancer(name, strategy string, tracker *loadbalance.Tracker, governed bool) {
-	bal, err := loadbalance.New(strategy, loadbalance.Config{})
+	bal, err := builtinDir.Build(strategy, loadbalance.NewParams(nil))
 	if err != nil {
 		panic("starter-grpc: " + err.Error())
 	}

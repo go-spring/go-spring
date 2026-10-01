@@ -119,21 +119,16 @@ type ConfigBus struct {
 	sub      *nats.Subscription
 	origin   string
 
-	// ins holds the metrics; refresh is the property-refresh entry point, held
-	// as a field so tests can drive onMessage without a running application.
-	ins     instruments
+	// refresh is the property-refresh entry point, held as a field so tests can
+	// drive onMessage without a running application. The metrics come from the
+	// package-wide instrument set (see observe.go).
 	refresh func(context.Context) error
 }
 
 // Init prepares the bus and starts its listener: it resolves the publisher
-// identity, builds the metrics, and subscribes. It runs as the bean's init hook,
-// after the NATS connection has been injected.
-//
-// The instruments are built here rather than at package init because the OTel
-// global meter binds to the first provider installed, and starter-otel installs
-// its own after this package's init.
+// identity and subscribes. It runs as the bean's init hook, after the NATS
+// connection has been injected.
 func (b *ConfigBus) Init() error {
-	b.ins = newInstruments()
 	b.refresh = gs.RefreshProperties
 	b.origin = b.Config.Origin
 	if b.origin == "" {

@@ -145,7 +145,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # OTel 指标仅经 actuator 暴露
 
 # --- 治理（服务 pulsar|pulsar://127.0.0.1:6650 的熔断/限流）-------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
 **启动 Pulsar**（同 [example/docker-compose.yml](example/docker-compose.yml)）：
@@ -326,14 +326,15 @@ docker start pulsar && go run .   # admin health 端点应答后即可启动（�
 ### 4.3 受保护 vs 未保护（治理标签检查）
 
 ```yaml
-# conf/govern.yaml
-govern:
-  enabled: true
-  resilience:
-    breaker:
-      enabled: true
-      min-calls: 4
-      failure-rate: 50
+# conf/governance.yaml
+spring:
+  governance:
+    enabled: true
+    resilience:
+      breaker:
+        enabled: true
+        min-calls: 4
+        failure-rate: 50
 ```
 
 服务标签是 `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]。停掉 broker 后：压

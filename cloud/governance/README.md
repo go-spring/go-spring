@@ -19,7 +19,7 @@ governance.Source bean ─────┼──→ center（单一活跃源）�
 Center.SetSource（显式）────┘                    res.Apply / lb.Apply / inj.SetConfig
 ```
 
-文档格式由 `rules.Parse(name, data, format)`（starter-governance 的 `rules` 子包，spring/conf 与容器无关治理核心之间的共享解析胶水）统一：任何后端送来的规则文档（文件字节 / HTTP body / 配置中心 value）都用同一套解析与键语义（`govern.*` 键），规则文件跨后端逐字节可移植。解析成功但没有任何 `govern.*` 键的文档一律报错（防截断静默关治理）。
+文档格式由 `rules.Parse(name, data, format)`（starter-governance 的 `rules` 子包，spring/conf 与容器无关治理核心之间的共享解析胶水）统一：任何后端送来的规则文档（文件字节 / HTTP body / 配置中心 value）都用同一套解析与键语义（`spring.governance.*` 键），规则文件跨后端逐字节可移植。解析成功但没有任何 `spring.governance.*` 键的文档一律报错（防截断静默关治理）。
 
 优先级：`Center.SetSource` > bean 注入。**没有内置默认源**——不配置任何来源时治理保持 disabled（`resilience.Manager.ClientExecutorFor` 返回透传 noop）。治理配置不挂 gs 的通用属性刷新管道。
 
@@ -48,10 +48,10 @@ func (s *nacosRuleSource) Subscribe(cb func(governance.Config)) { ... }
 
 | 后端 | 所在 starter | 一行接线 |
 |---|---|---|
-| 独立规则文件（fsnotify） | starter-governance | `govern.source.file.path=...` |
-| 治理控制台 / 规则 API（轮询拉取） | starter-governance | `govern.source.http.url=...` |
-| Nacos 直连（专用 dataId，ListenConfig 推送） | starter-governance-nacos | `govern.source.nacos.server=...` + `data-id=...` |
-| etcd 直连（专用 key，Watch 推送） | starter-governance-etcd | `govern.source.etcd.endpoint=...` + `key=...` |
+| 独立规则文件（fsnotify） | starter-governance | `spring.governance.source.file.path=...` |
+| 治理控制台 / 规则 API（轮询拉取） | starter-governance | `spring.governance.source.http.url=...` |
+| Nacos 直连（专用 dataId，ListenConfig 推送） | starter-governance-nacos | `spring.governance.source.nacos.server=...` + `data-id=...` |
+| etcd 直连（专用 key，Watch 推送） | starter-governance-etcd | `spring.governance.source.etcd.endpoint=...` + `key=...` |
 
 ## 为什么是平级伞包，而非挂到 resilience 下
 
@@ -96,7 +96,7 @@ scheduling 服务标签**：
 
 ## 配置
 
-治理规则使用 `govern.*` 键命名空间（如 `govern.enabled`、`govern.client.default.*`、`govern.client.rules`），与 Go 包名 `governance` 独立。规则是**独立文档**，经 Source 契约进入中心，不写进 `app.properties`——本地文件用 `govern.source.file.path` 引导（见 [starter-governance](../../starter/starter-governance/README_CN.md)）。
+治理规则使用 `spring.governance.*` 键命名空间（如 `spring.governance.enabled`、`spring.governance.client.default.*`、`spring.governance.client.rules`），与 Go 包名 `governance` 独立。规则是**独立文档**，经 Source 契约进入中心，不写进 `app.properties`——本地文件用 `spring.governance.source.file.path` 引导（见 [starter-governance](../../starter/starter-governance/README_CN.md)）。
 
 本包**容器无关**（不 import spring/gs）：gs 接线（注册三个 authority bean 与中心 bean、绑定注入的 Source、`GoLive`）在 **starter-governance** 的常驻 wiring bean 里。应用侧：
 
@@ -194,20 +194,20 @@ per-label 订阅配合"上次交付值"（`subscriber.last`）做**选择性扇�
 type Config struct {
     Enabled bool          // 总开关，两个方向一起；false 时两侧都解析成零值
     Driver  string        // 韧性后端："default" / "sentinel"，全进程统一（一个 Driver 两个方法）
-    Client  ClientConfig  // 出站半边：govern.client.*
-    Server  ServerConfig  // 入站半边：govern.server.*
+    Client  ClientConfig  // 出站半边：spring.governance.client.*
+    Server  ServerConfig  // 入站半边：spring.governance.server.*
 }
 
 type ClientConfig struct {
     Default ClientDefaultPolicy    // 出站兜底：没有 ClientRule 命中的服务都用这份
     Rules   []ClientRule           // 出站逐服务列表；同一 label 重复即拒绝整个文档
-    Fault   fault.Config     // 出站放火：govern.client.fault.*
+    Fault   fault.Config     // 出站放火：spring.governance.client.fault.*
 }
 
 type ServerConfig struct {
     Default resilience.ServerPolicy // 入站兜底（限流/并发/熔断/处理预算）
     Rules   []ServerRule      // 入站逐路由列表；同一 label 重复即拒绝
-    Fault   fault.Config         // 入站放火：govern.server.fault.*
+    Fault   fault.Config         // 入站放火：spring.governance.server.fault.*
 }
 
 type ClientDefaultPolicy struct {
@@ -251,7 +251,7 @@ func fault.ApplyServer(ctx, in *Injector, service string, fn func() error) error
 
 **没有包级门面**。`cloud/governance` 以前有一组 `Enabled/PolicyFor/Register/OnReady/…` 的包级函数与一个进程单例，现已全部删除：需要治理能力就注入对应的 bean，需要驱动中心就持有 `*Center`。这是"只有一套机制"的落点——不再有"全局槽位"与"IoC bean"并行。
 
-**为什么保护与选择是两个类型**：`resilience.ClientPolicy` 现在是纯保护模型（限流/熔断/舱壁/重试/超时），端点选择的词汇（balancer / outlier）归 `loadbalance.Selection`。两者由**部署方在规则文档里组合**（`ClientRule` / `ClientClientDefaultPolicy` 同时内嵌两半，所以配置 key 与以前完全一样：`govern.client.rules[0].attempt-timeout` 与 `govern.client.rules[0].balancer` 都在 `rules[0]` 下）。这样每个模块只认自己的配置类型，`resilience` 不必知道什么是 balancer。
+**为什么保护与选择是两个类型**：`resilience.ClientPolicy` 现在是纯保护模型（限流/熔断/舱壁/重试/超时），端点选择的词汇（balancer / outlier）归 `loadbalance.Selection`。两者由**部署方在规则文档里组合**（`ClientRule` / `ClientClientDefaultPolicy` 同时内嵌两半，所以配置 key 与以前完全一样：`spring.governance.client.rules[0].attempt-timeout` 与 `spring.governance.client.rules[0].balancer` 都在 `rules[0]` 下）。这样每个模块只认自己的配置类型，`resilience` 不必知道什么是 balancer。
 
 **为什么是 `Rules` 列表而不是 `map[label]`**：服务 label 用冒号分段（`gorm:mysql:orders-db`）。若 label 做 map key，冒号进到 YAML key 位置会让映射解析错乱（每个 key 都得加引号、漏一个就静默解析错）。改成列表后，label 退到 `service` 值的位置——冒号在值里，properties 不转义、YAML 不加引号，两种格式都干净。`PolicyFor` 遍历 Rules（每进程就几条，O(n) 可忽略）找首个 `Service` 等于 label 的，找不到回落 Default。
 
@@ -291,7 +291,7 @@ label 是 `resilience.Manager.ClientExecutorFor` / `PolicyFor` 与 `loadbalance.
 | starter-gateway（保护策略） | `gateway:<resilience-policy-name>`（按 policy 共享） | `gateway:strict` |
 | starter-dubbo | `dubbo:<app>` / `dubbo:<interface>:<version>:<group>` | 见 §7 |
 
-**给一个服务配置策略**，把上表中的 label 作为 `govern.client.rules[N].service` 的值。具体写法见 [配置指南 §3](#3-多-starter-项目给不同服务配不同策略)。
+**给一个服务配置策略**，把上表中的 label 作为 `spring.governance.client.rules[N].service` 的值。具体写法见 [配置指南 §3](#3-多-starter-项目给不同服务配不同策略)。
 
 **同一个 label 也管端点选择**：凡是走发现模式建了 `loadbalance.Pool` 的 client（`http` / `gateway` /
 gorm 四方言 / `redigo` / `redis` / `mongodb`），都用上表里它自己那一行的 label 去 `lbMgr.Bind(pool, label)`，
@@ -328,7 +328,7 @@ dubbo 有自己的 URL-param 治理模型（timeout / retries / loadbalance / cl
 
 ## 8. 与 fault 注入的关系（已落地）
 
-fault（“放火”）已**收进治理中心**，和 resilience 共用同一个 `governance.Config`——也就是同一份规则文档。两个方向各嵌一份 `fault.Config`：`ClientConfig.Fault`（`value:"${fault:=}"`，绑成 `govern.client.fault.*`）与 `ServerConfig.Fault`（绑成 `govern.server.fault.*`）。`*fault.Injector` 由 starter-governance 注册为 bean（`fault.NewInjector(fault.Configs{})`，两侧 Enabled=false 即 no-op），center 持有的是**同一个实例**——两侧 starter 注入它，center 往里推配置。每次 source push（`adopt`）在 `resilience.Manager.Apply` / `loadbalance.Manager.Apply` 之外，额外 `inj.SetConfig(fault.Configs{Client, Server})` 一次性热更两侧。
+fault（“放火”）已**收进治理中心**，和 resilience 共用同一个 `governance.Config`——也就是同一份规则文档。两个方向各嵌一份 `fault.Config`：`ClientConfig.Fault`（`value:"${fault:=}"`，绑成 `spring.governance.client.fault.*`）与 `ServerConfig.Fault`（绑成 `spring.governance.server.fault.*`）。`*fault.Injector` 由 starter-governance 注册为 bean（`fault.NewInjector(fault.Configs{})`，两侧 Enabled=false 即 no-op），center 持有的是**同一个实例**——两侧 starter 注入它，center 往里推配置。每次 source push（`adopt`）在 `resilience.Manager.Apply` / `loadbalance.Manager.Apply` 之外，额外 `inj.SetConfig(fault.Configs{Client, Server})` 一次性热更两侧。
 
 **为什么 fault 必须按方向拆，而 rules 不用**：`fault.Config` 的 `Rate / Latency / Error / Scope / 护栏` 是**没有 label 的全局旋钮**，作用于“一切流量”——它无处声明方向，只能靠所在的块表态。而 `ClientRule` 的作用域由一个 label 决定，label 本身已经带方向（`gin::8080` 是入站、`redigo:cache` 是出站），所以 rules 一份就够。
 
@@ -371,8 +371,8 @@ starter 侧注入同一个 `*fault.Injector` bean 接入，零耦合 cloud/gover
 
 ```properties
 # app.properties —— 治理的“引导”配置，只有这一行
-# 规则内容不在这里，在 conf/govern.properties
-govern.source.file.path=conf/govern.properties
+# 规则内容不在这里，在 conf/governance.properties
+spring.governance.source.file.path=conf/governance.properties
 ```
 
 ```go
@@ -389,8 +389,8 @@ import (
 
 **其它规则来源**：
 
-- `govern.source.http.*`（轮询远程控制台/规则 API，见 [starter-governance README](../../starter/starter-governance/README_CN.md)）；
-- config 中心的 source 适配器（nacos/etcd）各自独立成模块（`starter-governance-nacos`、`starter-governance-etcd`），内容同样是这份 `govern.*` 文档；
+- `spring.governance.source.http.*`（轮询远程控制台/规则 API，见 [starter-governance README](../../starter/starter-governance/README_CN.md)）；
+- config 中心的 source 适配器（nacos/etcd）各自独立成模块（`starter-governance-nacos`、`starter-governance-etcd`），内容同样是这份 `spring.governance.*` 文档；
 - 代码里 `ctr.SetSource(...)` 静态注入或推流。
 
 优先级：显式 `Center.SetSource` > 由 bean 注入的 source（如上面 file/http 的）。
@@ -407,71 +407,72 @@ import (
 最常见用法——全进程所有服务共享同一份韧性策略。规则写在**规则文件**里（下面是 `properties`，YAML 键同构）：
 
 ```properties
-# conf/govern.properties —— 治理规则，独立文档
-govern.enabled=true
-govern.driver=default          # 或 sentinel；全进程统一后端，一处切换处处生效
+# conf/governance.properties —— 治理规则，独立文档
+spring.governance.enabled=true
+spring.governance.driver=default          # 或 sentinel；全进程统一后端，一处切换处处生效
 
-govern.client.default.attempt-timeout=500ms
-govern.client.default.max-retries=1
-govern.client.default.rate-limit=100       # ops/s，0 表示不限流
-govern.client.default.error-threshold=20   # 连续失败 20 次熔断
-govern.client.default.open-duration=5s     # 熔断持续 5s 后半开试探
+spring.governance.client.default.attempt-timeout=500ms
+spring.governance.client.default.max-retries=1
+spring.governance.client.default.rate-limit=100       # ops/s，0 表示不限流
+spring.governance.client.default.error-threshold=20   # 连续失败 20 次熔断
+spring.governance.client.default.open-duration=5s     # 熔断持续 5s 后半开试探
 ```
 
-配完这份文件（加上 §1 的 `govern.source.file.path`），项目里的 redis、gorm、mongo、http-client……全部自动套用这套超时/重试/限流/熔断，且**热重载**——file source 盯着这个文件，改完不用重启（远程 source 同样的效果）。
+配完这份文件（加上 §1 的 `spring.governance.source.file.path`），项目里的 redis、gorm、mongo、http-client……全部自动套用这套超时/重试/限流/熔断，且**热重载**——file source 盯着这个文件，改完不用重启（远程 source 同样的效果）。
 
-> 规则文件里的键就是 `govern.*` 命名空间，与过去的 `${govern}` 属性一字不差。`govern.client.default.*` 下可用字段是 `resilience.ClientPolicy` 的全部旋钮：`attempt-timeout` / `max-retries` / `rate-limit` / `burst` / `rate-limit-max-wait` / `algorithm`(token-bucket|sliding-window) / `window` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`，以及端点选择类的 `balancer` / `balancer-replicas` / `balancer-zone-key` / `balancer-delegate` / `outlier-threshold` / `outlier-suspend-for`（见 §3.1）。字段含义见 [cloud/governance/resilience/policy.go](resilience/policy.go)。
+> 规则文件里的键就是 `spring.governance.*` 命名空间，与过去的 `${govern}` 属性一字不差。`spring.governance.client.default.*` 下可用字段是 `resilience.ClientPolicy` 的全部旋钮：`attempt-timeout` / `max-retries` / `rate-limit` / `burst` / `rate-limit-max-wait` / `algorithm`(token-bucket|sliding-window) / `window` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`，以及端点选择类的 `balancer` / `balancer-params`（策略自己的参数，扁平子映射）/ `outlier-threshold` / `outlier-suspend-for`（见 §3.1）。字段含义见 [cloud/governance/resilience/policy.go](resilience/policy.go)。
 
 ---
 
 ## 3. 多 starter 项目：给不同服务配不同策略
 
-真实项目里 redis 和 gorm 的容忍度不一样。用 `govern.client.rules[N]` 给特定服务单独配——**服务 label 写在 `service` 值里**（不是 key），所以冒号随便写、properties 不转义、YAML 不加引号：
+真实项目里 redis 和 gorm 的容忍度不一样。用 `spring.governance.client.rules[N]` 给特定服务单独配——**服务 label 写在 `service` 值里**（不是 key），所以冒号随便写、properties 不转义、YAML 不加引号：
 
 ```properties
-# conf/govern.properties
-govern.enabled=true
-govern.driver=default
+# conf/governance.properties
+spring.governance.enabled=true
+spring.governance.driver=default
 
 # 默认策略：兜底，大部分服务用这个
-govern.client.default.attempt-timeout=1s
-govern.client.default.max-retries=2
+spring.governance.client.default.attempt-timeout=1s
+spring.governance.client.default.max-retries=2
 
 # redis 单独收紧：缓存快失败，少重试
-govern.client.rules[0].service=redigo:cache
-govern.client.rules[0].attempt-timeout=200ms
-govern.client.rules[0].max-retries=0
+spring.governance.client.rules[0].service=redigo:cache
+spring.governance.client.rules[0].attempt-timeout=200ms
+spring.governance.client.rules[0].max-retries=0
 
 # mysql 放宽：数据库慢查询多，超时给宽
-govern.client.rules[1].service=gorm:mysql:orders-db
-govern.client.rules[1].attempt-timeout=3s
-govern.client.rules[1].max-retries=1
+spring.governance.client.rules[1].service=gorm:mysql:orders-db
+spring.governance.client.rules[1].attempt-timeout=3s
+spring.governance.client.rules[1].max-retries=1
 
 # http 下游服务按服务名
-govern.client.rules[2].service=http:user-svc
-govern.client.rules[2].attempt-timeout=800ms
+spring.governance.client.rules[2].service=http:user-svc
+spring.governance.client.rules[2].attempt-timeout=800ms
 ```
 
 YAML 规则文件里同样干净（冒号在值里，不是 key）：
 
 ```yaml
-# conf/govern.yaml
-govern:
-  enabled: true
-  driver: default
-  client:
-    default:
-      attempt-timeout: 1s
-      max-retries: 2
-  client:
-    rules:
-      - service: redigo:cache
-        attempt-timeout: 200ms
-        max-retries: 0
-      - service: gorm:mysql:orders-db
-        attempt-timeout: 3s
-      - service: http:user-svc
-        attempt-timeout: 800ms
+# conf/governance.yaml
+spring:
+  governance:
+    enabled: true
+    driver: default
+    client:
+      default:
+        attempt-timeout: 1s
+        max-retries: 2
+    client:
+      rules:
+        - service: redigo:cache
+          attempt-timeout: 200ms
+          max-retries: 0
+        - service: gorm:mysql:orders-db
+          attempt-timeout: 3s
+        - service: http:user-svc
+          attempt-timeout: 800ms
 ```
 
 ### 为什么是 `rules[N]` 而不是 `override.<label>`
@@ -485,13 +486,13 @@ govern:
 
 ```properties
 # 发现模式下路由到 user-svc 的 client：改用最少连接，且连续失败 5 次摘除 10s
-govern.client.rules[3].service=http:user-svc
-govern.client.rules[3].balancer=least_conn
-govern.client.rules[3].outlier-threshold=5
-govern.client.rules[3].outlier-suspend-for=10s
+spring.governance.client.rules[3].service=http:user-svc
+spring.governance.client.rules[3].balancer=least_conn
+spring.governance.client.rules[3].outlier-threshold=5
+spring.governance.client.rules[3].outlier-suspend-for=10s
 ```
 
-- **`balancer`**：`round_robin`(默认) / `least_conn` / `consistent_hash` / `weighted` / `zone_aware`（包内还注册了 `random` / `p2c`，公司策略名如 `luohua` 同理）。留空 = 保持该 client 的默认（round_robin）。写错策略名会被**忽略并沿用当前策略**，不影响调用——治理文档没有错误通道（"你推什么，你担保什么"）。策略参数也在这份文档里配、随 push 热更：`balancer-replicas`（consistent_hash 虚拟节点数）、`balancer-zone-key` / `balancer-delegate`（zone_aware 的元数据键与内层策略）。
+- **`balancer`**：`round_robin`(默认) / `least_conn` / `consistent_hash` / `weighted` / `zone_aware`（包内还注册了 `random` / `p2c`），以及部署自己贡献的策略（命名 `Factory` bean，如 `luohua`）。留空 = 保持该 client 的默认（round_robin）。写错策略名会被**忽略并沿用当前策略**，不影响调用——治理文档没有错误通道（"你推什么，你担保什么"）。**策略参数也在这份文档里配、随 push 热更**，放在 `balancer-params` 这个扁平子映射里，核心不解释键名，由策略自己读取：`replicas`（consistent_hash 虚拟节点数）、`zone-key` / `delegate`（zone_aware 的元数据键与内层策略）。写错参数名会在构造期报错并被忽略，不会静默丢参。
 - **`outlier-threshold`**：与 `error-threshold` 是同一套语义（连续失败 + 半开试探），区别在作用对象——`error-threshold` 熔断的是**整个服务**，`outlier-threshold` 摘的是**单个实例**。0 表示不摘除。
 - 两个旋钮都**原地生效**：改完 push，下一次请求就走新策略/新阈值，不用重启，也不会重建 transport。（策略自身的状态不跨切换保留——`least_conn` 的在途计数、`consistent_hash` 的哈希环、p2c 的延迟模型都会重来。）
 
@@ -525,7 +526,7 @@ govern.client.rules[3].outlier-suspend-for=10s
 > 所以"新实例不生效"对 ES/memcached 已经不是问题；`balancer` 对它们仍然无效，因为挑节点的不是我们。
 
 > 一句话自查：**这条 client 每次请求/每次建连会重新挑端点吗？** 会 → 它的服务标签就能配 `balancer`；
-> 不会（只挑一次、或交给库内部挑） → 别指望 `govern.client.rules[N].balancer` 对它生效。
+> 不会（只挑一次、或交给库内部挑） → 别指望 `spring.governance.client.rules[N].balancer` 对它生效。
 
 **两个语义边界**（写规则前值得知道）：
 
@@ -540,13 +541,13 @@ govern.client.rules[3].outlier-suspend-for=10s
 
 ### 3.2 让某一条服务不上治理
 
-客户端一律会挂 executor，**没有 per-service 的治理开关**——开关是进程级的（`govern.enabled`）。
+客户端一律会挂 executor，**没有 per-service 的治理开关**——开关是进程级的（`spring.governance.enabled`）。
 想让某条服务事实上不受治理（裸调用），给它配一条**所有旋钮都为 0 的 ClientRule** 即可：ClientRule 是整体替换
 default，全零 ClientRule 算出来的就是零 Policy，executor 退化为透传。
 
 ```properties
 # kafka:<brokers> 这条 client 不上治理
-govern.client.rules[0].service=kafka:10.0.0.1:9092
+spring.governance.client.rules[0].service=kafka:10.0.0.1:9092
 # 字段全不写 = 全零 = 透传
 ```
 
@@ -555,10 +556,10 @@ govern.client.rules[0].service=kafka:10.0.0.1:9092
 
 ### 几条规则
 
-- **一条 ClientRule 只配一个服务**：`govern.client.rules[0].service=redigo:cache`。不同服务永远各写一条——共享一条规则会在改策略时互相波及。
-- **ClientRule 是整体替换，不是字段合并**：给 `redigo:cache` 配了 ClientRule，它就**完全不继承** `govern.client.default`——漏写的字段按零值处理（零值=禁用该能力）。只想微调一个字段的话，把 default 里要保留的字段也抄进 ClientRule。
+- **一条 ClientRule 只配一个服务**：`spring.governance.client.rules[0].service=redigo:cache`。不同服务永远各写一条——共享一条规则会在改策略时互相波及。
+- **ClientRule 是整体替换，不是字段合并**：给 `redigo:cache` 配了 ClientRule，它就**完全不继承** `spring.governance.client.default`——漏写的字段按零值处理（零值=禁用该能力）。只想微调一个字段的话，把 default 里要保留的字段也抄进 ClientRule。
 - **label 不应重复**：文档里同一个 label 出现两条 ClientRule 即整体拒绝（旧快照继续服务），没有 first-match 语义。
-- **`service` 留空不匹配任何服务**——兜底请用 `govern.client.default`，不要用空 service 的 ClientRule。
+- **`service` 留空不匹配任何服务**——兜底请用 `spring.governance.client.default`，不要用空 service 的 ClientRule。
 
 ### 怎么知道某个服务的 label 是什么？
 
@@ -578,16 +579,16 @@ govern.client.rules[0].service=kafka:10.0.0.1:9092
 label 是**本进程这侧入口**的身份（不是被调方）：监听地址（gin / echo / http-server / grpc 的 `grpc::{addr}`），thrift 由调用方自定。同一个 `service` 键在两侧指的都是"starter 交给管理器的那个身份串"，只是入站的值恰好是个地址：
 
 ```properties
-# conf/govern.properties
-govern.enabled=true
-govern.driver=default
+# conf/governance.properties
+spring.governance.enabled=true
+spring.governance.driver=default
 
-govern.server.default.attempt-timeout=2s      # 单个请求的处理预算
-govern.server.default.rate-limit=1000         # 入站限流 1000 QPS
+spring.governance.server.default.attempt-timeout=2s      # 单个请求的处理预算
+spring.governance.server.default.rate-limit=1000         # 入站限流 1000 QPS
 
 # gin 监听 :8080 → label = gin::8080
-govern.server.rules[0].service=gin::8080
-govern.server.rules[0].rate-limit=500
+spring.governance.server.rules[0].service=gin::8080
+spring.governance.server.rules[0].rate-limit=500
 ```
 
 出站与入站各自独立：同一份文档里 `client.default` 管所有出站调用、`server.default` 管所有入站请求，**不互相继承、不互相覆盖**。方向不会配错——label 只属于一侧（`gin::8080` 是入站，`redigo:cache` 是出站），而规则所在的那个块把归属再写明一次。
@@ -605,13 +606,13 @@ gateway 的一条路由对应**两个** label，因为它们作用在两个不�
 
 ```properties
 # 保护：所有引用 policy "strict" 的路由
-govern.client.rules[0].service=gateway:strict
-govern.client.rules[0].attempt-timeout=2s
-govern.client.rules[0].max-retries=1
+spring.governance.client.rules[0].service=gateway:strict
+spring.governance.client.rules[0].attempt-timeout=2s
+spring.governance.client.rules[0].max-retries=1
 
 # 选择：只有路由 api/v1 的上游
-govern.client.rules[1].service=gateway:api/v1
-govern.client.rules[1].balancer=least_conn
+spring.governance.client.rules[1].service=gateway:api/v1
+spring.governance.client.rules[1].balancer=least_conn
 ```
 
 ---
@@ -624,10 +625,10 @@ dubbo 走的是 URL-param 模型，govern 只覆盖它的 `timeout` 和 `retries
 - 每个 reference：`dubbo:<interface>:<version>:<group>`
 
 ```properties
-# conf/govern.properties
-govern.client.rules[0].service=dubbo:com.example.UserService:1.0.0
-govern.client.rules[0].attempt-timeout=300ms
-govern.client.rules[0].max-retries=2
+# conf/governance.properties
+spring.governance.client.rules[0].service=dubbo:com.example.UserService:1.0.0
+spring.governance.client.rules[0].attempt-timeout=300ms
+spring.governance.client.rules[0].max-retries=2
 ```
 
 dubbo 专属旋钮（loadbalance / cluster / serialization）不进 govern，留在 dubbo 自己的配置段。
@@ -636,18 +637,18 @@ dubbo 专属旋钮（loadbalance / cluster / serialization）不进 govern，留
 
 ## 6. fault（放火）——随 govern 集中化，同一个 source 驱动 ⚠️
 
-fault 注入已**收进治理中心**，和 resilience 共用同一个 `governance.Config`——也就是同一份规则文档（参见[设计说明 §8](#8-与-fault-注入的关系已落地)）。放火的 key 分方向：出站是 `govern.client.fault.*`，入站是 `govern.server.fault.*`（都不再是顶层 `fault.*`）：
+fault 注入已**收进治理中心**，和 resilience 共用同一个 `governance.Config`——也就是同一份规则文档（参见[设计说明 §8](#8-与-fault-注入的关系已落地)）。放火的 key 分方向：出站是 `spring.governance.client.fault.*`，入站是 `spring.governance.server.fault.*`（都不再是顶层 `fault.*`）：
 
 ```properties
-# conf/govern.properties
+# conf/governance.properties
 # 出站：让本进程的调用以 50% 概率失败（redis / gorm / http-client / grpc client …）
-govern.client.fault.enabled=true
-govern.client.fault.rate=0.5
-govern.client.fault.error=generic
+spring.governance.client.fault.enabled=true
+spring.governance.client.fault.rate=0.5
+spring.governance.client.fault.error=generic
 
 # 入站：让本进程的 handler 以 50% 概率返回 503（gin / echo / grpc server …）
-govern.server.fault.enabled=true
-govern.server.fault.rate=0.5
+spring.governance.server.fault.enabled=true
+spring.governance.server.fault.rate=0.5
 ```
 
 **两个方向各烧各的。** 只配 `client.fault` 时入站零注入，反之亦然——这正是方向拆分要买的东西（集中化早期版本里一条全局 `rate` 会同时烧两侧）。两侧各持一个 `*fault.Injector` bean 实例、共享同一个 bean 指针：starter 侧注入的是**同一个** `*fault.Injector`，center `SetConfig` 一次性推两侧，starter 自己不再绑 fault 配置、也不 import 治理中心。
@@ -657,23 +658,23 @@ govern.server.fault.rate=0.5
 用 `client.fault.rules[]`（出站）/ `server.fault.rules[]`（入站）做定向（catch-all 之外的细分）：
 
 ```properties
-govern.client.fault.enabled=true
+spring.governance.client.fault.enabled=true
 
 # 出站默认（catch-all）：不实际注入错误，只让框架进入“fault 模式”
-govern.client.fault.rate=0
+spring.governance.client.fault.rate=0
 
 # 只给 redis 放火
-govern.client.fault.rules[0].service=redigo:cache
-govern.client.fault.rules[0].rate=0.5
-govern.client.fault.rules[0].error=timeout
+spring.governance.client.fault.rules[0].service=redigo:cache
+spring.governance.client.fault.rules[0].rate=0.5
+spring.governance.client.fault.rules[0].error=timeout
 ```
 
 ```properties
-govern.server.fault.enabled=true
+spring.governance.server.fault.enabled=true
 
 # 入站只烧某一个方法（grpc 的 label 是 grpc:<FullMethod>）
-govern.server.fault.rules[0].service=grpc:/demo.Service/Echo
-govern.server.fault.rules[0].rate=0.2
+spring.governance.server.fault.rules[0].service=grpc:/demo.Service/Echo
+spring.governance.server.fault.rules[0].rate=0.2
 ```
 
 > `rules[N].service` 里的值要和该 starter 实际传给 injector 的 service label 对上（出站是 `redigo:cache` 这类，入站是 `gin::8080` / `grpc:/pkg.Svc/Method` 这类）。
@@ -683,9 +684,9 @@ govern.server.fault.rules[0].rate=0.2
 放火忘了关很危险，fault 内置两个自愈上限：
 
 ```properties
-govern.client.fault.max-duration=10m     # 出站放火 10 分钟后自动停（从第一次生效算）
-govern.client.fault.max-affected=1000    # 出站累计影响 1000 次调用后自动停
-govern.server.fault.max-duration=10m     # 入站同理，两侧各算各的
+spring.governance.client.fault.max-duration=10m     # 出站放火 10 分钟后自动停（从第一次生效算）
+spring.governance.client.fault.max-affected=1000    # 出站累计影响 1000 次调用后自动停
+spring.governance.server.fault.max-duration=10m     # 入站同理，两侧各算各的
 ```
 
 **强烈建议**生产环境放火时必设其一，set fire and walk away 也不会烧到天荒地老。
@@ -697,7 +698,7 @@ govern.server.fault.max-duration=10m     # 入站同理，两侧各算各的
 用 `scope` 限定只烧压测流量、不碰真实请求（依赖 cloud/governance/traffic 的压测标记）：
 
 ```properties
-govern.client.fault.scope=loadtest   # 只给带压测标记的流量放火；真实流量不受影响
+spring.governance.client.fault.scope=loadtest   # 只给带压测标记的流量放火；真实流量不受影响
                                      # 反向：real = 只烧真实流量；空 = 全烧（默认）
 ```
 
@@ -722,49 +723,49 @@ spring.http.user.service-name=user-svc
 spring.http.user.addr=10.0.0.3:8081
 
 # 治理规则不在这里，只给它指个文件
-govern.source.file.path=conf/govern.properties
+spring.governance.source.file.path=conf/governance.properties
 ```
 
 ```properties
-# ============ conf/govern.properties：治理规则，一处下发，处处生效 ============
-govern.enabled=true
-govern.driver=default
+# ============ conf/governance.properties：治理规则，一处下发，处处生效 ============
+spring.governance.enabled=true
+spring.governance.driver=default
 
 # 默认策略
-govern.client.default.attempt-timeout=1s
-govern.client.default.max-retries=1
-govern.client.default.rate-limit=200
-govern.client.default.error-threshold=10
-govern.client.default.open-duration=10s
+spring.governance.client.default.attempt-timeout=1s
+spring.governance.client.default.max-retries=1
+spring.governance.client.default.rate-limit=200
+spring.governance.client.default.error-threshold=10
+spring.governance.client.default.open-duration=10s
 
 # redis 收紧：缓存要快
-govern.client.rules[0].service=redigo:cache
-govern.client.rules[0].attempt-timeout=100ms
-govern.client.rules[0].max-retries=0
+spring.governance.client.rules[0].service=redigo:cache
+spring.governance.client.rules[0].attempt-timeout=100ms
+spring.governance.client.rules[0].max-retries=0
 
 # DB 放宽：慢查询容忍
-govern.client.rules[1].service=gorm:mysql:orders
-govern.client.rules[1].attempt-timeout=3s
-govern.client.rules[1].max-retries=2
+spring.governance.client.rules[1].service=gorm:mysql:orders
+spring.governance.client.rules[1].attempt-timeout=3s
+spring.governance.client.rules[1].max-retries=2
 
 # —— 入站（gin 监听 :8080）——
 # 入站准入：限流 + 并发上限，保护自己不被上游压垮
-govern.server.default.rate-limit=1000
-govern.server.default.max-concurrent=200
+spring.governance.server.default.rate-limit=1000
+spring.governance.server.default.max-concurrent=200
 # 公开接口单独收紧（label = gin::8080）
-govern.server.rules[0].service=gin::8080
-govern.server.rules[0].rate-limit=500
+spring.governance.server.rules[0].service=gin::8080
+spring.governance.server.rules[0].rate-limit=500
 
 # fault：默认关，需要时翻开关
-govern.client.fault.enabled=false
-govern.server.fault.enabled=false
+spring.governance.client.fault.enabled=false
+spring.governance.server.fault.enabled=false
 # 演练时打开（出站只烧 redis；入站只烧一个 grpc 方法）：
-# govern.client.fault.enabled=true
-# govern.client.fault.scope=loadtest
-# govern.client.fault.rules[0].service=redigo:cache
-# govern.client.fault.rules[0].rate=0.3
-# govern.client.fault.rules[0].error=timeout
-# govern.client.fault.max-duration=5m
+# spring.governance.client.fault.enabled=true
+# spring.governance.client.fault.scope=loadtest
+# spring.governance.client.fault.rules[0].service=redigo:cache
+# spring.governance.client.fault.rules[0].rate=0.3
+# spring.governance.client.fault.rules[0].error=timeout
+# spring.governance.client.fault.max-duration=5m
 ```
 
 入口：
@@ -785,16 +786,16 @@ import (
 
 | 误区 | 正解 |
 |---|---|
-| 把 `govern.enabled` / `govern.client.default.*` 写进 `app.properties` | 治理规则是独立文档，经 source 进入中心。`app.properties` 里只放 `govern.source.*` 引导 key。 |
+| 把 `spring.governance.enabled` / `spring.governance.client.default.*` 写进 `app.properties` | 治理规则是独立文档，经 source 进入中心。`app.properties` 里只放 `spring.governance.source.*` 引导 key。 |
 | 在每个 starter 自己的配置段写 `resilience.*` | 已废弃。resilience 现在只认治理规则文档，starter 段里的 resilience 配置不生效。 |
-| 在 client 自己的配置段写 `balancer` / `suspend-threshold` / `suspend-for` | 已废弃。端点选择也是按服务的治理策略，写进 `govern.client.rules[N]`（键为 `balancer` / `outlier-threshold` / `outlier-suspend-for`）。 |
-| `govern.client.rules[N]` 只写一个字段想“微调” | ClientRule 是整体替换 default，漏写字段=禁用该能力。要保留的 default 字段得抄进 ClientRule。 |
-| 用 `govern.override.<label>` 旧写法 | 已改为 `govern.client.rules[N].service=<label>`。label 放值里，别再当 key（冒号会废掉 YAML）。 |
+| 在 client 自己的配置段写 `balancer` / `suspend-threshold` / `suspend-for` | 已废弃。端点选择也是按服务的治理策略，写进 `spring.governance.client.rules[N]`（键为 `balancer` / `outlier-threshold` / `outlier-suspend-for`）。 |
+| `spring.governance.client.rules[N]` 只写一个字段想“微调” | ClientRule 是整体替换 default，漏写字段=禁用该能力。要保留的 default 字段得抄进 ClientRule。 |
+| 用 `govern.override.<label>` 旧写法 | 已改为 `spring.governance.client.rules[N].service=<label>`。label 放值里，别再当 key（冒号会废掉 YAML）。 |
 | 同时开着 govern 的 `max-retries` 和 client 自己的 retry 旋钮 | **重试次数是相乘的**。客户端级的重试留在客户端（它们的语义不同，见下），所以两边都开 = 双重退避。二选一。 |
 | 以为 govern 的 `attempt-timeout` 能替代 client 的 `read-timeout` 之类 | 两者管的层次不同：`attempt-timeout` 是**单次尝试**的整体预算（executor 层），client 的 dial/read/write timeout 是**传输层**的。client 的传输超时留在 client（构造期参数，改不了不用重启的假象）。 |
-| 给 `govern.client.default` 或 `govern.client.rules[N]` 写 `enabled=true` 想按服务开关 | **没有这个键**：`ClientClientDefaultPolicy` / `ClientRule` 只带策略旋钮，开关是进程级的 `govern.enabled`。绑定按字段走，多余键被静默忽略——不报错，也不生效。想让某条服务不上治理，给它配一条所有旋钮为 0 的 ClientRule（见 §3.2）。 |
+| 给 `spring.governance.client.default` 或 `spring.governance.client.rules[N]` 写 `enabled=true` 想按服务开关 | **没有这个键**：`ClientClientDefaultPolicy` / `ClientRule` 只带策略旋钮，开关是进程级的 `spring.governance.enabled`。绑定按字段走，多余键被静默忽略——不报错，也不生效。想让某条服务不上治理，给它配一条所有旋钮为 0 的 ClientRule（见 §3.2）。 |
 | 不知道服务 label 是什么 | 配 `service-name` 让 label 稳定可读；查设计说明 §6 表。 |
-| 多 starter 项目写 `govern.client.fault.enabled=true` 以为只烧一个 | fault 是全进程共享开关，会烧所有 starter。用 `govern.client.fault.rules[].service` 定向。 |
+| 多 starter 项目写 `spring.governance.client.fault.enabled=true` 以为只烧一个 | fault 是全进程共享开关，会烧所有 starter。用 `spring.governance.client.fault.rules[].service` 定向。 |
 | 没 import starter-governance | 容器里没有治理 bean，可空注入拿到 nil（各 authority 视为未武装），resilience 完全旁路，不报错但也不生效。 |
-| 配了 `govern.*` 但忘了 `govern.source.file.path`（或其它 source） | 治理 disabled——没有 source 就没有规则来源。 |
-| 改了规则文件没生效 | 确认 file source 在盯它（`govern.source.file.path` 指向的目录未变）；远程 source 确认 push 成功。规则文档本身热重载。 |
+| 配了 `spring.governance.*` 但忘了 `spring.governance.source.file.path`（或其它 source） | 治理 disabled——没有 source 就没有规则来源。 |
+| 改了规则文件没生效 | 确认 file source 在盯它（`spring.governance.source.file.path` 指向的目录未变）；远程 source 确认 push 成功。规则文档本身热重载。 |

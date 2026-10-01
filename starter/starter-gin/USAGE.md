@@ -133,10 +133,10 @@ spring.observability.metrics.path=/metrics
 
 # --- governance (inbound admission + fault drills) ----------------------------
 # Same keys example-resilience uses: 5 QPS limit → burst shed with 429.
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.server.default.rate-limit=5    # INBOUND admission: 5 QPS on every route
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.server.default.rate-limit=5    # INBOUND admission: 5 QPS on every route
 ```
 
 **Verify** (structurally identical to what the examples assert):
@@ -261,7 +261,7 @@ All keys live under `spring.gin.server.*`. Reconciled against
 | `secureHeaders.enabled` | bool | false | When on: `X-Content-Type-Options:nosniff` always; `frameOptions` (DENY), `referrerPolicy` (no-referrer); "" omits. | — |
 | `secureHeaders.frameOptions` / `.referrerPolicy` | string | DENY / no-referrer | See above. | — |
 | `secureHeaders.hsts.enabled` / `.maxAge` / `.includeSubDomains` / `.preload` | — | off / 0s / false / false | Emitted only when the request is TLS and maxAge>0 (per-request `c.Request.TLS` check). | Set without TLS → header silently absent. |
-| `admission` / `fault` | — | — | **No starter keys.** Driven entirely by the governance center (the `govern.*` rules document), service label `gin::{addr}`, hot-reloaded. | — |
+| `admission` / `fault` | — | — | **No starter keys.** Driven entirely by the governance center (the `spring.governance.*` rules document), service label `gin::{addr}`, hot-reloaded. | — |
 
 ---
 
@@ -311,7 +311,7 @@ curl -i :8001/healthz    # starter-served liveness, independent of app routes
 
 ### 4.4 Admission drill (no restart — mirrors example-resilience/check.sh)
 
-1. Start §1's project with `govern.server.default.rate-limit=5` (inbound admission
+1. Start §1's project with `spring.governance.server.default.rate-limit=5` (inbound admission
    reads the `server` block — see cloud/governance README §4).
 2. Burst: `for i in $(seq 1 20); do curl -s -o/dev/null -w '%{http_code}\n' :8001/echo/x; done`
    → both 200s and 429s (the smoke asserts exactly that). Breaker open → 503
@@ -349,7 +349,7 @@ fault/admission can scope to marked traffic.
 | Everything works, no traces/metrics | starter-otel not imported | Add it; the OTel hooks are silent no-ops without it. |
 | Container fails at boot: "gin: invalid cors config" | mutually exclusive cors posture | Pick `allowAllOrigins` OR explicit `allowedOrigins`. |
 | Sensitive request bodies appear in logs | payload capture is ON by default (512 KiB) | `middleware.accessLog.payload.enabled=false`. |
-| 429s under modest traffic | governance rate-limit too low for the workload | Raise `govern.server.default.rate-limit` (hot-reload). |
+| 429s under modest traffic | governance rate-limit too low for the workload | Raise `spring.governance.server.default.rate-limit` (hot-reload). |
 | Clients rejected at TLS handshake with cert errors | `tls.ca-file` set — that enables **mTLS** (`RequireAndVerifyClientCert`) | Remove it for one-way TLS, or issue client certs. |
 | Access log shows garbage `resp.body` under gzip | — should not happen: ResponseCapture sits inside gzip; if you rebuild the chain manually, keep it innermost | In manual mode install `ResponseCapture` innermost, inside any transformer. |
 

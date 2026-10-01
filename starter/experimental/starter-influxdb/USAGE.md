@@ -323,7 +323,7 @@ With starter-governance configured, a limiter/breaker policy on service
 through the transport executor — hammer `WritePoints` and watch rejections surface as
 `_app_influxdb_access` records and in the resilience observer's outcome counters. Flip the
 policy at runtime; the executor hot-reloads without restart. Injected faults
-(`govern.client.fault.*`) strike at the same seam.
+(`spring.governance.client.fault.*`) strike at the same seam.
 
 ### 4.5 Async-writer drain
 

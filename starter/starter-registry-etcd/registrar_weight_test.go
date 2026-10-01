@@ -73,9 +73,10 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 	// Both halves go through the production constructor and adapter, so this
 	// live test covers the real wiring rather than a struct literal.
 	kv := etcdClient{cli}
-	reg, err := newEtcdRegistrar(EtcdConfig{KeyPrefix: "/services/weight-test/"}, kv)
+	reg, err := newEtcdRegistrar(EtcdConfig{KeyPrefix: "/services/weight-test/"}, kv, newTestObserver())
 	assert.Error(t, err).Nil()
 	disc := &etcdDiscovery{
+		obs:    newTestObserver(),
 		client: kv, keyPrefix: "/services/weight-test/",
 		bgCtx: context.Background(), entries: map[string]*serviceEntry{},
 	}

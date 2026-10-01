@@ -131,7 +131,7 @@ import starter-go-redis + starter-session-redis
   └─ gs.Module(gs.OnProperty("spring.session.redis"))
         └─ conf.BindEach("${spring.session.redis}") 逐条目 <name>：
              ├─ client == "" 时 fail fast（启动报错并点名实例）
-             └─ Provide newStore → bean "<name>"  （Export session.SessionStore；
+             └─ Provide newStore → bean "redis.<name>"  （Export session.SessionStore；
                   gs.ValueArg(c), gs.TagArg(c.Client)  无 destroy 钩子）
 
 gs.Run()
@@ -140,7 +140,7 @@ gs.Run()
   │    Store 内嵌 session.FromByteStore(&redisByteStore{client, prefix})：
   │    session（反）序列化全部留在 stdlib 抽象里；具体类型只是
   │    可导出命名的包装（gs bean 不能返回未导出的接口实现）。
-  ├─ bean 装配：消费方 autowire:"<name>" 解析
+  ├─ bean 装配：消费方 autowire:"redis.<name>" 解析
   └─ SIGTERM：无需释放——没有 destroy 钩子；session 留在 Redis 里
                  由 key TTL 过期。redis client 的 Close 属于 starter-go-redis。
 ```

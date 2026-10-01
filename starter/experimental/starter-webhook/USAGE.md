@@ -110,7 +110,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.trace.insecure=true
 
 # --- governance (optional; service label webhook:alert:dingtalk) ------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
 Other channels (from [example/conf/app.properties](example/conf/app.properties) comments):

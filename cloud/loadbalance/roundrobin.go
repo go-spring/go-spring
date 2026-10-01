@@ -22,13 +22,15 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-func init() {
-	Register(RoundRobin, func(cfg Config) (Balancer, error) {
-		if err := cfg.only(); err != nil {
-			return nil, err
-		}
-		return NewRoundRobin(), nil
-	})
+// roundRobinFactory is the [Factory] behind the [RoundRobin] name. The strategy
+// has no parameters: any key in the bag is rejected by [Params.Done].
+type roundRobinFactory struct{}
+
+func (roundRobinFactory) Build(_ Directory, p *Params) (Balancer, error) {
+	if err := p.Done(); err != nil {
+		return nil, err
+	}
+	return NewRoundRobin(), nil
 }
 
 // roundRobin holds only a monotonically increasing cursor; the candidate set is

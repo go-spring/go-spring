@@ -32,7 +32,7 @@
           "resilience": {
             "type": "object",
             "properties": {
-              "policy": { "type": "string", "default": "", "description": "Must name a spring.gateway.resilience.<name> key; policy values live in the governance rules document (govern.*) keyed gateway:<name>" }
+              "policy": { "type": "string", "default": "", "description": "Must name a spring.gateway.resilience.<name> key; policy values live in the governance rules document (spring.governance.*) keyed gateway:<name>" }
             }
           }
         }
@@ -40,7 +40,7 @@
     },
     "resilience": {
       "type": "object",
-      "description": "Name registry only: keys name executors routes reference via resilience.policy; values ignored (policy lives in the governance rules document (govern.*) keyed gateway:<name>)"
+      "description": "Name registry only: keys name executors routes reference via resilience.policy; values ignored (policy lives in the governance rules document (spring.governance.*) keyed gateway:<name>)"
     },
     "discovery": { "type": "string", "default": "", "description": "Default discovery backend name for lb:// routes lacking upstream.discovery" },
     "tracing": {

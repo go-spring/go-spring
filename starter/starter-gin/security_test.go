@@ -27,22 +27,19 @@ import (
 	"go-spring.org/cloud/security"
 )
 
-// secValidator is a security.TokenValidator that accepts exactly one token.
-type secValidator struct {
-	good        string
-	authorities []string
-}
-
-func (s secValidator) Validate(_ context.Context, token string) (*security.Authentication, error) {
-	if token != s.good {
-		return nil, errors.New("bad token")
-	}
-	return &security.Authentication{
-		Principal:     security.Principal{Subject: "alice"},
-		Token:         token,
-		Authenticated: true,
-		Authorities:   s.authorities,
-	}, nil
+// validator returns a security.TokenValidator accepting exactly one token.
+func validator(good string, authorities ...string) security.ValidatorFunc {
+	return security.ValidatorFunc(func(_ context.Context, token string) (*security.Authentication, error) {
+		if token != good {
+			return nil, errors.New("bad token")
+		}
+		return &security.Authentication{
+			Principal:     security.Principal{Subject: "alice"},
+			Token:         token,
+			Authenticated: true,
+			Authorities:   authorities,
+		}, nil
+	})
 }
 
 func newSecRouter(t *testing.T, middlewares ...gin.HandlerFunc) (*gin.Engine, *bool) {
@@ -71,7 +68,7 @@ func TestGinAuthenticateAuthorize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e, ran := newSecRouter(t, Authenticate(secValidator{good: "T", authorities: tt.authorities}, false), Authorize(tt.require...))
+			e, ran := newSecRouter(t, Authenticate(validator("T", tt.authorities...), false), Authorize(tt.require...))
 			req := httptest.NewRequest(http.MethodGet, "/x", nil)
 			if tt.token != "" {
 				req.Header.Set("Authorization", "Bearer "+tt.token)
@@ -90,7 +87,7 @@ func TestGinAuthenticateAuthorize(t *testing.T) {
 }
 
 func TestGinAuthenticateRequired(t *testing.T) {
-	e, _ := newSecRouter(t, Authenticate(secValidator{good: "T"}, true))
+	e, _ := newSecRouter(t, Authenticate(validator("T"), true))
 	rr := httptest.NewRecorder()
 	e.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/x", nil))
 	if rr.Code != http.StatusUnauthorized {
@@ -105,7 +102,7 @@ func TestGinAuthenticateStoresAuthentication(t *testing.T) {
 	var subject string
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.GET("/x", Authenticate(secValidator{good: "T"}, true), func(c *gin.Context) {
+	e.GET("/x", Authenticate(validator("T"), true), func(c *gin.Context) {
 		if a, ok := security.FromContext(c.Request.Context()); ok {
 			subject = a.Principal.Subject
 		}

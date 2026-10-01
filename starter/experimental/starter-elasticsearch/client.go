@@ -35,7 +35,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -87,12 +87,9 @@ type Client struct {
 // swaps the result into the client's dynamic transport. When governance is off
 // the executor is a transparent no-op (the round-tripper is then observe-only).
 func (o *Client) Init() error {
-	obs := newDBObserver("elasticsearch")
+	obs := newDBObserver()
 	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
 	o.service = serviceLabel(o.cfg)
-	if o.mgr == nil {
-		o.mgr = resilience.NewManager()
-	}
 	exec := fault.WrapClientExecutor(o.mgr.ClientExecutorFor("elasticsearch", o.service), o.service, o.inj)
 	o.exec = exec
 	if o.dyn != nil {

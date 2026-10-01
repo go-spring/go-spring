@@ -27,19 +27,21 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-const govRulesV1 = `govern:
-  enabled: true
-  client:
-    default:
-      attempt-timeout: 100ms
+const govRulesV1 = `spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        attempt-timeout: 100ms
 `
 
-const govRulesV2 = `govern:
-  enabled: true
-  client:
-    default:
-      attempt-timeout: 300ms
-      max-retries: 1
+const govRulesV2 = `spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        attempt-timeout: 300ms
+        max-retries: 1
 `
 
 // fakeKV stands in for a live etcd: it serves one value and pipes synthetic
@@ -74,7 +76,7 @@ func (f *fakeKV) put(val string) {
 func newGovTestSource(t *testing.T, val string) (*EtcdSource, *fakeKV) {
 	t.Helper()
 	fake := &fakeKV{val: val, watch: make(chan clientv3.WatchResponse, 8)}
-	src, err := NewEtcdSource(fake, "/govern.yaml", "yaml")
+	src, err := NewEtcdSource(fake, "/governance.yaml", "yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +139,7 @@ func TestEtcdSource_PushChain(t *testing.T) {
 // initial value fails construction instead of arming a disabled center.
 func TestEtcdSource_BadSeedFailsFast(t *testing.T) {
 	fake := &fakeKV{val: "govern: {", watch: make(chan clientv3.WatchResponse, 1)}
-	if _, err := NewEtcdSource(fake, "/govern.yaml", "yaml"); err == nil {
+	if _, err := NewEtcdSource(fake, "/governance.yaml", "yaml"); err == nil {
 		t.Fatal("bad initial value should fail construction")
 	}
 }

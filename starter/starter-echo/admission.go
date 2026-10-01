@@ -28,7 +28,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -38,7 +38,7 @@ import (
 // buildServerPolicy builds the inbound admission middleware. The resilience
 // executor is built from the injected [resilience.Manager], so this server gets
 // its rate-limit / bulkhead / breaker limits from the governance document's SERVER
-// block (govern.server.*)
+// block (spring.governance.server.*)
 // WITHOUT naming *governance.Center. A nil manager — a standalone call, or an app
 // that does not import starter-governance — is normalized to an unarmed one,
 // whose executor is a transparent pass-through, so the admission middleware runs
@@ -48,7 +48,7 @@ import (
 // outbound client's policy is tuned.
 //
 // The label is "echo:<address>", the same one the fault middleware's sibling
-// tables use for this server, so one govern rule covers the whole inbound side.
+// tables use for this server, so one governance rule covers the whole inbound side.
 func buildServerPolicy(cfg Config, mgr *resilience.Manager) echo.MiddlewareFunc {
 	if mgr == nil {
 		mgr = resilience.NewManager()

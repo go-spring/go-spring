@@ -369,6 +369,9 @@ func runStream(t *testing.T, payloadEnabled, sseDistributions, activeRequests bo
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
+	// The instrument set is process-wide and resolved once, so re-resolve it
+	// against this test's recording provider.
+	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	ct := &captureTracer{}
@@ -695,6 +698,9 @@ func runSkip(t *testing.T, path string, handler gin.HandlerFunc) (*captureMeter,
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
+	// The instrument set is process-wide and resolved once, so re-resolve it
+	// against this test's recording provider.
+	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	ct := &captureTracer{}
@@ -760,6 +766,9 @@ func runSkipRoute(t *testing.T, skipPaths []string, reg func(e *gin.Engine), req
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
+	// The instrument set is process-wide and resolved once, so re-resolve it
+	// against this test's recording provider.
+	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	ct := &captureTracer{}
@@ -938,6 +947,9 @@ func TestEngineMiddleware_RunsBeforeBuiltins(t *testing.T) {
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
+	// The instrument set is process-wide and resolved once, so re-resolve it
+	// against this test's recording provider.
+	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	gin.SetMode(gin.TestMode)
@@ -977,6 +989,9 @@ func TestEngineMiddleware_NilIsNoOp(t *testing.T) {
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
+	// The instrument set is process-wide and resolved once, so re-resolve it
+	// against this test's recording provider.
+	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	gin.SetMode(gin.TestMode)

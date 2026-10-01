@@ -17,7 +17,7 @@
 // Package StarterRegistryConsul adapts Consul as a service registry. Each
 // ${spring.registry.consul.<name>} block becomes ONE backend bean named
 // "consul.<name>" serving both sides of the naming idiom: the write side (a
-// discovery.Registrar collected by the starter-registry core, which registers
+// discovery.Registry collected by the starter-registry core, which registers
 // this instance once the app is ready and deregisters it on shutdown) and the
 // read side (a discovery.Discovery consumers cite by the bean's name).
 // Blank-import the package and configure one block per Consul agent:
@@ -69,7 +69,7 @@ func init() {
 	// One NAMED bean per block under ${spring.registry.consul.<name>}: the
 	// bean name "consul.<name>" is the label a client starter cites to pick
 	// this backend for discovery, and the starter-registry core collects the
-	// same bean (as a discovery.Registrar) into the single publication
+	// same bean (as a discovery.Registry) into the single publication
 	// lifecycle. Blocks across backends never collide (the name carries the
 	// backend type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -77,8 +77,9 @@ func init() {
 		return conf.BindEach(p, "${spring.registry.consul}", func(name string, c ConsulConfig) error {
 			r.Provide(newConsulBackend,
 				gs.IndexArg(0, gs.ValueArg(c)),
+				gs.IndexArg(1, gs.ValueArg(name)),
 			).Name("consul."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registrar]()).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
 				Destroy((*consulBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this agent unless the user
@@ -98,7 +99,7 @@ func init() {
 // ${spring.registry.consul.<name>} block made a bean. It owns the single
 // Consul api client for that agent (probed at construction) and serves both
 // halves of the naming idiom through it: the write side (a
-// discovery.Registrar collected by the starter-registry core) and the read
+// discovery.Registry collected by the starter-registry core) and the read
 // side (a discovery.Discovery consumers cite by the bean's name
 // "consul.<name>"; lazy, so an app that never cites it pays nothing for the
 // read half). Both sides resolve the same agent, so read and write can never
@@ -110,12 +111,16 @@ func init() {
 type consulBackend struct {
 	reg  *consulRegistrar
 	disc *consulDiscovery
+
+	// obs is this block's observability layer: one observer per configured
+	// block, closed by the bean destructor below.
+	obs *discovery.Observer
 }
 
 // newConsulBackend builds the client and probes the agent. The probe is the
 // fail-fast: a misconfigured or unreachable agent fails startup here, once
 // per block.
-func newConsulBackend(c ConsulConfig) (*consulBackend, error) {
+func newConsulBackend(c ConsulConfig, name string) (*consulBackend, error) {
 	if c.Address == "" {
 		return nil, errutil.Explain(nil, "registry-consul: address is required")
 	}
@@ -128,13 +133,17 @@ func newConsulBackend(c ConsulConfig) (*consulBackend, error) {
 	if _, _, err := client.Catalog().Services((&api.QueryOptions{}).WithContext(ctx)); err != nil {
 		return nil, errutil.Explain(err, "registry-consul: startup probe failed for %s", c.Address)
 	}
-	reg, err := newConsulRegistrar(c, client)
+	obs, err := discovery.NewObserver(obsSystem, name)
 	if err != nil {
 		return nil, err
 	}
-	disc := newConsulDiscovery(client, "")
+	reg, err := newConsulRegistrar(c, client, obs)
+	if err != nil {
+		return nil, err
+	}
+	disc := newConsulDiscovery(client, "", obs)
 	log.Debugf(context.Background(), starterTag, "consul backend for address=%s ready", c.Address)
-	return &consulBackend{reg: reg, disc: disc}, nil
+	return &consulBackend{reg: reg, disc: disc, obs: obs}, nil
 }
 
 // Close stops the discovery half's background blocking queries. It is the
@@ -144,6 +153,9 @@ func (b *consulBackend) Close() error {
 		return nil
 	}
 	b.disc.Close()
+	// Drop this block's gauge callbacks with it: the block owns them, so nothing
+	// of it may keep reporting after it is gone.
+	_ = b.obs.Close()
 	return nil
 }
 

@@ -80,7 +80,7 @@ func TestNacosDiscovery_Resolve(t *testing.T) {
 		inst("10.0.0.1", 8080, 10, true, true),
 		{Ip: "10.0.0.2", Port: 8443, Weight: 5, Enable: false, Healthy: true, Metadata: map[string]string{"scheme": "tls"}},
 	}}
-	d := newNacosDiscovery(fake, "DEFAULT_GROUP", "")
+	d := newNacosDiscovery(fake, "DEFAULT_GROUP", "", newTestObserver())
 
 	eps, err := d.Resolve(context.Background(), "order-svc")
 	if err != nil {
@@ -116,7 +116,7 @@ func TestNacosDiscovery_Resolve(t *testing.T) {
 // refreshes it so the next Resolve observes the new snapshot.
 func TestNacosDiscovery_PushRefreshesSnapshot(t *testing.T) {
 	fake := &fakeNamingClient{set: []model.Instance{inst("10.0.0.1", 8080, 10, true, true)}}
-	d := newNacosDiscovery(fake, "DEFAULT_GROUP", "")
+	d := newNacosDiscovery(fake, "DEFAULT_GROUP", "", newTestObserver())
 
 	eps, err := d.Resolve(context.Background(), "order-svc")
 	if err != nil {
@@ -147,7 +147,7 @@ func TestNacosDiscovery_PushRefreshesSnapshot(t *testing.T) {
 func TestNacosDiscovery_ClusterScope(t *testing.T) {
 	fake := &fakeNamingClient{set: []model.Instance{inst("10.0.0.1", 8080, 1, true, true)}}
 
-	d := newNacosDiscovery(fake, "DEFAULT_GROUP", "DEFAULT")
+	d := newNacosDiscovery(fake, "DEFAULT_GROUP", "DEFAULT", newTestObserver())
 	if _, err := d.Resolve(context.Background(), "order-svc"); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestNacosDiscovery_ClusterScope(t *testing.T) {
 		t.Fatalf("cluster DEFAULT must narrow the query, got %v", fake.clusters)
 	}
 
-	d = newNacosDiscovery(fake, "DEFAULT_GROUP", "")
+	d = newNacosDiscovery(fake, "DEFAULT_GROUP", "", newTestObserver())
 	if _, err := d.Resolve(context.Background(), "order-svc"); err != nil {
 		t.Fatal(err)
 	}

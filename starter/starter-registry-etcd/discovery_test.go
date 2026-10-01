@@ -26,7 +26,7 @@ import (
 )
 
 func TestServicePrefix(t *testing.T) {
-	d := &etcdDiscovery{keyPrefix: "/services/"}
+	d := &etcdDiscovery{obs: newTestObserver(), keyPrefix: "/services/"}
 	// The read prefix is exactly where etcdRegistrar.keyFor writes.
 	assert.That(t, d.servicePrefix("orders")).Equal("/services/orders/")
 }
@@ -47,7 +47,7 @@ func TestKvsToEndpoints(t *testing.T) {
 		// A malformed payload is skipped, not fatal to the snapshot.
 		{Key: []byte("/services/orders/bad"), Value: []byte("not-json")},
 	}
-	eps := kvsToEndpoints(kvs)
+	eps := kvsToEndpoints(newTestObserver(), kvs)
 
 	// Sorted by address, malformed entry dropped.
 	assert.That(t, len(eps)).Equal(2)
@@ -72,7 +72,7 @@ func TestKvsToEndpointsSchemeFilter(t *testing.T) {
 		mustKV(t, "/services/s/b", instanceValue{Addr: "10.0.0.2:80"}),
 	}
 	// FilterByScheme narrows to the tls instance only.
-	eps := discovery.FilterByScheme(kvsToEndpoints(kvs), "tls")
+	eps := discovery.FilterByScheme(kvsToEndpoints(newTestObserver(), kvs), "tls")
 	assert.That(t, len(eps)).Equal(1)
 	assert.That(t, eps[0].Addr).Equal("10.0.0.1:80")
 }
@@ -92,6 +92,6 @@ var _ discovery.Discovery = (*etcdDiscovery)(nil)
 // backend always sets client, and nothing in the type relies on lazy
 // initialization, so the pure helpers stay usable on a zero value.
 func TestEtcdDiscoveryNoClientPanics(t *testing.T) {
-	d := &etcdDiscovery{keyPrefix: "/services/"}
+	d := &etcdDiscovery{obs: newTestObserver(), keyPrefix: "/services/"}
 	assert.That(t, d.servicePrefix("x")).Equal("/services/x/")
 }

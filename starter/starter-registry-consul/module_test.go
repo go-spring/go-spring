@@ -28,7 +28,7 @@ import (
 
 // TestRegisterMultiInstance pins the BindEach assembly through a real gs
 // container: two blocks under ${spring.registry.consul} become two backend
-// beans, each contributing one discovery.Registrar (what the starter-registry
+// beans, each contributing one discovery.Registry (what the starter-registry
 // core collects) and one health.Indicator. The two fake agents stand in for
 // two Consul clusters, so the whole construction path — client, startup
 // probe, both halves — runs without docker.
@@ -42,8 +42,8 @@ func TestRegisterMultiInstance(t *testing.T) {
 		app.Property("spring.registry.consul.one.address", srvA.URL)
 		app.Property("spring.registry.consul.two.address", srvB.URL)
 	}).RunTest(t, func(s *struct {
-		Regs []discovery.Registrar `autowire:""`
-		Inds []*health.Indicator   `autowire:""`
+		Regs []discovery.Registry `autowire:""`
+		Inds []*health.Indicator  `autowire:""`
 	}) {
 		if len(s.Regs) != 2 {
 			t.Fatalf("want 2 registrar beans (one per block), got %d", len(s.Regs))
@@ -67,8 +67,8 @@ func TestRegisterMultiInstance(t *testing.T) {
 // beans register.
 func TestRegisterNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {
-		Regs []discovery.Registrar `autowire:""`
-		Inds []*health.Indicator   `autowire:""`
+		Regs []discovery.Registry `autowire:""`
+		Inds []*health.Indicator  `autowire:""`
 	}) {
 		if len(s.Regs) != 0 {
 			t.Fatalf("no registrar beans should register without config, got %d", len(s.Regs))

@@ -41,7 +41,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -80,15 +80,11 @@ func init() {
 			r.Provide(newNotifier,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container (the normal
-				// case) and are absent from a container without it. Without the
-				// "?" gs would treat an absent bean as a wiring error and the app
-				// would not boot — turning "governance is off" into "governance
-				// must be imported". The ctor treats a nil manager as an unarmed
-				// authority, i.e. a transparent pass-through.
-				gs.IndexArg(3, gs.TagArg("?")), // mgr *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("?")), // inj *fault.Injector
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
+				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
 			).Name(name).Caller(1)
 			return nil
 		})
@@ -109,9 +105,6 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config, mgr *resilience
 	}
 	log.Debugf(ctx.Context, log.TagAppDef, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
 
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
 	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("webhook", resilience.ServiceLabel("webhook", c.Channel, name)), resilience.ServiceLabel("webhook", c.Channel, name), inj)
 	return &Notifier{
 		cfg:    c,

@@ -27,13 +27,19 @@
 // the repository backend from Redis to a SQL database is therefore a
 // blank-import swap — no business code changes.
 //
-// The JobRepository bean is registered under its config name and exported as
-// batch.JobRepository, so the batch runner (starter-batch) picks it up by
-// interface via spring.batch.repository=<name>:
+// The JobRepository bean is named "<impl>.<name>" — here "redis.<name>", the
+// config instance's name qualified by this backend — because
+// batch.JobRepository is a replaceable seam that more than one backend can
+// contribute. A bare instance name would let this backend and a second one
+// register the same (name, batch.JobRepository) pair and fail the container's
+// start-up duplicate check. See starter/DESIGN.md §2.2.
+//
+// It is exported as batch.JobRepository, so the batch runner (starter-batch)
+// picks it up by interface via spring.batch.repository=<bean name>:
 //
 //	spring.go-redis.instances.cache.addr=127.0.0.1:6379
 //	spring.batch-repository.instances.jobs.client=cache
-//	spring.batch.repository=jobs
+//	spring.batch.repository=redis.jobs
 package StarterBatchRedis
 
 import (
@@ -46,6 +52,11 @@ import (
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
+
+// beanQualifier names this backend inside the batch.JobRepository seam: a
+// repository's bean is "<beanQualifier>.<config name>", matching the gorm and
+// registry families' <impl>.<name> shape (starter/DESIGN.md §2.2).
+const beanQualifier = "redis"
 
 func init() {
 	gs.Module(gs.OnProperty("spring.batch-repository.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
@@ -62,7 +73,7 @@ func init() {
 			// TagArg injects the *redis.Client bean by name — this is the
 			// seam that ties the JobRepository to a specific redis instance.
 			r.Provide(newRedisRepository, gs.ValueArg(c), gs.TagArg(c.Client)).
-				Name(name).
+				Name(beanQualifier + "." + name).
 				Export(gs.As[batch.JobRepository]()).
 				Caller(1)
 			return nil

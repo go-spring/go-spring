@@ -62,14 +62,28 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   spring.<family>.instances.<name>.*    一个实例;<name> 即 bean 名
   ```
 
-  - **bean 名就是裸的实例名 —— 只有一个例外。** gorm 家族是五个独立的方言模块
-    （`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、`-clickhouse`），
-    它们注册的是**同一个类型**的 bean：`gormcore.DB`。bean 以（名字，类型）为键，
-    所以两个方言各自带一个同名实例时，会注册出同一个键，容器直接拒绝启动。因此 gorm
-    把 bean 名限定成 `<dialect>.<name>`（`gormcore.Module` 从配置前缀的最后一段取限定
-    词，可用 `Dialect.BeanPrefix` 覆盖）。其它 client 家族每个家族只有一种 bean 类型，
-    裸名不可能撞，规则照旧。配置 key 两种情况下都是 `instances.<name>` —— 只有 bean
-    名带限定词。
+  - **bean 名带实现限定词 —— 当返回类型是可替换接缝时。** 判据是「**这个类型将来会
+    不会有多种实现**」，与现在有几种实现无关。
+
+    是接缝（类型在 `cloud/` 下，是中性、可整体替换的契约：`session.SessionStore`、
+    `batch.JobRepository`、`discovery.Discovery`、`resilience.Driver`、
+    `loadbalance.Factory`……；或框架级接口 `gs.Server`）→ **每个实现的 bean 名必须自带
+    实现名**，家族有实例概念时写成 `<实现名>.<实例名>`。bean 以（名字，类型）为键，第二个
+    实现带一个同名实例就会注册出同一个键，容器直接拒绝启动。gorm 的五个方言模块
+    （`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、`-clickhouse`）共享
+    `gormcore.DB`，所以 bean 名是 `<dialect>.<name>`（`gormcore.Module` 从配置前缀的
+    最后一段取限定词，可用 `Dialect.BeanPrefix` 覆盖）；registry 的 `etcd.<name>` /
+    `nacos.<name>`、session-redis 与 batch-redis 的 `redis.<name>` 同理。
+
+    不是接缝（该 starter 私有的类型，不会有第二个实现来抢，如 `*redis.Client`）→ 裸的
+    实例名即可。另外「一个构造函数一个 bean」的实现可以不写 `Name`：gs 的默认 bean 名
+    取自构造函数名（`gs_bean/bean.go`），本身就是天然的区分度（kratos / goframe / hertz
+    的 server bean 就是这么活的）。
+
+    限定词跟随「**这个实现是什么**」，不跟随「现在有几个实现」—— gorm 在只有 mysql 一个
+    方言时也叫 `mysql.default`。拿个数当判据，家族长第二个成员时就必须回头给第一个改名，
+    而那次改名由「别人加了个 starter」触发，最难预料。以上所有情况下配置 key 都是
+    `instances.<name>` —— 只有 bean 名带限定词。
 
   分两个桶的理由:一个家族的配置恰好只有这两级,而把它们在结构上分开,才使得实例名
   永远不可能撞上家族级 key。平铺命名(`spring.<family>.<name>.*`,家族级 key 做兄弟)
@@ -78,7 +92,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   (参考 Spring Cloud Stream,同一个问题同一种解法:`spring.cloud.stream.default.*` +
   `spring.cloud.stream.bindings.<name>.*`。)
   - `default` 只放**可被覆盖的默认值**。不可覆盖的策略不放这里;进程级策略有自己的
-    顶层前缀(`govern.*`)。
+    命名空间(`spring.governance.*`)。
   - `instances` 桶是唯一的激活信号,所以注册必须 gate 在它上面
     (`gs.OnProperty("spring.X.instances")`),并用
     `conf.BindEach(p, "${spring.X.instances}", ...)` 绑定。只配了 `${spring.X.default}`
@@ -88,7 +102,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     (`service-name`、`addr`、`weight`……)与各中心块 `spring.registry.<backend>.<name>`,
     那里不存在用户可控的名字可以撞(`<backend>` 段归框架,用户自选的 `<name>` 在更深
     一层)。另外**不可被实例覆盖的强制项也不进 `default`**:同家族的进程级策略(如
-    registry 的身份)直接挂在家族前缀,进程级策略挂自己的顶层前缀(`govern.*`)。
+    registry 的身份)直接挂在家族前缀,进程级策略挂自己的命名空间(`spring.governance.*`)。
   - 两条路的不变量一致:**永远不要让用户自选的名字和框架 key 同层。** 单实例家族
     (`spring.http.server`)的 key 直接挂在家族前缀下,因为它根本没有实例名。
 - **地址必填 —— fail-fast。** client 绝不能静默回退到 `localhost`。字段默认空
@@ -101,6 +115,18 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   `${driver:=...}` 选中,无需 fork starter。没有包级注册表:点名一个不存在的 bean
   在启动期失败。这也是注入服务发现的接缝(由 driver 构建 dialer)。可选能力放到
   **独立**接口上(如 go-redis 的 `ClusterDriver`),让已有的自定义 driver 保持可编译。
+- **需要治理的 client starter 默认集成 starter-governance。** starter 在自己的
+  **非测试**代码里 blank-import `starter-governance`,于是 `*resilience.Manager` /
+  `*loadbalance.Manager` / `*fault.Injector` 必然在容器里;注入写成**必填**
+  (`gs.IndexArg(N, gs.TagArg(""))`),不写可空(`"?"`)。这三个 bean 本就是 client
+  契约的一部分(它天生可治理、可观测、可路由),而 starter-governance 在不绑定规则来源
+  时完全惰性,所以集成它不改变任何默认行为。关掉治理是
+  `spring.governance.enabled=false`(或不配来源),**不是"bean 不存在"**。写成可空会把
+  "用户忘了 import"变成静默降级(治理看着在工作、其实没有),这正是本规则要消除的错误。
+  回归守卫:`starter-bigcache` 的 `TestBlankImportProvidesGovernanceBeans`。
+  (只在非测试代码里 blank-import;`gs.RunTest` 会经
+  `spring.force-autowire-is-nullable` 把一切注入强制 nullable —— 那是 gs 的行为,
+  不是本规则的例外。)
 - **启动期连接校验。** 客户端库允许时,构造函数做一次有超时上界的探测(如 Redis
   `PING` 用 `DialTimeout`),让配置错误在启动期暴露而非首个请求时。
 - **每个实例都有 `Destroy`。** 每个 bean 注册析构函数,`Close()` 连接并停掉其背后的
@@ -151,7 +177,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   与应用主端口隔开。
 - **`starter-governance-sentinel`** 只贡献一个进程级 bean —— 名为 `sentinel` 的
   `resilience.Driver` —— 给治理中心的 driver 目录。与 `starter-governance` 一起导入后,
-  治理文档的 `govern.driver=sentinel` 一次切换全部 executor——**含入站准入**，因为同一个
+  治理文档的 `spring.governance.driver=sentinel` 一次切换全部 executor——**含入站准入**，因为同一个
   `Driver` 同时应答两个方向。无端口、无自有 key。
 
 ### 2.5 配置 Provider 类(远程配置中心)
@@ -214,6 +240,16 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   `spring.redigo` 对应 redigo）。配置 key 本身就是技术选型的显式声明：用户通过写
   `spring.kafka.instances.xxx` 还是 `spring.kafka-sarama.instances.xxx` 来决定用哪个实现。这同时避免了
   两个实现被意外同时导入时的 bean 冲突,也让配置文件成为自解释文档。
+- **框架读的键一律在 `spring.` 下 —— 只有一个登记豁免。** 由 starter、`cloud/` 包或
+  gs 核心绑定的键都带 `spring.` 根（`spring.kafka.instances.*`、
+  `spring.actuator.podinfo.labels-path`、`spring.profiles.active`）。**应用自己加的
+  字段不带**：它用应用自己选的前缀，绝不用 `spring.` —— `spring.` 的含义是"这个键由
+  框架定义",所以 starter 写进来才算名正言顺,应用写进来则是在冒用它没有的权限。
+  唯一豁免是 `logging.*`：它由 `gs_app` 在容器 refresh **之前**读取,而一个要等装配
+  完成后才生效的日志系统没法报告装配失败,所以它保留自己的顶层根。它是
+  `scripts/check-config-namespace.sh` 的 `ALLOW_ROOTS` 里唯一一项;新增一项必须是有意
+  为之,并同时登记在该脚本与本文件。从环境变量导出的键（`GS_POD_NAME` -> `pod.name`）
+  根本不是配置键,不在本规则范围内。
 - **fail-fast 优先于静默默认。** 必填输入(地址、凭证、模式相关字段)在配置绑定阶段通过
   `expr` tag 校验（单字段用 `expr:"$ != ''"`,切片用 `expr:"len($) > 0"`）,跨字段
   规则（"addr 或 service-name 至少一个"）在构造函数中用 `errutil.RequireAny` 校验,
@@ -229,7 +265,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   的传输层,才**考虑**由 Go-Spring 提供统一能力。原因:各 RPC 框架各自带一套互不
   兼容的注册抽象(kitex 的 `registry.Registry`、kratos 的 `registry.Registrar`、
   dubbo-go 的 config-only registries、go-zero 的 `discov.EtcdConf`……),再加一层
-  Go-Spring `Registrar` 只会变成把我们的抽象翻译进各框架抽象的**第二层胶水**——正是
+  Go-Spring `Registry` 只会变成把我们的抽象翻译进各框架抽象的**第二层胶水**——正是
   这层耦合让"统一"变成净亏损。截至 2026-07-18 的评估:
   - *有原生注册+发现,用它们的(opt-in):* `kitex`(`kitex-contrib/registry-etcd`)、
     `kratos`(`kratos.Registrar`)、`go-zero`(`discov.EtcdConf`)、`goframe`(`gsvc`)、
@@ -270,6 +306,22 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **可观测遵循"中心定义、边缘桥接"。** starter 通过 OTel 全局输出,或用 `SetLogger`
   钩子把库的内部日志桥接进 go-spring `log`;桥接时必须同时补一个 go-spring
   `FileLogger` sink,否则会丢掉 console 输出。
+- **仪器集是共享的,观测不是。** 组件解析仪器**每进程一次**,不是每实例一次:OTel SDK 按
+  name/description/unit/kind 给仪器建索引,之后每次创建都拿回第一份,所以重复创建是个空操作,
+  且会静默保留第一份的描述。因此风险不在**重复创建**,而在**注册**。
+  - *注册归属持有该值的那个人。* 实例为共享的 observable gauge 注册自己那一份观测,并在**销毁
+    自己的同一个析构**里反注册;进程级的值由组件自己注册一次。注册若被别处持有,它就会活得比
+    值更久 —— 上报一个已死的实例,并把它钉住不放。
+  - *gauge 要注册,不要用创建期回调创建。* `metric.WithInt64Callback` 只对某个 descriptor 的
+    **第一次**创建生效,之后每一次都被丢弃且不报错。它只在「每进程恰好创建一次」时才正确,而
+    这个条件在调用点看不出来,违反它的表现是**少一条 series**,不是启动失败。`RegisterCallback`
+    既可叠加又可撤销。
+  - *同名即同一 descriptor。* name、description、unit 每次创建都必须一致,否则后一次连同它的
+    描述一起被忽略。
+  - *tracer 永不缓存*在结构体字段或包级变量里:被捕获的 `otel.Tracer` 在全局 provider 被重新
+    设置之后就停止转发。到使用点现取。
+  - *仪器集里的状态最多是成员关系* —— 哪些实例还活着 —— 绝不是测量数据。一个缓冲数据的共享
+    observer 就是一个无人能界定边界的全局数据存储。
 - **组件可观测遵循同一条规则:同类型 → 同名、同型、同齐整,且名字取能力不取实现**
   （`db.client.operation.duration`,绝不是 `redis.command.duration`）。三条原则支撑它,
   少一条就会走偏:
@@ -313,16 +365,34 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     的成员上出现（mqtt、nats、rabbitmq）。它**不进**消息族的共同清单:对没有这种回调的库硬
     要求,只能逼出假数据。checker 持有这份登记,并在「已登记成员不再上报」或「未登记成员开始
     上报」时报错。
-- **Registry 后端在自己的缝上上报。** registry starter 用后端名调用 `cloud/discovery`
-  的上报函数（`RegisterAttempt`、`DeregisterAttempt`、`WeightChange`、`Synced`）,后台
-  重注册传 `discovery.ReasonSelfHeal`。要报在「首次发布」与「自愈路径」**共同经过**的
-  漏斗上（etcd `publish`、zookeeper `createNode`、consul `upsert`）,而不是包在
-  `discovery.Registrar` 接口外面:自愈路径根本不经过那个接口,而它恰恰是「实例还在
-  服务、却已不再可被发现」的那条路径。指标与 span 的定义只在
-  `cloud/discovery/observe.go` 里有一份 —— 后端自己从不命名 instrument。本家族的
-  **只做发现**后端（`starter-registry-k8s`,集群内平台已替你把 Pod 注册好）没有这样的
-  漏斗可报:它定义 `obsSystem`、在成功与失败两侧上报 `discovery.Synced`,三个注册操作
-  一个都不产出;该例外登记在 `scripts/check-observability.sh`(registry 段)。
+- **Registry 后端在自己的缝上上报,经由自己的 observer。** 每个配置块在构造期建一个
+  `discovery.Observer`(由后端名 + 块名构成),上报走它的方法（`RegisterAttempt`、
+  `DeregisterAttempt`、`WeightChange`、`Synced`）,后台重注册传
+  `discovery.ReasonSelfHeal`;块的析构函数关闭 observer,连带收回它的 gauge。observer 是
+  块自己持有的一层封装,所以那些 gauge 背后的状态与块同寿:同进程内两个块不会互相污染,
+  测试之间也没有全局的东西要重置。要报在「首次发布」与「自愈路径」**共同经过**的漏斗上
+  （etcd `publish`、zookeeper `createNode`、consul `upsert`）,而不是包在
+  `discovery.Registry` 接口外面:自愈路径根本不经过那个接口,而它恰恰是「实例还在服务、
+  却已不再可被发现」的那条路径。指标与 span 的定义只在 `cloud/discovery/observe.go` 里
+  有一份 —— 后端自己从不命名 instrument。本家族的**只做发现**后端
+  （`starter-registry-k8s`,集群内平台已替你把 Pod 注册好）没有这样的漏斗可报:它建同一个
+  observer、在成功与失败两侧上报 `Synced`,三个注册操作一个都不产出;该例外登记在
+  `scripts/check-observability.sh`(registry 段)。
+  这些操作周围的日志行归后端自己写,所以字段由各后端自己拼出来。**一行日志要能解释
+  某条 discovery 指标或 span,就必须按下面这些名字、一个不少地带齐,否则 join 不上:**
+
+  | 字段 | 取值 |
+  |---|---|
+  | `system` | 后端名（`etcd`、`nacos`……）—— 取自 `Observer.System()`,与该指标自身的 `system` 属性同值 |
+  | `center` | 配置块名（`${spring.registry.<backend>.<name>}`）—— 取自 `Observer.Center()`。一个进程会把同一个服务注册进每一个配好的中心,没有这一维,两个集群的读数就是一条分不开的序列 |
+  | `service` | 正在注册或同步的服务名 |
+  | `operation` | `register` / `deregister` / `update_weight` / `sync` |
+  | `reason` | `initial` / `self_heal`,仅注册时有 |
+  | `status` | `ok` / `failed`,取自 `discovery.StatusOf(err)` —— 词表不是别族用的 `error`,所以这个值必须来自函数而不是手写 |
+  | `error` | 错误本身,用 `log.Err` |
+
+  消息与自有的细节(键名、采取的动作)由调用方自己补;上表只覆盖"标识这次操作"的部分,
+  也就是 join 所需要的那部分。
 
 ## 4. 新增 starter —— 检查清单
 
@@ -330,6 +400,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 2. 独立 module、标准文件骨架、license 头。
 3. 选配置前缀 —— 使用唯一的 `${spring.<name>}` 前缀来标识**本**实现。如果是已有能力的
    第二种实现,用 `<能力>-<实现>` 格式（如 `spring.kafka-sarama`）,不要复用已有前缀。
+   `spring.` 根不是可选的（§3）,`scripts/check-config-namespace.sh` 在每个绑定点强制。
 4. Client? → `gs.Group` 多实例、driver 注册表、地址必填 + fail-fast、启动期探测、
    每实例 `Destroy`,以及"一个关注点一个文件"的骨架(§2.2):`config.go` /
    `starter.go` / `discovery.go` / `resilience.go` / `observability.go`(+ `health/`)。
@@ -337,6 +408,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    `gs.OnProperty("spring.<family>.instances")`,家族级值在各实例的 tag 里读
    `${spring.<family>.default.*}`。**绝不可直接绑定在家族前缀上** ——
    `scripts/check-config-namespace.sh` 会检查。
+   **返回类型是可替换接缝?** → bean 名带实现限定词(`<实现名>.<实例名>`,见 §2.2),
+   否则第二个实现的同名实例会撞出同一个(名字,类型)键。
    **走发现拨号?** → 建池一律这三件套:挂 `loadbalance.Tracker`、在建连处把 `Pool.Pick`
    与 `Pool.Complete` 配对(把拨号结果喂回去,不喂 tracker 就是瞎的)、再用**与 executor
    同一个** `resilience.ServiceLabel`,在注入的 `*loadbalance.Manager` 上调
@@ -351,7 +424,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    直接调 `gs.RefreshProperties()` 门面,配 `example-config/`。
 7. Registry starter？→ 定义 `obsSystem`,并在「首次发布」与「自愈路径」共享的缝上上报
    （`discovery.RegisterAttempt` 带 `ReasonInitial`/`ReasonSelfHeal`、`DeregisterAttempt`、
-   `WeightChange`,以及成功与失败两侧的 `discovery.Synced`);绝不要改成包 `Registrar`
+   `WeightChange`,以及成功与失败两侧的 `discovery.Synced`);绝不要改成包 `Registry`
    接口 —— 自愈路径不经过它。本家族的只做发现后端（`starter-registry-k8s`）没有
    registrar:只定义 `obsSystem` 并上报 `discovery.Synced`,登记为本检查的例外。
    `scripts/check-observability.sh`(registry 段) 强制以上各项。

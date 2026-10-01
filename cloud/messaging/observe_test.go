@@ -63,13 +63,17 @@ func (d *fakeDriver) Close() error { return nil }
 
 // withProviders installs a manual meter reader and a recording tracer
 // provider, plus the W3C trace-context propagator (the global default is
-// none). Since Observe builds its instruments at construction time, call
-// withProviders before Observe.
+// none). Since Observe resolves the package's shared instruments at
+// construction time, call withProviders before Observe.
 func withProviders(t *testing.T) (*sdkmetric.ManualReader, *tracetest.SpanRecorder) {
 	t.Helper()
 	rdr := sdkmetric.NewManualReader()
 	prevMeter := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(rdr)))
+	// The instrument set is process-wide and resolved once, so without this it
+	// would keep reporting into whichever provider an earlier test resolved it
+	// against.
+	messaging.ResetInstruments()
 
 	rec := tracetest.NewSpanRecorder()
 	prevTracer := otel.GetTracerProvider()

@@ -22,8 +22,11 @@ package StarterAsynq
 
 import (
 	"context"
-	"go-spring.org/stdlib/strutil"
+	"sync"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -44,32 +47,51 @@ var accessTag = log.RegisterAppTag("asynq", "access")
 
 // tracer starts the producer spans of the enqueue path.
 
-// observer holds the enqueue path's OTel instruments. They are created by
-// newObserver at wiring time (Client.Init), not at package init, so an SDK
-// installed later still receives the records.
-type observer struct {
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever providers are current then.
+type instrumentSet struct {
 	duration metric.Float64Histogram
 	active   metric.Int64UpDownCounter
 }
 
-// newObserver builds the messaging.client.operation.duration histogram and
-// the messaging.client.active_requests up-down counter from whatever meter
-// provider is current.
+// instruments is the one instrument set this starter uses for the whole
+// process. Resolution is deferred to the first use, not run at package init, so
+// the instruments bind to whichever providers are current then - starter-otel
+// installs them before any bean is built, but a test may replace them later and
+// a value resolved at init would keep pointing at the old SDK.
+var instruments = sync.OnceValue(buildInstruments)
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
-func newObserver() *observer {
-	m := otel.Meter("go-spring.org/starter-asynq")
-	h, _ := m.Float64Histogram("messaging.client.operation.duration",
+// buildInstruments builds the messaging.client.operation.duration histogram and
+// the messaging.client.active_requests up-down counter.
+func buildInstruments() *instrumentSet {
+	m := otel.Meter(tracerName)
+	in := &instrumentSet{}
+	in.duration, _ = m.Float64Histogram("messaging.client.operation.duration",
 		metric.WithDescription("Duration of Asynq enqueue operations"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
-	a, _ := m.Int64UpDownCounter("messaging.client.active_requests",
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	in.active, _ = m.Int64UpDownCounter("messaging.client.active_requests",
 		metric.WithDescription("In-flight Asynq operations"),
 		metric.WithUnit("{request}"))
-	return &observer{duration: h, active: a}
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
+// observer holds the enqueue path's instrument set. newObserver takes the
+// shared set at wiring time (Client.Init), not at package init, so an SDK
+// installed later still receives the records.
+type observer struct {
+	ins *instrumentSet
+}
+
+// newObserver takes the shared instrument set.
+func newObserver() *observer {
+	return &observer{ins: instruments()}
 }
 
 // start opens a producer observation for one enqueue. taskType is the
@@ -87,17 +109,17 @@ func (o *observer) start(ctx context.Context, op, taskType string) (context.Cont
 	ctx, inner := otel.Tracer(tracerName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindProducer),
 		trace.WithAttributes(attrs...))
-	o.active.Add(ctx, 1, metric.WithAttributes(
+	o.ins.active.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("messaging.system", "asynq"),
 		attribute.String("messaging.operation", op),
 	))
-	return ctx, &span{ctx: ctx, observer: o, Span: inner, op: op, dest: taskType, start: time.Now()}
+	return ctx, &span{ctx: ctx, ins: o.ins, Span: inner, op: op, dest: taskType, start: time.Now()}
 }
 
 // span is one in-flight observation opened by observer.start.
 type span struct {
 	ctx context.Context
-	*observer
+	ins *instrumentSet
 	trace.Span
 	op    string
 	dest  string
@@ -120,12 +142,12 @@ func (s *span) End(err error) {
 		status = "error"
 	}
 	elapsed := time.Since(s.start)
-	s.duration.Record(s.ctx, elapsed.Seconds(), metric.WithAttributes(
+	s.ins.duration.Record(s.ctx, elapsed.Seconds(), metric.WithAttributes(
 		attribute.String("messaging.system", "asynq"),
 		attribute.String("messaging.operation", s.op),
 		attribute.String("status", status),
 	))
-	s.active.Add(s.ctx, -1, metric.WithAttributes(
+	s.ins.active.Add(s.ctx, -1, metric.WithAttributes(
 		attribute.String("messaging.system", "asynq"),
 		attribute.String("messaging.operation", s.op),
 	))

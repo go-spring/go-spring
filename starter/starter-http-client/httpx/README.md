@@ -21,7 +21,7 @@ sites are produced by `gs-http-gen`; a generated client only holds an
   generated client's `Target` need not be set.
 - Governance by default: when no explicit executor is supplied, one is taken
   from the centralized governance authority under `Resource` (derived from
-  ServiceName/Addr) — process-wide `govern.*` rules apply with hot-reload.
+  ServiceName/Addr) — process-wide `spring.governance.*` rules apply with hot-reload.
 - TLS: the `tls.*` certificate surface (client pair, CA bundle, server name,
   insecure escape hatch) is built into the base transport.
 - Optional `resilience` executor wrapping the whole chain, so a retry re-enters

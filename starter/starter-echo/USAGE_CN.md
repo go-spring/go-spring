@@ -134,20 +134,21 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 只走 actuator
 
 # --- governance(运行期故障注入)----------------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml**(§4.4 的故障演练用它):
+**conf/governance.yaml**(§4.4 的故障演练用它):
 
 ```yaml
-govern:
-  enabled: true
-  server:
-    fault:
-      enabled: false        # 改成 true 即"点火",无需重启
-      rate: 0.2
-      error: timeout
-      scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
+spring:
+  governance:
+    enabled: true
+    server:
+      fault:
+        enabled: false        # 改成 true 即"点火",无需重启
+        rate: 0.2
+        error: timeout
+        scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
 ```
 
 **验证**:
@@ -201,7 +202,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 - **admission 在 fault 外层**:被入站限流/隔离/熔断拦下(或放行)的请求不会再被放火;它产生的
   429/503 照样过 AccessLog/Tracing/Metrics。**无条件安装**——治理关着时 executor 是透明透传,
   只多一帧调用,别的不变。服务 label 是 `echo:<address>`(如 `echo::8080`),与治理规则一致:
-  `govern.server.rules[N].service=echo::8080`,配 `rate-limit` / `max-concurrent` / `error-threshold`
+  `spring.governance.server.rules[N].service=echo::8080`,配 `rate-limit` / `max-concurrent` / `error-threshold`
   等旋钮。拒绝映射为 **429**(限流、隔离满)与 **503**(熔断打开);handler 返回错误或已提交的
   5xx 会作为本次调用的失败回喂给 executor,熔断因此能看到服务端错误。入站准入**从不重试**
   ——handler 已产生副作用就不能重放——所以 `max-retries` 请留 0;真有重试策略也有重入守卫兜住

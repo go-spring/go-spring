@@ -28,7 +28,7 @@ demo/
 ├── router.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod** (module deps that matter):
@@ -147,20 +147,21 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance (runtime fault injection) ------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml** (fault drills in §4.4 use this):
+**conf/governance.yaml** (fault drills in §4.4 use this):
 
 ```yaml
-govern:
-  enabled: true
-  server:
-    fault:
-      enabled: false        # flip to true to "set fire" without restart
-      rate: 0.2
-      error: timeout
-      scope: loadtest       # only traffic marked X-LoadTest is affected
+spring:
+  governance:
+    enabled: true
+    server:
+      fault:
+        enabled: false        # flip to true to "set fire" without restart
+        rate: 0.2
+        error: timeout
+        scope: loadtest       # only traffic marked X-LoadTest is affected
 ```
 
 **Verify** (structurally identical to what `example/check.sh` asserts — X-App header,
@@ -333,7 +334,7 @@ curl -i 127.0.0.1:9370/readyz    # actuator readiness (add starter-actuator)
 
 ### 4.4 Fault drill (no restart)
 
-1. Start with `govern.yaml` as in §1 (`fault.enabled: false`).
+1. Start with `governance.yaml` as in §1 (`fault.enabled: false`).
 2. Generate baseline traffic: `curl 127.0.0.1:8003/echo/x` → 200s.
 3. Flip `fault.enabled: true` in the file — the governance source hot-reloads.
 4. Marked traffic burns, normal traffic unaffected:

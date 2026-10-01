@@ -99,9 +99,6 @@ func (o *DB) Init() error {
 			return err
 		}
 	}
-	if o.mgr == nil {
-		o.mgr = resilience.NewManager()
-	}
 	o.exec = fault.WrapClientExecutor(o.mgr.ClientExecutorFor(o.engine, o.service), o.service, o.inj)
 	if err := gormresilience.ApplyCallbacks(o.DB, o.exec, o.service); err != nil {
 		return err

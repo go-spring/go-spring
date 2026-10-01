@@ -28,8 +28,10 @@ package StarterMail
 
 import (
 	"context"
+	"sync"
 	"time"
 
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -46,37 +48,46 @@ const emailSystem = "smtp"
 // accessTag is the static log tag for the mail access log.
 var accessTag = log.RegisterAppTag("mail", "access")
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// semconv recommended set, the same one the other client starters use.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
-// observer emits the per-send signals for one Mailer. The instruments are built
-// when the Mailer is constructed, not at package init, so an SDK installed
-// later still receives the records.
-type observer struct {
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever meter provider is current then,
+// and immutable afterwards. It holds no per-mailer state — the email.system /
+// status labels travel with each record, not here.
+type instrumentSet struct {
 	duration metric.Float64Histogram
 	active   metric.Int64UpDownCounter
 }
 
-func newObserver() *observer {
+// instruments is the one instrument set this starter uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+// buildInstruments builds the instruments from whatever meter provider is
+// current — resolved on first use, not at package init, so an SDK installed
+// later than this package's init still receives the records.
+func buildInstruments() *instrumentSet {
 	m := otel.GetMeterProvider().Meter(meterName)
 	duration, _ := m.Float64Histogram(
 		"email.client.operation.duration",
 		metric.WithDescription("Duration of mail sends"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
 	)
 	active, _ := m.Int64UpDownCounter(
 		"email.client.active_requests",
 		metric.WithDescription("Number of mail sends currently in flight"),
 		metric.WithUnit("{request}"),
 	)
-	return &observer{duration: duration, active: active}
+	return &instrumentSet{duration: duration, active: active}
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // start bumps the in-flight gauge and returns the value to hand back to [done],
 // plus the instant the send began.
-func (o *observer) start(ctx context.Context) (metric.MeasurementOption, time.Time) {
+func (o *instrumentSet) start(ctx context.Context) (metric.MeasurementOption, time.Time) {
 	inflight := metric.WithAttributes(attribute.String("email.system", emailSystem))
 	o.active.Add(ctx, 1, inflight)
 	return inflight, time.Now()
@@ -87,7 +98,7 @@ func (o *observer) start(ctx context.Context) (metric.MeasurementOption, time.Ti
 // status is the ecosystem-wide result axis (ok|error) and duration_ms is the
 // ecosystem-wide duration key, so a failing send joins the same queries as
 // every other client — while email.system keeps the line identifiable as mail.
-func (o *observer) done(ctx context.Context, inflight metric.MeasurementOption, start time.Time, err error) {
+func (o *instrumentSet) done(ctx context.Context, inflight metric.MeasurementOption, start time.Time, err error) {
 	dur := time.Since(start)
 	status := statusOf(err)
 	o.active.Add(ctx, -1, inflight)

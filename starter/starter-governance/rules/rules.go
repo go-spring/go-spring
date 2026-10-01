@@ -44,16 +44,16 @@ import (
 // that works with a local file source works unchanged as a nacos dataId, an
 // etcd key value, or a console payload.
 //
-// Binding goes through the same conf value-tag machinery (prefix "govern"), so
+// Binding goes through the same conf value-tag machinery (prefix "spring.governance"), so
 // documents use the same keys an app.properties entry would. format names the
 // document format ("yaml",
 // "json", "properties", "toml"); when empty it is inferred from name's
 // extension, defaulting to properties.
 //
-// A document that parses but carries NO govern.* keys is an error, not "no
+// A document that parses but carries NO spring.governance.* keys is an error, not "no
 // governance": properties syntax almost never hard-fails, so a truncated or
 // emptied document would otherwise silently disarm the whole center. Turning
-// governance off is `govern.enabled=false` — a key that IS present.
+// governance off is `spring.governance.enabled=false` — a key that IS present.
 func Parse(name string, data []byte, format string) (governance.Config, error) {
 	if format == "" {
 		format = formatOf(name)
@@ -64,11 +64,11 @@ func Parse(name string, data []byte, format string) (governance.Config, error) {
 	}
 	m := flatten.Flatten(parsed)
 	if !hasGovernKey(m) {
-		return governance.Config{}, errutil.Explain(nil, "governance source: %s contains no govern.* keys (empty or truncated?)", name)
+		return governance.Config{}, errutil.Explain(nil, "governance source: %s contains no spring.governance.* keys (empty or truncated?)", name)
 	}
 
 	var cfg governance.Config
-	if err = conf.Bind(flatten.NewPropertiesStorage(flatten.NewProperties(m)), &cfg, "${govern:=}"); err != nil {
+	if err = conf.Bind(flatten.NewPropertiesStorage(flatten.NewProperties(m)), &cfg, "${spring.governance:=}"); err != nil {
 		return governance.Config{}, errutil.Explain(err, "governance source: bind %s failed", name)
 	}
 	return cfg, nil
@@ -87,7 +87,7 @@ func formatOf(name string) string {
 // key under the govern namespace.
 func hasGovernKey(m map[string]string) bool {
 	for k := range m {
-		if strings.HasPrefix(k, "govern.") {
+		if strings.HasPrefix(k, "spring.governance.") {
 			return true
 		}
 	}

@@ -73,17 +73,12 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.http-client.instances."+name+".driver:=${spring.http-client.default.driver:=?}}")),
 				gs.IndexArg(4, gs.TagArg("?")),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container, which is the
-				// normal case, and are absent from a container without it. Without
-				// the "?" gs would treat an absent bean as a wiring error and the
-				// app would not boot — turning "governance is off" into "governance
-				// must be imported", which is not the contract. The driver
-				// forwards a nil bean to httpx, which treats it as an unarmed
-				// authority, i.e. a transparent pass-through.
-				gs.IndexArg(5, gs.TagArg("?")),
-				gs.IndexArg(6, gs.TagArg("?")),
-				gs.IndexArg(7, gs.TagArg("?")), // nullable *loadbalance.Manager bean
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(5, gs.TagArg("")),
+				gs.IndexArg(6, gs.TagArg("")),
+				gs.IndexArg(7, gs.TagArg("")),  // *loadbalance.Manager
 				gs.IndexArg(8, gs.TagArg("?")), // nullable traffic.Propagator bean
 			).Name(name).Destroy((*route).Close).Caller(1)
 			return nil

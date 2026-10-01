@@ -29,13 +29,16 @@ middleware onto an existing `*gs.HttpServeMux`.
 - **Two mount points from one bean.**
   - `Wrap(next http.Handler) http.Handler` — HTTP middleware seam, mirrors
     `starter-lua-filter` so no framework coupling.
-  - `security.TokenValidator` — the same `*Authenticator` also satisfies
-    the transport-neutral validator, reusable from gRPC metadata,
-    WebSocket handshake, etc.
-- **Multi-instance via `gs.Group("${spring.security.jwt}", ...)`.** An
-  application can validate tokens from more than one issuer by adding
-  entries to the map. Destroy is `nil` (no goroutine, JWKS cache refreshes
-  on demand).
+  - `security.TokenValidator` — each instance is **exported as** this
+    transport-neutral seam, so an application injects it by name (no concrete
+    type in its code) and reuses it from gRPC metadata, WebSocket handshake,
+    etc.
+- **Multi-instance via a hand-written `gs.Module` over
+  `"${spring.security.jwt.instances}"`.** An application can validate tokens
+  from more than one issuer by adding entries to the map. `gs.Group` is not
+  usable here: it returns one bean per entry and has no access to the registry,
+  so it cannot attach `Name` + `Export`. No destroy hook (no goroutine, JWKS
+  cache refreshes on demand).
 
 ## 3. Constraints
 
@@ -50,10 +53,10 @@ middleware onto an existing `*gs.HttpServeMux`.
   `n`/`e` and EC `crv`/`x`/`y` are decoded from base64url directly, so the
   dependency graph stays limited to `golang-jwt/jwt/v5`. The cache
   refreshes on its configured interval and on an unknown-`kid` miss.
-- **No name at construction time.** `gs.Group`'s constructor does not
-  receive the bean name (a limitation of `gs.go:488`), so a per-instance
-  `RegisterValidator(name)` would need a runtime hack. Instead, callers
-  wire the `*Authenticator` directly via DI when they need to name it.
+- **Name reaches the constructor as argument 1.** Because the module is
+  hand-written, the config sub-key is passed explicitly
+  (`gs.IndexArg(1, gs.ValueArg(name))`), which is also what lets the bean carry
+  that name — and an application pick it with `autowire:"<name>"`.
 - Internal deps resolve through `go.work`; do not run `go mod tidy`.
   External dep is `github.com/golang-jwt/jwt/v5` only.
 

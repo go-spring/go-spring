@@ -230,7 +230,7 @@ span helper wrapped around it:
 1. `StartPublishSpan(ctx, topic)` opens a producer observation named `publish` with
    `messaging.destination.name = topic` [command.go, observe.go].
 2. `guard` resolves the executor for this client from the sync.Map [command.go:148-153].
-3. fault injection check (govern.client.fault.* policy, if enabled).
+3. fault injection check (spring.governance.client.fault.* policy, if enabled).
 4. observe bridge records the guarded call's outcome (span/metric/access log).
 5. resilience policy: rate limiter / circuit breaker on service `mqtt:<broker>`;
    on rejection the sentinel error returns and **paho Publish is never invoked**
@@ -301,11 +301,12 @@ With starter-governance configured, add a breaker/limiter policy for service
 `mqtt:tcp://127.0.0.1:1883`:
 
 ```yaml
-govern:
-  enabled: true
-  resilience:
-    mqtt:tcp://127.0.0.1:1883:
-      rateLimiter: { limit: 1, period: 1s }
+spring:
+  governance:
+    enabled: true
+    resilience:
+      mqtt:tcp://127.0.0.1:1883:
+        rateLimiter: { limit: 1, period: 1s }
 ```
 
 Hammer `GuardedPublish` → rejections surface as resilience sentinel errors and as

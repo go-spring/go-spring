@@ -20,7 +20,7 @@ per configured center —
 
 **Activation**: each `spring.registry.nacos.<name>` block is one registry center — one shared
 naming client, one startup probe, one lifecycle (`starter.go`). The bean named `nacos.<name>`
-exports BOTH `discovery.Registrar` (collected by the starter-registry core when
+exports BOTH `discovery.Registry` (collected by the starter-registry core when
 `spring.registry.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half).
 
@@ -124,8 +124,8 @@ spring.gateway.discovery=nacos.main                 # the backend bean's name
 spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
 # The route's balancing strategy is NOT a gateway key: it is a governance rule
-# for the route's label — govern.client.rules[N].service=gateway:orders with
-# govern.client.rules[N].balancer=weighted (see cloud/governance/README.md §3.1).
+# for the route's label — spring.governance.client.rules[N].service=gateway:orders with
+# spring.governance.client.rules[N].balancer=weighted (see cloud/governance/README.md §3.1).
 ```
 
 **Verify** (nacos from `example/docker-compose.yml` — `docker compose up -d`, then wait for
@@ -154,7 +154,7 @@ transitively by this starter; the nacos starter only contributes one registrar b
 ```
 import starter-registry-nacos
   ├─ per block ${spring.registry.nacos.<name>}: Provide(newNacosBackend)
-  │    Name("nacos."+name).Export(As[discovery.Discovery], As[discovery.Registrar])
+  │    Name("nacos."+name).Export(As[discovery.Discovery], As[discovery.Registry])
   │    condition: gs.OnProperty("spring.registry.nacos")              [starter.go]
   └─ import starter-registry (core, exactly once per process)
        └─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
@@ -163,7 +163,7 @@ gs.Run()
   ├─ conf.BindEach over spring.registry.nacos.* → one NacosConfig per block
   ├─ newNacosBackend per block: build nacos naming client + FAIL-FAST PROBE
   │    (GetAllServicesInfo page-1 — unreachable/auth-bad server aborts startup)  [starter.go]
-  ├─ registryServer collects every backend's Registrar via []discovery.Registrar
+  ├─ registryServer collects every backend's Registry via []discovery.Registry
   │    slice injection (across ALL backends — nacos, zookeeper, ...)
   ├─ Run: validate service-name/addr non-empty AND ≥1 registrar BEFORE readiness
   ├─ <-sig.TriggerAndWait()   ← readiness gate: register only when the whole app is up

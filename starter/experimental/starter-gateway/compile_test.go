@@ -129,10 +129,7 @@ func TestParseFilterTokenAcceptsPlainValues(t *testing.T) {
 // subscription to.
 func selectionPool(t *testing.T) *loadbalance.Pool {
 	t.Helper()
-	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
-	if err != nil {
-		t.Fatalf("loadbalance.New: %v", err)
-	}
+	bal := loadbalance.NewRoundRobin()
 	eps := []discovery.Endpoint{{Addr: "10.0.0.1:9000", Healthy: true}}
 	return loadbalance.NewPool(
 		func() ([]discovery.Endpoint, error) { return eps, nil },

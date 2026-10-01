@@ -26,7 +26,7 @@ demo/
 ├── order.go
 └── conf/
     ├── app.properties
-    └── govern.yaml          # not needed by the outbox itself; shown for parity
+    └── governance.yaml          # not needed by the outbox itself; shown for parity
 ```
 
 **go.mod** (module deps that matter):

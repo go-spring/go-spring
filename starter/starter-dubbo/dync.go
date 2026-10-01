@@ -31,7 +31,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -39,23 +39,13 @@ import (
 )
 
 func init() {
-	// dyncPoller is exported as a gs.Rooter so gs collects and instantiates it
-	// (nothing injects *dyncPoller). It reaches governance through the injected
-	// beans: the resilience manager supplies the per-service policy and the
-	// subscription fan-out, and the center supplies the ready signal. When
-	// starter-governance is imported and ${govern.enabled} is true, governance
-	// takes over dubbo's timeout and retries (see consumerToOverrideRules); its
-	// absence keeps the legacy ${spring.dubbo.consumer}-only behavior unchanged.
-	//
-	// Both governance beans are NULLABLE injections: they exist whenever
-	// starter-governance is in the container and are absent from a container
-	// without it. Without the "?" gs would treat an absent bean as a wiring error
-	// and the app would not boot — turning "governance is off" into "governance
-	// must be imported", which is not the contract.
+	// The governance beans are REQUIRED: this starter blank-imports
+	// starter-governance, so "governance off" is spring.governance.enabled=false,
+	// never an absent bean.
 	gs.Provide(newDyncPoller,
 		gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}")),
-		gs.IndexArg(1, gs.TagArg("?")), // nullable *resilience.Manager bean
-		gs.IndexArg(2, gs.TagArg("?")), // nullable *governance.Center bean
+		gs.IndexArg(1, gs.TagArg("")), // *resilience.Manager
+		gs.IndexArg(2, gs.TagArg("")), // *governance.Center
 	).Init((*dyncPoller).Init).Export(gs.As[gs.Rooter]()).Caller(1)
 }
 

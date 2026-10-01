@@ -22,7 +22,7 @@ demo/
 ├── messaging.go
 └── conf/
     ├── app.properties
-    └── govern.yaml
+    └── governance.yaml
 ```
 
 **go.mod**（关键依赖）：
@@ -138,19 +138,20 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 仅经 actuator
 
 # --- 治理（运行时 resilience）----------------------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml**（§4 演练使用）：
+**conf/governance.yaml**（§4 演练使用）：
 
 ```yaml
-govern:
-  enabled: true
-  resilience:
-    nats:                 # 对应 ResourceLabel 方案，见 §4.3
-      rate-limit: 100
-      breaker:
-        error-threshold: 5
+spring:
+  governance:
+    enabled: true
+    resilience:
+      nats:                 # 对应 ResourceLabel 方案，见 §4.3
+        rate-limit: 100
+        breaker:
+          error-threshold: 5
 ```
 
 **Broker 启动与验证**：
@@ -316,7 +317,7 @@ false；恢复 broker → Info `nats reconnected to ...` [driver.go:57-65]。
 
 ### 4.2 guarded vs 未 guarded 路径
 
-治理开启且限流收紧（§1 govern.yaml）时：
+治理开启且限流收紧（§1 governance.yaml）时：
 
 - `conn.Publish("s", b)`——始终成功（无 guard）[client.go:33-39]。
 - 热循环里调 `conn.PublishGuarded(ctx, "s", b)` → burst 耗尽后以
@@ -327,7 +328,7 @@ false；恢复 broker → Info `nats reconnected to ...` [driver.go:57-65]。
 
 ### 4.3 治理标签核对
 
-executor 的 service 是 `nats:<url>` [driver.go:166]。把 govern.yaml 规则限定到
+executor 的 service 是 `nats:<url>` [driver.go:166]。把 governance.yaml 规则限定到
 `nats:orders-service`（或前缀），策略即精确落到该连接。验证：wrapped-executor
 的拒绝会发 span + counter（`system="nats"`，由 resilience-observe 桥命名）
 [command.go:170-172]——演练后去 trace/metric 里 grep `nats`。
@@ -366,7 +367,7 @@ executor 的 service 是 `nats:<url>` [driver.go:166]。把 govern.yaml 规则�
 | 启动中断 `failed to create jetstream context` | `jetstream.enabled=true` 但 broker 未开 `-js` [driver.go:158-164] | 服务端加 `-js` 或关掉该 key。 |
 | `Conn.JetStream` 为 nil | 未设 `jetstream.enabled` | 设置它；JS 在启动期从同一连接派生。 |
 | 消费者能收消息但消费侧无 trace/metric | 用了内嵌的裸 `Conn.Subscribe`/`QueueSubscribe` 而非 `Conn.Consume` | 走 `Conn.Consume(ctx, subject, queue, handler)` 或 messaging.Driver。 |
-| guarded 调用突然报哨兵错误 | 限流耗尽或熔断打开——设计行为 [command.go:177-186] | 检查 govern.yaml 策略；熔断冷却后自愈。 |
+| guarded 调用突然报哨兵错误 | 限流耗尽或熔断打开——设计行为 [command.go:177-186] | 检查 governance.yaml 策略；熔断冷却后自愈。 |
 | producer trace 不链接调用方 span | 发布走的是 `PublishMsg`（无 ctx 参数），其 span 必为新根 | 改用 `PublishMsgContext(ctx, msg)`——`PublishGuarded` 已如此。 |
 | `/readiness` 报 `nats:<name>` 不健康 | 自动重连客户端正处于重连间隙 | 属预期；若该实例连通性不应计入就绪，对它设 `health.enabled=false`。 |
 | 第二个 header 值丢失 | driver 多值 header 压平取首值（单值信封） | 额外值放 payload，或用裸 Conn API。 |

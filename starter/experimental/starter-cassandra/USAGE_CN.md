@@ -280,7 +280,7 @@ curl -s :9370/metrics | grep db.client   # 时长直方图 + active_requests
 
 ### 4.3 故障 / resilience 演练（需 starter-governance）
 
-为 service `cassandra:127.0.0.1` 在 `govern.*` 下配 breaker 或 limiter，压测 `Exec`
+为 service `cassandra:127.0.0.1` 在 `spring.governance.*` 下配 breaker 或 limiter，压测 `Exec`
 插入，观察拒绝以快速错误返回且语句**未执行**（Cassandra 侧无行），并有 resilience
 observer 的 outcome 计数。运行期翻转策略 —— 执行器热生效，无需重启。注意 service label
 只取 hosts[0]：首 host 相同的实例 `b` 与实例 `a` 共用同一个 breaker 桶。

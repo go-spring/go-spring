@@ -65,6 +65,10 @@ type zkDiscovery struct {
 	done     chan struct{}
 	doneOnce sync.Once
 
+	// obs is the block's observability layer; it carries the identity (system,
+	// center) every reported sync and log line is labelled with.
+	obs *discovery.Observer
+
 	mu      sync.Mutex // guards entries
 	entries map[string]*serviceEntry
 }
@@ -114,13 +118,13 @@ func (d *zkDiscovery) Resolve(ctx context.Context, name string, opts ...discover
 	if !e.seeded {
 		eps, err := d.fetch(ctx, d.servicePath(name))
 		if err != nil {
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			return nil, errutil.Explain(err, "registry-zookeeper: list %q failed", name)
 		}
 		e.eps, e.seeded = eps, true
 		// The seed is this service's first confirmed snapshot; reporting it
 		// starts the freshness clock before any watch event arrives.
-		discovery.Synced(obsSystem, name, nil)
+		d.obs.Synced(name, nil)
 		go d.watchLoop(name, e)
 	}
 	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
@@ -153,7 +157,7 @@ func (d *zkDiscovery) fetch(ctx context.Context, path string) ([]discovery.Endpo
 		}
 		vals[child] = data
 	}
-	return valuesToEndpoints(vals), nil
+	return valuesToEndpoints(d.obs, vals), nil
 }
 
 // watchLoop refreshes a service's cache on every ZooKeeper change below path
@@ -180,9 +184,16 @@ func (d *zkDiscovery) watchLoop(name string, e *serviceEntry) {
 			// Ensemble unreachable (or the directory gone): keep the stale
 			// snapshot and retry arming later. Reported so the stale window is
 			// visible rather than only living inside this retry loop.
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			log.Warn(context.Background(), starterTag, append(
-				discovery.SyncFailedFields(obsSystem, name, err),
+				[]log.Field{
+					log.String("system", d.obs.System()),
+					log.String("center", d.obs.Center()),
+					log.String("service", name),
+					log.String("operation", "sync"),
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+				},
 				log.Msgf("registry-zookeeper: arm watch %q failed (keeping stale snapshot)", path),
 			)...)
 			select {
@@ -216,9 +227,16 @@ func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Eve
 	path := d.servicePath(name)
 	children, _, err := d.conn.Children(path)
 	if err != nil {
-		discovery.Synced(obsSystem, name, err)
+		d.obs.Synced(name, err)
 		log.Warn(context.Background(), starterTag, append(
-			discovery.SyncFailedFields(obsSystem, name, err),
+			[]log.Field{
+				log.String("system", d.obs.System()),
+				log.String("center", d.obs.Center()),
+				log.String("service", name),
+				log.String("operation", "sync"),
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+			},
 			log.Msgf("registry-zookeeper: list %q failed (keeping stale snapshot)", path),
 		)...)
 		return nil
@@ -240,19 +258,26 @@ func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Eve
 		evs = append(evs, ev)
 	}
 	if readErr != nil {
-		discovery.Synced(obsSystem, name, readErr)
+		d.obs.Synced(name, readErr)
 		log.Warn(context.Background(), starterTag, append(
-			discovery.SyncFailedFields(obsSystem, name, readErr),
+			[]log.Field{
+				log.String("system", d.obs.System()),
+				log.String("center", d.obs.Center()),
+				log.String("service", name),
+				log.String("operation", "sync"),
+				log.String("status", discovery.StatusOf(readErr)),
+				log.Err(readErr),
+			},
 			log.Msgf("registry-zookeeper: refresh %q failed (keeping stale snapshot)", path),
 		)...)
 		// The watches already armed stay live, so the next change re-runs this.
 		return evs
 	}
-	eps := valuesToEndpoints(vals)
+	eps := valuesToEndpoints(d.obs, vals)
 	e.mu.Lock()
 	e.eps = eps
 	e.mu.Unlock()
-	discovery.Synced(obsSystem, name, nil)
+	d.obs.Synced(name, nil)
 	return evs
 }
 
@@ -283,14 +308,15 @@ func firstEvent(evs []<-chan zk.Event) <-chan zk.Event {
 // decoding the instanceValue JSON the registrar writes. Every node found is
 // healthy (ephemeral liveness) and enabled (the registrar has no disabled
 // state); the payload's scheme field carries transport selection.
-func valuesToEndpoints(vals map[string][]byte) []discovery.Endpoint {
+func valuesToEndpoints(obs *discovery.Observer, vals map[string][]byte) []discovery.Endpoint {
 	eps := make([]discovery.Endpoint, 0, len(vals))
 	for name, data := range vals {
 		var v instanceValue
 		if err := json.Unmarshal(data, &v); err != nil {
 			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
 			log.Warn(context.Background(), starterTag,
-				log.String("system", obsSystem),
+				log.String("system", obs.System()),
+				log.String("center", obs.Center()),
 				log.String("node", name),
 				log.Err(err),
 				log.Msg("registry-zookeeper: skipping a malformed instance payload"))

@@ -119,7 +119,7 @@ spring.batch-repository.instances.main.key-prefix=demo:batch:
 spring.batch-repository.instances.main.ttl=24h
 
 # --- batch runner (starter-batch namespace) — picks the repo up by name -------
-spring.batch.repository=main
+spring.batch.repository=redis.main
 spring.batch.drain-timeout=30s
 spring.batch.jobs.reconcile.run-on-startup=true
 spring.batch.jobs.reconcile.params.date=2026-08-28
@@ -227,7 +227,9 @@ single hash deliberately: Save/Find/List are one round-trip each (`redisrepo.go:
 
 ⚠ Namespace split, by design: repositories bind under `spring.batch-repository.instances.<name>` because the
 runner owns `spring.batch.*` for job/step/chunk config (`config.go:27-31`). `spring.batch.repository`
-(singular, runner-side) references `spring.batch-repository.instances.<name>` (plural, this starter).
+(singular, runner-side) names a **bean**, not a config entry: the bean is `redis.<name>` — this starter's
+backend qualifier plus the config instance name — because `batch.JobRepository` is a replaceable seam a
+second backend can also contribute (starter/DESIGN.md §2.2).
 
 ---
 

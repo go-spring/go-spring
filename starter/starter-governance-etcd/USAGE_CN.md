@@ -10,7 +10,7 @@
 （`example/main.go`、`example/check.sh`）核实。etcd 自身客户端语义见
 [etcd 官方文档](https://etcd.io/docs/latest/)——本文只写 go-spring 的增量。
 
-**激活方式**：任一 `govern.source.etcd.*` 配置即武装条件模块（`gs.OnProperty` 是**前缀**
+**激活方式**：任一 `spring.governance.source.etcd.*` 配置即武装条件模块（`gs.OnProperty` 是**前缀**
 匹配，单个子键就能触发），并注册一个 `governance.Source` Bean。空导入且无该配置则不注册
 任何东西。Bean 本身并不武装治理——
 [`starter-governance`](../starter-governance/README_CN.md) 的接线 Bean 才是把它注入中心的
@@ -99,29 +99,30 @@ func main() { gs.Run() }
 
 ```properties
 # 治理规则放在自己的 etcd key 上，由 starter-governance-etcd 监听——
-# govern.* 下的任何东西都不走 app.properties。
-govern.source.etcd.endpoint=127.0.0.1:2379
-govern.source.etcd.key=/app/govern.yaml
+# spring.governance.* 下的任何东西都不走 app.properties。
+spring.governance.source.etcd.endpoint=127.0.0.1:2379
+spring.governance.source.etcd.key=/app/governance.yaml
 ```
 
 **规则文档**（启动前播种到该 key）：
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
 ```
 
 **验证**（本地 etcd，可用 `example/docker-compose.yml`）：
 
 ```bash
 docker compose up -d
-ETCDCTL_API=3 etcdctl put /app/govern.yaml "$(cat govern.yaml)"   # 启动前先播种
+ETCDCTL_API=3 etcdctl put /app/governance.yaml "$(cat governance.yaml)"   # 启动前先播种
 go run .
-ETCDCTL_API=3 etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
+ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
 # 无需重启：源推送新文档，PolicyFor 翻到 300ms
 ```
 
@@ -156,7 +157,7 @@ type Source interface {
 
 ```
 import starter-governance-etcd
-  └─ gs.Module(gs.OnProperty("govern.source.etcd"))       ← 前缀匹配即武装模块
+  └─ gs.Module(gs.OnProperty("spring.governance.source.etcd"))       ← 前缀匹配即武装模块
         ├─ conf.Bind → governEtcdConfig（${endpoint}/${key} 经 expr 校验非空）
         └─ Provide newEtcdSource Bean
              .Init((*EtcdSource).Init)                    ← 打开 watch 流
@@ -191,7 +192,7 @@ import starter-governance-etcd
    与 fault seam。
 
 key 上的 **DELETE** 不是 PUT，因此被忽略，上一份好快照继续生效——删文档不是关闭治理的方式。
-关闭的正确姿势是 `govern.enabled=false`（一个存在的键）。
+关闭的正确姿势是 `spring.governance.enabled=false`（一个存在的键）。
 
 ### 2.4 日志 tag
 
@@ -208,7 +209,7 @@ logger.governance_etcd.tag=_app_governance_etcd
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `govern.source.etcd` 之下（精确匹配，无宽松形态）。没有 `instances` 维度——
+所有 key 位于 `spring.governance.source.etcd` 之下（精确匹配，无宽松形态）。没有 `instances` 维度——
 一个源就是一个对象，中心只持一个。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
@@ -219,12 +220,12 @@ logger.governance_etcd.tag=_app_governance_etcd
 | `password` | string | `""` | etcd 认证密码。 | 同上。 |
 | `format` | string | key 的扩展名，否则 `properties` | 覆盖文档格式检测。`"yaml" \| "json" \| "properties" \| "toml"`（共享 reader 注册表里注册的任意格式均可）。 | 错但已知的格式 → 解析错误（播种期启动报错，之后保留上一份好配置）。 |
 
-格式推断：显式 `format` 优先；否则用 key 的点号扩展名（`/app/govern.yaml` → `yaml`）；再否则
+格式推断：显式 `format` 优先；否则用 key 的点号扩展名（`/app/governance.yaml` → `yaml`）；再否则
 回退 `properties`。因此无扩展名的 key 配非 properties 文档时必须显式给 `format`。
 
-文档本身由 `rules.Parse` 解析，它要求**至少有一个 `govern.*` 键**——能解析但一个 `govern.*`
-键都没有的文档（被截断或被清空）是错误，而非"没有治理"。规则键（`govern.enabled`、
-`govern.client.default.*`、`govern.client.rules[n].*`、`govern.client.fault.*`）见
+文档本身由 `rules.Parse` 解析，它要求**至少有一个 `spring.governance.*` 键**——能解析但一个 `spring.governance.*`
+键都没有的文档（被截断或被清空）是错误，而非"没有治理"。规则键（`spring.governance.enabled`、
+`spring.governance.client.default.*`、`spring.governance.client.rules[n].*`、`spring.governance.client.fault.*`）见
 [`starter-governance`](../starter-governance/USAGE_CN.md)，各后端完全一致。
 
 ---
@@ -237,7 +238,7 @@ logger.governance_etcd.tag=_app_governance_etcd
 ### 4.1 冷播种
 
 ```bash
-ETCDCTL_API=3 etcdctl put /app/govern.yaml "$(cat govern.yaml)"
+ETCDCTL_API=3 etcdctl put /app/governance.yaml "$(cat governance.yaml)"
 go run .        # 启动；初始 Get 播种快照
 ```
 
@@ -247,7 +248,7 @@ key 必须在应用启动前存在——源的构造期会执行一次初始 `Ge
 
 ```bash
 go run . &
-etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
+etcdctl put /app/governance.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
 ```
 
 无需重启；注入的 resilience 权威的 `PolicyFor("...")` 下次调用即翻到新超时。
@@ -255,7 +256,7 @@ etcdctl put /app/govern.yaml 'govern: {enabled: true, default: {enabled: true, a
 ### 4.3 坏值保留上一份好快照
 
 ```bash
-etcdctl put /app/govern.yaml 'govern: { broken'      # 或不含任何 govern.* 键的文档
+etcdctl put /app/governance.yaml 'govern: { broken'      # 或不含任何 spring.governance.* 键的文档
 ```
 
 预期：`_app_governance_etcd` 下一条 Error 日志
@@ -274,8 +275,8 @@ etcdctl put /app/govern.yaml 'govern: { broken'      # 或不含任何 govern.* 
 
 ### 4.5 删除 key
 
-`etcdctl del /app/govern.yaml` 触发 DELETE 事件，源会忽略它（只应用 PUT）。治理保持上一份
-好规则，且无日志。要关闭治理，请发布 `govern.enabled=false` 的文档。
+`etcdctl del /app/governance.yaml` 触发 DELETE 事件，源会忽略它（只应用 PUT）。治理保持上一份
+好规则，且无日志。要关闭治理，请发布 `spring.governance.enabled=false` 的文档。
 
 ### 4.6 冒烟测试
 
@@ -295,10 +296,10 @@ cd example && ./check.sh    # docker 门控：compose 起 etcd，跑自校验 ex
 | key 变了但治理仍关（`enabled=false`） | 未引入 `starter-governance` → 无接线 Bean，Source 从未被注入 | 引入 `go-spring.org/starter-governance`。 |
 | 启动报 `key <key> is empty` | 启动前必填 key 不存在 | 启动前先播种 key。 |
 | 启动报 `get <key> failed` | etcd 不可达 / 端口错 / 需认证却未配 `username`/`password` | 检查端点与凭据。 |
-| 启动报 `endpoint`/`key` 为空 | `govern.source.etcd.*` 只配了一部分（任一子键都会触发 `OnProperty`） | 补齐两个必填键，或删掉整个前缀。 |
-| `put` 之后规则不变 | (a) 值与当前逐字节相同或 DeepEqual 相等；(b) 值不可解析 / 不含 `govern.*` 键（Error 日志，保留上一份好配置）；(c) 另一个源已占用中心的唯一源位 | 看 `_app_governance_etcd` 日志行；只配一个源。 |
-| 删 key 后治理仍是旧规则 | DELETE 不是 PUT，按设计被忽略 | 重新 PUT 一份文档；要关闭用 `govern.enabled=false`。 |
-| 无扩展名的 key 报解析错误 | 格式推断回退到了 `properties` | 设置 `govern.source.etcd.format`。 |
+| 启动报 `endpoint`/`key` 为空 | `spring.governance.source.etcd.*` 只配了一部分（任一子键都会触发 `OnProperty`） | 补齐两个必填键，或删掉整个前缀。 |
+| `put` 之后规则不变 | (a) 值与当前逐字节相同或 DeepEqual 相等；(b) 值不可解析 / 不含 `spring.governance.*` 键（Error 日志，保留上一份好配置）；(c) 另一个源已占用中心的唯一源位 | 看 `_app_governance_etcd` 日志行；只配一个源。 |
+| 删 key 后治理仍是旧规则 | DELETE 不是 PUT，按设计被忽略 | 重新 PUT 一份文档；要关闭用 `spring.governance.enabled=false`。 |
+| 无扩展名的 key 报解析错误 | 格式推断回退到了 `properties` | 设置 `spring.governance.source.etcd.format`。 |
 
 ---
 
@@ -319,4 +320,4 @@ cd example && ./check.sh    # docker 门控：compose 起 etcd，跑自校验 ex
 - **无 watch 间隙暴露。** watch 掉线/compaction 或认证刷新被拒时不产生任何日志或指标；
   DELETE 被静默忽略。可观测性增量候选。
 - **共享解析语义**是文档跨后端可移植的原因；`rules.Parse` 的任何变更（例如"必须含
-  `govern.*` 键"这条规则）都会同时作用于所有源。
+  `spring.governance.*` 键"这条规则）都会同时作用于所有源。

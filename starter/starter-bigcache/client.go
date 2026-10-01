@@ -24,11 +24,12 @@ import (
 	"github.com/allegro/bigcache/v3"
 	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance/resilience"
+	"go.opentelemetry.io/otel/metric"
 
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -54,9 +55,17 @@ import (
 type Cache struct {
 	*bigcache.BigCache
 
-	// obs is this starter's per-operation observer (observe.go): client span,
-	// db.client.operation.duration metric, access log.
+	// obs is this starter's shared instrument set (observe.go): the client span,
+	// the db.client.operation.duration metric, the access log, and the
+	// cache-statistics gauges. One per process - every Cache holds the same one.
 	obs *dbObserver
+
+	// gaugeRegs is this cache's own registration of its statistics against the
+	// shared gauges. It is held here because the values those gauges report come
+	// from this cache: the registration's lifetime is the cache's lifetime, and
+	// Destroy takes it away. Dropping it would leave the instrument reporting a
+	// destroyed cache, and holding the registration would pin it.
+	gaugeRegs []metric.Registration
 
 	// mgr and inj are the governance beans gs injects into the constructor (both
 	// nil in a standalone call). mgr is normalized in Init: an unarmed manager is
@@ -85,18 +94,35 @@ type Cache struct {
 // is a transparent pass-through). When governance is off — an unarmed manager —
 // the resolved executor is a transparent no-op.
 func (c *Cache) Init() error {
-	c.obs = newDBObserver()
+	c.obs = instruments()
 	c.service = resilience.ServiceLabel("bigcache", c.name)
-	if c.mgr == nil {
-		c.mgr = resilience.NewManager()
-	}
 	c.exec = fault.WrapClientExecutor(c.mgr.ClientExecutorFor("bigcache", c.service), c.service, c.inj)
+
+	// Register this cache's statistics against the shared gauges, labeled with
+	// this instance's name so several caches in one process stay
+	// distinguishable. A registration error is dropped rather than failing the
+	// cache's startup: with no OTel SDK installed the meter is a no-op and there
+	// is nothing to report, which is not a reason to refuse to serve.
+	if reg, err := c.obs.observeGauges(c.BigCache, c.name); err == nil {
+		c.gaugeRegs = append(c.gaugeRegs, reg)
+	}
 	return nil
 }
 
-// Close releases the resilience executor (if armed) and the underlying BigCache.
-// It is the gs destroy method.
+// Destroy takes away this cache's gauge registration, releases the resilience
+// executor (if armed), and closes the underlying BigCache. It is the gs destroy
+// method.
+//
+// The unregistration comes first: once the cache is closed its statistics are
+// meaningless, and a registration left behind would both report a dead cache and
+// pin it. It is also why the registration lives on the cache rather than in the
+// shared instrument set - the same reason the gauges are not registered by a
+// creation-time callback.
 func (c *Cache) Destroy() error {
+	for _, reg := range c.gaugeRegs {
+		_ = reg.Unregister()
+	}
+	c.gaugeRegs = nil
 	if c.exec != nil {
 		_ = c.exec.Close()
 	}

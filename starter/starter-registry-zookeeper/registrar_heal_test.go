@@ -32,6 +32,7 @@ import (
 // ensemble is needed to drive the session monitor through loss and recovery.
 func newHealRegistrar() (*zkRegistrar, *atomic.Int32) {
 	r := &zkRegistrar{
+		obs:         newTestObserver(),
 		basePath:    "/services",
 		backoffBase: 5 * time.Millisecond,
 		backoffCap:  20 * time.Millisecond,

@@ -10,7 +10,7 @@
 `etcd:` 条目（如 `spring.config.import=etcd:127.0.0.1:2379/key`）。仅 blank import 不产生
 任何效果。导入的 key 进应用属性，并热刷新 `gs.Dync[T]` 字段。
 
-etcd 治理规则源现已独立为 `go-spring.org/starter-governance-etcd` 模块（`govern.source.etcd.*`）。
+etcd 治理规则源现已独立为 `go-spring.org/starter-governance-etcd` 模块（`spring.governance.source.etcd.*`）。
 
 ---
 
@@ -148,7 +148,7 @@ key 可以喂给任意 bean 的配置。etcd Get 本身发生在第 2 步——�
 
 ### 2.3 治理规则推送路径
 
-etcd 治理规则源现已独立为 `go-spring.org/starter-governance-etcd` 模块（`govern.source.etcd.*`）。
+etcd 治理规则源现已独立为 `go-spring.org/starter-governance-etcd` 模块（`spring.governance.source.etcd.*`）。
 
 ---
 
@@ -174,7 +174,7 @@ etcd 治理规则源现已独立为 `go-spring.org/starter-governance-etcd` 模�
 
 ### 3.2 治理属性面——已移出
 
-etcd 治理规则源现已独立为 `go-spring.org/starter-governance-etcd` 模块（`govern.source.etcd.*`）。
+etcd 治理规则源现已独立为 `go-spring.org/starter-governance-etcd` 模块（`spring.governance.source.etcd.*`）。
 
 ### 3.3 本 starter 没有的 key
 

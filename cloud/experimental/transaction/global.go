@@ -89,9 +89,14 @@ func (r *StepRegistry) Lookup(method string) ([]Step, bool) {
 // an ordinary function, and combining cross-cutting concerns is ordinary
 // nesting —
 //
-//	err := security.Require("orders:write")(ctx, func(ctx context.Context) error {
-//	    return transaction.GlobalTransactional(coord, reg)(ctx, "OrderService.Place", place)
-//	})
+//	func (s *OrderService) Place(ctx context.Context, req Req) error {
+//	    if err := security.Require(ctx, "orders:write"); err != nil {
+//	        return err
+//	    }
+//	    return transaction.GlobalTransactional(s.coord, s.reg)(ctx, "OrderService.Place", func(ctx context.Context) error {
+//	        return s.place(ctx, req)
+//	    })
+//	}
 func GlobalTransactional(coord Coordinator, reg *StepRegistry) func(ctx context.Context, method string, proceed func(context.Context) error) error {
 	return func(ctx context.Context, method string, proceed func(context.Context) error) error {
 		steps, ok := reg.Lookup(method)

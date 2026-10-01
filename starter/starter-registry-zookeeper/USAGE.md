@@ -12,7 +12,7 @@ everything below is go-spring's increment.
 
 **Activation**: each `spring.registry.zookeeper.<name>` block is one registry center — one shared
 session, one startup probe, one lifecycle (`starter.go`). The bean named `zookeeper.<name>` exports
-BOTH `discovery.Registrar` (collected by the starter-registry core when
+BOTH `discovery.Registry` (collected by the starter-registry core when
 `spring.registry.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half). This
 starter serves **both sides**: it advertises this instance to ZooKeeper as an ephemeral znode AND
@@ -134,7 +134,7 @@ docker exec -it starter-registry-zookeeper zkCli.sh
 ```
 blank-import starter-registry-zookeeper
   ├─ per block ${spring.registry.zookeeper.<name>}: Provide(newZkBackend)
-  │    Name("zookeeper."+name).Export(As[discovery.Discovery], As[discovery.Registrar])
+  │    Name("zookeeper."+name).Export(As[discovery.Discovery], As[discovery.Registry])
   │    condition: gs.OnProperty("spring.registry.zookeeper")           [starter.go]
   └─ import starter-registry (core, exactly once per process)
        └─ gs.Provide(NewServer).Name("registryServer").Export(gs.As[gs.Server]())
@@ -144,7 +144,7 @@ gs.Run()
   ├─ newZkBackend per block: zk.Connect(servers, session-timeout) + digest AddAuth
   │    when set + fail-fast probe Exists("/") — blocks until the session connects,
   │    so an unreachable ensemble fails STARTUP, not the first Register   [starter.go]
-  ├─ registryServer collects every backend's Registrar via []discovery.Registrar
+  ├─ registryServer collects every backend's Registry via []discovery.Registry
   │    slice injection (across ALL backends — zookeeper, nacos, ...)
   ├─ Run: validate service-name/addr AND ≥1 registrar BEFORE readiness
   ├─ wait <-sig.TriggerAndWait() — the ready-gate: registration only after
@@ -312,7 +312,7 @@ Suspect ledger (kept from the previous edition, plus new findings):
    re-register loop is the candidate fix.
 3. ~~No shipped consumer side~~ RESOLVED: `discovery_zookeeper.go` ships the backend — since the
    2026-09 multi-registry named-block redesign it IS the block's bean (`zookeeper.<name>`),
-   implementing both `discovery.Registrar` and `discovery.Discovery`; registration moved into
+   implementing both `discovery.Registry` and `discovery.Discovery`; registration moved into
    the shared starter-registry core.
 4. `addr` is not validated for `host:port` shape at write time (consul validates a numeric port);
    a malformed value is stored verbatim and only fails on the consumer dial.

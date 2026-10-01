@@ -16,7 +16,7 @@ directory into the governance center). `init` (starter.go) calls `sentinel.InitD
 (panicking on failure — "a misconfigured environment fails loudly here rather than on first
 use", per the source comment) and contributes the backend as the `sentinel`-named
 `resilience.Driver` bean. No port, **no configuration keys of its own** — the governance
-document's `govern.driver=sentinel` selects it, and policies are configured per service.
+document's `spring.governance.driver=sentinel` selects it, and policies are configured per service.
 
 ---
 
@@ -94,10 +94,10 @@ cd starter/starter-governance-sentinel/example && ./check.sh
 #          "composed policy: recovered after 3 attempts ...", exit 0
 ```
 
-The more common production path is declarative: set `govern.driver=sentinel` once in the
+The more common production path is declarative: set `spring.governance.driver=sentinel` once in the
 governance document and every client resolves through this backend — clients do not pick a
 driver at all: they inject the `*resilience.Manager` bean and call
-`mgr.ClientExecutorFor(system, label)` (see §2.2). With `govern.driver` unset everything stays on
+`mgr.ClientExecutorFor(system, label)` (see §2.2). With `spring.governance.driver` unset everything stays on
 the zero-dependency `default` driver.
 
 ---
@@ -110,7 +110,7 @@ the zero-dependency `default` driver.
 import starter-governance-sentinel
   └─ init(): sentinel.InitDefault()          // panics on failure
              gs.Provide(...).Name("sentinel").Export(gs.As[resilience.Driver]())
-             // the container is the driver directory; govern.driver=sentinel selects it
+             // the container is the driver directory; spring.governance.driver=sentinel selects it
 ```
 
 - `sentinelDriver.NewClientExecutor(service, p)` (starter.go) → `newSentinelExecutor(service, p)`
@@ -132,7 +132,7 @@ import starter-governance-sentinel
 starter) is the single call OUTBOUND clients use — on the `*resilience.Manager` bean they
 inject. `resilience.Manager.ServerExecutorFor(system, service)` is its inbound twin, used by protocol
 starters' admission middleware; it resolves the same label in a separate lane and builds through
-`Driver.NewServerExecutor` instead of `Driver.NewClientExecutor`, so `govern.driver=sentinel` covers both
+`Driver.NewServerExecutor` instead of `Driver.NewClientExecutor`, so `spring.governance.driver=sentinel` covers both
 directions with one key while the two configs stay independent:
 
 - It returns a stable `managedExecutor` holding the system and service labels; the backing
@@ -215,7 +215,7 @@ executor (`Execute`/`runOnce`).
 **No keys under this module's own prefix.** `grep -rhoE 'value:"[^"]+"' starter-governance-sentinel`
 yields nothing. The `ClientPolicy` knobs (`rate-limit`, `error-threshold`, `open-duration`,
 `max-concurrent`, `max-retries`, `timeout`, ...) are set in the **governance document** —
-`govern.client.default.*` for the whole process, `govern.client.rules[N].*` for a specific service — and
+`spring.governance.client.default.*` for the whole process, `spring.governance.client.rules[N].*` for a specific service — and
 reach this driver through `ExecutorFor` + `Refresh`. Field meanings:
 [cloud/governance/resilience](../../cloud/governance/resilience); key layout:
 [`cloud/governance/README.md`](../../cloud/governance/README.md).
@@ -233,7 +233,7 @@ cd starter/starter-governance-sentinel && go test ./...
 
 Or: `StarterGovernanceSentinel.NewSentinelDriver()` must return non-nil; the import-time Info log
 "registered sentinel resilience driver" (tag: app default) confirms init ran. The container
-half — the bean is collected and `govern.driver=sentinel` selects it — is pinned by
+half — the bean is collected and `spring.governance.driver=sentinel` selects it — is pinned by
 starter-governance's driver-directory test.
 
 ### 4.2 Breaker drill (from the example)
@@ -275,7 +275,7 @@ drills above — the seam observe-resilience's WrapExecutor consumes.
 |---------|--------------|-----|
 | Process panics at import: "sentinel init failed" | broken environment for `sentinel.InitDefault()` (config/log dirs) | Fix the env — the panic is by design, fail-loudly at import (suspect #1). |
 | Startup reports `no driver named "sentinel"` | starter not blank-imported | Add `import _ "go-spring.org/starter-governance-sentinel"`. |
-| Consumers stay on builtin resilience | the governance document's `govern.driver` is not `sentinel` | Set `govern.driver=sentinel` — one process-wide switch, effective everywhere (suspect #3). |
+| Consumers stay on builtin resilience | the governance document's `spring.governance.driver` is not `sentinel` | Set `spring.governance.driver=sentinel` — one process-wide switch, effective everywhere (suspect #3). |
 | Breaker never opens | `MinRequestAmount` not yet reached, or `ErrorThreshold`/window mis-sized | Check the defaults table §2.6 (`MinRequests` → 1, window → 1000ms). |
 | Breaker state looks reset after a config push | `Refresh` clears rules; sentinel replaces them and resets the stat window | Intended lazy-reload semantic (§2.4). |
 | Doubled resources in the sentinel console/metrics | bulkhead lives under `<label>$bulkhead` | Driver-internal naming (suspect #2) — filter by suffix. |
@@ -299,5 +299,5 @@ Design suspects (kept from the previous edition; for the audit ledger):
    crash rather than a normal boot error.
 2. Bulkhead lives under a `service$bulkhead` suffixed name — sentinel console/metrics show
    twice the services; leakage of driver internals into observability.
-3. Driver selection is process-wide (`govern.driver`) and latched per service at first
+3. Driver selection is process-wide (`spring.governance.driver`) and latched per service at first
    resolve, so a later change to the key does not rebuild already-resolved executors.

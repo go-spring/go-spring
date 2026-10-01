@@ -43,7 +43,7 @@ spring.batch-repository.instances.jobs.key-prefix=myapp:batch:
 spring.batch-repository.instances.jobs.ttl=168h
 
 # 批处理 runner 通过名字挑选一个 JobRepository。
-spring.batch.repository=jobs
+spring.batch.repository=redis.jobs
 ```
 
 `client` 属性是**必填**的。启动时若缺失，Starter 会 fail-fast 直接拒绝

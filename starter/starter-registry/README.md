@@ -10,7 +10,7 @@ once per process no matter how many backends you mix.
 
 ## What it does
 
-Each backend starter derives one `discovery.Registrar` per configured
+Each backend starter derives one `discovery.Registry` per configured
 `${spring.registry.<backend>.<name>}` block. This core collects them ALL —
 across backends — and drives them in lockstep:
 
@@ -65,7 +65,7 @@ spring.registry.addr=10.0.0.5:8080      # required when registering
 
 Any number of blocks, any mix of backends (etcd + zookeeper in one process is
 fine). Each block is a bean named `<backend>.<name>` serving **both halves**:
-the write side collected by this core as a Registrar, and the read side cited
+the write side collected by this core as a Registry, and the read side cited
 by consumers as a Discovery backend. Each backend's full key set lives in its
 starter's README/USAGE.
 

@@ -31,9 +31,11 @@ package StarterKafka
 
 import (
 	"context"
-	"go-spring.org/stdlib/strutil"
 	"sync"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -45,43 +47,50 @@ import (
 // backend — the family's shared vocabulary, not a per-file choice.
 const kafkaSystem = "kafka"
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set, shared with the other family members.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 // accessTag is the static log tag for the kafka access log — the messaging
 // family's shared tag, so one filter greps every broker's records.
 var accessTag = log.RegisterAppTag("messaging", "access")
 
-var (
-	// instruments are resolved on first use rather than at package init, so a
-	// SDK installed later (starter-otel) still receives the records.
-	instOnce sync.Once
-
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever providers are current then.
+type instrumentSet struct {
 	opTotal    metric.Int64Counter
 	opDuration metric.Float64Histogram
 	activeReqs metric.Int64UpDownCounter
-)
-
-// instruments builds the messaging.operation.* instruments — the same names,
-// attributes and status words cloud/messaging's Observe decorator uses — so
-// kafka's client-hook instrumentation (which cannot wrap in Observe without
-// double-counting every record) still lands on the family's dashboards.
-func instruments() {
-	instOnce.Do(func() {
-		m := otel.Meter("go-spring.org/starter-kafka")
-		opTotal, _ = m.Int64Counter("messaging.operation.total",
-			metric.WithDescription("Messages published and consumed, by operation and status"),
-			metric.WithUnit("{message}"))
-		opDuration, _ = m.Float64Histogram("messaging.operation.duration",
-			metric.WithDescription("Duration of a publish or a consume"),
-			metric.WithUnit("s"),
-			metric.WithExplicitBucketBoundaries(durationBuckets...))
-		activeReqs, _ = m.Int64UpDownCounter("messaging.operation.active",
-			metric.WithDescription("Number of in-flight messaging operations"),
-			metric.WithUnit("{operation}"))
-	})
 }
+
+// instruments is the one instrument set this starter uses for the whole
+// process. Resolution is deferred to the first use, not run at package init, so
+// the instruments bind to whichever providers are current then - starter-otel
+// installs them before any bean is built, but a test may replace them later and
+// a value resolved at init would keep pointing at the old SDK.
+var instruments = sync.OnceValue(buildInstruments)
+
+// buildInstruments builds the messaging.operation.* instruments — the same
+// names, attributes and status words cloud/messaging's Observe decorator uses —
+// so kafka's client-hook instrumentation (which cannot wrap in Observe without
+// double-counting every record) still lands on the family's dashboards.
+func buildInstruments() *instrumentSet {
+	m := otel.Meter("go-spring.org/starter-kafka")
+	in := &instrumentSet{}
+	in.opTotal, _ = m.Int64Counter("messaging.operation.total",
+		metric.WithDescription("Messages published and consumed, by operation and status"),
+		metric.WithUnit("{message}"))
+	in.opDuration, _ = m.Float64Histogram("messaging.operation.duration",
+		metric.WithDescription("Duration of a publish or a consume"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	in.activeReqs, _ = m.Int64UpDownCounter("messaging.operation.active",
+		metric.WithDescription("Number of in-flight messaging operations"),
+		metric.WithUnit("{operation}"))
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // inflightOf names the in-flight gauge's dimensions. The +1 taken when an
 // operation starts and the -1 taken when it ends must carry identical
@@ -116,9 +125,8 @@ type accessRecord struct {
 // startAccess opens an access-log record for op (e.g. "publish", "consume");
 // arg is the destination topic, captured in the log when non-empty.
 func startAccess(ctx context.Context, op, arg string) *accessRecord {
-	instruments()
 	inflight := inflightOf(op)
-	activeReqs.Add(ctx, 1, inflight)
+	instruments().activeReqs.Add(ctx, 1, inflight)
 	return &accessRecord{ctx: ctx, op: op, arg: arg, start: time.Now(), inflight: inflight}
 }
 
@@ -135,9 +143,10 @@ func (s *accessRecord) End(err error) {
 		attribute.String("messaging.operation", s.op),
 		attribute.String("status", status),
 	)
-	opTotal.Add(s.ctx, 1, attrs)
-	opDuration.Record(s.ctx, dur.Seconds(), attrs)
-	activeReqs.Add(s.ctx, -1, s.inflight)
+	ins := instruments()
+	ins.opTotal.Add(s.ctx, 1, attrs)
+	ins.opDuration.Record(s.ctx, dur.Seconds(), attrs)
+	ins.activeReqs.Add(s.ctx, -1, s.inflight)
 
 	// Log keys are the metric labels' names, so a dashboard selecting failed
 	// operations lands on the lines that explain them.

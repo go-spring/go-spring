@@ -44,7 +44,7 @@ spring.batch-repository.instances.jobs.key-prefix=myapp:batch:
 spring.batch-repository.instances.jobs.ttl=168h
 
 # The batch runner picks up the repository by name.
-spring.batch.repository=jobs
+spring.batch.repository=redis.jobs
 ```
 
 The `client` property is **required**. Booting without it fails fast — the

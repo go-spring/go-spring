@@ -23,27 +23,28 @@ package loadbalance
 
 import "time"
 
-// Selection is the resolved endpoint-selection policy: the strategy (with its
-// construction parameters, flat) and the outlier-suspension thresholds. A
-// balancer's construction parameters take effect together with a Balancer name
-// change — a rule that only retunes thresholds leaves the current strategy
-// untouched.
+// Selection is the resolved endpoint-selection policy: the strategy (by name),
+// the strategy's own parameters, and the outlier-suspension thresholds. The
+// parameters take effect together with a name change — a rule that only retunes
+// thresholds leaves the current strategy untouched.
 type Selection struct {
 	// Balancer is the strategy name to select endpoints with (e.g.
-	// "least_conn"). Empty means "leave the pool's current strategy alone".
+	// "least_conn"). It names an entry in the process's [Directory]: a built-in
+	// strategy, or one a deployment contributed as a [Factory] bean. Empty means
+	// "leave the pool's current strategy alone".
 	Balancer string `value:"${balancer:=}"`
 
-	// BalancerReplicas is the number of virtual nodes per endpoint for
-	// consistent-hash strategies (0 = the strategy default).
-	BalancerReplicas int `value:"${balancer-replicas:=0}"`
-
-	// BalancerZoneKey is the endpoint metadata key a zone-aware strategy reads
-	// for locality (empty = the loadbalance default).
-	BalancerZoneKey string `value:"${balancer-zone-key:=}"`
-
-	// BalancerDelegate names the strategy a zone-aware balancer delegates the
-	// final choice to (empty = round-robin).
-	BalancerDelegate string `value:"${balancer-delegate:=}"`
+	// Params carries the strategy's own construction parameters — flat, and
+	// opaque to this package: the strategy reads the keys it owns and rejects
+	// the rest (see [Params]). It binds from the `balancer-params` sub-map of a
+	// rule, so a rule reads:
+	//
+	//	balancer: consistent_hash
+	//	balancer-params:
+	//	  replicas: 200
+	//
+	// A strategy with new parameters needs no change here.
+	Params map[string]string `value:"${balancer-params:=}"`
 
 	// OutlierThreshold is the consecutive-failure count that suspends an
 	// endpoint. 0 disables suspension.
@@ -52,13 +53,6 @@ type Selection struct {
 	// OutlierSuspendFor is the cool-down before a suspended endpoint gets a
 	// half-open trial request. Ignored when [Selection.OutlierThreshold] is 0.
 	OutlierSuspendFor time.Duration `value:"${outlier-suspend-for:=0}"`
-}
-
-// BalancerConfig translates the flat selection knobs into the [Config] a
-// strategy factory consumes. It is the only place the flat names meet the
-// factory's parameter struct.
-func (s Selection) BalancerConfig() Config {
-	return Config{Replicas: s.BalancerReplicas, ZoneKey: s.BalancerZoneKey, Delegate: s.BalancerDelegate}
 }
 
 // Selection returns the endpoint-selection policy currently in force.

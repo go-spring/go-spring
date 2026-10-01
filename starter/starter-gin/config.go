@@ -27,7 +27,7 @@ import (
 //
 // Inbound admission (rate-limit / bulkhead / breaker) no longer has a per-server
 // resilience binding here: it flows through the neutral resilience.ClientExecutorFor
-// seam (backed by starter-govern when armed), so an incoming request's protection
+// seam (backed by starter-governance when armed), so an incoming request's protection
 // policy is governed alongside every outbound client and hot-reloads without
 // this starter coupling to cloud/governance. Fault injection stays server-local (it
 // is chaos tooling, not governance).

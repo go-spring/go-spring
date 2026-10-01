@@ -8,7 +8,7 @@ auth) are [etcd documentation](https://etcd.io/docs/)** — everything below is 
 
 **Model**: config is NAMED BLOCKS — each `spring.registry.etcd.<name>.*` block describes ONE etcd
 cluster and becomes ONE backend bean named `etcd.<name>` (`starter.go`). The bean implements BOTH
-sides of the naming idiom: `discovery.Registrar` (write — collected by the `registryServer` from
+sides of the naming idiom: `discovery.Registry` (write — collected by the `registryServer` from
 the [starter-registry](../starter-registry) core, imported transitively, which registers into
 EVERY configured center across backends) and `discovery.Discovery` (read — consumers cite the bean
 name, e.g. `discovery=etcd.main`; the bean is lazy, so a pure provider never pays for the read
@@ -141,11 +141,11 @@ etcdctl get /services/orders/ --prefix
 import starter-registry-etcd (transitively imports starter-registry)
   ├─ per ${spring.registry.etcd.<name>} block: gs.Provide(newEtcdBackend).Name("etcd.<name>")
   │      Module Condition: OnProperty("spring.registry.etcd")       [starter.go]
-  │      Export(As[discovery.Discovery], As[discovery.Registrar]) + Destroy(Close)
+  │      Export(As[discovery.Discovery], As[discovery.Registry]) + Destroy(Close)
   │
   ├─ starter-registry core: gs.Provide(NewServer).Name("registryServer")
   │      Condition: OnProperty("spring.registry.service-name")      [starter-registry/starter.go]
-  │      Registrars []discovery.Registrar — the container collects EVERY backend
+  │      Registries []discovery.Registry — the container collects EVERY backend
   │      bean's registrar (etcd, zookeeper, ... mixed) by slice injection
   │
 gs.Run()

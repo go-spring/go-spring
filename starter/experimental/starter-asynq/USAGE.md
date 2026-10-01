@@ -274,7 +274,7 @@ than the run abandons it (asynq then retries it on the next delivery — asynq s
 
 ### 4.5 Governance guard (optional)
 
-With starter-governance + a `govern` source, open the circuit / set a rate limit on service
+With starter-governance + a configured rules source, open the circuit / set a rate limit on service
 `asynq:<addr>`: `Client.Enqueue` returns the rejection **without touching Redis**; the
 promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 

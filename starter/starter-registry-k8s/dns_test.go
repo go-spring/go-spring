@@ -27,6 +27,17 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
+// newTestObserver builds the observation layer a test's backend block would own.
+// The identity is fixed (center "test"): what these tests exercise is the
+// reporting, not the labelling.
+func newTestObserver() *discovery.Observer {
+	o, err := discovery.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
+}
+
 // fakeResolver is an injectable stand-in for net.Resolver so DNS-mode tests run
 // without a cluster. It serves canned SRV/A answers and lets a test swap them
 // mid-run to simulate a scale event.
@@ -73,7 +84,7 @@ func TestDNS_ResolveSRV(t *testing.T) {
 	}, nil)
 	d := newDNSDiscovery(Config{
 		Mode: ModeDNS, Namespace: "ns", PortName: "grpc", ClusterDomain: "cluster.local",
-	}, f)
+	}, f, newTestObserver())
 
 	eps, err := d.Resolve(context.Background(), "svc")
 	assert.Error(t, err).Nil()
@@ -94,7 +105,7 @@ func TestDNS_ResolveA(t *testing.T) {
 	})
 	d := newDNSDiscovery(Config{
 		Mode: ModeDNS, Namespace: "ns", Port: 6379, ClusterDomain: "cluster.local",
-	}, f)
+	}, f, newTestObserver())
 
 	eps, err := d.Resolve(context.Background(), "redis")
 	assert.Error(t, err).Nil()
@@ -108,7 +119,7 @@ func TestDNS_CacheRefreshesAfterTTL(t *testing.T) {
 	d := newDNSDiscovery(Config{
 		Mode: ModeDNS, Namespace: "ns", Port: 6379,
 		ClusterDomain: "cluster.local", RefreshInterval: 10 * time.Millisecond,
-	}, f)
+	}, f, newTestObserver())
 
 	eps, err := d.Resolve(context.Background(), "redis")
 	assert.Error(t, err).Nil()
@@ -131,7 +142,7 @@ func TestDNS_CacheServesWithinTTL(t *testing.T) {
 	d := newDNSDiscovery(Config{
 		Mode: ModeDNS, Namespace: "ns", Port: 6379,
 		ClusterDomain: "cluster.local", RefreshInterval: time.Hour,
-	}, f)
+	}, f, newTestObserver())
 
 	_, err := d.Resolve(context.Background(), "redis")
 	assert.Error(t, err).Nil()

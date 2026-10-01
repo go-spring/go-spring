@@ -65,12 +65,12 @@ func TestRegisterMapsInstanceParams(t *testing.T) {
 	meta := map[string]string{"zone": "a"}
 
 	assert.Error(t, r.Register(context.Background(), discovery.Instance{
-		ServiceName: "orders", Addr: "10.0.0.5:8080", Weight: -5, Metadata: meta,
+		ServiceName: "orders-register-params", Addr: "10.0.0.5:8080", Weight: -5, Metadata: meta,
 	})).Nil()
 	p := client.lastRegistered()
 	assert.That(t, p.Ip).Equal("10.0.0.5")
 	assert.That(t, p.Port).Equal(uint64(8080))
-	assert.That(t, p.ServiceName).Equal("orders")
+	assert.That(t, p.ServiceName).Equal("orders-register-params")
 	assert.That(t, p.GroupName).Equal("DEFAULT_GROUP")
 	assert.That(t, p.ClusterName).Equal("DEFAULT")
 	assert.That(t, p.Ephemeral).True()
@@ -80,7 +80,7 @@ func TestRegisterMapsInstanceParams(t *testing.T) {
 
 	// Weight 0 is the drain signal and must survive the clamp.
 	assert.Error(t, r.Register(context.Background(), discovery.Instance{
-		ServiceName: "orders", Addr: "10.0.0.5:8080", Weight: 0,
+		ServiceName: "orders-register-params", Addr: "10.0.0.5:8080", Weight: 0,
 	})).Nil()
 	assert.That(t, client.lastRegistered().Weight).Equal(float64(0))
 }
@@ -92,12 +92,12 @@ func TestDeregisterMapsInstanceParams(t *testing.T) {
 	r, client := newTestRegistrar(false)
 
 	assert.Error(t, r.Deregister(context.Background(), discovery.Instance{
-		ServiceName: "orders", Addr: "10.0.0.5:8080",
+		ServiceName: "orders-deregister-params", Addr: "10.0.0.5:8080",
 	})).Nil()
 	p := client.lastDeregistered()
 	assert.That(t, p.Ip).Equal("10.0.0.5")
 	assert.That(t, p.Port).Equal(uint64(8080))
-	assert.That(t, p.ServiceName).Equal("orders")
+	assert.That(t, p.ServiceName).Equal("orders-deregister-params")
 	assert.That(t, p.GroupName).Equal("DEFAULT_GROUP")
 	assert.That(t, p.Ephemeral).True()
 }
@@ -107,7 +107,7 @@ func TestDeregisterMapsInstanceParams(t *testing.T) {
 // advertisement — metadata included — stays as registered.
 func TestUpdateWeightMapsParams(t *testing.T) {
 	r, client := newTestRegistrar(false)
-	in := discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080", Weight: 5, Metadata: map[string]string{"zone": "a"}}
+	in := discovery.Instance{ServiceName: "orders-update-weight", Addr: "10.0.0.5:8080", Weight: 5, Metadata: map[string]string{"zone": "a"}}
 
 	assert.Error(t, r.Register(context.Background(), in)).Nil()
 	assert.Error(t, r.UpdateWeight(context.Background(), in, 0)).Nil()

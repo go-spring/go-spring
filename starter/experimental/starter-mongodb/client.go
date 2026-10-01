@@ -33,7 +33,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -88,7 +88,7 @@ type Client struct {
 
 // serviceLabel derives a stable, human-readable service key for a client, so
 // limiter and breaker state is scoped per MongoDB instance rather than per
-// connection. The same label is what a govern.client.rules[N] rule matches to drive
+// connection. The same label is what a spring.governance.client.rules[N] rule matches to drive
 // this client's endpoint selection (balancer / outlier suspension).
 func serviceLabel(c Config) string {
 	return resilience.ServiceLabel("mongodb", c.ServiceName, c.URI)
@@ -115,11 +115,8 @@ func (d *dialerWrapper) DialContext(ctx context.Context, network, address string
 // is a transparent pass-through). When governance is off — an unarmed manager —
 // the resolved executor is a transparent no-op.
 func (o *Client) Init() error {
-	o.obs.Store(newDBObserver("mongodb"))
+	o.obs.Store(newDBObserver())
 	o.service = serviceLabel(o.cfg)
-	if o.mgr == nil {
-		o.mgr = resilience.NewManager()
-	}
 	exec := fault.WrapClientExecutor(o.mgr.ClientExecutorFor("mongodb", o.service), o.service, o.inj)
 	o.exec = exec
 	// Wrap the current (plain/discovery) dial with the policy and swap it into

@@ -28,7 +28,6 @@ import (
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
-	"go.opentelemetry.io/otel/metric"
 )
 
 // Pool is the wrapper bean redigo pools are injected as. It embeds
@@ -38,14 +37,12 @@ import (
 type Pool struct {
 	*redis.Pool
 
-	cfg      Config                    // address fields feed the governance service label
-	duration metric.Float64Histogram   // db.client.operation.duration; no-op instrument when starter-otel is absent
-	active   metric.Int64UpDownCounter // db.client.active_requests; same
-	exec     resilience.ClientExecutor // armed by ArmGovernance; observe-only when governance is off
-	chain    []CommandInterceptor      // user interceptor chain, first entry outermost; nil when none registered
-	service  string                    // governance service label (stable per pool)
-	lbPool   *loadbalance.Pool         // endpoint-selection pool, nil when discovery is not in effect
-	stop     func()                    // detaches the endpoint-selection binding
+	cfg     Config                    // address fields feed the governance service label
+	exec    resilience.ClientExecutor // armed by ArmGovernance; observe-only when governance is off
+	chain   []CommandInterceptor      // user interceptor chain, first entry outermost; nil when none registered
+	service string                    // governance service label (stable per pool)
+	lbPool  *loadbalance.Pool         // endpoint-selection pool, nil when discovery is not in effect
+	stop    func()                    // detaches the endpoint-selection binding
 }
 
 // backend is the discovery backend the entry's ${discovery} label resolved to,
@@ -89,12 +86,11 @@ func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool,
 	// Arm the standard instrumentation: the command observer and the
 	// instrumented Dial wrap. The observer is unconditional: without
 	// starter-otel the OTel globals are no-ops, so it costs one map lookup per
-	// command. Governance (the resilience executor and the endpoint-selection
-	// binding) is armed separately by [Pool.ArmGovernance], which the gs wiring
-	// calls with the injected beans — see that method for why it is not part of
-	// this pure assembly.
-	w.duration, w.active = newInstruments()
-
+	// command, and its instruments come from the process-wide set (see
+	// [instruments]). Governance (the resilience executor and the
+	// endpoint-selection binding) is armed separately by [Pool.ArmGovernance],
+	// which the gs wiring calls with the injected beans — see that method for why
+	// it is not part of this pure assembly.
 	w.setupDial()
 	return w, nil
 }
@@ -209,12 +205,6 @@ func (p *Pool) UseCommandInterceptor(i ...CommandInterceptor) {
 // way, through the executor's Refresh, and a selection change reaches the pool
 // through its binding. None of it needs a restart.
 func (o *Pool) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) error {
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
-	if lbMgr == nil {
-		lbMgr = loadbalance.NewManager()
-	}
 
 	// Resolution is deferred to call time, so the order of this arming relative
 	// to starter-governance's wiring is irrelevant.
@@ -240,9 +230,7 @@ func (o *Pool) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector, lbMgr
 func (p *Pool) wrapConn(raw redis.Conn) redis.Conn {
 	var layers []CommandInterceptor
 	layers = append(layers, p.chain...)
-	if p.duration != nil {
-		layers = append(layers, observeInterceptor(p.duration, p.active))
-	}
+	layers = append(layers, observeInterceptor())
 	if p.exec != nil {
 		layers = append(layers, resilienceInterceptor(p.exec, p.service))
 	}

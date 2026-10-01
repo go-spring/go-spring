@@ -12,7 +12,7 @@
 （后者负责把 driver 目录收进治理中心）。`init`（starter.go）调用 `sentinel.InitDefault()`
 （失败即 panic —— 源码注释："让配置错误的环境在这里大声失败，而不是等到首次使用"），
 随后把后端贡献为名为 `sentinel` 的 `resilience.Driver` bean。无端口、**无自有配置
-key** —— 由治理文档的 `govern.driver=sentinel` 选中，policy 按服务配。
+key** —— 由治理文档的 `spring.governance.driver=sentinel` 选中，policy 按服务配。
 
 ---
 
@@ -88,9 +88,9 @@ cd starter/starter-governance-sentinel/example && ./check.sh
 #       "composed policy: recovered after 3 attempts ..."、退出码 0
 ```
 
-生产上更常见的是声明式路径：在治理文档里设一次 `govern.driver=sentinel`，此后
+生产上更常见的是声明式路径：在治理文档里设一次 `spring.governance.driver=sentinel`，此后
 每个客户端都经这个后端解析 —— 客户端根本不选驱动：它们注入 `*resilience.Manager` bean
-并调用 `mgr.ClientExecutorFor(system, label)`（见 §2.2）。不设 `govern.driver` 时一切
+并调用 `mgr.ClientExecutorFor(system, label)`（见 §2.2）。不设 `spring.governance.driver` 时一切
 停留在零依赖的 `default` 驱动。
 
 ---
@@ -103,7 +103,7 @@ cd starter/starter-governance-sentinel/example && ./check.sh
 import starter-governance-sentinel
   └─ init(): sentinel.InitDefault()          // 失败即 panic
              gs.Provide(...).Name("sentinel").Export(gs.As[resilience.Driver]())
-             // 容器即驱动目录，govern.driver=sentinel 即选中它
+             // 容器即驱动目录，spring.governance.driver=sentinel 即选中它
 ```
 
 - `sentinelDriver.NewClientExecutor(service, p)`（starter.go）→ `newSentinelExecutor(service, p)`
@@ -124,7 +124,7 @@ import starter-governance-sentinel
 
 `resilience.Manager.ServerExecutorFor(system, service)` 是它的入站孪生，协议 starter 的准入
 中间件用它：同一个 label 在另一条 lane 上解析，构造走 `Driver.NewServerExecutor` 而非
-`Driver.NewClientExecutor`，所以 `govern.driver=sentinel` 一个键覆盖两个方向，而两份配置互不
+`Driver.NewClientExecutor`，所以 `spring.governance.driver=sentinel` 一个键覆盖两个方向，而两份配置互不
 影响。
 
 - 返回持有系统名与 label 的稳定 `managedExecutor`；真正的 executor 在**每次 Execute 时
@@ -200,8 +200,8 @@ policy 并**清空 loaded 集合**。sentinel 的 `LoadRulesOfResource` 会替�
 
 **本模块自有前缀下没有 key。** `grep -rhoE 'value:"[^"]+"' starter-governance-sentinel` 无命中。
 `ClientPolicy` 各字段（`rate-limit`、`error-threshold`、`open-duration`、`max-concurrent`、
-`max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `govern.client.default.*`，某个服务
-单独配用 `govern.client.rules[N].*` —— 经 `ExecutorFor` + `Refresh` 到达本驱动。字段含义见
+`max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `spring.governance.client.default.*`，某个服务
+单独配用 `spring.governance.client.rules[N].*` —— 经 `ExecutorFor` + `Refresh` 到达本驱动。字段含义见
 [cloud/governance/resilience](../../cloud/governance/resilience)，键的排布见
 [`cloud/governance/README.md`](../../cloud/governance/README.md)。
 
@@ -218,7 +218,7 @@ cd starter/starter-governance-sentinel && go test ./...
 
 或：`StarterGovernanceSentinel.NewSentinelDriver()` 必须返回非 nil；import 时的 Info 日志
 "registered sentinel resilience driver"（tag：app 默认）确认 init 已执行。容器侧则由
-`starter-governance` 的驱动目录测试固化（bean 被收集 + `govern.driver=sentinel` 能选中）。
+`starter-governance` 的驱动目录测试固化（bean 被收集 + `spring.governance.driver=sentinel` 能选中）。
 
 ### 4.2 熔断演练（来自 example）
 
@@ -258,7 +258,7 @@ source 推送变更）：下次 Execute 重载规则、限流消失。注意 ref
 |------|----------|------|
 | import 时进程 panic："sentinel init failed" | `sentinel.InitDefault()` 所需环境损坏（配置/日志目录） | 修复环境 —— panic 是刻意的 import 期大声失败（嫌疑 #1）。 |
 | 启动报 `no driver named "sentinel"` | 未 blank-import starter | 加 `import _ "go-spring.org/starter-governance-sentinel"`。 |
-| 消费方仍走内置 resilience | 治理文档的 `govern.driver` 未设为 sentinel | 设 `govern.driver=sentinel` —— 全进程一个开关，一处切换处处生效（嫌疑 #3）。 |
+| 消费方仍走内置 resilience | 治理文档的 `spring.governance.driver` 未设为 sentinel | 设 `spring.governance.driver=sentinel` —— 全进程一个开关，一处切换处处生效（嫌疑 #3）。 |
 | 熔断器从不打开 | 未达 `MinRequestAmount`，或 `ErrorThreshold`/窗口配比不当 | 对照 §2.6 默认值表（MinRequests → 1、窗口 → 1000ms）。 |
 | 配置推送后熔断状态像是被重置 | `Refresh` 清空规则；sentinel 替换规则并重置统计窗口 | 刻意的惰性重载语义（§2.4）。 |
 | sentinel 控制台/指标里服务数翻倍 | bulkhead 挂在 `service$bulkhead` 名下 | 驱动内部命名（嫌疑 #2）—— 按后缀过滤。 |
@@ -282,5 +282,5 @@ source 推送变更）：下次 Execute 重载规则、限流消失。注意 ref
    正常启动错误。
 2. bulkhead 挂在 `service$bulkhead` 后缀名下 —— sentinel 控制台/指标显示双倍服务；
    驱动内部细节泄漏到可观测层。
-3. 驱动选择是全进程的（`govern.driver`），且每个服务在首次 resolve 时闩定，所以
+3. 驱动选择是全进程的（`spring.governance.driver`），且每个服务在首次 resolve 时闩定，所以
    之后改这个 key 不会重建已解析的 executor。

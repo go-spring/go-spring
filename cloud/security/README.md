@@ -75,27 +75,23 @@ if auth.HasAnyAuthority("orders:read") {     // predicates are nil-safe
 
 ### 3. Gating a method
 
-`Require` is a plain decorator — the `@PreAuthorize` equivalent. It reads the
-identity from the context and returns a sentinel the caller maps to a status:
+`Require` is an upfront check — the `@PreAuthorize` equivalent. Call it at the
+top of the method; it reads the identity from the context and returns a
+sentinel the caller maps to a status:
 
 ```go
-err := security.Require("orders:write")(ctx, svc.placeOrder)
-switch {
-case errors.Is(err, security.ErrUnauthenticated): // 401: no verified identity
-case errors.Is(err, security.ErrForbidden):       // 403: authenticated, lacked the authority
+if err := security.Require(ctx, "orders:write"); err != nil {
+    switch {
+    case errors.Is(err, security.ErrUnauthenticated): // 401: no verified identity
+    case errors.Is(err, security.ErrForbidden):       // 403: authenticated, lacked the authority
+    }
 }
 ```
 
-With no authorities, `Require()` degrades to "an authenticated caller is
-required". There is deliberately no shared interceptor-chain protocol: the
-decorator is an ordinary function, so combining cross-cutting concerns is
-ordinary nesting —
-
-```go
-err := security.Require("orders:write")(ctx, func(ctx context.Context) error {
-    return transaction.GlobalTransactional(coord, reg)(ctx, "OrderService.Place", place)
-})
-```
+With no authorities, `Require(ctx)` degrades to "an authenticated caller is
+required". It is an ordinary function: it never wraps the business call, and
+there is deliberately no shared interceptor-chain protocol — the guard is a
+statement at the top of the method.
 
 ## What's in the package
 
@@ -103,13 +99,16 @@ err := security.Require("orders:write")(ctx, func(ctx context.Context) error {
   `Authentication{Principal, Token, Authenticated, Authorities}`, with
   `HasAuthority` / `HasAnyAuthority` / `HasAllAuthorities`.
 - **`TokenValidator`** — the single seam a starter or app implements to plug in
-  JWT verification, opaque-token introspection, etc.
-- **`Require(authorities...)`** — the method-level guard decorator.
+  JWT verification, opaque-token introspection, etc. **`ValidatorFunc`** adapts a
+  plain function to it (the `http.HandlerFunc` idiom) for state-free verifiers.
+- **`Require(ctx, authorities...)`** — the method-level upfront guard.
 - **`WithAuthentication` / `FromContext`** — context propagation, keyed by an
   unexported type so nothing else collides.
 - **Shared pure helpers** so per-family middleware cannot drift:
-  `ParseBearerToken`, `NewCSRFToken` / `MatchCSRFToken` (constant-time
-  compare), `DefaultCSRFCookieName` / `DefaultCSRFHeaderName`.
+  `ParseBearerToken`, `BearerChallenge` (the `WWW-Authenticate` value, with the
+  `BearerError*` codes), `DefaultSafeMethods`, `NewCSRFToken` /
+  `MatchCSRFToken` (constant-time compare), `DefaultCSRFCookieName` /
+  `DefaultCSRFHeaderName`.
 - **Error sentinels** `ErrUnauthenticated` (→ 401) and `ErrForbidden` (→ 403).
 - **`TLSConfig`** — the shared `tls.*` property block every TLS-speaking
   starter embeds; see the next section.
@@ -182,7 +181,7 @@ family's own concern (`starter-http-server` ships one; gin uses
   family; only the security-sensitive logic those shells share is exposed here
   as pure helpers, so behavior cannot drift between families. The method-level
   `Require` lives here — the same authority set, two gates: a route gate in the
-  server's idiom, a decorator gate in this package.
+  server's idiom, an upfront check at the top of the method.
 
 ### Constraints (do not break)
 
@@ -193,6 +192,9 @@ family's own concern (`starter-http-server` ships one; gin uses
   request through with no `Authentication` attached when the token is absent —
   the "authority decision deferred to a later filter" case. An **invalid**
   token always yields 401; a missing token only 401s when `required=true`.
+- **A validator that returns no error must return a verified identity.** The
+  shells fail closed on a nil or `Authenticated=false` result, so the contract's
+  "error, never a fake identity" clause is enforced rather than merely documented.
 - **CORS wildcard vs credentials**: with `AllowCredentials=true`, do not emit
   `Access-Control-Allow-Origin: *` — the spec forbids it. Echo the concrete
   origin instead, and add `Vary: Origin`.
@@ -219,8 +221,8 @@ family's own concern (`starter-http-server` ships one; gin uses
   container beans by starters; a middleware takes the `TokenValidator` value it
   was wired with and validates each request through it — no name-keyed global
   lookup at request or wiring time.
-- **No annotation scanning.** `@PreAuthorize` is replaced by an explicit
-  `security.Require(...)` wrapping the call.
+- **No annotation scanning.** `@PreAuthorize` is replaced by the explicit
+  `security.Require(ctx, ...)` upfront check.
 
 A JWT resource-server starter (`starter-security-jwt`) contributes a concrete
 `TokenValidator`; an authorization server starter (`starter-oauth2-server`)

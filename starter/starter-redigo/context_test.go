@@ -97,7 +97,6 @@ func TestDoContextSpanCarriesContextAttributes(t *testing.T) {
 		_ = tp.Shutdown(context.Background())
 	}()
 
-	duration, active := newInstruments()
 	inner := &ctxStubConn{reply: "v"}
 
 	// The user's interceptor never sees a span: it annotates the ctx and
@@ -108,7 +107,7 @@ func TestDoContextSpanCarriesContextAttributes(t *testing.T) {
 			return next(ctx, cmd, args)
 		}
 	})
-	c := NewConn(inner, user, observeInterceptor(duration, active))
+	c := NewConn(inner, user, observeInterceptor())
 
 	ctx := observability.WithContextAttributes(context.Background(),
 		attribute.String("deployment", "canary"))

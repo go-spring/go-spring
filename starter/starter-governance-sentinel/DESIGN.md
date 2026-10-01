@@ -7,7 +7,7 @@
 [alibaba/sentinel-golang][sentinel] as the production driver for
 `cloud/governance/resilience`. It contributes one bean — the `sentinel`-named
 `resilience.Driver` — and opens no port; alongside `starter-governance`, a blank
-import is enough for the governance center to resolve `govern.driver=sentinel`
+import is enough for the governance center to resolve `spring.governance.driver=sentinel`
 for every client.
 
 [sentinel]: https://github.com/alibaba/sentinel-golang

@@ -17,9 +17,6 @@
 package StarterBigCache
 
 import (
-	"context"
-
-	"github.com/allegro/bigcache/v3"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/governance/fault"
@@ -29,9 +26,6 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
 
 func init() {
@@ -59,16 +53,11 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.bigcache.instances."+name+".driver:=${spring.bigcache.default.driver:=?}}")),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container (the normal
-				// case) and are absent from a container without it. Without the
-				// "?" gs would treat an absent bean as a wiring error and the app
-				// would not boot, turning "governance is off" into "governance
-				// must be imported" — which is not the contract: (*Cache).Init
-				// treats a nil bean as an unarmed authority, a transparent
-				// pass-through.
-				gs.IndexArg(4, gs.TagArg("?")),
-				gs.IndexArg(5, gs.TagArg("?")),
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(4, gs.TagArg("")),
+				gs.IndexArg(5, gs.TagArg("")),
 			).Name(name).Init((*Cache).Init).Destroy((*Cache).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
@@ -86,8 +75,9 @@ func init() {
 }
 
 // newClient creates a new BigCache instance based on the provided configuration,
-// wrapped so Get/Set/Delete flow through the module-local observe layer, and registers OTel
-// gauges for its statistics, labeled by the instance name.
+// wrapped so Get/Set/Delete flow through the module-local observe layer. The
+// cache-statistics gauges are registered by Init, which is where the
+// registration is paired with the Destroy that takes it away again.
 //
 // mgr and inj are the governance beans the container injects (both nil in a
 // standalone, non-gs call); they are retained on the Cache for Init
@@ -104,64 +94,8 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 		log.Errorf(ctx.Context, log.TagAppDef, "bigcache: create instance failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create bigcache instance")
 	}
-	// Surface hits/misses/collisions/capacity as OTel gauges. Safe no-op when
-	// starter-otel is absent (the OTel globals are no-ops then).
-	registerMetrics(name, client)
 	log.Infof(ctx.Context, log.TagAppDef, "bigcache instance initialized, name=%s shards=%d", name, c.Shards)
 	// Return the wrapper; gs calls Init (InitMethod) after this returns to
 	// build the observer + executor from the injected governance beans.
 	return &Cache{BigCache: client, name: name, mgr: mgr, inj: inj}, nil
-}
-
-// metricsMeter is the OTel meter all bigcache instruments register under. It
-// follows the starter's module path, matching the convention used by other
-// starters (e.g. starter-gin's "go-spring.org/starter-gin").
-const metricsMeter = "go-spring.org/starter-bigcache"
-
-// statReader reads one snapshot value from a BigCache instance.
-type statReader func(*bigcache.BigCache) int64
-
-// statInstrument describes one gauge to register.
-type statInstrument struct {
-	name string
-	desc string
-	read statReader
-}
-
-// statInstruments lists the bigcache statistics surfaced as gauges. The five
-// counters come from Stats() (cumulative); entries/capacity come from Len()/
-// Capacity() (current). All are gauges rather than counters because
-// [bigcache.BigCache.ResetStats] can reset the counters, breaking monotonicity.
-var statInstruments = []statInstrument{
-	{name: "bigcache.hits", desc: "Number of successfully found keys", read: func(c *bigcache.BigCache) int64 { return c.Stats().Hits }},
-	{name: "bigcache.misses", desc: "Number of not found keys", read: func(c *bigcache.BigCache) int64 { return c.Stats().Misses }},
-	{name: "bigcache.delete_hits", desc: "Number of successfully deleted keys", read: func(c *bigcache.BigCache) int64 { return c.Stats().DelHits }},
-	{name: "bigcache.delete_misses", desc: "Number of not deleted keys", read: func(c *bigcache.BigCache) int64 { return c.Stats().DelMisses }},
-	{name: "bigcache.collisions", desc: "Number of key hash collisions", read: func(c *bigcache.BigCache) int64 { return c.Stats().Collisions }},
-	{name: "bigcache.entries", desc: "Current number of stored entries", read: func(c *bigcache.BigCache) int64 { return int64(c.Len()) }},
-	{name: "bigcache.capacity", desc: "Maximum number of entries the cache can hold", read: func(c *bigcache.BigCache) int64 { return int64(c.Capacity()) }},
-}
-
-// registerMetrics registers OTel observable gauges that surface a BigCache
-// instance's statistics (hits, misses, collisions) and capacity, labeled with
-// the instance name so multiple instances (e.g. "hot", "cold") are
-// distinguishable in a metrics backend. Each gauge pulls its value on
-// collection via a callback - no per-operation overhead and no background
-// goroutine.
-//
-// When starter-otel is imported the gauges are exported through the global
-// meter provider it installs (prometheus pull, OTLP, ...); when it is absent
-// the OTel globals are no-ops, so this call is safe and cheap to always make.
-func registerMetrics(name string, c *bigcache.BigCache) {
-	meter := otel.Meter(metricsMeter)
-	attrs := metric.WithAttributes(attribute.String("cache.name", name))
-	for _, inst := range statInstruments {
-		_, _ = meter.Int64ObservableGauge(inst.name,
-			metric.WithDescription(inst.desc),
-			metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
-				o.Observe(inst.read(c), attrs)
-				return nil
-			}),
-		)
-	}
 }

@@ -79,17 +79,38 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   spring.<family>.instances.<name>.*    one instance; <name> is the bean name
   ```
 
-  - **The bean name is the bare instance name — with one exception.** The gorm
-    family is five separate dialect modules (`starter-gorm-mysql`,
-    `-postgres`, `-sqlite`, `-sqlserver`, `-clickhouse`) that all register beans
-    of the *same* type, `gormcore.DB`. Beans are keyed by (name, type), so two
-    dialects carrying an instance of the same name would register the same pair
-    and the container would refuse to start. gorm therefore qualifies the bean
-    name as `<dialect>.<name>` (`gormcore.Module` takes the qualifier from the
-    config prefix's tail, overridable via `Dialect.BeanPrefix`). Every other
-    client family owns one bean type per family, so bare names cannot collide
-    and the rule stands. The config key stays `instances.<name>` either way —
-    only the bean name carries the qualifier.
+  - **The bean name carries an implementation qualifier when the returned type
+    is a replaceable seam.** The criterion is "**will this type have more than
+    one implementation**", not "how many does it have now".
+
+    A seam (a type under `cloud/` that is a neutral, wholesale-replaceable
+    contract: `session.SessionStore`, `batch.JobRepository`,
+    `discovery.Discovery`, `resilience.Driver`, `loadbalance.Factory`, ...; or a
+    framework interface such as `gs.Server`) → **every implementation's bean
+    name must carry the implementation name**, as `<impl>.<instance>` when the
+    family has instances. Beans are keyed by (name, type), so a second
+    implementation carrying an instance of the same name would register the same
+    pair and the container would refuse to start. The gorm family's five dialect
+    modules (`starter-gorm-mysql`, `-postgres`, `-sqlite`, `-sqlserver`,
+    `-clickhouse`) all register `gormcore.DB`, so they qualify the bean name as
+    `<dialect>.<name>` (`gormcore.Module` takes the qualifier from the config
+    prefix's tail, overridable via `Dialect.BeanPrefix`); registry's
+    `etcd.<name>` / `nacos.<name>` and session-redis' / batch-redis' `redis.<name>`
+    are the same shape.
+
+    Not a seam (a type private to the starter, which no second implementation
+    will claim, such as `*redis.Client`) → the bare instance name is fine. And
+    an "one constructor, one bean" implementation need not call `Name` at all:
+    gs derives the default bean name from the constructor function's name
+    (`gs_bean/bean.go`), which is already a natural qualifier — which is how the
+    kratos / goframe / hertz server beans live.
+
+    The qualifier follows **what the implementation is**, not how many exist —
+    gorm's bean was `mysql.default` back when mysql was its only dialect.
+    Judging by count forces a rename of the first member the moment a second
+    arrives, and that rename is triggered by someone else adding a starter,
+    which is the hardest thing to anticipate. The config key stays
+    `instances.<name>` in every case — only the bean name carries the qualifier.
 
   Two buckets because a family's settings have exactly two levels, and splitting
   them structurally is what makes an instance name unable to ever collide with a
@@ -101,8 +122,8 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   (Modeled on Spring Cloud Stream, which solves the same problem the same way:
   `spring.cloud.stream.default.*` + `spring.cloud.stream.bindings.<name>.*`.)
   - `default` holds only **overridable defaults**. Non-overridable policy does
-    not belong there; process-wide policy has its own top-level prefix
-    (`govern.*`).
+    not belong there; process-wide policy lives in its own namespace
+    (`spring.governance.*`).
   - The `instances` bucket is the sole activation signal, so gate registration on
     it (`gs.OnProperty("spring.X.instances")`) and bind with
     `conf.BindEach(p, "${spring.X.instances}", ...)`. A process that sets only
@@ -115,8 +136,8 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     there (the `<backend>` segment is the framework's, and the user's `<name>` is
     one level deeper). Forces that are not per-instance-overridable do **not**
     belong in `default` either — same-family process policy like registry's
-    identity sits at the family prefix, process-wide policy at its own top-level
-    prefix (`govern.*`).
+    identity sits at the family prefix, process-wide policy in its own namespace
+    (`spring.governance.*`).
   - The invariant either way: **never let a user-chosen name share a level with a
     framework key.** A single-instance family (`spring.http.server`) keeps its keys
     directly under the family prefix because it has no instance names at all.
@@ -135,6 +156,22 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   seam through which service discovery is injected (the driver builds the
   dialer). Optional capabilities go on *separate* interfaces (e.g. go-redis's
   `ClusterDriver`) so existing custom drivers keep compiling.
+- **A client starter that needs governance integrates it by default.** The
+  starter blank-imports `starter-governance` in its own **non-test** code, so
+  `*resilience.Manager` / `*loadbalance.Manager` / `*fault.Injector` are always
+  in the container; it injects them as REQUIRED (`gs.IndexArg(N, gs.TagArg(""))`),
+  never as nullable (`"?"`). The beans are part of the client's contract — it is
+  governable, observable and routable by construction — and `starter-governance`
+  is completely inert until a rule source is bound, so integrating it changes no
+  default behaviour. Turning governance off is
+  `spring.governance.enabled=false` (or binding no source), **not the absence of
+  a bean**. A nullable injection would turn "the user forgot the import" into a
+  silent degradation (governance looks on, is not) — exactly the error class this
+  removes. Regression guard:
+  `starter-bigcache`'s `TestBlankImportProvidesGovernanceBeans`.
+  (Blank-import it in non-test code only; `gs.RunTest` forces every injection
+  nullable via `spring.force-autowire-is-nullable`, which is gs's behaviour, not
+  an exception to this rule.)
 - **Startup connection check.** Where the client library allows it, the
   constructor performs a bounded probe (e.g. Redis `PING` with `DialTimeout`) so
   a misconfiguration surfaces at boot, not on first request.
@@ -200,7 +237,7 @@ facilities.
 - **`starter-governance-sentinel`** contributes one process-wide bean — the
   `sentinel`-named `resilience.Driver` — into the governance center's driver
   directory. Imported alongside `starter-governance`, the governance document's
-  `govern.driver=sentinel` switches every executor at once — inbound admission
+  `spring.governance.driver=sentinel` switches every executor at once — inbound admission
   included, since one `Driver` answers for both directions. No port, no keys of
   its own.
 
@@ -290,6 +327,21 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   `spring.kafka.instances.xxx` vs `spring.kafka-sarama.instances.xxx`. This avoids bean conflicts
   when both implementations happen to be imported, and makes the config file
   self-documenting.
+- **Everything the framework reads lives under `spring.` — with one registered
+  exception.** A key bound by a starter, a `cloud/` package, or the gs core
+  carries the `spring.` root (`spring.kafka.instances.*`,
+  `spring.actuator.podinfo.labels-path`, `spring.profiles.active`). An
+  application's **own** fields do not: they use a prefix of the application's
+  choosing, never `spring.` — `spring.` means "the framework defined this key",
+  so a starter that writes into it must earn the name, and an app that writes
+  into it claims authority it does not have. The single exception is
+  `logging.*`, read by `gs_app` *before* the container is refreshed: a log
+  system that only took effect after wiring could not report a wiring failure,
+  so it keeps its own top-level root. It is the only entry in
+  `scripts/check-config-namespace.sh`'s `ALLOW_ROOTS`; adding one must be
+  deliberate and recorded there and here. Keys derived from environment
+  variables (`GS_POD_NAME` -> `pod.name`) are not configuration keys at all and
+  are out of scope.
 - **Fail-fast over silent defaults.** Required inputs (addresses, credentials,
   mode-specific fields) are validated at startup with a clear `errutil.Explain`
   message rather than defaulted to something that half-works.
@@ -315,7 +367,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   have no native mechanism of their own. The reasoning: the RPC frameworks each
   ship an incompatible registration abstraction (kitex's `registry.Registry`,
   kratos's `registry.Registrar`, dubbo-go's config-only registries, go-zero's
-  `discov.EtcdConf`, ...), so a Go-Spring `Registrar` on top would just become a
+  `discov.EtcdConf`, ...), so a Go-Spring `Registry` on top would just become a
   second translation layer bridging our abstraction into each framework's — the
   very coupling that makes "unify it" a net loss. Evaluation as of 2026-07-18:
   - *Have native registration + discovery — use theirs (opt-in):* `kitex`
@@ -377,6 +429,30 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   the OTel globals or bridges the library's internal logs into go-spring `log`
   via a `SetLogger` hook; it must also add a go-spring `FileLogger` sink or the
   console output is lost.
+- **The instrument set is shared; the observation is not.** A component resolves
+  its instruments **once per process**, not once per instance: the OTel SDK keys
+  an instrument by name/description/unit/kind and hands every later creation the
+  first one, so a duplicate creation is a no-op that silently keeps the first
+  description. Duplicating is therefore not the risk — **registering** is.
+  - *A registration belongs to whoever holds the value.* An instance registers
+    its own observation of a shared observable gauge and unregisters it from the
+    same destructor that tears the instance down; a process-level value is
+    registered once, by the component itself. A registration held anywhere else
+    outlives its value — it reports a dead instance, and keeps it reachable.
+  - *Register a gauge; never create it with a callback.*
+    `metric.WithInt64Callback` applies a callback to the **first** creation of a
+    descriptor only and drops every later one without an error. It is correct
+    only while exactly one creation happens per process — a condition no call
+    site can see, and whose violation shows up as a missing series rather than a
+    failed boot. `RegisterCallback` is additive and reversible.
+  - *Same name means the same descriptor.* Name, description and unit must match
+    on every creation, or the later one is ignored together with its description.
+  - *A tracer is never cached* in a struct field or a package variable: a
+    captured `otel.Tracer` stops forwarding once the global provider is set
+    again. Resolve it at the use site.
+  - *State in an instrument set is membership at most* — which instances are
+    live — never measurements. A shared observer that buffers data is a global
+    data store with no owner to bound it.
 - **Component observability follows one rule: same kind → same name, same
   instrument type, same completeness, and a name states the capability, not the
   implementation** (`db.client.operation.duration`, never
@@ -443,21 +519,43 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     shared list: requiring it of a library that has no such callback could only
     produce fabricated data. The checker holds the registered list and fails if a
     registered member stops emitting it, or if an unregistered member starts.
-- **Registry backends report at their own seams.** A registry starter calls
-  `cloud/discovery`'s reporting functions (`RegisterAttempt`,
-  `DeregisterAttempt`, `WeightChange`, `Synced`) with its backend name, passing
-  `discovery.ReasonSelfHeal` for a background re-registration. Report where BOTH
-  the initial publish and the self-healing path funnel through (etcd
-  `publish`, zookeeper `createNode`, consul `upsert`), not around the
-  `discovery.Registrar` interface: the self-heal path never crosses that
-  interface, and it is the one that leaves an instance serving while no longer
-  discoverable. The metric and span definitions live once in
-  `cloud/discovery/observe.go` — backends never name an instrument themselves.
+- **Registry backends report at their own seams, through their own observer.**
+  Each configured block builds one `discovery.Observer` at construction — from
+  its backend name and its block name — and reports through its methods
+  (`RegisterAttempt`, `DeregisterAttempt`, `WeightChange`, `Synced`), passing
+  `discovery.ReasonSelfHeal` for a background re-registration; the block's
+  destructor closes the observer, which drops its gauges. The observer is a
+  layer the block owns, so the state behind those gauges lives exactly as long
+  as the block: two blocks in one process cannot contaminate each other, and
+  nothing is left to reset between tests. Report where BOTH the initial publish
+  and the self-healing path funnel through (etcd `publish`, zookeeper
+  `createNode`, consul `upsert`), not around the `discovery.Registry`
+  interface: the self-heal path never crosses that interface, and it is the one
+  that leaves an instance serving while no longer discoverable. The metric and
+  span definitions live once in `cloud/discovery/observe.go` — backends never
+  name an instrument themselves.
   A **discovery-only** backend of this family (`starter-registry-k8s`, where the
-  platform registers Pods for you) has no such seam to report at: it defines
-  `obsSystem` and reports `discovery.Synced` on both sync outcomes, and emits
-  none of the three registrar operations. Registered as an exception in
+  platform registers Pods for you) has no such seam to report at: it builds the
+  same observer and reports `Synced` on both sync outcomes, and emits none of the
+  three registrar operations. Registered as an exception in
   `scripts/check-observability.sh` (its registry section).
+  The log lines around those operations belong to the backend, so each one
+  writes its fields out. **A line that explains a discovery metric or span must
+  carry all of these, under exactly these names, or it does not join it:**
+
+  | Field | Value |
+  |---|---|
+  | `system` | the backend name (`etcd`, `nacos`, ...) — take it from `Observer.System()`, the same value the metric's own `system` attribute carries |
+  | `center` | the configured block (`${spring.registry.<backend>.<name>}`) — from `Observer.Center()`. One process publishes the same service into every configured center, so without this the readings of two clusters are one indistinguishable series |
+  | `service` | the name being registered or synced |
+  | `operation` | `register` / `deregister` / `update_weight` / `sync` |
+  | `reason` | `initial` / `self_heal` — registration only |
+  | `status` | `ok` / `failed`, taken from `discovery.StatusOf(err)` — the vocabulary is not the `error` other families use, which is exactly why the value comes from the function rather than from hand |
+  | `error` | the error itself, via `log.Err` |
+
+  The caller supplies its own message and its own detail (the key, the action
+  taken); the fields above cover only what identifies the operation, which is
+  what the join needs.
 
 ## 4. Adding a New Starter — Checklist
 
@@ -466,7 +564,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
 3. Choose the config prefix — use a unique `${spring.<name>}` prefix that
    identifies *this* implementation. If you are a second implementation of an
    existing capability, pick `<capability>-<impl>` (e.g. `spring.kafka-sarama`),
-   do not reuse the existing prefix.
+   do not reuse the existing prefix. The `spring.` root is not optional (§3);
+   `scripts/check-config-namespace.sh` enforces it at every binding site.
 4. Client? → `gs.Group` multi-instance, driver registry, required address with
    fail-fast, startup probe, per-instance `Destroy`, and the one-concern-one-file
    skeleton (§2.2): `config.go` / `starter.go` / `discovery.go` /
@@ -475,6 +574,9 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    module on `gs.OnProperty("spring.<family>.instances")`, and read family-wide
    values from `${spring.<family>.default.*}` inside each entry's tags. Never bind
    directly on the family prefix — `scripts/check-config-namespace.sh` enforces it.
+   **Returned type a replaceable seam?** → qualify the bean name with the
+   implementation (`<impl>.<instance>`, see §2.2); otherwise a second
+   implementation's same-named instance registers the same (name, type) key.
    **Dials through discovery?** → build the pool as the same three-piece set every
    time: a `loadbalance.Tracker` attached, `Pool.Pick` paired with `Pool.Complete`
    at the dial site (feeding the dial outcome — without it the tracker is blind),
@@ -494,7 +596,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
 7. Registry starter? → define `obsSystem` and report at the seams the initial
    publish and the self-healing path share (`discovery.RegisterAttempt` with
    `ReasonInitial`/`ReasonSelfHeal`, `DeregisterAttempt`, `WeightChange`, and
-   `discovery.Synced` on both sync outcomes); never wrap the `Registrar`
+   `discovery.Synced` on both sync outcomes); never wrap the `Registry`
    interface instead — the self-heal path does not cross it. A discovery-only
    backend of the family (`starter-registry-k8s`) has no registrar: it defines
    `obsSystem` and reports `discovery.Synced` only, and is registered as an

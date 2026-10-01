@@ -171,6 +171,7 @@ func reachableClient(t *testing.T) *api.Client {
 // as unpublished.
 func TestRegisterFailureIsReported(t *testing.T) {
 	r := &consulRegistrar{
+		obs:        newTestObserver(),
 		client:     closedPortClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
@@ -190,12 +191,13 @@ func TestRegisterFailureIsReported(t *testing.T) {
 }
 
 // The TTL heartbeat's self-healing escalation (reRegister) never passes through
-// the Registrar interface, so this asserts it is reported anyway — with
+// the Registry interface, so this asserts it is reported anyway — with
 // reason=self_heal, and with the gauge following each attempt's outcome.
 func TestSelfHealIsReported(t *testing.T) {
 	in := discovery.Instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1}
 	id := serviceID(in)
 	r := &consulRegistrar{
+		obs:        newTestObserver(),
 		client:     closedPortClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
@@ -236,6 +238,7 @@ func TestDeregisterRepeatIsANoOp(t *testing.T) {
 	client, err := api.NewClient(&api.Config{Address: srv.URL})
 	assert.Error(t, err).Nil()
 	r := &consulRegistrar{
+		obs:        newTestObserver(),
 		client:     client,
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
@@ -255,6 +258,7 @@ func TestDeregisterAndWeightChangeAreReported(t *testing.T) {
 	in := discovery.Instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
 	id := serviceID(in)
 	r := &consulRegistrar{
+		obs:        newTestObserver(),
 		client:     reachableClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},

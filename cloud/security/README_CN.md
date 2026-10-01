@@ -69,25 +69,20 @@ if auth.HasAnyAuthority("orders:read") {     // 判定方法是 nil-safe 的
 
 ### 3. 方法级守卫
 
-`Require` 是普通装饰器——`@PreAuthorize` 的等价物。它从 context 读身份，并返回
-调用方映射为状态码的哨兵错误：
+`Require` 是前置校验——`@PreAuthorize` 的等价物。在方法开头调用它，从 context
+读身份，并返回调用方映射为状态码的哨兵错误：
 
 ```go
-err := security.Require("orders:write")(ctx, svc.placeOrder)
-switch {
-case errors.Is(err, security.ErrUnauthenticated): // 401:无已验证身份
-case errors.Is(err, security.ErrForbidden):       // 403:已认证但缺该权限
+if err := security.Require(ctx, "orders:write"); err != nil {
+    switch {
+    case errors.Is(err, security.ErrUnauthenticated): // 401:无已验证身份
+    case errors.Is(err, security.ErrForbidden):       // 403:已认证但缺该权限
+    }
 }
 ```
 
-不传权限时，`Require()` 退化为“必须有已认证调用者”。这里刻意不建共享拦截器链
-协议：装饰器就是普通函数，组合横切关注点就是普通嵌套——
-
-```go
-err := security.Require("orders:write")(ctx, func(ctx context.Context) error {
-    return transaction.GlobalTransactional(coord, reg)(ctx, "OrderService.Place", place)
-})
-```
+不传权限时，`Require(ctx)` 退化为“必须有已认证调用者”。它是普通函数，不包裹业
+务调用，也不建共享拦截器链协议：守卫就是方法开头的一条语句。
 
 ## 包内有什么
 
@@ -95,12 +90,14 @@ err := security.Require("orders:write")(ctx, func(ctx context.Context) error {
   `Authentication{Principal, Token, Authenticated, Authorities}`，配
   `HasAuthority` / `HasAnyAuthority` / `HasAllAuthorities`。
 - **`TokenValidator`**——starter 或应用接入 JWT 校验、opaque-token 内省等的
-  唯一缝隙。
-- **`Require(authorities...)`**——方法级守卫装饰器。
+  唯一缝隙。**`ValidatorFunc`** 把普通函数适配成它（`http.HandlerFunc` 那套），
+  给无状态校验用。
+- **`Require(ctx, authorities...)`**——方法级前置守卫。
 - **`WithAuthentication` / `FromContext`**——用未导出 key 类型做 context 传
   递，防止碰撞。
 - **共享纯函数**，保证各家族中间件行为不漂移：`ParseBearerToken`、
-  `NewCSRFToken` / `MatchCSRFToken`（常量时间比较）、
+  `BearerChallenge`（`WWW-Authenticate` 取值，配 `BearerError*` 错误码）、
+  `DefaultSafeMethods`、`NewCSRFToken` / `MatchCSRFToken`（常量时间比较）、
   `DefaultCSRFCookieName` / `DefaultCSRFHeaderName`。
 - **错误哨兵** `ErrUnauthenticated`（→ 401）与 `ErrForbidden`（→ 403）。
 - **`TLSConfig`**——所有走 TLS 的 starter 共享的 `tls.*` 属性块；见下一节。
@@ -165,8 +162,8 @@ grpc，看到的同名旋钮行为一致。
   `starter-oauth2-server`）。
 - HTTP 中间件、路由级 `Authorize` 与 CORS 随各 server 家族走；只有这些壳共用
   的安全敏感逻辑以纯函数形式暴露在本包，保证各家族行为不漂移。方法级
-  `Require` 留在本包——同一权限集，两道闸：路由闸用 server 惯用法，装饰器闸在
-  本包。
+  `Require` 留在本包——同一权限集，两道闸：路由闸用 server 惯用法，方法开头的
+  前置检查在本包。
 
 ### 约束（禁止破坏）
 
@@ -176,6 +173,9 @@ grpc，看到的同名旋钮行为一致。
 - **`Authenticate(v, required=false)`**（各家族壳）无 token 时必须让请求原样
   透传，不挂 `Authentication`——“authority 决策由后续过滤器决定”。**非法**
   token 一律 401；**缺失** token 仅在 `required=true` 时 401。
+- **validator 返回 nil error 就必须返回已验证身份。** 壳对 nil 或
+  `Authenticated=false` 的结果 fail closed——契约里“宁可报错，也不返回假身份”
+  这句因此是被执行的，不只是被写下的。
 - **CORS 通配符与 credentials**：`AllowCredentials=true` 时不能发
   `Access-Control-Allow-Origin: *`——规范禁止。要回显具体 origin 并加
   `Vary: Origin`。
@@ -196,8 +196,8 @@ grpc，看到的同名旋钮行为一致。
 - **无 validator 驱动注册表。** validator 由 starter 作为容器 bean 贡献；中间
   件拿它装配时接到的 `TokenValidator` 值做每请求校验——装配期与请求期都不做按
   名的全局查找。
-- **无注解扫描。** `@PreAuthorize` 由显式的 `security.Require(...)` 装饰器取
-  代。
+- **无注解扫描。** `@PreAuthorize` 由显式的 `security.Require(ctx, ...)` 前置检
+  查取代。
 
 JWT 资源服务器 starter（`starter-security-jwt`）提供具体 `TokenValidator`；授
 权服务器 starter（`starter-oauth2-server`）签发中间件校验的令牌。

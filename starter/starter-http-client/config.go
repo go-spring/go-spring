@@ -42,7 +42,7 @@ type Config struct {
 	// a fixed address. It may also be set ALONGSIDE Addr: Addr then pins the
 	// direct address while ServiceName remains the (stable) governance service
 	// label — so switching an entry between direct and discovery addressing does
-	// not silently change the key govern.client.rules match on.
+	// not silently change the key spring.governance.client.rules match on.
 	ServiceName string `value:"${service-name:=}"`
 
 	// Discovery names the discovery backend bean that resolves ServiceName.
@@ -63,9 +63,9 @@ type Config struct {
 // in the governance rules document (starter-governance), matched by this
 // entry's service label. That includes the load-balancing strategy
 // (`balancer`) and outlier suspension (`outlier-threshold` /
-// `outlier-suspend-for`) — write them under govern.client.rules[N], not here.
+// `outlier-suspend-for`) — write them under spring.governance.client.rules[N], not here.
 //
-// Keep govern retry counts at 0 unless requests are idempotent: the client may
+// Keep governance retry counts at 0 unless requests are idempotent: the client may
 // issue POSTs and other non-idempotent verbs, and a retry re-sends them.
 
 // validate enforces the addr-or-service-name fail-fast rule shared by client

@@ -40,7 +40,7 @@ import (
 	// it. starter-governance registers the four beans this file injects
 	// (*resilience.Manager, *loadbalance.Manager, *fault.Injector, *governance.
 	// Center), so a deployment gets governance wiring by importing a client
-	// starter alone; turning governance OFF is govern.enabled=false (or binding
+	// starter alone; turning governance OFF is spring.governance.enabled=false (or binding
 	// no rule source), not the absence of the starter. The injected parameters
 	// are still nullable, so a container that somehow lacks these beans degrades
 	// to a transparent pass-through instead of failing to boot.
@@ -70,17 +70,12 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.redigo.instances."+name+".driver:=${spring.redigo.default.driver:=?}}")),
 				gs.IndexArg(3, gs.TagArg("${spring.redigo.instances."+name+".discovery:=${spring.redigo.default.discovery:=none}}?")),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container, which is the
-				// normal case, and are absent from a container without it. Without
-				// the "?" gs would treat an absent bean as a wiring error and the
-				// app would not boot — turning "governance is off" into "governance
-				// must be imported", which is not the contract. ArmGovernance
-				// treats a nil bean as an unarmed authority, i.e. a transparent
-				// pass-through.
-				gs.IndexArg(4, gs.TagArg("?")),
-				gs.IndexArg(5, gs.TagArg("?")),
-				gs.IndexArg(6, gs.TagArg("?")),
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(4, gs.TagArg("")),
+				gs.IndexArg(5, gs.TagArg("")),
+				gs.IndexArg(6, gs.TagArg("")),
 			).Name(name).Destroy(destroyPool)
 
 			// Contribute a health indicator for this instance unless the user

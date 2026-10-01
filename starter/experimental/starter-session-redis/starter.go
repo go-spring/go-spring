@@ -26,9 +26,16 @@
 // the session backend from Redis to any other distributed store is therefore a
 // blank-import swap — no business code changes.
 //
-// The Store bean is registered under its config name and exported as
-// session.SessionStore, so an application injects it by interface and hands it
-// to a session.Manager to serve shared, cross-replica HTTP sessions:
+// The Store bean is named "<impl>.<name>" — here "redis.<name>", the config
+// instance's name qualified by this backend — because session.SessionStore is a
+// replaceable seam that more than one session backend can contribute. A bare
+// instance name would let this backend and a second one register the same
+// (name, session.SessionStore) pair and fail the container's start-up
+// duplicate check. See starter/DESIGN.md §2.2.
+//
+// It is exported as session.SessionStore, so an application injects it by
+// interface and hands it to a session.Manager to serve shared, cross-replica
+// HTTP sessions:
 //
 //	gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {
 //	    mgr := session.NewManager(store, session.Options{})
@@ -47,6 +54,11 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
+// beanQualifier names this backend inside the session.SessionStore seam: a
+// store's bean is "<beanQualifier>.<config name>", matching the gorm and
+// registry families' <impl>.<name> shape (starter/DESIGN.md §2.2).
+const beanQualifier = "redis"
+
 func init() {
 	gs.Module(gs.OnProperty("spring.session.redis.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.session.redis.instances}", func(name string, c Config) error {
@@ -61,7 +73,7 @@ func init() {
 			// TagArg injects the *redis.Client bean by name — this is the seam
 			// that ties the store to a specific redis instance.
 			r.Provide(newStore, gs.ValueArg(c), gs.TagArg(c.Client)).
-				Name(name).
+				Name(beanQualifier + "." + name).
 				Export(gs.As[session.SessionStore]()).
 				Caller(1)
 			return nil

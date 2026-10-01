@@ -65,22 +65,28 @@ expiry). bigcache ignores it and uses the global `LifeWindow` set at
 construction. A backend that cannot honor per-entry ttl ignores the argument
 and says so in its own docs; it does not panic.
 
-## Metrics
+## Observability
 
 `New` wraps every backend in an observability decorator, so every operation —
-typed or promoted — records one metric under the `go-spring.org/cloud/cache`
-meter:
+typed or promoted — records the same signals under the
+`go-spring.org/cloud/cache` meter/tracer:
 
 - `cache.operation.total` — counter by exclusive `status` per `operation`
   (`get`: `hit`/`miss`/`error`; `set`/`delete`: `ok`/`error`). Summed over
   status it equals the operations executed; hit rate is
   `rate(get.hit) / rate(get.hit + get.miss)`.
+- `cache.operation.duration` — histogram over the same `operation` × `status`.
+  It is recorded here and not only by the backend clients because their
+  `db.client.operation.duration` cannot split a hit from a miss, and the two
+  have different latency profiles.
+- A client span per operation, named `get`/`set`/`delete`, carrying
+  `cache.operation`, `cache.key` and `cache.status`.
 
-The key never appears in a metric. No duration is recorded — an operation's
-latency is the backend client's, which the backends already report as
-`db.client.operation.duration` — and no logs either: cache calls are too
-frequent for a per-call line, and backend errors keep being reported by the
-backends' own instrumentation.
+The unit of observation is the byte layer: a get that finds the bytes is a hit
+even if a codec above this layer then fails to decode them. The key never
+appears in a metric (unbounded cardinality) — spans only. No logs: cache calls
+are too frequent for a per-call line, and backend errors keep being reported by
+the backends' own instrumentation.
 
 ## Implementing a backend
 

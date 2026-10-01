@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync"
 	"time"
 
 	"go-spring.org/cloud/governance/resilience"
@@ -42,6 +43,35 @@ func WithStore(s Store) Option { return func(c *coordinator) { c.store = s } }
 // starter that opens otel spans.
 func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
 
+// instrumentSet bundles the metrics a saga records: one per process, resolved
+// lazily on first use so the set binds to whichever OTel global provider is
+// current then, and immutable afterwards. It holds no per-saga state.
+type instrumentSet struct {
+	// outcomes counts saga terminal states — the event counter of the metrics
+	// rules: a saga's outcome is a rare, semantically major event, named after
+	// itself rather than riding the total/duration operation template. The saga
+	// ID is unbounded cardinality and stays out of the attributes.
+	outcomes metric.Int64Counter
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
+	in := &instrumentSet{}
+	in.outcomes, _ = otel.Meter("go-spring.org/cloud/experimental/transaction").
+		Int64Counter("transaction.saga.outcome.total",
+			metric.WithDescription("Saga terminal states, by status"),
+			metric.WithUnit("{saga}"))
+	return in
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
 // NewCoordinator returns the bundled in-process [Coordinator]: it runs a saga's
 // steps synchronously and, on the first failure, compensates the already-
 // succeeded steps in reverse order. With no options it uses no store and no
@@ -51,23 +81,12 @@ func NewCoordinator(opts ...Option) Coordinator {
 	for _, opt := range opts {
 		opt(c)
 	}
-	c.outcomes, _ = otel.Meter("go-spring.org/cloud/experimental/transaction").
-		Int64Counter("transaction.saga.outcome.total",
-			metric.WithDescription("Saga terminal states, by status"),
-			metric.WithUnit("{saga}"))
 	return c
 }
 
 type coordinator struct {
 	store    Store
 	observer Observer
-
-	// outcomes counts saga terminal states — the event counter of the metrics
-	// rules: a saga's outcome is a rare, semantically major event, named after
-	// itself rather than riding the total/duration operation template. The saga
-	// ID is unbounded cardinality and stays out of the attributes. Built at
-	// construction so an OTel SDK installed later still receives the records.
-	outcomes metric.Int64Counter
 }
 
 // completedStep records a step that succeeded, so compensation can replay it in
@@ -250,7 +269,7 @@ func (c *coordinator) persistRunning(ctx context.Context, s Saga, completed []co
 // log line too — a saga's outcome is the key lifecycle event an operator
 // greps for, and the span alone is not greppable text.
 func (c *coordinator) finish(ctx context.Context, s Saga, res *Result, completed []completedStep) {
-	c.outcomes.Add(ctx, 1, metric.WithAttributes(
+	instruments().outcomes.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("status", res.Status.String()),
 	))
 	if res.Status == StatusCommitted {

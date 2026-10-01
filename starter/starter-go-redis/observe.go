@@ -29,8 +29,11 @@ package StarterGoRedis
 import (
 	"context"
 	"fmt"
-	"go-spring.org/stdlib/strutil"
+	"sync"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/log"
@@ -43,10 +46,6 @@ import (
 // backend — the family's shared vocabulary, not a per-file choice.
 const redisSystem = "redis"
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set, shared with the other DB backends.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 // accessTag is the static access-log tag for Redis commands, registered once
 // at package init so logger config can address it (_app_redis_access).
 var accessTag = log.RegisterAppTag("redis", "access")
@@ -56,20 +55,38 @@ var accessTag = log.RegisterAppTag("redis", "access")
 // instance and would flood the log with uninteresting success lines.
 var skipOps = map[string]struct{}{"ping": {}}
 
-// newObserveHook builds the family's operation instruments from whatever meter
-// provider is current — at attach time, not package init, so an SDK installed
-// later than this package's init still receives the records.
-func newObserveHook() *observeHook {
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever meter provider is current then,
+// and immutable afterwards. It holds no per-client state — the db.system /
+// db.operation / status labels travel with each record, not here.
+type instrumentSet struct {
+	duration metric.Float64Histogram
+	active   metric.Int64UpDownCounter
+}
+
+// instruments is the one instrument set this starter uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+// buildInstruments builds the family's operation instruments from whatever meter
+// provider is current — resolved on first use, not at package init, so an SDK
+// installed later than this package's init still receives the records.
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/starter-go-redis")
 	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of redis client operations"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
 	active, _ := m.Int64UpDownCounter("db.client.active_requests",
 		metric.WithDescription("Number of in-flight redis client operations"),
 		metric.WithUnit("{request}"))
-	return &observeHook{duration: duration, active: active}
+	return &instrumentSet{duration: duration, active: active}
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // inflightOf names the in-flight gauge's dimensions. The +1 taken when a
 // command starts and the -1 taken when it ends must carry identical
@@ -92,17 +109,15 @@ func statusOf(err error) string {
 
 // applyObservability attaches the access-log + operation-metric hook to client.
 func applyObservability(client redis.UniversalClient) {
-	client.AddHook(newObserveHook())
+	client.AddHook(&observeHook{})
 }
 
 // observeHook emits a per-command access log and the family's duration /
 // in-flight instruments around every Redis command and pipeline; it sits
 // outside the resilience hook (see Client.Init) so one log line covers the
-// whole retry loop.
-type observeHook struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
+// whole retry loop. Its records go through the process-wide instrument set (see
+// [instruments]), so it carries no state.
+type observeHook struct{}
 
 var _ redis.Hook = (*observeHook)(nil)
 
@@ -116,7 +131,7 @@ func (h *observeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 		}
 		start := time.Now()
 		inflight := inflightOf(op)
-		h.active.Add(ctx, 1, inflight)
+		instruments().active.Add(ctx, 1, inflight)
 		err := next(ctx, cmd)
 		h.record(ctx, op, argOf(cmd), start, nilAsSuccess(err), inflight)
 		return err
@@ -127,7 +142,7 @@ func (h *observeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.
 	return func(ctx context.Context, cmds []redis.Cmder) error {
 		start := time.Now()
 		inflight := inflightOf("pipeline")
-		h.active.Add(ctx, 1, inflight)
+		instruments().active.Add(ctx, 1, inflight)
 		err := next(ctx, cmds)
 		h.record(ctx, "pipeline", "", start, nilAsSuccess(err), inflight)
 		return err
@@ -154,12 +169,12 @@ func argOf(cmd redis.Cmder) string {
 func (h *observeHook) record(ctx context.Context, op, arg string, start time.Time, err error, inflight metric.MeasurementOption) {
 	status := statusOf(err)
 	dur := float64(time.Since(start).Nanoseconds()) / 1e6
-	h.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+	instruments().duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		attribute.String("db.system", redisSystem),
 		attribute.String("db.operation", op),
 		attribute.String("status", status),
 	))
-	h.active.Add(ctx, -1, inflight)
+	instruments().active.Add(ctx, -1, inflight)
 
 	if err != nil {
 		log.Warn(ctx, accessTag,

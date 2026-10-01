@@ -107,6 +107,9 @@ if !a.HasAuthority("admin") {
 * **框架无关**:因为它包裹的是普通 `http.Handler`,无论 gin/echo/hertz/net-http
   serve 路由,同一个 authenticator 都能用。
 * **可选认证**:设 `required=false` 让未认证请求放行且不挂身份,把决策交给方法级守卫。
-* **编程式校验**:`*Authenticator` 实现 `security.TokenValidator`,可在 HTTP 路径外
-  (如 gRPC/WebSocket 传输)校验原始 token 字符串。
-* **多实例**:在 `spring.security.jwt.instances.*` 下定义多个条目,用 `gs.TagArg("...")` 按名选取。
+* **编程式校验**:每个实例都以配置子键为名导出为 `security.TokenValidator`,
+  非 HTTP 调用方(或任一 server 家族的 `Authenticate` 中间件)注入的是中立缝隙
+  (`Validator security.TokenValidator `autowire:"api"``),而非本包的
+  `*Authenticator`;具体类型仍可注入,供 `Wrap` 使用。
+* **多实例**:在 `spring.security.jwt.instances.*` 下定义多个条目,按名选取 ——
+  缝隙用 `autowire:"<name>"`,具体 authenticator 用 `gs.TagArg("...")`。

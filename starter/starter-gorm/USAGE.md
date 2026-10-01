@@ -28,7 +28,7 @@ demo/
 ├── dao.go
 ├── conf/
 │   ├── app.properties
-│   └── govern.yaml
+│   └── governance.yaml
 ```
 
 **go.mod** (module deps that matter):
@@ -148,14 +148,14 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime fault injection / breaker / retry) ------------------
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.error-threshold=20
-govern.client.default.open-duration=5s
-govern.client.default.max-retries=1
-govern.client.default.attempt-timeout=500ms
-# Endpoint selection rides the same label: govern.client.rules[N].balancer /
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.error-threshold=20
+spring.governance.client.default.open-duration=5s
+spring.governance.client.default.max-retries=1
+spring.governance.client.default.attempt-timeout=500ms
+# Endpoint selection rides the same label: spring.governance.client.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for for "gorm:mysql:orders-db" drive the
 # entry's pool in place (see cloud/governance/README.md §3.1).
 ```
@@ -229,7 +229,7 @@ gorm:query processor chain
   2. gorm:query  ← REPLACED by the resilience wrapper:
         resilience.Run(ctx, exec, op)
           ├─ admission (rate limit / bulkhead, if configured)
-          ├─ fault injector (govern.client.fault.* — may short-circuit the attempt)
+          ├─ fault injector (spring.governance.client.fault.* — may short-circuit the attempt)
           ├─ timeout / breaker / retry envelope
           └─ the ORIGINAL gorm:query body: builds SQL, executes, applies
              gorm's own logger (slow-query warn, see slow-threshold)
@@ -354,8 +354,8 @@ chain (it calls `sqlDB.PingContext` directly, health.go:31-38).
 Using the governance config from §1 plus a file source (see starter-governance)
 or the example-load layout (`starter-gorm-mysql/example-load`):
 
-1. Start the app with `govern.client.fault.enabled=false`; baseline queries succeed.
-2. Flip `govern.client.fault.enabled=true` (+ `rate`, `error`) — the governance source
+1. Start the app with `spring.governance.client.fault.enabled=false`; baseline queries succeed.
+2. Flip `spring.governance.client.fault.enabled=true` (+ `rate`, `error`) — the governance source
    hot-reloads.
 3. Faulted attempts short-circuit before the SQL runs: the injected error lands
    on `tx.Error`, the breaker counts it, and the observe layer still records the
@@ -385,7 +385,7 @@ endpoint and watch `OpenConnections`/`InUse`/`WaitCount` under load
 | Injection error "not a simple value"/type mismatch | Injecting `*gorm.DB` instead of the wrapper | Autowire the shared `*gormcore.DB` bean; it embeds `*gorm.DB`. |
 | No spans/metrics/access log | starter-otel not imported, or `observe.enabled=false` | Import starter-otel; check the per-instance kill switch — it removes the plugin entirely. |
 | Slow-query lines are plain text | `slow-threshold` routes GORM's warn output through go-spring.org/log, but the message body is GORM's one-line text | Filter by message; for structured slow logs use the access log instead. |
-| Queries rejected with rate-limited/circuit-open errors | Governance resilience engaged (or fault fired) | Intended protection; check `govern.*` config and the fault drill steps (§4.4). |
+| Queries rejected with rate-limited/circuit-open errors | Governance resilience engaged (or fault fired) | Intended protection; check `spring.governance.*` config and the fault drill steps (§4.4). |
 | Stale connection errors after hours | LB/firewall dropping idle TCP; `conn-max-lifetime=0` | Set `conn-max-lifetime` below the infrastructure's idle cut. |
 | `breakers trip on legitimate "not found"` — they don't | `gorm.ErrRecordNotFound` treated as success | By design (callbacks.go:29-30); only real errors feed the breaker. |
 

@@ -23,7 +23,7 @@
 //	import _ "go-spring.org/starter-governance-sentinel"
 //
 // which registers the backend as a bean named "sentinel". Selecting it is then a
-// one-line change to the governance document — govern.driver=sentinel — with no
+// one-line change to the governance document — spring.governance.driver=sentinel — with no
 // code change and no per-starter key: the center resolves the driver centrally
 // and every client picks it up through the same seam. This is the whole point of
 // the abstraction/driver split. The bundled zero-dependency "default" driver

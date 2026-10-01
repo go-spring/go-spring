@@ -152,7 +152,7 @@ gs.Run()
 `db.WithContext(ctx).First(&g, 1)`：
 
 1. gorm 的 `gorm:query` processor 执行 —— 但 gormcore 的 `ApplyCallbacks` 已把它
-   *替换*为在实例 resilience executor（治理规则 `govern.*` 的 timeout/retry/breaker，放火时
+   *替换*为在实例 resilience executor（治理规则 `spring.governance.*` 的 timeout/retry/breaker，放火时
    还有 fault 注入器）之下运行的包装。`gorm.ErrRecordNotFound` 视为成功，"无行"
    不会触发熔断（`starter-gorm/resilience/callbacks.go:runGuard`）。
 2. observe 插件的 `before_query` 开 span + in-flight 指标

@@ -48,7 +48,7 @@ directory the center resolves the configured name against. `Driver` has TWO
 methods — `NewClientExecutor(service, Policy)` for outbound and
 `NewServerExecutor(service, ServerPolicy)` for inbound — because the two directions do
 not share a model, and a sentinel-style backend maps them onto different native
-primitives. One object still answers for both, so `govern.driver=sentinel`
+primitives. One object still answers for both, so `spring.governance.driver=sentinel`
 remains a single key that switches the whole process. The bundled engine answers
 to `"default"` without a bean, via `NewDefaultDriver(nil)`; it projects an
 `ServerPolicy` onto its `ClientPolicy` engine (`ServerPolicy.AsPolicy`), which is exact for
@@ -155,7 +155,7 @@ sentinel driver from `starter/starter-governance-sentinel`.
 - **The container is the driver directory.** This package holds no registry:
   a backend is contributed as a bean named after itself, exported as
   `Driver`, and the governance wiring bean collects every such bean into a
-  name-keyed map. `govern.driver` selects one, resolved through
+  name-keyed map. `spring.governance.driver` selects one, resolved through
   that directory — the same "container as directory" shape `discovery`
   and the client starter `Driver`s use. The bundled builtin answers to
   `"default"` without a bean, so nothing has to contribute it.

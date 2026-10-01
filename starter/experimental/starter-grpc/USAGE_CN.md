@@ -149,28 +149,29 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- 治理（准入 + fault；从该文件热加载）--------------------------------------
-govern.source.file.path=conf/govern.yaml
+spring.governance.source.file.path=conf/governance.yaml
 ```
 
-**conf/govern.yaml**（fault 演练见 §4.3；准入在 resilience 规则里）：
+**conf/governance.yaml**（fault 演练见 §4.3；准入在 resilience 规则里）：
 
 ```yaml
-govern:
-  enabled: true
-  # 按服务的 resilience 规则；服务 label = "grpc:{addr}"（见 admission.go）。
-  # 入站（本服务）：准入 + 放火演练，都读 server 块
-  server:
-    rules:
-      - service: "grpc::9494"   # label = "grpc:{addr}"（admission.go）
-        rate-limit: 100         # QPS 上限；超限 → codes.ResourceExhausted
-        max-concurrent: 50      # 舱壁；超限 → codes.ResourceExhausted
-    fault:
-      enabled: false            # 改成 true 即可不重启"放火"
-      scope: loadtest           # 只影响带 x-loadtest 标记的流量
+spring:
+  governance:
+    enabled: true
+    # 按服务的 resilience 规则；服务 label = "grpc:{addr}"（见 admission.go）。
+    # 入站（本服务）：准入 + 放火演练，都读 server 块
+    server:
       rules:
-        - service: "grpc:/EchoService/Echo"   # 规则 label = "grpc:{FullMethod}"
-          rate: 0.2
-          error: timeout
+        - service: "grpc::9494"   # label = "grpc:{addr}"（admission.go）
+          rate-limit: 100         # QPS 上限；超限 → codes.ResourceExhausted
+          max-concurrent: 50      # 舱壁；超限 → codes.ResourceExhausted
+      fault:
+        enabled: false            # 改成 true 即可不重启"放火"
+        scope: loadtest           # 只影响带 x-loadtest 标记的流量
+        rules:
+          - service: "grpc:/EchoService/Echo"   # 规则 label = "grpc:{FullMethod}"
+            rate: 0.2
+            error: timeout
 ```
 
 **验证**（与示例断言同构）：
@@ -268,11 +269,11 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 - 仅靠 service config 选策略：`grpc.WithDefaultServiceConfig(
   StarterGrpc.LoadBalancingConfig(strategy))`。balancer 名为 `gs_round_robin`、`gs_least_conn`、
   `gs_consistent_hash`、`gs_weighted`、`gs_zone_aware`。它们在 init 预注册，**初始不启用驱逐**；
-  用一条治理规则统一配置：`govern.client.default.outlier-threshold` / `.outlier-suspend-for`
-  （它们解析的是进程级默认；要显式定向就写 `govern.client.rules[N].service=grpc:client`）。
+  用一条治理规则统一配置：`spring.governance.client.default.outlier-threshold` / `.outlier-suspend-for`
+  （它们解析的是进程级默认；要显式定向就写 `spring.governance.client.rules[N].service=grpc:client`）。
   规则里的 `balancer` 会**覆盖**所有内置 `gs_*` 名字的 service config 选择——picker 每次挑选都重读，
   所以 push 完下一笔 RPC 就走新策略，不用重连。`balancer` 留空 = 仍由 service config 决定；写错
-  名字 = 被忽略。由于标签是进程级的，配 `grpc:client`（或 `govern.client.default.balancer`）会**同时**改掉
+  名字 = 被忽略。由于标签是进程级的，配 `grpc:client`（或 `spring.governance.client.default.balancer`）会**同时**改掉
   所有内置客户端——这是这条 seam 的钝角所在。经 `RegisterBalancer` 注册的自定义名字不受影响：
   它们按设计保留自己的策略。
 - 按调用提示：`WithHashKey`（consistent-hash 亲和）、`WithZone`（zone 亲和）。
@@ -344,7 +345,7 @@ example-otel 端到端验证走 Jaeger API
 
 ### 4.3 fault 演练 — 热切换、不重启（fault.go）
 
-1. 以 `govern.yaml` 中 `fault.enabled: false` 启动。
+1. 以 `governance.yaml` 中 `fault.enabled: false` 启动。
 2. 打基线流量 → 全部正常。
 3. 把文件里 `fault.enabled` 改为 true——拦截器持有注入的 `*fault.Injector`，治理中心就地替换
    其配置，改动在下一个 RPC 生效，无需重启。
@@ -362,7 +363,7 @@ grpcurl -plaintext -d '{"message":"x"}' :9494 EchoService/Echo                  
 ### 4.4 准入演练（admission.go）
 
 服务 label 为 `grpc:{addr}` → `grpc::9494`。加一条规则
-（`govern.client.rules[n].service=grpc::9494`、`rate-limit=...`）把限流压到流量之下：拒绝以
+（`spring.governance.client.rules[n].service=grpc::9494`、`rate-limit=...`）把限流压到流量之下：拒绝以
 `codes.ResourceExhausted`（限流/舱壁）或 `codes.Unavailable`（熔断开启）呈现——
 `mapAdmissionError` 保证消费方可按 code 分支。被包裹的 observe-resilience executor 自身
 对熔断/拒绝打 counter/histogram。**不要**给入站配 retry：已产生副作用的 handler 无法重放
@@ -390,7 +391,7 @@ handler panic → `codes.Internal` "panic in {FullMethod}: ..."，并经共享 g
 | tracing/metrics "开了"但没有导出 | 未 import starter-otel——OTel 全局是无声 no-op | 加 import（照 example-otel）。 |
 | 拦截器配置不生效 | 前缀写错：是 `observer.*`，不是 `interceptor.*`（example-otel 的 conf 就带这个死 key） | 用 `spring.grpc.server.observer.tracing/metrics.enabled`。 |
 | 客户端 TLS 握手被拒、证书报错 | 配了 `tls.ca-file`——那会开启 **mTLS**（`RequireAndVerifyClientCert`） | 单向 TLS 就删掉它，否则给客户端发证。 |
-| 一切正常但 fault/准入无效果 | 未 import starter-governance 或未配 `govern.source`——seam 直通 | 加 import 并把 `govern.source.file.path` 指向文件。 |
+| 一切正常但 fault/准入无效果 | 未 import starter-governance 或未配 `spring.governance.source`——seam 直通 | 加 import 并把 `spring.governance.source.file.path` 指向文件。 |
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` 低于报文 | 调大上限。 |
 | stream RPC 绕过限流 | 准入设计上只覆盖 unary | 用用户 stream 拦截器 bean 防护（注入为 grpc.StreamServerInterceptor）。 |
 | GOAWAY / 连接抖动 | 激进的 `keepalive.time` 对上低频 ping 的客户端 | grpc keepalive 语义；放宽服务端参数。 |

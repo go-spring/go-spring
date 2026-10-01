@@ -32,13 +32,23 @@ import (
 // larger ring; 100 is a common, balanced default.
 const defaultReplicas = 100
 
-func init() {
-	Register(ConsistentHash, func(cfg Config) (Balancer, error) {
-		if err := cfg.only("replicas"); err != nil {
-			return nil, err
-		}
-		return NewConsistentHash(cfg.Replicas), nil
-	})
+// ParamReplicas is the parameter name the consistent-hash strategy reads for its
+// virtual-node count; it is the key a rule writes under `balancer-params`.
+const ParamReplicas = "replicas"
+
+// consistentHashFactory is the [Factory] behind the [ConsistentHash] name. Its
+// only parameter is [ParamReplicas].
+type consistentHashFactory struct{}
+
+func (consistentHashFactory) Build(_ Directory, p *Params) (Balancer, error) {
+	replicas, err := p.Int(ParamReplicas, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.Done(); err != nil {
+		return nil, err
+	}
+	return NewConsistentHash(replicas), nil
 }
 
 // consistentHash keeps a hash ring cached against the current endpoint set.

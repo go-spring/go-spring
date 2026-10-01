@@ -90,8 +90,7 @@ type fakeSubConn struct {
 // retuned by governance, which a unit test does not arm).
 func newTestPickerBuilder(t *testing.T) *gsPickerBuilder {
 	t.Helper()
-	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
-	assert.That(t, err).Nil()
+	bal := loadbalance.NewRoundRobin()
 	return &gsPickerBuilder{defaultBal: bal, tracker: loadbalance.NewTracker(loadbalance.TrackerConfig{
 		Threshold:  5,
 		SuspendFor: 30 * time.Second,
@@ -228,8 +227,7 @@ func TestPollLoop_PushesChanges(t *testing.T) {
 // favors the first. governed mirrors what init passes for the built-in names.
 func governedPicker(t *testing.T, governed bool) (balancer.Picker, *fakeSubConn, *fakeSubConn) {
 	t.Helper()
-	bal, err := loadbalance.New(loadbalance.RoundRobin, loadbalance.Config{})
-	assert.That(t, err).Nil()
+	bal := loadbalance.NewRoundRobin()
 	pb := &gsPickerBuilder{
 		defaultBal: bal,
 		tracker:    loadbalance.NewTracker(loadbalance.TrackerConfig{}),
@@ -281,8 +279,7 @@ func TestPicker_GovernedStrategyOverride(t *testing.T) {
 	assert.Number(t, counts[a.addr]).Equal(20)
 
 	// A pushed rule swaps the strategy in place: weighted follows the 9:1 weights.
-	weighted, err := loadbalance.New(loadbalance.Weighted, loadbalance.Config{})
-	assert.That(t, err).Nil()
+	weighted := loadbalance.NewWeighted()
 	governedBal.Store(&weighted)
 	counts = countPicks(t, picker, 100)
 	assert.That(t, counts[a.addr] > 80).True()
@@ -299,8 +296,7 @@ func TestPicker_GovernedStrategyOverride(t *testing.T) {
 // process-wide rule.
 func TestPicker_CustomNameIgnoresGovernanceOverride(t *testing.T) {
 	defer governedBal.Store(nil)
-	weighted, err := loadbalance.New(loadbalance.Weighted, loadbalance.Config{})
-	assert.That(t, err).Nil()
+	weighted := loadbalance.NewWeighted()
 	governedBal.Store(&weighted)
 
 	picker, a, _ := governedPicker(t, false)

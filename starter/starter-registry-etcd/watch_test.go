@@ -70,6 +70,7 @@ func TestWatchLoopReportsCancelAndReArms(t *testing.T) {
 
 	f := &fakeWatchSource{}
 	d := &etcdDiscovery{
+		obs:    newTestObserver(),
 		client: f, keyPrefix: "/services/",
 		bgCtx: bgCtx, entries: map[string]*serviceEntry{},
 	}
@@ -104,6 +105,7 @@ func TestWatchLoopReportsClosedStream(t *testing.T) {
 	defer cancel()
 
 	d := &etcdDiscovery{
+		obs:    newTestObserver(),
 		client: &closedStreamSource{}, keyPrefix: "/services/",
 		bgCtx: bgCtx, entries: map[string]*serviceEntry{},
 	}

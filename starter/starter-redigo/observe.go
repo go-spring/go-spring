@@ -19,9 +19,12 @@ package StarterRedigo
 import (
 	"context"
 	"fmt"
-	"go-spring.org/stdlib/strutil"
 	"strings"
+	"sync"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -30,10 +33,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
-
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
 
 // accessTag is the static log tag for the redigo access log.
 var accessTag = log.RegisterAppTag("redigo", "access")
@@ -53,20 +52,38 @@ var skipOps = map[string]struct{}{"PING": {}}
 // backend — the family's shared vocabulary, not a per-file choice.
 const redisSystem = "redis"
 
-// newInstruments builds the db.* instruments from whatever meter provider is
-// current — created per pool at construction, not at package init, so an SDK
-// installed after this package's init still receives the records.
-func newInstruments() (metric.Float64Histogram, metric.Int64UpDownCounter) {
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever meter provider is current then,
+// and immutable afterwards. It holds no per-pool state — the db.system /
+// db.operation / status labels travel with each record, not here.
+type instrumentSet struct {
+	duration metric.Float64Histogram
+	active   metric.Int64UpDownCounter
+}
+
+// instruments is the one instrument set this starter uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+// buildInstruments builds the db.* instruments from whatever meter provider is
+// current — resolved on first use, not at package init, so an SDK installed
+// after this package's init still receives the records.
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/starter-redigo")
 	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of redis client operations"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
 	active, _ := m.Int64UpDownCounter("db.client.active_requests",
 		metric.WithDescription("Number of in-flight redis client operations"),
 		metric.WithUnit("{request}"))
-	return duration, active
+	return &instrumentSet{duration: duration, active: active}
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // statusOf names the outcome the way the family's metric label and log field
 // expect — the same two words the other DB backends use.
@@ -85,7 +102,7 @@ func statusOf(err error) string {
 // paths. The span sits OUTSIDE the resilience layer, so one Execute (with any
 // retries the policy drives) is covered by a single span. Skipped ops pass
 // through untouched.
-func observeInterceptor(duration metric.Float64Histogram, active metric.Int64UpDownCounter) CommandInterceptor {
+func observeInterceptor() CommandInterceptor {
 	return func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (reply interface{}, err error) {
 			if _, skip := skipOps[strings.ToUpper(cmd)]; skip {
@@ -97,7 +114,7 @@ func observeInterceptor(duration metric.Float64Histogram, active metric.Int64UpD
 				attribute.String("db.system", redisSystem),
 				attribute.String("db.operation", strings.ToLower(cmd)),
 			)
-			active.Add(ctx, 1, inflight)
+			instruments().active.Add(ctx, 1, inflight)
 			ctx, span := otel.Tracer(tracerName).Start(ctx, cmd,
 				trace.WithSpanKind(trace.SpanKindClient),
 				trace.WithAttributes(
@@ -110,7 +127,7 @@ func observeInterceptor(duration metric.Float64Histogram, active metric.Int64UpD
 				span.SetStatus(codes.Error, err.Error())
 			}
 			span.End()
-			record(ctx, duration, active, inflight, cmd, statement, len(args) > 0, start, err)
+			record(ctx, inflight, cmd, statement, len(args) > 0, start, err)
 			return reply, err
 		}
 	}
@@ -120,15 +137,15 @@ func observeInterceptor(duration metric.Float64Histogram, active metric.Int64UpD
 // command. The log level carries the outcome: an error at Warn, a success
 // that names its key at Debug (lazy — the common case is uninteresting), and
 // a keyless success (ECHO, FLUSHALL, SELECT, ...) at Info.
-func record(ctx context.Context, duration metric.Float64Histogram, active metric.Int64UpDownCounter, inflight metric.MeasurementOption, cmd, statement string, hasArgs bool, start time.Time, err error) {
+func record(ctx context.Context, inflight metric.MeasurementOption, cmd, statement string, hasArgs bool, start time.Time, err error) {
 	status := statusOf(err)
 	dur := float64(time.Since(start).Nanoseconds()) / 1e6
-	duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+	instruments().duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		attribute.String("db.system", redisSystem),
 		attribute.String("db.operation", strings.ToLower(cmd)),
 		attribute.String("status", status),
 	))
-	active.Add(ctx, -1, inflight)
+	instruments().active.Add(ctx, -1, inflight)
 
 	// Log keys are the metric labels' names, so a dashboard selecting failed
 	// commands lands on the lines that explain them.

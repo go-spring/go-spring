@@ -57,16 +57,11 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.memcached.instances."+name+".driver:=${spring.memcached.default.driver:=?}}")),
 				gs.IndexArg(4, gs.TagArg("${spring.memcached.instances."+name+".discovery:=${spring.memcached.default.discovery:=none}}?")),
-				// The governance beans are NULLABLE injections: they exist
-				// whenever starter-governance is in the container (the normal
-				// case) and are absent from a container without it. Without the
-				// "?" gs would treat an absent bean as a wiring error and the app
-				// would not boot, turning "governance is off" into "governance
-				// must be imported" — which is not the contract: (*Client).Init
-				// treats a nil bean as an unarmed authority, a transparent
-				// pass-through.
-				gs.IndexArg(5, gs.TagArg("?")),
-				gs.IndexArg(6, gs.TagArg("?")),
+				// The governance beans are REQUIRED: this starter blank-imports
+				// starter-governance, so "governance off" is spring.governance.enabled=false,
+				// never an absent bean.
+				gs.IndexArg(5, gs.TagArg("")),
+				gs.IndexArg(6, gs.TagArg("")),
 			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.

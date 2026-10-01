@@ -73,6 +73,10 @@ type etcdDiscovery struct {
 	// bgCtx anchors the background watchers for the backend's lifetime.
 	bgCtx context.Context
 
+	// obs is the backend block's observability layer; it carries the identity
+	// (system, center) every reported sync and log line is labelled with.
+	obs *discovery.Observer
+
 	mu      sync.Mutex // guards entries
 	entries map[string]*serviceEntry
 }
@@ -109,7 +113,7 @@ func (d *etcdDiscovery) fetch(ctx context.Context, prefix string) ([]discovery.E
 	if err != nil {
 		return nil, err
 	}
-	return kvsToEndpoints(resp.Kvs), nil
+	return kvsToEndpoints(d.obs, resp.Kvs), nil
 }
 
 // Resolve returns the current instance set for name. A key's existence is the
@@ -123,13 +127,13 @@ func (d *etcdDiscovery) Resolve(ctx context.Context, name string, opts ...discov
 	if !e.seeded {
 		eps, err := d.fetch(ctx, d.servicePrefix(name))
 		if err != nil {
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			return nil, errutil.Explain(err, "registry-etcd: get %q failed", name)
 		}
 		e.eps, e.seeded = eps, true
 		// The seed is this service's first confirmed snapshot; reporting it
 		// starts the freshness clock before any watch event arrives.
-		discovery.Synced(obsSystem, name, nil)
+		d.obs.Synced(name, nil)
 		go d.watchLoop(name, e)
 	}
 	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
@@ -156,9 +160,16 @@ func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
 			// failed: nothing to report and nothing to re-arm.
 			return
 		}
-		discovery.Synced(obsSystem, name, err)
+		d.obs.Synced(name, err)
 		log.Error(context.Background(), starterTag, append(
-			discovery.SyncFailedFields(obsSystem, name, err),
+			[]log.Field{
+				log.String("system", d.obs.System()),
+				log.String("center", d.obs.Center()),
+				log.String("service", name),
+				log.String("operation", "sync"),
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+			},
 			log.Msgf("registry-etcd: watch %q ended; re-arming in %s", prefix, backoff),
 		)...)
 		select {
@@ -185,9 +196,16 @@ func (d *etcdDiscovery) drainWatch(name string, e *serviceEntry, prefix string, 
 		eps, err := d.fetch(ctx, prefix)
 		cancel()
 		if err != nil {
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			log.Warn(context.Background(), starterTag, append(
-				discovery.SyncFailedFields(obsSystem, name, err),
+				[]log.Field{
+					log.String("system", d.obs.System()),
+					log.String("center", d.obs.Center()),
+					log.String("service", name),
+					log.String("operation", "sync"),
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+				},
 				log.Msgf("registry-etcd: refresh %q failed (keeping stale snapshot)", prefix),
 			)...)
 			continue
@@ -195,7 +213,7 @@ func (d *etcdDiscovery) drainWatch(name string, e *serviceEntry, prefix string, 
 		e.mu.Lock()
 		e.eps = eps
 		e.mu.Unlock()
-		discovery.Synced(obsSystem, name, nil)
+		d.obs.Synced(name, nil)
 	}
 	return errWatchEnded
 }
@@ -204,14 +222,15 @@ func (d *etcdDiscovery) drainWatch(name string, e *serviceEntry, prefix string, 
 // discovery endpoints, decoding the instanceValue JSON the registrar writes.
 // Every key found is healthy (lease liveness) and enabled (the registrar has
 // no disabled state); the payload's scheme field carries transport selection.
-func kvsToEndpoints(kvs []*mvccpb.KeyValue) []discovery.Endpoint {
+func kvsToEndpoints(obs *discovery.Observer, kvs []*mvccpb.KeyValue) []discovery.Endpoint {
 	eps := make([]discovery.Endpoint, 0, len(kvs))
 	for _, kv := range kvs {
 		var v instanceValue
 		if err := json.Unmarshal(kv.Value, &v); err != nil {
 			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
 			log.Warn(context.Background(), starterTag,
-				log.String("system", obsSystem),
+				log.String("system", obs.System()),
+				log.String("center", obs.Center()),
 				log.String("key", string(kv.Key)),
 				log.Err(err),
 				log.Msg("registry-etcd: skipping a malformed instance payload"))

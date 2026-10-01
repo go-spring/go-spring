@@ -36,18 +36,11 @@ func init() {
 	// instead.
 	extension.SetFilter(faultFilterKey, newFaultFilter)
 
-	// The install-and-hold bean. Exported as a gs.Rooter so gs instantiates it
-	// even though nothing injects it — without a collected-type export an
-	// unreachable bean is never created and the filter would stay a pass-through.
-	//
-	// The injector is a NULLABLE injection: it exists whenever starter-governance
-	// is in the container, which is the normal case, and is absent from a
-	// container without it. Without the "?" gs would treat an absent bean as a
-	// wiring error and the app would not boot — turning "governance is off" into
-	// "governance must be imported", which is not the contract. A nil injector
-	// leaves fault injection off and the filter transparent.
+	// The governance beans are REQUIRED: this starter blank-imports
+	// starter-governance, so "governance off" is spring.governance.enabled=false,
+	// never an absent bean.
 	gs.Provide(newInjectorHook,
-		gs.IndexArg(0, gs.TagArg("?")),
+		gs.IndexArg(0, gs.TagArg("")),
 	).Export(gs.As[gs.Rooter]()).Caller(1)
 }
 

@@ -199,7 +199,7 @@ func TestRegisterSuccessIsReported(t *testing.T) {
 	r.stopHold(h)
 }
 
-// The self-healing re-registration never passes through the Registrar interface,
+// The self-healing re-registration never passes through the Registry interface,
 // so this asserts it is reported anyway — with reason=self_heal, which is what
 // separates "the center lost my instance" from the initial publish.
 func TestSelfHealFailureIsReported(t *testing.T) {
@@ -287,6 +287,7 @@ func TestDiscoveryReportsFailedSeedSync(t *testing.T) {
 	defer func() { _ = cli.Close() }()
 
 	d := &etcdDiscovery{
+		obs:    newTestObserver(),
 		client: etcdClient{cli}, keyPrefix: "/services/",
 		bgCtx: context.Background(), entries: map[string]*serviceEntry{},
 	}
@@ -317,6 +318,7 @@ func TestDiscoveryReportsSuccessfulSeedSyncLive(t *testing.T) {
 	defer func() { _ = cli.Close() }()
 
 	d := &etcdDiscovery{
+		obs:    newTestObserver(),
 		client: etcdClient{cli}, keyPrefix: "/services/obs-test/",
 		bgCtx: context.Background(), entries: map[string]*serviceEntry{},
 	}

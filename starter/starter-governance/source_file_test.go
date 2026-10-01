@@ -29,36 +29,38 @@ import (
 	"go-spring.org/cloud/loadbalance"
 )
 
-const rulesV1 = `govern.enabled=true
-govern.client.default.attempt-timeout=100ms
+const rulesV1 = `spring.governance.enabled=true
+spring.governance.client.default.attempt-timeout=100ms
 `
 
-const rulesV2 = `govern.enabled=true
-govern.client.default.attempt-timeout=300ms
-govern.client.default.max-retries=1
+const rulesV2 = `spring.governance.enabled=true
+spring.governance.client.default.attempt-timeout=300ms
+spring.governance.client.default.max-retries=1
 `
 
 // YAML variants of the same rules, to exercise format-by-extension and the
 // malformed/empty cases (properties syntax almost never hard-fails).
-const rulesV1YAML = `govern:
-  enabled: true
-  client:
-    default:
-      attempt-timeout: 100ms
+const rulesV1YAML = `spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        attempt-timeout: 100ms
 `
 
-const rulesV2YAML = `govern:
-  enabled: true
-  client:
-    default:
-      attempt-timeout: 300ms
-      max-retries: 1
+const rulesV2YAML = `spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        attempt-timeout: 300ms
+        max-retries: 1
 `
 
 // writeRules writes a rules file and returns its path.
 func writeRules(t *testing.T, content string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "govern.properties")
+	path := filepath.Join(t.TempDir(), "governance.properties")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +134,7 @@ func TestFileSource_HotReload(t *testing.T) {
 // vouched for": an unparseable edit and an empty (truncated) file both keep
 // the last good snapshot and push nothing; a subsequent good edit recovers.
 func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "govern.yaml")
+	path := filepath.Join(t.TempDir(), "governance.yaml")
 	if err := os.WriteFile(path, []byte(rulesV1YAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +157,7 @@ func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
 	}
 
 	// Malformed YAML: a hard parse failure.
-	if err = os.WriteFile(path, []byte("govern: { unclosed"), 0o644); err != nil {
+	if err = os.WriteFile(path, []byte("spring.governance: { unclosed"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	awaitStable()
@@ -163,8 +165,8 @@ func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
 		t.Fatalf("malformed edit must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 
-	// Empty file: parses "fine" but carries no govern.* keys — a truncating
-	// write, not a legitimate disable (that would be govern.enabled=false).
+	// Empty file: parses "fine" but carries no spring.governance.* keys — a truncating
+	// write, not a legitimate disable (that would be spring.governance.enabled=false).
 	if err = os.WriteFile(path, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}

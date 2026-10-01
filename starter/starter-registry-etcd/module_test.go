@@ -27,7 +27,7 @@ import (
 
 // TestRegisterMultiInstanceLive pins the BindEach assembly through a real gs
 // container against a live etcd: two blocks become two backend beans, each
-// contributing one discovery.Registrar (what the starter-registry core
+// contributing one discovery.Registry (what the starter-registry core
 // collects) and one health.Indicator whose probe answers for its own cluster.
 // Skips when no live etcd is reachable — the consul starter carries the
 // no-docker version of the same assembly contract.
@@ -41,8 +41,8 @@ func TestRegisterMultiInstanceLive(t *testing.T) {
 		app.Property("spring.registry.etcd.one.endpoints", addr)
 		app.Property("spring.registry.etcd.two.endpoints", addr)
 	}).RunTest(t, func(s *struct {
-		Regs []discovery.Registrar `autowire:""`
-		Inds []*health.Indicator   `autowire:""`
+		Regs []discovery.Registry `autowire:""`
+		Inds []*health.Indicator  `autowire:""`
 	}) {
 		if len(s.Regs) != 2 {
 			t.Fatalf("want 2 registrar beans (one per block), got %d", len(s.Regs))
@@ -66,8 +66,8 @@ func TestRegisterMultiInstanceLive(t *testing.T) {
 // register.
 func TestRegisterNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {
-		Regs []discovery.Registrar `autowire:""`
-		Inds []*health.Indicator   `autowire:""`
+		Regs []discovery.Registry `autowire:""`
+		Inds []*health.Indicator  `autowire:""`
 	}) {
 		if len(s.Regs) != 0 {
 			t.Fatalf("no registrar beans should register without config, got %d", len(s.Regs))

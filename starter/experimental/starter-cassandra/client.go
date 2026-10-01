@@ -33,7 +33,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -66,7 +66,7 @@ type Client struct {
 // [Client.ArmGovernance], which the gs wiring calls with the injected beans —
 // see that method for why it is not part of this lifecycle hook.
 func (o *Client) Init() error {
-	o.obs = newDBObserver("cassandra")
+	o.obs = newDBObserver()
 	return nil
 }
 
@@ -94,9 +94,6 @@ func (o *Client) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector) err
 	// "governance off": every resolve is an observe-only pass-through.
 	// Normalizing here keeps the rest of this method (and every caller) free of
 	// nil branches.
-	if mgr == nil {
-		mgr = resilience.NewManager()
-	}
 	o.service = resilience.ServiceLabel("cassandra", o.cfg.Hosts[0])
 	o.exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("cassandra", o.service), o.service, inj)
 	return nil

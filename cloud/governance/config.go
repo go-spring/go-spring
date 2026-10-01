@@ -74,10 +74,10 @@ type Config struct {
 	// executor, so there is nothing to select twice.
 	Driver string `value:"${driver:=default}"`
 
-	// Client is the outbound half of the document. Bind via govern.client.*.
+	// Client is the outbound half of the document. Bind via spring.governance.client.*.
 	Client ClientConfig `value:"${client:=}"`
 
-	// Server is the inbound half of the document. Bind via govern.server.*.
+	// Server is the inbound half of the document. Bind via spring.governance.server.*.
 	Server ServerConfig `value:"${server:=}"`
 }
 
@@ -89,9 +89,9 @@ type ClientConfig struct {
 	// per-service exceptions go under Rules. It carries only policy knobs — NOT
 	// the on/off switch or the backend name, which are process-wide at the top of
 	// the document ([Config.Enabled], [Config.Driver]) and deliberately NOT
-	// re-bindable per service. Bind via govern.client.default.* (e.g.
-	// govern.client.default.attempt-timeout=500ms,
-	// govern.client.default.balancer=least_conn).
+	// re-bindable per service. Bind via spring.governance.client.default.* (e.g.
+	// spring.governance.client.default.attempt-timeout=500ms,
+	// spring.governance.client.default.balancer=least_conn).
 	Default ClientDefaultPolicy `value:"${default:=}"`
 
 	// Rules are per-service outbound policy entries — one service per Rule, no
@@ -103,10 +103,10 @@ type ClientConfig struct {
 	// merge could not distinguish "explicitly set to 0" from "left unset".
 	// Bind via indexed properties:
 	//
-	//	govern.client.rules[0].service=redigo:cache
-	//	govern.client.rules[0].attempt-timeout=100ms
-	//	govern.client.rules[1].service=gorm:mysql:orders
-	//	govern.client.rules[1].attempt-timeout=3s
+	//	spring.governance.client.rules[0].service=redigo:cache
+	//	spring.governance.client.rules[0].attempt-timeout=100ms
+	//	spring.governance.client.rules[1].service=gorm:mysql:orders
+	//	spring.governance.client.rules[1].attempt-timeout=3s
 	//
 	// The service label (with its colons) lives in a value, not a key, so it
 	// is dot-safe and needs no escaping in .properties or YAML — unlike a
@@ -119,7 +119,7 @@ type ClientConfig struct {
 	// protection stack. The server side has its own, independent config under
 	// [ServerConfig.Fault] — one direction's fire never affects the other, which
 	// is what lets an operator burn outbound calls without failing inbound
-	// requests (and vice versa). Bind via govern.client.fault.*.
+	// requests (and vice versa). Bind via spring.governance.client.fault.*.
 	Fault fault.Config `value:"${fault:=}"`
 }
 
@@ -127,9 +127,9 @@ type ClientConfig struct {
 // needs in its role as a CALLEE.
 type ServerConfig struct {
 	// Default is the inbound admission model applied to every route that no Rule
-	// matches. Bind via govern.server.default.* (e.g.
-	// govern.server.default.rate-limit=1000,
-	// govern.server.default.max-concurrent=32).
+	// matches. Bind via spring.governance.server.default.* (e.g.
+	// spring.governance.server.default.rate-limit=1000,
+	// spring.governance.server.default.max-concurrent=32).
 	Default resilience.ServerPolicy `value:"${default:=}"`
 
 	// Rules are per-route admission entries, matched by the same exact label the
@@ -139,10 +139,10 @@ type ServerConfig struct {
 	// replaces Default, by the same no-field-wise-merge rule as [ClientConfig].
 	// Bind via indexed properties:
 	//
-	//	govern.server.rules[0].service=gin:0.0.0.0:8080
-	//	govern.server.rules[0].rate-limit=500
-	//	govern.server.rules[1].service=grpc:inventory.Inventory/Get
-	//	govern.server.rules[1].max-concurrent=64
+	//	spring.governance.server.rules[0].service=gin:0.0.0.0:8080
+	//	spring.governance.server.rules[0].rate-limit=500
+	//	spring.governance.server.rules[1].service=grpc:inventory.Inventory/Get
+	//	spring.governance.server.rules[1].max-concurrent=64
 	Rules []ServerRule `value:"${rules:=}"`
 
 	// Fault is this direction's fault-injection config. The server side injects
@@ -152,7 +152,7 @@ type ServerConfig struct {
 	// touching a real dependency. Independent of [ClientConfig.Fault], including
 	// the guardrails: each direction counts its own MaxDuration/MaxAffected, so a
 	// self-healed client fire does not disarm a server one. Bind via
-	// govern.server.fault.*.
+	// spring.governance.server.fault.*.
 	Fault fault.Config `value:"${fault:=}"`
 }
 
@@ -165,8 +165,8 @@ type ServerConfig struct {
 // from the second — and each module declares its own half's type. This is where a
 // deployment composes them, so a service is configured once and both modules
 // answer to the same label. Both halves are embedded, so their fields bind at
-// this struct's own level (govern.client.default.attempt-timeout,
-// govern.client.default.balancer, ...).
+// this struct's own level (spring.governance.client.default.attempt-timeout,
+// spring.governance.client.default.balancer, ...).
 type ClientDefaultPolicy struct {
 	resilience.ClientPolicy
 	loadbalance.Selection

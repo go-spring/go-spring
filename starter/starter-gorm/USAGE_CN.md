@@ -23,7 +23,7 @@ demo/
 ├── dao.go
 ├── conf/
 │   ├── app.properties
-│   └── govern.yaml
+│   └── governance.yaml
 ```
 
 **go.mod**(关键依赖):
@@ -140,14 +140,14 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 仅经 actuator
 
 # --- 服务治理(运行期故障注入 / 熔断 / 重试)-------------------------------
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.error-threshold=20
-govern.client.default.open-duration=5s
-govern.client.default.max-retries=1
-govern.client.default.attempt-timeout=500ms
-# 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 govern.client.rules[N].balancer /
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.error-threshold=20
+spring.governance.client.default.open-duration=5s
+spring.governance.client.default.max-retries=1
+spring.governance.client.default.attempt-timeout=500ms
+# 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 spring.governance.client.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for 原地驱动该 entry 的池
 # （见 cloud/governance/README.md §3.1）。
 ```
@@ -217,7 +217,7 @@ gorm:query processor 链
   2. gorm:query  ← 已被 resilience wrapper 替换:
         resilience.Run(ctx, exec, op)
           ├─ 准入(限流 / 舱壁,若已配置)
-          ├─ fault 注入器(govern.client.fault.*——可能短路本次尝试)
+          ├─ fault 注入器(spring.governance.client.fault.*——可能短路本次尝试)
           ├─ timeout / breaker / retry 包络
           └─ 原始 gorm:query 主体:构造 SQL、执行、应用 gorm 自身
              logger(慢查询 warn,见 slow-threshold)
@@ -330,8 +330,8 @@ health.go:31-38),因此探针失败不会触发 resilience 熔断。
 用 §1 的治理配置加文件 source(见 starter-governance)或 example-load 布局
 (`starter-gorm-mysql/example-load`):
 
-1. 以 `govern.client.fault.enabled=false` 启动;基线查询全部成功。
-2. 翻转 `govern.client.fault.enabled=true`(配 `rate`、`error`)——治理 source 热加载。
+1. 以 `spring.governance.client.fault.enabled=false` 启动;基线查询全部成功。
+2. 翻转 `spring.governance.client.fault.enabled=true`(配 `rate`、`error`)——治理 source 热加载。
 3. 被注入的尝试在 SQL 执行前短路:注入错误落到 `tx.Error`,熔断计数,observe 层仍
    记录失败操作——可以在访问日志和 `db.client.operation.duration` 的错误 status 桶
    里观察"火情"。
@@ -356,7 +356,7 @@ health.go:31-38),因此探针失败不会触发 resilience 熔断。
 | 注入报 "not a simple value"/类型不匹配 | 注入 `*gorm.DB` 而非 wrapper | autowire 共享的 `*gormcore.DB` bean；它内嵌 `*gorm.DB`。 |
 | 无 span/指标/访问日志 | 未 import starter-otel,或 `observe.enabled=false` | import starter-otel;检查实例级硬开关——false 会整体移除插件。 |
 | 慢查询行是纯文本 | `slow-threshold` 把 GORM 的 warn 输出经 go-spring.org/log 转发,但消息体是 GORM 单行文本 | 按消息过滤;要结构化慢日志改用访问日志。 |
-| 查询被 rate-limited/circuit-open 拒绝 | 治理 resilience 生效(或 fault 放火中) | 属预期保护;查 `govern.*` 配置与演练步骤(§4.4)。 |
+| 查询被 rate-limited/circuit-open 拒绝 | 治理 resilience 生效(或 fault 放火中) | 属预期保护;查 `spring.governance.*` 配置与演练步骤(§4.4)。 |
 | 运行数小时后报 stale connection | LB/防火墙掐空闲 TCP;`conn-max-lifetime=0` | 把 `conn-max-lifetime` 设为低于基础设施空闲阈值。 |
 | "正常 not found 会触发熔断"——不会 | `gorm.ErrRecordNotFound` 视为成功 | 设计如此(callbacks.go:29-30);只有真实错误喂熔断。 |
 

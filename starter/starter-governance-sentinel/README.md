@@ -6,7 +6,7 @@
 production driver for the resilience framework defined in
 [`cloud/governance/resilience`](../../cloud/governance/resilience). Blank-import it
 alongside [`starter-governance`](../starter-governance) and name it in the
-governance document (`govern.driver=sentinel`) — every client that resolves its
+governance document (`spring.governance.driver=sentinel`) — every client that resolves its
 executor through the governance center then gets adaptive rate limiting,
 circuit breaking, and bulkhead isolation on top of the same neutral `ClientPolicy`,
 with no per-client key and no code change.
@@ -42,17 +42,17 @@ registers or looks anything up.
 ### 2. Select it in the governance document
 
 The driver is chosen once for the whole process, not per client: the governance
-document names it in `govern.driver`, and every client that resolves its
-executor through the governance center picks it up. The `govern.*` keys live in
+document names it in `spring.governance.driver`, and every client that resolves its
+executor through the governance center picks it up. The `spring.governance.*` keys live in
 the governance document — its own system, not `app.properties` (see
 [`cloud/governance/README.md`](../../cloud/governance/README.md)):
 
 ```properties
-govern.enabled=true
-govern.driver=sentinel
-govern.client.default.max-retries=3
-govern.client.default.error-threshold=10
-govern.client.default.attempt-timeout=1s
+spring.governance.enabled=true
+spring.governance.driver=sentinel
+spring.governance.client.default.max-retries=3
+spring.governance.client.default.error-threshold=10
+spring.governance.client.default.attempt-timeout=1s
 ```
 
 ### 3. Or drive it directly

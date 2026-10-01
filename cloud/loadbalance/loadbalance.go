@@ -31,6 +31,12 @@
 //     [Tracker] (outlier suspension) to a Balancer, so the candidate set stays
 //     fresh as instances come and go and unhealthy instances are suspended.
 //
+// A strategy is named in a selection rule and resolved against a [Directory]:
+// the built-in strategies plus whatever [Factory] beans a deployment
+// contributes. The core fixes only the [Balancer]/[Factory]/[Params] contract,
+// so a new strategy — with parameters of its own — is added entirely outside
+// this package.
+//
 // The package has zero third-party dependencies; RPC-framework adapters (gRPC
 // balancer.Builder, kitex loadbalance.Loadbalancer, ...) live in their starters
 // and translate a Balancer into the framework's own picker interface.
@@ -38,19 +44,17 @@ package loadbalance
 
 import (
 	"errors"
-	"maps"
-	"slices"
-	"sync"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/stdlib/errutil"
 )
 
-// Names of the built-in strategies, registered by their respective files.
-// The names appear in service configs and gRPC LB config, so they are stable.
-// New strategies are admitted only after a survey of industry practice and a
-// real consumer; implementation variants with equivalent semantics (maglev,
-// rendezvous hashing; peak-ewma beside p2c) are deliberately out.
+// Names of the built-in strategies, contributed to the [Directory] by
+// [builtinFactories]. The names appear in service configs and gRPC LB config,
+// so they are stable. New built-in strategies are admitted only after a survey
+// of industry practice and a real consumer; a deployment that wants an
+// implementation variant with equivalent semantics (maglev, rendezvous hashing;
+// peak-ewma beside p2c) contributes it as its own [Factory] bean instead of
+// growing this list.
 const (
 	RoundRobin     = "round_robin"
 	LeastConn      = "least_conn"
@@ -110,97 +114,20 @@ type Balancer interface {
 	Complete(ep discovery.Endpoint, err error)
 }
 
-// Config carries the tunable parameters a [Balancer] strategy may consume at
-// construction — the same shared-config shape as governance/resilience's
-// PolicyConfig, so the registry stays name-keyed while instances can differ in
-// parameters. Each strategy consumes only its own fields and REJECTS a Config
-// that sets any other field (see [Config.only]): a parameter aimed at another
-// strategy is a construction error, never a silently dropped value. The zero
-// Config builds every strategy with its documented defaults.
-type Config struct {
-	// Replicas is the number of virtual nodes per endpoint for consistent-hash
-	// strategies. <=0 uses the strategy default (100).
-	Replicas int
-
-	// ZoneKey is the [discovery.Endpoint.Metadata] key a zone-aware strategy
-	// reads for an endpoint's locality. Empty uses [DefaultZoneKey].
-	ZoneKey string
-
-	// Delegate names the strategy a zone-aware balancer delegates the final
-	// choice to (e.g. "least_conn" for least-conn inside the zone). Empty uses
-	// round-robin. Naming zone_aware itself is an error (it would recurse).
-	Delegate string
-}
-
-// only verifies that no field of c is set except the ones named in fields,
-// returning an error listing the set-but-uncategorized ones. It is the shared
-// strict-partition check every registered factory runs before building. A
-// Config field added later joins the checked set here, so every strategy
-// rejects it by default until it opts in by naming it.
-func (c Config) only(fields ...string) error {
-	set := map[string]bool{}
-	if c.Replicas != 0 {
-		set["replicas"] = true
-	}
-	if c.ZoneKey != "" {
-		set["zone_key"] = true
-	}
-	if c.Delegate != "" {
-		set["delegate"] = true
-	}
-	for _, f := range fields {
-		delete(set, f)
-	}
-	if len(set) == 0 {
-		return nil
-	}
-	return errutil.Explain(nil, "loadbalance: config fields ignored by this strategy: %v", slices.Sorted(maps.Keys(set)))
-}
-
-// Factory builds a fresh, independent [Balancer] from cfg. The registry stores
-// factories (not balancers) because balancers hold mutable per-target state,
-// so every target gets its own instance.
+// Factory builds a fresh, independent [Balancer] for one target. It is the
+// single extension point of this package: a strategy is made available by
+// contributing a named Factory bean — the bean name IS the strategy name a
+// selection rule cites — so adding a strategy, built-in or third-party, never
+// changes this file again.
 //
-// A factory first validates strict field partition via [Config.only] and
-// errors on a misdirected parameter (replicas on least_conn), so a bad Config
-// surfaces at construction instead of silently doing nothing. The error
-// propagates out of [New]; [Pool.ApplySelection] degrades it to "keep the
-// current strategy", the same fail-static as an unknown name.
-type Factory func(cfg Config) (Balancer, error)
-
-var (
-	mu       sync.RWMutex
-	registry = map[string]Factory{}
-)
-
-// Register makes a [Balancer] strategy available under name. It panics if name
-// is empty, f is nil, or name is already registered.
-func Register(name string, f Factory) {
-	if name == "" {
-		panic(errutil.Explain(nil, "loadbalance: register with empty name"))
-	}
-	if f == nil {
-		panic(errutil.Explain(nil, "loadbalance: register nil factory for %s", name))
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if _, ok := registry[name]; ok {
-		panic(errutil.Explain(nil, "loadbalance: strategy already registered: %s", name))
-	}
-	registry[name] = f
-}
-
-// New builds a new [Balancer] for the registered strategy name, tuned by cfg
-// (the zero Config selects every strategy's defaults), or returns an error
-// listing the available strategies when none matches.
-func New(name string, cfg Config) (Balancer, error) {
-	mu.RLock()
-	f, ok := registry[name]
-	if !ok {
-		names := slices.Sorted(maps.Keys(registry))
-		mu.RUnlock()
-		return nil, errutil.Explain(nil, "loadbalance: no strategy registered as %q (registered: %v)", name, names)
-	}
-	mu.RUnlock()
-	return f(cfg)
+// dir gives a composing factory (zone_aware's delegate) access to its siblings
+// by name. p carries the strategy's own parameters, flat and interpreted by the
+// strategy alone; a factory ends with [Params.Done], so a parameter aimed at
+// another strategy fails construction instead of being silently dropped.
+//
+// A factory holds no per-target state — the directory keeps ONE instance and
+// [Factory.Build] runs per target — so anything stateful belongs on the
+// Balancer it returns, not on the factory.
+type Factory interface {
+	Build(dir Directory, p *Params) (Balancer, error)
 }

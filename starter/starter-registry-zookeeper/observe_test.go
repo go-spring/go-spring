@@ -121,19 +121,20 @@ func intGaugeValue(t *testing.T, name string, want map[string]string) int64 {
 }
 
 // The session monitor's recovery loop re-creates every registered node after a
-// session loss. That path never passes through the Registrar interface, so this
+// session loss. That path never passes through the Registry interface, so this
 // asserts it is reported anyway — with reason=self_heal, which is what
 // separates "the ensemble lost my node" from the initial publish.
 func TestSelfHealReRegistrationIsReported(t *testing.T) {
 	r := &zkRegistrar{
+		obs:      newTestObserver(),
 		basePath: "/services",
 		regs: map[string]discovery.Instance{
-			"/services/orders/orders-1.2.3.4:80": {
-				ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1,
+			"/services/orders-selfheal/orders-selfheal-1.2.3.4:80": {
+				ServiceName: "orders-selfheal", Addr: "1.2.3.4:80", Weight: 1,
 			},
 		},
 	}
-	gauge := map[string]string{"system": obsSystem, "service": "orders"}
+	gauge := map[string]string{"system": obsSystem, "service": "orders-selfheal"}
 
 	// The session is not usable yet: the pass fails and the instance is not
 	// discoverable, which is exactly what the gauge must say.
@@ -142,9 +143,9 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 	// can carry the identity that joins it to the metric below.
 	failed, err := r.reRegisterAll()
 	assert.Error(t, err).NotNil()
-	assert.That(t, failed).Equal("orders")
+	assert.That(t, failed).Equal("orders-selfheal")
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
-		"system": obsSystem, "service": "orders",
+		"system": obsSystem, "service": "orders-selfheal",
 		"reason": discovery.ReasonSelfHeal, "status": "failed",
 	})).Equal(int64(1))
 	assert.Number(t, intGaugeValue(t, "registry.instance.registered", gauge)).
@@ -155,7 +156,7 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 	_, err = r.reRegisterAll()
 	assert.Error(t, err).Nil()
 	assert.Number(t, sumValue(t, "registry.registration.attempts_total", map[string]string{
-		"system": obsSystem, "service": "orders",
+		"system": obsSystem, "service": "orders-selfheal",
 		"reason": discovery.ReasonSelfHeal, "status": "ok",
 	})).Equal(int64(1))
 	assert.Number(t, intGaugeValue(t, "registry.instance.registered", gauge)).Equal(int64(1))

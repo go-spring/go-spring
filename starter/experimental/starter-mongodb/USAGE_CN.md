@@ -128,10 +128,10 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 
 # --- 治理：作用于建连 seam 的策略（rate-limit 让建连保护可观测；
 #     breaker/retry/timeout 同样生效）----------------------------------------
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=5
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=5
 
 # --- actuator + otel -------------------------------------------------------
 spring.actuator.addr=:9370
@@ -249,20 +249,20 @@ key——观测无条件开启（见 §3.3）。
 | `discovery` | string | — | 用哪个已注册发现后端解析 service-name。未配置时回退 `${spring.mongodb.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 | `tls.*` | group | off | 共享 `security` 块（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）；`tls.Build` 报错直接失败启动 [starter.go:112-119]。enabled=false → 不启 TLS，除非 URI 自己要求（`mongodbs://` / `tls=true`）。 | 配一半 → 启动报 "mongodb: build TLS"。 |
 
-### 3.2 resilience / fault（govern.*，不在实例前缀下）
+### 3.2 resilience / fault（spring.governance.*，不在实例前缀下）
 
-策略 key 位于顶层 `govern.*`（starter-governance 治理中心）；本 starter 在 `Init` 里装备
+策略 key 位于顶层 `spring.governance.*`（starter-governance 治理中心）；本 starter 在 `Init` 里装备
 `fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
 [client.go:110-115]，其中 `mgr`/`inj` 是容器注入 `newClient` 的
-`*resilience.Manager` / `*fault.Injector` bean。相关 key（全集见 starter-governance USAGE）：`govern.enabled`、
-`govern.driver`、`govern.<driver>.rate-limit` / `error-threshold` / `open-duration` /
-`max-retries` / `timeout`，以及 `govern.client.fault.*` 注入块（enable/rate/error）。⚠ 记住
+`*resilience.Manager` / `*fault.Injector` bean。相关 key（全集见 starter-governance USAGE）：`spring.governance.enabled`、
+`spring.governance.driver`、`spring.governance.<driver>.rate-limit` / `error-threshold` / `open-duration` /
+`max-retries` / `timeout`，以及 `spring.governance.client.fault.*` 注入块（enable/rate/error）。⚠ 记住
 seam 在**建连层**：breaker 策略表现为拒绝*连接*；故障注入按拨号触发，不按命令。
 
 **端点选择由同一条规则、同一个标签管**。发现模式下池会挂上 suspension tracker 并经
 `lbMgr.Bind(pool, label)`（`*loadbalance.Manager` bean 注入 `newClient`）绑到
 `mongodb:<service-name|uri>`，于是
-`govern.client.rules[N].balancer`（round_robin / least_conn / consistent_hash / weighted / zone_aware /
+`spring.governance.client.rules[N].balancer`（round_robin / least_conn / consistent_hash / weighted / zone_aware /
 random / p2c）与 `outlier-threshold` / `outlier-suspend-for` **原地生效**——下一次拨号走新策略，
 不用重启，也不会重建已有连接。直连（只配 URI）的实例没有候选集，这些 key 对它无效。
 ⚠ dialer 能拿到的成败信号只有拨号本身，所以 `outlier-threshold` 摘的是**反复连不上**的实例；
@@ -310,25 +310,25 @@ grep _app_mongodb_access app.log | tail -1
 ### 4.3 建连层 resilience 演练（取自 example-cloudnative）
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=5
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=5
 spring.mongodb.instances.a.max-pool-size=100   # 给爆发留出强制新建连接的空间
 ```
 
 冷池上并发打 40 个 `InsertOne`：超限的拨号以 `resilience.ErrRateLimited` 失败、浮出为
 操作的连接错误；获准的照常成功（[example-cloudnative/example.go:197-225]）。反面同样
-成立：池一旦焐热，同样的爆发全数通过——保护是连接级的。运行时翻转 `govern.*` ——
+成立：池一旦焐热，同样的爆发全数通过——保护是连接级的。运行时翻转 `spring.governance.*` ——
 executor 热更新，无需重启（治理中心）。
 
 ### 4.4 故障注入 + 压测演练（example-load）
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.client.fault.enabled=true
-govern.client.fault.rate=0.5
-govern.client.fault.error=generic    # 或：timeout / reset
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.client.fault.enabled=true
+spring.governance.client.fault.rate=0.5
+spring.governance.client.fault.error=generic    # 或：timeout / reset
 ```
 
 运行 [example-load](example-load/)：upsert/FindOne 闭环输出吞吐、延迟分位与错误分布；
@@ -350,7 +350,7 @@ govern.client.fault.error=generic    # 或：timeout / reset
 | 绑定期对 `uri` 启动失败 | `uri` 为空——expr 校验非空 | 设置 `spring.mongodb.instances.<name>.uri`。 |
 | 启动报 "build TLS" / "build discovery resolver" | `tls.*` 配了一半；`discovery` 指向未注册后端 | 补全 security 块；init 里注册命名后端 bean。 |
 | 发现客户端报 "no such host" / 拓扑错误 | `service-name` 绕过驱动拓扑发现 | URI 加 `directConnection=true`；副本集/mongos URI 则放弃 service-name。 |
-| 爆发时操作报 `ErrRateLimited` | 治理 rate-limit 作用在建连 seam | 调高 `govern.<driver>.rate-limit` 或 `max-pool-size`/`min-pool-size`（焐热的池免拨号）。 |
+| 爆发时操作报 `ErrRateLimited` | 治理 rate-limit 作用在建连 seam | 调高 `spring.governance.<driver>.rate-limit` 或 `max-pool-size`/`min-pool-size`（焐热的池免拨号）。 |
 | 查询很慢 breaker 却从不跳闸 | 符合设计——resilience 仅建连层；慢而连通的命令它看不见 | 改为对 `db.client.operation.duration` 告警；见 §2.2。 |
 | 命令正常但无 span/metric | 未导入 starter-otel——monitor 搭乘 OTel 全局 | `_ "go-spring.org/starter-otel"` + `spring.observability.*`。 |
 | 注入 `*mongo.Client` 失败 | bean 是 wrapper `*StarterMongoDB.Client` | 注入 wrapper 类型；驱动方法原样提升。 |

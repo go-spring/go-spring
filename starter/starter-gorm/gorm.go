@@ -40,7 +40,7 @@ import (
 	// Blank import: importing this starter brings the governance authority with
 	// it — starter-governance registers the *resilience.Manager, *loadbalance.
 	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is govern.enabled=false (or binding no rule source),
+	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
 	// not the absence of the starter. The injected parameters stay nullable, so a
 	// container that somehow lacks these beans degrades to a transparent
 	// pass-through instead of failing to boot.
@@ -149,7 +149,7 @@ func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (d
 //
 // service is the entry's governance label ([resilience.ServiceLabel], e.g.
 // "gorm:mysql:orders-db"). The pool is built with a suspension tracker and its
-// endpoint selection is bound to that label, so one govern.client.rules[N] rule that
+// endpoint selection is bound to that label, so one spring.governance.client.rules[N] rule that
 // matches the entry's protection executor also governs its balancing strategy
 // and outlier suspension. The returned stop func detaches that binding and must
 // run on client teardown; it is a no-op when governance is not in the process
@@ -167,9 +167,6 @@ func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, se
 	}
 	bal := loadbalance.NewRoundRobin()
 	pool := loadbalance.NewPool(resolver, bal)
-	if lbMgr == nil {
-		lbMgr = loadbalance.NewManager()
-	}
 	return pool, resolver, lbMgr.Bind(pool, service), nil
 }
 

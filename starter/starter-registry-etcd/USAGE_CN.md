@@ -8,7 +8,7 @@
 
 **模型**:配置是**命名块**——每个 `spring.registry.etcd.<name>.*` 块描述一个 etcd 集群,
 成为名为 `etcd.<name>` 的后端 bean(`starter.go`)。该 bean 同时实现命名体系的两半:
-`discovery.Registrar`(写侧——由传递依赖自动引入的 [starter-registry](../starter-registry)
+`discovery.Registry`(写侧——由传递依赖自动引入的 [starter-registry](../starter-registry)
 核心之 `registryServer` 收集,跨后端注册进**每一个**已配置中心)与 `discovery.Discovery`
 (读侧——消费方按 bean 名引用,如 `discovery=etcd.main`;bean 惰性,纯 provider 从不为读侧
 付费)。读写共享该块的客户端与键前缀,永不分裂。没有默认/无名块。注册仅在设置
@@ -135,11 +135,11 @@ etcdctl get /services/orders/ --prefix
 import starter-registry-etcd（传递引入 starter-registry）
   ├─ 每个 ${spring.registry.etcd.<name>} 块: gs.Provide(newEtcdBackend).Name("etcd.<name>")
   │      Module 条件: OnProperty("spring.registry.etcd")            [starter.go]
-  │      Export(As[discovery.Discovery], As[discovery.Registrar]) + Destroy(Close)
+  │      Export(As[discovery.Discovery], As[discovery.Registry]) + Destroy(Close)
   │
   ├─ starter-registry 核心: gs.Provide(NewServer).Name("registryServer")
   │      条件: OnProperty("spring.registry.service-name")   [starter-registry/starter.go]
-  │      Registrars []discovery.Registrar——容器以切片注入收集每个后端 bean 的
+  │      Registries []discovery.Registry——容器以切片注入收集每个后端 bean 的
   │      registrar(etcd、zookeeper……混搭)
   │
 gs.Run()

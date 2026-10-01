@@ -289,7 +289,7 @@ unconditional (see §3.4).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `max-retries` | int | 3 | elastictransport retry count. ⚠ Interacts with the governance executor's retry (`govern.client.default.max-retries`) — two stacked retry loops multiply attempts and latency. | Large + governance retry → multiplied attempts. |
+| `max-retries` | int | 3 | elastictransport retry count. ⚠ Interacts with the governance executor's retry (`spring.governance.client.default.max-retries`) — two stacked retry loops multiply attempts and latency. | Large + governance retry → multiplied attempts. |
 | `disable-retry` | bool | false | Disables the client retry loop entirely. | — |
 | `compress-request-body` | bool | false | gzip request bodies. | — |
 | `enable-metrics` | bool | true | Client's built-in elastictransport metrics switch (⚠ schema.json wrongly says default false — code is the truth). | — |
@@ -339,19 +339,19 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 Resilience / fault drill (example-load style)
 
 ```properties
-# NOTE: governance RULES go in conf/govern.properties, referenced by govern.source.file.path in app.properties (see starter-governance USAGE).
-govern.enabled=true
-govern.driver=default
-govern.client.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
-govern.client.default.error-threshold=20
-govern.client.default.open-duration=5s
-govern.client.fault.enabled=false           # flip to true + rate=0.5 + error=timeout to "set fire"
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+spring.governance.enabled=true
+spring.governance.driver=default
+spring.governance.client.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
+spring.governance.client.default.error-threshold=20
+spring.governance.client.default.open-duration=5s
+spring.governance.client.fault.enabled=false           # flip to true + rate=0.5 + error=timeout to "set fire"
 ```
 
 Run [example-load/](example-load/) (`go run . -concurrency=16 -duration=5s`): the printed
 error breakdown shows rate-limited / circuit-open outcomes; the resilience outcome counter and
 breaker state-change log lines appear without restart. Policy is hot-reloadable (Dync) — edit
-govern.* and the executor picks it up.
+spring.governance.* and the executor picks it up.
 
 ### 4.4 Discovery wiring
 

@@ -23,14 +23,20 @@ package StarterElasticsearch
 
 import (
 	"context"
-	"go-spring.org/stdlib/strutil"
+	"sync"
 	"time"
+
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
+
+// elasticsearchSystem is the value the db.system label carries for this backend.
+const elasticsearchSystem = "elasticsearch"
 
 // maxArg bounds the operation argument captured on the access log.
 const maxArg = 512
@@ -41,31 +47,48 @@ var accessTag = log.RegisterAppTag("elasticsearch", "access")
 // dbObserver emits the elasticsearch client signals for one instance: the
 // db.client.operation.duration histogram, the db.client.active_requests
 // gauge, and the access log (no span — the elastic transport
-// instrumentation already emits it).
+// instrumentation already emits it). Its records go through the process-wide
+// instrument set (see [instruments]); only the db.system label is per instance.
 type dbObserver struct {
-	system   string
+	system string
+}
+
+// instrumentSet is this starter's instrument set: one per process, resolved
+// lazily on first use so it binds to whichever meter provider is current then,
+// and immutable afterwards. It holds no per-instance state — the db.system /
+// db.operation / status labels travel with each record, not here.
+type instrumentSet struct {
 	duration metric.Float64Histogram
 	active   metric.Int64UpDownCounter
 }
 
-// newDBObserver builds the OTel instruments from whatever meter provider is
-// current — called at wiring time (Init), not at package init, so an SDK
-// installed later than this package's init still receives the records.
+// instruments is the one instrument set this starter uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
-func newDBObserver(system string) *dbObserver {
+// buildInstruments builds the OTel instruments from whatever meter provider is
+// current — resolved on first use, not at package init, so an SDK installed
+// later than this package's init still receives the records.
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/starter-elasticsearch")
 	duration, _ := m.Float64Histogram("db.client.operation.duration",
-		metric.WithDescription("Duration of "+system+" client operations"),
+		metric.WithDescription("Duration of "+elasticsearchSystem+" client operations"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
 	active, _ := m.Int64UpDownCounter("db.client.active_requests",
-		metric.WithDescription("Number of in-flight "+system+" client operations"),
+		metric.WithDescription("Number of in-flight "+elasticsearchSystem+" client operations"),
 		metric.WithUnit("{request}"))
-	return &dbObserver{system: system, duration: duration, active: active}
+	return &instrumentSet{duration: duration, active: active}
+}
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
+// newDBObserver builds the observer for one instance.
+func newDBObserver() *dbObserver {
+	return &dbObserver{system: elasticsearchSystem}
 }
 
 // Start begins one operation: it bumps the in-flight gauge and records the
@@ -78,7 +101,7 @@ func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context
 		attribute.String("db.system", o.system),
 		attribute.String("db.operation", op),
 	)
-	o.active.Add(ctx, 1, inflight)
+	instruments().active.Add(ctx, 1, inflight)
 	// No span here: elasticsearch's own transport instrumentation (see
 	// command.go's newOtelInstrumentation) already emits the client span, so
 	// this observer only fills the metric + access-log gap.
@@ -107,12 +130,12 @@ func (s *dbSpan) End(err error) {
 	if err != nil {
 		status = "error"
 	}
-	o.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
+	instruments().duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
 		attribute.String("db.system", o.system),
 		attribute.String("db.operation", s.op),
 		attribute.String("status", status),
 	))
-	o.active.Add(s.ctx, -1, s.inflight)
+	instruments().active.Add(s.ctx, -1, s.inflight)
 
 	common := func() []log.Field {
 		fields := []log.Field{

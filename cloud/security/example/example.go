@@ -17,7 +17,7 @@
 // Command example demonstrates cloud/security on plain net/http: implementing
 // the TokenValidator seam, attaching the resulting identity to the request
 // context, gating a route on an authority, and enforcing an authority at the
-// method level with the security.Require decorator.
+// method level with the security.Require upfront check.
 //
 // It self-asserts every step and exits non-zero on mismatch, so it doubles as
 // the package's smoke test. No external services are required: a fixed token
@@ -94,19 +94,26 @@ func run() error {
 			_, _ = fmt.Fprintf(w, "orders of %s", auth.Principal.Subject)
 		}))))
 	mux.Handle("/orders/place", authenticate(validator, true, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Method-level gate: the business call is wrapped, not the route. On
-		// failure Require returns the sentinel the response maps to a status.
-		err := security.Require("orders:write")(r.Context(), svc.place)
-		switch {
-		case errors.Is(err, security.ErrUnauthenticated):
-			http.Error(w, "unauthenticated", http.StatusUnauthorized)
-		case errors.Is(err, security.ErrForbidden):
-			http.Error(w, "forbidden", http.StatusForbidden)
-		case err != nil:
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		default:
-			_, _ = w.Write([]byte("placed"))
+		// Method-level gate: an upfront check at the top of the call, not a
+		// wrapper around it. On failure Require returns the sentinel the
+		// response maps to a status, so the business call below runs only when
+		// it is admitted.
+		if err := security.Require(r.Context(), "orders:write"); err != nil {
+			switch {
+			case errors.Is(err, security.ErrUnauthenticated):
+				http.Error(w, "unauthenticated", http.StatusUnauthorized)
+			case errors.Is(err, security.ErrForbidden):
+				http.Error(w, "forbidden", http.StatusForbidden)
+			default:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
 		}
+		if err := svc.place(r.Context()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("placed"))
 	})))
 	mux.Handle("/admin", authenticate(validator, true,
 		authorize("ROLE_ADMIN")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -151,8 +158,8 @@ func run() error {
 	}
 	fmt.Println("valid token authenticated and cleared the route gate: OK")
 
-	// 5. The method-level decorator is authoritative too: alice holds orders:read
-	// but not orders:write, so the wrapped business call never runs.
+	// 5. The method-level gate is authoritative too: alice holds orders:read
+	// but not orders:write, so the business call behind it never runs.
 	if code, _, err := get(srv.URL+"/orders/place", "alice-token"); err != nil {
 		return err
 	} else if code != http.StatusForbidden {
@@ -160,7 +167,7 @@ func run() error {
 	}
 	fmt.Println("method-level Require denied the missing authority: OK")
 
-	// 6. The holder of orders:write clears the same decorator.
+	// 6. The holder of orders:write clears the same gate.
 	if code, body, err := get(srv.URL+"/orders/place", "admin-token"); err != nil {
 		return err
 	} else if code != http.StatusOK || body != "placed" {
@@ -262,7 +269,7 @@ func authorize(authorities ...string) func(http.Handler) http.Handler {
 	}
 }
 
-// orderService is the business object the method-level decorator wraps. Its
+// orderService is the business object the method-level gate guards. Its
 // place method is called only when Require has admitted the caller.
 type orderService struct{}
 

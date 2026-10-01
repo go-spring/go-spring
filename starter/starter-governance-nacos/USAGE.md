@@ -11,7 +11,7 @@ group, namespace, `ListenConfig`) are [Nacos docs](https://nacos.io/docs/latest/
 **What this starter is**: the Nacos adapter of the governance rule-source family. It is a
 `governance.Source` implementation; presenting the governance center itself is
 [starter-governance](../starter-governance)'s job. Blank-importing this package is inert until a
-`govern.source.nacos.*` key is present.
+`spring.governance.source.nacos.*` key is present.
 
 ---
 
@@ -86,24 +86,25 @@ func main() { gs.Run() }
 
 ```properties
 # The governance rules live in their OWN dataId, watched by
-# starter-governance-nacos — nothing under govern.* rides app.properties. This
+# starter-governance-nacos — nothing under spring.governance.* rides app.properties. This
 # block is the entire wiring: it arms the conditional module, whose Source bean
 # is injected onto the governance center.
-govern.source.nacos.server=127.0.0.1:8848
-govern.source.nacos.data-id=gs-govern-demo.yaml
-govern.source.nacos.group=DEFAULT_GROUP
+spring.governance.source.nacos.server=127.0.0.1:8848
+spring.governance.source.nacos.data-id=gs-govern-demo.yaml
+spring.governance.source.nacos.group=DEFAULT_GROUP
 ```
 
 **The rules document** (published to the dataId, not stored in `app.properties`):
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
-      max-retries: 2
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
+        max-retries: 2
 ```
 
 **Verify** (with a local Nacos, e.g. [example/docker-compose.yml](example/docker-compose.yml)):
@@ -154,9 +155,9 @@ bean lifecycle, so the center closes it on Destroy.
 
 ```
 blank-import starter-governance-nacos
-  └─ init() governance.go: gs.Module(gs.OnProperty("govern.source.nacos"), ...)
-         (OnProperty is a PREFIX check: any govern.source.nacos.* key arms it)
-       ├─ conf.Bind(p, &c, "${govern.source.nacos:=}")   bind + expr-validate the keys
+  └─ init() governance.go: gs.Module(gs.OnProperty("spring.governance.source.nacos"), ...)
+         (OnProperty is a PREFIX check: any spring.governance.source.nacos.* key arms it)
+       ├─ conf.Bind(p, &c, "${spring.governance.source.nacos:=}")   bind + expr-validate the keys
        └─ Provide newNacosSource:
             clients.NewConfigClient (namespace, 5s timeout, auth, NotLoadCacheAtStart)
               → NewNacosSource: initial GetConfig + rules.Parse   ← fail fast here
@@ -198,19 +199,19 @@ gs.Run()
 
 The document format is resolved by `sourceFormat` (mirrored from the etcd sibling): an explicit
 `format` key wins, else the dataId's dotted extension, else `properties`. A dataId naming a
-supported extension (`app-govern.yaml`, `app-govern.json`, `app-govern.toml`) needs no `format`
+supported extension (`app-governance.yaml`, `app-governance.json`, `app-governance.toml`) needs no `format`
 key; an extension-less or unknown-extension dataId defaults to `properties`.
 
 `rules.Parse` binds through the same `conf` value-tag machinery with prefix `govern`, and rejects a
-document that parses but carries no `govern.*` key (a truncated or emptied document) — turning
-governance off is `govern.enabled=false`, a key that IS present.
+document that parses but carries no `spring.governance.*` key (a truncated or emptied document) — turning
+governance off is `spring.governance.enabled=false`, a key that IS present.
 
 ---
 
 ## 3. Per-key behavior reference
 
-All keys live under `govern.source.nacos`, bound with the explicit prefix
-`${govern.source.nacos:=}` via `conf.Bind` (exact-match, no relaxed forms). This is the only
+All keys live under `spring.governance.source.nacos`, bound with the explicit prefix
+`${spring.governance.source.nacos:=}` via `conf.Bind` (exact-match, no relaxed forms). This is the only
 starter surface.
 
 | Key | Type | Default | Required | Behavior / interactions | Misconfiguration consequence |
@@ -225,14 +226,14 @@ starter surface.
 ⚠ There is **no** `timeout` key: the SDK client timeout is a fixed 5000 ms
 (`dialTimeoutMs` in `governance.go`), unlike `starter-config-nacos`'s import-string `timeout-ms`.
 
-⚠ `govern.source.*` is the bootstrap surface only. The rules document itself never rides
-`app.properties` — it lives in its own dataId, and its keys are the `govern.*` vocabulary
+⚠ `spring.governance.source.*` is the bootstrap surface only. The rules document itself never rides
+`app.properties` — it lives in its own dataId, and its keys are the `spring.governance.*` vocabulary
 documented in [starter-governance's USAGE](../starter-governance/USAGE.md).
 
 ### 3.1 Byte-portability of the document
 
 The document is parsed by the same `rules.Parse` used by the `starter-governance` file and http
-sources: it is flattened, required to carry at least one `govern.*` key, then bound into
+sources: it is flattened, required to carry at least one `spring.governance.*` key, then bound into
 `governance.Config`. Consequently a document that works as a local rules file works unchanged as a
 Nacos dataId (and vice versa, and as an etcd value with
 [starter-governance-etcd](../starter-governance-etcd)).
@@ -293,9 +294,9 @@ on exit.
 |---------|--------------|-----|
 | Startup fails `nacos server address must be host:port` | `server` has no `:` or an empty host/port | Use `host:port`, one server. |
 | Startup fails `governance nacos source: get <group>/<dataId> failed` | dataId missing, wrong group/namespace, wrong credentials, or server down | Create the dataId under the right group/namespace; check auth. |
-| Startup fails inside `rules.Parse` | dataId holds an unparseable or `govern.*`-less document | Publish a valid document first — the seed fails fast by design. |
-| Governance configured, `PolicyFor` stays zero | `govern.enabled` false (the default) in the document | Set `govern.enabled=true` — it is the master switch. |
-| A publish does not change the policy | logs `published an invalid document (keeping last good config)` | Fix the document; "off" is `govern.enabled=false`, not an empty document. |
+| Startup fails inside `rules.Parse` | dataId holds an unparseable or `spring.governance.*`-less document | Publish a valid document first — the seed fails fast by design. |
+| Governance configured, `PolicyFor` stays zero | `spring.governance.enabled` false (the default) in the document | Set `spring.governance.enabled=true` — it is the master switch. |
+| A publish does not change the policy | logs `published an invalid document (keeping last good config)` | Fix the document; "off" is `spring.governance.enabled=false`, not an empty document. |
 | A publish of identical content does nothing | by design — byte-equal re-deliveries and DeepEqual-equal documents push nothing | Expected. |
 | Custom Source bean silently ignored | missing `Export(gs.As[governance.Source]())` | Add the Export — without it the bean is invisible to interface injection. |
 | Rules change never arrives | Nacos connectivity, or the push target is not the watched `(group, dataId)` | Verify the publish lands on the configured group/dataId. |

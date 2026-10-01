@@ -24,6 +24,17 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
+// newTestObserver builds the observation layer a test's backend block would own.
+// The identity is fixed (center "test"): what these tests exercise is the
+// reporting, not the labelling.
+func newTestObserver() *discovery.Observer {
+	o, err := discovery.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
+}
+
 // compile-time contract: the adapter satisfies the discovery interface.
 var _ discovery.Discovery = (*zkDiscovery)(nil)
 
@@ -55,7 +66,7 @@ func TestValuesToEndpoints(t *testing.T) {
 		// A malformed payload is skipped, not fatal to the snapshot.
 		"orders-bad": []byte("not-json"),
 	}
-	eps := valuesToEndpoints(vals)
+	eps := valuesToEndpoints(newTestObserver(), vals)
 
 	// Sorted by address, malformed entry dropped.
 	assert.That(t, len(eps)).Equal(2)
@@ -76,7 +87,7 @@ func TestValuesToEndpoints(t *testing.T) {
 func TestValuesToEndpointsDrainEncoding(t *testing.T) {
 	// The drain signal (weight omitted from the payload) reconstructs as 0 —
 	// the endpoint stays in the snapshot but load-balance picking excludes it.
-	eps := valuesToEndpoints(map[string][]byte{
+	eps := valuesToEndpoints(newTestObserver(), map[string][]byte{
 		"a": mustPayload(t, instanceValue{ServiceName: "orders", Addr: "10.0.0.1:8080", Weight: 0}),
 	})
 	assert.That(t, len(eps)).Equal(1)
@@ -89,7 +100,7 @@ func TestValuesToEndpointsSchemeFilter(t *testing.T) {
 		"s-10.0.0.2:80": mustPayload(t, instanceValue{Addr: "10.0.0.2:80"}),
 	}
 	// FilterByScheme narrows to the tls instance only.
-	eps := discovery.FilterByScheme(valuesToEndpoints(vals), "tls")
+	eps := discovery.FilterByScheme(valuesToEndpoints(newTestObserver(), vals), "tls")
 	assert.That(t, len(eps)).Equal(1)
 	assert.That(t, eps[0].Addr).Equal("10.0.0.1:80")
 }

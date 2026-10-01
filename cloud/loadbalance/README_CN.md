@@ -81,13 +81,32 @@ pool := loadbalance.NewPool(resolver, bal)
 是 no-op)和**有状态**(least_conn 维护在途表;p2c 维护延迟模型)。所有策略
 状态按 endpoint 地址键,实例增删、快照重排都不影响幸存实例的存量状态。
 
-自定义策略实现 `Balancer` 接口后注册即可,与内置策略同等可用:
+自定义策略实现 `Balancer`(Pick/Complete,须并发安全),再作为一个命名
+`Factory` bean 贡献给容器——bean 名即规则引用的策略名,策略自己的参数从
+`Params` 里读:
 
 ```go
-loadbalance.Register("my_strategy", func(loadbalance.Config) loadbalance.Balancer {
-    return &myBalancer{} // 实现 Pick 和 Complete;须并发安全
-})
+type myFactory struct{}
+
+func (myFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbalance.Balancer, error) {
+    window, err := p.Duration("window", time.Second) // 策略自己的参数
+    if err != nil {
+        return nil, err
+    }
+    if err := p.Done(); err != nil { // 拒绝本策略不认识的键
+        return nil, err
+    }
+    return &myBalancer{window: window}, nil
+}
+
+// starter 的 init 里:
+gs.Provide(func() loadbalance.Factory { return myFactory{} }).
+    Name("my_strategy").
+    Export(gs.As[loadbalance.Factory]()).Caller(1)
 ```
+
+核心不认识任何策略参数——`Params` 就是规则里的扁平 `balancer-params` 映射,
+策略读自己拥有的键、拒绝其余。新增一个策略及其专属参数,本包一行都不用改。
 
 重试场景下,每次重试重新 `Pick` 即可拿到新鲜实例——候选集每次都重新过滤,
 不需要(也没有)失败端点黑名单接口;持续失败由 `Tracker` 自动摘除。
@@ -145,8 +164,19 @@ defer stop()
 `Manager.Apply(Settings{...})` 是治理中心唯一的入口——启动时用来源快照调一次,之后每次
 推送再调;`Manager.SelectionFor(label)` 读回某标签当前解析出的选择。
 
-`Pool.ApplySelection` 是同一个落点的直接入口,`Pool.Selection()` 可读回最近一次被接受的
-策略——自己管配置、不经 Manager 时用得上。
+规则给出策略名,并把策略自己的参数放进一个对本包不透明的扁平子映射:
+
+```yaml
+balancer: consistent_hash
+balancer-params:
+  replicas: 200
+outlier-threshold: 5
+```
+
+`Bind` 是"策略名变成策略"的唯一位置:它拿名字去 Manager 的 `Directory`——内置策略
+加上容器贡献的 `Factory` bean——解析出一个已构造的 `Balancer` 交给池,所以池永远不持有
+工厂表。`Pool.ApplyBalancer`(策略)与 `Pool.ApplySuspension`(阈值)是同样两半的直接
+入口,`Pool.Selection()` 可读回最近一次被接受的选择——自己管配置、不经 Manager 时用得上。
 
 ## Pick/Complete 契约
 

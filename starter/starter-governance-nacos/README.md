@@ -48,7 +48,7 @@ go get go-spring.org/starter-governance-nacos
 import _ "go-spring.org/starter-governance-nacos"
 ```
 
-The bean is registered only when a `govern.source.nacos.*` key is present, so
+The bean is registered only when a `spring.governance.source.nacos.*` key is present, so
 the blank import is inert otherwise.
 
 ### 2. Configure the source
@@ -56,9 +56,9 @@ the blank import is inert otherwise.
 Add the bootstrap keys to your [configuration file](example/conf/app.properties):
 
 ```properties
-govern.source.nacos.server=127.0.0.1:8848
-govern.source.nacos.data-id=app-govern.yaml
-govern.source.nacos.group=DEFAULT_GROUP
+spring.governance.source.nacos.server=127.0.0.1:8848
+spring.governance.source.nacos.data-id=app-governance.yaml
+spring.governance.source.nacos.group=DEFAULT_GROUP
 ```
 
 `server` and `data-id` are required; the other keys default (see
@@ -68,25 +68,26 @@ unparseable document fails startup instead of arming a disabled center.
 
 ### 3. Publish the rule document
 
-Put the rules in their OWN dataId, with the same `govern.*` keys an
+Put the rules in their OWN dataId, with the same `spring.governance.*` keys an
 `app.properties` entry would use:
 
 ```yaml
-govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
-  client:
-    rules:
-      - services: demo:service
-        attempt-timeout: 50ms
+spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
+    client:
+      rules:
+        - services: demo:service
+          attempt-timeout: 50ms
 ```
 
 Every published version is re-parsed and pushed into the center. The rule
-vocabulary (`govern.enabled`, `govern.client.default.*`, `govern.client.rules[n].*`,
-`govern.client.fault.*`) belongs to the governance domain; see
+vocabulary (`spring.governance.enabled`, `spring.governance.client.default.*`, `spring.governance.client.rules[n].*`,
+`spring.governance.client.fault.*`) belongs to the governance domain; see
 [starter-governance's USAGE](../starter-governance/USAGE.md) for the full
 reference. Introducing the governance center itself is still
 [starter-governance](../starter-governance)'s job — this module only supplies
@@ -94,7 +95,7 @@ the source.
 
 ## Configuration Keys
 
-All keys live under `govern.source.nacos`:
+All keys live under `spring.governance.source.nacos`:
 
 | Key         | Default                | Description                                   |
 |-------------|------------------------|-----------------------------------------------|

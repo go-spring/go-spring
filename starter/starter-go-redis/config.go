@@ -86,7 +86,7 @@ type Config struct {
 	// MaxRetries is how many times go-redis re-issues a command whose reply was
 	// a MOVED/ASK redirection or a cluster failover, default is 0. This is
 	// protocol-level recovery, NOT an idempotent retry: leave it to the client.
-	// govern's `max-retries` is the other, separate one (see the doc note below).
+	// governance's `max-retries` is the other, separate one (see the doc note below).
 	MaxRetries int `value:"${max-retries:=0}"`
 
 	// DialTimeout is the timeout for dialing the Redis server, e.g., "5s".

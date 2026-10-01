@@ -26,7 +26,7 @@ scope (see [starter/DESIGN §3](../DESIGN.md)).
 Configuration is **named blocks**: one `spring.registry.nacos.<name>.*` block
 per Nacos server. There is no default or unnamed block — the name is part of
 the address. Each block becomes ONE backend bean named `nacos.<name>`
-implementing BOTH `discovery.Registrar` (write) and `discovery.Discovery`
+implementing BOTH `discovery.Registry` (write) and `discovery.Discovery`
 (read), sharing the block's client and namespace/group/cluster:
 
 ```properties

@@ -51,7 +51,7 @@ func (s *side) config() Config {
 }
 
 // Configs is the direction pair the governance center pushes — one [Config] per
-// direction, mirroring govern.client.fault and govern.server.fault. Holding them
+// direction, mirroring spring.governance.client.fault and spring.governance.server.fault. Holding them
 // as a pair keeps a single push from being able to swap the two by accident, the
 // way two positional arguments of a setter could.
 type Configs struct {

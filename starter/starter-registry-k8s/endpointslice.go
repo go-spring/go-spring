@@ -54,6 +54,11 @@ type endpointSliceDiscovery struct {
 	cfg    Config
 	client kubernetes.Interface
 
+	// obs is the block's observability layer; it carries the identity (system,
+	// center) every reported sync and log line is labelled with, and its gauge
+	// callbacks are released by Close.
+	obs *discovery.Observer
+
 	mu       sync.Mutex // guards entries and watchers
 	entries  map[string]*esEntry
 	watchers map[*watcherHandle]struct{}
@@ -95,7 +100,7 @@ func (h *watcherHandle) stop() {
 // empty, otherwise from the kubeconfig file) and returns an informer-backed
 // backend. The client is built eagerly so a missing ServiceAccount or bad
 // kubeconfig fails at startup.
-func newEndpointSliceDiscovery(cfg Config) (*endpointSliceDiscovery, error) {
+func newEndpointSliceDiscovery(cfg Config, obs *discovery.Observer) (*endpointSliceDiscovery, error) {
 	restCfg, err := buildRESTConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -144,13 +149,13 @@ func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string, opts 
 	if !e.seeded {
 		eps, err := d.listSlices(ctx, name)
 		if err != nil {
-			discovery.Synced(obsSystem, name, err)
+			d.obs.Synced(name, err)
 			return nil, err
 		}
 		e.eps, e.seeded = eps, true
 		// The seed is this service's first confirmed snapshot; reporting it
 		// starts the freshness clock before any informer event arrives.
-		discovery.Synced(obsSystem, name, nil)
+		d.obs.Synced(name, nil)
 		go d.watchInformer(name, e)
 	}
 	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
@@ -205,9 +210,16 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 		DeleteFunc: func(any) { enqueue() },
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
-		discovery.Synced(obsSystem, name, err)
+		d.obs.Synced(name, err)
 		log.Warn(context.Background(), starterTag, append(
-			discovery.SyncFailedFields(obsSystem, name, err),
+			[]log.Field{
+				log.String("system", d.obs.System()),
+				log.String("center", d.obs.Center()),
+				log.String("service", name),
+				log.String("operation", "sync"),
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+			},
 			log.Msg("registry-k8s: informer handler registration failed; serving seed/stale snapshots"),
 		)...)
 		return
@@ -218,9 +230,16 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 	if !cache.WaitForCacheSync(h.done, informer.HasSynced) {
 		h.stop()
 		err := fmt.Errorf("registry-k8s: cache sync for %q failed", name)
-		discovery.Synced(obsSystem, name, err)
+		d.obs.Synced(name, err)
 		log.Warn(context.Background(), starterTag, append(
-			discovery.SyncFailedFields(obsSystem, name, err),
+			[]log.Field{
+				log.String("system", d.obs.System()),
+				log.String("center", d.obs.Center()),
+				log.String("service", name),
+				log.String("operation", "sync"),
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+			},
 			log.Msg("registry-k8s: cache sync failed; serving seed snapshots"),
 		)...)
 		return
@@ -239,9 +258,16 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 		case <-updates:
 			slices, err := lister.List(labels.Everything())
 			if err != nil {
-				discovery.Synced(obsSystem, name, err)
+				d.obs.Synced(name, err)
 				log.Warn(context.Background(), starterTag, append(
-					discovery.SyncFailedFields(obsSystem, name, err),
+					[]log.Field{
+						log.String("system", d.obs.System()),
+						log.String("center", d.obs.Center()),
+						log.String("service", name),
+						log.String("operation", "sync"),
+						log.String("status", discovery.StatusOf(err)),
+						log.Err(err),
+					},
 					log.Msg("registry-k8s: refresh from the informer cache failed (keeping stale snapshot)"),
 				)...)
 				continue
@@ -254,7 +280,7 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 			// Only a success advances the freshness clock: an informer that has
 			// stopped delivering shows up as a climbing cache age, not as a
 			// stale snapshot that still looks healthy.
-			discovery.Synced(obsSystem, name, nil)
+			d.obs.Synced(name, nil)
 		}
 	}
 }
@@ -278,7 +304,9 @@ func (d *endpointSliceDiscovery) Close() error {
 	for _, h := range ws {
 		h.stop()
 	}
-	return nil
+	// Drop this block's gauge callbacks with it: the block owns them, so nothing
+	// of it may keep reporting after it is gone.
+	return d.obs.Close()
 }
 
 // slicesToEndpoints flattens EndpointSlices into discovery endpoints, selecting

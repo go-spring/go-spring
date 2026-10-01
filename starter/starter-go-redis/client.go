@@ -60,9 +60,6 @@ type Client struct {
 // off — an unarmed manager — the resolved executor is a transparent no-op.
 func (o *Client) Init() error {
 	o.service = serviceLabel(o.cfg)
-	if o.mgr == nil {
-		o.mgr = resilience.NewManager()
-	}
 	exec := fault.WrapClientExecutor(o.mgr.ClientExecutorFor("redis", o.service), o.service, o.inj)
 	o.exec = exec
 	o.bindSelection()
@@ -107,9 +104,6 @@ func (o *Client) Destroy() error {
 func (o *Client) bindSelection() {
 	if o.lbPool == nil {
 		return
-	}
-	if o.lbMgr == nil {
-		o.lbMgr = loadbalance.NewManager()
 	}
 	o.detach = o.lbMgr.Bind(o.lbPool, o.service)
 }

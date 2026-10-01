@@ -18,6 +18,7 @@ package loadbalance
 
 import (
 	"context"
+	"maps"
 	"sync"
 
 	"go-spring.org/log"
@@ -49,6 +50,12 @@ type Manager struct {
 	// resolve maps a resource label to its selection. It is nil on an unarmed
 	// manager, in which case every pool keeps the strategy it was built with.
 	resolve func(label string) Selection
+
+	// dir is the strategy directory every bound pool's balancer is built from:
+	// the built-in strategies plus whatever [Factory] beans the container
+	// contributed (see [Manager.SetFactories]). It is never nil on a manager
+	// built by [NewManager].
+	dir Directory
 }
 
 // Settings is the selection half of the governance document: everything this
@@ -67,9 +74,55 @@ type Settings struct {
 
 // NewManager returns an unarmed Manager: no resolver yet, so every pool keeps
 // the strategy it was built with until [Manager.Apply] arms it. Bindings taken
-// while it is unarmed are remembered and come alive on that Apply.
+// while it is unarmed are remembered and come alive on that Apply. Its
+// directory holds the built-in strategies; a deployment adds its own with
+// [Manager.SetFactories] before the center goes live.
 func NewManager() *Manager {
-	return &Manager{subs: map[string][]*subscriber{}}
+	return &Manager{subs: map[string][]*subscriber{}, dir: builtinDirectory()}
+}
+
+// SetFactories installs the additional [Factory] beans the container
+// contributed, keyed by bean name — the strategy directory a `balancer` name in
+// a rule is resolved against. The built-in strategies stay in place and a
+// contributed name that shadows one is an error, as is an empty name or a nil
+// factory. It is the load-balancing counterpart of resilience's
+// Manager.SetDrivers and is meant to run during wiring, before the center goes
+// live; a nil or empty map is a no-op that leaves the built-ins alone.
+//
+// On error the directory is left unchanged, so a rejected contribution cannot
+// strip the process of the strategies it already had.
+func (m *Manager) SetFactories(extra map[string]Factory) error {
+	if len(extra) == 0 {
+		return nil
+	}
+	dir, err := NewDirectory(extra)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dir = dir
+	return nil
+}
+
+// Build constructs the strategy name from the manager's directory, using params
+// as the strategy's own parameters. It is how an adapter that cannot hold a
+// [Pool] — a gRPC balancer, say — resolves a governed strategy name against the
+// same directory the pools use, so a contributed strategy works in both.
+func (m *Manager) Build(name string, params map[string]string) (Balancer, error) {
+	return m.directory().Build(name, NewParams(params))
+}
+
+// directory returns the strategy directory in force. It is never nil: a manager
+// built by [NewManager] starts with the built-ins, and one built as a bare
+// &Manager{} falls back to them.
+func (m *Manager) directory() Directory {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.dir == nil {
+		m.dir = builtinDirectory()
+	}
+	return m.dir
 }
 
 // Apply adopts s as the manager's settings and re-evaluates every subscribed
@@ -113,6 +166,15 @@ func (m *Manager) Apply(s Settings) {
 // selection is applied immediately and again on every change, in place — no pool
 // rebuild, and the next [Pool.Pick] already sees it.
 //
+// Bind is the one place a strategy NAME becomes a strategy: it resolves the
+// name against the manager's [Directory] and hands the pool a built [Balancer],
+// so a pool never holds the factory table. A name that fails to build —
+// unknown, or a params bag the strategy rejects — is IGNORED rather than fatal:
+// the pool degrades to the last good strategy instead of taking the client
+// down, and the error is returned for [Manager.Subscribe] to log (the
+// governance source contract has no error channel). The suspension half is
+// applied unconditionally, so a rule that only retunes thresholds still works.
+//
 // The returned func detaches the binding. A pool whose lifetime is not the whole
 // process MUST call it, or the Manager keeps a callback pointing at a dead pool.
 // Binding an unarmed manager is safe and is the normal case for a pool built
@@ -122,7 +184,18 @@ func (m *Manager) Bind(pool *Pool, label string) (stop func()) {
 	if pool == nil {
 		return func() {}
 	}
-	return m.Subscribe(label, pool.ApplySelection)
+	return m.Subscribe(label, func(s Selection) error {
+		pool.ApplySuspension(TrackerConfig{Threshold: s.OutlierThreshold, SuspendFor: s.OutlierSuspendFor})
+		if s.Balancer == "" {
+			return nil // keep the pool's current strategy
+		}
+		bal, err := m.directory().Build(s.Balancer, NewParams(s.Params))
+		if err != nil {
+			return err
+		}
+		pool.ApplyBalancer(bal, s)
+		return nil
+	})
 }
 
 // Subscribe wires apply to label's managed selection: it is invoked immediately
@@ -233,8 +306,11 @@ type pending struct {
 }
 
 // selectionEqual reports whether two resolved selections are equivalent for the
-// purpose of change detection. [Selection] is comparable: its fields are a
-// string, a [Config] of comparable fields, an int and a duration.
+// purpose of change detection. [Selection] carries a parameter map and so is not
+// comparable with ==; every field is compared explicitly instead.
 func selectionEqual(a, b Selection) bool {
-	return a == b
+	return a.Balancer == b.Balancer &&
+		maps.Equal(a.Params, b.Params) &&
+		a.OutlierThreshold == b.OutlierThreshold &&
+		a.OutlierSuspendFor == b.OutlierSuspendFor
 }

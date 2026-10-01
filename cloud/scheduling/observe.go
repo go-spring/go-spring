@@ -19,8 +19,10 @@ package scheduling
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -50,31 +52,29 @@ import (
 // Runs also get a span on the global otel pipeline; a swallowed fire has no run
 // to trace, so it appears in metrics and logs only.
 
-// durationBuckets are the duration-histogram boundaries (seconds) — the OTel
-// HTTP semconv recommended set, shared with the other domain packages.
-var durationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-
 // lagBuckets are the wake-up-lag histogram boundaries (seconds). Lag is the
 // delay between a fire's scheduled instant and when its run actually started, so
 // the interesting range is sub-millisecond to seconds — finer than
-// durationBuckets, which starts at 5ms.
+// [observability.DurationBuckets], which starts at 5ms.
 var lagBuckets = []float64{0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5}
 
 // accessTag is the static log tag for the per-fire log lines.
 var accessTag = log.RegisterAppTag("scheduler", "access")
 
-// instruments bundles the metrics a fire records. They are built per record on
-// purpose: they must bind to the OTel global provider current at call time (it
-// is installed during wiring, after package inits), and the OTel meter returns
-// the same cached instrument for a given name+type, so re-creating them costs a
-// map lookup and never forks a metric into a second timeline.
-type instruments struct {
+// instrumentSet bundles the metrics a fire records: one per process, resolved
+// lazily on first use so the set binds to whichever OTel global provider is
+// current then (it is installed during wiring, after package inits), and
+// immutable afterwards. It holds no per-fire state.
+type instrumentSet struct {
 	runs     metric.Int64Counter
 	duration metric.Float64Histogram
 	lag      metric.Float64Histogram
 }
 
-func newInstruments() instruments {
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/cloud/scheduling")
 	runs, _ := m.Int64Counter("scheduling.runs",
 		metric.WithDescription("Scheduled job fires by status"),
@@ -82,7 +82,7 @@ func newInstruments() instruments {
 	duration, _ := m.Float64Histogram("scheduling.run.duration",
 		metric.WithDescription("Duration of a job run"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBuckets...))
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
 	// A rising lag is the scheduler's own health signal: the schedule is not
 	// drifting (the next fire stays anchored on the planned instant), but runs are
 	// starting later and later, which points at a process that is saturated or
@@ -91,8 +91,14 @@ func newInstruments() instruments {
 		metric.WithDescription("Delay between a fire's scheduled instant and the start of its run"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(lagBuckets...))
-	return instruments{runs: runs, duration: duration, lag: lag}
+	return &instrumentSet{runs: runs, duration: duration, lag: lag}
 }
+
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // statusOfRun classifies a run's outcome.
 func statusOfRun(err error) string {
@@ -123,7 +129,7 @@ func statusOf(ev event) string {
 func record(ev event) {
 	status := statusOf(ev)
 	ctx := context.Background()
-	ins := newInstruments()
+	ins := instruments()
 
 	ins.runs.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("job", ev.Name),

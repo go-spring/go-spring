@@ -19,19 +19,30 @@ package cache
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
+	"go-spring.org/cloud/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
+// Observability contract.
+//
+// The decorator observes the [ByteCache] it wraps, so the unit of observation is
+// the byte layer: a get that finds the bytes is a hit even when a codec above
+// this layer then fails to decode them. Encoding and decoding are a different
+// concern and are not reported here.
+//
 // Operation and status attribute values. The statuses are exclusive per
 // operation, so cache.operation.total summed over status is the number of
 // operations executed — there is no separate counter that could double-count.
 // A get distinguishes hit from miss ([ErrMiss]); set and delete have no miss
-// outcome, so theirs is ok/error. The key never appears in a metric: it is
-// unbounded and would explode the label space.
+// outcome, so theirs is ok/error. A miss is a normal outcome, not a failure: it
+// drives the hit rate, not an error rate.
 const (
 	opGet    = "get"
 	opSet    = "set"
@@ -43,70 +54,152 @@ const (
 	statusError = "error"
 )
 
-// observability is the [ByteCache] decorator [New] wraps every backend in.
-// It records the cache semantics — hit vs miss vs error — that no backend's
-// own instrumentation can see: a redis GET that returns nil is a successful
-// command down there, and only this layer knows it was a miss.
+// observedCache is the [ByteCache] decorator [New] wraps every backend in. It
+// records the cache semantics — hit vs miss vs error — that no backend's own
+// instrumentation can see: a redis GET that returns nil is a successful command
+// down there, and only this layer knows it was a miss.
 //
-// Only that counter is recorded. No duration: an operation's latency is
-// the backend client's, not the cache abstraction's. No logs: cache calls
-// are high-frequency, so a per-call line would be noise.
+// Every signal shares one vocabulary, so a metric and a span always agree:
 //
-// The instrument is built once in [newObservability] and reused: cache
-// calls are too frequent for a per-call meter lookup. This relies on [New]
-// running after the OTel global provider is installed — under the framework
-// it does, since bean construction happens after RefreshPrepare, where
-// starter-otel installs the provider. A cache built before any provider is
-// set records to the no-op meter.
-type observability struct {
+//	operation  get | set | delete
+//	status     hit | miss | ok | error
+//
+// No logs: cache calls are high-frequency, so a per-call line would be noise.
+//
+// Two invariants:
+//   - The key is a caller-chosen resource name. It belongs on spans, never on a
+//     metric, where its cardinality is unbounded.
+//   - The duration is the caller-visible one — the backend round trip — and it
+//     is the reason the histogram is here: the backend's own client metric
+//     cannot split hit from miss, and those two have different latency profiles.
+//
+// The instruments come from the package's process-wide set (see [instruments]),
+// resolved on first use: cache calls are too frequent for a per-call meter
+// lookup. This relies on [New] running after the OTel global provider is
+// installed — under the framework it does, since bean construction happens after
+// RefreshPrepare, where starter-otel installs the provider. A cache built before
+// any provider is set records to the no-op meter.
+type observedCache struct {
 	ByteCache
-	total metric.Int64Counter
 }
 
-// newObservability wraps bc and builds its instrument from the meter provider
-// current at construction time.
-func newObservability(bc ByteCache) observability {
+// instrumentSet is this package's metric set: one per process, resolved lazily
+// on first use so it binds to whichever meter provider is current then, and
+// immutable afterwards. It holds no per-cache state — the operation and status
+// labels travel with each record, not here.
+type instrumentSet struct {
+	total    metric.Int64Counter
+	duration metric.Float64Histogram
+}
+
+// instruments is the one instrument set this package uses for the whole process.
+var instruments = sync.OnceValue(buildInstruments)
+
+func buildInstruments() *instrumentSet {
 	m := otel.Meter("go-spring.org/cloud/cache")
-	total, _ := m.Int64Counter("cache.operation.total",
+	in := &instrumentSet{}
+	in.total, _ = m.Int64Counter("cache.operation.total",
 		metric.WithDescription("Cache operations executed, by operation and status"),
 		metric.WithUnit("{operation}"))
-	return observability{ByteCache: bc, total: total}
+	in.duration, _ = m.Float64Histogram("cache.operation.duration",
+		metric.WithDescription("Duration of cache operations, by operation and status"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+	return in
 }
 
-func (o observability) GetBytes(ctx context.Context, key string) ([]byte, error) {
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
+// tracerName names the tracer the operation spans open on. The tracer is looked
+// up per use (otel.Tracer at call time), never cached in a field or package
+// variable: one captured before any provider is set stops forwarding once the
+// global provider is set, unset and set again.
+const tracerName = "go-spring.org/cloud/cache"
+
+// newObservedCache wraps bc.
+func newObservedCache(bc ByteCache) observedCache {
+	return observedCache{ByteCache: bc}
+}
+
+// startSpan opens the operation's client span. The key rides on the span only —
+// see the invariants above.
+func startSpan(ctx context.Context, op, key string) (context.Context, trace.Span) {
+	return otel.Tracer(tracerName).Start(ctx, op,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("cache.operation", op),
+			attribute.String("cache.key", key),
+		))
+}
+
+// statusOf maps an outcome to the status dimension the metric and the span
+// share. ErrMiss is a status of its own: a miss is neither a success nor a
+// backend failure, and folding it into either would hide the hit rate this
+// decorator exists to report.
+func statusOf(op string, err error) string {
+	switch {
+	case err == nil && op == opGet:
+		return statusHit
+	case err == nil:
+		return statusOK
+	case op == opGet && errors.Is(err, ErrMiss):
+		return statusMiss
+	default:
+		return statusError
+	}
+}
+
+// endSpan stamps the outcome on the span — the same status value the metric
+// records, so the two cannot disagree — and closes it.
+func endSpan(span trace.Span, status string, err error) {
+	span.SetAttributes(attribute.String("cache.status", status))
+	if status == statusError {
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
+}
+
+// record emits the counter and the duration for one finished operation.
+func (o observedCache) record(ctx context.Context, op, status string, start time.Time) {
+	attrs := metric.WithAttributes(
+		attribute.String("operation", op),
+		attribute.String("status", status),
+	)
+	in := instruments()
+	in.total.Add(ctx, 1, attrs)
+	in.duration.Record(ctx, time.Since(start).Seconds(), attrs)
+}
+
+func (o observedCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
+	start := time.Now()
+	ctx, span := startSpan(ctx, opGet, key)
 	b, err := o.ByteCache.GetBytes(ctx, key)
-	o.record(ctx, opGet, err)
+	status := statusOf(opGet, err)
+	endSpan(span, status, err)
+	o.record(ctx, opGet, status, start)
 	return b, err
 }
 
-func (o observability) SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error {
+func (o observedCache) SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error {
+	start := time.Now()
+	ctx, span := startSpan(ctx, opSet, key)
 	err := o.ByteCache.SetBytes(ctx, key, val, ttl)
-	o.record(ctx, opSet, err)
+	status := statusOf(opSet, err)
+	endSpan(span, status, err)
+	o.record(ctx, opSet, status, start)
 	return err
 }
 
-func (o observability) Delete(ctx context.Context, key string) error {
+func (o observedCache) Delete(ctx context.Context, key string) error {
+	start := time.Now()
+	ctx, span := startSpan(ctx, opDelete, key)
 	err := o.ByteCache.Delete(ctx, key)
-	o.record(ctx, opDelete, err)
+	status := statusOf(opDelete, err)
+	endSpan(span, status, err)
+	o.record(ctx, opDelete, status, start)
 	return err
-}
-
-// record reports one operation on cache.operation.total, deriving the status
-// from the outcome: nil is hit (get) or ok (set/delete), any other error is
-// error, and a get miss — [ErrMiss] — is miss.
-func (o observability) record(ctx context.Context, op string, err error) {
-	status := statusOK
-	if op == opGet {
-		status = statusHit
-	}
-	if err != nil {
-		status = statusError
-		if op == opGet && errors.Is(err, ErrMiss) {
-			status = statusMiss
-		}
-	}
-	o.total.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("operation", op),
-		attribute.String("status", status),
-	))
 }
