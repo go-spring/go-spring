@@ -151,7 +151,7 @@ const DefaultDriverName = "default"
 // them: the container is the driver directory, and the governance wiring bean
 // collects the beans into a map the center resolves the configured name in.
 // This package holds no registry of its own, so selecting a backend by name is
-// the caller's job — see the discovery package for the same shape.
+// the caller's job.
 //
 // TWO methods rather than one direction-agnostic one, because the two directions
 // do not share a model: a backend maps [ClientPolicy] onto its outbound primitives and

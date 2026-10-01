@@ -29,8 +29,6 @@
 //   - "on"  — forced on.
 //   - "off" — forced off.
 //   - "auto" or unset — on iff a sidecar is detected ([Detect]).
-//
-// The package is a pure leaf (stdlib only): no logging, no config binding.
 package mesh
 
 import (

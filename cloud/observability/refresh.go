@@ -78,9 +78,8 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // funnel, "was the fleet actually refreshed, and did it fail" is answerable
 // only by grepping per-module logs.
 //
-// It deliberately wraps instead of referencing the refresh function: callers
-// pass their own (typically gs.RefreshProperties), so this package stays
-// spring-free and the cloud layer's dependency direction is preserved.
+// It wraps the refresh function instead of referencing it: callers pass their
+// own (typically gs.RefreshProperties), so this package stays spring-free.
 //
 //	observability.RefreshConf(ctx, gs.RefreshProperties)
 //
@@ -100,10 +99,6 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // for exemplar sampling) and into fn. Refresh events originate from backend
 // watch callbacks (k8s informer handlers, SDK listeners) that often carry no
 // context, so callers without one pass context.Background() at the boundary.
-//
-// The instruments are package-wide and resolved lazily on first use, so they
-// are built after the OTel global provider is installed (starter-otel wires it
-// during RefreshPrepare, after all package inits); see [instruments].
 func RefreshConf(ctx context.Context, fn func(context.Context) error) error {
 	in := instruments()
 

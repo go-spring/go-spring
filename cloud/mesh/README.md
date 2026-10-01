@@ -12,7 +12,7 @@ DNS address instead of building a discovery Resolver or a load-balance Pool.
 You normally don't call this package yourself — you set one environment
 variable and the starters react.
 
-## Install
+## Installation
 
 ```
 go get go-spring.org/cloud

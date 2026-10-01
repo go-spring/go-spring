@@ -169,8 +169,8 @@ type ClientPolicy struct {
 // [ClientExecutor.Execute] would be a transparent pass-through. It replaces struct
 // equality (`p == (ClientPolicy{})`) for readers who want intent, not bits.
 //
-// Endpoint selection is not consulted either, for the same shape of reason: it
-// is not part of this type at all. A service's selection knobs live in
+// Endpoint selection is not consulted either, for the same reason: it is not
+// part of this type at all. A service's selection knobs live in
 // [go-spring.org/cloud/loadbalance.Selection] and are read by the Pool, never by
 // [ClientExecutor.Execute].
 func (p ClientPolicy) IsZero() bool {

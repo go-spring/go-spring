@@ -2,9 +2,9 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-组件想在 actuator 的管理端口上多挂一个 HTTP 路径,就贡献一个 `Endpoint`
-bean。actuator 收集所有 `endpoint.Endpoint` 类型的 bean,逐个挂到自己的
-mux 上,和内置探针端点并列。
+组件想在 actuator 的管理端口上多挂一个 HTTP 路径，就贡献一个 `Endpoint`
+bean。actuator 收集所有 `endpoint.Endpoint` 类型的 bean，逐个挂到自己的
+mux 上，和内置探针端点并列。
 
 ## 安装
 
@@ -14,7 +14,7 @@ go get go-spring.org/cloud
 
 ## 用法
 
-给 actuator 贡献 Prometheus `/metrics`:
+给 actuator 贡献 Prometheus `/metrics`：
 
 ```go
 import (

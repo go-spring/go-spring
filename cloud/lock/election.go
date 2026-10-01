@@ -47,8 +47,8 @@ type ElectionConfig struct {
 	// OnStartedLeading is called when this instance becomes leader. Its ctx is cancelled
 	// when leadership is lost (lease expired) or the election stops, so a leader's
 	// work should honour ctx and return promptly. It runs on its own goroutine;
-	// [Election.Run] does not wait for it to return before re-campaigning after a
-	// loss, but it is cancelled first.
+	// on loss [Election.Run] cancels the term context, waits for it to return,
+	// then releases the lock, and only then re-campaigns.
 	OnStartedLeading func(ctx context.Context)
 
 	// OnStoppedLeading is called once each time this instance stops being leader

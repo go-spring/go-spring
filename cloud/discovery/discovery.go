@@ -25,9 +25,9 @@
 //
 // A company adapts its own naming service by implementing the single
 // [Discovery] interface; each backend is a named bean in the IoC container
-// (the registry starters derive theirs from ${spring.registry.<backend>} under
-// the fixed backend label, e.g. "etcd"), and
-// every client starter injects the backend it cites by name — the container is
+// (a registry starter derives one per ${spring.registry.<backend>.<name>}
+// block, named "<backend>.<name>" — e.g. "etcd.main"), and every client
+// starter injects the backend it cites by name — the container is
 // the discovery directory. Publishing this process to a registry (the
 // provider-side write) is handled by a registry starter such as
 // starter-registry-etcd, not by this package.
@@ -76,7 +76,7 @@ type Endpoint struct {
 	// picking (falling back to an even split only when every instance is
 	// zero-weighted, so unnormalized snapshots never blackhole). Negative
 	// values are misconfiguration, treated as the default weight (1). Backends
-	// that do not carry weights leave it empty — registrants normalize an
+	// that do not carry weights leave it zero — registrants normalize an
 	// unset weight to 1 at write time so "default" is never stored as 0.
 	Weight int
 
@@ -86,8 +86,8 @@ type Endpoint struct {
 	// traffic, not even as a fallback when no healthy instance exists.
 	//
 	// The zero value (false) means "not disabled", so backends that do not
-	// track the distinction are treated as enabled, preserving the old
-	// behavior. It is deliberately separate from Healthy: Disabled is an
+	// track the distinction are treated as enabled. It is deliberately
+	// separate from Healthy: Disabled is an
 	// operator decree that holds regardless of probe results, while Healthy is
 	// a probe result a load balancer may downgrade from. The eligible set is
 	// the !Disabled && Healthy instances, degrading to !Disabled only when none

@@ -22,14 +22,16 @@ container required. Container wiring for each family lives in the
 | [lock](lock/) | "May this replica run this exclusive work right now?" — distributed locking and leader election behind one contract. |
 | [mesh](mesh/) | "Am I behind a service-mesh sidecar?" — when yes, the app's own discovery/load-balancing steps aside. |
 | [messaging](messaging/) | Publish/consume `Message` envelopes through one `Publisher`/`Subscriber` pair; switching brokers is a wiring change. |
-| [observability](observability/) | Per-request attributes carried on the context, so spans started on your behalf carry them too. |
-| [scheduling](scheduling/) | Periodic and cron-scheduled background jobs: triggers (`FixedRate`, `FixedDelay`, `After`, cron, `DailyWindow`), concurrency policies, distributed-lock de-duplication. |
+| [observability](observability/) | Per-request attributes carried on the context, so spans started on your behalf carry them too; plus `RefreshConf`, the shared funnel for property-refresh triggers. |
+| [propagate](propagate/) | Moves a domain marker — the load-test flag, say — across protocol boundaries: one small `Carrier` seam over HTTP headers, gRPC metadata, Kafka record headers, dubbo attachments. |
+| [scheduling](scheduling/) | Periodic and cron-scheduled background jobs: triggers (`FixedRate`, `FixedDelay`, `After`, `ParseCron`, `DailyWindow`), concurrency policies, distributed-lock de-duplication. |
 | [security](security/) | Framework-agnostic authentication and authorization — identity model plus per-family middleware shells. |
 | [experimental](experimental/) | Evolving additions, not yet committed to the stable surface: [batch](experimental/batch/), [contract](experimental/contract/) testing, [loadtest](experimental/loadtest/), [outbox](experimental/outbox/), [session](experimental/session/), [transaction](experimental/transaction/). |
 
-Each package has its own `README.md` (and Chinese `README_CN.md`) with the
-design rationale and usage; families that carry per-module design rules also
-keep a `DESIGN.md`.
+Each package has its own `README.md` (and Chinese `README_CN.md`) covering usage
+and design rationale. Families with a larger design surface — `resilience`,
+`fault`, `security` — carry a full `## Design` section in their README rather
+than a separate file.
 
 ## How it fits with the rest
 

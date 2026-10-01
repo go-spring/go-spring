@@ -11,7 +11,7 @@ the same API into the IoC container.
 The scheduler is single-process by design. On a multi-replica deployment
 `WithLock` de-duplicates fires (only the lock holder runs) — it adds no
 sharding, failover, or task orchestration. For those, use an external job
-platform instead (e.g. `starter-xxl-job`); reach for `scheduling` when the
+platform instead (e.g. `starter-xxljob`); reach for `scheduling` when the
 job is in-process work (cache refresh, heartbeats, cleanup) that does not
 justify operating a scheduler center.
 
@@ -96,8 +96,8 @@ remaining runs finish on their own).
 | API | What it does |
 | --- | --- |
 | `NewScheduler()` | Creates a scheduler; nothing runs until `Start`. Every fire is reported through the package's built-in metrics and logs (see below). |
-| `NewJob(name, trigger, run, opts...)` | Builds a [Job]: the registration bundle of name, run function, trigger, execution options, and (via `.WithLock`) the distributed lock. Returns an error on an empty name, nil run or nil trigger. |
-| `Schedule(job)` | Registers a [Job] (before or after `Start`); returns a cancel that stops and removes it. Rejects a duplicate name or a stopped scheduler. |
+| `NewJob(name, trigger, run, opts...)` | Builds a `Job`: the registration bundle of name, run function, trigger, execution options, and (via `.WithLock`) the distributed lock. Returns an error on an empty name, nil run or nil trigger. |
+| `Schedule(job)` | Registers a `Job` (before or after `Start`); returns a cancel that stops and removes it. Rejects a duplicate name or a stopped scheduler. |
 | `FixedRate(d, opts...)` | Fire every d, anchored on the last **scheduled** time so drift does not accumulate. |
 | `FixedDelay(d, opts...)` | Fire d after the previous run **completes**; never overlaps, no concurrency policy applies. |
 | `After(d)` | Fire exactly once, d after the schedule starts, then stop the job — deferred one-shot work. |

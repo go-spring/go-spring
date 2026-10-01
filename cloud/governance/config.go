@@ -60,7 +60,7 @@ import (
 // resolves in exactly one block.
 type Config struct {
 	// Enabled gates the whole center — BOTH directions. When false, every module
-	// is disarmed: [Center.serviceFor] returns a zero Policy and
+	// is disarmed: [Center.clientServiceFor] returns a zero Policy and
 	// [Center.serverPolicyFor] a zero ServerPolicy (transparent pass-throughs)
 	// regardless of Default/Rules, and neither fault side injects. Importing
 	// starter-governance with no configured source is therefore a no-op.
@@ -96,7 +96,7 @@ type ClientConfig struct {
 
 	// Rules are per-service outbound policy entries — one service per Rule, no
 	// grouping several labels into one entry (they would silently share a
-	// policy). [Center.policyFor] returns the Rule whose Service equals the
+	// policy). [Center.clientPolicyFor] returns the Rule whose Service equals the
 	// label; when no Rule matches it returns Default. Each Rule's embedded
 	// halves fully replace Default for the matched service — not a field-wise
 	// merge: a resilience.ClientPolicy field of 0 means "disabled", so a partial

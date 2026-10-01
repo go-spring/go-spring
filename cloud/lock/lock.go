@@ -23,15 +23,13 @@
 // background worker or a one-off migration acquires a named lock (or wins an
 // election) and only the holder proceeds; the others wait or skip.
 //
-// The abstraction is split from its backends deliberately. Unlike
-// [go-spring.org/cloud/governance/resilience] and [go-spring.org/cloud/discovery], there
-// is no global string-keyed driver registry, because a lock backend needs a live
-// client (a Redis connection, an etcd/consul client) rather than a declarative
-// policy. The seam is therefore the [Locker] interface itself: each backend ships
-// as its own starter module that builds a client and exports a Locker bean, and
-// switching backend is a blank-import swap with no change to business code. The
-// bundled [MemoryLocker] is an in-process implementation with no dependencies, so
-// the framework and its tests run standalone.
+// The seam is the [Locker] interface itself, not a global string-keyed driver
+// registry: a lock backend needs a live client (a Redis connection, an
+// etcd/consul client), not a declarative policy that can be looked up by name.
+// Each backend ships as its own starter module that builds a client and exports
+// a Locker bean, so switching backend is a blank-import swap with no change to
+// business code. The bundled [MemoryLocker] is an in-process implementation
+// with no dependencies, so the framework and its tests run standalone.
 //
 // [Election] builds leader election on top of any Locker, so the same code elects
 // a leader whether it is backed by Redis, etcd, consul or the in-memory locker.

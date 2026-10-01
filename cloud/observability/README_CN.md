@@ -54,8 +54,9 @@ func TenantMiddleware(next http.Handler) http.Handler {
 两种情况都**不需要拿到 span 对象**，只需要 span 将要从中启动的那个
 context。
 
-**span 在框架内部启动。** 如 `client.Call(ctx, ...)` 内部的缓存或 DB 访问
-span，你在 ctx 上看不到它们。标注你传进去的 ctx 即可：
+**span 在框架内部启动。** 注册中心的注册、加锁、缓存或 DB 访问，你在自己的
+ctx 上看不到这些 span，`trace.SpanFromContext(ctx)` 返回的是父 span。标注你
+传进去的 ctx 即可：
 
 ```go
 ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
@@ -89,7 +90,7 @@ _ = observability.RefreshConf(ctx, gs.RefreshProperties)
 
 ## 不覆盖什么
 
-| 需求 | 应去哪里 |
+| 不覆盖 | 应去哪里 |
 |---|---|
 | **context 属性进 metric**——metric SDK 没有记录时的钩子，内置 metric 标签按设计保持封闭 | 给你自己的 instrument 在记录处传属性 |
 | **进程级维度**（env、cluster、version）——进程内每个 span 都一样 | OTel resource：`spring.observability.service-name`、`OTEL_RESOURCE_ATTRIBUTES` |

@@ -525,8 +525,8 @@ func (m *Manager) driverFor(name string) (Driver, error) {
 }
 
 // resolveBackend picks the backend named name out of dir, the name-keyed
-// directory of backends the container provided (see the discovery package for the
-// same shape). The empty name and defaultName both resolve to fallback, so a
+// directory of backends the container provided. The empty name and defaultName
+// both resolve to fallback, so a
 // process that contributes no backend still runs on the bundled one. A name
 // matching nothing is an error listing what IS available, so a typo in a
 // configured backend name is diagnosable instead of silently ignored. kind

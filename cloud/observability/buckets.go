@@ -20,9 +20,8 @@ import "slices"
 
 // DurationBuckets returns the duration-histogram boundaries, in seconds, that
 // every component builds its duration histograms from: the OTel HTTP semconv
-// recommended set. One definition rather than a literal per package, for the
-// same reason log keys and metric attribute names have one: a boundary is what
-// makes two histograms comparable, and a drifted boundary is silent — the
+// recommended set. One definition rather than a literal per package: a boundary
+// is what makes two histograms comparable, and a drifted boundary is silent — the
 // metric still reports, it just can no longer be bucketed against its siblings.
 //
 // It returns a fresh copy on every call. A component whose durations live on a

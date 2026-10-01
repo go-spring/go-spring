@@ -1,7 +1,5 @@
 # fault
 
-[![Go-Spring](https://img.shields.io/badge/Go--pring-cloud-blue)](https://github.com/go-spring/go-spring)
-
 `fault` is the in-process **fault-injection** companion to
 [cloud/governance/resilience](../resilience). It wraps a `resilience.ClientExecutor` so a
 configurable fraction of operations are made to fail or slow down on demand —
@@ -12,7 +10,7 @@ records the resulting outcomes.
 ## Features
 
 - Two seams: `WrapClientExecutor` (client side — wraps an executor so injected faults
-  land *inside* the retry/broker loop) and `ApplyServer` (server side — gates an
+  land *inside* the retry/breaker loop) and `ApplyServer` (server side — gates an
   inbound handler call). Both validate resilience, not bypass it.
 - Centralized, hot-reloadable config. fault rides the same `governance.Config`
   (and so the same source document) as resilience (see
@@ -23,9 +21,10 @@ records the resulting outcomes.
   spring.governance.client.fault.* drives outbound calls, spring.governance.server.fault.* drives
   inbound requests, and each side counts its own MaxDuration/MaxAffected
   guardrails. An outbound fire that self-heals leaves the inbound one armed.
-- Three injection kinds: `generic` (a retryable injected error), `timeout`
-  (`context.DeadlineExceeded`), `reset` (`syscall.ECONNRESET`); plus a pure
-  latency mode. Per-service rules via `Config.Rules`.
+- Four injection kinds: `generic` (a retryable injected error), `timeout`
+  (`context.DeadlineExceeded`), `reset` (`syscall.ECONNRESET`), `refused`
+  (`syscall.ECONNREFUSED`); plus a pure latency mode. Per-service rules via
+  `Config.Rules`.
 - Injected errors implement `resilience.Retryable`, so they deterministically
   drive retries regardless of the host's retry predicate.
 - stdlib + resilience only — no third-party deps, no gs/spring dependency. The
@@ -67,7 +66,7 @@ err := fault.ApplyServer(ctx, inj, "gin", func() error { return next(ctx) })
 
 For a self-contained injector (tests, cloud/experimental/loadtest), build one
 with `fault.NewInjector(fault.Configs{Client: ..., Server: ...})` and pass it the
-same way. One [Config] type serves both directions — the model is symmetric, so
+same way. One `Config` type serves both directions — the model is symmetric, so
 only the values differ — and the direction is fixed by which entry point reads
 it, never by a parameter a caller could aim wrong.
 
@@ -82,7 +81,7 @@ spring.governance.client.fault.error=generic        # "" | "generic" | "timeout"
 spring.governance.client.fault.latency=50ms         # optional, applied to every call
 spring.governance.client.fault.latency-jitter=20ms   # optional, sleep latency ± U[0,20ms]
 
-# inbound: Apply's inbound-handler gate (gin / echo / grpc / hertz / trpc / dubbo)
+# inbound: ApplyServer's inbound-handler gate (gin / echo / grpc / hertz / trpc / dubbo)
 spring.governance.server.fault.enabled=true
 spring.governance.server.fault.rate=0.2
 spring.governance.server.fault.error=timeout
@@ -93,12 +92,6 @@ Read the live values with `Injector.ClientConfig()` / `Injector.ServerConfig()`.
 See the [Design](#design) section below for the injection-point rationale and boundaries, and
 `starter-redigo/example-load` for a runnable load test that toggles fault.
 
-## Status
-
-`WrapClientExecutor` (client) + `ApplyServer` (server) seams, per-service `Rules`, and
-centralization under the governance center (whose one process-wide
-`*Injector` is a bean) are all landed.
-
 ---
 
 # Design
@@ -106,16 +99,16 @@ centralization under the governance center (whose one process-wide
 `fault` is the in-process fault-injection companion to
 [cloud/governance/resilience](../resilience). Where resilience *protects* a client against
 downstream failures, fault *manufactures* them on demand so the protection
-stack can be proven under load. It ships two seams — [WrapClientExecutor] for outbound
-calls, [ApplyServer] for inbound requests — plus the load-test binary
+stack can be proven under load. It ships two seams — `WrapClientExecutor` for outbound
+calls, `ApplyServer` for inbound requests — plus the load-test binary
 `starter-redigo/example-load` that drives the outbound one end to end.
 
 ## 1. Responsibilities & Boundaries
 
-- **Does:** wrap a [resilience.ClientExecutor] so a configurable fraction of
+- **Does:** wrap a `resilience.ClientExecutor` so a configurable fraction of
   operations are made to fail (or slow down) before the real executor sees
   them; hot-swap the live config behind an atomic pointer; expose neutral
-  [InjectedError] values that are [resilience.Retryable] and surface as familiar
+  `InjectedError` values that are `resilience.Retryable` and surface as familiar
   Go errors (`context.DeadlineExceeded`, `syscall.ECONNRESET`).
 - **Refuses:**
   - No gs / spring dependency. fault is stdlib + resilience only; the hot-reload
@@ -130,7 +123,7 @@ calls, [ApplyServer] for inbound requests — plus the load-test binary
 
 ## 2. Key Abstraction / Seam
 
-**One seam: [WrapClientExecutor].** A [faultExecutor] wraps the operation `fn`
+**One seam: `WrapClientExecutor`.** A `faultExecutor` wraps the operation `fn`
 *inside* its `Execute`, then delegates to the inner executor:
 
 ```
@@ -155,23 +148,23 @@ construction); fault then wraps that from the outside. The injected fault still
 reaches the real executor's retry loop, so it is both *handled* by resilience
 and *recorded* by observe.
 
-**Retryability.** [InjectedError] implements `Retryable() bool` returning true,
-which [resilience.ClientPolicy.ShouldRetry] consults first — so injected faults
+**Retryability.** `InjectedError` implements `Retryable() bool` returning true,
+which `resilience.ClientPolicy.ShouldRetry` consults first — so injected faults
 deterministically drive retries regardless of the host's configured predicate.
 The typed kinds wrap a real error so `errors.Is(err, context.DeadlineExceeded)`
 works and downstream classifiers (observe's outcome map) label the call like a
 genuine timeout/reset.
 
-**Two directions, one Injector.** [Injector] holds one [side] (config +
+**Two directions, one Injector.** `Injector` holds one `side` (config +
 guardrail counters) per direction, so an outbound fire and an inbound fire never
-see or trip each other: [WrapClientExecutor]'s per-attempt gate reads the client side,
-[ApplyServer] reads the server side. That is why the two configs must be separate keys
+see or trip each other: `WrapClientExecutor`'s per-attempt gate reads the client side,
+`ApplyServer` reads the server side. That is why the two configs must be separate keys
 (`spring.governance.client.fault.*` / `spring.governance.server.fault.*`) rather than one block with a
 per-rule direction flag — the knobs that need the direction most
 (`rate`/`latency`/`error`/`scope`/guardrails) are the GLOBAL ones, which carry no
 service label for a flag to hang on.
 
-**Hot-reload.** Each side holds its [Config] behind `atomic.Pointer`; the
+**Hot-reload.** Each side holds its `Config` behind `atomic.Pointer`; the
 governance center calls `SetConfig` on every source push, so faults toggle at
 runtime without a restart. There is no "must be enabled at boot" caveat: the
 wrap and the middleware are structural and always installed (`nil` injector ⇒

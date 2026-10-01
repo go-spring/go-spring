@@ -70,7 +70,7 @@ type p2c struct {
 	started map[string][]time.Time
 
 	// now is the clock, injectable so tests can drive the staleness aging
-	// deterministically (same idiom as Tracker). Defaults to time.Now.
+	// deterministically. Defaults to time.Now.
 	now func() time.Time
 }
 

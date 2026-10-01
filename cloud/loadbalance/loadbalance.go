@@ -19,8 +19,7 @@
 //
 // Discovery answers "which instances exist right now?"; this package answers
 // the next question — "given that live set, which one do I send this request
-// to?". It is deliberately split into two concerns, mirroring the discovery and
-// resilience packages:
+// to?". It is deliberately split into two concerns:
 //
 //   - [Balancer] is the pluggable selection strategy (round-robin, least-conn,
 //     consistent-hash, weighted, zone-aware). It is pure: given a candidate

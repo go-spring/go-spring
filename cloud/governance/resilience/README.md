@@ -1,13 +1,12 @@
 # resilience
+
 [English](README.md) | [中文](README_CN.md)
 
-`resilience` is a framework-agnostic client-fault-tolerance abstraction for
-client-side fault tolerance: rate limiting, circuit breaking, bulkhead
-isolation, retry, per-attempt timeout, and fallback. Client starters plug
-the single `ClientExecutor` seam into their own request hook (HTTP RoundTripper,
-Redis Hook, GORM plugin, ...); the rate-limit stage's counters are the
-executor's own budget for its service, so one budget can cover that service —
-or, with a shared `Counters` store, the whole fleet.
+`resilience` is a framework-agnostic abstraction for client-side fault
+tolerance: rate limiting, circuit breaking, bulkhead isolation, retry,
+per-attempt timeout, and fallback. Client starters plug the single
+`ClientExecutor` seam into their own request hook (HTTP RoundTripper, Redis
+Hook, GORM plugin, ...).
 
 ## Features
 
@@ -65,14 +64,13 @@ The `Export` is load-bearing: gs indexes beans by their exact type, so a
 concrete driver without it is invisible to the directory.
 
 The counter store is a backend too, but an OPTIONAL one — how wide a rate limit
-reaches, nothing more. With no `Counters` bean in the container each executor
+reaches, nothing more. With no `Counters` bean in the container, each executor
 counts in a budget of its own, exactly like its breaker and bulkhead state: an
 executor is built once per service label, so one budget still covers every
 caller of that label. Contribute a store over a shared backend (Redis) and the
-driver injects it, so the limit holds across replicas, one budget per service. It reaches the executors of the bundled engine, which is what
-a store is for: an engine that brings its own flow control (sentinel) counts on
-its own and ignores the store.
-
+driver injects it, so the limit holds across replicas — one budget per service.
+A store reaches only the bundled engine's executors: an engine that brings its
+own flow control (sentinel) counts on its own and ignores it.
 
 ## Installation
 
@@ -91,7 +89,7 @@ import (
     "go-spring.org/cloud/governance/resilience"
 )
 
-exec, _ := resilience.NewDefaultDriver(nil).NewExecutor("http:orders", resilience.ClientPolicy{
+exec, _ := resilience.NewDefaultDriver(nil).NewClientExecutor("http:orders", resilience.ClientPolicy{
     RateLimit:      100,
     ErrorThreshold: 5,
     MaxRetries:     2,
@@ -106,8 +104,14 @@ client := &http.Client{
 Combine with `cloud/discovery` at the dial layer:
 
 ```go
-ld, _ := discovery.NewClientDialer(ctx, "default", "orders")
-dial  := resilience.NewDialer(ld.DialContext, exec)
+// dialOf reads a live endpoint and dials it: the closure a discovery
+// Resolver + loadbalance Pool composes into.
+dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
+    ep, err := pool.Pick(loadbalance.PickInfo{})
+    if err != nil { return nil, err }
+    return (&net.Dialer{}).DialContext(ctx, network, ep.Addr)
+}
+dial = resilience.NewDialer(dial, exec)
 ```
 
 A bare budget check is the same call with only the rate-limit stage
@@ -115,8 +119,8 @@ configured — the empty body is the whole work being admitted:
 
 ```go
 exec := mgr.ClientExecutorFor("gateway", "route:orders")
-if err := exec.Execute(ctx, func(context.Context) error { return nil });
-    errors.Is(err, resilience.ErrRateLimited) { /* 429 */ }
+err := exec.Execute(ctx, func(context.Context) error { return nil })
+if errors.Is(err, resilience.ErrRateLimited) { /* 429 */ }
 ```
 
 ---
@@ -172,8 +176,8 @@ sentinel driver from `starter/starter-governance-sentinel`.
     naturally with a dial closure over a round-robin pick pool. Service is fixed
     because a dialer is already scoped to one service.
 
-  Inbound admission is NOT in this package: each protocol starter builds
-  its own middleware on the `resilience.ClientExecutorFor` seam (see
+  Inbound **middleware** is not in this package: each protocol starter
+  builds its own on the `resilience.Manager.ServerExecutorFor` seam (see
   starter-gin / starter-grpc admission), mapping neutral rejections to
   429/503 and serving each request exactly once.
 - **`Fallback` is a helper, not an interface method.** Adding a `degrade`
@@ -248,7 +252,7 @@ sentinel driver from `starter/starter-governance-sentinel`.
   make retry-inside-breaker semantics ambiguous.
 - **Duplicate breaker with `loadbalance.Tracker`.** Different job (LB
   eviction is a queryable candidate-set filter, resilience rejects a call
-  in flight). Feeding both from the same `DoneInfo.Err` keeps them
+  in flight). Feeding both from the same per-call error keeps them
   consistent without a code dependency.
 - **No sliding-window in the Redis counter store (elsewhere).** Only token
   bucket is cleanly expressible as an atomic Lua script; sliding-window

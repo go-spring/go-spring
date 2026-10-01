@@ -48,8 +48,8 @@ func (p ClientPolicy) ShouldRetry(err error) bool {
 // The schedule grows [ClientPolicy.InitialInterval] by [ClientPolicy.Multiplier] each step
 // up to [ClientPolicy.MaxInterval], then decorrelates concurrent callers by ±
 // [ClientPolicy.RandomizationFactor]. A zero InitialInterval yields 0 (no backoff),
-// which is how a legacy ClientPolicy with only MaxRetries set keeps its back-to-back
-// retry behavior. Both drivers call this so the math cannot drift.
+// so a policy that sets only [ClientPolicy.MaxRetries] retries back to back.
+// Both drivers call this so the math cannot drift.
 func (p ClientPolicy) Backoff(attempt int) time.Duration {
 	if p.InitialInterval <= 0 {
 		return 0

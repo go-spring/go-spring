@@ -5,7 +5,9 @@
 `observability` carries per-request attributes on a `context.Context`, so the
 spans go-spring starts **on your behalf** carry them too.
 
-You need this because most instrumentation starts its span inside the framework.
+## Why you need it
+
+Most instrumentation starts its span inside the framework.
 A registry registration, a lock acquisition, a cache or DB call — each creates
 its span *below* your frame and hands the span-carrying context to an inner
 closure, never back to you. `trace.SpanFromContext(ctx)` on your own context
@@ -51,8 +53,7 @@ inert.
 
 ## Two shapes that look unreachable, and are not
 
-Both come up when deciding whether this can help at all. Neither needs the span
-object, only the context it will be started from.
+Neither needs the span object, only the context it will be started from.
 
 **A span the framework starts below your frame.** Registry registration, a lock
 acquisition, a cache or DB call: you never see the span, so
@@ -92,7 +93,7 @@ The refresh function is passed in (not referenced), so the package stays
 spring-free; fn's error is returned unchanged — this is instrumentation, not
 error policy.
 
-## Scope
+## What it does not cover
 
 | Not covered | Where it belongs instead |
 |---|---|

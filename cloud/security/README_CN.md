@@ -1,4 +1,5 @@
 # security
+
 [English](README.md) | [中文](README_CN.md)
 
 `security` 是与框架无关、零依赖的认证与授权抽象——Spring Security 的等价能力
@@ -52,7 +53,7 @@ starter 会把具体 validator 作为容器 bean 贡献出来（例如
 import httpsvr "go-spring.org/starter-http-server"
 
 chain := httpsvr.Chain(
-    httpsvr.Authenticate(validator, true), // required=true:无 token 则 401
+    httpsvr.Authenticate(validator, true), // required=true：无 token 则 401
     httpsvr.Authorize("orders:read"),      // 路由级闸门
 )
 http.ListenAndServe(":8080", chain(mux))
@@ -75,8 +76,8 @@ if auth.HasAnyAuthority("orders:read") {     // 判定方法是 nil-safe 的
 ```go
 if err := security.Require(ctx, "orders:write"); err != nil {
     switch {
-    case errors.Is(err, security.ErrUnauthenticated): // 401:无已验证身份
-    case errors.Is(err, security.ErrForbidden):       // 403:已认证但缺该权限
+    case errors.Is(err, security.ErrUnauthenticated): // 401：无已验证身份
+    case errors.Is(err, security.ErrForbidden):       // 403：已认证但缺该权限
     }
 }
 ```

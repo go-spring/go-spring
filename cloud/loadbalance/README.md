@@ -25,8 +25,8 @@ import (
 )
 
 backend := discovery.NewStaticDiscovery(
-    discovery.Endpoint{Host: "10.0.0.1", Port: 8080},
-    discovery.Endpoint{Host: "10.0.0.2", Port: 8080},
+    discovery.Endpoint{Addr: "10.0.0.1:8080", Scheme: "tcp"},
+    discovery.Endpoint{Addr: "10.0.0.2:8080", Scheme: "tcp"},
 )
 resolver, err := discovery.NewResolver(ctx, backend, "orders")
 if err != nil { return err }
@@ -55,22 +55,23 @@ any wiring; set initial thresholds with `WithTrackerConfig`).
 pool := loadbalance.NewPool(resolver, bal)
 ```
 
-- **The endpoint source** is anything implementing
-  `Endpoints() ([]discovery.Endpoint, error)`; a discovery `Resolver` plugs in via
-  the `discovery.Resolver` itself — freshness lives entirely inside the
+- **The endpoint source** is a `discovery.Resolver` —
+  `func() ([]discovery.Endpoint, error)`. Freshness lives entirely inside the
   discovery backend, so each `Pick` re-reads the latest snapshot.
 - Each `Pick` filters in order: **discovery eligibility** (disabled/unhealthy
   instances) → **suspension** (instances cooling down in the `Tracker`) →
   **zero-weight drain** (instances whose weight was set to 0). The survivors
   go to the strategy. No filter may empty a non-empty set — traffic is never
   black-holed.
-- **Mesh mode** (`discovery.MeshMode()` on) degrades to a single stable
-  endpoint automatically — the sidecar owns LB, no code change needed.
+- **Mesh mode** (`mesh.Enabled()`): no pool is built at all —
+  `discovery.NewResolver` returns a nil Resolver and the caller dials its
+  configured address directly, letting the sidecar balance.
 
 ## Balancer: strategies
 
-The strategy decides "which survivor wins". Seven are built in, registered
-under stable names; `New` fetches by name, `Register` adds your own.
+The strategy decides "which survivor wins". Seven are built in; a governance
+rule names one by name, and any `Factory` bean the container contributed can be
+named the same way.
 
 | Scenario | Strategy | Why |
 |---|---|---|

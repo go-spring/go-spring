@@ -30,9 +30,9 @@ import (
 // reads and reports the rest through [Params.Done]. That is what lets a
 // strategy be extended with parameters of its own without any change here.
 //
-// Reading a key marks it consumed, which preserves the strict-partition
-// guarantee the typed Config used to give: a parameter aimed at another
-// strategy is a construction error, never a silently dropped value.
+// Reading a key marks it consumed, which gives a strict partition: a parameter
+// aimed at another strategy is a construction error, never a silently dropped
+// value.
 //
 // A Params is a one-shot reader owned by the factory that receives it; it is
 // not safe for concurrent use and must not be retained past construction.

@@ -16,18 +16,21 @@
 
 // Package propagate carries markers across protocol boundaries.
 //
-// [Carrier] is the three-method seam every protocol's metadata adapts to —
-// enumerate keys, read a key's values, write a key — so a marker moves across
-// an HTTP header, a gRPC metadata.MD, a Kafka record's header slice or a
-// dubbo attachment map through one shape. Three adapters cover the common map
-// forms ([MultiMap], [StringMap], [Header]) as zero-copy views over the
-// protocol's own map; anything else (a header slice, a getter/setter pair)
-// implements the interface in a small adapter type where it lives — the
-// decode rule that is a protocol fact, not carrier knowledge, stays with the
-// protocol.
+// A marker is a value one hop writes into a request's metadata and the next
+// hop reads back; the load-test flag is the case this package was built for.
+// Moving one across protocols needs a seam over that metadata, and [Carrier]
+// is it: enumerate the keys a hop's metadata holds, read one key's values,
+// write one key. An HTTP header, a gRPC metadata.MD, a Kafka record's header
+// slice and a dubbo attachment map all fit through those three calls.
 //
-// The carrier is half the pattern; the marker's owner holds the other half.
-// One marker is one key plus a seam pair:
+// [MultiMap], [StringMap] and [Header] adapt the common map shapes as
+// zero-copy views over the protocol's own map. Anything else — a header slice,
+// a getter/setter pair — gets a small adapter type next to the protocol that
+// owns the map, because how a protocol decodes its own metadata is a protocol
+// fact, not carrier knowledge.
+//
+// The carrier is only half of it; the marker's owner supplies the other half,
+// one key plus the two seams that move the value between carrier and context:
 //
 //	// inbound, per server hop: carrier → ctx
 //	for _, v := range c.Values(key) {
@@ -40,16 +43,15 @@
 //	    c.Set(key, v)
 //	}
 //
-// cloud/governance/traffic is the reference pair for the load-test marker.
+// cloud/governance/traffic is the reference pair, for the load-test marker.
 // This package holds no policy — no key registry, no value rules, no context
-// slot — only the carrier's invariants: an empty value reads as absent, and
-// Set replaces instead of appending (so re-injecting is idempotent). A view
-// over a nil map reads empty; writing needs a non-nil map, so an outbound
-// seam that injects allocates its map first.
+// slot — only the invariants the adapters share: an empty value reads as
+// absent, and Set replaces instead of appending, so re-injecting is
+// idempotent. A view over a nil map reads empty but cannot be written to, so
+// an outbound seam that injects allocates its map first.
 //
-// One boundary. For trace/correlation propagation prefer the OpenTelemetry
-// propagator API — this package is for domain markers that ride a self-owned
-// contract.
+// For trace and correlation propagation use the OpenTelemetry propagator API
+// instead; this package is for domain markers that ride a contract you own.
 package propagate
 
 import (
